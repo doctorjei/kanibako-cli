@@ -956,29 +956,29 @@ A target handles:
 2. Describing the launch contract declaratively (`descriptor`) -- core
    assembles argv, delivery binds, container env, and credential sync from it
 
-### Three-tier plugin discovery
+### Plugin discovery
 
-Kanibako discovers target plugins from three sources, checked in order.
-Later sources override earlier ones when two plugins register the same name.
+Kanibako discovers target plugins from two sources.
 
-| Tier | Location | Use case |
-|------|----------|----------|
-| 1. Entry points | `kanibako.agents` entry point group + `kanibako.plugins.*` namespace scan | Pip-installed packages and bind-mounted plugins in nested containers |
-| 2. User directory | `<config.data>/plugins/*.py`, by default `~/.local/share/kanibako/plugins/*.py` | Personal plugins shared across all projects |
-| 3. Project directory | `{project}/box_data/plugins/*.py` | Project-specific plugins |
+| Route | Where | Use case |
+|-------|-------|----------|
+| Entry points | `kanibako.agents` entry point group, from an installed package | Pip-installed plugins |
+| Namespace scan | `kanibako.plugins.*` | Bind-mounted plugins in nested containers |
 
-Drop a `.py` file containing a `Target` subclass into the user or project
-plugins directory and Kanibako picks it up automatically -- no packaging or
-`pip install` needed.  Files starting with `_` are skipped.
+Entry points override the namespace scan when two plugins register the same name;
+within the namespace scan the first one found keeps the name.
+
+**A plugin is installed code, and only installed code loads.** A `.py` file
+placed in `<config.data>/plugins/` or in a box store's `plugins/` is not
+discovered, is never imported, and does nothing. Package the plugin and
+`pip install` it instead -- see [docs/writing-targets.md](docs/writing-targets.md)
+for a minimal `pyproject.toml`.
 
 **A plugin that fails to load is skipped, not fatal.**  If a plugin raises while
 being imported -- most often because it was built against a different
 `kanibako-cli` -- Kanibako names it on standard error, says the rest still works,
 and carries on without it.  Only that agent becomes unavailable; every other
 agent, and `kanibako setup`, are unaffected.
-
-**Security note:** file-drop plugins run with the same permissions as
-Kanibako itself.  Only place files you trust in plugin directories.
 
 See [docs/writing-targets.md](docs/writing-targets.md) for the full developer
 guide.

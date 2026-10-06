@@ -22,7 +22,5 @@ def get_target(name: str, project_path: Path | None=None) -> type[Target]
 def resolve_target(name: str | None=None, project_path: Path | None=None) -> Target
 def _register(targets: dict[str, type[Target]], declared: dict[str, tuple[str, str]], name: str, cls: type[Target], source: str, *, tier: str, override: bool) -> None
 def _scan_plugin_modules(targets: dict[str, type[Target]], declared: dict[str, tuple[str, str]]) -> None
-def _scan_directory_plugins(directory: Path, targets: dict[str, type[Target]], declared: dict[str, tuple[str, str]]) -> None
-def _standalone_root_from(path: Path) -> Path | None
 def _require_meta_name(target: Target) -> Target
 ```

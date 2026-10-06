@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import importlib
-import importlib.util
 import logging
 import pkgutil
 import sys
@@ -53,11 +52,10 @@ def _register(
 ) -> None:
     """Enter *cls* in *targets* under the NODE its declared *name* derives.
 
-    THE ONE REGISTRATION GATE — all three discovery tiers assign through it, so the
-    pseudo-agent reservation (keyspec §2d) cannot hold at one tier and not another.
-    *override* carries each tier's own precedence rule: entry points and the two
-    file-drop scans replace an earlier answer, the ``kanibako.plugins`` module fallback
-    keeps the first one.
+    THE ONE REGISTRATION GATE — both discovery routes assign through it, so the
+    pseudo-agent reservation (keyspec §2d) cannot hold at one route and not another.
+    *override* carries each route's own precedence rule: entry points replace an
+    earlier answer, the ``kanibako.plugins`` module fallback keeps the first one.
 
     ⚑⚑ **THE KEY IS THE NODE, NOT THE DECLARED NAME** (``[R173]``, keyspec §0): a
     plugin calling itself ``Shell`` keeps that spelling in its ``name`` property — the
@@ -69,12 +67,12 @@ def _register(
     owns is a store dir and an ``agent.<node>.*`` slot, and those follow the node — so
     ``Shell`` claims exactly what ``shell`` does.
 
-    *declared* maps node → ``(declared name, tier)`` for what already holds it, which is
-    how a CASE COLLISION is told from an ordinary override.  Two plugins in ONE tier
+    *declared* maps node → ``(declared name, route)`` for what already holds it, which is
+    how a CASE COLLISION is told from an ordinary override.  Two plugins in ONE route
     declaring ``Claude`` and ``claude`` collapse to one node, and discovery order within
-    a tier is arbitrary — so the second is REFUSED rather than silently winning.  Across
-    tiers the precedence rule above is a documented answer, not an accident, and it is
-    left alone: a file-drop plugin still replaces an installed one.
+    a route is arbitrary — so the second is REFUSED rather than silently winning.  Across
+    routes the precedence rule above is a documented answer, not an accident, and it is
+    left alone.
 
     ⚑ THE PLUGIN-SHAPE GATE refuses a plugin with no ``descriptor`` or no
     ``default_entrypoint`` (the invariant this serves: ``targets.base.has_plugin``).  It
@@ -192,85 +190,19 @@ def _scan_plugin_modules(
                 )
 
 
-def _scan_directory_plugins(
-    directory: Path,
-    targets: dict[str, type[Target]],
-    declared: dict[str, tuple[str, str]],
-) -> None:
-    """Scan a directory for .py files containing Target subclasses.
-
-    Files starting with ``_`` are skipped.  Later directories in the
-    discovery chain override earlier ones (same target name replaces).
-    """
-    if not directory.is_dir():
-        return
-    for py_file in sorted(directory.glob("*.py")):
-        if py_file.name.startswith("_"):
-            continue
-        try:
-            spec = importlib.util.spec_from_file_location(
-                f"kanibako_plugin_{py_file.stem}", py_file,
-            )
-            if spec is None or spec.loader is None:
-                continue
-            mod = importlib.util.module_from_spec(spec)
-            spec.loader.exec_module(mod)  # type: ignore[union-attr]
-        except Exception:
-            logger.debug("Failed to load plugin %s", py_file, exc_info=True)
-            continue
-        for attr_name in dir(mod):
-            attr = getattr(mod, attr_name, None)
-            if (
-                isinstance(attr, type)
-                and issubclass(attr, Target)
-                and attr is not Target
-                and attr is not ShellTarget
-            ):
-                try:
-                    instance = attr()
-                    name = instance.name
-                except Exception:
-                    continue
-                # Later directories in the chain override earlier ones, so each
-                # DIRECTORY is its own tier for the case-collision test.
-                _register(
-                    targets, declared, name, attr, f"file '{py_file}'",
-                    tier=str(directory), override=True,
-                )
-
-
-def _standalone_root_from(path: Path) -> Path | None:
-    """The standalone ROOT at or above *path*, or ``None`` if no ancestor qualifies.
-
-    ⚑ SD's ONE predicate: the root whose OWN ``workset.yaml`` stores the
-    ``workset.registry`` null.  This seam is handed ``proj.project_path`` — the WORKSPACE
-    — while ``workset.boxes`` is carried by the ROOT's file, so walking is what makes the
-    store answerable.
-    """
-    from kanibako.settings.paths import _is_standalone_meta_dir
-
-    candidate = Path(path).resolve()
-    for ancestor in (candidate, *candidate.parents):
-        if _is_standalone_meta_dir(ancestor):
-            return ancestor
-    return None
-
-
 def discover_targets(project_path: Path | None = None) -> dict[str, type[Target]]:
-    """Scan entry points, plugin modules, and directories for targets.
+    """Scan entry points and plugin modules for targets.
 
     ⚑ **Keyed by NODE — the declared name in lowercase** (``[R173]``, keyspec §0).
     The declared spelling is the plugin's ``name`` property and stays there; these
     keys are what the ``agents/<node>/`` store dir and the ``agent.<node>.*`` cascade
     slot are spelled from, so they carry the node's case, not the name's.
 
-    Discovery order (later overrides earlier):
-
-    1. Entry points (pip-installed packages)
-    2. ``kanibako.plugins.*`` module scan (bind-mount fallback)
-    3. User directory (``<config.data>/plugins/``, by default
-       ``~/.local/share/kanibako/plugins/``)
-    4. Project directory (its RESOLVED store's ``plugins/``)
+    ⚑ **A PLUGIN IS INSTALLED CODE, AND ONLY INSTALLED CODE LOADS** (keyspec §2,
+    *"Plugins load only from installed packages"*).  Discovery reads no directory
+    tree: there is no user plugins dir and no project plugins dir, so a ``.py`` file
+    under either is inert data.  *project_path* is accepted and ignored — it is
+    carried by every caller and stays in the signature.
     """
     targets: dict[str, type[Target]] = {}
     # node -> (declared name, tier), so ``_register`` can tell a CASE COLLISION from
@@ -280,8 +212,8 @@ def discover_targets(project_path: Path | None = None) -> dict[str, type[Target]
     # ⚑ THE BUILT-IN IS SEEDED, NOT DISCOVERED ([R175] — built-in is a CATEGORY,
     # not a carve-out).  The plain-shell target owns the ``shell`` slot the way a
     # plugin owns its name, so it enters through no plugin door: no entry point
-    # (``pyproject.toml`` carries none for it), no module scan, no file drop —
-    # both scanners below skip it by identity.  The D6 reservation in
+    # (``pyproject.toml`` carries none for it), no module scan —
+    # the module scanner below skips it by identity.  The D6 reservation in
     # ``_register`` / ``_require_meta_name`` therefore never sees it, and a
     # third-party plugin declaring ``shell`` is still refused there — that
     # refusal protects exactly this slot.
@@ -304,14 +236,14 @@ def discover_targets(project_path: Path | None = None) -> dict[str, type[Target]
         # 2026-08-17 with a stale kanibako-agent-goose: three sequential
         # dead-ends, three manual edits.
         #
-        # The two FALLBACK scanners below have always tolerated a failing plugin
+        # The FALLBACK scanner below has always tolerated a failing plugin
         # (``logger.debug`` + continue); this loop is the primary path and was the
         # only one that did not.  Skip-and-warn brings it in line.
         #
         # WARN, never swallow: a pip-installed adapter that cannot load is a
         # broken install the user must know about, so this goes to stderr with
-        # the cure — unlike the fallbacks' debug-level note, which covers
-        # optional bind-mount/file-drop paths where absence is routine.
+        # the cure — unlike the fallback's debug-level note, which covers the
+        # optional bind-mount path where absence is routine.
         #
         # ⚑ AND IT IS NOW THE ONLY CARRIER OF THE CURE.  v1.8.0 DELETED the four
         # flat re-export shims outright (clean break — a shim is a deprecation
@@ -350,28 +282,6 @@ def discover_targets(project_path: Path | None = None) -> dict[str, type[Target]
 
     # Fallback: scan kanibako.plugins.* for bind-mounted plugins
     _scan_plugin_modules(targets, declared)
-
-    # User-level file-drop plugins, under the ``config.data`` directory the user actually
-    # configured — never the XDG data base plus a hardcoded "kanibako" leaf ([R155]).  ⚑
-    # ``resolve_data_path`` is PURE and TOTAL (creates nothing, never raises, degrades to
-    # the default): discovery runs on every command, including before a config file exists,
-    # so it must not acquire a failure mode here.
-    from kanibako.settings.paths import (
-        resolve_data_path, standalone_box_store, total_standalone_early)
-
-    _scan_directory_plugins(resolve_data_path() / "plugins", targets, declared)
-
-    # Project-level file-drop plugins.  Absence is not an error.  ⚑ Resolved from the
-    # standalone ROOT, never from *project_path* as handed in: production passes
-    # ``proj.project_path`` — the WORKSPACE — and answering the store off that reads a
-    # ``workset.yaml`` that never carried the key.  Public signature unchanged.
-    if project_path is not None:
-        store_root = _standalone_root_from(project_path) or project_path
-        _scan_directory_plugins(
-            standalone_box_store(
-                store_root, early=total_standalone_early(),
-            ) / "plugins", targets, declared,
-        )
 
     return targets
 
