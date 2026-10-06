@@ -129,9 +129,7 @@ def test_a_non_string_at_a_layer1_path_key_is_refused_by_name_at_the_cli(
     assert "BARE RELATIVE" not in printed, printed
 
 
-#: ⛔ ``channels.common`` + a LIST IS NOT IN THIS TABLE.  ``channels.*`` is bind-shaped, so
-#: the file READ refuses a list there through the bind parser, which names the file and the
-#: repr but NOT the key.  It is pinned, as a refusal only, by the test below.
+#: ``channels.common`` + a LIST has its own test below, which also pins the FILE it names.
 WORKSET_EARLY_CASES = (
     ("channels.common", 8080, "workset.channels.common", "an integer"),
     ("channels.common", {"x": None}, "workset.channels.common", "a map"),
@@ -185,6 +183,50 @@ def test_a_list_at_workset_channels_common_gets_the_path_key_refusal(
     assert rc != 0
     assert "workset.channels.common" in printed, printed
     assert "give one quoted path" in printed, printed
+    assert "workset.yaml" in printed, printed
+
+
+def _pref_case(scope: str):
+    return pytest.param(scope, marks=pytest.mark.writes_undeclared(
+        *(("pref.workset",) if scope == "workset" else ()),
+        f"pref.{scope}.channels", f"pref.{scope}.channels.common",
+        reason="drives spec §2h's refusal of a non-allowlisted pref target, so the "
+               "file partial carries the refused pref node before the refusal.",
+    ))
+
+
+@pytest.mark.parametrize("scope", [_pref_case("workset"), _pref_case("system")])
+def test_a_list_at_a_pref_channels_common_gets_the_pref_refusal(
+    tmp_home, config_file, capsys, scope,
+):
+    """``pref.<scope>.channels.common: [a]`` gets spec §2h's "not requestable" refusal.
+
+    Mutation: judge the UNSTRIPPED ``pref.`` key in ``_at_bind_leaf`` → the bind
+    parser's arity refusal answers instead.
+    """
+    root = _registered_ws(tmp_home, capsys)
+    _write(root / "workset.yaml",
+           f"name: ws1\npref:\n  {scope}:\n    channels:\n      common:\n      - a\n")
+    rc, printed = _cli(DOOR, tmp_home, capsys)
+    assert rc != 0
+    assert f"{scope}.channels.common" in printed, printed
+    assert "not requestable" in printed, printed
+    assert "elements" not in printed, printed
+
+
+@pytest.mark.parametrize("body", [
+    "pref:\n  box:\n    common:\n    - a\n",
+    "pref:\n  agent:\n    claude:\n      common:\n      - a\n",
+])
+def test_a_list_at_a_pref_bind_category_keeps_the_bind_refusal(
+    tmp_home, config_file, capsys, body,
+):
+    """The control: a pref whose target IS a bind category still bind-parses."""
+    root = _registered_ws(tmp_home, capsys)
+    _write(root / "workset.yaml", "name: ws1\n" + body)
+    rc, printed = _cli(DOOR, tmp_home, capsys)
+    assert rc != 0
+    assert "2 or 3 elements" in printed, printed
 
 
 def test_a_string_at_a_workset_early_path_key_still_reaches_the_bare_relative_arm(
