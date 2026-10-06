@@ -119,3 +119,39 @@ class TestDetection:
         std.settings.parent.mkdir(parents=True, exist_ok=True)
         std.settings.write_text("workset:\n  registry: null\n")
         assert box_resolve.standalone_settings_present(root) is False
+
+
+class TestNamedSetRefusal:
+    def _named(self, tmp_home) -> Path:
+        root = tmp_home / "home" / "ws2"
+        assert _cli(["workset", "create", str(root), "--name", "ws2"]) == 0
+        return root
+
+    def test_refused_without_force(
+        self, config_file, tmp_home, credentials_dir, capsys,
+    ):
+        root = self._named(tmp_home)
+        before = (root / WORKSET_META_FILE).read_text() if (
+            root / WORKSET_META_FILE).exists() else None
+        capsys.readouterr()
+        assert _cli(["workset", "set", "ws2", "workset.registry", "--null"]) == 1
+        err = capsys.readouterr().err
+        assert "standalone" in err
+        assert "--force" in err
+        after = (root / WORKSET_META_FILE).read_text() if (
+            root / WORKSET_META_FILE).exists() else None
+        assert after == before
+        assert box_resolve.standalone_settings_present(root) is False
+
+    def test_accepted_with_force(
+        self, config_file, tmp_home, credentials_dir, capsys,
+    ):
+        root = self._named(tmp_home)
+        capsys.readouterr()
+        rc = _cli(["workset", "set", "ws2", "workset.registry", "--null", "--force"])
+        out = capsys.readouterr()
+        assert rc == 0, out.err
+        assert "standalone" in out.err
+        doc = yaml.safe_load((root / WORKSET_META_FILE).read_text())
+        assert doc["workset"]["registry"] is None
+        assert box_resolve.standalone_settings_present(root) is True

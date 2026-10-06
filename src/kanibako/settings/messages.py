@@ -189,6 +189,12 @@ PER_OWNER_SHARE_TAIL = "; to share one path on purpose, move it to %s"
 ERR_WORKSET_EARLY_SET_HEAD = (
                         "nothing was written: this value could not be read back.\n  %s")
                                                     # the reader's refusal
+ERR_WORKSET_SET_MAKES_STANDALONE = (
+                        "a null workset.registry would make working set '%s' standalone, so "
+                        "nothing was written. Rerun with --force to set it anyway.")
+WARN_WORKSET_SET_MAKES_STANDALONE = (
+                        "Warning: a null workset.registry makes working set '%s' standalone.")
+                                                    # the workset name (both)
 # ⚑ The §2a bad-ENTRY report, ONE per file the command reads, and the only thing ``get``
 # says about them.  ``config.chain_reaches`` separates the two arms below.
 WARN_CONFIG_BAD_ENTRIES = "%s stores entries that are not keys (spec §0):\n  %s"
