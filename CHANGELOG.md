@@ -588,6 +588,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`box rm` and `box duplicate` refuse a `box:` that is not a table, naming the file.** They used to drop the bad
+  value silently (`rm` parked a deregistered entry with no image) or copy it into the new box. The refusal comes
+  before the registry, the workspace, or the name is touched, so fixing the file and retrying works. A bare
+  `box duplicate` (no `--to`) still copies the file as it is.
+
+- **A box whose `box:` is not a table is refused before setup, not after.** `box extract --name` onto such a box
+  and `start` of a workset member used to leave a new `home/` beside the bad `box.yaml`. Creating with an explicit
+  vault choice still runs setup first.
+
 - **`stop --all` no longer hides every mode's skip lines when one registry will not parse.** Each registry
   read is now separate, so an unreadable file warns and costs only the skip lines of the modes it feeds.
   The global `registry.yaml` feeds both standalone and named boxes, so it still costs both and is warned
