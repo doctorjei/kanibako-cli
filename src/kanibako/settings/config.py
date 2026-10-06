@@ -6,7 +6,7 @@ from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 from types import MappingProxyType
-from typing import TYPE_CHECKING, TypedDict
+from typing import TYPE_CHECKING, NamedTuple, TypedDict
 from kanibako._atomic import atomic_write_text
 from kanibako.errors import ConfigError
 from kanibako.settings.bootstrap import (BOXES_PATH, CONFIG_FILE, CONFIG_PATH_DEFAULTS,
@@ -17,7 +17,8 @@ from kanibako.settings.messages import (ERR_CONFIG_LAYER1_SETTINGS, ERR_CONFIG_L
                                         ERR_CONFIG_LAYER1_UNDECLARED,
                                         ERR_CONFIG_NULL_PATH_CURE,
                                         ERR_CONFIG_NULL_PATH_HEAD,
-                                        ERR_CONFIG_PATH_REF_SCOPE, ERR_CONFIG_REF_ORDER)
+                                        ERR_CONFIG_PATH_REF_SCOPE, ERR_CONFIG_REF_ORDER,
+                                        PER_OWNER_SHARERS)
 
 if TYPE_CHECKING:
     from kanibako.settings.paths import BoxMode
@@ -1186,23 +1187,44 @@ def reaches_identity(
     return any(alt <= reached for alt in wanted)
 
 
-def identity_cure(
+class IdentityGap(NamedTuple):
+    """What a refused per-owner value lacks: the cure, and who would share the path."""
+    cure: str
+    who: str
+    sharers: str
+
+
+def identity_gap(
     value: str, level: str, agent: "str | None", *, key: str, stored: "Callable[[str], object]",
-) -> str:
-    """*value* with the anchors it lacks appended, so it reaches *level* in every box mode."""
+) -> IdentityGap:
+    """*value*'s gap to *level*'s identity in every box mode: the anchors it lacks, appended."""
     from kanibako.settings.kb_store import IDENTITY_ANCHORS, IDENTITY_PAIRED
     from kanibako.settings.paths import BoxMode
 
-    def lacking(lvl: str) -> list[str]:
-        if all(reaches_identity(value, lvl, m, key=key, stored=stored) for m in BoxMode):
-            return []
+    def lacking(lvl: str, modes: "Iterable[BoxMode]") -> "tuple[list[str], bool, list[BoxMode]]":
+        failing = [m for m in modes if not reaches_identity(value, lvl, m, key=key, stored=stored)]
+        if not failing:
+            return [], False, []
+        pairs = IDENTITY_PAIRED.get(lvl, {})
+        paired = [a for p in sorted({pairs[m.value] for m in failing if m.value in pairs})
+                  for a in lacking(p, [m for m in failing if pairs.get(m.value) == p])[0]]
         common = set.intersection(*(set(anchors) for anchors in IDENTITY_ANCHORS[lvl].values()))
-        anchor = min(common).replace("<agent>", agent or "<agent>")
-        paired = sorted(set(IDENTITY_PAIRED.get(lvl, {}).values()))
-        own = [] if chain_reaches(value, {anchor}, key=key, stored=stored) else ["{" + anchor + "}"]
-        return [*(a for p in paired for a in lacking(p)), *own]
+        own = min(common).replace("<agent>", agent or "<agent>")
+        own_lacks = not chain_reaches(value, {own}, key=key, stored=stored)
+        return [*paired, *(["{" + own + "}"] if own_lacks else [])], own_lacks, failing
 
-    return "/".join([value.rstrip("/"), *lacking(level)])
+    found, own_lacks, failing = lacking(level, BoxMode)
+    pairs = IDENTITY_PAIRED.get(level, {})
+    if not own_lacks:
+        case = "paired"
+    elif len(found) == 1 and any(m.value in pairs for m in failing):
+        case = "own+standalone" if BoxMode.standalone in failing else "own"
+    elif failing == [BoxMode.standalone]:
+        case = "standalone"
+    else:
+        case = "none"
+    who, sharers = PER_OWNER_SHARERS[(level, case)]
+    return IdentityGap("/".join([value.rstrip("/"), *found]), who, sharers)
 
 
 def key_owner(key: str) -> "tuple[str, str | None]":

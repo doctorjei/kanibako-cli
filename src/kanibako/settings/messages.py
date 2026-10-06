@@ -155,20 +155,34 @@ ERR_CONFIG_REF_ORDER = (
                                                     # the key, the value, the ref, its set, the key's set
 #: The SET door's per-owner refusal (keyspec §0 "Per-owner resources"), and its words per owner.
 ERR_PER_OWNER_SET = (
-                        "nothing was written: %s = %r (%s scope, %s) would give every %s "
+                        "nothing was written: %s = %r (%s scope, %s) would give %s "
                         "one shared path, because the value does not reach %s identity. %s Spell "
                         "the identity into the value: %r, or set %s in each %s's own file.")
 PER_OWNER_SET_WORDS = {
-    "workset": ("working set", "working-set", "Same-named boxes in different working sets, "
-                "and every standalone box, would share it.", "working set"),
-    "partition": ("channel partition", "partition", "Same-named boxes in different working "
-                  "sets would share it.", "working set"),
-    "box": ("box", "box", "Every box would share it.", "box"),
-    "agent": ("agent", "agent", "Every agent would share it.", "agent"),
+    "workset": ("working-set", "working set"),
+    "partition": ("partition", "working set"),
+    "box": ("box", "box"),
+    "agent": ("agent", "agent"),
+}
+#: Who would share the path, by owner and by what the value lacks (``config.identity_gap``).
+PER_OWNER_SHARERS = {
+    ("workset", "none"): ("every working set", "Same-named boxes in different working sets, "
+                          "and every standalone box, would share it."),
+    ("workset", "standalone"): ("every standalone box", "Every standalone box would share it."),
+    ("partition", "none"): ("every channel partition", "Same-named boxes in different working "
+                            "sets would share it."),
+    ("box", "none"): ("every box", "Every box would share it."),
+    ("box", "paired"): ("same-named boxes in different working sets", "Same-named boxes in "
+                        "different working sets would share it."),
+    ("box", "own"): ("the boxes of each working set", "The boxes of each working set would "
+                     "share it."),
+    ("box", "own+standalone"): ("the boxes of each working set", "The boxes of each working "
+                                "set, and every standalone box, would share it."),
+    ("agent", "none"): ("every agent", "Every agent would share it."),
 }
 #: The READ door's twin, for a value the system file already holds; the same words per owner.
 ERR_PER_OWNER_READ = (
-                        "%s is set to %r in %s, which gives every %s one shared path, "
+                        "%s is set to %r in %s, which gives %s one shared path, "
                         "because the value does not reach %s identity. %s Nothing was changed. "
                         "Spell the identity into the value: kanibako system set "
                         "'%s=%s'; or run kanibako system reset %s, then kanibako workset "
@@ -178,7 +192,7 @@ ERR_PER_OWNER_READ = (
                                                     # key, value, file, the words, the cure
 #: The LAUNCH twin, for a key or bind entry any containing settings file holds.
 ERR_PER_OWNER_LAUNCH = (
-                        "%s is set to %r in %s, which gives every %s one shared path, "
+                        "%s is set to %r in %s, which gives %s one shared path, "
                         "because the value does not reach %s identity. %s Nothing was changed. "
                         "Spell the identity into the value: %r, or put it in each %s's "
                         "own file%s.")

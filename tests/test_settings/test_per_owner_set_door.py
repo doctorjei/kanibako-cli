@@ -259,17 +259,27 @@ class TestTheCureThroughTheCli:
         run.settings = settings  # type: ignore[attr-defined]
         return run
 
-    @pytest.mark.parametrize(("value", "cure"), [
-        ("/x/{box.env.V0}/{meta.box.name}", "/x/{box.env.V0}/{meta.box.name}/{meta.workset.path}"),
-        ("/x/{meta.workset.path}", "/x/{meta.workset.path}/{meta.box.name}"),
+    @pytest.mark.parametrize(("key", "value", "cure", "sharers"), [
+        ("box.canon", "/x/{box.env.V0}/{meta.box.name}",
+         "/x/{box.env.V0}/{meta.box.name}/{meta.workset.path}",
+         "would give same-named boxes in different working sets one shared path"),
+        ("box.canon", "/x/{meta.workset.path}", "/x/{meta.workset.path}/{meta.box.name}",
+         "would give the boxes of each working set one shared path"),
+        ("box.canon", "/x/{meta.workset.name}", "/x/{meta.workset.name}/{meta.box.name}",
+         "The boxes of each working set, and every standalone box, would share it."),
+        ("box.canon", "/x", "/x/{meta.workset.path}/{meta.box.name}",
+         "would give every box one shared path"),
+        ("workset.boxes", "/x/{meta.workset.name}", "/x/{meta.workset.name}/{meta.workset.path}",
+         "would give every standalone box one shared path"),
     ])
-    def test_the_refusal_is_true_and_its_cure_is_written(self, cli, value, cure):
+    def test_the_refusal_is_true_and_its_cure_is_written(self, cli, key, value, cure, sharers):
         before = _digest(cli.settings)
-        refused = cli("system", "set", f"box.canon={value}")
+        refused = cli("system", "set", f"{key}={value}")
         assert refused.returncode == 1, refused.stderr
-        assert "does not reach box identity" in refused.stderr, refused.stderr
-        assert "names no box identity" not in refused.stderr, refused.stderr
+        assert "does not reach" in refused.stderr, refused.stderr
+        assert "names no " not in refused.stderr, refused.stderr
+        assert sharers in refused.stderr, refused.stderr
         assert f"Spell the identity into the value: {cure!r}" in refused.stderr, refused.stderr
         assert _digest(cli.settings) == before
-        written = cli("system", "set", f"box.canon={cure}")
+        written = cli("system", "set", f"{key}={cure}")
         assert written.returncode == 0, written.stderr

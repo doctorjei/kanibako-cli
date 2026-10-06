@@ -71,7 +71,7 @@ from kanibako.settings.config import (
     box_scalar_defaults_floor,
     load_config,
     config_base_path,
-    identity_cure,
+    identity_gap,
     key_owner,
     null_path_keys_error,
     reaches_identity,
@@ -1533,11 +1533,11 @@ def _refuse_inherited_per_owner(
             (BoxMode.primary, BoxMode.named) if scope == "workset" else tuple(BoxMode))
         if all(reaches_identity(value, owner, m, key=key, stored=stored) for m in modes):
             return
-        noun, identity, shared_by, file_owner = PER_OWNER_SET_WORDS[owner]
+        identity, file_owner = PER_OWNER_SET_WORDS[owner]
+        gap = identity_gap(value, owner, agent, key=key, stored=stored)
         refusals.append(ERR_PER_OWNER_LAUNCH % (
-            name, value, path if path is not None else "a settings file", noun, identity,
-            shared_by, identity_cure(value, owner, agent, key=key, stored=stored), file_owner,
-            tail,
+            name, value, path if path is not None else "a settings file", gap.who, identity,
+            gap.sharers, gap.cure, file_owner, tail,
         ))
 
     for (level, path, floor_store), tier in zip(written, tiers):
