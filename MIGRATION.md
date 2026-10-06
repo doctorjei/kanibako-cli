@@ -7857,18 +7857,18 @@ root file and the box file were indistinguishable while both were called
   root holds the kanibako artifacts (`settings.yaml`, `box_data/`, `vault/`); your
   actual project files live under `workspace/` (mounted as `~/workspace`).
 
-⚑ **The standalone walk marker is now a `box_data/` directory PLUS a
-`<root>/settings.yaml`** — presence alone, not any field inside the file. (A
-NAMED workset root also carries `<root>/settings.yaml`, but with a
-`workset.meta` identity — superseded in v1.8.0: the identity moved to
-`<root>/registry.yaml` and the settings file became optional, §2.43 — and NO
-`box_data/` dir, so the two never collide.) The
-old in-tree `.kanibako`/`kanibako` dotdir marker is gone. When hand-editing a
-standalone tree, place `settings.yaml` at the root, keep a `box_data/` dir
-beside it, and put your files under `workspace/`. Drop any `layout:` field —
-and drop `mode` too: nothing writes or reads a `mode` token on a standalone
-box's `settings.yaml` (`launch/box_resolve.py:standalone_settings_present`
-tests presence only, deliberately not `project.mode`; see §9.2 for the full
+⚑ **The standalone walk marker is now `registry: null` under `workset:` in
+`<root>/workset.yaml`** — the root file's OWN stored `workset.registry` null, never a value
+reached through the settings cascade. `create` writes it beside `workset.kuid` as
+`registry: null  # REMOVING THIS WILL BREAK A STANDALONE BOX!`. Neither a `<root>/box_data/`
+directory nor the file's mere presence marks a standalone root, and removing the line
+makes the root read as not standalone. (A NAMED workset root's `<root>/workset.yaml` stores no
+null there; `kanibako workset set <name> workset.registry --null` is refused unless
+`--force`, because it would make the workset standalone.) The old in-tree
+`.kanibako`/`kanibako` dotdir marker is gone. When hand-editing a standalone tree, keep
+that line in `<root>/workset.yaml`, keep `<root>/box_data/` beside it, and put your files
+under `<root>/workspace/`. Drop any `layout:` or `mode` field: nothing reads a `mode` token
+(see the section headed *Per-box meta file project.yaml → settings.yaml* for the full
 `project:`-table correction).
 
 ⚑ **No automatic migration (pre-public):** there is no on-disk migrator. To move a

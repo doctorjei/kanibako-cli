@@ -2190,7 +2190,7 @@ def _to_workset(
         unwind.on_success(lambda: _dispose_stash(stash))
 
     # ⚑ ``force=True``: an absorb INTO a workset must override the standalone-marker
-    # connect guard (B2a) — a standalone source still carries its ``box_data/`` marker
+    # connect guard (B2a) — a standalone source still carries its root ``workset.yaml`` marker
     # here, since the marker is removed LATER in the convert. No-op for other modes.
     # ⚑ The unwind deletes a target leaf only when THIS op created it — ``add_project``
     # adopts an existing one, and on a same-workset, same-name relocation the workspace

@@ -213,6 +213,9 @@ def _workset_member_paths(
     members: list[tuple[str, str, str]] = []
     for ws_name, ws_root_str in worksets.items():
         ws_root = Path(ws_root_str)
+        from kanibako.launch.box_resolve import standalone_settings_present
+        if standalone_settings_present(ws_root):
+            continue
         registry_path = workset_registry.resolve_workset_registry_path(
             ws_root, load_doc(ws_root / WORKSET_META_FILE), early=_early(early_system, ws_name),
         )
@@ -321,6 +324,9 @@ def _resolve_before_standalone(
         cwd_str = str(cwd.resolve())
         for ws_name, ws_root in names["worksets"].items():
             ws_path = Path(ws_root)
+            from kanibako.launch.box_resolve import standalone_settings_present
+            if standalone_settings_present(ws_path):
+                continue
             settings_doc = load_workset_settings_doc(ws_path)
             ws_early = _early(early_system, ws_name)
             ws_workspaces = resolve_workspaces_locator(ws_path, settings_doc, early=ws_early)
@@ -424,6 +430,9 @@ def resolve_qualified_name(
     )
 
     ws_root = Path(names["worksets"][stored_ws])
+    from kanibako.launch.box_resolve import standalone_settings_present
+    if standalone_settings_present(ws_root):
+        raise ProjectError(f"Project '{proj_name}' not found in workset '{stored_ws}'")
     settings_doc = load_workset_settings_doc(ws_root)
     ws_early = _early(early_system, stored_ws)
     # Registered membership FIRST (the authoritative name → workspace store):

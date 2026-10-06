@@ -53,13 +53,15 @@ def _enumerate_worksets(
     """Yield ``(workset_name, workset_root, mode)`` for EVERY reachable workset.
 
     PRIMARY first (``std.primary_workset``), then every NAMED workset from the
-    global ``worksets:`` discovery section.
+    global ``worksets:`` discovery section; a listed root that stores the standalone
+    ``workset.registry`` null is not a named workset and is skipped.
     """
     yield (_PRIMARY_WORKSET_NAME, std.primary_workset, BoxMode.primary)
     for name, root_str in registry_store.load_section(
         std.registry, "worksets"
     ).items():
-        yield (name, Path(root_str), BoxMode.named)
+        if not standalone_settings_present(Path(root_str)):
+            yield (name, Path(root_str), BoxMode.named)
 
 
 class _OwnedBox(NamedTuple):
@@ -132,6 +134,8 @@ def find_connected_external_box(
         std.registry, "worksets"
     ).items():
         root = Path(root_str)
+        if standalone_settings_present(root):
+            continue
         settings: Any = load_doc(root / WORKSET_META_FILE)
         early = EarlyScope(std.early_system, name)
         registry_path = workset_registry.resolve_workset_registry_path(

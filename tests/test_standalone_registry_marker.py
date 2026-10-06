@@ -107,8 +107,8 @@ class TestDetection:
         (tmp_path / WORKSET_META_FILE).write_text("workset:\n  registry: null\n")
         assert box_resolve.standalone_settings_present(tmp_path) is True
 
-    def test_named_stays_named_when_the_system_file_nulls_registry(
-        self, config_file, tmp_home, credentials_dir,
+    def test_a_system_file_null_is_not_the_roots_own_marker(
+        self, config_file, tmp_home, credentials_dir, capsys,
     ):
         from kanibako.settings.config import load_config
         from kanibako.settings.paths import load_std_paths
@@ -119,6 +119,9 @@ class TestDetection:
         std.settings.parent.mkdir(parents=True, exist_ok=True)
         std.settings.write_text("workset:\n  registry: null\n")
         assert box_resolve.standalone_settings_present(root) is False
+        out = _info(root / "workspaces", capsys)
+        assert "Mode:         standalone" not in out
+        assert "workset.registry" in out
 
 
 class TestNamedSetRefusal:
@@ -155,3 +158,44 @@ class TestNamedSetRefusal:
         doc = yaml.safe_load((root / WORKSET_META_FILE).read_text())
         assert doc["workset"]["registry"] is None
         assert box_resolve.standalone_settings_present(root) is True
+
+
+class TestForcedNullReadsStandalone:
+    """After a forced null, the registered workset reads STANDALONE from anywhere in its tree."""
+
+    def _forced(self, tmp_home, capsys) -> Path:
+        root = tmp_home / "home" / "ws3"
+        assert _cli(["workset", "create", str(root), "--name", "ws3"]) == 0
+        assert _cli(["workset", "set", "ws3", "workset.registry", "--null", "--force"]) == 0
+        capsys.readouterr()
+        return root
+
+    def test_box_info_in_tree_at_root_and_unrelated(
+        self, config_file, tmp_home, credentials_dir, capsys,
+    ):
+        root = self._forced(tmp_home, capsys)
+        (root / "workspaces" / "foo").mkdir(parents=True, exist_ok=True)
+        for target in (root, root / "workspaces" / "foo"):
+            out = _info(target, capsys)
+            assert "Mode:         standalone" in out, out
+            assert f"Metadata:     {root}" in out, out
+        other = tmp_home / "home" / "other"
+        other.mkdir()
+        out = _info(other, capsys)
+        assert "workset.registry" not in out, out
+
+    def test_box_list_does_not_warn(
+        self, config_file, tmp_home, credentials_dir, capsys,
+    ):
+        self._forced(tmp_home, capsys)
+        assert _cli(["box", "list"]) == 0
+        assert "workset.registry" not in capsys.readouterr().err
+
+    def test_workset_reset_is_the_way_back(
+        self, config_file, tmp_home, credentials_dir, capsys,
+    ):
+        root = self._forced(tmp_home, capsys)
+        assert _cli(["workset", "reset", "ws3", "workset.registry"]) == 0, capsys.readouterr().err
+        assert box_resolve.standalone_settings_present(root) is False
+        assert "Mode:         standalone" not in _info(root / "workspaces", capsys)
+        assert _cli(["workset", "info", "ws3"]) == 0

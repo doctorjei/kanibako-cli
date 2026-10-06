@@ -1675,8 +1675,8 @@ def detect_project_mode(project_dir: Path, std: StandardPaths,
     if ac_ancestor is not None:
         return DetectionResult(BoxMode.primary, ac_ancestor)
 
-    # 5. Walk ancestors for on-disk markers, IMPORTING what is unregistered.  NAMED is
-    # checked first at each level: a workset root is the more specific shape.
+    # 5. Walk ancestors for on-disk markers, IMPORTING what is unregistered.  STANDALONE is
+    # checked first at each level: the root file's own null defines it, skeleton or not.
     from kanibako.project import import_reconcile
     from kanibako.project.workset import (
         is_workset_skeleton, refuse_retired_workset_identity,
@@ -1692,6 +1692,11 @@ def detect_project_mode(project_dir: Path, std: StandardPaths,
         # before acting on the directory, or the diagnosis never happens.
         refuse_retired_workset_identity(current)
 
+        # STANDALONE: the root file's own stored ``workset.registry`` null; box_data/ is not the marker.
+        if _is_standalone_meta_dir(current):
+            import_reconcile.import_standalone(std.registry, current, journal=std.journal)
+            return DetectionResult(BoxMode.standalone, current)
+
         # NAMED: an unregistered workset root; import it, then the standard check resolves it.
         if is_workset_skeleton(current, early=EarlyScope(std.early_system, current.name)):
             import_reconcile.import_named_workset(
@@ -1700,11 +1705,6 @@ def detect_project_mode(project_dir: Path, std: StandardPaths,
             ws_after = _check_workset(resolved, std)
             if ws_after is not None:
                 return ws_after
-
-        # STANDALONE: the root file's own stored ``workset.registry`` null; box_data/ is not the marker.
-        if _is_standalone_meta_dir(current):
-            import_reconcile.import_standalone(std.registry, current, journal=std.journal)
-            return DetectionResult(BoxMode.standalone, current)
 
         # Stop conditions: reached $HOME or filesystem root.
         if current == home:
@@ -1729,6 +1729,8 @@ def _check_workset(resolved_dir: Path, std: StandardPaths) -> DetectionResult | 
 
     for ws_name, _root_str in worksets_section.items():
         ws_root = Path(_root_str).resolve()
+        if _is_standalone_meta_dir(ws_root):
+            continue
         # The RESOLVED ``workset.workspaces`` — a repoint is honored (§3.3).
         ws_workspaces = resolve_workspaces_locator(
             ws_root, load_workset_settings_doc(ws_root),

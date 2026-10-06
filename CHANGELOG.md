@@ -21,7 +21,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   standalone.
 
 - **`kanibako workset set <name> workset.registry --null` on a named working set is refused**, warning that it
-  would make the working set standalone; `--force` writes it.
+  would make the working set standalone; `--force` writes it. The working set then reads as standalone from
+  anywhere in its tree, though still listed: its members are not consulted (`workset info` shows none) until
+  `kanibako workset reset <name> workset.registry` restores it.
 
 - **`workset.*` directory keys set in the system settings file now apply everywhere.** `kanibako system set
   workset.boxes=…` (and logs, workspaces, registry, channelroot, channels.*, canon, template, vault_ro,

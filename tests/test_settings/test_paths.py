@@ -572,7 +572,7 @@ class TestDetectBoxMode:
         assert result.mode is BoxMode.primary
         assert result.project_root == project_dir.resolve()
 
-    def test_standalone_when_box_data_dir_exists(self, config_file, tmp_home):
+    def test_standalone_when_the_root_file_stores_the_registry_null(self, config_file, tmp_home):
         config = load_config(config_file)
         std = load_std_paths(config)
         project_dir = tmp_home / "project"
@@ -2067,7 +2067,7 @@ class TestP5aStandalonePresenceSwitch:
         # box_data/ present but NO workset.yaml → not a standalone marker.
         assert _is_standalone_meta_dir(root) is False
 
-    def test_missing_box_data_is_not_standalone(self, tmp_home):
+    def test_settings_without_the_registry_null_is_not_standalone(self, tmp_home):
         from kanibako.settings.config import dump_doc
         from kanibako.settings.paths import _is_standalone_meta_dir
         root = tmp_home / "box"
