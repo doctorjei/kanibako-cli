@@ -603,6 +603,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `kanibako system set access=…`. A `pref.agent.default.*` request is unchanged; it spells its
   node as data and needs no bare key.
 
+- **A null path key refuses with one reason, not two.** The resolver's own null-path refusal
+  (`config.*`/`system.*` path tiers, stored or derived) spelled its own sentence — "A `<None>` is a
+  value: it does not fall back to the default" — while every other null-path door said it through
+  `ERR_CONFIG_NULL_PATH_REASON` ("kanibako gives a null path key no meaning"). Both roads now say the
+  shared sentence; the per-key default and the referent line a derived null names are kept, since those
+  are the key's own information rather than a second copy of the reason.
+
 - **`set` no longer refuses a reference to a computed sharing-state key.** A value naming a
   `meta.*.auth.*_active` key, such as `box set box.env.X={meta.box.auth.global_active}`, was
   refused as a dangling reference although the launch resolves it. The set-time check now computes

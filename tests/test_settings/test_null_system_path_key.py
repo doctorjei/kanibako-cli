@@ -20,6 +20,7 @@ from kanibako.settings.config import (
     refuses_null_path_key,
     system_path_set_values,
 )
+from kanibako.settings.messages import ERR_CONFIG_NULL_PATH_REASON
 from kanibako.settings.paths import (
     load_std_paths,
     load_system_config,
@@ -340,3 +341,83 @@ class TestADerivedNullIsRefusedWhereAStoredOneIs:
         )
         assert "system.channels.broadcast" not in resolved
         assert "system.channels.common" in resolved  # its siblings stand
+
+
+class TestBothRoadsIntoANullPathKeySayTheOneReason:
+    """⚑ THE ANTI-FORK PIN (NP, ruled A).  The two roads into a null path key — a
+    STORED ``null`` and a DERIVED one — used to spell their own reason
+    ("A ``<None>`` is a value: it does not fall back to the default") while every
+    other null-path door said it through :data:`ERR_CONFIG_NULL_PATH_REASON`.  Two
+    wordings for one rule is the duplicate-renderer defect one layer down: they
+    drift the first time one gets reworded, and the user reads a different
+    sentence depending on which door caught them.
+
+    What is KEPT is not duplication.  The per-key default is that key's own
+    default, and the referent line names the key a DERIVED null arrived through —
+    neither is a restatement of the reason, and dropping either loses information
+    the cure needs.
+    """
+
+    def test_a_stored_null_says_the_shared_reason(self, tmp_path):
+        from kanibako.errors import KanibakoError
+
+        # ⚑ HANDED TO THE RESOLVER DIRECTLY.  ``system_path_set_values`` runs the
+        # READ-TIME door first, which is a different (also shared-reason) door; the
+        # site under test here is the resolver's own stored-null refusal, and going
+        # through the read-time door would grade that one and call it this one.
+        with pytest.raises(KanibakoError) as caught:
+            resolve_system_paths(
+                {"system.channelroot": None},
+                data_home=tmp_path / "data", home=tmp_path / "home",
+            )
+        text = str(caught.value)
+        assert ERR_CONFIG_NULL_PATH_REASON in text, text
+        assert "system.channelroot" in text
+        assert SYSTEM_PATH_DEFAULTS["system.channelroot"] in text, (
+            "the per-key default was dropped along with the retired wording"
+        )
+
+    def test_a_derived_null_says_the_shared_reason_and_still_names_the_referent(
+        self, tmp_path,
+    ):
+        from kanibako.errors import KanibakoError
+
+        values = system_path_set_values(_settings(
+            tmp_path, 'system:\n  canon: null\n  cache: "@system.canon/cache"\n',
+        ))
+        with pytest.raises(KanibakoError) as caught:
+            resolve_system_paths(
+                values, data_home=tmp_path / "data", home=tmp_path / "home",
+            )
+        text = str(caught.value)
+        assert ERR_CONFIG_NULL_PATH_REASON in text, text
+        assert "system.canon" in text, (
+            "the referent line is the user's only pointer to where the null came from"
+        )
+        assert SYSTEM_PATH_DEFAULTS["system.cache"] in text
+
+    def test_the_two_roads_do_not_drift_apart(self, tmp_path):
+        """Same sentence, both roads — not two sentences that happen to agree today."""
+        from kanibako.errors import KanibakoError
+
+        roads = [
+            {"system.channelroot": None},
+            system_path_set_values(_settings(
+                tmp_path, 'system:\n  canon: null\n  cache: "@system.canon/cache"\n',
+            )),
+        ]
+        for values in roads:
+            with pytest.raises(KanibakoError) as caught:
+                resolve_system_paths(
+                    values, data_home=tmp_path / "data", home=tmp_path / "home",
+                )
+            assert str(caught.value).count(ERR_CONFIG_NULL_PATH_REASON) == 1, (
+                str(caught.value)
+            )
+
+    def test_the_retired_wording_is_gone_from_the_source(self):
+        """Nothing re-forks the sentence: the retired phrasing must not come back."""
+        src = (Path(__file__).resolve().parents[2] / "src" / "kanibako" / "settings"
+               / "paths.py").read_text()
+        assert "A <None> is a value" not in src
+        assert "it does not fall back to the default" not in src
