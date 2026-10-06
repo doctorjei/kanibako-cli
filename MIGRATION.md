@@ -406,6 +406,13 @@ inside boxes. In order of likely impact:
     key work on the system settings file, not the agent's own file — see *`system set
     agent.<node>.*` writes the system settings file*.
 
+39. **A `workset.*` directory key in the system settings file now reaches every command, and a value
+    there that names no working set (`workset.boxes: /srv/kb`) makes the commands that read it exit
+    1 until you change it with `system set` or `system reset`.** A box created under the default
+    directory is not moved for you; `start` prints the move — see *`workset.*` directory keys set
+    with `system set` now reach every reader* and *A working set directory value in the system
+    settings file must name its working set*.
+
 ---
 
 ## 2. Per-area detail
@@ -6444,8 +6451,9 @@ directory key's `set` fails with "this value could not be read back".**
 
 **What changed.** A value may reference only keys of its own set or of a set resolved earlier, so
 `@box.*` and `@meta.box.*` are refused inside `workset.*`, and `@workset.*` inside `agent.*` or
-`system.*`. At `workset set`, a working set directory key takes only an absolute path, `~`,
-`$XDG_*`, or `@meta.workset.path`.
+`system.*`. At `workset set` and `system set`, a working set directory key takes an absolute path,
+`~`, `$XDG_*`, `@meta.workset.path`, `@meta.workset.name`, a system path key, or another working set
+directory key.
 
 **What you see.**
 
@@ -6604,6 +6612,83 @@ kanibako start <box>
 ```
 
 `kanibako stop` cannot do this for you: it addresses only the new names.
+
+### `workset.*` directory keys set with `system set` now reach every reader
+
+**Read this if your system settings file (`<data>/global/settings.yaml`) sets a `workset.*` directory
+key such as `workset.boxes`.**
+
+**What changed.** Only the launch used to read these keys from the system settings file; `create`,
+`workset connect`, `workset create`, `box list`, and box detection used the default directory. Now
+every reader uses the system value, and a working set's own `<workset root>/workset.yaml` still
+wins, a `null` there included. A directory key may reference another one (`@workset.boxes/logs`); a
+cycle is refused, naming the chain. A standalone box's `workset.logs` default is now
+`@workset.boxes`, which is the same directory as before, `<root>/box_data/`. A value the system file
+holds must also name its working set: see *A working set directory value in the system settings
+file must name its working set*.
+
+**What you see.** New boxes go under the directory the system value names. A box an earlier release
+created under the default directory is looked for under the system value: `box list` may leave it
+out, and `start` reports its box directory gone. Because `workset.boxes` is not at its default,
+`start` prints the move instead of a rebuild:
+
+```
+Error: box 'proj1' is registered, but its box directory is gone (/srv/kb/…/proj1).
+  A launch will not rebuild it — rebuilding a box is a repair, and a repair has to be asked for by name.
+  workset.boxes is not at its default, so this box's store need not be where this launch looks for it.
+  Its store is still at /home/you/.local/share/kanibako/primary_workset/boxes/proj1.
+  Move it, with the box stopped:  mkdir -p /srv/kb/… && mv /home/you/.local/share/kanibako/primary_workset/boxes/proj1 /srv/kb/…/proj1
+```
+
+When the old store is not at the default place, the line reads `OLD_STORE`; replace it with the
+directory `workset.boxes` used to name. No move is printed onto a path that already exists.
+
+**What to do.** Run the printed move for each box, with the box stopped, or set the key in each
+working set's own `workset.yaml` instead and leave the system file without it. A standalone box
+cannot be moved this way yet: its launch still looks for the store only at `<root>/box_data`, so
+after the move it still refuses, though nothing is lost.
+
+### A working set directory value in the system settings file must name its working set
+
+**Read this if your system settings file sets a `workset.*` directory key to a plain path, or a
+command now exits 1 with "names no working-set identity".**
+
+**What changed.** Keyspec §0 "Per-owner resources": a directory every working set inherits must spell
+the working set into its path, or every working set shares one directory, and same-named boxes in
+different working sets share one store. Every working set directory key but `workset.template` is
+checked.
+
+- `system set workset.boxes=/srv/kb` exits 1 and writes nothing. A working set's own file may still
+  hold a plain path (`workset set <workset> workset.boxes=/srv/kb`).
+- A value the system file already holds is refused by every reader that reads it, naming the file.
+  A plain `workset.boxes`, `workset.logs`, `workset.vault_ro`, or `workset.vault_rw` is read by almost
+  every command, `box list`, `create`, and `stop <box>` included; the other keys refuse where they are
+  read.
+- `box rm --purge`, `box purge`, `box move`, `box convert`, `box extract`, `box duplicate --force`,
+  `workset rm --purge`, and `workset disconnect --remove-files` check each working set they touch
+  before their first change, and delete nothing when they refuse.
+- `start` refuses a per-owner key or bind entry that a settings file of a wider scope holds without
+  its owner's identity, naming the file and the entry. An undeclared bind entry's refusal names the
+  `system.bindings.*` key to move it to if you mean to share it. Undeclared `agent.<agent>.*` entries
+  are not checked.
+
+**What you see.**
+
+```
+$ kanibako box list
+Error: workset.boxes is set to '/srv/kb' in /home/you/.local/share/kanibako/global/settings.yaml, which gives every working set one shared path, because the value names no working-set identity. Same-named boxes in different working sets, and every standalone box, would share it. Nothing was changed. Spell the identity into the value: kanibako system set 'workset.boxes=/srv/kb/{meta.workset.path}'; or run kanibako system reset workset.boxes, then kanibako workset set <workset> 'workset.boxes=…' in each working set. To stop running boxes meanwhile: kanibako stop --all stops every running box even when a settings file is refused; it lists them and asks first.
+```
+
+**What to do.** Run `system set` with the spelling the message prints, or run `system reset <key>`
+and then `workset set` in each working set. Until then, `stop <box>` refuses and stops nothing;
+`kanibako stop --all` lists every running box, asks, and stops them all, and it writes back no
+in-box login. It warns once and goes on when a settings file is refused, so it may not name a box
+whose name renders no container. To stop one box alone, use the container runtime (`podman stop
+kb-<workset>-<box>`).
+
+**On a first run** (no `~/.config/kanibako.cfg` yet), `system set`, `system reset`, `stop --all`, and
+`kanibako setup` refuse too, and setup writes nothing. Edit the system settings file by hand: delete
+the line or spell the working set into its value.
 
 ---
 
