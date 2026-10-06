@@ -234,7 +234,8 @@ class TestOnlyTheFloorsBlindnessIsForgiven:
 class TestTheCureThroughTheCli:
     """The refusal names what the value lacks and its cure adds only that: a stored 40-deep
     ``box.env`` chain before ``{meta.box.name}`` lacks the workset anchor alone, and an anchor
-    the value already holds is never spelled twice."""
+    the value already holds is never spelled twice.  The chain stays under the depth cap (64);
+    past it, the stored chain is itself a bad entry (keyspec §2a) and refuses first."""
 
     @pytest.fixture
     def cli(self, tmp_path):

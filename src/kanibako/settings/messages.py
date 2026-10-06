@@ -223,6 +223,7 @@ WARN_CONFIG_BAD_ENTRIES = "%s stores entries that are not keys (spec §0):\n  %s
                                                     # the file path, the entries
 WARN_CONFIG_ILL_TYPED_ENTRIES = "%s stores values their keys refuse (spec §2a):\n  %s"
                                                     # the file path, the entries
+WARN_CONFIG_UNRESOLVABLE_ENTRIES = "%s stores values that do not resolve (spec §2a):\n  %s"
 ERR_STORED_NON_SCALAR = "a %s where one %s value goes"   # the shape, the key's type
 #: The OUT-of-chain refusal's tail — what it did not do, and the two cures.
 ERR_CONFIG_BAD_ENTRIES_TAIL = (

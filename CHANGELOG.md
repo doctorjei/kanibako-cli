@@ -573,6 +573,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   holds its own referrer (`system set box.env.B={box.env}`) crashed `set` and launch with a Python
   `RecursionError`; both now refuse it as a cyclic reference.
 
+- **`set` and `get` now treat a stored value that does not resolve as a bad entry (keyspec §2a).** A
+  settings file the command reads could store a cycle, a dangling `{key}`-reference, an unknown
+  `{$NAME}` variable, or a chain past the depth cap, and an unrelated `set` still wrote at exit 0.
+  Now `set` refuses and names each such entry; `--force` warns and writes, `get` warns and reads on,
+  and setting the bad key itself to a value that resolves is not blocked. A reference to a key this
+  command's cascade cannot see, such as `{meta.workset.path}` in a system-file `box.*` default, is
+  not reported. A file that stored such a value now needs `--force` or a repair before an unrelated
+  `set` writes.
+
 - **The `{key}`-reference depth cap (64) no longer depends on the order keys resolve in.** A reference
   that reached an already-resolved key skipped the depth that key stood on, so a chain past the cap passed
   whenever its tail had resolved first. With a stored 70-deep `box.env.V*` chain,

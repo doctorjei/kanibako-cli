@@ -54,6 +54,7 @@ ERR_WORKSET_SET_MAKES_STANDALONE = "a null workset.registry would make working s
 WARN_WORKSET_SET_MAKES_STANDALONE = "Warning: a null workset.registry makes working set '%s' standalone."
 WARN_CONFIG_BAD_ENTRIES = '%s stores entries that are not keys (spec §0):\n  %s'
 WARN_CONFIG_ILL_TYPED_ENTRIES = '%s stores values their keys refuse (spec §2a):\n  %s'
+WARN_CONFIG_UNRESOLVABLE_ENTRIES = '%s stores values that do not resolve (spec §2a):\n  %s'
 ERR_STORED_NON_SCALAR = 'a %s where one %s value goes'
 ERR_CONFIG_BAD_ENTRIES_TAIL = '\nNothing was written. Remove those entries by editing the file, or rerun with --force to set anyway.'
 ERR_CONFIG_CHAIN_BAD_ENTRY = "the edited value's own upstream chain reaches %s, a bad entry, so this set is refused too (spec §2a):\n%s\nName another upstream, or fix that entry by editing the file. --force does not set a value whose own chain is broken."
