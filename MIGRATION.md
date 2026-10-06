@@ -129,7 +129,7 @@ inside boxes. In order of likely impact:
 
 7. **The `commons` channel is now `common`** — on disk (host) and in-box
    (`~/channels/commons` → `~/channels/common`). Move the directories before first launch or
-   an empty `common/` is created beside your old, populated `commons/`, silently (§2.3). Any
+   an empty `common/` is created, silently; it sits beside your old, populated `commons/` (§2.3). Any
    scripts/notes of yours that reference the old path break silently.
 
 8. **Instruction files move into the canon.** New boxes get `~/canon/{charter,handbook,notebook,
@@ -692,7 +692,7 @@ One word now names both the mount category and the channel. Three things move at
 
 What you must do, **before your first launch on v1.8.0**:
 1. `mv commons common` at the system channel root and in every workset's `channels/` dir.
-   (If you launch first, an empty `common/` is guarantee-created beside your old, populated
+   (If you launch first, an empty `common/` is guarantee-created; it sits beside your old, populated
    `commons/` — content still on disk, invisible to every box, no error.)
 2. If you ever set a `…channels.commons` key (`kanibako workset set <workset>
    workset.channels.commons=<path>`, or `kanibako system set system.channels.commons=<path>`):
@@ -4703,7 +4703,7 @@ and the handbook one level deeper.
 `general/`, `workset/`, `box/`, plus the `agent/` chapter your agent plugin contributes — and the
 same `ROM_CONTENTS.md` index at its root. The book is delivered by read-only binds from the
 packages, so a box picks up the new root at its next start with nothing for you to do. One file
-inside it moved too: the box guide is `charter/general/ROM_GENERAL.md`, up a level from the old
+inside it moved too: the box guide is `charter/general/ROM_GENERAL.md`; it moved up a level from the old
 `bible/general/directives/ROM_GENERAL.md`, and `charter/general/directives/` holds a new
 `IDENTITY.md` instead. Both are packaged read-only content, so the only thing to check is a note or
 a script of your own that names an old path.
@@ -4741,9 +4741,9 @@ not sort it out either: every one of these stores is create-if-absent on every p
 never moves your file and never overwrites it — it only adds stock content beside it. Move each
 file you wrote up one level, keep your content, and delete the old copy you moved it from.
 
-Inside the general chapter, the old `directives/rules/` flattened into `directives/` in the same pass:
-the old `rules/CANON.md` became `directives/LOWER_CANON.md` and the old `rules/DATAPOLICY.md` became
-`directives/DATAPOLICY.md`, while `rules/INTERACTION.md` moved up and was rewritten. Two procedures
+Inside the general chapter, the old `directives/rules/` flattened in the same pass; its files now sit in `directives/`:
+`rules/CANON.md` is renamed; it is now `directives/LOWER_CANON.md`. `rules/DATAPOLICY.md` is renamed too;
+it is now `directives/DATAPOLICY.md`, while `rules/INTERACTION.md` moved up and was rewritten. Two procedures
 joined the chapter, `DOCUMENT_UPDATES.md` and `STATE_CLEANUP.md`, beside the existing
 `USING_CHANNELS.md`. ⚑ **Take anything you wrote out of
 `<data>/global/canon/handbook/general/directives/rules/`, then delete that directory.**
@@ -7590,7 +7590,7 @@ for f in *.yaml; do
 done
 ```
 
-(The old default `general.yaml` likewise becomes `general/settings.yaml`.) If you
+(The default `general.yaml` is renamed too; it becomes `general/settings.yaml`.) If you
 skip the move, kanibako simply regenerates a fresh default settings file in the
 new location and your old `<agent>.yaml` overrides are ignored until moved.
 
@@ -7691,7 +7691,7 @@ suitable dir and **warns** — it is not silently substituted.
 
 ⚑ **`@system.data` superseded in v1.8.0 — see §2.1 (line 197), now `@config.data`.**
 The tree below is otherwise still the 1.6.0-era layout described in this section;
-later v1.8.0 moves inside it (e.g. the old `base_template/` → `template/`, §2.5 line 460, and
+later v1.8.0 moves inside it (e.g. `base_template/` is renamed; it is now `template/`, §2.5 line 460, and
 the per-tier settings filenames, §2.45 line 2774) are not reflected in the diagram —
 the two `settings.yaml` files under `primary_workset/` are now `workset.yaml` and
 `box.yaml`, while `global/settings.yaml` keeps its name.
