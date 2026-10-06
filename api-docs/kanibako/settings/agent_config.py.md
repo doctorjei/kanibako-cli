@@ -36,9 +36,9 @@ def agent_config_path(data_path: Path, agent_id: str, paths_agents: str='agents'
 @dataclass
 class AgentConfig:
     run_args: list[str] | None = None
-    state: dict[str, str | None] = field(default_factory=dict)
-    env: dict[str, str | None] = field(default_factory=dict)
-    secret_path: dict[str, str | None] = field(default_factory=dict)
+    state: dict[str, str | bool | None] = field(default_factory=dict)
+    env: dict[str, str | bool | None] = field(default_factory=dict)
+    secret_path: dict[str, str | bool | None] = field(default_factory=dict)
     transform_settings: dict = field(default_factory=dict)
     category_tables: dict[str, object] = field(default_factory=dict)
 ```
