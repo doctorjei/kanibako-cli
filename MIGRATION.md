@@ -129,7 +129,7 @@ inside boxes. In order of likely impact:
 
 7. **The `commons` channel is now `common`** — on disk (host) and in-box
    (`~/channels/commons` → `~/channels/common`). Move the directories before first launch or
-   an empty `common/` is created beside your populated `commons/`, silently (§2.3). Any
+   an empty `common/` is created beside your old, populated `commons/`, silently (§2.3). Any
    scripts/notes of yours that reference the old path break silently.
 
 8. **Instruction files move into the canon.** New boxes get `~/canon/{charter,handbook,notebook,
@@ -160,7 +160,7 @@ inside boxes. In order of likely impact:
 12. **The box template root moved and restructured** (`global/base_template/` →
     `global/template/box/home/`). Existing boxes are untouched (seeded once, long ago). The
     forced `kanibako setup` (item 1) re-creates the NEW tree with **stock packaged content**,
-    so new boxes do NOT seed empty — but **any customizations you made in
+    so new boxes do NOT seed empty — but **any customizations you made in the old
     `global/base_template/` are orphaned there, silently**: nothing reads the old directory,
     nothing warns about it, and new boxes seed the stock files instead of yours (§2.5).
 
@@ -692,7 +692,7 @@ One word now names both the mount category and the channel. Three things move at
 
 What you must do, **before your first launch on v1.8.0**:
 1. `mv commons common` at the system channel root and in every workset's `channels/` dir.
-   (If you launch first, an empty `common/` is guarantee-created beside your populated
+   (If you launch first, an empty `common/` is guarantee-created beside your old, populated
    `commons/` — content still on disk, invisible to every box, no error.)
 2. If you ever set a `…channels.commons` key (`kanibako workset set <workset>
    workset.channels.commons=<path>`, or `kanibako system set system.channels.commons=<path>`):
@@ -817,7 +817,7 @@ they are harmless but will dangle if the old harness dirs are later removed.
 **(b) The box template root — verified end-to-end on a simulated upgraded store.**
 `system.base_template` is retired; the new key `system.template` names a template **root**,
 and the box-home seed lives two levels down (`global/template/box/home/`). What actually
-happens when you upgrade a store that still has `global/base_template/` (the sequence is
+happens when you upgrade a store that still has the old `global/base_template/` (the sequence is
 forced, not optional):
 
 1. Your first `start` / `create` / `agent reauth` hits the setup-compatibility gate: a hard rc 1
@@ -832,7 +832,7 @@ forced, not optional):
    `Templates refreshed (N added, M updated)`), and records the setup completion.
 3. Your old `global/base_template/` is **orphaned but preserved**: untouched on disk, read by
    nothing, and mentioned by nothing — setup does not warn about it. New boxes now seed the
-   stock content, **not yours**. That masking is the real exposure: if you customized
+   stock content, **not yours**. That masking is the real exposure: if you customized the old
    `base_template/`, your customizations silently stop reaching new boxes.
 
 To carry customizations forward, note the packaged payload also **restructured**: the new
@@ -841,7 +841,7 @@ To carry customizations forward, note the packaged payload also **restructured**
 - home dotfiles and files you added → `global/template/box/home/<same relative path>`;
 - old `base_template/playbook/**` guidance has **no matching template destination** — that
   content belongs in the host handbook now (`global/canon/handbook/**`, §2.4's recipe).
-Then remove `global/base_template/` when you have taken what you want.
+Then remove the old `global/base_template/` when you have taken what you want.
 
 If you had *set* `system.base_template` explicitly: the key is gone (typed `set`/`get` refuse
 it by name as `not a declared system key`, and a stored value stops the resolve — §2.47).
@@ -3176,7 +3176,7 @@ THE RULE: this file records MEMBERSHIP and nothing else — one flat `boxes:` en
 
 ### 2.44 Helper boxes: the entrypoint script moved out of `playbook/`
 
-A spawned helper's directory layout carried a `playbook/scripts/` directory holding
+A spawned helper's directory layout used to carry a `playbook/scripts/` directory holding
 `helper-init.sh`, the entrypoint wrapper. `playbook` was the pre-canon name for what is now the
 canon **handbook**, and the wrapper level carried nothing else, so both halves are gone:
 
@@ -4622,7 +4622,7 @@ the default layout, exactly as though you had never configured it. So if your `c
 pointed the store somewhere other than `$XDG_DATA_HOME/kanibako`, the next command looks in the
 default location and finds a host with no boxes, no worksets and no agents in it. **The failure
 looks like kanibako losing your whole install**, so if a host comes up empty, check for a file
-still called `kanibako_config.yaml` before anything else.
+still called by its old name, `kanibako_config.yaml`, before anything else.
 
 ⚑ **Rename before you clean out, and the order matters.** §2.67's refusal — a settings table in
 a file that may hold only `config:` — is raised by the code that *reads* the config file, which
@@ -4703,7 +4703,7 @@ and the handbook one level deeper.
 `general/`, `workset/`, `box/`, plus the `agent/` chapter your agent plugin contributes — and the
 same `ROM_CONTENTS.md` index at its root. The book is delivered by read-only binds from the
 packages, so a box picks up the new root at its next start with nothing for you to do. One file
-inside it moved too: the box guide is `charter/general/ROM_GENERAL.md`, up a level from
+inside it moved too: the box guide is `charter/general/ROM_GENERAL.md`, up a level from the old
 `bible/general/directives/ROM_GENERAL.md`, and `charter/general/directives/` holds a new
 `IDENTITY.md` instead. Both are packaged read-only content, so the only thing to check is a note or
 a script of your own that names an old path.
@@ -4741,8 +4741,8 @@ not sort it out either: every one of these stores is create-if-absent on every p
 never moves your file and never overwrites it — it only adds stock content beside it. Move each
 file you wrote up one level, keep your content, and delete the old copy you moved it from.
 
-Inside the general chapter, `directives/rules/` flattened into `directives/` in the same pass:
-`rules/CANON.md` became `directives/LOWER_CANON.md` and `rules/DATAPOLICY.md` became
+Inside the general chapter, the old `directives/rules/` flattened into `directives/` in the same pass:
+the old `rules/CANON.md` became `directives/LOWER_CANON.md` and the old `rules/DATAPOLICY.md` became
 `directives/DATAPOLICY.md`, while `rules/INTERACTION.md` moved up and was rewritten. Two procedures
 joined the chapter, `DOCUMENT_UPDATES.md` and `STATE_CLEANUP.md`, beside the existing
 `USING_CHANNELS.md`. ⚑ **Take anything you wrote out of
@@ -7590,7 +7590,7 @@ for f in *.yaml; do
 done
 ```
 
-(The default `general.yaml` likewise becomes `general/settings.yaml`.) If you
+(The old default `general.yaml` likewise becomes `general/settings.yaml`.) If you
 skip the move, kanibako simply regenerates a fresh default settings file in the
 new location and your old `<agent>.yaml` overrides are ignored until moved.
 
@@ -7691,7 +7691,7 @@ suitable dir and **warns** — it is not silently substituted.
 
 ⚑ **`@system.data` superseded in v1.8.0 — see §2.1 (line 197), now `@config.data`.**
 The tree below is otherwise still the 1.6.0-era layout described in this section;
-later v1.8.0 moves inside it (e.g. `base_template/` → `template/`, §2.5 line 460, and
+later v1.8.0 moves inside it (e.g. the old `base_template/` → `template/`, §2.5 line 460, and
 the per-tier settings filenames, §2.45 line 2774) are not reflected in the diagram —
 the two `settings.yaml` files under `primary_workset/` are now `workset.yaml` and
 `box.yaml`, while `global/settings.yaml` keeps its name.
@@ -7993,7 +7993,7 @@ sections have moved again since. The canonical, current section list is
 Steps:
 
 1. Create `@config.data/global/` if it does not exist.
-2. Merge the contents of `names.yaml`, `worksets.yaml`, `connected.yaml`,
+2. Merge the contents of the old `names.yaml`, `worksets.yaml`, `connected.yaml`,
    `rigs.yaml`, and `image-shells.yaml` into the appropriate sections of
    `@config.data/global/registry.yaml`.
 3. Remove the old `names.yaml` / `worksets.yaml` / `connected.yaml` /
@@ -8092,7 +8092,7 @@ tighten the write paths without moving the in-box paths.)
 
 ### 7.3 In-box layout: `~/comms/` → `~/channels/`
 
-⚑ **`commons/` superseded in v1.8.0 — see §2.3 (line 326).** Every `commons/` path
+⚑ **`commons/` superseded in v1.8.0 — see §2.3 (line 326).** Every old `commons/` path
 in the diagram below (both the system and workset trees) is `common/` as of
 v1.8.0.
 

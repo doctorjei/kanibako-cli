@@ -2,7 +2,7 @@
   "version": 1,
   "until": "2026-10-11",
   "by": "Jei Blanchard",
-  "note": "Q59: parity reserved-agent-names shell disagreement accepted short-term; live carrier is the no_agent scrub row until scoping vocabulary (ii) exists; until extended to 2026-09-30 on his word (Q66), which covered only the three parity disagreements. keyspace registry closed (authored 2026-09-22, kind-import row step 4) - the pre-existing undeclared:keyspace strays (filename-shaped identifiers) accepted by the director (Kirobo) as day-one cost; Q67 answered 2026-09-24 (candidates are whole key-shaped literals and @-refs, filenames are declared constants), and the entries then left were declaration homes of meta-files / agent-plugin-files / docker-context-files constants that undeclared could not see across registries - reported to kinemata 2026-09-24 (from-kanibako-2026-09-24-undeclared-flags-another-registrys-declaration-home.md); vscode_remote.py's meta.json became the docker-context-files constant DOCKER_CONTEXT_META_FILE later that day, after the letter, and its declaration line was the same gap. 2026-09-24: the nine system._boxes / system._primary_* records (live code uses of manifest not_keys.code_residue names, accepted earlier that day by the director (Kirobo)) were cleared the same day by renaming the four path-tier table entries to the non-key names _primary_boxes / _primary_vault_ro / _primary_vault_rw / _primary_logs; no record of them remains. The re-record also offered 10 claims + 3 api-doc parity findings from concurrent commits; left for their owners, not accepted here. 2026-09-24, kinemata 0.4.1: `kinemata baseline --prune` dropped the five filename declaration-line records (box.yaml, workset.yaml, config.toml, config.yaml, meta.json) once keyspace's defer_to handed them to the filenames registry, and one canon-layout record, templates.py's `_CANON_CHAPTER_LEAF = \"handbook\"`, which now reads core_defaults.HANDBOOK_REL; no undeclared:keyspace record remains. 2026-09-30: until moved to 2026-10-04 (Sunday) on his word this session, at his instruction; it covers the 610 findings carried in this file. 2026-10-03: until moved to 2026-10-11 on his word (140th). 2026-10-06 (151st), director (Kirobo) ruling: three per-owner-default-reaches-anchor shape findings accepted - meta.box.container: <W>/<B> are rendered placeholders, not refs (DESIGN \u00a7 7; renderer reaches the box identity); meta.agent.default.path and meta.agent.shell.path: literal agent name equals the agent identity for a fixed node; spec spelling via {meta.agent.<x>.name} is a candidate tidy (no behavior change). 2026-10-06 (152nd, task 152-write-baseline), director (Kirobo): `kinemata baseline --prune` dropped 18 records no longer present (15 claims, two WORKSPACES_PATH, one XDG_DATA_HOME); until unchanged. Same task: six stale path claims in llm-docs/ and docs/architecture.md were cured in the text (full package paths, or the retired path named as such) and their records pruned.",
+  "note": "Q59: parity reserved-agent-names shell disagreement accepted short-term; live carrier is the no_agent scrub row until scoping vocabulary (ii) exists; until extended to 2026-09-30 on his word (Q66), which covered only the three parity disagreements. keyspace registry closed (authored 2026-09-22, kind-import row step 4) - the pre-existing undeclared:keyspace strays (filename-shaped identifiers) accepted by the director (Kirobo) as day-one cost; Q67 answered 2026-09-24 (candidates are whole key-shaped literals and @-refs, filenames are declared constants), and the entries then left were declaration homes of meta-files / agent-plugin-files / docker-context-files constants that undeclared could not see across registries - reported to kinemata 2026-09-24 (from-kanibako-2026-09-24-undeclared-flags-another-registrys-declaration-home.md); vscode_remote.py's meta.json became the docker-context-files constant DOCKER_CONTEXT_META_FILE later that day, after the letter, and its declaration line was the same gap. 2026-09-24: the nine system._boxes / system._primary_* records (live code uses of manifest not_keys.code_residue names, accepted earlier that day by the director (Kirobo)) were cleared the same day by renaming the four path-tier table entries to the non-key names _primary_boxes / _primary_vault_ro / _primary_vault_rw / _primary_logs; no record of them remains. The re-record also offered 10 claims + 3 api-doc parity findings from concurrent commits; left for their owners, not accepted here. 2026-09-24, kinemata 0.4.1: `kinemata baseline --prune` dropped the five filename declaration-line records (box.yaml, workset.yaml, config.toml, config.yaml, meta.json) once keyspace's defer_to handed them to the filenames registry, and one canon-layout record, templates.py's `_CANON_CHAPTER_LEAF = \"handbook\"`, which now reads core_defaults.HANDBOOK_REL; no undeclared:keyspace record remains. 2026-09-30: until moved to 2026-10-04 (Sunday) on his word this session, at his instruction; it covers the 610 findings carried in this file. 2026-10-03: until moved to 2026-10-11 on his word (140th). 2026-10-06 (151st), director (Kirobo) ruling: three per-owner-default-reaches-anchor shape findings accepted - meta.box.container: <W>/<B> are rendered placeholders, not refs (DESIGN \u00a7 7; renderer reaches the box identity); meta.agent.default.path and meta.agent.shell.path: literal agent name equals the agent identity for a fixed node; spec spelling via {meta.agent.<x>.name} is a candidate tidy (no behavior change). 2026-10-06 (152nd, task 152-write-baseline), director (Kirobo): `kinemata baseline --prune` dropped 18 records no longer present (15 claims, two WORKSPACES_PATH, one XDG_DATA_HOME); until unchanged. Same task: six stale path claims in llm-docs/ and docs/architecture.md were cured in the text (full package paths, or the retired path named as such) and their records pruned. Same task: 21 MIGRATION.md records for retired store paths (base_template/, commons/, rules/, playbook/scripts/, the pre-1.6.0 registry files, kanibako_config.yaml, general.yaml) cured by naming each path as old in its own clause, line count unchanged and no heading touched; records pruned.",
   "findings": [
     {
       "registry": "canonical",
@@ -297,27 +297,6 @@
       "antipattern": "base.cfg",
       "path": "llm-docs/kanibako/settings/paths.py.md",
       "text": "set: `/etc` `base.cfg` < user-global. A user with only `~/.config/kanibako.cfg` gets the"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "base_template/",
-      "path": "MIGRATION.md",
-      "text": "`base_template/`, your customizations silently stop reaching new boxes."
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "base_template/",
-      "path": "MIGRATION.md",
-      "text": "later v1.8.0 moves inside it (e.g. `base_template/` \u2192 `template/`, \u00a72.5 line 460, and"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "bible/general/directives/ROM_GENERAL.md",
-      "path": "MIGRATION.md",
-      "text": "`bible/general/directives/ROM_GENERAL.md`, and `charter/general/directives/` holds a new"
     },
     {
       "registry": "claims",
@@ -1144,20 +1123,6 @@
       "entry": "claim:path",
       "antipattern": "common/",
       "path": "MIGRATION.md",
-      "text": "(If you launch first, an empty `common/` is guarantee-created beside your populated"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "common/",
-      "path": "MIGRATION.md",
-      "text": "an empty `common/` is created beside your populated `commons/`, silently (\u00a72.3). Any"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "common/",
-      "path": "MIGRATION.md",
       "text": "dirs move one level down, into a `common/` subdir of the agent's store dir:"
     },
     {
@@ -1198,37 +1163,9 @@
     {
       "registry": "claims",
       "entry": "claim:path",
-      "antipattern": "commons/",
-      "path": "MIGRATION.md",
-      "text": "`commons/` \u2014 content still on disk, invisible to every box, no error.)"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "commons/",
-      "path": "MIGRATION.md",
-      "text": "an empty `common/` is created beside your populated `commons/`, silently (\u00a72.3). Any"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "commons/",
-      "path": "MIGRATION.md",
-      "text": "\u2691 **`commons/` superseded in v1.8.0 \u2014 see \u00a72.3 (line 326).** Every `commons/` path"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
       "antipattern": "comms/",
       "path": "MIGRATION.md",
       "text": "| Primary store | scattered `boxes/`, `comms/`, `share_*/` under data root | **PRIMARY workset** is a real dir at `@syst"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "connected.yaml",
-      "path": "MIGRATION.md",
-      "text": "2. Merge the contents of `names.yaml`, `worksets.yaml`, `connected.yaml`,"
     },
     {
       "registry": "claims",
@@ -1331,13 +1268,6 @@
     {
       "registry": "claims",
       "entry": "claim:path",
-      "antipattern": "directives/rules/",
-      "path": "MIGRATION.md",
-      "text": "Inside the general chapter, `directives/rules/` flattened into `directives/` in the same pass:"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
       "antipattern": "dist/",
       "path": "docs/RELEASING.md",
       "text": "`agent-codex` are accepted), builds **only** that package into `dist/`, refuses"
@@ -1374,13 +1304,6 @@
       "registry": "claims",
       "entry": "claim:path",
       "antipattern": "general.yaml",
-      "path": "MIGRATION.md",
-      "text": "(The default `general.yaml` likewise becomes `general/settings.yaml`.) If you"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "general.yaml",
       "path": "llm-docs/kanibako/settings/config_io.py.md",
       "text": "1. **`general.yaml`** (module docstring file list) \u2014 the file does not exist. Whole-repo search"
     },
@@ -1397,13 +1320,6 @@
       "antipattern": "general.yaml",
       "path": "llm-docs/kanibako/settings/config_io.py.md",
       "text": "config files \u2026 are serialized \u2026 through `load_doc`/`dump_doc`\" and enumerated `general.yaml` \u2014"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "general/settings.yaml",
-      "path": "MIGRATION.md",
-      "text": "(The default `general.yaml` likewise becomes `general/settings.yaml`.) If you"
     },
     {
       "registry": "claims",
@@ -1460,27 +1376,6 @@
       "antipattern": "global/base_template/",
       "path": "MIGRATION.md",
       "text": "12. **The box template root moved and restructured** (`global/base_template/` \u2192"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "global/base_template/",
-      "path": "MIGRATION.md",
-      "text": "Then remove `global/base_template/` when you have taken what you want."
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "global/base_template/",
-      "path": "MIGRATION.md",
-      "text": "`global/base_template/` are orphaned there, silently**: nothing reads the old directory,"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "global/base_template/",
-      "path": "MIGRATION.md",
-      "text": "happens when you upgrade a store that still has `global/base_template/` (the sequence is"
     },
     {
       "registry": "claims",
@@ -1836,13 +1731,6 @@
       "registry": "claims",
       "entry": "claim:path",
       "antipattern": "kanibako_config.yaml",
-      "path": "MIGRATION.md",
-      "text": "still called `kanibako_config.yaml` before anything else."
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "kanibako_config.yaml",
       "path": "llm-docs/kanibako/settings/messages.py.md",
       "text": "Layer-1 bootstrap paths, prefix `config.*`, living in `kanibako_config.yaml`, resolved by the flat"
     },
@@ -1915,13 +1803,6 @@
       "antipattern": "myagent/",
       "path": "docs/writing-targets.md",
       "text": "files \u2014 the base package owns those. Only your leaf package (`myagent/`) gets"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "names.yaml",
-      "path": "MIGRATION.md",
-      "text": "2. Merge the contents of `names.yaml`, `worksets.yaml`, `connected.yaml`,"
     },
     {
       "registry": "claims",
@@ -2069,13 +1950,6 @@
       "antipattern": "playbook/",
       "path": "MIGRATION.md",
       "text": "### 2.44 Helper boxes: the entrypoint script moved out of `playbook/`"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "playbook/scripts/",
-      "path": "MIGRATION.md",
-      "text": "A spawned helper's directory layout carried a `playbook/scripts/` directory holding"
     },
     {
       "registry": "claims",
@@ -2377,20 +2251,6 @@
       "antipattern": "rigs.yaml",
       "path": "MIGRATION.md",
       "text": "`rigs.yaml`, and `image-shells.yaml` into the appropriate sections of"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "rules/CANON.md",
-      "path": "MIGRATION.md",
-      "text": "`rules/CANON.md` became `directives/LOWER_CANON.md` and `rules/DATAPOLICY.md` became"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "rules/DATAPOLICY.md",
-      "path": "MIGRATION.md",
-      "text": "`rules/CANON.md` became `directives/LOWER_CANON.md` and `rules/DATAPOLICY.md` became"
     },
     {
       "registry": "claims",
@@ -3764,13 +3624,6 @@
       "antipattern": "workset.yaml",
       "path": "llm-docs/kanibako/settings/settings_launch.py.md",
       "text": "`workset.yaml` at create time (`paths.py::establish_standalone`, via `box_identity.standalone_kuid`)."
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "worksets.yaml",
-      "path": "MIGRATION.md",
-      "text": "2. Merge the contents of `names.yaml`, `worksets.yaml`, `connected.yaml`,"
     },
     {
       "registry": "claims",
