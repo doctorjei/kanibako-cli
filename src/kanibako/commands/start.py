@@ -7439,6 +7439,7 @@ def _resolve_launch_snapshot(
         # keyspec §2b makes it ``shell``.
         cli_level=cli_level,
         dest_keys=dest_keys,
+        descriptor=desc,
     )
     try:
         # THE REALIZATION SEAM (MBR-1 P4c-2), and its position is the design: AFTER
