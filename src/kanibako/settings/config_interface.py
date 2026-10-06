@@ -26,7 +26,7 @@ from kanibako.settings.config import (
     load_config,
     load_project_overrides,
     null_path_keys_error,
-    identity_cure,
+    identity_gap,
     reaches_identity,
     read_agent_settings,
     ref_order_error,
@@ -1646,11 +1646,11 @@ def _per_owner_set_error(
         modes = (BoxMode.primary if ws.is_default else BoxMode.named,)
     if all(reaches_identity(value, owner, mode, key=key, stored=stored) for mode in modes):
         return None
-    noun, identity, shared_by, file_owner = PER_OWNER_SET_WORDS[owner]
-    cure = identity_cure(value, owner, agent, key=key, stored=stored)
+    identity, file_owner = PER_OWNER_SET_WORDS[owner]
+    gap = identity_gap(value, owner, agent, key=key, stored=stored)
     return "Error: " + ERR_PER_OWNER_SET % (
-        canonical, value, command_scope.value, written, noun, identity, shared_by, cure,
-        canonical, file_owner,
+        canonical, value, command_scope.value, written, gap.who, identity, gap.sharers,
+        gap.cure, canonical, file_owner,
     )
 
 

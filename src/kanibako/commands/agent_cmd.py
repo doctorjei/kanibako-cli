@@ -445,7 +445,10 @@ def _agent_file_verdict_after_edit(
 
         class RealPath(logging.Filter):
             def filter(self, record: logging.LogRecord) -> bool:
-                record.msg, record.args = real(record.getMessage()), ()
+                try:
+                    record.msg, record.args = real(record.getMessage()), ()
+                except (TypeError, ValueError):
+                    pass
                 return True
 
         rewrite = RealPath()
