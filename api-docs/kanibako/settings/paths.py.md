@@ -10,6 +10,7 @@ Prose for these symbols lives in `llm-docs/kanibako/settings/paths.py.md`.
 ```
 logger = get_logger('paths')
 SUBSCRIPTED_SYSTEM_PATH_KEYS: frozenset[str] = frozenset({'system.backup', 'system.channelroot', 'system.template', 'system.cache', 'system.state', 'system.runtime'})
+STANDALONE_REGISTRY_COMMENT = 'REMOVING THIS WILL BREAK A STANDALONE BOX!'
 _runtime_fallback_cache: dict[tuple[str, str], Path] = {}
 _RUNTIME_TMP_PREFIX = 'kanibako-runtime-'
 _FLOOR_FIELD_ALIASES: dict[str, str] = {'system.channelroot': 'channels'}
