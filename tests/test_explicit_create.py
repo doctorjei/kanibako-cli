@@ -1220,6 +1220,57 @@ class TestNamedInTreeNullWorkspaceHasNoPath:
         assert proj.project_path == (tmp_home / "project").resolve()
 
 
+class TestUnregisteredStandaloneRegisterHint:
+    """The hint an unregistered standalone ``create`` prints is a RUNNABLE cure.
+
+    Registration at create is opt-in for a standalone box (§D4a), so this line is
+    the only thing that tells the user how to adopt the box they just made.  Its
+    operand is the box ROOT, and a root is not one shell word whenever it holds a
+    space — pasted unquoted, ``register`` adopts the root's PREFIX, a path that is
+    not this box.
+    """
+
+    @staticmethod
+    def _spaced_root(tmp_home):
+        # ⚑ The space sits in the PARENT so what breaks is the cure line's quoting
+        # alone; a spaced LEAF would make the box NAME illegal and fail for a
+        # second, unrelated reason.
+        root = tmp_home / "sa box" / "sa"
+        root.mkdir(parents=True)
+        return root
+
+    def test_the_hint_at_a_spaced_root_registers_that_root(
+        self, config_file, tmp_home, credentials_dir, capsys,
+    ):
+        """Pinned as a RUN, not a string match: only the run says the box at the
+        SPACED root is the one that got adopted."""
+        from kanibako.cli import build_parser
+        from kanibako.commands.box._parser import run_create
+        from kanibako.project import registry_store
+
+        root = self._spaced_root(tmp_home)
+        ns = argparse.Namespace(
+            path=str(root), standalone=True, no_vault=True,
+            name=None, image=None, agent=None, allow_home=False, register=False,
+        )
+        capsys.readouterr()
+        assert run_create(ns) == 0
+        out = capsys.readouterr().out
+
+        _config, std = _std(config_file)
+        assert registry_store.standalone_name_for_root(std.registry, root) is None
+
+        found = re.search(r"run '(.*)' to address it by name from elsewhere\.", out, re.S)
+        assert found, f"no registration hint in {out!r}"
+        argv = shlex.split(found.group(1))
+        assert argv[:3] == ["kanibako", "box", "register"]
+        assert argv[3:] == [str(root)], "the root must arrive as ONE operand"
+
+        parsed = build_parser().parse_args(argv[1:])
+        assert parsed.func(parsed) == 0
+        assert registry_store.standalone_name_for_root(std.registry, root)
+
+
 class TestCreateRefusesPerOwnerBeforeTheDir:
     """A primary ``create <path>`` refused by an inherited per-owner key leaves no ``<path>``."""
 

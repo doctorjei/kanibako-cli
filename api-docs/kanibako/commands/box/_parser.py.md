@@ -56,6 +56,7 @@ def _purge_deregistered(std, name: str, entry: dict, args: argparse.Namespace) -
 def _resolve_standalone_target(std, config, target: str) -> tuple[str | None, Path | None]
 def _rm_standalone(std, box_name: str, root, args: argparse.Namespace) -> int
 def _readopt_deregistered(std, name: str, entry: dict) -> int
+def _box_register_cure(target: str) -> str
 def _format_credential_age(creds_path: Path) -> str
 def _check_container_running(proj) -> tuple[bool, str]
 def _resolve_config_subject(std, config, project_dir: str | None)

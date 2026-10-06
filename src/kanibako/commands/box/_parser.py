@@ -1385,7 +1385,7 @@ def run_create(args: argparse.Namespace) -> int:
         std.registry, Path(proj.metadata_path),
     ) is None:
         print(
-            f"Not registered; run 'kanibako box register {proj.metadata_path}' "
+            f"Not registered; run '{_box_register_cure(str(proj.metadata_path))}' "
             f"to address it by name from elsewhere."
         )
     return 0
@@ -2177,6 +2177,10 @@ def _readopt_deregistered(std, name: str, entry: dict) -> int:
     registry_store.unregister_deregistered(std.registry, name)
     print(f"Registered primary box '{name}' at {workspace}.")
     return 0
+
+
+def _box_register_cure(target: str) -> str:
+    return f"kanibako box register {shlex.quote(target)}"
 
 
 def run_register(args: argparse.Namespace) -> int:
