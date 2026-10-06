@@ -588,6 +588,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`box vault restore` and `box vault prune` now confirm before they delete.** Both documented `--force`
+  as skipping a prompt that did not exist. Each now asks you to type `yes` and exits 2 on any other answer
+  or a closed stdin; `--force` skips only the prompt. A snapshot name that does not exist still fails with
+  exit 1 without asking. Not covered: a name that resolves outside the snapshot store still restores unprompted.
+
+- **`create`'s cure lines now quote the box root they name.** The `create --recover`, `start`, plain
+  `create`, and `box register`'s `--recover --register` lines a refusal prints pasted a root holding a
+  space as two operands. A root without one prints as before. The post-create "Not registered; run
+  'kanibako box register <root>'" line still prints the root unquoted.
+
+- **`agent get`, `agent show`, and `agent info` print a stored bool as `true`/`false`**, as `system get`
+  does, not as Python `True`/`False`. A stored string such as `"True"` still prints as written. What the
+  launch receives is unchanged: an `env` bool still reaches the agent as `True`/`False`.
+
+- **An in-box `box fork` no longer refuses when the helper has no registry path.** The fork reads no
+  registry file, yet its precondition required one.
+
 - **`box extract` no longer writes an inherited `box.enable_vault` into a standalone box's settings.**
   Extracting into a standalone root with no box store wrote the system or workset value (`false`) into the
   box's own settings file, though the key stays absent there unless the user sets it. The extract still
