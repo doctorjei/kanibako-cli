@@ -817,8 +817,8 @@ def setup_compat_gate(
     ⚑ *settings_path* is the SYSTEM SETTINGS file, the marker's home since 2026-08-26
     (:func:`read_setup_completed`).
     ⚑ ONE-RELEASE MIGRATION GUARD (v1.8.0): with no marker there, an existing v1.7-era
-    *legacy_config* (``kanibako_config.yaml``, where v1.7.x initialized and kept its
-    marker) reads as below ``SETUP_BCV``, so an upgrader is hard-blocked until setup runs.
+    *legacy_config* (``kanibako_config.yaml``, written by v1.7.x init) blocks until it is
+    renamed and setup runs; only its existence is read.
     """
     from kanibako import SETUP_BCV, SETUP_FCV, __version__
     from kanibako.errors import ConfigError
@@ -827,7 +827,11 @@ def setup_compat_gate(
     if marker is None:
         if legacy_config is None or not legacy_config.exists():
             return "kanibako isn't set up yet. Run 'kanibako setup' to get started."
-        raise _setup_too_old(read_setup_completed(legacy_config) or legacy_config.name)
+        raise ConfigError(
+            f"{legacy_config} is a kanibako v1.7 config file, which this version does not read. "
+            f"Rename it to {legacy_config.with_name(CONFIG_FILE)}, keep only its 'config:' "
+            "table, then run 'kanibako setup' before agent commands."
+        )
 
     from packaging.version import InvalidVersion, Version
 
@@ -862,11 +866,7 @@ def setup_compat_gate(
         return None
     if config_ver >= bcv:
         return "kanibako setup is out of date — re-run 'kanibako setup'."
-    raise _setup_too_old(marker)
-
-
-def _setup_too_old(marker: str) -> ConfigError:
-    return ConfigError(
+    raise ConfigError(
         f"This kanibako config ({marker}) is too old to auto-update. "
         "Re-run 'kanibako setup' before agent commands."
     )
