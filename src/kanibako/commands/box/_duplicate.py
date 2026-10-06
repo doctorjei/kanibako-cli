@@ -799,14 +799,7 @@ def run_duplicate(args: argparse.Namespace) -> int:
         )
         return 1
 
-    # The source's box tier must be a SHAPE the destination can hold: this path copies
-    # the metadata verbatim (copy_tree_keeping_links below), so the new box's box tier IS
-    # the source's file, and a ``box`` that is not a table would land there as the new
-    # box's authored settings with rc 0.  ``refuse_scalar_sections`` is the guard
-    # ``carried_box_settings`` asks, so one stored ``box`` value has one answer however it
-    # is reached.  Asked HERE because it is the last point before anything is written: the
-    # workspace copy, the name registration and the metadata copy are all below, and
-    # ``_unwind_local_name`` restores only a name this path has already minted.
+    # verbatim copy: refuse a non-table `box` before anything is written
     refuse_scalar_sections(source_project_dir / BOX_META_FILE, ("box",))
 
     if args.force:
