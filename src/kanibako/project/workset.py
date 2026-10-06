@@ -1380,7 +1380,9 @@ def release_project(ws: Workset, name: str, *, keep_link: bool = False) -> Works
     an EXTERNAL member's discoverability link (recorded path ≠ ``workspaces/<name>``) is
     unlinked, and only the link.  Its store is :func:`remove_member_store`.
     *keep_link* skips that unlink (a rollback).
+    A null ``workset.registry`` refuses (resolving :attr:`Workset.registry_path`) before any change.
     """
+    _ = ws.registry_path
     target = _find_member(ws, name)
 
     # ⚑⚑ ORDER IS THE REVERSE OF add_project: clean the link BEFORE the durable write, so

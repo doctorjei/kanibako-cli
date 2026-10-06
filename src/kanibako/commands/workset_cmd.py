@@ -555,6 +555,8 @@ def run_rm(args: argparse.Namespace) -> int:
 def run_connect(args: argparse.Namespace) -> int:
     import os
 
+    from kanibako.settings.settings_resolve import SettingsError
+
     std = _load_std()
     registry = list_worksets(std)
     stored = find_identifier(args.workset, registry)  # ⚑ case-blind (§0)
@@ -564,7 +566,8 @@ def run_connect(args: argparse.Namespace) -> int:
 
     try:
         ws = load_workset(registry[stored], stored, early_system=std.early_system)
-    except WorksetError as e:
+        _ = ws.registry_path
+    except (WorksetError, SettingsError) as e:
         print(f"Error: {e}", file=sys.stderr)
         return 1
 
