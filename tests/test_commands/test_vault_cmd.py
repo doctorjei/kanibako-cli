@@ -194,7 +194,7 @@ class TestVaultRestore:
 
         parser = build_parser()
         args = parser.parse_args([
-            "box", "vault", "restore", snap.name, str(proj.project_path),
+            "box", "vault", "restore", snap.name, str(proj.project_path), "--force",
         ])
         rc = run_restore(args)
 
@@ -255,13 +255,245 @@ class TestVaultPrune:
 
         parser = build_parser()
         args = parser.parse_args([
-            "box", "vault", "prune", "--keep", "2", str(proj.project_path),
+            "box", "vault", "prune", "--keep", "2", str(proj.project_path), "--force",
         ])
         rc = run_prune(args)
 
         assert rc == 0
         captured = capsys.readouterr()
         assert "Pruned 3" in captured.out
+
+
+# ---------------------------------------------------------------------------
+# Destructive commands confirm unless --force
+# ---------------------------------------------------------------------------
+
+
+def _no_stdin(*_args, **_kwargs):
+    raise AssertionError("stdin was read; this command must not prompt")
+
+
+def _make_snapshots(proj, count: int = 5) -> None:
+    import shutil
+    versions = proj.vault_rw_path.parent / ".versions"
+    versions.mkdir(parents=True, exist_ok=True)
+    for i in range(count):
+        snap_dir = versions / f"2026010{i + 1}T000000Z"
+        snap_dir.mkdir()
+        shutil.copy2(proj.vault_rw_path / "data.txt", snap_dir / "data.txt")
+
+
+class TestVaultRestoreConfirms:
+    """``--force`` is the only thing that skips the prompt; a declined or closed
+    stdin leaves share-rw exactly as it was."""
+
+    def test_declined_prompt_restores_nothing(
+        self, config_file, tmp_home, credentials_dir, capsys, monkeypatch,
+    ):
+        proj = _init_project_with_vault(config_file, tmp_home, credentials_dir)
+
+        from kanibako.snapshots import create_snapshot
+        snap = create_snapshot(proj.vault_rw_path)
+        (proj.vault_rw_path / "data.txt").write_text("modified")
+
+        monkeypatch.setattr("builtins.input", lambda *_a: "no")
+        parser = build_parser()
+        args = parser.parse_args([
+            "box", "vault", "restore", snap.name, str(proj.project_path),
+        ])
+        rc = run_restore(args)
+
+        assert rc == 2
+        assert (proj.vault_rw_path / "data.txt").read_text() == "modified"
+        assert "Aborted." in capsys.readouterr().out
+
+    def test_closed_stdin_restores_nothing(
+        self, config_file, tmp_home, credentials_dir, monkeypatch,
+    ):
+        proj = _init_project_with_vault(config_file, tmp_home, credentials_dir)
+
+        from kanibako.snapshots import create_snapshot
+        snap = create_snapshot(proj.vault_rw_path)
+        (proj.vault_rw_path / "data.txt").write_text("modified")
+
+        def _eof(*_a):
+            raise EOFError
+
+        monkeypatch.setattr("builtins.input", _eof)
+        parser = build_parser()
+        args = parser.parse_args([
+            "box", "vault", "restore", snap.name, str(proj.project_path),
+        ])
+        rc = run_restore(args)
+
+        assert rc == 2
+        assert (proj.vault_rw_path / "data.txt").read_text() == "modified"
+
+    def test_confirmed_prompt_restores(
+        self, config_file, tmp_home, credentials_dir, monkeypatch,
+    ):
+        proj = _init_project_with_vault(config_file, tmp_home, credentials_dir)
+
+        from kanibako.snapshots import create_snapshot
+        snap = create_snapshot(proj.vault_rw_path)
+        (proj.vault_rw_path / "data.txt").write_text("modified")
+
+        monkeypatch.setattr("builtins.input", lambda *_a: "yes")
+        parser = build_parser()
+        args = parser.parse_args([
+            "box", "vault", "restore", snap.name, str(proj.project_path),
+        ])
+        rc = run_restore(args)
+
+        assert rc == 0
+        assert (proj.vault_rw_path / "data.txt").read_text() == "hello vault"
+
+    def test_force_skips_prompt(self, config_file, tmp_home, credentials_dir,
+                                monkeypatch):
+        proj = _init_project_with_vault(config_file, tmp_home, credentials_dir)
+
+        from kanibako.snapshots import create_snapshot
+        snap = create_snapshot(proj.vault_rw_path)
+        (proj.vault_rw_path / "data.txt").write_text("modified")
+
+        monkeypatch.setattr("builtins.input", _no_stdin)
+        parser = build_parser()
+        args = parser.parse_args([
+            "box", "vault", "restore", snap.name, str(proj.project_path), "--force",
+        ])
+        rc = run_restore(args)
+
+        assert rc == 0
+        assert (proj.vault_rw_path / "data.txt").read_text() == "hello vault"
+
+    def test_unknown_name_does_not_prompt(
+        self, config_file, tmp_home, credentials_dir, monkeypatch,
+    ):
+        proj = _init_project_with_vault(config_file, tmp_home, credentials_dir)
+
+        monkeypatch.setattr("builtins.input", _no_stdin)
+        parser = build_parser()
+        args = parser.parse_args([
+            "box", "vault", "restore", "nonexistent", str(proj.project_path),
+        ])
+        rc = run_restore(args)
+
+        assert rc == 1
+        assert (proj.vault_rw_path / "data.txt").read_text() == "hello vault"
+
+
+class TestVaultPruneConfirms:
+    """A declined prune keeps every snapshot it would otherwise have deleted."""
+
+    def test_declined_prompt_prunes_nothing(
+        self, config_file, tmp_home, credentials_dir, capsys, monkeypatch,
+    ):
+        proj = _init_project_with_vault(config_file, tmp_home, credentials_dir)
+        _make_snapshots(proj)
+        versions = proj.vault_rw_path.parent / ".versions"
+
+        monkeypatch.setattr("builtins.input", lambda *_a: "no")
+        parser = build_parser()
+        args = parser.parse_args([
+            "box", "vault", "prune", "--keep", "2", str(proj.project_path),
+        ])
+        rc = run_prune(args)
+
+        assert rc == 2
+        assert len(list(versions.iterdir())) == 5
+        assert "Aborted." in capsys.readouterr().out
+
+    def test_confirmed_prompt_prunes(
+        self, config_file, tmp_home, credentials_dir, monkeypatch,
+    ):
+        proj = _init_project_with_vault(config_file, tmp_home, credentials_dir)
+        _make_snapshots(proj)
+        versions = proj.vault_rw_path.parent / ".versions"
+
+        monkeypatch.setattr("builtins.input", lambda *_a: "yes")
+        parser = build_parser()
+        args = parser.parse_args([
+            "box", "vault", "prune", "--keep", "2", str(proj.project_path),
+        ])
+        rc = run_prune(args)
+
+        assert rc == 0
+        assert len(list(versions.iterdir())) == 2
+
+    def test_force_skips_prompt(self, config_file, tmp_home, credentials_dir,
+                                monkeypatch):
+        proj = _init_project_with_vault(config_file, tmp_home, credentials_dir)
+        _make_snapshots(proj)
+        versions = proj.vault_rw_path.parent / ".versions"
+
+        monkeypatch.setattr("builtins.input", _no_stdin)
+        parser = build_parser()
+        args = parser.parse_args([
+            "box", "vault", "prune", "--keep", "2", str(proj.project_path), "--force",
+        ])
+        rc = run_prune(args)
+
+        assert rc == 0
+        assert len(list(versions.iterdir())) == 2
+
+    def test_nothing_to_prune_does_not_prompt(
+        self, config_file, tmp_home, credentials_dir, capsys, monkeypatch,
+    ):
+        proj = _init_project_with_vault(config_file, tmp_home, credentials_dir)
+        _make_snapshots(proj, count=1)
+
+        monkeypatch.setattr("builtins.input", _no_stdin)
+        parser = build_parser()
+        args = parser.parse_args([
+            "box", "vault", "prune", "--keep", "2", str(proj.project_path),
+        ])
+        rc = run_prune(args)
+
+        assert rc == 0
+        assert "Nothing to prune" in capsys.readouterr().out
+
+
+class TestVaultForceDoesNotOverrideRefusals:
+    """``--force`` skips the prompt only; every pre-existing refusal still holds."""
+
+    def _disabled_project(self, config_file, tmp_home):
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        resolve_project(
+            std, config, project_dir=str(tmp_home / "project"),
+            initialize=True, enable_vault=False,
+        )
+
+    def test_restore_refuses_disabled_vault(
+        self, config_file, tmp_home, credentials_dir, capsys, monkeypatch,
+    ):
+        self._disabled_project(config_file, tmp_home)
+        monkeypatch.setattr("builtins.input", _no_stdin)
+
+        parser = build_parser()
+        args = parser.parse_args([
+            "box", "vault", "restore", "20260101T000000Z",
+            str(tmp_home / "project"), "--force",
+        ])
+        rc = run_restore(args)
+
+        assert rc == 1
+        assert "disabled" in capsys.readouterr().err.lower()
+
+    def test_prune_refuses_disabled_vault(
+        self, config_file, tmp_home, credentials_dir, capsys, monkeypatch,
+    ):
+        self._disabled_project(config_file, tmp_home)
+        monkeypatch.setattr("builtins.input", _no_stdin)
+
+        parser = build_parser()
+        args = parser.parse_args([
+            "box", "vault", "prune", str(tmp_home / "project"), "--force",
+        ])
+        rc = run_prune(args)
+
+        assert rc == 1
+        assert "disabled" in capsys.readouterr().err.lower()
 
 
 # ---------------------------------------------------------------------------
