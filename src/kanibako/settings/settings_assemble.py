@@ -62,7 +62,9 @@ from kanibako.settings.settings_keyspace import (
     TABLE_VALUED_AGENT_LEAVES,
     TERMINAL_CATEGORY_TAILS,
     Judgment,
+    KeyClass,
     is_terminal_category_key,
+    key_class,
     pref_allowlist_entry,
     display_store_path,
     undeclared_store_paths,
@@ -1158,6 +1160,19 @@ def _at_declared_category(parts: tuple[str, ...]) -> bool:
     return is_terminal_category_key(".".join(parts))
 
 
+def _at_bind_leaf(parts: tuple[str, ...], *, in_binds: bool) -> bool:
+    """Does *parts* end at a bind LEAF category, not a declared key merely ending in its token?
+
+    Spec §2a: ``system.channels.common`` is the CHANNEL type-root, a path key, and the
+    ``channels.`` segment is the discriminator the keyspace judge already reads.
+    """
+    if in_binds or parts[-1] not in BIND_LEAF_CATEGORIES:
+        return False
+    if _at_declared_category(parts):
+        return True
+    return key_class(".".join(parts), valid_agents=()).cls is not KeyClass.KEY
+
+
 def _parse_node(
     value: Any, *, in_binds: bool, dest_keyed: bool = False, at_bindings: bool = False,
     path: tuple[str, ...] = (), for_pref_requests: bool = False,
@@ -1189,7 +1204,8 @@ def _parse_node(
                     )
                     continue
                 _refuse_malformed_category((*path, key_s), sub)
-            if not in_binds and key_s in BIND_LEAF_CATEGORIES:
+            bind_leaf = _at_bind_leaf((*path, key_s), in_binds=in_binds)
+            if bind_leaf:
                 # A TERMINAL dest-keyed category — the map is HERE, not one level down, so it is
                 # parsed on the way PAST the category token. Same malformed-shape hand-off as an arm.
                 # ⚑ ``not in_binds`` keeps a user's entry literally NAMED ``common`` inside another
@@ -1214,7 +1230,7 @@ def _parse_node(
                 # so the branches above cannot reach it. Same rule, same wording.
                 _refuse_malformed_category((*path, key_s), sub)
             # Entering a bind-shaped category: its entries below are binds.
-            descend_binds = in_binds or key_s in BIND_CATEGORY_TOKENS
+            descend_binds = in_binds or bind_leaf or key_s == _DEST_KEYED_CATEGORY
             store[key_s] = _parse_node(
                 sub,
                 in_binds=descend_binds,
@@ -1537,7 +1553,7 @@ def _insert_dotted(store: KeyStore, dotted: str, value: Any) -> None:
         node[parts[-1]] = parse_bind_map(
             value, category=f"{_DEST_KEYED_CATEGORY}.{parts[-1]}",
         )
-    elif parts[-1] in BIND_LEAF_CATEGORIES and isinstance(value, dict):
+    elif _at_bind_leaf(tuple(parts), in_binds=False) and isinstance(value, dict):
         # ⚑ SAME §2a rule as a settings file's own walk: a floor key names its scope in
         # its own segments, so the DECLARATION ROOT is read from them rather than left
         # unsupplied. A producer that already rooted (``agent_defaults.load_common``)
