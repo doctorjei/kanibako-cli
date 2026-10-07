@@ -963,7 +963,8 @@ def _new_member_undo(ws: Workset, name: str) -> Callable[[], None]:
 
 
 # ⚑ UNDO, NOT REPLAY: ``--recover`` refuses shaping flags (see the commit body).
-def _new_box_undo(std, probe, *, standalone: bool) -> Callable[[], None]:
+def _new_box_undo(std, probe, *, standalone: bool,
+                  name: "str | None" = None) -> Callable[[], None]:
     """Undo for the box tree this create is about to materialize; build it BEFORE.
 
     Removes only what did not exist.  A STANDALONE root is the USER's own directory.
@@ -999,11 +1000,14 @@ def _new_box_undo(std, probe, *, standalone: bool) -> Callable[[], None]:
         # ⚑ THE PROBE'S OWN PATHS CARRY A PLACEHOLDER LEAF (``__unregistered__``): a
         # non-materializing resolve has no real name yet, so the box dir and the vault
         # arms are ``<store>/__unregistered__``.  Their PARENT is the resolved store,
-        # which is what honours a repointed ``workset.{boxes,vault_ro,vault_rw}`` —
-        # and ``probe.name`` is the name the materializing resolve will mint.
+        # which is what honours a repointed ``workset.{boxes,vault_ro,vault_rw}``.
+        # ⚑ ``--name`` is the ONE NAME THE MATERIALIZING RESOLVE WILL USE, and the
+        # probe's is not it: ``_name_new_box_probe`` always picks from the workspace
+        # basename, so naming the leaves from it alone would miss a ``--name`` box.
+        box_name = name or probe.name
         dirs = [p for p in (
-            probe.metadata_path.parent / probe.name,
-            *(p.parent / probe.name for p in
+            probe.metadata_path.parent / box_name,
+            *(p.parent / box_name for p in
               (probe.vault_ro_path, probe.vault_rw_path) if p is not None),
         )]
         parents = [probe.metadata_path.parent]
@@ -1357,7 +1361,8 @@ def run_create(args: argparse.Namespace) -> int:
     # ⚑ NOT the NAMED arm: a recovery adopts attempt one's tree, not this one's.
     _undo_box = None
     if _named_spec is None:
-        _undo_box = _new_box_undo(std, _probe, standalone=bool(args.standalone))
+        _undo_box = _new_box_undo(std, _probe, standalone=bool(args.standalone),
+                                  name=getattr(args, "name", None))
 
     _journaled = False
     try:
