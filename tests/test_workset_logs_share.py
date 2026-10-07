@@ -32,6 +32,7 @@ from kanibako.settings.config import (
 )
 from kanibako.settings.config_io import dump_doc
 from kanibako.settings.paths import box_log_files, load_std_paths
+from kanibako.settings.settings_resolve import UNSET
 
 
 # --------------------------------------------------------------------------- helpers
@@ -39,7 +40,7 @@ from kanibako.settings.paths import box_log_files, load_std_paths
 def set_own_logs(root: Path, value: "str | None") -> None:
     """Record a workset's OWN ``workset.logs`` value, as ``workset set`` writes it.
 
-    ``None`` is the ``--null`` write: the workset keeps nothing of its own.
+    ``None`` is the ``--null`` write: a stored null, which means NO logs directory.
     """
     dump_doc(root / WORKSET_META_FILE, {"workset": {"logs": value}})
 
@@ -61,6 +62,13 @@ def seed_log(logs_dir: Path, box: str) -> "dict[Path, str]":
     for path, text in written.items():
         path.write_text(text)
     return written
+
+
+def with_system_logs(config_file, value: str):
+    """A ``std`` whose early SYSTEM tier carries *value*, re-read the way a live process
+    reads it."""
+    dump_doc(system_settings_path(), {"workset": {"logs": value}})
+    return load_std_paths(load_config(config_file))
 
 
 def forced_share(std, tmp_home, a, b):
@@ -152,19 +160,20 @@ class TestTheShareIsRefusedByName:
         assert logs_share_refusal("workset.logs", "@meta.workset.path/../shared_logs", std,
                                  force=True, scope="system") is None
 
-    def test_a_null_write_that_falls_through_to_a_colliding_system_value_is_refused(
-            self, std, tmp_home, config_file):
-        """``--null`` is a write too: the target keeps nothing and reads the tier below."""
+    def test_a_null_write_is_never_a_share(self, std, tmp_home, config_file):
+        """``--null`` stores a null: NO logs directory, so nothing to share, whatever the
+        tier below says (``resolve_workset_logs``)."""
         two_worksets(std, tmp_home)
-        # The FORCED system-tier value the null falls through TO, on disk, then re-read
-        # so the early tier carries it the way a live process would.
-        dump_doc(system_settings_path(),
-                {"workset": {"logs": "@meta.workset.path/../shared_logs"}})
-        std_with_tier = load_std_paths(load_config(config_file))
+        std_with_tier = with_system_logs(config_file, "@meta.workset.path/../shared_logs")
 
-        msg = logs_share_refusal("workset.logs", None, std_with_tier, force=False,
-                                scope="workset", target_name="A")
-        assert msg is not None, "nulling onto a tier that collides is still a share"
+        assert logs_share_refusal("workset.logs", None, std_with_tier, force=False,
+                                 scope="workset", target_name="A") is None
+
+    def test_a_system_null_is_never_a_share(self, std, tmp_home):
+        two_worksets(std, tmp_home)
+
+        assert logs_share_refusal("workset.logs", None, std, force=False,
+                                 scope="system") is None
 
     def test_another_per_owner_key_is_not_policed_by_this_guard(self, std, tmp_home):
         """Only ``workset.logs`` is in scope; a sibling key at the same door is untouched."""
@@ -174,6 +183,69 @@ class TestTheShareIsRefusedByName:
         assert logs_share_refusal("workset.registry", str(tmp_home / "shared_logs"), std,
                                  force=False, scope="workset",
                                  target_name="B", target_root=b.root) is None
+
+
+class TestResetAndCreateAreDoorsToo:
+    """A reset or a new workset can fall through onto a system value another reads."""
+
+    DOTDOT = "@meta.workset.path/../shared_logs"
+
+    def test_a_reset_that_falls_through_onto_anothers_dir_is_refused(
+            self, std, tmp_home, config_file):
+        a, b = two_worksets(std, tmp_home)
+        set_own_logs(b.root, str(tmp_home / "logs_b"))
+        std2 = with_system_logs(config_file, self.DOTDOT)
+
+        msg = logs_share_refusal("workset.logs", UNSET, std2, force=False,
+                                scope="workset", target_name="B", target_root=b.root)
+
+        assert msg is not None
+        assert "'A'" in msg and "'B'" in msg
+        assert logs_share_refusal("workset.logs", UNSET, std2, force=True,
+                                 scope="workset", target_name="B",
+                                 target_root=b.root) is None
+
+    def test_a_reset_onto_a_dir_of_its_own_is_not_refused(self, std, tmp_home, config_file):
+        _a, b = two_worksets(std, tmp_home)
+        set_own_logs(b.root, str(tmp_home / "logs_b"))
+        std2 = with_system_logs(config_file, "@meta.workset.path/mylogs")
+
+        assert logs_share_refusal("workset.logs", UNSET, std2, force=False,
+                                 scope="workset", target_name="B",
+                                 target_root=b.root) is None
+
+    def test_a_reset_that_changes_nothing_is_not_refused(self, std, tmp_home, config_file):
+        """A share already there (forced) is not this write's doing."""
+        _a, b = two_worksets(std, tmp_home)
+        std2 = with_system_logs(config_file, self.DOTDOT)
+
+        assert logs_share_refusal("workset.logs", UNSET, std2, force=False,
+                                 scope="workset", target_name="B",
+                                 target_root=b.root) is None
+
+    def test_a_new_workset_inheriting_anothers_dir_is_refused(
+            self, std, tmp_home, config_file):
+        two_worksets(std, tmp_home)
+        std2 = with_system_logs(config_file, self.DOTDOT)
+
+        msg = logs_share_refusal("workset.logs", UNSET, std2, force=False,
+                                scope="workset", target_name="C",
+                                target_root=tmp_home / "wsC")
+
+        assert msg is not None
+        assert "'A'" in msg and "'B'" in msg and "'C'" in msg
+        assert logs_share_refusal("workset.logs", UNSET, std2, force=True,
+                                 scope="workset", target_name="C",
+                                 target_root=tmp_home / "wsC") is None
+
+    def test_a_new_workset_on_a_dir_of_its_own_is_not_refused(
+            self, std, tmp_home, config_file):
+        two_worksets(std, tmp_home)
+        std2 = with_system_logs(config_file, "@meta.workset.path/mylogs")
+
+        assert logs_share_refusal("workset.logs", UNSET, std2, force=False,
+                                 scope="workset", target_name="C",
+                                 target_root=tmp_home / "wsC") is None
 
 
 # ------------------------------------------------- the forced share's destructive verb
@@ -248,6 +320,19 @@ class TestAForcedSharesPurgeTakesOnlyItsOwnPart:
         assert sorted(p.name for p in removed) == ["alpha.creds-watcher.log", "alpha.jsonl"]
         assert not any(p.exists() for p in written)
         assert "kept" not in capsys.readouterr().err.lower()
+
+    def test_a_workset_with_no_logs_dir_is_never_a_partner(self, std, tmp_home):
+        """A stored null is NO logs dir, not the default ``<root>/logs`` leaf."""
+        a, b = two_worksets(std, tmp_home)
+        set_own_logs(a.root, None)
+        add_project(a, "alpha", tmp_home / "src" / "alpha")
+        set_own_logs(b.root, str(a.root / "logs"))
+        add_project(b, "alpha", tmp_home / "src2" / "alpha")
+        written = seed_log(a.root / "logs", "alpha")
+
+        removed = purge_box_logs(std, a.root / "logs", "alpha", workset_root=b.root)
+
+        assert sorted(removed) == sorted(written)
 
     def test_a_null_log_directory_holds_nothing_to_delete(self, std, tmp_home):
         a, _b = two_worksets(std, tmp_home)

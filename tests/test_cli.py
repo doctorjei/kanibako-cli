@@ -203,7 +203,6 @@ class TestParser:
         ["create", "/tmp/project", "--force"],
         ["box", "register", "name", "--force"],
         ["register", "name", "--force"],
-        ["workset", "create", "/tmp/ws", "--force"],
     ])
     def test_cross_kind_force_is_gone(self, argv):
         """`--force` on these existed only to bypass the cross-kind name refusal."""

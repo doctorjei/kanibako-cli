@@ -19,6 +19,7 @@ from kanibako.commands.flags import add_null_flag, add_set_force_flag
 from kanibako.settings.config import user_config_file, load_config
 from kanibako.settings.messages import ERR_WS_CONNECT_PATH_IS_PRIMARY_BOX
 from kanibako.errors import ConfigError, WorksetError
+from kanibako.settings.settings_resolve import UNSET
 from kanibako.settings.paths import (
     BoxMode,
     _early_scope,
@@ -98,6 +99,10 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
     create_p.add_argument(
         "--no-vault", action="store_true",
         help="Disable vault directories",
+    )
+    create_p.add_argument(
+        "--force", action="store_true",
+        help="Accept a workset.logs directory shared with another working set",
     )
     create_p.set_defaults(func=run_create)
 
@@ -215,7 +220,9 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
         help="Reset all overrides",
     )
     reset_p.add_argument(
-        "--force", action="store_true", help="Skip confirmation prompts",
+        "--force", action="store_true",
+        help="Skip confirmation prompts; accept a workset.logs directory shared with "
+             "another working set",
     )
     reset_p.set_defaults(func=run_reset)
 
@@ -409,6 +416,16 @@ def run_create(args: argparse.Namespace) -> int:
     except TemplateScopeError as e:
         print(f"Error: {e}", file=sys.stderr)
         return 1
+
+    # ⚑ Keyspec § 0: the new workset's inherited workset.logs may land on another's dir.
+    if find_identifier(name, list_worksets(std)) is None:
+        _collision = logs_share_refusal(
+            "workset.logs", UNSET, std, force=getattr(args, "force", False),
+            scope="workset", target_name=name, target_root=path,
+        )
+        if _collision is not None:
+            print(_collision, file=sys.stderr)
+            return 1
 
     try:
         ws = create_workset(name, path, std)
@@ -834,6 +851,15 @@ def _run_workset_config(args: argparse.Namespace) -> int:
 
     # Handle --reset mode
     if args.reset is not None:
+        # ⚑ Keyspec § 0: dropping the own value can fall through onto another's log dir.
+        _collision = logs_share_refusal(
+            "workset.logs" if args.reset_all or args.reset == "__ALL__" else args.reset,
+            UNSET, std, force=args.force, scope="workset",
+            target_name=ws.name, target_root=ws.root,
+        )
+        if _collision is not None:
+            print(_collision, file=sys.stderr)
+            return 1
         if args.reset_all or args.reset == "__ALL__":
             msg = reset_all(
                 config_path=ws_config,
