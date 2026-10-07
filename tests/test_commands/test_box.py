@@ -2411,7 +2411,8 @@ class TestBoxDuplicateExternal:
 
         # Standalone layout at destination with the external contents.
         assert (dest / "box_data").is_dir()
-        assert (dest / "code.py").read_text() == "print('external')"
+        assert (dest / "workspace" / "code.py").read_text() == "print('external')"
+        assert not (dest / "code.py").exists()
         # Source + connection untouched.
         assert (ext_dir / "code.py").read_text() == "print('external')"
         assert _connected_index(std) == before
@@ -2548,7 +2549,8 @@ class TestBoxDuplicateFromWorkset:
 
         assert (dest / "box_data").is_dir()
         assert (dest / "box_data" / "marker.txt").read_text() == "ws-dup-marker"
-        assert (dest / "code.py").read_text() == "print('ws-dup')"
+        assert (dest / "workspace" / "code.py").read_text() == "print('ws-dup')"
+        assert not (dest / "code.py").exists()
 
     def test_duplicate_workset_bare(self, config_file, tmp_home, credentials_dir):
         from kanibako.commands.box import run_duplicate
@@ -2565,6 +2567,7 @@ class TestBoxDuplicateFromWorkset:
 
         # Metadata exists but workspace not copied
         assert (dest / "box_data" / "marker.txt").read_text() == "ws-dup-marker"
+        assert not (dest / "workspace" / "code.py").exists()
         assert not (dest / "code.py").exists()
 
     def test_duplicate_workset_preserves_source(self, config_file, tmp_home, credentials_dir):
