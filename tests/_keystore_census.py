@@ -523,10 +523,11 @@ def pytest_configure(config: "pytest.Config") -> None:
   ⚑ The window is cheap insurance rather than a live guard: discovery reads installed
   entry-point metadata and the ``kanibako.plugins`` namespace and resolves no path from
   the environment, so nothing it reads lives under a redirected variable today. It stays
-  armed because that is a property of the caller, not a promise about the caller.
+  armed so that a future discovery route which does read the environment cannot leak the
+  real user dirs into the memo.
   (``tests/test_census_configure_isolation.py`` pins the memo and the window.)
 
-  ⚑ ``throwaway_user_dirs`` covers that one call only; see ``tests._user_dirs`.
+  ⚑ ``throwaway_user_dirs`` covers that one call only; see ``tests._user_dirs``.
 
   ⚑ THE ORDER IS LOAD-BEARING.  The priming call stays FIRST, before the funnel is
   captured: ``_discover``'s memo is what every later test reads, and it must be

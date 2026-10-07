@@ -746,8 +746,8 @@ class TestPluginChapterBind:
         assert core_defaults.rom_agent_default_categories(_ChapterTarget(chapter)) == {}
 
     def test_no_bind_when_the_target_has_no_rom_root(self):
-        """Directory plugins are not ``kanibako.plugins.*`` packages, so ``rom_root``
-        returns None for them — the right answer, not an error."""
+        """A target outside the ``kanibako.plugins.*`` namespace has no ``rom_root``,
+        so it returns None — the right answer, not an error."""
         assert core_defaults.rom_agent_default_categories(_ChapterTarget(None)) == {}
 
 

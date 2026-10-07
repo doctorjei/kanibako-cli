@@ -283,7 +283,7 @@ would be the same existence error the spec rejects for keys.
 Two fields carry the rest. `leaves` holds the PLUGIN-declared agent keys, unioned over the core §2d
 contract by the validator (§0 *"Agent specifics are PLUGIN-declared"*). `discovery_failed` records
 that discovery FAILED — an environment fault, as distinct from "no agents are installed". Without it
-an unreadable plugin dir reports *"'claude' is not a valid agent"*, blaming the user's spelling for
+a broken plugin reports *"'claude' is not a valid agent"*, blaming the user's spelling for
 a broken box.
 
 `default_valid_agents` is the production supplier: every DISCOVERED agent plus the agent keys those

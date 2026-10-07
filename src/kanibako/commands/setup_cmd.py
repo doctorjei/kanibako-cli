@@ -52,7 +52,7 @@ def _declared_name(node: str, cls: type) -> str:
     ``Target.name``; an ENTRY POINT under its entry-point name, which is packaging
     metadata and need not agree with the class.  A declared name that does not fold
     back to the node the class was filed under is therefore not this node's name at
-    all — and the node is then the honest answer, being itself a legal name that
+    all — so the node is the honest answer, itself a legal name that
     ``config.resolve_agent`` resolves.
     """
     from kanibako.identifiers import agent_node_case

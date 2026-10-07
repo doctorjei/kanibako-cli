@@ -619,8 +619,8 @@ def apply_prefs(
 # Suppliers / helpers for consumers
 # ---------------------------------------------------------------------------
 
-#: Process-scoped memo for plugin discovery, which walks entry points, a module
-#: namespace and two plugin DIRECTORIES. Reset via :func:`reset_discovery_cache`.
+#: Process-scoped memo for plugin discovery, which walks entry points and a module
+#: namespace. Reset via :func:`reset_discovery_cache`.
 _DISCOVERY: "dict[str, AgentNames]" = {}
 
 
@@ -676,7 +676,7 @@ class AgentNames(Collection[str]):
             unreadable,
         )
         #: ⚑ Discovery FAILED (an environment fault), as distinct from "no agents
-        #: are installed". Without this an unreadable plugin dir reports *"'claude'
+        #: are installed". Without this a broken plugin reports *"'claude'
         #: is not a valid agent"* — blaming the user's spelling for a broken box.
         self.discovery_failed = discovery_failed
 
@@ -762,7 +762,7 @@ def default_valid_agents() -> AgentNames:
         _log.debug("agent discovery failed while validating a pref", exc_info=True)
         # ⚑ A FAILED PASS READ NOTHING, so it concedes EVERYTHING — the same rule as
         # the line above, applied to an empty result. Refusing instead would blame a
-        # broken plugin directory on the user's spelling of a leaf.
+        # broken plugin on the user's spelling of a leaf.
         result = AgentNames(
             (), unreadable=unread_harnesses({}), discovery_failed=True,
         )
