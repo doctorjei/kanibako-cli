@@ -433,11 +433,34 @@ def _assert_links_verbatim(tree: Path, texts: dict[str, str]) -> None:
 
 
 class TestBoxDuplicate:
-    def _make_args(self, source, dest, bare=False, force=False):
+    def _make_args(self, source, dest, bare=False, force=False, to_mode=None):
         return argparse.Namespace(
             source_path=str(source), new_path=str(dest),
-            bare=bare, force=force, to_mode=None,
+            bare=bare, force=force, to_mode=to_mode,
         )
+
+    def _named_source(self, std, config, root, name):
+        """A registered NAMED (workset) member with its own canary."""
+        ws = create_workset(f"ws_{name}", root, std)
+        leaf = ws.workspaces_dir / name
+        leaf.mkdir(parents=True)
+        (leaf / "keepme.txt").write_text("FROM-THE-SOURCE")
+        add_project(ws, name, leaf, std)
+        return leaf
+
+    def _armed_dest(self, path):
+        """A destination holding its own bytes at BOTH levels: a standalone target
+        merges into ``<dst>/workspace``, not ``<dst>`` itself, so a root-level
+        canary alone cannot see that route's damage."""
+        path.mkdir()
+        (path / "keepme.txt").write_text("THE-DESTINATION-OWN")
+        (path / "workspace").mkdir()
+        (path / "workspace" / "keepme.txt").write_text("THE-DESTINATION-OWN")
+        return path
+
+    def _both_levels_own(self, dst):
+        for f in (dst / "keepme.txt", dst / "workspace" / "keepme.txt"):
+            assert f.read_text() == "THE-DESTINATION-OWN", f"{f} was written"
 
     def test_duplicate_success(self, config_file, tmp_home, credentials_dir):
         from kanibako.commands.box import run_duplicate
@@ -916,6 +939,112 @@ class TestBoxDuplicate:
         assert rc == 1
         assert (dst_dir / "keepme.txt").read_text() == "THE-DESTINATION-OWN"
         assert (orphan / "retained.txt").read_text() == "RETAINED"
+
+    # --- task-dupforce-fix1: three more routes of the SAME command ---
+    # ⚑ Red reference is the PREVIOUS tip (dc0f8af1), not main: each case below
+    # read CHANGED there and INTACT here.  The default no-``--to`` path is NOT
+    # exempt — it re-enters through ``_duplicate_from_workset``, which merged
+    # before the mint exactly as the old cross-mode path did.
+
+    def test_named_source_no_to_refuses_before_the_destination_is_written(
+        self, config_file, tmp_home, credentials_dir,
+    ):
+        """Route 1: a NAMED source with no ``--to`` refuses Guard-1 without
+        touching a registered destination's files."""
+        from kanibako.commands.box import run_duplicate
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        src = self._named_source(std, config, tmp_home / "wsroot_r1", "r1src")
+        dst = self._armed_dest(tmp_home / "dupfix_r1")
+        resolve_project(std, config, project_dir=str(dst), initialize=True)
+
+        assert run_duplicate(self._make_args(src, dst, force=True)) == 1
+        self._both_levels_own(dst)
+
+    def test_named_source_orphan_home_refuses_before_the_destination_is_written(
+        self, config_file, tmp_home, credentials_dir,
+    ):
+        """Route 1's other refusal: the minted home is a retained/orphaned box."""
+        from kanibako.commands.box import run_duplicate
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        src = self._named_source(std, config, tmp_home / "wsroot_r1b", "r1bsrc")
+        dst = self._armed_dest(tmp_home / "dupfix_r1b")
+        orphan = std.boxes / "dupfix_r1b"
+        orphan.mkdir(parents=True)
+        (orphan / "retained.txt").write_text("RETAINED")
+
+        assert run_duplicate(self._make_args(src, dst, force=True)) == 1
+        self._both_levels_own(dst)
+        assert (orphan / "retained.txt").read_text() == "RETAINED"
+
+    def test_to_primary_orphan_home_refuses_before_the_destination_is_written(
+        self, config_file, tmp_home, credentials_dir,
+    ):
+        """Route 2: ``--to primary`` onto a dst whose minted home is retained.
+        The F-3 front-run covers Guard-1 only, so this route still reached the
+        copy before the home-free check could stop it."""
+        from kanibako.commands.box import run_duplicate
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        src = tmp_home / "dupfix_r2_src"
+        src.mkdir()
+        (src / "keepme.txt").write_text("FROM-THE-SOURCE")
+        resolve_project(std, config, project_dir=str(src), initialize=True)
+        dst = self._armed_dest(tmp_home / "dupfix_r2")
+        orphan = std.boxes / "dupfix_r2"
+        orphan.mkdir(parents=True)
+        (orphan / "retained.txt").write_text("RETAINED")
+
+        assert run_duplicate(self._make_args(
+            src, dst, force=True, to_mode="primary")) == 1
+        self._both_levels_own(dst)
+        assert (orphan / "retained.txt").read_text() == "RETAINED"
+
+    def test_to_standalone_scalar_root_refuses_before_the_workspace_is_written(
+        self, config_file, tmp_home, credentials_dir,
+    ):
+        """Route 3: ``--to standalone`` onto a root whose ``workset.yaml`` holds a
+        scalar ``workset:``.  ``establish_standalone`` refuses that, but only
+        after the merge had already filled ``<dst>/workspace``."""
+        from kanibako.commands.box import run_duplicate
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        src = tmp_home / "dupfix_r3_src"
+        src.mkdir()
+        (src / "keepme.txt").write_text("FROM-THE-SOURCE")
+        resolve_project(std, config, project_dir=str(src), initialize=True)
+        dst = self._armed_dest(tmp_home / "dupfix_r3")
+        (dst / "workset.yaml").write_text("workset: scalar-not-a-table\n")
+
+        from kanibako.errors import ConfigError
+        with pytest.raises(ConfigError):
+            run_duplicate(self._make_args(
+                src, dst, force=True, to_mode="standalone"))
+        self._both_levels_own(dst)
+
+    def test_from_workset_to_standalone_scalar_root_refuses_before_the_write(
+        self, config_file, tmp_home, credentials_dir,
+    ):
+        """Route 3's second caller: a NAMED source ``--to standalone`` reaches the
+        same ``establish_standalone`` refusal from the other direction."""
+        from kanibako.commands.box import run_duplicate
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        src = self._named_source(std, config, tmp_home / "wsroot_r3b", "r3bsrc")
+        dst = self._armed_dest(tmp_home / "dupfix_r3b")
+        (dst / "workset.yaml").write_text("workset: scalar-not-a-table\n")
+
+        from kanibako.errors import ConfigError
+        with pytest.raises(ConfigError):
+            run_duplicate(self._make_args(
+                src, dst, force=True, to_mode="standalone"))
+        self._both_levels_own(dst)
 
     def test_workspace_copy_failure_unregisters_the_minted_name(
         self, config_file, tmp_home, credentials_dir,
