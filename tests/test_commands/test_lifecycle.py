@@ -1615,6 +1615,45 @@ class TestTheWorksetsOwnWorkspaceIsInTree:
         assert (real / "file.txt").read_text() == "keep"
         assert f"Note: left {real.resolve()}; it is yours" in capsys.readouterr().err
 
+    def test_the_landed_workspace_is_the_same_link_not_a_copy(self, env):
+        """Q102 (a): symlinks beget symlinks.  The move re-creates the pointer at the
+        destination, so the box SHARES the user's directory instead of duplicating it."""
+        config, std, tmp_home = env
+        ws1, leaf, real, state = self._symlinked_member(env)
+        ws2 = create_workset("ws2", tmp_home / "ws2_root", std)
+        new = execute_lifecycle(
+            state, TargetSpec(location=BARE_INTO_WS, ownership="ws2"), std, config,
+            confirm=_conf_yes(),
+        )
+        landed = ws2.workspaces_dir / "alpha"
+        assert landed.is_symlink()
+        assert landed.resolve() == real.resolve()
+        assert not os.path.lexists(leaf)
+        assert (real / "file.txt").read_text() == "keep"
+
+    def test_a_failure_after_the_link_is_laid_unwinds_it_without_going_through_it(
+        self, env, monkeypatch
+    ):
+        """Scope item 4: the unwind removes a created LINK by unlinking it.  A ``rmtree``
+        would either refuse it and leave the pointer standing, or worse, reach the target."""
+        config, std, tmp_home = env
+        ws1, leaf, real, state = self._symlinked_member(env)
+        create_workset("ws2", tmp_home / "ws2_root", std)
+
+        def boom(*a, **kw):
+            raise RuntimeError("injected after the workspace link is laid")
+
+        monkeypatch.setattr(lc, "write_box_enable_vault", boom)
+        with pytest.raises(RuntimeError, match="injected after"):
+            execute_lifecycle(
+                state, TargetSpec(location=BARE_INTO_WS, ownership="ws2"), std, config,
+                confirm=_conf_yes(),
+            )
+        landed = (tmp_home / "ws2_root" / "workspaces") / "alpha"
+        assert not os.path.lexists(landed)
+        assert leaf.is_symlink()
+        assert (real / "file.txt").read_text() == "keep"
+
     def test_in_place_convert_of_a_symlinked_leaf_is_refused(self, env):
         """SL3: the guard reads the link's PARENT, so a symlinked in-tree leaf is
         refused exactly like a plain one."""

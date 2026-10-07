@@ -20,7 +20,7 @@ from kanibako.identifiers import find_identifier
 from kanibako.settings.config_io import dump_doc, refuse_scalar_sections
 from kanibako.runtime.container import remove_box_tree
 from kanibako.settings.core_defaults import materialize_canon_skeleton
-from kanibako.tree_copy import copy_tree_keeping_links, failed_entries
+from kanibako.tree_copy import copy_tree_keeping_links, failed_entries, lay_root_link
 from kanibako.settings.paths import (
     BoxMode,
     WorksetSpec,
@@ -262,12 +262,17 @@ def _run_duplicate_cross_mode(args: argparse.Namespace, std, config) -> int:
 def _merge_workspace(src: Path, dst: Path, force: bool) -> None:
     """Copy the workspace *src* to *dst*, merging into an existing *dst* under *force*.
 
+    A workspace that is itself a LINK is re-created as a link (Q102 (a)) whenever *dst* is
+    absent or an empty placeholder; a *dst* that already holds content is merged into, as
+    ``--force`` has always meant — a pointer is never traded for someone's files.
+
     Raises ``ProjectError`` naming each entry the merge could not copy.
     """
     from kanibako.errors import ProjectError
 
     try:
-        copy_tree_keeping_links(src, dst, dirs_exist_ok=force, replace_existing=force)
+        if not lay_root_link(src, dst):
+            copy_tree_keeping_links(src, dst, dirs_exist_ok=force, replace_existing=force)
     except shutil.Error as e:
         listing = failed_entries(e)
         detail = f"; {listing}" if listing is not None else f": {e}"
@@ -348,7 +353,8 @@ def _duplicate_to_standalone(src_proj, new_path, std, force, src_enable_vault, c
             # The home carries the root-owned canon skeleton (J-7); a bare rmtree
             # fails with EACCES and strands a half-removed destination.
             remove_box_tree(dst_shell)
-        copy_tree_keeping_links(src_proj.shell_path, dst_shell)
+        if not lay_root_link(src_proj.shell_path, dst_shell):
+            copy_tree_keeping_links(src_proj.shell_path, dst_shell)
         # copytree carries the skeleton's modes but not its ownership — re-assert.
         materialize_canon_skeleton(dst_shell)
 
@@ -513,7 +519,7 @@ def _duplicate_to_local(src_proj, new_path, std, config, force, carried,
         # Ensure home is inside the project dir.
         if src_proj.shell_path.is_dir():
             dst_home = dst_project / "home"
-            if not dst_home.is_dir():
+            if not dst_home.is_dir() and not lay_root_link(src_proj.shell_path, dst_home):
                 copy_tree_keeping_links(src_proj.shell_path, dst_home)
             materialize_canon_skeleton(dst_home)
     except BaseException:

@@ -440,6 +440,36 @@ class TestCopyVaultLeafContents:
         _copy_vault_leaf_contents(src, dst)
         assert os.readlink(dst / "gone") == str(tmp_path / "no-such-target")
 
+    def test_a_linked_source_leaf_is_shared_as_a_link_not_materialized(self, tmp_path):
+        """Q102 (a): the carry re-creates the pointer, so the new box shares the store
+        instead of duplicating the whole outside tree it names."""
+        real = tmp_path / "real"
+        real.mkdir()
+        (real / "v.txt").write_text("v")
+        src = tmp_path / "src"
+        src.symlink_to(real)
+        dst = tmp_path / "dst"
+        _copy_vault_leaf_contents(src, dst)
+        assert dst.is_symlink()
+        assert os.readlink(dst) == str(real)
+        assert (dst / "v.txt").read_text() == "v"
+
+    def test_a_linked_source_still_merges_into_a_leaf_that_holds_content(self, tmp_path):
+        """The trade is only ever for an empty placeholder; a destination with data in it
+        keeps its data and takes the source's contents beside it, as before."""
+        real = tmp_path / "real"
+        real.mkdir()
+        (real / "v.txt").write_text("v")
+        src = tmp_path / "src"
+        src.symlink_to(real)
+        dst = tmp_path / "dst"
+        dst.mkdir()
+        (dst / "prior.txt").write_text("prior")
+        _copy_vault_leaf_contents(src, dst)
+        assert not dst.is_symlink()
+        assert (dst / "prior.txt").read_text() == "prior"
+        assert (dst / "v.txt").read_text() == "v"
+
     def test_uncopyable_entry_raises_named_project_error(self, tmp_path):
         """An entry that cannot land (a link already at that name) fails the carry by NAME."""
         src = tmp_path / "src"
