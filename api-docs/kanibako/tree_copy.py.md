@@ -7,7 +7,8 @@ _Signatures only: no comments, no docstrings, no bodies._
 ## Functions
 ```
 def copy_tree_keeping_links(src: Path, dst: Path, *, ignore: Callable[[str, list[str]], Iterable[str]] | None=None, dirs_exist_ok: bool=False, replace_existing: bool=False, keep_root_link: bool=False) -> None
-def lay_root_link(src: Path, dst: Path, *, moved_root: Path | None=None, relocated: Mapping[Path, Path] | None=None) -> bool
+def removed_root_of(target: str, removed: Collection[Path]) -> Path | None
+def lay_root_link(src: Path, dst: Path, *, removed: Collection[Path]=(), relocated: Mapping[Path, Path] | None=None) -> bool
 def failed_entries(err: shutil.Error) -> str | None
 def _copy_root_link(src: Path, dst: Path, *, dirs_exist_ok: bool, replace_existing: bool) -> None
 def _relocated_target(target: str, relocated: Mapping[Path, Path]) -> str | None

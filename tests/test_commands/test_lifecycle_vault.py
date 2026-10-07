@@ -1124,7 +1124,7 @@ class TestACarryRePointsALinkToWhereItsTargetLanded:
         src.symlink_to(target)
         dst = tmp_path / "landed" / "rw"
 
-        _copy_vault_leaf_contents(src, dst, moved_root=tmp_path / "ws",
+        _copy_vault_leaf_contents(src, dst, removed=[tmp_path / "ws"],
                                  relocated={old_ws: landed_ws})
 
         assert dst.is_symlink()
@@ -1141,7 +1141,7 @@ class TestACarryRePointsALinkToWhereItsTargetLanded:
         src.symlink_to(outside)
         dst = tmp_path / "landed" / "rw"
 
-        _copy_vault_leaf_contents(src, dst, moved_root=tmp_path / "ws",
+        _copy_vault_leaf_contents(src, dst, removed=[tmp_path / "ws"],
                                  relocated={tmp_path / "ws": tmp_path / "new_ws"})
 
         assert dst.is_symlink()
@@ -1158,7 +1158,7 @@ class TestACarryRePointsALinkToWhereItsTargetLanded:
         src.symlink_to(attic)
         dst = tmp_path / "landed" / "rw"
 
-        _copy_vault_leaf_contents(src, dst, moved_root=tmp_path / "ws",
+        _copy_vault_leaf_contents(src, dst, removed=[tmp_path / "ws"],
                                  relocated={})
 
         assert not dst.is_symlink()
@@ -1189,3 +1189,66 @@ class TestACarryRePointsALinkToWhereItsTargetLanded:
         assert carried is not None
         assert carried.is_symlink()
         assert (carried / "m.txt").read_text() == "FOLLOW ME"
+
+
+def _standalone_with_vault_link(env, text):
+    """A standalone root whose ``vault/rw`` is the relative link *text*, its target
+    holding ``m.txt``; returns ``(root, resolved target)``."""
+    root = _make_standalone(env, "sa", "content")
+    vrw = root / "vault" / "rw"
+    target = (vrw.parent / text).resolve()
+    target.mkdir(parents=True)
+    (target / "m.txt").write_text("ONE COPY")
+    shutil.rmtree(vrw)
+    os.symlink(text, vrw)
+    return root, target
+
+
+def _convert(env, root, leg):
+    """``box convert --move`` of *root*: *leg* ``"workset"`` lands in workset ``ws1``,
+    ``"default"`` in the default workset."""
+    config, std, tmp_home = env
+    state = resolve_lifecycle_target(str(root), std, config)
+    if leg == "workset":
+        ws = create_workset("ws1", tmp_home / "ws1_root", std)
+        spec = TargetSpec(location=ws.workspaces_dir / "sa", ownership="ws1", name="sa")
+    else:
+        spec = TargetSpec(location=tmp_home / "landed", ownership="default", name="landed")
+    return execute_lifecycle(state, spec, std, config, confirm=_conf_yes())
+
+
+@pytest.mark.parametrize("leg", ["workset", "default"])
+class TestAVaultLinkAfterAStandaloneMove:
+    """Q70 "Keep symlinks": the pointer survives wherever its target does.  Only a
+    target the move REMOVES with no landing is copied, and only then is it warned."""
+
+    def test_a_user_dir_the_move_leaves_in_place_keeps_its_pointer(self, env, leg, capsys):
+        root, attic = _standalone_with_vault_link(env, "../attic")
+
+        new = _convert(env, root, leg)
+
+        assert new.vault_rw is not None and new.vault_rw.is_symlink()
+        assert os.path.realpath(new.vault_rw) == str(attic)
+        assert (attic / "m.txt").read_text() == "ONE COPY"
+        assert "POINTER is gone" not in capsys.readouterr().err
+
+    def test_a_link_into_the_store_names_where_the_store_landed(self, env, leg, capsys):
+        root, _target = _standalone_with_vault_link(env, "../box_data/attic")
+
+        new = _convert(env, root, leg)
+
+        landed = new.metadata_path / "attic"
+        assert new.vault_rw is not None and new.vault_rw.is_symlink()
+        assert os.path.realpath(new.vault_rw) == os.path.realpath(landed)
+        assert (landed / "m.txt").read_text() == "ONE COPY"
+        assert "POINTER is gone" not in capsys.readouterr().err
+
+    def test_a_target_the_move_removes_is_copied_and_warned(self, env, leg, capsys):
+        root, target = _standalone_with_vault_link(env, "ro/sub")
+
+        new = _convert(env, root, leg)
+
+        assert not target.exists()
+        assert new.vault_rw is not None and not new.vault_rw.is_symlink()
+        assert (new.vault_rw / "m.txt").read_text() == "ONE COPY"
+        assert "which this move removes" in capsys.readouterr().err

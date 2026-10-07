@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import shlex
 import shutil
-from collections.abc import Mapping
+from collections.abc import Collection, Mapping
 from dataclasses import dataclass, field
 from functools import partial
 from pathlib import Path
@@ -78,7 +78,9 @@ from kanibako.settings.paths import (
     unregister_primary_box_name,
     write_vault_gitignore,
 )
-from kanibako.tree_copy import copy_tree_keeping_links, failed_entries, lay_root_link
+from kanibako.tree_copy import (
+    copy_tree_keeping_links, failed_entries, lay_root_link, removed_root_of,
+)
 from kanibako.utils import write_project_gitignore
 from kanibako.project.workset import (
     Workset,
@@ -1294,7 +1296,7 @@ def _vault_leaf_has_contents(leaf: Path) -> bool:
 
 
 def _copy_vault_leaf_contents(src: Path, dst: Path | None,
-                             moved_root: Path | None = None,
+                             removed: Collection[Path] = (),
                              relocated: Mapping[Path, Path] | None = None) -> None:
     """Merge-copy the CONTENTS of vault leaf *src* into leaf *dst*.
 
@@ -1328,15 +1330,17 @@ def _copy_vault_leaf_contents(src: Path, dst: Path | None,
             f"is inside the source."
         )
     dst.mkdir(parents=True, exist_ok=True)
-    if lay_root_link(src, dst, moved_root=moved_root, relocated=relocated):
+    if lay_root_link(src, dst, removed=removed, relocated=relocated):
         # A POINTER source into an empty destination: share the target, don't materialize.
         return
-    if src.is_symlink() and moved_root is not None:
+    import os
+    gone = removed_root_of(os.path.realpath(src), removed) if src.is_symlink() else None
+    if gone is not None:
         # ⚑ The pointer could not be kept: the target sits inside a tree this move tears
         # down and outside every tree it LANDS.  Bytes arrive as a SECOND copy -- say so.
         import sys
         print(
-            f"Warning: {src} is a link into {moved_root}, which this move removes and does "
+            f"Warning: {src} is a link into {gone}, which this move removes and does "
             f"not re-aim; its BYTES were copied to {dst} and the POINTER is gone. Writes "
             "after this do not reach the original target.",
             file=sys.stderr,
@@ -1471,15 +1475,30 @@ def _carry_vault_contents(
     reuse-in-place edges (whose teardown is skipped) collapse to same-path no-ops
     inside.  A copy failure RAISES, aborting before anything is deleted.
 
-    ``moved_root`` is the source box's own root: a link INTO it names a place this
-    relocation tears down, so it is not carried at the old location.  ``relocated``
-    (``{old_root: new_root}``) says where the carried trees LAND, so such a link is
-    re-pointed under its landing instead of becoming a second copy that diverges;
-    with no mapping over it the bytes are copied and the loss is warned.
+    ``relocated`` (``{old_root: new_root}``) says where the carried trees LAND, so a
+    vault link into one is re-pointed under its landing instead of becoming a second
+    copy that diverges.  A link into a tree the teardown removes and nothing lands
+    copies the bytes and warns; a link to anything that SURVIVES keeps its pointer.
     """
+    removed = _torn_down_roots(state, std)
     for src, dst in _vault_carry_pairs(state, std, dst_ro, dst_rw):
-        _copy_vault_leaf_contents(src, dst, moved_root=state.metadata_path,
-                                 relocated=relocated)
+        _copy_vault_leaf_contents(src, dst, removed=removed, relocated=relocated)
+
+
+def _torn_down_roots(state: ProjectState, std: StandardPaths) -> list[Path]:
+    """The trees :func:`_remove_old_metadata` deletes, from the plans it deletes by."""
+    if state.mode != BoxMode.standalone:
+        return [state.metadata_path]
+    scope = _early_scope(std, BoxMode.standalone)
+    store, _kept = standalone_store_teardown_plan(state.metadata_path, early=scope)
+    vaults, _kept_vaults = standalone_vault_teardown(state.metadata_path, early=scope)
+    return [path for path in (store, *vaults) if path is not None]
+
+
+def _landings(*pairs: tuple[Path, Path]) -> dict[Path, Path] | None:
+    """``{old: new}`` for each carried tree that actually moves; None when none does."""
+    moved = {old: new for old, new in pairs if old.resolve() != new.resolve()}
+    return moved or None
 
 
 def _move_log_back(dst: Path, src: Path) -> None:
@@ -1911,11 +1930,8 @@ def _to_default(
     # deleted below -- contents move first, and a vault link follows the landing.
     _carry_vault_contents(
         state, std, vault_ro, vault_rw,
-        relocated=(
-            {state.workspace_path: new_workspace}
-            if state.workspace_path.resolve() != new_workspace.resolve()
-            else None
-        ),
+        relocated=_landings((state.workspace_path, new_workspace),
+                            (src_meta_dir, dst_metadata)),
     )
     _carry_box_logs(state, std, unwind, dst_logs=std.primary_logs, dst_name=project_name)
 
@@ -2296,6 +2312,7 @@ def _to_workset(
     # (root vs ``box_data/``) — see :func:`box_metadata_dir` (M-8).
     metadata_source = box_metadata_dir(state.mode, state.metadata_path,
                                         early=EarlyScope(std.early_system, _state_ws_token(state)))
+    store_source = metadata_source
     shell_source = state.shell_path
 
     source_is_workset = state.mode == BoxMode.named
@@ -2486,11 +2503,8 @@ def _to_workset(
         # instead of becoming a second copy of a tree that moved.
         _carry_vault_contents(
             state, std, vault_ro, vault_rw,
-            relocated=(
-                {state.workspace_path: recorded_workspace}
-                if state.workspace_path.resolve() != recorded_workspace.resolve()
-                else None
-            ),
+            relocated=_landings((state.workspace_path, recorded_workspace),
+                                (store_source, dst_project)),
         )
         _remove_old_metadata(state, std, config, unwind, dst_vault=dst_vault)
 

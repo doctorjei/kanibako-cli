@@ -22,7 +22,7 @@ from __future__ import annotations
 import errno
 import os
 import shutil
-from collections.abc import Callable, Iterable, Mapping
+from collections.abc import Callable, Collection, Iterable, Mapping
 from pathlib import Path
 
 
@@ -129,19 +129,29 @@ def _relocated_target(target: str, relocated: Mapping[Path, Path]) -> str | None
 
     The SAME RELATIVE POSITION under the landing, which is what a carried pointer must name:
     ``<old>/vaultdata`` under a workspace that lands at ``<new>`` is ``<new>/vaultdata``.
-    ``None`` when no carried tree contains *target* -- an outside target does not move and
-    its pointer stays valid as it stands.
+    The deepest carried tree holding *target* wins.  ``None`` when none holds it.
     """
-    for old, new in relocated.items():
-        old_resolved = os.path.realpath(str(old))
-        if not _is_under(target, old):
-            continue
-        return os.path.join(str(new), os.path.relpath(target, old_resolved))
+    holders = [(os.path.realpath(str(old)), new) for old, new in relocated.items()
+               if _is_under(target, old)]
+    if not holders:
+        return None
+    old_resolved, new = max(holders, key=lambda pair: len(pair[0]))
+    return os.path.join(str(new), os.path.relpath(target, old_resolved))
+
+
+def removed_root_of(target: str, removed: Collection[Path]) -> Path | None:
+    """The tree in *removed* that holds *target*, or None when the target survives.
+
+    A LINK in *removed* holds nothing: ``rmtree`` never descends through one.
+    """
+    for root in removed:
+        if not os.path.islink(root) and _is_under(target, root):
+            return root
     return None
 
 
 def lay_root_link(
-    src: Path, dst: Path, *, moved_root: Path | None = None,
+    src: Path, dst: Path, *, removed: Collection[Path] = (),
     relocated: Mapping[Path, Path] | None = None,
 ) -> bool:
     """Lay *src*'s root LINK at *dst* when that costs nothing; else let the caller copy.
@@ -152,28 +162,20 @@ def lay_root_link(
     one that holds an entry and a mount point answers EBUSY, so content is never traded for a
     pointer.  False otherwise, and the caller's own copy runs unchanged, exception and all.
 
-    *moved_root* is the root of the tree THIS operation carries along with *src*.  A link
-    whose target sits inside it names a place that will be torn down, so it must not be
-    carried at the OLD location.  *relocated* says where such trees LAND: with a mapping the
-    link is re-pointed at the landed path and the POINTER survives (Q70 keeps symlinks, and
-    two independent copies of one tree diverge silently).  With no mapping there is nothing
-    to re-point at, so the answer is False and the caller copies the bytes.
-
-    A target outside every carried tree is unaffected: it stays where it is and the pointer
-    is carried, which is the whole point.
+    *relocated* maps each tree THIS operation carries to where it LANDS: a link into one is
+    re-pointed at the landed path and the POINTER survives (Q70 keeps symlinks, and two
+    independent copies of one tree diverge silently).  *removed* names the trees it tears
+    down: a link into one with no landing has nothing to point at, so the answer is False
+    and the caller copies the bytes.  Any other target SURVIVES, and its pointer is laid.
     """
     if not os.path.islink(src):
         return False
     if os.path.islink(dst):
         return False
-    landing: str | None = None
-    if moved_root is not None or relocated:
-        target = os.path.realpath(src)
-        landing = _relocated_target(target, relocated or {})
-        if (landing is None and moved_root is not None
-                and target != os.path.realpath(moved_root)
-                and _is_under(target, moved_root)):
-            return False
+    target = os.path.realpath(src)
+    landing = _relocated_target(target, relocated or {})
+    if landing is None and removed_root_of(target, removed) is not None:
+        return False
     if dst.is_dir():
         try:
             os.rmdir(dst)

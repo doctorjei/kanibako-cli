@@ -8,7 +8,9 @@ from pathlib import Path
 
 import pytest
 
-from kanibako.tree_copy import copy_tree_keeping_links, failed_entries, lay_root_link
+from kanibako.tree_copy import (
+    _relocated_target, copy_tree_keeping_links, failed_entries, lay_root_link, removed_root_of,
+)
 
 
 @pytest.fixture
@@ -352,28 +354,45 @@ class TestALoopingRootLinkIsRefused:
         assert os.readlink(dst) == str(outside / "no-such")
 
 
-class TestMovedRootIsNotLaidAsADanglingLanding:
+class TestRemovedRootIsNotLaidAsADanglingLanding:
     """A link whose target travels with the operation must not be re-pointed at the
     place that operation tears down."""
 
-    def test_a_target_inside_the_moved_root_answers_false(self, layout):
+    def test_a_target_inside_the_removed_root_answers_false(self, layout):
         src, _outside, dst = layout
         inside = src.parent / "sibling"
         inside.mkdir()
         (inside / "go.txt").write_text("go")
         shutil.rmtree(src)
         os.symlink(str(inside), src)
-        assert lay_root_link(src, dst, moved_root=src.parent) is False
+        assert lay_root_link(src, dst, removed=[src.parent]) is False
         assert not os.path.lexists(dst)
 
-    def test_a_target_outside_the_moved_root_is_still_carried(self, layout):
+    def test_a_target_outside_the_removed_root_is_still_carried(self, layout):
         src, outside, dst = layout
         shutil.rmtree(src)
         os.symlink(str(outside), src)
-        assert lay_root_link(src, dst, moved_root=src.parent) is True
+        assert lay_root_link(src, dst, removed=[src.parent]) is True
         assert os.readlink(dst) == str(outside)
 
-    def test_without_a_moved_root_the_link_is_laid_as_before(self, layout):
+    def test_a_removed_root_that_is_a_link_holds_nothing(self, layout):
+        """``rmtree`` never descends through a link, so a target reached THROUGH a
+        removed link survives the move and keeps its pointer."""
+        src, outside, dst = layout
+        shutil.rmtree(src)
+        os.symlink(str(outside), src)
+        via = src.parent / "via"
+        os.symlink(str(outside), via)
+        assert removed_root_of(os.path.realpath(src), [via]) is None
+        assert lay_root_link(src, dst, removed=[via]) is True
+
+    def test_the_deepest_landing_wins(self, tmp_path):
+        outer, inner = tmp_path / "outer", tmp_path / "outer" / "inner"
+        (inner / "t").mkdir(parents=True)
+        relocated = {outer: tmp_path / "A", inner: tmp_path / "B"}
+        assert _relocated_target(str(inner / "t"), relocated) == str(tmp_path / "B" / "t")
+
+    def test_without_a_removed_root_the_link_is_laid_as_before(self, layout):
         src, _outside, dst = layout
         inside = src.parent / "sibling"
         inside.mkdir()
