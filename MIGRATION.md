@@ -430,7 +430,8 @@ inside boxes. In order of likely impact:
     registry with a note instead** — see *A working set named default must be registered again*.
 
 42. **`box duplicate --to standalone` of a workset box puts the workspace at `<dst>/workspace/`, and a duplicate or
-    convert now carries a symlinked workspace or vault as a link to its target instead of a copy of its contents** —
+    convert now carries a symlinked workspace or vault as a link to its target instead of a copy of its contents;
+    a box is identified by its path as given, so a directory reached through a different symlink is not that box** —
     see *A duplicate or convert keeps a symlinked workspace or vault as a link*.
 
 ---
@@ -6971,7 +6972,18 @@ is yours.
 
 **`box duplicate --to standalone` of a workset box.** The workspace is now at `<dst>/workspace/`, not `<dst>/`.
 If that workspace's root is a symlink, the new box's `<dst>/workspace/` is a link to the same target, so both boxes
-write the same files; copy the target yourself if you need an independent copy. `--to primary` still copies bytes.
+write the same files; copy the target yourself if you need an independent copy.
+
+**`box duplicate --to primary` of a box whose workspace root is a symlink.** The destination is now a link to the
+same target instead of a copy of its contents. The new box keeps its own name, store, home, and journal entry; only
+the workspace files are shared.
+
+**A box is identified by its path, not the path's resolved target.** `box info <path>`, a launch, and every registry
+lookup compare the path as given, so two boxes linking one target answer for themselves. With no box argument the
+current directory is the one the shell reports (`$PWD`). A directory reached through a different symlink than the one
+the box is registered under is not that box: from `~/alias/project`, where `~/alias` links the parent of a box
+registered as `/data/project`, kanibako reports no box and a launch does not create one. Name the box, or run from
+its registered path (`cd -P` drops the link from the shell's path).
 
 **`box convert` of a box whose vault directory is a symlink.** The converted box's vault is now a link, either to the
 same target or to its landed place when the target moved with the box. Before, it was a copy of the target's

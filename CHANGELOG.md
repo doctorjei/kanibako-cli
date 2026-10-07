@@ -23,6 +23,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `box rm --purge` and `workset disconnect --remove-files` now keep that file and print a `Note: kept <path>` line
   naming the other working sets, instead of deleting it. Differently-named boxes' logs are untouched.
 
+- **A box is identified by its path as given, not by the path's resolved target.** Two boxes whose workspaces link
+  one target are two boxes that share files: `box info`, a launch, and the registries answer for the box registered
+  at the literal path, and a second box may be registered at a link to an already-registered workspace. A command
+  run with no box argument takes the current directory as the shell reached it (`$PWD`), so `cd <link>` names the
+  box at `<link>`. A directory reached through a different symlink than the one a box is registered under is not
+  that box.
+
 - **A standalone box's root `workset.yaml` now records `registry: null`** beside `workset.kuid`, written at
   `create` as `registry: null  # REMOVING THIS WILL BREAK A STANDALONE BOX!`.
 
@@ -617,7 +624,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   nothing carries it.
 - **A workset or external-connected project duplicated `--to standalone` now lands its workspace in the destination's
   resolved `workspace/` subdir instead of the box root.** A symlinked workspace root is carried there as a link
-  sharing its target, but only when that subdir does not exist yet. `--to primary` still copies bytes.
+  sharing its target, but only when that subdir does not exist yet.
+- **`box duplicate --to primary` of a box whose workspace root is a symlink now lays the same link at the destination
+  instead of copying the target's contents.** The new box shares the files and keeps its own name, store, home, and
+  journal entry.
 - **`kanibako code --remote` says what pointing `dev.containers.dockerPath` at its wrapper costs.** VS Code applies
   that user setting in Remote-SSH windows too, so a container attach through a Remote-SSH window fails on any host
   where the wrapper's path does not exist. The prompt and the manual snippet now say so and give the undo (set it
