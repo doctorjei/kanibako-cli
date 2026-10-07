@@ -962,9 +962,7 @@ def _new_member_undo(ws: Workset, name: str) -> Callable[[], None]:
     return undo
 
 
-#: The per-owner keys a standalone ``create`` ACCEPTS, so its pre-write refusal skips them:
-#: ``registry`` names the SYSTEM index — a standalone box is indexed only on ``--register`` —
-#: and the canon stamp reads ``workset.canon`` alone, never ``template``.
+#: The per-owner keys a standalone ``create`` accepts: ``registry`` (§D4a below), ``template``.
 _STANDALONE_CREATE_EXEMPT_KEYS: frozenset[str] = frozenset({"registry", "template"})
 
 
@@ -1093,9 +1091,7 @@ def run_create(args: argparse.Namespace) -> int:
     if project_dir is not None and _named_spec is None:
         target = Path(project_dir)
         _fresh = not target.exists()
-        # ⚑ BEFORE ANY WRITE, WHETHER OR NOT ``<path>`` EXISTS.  A guard under
-        # ``if not target.exists()`` never runs for the user's OWN directory, so the whole
-        # box materialized there first and the refusal came after it.
+        # ⚑ BEFORE ANY WRITE, EXISTING TARGET INCLUDED — never fold it into the mkdir.
         if args.standalone:
             refuse_inherited_per_owner(
                 effective_path, _early_scope(std, BoxMode.standalone),
