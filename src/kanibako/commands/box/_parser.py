@@ -805,7 +805,7 @@ def _create_recovery_refusal(
         if cures:
             lines.append("Or change them afterwards:")
             lines += [
-                f"  kanibako box set --box {name} {key}" for key in cures
+                f"  kanibako box set --box {shlex.quote(name)} {key}" for key in cures
             ]
     lines += ["Inspect it first:", "  kanibako box diagnose"]
     return "\n".join(lines)
@@ -2335,7 +2335,7 @@ def _check_container_running(proj) -> tuple[bool, str]:
     if runtime.container_exists(container_name):
         return False, (
             f"exited, still holding the name ({container_name}); "
-            f"clear it: kanibako stop {proj.name}"
+            f"clear it: kanibako stop {shlex.quote(proj.name)}"
         )
     return False, f"not running ({container_name})"
 

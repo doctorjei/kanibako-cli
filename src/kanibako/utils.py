@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+import shlex
 import shutil
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -100,13 +101,15 @@ def unrenderable_box_name_refusal(
     reason = box_name_reason(box) or "box name must not be empty"
     if mode == "standalone":
         cure = (
-            f"kanibako box convert {path} --standalone --name <new-name>" if path
-            else "kanibako box convert --standalone --name <new-name>"
+            f"kanibako box convert {shlex.quote(str(path))} --standalone --name <new-name>"
+            if path else
+            "kanibako box convert --standalone --name <new-name>"
         )
     else:
         cure = (
-            f"kanibako box move {path} <new-path> --name <new-name>" if path
-            else "kanibako box move <new-path> --name <new-name>"
+            f"kanibako box move {shlex.quote(str(path))} <new-path> --name <new-name>"
+            if path else
+            "kanibako box move <new-path> --name <new-name>"
         )
     return (
         f"Error: box '{box}' has no container name: {reason}. Give the box a valid "

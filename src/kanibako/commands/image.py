@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import shlex
 import shutil
 import sys
 import tarfile
@@ -943,7 +944,7 @@ def run_add(args: argparse.Namespace) -> int:
         shutil.copyfile(src_file, dest)
         print(
             f"Added template '{name}' ({dest}). "
-            f"Run 'kanibako rig prep {name}' to build it."
+            f"Run 'kanibako rig prep {shlex.quote(name)}' to build it."
         )
         return 0
 
@@ -987,7 +988,7 @@ def run_add(args: argparse.Namespace) -> int:
     )
     print(
         f"Added prefab '{name}' -> {source}. "
-        f"Run 'kanibako rig prep {name}' to pull it."
+        f"Run 'kanibako rig prep {shlex.quote(name)}' to pull it."
     )
     return 0
 

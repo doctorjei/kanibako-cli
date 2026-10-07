@@ -17,6 +17,7 @@ pushes are load-bearing; see ``llm-docs/kanibako/commands/box/_lifecycle.py.md``
 
 from __future__ import annotations
 
+import shlex
 import shutil
 from collections.abc import Mapping
 from dataclasses import dataclass, field
@@ -586,14 +587,14 @@ def _resolve_target_workset(
 
 
 def _cure_ref(state: ProjectState) -> str:
-    """The reference a printed cure reaches *state* by.
+    """The reference a printed cure reaches *state* by, QUOTED for the shell.
 
     ⚑ A standalone's name is in no registry the route reads, and its nested workspace
     resolves through the path space its root sits in, so it is the box root.
     """
     if state.mode is BoxMode.standalone:
-        return str(state.metadata_path)
-    return state.name
+        return shlex.quote(str(state.metadata_path))
+    return shlex.quote(state.name)
 
 
 def _validate(
@@ -712,9 +713,9 @@ def _validate(
         if (ws_dir is not None and is_in_tree_workspace(target_ws, dest)
                 and dest != (ws_dir / new_name).resolve()):
             leaf = ws_dir / new_name
-            rename = "" if _same_box_name(new_name, state.name) else f" --name {new_name}"
+            rename = "" if _same_box_name(new_name, state.name) else f" --name {shlex.quote(new_name)}"
             ref = _cure_ref(state)
-            bare = (f"kanibako box convert {ref} --workset {target_ws.name} "
+            bare = (f"kanibako box convert {ref} --workset {shlex.quote(target_ws.name)} "
                     f"--move{rename}")
             if spec.records_only:
                 advice = (f"Move the files to `{leaf}` and run `kanibako box remap` "
@@ -722,8 +723,8 @@ def _validate(
             elif spec.verb == "convert":
                 advice = f"Run `{bare}`"
             else:
-                advice = (f"Run `kanibako box move {ref} {leaf} --workset "
-                          f"{target_ws.name}{rename}` (or `{bare}`)")
+                advice = (f"Run `kanibako box move {ref} {shlex.quote(str(leaf))} "
+                          f"--workset {shlex.quote(target_ws.name)}{rename}` (or `{bare}`)")
             raise ProjectError(
                 f"Refusing to record {dest} for a workset member: inside workset "
                 f"'{target_ws.name}' a member would live at `{leaf}`, and no other "
@@ -740,7 +741,7 @@ def _validate(
         if (landing_leaf is not None
                 and is_in_tree_workspace(target_ws, state.workspace_path)
                 and (landing_leaf / new_name).resolve() != state.workspace_path.resolve()):
-            rename = "" if _same_box_name(new_name, state.name) else f" --name {new_name}"
+            rename = "" if _same_box_name(new_name, state.name) else f" --name {shlex.quote(new_name)}"
             ref = _cure_ref(state)
             raise ProjectError(
                 f"Refusing to convert '{state.name}' in place: a member of workset "
@@ -748,7 +749,7 @@ def _validate(
                 f"'{state.name}' already has its workspace at "
                 f"{state.workspace_path} — an in-place convert would leave that tree "
                 f"behind with no box owning it. Run `kanibako box convert "
-                f"{ref} --workset {target_ws.name}{rename} --move` to move it "
+                f"{ref} --workset {shlex.quote(target_ws.name)}{rename} --move` to move it "
                 f"there, or `kanibako box move {ref} <path>` to move it out of "
                 f"the workset."
             )
@@ -812,7 +813,7 @@ def _validate(
                 f"Refusing to move: your shell's current directory is inside "
                 f"the project being moved ({old}). Moving would strand your "
                 f"shell on a removed directory. cd out first, or pass --force "
-                f"(then run: cd {dest})."
+                f"(then run: cd {shlex.quote(str(dest))})."
             )
 
     # --- name not taken in target workset ---
