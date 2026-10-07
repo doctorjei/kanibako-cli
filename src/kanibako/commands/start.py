@@ -1656,7 +1656,15 @@ def _unregistered_pending_create_error(
     # this line is byte-identical to the registered-box arm's for the same box and
     # it runs from any directory.
     workspace = str(Path(project_dir or os.getcwd()).resolve())
-    pending = journal.pending_create_for_workspace(std.journal, workspace)
+    try:
+        pending = journal.pending_create_for_workspace(std.journal, workspace)
+    except ConfigError:
+        # ⚑ AN UNREADABLE JOURNAL IS NOT THIS ARM'S BUSINESS.  This lookup only
+        # ENRICHES the no-box refusal, so a journal that will not parse falls
+        # through to that refusal rather than replacing it: the launch is
+        # refusing an unregistered box either way, and a cure that says to delete
+        # the journal would discard the pending entry it is here to report.
+        return None
     if pending is None or pending.get("mode") in ("standalone", "named"):
         return None
     return (
