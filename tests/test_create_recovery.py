@@ -2450,6 +2450,32 @@ class TestWindowUndoSparesAWriteItDidNotMake:
         assert (std.primary_workset / "registry.yaml").read_text() == "boxes: []\n"
         assert not (std.boxes / "project").exists()
 
+    def test_a_primary_undo_spares_the_store_vault_claim_another_box_uses(
+        self, config_file, tmp_home, credentials_dir
+    ):
+        """⚑ ``vault/.gitignore`` is the STORE's: it stays while another box's arm needs it."""
+        from kanibako.commands.box._parser import run_create
+
+        std = self._std(config_file)
+        vault = std.primary_workset / "vault"
+        assert not vault.exists()
+        rel = vault.relative_to(std.data)
+
+        with pytest.MonkeyPatch.context() as mp:
+            mp.setattr(
+                "kanibako.commands.start._write_create_entry",
+                self._fail_with_a_write(
+                    [(f"{rel}/rw/other/notes.txt", "mid-window\n")], std.data),
+            )
+            with pytest.raises(_InterruptCreate):
+                run_create(_create_args(tmp_home / "project", no_vault=False))
+
+        assert (vault / "rw" / "other" / "notes.txt").is_file()
+        assert (vault / ".gitignore").is_file(), (
+            "the undo removed the store-wide vault claim another box still uses"
+        )
+        assert not (vault / "rw" / "project").exists()
+
     def test_a_named_primary_box_is_undone_under_its_own_name(
         self, config_file, tmp_home, credentials_dir
     ):
@@ -2531,11 +2557,9 @@ class TestWindowUndoRestoresARootWorksetFile:
     ):
         """⚑ THE GUARD: undo must not clobber an edit made AFTER the create's write.
 
-        The undo's guard is the file's ``workset.kuid`` — the one value this create
-        AUTHORS and no other writer shares.  If the file still carries this create's
-        kuid, nothing else has rewritten it and the original bytes are restored; if
-        the kuid is gone or different, a later writer owns the file and the undo
-        leaves it exactly as it found it.
+        The undo restores the original bytes only while the file holds EXACTLY the
+        bytes this create wrote; any other content belongs to a later writer, and
+        the undo leaves it exactly as it found it.
         """
         from kanibako.commands.box._parser import run_create
 
@@ -2574,9 +2598,8 @@ class TestWindowUndoRestoresARootWorksetFile:
         """⚑ THE SAME DEFECT, THE OTHER ROOT FILE: ``.gitignore``.
 
         ``write_project_gitignore`` APPENDS, so on a root that already had one the
-        create adds its entries to the user's file.  ⚑ An append leaves the original
-        bytes as a PREFIX, which is what lets the undo tell its own write apart from a
-        later one — and without the undo the entries simply stay.
+        create adds its entries to the user's file — and without the undo the entries
+        simply stay.
         """
         from kanibako.commands.box._parser import run_create
 
@@ -2598,11 +2621,10 @@ class TestWindowUndoRestoresARootWorksetFile:
     def test_the_gitignore_restore_leaves_a_later_edit_alone(
         self, config_file, tmp_home, credentials_dir
     ):
-        """⚑ THE GUARD for the append: the original bytes must still be a PREFIX.
+        """⚑ THE GUARD for the append: a later writer's ``.gitignore`` is left alone.
 
-        The undo reverts ``.gitignore`` only while the user's original lines are still
-        the head of the file — an append only ever adds to the end.  A later writer
-        that changes those lines owns the file, and the undo must leave it alone.
+        The undo reverts ``.gitignore`` only while it holds exactly the bytes this
+        create wrote.  A later writer that changes them owns the file.
         """
         from kanibako.commands.box._parser import run_create
 
@@ -2615,8 +2637,8 @@ class TestWindowUndoRestoresARootWorksetFile:
         seen: "dict[str, int]" = {}
 
         def _append_then_edit(std, proj):
-            # The create appended; assert it really did, so the prefix guard is the
-            # thing under test rather than a no-op.
+            # The create appended; assert it really did, so the guard is the thing
+            # under test rather than a no-op.
             appended = gi.read_text()
             assert appended.startswith(original), appended
             assert appended != original, "the create appended nothing"
@@ -2634,6 +2656,35 @@ class TestWindowUndoRestoresARootWorksetFile:
         assert gi.read_text() == later, (
             "the undo overwrote a LATER edit of the user's .gitignore"
         )
+
+    @pytest.mark.parametrize("name", [".gitignore", "workset.yaml"])
+    def test_a_later_append_to_a_root_file_survives_the_undo(
+        self, name, config_file, tmp_home, credentials_dir, capsys
+    ):
+        """⚑ An APPEND keeps the old bytes as a prefix AND keeps the kuid, so only an
+        exact match with what this create wrote may bring the original back."""
+        from kanibako.commands.box._parser import run_create
+
+        path = tmp_home / "sa"
+        path.mkdir()
+        target = path / name
+        target.write_text(self._ROOT if name == "workset.yaml" else "*.pyc\n")
+        appended = "# appended by the user mid-window\n"
+
+        def _append(std, proj):
+            with open(target, "a") as f:
+                f.write(appended)
+            raise _InterruptCreate("stopped before the journal entry")
+
+        with pytest.MonkeyPatch.context() as mp:
+            mp.setattr("kanibako.commands.start._write_create_entry", _append)
+            with pytest.raises(_InterruptCreate):
+                run_create(_create_args(path, standalone=True, no_vault=False))
+
+        assert target.read_text().endswith(appended), (
+            f"the undo erased a later append to the user's {name}"
+        )
+        assert str(target) in capsys.readouterr().err
 
 
 class TestCuresAreRunnable:
