@@ -5999,20 +5999,22 @@ For a registered name, choose another `--name`.
 
 ### A box and a workset may share a name; `--force` is gone from create and register
 
-**Read this if `box create`, `kanibako create`, `box register`, `kanibako register`, or
-`workset create` now fails with `unrecognized arguments: --force`.**
+**Read this if `box create`, `kanibako create`, `box register`, or `kanibako register` now
+fails with `unrecognized arguments: --force`, or if you pass `--force` to `workset create`.**
 
 **What changed.** Box and workset names are separate namespaces, and only a name the same kind
 already holds is refused. Creating, registering, or renaming a box with a workset's name, or
 creating a workset with a primary box's name, now succeeds without `--force`, and that `--force`
-was removed because bypassing this refusal was its only job. A bare name held by both still
+was removed from the four box commands because bypassing this refusal was its only job.
+`workset create --force` no longer bypasses it either: its single meaning is now to accept a
+`workset.logs` directory shared with another working set (see *Two working sets on one
+`workset.logs` directory are refused without `--force`*). A bare name held by both still
 resolves to the box, with no warning; `kanibako workset <cmd> <name>` reaches the workset. An
 auto-named box no longer skips a workset's name: a new box beside a workset `solo` is named `solo`,
 where it used to be `solo2`.
 
-**What to do.** Drop `--force` from those five commands. `workset create --force` returns with a
-single meaning: accept a `workset.logs` directory shared with another working set (see *Two
-working sets on one `workset.logs` directory are refused without `--force`*).
+**What to do.** Drop `--force` from the four box commands, and from `workset create` unless you
+mean to accept a shared `workset.logs` directory.
 
 ### A `null` workset vault, canon, template or channel root means no directory
 
@@ -6950,9 +6952,9 @@ See *Packaging* in [docs/writing-targets.md](docs/writing-targets.md).
 `workset.logs` values or through one value in the system settings file such as
 `@meta.workset.path/../logs`.
 
-**What changed.** `workset set`, `system set`, `workset reset` and `workset create` refuse (exit 1)
-a change that would land two working sets, the default one included, on one logs directory, and
-name the working sets. Values are compared as the directories they resolve to, so two different
+**What changed.** `workset set`, `system set`, `workset reset`, `system reset` and `workset create`
+refuse (exit 1) a change that would land two working sets, the default one included, on one logs
+directory, and name the working sets. Values are compared as the directories they resolve to, so two different
 spellings of one directory collide. A `null` `workset.logs` names no directory (see *A
 `workset.logs` of `null` means no logs*), so it never collides. A share that already exists is
 not refused until a write moves one of its working sets.
