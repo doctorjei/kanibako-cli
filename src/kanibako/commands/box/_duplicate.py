@@ -262,14 +262,9 @@ def _run_duplicate_cross_mode(args: argparse.Namespace, std, config) -> int:
 def _merge_workspace(src: Path, dst: Path, force: bool) -> None:
     """Copy the workspace *src* to *dst*, merging into an existing *dst* under *force*.
 
-    ⚑ A duplicate never lays the source's root LINK, though the source workspace is
-    one.  Every caller here makes *dst* a NEW box, and at ``--to standalone`` that
-    destination IS the new box ROOT, which ``_duplicate_to_standalone`` goes on to
-    fill with ``workset.yaml``, ``box_data/`` and ``.gitignore``: laid as a link,
-    those land in the user's own directory and ``box info <dst>`` answers the SOURCE
-    box.  A duplicate is a copy, not a relocation -- the bytes come along, the
-    pointer does not.  Q102's "symlinks beget symlinks" governs the doors that MOVE
-    a box; this is not one of them.
+    ⚑ A duplicate never lays the source's root LINK.  At ``--to standalone`` *dst* IS
+    the new box ROOT, so a link there writes the box's own ``workset.yaml`` and
+    ``box_data/`` into the user's directory, and ``box info <dst>`` answers the SOURCE.
 
     Raises ``ProjectError`` naming each entry the merge could not copy.
     """
