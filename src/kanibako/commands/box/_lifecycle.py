@@ -1916,7 +1916,17 @@ def _to_default(
 
     # ⚑ THE VAULT CARRY (P1 data loss): the leaves above are created EMPTY and
     # ``_remove_old_metadata`` below deletes the source — contents move first.
-    _carry_vault_contents(state, std, vault_ro, vault_rw)
+    # The workspace LANDS at ``new_workspace``, so a vault link pointing into the
+    # source workspace is re-aimed at the same relative position under that
+    # landing rather than left as a second copy of a tree that moved.
+    _carry_vault_contents(
+        state, std, vault_ro, vault_rw,
+        relocated=(
+            {state.workspace_path: new_workspace}
+            if state.workspace_path.resolve() != new_workspace.resolve()
+            else None
+        ),
+    )
     _carry_box_logs(state, std, unwind, dst_logs=std.primary_logs, dst_name=project_name)
 
     _remove_old_metadata(
