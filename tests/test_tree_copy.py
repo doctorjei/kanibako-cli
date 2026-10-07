@@ -197,11 +197,7 @@ def test_failed_entries_names_each_source_and_caps_the_list():
 
 
 class TestALinkedTreeRoot:
-    """``keep_root_link``: a root that IS a link is re-created as a link (Q102 (a)).
-
-    Without it ``copytree`` lists the root THROUGH and the target tree is materialized —
-    the pointer the user made silently becomes a copy of what it pointed at.
-    """
+    """A root that IS a link is re-created as a link (Q102 (a)); off, it is materialized."""
 
     @staticmethod
     def _relink_root(src: Path, text: str) -> None:
@@ -263,10 +259,7 @@ class TestALinkedTreeRoot:
 
 
 class TestLayRootLink:
-    """``lay_root_link``: the root-link rule for a caller whose destination is a
-    placeholder the op made.  It takes the link when that costs nothing and answers
-    False otherwise, so the caller's own copy runs exactly as it always did.
-    """
+    """Take the root link when it costs nothing; else answer False and let the caller copy."""
 
     @staticmethod
     def _link_source(src: Path, target) -> None:
@@ -286,7 +279,6 @@ class TestLayRootLink:
         assert os.readlink(dst) == str(outside)
 
     def test_an_empty_placeholder_is_traded_for_the_link(self, layout):
-        """The relocation made this empty directory to fill; a pointer costs it nothing."""
         src, outside, dst = layout
         self._link_source(src, outside)
         dst.mkdir(parents=True)

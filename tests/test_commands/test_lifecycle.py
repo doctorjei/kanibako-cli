@@ -1628,6 +1628,7 @@ class TestTheWorksetsOwnWorkspaceIsInTree:
         landed = ws2.workspaces_dir / "alpha"
         assert landed.is_symlink()
         assert landed.resolve() == real.resolve()
+        assert new.workspace_path == landed
         assert not os.path.lexists(leaf)
         assert (real / "file.txt").read_text() == "keep"
 

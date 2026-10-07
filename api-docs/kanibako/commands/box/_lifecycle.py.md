@@ -47,6 +47,7 @@ def _run_steps(state: ProjectState, spec: TargetSpec, std: StandardPaths, config
 def _retire_old_workspace(old: Path, landed: Path) -> None
 def _apply_ownership_and_markers(state: ProjectState, std: StandardPaths, config: BootstrapConfig, unwind: _Unwind, *, target_mode: BoxMode, target_ws: Workset | None, new_name: str, new_workspace: Path, relocating: bool, dest: Path | None, requested_name: str='') -> ProjectState
 def _unwind_box_tree(path: Path) -> None
+def _unwind_created_root(path: Path) -> None
 def _copy_metadata(src_metadata: Path, src_shell: Path, dst_metadata: Path, *, shell_into_metadata: bool, home_leaf: str='home', unwind: _Unwind) -> Path
 def _deliver_carried_box_settings(state: ProjectState, dst_box_tier: Path, *, early: EarlyScope) -> None
 def _vault_leaf_has_contents(leaf: Path) -> bool

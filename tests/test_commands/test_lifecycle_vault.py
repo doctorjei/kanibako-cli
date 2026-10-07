@@ -441,8 +441,7 @@ class TestCopyVaultLeafContents:
         assert os.readlink(dst / "gone") == str(tmp_path / "no-such-target")
 
     def test_a_linked_source_leaf_is_shared_as_a_link_not_materialized(self, tmp_path):
-        """Q102 (a): the carry re-creates the pointer, so the new box shares the store
-        instead of duplicating the whole outside tree it names."""
+        """Q102 (a): the carry re-creates the pointer; the box shares the store."""
         real = tmp_path / "real"
         real.mkdir()
         (real / "v.txt").write_text("v")
@@ -455,8 +454,7 @@ class TestCopyVaultLeafContents:
         assert (dst / "v.txt").read_text() == "v"
 
     def test_a_linked_source_still_merges_into_a_leaf_that_holds_content(self, tmp_path):
-        """The trade is only ever for an empty placeholder; a destination with data in it
-        keeps its data and takes the source's contents beside it, as before."""
+        """Only an empty placeholder is traded; a leaf with data merges as before."""
         real = tmp_path / "real"
         real.mkdir()
         (real / "v.txt").write_text("v")

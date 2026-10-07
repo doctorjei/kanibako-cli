@@ -1143,10 +1143,8 @@ def _retire_old_workspace(old: Path, landed: Path) -> None:
     ``_validate`` refuses that first).  A symlink is unlinked, never followed.  A failed
     delete prints a Note and stops: no second deleter, rc unchanged.
 
-    ⚑ That containment guard reads RESOLVED paths — right for two real trees, wrong for a
-    LINKED *old*, which after a link-preserving copy names the SAME target as *landed* while
-    being a different path.  Unlinking a link cannot reach *landed*, so a linked *old* is
-    judged by its own path alone and does retire.
+    ⚑ A LINKED *old* is judged by its own path: after a link-preserving copy it names the
+    same target as *landed* but is not it, and an unlink cannot reach *landed*.
     """
     import os
     import sys
@@ -1221,11 +1219,10 @@ def _unwind_box_tree(path: Path) -> None:
 
 
 def _unwind_created_root(path: Path) -> None:
-    """Undo a root this op created, which may have been laid as a LINK (scope item 4).
+    """Undo a root this op created that may have been laid as a LINK.
 
-    ``shutil.rmtree`` refuses a symlink and moves on under ``ignore_errors``, leaving the
-    pointer standing where the next run expects nothing.  A link is UNLINKED — never removed
-    through — and a real tree is removed exactly as before.
+    ``rmtree`` refuses a symlink and moves on under ``ignore_errors``, leaving the pointer
+    standing where the next run expects nothing: a link is UNLINKED, never removed through.
     """
     if path.is_symlink():
         try:
@@ -1329,9 +1326,7 @@ def _copy_vault_leaf_contents(src: Path, dst: Path | None) -> None:
         )
     dst.mkdir(parents=True, exist_ok=True)
     if lay_root_link(src, dst):
-        # ⚑ The source leaf is a POINTER and the destination holds nothing — share the
-        # target.  Copying through would materialize the whole outside tree under the
-        # new box, which is the defect this row is about.
+        # A POINTER source into an empty destination: share the target, don't materialize.
         return
     try:
         copy_tree_keeping_links(src, dst, dirs_exist_ok=True)
@@ -1888,8 +1883,7 @@ def _to_default(
             if leaf is None:
                 continue
             leaf.mkdir(parents=True, exist_ok=True)
-            # ⚑ The carry below may trade this empty leaf for a LINK to the source's
-            # target; the unwind has to remove whichever of the two is standing there.
+            # The carry may trade this empty leaf for a LINK; the unwind takes either.
             unwind.push(partial(_unwind_created_root, leaf))
 
     # ⚑ THE VAULT CARRY (P1 data loss): the leaves above are created EMPTY and
