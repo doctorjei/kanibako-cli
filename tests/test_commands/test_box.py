@@ -941,10 +941,7 @@ class TestBoxDuplicate:
         assert (orphan / "retained.txt").read_text() == "RETAINED"
 
     # --- task-dupforce-fix1: three more routes of the SAME command ---
-    # ⚑ Red reference is the PREVIOUS tip (dc0f8af1), not main: each case below
-    # read CHANGED there and INTACT here.  The default no-``--to`` path is NOT
-    # exempt — it re-enters through ``_duplicate_from_workset``, which merged
-    # before the mint exactly as the old cross-mode path did.
+    # ⚑ Red reference is the PREVIOUS tip (dc0f8af1), not main.
 
     def test_named_source_no_to_refuses_before_the_destination_is_written(
         self, config_file, tmp_home, credentials_dir,
