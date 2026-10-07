@@ -3031,8 +3031,9 @@ def _named_member_with_scalar_box(config_file, tmp_home):
 class TestBoxShapeRefusalPrecedesSetup:
     """Both create doors judge the box tier's SHAPE before they build anything."""
 
+    @pytest.mark.parametrize("enable_vault", [None, False, True])
     def test_a_scalar_box_tier_refuses_the_named_door_with_no_shell_left_behind(
-        self, config_file, tmp_home,
+        self, config_file, tmp_home, enable_vault,
     ):
         """The named door refuses a scalar ``box`` with NOTHING of the setup on disk.
 
@@ -3040,6 +3041,9 @@ class TestBoxShapeRefusalPrecedesSetup:
         ``box create`` and a launch both reach for a named member, and its guard admits a
         box tier that already exists while ``home/`` does not.  Leaving a bootstrapped
         ``home/`` behind is what makes the refusal unrecoverable by a plain retry.
+
+        ⚑ ON EVERY ``enable_vault``: an explicit choice skips the door's read, so the door
+        asks the shape rule itself — ahead of the setup, not after it.
         """
         from kanibako.errors import ConfigError
 
@@ -3048,7 +3052,7 @@ class TestBoxShapeRefusalPrecedesSetup:
 
         with pytest.raises(ConfigError) as exc:
             resolve_workset_project(WorksetSpec.from_workset(ws), "doormem", std, config,
-                                    initialize=True)
+                                    initialize=True, enable_vault=enable_vault)
         assert "holds 42 at 'box'" in str(exc.value)
         assert not (metadata_path / "home").exists()
         assert toml.read_text() == "box: 42\n"
@@ -3087,14 +3091,15 @@ class TestBoxShapeRefusalPrecedesSetup:
         assert calls == ["read_box_enable_vault", "_init_project"]
 
     @pytest.mark.parametrize("register", [False, True])
+    @pytest.mark.parametrize("enable_vault", [None, False, True])
     def test_a_scalar_box_tier_refuses_the_primary_door_with_no_shell_left_behind(
-        self, config_file, tmp_home, register,
+        self, config_file, tmp_home, register, enable_vault,
     ):
         """The primary door refuses a scalar ``box`` with NOTHING of the setup on disk.
 
         ⚑ REACHABLE through ``name_override``: the door's guard tests the pre-name dir,
         then switches to ``boxes/<name>``, which may already hold a box tier.  ``box
-        extract --name`` takes this path with ``enable_vault=None``.
+        extract --name`` takes this path, and it reaches every ``enable_vault`` arm.
         """
         from kanibako.errors import ConfigError
 
@@ -3107,7 +3112,7 @@ class TestBoxShapeRefusalPrecedesSetup:
 
         with pytest.raises(ConfigError) as exc:
             resolve_project(std, config, project_dir=str(project), initialize=True,
-                            name_override="foo", register=register)
+                            name_override="foo", register=register, enable_vault=enable_vault)
         assert "holds 42 at 'box'" in str(exc.value)
         assert not (metadata_path / "home").exists()
         assert toml.read_text() == "box: 42\n"
