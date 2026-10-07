@@ -60,7 +60,7 @@ from kanibako.settings.messages import (
     ERR_CONFIG_NULL_PATH, ERR_NULL_WORKSPACE_BIND, ERR_STANDALONE_NULL_WORKSPACES,
     ERR_WORKSET_NULL_WORKSPACES,
 )
-from kanibako.settings.settings_resolve import SettingsError, _Unset
+from kanibako.settings.settings_resolve import UNSET, SettingsError
 from kanibako.settings.workset_dirkeys import (
     EarlyScope, EarlySystem, early_repoint, refuse_inherited_per_owner, resolve_workset_dir_key,
 )
@@ -943,54 +943,22 @@ def _load_registry(std: StandardPaths) -> dict[str, Path]:
 _UNDROPPABLE: set[tuple[Path, str]] = set()
 
 
-def shared_dir_refusal(
-    canonical_key: str, value: object, target_root: Path, target_name: str,
-    std: StandardPaths, *, force: bool, scope: str,
-) -> str | None:
-    """The message a set door must print INSTEAD of writing *value* to ``workset.logs``,
-    or ``None`` to go ahead.
-
-    Keyspec § 0 "Per-owner resources": two instances whose OWN values name one per-owner
-    resource share it, and the share is refused by name unless ``--force``.  *scope* is the
-    writing scope's word (``workset`` / ``system``), named in the refusal so a ``system``
-    write reads differently from a workset's own.
-    """
-    if force or value is None or canonical_key != "workset.logs":
-        return None
-    hit = find_shared_dir_collision(
-        target_root, target_name, str(value), std, key="logs",
-    )
-    if hit is None:
-        return None
-    other, other_dir = hit
-    return (
-        f"Error: workset.logs = {value!r} ({scope} scope) is the directory working set "
-        f"'{other}' already resolves workset.logs to ({other_dir}). Two working sets on "
-        "one log directory share its files: a same-named box in either writes into the "
-        "other's, and a purge in either can reach the other's. Point this one at a "
-        "directory of its own, or pass --force to share it deliberately."
-    )
+def _logs_walk_targets(std: StandardPaths) -> dict[str, Path]:
+    """Every workset a ``workset.logs`` share can reach: the registered ones, PLUS the
+    default, which is VIRTUAL (no registry row) and owns the primary log directory."""
+    return {**_load_registry(std), DEFAULT_WORKSET_ID: std.primary_workset}
 
 
-def _resolved_workset_dir(root: Path, name: str, key: str, std: StandardPaths) -> Path:
-    """The directory ``workset.<key>`` resolves to for the registered workset *name* at
-    *root*, reading its OWN ``workset.yaml`` first and the system tier beneath it."""
-    early = EarlyScope(std.early_system, name)
-    doc = load_doc(root / WORKSET_META_FILE)
-    repoint, _where = early_repoint(root, doc, key, early=early)
-    leaf = {"logs": _LOGS_LEAF}.get(key, key)
-    return resolve_workset_dir_key(
-        root, repoint if not isinstance(repoint, _Unset) else None, leaf,
-        key=key, early=early, workset_settings=doc,
-    )
+def _system_logs_repoint(std: StandardPaths) -> object:
+    """The raw ``workset.logs`` the SYSTEM tier carries, as stored (``UNSET`` if none)."""
+    return std.early_system.tier.get("workset.logs", UNSET)
 
 
-def find_shared_dir_collision(
-    candidate_root: Path, candidate_name: str, candidate_value: str | None,
-    std: StandardPaths, *, key: str = "logs",
-) -> tuple[str, Path] | None:
-    """Why *candidate_value* would give ``workset.<key>`` a directory ANOTHER registered
-    workset already resolves to, or ``None`` when the directory is uniquely *candidate_name*'s.
+def find_logs_share(
+    std: StandardPaths, *, value: "str | None", scope: str,
+    target_name: str | None = None, target_root: Path | None = None,
+) -> "tuple[tuple[str, ...], Path] | None":
+    """Which worksets one write of *value* puts on ONE ``workset.logs`` directory, and which.
 
     Keyspec § 0 "Per-owner resources": two instances whose OWN values name one per-owner
     resource share it, and that share must be refused by name unless ``--force``.  The
@@ -1002,27 +970,73 @@ def find_shared_dir_collision(
     different string in every workset's file and ONE directory on disk; a raw-value
     comparison reports no collision while both worksets write into the same files.
 
-    A workset that states no value is walked too: its per-mode default is a candidate, so
-    pointing this workset's key at another workset's default leaf is caught as readily as
-    two worksets naming one literal.
+    *scope* picks which worksets the write DRIVES, and only a driven workset can make the
+    share this reports: a ``workset`` write moves its target alone, while a ``system`` write
+    lands on the tier every workset WITHOUT its own value reads.  Without that gate a third
+    workset's unrelated write would be refused for two OTHERS already sharing.
+
+    A ``None`` *value* is the ``--null`` write: the target keeps nothing of its own and
+    falls through to the system tier -- a share too when that tier names a directory
+    someone else already resolves to.
+
+    A workset whose value cannot be resolved is skipped: it is already broken, its verbs
+    refuse it, and it cannot say what it owns.
     """
-    early = EarlyScope(std.early_system, candidate_name)
-    mine = resolve_workset_dir_key(
-        candidate_root, candidate_value, _LOGS_LEAF, key=key, early=early,
-    )
-    mine_resolved = Path(mine).resolve()
-    for other_name, other_root in _load_registry(std).items():
-        if other_name == candidate_name:
-            continue
+    groups: dict[Path, list[tuple[str, bool]]] = {}
+    for name, root in _logs_walk_targets(std).items():
         try:
-            other = _resolved_workset_dir(other_root, other_name, key, std)
+            early = EarlyScope(std.early_system, name)
+            doc = load_doc(root / WORKSET_META_FILE)
+            own, where = early_repoint(root, doc, "logs", early=early)
+            if scope == "workset" and name == target_name and target_root is not None:
+                root = target_root
+            own_here = own is not UNSET and where == root / WORKSET_META_FILE
+            if scope == "workset" and name == target_name:
+                driven, repoint = True, (value if value is not None
+                                      else _system_logs_repoint(std))
+            elif scope == "system" and not own_here:
+                driven, repoint = True, value
+            else:
+                driven, repoint = False, (own if own is not UNSET else None)
+            resolved = resolve_workset_dir_key(
+                root, repoint if isinstance(repoint, str) else None, _LOGS_LEAF,
+                key="logs", early=early, workset_settings=doc,
+            )
         except (ConfigError, SettingsError):
-            # A workset whose own value cannot be resolved is already broken, and its verbs
-            # refuse it; it cannot tell us what it owns, so it cannot be a named sharer.
             continue
-        if Path(other).resolve() == mine_resolved:
-            return other_name, Path(other)
+        groups.setdefault(Path(resolved).resolve(), []).append((name, driven))
+    for resolved, members in groups.items():
+        if len(members) > 1 and any(is_driven for _, is_driven in members):
+            return tuple(sorted(name for name, _ in members)), resolved
     return None
+
+
+def logs_share_refusal(
+    canonical_key: str, value: "str | None", std: StandardPaths, *, force: bool,
+    scope: str, target_name: str | None = None, target_root: Path | None = None,
+) -> str | None:
+    """The message a set door must print INSTEAD of writing *value* to ``workset.logs``,
+    or ``None`` to go ahead.
+
+    *scope* is the writing tier's word (``workset`` / ``system``), named so a ``system``
+    refusal reads differently from a workset's own.
+    """
+    if force or canonical_key != "workset.logs":
+        return None
+    hit = find_logs_share(
+        std, value=value, scope=scope, target_name=target_name, target_root=target_root,
+    )
+    if hit is None:
+        return None
+    names, shared = hit
+    sharers = ", ".join(f"'{name}'" for name in names)
+    return (
+        f"Error: nothing was written: workset.logs = {value!r} ({scope} scope) resolves "
+        f"to the SAME log directory ({shared}) for working sets {sharers}. Two working "
+        "sets on one log directory share its files: a same-named box in either writes "
+        "into the other's, and a purge in either reaches the other's. Point them at "
+        "directories of their own, or pass --force to share it deliberately."
+    )
 
 
 # ---------------------------------------------------------------------------
