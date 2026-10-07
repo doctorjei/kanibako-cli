@@ -78,7 +78,7 @@ from kanibako.settings.paths import (
     unregister_primary_box_name,
     write_vault_gitignore,
 )
-from kanibako.tree_copy import copy_tree_keeping_links, failed_entries
+from kanibako.tree_copy import copy_tree_keeping_links, failed_entries, lay_root_link
 from kanibako.utils import write_project_gitignore
 from kanibako.project.workset import (
     Workset,
@@ -510,7 +510,8 @@ def copy_into_workset(
 
         if shell_path.is_dir():
             dst_shell = dst_project / "home"
-            copy_tree_keeping_links(shell_path, dst_shell, dirs_exist_ok=True)
+            if not lay_root_link(shell_path, dst_shell):
+                copy_tree_keeping_links(shell_path, dst_shell, dirs_exist_ok=True)
             # ⚑ The copy carries the canon skeleton's MODES but not its OWNERSHIP — re-assert.
             materialize_canon_skeleton(dst_shell)
 
@@ -521,7 +522,9 @@ def copy_into_workset(
                 ignore = _workspace_copy_ignore(
                     metadata_path, source_path, mode=BoxMode.standalone,
                     early=_early_scope(std, BoxMode.standalone))
-            copy_tree_keeping_links(source_path, dst_workspace, ignore=ignore, dirs_exist_ok=True)
+            if not lay_root_link(source_path, dst_workspace):
+                copy_tree_keeping_links(
+                    source_path, dst_workspace, ignore=ignore, dirs_exist_ok=True)
     except BaseException:
         _unwind_target_member(ws, proj_name, existed)
         raise
@@ -1046,14 +1049,15 @@ def _run_steps(
         # the DEFAULT layout a standalone's workspace sits one level below the root that
         # carries ``workset.boxes``, so *src* answered the store as the USER'S
         # ``<workspace>/box_data`` and this move deleted it (R1).
-        copy_tree_keeping_links(
-            src, landing,
-            ignore=_workspace_copy_ignore(
-                state.metadata_path, src, mode=state.mode,
-                early=EarlyScope(std.early_system, _state_ws_token(state))),
-        )
+        if not lay_root_link(src, landing):
+            copy_tree_keeping_links(
+                src, landing,
+                ignore=_workspace_copy_ignore(
+                    state.metadata_path, src, mode=state.mode,
+                    early=EarlyScope(std.early_system, _state_ws_token(state))),
+            )
         # ⚑ THE UNWIND OWNS ONLY WHAT THIS MOVE CREATED: the copy refuses an existing dest.
-        unwind.push(lambda: shutil.rmtree(dest, ignore_errors=True))
+        unwind.push(lambda: _unwind_created_root(dest))
         new_workspace = dest
     elif relocating and dest is not None and state.is_external:
         # ⚑ EXTERNAL source: the "workspace" is the USER'S OWN dir — never moved, only
@@ -1138,21 +1142,33 @@ def _retire_old_workspace(old: Path, landed: Path) -> None:
     absent *old*, and an *old* that is or holds *landed* (a move into its own subtree;
     ``_validate`` refuses that first).  A symlink is unlinked, never followed.  A failed
     delete prints a Note and stops: no second deleter, rc unchanged.
+
+    ⚑ That containment guard reads RESOLVED paths — right for two real trees, wrong for a
+    LINKED *old*, which after a link-preserving copy names the SAME target as *landed* while
+    being a different path.  Unlinking a link cannot reach *landed*, so a linked *old* is
+    judged by its own path alone and does retire.
     """
+    import os
     import sys
 
     if not old.exists() and not old.is_symlink():
+        return
+    if old.is_symlink():
+        target = old.resolve()
+        if os.path.abspath(str(old)) == os.path.abspath(str(landed)):
+            return
+        try:
+            old.unlink()
+            print(f"Note: left {target}; it is yours", file=sys.stderr)
+        except OSError as err:
+            print(f"Note: could not remove the old workspace {old}: {err}", file=sys.stderr)
         return
     old_r = old.resolve()
     landed_r = landed.resolve()
     if old_r == landed_r or old_r in landed_r.parents:
         return
     try:
-        if old.is_symlink():
-            old.unlink()
-            print(f"Note: left {old_r}; it is yours", file=sys.stderr)
-        else:
-            shutil.rmtree(old)
+        shutil.rmtree(old)
     except OSError as err:
         print(f"Note: could not remove the old workspace {old}: {err}", file=sys.stderr)
 
@@ -1204,6 +1220,22 @@ def _unwind_box_tree(path: Path) -> None:
     remove_box_tree(path)
 
 
+def _unwind_created_root(path: Path) -> None:
+    """Undo a root this op created, which may have been laid as a LINK (scope item 4).
+
+    ``shutil.rmtree`` refuses a symlink and moves on under ``ignore_errors``, leaving the
+    pointer standing where the next run expects nothing.  A link is UNLINKED — never removed
+    through — and a real tree is removed exactly as before.
+    """
+    if path.is_symlink():
+        try:
+            path.unlink()
+        except OSError:
+            pass
+    else:
+        shutil.rmtree(path, ignore_errors=True)
+
+
 def _copy_metadata(
     src_metadata: Path,
     src_shell: Path,
@@ -1225,7 +1257,8 @@ def _copy_metadata(
 
     dst_shell = dst_metadata / home_leaf
     if src_shell.is_dir():
-        copy_tree_keeping_links(src_shell, dst_shell, dirs_exist_ok=True)
+        if not lay_root_link(src_shell, dst_shell):
+            copy_tree_keeping_links(src_shell, dst_shell, dirs_exist_ok=True)
         # ⚑ The copy carries the canon skeleton's 555 MODES but never its OWNERSHIP —
         # re-assert (idempotent; J-7).
         materialize_canon_skeleton(dst_shell)
@@ -1295,6 +1328,11 @@ def _copy_vault_leaf_contents(src: Path, dst: Path | None) -> None:
             f"is inside the source."
         )
     dst.mkdir(parents=True, exist_ok=True)
+    if lay_root_link(src, dst):
+        # ⚑ The source leaf is a POINTER and the destination holds nothing — share the
+        # target.  Copying through would materialize the whole outside tree under the
+        # new box, which is the defect this row is about.
+        return
     try:
         copy_tree_keeping_links(src, dst, dirs_exist_ok=True)
     except shutil.Error as e:
@@ -1850,7 +1888,9 @@ def _to_default(
             if leaf is None:
                 continue
             leaf.mkdir(parents=True, exist_ok=True)
-            unwind.push(partial(shutil.rmtree, leaf, ignore_errors=True))
+            # ⚑ The carry below may trade this empty leaf for a LINK to the source's
+            # target; the unwind has to remove whichever of the two is standing there.
+            unwind.push(partial(_unwind_created_root, leaf))
 
     # ⚑ THE VAULT CARRY (P1 data loss): the leaves above are created EMPTY and
     # ``_remove_old_metadata`` below deletes the source — contents move first.
@@ -2349,7 +2389,8 @@ def _to_workset(
         state, dst_project / BOX_META_FILE, early=EarlyScope(std.early_system, _state_ws_token(state)))
     dst_shell = dst_project / "home"
     if shell_source.is_dir():
-        copy_tree_keeping_links(shell_source, dst_shell, dirs_exist_ok=True)
+        if not lay_root_link(shell_source, dst_shell):
+            copy_tree_keeping_links(shell_source, dst_shell, dirs_exist_ok=True)
         # ⚑ The copy carries the canon skeleton's MODES but not its OWNERSHIP (J-7).
         materialize_canon_skeleton(dst_shell)
 
@@ -2360,9 +2401,10 @@ def _to_workset(
             ignore = _workspace_copy_ignore(
                 state.metadata_path, state.workspace_path, mode=BoxMode.standalone,
                 early=EarlyScope(std.early_system, _state_ws_token(state)))
-        copy_tree_keeping_links(
-            state.workspace_path, dst_workspace, ignore=ignore, dirs_exist_ok=True,
-        )
+        if not lay_root_link(state.workspace_path, dst_workspace):
+            copy_tree_keeping_links(
+                state.workspace_path, dst_workspace, ignore=ignore, dirs_exist_ok=True,
+            )
         # ⚑ An in-tree workset source's leaf is retired on success, like step 2's copy;
         # other sources keep their tree (an in-place convert deletes nothing).
         if source_is_workset and not state.is_external:

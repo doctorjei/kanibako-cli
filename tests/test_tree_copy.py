@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from kanibako.tree_copy import copy_tree_keeping_links, failed_entries
+from kanibako.tree_copy import copy_tree_keeping_links, failed_entries, lay_root_link
 
 
 @pytest.fixture
@@ -260,3 +260,60 @@ class TestALinkedTreeRoot:
         copy_tree_keeping_links(
             src, dst, dirs_exist_ok=True, replace_existing=True, keep_root_link=True)
         assert os.readlink(dst) == str(outside)
+
+
+class TestLayRootLink:
+    """``lay_root_link``: the root-link rule for a caller whose destination is a
+    placeholder the op made.  It takes the link when that costs nothing and answers
+    False otherwise, so the caller's own copy runs exactly as it always did.
+    """
+
+    @staticmethod
+    def _link_source(src: Path, target) -> None:
+        shutil.rmtree(src)
+        os.symlink(str(target), src)
+
+    def test_a_plain_directory_source_answers_false_and_lands_nothing(self, layout):
+        src, _outside, dst = layout
+        assert lay_root_link(src, dst) is False
+        assert not os.path.lexists(dst)
+
+    def test_an_absent_destination_takes_the_link(self, layout):
+        src, outside, dst = layout
+        self._link_source(src, outside)
+        assert lay_root_link(src, dst) is True
+        assert dst.is_symlink()
+        assert os.readlink(dst) == str(outside)
+
+    def test_an_empty_placeholder_is_traded_for_the_link(self, layout):
+        """The relocation made this empty directory to fill; a pointer costs it nothing."""
+        src, outside, dst = layout
+        self._link_source(src, outside)
+        dst.mkdir(parents=True)
+        assert lay_root_link(src, dst) is True
+        assert dst.is_symlink()
+        assert (dst / "big.txt").read_text() == "outside data"
+
+    def test_a_destination_holding_content_is_never_traded(self, layout):
+        src, outside, dst = layout
+        self._link_source(src, outside)
+        dst.mkdir(parents=True)
+        (dst / "prior.txt").write_text("prior")
+        assert lay_root_link(src, dst) is False
+        assert not dst.is_symlink()
+        assert (dst / "prior.txt").read_text() == "prior"
+
+    def test_a_link_already_at_the_destination_keeps_its_own_target(self, layout):
+        src, outside, dst = layout
+        self._link_source(src, outside)
+        other = layout[1] / "deep"
+        os.symlink(str(other), dst)
+        assert lay_root_link(src, dst) is False
+        assert os.readlink(dst) == str(other)
+
+    def test_a_file_at_the_destination_is_left_alone(self, layout):
+        src, outside, dst = layout
+        self._link_source(src, outside)
+        dst.write_text("not a directory")
+        assert lay_root_link(src, dst) is False
+        assert dst.read_text() == "not a directory"

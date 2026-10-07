@@ -113,6 +113,38 @@ def _copy_root_link(
     shutil.copystat(src, dst, follow_symlinks=False)
 
 
+def lay_root_link(src: Path, dst: Path) -> bool:
+    """Lay *src*'s root LINK at *dst* when doing so costs nothing; else copy as before.
+
+    :func:`copy_tree_keeping_links` with *keep_root_link* is STRICT: it will not touch what
+    already sits at *dst*.  That is wrong for the relocation callers, whose destination is a
+    placeholder directory the op itself just made — refusing strands it, and copying through
+    materializes the target.  This answers the one question that decides it: WHAT IS AT *dst*?
+
+    True when the link was laid — *dst* was absent, or a real directory holding NOTHING.
+    ``os.rmdir`` carries the whole safety argument: it cannot remove a directory that holds
+    an entry, and a mount point answers ``EBUSY``, so a destination with content or mounted
+    over is left exactly as it is and the caller merges into it as it always did.  A
+    placeholder is not content; the only thing traded away is the placeholder.
+
+    False when *src* is not a link at all, or *dst* holds something — the caller then runs
+    its own copy, unchanged, including the exception it has always raised.
+    """
+    if not os.path.islink(src):
+        return False
+    if os.path.islink(dst):
+        return False
+    if dst.is_dir():
+        try:
+            os.rmdir(dst)
+        except OSError:
+            return False
+    elif dst.exists():
+        return False
+    copy_tree_keeping_links(src, dst, keep_root_link=True)
+    return True
+
+
 def failed_entries(err: shutil.Error) -> str | None:
     """``"N entries failed:"`` and a ``source: reason`` line for each of the first five.
 
