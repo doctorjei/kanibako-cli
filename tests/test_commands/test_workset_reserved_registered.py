@@ -1,4 +1,9 @@
-"""A pre-1.8 workset registered as ``primary`` or ``standalone`` is refused at load.
+"""A pre-1.8 workset registered under a reserved name is refused at load.
+
+The names split two ways and the split is what the cure is built from: a PARTITION
+TOKEN (``primary``) is unregistered by name, while an ALIAS VARIANT (``Default``) is
+not — the ``workset`` verbs resolve ``default``/``__default__`` to the synthesized
+default workset — so its cure renames the DIRECTORY instead.
 
 The CLI runs in a subprocess against an isolated HOME in a TemporaryDirectory.
 The cure test executes the refusal's own printed lines, in order, so the message
@@ -20,6 +25,13 @@ import pytest
 
 REPO_SRC = Path(__file__).resolve().parents[2] / "src"
 NEW_NAME = "renamed"
+#: The names the ``workset`` verbs resolve to the synthesized default workset.
+ALIASES = frozenset({"default", "__default__"})
+
+
+def _is_alias(legacy: str) -> bool:
+    """Whether *legacy* is a case variant of a name the verbs resolve to PRIMARY."""
+    return legacy.lower() in ALIASES
 
 
 @pytest.fixture
@@ -131,6 +143,13 @@ def _run_cure(env: dict[str, str], stderr: str) -> None:
     ("primary", "primary", True),
     ("standalone", "sa-root", True),
     ("primary", "primary", False),
+    # ⚑ An ALIAS VARIANT is refused too, and MOVES even when its directory is
+    # already legal: the registry KEY is the reserved thing, and the basename is
+    # the only name a re-import can give the tree.
+    ("Default", "Default", True),
+    ("DEFAULT", "sa-root", True),
+    ("__Default__", "__Default__", False),
+    ("default", "sa-root", False),
 ])
 def test_reserved_registered_workset_is_refused_then_cured(
     env: dict[str, str], legacy: str, leaf: str, with_in_tree: bool,
@@ -139,17 +158,22 @@ def test_reserved_registered_workset_is_refused_then_cured(
     root = home / "ws" / leaf
     root.parent.mkdir()
     external, in_tree = _plant_legacy(env, legacy, root, with_in_tree=with_in_tree)
+    aliased = _is_alias(legacy)
+    moved = aliased or leaf == legacy
 
     doors = [external, root] + ([in_tree] if in_tree is not None else [])
     for door in doors:
         refused = _cli(env, "box", "info", cwd=door)
         assert refused.returncode == 1, (door, refused.stdout)
         assert f"Working set '{legacy}' is registered under a reserved name" in refused.stderr
-        assert f"kanibako workset rm {legacy} --force" in refused.stderr
+        # ⚑ A NAME-BASED step is printed only when it can run: ``workset rm
+        # Default`` resolves to PRIMARY and refuses, so it is never offered.
+        assert (f"kanibako workset rm {legacy} --force" in refused.stderr) == (not aliased)
         assert "No workset found" not in refused.stderr
-        assert "default" not in refused.stderr.split(":", 2)[1]
-    assert ("  mv " in refused.stderr) == (leaf == legacy)
-    assert ("box remap --force" in refused.stderr) == (leaf == legacy and with_in_tree)
+        if not aliased:
+            assert "default" not in refused.stderr.split(":", 2)[1]
+    assert ("  mv " in refused.stderr) == moved
+    assert ("box remap --force" in refused.stderr) == (moved and with_in_tree)
 
     listed = _cli(env, "workset", "list")
     assert listed.returncode == 0, listed.stderr
@@ -157,8 +181,10 @@ def test_reserved_registered_workset_is_refused_then_cured(
 
     _run_cure(env, refused.stderr)
 
-    expected = NEW_NAME if leaf == legacy else leaf
-    assert sorted(_worksets()) == [expected]
+    expected = NEW_NAME if moved else leaf
+    # ⚑ An ALIAS VARIANT's registry KEY survives the cure — `workset rm` reads it as
+    # PRIMARY, so nothing can unregister it — while a partition token's is removed.
+    assert sorted(_worksets()) == ([legacy, expected] if aliased else [expected])
     resolved: list[tuple[Path, str]] = [(external, "ext")]
     if with_in_tree:
         resolved.append((home / "ws" / expected / "workspaces" / "intree", "intree"))
@@ -166,6 +192,30 @@ def test_reserved_registered_workset_is_refused_then_cured(
         info = _cli(env, "box", "info", cwd=source)
         assert info.returncode == 0, info.stderr
         assert f"kb-{expected.replace('-', '--')}-{box}" in info.stdout
+
+
+def test_a_default_alias_in_any_case_is_refused_at_the_create_door(
+    env: dict[str, str],
+) -> None:
+    """The create door clears the same bar case-blind: no variant registers."""
+    home = Path(env["HOME"])
+    for legacy in ("default", "Default", "DEFAULT", "__default__", "__Default__"):
+        made = _cli(env, "workset", "create", str(home / "ws" / legacy), "--name", legacy)
+        assert made.returncode == 1, (legacy, made.stdout)
+        assert f"Workset name '{legacy}' is reserved" in made.stderr
+        assert legacy not in _worksets()
+
+
+@pytest.mark.parametrize("legacy", ["default", "Default", "DEFAULT", "__Default__"])
+def test_default_alias_still_addresses_the_primary_workset(
+    env: dict[str, str], legacy: str,
+) -> None:
+    """The reservation is at the doors, NOT at resolve: the verbs still read the
+    alias as PRIMARY, and the primary workset is never itself refused."""
+    info = _cli(env, "workset", "info", legacy)
+    assert info.returncode == 0, info.stderr
+    assert "Name:     __default__" in info.stdout
+    assert "<default workset>" in info.stdout
 
 
 def test_a_normal_workset_beside_a_reserved_one_is_untouched(env: dict[str, str]) -> None:
