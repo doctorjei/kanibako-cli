@@ -194,3 +194,69 @@ def test_failed_entries_names_each_source_and_caps_the_list():
         ["7 entries failed:", *(f"  /s/{i}: why" for i in range(5)), "  … and 2 more"],
     )
     assert failed_entries(shutil.Error("not a list")) is None
+
+
+class TestALinkedTreeRoot:
+    """``keep_root_link``: a root that IS a link is re-created as a link (Q102 (a)).
+
+    Without it ``copytree`` lists the root THROUGH and the target tree is materialized —
+    the pointer the user made silently becomes a copy of what it pointed at.
+    """
+
+    @staticmethod
+    def _relink_root(src: Path, text: str) -> None:
+        """The fixture's real ``src`` becomes a link reading *text*."""
+        shutil.rmtree(src)
+        os.symlink(text, src)
+
+    def test_off_by_default_a_linked_root_is_still_materialized(self, layout):
+        src, outside, dst = layout
+        self._relink_root(src, "../outside")
+        copy_tree_keeping_links(src, dst)
+        assert not dst.is_symlink()
+        assert (dst / "big.txt").read_text() == "outside data"
+
+    def test_a_relative_root_link_is_rewritten_to_name_the_same_target(self, layout):
+        """The old text read against the OLD parent; from the new one it would drift."""
+        src, outside, dst = layout
+        self._relink_root(src, "../outside")
+        copy_tree_keeping_links(src, dst, keep_root_link=True)
+        assert dst.is_symlink()
+        assert os.readlink(dst) == "../../outside"
+        assert (dst / "big.txt").read_text() == "outside data"
+        assert (dst / "deep" / "nested.txt").read_text() == "nested"
+
+    def test_an_absolute_root_link_is_carried_exactly(self, layout):
+        src, outside, dst = layout
+        self._relink_root(src, str(outside))
+        copy_tree_keeping_links(src, dst, keep_root_link=True)
+        assert os.readlink(dst) == str(outside)
+
+    def test_a_dangling_relative_root_link_is_rewritten_not_left_pointing_elsewhere(self, layout):
+        src, _outside, dst = layout
+        self._relink_root(src, "../gone")
+        copy_tree_keeping_links(src, dst, keep_root_link=True)
+        assert os.readlink(dst) == "../../gone"
+        assert not dst.resolve().exists()
+
+    def test_a_real_directory_at_the_destination_is_refused_not_removed(self, layout):
+        """Only the party that MADE that directory may delete it."""
+        src, outside, dst = layout
+        self._relink_root(src, str(outside))
+        dst.mkdir(parents=True)
+        (dst / "someone_elses.txt").write_text("keep me")
+        with pytest.raises(shutil.Error):
+            copy_tree_keeping_links(src, dst, dirs_exist_ok=True, keep_root_link=True)
+        assert (dst / "someone_elses.txt").read_text() == "keep me"
+
+    def test_an_existing_link_yields_only_to_replace_existing(self, layout):
+        src, outside, dst = layout
+        self._relink_root(src, str(outside))
+        other = layout[1] / "deep"
+        os.symlink(str(other), dst)
+        with pytest.raises(shutil.Error):
+            copy_tree_keeping_links(src, dst, dirs_exist_ok=True, keep_root_link=True)
+        assert os.readlink(dst) == str(other)
+        copy_tree_keeping_links(
+            src, dst, dirs_exist_ok=True, replace_existing=True, keep_root_link=True)
+        assert os.readlink(dst) == str(outside)

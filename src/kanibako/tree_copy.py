@@ -32,6 +32,7 @@ def copy_tree_keeping_links(
     ignore: Callable[[str, list[str]], Iterable[str]] | None = None,
     dirs_exist_ok: bool = False,
     replace_existing: bool = False,
+    keep_root_link: bool = False,
 ) -> None:
     """``shutil.copytree`` *src* to *dst* under THE RULE in the module docstring.
 
@@ -47,7 +48,18 @@ def copy_tree_keeping_links(
     *replace_existing* is the ``--force`` overwrite contract: a link then atomically REPLACES an
     existing non-directory entry at its name.  An existing real directory there is still
     reported in the ``shutil.Error`` and never removed.
+
+    ⚑ *keep_root_link* extends THE RULE to the ROOT itself.  ``copytree`` lists *src* THROUGH,
+    so a root that is a link materializes its target tree at *dst* — the pointer the user made
+    becomes a copy of what it pointed at.  Off by default, because a snapshot or a stash is
+    meant to HOLD bytes, not a pointer.  When on, a linked root is re-created as a link
+    (Q102 (a): *"symlinks beget symlinks"*); see :func:`_copy_root_link` for the text and
+    what already sitting at *dst* costs.
     """
+    if keep_root_link and os.path.islink(src):
+        _copy_root_link(src, dst, dirs_exist_ok=dirs_exist_ok,
+                       replace_existing=replace_existing)
+        return
     refused: list[tuple[str, str, str]] = []
     walk_ignore = _refusing_links_in_the_way(src, dst, ignore, refused) if dirs_exist_ok else ignore
     failures: list[tuple[str, str, str]] = []
@@ -57,6 +69,48 @@ def copy_tree_keeping_links(
         failures = [entry for entry in err.args[0] if not (replace_existing and _replaced(*entry))]
     if refused or failures:
         raise shutil.Error(refused + failures)
+
+
+def _copy_root_link(
+    src: Path, dst: Path, *, dirs_exist_ok: bool, replace_existing: bool,
+) -> None:
+    """Re-create a symlinked tree ROOT as a link at *dst*, so the copy SHARES the target.
+
+    ⚑ THE TEXT.  An ABSOLUTE text is carried exactly.  A RELATIVE one was written against
+    *src*'s directory, and after a move that directory is somewhere else, so the same text
+    would name a DIFFERENT thing from the new place: it is rewritten to name the SAME target
+    from *dst*'s parent (Q70's ``new_relative_link``).  A DANGLING relative link is rewritten
+    too — the target is a path whether or not it exists, and leaving the old text would point
+    the dangling somewhere else.
+
+    ⚑ WHAT IS ALREADY AT *dst* is never removed on the user's behalf.  A real directory there
+    is refused: the only party allowed to delete it is the one that made it, and this function
+    cannot know that — a caller whose own ``mkdir`` put it there proves the point from the
+    unwind's ``existed`` snapshot and removes it before calling.  A link already there is
+    replaced only under *replace_existing*, the same ``--force`` contract a leaf link honors.
+    """
+    text = os.readlink(src)
+    if os.path.isabs(text):
+        new_text = text
+    else:
+        target = os.path.realpath(src)
+        if target == os.path.abspath(dst):
+            raise shutil.Error([
+                (str(src), str(dst), "the link resolves to its own destination")])
+        new_text = os.path.relpath(target, os.path.dirname(os.path.abspath(dst)))
+    if os.path.lexists(dst):
+        if not dirs_exist_ok:
+            raise FileExistsError(f"destination exists: {dst}")
+        if not os.path.islink(dst):
+            raise shutil.Error([
+                (str(src), str(dst),
+                 "a real directory is at the destination; a linked root will not replace it")])
+        if not replace_existing:
+            raise shutil.Error([
+                (str(src), str(dst), "a link is already at the destination; not overwritten")])
+        os.unlink(dst)
+    os.symlink(new_text, dst)
+    shutil.copystat(src, dst, follow_symlinks=False)
 
 
 def failed_entries(err: shutil.Error) -> str | None:
