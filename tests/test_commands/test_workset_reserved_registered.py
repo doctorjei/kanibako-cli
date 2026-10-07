@@ -172,6 +172,13 @@ def test_reserved_registered_workset_is_refused_then_cured(
         assert "No workset found" not in refused.stderr
         if not aliased:
             assert "default" not in refused.stderr.split(":", 2)[1]
+        else:
+            # ⚑ The rationale follows the split: an alias is refused for being the
+            # verbs' name for PRIMARY, not for the partition-key collision that does
+            # not apply to it — and it cites the MIGRATION heading for ITS case.
+            assert "name for the primary working set" in refused.stderr
+            assert "A working set named default must be registered again" in refused.stderr
+            assert "__PRIMARY__" not in refused.stderr
     assert ("  mv " in refused.stderr) == moved
     assert ("box remap --force" in refused.stderr) == (moved and with_in_tree)
 
