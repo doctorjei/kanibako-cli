@@ -69,9 +69,11 @@ def _team(std, tmp_home: Path):
 
 
 class TestWorksetSites:
-    def test_create_reads_only_under_the_new_workset_s_name(self, std, tmp_home, early_reads):
+    def test_create_reads_its_own_name_and_the_default_under_primary(
+            self, std, tmp_home, early_reads):
         _team(std, tmp_home)
-        assert set(early_reads) == {"team"}
+        # The logs-share check walks the default workset under the token its boxes read.
+        assert set(early_reads) == {"team", WS_TOKEN_PRIMARY}
 
     def test_the_default_workset(self, std, early_reads):
         assert workset.default_workset(std).is_default

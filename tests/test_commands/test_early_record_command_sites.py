@@ -69,7 +69,8 @@ class TestPurge:
         seen = _spy(request, std)
         assert run(argparse.Namespace(path=str(tmp_home / "lone"), all_projects=False,
                                       force=True)) == 0
-        assert set(seen) == {WS_TOKEN_STANDALONE}
+        # The log purge's share walk reads the default workset under the primary token.
+        assert set(seen) == {WS_TOKEN_PRIMARY, WS_TOKEN_STANDALONE}
 
 
 class TestBoxRm:

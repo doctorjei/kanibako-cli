@@ -953,6 +953,12 @@ def _logs_walk_targets(std: StandardPaths) -> dict[str, Path]:
     return {**_load_registry(std), DEFAULT_WORKSET_ID: std.primary_workset}
 
 
+def _walk_scope(system: EarlySystem, name: str, root: Path) -> EarlyScope:
+    """*name*'s scope, through :attr:`Workset.early_scope` (the default reads as primary)."""
+    return Workset(name, root, is_default=name == DEFAULT_WORKSET_ID,
+                   early_system=system).early_scope
+
+
 def _shown(name: str) -> str:
     """*name* as a message says it: the VIRTUAL default's id reads as its alias."""
     return DEFAULT_WORKSET_ALIAS if name == DEFAULT_WORKSET_ID else name
@@ -1019,7 +1025,7 @@ def find_logs_share(
             elif scope == "system":
                 driven = (system.tier != std.early_system.tier
                           and _stored_repoint(doc, _LOGS_LEAF) is UNSET)
-            resolved = resolve_workset_logs(root, doc, early=EarlyScope(system, name))
+            resolved = resolve_workset_logs(root, doc, early=_walk_scope(system, name, root))
         except (ConfigError, SettingsError):
             continue
         if resolved is not None:
@@ -1087,7 +1093,7 @@ def _logs_share_partners(
         if workset_root is not None and Path(workset_root).resolve() == root.resolve():
             continue
         try:
-            early = EarlyScope(std.early_system, name)
+            early = _walk_scope(std.early_system, name, root)
             doc = load_doc(root / WORKSET_META_FILE)
             resolved = resolve_workset_logs(root, doc, early=early)
         except (ConfigError, SettingsError, OSError):
