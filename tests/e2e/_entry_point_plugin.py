@@ -43,7 +43,7 @@ def install_entry_point_plugin(
     shutil.copy2(src, site_dir / f"{module}.py")
 
     dist_info = site_dir / f"{dist}-0.0.dist-info"
-    dist_info.mkdir()
+    dist_info.mkdir(parents=True, exist_ok=True)
     (dist_info / "METADATA").write_text(
         f"Metadata-Version: 2.1\nName: {dist}\nVersion: 0.0\n"
     )
