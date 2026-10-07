@@ -1208,6 +1208,66 @@ class TestValidation:
         assert new.mode == BoxMode.standalone
         assert (new.vault_rw / "own.txt").read_text() == "BOX-OWN"
 
+    def test_an_empty_vault_declaration_is_unset_so_the_users_vault_still_blocks(self, env):
+        """``vault_rw: ""`` is UNSET to the resolver, so it exempts NOTHING.
+
+        The raw-document check read an empty value as DECLARED; the guard went quiet
+        and the default ``vault/rw`` was adopted and purged anyway.  RED on prev tip.
+        """
+        config, std, tmp_home = env
+        root = _default_with_workset_keys(env, "emptydecl", {"vault_rw": ""})
+        vfile = root / "vault" / "rw" / "vfile.txt"
+        vfile.parent.mkdir(parents=True)
+        vfile.write_text("USER-VAULT")
+        state = resolve_lifecycle_target(str(root), std, config)
+        with pytest.raises(ProjectError, match="did not create it"):
+            execute_lifecycle(
+                state, TargetSpec(ownership="standalone"), std, config,
+                confirm=_conf_yes(),
+            )
+        assert vfile.read_text() == "USER-VAULT"
+
+    def test_the_refusal_names_what_declaring_the_vault_actually_does(self, env):
+        """D1 — the cure a guard prints is part of the guard.
+
+        Declaring the colliding directory (``vault_rw: @meta.workset.path/vault/rw``)
+        switches this guard OFF, the convert adopts it, ``standalone_vault_teardown``
+        marks it REMOVABLE inside the root, and ``box rm --purge`` deletes it.  The
+        first cut recommended exactly that.
+        """
+        config, std, tmp_home = env
+        pdir = _make_default(env)
+        vfile = pdir / "vault" / "rw" / "vfile.txt"
+        vfile.parent.mkdir(parents=True)
+        vfile.write_text("USER-VAULT")
+        state = resolve_lifecycle_target(str(pdir), std, config)
+        with pytest.raises(ProjectError) as exc:
+            execute_lifecycle(
+                state, TargetSpec(ownership="standalone"), std, config,
+                confirm=_conf_yes(),
+            )
+        msg = str(exc.value)
+        assert "or declare it as the vault in the root's workset.yaml" not in msg
+        assert "would not protect it" in msg
+
+    def test_an_empty_arm_on_disk_is_the_skeleton_not_a_collision(self, env):
+        """Pins the empty-arm exemption (green by design, not a red): an empty
+        default ``vault/{ro,rw}`` is what the convert creates itself.
+        """
+        config, std, tmp_home = env
+        pdir = _make_default(env)
+        (pdir / "vault" / "rw").mkdir(parents=True)
+        (pdir / "vault" / "ro").mkdir(parents=True)
+        state = resolve_lifecycle_target(str(pdir), std, config)
+        (state.vault_rw / "own.txt").parent.mkdir(parents=True, exist_ok=True)
+        (state.vault_rw / "own.txt").write_text("BOX-OWN")
+        new = execute_lifecycle(
+            state, TargetSpec(ownership="standalone"), std, config,
+            confirm=_conf_yes(),
+        )
+        assert new.mode == BoxMode.standalone
+        assert (new.vault_rw / "own.txt").read_text() == "BOX-OWN"
+
     def test_the_sources_own_leaves_do_not_block_its_own_relocation(self, env):
         """The same-workset, same-name case releases and re-records its own leaves."""
         config, std, tmp_home = env
