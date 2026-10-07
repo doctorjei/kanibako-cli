@@ -48,12 +48,12 @@ def _declared_name(node: str, cls: type) -> str:
     declaration away, so it is read back off the class.
 
     ⚑ **Read back and CHECKED, because the two discovery routes declare it in
-    different places.**  A file-drop plugin is filed under its ``Target.name``; an
-    ENTRY POINT is filed under its entry-point name, which is packaging metadata and
-    need not agree with the class.  A declared name that does not fold back to the
-    node the class was filed under is therefore not this node's name at all — and the
-    node is then the honest answer, being itself a legal name that
-    ``config.resolve_agent`` resolves.
+    different places.**  A ``kanibako.plugins`` sub-package is filed under its
+    ``Target.name``; an ENTRY POINT is filed under its entry-point name, which is
+    packaging metadata and need not agree with the class.  A declared name that does
+    not fold back to the node the class was filed under is therefore not this node's
+    name at all — and the node is then the honest answer, being itself a legal name
+    that ``config.resolve_agent`` resolves.
     """
     from kanibako.identifiers import agent_node_case
 
