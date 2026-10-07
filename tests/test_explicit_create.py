@@ -1369,3 +1369,25 @@ class TestStandaloneCreatePerOwnerBeforeTheDir:
         assert sorted(p.name for p in target.iterdir()) == ["user.txt"], (
             f"{key} refused the create but wrote into {target}"
         )
+
+    @pytest.mark.parametrize("key", ["channelroot", "channels.chat"])
+    def test_refused_a_cwd_target_is_left_as_the_user_left_it(
+        self, config_file, tmp_home, credentials_dir, capsys, monkeypatch, key,
+    ):
+        """With no ``<path>`` the target is the cwd, which always exists: same contract."""
+        from kanibako.cli import main
+
+        self._system_workset_key(config_file, key)
+        cwd = tmp_home / "mine"
+        cwd.mkdir()
+        (cwd / "user.txt").write_text("the user's own file\n")
+        monkeypatch.chdir(cwd)
+        capsys.readouterr()
+
+        with pytest.raises(SystemExit) as exc:
+            main(["create", "--standalone"])
+        assert exc.value.code == 1
+        assert f"workset.{key}" in capsys.readouterr().err
+        assert sorted(p.name for p in cwd.iterdir()) == ["user.txt"], (
+            f"{key} refused the create but wrote into {cwd}"
+        )

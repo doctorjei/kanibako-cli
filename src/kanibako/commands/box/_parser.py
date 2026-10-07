@@ -1016,6 +1016,10 @@ def run_create(args: argparse.Namespace) -> int:
             _standalone_settings_files(
                 effective_path, early=_early_scope(std, BoxMode.standalone))[1],
             ("workset",))
+        refuse_inherited_per_owner(
+            effective_path, _early_scope(std, BoxMode.standalone),
+            exclude=_STANDALONE_CREATE_EXEMPT_KEYS,
+        )
 
     # ⚑ THE SPACE IS THE CWD'S, NOT THE TARGET'S: "a command's workset path space is
     # the named workset whose root contains the current directory".
@@ -1086,20 +1090,14 @@ def run_create(args: argparse.Namespace) -> int:
             print(f"Error: {e}", file=sys.stderr)
             return 1
 
-    # Create directory if it doesn't exist.  A NAMED member's dir is its workspace
-    # under the working set, which ``add_project`` makes — never ``<cwd>/<identifier>``.
+    # A NAMED member's dir is its workspace under the working set, which
+    # ``add_project`` makes — never ``<cwd>/<identifier>``.
     if project_dir is not None and _named_spec is None:
         target = Path(project_dir)
-        _fresh = not target.exists()
-        # ⚑ BEFORE ANY WRITE, EXISTING TARGET INCLUDED — never fold it into the mkdir.
-        if args.standalone:
-            refuse_inherited_per_owner(
-                effective_path, _early_scope(std, BoxMode.standalone),
-                exclude=_STANDALONE_CREATE_EXEMPT_KEYS,
-            )
-        elif _fresh:
-            refuse_inherited_per_owner(std.primary_workset, _early_scope(std, BoxMode.primary))
-        if _fresh:
+        if not target.exists():
+            if not args.standalone:
+                refuse_inherited_per_owner(
+                    std.primary_workset, _early_scope(std, BoxMode.primary))
             target.mkdir(parents=True)
 
     from kanibako.commands.start import (
