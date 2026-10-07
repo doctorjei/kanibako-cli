@@ -947,8 +947,8 @@ first-party plugins, while `__package__` is correct whether the `Target` class l
 the latter).
 
 Returns `None` on ANY failure — no such module entry, no `__package__`, an unimportable/absent
-package, or no `data/rom` directory. A `Target` class outside the `kanibako.plugins.*`
-namespace — such as one an entry point loads from another package — simply resolves to `None`.
+package, or no `data/rom` directory. The namespace does not matter: a plugin an entry point loads from
+its own package gets a real path when that package ships `data/rom`.
 
 ```python
 def default_category_binds(self) -> CategoryBindDefaults
