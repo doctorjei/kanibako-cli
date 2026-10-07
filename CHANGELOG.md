@@ -588,6 +588,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Launching a box whose `create` was interrupted before registration names `create --recover`.** Such a box has no
+  registration to launch, and the launch's "no box" refusal offered `create` — which that same path then refuses for the
+  pending entry, so the remedy took two commands. It now names `kanibako create --recover <workspace>` plus
+  `kanibako box diagnose`, for the path form and the cwd form alike (and for `kanibako code`). Registration still decides
+  whether a box exists, and a launch still does not adopt the half-built box; only the cure changes. A bare-name launch
+  is unchanged — a name resolves through the registry, which holds no workspace to match.
+
 - **`kanibako create --standalone [<path>]` refuses a per-owner `workset.` key before it writes anything.** A
   system-tier value that reaches no working-set identity refused the standalone create at exit 1, but only after
   writing. A new `<path>` was left behind: empty for `workset.canon` and `workset.workspaces`, and holding a whole box
