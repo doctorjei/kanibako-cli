@@ -597,6 +597,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`box convert --move` into a workset or into the default workset now re-points a vault link whose target lies in
+  the workspace or the box store it carries.** The link names the landed tree instead of leaving a second copy that
+  diverges.
+- **A vault link whose target the convert leaves in place, such as a directory in a standalone root, is now carried as
+  a link to that same target.** Before, its bytes were copied and the warning wrongly said the move removed it. Bytes
+  are copied, with a warning naming the removed tree, only when the target is in a tree the convert deletes and
+  nothing carries it.
+- **A workset or external-connected project duplicated `--to standalone` now lands its workspace in the destination's
+  resolved `workspace/` subdir instead of the box root.** A symlinked workspace root is carried there as a link
+  sharing its target, but only when that subdir does not exist yet. `--to primary` still copies bytes.
 - **`kanibako code --remote` says what pointing `dev.containers.dockerPath` at its wrapper costs.** VS Code applies
   that user setting in Remote-SSH windows too, so a container attach through a Remote-SSH window fails on any host
   where the wrapper's path does not exist. The prompt and the manual snippet now say so and give the undo (set it
