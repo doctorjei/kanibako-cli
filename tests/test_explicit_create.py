@@ -418,6 +418,137 @@ class TestInterruptedCreateBoundary:
         assert _pending_create_entry(std, proj) is not None
         assert registry_store.load_standalone(std.registry) == {}
 
+    # -- the UNREGISTERED-but-pending arm: the launch names the cure that runs ----
+
+    @staticmethod
+    def _unregistered_pending_create(config_file, path):
+        """A PRIMARY create stopped BEFORE registration: entry written, unregistered."""
+        from tests.test_create_recovery import _simulate_interrupted_create
+
+        path.mkdir(parents=True, exist_ok=True)
+        config, std = _std(config_file)
+        return std, _simulate_interrupted_create(
+            std, config, standalone=False, path=path, register_box=False,
+        )
+
+    def test_launch_names_recover_when_create_is_pending_unregistered(
+        self, config_file, tmp_home, credentials_dir, capsys, monkeypatch
+    ):
+        """An UNREGISTERED box with a pending ``create`` entry refuses naming
+        ``create --recover``, which is what performs the replay — not ``create``,
+        which the same path refuses in turn.  Both the PATH and the CWD launch
+        routes print that one line, and neither adopts the half-built box."""
+        # ⚑ TWO WORKSPACES, NOT ONE REUSED: ``tmp_home`` chdirs into
+        # ``tmp_path/project``, so a box placed there would make the PATH route and
+        # the CWD route the same call and cover one of them twice.
+        by_path = tmp_home / "by-path"
+        by_cwd = tmp_home / "by-cwd"
+        std, _p1 = self._unregistered_pending_create(config_file, by_path)
+        std, _p2 = self._unregistered_pending_create(config_file, by_cwd)
+
+        assert _launch(str(by_path)) == 1
+        err = capsys.readouterr().err
+        # ⚑ THE LINE, NOT A SUBSTRING OF IT: the whole remedy is one command.
+        assert (f"  Finish it:  kanibako create --recover {by_path}"
+                in [ln.rstrip() for ln in err.splitlines()])
+        assert "kanibako box diagnose" in err
+        # ``create`` alone is the refusal this arm replaces: it re-runs the create
+        # and is refused for the very entry named here.
+        assert f"run:  kanibako create {by_path}" not in err
+        # REGISTRATION IS STILL THE EXISTENCE SIGNAL — nothing was adopted.
+        assert _primary_boxes(std) == {}
+
+        # THE CWD ROUTE (``shell`` / bare ``kanibako`` from inside the workspace)
+        # names ITS OWN box's cure, from inside that box's directory.
+        monkeypatch.chdir(by_cwd)
+        assert _launch(None) == 1
+        err = capsys.readouterr().err
+        assert (f"  Finish it:  kanibako create --recover {by_cwd}"
+                in [ln.rstrip() for ln in err.splitlines()])
+        assert f"kanibako create --recover {by_path}" not in err
+        assert _primary_boxes(std) == {}
+
+    def test_printed_recover_cure_registers_the_box(
+        self, config_file, tmp_home, credentials_dir, capsys
+    ):
+        """The printed ``--recover`` line RUNS: tokenized as printed it names a
+        real path with ``--recover``, and running it that way registers the box
+        and clears the entry — so the cure is the whole remedy."""
+        from pathlib import Path
+
+        from kanibako.commands.box._parser import run_create
+        from kanibako.commands.start import _pending_create_entry
+
+        path = tmp_home / "by-path"
+        std, proj = self._unregistered_pending_create(config_file, path)
+
+        assert _launch(str(path)) == 1
+        cure = next(
+            ln.strip() for ln in capsys.readouterr().err.splitlines()
+            if ln.strip().startswith("Finish it:")
+        ).removeprefix("Finish it:").strip()
+
+        # ⚑ READ THE CURE AS SHELL TOKENS, so a line that would not run as printed
+        # (unquoted path, a stray flag) fails here rather than at the user's shell.
+        argv = shlex.split(cure)
+        assert argv[:3] == ["kanibako", "create", "--recover"]
+        printed_path = argv[3]
+        assert Path(printed_path).resolve() == path.resolve()
+
+        assert run_create(_create_args(
+            printed_path, recover=True, no_vault=False,
+        )) == 0
+        assert _pending_create_entry(std, proj) is None
+        assert _primary_boxes(std) == {"by-path": printed_path}
+        # THE GATE NOW PASSES — the box resolves for the next launch.
+        config, _ = _std(config_file)
+        assert _resolve_existing_box(std, config, str(path)) is not None
+
+    def test_launch_without_a_pending_entry_keeps_the_plain_create_cure(
+        self, config_file, tmp_home, credentials_dir, capsys
+    ):
+        """A workspace with NO journal entry is not an interrupted create: the
+        launch keeps naming plain ``create``, so the new arm does not answer a
+        box that was never half-built."""
+        from kanibako.commands.start import _pending_create_entry
+        from kanibako.settings.paths import resolve_project
+
+        path = tmp_home / "by-path"
+        path.mkdir()
+        config, std = _std(config_file)
+        proj = resolve_project(
+            std, config, project_dir=str(path), initialize=True, register=False,
+        )
+        assert _pending_create_entry(std, proj) is None
+
+        assert _launch(str(path)) == 1
+        err = capsys.readouterr().err
+        assert f"Error: no box at {path}. To create a new box, run:" in err
+        assert f"kanibako create {path}" in err
+        assert "--recover" not in err
+
+    def test_unreadable_journal_keeps_the_plain_no_box_refusal(
+        self, config_file, tmp_home, credentials_dir, capsys
+    ):
+        """A journal that will not parse leaves the plain refusal standing.  The
+        pending lookup only enriches that refusal, so it must not turn an
+        unparseable journal into the message — which would tell the user to
+        delete the very entry the lookup exists to report."""
+        from kanibako.settings.paths import resolve_project
+
+        path = tmp_home / "by-path"
+        path.mkdir()
+        config, std = _std(config_file)
+        resolve_project(std, config, project_dir=str(path), initialize=True,
+                        register=False)
+        std.journal.parent.mkdir(parents=True, exist_ok=True)
+        std.journal.write_text("- not\n- a mapping\n")
+
+        assert _launch(str(path)) == 1
+        err = capsys.readouterr().err
+        assert f"Error: no box at {path}. To create a new box, run:" in err
+        assert "--recover" not in err
+
 
 # ---------------------------------------------------------------------------
 # MBR-6: a launch REFUSES a registered box whose directory is gone
