@@ -588,6 +588,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`box vault restore` refuses a snapshot name that resolves outside the snapshots directory.** A traversal name
+  (`../…`), an absolute path, `.`, `..`, an empty name, or a symlink in `.versions/` pointing out of it previously
+  replaced share-rw with whatever it resolved to — rc 0, and without a prompt for every case but the symlink. Each is now
+  refused with an `Error: Refused snapshot name …` line (rc 1) before share-rw is touched. `box vault prune` no longer
+  counts or deletes any symlink in `.versions/`: a link to a real snapshot used to take the newest slot, so `--keep 1`
+  could delete every real snapshot.
+
 - **A printed cure now quotes the box name it names.** `box rm` and `box create` printed `kanibako box register <name>`
   and `kanibako box rm <name> --purge` with the name interpolated raw, and a box created from a path is registered under
   that path's basename verbatim — `kanibako create 'q$(id)'` exits 0 and leaves a box named `q$(id)`. Pasted as printed,
