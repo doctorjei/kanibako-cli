@@ -22,7 +22,7 @@ from __future__ import annotations
 import errno
 import os
 import shutil
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Mapping
 from pathlib import Path
 
 
@@ -122,7 +122,26 @@ def _copy_root_link(
     shutil.copystat(src, dst, follow_symlinks=False)
 
 
-def lay_root_link(src: Path, dst: Path, *, moved_root: Path | None = None) -> bool:
+def _relocated_target(target: str, relocated: Mapping[Path, Path]) -> str | None:
+    """Where *target* lands once each carried tree in *relocated* has moved to its value.
+
+    The SAME RELATIVE POSITION under the landing, which is what a carried pointer must name:
+    ``<old>/vaultdata`` under a workspace that lands at ``<new>`` is ``<new>/vaultdata``.
+    ``None`` when no carried tree contains *target* -- an outside target does not move and
+    its pointer stays valid as it stands.
+    """
+    for old, new in relocated.items():
+        old_resolved = os.path.realpath(str(old))
+        if not _is_under(target, old):
+            continue
+        return os.path.join(str(new), os.path.relpath(target, old_resolved))
+    return None
+
+
+def lay_root_link(
+    src: Path, dst: Path, *, moved_root: Path | None = None,
+    relocated: Mapping[Path, Path] | None = None,
+) -> bool:
     """Lay *src*'s root LINK at *dst* when that costs nothing; else let the caller copy.
 
     ``keep_root_link`` refuses whatever already sits at *dst*, which strands a relocation
@@ -132,18 +151,26 @@ def lay_root_link(src: Path, dst: Path, *, moved_root: Path | None = None) -> bo
     pointer.  False otherwise, and the caller's own copy runs unchanged, exception and all.
 
     *moved_root* is the root of the tree THIS operation carries along with *src*.  A link
-    whose target sits inside it names a place that will be torn down: the rewrite re-points
-    at the OLD absolute location, so the landed link dangles the moment the source goes.
-    Answering False leaves the caller to copy the bytes, which arrive correct.  A target
-    outside *moved_root* stays put and is carried as a pointer, which is the whole point.
+    whose target sits inside it names a place that will be torn down, so it must not be
+    carried at the OLD location.  *relocated* says where such trees LAND: with a mapping the
+    link is re-pointed at the landed path and the POINTER survives (Q70 keeps symlinks, and
+    two independent copies of one tree diverge silently).  With no mapping there is nothing
+    to re-point at, so the answer is False and the caller copies the bytes.
+
+    A target outside every carried tree is unaffected: it stays where it is and the pointer
+    is carried, which is the whole point.
     """
     if not os.path.islink(src):
         return False
     if os.path.islink(dst):
         return False
-    if moved_root is not None:
+    landing: str | None = None
+    if moved_root is not None or relocated:
         target = os.path.realpath(src)
-        if target != os.path.realpath(moved_root) and _is_under(target, moved_root):
+        landing = _relocated_target(target, relocated or {})
+        if (landing is None and moved_root is not None
+                and target != os.path.realpath(moved_root)
+                and _is_under(target, moved_root)):
             return False
     if dst.is_dir():
         try:
@@ -153,6 +180,11 @@ def lay_root_link(src: Path, dst: Path, *, moved_root: Path | None = None) -> bo
     elif dst.exists():
         return False
     os.makedirs(os.path.dirname(os.path.abspath(str(dst))), exist_ok=True)
+    if landing is not None:
+        os.symlink(
+            os.path.relpath(landing, os.path.dirname(os.path.abspath(str(dst)))), dst)
+        shutil.copystat(src, dst, follow_symlinks=False)
+        return True
     copy_tree_keeping_links(src, dst, keep_root_link=True)
     return True
 
