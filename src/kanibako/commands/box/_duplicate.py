@@ -263,15 +263,12 @@ def _merge_workspace(src: Path, dst: Path, force: bool, *,
                      share_root_link: bool = False) -> None:
     """Copy the workspace *src* to *dst*, merging into an existing *dst* under *force*.
 
-    By DEFAULT a duplicate never lays the source's root LINK, because when *dst* IS the
-    new box ROOT a link there writes the box's own ``workset.yaml`` and ``box_data/``
-    into the user's directory, and ``box info <dst>`` answers the SOURCE.
-
-    *share_root_link* is for a caller whose *dst* is the new box's RESOLVED workspace
-    subdir rather than its root.  There a linked root is carried as a link -- the copy
-    SHARES the target, Q102 (a) -- rather than materialized into a second copy.  It is
-    laid only while *dst* is absent: a directory that is already there takes the
-    ordinary merge, so nothing the user made is traded for a pointer.
+    By DEFAULT a duplicate never lays the source's root LINK: when *dst* IS the new box
+    ROOT, a link there writes the box's own ``workset.yaml`` and ``box_data/`` into the
+    user's directory and ``box info <dst>`` answers the SOURCE.  *share_root_link* is
+    for a *dst* that is the resolved workspace SUBDIR instead, where a linked root is
+    carried as a link (Q102 (a)) -- but only while *dst* is absent, never over a
+    directory the user made.
 
     Raises ``ProjectError`` naming each entry the merge could not copy.
     """
@@ -731,12 +728,8 @@ def _duplicate_from_workset(args, source_path, new_path, std, config) -> int:
     if target_mode == BoxMode.standalone:
         # The standalone merge stays HERE; the primary target's moved inside.
         if ws_workspace is not None:
-            # Land the workspace in the destination root's RESOLVED ``workspace/``
-            # subdir, as the primary-source route does -- NOT at the ROOT.  Merging
-            # into the root left the workspace files beside the box's own
-            # ``workset.yaml`` / ``box_data/``, so the new box's live workspace came
-            # out empty.  In its own subdir a linked source root can be carried as a
-            # link (Q102 (a)) without writing a byte into the target.
+            # Land the workspace in the resolved ``workspace/`` subdir, NOT the ROOT:
+            # merging into the root left it empty, and there a linked root stays a link.
             from kanibako.project.workset import (
                 load_workset_settings_doc,
                 resolve_workset_workspaces,
