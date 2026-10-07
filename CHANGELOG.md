@@ -785,10 +785,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the entry deleted was `agent: default: default_agent` — because a table left with nothing under
   it parses as null, and a null there is refused in its own right. Naming only the leaf left the
   file stranded in a state the printed `set` then refused, with nothing pointing at the cause.
-  The step's reason now says the `set` refuses wherever it does. A nested table, or a retired
-  `box.agent` table, in an agent file is cured by an `agent set` that reads that same file, and
-  that `set` refuses until the table is gone; both refusals used to say nothing blocks the write.
-  A nested table stored in another agent's file is cured in that agent's file, and still says so.
+  The step's reason now says the `set` refuses wherever it does. When a nested table or a retired
+  `box.agent` table sits in an agent's own file, the cure's `agent set` for that agent reads that
+  file and refuses until the table is gone; both refusals used to say nothing blocks the write. A
+  nested table stored in another agent's file is cured in that agent's file, and its refusal still
+  says nothing blocks the write.
 
 - **A stored `agent.default.auto_approve` is cured with a command that runs.** At the agent level
   the cure printed `kanibako agent set default access=…`, which the CLI refuses with exit 1 —
