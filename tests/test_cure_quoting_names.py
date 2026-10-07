@@ -686,13 +686,14 @@ class TestTheRemainingCleanupCuresAreQuoted:
         metadata = tmp_path / "boxes" / name
         metadata.mkdir(parents=True)
         monkeypatch.setattr(_parser, "_purge_dir", lambda target: False)
-        monkeypatch.setattr(_parser, "remove_box_logs", lambda logs, box: [])
+        monkeypatch.setattr(_parser, "purge_box_logs",
+                          lambda std, logs, box, *, workset_root: [])
         monkeypatch.setattr("kanibako.settings.paths.standalone_store_teardown_plan",
                             lambda root, early: (metadata, None))
         err = io.StringIO()
         with contextlib.redirect_stderr(err), contextlib.redirect_stdout(io.StringIO()):
             assert _parser._teardown_standalone_box(
-                tmp_path, ([], [], tmp_path / "logs", name), early=None) is False
+                tmp_path, ([], [], tmp_path / "logs", name), std=None, early=None) is False
         cure = _pasteable(_line(err.getvalue(), "Try: podman unshare"), "Try: ")
 
         _assert_unshare_inert(cure, metadata, tmp_path / "scratch")

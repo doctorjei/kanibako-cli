@@ -31,7 +31,9 @@ from kanibako.runtime.container import ContainerRuntime
 from kanibako.identifiers import agent_node_case, find_identifier
 from kanibako.errors import ContainerError, ProjectError, WorksetError
 from kanibako.project.names import read_names
-from kanibako.project.workset import Workset, add_project, list_worksets, load_workset
+from kanibako.project.workset import (
+    Workset, add_project, list_worksets, load_workset, purge_box_logs,
+)
 from kanibako.settings.messages import (
     ERR_WORKSET_MEMBER_NAME_CONFLICT,
     ERR_WORKSET_MEMBER_NAME_TAKEN,
@@ -42,6 +44,7 @@ from kanibako.settings.paths import (
     IGNORE_FILE,
     BoxMode,
     DesignationRoute,
+    StandardPaths,
     WorksetSpec,
     _box_settings_files,
     _early_scope,
@@ -58,7 +61,6 @@ from kanibako.settings.paths import (
     load_primary_boxes,
     load_std_paths,
     primary_box_name_for_workspace,
-    remove_box_logs,
     resolve_any_project,
     resolve_box_target,
     resolve_project,
@@ -1846,7 +1848,8 @@ def _teardown_primary_box(std, name: str, metadata_dir: Path) -> bool:
             file=sys.stderr,
         )
     # The per-box logs, keyed by the registry name.
-    for log_file in remove_box_logs(std.primary_logs, name):
+    for log_file in purge_box_logs(std, std.primary_logs, name,
+                                   workset_root=std.primary_workset):
         print(f"Removed log: {log_file}")
     return removed
 
@@ -1876,7 +1879,7 @@ def _standalone_teardown_plan(
 
 
 def _teardown_standalone_box(
-    root: Path, plan: _StandaloneTeardown, *, early: EarlyScope,
+    root: Path, plan: _StandaloneTeardown, *, std: "StandardPaths", early: EarlyScope,
 ) -> bool:
     """Delete a STANDALONE box's in-tree metadata + its logs; the workspace and *root* stay.
 
@@ -1893,8 +1896,9 @@ def _teardown_standalone_box(
     metadata_dir, retained_store = standalone_store_teardown_plan(root, early=early)
     removable_vault, retained_vault, logs_dir, box_name = plan
     # ⚑ Logs are deleted by NAME, so a log under a ``workset.logs`` pointed outside
-    # the store goes too.
-    for log_file in remove_box_logs(logs_dir, box_name):
+    # the store goes too.  ⚑ SCOPED: a same-named box in a working set FORCED onto this
+    # same log directory makes the file unattributable, and it is kept and reported.
+    for log_file in purge_box_logs(std, logs_dir, box_name, workset_root=root):
         print(f"Removed log: {log_file}")
     if retained_store is not None:
         report_retained_store(retained_store, root)
@@ -2025,7 +2029,7 @@ def _purge_deregistered(std, name: str, entry: dict, args: argparse.Namespace) -
         _teardown_standalone_box(
             root, _standalone_teardown_plan(
                 root, name, early=_early_scope(std, BoxMode.standalone)),
-            early=_early_scope(std, BoxMode.standalone))
+            std=std, early=_early_scope(std, BoxMode.standalone))
     else:
         _teardown_primary_box(std, name, metadata_dir)
 
@@ -2107,7 +2111,8 @@ def _rm_standalone(std, box_name: str, root, args: argparse.Namespace) -> int:
                 except UserCanceled:
                     print("Aborted (box was already unregistered).")
                     return 2
-            _teardown_standalone_box(root_path, plan, early=_early_scope(std, BoxMode.standalone))
+            _teardown_standalone_box(root_path, plan, std=std,
+                                    early=_early_scope(std, BoxMode.standalone))
         else:
             print(f"No metadata directory found at {metadata_dir}")
     elif root_path is not None and metadata_dir is not None and metadata_dir.is_dir():

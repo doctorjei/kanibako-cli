@@ -24,7 +24,6 @@ from kanibako.settings.paths import (
     _early_scope,
     load_std_paths,
     primary_box_name_for_workspace,
-    remove_box_logs,
     workset_settings_path,
 )
 from kanibako.utils import confirm_prompt
@@ -43,6 +42,7 @@ from kanibako.project.workset import (
     list_worksets,
     load_workset,
     logs_share_refusal,
+    purge_box_logs,
     refuse_existing_box,
     refuse_null_workspaces,
     remove_project,
@@ -738,7 +738,10 @@ def run_disconnect(args: argparse.Namespace) -> int:
     if logs_dir is not None:
         # ⚑ HERE, not in ``remove_project``/``release_project``: a move releases the box
         # through ``release_project``, and its logs must survive the move.
-        remove_box_logs(logs_dir, proj.name)
+        # ⚑ SCOPED TO THIS WORKSET: under a FORCED ``workset.logs`` share a same-named
+        # box elsewhere maps to the same file, and that file is kept and reported rather
+        # than deleted here (:func:`purge_box_logs`).
+        purge_box_logs(std, logs_dir, proj.name, workset_root=ws.root)
     print(f"Removed project '{proj.name}' from working set '{ws.name}'")
     return 0
 
