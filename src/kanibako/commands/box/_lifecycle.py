@@ -1298,25 +1298,20 @@ def _copy_vault_leaf_contents(src: Path, dst: Path | None,
                              relocated: Mapping[Path, Path] | None = None) -> None:
     """Merge-copy the CONTENTS of vault leaf *src* into leaf *dst*.
 
-    ⚑ The counterpart ``snapshots.py`` copies vault content under the same symlink
-    rule; this is the same operation pointed at the relocation destination instead
-    of a snapshot dir.  No-ops when *src* holds nothing (missing or not a dir) and when
-    *src* and *dst* are the same directory (a reuse-in-place edge, whose teardown
-    is skipped — there is nothing to carry).  RAISES on a copy failure: callers
-    run this BEFORE the source teardown (except leg 2 of the workset stash and its
-    unwind, whose source is the stash), so a failure aborts the relocation with
-    the source still whole (and the unwind drops the destination).
+    ⚑ ``snapshots.py`` copies vault content under the same symlink rule; this is that
+    operation aimed at the relocation destination.  No-ops when *src* holds nothing or
+    when *src* and *dst* are the same dir (a reuse-in-place edge: nothing to carry).
+    RAISES on a copy failure -- callers run this BEFORE the source teardown (except
+    leg 2 of the workset stash, whose source IS the stash), so a failure aborts with
+    the source still whole and the unwind drops the destination.
 
     ⚑ Every symlink is copied VERBATIM and never followed
     (:func:`kanibako.tree_copy.copy_tree_keeping_links`), so a dangling link carries
-    like any other.  The copy takes every entry it can before it raises one
-    ``shutil.Error`` listing the rest; that failure is re-raised as a
-    ``ProjectError`` naming the leaf and the entries — the entries are NOT skipped,
-    since skipping one would drop it from the store without a word.
-
-    ⚑ A DANGLING LEAF IS CARRIED, not skipped: ``vault/rw -> <gone>`` is still the
-    user's pointer, and dropping it leaves a real empty leaf where their pointer was.
-    A source that merely holds nothing -- missing, or a real non-directory -- no-ops.
+    like any other -- ``vault/rw -> <gone>`` is still the user's pointer, and dropping
+    it leaves a real empty leaf where their pointer was.  The copy takes every entry it
+    can before raising one ``shutil.Error`` listing the rest, re-raised as a
+    ``ProjectError`` naming the leaf and the entries; skipping one would drop it from
+    the store without a word.
     """
     if dst is None:
         return
@@ -1337,9 +1332,8 @@ def _copy_vault_leaf_contents(src: Path, dst: Path | None,
         # A POINTER source into an empty destination: share the target, don't materialize.
         return
     if src.is_symlink() and moved_root is not None:
-        # ⚑ The pointer could not be kept and nothing re-points it: the target sits inside
-        # a tree this relocation tears down, outside every tree it LANDS.  Bytes arrive, but
-        # they are now a SECOND copy, so say so rather than let them diverge quietly.
+        # ⚑ The pointer could not be kept: the target sits inside a tree this move tears
+        # down and outside every tree it LANDS.  Bytes arrive as a SECOND copy -- say so.
         import sys
         print(
             f"Warning: {src} is a link into {moved_root}, which this move removes and does "
@@ -1478,11 +1472,10 @@ def _carry_vault_contents(
     inside.  A copy failure RAISES, aborting before anything is deleted.
 
     ``moved_root`` is the source box's own root: a link INTO it names a place this
-    relocation tears down, so it is not carried at the old location.  ``relocated`` is
-    where this operation's carried trees LAND (``{old_root: new_root}``); a link whose
-    target sits inside one is re-pointed at the same relative position under its landing,
-    so the POINTER survives instead of becoming a second copy that diverges.  With no
-    mapping covering it the bytes are copied and the loss is warned.
+    relocation tears down, so it is not carried at the old location.  ``relocated``
+    (``{old_root: new_root}``) says where the carried trees LAND, so such a link is
+    re-pointed under its landing instead of becoming a second copy that diverges;
+    with no mapping over it the bytes are copied and the loss is warned.
     """
     for src, dst in _vault_carry_pairs(state, std, dst_ro, dst_rw):
         _copy_vault_leaf_contents(src, dst, moved_root=state.metadata_path,
@@ -1914,11 +1907,8 @@ def _to_default(
             # The carry may trade this empty leaf for a LINK; the unwind takes either.
             unwind.push(partial(_unwind_created_root, leaf))
 
-    # ⚑ THE VAULT CARRY (P1 data loss): the leaves above are created EMPTY and
-    # ``_remove_old_metadata`` below deletes the source — contents move first.
-    # The workspace LANDS at ``new_workspace``, so a vault link pointing into the
-    # source workspace is re-aimed at the same relative position under that
-    # landing rather than left as a second copy of a tree that moved.
+    # ⚑ THE VAULT CARRY (P1 data loss): the leaves above are EMPTY and the source is
+    # deleted below -- contents move first, and a vault link follows the landing.
     _carry_vault_contents(
         state, std, vault_ro, vault_rw,
         relocated=(
