@@ -882,6 +882,34 @@ class TestTheOtherPrintedCommandsAreQuoted:
                       tmp_path / "paste-move")
         _assert_inert(remove, ["box", "rm", name], tmp_path / "paste-rm")
 
+    def test_the_in_tree_connect_cure_carries_the_leaf_name_as_one_word(
+            self, name, tmp_path, config_file, tmp_home, credentials_dir):
+        """In-tree, the in-place convert cure renames the box to the LEAF's name."""
+        from kanibako.commands.workset_cmd import run_connect
+        from kanibako.project.workset import create_workset
+        from kanibako.settings.config import load_config
+        from kanibako.settings.paths import (
+            BoxMode, _early_scope, load_std_paths, register_primary_box_name)
+
+        std = load_std_paths(load_config(config_file))
+        ws = create_workset("xpb", (tmp_home / "ws_xpb").resolve(), std)
+        leaf = (ws.workspaces_dir / name).resolve()
+        leaf.mkdir(parents=True)
+        register_primary_box_name(std.primary_workset, "ownerbox", str(leaf),
+                                  early=_early_scope(std, BoxMode.primary))
+        err = io.StringIO()
+        with contextlib.redirect_stderr(err):
+            assert run_connect(argparse.Namespace(
+                workset="xpb", source=str(leaf), project_name=name, force=True)) == 1
+        text = err.getvalue().replace("\n", " ")
+
+        convert = re.search(r"\('(kanibako box convert .+?)', or 'kanibako box convert ",
+                            text)
+        assert convert, text
+        _assert_inert(convert.group(1),
+                      ["box", "convert", "ownerbox", "--workset", "xpb", "--name", name],
+                      tmp_path / "paste")
+
     def test_the_in_place_rename_cure_pastes_to_one_argv(self, name, tmp_path, monkeypatch):
         """``_lifecycle._default_rename_name`` refusing a primary box's in-place rename."""
         from unittest.mock import MagicMock
