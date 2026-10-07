@@ -81,7 +81,7 @@ from kanibako.settings.paths import (
 from kanibako.tree_copy import (
     copy_tree_keeping_links, failed_entries, lay_root_link, removed_root_of,
 )
-from kanibako.utils import write_project_gitignore
+from kanibako.utils import literal_path, write_project_gitignore
 from kanibako.project.workset import (
     Workset,
     add_project,
@@ -276,7 +276,7 @@ def resolve_lifecycle_target(
         config = load_config(user_config_file())
 
     raw = resolve_designation(std, old, unknown_name_is_path=True)
-    raw_path = Path(raw).resolve()
+    raw_path = Path(literal_path(raw))
 
     detection = detect_project_mode(raw_path, std, config)
 

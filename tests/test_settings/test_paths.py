@@ -129,13 +129,11 @@ class TestResolveProject:
     def test_reverse_lookup_reuses_registered_name_dir_present(
         self, config_file, tmp_home, credentials_dir,
     ):
-        """Bug A durable fix: an already-registered workspace whose stored path
-        string differs from the freshly-resolved one (symlink drift) is REUSED,
-        not re-minted, when the box dir is already present.
+        """Bug A durable fix: a workspace registered under a symlink is REUSED,
+        not re-minted, when resolved by that path and the box dir is present.
 
-        The membership reverse-lookup is resolved-path aware, so the symlink-vs-
-        real difference matches and reuses the existing name — so NO duplicate
-        membership entry and NO duplicate box dir are minted.
+        Both sides compare literally (Q4Jei 155-DUPLINK), so the stored link
+        string matches and NO duplicate membership entry or box dir is minted.
         """
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -145,13 +143,12 @@ class TestResolveProject:
         link_ws = tmp_home / "linkws"
         link_ws.symlink_to(real_ws)
 
-        # Registered under the SYMLINK string (unresolved) → the stored value
-        # differs from the resolved real path a fresh resolve computes.
+        # Registered under the SYMLINK string, not the real path it links.
         _reg_primary(std, "myproj", str(link_ws))
         (std.boxes / "myproj").mkdir(parents=True)  # box dir already present
 
         proj = resolve_project(
-            std, config, project_dir=str(real_ws), initialize=True,
+            std, config, project_dir=str(link_ws), initialize=True,
         )
 
         assert proj.name == "myproj"
@@ -177,7 +174,7 @@ class TestResolveProject:
         _reg_primary(std, "keep", str(link_ws))
 
         proj = resolve_project(
-            std, config, project_dir=str(real_ws), initialize=True,
+            std, config, project_dir=str(link_ws), initialize=True,
         )
 
         assert proj.name == "keep"

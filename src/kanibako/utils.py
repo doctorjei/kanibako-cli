@@ -202,6 +202,22 @@ def project_hash(project_path: str) -> str:
     return hashlib.sha256(project_path.encode()).hexdigest()
 
 
+def literal_path(value: str | os.PathLike[str]) -> str:
+    """*value* absolute and normalized, links unfollowed: box identity's form."""
+    return os.path.normpath(os.path.abspath(value))
+
+
+def logical_cwd() -> str:
+    """``$PWD`` when it names the current directory, else :func:`os.getcwd`."""
+    pwd = os.environ.get("PWD", "")
+    try:
+        if os.path.isabs(pwd) and os.path.samefile(pwd, "."):
+            return literal_path(pwd)
+    except OSError:
+        pass
+    return os.getcwd()
+
+
 # ---------------------------------------------------------------------------
 # Project .gitignore helper
 # ---------------------------------------------------------------------------

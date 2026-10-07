@@ -43,6 +43,7 @@ from kanibako.settings.messages import ERR_CONFIG_NULL_PATH
 from kanibako.settings.settings_resolve import SettingsError
 from kanibako.settings.workset_dirkeys import EarlyScope, early_repoint, resolve_workset_dir_key
 from kanibako.errors import LegacyRegistryIdentityError, ProjectError
+from kanibako.utils import literal_path
 
 # The DEFAULT leaf ``workset.registry`` falls back to — ⚑ a fallback, never a path
 # component: the key is repointable, so nothing may join this directly.
@@ -66,13 +67,7 @@ _SORTED_SECTIONS = (_BOXES_SECTION,)
 
 
 def _same_workspace(a: str, b: str) -> bool:
-    """True if *a* and *b* denote the SAME workspace path (resolved-path aware)."""
-    if a == b:
-        return True
-    try:
-        return Path(a).resolve() == Path(b).resolve()
-    except (OSError, RuntimeError):
-        return False
+    return literal_path(a) == literal_path(b)
 
 
 def _refuse_retired_registry_sections(

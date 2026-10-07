@@ -38,7 +38,7 @@ from kanibako.settings.paths import (
     resolve_workset_project,
     unregister_primary_box_name,
 )
-from kanibako.utils import confirm_prompt
+from kanibako.utils import confirm_prompt, literal_path
 from kanibako.channels.channels import workset_name_token, workset_root
 from kanibako.settings.workset_dirkeys import EarlyScope, refuse_inherited_per_owner
 
@@ -71,7 +71,7 @@ def _source_is_external(args: argparse.Namespace, std) -> bool:
     if not raw:
         return False
     try:
-        source_path = Path(raw).resolve()
+        source_path = Path(literal_path(raw))
     except (OSError, ValueError):
         return False
     return box_resolve.find_connected_external_box(source_path, std) is not None
@@ -87,10 +87,10 @@ def _run_duplicate_cross_mode(args: argparse.Namespace, std, config) -> int:
     if to_mode is BoxMode.named:
         return _duplicate_to_workset(args, std, config)
 
-    source_path = Path(args.source_path).resolve()
+    source_path = Path(literal_path(args.source_path))
     new_path = Path(args.new_path).resolve()
 
-    if source_path == new_path:
+    if new_path in (source_path, source_path.resolve()):
         print("Error: source and destination paths are the same.", file=sys.stderr)
         return 1
 
@@ -507,7 +507,7 @@ def _duplicate_to_local(src_proj, new_path, std, config, force, carried,
     # leaves no trace.
     try:
         if workspace_src is not None:
-            _merge_workspace(workspace_src, new_path, force)
+            _merge_workspace(workspace_src, new_path, force, share_root_link=True)
         if force and dst_project.is_dir():
             remove_box_tree(dst_project)
         copy_tree_keeping_links(
@@ -553,7 +553,7 @@ def _duplicate_to_workset(args, std, config) -> int:
     ws_name = stored_ws
     ws = load_workset(registry[ws_name], ws_name, early_system=std.early_system)
 
-    source_path = Path(args.source_path).resolve()
+    source_path = Path(literal_path(args.source_path))
     # ⚑ A duplicate is always an IN-TREE member (``copy_into_workset``), even ``--bare``:
     # a null ``workset.workspaces`` refuses before the prompt, not inside ``add_project``.
     from kanibako.project.workset import refuse_null_workspaces
@@ -813,7 +813,7 @@ def run_duplicate(args: argparse.Namespace) -> int:
     # (matching `--to primary`).
     src_for_detect = Path(args.source_path)
     if src_for_detect.is_dir():
-        src_mode = detect_project_mode(src_for_detect.resolve(), std, config).mode
+        src_mode = detect_project_mode(src_for_detect, std, config).mode
         if src_mode is BoxMode.standalone:
             args.to_mode = BoxMode.standalone.value
             return _run_duplicate_cross_mode(args, std, config)
@@ -821,11 +821,11 @@ def run_duplicate(args: argparse.Namespace) -> int:
             args.to_mode = BoxMode.primary.value
             return _run_duplicate_cross_mode(args, std, config)
 
-    source_path = Path(args.source_path).resolve()
+    source_path = Path(literal_path(args.source_path))
     new_path = Path(args.new_path).resolve()
 
     # 1. Paths must differ.
-    if source_path == new_path:
+    if new_path in (source_path, source_path.resolve()):
         print("Error: source and destination paths are the same.", file=sys.stderr)
         return 1
 

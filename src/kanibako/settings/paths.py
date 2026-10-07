@@ -51,7 +51,7 @@ from kanibako.settings.settings_resolve import (LevelView, ResolveCtx, SettingsE
 
 from kanibako.project.names import (resolve_name, resolve_qualified_name)
 from kanibako.launch.box_identity import Designation, classify_designation
-from kanibako.utils import project_hash, short_hash
+from kanibako.utils import literal_path, logical_cwd, project_hash, short_hash
 from kanibako.settings.bootstrap import (BASHRC_FILE, CONFIG_PATH_DEFAULTS,
                                          CREDS_WATCHER_LOG_SUFFIX, HOME_PATH,
                                          IGNORE_FILE, KANIBAKO_PATH, KIND_PROJECT, KIND_WORKSET,
@@ -1287,12 +1287,12 @@ def resolve_project(std: StandardPaths, config: BootstrapConfig, project_dir: st
                     name_override: str | None = None, register: bool = True) -> ProjectPaths:
     """Resolve (and optionally initialize) per-project paths (PRIMARY mode)."""
     raw = resolve_designation(std, project_dir, unknown_name_is_path=True)
-    project_path = Path(raw).resolve()
+    project_path = Path(literal_path(raw))
 
     if not project_path.is_dir():
         raise ProjectError(ERR_PROJECT_NO_PATH % project_path)
 
-    phash = project_hash(str(project_path))
+    phash = project_hash(str(project_path.resolve()))
     project_path_str = str(project_path)
 
     # Determine the project directory: name-based (boxes/{name}/).
@@ -1752,8 +1752,8 @@ def _is_standalone_meta_dir(root: Path) -> bool:
 def detect_project_mode(project_dir: Path, std: StandardPaths,
                         config: BootstrapConfig) -> DetectionResult:
     """Infer which project mode applies to *project_dir*, walking ancestors for markers."""
-    resolved = project_dir.resolve()
-    home = Path.home().resolve()
+    resolved = Path(literal_path(project_dir))
+    homes = {Path.home().resolve(), Path(literal_path(Path.home()))}
 
     # 1. Connected-external check.  ⚑ MUST run BEFORE the step-2 marker check: otherwise
     # import_standalone re-creates the very dual registration that --force removed.
@@ -1814,7 +1814,7 @@ def detect_project_mode(project_dir: Path, std: StandardPaths,
                 return ws_after
 
         # Stop conditions: reached $HOME or filesystem root.
-        if current == home:
+        if current in homes:
             break
         parent = current.parent
         if parent == current:
@@ -2179,7 +2179,7 @@ def _find_workset_for_path(project_dir: Path, std: StandardPaths) -> tuple[_Work
                                           load_workset_settings_doc, resolve_workspaces_locator)
 
     registry = list_worksets(std)
-    resolved = project_dir.resolve()
+    resolved = Path(literal_path(project_dir))
     for ws_name, root in registry.items():
         ws_root = root.resolve()
         # The RESOLVED ``workset.workspaces`` — a repoint is honored (§3.3).
@@ -2219,7 +2219,7 @@ def _resolve_workset_or_connected(project_dir: Path,
         # ⚑ Lazy import avoids a paths <-> box_resolve import cycle — do not hoist.
         from kanibako.launch import box_resolve
         from kanibako.project.workset import load_workset
-        owned = box_resolve.find_connected_external_box(project_dir.resolve(), std)
+        owned = box_resolve.find_connected_external_box(project_dir, std)
         if owned is not None:
             ws, proj_name = (load_workset(owned.workset_root, owned.workset_name,
                                           early_system=std.early_system),
@@ -2276,7 +2276,7 @@ def resolve_designation(std: StandardPaths, value: str | None, *, unknown_name_i
     """
     route = designation_route(value, name_first=name_first)
     if route is DesignationRoute.CWD:
-        return os.getcwd()
+        return logical_cwd()
     assert value is not None
     if route is DesignationRoute.INVALID:
         raise ProjectError(ERR_PROJECT_BAD_DESIGNATION % value)
@@ -2336,7 +2336,7 @@ def _resolve_designated_path(std: StandardPaths, config: BootstrapConfig, raw: s
                              initialize: bool, register: bool,
                              name_override: str | None = None) -> ProjectPaths:
     """Resolve the path a designation resolved to, by the mode detected there."""
-    raw_dir = Path(raw).resolve()
+    raw_dir = Path(literal_path(raw))
     detection = detect_project_mode(raw_dir, std, config)
     root_str = str(detection.project_root)
 
