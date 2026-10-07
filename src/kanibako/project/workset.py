@@ -765,13 +765,14 @@ def _load_workset(root: Path, name: str, *, early_system: EarlySystem) -> Workse
 def refuse_reserved_registered_name(name: str, root: Path, *, early_system: EarlySystem) -> None:
     """RAISE when a pre-1.8 registry entry carries a name ``create`` now refuses.
 
-    ``default`` and ``__default__`` are exempt: they were reserved before 1.8, and
-    ``workset rm`` cannot address them, so this cure would not run.
+    ⚑ An ALIAS VARIANT (``Default``, ``__DEFAULT__``) is refused like any other, and
+    is cured by DIRECTORY: the ``workset`` verbs resolve ``default``/``__default__``
+    to the synthesized default workset, so a name-based step answers for PRIMARY and
+    never reaches the registered entry.
     """
     if not is_reserved_workset_name(name):
         return
-    if find_identifier(name, RESERVED_WORKSET_IDENTIFIERS) is not None:
-        return
+    aliased = find_identifier(name, RESERVED_WORKSET_IDENTIFIERS) is not None
     try:
         boxes = workset_registry.load_workset_boxes(
             Workset(name=name, root=root, early_system=early_system).registry_path)
@@ -781,9 +782,12 @@ def refuse_reserved_registered_name(name: str, root: Path, *, early_system: Earl
         (box, Path(path).relative_to(root)) for box, path in boxes.items()
         if Path(path).is_relative_to(root)
     )
-    moved = is_reserved_workset_name(root.name)
+    # ⚑ FORCED for an alias variant even when the directory is already legal: the
+    # reserved thing is the registry KEY, and the basename is the only name a
+    # re-import can give this tree.
+    moved = aliased or is_reserved_workset_name(root.name)
     new_root = root.parent / "<new name>" if moved else root
-    steps = [f"kanibako workset rm {shlex.quote(name)} --force"]
+    steps = [] if aliased else [f"kanibako workset rm {shlex.quote(name)} --force"]
     if moved:
         steps.append(f"mv {shlex.quote(str(root))} {shlex.quote(str(new_root))}")
     verb = "box remap --force" if moved else "box info"
@@ -798,17 +802,28 @@ def refuse_reserved_registered_name(name: str, root: Path, *, early_system: Earl
         steps.append(f"cd {shlex.quote(str(new_root))} && kanibako box info")
         tail = ("The last command imports the working set under its directory name, "
                 "then exits 1 saying you are not inside a project, which is expected.")
-    refused = RESERVED_WORKSET_NAMES - RESERVED_WORKSET_IDENTIFIERS
+    if aliased:
+        refused = ", ".join(sorted(RESERVED_WORKSET_IDENTIFIERS))
+        why = (
+            f"{refused} are the `workset` verbs' name for the primary working set, so "
+            "no working set may take one, and `workset rm` reaches primary rather than "
+            "this entry"
+        )
+        heading = "'A working set named default must be registered again'"
+    else:
+        refused = ", ".join(sorted(RESERVED_WORKSET_NAMES - RESERVED_WORKSET_IDENTIFIERS))
+        why = (
+            f"{refused} belong to the primary and standalone partitions: a working set "
+            f"called '{name}' would share their container names (kb-<workset>-<box>) or "
+            "channel addresses"
+        )
+        heading = "'A working set named primary or standalone must be registered again'"
     raise ReservedWorksetNameError(
         f"Working set '{name}' is registered under a reserved name. The names "
-        f"{', '.join(sorted(refused))} belong to the primary and standalone "
-        f"partitions: a working set called '{name}' would share their container "
-        f"names (kb-<workset>-<box>) or channel addresses. kanibako 1.7 accepted the "
-        f"name; 1.8 refuses it. Register the working set again under its directory "
-        f"name; its files stay where they are:\n"
+        f"{why}. kanibako 1.7 accepted the name; 1.8 refuses it. Register the working "
+        "set again under its directory name; its files stay where they are:\n"
         + "".join(f"  {step}\n" for step in steps)
-        + f"{tail} See MIGRATION.md, 'A working set named primary or standalone must "
-        f"be registered again'."
+        + f"{tail} See MIGRATION.md, {heading}."
     )
 
 
