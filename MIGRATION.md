@@ -6871,7 +6871,7 @@ unaffected — its resolved store is `<root>/box_data`, exactly as before.
 **Read this if you ever wrote an agent plugin as a `.py` file dropped into a `plugins/` directory.**
 
 **What changed.** Plugins load only from installed packages: the `kanibako.agents` entry-point
-group, plus the `kanibako.plugins.*` namespace scan. Neither of these directories is read any more:
+group, plus the `kanibako.plugins.*` namespace scan. Neither of these directories is read anymore:
 
 | where a dropped `.py` used to load | now |
 |---|---|
