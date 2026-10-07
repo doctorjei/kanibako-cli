@@ -309,3 +309,74 @@ class TestLayRootLink:
         dst.write_text("not a directory")
         assert lay_root_link(src, dst) is False
         assert dst.read_text() == "not a directory"
+
+
+class TestALoopingRootLinkIsRefused:
+    """A link that cannot resolve because it LOOPS fails before anything is laid.
+
+    Laid from an unrolled loop it carries nothing and poisons the caller's unwind
+    instead -- the reviewed tip failed the move AND could not restore the record.
+    A DANGLING link is not that, and must still be carried.
+    """
+
+    def test_a_self_looping_relative_link_raises_and_lands_nothing(self, layout):
+        src, _outside, dst = layout
+        shutil.rmtree(src)
+        os.symlink(src.name, src)
+        with pytest.raises(shutil.Error, match="does not resolve"):
+            copy_tree_keeping_links(src, dst, keep_root_link=True)
+        assert not os.path.lexists(dst)
+
+    def test_a_two_link_cycle_raises(self, layout):
+        src, _outside, dst = layout
+        shutil.rmtree(src)
+        os.symlink("other", src)
+        os.symlink(src.name, src.parent / "other")
+        with pytest.raises(shutil.Error, match="Too many levels"):
+            copy_tree_keeping_links(src, dst, keep_root_link=True)
+        assert not os.path.lexists(dst)
+
+    def test_an_absolute_self_loop_raises(self, layout):
+        src, _outside, dst = layout
+        shutil.rmtree(src)
+        os.symlink(str(src), src)
+        with pytest.raises(shutil.Error, match="does not resolve"):
+            lay_root_link(src, dst)
+        assert not os.path.lexists(dst)
+
+    def test_a_dangling_link_is_carried_not_refused(self, layout):
+        src, outside, dst = layout
+        shutil.rmtree(src)
+        os.symlink(str(outside / "no-such"), src)
+        assert lay_root_link(src, dst) is True
+        assert os.readlink(dst) == str(outside / "no-such")
+
+
+class TestMovedRootIsNotLaidAsADanglingLanding:
+    """A link whose target travels with the operation must not be re-pointed at the
+    place that operation tears down."""
+
+    def test_a_target_inside_the_moved_root_answers_false(self, layout):
+        src, _outside, dst = layout
+        inside = src.parent / "sibling"
+        inside.mkdir()
+        (inside / "go.txt").write_text("go")
+        shutil.rmtree(src)
+        os.symlink(str(inside), src)
+        assert lay_root_link(src, dst, moved_root=src.parent) is False
+        assert not os.path.lexists(dst)
+
+    def test_a_target_outside_the_moved_root_is_still_carried(self, layout):
+        src, outside, dst = layout
+        shutil.rmtree(src)
+        os.symlink(str(outside), src)
+        assert lay_root_link(src, dst, moved_root=src.parent) is True
+        assert os.readlink(dst) == str(outside)
+
+    def test_without_a_moved_root_the_link_is_laid_as_before(self, layout):
+        src, _outside, dst = layout
+        inside = src.parent / "sibling"
+        inside.mkdir()
+        shutil.rmtree(src)
+        os.symlink(str(inside), src)
+        assert lay_root_link(src, dst) is True
