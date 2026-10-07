@@ -15,8 +15,8 @@
 #
 # ⛔ THE REFUSAL IS NOT PER LEVEL. At the ``agent`` tier it turns on the ARM: the
 # cure writes the persona the entry is STORED UNDER, so one entry refuses under
-# its own persona and succeeds under another's. Measured per arm in section 5, and
-# ``_behavior_cure_checks_file`` is the one place that decides it.
+# its own persona and succeeds under another's. Measured per arm in section 5; for
+# the behavior keys ``_behavior_cure_checks_file`` is the one place that decides it.
 #
 # What is therefore stated unconditionally is the one fact that holds at every
 # level and for every shape: a table left with nothing under it parses as null,
@@ -52,6 +52,7 @@ _LEVELS = ["base", "system", "workset", "box", "agent"]
 #: The refusal this step promises, and the truth it states in its place.
 _PROMISES_REFUSAL = "§2a refuses a write that collides with a retired entry"
 _PROMISES_NO_REFUSAL = "it does not refuse this entry"
+_PROMISES_BAD_ENTRY_REFUSAL = "§2a refuses a write that collides with a bad entry"
 
 #: ``  Delete the `agent: default: default_agent` entry from /p FIRST — and `a:` / `b:`
 #: with it, if that leaves them empty: …`` — the step, and the parents it names.
@@ -431,16 +432,29 @@ def test_the_nested_table_arm_runs_end_to_end(tree) -> None:
     )
 
 
-def test_the_nested_table_arm_claims_no_refusal_in_process() -> None:
-    """The same claim pinned without a subprocess: ``agent_file`` passes no
-    *checks_file*, so the arm defaults to the sentence that promises nothing."""
+@pytest.mark.parametrize(
+    ("node", "refuses"), [("shell", False), ("claude", True), ("Claude", True)],
+)
+def test_the_nested_table_arm_promises_a_refusal_only_in_its_own_file(node, refuses) -> None:
+    """``agent set claude`` writes claude's file: measured rc 1 while that file still
+    stores ``self.claude``, rc 0 when shell's does. Case folds as the node does."""
     with pytest.raises(SettingsError) as exc:
         _refuse_nested_tables(
-            {"claude": {"env": {"KANI_PROBE": "yes"}}}, node="shell", path=Path("/x/agent.yaml"),
+            {"claude": {"env": {"KANI_PROBE": "yes"}}}, node=node, path=Path("/x/agent.yaml"),
         )
     msg = str(exc.value)
-    assert _PROMISES_REFUSAL not in msg
-    assert _PROMISES_NO_REFUSAL in msg
+    assert (_PROMISES_BAD_ENTRY_REFUSAL in msg) is refuses
+    assert (_PROMISES_NO_REFUSAL in msg) is not refuses
+    assert _PROMISES_REFUSAL not in msg, "a nested table is not a retired entry"
+
+
+def test_the_retired_mirror_in_an_agent_file_promises_its_refusal() -> None:
+    """Its cure is ``agent set <agent>``; for the file's own agent that ``set`` reads this
+    file and refuses (measured rc 1), so promising nothing would be false."""
+    msg = _file_key_refusal("agent", {"box": {"agent": {"model": "sonnet"}}})
+    assert "kanibako agent set <agent> model=sonnet" in msg
+    assert _PROMISES_REFUSAL in msg
+    assert _PROMISES_NO_REFUSAL not in msg
 
 
 # --------------------------------------------------------------------------- #
