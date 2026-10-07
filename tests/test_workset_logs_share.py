@@ -248,6 +248,53 @@ class TestResetAndCreateAreDoorsToo:
                                  target_root=tmp_home / "wsC") is None
 
 
+class TestTheCliDoorsRefuse:
+    """``system reset`` and ``workset create`` as the CLI runs them."""
+
+    @staticmethod
+    def run(*argv: str) -> int:
+        from kanibako.cli import build_parser
+
+        args = build_parser().parse_args(list(argv))
+        return args.func(args)
+
+    def test_a_system_reset_that_lands_two_worksets_on_one_dir_is_refused(
+            self, std, tmp_home, config_file, capsys):
+        a, b = two_worksets(std, tmp_home)
+        with_system_logs(config_file, "@meta.workset.path/mylogs")
+        set_own_logs(a.root, str(b.root / "logs"))
+        before = system_settings_path().read_bytes()
+
+        assert self.run("system", "reset", "workset.logs") == 1
+        err = capsys.readouterr().err
+        assert "'A', 'B'" in err
+        assert system_settings_path().read_bytes() == before, "nothing may be written"
+        assert self.run("system", "reset", "--all") == 1
+        assert system_settings_path().read_bytes() == before
+
+        assert self.run("system", "reset", "--force", "workset.logs") == 0
+        assert system_settings_path().read_bytes() != before
+
+    def test_a_system_reset_that_shares_nothing_is_not_refused(
+            self, std, tmp_home, config_file):
+        two_worksets(std, tmp_home)
+        with_system_logs(config_file, "@meta.workset.path/mylogs")
+
+        assert self.run("system", "reset", "workset.logs") == 0
+
+    def test_an_existing_root_is_reported_before_a_logs_share(
+            self, std, tmp_home, config_file, capsys):
+        """The logs check runs after create's own checks, so its reason is never false."""
+        two_worksets(std, tmp_home)
+        with_system_logs(config_file, "@meta.workset.path/../shared_logs")
+        (tmp_home / "wsC").mkdir()
+
+        assert self.run("workset", "create", "--name", "C", str(tmp_home / "wsC")) == 1
+        err = capsys.readouterr().err
+        assert "already exists" in err
+        assert "SAME log directory" not in err
+
+
 # ------------------------------------------------- the forced share's destructive verb
 
 class TestAForcedSharesPurgeTakesOnlyItsOwnPart:

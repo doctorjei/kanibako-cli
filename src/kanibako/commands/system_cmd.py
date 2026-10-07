@@ -60,7 +60,9 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
         help="Remove all overrides",
     )
     reset_p.add_argument(
-        "--force", action="store_true", help="Skip confirmation prompts",
+        "--force", action="store_true",
+        help="Skip confirmation prompts; accept a workset.logs directory shared by "
+             "working sets",
     )
     reset_p.set_defaults(func=run_reset)
 
@@ -385,6 +387,21 @@ def _run_system_config(args: argparse.Namespace) -> int:
     action, key, value = parse_config_arg(
         key_value, set_null=getattr(args, "null", False),
     )
+
+    # ⚑ Keyspec § 0: dropping the system value can land worksets on one log dir.
+    if args.reset and (key or getattr(args, "all_keys", False)):
+        reset_std, _ = _system_target_std(cf)
+        if reset_std is not None:
+            from kanibako.project.workset import logs_share_refusal
+            from kanibako.settings.settings_resolve import UNSET
+
+            _collision = logs_share_refusal(
+                "workset.logs" if getattr(args, "all_keys", False) else key, UNSET,
+                reset_std, force=args.force, scope="system",
+            )
+            if _collision is not None:
+                print(_collision, file=sys.stderr)
+                return 1
 
     # --reset --all
     if args.reset and getattr(args, "all_keys", False):

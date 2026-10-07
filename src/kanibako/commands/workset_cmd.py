@@ -417,18 +417,9 @@ def run_create(args: argparse.Namespace) -> int:
         print(f"Error: {e}", file=sys.stderr)
         return 1
 
-    # ⚑ Keyspec § 0: the new workset's inherited workset.logs may land on another's dir.
-    if find_identifier(name, list_worksets(std)) is None:
-        _collision = logs_share_refusal(
-            "workset.logs", UNSET, std, force=getattr(args, "force", False),
-            scope="workset", target_name=name, target_root=path,
-        )
-        if _collision is not None:
-            print(_collision, file=sys.stderr)
-            return 1
-
     try:
-        ws = create_workset(name, path, std)
+        ws = create_workset(name, path, std,
+                            force_logs_share=getattr(args, "force", False))
     except WorksetError as e:
         print(f"Error: {e}", file=sys.stderr)
         return 1

@@ -1047,8 +1047,12 @@ def logs_share_refusal(
         return None
     names, shared = hit
     sharers = ", ".join(f"'{name}'" for name in names)
-    what = (f"workset.logs = {value!r} ({scope} scope)" if value is not UNSET
-            else f"working set '{_shown(target_name or '')}' with no workset.logs of its own")
+    if value is not UNSET:
+        what = f"workset.logs = {value!r} ({scope} scope)"
+    elif scope == "system":
+        what = "workset.logs with no system-scope value"
+    else:
+        what = f"working set '{_shown(target_name or '')}' with no workset.logs of its own"
     return (
         f"Error: nothing was written: {what} resolves "
         f"to the SAME log directory ({shared}) for working sets {sharers}. Two working "
@@ -1196,9 +1200,12 @@ def is_workset_skeleton(root: Path, *, early: EarlyScope) -> bool:
 # ---------------------------------------------------------------------------
 
 def create_workset(
-    name: str, root: Path, std: StandardPaths,
+    name: str, root: Path, std: StandardPaths, *, force_logs_share: bool = False,
 ) -> Workset:
-    """Create a new workset directory structure and register it globally."""
+    """Create a new workset directory structure and register it globally.
+
+    *force_logs_share* accepts a ``workset.logs`` directory another workset resolves to.
+    """
     if not name:
         raise WorksetError("Workset name must not be empty.")
 
@@ -1228,6 +1235,10 @@ def create_workset(
     if root.exists():
         raise WorksetError(f"Workset root already exists: {root}")
     refuse_inherited_per_owner(root, EarlyScope(std.early_system, name), doc=None)
+    shared = logs_share_refusal("workset.logs", UNSET, std, force=force_logs_share,
+                                scope="workset", target_name=name, target_root=root)
+    if shared is not None:
+        raise WorksetError(shared.removeprefix("Error: "))
 
     # Multi-step: disk skeleton, then the ONE global registration.  A crash between
     # them would orphan dirs, so unwind in reverse: all-or-nothing.
