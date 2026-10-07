@@ -945,6 +945,15 @@ def _run_workset_config(args: argparse.Namespace) -> int:
         return 0
 
     if action == ConfigAction.set:
+        # ⚑ Keyspec § 0 "Per-owner resources": two instances whose OWN values name one
+        # per-owner resource share it, and the share is refused by name unless ``--force``.
+        # The set door's own per-owner arm stands down here (the write is AT the owner's
+        # scope), so this is the only thing that keeps a second workset from being aimed at
+        # the first one's log directory.
+        _collision = _logs_share_refusal(key, value, ws, std, force=args.force)
+        if _collision is not None:
+            print(_collision, file=sys.stderr)
+            return 1
         # ⚑ The WORKING SET is the target (spec §2a): ``resolve_inputs`` builds its full
         # cascade — the system file, ``workset.yaml`` and the workset anchors. It names
         # no box, so every ``@meta.box.*`` anchor is OMITTED, never fabricated.
