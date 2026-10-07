@@ -262,15 +262,21 @@ def _run_duplicate_cross_mode(args: argparse.Namespace, std, config) -> int:
 def _merge_workspace(src: Path, dst: Path, force: bool) -> None:
     """Copy the workspace *src* to *dst*, merging into an existing *dst* under *force*.
 
-    A LINKED workspace is re-created as a link when *dst* is absent or empty (Q102 (a)).
+    ⚑ A duplicate never lays the source's root LINK, though the source workspace is
+    one.  Every caller here makes *dst* a NEW box, and at ``--to standalone`` that
+    destination IS the new box ROOT, which ``_duplicate_to_standalone`` goes on to
+    fill with ``workset.yaml``, ``box_data/`` and ``.gitignore``: laid as a link,
+    those land in the user's own directory and ``box info <dst>`` answers the SOURCE
+    box.  A duplicate is a copy, not a relocation -- the bytes come along, the
+    pointer does not.  Q102's "symlinks beget symlinks" governs the doors that MOVE
+    a box; this is not one of them.
 
     Raises ``ProjectError`` naming each entry the merge could not copy.
     """
     from kanibako.errors import ProjectError
 
     try:
-        if not lay_root_link(src, dst):
-            copy_tree_keeping_links(src, dst, dirs_exist_ok=force, replace_existing=force)
+        copy_tree_keeping_links(src, dst, dirs_exist_ok=force, replace_existing=force)
     except shutil.Error as e:
         listing = failed_entries(e)
         detail = f"; {listing}" if listing is not None else f": {e}"
