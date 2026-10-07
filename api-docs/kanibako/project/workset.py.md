@@ -54,6 +54,9 @@ def report_retained_vaults(root: Path, retained: Iterable[Path]) -> None
 def is_reserved_workset_name(name: str) -> bool
 def refuse_reserved_registered_name(name: str, root: Path, *, early_system: EarlySystem) -> None
 def refuse_retired_workset_identity(root: Path) -> None
+def find_logs_share(std: StandardPaths, *, value: 'str | None', scope: str, target_name: str | None=None, target_root: Path | None=None) -> 'tuple[tuple[str, ...], Path] | None'
+def logs_share_refusal(canonical_key: str, value: 'str | None', std: StandardPaths, *, force: bool, scope: str, target_name: str | None=None, target_root: Path | None=None) -> str | None
+def purge_box_logs(std: StandardPaths, logs_dir: Path | None, box: str, *, workset_root: Path | None) -> list[Path]
 def is_workset_skeleton(root: Path, *, early: EarlyScope) -> bool
 def create_workset(name: str, root: Path, std: StandardPaths) -> Workset
 def load_workset(root: Path, name: str, *, early_system: EarlySystem) -> Workset
@@ -75,6 +78,9 @@ def _holds_only_arms(path: Path, arms: set[Path]) -> bool
 def _journal_connect(journal: Path | None, box_path: Path, *, name: str, workset: str | None=None, workspace: str | None=None)
 def _load_workset(root: Path, name: str, *, early_system: EarlySystem) -> Workset
 def _load_registry(std: StandardPaths) -> dict[str, Path]
+def _logs_walk_targets(std: StandardPaths) -> dict[str, Path]
+def _system_logs_repoint(std: StandardPaths) -> object
+def _logs_share_partners(std: StandardPaths, logs_dir: Path, box: str, *, workset_root: Path | None) -> tuple[str, ...]
 def _workset_skeleton_dirs(root: Path, *, early: EarlyScope) -> tuple[Path, ...]
 def _path_in_tree(path: Path, root: Path) -> bool
 def _detach_project(ws: Workset, name: str) -> None

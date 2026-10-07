@@ -1111,7 +1111,8 @@ def purge_box_logs(
     verb's way, so a forced share costs the ordinary purge nothing.
 
     *workset_root* is the workset the verb acts for; ``None`` for a STANDALONE box, whose
-    degenerate workset is not in the walk.  Returns what was actually deleted.
+    degenerate workset is not in the walk.  Returns what was actually deleted — a kept
+    file is NOT in that list, because every caller prints it as "Removed".
     """
     partners = () if logs_dir is None else _logs_share_partners(
         std, logs_dir, box, workset_root=workset_root,

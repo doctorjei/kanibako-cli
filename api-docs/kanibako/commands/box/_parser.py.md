@@ -51,7 +51,7 @@ def _purge_dir(target: Path) -> bool
 def _assert_deletable(path, *, must_be_under: Path | None=None) -> Path
 def _teardown_primary_box(std, name: str, metadata_dir: Path) -> bool
 def _standalone_teardown_plan(root: Path, registered_name: str, *, early: EarlyScope) -> _StandaloneTeardown
-def _teardown_standalone_box(root: Path, plan: _StandaloneTeardown, *, early: EarlyScope) -> bool
+def _teardown_standalone_box(root: Path, plan: _StandaloneTeardown, *, std: 'StandardPaths', early: EarlyScope) -> bool
 def _read_box_image(settings_file: Path) -> str | None
 def _read_box_image_tiered(box_tier: Path, workset_tier: Path) -> str | None
 def _purge_deregistered(std, name: str, entry: dict, args: argparse.Namespace) -> int

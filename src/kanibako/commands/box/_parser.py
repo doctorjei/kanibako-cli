@@ -1896,8 +1896,7 @@ def _teardown_standalone_box(
     metadata_dir, retained_store = standalone_store_teardown_plan(root, early=early)
     removable_vault, retained_vault, logs_dir, box_name = plan
     # ⚑ Logs are deleted by NAME, so a log under a ``workset.logs`` pointed outside
-    # the store goes too.  ⚑ SCOPED: a same-named box in a working set FORCED onto this
-    # same log directory makes the file unattributable, and it is kept and reported.
+    # the store goes too.
     for log_file in purge_box_logs(std, logs_dir, box_name, workset_root=root):
         print(f"Removed log: {log_file}")
     if retained_store is not None:

@@ -1522,13 +1522,7 @@ def remove_box_logs(logs_dir: Path | None, box: str, *, keep: Iterable[Path] = (
     """Delete box *box*'s log files from *logs_dir*; returns the ones that existed.
 
     A ``None`` *logs_dir* (``workset.logs`` is ``<None>``) holds no logs: nothing to delete.
-
-    *keep* names files this verb must leave ALONE even though *box* names them here: the
-    shared-log case, where a same-named box in another working set resolves to the very
-    same file, so deleting it would delete that other box's logs
-    (:func:`kanibako.project.workset.purge_box_logs`).  A kept file is NOT in the
-    returned list — every caller prints its result as "Removed", and a kept file in it
-    would make that print a lie.
+    *keep* spares files *box* also names elsewhere — see ``purge_box_logs``.
     """
     removed: list[Path] = []
     if logs_dir is None:
