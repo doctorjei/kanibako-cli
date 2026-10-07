@@ -28,7 +28,7 @@ _VAULT_RO_KEY = 'vault_ro'
 _VAULT_RW_KEY = 'vault_rw'
 _VAULT_RO_LEAF = f'{_VAULT_LEAF}/{bootstrap.RO_PATH}'
 _VAULT_RW_LEAF = f'{_VAULT_LEAF}/{bootstrap.RW_PATH}'
-_UNDROPPABLE: set[str] = set()
+_UNDROPPABLE: set[tuple[Path, str]] = set()
 ```
 
 ## Functions
