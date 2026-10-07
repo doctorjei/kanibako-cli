@@ -15,11 +15,13 @@ covered:
     detach must KEEP the box running, and a reattach must hit the SAME
     container, not recreate it (the "detach -> keep" half).
 
-They use the TESTING-ONLY ``DeadTarget`` / ``LiveTarget`` directory-plugins
+They use the TESTING-ONLY ``DeadTarget`` / ``LiveTarget`` plugins
 (``dead.py`` / ``live.py``) plus their ``dead-agent`` / ``live-agent`` scripts,
-all of which live under ``tests/`` only and are never packaged.  Requires
-podman + tmux + the e2e image, and pexpect; they SKIP gracefully when any is
-absent.
+all of which live under ``tests/`` only and are never packaged.  Each plugin is
+published to the subprocess as an INSTALLED one — a synthetic ``*.dist-info`` on
+the child's ``PYTHONPATH`` (see :mod:`tests.e2e._entry_point_plugin`), which is the
+only route discovery reads.  Requires podman + tmux + the e2e image, and pexpect;
+they SKIP gracefully when any is absent.
 """
 
 from __future__ import annotations
@@ -35,6 +37,10 @@ import pytest
 # Graceful skip when pexpect is not installed (it is a dev-only test dep).
 pexpect = pytest.importorskip("pexpect")
 
+from tests.e2e._entry_point_plugin import (  # noqa: E402
+    entry_point_plugin_path,
+    install_entry_point_plugin,
+)
 from tests.e2e.conftest import (  # noqa: E402
     CONTAINER_PREFIX,
     box_container,
@@ -80,9 +86,9 @@ def dead_env(tmp_path, host_storage_conf) -> dict:
       - the ``dead-agent`` crash script is installed at
         ``<HOME>/.local/bin/dead-agent`` (the per-agent contract path that
         ``DeadTarget.detect()`` anchors to), chmod 0755,
-      - ``dead.py`` is dropped into
-        ``<XDG_DATA_HOME>/kanibako/plugins/dead.py`` (the user directory-plugin
-        tier) so the plugin is discovered, and
+      - ``dead.py`` is installed as an ``kanibako.agents`` ENTRY POINT on the
+        child's ``PYTHONPATH`` (a synthetic ``*.dist-info`` beside the module),
+        which is the only route discovery reads, and
       - system settings pin ``system.agent: dead`` so
         ``resolve_agent`` selects it unambiguously.
 
@@ -107,10 +113,11 @@ def dead_env(tmp_path, host_storage_conf) -> dict:
     shutil.copy2(_DEAD_EXE_SRC, dead_binary)
     dead_binary.chmod(0o755)
 
-    # The DeadTarget plugin in the user directory-plugin tier.
-    plugin_dir = data_home / "kanibako" / "plugins"
-    plugin_dir.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(_PLUGIN_SRC, plugin_dir / "dead.py")
+    # DeadTarget, published to the child the way an installed package is.
+    plugin_site = install_entry_point_plugin(
+        tmp_path / "ep", src=_PLUGIN_SRC, module="dead",
+        entry="dead", attr="DeadTarget", dist="dead-agent",
+    )
 
     # Pin the e2e image and system.agent = dead, so selection picks DeadTarget
     # (mirrors e2e_env's claude pin).  ⚑ The pin is REQUIRED: nothing is selected
@@ -129,6 +136,8 @@ def dead_env(tmp_path, host_storage_conf) -> dict:
         # Put the dead-agent dir first on PATH for parity with e2e_env (detect()
         # anchors to ~/.local/bin, but keep PATH consistent).
         "PATH": f"{dead_bin_dir}:{env.get('PATH', '')}",
+        # The synthetic install the child discovers DeadTarget through.
+        "PYTHONPATH": entry_point_plugin_path(env, plugin_site),
         # Pin rootless podman storage to the host's real graphroot (see
         # e2e_env / host_storage_conf).
         "CONTAINERS_STORAGE_CONF": str(host_storage_conf),
@@ -244,9 +253,9 @@ def live_env(tmp_path, host_storage_conf) -> dict:
       - the ``live-agent`` script is installed at ``<HOME>/.local/bin/live-agent``
         (the per-agent contract path that ``LiveTarget.detect()`` anchors to),
         chmod 0755,
-      - ``live.py`` is dropped into
-        ``<XDG_DATA_HOME>/kanibako/plugins/live.py`` (the user directory-plugin
-        tier) so the plugin is discovered, and
+      - ``live.py`` is installed as an ``kanibako.agents`` ENTRY POINT on the
+        child's ``PYTHONPATH`` (a synthetic ``*.dist-info`` beside the module),
+        which is the only route discovery reads, and
       - system settings pin ``system.agent: live`` so
         ``resolve_agent`` selects it unambiguously.
 
@@ -271,10 +280,11 @@ def live_env(tmp_path, host_storage_conf) -> dict:
     shutil.copy2(_LIVE_EXE_SRC, live_binary)
     live_binary.chmod(0o755)
 
-    # The LiveTarget plugin in the user directory-plugin tier.
-    plugin_dir = data_home / "kanibako" / "plugins"
-    plugin_dir.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(_LIVE_PLUGIN_SRC, plugin_dir / "live.py")
+    # LiveTarget, published to the child the way an installed package is.
+    plugin_site = install_entry_point_plugin(
+        tmp_path / "ep", src=_LIVE_PLUGIN_SRC, module="live",
+        entry="live", attr="LiveTarget", dist="live-agent",
+    )
 
     # Pin the e2e image and system.agent = live, so selection picks LiveTarget
     # (mirrors dead_env's dead pin).  ⚑ The pin is REQUIRED: nothing is selected
@@ -293,6 +303,8 @@ def live_env(tmp_path, host_storage_conf) -> dict:
         # Put the live-agent dir first on PATH for parity with dead_env (detect()
         # anchors to ~/.local/bin, but keep PATH consistent).
         "PATH": f"{live_bin_dir}:{env.get('PATH', '')}",
+        # The synthetic install the child discovers LiveTarget through.
+        "PYTHONPATH": entry_point_plugin_path(env, plugin_site),
         # Pin rootless podman storage to the host's real graphroot (see
         # e2e_env / host_storage_conf).
         "CONTAINERS_STORAGE_CONF": str(host_storage_conf),

@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+import json
+import os
+import subprocess
+import sys
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -19,6 +23,9 @@ from kanibako.targets.base import (
     Target,
 )
 from kanibako.targets.shell import ShellTarget
+
+from tests.e2e._entry_point_plugin import install_entry_point_plugin
+from tests.support.repo import REPO_ROOT
 
 
 def _isolate_config(tmp_path, monkeypatch) -> None:
@@ -791,3 +798,89 @@ class TestFileDropDirectoriesAreNotADiscoveryRoute:
         with patch("kanibako.targets.entry_points", return_value=[ep]):
             targets = discover_targets()
         assert targets["myplugin"] is module.MyFilePlugin
+
+
+# The e2e PTY fixtures are the reason this route needs a probe at all.
+_E2E_FIXTURES = Path(REPO_ROOT) / "tests" / "e2e" / "fixtures"
+
+# (fixture dir, module name, entry-point key, Target class)
+_PUBLISHED_AGENTS = [
+    ("dead-agent", "dead", "dead", "DeadTarget"),
+    ("live-agent", "live", "live", "LiveTarget"),
+]
+
+_DISCOVER_IN_CHILD = (
+    "import json;"
+    "from kanibako.targets import discover_targets;"
+    "print(json.dumps(sorted(discover_targets())))"
+)
+
+
+def _discover_in_child(pythonpath: str) -> list[str]:
+    """Every node ``discover_targets`` returns in a VIRGIN interpreter.
+
+    A fresh subprocess, per the house rule in ``test_plugin_import_compat``: the
+    whole mechanism under test is an import-time one (``importlib.metadata`` reads
+    ``sys.path``), so it cannot be observed by patching in a process that already
+    imported the packages.
+    """
+    proc = subprocess.run(
+        [sys.executable, "-c", _DISCOVER_IN_CHILD],
+        capture_output=True,
+        text=True,
+        cwd=REPO_ROOT,
+        env={**os.environ, "PYTHONPATH": pythonpath},
+        timeout=120,
+    )
+    assert proc.returncode == 0, f"discovery child failed:\n{proc.stderr}"
+    return json.loads(proc.stdout)
+
+
+class TestAPluginPublishedAsAnInstalledEntryPoint:
+    """The route the e2e PTY fixtures publish their plugins through.
+
+    ⚑ THE FIXTURES ARE THE SUBJECT, NOT A LOOKALIKE.  ``dead``/``live`` are the
+    REAL ``tests/e2e/fixtures`` modules and the REAL
+    :func:`tests.e2e._entry_point_plugin.install_entry_point_plugin` the e2e calls,
+    so a break in either is a break the e2e would hit.  Discovery reads installed
+    metadata and nothing else, so a plugin a test merely drops in a directory is
+    never seen — publishing means writing the ``*.dist-info`` a package install
+    would have written, and putting it on the child's ``PYTHONPATH``.
+    """
+
+    @pytest.mark.parametrize(
+        "fixture_dir,module,entry,attr", _PUBLISHED_AGENTS,
+        ids=[row[2] for row in _PUBLISHED_AGENTS],
+    )
+    def test_the_plugin_is_discovered_and_is_the_real_class(
+        self, tmp_path, fixture_dir, module, entry, attr
+    ):
+        site = install_entry_point_plugin(
+            tmp_path / "ep",
+            src=_E2E_FIXTURES / fixture_dir / f"{module}.py",
+            module=module, entry=entry, attr=attr, dist=f"{module}-agent",
+        )
+        nodes = _discover_in_child(os.pathsep.join((str(site), str(REPO_ROOT / "src"))))
+        assert entry in nodes, (
+            f"{attr} was not discovered from its synthetic install — the e2e PTY "
+            f"fixtures would start with no such agent:\n{nodes}"
+        )
+
+    def test_publishing_is_what_makes_the_difference(self, tmp_path):
+        """Anti-vacuity: WITHOUT the published install the same plugin is invisible.
+
+        The module is present and importable either way, so the only difference is
+        the metadata discovery reads.  Without this, a fixture could load because
+        the host happened to have the agent installed and the route would read as
+        working for the wrong reason.
+        """
+        fixture_dir, module, entry, attr = _PUBLISHED_AGENTS[0]
+        install_entry_point_plugin(
+            tmp_path / "ep",
+            src=_E2E_FIXTURES / fixture_dir / f"{module}.py",
+            module=module, entry=entry, attr=attr, dist=f"{module}-agent",
+        )
+        assert entry not in _discover_in_child(str(REPO_ROOT / "src")), (
+            f"'{entry}' resolved with nothing published for it — this suite would "
+            f"pass without proving the entry-point route works"
+        )
