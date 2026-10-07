@@ -102,24 +102,38 @@ def test_register_second_name_same_path_is_refused(reg: Path) -> None:
     assert workset_registry.load_workset_boxes(reg) == {"alpha": "/abs/shared"}
 
 
-def test_register_second_name_same_path_via_symlink_is_refused(
+def test_register_second_name_same_path_spelled_differently_is_refused(
     reg: Path, tmp_path: Path,
 ) -> None:
-    """A normalization/symlink alias of an already-registered path is refused.
-
-    The resolved-path fallback in the uniqueness check catches the drift that
-    let ``_resolve_local_dir``'s exact-string match miss and mint a duplicate.
-    """
+    """A trailing-slash / ``..`` spelling of an already-registered path is refused."""
     from kanibako.errors import ProjectError
 
+    real = tmp_path / "real"
+    real.mkdir()
+    workset_registry.register_workset_box(reg, "alpha", real)
+    with pytest.raises(ProjectError, match="already registered"):
+        workset_registry.register_workset_box(reg, "beta", Path(f"{real}/../real/"))
+    assert workset_registry.load_workset_boxes(reg) == {"alpha": str(real)}
+
+
+def test_register_second_name_via_a_link_is_a_twin(
+    reg: Path, tmp_path: Path,
+) -> None:
+    """A link to a registered workspace is a DIFFERENT path, so a second box.
+
+    Q4Jei 155-DUPLINK: identity is the path, not the resolved target; twin
+    boxes sharing one target are allowed.
+    """
     real = tmp_path / "real"
     real.mkdir()
     link = tmp_path / "alias"
     link.symlink_to(real)
     workset_registry.register_workset_box(reg, "alpha", real)
-    with pytest.raises(ProjectError, match="already registered"):
-        workset_registry.register_workset_box(reg, "beta", link)
-    assert workset_registry.load_workset_boxes(reg) == {"alpha": str(real)}
+    workset_registry.register_workset_box(reg, "beta", link)
+    assert workset_registry.load_workset_boxes(reg) == {
+        "alpha": str(real), "beta": str(link),
+    }
+    assert workset_registry.reverse_lookup_workset_box(reg, link) == "beta"
 
 
 def test_register_move_same_name_new_path_is_allowed(reg: Path) -> None:

@@ -10,8 +10,9 @@ re-creates a linked tree root AS A LINK, the copy sharing the target**.
 
 Landing the workspace in the destination's resolved ``workspace/`` subdir unties
 the knot: a link laid THERE shares the target without writing a byte into the
-user's directory.  ``--to primary`` is unchanged -- its destination IS the new
-box's identity path, so it keeps copying bytes (carve-out pending).
+user's directory.  ``--to primary`` lays the link at the destination itself: box
+identity is the path, not the resolved target (Q4Jei 155-DUPLINK), so the twin
+is still its own box.
 """
 
 from __future__ import annotations
@@ -153,14 +154,16 @@ class TestALinkedWorkspaceRootIsCarriedAsALink:
         assert (landed / "keepme.txt").read_text() == "payload\n"
 
 
-class TestAPrimaryTargetStillCopiesBytes:
-    """The destination IS the new box's identity path, so a link there would make
-    the new box resolve to the source's identity.  Bytes stay (carve-out pending)."""
+class TestAPrimaryTargetSharesTheLinkAndKeepsItsOwnIdentity:
+    """Q102 (a) without a carve-out: the twin shares the target, yet each box
+    answers for itself and keeps its own store."""
 
-    def test_to_primary_materializes_the_linked_workspace(
+    def test_to_primary_lays_the_link_and_each_twin_is_its_own_box(
         self, config_file, tmp_home, credentials_dir, capsys,
     ):
-        config, _std_, leaf = _member_with_workspace(
+        from kanibako.launch.box_resolve import resolve_box_identity
+
+        config, std, leaf = _member_with_workspace(
             tmp_home, config_file, "app", tmp_home / "outside_app")
         (leaf / "keepme.txt").write_text("payload\n")
         target = tmp_home / "outside_app"
@@ -170,9 +173,16 @@ class TestAPrimaryTargetStillCopiesBytes:
         cap = capsys.readouterr()
 
         assert rc == 0, cap.out + cap.err
-        assert dest.is_dir() and not dest.is_symlink()
-        assert (dest / "keepme.txt").read_text() == "payload\n"
+        assert dest.is_symlink(), f"{dest} is {describe(dest)}"
+        assert os.path.realpath(dest) == os.path.realpath(target)
         assert sorted(p.name for p in target.iterdir()) == ["keepme.txt"]
+        dst_id = resolve_box_identity(dest, std, config)
+        src_id = resolve_box_identity(leaf, std, config)
+        assert (dst_id["name"], dst_id["mode"].value) == ("dup-primary", "primary")
+        assert (src_id["name"], src_id["mode"].value) == ("app", "named")
+        store = std.boxes / "dup-primary"
+        assert store.is_dir() and not store.is_symlink()
+        assert not store.resolve().is_relative_to(target.resolve())
 
 
 def describe(p):

@@ -67,7 +67,7 @@ class TestPathEdgeCases:
         proj = resolve_project(std, config, project_dir=str(uni), initialize=True)
         assert proj.project_path == uni.resolve()
 
-    def test_symlink_resolved(self, tmp_home, config_file, credentials_dir):
+    def test_symlink_kept_as_given(self, tmp_home, config_file, credentials_dir):
         config = load_config(config_file)
         std = load_std_paths(config)
         real = tmp_home / "real_project"
@@ -75,7 +75,7 @@ class TestPathEdgeCases:
         link = tmp_home / "link_project"
         link.symlink_to(real)
         proj = resolve_project(std, config, project_dir=str(link), initialize=True)
-        assert proj.project_path == real.resolve()
+        assert proj.project_path == link
 
     def test_missing_config_detection(self, tmp_home):
         """load_std_paths raises ConfigError when no config file exists."""

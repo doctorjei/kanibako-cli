@@ -29,6 +29,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from kanibako.settings.config_io import dump_doc, load_doc
+from kanibako.utils import literal_path
 
 # The single top-level mapping in the journal document.
 _ENTRIES = "entries"
@@ -127,15 +128,15 @@ def pending_create_for_workspace(
     journal — there is no on-disk meta to read it from.
     """
     # The journal is keyed by box PATH, so a lookup BY WORKSPACE has to scan.  Both
-    # sides are resolve()d for symlink / trailing-slash equivalence.
-    target = str(Path(workspace).resolve())
+    # sides are compared literally: twins sharing a target are two workspaces.
+    target = literal_path(workspace)
     for entry in read_journal(journal_path).values():
         if entry.get("op") != "create":
             continue
         ws = entry.get("workspace")
         if ws is None:
             continue
-        if str(Path(ws).resolve()) == target:
+        if literal_path(ws) == target:
             return entry
     return None
 

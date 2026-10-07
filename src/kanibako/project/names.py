@@ -34,6 +34,7 @@ from kanibako.project import registry_store
 from kanibako.settings.config import WORKSET_META_FILE
 from kanibako.errors import AmbiguousNameError, ProjectError
 from kanibako.log import get_logger
+from kanibako.utils import literal_path
 
 if TYPE_CHECKING:
     from kanibako.settings.workset_dirkeys import EarlyScope, EarlySystem
@@ -378,12 +379,11 @@ def _resolve_before_standalone(
     #    WORKSPACE path, the form ``resolve_project`` takes.
     members = _workset_member_paths(names["worksets"], name, early_system=early_system)
     if members:
-        # Collapse identical targets (a symlinked workspace can normalize to the same
-        # path), keeping the first workset claiming each so a shared box is named once;
-        # distinct paths ⇒ a member of multiple worksets → ambiguous from outside.
+        # Collapse identical paths, keeping the first workset claiming each so a shared
+        # box is named once; distinct paths ⇒ a member of multiple worksets → ambiguous.
         targets: dict[str, tuple[str, str, str]] = {}
         for member in members:
-            targets.setdefault(str(Path(member[2]).resolve()), member)
+            targets.setdefault(literal_path(member[2]), member)
         if len(targets) == 1:
             return members[0][2], "project"
         # ``workset.workspaces`` is settable, so a registered path need not name its

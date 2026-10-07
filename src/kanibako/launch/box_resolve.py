@@ -24,6 +24,7 @@ from kanibako.settings.paths import (
     StandardPaths,
     detect_project_mode,
 )
+from kanibako.utils import literal_path
 
 # The PRIMARY workset's NAME (not a mode).  Anchored by ``config.primary_workset``,
 # not listed in the global ``worksets:`` section — so the enumeration yields it
@@ -80,14 +81,14 @@ def _find_owning_box(
 ) -> _OwnedBox | None:
     """Scan every workset's per-workset registry for a box AT *project_dir*.
 
-    Honors a ``workset.registry`` repoint; matches on PATH with BOTH sides
-    ``resolve()``d, so symlink / relative / trailing-slash forms compare equal.
+    Honors a ``workset.registry`` repoint; matches the literal path (links
+    unfollowed), so twins sharing a target stay two boxes.
     ``None`` when no workset owns the dir.
     """
     from kanibako.channels.channels import workset_token
     from kanibako.settings.workset_dirkeys import EarlyScope
 
-    target = project_dir.resolve()
+    target = literal_path(project_dir)
     for workset_name, root, mode in _enumerate_worksets(std):
         settings: Any = load_doc(root / WORKSET_META_FILE)
         registry_path = workset_registry.resolve_workset_registry_path(
@@ -96,7 +97,7 @@ def _find_owning_box(
         )
         boxes = workset_registry.load_workset_boxes(registry_path)
         for box_name, box_path_str in boxes.items():
-            if Path(box_path_str).resolve() == target:
+            if literal_path(box_path_str) == target:
                 return _OwnedBox(
                     workset_name=workset_name,
                     workset_root=root,
@@ -126,7 +127,7 @@ def find_connected_external_box(
     from kanibako.project.workset import list_worksets, resolve_workspaces_locator
     from kanibako.settings.workset_dirkeys import EarlyScope
 
-    target = project_dir.resolve()
+    target = Path(literal_path(project_dir))
     best: _OwnedBox | None = None
     best_depth = -1
     for name, root in list_worksets(std).items():
@@ -138,17 +139,16 @@ def find_connected_external_box(
             root, settings, early=early,
         )
         # No mapping check needed: ``load_doc`` returns a mapping or refuses the file.
-        workspaces_resolved = resolve_workspaces_locator(root, settings, early=early).resolve()
+        workspaces = resolve_workspaces_locator(root, settings, early=early)
+        workspaces_resolved = workspaces.resolve()
         boxes = workset_registry.load_workset_boxes(registry_path)
         for box_name, box_path_str in boxes.items():
-            box_path = Path(box_path_str).resolve()
-            # Skip ONLY members under the CURRENT resolved workspaces dir —
-            # ordinary location detection owns those.
-            try:
-                box_path.relative_to(workspaces_resolved)
+            box_path = Path(literal_path(box_path_str))
+            # Skip ONLY members under the CURRENT workspaces dir (literally or
+            # resolved) — ordinary location detection owns those.
+            if (box_path.is_relative_to(literal_path(workspaces))
+                    or box_path.resolve().is_relative_to(workspaces_resolved)):
                 continue
-            except ValueError:
-                pass
             # Ancestor match: the registered path IS *target* or an ancestor.
             try:
                 target.relative_to(box_path)
@@ -184,7 +184,7 @@ def detect_box_mode(
     # 2. Workset ownership from the per-workset registries.
     owned = _find_owning_box(project_dir, std, config)
     if owned is not None:
-        return DetectionResult(owned.mode, owned.box_path.resolve())
+        return DetectionResult(owned.mode, owned.box_path)
 
     # 3. Treewalk detection (compose — do not duplicate).  ⚑ A PRIMARY result is
     # the no-marker default → NOT a box in the new model → None, which is the
@@ -252,7 +252,7 @@ def resolve_box_identity(
         return {
             "mode": owned.mode,
             "name": owned.box_name,  # the ``boxes:`` entry KEY (D1b)
-            "workspace": owned.box_path.resolve(),
+            "workspace": owned.box_path,
             "registered": True,
         }
 
@@ -262,6 +262,6 @@ def resolve_box_identity(
     return {
         "mode": result.mode,
         "name": result.project_root.name,
-        "workspace": result.project_root.resolve(),
+        "workspace": Path(literal_path(result.project_root)),
         "registered": False,
     }
