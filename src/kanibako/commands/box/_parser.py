@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import dataclasses
+import os
 import shlex
 import shutil
 import sys
@@ -962,6 +963,67 @@ def _new_member_undo(ws: Workset, name: str) -> Callable[[], None]:
     return undo
 
 
+# ⚑⚑ WHY UNDO AND NOT REPLAY IN THE PRE-JOURNAL WINDOW: ``--recover`` REFUSES shaping
+# flags, so replaying a failed ``--private`` create would forward HOST CREDENTIALS into a
+# box the user asked to be sealed.  Undo is the only arm that leaves nothing behind
+# without needing the arguments attempt one was given — which the journal never records.
+def _new_box_undo(std, probe, *, standalone: bool) -> Callable[[], None]:
+    """The undo for the box tree this create is about to materialize; build it BEFORE.
+
+    Removes only what did not exist when the tree was made: a path the user already
+    had is kept, and a STANDALONE root — ``resolve_standalone_project`` requires the
+    directory to exist, so it is the user's own — is never removed, only what the
+    create added inside it.  ``vault.ro``/``vault.rw`` are repointable keys on BOTH
+    modes, so the resolved arms are diffed where they land rather than under the root.
+    """
+    from kanibako.runtime.container import remove_box_tree
+
+    def _paths(root: Path) -> "set[Path]":
+        if not root.is_dir():
+            return set()
+        return {Path(dirpath) / name
+                for dirpath, dirnames, filenames in os.walk(root, followlinks=False)
+                for name in (*dirnames, *filenames)}
+
+    def _absent(path: Path) -> bool:
+        return not path.exists() and not path.is_symlink()
+
+    roots = [p for p in (
+        # ⚑ THE PRIMARY TREE ROOT IS THE BOX DIR, and its name is the one
+        # ``_name_new_box_probe`` picked — the same deterministic pick the
+        # materializing resolve repeats.  The stores travel with it because the vault
+        # skeleton is ``<primary_workset>/vault``, a SIBLING of ``boxes/``, and the data
+        # root under them because a first create is what brings that into being.
+        *((probe.metadata_path,) if standalone
+          else (std.data, std.boxes, std.primary_workset)),
+        probe.vault_ro_path,
+        probe.vault_rw_path,
+    ) if p is not None]
+    before = {root: _paths(root) for root in roots}
+    new_roots = [root for root in roots if _absent(root)]
+
+    def _remove(path: Path) -> None:
+        # ⚑ A SYMLINK IS UNLINKED, never followed: ``remove_box_tree`` would delete a
+        # TARGET the user pointed at rather than the link this create made.
+        if path.is_symlink() or not path.is_dir():
+            path.unlink(missing_ok=True)
+        # ⚑ LEAVES BEFORE PARENTS, and a parent only while it holds nothing — a sibling
+        # written since this create is the user's, exactly as ``_new_member_undo`` keeps.
+        elif not any(path.iterdir()):
+            remove_box_tree(path)
+
+    def undo() -> None:
+        # ⚑ DEEPEST FIRST: a path this create made holds nothing but what it made.
+        for root in roots:
+            for path in sorted(_paths(root) - before[root],
+                               key=lambda p: len(p.parts), reverse=True):
+                _remove(path)
+        for root in new_roots:
+            _remove(root)
+
+    return undo
+
+
 #: The per-owner keys a standalone ``create`` accepts: ``registry`` (§D4a below), ``template``.
 _STANDALONE_CREATE_EXEMPT_KEYS: frozenset[str] = frozenset({"registry", "template"})
 
@@ -1249,6 +1311,15 @@ def run_create(args: argparse.Namespace) -> int:
             return 1
         _named_spec = WorksetSpec.from_workset(_named_ws)
 
+    # ⚑ THE SAME UNDO SHAPE, THE TREE ARM: the member is what a NAMED create makes
+    # early; the materializing resolve is what every arm makes late.  Until the entry
+    # is written nothing could recover either, so any exit before it UNDOES both.
+    # ⛔ NOT the NAMED arm's business: a recovery re-enters a half-built member's box,
+    # and the tree it adopts belongs to attempt one, never to this invocation.
+    _undo_box = None
+    if _named_spec is None:
+        _undo_box = _new_box_undo(std, _probe, standalone=bool(args.standalone))
+
     _journaled = False
     try:
         # Loadability resolved → MATERIALIZE the box for real.  ⚑ ``register=False``
@@ -1350,13 +1421,17 @@ def run_create(args: argparse.Namespace) -> int:
         _journaled = True
     finally:
         # ⚑ ONE cleanup path, for a refusal's ``return`` and a raise alike.
-        if _undo_member is not None and not _journaled:
-            # ⚑ A failed undo must not replace the error that brought us here.
-            try:
-                _undo_member()
-            except Exception as undo_err:  # noqa: BLE001 - reported, never raised
-                print(f"Warning: could not undo the member '{_member}' this create "
-                      f"added: {undo_err}", file=sys.stderr)
+        if not _journaled:
+            for _undo, _what in ((_undo_member, f"the member '{_member}'"),
+                                 (_undo_box, "the box tree")):
+                if _undo is None:
+                    continue
+                # ⚑ A failed undo must not replace the error that brought us here.
+                try:
+                    _undo()
+                except Exception as undo_err:  # noqa: BLE001 - reported, never raised
+                    print(f"Warning: could not undo {_what} this create added: "
+                          f"{undo_err}", file=sys.stderr)
     seed_new_box(std, config, proj, explicit_agent=_agent_arg)
     # ⚑ THE CANON SKELETON (J-7) — AFTER the seed (it makes the root 555; protect first
     # and the seed's copies die EACCES) and INSIDE the journal window (it must replay).

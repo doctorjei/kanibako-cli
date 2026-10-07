@@ -881,6 +881,24 @@ def _simulate_interrupted_create(
     return proj
 
 
+def _disk_snapshot(*roots: Path) -> "dict[str, int]":
+    """Every path under each of *roots* → its size; the "nothing was touched" snapshot.
+
+    Both roots always: a STANDALONE box keeps its tree under the box ROOT
+    (``<root>/box_data``) and a PRIMARY one under ``std.boxes``, so a snapshot
+    of ``std.boxes`` alone would be vacuous for half the parametrization.
+    """
+    snapshot: dict[str, int] = {}
+    for root in roots:
+        if not root.exists():
+            continue
+        snapshot.update({
+            f"{root}::{p.relative_to(root)}": p.stat().st_size
+            for p in sorted(root.rglob("*"))
+        })
+    return snapshot
+
+
 class TestRecoveryPrimary:
     @pytest.mark.parametrize("register_box", [False, True])
     def test_recovery_completes_and_clears_entry(
@@ -1798,21 +1816,7 @@ class TestPendingCreateRefusal:
 
     @staticmethod
     def _disk(*roots: Path) -> "dict[str, int]":
-        """Every path under each of *roots* → its size; the "nothing was touched" snapshot.
-
-        Both roots always: a STANDALONE box keeps its tree under the box ROOT
-        (``<root>/box_data``) and a PRIMARY one under ``std.boxes``, so a snapshot
-        of ``std.boxes`` alone would be vacuous for half the parametrization.
-        """
-        snapshot: dict[str, int] = {}
-        for root in roots:
-            if not root.exists():
-                continue
-            snapshot.update({
-                f"{root}::{p.relative_to(root)}": p.stat().st_size
-                for p in sorted(root.rglob("*"))
-            })
-        return snapshot
+        return _disk_snapshot(*roots)
 
     def _interrupted(self, config_file, tmp_home, standalone):
         """A half-built box + pending entry, and the box key it hangs off."""
@@ -2060,6 +2064,171 @@ class TestPreJournalForkRefused:
             for p in sorted(std.boxes.rglob("*"))
         } == before
         assert _primary_names(std) == {}
+
+
+# ⭐ THE PRE-JOURNAL WINDOW: every write ``create`` makes BEFORE
+# ``_write_create_entry`` — the materializing resolve, the creation-flag persist, the
+# ``--private`` and ``--agent`` persists and ``write_project_gitignore``.  Nothing in
+# it is recoverable (``--recover`` refuses shaping flags, so replaying a failed
+# ``--private`` create would forward host credentials), so every exit from it — a
+# refusal's ``return`` and a raise alike — UNDOES what this create made.
+#
+# ⚑ THE CRASH IS INJECTED AT A CHOKE POINT IN THE PRODUCT, never re-implemented here:
+# a second helper that spelled "an interrupted create" would be a second definition of
+# what the window leaves behind, and the two would drift.
+_PRE_JOURNAL_EXITS = ("private-refuses", "agent-persists-nothing", "entry-write-raises")
+
+
+class _InterruptCreate(Exception):
+    """Stops a create at a chosen point, so a test can stand where a crash would."""
+
+
+class TestPreJournalWindowUndoesItsOwnWrites:
+    """An exit from the pre-journal window leaves the disk as this create found it."""
+
+    @pytest.fixture(autouse=True)
+    def _no_seed(self, monkeypatch):
+        monkeypatch.setattr(
+            "kanibako.commands.start.seed_new_box",
+            lambda std, config, proj, **kw: None,
+        )
+
+    def _std(self, config_file):
+        from kanibako.settings.config import load_config
+        from kanibako.settings.paths import load_std_paths
+        return load_std_paths(load_config(config_file))
+
+    def _target(self, tmp_home, standalone):
+        """The box root, holding the USER's files — a create must survive them."""
+        path = tmp_home / ("sa" if standalone else "project")
+        if standalone:
+            path.mkdir()
+        (path / "MY_NOTES.txt").write_text("written before any create\n")
+        (path / "code").mkdir()
+        (path / "code" / "main.py").write_text("print('mine')\n")
+        return path
+
+    def _create_in_the_window(self, path, standalone, exit_kind, mp):
+        """Run a real ``create`` stopped inside the window; return its outcome.
+
+        ⚑ The three exits are the window's three: the ``--private`` persist RAISES,
+        the ``--agent`` persist ``return``s, and the entry write raises after both.
+        Each is reached by failing the thing it persists, so the product — not this
+        test — decides which exit that is.  ⚑ *mp* is a caller's ``MonkeyPatch``, so a
+        test that re-runs afterwards can drop the crash without dropping the fixture's.
+        """
+        from kanibako.commands.box._parser import run_create
+
+        if exit_kind in ("private-refuses", "agent-persists-nothing"):
+            mp.setattr(
+                "kanibako.settings.config_interface.set_config_value",
+                lambda *a, **kw: "Error: the settings file is read-only",
+            )
+        if exit_kind == "entry-write-raises":
+            def _raise(std, proj):
+                raise _InterruptCreate("stopped before the journal entry")
+
+            mp.setattr("kanibako.commands.start._write_create_entry", _raise)
+
+        args = _create_args(path, standalone=standalone, no_vault=False)
+        if exit_kind == "private-refuses":
+            args.private = True
+        if exit_kind == "agent-persists-nothing":
+            args.agent = "goose"
+        try:
+            return ("returned", run_create(args))
+        except Exception as exc:  # the raise exits are the point, not a failure
+            return ("raised", type(exc).__name__)
+
+    @pytest.mark.parametrize("standalone", [False, True], ids=["primary", "standalone"])
+    @pytest.mark.parametrize("exit_kind", _PRE_JOURNAL_EXITS)
+    def test_every_exit_in_the_window_undoes_what_this_create_made(
+        self, standalone, exit_kind, config_file, tmp_home, credentials_dir
+    ):
+        """All three exits, both modes: the tree is byte-for-byte what it was.
+
+        ⛔ WITHOUT THE UNDO this leaves ``box_data canon vault workset.yaml
+        workspace`` (STANDALONE) or ``std.boxes/<name>`` (PRIMARY) behind, and then
+        ``--recover`` claims *"the box there is complete"* while a bare re-run says
+        *"project already initialized"* — a half-built box no printed route reaches.
+        """
+        std = self._std(config_file)
+        path = self._target(tmp_home, standalone)
+        before = _disk_snapshot(std.data, path)
+
+        with pytest.MonkeyPatch.context() as mp:
+            outcome = self._create_in_the_window(path, standalone, exit_kind, mp)
+
+        assert outcome[0] == "raised" or outcome[1] == 1, outcome
+        assert _disk_snapshot(std.data, path) == before
+        # THE USER'S OWN FILES, named — a cleanup that does not undo exactly its own
+        # writes would pass the snapshot above on an empty target and destroy these.
+        assert (path / "MY_NOTES.txt").read_text() == "written before any create\n"
+        assert (path / "code" / "main.py").read_text() == "print('mine')\n"
+        assert path.is_dir()
+        assert journal.read_journal(std.journal) == {}
+
+    @pytest.mark.parametrize("standalone", [False, True], ids=["primary", "standalone"])
+    def test_a_re_run_after_an_undone_exit_reaches_the_create_again(
+        self, standalone, config_file, tmp_home, credentials_dir
+    ):
+        """The cure is not a different command: the SAME create now succeeds.
+
+        ⚑ Before the undo the re-run was refused twice over — *"project already
+        initialized"* for the standalone arm, the orphaned-metadata refusal for the
+        primary one — which is what made the half-built box unrecoverable.
+        """
+        from kanibako.commands.box._parser import run_create
+
+        std = self._std(config_file)
+        path = self._target(tmp_home, standalone)
+
+        with pytest.MonkeyPatch.context() as mp:
+            self._create_in_the_window(path, standalone, "entry-write-raises", mp)
+
+        assert run_create(_create_args(path, standalone=standalone, no_vault=False)) == 0
+        assert journal.read_journal(std.journal) == {}
+        # And the user's files came through the whole thing.
+        assert (path / "MY_NOTES.txt").exists()
+        assert (path / "code" / "main.py").exists()
+
+    @pytest.mark.parametrize("standalone", [False, True], ids=["primary", "standalone"])
+    def test_an_undone_exit_over_a_half_built_box_adopts_it_instead_of_deleting_it(
+        self, standalone, config_file, tmp_home, credentials_dir
+    ):
+        """⛔ THE RED-TEAM CASE: the undo must not touch what ATTEMPT ONE made.
+
+        A ``--recover`` re-enters a box that is already half-built, so its resolve is
+        not a fresh one — and a window undo that removed "the tree" would delete the
+        user's half-built box on the second failure.  The pending entry is what says
+        whose tree it is.
+        """
+        from kanibako.commands.box._parser import run_create
+        from kanibako.settings.config import load_config
+
+        std = self._std(config_file)
+        path = self._target(tmp_home, standalone)
+        proj = _simulate_interrupted_create(
+            std, load_config(config_file), standalone=standalone, path=path,
+            register_box=False,
+        )
+        edit = Path(proj.shell_path) / "ATTEMPT_ONE_EDIT.txt"
+        edit.write_text("written by the interrupted attempt\n")
+        before = _disk_snapshot(std.data, path)
+        assert journal.pending_create(std.journal, _box_journal_key(proj)) is not None
+
+        def _raise(std, proj):
+            raise _InterruptCreate("stopped before the recovery rewrote the entry")
+
+        with pytest.MonkeyPatch.context() as mp:
+            mp.setattr("kanibako.commands.start._write_create_entry", _raise)
+            with pytest.raises(_InterruptCreate):
+                run_create(_create_args(path, standalone=standalone, no_vault=False,
+                                        recover=True, register=standalone))
+
+        assert _disk_snapshot(std.data, path) == before
+        assert edit.read_text() == "written by the interrupted attempt\n"
+        assert journal.pending_create(std.journal, _box_journal_key(proj)) is not None
 
 
 class TestCuresAreRunnable:
