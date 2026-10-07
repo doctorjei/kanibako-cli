@@ -15,6 +15,7 @@ here (S3/S7/S8/S9/S13/S14) & the dest-keying depth rule: llm-docs.
 from __future__ import annotations
 
 import logging
+import shlex
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
@@ -229,8 +230,17 @@ def _cure_subject(level: str, box_name: str | None) -> str:
     leaves ``key_value`` empty, so the pasted line hunts for a working set named after the key;
     ``box set`` takes its arguments as a LIST, so the key alone parses and the write lands on
     whatever box the reader's cwd resolves to — a different box, silently.
+
+    ⚑ THE REAL NAME IS QUOTED, THE PLACEHOLDER IS NOT.  A name reaching here came from
+    ``proj.name``, and a box created from a path is registered under that basename VERBATIM —
+    so it can carry ``$( )``, a space or a ``~``.  The cure is pasted, so it must arrive as ONE
+    shell word.  The ``<box>``/``<workset>`` branch is the opposite: it is a PLACEHOLDER the
+    reader replaces by hand, and quoting it would print ``'<box>'`` — literally the text the
+    reader is now required to type, for no safety gain.
     """
-    return box_name if level == "box" and box_name else f"<{level}>"
+    if level == "box" and box_name:
+        return shlex.quote(box_name)
+    return f"<{level}>"
 
 
 def _retired_mirror_cure(

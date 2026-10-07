@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import shlex
 import shutil
 import sys
 
@@ -132,10 +133,15 @@ def _warn_undeleted(path) -> None:
     them through ``remove_box_tree`` (which returns a bool) would otherwise turn a
     loud failure into a silent one — the box would report "done" over a tree that is
     still on disk.
+
+    ⚑ The suggested line is PASTED, and *path* carries the box name, which a box
+    created from a path holds VERBATIM.  Quoted, so a name holding a space cannot
+    widen the command's targets: unquoted, a box named ``x ~`` prints
+    ``rm -rf …/boxes/x ~`` and the shell hands ``$HOME`` to ``rm`` as a SECOND target.
     """
     print(
         f"\nWarning: could not fully remove {path}.\n"
-        f"Try: podman unshare rm -rf {path}",
+        f"Try: podman unshare rm -rf {shlex.quote(str(path))}",
         file=sys.stderr,
     )
 
