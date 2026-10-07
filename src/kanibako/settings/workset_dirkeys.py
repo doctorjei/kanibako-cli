@@ -173,8 +173,7 @@ def refuse_inherited_per_owner(
 
     Runs :func:`early_repoint` over every per-owner key in :data:`WORKSET_EARLY_KEYS` less
     *exclude*; raises its :class:`~kanibako.errors.ConfigError`.  *doc*: the own file's
-    document, if read.  ⚑ *exclude* is what a door that reaches only a SUBSET of the keys
-    passes — the keys it resolves are the door's own knowledge, so the walk stays here.
+    document, if read.  *exclude*: the keys a door reaching only a SUBSET does not walk.
     """
     from kanibako.settings.config_keys import KEY_OWNERS
 
