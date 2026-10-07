@@ -2450,6 +2450,33 @@ class TestWindowUndoSparesAWriteItDidNotMake:
         assert (std.primary_workset / "registry.yaml").read_text() == "boxes: []\n"
         assert not (std.boxes / "project").exists()
 
+    def test_a_named_primary_box_is_undone_under_its_own_name(
+        self, config_file, tmp_home, credentials_dir
+    ):
+        """⚑ ``--name`` is the name the materializing resolve uses, not the probe's.
+
+        ⚑ The probe's name is always picked from the WORKSPACE basename — the
+        ``--name`` override never reaches it — so an undo that named its leaves from
+        the probe alone would look for a box that was never created and leave the
+        real one behind.
+        """
+        from kanibako.commands.box._parser import run_create
+
+        std = self._std(config_file)
+
+        def _raise(std, proj):
+            raise _InterruptCreate("stopped before the journal entry")
+
+        with pytest.MonkeyPatch.context() as mp:
+            mp.setattr("kanibako.commands.start._write_create_entry", _raise)
+            with pytest.raises(_InterruptCreate):
+                run_create(_create_args(tmp_home / "project", name="mybox",
+                                        no_vault=False))
+
+        assert not (std.boxes / "mybox").exists(), (
+            "the undo looked for the workspace-basename box, not the --name one"
+        )
+
 
 class TestWindowUndoRestoresARootWorksetFile:
     """D2: a pre-existing root ``workset.yaml`` is RESTORED, byte for byte.
