@@ -66,6 +66,7 @@ def _resolve_existing_box(std: StandardPaths, config: BootstrapConfig, project_d
 def _broken_standalone_error(std: StandardPaths, project_dir: str) -> str | None
 def _store_move_cure(old: Path | None, new: Path) -> str
 def _interrupted_create_error(proj: ProjectPaths, pending: dict) -> str
+def _unregistered_pending_create_error(std: StandardPaths, project_dir: str | None) -> str | None
 def _no_box_error(project_dir: str | None, std: StandardPaths | None=None) -> str
 def _unbuilt_box_error(proj: ProjectPaths, std: StandardPaths) -> str | None
 def _refuse_null_workspace_bind(std, proj: ProjectPaths) -> None
