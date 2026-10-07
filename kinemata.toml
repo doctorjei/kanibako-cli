@@ -3113,8 +3113,8 @@ extract = '(?m)^ci-python: (\S+)$'
 # the `kanibako.agents` entry-point KEYS of the root `pyproject.toml` and of each
 # `packages/*/pyproject.toml` (what `_register` is handed as `ep.name`), and the
 # literal returned by the `name` property of every `Target` subclass under `src/`
-# and `packages/*/src/` (what `_register` is handed by the module and file-drop
-# scans, and what `_require_meta_name` validates).
+# and `packages/*/src/` (what `_register` is handed by the module scan, and what
+# `_require_meta_name` validates).
 #
 # ⚑ IT READS THE TREE, NOT THE INSTALLED METADATA, and CI forces that rather
 # than style. The conformance job installs `-e .` and DELIBERATELY not the three

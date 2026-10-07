@@ -947,9 +947,9 @@ first-party plugins, while `__package__` is correct whether the `Target` class l
 the latter).
 
 Returns `None` on ANY failure — no such module entry, no `__package__`, an unimportable/absent
-package, or no `data/rom` directory. Directory plugins
-(`~/.local/share/kanibako/plugins/`, `{project}/box_data/plugins/`) are not `kanibako.plugins.*`
-packages and simply resolve to `None`, which is the RIGHT answer for them.
+package, or no `data/rom` directory. Anything outside the `kanibako.plugins.*` namespace —
+including a `.py` file in a user or box store's `plugins/` directory — is not a
+`kanibako.plugins.*` package and simply resolves to `None`.
 
 ```python
 def default_category_binds(self) -> CategoryBindDefaults

@@ -56,7 +56,8 @@ the node by lowercasing it, and the node is what spells `<data>/agents/<agent>/`
 second plugin calling itself `myagent` claims that node too. What happens then is the ordinary
 discovery precedence (see *Plugin discovery* in the README): within one route the second
 is refused with a warning naming both spellings, because order inside a route is arbitrary;
-across routes the later route overrides the earlier one.
+between the two routes the entry point wins, because entry points register first and the
+module-scan fallback only fills a node nothing has claimed yet.
 
 Optional overrides (sensible defaults provided by the base class):
 
