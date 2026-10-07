@@ -2865,3 +2865,53 @@ class TestStandaloneRootIsNotAPositionInThePath:
                 f"the standalone root is derived POSITIONALLY here: {line.strip()!r}; "
                 f"read it off ProjectState.metadata_path (drift I) instead"
             )
+
+
+class TestADuplicateNeverLaysTheRootLink:
+    """Every caller of ``_merge_workspace`` makes the destination a NEW box, and at
+    ``--to standalone`` that destination IS the new box ROOT, which the caller goes
+    on to fill with workset.yaml, box_data/ and .gitignore.  Laid as a link those
+    land in the user's own directory and ``box info <dst>`` answers the SOURCE box.
+    A duplicate is a copy: the bytes come along, the pointer does not."""
+
+    def test_a_linked_source_workspace_copies_bytes_and_writes_nothing_through(self, tmp_path):
+        from kanibako.commands.box._duplicate import _merge_workspace
+        outside = tmp_path / "user_data"
+        outside.mkdir()
+        (outside / "f.txt").write_text("user bytes")
+        src = tmp_path / "src_ws"
+        os.symlink(str(outside), src)
+        dst = tmp_path / "newbox"
+        _merge_workspace(src, dst, force=True)
+        assert not dst.is_symlink()
+        assert (dst / "f.txt").read_text() == "user bytes"
+        assert sorted(p.name for p in outside.iterdir()) == ["f.txt"]
+
+    def test_an_existing_destination_is_refused_without_force(self, tmp_path):
+        from kanibako.commands.box._duplicate import _merge_workspace
+        outside = tmp_path / "user_data"
+        outside.mkdir()
+        (outside / "f.txt").write_text("user bytes")
+        src = tmp_path / "src_ws"
+        os.symlink(str(outside), src)
+        dst = tmp_path / "users_empty_dir"
+        dst.mkdir()
+        with pytest.raises(FileExistsError):
+            _merge_workspace(src, dst, force=False)
+        assert not dst.is_symlink()
+        assert list(dst.iterdir()) == []
+
+    def test_an_occupied_destination_is_refused_without_force(self, tmp_path):
+        from kanibako.commands.box._duplicate import _merge_workspace
+        outside = tmp_path / "user_data"
+        outside.mkdir()
+        (outside / "f.txt").write_text("user bytes")
+        src = tmp_path / "src_ws"
+        os.symlink(str(outside), src)
+        dst = tmp_path / "users_dir"
+        dst.mkdir()
+        (dst / "mine.txt").write_text("MINE")
+        with pytest.raises(FileExistsError):
+            _merge_workspace(src, dst, force=False)
+        assert (dst / "mine.txt").read_text() == "MINE"
+        assert not (dst / "f.txt").exists()

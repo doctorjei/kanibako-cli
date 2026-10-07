@@ -1046,3 +1046,52 @@ class TestDisabledVaultDataGuard:
         assert f"Note: left the vault at {state.vault_rw} in place" in err
         assert "could not remove the old store of 'b1'" not in err
         assert not (ws_a.projects_dir / "b1").exists()
+
+
+class TestADanglingVaultLeafIsCarried:
+    """A dangling leaf is still the pointer the user set.  Dropping it leaves a real
+    empty leaf where their pointer was, and the target is unrecoverable.  A source
+    that genuinely holds nothing still no-ops."""
+
+    def test_a_dangling_leaf_lands_as_the_same_pointer(self, tmp_path):
+        src = tmp_path / "box" / "vault" / "rw"
+        src.parent.mkdir(parents=True)
+        gone = tmp_path / "gone"
+        os.symlink(str(gone), src)
+        dst = tmp_path / "new" / "vault" / "rw"
+        _copy_vault_leaf_contents(src, dst)
+        assert dst.is_symlink()
+        assert os.readlink(dst) == str(gone)
+
+    def test_a_missing_source_still_no_ops(self, tmp_path):
+        dst = tmp_path / "new" / "vault" / "rw"
+        _copy_vault_leaf_contents(tmp_path / "nowhere", dst)
+        assert not os.path.lexists(str(dst))
+
+    def test_a_real_non_directory_source_still_no_ops(self, tmp_path):
+        src = tmp_path / "afile"
+        src.write_text("not a directory")
+        dst = tmp_path / "new" / "vault" / "rw"
+        _copy_vault_leaf_contents(src, dst)
+        assert not os.path.lexists(str(dst))
+
+
+class TestTheStashNeverHoldsALinkedLeaf:
+    """The ws->ws stash is the safety copy for a release that DELETES the source
+    store, so it must hold BYTES.  A linked leaf is refused by the per-box guard
+    before the stash is ever filled, so no pointer into deleted ground can stand
+    in it."""
+
+    def test_a_linked_vault_leaf_is_not_a_carry_pair(self, env):
+        config, std, tmp_home = env
+        ws = create_workset("wsa", tmp_home / "wsa_root", std)
+        internal = ws.workspaces_dir / "b1"
+        internal.mkdir(parents=True)
+        add_project(ws, "b1", internal, std)
+        state = resolve_lifecycle_target(str(internal), std, config)
+        outside = tmp_home / "outside"
+        outside.mkdir()
+        shutil.rmtree(state.vault_rw)
+        os.symlink(str(outside), state.vault_rw)
+        pairs = _vault_carry_pairs(state, std, None, tmp_home / "stash_rw")
+        assert all(src != state.vault_rw for src, _dst in pairs)
