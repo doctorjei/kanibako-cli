@@ -1293,7 +1293,8 @@ def _vault_leaf_has_contents(leaf: Path) -> bool:
         return True
 
 
-def _copy_vault_leaf_contents(src: Path, dst: Path | None) -> None:
+def _copy_vault_leaf_contents(src: Path, dst: Path | None,
+                             moved_root: Path | None = None) -> None:
     """Merge-copy the CONTENTS of vault leaf *src* into leaf *dst*.
 
     ⚑ The counterpart ``snapshots.py`` copies vault content under the same symlink
@@ -1333,7 +1334,7 @@ def _copy_vault_leaf_contents(src: Path, dst: Path | None) -> None:
             f"is inside the source."
         )
     dst.mkdir(parents=True, exist_ok=True)
-    if lay_root_link(src, dst):
+    if lay_root_link(src, dst, moved_root=moved_root):
         # A POINTER source into an empty destination: share the target, don't materialize.
         return
     try:
@@ -1464,9 +1465,14 @@ def _carry_vault_contents(
     Runs BEFORE the source teardown on every path that relocates the vault; the
     reuse-in-place edges (whose teardown is skipped) collapse to same-path no-ops
     inside.  A copy failure RAISES, aborting before anything is deleted.
+
+    ⚑ ``moved_root`` is the source box's own root: a vault link pointing INTO that tree
+    names a place this relocation tears down, so it is materialized rather than carried
+    as a pointer that would dangle on arrival.  A link pointing outside it stays put and
+    is carried.
     """
     for src, dst in _vault_carry_pairs(state, std, dst_ro, dst_rw):
-        _copy_vault_leaf_contents(src, dst)
+        _copy_vault_leaf_contents(src, dst, moved_root=state.metadata_path)
 
 
 def _move_log_back(dst: Path, src: Path) -> None:
