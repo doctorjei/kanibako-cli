@@ -250,6 +250,55 @@ def test_an_alias_key_on_the_primary_store_is_dropped_never_moved(env: dict[str,
     assert _tree(primary) == before
 
 
+def _write_worksets(entries: list[tuple[str, Path]]) -> None:
+    """Write the ``worksets`` section by hand, in *entries*' order (a save would sort it)."""
+    lines = "".join(f"  {name}: {root}\n" for name, root in entries)
+    _registry().write_text(f"worksets:\n{lines}standalone: {{}}\nderegistered: {{}}\n"
+                           "rigs: {}\nimage_shells: {}\n")
+
+
+@pytest.mark.parametrize("dead_first", [False, True])
+def test_only_the_dead_alias_variant_is_dropped_beside_a_live_one(
+    env: dict[str, str], dead_first: bool,
+) -> None:
+    """Two case variants of one alias: the drop removes the EXACT key it tested."""
+    home = Path(env["HOME"])
+    live_root, gone = home / "ws" / "alpha", home / "ws" / "gone"
+    live_root.parent.mkdir()
+    assert _cli(env, "workset", "create", str(live_root), "--name", "alpha").returncode == 0
+    live, dead = ("DEFAULT", "Default") if dead_first else ("Default", "DEFAULT")
+    entries = [(live, live_root), (dead, gone)]
+    _write_worksets(entries[::-1] if dead_first else entries)
+
+    listed = _cli(env, "workset", "list")
+    assert listed.returncode == 0, listed.stderr
+    assert f"Note: removed working set '{dead}' ({gone}) from the registry" in listed.stderr
+    assert f"removed working set '{live}'" not in listed.stderr
+    assert _worksets() == {live: str(live_root)}
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root writes through a read-only mode")
+def test_a_drop_that_cannot_write_keeps_the_entry_and_warns(env: dict[str, str]) -> None:
+    home = Path(env["HOME"])
+    gone = home / "ws" / "Default"
+    registry = _registry()
+    registry.parent.mkdir(parents=True, exist_ok=True)
+    _write_worksets([("Default", gone)])
+    before = registry.read_bytes()
+    registry.chmod(0o444)
+    registry.parent.chmod(0o555)
+    try:
+        listed = _cli(env, "workset", "list")
+    finally:
+        registry.parent.chmod(0o755)
+        registry.chmod(0o644)
+    assert listed.returncode == 0, listed.stderr
+    assert "Traceback" not in listed.stderr
+    assert listed.stderr.count("could not be removed from the registry") == 1
+    assert "Default" in listed.stdout
+    assert registry.read_bytes() == before
+
+
 def test_a_default_alias_in_any_case_is_refused_at_the_create_door(
     env: dict[str, str],
 ) -> None:

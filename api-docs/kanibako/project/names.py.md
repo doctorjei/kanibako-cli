@@ -15,7 +15,7 @@ logger = get_logger('names')
 def read_names(registry: Path) -> dict[str, dict[str, str]]
 def register_name(registry: Path, name: str, path: str, section: str='worksets') -> None
 def register_name_if_absent(registry: Path, name: str, path: str, section: str='worksets') -> None
-def unregister_name(registry: Path, name: str, section: str='worksets') -> bool
+def unregister_name(registry: Path, name: str, section: str='worksets', *, exact: bool=False) -> bool
 def lookup_by_path(registry: Path, path: str) -> tuple[str, str] | None
 def resolve_name(registry: Path, name: str, cwd: Path | None=None, primary_workset: Path | None=None, *, early_system: EarlySystem, standalone: bool=True) -> tuple[str, str]
 def resolve_qualified_name(registry: Path, qualified: str, *, early_system: EarlySystem) -> tuple[str, str]

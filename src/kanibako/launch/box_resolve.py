@@ -52,9 +52,8 @@ def _enumerate_worksets(
 ) -> Iterator[tuple[str, Path, BoxMode]]:
     """Yield ``(workset_name, workset_root, mode)`` for EVERY reachable workset.
 
-    PRIMARY first (``std.primary_workset``), then every NAMED workset from the
-    global ``worksets:`` discovery section; a listed root that stores the standalone
-    ``workset.registry`` null is not a named workset and is skipped.
+    PRIMARY first, then every NAMED workset :func:`list_worksets` returns; a root
+    storing the standalone ``workset.registry`` null is skipped.
     """
     from kanibako.project.workset import list_worksets
 

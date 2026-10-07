@@ -147,15 +147,19 @@ def unregister_name(
     registry: Path,
     name: str,
     section: str = "worksets",
+    *,
+    exact: bool = False,
 ) -> bool:
     """Remove a name from the registry.
 
-    Returns True if the name was found and removed, False otherwise.
+    Returns True if the name was found and removed, False otherwise.  *exact* removes
+    only the key spelled as *name*, never a case variant of it.
     """
     names = _load(registry)
     # ⚑ Found case-blind, DELETED by the stored spelling (§0): folding the query alone
     # would report success while leaving the entry behind.
-    stored = find_identifier(name, names.get(section, {}))
+    entries = names.get(section, {})
+    stored = (name if name in entries else None) if exact else find_identifier(name, entries)
     if stored is None:
         return False
     del names[section][stored]
