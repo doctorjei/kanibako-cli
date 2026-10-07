@@ -665,8 +665,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `box duplicate` (no `--to`) still copies the file as it is.
 
 - **A box whose `box:` is not a table is refused before setup, not after.** `box extract --name` onto such a box
-  and `start` of a workset member used to leave a new `home/` beside the bad `box.yaml`. Creating with an explicit
-  vault choice still runs setup first.
+  and `start` of a workset member used to leave a new `home/` beside the bad `box.yaml`.
 
 - **`stop --all` no longer hides every mode's skip lines when one registry will not parse.** Each registry
   read is now separate, so an unreadable file warns and costs only the skip lines of the modes it feeds.

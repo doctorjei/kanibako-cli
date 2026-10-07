@@ -1370,9 +1370,6 @@ def resolve_project(std: StandardPaths, config: BootstrapConfig, project_dir: st
         _dir_existed = project_dir_path.is_dir()
 
         assert resolved_vault is not None
-        # ⚑ THE SHAPE RULE BEFORE ANY SETUP, ON EVERY ARM: the AUTHORED reader asks it and
-        # refuses a non-table ``box``, and an explicit ``enable_vault`` is only a DEFAULT —
-        # it does not outrank the file's shape.  The explicit value still persists.
         authored_vault = read_box_enable_vault(project_toml)
         persist_vault = (enable_vault if enable_vault is not None else authored_vault)
         _init_project(std, metadata_path, shell_path, vault_ro_path,
@@ -2060,7 +2057,6 @@ def resolve_workset_project(ws: WorksetSpec, project_name: str, std: StandardPat
 
     is_new = False
     if initialize and not shell_path.is_dir():
-        # ⚑ THE SHAPE RULE BEFORE ANY SETUP, ON EVERY ARM — as the primary door asks it.
         authored_vault = read_box_enable_vault(project_toml)
         persist_vault = (enable_vault if enable_vault is not None else authored_vault)
         _init_workset_project(std, metadata_path, shell_path)
