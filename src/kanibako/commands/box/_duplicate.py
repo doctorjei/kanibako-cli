@@ -326,7 +326,7 @@ def _duplicate_to_standalone(src_proj, new_path, std, force, src_enable_vault, c
     # the dest's BOX tier (M-8) — the same guard ``_lifecycle.py`` applies when it
     # re-roots a box.  The stray nested root is not inert: ``<dst>/box_data`` would
     # then carry BOTH ``box_data/`` and a ``workset.yaml``, i.e. the standalone
-    # MARKER (``box_resolve.standalone_settings_present``), under the SOURCE's kuid.
+    # MARKER (``box_resolve.stores_standalone_registry_null``), under the SOURCE's kuid.
     src_meta_dir = box_metadata_dir(src_proj.mode, src_proj.metadata_path,
                                     early=src_proj._require_early())
     copy_tree_keeping_links(

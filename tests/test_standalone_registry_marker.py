@@ -85,7 +85,7 @@ class TestDetection:
         self, config_file, tmp_home, credentials_dir, capsys,
     ):
         root = _create_standalone(tmp_home)
-        assert box_resolve.standalone_settings_present(root) is True
+        assert box_resolve.stores_standalone_registry_null(root) is True
         assert "Mode:         standalone" in _info(root, capsys)
 
     def test_removing_the_line_reads_not_standalone(
@@ -96,17 +96,17 @@ class TestDetection:
         kept = [ln for ln in settings.read_text().splitlines() if "registry" not in ln]
         settings.write_text("\n".join(kept) + "\n")
         assert (root / STANDALONE_META_DIR).is_dir()
-        assert box_resolve.standalone_settings_present(root) is False
+        assert box_resolve.stores_standalone_registry_null(root) is False
         assert "Mode:         standalone" not in _info(root, capsys)
 
     def test_box_data_alone_is_not_the_marker(self, tmp_path):
         (tmp_path / STANDALONE_META_DIR).mkdir()
         (tmp_path / WORKSET_META_FILE).write_text("workset:\n  kuid: abcde\n")
-        assert box_resolve.standalone_settings_present(tmp_path) is False
+        assert box_resolve.stores_standalone_registry_null(tmp_path) is False
 
     def test_stored_null_is_the_marker_without_box_data(self, tmp_path):
         (tmp_path / WORKSET_META_FILE).write_text("workset:\n  registry: null\n")
-        assert box_resolve.standalone_settings_present(tmp_path) is True
+        assert box_resolve.stores_standalone_registry_null(tmp_path) is True
 
     def test_a_system_file_null_is_not_the_roots_own_marker(
         self, config_file, tmp_home, credentials_dir, capsys,
@@ -119,7 +119,7 @@ class TestDetection:
         std = load_std_paths(load_config(config_file))
         std.settings.parent.mkdir(parents=True, exist_ok=True)
         std.settings.write_text("workset:\n  registry: null\n")
-        assert box_resolve.standalone_settings_present(root) is False
+        assert box_resolve.stores_standalone_registry_null(root) is False
         out = _info(root / "workspaces", capsys)
         assert "Mode:         standalone" not in out
         assert "workset.registry" in out
@@ -145,7 +145,7 @@ class TestNamedSetRefusal:
         after = (root / WORKSET_META_FILE).read_text() if (
             root / WORKSET_META_FILE).exists() else None
         assert after == before
-        assert box_resolve.standalone_settings_present(root) is False
+        assert box_resolve.stores_standalone_registry_null(root) is False
 
     def test_accepted_with_force(
         self, config_file, tmp_home, credentials_dir, capsys,
@@ -158,7 +158,7 @@ class TestNamedSetRefusal:
         assert "standalone" in out.err
         doc = yaml.safe_load((root / WORKSET_META_FILE).read_text())
         assert doc["workset"]["registry"] is None
-        assert box_resolve.standalone_settings_present(root) is True
+        assert box_resolve.stores_standalone_registry_null(root) is True
 
 
 class TestForcedNullReadsStandalone:
@@ -197,7 +197,7 @@ class TestForcedNullReadsStandalone:
     ):
         root = self._forced(tmp_home, capsys)
         assert _cli(["workset", "reset", "ws3", "workset.registry"]) == 0, capsys.readouterr().err
-        assert box_resolve.standalone_settings_present(root) is False
+        assert box_resolve.stores_standalone_registry_null(root) is False
         assert "Mode:         standalone" not in _info(root / "workspaces", capsys)
         assert _cli(["workset", "info", "ws3"]) == 0
 

@@ -54,22 +54,22 @@ def _register_box(registry_path: Path, box_name: str, box_path: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
-# standalone_settings_present — presence only, no project.mode read
+# stores_standalone_registry_null — the stored registry null, no project.mode read
 # ---------------------------------------------------------------------------
 
-class TestStandaloneSettingsPresent:
+class TestStoresStandaloneRegistryNull:
     def test_true_when_both_marker_and_settings(self, project_dir):
         _make_standalone_marker(project_dir)
-        assert box_resolve.standalone_settings_present(project_dir) is True
+        assert box_resolve.stores_standalone_registry_null(project_dir) is True
 
     def test_false_when_no_settings_file(self, project_dir):
         (project_dir / STANDALONE_META_DIR).mkdir()
-        assert box_resolve.standalone_settings_present(project_dir) is False
+        assert box_resolve.stores_standalone_registry_null(project_dir) is False
 
     def test_false_without_the_registry_null(self, project_dir):
         (project_dir / STANDALONE_META_DIR).mkdir()
         (project_dir / WORKSET_META_FILE).write_text("box: {}\n")
-        assert box_resolve.standalone_settings_present(project_dir) is False
+        assert box_resolve.stores_standalone_registry_null(project_dir) is False
 
     def test_does_not_read_project_mode(self, project_dir):
         # A settings file WITHOUT any ``project.mode`` field still counts — the
@@ -78,7 +78,7 @@ class TestStandaloneSettingsPresent:
         (project_dir / STANDALONE_META_DIR).mkdir()
         (project_dir / WORKSET_META_FILE).write_text(
             "box:\n  enable_vault: false\nworkset:\n  registry: null\n")
-        assert box_resolve.standalone_settings_present(project_dir) is True
+        assert box_resolve.stores_standalone_registry_null(project_dir) is True
 
 
 # ---------------------------------------------------------------------------

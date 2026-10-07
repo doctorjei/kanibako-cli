@@ -13,7 +13,7 @@ _PRIMARY_WORKSET_NAME = 'default'
 
 ## Functions
 ```
-def standalone_settings_present(project_dir: Path) -> bool
+def stores_standalone_registry_null(project_dir: Path) -> bool
 def find_connected_external_box(project_dir: Path, std: StandardPaths) -> _OwnedBox | None
 def detect_box_mode(project_dir: Path, std: StandardPaths, config: BootstrapConfig) -> DetectionResult | None
 def standalone_box_name(box_root: Path, registered_name: str | None) -> str

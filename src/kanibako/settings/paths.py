@@ -1741,7 +1741,7 @@ def _find_local_ancestor(target: Path, std: StandardPaths) -> Path | None:
 def _is_standalone_meta_dir(root: Path) -> bool:
     """True only if *root*'s own ``workset.yaml`` stores the standalone ``workset.registry`` null."""
     from kanibako.launch import box_resolve
-    return box_resolve.standalone_settings_present(root)
+    return box_resolve.stores_standalone_registry_null(root)
 
 
 def detect_project_mode(project_dir: Path, std: StandardPaths,

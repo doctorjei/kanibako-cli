@@ -31,7 +31,7 @@ from kanibako.settings.paths import (
 _PRIMARY_WORKSET_NAME = "default"
 
 
-def standalone_settings_present(project_dir: Path) -> bool:
+def stores_standalone_registry_null(project_dir: Path) -> bool:
     """True iff *project_dir*'s OWN ``workset.yaml`` stores ``workset.registry`` as null.
 
     ⚑ That stored null DEFINES standalone (system-design § Detection & import): this
@@ -60,7 +60,7 @@ def _enumerate_worksets(
     for name, root_str in registry_store.load_section(
         std.registry, "worksets"
     ).items():
-        if not standalone_settings_present(Path(root_str)):
+        if not stores_standalone_registry_null(Path(root_str)):
             yield (name, Path(root_str), BoxMode.named)
 
 
@@ -134,7 +134,7 @@ def find_connected_external_box(
         std.registry, "worksets"
     ).items():
         root = Path(root_str)
-        if standalone_settings_present(root):
+        if stores_standalone_registry_null(root):
             continue
         settings: Any = load_doc(root / WORKSET_META_FILE)
         early = EarlyScope(std.early_system, name)
@@ -182,7 +182,7 @@ def detect_box_mode(
     ``None`` (not a box).  The four cases in full: the llm-doc.
     """
     # 1. Standalone by the root file's own stored ``workset.registry`` null (OVERRIDES everything).
-    if standalone_settings_present(project_dir):
+    if stores_standalone_registry_null(project_dir):
         return DetectionResult(BoxMode.standalone, project_dir.resolve())
 
     # 2. Workset ownership from the per-workset registries.

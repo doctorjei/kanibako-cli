@@ -746,9 +746,9 @@ def _load_workset(root: Path, name: str, *, early_system: EarlySystem) -> Workse
     refuse_retired_workset_identity(root)
     settings_doc = load_workset_settings_doc(root)
     ws = Workset(name=name, root=root, early_system=early_system)
-    from kanibako.launch.box_resolve import standalone_settings_present
+    from kanibako.launch.box_resolve import stores_standalone_registry_null
     registry_path = workset_registry.resolve_workset_registry_path(
-        root, None if standalone_settings_present(root) else settings_doc, early=ws.early_scope,
+        root, None if stores_standalone_registry_null(root) else settings_doc, early=ws.early_scope,
     )
     # ⚑ Members come from ``boxes:``, which is the WHOLE of what that file holds, and
     # the path is recorded there exactly once.
@@ -1157,7 +1157,7 @@ def refuse_existing_box(source: Path, std: StandardPaths, *, force: bool = False
     # ⚑ D3-mode #1: an in-place standalone MARKER is the box's authoritative
     # self-declaration; connecting it would be a silent "steal" + dual registration.
     # The guard ALONE fixes it — with no ``boxes:`` entry, resolution finds the marker.
-    if not force and box_resolve.standalone_settings_present(resolved_source):
+    if not force and box_resolve.stores_standalone_registry_null(resolved_source):
         raise WorksetError(
             f"Cannot connect '{resolved_source}': it is a standalone box "
             "(in-place marker present). Connecting it would absorb a box "
@@ -1281,7 +1281,7 @@ def add_project(
             # re-imports it as standalone: a clean round-trip.
             from kanibako.launch import box_resolve as _box_resolve
 
-            if force and _box_resolve.standalone_settings_present(
+            if force and _box_resolve.stores_standalone_registry_null(
                 resolved_source
             ):
                 from kanibako.project import registry_store

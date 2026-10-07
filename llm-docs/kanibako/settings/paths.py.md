@@ -284,7 +284,7 @@ EVERY mode (spec §2c ALL PROJECTS), so the box tier is ALWAYS a real path — n
   `{}` for it, so a standalone box with no box file resolves byte-identically to one with no box
   tier at all. The workset tier is the ROOT `<root>/workset.yaml` — the file that plays the
   WORKSET tier for a degenerate one-box workset, and the file DETECTION reads
-  (`~/canon/workbook/specs/system-design-1.8.0.md` § "Detection & import"; `box_resolve.standalone_settings_present`).
+  (`~/canon/workbook/specs/system-design-1.8.0.md` § "Detection & import"; `box_resolve.stores_standalone_registry_null`).
   A `box.*` key stored THERE still resolves for box scope via R2 downward-defaults (`box` ⊂
   `workset` in `SCOPE_CONTAINMENT` — the workset-tier read KEEPS `box.*`). That is DECLARED DESIGN
   (keyspec §2c), and it is also how a pre-P2 standalone box keeps working with no migration.
@@ -983,7 +983,7 @@ standalone self-declaration (design D4) — the former `box.mode == "standalone"
 DROPPED (that field is gone). A box's own in-place settings file is the highest-precedence,
 authoritative standalone signal and OVERRIDES any workset determination (D3-mode #1); requiring both
 parts keeps an unrelated `box_data/` directory from being mistaken for a marker. Delegates to
-`box_resolve.standalone_settings_present` (the single definition of the presence check).
+`box_resolve.stores_standalone_registry_null` (the single definition of the presence check).
 
 ```python
 def detect_project_mode(
@@ -1035,7 +1035,7 @@ physically CONTAINS this box) must NOT be able to "steal" a box that declares it
 LIVE connection is the one exception, resolved by step 1.) This mirrors the marker-first precedence
 of `box_resolve.detect_box_mode` (its step 1) and keys on the SAME standalone-marker signal
 (`box_data/` + root `workset.yaml`, via `_is_standalone_meta_dir` →
-`box_resolve.standalone_settings_present`), so a workset/primary box (which never carries
+`box_resolve.stores_standalone_registry_null`), so a workset/primary box (which never carries
 `box_data/`) is unaffected. Only the resolved dir itself is inspected there (an ancestor marker is
 still handled by the step-5 walk); this matches `detect_box_mode`, which likewise honors the
 in-place marker only at `project_dir` before the workset scan. A GENUINE nested standalone (with NO
@@ -1620,7 +1620,7 @@ system-tier value); standalone alone then PERSISTS the RESOLVED value — that w
 migration, landing the root file's value at the box tier.
 
 **Box identity name (P8a):** sourced from `box_resolve` for a MATERIALIZED standalone (`box_data/` +
-`workset.yaml` present — the same gate `standalone_settings_present` uses). `box_resolve` composes
+`workset.yaml` present — the same gate `stores_standalone_registry_null` uses). `box_resolve` composes
 the name LIVE (P6d) as `<stored workset.kuid>_<live leaf>` — the kuid is the STABLE stored prefix
 (from the box's OWN `workset.yaml`, design D6) and the leaf is re-derived from the CURRENT root
 basename, so a moved standalone tree keeps its kuid identity while the leaf tracks the new dir (spec
