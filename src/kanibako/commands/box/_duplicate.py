@@ -728,8 +728,7 @@ def _duplicate_from_workset(args, source_path, new_path, std, config) -> int:
     if target_mode == BoxMode.standalone:
         # The standalone merge stays HERE; the primary target's moved inside.
         if ws_workspace is not None:
-            # Land the workspace in the resolved ``workspace/`` subdir, NOT the ROOT:
-            # merging into the root left it empty, and there a linked root stays a link.
+            # The resolved ``workspace/`` subdir, NOT the ROOT; a linked root stays a link.
             from kanibako.project.workset import (
                 load_workset_settings_doc,
                 resolve_workset_workspaces,
