@@ -1633,13 +1633,12 @@ def _unregistered_pending_create_error(
     """The launch refusal for a workspace whose ``create`` is pending and never registered.
 
     ``None`` when the launch target names no workspace, or no ``create`` entry is
-    pending for it — the caller then keeps its plain "no box" shape.  The cure is
-    the same line :func:`_interrupted_create_error` prints for the registered
-    box, because ``create --recover`` is what performs the replay either way.
+    pending for it — the caller then keeps its plain "no box" shape.
 
     ⚑ REGISTRATION IS STILL THE EXISTENCE SIGNAL, so this REFUSES rather than
     resolves: the half-built box is never adopted by a launch (see
-    :func:`_resolve_existing_box`).  Only the CURE changes with the pending entry.
+    :func:`_resolve_existing_box`).  Only the CURE changes with the pending entry,
+    and it is the line :func:`_interrupted_create_error` prints for a registered box.
 
     ⚑ An entry recorded for a STANDALONE or NAMED box is not this arm's
     population: those launches carry their own refusal, which names the mode flag
@@ -1648,22 +1647,19 @@ def _unregistered_pending_create_error(
     from kanibako.launch import journal
 
     if project_dir and designation_route(project_dir) is not DesignationRoute.PATH:
-        # A bare NAME is read through the registry, never as a workspace on disk,
-        # so the journal lookup has no workspace to match.
+        # A bare NAME resolves through the registry, never as a workspace on disk.
         return None
-    # ⚑ THE CURE'S ROOT IS THE RESOLVED WORKSPACE, which is what
-    # :func:`_create_designation` gives a PRIMARY probe (``probe.project_path``), so
-    # this line is byte-identical to the registered-box arm's for the same box and
-    # it runs from any directory.
+    # ⚑ THE CURE'S ROOT IS THE RESOLVED WORKSPACE — what
+    # :func:`_create_designation` gives a PRIMARY probe — so the line runs from
+    # any directory.
     workspace = str(Path(project_dir or os.getcwd()).resolve())
     try:
         pending = journal.pending_create_for_workspace(std.journal, workspace)
     except ConfigError:
-        # ⚑ AN UNREADABLE JOURNAL IS NOT THIS ARM'S BUSINESS.  This lookup only
-        # ENRICHES the no-box refusal, so a journal that will not parse falls
-        # through to that refusal rather than replacing it: the launch is
-        # refusing an unregistered box either way, and a cure that says to delete
-        # the journal would discard the pending entry it is here to report.
+        # ⚑ THIS LOOKUP ONLY ENRICHES the refusal, so a journal that will not
+        # parse yields no entry and the plain message stands. Refusing on the
+        # journal instead would cure it by deletion, discarding the pending entry
+        # this arm exists to report.
         return None
     if pending is None or pending.get("mode") in ("standalone", "named"):
         return None
