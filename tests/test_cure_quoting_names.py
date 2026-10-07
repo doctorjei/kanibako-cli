@@ -303,7 +303,7 @@ class TestTheReservedWorksetStepsAreQuoted:
 
         refused = _cli(cli_env, "box", "info", cwd=member)
         assert refused.returncode == 1, refused.stdout
-        assert f"Working set 'primary' is registered under a reserved name" in refused.stderr
+        assert "Working set 'primary' is registered under a reserved name" in refused.stderr
 
         steps = [
             ln.strip() for ln in refused.stderr.splitlines()
