@@ -1000,7 +1000,7 @@ def _new_box_undo(std, probe, *, standalone: bool,
         # ⚑ THE PROBE'S OWN PATHS CARRY A PLACEHOLDER LEAF (``__unregistered__``): a
         # non-materializing resolve has no real name yet, so the box dir and the vault
         # arms are ``<store>/__unregistered__``.  Their PARENT is the resolved store,
-        # which is what honours a repointed ``workset.{boxes,vault_ro,vault_rw}``.
+        # which is what honors a repointed ``workset.{boxes,vault_ro,vault_rw}``.
         # ⚑ ``--name`` is the ONE NAME THE MATERIALIZING RESOLVE WILL USE, and the
         # probe's is not it: ``_name_new_box_probe`` always picks from the workspace
         # basename, so naming the leaves from it alone would miss a ``--name`` box.
