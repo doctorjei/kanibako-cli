@@ -1076,11 +1076,16 @@ class TestADanglingVaultLeafIsCarried:
         assert not os.path.lexists(str(dst))
 
 
-class TestTheStashNeverHoldsALinkedLeaf:
-    """The ws->ws stash is the safety copy for a release that DELETES the source
-    store, so it must hold BYTES.  A linked leaf is refused by the per-box guard
-    before the stash is ever filled, so no pointer into deleted ground can stand
-    in it."""
+class TestALeafThatResolvesAwayFromItsArmIsNotACarryPair:
+    """What the per-box guard rejects is a leaf whose RESOLVED path is not under
+    the arm -- shared or foreign ground the teardown also refuses to touch.
+
+    ⚑ This is NOT "a stash never holds a linked leaf".  A link is carried
+    wherever the rule allows one, and an in-arm sibling ``m1 -> m1data`` stashes
+    as a LINK; the stash holds bytes only where the rule forces a copy.  The
+    claim was corrected in the fix2 review -- what is pinned here is the narrow
+    guard, not a blanket ban on links.
+    """
 
     def test_a_linked_vault_leaf_is_not_a_carry_pair(self, env):
         config, std, tmp_home = env
@@ -1095,3 +1100,92 @@ class TestTheStashNeverHoldsALinkedLeaf:
         os.symlink(str(outside), state.vault_rw)
         pairs = _vault_carry_pairs(state, std, None, tmp_home / "stash_rw")
         assert all(src != state.vault_rw for src, _dst in pairs)
+
+
+class TestACarryRePointsALinkToWhereItsTargetLanded:
+    """Q70: a carried pointer must name where its target LANDED.
+
+    The operation knows each carried tree's old->new landing, so a target inside
+    one maps to the SAME RELATIVE POSITION under that landing.  Materializing
+    instead leaves two independent copies of one tree, and later writes diverge
+    without a sound.  A materialization is legitimate only for a target in a part
+    the operation does not carry -- and must be announced."""
+
+    def test_a_target_inside_a_carried_tree_is_re_aimed_at_the_landing(self, tmp_path):
+        old_ws = tmp_path / "ws" / "workspaces" / "b1"
+        target = old_ws / "vaultdata"
+        target.mkdir(parents=True)
+        (target / "m.txt").write_text("OLD")
+        landed_ws = tmp_path / "new_ws" / "workspaces" / "b1"
+        (landed_ws / "vaultdata").mkdir(parents=True)
+        (landed_ws / "vaultdata" / "m.txt").write_text("NEW")
+        src = tmp_path / "v" / "rw"
+        src.parent.mkdir(parents=True)
+        src.symlink_to(target)
+        dst = tmp_path / "landed" / "rw"
+
+        _copy_vault_leaf_contents(src, dst, moved_root=tmp_path / "ws",
+                                 relocated={old_ws: landed_ws})
+
+        assert dst.is_symlink()
+        assert os.path.realpath(dst) == os.path.realpath(landed_ws / "vaultdata")
+        # Reading through it reaches the LANDING, not the tree being torn down.
+        assert (dst / "m.txt").read_text() == "NEW"
+
+    def test_a_target_outside_every_carried_tree_is_carried_as_it_stands(self, tmp_path):
+        outside = tmp_path / "outside"
+        outside.mkdir()
+        (outside / "m.txt").write_text("OUT")
+        src = tmp_path / "v" / "rw"
+        src.parent.mkdir(parents=True)
+        src.symlink_to(outside)
+        dst = tmp_path / "landed" / "rw"
+
+        _copy_vault_leaf_contents(src, dst, moved_root=tmp_path / "ws",
+                                 relocated={tmp_path / "ws": tmp_path / "new_ws"})
+
+        assert dst.is_symlink()
+        assert os.path.realpath(dst) == os.path.realpath(outside)
+
+    def test_a_target_with_no_landing_materializes_and_says_so(self, tmp_path, capsys):
+        """The one honest materialization: nothing carries this part, so bytes
+        arrive and the loss of the pointer is announced, not left silent."""
+        attic = tmp_path / "ws" / "attic"
+        attic.mkdir(parents=True)
+        (attic / "m.txt").write_text("STUCK")
+        src = tmp_path / "v" / "rw"
+        src.parent.mkdir(parents=True)
+        src.symlink_to(attic)
+        dst = tmp_path / "landed" / "rw"
+
+        _copy_vault_leaf_contents(src, dst, moved_root=tmp_path / "ws",
+                                 relocated={})
+
+        assert not dst.is_symlink()
+        assert (dst / "m.txt").read_text() == "STUCK"
+        assert "POINTER is gone" in capsys.readouterr().err
+
+    def test_the_default_leg_re_aims_where_the_workspace_landed(self, env):
+        """``convert --default --move`` carries the workspace, so a vault link
+        into it must follow it -- not report the pointer gone over a tree that is
+        sitting in the landing."""
+        config, std, tmp_home = env
+        root = _make_standalone(env, "sa", "content")
+        inside = root / "workspace" / "vaultdata"
+        inside.mkdir(parents=True)
+        (inside / "m.txt").write_text("FOLLOW ME")
+        vrw = root / "vault" / "rw"
+        shutil.rmtree(vrw)
+        os.symlink(str(root / "workspace" / "vaultdata"), vrw)
+        state = resolve_lifecycle_target(str(root), std, config)
+        landed = tmp_home / "landed"
+
+        new = execute_lifecycle(
+            state, TargetSpec(location=landed, ownership="default", name="landed"),
+            std, config, confirm=_conf_yes(),
+        )
+
+        carried = new.vault_rw
+        assert carried is not None
+        assert carried.is_symlink()
+        assert (carried / "m.txt").read_text() == "FOLLOW ME"
