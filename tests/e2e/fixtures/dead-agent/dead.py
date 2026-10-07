@@ -1,19 +1,19 @@
 """DeadTarget: a TESTING-ONLY agent plugin that is dead on arrival.
 
-This is a real kanibako ``Target`` discovered through the directory-plugin
-tier (``$XDG_DATA_HOME/kanibako/plugins/`` or a project's
-``box_data/plugins/``), so a box launched with it goes through the genuine
-agent-resolution -> binding-delivery -> bootstrap path.  Its delivered
-"binary" is a tiny script (``dead-agent``) that prints a marker to stderr
-and exits non-zero, so the launch always reaches kanibako's crash/death
-handling.  Used by the interactive (PTY) error-recovery tests to exercise
-the real attach-on-a-dying-container path that the stub-claude e2e cannot
-reach in a non-TTY harness.
+This is a real kanibako ``Target`` discovered through the ``kanibako.agents``
+entry-point group — the only route ``discover_targets`` reads (keyspec §2,
+*"Plugins load only from installed packages"*) — so a box launched with it goes
+through the genuine agent-resolution -> binding-delivery -> bootstrap path.  Its
+delivered "binary" is a tiny script (``dead-agent``) that prints a marker to
+stderr and exits non-zero, so the launch always reaches kanibako's crash/death
+handling.  Used by the interactive (PTY) error-recovery tests to exercise the
+real attach-on-a-dying-container path that the stub-claude e2e cannot reach in a
+non-TTY harness.
 
 TESTING-ONLY: this lives under ``tests/`` and is NEVER packaged or
-published.  It is not in any ``pyproject`` ``packages`` list, entry-points,
-or ``build-all.sh`` — it can only be discovered when a test explicitly drops
-it into a plugin directory.
+published.  It is not in any ``pyproject`` ``packages`` list, entry-points, or
+``build-all.sh`` — it is published to a test's subprocess only by the synthetic
+``*.dist-info`` :mod:`tests.e2e._entry_point_plugin` writes beside it.
 """
 
 from __future__ import annotations

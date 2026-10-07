@@ -6,9 +6,10 @@ keeps running so its tmux session persists, letting an interactive (PTY) test
 send ``Ctrl-b d`` and verify the box is KEPT running + reattachable (vs the
 dead agent, whose exit drives the crash/teardown path).
 
-A real kanibako ``Target`` discovered through the directory-plugin tier; its
-delivered "binary" is a tiny script (``live-agent``) that prints a marker and
-then sleeps.  TESTING-ONLY: lives under ``tests/`` and is NEVER packaged.
+A real kanibako ``Target`` discovered through the ``kanibako.agents`` entry-point
+group; its delivered "binary" is a tiny script (``live-agent``) that prints a
+marker and then sleeps.  TESTING-ONLY: lives under ``tests/`` and is NEVER
+packaged.
 """
 
 from __future__ import annotations
