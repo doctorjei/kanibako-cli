@@ -962,7 +962,7 @@ def _new_member_undo(ws: Workset, name: str) -> Callable[[], None]:
     return undo
 
 
-# ⚑ UNDO, NOT REPLAY: ``--recover`` refuses shaping flags (see the commit body).
+# ⚑ UNDO, NOT REPLAY: ``--recover`` refuses shaping flags.
 def _new_box_undo(std, probe, *, standalone: bool,
                   name: "str | None" = None) -> Callable[[], None]:
     """Undo for the box tree this create is about to materialize; build it BEFORE.
@@ -978,15 +978,12 @@ def _new_box_undo(std, probe, *, standalone: bool,
     def _absent(path: Path) -> bool:
         return not path.exists() and not path.is_symlink()
 
-    # ⚑ NAME THIS CREATE'S OWN OUTPUTS.  Nothing here is discovered by diffing a tree:
-    # a set difference deletes every path that appeared while the window was open,
-    # including another box's home and the user's own source files.
+    # ⚑ NAME THIS CREATE'S OWN OUTPUTS: never found by diffing a tree, whose set
+    # difference takes every path that appeared while the window was open.
     if standalone:
         root = probe.metadata_path
         canon = resolve_workset_canon(
             root, load_workset_settings_doc(root), early=probe._early)
-        # ⚑ THE USER'S ROOT: only these leaves are ours.  ``probe.project_path`` is the
-        # workspace SUBDIR, so the root's own files are named separately below.
         dirs = [p for p in (
             probe.shell_path.parent, canon,  # the box store and the canon tier
             probe.vault_ro_path, probe.vault_rw_path,
@@ -997,13 +994,8 @@ def _new_box_undo(std, probe, *, standalone: bool,
         vault_root = root
         files = [root / IGNORE_FILE, root / WORKSET_META_FILE]
     else:
-        # ⚑ THE PROBE'S OWN PATHS CARRY A PLACEHOLDER LEAF (``__unregistered__``): a
-        # non-materializing resolve has no real name yet, so the box dir and the vault
-        # arms are ``<store>/__unregistered__``.  Their PARENT is the resolved store,
-        # which is what honors a repointed ``workset.{boxes,vault_ro,vault_rw}``.
-        # ⚑ ``--name`` is the ONE NAME THE MATERIALIZING RESOLVE WILL USE, and the
-        # probe's is not it: ``_name_new_box_probe`` always picks from the workspace
-        # basename, so naming the leaves from it alone would miss a ``--name`` box.
+        # ⚑ THE PROBE'S PATHS CARRY A PLACEHOLDER LEAF (``__unregistered__``); their
+        # PARENT is the resolved store.  ⚑ ``--name``, not the probe's name.
         box_name = name or probe.name
         dirs = [p for p in (
             probe.metadata_path.parent / box_name,
@@ -1016,13 +1008,10 @@ def _new_box_undo(std, probe, *, standalone: bool,
         vault_root = std.primary_workset
         files = []
     skeleton = vault_root / VAULT_PATH
-    # ⚑ THE VAULT SKELETON ITSELF: it is the parent that holds both arms, and
-    # ``skeleton/.gitignore`` is the claim file that would otherwise keep it non-empty.
     parents.append(skeleton)
     files.append(skeleton / IGNORE_FILE)
     if not standalone:
-        # ⚑ THE STORE ABOVE THE BOXES, while it holds nothing but what this create made.
-        # A STANDALONE root is the USER's directory and is never a parent to remove.
+        # ⚑ THE STORE ABOVE THE BOXES — never a STANDALONE root, the USER's directory.
         parents.append(std.primary_workset)
 
     new_dirs = [p for p in dirs if _absent(p)]
@@ -1030,17 +1019,14 @@ def _new_box_undo(std, probe, *, standalone: bool,
     new_files = [p for p in files if _absent(p)]
 
     def _kuid_of(data: bytes) -> "str | None":
-        """The ``workset.kuid`` in *data* — the value a create AUTHORS."""
         for line in data.decode(errors="replace").splitlines():
             if line.strip().startswith("kuid:"):
                 return line.split(":", 1)[1].strip()
         return None
 
-    # ⚑ THE ROOT FILES A CREATE REWRITES, each with how to tell OUR write from a later
-    # one: ``.gitignore`` is APPENDED to, so the original bytes survive as a PREFIX; the
-    # settings file is re-dumped, dropping the user's comments and replacing their
-    # ``kuid``, so only the kuid marks it.  A file failing its own guard belongs to a
-    # later writer and is left exactly as it stands.
+    # ⚑ THE ROOT FILES A CREATE REWRITES, with how to tell OUR write from a later
+    # one's: ``.gitignore`` is APPENDED (its bytes stay a PREFIX), the settings file
+    # is re-dumped (only its ``kuid`` marks it).
     rewrites = []
     if standalone:
         for path, guard in (
@@ -1052,15 +1038,15 @@ def _new_box_undo(std, probe, *, standalone: bool,
                 rewrites.append((path, path.read_bytes(), guard))
 
     def undo() -> None:
-        for path in new_dirs:  # ⚑ LEAVES BEFORE PARENTS.
+        # ⚑ LEAVES, THEN FILES, THEN DEEPEST PARENT: the skeleton's claim file is
+        # what keeps ``vault/`` non-empty once the arms come out.
+        for path in new_dirs:
             if path.is_dir() and not path.is_symlink():
                 remove_box_tree(path)
             else:
                 path.unlink(missing_ok=True)
-        for path in new_files:  # ⚑ ONLY WHAT THIS CREATE MADE, files included.
+        for path in new_files:
             path.unlink(missing_ok=True)
-        # ⚑ DEEPEST PARENT FIRST, and AFTER the files: the vault skeleton's claim file
-        # is what would otherwise keep ``vault/`` non-empty when the arms come out.
         for path in sorted(new_parents, key=lambda p: len(p.parts), reverse=True):
             if path.is_dir() and not any(path.iterdir()):
                 path.rmdir()
