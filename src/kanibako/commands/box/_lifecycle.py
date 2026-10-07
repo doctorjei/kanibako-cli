@@ -1311,8 +1311,16 @@ def _copy_vault_leaf_contents(src: Path, dst: Path | None) -> None:
     ``shutil.Error`` listing the rest; that failure is re-raised as a
     ``ProjectError`` naming the leaf and the entries — the entries are NOT skipped,
     since skipping one would drop it from the store without a word.
+
+    ⚑ A DANGLING LEAF IS CARRIED, not skipped.  ``vault/rw -> <gone>`` is still the
+    user's pointer, and dropping it silently loses the one thing they set: the box
+    arrives with a real empty leaf where their pointer was, and the target is
+    unrecoverable.  The workspace side carries a dangling root, so this side does too.
+    A source that is merely missing, or a real non-directory, still no-ops.
     """
-    if dst is None or not src.is_dir():
+    if dst is None:
+        return
+    if not src.is_dir() and not (src.is_symlink() and not src.exists()):
         return
     if src.resolve() == dst.resolve():
         return
