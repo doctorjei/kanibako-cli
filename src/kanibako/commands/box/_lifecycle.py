@@ -1313,11 +1313,9 @@ def _copy_vault_leaf_contents(src: Path, dst: Path | None,
     ``ProjectError`` naming the leaf and the entries — the entries are NOT skipped,
     since skipping one would drop it from the store without a word.
 
-    ⚑ A DANGLING LEAF IS CARRIED, not skipped.  ``vault/rw -> <gone>`` is still the
-    user's pointer, and dropping it silently loses the one thing they set: the box
-    arrives with a real empty leaf where their pointer was, and the target is
-    unrecoverable.  The workspace side carries a dangling root, so this side does too.
-    A source that is merely missing, or a real non-directory, still no-ops.
+    ⚑ A DANGLING LEAF IS CARRIED, not skipped: ``vault/rw -> <gone>`` is still the
+    user's pointer, and dropping it leaves a real empty leaf where their pointer was.
+    A source that merely holds nothing -- missing, or a real non-directory -- no-ops.
     """
     if dst is None:
         return
@@ -1466,10 +1464,8 @@ def _carry_vault_contents(
     reuse-in-place edges (whose teardown is skipped) collapse to same-path no-ops
     inside.  A copy failure RAISES, aborting before anything is deleted.
 
-    ⚑ ``moved_root`` is the source box's own root: a vault link pointing INTO that tree
-    names a place this relocation tears down, so it is materialized rather than carried
-    as a pointer that would dangle on arrival.  A link pointing outside it stays put and
-    is carried.
+    ``moved_root`` is the source box's own root: a link INTO it names a place this
+    relocation tears down, so it is materialized, not carried as a dangling pointer.
     """
     for src, dst in _vault_carry_pairs(state, std, dst_ro, dst_rw):
         _copy_vault_leaf_contents(src, dst, moved_root=state.metadata_path)
