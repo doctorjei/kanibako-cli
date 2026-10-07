@@ -937,7 +937,7 @@ class TestLoadSystemConfig:
         from kanibako.settings.bootstrap import SYSTEM_PATH_DEFAULTS
 
         resolved = load_system_config(user, data_home=tmp_path, home=tmp_path)
-        assert SYSTEM_PATH_DEFAULTS["system.channelroot"] == "@config.data/channels"
+        assert SYSTEM_PATH_DEFAULTS["system.channelroot"] == "{config.data}/channels"
         assert resolved["system.channelroot"] == resolved["config.data"] / "channels"
 
     def test_per_key_independent_cascade(self, tmp_path, monkeypatch):

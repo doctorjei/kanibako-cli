@@ -52,36 +52,36 @@ SITE_SETTINGS_FILE = "settings_base.yaml"
 # Bootstrap keys from ``kanibako.cfg``, resolved FLAT — not by the keyspace pipeline.
 # ⚑ The set may GROW; spec §1 states no count. Its SIZE is pinned by test_manifest_conformance.
 CONFIG_PATH_DEFAULTS: dict[str, str] = {
-    "config.data":                  "$XDG_DATA_HOME/kanibako",
-    "config.settings":              "@config.data/global/settings.yaml",
-    "config.agents":                "@config.data/agents",
-    "config.primary_workset":       "@config.data/primary_workset",
-    "config.registry":              "@config.data/global/registry.yaml",
+    "config.data":                  "{$XDG_DATA_HOME}/kanibako",
+    "config.settings":              "{config.data}/global/settings.yaml",
+    "config.agents":                "{config.data}/agents",
+    "config.primary_workset":       "{config.data}/primary_workset",
+    "config.registry":              "{config.data}/global/registry.yaml",
     # The LIFECYCLE JOURNAL — the TRANSIENT truth beside the steady-state registry.
-    "config.journal":               "@config.data/global/journal.yaml"}
+    "config.journal":               "{config.data}/global/journal.yaml"}
 
 
 # ---------------------------------------------------------------------------
 # Layer 2 — system-scope SETTINGS keys that are PATHS (spec §1/§2g)
 # ---------------------------------------------------------------------------
-# SETTINGS keys, not bootstrap config: each ``@``-refs a Layer-1 config key, an XDG base,
+# SETTINGS keys, not bootstrap config: each ``{…}``-refs a Layer-1 config key, an XDG base,
 # or another key in THIS table.  ⚑ THIS TABLE IS THE FLOOR, NOT THE STORE: every key here is
 # CLI-settable at the system scope (``config_keys._KEY_ROUTES``) and a set lands in the ``system:``
 # table of the SYSTEM SETTINGS file, which the cascade layers OVER these defaults.
 SYSTEM_PATH_DEFAULTS: dict[str, str] = {
-   "system.backup":                 "@config.data/backup",
-   "system.channelroot":            "@config.data/channels",
-   "system.template":               "@config.data/global/template",
-   "system.canon":                  "@config.data/global/canon",
-   "system.cache":                  "$XDG_CACHE_HOME/kanibako",
-   "system.state":                  "$XDG_STATE_HOME/kanibako",
-   "system.runtime":                "$XDG_RUNTIME_DIR/kanibako",
+   "system.backup":                 "{config.data}/backup",
+   "system.channelroot":            "{config.data}/channels",
+   "system.template":               "{config.data}/global/template",
+   "system.canon":                  "{config.data}/global/canon",
+   "system.cache":                  "{$XDG_CACHE_HOME}/kanibako",
+   "system.state":                  "{$XDG_STATE_HOME}/kanibako",
+   "system.runtime":                "{$XDG_RUNTIME_DIR}/kanibako",
    # Channels skeleton.  ⚑ ORDER-DEPENDENT: broadcast refs chat, the rest ref channelroot.
-   "system.channels.common":        "@system.channelroot/common",
-   "system.channels.chat":          "@system.channelroot/chat",
-   "system.channels.broadcast":     "@system.channels.chat/broadcast.md",
-   "system.channels.mailboxes":     "@system.channelroot/mailboxes",
-   "system.channels.share":         "@system.channelroot/share"}
+   "system.channels.common":        "{system.channelroot}/common",
+   "system.channels.chat":          "{system.channelroot}/chat",
+   "system.channels.broadcast":     "{system.channels.chat}/broadcast.md",
+   "system.channels.mailboxes":     "{system.channelroot}/mailboxes",
+   "system.channels.share":         "{system.channelroot}/share"}
 
 
 # ---------------------------------------------------------------------------
@@ -90,7 +90,7 @@ SYSTEM_PATH_DEFAULTS: dict[str, str] = {
 #: The helper-hub SPAWN BUDGET built-ins — how deep and how wide a box may spawn when
 #: no tier carries the key.  ⚑ Keyed by LEAF: the two consumers want it two ways, and a
 #: leaf map is the shape both can derive from.  ``settings_launch.SYSTEM_SCALAR_FLOOR``
-#: spells the dotted keys for the launch floor, so an ``@system.helpers.depth`` answers;
+#: spells the dotted keys for the launch floor, so an ``{system.helpers.depth}`` answers;
 #: ``channels/helpers.py`` takes the bare numbers for ``SpawnBudget``'s field defaults
 #: and for the in-box resolve, which runs before any snapshot exists.
 #: ⚑ HERE rather than beside either consumer because it is ONE value with TWO carriers
