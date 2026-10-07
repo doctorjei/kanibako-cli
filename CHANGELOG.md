@@ -13,9 +13,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - **Two working sets can no longer be put on one `workset.logs` directory by accident.** `workset set`,
-  `system set`, `workset reset` and `workset create` refuse a change that lands two working sets (the default one
-  included) on one logs directory, comparing resolved directories, and name the working sets; `--force` keeps a
-  deliberate share. `workset create` gains `--force` for this alone. A `null` `workset.logs` names no directory and
+  `system set`, `workset reset`, `system reset` and `workset create` refuse a change that lands two working sets
+  (the default one included) on one logs directory, comparing resolved directories, and name the working sets;
+  `--force` keeps a deliberate share. `workset create` gains `--force` for this alone. A `null` `workset.logs` names no directory and
   never collides.
 
 - **A purge under a forced `workset.logs` share keeps a log file it cannot attribute.** Per-box log files are named
