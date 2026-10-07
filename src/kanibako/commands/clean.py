@@ -134,10 +134,7 @@ def _warn_undeleted(path) -> None:
     loud failure into a silent one — the box would report "done" over a tree that is
     still on disk.
 
-    ⚑ The suggested line is PASTED, and *path* carries the box name, which a box
-    created from a path holds VERBATIM.  Quoted, so a name holding a space cannot
-    widen the command's targets: unquoted, a box named ``x ~`` prints
-    ``rm -rf …/boxes/x ~`` and the shell hands ``$HOME`` to ``rm`` as a SECOND target.
+    ⚑ The suggested line is PASTED, so its operand is quoted.
     """
     print(
         f"\nWarning: could not fully remove {path}.\n"
