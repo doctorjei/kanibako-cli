@@ -136,6 +136,20 @@ class TestRefuseInheritedPerOwner:
             tmp_path, _scope({"workset.template": "/srv/tmpl"}, tmp_path / "settings.yaml"),
         )
 
+    def test_exclude_narrows_the_walk_and_leaves_the_default_alone(self, tmp_path):
+        """``registry`` is judged by the DEFAULT walk and spared only by ``exclude``.
+
+        Pinned both ways, so the default cannot silently narrow: the standalone
+        ``create`` door is the only caller that passes ``exclude``.
+        """
+        settings = tmp_path / "settings.yaml"
+        tier = {"workset.registry": "/srv/reg"}
+        with pytest.raises(ConfigError, match=r"workset\.registry is set to '/srv/reg'"):
+            refuse_inherited_per_owner(tmp_path, _scope(tier, settings))
+        refuse_inherited_per_owner(tmp_path, _scope(tier, settings), exclude={"registry"})
+        with pytest.raises(ConfigError, match=r"workset\.registry"):
+            refuse_inherited_per_owner(tmp_path, _scope(tier, settings), exclude={"boxes"})
+
 
 class TestWorksetCreate:
     def _create(self, std, ws_root: Path, capsys) -> tuple[int, str]:
