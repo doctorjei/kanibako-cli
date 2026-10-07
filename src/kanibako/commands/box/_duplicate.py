@@ -9,6 +9,7 @@ from pathlib import Path
 
 from kanibako.settings.config import (
     BOX_META_FILE,
+    WORKSET_META_FILE,
     carried_box_settings,
     user_config_file,
     load_config,
@@ -191,6 +192,13 @@ def _run_duplicate_cross_mode(args: argparse.Namespace, std, config) -> int:
 
     # default<->standalone: architectural boundary (centralized vs in-workspace metadata), not re-rooting — kept distinct (#71 B2).
     if target_mode == BoxMode.standalone:
+        # ⚑ Pre-flight the DESTINATION root's shape before the merge.  A root whose
+        # ``workset.yaml`` holds a scalar ``workset:`` is refused by
+        # ``establish_standalone``, but that runs after the workspace copy, so
+        # ``--force`` had already written the destination when the refusal arrived
+        # (task-dupforce-fix1 route 3).  Same refusal, moved ahead of the write;
+        # it is already applied to the source this way.
+        refuse_scalar_sections(new_path / WORKSET_META_FILE, ("workset",))
         if not args.bare and workspace_src is not None and workspace_src.is_dir():
             # The copy DESTINATION is the destination root's resolved
             # ``workset.workspaces`` (ruled 10, 2026-08-02) — the STANDALONE
@@ -219,9 +227,15 @@ def _run_duplicate_cross_mode(args: argparse.Namespace, std, config) -> int:
         # the boxes/<name> metadata dir + its registration.
         from kanibako.errors import ProjectError
         try:
-            if not args.bare and workspace_src is not None and workspace_src.is_dir():
-                _merge_workspace(workspace_src, new_path, args.force)
-            _duplicate_to_local(src_proj, new_path, std, config, args.force, carried)
+            # ⚑ The workspace merge moved INSIDE ``_duplicate_to_local``, after the
+            # mint and the home-free check, so neither refusal can be preceded by a
+            # write to *new_path* (task-dupforce-fix1 route 2).
+            _duplicate_to_local(
+                src_proj, new_path, std, config, args.force, carried,
+                workspace_src=(workspace_src
+                             if not args.bare and workspace_src is not None
+                             and workspace_src.is_dir() else None),
+            )
         except FileExistsError:
             # F-3 (NIT): a no-force copy onto a pre-existing (unregistered) dir
             # raises FileExistsError from copytree — surface the friendly
@@ -442,12 +456,20 @@ def _assert_dup_home_free(std, name: str) -> None:
         raise
 
 
-def _duplicate_to_local(src_proj, new_path, std, config, force, carried):
+def _duplicate_to_local(src_proj, new_path, std, config, force, carried,
+                       workspace_src=None):
     """Copy metadata into default-mode layout for new_path.
 
     ⚑ The source's VAULT is not carried, and that is CONFIRMED INTENDED
     (2026-08-27) -- the same holds for _duplicate_to_standalone.  Vaults do not
     travel on duplicate.
+
+    ⚑⚑ *workspace_src*, when given, is merged into *new_path* HERE — after the name
+    is minted and the home-free check has run — not by the caller.  Both cross-mode
+    callers used to merge first and mint second, so ``--force`` had already replaced
+    the destination's files before either refusal could fire (task-dupforce-fix1).
+    Minting first is what lets the home-free check run early: it needs the minted
+    name, and it guards a retained home that ``--force`` would otherwise rmtree.
     """
     # Assign a new name for the duplicate.  The name MUST be registered first
     # because the destination metadata dir is derived from it (std.boxes/<name>).
@@ -476,11 +498,13 @@ def _duplicate_to_local(src_proj, new_path, std, config, force, carried):
                                     early=src_proj._require_early())
 
     # Failure-consistency: a crash AFTER assign_primary_box_name (which registers it)
-    # but DURING the metadata/shell copy below would otherwise strand a
+    # but DURING the workspace or metadata copy below would otherwise strand a
     # "registered but no metadata" orphan.  Unwind the registration + any partial
     # dest dir on failure, then re-raise — duplicate either fully succeeds or
     # leaves no trace.
     try:
+        if workspace_src is not None:
+            _merge_workspace(workspace_src, new_path, force)
         if force and dst_project.is_dir():
             remove_box_tree(dst_project)
         copy_tree_keeping_links(
@@ -692,19 +716,33 @@ def _duplicate_from_workset(args, source_path, new_path, std, config) -> int:
             print("Aborted.")
             return 2
 
-    if ws_workspace is not None:
-        _merge_workspace(ws_workspace, new_path, args.force)
+    # ⚑ Refuse a scalar ``workset:`` at the destination root BEFORE the merge, not
+    # inside ``establish_standalone`` after it (task-dupforce-fix1 route 3, this
+    # route's own sighting of it).  Same refusal the source already gets.
+    if target_mode == BoxMode.standalone:
+        refuse_scalar_sections(new_path / WORKSET_META_FILE, ("workset",))
 
     # Copy metadata into target layout.
     # default<->standalone: architectural boundary (centralized vs in-workspace metadata), not re-rooting — kept distinct (#71 B2).
     if target_mode == BoxMode.standalone:
+        # ⚑ The standalone merge stays HERE, ahead of ``_duplicate_to_standalone``.
+        # The PRIMARY target's merge moved inside ``_duplicate_to_local``, after the
+        # mint and the home-free check (route 1) — leaving this one unconditional
+        # merged the primary target twice, the first pass still ahead of the mint.
+        if ws_workspace is not None:
+            _merge_workspace(ws_workspace, new_path, args.force)
         _duplicate_to_standalone(
             src_proj, new_path, std, args.force, src_enable_vault, carried,
         )
     else:
         from kanibako.errors import ProjectError
         try:
-            _duplicate_to_local(src_proj, new_path, std, config, args.force, carried)
+            # ⚑ The merge moved INSIDE ``_duplicate_to_local`` for the primary
+            # target too, after the mint and the home-free check (route 1).
+            _duplicate_to_local(
+                src_proj, new_path, std, config, args.force, carried,
+                workspace_src=ws_workspace,
+            )
         except ProjectError as e:
             # A local target onto a deregistered/orphaned (or name-colliding) home
             # is refused with register/purge guidance rather than clobbered.
