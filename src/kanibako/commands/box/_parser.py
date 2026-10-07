@@ -39,6 +39,7 @@ from kanibako.settings.messages import (
     ERR_WORKSET_NULL_WORKSPACES,
 )
 from kanibako.settings.paths import (
+    IGNORE_FILE,
     BoxMode,
     DesignationRoute,
     WorksetSpec,
@@ -963,17 +964,19 @@ def _new_member_undo(ws: Workset, name: str) -> Callable[[], None]:
 
 
 # ⚑ UNDO, NOT REPLAY: ``--recover`` refuses shaping flags.
-def _new_box_undo(std, probe, *, standalone: bool,
-                  name: "str | None" = None) -> Callable[[], None]:
-    """Undo for the box tree this create is about to materialize; build it BEFORE.
+def _new_box_undo(
+    std, probe, *, standalone: bool, name: "str | None" = None,
+) -> tuple[Callable[[], None], Callable[[str], None]]:
+    """``(undo, wrote)`` for the box tree this create is about to materialize; build it BEFORE.
 
     Removes only what did not exist.  A STANDALONE root is the USER's own directory.
+    Call ``wrote(<root file name>)`` right after each write this create makes to one.
     """
     from kanibako.project.workset import (
         load_workset_settings_doc, resolve_workset_canon,
     )
     from kanibako.runtime.container import remove_box_tree
-    from kanibako.settings.paths import IGNORE_FILE, VAULT_PATH
+    from kanibako.settings.paths import VAULT_PATH
 
     def _absent(path: Path) -> bool:
         return not path.exists() and not path.is_symlink()
@@ -1009,7 +1012,7 @@ def _new_box_undo(std, probe, *, standalone: bool,
         files = []
     skeleton = vault_root / VAULT_PATH
     parents.append(skeleton)
-    files.append(skeleton / IGNORE_FILE)
+    claim = skeleton / IGNORE_FILE
     if not standalone:
         # ⚑ THE STORE ABOVE THE BOXES — never a STANDALONE root, the USER's directory.
         parents.append(std.primary_workset)
@@ -1017,29 +1020,22 @@ def _new_box_undo(std, probe, *, standalone: bool,
     new_dirs = [p for p in dirs if _absent(p)]
     new_parents = [p for p in parents if _absent(p)]
     new_files = [p for p in files if _absent(p)]
+    new_claim = _absent(claim)
 
-    def _kuid_of(data: bytes) -> "str | None":
-        for line in data.decode(errors="replace").splitlines():
-            if line.strip().startswith("kuid:"):
-                return line.split(":", 1)[1].strip()
-        return None
-
-    # ⚑ THE ROOT FILES A CREATE REWRITES, with how to tell OUR write from a later
-    # one's: ``.gitignore`` is APPENDED (its bytes stay a PREFIX), the settings file
-    # is re-dumped (only its ``kuid`` marks it).
-    rewrites = []
+    # ⚑ A REWRITTEN ROOT FILE comes back only while it holds EXACTLY this create's
+    # bytes: an append keeps both a prefix and the kuid.  name -> [original, ours].
+    rewrites: dict[str, list[bytes]] = {}
     if standalone:
-        for path, guard in (
-            (root / IGNORE_FILE, lambda now, was: now.startswith(was)),
-            (root / WORKSET_META_FILE,
-             lambda now, was: _kuid_of(now) != _kuid_of(was)),
-        ):
-            if path.is_file():
-                rewrites.append((path, path.read_bytes(), guard))
+        for fname in (IGNORE_FILE, WORKSET_META_FILE):
+            if (root / fname).is_file():
+                rewrites[fname] = [(root / fname).read_bytes()] * 2
+
+    def wrote(fname: str) -> None:
+        if fname in rewrites and (root / fname).is_file():
+            rewrites[fname][1] = (root / fname).read_bytes()
 
     def undo() -> None:
-        # ⚑ LEAVES, THEN FILES, THEN DEEPEST PARENT: the skeleton's claim file is
-        # what keeps ``vault/`` non-empty once the arms come out.
+        # ⚑ LEAVES, THEN FILES, THEN DEEPEST PARENT.
         for path in new_dirs:
             if path.is_dir() and not path.is_symlink():
                 remove_box_tree(path)
@@ -1047,14 +1043,24 @@ def _new_box_undo(std, probe, *, standalone: bool,
                 path.unlink(missing_ok=True)
         for path in new_files:
             path.unlink(missing_ok=True)
+        # ⚑ The skeleton's claim is SHARED: it goes only once nothing else uses it.
+        if new_claim and skeleton.is_dir() and all(
+            p == claim or (p in new_parents and p.is_dir() and not any(p.iterdir()))
+            for p in skeleton.iterdir()
+        ):
+            claim.unlink(missing_ok=True)
         for path in sorted(new_parents, key=lambda p: len(p.parts), reverse=True):
             if path.is_dir() and not any(path.iterdir()):
                 path.rmdir()
-        for path, original, guard in rewrites:
-            if guard(path.read_bytes(), original):
+        for fname, (original, ours) in rewrites.items():
+            path = root / fname
+            if path.is_file() and path.read_bytes() == ours:
                 path.write_bytes(original)
+            else:
+                print(f"Note: left {path} as found; it changed after this create "
+                      f"wrote it.", file=sys.stderr)
 
-    return undo
+    return undo, wrote
 
 
 #: The per-owner keys a standalone ``create`` accepts: ``registry`` (§D4a below), ``template``.
@@ -1346,9 +1352,11 @@ def run_create(args: argparse.Namespace) -> int:
 
     # ⚑ NOT the NAMED arm: a recovery adopts attempt one's tree, not this one's.
     _undo_box = None
+    _box_wrote: Callable[[str], None] | None = None
     if _named_spec is None:
-        _undo_box = _new_box_undo(std, _probe, standalone=bool(args.standalone),
-                                  name=getattr(args, "name", None))
+        _undo_box, _box_wrote = _new_box_undo(
+            std, _probe, standalone=bool(args.standalone),
+            name=getattr(args, "name", None))
 
     _journaled = False
     try:
@@ -1367,6 +1375,8 @@ def run_create(args: argparse.Namespace) -> int:
                 name=standalone_name,
                 register=False,
             )
+            assert _box_wrote is not None
+            _box_wrote(WORKSET_META_FILE)
         else:
             proj = resolve_project(
                 std, config, project_dir=project_dir, initialize=True,
@@ -1443,6 +1453,8 @@ def run_create(args: argparse.Namespace) -> int:
             # vault/ live there, and for standalone the workspace is a SUBDIR of the root.
             if args.standalone:
                 write_project_gitignore(proj.metadata_path)
+                assert _box_wrote is not None
+                _box_wrote(IGNORE_FILE)
 
         # ⚑ THE J1 WRITE-AHEAD ORDER, AND IT IS THE WHOLE MECHANISM: write entry → seed →
         # register → clear entry.  Clearing is IMMEDIATE after the registry write (HARD

@@ -45,7 +45,7 @@ def _named_workset_owning(path: Path, std) -> str | None
 def _create_in_workset_space(workset: str, path: Path, *, standalone: bool, by_cwd: bool) -> str
 def _plan_workset_member(std, workset: str, name: str, args) -> 'tuple[Workset, str, bool] | None'
 def _new_member_undo(ws: Workset, name: str) -> Callable[[], None]
-def _new_box_undo(std, probe, *, standalone: bool, name: 'str | None'=None) -> Callable[[], None]
+def _new_box_undo(std, probe, *, standalone: bool, name: 'str | None'=None) -> tuple[Callable[[], None], Callable[[str], None]]
 def _list_orphans(projects: list, ws_data: list, std, quiet: bool) -> int
 def _purge_dir(target: Path) -> bool
 def _assert_deletable(path, *, must_be_under: Path | None=None) -> Path
