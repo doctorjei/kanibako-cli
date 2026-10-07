@@ -615,3 +615,36 @@ class TestTheCleanupCuresAreQuoted:
 
         assert f"rm {shlex.quote(str(lock))}" in printed
         assert self._operands(cure, tmp_path / "scratch") == [str(lock)]
+    def test_the_disconnect_cure_keeps_one_operand(self, tmp_path, monkeypatch,
+                                                   tmp_home, config_file,
+                                                   credentials_dir):
+        """``workset disconnect``'s OSError arm, whose operand is the member's dir."""
+        from kanibako.commands import workset_cmd
+        from kanibako.project.workset import add_project, create_workset
+        from kanibako.settings.config import load_config, user_config_file
+        from kanibako.settings.paths import load_std_paths
+
+        std = load_std_paths(load_config(user_config_file()))
+        ws = create_workset("ws", tmp_home / "ws_root", std)
+        member = tmp_home / "member"
+        member.mkdir()
+        add_project(ws, _SPACED, member, std)
+
+        from unittest.mock import patch
+
+        err = io.StringIO()
+        with (
+            patch("kanibako.commands.workset_cmd.remove_project",
+                  side_effect=OSError("refused")),
+            contextlib.redirect_stderr(err),
+            contextlib.redirect_stdout(io.StringIO()),
+        ):
+            rc = workset_cmd.run_disconnect(argparse.Namespace(
+                workset="ws", project=_SPACED, box=None,
+                force=True, remove_files=False))
+        printed = err.getvalue()
+        assert rc == 1 and "could not remove project" in printed, printed
+        cure = _pasteable(_line(printed, "unshare"), "Try: ")
+
+        assert self._operands(cure, tmp_path / "scratch") == [
+            "-rf", str(ws.projects_dir / _SPACED)]
