@@ -278,24 +278,37 @@ def test_only_the_dead_alias_variant_is_dropped_beside_a_live_one(
 
 
 @pytest.mark.skipif(os.geteuid() == 0, reason="root writes through a read-only mode")
-def test_a_drop_that_cannot_write_keeps_the_entry_and_warns(env: dict[str, str]) -> None:
-    home = Path(env["HOME"])
-    gone = home / "ws" / "Default"
+@pytest.mark.parametrize("on_primary", [False, True])
+def test_a_drop_that_cannot_write_still_skips_the_entry_and_warns(
+    env: dict[str, str], on_primary: bool,
+) -> None:
+    """A read-only registry keeps the entry ON DISK; the load still leaves it out."""
+    from kanibako.settings.config import load_config, user_config_file
+    from kanibako.settings.paths import load_std_paths
+
+    project = Path(env["HOME"]) / "proj"
+    project.mkdir()
+    assert _cli(env, "box", "create", cwd=project).returncode == 0
+    primary = load_std_paths(load_config(user_config_file())).primary_workset
+    root = primary if on_primary else Path(env["HOME"]) / "ws" / "Default"
     registry = _registry()
-    registry.parent.mkdir(parents=True, exist_ok=True)
-    _write_worksets([("Default", gone)])
+    _write_worksets([("Default", root)])
     before = registry.read_bytes()
     registry.chmod(0o444)
     registry.parent.chmod(0o555)
     try:
         listed = _cli(env, "workset", "list")
+        info = _cli(env, "box", "info", cwd=project)
     finally:
         registry.parent.chmod(0o755)
         registry.chmod(0o644)
-    assert listed.returncode == 0, listed.stderr
-    assert "Traceback" not in listed.stderr
-    assert listed.stderr.count("could not be removed from the registry") == 1
-    assert "Default" in listed.stdout
+    for run in (listed, info):
+        assert run.returncode == 0, run.stderr
+        assert "Traceback" not in run.stderr
+        assert "mv " not in run.stderr and "reserved name" not in run.stderr
+        assert run.stderr.count("could not be removed from the registry") == 1
+    assert "Default" not in listed.stdout and "ERROR" not in listed.stdout
+    assert "kb-primary-proj" in info.stdout
     assert registry.read_bytes() == before
 
 
