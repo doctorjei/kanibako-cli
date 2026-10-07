@@ -42,6 +42,7 @@ from kanibako.project.workset import (
     is_in_tree_workspace,
     list_worksets,
     load_workset,
+    logs_share_refusal,
     refuse_existing_box,
     refuse_null_workspaces,
     remove_project,
@@ -950,7 +951,10 @@ def _run_workset_config(args: argparse.Namespace) -> int:
         # The set door's own per-owner arm stands down here (the write is AT the owner's
         # scope), so this is the only thing that keeps a second workset from being aimed at
         # the first one's log directory.
-        _collision = _logs_share_refusal(key, value, ws, std, force=args.force)
+        _collision = logs_share_refusal(
+            key, value, std, force=args.force, scope="workset",
+            target_name=ws.name, target_root=ws.root,
+        )
         if _collision is not None:
             print(_collision, file=sys.stderr)
             return 1
