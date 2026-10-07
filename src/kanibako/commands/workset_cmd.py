@@ -630,11 +630,13 @@ def run_connect(args: argparse.Namespace) -> int:
     owner = primary_box_name_for_workspace(std.primary_workset, str(resolved),
                                            early=_early_scope(std, BoxMode.primary))
     if owner is not None:
-        rename = f" --name {project_name}" if in_tree and owner != project_name else ""
+        rename = (f" --name {shlex.quote(project_name)}"
+                  if in_tree and owner != project_name else "")
+        box, ws_ref = shlex.quote(owner), shlex.quote(ws.name)
         print(
             f"Error: Cannot connect '{resolved}': "
             + ERR_WS_CONNECT_PATH_IS_PRIMARY_BOX % (
-                owner, ws.name, owner, ws.name, rename, owner, ws.name, owner, owner,
+                owner, ws.name, box, ws_ref, rename, box, ws_ref, box, box,
             ),
             file=sys.stderr,
         )

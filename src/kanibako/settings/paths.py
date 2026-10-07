@@ -25,6 +25,7 @@ from kanibako.settings.messages import (PROFILE_CONTENTS, BASHRC_CONTENTS,
                                               ERR_WORKSET_NULL_WORKSPACES)
 
 import os
+import shlex
 import tempfile
 from dataclasses import dataclass, field
 from enum import Enum
@@ -1946,7 +1947,8 @@ def check_workspace_not_named_box(std: StandardPaths, workspace: str) -> None:
     if owned is not None:
         raise ProjectError(ERR_PROJECT_PATH_IS_NAMED_BOX % (
             workspace, owned.box_name, owned.workset_name,
-            owned.workset_name, owned.box_name, owned.workset_name, owned.box_name,
+            *map(shlex.quote, (owned.workset_name, owned.box_name,
+                               owned.workset_name, owned.box_name)),
         ))
 
 

@@ -3000,7 +3000,7 @@ def _run_container(
             print(
                 f"Error: --restart could not stop box '{proj.name}' — it is "
                 f"still running. Stop it manually (`kanibako stop "
-                f"{proj.name}`), then start it again.",
+                f"{shlex.quote(proj.name)}`), then start it again.",
                 file=sys.stderr,
             )
             return 1
@@ -10149,7 +10149,7 @@ def _refuse_legacy_container(runtime, proj: ProjectPaths) -> str | None:
             f"had before the container naming change. Starting it again would "
             f"leave two boxes running, so this is refused. Stop it, then start "
             f"it again:\n"
-            f"  {runtime.cmd} stop {legacy}"
+            f"  {shlex.quote(runtime.cmd)} stop {shlex.quote(legacy)}"
         )
     return None
 
