@@ -19,8 +19,10 @@ from pathlib import Path
 
 from kanibako.launch.box_identity import Designation, classify_designation, validate_box_name
 from kanibako.commands.flags import add_null_flag, add_set_force_flag
-from kanibako.settings.config_io import refuse_scalar_sections
-from kanibako.settings.workset_dirkeys import EarlyScope, refuse_inherited_per_owner
+from kanibako.settings.config_io import load_doc, refuse_scalar_sections
+from kanibako.settings.workset_dirkeys import (
+    WORKSET_EARLY_KEYS, EarlyScope, early_repoint, refuse_inherited_per_owner,
+)
 from kanibako.settings.config import (
     WORKSET_META_FILE,
     user_config_file,
@@ -962,6 +964,19 @@ def _new_member_undo(ws: Workset, name: str) -> Callable[[], None]:
     return undo
 
 
+#: The keys a standalone create resolves; it accepts ``registry`` and ``template``.
+_STANDALONE_CREATE_EARLY_KEYS: frozenset[str] = frozenset(WORKSET_EARLY_KEYS) - {
+    "registry", "template",
+}
+
+
+def _refuse_standalone_create_per_owner(root: Path, early: EarlyScope) -> None:
+    """*root*'s per-owner refusal, over the keys a standalone create resolves."""
+    doc = load_doc(root / WORKSET_META_FILE)
+    for key in sorted(_STANDALONE_CREATE_EARLY_KEYS):
+        early_repoint(root, doc, key, early=early)
+
+
 def run_create(args: argparse.Namespace) -> int:
     """Create a new kanibako project (replaces ``kanibako init``)."""
     config_file = user_config_file()
@@ -1087,7 +1102,10 @@ def run_create(args: argparse.Namespace) -> int:
     if project_dir is not None and _named_spec is None:
         target = Path(project_dir)
         if not target.exists():
-            if not args.standalone:
+            if args.standalone:
+                _refuse_standalone_create_per_owner(
+                    effective_path, _early_scope(std, BoxMode.standalone))
+            else:
                 refuse_inherited_per_owner(std.primary_workset, _early_scope(std, BoxMode.primary))
             target.mkdir(parents=True)
 

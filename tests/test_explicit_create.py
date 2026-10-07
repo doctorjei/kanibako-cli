@@ -1291,3 +1291,56 @@ class TestCreateRefusesPerOwnerBeforeTheDir:
         assert exc.value.code == 1
         assert f"workset.{key}" in capsys.readouterr().err
         assert not target.exists()
+
+
+# ⚑ ``workset.registry`` and ``workset.template`` are the per-owner keys a standalone
+# ``create`` does NOT resolve — ``registry`` indexes boxes at the SYSTEM registry, and the
+# standalone canon stamp reads ``workset.canon`` alone.  A pre-mkdir guard that refused
+# EVERY per-owner key would refuse both of these valid creates.
+_STANDALONE_ACCEPTED_KEYS = ["registry", "template"]
+
+
+class TestStandaloneCreatePerOwnerBeforeTheDir:
+    """A standalone ``create <path>`` refuses its own per-owner keys, and only those."""
+
+    @staticmethod
+    def _system_workset_key(config_file, key, value="/srv/x"):
+        _config, std = _std(config_file)
+        head, _, leaf = key.partition(".")
+        std.settings.parent.mkdir(parents=True, exist_ok=True)
+        from kanibako.settings.config_io import dump_doc
+        dump_doc(std.settings, {"workset": {head: {leaf: value} if leaf else value}})
+        return std
+
+    @pytest.mark.parametrize(
+        "key", ["canon", "workspaces", "channelroot", "channels.chat"],
+    )
+    def test_refused_and_path_absent(self, config_file, tmp_home, credentials_dir, capsys, key):
+        """The refusal lands before the mkdir, so no ``<path>`` stands behind it."""
+        from kanibako.cli import main
+
+        self._system_workset_key(config_file, key)
+        target = tmp_home / "new"
+        capsys.readouterr()
+
+        with pytest.raises(SystemExit) as exc:
+            main(["create", "--standalone", str(target)])
+        assert exc.value.code == 1
+        assert f"workset.{key}" in capsys.readouterr().err
+        assert not target.exists(), f"{key} refused the create but left {target} behind"
+
+    @pytest.mark.parametrize("key", _STANDALONE_ACCEPTED_KEYS)
+    def test_inherited_value_the_standalone_arm_accepts_still_creates(
+        self, config_file, tmp_home, credentials_dir, capsys, key,
+    ):
+        """An inherited value the standalone arm accepts must not block the create."""
+        from kanibako.cli import main
+
+        self._system_workset_key(config_file, key)
+        target = tmp_home / "new"
+        capsys.readouterr()
+
+        with pytest.raises(SystemExit) as exc:
+            main(["create", "--standalone", str(target)])
+        assert exc.value.code == 0, capsys.readouterr().err
+        assert (target / "box_data").is_dir(), f"{key} blocked a standalone create"
