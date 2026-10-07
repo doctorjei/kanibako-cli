@@ -5956,6 +5956,22 @@ are not affected. `box duplicate --to named` does not print this refusal; see th
 
 **What to do.** Move it aside or choose another `--name`.
 
+### An in-place `box convert --standalone` refuses a vault at your project root
+
+**Read this if `box convert --standalone` stops with
+`Refusing to convert '<name>' to standalone: <path> already exists and this operation did not create it`.**
+
+**What changed.** A standalone box's vault IS the root's own `workset.vault_ro` /
+`workset.vault_rw` arm — there is no per-box leaf under it. Your own `vault/rw` used to be
+taken for that arm: the convert merged the box's store into it, and a later `box rm --purge`
+deleted the directory with your files in it. The convert now refuses before it writes
+anything, and `--force` does not override this. The vault the box already owns, and an empty
+`vault/` arm, are not affected; neither is `box move`, nor a convert with a destination.
+
+**What to do.** Move the directory aside, or move your files out of it. Naming that same
+directory as the vault in the root's `workset.yaml` does not protect it — that makes it the
+box's own arm, which `box rm --purge` deletes.
+
 ### A leftover directory at `box duplicate --to named` needs `--force`; a registered name is refused
 
 **Read this if `box duplicate --to named --workset <ws> --name <name>` stops with
