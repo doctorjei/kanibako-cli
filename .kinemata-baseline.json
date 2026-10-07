@@ -801,7 +801,7 @@
       "entry": "claim:path",
       "antipattern": "box_data/",
       "path": "llm-docs/kanibako/project/import_reconcile.py.md",
-      "text": "`project.mode`. `box_resolve.standalone_settings_present(root)` is the test. A bare `box_data/` is"
+      "text": "`project.mode`. `box_resolve.stores_standalone_registry_null(root)` is the test. A bare `box_data/` is"
     },
     {
       "registry": "claims",
@@ -3035,7 +3035,7 @@
       "entry": "claim:path",
       "antipattern": "workset.yaml",
       "path": "llm-docs/kanibako/settings/paths.py.md",
-      "text": "`workset.yaml` present \u2014 the same gate `standalone_settings_present` uses). `box_resolve` composes"
+      "text": "`workset.yaml` present \u2014 the same gate `stores_standalone_registry_null` uses). `box_resolve` composes"
     },
     {
       "registry": "claims",

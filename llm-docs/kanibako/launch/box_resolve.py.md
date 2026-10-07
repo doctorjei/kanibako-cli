@@ -47,7 +47,7 @@ and then iterates the section for every NAMED workset.
 
 ## The standalone marker
 
-`stores_standalone_registry_null` tests ONE thing: whether the dir's OWN `workset.yaml` stores
+`stores_standalone_registry_null` tests ONE thing: whether the dir's OWN `WORKSET_META_FILE` stores
 `workset.registry` as null. That stored null is the DEFINITION of standalone (system-design
 § Detection & import) — this file only, never the cascade — so a bare `box_data/` is not enough:
 
