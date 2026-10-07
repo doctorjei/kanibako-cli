@@ -288,7 +288,7 @@ a broken box.
 
 `default_valid_agents` is the production supplier: every DISCOVERED agent plus the agent keys those
 plugins DECLARE. It is MEMOIZED in `_DISCOVERY` and reached only when a request actually names
-`agent.*` (`_needs_agent_discovery`), so the "lazy" claim is enforced by the call site, not just
+`agent.*` (`resolve_valid_agents`), so the "lazy" claim is enforced by the call site, not just
 asserted. A discovery FAILURE is recorded on the result rather than swallowed: an environment fault
 must not be reported as a bad agent name.
 
@@ -300,7 +300,7 @@ DIRECTORIES; a launch runs several resolves, and repeating it per resolve is pur
 agent plugins installed — is falsy, so a truthiness test would discard a caller's deliberate empty
 set and silently re-discover.
 
-⚑ `_needs_agent_discovery` returns True only for an agent-scope target. `pref.system.agent` does
+⚑ `resolve_valid_agents` discovers only for an agent-scope target. `pref.system.agent` does
 NOT need discovery: its VALUE names an agent, but §2h validates the target key, not the value, and a
 not-yet-installed agent name is legal there.
 

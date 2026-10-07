@@ -580,10 +580,7 @@ def apply_prefs(
     # no agent plugins installed) is falsy, so a truthiness test would discard a
     # caller's deliberate empty set and silently re-discover.
     if valid_agents is None:
-        valid_agents = (
-            default_valid_agents() if _needs_agent_discovery(requests)
-            else AgentNames(())
-        )
+        valid_agents = resolve_valid_agents(r.target for r in requests)
 
     ws: list[PrefRequest] = []
     box: list[PrefRequest] = []
@@ -709,7 +706,7 @@ def default_valid_agents() -> AgentNames:
     the agent keys those plugins DECLARE, harness by harness.
 
     MEMOIZED for the process (:data:`_DISCOVERY`) and reached only when a request
-    actually names ``agent.*`` (:func:`_needs_agent_discovery`), so laziness is
+    actually names ``agent.*`` (:func:`resolve_valid_agents`), so laziness is
     enforced by the call site, not just asserted. A discovery FAILURE is recorded
     on the result rather than swallowed: an environment fault must not be reported
     as a bad agent name.
@@ -770,17 +767,15 @@ def default_valid_agents() -> AgentNames:
     return result
 
 
-def _needs_agent_discovery(requests: Sequence[PrefRequest]) -> bool:
-    """Does validating *requests* require knowing which agents exist?
+def resolve_valid_agents(targets: Iterable[str]) -> AgentNames:
+    """The ``valid_agents`` for *targets*, discovered only if one is agent-scope.
 
-    Only an agent-scope target does. ``pref.system.agent`` does NOT — its VALUE
-    names an agent, but §2h validates the target key, not the value (and a
-    not-yet-installed agent name is legal there, see :func:`allowlist_reason`).
+    ``pref.system.agent`` is not: §2h judges the key, not its value. Otherwise an
+    EMPTY :class:`AgentNames`, not ``None``.
     """
-    return any(
-        r.target.startswith("agent.") or r.target.startswith("meta.agent.")
-        for r in requests
-    )
+    if any(t.startswith(("agent.", "meta.agent.")) for t in targets):
+        return default_valid_agents()
+    return AgentNames(())
 
 
 def pref_value(

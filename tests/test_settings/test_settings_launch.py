@@ -5028,6 +5028,89 @@ class TestCliLevelGuardIsNotBypassable:
         assert snap.agent.claude.continue_mode is False
 
 
+class TestOneAgentCollectionPerResolve:
+    """``assemble_cascade`` resolves ``valid_agents`` ONCE and forwards the same object to
+    the pref door (``apply_prefs``) and the CLI door (``guard_cli_level``).
+
+    Discovery is counted at ``discover_targets`` (the real plugin walk), not timed.
+    """
+
+    PERSONA_KEY = "agent.navigator℘goose.model"
+
+    def _discovery(self, monkeypatch):
+        """Discover ``claude`` + ``goose``, declaring nothing; return the call counter."""
+        calls: list[int] = []
+
+        class _Target:
+            def setting_descriptors(self):
+                return []
+
+        def discover():
+            calls.append(1)
+            return {"claude": _Target, "goose": _Target}
+
+        monkeypatch.setattr("kanibako.targets.discover_targets", discover)
+        return calls
+
+    def _snap(self, tmp_path, *, box=None, cli_level=None):
+        box_p = _write_yaml(tmp_path / "box.yaml", box) if box is not None else None
+        return build_launch_snapshot(
+            agent_name="claude", ctx=_ctx(), system_path=None, agent_path=None,
+            workset_path=None, box_path=box_p, cli_level=cli_level,
+        )
+
+    def test_a_persona_node_on_a_discovered_harness_passes_the_cli_door(
+        self, tmp_path, monkeypatch,
+    ):
+        """The row's case: before, the CLI door was handed ``None`` and refused it with
+        *"'navigator℘goose' is not a valid agent"* though discovery admits it."""
+        self._discovery(monkeypatch)
+        snap = self._snap(tmp_path, cli_level={self.PERSONA_KEY: "opus"})
+        assert snap.agent["navigator℘goose"].model == "opus"
+
+    def test_both_doors_get_ONE_collection_and_discovery_runs_once(
+        self, tmp_path, monkeypatch,
+    ):
+        from kanibako.settings import settings_launch
+
+        calls = self._discovery(monkeypatch)
+        seen: list[object] = []
+        real_apply, real_guard = settings_launch.apply_prefs, settings_launch.guard_cli_level
+
+        def apply_spy(requests, *, valid_agents=None, **kw):
+            seen.append(valid_agents)
+            return real_apply(requests, valid_agents=valid_agents, **kw)
+
+        def guard_spy(level, *, valid_agents=None, **kw):
+            seen.append(valid_agents)
+            return real_guard(level, valid_agents=valid_agents, **kw)
+
+        monkeypatch.setattr(settings_launch, "apply_prefs", apply_spy)
+        monkeypatch.setattr(settings_launch, "guard_cli_level", guard_spy)
+        self._snap(
+            tmp_path,
+            box={"pref": {"agent": {"claude": {"model": "from-pref"}}}},
+            cli_level={self.PERSONA_KEY: "opus"},
+        )
+        assert len(seen) == 2 and seen[0] is not None and seen[0] is seen[1]
+        assert calls == [1]
+
+    def test_a_pref_free_agent_free_launch_never_discovers(self, tmp_path, monkeypatch):
+        """Laziness: the CLI keys ``build_cli_level`` spells on the ACTIVE agent are
+        answered by the guard's union, so they cost no plugin walk either."""
+        calls = self._discovery(monkeypatch)
+        self._snap(
+            tmp_path,
+            cli_level={
+                "system.agent": "claude",
+                "agent.claude.model": "opus",
+                "agent.claude.continue_mode": True,
+                "box.image": "ghcr.io/x:y",
+            },
+        )
+        assert calls == []
+
+
 # --------------------------------------------------------------------------- #
 # The PERSONA rung — the persona store's LIVE, never-persisted tier            #
 # --------------------------------------------------------------------------- #

@@ -21,7 +21,7 @@ standing no-re-read guarantee already holds.
 
 from __future__ import annotations
 
-from typing import Collection, Final, Mapping
+from typing import Collection, Final, Iterator, Mapping
 
 from kanibako.settings.settings_keyspace import key_validity
 from kanibako.settings.settings_prefs import LOCATOR_CLOSURE
@@ -111,9 +111,10 @@ def guard_cli_level(
     the splice, so no call site can bypass it. A no-op for an empty level. The three arms
     below run in order: closed keyspace, categorical head, locator closure.
 
-    *active_agent* is UNIONED into *valid_agents* — it is valid BY CONSTRUCTION, having just
-    been resolved. The union is not a bypass: a key naming any OTHER agent is still refused.
-    The llm-doc explains why ``None`` there means "do not pay for plugin discovery".
+    *active_agent* is UNIONED into *valid_agents* (:class:`_ActiveAgentNames`) — it is valid
+    BY CONSTRUCTION, having just been resolved. The union is not a bypass: a key naming any
+    OTHER agent is still refused. The llm-doc explains why ``None`` there means "do not pay
+    for plugin discovery".
 
     ⚑⚑ THE LEAF VOCABULARY IS SOURCED, NEVER TAKEN AS A PARAMETER. This door is the TWIN of
     ``config_keys.agent_key_reason``: NAMES injected, vocabulary from
@@ -136,9 +137,7 @@ def guard_cli_level(
     # no plugin import, no cycle in either order).
     from kanibako.settings.config_keys import AGENT_LEAF_MAP
 
-    agents: set[str] = set(valid_agents or ())
-    if active_agent:
-        agents.add(active_agent)
+    agents = _ActiveAgentNames(() if valid_agents is None else valid_agents, active_agent)
 
     for key in level:
         reason = key_validity(
@@ -166,3 +165,42 @@ def guard_cli_level(
                 f"file the cascade reads. The CLI is not a pref, so §2h's forbidden "
                 f"tiers do not cover it and this guard bars it directly."
             )
+
+
+def keys_needing_agent_names(
+    level: "Mapping[str, object] | None", *, active_agent: "str | None",
+) -> list[str]:
+    """The keys of *level* whose agent NAME :func:`guard_cli_level` must look up.
+
+    Every key but ``agent.<active_agent>.*``, which the guard's active-agent union answers
+    without plugin discovery — the only agent scope :func:`build_cli_level` spells.
+    """
+    own = f"agent.{active_agent}." if active_agent else None
+    return [key for key in level or () if own is None or not key.startswith(own)]
+
+
+class _ActiveAgentNames(Collection[str]):
+    """*forwarded* UNIONED with the ACTIVE agent, without flattening *forwarded*.
+
+    Membership asks *forwarded*'s OWN predicate: an ``AgentNames`` admits a persona node
+    by its harness, so its iteration is not the set of names it accepts. ``leaf_map`` and
+    ``discovery_failed`` are forwarded, so a reader that asks them gets *forwarded*'s
+    answer. Iteration yields both parts, for a refusal message's list of valid agents.
+    """
+
+    def __init__(self, forwarded: Collection[str], active_agent: "str | None") -> None:
+        self._forwarded = forwarded
+        self._active = active_agent or None
+        self.leaf_map = getattr(forwarded, "leaf_map", None)
+        self.discovery_failed = getattr(forwarded, "discovery_failed", False)
+
+    def __contains__(self, item: object) -> bool:
+        return (self._active is not None and item == self._active) or item in self._forwarded
+
+    def __iter__(self) -> Iterator[str]:
+        yield from self._forwarded
+        if self._active is not None and self._active not in set(self._forwarded):
+            yield self._active
+
+    def __len__(self) -> int:
+        return sum(1 for _ in self)

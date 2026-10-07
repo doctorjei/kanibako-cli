@@ -121,7 +121,11 @@ from kanibako.settings.settings_categories import (
     is_path_key_value,
     refuse_non_scalar_family_value,
 )
-from kanibako.settings.settings_cli_level import build_cli_level, guard_cli_level
+from kanibako.settings.settings_cli_level import (
+    build_cli_level,
+    guard_cli_level,
+    keys_needing_agent_names,
+)
 from kanibako.settings.settings_expand import (
     Derive, DestKeys, NullSources, RefsRead, expand,
 )
@@ -140,7 +144,12 @@ from kanibako.settings.settings_keyspace import (
 from kanibako.settings.settings_keyspace_probe import keyspace_verdict
 from kanibako.settings.settings_keyspace_probe import observe as observe_keyspace
 from kanibako.settings.settings_merge import merge
-from kanibako.settings.settings_prefs import PrefRequest, apply_prefs, collect_prefs
+from kanibako.settings.settings_prefs import (
+    PrefRequest,
+    apply_prefs,
+    collect_prefs,
+    resolve_valid_agents,
+)
 from kanibako.settings.settings_resolve import (
     ResolveCtx,
     SettingsError,
@@ -2358,9 +2367,14 @@ def assemble_cascade(
     requests = list(prefs) if prefs is not None else collect_prefs(
         workset_path, box_path,
     )
-    # ``valid_agents`` is passed through UNRESOLVED (``None`` = "decide inside"), so a
-    # pref-free launch pays nothing for discovery. ⚑ ``is None``, not falsy — an empty
-    # AgentNames is a legitimate caller-supplied value.
+    # Resolved ONCE and the same object forwarded to BOTH doors, so they cannot disagree
+    # about which agents exist; discovery only if a key either door judges needs it.
+    # ⚑ ``is None``, not falsy — an empty AgentNames is a legitimate caller value.
+    if valid_agents is None:
+        valid_agents = resolve_valid_agents([
+            *(r.target for r in requests),
+            *keys_needing_agent_names(cli_level, active_agent=agent_name),
+        ])
     ws_prefs, box_prefs = apply_prefs(requests, valid_agents=valid_agents)
 
     levels: list[KeyStore] = []
