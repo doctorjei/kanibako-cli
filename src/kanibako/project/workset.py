@@ -38,11 +38,12 @@ had drifted (it named a ``worksets.yaml`` that no longer exists).
 
 from __future__ import annotations
 
+import copy
 import shlex
 import sys
 from collections.abc import Iterable, Mapping
 from contextlib import contextmanager
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any, Callable
 
@@ -62,7 +63,8 @@ from kanibako.settings.messages import (
 )
 from kanibako.settings.settings_resolve import UNSET, SettingsError
 from kanibako.settings.workset_dirkeys import (
-    EarlyScope, EarlySystem, early_repoint, refuse_inherited_per_owner, resolve_workset_dir_key,
+    EarlyScope, EarlySystem, _stored_repoint, early_repoint, refuse_inherited_per_owner,
+    resolve_workset_dir_key,
 )
 from kanibako.utils import WORKSET_SEGMENT_PRIMARY, WORKSET_SEGMENT_STANDALONE
 # ⚑ FORWARD edge of a documented cycle: ``settings/paths.py`` breaks it by DEFERRING
@@ -951,77 +953,90 @@ def _logs_walk_targets(std: StandardPaths) -> dict[str, Path]:
     return {**_load_registry(std), DEFAULT_WORKSET_ID: std.primary_workset}
 
 
-def _system_logs_repoint(std: StandardPaths) -> object:
-    """The raw ``workset.logs`` the SYSTEM tier carries, as stored (``UNSET`` if none)."""
-    return std.early_system.tier.get("workset.logs", UNSET)
+def _shown(name: str) -> str:
+    """*name* as a message says it: the VIRTUAL default's id reads as its alias."""
+    return DEFAULT_WORKSET_ALIAS if name == DEFAULT_WORKSET_ID else name
+
+
+def _with_logs(doc: Mapping[str, Any] | None, value: object) -> dict:
+    """A copy of *doc* as a write leaves its ``workset.logs`` slot: *value*, or gone if ``UNSET``."""
+    from kanibako.settings.config_keys import _KEY_ROUTES
+
+    sections, slot = _KEY_ROUTES["workset.logs"]
+    out = copy.deepcopy(dict(doc)) if isinstance(doc, Mapping) else {}
+    node = out
+    for section in sections:
+        child = node.get(section)
+        child = dict(child) if isinstance(child, Mapping) else {}
+        node[section] = child
+        node = child
+    if value is UNSET:
+        node.pop(slot, None)
+    else:
+        node[slot] = value
+    return out
 
 
 def find_logs_share(
-    std: StandardPaths, *, value: "str | None", scope: str,
+    std: StandardPaths, *, value: object, scope: str,
     target_name: str | None = None, target_root: Path | None = None,
 ) -> "tuple[tuple[str, ...], Path] | None":
-    """Which worksets one write of *value* puts on ONE ``workset.logs`` directory, and which.
+    """Which worksets one ``workset.logs`` write puts on ONE directory, and which.
 
-    Keyspec § 0 "Per-owner resources": two instances whose OWN values name one per-owner
-    resource share it, and that share must be refused by name unless ``--force``.  The
-    existing per-owner arms do not cover it -- ``_per_owner_set_error`` stands down when the
-    write happens AT the owner's own scope, and ``_refuse_unanchored`` polices only the
-    INHERITED read.  Neither compares two instances' values.
+    Keyspec § 0 "Per-owner resources": two instances whose own values name one per-owner
+    resource share it, refused by name unless ``--force``.  *value* is what the write
+    leaves: a string, ``None`` for ``--null``, ``UNSET`` for a reset or a new workset.
+    *scope* ``workset`` rewrites *target_name* alone (*target_root* may add it to the
+    walk, as a new workset); ``system`` rewrites the tier every workset WITHOUT its own
+    value reads.  Only a share holding a workset the write MOVES is reported, so a write
+    that changes nothing is never refused for a share already there.
 
-    ⚑ COMPARED RESOLVED, NEVER LEXICALLY.  ``@meta.workset.path/../shared_logs`` is a
-    different string in every workset's file and ONE directory on disk; a raw-value
-    comparison reports no collision while both worksets write into the same files.
-
-    *scope* picks which worksets the write DRIVES, and only a driven workset can make the
-    share this reports: a ``workset`` write moves its target alone, while a ``system`` write
-    lands on the tier every workset WITHOUT its own value reads.  Without that gate a third
-    workset's unrelated write would be refused for two OTHERS already sharing.
-
-    A ``None`` *value* is the ``--null`` write: the target keeps nothing of its own and
-    falls through to the system tier -- a share too when that tier names a directory
-    someone else already resolves to.
-
-    A workset whose value cannot be resolved is skipped: it is already broken, its verbs
-    refuse it, and it cannot say what it owns.
+    ⚑ Every workset resolves through :func:`resolve_workset_logs`, the rule its boxes
+    read, and paths compare RESOLVED: ``@meta.workset.path/../shared`` differs per file
+    and is one directory.  No logs dir (``None``) is no member; an unresolvable value is
+    skipped, as its verbs already refuse it.
     """
+    targets = _logs_walk_targets(std)
+    joins = scope == "workset" and target_name not in targets
+    if scope == "workset" and target_name is not None and target_root is not None:
+        targets[target_name] = target_root
+    system = std.early_system
+    if scope == "system":
+        tier: dict[str, Any] = {k: v for k, v in system.tier.items() if k != "workset.logs"}
+        if value is not UNSET:
+            tier["workset.logs"] = value
+        system = replace(system, tier=tier)
     groups: dict[Path, list[tuple[str, bool]]] = {}
-    for name, root in _logs_walk_targets(std).items():
+    for name, root in targets.items():
         try:
-            early = EarlyScope(std.early_system, name)
             doc = load_doc(root / WORKSET_META_FILE)
-            own, where = early_repoint(root, doc, "logs", early=early)
-            if scope == "workset" and name == target_name and target_root is not None:
-                root = target_root
-            own_here = own is not UNSET and where == root / WORKSET_META_FILE
+            driven = False
             if scope == "workset" and name == target_name:
-                driven, repoint = True, (value if value is not None
-                                      else _system_logs_repoint(std))
-            elif scope == "system" and not own_here:
-                driven, repoint = True, value
-            else:
-                driven, repoint = False, (own if own is not UNSET else None)
-            resolved = resolve_workset_dir_key(
-                root, repoint if isinstance(repoint, str) else None, _LOGS_LEAF,
-                key="logs", early=early, workset_settings=doc,
-            )
+                moved = _with_logs(doc, value)
+                driven = joins or (_stored_repoint(moved, _LOGS_LEAF)
+                                   != _stored_repoint(doc, _LOGS_LEAF))
+                doc = moved
+            elif scope == "system":
+                driven = (system.tier != std.early_system.tier
+                          and _stored_repoint(doc, _LOGS_LEAF) is UNSET)
+            resolved = resolve_workset_logs(root, doc, early=EarlyScope(system, name))
         except (ConfigError, SettingsError):
             continue
-        groups.setdefault(Path(resolved).resolve(), []).append((name, driven))
+        if resolved is not None:
+            groups.setdefault(Path(resolved).resolve(), []).append((name, driven))
     for resolved, members in groups.items():
         if len(members) > 1 and any(is_driven for _, is_driven in members):
-            return tuple(sorted(name for name, _ in members)), resolved
+            return tuple(sorted(_shown(name) for name, _ in members)), resolved
     return None
 
 
 def logs_share_refusal(
-    canonical_key: str, value: "str | None", std: StandardPaths, *, force: bool,
+    canonical_key: str, value: object, std: StandardPaths, *, force: bool,
     scope: str, target_name: str | None = None, target_root: Path | None = None,
 ) -> str | None:
-    """The message a set door must print INSTEAD of writing *value* to ``workset.logs``,
-    or ``None`` to go ahead.
+    """The message a ``workset.logs`` write door prints INSTEAD of writing, or ``None``.
 
-    *scope* is the writing tier's word (``workset`` / ``system``), named so a ``system``
-    refusal reads differently from a workset's own.
+    *value*, *scope* and the target are :func:`find_logs_share`'s.
     """
     if force or canonical_key != "workset.logs":
         return None
@@ -1032,8 +1047,10 @@ def logs_share_refusal(
         return None
     names, shared = hit
     sharers = ", ".join(f"'{name}'" for name in names)
+    what = (f"workset.logs = {value!r} ({scope} scope)" if value is not UNSET
+            else f"working set '{_shown(target_name or '')}' with no workset.logs of its own")
     return (
-        f"Error: nothing was written: workset.logs = {value!r} ({scope} scope) resolves "
+        f"Error: nothing was written: {what} resolves "
         f"to the SAME log directory ({shared}) for working sets {sharers}. Two working "
         "sets on one log directory share its files: a same-named box in either writes "
         "into the other's, and a purge in either reaches the other's. Point them at "
@@ -1049,17 +1066,13 @@ def _logs_share_partners(
     A working set is a PARTNER when its own resolved ``workset.logs`` IS *logs_dir* AND
     its ``boxes:`` membership holds a box of *box*'s name: the two boxes then name ONE
     file (``{workset.logs}/<name>.jsonl``), and nothing inside says which box wrote it.
-    *workset_root* is the purging verb's own workset, excluded by resolved root; ``None``
-    excludes nothing — a STANDALONE box's degenerate workset is not in the walk, so every
-    match is somebody else.
+    *workset_root* is the purging verb's own workset, excluded by resolved root; a
+    STANDALONE root is not in the walk, so every match is somebody else.
 
-    ⚑ COMPARED RESOLVED, like :func:`find_logs_share`; two lexically different values
-    that land on one directory are one directory.
-
-    A partner whose membership table cannot be READ still COUNTS.  The rule is to keep an
-    unattributable file, and a table that will not open cannot prove the file is no one
-    else's; a workset whose own ``workset.logs`` will not resolve is NOT a partner, since
-    it writes no logs anywhere.
+    ⚑ Resolved through :func:`resolve_workset_logs` and compared RESOLVED, like
+    :func:`find_logs_share`.  A partner whose membership table cannot be READ still
+    COUNTS: a table that will not open cannot prove the file is no one else's.  A
+    workset with no logs dir, or one that will not resolve, writes no logs: no partner.
     """
     try:
         shared = Path(logs_dir).resolve()
@@ -1072,14 +1085,10 @@ def _logs_share_partners(
         try:
             early = EarlyScope(std.early_system, name)
             doc = load_doc(root / WORKSET_META_FILE)
-            own, _where = early_repoint(root, doc, "logs", early=early)
-            resolved = resolve_workset_dir_key(
-                root, own if isinstance(own, str) else None, _LOGS_LEAF,
-                key="logs", early=early, workset_settings=doc,
-            )
+            resolved = resolve_workset_logs(root, doc, early=early)
         except (ConfigError, SettingsError, OSError):
             continue
-        if Path(resolved).resolve() != shared:
+        if resolved is None or Path(resolved).resolve() != shared:
             continue
         from kanibako.launch.box_resolve import stores_standalone_registry_null
         try:
@@ -1090,10 +1099,10 @@ def _logs_share_partners(
                 )
             )
         except (ConfigError, SettingsError, OSError):
-            partners.append(name)
+            partners.append(_shown(name))
             continue
         if find_identifier(box, boxes) is not None:
-            partners.append(name)
+            partners.append(_shown(name))
     return tuple(partners)
 
 
@@ -1110,9 +1119,10 @@ def purge_box_logs(
     path outside the box's own root.  A differently-named box's files are never in this
     verb's way, so a forced share costs the ordinary purge nothing.
 
-    *workset_root* is the workset the verb acts for; ``None`` for a STANDALONE box, whose
-    degenerate workset is not in the walk.  Returns what was actually deleted — a kept
-    file is NOT in that list, because every caller prints it as "Removed".
+    *workset_root* is the root of the workset the verb acts for: ``ws.root``, the
+    primary workset, or a STANDALONE box's own root (never in the walk, so it excludes
+    nothing).  Returns what was actually deleted — a kept file is NOT in that list,
+    because every caller prints it as "Removed".
     """
     if logs_dir is None:
         return remove_box_logs(None, box)
