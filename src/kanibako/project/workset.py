@@ -60,7 +60,7 @@ from kanibako.settings.messages import (
     ERR_CONFIG_NULL_PATH, ERR_NULL_WORKSPACE_BIND, ERR_STANDALONE_NULL_WORKSPACES,
     ERR_WORKSET_NULL_WORKSPACES,
 )
-from kanibako.settings.settings_resolve import SettingsError
+from kanibako.settings.settings_resolve import SettingsError, _Unset
 from kanibako.settings.workset_dirkeys import (
     EarlyScope, EarlySystem, early_repoint, refuse_inherited_per_owner, resolve_workset_dir_key,
 )
@@ -941,6 +941,88 @@ def _load_registry(std: StandardPaths) -> dict[str, Path]:
 
 #: Droppable ``(registry, key)`` pairs whose write failed: left out in memory, warned once.
 _UNDROPPABLE: set[tuple[Path, str]] = set()
+
+
+def shared_dir_refusal(
+    canonical_key: str, value: object, target_root: Path, target_name: str,
+    std: StandardPaths, *, force: bool, scope: str,
+) -> str | None:
+    """The message a set door must print INSTEAD of writing *value* to ``workset.logs``,
+    or ``None`` to go ahead.
+
+    Keyspec § 0 "Per-owner resources": two instances whose OWN values name one per-owner
+    resource share it, and the share is refused by name unless ``--force``.  *scope* is the
+    writing scope's word (``workset`` / ``system``), named in the refusal so a ``system``
+    write reads differently from a workset's own.
+    """
+    if force or value is None or canonical_key != "workset.logs":
+        return None
+    hit = find_shared_dir_collision(
+        target_root, target_name, str(value), std, key="logs",
+    )
+    if hit is None:
+        return None
+    other, other_dir = hit
+    return (
+        f"Error: workset.logs = {value!r} ({scope} scope) is the directory working set "
+        f"'{other}' already resolves workset.logs to ({other_dir}). Two working sets on "
+        "one log directory share its files: a same-named box in either writes into the "
+        "other's, and a purge in either can reach the other's. Point this one at a "
+        "directory of its own, or pass --force to share it deliberately."
+    )
+
+
+def _resolved_workset_dir(root: Path, name: str, key: str, std: StandardPaths) -> Path:
+    """The directory ``workset.<key>`` resolves to for the registered workset *name* at
+    *root*, reading its OWN ``workset.yaml`` first and the system tier beneath it."""
+    early = EarlyScope(std.early_system, name)
+    doc = load_doc(root / WORKSET_META_FILE)
+    repoint, _where = early_repoint(root, doc, key, early=early)
+    leaf = {"logs": _LOGS_LEAF}.get(key, key)
+    return resolve_workset_dir_key(
+        root, repoint if not isinstance(repoint, _Unset) else None, leaf,
+        key=key, early=early, workset_settings=doc,
+    )
+
+
+def find_shared_dir_collision(
+    candidate_root: Path, candidate_name: str, candidate_value: str | None,
+    std: StandardPaths, *, key: str = "logs",
+) -> tuple[str, Path] | None:
+    """Why *candidate_value* would give ``workset.<key>`` a directory ANOTHER registered
+    workset already resolves to, or ``None`` when the directory is uniquely *candidate_name*'s.
+
+    Keyspec § 0 "Per-owner resources": two instances whose OWN values name one per-owner
+    resource share it, and that share must be refused by name unless ``--force``.  The
+    existing per-owner arms do not cover it -- ``_per_owner_set_error`` stands down when the
+    write happens AT the owner's own scope, and ``_refuse_unanchored`` polices only the
+    INHERITED read.  Neither compares two instances' values.
+
+    ⚑ COMPARED RESOLVED, NEVER LEXICALLY.  ``@meta.workset.path/../shared_logs`` is a
+    different string in every workset's file and ONE directory on disk; a raw-value
+    comparison reports no collision while both worksets write into the same files.
+
+    A workset that states no value is walked too: its per-mode default is a candidate, so
+    pointing this workset's key at another workset's default leaf is caught as readily as
+    two worksets naming one literal.
+    """
+    early = EarlyScope(std.early_system, candidate_name)
+    mine = resolve_workset_dir_key(
+        candidate_root, candidate_value, _LOGS_LEAF, key=key, early=early,
+    )
+    mine_resolved = Path(mine).resolve()
+    for other_name, other_root in _load_registry(std).items():
+        if other_name == candidate_name:
+            continue
+        try:
+            other = _resolved_workset_dir(other_root, other_name, key, std)
+        except (ConfigError, SettingsError):
+            # A workset whose own value cannot be resolved is already broken, and its verbs
+            # refuse it; it cannot tell us what it owns, so it cannot be a named sharer.
+            continue
+        if Path(other).resolve() == mine_resolved:
+            return other_name, Path(other)
+    return None
 
 
 # ---------------------------------------------------------------------------
