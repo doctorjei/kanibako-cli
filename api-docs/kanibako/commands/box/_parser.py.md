@@ -14,6 +14,7 @@ _MISSING_WORKSPACE = 'missing workspace'
 _CREATE_SHAPING_FLAGS = ('name', 'image', 'agent', 'private', 'no_vault')
 _CREATE_SUBJECT_FLAGS = ('path', 'standalone', 'allow_home', 'register')
 _SHAPING_SET_CURE = {'image': ('box.image=<value>',), 'agent': ('pref.system.agent=<value>',), 'private': ('box.auth.global_enabled=false', 'box.auth.workset_enabled=false'), 'no_vault': ('box.enable_vault=false',)}
+_STANDALONE_CREATE_EARLY_KEYS: frozenset[str] = frozenset(WORKSET_EARLY_KEYS) - {'registry', 'template'}
 ```
 
 ## Types
@@ -44,6 +45,7 @@ def _named_workset_owning(path: Path, std) -> str | None
 def _create_in_workset_space(workset: str, path: Path, *, standalone: bool, by_cwd: bool) -> str
 def _plan_workset_member(std, workset: str, name: str, args) -> 'tuple[Workset, str, bool] | None'
 def _new_member_undo(ws: Workset, name: str) -> Callable[[], None]
+def _refuse_standalone_create_per_owner(root: Path, early: EarlyScope) -> None
 def _list_orphans(projects: list, ws_data: list, std, quiet: bool) -> int
 def _purge_dir(target: Path) -> bool
 def _assert_deletable(path, *, must_be_under: Path | None=None) -> Path
