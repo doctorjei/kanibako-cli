@@ -588,6 +588,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A command printed in an error or hint now pastes as printed.** Cures and hints that name a box, a working set,
+  a box-derived path, a box reference, or an image now shell-quote it. A box created from a path keeps that basename
+  verbatim, so a name with a space or `$( )` used to print a line that split into extra operands or ran the embedded
+  command (including the `podman unshare rm -rf` cleanup cures). Placeholders such as `<path>` stay bare, and plain
+  names print unchanged.
+
 - **Launching a box whose `create` was interrupted before registration names `create --recover`.** Such a box has no
   registration to launch, and the launch's "no box" refusal offered `create` — which that same path then refuses for the
   pending entry, so the remedy took two commands. It now names `kanibako create --recover <workspace>` plus
