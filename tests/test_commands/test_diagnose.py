@@ -1239,7 +1239,7 @@ class TestCheckVscode:
         """dockerPath == the kanibako dispatch wrapper path -> [ok] (FF-1)."""
         from kanibako.vscode import vscode_remote as vr
 
-        wrapper = str(vr.dispatch_wrapper_path())
+        wrapper = str(vr.ensure_dispatch_wrapper())
         self._settings(
             tmp_path,
             json.dumps({"dev.containers.dockerPath": wrapper}),
@@ -1247,6 +1247,21 @@ class TestCheckVscode:
         status, _label, detail = self._vscode_with_settings(tmp_path)
         assert status == "ok"
         assert "kanibako dispatch wrapper" in detail
+        assert "Remote-SSH window to a host without this path fails" in detail
+
+    def test_dockerpath_absolute_path_missing_here(self, tmp_path: Path) -> None:
+        """An absolute dockerPath that does not exist on this machine -> [!!]
+        naming that fact and the "podman" cure (the far-host case)."""
+        missing = "/home/nobody/.local/share/kanibako/vscode-remote/bin/podman-dispatch"
+        self._settings(
+            tmp_path,
+            json.dumps({"dev.containers.dockerPath": missing}),
+        )
+        status, _label, detail = self._vscode_with_settings(tmp_path)
+        assert status == "!!"
+        assert missing in detail
+        assert "does not exist on this machine" in detail
+        assert 'dev.containers.dockerPath": "podman"' in detail
 
     def test_dockerpath_other_value(self, tmp_path: Path) -> None:
         """dockerPath set to something else -> [!!] naming the wrong value."""

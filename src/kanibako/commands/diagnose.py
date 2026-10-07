@@ -383,11 +383,14 @@ def _check_vscode_docker_path(settings_path: Path) -> tuple[str, str, str]:
 
     * ``"podman"`` — local attach works (a NOTE flags that ``kanibako code
       --remote`` needs the kanibako dispatch wrapper instead);
-    * the kanibako dispatch wrapper path — both local AND ``--remote`` work.
+    * the kanibako dispatch wrapper path — local AND ``--remote`` work, but
+      VS Code applies this user setting in Remote-SSH windows too, so an
+      attach through a Remote-SSH window fails on a host without that path.
 
     Returns a single ``(status, label, detail)`` line: ``ok`` for either of the
-    above; ``!!`` (with remediation) when the file or key is absent or holds
-    another value; ``--`` when the file exists but is unreadable / unparseable.
+    above; ``!!`` (with remediation) when the file or key is absent, names an
+    absolute path missing on this machine (the far-host case), or holds another
+    value; ``--`` when the file exists but is unreadable / unparseable.
     """
     label = "VS Code dockerPath"
     remediation = (
@@ -419,13 +422,22 @@ def _check_vscode_docker_path(settings_path: Path) -> tuple[str, str, str]:
             '"dev.containers.dockerPath": "podman" '
             "(local only; 'kanibako code --remote' needs the kanibako wrapper)",
         )
+    if isinstance(value, str) and Path(value).is_absolute() and not Path(value).exists():
+        return (
+            "!!",
+            label,
+            f'"dev.containers.dockerPath" is "{value}", which does not exist on '
+            "this machine (VS Code applies this user setting in Remote-SSH "
+            f"windows too) -- {remediation}",
+        )
     from kanibako.vscode.vscode_remote import dispatch_wrapper_path
 
     if value is not None and value == str(dispatch_wrapper_path()):
         return (
             "ok",
             label,
-            f'"dev.containers.dockerPath": "{value}" (kanibako dispatch wrapper)',
+            f'"dev.containers.dockerPath": "{value}" (kanibako dispatch '
+            "wrapper; a Remote-SSH window to a host without this path fails)",
         )
     if value is None:
         return ("!!", label, f'"dev.containers.dockerPath" not set -- {remediation}')

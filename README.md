@@ -335,9 +335,12 @@ Requirements:
   ```
 
 On first `--remote` use, kanibako asks to point
-`dev.containers.dockerPath` at its dispatch wrapper (local attaches are
+`dev.containers.dockerPath` at its dispatch wrapper. Local attach windows are
 unaffected — the wrapper is a pass-through to `podman` except for remote
-attach windows).
+attach windows. Remote-SSH windows are affected: VS Code applies this user
+setting there too, so attaching to a container through a Remote-SSH window
+fails on any host where the wrapper's path does not exist. To undo the change,
+set `"dev.containers.dockerPath": "podman"`.
 
 If a remote attach fails, check `vscode-remote/dispatch.log` under the
 `system.state` key, which defaults to `$XDG_STATE_HOME/kanibako` --

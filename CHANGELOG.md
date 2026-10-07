@@ -597,6 +597,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`kanibako code --remote` says what pointing `dev.containers.dockerPath` at its wrapper costs.** VS Code applies
+  that user setting in Remote-SSH windows too, so a container attach through a Remote-SSH window fails on any host
+  where the wrapper's path does not exist. The prompt and the manual snippet now say so and give the undo (set it
+  back to `"podman"`); a wrapper path from another machine or an older location is named as such. `kanibako system
+  diagnose` flags an absolute `dockerPath` that does not exist on the machine it runs on, and its wrapper `[ok]` line
+  carries the Remote-SSH caveat. The wrapper is now installed before the setting is offered, so the setting never
+  names a missing file.
+
 - **A command printed in an error or hint now pastes as printed.** Cures and hints that name a box, a working set,
   a box-derived path, a box reference, or an image now shell-quote it. A box created from a path keeps that basename
   verbatim, so a name with a space or `$( )` used to print a line that split into extra operands or ran the embedded

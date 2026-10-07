@@ -225,6 +225,98 @@ def test_settings_already_wired_proceeds(
             run_code(_args(project="mybox", remote="host"))
 
 
+_FOREIGN_WRAPPER = (
+    "/home/nobody/.local/share/kanibako/vscode-remote/bin/podman-dispatch"
+)
+
+
+def test_settings_prompt_names_remote_ssh_cost_and_undo(
+    tmp_path, monkeypatch, _both_present, capsys,
+):
+    """The y/N discloses that VS Code applies the setting in Remote-SSH
+    windows too, and how to undo it, BEFORE the user answers."""
+    _settings_path(tmp_path, monkeypatch)
+    with (
+        patch("sys.stdin.isatty", return_value=True),
+        patch("builtins.input", return_value="n"),
+    ):
+        rc = run_code(_args(project="mybox", remote="host"))
+    assert rc == 1
+    out = capsys.readouterr().out
+    assert "Remote-SSH windows too" in out
+    assert '"dev.containers.dockerPath": "podman"' in out
+    assert out.index("Remote-SSH") < out.index("[y/N]")
+
+
+def test_settings_non_tty_snippet_names_remote_ssh_cost(
+    tmp_path, monkeypatch, _both_present, capsys,
+):
+    _settings_path(tmp_path, monkeypatch)
+    with patch("sys.stdin.isatty", return_value=False):
+        rc = run_code(_args(project="mybox", remote="host"))
+    assert rc == 1
+    err = capsys.readouterr().err
+    assert "Remote-SSH windows too" in err
+    assert '"dev.containers.dockerPath": "podman"' in err
+
+
+def test_settings_foreign_wrapper_is_named_not_generic(
+    tmp_path, monkeypatch, _both_present, capsys,
+):
+    """A podman-dispatch path that is not this machine's gets its own text."""
+    sp = _settings_path(tmp_path, monkeypatch)
+    sp.parent.mkdir(parents=True, exist_ok=True)
+    sp.write_text(json.dumps({"dev.containers.dockerPath": _FOREIGN_WRAPPER}))
+    with (
+        patch("sys.stdin.isatty", return_value=True),
+        patch("builtins.input", return_value="n"),
+    ):
+        rc = run_code(_args(project="mybox", remote="host"))
+    assert rc == 1
+    out = capsys.readouterr().out
+    assert _FOREIGN_WRAPPER in out
+    assert "not this machine's" in out
+    assert f"Replace it with {vr.dispatch_wrapper_path()}? [y/N]" in out
+
+
+def test_wrapper_installed_before_setting_points_at_it(
+    tmp_path, monkeypatch, _both_present,
+):
+    """If the wrapper cannot be installed, the setting is never written."""
+    sp = _settings_path(tmp_path, monkeypatch)
+    with (
+        patch("sys.stdin.isatty", return_value=True),
+        patch("builtins.input", return_value="y"),
+        patch(
+            "kanibako.vscode.vscode_remote.ensure_dispatch_wrapper",
+            side_effect=OSError("cache not writable"),
+        ),
+    ):
+        with pytest.raises(OSError, match="cache not writable"):
+            run_code(_args(project="mybox", remote="host"))
+    assert not sp.exists()
+
+
+def test_settings_already_wired_missing_wrapper_regenerated(
+    tmp_path, monkeypatch, _both_present,
+):
+    """Already wired + wrapper file gone: the file is back before the flow
+    goes on."""
+    sp = _settings_path(tmp_path, monkeypatch)
+    sp.parent.mkdir(parents=True, exist_ok=True)
+    wrapper = vr.dispatch_wrapper_path()
+    sp.write_text(json.dumps({"dev.containers.dockerPath": str(wrapper)}))
+    assert not wrapper.exists()
+
+    def _probe(_dest):
+        assert wrapper.is_file()
+        raise RuntimeError("proceeded")
+
+    with patch("kanibako.vscode.vscode_remote.probe_remote", side_effect=_probe):
+        with pytest.raises(RuntimeError, match="proceeded"):
+            run_code(_args(project="mybox", remote="host"))
+
+
 # --- full remote happy path + failure surfacing ----------------------------
 
 def _wire_ok(tmp_path, monkeypatch):
