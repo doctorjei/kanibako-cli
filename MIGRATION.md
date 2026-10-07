@@ -429,6 +429,10 @@ inside boxes. In order of likely impact:
     entry whose directory is gone, or that points at the primary working set, is removed from the
     registry with a note instead** — see *A working set named default must be registered again*.
 
+42. **`box duplicate --to standalone` of a workset box puts the workspace at `<dst>/workspace/`, and a duplicate or
+    convert now carries a symlinked workspace or vault as a link to its target instead of a copy of its contents** —
+    see *A duplicate or convert keeps a symlinked workspace or vault as a link*.
+
 ---
 
 ## 2. Per-area detail
@@ -6937,6 +6941,19 @@ myagent = "my_agent:MyAgentTarget"
 ```
 
 See *Packaging* in [docs/writing-targets.md](docs/writing-targets.md).
+
+---
+
+### 2.111 A duplicate or convert keeps a symlinked workspace or vault as a link
+
+**`box duplicate --to standalone` of a workset box.** The workspace is now at `<dst>/workspace/`, not `<dst>/`.
+If that workspace's root is a symlink, the new box's `<dst>/workspace/` is a link to the same target, so both boxes
+write the same files; copy the target yourself if you need an independent copy. `--to primary` still copies bytes.
+
+**`box convert` of a box whose vault directory is a symlink.** The converted box's vault is now a link, either to the
+same target or to its landed place when the target moved with the box. Before, it was a copy of the target's
+contents. Deleting the original target now affects the converted box. A target inside a tree the convert deletes is
+still copied, with a warning.
 
 ---
 
