@@ -259,18 +259,28 @@ def _run_duplicate_cross_mode(args: argparse.Namespace, std, config) -> int:
     return 0
 
 
-def _merge_workspace(src: Path, dst: Path, force: bool) -> None:
+def _merge_workspace(src: Path, dst: Path, force: bool, *,
+                     share_root_link: bool = False) -> None:
     """Copy the workspace *src* to *dst*, merging into an existing *dst* under *force*.
 
-    ⚑ A duplicate never lays the source's root LINK.  At ``--to standalone`` *dst* IS
-    the new box ROOT, so a link there writes the box's own ``workset.yaml`` and
-    ``box_data/`` into the user's directory, and ``box info <dst>`` answers the SOURCE.
+    By DEFAULT a duplicate never lays the source's root LINK, because when *dst* IS the
+    new box ROOT a link there writes the box's own ``workset.yaml`` and ``box_data/``
+    into the user's directory, and ``box info <dst>`` answers the SOURCE.
+
+    *share_root_link* is for a caller whose *dst* is the new box's RESOLVED workspace
+    subdir rather than its root.  There a linked root is carried as a link -- the copy
+    SHARES the target, Q102 (a) -- rather than materialized into a second copy.  It is
+    laid only while *dst* is absent: a directory that is already there takes the
+    ordinary merge, so nothing the user made is traded for a pointer.
 
     Raises ``ProjectError`` naming each entry the merge could not copy.
     """
     from kanibako.errors import ProjectError
 
     try:
+        if share_root_link and not dst.exists() and not dst.is_symlink() \
+                and lay_root_link(src, dst):
+            return
         copy_tree_keeping_links(src, dst, dirs_exist_ok=force, replace_existing=force)
     except shutil.Error as e:
         listing = failed_entries(e)
@@ -721,7 +731,23 @@ def _duplicate_from_workset(args, source_path, new_path, std, config) -> int:
     if target_mode == BoxMode.standalone:
         # The standalone merge stays HERE; the primary target's moved inside.
         if ws_workspace is not None:
-            _merge_workspace(ws_workspace, new_path, args.force)
+            # Land the workspace in the destination root's RESOLVED ``workspace/``
+            # subdir, as the primary-source route does -- NOT at the ROOT.  Merging
+            # into the root left the workspace files beside the box's own
+            # ``workset.yaml`` / ``box_data/``, so the new box's live workspace came
+            # out empty.  In its own subdir a linked source root can be carried as a
+            # link (Q102 (a)) without writing a byte into the target.
+            from kanibako.project.workset import (
+                load_workset_settings_doc,
+                resolve_workset_workspaces,
+            )
+            dest_workspace = resolve_workset_workspaces(
+                new_path, load_workset_settings_doc(new_path), standalone=True,
+                early=_early_scope(std, BoxMode.standalone),
+            )
+            assert dest_workspace is not None  # a nulling root refused before the prompt
+            _merge_workspace(ws_workspace, dest_workspace, args.force,
+                             share_root_link=True)
         _duplicate_to_standalone(
             src_proj, new_path, std, args.force, src_enable_vault, carried,
         )
