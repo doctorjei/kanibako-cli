@@ -49,12 +49,9 @@ def copy_tree_keeping_links(
     existing non-directory entry at its name.  An existing real directory there is still
     reported in the ``shutil.Error`` and never removed.
 
-    ⚑ *keep_root_link* extends THE RULE to the ROOT itself.  ``copytree`` lists *src* THROUGH,
-    so a root that is a link materializes its target tree at *dst* — the pointer the user made
-    becomes a copy of what it pointed at.  Off by default, because a snapshot or a stash is
-    meant to HOLD bytes, not a pointer.  When on, a linked root is re-created as a link
-    (Q102 (a): *"symlinks beget symlinks"*); see :func:`_copy_root_link` for the text and
-    what already sitting at *dst* costs.
+    ⚑ *keep_root_link* extends THE RULE to the ROOT: ``copytree`` lists *src* THROUGH, so a
+    root that is a link materializes its target at *dst*.  Off by default -- a snapshot or a
+    stash is meant to HOLD bytes, not a pointer.  See :func:`_copy_root_link`.
     """
     if keep_root_link and os.path.islink(src):
         _copy_root_link(src, dst, dirs_exist_ok=dirs_exist_ok,
@@ -76,18 +73,13 @@ def _copy_root_link(
 ) -> None:
     """Re-create a symlinked tree ROOT as a link at *dst*, so the copy SHARES the target.
 
-    ⚑ THE TEXT.  An ABSOLUTE text is carried exactly.  A RELATIVE one was written against
-    *src*'s directory, and after a move that directory is somewhere else, so the same text
-    would name a DIFFERENT thing from the new place: it is rewritten to name the SAME target
-    from *dst*'s parent (Q70's ``new_relative_link``).  A DANGLING relative link is rewritten
-    too — the target is a path whether or not it exists, and leaving the old text would point
-    the dangling somewhere else.
+    THE TEXT: absolute is carried exactly; relative was written against *src*'s directory and
+    is rewritten to name the SAME target from *dst*'s parent (Q70).  A dangling one is
+    rewritten too -- the target is a path whether or not it exists.
 
-    ⚑ WHAT IS ALREADY AT *dst* is never removed on the user's behalf.  A real directory there
-    is refused: the only party allowed to delete it is the one that made it, and this function
-    cannot know that — a caller whose own ``mkdir`` put it there proves the point from the
-    unwind's ``existed`` snapshot and removes it before calling.  A link already there is
-    replaced only under *replace_existing*, the same ``--force`` contract a leaf link honors.
+    WHAT IS ALREADY AT *dst* is never removed on the user's behalf: a real directory there is
+    refused, and a link yields only to *replace_existing*, the ``--force`` contract a leaf
+    link honors.
     """
     text = os.readlink(src)
     if os.path.isabs(text):
@@ -114,21 +106,13 @@ def _copy_root_link(
 
 
 def lay_root_link(src: Path, dst: Path) -> bool:
-    """Lay *src*'s root LINK at *dst* when doing so costs nothing; else copy as before.
+    """Lay *src*'s root LINK at *dst* when that costs nothing; else let the caller copy.
 
-    :func:`copy_tree_keeping_links` with *keep_root_link* is STRICT: it will not touch what
-    already sits at *dst*.  That is wrong for the relocation callers, whose destination is a
-    placeholder directory the op itself just made — refusing strands it, and copying through
-    materializes the target.  This answers the one question that decides it: WHAT IS AT *dst*?
-
-    True when the link was laid — *dst* was absent, or a real directory holding NOTHING.
-    ``os.rmdir`` carries the whole safety argument: it cannot remove a directory that holds
-    an entry, and a mount point answers ``EBUSY``, so a destination with content or mounted
-    over is left exactly as it is and the caller merges into it as it always did.  A
-    placeholder is not content; the only thing traded away is the placeholder.
-
-    False when *src* is not a link at all, or *dst* holds something — the caller then runs
-    its own copy, unchanged, including the exception it has always raised.
+    ``keep_root_link`` refuses whatever already sits at *dst*, which strands a relocation
+    whose destination is an empty placeholder its own ``mkdir`` just made.  True when the
+    link was laid: *dst* absent, or a directory holding nothing -- ``os.rmdir`` cannot remove
+    one that holds an entry and a mount point answers EBUSY, so content is never traded for a
+    pointer.  False otherwise, and the caller's own copy runs unchanged, exception and all.
     """
     if not os.path.islink(src):
         return False
@@ -141,6 +125,7 @@ def lay_root_link(src: Path, dst: Path) -> bool:
             return False
     elif dst.exists():
         return False
+    os.makedirs(os.path.dirname(os.path.abspath(str(dst))), exist_ok=True)
     copy_tree_keeping_links(src, dst, keep_root_link=True)
     return True
 

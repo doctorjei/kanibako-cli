@@ -262,9 +262,7 @@ def _run_duplicate_cross_mode(args: argparse.Namespace, std, config) -> int:
 def _merge_workspace(src: Path, dst: Path, force: bool) -> None:
     """Copy the workspace *src* to *dst*, merging into an existing *dst* under *force*.
 
-    A workspace that is itself a LINK is re-created as a link (Q102 (a)) whenever *dst* is
-    absent or an empty placeholder; a *dst* that already holds content is merged into, as
-    ``--force`` has always meant — a pointer is never traded for someone's files.
+    A LINKED workspace is re-created as a link when *dst* is absent or empty (Q102 (a)).
 
     Raises ``ProjectError`` naming each entry the merge could not copy.
     """
