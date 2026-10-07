@@ -922,13 +922,23 @@ def _load_registry(std: StandardPaths) -> dict[str, Path]:
                 why = "it is the primary working set, which `default` already names"
             else:
                 why = None
-            if why is not None:
-                unregister_name(std.registry, name, section="worksets")
-                print(f"Note: removed working set '{name}' ({root}) from the registry: "
-                      f"{why}. No file under it was touched.", file=sys.stderr)
-                continue
+            if why is not None and name not in _UNDROPPABLE:
+                try:
+                    unregister_name(std.registry, name, section="worksets", exact=True)
+                except OSError as exc:
+                    _UNDROPPABLE.add(name)
+                    print(f"Warning: working set '{name}' ({root}) could not be removed "
+                          f"from the registry ({why}): {exc}", file=sys.stderr)
+                else:
+                    print(f"Note: removed working set '{name}' ({root}) from the registry: "
+                          f"{why}. No file under it was touched.", file=sys.stderr)
+                    continue
         registry[name] = root
     return registry
+
+
+#: Droppable keys whose registry write failed: kept, and warned about once per process.
+_UNDROPPABLE: set[str] = set()
 
 
 # ---------------------------------------------------------------------------
