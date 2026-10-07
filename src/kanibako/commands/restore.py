@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import shlex
 import shutil
 import subprocess
 import sys
@@ -272,7 +273,7 @@ def _restore_one(std, config, *, project_dir, archive_file, force, name=None) ->
             print(
                 f"Error: could not remove the existing box data at "
                 f"{proj.metadata_path}.\nTry: podman unshare rm -rf "
-                f"{proj.metadata_path}",
+                f"{shlex.quote(str(proj.metadata_path))}",
                 file=sys.stderr,
             )
             return 1

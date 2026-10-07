@@ -1725,7 +1725,7 @@ def _teardown_primary_box(std, name: str, metadata_dir: Path) -> bool:
         print(
             f"Warning: could not fully remove {metadata_dir} "
             "(it may contain files created inside a container). "
-            f"Try: podman unshare rm -rf {metadata_dir}",
+            f"Try: podman unshare rm -rf {shlex.quote(str(metadata_dir))}",
             file=sys.stderr,
         )
     # The per-box logs, keyed by the registry name.
@@ -1800,7 +1800,7 @@ def _teardown_standalone_box(
     print(
         f"Warning: could not fully remove {metadata_dir} "
         "(it may contain files created inside a container). "
-        f"Try: podman unshare rm -rf {metadata_dir}",
+        f"Try: podman unshare rm -rf {shlex.quote(str(metadata_dir))}",
         file=sys.stderr,
     )
     return False

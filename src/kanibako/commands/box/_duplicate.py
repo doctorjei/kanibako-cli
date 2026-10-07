@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import shlex
 import shutil
 import sys
 from pathlib import Path
@@ -325,7 +326,7 @@ def _duplicate_to_standalone(src_proj, new_path, std, force, src_enable_vault, c
         # would MERGE the new box into the old one rather than replace it.
         raise ProjectError(
             f"could not remove the existing box data at {dst_metadata}.\n"
-            f"Try: podman unshare rm -rf {dst_metadata}"
+            f"Try: podman unshare rm -rf {shlex.quote(str(dst_metadata))}"
         )
     # ⚑ Copy from the box METADATA DIR, never ``metadata_path``: for a standalone
     # source those differ (root vs ``box_data/``), and the root would drag

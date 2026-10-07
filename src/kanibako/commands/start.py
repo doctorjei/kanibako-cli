@@ -1901,7 +1901,8 @@ def _check_launch_baseline(
             f"installed in image '{image}'.\n"
             f"  Kanibako cannot start the interactive session without it.\n"
             f"  A shell IS still available to investigate, e.g.:\n"
-            f"      {runtime.cmd} run --rm -it {image} bash\n"
+            f"      {shlex.quote(runtime.cmd)} run --rm -it "
+            f"{shlex.quote(image)} bash\n"
             f"  or, once a box exists:  kanibako shell\n"
             f"  Install it in the image{or_set}.",
             file=sys.stderr,

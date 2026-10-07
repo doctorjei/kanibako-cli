@@ -10,6 +10,7 @@
 from __future__ import annotations
 
 import argparse
+import shlex
 import sys
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -726,7 +727,8 @@ def run_disconnect(args: argparse.Namespace) -> int:
         # (root-owned canon skeleton, or anything the rootless container wrote as root).
         print(f"Error: could not remove project '{member}': {e}", file=sys.stderr)
         print(
-            f"  Try: podman unshare rm -rf {ws.projects_dir / member}",
+            f"  Try: podman unshare rm -rf "
+            f"{shlex.quote(str(ws.projects_dir / member))}",
             file=sys.stderr,
         )
         return 1
@@ -1245,9 +1247,11 @@ def _workset_raw_shares(files: Sequence[SettingsFile]) -> dict[tuple[str, str], 
                         f"binding is keyed BY its destination and has no entry "
                         f"name (the name was dropped 2026-08-06c), so '{dest}' is "
                         f"the RETIRED name-keyed shape. Fix it: "
-                        f"`kanibako workset share rm <workset> {dest} "
-                        f"--mode {mode}` then `kanibako workset share add "
-                        f"<workset> {leaf.src}:<box_dest> --mode {mode}` — or "
+                        f"`kanibako workset share rm <workset> "
+                        f"{shlex.quote(dest)} --mode {shlex.quote(mode)}` "
+                        f"then `kanibako workset share add "
+                        f"<workset> {shlex.quote(leaf.src)}:<box_dest> "
+                        f"--mode {shlex.quote(mode)}` — or "
                         f"re-key the entry to its destination in the settings "
                         f"file."
                     )

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import shlex
 import sys
 
 from kanibako.settings.config import user_config_file, load_config, BootstrapConfig
@@ -274,7 +275,7 @@ def _stop_one(runtime: ContainerRuntime, *, project_dir: str | None) -> int:
             print(f"Removed stopped container: {container_name}")
         else:
             print("\nIf a stale lock file is blocking a new session, remove it manually:")
-            print(f"  rm {lock_file}")
+            print(f"  rm {shlex.quote(str(lock_file))}")
 
     return 0
 
