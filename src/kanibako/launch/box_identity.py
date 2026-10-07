@@ -272,13 +272,14 @@ def validate_standalone_name(supplied: str, existing: set[str]) -> None:
 
 
 def resolve_standalone_name(
-    root: Path, supplied: str, existing: set[str],
+    root: Path, supplied: str, existing: set[str], *, box_kuid: str | None = None,
 ) -> str:
     """Resolve the standalone box name for *root* given a user *supplied* name.
 
     Three branches: empty → a fresh name; a non-canonical string → its whole
     text becomes the leaf; a verbatim canonical id → honored if free, refused if
-    taken.  The last is the only refusable input.
+    taken.  The last is the only refusable input.  *box_kuid*, a box's STORED kuid,
+    is the kuid half of a non-canonical name instead of a fresh one.
 
     ⚑ The case the user typed survives every branch (spec §0), because
     :func:`sanitize_cap` no longer folds; the kuid half is canonicalized, never the
@@ -289,6 +290,8 @@ def resolve_standalone_name(
 
     if not is_canonical_standalone_name(supplied):
         # Not a canonical id: use the whole supplied string as the leaf source.
+        if box_kuid is not None:
+            return f"{box_kuid}_{sanitize_cap(supplied)}"
         return _generate_with_leaf(sanitize_cap(supplied), existing)
 
     # A verbatim canonical id: honor it if free, else refuse with guidance.

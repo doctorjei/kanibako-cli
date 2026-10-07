@@ -37,6 +37,7 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
+from kanibako._atomic import rmw_lock
 from kanibako.identifiers import find_identifier
 from kanibako.settings.config_io import dump_doc, load_doc
 from kanibako.settings.messages import ERR_CONFIG_NULL_PATH
@@ -174,42 +175,45 @@ def load_workset_boxes(registry_path: Path) -> dict[str, str]:
 
 def register_workset_box(registry_path: Path, box_name: str, path: Path) -> None:
     """Register (add or replace) *box_name* → *path* in the ``boxes:`` section."""
-    full_doc, boxes = _load_boxes_raw(registry_path)
-    path_str = str(path)
-    # ⚑ Workspace-path uniqueness (Bug A durable fix): one workspace, EXACTLY one
-    # box name.  Relaxing this refusal re-opens duplicate ``list`` rows.  It costs
-    # the legitimate flows nothing — a re-register is idempotent and a MOVE (same
-    # name, new path) still overwrites below.
-    # ⚑ THE SELF TEST IS CASE-BLIND (spec §0, ⚑ NAMING RULES) AND THE WRITE BELOW IS
-    # WHAT MAKES THAT SAFE.  ``Foo`` against a stored ``foo`` is the SAME box, so it is
-    # self and not a second registration of one workspace; the case-variant row is then
-    # dropped rather than left BESIDE the new one, which is the two-rows-for-one-box
-    # outcome an exact self test used to prevent by refusing instead.
-    self_name = find_identifier(box_name, boxes)
-    for existing_name, existing_path in boxes.items():
-        if existing_name != self_name and _same_workspace(existing_path, path_str):
-            raise ProjectError(
-                f"Workspace {path_str!r} is already registered in this workset "
-                f"as box {existing_name!r}; refusing to register it a second "
-                f"time as {box_name!r} (one box per workspace path)."
-            )
-    if self_name is not None and self_name != box_name:
-        del boxes[self_name]
-    boxes[box_name] = path_str
-    _write_boxes(registry_path, full_doc, boxes)
+    # ⚑ ONE read-modify-write: two concurrent creates must not drop each other's row.
+    with rmw_lock(registry_path):
+        full_doc, boxes = _load_boxes_raw(registry_path)
+        path_str = str(path)
+        # ⚑ Workspace-path uniqueness (Bug A durable fix): one workspace, EXACTLY one
+        # box name.  Relaxing this refusal re-opens duplicate ``list`` rows.  It costs
+        # the legitimate flows nothing — a re-register is idempotent and a MOVE (same
+        # name, new path) still overwrites below.
+        # ⚑ THE SELF TEST IS CASE-BLIND (spec §0, ⚑ NAMING RULES) AND THE WRITE BELOW IS
+        # WHAT MAKES THAT SAFE.  ``Foo`` against a stored ``foo`` is the SAME box, so it is
+        # self and not a second registration of one workspace; the case-variant row is then
+        # dropped rather than left BESIDE the new one, which is the two-rows-for-one-box
+        # outcome an exact self test used to prevent by refusing instead.
+        self_name = find_identifier(box_name, boxes)
+        for existing_name, existing_path in boxes.items():
+            if existing_name != self_name and _same_workspace(existing_path, path_str):
+                raise ProjectError(
+                    f"Workspace {path_str!r} is already registered in this workset "
+                    f"as box {existing_name!r}; refusing to register it a second "
+                    f"time as {box_name!r} (one box per workspace path)."
+                )
+        if self_name is not None and self_name != box_name:
+            del boxes[self_name]
+        boxes[box_name] = path_str
+        _write_boxes(registry_path, full_doc, boxes)
 
 
 def unregister_workset_box(registry_path: Path, box_name: str) -> None:
     """Remove *box_name* from the ``boxes:`` section; no write at all if absent."""
     if not registry_path.is_file():
         return
-    full_doc, boxes = _load_boxes_raw(registry_path)
-    # ⚑ Found case-blind, removed by the STORED spelling (§0).
-    stored = find_identifier(box_name, boxes)
-    if stored is None:
-        return
-    del boxes[stored]
-    _write_boxes(registry_path, full_doc, boxes)
+    with rmw_lock(registry_path):
+        full_doc, boxes = _load_boxes_raw(registry_path)
+        # ⚑ Found case-blind, removed by the STORED spelling (§0).
+        stored = find_identifier(box_name, boxes)
+        if stored is None:
+            return
+        del boxes[stored]
+        _write_boxes(registry_path, full_doc, boxes)
 
 
 def workset_box_path(registry_path: Path, box_name: str) -> str | None:

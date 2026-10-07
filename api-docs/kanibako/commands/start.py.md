@@ -147,7 +147,7 @@ def _install_box_handbook(*, proj, snapshot: 'KeyStore', agent_id: str, logger) 
 def _box_journal_key(proj) -> str
 def _create_designation(probe) -> 'tuple[str, str]'
 def _create_cure(mode_flag: str, root: str, *flags: str) -> str
-def _write_create_entry(std, proj, *, state: dict | None=None, claim: bool=False) -> bool
+def _write_create_entry(std, proj, *, state: dict | None=None, claim: bool=False) -> dict | None
 def _primary_probe_named(std, probe, name: str)
 def _clear_create_entry(std, proj) -> None
 def _pending_create_entry(std, proj) -> dict | None

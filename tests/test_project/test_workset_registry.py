@@ -405,3 +405,38 @@ def test_an_absent_registry_key_still_takes_the_default(
                 early=early_record(tmp_path, mode=BoxMode.primary))
         == workset_root / "registry.yaml"
     )
+
+
+def test_concurrent_registrations_keep_every_row(tmp_path: Path, monkeypatch) -> None:
+    """Two registrations that read the registry at once must not drop a row.
+
+    The read is held open until both have read, which is the interleaving that lost
+    two of twenty rows in a 5×4 concurrent-create run.
+    """
+    import threading
+
+    registry = tmp_path / "registry.yaml"
+    workset_registry.register_workset_box(registry, "seed", tmp_path / "seed")
+    real_load = workset_registry._load_boxes_raw
+    both_read = threading.Barrier(2, timeout=2)
+
+    def _slow_load(path):
+        got = real_load(path)
+        try:
+            both_read.wait()
+        except threading.BrokenBarrierError:
+            pass  # serialized: the other writer is still waiting on the lock
+        return got
+
+    monkeypatch.setattr(workset_registry, "_load_boxes_raw", _slow_load)
+    threads = [
+        threading.Thread(target=workset_registry.register_workset_box,
+                         args=(registry, name, tmp_path / name))
+        for name in ("one", "two")
+    ]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    assert set(workset_registry.load_workset_boxes(registry)) == {"seed", "one", "two"}
