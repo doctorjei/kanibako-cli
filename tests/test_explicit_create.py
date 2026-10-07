@@ -1344,3 +1344,28 @@ class TestStandaloneCreatePerOwnerBeforeTheDir:
             main(["create", "--standalone", str(target)])
         assert exc.value.code == 0, capsys.readouterr().err
         assert (target / "box_data").is_dir(), f"{key} blocked a standalone create"
+
+    @pytest.mark.parametrize("key", ["channelroot", "channels.chat", "channels.mailboxes"])
+    def test_refused_a_pre_existing_target_is_left_as_the_user_left_it(
+        self, config_file, tmp_home, credentials_dir, capsys, key,
+    ):
+        """The refusal lands before ANY write, so a target that ALREADY exists is untouched.
+
+        ⛔ A guard that runs only under ``if not target.exists()`` never reaches this case:
+        the create then materializes a whole box beside ``user.txt`` and refuses afterwards.
+        """
+        from kanibako.cli import main
+
+        self._system_workset_key(config_file, key)
+        target = tmp_home / "mine"
+        target.mkdir()
+        (target / "user.txt").write_text("the user's own file\n")
+        capsys.readouterr()
+
+        with pytest.raises(SystemExit) as exc:
+            main(["create", "--standalone", str(target)])
+        assert exc.value.code == 1
+        assert f"workset.{key}" in capsys.readouterr().err
+        assert sorted(p.name for p in target.iterdir()) == ["user.txt"], (
+            f"{key} refused the create but wrote into {target}"
+        )
