@@ -934,7 +934,7 @@ class TestDiscoveryIsLazyCachedAndHonest:
         sp.reset_discovery_cache()
 
         def boom():
-            raise RuntimeError("plugin dir unreadable")
+            raise RuntimeError("plugin metadata unreadable")
 
         monkeypatch.setattr("kanibako.targets.discover_targets", boom)
         agents = sp.default_valid_agents()

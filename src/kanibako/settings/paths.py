@@ -1093,8 +1093,7 @@ def resolve_data_path(*, config_home: Path | None = None,
     :class:`StandardPaths` reaches the directory the user CONFIGURED instead of composing the
     XDG data base with a hardcoded ``kanibako`` leaf ([R155]: a kanibako subdirectory
     references ``config.data``; it is never composed from the XDG base).
-    :meth:`kanibako.targets.discover_targets.resolve_target` is such a caller:
-    ``load_std_paths`` REQUIRES a config file and this does not.
+    Unlike ``load_std_paths``, it needs no config file.
 
     ⚑ TOTAL: any failure to read or resolve config — the file is absent, unreadable, or
     malformed YAML, or a stored expression fails to resolve — degrades to

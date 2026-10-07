@@ -13,8 +13,8 @@ that process touched.
 ``_discover``'s process memo is what every later test reads. Its concession rule
 concedes an unprimed memo (an empty map means "no agent's vocabulary is known here"),
 which fails SAFE — so a green suite is not evidence that priming occurred, and
-``test_census_still_primes_the_memo`` is the only assertion here that can fail for a
-reason about the code under it.
+``test_census_still_primes_the_memo_at_configure_time`` is the only assertion here that
+can fail for a reason about the code under it.
 
 ⚑ THE WINDOW HAS NO USER-DIR OBSERVABLE TO GUARD, and that is a property of the
 priming call rather than of this file.  ``discover_targets`` reads installed

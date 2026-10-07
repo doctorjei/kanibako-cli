@@ -32,7 +32,7 @@ from tests.support.repo import REPO_ROOT
 
 
 def _isolate_config(tmp_path, monkeypatch) -> None:
-    """Pin the CONFIG side of the user plugin dir, which is ``config.data``/plugins.
+    """Pin the CONFIG side of the retired user plugin dir, ``config.data``/plugins.
 
     ⚑ ``XDG_DATA_HOME`` alone does not determine where a ``config.data`` dir resolves
     ([R155]), so an unisolated ``XDG_CONFIG_HOME`` — or the site base under ``/etc`` —
