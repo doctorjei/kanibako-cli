@@ -177,9 +177,6 @@ def _purge_one(std, config, path: str, *, force: bool) -> int:
     print("Removing session data... ", end="", flush=True)
     # Remove the per-box logs first (their paths are derived from the box's
     # tree, which the rmtree below may take with it for standalone).
-    # ⚑ SCOPED TO THIS BOX'S WORKSET: a forced ``workset.logs`` share makes a
-    # same-named box's log file ONE file for two working sets, and that file is kept
-    # and reported here instead of deleted (:func:`purge_box_logs`).
     purge_box_logs(std, *box_logs_location(std, proj), workset_root=workset_root(proj, std))
 
     if proj.mode is BoxMode.standalone:

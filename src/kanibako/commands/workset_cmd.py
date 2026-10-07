@@ -738,9 +738,6 @@ def run_disconnect(args: argparse.Namespace) -> int:
     if logs_dir is not None:
         # ⚑ HERE, not in ``remove_project``/``release_project``: a move releases the box
         # through ``release_project``, and its logs must survive the move.
-        # ⚑ SCOPED TO THIS WORKSET: under a FORCED ``workset.logs`` share a same-named
-        # box elsewhere maps to the same file, and that file is kept and reported rather
-        # than deleted here (:func:`purge_box_logs`).
         purge_box_logs(std, logs_dir, proj.name, workset_root=ws.root)
     print(f"Removed project '{proj.name}' from working set '{ws.name}'")
     return 0
@@ -949,11 +946,7 @@ def _run_workset_config(args: argparse.Namespace) -> int:
         return 0
 
     if action == ConfigAction.set:
-        # ⚑ Keyspec § 0 "Per-owner resources": two instances whose OWN values name one
-        # per-owner resource share it, and the share is refused by name unless ``--force``.
-        # The set door's own per-owner arm stands down here (the write is AT the owner's
-        # scope), so this is the only thing that keeps a second workset from being aimed at
-        # the first one's log directory.
+        # ⚑ Keyspec § 0: two worksets on one log dir share its files — refused by name.
         _collision = logs_share_refusal(
             key, value, std, force=args.force, scope="workset",
             target_name=ws.name, target_root=ws.root,

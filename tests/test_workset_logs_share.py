@@ -25,7 +25,7 @@ from pathlib import Path
 import pytest
 
 from kanibako.project.workset import (
-    DEFAULT_WORKSET_ID, add_project, create_workset, logs_share_refusal, purge_box_logs,
+    add_project, create_workset, logs_share_refusal, purge_box_logs,
 )
 from kanibako.settings.config import (
     WORKSET_META_FILE, load_config, system_settings_path,
