@@ -588,6 +588,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`kanibako create --standalone [<path>]` refuses a per-owner `workset.` key before it writes anything.** A
+  system-tier value that reaches no working-set identity refused the standalone create at exit 1, but only after
+  writing. A new `<path>` was left behind: empty for `workset.canon` and `workset.workspaces`, and holding a whole box
+  (`.gitignore`, `box_data/`, `canon/`, `vault/`, `workset.yaml`, `workspace/`) for `workset.channelroot` and every
+  `workset.channels.*` leaf. For those channel keys, a directory that already existed (`<path>`, or the current
+  directory when no `<path>` is given) had that box written beside the user's own files. The create now refuses first
+  and leaves the directory as it found it. `workset.registry` and `workset.template` are still accepted: a standalone
+  box is indexed only on `--register`, and its canon stamp reads `workset.canon` alone.
+
 - **`box convert --standalone` in place refuses a `vault/` at the project root that the box
   does not own.** A standalone box's vault IS the root's own `workset.vault_ro`/`vault_rw`
   arm, with no per-box leaf under it. Your own `vault/rw` used to be taken for that arm: the
