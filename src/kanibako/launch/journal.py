@@ -14,9 +14,10 @@ done steps skip — so every lifecycle op must stay idempotent (create-if-absent
 register-if-absent / remove-if-absent).  NO ``phase`` field and NO rollback; do
 not add either.
 
-NOT yet a TRUE pre-dir write-ahead: the resolver materializes the box dir + meta
-BEFORE the entry is written, so a crash during that dir-creation still leaves a
-(narrower) unrecoverable limbo.  Known and deferred — do not read it as closed.
+A ``create`` entry is written ONCE, before the create's first box write, and its
+``state`` mapping records everything the create was told that sets box state, so a
+replay finishes that attempt rather than guessing it.  ``state`` is a RECORD OF
+INTENT, not a progress marker: it never changes after the write.
 
 Schema, entry-key derivation, atomicity, the replay table and the design
 authority: ``llm-docs/kanibako/launch/journal.py.md``.
@@ -24,7 +25,11 @@ authority: ``llm-docs/kanibako/launch/journal.py.md``.
 
 from __future__ import annotations
 
+import contextlib
+import fcntl
+import os
 import socket
+from collections.abc import Iterator
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -38,6 +43,22 @@ _ENTRIES = "entries"
 def _key(box_path: str | Path) -> str:
     """Normalize a box host-side path into the journal entry key."""
     return str(box_path)
+
+
+@contextlib.contextmanager
+def _locked(journal_path: Path) -> Iterator[None]:
+    """Serialize every read-modify-write of the journal: a ``flock`` on its DIRECTORY.
+
+    The document is replaced by rename, so a lock on the file would not survive a
+    write; the directory outlives every rename.
+    """
+    journal_path.parent.mkdir(parents=True, exist_ok=True)
+    fd = os.open(journal_path.parent, os.O_RDONLY)
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX)
+        yield
+    finally:
+        os.close(fd)
 
 
 def read_journal(journal_path: Path) -> dict[str, dict]:
@@ -59,14 +80,32 @@ def write_entry(
     mode: str,
     workset: str | None = None,
     workspace: str | None = None,
-) -> None:
-    """Write-ahead: record an in-flight lifecycle op keyed by *box_path* (atomic RMW)."""
+    state: dict | None = None,
+    claim: bool = False,
+) -> bool:
+    """Write-ahead: record an in-flight lifecycle op keyed by *box_path* (atomic RMW).
+
+    *state* is what the op was told that sets box state (omitted when empty).  With
+    *claim*, a key that already holds an entry is left alone and ``False`` comes back,
+    so two writers can never share one key.
+    """
     key = _key(box_path)
-    doc = load_doc(journal_path)
-    entries = doc.get(_ENTRIES)
-    if not isinstance(entries, dict):
-        entries = {}
-        doc[_ENTRIES] = entries
+    with _locked(journal_path):
+        doc = load_doc(journal_path)
+        entries = doc.get(_ENTRIES)
+        if not isinstance(entries, dict):
+            entries = {}
+            doc[_ENTRIES] = entries
+        if claim and key in entries:
+            return False
+        entries[key] = _entry(op, name, mode, workset, workspace, state)
+        dump_doc(journal_path, doc)
+    return True
+
+
+def _entry(op: str, name: str, mode: str, workset: str | None,
+           workspace: str | None, state: dict | None) -> dict:
+    """One entry's mapping, in its on-disk key order."""
     entry: dict = {
         "op": op,
         "name": name,
@@ -76,15 +115,14 @@ def write_entry(
         entry["workset"] = workset
     if workspace is not None:
         entry["workspace"] = workspace
+    if state:
+        entry["state"] = dict(state)
     # Stamped AFTER the optional fields on purpose: ``dump_doc`` pins
     # ``sort_keys=False``, so insertion order is the on-disk order.  ``host`` has no
     # reader yet — it is reserved for liveness detection.
     entry["started_at"] = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     entry["host"] = socket.gethostname()
-    # Overwriting an existing entry is intended: a re-run before recovery just
-    # re-stamps the same intent, and the op it records is idempotent either way.
-    entries[key] = entry
-    dump_doc(journal_path, doc)
+    return entry
 
 
 def clear_entry(journal_path: Path, box_path: str | Path) -> None:
@@ -93,12 +131,13 @@ def clear_entry(journal_path: Path, box_path: str | Path) -> None:
     # ``entries: {}`` and is never deleted.  The no-op arm is what lets a replay call
     # this unconditionally.
     key = _key(box_path)
-    doc = load_doc(journal_path)
-    entries = doc.get(_ENTRIES)
-    if not isinstance(entries, dict) or key not in entries:
-        return
-    del entries[key]
-    dump_doc(journal_path, doc)
+    with _locked(journal_path):
+        doc = load_doc(journal_path)
+        entries = doc.get(_ENTRIES)
+        if not isinstance(entries, dict) or key not in entries:
+            return
+        del entries[key]
+        dump_doc(journal_path, doc)
 
 
 def pending_entry(journal_path: Path, box_path: str | Path) -> dict | None:

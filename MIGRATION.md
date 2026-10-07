@@ -6333,8 +6333,10 @@ refuses, instead of minting `<name>2`, and its message no longer advises `rm -rf
 - If a `create` of yours stopped working, or a half-finished `create` was completed in silence on
   a re-run, re-run it as `kanibako create --recover <path>` (`kanibako create --standalone --recover
   <root>` for a standalone box). A bare re-run now refuses and tells you what it found, and refuses
-  any flag that would initialize box state — attempt one already did, and nothing re-reads a flag
-  after that. To change a refused flag afterwards, use the `box set` key the refusal prints
+  any flag that would initialize box state: the pending entry records what attempt one was told
+  (`--private`, `-i`/`--image`, `--agent`, `--no-vault`, and a standalone root's `.gitignore`
+  entry), and `--recover` applies exactly that, however early the attempt was interrupted. To
+  change a refused flag afterwards, use the `box set` key the refusal prints
   (`--no-vault` → `box.enable_vault=false`).
 - **If you have a `std.boxes/<name>` directory that no registration claims**, a `create` for that
   name now refuses instead of advising `rm -rf`. The registry is a rebuildable index, so that

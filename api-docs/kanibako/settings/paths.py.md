@@ -68,7 +68,7 @@ def load_primary_boxes(primary_workset: Path, *, early: EarlyScope) -> dict[str,
 def primary_box_name_for_workspace(primary_workset: Path, workspace: str, *, early: EarlyScope) -> str | None
 def check_primary_box_name_free(primary_workset: Path, name: str, workspace: str, *, early: EarlyScope) -> None
 def check_workspace_not_named_box(std: StandardPaths, workspace: str) -> None
-def pick_primary_box_name(primary_workset: Path, workspace: str, boxes_dir: Path | None=None, *, early: EarlyScope) -> str
+def pick_primary_box_name(primary_workset: Path, workspace: str, boxes_dir: Path | None=None, *, early: EarlyScope, journal: Path | None=None) -> str
 def register_primary_box_name(primary_workset: Path, name: str, workspace: Path | str, *, early: EarlyScope) -> None
 def register_primary_box_name_if_absent(primary_workset: Path, name: str, workspace: Path | str, *, early: EarlyScope) -> None
 def assign_primary_box_name(primary_workset: Path, workspace: Path | str, boxes_dir: Path | None=None, *, early: EarlyScope) -> str

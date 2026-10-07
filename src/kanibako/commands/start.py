@@ -5930,7 +5930,7 @@ def _name_new_box_probe(std, proj) -> None:
         proj.name = pick_primary_box_name(
             std.primary_workset,
             str(proj.project_path), boxes_dir=std.boxes,
-            early=_early_scope(std, BoxMode.primary),
+            early=_early_scope(std, BoxMode.primary), journal=std.journal,
         )
     else:
         proj.name = short_hash(proj.project_hash)
@@ -8792,15 +8792,39 @@ def recover_cure(probe) -> str:
     return cure
 
 
-def _write_create_entry(std, proj) -> None:
-    """Write the write-ahead ``create`` journal entry for *proj* (intent)."""
+def _write_create_entry(std, proj, *, state: dict | None = None,
+                        claim: bool = False) -> bool:
+    """Write the write-ahead ``create`` journal entry for *proj* (intent).
+
+    *state* and *claim* pass through to :func:`kanibako.launch.journal.write_entry`;
+    ``False`` means *claim* found the key already taken.
+    """
     from kanibako.launch import journal
 
     workset = proj.group.name if getattr(proj, "group", None) is not None else None
-    journal.write_entry(
+    return journal.write_entry(
         std.journal, _box_journal_key(proj),
         op="create", name=proj.name, mode=proj.mode.value, workset=workset,
-        workspace=str(proj.project_path),
+        workspace=str(proj.project_path), state=state, claim=claim,
+    )
+
+
+def _primary_probe_named(std, probe, name: str):
+    """*probe*, a brand-new PRIMARY box's, re-pointed at ``boxes/<name>``.
+
+    A non-materializing resolve of a new box carries the shared
+    ``__unregistered__`` placeholder dir, so its journal key would be every new
+    box's.  The materialize later reads *name* back from the entry.
+    """
+    import dataclasses
+
+    from kanibako.settings.paths import _primary_box_paths
+
+    metadata = std.boxes / name
+    shell, vault_ro, vault_rw = _primary_box_paths(std, metadata, name)
+    return dataclasses.replace(
+        probe, name=name, metadata_path=metadata, shell_path=shell,
+        vault_ro_path=vault_ro, vault_rw_path=vault_rw,
     )
 
 
