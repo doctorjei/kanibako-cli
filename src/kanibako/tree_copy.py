@@ -51,8 +51,10 @@ def copy_tree_keeping_links(
     reported in the ``shutil.Error`` and never removed.
 
     ⚑ *keep_root_link* extends THE RULE to the ROOT: ``copytree`` lists *src* THROUGH, so a
-    root that is a link materializes its target at *dst*.  Off by default -- a snapshot or a
-    stash is meant to HOLD bytes, not a pointer.  See :func:`_copy_root_link`.
+    root that is a link materializes its target at *dst*.  Off by default -- a caller asking
+    for a snapshot wants BYTES at the ROOT.  It governs the ROOT ONLY: links INSIDE a tree
+    are carried as links on every setting, a stash included, and an in-arm sibling
+    ``m1 -> m1data`` does stash as a link.  See :func:`_copy_root_link`.
     """
     if keep_root_link and os.path.islink(src):
         _copy_root_link(src, dst, dirs_exist_ok=dirs_exist_ok,
