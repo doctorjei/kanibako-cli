@@ -1025,21 +1025,27 @@ def _new_box_undo(std, probe, *, standalone: bool) -> Callable[[], None]:
     new_parents = [p for p in parents if _absent(p)]
     new_files = [p for p in files if _absent(p)]
 
-    def _kuid(path: Path) -> "str | None":
-        """The ``workset.kuid`` this file holds — the value a create AUTHORS."""
-        try:
-            for line in path.read_text().splitlines():
-                if line.strip().startswith("kuid:"):
-                    return line.split(":", 1)[1].strip()
-        except OSError:
-            return None
+    def _kuid_of(data: bytes) -> "str | None":
+        """The ``workset.kuid`` in *data* — the value a create AUTHORS."""
+        for line in data.decode(errors="replace").splitlines():
+            if line.strip().startswith("kuid:"):
+                return line.split(":", 1)[1].strip()
         return None
 
-    # ⚑ THE ROOT FILE'S ORIGINAL BYTES: a create rewrites a file that already existed,
-    # dropping the user's comments and replacing their ``kuid`` with its own.
-    ws_file = probe.metadata_path / WORKSET_META_FILE if standalone else None
-    saved_bytes = ws_file.read_bytes() if ws_file is not None and ws_file.is_file() else None
-    saved_kuid = _kuid(ws_file) if ws_file is not None else None
+    # ⚑ THE ROOT FILES A CREATE REWRITES, each with how to tell OUR write from a later
+    # one: ``.gitignore`` is APPENDED to, so the original bytes survive as a PREFIX; the
+    # settings file is re-dumped, dropping the user's comments and replacing their
+    # ``kuid``, so only the kuid marks it.  A file failing its own guard belongs to a
+    # later writer and is left exactly as it stands.
+    rewrites = []
+    if standalone:
+        for path, guard in (
+            (root / IGNORE_FILE, lambda now, was: now.startswith(was)),
+            (root / WORKSET_META_FILE,
+             lambda now, was: _kuid_of(now) != _kuid_of(was)),
+        ):
+            if path.is_file():
+                rewrites.append((path, path.read_bytes(), guard))
 
     def undo() -> None:
         for path in new_dirs:  # ⚑ LEAVES BEFORE PARENTS.
@@ -1048,22 +1054,15 @@ def _new_box_undo(std, probe, *, standalone: bool) -> Callable[[], None]:
             else:
                 path.unlink(missing_ok=True)
         for path in new_files:  # ⚑ ONLY WHAT THIS CREATE MADE, files included.
-            if path != ws_file:
-                path.unlink(missing_ok=True)
+            path.unlink(missing_ok=True)
         # ⚑ DEEPEST PARENT FIRST, and AFTER the files: the vault skeleton's claim file
         # is what would otherwise keep ``vault/`` non-empty when the arms come out.
         for path in sorted(new_parents, key=lambda p: len(p.parts), reverse=True):
             if path.is_dir() and not any(path.iterdir()):
                 path.rmdir()
-        if ws_file is not None and saved_bytes is None:
-            # ⚑ THE FILE WAS OURS: the create made it, so give the root back.
-            ws_file.unlink(missing_ok=True)
-        elif ws_file is not None and _kuid(ws_file) != saved_kuid:
-            # ⚑ GUARD: restore only while the file still holds what this create wrote.
-            # The ``kuid`` is the value a create AUTHORS, so a file whose kuid is no
-            # longer that one has been rewritten by someone else and is not ours to
-            # revert — the undo would overwrite an edit made after this create ran.
-            ws_file.write_bytes(saved_bytes)
+        for path, original, guard in rewrites:
+            if guard(path.read_bytes(), original):
+                path.write_bytes(original)
 
     return undo
 
