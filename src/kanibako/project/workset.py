@@ -68,7 +68,9 @@ from kanibako.utils import WORKSET_SEGMENT_PRIMARY, WORKSET_SEGMENT_STANDALONE
 # ⚑ FORWARD edge of a documented cycle: ``settings/paths.py`` breaks it by DEFERRING
 # its ``project.workset`` imports into function bodies — do not add a module-scope
 # edge back this way.
-from kanibako.settings.paths import StandardPaths, _workset_box_paths
+from kanibako.settings.paths import (
+    StandardPaths, _workset_box_paths, box_log_files, remove_box_logs,
+)
 
 # ⚑⚑ EVERY NAME BELOW IS AN ALIAS, NEVER A VALUE.  The defaults themselves live in
 # ``settings/bootstrap.py``, the designated path-literal file, and are materialized
@@ -1037,6 +1039,95 @@ def logs_share_refusal(
         "into the other's, and a purge in either reaches the other's. Point them at "
         "directories of their own, or pass --force to share it deliberately."
     )
+
+
+def _logs_share_partners(
+    std: StandardPaths, logs_dir: Path, box: str, *, workset_root: Path | None,
+) -> tuple[str, ...]:
+    """Working sets whose claim on *box*'s log file here is indistinguishable from this one's.
+
+    A working set is a PARTNER when its own resolved ``workset.logs`` IS *logs_dir* AND
+    its ``boxes:`` membership holds a box of *box*'s name: the two boxes then name ONE
+    file (``{workset.logs}/<name>.jsonl``), and nothing inside says which box wrote it.
+    *workset_root* is the purging verb's own workset, excluded by resolved root; ``None``
+    excludes nothing — a STANDALONE box's degenerate workset is not in the walk, so every
+    match is somebody else.
+
+    ⚑ COMPARED RESOLVED, like :func:`find_logs_share`; two lexically different values
+    that land on one directory are one directory.
+
+    A partner whose membership table cannot be READ still COUNTS.  The rule is to keep an
+    unattributable file, and a table that will not open cannot prove the file is no one
+    else's; a workset whose own ``workset.logs`` will not resolve is NOT a partner, since
+    it writes no logs anywhere.
+    """
+    try:
+        shared = Path(logs_dir).resolve()
+    except OSError:
+        return ()
+    partners: list[str] = []
+    for name, root in _logs_walk_targets(std).items():
+        if workset_root is not None and Path(workset_root).resolve() == root.resolve():
+            continue
+        try:
+            early = EarlyScope(std.early_system, name)
+            doc = load_doc(root / WORKSET_META_FILE)
+            own, _where = early_repoint(root, doc, "logs", early=early)
+            resolved = resolve_workset_dir_key(
+                root, own if isinstance(own, str) else None, _LOGS_LEAF,
+                key="logs", early=early, workset_settings=doc,
+            )
+        except (ConfigError, SettingsError, OSError):
+            continue
+        if Path(resolved).resolve() != shared:
+            continue
+        from kanibako.launch.box_resolve import stores_standalone_registry_null
+        try:
+            boxes = workset_registry.load_workset_boxes(
+                workset_registry.resolve_workset_registry_path(
+                    root, None if stores_standalone_registry_null(root) else doc,
+                    early=early,
+                )
+            )
+        except (ConfigError, SettingsError, OSError):
+            partners.append(name)
+            continue
+        if find_identifier(box, boxes) is not None:
+            partners.append(name)
+    return tuple(partners)
+
+
+def purge_box_logs(
+    std: StandardPaths, logs_dir: Path | None, box: str, *, workset_root: Path | None,
+) -> list[Path]:
+    """Delete *box*'s log files, keeping any file another working set shares by name.
+
+    Keyspec § 0 "Per-owner resources": *"a forced share's destructive verb removes only
+    its own instance's part."*  A per-box log is named by BOX NAME ALONE, so once two
+    working sets are forced onto one ``workset.logs`` directory, same-named boxes in the
+    two of them map to the SAME file.  That file is not attributable, so it is KEPT and
+    REPORTED and never deleted — the same rule a destructive verb already follows for any
+    path outside the box's own root.  A differently-named box's files are never in this
+    verb's way, so a forced share costs the ordinary purge nothing.
+
+    *workset_root* is the workset the verb acts for; ``None`` for a STANDALONE box, whose
+    degenerate workset is not in the walk.  Returns what was actually deleted.
+    """
+    partners = () if logs_dir is None else _logs_share_partners(
+        std, logs_dir, box, workset_root=workset_root,
+    )
+    keep: tuple[Path, ...] = ()
+    if partners:
+        keep = tuple(box_log_files(logs_dir, box))
+        who = ", ".join(f"'{name}'" for name in partners)
+        for path in keep:
+            print(
+                f"Note: kept {path} — working set(s) {who} resolve workset.logs to this "
+                f"same directory and hold a box named {box!r}, so the file is not "
+                "attributable to one box. Delete it yourself if this purge owns it.",
+                file=sys.stderr,
+            )
+    return remove_box_logs(logs_dir, box, keep=keep)
 
 
 # ---------------------------------------------------------------------------
