@@ -6010,7 +6010,9 @@ resolves to the box, with no warning; `kanibako workset <cmd> <name>` reaches th
 auto-named box no longer skips a workset's name: a new box beside a workset `solo` is named `solo`,
 where it used to be `solo2`.
 
-**What to do.** Drop `--force` from those five commands.
+**What to do.** Drop `--force` from those five commands. `workset create --force` returns with a
+single meaning: accept a `workset.logs` directory shared with another working set (see *Two
+working sets on one `workset.logs` directory are refused without `--force`*).
 
 ### A `null` workset vault, canon, template or channel root means no directory
 
@@ -6941,6 +6943,25 @@ myagent = "my_agent:MyAgentTarget"
 ```
 
 See *Packaging* in [docs/writing-targets.md](docs/writing-targets.md).
+
+### Two working sets on one `workset.logs` directory are refused without `--force`
+
+**Read this if two working sets write their box logs into one directory**, through their own
+`workset.logs` values or through one value in the system settings file such as
+`@meta.workset.path/../logs`.
+
+**What changed.** `workset set`, `system set`, `workset reset` and `workset create` refuse (exit 1)
+a change that would land two working sets, the default one included, on one logs directory, and
+name the working sets. Values are compared as the directories they resolve to, so two different
+spellings of one directory collide. A `null` `workset.logs` names no directory (see *A
+`workset.logs` of `null` means no logs*), so it never collides. A share that already exists is
+not refused until a write moves one of its working sets.
+
+**What to do.** Give each working set a logs directory of its own. To keep a deliberate share,
+add `--force` to the command; `workset create --force` means only that. Under a forced share,
+`box purge`, `box rm --purge` and `workset disconnect --remove-files` keep a log file that a
+same-named box in another working set also writes, and print its path; delete it yourself if it
+is yours.
 
 ---
 

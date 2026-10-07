@@ -12,6 +12,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Two working sets can no longer be put on one `workset.logs` directory by accident.** `workset set`,
+  `system set`, `workset reset` and `workset create` refuse a change that lands two working sets (the default one
+  included) on one logs directory, comparing resolved directories, and name the working sets; `--force` keeps a
+  deliberate share. `workset create` gains `--force` for this alone. A `null` `workset.logs` names no directory and
+  never collides.
+
+- **A purge under a forced `workset.logs` share keeps a log file it cannot attribute.** Per-box log files are named
+  by box name alone, so same-named boxes in two working sets on one logs directory write one file. `box purge`,
+  `box rm --purge` and `workset disconnect --remove-files` now keep that file and print a `Note: kept <path>` line
+  naming the other working sets, instead of deleting it. Differently-named boxes' logs are untouched.
+
 - **A standalone box's root `workset.yaml` now records `registry: null`** beside `workset.kuid`, written at
   `create` as `registry: null  # REMOVING THIS WILL BREAK A STANDALONE BOX!`.
 
