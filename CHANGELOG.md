@@ -2272,10 +2272,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **`create` on a path carrying a pending create entry refuses and names the box, the workspace,
   and when the attempt started; `create --recover` completes it.** This covers primary and
-  standalone boxes. A create interrupted before its write-ahead entry leaves a home no entry
-  claims, and the bare primary create now refuses that instead of silently minting `<name>2`. A
-  home that a deregistered entry still claims is not an orphan: the create mints the next free name
-  beside it, as before. See *`create` refuses an interrupted create; finish it with `--recover`* in
+  standalone boxes. A create that fails or is refused before it writes that entry now removes what
+  it made — only paths that did not exist when it started, under the name it was creating
+  (`--name` included) — so a rerun starts clean. In a standalone root, a `workset.yaml` or
+  `.gitignore` you already had is put back byte for byte unless it changed after the create wrote
+  it; then it is left as found and the create prints a note naming the file. The shared
+  `vault/.gitignore` stays while anything else is under `vault/`. A box in a named working set is
+  not undone. A create killed outright before its entry still leaves a home no entry claims, and
+  the bare primary create refuses that instead of silently minting `<name>2`. A home that a
+  deregistered entry still claims is not an orphan: the create mints the next free name beside it,
+  as before. See *`create` refuses an interrupted create; finish it with `--recover`* in
   [MIGRATION.md](MIGRATION.md).
 
 - **`kanibako workset connect` refuses a source that is not an existing directory.** In 1.8.0-rc2,
