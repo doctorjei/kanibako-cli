@@ -2541,6 +2541,33 @@ class TestWindowUndoRestoresARootWorksetFile:
             "the undo overwrote a LATER edit of the root settings file"
         )
 
+    def test_a_pre_existing_gitignore_loses_the_entries_the_create_appended(
+        self, config_file, tmp_home, credentials_dir
+    ):
+        """⚑ THE SAME DEFECT, THE OTHER ROOT FILE: ``.gitignore``.
+
+        ``write_project_gitignore`` APPENDS, so on a root that already had one the
+        create adds its entries to the user's file.  ⚑ An append leaves the original
+        bytes as a PREFIX, which is what lets the undo tell its own write apart from a
+        later one — and without the undo the entries simply stay.
+        """
+        from kanibako.commands.box._parser import run_create
+
+        path = tmp_home / "sa"
+        path.mkdir()
+        mine = "# my rules\n*.pyc\n"
+        gi = path / ".gitignore"
+        gi.write_text(mine)
+
+        with pytest.MonkeyPatch.context() as mp:
+            mp.setattr("kanibako.commands.start._write_create_entry", self._fail())
+            with pytest.raises(_InterruptCreate):
+                run_create(_create_args(path, standalone=True, no_vault=False))
+
+        assert gi.read_text() == mine, (
+            "the failed create left its .gitignore entries in the USER's file"
+        )
+
 
 class TestCuresAreRunnable:
     """Every cure a ``create`` refusal prints is a command that RUNS.
