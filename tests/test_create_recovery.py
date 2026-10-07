@@ -2304,14 +2304,242 @@ class TestPreJournalWindowUndoesItsOwnWrites:
         # The neighbour's file, and the root itself, are untouched.
         assert (outside / "KEPT.txt").read_text() == "a neighbour's file\n"
         assert path.is_dir()
-        # ⚑ THE ONE THING THIS DOES NOT UNDO, stated so it is pinned and not lost:
-        # ``establish_standalone`` AUTHORS ``workset.kuid``/``registry`` into a root
-        # file that already existed, and no undo rewrites a file's bytes.  It is not a
-        # lock-out — the next create re-authors it and completes, which is asserted
-        # here — but it IS a change this window leaves behind.
-        assert "registry: null" in path.joinpath("workset.yaml").read_text()
+        # The pre-existing root file is back to its own bytes, so the re-run reads
+        # the user's settings rather than a rewritten one — and completes.
+        assert path.joinpath("workset.yaml").read_text() == (
+            "workset:\n"
+            f"  vault_ro: {outside}/vault_ro\n"
+            f"  vault_rw: {outside}/vault_rw\n"
+        )
         assert run_create(_create_args(path, standalone=True, no_vault=False)) == 0
         assert (path / "box_data").is_dir()
+
+
+class TestWindowUndoSparesAWriteItDidNotMake:
+    """⭐⭐⭐ THE GATE: an undo removes WHAT THIS CREATE MADE, and nothing else.
+
+    The window undo once snapshotted whole trees and deleted the set difference, so
+    ANY path that appeared while the window was open went with it — a neighbouring
+    box's file, the user's own source tree.  These tests write into the trees the
+    window passes over, at the moment the window is open, and assert the write
+    survives; a single-writer run cannot see it, because with no second writer
+    "the set difference" and "what I made" are the same set.
+    """
+
+    @pytest.fixture(autouse=True)
+    def _no_seed(self, monkeypatch):
+        monkeypatch.setattr(
+            "kanibako.commands.start.seed_new_box",
+            lambda std, config, proj, **kw: None,
+        )
+
+    def _std(self, config_file):
+        from kanibako.settings.config import load_config
+        from kanibako.settings.paths import load_std_paths
+        return load_std_paths(load_config(config_file))
+
+    def _fail_with_a_write(self, writes, target_dir):
+        """A stand-in for the journal write that also plants *writes*, then fails.
+
+        ⚑ Planted INSIDE the window, at the choke point every exit passes, so the
+        file provably exists while the window is open — not after the undo ran.
+        """
+        def _entry_write(std, proj):
+            for rel, text in writes:
+                path = target_dir / rel
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(text)
+            raise _InterruptCreate("stopped before the journal entry")
+
+        return _entry_write
+
+    def test_a_primary_undo_spares_a_neighbouring_boxes_file(self, config_file,
+                                                            tmp_home, credentials_dir):
+        """⚑ PRIMARY: another box's home is not this create's to delete.
+
+        ⚑ ``boxes/<name>`` is the leaf this create owns; ``boxes/other`` is a box
+        somebody else owns, and a concurrent write into it is theirs.
+        """
+        from kanibako.commands.box._parser import run_create
+
+        std = self._std(config_file)
+        neighbour = std.boxes / "other"
+        (neighbour / "home").mkdir(parents=True)
+        (neighbour / "home" / "theirs.txt").write_text("the neighbour's\n")
+
+        with pytest.MonkeyPatch.context() as mp:
+            mp.setattr(
+                "kanibako.commands.start._write_create_entry",
+                self._fail_with_a_write(
+                    [("other/home/agent-wrote-this.txt", "written mid-window\n")],
+                    std.boxes,
+                ),
+            )
+            with pytest.raises(_InterruptCreate):
+                run_create(_create_args(tmp_home / "project", no_vault=False))
+
+        assert (neighbour / "home" / "agent-wrote-this.txt").read_text() == (
+            "written mid-window\n"
+        ), "the undo deleted a concurrent write in ANOTHER box's home"
+        assert (neighbour / "home" / "theirs.txt").read_text() == "the neighbour's\n"
+        # And this create's OWN leaf went, so the undo is not simply disabled.
+        assert not (std.boxes / "project").exists()
+
+    def test_a_standalone_undo_spares_the_users_own_directory(
+        self, config_file, tmp_home, credentials_dir
+    ):
+        """⚑ STANDALONE: the root is the USER's directory, not a store this owns.
+
+        ⚑ ``create --standalone <dir>`` names a directory the user already had — the
+        product's own resolver refuses to unwind it for that reason.  So ``code/``,
+        their notes, and anything else they wrote during the window all survive.
+        """
+        from kanibako.commands.box._parser import run_create
+
+        path = tmp_home / "sa"
+        path.mkdir()
+        (path / "code").mkdir()
+        (path / "code" / "main.py").write_text("print('mine')\n")
+
+        with pytest.MonkeyPatch.context() as mp:
+            mp.setattr(
+                "kanibako.commands.start._write_create_entry",
+                self._fail_with_a_write(
+                    [("code/user-saved-this.py", "saved mid-window\n"),
+                     ("NOTES.txt", "typed mid-window\n")], path,
+                ),
+            )
+            with pytest.raises(_InterruptCreate):
+                run_create(_create_args(path, standalone=True, no_vault=False))
+
+        assert (path / "code" / "user-saved-this.py").read_text() == "saved mid-window\n", (
+            "the undo deleted the USER's file out of the directory they named"
+        )
+        assert (path / "NOTES.txt").read_text() == "typed mid-window\n"
+        assert (path / "code" / "main.py").read_text() == "print('mine')\n"
+        # And this create's OWN tree went, so the undo is not simply disabled.
+        assert not (path / "box_data").exists()
+        assert not (path / "canon").exists()
+
+    def test_a_primary_undo_spares_a_write_into_the_workset_store(
+        self, config_file, tmp_home, credentials_dir
+    ):
+        """⚑ The PRIMARY window walks ``std.data``; the store holds EVERY box.
+
+        A registry, a journal or a cache written by a second process while this
+        window is open is that process's, and outlives this create's failure.
+        """
+        from kanibako.commands.box._parser import run_create
+
+        std = self._std(config_file)
+        # ⚑ THE REAL REGISTRY SPELLING: ``<store>/primary_workset/registry.yaml``.
+        rel_ws = std.primary_workset.relative_to(std.data)
+
+        with pytest.MonkeyPatch.context() as mp:
+            mp.setattr(
+                "kanibako.commands.start._write_create_entry",
+                self._fail_with_a_write(
+                    [(f"{rel_ws}/boxes/other/home/agent.txt", "mid-window\n"),
+                     (f"{rel_ws}/registry.yaml", "boxes: []\n")], std.data,
+                ),
+            )
+            with pytest.raises(_InterruptCreate):
+                run_create(_create_args(tmp_home / "project", no_vault=False))
+
+        assert (std.boxes / "other" / "home" / "agent.txt").is_file()
+        assert (std.primary_workset / "registry.yaml").read_text() == "boxes: []\n"
+        assert not (std.boxes / "project").exists()
+
+
+class TestWindowUndoRestoresARootWorksetFile:
+    """D2: a pre-existing root ``workset.yaml`` is RESTORED, byte for byte.
+
+    ``establish_standalone`` AUTHORS ``workset.kuid``/``registry`` into the root's
+    settings file.  On a root whose file already existed, that rewrite dropped the
+    user's comments and key order — and no undo put the bytes back, so a failed
+    create silently reformatted a file the user hand-wrote.
+    """
+
+    @pytest.fixture(autouse=True)
+    def _no_seed(self, monkeypatch):
+        monkeypatch.setattr(
+            "kanibako.commands.start.seed_new_box",
+            lambda std, config, proj, **kw: None,
+        )
+
+    _ROOT = (
+        "# my box's settings -- keep this comment\n"
+        "workset:\n"
+        "  kuid: my-own-kuid-0001\n"
+    )
+
+    def _fail(self):
+        def _entry_write(std, proj):
+            raise _InterruptCreate("stopped before the journal entry")
+
+        return _entry_write
+
+    def test_a_pre_existing_root_file_comes_back_byte_for_byte(
+        self, config_file, tmp_home, credentials_dir
+    ):
+        """⚑ The ruling: save the original BYTES before the window, put them back."""
+        from kanibako.commands.box._parser import run_create
+
+        path = tmp_home / "sa"
+        path.mkdir()
+        ws_file = path / "workset.yaml"
+        ws_file.write_text(self._ROOT)
+
+        with pytest.MonkeyPatch.context() as mp:
+            mp.setattr("kanibako.commands.start._write_create_entry", self._fail())
+            with pytest.raises(_InterruptCreate):
+                run_create(_create_args(path, standalone=True, no_vault=False))
+
+        assert ws_file.read_text() == self._ROOT, (
+            "the failed create's rewrite of a PRE-EXISTING root file was not undone"
+        )
+
+    def test_the_restore_leaves_a_later_edit_of_that_file_alone(
+        self, config_file, tmp_home, credentials_dir
+    ):
+        """⚑ THE GUARD: undo must not clobber an edit made AFTER the create's write.
+
+        The undo's guard is the file's ``workset.kuid`` — the one value this create
+        AUTHORS and no other writer shares.  If the file still carries this create's
+        kuid, nothing else has rewritten it and the original bytes are restored; if
+        the kuid is gone or different, a later writer owns the file and the undo
+        leaves it exactly as it found it.
+        """
+        from kanibako.commands.box._parser import run_create
+
+        path = tmp_home / "sa"
+        path.mkdir()
+        ws_file = path / "workset.yaml"
+        ws_file.write_text(self._ROOT)
+
+        # Capture what this create authors, then let a LATER writer replace the file.
+        seen: "dict[str, str]" = {}
+
+        def _write_then_replace(std, proj):
+            authored = ws_file.read_text()
+            kuid = next((ln for ln in authored.splitlines()
+                         if ln.strip().startswith("kuid:")), None)
+            assert kuid is not None, f"the create authored no kuid:\n{authored}"
+            seen["kuid"] = kuid.strip()
+            # A later, legitimate edit: the user re-wrote the file, kuid and all.
+            ws_file.write_text(self._ROOT + "  # edited by the user afterwards\n")
+            raise _InterruptCreate("stopped before the journal entry")
+
+        with pytest.MonkeyPatch.context() as mp:
+            mp.setattr("kanibako.commands.start._write_create_entry", _write_then_replace)
+            with pytest.raises(_InterruptCreate):
+                run_create(_create_args(path, standalone=True, no_vault=False))
+
+        assert seen, "the create never authored a kuid, so the guard proves nothing"
+        kept = ws_file.read_text()
+        assert kept.endswith("  # edited by the user afterwards\n"), (
+            "the undo overwrote a LATER edit of the root settings file"
+        )
 
 
 class TestCuresAreRunnable:

@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import argparse
 import dataclasses
-import os
 import shlex
 import shutil
 import sys
@@ -967,43 +966,104 @@ def _new_member_undo(ws: Workset, name: str) -> Callable[[], None]:
 def _new_box_undo(std, probe, *, standalone: bool) -> Callable[[], None]:
     """Undo for the box tree this create is about to materialize; build it BEFORE.
 
-    Removes only what did not exist.  A STANDALONE root is the USER's own directory."""
+    Removes only what did not exist.  A STANDALONE root is the USER's own directory.
+    """
+    from kanibako.project.workset import (
+        load_workset_settings_doc, resolve_workset_canon,
+    )
     from kanibako.runtime.container import remove_box_tree
-
-    def _paths(root: Path) -> "set[Path]":
-        if not root.is_dir():
-            return set()
-        return {Path(dirpath) / name
-                for dirpath, dirnames, filenames in os.walk(root, followlinks=False)
-                for name in (*dirnames, *filenames)}
+    from kanibako.settings.paths import IGNORE_FILE, VAULT_PATH
 
     def _absent(path: Path) -> bool:
         return not path.exists() and not path.is_symlink()
 
-    # ⚑ THE PRIMARY ROOTS ARE THE STORES: the vault is a SIBLING of ``boxes/``.
-    roots = [p for p in (
-        *((probe.metadata_path,) if standalone
-          else (std.data, std.boxes, std.primary_workset)),
-        probe.vault_ro_path,
-        probe.vault_rw_path,
-    ) if p is not None]
-    before = {root: _paths(root) for root in roots}
-    new_roots = [root for root in roots if _absent(root)]
+    # ⚑ NAME THIS CREATE'S OWN OUTPUTS.  Nothing here is discovered by diffing a tree:
+    # a set difference deletes every path that appeared while the window was open,
+    # including another box's home and the user's own source files.
+    if standalone:
+        root = probe.metadata_path
+        canon = resolve_workset_canon(
+            root, load_workset_settings_doc(root), early=probe._early)
+        # ⚑ THE USER'S ROOT: only these leaves are ours.  ``probe.project_path`` is the
+        # workspace SUBDIR, so the root's own files are named separately below.
+        dirs = [p for p in (
+            probe.shell_path.parent, canon,  # the box store and the canon tier
+            probe.vault_ro_path, probe.vault_rw_path,
+            probe.project_path,
+        ) if p is not None]
+        parents = [p.parent for p in (probe.vault_ro_path, probe.vault_rw_path)
+                   if p is not None]
+        vault_root = root
+        files = [root / IGNORE_FILE, root / WORKSET_META_FILE]
+    else:
+        # ⚑ THE PROBE'S OWN PATHS CARRY A PLACEHOLDER LEAF (``__unregistered__``): a
+        # non-materializing resolve has no real name yet, so the box dir and the vault
+        # arms are ``<store>/__unregistered__``.  Their PARENT is the resolved store,
+        # which is what honours a repointed ``workset.{boxes,vault_ro,vault_rw}`` —
+        # and ``probe.name`` is the name the materializing resolve will mint.
+        dirs = [p for p in (
+            probe.metadata_path.parent / probe.name,
+            *(p.parent / probe.name for p in
+              (probe.vault_ro_path, probe.vault_rw_path) if p is not None),
+        )]
+        parents = [probe.metadata_path.parent]
+        parents += [p.parent for p in (probe.vault_ro_path, probe.vault_rw_path)
+                    if p is not None]
+        vault_root = std.primary_workset
+        files = []
+    skeleton = vault_root / VAULT_PATH
+    # ⚑ THE VAULT SKELETON ITSELF: it is the parent that holds both arms, and
+    # ``skeleton/.gitignore`` is the claim file that would otherwise keep it non-empty.
+    parents.append(skeleton)
+    files.append(skeleton / IGNORE_FILE)
+    if not standalone:
+        # ⚑ THE STORE ABOVE THE BOXES, while it holds nothing but what this create made.
+        # A STANDALONE root is the USER's directory and is never a parent to remove.
+        parents.append(std.primary_workset)
 
-    def _remove(path: Path) -> None:
-        # ⚑ A SYMLINK IS UNLINKED, never followed; a parent only while it is empty.
-        if path.is_symlink() or not path.is_dir():
-            path.unlink(missing_ok=True)
-        elif not any(path.iterdir()):
-            remove_box_tree(path)
+    new_dirs = [p for p in dirs if _absent(p)]
+    new_parents = [p for p in parents if _absent(p)]
+    new_files = [p for p in files if _absent(p)]
+
+    def _kuid(path: Path) -> "str | None":
+        """The ``workset.kuid`` this file holds — the value a create AUTHORS."""
+        try:
+            for line in path.read_text().splitlines():
+                if line.strip().startswith("kuid:"):
+                    return line.split(":", 1)[1].strip()
+        except OSError:
+            return None
+        return None
+
+    # ⚑ THE ROOT FILE'S ORIGINAL BYTES: a create rewrites a file that already existed,
+    # dropping the user's comments and replacing their ``kuid`` with its own.
+    ws_file = probe.metadata_path / WORKSET_META_FILE if standalone else None
+    saved_bytes = ws_file.read_bytes() if ws_file is not None and ws_file.is_file() else None
+    saved_kuid = _kuid(ws_file) if ws_file is not None else None
 
     def undo() -> None:
-        for root in roots:  # ⚑ DEEPEST FIRST.
-            for path in sorted(_paths(root) - before[root],
-                               key=lambda p: len(p.parts), reverse=True):
-                _remove(path)
-        for root in new_roots:
-            _remove(root)
+        for path in new_dirs:  # ⚑ LEAVES BEFORE PARENTS.
+            if path.is_dir() and not path.is_symlink():
+                remove_box_tree(path)
+            else:
+                path.unlink(missing_ok=True)
+        for path in new_files:  # ⚑ ONLY WHAT THIS CREATE MADE, files included.
+            if path != ws_file:
+                path.unlink(missing_ok=True)
+        # ⚑ DEEPEST PARENT FIRST, and AFTER the files: the vault skeleton's claim file
+        # is what would otherwise keep ``vault/`` non-empty when the arms come out.
+        for path in sorted(new_parents, key=lambda p: len(p.parts), reverse=True):
+            if path.is_dir() and not any(path.iterdir()):
+                path.rmdir()
+        if ws_file is not None and saved_bytes is None:
+            # ⚑ THE FILE WAS OURS: the create made it, so give the root back.
+            ws_file.unlink(missing_ok=True)
+        elif ws_file is not None and _kuid(ws_file) != saved_kuid:
+            # ⚑ GUARD: restore only while the file still holds what this create wrote.
+            # The ``kuid`` is the value a create AUTHORS, so a file whose kuid is no
+            # longer that one has been rewritten by someone else and is not ours to
+            # revert — the undo would overwrite an edit made after this create ran.
+            ws_file.write_bytes(saved_bytes)
 
     return undo
 
