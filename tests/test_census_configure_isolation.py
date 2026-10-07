@@ -1,4 +1,4 @@
-"""The census's CONFIGURE-TIME priming call must not read the host's user dirs.
+"""The census's CONFIGURE-TIME priming call, and the redirect window it runs inside.
 
 ⚑ WHY A CHILD PROCESS.  The defect is not observable from inside a test: the
 ``settings_keyspace_probe`` memo that carries it is primed in
@@ -8,22 +8,24 @@ in ``tests/conftest.py``, which says the same). The only honest way to ask "what
 the priming call read?" is to run a whole pytest session in a child and look at what
 that process touched.
 
-⚑ THE OBSERVABLE IS THE USER PLUGIN TIER'S IMPORT, in two spellings — the default
-``<XDG_DATA_HOME>/kanibako/plugins`` and a directory only a ``kanibako.cfg`` can point
-at. Discovery resolves ``config.data`` through ``resolve_data_path``, which reads the
-config file BEFORE it falls back to that default, so a cure that redirected only the
-XDG bases would still read the host's config file.
+⚑ WHAT IS PINNED HERE IS THAT THE PRIMING HAPPENS, not what it read.
+``plugin_agent_leaf_map`` is eager ON PURPOSE: it is the priming point, and
+``_discover``'s process memo is what every later test reads. Its concession rule
+concedes an unprimed memo (an empty map means "no agent's vocabulary is known here"),
+which fails SAFE — so a green suite is not evidence that priming occurred, and
+``test_census_still_primes_the_memo`` is the only assertion here that can fail for a
+reason about the code under it.
 
-⚑ THE SENTINEL IS NOT SHAPED AS A ``Target``.  ``discover_targets`` execs every
-``*.py`` in the directory before it looks for ``Target`` subclasses, so the module
-BODY alone proves the tier was read — and a sentinel that declared a class could
-contribute vocabulary to the census and mask the leak it exists to reveal.
-
-⚑⚑ THE SENTINEL CREATES ITS OWN PARENT, and that is load-bearing rather than tidy.
-``_scan_directory_plugins`` wraps every ``exec_module`` in ``except Exception:
-continue`` — deliberately, so one broken plugin cannot take discovery down. A
-sentinel that wrote into a directory that did not yet exist would raise
-``FileNotFoundError``, be swallowed, and leave the test GREEN having proved nothing.
+⚑ THE WINDOW HAS NO USER-DIR OBSERVABLE TO GUARD, and that is a property of the
+priming call rather than of this file.  ``discover_targets`` reads installed
+entry-point metadata and the ``kanibako.plugins`` namespace, and resolves no path
+from the environment: it never consults ``config.data``, so ``resolve_data_path`` is
+unreachable from here and no ``kanibako.cfg`` on this box is consulted either. The
+observable a leak probe would need — something the window's redirection can move —
+therefore does not exist.  ``throwaway_user_dirs`` stays armed around the call
+anyway (it costs one ``mkdtemp``, and it is what keeps that true if discovery ever
+grows a path-dependent input again); what the two tests below pin is that the window
+moves exactly the shared variable list and restores it, on the exception path too.
 """
 
 from __future__ import annotations
@@ -33,8 +35,6 @@ import subprocess
 import sys
 from pathlib import Path
 
-from kanibako.settings.bootstrap import CONFIG_FILE, KANIBAKO_PATH
-
 from tests._user_dirs import HOME_VAR, user_dir_env_vars, user_dir_tree
 
 #: One small, fast, already-green file for the child to collect and run. The child's
@@ -42,12 +42,6 @@ from tests._user_dirs import HOME_VAR, user_dir_env_vars, user_dir_tree
 CHILD_TEST = "tests/test_atomic.py"
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-
-SENTINEL_NAME = "sentinel_user_plugin.py"
-
-#: Where the sentinel's marker lands. OUTSIDE the tree the child is redirected to, so
-#: "the tree contains what it should" can never be mistaken for "nothing was read".
-MARKER_DIRNAME = "OUTSIDE-the-redirected-tree"
 
 #: The child environment's root. Every redirected variable lives under it.
 HOST_DIRNAME = "host"
@@ -57,21 +51,6 @@ HOST_DIRNAME = "host"
 #: one assertion, and a repo module for it would be a file outliving its reason.
 MEMO_PROBE_MODULE = "census_memo_probe"
 MEMO_PROBE_ENV = "KANI_CENSUS_MEMO_PROBE_OUT"
-
-
-def _sentinel_source(marker: Path) -> str:
-  """A user-tier plugin module whose IMPORT writes *marker*."""
-  return (
-    "import pathlib\n"
-    f"_p = pathlib.Path({str(marker)!r})\n"
-    "_p.parent.mkdir(parents=True, exist_ok=True)\n"
-    "_p.write_text('imported at configure time')\n"
-  )
-
-
-def _write_sentinel_plugin(plugins_dir: Path, marker: Path) -> None:
-  plugins_dir.mkdir(parents=True, exist_ok=True)
-  plugins_dir.joinpath(SENTINEL_NAME).write_text(_sentinel_source(marker), encoding="utf-8")
 
 
 def _child_env(root: Path) -> dict[str, str]:
@@ -97,22 +76,6 @@ def _run_child(env: dict[str, str], *extra: str) -> subprocess.CompletedProcess[
   )
 
 
-def _armed_host(tmp_path: Path) -> tuple[dict[str, str], Path]:
-  """A child environment plus the marker its user plugin tier would write.
-
-  Returns the env and a marker path proven to lie OUTSIDE the redirected tree, so a
-  later assertion cannot pass merely because the tree is self-contained.
-  """
-  host = tmp_path / HOST_DIRNAME
-  env = _child_env(host)
-  marker = tmp_path / MARKER_DIRNAME / "sentinel-imported"
-  assert host not in marker.parents and marker != host, (
-    f"the marker {marker} is not outside the redirected tree at {host}"
-  )
-  assert not marker.exists(), "the marker already exists before anything ran"
-  return env, marker
-
-
 def _child_ran(proc: subprocess.CompletedProcess[str]) -> None:
   """A child that could not run proves nothing — and its silence reads as a pass."""
   assert proc.returncode == 0, (
@@ -122,77 +85,21 @@ def _child_ran(proc: subprocess.CompletedProcess[str]) -> None:
   )
 
 
-def test_census_priming_never_imports_the_host_user_plugin_tier(tmp_path):
-  """The default user plugin tier must not be imported at CONFIGURE time.
+def test_census_still_primes_the_memo_at_configure_time(tmp_path):
+  """⚑⚑ THAT THE PRIMING HAPPENS AT ALL, which is the only child-probe claim here.
 
-  ⚑ THE DEFECT, PRECISELY.  ``pytest_configure`` primes
-  ``plugin_agent_leaf_map()`` with whatever the environment hands it, and discovery
-  scans ``<config.data>/plugins/``. On a machine that has one, that plugin's declared
-  leaves become the session's vocabulary — and the memo is fixed for the whole
-  process, long after the autouse ``_isolate_user_dirs`` fixture would have
-  redirected anything.
-  """
-  env, marker = _armed_host(tmp_path)
-  _write_sentinel_plugin(Path(env["XDG_DATA_HOME"]) / KANIBAKO_PATH / "plugins", marker)
-
-  proc = _run_child(env)
-  _child_ran(proc)
-
-  assert not marker.exists(), (
-    "the child pytest run imported the user plugin tier at CONFIGURE time: the "
-    f"census primed discovery outside a throwaway HOME (child rc={proc.returncode})\n"
-    f"--- child stdout ---\n{proc.stdout}\n--- child stderr ---\n{proc.stderr}"
-  )
-
-
-def test_census_priming_never_follows_a_host_authored_config_file(tmp_path):
-  """A ``kanibako.cfg`` must not be read at CONFIGURE time either.
-
-  ⚑ THE CONFIG READ IS A SEPARATE INPUT FROM THE XDG BASES.
-  ``resolve_data_path`` reads ``$XDG_CONFIG_HOME/kanibako.cfg`` first and only then
-  falls back to ``<XDG_DATA_HOME>/kanibako``. This config repoints ``config.data`` at a
-  directory that is NOT the fallback, so the sentinel is reachable only through the
-  file: a cure that redirected the XDG data base alone leaves this one armed.
-
-  ⚑ And it is a real read, not a degraded one: ``resolve_data_path`` is total and
-  swallows a malformed file into that same fallback, so a sentinel sitting at the
-  FALLBACK path would pass here for the wrong reason.
-  """
-  env, marker = _armed_host(tmp_path)
-  repointed = Path(env["XDG_DATA_HOME"]) / "elsewhere"
-  Path(env["XDG_CONFIG_HOME"], CONFIG_FILE).write_text(
-    f"config:\n  data: {str(repointed)!r}\n", encoding="utf-8",
-  )
-  _write_sentinel_plugin(repointed / "plugins", marker)
-
-  proc = _run_child(env)
-  _child_ran(proc)
-
-  assert not marker.exists(), (
-    "the child pytest run followed a HOST-authored kanibako.cfg at CONFIGURE time: "
-    f"the priming call read the config file (child rc={proc.returncode})\n"
-    f"--- child stdout ---\n{proc.stdout}\n--- child stderr ---\n{proc.stderr}"
-  )
-
-
-def test_census_still_primes_the_memo_and_ignores_the_armed_host_tier(tmp_path):
-  """⚑⚑ THE ORDERING HALF, WHICH THE TWO TESTS ABOVE CANNOT SEE.
-
-  Redirecting the priming call is only half the change, and the half that matters
-  is that priming still HAPPENS: ``_discover``'s memo is what every later test reads,
-  and it must be primed before any test patches discovery. Deleting or making the call
-  lazy would silence both leak tests above — the child would read nothing at all — while
-  quietly handing the whole session an UNPRIMED keyspace. So this arms the host tier
-  AND asserts the memo came back populated.
+  Priming is eager ON PURPOSE: ``_discover``'s process memo is what every later test
+  reads, and it must be filled before any test patches discovery. Deleting the call or
+  making it lazy would not red anything — the concession rule treats an unprimed memo as
+  "no agent's vocabulary is known here", so every unknown key is allowed and the run
+  stays green — while quietly handing the whole session an unprimed keyspace. So the
+  child reports what its OWN ``_PLUGINS`` holds.
 
   ⚑ The probe is a CHILD-side plugin that reports ``_PLUGINS`` at
   ``pytest_collection_finish``: after every ``pytest_configure`` has run, and without
-  this process poking at the child's internals. ``AGENT_LEAF_MAP``'s concession rule
-  means an unprimed memo fails SAFE (everything unknown is allowed), which is exactly
-  why a green suite cannot be the evidence that priming occurred.
+  this process poking at the child's internals.
   """
-  env, marker = _armed_host(tmp_path)
-  _write_sentinel_plugin(Path(env["XDG_DATA_HOME"]) / KANIBAKO_PATH / "plugins", marker)
+  env = _child_env(tmp_path / HOST_DIRNAME)
 
   reported = tmp_path / "memo-reported-by-child.txt"
   probe_dir = tmp_path / "probe"
@@ -214,9 +121,6 @@ def test_census_still_primes_the_memo_and_ignores_the_armed_host_tier(tmp_path):
   proc = _run_child(env, "-p", MEMO_PROBE_MODULE)
   _child_ran(proc)
 
-  assert not marker.exists(), (
-    "the child read the armed host plugin tier at CONFIGURE time"
-  )
   assert reported.exists(), (
     f"the child never reported its memo (rc={proc.returncode})\n"
     f"--- child stdout ---\n{proc.stdout}\n--- child stderr ---\n{proc.stderr}"

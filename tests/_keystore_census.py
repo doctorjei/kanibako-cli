@@ -512,21 +512,21 @@ def _marker_paths(item: "pytest.Item") -> frozenset[str]:
 
 
 def pytest_configure(config: "pytest.Config") -> None:
-  """Arm the census, priming discovery WITHOUT the host's user dirs.
+  """Arm the census, priming discovery inside a throwaway set of user dirs.
 
   ⚑⚑ THE PRIMING CALL RUNS BEFORE ANY FIXTURE, SO NO PER-TEST ISOLATION HAS RUN.
   ``_isolate_user_dirs`` in ``tests/conftest.py`` is an autouse FIXTURE: by the time
   this hook fires, it has redirected nothing. ``plugin_agent_leaf_map`` →
-  ``kanibako.targets.discover_targets`` scans the USER plugin tier
-  (``<config.data>/plugins/``) and, through ``resolve_data_path``, reads the host's
-  ``kanibako.cfg``. Unredirected, whatever plugin the developer's real store holds
-  decides this session's declared vocabulary — and ``_discover``'s process memo then
-  fixes that answer for the WHOLE process, so the leak outlives every later
-  isolation. Two inputs, two redirections needed: a cure that moved only the XDG
-  bases would still read the host's config file.
-  (Both are pinned by ``tests/test_census_configure_isolation.py``.)
+  ``kanibako.targets.discover_targets`` is therefore called with ``HOME`` and the XDG
+  bases pointed at a fresh tree, and ``_discover``'s process memo then fixes that
+  answer for the WHOLE process, so whatever it reads outlives every later isolation.
+  ⚑ The window is cheap insurance rather than a live guard: discovery reads installed
+  entry-point metadata and the ``kanibako.plugins`` namespace and resolves no path from
+  the environment, so nothing it reads lives under a redirected variable today. It stays
+  armed because that is a property of the caller, not a promise about the caller.
+  (``tests/test_census_configure_isolation.py`` pins the memo and the window.)
 
-  ⚑ ``throwaway_user_dirs`` covers that one call only; see ``tests._user_dirs``.
+  ⚑ ``throwaway_user_dirs`` covers that one call only; see ``tests._user_dirs`.
 
   ⚑ THE ORDER IS LOAD-BEARING.  The priming call stays FIRST, before the funnel is
   captured: ``_discover``'s memo is what every later test reads, and it must be
