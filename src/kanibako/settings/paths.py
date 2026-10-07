@@ -1958,10 +1958,19 @@ def check_workspace_not_named_box(std: StandardPaths, workspace: str) -> None:
 
 
 def pick_primary_box_name(primary_workset: Path, workspace: str,
-                          boxes_dir: Path | None = None, *, early: EarlyScope) -> str:
-    """Pick a PRIMARY box name from *workspace*'s basename, free among primary boxes."""
+                          boxes_dir: Path | None = None, *, early: EarlyScope,
+                          journal: Path | None = None) -> str:
+    """Pick a PRIMARY box name from *workspace*'s basename, free among primary boxes.
+
+    With *journal*, a name whose ``boxes_dir`` key holds a pending entry is taken too:
+    an interrupted create may have claimed it before making its dir.
+    """
     base = Path(workspace).name or "project"
     taken_names = load_primary_boxes(primary_workset, early=early)
+    pending = set()
+    if journal is not None and boxes_dir is not None:
+        from kanibako.launch.journal import read_journal
+        pending = set(read_journal(journal))
 
     def taken(cand: str) -> bool:
         # ⚑ TWO rules, deliberately: the NAME domain compares case-blind (§0), the
@@ -1969,6 +1978,7 @@ def pick_primary_box_name(primary_workset: Path, workspace: str,
         return (
             find_identifier(cand, taken_names) is not None
             or (boxes_dir is not None and (boxes_dir / cand).exists())
+            or (boxes_dir is not None and str(boxes_dir / cand) in pending)
         )
 
     candidate = base

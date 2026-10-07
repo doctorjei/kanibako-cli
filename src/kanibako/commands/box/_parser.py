@@ -85,9 +85,8 @@ _MISSING_WORKSPACE = "missing workspace"
 # The two ``create`` flag classes.  Their union is pinned against the parser by
 # ``TestCreateFlagsAreClassified``, so a NEW create flag reds until it is filed.
 
-# SHAPING — writes stored box state.  Attempt one already wrote it, and the create
-# journal records the INTENT and never the arguments, so on a replay a shaping flag
-# can be neither honored nor compared against what was asked for the first time.
+# SHAPING — sets stored box state.  The create entry records what attempt one was
+# told, and a replay applies exactly that, so a shaping flag on the replay is refused.
 _CREATE_SHAPING_FLAGS = ("name", "image", "agent", "private", "no_vault")
 
 # SUBJECT — writes no stored box state.  Each one selects WHICH box, bypasses a
@@ -732,9 +731,9 @@ def _create_recovery_refusal(
     )
 
     recover = bool(getattr(args, "recover", False))
-    # ⚑ GIVEN, NEVER COMPARED: the journal records the INTENT, not the arguments, so
-    # there is no value on record to agree with.  The loop over the class IS the check;
-    # an unrolled chain would restate it and drift.
+    # ⚑ GIVEN, NEVER COMPARED: the entry is the only record of what attempt one was
+    # told, so a value typed now is refused even when it agrees.  The loop over the
+    # class IS the check; an unrolled chain would restate it and drift.
     given = [flag for flag in _CREATE_SHAPING_FLAGS if getattr(args, flag, None)]
 
     mode_flag, root = _create_designation(probe)
@@ -769,8 +768,8 @@ def _create_recovery_refusal(
         header = (
             "Error: an interrupted 'create' is pending for this path, and "
             f"{', '.join('--' + f.replace('_', '-') for f in given)} would have "
-            "been ignored. Attempt one already wrote this box's settings; nothing "
-            "re-reads a flag after that."
+            "been ignored. The pending entry records what attempt one was told, "
+            "and --recover applies exactly that."
         )
     else:
         header = (
@@ -786,7 +785,7 @@ def _create_recovery_refusal(
     ]
 
     # ⚑ ``--recover`` COLLAPSES THE CURE: the flags are refused precisely because
-    # attempt one wrote the state, so all that is left to say is how to re-run.
+    # the entry records the state, so all that is left to say is how to re-run.
     if recover:
         lines += [
             "Re-run without them:",
@@ -795,8 +794,8 @@ def _create_recovery_refusal(
         return "\n".join(lines)
 
     lines += [
-        "Finish that attempt — the box keeps the name and the settings it "
-        "already has:",
+        "Finish that attempt — the box keeps the name and the settings attempt "
+        "one was told:",
         f"  {recover_cure(probe)}",
     ]
     if given:
@@ -1204,9 +1203,11 @@ def run_create(args: argparse.Namespace) -> int:
             target.mkdir(parents=True)
 
     from kanibako.commands.start import (
+        _box_journal_key,
         _clear_create_entry,
         _name_new_box_probe,
         _pending_create_entry,
+        _primary_probe_named,
         _register_new_box,
         _write_create_entry,
         persona_create_verdict,
@@ -1278,16 +1279,18 @@ def run_create(args: argparse.Namespace) -> int:
         except ProjectError as e:
             print(f"Error: {e}", file=sys.stderr)
             return 1
-    is_recovery = _already and _pending is not None and bool(
-        getattr(args, "recover", False)
-    )
+    # ⚑ Past the refusal, a pending entry means ``--recover``.
+    is_recovery = _pending is not None
+    _recorded = dict((_pending or {}).get("state") or {})
+    if is_recovery:
+        enable_vault = not _recorded.get("no_vault", False)
     # ⚑⚑ THE ONE ANSWER TO "which agent is this create steering" — the persona pre-flight,
     # the ``pref.system.agent`` persist and the seed all read it, and spelling
     # ``args.agent`` at any of them again reopens the defect (pinned by
     # ``TestAgentFlagIsReadOnce``).  ``None`` here is "resolve from settings", NEVER
     # "no agent": it routes each consumer to the ``pref.system.agent`` the persist
-    # wrote, so seed and settings cannot disagree.
-    _agent_arg = None if is_recovery else getattr(args, "agent", None)
+    # wrote, so seed and settings cannot disagree.  A recovery reads the RECORDED one.
+    _agent_arg = _recorded.get("agent") if is_recovery else getattr(args, "agent", None)
     # ⚑⚑ "GIVEN" IS ``is not None`` AT EVERY DOOR — argparse's own absent-vs-present
     # answer, and the ONE predicate both the store check here and the
     # ``pref.system.agent`` persist below ask.  Truthiness and ``.strip()`` truthiness
@@ -1335,33 +1338,64 @@ def run_create(args: argparse.Namespace) -> int:
         )
         return 1
 
-    # ⚑ THE MEMBERSHIP WRITE, AFTER EVERY REFUSAL: a pending create's member was
-    # written by attempt one, so a recovery adds nothing.  Until the journal entry is
-    # written, nothing could recover this member, so any exit before it UNDOES it.
-    _undo_member = None
-    if _named_spec is not None and not _named_existing:
-        assert _member is not None and _named_ws is not None
-        assert _named_ws.workspaces_dir is not None  # refused in the plan
-        _undo_member = _new_member_undo(_named_ws, _member)
-        try:
-            add_project(
-                _named_ws, _member, _named_ws.workspaces_dir / _member, std,
-            )
-        except WorksetError as e:  # ``add_project`` unwinds its own writes
-            print(f"Error: {e}", file=sys.stderr)
-            return 1
-        _named_spec = WorksetSpec.from_workset(_named_ws)
+    # ⚑ THE ENTRY COMES FIRST, before any box write, recording the state this create
+    # was told to set.  Written ONCE: a recovery replays it.
+    _entry_probe = _probe
+    _state = _recorded
+    if not is_recovery:
+        _state = {k: v for k, v in (
+            ("private", bool(getattr(args, "private", False))),
+            ("image", args.image),
+            ("agent", _agent_arg),
+            ("no_vault", not enable_vault),
+            ("gitignore", bool(args.standalone)),
+        ) if v not in (None, False)}
+        _repick = _named_spec is None and not args.standalone and not getattr(
+            args, "name", None)
+        if _named_spec is None and not args.standalone:
+            # ⚑ Not the probe's shared placeholder dir.
+            _entry_probe = _primary_probe_named(
+                std, _probe, getattr(args, "name", None) or _probe.name)
+        # ⚑ A CLAIM: two creates never share a key.
+        while not _write_create_entry(std, _entry_probe, state=_state, claim=True):
+            if not _repick:
+                print(
+                    f"Error: another create of this box started meanwhile; its "
+                    f"journal entry holds {_box_journal_key(_entry_probe)}.",
+                    file=sys.stderr,
+                )
+                return 1
+            _probe.name = ""
+            _name_new_box_probe(std, _probe)
+            _entry_probe = _primary_probe_named(std, _probe, _probe.name)
 
-    # ⚑ NOT the NAMED arm: a recovery adopts attempt one's tree, not this one's.
+    # ⚑ THE MEMBERSHIP WRITE comes after every refusal and after the entry.
+    _undo_member = None
     _undo_box = None
     _box_wrote: Callable[[str], None] | None = None
-    if _named_spec is None:
+    # ⚑ THE UNDO IS A FRESH CREATE'S ONLY: a recovery adopts attempt one's tree.
+    if not is_recovery and _named_spec is not None and not _named_existing:
+        assert _member is not None and _named_ws is not None
+        _undo_member = _new_member_undo(_named_ws, _member)
+    elif not is_recovery and _named_spec is None:
         _undo_box, _box_wrote = _new_box_undo(
-            std, _probe, standalone=bool(args.standalone),
-            name=getattr(args, "name", None))
+            std, _entry_probe, standalone=bool(args.standalone))
 
-    _journaled = False
+    _committed = False
     try:
+        if _named_spec is not None and not _named_existing:
+            assert _member is not None and _named_ws is not None
+            assert _named_ws.workspaces_dir is not None  # refused in the plan
+            try:
+                add_project(
+                    _named_ws, _member, _named_ws.workspaces_dir / _member, std,
+                )
+            except WorksetError as e:
+                _undo_member = None  # ``add_project`` unwinds its own writes
+                print(f"Error: {e}", file=sys.stderr)
+                return 1
+            _named_spec = WorksetSpec.from_workset(_named_ws)
+
         # Loadability resolved → MATERIALIZE the box for real.  ⚑ ``register=False``
         # DEFERS registration past the home seed: "registered ==> fully seeded".
         if _named_spec is not None:
@@ -1377,8 +1411,8 @@ def run_create(args: argparse.Namespace) -> int:
                 name=standalone_name,
                 register=False,
             )
-            assert _box_wrote is not None
-            _box_wrote(WORKSET_META_FILE)
+            if _box_wrote is not None:
+                _box_wrote(WORKSET_META_FILE)
         else:
             proj = resolve_project(
                 std, config, project_dir=project_dir, initialize=True,
@@ -1387,18 +1421,18 @@ def run_create(args: argparse.Namespace) -> int:
                 register=False,
             )
 
-        # ⚑ FRESH CREATE ONLY — a recovery re-create reuses the half-built box's on-disk meta.
-        if proj.is_new:
+        # ⚑ A fresh create, or a replay: every write below is an idempotent set.
+        if proj.is_new or is_recovery:
             # ⚑ §1A CREATE EXCEPTION (R-11a) via the ONE shared gate, writing the BOX-TIER
             # file from the ONE pair (M-8).  Only an EXPLICIT ``-i``/``--image`` persists.
             project_toml, create_ws_path = box_workset_settings_paths(proj)
             persist_creation_flags(
-                project_toml, materializing=proj.is_new, image=args.image,
+                project_toml, materializing=True, image=_state.get("image"),
             )
 
             # ⚑ AUTH-CRITICAL: --private must run BEFORE the seed, and must write through the
             # SANCTIONED settings write into the SAME box-tier file the snapshot reads.
-            if getattr(args, "private", False):
+            if _state.get("private"):
                 from kanibako.settings.config_interface import set_config_value
                 from kanibako.settings.config_keys import ConfigLevel
                 from kanibako.errors import KanibakoError
@@ -1453,19 +1487,20 @@ def run_create(args: argparse.Namespace) -> int:
 
             # ⚑ At the project ROOT (``metadata_path``), not ``project_path`` — box_data/ and
             # vault/ live there, and for standalone the workspace is a SUBDIR of the root.
-            if args.standalone:
+            if _state.get("gitignore"):
                 write_project_gitignore(proj.metadata_path)
-                assert _box_wrote is not None
-                _box_wrote(IGNORE_FILE)
+                if _box_wrote is not None:
+                    _box_wrote(IGNORE_FILE)
 
-        # ⚑ THE J1 WRITE-AHEAD ORDER, AND IT IS THE WHOLE MECHANISM: write entry → seed →
-        # register → clear entry.  Clearing is IMMEDIATE after the registry write (HARD
-        # INVARIANT: registered ==> no pending entry at rest).  Do not reorder these four.
-        _write_create_entry(std, proj)
-        _journaled = True
+        # ⚑ THE J1 WRITE-AHEAD ORDER, AND IT IS THE WHOLE MECHANISM: entry (above) →
+        # state → seed → register → clear entry.  Clearing is IMMEDIATE after the
+        # registry write (HARD INVARIANT: registered ==> no pending entry at rest).
+        _committed = True
     finally:
-        # ⚑ ONE cleanup path, for a refusal's ``return`` and a raise alike.
-        if not _journaled:
+        # ⚑ ONE cleanup path, for a refusal's ``return`` and a raise alike; a kill
+        # runs none of it and leaves the entry.
+        if not _committed and not is_recovery:
+            _undone = True
             for _undo, _what in ((_undo_member, f"the member '{_member}'"),
                                  (_undo_box, "the box tree")):
                 if _undo is None:
@@ -1474,8 +1509,12 @@ def run_create(args: argparse.Namespace) -> int:
                 try:
                     _undo()
                 except Exception as undo_err:  # noqa: BLE001 - reported, never raised
+                    _undone = False
                     print(f"Warning: could not undo {_what} this create added: "
                           f"{undo_err}", file=sys.stderr)
+            # ⚑ What the undo could not remove stays recoverable.
+            if _undone:
+                _clear_create_entry(std, _entry_probe)
     seed_new_box(std, config, proj, explicit_agent=_agent_arg)
     # ⚑ THE CANON SKELETON (J-7) — AFTER the seed (it makes the root 555; protect first
     # and the seed's copies die EACCES) and INSIDE the journal window (it must replay).

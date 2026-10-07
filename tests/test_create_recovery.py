@@ -1046,10 +1046,9 @@ class TestRecoveryStandalone:
 class TestRecoveryAgentIdentity:
     """A recovery may not seed one agent while the box is configured for another.
 
-    ``--agent`` persists ``pref.system.agent`` under ``if proj.is_new:``, so a
-    recovery — which is by definition NOT new — cannot adopt a new one.  The seed
-    call sits OUTSIDE that guard, so it must resolve the agent the box's own
-    settings resolve to: seeded for one, configured for the other, has no way
+    A recovery replays the agent its journal entry records, never a new one, and
+    the seed must resolve the agent the box's own settings resolve to: seeded for
+    one, configured for the other, has no way
     back (the home bind owns the content after create; nothing re-seeds).  A
     ``--agent`` typed on the recovery is REFUSED by name rather than dropped.
     """
@@ -1102,8 +1101,7 @@ class TestRecoveryAgentIdentity:
 
         box_key = str(std.boxes / "halfbox")
         assert journal.pending_create(std.journal, box_key) is not None
-        # The persist DID happen on attempt one — it precedes the journal window,
-        # so a pending entry means the box already has its agent.
+        # This attempt died at the register, after its agent persist.
         box_yaml = load_doc(std.boxes / "halfbox" / "box.yaml")
         assert box_yaml["pref"]["system"]["agent"] == "claude"
 
@@ -1133,9 +1131,8 @@ class TestRecoveryAgentIdentity:
     ):
         """The refusal half: a second ``--agent`` on a recovery is REFUSED by name.
 
-        ``--agent`` and ``--name`` are SHAPING, so attempt one already wrote the
-        box's agent and the journal records no argument to compare the new one
-        against.  Dropping the flag silently is what this refuses; a refusal that
+        ``--agent`` and ``--name`` are SHAPING: the entry is the only record of
+        what attempt one was told, so a new value is refused, never compared.  Dropping the flag silently is what this refuses; a refusal that
         did not NAME it would leave the user with no way to know what was ignored.
         """
         from kanibako.commands.box._parser import run_create
@@ -1457,8 +1454,7 @@ class TestCreateFlagsAreClassified:
     """Every flag ``create`` advertises is SHAPING or SUBJECT, on BOTH spellings.
 
     The recovery refusal turns on that partition — shaping flags cannot be
-    honored on a replay because attempt one already wrote the box's state and
-    the journal records the intent, not the arguments — so a create flag nobody
+    honored on a replay, which applies what the entry records — so a create flag nobody
     classified is a flag the refusal silently ignores.  Asserted against the
     parser, never against an inventory: adding a flag to ``create`` without
     filing it reds here.
@@ -1882,8 +1878,8 @@ class TestPendingCreateRefusal:
     def test_shaping_flags_refused_by_name_with_an_after_the_fact_cure(
         self, standalone, config_file, tmp_home, credentials_dir, capsys
     ):
-        """Case B — a SHAPING flag on the re-run is refused BY NAME: attempt one
-        already wrote this box's settings, so the flag can be neither honored nor
+        """Case B — a SHAPING flag on the re-run is refused BY NAME: the entry
+        records what attempt one was told, so the flag can be neither honored nor
         compared.  The refusal names the flags AND the ``box set`` key that changes
         each one afterwards."""
         from kanibako.commands.box._parser import run_create
@@ -2066,17 +2062,16 @@ class TestPreJournalForkRefused:
         assert _primary_names(std) == {}
 
 
-# ⭐ THE PRE-JOURNAL WINDOW: every write ``create`` makes BEFORE
-# ``_write_create_entry`` — the materializing resolve, the creation-flag persist, the
-# ``--private`` and ``--agent`` persists and ``write_project_gitignore``.  Nothing in
-# it is recoverable (``--recover`` refuses shaping flags, so replaying a failed
-# ``--private`` create would forward host credentials), so every exit from it — a
-# refusal's ``return`` and a raise alike — UNDOES what this create made.
+# ⭐ THE UNDO WINDOW: every write a FRESH ``create`` makes between its journal entry and
+# the end of its state writes — the materializing resolve, the creation-flag persist,
+# the ``--private`` and ``--agent`` persists and ``write_project_gitignore``.  An ORDERLY
+# exit from it — a refusal's ``return`` and a raise alike — UNDOES what this create made
+# and then clears its entry; only a kill leaves the entry for ``--recover``.
 #
 # ⚑ THE CRASH IS INJECTED AT A CHOKE POINT IN THE PRODUCT, never re-implemented here:
 # a second helper that spelled "an interrupted create" would be a second definition of
 # what the window leaves behind, and the two would drift.
-_PRE_JOURNAL_EXITS = ("private-refuses", "agent-persists-nothing", "entry-write-raises")
+_PRE_JOURNAL_EXITS = ("private-refuses", "agent-persists-nothing", "window-end-raises")
 
 
 def _dirs(*roots: Path) -> set[str]:
@@ -2094,6 +2089,40 @@ class _InterruptCreate(Exception):
     """Stops a create at a chosen point, so a test can stand where a crash would."""
 
 
+def _at_window_end(mp, standalone, stand_in, *, at=None):
+    """Run *stand_in* where the undo window closes: after this create's last state write.
+
+    That is the undo's record of the root ``.gitignore`` append for a STANDALONE
+    create, and the creation-flag persist for a PRIMARY one (nothing follows it
+    without ``--private``/``--agent``); *at* names a ``_parser`` writer to stop after.
+    """
+    from kanibako.commands.box import _parser
+    from kanibako.settings.paths import IGNORE_FILE
+
+    if standalone and at is None:
+        real_undo = _parser._new_box_undo
+
+        def _undo_then_stop(*a, **kw):
+            undo, wrote = real_undo(*a, **kw)
+
+            def _wrote(fname):
+                wrote(fname)
+                if fname == IGNORE_FILE:
+                    stand_in(None, None)
+
+            return undo, _wrote
+
+        mp.setattr(_parser, "_new_box_undo", _undo_then_stop)
+        return
+    real = getattr(_parser, at or "persist_creation_flags")
+
+    def _end(*a, **kw):
+        real(*a, **kw)
+        stand_in(None, None)
+
+    mp.setattr(_parser, at or "persist_creation_flags", _end)
+
+
 class TestPreJournalWindowUndoesItsOwnWrites:
     """An exit from the pre-journal window leaves the disk as this create found it."""
 
@@ -2107,7 +2136,12 @@ class TestPreJournalWindowUndoesItsOwnWrites:
     def _std(self, config_file):
         from kanibako.settings.config import load_config
         from kanibako.settings.paths import load_std_paths
-        return load_std_paths(load_config(config_file))
+        std = load_std_paths(load_config(config_file))
+        # ⚑ THE JOURNAL IS THE CREATE'S RECORD, NOT ITS OUTPUT: an installed system
+        # already has it, and an emptied one stays as ``entries: {}`` (JC-J1-3).
+        std.journal.parent.mkdir(parents=True, exist_ok=True)
+        std.journal.write_text("entries: {}\n")
+        return std
 
     def _target(self, tmp_home, standalone):
         """The box root, holding the USER's files — a create must survive them."""
@@ -2123,7 +2157,7 @@ class TestPreJournalWindowUndoesItsOwnWrites:
         """Run a real ``create`` stopped inside the window; return its outcome.
 
         ⚑ The three exits are the window's three: the ``--private`` persist RAISES,
-        the ``--agent`` persist ``return``s, and the entry write raises after both.
+        the ``--agent`` persist ``return``s, and the window's last write raises after both.
         Each is reached by failing the thing it persists, so the product — not this
         test — decides which exit that is.  ⚑ *mp* is a caller's ``MonkeyPatch``, so a
         test that re-runs afterwards can drop the crash without dropping the fixture's.
@@ -2135,11 +2169,11 @@ class TestPreJournalWindowUndoesItsOwnWrites:
                 "kanibako.settings.config_interface.set_config_value",
                 lambda *a, **kw: "Error: the settings file is read-only",
             )
-        if exit_kind == "entry-write-raises":
+        if exit_kind == "window-end-raises":
             def _raise(std, proj):
-                raise _InterruptCreate("stopped before the journal entry")
+                raise _InterruptCreate("stopped at the end of the undo window")
 
-            mp.setattr("kanibako.commands.start._write_create_entry", _raise)
+            _at_window_end(mp, standalone, _raise)
 
         args = _create_args(path, standalone=standalone, no_vault=False)
         if exit_kind == "private-refuses":
@@ -2195,7 +2229,7 @@ class TestPreJournalWindowUndoesItsOwnWrites:
         path = self._target(tmp_home, standalone)
 
         with pytest.MonkeyPatch.context() as mp:
-            self._create_in_the_window(path, standalone, "entry-write-raises", mp)
+            self._create_in_the_window(path, standalone, "window-end-raises", mp)
 
         assert run_create(_create_args(path, standalone=standalone, no_vault=False)) == 0
         assert journal.read_journal(std.journal) == {}
@@ -2229,10 +2263,10 @@ class TestPreJournalWindowUndoesItsOwnWrites:
         assert journal.pending_create(std.journal, _box_journal_key(proj)) is not None
 
         def _raise(std, proj):
-            raise _InterruptCreate("stopped before the recovery rewrote the entry")
+            raise _InterruptCreate("stopped inside the recovery's state replay")
 
         with pytest.MonkeyPatch.context() as mp:
-            mp.setattr("kanibako.commands.start._write_create_entry", _raise)
+            _at_window_end(mp, False, _raise, at="persist_creation_flags")
             with pytest.raises(_InterruptCreate):
                 run_create(_create_args(path, standalone=standalone, no_vault=False,
                                         recover=True, register=standalone))
@@ -2294,7 +2328,7 @@ class TestPreJournalWindowUndoesItsOwnWrites:
         dirs_before = {p for p in _dirs(std.data, path, outside)}
 
         with pytest.MonkeyPatch.context() as mp:
-            outcome = self._create_in_the_window(path, True, "entry-write-raises", mp)
+            outcome = self._create_in_the_window(path, True, "window-end-raises", mp)
         assert outcome[0] == "raised", outcome
 
         # NO DIRECTORY this create made survives, anywhere the arms can point.
@@ -2336,7 +2370,12 @@ class TestWindowUndoSparesAWriteItDidNotMake:
     def _std(self, config_file):
         from kanibako.settings.config import load_config
         from kanibako.settings.paths import load_std_paths
-        return load_std_paths(load_config(config_file))
+        std = load_std_paths(load_config(config_file))
+        # ⚑ THE JOURNAL IS THE CREATE'S RECORD, NOT ITS OUTPUT: an installed system
+        # already has it, and an emptied one stays as ``entries: {}`` (JC-J1-3).
+        std.journal.parent.mkdir(parents=True, exist_ok=True)
+        std.journal.write_text("entries: {}\n")
+        return std
 
     def _fail_with_a_write(self, writes, target_dir):
         """A stand-in for the journal write that also plants *writes*, then fails.
@@ -2349,7 +2388,7 @@ class TestWindowUndoSparesAWriteItDidNotMake:
                 path = target_dir / rel
                 path.parent.mkdir(parents=True, exist_ok=True)
                 path.write_text(text)
-            raise _InterruptCreate("stopped before the journal entry")
+            raise _InterruptCreate("stopped at the end of the undo window")
 
         return _entry_write
 
@@ -2368,8 +2407,8 @@ class TestWindowUndoSparesAWriteItDidNotMake:
         (neighbour / "home" / "theirs.txt").write_text("the neighbour's\n")
 
         with pytest.MonkeyPatch.context() as mp:
-            mp.setattr(
-                "kanibako.commands.start._write_create_entry",
+            _at_window_end(
+                mp, False,
                 self._fail_with_a_write(
                     [("other/home/agent-wrote-this.txt", "written mid-window\n")],
                     std.boxes,
@@ -2402,8 +2441,8 @@ class TestWindowUndoSparesAWriteItDidNotMake:
         (path / "code" / "main.py").write_text("print('mine')\n")
 
         with pytest.MonkeyPatch.context() as mp:
-            mp.setattr(
-                "kanibako.commands.start._write_create_entry",
+            _at_window_end(
+                mp, True,
                 self._fail_with_a_write(
                     [("code/user-saved-this.py", "saved mid-window\n"),
                      ("NOTES.txt", "typed mid-window\n")], path,
@@ -2436,8 +2475,8 @@ class TestWindowUndoSparesAWriteItDidNotMake:
         rel_ws = std.primary_workset.relative_to(std.data)
 
         with pytest.MonkeyPatch.context() as mp:
-            mp.setattr(
-                "kanibako.commands.start._write_create_entry",
+            _at_window_end(
+                mp, False,
                 self._fail_with_a_write(
                     [(f"{rel_ws}/boxes/other/home/agent.txt", "mid-window\n"),
                      (f"{rel_ws}/registry.yaml", "boxes: []\n")], std.data,
@@ -2462,8 +2501,8 @@ class TestWindowUndoSparesAWriteItDidNotMake:
         rel = vault.relative_to(std.data)
 
         with pytest.MonkeyPatch.context() as mp:
-            mp.setattr(
-                "kanibako.commands.start._write_create_entry",
+            _at_window_end(
+                mp, False,
                 self._fail_with_a_write(
                     [(f"{rel}/rw/other/notes.txt", "mid-window\n")], std.data),
             )
@@ -2491,10 +2530,10 @@ class TestWindowUndoSparesAWriteItDidNotMake:
         std = self._std(config_file)
 
         def _raise(std, proj):
-            raise _InterruptCreate("stopped before the journal entry")
+            raise _InterruptCreate("stopped at the end of the undo window")
 
         with pytest.MonkeyPatch.context() as mp:
-            mp.setattr("kanibako.commands.start._write_create_entry", _raise)
+            _at_window_end(mp, False, _raise)
             with pytest.raises(_InterruptCreate):
                 run_create(_create_args(tmp_home / "project", name="mybox",
                                         no_vault=False))
@@ -2528,7 +2567,7 @@ class TestWindowUndoRestoresARootWorksetFile:
 
     def _fail(self):
         def _entry_write(std, proj):
-            raise _InterruptCreate("stopped before the journal entry")
+            raise _InterruptCreate("stopped at the end of the undo window")
 
         return _entry_write
 
@@ -2544,7 +2583,7 @@ class TestWindowUndoRestoresARootWorksetFile:
         ws_file.write_text(self._ROOT)
 
         with pytest.MonkeyPatch.context() as mp:
-            mp.setattr("kanibako.commands.start._write_create_entry", self._fail())
+            _at_window_end(mp, True, self._fail())
             with pytest.raises(_InterruptCreate):
                 run_create(_create_args(path, standalone=True, no_vault=False))
 
@@ -2579,10 +2618,10 @@ class TestWindowUndoRestoresARootWorksetFile:
             seen["kuid"] = kuid.strip()
             # A later, legitimate edit: the user re-wrote the file, kuid and all.
             ws_file.write_text(self._ROOT + "  # edited by the user afterwards\n")
-            raise _InterruptCreate("stopped before the journal entry")
+            raise _InterruptCreate("stopped at the end of the undo window")
 
         with pytest.MonkeyPatch.context() as mp:
-            mp.setattr("kanibako.commands.start._write_create_entry", _write_then_replace)
+            _at_window_end(mp, True, _write_then_replace)
             with pytest.raises(_InterruptCreate):
                 run_create(_create_args(path, standalone=True, no_vault=False))
 
@@ -2610,7 +2649,7 @@ class TestWindowUndoRestoresARootWorksetFile:
         gi.write_text(mine)
 
         with pytest.MonkeyPatch.context() as mp:
-            mp.setattr("kanibako.commands.start._write_create_entry", self._fail())
+            _at_window_end(mp, True, self._fail())
             with pytest.raises(_InterruptCreate):
                 run_create(_create_args(path, standalone=True, no_vault=False))
 
@@ -2644,10 +2683,10 @@ class TestWindowUndoRestoresARootWorksetFile:
             assert appended != original, "the create appended nothing"
             seen["len"] = len(appended)
             gi.write_text(later)
-            raise _InterruptCreate("stopped before the journal entry")
+            raise _InterruptCreate("stopped at the end of the undo window")
 
         with pytest.MonkeyPatch.context() as mp:
-            mp.setattr("kanibako.commands.start._write_create_entry",
+            _at_window_end(mp, True,
                        _append_then_edit)
             with pytest.raises(_InterruptCreate):
                 run_create(_create_args(path, standalone=True, no_vault=False))
@@ -2674,10 +2713,10 @@ class TestWindowUndoRestoresARootWorksetFile:
         def _append(std, proj):
             with open(target, "a") as f:
                 f.write(appended)
-            raise _InterruptCreate("stopped before the journal entry")
+            raise _InterruptCreate("stopped at the end of the undo window")
 
         with pytest.MonkeyPatch.context() as mp:
-            mp.setattr("kanibako.commands.start._write_create_entry", _append)
+            _at_window_end(mp, True, _append)
             with pytest.raises(_InterruptCreate):
                 run_create(_create_args(path, standalone=True, no_vault=False))
 
@@ -3138,41 +3177,60 @@ class TestBareCreateOverADeregisteredHome:
 
 
 # ---------------------------------------------------------------------------
-# Part 2 (prejournalcreate, WIP 2026-10-07): the journal entry is written
-# BEFORE the materializing resolve, not after.  A kill in the pre-journal
-# window therefore LEAVES a pending create entry on disk, and ``create
-# --recover`` is what COMPLETES the half-built box by replay.  The Part 1
-# pre-journal undo is now a no-op (its trigger never fires), so the only
-# test for the new property is the entry's presence at the end of the window
-# — the box tree is left in place, the user can re-run.
-#
-# ⛔ RED ON PART 1: a kill in the pre-journal window undoes the box tree and
-# leaves no journal entry.  A second ``create`` is therefore the cure (not
-# ``create --recover``), and that is the regression this test pins.
+# Write-ahead create: the entry comes BEFORE the create's first box write and records
+# everything the create was told that sets box state; ``--recover`` replays it.
 # ---------------------------------------------------------------------------
 
+# A child ``kanibako create`` that SIGKILLs itself at a chosen point: a hard kill runs
+# no ``finally``, so only a separate process can stand where a real crash leaves things.
+_KILLED_CREATE = """
+import os, signal, sys
+from kanibako.commands.box import _parser
 
-class TestPreJournalEntryWritesBeforeFirstDiskWrite:
-    """A kill in the pre-journal window now LEAVES a pending create entry.
+def _kill(*a, **kw):
+    os.kill(os.getpid(), signal.SIGKILL)
 
-    ``launch/journal.py`` (:17) names the gap Part 2 closes: the resolver
-    materializes the box dir + meta BEFORE the entry is written, so a crash
-    during that dir-creation still leaves a (narrower) unrecoverable limbo.
-    This test pins the new property — the entry IS present after a kill in
-    the window — on the two modes the Part 1 undo covered.
+if sys.argv[1] == "after-materialize":
+    _parser.persist_creation_flags = _kill
+else:
+    for _n in ("resolve_project", "resolve_standalone_project"):
+        def _wrap(*a, _real=getattr(_parser, _n), **kw):
+            if kw.get("initialize"):
+                _kill()
+            return _real(*a, **kw)
+        setattr(_parser, _n, _wrap)
+from kanibako.cli import main
+sys.exit(main(sys.argv[2:]))
+"""
 
-    The kill point is the same one the Part 1 "private-refuses" arm uses:
-    the ``--private`` settings write returns an error and the product
-    raises.  Under Part 1 the journal entry is never written and the undo
-    runs; under Part 2 the journal entry is written BEFORE that raise, so
-    the box tree is left AND the entry is on disk — a ``create --recover``
-    is the cure, not a second ``create``.
+
+def _killed_create(point: str, argv: "list[str]") -> int:
+    """Run ``kanibako <argv>`` in a child killed at *point*; return its returncode."""
+    import os
+    import subprocess
+    import sys
+
+    import kanibako
+
+    env = dict(os.environ)
+    env["PYTHONPATH"] = str(Path(kanibako.__file__).parents[1])
+    return subprocess.run(
+        [sys.executable, "-c", _KILLED_CREATE, point, *argv],
+        env=env, capture_output=True, timeout=120,
+    ).returncode
+
+
+class TestAKilledCreateIsRecoveredWithWhatItWasTold:
+    """A kill in what used to be the pre-journal window leaves a pending entry that
+    RECORDS the state-setting flags, and ``--recover`` finishes the box with them.
+
+    ⛔ Before the entry moved ahead of the first write, the kill left a box tree and
+    no entry; and an entry written without the flags would recover a ``--private``
+    box with credential forwarding ON.
     """
 
     @pytest.fixture(autouse=True)
     def _no_seed(self, monkeypatch):
-        # Same suppression as the Part 1 suite — we are testing the WINDOW,
-        # not the seed.
         monkeypatch.setattr(
             "kanibako.commands.start.seed_new_box",
             lambda std, config, proj, **kw: None,
@@ -3182,55 +3240,81 @@ class TestPreJournalEntryWritesBeforeFirstDiskWrite:
             lambda *a, **kw: None,
         )
 
-    def _std(self, config_file):
-        from kanibako.settings.config import load_config
-        from kanibako.settings.paths import load_std_paths
-        return load_std_paths(load_config(config_file))
-
-    def _target(self, tmp_home, standalone):
-        path = tmp_home / ("sa" if standalone else "project")
-        if standalone:
-            path.mkdir()
-        return path
-
+    @pytest.mark.parametrize("point", ["after-entry", "after-materialize"])
     @pytest.mark.parametrize("standalone", [False, True], ids=["primary", "standalone"])
-    def test_a_kill_in_the_window_leaves_a_pending_create_entry(
-        self, standalone, config_file, tmp_home, credentials_dir, monkeypatch,
+    def test_the_entry_records_the_flags_and_recover_applies_them(
+        self, standalone, point, config_file, tmp_home, credentials_dir,
     ):
-        """After a raise in the pre-journal window, the journal entry IS
-        present (Part 2 property) and the box tree IS left on disk.
-
-        ``set_config_value`` is patched to return a refused-write message,
-        which is the same kill point the Part 1 ``--private`` arm uses; the
-        product then raises from ``run_create`` before reaching the current
-        journal-entry call.  The Part 2 fix moves the entry write BEFORE
-        this raise, so the assertion below passes.
-        """
         from kanibako.commands.box._parser import run_create
-
-        monkeypatch.setattr(
-            "kanibako.settings.config_interface.set_config_value",
-            lambda *a, **kw: "Error: the settings file is read-only",
+        from kanibako.settings.config import load_config
+        from kanibako.settings.config_io import load_doc
+        from kanibako.settings.paths import (
+            box_workset_settings_paths, load_std_paths, resolve_project,
+            resolve_standalone_project,
         )
 
-        std = self._std(config_file)
-        path = self._target(tmp_home, standalone)
-        args = _create_args(path, standalone=standalone, no_vault=False)
-        args.private = True  # forces the ``--private`` arm to run + raise
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        path = tmp_home / ("sa" if standalone else "killed")
+        path.mkdir()
+        argv = ["create", *(["--standalone"] if standalone else []), str(path),
+                "--private", "-i", "example/rig:1", "--agent", "goose"]
 
-        from kanibako.errors import KanibakoError
-        with pytest.raises(KanibakoError):
-            run_create(args)
+        assert _killed_create(point, argv) == -9
 
-        # PART 2 PROPERTY: the journal entry was written BEFORE the
-        # ``--private`` raise, so the kill in the window left it on disk.
         entries = journal.read_journal(std.journal)
-        assert entries, (
-            "Part 2: a kill in the pre-journal window MUST leave a pending "
-            "create entry on disk; ``create --recover`` is the cure."
-        )
-        # The single pending entry is for THIS create (one box, one key).
-        assert len(entries) == 1
+        assert len(entries) == 1, entries
         entry = next(iter(entries.values()))
         assert entry["op"] == "create"
-        assert entry["mode"] == ("standalone" if standalone else "primary")
+        assert entry["state"]["private"] is True
+        assert entry["state"]["image"] == "example/rig:1"
+        assert entry["state"]["agent"] == "goose"
+        assert entry["state"].get("gitignore", False) is standalone
+
+        assert run_create(_create_args(path, standalone=standalone, no_vault=False,
+                                       recover=True)) == 0
+
+        proj = (resolve_standalone_project(std, config, str(path)) if standalone
+                else resolve_project(std, config, project_dir=str(path)))
+        doc = load_doc(box_workset_settings_paths(proj)[0])
+        assert doc["box"]["auth"]["global_enabled"] is False
+        assert doc["box"]["auth"]["workset_enabled"] is False
+        assert doc["box"]["image"] == "example/rig:1"
+        assert doc["pref"]["system"]["agent"] == "goose"
+        if standalone:
+            assert "box_data/" in (path / ".gitignore").read_text().splitlines()
+        else:
+            assert _primary_names(std) == {"killed": str(path)}
+        assert journal.read_journal(std.journal) == {}
+
+    def test_a_pending_key_is_never_picked_by_another_create(
+        self, config_file, tmp_home, credentials_dir,
+    ):
+        """Two creates never share a key: a name an interrupted create claimed before
+        making its dir is taken, so the next same-basename create picks another."""
+        from kanibako.commands.box._parser import run_create
+        from kanibako.settings.config import load_config
+        from kanibako.settings.paths import load_std_paths
+
+        std = load_std_paths(load_config(config_file))
+        first = tmp_home / "a" / "proj"
+        second = tmp_home / "b" / "proj"
+        first.mkdir(parents=True)
+        second.mkdir(parents=True)
+
+        assert _killed_create("after-entry", ["create", str(first)]) == -9
+        assert not (std.boxes / "proj").exists()
+        assert run_create(_create_args(second, no_vault=False)) == 0
+
+        assert _primary_names(std) == {"proj2": str(second)}
+        entries = journal.read_journal(std.journal)
+        assert list(entries) == [str(std.boxes / "proj")]
+        assert entries[str(std.boxes / "proj")]["workspace"] == str(first)
+
+    def test_a_claim_on_a_held_key_writes_nothing(self, tmp_path: Path) -> None:
+        jp = tmp_path / "journal.yaml"
+        assert journal.write_entry(jp, "/boxes/x", op="create", name="x",
+                                   mode="primary", workspace="/w/1", claim=True)
+        assert not journal.write_entry(jp, "/boxes/x", op="create", name="x",
+                                       mode="primary", workspace="/w/2", claim=True)
+        assert journal.read_journal(jp)["/boxes/x"]["workspace"] == "/w/1"

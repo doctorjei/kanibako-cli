@@ -464,6 +464,16 @@ class TestAnInterruptedNamedCreateIsRecoverable:
         assert _tree(tmp_home) == before
 
 
+def _seed_journal(std) -> None:
+    """Lay down the journal an installed system already has.
+
+    ⚑ It is the create's RECORD, not its output: the undo clears this create's entry
+    and an emptied journal stays as ``entries: {}`` (JC-J1-3).
+    """
+    std.journal.parent.mkdir(parents=True, exist_ok=True)
+    std.journal.write_text("entries: {}\n")
+
+
 class TestNoRefusalStrandsAMember:
     """Every refusal runs before the membership write: the working set's records,
     its ``boxes/`` and every other file under the test tree are unchanged."""
@@ -495,9 +505,9 @@ class TestNoRefusalStrandsAMember:
     def test_a_failed_persist_undoes_the_member(
         self, wsa, tmp_home, credentials_dir, monkeypatch, over,
     ):
-        """A persist that fails after the membership write, before the journal entry,
-        leaves no member: nothing could recover it, and a ``--private`` box left
-        behind would forward the host credentials the user asked it not to."""
+        """A persist that fails after the membership write leaves no member and no
+        entry: an orderly exit undoes what this create made, and a ``--private`` box
+        left behind would forward the host credentials the user asked it not to."""
         from kanibako.commands.box._parser import run_create
         from kanibako.errors import KanibakoError
 
@@ -508,6 +518,7 @@ class TestNoRefusalStrandsAMember:
             "kanibako.settings.config_interface.set_config_value",
             lambda *a, **kw: "Error: simulated persist failure",
         )
+        _seed_journal(std)
         before = _tree(tmp_home)
         try:
             rc = run_create(_args("pvbox", **over))
@@ -540,6 +551,7 @@ class TestNoRefusalStrandsAMember:
             "kanibako.settings.config_interface.set_config_value",
             lambda *a, **kw: "Error: simulated persist failure",
         )
+        _seed_journal(_std)
         before = _tree(tmp_home)
         with pytest.raises(KanibakoError):
             run_create(_args("pvbox", private=True))

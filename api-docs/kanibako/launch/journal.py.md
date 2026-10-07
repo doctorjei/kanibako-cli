@@ -15,11 +15,14 @@ _IMPORT_OPS = ('import', 'connect')
 ## Functions
 ```
 def read_journal(journal_path: Path) -> dict[str, dict]
-def write_entry(journal_path: Path, box_path: str | Path, *, op: str, name: str, mode: str, workset: str | None=None, workspace: str | None=None) -> None
+def write_entry(journal_path: Path, box_path: str | Path, *, op: str, name: str, mode: str, workset: str | None=None, workspace: str | None=None, state: dict | None=None, claim: bool=False) -> bool
 def clear_entry(journal_path: Path, box_path: str | Path) -> None
 def pending_entry(journal_path: Path, box_path: str | Path) -> dict | None
 def pending_create(journal_path: Path, box_path: str | Path) -> dict | None
 def pending_create_for_workspace(journal_path: Path, workspace: str | Path) -> dict | None
 def pending_import(journal_path: Path, box_path: str | Path) -> dict | None
 def _key(box_path: str | Path) -> str
+@contextlib.contextmanager
+def _locked(journal_path: Path) -> Iterator[None]
+def _entry(op: str, name: str, mode: str, workset: str | None, workspace: str | None, state: dict | None) -> dict
 ```
