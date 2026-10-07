@@ -3042,8 +3042,8 @@ class TestBoxShapeRefusalPrecedesSetup:
         box tier that already exists while ``home/`` does not.  Leaving a bootstrapped
         ``home/`` behind is what makes the refusal unrecoverable by a plain retry.
 
-        ⚑ ON EVERY ``enable_vault``: an explicit choice skips the door's read, so the door
-        asks the shape rule itself — ahead of the setup, not after it.
+        ⚑ ON EVERY ``enable_vault``: the door reads the authored tier first, so the shape
+        rule runs ahead of the setup, not after it.
         """
         from kanibako.errors import ConfigError
 
@@ -3099,7 +3099,7 @@ class TestBoxShapeRefusalPrecedesSetup:
 
         ⚑ REACHABLE through ``name_override``: the door's guard tests the pre-name dir,
         then switches to ``boxes/<name>``, which may already hold a box tier.  ``box
-        extract --name`` takes this path, and it reaches every ``enable_vault`` arm.
+        extract --name`` takes this path with ``enable_vault=None``.
         """
         from kanibako.errors import ConfigError
 
