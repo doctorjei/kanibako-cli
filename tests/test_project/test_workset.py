@@ -505,15 +505,15 @@ class TestAddProjectConnectGuard:
     @staticmethod
     def _make_standalone(dir_path: Path) -> None:
         """Stamp *dir_path* with the in-place standalone MARKER (box_data/ +
-        workset.yaml), matching box_resolve.standalone_settings_present."""
-        from kanibako.launch.box_resolve import standalone_settings_present
+        workset.yaml), matching box_resolve.stores_standalone_registry_null."""
+        from kanibako.launch.box_resolve import stores_standalone_registry_null
         from kanibako.settings.config import WORKSET_META_FILE
         from kanibako.settings.paths import STANDALONE_META_DIR
 
         dir_path.mkdir(parents=True, exist_ok=True)
         (dir_path / STANDALONE_META_DIR).mkdir()
         (dir_path / WORKSET_META_FILE).write_text("workset:\n  registry: null\n")
-        assert standalone_settings_present(dir_path)  # marker is real
+        assert stores_standalone_registry_null(dir_path)  # marker is real
 
     def test_refuses_standalone_marked_external_source(self, std, tmp_home):
         # Connecting a dir that declares itself standalone (in-place marker) must

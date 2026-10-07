@@ -135,7 +135,7 @@ class TestCheckBoxComponents:
         """#3 — the settings-file marker is NOT re-checked at launch: a proj
         whose workspace + home exist passes even with no box.yaml (the
         marker's absence is handled at resolution/detection, not double-fired
-        here — see box_resolve.standalone_settings_present below)."""
+        here — see box_resolve.stores_standalone_registry_null below)."""
         proj = self._proj(tmp_path)  # no box.yaml written anywhere
         assert not (proj.metadata_path / "box.yaml").exists()
         assert _check_box_components(proj) is None
@@ -150,9 +150,9 @@ class TestCheckBoxComponents:
         root = tmp_path / "sbox"
         (root / "box_data").mkdir(parents=True)
         # box_data present but NO workset.yaml → not recognized as a box.
-        assert not box_resolve.standalone_settings_present(root)
+        assert not box_resolve.stores_standalone_registry_null(root)
         (root / "workset.yaml").write_text("workset:\n  registry: null\n")
-        assert box_resolve.standalone_settings_present(root)
+        assert box_resolve.stores_standalone_registry_null(root)
 
     def test_wired_into_run_container(self, start_mocks, tmp_path, capsys):
         """The gate is wired into ``_run_container``: a resolved box whose

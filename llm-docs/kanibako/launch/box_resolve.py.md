@@ -47,16 +47,16 @@ and then iterates the section for every NAMED workset.
 
 ## The standalone marker
 
-`standalone_settings_present` is a PRESENCE check and nothing more: the standalone meta dir and the
-box settings file must BOTH exist —
+`stores_standalone_registry_null` tests ONE thing: whether the dir's OWN `workset.yaml` stores
+`workset.registry` as null. That stored null is the DEFINITION of standalone (system-design
+§ Detection & import) — this file only, never the cascade — so a bare `box_data/` is not enough:
 
 ```
-(project_dir/STANDALONE_META_DIR).is_dir() and (project_dir/BOX_META_FILE).is_file()
+(project_dir / WORKSET_META_FILE).is_file() and doc["workset"]["registry"] is None
 ```
 
 It mirrors `kanibako.settings.paths._is_standalone_meta_dir`, but deliberately does NOT read
-`project.mode`. Under D4 the existence of the file is the signal; re-introducing a read of
-`project.mode` here would re-couple the module to a field that is being retired.
+`project.mode`; re-introducing that read here would re-couple the module to a retired field.
 
 This is the highest-precedence detection signal. A box's own in-place settings file is its
 authoritative self-declaration of standalone identity, and it OVERRIDES any workset determination —

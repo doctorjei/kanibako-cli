@@ -165,7 +165,7 @@ left alone for the create-recovery path to find. A `None` journal is a no-op.
 `root` is the standalone project root: the dir containing `box_data/` and `workset.yaml`.
 
 **The marker gate** (design D4): the ROOT settings FILE is the standalone signal — **NOT**
-`project.mode`. `box_resolve.standalone_settings_present(root)` is the test. A bare `box_data/` is
+`project.mode`. `box_resolve.stores_standalone_registry_null(root)` is the test. A bare `box_data/` is
 not enough. No marker → `None`, nothing to import.
 
 **Name composition is kuid-first** (P8b — the box no longer self-describes its `project.name` on

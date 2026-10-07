@@ -2118,7 +2118,7 @@ def run_rm(args: argparse.Namespace) -> int:
 def _readopt_deregistered(std, name: str, entry: dict) -> int:
     """⚑ INDEX-ONLY, SEED-FREE readopt: move a box from ``deregistered`` back to active."""
     from kanibako.project import registry_store
-    from kanibako.launch.box_resolve import standalone_settings_present
+    from kanibako.launch.box_resolve import stores_standalone_registry_null
 
     kind = entry.get("kind")
     workspace = entry.get("workspace")
@@ -2127,7 +2127,7 @@ def _readopt_deregistered(std, name: str, entry: dict) -> int:
     if kind == "standalone":
         root = Path(str(metadata)).resolve() if metadata else None
         # Self-heal: the in-tree marker is gone → nothing to restore, drop the entry.
-        if root is None or not standalone_settings_present(root):
+        if root is None or not stores_standalone_registry_null(root):
             registry_store.unregister_deregistered(std.registry, name)
             print(
                 f"No standalone metadata found for '{name}' (dropped stale entry); "
@@ -2199,7 +2199,7 @@ def _retained_box_cures(target: str) -> "tuple[str, str]":
 def run_register(args: argparse.Namespace) -> int:
     """⚑ Re-register a box: INDEX-ONLY and SEED-FREE, by NAME (readopt) or PATH (standalone)."""
     from kanibako.project import registry_store
-    from kanibako.launch.box_resolve import standalone_settings_present
+    from kanibako.launch.box_resolve import stores_standalone_registry_null
     from kanibako.commands.start import _create_cure
 
     config_file = user_config_file()
@@ -2252,7 +2252,7 @@ def run_register(args: argparse.Namespace) -> int:
     candidate = Path(target)
     if candidate.is_dir():
         root = candidate.resolve()
-        if standalone_settings_present(root):
+        if stores_standalone_registry_null(root):
             already = registry_store.standalone_name_for_root(std.registry, root)
             if already is not None:
                 print(f"'{already}' is already registered (standalone box at {root}).")
