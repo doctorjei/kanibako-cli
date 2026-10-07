@@ -424,6 +424,11 @@ inside boxes. In order of likely impact:
     loads it, and the refusal prints the commands that register it again under another name** — see
     *A working set named primary or standalone must be registered again*.
 
+41. **A working set v1.7.x registered under a case variant of `default` now refuses every command that
+    loads it, and the refusal prints the commands that register it again under another name; such an
+    entry whose directory is gone, or that points at the primary working set, is removed from the
+    registry with a note instead** — see *A working set named default must be registered again*.
+
 ---
 
 ## 2. Per-area detail
@@ -6829,6 +6834,27 @@ the directory keeps its name, each of those lines is `box info` instead. A worki
 inside its tree ends with `cd <root> && kanibako box info`, which imports it and then exits 1 saying
 you are not inside a project; that is expected. Each box keeps its name and data; its container
 becomes `kb-<new name>-<box>`.
+
+### A working set named default must be registered again
+
+**Read this if `kanibako workset list` shows a working set named `default` or `__default__` in any
+letter case, such as `Default` or `__DEFAULT__`.**
+
+**What changed.** `default` and `__default__` are the `workset` verbs' name for the primary working
+set, so no working set may take one, in any case. `workset create` and the import already refused
+them; a working set a pre-1.8.0 release registered under one kept loading, and its boxes' containers
+took `kb-Default-<box>`. It now refuses at every command that loads it.
+
+**What to do.** Pick the new name and run the printed lines in order (`mv` the directory, then one
+`box remap --force` per in-tree box; a working set with no box inside ends with `cd <root> && kanibako
+box info`). `workset rm Default` reads the name as the primary working set, so the message prints no
+`workset rm` line.
+
+**What remains.** Nothing to clean up by hand. Since `workset rm` cannot reach the old entry,
+kanibako removes it: the first command that reads the registry after the `mv` finds its directory
+gone, drops the entry, and prints a note naming it and its path. An entry under one of these names
+that points at the primary working set itself is dropped the same way, with no refusal and nothing to
+move. Only the registry entry is removed; no file under that path is touched.
 
 ---
 

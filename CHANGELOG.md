@@ -96,6 +96,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   directory name; `workset list` still shows it and `workset rm` still removes it. See *A working
   set named primary or standalone must be registered again* in `MIGRATION.md`.
 
+- **A working set already registered under a case variant of `default` (`Default`, `__DEFAULT__`)
+  refuses every command that loads it.** `workset create` and the import refused these names, but a
+  working set a pre-1.8.0 release registered as `Default` kept loading under a name no `workset` verb
+  can address, and its containers took `kb-Default-<box>`. `workset rm Default` addresses the primary
+  working set, so the printed cure starts by renaming the directory instead. Such an entry whose
+  directory is gone, or that points at the primary working set, is removed from the registry with a
+  note rather than refused; no file is touched. `default` in any case still addresses the primary
+  working set. See *A working set named default must be registered again* in `MIGRATION.md`.
+
 - **`system set`, `get`, and `reset` on `agent.<node>.*` use the system settings file.** They used
   to write and clear `agents/<node>/agent.yaml`, and `get` read that file first; per keyspec §2a
   they now work on `<data>/global/settings.yaml` alone, under `agent: <node>:`. **Printed-line

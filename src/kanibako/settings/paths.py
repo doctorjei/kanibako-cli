@@ -1823,15 +1823,11 @@ def detect_project_mode(project_dir: Path, std: StandardPaths,
 
 def _check_workset(resolved_dir: Path, std: StandardPaths) -> DetectionResult | None:
     """Check whether *resolved_dir* is inside a registered workset (``workspaces/`` first)."""
-    from kanibako.project import registry_store
-    from kanibako.project.workset import load_workset_settings_doc, resolve_workspaces_locator
+    from kanibako.project.workset import (list_worksets, load_workset_settings_doc,
+                                          resolve_workspaces_locator)
 
-    worksets_section = registry_store.load_section(std.registry, "worksets")
-    if not worksets_section:
-        return None
-
-    for ws_name, _root_str in worksets_section.items():
-        ws_root = Path(_root_str).resolve()
+    for ws_name, ws_root in list_worksets(std).items():
+        ws_root = ws_root.resolve()
         if _is_standalone_meta_dir(ws_root):
             continue
         # The RESOLVED ``workset.workspaces`` — a repoint is honored (§3.3).

@@ -189,9 +189,9 @@ def test_reserved_registered_workset_is_refused_then_cured(
     _run_cure(env, refused.stderr)
 
     expected = NEW_NAME if moved else leaf
-    # ⚑ An ALIAS VARIANT's registry KEY survives the cure — `workset rm` reads it as
-    # PRIMARY, so nothing can unregister it — while a partition token's is removed.
-    assert sorted(_worksets()) == ([legacy, expected] if aliased else [expected])
+    # ⚑ An ALIAS VARIANT's key outlives `workset rm`, which reads it as PRIMARY; the
+    # first load after the `mv` drops it, its root being gone.
+    assert sorted(_worksets()) == [expected]
     resolved: list[tuple[Path, str]] = [(external, "ext")]
     if with_in_tree:
         resolved.append((home / "ws" / expected / "workspaces" / "intree", "intree"))
@@ -199,6 +199,55 @@ def test_reserved_registered_workset_is_refused_then_cured(
         info = _cli(env, "box", "info", cwd=source)
         assert info.returncode == 0, info.stderr
         assert f"kb-{expected.replace('-', '--')}-{box}" in info.stdout
+
+
+def _tree(root: Path) -> dict[str, bytes]:
+    """Every file under *root*, by relative path, with its bytes."""
+    return {str(f.relative_to(root)): f.read_bytes() for f in root.rglob("*") if f.is_file()}
+
+
+def test_an_alias_key_whose_root_is_gone_is_dropped_with_a_note(env: dict[str, str]) -> None:
+    from kanibako.project.names import register_name
+
+    home = Path(env["HOME"])
+    gone = home / "ws" / "Default"
+    gone.parent.mkdir()
+    (gone.parent / "beside.txt").write_text("kept\n")
+    register_name(_registry(), "Default", str(gone), section="worksets")
+    before = _tree(home)
+
+    listed = _cli(env, "workset", "list")
+    assert listed.returncode == 0, listed.stderr
+    assert f"Note: removed working set 'Default' ({gone}) from the registry" in listed.stderr
+    assert "ERROR" not in listed.stdout and "Default" not in listed.stdout
+    assert "Default" not in _worksets()
+    assert _tree(home) == before
+    again = _cli(env, "workset", "list")
+    assert "Note:" not in again.stderr
+
+
+def test_an_alias_key_on_the_primary_store_is_dropped_never_moved(env: dict[str, str]) -> None:
+    """A hand-edited ``Default: <primary>`` is dropped; no ``mv`` of the primary store."""
+    from kanibako.project.names import register_name
+    from kanibako.settings.config import load_config, user_config_file
+    from kanibako.settings.paths import load_std_paths
+
+    project = Path(env["HOME"]) / "proj"
+    project.mkdir()
+    made = _cli(env, "box", "create", cwd=project)
+    assert made.returncode == 0, made.stderr
+    primary = load_std_paths(load_config(user_config_file())).primary_workset
+    register_name(_registry(), "__DEFAULT__", str(primary), section="worksets")
+    before = _tree(primary)
+    assert before
+
+    info = _cli(env, "box", "info", cwd=project)
+    assert info.returncode == 0, info.stderr
+    assert f"Note: removed working set '__DEFAULT__' ({primary}) from the registry" in info.stderr
+    assert "reserved name" not in info.stderr and "mv " not in info.stderr
+    assert "kb-primary-proj" in info.stdout
+    assert _worksets() == {}
+    assert _tree(primary) == before
 
 
 def test_a_default_alias_in_any_case_is_refused_at_the_create_door(

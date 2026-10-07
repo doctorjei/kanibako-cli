@@ -904,9 +904,31 @@ def refuse_retired_workset_identity(root: Path) -> None:
 # ---------------------------------------------------------------------------
 
 def _load_registry(std: StandardPaths) -> dict[str, Path]:
-    """Return ``{name: root_path}`` from the global worksets registry."""
+    """Return ``{name: root_path}`` from the global worksets registry.
+
+    ⚑ An entry keyed by a ``default`` alias variant whose root is gone, or is the
+    primary store itself, is DROPPED here with a note: no command could address it
+    and its cure would move the primary store.  Only the registry file is written.
+    """
     section = registry_store.load_section(std.registry, "worksets")
-    return {name: Path(root) for name, root in section.items()}
+    primary = std.primary_workset.resolve()
+    registry: dict[str, Path] = {}
+    for name, root_str in section.items():
+        root = Path(root_str)
+        if find_identifier(name, RESERVED_WORKSET_IDENTIFIERS) is not None:
+            if registry_store._metadata_definitively_gone(root_str):
+                why = "its directory no longer exists"
+            elif root.resolve() == primary:
+                why = "it is the primary working set, which `default` already names"
+            else:
+                why = None
+            if why is not None:
+                unregister_name(std.registry, name, section="worksets")
+                print(f"Note: removed working set '{name}' ({root}) from the registry: "
+                      f"{why}. No file under it was touched.", file=sys.stderr)
+                continue
+        registry[name] = root
+    return registry
 
 
 # ---------------------------------------------------------------------------
