@@ -870,7 +870,7 @@ def run_duplicate(args: argparse.Namespace) -> int:
             print("Aborted.")
             return 2
 
-    # 7. Registration runs BEFORE anything is copied.  Both refusals below used to
+    # 8. Registration runs BEFORE anything is copied.  Both refusals below used to
     # arrive AFTER ``_merge_workspace``, so `--force` had already replaced the
     # destination's files by the time the command said "already registered"
     # (task-dupforce).  Minting the name first also lets the home-free check run
