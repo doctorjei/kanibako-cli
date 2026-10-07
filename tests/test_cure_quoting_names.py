@@ -1,11 +1,13 @@
 """Every name-, path- and ref-operand of a printed cure is a shell word.
 
-The retained-box pair's quoting is pinned in :mod:`tests.test_cure_quoting`;
-this covers the REST of the family: the ``proj.name`` cures in ``start`` and
-``box info``, the ``box set --box`` shaping cure, the reserved-workset
-``rm``/``mv``/``cd`` steps, the ``unrenderable_box_name_refusal`` convert and
-move cures, the ``box convert``/``box move`` refusals in ``_lifecycle``, and
-the two ``rig prep`` cures.
+The retained-box pair's quoting is pinned in :mod:`tests.test_cure_quoting`.
+This covers the REST of the family: the ``rig prep`` cures, the ``box set
+--box`` shaping cure, the reserved-workset ``rm``/``mv``/``cd`` steps, the
+``unrenderable_box_name_refusal`` convert and move cures, the ``box convert
+--move`` / ``box move`` refusals in ``_lifecycle`` (whose ``_cure_ref`` operand
+is pinned by pasting the refusal's own printed cure), the ``box info``
+"clear it" cure, the retired-key ``box set`` subject, and the six
+``podman unshare`` cleanup cures plus the ``stop`` lock-file cure.
 
 These operands are reachable with shell metacharacters in them.  A box
 created from a PATH is registered under that path's basename VERBATIM —
@@ -16,6 +18,11 @@ as an EXECUTION: each printed command is pasted into a real ``/bin/sh`` whose
 leading program is a stub recording the argv the SHELL built, and the
 assertion is on that argv plus the marker file the injected command would
 leave.  A string match cannot say whether the second command ran.
+
+⚑ THE ``unshare`` cures carry a SPACE-bearing name too, and their claim is
+the stronger one: an unquoted operand does not merely run the wrong text, it
+becomes a SECOND operand of the same recursive removal.  Those are pinned
+against a name holding a space as well as against ``_HOSTILE``.
 """
 
 from __future__ import annotations
@@ -328,4 +335,283 @@ def test_a_plain_operand_prints_the_same_bytes_it_did():
     from kanibako.utils import unrenderable_box_name_refusal
 
     text = unrenderable_box_name_refusal("-droste", "primary", Path("/home/u/plainbox"))
-    assert "kanibako box move /home/u/plainbox <new-path> --name <new-name>" in text
+    assert "kanibako box move /home/u/plainbox <new-path> --name <new-name>" in text# ---------------------------------------------------------------------------
+# The retired-key subject, the _lifecycle ref, and the cleanup cures.
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize("name", _HOSTILE)
+class TestTheRetiredKeySubjectIsQuoted:
+    """``settings_assemble._cure_subject`` is the cure's required positional.
+
+    ⚑ A real box name is a value the reader PASTS, so it must arrive as one
+    shell word.  Its PLACEHOLDER branch is the opposite and is pinned by
+    :func:`test_the_cure_subject_placeholder_is_left_unquoted` beside this class.
+    """
+
+    def test_the_printed_subject_pastes_to_one_argv(self, name, tmp_path):
+        from kanibako.settings.settings_assemble import _retired_key_cure
+
+        cure = _retired_key_cure("box.agent_name", level="box", value="claude",
+                                 box_name=name)
+
+        assert f"kanibako box set {shlex.quote(name)} pref.system.agent=claude" in cure
+        _assert_inert(cure, ["box", "set", name, "pref.system.agent=claude"],
+                      tmp_path / "paste")
+
+
+def test_the_cure_subject_placeholder_is_left_unquoted():
+    """The reader fills the placeholder in, so quoting it would be a regression.
+
+    The counterpart of the value branch above: ``<box>``/``<workset>`` are text
+    the reader replaces, and a quoted placeholder would print ``'<box>'`` —
+    literally what the reader is then required to type.
+    """
+    from kanibako.settings.settings_assemble import _cure_subject
+
+    assert _cure_subject("box", None) == "<box>"
+    assert _cure_subject("workset", None) == "<workset>"
+    # At workset scope a name is not the positional either, so the placeholder
+    # wins over a name it would otherwise splice in.
+    assert _cure_subject("workset", "any name") == "<workset>"
+
+
+def test_a_plain_cure_subject_prints_bare():
+    """``shlex.quote`` is a no-op for the ordinary box, so nothing else moves."""
+    from kanibako.settings.settings_assemble import _cure_subject
+
+    assert _cure_subject("box", "plainbox") == "plainbox"
+    assert _cure_subject("box", "/data/boxes/plainbox") == "/data/boxes/plainbox"
+
+
+@pytest.mark.parametrize("name", _HOSTILE)
+class TestTheCureRefIsQuoted:
+    """``_lifecycle._cure_ref`` is the reference its refusals cure a box BY.
+
+    Driven through the two refusals that print it — ``box convert … --move`` and
+    the ``box move`` refusal — for a member whose NAME carries the metacharacter.
+    No podman: both refusals fire before any runtime is touched.
+    """
+
+    def _refuse(self, name, tmp_home, *, convert):
+        """Drive one in-tree-landing refusal for a member named *name*.
+
+        Returns the refusal's stderr and the canonical leaf the move cure names.
+        """
+        from kanibako.commands.box import _lifecycle
+        from kanibako.project.workset import add_project, create_workset
+        from kanibako.settings.config import load_config, user_config_file
+        from kanibako.settings.paths import load_std_paths
+
+        config = load_config(user_config_file())
+        std = load_std_paths(config)
+        ws1 = create_workset("ws1", tmp_home / "ws1_root", std)
+        ws2 = create_workset("ws2", tmp_home / "ws2_root", std)
+        leaf = ws1.workspaces_dir / name
+        leaf.mkdir(parents=True)
+        (leaf / "file.txt").write_text("wsdata")
+        add_project(ws1, name, leaf, std)
+        stray = ws2.root / "stray"
+
+        common = dict(force=True, to_default=False, to_standalone=False,
+                      to_workset="ws2", name=None)
+        # A bare `--move` converts successfully; the refusal needs `--move <path>`,
+        # whose landing is the non-canonical in-tree path the guard rejects.
+        args = (argparse.Namespace(old=str(leaf), move=str(stray), **common)
+                if convert
+                else argparse.Namespace(old=str(leaf), new=str(stray), **common))
+        handler = _lifecycle.run_convert if convert else _lifecycle.run_move
+        err = io.StringIO()
+        with contextlib.redirect_stderr(err):
+            assert handler(args) == 1
+        text = err.getvalue()
+        assert "Refusing to record" in text, text
+        return text, ws2.workspaces_dir / name
+
+    def test_the_convert_move_cure_pastes_to_one_argv(self, name, tmp_path,
+                                                      tmp_home, config_file,
+                                                      credentials_dir):
+        text, _ = self._refuse(name, tmp_home, convert=True)
+
+        assert f"kanibako box convert {shlex.quote(name)} --workset ws2 --move" in text
+        _assert_inert(_backticked(_line(text, "kanibako box convert"), "kanibako box convert"),
+                      ["box", "convert", name, "--workset", "ws2", "--move"],
+                      tmp_path / "paste-convert")
+
+    def test_the_move_cure_pastes_to_one_argv(self, name, tmp_path, tmp_home,
+                                              config_file, credentials_dir):
+        text, leaf = self._refuse(name, tmp_home, convert=False)
+
+        _assert_inert(_backticked(_line(text, "kanibako box move"), "kanibako box move"),
+                      ["box", "move", name, str(leaf), "--workset", "ws2"],
+                      tmp_path / "paste-move")
+
+
+@pytest.mark.parametrize("name", _HOSTILE)
+class TestTheBoxInfoClearItCureIsQuoted:
+    """``box info``'s "clear it" cure, staged with a FAKE runtime.
+
+    ⚑ The cure prints only when the runtime reports a container that HOLDS the
+    name but is not running, so the stub answers ``ps`` with no rows and
+    ``inspect`` with success — ``container_exists`` is exactly that exit status.
+    No podman, and no container.
+    """
+
+    def test_the_printed_cure_pastes_to_one_argv(self, name, tmp_path, monkeypatch,
+                                                 tmp_home, config_file,
+                                                 credentials_dir):
+        from kanibako.commands.box._parser import run_info
+        from kanibako.project.workset import add_project, create_workset
+        from kanibako.settings.config import load_config, user_config_file
+        from kanibako.settings.paths import load_std_paths
+
+        config = load_config(user_config_file())
+        std = load_std_paths(config)
+        ws = create_workset("ws", tmp_home / "ws_root", std)
+        leaf = ws.workspaces_dir / name
+        leaf.mkdir(parents=True)
+        add_project(ws, name, leaf, std)
+
+        stub = tmp_path / "runtime-stub"
+        stub.write_text("#!/bin/sh\nexit 0\n")
+        stub.chmod(0o755)
+        monkeypatch.setenv("KANIBAKO_DOCKER_CMD", str(stub))
+
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(out):
+            run_info(argparse.Namespace(path=str(leaf), box=None))
+        printed = out.getvalue()
+        assert "clear it: kanibako stop" in printed, printed
+        _assert_inert(_pasteable(_line(printed, "clear it:"), "clear it:"),
+                      ["stop", name], tmp_path / "paste")
+
+
+#: A name holding a SPACE.  The cleanup cures' claim is the stronger one: an
+#: unquoted operand does not merely run the wrong text, it becomes a SECOND
+#: operand of the same recursive removal.  ``_HOSTILE`` does not exercise that.
+_SPACED = "x ~"
+
+
+_BACKTICKED = re.compile(r"`([^`]*)`")
+
+
+def _backticked(line: str, verb: str) -> str:
+    """The backticked command in *line* that starts with *verb*.
+
+    ⚑ A refusal names the target leaf in PROSE before it names the cure, so the
+    line carries several backticked spans and the first one is not the command.
+    """
+    for candidate in _BACKTICKED.findall(line):
+        if candidate.strip().startswith(verb):
+            return candidate.strip()
+    raise AssertionError(f"no backticked {verb} in {line!r}")
+
+
+def _pasteable(line: str, lead: str) -> str:
+    """The command a printed line carries, with the prose around it removed.
+
+    ⚑ A cure reaches the terminal inside a sentence — after ``Try:``, inside the
+    backticks of ``Run `…```, or behind ``clear it:``.  None of that is what a
+    reader copies, and pasting it verbatim would run the PROSE instead of the
+    cure, so the line is cut at *lead* first.  This is why the reserved-workset
+    steps are pasted whole: they are printed one per line with no prose.
+    """
+    assert lead in line, line
+    return line.split(lead, 1)[1].strip()
+
+
+class TestTheCleanupCuresAreQuoted:
+    """The ``podman unshare`` cures and the ``stop`` lock-file cure.
+
+    ⚑ Each operand is built from the box name, so it is pinned against a name
+    holding a space: unquoted, ``…/boxes/x`` and ``~`` reach the shell as two
+    operands, and the reader's shell expands the second into ``$HOME``.  A stub
+    ``rm`` records the argv the SHELL built — that is the whole claim, and
+    nothing here deletes anything.
+    """
+
+    @staticmethod
+    def _operands(command: str, scratch: Path) -> "list[str]":
+        """Paste *command* with a recording ``rm`` on PATH; return rm's argv."""
+        stub_dir = scratch / "stubbin"
+        stub_dir.mkdir(parents=True, exist_ok=True)
+        dump = scratch / "rm.dump"
+        for name in ("podman", "rm"):
+            prog = stub_dir / name
+            if name == "podman":
+                body = '#!/bin/sh\n[ "$1" = unshare ] && shift\nexec "$@"\n'
+            else:
+                body = ("#!/bin/sh\nfor a in \"$@\"; do printf '%s\\0' \"$a\" >> "
+                        + shlex.quote(str(dump)) + "\ndone\n")
+            prog.write_text(body)
+            prog.chmod(0o755)
+        subprocess.run(["/bin/sh", "-c", command], cwd=str(scratch),
+                       env={"PATH": f"{stub_dir}:/usr/bin:/bin",
+                            "HOME": str(scratch / "fakehome")},
+                       capture_output=True, text=True, check=False)
+        return [a for a in dump.read_bytes().decode().split("\0") if a]
+
+    def test_the_warn_undeleted_cure_keeps_one_operand(self, tmp_path):
+        """``clean._warn_undeleted`` — the builder that prints the warning."""
+        from kanibako.commands.clean import _warn_undeleted
+
+        target = tmp_path / "boxes" / _SPACED
+        target.parent.mkdir(parents=True, exist_ok=True)
+        err = io.StringIO()
+        with contextlib.redirect_stderr(err):
+            _warn_undeleted(target)
+        printed = err.getvalue()
+        cure = _pasteable(_line(printed, "Try: podman unshare"), "Try: ")
+
+        assert f"podman unshare rm -rf {shlex.quote(str(target))}" in printed
+        assert self._operands(cure, tmp_path / "scratch") == ["-rf", str(target)]
+
+    def test_the_primary_teardown_cure_keeps_one_operand(self, tmp_path, monkeypatch,
+                                                         tmp_home, config_file,
+                                                         credentials_dir):
+        """``_parser._teardown_primary_box``, with the removal forced to fail."""
+        from kanibako.commands.box import _parser
+        from kanibako.settings.config import load_config, user_config_file
+        from kanibako.settings.paths import load_std_paths
+
+        monkeypatch.setattr(_parser, "_purge_dir", lambda target: False)
+        std = load_std_paths(load_config(user_config_file()))
+        metadata = tmp_path / "boxes" / _SPACED
+        metadata.mkdir(parents=True)
+        err = io.StringIO()
+        with contextlib.redirect_stderr(err):
+            _parser._teardown_primary_box(std, "x ~", metadata)
+        cure = _pasteable(_line(err.getvalue(), "Try: podman unshare"), "Try: ")
+
+        assert f"podman unshare rm -rf {shlex.quote(str(metadata))}" in err.getvalue()
+        assert self._operands(cure, tmp_path / "scratch") == ["-rf", str(metadata)]
+
+    def test_the_stop_lock_cure_keeps_one_operand(self, tmp_path):
+        """``stop._stop_one`` with a runtime that holds neither a container nor a box."""
+        from unittest.mock import MagicMock, patch
+
+        from kanibako.commands.stop import _stop_one
+
+        rt = MagicMock()
+        # The lock cure is the arm where the runtime STOPPED nothing and holds no
+        # container — the state a stale lock file blocks.
+        rt.stop.return_value = False
+        rt.is_running.return_value = False
+        rt.list_running.return_value = []
+        rt.container_exists.return_value = False
+        rt.inspect_env.return_value = None
+        proj = MagicMock()
+        proj.metadata_path = tmp_path / "boxes" / _SPACED
+        lock = proj.metadata_path / ".kanibako.lock"
+        out = io.StringIO()
+        with (
+            patch("kanibako.commands.stop.load_config"),
+            patch("kanibako.commands.stop.load_std_paths"),
+            patch("kanibako.commands.stop.resolve_box_target", return_value=proj),
+            contextlib.redirect_stdout(out),
+        ):
+            assert _stop_one(rt, project_dir=None) == 0
+        printed = out.getvalue()
+        cure = _line(printed, "rm ")
+
+        assert f"rm {shlex.quote(str(lock))}" in printed
+        assert self._operands(cure, tmp_path / "scratch") == [str(lock)]
