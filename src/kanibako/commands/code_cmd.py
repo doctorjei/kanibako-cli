@@ -54,8 +54,9 @@ def add_code_parser(subparsers: argparse._SubParsersAction) -> None:
     p.add_argument(
         "--remote", metavar="HOST", default=None,
         help=(
-            "Attach LOCAL VS Code to a box on a REMOTE host over SSH "
-            "(HOST resolves via your ~/.ssh/config). Requires a box name."
+            "Attach LOCAL VS Code to a box on a REMOTE host over SSH. "
+            "HOST is where the BOX runs, not where VS Code runs (it resolves "
+            "via your ~/.ssh/config). Requires a box name."
         ),
     )
     p.set_defaults(func=run_code)
@@ -526,6 +527,8 @@ def _wire_docker_path(wrapper_path) -> int | None:
     pattern as ``seed_claude_bypass_permissions``) — a JSONC file needing a
     change, an unreadable file, or a non-tty session prints the exact manual
     snippet and aborts.  NEVER clobbers a file it cannot losslessly rewrite.
+    Every ask states the cost: VS Code applies this user setting in Remote-SSH
+    windows too.  *wrapper_path* must already exist; the caller installs it.
     """
     wrapper_str = str(wrapper_path)
     settings_path = (
@@ -535,6 +538,15 @@ def _wire_docker_path(wrapper_path) -> int | None:
         f"  Add this to your VS Code user settings.json ({settings_path}):\n"
         f'      "dev.containers.dockerPath": "{wrapper_str}"'
     )
+    cost = (
+        "  VS Code applies this user setting in Remote-SSH windows too: "
+        "attaching through a Remote-SSH window\n"
+        f"  on a host without {wrapper_str} fails with "
+        "'Command not found'.\n"
+        f'  To undo it, set "dev.containers.dockerPath": "podman" in '
+        f"{settings_path}."
+    )
+    manual = snippet + "\n" + cost
 
     existing_text: str | None = None
     if settings_path.is_file():
@@ -542,7 +554,7 @@ def _wire_docker_path(wrapper_path) -> int | None:
             existing_text = settings_path.read_text(encoding="utf-8")
         except OSError:
             print(
-                f"Error: cannot read {settings_path}.\n{snippet}",
+                f"Error: cannot read {settings_path}.\n{manual}",
                 file=sys.stderr,
             )
             return 1
@@ -555,15 +567,27 @@ def _wire_docker_path(wrapper_path) -> int | None:
         if not isinstance(data, dict):
             print(
                 "Error: your VS Code settings.json could not be read as a "
-                "JSON(C) object; refusing to modify it.\n" + snippet,
+                "JSON(C) object; refusing to modify it.\n" + manual,
                 file=sys.stderr,
             )
             return 1
     else:
         data = {}
 
-    if data.get("dev.containers.dockerPath") == wrapper_str:
+    current = data.get("dev.containers.dockerPath")
+    if current == wrapper_str:
         return None  # already wired
+    # Another machine's wrapper, or one from an older location.
+    foreign = (
+        isinstance(current, str)
+        and Path(current).name == Path(wrapper_str).name
+    )
+    current_line = (
+        f"VS Code 'dev.containers.dockerPath' is {current}: a kanibako "
+        "dispatch wrapper that is not this machine's (another machine's, or "
+        "an older location).\n"
+        if foreign else ""
+    )
 
     # A WRITE is needed.  Rewriting via json.dumps drops JSONC comments, so
     # only auto-modify files that are already strict JSON; otherwise hand the
@@ -573,25 +597,28 @@ def _wire_docker_path(wrapper_path) -> int | None:
             json.loads(existing_text)
         except ValueError:
             print(
-                "Error: your VS Code settings.json contains JSONC comments or "
+                current_line
+                + "Error: your VS Code settings.json contains JSONC comments or "
                 "trailing commas; refusing to rewrite it (comments would be "
-                "lost).\n" + snippet,
+                "lost).\n" + manual,
                 file=sys.stderr,
             )
             return 1
 
     if not sys.stdin.isatty():
         print(
-            "VS Code 'dev.containers.dockerPath' must point at the kanibako "
-            "dispatch wrapper for --remote.\n" + snippet,
+            current_line
+            + "VS Code 'dev.containers.dockerPath' must point at the kanibako "
+            "dispatch wrapper for --remote.\n" + manual,
             file=sys.stderr,
         )
         return 1
 
-    print(
-        f"Update VS Code 'dev.containers.dockerPath' -> {wrapper_str}? [y/N] ",
-        end="", flush=True,
+    verb = "Replace it with" if foreign else (
+        "Update VS Code 'dev.containers.dockerPath' ->"
     )
+    print(current_line + cost)
+    print(f"{verb} {wrapper_str}? [y/N] ", end="", flush=True)
     try:
         resp = input()
     except (EOFError, KeyboardInterrupt):
@@ -712,15 +739,14 @@ def _run_code_remote(args: argparse.Namespace, dest: str) -> int:
         )
         return 1
 
-    # (b) dev.containers.dockerPath must point at the kanibako dispatch wrapper.
-    wrapper_path = vr.dispatch_wrapper_path()
-    rc = _wire_docker_path(wrapper_path)
+    # (b) Install/refresh the wrapper BEFORE dev.containers.dockerPath may
+    # point at it, so the setting never names a missing file.
+    rc = _wire_docker_path(vr.ensure_dispatch_wrapper())
     if rc is not None:
         return rc
 
-    # (c) Install/refresh the wrapper, probe the remote, then write the docker
-    # context meta + connection store entry.
-    vr.ensure_dispatch_wrapper()
+    # (c) Probe the remote, then write the docker context meta + connection
+    # store entry.
     try:
         uid = vr.probe_remote(dest)
     except KanibakoError as exc:
