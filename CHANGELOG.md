@@ -588,6 +588,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`box convert --standalone` in place refuses a `vault/` at the project root that the box
+  does not own.** A standalone box's vault IS the root's own `workset.vault_ro`/`vault_rw`
+  arm, with no per-box leaf under it. Your own `vault/rw` used to be taken for that arm: the
+  convert merged the box's store into it, and a later `box rm --purge` deleted the directory
+  with your files in it. It is now refused before anything is written, and `--force` does not
+  override this. The vault the box already owns and an empty `vault/` arm are unaffected.
+  Naming the same directory as the vault in the root's `workset.yaml` does not protect it —
+  that makes it the box's own arm, which `box rm --purge` deletes; move it aside instead.
+
 - **`box duplicate --force` no longer overwrites the destination's files before it refuses.** A duplicate that was
   going to be turned down — the destination already a registered box, its new box home retained by `box rm` or left
   as an orphan, or a destination root whose `workset.yaml` holds a scalar `workset:` — could first replace the
