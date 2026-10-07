@@ -367,18 +367,15 @@ after `tests-gate`:
 4. Builds all five packages from the tagged tree.
 5. **Refuses a version collision with different content**
    (`scripts/check-publish-collisions.py`), comparing **every** built wheel
-   against what PyPI already serves. It bites hardest on the
+   and sdist against what PyPI already serves. It bites hardest on the
    independently-versioned agents: they rebuild at their static version, and
    `skip-existing` below would drop that upload in silence — leaving PyPI
-   serving the old wheel under a release claiming the new files.
+   serving the old files under a release claiming the new ones.
    **Every path in this repo that uploads to PyPI runs this guard first** — the
    `dev` and `publish-agent` jobs, and the manual `scripts/build-all.sh
    --upload`, which is not part of this procedure but reaches the same index.
    `tests/test_publish_guard.py` asserts that rule rather than a list of paths,
    deriving the paths from the upload mechanisms themselves.
-   ⚑ **Wheels only.** A content change confined to an sdist passes the guard;
-   the run says so whenever sdists are present, and the script's own docstring
-   explains why comparing them would refuse honest releases.
 6. **Publishes to prod PyPI** via OIDC trusted publishing
    (`pypa/gh-action-pypi-publish`, `skip-existing: true`, no token) — so the
    independently-versioned agents are skipped rather than failing when their

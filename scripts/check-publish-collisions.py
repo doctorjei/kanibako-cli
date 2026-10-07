@@ -13,34 +13,23 @@ user installing the meta package was a wheel the current cli refuses to load --
 and because plugin discovery was unguarded, that bricked every command including
 ``kanibako setup``.
 
-The check: for each locally built WHEEL (sdists are not compared), if PyPI already
-serves that exact name+version, compare the CONTENT.  Identical is fine (a genuine
-re-run).  Any difference means the version must be bumped, and we say so and exit
-non-zero BEFORE the upload step can silently swallow it.
+The check: for each locally built wheel and sdist, if PyPI already serves that
+exact name+version, compare the CONTENT.  Identical is fine (a genuine re-run).
+Any difference means the version must be bumped, and we say so and exit non-zero
+BEFORE the upload step can silently swallow it.
 
-Deliberately compares extracted MEMBER CONTENT, not the archive bytes: wheels are
-not byte-reproducible (zip entry timestamps differ per build), so an archive hash
-would fail every time and get switched off within a week.  ``*.dist-info/WHEEL``
-and ``RECORD`` are excluded for the same reason -- WHEEL embeds the build
-toolchain's version, and RECORD is derived from the other members, so it can only
-differ when they already do.  ``METADATA`` is deliberately KEPT: a dependency
-floor changing under a fixed version is exactly the bug this is looking for.
-
-WHY SDISTS ARE NOT COMPARED, AND WHAT THAT LEAVES OPEN.  The same trick does not
-carry over.  An sdist's member set and its rendered metadata -- ``PKG-INFO``,
-``*.egg-info/SOURCES.txt`` -- are artifacts of whichever setuptools built it, so a
-local build measured against a PyPI one built on a different toolchain can differ
-without its CONTENT differing: a FALSE refusal, which is precisely how a guard
-gets switched off.  Excluding members would need to start from WHICH ones are
-toolchain-dependent, and answering that takes a reproducibility study nobody has
-run; widening the glob is an open item on the task board, gated on that study.
-Dependency coverage does not ride on this either way -- every package here builds
-a wheel too, and its ``METADATA`` is compared at the same name+version.  So the
-gap is real and NAMED: a content change confined to the sdist -- a file that ships
-in the sdist and not the wheel -- passes this check.  Both artifacts are built
-from one tree, which makes that unlikely, not impossible.  A run says so whenever
-sdists are present, rather than leaving the limit in this docstring where the
-operator will not be reading it.
+Deliberately compares extracted MEMBER CONTENT, not the archive bytes: neither
+format is byte-reproducible (zip entry timestamps, tar headers and the gzip header
+differ per build), so an archive hash would fail every time and get switched off
+within a week.  Sdist members are keyed without their ``<name>-<version>/`` top
+directory, whose spelling changed with setuptools' name normalization.  Skipped:
+``*.dist-info/WHEEL`` and ``RECORD`` -- WHEEL embeds the build toolchain's version,
+and RECORD is derived from the other members, so it can only differ when they
+already do -- and the sdist's ``PKG-INFO`` (top-level and ``*.egg-info/``), which
+the toolchain renders (setuptools 68 writes ``Metadata-Version: 2.1`` and drops
+every ``Requires-Dist``).  ``METADATA``, ``pyproject.toml`` and ``requires.txt`` are
+deliberately KEPT: a dependency floor changing under a fixed version is exactly the
+bug this is looking for.
 
 Usage:  check-publish-collisions.py DIST_DIR
 Exit:   0 nothing to flag  ·  1 a collision needs a version bump  ·  2 bad usage
@@ -52,35 +41,64 @@ import hashlib
 import io
 import json
 import sys
+import tarfile
 import urllib.error
 import urllib.request
 import zipfile
+from fnmatch import fnmatchcase
 from pathlib import Path
 
 PYPI = "https://pypi.org/pypi"
-SKIP_SUFFIXES = ("/WHEEL", "/RECORD")
+
+#: Toolchain-written members, never compared (see the module docstring): the
+#: wheel's build stamp and its derived RECORD, and the sdist's rendered PKG-INFO.
+SKIP_MEMBERS = ("*.dist-info/WHEEL", "*.dist-info/RECORD", "PKG-INFO", "*.egg-info/PKG-INFO")
 
 
 def payload_digests(blob: bytes) -> dict[str, str]:
-  """Map each wheel member to a sha256 of its CONTENT, minus the volatile ones."""
-  out: dict[str, str] = {}
-  with zipfile.ZipFile(io.BytesIO(blob)) as z:
-    for name in z.namelist():
-      if name.endswith("/") or name.endswith(SKIP_SUFFIXES):
-        continue
-      out[name] = hashlib.sha256(z.read(name)).hexdigest()
-  return out
+  """Map each wheel or sdist member to a sha256 of its CONTENT, minus the skipped ones.
+
+  Regular files only; an sdist member's key drops its ``<name>-<version>/`` prefix.
+  """
+  members: dict[str, bytes] = {}
+  if zipfile.is_zipfile(io.BytesIO(blob)):
+    with zipfile.ZipFile(io.BytesIO(blob)) as z:
+      for name in z.namelist():
+        if not name.endswith("/"):
+          members[name] = z.read(name)
+  else:
+    with tarfile.open(fileobj=io.BytesIO(blob), mode="r:gz") as t:
+      for m in t.getmembers():
+        f = t.extractfile(m) if m.isfile() else None
+        if f is not None:
+          members[m.name.split("/", 1)[-1]] = f.read()
+  return {
+    name: hashlib.sha256(data).hexdigest()
+    for name, data in members.items()
+    if not any(fnmatchcase(name, pat) for pat in SKIP_MEMBERS)
+  }
 
 
-def parse_wheel_name(filename: str) -> tuple[str, str]:
-  """``kanibako_agent_goose-0.4.0-py3-none-any.whl`` -> (dist-name, version)."""
-  stem = filename[: -len(".whl")]
-  name, version = stem.split("-")[:2]
-  return name.replace("_", "-"), version
+def parse_dist_name(filename: str) -> tuple[str, str, str]:
+  """``kanibako_agent_goose-0.4.0-py3-none-any.whl`` -> (dist-name, version, packagetype).
+
+  An sdist is ``<name>-<version>.tar.gz``; setuptools before 69 kept the hyphens in
+  ``<name>``, so the version is whatever follows the LAST hyphen.
+  """
+  if filename.endswith(".whl"):
+    name, version = filename[: -len(".whl")].split("-")[:2]
+    kind = "bdist_wheel"
+  else:
+    name, version = filename[: -len(".tar.gz")].rsplit("-", 1)
+    kind = "sdist"
+  return name.replace("_", "-"), version, kind
 
 
-def published_wheel(name: str, version: str) -> bytes | None:
-  """Return the published wheel's bytes, or None if that version is not on PyPI."""
+def published_artifacts(name: str, version: str, kinds: set[str]) -> dict[str, bytes] | None:
+  """Return the published bytes of each wanted packagetype, or None if that version is not on PyPI.
+
+  One JSON request per name+version; a kind PyPI does not serve is absent from the result.
+  """
   try:
     with urllib.request.urlopen(f"{PYPI}/{name}/{version}/json", timeout=30) as r:
       meta = json.load(r)
@@ -88,11 +106,13 @@ def published_wheel(name: str, version: str) -> bytes | None:
     if exc.code == 404:
       return None
     raise
+  found: dict[str, bytes] = {}
   for url in meta.get("urls", []):
-    if url["packagetype"] == "bdist_wheel":
+    kind = url["packagetype"]
+    if kind in kinds and kind not in found:
       with urllib.request.urlopen(url["url"], timeout=60) as r:
-        return r.read()
-  return None
+        found[kind] = r.read()
+  return found
 
 
 def main(argv: list[str]) -> int:
@@ -100,45 +120,44 @@ def main(argv: list[str]) -> int:
     print(__doc__, file=sys.stderr)
     return 2
   dist_dir = Path(argv[1])
-  wheels = sorted(dist_dir.glob("*.whl"))
-  if not wheels:
-    print(f"No wheels in {dist_dir} — nothing to check.", file=sys.stderr)
+  artifacts = sorted([*dist_dir.glob("*.whl"), *dist_dir.glob("*.tar.gz")])
+  if not artifacts:
+    print(f"No wheels or sdists in {dist_dir} — nothing to check.", file=sys.stderr)
     return 2
-  sdists = sorted(dist_dir.glob("*.tar.gz"))
+
+  releases: dict[tuple[str, str], dict[str, Path]] = {}
+  for path in artifacts:
+    name, version, kind = parse_dist_name(path.name)
+    releases.setdefault((name, version), {})[kind] = path
 
   collisions: list[str] = []
-  for wheel in wheels:
-    name, version = parse_wheel_name(wheel.name)
-    remote = published_wheel(name, version)
-    if remote is None:
-      print(f"  ok    {name} {version}: new version, nothing published yet")
-      continue
+  for (name, version), local in releases.items():
+    remote = published_artifacts(name, version, set(local))
+    for kind, path in sorted(local.items()):
+      if remote is None or kind not in remote:
+        print(f"  ok    {path.name}: new artifact, nothing published yet")
+        continue
 
-    local_d, remote_d = payload_digests(wheel.read_bytes()), payload_digests(remote)
-    if local_d == remote_d:
-      print(f"  ok    {name} {version}: already published, content identical")
-      continue
+      local_d, remote_d = payload_digests(path.read_bytes()), payload_digests(remote[kind])
+      if local_d == remote_d:
+        print(f"  ok    {path.name}: already published, content identical")
+        continue
 
-    changed = sorted(
-      k for k in set(local_d) | set(remote_d) if local_d.get(k) != remote_d.get(k)
-    )
-    collisions.append(name)
-    print(f"  FAIL  {name} {version}: already published, CONTENT DIFFERS")
-    for member in changed[:10]:
-      if member not in remote_d:
-        state = "added locally"
-      elif member not in local_d:
-        state = "removed locally"
-      else:
-        state = "modified"
-      print(f"          {state:16} {member}")
-    if len(changed) > 10:
-      print(f"          … and {len(changed) - 10} more")
-
-  # Say the limit where the operator is looking, not only in the docstring: the
-  # sign-off below would otherwise read as covering everything in the directory.
-  for sdist in sdists:
-    print(f"  NOT CHECKED  {sdist.name}: sdists are not content-compared")
+      changed = sorted(
+        k for k in set(local_d) | set(remote_d) if local_d.get(k) != remote_d.get(k)
+      )
+      collisions.append(path.name)
+      print(f"  FAIL  {path.name}: already published, CONTENT DIFFERS")
+      for member in changed[:10]:
+        if member not in remote_d:
+          state = "added locally"
+        elif member not in local_d:
+          state = "removed locally"
+        else:
+          state = "modified"
+        print(f"          {state:16} {member}")
+      if len(changed) > 10:
+        print(f"          … and {len(changed) - 10} more")
 
   if collisions:
     print(
@@ -151,7 +170,7 @@ def main(argv: list[str]) -> int:
     )
     return 1
 
-  print("\nEvery WHEEL is safe to publish.")
+  print("\nEvery wheel and sdist is safe to publish.")
   return 0
 
 

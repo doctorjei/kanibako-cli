@@ -49,6 +49,11 @@ WHAT THIS STILL DOES NOT COVER.
 
 from __future__ import annotations
 
+import importlib.util
+import io
+import json
+import tarfile
+import zipfile
 from pathlib import Path
 from typing import Any
 
@@ -185,3 +190,94 @@ def test_guard_runs_before_the_upload(path: str) -> None:
     f"{path} runs {GUARD_SCRIPT} at position {min(guards)}, after its first "
     f"upload at position {min(uploads)} — a guard behind the upload is decorative"
   )
+
+
+def _load_guard() -> Any:
+  """Import the hyphenated guard script by path -- it is not a package module."""
+  spec = importlib.util.spec_from_file_location(
+    "check_publish_collisions", REPO_ROOT / GUARD_SCRIPT
+  )
+  assert spec is not None and spec.loader is not None
+  module = importlib.util.module_from_spec(spec)
+  spec.loader.exec_module(module)
+  return module
+
+
+def _sdist(top: str, files: dict[str, bytes], mtime: int) -> bytes:
+  buf = io.BytesIO()
+  with tarfile.open(fileobj=buf, mode="w:gz") as tar:
+    for name, data in files.items():
+      info = tarfile.TarInfo(f"{top}/{name}")
+      info.size, info.mtime, info.uname = len(data), mtime, f"user{mtime}"
+      tar.addfile(info, io.BytesIO(data))
+  return buf.getvalue()
+
+
+def _run_guard(
+  tmp_path: Path, monkeypatch: pytest.MonkeyPatch, local: bytes, published: bytes
+) -> tuple[int, list[str]]:
+  """Run ``main`` on a dist dir holding *local* while PyPI serves *published*.
+
+  Both sides also hold one identical wheel, so the sdist alone decides the verdict.
+  """
+  guard = _load_guard()
+  wheel = io.BytesIO()
+  with zipfile.ZipFile(wheel, "w") as z:
+    z.writestr("demo/core.py", "X = 1\n")
+  (tmp_path / "kanibako_demo-1.0-py3-none-any.whl").write_bytes(wheel.getvalue())
+  (tmp_path / "kanibako_demo-1.0.tar.gz").write_bytes(local)
+  served = {
+    "https://files.example/demo.whl": wheel.getvalue(),
+    "https://files.example/demo.tar.gz": published,
+  }
+  urls: list[str] = []
+
+  def fake_urlopen(url: str, timeout: int) -> io.BytesIO:
+    urls.append(url)
+    if url.endswith("/json"):
+      meta = {
+        "urls": [
+          {"packagetype": "bdist_wheel", "url": "https://files.example/demo.whl"},
+          {"packagetype": "sdist", "url": "https://files.example/demo.tar.gz"},
+        ]
+      }
+      return io.BytesIO(json.dumps(meta).encode())
+    return io.BytesIO(served[url])
+
+  monkeypatch.setattr(guard.urllib.request, "urlopen", fake_urlopen)
+  return guard.main(["guard", str(tmp_path)]), urls
+
+
+_PAYLOAD = {"pyproject.toml": b"[project]\n", "src/demo/core.py": b"X = 1\n"}
+
+
+def test_sdist_differing_only_in_toolchain_members_passes(
+  tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+  """PKG-INFO, tar headers, and the top directory's spelling are not content."""
+  local = _sdist(
+    "kanibako_demo-1.0",
+    {**_PAYLOAD, "PKG-INFO": b"Metadata-Version: 2.4\n", "src/d.egg-info/PKG-INFO": b"2.4"},
+    mtime=2,
+  )
+  published = _sdist(
+    "kanibako-demo-1.0",
+    {**_PAYLOAD, "PKG-INFO": b"Metadata-Version: 2.1\n", "src/d.egg-info/PKG-INFO": b"2.1"},
+    mtime=1,
+  )
+  rc, urls = _run_guard(tmp_path, monkeypatch, local, published)
+  assert rc == 0
+  assert [u for u in urls if u.endswith("/json")] == [
+    "https://pypi.org/pypi/kanibako-demo/1.0/json"
+  ]
+
+
+def test_sdist_differing_in_a_payload_file_is_refused(
+  tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+  """A change confined to the sdist must not pass under an already-published version."""
+  local = _sdist("kanibako_demo-1.0", {**_PAYLOAD, "tests/test_core.py": b"new\n"}, mtime=1)
+  published = _sdist("kanibako_demo-1.0", {**_PAYLOAD, "tests/test_core.py": b"old\n"}, mtime=1)
+  rc, _ = _run_guard(tmp_path, monkeypatch, local, published)
+  assert rc == 1
+  assert "modified         tests/test_core.py" in capsys.readouterr().out
