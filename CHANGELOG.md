@@ -2054,16 +2054,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   damaged copy could be written back into the shared store. That copy now waits on the same lock.
   The refresh has run unlocked since `workset.auth.global_sync` arrived in 1.7.0.
 
-- **Plugins you drop in your own store are now found.** The user-level file-drop plugin directory
-  (discovery tier 2) was composed from `$XDG_DATA_HOME` plus a hardcoded `kanibako` segment rather
-  than read from `config.data`. A user who repointed `config.data` therefore had plugin discovery
-  scanning a store they no longer used — an agent they had written simply never appeared in
-  `kanibako setup` or `--agent`, with nothing printed to explain the absence. It now resolves
-  through `config.data`, the declared key. A default install is unaffected: `config.data` defaults
-  to `$XDG_DATA_HOME/kanibako`, which is the path the site was hardcoding. ⚠️ **If you repointed
-  `config.data`, plugins in the old location stop being discovered** — see `MIGRATION.md`
-  § *2.72 File-drop plugins follow a repointed `config.data`* for the move.
-
 - **The seeded `check-comms.sh` hook never reported a broadcast, and an error inside your mailbox
   could stop it reporting mail.** Two defects, both shipped in `1.8.0rc2`. It watched
   `chat/broadcast.log`, a filename retired in 1.6.0 when broadcasts moved to `chat/broadcast.md`, so
@@ -2550,11 +2540,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Two agent plugins whose names differ only in case are no longer decided by install order.**
   They collapse to one node, so they claim one store directory and one cascade slot. Where both
-  arrive through the same discovery route — two entry points, or two files in one plugin
-  directory — the second is **skipped with a warning naming both spellings**, instead of silently
-  winning or losing depending on the order the metadata happened to come back in. Overriding an
-  installed plugin with one you drop in your own store is unchanged and still works: that is a
-  different route, and which route wins is written down.
+  arrive through the same discovery route — two entry points, or two `kanibako.plugins.*`
+  sub-packages — the second is **skipped with a warning naming both spellings**, instead of
+  silently winning or losing depending on the order the metadata happened to come back in. Between
+  the routes the entry point wins: it registers first, and the namespace scan only fills a node
+  nothing has claimed.
 
 - **A user-typed agent spelling reaches the node however it is capitalized — and a re-cased
   reserved name is refused however it is capitalized.** `agent.Claude.model` reads the `claude`
@@ -3027,6 +3017,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   plugin/base version pairing; upgrade the `kanibako-agent-*` packages with the base.
 
 ### Removed
+
+- **File-drop plugin directories.** A `.py` file in `{config.data}/plugins/` or in a box store's
+  `plugins/` (`<workspace>/box_data/plugins/` for a primary or named box; the store's own
+  `plugins/` for a standalone box) was imported during agent discovery on most commands, with no
+  install step. Both directories are gone as discovery routes: plugins load only from installed
+  packages, through the `kanibako.agents` entry-point group (the `kanibako.plugins.*` namespace
+  scan is unchanged). A `.py` left in either directory is never imported. See *File-drop plugin
+  directories are no longer a discovery route* in [MIGRATION.md](MIGRATION.md).
 
 - **`$KANIBAKO_SHELL`.** kanibako no longer reads this host environment variable when it picks the
   shell for a launch that runs no agent program. The shell is now `box.shell`, else the image's

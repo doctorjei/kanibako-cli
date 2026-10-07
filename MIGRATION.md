@@ -316,10 +316,10 @@ inside boxes. In order of likely impact:
     rename its entry file and add one import to your handbook index. **Upgrading from v1.7.2 you
     have none of this** — the canon books are new in v1.8.0.
 
-30. **If `config.data` points anywhere but `$XDG_DATA_HOME/kanibako`, your own file-drop plugins
-    are now discovered in it — and stop being discovered in the default store** (§2.72). The
-    plugin directory was built from the XDG *data* base plus a hardcoded `kanibako`, so a plugin you
-    had dropped in your store was silently never loaded. Move the `.py` files.
+30. **A `.py` plugin you dropped in a `plugins/` directory is no longer loaded** (see *2.110
+    File-drop plugin directories are no longer a discovery route*). Package and install it, then
+    delete the `.py` from `{config.data}/plugins/`, `<workspace>/box_data/plugins/`, or a
+    standalone store's `plugins/`.
 
 31. **A `run_args` you set for every agent now actually reaches every agent** (§2.75).
     `agent.default.run_args` — the bare `run_args` spelling included — was settable at any scope and
@@ -4866,34 +4866,10 @@ afterwards, so by the time you read the list your shipped-template edits are alr
 
 ---
 
-### 2.72 File-drop plugins follow a repointed `config.data`
+### 2.72 Retired: file-drop plugins and `config.data`
 
-**Read this ONLY if `config.data` points somewhere other than `$XDG_DATA_HOME/kanibako`** — for
-example `config.data: /srv/kanibako`. On a default install the path below resolves exactly where
-it did before and this section is a no-op.
-
-**What changed.** The file-drop plugin directory was built from `$XDG_DATA_HOME` plus a hardcoded
-`kanibako` segment instead of being read from `config.data`, so it stayed in the default store no
-matter where yours actually was:
-
-| what | old path | new path |
-|---|---|---|
-| your own file-drop plugins | `$XDG_DATA_HOME/kanibako/plugins/` | `<data>/plugins/` |
-
-The trigger is the whole path, not its last segment. A store moved to a different *parent* while
-keeping the `kanibako` name — `/srv/kanibako` — was affected exactly as one renamed outright.
-
-**How a user notices.** Quietly. Discovery scanned the default location, so a target you had
-written and dropped into `<data>/plugins/` did not appear in `kanibako setup` or as an `--agent`
-value, and nothing said why. Now it is found — and a copy left behind in
-`$XDG_DATA_HOME/kanibako/plugins/` stops being found, which is the same change seen from the other
-side.
-
-**What you must do.** Move any file-drop plugins from `$XDG_DATA_HOME/kanibako/plugins/` into
-`<data>/plugins/`. Nothing kanibako ships lives there — this directory holds only `.py` files you put
-there yourself. Plugins installed with `pip` are unaffected; they are found through entry points.
-
-The `code --remote` wrapper moved too, for every install, and not into `<data>` — see
+Superseded by *2.110 File-drop plugin directories are no longer a discovery route*: no `plugins/`
+directory is read, so there is nothing to move. The `code --remote` wrapper move still stands; see
 *2.83 The `code --remote` wrapper moved from the data store to the cache root*.
 
 ### 2.73 An agent's description is a settings key, and the agent file's `name:` is gone
@@ -6846,10 +6822,9 @@ becomes `kb-<new name>-<box>`.
 
 **What changed.** `workset.boxes` is a repointable workset key, and its standalone value is the
 `{meta.workset.path}/box_data` *default* — so `box_data` named a standalone box's store only
-while the key was unset. Home, the box-scope settings file, both standalone teardowns, the
-`box rm` purge and the project file-drop plugin scan composed the leaf directly, so a
-hand-repointed store was read from a directory the box did not use. All of them now resolve
-the key.
+while the key was unset. Home, the box-scope settings file, both standalone teardowns and the
+`box rm` purge composed the leaf directly, so a hand-repointed store was read from a directory
+the box did not use. All of them now resolve the key.
 
 Two things follow that are worth stating plainly.
 
@@ -6878,11 +6853,6 @@ A store removed by any of them takes that root file with it: with the store gone
 longer a box, and the file carries the repoint. Remove it by hand only if you are removing the
 whole box.
 
-**The project plugin dir moved with the store.** A plugin dropped in a project's plugins
-directory was read from the composed default leaf, so for a box with a relocated store it was
-never loaded, and one dropped in the leftover default leaf was loaded even though the box had
-stopped using it. Both follow the resolved store now.
-
 **Detection changed in the same release, and it no longer looks for `<root>/box_data`.** A standalone
 root is the root whose own `<root>/workset.yaml` stores the `workset.registry` null. `<root>/box_data`
 is the default leaf of the `workset.boxes` key, not a marker, so a box whose store was relocated is
@@ -6893,6 +6863,38 @@ discovered whether or not `<root>/box_data` still exists.
 to remove, and removing it does not un-detect the box. If you want the relocated store gone,
 remove it yourself with the path from the Note. A box with no `workset.boxes` entry is
 unaffected — its resolved store is `<root>/box_data`, exactly as before.
+
+---
+
+### 2.110 File-drop plugin directories are no longer a discovery route
+
+**Read this if you ever wrote an agent plugin as a `.py` file dropped into a `plugins/` directory.**
+
+**What changed.** Plugins load only from installed packages: the `kanibako.agents` entry-point
+group, plus the `kanibako.plugins.*` namespace scan. Neither of these directories is read any more:
+
+| where a dropped `.py` used to load | now |
+|---|---|
+| `{config.data}/plugins/` (by default `~/.local/share/kanibako/plugins/`) | never imported |
+| a box store's `plugins/`: `<workspace>/box_data/plugins/` for a primary or named box, the store's own `plugins/` for a standalone box | never imported |
+
+**Why.** A plugin is host code. Those directories ran it on most commands with no install step.
+
+**What you must do.** Nothing if your agents came from `pip`. Otherwise package the plugin and
+install it (`pip install .`), then delete the `.py` files from those directories; nothing reads them
+and nothing warns. A minimal `pyproject.toml`:
+
+```toml
+[project]
+name = "my-kanibako-agent"
+version = "0.1.0"
+dependencies = ["kanibako-cli"]
+
+[project.entry-points."kanibako.agents"]
+myagent = "my_agent:MyAgentTarget"
+```
+
+See *Packaging* in [docs/writing-targets.md](docs/writing-targets.md).
 
 ---
 
