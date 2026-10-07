@@ -28,7 +28,10 @@ from kanibako.launch.box_identity import validate_box_name
 from kanibako.runtime.container import remove_box_tree
 from kanibako.settings import bootstrap
 from kanibako.settings.core_defaults import materialize_canon_skeleton
-from kanibako.settings.workset_dirkeys import EarlyScope, refuse_inherited_per_owner
+from kanibako.settings.workset_dirkeys import (
+    EarlyScope, early_repoint, refuse_inherited_per_owner,
+)
+from kanibako.settings.settings_resolve import UNSET
 from kanibako.settings.config import (
     BOX_META_FILE,
     WORKSET_META_FILE,
@@ -867,29 +870,30 @@ def _validate(
     # resolved the new standalone's arm onto whatever already sat there, merged the
     # box's store into it, and the later ``box rm --purge`` deleted the lot.  Refused
     # before any write, as the named arm above is.  ⚑ Two arms are no collision: one
-    # the root's own ``workset.yaml`` DECLARES — the user nominated that directory and
-    # adopting it is obeying them, not tripping over it — and one holding NOTHING,
-    # since an empty default arm is indistinguishable from kanibako's own skeleton
-    # and has nothing for the purge to take.
+    # the keyspace DECLARES — ask :func:`early_repoint`, which honors BOTH tiers and
+    # reads ``vault_rw: ""`` as UNSET where a raw ``key in doc["workset"]`` does not
+    # — and one holding NOTHING, an empty default arm being indistinguishable from
+    # kanibako's own skeleton, with nothing for the purge to take.
     if (
         not spec.records_only
         and target_mode == BoxMode.standalone
         and dest is None
         and state.mode != BoxMode.standalone
     ):
-        doc = load_workset_settings_doc(state.workspace_path) or {}
-        section = doc.get("workset")
-        declared = section if isinstance(section, Mapping) else {}
+        doc = load_workset_settings_doc(state.workspace_path)
+        early = _early_scope(std, BoxMode.standalone)
         taken_vault = []
         for key, arm, mine in zip(
             ("vault_ro", "vault_rw"),
-            resolve_workset_vault_pair(
-                state.workspace_path, early=_early_scope(std, BoxMode.standalone)),
+            resolve_workset_vault_pair(state.workspace_path, early=early),
             (state.vault_ro, state.vault_rw),
         ):
-            if arm is None or key in declared:
+            if arm is None:
                 continue
             if mine is not None and arm.resolve() == mine.resolve():
+                continue
+            declared, _carrier = early_repoint(state.workspace_path, doc, key, early=early)
+            if declared is not UNSET:
                 continue
             if not (arm.exists() or arm.is_symlink()):
                 continue
@@ -902,7 +906,8 @@ def _validate(
                 "already exists and this operation did not create it. A standalone "
                 "box's vault IS the root's own arm, so this directory would become "
                 "the box's and a later `box rm --purge` would delete it. Move it "
-                "aside, or declare it as the vault in the root's workset.yaml."
+                "aside first: declaring this directory as the vault in the root's "
+                "workset.yaml would not protect it — that only makes it the box's."
             )
 
     # --- same-kind name policy on a DEFAULT-mode --name rename edge (F-7) ---
