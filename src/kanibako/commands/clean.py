@@ -16,13 +16,13 @@ from kanibako.settings.paths import (
     _primary_box_paths,
     box_logs_location,
     load_std_paths,
-    remove_box_logs,
     report_retained_store,
     resolve_any_project,
     standalone_box_store,
     standalone_store_teardown_plan,
 )
 from kanibako.utils import confirm_prompt
+from kanibako.project.workset import purge_box_logs
 from kanibako.channels.channels import workset_name_token, workset_root
 from kanibako.settings.workset_dirkeys import EarlyScope, refuse_inherited_per_owner
 from kanibako.settings.messages import STATUS_NO_DATA
@@ -177,7 +177,10 @@ def _purge_one(std, config, path: str, *, force: bool) -> int:
     print("Removing session data... ", end="", flush=True)
     # Remove the per-box logs first (their paths are derived from the box's
     # tree, which the rmtree below may take with it for standalone).
-    remove_box_logs(*box_logs_location(std, proj))
+    # ⚑ SCOPED TO THIS BOX'S WORKSET: a forced ``workset.logs`` share makes a
+    # same-named box's log file ONE file for two working sets, and that file is kept
+    # and reported here instead of deleted (:func:`purge_box_logs`).
+    purge_box_logs(std, *box_logs_location(std, proj), workset_root=workset_root(proj, std))
 
     if proj.mode is BoxMode.standalone:
         # metadata_path is the project ROOT — remove ONLY the in-tree kanibako artifacts.
@@ -286,7 +289,8 @@ def _purge_all(std, config, *, force: bool) -> int:
 
         # The per-box logs, under the PRIMARY workset's resolved ``workset.logs``
         # (box == metadata dir name).
-        remove_box_logs(std.primary_logs, metadata_path.name)
+        purge_box_logs(std, std.primary_logs, metadata_path.name,
+                       workset_root=std.primary_workset)
 
         # M2: drop the now-dangling registry entry for this PRIMARY box.
         _unregister_purged_primary(std, metadata_path, project_path)
@@ -311,7 +315,7 @@ def _purge_all(std, config, *, force: bool) -> int:
                 # ⚑ NAMED logs — the RESOLVED ``workset.logs``, which is what the
                 # box's helpers.jsonl mount is bound from; the default leaf is
                 # ``<root>/logs``, not the box's own directory.
-                remove_box_logs(logs_dir, proj_name)
+                purge_box_logs(std, logs_dir, proj_name, workset_root=ws.root)
                 print("done.")
                 removed += 1
 
