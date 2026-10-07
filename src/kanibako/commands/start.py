@@ -3064,7 +3064,7 @@ def _run_container(
                     f"Box '{proj.name}' is already running agent "
                     f"'{display_agent_ref(stored_agent)}'; cannot reattach with "
                     f"--agent '{display_agent_ref(explicit_agent)}'. Stop it first "
-                    f"(`kanibako stop {proj.name}`) to relaunch with a "
+                    f"(`kanibako stop {shlex.quote(proj.name)}`) to relaunch with a "
                     f"different agent."
                 )
             explicit_agent = stored_agent
@@ -3186,8 +3186,8 @@ def _run_container(
                 f"{', '.join(_rejected)} cannot be applied to it (a running "
                 f"box keeps the container and the agent session it was "
                 f"launched with).\n"
-                f"  Restart it: kanibako --restart {proj.name}\n"
-                f"  Or stop it: kanibako stop {proj.name}",
+                f"  Restart it: kanibako --restart {shlex.quote(proj.name)}\n"
+                f"  Or stop it: kanibako stop {shlex.quote(proj.name)}",
                 file=sys.stderr,
             )
             return 1
@@ -3883,7 +3883,7 @@ def _run_container(
                     "Error: This project's box is not running, but a stopped "
                     f"container is still holding its name ({container_name}), "
                     "which blocks a new launch.\n"
-                    f"  Clear it:  kanibako stop {proj.name}\n"
+                    f"  Clear it:  kanibako stop {shlex.quote(proj.name)}\n"
                     "  Then run your command again.",
                     file=sys.stderr,
                 )
@@ -5175,9 +5175,9 @@ def _run_container(
             )
             print(
                 f"{_started}\n"
-                f"  Attach:    kanibako start {proj.name}\n"
-                f"  VS Code:   kanibako code {proj.name}\n"
-                f"  Stop it:   kanibako stop {proj.name}",
+                f"  Attach:    kanibako start {shlex.quote(proj.name)}\n"
+                f"  VS Code:   kanibako code {shlex.quote(proj.name)}\n"
+                f"  Stop it:   kanibako stop {shlex.quote(proj.name)}",
                 file=sys.stderr,
             )
             # D Part 2: a detached launch leaves no foreground host process to write
@@ -5333,8 +5333,8 @@ def _run_container(
                     f"{_max_exec_attempts} attempts. Its container "
                     f"({container_name}) is still running; the agent inside may "
                     f"have exited.\n"
-                    f"  Look inside:  kanibako shell {proj.name}\n"
-                    f"  Stop it:      kanibako stop {proj.name}\n"
+                    f"  Look inside:  kanibako shell {shlex.quote(proj.name)}\n"
+                    f"  Stop it:      kanibako stop {shlex.quote(proj.name)}\n"
                     f"  Then start it again.",
                     file=sys.stderr,
                 )

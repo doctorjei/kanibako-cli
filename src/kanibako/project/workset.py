@@ -38,6 +38,7 @@ had drifted (it named a ``worksets.yaml`` that no longer exists).
 
 from __future__ import annotations
 
+import shlex
 import sys
 from collections.abc import Iterable, Mapping
 from contextlib import contextmanager
@@ -782,17 +783,19 @@ def refuse_reserved_registered_name(name: str, root: Path, *, early_system: Earl
     )
     moved = is_reserved_workset_name(root.name)
     new_root = root.parent / "<new name>" if moved else root
-    steps = [f"kanibako workset rm {name} --force"]
+    steps = [f"kanibako workset rm {shlex.quote(name)} --force"]
     if moved:
-        steps.append(f"mv {root} {new_root}")
+        steps.append(f"mv {shlex.quote(str(root))} {shlex.quote(str(new_root))}")
     verb = "box remap --force" if moved else "box info"
-    steps += [f"cd {new_root / rel} && kanibako {verb}" for _, rel in in_tree]
+    steps += [
+        f"cd {shlex.quote(str(new_root / rel))} && kanibako {verb}" for _, rel in in_tree
+    ]
     if in_tree:
         tail = (f"The first '{verb}' imports the working set under its directory name; "
                 + ("each one re-points that box at its new path." if moved
                    else "the others only confirm each box."))
     else:
-        steps.append(f"cd {new_root} && kanibako box info")
+        steps.append(f"cd {shlex.quote(str(new_root))} && kanibako box info")
         tail = ("The last command imports the working set under its directory name, "
                 "then exits 1 saying you are not inside a project, which is expected.")
     refused = RESERVED_WORKSET_NAMES - RESERVED_WORKSET_IDENTIFIERS
