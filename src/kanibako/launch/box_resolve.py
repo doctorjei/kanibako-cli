@@ -56,12 +56,12 @@ def _enumerate_worksets(
     global ``worksets:`` discovery section; a listed root that stores the standalone
     ``workset.registry`` null is not a named workset and is skipped.
     """
+    from kanibako.project.workset import list_worksets
+
     yield (_PRIMARY_WORKSET_NAME, std.primary_workset, BoxMode.primary)
-    for name, root_str in registry_store.load_section(
-        std.registry, "worksets"
-    ).items():
-        if not stores_standalone_registry_null(Path(root_str)):
-            yield (name, Path(root_str), BoxMode.named)
+    for name, root in list_worksets(std).items():
+        if not stores_standalone_registry_null(root):
+            yield (name, root, BoxMode.named)
 
 
 class _OwnedBox(NamedTuple):
@@ -124,16 +124,13 @@ def find_connected_external_box(
     NOT "under the workset root".  Widening it strands members registered under an
     OLD composition — bifrost A0, 2026-08-02.  Reasoning: the llm-doc.
     """
-    from kanibako.project.workset import resolve_workspaces_locator
+    from kanibako.project.workset import list_worksets, resolve_workspaces_locator
     from kanibako.settings.workset_dirkeys import EarlyScope
 
     target = project_dir.resolve()
     best: _OwnedBox | None = None
     best_depth = -1
-    for name, root_str in registry_store.load_section(
-        std.registry, "worksets"
-    ).items():
-        root = Path(root_str)
+    for name, root in list_worksets(std).items():
         if stores_standalone_registry_null(root):
             continue
         settings: Any = load_doc(root / WORKSET_META_FILE)
