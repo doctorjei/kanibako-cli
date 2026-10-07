@@ -79,6 +79,7 @@ def _journal_connect(journal: Path | None, box_path: Path, *, name: str, workset
 def _load_workset(root: Path, name: str, *, early_system: EarlySystem) -> Workset
 def _load_registry(std: StandardPaths) -> dict[str, Path]
 def _logs_walk_targets(std: StandardPaths) -> dict[str, Path]
+def _walk_scope(system: EarlySystem, name: str, root: Path) -> EarlyScope
 def _shown(name: str) -> str
 def _with_logs(doc: Mapping[str, Any] | None, value: object) -> dict
 def _logs_share_partners(std: StandardPaths, logs_dir: Path, box: str, *, workset_root: Path | None) -> tuple[str, ...]

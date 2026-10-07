@@ -31,7 +31,7 @@ from kanibako.settings.config import (
     WORKSET_META_FILE, load_config, system_settings_path,
 )
 from kanibako.settings.config_io import dump_doc
-from kanibako.settings.paths import box_log_files, load_std_paths
+from kanibako.settings.paths import box_log_files, load_std_paths, resolve_project
 from kanibako.settings.settings_resolve import UNSET
 
 
@@ -413,3 +413,39 @@ class TestBothCollidingValueShapesCloseTheSameDoor:
         assert logs_share_refusal("workset.logs", value, std, force=False,
                                  scope="workset", target_name="B",
                                  target_root=b.root) is not None
+
+
+class TestTheDefaultWorksetResolvesUnderTheTokenItsBoxesRead:
+    """The default's log dir is the one its boxes write: ``@meta.workset.name`` is
+    ``__PRIMARY__`` for it, never the registry id ``__default__``."""
+
+    NAMED = "@meta.workset.name"
+
+    def _primary_box_and_a(self, config_file, tmp_home):
+        """A primary box ``alpha``, its log written; a named ``A`` holding an ``alpha`` too."""
+        std = with_system_logs(config_file, f"{tmp_home}/L/{self.NAMED}/{{meta.workset.path}}")
+        workspace = tmp_home / "alpha"
+        workspace.mkdir()
+        resolve_project(std, load_config(config_file), project_dir=str(workspace),
+                        initialize=True)
+        a = create_workset("A", tmp_home / "wsA", std)
+        add_project(a, "alpha", tmp_home / "src" / "alpha")
+        return std, a, seed_log(std.primary_logs, "alpha")
+
+    def test_a_named_workset_aimed_at_the_primary_log_dir_is_refused(
+            self, config_file, tmp_home):
+        std, a, _written = self._primary_box_and_a(config_file, tmp_home)
+
+        msg = logs_share_refusal("workset.logs", str(std.primary_logs), std, force=False,
+                                 scope="workset", target_name="A", target_root=a.root)
+
+        assert msg is not None
+        assert "'A'" in msg and "'default'" in msg
+
+    def test_a_forced_shares_purge_keeps_the_primary_boxs_log(self, config_file, tmp_home):
+        std, a, written = self._primary_box_and_a(config_file, tmp_home)
+        set_own_logs(a.root, str(std.primary_logs))
+
+        assert purge_box_logs(std, std.primary_logs, "alpha", workset_root=a.root) == []
+        for path, text in written.items():
+            assert path.read_text() == text, f"{path.name} must survive byte for byte"
