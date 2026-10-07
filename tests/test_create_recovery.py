@@ -2568,6 +2568,46 @@ class TestWindowUndoRestoresARootWorksetFile:
             "the failed create left its .gitignore entries in the USER's file"
         )
 
+    def test_the_gitignore_restore_leaves_a_later_edit_alone(
+        self, config_file, tmp_home, credentials_dir
+    ):
+        """⚑ THE GUARD for the append: the original bytes must still be a PREFIX.
+
+        The undo reverts ``.gitignore`` only while the user's original lines are still
+        the head of the file — an append only ever adds to the end.  A later writer
+        that changes those lines owns the file, and the undo must leave it alone.
+        """
+        from kanibako.commands.box._parser import run_create
+
+        path = tmp_home / "sa"
+        path.mkdir()
+        original = "# my rules\n*.pyc\n"
+        gi = path / ".gitignore"
+        gi.write_text(original)
+        later = "# my rules, corrected\n*.pyo\n"
+        seen: "dict[str, int]" = {}
+
+        def _append_then_edit(std, proj):
+            # The create appended; assert it really did, so the prefix guard is the
+            # thing under test rather than a no-op.
+            appended = gi.read_text()
+            assert appended.startswith(original), appended
+            assert appended != original, "the create appended nothing"
+            seen["len"] = len(appended)
+            gi.write_text(later)
+            raise _InterruptCreate("stopped before the journal entry")
+
+        with pytest.MonkeyPatch.context() as mp:
+            mp.setattr("kanibako.commands.start._write_create_entry",
+                       _append_then_edit)
+            with pytest.raises(_InterruptCreate):
+                run_create(_create_args(path, standalone=True, no_vault=False))
+
+        assert seen, "the create never reached the .gitignore"
+        assert gi.read_text() == later, (
+            "the undo overwrote a LATER edit of the user's .gitignore"
+        )
+
 
 class TestCuresAreRunnable:
     """Every cure a ``create`` refusal prints is a command that RUNS.
