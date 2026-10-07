@@ -118,7 +118,7 @@ def _copy_root_link(
     shutil.copystat(src, dst, follow_symlinks=False)
 
 
-def lay_root_link(src: Path, dst: Path) -> bool:
+def lay_root_link(src: Path, dst: Path, *, moved_root: Path | None = None) -> bool:
     """Lay *src*'s root LINK at *dst* when that costs nothing; else let the caller copy.
 
     ``keep_root_link`` refuses whatever already sits at *dst*, which strands a relocation
@@ -126,11 +126,21 @@ def lay_root_link(src: Path, dst: Path) -> bool:
     link was laid: *dst* absent, or a directory holding nothing -- ``os.rmdir`` cannot remove
     one that holds an entry and a mount point answers EBUSY, so content is never traded for a
     pointer.  False otherwise, and the caller's own copy runs unchanged, exception and all.
+
+    *moved_root* is the root of the tree THIS operation carries along with *src*.  A link
+    whose target sits inside it names a place that will be torn down: the rewrite re-points
+    at the OLD absolute location, so the landed link dangles the moment the source goes.
+    Answering False leaves the caller to copy the bytes, which arrive correct.  A target
+    outside *moved_root* stays put and is carried as a pointer, which is the whole point.
     """
     if not os.path.islink(src):
         return False
     if os.path.islink(dst):
         return False
+    if moved_root is not None:
+        target = os.path.realpath(src)
+        if target != os.path.realpath(moved_root) and _is_under(target, moved_root):
+            return False
     if dst.is_dir():
         try:
             os.rmdir(dst)
@@ -141,6 +151,15 @@ def lay_root_link(src: Path, dst: Path) -> bool:
     os.makedirs(os.path.dirname(os.path.abspath(str(dst))), exist_ok=True)
     copy_tree_keeping_links(src, dst, keep_root_link=True)
     return True
+
+
+def _is_under(path: str, root: Path) -> bool:
+    """True when *path* lies inside *root*, both taken resolved."""
+    resolved_root = os.path.realpath(str(root))
+    try:
+        return os.path.commonpath([path, resolved_root]) == resolved_root
+    except ValueError:
+        return False
 
 
 def failed_entries(err: shutil.Error) -> str | None:
