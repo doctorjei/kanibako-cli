@@ -1294,7 +1294,8 @@ def _vault_leaf_has_contents(leaf: Path) -> bool:
 
 
 def _copy_vault_leaf_contents(src: Path, dst: Path | None,
-                             moved_root: Path | None = None) -> None:
+                             moved_root: Path | None = None,
+                             relocated: Mapping[Path, Path] | None = None) -> None:
     """Merge-copy the CONTENTS of vault leaf *src* into leaf *dst*.
 
     ⚑ The counterpart ``snapshots.py`` copies vault content under the same symlink
@@ -1332,9 +1333,20 @@ def _copy_vault_leaf_contents(src: Path, dst: Path | None,
             f"is inside the source."
         )
     dst.mkdir(parents=True, exist_ok=True)
-    if lay_root_link(src, dst, moved_root=moved_root):
+    if lay_root_link(src, dst, moved_root=moved_root, relocated=relocated):
         # A POINTER source into an empty destination: share the target, don't materialize.
         return
+    if src.is_symlink() and moved_root is not None:
+        # ⚑ The pointer could not be kept and nothing re-points it: the target sits inside
+        # a tree this relocation tears down, outside every tree it LANDS.  Bytes arrive, but
+        # they are now a SECOND copy, so say so rather than let them diverge quietly.
+        import sys
+        print(
+            f"Warning: {src} is a link into {moved_root}, which this move removes and does "
+            f"not re-aim; its BYTES were copied to {dst} and the POINTER is gone. Writes "
+            "after this do not reach the original target.",
+            file=sys.stderr,
+        )
     try:
         copy_tree_keeping_links(src, dst, dirs_exist_ok=True)
     except shutil.Error as e:
@@ -1457,6 +1469,7 @@ def _carry_vault_contents(
     std: StandardPaths,
     dst_ro: Path | None,
     dst_rw: Path | None,
+    relocated: Mapping[Path, Path] | None = None,
 ) -> None:
     """Carry the source vault's contents into the freshly created destination leaves.
 
@@ -1465,10 +1478,15 @@ def _carry_vault_contents(
     inside.  A copy failure RAISES, aborting before anything is deleted.
 
     ``moved_root`` is the source box's own root: a link INTO it names a place this
-    relocation tears down, so it is materialized, not carried as a dangling pointer.
+    relocation tears down, so it is not carried at the old location.  ``relocated`` is
+    where this operation's carried trees LAND (``{old_root: new_root}``); a link whose
+    target sits inside one is re-pointed at the same relative position under its landing,
+    so the POINTER survives instead of becoming a second copy that diverges.  With no
+    mapping covering it the bytes are copied and the loss is warned.
     """
     for src, dst in _vault_carry_pairs(state, std, dst_ro, dst_rw):
-        _copy_vault_leaf_contents(src, dst, moved_root=state.metadata_path)
+        _copy_vault_leaf_contents(src, dst, moved_root=state.metadata_path,
+                                 relocated=relocated)
 
 
 def _move_log_back(dst: Path, src: Path) -> None:
@@ -2462,8 +2480,18 @@ def _to_workset(
     )
     if not source_is_workset:
         # ⚑ THE VAULT CARRY (P1 data loss) — see ``_to_default``: contents move
-        # before the teardown below deletes the source.
-        _carry_vault_contents(state, std, vault_ro, vault_rw)
+        # before the teardown below deletes the source.  The workspace LANDS at
+        # ``recorded_workspace``, so a vault link that pointed into the source
+        # workspace is re-aimed at the same relative position under that landing
+        # instead of becoming a second copy of a tree that moved.
+        _carry_vault_contents(
+            state, std, vault_ro, vault_rw,
+            relocated=(
+                {state.workspace_path: recorded_workspace}
+                if state.workspace_path.resolve() != recorded_workspace.resolve()
+                else None
+            ),
+        )
         _remove_old_metadata(state, std, config, unwind, dst_vault=dst_vault)
 
     return ProjectState(
