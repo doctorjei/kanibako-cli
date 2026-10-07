@@ -91,10 +91,14 @@ def _copy_root_link(
     try:
         os.path.realpath(src, strict=True)
     except OSError as err:
-        if err.errno != errno.ENOENT:
+        # ``errno`` is ``int | None``: an OSError raised without one names itself rather
+        # than crashing inside ``os.strerror(None)`` on the way to the refusal.
+        if err.errno == errno.ENOENT:
+            pass
+        else:
+            reason = os.strerror(err.errno) if err.errno is not None else str(err)
             raise shutil.Error([
-                (str(src), str(dst),
-                 f"the link does not resolve: {os.strerror(err.errno)}")]) from err
+                (str(src), str(dst), f"the link does not resolve: {reason}")]) from err
     if os.path.isabs(text):
         new_text = text
     else:
