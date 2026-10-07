@@ -852,6 +852,108 @@ class TestBoxDuplicate:
         assert not (std.boxes / "orphan_dst").exists()
 
 
+    def test_registered_dest_refuses_before_the_workspace_is_written(
+        self, config_file, tmp_home, credentials_dir,
+    ):
+        """task-dupforce: `--force` onto an ALREADY-REGISTERED destination must
+        refuse without writing a byte to that workspace.
+
+        Pre-fix the workspace merge ran FIRST, so the destination's own files had
+        already been replaced by the source's by the time Guard-1 refused.
+        """
+        from kanibako.commands.box import run_duplicate
+        from kanibako.settings.paths import load_primary_boxes
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+
+        src_dir = tmp_home / "dupwrite_src"
+        src_dir.mkdir()
+        (src_dir / "keepme.txt").write_text("FROM-THE-SOURCE")
+        resolve_project(std, config, project_dir=str(src_dir), initialize=True)
+
+        dst_dir = tmp_home / "dupwrite_dst"
+        dst_dir.mkdir()
+        (dst_dir / "keepme.txt").write_text("THE-DESTINATION-OWN")
+        resolve_project(std, config, project_dir=str(dst_dir), initialize=True)
+
+        names_before = load_primary_boxes(
+            std.primary_workset, early=_early_scope(std, BoxMode.primary))
+
+        rc = run_duplicate(self._make_args(src_dir, dst_dir, force=True))
+
+        assert rc == 1
+        assert (dst_dir / "keepme.txt").read_text() == "THE-DESTINATION-OWN"
+        assert load_primary_boxes(
+            std.primary_workset, early=_early_scope(std, BoxMode.primary)) == names_before
+
+    def test_orphan_home_refuses_before_the_workspace_is_written(
+        self, config_file, tmp_home, credentials_dir,
+    ):
+        """The home-free check is the SECOND refusal that used to land after the
+        copy; an orphaned ``std.boxes/<minted name>`` must stop the command before
+        the destination workspace is merged into, and stay untouched itself."""
+        from kanibako.commands.box import run_duplicate
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+
+        src_dir = tmp_home / "duporphan_src"
+        src_dir.mkdir()
+        (src_dir / "keepme.txt").write_text("FROM-THE-SOURCE")
+        resolve_project(std, config, project_dir=str(src_dir), initialize=True)
+
+        dst_dir = tmp_home / "duporphanleaf"
+        dst_dir.mkdir()
+        (dst_dir / "keepme.txt").write_text("THE-DESTINATION-OWN")
+
+        orphan = std.boxes / "duporphanleaf"
+        orphan.mkdir(parents=True)
+        (orphan / "retained.txt").write_text("RETAINED")
+
+        rc = run_duplicate(self._make_args(src_dir, dst_dir, force=True))
+
+        assert rc == 1
+        assert (dst_dir / "keepme.txt").read_text() == "THE-DESTINATION-OWN"
+        assert (orphan / "retained.txt").read_text() == "RETAINED"
+
+    def test_workspace_copy_failure_unregisters_the_minted_name(
+        self, config_file, tmp_home, credentials_dir,
+    ):
+        """The workspace copy now sits INSIDE the unwind, so a copy failure after
+        the name was minted leaves no "registered but no metadata" orphan."""
+        from kanibako.commands.box import run_duplicate
+        from kanibako.settings.paths import load_primary_boxes
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+
+        src_dir = tmp_home / "dupunwind_src"
+        src_dir.mkdir()
+        (src_dir / "code.py").write_text("print('unwind')")
+        resolve_project(std, config, project_dir=str(src_dir), initialize=True)
+
+        dst_dir = tmp_home / "dupunwind_dst"
+        names_before = load_primary_boxes(
+            std.primary_workset, early=_early_scope(std, BoxMode.primary))
+
+        def _boom(src, dst, *a, **kw):
+            from pathlib import Path
+            Path(dst).mkdir(parents=True, exist_ok=True)
+            raise OSError("disk full")
+
+        with patch(
+            "kanibako.commands.box._duplicate.shutil.copytree", side_effect=_boom,
+        ):
+            with pytest.raises(OSError, match="disk full"):
+                run_duplicate(self._make_args(src_dir, dst_dir, force=True))
+
+        names_after = load_primary_boxes(
+            std.primary_workset, early=_early_scope(std, BoxMode.primary))
+        assert names_after == names_before
+        assert "dupunwind_dst" not in names_after
+
+
 class TestBoxInfo:
     def test_info_local(self, config_file, tmp_home, credentials_dir, capsys):
         from kanibako.commands.box import run_info

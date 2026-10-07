@@ -849,15 +849,12 @@ def run_duplicate(args: argparse.Namespace) -> int:
             print("Aborted.")
             return 2
 
-    # Copy workspace (unless --bare).
-    if not args.bare:
-        _merge_workspace(source_path, new_path, args.force)
-
-    # Assign a new name for the duplicate.  The name MUST be registered first
-    # because the destination metadata dir is derived from it (std.boxes/<name>).
-    # The PRIMARY membership enforces one box per workspace path (Bug-A guard), so
-    # a bare duplicate whose destination workspace is ALREADY a registered box
-    # refuses cleanly rather than mint a second box for the same workspace.
+    # 7. Registration runs BEFORE anything is copied.  Both refusals below used to
+    # arrive AFTER ``_merge_workspace``, so `--force` had already replaced the
+    # destination's files by the time the command said "already registered"
+    # (task-dupforce).  Minting the name first also lets the home-free check run
+    # early: it needs the minted name, and guards a retained home `--force` would
+    # otherwise rmtree.
     from kanibako.errors import ProjectError
     try:
         dup_name = assign_primary_box_name(
@@ -877,12 +874,14 @@ def run_duplicate(args: argparse.Namespace) -> int:
         print(f"Error: {e}", file=sys.stderr)
         return 1
 
-    # Failure-consistency: a crash AFTER assign_primary_box_name but DURING the metadata copy
-    # would otherwise strand a "registered but no metadata" orphan.  Unwind the
-    # registration + any partial dest dir on failure, then re-raise.  (The
-    # workspace copytree above runs BEFORE registration, so it is intentionally
-    # outside this unwind.)
+    # Failure-consistency: the workspace copy now shares the unwind, because the
+    # name is already registered above.  A failure at EITHER step unregisters it,
+    # so no "registered but no metadata" orphan survives.
     try:
+        # Copy workspace (unless --bare).
+        if not args.bare:
+            _merge_workspace(source_path, new_path, args.force)
+
         # Copy metadata (entire project dir including home/).
         if args.force and new_project_dir.is_dir():
             remove_box_tree(new_project_dir)
