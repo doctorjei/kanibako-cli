@@ -588,6 +588,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`box duplicate --force` no longer overwrites the destination's files before it refuses.** A duplicate that was
+  going to be turned down — the destination already a registered box, its new box home retained by `box rm` or left
+  as an orphan, or a destination root whose `workset.yaml` holds a scalar `workset:` — could first replace the
+  destination's workspace files with the source's, so the refusal left your data changed. Every such route, from a
+  primary or a workset source and with or without `--to`, now refuses before writing anything.
+
 - **`box vault restore` refuses a snapshot name that resolves outside the snapshots directory.** A traversal name
   (`../…`), an absolute path, `.`, `..`, an empty name, or a symlink in `.versions/` pointing out of it previously
   replaced share-rw with whatever it resolved to — rc 0, and without a prompt for every case but the symlink. Each is now
