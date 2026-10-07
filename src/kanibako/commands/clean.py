@@ -133,8 +133,6 @@ def _warn_undeleted(path) -> None:
     them through ``remove_box_tree`` (which returns a bool) would otherwise turn a
     loud failure into a silent one — the box would report "done" over a tree that is
     still on disk.
-
-    ⚑ The suggested line is PASTED, so its operand is quoted.
     """
     print(
         f"\nWarning: could not fully remove {path}.\n"

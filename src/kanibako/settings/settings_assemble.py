@@ -230,12 +230,6 @@ def _cure_subject(level: str, box_name: str | None) -> str:
     leaves ``key_value`` empty, so the pasted line hunts for a working set named after the key;
     ``box set`` takes its arguments as a LIST, so the key alone parses and the write lands on
     whatever box the reader's cwd resolves to — a different box, silently.
-
-    ⚑ THE REAL NAME IS QUOTED, THE PLACEHOLDER IS NOT.  ``proj.name`` is a pasted
-    operand, and a box created from a path holds that basename VERBATIM.  The
-    ``<box>`` / ``<workset>`` branch is the opposite: the reader replaces that
-    text by hand, and quoting it would print ``'<box>'`` — the very text the
-    reader is now required to type.
     """
     if level == "box" and box_name:
         return shlex.quote(box_name)
