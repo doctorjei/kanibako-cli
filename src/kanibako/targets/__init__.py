@@ -28,15 +28,11 @@ logger = logging.getLogger(__name__)
 # every call would bury the rest of the output.
 _EP_LOAD_FAILED: set[str] = set()
 
-# Harness names already refused as RESERVED, so the stderr warning is emitted ONCE per
-# process — the same reason ``_EP_LOAD_FAILED`` above exists.
+# Also warned once per process, for that same reason: harness names refused as
+# RESERVED, declared names refused as CASE-COLLIDING, and names refused as
+# NOT-HAVING-THE-PLUGIN-SHAPE (no descriptor / no entrypoint).
 _RESERVED_NAME_WARNED: set[str] = set()
-
-# Declared names already refused as CASE-COLLIDING, warned once per process, identically.
 _COLLIDING_NAME_WARNED: set[str] = set()
-
-# Names already refused as NOT-HAVING-THE-PLUGIN-SHAPE (no descriptor / no entrypoint),
-# warned once per process, for the same reason as the two sets above.
 _NO_PLUGIN_SHAPE_WARNED: set[str] = set()
 
 
@@ -78,10 +74,9 @@ def _register(
     ``default_entrypoint`` (the invariant this serves: ``targets.base.has_plugin``).  It
     runs after the reservation check, so a reserved name is reported as reserved.
 
-    ⚑ SKIP-AND-WARN, NEVER RAISE, for the reason the ``ep.load()`` guard in
-    :func:`discover_targets` states at length: discovery runs on every command, so one
-    third-party plugin's bad name must not take the CLI down. The refusal costs that ONE
-    plugin its registration and nothing else.
+    ⚑ SKIP-AND-WARN, NEVER RAISE — the ``ep.load()`` guard in
+    :func:`discover_targets` states why at length. The refusal costs that ONE plugin
+    its registration and nothing else.
     """
     node = agent_node_case(name)
     why = reserved_pseudo_agent_reason(node)
@@ -148,12 +143,7 @@ def _scan_plugin_modules(
 ) -> None:
     """Scan ``kanibako.plugins.*`` for Target subclasses (bind-mount fallback).
 
-    Entry points rely on dist-info metadata which doesn't travel via
-    bind-mount.  This fallback imports all sub-packages of
-    ``kanibako.plugins`` and collects any ``Target`` subclasses found,
-    keyed by their ``name`` property.
-
-    Already-discovered targets (from entry points) are not overwritten.
+    Entry points rely on dist-info metadata, which does not travel via bind-mount.
     """
     try:
         import kanibako.plugins as plugins_pkg
@@ -227,32 +217,23 @@ def discover_targets(project_path: Path | None = None) -> dict[str, type[Target]
     for ep in eps:
         # ⚑⚑ ONE BROKEN ADAPTER MUST NOT TAKE THE WHOLE CLI DOWN.  ``ep.load()``
         # imports third-party code, and an adapter built against a different
-        # kanibako-cli raises ImportError from its own module body.  Unguarded,
-        # that propagated out of discovery and killed whatever command called it
-        # — as a raw traceback, from a plugin the user was not even using, since
-        # agent SELECTION enumerates every entry point.  Worse, ``setup_cmd``
-        # calls this too, so the documented cure (`kanibako setup`) died the same
-        # way and hand-editing site-packages was the only way back in.  MEASURED
-        # 2026-08-17 with a stale kanibako-agent-goose: three sequential
-        # dead-ends, three manual edits.
+        # kanibako-cli raises from its own module body.  Unguarded that propagates
+        # out of discovery and kills whatever command called it — a raw traceback
+        # from a plugin the user was not even using, since agent SELECTION
+        # enumerates every entry point, and ``setup_cmd`` calls this too, so the
+        # documented cure dies the same way.
         #
-        # The FALLBACK scanner below has always tolerated a failing plugin
-        # (``logger.debug`` + continue); this loop is the primary path and was the
-        # only one that did not.  Skip-and-warn brings it in line.
+        # WARN, never swallow: a pip-installed adapter that cannot load is a broken
+        # install the user must know about, so this goes to stderr with the cure —
+        # unlike the fallback's debug-level note, which covers the optional
+        # bind-mount path where absence is routine.
         #
-        # WARN, never swallow: a pip-installed adapter that cannot load is a
-        # broken install the user must know about, so this goes to stderr with
-        # the cure — unlike the fallback's debug-level note, which covers the
-        # optional bind-mount path where absence is routine.
-        #
-        # ⚑ AND IT IS NOW THE ONLY CARRIER OF THE CURE.  v1.8.0 DELETED the four
-        # flat re-export shims outright (clean break — a shim is a deprecation
-        # window), so an old plugin arrives here as a bare
-        # ``ModuleNotFoundError``.  That exception names the missing MODULE but
-        # not the PACKAGE that reached for it, and the user never wrote the
-        # import — so this is the one place that can name the distribution, and
-        # it hands over 'MIGRATION.md' as the term that finds the affected
-        # versions.  Pinned by ``tests/test_plugin_import_compat.py``.
+        # ⚑ AND IT IS THE ONLY CARRIER OF THE CURE.  An adapter too old for this
+        # core arrives as a bare ``ModuleNotFoundError``, which names the missing
+        # MODULE but not the PACKAGE that reached for it — and the user never wrote
+        # that import.  So this is the one place that can name the distribution, and
+        # it hands over 'MIGRATION.md' as the term that finds the affected versions.
+        # Pinned by ``tests/test_plugin_import_compat.py``.
         try:
             cls = ep.load()
         except Exception as exc:
@@ -313,8 +294,7 @@ def _require_meta_name(target: Target) -> Target:
     neither, so fail loudly rather than silently writing to
     ``agents//agent.yaml``.
 
-    ⚑ IT IS NOT THE VALUE OF ``meta.agent.<agent>.name``, and this docstring
-    used to say it was.  That key is materialized by
+    ⚑ IT IS NOT THE VALUE OF ``meta.agent.<agent>.name``.  That key is materialized by
     ``settings.settings_launch.meta_identity_floor`` from the ACTIVE NODE, which
     for a persona is not the plugin's name at all; the two coincide only for a
     bare agent.  Nothing here feeds this value into that key — this function
@@ -360,12 +340,11 @@ def resolve_target(
 ) -> Target:
     """Instantiate a target by name, or auto-detect.
 
-    If *name* is given, looks it up via entry points.
-    If *name* is None, iterates all discovered targets and returns the first
-    one whose ``detect()`` succeeds.
+    If *name* is given, looks it up in the registry; otherwise returns the first
+    discovered target whose ``detect()`` succeeds.
 
     Raises ``KeyError`` if no matching target is found.  Raises ``ValueError``
-    if the resolved target does not declare ``meta.agent.<agent>.name``.
+    if the resolved target does not declare a legal harness ``name``.
     """
     if name:
         cls = get_target(name, project_path)
