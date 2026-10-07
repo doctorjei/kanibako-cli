@@ -2079,6 +2079,17 @@ class TestPreJournalForkRefused:
 _PRE_JOURNAL_EXITS = ("private-refuses", "agent-persists-nothing", "entry-write-raises")
 
 
+def _dirs(*roots: Path) -> set[str]:
+    """Every DIRECTORY under each of *roots* — what an undo has to give back.
+
+    ⚑ Deliberately directories and not the byte snapshot: the one thing the window
+    does not undo is a root file it AUTHORS into (``workset.kuid``/``registry``), and
+    a byte comparison would report that as the undo failing when no tree was left.
+    """
+    return {f"{root}::{p.relative_to(root)}"
+            for root in roots if root.exists() for p in root.rglob("*") if p.is_dir()}
+
+
 class _InterruptCreate(Exception):
     """Stops a create at a chosen point, so a test can stand where a crash would."""
 
@@ -2229,6 +2240,78 @@ class TestPreJournalWindowUndoesItsOwnWrites:
         assert _disk_snapshot(std.data, path) == before
         assert edit.read_text() == "written by the interrupted attempt\n"
         assert journal.pending_create(std.journal, _box_journal_key(proj)) is not None
+
+    @pytest.mark.parametrize("standalone", [False, True], ids=["primary", "standalone"])
+    def test_a_create_that_did_reach_the_entry_keeps_its_box(
+        self, standalone, config_file, tmp_home, credentials_dir
+    ):
+        """⚑ THE OTHER DIRECTION of the one key: ``_journaled`` releases the undo.
+
+        The ``finally`` runs on the success path too, so an undo keyed on anything but
+        the entry would delete the box of a create that finished — which no refusal
+        test can see, because a refusal never gets that far.
+        """
+        from kanibako.commands.box._parser import run_create
+
+        std = self._std(config_file)
+        path = self._target(tmp_home, standalone)
+
+        assert run_create(_create_args(path, standalone=standalone, no_vault=False)) == 0
+
+        # STANDALONE keeps its metadata under the ROOT; PRIMARY under ``std.boxes``.
+        made = (
+            [path / "box_data", path / "workspace"]
+            if standalone
+            else [std.boxes / "project" / "home"]
+        )
+        assert all(p.is_dir() for p in made), made
+        assert journal.read_journal(std.journal) == {}
+
+    def test_a_repointed_vault_arm_outside_the_root_is_undone_too(
+        self, config_file, tmp_home, credentials_dir
+    ):
+        """``vault.ro``/``vault.rw`` are REPOINTABLE, so the box's store is not
+        necessarily under the root — and a pre-existing root file is where it says so.
+
+        ⚑ Without the resolved arms in the undo's roots the create would leave
+        ``<elsewhere>/vault_{ro,rw}`` behind, outside the root every other part of the
+        undo looks at.  ⚑ And the re-run is asserted, because "nothing was left" is
+        only worth anything if the user can then create there.
+        """
+        from kanibako.commands.box._parser import run_create
+
+        std = self._std(config_file)
+        path = tmp_home / "sa"
+        outside = tmp_home / "elsewhere"
+        path.mkdir()
+        outside.mkdir()
+        path.joinpath("workset.yaml").write_text(
+            "workset:\n"
+            f"  vault_ro: {outside}/vault_ro\n"
+            f"  vault_rw: {outside}/vault_rw\n"
+        )
+        (outside / "KEPT.txt").write_text("a neighbour's file\n")
+        dirs_before = {p for p in _dirs(std.data, path, outside)}
+
+        with pytest.MonkeyPatch.context() as mp:
+            outcome = self._create_in_the_window(path, True, "entry-write-raises", mp)
+        assert outcome[0] == "raised", outcome
+
+        # NO DIRECTORY this create made survives, anywhere the arms can point.
+        assert _dirs(std.data, path, outside) == dirs_before
+        assert not (outside / "vault_ro").exists()
+        assert not (outside / "vault_rw").exists()
+        # The neighbour's file, and the root itself, are untouched.
+        assert (outside / "KEPT.txt").read_text() == "a neighbour's file\n"
+        assert path.is_dir()
+        # ⚑ THE ONE THING THIS DOES NOT UNDO, stated so it is pinned and not lost:
+        # ``establish_standalone`` AUTHORS ``workset.kuid``/``registry`` into a root
+        # file that already existed, and no undo rewrites a file's bytes.  It is not a
+        # lock-out — the next create re-authors it and completes, which is asserted
+        # here — but it IS a change this window leaves behind.
+        assert "registry: null" in path.joinpath("workset.yaml").read_text()
+        assert run_create(_create_args(path, standalone=True, no_vault=False)) == 0
+        assert (path / "box_data").is_dir()
 
 
 class TestCuresAreRunnable:
