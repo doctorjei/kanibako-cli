@@ -212,8 +212,8 @@ def _default_rename_name(
             raise ProjectError(
                 f"In-place rename of a primary (default-mode) box is not "
                 f"supported: '{existing}' -> '{requested_name}'. Move the box "
-                f"to rename it (e.g. `box move {existing} <new-path> --name "
-                f"{requested_name}`), or drop --name to keep the current name."
+                f"to rename it (e.g. `box move {shlex.quote(existing)} <new-path> --name "
+                f"{shlex.quote(requested_name)}`), or drop --name to keep the current name."
             )
         # --name equals the current name: a moot reuse, not a rename edge.
         return None
@@ -771,7 +771,7 @@ def _validate(
         raise ProjectError(
             f"Refusing to land the project inside workset '{ws_name}' "
             f"({ws_root}) — it is not (being made) a member of that workset. "
-            f"Use `--workset {ws_name}` to make it a member, or choose a "
+            f"Use `--workset {shlex.quote(ws_name)}` to make it a member, or choose a "
             "destination outside that workset."
         )
 

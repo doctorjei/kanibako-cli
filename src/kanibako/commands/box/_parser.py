@@ -605,7 +605,7 @@ def _assert_primary_home_free_for_create(std, name: str) -> None:
             f"{box_dir / 'home'}.\n"
             f"Look at both sides before touching anything:\n"
             f"  kanibako box list\n"
-            f"  ls {box_dir}\n"
+            f"  ls {shlex.quote(str(box_dir))}\n"
             f"To get that box back, restore the registry that indexed it (a backup, "
             f"or the machine it was made on), then retry: no command re-registers a "
             f"primary box by name, and 'kanibako box register' reads back a "

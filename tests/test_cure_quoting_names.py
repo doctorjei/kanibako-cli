@@ -1,28 +1,32 @@
-"""Every name-, path- and ref-operand of a printed cure is a shell word.
+"""Every name-, path-, image- and ref-operand of a printed cure is a shell word.
 
 The retained-box pair's quoting is pinned in :mod:`tests.test_cure_quoting`.
-This covers the REST of the family: the ``rig prep`` cures, the ``box set
---box`` shaping cure, the reserved-workset ``rm``/``mv``/``cd`` steps, the
-``unrenderable_box_name_refusal`` convert and move cures, the ``box convert
---move`` / ``box move`` refusals in ``_lifecycle`` (whose ``_cure_ref`` operand
-is pinned by pasting the refusal's own printed cure), the ``box info``
-"clear it" cure, the retired-key ``box set`` subject, and the six
-``podman unshare`` cleanup cures plus the ``stop`` lock-file cure.
+This file covers the rest of the family:
 
-These operands are reachable with shell metacharacters in them.  A box
-created from a PATH is registered under that path's basename VERBATIM —
-``kanibako box create 'q$(touch pwned)'`` exits 0 and leaves a primary box
-named ``q$(touch pwned)`` — and ``rig add --name`` stores whatever it was
-handed, with no name validation at all.  So the metacharacter half is pinned
-as an EXECUTION: each printed command is pasted into a real ``/bin/sh`` whose
-leading program is a stub recording the argv the SHELL built, and the
-assertion is on that argv plus the marker file the injected command would
-leave.  A string match cannot say whether the second command ran.
+* ``rig prep``; ``box set --box``; the reserved-workset ``rm``/``mv``/``cd``
+  steps; the ``unrenderable_box_name_refusal`` convert and move cures; the
+  retired-key ``box set`` subject;
+* ``_lifecycle``: the ``box convert --move`` / ``box move`` refusals (the
+  ``_cure_ref`` operand), the in-place-rename ``box move``, and the
+  membership guard's ``--workset``;
+* ``box info``'s "clear it" cure; ``start``'s ``--restart`` stop cure, its
+  legacy-container stop cure, and its baseline ``run --rm -it <image> bash``
+  hint; the orphaned-home ``ls``;
+* ``workset connect``'s primary-box cures; ``paths``' named-box ``box show``
+  and ``workset disconnect``; the retired-share ``workset share rm``/``add``;
+* every ``podman unshare rm -rf`` cleanup cure (``clean``, both teardowns,
+  ``duplicate``, ``extract``, ``workset disconnect``) and ``stop``'s lock-file
+  ``rm``.
 
-⚑ THE ``unshare`` cures carry a SPACE-bearing name too, and their claim is
-the stronger one: an unquoted operand does not merely run the wrong text, it
-becomes a SECOND operand of the same recursive removal.  Those are pinned
-against a name holding a space as well as against ``_HOSTILE``.
+A box created from a PATH is registered under that basename VERBATIM, and
+``rig add --name`` stores whatever it is handed, so these operands reach a
+printed cure with shell metacharacters or a space in them.  Each cure is
+therefore pinned as an EXECUTION: the printed command is pasted into a real
+``/bin/sh`` whose leading program is a recording stub, and the assertions are
+on the argv the SHELL built and on the marker file an injected command would
+leave.  The operands are ``q;>pwned``/``q$(touch pwned)`` (a command runs)
+and ``x ~`` (one operand becomes two, the second expanding to ``$HOME``),
+and each class's parametrization names the ones it pastes.
 """
 
 from __future__ import annotations
@@ -335,7 +339,10 @@ def test_a_plain_operand_prints_the_same_bytes_it_did():
     from kanibako.utils import unrenderable_box_name_refusal
 
     text = unrenderable_box_name_refusal("-droste", "primary", Path("/home/u/plainbox"))
-    assert "kanibako box move /home/u/plainbox <new-path> --name <new-name>" in text# ---------------------------------------------------------------------------
+    assert "kanibako box move /home/u/plainbox <new-path> --name <new-name>" in text
+
+
+# ---------------------------------------------------------------------------
 # The retired-key subject, the _lifecycle ref, and the cleanup cures.
 # ---------------------------------------------------------------------------
 
@@ -615,6 +622,7 @@ class TestTheCleanupCuresAreQuoted:
 
         assert f"rm {shlex.quote(str(lock))}" in printed
         assert self._operands(cure, tmp_path / "scratch") == [str(lock)]
+
     def test_the_disconnect_cure_keeps_one_operand(self, tmp_path, monkeypatch,
                                                    tmp_home, config_file,
                                                    credentials_dir):
@@ -648,3 +656,311 @@ class TestTheCleanupCuresAreQuoted:
 
         assert self._operands(cure, tmp_path / "scratch") == [
             "-rf", str(ws.projects_dir / _SPACED)]
+
+
+# ---------------------------------------------------------------------------
+# The rest of the family, each pinned against a ``$( )`` name AND a spaced one.
+# ---------------------------------------------------------------------------
+
+#: The two operands every test below pastes: one that RUNS a command when left
+#: bare, and one that SPLITS into two operands (the second expanding to $HOME).
+_BOTH = ["q$(touch pwned)", _SPACED]
+
+
+def _assert_unshare_inert(cure: str, target: Path, scratch: Path) -> None:
+    """Pasting a ``podman unshare rm -rf`` *cure* removes exactly *target* and runs nothing."""
+    operands = TestTheCleanupCuresAreQuoted._operands(cure, scratch)
+
+    assert not (scratch / _MARKER).exists(), f"the pasted cure ran injected text: {cure}"
+    assert operands == ["-rf", str(target)], f"the shell built {operands} from {cure}"
+
+
+@pytest.mark.parametrize("name", _BOTH)
+class TestTheRemainingCleanupCuresAreQuoted:
+    """The ``podman unshare`` cures of standalone teardown, duplicate, and extract."""
+
+    def test_the_standalone_teardown_cure_keeps_one_operand(self, name, tmp_path, monkeypatch):
+        """``_parser._teardown_standalone_box`` with the removal forced to fail."""
+        from kanibako.commands.box import _parser
+
+        metadata = tmp_path / "boxes" / name
+        metadata.mkdir(parents=True)
+        monkeypatch.setattr(_parser, "_purge_dir", lambda target: False)
+        monkeypatch.setattr(_parser, "remove_box_logs", lambda logs, box: [])
+        monkeypatch.setattr("kanibako.settings.paths.standalone_store_teardown_plan",
+                            lambda root, early: (metadata, None))
+        err = io.StringIO()
+        with contextlib.redirect_stderr(err), contextlib.redirect_stdout(io.StringIO()):
+            assert _parser._teardown_standalone_box(
+                tmp_path, ([], [], tmp_path / "logs", name), early=None) is False
+        cure = _pasteable(_line(err.getvalue(), "Try: podman unshare"), "Try: ")
+
+        _assert_unshare_inert(cure, metadata, tmp_path / "scratch")
+
+    def test_the_duplicate_cure_keeps_one_operand(self, name, tmp_path, monkeypatch):
+        """``_duplicate._duplicate_to_standalone --force`` over a store it cannot remove."""
+        from unittest.mock import MagicMock
+
+        from kanibako.commands.box import _duplicate
+        from kanibako.errors import ProjectError
+
+        store = tmp_path / "dst" / name
+        store.mkdir(parents=True)
+        monkeypatch.setattr(_duplicate, "_early_scope", lambda std, mode: None)
+        monkeypatch.setattr(_duplicate, "remove_box_tree", lambda path: False)
+        monkeypatch.setattr("kanibako.settings.paths.standalone_box_store",
+                            lambda root, early: store)
+        with pytest.raises(ProjectError) as refused:
+            _duplicate._duplicate_to_standalone(
+                MagicMock(), tmp_path / "dst", MagicMock(), True, False, {})
+        cure = _pasteable(_line(str(refused.value), "Try: podman unshare"), "Try: ")
+
+        _assert_unshare_inert(cure, store, tmp_path / "scratch")
+
+    def test_the_extract_cure_keeps_one_operand(self, name, tmp_path, monkeypatch):
+        """``restore._restore_one`` over box data it cannot remove."""
+        import tarfile
+        from unittest.mock import MagicMock
+
+        from kanibako.commands import restore
+        from kanibako.settings.paths import BoxMode
+
+        staged = tmp_path / "staged" / "h"
+        staged.mkdir(parents=True)
+        (staged / "kanibako-archive-info.txt").write_text("Project path: /w/proj\n")
+        archive = tmp_path / "box.txz"
+        with tarfile.open(archive, "w:xz") as tar:
+            tar.add(staged, arcname="h")
+
+        metadata = tmp_path / "boxes" / name
+        metadata.mkdir(parents=True)
+        proj = MagicMock(project_hash="h", mode=BoxMode.primary, metadata_path=metadata)
+        monkeypatch.setattr(restore, "resolve_any_project", lambda *a, **k: proj)
+        monkeypatch.setattr(restore, "refuse_inherited_per_owner", lambda *a, **k: None)
+        monkeypatch.setattr(restore, "workset_root", lambda *a, **k: tmp_path)
+        monkeypatch.setattr(restore, "workset_name_token", lambda *a, **k: "t")
+        monkeypatch.setattr(restore, "remove_box_tree", lambda path: False)
+        monkeypatch.setattr("kanibako.commands.archive._recorded_workspace_of",
+                            lambda std, proj: None)
+        err = io.StringIO()
+        with contextlib.redirect_stderr(err), contextlib.redirect_stdout(io.StringIO()):
+            assert restore._restore_one(MagicMock(boxes=tmp_path / "boxes"), MagicMock(),
+                                        project_dir=None, archive_file=archive,
+                                        force=False) == 1
+        cure = _pasteable(_line(err.getvalue(), "Try: podman unshare"), "Try: ")
+
+        _assert_unshare_inert(cure, metadata, tmp_path / "scratch")
+
+
+@pytest.mark.parametrize("name", _BOTH)
+class TestTheOtherPrintedCommandsAreQuoted:
+    """Every other printed command whose operand is a name, a path, or an image."""
+
+    def test_the_baseline_shell_hint_pastes_to_one_argv(self, name, tmp_path, monkeypatch):
+        """``start._check_launch_baseline``'s ``run --rm -it <image> bash`` hint."""
+        from types import SimpleNamespace
+        from unittest.mock import MagicMock
+
+        from kanibako.commands import start
+        from kanibako.runtime import baseline
+
+        monkeypatch.setattr(start, "probe_missing_executables", lambda *a: ["tmux"])
+        monkeypatch.setattr(baseline, "executables", lambda: [])
+        err = io.StringIO()
+        with contextlib.redirect_stderr(err):
+            assert start._check_launch_baseline(
+                MagicMock(cmd="podman"), name, "tmux", "box1",
+                SimpleNamespace(state=tmp_path / "state"), setting=None,
+            ) is start._BOOTSTRAP_MISSING
+        hint = _line(err.getvalue(), " run --rm -it ")
+
+        argv, paste_cwd, _, _ = _paste(hint, tmp_path / "paste", stub="podman")
+        assert not (paste_cwd / _MARKER).exists(), hint
+        assert argv == ["run", "--rm", "-it", name, "bash"], argv
+
+    def test_the_retired_share_cure_pastes_to_one_argv_each(self, name, tmp_path):
+        """``workset_cmd._workset_raw_shares`` on a RETIRED name-keyed entry."""
+        from kanibako.commands.workset_cmd import _workset_raw_shares
+        from kanibako.settings.config_io import dump_doc
+        from kanibako.settings.settings_assemble import ReadPurpose, read_settings_files
+        from kanibako.settings.settings_resolve import SettingsError
+
+        src = f"/host/{name}"
+        path = tmp_path / "workset.yaml"
+        dump_doc(path, {"workset": {"bindings": {"rw": {name: [src]}}}})
+        files = read_settings_files((("workset", path),), purpose=ReadPurpose.NARROW)
+        with pytest.raises(SettingsError) as refused:
+            _workset_raw_shares(files)
+        text = str(refused.value).replace("\n", " ")
+
+        remove = (_backticked(text, "kanibako workset share rm")
+                  .replace("<workset>", "ws"))
+        add = (_backticked(text, "kanibako workset share add")
+               .replace("<workset>", "ws").replace("<box_dest>", "/dst"))
+        _assert_inert(remove, ["workset", "share", "rm", "ws", name, "--mode", "rw"],
+                      tmp_path / "paste-rm")
+        _assert_inert(add, ["workset", "share", "add", "ws", f"{src}:/dst", "--mode", "rw"],
+                      tmp_path / "paste-add")
+
+    def test_the_restart_stop_cure_pastes_to_one_argv(self, name, tmp_path, start_mocks):
+        """``_run_container --restart`` when the stop did not take."""
+        from unittest.mock import patch
+
+        from kanibako.commands.start import _run_container
+
+        err = io.StringIO()
+        with start_mocks() as m, patch("kanibako.commands.stop._stop_one", return_value=0):
+            m.resolve_any_project.return_value.name = name
+            m.runtime.is_running.return_value = True
+            m.runtime.container_exists.return_value = True
+            m.runtime.inspect_env.return_value = "claude"
+            with contextlib.redirect_stderr(err), contextlib.redirect_stdout(io.StringIO()):
+                assert _run_container(
+                    project_dir=None, entrypoint=None, image_override=None,
+                    new_session=False, safe_mode=False, resume_mode=False,
+                    extra_args=[], persistent=True, restart=True,
+                ) == 1
+        line = _line(err.getvalue(), "could not stop")
+
+        _assert_inert(_backticked(line, "kanibako stop"), ["stop", name], tmp_path / "paste")
+
+    def test_the_named_box_path_cures_paste_to_one_argv_each(self, name, tmp_path, monkeypatch):
+        """``paths.check_workspace_not_named_box`` — ``box show`` and ``workset disconnect``."""
+        from types import SimpleNamespace
+
+        from kanibako.errors import ProjectError
+        from kanibako.launch import box_resolve
+        from kanibako.settings.paths import check_workspace_not_named_box
+
+        monkeypatch.setattr(box_resolve, "find_connected_external_box",
+                            lambda path, std: SimpleNamespace(box_name=name,
+                                                              workset_name=name))
+        with pytest.raises(ProjectError) as refused:
+            check_workspace_not_named_box(None, str(tmp_path / "w"))
+        text = str(refused.value)
+
+        show = re.search(r"\('(kanibako box show .+)'\), or free", text).group(1)
+        _assert_inert(show, ["box", "show", f"{name}/{name}"], tmp_path / "paste-show")
+        _assert_inert(_line(text, "kanibako workset disconnect"),
+                      ["workset", "disconnect", name, name, "--force"],
+                      tmp_path / "paste-disconnect")
+
+    def test_the_connect_primary_box_cures_paste_to_one_argv_each(self, name, tmp_path,
+                                                                  config_file, tmp_home,
+                                                                  credentials_dir):
+        """``workset connect`` of a PRIMARY box's workspace: the convert/move/rm cures."""
+        from kanibako.commands.workset_cmd import run_connect
+        from kanibako.project.workset import create_workset
+        from kanibako.settings.config import load_config
+        from kanibako.settings.paths import (
+            BoxMode, _early_scope, load_std_paths, register_primary_box_name)
+
+        std = load_std_paths(load_config(config_file))
+        ext = (tmp_home / "ext" / "member").resolve()
+        ext.mkdir(parents=True)
+        register_primary_box_name(std.primary_workset, name, str(ext),
+                                  early=_early_scope(std, BoxMode.primary))
+        create_workset("xpb", (tmp_home / "ws_xpb").resolve(), std)
+        err = io.StringIO()
+        with contextlib.redirect_stderr(err):
+            assert run_connect(argparse.Namespace(
+                workset="xpb", source=str(ext), project_name="member", force=True)) == 1
+        text = err.getvalue().replace("\n", " ")
+
+        cures = re.search(
+            r"\('(kanibako box convert .+?)', or '(kanibako box convert .+?)' to give it "
+            r"another name\), move it out of the way \('(kanibako box move .+?)'\), or "
+            r"drop the box \('(kanibako box rm .+?)'\)\.", text)
+        assert cures, text
+        convert, renamed, move, remove = cures.groups()
+        _assert_inert(convert, ["box", "convert", name, "--workset", "xpb"],
+                      tmp_path / "paste-convert")
+        _assert_inert(renamed.replace("<member>", "mem"),
+                      ["box", "convert", name, "--workset", "xpb", "--name", "mem", "--move"],
+                      tmp_path / "paste-renamed")
+        _assert_inert(move.replace("<path>", "/w/p"), ["box", "move", name, "/w/p"],
+                      tmp_path / "paste-move")
+        _assert_inert(remove, ["box", "rm", name], tmp_path / "paste-rm")
+
+    def test_the_in_place_rename_cure_pastes_to_one_argv(self, name, tmp_path, monkeypatch):
+        """``_lifecycle._default_rename_name`` refusing a primary box's in-place rename."""
+        from unittest.mock import MagicMock
+
+        from kanibako.commands.box import _lifecycle
+        from kanibako.errors import ProjectError
+
+        monkeypatch.setattr(_lifecycle, "_primary_name_at", lambda *a: name)
+        with pytest.raises(ProjectError) as refused:
+            _lifecycle._default_rename_name(MagicMock(), MagicMock(), tmp_path, name + "2")
+        cure = _backticked(str(refused.value), "box move").replace("<new-path>", "/w/moved")
+
+        argv, paste_cwd, _, _ = _paste(cure, tmp_path / "paste", stub="box")
+        assert not (paste_cwd / _MARKER).exists(), cure
+        assert argv == ["move", name, "/w/moved", "--name", name + "2"], argv
+
+    def test_the_membership_guard_cure_names_one_workset(self, name, tmp_path, monkeypatch,
+                                                         config_file, tmp_home,
+                                                         credentials_dir):
+        """``_lifecycle._validate``'s refusal to land inside a workset it is not joining."""
+        from kanibako.commands.box import _lifecycle
+        from kanibako.settings.config import load_config
+        from kanibako.settings.paths import load_std_paths, resolve_project
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        source = tmp_home / "proj"
+        source.mkdir()
+        resolve_project(std, config, project_dir=str(source), initialize=True)
+        foreign = tmp_home / "foreign"
+        real_in_tree = _lifecycle.is_in_tree_workspace
+        monkeypatch.setattr(_lifecycle, "list_worksets",
+                            lambda std: {name: foreign})
+        monkeypatch.setattr(_lifecycle, "is_in_tree_workspace",
+                            lambda ws, path: ws.name == name or real_in_tree(ws, path))
+        err = io.StringIO()
+        with contextlib.redirect_stderr(err), contextlib.redirect_stdout(io.StringIO()):
+            assert _lifecycle.run_move(argparse.Namespace(
+                old=str(source), new=str(tmp_home / "dest"), force=True,
+                to_default=False, to_standalone=False, to_workset=None, name=None)) == 1
+        flag = _backticked(_line(err.getvalue(), "Use `--workset"), "--workset")
+
+        _assert_inert(f"kanibako box move {flag}", ["box", "move", "--workset", name],
+                      tmp_path / "paste")
+
+    def test_the_orphaned_home_ls_cure_pastes_to_one_argv(self, name, tmp_path, monkeypatch):
+        """``_parser._assert_primary_home_free_for_create`` over an unclaimed box home."""
+        from types import SimpleNamespace
+
+        from kanibako.commands.box._parser import _assert_primary_home_free_for_create
+        from kanibako.errors import ProjectError
+
+        (tmp_path / "boxes" / name).mkdir(parents=True)
+        monkeypatch.setattr("kanibako.project.registry_store.lookup_deregistered",
+                            lambda registry, box: None)
+        monkeypatch.setattr("kanibako.launch.journal.pending_create",
+                            lambda journal, box_dir: None)
+        std = SimpleNamespace(boxes=tmp_path / "boxes", registry=None, journal=None)
+        with pytest.raises(ProjectError) as refused:
+            _assert_primary_home_free_for_create(std, name)
+        listing = _line(str(refused.value), "  ls ")
+
+        argv, paste_cwd, _, _ = _paste(listing, tmp_path / "paste", stub="ls")
+        assert not (paste_cwd / _MARKER).exists(), listing
+        assert argv == [str(tmp_path / "boxes" / name)], argv
+
+    def test_the_legacy_container_stop_cure_pastes_to_one_argv(self, name, tmp_path,
+                                                               monkeypatch):
+        """``start._refuse_legacy_container``: the pre-``kb-`` name is built from the box name."""
+        from unittest.mock import MagicMock
+
+        from kanibako.commands import start
+
+        legacy = f"kanibako-{name}"
+        monkeypatch.setattr(start, "legacy_container_names", lambda proj: (legacy,))
+        refusal = start._refuse_legacy_container(
+            MagicMock(cmd="podman", is_running=lambda n: True), MagicMock())
+
+        argv, paste_cwd, _, _ = _paste(_line(refusal, " stop "), tmp_path / "paste",
+                                       stub="podman")
+        assert not (paste_cwd / _MARKER).exists(), refusal
+        assert argv == ["stop", legacy], argv
