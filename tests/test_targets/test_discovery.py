@@ -815,17 +815,20 @@ _PUBLISHED_AGENTS = [
 _DISCOVER_IN_CHILD = (
     "import json;"
     "from kanibako.targets import discover_targets;"
-    "print(json.dumps(sorted(discover_targets())))"
+    "print(json.dumps({n: f'{c.__module__}:{c.__qualname__}'"
+    "                  for n, c in discover_targets().items()}))"
 )
 
 
-def _discover_in_child(pythonpath: str) -> list[str]:
-    """Every node ``discover_targets`` returns in a VIRGIN interpreter.
+def _discover_in_child(pythonpath: str) -> dict[str, str]:
+    """Every node ``discover_targets`` returns in a VIRGIN interpreter, as
+    ``{node: "module:qualname"}``.
 
     A fresh subprocess, per the house rule in ``test_plugin_import_compat``: the
     whole mechanism under test is an import-time one (``importlib.metadata`` reads
     ``sys.path``), so it cannot be observed by patching in a process that already
-    imported the packages.
+    imported the packages.  Classes rather than bare node names, so an assertion
+    can tell WHICH plugin answered instead of only that some plugin did.
     """
     proc = subprocess.run(
         [sys.executable, "-c", _DISCOVER_IN_CHILD],
@@ -872,9 +875,10 @@ class TestAPluginPublishedAsAnInstalledEntryPoint:
         nodes = _discover_in_child(
             entry_point_plugin_path({}, site, REPO_ROOT / "src")
         )
-        assert entry in nodes, (
-            f"{attr} was not discovered from its synthetic install — the e2e PTY "
-            f"fixtures would start with no such agent:\n{nodes}"
+        assert nodes.get(entry) == f"{module}:{attr}", (
+            f"{attr} was not the class discovery registered for '{entry}' — the e2e "
+            f"PTY fixtures would start with no such agent, or with another one:\n"
+            f"{nodes}"
         )
 
     def test_publishing_is_what_makes_the_difference(self, tmp_path):
@@ -884,12 +888,18 @@ class TestAPluginPublishedAsAnInstalledEntryPoint:
         the metadata discovery reads.  Without this, a fixture could load because
         the host happened to have the agent installed and the route would read as
         working for the wrong reason.
+
+        ⚑ JUDGED BY CLASS, NOT BY NAME: a host that genuinely has an agent called
+        ``dead`` or ``live`` installed must not turn this into a false red, and the
+        claim being pinned is about the fixture's class rather than the node.
         """
         fixture_dir, module, entry, attr = _PUBLISHED_AGENTS[0]
         self._publish(tmp_path, fixture_dir, module, entry, attr)
-        assert entry not in _discover_in_child(str(REPO_ROOT / "src")), (
-            f"'{entry}' resolved with nothing published for it — this suite would "
-            f"pass without proving the entry-point route works"
+        ambient = _discover_in_child(str(REPO_ROOT / "src"))
+        assert ambient.get(entry) != f"{module}:{attr}", (
+            f"'{entry}' resolved to the fixture's own class with nothing published "
+            f"for it — this suite would pass without proving the entry-point route "
+            f"works:\n{ambient}"
         )
 
     def test_the_site_dir_outranks_an_inherited_pythonpath(self, tmp_path):
