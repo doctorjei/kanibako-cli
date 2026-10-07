@@ -294,6 +294,78 @@ def test_the_active_agent_is_unioned_into_a_supplied_valid_set() -> None:
         )
 
 
+def test_a_forwarded_collection_is_ASKED_not_flattened() -> None:
+    """The union keeps the forwarded collection's own membership PREDICATE.
+
+    ``AgentNames``'s contract: membership is a predicate, iteration only the finite list
+    an error message names. Flattening the collection into a ``set`` of its iteration
+    replaced its answer with that list; this collection admits a node its iteration
+    never yields, so a flattened door refused it with *"is not a valid agent"*.
+    """
+    from typing import Collection
+
+    class _Predicate(Collection[str]):
+        def __contains__(self, item: object) -> bool:
+            return item == "navigator℘goose"
+
+        def __iter__(self):
+            return iter(())
+
+        def __len__(self) -> int:
+            return 0
+
+    guard_cli_level(
+        {"agent.navigator℘goose.model": "opus"},
+        active_agent=ACTIVE, valid_agents=_Predicate(),
+    )
+    with pytest.raises(SettingsError, match="is not a valid agent"):
+        guard_cli_level(
+            {"agent.codex.model": "x"}, active_agent=ACTIVE, valid_agents=_Predicate(),
+        )
+
+
+def test_a_persona_node_on_a_DISCOVERED_harness_passes_the_door() -> None:
+    """``navigator℘goose`` on a discovered ``goose``, with ``claude`` active.
+
+    ⚑ Green before the union stopped flattening too: the §0 segment rule re-derives a
+    persona node's harness itself. The launch-level twin in ``test_settings_launch.py``
+    is the one the forwarding fix turns.
+    """
+    from kanibako.settings.settings_prefs import AgentNames
+
+    discovered = AgentNames({"claude", "goose"})
+    guard_cli_level(
+        {"agent.navigator℘goose.model": "opus"},
+        active_agent=ACTIVE, valid_agents=discovered,
+    )
+    with pytest.raises(SettingsError) as exc:
+        guard_cli_level(
+            {"agent.codex.model": "x"},
+            active_agent="navigator℘claude", valid_agents=discovered,
+        )
+    # The refusal names the forwarded harnesses AND the active agent as valid.
+    assert "goose" in str(exc.value) and "navigator" in str(exc.value)
+
+
+def test_an_EMPTY_active_agent_is_no_agent() -> None:
+    """``""`` is not an agent name, so it is not unioned in or listed as valid."""
+    with pytest.raises(SettingsError) as exc:
+        guard_cli_level({"agent.codex.model": "x"}, active_agent="", valid_agents={"claude"})
+    assert "valid: claude, default, shell)" in str(exc.value)
+
+
+def test_the_union_forwards_what_the_collection_says_about_itself() -> None:
+    """A reader asking the union for ``leaf_map`` / ``discovery_failed`` (as
+    ``settings_prefs.key_reason`` and the bad-agent reason do) gets the forwarded answer."""
+    from kanibako.settings.settings_cli_level import _ActiveAgentNames
+    from kanibako.settings.settings_prefs import AgentNames
+
+    failed = AgentNames((), discovery_failed=True)
+    assert _ActiveAgentNames(failed, ACTIVE).discovery_failed is True
+    named = AgentNames({"goose"}, leaf_map={"goose": {"provider"}})
+    assert _ActiveAgentNames(named, ACTIVE).leaf_map is named.leaf_map
+
+
 # --------------------------------------------------------------------------- #
 # the guard's LEAF VOCABULARY — [R150], spec §0                               #
 # --------------------------------------------------------------------------- #
