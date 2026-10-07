@@ -19,6 +19,7 @@ is not yet decided; until it is, such a link is copied verbatim like any other.
 
 from __future__ import annotations
 
+import errno
 import os
 import shutil
 from collections.abc import Callable, Iterable
@@ -80,8 +81,20 @@ def _copy_root_link(
     WHAT IS ALREADY AT *dst* is never removed on the user's behalf: a real directory there is
     refused, and a link yields only to *replace_existing*, the ``--force`` contract a leaf
     link honors.
+
+    A link that cannot resolve because it LOOPS is refused BEFORE anything is laid.  Laid
+    from an unrolled loop it carries nothing and poisons the caller's unwind instead.  A
+    DANGLING link is a different animal -- the target is a path whether or not it exists
+    -- so it passes and is carried.
     """
     text = os.readlink(src)
+    try:
+        os.path.realpath(src, strict=True)
+    except OSError as err:
+        if err.errno != errno.ENOENT:
+            raise shutil.Error([
+                (str(src), str(dst),
+                 f"the link does not resolve: {os.strerror(err.errno)}")]) from err
     if os.path.isabs(text):
         new_text = text
     else:
