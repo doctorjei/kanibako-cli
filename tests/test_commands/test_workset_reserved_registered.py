@@ -113,7 +113,9 @@ def _run_cure(env: dict[str, str], stderr: str) -> None:
         where = None
         if line.startswith("cd "):
             target, line = line[3:].split(" && ", 1)
-            where = Path(target)
+            # The path is a printed shell WORD, so it is read the way the shell
+            # reads it; slicing the text left any quoting in the path.
+            where = Path(shlex.split(target)[0])
         argv = shlex.split(line)
         assert argv[0] == "kanibako", line
         result = _cli(env, *argv[1:], cwd=where)
