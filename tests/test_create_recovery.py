@@ -3135,3 +3135,102 @@ class TestBareCreateOverADeregisteredHome:
         assert (orphan / "home" / "KEEP.txt").read_text() == "orphaned"
         assert sorted(p.name for p in std.boxes.iterdir()) == ["orphan"]
         assert _primary_names(std) == {}
+
+
+# ---------------------------------------------------------------------------
+# Part 2 (prejournalcreate, WIP 2026-10-07): the journal entry is written
+# BEFORE the materializing resolve, not after.  A kill in the pre-journal
+# window therefore LEAVES a pending create entry on disk, and ``create
+# --recover`` is what COMPLETES the half-built box by replay.  The Part 1
+# pre-journal undo is now a no-op (its trigger never fires), so the only
+# test for the new property is the entry's presence at the end of the window
+# — the box tree is left in place, the user can re-run.
+#
+# ⛔ RED ON PART 1: a kill in the pre-journal window undoes the box tree and
+# leaves no journal entry.  A second ``create`` is therefore the cure (not
+# ``create --recover``), and that is the regression this test pins.
+# ---------------------------------------------------------------------------
+
+
+class TestPreJournalEntryWritesBeforeFirstDiskWrite:
+    """A kill in the pre-journal window now LEAVES a pending create entry.
+
+    ``launch/journal.py`` (:17) names the gap Part 2 closes: the resolver
+    materializes the box dir + meta BEFORE the entry is written, so a crash
+    during that dir-creation still leaves a (narrower) unrecoverable limbo.
+    This test pins the new property — the entry IS present after a kill in
+    the window — on the two modes the Part 1 undo covered.
+
+    The kill point is the same one the Part 1 "private-refuses" arm uses:
+    the ``--private`` settings write returns an error and the product
+    raises.  Under Part 1 the journal entry is never written and the undo
+    runs; under Part 2 the journal entry is written BEFORE that raise, so
+    the box tree is left AND the entry is on disk — a ``create --recover``
+    is the cure, not a second ``create``.
+    """
+
+    @pytest.fixture(autouse=True)
+    def _no_seed(self, monkeypatch):
+        # Same suppression as the Part 1 suite — we are testing the WINDOW,
+        # not the seed.
+        monkeypatch.setattr(
+            "kanibako.commands.start.seed_new_box",
+            lambda std, config, proj, **kw: None,
+        )
+        monkeypatch.setattr(
+            "kanibako.settings.core_defaults.materialize_canon_skeleton",
+            lambda *a, **kw: None,
+        )
+
+    def _std(self, config_file):
+        from kanibako.settings.config import load_config
+        from kanibako.settings.paths import load_std_paths
+        return load_std_paths(load_config(config_file))
+
+    def _target(self, tmp_home, standalone):
+        path = tmp_home / ("sa" if standalone else "project")
+        if standalone:
+            path.mkdir()
+        return path
+
+    @pytest.mark.parametrize("standalone", [False, True], ids=["primary", "standalone"])
+    def test_a_kill_in_the_window_leaves_a_pending_create_entry(
+        self, standalone, config_file, tmp_home, credentials_dir, monkeypatch,
+    ):
+        """After a raise in the pre-journal window, the journal entry IS
+        present (Part 2 property) and the box tree IS left on disk.
+
+        ``set_config_value`` is patched to return a refused-write message,
+        which is the same kill point the Part 1 ``--private`` arm uses; the
+        product then raises from ``run_create`` before reaching the current
+        journal-entry call.  The Part 2 fix moves the entry write BEFORE
+        this raise, so the assertion below passes.
+        """
+        from kanibako.commands.box._parser import run_create
+
+        monkeypatch.setattr(
+            "kanibako.settings.config_interface.set_config_value",
+            lambda *a, **kw: "Error: the settings file is read-only",
+        )
+
+        std = self._std(config_file)
+        path = self._target(tmp_home, standalone)
+        args = _create_args(path, standalone=standalone, no_vault=False)
+        args.private = True  # forces the ``--private`` arm to run + raise
+
+        from kanibako.errors import KanibakoError
+        with pytest.raises(KanibakoError):
+            run_create(args)
+
+        # PART 2 PROPERTY: the journal entry was written BEFORE the
+        # ``--private`` raise, so the kill in the window left it on disk.
+        entries = journal.read_journal(std.journal)
+        assert entries, (
+            "Part 2: a kill in the pre-journal window MUST leave a pending "
+            "create entry on disk; ``create --recover`` is the cure."
+        )
+        # The single pending entry is for THIS create (one box, one key).
+        assert len(entries) == 1
+        entry = next(iter(entries.values()))
+        assert entry["op"] == "create"
+        assert entry["mode"] == ("standalone" if standalone else "primary")
