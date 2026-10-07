@@ -3314,7 +3314,85 @@ class TestAKilledCreateIsRecoveredWithWhatItWasTold:
     def test_a_claim_on_a_held_key_writes_nothing(self, tmp_path: Path) -> None:
         jp = tmp_path / "journal.yaml"
         assert journal.write_entry(jp, "/boxes/x", op="create", name="x",
-                                   mode="primary", workspace="/w/1", claim=True)
-        assert not journal.write_entry(jp, "/boxes/x", op="create", name="x",
-                                       mode="primary", workspace="/w/2", claim=True)
+                                   mode="primary", workspace="/w/1", claim=True) is None
+        held = journal.write_entry(jp, "/boxes/x", op="create", name="x",
+                                   mode="primary", workspace="/w/2", claim=True)
+        assert held is not None and held["workspace"] == "/w/1"
         assert journal.read_journal(jp)["/boxes/x"]["workspace"] == "/w/1"
+
+    def test_a_claim_on_a_workspace_with_a_pending_create_writes_nothing(
+        self, tmp_path: Path,
+    ) -> None:
+        """One workspace never has two creates, whatever key the second would take."""
+        jp = tmp_path / "journal.yaml"
+        assert journal.write_entry(jp, "/boxes/same", op="create", name="same",
+                                   mode="primary", workspace="/w/same", claim=True) is None
+        held = journal.write_entry(jp, "/boxes/same2", op="create", name="same2",
+                                   mode="primary", workspace="/w/same", claim=True)
+        assert held is not None and held["name"] == "same"
+        assert list(journal.read_journal(jp)) == ["/boxes/same"]
+
+    def test_a_second_create_of_one_workspace_is_refused_not_repicked(
+        self, config_file, tmp_home, credentials_dir, monkeypatch, capsys,
+    ):
+        """Another create of the SAME workspace claims between this one's probe and its
+        claim: this one refuses and leaves that create's entry, never a second box."""
+        from kanibako.commands import start
+        from kanibako.commands.box._parser import run_create
+        from kanibako.settings.config import load_config
+        from kanibako.settings.paths import load_std_paths
+
+        std = load_std_paths(load_config(config_file))
+        path = tmp_home / "same"
+        path.mkdir()
+        real = start._write_create_entry
+
+        def _other_create_claims_first(std_, proj, **kw):
+            journal.write_entry(std.journal, str(std.boxes / "same"), op="create",
+                                name="same", mode="primary", workspace=str(path))
+            monkeypatch.setattr(start, "_write_create_entry", real)
+            return real(std_, proj, **kw)
+
+        monkeypatch.setattr(start, "_write_create_entry", _other_create_claims_first)
+
+        assert run_create(_create_args(path, no_vault=False)) == 1
+        assert "another create of this workspace is in progress" in capsys.readouterr().err
+        assert list(journal.read_journal(std.journal)) == [str(std.boxes / "same")]
+        assert not std.boxes.exists() or list(std.boxes.iterdir()) == []
+        assert _primary_names(std) == {}
+
+    @pytest.mark.parametrize("point", ["after-entry", "after-materialize"])
+    def test_a_standalone_name_is_recorded_and_recover_registers_it(
+        self, point, config_file, tmp_home, credentials_dir,
+    ):
+        """``--register --name foo`` survives a kill: ``--recover`` refuses ``--name``,
+        so only the entry can carry it, and it carries the ``--register`` with it."""
+        from kanibako.commands.box._parser import run_create
+        from kanibako.project import registry_store
+        from kanibako.settings.config import load_config, read_workset_kuid
+        from kanibako.settings.paths import WORKSET_META_FILE, load_std_paths
+
+        std = load_std_paths(load_config(config_file))
+        path = tmp_home / "sn"
+        path.mkdir()
+
+        assert _killed_create(point, ["create", "--standalone", str(path), "--register",
+                                      "--name", "foo"]) == -9
+        entry = next(iter(journal.read_journal(std.journal).values()))
+        assert entry["state"]["name"] == "foo"
+        assert entry["state"]["register"] is True
+
+        # ⚑ No ``--register`` on the replay: the entry's is the one applied.
+        assert run_create(_create_args(path, standalone=True, no_vault=False,
+                                       recover=True)) == 0
+        stored = read_workset_kuid(path / WORKSET_META_FILE)
+        assert registry_store.standalone_name_for_root(std.registry, path) == f"{stored}_foo"
+        assert journal.read_journal(std.journal) == {}
+
+    def test_new_box_undo_takes_no_name(self) -> None:
+        """The undo names the CLAIMED box (its probe's); a second name would diverge."""
+        import inspect
+
+        from kanibako.commands.box._parser import _new_box_undo
+
+        assert "name" not in inspect.signature(_new_box_undo).parameters

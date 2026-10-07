@@ -966,7 +966,7 @@ def _new_member_undo(ws: Workset, name: str) -> Callable[[], None]:
 
 # ⚑ UNDO, NOT REPLAY: ``--recover`` refuses shaping flags.
 def _new_box_undo(
-    std, probe, *, standalone: bool, name: "str | None" = None,
+    std, probe, *, standalone: bool,
 ) -> tuple[Callable[[], None], Callable[[str], None]]:
     """``(undo, wrote)`` for the box tree this create is about to materialize; build it BEFORE.
 
@@ -999,8 +999,8 @@ def _new_box_undo(
         files = [root / IGNORE_FILE, root / WORKSET_META_FILE]
     else:
         # ⚑ THE PROBE'S PATHS CARRY A PLACEHOLDER LEAF (``__unregistered__``); their
-        # PARENT is the resolved store.  ⚑ ``--name``, not the probe's name.
-        box_name = name or probe.name
+        # PARENT is the resolved store.
+        box_name = probe.name
         dirs = [p for p in (
             probe.metadata_path.parent / box_name,
             *(p.parent / box_name for p in
@@ -1062,6 +1062,22 @@ def _new_box_undo(
                       f"wrote it.", file=sys.stderr)
 
     return undo, wrote
+
+
+def _recovered_standalone_name(std, proj, supplied: str) -> str:
+    """The registry name attempt one's ``--name`` gives a materialized standalone box."""
+    from kanibako import kuid
+    from kanibako.launch.box_identity import resolve_standalone_name
+    from kanibako.project import registry_store
+    from kanibako.settings.config import read_workset_kuid
+
+    root = Path(proj.metadata_path)
+    stored = read_workset_kuid(root / WORKSET_META_FILE)
+    return registry_store.standalone_name_for_root(std.registry, root) or (
+        resolve_standalone_name(
+            root, supplied, registry_store.standalone_box_names(std.registry),
+            box_kuid=None if stored == kuid.SENTINEL else stored,
+        ))
 
 
 #: The per-owner keys a standalone ``create`` accepts: ``registry`` (§D4a below), ``template``.
@@ -1203,7 +1219,6 @@ def run_create(args: argparse.Namespace) -> int:
             target.mkdir(parents=True)
 
     from kanibako.commands.start import (
-        _box_journal_key,
         _clear_create_entry,
         _name_new_box_probe,
         _pending_create_entry,
@@ -1284,6 +1299,8 @@ def run_create(args: argparse.Namespace) -> int:
     _recorded = dict((_pending or {}).get("state") or {})
     if is_recovery:
         enable_vault = not _recorded.get("no_vault", False)
+        standalone_name = _recorded.get("name", "") if args.standalone else ""
+        standalone_register = standalone_register or bool(_recorded.get("register"))
     # ⚑⚑ THE ONE ANSWER TO "which agent is this create steering" — the persona pre-flight,
     # the ``pref.system.agent`` persist and the seed all read it, and spelling
     # ``args.agent`` at any of them again reopens the defect (pinned by
@@ -1349,19 +1366,25 @@ def run_create(args: argparse.Namespace) -> int:
             ("agent", _agent_arg),
             ("no_vault", not enable_vault),
             ("gitignore", bool(args.standalone)),
-        ) if v not in (None, False)}
+            ("register", standalone_register and bool(args.standalone)),
+            ("name", standalone_name if args.standalone else None),
+        ) if v not in (None, False, "")}
         _repick = _named_spec is None and not args.standalone and not getattr(
             args, "name", None)
         if _named_spec is None and not args.standalone:
             # ⚑ Not the probe's shared placeholder dir.
             _entry_probe = _primary_probe_named(
                 std, _probe, getattr(args, "name", None) or _probe.name)
-        # ⚑ A CLAIM: two creates never share a key.
-        while not _write_create_entry(std, _entry_probe, state=_state, claim=True):
-            if not _repick:
+        # ⚑ A CLAIM: two creates never share a key, nor one workspace.
+        while (_held := _write_create_entry(
+                std, _entry_probe, state=_state, claim=True)) is not None:
+            _same_ws = str(Path(str(_held.get("workspace"))).resolve()) == str(
+                Path(str(_entry_probe.project_path)).resolve())
+            if _same_ws or not _repick:
                 print(
-                    f"Error: another create of this box started meanwhile; its "
-                    f"journal entry holds {_box_journal_key(_entry_probe)}.",
+                    f"Error: another create of this "
+                    f"{'workspace' if _same_ws else 'box'} is in progress; its "
+                    f"journal entry names the box '{_held.get('name')}'.",
                     file=sys.stderr,
                 )
                 return 1
@@ -1413,11 +1436,16 @@ def run_create(args: argparse.Namespace) -> int:
             )
             if _box_wrote is not None:
                 _box_wrote(WORKSET_META_FILE)
+            # ⚑ Attempt one materialized and stored its kuid; the recorded name
+            # completes it, unless attempt one also registered.
+            if is_recovery and standalone_name and not proj.is_new:
+                proj.name = _recovered_standalone_name(std, proj, standalone_name)
         else:
+            # ⚑ THE CLAIMED NAME, never re-derived from a workspace scan.
             proj = resolve_project(
                 std, config, project_dir=project_dir, initialize=True,
                 enable_vault=enable_vault if not enable_vault else None,
-                name_override=getattr(args, "name", None),
+                name_override=_entry_probe.name,
                 register=False,
             )
 

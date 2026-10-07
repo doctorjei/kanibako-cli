@@ -25,14 +25,11 @@ authority: ``llm-docs/kanibako/launch/journal.py.md``.
 
 from __future__ import annotations
 
-import contextlib
-import fcntl
-import os
 import socket
-from collections.abc import Iterator
 from datetime import datetime, timezone
 from pathlib import Path
 
+from kanibako._atomic import rmw_lock
 from kanibako.settings.config_io import dump_doc, load_doc
 from kanibako.utils import literal_path
 
@@ -43,22 +40,6 @@ _ENTRIES = "entries"
 def _key(box_path: str | Path) -> str:
     """Normalize a box host-side path into the journal entry key."""
     return str(box_path)
-
-
-@contextlib.contextmanager
-def _locked(journal_path: Path) -> Iterator[None]:
-    """Serialize every read-modify-write of the journal: a ``flock`` on its DIRECTORY.
-
-    The document is replaced by rename, so a lock on the file would not survive a
-    write; the directory outlives every rename.
-    """
-    journal_path.parent.mkdir(parents=True, exist_ok=True)
-    fd = os.open(journal_path.parent, os.O_RDONLY)
-    try:
-        fcntl.flock(fd, fcntl.LOCK_EX)
-        yield
-    finally:
-        os.close(fd)
 
 
 def read_journal(journal_path: Path) -> dict[str, dict]:
@@ -82,25 +63,31 @@ def write_entry(
     workspace: str | None = None,
     state: dict | None = None,
     claim: bool = False,
-) -> bool:
+) -> dict | None:
     """Write-ahead: record an in-flight lifecycle op keyed by *box_path* (atomic RMW).
 
     *state* is what the op was told that sets box state (omitted when empty).  With
-    *claim*, a key that already holds an entry is left alone and ``False`` comes back,
-    so two writers can never share one key.
+    *claim*, an entry already holding the key, or a pending ``create`` of the same
+    *workspace*, is left alone and returned, and nothing is written: two writers
+    never share one key, and one workspace never has two creates.  ``None`` = written.
     """
     key = _key(box_path)
-    with _locked(journal_path):
+    with rmw_lock(journal_path):
         doc = load_doc(journal_path)
         entries = doc.get(_ENTRIES)
         if not isinstance(entries, dict):
             entries = {}
             doc[_ENTRIES] = entries
-        if claim and key in entries:
-            return False
+        if claim:
+            if key in entries:
+                return entries[key]
+            if workspace is not None:
+                held = _create_for_workspace(entries, workspace)
+                if held is not None:
+                    return held
         entries[key] = _entry(op, name, mode, workset, workspace, state)
         dump_doc(journal_path, doc)
-    return True
+    return None
 
 
 def _entry(op: str, name: str, mode: str, workset: str | None,
@@ -131,7 +118,7 @@ def clear_entry(journal_path: Path, box_path: str | Path) -> None:
     # ``entries: {}`` and is never deleted.  The no-op arm is what lets a replay call
     # this unconditionally.
     key = _key(box_path)
-    with _locked(journal_path):
+    with rmw_lock(journal_path):
         doc = load_doc(journal_path)
         entries = doc.get(_ENTRIES)
         if not isinstance(entries, dict) or key not in entries:
@@ -166,11 +153,16 @@ def pending_create_for_workspace(
     mid-create for this workspace but never registered, so its NAME is read from the
     journal — there is no on-disk meta to read it from.
     """
+    return _create_for_workspace(read_journal(journal_path), workspace)
+
+
+def _create_for_workspace(entries: dict, workspace: str | Path) -> dict | None:
+    """The first ``create`` entry in *entries* whose ``workspace`` is *workspace*."""
     # The journal is keyed by box PATH, so a lookup BY WORKSPACE has to scan.  Both
     # sides compare literally: twins are two workspaces.
     target = literal_path(workspace)
-    for entry in read_journal(journal_path).values():
-        if entry.get("op") != "create":
+    for entry in entries.values():
+        if not isinstance(entry, dict) or entry.get("op") != "create":
             continue
         ws = entry.get("workspace")
         if ws is None:

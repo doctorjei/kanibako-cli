@@ -2331,7 +2331,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and when the attempt started; `create --recover` completes it.** This covers primary, standalone,
   and named boxes. The entry is written before the create's first write to the box, and it records
   what the create was told that sets box state: `--private`, `-i`/`--image`, `--agent`,
-  `--no-vault`, and a standalone root's `.gitignore` entry. A create killed at any point after that
+  `--no-vault`, a standalone root's `.gitignore` entry, and a standalone create's `--register`
+  with its `--name`. A create killed at any point after that
   is finished by `--recover` with exactly those settings, so a killed `create --private` recovers
   with credential forwarding off; `--recover` refuses those flags of its own. A create that fails or
   is refused before it has written that state removes what it made — only paths that did not exist
@@ -2339,9 +2340,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   rerun starts clean. In a standalone root, a `workset.yaml` or `.gitignore` you already had is put
   back byte for byte unless it changed after the create wrote it; then it is left as found and the
   create prints a note naming the file. The shared `vault/.gitignore` stays while anything else is
-  under `vault/`. A box in a named working set is undone the same way, its membership record included. Two
-  primary creates of same-named workspaces never share a box: the second takes the next free name,
-  even while the first has not yet made its directory. A home no entry or registration claims (one
+  under `vault/`. A box in a named working set is undone the same way, its membership record
+  included. Two primary creates of same-named workspaces never share a box: the second takes the
+  next free name, even while the first has not yet made its directory. A second create of a
+  workspace whose create is still running refuses. Concurrent creates no longer lose each other's
+  registry rows. A home no entry or registration claims (one
   an earlier version left behind) is refused by the bare primary create instead of silently minting
   `<name>2`. A home that a deregistered entry still claims is not an orphan: the create mints the
   next free name beside it, as before. See *`create` refuses an interrupted create; finish it with

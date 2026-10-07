@@ -6,5 +6,7 @@ _Signatures only: no comments, no docstrings, no bodies._
 
 ## Functions
 ```
+@contextlib.contextmanager
+def rmw_lock(path: Path) -> Iterator[None]
 def atomic_write_text(path: Path, data: str) -> None
 ```

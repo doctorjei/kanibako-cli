@@ -8793,11 +8793,11 @@ def recover_cure(probe) -> str:
 
 
 def _write_create_entry(std, proj, *, state: dict | None = None,
-                        claim: bool = False) -> bool:
+                        claim: bool = False) -> dict | None:
     """Write the write-ahead ``create`` journal entry for *proj* (intent).
 
-    *state* and *claim* pass through to :func:`kanibako.launch.journal.write_entry`;
-    ``False`` means *claim* found the key already taken.
+    *state* and *claim* pass through to :func:`kanibako.launch.journal.write_entry`,
+    whose answer this returns: ``None`` once written, else the entry that held it.
     """
     from kanibako.launch import journal
 

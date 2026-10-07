@@ -12,9 +12,30 @@ registry/state writes through them without risking an import cycle.
 
 from __future__ import annotations
 
+import contextlib
+import fcntl
 import os
 import tempfile
+from collections.abc import Iterator
 from pathlib import Path
+
+
+@contextlib.contextmanager
+def rmw_lock(path: Path) -> Iterator[None]:
+    """Serialize every read-modify-write of *path*: a ``flock`` on its DIRECTORY.
+
+    The file is replaced by rename, so a lock on it would not survive a write; the
+    directory outlives every rename.  Never nest it over one directory: each entry
+    opens a fresh descriptor, and those conflict within one process.
+    """
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd = os.open(path.parent, os.O_RDONLY)
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX)
+        yield
+    finally:
+        os.close(fd)
 
 
 def atomic_write_text(path: Path, data: str) -> None:
