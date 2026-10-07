@@ -341,6 +341,9 @@ _MIRROR_STORY = (
 )
 
 
+_RETIRED = "a retired entry"
+
+
 def _file_spelled_parents(parts: "tuple[str, ...]") -> "list[str]":
     """The ancestor tables of a file-key, innermost first, spelled the way the FILE spells them.
 
@@ -390,7 +393,9 @@ def refuse_retired_keys(
             + delete_before_set_step(
                 f"`{': '.join(parts)}` entry", where=where,
                 parents=_file_spelled_parents(parts),
-                checks_file=level in SET_TARGETS_ITS_OWN_FILE,
+                # ``agent set <agent>`` reads this file for its own agent.
+                collides_with=_RETIRED if level in SET_TARGETS_ITS_OWN_FILE
+                or (mirror is not None and level == "agent") else None,
             )
             + f"\n  Fix: {cure}"
         )
@@ -557,9 +562,9 @@ def refuse_retired_behavior_keys(
                     f"`{spelling}` entry",
                     where=path if path is not None else "<settings>",
                     parents=_file_spelled_parents(parts),
-                    checks_file=_behavior_cure_checks_file(
+                    collides_with=_RETIRED if _behavior_cure_checks_file(
                         level, node=node, subject=subject,
-                    ),
+                    ) else None,
                 )
                 + f"\n  Fix: {cure}"
             )

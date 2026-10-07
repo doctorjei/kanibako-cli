@@ -20,6 +20,7 @@ _BASE_TO_BOX_LEVELS: tuple[str, ...] = ('base', *SCOPE_CONTAINMENT)
 _NO_LEAF: Any = object()
 _SELECTION_STORY = "The RULE CHANGED in kanibako 1.8.0: a box no longer names its agent with a key of its own — it REQUESTS one at the key that resolves earlier (`pref.system.agent`, spec §2h), and the system default is now `system.agent` (§2g). Refusing rather than running: kanibako cannot tell which agent you meant, and guessing would launch a DIFFERENT agent and seed that agent's credentials into this box."
 _MIRROR_STORY = "The RULE CHANGED in kanibako 1.8.0: a box no longer carries a SETTABLE mirror of its agent's settings — it REQUESTS a tweak with `pref.agent.<agent>.<key>` (spec §2h) and reads the effective value back at the read-only `meta.box.agent.<key>` (§2b). Refusing rather than running: an undeclared key is not read at all, so this box would come up on the agent's UNTWEAKED settings and every override in this table would silently vanish."
+_RETIRED = 'a retired entry'
 _RETIRED_BEHAVIOR_VALUE_MAP: 'dict[str, dict[bool, str]]' = {'auto_approve': {True: 'full', False: 'restricted'}}
 _BEHAVIOR_TABLE_SHAPES: 'tuple[tuple[tuple[str, ...], int], ...]' = ((('agent',), 1), (('pref', 'agent'), 1), (ROOT_SECTIONS, 0))
 _DROP_WARNED: 'set[tuple[str, str]]' = set()

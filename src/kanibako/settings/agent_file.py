@@ -804,12 +804,13 @@ def _refused_category(sub_tbl: dict) -> str | None:
 
 
 def _nested_table_steps(
-    category: str | None, sub_key: str, *, var: str, value: str, path: Path | None
+    category: str | None, sub_key: str, *, var: str, value: str, path: Path | None,
+    node: str | None,
 ) -> str:
     """The fix + delete pair, in the order THIS arm's cure actually needs.
 
-    ⚑ Delete-first is correct ONLY when the cure is a runnable ``set``: that command
-    reads the file the stale table is still in, so the stale entry refuses the write.
+    ⚑ Delete-first is correct ONLY when the cure is a runnable ``set``: when *sub_key* is
+    *node*, that command reads the file the stale table is still in, so it refuses the write.
     The other arms MOVE the content (up one level, or into the SYSTEM file) or hand-edit
     it — deleting first would destroy what the user was just told to move.
     """
@@ -823,6 +824,8 @@ def _nested_table_steps(
             delete_before_set_step(
                 f"`{file_spelling(sub_key)}` table", where=where,
                 parents=[f"`{_ROOT}:`"],
+                collides_with="a bad entry" if node is not None
+                and _node_identity(sub_key) == _node_identity(node) else None,
             )
             + f"\n  Fix: {cure}"
         )
@@ -893,7 +896,7 @@ def _refuse_nested_tables(
             f"{path if path is not None else '<agent settings>'}; it holds: "
             f"{held}.\n"
             f"{history}\n"
-            f"{_nested_table_steps(category, sub_key, var=var, value=value, path=path)}"
+            f"{_nested_table_steps(category, sub_key, var=var, value=value, path=path, node=node)}"
         )
 
 

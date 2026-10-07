@@ -17,6 +17,7 @@ from __future__ import annotations
 import argparse
 import logging
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -179,26 +180,32 @@ class TestForceSetsPastABadEntry:
         cap = capsys.readouterr()
         assert rc == 1, cap.out + cap.err
 
-    def test_following_the_printed_cure_with_force_works(self, agent_door, capsys):
-        """The reader's cure line says ``Fix: kanibako agent set claude env.FOO=bar``.  A plain
-        ``set`` following it now refuses; the SAME command with ``--force`` succeeds.  The cure
-        text itself is NOT edited in this task — the mismatch is reported instead."""
+    def test_following_the_printed_cure_works_without_force(self, agent_door, capsys):
+        """The reader's cure is a delete, then ``Fix: kanibako agent set claude env.FOO=bar``.
+        That ``set`` writes this same file, so the sentence says it refuses while the table
+        is stored — and run in the printed order, the sequence completes with no ``--force``."""
         path = _write_agent(agent_door, {
             "self": {"claude": {"env": {"FOO": "bar"}}},
         })
 
-        plain = _agent_set("claude", "model=opus")
-        cap = capsys.readouterr()
-        assert plain == 1
-        assert "Fix:" in cap.err          # the cure the reader prints
-        assert "--force" in cap.err       # …and the arm that makes it followable
+        assert _agent_set("claude", "model=opus") == 1
+        refusal = capsys.readouterr().err
+        assert "Delete the `self.claude` table from " in refusal
+        assert ("§2a refuses a write that collides with a bad entry still stored in the "
+                "files it reads.") in refusal
+        assert "it does not refuse this entry" not in refusal
+        printed = re.search(r"^\s*Fix: kanibako agent set (\S+) (\S+)$", refusal, re.MULTILINE)
+        assert printed, refusal
 
-        forced = _agent_set("claude", "model=opus", force=True)
-        assert forced == 0
+        assert _agent_set(*printed.groups()) == 1, "the sentence promises this refusal"
+        capsys.readouterr()
 
-        from kanibako.settings.config_io import load_doc
+        from kanibako.settings.config_io import dump_doc, load_doc
 
-        assert load_doc(path)["self"]["model"] == "opus"
+        dump_doc(path, {})                  # the printed delete: `self.claude`, then `self:`
+        assert _agent_set(*printed.groups()) == 0
+        assert _agent_set("claude", "model=opus") == 0
+        assert load_doc(path)["self"] == {"env": {"FOO": "bar"}, "model": "opus"}
 
 
 class TestTheEditedKeyItselfIsNeverBlocked:

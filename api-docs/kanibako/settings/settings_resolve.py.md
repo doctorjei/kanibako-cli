@@ -53,7 +53,7 @@ def match_braced(expr: str, i: int) -> tuple[Literal['ref', 'var'], str, int] | 
 def expand_expr(expr: str, *, space: Literal['host', 'guest'], ctx: ResolveCtx, lookup: Callable[[str, tuple[str, ...]], str], chain: tuple[str, ...]=(), defer_env: bool=False) -> str
 def resolve_var(name: str, ctx: ResolveCtx) -> str | _Unset
 def resolve_value(key: str, *, levels: list[LevelView], ctx: ResolveCtx, lookup: Callable[[str, tuple[str, ...]], str]) -> ResolvedValue | _Unset
-def delete_before_set_step(entry: str, *, where: Any, parents: 'Sequence[str]'=(), checks_file: bool=False) -> str
+def delete_before_set_step(entry: str, *, where: Any, parents: 'Sequence[str]'=(), collides_with: str | None=None) -> str
 def _host_term() -> str
 def _host_colorterm() -> str | None
 def _unescape(s: str) -> str

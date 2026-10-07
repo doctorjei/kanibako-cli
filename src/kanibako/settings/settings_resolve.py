@@ -915,16 +915,15 @@ def _no_lookup(ref: str, chain: tuple[str, ...]) -> str:
     raise SettingsError(f"@-refs are not supported in behavior settings: {ref}")
 
 
-#: The levels whose retired-entry cure is ALWAYS a ``set`` into that same level's own file, so
-#: it refuses the write while the entry is there. Measured end to end through the real CLI with
-#: the entry present: these three rc 1. ``base`` is not among them — its cure is always a
-#: ``system set``. The ``agent`` tier is NOT a level decision and lives in
-#: ``_behavior_cure_checks_file``.
+#: The levels whose retired-entry cure is ALWAYS a ``set`` that reads that same level's own file,
+#: so it refuses the write while the entry is there. Measured end to end through the real CLI
+#: with the entry present: these three rc 1. ``base`` is not among them. The ``agent`` tier is
+#: NOT a level decision: each cure decides it per arm.
 SET_TARGETS_ITS_OWN_FILE: "frozenset[str]" = frozenset({"system", "workset", "box"})
 
 
-def delete_before_set_step(entry: str, *, where: Any,
-                          parents: "Sequence[str]" = (), checks_file: bool = False) -> str:
+def delete_before_set_step(entry: str, *, where: Any, parents: "Sequence[str]" = (),
+                           collides_with: str | None = None) -> str:
     """The delete-before-the-``set`` step, naming every parent that delete can leave empty.
 
     ⚑ THE PARENTS ARE PART OF THE CURE, NOT A COURTESY. YAML reads a key with nothing
@@ -936,8 +935,8 @@ def delete_before_set_step(entry: str, *, where: Any,
     noun (``the `agent: default: default_agent` entry`` / ``the `self.foo` table``), so
     each site keeps the spelling its message already uses. *parents* are the ancestor
     tables, innermost first, already spelled for the file; empty for a top-level leaf,
-    which has no parent to strand. *checks_file* says the printed ``set`` refuses the write
-    while *entry* is still stored — see the sentence it picks.
+    which has no parent to strand. *collides_with* names what the printed ``set`` refuses
+    while *entry* is still stored (``a retired entry``); ``None``: it does not refuse.
     """
     stranded = (
         f" — and {' / '.join(parents)} with it, if that leaves "
@@ -950,9 +949,9 @@ def delete_before_set_step(entry: str, *, where: Any,
     # the write succeeds (rc 0) it must not promise a refusal that never comes. Both
     # sentences name no file, so neither reaches an arm the other does not.
     why = (
-        "The fix below is a `set`, and §2a refuses a write that collides with a "
-        "retired entry still stored in the files it reads."
-        if checks_file else
+        "The fix below is a `set`, and §2a refuses a write that collides with "
+        f"{collides_with} still stored in the files it reads."
+        if collides_with else
         "The fix below is a `set`, and it does not refuse this entry — nothing blocks "
         "the write. Delete the entry, then run the fix below: deleting it alone loses "
         "the setting."
