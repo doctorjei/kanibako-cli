@@ -861,6 +861,38 @@ def _validate(
                 "Move it aside, or choose another name."
             )
 
+    # --- the same leftover refusal, on the STANDALONE landing's vault arm ---
+    # ⚑ A PRIMARY box's vault is ``{workset.vault_*}/<name>`` under the WORKSET root,
+    # never the project dir's own ``vault/rw`` (keyspace §2c).  So a ``vault/rw`` at the
+    # root belongs to no registered box, yet the in-place convert's carry MERGES the
+    # box's store into it and the new standalone resolves it as its own arm — which the
+    # later ``box rm --purge`` then deletes.  Refused before any write, as the named
+    # arm above is; only the box's OWN arm for that side is exempt.
+    if (
+        not spec.records_only
+        and target_mode == BoxMode.standalone
+        and dest is None
+        and state.mode != BoxMode.standalone
+    ):
+        taken_vault = []
+        for arm, mine in zip(
+            resolve_workset_vault_pair(
+                state.workspace_path, early=_early_scope(std, BoxMode.standalone)),
+            (state.vault_ro, state.vault_rw),
+        ):
+            if arm is None or (mine is not None and arm.resolve() == mine.resolve()):
+                continue
+            if arm.exists() or arm.is_symlink():
+                taken_vault.append(arm)
+        if taken_vault:
+            raise ProjectError(
+                f"Refusing to convert '{state.name}' to standalone: {taken_vault[0]} "
+                "already exists and this operation did not create it. A standalone "
+                "box's vault IS the root's own arm, so this directory would become "
+                "the box's and a later `box rm --purge` would delete it. Move it "
+                "aside, or convert to a different root."
+            )
+
     # --- same-kind name policy on a DEFAULT-mode --name rename edge (F-7) ---
     # ⚑ Checked UP FRONT so a name refusal costs no file copy.
     requested_name = spec.name or ""

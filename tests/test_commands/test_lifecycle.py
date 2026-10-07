@@ -1173,6 +1173,41 @@ class TestValidation:
         assert (abandoned / "box.yaml").read_text() == "mode: primary\n"
         assert (pdir / "file.txt").read_text() == "hello"
 
+    def test_a_user_vault_at_the_root_blocks_an_in_place_standalone_convert(self, env):
+        """A ``vault/rw`` the box does not own must not become its standalone arm.
+
+        A PRIMARY box's vault is ``{workset.vault_*}/<name>`` under the WORKSET root,
+        so a ``vault/rw`` at the project root is the user's.  The convert used to
+        merge the box's store into it, making the later ``box rm --purge`` delete it.
+        """
+        config, std, tmp_home = env
+        pdir = _make_default(env)
+        vfile = pdir / "vault" / "rw" / "vfile.txt"
+        vfile.parent.mkdir(parents=True)
+        vfile.write_text("USER-VAULT")
+        state = resolve_lifecycle_target(str(pdir), std, config)
+        with pytest.raises(ProjectError, match="did not create it"):
+            execute_lifecycle(
+                state, TargetSpec(ownership="standalone"), std, config,
+                confirm=_conf_yes(),
+            )
+        assert vfile.read_text() == "USER-VAULT"
+        assert (pdir / "file.txt").read_text() == "hello"
+
+    def test_a_clean_root_still_receives_the_boxs_own_vault(self, env):
+        """The guard must not stop the ordinary carry into a root holding no vault."""
+        config, std, tmp_home = env
+        pdir = _make_default(env)
+        state = resolve_lifecycle_target(str(pdir), std, config)
+        (state.vault_rw / "own.txt").parent.mkdir(parents=True, exist_ok=True)
+        (state.vault_rw / "own.txt").write_text("BOX-OWN")
+        new = execute_lifecycle(
+            state, TargetSpec(ownership="standalone"), std, config,
+            confirm=_conf_yes(),
+        )
+        assert new.mode == BoxMode.standalone
+        assert (new.vault_rw / "own.txt").read_text() == "BOX-OWN"
+
     def test_the_sources_own_leaves_do_not_block_its_own_relocation(self, env):
         """The same-workset, same-name case releases and re-records its own leaves."""
         config, std, tmp_home = env
