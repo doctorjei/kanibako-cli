@@ -24,7 +24,10 @@ from kanibako.targets.base import (
 )
 from kanibako.targets.shell import ShellTarget
 
-from tests.e2e._entry_point_plugin import install_entry_point_plugin
+from tests.e2e._entry_point_plugin import (
+    entry_point_plugin_path,
+    install_entry_point_plugin,
+)
 from tests.support.repo import REPO_ROOT
 
 
@@ -840,13 +843,23 @@ class TestAPluginPublishedAsAnInstalledEntryPoint:
     """The route the e2e PTY fixtures publish their plugins through.
 
     ⚑ THE FIXTURES ARE THE SUBJECT, NOT A LOOKALIKE.  ``dead``/``live`` are the
-    REAL ``tests/e2e/fixtures`` modules and the REAL
-    :func:`tests.e2e._entry_point_plugin.install_entry_point_plugin` the e2e calls,
-    so a break in either is a break the e2e would hit.  Discovery reads installed
-    metadata and nothing else, so a plugin a test merely drops in a directory is
-    never seen — publishing means writing the ``*.dist-info`` a package install
-    would have written, and putting it on the child's ``PYTHONPATH``.
+    REAL ``tests/e2e/fixtures`` modules, published by the REAL
+    :func:`tests.e2e._entry_point_plugin.install_entry_point_plugin` the e2e calls
+    and put on the path by the REAL
+    :func:`~tests.e2e._entry_point_plugin.entry_point_plugin_path`, so a break in
+    either is a break the e2e would hit.  Discovery reads installed metadata and
+    nothing else, so a plugin a test merely drops in a directory is never seen —
+    publishing means writing the ``*.dist-info`` a package install would have
+    written, and putting it on the child's ``PYTHONPATH``.
     """
+
+    @staticmethod
+    def _publish(tmp_path, fixture_dir, module, entry, attr):
+        return install_entry_point_plugin(
+            tmp_path / "ep",
+            src=_E2E_FIXTURES / fixture_dir / f"{module}.py",
+            module=module, entry=entry, attr=attr, dist=f"{module}-agent",
+        )
 
     @pytest.mark.parametrize(
         "fixture_dir,module,entry,attr", _PUBLISHED_AGENTS,
@@ -855,12 +868,10 @@ class TestAPluginPublishedAsAnInstalledEntryPoint:
     def test_the_plugin_is_discovered_and_is_the_real_class(
         self, tmp_path, fixture_dir, module, entry, attr
     ):
-        site = install_entry_point_plugin(
-            tmp_path / "ep",
-            src=_E2E_FIXTURES / fixture_dir / f"{module}.py",
-            module=module, entry=entry, attr=attr, dist=f"{module}-agent",
+        site = self._publish(tmp_path, fixture_dir, module, entry, attr)
+        nodes = _discover_in_child(
+            entry_point_plugin_path({}, site, REPO_ROOT / "src")
         )
-        nodes = _discover_in_child(os.pathsep.join((str(site), str(REPO_ROOT / "src"))))
         assert entry in nodes, (
             f"{attr} was not discovered from its synthetic install — the e2e PTY "
             f"fixtures would start with no such agent:\n{nodes}"
@@ -875,12 +886,21 @@ class TestAPluginPublishedAsAnInstalledEntryPoint:
         working for the wrong reason.
         """
         fixture_dir, module, entry, attr = _PUBLISHED_AGENTS[0]
-        install_entry_point_plugin(
-            tmp_path / "ep",
-            src=_E2E_FIXTURES / fixture_dir / f"{module}.py",
-            module=module, entry=entry, attr=attr, dist=f"{module}-agent",
-        )
+        self._publish(tmp_path, fixture_dir, module, entry, attr)
         assert entry not in _discover_in_child(str(REPO_ROOT / "src")), (
             f"'{entry}' resolved with nothing published for it — this suite would "
             f"pass without proving the entry-point route works"
         )
+
+    def test_the_site_dir_outranks_an_inherited_pythonpath(self, tmp_path):
+        """The e2e's own ``env`` is what gets the site dir, and its path is KEPT.
+
+        A fixture that clobbered an inherited ``PYTHONPATH`` would drop whatever the
+        harness put there — this box's kanibako lives on one.
+        """
+        fixture_dir, module, entry, attr = _PUBLISHED_AGENTS[0]
+        site = self._publish(tmp_path, fixture_dir, module, entry, attr)
+        inherited = entry_point_plugin_path({"PYTHONPATH": "/somewhere/else"}, site)
+        parts = inherited.split(os.pathsep)
+        assert parts[0] == str(site), inherited
+        assert parts[1] == "/somewhere/else", inherited
