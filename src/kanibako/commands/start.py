@@ -1627,6 +1627,47 @@ def _interrupted_create_error(proj: ProjectPaths, pending: dict) -> str:
     )
 
 
+def _unregistered_pending_create_error(
+    std: StandardPaths, project_dir: str | None,
+) -> str | None:
+    """The launch refusal for a workspace whose ``create`` is pending and never registered.
+
+    ``None`` when the launch target names no workspace, or no ``create`` entry is
+    pending for it — the caller then keeps its plain "no box" shape.  The cure is
+    the same line :func:`_interrupted_create_error` prints for the registered
+    box, because ``create --recover`` is what performs the replay either way.
+
+    ⚑ REGISTRATION IS STILL THE EXISTENCE SIGNAL, so this REFUSES rather than
+    resolves: the half-built box is never adopted by a launch (see
+    :func:`_resolve_existing_box`).  Only the CURE changes with the pending entry.
+
+    ⚑ An entry recorded for a STANDALONE or NAMED box is not this arm's
+    population: those launches carry their own refusal, which names the mode flag
+    or the member name, and this message would name neither.
+    """
+    from kanibako.launch import journal
+
+    if project_dir and designation_route(project_dir) is not DesignationRoute.PATH:
+        # A bare NAME is read through the registry, never as a workspace on disk,
+        # so the journal lookup has no workspace to match.
+        return None
+    # ⚑ THE CURE'S ROOT IS THE RESOLVED WORKSPACE, which is what
+    # :func:`_create_designation` gives a PRIMARY probe (``probe.project_path``), so
+    # this line is byte-identical to the registered-box arm's for the same box and
+    # it runs from any directory.
+    workspace = str(Path(project_dir or os.getcwd()).resolve())
+    pending = journal.pending_create_for_workspace(std.journal, workspace)
+    if pending is None or pending.get("mode") in ("standalone", "named"):
+        return None
+    return (
+        f"Error: no box at {workspace}, but an interrupted 'create' is pending "
+        f"for it (started {pending.get('started_at', '?')} on "
+        f"{pending.get('host', '?')}); a launch will not finish it.\n"
+        f"  Finish it:  {_create_cure('', workspace, '--recover')}\n"
+        "  Inspect it first:  kanibako box diagnose"
+    )
+
+
 def _no_box_error(project_dir: str | None, std: StandardPaths | None = None) -> str:
     """The launch-time "no box; run create" error for an ABSENT box target.
 
@@ -1652,11 +1693,23 @@ def _no_box_error(project_dir: str | None, std: StandardPaths | None = None) -> 
     optional so the unit tests that only exercise the generic shape, and any
     caller with no resolved paths in hand, keep calling this unchanged; with no
     *std* the branch is simply not consulted.
+
+    ⚑ AND SO IS THE PENDING-CREATE branch: a workspace whose ``create`` never
+    reached registration has no box to name, so it lands here too — but
+    ``create --recover`` is what finishes it, not ``create``.  See
+    :func:`_unregistered_pending_create_error`, which owns that message.
     """
     if project_dir and std is not None:
         broken = _broken_standalone_error(std, project_dir)
         if broken is not None:
             return broken
+    if std is not None:
+        # ⚑ CONSULTED BEFORE THE NAME ROUTE BELOW and before the plain one-liner:
+        # a pending entry is a fact about the workspace on disk, and a NAME names
+        # no workspace to match it against.
+        pending = _unregistered_pending_create_error(std, project_dir)
+        if pending is not None:
+            return pending
     if project_dir:
         # A PATH shows its resolved dir; a NAME shows the spec verbatim — either way
         # copy-pasteable.
