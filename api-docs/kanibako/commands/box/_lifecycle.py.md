@@ -51,10 +51,12 @@ def _unwind_created_root(path: Path) -> None
 def _copy_metadata(src_metadata: Path, src_shell: Path, dst_metadata: Path, *, shell_into_metadata: bool, home_leaf: str='home', unwind: _Unwind) -> Path
 def _deliver_carried_box_settings(state: ProjectState, dst_box_tier: Path, *, early: EarlyScope) -> None
 def _vault_leaf_has_contents(leaf: Path) -> bool
-def _copy_vault_leaf_contents(src: Path, dst: Path | None, moved_root: Path | None=None, relocated: Mapping[Path, Path] | None=None) -> None
+def _copy_vault_leaf_contents(src: Path, dst: Path | None, removed: Collection[Path]=(), relocated: Mapping[Path, Path] | None=None) -> None
 def _vault_copy_failure_message(src: Path, dst: Path, err: shutil.Error) -> str
 def _vault_carry_pairs(state: ProjectState, std: StandardPaths, dst_ro: Path | None, dst_rw: Path | None) -> list[tuple[Path, Path]]
 def _carry_vault_contents(state: ProjectState, std: StandardPaths, dst_ro: Path | None, dst_rw: Path | None, relocated: Mapping[Path, Path] | None=None) -> None
+def _torn_down_roots(state: ProjectState, std: StandardPaths) -> list[Path]
+def _landings(*pairs: tuple[Path, Path]) -> dict[Path, Path] | None
 def _move_log_back(dst: Path, src: Path) -> None
 def _carry_box_logs(state: ProjectState, std: StandardPaths, unwind: _Unwind, *, dst_logs: Path | None, dst_name: str) -> None
 def _unreceived_vault_leaves(src_arms: tuple[Path | None, Path | None], dst_vault: tuple[Path | None, Path | None], leaf_name: str='', *, vault_enabled: bool=True) -> list[tuple[Path, str]]
