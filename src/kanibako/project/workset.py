@@ -1114,9 +1114,9 @@ def purge_box_logs(
     degenerate workset is not in the walk.  Returns what was actually deleted — a kept
     file is NOT in that list, because every caller prints it as "Removed".
     """
-    partners = () if logs_dir is None else _logs_share_partners(
-        std, logs_dir, box, workset_root=workset_root,
-    )
+    if logs_dir is None:
+        return remove_box_logs(None, box)
+    partners = _logs_share_partners(std, logs_dir, box, workset_root=workset_root)
     keep: tuple[Path, ...] = ()
     if partners:
         keep = tuple(box_log_files(logs_dir, box))
