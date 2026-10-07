@@ -538,11 +538,7 @@ def _run_system_config(args: argparse.Namespace) -> int:
         # which this verb deliberately does not hold (the foundation note above). It is
         # loaded for the set-time resolve (:func:`_system_target_std`).
         set_std, set_std_error = _system_target_std(cf)
-        # ⚑ Keyspec § 0 "Per-owner resources": a SYSTEM-tier ``workset.logs`` lands on
-        # the tier every workset WITHOUT its own value reads, so one value that DOES reach
-        # identity yet dotdots out of each workset (``@meta.workset.path/../shared``) puts
-        # them ALL on one log directory.  The anchor refusal above only catches a value
-        # that reaches no identity; this catches the anchored ones that still collide.
+        # ⚑ Keyspec § 0: an anchored value can still land worksets on one log dir.
         if set_std is not None:
             from kanibako.project.workset import logs_share_refusal
 
