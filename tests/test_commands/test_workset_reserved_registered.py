@@ -23,6 +23,8 @@ from pathlib import Path
 
 import pytest
 
+from tests.support.protected_trees import reap_box_stores
+
 REPO_SRC = Path(__file__).resolve().parents[2] / "src"
 NEW_NAME = "renamed"
 #: The names the ``workset`` verbs resolve to the synthesized default workset.
@@ -59,7 +61,12 @@ def env(monkeypatch: pytest.MonkeyPatch) -> Iterator[dict[str, str]]:
         from tests.support.filenames import CONFIG_FILENAME
 
         write_global_config(dirs["config"] / CONFIG_FILENAME)
-        yield child
+        try:
+            yield child
+        finally:
+            # ``box create`` protects the canon skeleton; where ``podman unshare`` works
+            # (CI) it is foreign-owned and ``TemporaryDirectory`` cannot remove it.
+            reap_box_stores(base)
 
 
 def _cli(env: dict[str, str], *args: str, cwd: Path | None = None) -> subprocess.CompletedProcess[str]:
