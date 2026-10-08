@@ -475,7 +475,7 @@ def test_an_empty_root_table_is_ACCEPTED_so_no_wording_may_call_it_refused(tree)
 
 
 def test_a_stranded_null_root_is_refused_so_the_wording_stops_short_of_claiming(tree) -> None:
-    """The neighbouring truth that makes a per-level promise impossible: the same tier,
+    """The neighboring truth that makes a per-level promise impossible: the same tier,
     the same file, the same cure — a null ``pref:`` is refused where ``pref: {}`` is not."""
     assert tree.cli("workset", "create", "ws1").returncode == 0
     stale = tree.home / "ws1" / "workset.yaml"

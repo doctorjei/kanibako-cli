@@ -101,7 +101,7 @@ def ws_files(tmp_path, std):
 
     ⚑ WITHOUT ONE, ``@workset.channelroot`` dangles at the WORKSET door too and the
     "unchanged at its own door" half of Row 2 would be testing a missing anchor rather
-    than the door's behaviour. ``create_workset`` refuses a root that already exists, so
+    than the door's behavior. ``create_workset`` refuses a root that already exists, so
     the tiers are laid down around it, not before it.
     """
     files = {
@@ -460,7 +460,7 @@ class TestWhatStaysRefused:
     def test_an_escaped_ref_is_not_a_ref(self, tmp_path, std):
         r"""``\@workset.nonexistent`` is a literal, so the floor's blindness must not open.
 
-        ⚑ This is a GUARD, not a new behaviour: the value never reaches the probe, because
+        ⚑ This is a GUARD, not a new behavior: the value never reaches the probe, because
         the ``[R147]`` bare-relative refusal takes it first. What is pinned is that the
         blindness rule did not open behind that guard.
         """

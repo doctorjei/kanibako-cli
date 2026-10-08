@@ -282,7 +282,7 @@ def test_ps_shows_a_running_standalone_box_whose_root_is_gone(
 def test_list_shows_a_box_with_no_recorded_workspace(
     sandbox, tmp_path, monkeypatch, capsys,
 ):
-    """A box with no recorded workspace is listed, labelled by that fact."""
+    """A box with no recorded workspace is listed, labeled by that fact."""
     out = _cli(["box", "list"], (), tmp_path, monkeypatch, capsys)
     assert "no breadcrumb" in _row(out, _STRAY, "unknown")
 

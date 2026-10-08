@@ -1339,7 +1339,7 @@ class TestStopAllSkipsABoxThatRendersNoName:
     def test_all_still_stops_the_rest_when_no_box_is_skipped(
         self, live_runtime, capsys,
     ):
-        """The sweep's own behaviour is unchanged when nothing renders no name."""
+        """The sweep's own behavior is unchanged when nothing renders no name."""
         live_runtime.list_running.return_value = [
             ("kb-primary-other", "img:latest", "Up 1 minute"),
         ]

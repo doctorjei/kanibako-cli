@@ -4,7 +4,7 @@ A plugin reaches :func:`kanibako.targets.discover_targets` through the
 ``kanibako.agents`` entry-point group (keyspec §2, *"Plugins load only from
 installed packages"*).  Discovery reads installed metadata and nothing else, so a
 test that wants a real ``Target`` has to present the two files
-:mod:`importlib.metadata` needs to recognise a package — a ``*.dist-info/``
+:mod:`importlib.metadata` needs to recognize a package — a ``*.dist-info/``
 holding ``METADATA`` and ``entry_points.txt`` — beside the plugin module.  Putting
 the returned directory on ``PYTHONPATH`` is then all a subprocess needs: no build,
 no ``pip``, and nothing under ``tests/`` is ever packaged.

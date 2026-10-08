@@ -1278,7 +1278,7 @@ class TestLaunchWiring:
         unsplit the emitter would STILL raise, because it consults ``must_exist``
         first: the overlap is therefore invisible at the emitter and only the
         call-site set arithmetic proves the subtraction is there. This test pins the
-        BEHAVIOUR half so a future reordering of the emitter's two policy checks
+        BEHAVIOR half so a future reordering of the emitter's two policy checks
         cannot silently turn an overlapped dest into a silent skip.
         """
         import shutil

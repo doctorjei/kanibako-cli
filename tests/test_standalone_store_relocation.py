@@ -9,7 +9,7 @@ composing the leaf.
 each case asserts what is GONE and what SURVIVED, never the exit code alone.
 
 ⚑ EVERY CASE GOES THROUGH A DOOR THAT EXISTS AT THE BASE (``cli.build_parser`` plus
-``args.func``), so a base run fails on an ASSERTION about behaviour rather than on an
+``args.func``), so a base run fails on an ASSERTION about behavior rather than on an
 import of a name this change introduced.
 """
 
