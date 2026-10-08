@@ -164,8 +164,10 @@ jobs:
       # `0.4.0` loads it and stays GREEN while exempting a constant's whole home
       # module from `check`, so a respelling there is reported by nothing. The
       # measurement is in the `filenames` registry's note. `[claims] declared_in`
-      # needs `0.5.2`, where it is new.
-      - run: pip install "kinemata[yaml]==0.5.2"
+      # needs `0.5.2`, where it is new. `0.5.4` makes an entry with no `home` read
+      # the test trees despite `exclude`; `retired-seams` keeps its rule on
+      # shipped source with `only`.
+      - run: pip install "kinemata[yaml]==0.5.4"
       # ⚑ THE PROJECT ITSELF IS INSTALLED HERE BECAUSE THE PARITY ORACLE IMPORTS
       # IT. `parity` runs a command that prints what the code produces, and an
       # oracle it cannot run is a FAILURE that no baseline can accept -- so a
