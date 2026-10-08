@@ -27,8 +27,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   target are two boxes that share files: `box info`, a launch, and the registries answer for the box registered at the
   literal path, and a second box may be registered at a link to an already-registered workspace. A command run with no
   box argument takes the current directory as the shell reached it (`$PWD`), so `cd <link>` names the box at `<link>`,
-  and a relative path such as `.` is taken from it. `workset create`, `workset connect`, and `box duplicate` store the
-  path as given. Each twin has its own project hash, so extracting one twin's archive into the other asks before it
+  and a relative path such as `.` is taken from it. `workset create`, `workset connect`, an imported working set, and
+  `box duplicate` store the path as given, so `box list` shows a working set's root and its in-tree members as given;
+  `workset connect` with no `--name` names the box after the path's last component, not its link target's. Each twin has its own project hash, so extracting one twin's archive into the other asks before it
   restores. A directory reached through a different symlink than the one a box is registered under is not that box.
   Standalone boxes follow the same rule: `box create --standalone`, `box register`, and every lookup keep the path as
   given. A standalone box registered through a link before this release keeps its resolved path; work from that path, or

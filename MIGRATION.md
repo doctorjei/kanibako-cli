@@ -7036,7 +7036,9 @@ Boxes, working sets, and connected directories registered before this release we
 even when they were created through a link; `box list` and `workset list` show the stored path. Working from a link
 to one of them now finds no box. For a primary box, `box create` there makes a second box that shares the files;
 inside a working set's tree it is refused. Run from the stored
-path, or name the box. New registrations store the path as given.
+path, or name the box. New registrations store the path as given, including a working set kanibako imports when it
+finds one and a member connected inside a working set's tree. `workset connect` with no `--name` names the box after
+the path's last component, not its link target's.
 
 A standalone box follows the same rule: its identity is the path it was created or registered at, as given. One
 registered through a link before this release holds the resolved path, and from the link kanibako refuses to import it
