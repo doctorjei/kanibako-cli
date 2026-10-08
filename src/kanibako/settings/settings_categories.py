@@ -112,11 +112,15 @@ ABSTRACT_CATEGORIES: Final[tuple[str, ...]] = ("common", "caches", "seeded")
 
 # spec §2a DECLARATION ROOTS — THE single copy of the spec's table.  ``{agent}`` is the
 # only placeholder, because the agent tier is discriminated.
+# ⚑ The AGENT row is a ``.format()`` TEMPLATE, so its reference braces are DOUBLED in
+# source: ``.format(agent="claude")`` renders ``{meta.agent.claude.path}``.  The other
+# three rows are read verbatim and take SINGLE braces — doubling those would ship a
+# literal ``{{config.data}}`` to the resolver.
 DECLARATION_ROOT_REF: Final[Mapping[str, str]] = {
-    "system": "@config.data",
-    "agent": "@meta.agent.{agent}.path",
-    "workset": "@meta.workset.path",
-    "box": "@meta.box.path",
+    "system": "{config.data}",
+    "agent": "{{meta.agent.{agent}.path}}",
+    "workset": "{meta.workset.path}",
+    "box": "{meta.box.path}",
 }
 
 _DELIVERY: dict[str, Delivery] = {

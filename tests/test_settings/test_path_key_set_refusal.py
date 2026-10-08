@@ -140,7 +140,7 @@ class TestEverySetRouteRefusesABareRelative:
         message = _set_ws("workset.channelroot", _BARE, std, ws)
         assert f"in {workset_settings_path(ws)}" in message
         assert str(ws.root / _BARE) in message
-        assert "@meta.workset.path" in message
+        assert "{meta.workset.path}" in message
 
 
 class TestTheAgentRoutes:
@@ -153,7 +153,7 @@ class TestTheAgentRoutes:
         files = _files(tmp_path)
         message = _set(leaf, _BARE, files, ConfigLevel.system)
         _assert_named_both_readings(message, leaf, _BARE)
-        assert "@meta.agent.default.path" in message
+        assert "{meta.agent.default.path}" in message
 
     @pytest.mark.parametrize("leaf", ["canon", "template"])
     def test_the_per_node_spelling_is_refused(self, leaf, tmp_path):
@@ -277,7 +277,7 @@ class TestTheLegalShapesAreAccepted:
         then refused its own cure."""
         ws = create_workset("curews", tmp_home / "curews", std)
         refusal = _set_ws("workset.channelroot", _BARE, std, ws)
-        offered = f"@meta.workset.path/{_BARE}"
+        offered = f"{{meta.workset.path}}/{_BARE}"
         assert offered in refusal
         assert not _set_ws("workset.channelroot", offered, std, ws).startswith("Error:")
 
@@ -433,7 +433,7 @@ class TestTheAnchorDegradesHONESTLY:
         ``spelled '...'`` clause is dropped rather than repeating the same text twice."""
         files = _files(tmp_path)
         message = _set("workset.channelroot", _BARE, files, ConfigLevel.system)
-        assert f"@meta.workset.path/{_BARE}" in message
+        assert f"{{meta.workset.path}}/{_BARE}" in message
         # ⚑ The ``, spelled '<ref>/<value>'`` CLAUSE, not the word: the closing line of
         # every one of these messages ends "spelled so it resolves on its own".
         assert ", spelled '" not in message

@@ -450,10 +450,10 @@ class TestAgentCategoriesForNodeOnCommon:
     TABLE = {
         "agent.claude.common": {
             "/home/agent/.claude/plugins": (
-                "@meta.agent.claude.path/common/plugins",
+                "{meta.agent.claude.path}/common/plugins",
             ),
             "/home/agent/.claude/cache": (
-                "@meta.agent.claude.path/common/cache",
+                "{meta.agent.claude.path}/common/cache",
             ),
         },
     }
@@ -480,7 +480,7 @@ class TestAgentCategoriesForNodeOnCommon:
         assert set(out) == {"agent.nav℘claude.common"}
         arm = out["agent.nav℘claude.common"]
         assert arm["/home/agent/.claude/plugins"] == (
-            "@meta.agent.nav℘claude.path/common/plugins",
+            "{meta.agent.nav℘claude.path}/common/plugins",
         )
         # ⚑ The DESTINATIONS are untouched — they are the entry identity, and a
         # persona delivers to the same in-box path its harness does. INVERT:
@@ -573,19 +573,19 @@ class TestEveryDeclaredCategoryMoves:
     #: harness's own store so all of them must move.
     TABLE = {
         "agent.claude.seeded": {
-            "/home/agent/seed": ("@meta.agent.claude.path/seedsrc",),
+            "/home/agent/seed": ("{meta.agent.claude.path}/seedsrc",),
         },
         "agent.claude.caches": {
-            "/home/agent/.cache/x": ("@meta.agent.claude.path/caches/x",),
+            "/home/agent/.cache/x": ("{meta.agent.claude.path}/caches/x",),
         },
         "agent.claude.bindings.ro": {
-            "/home/agent/ro": ("@meta.agent.claude.path/robits", "ro"),
+            "/home/agent/ro": ("{meta.agent.claude.path}/robits", "ro"),
         },
         "agent.claude.bindings.rw": {
-            "/home/agent/rw": ("@meta.agent.claude.path/rwbits",),
+            "/home/agent/rw": ("{meta.agent.claude.path}/rwbits",),
         },
         "agent.claude.synced": {
-            "/home/agent/sync": ("@meta.agent.claude.path/syncsrc",),
+            "/home/agent/sync": ("{meta.agent.claude.path}/syncsrc",),
         },
     }
 
@@ -615,7 +615,7 @@ class TestEveryDeclaredCategoryMoves:
         """
         for key, arm in self._out().items():
             for dest, entry in arm.items():
-                assert entry[0].startswith("@meta.agent.nav℘claude.path/"), (
+                assert entry[0].startswith("{meta.agent.nav℘claude.path}/"), (
                     f"{key} entry at {dest} still names the harness store"
                 )
 
@@ -627,7 +627,7 @@ class TestEveryDeclaredCategoryMoves:
         """
         arm = self._out()["agent.nav℘claude.bindings.ro"]
         assert arm["/home/agent/ro"] == (
-            "@meta.agent.nav℘claude.path/robits", "ro",
+            "{meta.agent.nav℘claude.path}/robits", "ro",
         )
 
     def test_the_destinations_never_move(self):
@@ -658,8 +658,8 @@ class TestEveryDeclaredCategoryMoves:
             "agent.claude.caches": {
                 "/home/agent/a": ("/opt/fixed",),
                 "/home/agent/b": ("~/.claude/real",),
-                "/home/agent/c": ("@system.template/x",),
-                "/home/agent/d": ("@meta.agent.goose.path/other",),
+                "/home/agent/c": ("{system.template}/x",),
+                "/home/agent/d": ("{meta.agent.goose.path}/other",),
             },
         }
         out = agent_categories_for_node(
@@ -689,14 +689,14 @@ class TestEveryDeclaredCategoryMoves:
         from kanibako.settings.agent_representation import agent_categories_for_node
 
         table = {
-            "agent.claude.template": "@config.agents/claude/template",
+            "agent.claude.template": "{config.agents}/claude/template",
             "agent.claude.masks": ["/home/agent/hidden"],
         }
         out = agent_categories_for_node(
             table, node_name="nav℘claude", harness="claude",
         )
         assert out == {
-            "agent.nav℘claude.template": "@config.agents/claude/template",
+            "agent.nav℘claude.template": "{config.agents}/claude/template",
             "agent.nav℘claude.masks": ["/home/agent/hidden"],
         }
 
@@ -717,10 +717,10 @@ class TestHarnessStoreLeaf:
         from kanibako.settings.agent_representation import harness_store_leaf
 
         assert harness_store_leaf(
-            "@meta.agent.claude.path/common/plugins", "claude",
+            "{meta.agent.claude.path}/common/plugins", "claude",
         ) == "common/plugins"
         assert harness_store_leaf(
-            "@meta.agent.claude.path/seedsrc", "claude",
+            "{meta.agent.claude.path}/seedsrc", "claude",
         ) == "seedsrc"
 
     def test_anything_else_is_None(self):
@@ -729,11 +729,11 @@ class TestHarnessStoreLeaf:
         from kanibako.settings.agent_representation import harness_store_leaf
 
         for src in (
-            "/opt/fixed", "~/.claude", "$HOME/x", "@system.template/x",
-            "@meta.agent.goose.path/x",
-            "@meta.agent.claude.path",       # the root itself — no leaf
-            "@meta.agent.claude.path/",      # trailing slash — still no leaf
-            "@meta.agent.claudex.path/y",    # a LONGER harness name, not a prefix hit
+            "/opt/fixed", "~/.claude", "$HOME/x", "{system.template}/x",
+            "{meta.agent.goose.path}/x",
+            "{meta.agent.claude.path}",       # the root itself — no leaf
+            "{meta.agent.claude.path}/",      # trailing slash — still no leaf
+            "{meta.agent.claudex.path}/y",    # a LONGER harness name, not a prefix hit
             None, 3,
         ):
             assert harness_store_leaf(src, "claude") is None, src
