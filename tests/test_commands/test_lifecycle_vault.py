@@ -1008,7 +1008,6 @@ class TestDisabledVaultDataGuard:
         assert new.name == "dv4"
         assert new.vault_rw == state.vault_rw
         assert (state.vault_rw / "keep.txt").read_text() == "stale store"
-        assert (state.vault_rw / "keep.txt").read_text() == "stale store"
 
     def test_a_same_path_remap_is_not_refused(self, env, capsys):
         """A remap onto the path the box is registered at reuses it in place, vault
