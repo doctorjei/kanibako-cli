@@ -1671,7 +1671,7 @@ class TestRefusalCuresReachTheBoxTheyName:
             workset="wsa", source=str(leaf), project_name=None, force=False,
         )) == 1
         err = capsys.readouterr().err
-        route = re.findall(r"'(kanibako box convert [^']+)'", err)[0]
+        route = re.findall(r"^  (kanibako box convert .+)$", err, re.M)[0]
 
         assert _run_printed(route) == 0
         members = load_workset(ws.root, "wsa", early_system=std.early_system).projects

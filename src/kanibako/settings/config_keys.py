@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import logging
 import re
+import shlex
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path  # noqa: F401  (annotations)
@@ -1219,8 +1220,8 @@ def terminal_category_write_error(canonical: str, *, verb: str) -> str | None:
                     f"it from there."
                 ),
                 survives=(
-                    f"Reading it back with 'kanibako agent get {shown_node} {category}' "
-                    f"still works."
+                    f"Reading it back still works:\n"
+                    f"  kanibako agent get {shown_node} {category}"
                 ),
             )
         return _terminal_category_message(
@@ -1228,7 +1229,7 @@ def terminal_category_write_error(canonical: str, *, verb: str) -> str | None:
             verb=verb,
             cure=_AGENT_DEFAULT_TIER_CURE,
             survives=(
-                f"Reading it back with 'kanibako system get {canonical}' still works."
+                f"Reading it back still works:\n  kanibako system get {shlex.quote(canonical)}"
             ),
         )
     # ⚑ EXHAUSTIVE BY CONSTRUCTION: ``is_terminal_category_key`` requires a head in
@@ -1242,7 +1243,8 @@ def terminal_category_write_error(canonical: str, *, verb: str) -> str | None:
             f"reads it from there."
         ),
         survives=(
-            f"Reading it back with '{_SCOPE_READ_COMMAND[scope]} {canonical}' still works."
+            f"Reading it back still works:\n"
+            f"  {_SCOPE_READ_COMMAND[scope]} {shlex.quote(canonical)}"
         ),
     )
 
@@ -1626,8 +1628,8 @@ def scope_bind_retired_error(canonical: str, *, verb: str) -> str | None:
             f"directly; the launch reads it from there."
         ),
         survives=(
-            f"Reading it back with "
-            f"'{_SCOPE_READ_COMMAND[scope]} {canonical}' still works."
+            f"Reading it back still works:\n"
+            f"  {_SCOPE_READ_COMMAND[scope]} {shlex.quote(canonical)}"
         ),
     )
 
@@ -1669,9 +1671,9 @@ def agent_node_bind_retired_error(canonical: str, *, verb: str) -> str | None:
             cure=_AGENT_DEFAULT_TIER_CURE,
             survives=(
                 f"The surviving key is 'agent.{shown_node}.{category}' — the whole "
-                f"dest-keyed map, read with 'kanibako system get "
-                f"agent.{shown_node}.{category}'; an entry inside it is DATA, not a "
-                f"key of its own."
+                f"dest-keyed map; an entry inside it is DATA, not a key of its own. "
+                f"Read the map with:\n"
+                f"  kanibako system get agent.{shown_node}.{category}"
             ),
         )
     if _is_agent_node_bind_key(canonical):
@@ -1680,8 +1682,8 @@ def agent_node_bind_retired_error(canonical: str, *, verb: str) -> str | None:
         # and the read refuses (measured). There is no ``config`` noun to fall back
         # on; see :data:`_SCOPE_READ_COMMAND`.
         survives = (
-            f"Reading it back with 'kanibako agent get {shown_node} "
-            f"{category}.{name}' still works."
+            f"Reading it back still works:\n"
+            f"  kanibako agent get {shown_node} {shlex.quote(f'{category}.{name}')}"
         )
     else:
         survives = (
@@ -1858,7 +1860,7 @@ def table_leaf_read_cure(canonical: str, active_agent: str | None = None) -> str
     return (
         f" '{canonical}' IS a declared agent leaf (spec §2d), but a TABLE-valued one — "
         f"no scalar request can carry it, so it has no bare spelling at a file scope. "
-        f"Read it at the agent noun: 'kanibako agent get {agent} {canonical}'."
+        f"Read it at the agent noun:\n  kanibako agent get {agent} {shlex.quote(canonical)}"
     )
 
 
@@ -1907,8 +1909,8 @@ def agent_category_read_error(canonical: str, key: str) -> str | None:
         f"Error: '{key}' cannot be read here: a per-agent category table lives in that "
         f"agent's own settings file (agents/{shown_node}/agent.yaml), which this noun does "
         f"not read — reporting it unset here would invent an answer over a table that "
-        f"exists (spec §2a). Read it at the agent noun: "
-        f"'kanibako agent get {shown_node} {category}'."
+        f"exists (spec §2a). Read it at the agent noun:\n"
+        f"  kanibako agent get {shown_node} {category}"
     )
 
 
@@ -1988,8 +1990,8 @@ def foreign_scope_read_error(
     return (
         f"Error: '{key}' cannot be read at the '{noun}' noun: it is a declared {scope}-scope "
         f"key whose value is merged entry by entry across tiers, so this noun holds at most a "
-        f"fragment of it and never the value (spec §2a). Read it with "
-        f"'{_SCOPE_READ_COMMAND[scope]} {key}'."
+        f"fragment of it and never the value (spec §2a). Read it with:\n"
+        f"  {_SCOPE_READ_COMMAND[scope]} {shlex.quote(key)}"
     )
 
 

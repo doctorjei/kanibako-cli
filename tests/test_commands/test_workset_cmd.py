@@ -1186,7 +1186,7 @@ class TestWorksetConnect:
         assert run_connect(args) == 1
         err = capsys.readouterr().err
         assert "it is already the workspace of primary box 'beta'" in err
-        assert "'kanibako box convert beta --workset xpb'" in err
+        assert "\n  kanibako box convert beta --workset xpb\n" in err
         assert _workset_boxes(load_workset(list_worksets(std)["xpb"], "xpb",
                 early_system=std.early_system)) == {}
 

@@ -39,6 +39,7 @@ deliberately broken.  Only the write half moved.
 from __future__ import annotations
 
 import re
+import shlex
 from pathlib import Path
 
 import pytest
@@ -846,11 +847,11 @@ class TestADottedDestinationSlotsWHOLE:
         msg = bench.set(ConfigLevel.box, f"box.caches.{self._DOTTED}", "/some/src")
         assert msg.startswith("Error:") and "RETIRED" in msg, msg
         assert "config get" not in msg, msg          # the noun that does not exist
-        m = re.search(
-            r"'kanibako box get <box> (?P<key>[^']+)' still works", msg
-        )
+        m = re.search(r"still works:\n  kanibako box get <box> (?P<key>.+)$", msg)
         assert m is not None, msg
-        assert bench.get(ConfigLevel.box, m.group("key")) is not None, msg
+        # The key is shell-quoted (a ``~`` in it would expand), so read it as the shell does.
+        (key,) = shlex.split(m.group("key"))
+        assert bench.get(ConfigLevel.box, key) is not None, msg
 
 
 # ---------------------------------------------------------------------------

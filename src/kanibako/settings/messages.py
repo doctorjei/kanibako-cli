@@ -249,17 +249,19 @@ ERR_PROJECT_NAME_USED = "Name '%s' is already registered"
 # ⚑ "one record per project" (spec § Detection & import) asked at the PATH, not the name.
 ERR_PROJECT_PATH_IS_NAMED_BOX = ("Refusing to create a box at %s: it is already the workspace of " +
                          "named box '%s' in workset '%s', and one path is one project's record. " +
-                         "Use that box ('kanibako box show %s/%s'), " +
-                         "or free the path first:\n"
+                         "Use that box, or free the path first:\n"
+                         "  kanibako box show %s/%s\n"
                          "  kanibako workset disconnect %s %s --force") # path, box, workset (ws, box, ws, box)
 
 ERR_WORKSET_NO_PROJECT = "Project '%s' not found in workset '%s'" # project name, workset name
 ERR_WS_CONNECT_PATH_IS_PRIMARY_BOX = (
     "it is already the workspace of primary box '%s'; to make it a member of '%s' "
-    "instead, convert that box ('kanibako box convert %s --workset %s%s', or 'kanibako "
-    "box convert %s --workset %s --name <member> --move' to give it another name), "
-    "move it out of the way ('kanibako box move %s <path>'), or drop the box "
-    "('kanibako box rm %s')."
+    "instead, convert that box (in place, or under another name), move it out of the "
+    "way, or drop the box:\n"
+    "  kanibako box convert %s --workset %s%s\n"
+    "  kanibako box convert %s --workset %s --name <member> --move\n"
+    "  kanibako box move %s <path>\n"
+    "  kanibako box rm %s"
 ) # box, ws, box, ws, ' --name <leaf>' when in-tree under another name, box, ws, box, box
 ERR_WORKSET_NO_WORKSET = "No workset found for path: %s" # project dir
 ERR_WORKSET_WS_NOT_BOX = ("'%s' is a workset, not a single project box. Name a project inside it " +

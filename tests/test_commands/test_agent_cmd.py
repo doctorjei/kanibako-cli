@@ -1320,7 +1320,7 @@ class TestAMissingStoreSaysWhy:
     # sends a user who asked to remove a value to write one.
     _RESERVED_CURES = [
         "set the any-agent default with the bare key (e.g. 'label') instead.",
-        "read the any-agent default with 'kanibako system get agent.default.label' instead.",
+        "read the any-agent default instead with:\n  kanibako system get agent.default.label\n",
         "'agent: default:' table of the system settings file",
         "'agent: default:' table of the system settings file",
         "reset the any-agent default with the bare key (e.g. 'label') instead.",
@@ -1361,7 +1361,7 @@ class TestAMissingStoreSaysWhy:
         )
         err = capsys.readouterr().err
         assert rc == 1
-        assert f"'kanibako system get agent.default.{tail}'" in err, err
+        assert f":\n  kanibako system get agent.default.{tail}\n" in err, err
         assert "no bare CLI spelling" not in err, err
         assert "'agent: default:' table" not in err, err
 

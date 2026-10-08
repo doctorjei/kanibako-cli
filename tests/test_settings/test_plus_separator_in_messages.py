@@ -48,7 +48,7 @@ class TestThroughTheCli:
     store.mkdir(parents=True)
     (store / "agent.yaml").write_text("self:\n  model: opus\n  zippity: 1\n")
     out = _run(["agent", "get", "nav+claude", "model"], capsys)
-    assert "'kanibako agent reset nav+claude --all'" in out, out
+    assert "\n  kanibako agent reset nav+claude --all\n" in out, out
     assert "the agent settings file for 'nav+claude'" in out, out
     assert "℘" not in out, out
 
