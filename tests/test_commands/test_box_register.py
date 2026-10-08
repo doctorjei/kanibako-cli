@@ -472,9 +472,10 @@ class TestCreateStandaloneOptIn:
 
     §D4a (owner 2026-07-04): the registry is the by-name-from-another-directory
     index and nothing else, so a standalone box is independent by default and
-    moves freely.  ``--name`` names the registry entry, hence is a NO-OP without
-    ``--register``.  An unregistered box is adopted later by the ``register``
-    verb (I2) — index-only and seed-free.
+    moves freely.  ``--name`` never names that entry — the KEY comes from the
+    box's own directory — and on a standalone box it is REFUSED outright
+    (ruling 2026-10-08).  An unregistered box is adopted later by the
+    ``register`` verb (I2) — index-only and seed-free.
     """
 
     @staticmethod
