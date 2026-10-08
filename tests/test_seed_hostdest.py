@@ -463,15 +463,15 @@ class TestCanonDefaultCategories:
         chapter into its store — it must read the DEFAULT agent's chapter, not
         nothing."""
         cats = core_defaults.canon_default_categories(_Std(tmp_path), "raiju℘claude")
-        assert cats["agent.default.canon"] == "@config.agents/default/canon"
-        assert cats["agent.raiju℘claude.canon"] == "@agent.default.canon"
+        assert cats["agent.default.canon"] == "{config.agents}/default/canon"
+        assert cats["agent.raiju℘claude.canon"] == "{agent.default.canon}"
 
     def test_a_node_whose_store_provides_a_canon_uses_its_own(self, tmp_path):
         (tmp_path / "claude" / "canon").mkdir(parents=True)
         cats = core_defaults.canon_default_categories(_Std(tmp_path), "claude")
-        assert cats["agent.claude.canon"] == "@config.agents/claude/canon"
+        assert cats["agent.claude.canon"] == "{config.agents}/claude/canon"
         # The default tier is STILL declared — it is the fallback for everyone else.
-        assert cats["agent.default.canon"] == "@config.agents/default/canon"
+        assert cats["agent.default.canon"] == "{config.agents}/default/canon"
 
     def test_a_persona_store_canon_is_named_with_the_plus_spelling(self, tmp_path):
         """⚑ THE SPELLING PIN for the canon arm — literal, and a bare agent cannot
@@ -486,7 +486,7 @@ class TestCanonDefaultCategories:
         (tmp_path / "raiju+claude" / "canon").mkdir(parents=True)
         cats = core_defaults.canon_default_categories(_Std(tmp_path), "raiju℘claude")
         assert cats["agent.raiju℘claude.canon"] == (
-            "@config.agents/raiju+claude/canon"
+            "{config.agents}/raiju+claude/canon"
         )
 
     def test_a_shell_box_omits_the_agent_chapter_and_key(self, tmp_path):

@@ -820,14 +820,14 @@ def canon_default_categories(
     # node, while the value and the probe below it are store PATHS and take the ``+``
     # dirname (``agent_config.store_dirname``).
     store_canon = (
-        f"@config.agents/{store_dirname(agent_name)}/canon" if agent_name else None
+        f"{{config.agents}}/{store_dirname(agent_name)}/canon" if agent_name else None
     )
     out: dict[str, object] = {}
     if agent_name:
-        out["agent.default.canon"] = "@config.agents/default/canon"
+        out["agent.default.canon"] = "{config.agents}/default/canon"
         node_store = std.agents / store_dirname(agent_name) / "canon"
         out[f"agent.{agent_name}.canon"] = (
-            store_canon if node_store.is_dir() else "@agent.default.canon"
+            store_canon if node_store.is_dir() else "{agent.default.canon}"
         )
         # ⚑ THE PSEUDO-AGENT ARM RIDES THE SAME GATE (D2): each addressable
         # pseudo-agent's tier is materialized wherever an agent context exists —
@@ -841,8 +841,8 @@ def canon_default_categories(
         for pseudo in sorted(ADDRESSABLE_PSEUDO_AGENTS):
             pseudo_store = std.agents / store_dirname(pseudo) / "canon"
             out[f"agent.{pseudo}.canon"] = (
-                f"@config.agents/{store_dirname(pseudo)}/canon"
-                if pseudo_store.is_dir() else "@config.agents/default/canon"
+                f"{{config.agents}}/{store_dirname(pseudo)}/canon"
+                if pseudo_store.is_dir() else "{config.agents}/default/canon"
             )
 
     for entry in _load_doc().get("canon", []):
