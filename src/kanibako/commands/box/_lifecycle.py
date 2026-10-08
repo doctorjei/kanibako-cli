@@ -730,6 +730,18 @@ def _validate(
         if dest.exists():
             raise ProjectError(f"Destination already exists: {dest}")
 
+    # The name a printed cure lands under: the one asked for, else the box's own, else
+    # none — a name the collision guard below refuses is no cure.
+    asked = [new_name] + ([] if _same_box_name(new_name, state.name) else [state.name])
+    cure_name = next((n for n in asked if _name_held_in_target_workset(
+        target_mode, target_ws, state, n) is None), None)
+    rename = ("" if cure_name is None or _same_box_name(cure_name, state.name)
+              else f" --name {shlex.quote(cure_name)}")
+    held_names = asked if cure_name is None else asked[:asked.index(cure_name)]
+    held_note = (" (" + " and ".join(f"'{n}'" for n in held_names)
+                 + f" already held in workset '{target_ws.name}')"
+                 if held_names and target_ws is not None else "")
+
     # --- an in-tree landing for a NAMED target must be the one leaf the target
     #     records.  Any other in-tree path is copied to by step 2 and copied again to
     #     ``workspaces/<name>`` by step 2b, so the box would record ``workspaces/<name>``
@@ -739,21 +751,17 @@ def _validate(
         ws_dir = target_ws.workspaces_dir
         if (ws_dir is not None and is_in_tree_workspace(target_ws, dest)
                 and dest != (ws_dir / new_name).resolve()):
-            leaf = ws_dir / new_name
-            # Drop ``--name <new_name>`` when it would re-trip the collision guard
-            # below — the user defaults to ``state.name`` (the self exemption).
-            rename = "" if (
-                _same_box_name(new_name, state.name)
-                or _name_held_in_target_workset(
-                    target_mode, target_ws, state, new_name,
-                ) is not None
-            ) else f" --name {shlex.quote(new_name)}"
+            leaf = ws_dir / (cure_name or new_name)
             ref = _cure_ref(state)
             bare = (f"kanibako box convert {ref} --workset {shlex.quote(target_ws.name)} "
                     f"--move{rename}")
             if spec.records_only:
                 advice = (f"Move the files to `{leaf}` and run `kanibako box remap` "
                           "again")
+            elif cure_name is None:
+                advice = (f"Run `kanibako box convert {ref} --workset "
+                          f"{shlex.quote(target_ws.name)} --move --name <name>` with a name "
+                          "no member holds")
             elif spec.verb == "convert":
                 advice = f"Run `{bare}`"
             else:
@@ -761,7 +769,7 @@ def _validate(
                           f"--workset {shlex.quote(target_ws.name)}{rename}` (or `{bare}`)")
             raise ProjectError(
                 f"Refusing to record {dest} for a workset member: inside workset "
-                f"'{target_ws.name}' a member would live at `{leaf}`, and no other "
+                f"'{target_ws.name}' a member would live at `{leaf}`{held_note}, and no other "
                 f"in-tree path is the workspace the box records. {advice}, or "
                 "choose a destination outside the workset."
             )
@@ -775,24 +783,26 @@ def _validate(
         if (landing_leaf is not None
                 and is_in_tree_workspace(target_ws, state.workspace_path)
                 and (landing_leaf / new_name).resolve() != state.workspace_path.resolve()):
-            # Drop ``--name <new_name>`` when it would re-trip the collision guard
-            # below — the user defaults to ``state.name`` (the self exemption).
-            rename = "" if (
-                _same_box_name(new_name, state.name)
-                or _name_held_in_target_workset(
-                    target_mode, target_ws, state, new_name,
-                ) is not None
-            ) else f" --name {shlex.quote(new_name)}"
             ref = _cure_ref(state)
+            ws_q = shlex.quote(target_ws.name)
+            leaf = landing_leaf / (cure_name or new_name)
+            if cure_name is None:
+                cure = (f"Run `kanibako box convert {ref} --workset {ws_q} --move --name "
+                        "<name>` with a name no member holds")
+            elif leaf.resolve() == state.workspace_path.resolve():
+                cure = (f"Run `kanibako box convert {ref} --workset {ws_q}` to convert it "
+                        f"where it stands as '{state.name}'")
+                leaf = landing_leaf / new_name
+            else:
+                cure = (f"Run `kanibako box convert {ref} --workset {ws_q}{rename} --move` "
+                        "to move it there")
             raise ProjectError(
                 f"Refusing to convert '{state.name}' in place: a member of workset "
-                f"'{target_ws.name}' would live at {(landing_leaf / new_name)}, and "
+                f"'{target_ws.name}' would live at {leaf}{held_note}, and "
                 f"'{state.name}' already has its workspace at "
                 f"{state.workspace_path} — an in-place convert would leave that tree "
-                f"behind with no box owning it. Run `kanibako box convert "
-                f"{ref} --workset {shlex.quote(target_ws.name)}{rename} --move` to move it "
-                f"there, or `kanibako box move {ref} <path>` to move it out of "
-                f"the workset."
+                f"behind with no box owning it. {cure}, or `kanibako box move {ref} "
+                "<path>` to move it out of the workset."
             )
 
     # --- membership guard: refuse landing inside a workset the project is

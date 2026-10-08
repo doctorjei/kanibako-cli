@@ -1174,47 +1174,6 @@ class TestInTreeLandingRefused:
                 "--name renamed`") in err
         assert "`kanibako box convert proj --workset ws --move --name renamed`" in err
 
-    def test_the_advice_omits_rename_when_the_new_name_is_held(self, env, capsys):
-        """F1-fix1: held ``--name`` would re-trip the collision guard — drop it."""
-        config, std, tmp_home = env
-        ws = create_workset("ws", tmp_home / "ws_root", std)
-        _named(env, ws, name="renamed")
-        pdir = _default(env, contents="primary")
-        rc = run_move(_move_args(pdir, ws.root / "x", to_workset="ws", name="renamed"))
-        assert rc == 1
-        err = capsys.readouterr().err
-        # The advice must NOT include ``--name renamed`` — that is the fix.
-        # (The canonical leaf in the advice is ``ws_dir / new_name`` regardless.)
-        assert " --name renamed" not in err
-        # The advice still points at the canonical leaf and the move command,
-        # with no rename flag appended.
-        assert (f"kanibako box move proj {ws.workspaces_dir / 'renamed'} "
-                "--workset ws`") in err
-        # The convert-form (bare) variant likewise drops the rename.
-        assert "`kanibako box convert proj --workset ws --move`" in err
-
-    def test_following_the_advice_literally_with_a_held_name_succeeds(self, env, capsys):
-        """F1-fix1: the move form of the advice (rename dropped) lands cleanly."""
-        config, std, tmp_home = env
-        ws = create_workset("ws", tmp_home / "ws_root", std)
-        _named(env, ws, name="renamed")
-        pdir = _default(env, contents="primary")
-        rc = run_move(_move_args(pdir, ws.workspaces_dir / "proj", to_workset="ws"))
-        assert rc == 0, capsys.readouterr().err
-        assert (ws.workspaces_dir / "proj" / "file.txt").read_text() == "primary"
-        from kanibako.project.workset_registry import (
-            load_workset_boxes, resolve_workset_registry_path,
-        )
-        from kanibako.settings.config_io import load_doc
-        from kanibako.settings.paths import _early_scope
-        registry_path = resolve_workset_registry_path(
-            ws.root, load_doc(ws.root / "workset.yaml"),
-            early=_early_scope(std, BoxMode.named, "ws"),
-        )
-        registered = load_workset_boxes(registry_path)
-        assert "renamed" in registered
-        assert "proj" in registered
-
     def test_remap_onto_a_non_canonical_in_tree_path(self, env, capsys):
         """``remap`` records records only, but still not a workspace that never was."""
         config, std, tmp_home = env
@@ -1526,7 +1485,7 @@ def _printed_routes(err):
     return re.findall(r"`(kanibako box (?:convert|move) [^`]+)`", err)
 
 
-def _run_printed(route, *, move_dest=None):
+def _run_printed(route, *, move_dest=None, name=None):
     """Re-dispatch a printed route to the entry point it names.
 
     PIN BY RUNNING, NOT BY TEXT: the argv the refusal printed is what reaches
@@ -1538,6 +1497,8 @@ def _run_printed(route, *, move_dest=None):
     verb, rest = argv[0], list(argv[1:])
     if move_dest is not None:
         rest = [move_dest if a == "<path>" else a for a in rest]
+    if name is not None:
+        rest = [name if a == "<name>" else a for a in rest]
 
     def flag(name):
         return rest[rest.index(name) + 1] if name in rest else None
@@ -1718,6 +1679,111 @@ class TestRefusalCuresReachTheBoxTheyName:
         assert Path(members[0].source_path).resolve() == leaf.resolve()
         assert (leaf / "file.txt").read_text() == "keep"
         assert load_primary_boxes(std.primary_workset, early=_early_scope(std, BoxMode.primary)) == {}
+
+
+class TestCuresAvoidAHeldName:
+    """A cure never names a box name another member of the target workset holds.
+
+    Every printed command is RUN as printed; the sibling holding the name keeps it.
+    """
+
+    def _members(self, env, ws):
+        config, std, tmp_home = env
+        return {p.name: Path(p.source_path).resolve() for p in load_workset(
+            ws.root, ws.name, early_system=std.early_system).projects}
+
+    def _primary_in_leaf(self, env, owner):
+        """A primary box *owner* standing at ``wsa``'s repointed leaf ``extws/beta``."""
+        config, std, tmp_home = env
+        leaf = tmp_home / "extws" / "beta"
+        leaf.mkdir(parents=True)
+        (leaf / "file.txt").write_text("keep")
+        resolve_project(std, config, project_dir=str(leaf), initialize=True,
+                        name_override=owner)
+        ws = create_workset("wsa", tmp_home / "wsa_root", std)
+        dump_doc(ws.root / "workset.yaml", {"workset": {"workspaces": str(leaf.parent)}})
+        return leaf, load_workset(ws.root, "wsa", early_system=std.early_system)
+
+    @pytest.mark.parametrize("route_index", [0, 1])
+    def test_in_tree_landing_cures_drop_a_held_name(self, env, capsys, route_index):
+        """The move form names the leaf its own name reaches, not the held one's."""
+        config, std, tmp_home = env
+        ws = create_workset("ws", tmp_home / "ws_root", std)
+        held = _named(env, ws, name="renamed")
+        pdir = _default(env, contents="primary")
+        assert run_move(_move_args(pdir, ws.root / "x", to_workset="ws",
+                                   name="renamed")) == 1
+        err = capsys.readouterr().err
+        routes = _printed_routes(err)
+        assert len(routes) == 2
+
+        assert _run_printed(routes[route_index]) == 0
+        assert f"would live at `{ws.workspaces_dir / 'proj'}`" in err
+        assert self._members(env, ws) == {
+            "renamed": held.resolve(), "proj": (ws.workspaces_dir / "proj").resolve(),
+        }
+        assert (ws.workspaces_dir / "proj" / "file.txt").read_text() == "primary"
+
+    @pytest.mark.parametrize("owner", ["beta", "foo"])
+    def test_in_place_convert_cure_drops_a_held_name(self, env, capsys, owner):
+        """Under its own name the box either stands at its leaf already (convert it
+        there) or moves to that leaf — never to the held one."""
+        config, std, tmp_home = env
+        leaf, ws = self._primary_in_leaf(env, owner)
+        held = _external_member(env, ws, name="gamma")
+        assert run_convert(_convert_args(owner, to_workset="wsa", name="gamma")) == 1
+        err = capsys.readouterr().err
+        route = _printed_routes(err)[0]
+        own = tmp_home / "extws" / owner
+
+        assert _run_printed(route) == 0
+        if owner == "beta":
+            assert f"would live at {tmp_home / 'extws' / 'gamma'} " in err
+            assert "--move" not in route
+        else:
+            assert f"would live at {own} " in err
+        assert self._members(env, ws) == {"gamma": held.resolve(), owner: own.resolve()}
+        assert (own / "file.txt").read_text() == "keep"
+
+    def test_in_tree_landing_with_both_names_held(self, env, capsys):
+        """Dropping ``--name`` cannot help when the box's own name is held too."""
+        config, std, tmp_home = env
+        ws = create_workset("ws", tmp_home / "ws_root", std)
+        held = _named(env, ws, name="renamed")
+        other = _external_member(env, ws, name="proj")
+        pdir = _default(env, contents="primary")
+        assert run_move(_move_args(pdir, ws.root / "x", to_workset="ws",
+                                   name="renamed")) == 1
+        err = capsys.readouterr().err
+        assert "'renamed' and 'proj' already held in workset 'ws'" in err
+        routes = _printed_routes(err)
+        assert routes == ["kanibako box convert proj --workset ws --move --name <name>"]
+
+        assert _run_printed(routes[0], name="fresh") == 0
+        assert self._members(env, ws) == {
+            "renamed": held.resolve(), "proj": other.resolve(),
+            "fresh": (ws.workspaces_dir / "fresh").resolve(),
+        }
+
+    def test_in_place_convert_with_both_names_held(self, env, capsys):
+        config, std, tmp_home = env
+        leaf, ws = self._primary_in_leaf(env, "beta")
+        gamma = _external_member(env, ws, name="gamma")
+        beta = tmp_home / "beta_elsewhere"
+        beta.mkdir()
+        add_project(ws, "beta", beta, std)
+        assert run_convert(_convert_args("beta", to_workset="wsa", name="gamma")) == 1
+        err = capsys.readouterr().err
+        assert "'gamma' and 'beta' already held in workset 'wsa'" in err
+        route = _printed_routes(err)[0]
+        assert route.endswith("--move --name <name>")
+
+        assert _run_printed(route, name="delta") == 0
+        delta = tmp_home / "extws" / "delta"
+        assert self._members(env, ws) == {
+            "gamma": gamma.resolve(), "beta": beta.resolve(), "delta": delta.resolve(),
+        }
+        assert (delta / "file.txt").read_text() == "keep"
 
 
 class TestRelocationOutOfTheLandingLeaf:
