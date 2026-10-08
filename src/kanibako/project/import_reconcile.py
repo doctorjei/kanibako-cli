@@ -172,6 +172,15 @@ def import_standalone(
         if journal_mod.pending_create(journal, store) is not None:
             return None
 
+    # ⚑ [R188]: a second link to a registered standalone root is refused, not a second box.
+    owner = registry_store.standalone_name_for_same_dir(registry, root)
+    if owner is not None:
+        owner_root = registry_store.standalone_root(registry, owner)
+        raise ImportConflictError(
+            f"{root} is another path to standalone box '{owner}', registered at "
+            f"{owner_root}; a standalone box has one path. Work from {owner_root}."
+        )
+
     # ⚑ The LIVE name, by THE one naming rule; an unregistered box has no stored
     # registry name, so a pre-kuid box falls back to its leaf.
     name = box_resolve.standalone_box_name(root, None)

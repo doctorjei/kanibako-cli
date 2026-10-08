@@ -35,7 +35,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `wsB`; a link to an already-registered working set's directory is that working set and registers nothing. A
   directory reached through a different symlink than the one a box is registered under is not that box.
   Standalone boxes follow the same rule: `box create --standalone`, `box register`, and every lookup keep the path as
-  given. A standalone box registered through a link before this release keeps its resolved path; work from that path, or
+  given, but a second link to a registered standalone root is refused, naming the registered path to work from. A
+  standalone box registered through a link before this release keeps its resolved path; work from that path, or
   `box rm <name>` and then `box register <link>`.
 
 - **A standalone box's root `workset.yaml` now records `registry: null`** beside `workset.kuid`, written at
@@ -637,6 +638,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `--force` is unchanged and still means "skip the confirmation".
 
 ### Fixed
+
+- **Registering a standalone box again through a link drops its stale `deregistered` entry.** After `box rm <name>`
+  and `box register <link>`, the old entry stayed: `box register <name>` refused, and `box rm <name> --purge` could
+  delete the live box's metadata. Registration now drops a retained entry for the same directory, and both commands
+  drop such an entry already left behind without touching the box.
 
 - **`set` now refuses a stored binding whose destination does not resolve**, as `show --effective` does. With
   `box: {bindings: {rw: {"@box.env": ["/h"]}}}` in a file the command reads, `system set`, `workset set`, `box set`
