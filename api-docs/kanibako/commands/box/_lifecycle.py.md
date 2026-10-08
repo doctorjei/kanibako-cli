@@ -42,6 +42,7 @@ def _state_from_paths(owner: str, proj: ProjectPaths, *, ws: Workset | None, ear
 def _workspace_copy_ignore(metadata_root: Path, copied_root: Path, *, mode: BoxMode, early: EarlyScope) -> Callable[[str, list[str]], set[str]]
 def _resolve_target_workset(name: str, std: StandardPaths) -> Workset
 def _cure_ref(state: ProjectState) -> str
+def _name_held_in_target_workset(target_mode: BoxMode | None, target_ws: Workset | None, state: ProjectState, new_name: str) -> str | None
 def _validate(state: ProjectState, spec: TargetSpec, std: StandardPaths, config: BootstrapConfig, *, force: bool, cwd: Path) -> dict
 def _run_steps(state: ProjectState, spec: TargetSpec, std: StandardPaths, config: BootstrapConfig, plan: dict, unwind: _Unwind) -> ProjectState
 def _retire_old_workspace(old: Path, landed: Path) -> None
