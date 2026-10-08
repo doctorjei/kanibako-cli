@@ -1611,7 +1611,7 @@ def test_auth_clean_break_no_group_auth_keys():
     # selection level), which resolves strictly EARLIER than this L4.1 anchor.
     # INVERT: interpolate the name again and the F2 incoherence returns (a --agent
     # launch would resolve the WRONG per-agent credential dir).
-    assert chain["meta.box.auth.workset_path"] == "@workset.auth.path/@system.agent"
+    assert chain["meta.box.auth.workset_path"] == "{workset.auth.path}/{system.agent}"
 
 
 def test_auth_capability_mirror_is_ref_to_agent_slot():
@@ -1620,7 +1620,7 @@ def test_auth_capability_mirror_is_ref_to_agent_slot():
     chain = auth_chain_floor(mode="primary", agent_name="goose")
     assert (
         chain["meta.box.agent.auth.share_support"]
-        == "@meta.agent.goose.auth.share_support"
+        == "{meta.agent.goose.auth.share_support}"
     )
 
 
@@ -2529,7 +2529,7 @@ def test_meta_runtime_floor_requires_literal_for_non_primary():
         meta_runtime_floor(mode="standalone", ws_name="__STANDALONE__")
     # primary ignores the literal.
     floor = meta_runtime_floor(mode="primary", ws_name="__PRIMARY__")
-    assert floor["meta.runtime.ws_root"] == "@config.primary_workset"
+    assert floor["meta.runtime.ws_root"] == "{config.primary_workset}"
 
 
 @pytest.mark.parametrize("mode", ["primary", "named", "standalone"])
@@ -2680,7 +2680,7 @@ class TestMetaAgentNameIsTheStoreDirname:
             floor = self._floor(node, real)
             name = floor[f"meta.agent.{node}.name"]
             assert (
-                f"@config.agents/{name.lower()}" == floor[f"meta.agent.{node}.path"]
+                f"{{config.agents}}/{name.lower()}" == floor[f"meta.agent.{node}.path"]
             ), (node, real)
 
     def test_a_bare_agent_is_byte_identical(self):
@@ -2700,7 +2700,7 @@ class TestMetaAgentNameIsTheStoreDirname:
         """
         floor = self._floor("kirobo", "Kirobo")
         assert floor["meta.agent.kirobo.name"] == "Kirobo"
-        assert floor["meta.agent.kirobo.path"] == "@config.agents/kirobo"
+        assert floor["meta.agent.kirobo.path"] == "{config.agents}/kirobo"
 
     def test_only_the_HARNESS_segment_takes_the_declared_case(self):
         """A persona segment is the user's; neither ruling reaches it (``Q35``).
@@ -2743,9 +2743,9 @@ class TestMetaAgentPath:
         # the KEY is a key path so the node stays canonical (``℘``); the VALUE is a
         # DIRECTORY so it carries the ``+`` store spelling.
         assert floor["meta.agent.navigator℘claude.path"] == (
-            "@config.agents/navigator+claude"
+            "{config.agents}/navigator+claude"
         )
-        assert floor["meta.agent.claude.path"] == "@config.agents/claude"
+        assert floor["meta.agent.claude.path"] == "{config.agents}/claude"
 
     def test_bare_agent_materializes_one_slot(self):
         """node == harness for a bare agent → ONE entry, byte-identical to the
@@ -3963,22 +3963,22 @@ def test_workset_anchor_floor_meta_box_path_per_mode():
 
     for mode in ("primary", "named"):
         floor = workset_anchor_floor(mode=mode)
-        assert floor["meta.box.path"] == "@workset.boxes/@meta.box.name"
-        assert floor["workset.boxes"] == "@meta.workset.path/boxes"
-        assert floor["workset.logs"] == "@meta.workset.path/logs"
+        assert floor["meta.box.path"] == "{workset.boxes}/{meta.box.name}"
+        assert floor["workset.boxes"] == "{meta.workset.path}/boxes"
+        assert floor["workset.logs"] == "{meta.workset.path}/logs"
 
     floor = workset_anchor_floor(mode="standalone")
-    assert floor["meta.box.path"] == "@workset.boxes"
+    assert floor["meta.box.path"] == "{workset.boxes}"
     assert not floor["meta.box.path"].endswith("/")
-    assert floor["workset.boxes"] == "@meta.workset.path/box_data"
-    assert floor["workset.logs"] == "@workset.boxes"
+    assert floor["workset.boxes"] == "{meta.workset.path}/box_data"
+    assert floor["workset.logs"] == "{workset.boxes}"
 
     # The vault roots are UNIFORM in every mode (spec §2c ALL PROJECTS) — only the
     # BOX BIND differs (the per-box subdir a lone box does not need).
     for mode in ("primary", "named", "standalone"):
         floor = workset_anchor_floor(mode=mode)
-        assert floor["workset.vault_ro"] == "@meta.workset.path/vault/ro"
-        assert floor["workset.vault_rw"] == "@meta.workset.path/vault/rw"
+        assert floor["workset.vault_ro"] == "{meta.workset.path}/vault/ro"
+        assert floor["workset.vault_rw"] == "{meta.workset.path}/vault/rw"
 
 
 def _box_root_floor(mode: str) -> dict[str, object]:
@@ -4011,7 +4011,7 @@ def test_meta_box_home_resolves_under_the_box_root_in_every_mode():
     }
     for mode, want in expected.items():
         floor = _box_root_floor(mode)
-        assert floor["meta.box.home"] == "@meta.box.path/home", mode
+        assert floor["meta.box.home"] == "{meta.box.path}/home", mode
         snap = build_launch_snapshot(
             agent_name="claude", ctx=_ctx(),
             system_path=None, agent_path=None, workset_path=None, box_path=None,

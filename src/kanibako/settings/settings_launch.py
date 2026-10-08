@@ -269,7 +269,7 @@ def auth_chain_floor(
         # passes blank today, but P7 made ``""`` a MEANINGFUL value (the D-M6
         # suppression), so the trap is one careless caller away.
         "meta.box.agent.auth.share_support": (
-            f"@meta.agent.{agent_name}.auth.share_support"
+            f"{{meta.agent.{agent_name}.auth.share_support}}"
             if agent_name and agent_name.strip()
             else False
         ),
@@ -282,7 +282,7 @@ def auth_chain_floor(
         # ⚑ SPELLED EXACTLY AS THE SPEC (§2c) rather than interpolated in Python; it
         # is a CONSTANT, the per-box variation arriving through the §1A selection
         # level applied BEFORE this one. No braces needed, both refs EMBEDDED.
-        "meta.box.auth.workset_path": "@workset.auth.path/@system.agent",
+        "meta.box.auth.workset_path": "{workset.auth.path}/{system.agent}",
     }
     if mode == "standalone":
         # A lone box has no workset group → the workset allow keys are the LITERAL
@@ -299,9 +299,9 @@ def auth_chain_floor(
     elif mode is not None:
         # PRIMARY / NAMED (ALL WORKSETS): workset allow defaults to the system
         # gate; the workset dir syncs UP to global by default.
-        floor["workset.auth.share_allowed"] = "@system.auth.share_allowed"
-        floor["workset.auth.global_sync"] = "@system.auth.share_allowed"
-        floor["workset.auth.path"] = "@meta.workset.path/auth"
+        floor["workset.auth.share_allowed"] = "{system.auth.share_allowed}"
+        floor["workset.auth.global_sync"] = "{system.auth.share_allowed}"
+        floor["workset.auth.path"] = "{meta.workset.path}/auth"
     return floor
 
 
@@ -369,7 +369,7 @@ def meta_runtime_floor(
     #   named      → the detected workset root literal;
     #   standalone → the runtime project dir literal.
     if mode == "primary":
-        floor["meta.runtime.ws_root"] = "@config.primary_workset"
+        floor["meta.runtime.ws_root"] = "{config.primary_workset}"
     else:
         if ws_root_literal is None:
             raise SettingsError(
@@ -379,18 +379,18 @@ def meta_runtime_floor(
         floor["meta.runtime.ws_root"] = literal_expr(ws_root_literal)
 
     # Single-source re-root (spec §1A; §2c) — UNIFORM all modes.
-    floor["meta.workset.path"] = "@meta.runtime.ws_root"
+    floor["meta.workset.path"] = "{meta.runtime.ws_root}"
     # ⚑ The SPEC's own spelling (§2c), chaining through the anchor set one line up.
     # Spelling it off @meta.runtime.ws_root would resolve to the byte-identical value
     # but DIVERGE from the spec, and the spec is authority.  ⚑ The FILENAME is drawn
     # from its one carrier, exactly as the agent-tier formula below does — the spec
     # fixes the @-anchor, not a hand-typed leaf.
-    floor["meta.workset.settings"] = f"@meta.workset.path/{WORKSET_META_FILE}"
+    floor["meta.workset.settings"] = f"{{meta.workset.path}}/{WORKSET_META_FILE}"
     # The SINGLE SOURCE for the partition token; block B2 no longer sets it directly.
-    floor["meta.workset.name"] = "@meta.runtime.ws_name"
+    floor["meta.workset.name"] = "{meta.runtime.ws_name}"
     # The RO identity anchor surfacing the runtime mode (spec §2b; was the settable
     # box.mode config-set key, dropped this block).
-    floor["meta.box.mode"] = "@meta.runtime.project_type"
+    floor["meta.box.mode"] = "{meta.runtime.project_type}"
 
     return floor
 
@@ -448,7 +448,7 @@ def meta_agent_path_floor(agent_name: str) -> dict[str, object]:
     # while every other composer named ``agents/Nav+claude/``. The node is what holds
     # this key and the rest of the tree in agreement.
     return {
-        f"meta.agent.{store_agent}.path": f"@config.agents/{store_dirname(store_agent)}"
+        f"meta.agent.{store_agent}.path": f"{{config.agents}}/{store_dirname(store_agent)}"
         for store_agent in {agent_name, harness_of(agent_name)}
     }
 
@@ -637,7 +637,7 @@ def meta_agent_identity_floor(
     # formula, resolved transitively through the sibling ``path`` anchor — the
     # SAME file ``agent_settings_path`` composes.
     floor[f"meta.agent.{agent_name}.settings"] = (
-        f"@meta.agent.{agent_name}.path/{AGENT_META_FILE}"
+        f"{{meta.agent.{agent_name}.path}}/{AGENT_META_FILE}"
     )
     # ⚑ The agent's credential-SHARING CAPABILITY: plugin-set, RO — the hard
     # floor a user can't fake. The auth chain's mirror views UP to this key, so
@@ -787,22 +787,22 @@ def workset_anchor_floor(
         # boxes/logs are PER-MODE; the vault roots are UNIFORM (§2c ALL PROJECTS) —
         # only the box BIND differs per mode.
         "workset.boxes": (
-            "@meta.workset.path/box_data" if standalone else "@meta.workset.path/boxes"
+            "{meta.workset.path}/box_data" if standalone else "{meta.workset.path}/boxes"
         ),
-        "workset.vault_ro": "@meta.workset.path/vault/ro",
-        "workset.vault_rw": "@meta.workset.path/vault/rw",
-        "workset.logs": "@workset.boxes" if standalone else "@meta.workset.path/logs",
+        "workset.vault_ro": "{meta.workset.path}/vault/ro",
+        "workset.vault_rw": "{meta.workset.path}/vault/rw",
+        "workset.logs": "{workset.boxes}" if standalone else "{meta.workset.path}/logs",
         # The RO per-mode BOX ROOT — the anchor every rooted box key spells itself
         # against. STANDALONE is the EMPTY LEAF (a bare whole-value ref).
         "meta.box.path": (
-            "@workset.boxes" if standalone else "@workset.boxes/@meta.box.name"
+            "{workset.boxes}" if standalone else "{workset.boxes}/{meta.box.name}"
         ),
         # ⚑ THE ONLY SPELLING of the box home: it does NOT route through
         # ``bindings.rw`` (spec ``:1015``) — the assembly seam READS THIS KEY to build
         # the pid-0 foundation bind, so this line is what every launch's home mount
         # resolves through. Do not re-inline the formula anywhere downstream, and do
         # not re-derive it from ``proj.shell_path``.
-        BOX_HOME_KEY: "@meta.box.path/home",
+        BOX_HOME_KEY: "{meta.box.path}/home",
         # The per-scope CANON CONTRIBUTION roots (spec §2c/§2b). UNIFORM in every mode
         # with no ``<None>`` carve-out, which is only safe because the chapter binds
         # they feed are SKIP-IF-ABSENT.
@@ -812,8 +812,8 @@ def workset_anchor_floor(
         # into the assembled ``~/canon/handbook/box``. The box's assembled guest view
         # lives at ``<box_dir>/home/canon`` and arrives through the home bind. Same
         # word, adjacent paths, opposite directions of travel.
-        "workset.canon": "@meta.workset.path/canon",
-        "box.canon": "@meta.box.path/canon",
+        "workset.canon": "{meta.workset.path}/canon",
+        "box.canon": "{meta.box.path}/canon",
         # The advisory kuid-CHECK knob, UNIFORM (the manifest declares one bool, not a
         # per-mode map). ⚑ Same defect as ``workset.channelroot`` below: declared with a
         # default and emitted by no floor, so ``@workset.skip_kuid_check`` dangled in
@@ -843,7 +843,7 @@ def workset_anchor_floor(
         # ⚑ The registry is spelled as the spec's own @-ref FORMULA, like every anchor
         # above — not as the resolved literal ``project/workset_registry.py`` joins at
         # use, which would make this a second carrier of one path.
-        floor["workset.registry"] = "@meta.workset.path/registry.yaml"
+        floor["workset.registry"] = "{meta.workset.path}/registry.yaml"
         # The LAYER-3 SEED SOURCE (spec §2c/§2a) — same defect, same fix. Its value was
         # spelled ONLY by ``launch.templates.template_seed_defaults``, and that table
         # feeds the CREATE-time seed resolve alone, so for a box that ALREADY EXISTS
@@ -851,7 +851,7 @@ def workset_anchor_floor(
         # table now REFERENCES the key instead of declaring it, so this line is the one
         # spelling — and the ``template`` leaf itself still comes from the constant
         # ``launch.templates`` owns.
-        floor["workset.template"] = f"@meta.workset.path/{AGENT_TEMPLATE_STORE_REL}"
+        floor["workset.template"] = f"{{meta.workset.path}}/{AGENT_TEMPLATE_STORE_REL}"
         # ⚑ ``kuid.SENTINEL``, never a re-typed "00000": the sentinel's unmintable even
         # parity is what makes PRESENT-SENTINEL ("no kuid stored") distinguishable from
         # a wrong one, and that property lives with the codec.
