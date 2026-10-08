@@ -1241,6 +1241,27 @@ class TestLazyInitExemptions:
         assert (tmp_path / "config" / CONFIG_FILENAME).exists()
 
 
+
+class TestCreateRefusesBeforeFirstRunSetup:
+    """A ``create`` refusal that needs no settings writes nothing in a fresh HOME."""
+
+    @pytest.mark.parametrize("argv, cwd_is_home", [
+        (["create", "--name=-bad", "target"], False),
+        (["box", "create", "--name=-bad"], False),
+        (["create"], True),
+        (["box", "create", "--standalone"], True),
+    ])
+    def test_refusal_writes_nothing(self, tmp_home, monkeypatch, argv, cwd_is_home):
+        from kanibako.cli import main
+
+        if cwd_is_home:
+            monkeypatch.chdir(tmp_home / "home")
+        before = sorted(tmp_home.rglob("*"))
+        with pytest.raises(SystemExit) as exc_info:
+            main(argv)
+        assert exc_info.value.code == 1
+        assert sorted(tmp_home.rglob("*")) == before
+
 class TestVerboseFlag:
     def test_verbose_short_sets_debug(self):
         from kanibako.cli import main

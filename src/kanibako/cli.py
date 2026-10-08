@@ -72,6 +72,7 @@ def build_parser() -> argparse.ArgumentParser:
     from kanibako.commands.image import add_parser as add_rig_parser
     from kanibako.commands.box import add_parser as add_box_parser
     from kanibako.commands.box._parser import (
+        precheck_create,
         run_create,
         run_list as run_list_fn,
         run_ps,
@@ -174,7 +175,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="Finish an interrupted 'create' on this path instead of starting a "
              "new box; it keeps the name and settings the first attempt chose",
     )
-    create_p.set_defaults(func=run_create)
+    create_p.set_defaults(func=run_create, precheck=precheck_create)
 
     # rm — top-level alias for box rm
     rm_p = subparsers.add_parser("rm", help="Remove a project")
@@ -586,6 +587,11 @@ def main(argv: list[str] | None = None) -> None:
             and getattr(args, "box_command", None) in ("helper", "fork")
         )
         try:
+            # ⚑ A command's settings-free refusals run BEFORE first-run setup writes.
+            precheck = getattr(args, "precheck", None)
+            refused = precheck(args) if precheck is not None else None
+            if refused is not None:
+                sys.exit(refused)
             _setup_nudge(args)
             if not skip_init:
                 _ensure_initialized()

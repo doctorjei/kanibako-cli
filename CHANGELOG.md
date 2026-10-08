@@ -639,6 +639,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A refused `create` on a fresh install no longer leaves the first-run setup behind.** An invalid `--name`
+  and the `$HOME` guard now refuse before setup writes `kanibako.cfg` and the data tree.
+
 - **Registering a standalone box again through a link drops its stale `deregistered` entry.** After `box rm <name>`
   and `box register <link>`, the old entry stayed: `box register <name>` refused, and `box rm <name> --purge` could
   delete the live box's metadata. Registration now drops a retained entry for the same directory, and both commands

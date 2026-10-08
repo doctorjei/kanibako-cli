@@ -26,6 +26,7 @@ _StandaloneTeardown = tuple[list[Path], list[Path], 'Path | None', str]
 ## Functions
 ```
 def add_parser(subparsers: argparse._SubParsersAction) -> None
+def precheck_create(args: argparse.Namespace) -> int | None
 def run_create(args: argparse.Namespace) -> int
 def run_ps(args: argparse.Namespace) -> int
 def run_list(args: argparse.Namespace) -> int
@@ -48,6 +49,7 @@ def _new_member_undo(ws: Workset, name: str) -> Callable[[], None]
 def _new_box_undo(std, probe, *, standalone: bool) -> tuple[Callable[[], None], Callable[[str], None]]
 def _claim_create_entry(std, probe, state: dict, *, primary: bool) -> 'dict | None'
 def _recovered_standalone_name(std, proj, supplied: str) -> str
+def _create_target(args: argparse.Namespace) -> Path
 def _list_orphans(projects: list, ws_data: list, std, quiet: bool) -> int
 def _purge_dir(target: Path) -> bool
 def _assert_deletable(path, *, must_be_under: Path | None=None) -> Path
