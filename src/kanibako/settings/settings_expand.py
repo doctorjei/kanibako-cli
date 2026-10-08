@@ -47,7 +47,7 @@ from typing import Callable, cast, overload
 
 from kanibako.settings.kb_store import Bind, BindEntry, StoreValue, __MISSING__
 from kanibako.settings.keystore import KeyStore
-from kanibako.settings.settings_categories import BARE_RELATIVE_SOURCE_HAZARD
+from kanibako.settings.settings_categories import BARE_RELATIVE_SOURCE_HAZARD, _shape_phrase
 from kanibako.settings.settings_keyspace import KeyClass, entry_label
 from kanibako.settings.settings_keyspace_probe import keyspace_verdict
 from kanibako.settings.settings_resolve import (
@@ -479,8 +479,7 @@ class _Expander:
                 f"Binding destination {key!r} references {state} config key; "
                 f"a box destination cannot resolve to no path."
             )
-        assert isinstance(dest, str)
-        return dest
+        return self._require_path(key, dest, "box destination", chain=(".".join(chain),))
 
     def _expand_leaf(
         self, value: StoreValue, *, path: tuple[str, ...]
@@ -533,6 +532,22 @@ class _Expander:
             f"absolute path, '~/...', '$XDG_*/...' or an '@'-ref."
         )
 
+    @staticmethod
+    def _require_path(
+        raw: str, got: StoreValue | _Absent, what: str, *, chain: tuple[str, ...],
+    ) -> str:
+        """*got*, the expansion of the path *raw*, if it is a string; else a named refusal.
+
+        A whole-value ``@``-ref inherits its referent's value, so one naming a table or
+        a number yields no path at all.
+        """
+        if isinstance(got, str):
+            return got
+        raise _ExpandedShapeError(
+            f"{chain[0]} declares the {what} {raw!r}, which resolved to "
+            f"{_shape_phrase(got)} — not a path. Reference a key that holds one path."
+        )
+
     def _expand_bind(self, bind: Bind, *, chain: tuple[str, ...]) -> StoreValue | _Absent:
         """Expand a :class:`Bind`: ``host_src`` fully host-side; ``box_dest``
         ``@``-refs only (``$XDG``/``~`` left RAW, deferred box-side — S17).
@@ -556,8 +571,8 @@ class _Expander:
                 f"Bind box_dest {bind.box!r} references {state} config key; "
                 f"a box destination cannot resolve to no path."
             )
-        assert isinstance(host, str)
-        assert isinstance(box, str)
+        host = self._require_path(bind.host, host, "host source", chain=chain)
+        box = self._require_path(bind.box, box, "box destination", chain=chain)
         self._refuse_relative_host_src(bind.host, host, chain=chain)
         return Bind(host, box, bind.opts)
 
@@ -581,7 +596,7 @@ class _Expander:
         )
         if src is _ABSENT or src is None:
             return src
-        assert isinstance(src, str)
+        src = self._require_path(entry.src, src, "host source", chain=chain)
         self._refuse_relative_host_src(entry.src, src, chain=chain)
         return BindEntry(src, entry.opts)
 

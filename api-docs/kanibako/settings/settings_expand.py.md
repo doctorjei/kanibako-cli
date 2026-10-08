@@ -62,6 +62,8 @@ class _Expander:
     def _expand_dest_key(self, key: str, value: StoreValue, *, chain: tuple[str, ...], seed: bool=False) -> str | None
     def _expand_leaf(self, value: StoreValue, *, path: tuple[str, ...]) -> StoreValue | _Absent
     def _refuse_relative_host_src(self, raw: str, expanded: str, *, chain: tuple[str, ...]) -> None
+    @staticmethod
+    def _require_path(raw: str, got: StoreValue | _Absent, what: str, *, chain: tuple[str, ...]) -> str
     def _expand_bind(self, bind: Bind, *, chain: tuple[str, ...]) -> StoreValue | _Absent
     def _expand_bind_entry(self, entry: BindEntry, *, chain: tuple[str, ...], null_refs: list[str] | None=None) -> StoreValue | _Absent
     def _expand_str(self, value: str, *, space: str, chain: tuple[str, ...], null_refs: list[str] | None=None) -> StoreValue | _Absent
