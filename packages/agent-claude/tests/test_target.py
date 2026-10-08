@@ -493,7 +493,7 @@ class TestDefaultShares:
     The old PROJECT ``resource_mappings`` abstraction was deleted (those dirs live
     in the box home bind, fresh per box); plugins + cache are now entries in the
     ONE TERMINAL category key ``agent.claude.common``, ROOTED AT DECLARATION under
-    the agent store root ``@meta.agent.claude.path`` (spec §2a).
+    the agent store root ``{meta.agent.claude.path}`` (spec §2a).
 
     ⚑ ``common`` went DEST-KEYED 2026-08-08c: the box DESTINATION is the map key
     and the entry NAME is gone, so a value is ``(host_src,)`` — the dest left the
@@ -506,14 +506,14 @@ class TestDefaultShares:
         # STRUCTURED form (spec §2a): ONE terminal key whose value is the whole
         # dest-keyed map {box_dest: (host_src,)}, NOT a colon-joined string and
         # NOT a key per entry.  The host_src is the STORED, fully self-resolving
-        # @-ref — no layer prepends a root later (§2a).
+        # braced ref — no layer prepends a root later (§2a).
         assert common_binds == {
             "agent.claude.common": {
                 "/home/agent/.claude/plugins": (
-                    "@meta.agent.claude.path/common/plugins",
+                    "{meta.agent.claude.path}/common/plugins",
                 ),
                 "/home/agent/.claude/cache": (
-                    "@meta.agent.claude.path/common/cache",
+                    "{meta.agent.claude.path}/common/cache",
                 ),
             },
         }
@@ -522,12 +522,12 @@ class TestDefaultShares:
         """host_src RESOLVES ON ITS OWN (spec §2a).
 
         ⚑ The pre-P3 form of this test asserted ``not host_src.startswith("/")``,
-        which an ``@``-ref also satisfies — it would have passed VACUOUSLY over the
+        which a key ref also satisfies — it would have passed VACUOUSLY over the
         new shape while guarding nothing.  Inverted: assert the anchored form
         positively, so a regression to a bare leaf is RED.
 
         ⚑ The DESTINATION is now the map KEY, so the same walk asserts it there —
-        an ``@``-ref that leaked into the key position would be RED on the dest
+        a key ref that leaked into the key position would be RED on the dest
         check rather than passing unexamined.
         """
         from kanibako.settings.agent_config import is_self_resolving
@@ -537,7 +537,7 @@ class TestDefaultShares:
         for box_dest, value in arm.items():
             host_src = value[0]
             assert is_self_resolving(host_src), box_dest
-            assert host_src.startswith("@meta.agent.claude.path/common/"), box_dest
+            assert host_src.startswith("{meta.agent.claude.path}/common/"), box_dest
             assert box_dest.startswith("/home/agent/.claude/")
 
 
@@ -556,7 +556,7 @@ class TestDefaultCategoryBinds:
         assert ClaudeTarget().default_category_binds() == {
             "agent.claude.caches": {
                 "{system.cache}/tweakcc": (
-                    "@meta.agent.claude.path/caches/tweakcc",
+                    "{meta.agent.claude.path}/caches/tweakcc",
                 ),
             },
         }
