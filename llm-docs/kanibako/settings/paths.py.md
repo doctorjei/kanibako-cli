@@ -1604,9 +1604,7 @@ lives.
 ⚑ STANDALONE paths are derived from the (current) root, never the stored absolutes: the DEFAULT
 formulas are all `@`-anchored to the root (`@meta.workset.path/…`), so a default-shaped tree is
 drop-in portable BY CONSTRUCTION — a moved/imported tree resolves against its new location. A stored
-ABSOLUTE repoint (e.g. `workset.workspaces`) is the user's own choice and travels as written. The
-`resolved.*` section in `settings.yaml` is advisory only (BUG#1 fix); home/vault always live at the
-fixed `box_data/home` + `<root>/vault/{ro,rw}` positions.
+ABSOLUTE repoint (e.g. `workset.workspaces`) is the user's own choice and travels as written.
 
 `enable_vault` (P5a): explicit param wins; else the box-scope `box.enable_vault` resolved through
 the CASCADE by `config.resolve_box_enable_vault` — `base < system < workset < box`, the BOX tier
