@@ -203,8 +203,14 @@ def project_hash(project_path: str) -> str:
 
 
 def literal_path(value: str | os.PathLike[str]) -> str:
-    """*value* absolute and normalized, links unfollowed: box identity's form."""
-    return os.path.normpath(os.path.abspath(value))
+    """*value* absolute and normalized, links unfollowed: box identity's form.
+
+    A relative *value* joins :func:`logical_cwd`, the directory as the user reached it.
+    """
+    text = os.fspath(value)
+    if not os.path.isabs(text):
+        text = os.path.join(logical_cwd(), text)
+    return os.path.normpath(text)
 
 
 def logical_cwd() -> str:
@@ -212,7 +218,7 @@ def logical_cwd() -> str:
     pwd = os.environ.get("PWD", "")
     try:
         if os.path.isabs(pwd) and os.path.samefile(pwd, "."):
-            return literal_path(pwd)
+            return os.path.normpath(pwd)
     except OSError:
         pass
     return os.getcwd()

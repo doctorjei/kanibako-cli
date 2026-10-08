@@ -88,9 +88,9 @@ def _run_duplicate_cross_mode(args: argparse.Namespace, std, config) -> int:
         return _duplicate_to_workset(args, std, config)
 
     source_path = Path(literal_path(args.source_path))
-    new_path = Path(args.new_path).resolve()
+    new_path = Path(literal_path(args.new_path))
 
-    if new_path in (source_path, source_path.resolve()):
+    if new_path == source_path or new_path.resolve() == source_path.resolve():
         print("Error: source and destination paths are the same.", file=sys.stderr)
         return 1
 
@@ -822,10 +822,10 @@ def run_duplicate(args: argparse.Namespace) -> int:
             return _run_duplicate_cross_mode(args, std, config)
 
     source_path = Path(literal_path(args.source_path))
-    new_path = Path(args.new_path).resolve()
+    new_path = Path(literal_path(args.new_path))
 
     # 1. Paths must differ.
-    if new_path in (source_path, source_path.resolve()):
+    if new_path == source_path or new_path.resolve() == source_path.resolve():
         print("Error: source and destination paths are the same.", file=sys.stderr)
         return 1
 

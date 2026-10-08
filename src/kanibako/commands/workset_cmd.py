@@ -27,7 +27,7 @@ from kanibako.settings.paths import (
     primary_box_name_for_workspace,
     workset_settings_path,
 )
-from kanibako.utils import confirm_prompt
+from kanibako.utils import confirm_prompt, literal_path, logical_cwd
 from kanibako.identifiers import find_identifier
 from kanibako.project.workset_registry import (
     load_workset_boxes,
@@ -391,8 +391,6 @@ _STANDALONE_REFUSAL = (
 
 
 def run_create(args: argparse.Namespace) -> int:
-    import os
-
     # ⚑ FIRST, before any path work or store read: the refusal is a pure argv verdict,
     # and a working set half-registered before it would be the defect twice over.
     if getattr(args, "standalone", False):
@@ -400,10 +398,7 @@ def run_create(args: argparse.Namespace) -> int:
         return 1
 
     std = _load_std()
-    path = args.path
-    if path is None:
-        path = os.getcwd()
-    path = Path(path).resolve()
+    path = Path(literal_path(args.path if args.path is not None else logical_cwd()))
     name = args.name or path.name
 
     # ⚑ PRE-FLIGHT the workset mold BEFORE anything is registered or created — a
@@ -583,7 +578,7 @@ def run_connect(args: argparse.Namespace) -> int:
         print(f"Error: {e}", file=sys.stderr)
         return 1
 
-    source = Path(args.source) if args.source else Path(os.getcwd())
+    source = Path(args.source) if args.source else Path(logical_cwd())
     project_name = args.project_name or source.resolve().name
 
     # ⚑ EVERY REFUSAL BELOW FIRES BEFORE THE JOURNAL BRACKET, so a refused connect leaves
@@ -636,7 +631,7 @@ def run_connect(args: argparse.Namespace) -> int:
 
     # ⚑ ONE BOX PER WORKSPACE: a primary box's workspace is never connected.  In-tree,
     # the in-place cure must land on THIS leaf, so it carries the leaf's name.
-    owner = primary_box_name_for_workspace(std.primary_workset, str(resolved),
+    owner = primary_box_name_for_workspace(std.primary_workset, literal_path(source),
                                            early=_early_scope(std, BoxMode.primary))
     if owner is not None:
         rename = (f" --name {shlex.quote(project_name)}"
@@ -660,7 +655,7 @@ def run_connect(args: argparse.Namespace) -> int:
         with _journal_connect(
             std.journal, ws.projects_dir / project_name,
             name=project_name, workset=ws.name,
-            workspace=str(source.resolve()),
+            workspace=literal_path(source),
         ):
             proj = add_project(ws, project_name, source, std, force=args.force)
     except WorksetError as e:

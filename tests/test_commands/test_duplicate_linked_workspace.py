@@ -227,3 +227,39 @@ class TestMergeWorkspaceStillRefusesToLinkIntoARoot:
 
         assert dst.is_symlink()
         assert os.path.realpath(dst) == os.path.realpath(real)
+
+
+class TestADuplicateThroughALinkedParentIsFoundThere:
+    def test_the_destination_is_registered_at_the_path_given(
+        self, config_file, tmp_home, credentials_dir, capsys,
+    ):
+        from kanibako.launch.box_resolve import resolve_box_identity
+
+        config, std, leaf = _member_with_workspace(
+            tmp_home, config_file, "app", tmp_home / "outside_app", linked=False)
+        real = tmp_home / "real"
+        real.mkdir()
+        alias = tmp_home / "alias"
+        alias.symlink_to(real)
+        dest = alias / "dup"
+
+        rc = _dup(config, leaf, dest, "primary")
+        cap = capsys.readouterr()
+
+        assert rc == 0, cap.out + cap.err
+        identity = resolve_box_identity(dest, std, config)
+        assert identity is not None
+        assert (identity["name"], identity["workspace"]) == ("dup", dest)
+
+    def test_a_destination_linking_to_the_source_is_the_same_path(
+        self, config_file, tmp_home, credentials_dir, capsys,
+    ):
+        config, std, leaf = _member_with_workspace(
+            tmp_home, config_file, "app", tmp_home / "outside_app", linked=False)
+        dest = tmp_home / "same"
+        dest.symlink_to(leaf)
+
+        rc = _dup(config, leaf, dest, "primary")
+
+        assert rc == 1
+        assert "source and destination paths are the same" in capsys.readouterr().err
