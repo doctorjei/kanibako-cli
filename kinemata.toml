@@ -1576,10 +1576,11 @@ suffixes = [".py"]
 # CATCHES: a British form anywhere a `raw` scan reads, as a whole word or as a
 # piece of an identifier (`_` or camelCase joined): each pattern
 # ends at a non-lowercase letter, so a camelCase or `_` boundary still matches.
-# NOT CAUGHT: files under `[project] exclude` -- the test trees. The exclusion is
-# project-wide and a registry cannot narrow it, so the tests are unchecked here
-# (NOT EXPRESSIBLE, [R160]); a pytest guard in its place would be the bespoke
-# check that rule retires.
+# The tail also refuses an uppercase letter after an uppercase one, so an
+# all-caps word reads as its lowercase form does: ENROLLED, PROGRAMMED,
+# GREYHOUND, ANALYSES, and EXCHEQUER are American and do not fire.
+# Since kinemata 0.5.4 the entries with no `home` also read the test trees under
+# `[project] exclude`; the one entry with a `home` still skips them.
 # Every pattern breaks its own word with a one-letter class (`[u]`) so this file
 # does not spell what it forbids.
 # The one `home`: CHANGELOG and MIGRATION spell the retired predecessor of
@@ -1597,33 +1598,33 @@ suffixes = [
 
   [[registry.entry]]
   id = "our"
-  antipatterns = ['''(?i)(behavio|colo|favo|flavo|hono|labo|neighbo|harbo|humo|rumo|vapo|odo|armo|vigo|rigo|savio|endeavo|tumo|parlo|splendo|clamo|cando|ardo|fervo|valo|savo|demeano)[u]r(s|ed|ing|al|ally|able|ably|ite|ites|ful|less|er|ers|hood|hoods|ist)?(?-i:(?![a-z]))''']
+  antipatterns = ['''(?i)(behavio|colo|favo|flavo|hono|labo|neighbo|harbo|humo|rumo|vapo|odo|armo|vigo|rigo|savio|endeavo|tumo|parlo|splendo|clamo|cando|ardo|fervo|valo|savo|demeano)[u]r(s|ed|ing|al|ally|able|ably|ite|ites|ful|less|er|ers|hood|hoods|ist)?(?-i:(?![a-z])(?!(?<=[A-Z])[A-Z]))''']
   note = "-our: behavior, color, honor, neighbor"
 
   [[registry.entry]]
   id = "ise"
-  antipatterns = ['''(?i)(absolut|author|canonical|capital|central|character|custom|synchron|general|harmon|initial|internal|material|memo|neutral|normal|optim|parametr|parenthes|recogn|relativ|serial|summar|synthes|real|organ|util|special|minim|maxim|standard|visual|categor|priorit|emphas|apolog|critic|final|local|global|personal|stabil|sanit|token|legal|modern|fantas|familiar|formal|mobil|penal|politic|random|rational|tantal|trivial|vapor|verbal)[i]s(e|es|ed|edly|ing|ingly|er|ers|ation|ations|able|ably|ability)(?-i:(?![a-z]))''']
+  antipatterns = ['''(?i)(absolut|author|canonical|capital|central|character|custom|synchron|general|harmon|initial|internal|material|memo|neutral|normal|optim|parametr|parenthes|recogn|relativ|serial|summar|synthes|real|organ|util|special|minim|maxim|standard|visual|categor|priorit|emphas|apolog|critic|final|local|global|personal|stabil|sanit|token|legal|modern|fantas|familiar|formal|mobil|penal|politic|random|rational|tantal|trivial|vapor|verbal)[i]s(e|es|ed|edly|ing|ingly|er|ers|ation|ations|able|ably|ability)(?-i:(?![a-z])(?!(?<=[A-Z])[A-Z]))''']
   note = "-ize: materialize, recognize, normalize"
 
   [[registry.entry]]
   id = "yse"
-  antipatterns = ['''(?i)(analy|paraly|cataly)[s](e|ed|ing|er|ers|able)(?-i:(?![a-z]))''']
+  antipatterns = ['''(?i)(analy|paraly|cataly)[s](e|ed|ing|er|ers|able)(?-i:(?![a-z])(?!(?<=[A-Z])[A-Z]))''']
   note = "-yze as a verb: analyze; the plural noun `analyses` is American"
 
   [[registry.entry]]
   id = "doubled-l"
-  antipatterns = ['''(?i)(label|model|travel|signal|funnel|journal|level|fuel|dial|tunnel|channel|total|equal|rival|marvel|quarrel|counsel|panel|pedal|shovel|swivel|unravel|revel|chisel|duel|enamel|libel|parcel|yodel|grovel|bevel|spiral)l(ed|ing|er|ers)(?-i:(?![a-z]))''']
+  antipatterns = ['''(?i)(label|model|travel|signal|funnel|journal|level|fuel|dial|tunnel|channel|total|equal|rival|marvel|quarrel|counsel|panel|pedal|shovel|swivel|unravel|revel|chisel|duel|enamel|libel|parcel|yodel|grovel|bevel|spiral)l(ed|ing|er|ers)(?-i:(?![a-z])(?!(?<=[A-Z])[A-Z]))''']
   note = "one l before an unstressed suffix: labeled, modeled, signaler"
 
   [[registry.entry]]
   id = "cancel"
-  antipatterns = ['''(?i)cancel[l](ed|ing|er|ers)(?-i:(?![a-z]))''']
+  antipatterns = ['''(?i)cancel[l](ed|ing|er|ers)(?-i:(?![a-z])(?!(?<=[A-Z])[A-Z]))''']
   home = ["CHANGELOG.md", "MIGRATION.md"]
   note = "canceled, canceling; `cancellation` is American"
 
   [[registry.entry]]
   id = "ence"
-  antipatterns = ['''(?i)(defen|offen|preten|licen)[c]e(s|d|less)?(?-i:(?![a-z]))''']
+  antipatterns = ['''(?i)(defen|offen|preten|licen)[c]e(s|d|less)?(?-i:(?![a-z])(?!(?<=[A-Z])[A-Z]))''']
   note = "defense, offense, pretense, and license as a noun"
 
   [[registry.entry]]
@@ -1638,45 +1639,43 @@ suffixes = [
 
   [[registry.entry]]
   id = "gray"
-  antipatterns = ['''(?i)(?:(?<![a-z])|(?-i:(?=[A-Z])))gr[e]y(s|ed|ing|ish)?(?-i:(?![a-z]))''']
+  antipatterns = ['''(?i)(?:(?<![a-z])|(?-i:(?=[A-Z])))gr[e]y(s|ed|ing|ish)?(?-i:(?![a-z])(?!(?<=[A-Z])[A-Z]))''']
   note = "gray"
 
   [[registry.entry]]
   id = "program"
-  antipatterns = ['''(?i)program[m]e(s)?(?-i:(?![a-z]))''']
+  antipatterns = ['''(?i)program[m]e(s)?(?-i:(?![a-z])(?!(?<=[A-Z])[A-Z]))''']
   note = "program; `programmer` and `programmed` are American"
 
   [[registry.entry]]
   id = "past-t"
-  antipatterns = ['''(?i)(?:(?<![a-z])|(?-i:(?=[A-Z])))(misspe[l]t|spe[l]t|lear[n]t|drea[m]t)(?-i:(?![a-z]))''']
+  antipatterns = ['''(?i)(?:(?<![a-z])|(?-i:(?=[A-Z])))(misspe[l]t|spe[l]t|lear[n]t|drea[m]t)(?-i:(?![a-z])(?!(?<=[A-Z])[A-Z]))''']
   note = "spelled, misspelled, learned, dreamed"
 
   [[registry.entry]]
   id = "re"
-  antipatterns = ['''(?i)(?:(?<![a-z])|(?-i:(?=[A-Z])))(theat|cent|met|lit|fib|calib)[r]e(s|d)?(?-i:(?![a-z]))''']
+  antipatterns = ['''(?i)(?:(?<![a-z])|(?-i:(?=[A-Z])))(theat|cent|met|lit|fib|calib)[r]e(s|d)?(?-i:(?![a-z])(?!(?<=[A-Z])[A-Z]))''']
   note = "theater, center, meter, liter, fiber, caliber"
 
   [[registry.entry]]
   id = "aging"
-  antipatterns = ['''(?i)(?:(?<![a-z])|(?-i:(?=[A-Z])))ag[e]ing(?-i:(?![a-z]))''']
+  antipatterns = ['''(?i)(?:(?<![a-z])|(?-i:(?=[A-Z])))ag[e]ing(?-i:(?![a-z])(?!(?<=[A-Z])[A-Z]))''']
   note = "aging"
 
   [[registry.entry]]
   id = "ogue"
-  antipatterns = ['''(?i)(catalog|analog)[u](e|es|ed|ing)(?-i:(?![a-z]))''']
+  antipatterns = ['''(?i)(catalog|analog)[u](e|es|ed|ing)(?-i:(?![a-z])(?!(?<=[A-Z])[A-Z]))''']
   note = "catalog, analog"
 
   [[registry.entry]]
   id = "mold"
-  antipatterns = ['''(?i)(?:(?<![a-z])|(?-i:(?=[A-Z])))mou[l]d(s|ed|ing)?(?-i:(?![a-z]))''']
+  antipatterns = ['''(?i)(?:(?<![a-z])|(?-i:(?=[A-Z])))mou[l]d(s|ed|ing)?(?-i:(?![a-z])(?!(?<=[A-Z])[A-Z]))''']
   note = "mold"
 
   [[registry.entry]]
   id = "single-l"
-  # `(?!l)` keeps all-caps American spellings (ENROLLED, FULFILLED) out: the
-  # case-sensitive tail lookahead lets an uppercase second `L` through.
   antipatterns = [
-    '''(?i)(?:(?<![a-z])|(?-i:(?=[A-Z])))(fulfi[l]|enro[l])(?!l)(s|ment|ments)?(?-i:(?![a-z]))''',
+    '''(?i)(?:(?<![a-z])|(?-i:(?=[A-Z])))(fulfi[l]|enro[l])(s|ment|ments)?(?-i:(?![a-z])(?!(?<=[A-Z])[A-Z]))''',
     '''(?i)(skil|wil)[f]ul''',
   ]
   note = "fulfill, enroll, skillful, willful"
@@ -1686,7 +1685,7 @@ suffixes = [
   antipatterns = [
     '''(?i)scept[i]c''',
     '''(?i)man[o]euvr''',
-    '''(?i)(?:(?<![a-z])|(?-i:(?=[A-Z])))(practi[s](e|es|ed|ing)|ty[r]es?|che[q]ues?)(?-i:(?![a-z]))''',
+    '''(?i)(?:(?<![a-z])|(?-i:(?=[A-Z])))(practi[s](e|es|ed|ing)|ty[r]es?|che[q]ues?)(?-i:(?![a-z])(?!(?<=[A-Z])[A-Z]))''',
   ]
   note = "skeptic, maneuver, practice (verb), tire, check"
 
