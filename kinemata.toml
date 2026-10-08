@@ -2941,7 +2941,7 @@ import json
 from kanibako.settings.settings_launch import _BOX_MODES, auth_chain_floor
 from kinemata_views import every_mode_cell
 cells = every_mode_cell({
-    mode: auth_chain_floor(mode=mode, agent_name="<@system.agent>") for mode in _BOX_MODES
+    mode: auth_chain_floor(mode=mode, agent_name="<{system.agent}>") for mode in _BOX_MODES
 })
 for key, cell in sorted(cells.items()):
     if not key.startswith("meta."):
@@ -3349,7 +3349,7 @@ for key, value in sorted(agent_template_defaults("gemma℘claude").items()):
 extract = '(?m)^kanibako-template-source: ([^\s=]+)=(\S+)$'
 field = "default"
 authority = "declared"
-translate = { pattern = '^@meta\.agent\.<agent>\.path/', replacement = "@config.agents/gemma+claude/" }
+translate = { pattern = '^\{meta\.agent\.<agent>\.path\}/', replacement = "{config.agents}/gemma+claude/" }
 translate_identifier = { pattern = '^agent\.<agent>\.', replacement = "agent.gemma℘claude." }
 
 # ⚑ THE ORACLE PRINTS EVERY KEY EXCEPT THE FALLBACK ARM: `agent.default.template`
@@ -3875,7 +3875,7 @@ import json
 from kanibako.settings.settings_launch import _BOX_MODES, auth_chain_floor
 from kinemata_views import every_mode_cell
 cells = every_mode_cell({
-    mode: auth_chain_floor(mode=mode, agent_name="<@system.agent>") for mode in _BOX_MODES
+    mode: auth_chain_floor(mode=mode, agent_name="<{system.agent}>") for mode in _BOX_MODES
 })
 for key, cell in sorted(cells.items()):
     if key.startswith("meta."):
@@ -3967,7 +3967,7 @@ for mode in _BOX_MODES:
     root = None if mode == "primary" else REF_WORKSET_PATH
     early = EarlyScope(
         ref_token_standard_paths(mode).early_system,
-        workset_token(BoxMode(mode), "@meta.workset.name"),
+        workset_token(BoxMode(mode), "{meta.workset.name}"),
     )
     floor = workset_anchor_floor(
         mode=mode, workspaces=_workset_workspaces_floor_value(mode, root, early=early),
@@ -4150,7 +4150,7 @@ for key, value in sorted(floor.items()):
 extract = '(?m)^kanibako-canon-default: ([^\s=]+)=(\S+)$'
 field = "default"
 authority = "declared"
-translate = { pattern = '^@meta\.agent\.<agent>\.path/', replacement = "@config.agents/gemma+claude/" }
+translate = { pattern = '^\{meta\.agent\.<agent>\.path\}/', replacement = "{config.agents}/gemma+claude/" }
 translate_identifier = { pattern = '^agent\.<agent>\.', replacement = "agent.gemma℘claude." }
 
 # ⚑ THE LAUNCH'S OWN WIRING, FED `@`-REFS. `settings_launch._box_workset_floors` is
@@ -4214,7 +4214,7 @@ with tempfile.TemporaryDirectory() as scratch:
     os.chdir(scratch)
     _, floor, _ = _box_workset_floors(
         ref_token_standard_paths("primary"),
-        ref_token_project("primary", workset_name="@meta.workset.name", box_name="@meta.box.name"),
+        ref_token_project("primary", workset_name="{meta.workset.name}", box_name="{meta.box.name}"),
         "",
     )
 for key, value in sorted(floor.items()):
@@ -4224,7 +4224,7 @@ for key, value in sorted(floor.items()):
 extract = '(?m)^kanibako-channel: ([^\s=]+)=(\S+)$'
 field = ["default", "primary"]
 authority = "declared"
-translate = { pattern = '^@workset\.channel(?:root/|s\.)', replacement = "@meta.workset.path/channels/" }
+translate = { pattern = '^\{workset\.channel(?:root\}/(.*)|s\.([^./}]+)\}(.*))$', replacement = '{meta.workset.path}/channels/\1\2\3' }
 
 [[parity]]
 registry = "workset-channels-named"
@@ -4236,7 +4236,7 @@ with tempfile.TemporaryDirectory() as scratch:
     os.chdir(scratch)
     _, floor, _ = _box_workset_floors(
         ref_token_standard_paths("named"),
-        ref_token_project("named", workset_name="@meta.workset.name", box_name="@meta.box.name"),
+        ref_token_project("named", workset_name="{meta.workset.name}", box_name="{meta.box.name}"),
         "",
     )
 for key, value in sorted(floor.items()):
@@ -4246,7 +4246,7 @@ for key, value in sorted(floor.items()):
 extract = '(?m)^kanibako-channel: ([^\s=]+)=(\S+)$'
 field = ["default", "named"]
 authority = "declared"
-translate = { pattern = '^@workset\.channel(?:root/|s\.)', replacement = "@meta.workset.path/channels/" }
+translate = { pattern = '^\{workset\.channel(?:root\}/(.*)|s\.([^./}]+)\}(.*))$', replacement = '{meta.workset.path}/channels/\1\2\3' }
 
 # 🛑 THE NAMED MODE ONLY, AND SO A PARTIAL. The row is one formula for every mode,
 # but `workset_name_token` answers PRIMARY and STANDALONE with the constants
@@ -4274,7 +4274,7 @@ with tempfile.TemporaryDirectory() as scratch:
     os.chdir(scratch)
     _, floor, _ = _box_workset_floors(
         ref_token_standard_paths("named"),
-        ref_token_project("named", workset_name="@meta.workset.name", box_name="@meta.box.name"),
+        ref_token_project("named", workset_name="{meta.workset.name}", box_name="{meta.box.name}"),
         "",
     )
 for leaf in ("mailboxes", "share_global"):
@@ -4452,7 +4452,7 @@ extract = '(?m)^kanibako-agent-identity: ([^\s=]+)=(.+)$'
 field = "value"
 format = "json"
 authority = "declared"
-translate = { pattern = '^@config\.agents/@meta\.agent\.(default|shell)\.name$', replacement = '@config.agents/\1' }
+translate = { pattern = '^\{config\.agents\}/\{meta\.agent\.(default|shell)\.name\}$', replacement = '{config.agents}/\1' }
 
 # ⚑ THE MATERIALIZER RUN ON AN EMPTY STORE: its fail-closed arm writes all three
 # keys, and the oracle prints every leaf it wrote -- no name filter. A leaf whose
@@ -4621,7 +4621,7 @@ for key, value in sorted(meta_agent_path_floor(node).items()):
 extract = '(?m)^kanibako-agent-path: ([^\s=]+)=(\S+)$'
 field = "value"
 authority = "declared"
-translate = { pattern = '@meta\.agent\.<agent>\.name$', replacement = "gemma+claude" }
+translate = { pattern = '\{meta\.agent\.<agent>\.name\}$', replacement = "gemma+claude" }
 translate_identifier = { pattern = '^meta\.agent\.<agent>\.', replacement = "meta.agent.gemma℘claude." }
 
 # ⚑ The oracle prints every `meta.agent.*.settings` key the identity floor emits, so
@@ -4647,7 +4647,7 @@ for key, value in sorted(floor.items()):
 extract = '(?m)^kanibako-agent-settings: ([^\s=]+)=(\S+)$'
 field = "value"
 authority = "declared"
-translate = { pattern = '^@meta\.agent\.<agent>\.', replacement = "@meta.agent.gemma℘claude." }
+translate = { pattern = '^\{meta\.agent\.<agent>\.path\}', replacement = "{meta.agent.gemma℘claude.path}" }
 translate_identifier = { pattern = '^meta\.agent\.<agent>\.', replacement = "meta.agent.gemma℘claude." }
 
 # ⚑ THE LAUNCH'S WIRING, FED `@`-REFS (`kinemata_views.box_address_floor`): the
@@ -4703,7 +4703,7 @@ print(f"kanibako-box-address: meta.box.inbox={literal_text(floor['meta.box.inbox
 extract = '(?m)^kanibako-box-address: ([^\s=]+)=(\S+)$'
 field = "value"
 authority = "declared"
-translate = { pattern = '^@workset\.channels\.mailboxes/', replacement = "@system.channels.mailboxes/@meta.workset.name/" }
+translate = { pattern = '^\{workset\.channels\.mailboxes\}', replacement = "{system.channels.mailboxes}/{meta.workset.name}" }
 
 [[parity]]
 registry = "box-share-global"
@@ -4718,7 +4718,7 @@ print(f"kanibako-box-address: meta.box.share_global={literal_text(floor['meta.bo
 extract = '(?m)^kanibako-box-address: ([^\s=]+)=(\S+)$'
 field = "value"
 authority = "declared"
-translate = { pattern = '^@workset\.channels\.share_global/', replacement = "@system.channels.share/@meta.workset.name/" }
+translate = { pattern = '^\{workset\.channels\.share_global\}', replacement = "{system.channels.share}/{meta.workset.name}" }
 
 [[parity]]
 registry = "box-share-workset-primary"
@@ -4733,7 +4733,7 @@ print(f"kanibako-box-address: meta.box.share_workset={literal_text(floor['meta.b
 extract = '(?m)^kanibako-box-address: ([^\s=]+)=(\S+)$'
 field = ["value", "primary"]
 authority = "declared"
-translate = { pattern = '^@workset\.channels\.share/', replacement = "@meta.workset.path/channels/share/" }
+translate = { pattern = '^\{workset\.channels\.share\}', replacement = "{meta.workset.path}/channels/share" }
 
 [[parity]]
 registry = "box-share-workset-named"
@@ -4748,7 +4748,7 @@ print(f"kanibako-box-address: meta.box.share_workset={literal_text(floor['meta.b
 extract = '(?m)^kanibako-box-address: ([^\s=]+)=(\S+)$'
 field = ["value", "named"]
 authority = "declared"
-translate = { pattern = '^@workset\.channels\.share/', replacement = "@meta.workset.path/channels/share/" }
+translate = { pattern = '^\{workset\.channels\.share\}', replacement = "{meta.workset.path}/channels/share" }
 
 [[parity]]
 registry = "box-share-workset-standalone"
@@ -4791,7 +4791,7 @@ for key, value in sorted(seeds.items()):
 extract = '(?m)^kanibako-seed-source: ([^\s=]+)=(\S+)$'
 field = "default"
 authority = "declared"
-translate = { pattern = '^@meta\.agent\.<agent>\.path/', replacement = "@config.agents/gemma+claude/" }
+translate = { pattern = '^\{meta\.agent\.<agent>\.path\}/', replacement = "{config.agents}/gemma+claude/" }
 translate_identifier = { pattern = '^agent\.<agent>\.', replacement = "agent.gemma℘claude." }
 
 # ⚑ THE ORACLE PRINTS EVERY `agent.*.seeded` LAYER'S ENTRIES, so a layer keyed to a
@@ -4828,7 +4828,7 @@ for key, layer in sorted(seeds.items()):
 extract = '(?m)^kanibako-agent-seed: ([^\s=]+)=(\S+)$'
 field = "default"
 authority = "declared"
-translate = { pattern = '^\(@agent\.<agent>\.(.*)\)$', replacement = '@agent.gemma℘claude.\1' }
+translate = { pattern = '^\(\{agent\.<agent>\.([^/}]+)\}/(.*)\)$', replacement = '{agent.gemma℘claude.\1}/\2' }
 
 [[parity]]
 registry = "agent-seeded-layer-bare"
@@ -4845,7 +4845,7 @@ for key, layer in sorted(seeds.items()):
 extract = '(?m)^kanibako-agent-seed: ([^\s=]+)=(\S+)$'
 field = "default"
 authority = "declared"
-translate = { pattern = '^\(@agent\.<agent>\.(.*)\)$', replacement = '@agent.claude.\1' }
+translate = { pattern = '^\(\{agent\.<agent>\.([^/}]+)\}/(.*)\)$', replacement = '{agent.claude.\1}/\2' }
 
 # ⚑ THE BARE CONTROL `agent-template-source` DECLINED TO BE: that view takes a persona
 # because a bare node hides the key/dirname split. This one takes `claude` because a
@@ -4868,7 +4868,7 @@ for key, value in sorted(agent_template_defaults("claude").items()):
 extract = '(?m)^kanibako-template-source: ([^\s=]+)=(\S+)$'
 field = "default"
 authority = "declared"
-translate = { pattern = '^@meta\.agent\.<agent>\.path/', replacement = "@config.agents/claude/" }
+translate = { pattern = '^\{meta\.agent\.<agent>\.path\}/', replacement = "{config.agents}/claude/" }
 translate_identifier = { pattern = '^agent\.<agent>\.', replacement = "agent.claude." }
 
 # ⚑ THE ACTIVE NODE IS THE SENTINEL `<active>`, the manifest's own discriminator:
@@ -4982,9 +4982,9 @@ from kinemata_views import (
 )
 floors = {}
 for mode in _BOX_MODES:
-    proj = ref_token_project(mode, workset_name="@meta.workset.name", box_name="@meta.box.name")
+    proj = ref_token_project(mode, workset_name="{meta.workset.name}", box_name="{meta.box.name}")
     for decoy in ("project_path", "vault_ro_path", "vault_rw_path"):
-        setattr(proj, decoy, pathlib.Path(f"@DECOY.{decoy}"))
+        setattr(proj, decoy, pathlib.Path(f"{{DECOY.{decoy}}}"))
     binds = core_default_categories(
         ref_token_standard_paths(mode), proj, enable_vault=True, mode=mode,
         guarantee_create=False,
@@ -5009,9 +5009,9 @@ from kinemata_views import (
 )
 floors = {}
 for mode in _BOX_MODES:
-    proj = ref_token_project(mode, workset_name="@meta.workset.name", box_name="@meta.box.name")
+    proj = ref_token_project(mode, workset_name="{meta.workset.name}", box_name="{meta.box.name}")
     for decoy in ("project_path", "vault_ro_path", "vault_rw_path"):
-        setattr(proj, decoy, pathlib.Path(f"@DECOY.{decoy}"))
+        setattr(proj, decoy, pathlib.Path(f"{{DECOY.{decoy}}}"))
     binds = core_default_categories(
         ref_token_standard_paths(mode), proj, enable_vault=True, mode=mode,
         guarantee_create=False,
@@ -5049,7 +5049,7 @@ with tempfile.TemporaryDirectory() as scratch:
     os.chdir(scratch)
     binds = channel_default_categories(
         ref_token_standard_paths("named"),
-        ref_token_project("named", workset_name="@meta.workset.name", box_name="@meta.box.name"),
+        ref_token_project("named", workset_name="{meta.workset.name}", box_name="{meta.box.name}"),
     )
 for dest, (host_src, *_) in guest_bind_arm(binds, "bindings.rw"):
     print(f"kanibako-channel-bind: {dest}={host_src}")
@@ -5069,7 +5069,7 @@ with tempfile.TemporaryDirectory() as scratch:
     os.chdir(scratch)
     binds = channel_default_categories(
         ref_token_standard_paths("primary"),
-        ref_token_project("primary", workset_name="@meta.workset.name", box_name="@meta.box.name"),
+        ref_token_project("primary", workset_name="{meta.workset.name}", box_name="{meta.box.name}"),
     )
 for dest, (host_src, *_) in guest_bind_arm(binds, "bindings.rw"):
     print(f"kanibako-channel-bind: {dest}={host_src}")
@@ -5100,7 +5100,7 @@ with tempfile.TemporaryDirectory() as scratch:
     os.chdir(scratch)
     binds = channel_default_categories(
         ref_token_standard_paths("standalone"),
-        ref_token_project("standalone", workset_name="@meta.workset.name", box_name="@meta.box.name"),
+        ref_token_project("standalone", workset_name="{meta.workset.name}", box_name="{meta.box.name}"),
     )
 for dest, (host_src, *_) in guest_bind_arm(binds, "bindings.rw"):
     print(f"kanibako-channel-bind: {dest}={host_src}")

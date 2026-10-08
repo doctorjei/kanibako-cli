@@ -297,7 +297,7 @@ def literal_text(value: Any) -> Any:
     """The text a floor's `literal_expr` value spells; a non-string passes through.
 
     A floor enters a resolved host path as `settings_resolve.literal_expr`, so a
-    sentinel `@`-ref handed in comes back escaped; this reads it back to the path the
+    sentinel reference handed in comes back escaped; this reads it back to the path the
     manifest formula names. A string that is NOT exactly a `literal_expr` raises, so a
     producer that stops escaping its path reds the view instead of printing the cell.
     """
@@ -314,15 +314,15 @@ def literal_text(value: Any) -> Any:
     return text
 
 
-#: The workset root a sentinel run hands the derivations, as the `@`-ref the
+#: The workset root a sentinel run hands the derivations, as the braced reference the
 #: manifest composes from. A derivation joins its output onto this exactly as it
 #: would onto a real path, so what it prints is the manifest's formula when the
 #: composition is the declared one -- the code does the composing, and no
 #: resolver is written here.
-REF_WORKSET_PATH = "@meta.workset.path"
+REF_WORKSET_PATH = "{meta.workset.path}"
 
 #: The attribute that carries the workset root in each mode -- the E6 row
-#: `meta.runtime.ws_root`: PRIMARY `@config.primary_workset` (`std.primary_workset`),
+#: `meta.runtime.ws_root`: PRIMARY `{config.primary_workset}` (`std.primary_workset`),
 #: NAMED the detected workset root (`proj.group.root`), STANDALONE the project dir
 #: (`proj.metadata_path`). Only that attribute carries `REF_WORKSET_PATH`; every
 #: other candidate carries a DECOY naming itself -- or, for the group outside
@@ -340,17 +340,16 @@ def _root_or_decoy(mode: str, attribute: str) -> Any:
 
     if _ROOT_ATTRIBUTE[mode] == attribute:
         return Path(REF_WORKSET_PATH)
-    return Path(f"@DECOY.{attribute}")
+    return Path(f"{{DECOY.{attribute}}}")
 
 
 def ref_token_project(mode: str, *, workset_name: str, box_name: str) -> Any:
     """The `ProjectPaths` attributes the channel and helper derivations read.
 
-    *workset_name* and *box_name* are the `@`-refs to hand in, spelled as the
-    cell under comparison spells them: bare where the ref ends the cell
-    (`@meta.workset.name`), braced where it is embedded (`@{meta.workset.name}`,
-    `policy.reference_forms`). The caller chooses, because one cell cannot be
-    matched by the other spelling.
+    *workset_name* and *box_name* are the references to hand in, spelled as the
+    cell under comparison spells them -- `{meta.workset.name}`, `{meta.box.name}`.
+    A braced ref reads the same bare or embedded (`policy.reference_forms`), so
+    the caller passes the cell's own spelling rather than a second notation.
 
     ⚑ MODE-AWARE: `metadata_path` and the named group's `root` carry the workset
     ref only in the mode whose root they are (`_ROOT_ATTRIBUTE`), a decoy
@@ -377,7 +376,7 @@ def ref_token_project(mode: str, *, workset_name: str, box_name: str) -> Any:
 
 
 def ref_token_standard_paths(mode: str) -> Any:
-    """The `StandardPaths` attributes the channel derivations read, as `@`-refs.
+    """The `StandardPaths` attributes the channel derivations read, as braced references.
 
     `primary_workset` is the workset ref only for a PRIMARY box and a decoy
     otherwise (`_ROOT_ATTRIBUTE`). Deliberately NOT a `StandardPaths`:
@@ -386,7 +385,7 @@ def ref_token_standard_paths(mode: str) -> Any:
 
     `early_system` is the early-system record the workset-key readers take, built
     by the product's own pure builder over an EMPTY tier (no system file states a
-    `workset.*` repoint) and a resolved tier whose every path is its own `@`-ref.
+    `workset.*` repoint) and a resolved tier whose every path is its own braced reference.
     """
     from pathlib import Path
     from types import SimpleNamespace
@@ -394,13 +393,13 @@ def ref_token_standard_paths(mode: str) -> Any:
     from kanibako.settings.bootstrap import SYSTEM_PATH_DEFAULTS
     from kanibako.settings.workset_dirkeys import early_system
 
-    resolved = {key: Path(f"@{key}") for key in (*SYSTEM_PATH_DEFAULTS, "config.settings")}
+    resolved = {key: Path(f"{{{key}}}") for key in (*SYSTEM_PATH_DEFAULTS, "config.settings")}
     return SimpleNamespace(
         primary_workset=_root_or_decoy(mode, "primary_workset"),
-        channels_common=Path("@system.channels.common"),
-        channels_chat=Path("@system.channels.chat"),
-        channels_mailboxes=Path("@system.channels.mailboxes"),
-        channels_share=Path("@system.channels.share"),
+        channels_common=Path("{system.channels.common}"),
+        channels_chat=Path("{system.channels.chat}"),
+        channels_mailboxes=Path("{system.channels.mailboxes}"),
+        channels_share=Path("{system.channels.share}"),
         early_system=early_system({}, resolved),
     )
 
@@ -425,10 +424,10 @@ def guest_bind_arm(binds: Any, arm: str) -> list[tuple[str, tuple[str, ...]]]:
 
 def sentinel_helper_binds() -> Any:
     """`core_defaults.helper_default_categories` fed the socket `helper_socket_path`
-    names for a NAMED sentinel box, under a run dir spelled `@system.runtime`.
+    names for a NAMED sentinel box, under a run dir spelled `{system.runtime}`.
 
     The box and workset names are the braced refs the socket cell embeds
-    (`@{meta.box.name}`, `@{meta.workset.name}`). Both sources are created, because
+    (`{meta.box.name}`, `{meta.workset.name}`). Both sources are created, because
     the emitter binds only a source that exists, and they are created RELATIVE to
     the working directory -- so the caller runs this in a scratch cwd.
     """
@@ -437,11 +436,11 @@ def sentinel_helper_binds() -> Any:
     from kanibako.commands.start import helper_socket_path
     from kanibako.settings.core_defaults import helper_default_categories
 
-    run_dir = Path("@system.runtime")
+    run_dir = Path("{system.runtime}")
     run_dir.mkdir()
     socket = helper_socket_path(
         ref_token_project(
-            "named", workset_name="@{meta.workset.name}", box_name="@{meta.box.name}",
+            "named", workset_name="{meta.workset.name}", box_name="{meta.box.name}",
         ),
         run_dir,
     )
@@ -456,9 +455,9 @@ def box_address_floor(mode: str) -> dict[str, Any]:
     box through `settings_launch.box_address_args` -- the wiring `commands.start`
     unpacks into the same call, so the three address slots are the launch's own.
 
-    The box name is `@meta.box.name` and the named workset's `@meta.workset.name`
-    (bare: each ref ends its cell). The derivation reads a workset file at the stub
-    root, so the caller runs this in a scratch cwd, where `@meta.workset.path/...`
+    The box name is `{meta.box.name}` and the named workset's `{meta.workset.name}`
+    (each ref ends its cell). The derivation reads a workset file at the stub
+    root, so the caller runs this in a scratch cwd, where `{meta.workset.path}/...`
     is absent. The other identity inputs are decoys naming themselves.
     """
     from kanibako.channels.channels import box_channel_addresses
@@ -466,13 +465,13 @@ def box_address_floor(mode: str) -> dict[str, Any]:
 
     addr = box_channel_addresses(
         ref_token_project(
-            mode, workset_name="@meta.workset.name", box_name="@meta.box.name",
+            mode, workset_name="{meta.workset.name}", box_name="{meta.box.name}",
         ),
         ref_token_standard_paths(mode),
     )
     return meta_identity_floor(
-        box_name="@meta.box.name", project_path="@DECOY.project_path",
-        **box_address_args(addr), box_settings="@DECOY.box_settings",
+        box_name="{meta.box.name}", project_path="{DECOY.project_path}",
+        **box_address_args(addr), box_settings="{DECOY.box_settings}",
     )
 
 
