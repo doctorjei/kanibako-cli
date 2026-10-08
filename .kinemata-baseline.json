@@ -3319,13 +3319,6 @@
     },
     {
       "registry": "store-layout",
-      "entry": "IGNORE_FILE",
-      "antipattern": "\\.gitignore",
-      "path": "src/kanibako/utils.py",
-      "text": "gitignore = project_path / \".gitignore\""
-    },
-    {
-      "registry": "store-layout",
       "entry": "LOGS_PATH",
       "antipattern": "logs",
       "path": "src/kanibako/commands/start.py",
@@ -3344,62 +3337,6 @@
       "antipattern": "logs",
       "path": "src/kanibako/settings/settings_keyspace.py",
       "text": "\"workspaces\", \"boxes\", \"logs\", \"registry\", \"template\", \"canon\","
-    },
-    {
-      "registry": "store-layout",
-      "entry": "XDG_DATA_HOME",
-      "antipattern": "XDG_DATA_HOME",
-      "path": "src/kanibako/cli.py",
-      "text": "cf, data_home=xdg(\"XDG_DATA_HOME\", \".local/share\"), home=Path.home(),"
-    },
-    {
-      "registry": "store-layout",
-      "entry": "XDG_DATA_HOME",
-      "antipattern": "XDG_DATA_HOME",
-      "path": "src/kanibako/cli.py",
-      "text": "data_home = xdg(\"XDG_DATA_HOME\", \".local/share\")"
-    },
-    {
-      "registry": "store-layout",
-      "entry": "XDG_DATA_HOME",
-      "antipattern": "XDG_DATA_HOME",
-      "path": "src/kanibako/commands/diagnose.py",
-      "text": "data_home = xdg(\"XDG_DATA_HOME\", \".local/share\")"
-    },
-    {
-      "registry": "store-layout",
-      "entry": "XDG_DATA_HOME",
-      "antipattern": "XDG_DATA_HOME",
-      "path": "src/kanibako/commands/install.py",
-      "text": "completions_dir = xdg(\"XDG_DATA_HOME\", \".local/share\") / \"bash-completion\" / \"completions\""
-    },
-    {
-      "registry": "store-layout",
-      "entry": "XDG_DATA_HOME",
-      "antipattern": "XDG_DATA_HOME",
-      "path": "src/kanibako/commands/system_cmd.py",
-      "text": "data_home = xdg(\"XDG_DATA_HOME\", \".local/share\")"
-    },
-    {
-      "registry": "store-layout",
-      "entry": "XDG_DATA_HOME",
-      "antipattern": "XDG_DATA_HOME",
-      "path": "src/kanibako/settings/config.py",
-      "text": "global_path, data_home=xdg(\"XDG_DATA_HOME\", \".local/share\"), home=Path.home(),"
-    },
-    {
-      "registry": "store-layout",
-      "entry": "XDG_DATA_HOME",
-      "antipattern": "XDG_DATA_HOME",
-      "path": "src/kanibako/settings/config_interface.py",
-      "text": "data_home = xdg(\"XDG_DATA_HOME\", \".local/share\")"
-    },
-    {
-      "registry": "store-layout",
-      "entry": "XDG_RUNTIME_DIR",
-      "antipattern": "XDG_RUNTIME_DIR",
-      "path": "src/kanibako/vscode/vscode_remote.py",
-      "text": "val = os.environ.get(\"XDG_RUNTIME_DIR\", \"\")"
     },
     {
       "registry": "store-layout",

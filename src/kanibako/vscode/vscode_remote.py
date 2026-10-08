@@ -53,6 +53,7 @@ from pathlib import Path
 from kanibako.errors import KanibakoError
 from kanibako.log import get_logger
 from kanibako.runtime.container import image_ref_or_none
+from kanibako.settings.bootstrap import XDG_RUNTIME_DIR
 from kanibako.settings.paths import resolve_cache_path, resolve_state_path
 
 logger = get_logger("vscode_remote")
@@ -80,7 +81,7 @@ def _runtime_dir() -> str:
     ``/kanibako`` and warns) — the ControlPath just needs a short, writable,
     per-user dir the mux socket can live under.
     """
-    val = os.environ.get("XDG_RUNTIME_DIR", "")
+    val = os.environ.get(XDG_RUNTIME_DIR, "")
     if val and os.path.isabs(val):
         return val
     val = os.environ.get("TMPDIR", "")
