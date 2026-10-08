@@ -73,7 +73,7 @@ policy:
   parametric_expansion:
     - "every agent.default.<key> ALSO exists as agent.<agent>.<key> (same type,
        same default, resolved via agent_tier_fallback)"
-    - "every category in `categories` exists at every scope in categories.scopes"
+    - "every category in `categories` exists at every scope in category_scopes.tokens"
     - "meta.box.agent.<key> MIRRORS (RO) the ACTIVE agent's whole subtree (§2b;
        R-4 — the settable box.agent.<key> form is RETIRED; a box tweaks its
        agent via pref.agent.<agent>.<key>, §2h)"
@@ -623,6 +623,14 @@ policy:
                  spec 2026-07-28). Rulings: 2026-06-27 walkthrough + Jei 2026-07-27."
 
 ## ---------------------------------------------------------------------------
+## CATEGORY SCOPES — the settable cascade levels every `categories:` family is
+## declared over (`policy.parametric_expansion`). Not a family, so not in that table.
+category_scopes:
+  # Token mapping: the spec (§2a) spells the active-agent level `agent.<active>`; this file spells it `agent.active`.
+  tokens: [system, agent.default, agent.active, workset, box]
+  spec: "§2a"
+
+## ---------------------------------------------------------------------------
 ## CATEGORIES — the unified primitive (§2a). Available at EVERY scope, so they are
 ## declared ONCE here rather than enumerated scope×category (would be 4×9 entries).
 ## TWO SHAPES, do not conflate. (1) The <VAR>-PARAMETRIC SCALAR categories
@@ -652,10 +660,6 @@ policy:
 ## records the MECHANISM, never the effect.
 ## ---------------------------------------------------------------------------
 categories:
-  # Token mapping: the spec (§2a) spells the active-agent level `agent.<active>`; this file spells it `agent.active`.
-  scopes: [system, agent.default, agent.active, workset, box]
-  scopes_spec: "§2a"
-
   masks:
     delivery: MOUNT             # the `mask` arm of the five-arm fold
     terminal_key: true          # the value is the whole map; inner keys are data
@@ -3054,7 +3058,7 @@ not_keys:
              legal shapes are the scope-discriminated
              `agent.default.secret_path.<VAR>` and
              `agent.<agent>.secret_path.<VAR>` (§2a secret_path category ×
-             categories.scopes); the bare form matches NO declared scope and is
+             category_scopes.tokens); the bare form matches NO declared scope and is
              NOT a key. The constant is confirmed DEAD (zero consumers in src/,
              tests/, packages/ — packet C11), so this is record-not-behavior:
              the CODE FIX lands at the KeyKind rewrite (deferred; this entry

@@ -414,7 +414,7 @@ class TestTraversalDefensesStayInCode:
 #: independent of which plugins happen to be installed on the runner.
 PROBE_AGENTS: frozenset[str] = frozenset({"claude", "codex", "goose"})
 
-#: The manifest's ``categories.scopes`` tokens, each mapped to the scope prefix(es)
+#: The manifest's ``category_scopes.tokens``, each mapped to the scope prefix(es)
 #: ``key_validity`` actually spells.  Identity for four of the five.
 #:
 #: ⚑⚑ ``agent.active`` IS THE ONE THAT MOVES, AND IT IS A NOTATION DIFFERENCE, NOT DRIFT.
@@ -438,20 +438,8 @@ _SCOPE_TOKEN_SPELLINGS: dict[str, tuple[str, ...]] = {
     "box": ("box",),
 }
 
-#: The ``categories:`` fields that are NOT a family, each with the reason.  ⚑ A
-#: classification table, not a skip list: :class:`TestTheCategoriesBlockShape` asserts it
-#: and the family set TOGETHER account for every field, both directions, so a new field
-#: is RED until somebody decides which it is.
-_NON_FAMILY_FIELDS: dict[str, str] = {
-    "scopes": (
-        "the SETTABLE-cascade list the families are declared over — an INPUT to the "
-        "surface this section composes, not a member of it"
-    ),
-    "scopes_spec": "the spec citation for the line above; prose, nothing to enforce",
-}
-
 #: The manifest's RO mirror prefix (``policy.parametric_expansion`` bullet 3, spec §2b).
-#: A category-bearing prefix that ``categories.scopes`` does NOT list — which is the
+#: A category-bearing prefix that ``category_scopes.tokens`` does NOT list — which is the
 #: whole reason the surface has to be COMPOSED rather than read off that one line.
 _MIRROR_PREFIX = "meta.box.agent"
 
@@ -471,7 +459,7 @@ _PROBE_VAR = "KANIBAKO_ENFORCEMENT_PROBE"
 #: one-to-one in both directions by :class:`TestTheCompositionRulesAreClassified`, so a
 #: FOURTH bullet lands RED and a DELETED arm lands red too.
 _COMPOSITION_RULES: dict[str, str] = {
-    "the cascade cross-product — every family at every categories.scopes token": (
+    "the cascade cross-product — every family at every category_scopes token": (
         "every category in `categories` exists at every scope"
     ),
     "the agent-tier expansion — what makes `agent.active` a set of real prefixes": (
@@ -484,20 +472,17 @@ _COMPOSITION_RULES: dict[str, str] = {
 
 
 def _families() -> list[str]:
-    """The manifest's nine ``categories:`` family names.
+    """The manifest's nine ``categories:`` family names: every field of the block.
 
-    ⚑ Derived STRUCTURALLY — a family row is the mapping that describes a family; the
-    two non-family fields are a list and a string.  The name-keyed
-    :data:`_NON_FAMILY_FIELDS` is the second lock, not the first, and the shape case
-    asserts the two agree.
+    The cascade tokens live in ``category_scopes:``, so the block holds families only;
+    :class:`TestTheCategoriesBlockShape` asserts each field is a family mapping.
     """
-    cats = manifest_doc()["categories"]
-    return sorted(k for k, v in cats.items() if isinstance(v, dict))
+    return sorted(manifest_doc()["categories"])
 
 
 def _cascade_prefixes() -> list[str]:
-    """The ``categories.scopes`` tokens, spelled the way the code spells them."""
-    scopes = manifest_doc()["categories"]["scopes"]
+    """The ``category_scopes.tokens``, spelled the way the code spells them."""
+    scopes = manifest_doc()["category_scopes"]["tokens"]
     return [s for token in scopes for s in _SCOPE_TOKEN_SPELLINGS[token]]
 
 
@@ -616,31 +601,24 @@ class TestTheFamilySetIsTheDeliveryTable:
 
 
 class TestTheCategoriesBlockShape:
-    """Every field of ``categories:`` is a family or a classified non-family."""
+    """Every field of ``categories:`` is a family; the cascade tokens live elsewhere."""
 
     def test_the_block_exists_and_is_a_mapping(self):
         """Anti-vacuity: a renamed or deleted block must red HERE, not vanish."""
         assert isinstance(manifest_doc().get("categories"), dict)
 
-    def test_every_categories_field_is_a_family_or_classified(self):
-        """⚑ LOAD-BEARING.  families ∪ _NON_FAMILY_FIELDS == the block's fields, both ways.
+    def test_every_categories_field_is_a_family(self):
+        """⚑ LOAD-BEARING.  A non-family field belongs in its own section.
 
-        A new field lands here unclassified, which is the correct outcome: somebody must
-        decide whether it is a tenth family (and then whether the code delivers it) or a
-        policy field, and say so.  A DELETED one lands here too, so the table cannot rot
-        in the other direction.
+        ``category_scopes:`` is the precedent: a list or a citation dropped into
+        ``categories:`` would be read as a tenth family by every consumer, so it lands
+        RED here until somebody gives it a section of its own.
         """
-        fields = set(manifest_doc()["categories"])
-        unclassified = fields - set(_families()) - set(_NON_FAMILY_FIELDS)
-        assert not unclassified, (
-            f"categories: carries fields this section neither treats as a family nor "
-            f"names: {sorted(unclassified)} — add each to _NON_FAMILY_FIELDS (with a "
-            f"reason) or let it be a family"
-        )
-        stale = set(_NON_FAMILY_FIELDS) - fields
-        assert not stale, (
-            f"_NON_FAMILY_FIELDS names fields categories: no longer carries: "
-            f"{sorted(stale)}"
+        cats = manifest_doc()["categories"]
+        not_families = sorted(k for k, v in cats.items() if not isinstance(v, dict))
+        assert not not_families, (
+            f"categories: carries fields that are not family mappings: {not_families}"
+            f" — move each to its own top-level section"
         )
 
     def test_the_non_parametric_families_are_the_code_terminal_tails(self):
@@ -756,16 +734,16 @@ class TestTheScopeTokenMapping:
     """The token bridge is exhaustive, so a new scope cannot slip through untranslated."""
 
     def test_every_scopes_token_is_mapped_and_every_mapping_is_used(self):
-        """Both directions.  A new ``categories.scopes`` token is RED until translated.
+        """Both directions.  A new ``category_scopes`` token is RED until translated.
 
         This is the case that makes the ``agent.active`` bridge safe.  An unmapped token
         would otherwise be silently DROPPED from the surface — the failure mode that
         does not go red, it goes green over less.
         """
-        tokens = set(manifest_doc()["categories"]["scopes"])
+        tokens = set(manifest_doc()["category_scopes"]["tokens"])
         mapped = set(_SCOPE_TOKEN_SPELLINGS)
         assert tokens == mapped, (
-            f"categories.scopes token drift — declared in the manifest but not "
+            f"category_scopes token drift — declared in the manifest but not "
             f"translated to a code spelling here: {sorted(tokens - mapped)}; translated "
             f"here but no longer declared: {sorted(mapped - tokens)}"
         )
@@ -784,7 +762,7 @@ class TestTheScopeTokenMapping:
 class TestTheCompositionRulesAreClassified:
     """⚑⚑ THE EXHAUSTIVENESS THAT MAKES THE SURFACE BINDING RATHER THAN A SAMPLE.
 
-    ``categories.scopes`` IS NOT THE ACCEPTANCE SURFACE — it is the settable-cascade
+    ``category_scopes.tokens`` IS NOT THE ACCEPTANCE SURFACE — it is the settable-cascade
     list.  Reading it literally and stopping there under-covers by the mirror arm and
     the ``pref.`` recursion.  The surface is COMPOSED, and a composition rule that this
     section stops implementing makes the surface SMALLER without making anything red.

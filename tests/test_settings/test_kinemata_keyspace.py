@@ -81,7 +81,7 @@ _TIER_LEAVES = sorted(
 def _scopes() -> list[str]:
   """Category scopes, the manifest's agent-node spelling instantiated per node."""
   out = []
-  for scope in _CATEGORIES["scopes"]:
+  for scope in _DOC["category_scopes"]["tokens"]:
     if scope.split(".")[0] == _TIER_HEAD:
       out += [_TIER_HEAD + "." + node for node in _AGENT_NODES]
     else:
@@ -154,11 +154,11 @@ _PREF_REFUSED = sorted("pref." + k for k in _CORPUS if not _allowlisted(k))
 
 
 #: The manifest's spelling of the ACTIVE-agent placeholder (``agent.active`` in
-#: ``categories.scopes``, the spec's ``agent.<active>``), read as a literal node. It is
+#: ``category_scopes.tokens``, the spec's ``agent.<active>``), read as a literal node. It is
 #: no agent, so a key spelled through it is refused -- the reading the adapter once got
 #: wrong by taking the scope token as a real segment.
 _PLACEHOLDER_NODES = tuple(
-  node for scope in _CATEGORIES["scopes"]
+  node for scope in _DOC["category_scopes"]["tokens"]
   for head, _, node in [scope.partition(".")]
   if head == _TIER_HEAD and node and node not in _CORE_NODES
 )

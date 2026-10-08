@@ -179,8 +179,8 @@ class KeyspaceRegistry:
     self._true_node_alt = (
       "(?:" + "|".join(re.escape(n) for n in sorted(self._nodes - self._core_nodes)) + ")"
     )
-    scopes, families, var_families = self._read_categories(doc["categories"])
-    self._scopes = self._instantiate_scopes(scopes)
+    families, var_families = self._read_categories(doc["categories"])
+    self._scopes = self._instantiate_scopes([str(s) for s in doc["category_scopes"]["tokens"]])
     self._one_seg_scopes = {s for s in self._scopes if "." not in s}
     self._families = families
     self._var_families = var_families
@@ -212,22 +212,16 @@ class KeyspaceRegistry:
     return interiors
 
   @staticmethod
-  def _read_categories(categories: dict[str, Any]) -> tuple[list[str], set[str], set[str]]:
-    """Scopes, families, and VAR-tailed families from the categories table."""
-    scopes: list[str] = []
+  def _read_categories(categories: dict[str, Any]) -> tuple[set[str], set[str]]:
+    """Families, and VAR-tailed families, from the categories table."""
     families: set[str] = set()
     var_families: set[str] = set()
     for field, block in categories.items():
-      if field.endswith("_spec"):
-        continue
-      if isinstance(block, list):
-        scopes = [str(s) for s in block]
-      elif isinstance(block, dict):
-        families.add(field)
-        params = block.get(_PARAMETRIC_FIELD)
-        if isinstance(params, list) and "VAR" in [str(p) for p in params]:
-          var_families.add(field)
-    return scopes, families, var_families
+      families.add(field)
+      params = block.get(_PARAMETRIC_FIELD) if isinstance(block, dict) else None
+      if isinstance(params, list) and "VAR" in [str(p) for p in params]:
+        var_families.add(field)
+    return families, var_families
 
   @staticmethod
   def _read_core_nodes(keys: dict[str, Any], tier_head: str) -> frozenset[str]:
@@ -248,9 +242,8 @@ class KeyspaceRegistry:
   def _instantiate_scopes(self, scopes: list[str]) -> list[str]:
     """Category scopes, the manifest's active-agent token read as a placeholder.
 
-    An agent-headed scope token whose node core does not own is the spec's
-    ``agent.<active>`` (the manifest spells it ``agent.active``), so it stands for
-    every node the adapter knows, never for a node named ``active``.
+    An agent-headed token whose node core does not own is the spec's
+    ``agent.<active>``: it stands for every node the adapter knows.
     """
     out: dict[str, None] = {}
     for scope in scopes:

@@ -47,7 +47,7 @@ class KeyspaceRegistry:
     @staticmethod
     def _build_interiors(keys: dict[str, Any], not_keys: dict[str, Any]) -> set[str]
     @staticmethod
-    def _read_categories(categories: dict[str, Any]) -> tuple[list[str], set[str], set[str]]
+    def _read_categories(categories: dict[str, Any]) -> tuple[set[str], set[str]]
     @staticmethod
     def _read_core_nodes(keys: dict[str, Any], tier_head: str) -> frozenset[str]
     def _instantiate_scopes(self, scopes: list[str]) -> list[str]
