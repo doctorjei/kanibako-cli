@@ -746,7 +746,7 @@ class TestWorksetConnect:
         link.symlink_to(target)
         self._assert_connect_refused(
             config_file, tmp_home, capsys, link, name="gone",
-            expect=f"Error: Cannot connect '{target.resolve()}': it is not a directory.",
+            expect=f"Error: Cannot connect '{link}': it is not a directory.",
         )
 
     def test_connect_force_does_not_bypass_a_missing_external_source(

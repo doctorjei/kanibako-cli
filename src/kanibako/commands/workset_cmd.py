@@ -578,8 +578,8 @@ def run_connect(args: argparse.Namespace) -> int:
         print(f"Error: {e}", file=sys.stderr)
         return 1
 
-    source = Path(args.source) if args.source else Path(logical_cwd())
-    project_name = args.project_name or source.resolve().name
+    source = Path(literal_path(args.source if args.source else logical_cwd()))
+    project_name = args.project_name or source.name
 
     # ⚑ EVERY REFUSAL BELOW FIRES BEFORE THE JOURNAL BRACKET, so a refused connect leaves
     # no pending ``connect`` entry behind (``add_project`` refuses the same null case for
@@ -626,7 +626,7 @@ def run_connect(args: argparse.Namespace) -> int:
     elif not source.is_dir():
         # ⚑ ``connect`` REGISTERS an EXTERNAL dir; a dangling symlink is PRESENT, not missing.
         present = "it is not a directory." if os.path.lexists(source) else "no such directory."
-        print(f"Error: Cannot connect '{source.resolve()}': {present}", file=sys.stderr)
+        print(f"Error: Cannot connect '{source}': {present}", file=sys.stderr)
         return 1
 
     # ⚑ ONE BOX PER WORKSPACE: a primary box's workspace is never connected.  In-tree,

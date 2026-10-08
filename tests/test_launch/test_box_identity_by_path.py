@@ -235,3 +235,91 @@ class TestTwinsHashTheirOwnPaths:
 
         proj = resolve_project(std, config, str(real))
         assert proj.project_hash == project_hash(str(real))
+
+
+class TestAWorksetRootIsLoadedAndImportedAsGiven:
+    """A workset root reached through a link keeps the link's spelling: loading it,
+    importing it, and connecting a member under it never swap in the real path."""
+
+    def _alias(self, tmp_home):
+        real = tmp_home / "real"
+        real.mkdir()
+        alias = tmp_home / "alias"
+        alias.symlink_to(real)
+        return alias
+
+    def test_an_in_tree_member_records_the_root_as_given(
+        self, config_file, tmp_home,
+    ):
+        from kanibako.project import workset_registry
+        from kanibako.project.workset import add_project, create_workset, load_workset
+
+        std = load_std_paths(load_config(config_file))
+        alias = self._alias(tmp_home)
+        create_workset("ws1", alias / "ws1", std)
+        ws = load_workset(alias / "ws1", "ws1", early_system=std.early_system)
+        assert ws.root == alias / "ws1"
+
+        add_project(ws, "m1", alias / "ws1" / "workspaces" / "m1", std)
+        boxes = workset_registry.load_workset_boxes(alias / "ws1" / "registry.yaml")
+        assert boxes == {"m1": str(alias / "ws1" / "workspaces" / "m1")}
+
+    def test_an_imported_root_is_stored_as_given(self, config_file, tmp_home):
+        from kanibako.project import import_reconcile, registry_store
+
+        std = load_std_paths(load_config(config_file))
+        alias = self._alias(tmp_home)
+        (alias / "wsx").mkdir()
+
+        name = import_reconcile.import_named_workset(std.registry, alias / "wsx")
+        assert name == "wsx"
+        stored = registry_store.load_section(std.registry, "worksets")["wsx"]
+        assert str(stored) == str(alias / "wsx")
+        # The same directory by its real path is the same workset: a no-op.
+        again = import_reconcile.import_named_workset(
+            std.registry, tmp_home / "real" / "wsx")
+        assert again == "wsx"
+        stored = registry_store.load_section(std.registry, "worksets")["wsx"]
+        assert str(stored) == str(alias / "wsx")
+
+    def test_connect_names_the_box_after_the_path_as_given(
+        self, config_file, tmp_home, capsys,
+    ):
+        import argparse
+
+        from kanibako.commands.workset_cmd import run_connect
+        from kanibako.project import workset_registry
+        from kanibako.project.workset import create_workset
+
+        std = load_std_paths(load_config(config_file))
+        create_workset("cws", tmp_home / "cws", std)
+        real = tmp_home / "real_proj"
+        real.mkdir()
+        alias = tmp_home / "alias_proj"
+        alias.symlink_to(real)
+
+        rc = run_connect(argparse.Namespace(
+            workset="cws", source=str(alias), project_name=None, force=False,
+        ))
+        assert rc == 0, capsys.readouterr().err
+        boxes = workset_registry.load_workset_boxes(tmp_home / "cws" / "registry.yaml")
+        assert boxes == {"alias_proj": str(alias)}
+
+    def test_connect_refusal_names_the_path_as_given(
+        self, config_file, tmp_home, capsys,
+    ):
+        import argparse
+
+        from kanibako.commands.workset_cmd import run_connect
+        from kanibako.project.workset import create_workset
+
+        std = load_std_paths(load_config(config_file))
+        create_workset("rws", tmp_home / "rws", std)
+        alias = self._alias(tmp_home)
+
+        rc = run_connect(argparse.Namespace(
+            workset="rws", source=str(alias / "missing"), project_name=None, force=False,
+        ))
+        assert rc == 1
+        err = capsys.readouterr().err
+        assert f"Cannot connect '{alias / 'missing'}'" in err

@@ -1291,7 +1291,7 @@ def load_workset(root: Path, name: str, *, early_system: EarlySystem) -> Workset
     the caller reached *root* through that mapping, and it is the only record of the
     name there is.
     """
-    root = root.resolve()
+    root = Path(literal_path(root))
     if not root.is_dir():
         raise WorksetError(f"Workset root does not exist: {root}")
     return _load_workset(root, name, early_system=early_system)

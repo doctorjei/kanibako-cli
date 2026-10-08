@@ -207,7 +207,7 @@ def import_named_workset(
     an empty or reserved basename, or ``$HOME`` (see the guards below).
     ⚑ Does NOT rewrite the workset-create skeleton; it only registers.
     """
-    root = root.resolve()
+    root = Path(literal_path(root))
     root_str = str(root)
 
     from kanibako.project.workset import is_reserved_workset_name
@@ -236,15 +236,15 @@ def import_named_workset(
     # EVERY command's mode detection.  Declining leaves it what it already was: a
     # plain primary-mode dir.  Tested directly, never caught: an ``except
     # ProjectError`` here would swallow the SAME-KIND collision refusal below.
-    if root == Path.home().resolve():
+    if root.resolve() == Path.home().resolve():
         return None
 
     names_section = registry_store.load_section(registry, "worksets")
     current = names_section.get(name)
     if current is not None:
-        if str(Path(current).resolve()) == root_str:
+        if Path(current).resolve() == root.resolve():
             # Already registered to this root → no-op; clear a stale entry.
-            _clear_stale_import(journal, root)
+            _clear_stale_import(journal, Path(current))
             return name
         # SAME-KIND: the name is another WORKSET's.  Refuse, leave the tree on disk.
         raise _conflict("workset", name, root, str(current))
