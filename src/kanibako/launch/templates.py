@@ -91,7 +91,7 @@ def agent_template_defaults(agent_id: str | None) -> dict[str, object]:
     # (``store_canon if node_store.is_dir() else …``): that conditional is the canon
     # key's own behavior, not this family's.
     defs["agent.default.template"] = (
-        f"@config.agents/default/{AGENT_TEMPLATE_STORE_REL}"
+        f"{{config.agents}}/default/{AGENT_TEMPLATE_STORE_REL}"
     )
     if agent_id in ADDRESSABLE_PSEUDO_AGENTS:
         # ⚑ A PRESENT ``None``, NEVER ABSENT.  §2d's shell fence declares
@@ -129,7 +129,7 @@ def agent_template_defaults(agent_id: str | None) -> dict[str, object]:
     # ⚑ KEY vs DIRECTORY: the key segment stays the CANONICAL node, the value is
     # a store path and takes the ``+`` dirname (``agent_config.store_dirname``).
     defs[f"agent.{agent_id}.template"] = (
-        f"@config.agents/{store_dirname(agent_id)}/{AGENT_TEMPLATE_STORE_REL}"
+        f"{{config.agents}}/{store_dirname(agent_id)}/{AGENT_TEMPLATE_STORE_REL}"
     )
     return defs
 
@@ -161,7 +161,7 @@ def template_seed_defaults(
         # RESERVED on a COPY and no shipped layer sets it.
         return {_SEED_DEST_HOME: (f"{source_root}/{_SEED_SRC_HOME}",)}
 
-    defs: dict[str, object] = {"system.seeded": _layer("@system.template")}
+    defs: dict[str, object] = {"system.seeded": _layer("{system.template}")}
     defs.update(agent_template_defaults(agent_id))
     if agent_id:
         # EVERY agent node declares the layer (spec §2a: ``<scope>.seeded`` is declared
@@ -172,11 +172,11 @@ def template_seed_defaults(
         # ``None`` makes the entry ``None`` (spec §0), and the collapse skips a ``None``
         # seeded entry), and a USER-set ``agent.shell.template`` seeds from that store.
         # Gating on the default's value here dropped the user's value at create.
-        defs[f"agent.{agent_id}.seeded"] = _layer(f"@agent.{agent_id}.template")
+        defs[f"agent.{agent_id}.seeded"] = _layer(f"{{agent.{agent_id}.template}}")
     if has_workset_channels(proj):
         # STANDALONE (no workset channels) omits the layer: its workset tier is <None>
         # (spec §2c), which the floor SUPPLIES as the source key's present ``None``.
-        defs["workset.seeded"] = _layer("@workset.template")
+        defs["workset.seeded"] = _layer("{workset.template}")
     return defs
 
 

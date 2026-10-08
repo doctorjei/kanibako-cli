@@ -1577,7 +1577,7 @@ keys:
     type: path
     owner: shared
     set: cli+file
-    default: "@config.agents/default/template"
+    default: "{config.agents}/default/template"
     note: "the all-agents fallback arm of the layer-2 TEMPLATE SOURCE, sibling of
            the agent.default.canon row below — `template` is a §2d default-tier leaf
            like every other, so the arm exists by the §2d fallback rule
@@ -1607,7 +1607,7 @@ keys:
     type: path
     owner: shared
     set: cli+file
-    default: "@config.agents/default/canon"
+    default: "{config.agents}/default/canon"
     note: "the all-agents fallback CANON CONTRIBUTION ROOT (= the parametric
            default with meta.agent.default.name = \"default\") — a plain dir in
            the agents store, CORE-owned: there is NO default plugin package
@@ -1778,7 +1778,7 @@ keys:
     type: path
     owner: shared
     set: cli+file
-    default: "@config.agents/default/canon"
+    default: "{config.agents}/default/canon"
     note: "the shell tier's CANON CONTRIBUTION ROOT is the all-agents fallback arm
            itself (fence literal) — the pseudo-agent ships no canon of its own."
     spec: "§2d (shell fence)"

@@ -258,9 +258,9 @@ class TestTemplateSeedDefaults:
         #   @agent.claude.template -> @config.agents/claude/<store rel>
         source = defs["agent.claude.seeded"]["~/"][0]
         store_ref = defs["agent.claude.template"]
-        assert source.startswith("@agent.claude.template/")
-        resolved = source.replace("@agent.claude.template", store_ref, 1)
-        store_relative = resolved.split("@config.agents/claude/", 1)[1]
+        assert source.startswith("{agent.claude.template}/")
+        resolved = source.replace("{agent.claude.template}", store_ref, 1)
+        store_relative = resolved.split("{config.agents}/claude/", 1)[1]
         assert store_relative == f"{AGENT_TEMPLATE_STORE_REL}/{_SEED_SRC_HOME}", (
             "the seeded payload lands where NOTHING reads it"
         )
@@ -293,14 +293,14 @@ class TestTemplateSeedDefaults:
         from kanibako.launch.templates import agent_template_defaults
 
         assert agent_template_defaults("shell") == {
-            "agent.default.template": "@config.agents/default/template",
+            "agent.default.template": "{config.agents}/default/template",
             "agent.shell.template": None,
         }
         defs = template_seed_defaults(primary_proj, "shell")
         assert "agent.shell.template" in defs
         assert defs["agent.shell.template"] is None
         assert defs["agent.shell.seeded"] == {
-            "~/": ("@agent.shell.template/box/home",),
+            "~/": ("{agent.shell.template}/box/home",),
         }
 
     def test_the_workset_source_key_is_the_floors_not_this_tables(self, primary_proj):

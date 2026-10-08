@@ -53,15 +53,15 @@ NODE_DIR = "navigator+claude"
 #: re-rootable; destinations are guest-absolute (R-11) and never move.
 DECLARED_BINDS = {
     "agent.claude.caches": {
-        "/home/agent/.kani_cache": ("@meta.agent.claude.path/caches/kani",),
+        "/home/agent/.kani_cache": ("{meta.agent.claude.path}/caches/kani",),
     },
     "agent.claude.bindings.ro": {
-        "/home/agent/kani_ro": ("@meta.agent.claude.path/robits", "ro"),
+        "/home/agent/kani_ro": ("{meta.agent.claude.path}/robits", "ro"),
     },
 }
 DECLARED_SEEDS = {
     "agent.claude.seeded": {
-        "~/kani_seed": ("@meta.agent.claude.path/seedsrc",),
+        "~/kani_seed": ("{meta.agent.claude.path}/seedsrc",),
     },
 }
 
@@ -185,7 +185,7 @@ class TestTheShippedCachesRowAdaptsToAPersona:
         ) == {
             f"agent.{NODE}.caches": {
                 "{system.cache}/tweakcc": (
-                    f"@meta.agent.{NODE}.path/caches/tweakcc",
+                    f"{{meta.agent.{NODE}.path}}/caches/tweakcc",
                 ),
             },
         }

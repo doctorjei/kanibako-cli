@@ -3002,8 +3002,8 @@ def test_shell_canon_falls_back_to_default_canon(tmp_path):
 
     std = SimpleNamespace(agents=tmp_path / "agents")
     out = canon_default_categories(std, "shell")
-    assert out["agent.default.canon"] == "@config.agents/default/canon"
-    assert out["agent.shell.canon"] == "@config.agents/default/canon"
+    assert out["agent.default.canon"] == "{config.agents}/default/canon"
+    assert out["agent.shell.canon"] == "{config.agents}/default/canon"
 
 
 def test_meta_identity_standalone_share_workset_none_terminal():
