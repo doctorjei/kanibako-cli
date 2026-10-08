@@ -645,7 +645,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **The cures `box rm` prints for a box with a legacy name now work as printed.** A name the box-name rule no longer
   allows, such as `my project`, reads as a path, so `box register 'my project'` and `box rm 'my project' --purge` did
   not find the retained box. Both now fall back to it after every path lookup. Printed commands (`box register`,
-  `box rm --purge`, `rig prep`) now stand on their own lines instead of inside quotes that nested around a quoted name.
+  `box rm --purge`, `rig prep`, the `workset connect` and `box create` refusals' `box convert`/`move`/`rm`/`show`
+  cures, and the settings refusals' read-back commands) now stand on their own lines instead of inside quotes that
+  nested around a quoted name; a read-back key or entry name is shell-quoted where it needs it.
 
 - **Registering a standalone box again through a link drops its stale `deregistered` entry.** After `box rm <name>`
   and `box register <link>`, the old entry stayed: `box register <name>` refused, and `box rm <name> --purge` could

@@ -2851,7 +2851,7 @@ class TestTerminalCategoryWriteRefusal:
             ):
                 key = f"{tok}.{cat}"
                 msg = bench.set(scope, key, "/tmp/probe")
-                assert f"{promised} {key}' still works" in msg, msg
+                assert f"still works:\n  {promised} {key}" in msg, msg
                 file = {"system": bench.ssp, "workset": bench.ws, "box": bench.box}[tok]
                 bench.seed(file, (tok, *tail[:-1]), tail[-1], dict(stored))
                 assert bench.get(scope, key) == str(stored), key
@@ -2859,7 +2859,7 @@ class TestTerminalCategoryWriteRefusal:
             # -- the reserved any-agent tier: a SYSTEM-file table, read at the system noun.
             key = f"agent.default.{cat}"
             msg = bench.set(ConfigLevel.system, key, "/tmp/probe")
-            assert f"kanibako system get {key}' still works" in msg, msg
+            assert f"still works:\n  kanibako system get {key}" in msg, msg
             bench.seed(bench.ssp, ("agent", "default", *tail[:-1]), tail[-1], dict(stored))
             assert bench.get(ConfigLevel.system, key) == str(stored), key
 
@@ -2868,7 +2868,7 @@ class TestTerminalCategoryWriteRefusal:
             # this executes the promised command's engine rather than restating it.
             key = f"agent.claude.{cat}"
             msg = bench.set(ConfigLevel.system, key, "/tmp/probe")
-            assert f"kanibako agent get claude {cat}' still works" in msg, msg
+            assert f"still works:\n  kanibako agent get claude {cat}" in msg, msg
             assert "agents/claude/agent.yaml" in msg, msg
             node_file = bench.agents / "claude" / "agent.yaml"
             node_file.parent.mkdir(parents=True, exist_ok=True)

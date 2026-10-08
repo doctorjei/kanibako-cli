@@ -14,6 +14,7 @@ Reference: ``llm-docs/kanibako/settings/config_dest.py.md``.
 
 from __future__ import annotations
 
+import shlex
 from dataclasses import dataclass
 from pathlib import Path
 from typing import overload
@@ -139,8 +140,8 @@ def _reserved_tier_read_refusal(tail: str) -> str:
     routes that spelling to the tier's slot), in ``config_keys``' read-command spelling.
     """
     return (
-        f"{_RESERVED_TIER_HEAD}; read the any-agent default with "
-        f"'{_SCOPE_READ_COMMAND['system']} agent.default.{tail}' instead."
+        f"{_RESERVED_TIER_HEAD}; read the any-agent default instead with:\n"
+        f"  {_SCOPE_READ_COMMAND['system']} {shlex.quote(f'agent.default.{tail}')}"
     )
 
 
@@ -155,7 +156,7 @@ def _reserved_tier_category_refusal(tail: str) -> str:
     key = f"agent.{AGENT_DEFAULT_SUB}.{tail}"
     return (
         f"{_RESERVED_TIER_HEAD}; '{key}' is a system-scope key: set or reset it at the system "
-        f"scope, and read it with '{_SCOPE_READ_COMMAND['system']} {key}'."
+        f"scope, and read it with:\n  {_SCOPE_READ_COMMAND['system']} {shlex.quote(key)}"
     )
 
 

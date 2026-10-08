@@ -1298,8 +1298,8 @@ def _refuse_undeclared_state(
         f"key has no meaning to give a box, and carrying it through would be the "
         f"very 'anything goes' behavior the closed keyspace replaces.\n"
         f"  Fix: remove {spelled} from {path or 'the agent settings file'} (or correct the "
-        f"spelling), or clear every override with "
-        f"'kanibako agent reset {agent} --all'."
+        f"spelling), or clear every override with:\n"
+        f"  kanibako agent reset {agent} --all"
     )
 
 
