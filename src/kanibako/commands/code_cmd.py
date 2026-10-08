@@ -347,7 +347,7 @@ def _resolve_box_agent_node(runtime, std, proj, container_name: str) -> str | No
         return None
 
 
-def _resolve_box_vscode_extension(agent_name: str | None, proj) -> str | None:
+def _resolve_box_vscode_extension(agent_name: str | None) -> str | None:
     """Best-effort: *agent_name*'s ``descriptor.vscode_extension`` (or ``None``).
 
     Takes the pre-resolved box agent NODE-name (see :func:`_resolve_box_agent_node`)
@@ -490,7 +490,7 @@ def _seed_attached_config(runtime, std, proj, container_name: str) -> None:
             return  # can't key the image-shared config → skip, never crash
         # Resolve the box agent ONCE (STAMP-first) for the extension seed.
         agent_name = _resolve_box_agent_node(runtime, std, proj, container_name)
-        extension = _resolve_box_vscode_extension(agent_name, proj)
+        extension = _resolve_box_vscode_extension(agent_name)
         path = attached_container_config_path(
             image_ref, user_config_home(),
         )

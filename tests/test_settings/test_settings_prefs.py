@@ -907,7 +907,7 @@ class TestDiscoveryIsLazyCachedAndHonest:
         sp.reset_discovery_cache()
         monkeypatch.setattr(
             "kanibako.targets.discover_targets",
-            lambda project_path=None: {"goose": _Broken, "claude": _Fine},
+            lambda: {"goose": _Broken, "claude": _Fine},
         )
         agents = sp.default_valid_agents()
         # The NAME survives: a broken plugin is still an installed agent.
