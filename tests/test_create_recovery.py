@@ -3397,8 +3397,12 @@ class TestAKilledCreateIsRecoveredWithWhatItWasTold:
     def test_a_standalone_name_is_recorded_and_recover_registers_it(
         self, point, config_file, tmp_home, credentials_dir,
     ):
-        """``--register --name foo`` survives a kill: ``--recover`` refuses ``--name``,
-        so only the entry can carry it, and it carries the ``--register`` with it."""
+        """``--register`` survives a kill: ``--recover`` refuses ``--name``, so only
+        the entry can carry it, and it carries the ``--register`` with it.
+
+        ⚑ Driven by the leaf no-op since ruling 2026-10-08 — a divergent
+        ``--name`` never reaches the journal any more.
+        """
         from kanibako.commands.box._parser import run_create
         from kanibako.project import registry_store
         from kanibako.settings.config import load_config, read_workset_kuid
@@ -3409,17 +3413,38 @@ class TestAKilledCreateIsRecoveredWithWhatItWasTold:
         path.mkdir()
 
         assert _killed_create(point, ["create", "--standalone", str(path), "--register",
-                                      "--name", "foo"]) == -9
+                                      "--name", "sn"]) == -9
         entry = next(iter(journal.read_journal(std.journal).values()))
-        assert entry["state"]["name"] == "foo"
+        assert entry["state"]["name"] == "sn"
         assert entry["state"]["register"] is True
 
         # ⚑ No ``--register`` on the replay: the entry's is the one applied.
         assert run_create(_create_args(path, standalone=True, no_vault=False,
                                        recover=True)) == 0
         stored = read_workset_kuid(path / WORKSET_META_FILE)
-        assert registry_store.standalone_name_for_root(std.registry, path) == f"{stored}_foo"
+        assert registry_store.standalone_name_for_root(std.registry, path) == f"{stored}_sn"
         assert journal.read_journal(std.journal) == {}
+
+    def test_a_divergent_standalone_name_journals_nothing(
+        self, config_file, tmp_home, credentials_dir,
+    ):
+        """⚑ The refusal is atomic: a standalone ``--name`` that is not the leaf is
+        turned away before a journal entry exists, so there is no half-create for
+        ``--recover`` to resume."""
+        from kanibako.commands.box._parser import run_create
+        from kanibako.project import registry_store
+        from kanibako.settings.config import load_config
+        from kanibako.settings.paths import load_std_paths
+
+        std = load_std_paths(load_config(config_file))
+        path = tmp_home / "sn2"
+        path.mkdir()
+
+        assert run_create(_create_args(path, standalone=True, register=True,
+                                       name="other")) == 1
+        assert journal.read_journal(std.journal) == {}
+        assert registry_store.load_standalone(std.registry) == {}
+        assert not (path / "workset.yaml").exists()
 
     def test_new_box_undo_takes_no_name(self) -> None:
         """The undo names the CLAIMED box (its probe's); a second name would diverge."""
