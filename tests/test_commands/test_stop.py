@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import io
+import sys
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -246,7 +248,8 @@ class TestStopAll:
         mock_runtime.is_running.side_effect = lambda name: True
         mock_runtime.stop.side_effect = [True, False]
         rc = _stop_all(mock_runtime, force=True)
-        assert rc == 0
+        assert rc == 1
+        assert mock_runtime.stop.call_count == 2
         out = capsys.readouterr().out
         assert out.endswith("\nStopped 1 container(s); removed 0 stopped container(s).\n")
         capsys.readouterr()  # drain stderr
@@ -313,7 +316,7 @@ class TestStopAll:
         mock_runtime.container_exists.return_value = True
         mock_runtime.rm.return_value = False
         rc = _stop_all(mock_runtime, force=True)
-        assert rc == 0
+        assert rc == 1
         captured = capsys.readouterr()
         assert captured.err == "Failed to remove kb-running\n"
         assert captured.out.endswith(
@@ -328,13 +331,39 @@ class TestStopAll:
         mock_runtime.is_running.return_value = False
         mock_runtime.rm.return_value = False
         rc = _stop_all(mock_runtime, force=True)
-        assert rc == 0
+        assert rc == 1
         captured = capsys.readouterr()
         assert "Removed stopped container" not in captured.out
         assert captured.err == "Failed to remove kanibako-aabbccdd\n"
         assert captured.out.endswith(
             "\nStopped 0 container(s); removed 0 stopped container(s).\n"
         )
+
+    def test_a_failure_line_follows_the_output_before_it(self, mock_runtime, monkeypatch):
+        events: list[str] = []
+
+        class _Buffered(io.StringIO):
+            def flush(self):
+                events.append(self.getvalue())
+                self.seek(0)
+                self.truncate()
+
+        class _Direct(io.StringIO):
+            def write(self, text):
+                events.append(text)
+                return len(text)
+
+        monkeypatch.setattr(sys, "stdout", _Buffered())
+        monkeypatch.setattr(sys, "stderr", _Direct())
+        mock_runtime.list_running.return_value = [
+            ("kb-a", "img:latest", "Up 5 minutes"),
+            ("kb-b", "img:latest", "Up 5 minutes"),
+        ]
+        mock_runtime.is_running.return_value = True
+        mock_runtime.stop.side_effect = [True, False]
+        mock_runtime.container_exists.return_value = False
+        assert _stop_all(mock_runtime, force=True) == 1
+        assert "".join(events).startswith("Stopped kb-a\nFailed to stop kb-b\n")
 
     def test_mixed_running_and_exited_prompts_truthfully(self, mock_runtime, capsys, monkeypatch):
         mock_runtime.list_running.return_value = [

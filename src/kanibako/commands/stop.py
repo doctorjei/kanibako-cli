@@ -330,7 +330,8 @@ def _stop_all(runtime: ContainerRuntime, *, force: bool = False) -> int:
     """Stop and remove each running kanibako container; remove each stopped one.
 
     Containers are handled in listing order.  A stopped container still holds
-    the box's name and blocks the next launch, so it is removed too.
+    the box's name and blocks the next launch, so it is removed too.  Returns 1
+    if any stop or removal failed, after handling every container.
     """
     # ⚑ SKIP AND CONTINUE: the sweep carries on with every container that has a name.
     for name in _boxes_rendering_no_name():
@@ -364,6 +365,14 @@ def _stop_all(runtime: ContainerRuntime, *, force: bool = False) -> int:
             print("Aborted.")
             return 2
 
+    failed = False
+
+    def fail(line: str) -> None:
+        nonlocal failed
+        failed = True
+        sys.stdout.flush()
+        print(line, file=sys.stderr)
+
     stopped_count = 0
     removed_count = 0
     for name, _image, _status in containers:
@@ -371,17 +380,17 @@ def _stop_all(runtime: ContainerRuntime, *, force: bool = False) -> int:
             if runtime.stop(name):
                 print(f"Stopped {name}")
                 if runtime.container_exists(name) and not runtime.rm(name):
-                    print(f"Failed to remove {name}", file=sys.stderr)
+                    fail(f"Failed to remove {name}")
                 stopped_count += 1
             else:
-                print(f"Failed to stop {name}", file=sys.stderr)
+                fail(f"Failed to stop {name}")
         else:
             # Reuse the sentence ``_stop_one`` prints for an already-stopped box.
             if runtime.rm(name):
                 print(f"Removed stopped container: {name}")
                 removed_count += 1
             else:
-                print(f"Failed to remove {name}", file=sys.stderr)
+                fail(f"Failed to remove {name}")
 
     print(f"\nStopped {stopped_count} container(s); removed {removed_count} stopped container(s).")
-    return 0
+    return 1 if failed else 0
