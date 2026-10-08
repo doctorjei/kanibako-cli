@@ -658,6 +658,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   prints `No kanibako containers found.` The `--all` help reads "Stop all running kanibako containers and remove
   stopped ones".
 
+- **`stop --all` now exits 1 when any stop or removal failed.** It still handles every other container and prints
+  the summary line before it exits; before, it exited 0. Each `Failed to …` line on stderr now follows the stdout
+  lines before it when both go to one pipe.
+
 - **`box convert --move` into a workset or into the default workset now re-points a vault link whose target lies in
   the workspace or the box store it carries.** The link names the landed tree instead of leaving a second copy that
   diverges.
