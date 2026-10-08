@@ -1,8 +1,8 @@
 """Every operand of a printed cure is shell-quoted, because a cure is PASTED.
 
-A box created from a PATH is registered under that path's basename VERBATIM:
-``kanibako create 'q$(touch pwned)'`` exits 0 and leaves a primary box named
-``q$(touch pwned)``, and ``box rm`` on it prints
+A box created from a PATH by an older kanibako is registered under that path's
+basename VERBATIM, so a store can hold a primary box named ``q$(touch pwned)``, and
+``box rm`` on it prints
 
     Restore it or delete it:
       kanibako box register q$(touch pwned)
@@ -31,7 +31,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-# ⚑ HOSTILE OPERANDS ARE BASENAMES A REAL ``create`` PRODUCES.  ``q;>pwned`` needs
+# ⚑ HOSTILE OPERANDS ARE BASENAMES AN OLDER ``create`` PRODUCED.  ``q;>pwned`` needs
 # the ``;``; the ``$( )`` form needs no separator, so the two fail differently.
 _HOSTILE = ["q;>pwned", "q$(touch pwned)"]
 _MARKER = "pwned"
@@ -160,9 +160,10 @@ def _run(argv: "list[str]") -> int:
 
 
 def _park_primary_box(name: str) -> Path:
-    """Create a PRIMARY box registered under *name*; return its workspace path."""
+    """Create a PRIMARY box registered under *name*, as an older ``create`` did."""
     path = Path.cwd() / name
-    assert _run(["box", "create", str(path), "--no-vault"]) == 0
+    with patch("kanibako.settings.paths.box_name_reason", return_value=None):
+        assert _run(["box", "create", str(path), "--no-vault"]) == 0
     return path
 
 
@@ -190,8 +191,7 @@ def _standalone_root(name: str) -> Path:
 def _at_rm_primary(name: str, capsys) -> str:
     """Door 4: the cure a ``box rm`` prints when it parks an ACTIVE primary box.
 
-    Reached with no registry editing: ``create`` stores the basename verbatim and
-    ``rm`` on the path resolves it back.
+    ``rm`` on the path resolves the parked box back.
     """
     _park_primary_box(name)
     capsys.readouterr()

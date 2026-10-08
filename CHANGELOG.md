@@ -12,6 +12,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **A box named after its directory must have a valid box name.** With no `--name`, `create`, `workset connect`, and
+  `box duplicate --to named` refuse a directory name that breaks the box-name rule (`my project`, `-x`), before
+  anything is written, and print the command with `--name <new-name>`. `workset connect --name` and
+  `box duplicate --to named --name` now check the rule too.
+
 - **Two working sets can no longer be put on one `workset.logs` directory by accident.** `workset set`,
   `system set`, `workset reset`, `system reset` and `workset create` refuse a change that lands two working sets
   (the default one included) on one logs directory, comparing resolved directories, and name the working sets;

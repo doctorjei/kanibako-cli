@@ -61,6 +61,7 @@ from kanibako.settings.paths import (
     load_primary_boxes,
     load_std_paths,
     primary_box_name_for_workspace,
+    refuse_derived_primary_box_name,
     resolve_any_project,
     resolve_box_target,
     resolve_project,
@@ -1252,6 +1253,12 @@ def run_create(args: argparse.Namespace) -> int:
             if not args.standalone:
                 refuse_inherited_per_owner(
                     std.primary_workset, _early_scope(std, BoxMode.primary))
+                if not getattr(args, "name", None):
+                    try:
+                        refuse_derived_primary_box_name(str(effective_path))
+                    except ProjectError as e:
+                        print(f"Error: {e}", file=sys.stderr)
+                        return 1
             target.mkdir(parents=True)
 
     from kanibako.commands.start import (
@@ -1291,6 +1298,8 @@ def run_create(args: argparse.Namespace) -> int:
     # A NAMED member's answer is whether its box dir exists, read before any write:
     # ``add_project`` makes that dir, and a pending create's attempt one already did.
     _already = _named_already if _named_spec is not None else box_tree_materialized(_probe)
+    if _named_spec is None and not args.standalone and getattr(args, "name", None):
+        _probe.name = _probe.name or args.name
     _name_new_box_probe(std, _probe)
     # ⚑ The JOURNAL ENTRY, not ``is_new``, drives recovery.
     _pending = _pending_create_entry(std, _probe)

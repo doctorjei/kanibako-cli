@@ -17,8 +17,9 @@ from typing import TYPE_CHECKING
 
 from kanibako.commands.flags import add_null_flag, add_set_force_flag
 from kanibako.settings.config import user_config_file, load_config
-from kanibako.settings.messages import ERR_WS_CONNECT_PATH_IS_PRIMARY_BOX
-from kanibako.errors import ConfigError, WorksetError
+from kanibako.launch.box_identity import box_name_reason, validate_box_name
+from kanibako.settings.messages import ERR_DERIVED_BOX_NAME, ERR_WS_CONNECT_PATH_IS_PRIMARY_BOX
+from kanibako.errors import ConfigError, ProjectError, WorksetError
 from kanibako.settings.settings_resolve import UNSET
 from kanibako.settings.paths import (
     BoxMode,
@@ -580,6 +581,15 @@ def run_connect(args: argparse.Namespace) -> int:
 
     source = Path(literal_path(args.source if args.source else logical_cwd()))
     project_name = args.project_name or source.name
+    # ⚑ The box-name rule (spec §0), typed or derived, before any write.
+    try:
+        validate_box_name(project_name)
+    except ProjectError as e:
+        cure = (f"kanibako workset connect {shlex.quote(stored)} "
+                f"{shlex.quote(str(source))} --name <new-name>")
+        print("Error: " + (str(e) if args.project_name else ERR_DERIVED_BOX_NAME % (
+            project_name, box_name_reason(project_name), cure)), file=sys.stderr)
+        return 1
 
     # ⚑ EVERY REFUSAL BELOW FIRES BEFORE THE JOURNAL BRACKET, so a refused connect leaves
     # no pending ``connect`` entry behind (``add_project`` refuses the same null case for

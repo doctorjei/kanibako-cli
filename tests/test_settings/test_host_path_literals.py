@@ -185,8 +185,8 @@ def test_a_workset_name_is_kept_in_its_channel_addresses(
 
 @pytest.mark.parametrize("leaf", ["n$m", "n@m", "n\\m"])
 def test_a_box_named_for_its_directory_keeps_the_name(tmp_path, monkeypatch, leaf) -> None:
-    """A box takes its directory's name, any character included; ``meta.box.name`` and
-    the ``KANIBAKO_NAME`` stamp carry it as it is."""
+    """A box an older ``create`` named for its directory, any character included:
+    ``meta.box.name`` and the ``KANIBAKO_NAME`` stamp carry the name as it is."""
     from kanibako.settings.settings_launch import snapshot_leaf
 
     root = tmp_path / "plain"
@@ -201,6 +201,7 @@ def test_a_box_named_for_its_directory_keeps_the_name(tmp_path, monkeypatch, lea
     from kanibako.settings.config import user_config_file, write_global_config
 
     write_global_config(user_config_file())
+    monkeypatch.setattr("kanibako.settings.paths.box_name_reason", lambda name: None)
     _, _, snapshot = _create_and_launch(root, leaf=leaf)
     assert snapshot_leaf(snapshot, "meta.box.name") == leaf
     assert snapshot_leaf(snapshot, "system.env.KANIBAKO_NAME") == leaf

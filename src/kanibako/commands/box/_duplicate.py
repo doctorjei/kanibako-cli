@@ -40,6 +40,9 @@ from kanibako.settings.paths import (
     unregister_primary_box_name,
 )
 from kanibako.utils import confirm_prompt, literal_path
+from kanibako.errors import ProjectError
+from kanibako.launch.box_identity import box_name_reason, validate_box_name
+from kanibako.settings.messages import ERR_DERIVED_BOX_NAME
 from kanibako.channels.channels import workset_name_token, workset_root
 from kanibako.settings.workset_dirkeys import EarlyScope, refuse_inherited_per_owner
 
@@ -586,6 +589,16 @@ def _duplicate_to_workset(args, std, config) -> int:
     # ⚑ Stored as typed (spec §0): the user's ``--name``, else the source directory's
     # own basename — whose case is the user's too, and is never folded on its way here.
     proj_name = getattr(args, "project_name", None) or source_path.name
+    # ⚑ The box-name rule (spec §0), typed or derived, before any write.
+    try:
+        validate_box_name(proj_name)
+    except ProjectError as e:
+        cure = (f"kanibako box duplicate {shlex.quote(str(source_path))} "
+                f"{shlex.quote(literal_path(args.new_path))} --to named "
+                f"--workset {shlex.quote(ws_name)} --name <new-name>")
+        print("Error: " + (str(e) if getattr(args, "project_name", None) else ERR_DERIVED_BOX_NAME % (
+            proj_name, box_name_reason(proj_name), cure)), file=sys.stderr)
+        return 1
 
     # Validate name not taken — case-blind (spec §0), reporting the member as STORED.
     # ⚑ NOT reachable by the registry-lookup guard in

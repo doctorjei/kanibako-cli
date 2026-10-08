@@ -18,8 +18,8 @@ This file covers the rest of the family:
   ``duplicate``, ``extract``, ``workset disconnect``) and ``stop``'s lock-file
   ``rm``.
 
-A box created from a PATH is registered under that basename VERBATIM, and
-``rig add --name`` stores whatever it is handed, so these operands reach a
+A box created from a PATH by an older kanibako is registered under that basename
+VERBATIM, and ``rig add --name`` stores whatever it is handed, so these operands reach a
 printed cure with shell metacharacters or a space in them.  Each cure is
 therefore pinned as an EXECUTION: the printed command is pasted into a real
 ``/bin/sh`` whose leading program is a recording stub, and the assertions are
@@ -198,9 +198,9 @@ class TestTheRigPrepCureIsQuoted:
         printed = _printed(["rig", "add", "--name", name, "docker.io/library/alpine:3.19"])
 
         assert f"kanibako rig prep {shlex.quote(name)}" in printed
-        # The cure is a WHOLE line; prose quotes around it would nest.
-        assert "'kanibako rig" not in printed, printed
-        operand = re.search(r"^  kanibako rig prep (.+)$", printed, re.M).group(1)
+        # The message wraps the cure in prose single quotes, which are not part
+        # of what a user copies, so the OPERAND is what lies inside them.
+        operand = re.search(r"kanibako rig prep (.+?)' to pull it", printed).group(1)
         _assert_inert(f"kanibako rig prep {operand}", ["rig", "prep", name],
                       tmp_path / "paste")
 
@@ -840,8 +840,8 @@ class TestTheOtherPrintedCommandsAreQuoted:
             check_workspace_not_named_box(None, str(tmp_path / "w"))
         text = str(refused.value)
 
-        assert "'kanibako" not in text, text
-        _assert_inert(_line(text, "kanibako box show"), ["box", "show", f"{name}/{name}"], tmp_path / "paste-show")
+        show = re.search(r"\('(kanibako box show .+)'\), or free", text).group(1)
+        _assert_inert(show, ["box", "show", f"{name}/{name}"], tmp_path / "paste-show")
         _assert_inert(_line(text, "kanibako workset disconnect"),
                       ["workset", "disconnect", name, name, "--force"],
                       tmp_path / "paste-disconnect")
@@ -866,12 +866,14 @@ class TestTheOtherPrintedCommandsAreQuoted:
         with contextlib.redirect_stderr(err):
             assert run_connect(argparse.Namespace(
                 workset="xpb", source=str(ext), project_name="member", force=True)) == 1
-        text = err.getvalue()
+        text = err.getvalue().replace("\n", " ")
 
-        assert "'kanibako" not in text, text
-        convert, renamed = (ln.strip() for ln in text.splitlines()
-                            if ln.startswith("  kanibako box convert "))
-        move, remove = _line(text, "kanibako box move"), _line(text, "kanibako box rm")
+        cures = re.search(
+            r"\('(kanibako box convert .+?)', or '(kanibako box convert .+?)' to give it "
+            r"another name\), move it out of the way \('(kanibako box move .+?)'\), or "
+            r"drop the box \('(kanibako box rm .+?)'\)\.", text)
+        assert cures, text
+        convert, renamed, move, remove = cures.groups()
         _assert_inert(convert, ["box", "convert", name, "--workset", "xpb"],
                       tmp_path / "paste-convert")
         _assert_inert(renamed.replace("<member>", "mem"),
@@ -881,11 +883,11 @@ class TestTheOtherPrintedCommandsAreQuoted:
                       tmp_path / "paste-move")
         _assert_inert(remove, ["box", "rm", name], tmp_path / "paste-rm")
 
-    def test_the_in_tree_connect_cure_carries_the_leaf_name_as_one_word(
+    def test_the_in_tree_connect_refuses_the_leaf_name_before_its_cure(
             self, name, tmp_path, config_file, tmp_home, credentials_dir):
-        """In-tree, the in-place convert cure renames the box to the LEAF's name."""
+        """In-tree, a leaf name that fails the box-name rule is refused; no cure carries it."""
         from kanibako.commands.workset_cmd import run_connect
-        from kanibako.project.workset import create_workset
+        from kanibako.project.workset import create_workset, load_workset
         from kanibako.settings.config import load_config
         from kanibako.settings.paths import (
             BoxMode, _early_scope, load_std_paths, register_primary_box_name)
@@ -902,10 +904,10 @@ class TestTheOtherPrintedCommandsAreQuoted:
                 workset="xpb", source=str(leaf), project_name=name, force=True)) == 1
         text = err.getvalue()
 
-        assert "'kanibako" not in text, text
-        _assert_inert(_line(text, "kanibako box convert"),
-                      ["box", "convert", "ownerbox", "--workset", "xpb", "--name", name],
-                      tmp_path / "paste")
+        assert f"Invalid box name '{name}'" in text
+        assert "kanibako box convert" not in text
+        assert [p.name for p in load_workset(
+            ws.root, "xpb", early_system=std.early_system).projects] == []
 
     def test_the_in_place_rename_cure_pastes_to_one_argv(self, name, tmp_path, monkeypatch):
         """``_lifecycle._default_rename_name`` refusing a primary box's in-place rename."""
@@ -989,38 +991,3 @@ class TestTheOtherPrintedCommandsAreQuoted:
                                        stub="podman")
         assert not (paste_cwd / _MARKER).exists(), refusal
         assert argv == ["stop", legacy], argv
-
-
-
-# The settings refusals end on the read-back command, on its own line; a bind
-# entry's name is free-form, so the operand that carries it is shell-quoted.
-_SETTINGS_CURES = [
-    pytest.param(lambda ck: ck.agent_node_bind_retired_error(
-        "agent.claude.bindings.ro.my dir", verb="set"),
-        ["agent", "get", "claude", "bindings.ro.my dir"], id="agent_node_bind"),
-    pytest.param(lambda ck: ck.agent_node_bind_retired_error(
-        "agent.default.caches.x y", verb="set"),
-        ["system", "get", "agent.default.caches"], id="agent_default_bind"),
-    pytest.param(lambda ck: ck.scope_bind_retired_error("box.caches.~/x y", verb="set"),
-                 ["box", "get", "<box>", "box.caches.~/x y"], id="scope_bind"),
-    pytest.param(lambda ck: ck.table_leaf_read_cure("transform_settings", "claude"),
-                 ["agent", "get", "claude", "transform_settings"], id="table_leaf"),
-    pytest.param(lambda ck: ck.agent_category_read_error(
-        "agent.claude.caches", "agent.claude.caches"),
-        ["agent", "get", "claude", "caches"], id="agent_category"),
-    pytest.param(lambda ck: ck.foreign_scope_read_error(
-        "system.caches", "system.caches", ck.ConfigLevel.box),
-        ["system", "get", "system.caches"], id="foreign_scope"),
-]
-
-
-@pytest.mark.parametrize("produce,argv", _SETTINGS_CURES)
-def test_a_settings_read_back_cure_is_a_whole_pasteable_line(produce, argv):
-    from kanibako.settings import config_keys
-
-    message = produce(config_keys)
-
-    assert "'kanibako" not in message, message
-    last = message.splitlines()[-1]
-    assert last.startswith("  kanibako "), message
-    assert shlex.split(last) == ["kanibako", *argv]

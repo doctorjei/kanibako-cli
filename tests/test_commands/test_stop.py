@@ -1215,14 +1215,14 @@ class TestStopABoxThatRendersNoName:
     def _legacy_box(std, config, tmp_home):
         """A real PRIMARY box whose NAME the box-name rule no longer allows.
 
-        The name comes from the workspace directory's basename, and validation lives at
-        ``--name``, so this is exactly how such a name survives on disk.
+        An older ``create`` named it for its workspace directory, unchecked.
         """
         from kanibako.settings.paths import resolve_project
 
         workspace = tmp_home / "work" / "-legacy"
         workspace.mkdir(parents=True)
-        proj = resolve_project(std, config, project_dir=str(workspace), initialize=True)
+        with patch("kanibako.settings.paths.box_name_reason", return_value=None):
+            proj = resolve_project(std, config, project_dir=str(workspace), initialize=True)
         return workspace, proj.name
 
     def test_stop_refuses_with_the_rule_and_the_cure(
@@ -1266,7 +1266,8 @@ class TestStopAllSkipsABoxThatRendersNoName:
 
         workspace = tmp_home / "work" / "-legacy"
         workspace.mkdir(parents=True)
-        resolve_project(std, config, project_dir=str(workspace), initialize=True)
+        with patch("kanibako.settings.paths.box_name_reason", return_value=None):
+            resolve_project(std, config, project_dir=str(workspace), initialize=True)
 
         live_runtime.list_running.return_value = [
             ("kb-primary-other", "img:latest", "Up 1 minute"),
@@ -1366,7 +1367,8 @@ class TestStopAllIsolatesARegistryRefusal:
 
         workspace = tmp_home / "work" / "-legacy"
         workspace.mkdir(parents=True)
-        resolve_project(std, config, project_dir=str(workspace), initialize=True)
+        with patch("kanibako.settings.paths.box_name_reason", return_value=None):
+            resolve_project(std, config, project_dir=str(workspace), initialize=True)
 
         (tmp_home / "solo").mkdir()
         register_standalone(std.registry, "-solo", tmp_home / "solo")

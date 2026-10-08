@@ -649,7 +649,8 @@ class TestDesignationRoute:
         monkeypatch.chdir(tmp_home)
         hidden = tmp_home / ".hidden"
         hidden.mkdir()
-        resolve_project(std, config, project_dir=str(hidden), initialize=True)
+        resolve_project(std, config, project_dir=str(hidden), initialize=True,
+                        name_override="hidden")
 
         proj = resolve_box_target(std, config, ".hidden")
         assert proj.project_path == hidden.resolve()

@@ -434,6 +434,10 @@ inside boxes. In order of likely impact:
     a box is identified by its path as given, so a directory reached through a different symlink is not that box** —
     see *A duplicate or convert keeps a symlinked workspace or vault as a link*.
 
+43. **`create`, `workset connect`, and `box duplicate --to named` with no `--name` refuse a directory whose name is
+    not a valid box name (`my project`, `-x`), and print the command with `--name`** — see *A box named after its
+    directory must have a valid box name*.
+
 ---
 
 ## 2. Per-area detail
@@ -7052,6 +7056,20 @@ import it a second time and names the path to work from. Work from the resolved 
 same target or to its landed place when the target moved with the box. Before, it was a copy of the target's
 contents. Deleting the original target now affects the converted box. A target inside a tree the convert deletes is
 still copied, with a warning.
+
+### A box named after its directory must have a valid box name
+
+With no `--name`, `create`, `workset connect`, and `box duplicate --to named` name the box after its directory.
+Through v1.7.x that name was stored as it was, so a directory named `my project`, `-x`, or `q$(touch x)` made a box
+whose name breaks the box-name rule. Now such a name is refused with the rule it breaks, before anything is
+written, and the refusal prints the same command with `--name <new-name>`:
+
+```
+kanibako create --name myproject ~/my\ project
+```
+
+`create --name` takes the same rule as before; `workset connect --name` and `box duplicate --to named --name` now
+take it too. Nothing renames a box created under such a name before this release.
 
 ---
 

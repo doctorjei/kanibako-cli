@@ -393,10 +393,11 @@ class TestPathDesignationIsNeverAName:
     Detection & import), so ``rm`` and ``register`` never look it up by name."""
 
     def _hidden_box(self, config_file, tmp_home, monkeypatch):
-        """A primary box registered as ``.hidden``; cwd then moves to an empty dir."""
+        """A primary box an older ``create`` registered as ``.hidden``; cwd then moves to an empty dir."""
         config, std = _std(config_file)
         monkeypatch.chdir(tmp_home)
         (tmp_home / ".hidden").mkdir()
+        monkeypatch.setattr("kanibako.settings.paths.box_name_reason", lambda name: None)
         assert run_create(_create_args(".hidden")) == 0
         assert ".hidden" in load_primary_boxes(
             std.primary_workset, early=_early_scope(std, BoxMode.primary),
