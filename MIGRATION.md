@@ -6068,6 +6068,20 @@ is, each directory is named — `Note: left the vault at <path> in place — box
 so nothing received its contents.` — and you remove it yourself. `--force` on these verbs also
 skips the confirmation prompt, as it always did.
 
+### A primary box keeps its name when it moves
+
+**Read this if you run `box move` or `box remap` on a primary box without `--name`, or a script
+reads the name these commands print.**
+
+**What changed.** These commands renamed the box to the destination's basename without saying so:
+`box move beta ~/elsewhere/gamma` printed `Moved 'gamma'`, and `box move beta ~/elsewhere/beta`
+printed `Moved 'beta2'`. The box now keeps its name and its vault. A move or remap onto a path
+where another primary box is registered, for example one whose directory you deleted, is now
+refused with exit 1, naming that box; before, one of the two boxes lost its registration.
+
+**What to do.** To rename a box as it moves, run `box move <box> <new-path> --name <new>`. If the
+refusal names another box, remove it with `box rm <other>` or choose another path.
+
 ### 2.95 The `agent` verbs refuse an agent file with an undeclared key, as the launch does
 
 **Read this if an agent's settings file (`<data>/agents/<agent>/agent.yaml`) has a line under

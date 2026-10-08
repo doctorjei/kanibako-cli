@@ -284,6 +284,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   exempt, and `box remap` is unaffected. See *A leftover directory of the box's name in the target
   workset is refused* in [MIGRATION.md](MIGRATION.md).
 
+- **`box move` and `box remap` of a primary box keep its name.** Without `--name`, they renamed the
+  box to the destination's basename (`box move beta ~/elsewhere/gamma` printed `Moved 'gamma'`), or to
+  `beta2` when that basename was the box's own name. The box now keeps its name, and its vault with
+  it. To rename, pass `box move --name <new>`. A move or remap onto a path where another primary box
+  is registered is now refused, naming that box; before, one of the two boxes lost its registration.
+  See *A primary box keeps its name when it moves* in [MIGRATION.md](MIGRATION.md).
+
 - The undeclared-key refusal now lists each entry beside the settings file that carries it, instead
   of every file the resolve loaded; an entry no settings file carries is said to come from a
   non-file input. The system settings file and the site base file are now checked one file at a

@@ -142,7 +142,7 @@ class TestVaultCarry:
         seed = _seed_vault(state)
         dest = tmp_home / "newhome"
         new = execute_lifecycle(
-            state, TargetSpec(location=dest, ownership=UNCHANGED),
+            state, TargetSpec(location=dest, ownership=UNCHANGED, name="newhome"),
             std, config, confirm=_conf_yes(),
         )
         assert new.mode == BoxMode.primary
@@ -948,7 +948,7 @@ class TestDisabledVaultDataGuard:
         return state
 
     @pytest.mark.parametrize("spec", [
-        pytest.param({"location": "dest", "ownership": UNCHANGED}, id="move"),
+        pytest.param({"location": "dest", "ownership": UNCHANGED, "name": "moved"}, id="move"),
         pytest.param({"ownership": "standalone"}, id="convert"),
     ])
     def test_refused_without_force_and_the_data_survives(self, env, spec):
@@ -967,7 +967,7 @@ class TestDisabledVaultDataGuard:
         )
 
     @pytest.mark.parametrize("spec", [
-        pytest.param({"location": "dest", "ownership": UNCHANGED}, id="move"),
+        pytest.param({"location": "dest", "ownership": UNCHANGED, "name": "moved"}, id="move"),
         pytest.param({"ownership": "standalone"}, id="convert"),
     ])
     def test_force_proceeds_and_leaves_the_data_in_place(self, env, spec, capsys):
@@ -984,7 +984,7 @@ class TestDisabledVaultDataGuard:
         assert "box.enable_vault is false" in err
 
     @pytest.mark.parametrize("spec", [
-        pytest.param({"location": "dest", "ownership": UNCHANGED}, id="move"),
+        pytest.param({"location": "dest", "ownership": UNCHANGED, "name": "moved"}, id="move"),
         pytest.param({"ownership": "standalone"}, id="convert"),
     ])
     def test_an_empty_disabled_vault_is_not_refused(self, env, spec, capsys):
@@ -997,17 +997,17 @@ class TestDisabledVaultDataGuard:
         execute_lifecycle(state, TargetSpec(**kwargs), std, config, confirm=_conf_yes())
         assert "left the vault" not in capsys.readouterr().err
 
-    def test_a_remap_after_the_user_moved_the_tree_is_refused(self, env):
-        """``box remap``: the files are already at *dest*, but the vault is not carried."""
+    def test_a_remap_keeps_the_name_and_so_the_vault(self, env):
+        """``box remap`` keeps the box's name, so its vault stays its own: nothing to strand."""
         config, std, tmp_home = env
         state = self._disabled_with_data(env, "dv4")
         dest = tmp_home / "dv4-moved"
         state.workspace_path.rename(dest)
         spec = TargetSpec(location=dest, ownership=UNCHANGED, records_only=True)
-        with pytest.raises(ProjectError) as exc:
-            execute_lifecycle(state, spec, std, config, confirm=_conf_yes())
-        assert str(state.vault_rw) in str(exc.value)
-        assert "--force" in str(exc.value)
+        new = execute_lifecycle(state, spec, std, config, confirm=_conf_yes())
+        assert new.name == "dv4"
+        assert new.vault_rw == state.vault_rw
+        assert (state.vault_rw / "keep.txt").read_text() == "stale store"
         assert (state.vault_rw / "keep.txt").read_text() == "stale store"
 
     def test_a_same_path_remap_is_not_refused(self, env, capsys):

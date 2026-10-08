@@ -87,6 +87,71 @@ class TestBoxMove:
         assert proj.name == "beta"
         assert proj.project_path == dest.resolve()
 
+    def test_a_failed_bare_move_leaves_the_name_at_the_old_path(
+        self, config_file, tmp_home, credentials_dir, monkeypatch,
+    ):
+        """A failure after the bare move re-registers the name rolls it back to the old path."""
+        from kanibako.commands.box import _lifecycle
+        from kanibako.settings.paths import load_primary_boxes
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        project_dir = tmp_home / "proj" / "beta"
+        project_dir.mkdir(parents=True)
+        resolve_project(std, config, project_dir=str(project_dir), initialize=True)
+        dest = tmp_home / "elsewhere" / "beta"
+        early = _early_scope(std, BoxMode.primary)
+
+        seen = []
+
+        def boom(*_a, **_kw):
+            seen.append(load_primary_boxes(std.primary_workset, early=early).get("beta"))
+            raise OSError("injected")
+
+        monkeypatch.setattr(_lifecycle, "write_box_enable_vault", boom)
+        assert run_move(_move_args(project_dir, dest)) == 1
+
+        assert seen == [str(dest)]
+        boxes = load_primary_boxes(std.primary_workset, early=early)
+        assert boxes.get("beta") == str(project_dir)
+        assert str(dest) not in boxes.values()
+        assert project_dir.is_dir()
+
+    def test_a_move_onto_another_boxs_registered_path_is_refused(
+        self, config_file, tmp_home, credentials_dir, capsys,
+    ):
+        """Landing on a path another primary box is registered at refuses and names it."""
+        import hashlib
+
+        from kanibako.project import workset_registry
+        from kanibako.settings.config import WORKSET_META_FILE
+        from kanibako.settings.paths import load_primary_boxes
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        early = _early_scope(std, BoxMode.primary)
+        for name in ("alpha", "beta"):
+            (tmp_home / "proj" / name).mkdir(parents=True)
+            resolve_project(std, config, project_dir=str(tmp_home / "proj" / name),
+                            initialize=True)
+        (tmp_home / "proj" / "alpha").rmdir()
+        registry = workset_registry.resolve_workset_registry_path(
+            std.primary_workset, load_doc(std.primary_workset / WORKSET_META_FILE), early=early)
+        before = hashlib.sha256(registry.read_bytes()).hexdigest()
+        capsys.readouterr()
+
+        rc = run_move(_move_args(tmp_home / "proj" / "beta", tmp_home / "proj" / "alpha"))
+        assert rc == 1
+        err = capsys.readouterr().err
+        assert f"primary box 'alpha' is registered at {tmp_home / 'proj' / 'alpha'}" in err
+        assert "'beta' would land" in err
+        assert "`box rm alpha`" in err
+        assert hashlib.sha256(registry.read_bytes()).hexdigest() == before
+        assert load_primary_boxes(std.primary_workset, early=early) == {
+            "alpha": str(tmp_home / "proj" / "alpha"),
+            "beta": str(tmp_home / "proj" / "beta"),
+        }
+
     def test_move_requires_both_paths(self, config_file, tmp_home, credentials_dir):
         """move with a missing path returns an error (no cwd fallback)."""
         rc = run_move(_move_args(str(tmp_home / "dest"), None))
