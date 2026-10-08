@@ -51,6 +51,7 @@ from __future__ import annotations
 from typing import Any, NamedTuple
 
 from kanibako.settings import core_defaults
+from kanibako.settings.config_keys import SETUP_MARKER_KEY
 from kanibako.settings.kb_store import SCOPE_CONTAINMENT
 from kanibako.settings.keyspace_manifest import manifest_doc
 from kanibako.settings.paths import BoxMode
@@ -222,7 +223,7 @@ def source_groups() -> tuple[tuple[str, frozenset[str]], ...]:
     # PRESENT ``None``, so they arrive in that group above, derived off its emitter; so do
     # ``agent.default.{model,endpoint,run_args,transform}``, off ``agent_default:``.
     ("(nothing declares it — unset until you set it)", frozenset({
-      "system.agent", "system.setup_completed",
+      "system.agent", SETUP_MARKER_KEY,
     })),
     # ``default: {}`` — the resolver's own initial state for a category arm.
     ("(empty — the category starts with no entries)", frozenset({
