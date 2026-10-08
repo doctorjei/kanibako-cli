@@ -294,6 +294,48 @@ def validate_standalone_name(supplied: str, existing: set[str]) -> None:
         raise _refuse_taken(stored)
 
 
+def refuse_nonleaf_standalone_name(
+    supplied: str, root: Path, *, box_kuid: str | None = None,
+) -> None:
+    """Refuse a standalone ``--name`` that is not the name the box already carries.
+
+    Standalone identity is not user-settable: keyspec §2c STANDALONE defines
+    ``meta.box.name`` as ``{workset.kuid}_%leaf({meta.workset.path})%`` — the leaf
+    IS the project directory's basename, nothing else — and system-design
+    §"Detection & import" calls standalone names machine-generated.  So a typed
+    ``--name`` has no identity here to set.  1.8.0 does not silently ignore a flag
+    the user typed, so every standalone door refuses it instead of dropping it.
+
+    Two inputs pass as no-ops, because they ask for what the box gets anyway: the
+    bare leaf (``proj`` for ``/x/proj``), and — where *box_kuid* is known — the
+    fully-composed ``<kuid>_<leaf>`` in its stored spelling.
+
+    ⚑ Every standalone door routes through here so the wording cannot drift; a
+    door that validates its own copy of this rule is the bug this function exists
+    to prevent.
+    """
+    if not supplied:
+        return
+    leaf = sanitize_cap(root.name)
+    if supplied == leaf:
+        return
+    if (
+        box_kuid is not None
+        and is_canonical_standalone_name(supplied)
+        and _canonical_name(supplied) == compose_standalone_name(box_kuid, root)
+    ):
+        return
+    shown = (
+        compose_standalone_name(box_kuid, root)
+        if box_kuid is not None
+        else f"<kuid>_{leaf}"
+    )
+    raise ProjectError(
+        f"a standalone box is named '{shown}' after its directory; "
+        f"rename the directory to rename the box"
+    )
+
+
 def resolve_standalone_name(
     root: Path, supplied: str, existing: set[str], *, box_kuid: str | None = None,
 ) -> str:
