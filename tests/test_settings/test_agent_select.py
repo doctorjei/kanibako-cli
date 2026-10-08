@@ -882,6 +882,20 @@ class TestRetiredKeyCureIsLevelAppropriate:
             assert "system set system.agent=goose" in msg
             assert "box set <box> pref.system.agent=goose" in msg
 
+    @pytest.mark.parametrize("level", ["system", "base", "agent"])
+    @pytest.mark.parametrize("data", [
+        {"box": {"agent_name": "goose"}}, {"box": {"agent": {"model": "x"}}},
+    ])
+    def test_a_removal_cure_is_not_introduced_as_a_set(self, tmp_path, level, data):
+        msg = self._msg(tmp_path, level, data)
+        assert "Fix: REMOVE it" in msg
+        assert "The fix below is a `set`" not in msg
+        assert "The fix below starts with that removal" in msg
+
+    def test_a_set_cure_is_still_introduced_as_a_set(self, tmp_path):
+        msg = self._msg(tmp_path, "box", {"box": {"agent_name": "goose"}})
+        assert "The fix below is a `set`" in msg
+
     def test_the_system_default_cure_is_level_independent(self, tmp_path):
         for level in ("system", "box"):
             msg = self._msg(

@@ -923,7 +923,8 @@ SET_TARGETS_ITS_OWN_FILE: "frozenset[str]" = frozenset({"system", "workset", "bo
 
 
 def delete_before_set_step(entry: str, *, where: Any, parents: "Sequence[str]" = (),
-                           collides_with: str | None = None) -> str:
+                           collides_with: str | None = None,
+                           removal_first: bool = False) -> str:
     """The delete-before-the-``set`` step, naming every parent that delete can leave empty.
 
     ⚑ THE PARENTS ARE PART OF THE CURE, NOT A COURTESY. YAML reads a key with nothing
@@ -937,6 +938,7 @@ def delete_before_set_step(entry: str, *, where: Any, parents: "Sequence[str]" =
     tables, innermost first, already spelled for the file; empty for a top-level leaf,
     which has no parent to strand. *collides_with* names what the printed ``set`` refuses
     while *entry* is still stored (``a retired entry``); ``None``: it does not refuse.
+    *removal_first*: the printed fix opens with that removal, and only then offers a ``set``.
     """
     stranded = (
         f" — and {' / '.join(parents)} with it, if that leaves "
@@ -946,14 +948,23 @@ def delete_before_set_step(entry: str, *, where: Any, parents: "Sequence[str]" =
     ) if parents else ""
     # ⚑ ONE SENTENCE PER ARM, each measured end to end through the real CLI: where the
     # printed ``set`` refuses the write while the entry is there (rc 1) it says so; where
-    # the write succeeds (rc 0) it must not promise a refusal that never comes. Both
-    # sentences name no file, so neither reaches an arm the other does not.
-    why = (
-        "The fix below is a `set`, and §2a refuses a write that collides with "
-        f"{collides_with} still stored in the files it reads."
-        if collides_with else
-        "The fix below is a `set`, and it does not refuse this entry — nothing blocks "
-        "the write. Delete the entry, then run the fix below: deleting it alone loses "
-        "the setting."
-    )
+    # the write succeeds (rc 0) it must not promise a refusal that never comes. No
+    # sentence names a file, so none reaches an arm another does not.
+    if removal_first:
+        then = (
+            f"§2a refuses a write that collides with {collides_with} still stored in the "
+            f"files it reads" if collides_with else "it does not refuse this entry"
+        )
+        why = f"The fix below starts with that removal, then offers a `set`, and {then}."
+    elif collides_with:
+        why = (
+            "The fix below is a `set`, and §2a refuses a write that collides with "
+            f"{collides_with} still stored in the files it reads."
+        )
+    else:
+        why = (
+            "The fix below is a `set`, and it does not refuse this entry — nothing blocks "
+            "the write. Delete the entry, then run the fix below: deleting it alone loses "
+            "the setting."
+        )
     return f"  Delete the {entry} from {where} FIRST{stranded}. {why}"
