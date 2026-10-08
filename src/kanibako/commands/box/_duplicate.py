@@ -8,6 +8,7 @@ import shutil
 import sys
 from pathlib import Path
 
+from kanibako.settings.bootstrap import STANDALONE_META_DIR
 from kanibako.settings.config import (
     BOX_META_FILE,
     WORKSET_META_FILE,
@@ -206,7 +207,7 @@ def _run_duplicate_cross_mode(args: argparse.Namespace, std, config) -> int:
         refuse_scalar_sections(new_path / WORKSET_META_FILE, ("workset",))
         # Scalar ``box:`` refused pre-copy; --force rebuilds box_data.
         if not args.force:
-            refuse_scalar_sections(new_path / "box_data" / BOX_META_FILE, ("box",))
+            refuse_scalar_sections(new_path / STANDALONE_META_DIR / BOX_META_FILE, ("box",))
         if not args.bare and workspace_src is not None and workspace_src.is_dir():
             # The copy DESTINATION is the destination root's resolved
             # ``workset.workspaces`` (ruled 10, 2026-08-02) — the STANDALONE
