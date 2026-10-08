@@ -5943,7 +5943,9 @@ gave and that path, and tells you the command to run.
 **What to do.** To move the box into the workset, run `box convert <box> --workset <ws> --move`
 (bare) or `box move <box> <ws>/workspaces/<name> --workset <ws>`. To keep the files where you named,
 choose a path outside the workset. If you moved the files by hand, put them at `workspaces/<name>`
-and `remap` there. `--force` does not override this.
+and `remap` there. `--force` does not override this. If the box already lives at `workspaces/<name>`, the
+refusal says so; to record it on another leaf, re-run the move with `--name <name>`. If another member holds
+the name, the printed command uses the box's own name instead, or asks for a free one with `--name`.
 
 ### `box convert --move` of an external-connected box is refused
 
