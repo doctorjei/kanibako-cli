@@ -772,10 +772,20 @@ class TestFileDropDirectoriesAreNotADiscoveryRoute:
             targets = discover_targets()
         assert "myplugin" not in targets
 
-    def test_a_py_file_in_a_box_store_plugins_dir_does_not_load(self, tmp_path):
-        """The PER-BOX door, in the layout it read: the RESOLVED store's ``plugins/``."""
+    def test_a_py_file_in_a_box_store_plugins_dir_does_not_load(
+        self, tmp_path, monkeypatch
+    ):
+        """The PER-BOX door, in the layout it read: the RESOLVED store's ``plugins/``.
+
+        Discovery takes no path, so no caller can hand it a box store; and run from
+        inside the box, the store's ``plugins/`` still does not load.
+        """
+        import inspect
+
+        assert not inspect.signature(discover_targets).parameters
         proj = tmp_path / "myproject"
         _write_plugin(proj / "box_data" / "plugins", "projplugin.py", "projplugin")
+        monkeypatch.chdir(proj)
 
         with patch("kanibako.targets.entry_points", return_value=[]):
             targets = discover_targets()

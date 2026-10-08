@@ -7654,6 +7654,18 @@ class is otherwise unchanged: it is still a `KanibakoError`, and the CLI still r
 **What you must do.** Replace the name in every import and `except` clause:
 `from kanibako.errors import UserCancelled` becomes `from kanibako.errors import UserCanceled`.
 
+### 3.4 Target discovery no longer takes `project_path`
+
+**Read this if your plugin calls `kanibako.targets.discover_targets`, `get_target`, or
+`resolve_target`.** The published `kanibako-agent-claude`, `-codex` and `-goose` plugins call none
+of them.
+
+**What changed.** The three functions no longer take a `project_path` argument. Discovery reads only
+installed packages, so the argument was already ignored. Passing it now raises `TypeError`.
+
+**What you must do.** Drop the argument: `resolve_target(name, project_path)` becomes
+`resolve_target(name)`, and `discover_targets(project_path)` becomes `discover_targets()`.
+
 ---
 
 # Migrating to kanibako 1.6.0

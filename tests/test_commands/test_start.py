@@ -9375,7 +9375,7 @@ class TestSuppressedBoxLaunchesShell:
     def _run(self, m):
         m.resolve_agent.return_value = self._suppressed()
 
-        def _forbid_empty(name=None, project_path=None):
+        def _forbid_empty(name=None):
             # ⚑ THE DEFECT, precisely: an EMPTY name makes ``resolve_target``
             # AUTO-DETECT (its documented contract for other callers), so a
             # suppressed box gets whatever agent is installed. A resolve for a

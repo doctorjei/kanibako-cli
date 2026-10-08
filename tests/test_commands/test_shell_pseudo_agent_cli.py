@@ -300,7 +300,7 @@ class TestAShellBoxStampIsReadBackAsTheShellAgent:
         std, _config, proj, cname, _ = shell_box
         node = _resolve_box_agent_node(_FakeRuntime(), std, proj, cname)
         assert node == "shell"
-        assert _resolve_box_vscode_extension(node, proj) is None
+        assert _resolve_box_vscode_extension(node) is None
 
     def test_code_remote_seed_asks_the_shell_target_for_its_extension(self, shell_box):
         """The remote leg reaches the extension lookup with the ``shell`` node, and

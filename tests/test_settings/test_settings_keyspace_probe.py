@@ -369,8 +369,8 @@ def test_discovery_is_ONE_pass_supplying_BOTH_halves(clean_probe, monkeypatch):
   """
   calls = []
 
-  def fake_discover(project_path=None):
-    calls.append(project_path)
+  def fake_discover():
+    calls.append(None)
     return {"claude": _target("model"), "goose": _target("provider")}
 
   monkeypatch.setattr(probe, "_PLUGINS", None)
@@ -392,7 +392,7 @@ def test_discovery_that_will_not_import_concedes_BOTH_halves(clean_probe, monkey
   MUTATION: let the exception escape ``_discover`` and every resolve in the process
   raises out of the refusal seam instead.
   """
-  def explode(project_path=None):
+  def explode():
     raise ImportError("no plugin machinery here")
 
   monkeypatch.setattr(probe, "_PLUGINS", None)
@@ -411,7 +411,7 @@ def test_one_plugins_descriptor_fault_does_not_abort_the_pass(clean_probe, monke
   ⚑ The faulting agent's OWN standing is the case below; this one is only that the
   blast radius stops at it.
   """
-  def fake_discover(project_path=None):
+  def fake_discover():
     return {"claude": _target("model"), "goose": _target(broken=True)}
 
   monkeypatch.setattr(probe, "_PLUGINS", None)
@@ -439,7 +439,7 @@ def test_a_plugin_whose_DESCRIPTORS_raise_is_conceded_like_an_ABSENT_one(
   ``_discover`` and the first two assertions redden, the goose one naming "not a
   declared agent key" as its cause.
   """
-  def fake_discover(project_path=None):
+  def fake_discover():
     return {"claude": _target("model"), "goose": _target("provider", broken=True)}
 
   monkeypatch.setattr(probe, "_PLUGINS", None)
@@ -461,7 +461,7 @@ def test_a_HALF_READ_descriptor_list_contributes_NOTHING(clean_probe, monkeypatc
   MUTATION: accumulate the descriptors into ``declared_by[name]`` as they arrive and
   the salvaged leaf reappears under a ``goose`` key that must not exist.
   """
-  def fake_discover(project_path=None):
+  def fake_discover():
     return {
       "claude": _target("model"),
       "goose": _target_breaking_part_way("provider", "endpoint"),
@@ -506,8 +506,8 @@ def counting_discovery(clean_probe, monkeypatch):
   """
   calls = []
 
-  def fake_discover(project_path=None):
-    calls.append(project_path)
+  def fake_discover():
+    calls.append(None)
     return {"claude": _target("model", "provider")}
 
   monkeypatch.setattr(probe, "_PLUGINS", None)
