@@ -602,6 +602,28 @@ def _cure_ref(state: ProjectState) -> str:
     return shlex.quote(state.name)
 
 
+def _name_held_in_target_workset(
+    target_mode: BoxMode | None,
+    target_ws: Workset | None,
+    state: ProjectState,
+    new_name: str,
+) -> str | None:
+    """Held name in *target_ws* matching *new_name*, or ``None``.
+
+    Applies the SELF exemption (same workset, same name) the collision guard
+    below uses; the two callers (advice sites + guard) share the same check.
+    """
+    if target_mode != BoxMode.named or target_ws is None:
+        return None
+    if (
+        state.ws is not None
+        and target_ws.name == state.ws.name
+        and _same_box_name(new_name, state.name)
+    ):
+        return None
+    return find_identifier(new_name, (p.name for p in target_ws.projects))
+
+
 def _validate(
     state: ProjectState,
     spec: TargetSpec,
@@ -718,7 +740,14 @@ def _validate(
         if (ws_dir is not None and is_in_tree_workspace(target_ws, dest)
                 and dest != (ws_dir / new_name).resolve()):
             leaf = ws_dir / new_name
-            rename = "" if _same_box_name(new_name, state.name) else f" --name {shlex.quote(new_name)}"
+            # Drop ``--name <new_name>`` when it would re-trip the collision guard
+            # below — the user defaults to ``state.name`` (the self exemption).
+            rename = "" if (
+                _same_box_name(new_name, state.name)
+                or _name_held_in_target_workset(
+                    target_mode, target_ws, state, new_name,
+                ) is not None
+            ) else f" --name {shlex.quote(new_name)}"
             ref = _cure_ref(state)
             bare = (f"kanibako box convert {ref} --workset {shlex.quote(target_ws.name)} "
                     f"--move{rename}")
@@ -746,7 +775,14 @@ def _validate(
         if (landing_leaf is not None
                 and is_in_tree_workspace(target_ws, state.workspace_path)
                 and (landing_leaf / new_name).resolve() != state.workspace_path.resolve()):
-            rename = "" if _same_box_name(new_name, state.name) else f" --name {shlex.quote(new_name)}"
+            # Drop ``--name <new_name>`` when it would re-trip the collision guard
+            # below — the user defaults to ``state.name`` (the self exemption).
+            rename = "" if (
+                _same_box_name(new_name, state.name)
+                or _name_held_in_target_workset(
+                    target_mode, target_ws, state, new_name,
+                ) is not None
+            ) else f" --name {shlex.quote(new_name)}"
             ref = _cure_ref(state)
             raise ProjectError(
                 f"Refusing to convert '{state.name}' in place: a member of workset "
@@ -827,18 +863,13 @@ def _validate(
     # and the member scan, so it is not read as free either.  ⚑ The member scan is an
     # ``==`` over already-loaded members rather than a registry lookup, so nothing in
     # ``tests/test_identifier_case_enforcement.py`` sees it — found by reading.
-    if (
-        target_mode == BoxMode.named
-        and target_ws is not None
-        and not (state.ws is not None and target_ws.name == state.ws.name
-                 and _same_box_name(new_name, state.name))
-    ):
-        held = find_identifier(new_name, (p.name for p in target_ws.projects))
-        if held is not None:
-            raise WorksetError(
-                f"Project '{held}' already exists in workset "
-                f"'{target_ws.name}'."
-            )
+    held = _name_held_in_target_workset(target_mode, target_ws, state, new_name)
+    if held is not None:
+        assert target_ws is not None  # narrowed: helper returns non-None only when target_ws is set
+        raise WorksetError(
+            f"Project '{held}' already exists in workset "
+            f"'{target_ws.name}'."
+        )
 
     # --- an UNREGISTERED leaf of the target's new name is the same collision on disk:
     #     ``add_project`` adopts whatever is already there.  ⚑ ``records_only`` is exempt

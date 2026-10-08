@@ -1174,6 +1174,47 @@ class TestInTreeLandingRefused:
                 "--name renamed`") in err
         assert "`kanibako box convert proj --workset ws --move --name renamed`" in err
 
+    def test_the_advice_omits_rename_when_the_new_name_is_held(self, env, capsys):
+        """F1-fix1: held ``--name`` would re-trip the collision guard — drop it."""
+        config, std, tmp_home = env
+        ws = create_workset("ws", tmp_home / "ws_root", std)
+        _named(env, ws, name="renamed")
+        pdir = _default(env, contents="primary")
+        rc = run_move(_move_args(pdir, ws.root / "x", to_workset="ws", name="renamed"))
+        assert rc == 1
+        err = capsys.readouterr().err
+        # The advice must NOT include ``--name renamed`` — that is the fix.
+        # (The canonical leaf in the advice is ``ws_dir / new_name`` regardless.)
+        assert " --name renamed" not in err
+        # The advice still points at the canonical leaf and the move command,
+        # with no rename flag appended.
+        assert (f"kanibako box move proj {ws.workspaces_dir / 'renamed'} "
+                "--workset ws`") in err
+        # The convert-form (bare) variant likewise drops the rename.
+        assert "`kanibako box convert proj --workset ws --move`" in err
+
+    def test_following_the_advice_literally_with_a_held_name_succeeds(self, env, capsys):
+        """F1-fix1: the move form of the advice (rename dropped) lands cleanly."""
+        config, std, tmp_home = env
+        ws = create_workset("ws", tmp_home / "ws_root", std)
+        _named(env, ws, name="renamed")
+        pdir = _default(env, contents="primary")
+        rc = run_move(_move_args(pdir, ws.workspaces_dir / "proj", to_workset="ws"))
+        assert rc == 0, capsys.readouterr().err
+        assert (ws.workspaces_dir / "proj" / "file.txt").read_text() == "primary"
+        from kanibako.project.workset_registry import (
+            load_workset_boxes, resolve_workset_registry_path,
+        )
+        from kanibako.settings.config_io import load_doc
+        from kanibako.settings.paths import _early_scope
+        registry_path = resolve_workset_registry_path(
+            ws.root, load_doc(ws.root / "workset.yaml"),
+            early=_early_scope(std, BoxMode.named, "ws"),
+        )
+        registered = load_workset_boxes(registry_path)
+        assert "renamed" in registered
+        assert "proj" in registered
+
     def test_remap_onto_a_non_canonical_in_tree_path(self, env, capsys):
         """``remap`` records records only, but still not a workspace that never was."""
         config, std, tmp_home = env
