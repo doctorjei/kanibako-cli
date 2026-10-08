@@ -23,12 +23,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `box rm --purge` and `workset disconnect --remove-files` now keep that file and print a `Note: kept <path>` line
   naming the other working sets, instead of deleting it. Differently-named boxes' logs are untouched.
 
-- **A box is identified by its path as given, not by the path's resolved target.** Two boxes whose workspaces link
-  one target are two boxes that share files: `box info`, a launch, and the registries answer for the box registered
-  at the literal path, and a second box may be registered at a link to an already-registered workspace. A command
-  run with no box argument takes the current directory as the shell reached it (`$PWD`), so `cd <link>` names the
-  box at `<link>`. A directory reached through a different symlink than the one a box is registered under is not
-  that box.
+- **A box is identified by its path as given, not by the path's resolved target.** Two boxes whose workspaces link one
+  target are two boxes that share files: `box info`, a launch, and the registries answer for the box registered at the
+  literal path, and a second box may be registered at a link to an already-registered workspace. A command run with no
+  box argument takes the current directory as the shell reached it (`$PWD`), so `cd <link>` names the box at `<link>`,
+  and a relative path such as `.` is taken from it. `workset create`, `workset connect`, and `box duplicate` store the
+  path as given. Each twin has its own project hash, so extracting one twin's archive into the other asks before it
+  restores. A directory reached through a different symlink than the one a box is registered under is not that box.
 
 - **A standalone box's root `workset.yaml` now records `registry: null`** beside `workset.kuid`, written at
   `create` as `registry: null  # REMOVING THIS WILL BREAK A STANDALONE BOX!`.

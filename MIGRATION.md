@@ -6980,10 +6980,16 @@ the workspace files are shared.
 
 **A box is identified by its path, not the path's resolved target.** `box info <path>`, a launch, and every registry
 lookup compare the path as given, so two boxes linking one target answer for themselves. With no box argument the
-current directory is the one the shell reports (`$PWD`). A directory reached through a different symlink than the one
-the box is registered under is not that box: from `~/alias/project`, where `~/alias` links the parent of a box
-registered as `/data/project`, kanibako reports no box and a launch does not create one. Name the box, or run from
-its registered path (`cd -P` drops the link from the shell's path).
+current directory is the one the shell reports (`$PWD`), and a relative path such as `.` is taken from it. A
+directory reached through a different symlink than the one the box is registered under is not that box: from
+`~/alias/project`, where `~/alias` links the parent of a box registered as `/data/project`, kanibako reports no box
+and a launch does not create one. Name the box, or run from its registered path (`cd -P` drops the link from the
+shell's path).
+
+Boxes, working sets, and connected directories registered before this release were stored under the resolved path,
+even when they were created through a link; `box list` and `workset list` show the stored path. Working from a link
+to one of them now finds no box, and `box create` there makes a second box that shares the files. Run from the stored
+path, or name the box. New registrations store the path as given.
 
 **`box convert` of a box whose vault directory is a symlink.** The converted box's vault is now a link, either to the
 same target or to its landed place when the target moved with the box. Before, it was a copy of the target's
