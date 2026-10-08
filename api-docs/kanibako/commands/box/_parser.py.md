@@ -46,6 +46,7 @@ def _create_in_workset_space(workset: str, path: Path, *, standalone: bool, by_c
 def _plan_workset_member(std, workset: str, name: str, args) -> 'tuple[Workset, str, bool] | None'
 def _new_member_undo(ws: Workset, name: str) -> Callable[[], None]
 def _new_box_undo(std, probe, *, standalone: bool) -> tuple[Callable[[], None], Callable[[str], None]]
+def _claim_create_entry(std, probe, state: dict, *, primary: bool) -> 'dict | None'
 def _recovered_standalone_name(std, proj, supplied: str) -> str
 def _list_orphans(projects: list, ws_data: list, std, quiet: bool) -> int
 def _purge_dir(target: Path) -> bool

@@ -3361,6 +3361,38 @@ class TestAKilledCreateIsRecoveredWithWhatItWasTold:
         assert not std.boxes.exists() or list(std.boxes.iterdir()) == []
         assert _primary_names(std) == {}
 
+    def test_a_name_registered_between_pick_and_claim_is_repicked(
+        self, config_file, tmp_home, credentials_dir, monkeypatch,
+    ):
+        """A same-basename create of ANOTHER workspace finishes — registers and clears its
+        entry — after this one picked ``proj``: the claim must see the registration, not
+        only the journal, or this create seeds into the other box's tree."""
+        from kanibako.commands import start
+        from kanibako.commands.box._parser import run_create
+        from kanibako.settings.config import load_config
+        from kanibako.settings.paths import load_std_paths
+
+        std = load_std_paths(load_config(config_file))
+        winner, loser = tmp_home / "a" / "proj", tmp_home / "b" / "proj"
+        winner.mkdir(parents=True)
+        loser.mkdir(parents=True)
+        real = start._primary_probe_named
+        ran: list[int] = []
+
+        def _winner_finishes_first(*a, **kw):
+            # ⚑ ONCE: the loser bound this stand-in, and calls it again on its re-pick.
+            if not ran:
+                ran.append(1)
+                monkeypatch.setattr(start, "_primary_probe_named", real)
+                assert run_create(_create_args(winner, no_vault=False)) == 0
+            return real(*a, **kw)
+
+        monkeypatch.setattr(start, "_primary_probe_named", _winner_finishes_first)
+
+        assert run_create(_create_args(loser, no_vault=False)) == 0
+        assert _primary_names(std) == {"proj": str(winner), "proj2": str(loser)}
+        assert journal.read_journal(std.journal) == {}
+
     @pytest.mark.parametrize("point", ["after-entry", "after-materialize"])
     def test_a_standalone_name_is_recorded_and_recover_registers_it(
         self, point, config_file, tmp_home, credentials_dir,

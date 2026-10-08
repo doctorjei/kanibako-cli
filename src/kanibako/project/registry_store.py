@@ -8,7 +8,7 @@ passed through verbatim here.
 Every public function takes the resolved ``config.registry`` FILE path
 (``std.registry``); nothing reconstructs it from ``config.data``.  Old files are
 never read (no migration), an absent file yields empty sections, and writes are
-atomic via ``config_io.dump_doc``; every read-modify-write holds ``_atomic.rmw_lock``.
+atomic via ``config_io.dump_doc``.
 
 See ``llm-docs/kanibako/project/registry_store.py.md`` for the file layout, what
 this consolidation replaced, and the design of the ``deregistered`` section.
@@ -292,7 +292,6 @@ def list_deregistered(registry: Path) -> dict[str, dict]:
     live = _live(entries)
     if len(live) == len(entries):
         return live
-    # ⚑ A drop is a write: re-read under the lock, so a row added meanwhile survives.
     with rmw_lock(registry):
         entries = load_deregistered(registry)
         live = _live(entries)

@@ -175,7 +175,6 @@ def load_workset_boxes(registry_path: Path) -> dict[str, str]:
 
 def register_workset_box(registry_path: Path, box_name: str, path: Path) -> None:
     """Register (add or replace) *box_name* → *path* in the ``boxes:`` section."""
-    # ⚑ ONE read-modify-write: two concurrent creates must not drop each other's row.
     with rmw_lock(registry_path):
         full_doc, boxes = _load_boxes_raw(registry_path)
         path_str = str(path)
