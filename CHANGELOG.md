@@ -19,6 +19,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   directory; and by the in-box `fork`. `workset connect --name` and `box duplicate --to named --name` now check the
   rule too. Rename an existing box with `kanibako box move <path> <new-path> --name <new-name>`.
 
+- **A box name is ASCII-only.** A box name's characters are ASCII letters, digits, `_`, `-`, and `.`, the set
+  podman allows in a container name; `create --name café` and a box named after a directory such as `café/` are
+  refused, naming the character. An existing non-ASCII box is warned about and found by its path; rename it with
+  `kanibako box move <path> <new-path> --name <new-name>`.
+
 - **Two working sets can no longer be put on one `workset.logs` directory by accident.** `workset set`,
   `system set`, `workset reset`, `system reset` and `workset create` refuse a change that lands two working sets
   (the default one included) on one logs directory, comparing resolved directories, and name the working sets;

@@ -367,10 +367,8 @@ class TestValidateBoxName:
             "x" * 64,          # max length 64
             "1.2.3",
             "a.b-c_d",
-            "café",            # unicode letters allowed
-            "über_box",
-            "日本語",           # unicode CJK allowed
-            "项目1",
+            "ok_name-1.x",
+            "MyApp",
             "abcde_proj",      # a canonical standalone id is a valid name
         ],
     )
@@ -378,6 +376,23 @@ class TestValidateBoxName:
         assert box_identity.is_valid_box_name(name) is True
         assert box_identity.box_name_reason(name) is None
         box_identity.validate_box_name(name)  # does not raise
+
+    # --- non-ASCII: the allowlist is ASCII-only (podman's container-name set) ---
+
+    @pytest.mark.parametrize("name", ["café", "über_box", "日本語", "项目1", "ａbc"])
+    def test_rejects_non_ascii(self, name: str) -> None:
+        assert box_identity.is_valid_box_name(name) is False
+        with pytest.raises(ProjectError, match=f"Invalid box name '{name}'"):
+            box_identity.validate_box_name(name)
+
+    def test_non_ascii_reason_names_the_character_and_the_allowed_set(self) -> None:
+        assert box_identity.box_name_reason("café") == (
+            "box name must not contain 'é': only ASCII letters, digits,"
+            " '_', '-', and '.' are allowed")
+
+    def test_unprintable_character_is_named_by_codepoint(self) -> None:
+        reason = box_identity.box_name_reason("a\u00a0b")
+        assert reason is not None and "U+00A0" in reason
 
     # --- control chars ----------------------------------------------------
 
@@ -466,7 +481,7 @@ class TestClassifyDesignation:
 
     @pytest.mark.parametrize(
         "value",
-        [".hidden", "foo.", "..x", "a b", "ws/proj", "./foo", ".", "..", "/abs/dir",
+        [".hidden", "foo.", "..x", "a b", "café", "ws/proj", "./foo", ".", "..", "/abs/dir",
          "x" * 65],
     )
     def test_non_name_that_can_be_a_path_is_a_path(self, value: str) -> None:

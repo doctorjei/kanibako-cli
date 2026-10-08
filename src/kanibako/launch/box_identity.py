@@ -1,4 +1,4 @@
-"""STANDALONE box identity generation, plus the box-name blocklist.
+"""STANDALONE box identity generation, plus the box-name allowlist.
 
 A standalone box is named ``<kuid>_<leaf>``: a stable :mod:`kanibako.kuid` prefix
 stored as the settable ``workset.kuid`` key, joined by ``_`` to the project-root
@@ -10,14 +10,13 @@ side-effect free so the sanitize/cap/collision-regen logic is directly
 unit-testable.
 
 See ``llm-docs/kanibako/launch/box_identity.py.md`` for the name grammar, the
-blocklist rule and the resolve branches.
+allowlist rule and the resolve branches.
 """
 
 from __future__ import annotations
 
 import enum
 import re
-import string
 from pathlib import Path
 
 from kanibako import kuid
@@ -46,19 +45,18 @@ _MAX_REGEN_ATTEMPTS = 1000
 _LEAF_RE = re.compile(rf"^[{_LEAF_CHARS}]{{1,{_LEAF_CAP}}}$")
 
 # ---------------------------------------------------------------------------
-# Box-name BLOCKLIST validation (W1 Phase D, §Design 8).  A name is rejected only
-# for a blocked character or a structural rule — everything else is permitted, so
-# unicode letters/digits and interior ``.`` ARE allowed.
+# Box-name ALLOWLIST (spec §0, ⚑ NAMING RULES): 1–64 characters, each an ASCII
+# letter, digit, ``_``, ``-``, or ``.``; not starting with ``-`` or ``.``, not
+# ending with ``.``.  ASCII-only because the container name ``kb-<W>-<B>`` must
+# match podman's ``[a-zA-Z0-9][a-zA-Z0-9_.-]*``.
 #
 # ⚑ A name is validated AS THE USER TYPED IT (spec §0, ⚑ NAMING RULES).  Uppercase
 # ASCII is not a violation and is no longer folded upstream; collision is what
 # compares case-blind, and that happens elsewhere.
 # ---------------------------------------------------------------------------
 
-# ASCII punctuation that survives (the ONLY ASCII punctuation permitted).
-_ALLOWED_PUNCT = frozenset("_-.")
-# ASCII punctuation that is blocked = string.punctuation minus the survivors.
-_BLOCKED_ASCII_PUNCT = frozenset(string.punctuation) - _ALLOWED_PUNCT
+# The permitted characters: the leaf alphabet, which is exactly the spec's set.
+_NAME_CHAR_RE = re.compile(rf"[{_LEAF_CHARS}]")
 
 # Suggested length bound.
 _NAME_MIN_LEN = 1
@@ -75,35 +73,24 @@ def _box_name_violation(name: str) -> str | None:
     if name in (".", ".."):
         return f"box name must not be '{name}'"
 
-    # Per-character blocklist.
     for ch in name:
-        codepoint = ord(ch)
-        if codepoint <= 0x1F or codepoint == 0x7F:
-            return (
-                f"box name must not contain control character U+{codepoint:04X}"
-            )
-        if ch.isspace():
-            return "box name must not contain whitespace"
-        if ch in _BLOCKED_ASCII_PUNCT:
-            return f"box name must not contain '{ch}'"
+        if not _NAME_CHAR_RE.fullmatch(ch):
+            shown = f"'{ch}'" if ch.isprintable() and not ch.isspace() else f"U+{ord(ch):04X}"
+            return (f"box name must not contain {shown}: only ASCII letters, digits,"
+                    " '_', '-', and '.' are allowed")
 
-    # Structural: leading/trailing rules.
     if name.startswith("-"):
         return "box name must not start with '-' (collides with CLI flags)"
     if name.startswith("."):
         return "box name must not start with '.' (hidden/relative)"
     if name.endswith("."):
         return "box name must not end with '.'"
-    # ⚑ Redundant with the per-char whitespace block above, but kept explicit:
-    # the Windows-portability intent is not recoverable from that general check.
-    if name != name.rstrip():
-        return "box name must not end with whitespace"
 
     return None
 
 
 def is_valid_box_name(name: str) -> bool:
-    """Return ``True`` when *name* passes the box-name blocklist (non-raising).
+    """Return ``True`` when *name* passes the box-name allowlist (non-raising).
 
     The "flag, don't reject" companion to :func:`validate_box_name`: a
     pre-existing non-conforming box still resolves, it just gets warned about.

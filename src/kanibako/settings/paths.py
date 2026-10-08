@@ -2385,7 +2385,7 @@ def resolve_box_target(std: StandardPaths, config: BootstrapConfig, value: str |
 
 
 def _flag_nonconforming(proj: ProjectPaths) -> ProjectPaths:
-    """Warn (do NOT reject) when a resolved box's name violates the blocklist."""
+    """Warn (do NOT reject) when a resolved box's name violates the box-name rule."""
     from kanibako.launch.box_identity import box_name_reason
 
     if proj.name:
