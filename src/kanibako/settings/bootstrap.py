@@ -5,8 +5,8 @@
 whatever literal survives is stored ONCE, in one constant, in the appropriate area.
 
 🛑 STRUCTURAL EXCEPTIONS THAT CANNOT IMPORT THIS FILE, and are guarded by a drift test that
-reads the shipped bytes instead: the PID-1 pair (``box_supervisor``/``box_lifecycle``, pinned
-flat and stdlib-only), the bundled ``Containerfile.template-*``, and seeded in-box scripts.
+reads the shipped bytes instead: the bundled ``Containerfile.template-*`` and seeded in-box
+scripts.  PID-1's ``box_supervisor`` does import it.
 
 ⚑ THIS FILE MUST STAY IMPORT-FREE. ``settings/paths.py`` imports it and ``project/workset.py``
 imports that, so an import added here can close the tree's documented cycle — the same

@@ -34,18 +34,22 @@ see "`PINNED_ROOT_RELPATH` is a QUARANTINED DUPLICATE" below.
 
 `box_supervisor` and `box_lifecycle` are **pinned flat** (ratified 2026-08-01) and invoked in-box by
 a dotted literal (`python3 -m kanibako.box_supervisor`). They must import **stdlib only**, plus each
-other and `kanibako.log`.
+other, `kanibako.log`, and the import-free `kanibako.settings.bootstrap` leaf, which owns the XDG
+literals `XDG_PROJECTIONS` reads.
 
-**VERIFIED (this pass, on the dev box):** `import kanibako.box_supervisor` pulls in exactly
-`kanibako`, `kanibako.box_lifecycle`, `kanibako.log` and nothing else from the package;
+**PINNED BY TEST:** `import kanibako.box_supervisor` pulls in exactly `kanibako`,
+`kanibako.box_lifecycle`, `kanibako.log`, `kanibako.settings` (a docstring-only `__init__`) and
+`kanibako.settings.bootstrap`, and nothing else from the package; the static walk and a `python -S`
+import in `tests/test_box_supervisor.py` both check it;
 `box_lifecycle` imports only `__future__ · collections.abc · dataclasses · enum · glob · pathlib ·
 subprocess`, and `log` only `__future__ · logging · sys`. The contract holds today.
 
 Why it is load-bearing: every launch runs a forward-compat probe — `import kanibako.box_supervisor`
 — whose FAILURE silently degrades the launch to the bare-shell keep-alive. Widening the import
-surface (e.g. reaching into the settings package) would put every launch at the mercy of that
-package importing cleanly. This is the whole reason `PINNED_ROOT_RELPATH` is a QUARANTINED DUPLICATE
-rather than an import; see its entry below.
+surface (e.g. reaching past `bootstrap` into the settings package) would put every launch at the
+mercy of that package importing cleanly. This is the whole reason `PINNED_ROOT_RELPATH` is a
+QUARANTINED DUPLICATE rather than an import; see its entry below. ⚑ The cost of the one `bootstrap`
+import: `settings/__init__.py` now runs at every start, so an import added there breaks PID-1.
 
 ## Tolerance is the house rule
 
