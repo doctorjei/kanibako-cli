@@ -304,6 +304,23 @@ class TestStopAll:
             "\nStopped 0 container(s); removed 1 stopped container(s).\n"
         )
 
+    def test_a_failed_removal_after_a_stop_is_reported(self, mock_runtime, capsys):
+        mock_runtime.list_running.return_value = [
+            ("kb-running", "img:latest", "Up 5 minutes"),
+        ]
+        mock_runtime.is_running.return_value = True
+        mock_runtime.stop.return_value = True
+        mock_runtime.container_exists.return_value = True
+        mock_runtime.rm.return_value = False
+        rc = _stop_all(mock_runtime, force=True)
+        assert rc == 0
+        captured = capsys.readouterr()
+        assert captured.err == "Failed to remove kb-running\n"
+        assert captured.out.endswith(
+            "Stopped kb-running\n"
+            "\nStopped 1 container(s); removed 0 stopped container(s).\n"
+        )
+
     def test_a_failed_removal_is_reported_and_not_counted(self, mock_runtime, capsys):
         mock_runtime.list_running.return_value = [
             ("kanibako-aabbccdd", "img:latest", "Exited (1) 2 hours ago"),

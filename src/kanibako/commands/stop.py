@@ -370,8 +370,8 @@ def _stop_all(runtime: ContainerRuntime, *, force: bool = False) -> int:
         if liveliness[name]:
             if runtime.stop(name):
                 print(f"Stopped {name}")
-                if runtime.container_exists(name):
-                    runtime.rm(name)
+                if runtime.container_exists(name) and not runtime.rm(name):
+                    print(f"Failed to remove {name}", file=sys.stderr)
                 stopped_count += 1
             else:
                 print(f"Failed to stop {name}", file=sys.stderr)
