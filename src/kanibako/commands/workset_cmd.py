@@ -613,8 +613,9 @@ def run_connect(args: argparse.Namespace) -> int:
                 why = ("it is inside the working set root or its workspaces "
                        "directory, not a project")
             print(
-                f"Error: Cannot connect '{resolved}': {why}. 'connect' registers a "
-                f"member and creates none — it takes an existing '{leaf}' directory.",
+                f"Error: Cannot connect '{source}': {why}. 'connect' registers a "
+                f"member and creates none — it takes an existing "
+                f"'{workspaces / project_name}' directory.",
                 file=sys.stderr,
             )
             return 1
@@ -638,7 +639,7 @@ def run_connect(args: argparse.Namespace) -> int:
                   if in_tree and owner != project_name else "")
         box, ws_ref = shlex.quote(owner), shlex.quote(ws.name)
         print(
-            f"Error: Cannot connect '{resolved}': "
+            f"Error: Cannot connect '{source}': "
             + ERR_WS_CONNECT_PATH_IS_PRIMARY_BOX % (
                 owner, ws.name, box, ws_ref, rename, box, ws_ref, box, box,
             ),

@@ -323,3 +323,87 @@ class TestAWorksetRootIsLoadedAndImportedAsGiven:
         assert rc == 1
         err = capsys.readouterr().err
         assert f"Cannot connect '{alias / 'missing'}'" in err
+
+
+class TestALinkToARegisteredWorksetRootIsThatWorkset:
+    """The directory is a workset's identity: a link named unlike the root it reaches
+    never registers a second workset on that directory."""
+
+    def _ws2_and_link(self, config_file, tmp_home):
+        from kanibako.project.workset import create_workset
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        create_workset("ws2", tmp_home / "ws2", std)
+        link = tmp_home / "wsB"
+        link.symlink_to(tmp_home / "ws2")
+        return config, std, link
+
+    def test_an_import_through_the_link_is_a_no_op(self, config_file, tmp_home):
+        from kanibako.project import import_reconcile, registry_store
+
+        _, std, link = self._ws2_and_link(config_file, tmp_home)
+        assert import_reconcile.import_named_workset(std.registry, link) == "ws2"
+        section = registry_store.load_section(std.registry, "worksets")
+        assert dict(section) == {"ws2": str(tmp_home / "ws2")}
+
+    def test_a_treewalk_through_the_link_imports_nothing(self, config_file, tmp_home):
+        from kanibako.project import registry_store
+
+        config, std, link = self._ws2_and_link(config_file, tmp_home)
+        member = link / "workspaces" / "w1"
+        member.mkdir(parents=True)
+        detect_project_mode(member, std, config)
+        section = registry_store.load_section(std.registry, "worksets")
+        assert dict(section) == {"ws2": str(tmp_home / "ws2")}
+
+
+class TestConnectRefusalsNameThePathAsGiven:
+    def test_the_in_tree_refusal_names_the_link_and_the_literal_leaf(
+        self, config_file, tmp_home, capsys,
+    ):
+        import argparse
+
+        from kanibako.commands.workset_cmd import run_connect
+        from kanibako.project.workset import create_workset
+
+        std = load_std_paths(load_config(config_file))
+        real = tmp_home / "real"
+        real.mkdir()
+        (tmp_home / "alias").symlink_to(real)
+        root = tmp_home / "alias" / "lws"
+        create_workset("lws", root, std)
+        link = tmp_home / "inlink"
+        link.symlink_to(root / "workspaces")
+
+        rc = run_connect(argparse.Namespace(
+            workset="lws", source=str(link), project_name="p", force=False,
+        ))
+        assert rc == 1
+        err = capsys.readouterr().err
+        assert f"Cannot connect '{link}': it is inside the working set" in err
+        assert f"it takes an existing '{root / 'workspaces' / 'p'}' directory" in err
+
+    def test_the_primary_owner_refusal_names_the_link(
+        self, config_file, tmp_home, capsys,
+    ):
+        import argparse
+
+        from kanibako.commands.workset_cmd import run_connect
+        from kanibako.project.workset import create_workset
+
+        std = load_std_paths(load_config(config_file))
+        create_workset("ows", tmp_home / "ows", std)
+        real = tmp_home / "real_ws"
+        real.mkdir()
+        link = tmp_home / "link_ws"
+        link.symlink_to(real)
+        _primary_twin(std, link, "beta")
+
+        rc = run_connect(argparse.Namespace(
+            workset="ows", source=str(link), project_name=None, force=False,
+        ))
+        assert rc == 1
+        err = capsys.readouterr().err
+        assert (f"Cannot connect '{link}': it is already the workspace of "
+                f"primary box 'beta'") in err
