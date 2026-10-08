@@ -31,6 +31,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   command that finds an existing standalone box by its moved directory refuses with the cure "Rename the directory
   to an ASCII name (or move it back)."
 
+- **A standalone box is named by its directory, and `--name` is refused on every standalone
+  door.** The composed `{kuid}_{directory}` string is now both the box's name and its registry
+  key, so `box list` and `box info` can no longer disagree on one box. Before, `--name` fed the
+  key while the name was recomputed from the directory: a box in `~/proj` created with
+  `--name sabox` listed as `kh3vv_sabox` and reported as `kh3vv_proj`. `create --standalone`,
+  `box create`, `box move`, `box convert --standalone`, `box duplicate --to standalone` and
+  `box extract` refuse a name that is not the directory's own rather than dropping the flag;
+  the bare directory name and the full composed name pass as no-ops. Rename the directory to
+  rename the box. A box already registered under a divergent key is cured with `box rm <old
+  key>` and then `box register <path>`; what each reader does with such a key until you run it
+  is tabulated in [MIGRATION.md](MIGRATION.md).
+
 - **Two working sets can no longer be put on one `workset.logs` directory by accident.** `workset set`,
   `system set`, `workset reset`, `system reset` and `workset create` refuse a change that lands two working sets
   (the default one included) on one logs directory, comparing resolved directories, and name the working sets;

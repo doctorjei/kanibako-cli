@@ -402,49 +402,35 @@ class TestConvertInPlace:
         assert len(prefix) == 5
         assert leaf == "proj"
 
-    def test_convert_standalone_honors_canonical_name(self, env):
-        """A free, well-formed canonical --name is honored verbatim (no forced
-        rename — the OLD BUG#4 behavior is replaced) (R1/R3 match+free)."""
-        from kanibako.project.registry_store import load_standalone
-
+    def test_convert_standalone_refuses_a_canonical_name(self, env):
+        """⚑ INVERTED by ruling 2026-10-08: a free canonical ``--name`` used to be
+        taken verbatim; a standalone box is named by its directory."""
         config, std, tmp_home = env
         pdir = _make_default(env)
         src_state = resolve_lifecycle_target(str(pdir), std, config)
-        new = execute_lifecycle(
-            src_state,
-            TargetSpec(location=INPLACE, ownership="standalone", name="abcde_proj"),
-            std, config, confirm=_conf_yes(),
-        )
-        assert new.mode is BoxMode.standalone
-        assert new.name == "abcde_proj"
-        # P8b/Option A: the honored name lives in registry.standalone + new.name,
-        # not an on-disk ``project:`` section (no ``project:`` on disk).
-        assert "project" not in load_doc(pdir / "workset.yaml")
-        standalone = load_standalone(std.registry)
-        assert standalone["abcde_proj"] == str(pdir)
+        with pytest.raises(ProjectError, match="after its directory"):
+            execute_lifecycle(
+                src_state,
+                TargetSpec(location=INPLACE, ownership="standalone", name="abcde_proj"),
+                std, config, confirm=_conf_yes(),
+            )
 
-    def test_convert_standalone_noncanonical_name_becomes_leaf(self, env):
-        """A non-canonical --name becomes the leaf with a FRESH random prefix
-        (sanitized, case KEPT — spec §0) (R1/R3 no-match)."""
+    def test_convert_standalone_refuses_a_noncanonical_name(self, env):
+        """⚑ INVERTED by ruling 2026-10-08: ``MyBox`` used to become the leaf."""
         config, std, tmp_home = env
         pdir = _make_default(env)
         src_state = resolve_lifecycle_target(str(pdir), std, config)
-        new = execute_lifecycle(
-            src_state,
-            TargetSpec(location=INPLACE, ownership="standalone", name="MyBox"),
-            std, config, confirm=_conf_yes(),
-        )
-        assert new.mode is BoxMode.standalone
-        prefix, sep, leaf = new.name.partition("_")
-        assert sep == "_"
-        assert len(prefix) == 5
-        assert leaf == "MyBox"  # the case the user typed (spec §0)
+        with pytest.raises(ProjectError, match="after its directory"):
+            execute_lifecycle(
+                src_state,
+                TargetSpec(location=INPLACE, ownership="standalone", name="MyBox"),
+                std, config, confirm=_conf_yes(),
+            )
 
-    def test_convert_standalone_taken_canonical_name_refuses(self, env):
-        """A canonical --name that collides with an existing standalone box is
-        refused (R1/R3 match+taken)."""
+    def test_convert_standalone_refuses_before_the_collision_check(self, env):
+        """⚑ The directory rule fires FIRST, so the old ``already a box with that
+        name`` guidance is no longer reachable from this door."""
         config, std, tmp_home = env
-        # Establish an existing standalone box and learn its real name.
         existing_dir = _make_standalone(env, name="existing")
         existing_state = resolve_lifecycle_target(str(existing_dir), std, config)
         taken = existing_state.name
@@ -452,7 +438,7 @@ class TestConvertInPlace:
 
         pdir = _make_default(env)
         src_state = resolve_lifecycle_target(str(pdir), std, config)
-        with pytest.raises(ProjectError, match="already a box with that name"):
+        with pytest.raises(ProjectError, match="after its directory"):
             execute_lifecycle(
                 src_state,
                 TargetSpec(location=INPLACE, ownership="standalone", name=taken),
@@ -2790,7 +2776,8 @@ class TestStandaloneRootIsNotAPositionInThePath:
         (first.vault_rw / "SECRET").write_text("RW")
         (first.shell_path / "notes.md").write_text("HOME")
 
-        renamed = _convert_in_place(env, root, "standalone", name="renamedbox")
+        # The leaf no-op: the property under test is the ROOT, not the rename.
+        renamed = _convert_in_place(env, root, "standalone", name="renameplain")
 
         assert renamed.metadata_path == root
         assert renamed.workspace_path == first.workspace_path
@@ -2818,7 +2805,8 @@ class TestStandaloneRootIsNotAPositionInThePath:
         )
         first = _convert_to_standalone_in_place(env, root)
 
-        renamed = _convert_in_place(env, root, "standalone", name="renamedeep")
+        # ⚑ Leaf no-op — see the note on the plain-layout case above.
+        renamed = _convert_in_place(env, root, "standalone", name="renamenested")
 
         assert renamed.metadata_path == root
         assert renamed.workspace_path == root / "nested" / "deep"
