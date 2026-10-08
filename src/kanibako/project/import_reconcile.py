@@ -38,7 +38,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from kanibako.project import registry_store
-from kanibako.project.names import register_name
+from kanibako.project.names import lookup_by_path, register_name
 from kanibako.errors import KanibakoError
 from kanibako.settings.paths import standalone_box_store
 from kanibako.utils import literal_path
@@ -203,8 +203,9 @@ def import_named_workset(
 
     Names it after *root*'s LEAF DIRECTORY basename ([R139]) — a workset records no
     name on disk, and the basename is the answer in the absence of another one.
-    Returns that name, or ``None`` when *root* cannot be imported as a workset —
-    an empty or reserved basename, or ``$HOME`` (see the guards below).
+    Returns that name (or the directory's registered one), or ``None`` when *root*
+    cannot be imported as a workset — an empty or reserved basename, or ``$HOME``
+    (see the guards below).
     ⚑ Does NOT rewrite the workset-create skeleton; it only registers.
     """
     root = Path(literal_path(root))
@@ -239,13 +240,14 @@ def import_named_workset(
     if root.resolve() == Path.home().resolve():
         return None
 
+    # Already registered to this DIRECTORY, under any name → no-op; clear a stale entry.
     names_section = registry_store.load_section(registry, "worksets")
+    registered = lookup_by_path(registry, root_str)
+    if registered is not None:
+        _clear_stale_import(journal, Path(names_section[registered[0]]))
+        return registered[0]
     current = names_section.get(name)
     if current is not None:
-        if Path(current).resolve() == root.resolve():
-            # Already registered to this root → no-op; clear a stale entry.
-            _clear_stale_import(journal, Path(current))
-            return name
         # SAME-KIND: the name is another WORKSET's.  Refuse, leave the tree on disk.
         raise _conflict("workset", name, root, str(current))
 
