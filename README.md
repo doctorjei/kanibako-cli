@@ -766,7 +766,7 @@ kanibako box set box.env.KANIBAKO_PS1="(myproject) \u:\w\$ "
 
 ### Init scripts
 
-Drop `.sh` files into the `shell.d/` directory inside your project's shell
+Drop `.sh` files into the `.shell.d/` directory inside your project's shell
 path.  They are sourced by `.bashrc` on every interactive shell startup:
 
 ```bash
@@ -779,7 +779,7 @@ echo 'alias ll="ls -la"' > /path/to/shell/.shell.d/aliases.sh
 ```
 
 Existing shells from older Kanibako versions are automatically upgraded to
-support `shell.d/` on the next launch.
+support `.shell.d/` on the next launch.
 
 ## Agent Configuration
 
