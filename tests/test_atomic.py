@@ -96,3 +96,32 @@ def test_fsync_failure_leaves_original_intact(tmp_path, monkeypatch):
 
     assert target.read_text() == "ORIGINAL"
     assert _temp_residue(tmp_path) == []
+
+
+def test_rmw_lock_is_reentrant_in_a_thread_and_exclusive_across_threads(tmp_path) -> None:
+    """A locked read-modify-write may call another; a second thread still waits."""
+    import threading
+
+    from kanibako._atomic import rmw_lock
+
+    doc = tmp_path / "registry.yaml"
+    order: list[str] = []
+
+    def _other():
+        with rmw_lock(doc):
+            order.append("other")
+
+    def _nested():
+        with rmw_lock(doc):
+            with rmw_lock(doc):  # self-deadlocks without re-entrancy
+                other = threading.Thread(target=_other, daemon=True)
+                other.start()
+                other.join(timeout=0.3)
+                order.append("held")
+        other.join(timeout=5)
+
+    outer = threading.Thread(target=_nested, daemon=True)
+    outer.start()
+    outer.join(timeout=10)
+    assert not outer.is_alive(), "a nested rmw_lock deadlocked"
+    assert order == ["held", "other"]

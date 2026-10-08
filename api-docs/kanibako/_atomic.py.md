@@ -4,6 +4,12 @@ _Signatures only: no comments, no docstrings, no bodies._
 **GENERATED — do not hand-edit; regenerate with `scripts/gen-api-doc.py`.**
 
 
+## Variables
+
+```
+_held = threading.local()
+```
+
 ## Functions
 ```
 @contextlib.contextmanager

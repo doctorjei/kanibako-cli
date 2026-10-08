@@ -8,7 +8,7 @@ passed through verbatim here.
 Every public function takes the resolved ``config.registry`` FILE path
 (``std.registry``); nothing reconstructs it from ``config.data``.  Old files are
 never read (no migration), an absent file yields empty sections, and writes are
-atomic via ``config_io.dump_doc``.
+atomic via ``config_io.dump_doc``; every read-modify-write holds ``_atomic.rmw_lock``.
 
 See ``llm-docs/kanibako/project/registry_store.py.md`` for the file layout, what
 this consolidation replaced, and the design of the ``deregistered`` section.
@@ -18,6 +18,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from kanibako._atomic import rmw_lock
 from kanibako.identifiers import find_identifier
 from kanibako.settings.config_io import dump_doc, load_doc
 
@@ -89,9 +90,10 @@ def load_section(registry: Path, section: str) -> dict:
 
 def save_section(registry: Path, section: str, entries: dict) -> None:
     """Replace one section of the ``registry.yaml``, preserving the others."""
-    sections = load_registry(registry)
-    sections[section] = dict(entries)
-    save_registry(registry, sections)
+    with rmw_lock(registry):
+        sections = load_registry(registry)
+        sections[section] = dict(entries)
+        save_registry(registry, sections)
 
 
 # ---------------------------------------------------------------------------
@@ -147,10 +149,11 @@ def register_standalone(registry: Path, box_name: str, root: Path) -> None:
     case-variant row for the same box is REPLACED rather than joined
     (:func:`_drop_case_twin`).
     """
-    entries = load_standalone(registry)
-    _drop_case_twin(entries, box_name)
-    entries[box_name] = str(root)
-    save_section(registry, "standalone", entries)
+    with rmw_lock(registry):
+        entries = load_standalone(registry)
+        _drop_case_twin(entries, box_name)
+        entries[box_name] = str(root)
+        save_section(registry, "standalone", entries)
 
 
 def unregister_standalone(registry: Path, box_name: str) -> None:
@@ -158,11 +161,12 @@ def unregister_standalone(registry: Path, box_name: str) -> None:
 
     ⚑ Found case-blind, removed by the STORED spelling (§0).
     """
-    entries = load_standalone(registry)
-    stored = find_identifier(box_name, entries)
-    if stored is not None:
-        del entries[stored]
-        save_section(registry, "standalone", entries)
+    with rmw_lock(registry):
+        entries = load_standalone(registry)
+        stored = find_identifier(box_name, entries)
+        if stored is not None:
+            del entries[stored]
+            save_section(registry, "standalone", entries)
 
 
 def standalone_name_for_root(registry: Path, root: Path) -> str | None:
@@ -212,19 +216,20 @@ def register_deregistered(
     (:func:`_drop_case_twin`): :func:`lookup_deregistered` and the purge verbs resolve
     case-blind, so two rows would make which blob they find a matter of order.
     """
-    entries = load_deregistered(registry)
-    _drop_case_twin(entries, box_name)
-    entry: dict = {
-        "kind": kind,
-        "workspace": str(workspace) if workspace is not None else None,
-        "metadata": str(metadata),
-    }
-    if image is not None:
-        entry["image"] = str(image)
-    if deregistered_at is not None:
-        entry["deregistered_at"] = str(deregistered_at)
-    entries[box_name] = entry
-    save_section(registry, "deregistered", entries)
+    with rmw_lock(registry):
+        entries = load_deregistered(registry)
+        _drop_case_twin(entries, box_name)
+        entry: dict = {
+            "kind": kind,
+            "workspace": str(workspace) if workspace is not None else None,
+            "metadata": str(metadata),
+        }
+        if image is not None:
+            entry["image"] = str(image)
+        if deregistered_at is not None:
+            entry["deregistered_at"] = str(deregistered_at)
+        entries[box_name] = entry
+        save_section(registry, "deregistered", entries)
 
 
 def unregister_deregistered(registry: Path, box_name: str) -> bool:
@@ -232,13 +237,14 @@ def unregister_deregistered(registry: Path, box_name: str) -> bool:
 
     ⚑ Found case-blind, removed by the STORED spelling (§0).
     """
-    entries = load_deregistered(registry)
-    stored = find_identifier(box_name, entries)
-    if stored is not None:
-        del entries[stored]
-        save_section(registry, "deregistered", entries)
-        return True
-    return False
+    with rmw_lock(registry):
+        entries = load_deregistered(registry)
+        stored = find_identifier(box_name, entries)
+        if stored is not None:
+            del entries[stored]
+            save_section(registry, "deregistered", entries)
+            return True
+        return False
 
 
 def lookup_deregistered(registry: Path, box_name: str) -> dict | None:
@@ -277,15 +283,19 @@ def list_deregistered(registry: Path) -> dict[str, dict]:
     Dropped only when ``metadata`` is empty (no recovery target) or definitively
     gone; the pruned section is persisted when anything is removed.
     """
+    def _live(entries: dict[str, dict]) -> dict[str, dict]:
+        return {name: entry for name, entry in entries.items()
+                if entry.get("metadata")
+                and not _metadata_definitively_gone(str(entry["metadata"]))}
+
     entries = load_deregistered(registry)
-    live: dict[str, dict] = {}
-    dropped = False
-    for name, entry in entries.items():
-        meta = entry.get("metadata")
-        if not meta or _metadata_definitively_gone(str(meta)):
-            dropped = True
-        else:
-            live[name] = entry
-    if dropped:
-        save_section(registry, "deregistered", live)
-    return live
+    live = _live(entries)
+    if len(live) == len(entries):
+        return live
+    # ⚑ A drop is a write: re-read under the lock, so a row added meanwhile survives.
+    with rmw_lock(registry):
+        entries = load_deregistered(registry)
+        live = _live(entries)
+        if len(live) != len(entries):
+            save_section(registry, "deregistered", live)
+        return live

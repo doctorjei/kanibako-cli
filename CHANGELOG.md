@@ -2343,8 +2343,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   under `vault/`. A box in a named working set is undone the same way, its membership record
   included. Two primary creates of same-named workspaces never share a box: the second takes the
   next free name, even while the first has not yet made its directory. A second create of a
-  workspace whose create is still running refuses. Concurrent creates no longer lose each other's
-  registry rows. A home no entry or registration claims (one
+  workspace whose create is still running refuses. Concurrent commands no longer lose each
+  other's registry rows. A home no entry or registration claims (one
   an earlier version left behind) is refused by the bare primary create instead of silently minting
   `<name>2`. A home that a deregistered entry still claims is not an orphan: the create mints the
   next free name beside it, as before. See *`create` refuses an interrupted create; finish it with

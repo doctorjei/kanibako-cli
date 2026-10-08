@@ -29,6 +29,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from kanibako._atomic import rmw_lock
 from kanibako.identifiers import find_identifier
 from kanibako.project import registry_store
 from kanibako.settings.config import WORKSET_META_FILE
@@ -100,18 +101,19 @@ def register_name(
             "Refusing to register $HOME as a project path — this would "
             "mount your entire home directory as the workspace."
         )
-    names = _load(registry)
-    # ⚑ Compared case-blind (spec §0, ⚑ NAMING RULES) — ``Foo`` collides with ``foo``.
-    held = find_identifier(name, names["worksets"])
-    if held is not None:
-        raise ProjectError(
-            f"Name '{name}' is already registered"
-            f" (worksets: {names['worksets'][held]})"
-        )
-    # 🛑 STORED AS TYPED — fold to compare, NEVER to store.  The key written here is the
-    # caller's spelling, unfolded, and it stays that way.
-    names[section][name] = path
-    _save(registry, names)
+    with rmw_lock(registry):
+        names = _load(registry)
+        # ⚑ Compared case-blind (spec §0, ⚑ NAMING RULES) — ``Foo`` collides with ``foo``.
+        held = find_identifier(name, names["worksets"])
+        if held is not None:
+            raise ProjectError(
+                f"Name '{name}' is already registered"
+                f" (worksets: {names['worksets'][held]})"
+            )
+        # 🛑 STORED AS TYPED — fold to compare, NEVER to store.  The key written here is the
+        # caller's spelling, unfolded, and it stays that way.
+        names[section][name] = path
+        _save(registry, names)
 
 
 def register_name_if_absent(
@@ -134,14 +136,15 @@ def register_name_if_absent(
         # Surface the $HOME guard with the same message as register_name.
         register_name(registry, name, path, section=section)
         return
-    names = _load(registry)
-    # ⚑ Case-blind (§0): the recovery re-entry may type a different case than the
-    # interrupted create stored, and that is still the SAME registered name.
-    stored = find_identifier(name, names[section])
-    existing = None if stored is None else names[section][stored]
-    if existing is not None and existing == path:
-        return  # identical mapping already present → no-op.
-    register_name(registry, name, path, section=section)
+    with rmw_lock(registry):
+        names = _load(registry)
+        # ⚑ Case-blind (§0): the recovery re-entry may type a different case than the
+        # interrupted create stored, and that is still the SAME registered name.
+        stored = find_identifier(name, names[section])
+        existing = None if stored is None else names[section][stored]
+        if existing is not None and existing == path:
+            return  # identical mapping already present → no-op.
+        register_name(registry, name, path, section=section)
 
 
 def unregister_name(
@@ -156,16 +159,17 @@ def unregister_name(
     Returns True if the name was found and removed, False otherwise.  *exact* removes
     only the key spelled as *name*, never a case variant of it.
     """
-    names = _load(registry)
-    # ⚑ Found case-blind, DELETED by the stored spelling (§0): folding the query alone
-    # would report success while leaving the entry behind.
-    entries = names.get(section, {})
-    stored = (name if name in entries else None) if exact else find_identifier(name, entries)
-    if stored is None:
-        return False
-    del names[section][stored]
-    _save(registry, names)
-    return True
+    with rmw_lock(registry):
+        names = _load(registry)
+        # ⚑ Found case-blind, DELETED by the stored spelling (§0): folding the query alone
+        # would report success while leaving the entry behind.
+        entries = names.get(section, {})
+        stored = (name if name in entries else None) if exact else find_identifier(name, entries)
+        if stored is None:
+            return False
+        del names[section][stored]
+        _save(registry, names)
+        return True
 
 
 def lookup_by_path(

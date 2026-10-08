@@ -16,8 +16,12 @@ import contextlib
 import fcntl
 import os
 import tempfile
+import threading
 from collections.abc import Iterator
 from pathlib import Path
+
+
+_held = threading.local()
 
 
 @contextlib.contextmanager
@@ -25,16 +29,24 @@ def rmw_lock(path: Path) -> Iterator[None]:
     """Serialize every read-modify-write of *path*: a ``flock`` on its DIRECTORY.
 
     The file is replaced by rename, so a lock on it would not survive a write; the
-    directory outlives every rename.  Never nest it over one directory: each entry
-    opens a fresh descriptor, and those conflict within one process.
+    directory outlives every rename.  RE-ENTRANT within a thread, so a locked
+    read-modify-write may call another: ``flock`` descriptors conflict even within
+    one process, so a second one would deadlock.
     """
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    fd = os.open(path.parent, os.O_RDONLY)
+    key = os.path.realpath(path.parent)
+    held = _held.__dict__.setdefault("dirs", set())
+    if key in held:
+        yield
+        return
+    fd = os.open(key, os.O_RDONLY)
     try:
         fcntl.flock(fd, fcntl.LOCK_EX)
+        held.add(key)
         yield
     finally:
+        held.discard(key)
         os.close(fd)
 
 

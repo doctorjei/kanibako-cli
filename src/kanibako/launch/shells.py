@@ -12,6 +12,7 @@ import shlex
 import subprocess
 
 from kanibako.errors import KanibakoError
+from kanibako._atomic import rmw_lock
 from kanibako.project import registry_store
 
 # ---------------------------------------------------------------------------
@@ -46,9 +47,10 @@ def load_image_shells(std) -> dict[str, str]:
 
 def save_image_shell(std, key: str, shell: str) -> None:
     """Upsert one ``key -> shell`` entry, preserving existing entries."""
-    mapping = load_image_shells(std)
-    mapping[key] = shell
-    registry_store.save_section(_store_path(std), _STORE_SECTION, mapping)
+    with rmw_lock(_store_path(std)):
+        mapping = load_image_shells(std)
+        mapping[key] = shell
+        registry_store.save_section(_store_path(std), _STORE_SECTION, mapping)
 
 
 def image_store_key(runtime, image: str) -> str:
