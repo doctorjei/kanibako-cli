@@ -877,7 +877,7 @@ keys:
     type: path
     owner: shared
     set: file
-    default: "@config.data/global/settings.yaml"
+    default: "{config.data}/global/settings.yaml"
     why: "THE system settings FILE — the cascade `system` level input"
     spec: "§1"
   config.agents:
@@ -885,7 +885,7 @@ keys:
     type: path
     owner: shared
     set: file
-    default: "@config.data/agents"
+    default: "{config.data}/agents"
     why: "per-agent store; agent cascade files at <agent>/agent.yaml"
     spec: "§1"
   config.primary_workset:
@@ -893,7 +893,7 @@ keys:
     type: path
     owner: shared
     set: file
-    default: "@config.data/primary_workset"
+    default: "{config.data}/primary_workset"
     why: "PRIMARY workset root"
     spec: "§1"
   config.registry:
@@ -901,7 +901,7 @@ keys:
     type: path
     owner: shared
     set: file
-    default: "@config.data/global/registry.yaml"
+    default: "{config.data}/global/registry.yaml"
     why: "name→path resolution; needed before loading named workset/box files"
     spec: "§1"
   config.journal:
@@ -909,7 +909,7 @@ keys:
     type: path
     owner: shared
     set: file
-    default: "@config.data/global/journal.yaml"
+    default: "{config.data}/global/journal.yaml"
     why: "lifecycle journal (crash-recovery write-ahead log); normally EMPTY"
     spec: "§1 (added 2026-06-30b)"
     # ⚑ DRIFT RESOLVED (Jei 2026-07-27): §1 prose claimed the Layer-1 set was
@@ -924,14 +924,14 @@ keys:
     type: path
     owner: shared
     set: cli+file
-    default: "@config.data/channels"
+    default: "{config.data}/channels"
     spec: "§2g"
   system.channels.common:
     scope: system
     type: path
     owner: shared
     set: cli+file
-    default: "@system.channelroot/common"
+    default: "{system.channelroot}/common"
     note: "shared-scratch type-root. RENAMED from system.channels.commons (R-6)
            — a GUEST path in every box and named in the packaged agent guide:
            migration M-9 (the first guest-path migration in this set)."
@@ -941,35 +941,35 @@ keys:
     type: path
     owner: shared
     set: cli+file
-    default: "@system.channelroot/chat"
+    default: "{system.channelroot}/chat"
     spec: "§2g"
   system.channels.broadcast:
     scope: system
     type: path
     owner: shared
     set: cli+file
-    default: "@system.channels.chat/broadcast.md"
+    default: "{system.channels.chat}/broadcast.md"
     spec: "§2g"
   system.channels.mailboxes:
     scope: system
     type: path
     owner: shared
     set: cli+file
-    default: "@system.channelroot/mailboxes"
+    default: "{system.channelroot}/mailboxes"
     spec: "§2g"
   system.channels.share:
     scope: system
     type: path
     owner: shared
     set: cli+file
-    default: "@system.channelroot/share"
+    default: "{system.channelroot}/share"
     spec: "§2g"
   system.template:
     scope: system
     type: path
     owner: shared
     set: cli+file
-    default: "@config.data/global/template"
+    default: "{config.data}/global/template"
     note: "the system TEMPLATE ROOT. RENAMED from system.base_template (R-1;
            default global/base_template → global/template; migration M-11).
            Holding the ROOT leaves room for further template subtrees without
@@ -984,7 +984,7 @@ keys:
     type: path
     owner: shared
     set: cli+file
-    default: "@config.data/global/canon"
+    default: "{config.data}/global/canon"
     note: "the SYSTEM-level CANON CONTRIBUTION ROOT — the user's own directives;
            its handbook/ subtree is bound in-box at ~/canon/handbook/. Names a
            per-scope CONTRIBUTION root, NOT a copy of the assembled canon:
@@ -1000,7 +1000,7 @@ keys:
     type: path
     owner: shared
     set: cli+file
-    default: "@config.data/backup"
+    default: "{config.data}/backup"
     spec: "§2g"
     note: "RESERVED 2026-09-21 — future intent, no consumer yet; setting it is accepted
            and inert BY DESIGN, not by omission. Do not wire a consumer without a new
@@ -1098,8 +1098,8 @@ keys:
     type: path
     owner: workset
     set: cli+file
-    default: {primary: null, named: "@meta.workset.path/workspaces",
-              standalone: "@meta.workset.path/workspace"}
+    default: {primary: null, named: "{meta.workset.path}/workspaces",
+              standalone: "{meta.workset.path}/workspace"}
     note: "standalone: just the one box; changeable from workset level (R-26).
            PRIMARY arm: the anchor floor supplies the null as a present None
            (Q82); a value the user sets is honored through the cascade."
@@ -1109,8 +1109,8 @@ keys:
     type: path
     owner: workset
     set: cli+file
-    default: {primary: "@meta.workset.path/boxes", named: "@meta.workset.path/boxes",
-              standalone: "@meta.workset.path/box_data"}
+    default: {primary: "{meta.workset.path}/boxes", named: "{meta.workset.path}/boxes",
+              standalone: "{meta.workset.path}/box_data"}
     note: "standalone: just the one box; changeable from workset level (R-27)"
     spec: "§2c / §2e (R-27)"
   workset.logs:
@@ -1118,8 +1118,8 @@ keys:
     type: path
     owner: workset
     set: cli+file
-    default: {primary: "@meta.workset.path/logs", named: "@meta.workset.path/logs",
-              standalone: "@workset.boxes"}
+    default: {primary: "{meta.workset.path}/logs", named: "{meta.workset.path}/logs",
+              standalone: "{workset.boxes}"}
     note: "standalone: the box root IS the log home (R-28); the helper-log bind
            stays a SINGLE row for all modes because this key carries the variation"
     spec: "§2c / §2e (R-28)"
@@ -1128,7 +1128,7 @@ keys:
     type: path
     owner: workset
     set: cli+file
-    default: "@meta.workset.path/vault/ro"
+    default: "{meta.workset.path}/vault/ro"
     note: "ALL PROJECTS — defined ONCE for EVERY mode (R-29); only the box BIND
            differs per mode (the per-box /{meta.box.name} subdir a lone box does
            not need)"
@@ -1138,7 +1138,7 @@ keys:
     type: path
     owner: workset
     set: cli+file
-    default: "@meta.workset.path/vault/rw"
+    default: "{meta.workset.path}/vault/rw"
     note: "ALL PROJECTS — defined ONCE for EVERY mode (R-29); see vault_ro"
     spec: "§2c (ALL PROJECTS; R-29)"
   workset.canon:
@@ -1146,7 +1146,7 @@ keys:
     type: path
     owner: workset
     set: cli+file
-    default: "@meta.workset.path/canon"
+    default: "{meta.workset.path}/canon"
     note: "the WORKSET's CANON CONTRIBUTION ROOT; its handbook/ subtree supplies
            the handbook's WORKSET chapter, bound at ~/canon/handbook/workset/.
            UNIFORM IN EVERY MODE (ALL PROJECTS) — deliberately NOT per-mode:
@@ -1161,8 +1161,8 @@ keys:
     type: path
     owner: workset
     set: cli+file
-    default: {primary: "@meta.workset.path/registry.yaml",
-              named: "@meta.workset.path/registry.yaml", standalone: null}
+    default: {primary: "{meta.workset.path}/registry.yaml",
+              named: "{meta.workset.path}/registry.yaml", standalone: null}
     note: "PER-WORKSET box registry; a NORMAL key, NOT a config-locate key.
            Its entry KEYS yield the RO meta.box.name anchors."
     spec: "§2c (2026-07-04)"
@@ -1171,8 +1171,8 @@ keys:
     type: path
     owner: shared
     set: cli+file
-    default: {primary: "@meta.workset.path/template",
-              named: "@meta.workset.path/template", standalone: null}
+    default: {primary: "{meta.workset.path}/template",
+              named: "{meta.workset.path}/template", standalone: null}
     note: "seed layer 3; the layer is SKIPPED when the source dir is absent
            (ruled 2026-07-09, was <None>). standalone: <None> — a lone box has
            no template tier (the spec's STANDALONE block states it explicitly:
@@ -1197,7 +1197,7 @@ keys:
     scope: workset
     type: bool
     set: cli+file
-    default: {primary: "@system.auth.share_allowed", named: "@system.auth.share_allowed",
+    default: {primary: "{system.auth.share_allowed}", named: "{system.auth.share_allowed}",
               standalone: false}
     note: "standalone: a lone box has no workset group → WORKSET-share unavailable"
     spec: "§2c (auth-level 2026-07-01)"
@@ -1205,7 +1205,7 @@ keys:
     scope: workset
     type: bool
     set: cli+file
-    default: {primary: "@system.auth.share_allowed", named: "@system.auth.share_allowed",
+    default: {primary: "{system.auth.share_allowed}", named: "{system.auth.share_allowed}",
               standalone: false}
     spec: "§2c"
   workset.auth.path:
@@ -1213,7 +1213,7 @@ keys:
     type: path
     owner: workset
     set: cli+file
-    default: {primary: "@meta.workset.path/auth", named: "@meta.workset.path/auth",
+    default: {primary: "{meta.workset.path}/auth", named: "{meta.workset.path}/auth",
               standalone: null}
     note: "the SETTABLE source for meta.box.auth.workset_path"
     spec: "§2c"
@@ -1222,7 +1222,7 @@ keys:
     type: path
     owner: workset
     set: cli+file
-    default: {primary: "@meta.workset.path/channels", named: "@meta.workset.path/channels",
+    default: {primary: "{meta.workset.path}/channels", named: "{meta.workset.path}/channels",
               standalone: null}
     spec: "§2c"
   workset.channels.common:
@@ -1230,7 +1230,7 @@ keys:
     type: path
     owner: workset
     set: cli+file
-    default: {primary: "@workset.channelroot/common", named: "@workset.channelroot/common",
+    default: {primary: "{workset.channelroot}/common", named: "{workset.channelroot}/common",
               standalone: null}
     note: "RENAMED from workset.channels.commons (R-6); guest path in every box
            — migration M-9"
@@ -1240,7 +1240,7 @@ keys:
     type: path
     owner: workset
     set: cli+file
-    default: {primary: "@workset.channelroot/chat", named: "@workset.channelroot/chat",
+    default: {primary: "{workset.channelroot}/chat", named: "{workset.channelroot}/chat",
               standalone: null}
     spec: "§2c"
   workset.channels.broadcast:
@@ -1248,15 +1248,15 @@ keys:
     type: path
     owner: workset
     set: cli+file
-    default: {primary: "@workset.channels.chat/broadcast.md",
-              named: "@workset.channels.chat/broadcast.md", standalone: null}
+    default: {primary: "{workset.channels.chat}/broadcast.md",
+              named: "{workset.channels.chat}/broadcast.md", standalone: null}
     spec: "§2c"
   workset.channels.share:
     scope: workset
     type: path
     owner: workset
     set: cli+file
-    default: {primary: "@workset.channelroot/share", named: "@workset.channelroot/share",
+    default: {primary: "{workset.channelroot}/share", named: "{workset.channelroot}/share",
               standalone: null}
     spec: "§2c"
   workset.channels.mailboxes:
@@ -1264,7 +1264,7 @@ keys:
     type: path
     owner: partition
     set: cli+file
-    default: "@system.channels.mailboxes/@meta.workset.name"
+    default: "{system.channels.mailboxes}/{meta.workset.name}"
     note: "ALL PROJECTS — mailboxes aggregate at SYSTEM, partitioned by workset name"
     spec: "§2c (ALL PROJECTS)"
   workset.channels.share_global:
@@ -1272,7 +1272,7 @@ keys:
     type: path
     owner: partition
     set: cli+file
-    default: "@system.channels.share/@meta.workset.name"
+    default: "{system.channels.share}/{meta.workset.name}"
     spec: "§2c (ALL PROJECTS)"
 
   ## ---- LAYER 2: box.* settings keys (§2b) ---------------------------------
@@ -1304,7 +1304,7 @@ keys:
     type: path
     owner: box
     set: cli+file
-    default: "@meta.box.path/canon"
+    default: "{meta.box.path}/canon"
     note: "the BOX's CANON CONTRIBUTION ROOT; its handbook/ subtree supplies the
            handbook's BOX chapter, bound at ~/canon/handbook/box/. Resolves in
            EVERY mode now that meta.box.path is uniform (§2c), standalone
@@ -1651,7 +1651,7 @@ keys:
     type: path
     owner: shared
     set: cli+file
-    default: "@meta.agent.<agent>.path/template"
+    default: "{meta.agent.<agent>.path}/template"
     note: "per-agent template SOURCE; seed layer 2"
     spec: "§2d"
   agent.<agent>.canon:
@@ -1660,7 +1660,7 @@ keys:
     type: path
     owner: shared
     set: cli+file
-    default: "@meta.agent.<agent>.path/canon"
+    default: "{meta.agent.<agent>.path}/canon"
     fallback: "agent.default.canon"
     note: "the AGENT's CANON CONTRIBUTION ROOT; its handbook/ subtree supplies
            the handbook's AGENT chapter, bound at ~/canon/handbook/agent/.
@@ -2002,13 +2002,13 @@ keys:
     namespace: meta
     set: never
     origin: bootstrap
-    value: "@meta.runtime.ws_root"
+    value: "{meta.runtime.ws_root}"
     spec: "§2c / §1A"
   meta.workset.name:
     namespace: meta
     set: never
     origin: bootstrap
-    value: "@meta.runtime.ws_name"
+    value: "{meta.runtime.ws_name}"
     spec: "§2c / §1A"
   meta.workset.settings:
     namespace: meta
@@ -2016,7 +2016,7 @@ keys:
     origin: bootstrap
     type: path
     owner: workset
-    value: "@meta.workset.path/workset.yaml"
+    value: "{meta.workset.path}/workset.yaml"
     note: "the §1A SINGLE-SOURCE canonical spelling; the former
            {meta.runtime.ws_settings} anchor is CUT (unified path; R-36)"
     spec: "§2c / §1A"
@@ -2049,9 +2049,9 @@ keys:
     origin: construct_time
     type: path
     owner: box
-    value: {primary: "@workset.boxes/@meta.box.name",
-            named: "@workset.boxes/@meta.box.name",
-            standalone: "@workset.boxes"}
+    value: {primary: "{workset.boxes}/{meta.box.name}",
+            named: "{workset.boxes}/{meta.box.name}",
+            standalone: "{workset.boxes}"}
     note: "the RO per-mode BOX ROOT — the declaration root every rooted box key
            spells itself against (§2a table). STANDALONE is the EMPTY LEAF:
            workset.boxes IS the box root, so the value is a BARE whole-value ref
@@ -2066,7 +2066,7 @@ keys:
     origin: derived
     type: path
     owner: box
-    value: "@meta.box.path/home"
+    value: "{meta.box.path}/home"
     note: "RO DERIVED box-home SOURCE — the pid-0 FOUNDATION bind's src_path,
            seeded into the collapse before any other entry (§0). It does NOT route
            through bindings.rw: home is the base plate, not one bind among many
@@ -2108,7 +2108,7 @@ keys:
     namespace: meta
     set: never
     origin: runtime_treewalk
-    value: "@meta.runtime.project_type"
+    value: "{meta.runtime.project_type}"
     note: "mode is IDENTITY, not behavior — was the settable box.mode"
     spec: "§2c"
   meta.box.inbox:
@@ -2117,7 +2117,7 @@ keys:
     origin: derived
     type: path
     owner: box
-    value: "@workset.channels.mailboxes/@meta.box.name"
+    value: "{workset.channels.mailboxes}/{meta.box.name}"
     spec: "§2c (ALL PROJECTS)"
   meta.box.share_global:
     namespace: meta
@@ -2125,7 +2125,7 @@ keys:
     origin: derived
     type: path
     owner: box
-    value: "@workset.channels.share_global/@meta.box.name"
+    value: "{workset.channels.share_global}/{meta.box.name}"
     spec: "§2c (ALL PROJECTS)"
   meta.box.share_workset:
     namespace: meta
@@ -2133,8 +2133,8 @@ keys:
     origin: derived
     type: path
     owner: box
-    value: {primary: "@workset.channels.share/@meta.box.name",
-            named: "@workset.channels.share/@meta.box.name",
+    value: {primary: "{workset.channels.share}/{meta.box.name}",
+            named: "{workset.channels.share}/{meta.box.name}",
             standalone: null}
     spec: "§2c"
   meta.box.auth.workset_path:
@@ -2143,8 +2143,8 @@ keys:
     origin: derived
     type: path
     owner: workset
-    value: {primary: "@workset.auth.path/@system.agent",
-            named: "@workset.auth.path/@system.agent",
+    value: {primary: "{workset.auth.path}/{system.agent}",
+            named: "{workset.auth.path}/{system.agent}",
             standalone: null}
     note: "reclassified from the old SETTABLE box.auth.workset_path (2026-07-04):
            being meta means it can't be set to a dangling reference. Respelled from
@@ -2191,7 +2191,7 @@ keys:
     namespace: meta
     set: never
     origin: plugin
-    value: "@meta.agent.<@system.agent>.auth.share_support"
+    value: "{meta.agent.<{system.agent}>.auth.share_support}"
     note: "box-immutable capability MIRROR — the hard RO floor a box cannot
            fake. Respelled from <{box.agent_name}> (R-32, with R-3)."
     spec: "§2c / §2d (R-32)"
@@ -2246,7 +2246,7 @@ keys:
     origin: construct_time
     type: path
     owner: agent
-    value: "@config.agents/@meta.agent.default.name"
+    value: "{config.agents}/default"
     spec: "§2d"
   ## ---- meta.agent.shell.* — the plain-shell identity anchors (§2d fence) ----
   ## Concrete literals, because the parametric meta.agent.<agent>.* rows below are
@@ -2269,7 +2269,7 @@ keys:
     origin: construct_time
     type: path
     owner: agent
-    value: "@config.agents/@meta.agent.shell.name"
+    value: "{config.agents}/shell"
     note: "META so agent/workset/box cascade CANNOT override it — the twin formula
            ({config.agents}/{meta.agent.<agent>.name}) with name = shell."
     spec: "§2d (shell fence)"
@@ -2279,7 +2279,7 @@ keys:
     origin: construct_time
     type: path
     owner: agent
-    value: "@meta.agent.shell.path/agent.yaml"
+    value: "{meta.agent.shell.path}/agent.yaml"
     spec: "§2d (shell fence)"
   meta.agent.shell.mode:
     namespace: meta
@@ -2327,7 +2327,7 @@ keys:
     origin: construct_time
     type: path
     owner: agent
-    value: "@config.agents/@meta.agent.<agent>.name"
+    value: "{config.agents}/{meta.agent.<agent>.name}"
     note: "META so agent/workset/box cascade CANNOT override it (D-2026-06-22)"
     spec: "§2d"
   meta.agent.<agent>.settings:
@@ -2337,7 +2337,7 @@ keys:
     origin: construct_time
     type: path
     owner: agent
-    value: "@meta.agent.<agent>.path/agent.yaml"
+    value: "{meta.agent.<agent>.path}/agent.yaml"
     spec: "§2d"
   meta.agent.<agent>.mode:
     namespace: meta

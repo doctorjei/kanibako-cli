@@ -286,8 +286,8 @@ class TestKeyRows:
         """``workset.boxes`` agrees for primary/named and differs for standalone."""
         row = next(r for r in key_rows() if r.key == "workset.boxes")
         assert row.per_mode == (
-            ("primary, named", "@meta.workset.path/boxes"),
-            ("standalone", "@meta.workset.path/box_data"),
+            ("primary, named", "{meta.workset.path}/boxes"),
+            ("standalone", "{meta.workset.path}/box_data"),
         )
 
     def test_an_unclassified_row_is_refused_rather_than_printed_blank(self, monkeypatch):
