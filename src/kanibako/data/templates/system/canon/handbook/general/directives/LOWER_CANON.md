@@ -18,6 +18,8 @@ Lower Canon includes these books:
 
 Non-draft specification and design documents are also considered _Law_.
 
+Kanibako does not seed empty lower-canon directories; create one when you first need it.
+
 #### Notebook
 
 The notebook is agent-editable and can include Law and Lore. Directories are used for primary
