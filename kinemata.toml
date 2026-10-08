@@ -180,6 +180,9 @@ exclude = [
   "/packages/agent-claude/tests/",
   "/packages/agent-codex/tests/",
   "/packages/agent-goose/tests/",
+  # The store scripts/build-claims-store.sh builds: kanibako's output, not
+  # this tree's source. `[claims] resolve_in` reads it regardless.
+  "/.claims-store/",
 ]
 
 # ---------------------------------------------------------------------------
