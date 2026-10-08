@@ -98,6 +98,15 @@ def _run_duplicate_cross_mode(args: argparse.Namespace, std, config) -> int:
         print(f"Error: source path does not exist as a directory: {source_path}", file=sys.stderr)
         return 1
 
+    # Refuse an existing destination BEFORE any write (matches local-mode step 4).
+    if not args.bare and new_path.exists() and not args.force:
+        print(
+            f"Error: destination already exists: {new_path}",
+            file=sys.stderr,
+        )
+        print("  Use --force to overwrite.", file=sys.stderr)
+        return 1
+
     # Detect source mode and resolve.
     source_mode = detect_project_mode(source_path, std, config).mode
 
@@ -195,6 +204,10 @@ def _run_duplicate_cross_mode(args: argparse.Namespace, std, config) -> int:
     if target_mode == BoxMode.standalone:
         # ⚑ Route 3: refuse a scalar ``workset:`` root BEFORE the merge, not after.
         refuse_scalar_sections(new_path / WORKSET_META_FILE, ("workset",))
+        # Refuse a scalar ``box:`` in the BOX tier BEFORE the copy — same
+        # refusal ``write_box_enable_vault`` would raise after the home and
+        # workspace are already copied.
+        refuse_scalar_sections(new_path / "box_data" / BOX_META_FILE, ("box",))
         if not args.bare and workspace_src is not None and workspace_src.is_dir():
             # The copy DESTINATION is the destination root's resolved
             # ``workset.workspaces`` (ruled 10, 2026-08-02) — the STANDALONE
