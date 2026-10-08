@@ -575,7 +575,7 @@ BIND_EXEMPTIONS: dict[str, str] = {
 #: The helper socket's host source is COMPUTED by the name rule (companion § "Box and
 #: helper identity"), so its row is checked against that rule instead of a ``meta_ref``.
 HELPER_SOCKET_DEST = "~/.kanibako/state/helper.sock"
-_HELPER_SOCKET_CELL = re.compile(r'^\(@system\.runtime/<bounded name of "(?P<t>[^"]+)">, ""\)$')
+_HELPER_SOCKET_CELL = re.compile(r'^\(\{system\.runtime\}/<bounded name of "(?P<t>[^"]+)">, ""\)$')
 
 
 def _spec_socket_name(identity: str, run_dir: Path) -> str:
@@ -610,8 +610,8 @@ def _check_helper_socket_row(raw: object) -> None:
         for box_name in ("app", "x" * 120, "箱" * 30):
             proj = _StubChannelProject(BoxMode(mode))
             proj.name = box_name
-            identity = (cell["t"].replace("@{meta.box.name}", _spec_segment(box_name))
-                        .replace("@{meta.workset.name}", _spec_segment(ws_name)))
+            identity = (cell["t"].replace("{meta.box.name}", _spec_segment(box_name))
+                        .replace("{meta.workset.name}", _spec_segment(ws_name)))
             assert "@" not in identity, f"unrendered ref in {cell['t']!r}"
             want = run_dir / _spec_socket_name(identity, run_dir)
             assert helper_socket_path(proj, run_dir) == want, (mode, box_name)
@@ -1097,9 +1097,9 @@ class TestValueAgentIdentity:
             "{meta.agent.<agent>.path}/agent.yaml"
         )
         assert _value("meta.agent.default.name") == "default"
-        assert _value("meta.agent.default.path") == "{config.agents}/default"
+        assert _value("meta.agent.default.path") == "{config.agents}/{meta.agent.default.name}"
         assert _value("meta.agent.shell.auth.share_support") is False
-        assert _value("meta.agent.shell.path") == "{config.agents}/shell"
+        assert _value("meta.agent.shell.path") == "{config.agents}/{meta.agent.shell.name}"
         assert _value("meta.agent.shell.name") == "shell"
         assert _value("meta.agent.shell.settings") == (
             "{meta.agent.shell.path}/agent.yaml"
