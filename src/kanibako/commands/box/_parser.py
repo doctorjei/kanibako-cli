@@ -1135,7 +1135,7 @@ def run_create(args: argparse.Namespace) -> int:
     effective_path = (
         Path(literal_path(project_dir)) if project_dir else Path(logical_cwd())
     )
-    if effective_path == Path.home().resolve():
+    if effective_path.resolve() == Path.home().resolve():
         if not args.standalone:
             print(
                 "Error: Refusing to create a project at $HOME.\n"
@@ -2477,7 +2477,7 @@ def run_register(args: argparse.Namespace) -> int:
     #    ⚑ REUSE ``import_standalone``: it is already index-only + seed-free.
     candidate = Path(target)
     if candidate.is_dir():
-        root = candidate
+        root = Path(literal_path(target))
         if stores_standalone_registry_null(root):
             already = registry_store.standalone_name_for_root(std.registry, root)
             if already is not None:

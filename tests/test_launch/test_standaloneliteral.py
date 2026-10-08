@@ -90,3 +90,123 @@ class TestAStandaloneReachedThroughALinkIsFoundByLiteralPath:
         det_first = box_resolve.detect_box_mode(first, std, config)
         assert det_first is not None
         assert det_first.project_root == first
+
+
+# ---------------------------------------------------------------------------
+# The CLI chain: create, look up, register, warn, and the $HOME guard
+# ---------------------------------------------------------------------------
+
+def _create_args(path, **over):
+    import argparse
+    ns = argparse.Namespace(
+        path=None if path is None else str(path), standalone=True, no_vault=True,
+        name=None, image=None, agent=None, allow_home=False,
+        private=False, register=True,
+    )
+    for k, v in over.items():
+        setattr(ns, k, v)
+    return ns
+
+
+def _enter(monkeypatch, path: Path) -> None:
+    """``cd`` the way a shell does: the directory, and ``$PWD`` spelled as reached."""
+    monkeypatch.chdir(path)
+    monkeypatch.setenv("PWD", str(path))
+
+
+def _linked_proj(tmp_home: Path, link: str = "alias") -> Path:
+    """``<tmp>/<link>/proj``, where ``<link>`` points at ``<tmp>/real``."""
+    real = tmp_home / "real"
+    (real / "proj").mkdir(parents=True, exist_ok=True)
+    (tmp_home / link).symlink_to(real)
+    return tmp_home / link / "proj"
+
+
+def _standalone_entries(std) -> dict:
+    from kanibako.project import registry_store
+    return registry_store.load_standalone(std.registry)
+
+
+class TestTheCliChainKeepsTheLiteralPath:
+    def test_create_through_a_link_registers_the_link_and_looks_up_from_it(
+            self, config_file, tmp_home, credentials_dir, monkeypatch):
+        from kanibako.commands.box._parser import run_create
+        from kanibako.settings.paths import resolve_any_project
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        proj = _linked_proj(tmp_home)
+        assert run_create(_create_args(proj)) == 0
+        entries = _standalone_entries(std)
+        assert list(entries.values()) == [str(proj)]
+        (name,) = entries
+
+        sub = proj / "sub"
+        sub.mkdir()
+        for where, designation in ((proj, None), (sub, None), (proj, "."), (tmp_home, str(proj))):
+            _enter(monkeypatch, where)
+            found = resolve_any_project(std, config, designation)
+            assert found.name == name
+            assert found.metadata_path == proj
+        assert _standalone_entries(std) == {name: str(proj)}
+
+    def test_create_with_no_path_takes_the_cwd_as_the_shell_reached_it(
+            self, config_file, tmp_home, credentials_dir, monkeypatch):
+        from kanibako.commands.box._parser import run_create
+
+        std = load_std_paths(load_config(config_file))
+        proj = _linked_proj(tmp_home)
+        _enter(monkeypatch, proj)
+        assert run_create(_create_args(None)) == 0
+        assert list(_standalone_entries(std).values()) == [str(proj)]
+
+    def test_box_register_through_a_link_stores_the_link(
+            self, config_file, tmp_home, credentials_dir, monkeypatch):
+        import argparse
+
+        from kanibako.commands.box._parser import run_create, run_register
+
+        std = load_std_paths(load_config(config_file))
+        proj = _linked_proj(tmp_home)
+        assert run_create(_create_args(proj, register=False)) == 0
+        assert _standalone_entries(std) == {}
+        _enter(monkeypatch, proj.parent)
+        assert run_register(argparse.Namespace(target="proj", box=None)) == 0
+        assert list(_standalone_entries(std).values()) == [str(proj)]
+
+    def test_a_second_link_spelling_of_a_registered_name_warns_with_its_path(
+            self, config_file, tmp_home, credentials_dir, monkeypatch, caplog):
+        from kanibako.project import registry_store
+        from kanibako.settings.paths import resolve_designation
+
+        std = load_std_paths(load_config(config_file))
+        proj = _linked_proj(tmp_home)
+        (tmp_home / "alias2").symlink_to(tmp_home / "real")
+        registry_store.register_standalone(std.registry, "proj", proj)
+        _enter(monkeypatch, tmp_home / "alias2")
+        with caplog.at_level("WARNING"):
+            assert resolve_designation(std, "proj", unknown_name_is_path=False) == "proj"
+        warned = [r.getMessage() for r in caplog.records if "is shadowed" in r.getMessage()]
+        assert len(warned) == 1
+        assert str(tmp_home / "alias2" / "proj") in warned[0]
+
+
+class TestTheHomeGuardComparesResolvedPaths:
+    def test_a_link_to_home_is_refused_without_allow_home(
+            self, config_file, tmp_home, credentials_dir):
+        from kanibako.commands.box._parser import run_create
+
+        home = Path.home()
+        (tmp_home / "homelink").symlink_to(home)
+        assert run_create(_create_args(tmp_home / "homelink", register=False)) == 1
+        assert not (home / "box_data").exists()
+
+    def test_home_spelled_through_a_link_is_refused_without_allow_home(
+            self, config_file, tmp_home, credentials_dir, monkeypatch):
+        from kanibako.commands.box._parser import run_create
+
+        linkhome = tmp_home / "linkhome"
+        linkhome.symlink_to(Path.home())
+        monkeypatch.setenv("HOME", str(linkhome))
+        assert run_create(_create_args(linkhome, register=False)) == 1
+        assert not (linkhome / "box_data").exists()
