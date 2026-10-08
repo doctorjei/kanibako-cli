@@ -106,6 +106,8 @@ def _host_path_within(candidate: Path, root: Path) -> bool
 def _init_project(std: StandardPaths, metadata_path: Path, shell_path: Path, vault_ro_path: Path | None, vault_rw_path: Path | None, project_path: Path, *, enable_vault: bool=True) -> None
 def _find_local_ancestor(target: Path, std: StandardPaths) -> Path | None
 def _is_standalone_meta_dir(root: Path) -> bool
+def _relative_to_either(path: Path, root: Path) -> Path | None
+def _workset_arms(std: StandardPaths, ws_name: str, root: Path) -> tuple[Path, Path]
 def _check_workset(resolved_dir: Path, std: StandardPaths) -> DetectionResult | None
 def _workset_box_name_for_workspace(ws_root: Path, workspace: str, *, early: EarlyScope) -> str | None
 def _workset_box_workspace_for_name(ws_root: Path, box_name: str, *, early: EarlyScope) -> str | None

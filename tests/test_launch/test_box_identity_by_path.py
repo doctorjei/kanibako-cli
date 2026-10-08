@@ -127,3 +127,111 @@ class TestAPendingCreateIsFoundByItsOwnPath:
 
         assert journal.pending_create_for_workspace(jp, first)["name"] == "first"
         assert journal.pending_create_for_workspace(jp, second) is None
+
+
+class TestAWorksetMadeThroughALinkIsFoundThroughIt:
+    """Registration stores the path the user gave, so the lookups that compare
+    literal paths find it again along that same path."""
+
+    def _through_alias(self, config_file, tmp_home):
+        from kanibako.project.workset import add_project, create_workset, list_worksets
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        real = tmp_home / "real"
+        (real / "src1" / "sub").mkdir(parents=True)
+        alias = tmp_home / "alias"
+        alias.symlink_to(real)
+        ws = create_workset("ws1", alias / "ws1", std)
+        add_project(ws, "src1", alias / "src1", std)
+        return config, std, alias, list_worksets(std)["ws1"]
+
+    def test_the_root_and_the_connected_source_are_stored_as_given(
+        self, config_file, tmp_home,
+    ):
+        from kanibako.project import workset_registry
+
+        _config, _std, alias, root = self._through_alias(config_file, tmp_home)
+
+        assert root == alias / "ws1"
+        boxes = workset_registry.load_workset_boxes(root / "registry.yaml")
+        assert boxes == {"src1": str(alias / "src1")}
+
+    def test_the_member_answers_from_the_linked_path_a_subdir_and_its_leaf(
+        self, config_file, tmp_home,
+    ):
+        config, std, alias, _root = self._through_alias(config_file, tmp_home)
+
+        for where in (alias / "src1", alias / "ws1" / "workspaces" / "src1"):
+            identity = box_resolve.resolve_box_identity(where, std, config)
+            assert identity is not None, where
+            assert (identity["name"], identity["mode"]) == ("src1", BoxMode.named), where
+        subdir = alias / "src1" / "sub"
+        owned = box_resolve.find_connected_external_box(subdir, std)
+        assert owned is not None and owned.box_name == "src1"
+        assert detect_project_mode(subdir, std, config).mode is BoxMode.named
+
+    def test_the_workset_also_answers_at_its_resolved_root(
+        self, config_file, tmp_home,
+    ):
+        """A workset has one root, so either spelling of it finds the workset."""
+        config, std, _alias, _root = self._through_alias(config_file, tmp_home)
+
+        leaf = tmp_home / "real" / "ws1" / "workspaces" / "src1"
+        identity = box_resolve.resolve_box_identity(leaf, std, config)
+        assert identity is not None
+        assert (identity["name"], identity["mode"]) == ("src1", BoxMode.named)
+
+
+class TestARelativePathJoinsThePathTheUserTook:
+    def test_dot_inside_a_link_names_the_link(
+        self, config_file, tmp_home, monkeypatch,
+    ):
+        from kanibako.utils import literal_path
+
+        std = load_std_paths(load_config(config_file))
+        real = tmp_home / "real"
+        (real / "sub").mkdir(parents=True)
+        link = tmp_home / "link"
+        link.symlink_to(real)
+        monkeypatch.chdir(link)
+        monkeypatch.setenv("PWD", str(link))
+
+        assert literal_path(".") == str(link)
+        assert literal_path("sub/..") == str(link)
+        from kanibako.settings.paths import resolve_project
+
+        assert resolve_project(std, load_config(config_file), ".").project_path == link
+
+
+class TestTwinsHashTheirOwnPaths:
+    def test_two_links_to_one_target_have_two_hashes(
+        self, config_file, tmp_home,
+    ):
+        from kanibako.settings.paths import resolve_project
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        real = tmp_home / "real"
+        real.mkdir()
+        first = tmp_home / "first"
+        first.symlink_to(real)
+        second = tmp_home / "second"
+        second.symlink_to(real)
+
+        hashes = {resolve_project(std, config, str(p)).project_hash
+                  for p in (first, second, real)}
+        assert len(hashes) == 3
+
+    def test_a_path_with_no_link_keeps_its_hash(self, config_file, tmp_home):
+        """A box registered at its resolved path hashes exactly as before."""
+        from kanibako.settings.paths import resolve_project
+        from kanibako.utils import project_hash
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        real = (tmp_home / "real").resolve()
+        real.mkdir()
+
+        proj = resolve_project(std, config, str(real))
+        assert proj.project_hash == project_hash(str(real))

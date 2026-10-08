@@ -1292,7 +1292,7 @@ def resolve_project(std: StandardPaths, config: BootstrapConfig, project_dir: st
     if not project_path.is_dir():
         raise ProjectError(ERR_PROJECT_NO_PATH % project_path)
 
-    phash = project_hash(str(project_path.resolve()))
+    phash = project_hash(str(project_path))
     project_path_str = str(project_path)
 
     # Determine the project directory: name-based (boxes/{name}/).
@@ -1825,32 +1825,37 @@ def detect_project_mode(project_dir: Path, std: StandardPaths,
     return DetectionResult(BoxMode.primary, resolved)
 
 
+def _relative_to_either(path: Path, root: Path) -> Path | None:
+    """*path* relative to *root* as stored or resolved; ``None`` under neither."""
+    for form in (root, root.resolve()):
+        if path.is_relative_to(form):
+            return path.relative_to(form)
+    return None
+
+
+def _workset_arms(std: StandardPaths, ws_name: str, root: Path) -> tuple[Path, Path]:
+    """A registered workset's literal ``(workspaces, root)``, the repoint honored (§3.3)."""
+    from kanibako.project.workset import load_workset_settings_doc, resolve_workspaces_locator
+
+    ws_root = Path(literal_path(root))
+    ws_workspaces = resolve_workspaces_locator(
+        ws_root, load_workset_settings_doc(ws_root),
+        early=_early_scope(std, BoxMode.named, ws_name),
+    )
+    return Path(literal_path(ws_workspaces)), ws_root
+
+
 def _check_workset(resolved_dir: Path, std: StandardPaths) -> DetectionResult | None:
     """Check whether *resolved_dir* is inside a registered workset (``workspaces/`` first)."""
-    from kanibako.project.workset import (list_worksets, load_workset_settings_doc,
-                                          resolve_workspaces_locator)
+    from kanibako.project.workset import list_worksets
 
-    for ws_name, ws_root in list_worksets(std).items():
-        ws_root = ws_root.resolve()
-        if _is_standalone_meta_dir(ws_root):
+    for ws_name, root in list_worksets(std).items():
+        if _is_standalone_meta_dir(root.resolve()):
             continue
-        # The RESOLVED ``workset.workspaces`` — a repoint is honored (§3.3).
-        ws_workspaces = resolve_workspaces_locator(
-            ws_root, load_workset_settings_doc(ws_root),
-            early=_early_scope(std, BoxMode.named, ws_name),
-        )
-        # Check workspaces/ first (more specific).
-        try:
-            resolved_dir.relative_to(ws_workspaces)
+        ws_workspaces, ws_root = _workset_arms(std, ws_name, root)
+        if (_relative_to_either(resolved_dir, ws_workspaces) is not None
+                or _relative_to_either(resolved_dir, ws_root) is not None):
             return DetectionResult(BoxMode.named, resolved_dir)
-        except ValueError:
-            pass
-        # Then check workset root itself.
-        try:
-            resolved_dir.relative_to(ws_root)
-            return DetectionResult(BoxMode.named, resolved_dir)
-        except ValueError:
-            continue
 
     return None
 
@@ -2045,7 +2050,7 @@ def resolve_workset_project(ws: WorksetSpec, project_name: str, std: StandardPat
     resolved_vault = enable_vault
 
     # Hash the workspace (identity): a null must not rename the box.
-    phash = project_hash(str(workspace.resolve()))
+    phash = project_hash(literal_path(workspace))
     # None for an in-tree member under a null ``workset.workspaces`` (Q106).
     project_path: Path | None = workspace
     from kanibako.project.workset import refuse_null_box_workspace
@@ -2175,33 +2180,21 @@ def iter_workset_projects(std: StandardPaths, config: BootstrapConfig) -> _Works
 
 def _find_workset_for_path(project_dir: Path, std: StandardPaths) -> tuple[_WorksetLike, str | None]:
     """Return ``(workset, project_name)`` for a path inside a workset (name ``None`` at the root)."""
-    from kanibako.project.workset import (list_worksets, load_workset,
-                                          load_workset_settings_doc, resolve_workspaces_locator)
+    from kanibako.project.workset import list_worksets, load_workset
 
     registry = list_worksets(std)
     resolved = Path(literal_path(project_dir))
     for ws_name, root in registry.items():
-        ws_root = root.resolve()
-        # The RESOLVED ``workset.workspaces`` — a repoint is honored (§3.3).
-        ws_workspaces = resolve_workspaces_locator(
-            ws_root, load_workset_settings_doc(ws_root),
-            early=_early_scope(std, BoxMode.named, ws_name),
-        )
+        ws_workspaces, ws_root = _workset_arms(std, ws_name, root)
         # Check workspaces/ first (specific project).
-        try:
-            rel = resolved.relative_to(ws_workspaces)
-            project_name = rel.parts[0] if rel.parts else None
+        rel = _relative_to_either(resolved, ws_workspaces)
+        if rel is not None:
             ws = load_workset(root, ws_name, early_system=std.early_system)
-            return ws, project_name
-        except ValueError:
-            pass
+            return ws, rel.parts[0] if rel.parts else None
         # Then check workset root itself.
-        try:
-            resolved.relative_to(ws_root)
+        if _relative_to_either(resolved, ws_root) is not None:
             ws = load_workset(root, ws_name, early_system=std.early_system)
             return ws, None
-        except ValueError:
-            continue
     raise WorksetError(ERR_WORKSET_NO_WORKSET % project_dir)
 
 

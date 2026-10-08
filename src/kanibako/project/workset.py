@@ -66,7 +66,7 @@ from kanibako.settings.workset_dirkeys import (
     EarlyScope, EarlySystem, _stored_repoint, early_repoint, refuse_inherited_per_owner,
     resolve_workset_dir_key,
 )
-from kanibako.utils import WORKSET_SEGMENT_PRIMARY, WORKSET_SEGMENT_STANDALONE
+from kanibako.utils import WORKSET_SEGMENT_PRIMARY, WORKSET_SEGMENT_STANDALONE, literal_path
 # ⚑ FORWARD edge of a documented cycle: ``settings/paths.py`` breaks it by DEFERRING
 # its ``project.workset`` imports into function bodies — do not add a module-scope
 # edge back this way.
@@ -1237,7 +1237,7 @@ def create_workset(
             "different name."
         )
 
-    root = root.resolve()
+    root = Path(literal_path(root))
     if root.exists():
         raise WorksetError(f"Workset root already exists: {root}")
     refuse_inherited_per_owner(root, EarlyScope(std.early_system, name), doc=None)
@@ -1265,7 +1265,7 @@ def create_workset(
         # *root*, so ``parents`` and ``exist_ok`` can only fill in this root: a system
         # value may nest a leaf or name one twice.
         for subdir_path in _workset_skeleton_dirs(root, early=ws.early_scope):
-            if _path_in_tree(subdir_path, root) and subdir_path.resolve() != root:
+            if _path_in_tree(subdir_path, root) and subdir_path.resolve() != root.resolve():
                 subdir_path.mkdir(parents=True, exist_ok=True)
 
         # ⚑⚑ THE REGISTRATION IS THE CREATION: this line is what makes the directory a
@@ -1433,7 +1433,7 @@ def refuse_existing_box(source: Path, std: StandardPaths, *, force: bool = False
             "first."
         )
 
-    existing = box_resolve.find_connected_external_box(resolved_source, std)
+    existing = box_resolve.find_connected_external_box(source, std)
     if existing is not None:
         raise WorksetError(
             f"Cannot connect '{resolved_source}': it is already connected "
@@ -1463,6 +1463,8 @@ def add_project(
             )
 
     resolved_source = source_path.resolve()
+    # Identity: the path as given.
+    literal_source = Path(literal_path(source_path))
 
     # External ⇔ not one of the workset's own workspace dirs.
     is_external = std is not None and not is_in_tree_workspace(ws, resolved_source)
@@ -1490,7 +1492,7 @@ def add_project(
                 "workset, or connect it to that workset instead."
             )
 
-        refuse_existing_box(resolved_source, std, force=force)
+        refuse_existing_box(literal_source, std, force=force)
 
     # ⚑⚑ THE ONE RECORDED PATH: an EXTERNAL connect records the source dir itself; an
     # in-tree member records ``workspaces/<name>``, which is the dir created below and
@@ -1498,7 +1500,7 @@ def add_project(
     # connect wrote a path the box never ran on.  Under a null ``workset.workspaces`` only
     # a *restoring* unwind reaches the in-tree arm; it re-records the member's own path.
     workspaces = ws.workspaces_dir
-    recorded_workspace = (resolved_source if is_external or workspaces is None
+    recorded_workspace = (literal_source if is_external or workspaces is None
                           else workspaces / name)
 
     # Multi-step: the external case touches a symlink + the box dirs before the
@@ -1537,7 +1539,7 @@ def add_project(
             # ⚑ workspaces/{name} is a discoverability SYMLINK — never mounted.
             # is_external implies std is not None, but mypy can't track that.
             assert std is not None
-            link = ensure_discoverability_link(ws, name, resolved_source)
+            link = ensure_discoverability_link(ws, name, literal_source)
             if link is not None:
                 unwind.push(
                     lambda: link.unlink() if link.is_symlink() else None
