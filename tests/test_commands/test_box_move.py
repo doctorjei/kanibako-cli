@@ -405,3 +405,44 @@ class TestBoxMoveOfTheWorksetsOwnWorkspace:
         member = next(p for p in load_workset(
             ws.root, "ws1", early_system=std.early_system).projects if p.name == "alpha")
         assert member.source_path.resolve() == real.resolve()
+
+    def test_rollback_restores_the_registry_text_byte_for_byte(
+            self, config_file, tmp_home, credentials_dir, monkeypatch):
+        """rollbackexternal: failed-move rollback restores the registry text byte-for-byte."""
+        import shutil
+
+        import kanibako.commands.box._lifecycle as lc
+        from kanibako.project.workset import add_project, create_workset
+        from kanibako.project.workset_registry import resolve_workset_registry_path
+        from kanibako.settings.config_io import load_doc
+        from kanibako.settings.paths import _early_scope
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        ws = create_workset("ws1", tmp_home / "ws1_root", std)
+        leaf = ws.workspaces_dir / "alpha"
+        leaf.mkdir(parents=True)
+        (leaf / "f.txt").write_text("mine")
+        add_project(ws, "alpha", leaf, std)
+        real = tmp_home / "real"
+        shutil.move(str(leaf), str(real))
+        leaf.symlink_to(real)
+        dest = tmp_home / "ext" / "alpha"
+
+        registry_path = resolve_workset_registry_path(
+            ws.root, load_doc(ws.root / "workset.yaml"),
+            early=_early_scope(std, BoxMode.named, "ws1"),
+        )
+        before = registry_path.read_text()
+
+        def boom(*a, **kw):
+            raise RuntimeError("injected late failure")
+        monkeypatch.setattr(lc, "write_box_enable_vault", boom)
+
+        with pytest.raises(RuntimeError, match="injected late failure"):
+            run_move(_move_args(leaf, dest))
+
+        after = registry_path.read_text()
+        assert after == before
+        assert f"alpha: {leaf}" in after
+        assert f"alpha: {real}" not in after
