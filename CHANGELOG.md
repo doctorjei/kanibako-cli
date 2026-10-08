@@ -552,6 +552,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `box duplicate` already did into a primary box. With `--force`, the duplicate merges
   into it as before.
 
+- **`box duplicate --to standalone` refuses an existing destination without `--force`.** This
+  also covers a standalone source duplicated without `--to`. Any existing `<dst>`, even an empty
+  one, now stops the duplicate before the prompt with `Error: destination already exists: <dst>`
+  and `Use --force to overwrite.`, as the other modes do. Before, the copy merged into it, or
+  ended in a `FileExistsError` traceback when `<dst>/workspace` existed. `--to primary` gives
+  the same refusal, now before the prompt. `--bare` skips the check. See `MIGRATION.md` §
+  *An existing directory at `box duplicate --to standalone` needs `--force`*.
+
 - **An agent plugin's own default for a key beats `agent.default.<key>`.** A value a plugin
   declares now sits at `agent.<agent>.*`, above the `agent.default` tier, so a user's
   `agent.default.<key>` no longer reaches an agent whose plugin sets its own default for that key:
@@ -629,6 +637,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **A binding whose source or destination `@`-references a map or a number is now a named refusal**, not a
   bare `AssertionError` traceback. A settings file storing `box: {bindings: {rw: {/c: ["@box.env"]}}}`
   crashed every `set`; the error now names the entry and says the reference resolved to a map, not a path.
+
+- **`box duplicate --to standalone --bare` onto a `<dst>` whose `box_data/box.yaml` holds a scalar `box:` now refuses
+  before writing anything.** Before, it laid down the new home and then refused, leaving those files in `<dst>`.
+  `--force` rebuilds `box_data/` and is not refused.
 - **`box convert --move` into a workset or into the default workset now re-points a vault link whose target lies in
   the workspace or the box store it carries.** The link names the landed tree instead of leaving a second copy that
   diverges.
