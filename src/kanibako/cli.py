@@ -323,6 +323,7 @@ def _ensure_initialized() -> None:
     )
     from pathlib import Path
 
+    from kanibako.settings.bootstrap import XDG_DATA_HOME, XDG_SPEC_DEFAULTS
     from kanibako.settings.paths import load_system_config, xdg
 
     cf = user_config_file()
@@ -353,7 +354,7 @@ def _ensure_initialized() -> None:
         # would ever use -- the store silently in the wrong place, with nothing pointing at it.
         # Reading the files makes init create the store every reader resolves.  The Layer-1
         # file was just written EMPTY, so its own contribution is the declared defaults.
-        data_home = xdg("XDG_DATA_HOME", ".local/share")
+        data_home = xdg(XDG_DATA_HOME, XDG_SPEC_DEFAULTS[XDG_DATA_HOME])
         sys_paths = load_system_config(
             cf, data_home=data_home, home=Path.home(),
         )
@@ -472,7 +473,8 @@ def _setup_nudge(args: argparse.Namespace) -> None:
     try:
         from pathlib import Path
 
-        from kanibako.settings.bootstrap import LEGACY_CONFIG_FILE
+        from kanibako.settings.bootstrap import (LEGACY_CONFIG_FILE, XDG_DATA_HOME,
+                                                 XDG_SPEC_DEFAULTS)
         from kanibako.settings.config import user_config_file, setup_compat_gate
         from kanibako.settings.paths import load_system_config, xdg
 
@@ -487,7 +489,7 @@ def _setup_nudge(args: argparse.Namespace) -> None:
         # ``KanibakoError`` (including ``ConfigError``) propagates to ``main`` and exits 1;
         # any other exception degrades to "no gate ran" per the never-break-a-command contract.
         settings_path = load_system_config(
-            cf, data_home=xdg("XDG_DATA_HOME", ".local/share"), home=Path.home(),
+            cf, data_home=xdg(XDG_DATA_HOME, XDG_SPEC_DEFAULTS[XDG_DATA_HOME]), home=Path.home(),
         )["config.settings"]
         # ⚑ The separate HARD template-staleness gate that used to run here is
         # RETIRED (R-38): packaged-template drift is now announced by the bands

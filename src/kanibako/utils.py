@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from kanibako.errors import UserCanceled
+from kanibako.settings.bootstrap import IGNORE_FILE
 
 if TYPE_CHECKING:
     from kanibako.settings.paths import ProjectPaths
@@ -233,7 +234,7 @@ _GITIGNORE_ENTRIES = ["box_data/"]
 
 def write_project_gitignore(project_path: Path) -> None:
     """Append the standalone box-metadata dir (box_data/) to the project .gitignore."""
-    gitignore = project_path / ".gitignore"
+    gitignore = project_path / IGNORE_FILE
     existing = ""
     if gitignore.is_file():
         existing = gitignore.read_text()

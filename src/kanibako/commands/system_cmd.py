@@ -145,9 +145,10 @@ def run_info(args: argparse.Namespace) -> int:
         print(f"Config:    {cf}")
         from pathlib import Path
 
+        from kanibako.settings.bootstrap import XDG_DATA_HOME, XDG_SPEC_DEFAULTS
         from kanibako.settings.config import bootstrap_config_paths
         from kanibako.settings.paths import resolve_config_paths
-        data_home = xdg("XDG_DATA_HOME", ".local/share")
+        data_home = xdg(XDG_DATA_HOME, XDG_SPEC_DEFAULTS[XDG_DATA_HOME])
         # ⚑ ``bootstrap_config_paths``, not ``load_config(cf).config_paths``: the raw
         # capture also carries whatever ``system:`` table the file happens to hold, and
         # the Layer-1 file may not supply settings (Jei, 2026-08-26).

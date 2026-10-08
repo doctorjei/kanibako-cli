@@ -10,12 +10,14 @@ from __future__ import annotations
 
 import subprocess
 
+from kanibako.settings.bootstrap import XDG_DATA_HOME, XDG_SPEC_DEFAULTS
 from kanibako.settings.paths import xdg
 
 
 def _install_completion() -> None:
     """Register bash/zsh completion for kanibako via argcomplete."""
-    completions_dir = xdg("XDG_DATA_HOME", ".local/share") / "bash-completion" / "completions"
+    data_home = xdg(XDG_DATA_HOME, XDG_SPEC_DEFAULTS[XDG_DATA_HOME])
+    completions_dir = data_home / "bash-completion" / "completions"
     completions_dir.mkdir(parents=True, exist_ok=True)
     target = completions_dir / "kanibako"
 

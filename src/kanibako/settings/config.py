@@ -389,10 +389,12 @@ def _typed_box_scalar(defaults: KanibakoConfig, field_name: str, value: object) 
 
 def _system_settings_path(global_path: Path) -> Path | None:
     """``@config.settings`` off the Layer-1 file — the SYSTEM tier, or ``None`` if absent."""
+    from kanibako.settings.bootstrap import XDG_DATA_HOME, XDG_SPEC_DEFAULTS
     from kanibako.settings.paths import load_system_config, xdg
 
     path = load_system_config(
-        global_path, data_home=xdg("XDG_DATA_HOME", ".local/share"), home=Path.home(),
+        global_path, data_home=xdg(XDG_DATA_HOME, XDG_SPEC_DEFAULTS[XDG_DATA_HOME]),
+        home=Path.home(),
     )["config.settings"]
     return path if path.exists() else None
 
