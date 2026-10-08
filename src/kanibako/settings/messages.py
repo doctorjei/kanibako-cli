@@ -250,7 +250,7 @@ ERR_DERIVED_BOX_NAME = "The directory name '%s' is not a valid box name: %s."  #
 CURE_DERIVED_BOX_NAME = "Give the box a valid name:\n  %s"  # the command, `--name <new-name>` LAST
 CURE_DERIVED_DUP_DEST = "Pick a destination directory whose name is a valid box name."
 CURE_DERIVED_FORK_NAME = "Pick a fork name that is a valid box name."
-CURE_DERIVED_FORK_BOX = "Rename this box first, from the host:\n  %s"  # the box move command
+CURE_DERIVED_FORK_BOX = "Move this box to a directory whose name is a valid box name, from the host:\n  %s"  # the box move command
 # ⚑ "one record per project" (spec § Detection & import) asked at the PATH, not the name.
 ERR_PROJECT_PATH_IS_NAMED_BOX = ("Refusing to create a box at %s: it is already the workspace of " +
                          "named box '%s' in workset '%s', and one path is one project's record. " +

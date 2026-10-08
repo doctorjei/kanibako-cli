@@ -199,12 +199,27 @@ def test_extract_names_its_own_cure_and_the_cure_works(tmp_home, config_file, cr
     assert sorted(_primary_boxes()) == ["exok", "src"]
 
 
+def _tree(root) -> str:
+    """A digest of every path, type, and file's bytes under *root*."""
+    import hashlib
+
+    digest = hashlib.sha256()
+    for path in sorted(root.rglob("*")):
+        kind = "l" if path.is_symlink() else "d" if path.is_dir() else "f"
+        digest.update(f"{path.relative_to(root)}\0{kind}\0".encode())
+        if kind == "f":
+            digest.update(path.read_bytes())
+    return digest.hexdigest()
+
+
 def test_move_names_its_own_cure_and_the_cure_works(tmp_home, config_file, credentials_dir):
     source = _standalone_box(tmp_home, "sa")
+    before = _tree(source)
     dest = tmp_home / "work" / "-m1"
     rc, text = _cli("box", "move", str(source), str(dest), "--default", "--force")
 
     assert rc == 1, text
+    assert _tree(source) == before
     assert _cure(text) == ["kanibako", "box", "move", str(source), str(dest), "--default",
                            "--name", "<new-name>"]
     assert not dest.exists()
@@ -215,13 +230,32 @@ def test_move_names_its_own_cure_and_the_cure_works(tmp_home, config_file, crede
     assert list(_primary_boxes()) == ["mvok"]
 
 
-def test_convert_names_its_own_cure(tmp_home, config_file, credentials_dir):
+def test_convert_names_its_own_cure_and_leaves_the_box_as_it_was(
+        tmp_home, config_file, credentials_dir):
     source = _standalone_box(tmp_home, "-c1")
+    assert (source / "workspace").is_dir()
+    before = _tree(source)
     rc, text = _cli("box", "convert", str(source), "--default", "--force")
 
     assert rc == 1, text
     assert _cure(text) == ["kanibako", "box", "convert", str(source), "--default",
                            "--name", "<new-name>"]
+    assert _tree(source) == before
+    assert _primary_boxes() == {}
+
+
+def test_convert_with_a_move_into_a_rule_breaking_directory_moves_nothing(
+        tmp_home, config_file, credentials_dir):
+    source = _standalone_box(tmp_home, "sa")
+    before = _tree(source)
+    dest = tmp_home / "work" / "-c2"
+    rc, text = _cli("box", "convert", str(source), "--default", "--move", str(dest), "--force")
+
+    assert rc == 1, text
+    assert _cure(text) == ["kanibako", "box", "convert", str(source), "--default",
+                           "--move", str(dest), "--name", "<new-name>"]
+    assert _tree(source) == before
+    assert not dest.exists()
     assert _primary_boxes() == {}
 
 
