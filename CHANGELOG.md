@@ -30,6 +30,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and a relative path such as `.` is taken from it. `workset create`, `workset connect`, and `box duplicate` store the
   path as given. Each twin has its own project hash, so extracting one twin's archive into the other asks before it
   restores. A directory reached through a different symlink than the one a box is registered under is not that box.
+  Standalone boxes follow the same rule: `box create --standalone`, `box register`, and every lookup keep the path as
+  given. A standalone box registered through a link before this release keeps its resolved path; work from that path or
+  register it again at the link.
 
 - **A standalone box's root `workset.yaml` now records `registry: null`** beside `workset.kuid`, written at
   `create` as `registry: null  # REMOVING THIS WILL BREAK A STANDALONE BOX!`.

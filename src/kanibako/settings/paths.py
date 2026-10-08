@@ -2321,7 +2321,7 @@ def _warn_standalone_shadowed(std: StandardPaths, value: str) -> None:
 
     root = registry_store.standalone_root(std.registry, value)
     if root is not None and literal_path(root) != literal_path(value):
-        logger.warning(WARN_SA_SHADOWED_BY_PATH, value, Path(value).resolve(), root)
+        logger.warning(WARN_SA_SHADOWED_BY_PATH, value, literal_path(value), root)
 
 
 def resolve_any_project(std: StandardPaths, config: BootstrapConfig, project_dir: str | None = None,
@@ -2461,13 +2461,12 @@ def resolve_standalone_project(std: StandardPaths, config: BootstrapConfig,
                                enable_vault: bool | None = None, name: str = "",
                                register: bool = True) -> ProjectPaths:
     """Resolve (and optionally initialize) per-project paths for standalone mode."""
-    raw = project_dir or os.getcwd()
-    root = Path(literal_path(raw))
+    root = Path(literal_path(project_dir or logical_cwd()))
 
     if not root.is_dir():
         raise ProjectError(ERR_PROJECT_NO_PATH % root)
 
-    # The hash + identity key off the stable ROOT; the workspace subdir is not the identity.
+    # The hash and identity key off the ROOT, not the workspace subdir.
     phash = project_hash(str(root))
 
     from kanibako.project.workset import (load_workset_settings_doc, resolve_workset_workspaces)

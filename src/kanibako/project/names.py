@@ -264,7 +264,7 @@ def resolve_name(
             early_system=early_system,
         )
     except AmbiguousNameError:
-        # The standalone step is not a tiebreaker for an earlier step's tie.
+        # The standalone step does not break an earlier step's tie.
         raise
     except ProjectError:
         root = registry_store.standalone_root(registry, name) if standalone else None

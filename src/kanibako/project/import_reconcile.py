@@ -41,6 +41,7 @@ from kanibako.project import registry_store
 from kanibako.project.names import register_name
 from kanibako.errors import KanibakoError
 from kanibako.settings.paths import standalone_box_store
+from kanibako.utils import literal_path
 
 if TYPE_CHECKING:
     from kanibako.settings.workset_dirkeys import EarlyScope
@@ -147,9 +148,9 @@ def import_standalone(
     is pending for it — that box is ``create --recover``'s, and an import would
     overwrite its journal entry.
     """
-    root = root.resolve()
+    root = Path(literal_path(root))
     root_str = str(root)
-    # ⚑ The journal KEY is the RESOLVED store, and it MUST agree with
+    # ⚑ The journal KEY is the store under the literal root, and it MUST agree with
     # ``commands/start.py::_box_journal_key`` (``shell_path.parent``).
     store = standalone_box_store(root, early=early)
 

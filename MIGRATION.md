@@ -7011,6 +7011,11 @@ to one of them now finds no box. For a primary box, `box create` there makes a s
 inside a working set's tree it is refused. Run from the stored
 path, or name the box. New registrations store the path as given.
 
+A standalone box follows the same rule: its identity is the path it was created or registered at, as given. One
+registered through a link before this release holds the resolved path, and from the link kanibako refuses to import it
+under its own name a second time. Work from the resolved path, or register it again at the link:
+`kanibako box rm <name>`, then `kanibako box register <link>`. Nothing falls back to the resolved spelling.
+
 **`box convert` of a box whose vault directory is a symlink.** The converted box's vault is now a link, either to the
 same target or to its landed place when the target moved with the box. Before, it was a copy of the target's
 contents. Deleting the original target now affects the converted box. A target inside a tree the convert deletes is
