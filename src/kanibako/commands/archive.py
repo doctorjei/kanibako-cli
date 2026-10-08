@@ -11,6 +11,7 @@ from pathlib import Path
 from kanibako.settings.config import user_config_file, load_config
 from kanibako.errors import GitError
 from kanibako.git import check_uncommitted, check_unpushed, get_metadata, is_git_repo
+from kanibako.settings.messages import MSG_DONE, STATUS_NO_DATA
 from kanibako.settings.paths import load_std_paths, resolve_any_project
 
 
@@ -141,7 +142,7 @@ def _archive_one(std, config, proj, *, output_file, args) -> int:
     finally:
         info_file.unlink(missing_ok=True)
 
-    print("done.")
+    print(MSG_DONE)
     print(f"Archive created: {archive_file}")
     return 0
 
@@ -165,7 +166,7 @@ def _archive_all(std, config, args) -> int:
 
     total = len(projects)
     for _, _, project_list in ws_data:
-        total += sum(1 for _, status in project_list if status != "no-data")
+        total += sum(1 for _, status in project_list if status != STATUS_NO_DATA)
 
     print(f"Found {total} project(s) to archive:")
     for metadata_path, project_path in projects:
@@ -173,7 +174,7 @@ def _archive_all(std, config, args) -> int:
         print(f"  {label}")
     for ws_name, ws, project_list in ws_data:
         for proj_name, status in project_list:
-            if status != "no-data":
+            if status != STATUS_NO_DATA:
                 print(f"  {ws_name}/{proj_name}")
     print()
 
@@ -201,7 +202,7 @@ def _archive_all(std, config, args) -> int:
     # Workset projects.
     for ws_name, ws, project_list in ws_data:
         for proj_name, status in project_list:
-            if status == "no-data":
+            if status == STATUS_NO_DATA:
                 continue
             try:
                 proj = resolve_workset_project(

@@ -28,6 +28,7 @@ from kanibako.tree_copy import copy_tree_keeping_links
 from kanibako.utils import confirm_prompt
 from kanibako.channels.channels import workset_name_token, workset_root
 from kanibako.settings.workset_dirkeys import EarlyScope, refuse_inherited_per_owner
+from kanibako.settings.messages import MSG_DONE
 
 
 def _keep_links_filter(member: tarfile.TarInfo, dest_path: str) -> tarfile.TarInfo:
@@ -303,12 +304,12 @@ def _restore_one(std, config, *, project_dir, archive_file, force, name=None) ->
         except (ProjectError, WorksetError) as e:
             # The tree is restored; only the registry write failed.  Report that
             # recoverable state instead of letting a traceback escape.
-            print("done.")
+            print(MSG_DONE)
             print(f"Error: restored data to {proj.metadata_path}, but could not "
                   f"register the box: {e}", file=sys.stderr)
             return 1
 
-        print("done.")
+        print(MSG_DONE)
         print(f"Session data restored to {workspace or '<None>'}")
         print(f"  box: {proj.name} ({proj.mode.value})")
         return 0
