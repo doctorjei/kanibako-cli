@@ -41,7 +41,8 @@ from kanibako.settings.config import (
     write_box_enable_vault,
 )
 from kanibako.identifiers import find_identifier
-from kanibako.errors import ProjectError, WorksetError
+from kanibako.errors import DerivedBoxNameError, ProjectError, WorksetError
+from kanibako.settings.messages import CURE_DERIVED_BOX_NAME
 from kanibako.settings.paths import (
     STANDALONE_META_DIR,
     BoxMode,
@@ -2953,6 +2954,12 @@ def run_move(args) -> int:
             force=getattr(args, "force", False),
             confirm=_make_confirm(getattr(args, "force", False), summary),
         )
+    except DerivedBoxNameError as e:
+        cure = shlex.join(["kanibako", "box", "move", old, str(new_path),
+                           *(["--default"] if getattr(args, "to_default", False) else [])])
+        print(f"Error: {e.with_cure(CURE_DERIVED_BOX_NAME % (cure + ' --name <new-name>'))}",
+              file=sys.stderr)
+        return 1
     except (ProjectError, WorksetError) as e:
         print(f"Error: {e}", file=sys.stderr)
         return 1
@@ -3035,6 +3042,13 @@ def run_convert(args) -> int:
             force=getattr(args, "force", False),
             confirm=_make_confirm(getattr(args, "force", False), summary),
         )
+    except DerivedBoxNameError as e:
+        cure = shlex.join(["kanibako", "box", "convert", subject or str(state.workspace_path),
+                           "--default", *(["--move", str(location)]
+                                          if isinstance(location, Path) else [])])
+        print(f"Error: {e.with_cure(CURE_DERIVED_BOX_NAME % (cure + ' --name <new-name>'))}",
+              file=sys.stderr)
+        return 1
     except (ProjectError, WorksetError) as e:
         print(f"Error: {e}", file=sys.stderr)
         return 1

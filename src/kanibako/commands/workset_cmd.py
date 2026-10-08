@@ -17,15 +17,16 @@ from typing import TYPE_CHECKING
 
 from kanibako.commands.flags import add_null_flag, add_set_force_flag
 from kanibako.settings.config import user_config_file, load_config
-from kanibako.launch.box_identity import box_name_reason, validate_box_name
-from kanibako.settings.messages import ERR_DERIVED_BOX_NAME, ERR_WS_CONNECT_PATH_IS_PRIMARY_BOX
-from kanibako.errors import ConfigError, ProjectError, WorksetError
+from kanibako.launch.box_identity import validate_box_name
+from kanibako.settings.messages import CURE_DERIVED_BOX_NAME, ERR_WS_CONNECT_PATH_IS_PRIMARY_BOX
+from kanibako.errors import ConfigError, DerivedBoxNameError, ProjectError, WorksetError
 from kanibako.settings.settings_resolve import UNSET
 from kanibako.settings.paths import (
     BoxMode,
     _early_scope,
     load_std_paths,
     primary_box_name_for_workspace,
+    refuse_derived_box_name,
     workset_settings_path,
 )
 from kanibako.utils import confirm_prompt, literal_path, logical_cwd
@@ -583,12 +584,17 @@ def run_connect(args: argparse.Namespace) -> int:
     project_name = args.project_name or source.name
     # ⚑ The box-name rule (spec §0), typed or derived, before any write.
     try:
-        validate_box_name(project_name)
-    except ProjectError as e:
+        if args.project_name:
+            validate_box_name(project_name)
+        else:
+            refuse_derived_box_name(project_name)
+    except DerivedBoxNameError as e:
         cure = (f"kanibako workset connect {shlex.quote(stored)} "
                 f"{shlex.quote(str(source))} --name <new-name>")
-        print("Error: " + (str(e) if args.project_name else ERR_DERIVED_BOX_NAME % (
-            project_name, box_name_reason(project_name), cure)), file=sys.stderr)
+        print(f"Error: {e.with_cure(CURE_DERIVED_BOX_NAME % cure)}", file=sys.stderr)
+        return 1
+    except ProjectError as e:
+        print(f"Error: {e}", file=sys.stderr)
         return 1
 
     # ⚑ EVERY REFUSAL BELOW FIRES BEFORE THE JOURNAL BRACKET, so a refused connect leaves

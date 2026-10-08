@@ -1,8 +1,9 @@
 """A box name DERIVED from a directory basename meets the box-name rule (spec §0).
 
-``create``, ``workset connect``, and ``box duplicate --to named`` name a box after
-a directory when no ``--name`` is given.  A basename the rule refuses is refused
-before anything is written, and the refusal names a ``--name`` cure.
+``create``, ``workset connect``, ``box duplicate``, ``box extract``, ``box move``,
+``box convert``, and the helper fork name a box after a directory when no ``--name``
+is given.  A basename the rule refuses is refused before anything is written, and
+each command prints its OWN cure, with ``--name <new-name>`` last.
 """
 
 from __future__ import annotations
@@ -52,7 +53,7 @@ def test_create_refuses_a_new_directory_and_writes_nothing(
 
     assert rc == 1, text
     assert f"The directory name '{name}' is not a valid box name" in text
-    assert _cure(text) == ["kanibako", "create", "--name", "<new-name>", str(path)]
+    assert _cure(text) == ["kanibako", "create", str(path), "--name", "<new-name>"]
     assert not path.exists()
     assert _primary_boxes() == {}
 
@@ -67,7 +68,7 @@ def test_create_in_an_existing_directory_refuses_and_registers_nothing(
     rc, text = _cli("create", "--no-vault")
 
     assert rc == 1, text
-    assert _cure(text) == ["kanibako", "create", "--name", "<new-name>", str(path)]
+    assert _cure(text) == ["kanibako", "create", str(path), "--name", "<new-name>"]
     assert _primary_boxes() == {}
     assert not (tmp_home / "work" / "PWNED").exists()
 
@@ -78,7 +79,7 @@ def test_the_named_cure_creates_the_box(tmp_home, config_file, credentials_dir):
     assert rc == 1, text
 
     cure = [w if w != "<new-name>" else "okbox" for w in _cure(text)[1:]]
-    rc, text = _cli(*cure[:1], "--no-vault", *cure[1:])
+    rc, text = _cli(*cure, "--no-vault")
 
     assert rc == 0, text
     assert list(_primary_boxes()) == ["okbox"]
@@ -134,3 +135,133 @@ def test_duplicate_to_named_refuses_a_derived_name(tmp_home, config_file, creden
                            str(tmp_home / "unused"), "--to", "named", "--workset", "wsx",
                            "--name", "<new-name>"]
     assert _members(ws, std) == []
+
+
+def _primary_box(tmp_home, leaf: str = "src"):
+    path = tmp_home / "work" / leaf
+    rc, text = _cli("create", "--no-vault", str(path))
+    assert rc == 0, text
+    return path
+
+
+def _standalone_box(tmp_home, leaf: str):
+    path = tmp_home / "work" / leaf
+    path.mkdir(parents=True, exist_ok=True)
+    rc, text = _cli("create", "--no-vault", "--standalone", str(path))
+    assert rc == 0, text
+    return path
+
+
+_DEST = "The directory name '-dup' is not a valid box name"
+_PICK = "Pick a destination directory whose name is a valid box name."
+
+
+def test_duplicate_names_the_destination_cure(tmp_home, config_file, credentials_dir):
+    source = _primary_box(tmp_home)
+    dest = tmp_home / "work" / "-dup"
+    rc, text = _cli("box", "duplicate", str(source), str(dest), "--force")
+
+    assert rc == 1, text
+    assert _DEST in text and _PICK in text and "kanibako create" not in text
+    assert not dest.exists()
+    assert list(_primary_boxes()) == ["src"]
+
+
+def test_duplicate_to_primary_names_the_destination_cure(
+        tmp_home, config_file, credentials_dir):
+    source = _standalone_box(tmp_home, "sa")
+    dest = tmp_home / "work" / "-dup"
+    rc, text = _cli("box", "duplicate", str(source), str(dest), "--to", "primary", "--force")
+
+    assert rc == 1, text
+    assert _DEST in text and _PICK in text and "kanibako create" not in text
+    assert not dest.exists()
+    assert _primary_boxes() == {}
+
+
+def test_extract_names_its_own_cure_and_the_cure_works(tmp_home, config_file, credentials_dir):
+    source = _primary_box(tmp_home)
+    archive = tmp_home / "a.txz"
+    rc, text = _cli("box", "archive", str(source), str(archive), "--force")
+    assert rc == 0, text
+    dest = tmp_home / "work" / "-e1"
+    dest.mkdir()
+    rc, text = _cli("box", "extract", str(archive), str(dest), "--force")
+
+    assert rc == 1, text
+    assert _cure(text) == ["kanibako", "box", "extract", str(archive), str(dest),
+                           "--name", "<new-name>"]
+    assert "pick another --name" not in text
+    assert list(_primary_boxes()) == ["src"]
+
+    rc, text = _cli(*[w if w != "<new-name>" else "exok" for w in _cure(text)[1:]], "--force")
+    assert rc == 0, text
+    assert sorted(_primary_boxes()) == ["exok", "src"]
+
+
+def test_move_names_its_own_cure_and_the_cure_works(tmp_home, config_file, credentials_dir):
+    source = _standalone_box(tmp_home, "sa")
+    dest = tmp_home / "work" / "-m1"
+    rc, text = _cli("box", "move", str(source), str(dest), "--default", "--force")
+
+    assert rc == 1, text
+    assert _cure(text) == ["kanibako", "box", "move", str(source), str(dest), "--default",
+                           "--name", "<new-name>"]
+    assert not dest.exists()
+    assert _primary_boxes() == {}
+
+    rc, text = _cli(*[w if w != "<new-name>" else "mvok" for w in _cure(text)[1:]], "--force")
+    assert rc == 0, text
+    assert list(_primary_boxes()) == ["mvok"]
+
+
+def test_convert_names_its_own_cure(tmp_home, config_file, credentials_dir):
+    source = _standalone_box(tmp_home, "-c1")
+    rc, text = _cli("box", "convert", str(source), "--default", "--force")
+
+    assert rc == 1, text
+    assert _cure(text) == ["kanibako", "box", "convert", str(source), "--default",
+                           "--name", "<new-name>"]
+    assert _primary_boxes() == {}
+
+
+def _fork_hub(tmp_home, workspace):
+    from unittest.mock import MagicMock
+
+    from kanibako.channels.helper_listener import HelperContext, HelperHub
+    from kanibako.settings.config import load_config, user_config_file
+    from kanibako.settings.paths import BoxMode, _early_scope, load_std_paths
+
+    std = load_std_paths(load_config(user_config_file()))
+    shell = std.boxes / "x" / "home"
+    (shell / "helpers").mkdir(parents=True)
+    hub = HelperHub()
+    hub._ctx = HelperContext(
+        runtime=MagicMock(), image="test:latest", container_name_segments=("primary", "x"),
+        shell_path=shell, helpers_dir=shell / "helpers", socket_path=tmp_home / "h.sock",
+        project_path=workspace, data_path=std.data_path, boxes=std.boxes,
+        primary_workset=std.primary_workset, early=_early_scope(std, BoxMode.primary),
+    )
+    return hub
+
+
+def test_fork_of_a_rule_breaking_box_names_the_move_cure(tmp_home, config_file, credentials_dir):
+    workspace = tmp_home / "work" / "-legacy"
+    workspace.mkdir(parents=True)
+    reply = _fork_hub(tmp_home, workspace)._handle_fork({"name": "two"})
+
+    assert reply["status"] == "error"
+    assert shlex.split(reply["message"].splitlines()[-1]) == [
+        "kanibako", "box", "move", str(workspace), "<new-path>", "--name", "<new-name>"]
+    assert not (tmp_home / "work" / "-legacy.two").exists()
+    assert _primary_boxes() == {}
+
+
+def test_fork_with_a_rule_breaking_name_asks_for_another(tmp_home, config_file, credentials_dir):
+    workspace = tmp_home / "work" / "app"
+    workspace.mkdir(parents=True)
+    reply = _fork_hub(tmp_home, workspace)._handle_fork({"name": "a b"})
+
+    assert reply["status"] == "error"
+    assert reply["message"].endswith("Pick a fork name that is a valid box name.")
+    assert not (tmp_home / "work" / "app.a b").exists()

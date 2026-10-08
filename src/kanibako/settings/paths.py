@@ -41,7 +41,7 @@ from kanibako.settings.config import (WORKSET_META_FILE, BOX_META_FILE, Bootstra
                                       config_file_path, load_config, read_box_enable_vault, read_workset_kuid,
                                       read_workset_skip_kuid_check, write_box_enable_vault)
 
-from kanibako.errors import (AmbiguousNameError, ConfigError, ProjectError,
+from kanibako.errors import (AmbiguousNameError, ConfigError, DerivedBoxNameError, ProjectError,
                              ReservedWorksetNameError, WorksetError)
 from kanibako.settings.agent_config import (ambiguous_path_value_error,
                                             is_unambiguous_path_value)
@@ -1957,13 +1957,11 @@ def check_workspace_not_named_box(std: StandardPaths, workspace: str) -> None:
         ))
 
 
-def refuse_derived_primary_box_name(workspace: str) -> None:
-    """Refuse *workspace*'s basename as a PRIMARY box name when it fails the box-name rule."""
-    base = Path(workspace).name or "project"
+def refuse_derived_box_name(base: str) -> None:
+    """Refuse *base*, a box name taken from a directory, when it fails the box-name rule."""
     reason = box_name_reason(base)
     if reason is not None:
-        cure = f"kanibako create --name <new-name> {shlex.quote(workspace)}"
-        raise ProjectError(ERR_DERIVED_BOX_NAME % (base, reason, cure))
+        raise DerivedBoxNameError(ERR_DERIVED_BOX_NAME % (base, reason))
 
 
 def pick_primary_box_name(primary_workset: Path, workspace: str,
@@ -1974,8 +1972,8 @@ def pick_primary_box_name(primary_workset: Path, workspace: str,
     With *journal*, a name whose ``boxes_dir`` key holds a pending entry is taken too:
     an interrupted create may have claimed it before making its dir.
     """
-    refuse_derived_primary_box_name(workspace)
     base = Path(workspace).name or "project"
+    refuse_derived_box_name(base)
     taken_names = load_primary_boxes(primary_workset, early=early)
     pending = set()
     if journal is not None and boxes_dir is not None:

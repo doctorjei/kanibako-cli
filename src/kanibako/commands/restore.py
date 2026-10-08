@@ -14,7 +14,7 @@ from pathlib import Path
 from kanibako.settings.config import user_config_file, load_config
 from kanibako.runtime.container import remove_box_tree
 from kanibako.settings.core_defaults import materialize_canon_skeleton
-from kanibako.errors import ProjectError, UserCanceled, WorksetError
+from kanibako.errors import DerivedBoxNameError, ProjectError, UserCanceled, WorksetError
 from kanibako.git import is_git_repo
 from kanibako.settings.paths import (
     BoxMode,
@@ -28,7 +28,7 @@ from kanibako.tree_copy import copy_tree_keeping_links
 from kanibako.utils import confirm_prompt
 from kanibako.channels.channels import workset_name_token, workset_root
 from kanibako.settings.workset_dirkeys import EarlyScope, refuse_inherited_per_owner
-from kanibako.settings.messages import MSG_DONE
+from kanibako.settings.messages import CURE_DERIVED_BOX_NAME, MSG_DONE
 
 
 def _keep_links_filter(member: tarfile.TarInfo, dest_path: str) -> tarfile.TarInfo:
@@ -238,6 +238,11 @@ def _restore_one(std, config, *, project_dir, archive_file, force, name=None) ->
                 register=False,
                 name_override=name,
             )
+        except DerivedBoxNameError as e:
+            cure = (f"kanibako box extract {shlex.quote(str(archive_file.absolute()))} "
+                    f"{shlex.quote(str(proj.project_path))} --name <new-name>")
+            print(f"Error: {e.with_cure(CURE_DERIVED_BOX_NAME % cure)}", file=sys.stderr)
+            return 1
         except (ProjectError, WorksetError) as e:
             # Guard-1 path-uniqueness / name-collision: --name already belongs to a
             # different workspace.  Name the cure rather than the rule.
