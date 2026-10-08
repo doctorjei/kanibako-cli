@@ -1064,6 +1064,30 @@ def _new_box_undo(
     return undo, wrote
 
 
+def _claim_create_entry(std, probe, state: dict, *, primary: bool) -> "dict | None":
+    """Claim *probe*'s create entry: ``None`` once written, else what holds the name.
+
+    A PRIMARY name holds when another workspace registered it, or nothing did and its
+    dir exists: a finished create registers before it clears its entry, and the clear
+    waits on this lock.
+    """
+    from kanibako._atomic import rmw_lock
+    from kanibako.commands.start import _write_create_entry
+
+    from kanibako.project.workset_registry import _same_workspace
+
+    with rmw_lock(std.journal):
+        if primary:
+            boxes = load_primary_boxes(
+                std.primary_workset, early=_early_scope(std, BoxMode.primary))
+            held = find_identifier(probe.name, boxes)
+            if (held is None and (std.boxes / probe.name).exists()) or (
+                    held is not None
+                    and not _same_workspace(boxes[held], str(probe.project_path))):
+                return {"name": probe.name}
+        return _write_create_entry(std, probe, state=state, claim=True)
+
+
 def _recovered_standalone_name(std, proj, supplied: str) -> str:
     """The registry name attempt one's ``--name`` gives a materialized standalone box."""
     from kanibako import kuid
@@ -1224,7 +1248,6 @@ def run_create(args: argparse.Namespace) -> int:
         _pending_create_entry,
         _primary_probe_named,
         _register_new_box,
-        _write_create_entry,
         persona_create_verdict,
         seed_new_box,
     )
@@ -1376,12 +1399,15 @@ def run_create(args: argparse.Namespace) -> int:
             _entry_probe = _primary_probe_named(
                 std, _probe, getattr(args, "name", None) or _probe.name)
         # ⚑ A CLAIM: two creates never share a key, nor one workspace.
-        while (_held := _write_create_entry(
-                std, _entry_probe, state=_state, claim=True)) is not None:
+        while (_held := _claim_create_entry(
+                std, _entry_probe, _state,
+                primary=_named_spec is None and not args.standalone)) is not None:
             _same_ws = str(Path(str(_held.get("workspace"))).resolve()) == str(
                 Path(str(_entry_probe.project_path)).resolve())
             if _same_ws or not _repick:
                 print(
+                    f"Error: a box named '{_held['name']}' was created meanwhile."
+                    if "op" not in _held else
                     f"Error: another create of this "
                     f"{'workspace' if _same_ws else 'box'} is in progress; its "
                     f"journal entry names the box '{_held.get('name')}'.",
