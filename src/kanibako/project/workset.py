@@ -1463,7 +1463,6 @@ def add_project(
             )
 
     resolved_source = source_path.resolve()
-    # Identity: the path as given.
     literal_source = Path(literal_path(source_path))
 
     # External ⇔ not one of the workset's own workspace dirs.
