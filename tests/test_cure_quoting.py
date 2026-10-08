@@ -4,7 +4,9 @@ A box created from a PATH is registered under that path's basename VERBATIM:
 ``kanibako create 'q$(touch pwned)'`` exits 0 and leaves a primary box named
 ``q$(touch pwned)``, and ``box rm`` on it prints
 
-    Restore it with 'kanibako box register q$(touch pwned)', ...
+    Restore it or delete it:
+      kanibako box register q$(touch pwned)
+      ...
 
 Pasted, the ``$(...)`` is a command substitution and runs.  The metacharacter
 half is pinned as an EXECUTION: each printed command is pasted into a real
@@ -13,7 +15,9 @@ and the assertion is on that argv plus the marker file the injected command woul
 leave.  A string match cannot say whether the second command ran.
 
 The retained-box pair is rendered by one primitive, so the doors that share a
-sentence print it identically and no door can drift into a second wording.
+sentence print it identically and no door can drift into a second wording.  Each
+command stands on its own line: a command wrapped in prose quotes nests them around
+its quoted operand, and the result no longer pastes.
 """
 
 from __future__ import annotations
@@ -32,31 +36,20 @@ import pytest
 _HOSTILE = ["q;>pwned", "q$(touch pwned)"]
 _MARKER = "pwned"
 _SAFE = "plainbox"
-_SENTENCE = "Restore it with"
+_SENTENCE = "Restore it or delete it:"
 
-# The register half, delimited by whatever connective its message puts after the
-# operand.  Non-greedy, so on a quoted operand it stops at the CLOSING quote
-# ``shlex.quote`` adds rather than swallowing the pair.
-_REGISTER_RE = re.compile(
-    r"kanibako box register (.*?)'(?:, or delete it with | to recover it )", re.S,
-)
-_PURGE_RE = re.compile(r"kanibako box rm (.*?)\s*--purge", re.S)
+# Each half is a WHOLE line: what a user copies is the line, so nothing may sit
+# around the command on it.
+_REGISTER_RE = re.compile(r"^  (kanibako box register .*)$", re.M)
+_PURGE_RE = re.compile(r"^  (kanibako box rm .* --purge)$", re.M)
 
 
 def _pair(message: str) -> "tuple[str, str]":
-    """The register and purge COMMANDS as *message* offers them.
-
-    The message wraps each in prose single quotes, which are not part of what a
-    user copies, so they are dropped; what is left is exactly the text printed
-    between the verb and the connective that follows it.
-    """
+    """The register and purge COMMANDS as *message* offers them, one line each."""
     register, purge = _REGISTER_RE.search(message), _PURGE_RE.search(message)
-    assert register is not None, f"no register cure in {message!r}"
-    assert purge is not None, f"no purge cure in {message!r}"
-    return (
-        f"kanibako box register {register.group(1)}",
-        f"kanibako box rm {purge.group(1)} --purge",
-    )
+    assert register is not None, f"no register cure line in {message!r}"
+    assert purge is not None, f"no purge cure line in {message!r}"
+    return register.group(1), purge.group(1)
 
 
 def _paste(command: str, scratch: Path, stub: str = "kanibako") -> "tuple[list[str], Path, str]":
@@ -217,10 +210,8 @@ def _at_rm_standalone(name: str, capsys) -> str:
 def _at_rm_deregistered(name: str, capsys) -> str:
     """Door 2: the cure printed for an entry that is ALREADY deregistered.
 
-    ``box rm`` reaches this only for a NAME-route target, and
-    :func:`validate_box_name` refuses every shell metacharacter, so the operand is
-    handed to the handler directly; what is pinned is that the cure quotes
-    whatever name it is given.
+    The operand is handed to the handler directly; what is pinned is that the
+    cure quotes whatever name it is given.
     """
     from kanibako.commands.box._parser import _purge_deregistered
     from kanibako.project import registry_store
@@ -328,12 +319,9 @@ def test_the_three_shared_doors_print_one_identical_sentence(
     """
     def sentence(door, name) -> str:
         message = door(name, capsys)
-        # From the sentence's own first word, so the different lead-in each door
-        # prints before it is excluded without depending on where it wraps.
-        return next(
-            ln[ln.index(_SENTENCE):].strip()
-            for ln in message.splitlines() if _SENTENCE in ln
-        )
+        # From the sentence's own line, so the different lead-in each door prints
+        # before it is excluded; the two cure lines follow it.
+        return message[message.index(_SENTENCE):].strip()
 
     spoken = {
         door.__name__: sentence(door, _HOSTILE[0])
@@ -442,3 +430,97 @@ def test_a_plain_operand_prints_the_same_bytes_it_did(
         f"kanibako box register {shlex.quote(name)}",
         f"kanibako box rm {shlex.quote(name)} --purge",
     )
+
+@pytest.mark.parametrize("door", _PAIR_DOORS, ids=[p.values[0].__name__ for p in _PAIR_DOORS])
+def test_no_door_wraps_a_cure_in_prose_quotes(
+    door, tmp_home, config_file, credentials_dir, capsys
+):
+    """A quoted command around a quoted operand nests the quotes and does not paste."""
+    message = door("my box", capsys)
+
+    assert "'kanibako box" not in message, message
+    register, purge = _pair(message)
+    assert shlex.split(register) == ["kanibako", "box", "register", "my box"]
+    assert shlex.split(purge) == ["kanibako", "box", "rm", "my box", "--purge"]
+
+
+def _legacy_primary_box(name: str) -> Path:
+    """A PRIMARY box registered under *name*, a name the box-name rule now refuses.
+
+    ``create`` refuses the name, so the box is created valid and re-keyed by the
+    real registration API, which (like an older release) does not check the rule.
+    """
+    from kanibako.settings.config import load_config, user_config_file
+    from kanibako.settings.paths import (
+        BoxMode, _early_scope, load_std_paths, register_primary_box_name,
+        unregister_primary_box_name,
+    )
+    from kanibako.launch.box_identity import is_valid_box_name
+
+    assert not is_valid_box_name(name)
+    path = _park_primary_box("legacy_ws")
+    std = load_std_paths(load_config(user_config_file()))
+    early = _early_scope(std, BoxMode.primary)
+    unregister_primary_box_name(std.primary_workset, "legacy_ws", early=early)
+    (std.boxes / "legacy_ws").rename(std.boxes / name)
+    register_primary_box_name(std.primary_workset, name, path, early=early)
+    return path
+
+
+class TestALegacyNameCureWorksPasted:
+    """``box rm`` of a legacy-named box prints cures that must run as printed.
+
+    A name the rule refuses designates a PATH, never a NAME, so a lookup gated on
+    the NAME route cannot find the retained entry the cure names.
+    """
+
+    _NAME = "my project"
+
+    def _rm(self, capsys) -> "tuple[str, str]":
+        path = _legacy_primary_box(self._NAME)
+        capsys.readouterr()
+        assert _run(["box", "rm", str(path)]) == 0
+        return _pair(capsys.readouterr().out)
+
+    def test_the_register_cure_readopts_the_box(
+        self, tmp_home, config_file, credentials_dir, capsys
+    ):
+        from kanibako.settings.config import load_config, user_config_file
+        from kanibako.settings.paths import BoxMode, _early_scope, load_primary_boxes, load_std_paths
+
+        register, _purge = self._rm(capsys)
+        assert _run(shlex.split(register)[1:]) == 0
+
+        std = load_std_paths(load_config(user_config_file()))
+        assert self._NAME in load_primary_boxes(
+            std.primary_workset, early=_early_scope(std, BoxMode.primary),
+        )
+
+    def test_the_purge_cure_deletes_the_retained_metadata(
+        self, tmp_home, config_file, credentials_dir, capsys
+    ):
+        from kanibako.settings.config import load_config, user_config_file
+        from kanibako.settings.paths import load_std_paths
+
+        _register, purge = self._rm(capsys)
+        assert _run([*shlex.split(purge)[1:], "--force"]) == 0
+
+        std = load_std_paths(load_config(user_config_file()))
+        assert not (std.boxes / self._NAME).exists()
+
+    def test_a_real_path_still_outranks_the_retained_name(
+        self, tmp_home, config_file, credentials_dir, capsys
+    ):
+        """A standalone box on disk at the designation registers as itself."""
+        from kanibako.project import registry_store
+        from kanibako.settings.config import load_config, user_config_file
+        from kanibako.settings.paths import load_std_paths
+
+        self._rm(capsys)
+        root = Path.cwd() / self._NAME
+        assert _run(["box", "create", str(root), "--standalone", "--no-vault"]) == 0
+        assert _run(["box", "register", self._NAME]) == 0
+
+        std = load_std_paths(load_config(user_config_file()))
+        assert registry_store.standalone_name_for_root(std.registry, root) is not None
+        assert registry_store.lookup_deregistered(std.registry, self._NAME) is not None

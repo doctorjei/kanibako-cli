@@ -943,8 +943,8 @@ def run_add(args: argparse.Namespace) -> int:
         src_file = local_path if local_path is not None else Path(source)
         shutil.copyfile(src_file, dest)
         print(
-            f"Added template '{name}' ({dest}). "
-            f"Run 'kanibako rig prep {shlex.quote(name)}' to build it."
+            f"Added template '{name}' ({dest}). To build it, run:\n"
+            f"  kanibako rig prep {shlex.quote(name)}"
         )
         return 0
 
@@ -987,8 +987,8 @@ def run_add(args: argparse.Namespace) -> int:
         RigRecord(name=name, kind="prefab", source=source, source_type="ref"),
     )
     print(
-        f"Added prefab '{name}' -> {source}. "
-        f"Run 'kanibako rig prep {shlex.quote(name)}' to pull it."
+        f"Added prefab '{name}' -> {source}. To pull it, run:\n"
+        f"  kanibako rig prep {shlex.quote(name)}"
     )
     return 0
 

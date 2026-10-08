@@ -601,19 +601,18 @@ class TestCreateStandaloneOptIn:
         """The flip is SIGNALED: v1.7.2 registered silently, so silence would
         report the old outcome.
 
-        ⚑ The asserted command is closed with its quote on purpose.  The success
-        line above it prints ``project_path`` (the ``workspace/`` SUBDIR), and an
-        unterminated match would pass on that path too — while
-        ``box register <root>/workspace`` finds no standalone marker and does NOT
-        paste.
+        ⚑ The asserted command is a WHOLE line on purpose.  The success line above
+        it prints ``project_path`` (the ``workspace/`` SUBDIR), and an unterminated
+        match would pass on that path too — while ``box register <root>/workspace``
+        finds no standalone marker and does NOT paste.
         """
         root = tmp_home / "sa"
         root.mkdir()
 
         assert run_create(_create_args(root, standalone=True)) == 0
-        out = capsys.readouterr().out
-        assert f"'kanibako box register {root}'" in out
-        assert f"'kanibako box register {root / 'workspace'}'" not in out
+        lines = capsys.readouterr().out.splitlines()
+        assert f"  kanibako box register {root}" in lines
+        assert f"  kanibako box register {root / 'workspace'}" not in lines
 
         # The opposite arm: nothing to cure, so no hint.
         other = tmp_home / "sa2"

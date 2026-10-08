@@ -587,9 +587,9 @@ def _assert_primary_home_free_for_create(std, name: str) -> None:
         register_cure, purge_cure = _retained_box_cures(name)
         raise ProjectError(
             f"a box named '{name}' already exists as a deregistered box "
-            f"(metadata retained by 'rm'); run '{register_cure}' to "
-            f"recover it or '{purge_cure}' to delete it, then "
-            f"retry."
+            f"(metadata retained by 'rm'). Recover it or delete it, then retry:\n"
+            f"  {register_cure}\n"
+            f"  {purge_cure}"
         )
 
     # A half-create being recovered is the legitimate re-entry — never refuse it.
@@ -1619,8 +1619,8 @@ def run_create(args: argparse.Namespace) -> int:
         std.registry, Path(proj.metadata_path),
     ) is None:
         print(
-            f"Not registered; run '{_box_register_cure(str(proj.metadata_path))}' "
-            f"to address it by name from elsewhere."
+            f"Not registered; to address it by name from elsewhere, run:\n"
+            f"  {_box_register_cure(str(proj.metadata_path))}"
         )
     return 0
 
@@ -2062,11 +2062,7 @@ def _purge_deregistered(std, name: str, entry: dict, args: argparse.Namespace) -
 
     if not args.purge:
         print(f"'{name}' is already deregistered (metadata retained at {metadata}).")
-        register_cure, purge_cure = _retained_box_cures(name)
-        print(
-            f"Restore it with '{register_cure}', "
-            f"or delete it with '{purge_cure}'."
-        )
+        print(_retained_box_cure_lines(name))
         return 0
 
     if kind == "standalone" and metadata:
@@ -2231,12 +2227,8 @@ def _rm_standalone(std, box_name: str, root, args: argparse.Namespace) -> int:
             image=image,
             deregistered_at=datetime.now(tz=timezone.utc).isoformat(),
         )
-        register_cure, purge_cure = _retained_box_cures(box_name)
-        print(
-            f"Deregistered '{box_name}' (metadata retained). "
-            f"Restore it with '{register_cure}', "
-            f"or delete it with '{purge_cure}'."
-        )
+        print(f"Deregistered '{box_name}' (metadata retained).")
+        print(_retained_box_cure_lines(box_name))
     return 0
 
 
@@ -2283,7 +2275,7 @@ def run_rm(args: argparse.Namespace) -> int:
         if sa_name is not None:
             return _rm_standalone(std, sa_name, sa_root, args)
 
-    if name is None and by_name:
+    if name is None:
         # ⚑ Not active anywhere — a re-`rm` after a plain `rm` must resolve the retained
         # metadata HERE rather than erroring "not registered".
         # ⚑ Case-blind (spec §0), and the purge takes the STORED spelling: it names the
@@ -2328,8 +2320,8 @@ def run_rm(args: argparse.Namespace) -> int:
         else:
             print(f"No metadata directory found at {metadata_dir}")
     else:
-        # No --purge: retain the metadata and park a ``deregistered`` entry, so a later
-        # `rm --purge` / `register` finds it BY NAME.
+        # No --purge: retain the metadata and park a ``deregistered`` entry for a later
+        # `rm --purge` / `register`.
         if metadata_dir.is_dir():
             registry_store.register_deregistered(
                 std.registry,
@@ -2340,12 +2332,8 @@ def run_rm(args: argparse.Namespace) -> int:
                 image=image,
                 deregistered_at=datetime.now(tz=timezone.utc).isoformat(),
             )
-            register_cure, purge_cure = _retained_box_cures(name)
-            print(
-                f"Deregistered '{name}' (metadata retained). "
-                f"Restore it with '{register_cure}', "
-                f"or delete it with '{purge_cure}'."
-            )
+            print(f"Deregistered '{name}' (metadata retained).")
+            print(_retained_box_cure_lines(name))
 
     return 0
 
@@ -2437,8 +2425,13 @@ def _box_rm_purge_cure(target: str) -> str:
 
 
 def _retained_box_cures(target: str) -> "tuple[str, str]":
-    """The restore/delete PAIR; every retained-box door renders it here."""
+    """The restore/delete PAIR every retained-box door prints."""
     return _box_register_cure(target), _box_rm_purge_cure(target)
+
+
+def _retained_box_cure_lines(target: str) -> str:
+    register_cure, purge_cure = _retained_box_cures(target)
+    return f"Restore it or delete it:\n  {register_cure}\n  {purge_cure}"
 
 
 def run_register(args: argparse.Namespace) -> int:
@@ -2521,6 +2514,10 @@ def run_register(args: argparse.Namespace) -> int:
                 return 1
             print(f"Registered standalone box '{sa_name}' at {root}.")
             return 0
+
+    legacy_name = None if by_name else find_identifier(target, deregistered)
+    if legacy_name is not None:
+        return _readopt_deregistered(std, legacy_name, dict(deregistered[legacy_name]))
 
     # 4. Nothing to register.
     print(
