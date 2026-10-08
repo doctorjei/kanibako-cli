@@ -236,6 +236,10 @@ def _cure_subject(level: str, box_name: str | None) -> str:
     return f"<{level}>"
 
 
+#: How a cure that has NO equivalent at its level opens: the removal comes before any ``set``.
+_REMOVE_IT = "REMOVE it —"
+
+
 def _retired_mirror_cure(
     *, level: str, box_name: str | None, table: "dict[Any, Any]",
 ) -> str:
@@ -254,7 +258,7 @@ def _retired_mirror_cure(
         )
     # Same §2h gate the scalar cure applies: no request may be written here at all.
     return (
-        f"REMOVE it — a request may be written ONLY in a workset or box settings "
+        f"{_REMOVE_IT} a request may be written ONLY in a workset or box settings "
         f"file (spec §2h), so this table has NO equivalent at {level} scope. If "
         f"you meant to tweak the agent everywhere, set it on the AGENT itself: "
         + "; ".join(f"kanibako agent set <agent> {tail}" for tail in tails)
@@ -295,7 +299,7 @@ def _retired_key_cure(
     # M-4: no legal pref equivalent at base/system/agent — FLAG it, never silently relocate it.
     # No single box is in scope here, so the box arm takes the placeholder.
     return (
-        f"REMOVE it — a request may be written ONLY in a workset or box settings "
+        f"{_REMOVE_IT} a request may be written ONLY in a workset or box settings "
         f"file (spec §2h), so this key has NO equivalent at {level} scope. If you "
         f"meant the host-wide default, set it: kanibako system set "
         f"system.agent={value}. If you meant one box, set the request in THAT "
@@ -396,6 +400,7 @@ def refuse_retired_keys(
                 # ``agent set <agent>`` reads this file for its own agent.
                 collides_with=_RETIRED if level in SET_TARGETS_ITS_OWN_FILE
                 or (mirror is not None and level == "agent") else None,
+                removal_first=cure.startswith(_REMOVE_IT),
             )
             + f"\n  Fix: {cure}"
         )
