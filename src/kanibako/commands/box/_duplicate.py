@@ -45,6 +45,8 @@ from kanibako.errors import DerivedBoxNameError, ProjectError
 from kanibako.launch.box_identity import validate_box_name
 from kanibako.settings.messages import CURE_DERIVED_BOX_NAME, CURE_DERIVED_DUP_DEST
 from kanibako.channels.channels import workset_name_token, workset_root
+from kanibako.errors import ProjectError
+from kanibako.launch.box_identity import refuse_nonleaf_standalone_name
 from kanibako.settings.workset_dirkeys import EarlyScope, refuse_inherited_per_owner
 
 
@@ -121,6 +123,15 @@ def _run_duplicate_cross_mode(args: argparse.Namespace, std, config) -> int:
 
     if not args.bare and new_path.exists() and not args.force:
         return _refuse_existing_destination(new_path)
+
+    # A standalone target mints <kuid>_<leaf> from the destination root and never
+    # reads --name: refuse, don't ask approval of a flag that does nothing.
+    if to_mode is BoxMode.standalone and getattr(args, "project_name", None):
+        try:
+            refuse_nonleaf_standalone_name(args.project_name, new_path)
+        except ProjectError as e:
+            print(f"Error: {e}", file=sys.stderr)
+            return 1
 
     # Detect source mode and resolve.
     source_mode = detect_project_mode(source_path, std, config).mode
@@ -250,7 +261,7 @@ def _run_duplicate_cross_mode(args: argparse.Namespace, std, config) -> int:
         # Roll back only when new_path did NOT pre-exist (F2: never delete a dir
         # the user already had); _duplicate_to_local's own unwind already cleans
         # the boxes/<name> metadata dir + its registration.
-        from kanibako.errors import ProjectError
+        # A local ProjectError import would shadow the module binding function-wide.
         try:
             # ⚑ Route 2: the merge now happens inside ``_duplicate_to_local``.
             _duplicate_to_local(

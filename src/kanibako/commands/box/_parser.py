@@ -17,7 +17,8 @@ from collections.abc import Callable
 from datetime import datetime, timezone
 from pathlib import Path
 
-from kanibako.launch.box_identity import (Designation, classify_designation, sanitize_cap,
+from kanibako.launch.box_identity import (Designation, classify_designation,
+                                          refuse_nonleaf_standalone_name, sanitize_cap,
                                           validate_box_name)
 from kanibako.commands.flags import add_null_flag, add_set_force_flag
 from kanibako.settings.config_io import refuse_scalar_sections
@@ -1168,6 +1169,14 @@ def run_create(args: argparse.Namespace) -> int:
     standalone_name = (getattr(args, "name", None) or "") if standalone_register else ""
     effective_path = _create_target(args)
 
+    # A standalone box is named by its directory, not by --name: refuse, don't drop.
+    if args.standalone and getattr(args, "name", None):
+        try:
+            refuse_nonleaf_standalone_name(args.name, effective_path)
+        except ProjectError as e:
+            print(f"Error: {e}", file=sys.stderr)
+            return 1
+
     # ⚑ BEFORE ANY WRITE
     if args.standalone:
         # A standalone name re-derives its leaf from the directory at every lookup.
@@ -1176,6 +1185,18 @@ def run_create(args: argparse.Namespace) -> int:
         except DerivedBoxNameError as e:
             print(f"Error: {e.with_cure(CURE_LEAF_NOT_ASCII)}", file=sys.stderr)
             return 1
+        # A standalone box is named by its directory, not by --name: refuse, don't drop.
+        # ⚑ Placed AFTER the ASCII check above, and a DerivedBoxNameError is re-raised
+        # untouched: that refusal and its CURE_LEAF_NOT_ASCII own a non-ASCII root, so a
+        # typed --name never pre-empts the better cure (kanibako ruling 2026-10-09).
+        if getattr(args, "name", None):
+            try:
+                refuse_nonleaf_standalone_name(args.name, effective_path)
+            except DerivedBoxNameError:
+                raise
+            except ProjectError as e:
+                print(f"Error: {e}", file=sys.stderr)
+                return 1
         refuse_scalar_sections(
             _standalone_settings_files(
                 effective_path, early=_early_scope(std, BoxMode.standalone))[1],

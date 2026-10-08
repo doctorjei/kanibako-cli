@@ -15,6 +15,7 @@ from kanibako.settings.config import user_config_file, load_config
 from kanibako.runtime.container import remove_box_tree
 from kanibako.settings.core_defaults import materialize_canon_skeleton
 from kanibako.errors import DerivedBoxNameError, ProjectError, UserCanceled, WorksetError
+from kanibako.launch.box_identity import refuse_standalone_rename
 from kanibako.git import is_git_repo
 from kanibako.settings.paths import (
     BoxMode,
@@ -132,6 +133,15 @@ def _restore_one(std, config, *, project_dir, archive_file, force, name=None) ->
     )
     refuse_inherited_per_owner(
         workset_root(proj, std), EarlyScope(std.early_system, workset_name_token(proj)))
+
+    # A standalone box is not renamed by extract: its name comes from its root,
+    # so --name sets nothing.  Refused before the destination resolve.
+    if name and proj.mode is BoxMode.standalone:
+        try:
+            refuse_standalone_rename(name, proj.name)
+        except ProjectError as e:
+            print(f"Error: {e}", file=sys.stderr)
+            return 1
 
     # ⚑ NAME COLLISION IS A TRUE PRE-FLIGHT, exactly as in ``box create``.  Extract
     # DELETES the destination tree before copying, so a collision discovered at
@@ -256,9 +266,8 @@ def _restore_one(std, config, *, project_dir, archive_file, force, name=None) ->
             return 1
 
         if name and proj.mode is not BoxMode.primary:
-            # --name only means anything for a default/primary box: a standalone box
-            # carries its identity in its own workset.yaml and a workset box takes
-            # its name from its workspace dir.  Say so instead of dropping it.
+            # Named-only now: a workset member takes its name from its workspace
+            # dir, so --name is equally inert; the ruling named standalone only.
             print(
                 f"Warning: --name is ignored for {proj.mode.value}-mode boxes "
                 f"(this box is named {proj.name!r}).",
