@@ -205,6 +205,10 @@ jobs:
       - run: kinemata parity
       - run: kinemata shape
       - run: kinemata undeclared
+      # ⚑ `claims` resolves runtime path claims against a store kanibako builds
+      # itself (`[claims] resolve_in`), so the store is built first. Without it
+      # `claims` refuses at load, rc 2, rather than reading clean.
+      - run: scripts/build-claims-store.sh
       - run: kinemata claims
 
   integration:

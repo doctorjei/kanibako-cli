@@ -189,6 +189,15 @@ exclude = [
 # file.
 [claims]
 suffixes = [".md"]
+# RUNTIME PATHS: a path claim the tree cannot settle is resolved against a store
+# kanibako itself built -- `scripts/build-claims-store.sh` (setup, a primary box,
+# a workset with a named box, a standalone box), which the conformance job runs
+# before `claims`. So `box.yaml` or `vault/` in the prose resolves only where
+# kanibako really creates it. The store is gitignored; build it before running
+# `claims` locally. Without it `claims` refuses at load rather than reading
+# clean (kinemata raises on a `resolve_in` directory that is absent). See
+# refusal 5 below for what it settles.
+resolve_in = [".claims-store"]
 
 historical = [
   # REASON OF KIND: a changelog is by definition a record of what was true at
@@ -278,6 +287,9 @@ historical = [
 #        machine without ~/canon -- i.e. CI -- it silently does nothing and 255
 #        findings return. A config that means something different in CI than it
 #        does locally is not a config.
+#        ⚑ kinemata 0.5.2 raises on an absent `resolve_in` directory instead,
+#        which is what lets the built store above be one. (a) still refuses
+#        this entry.
 #
 # 3. exclude = ["llm-docs/", "api-docs/"] -- REFUSED as tuning-to-green. Their
 #    findings are real (see the api-docs generator defect in the report).
@@ -304,15 +316,17 @@ historical = [
 #    ⚑ Re-verified 2026-09-14: the section still reads that way, the machinery
 #    still sits in `salvage/`, and `src/kanibako/deprecation.py` is still absent.
 #
-# 5. Nothing addresses the ~474 RUNTIME/HOST-STORE path claims (box_data/,
-#    workset.yaml, box.yaml, agent.yaml, registry.yaml, kanibako.cfg, vault/ ...).
-#    There is no principled knob for them: they name paths in the tree kanibako
-#    CREATES for a user, not in this repo, and they are spread across live docs.
-#    They are not history and they are not excludable by file. This is the
-#    "check cannot be made to mean something here" outcome R159 allows.
-#    The tool's own designed answer is `kinemata baseline --record --until <date>`,
-#    which dates them rather than pretending they are false. That is a decision
-#    for the director, not for this config.
+# 5. The RUNTIME/HOST-STORE path claims (box_data/, workset.yaml, box.yaml,
+#    agent.yaml, registry.yaml, kanibako.cfg, vault/ ...) name paths in the tree
+#    kanibako CREATES for a user, not in this repo, and they are spread across
+#    live docs. They are not history and they are not excludable by file.
+#    ⚑ ADDRESSED by `resolve_in` above: they resolve against a store kanibako
+#    builds with its own commands, so a claim settles only where kanibako
+#    really creates the path. Measured 2026-10-08 on `ea3b5171` plus this
+#    change: `claims` accepted 464 baseline claims before, 138 after; the 326
+#    the store settles were pruned from `.kinemata-baseline.json`. The rest
+#    name paths that store does not hold (bare `box.yaml` leads) and stay
+#    accepted by date there.
 #
 # 6. external = true -- NOT SET, and this is a scope decision rather than a
 #    judgment. Turning it on reaches the network on every run, which an

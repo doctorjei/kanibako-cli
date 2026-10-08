@@ -11,3 +11,6 @@ dist/
 *.swp
 *.swo
 *~
+
+# Store built by scripts/build-claims-store.sh for `kinemata claims`
+/.claims-store
