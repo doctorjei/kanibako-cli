@@ -68,7 +68,7 @@ def _registered_ws(tmp_home, capsys) -> Path:
 
 #: (label, file to write, body, the key and the shape the refusal must name)
 #: ⭐ A SCALAR'S SHAPE IS ITS USER WORD WITH ITS ARTICLE — ``an integer`` / ``a boolean`` /
-#: ``a number``, never the class name a Python reader would recognise but a YAML author
+#: ``a number``, never the class name a Python reader would recognize but a YAML author
 #: never wrote.
 LAYER_TIER_CASES = (
     ("system.cache", "system", "cache", ["x"], "system.cache", "a list"),

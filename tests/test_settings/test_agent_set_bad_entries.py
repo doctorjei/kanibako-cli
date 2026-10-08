@@ -127,7 +127,7 @@ class TestALegitimateAgentFileStillSets:
 
         doc = load_doc(path)
         assert doc["self"]["model"] == "sonnet"
-        # Untouched neighbours: the write was sparse.
+        # Untouched neighbors: the write was sparse.
         assert doc["self"]["endpoint"] == "https://x"
         assert doc["self"]["env"] == {"EDITOR": "vim"}
 
@@ -234,7 +234,7 @@ class TestTheEditedKeyItselfIsNeverBlocked:
     def test_a_bad_entry_elsewhere_still_blocks_while_another_key_is_edited(
         self, agent_door, capsys,
     ):
-        """The exemption is narrow: it covers the edited entry only, not its neighbours."""
+        """The exemption is narrow: it covers the edited entry only, not its neighbors."""
         path = _write_agent(agent_door, {
             "self": {"model": {"x": 1}, "claude": {"env": {"FOO": "bar"}}},
         })

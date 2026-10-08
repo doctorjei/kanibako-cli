@@ -134,7 +134,7 @@ class TestCreateRefusesNamedBoxWorkspace:
         assert "already the workspace of named box 'extbox'" in capsys.readouterr().err
         assert _primary_boxes(std) == {}
 
-    def test_a_neighbour_path_is_not_refused(
+    def test_a_neighbor_path_is_not_refused(
         self, config_file, tmp_home, credentials_dir, capsys
     ):
         """The guard is the OWNING PATH, not the containing directory."""
@@ -142,10 +142,10 @@ class TestCreateRefusesNamedBoxWorkspace:
 
         _config, std = _std(config_file)
         _connected_member(tmp_home, std)
-        neighbour = tmp_home / "ext2"
-        neighbour.mkdir()
+        neighbor = tmp_home / "ext2"
+        neighbor.mkdir()
 
-        assert run_create(_create_args(neighbour)) == 0
+        assert run_create(_create_args(neighbor)) == 0
         assert "already the workspace of named box" not in capsys.readouterr().err
 
     def test_an_in_tree_member_is_not_refused(

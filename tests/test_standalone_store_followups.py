@@ -11,7 +11,7 @@ while the key is unset.  Three readers composed the leaf instead of resolving it
 
 ⚑ Every case here goes through a DOOR THAT EXISTS AT THE BASE (``cli.build_parser`` plus
 ``args.func``, ``import_standalone``, ``execute_lifecycle``), so a base run fails on an
-ASSERTION about behaviour rather than on an import of a name this change introduced.
+ASSERTION about behavior rather than on an import of a name this change introduced.
 
 ⚑ THE BAR FOR THE LAST TWO CLASSES IS DATA SAFETY, NOT AN EXIT CODE: each asserts what
 SURVIVES at the source and what is ABSENT from the copy.  A verb that returns 0 in all of

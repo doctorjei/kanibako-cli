@@ -1604,7 +1604,7 @@ class TestEffectiveRendersANodeTheWayAUserWritesIt:
     beside its ``binding_derivations`` derivation.
 
     ⚑ AND ONLY THE KEYS. A bind's ``src`` and ``dest``, and a pref's stored VALUE, are
-    DATA the user typed and must read back verbatim -- normalising them would print a
+    DATA the user typed and must read back verbatim -- normalizing them would print a
     path that no longer exists and contradict the ``env`` lines below, which render the
     same value through ``render_stored_scalar`` and keep the character. The fixture
     therefore puts ``℘`` inside a source path and inside a value, so a fix that reaches

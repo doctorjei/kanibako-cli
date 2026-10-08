@@ -227,7 +227,7 @@ class TestTheMembershipIsDerivedFromTheDeclaredDefault:
         assert refuses_null_box_scalar(dotted) is True
 
     def test_box_shell_is_not_refused_because_its_default_is_none(self):
-        """🛑 THE NEIGHBOUR THAT MUST KEEP WORKING: ``box.shell``'s declared ``<None>`` is
+        """🛑 THE NEIGHBOR THAT MUST KEEP WORKING: ``box.shell``'s declared ``<None>`` is
         a MEANING (auto-detect, spec §2b), not a gap — so the door stays silent and
         ``--null box.shell`` is still a legal write."""
         from kanibako.settings.config import refuses_null_box_scalar

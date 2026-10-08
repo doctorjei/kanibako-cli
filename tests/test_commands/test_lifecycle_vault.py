@@ -565,7 +565,7 @@ class TestNullArmAcrossTheLifecycle:
 
     ⚑ A null arm is a DECLARED value (spec §2a), so every verb here completes and the
     relocation creates nothing under the nulled arm.  Each case pins one place that
-    composes the per-box leaf: a null arm that is not recognised as null raises
+    composes the per-box leaf: a null arm that is not recognized as null raises
     ``TypeError`` (or deletes a sibling box's vault) instead of completing.
     """
 

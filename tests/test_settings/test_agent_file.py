@@ -1791,17 +1791,17 @@ class TestAStoredBoolReachesTheVerbUnrendered:
             tmp_path, "  model: true\n").state["model"]) == "true"
 
 
-class TestEveryNeighbourOfABoolIsUntouched:
-    """Only a real bool changes. Its neighbours — the values that merely LOOK like one —
+class TestEveryNeighborOfABoolIsUntouched:
+    """Only a real bool changes. Its neighbors — the values that merely LOOK like one —
     were already rendered correctly and must stay byte-identical.
 
     ⚑ THE STRING TRAP, pinned: a truthiness test would read ``"false"`` and ``0`` as
-    falsy and print ``false``'s neighbour as ``true``. Each row here is one value the
+    falsy and print ``false``'s neighbor as ``true``. Each row here is one value the
     widening must leave exactly as it found it.
     """
 
     ROWS = [
-        # (yaml, what `get` must print) — the ten stored spellings and their neighbours.
+        # (yaml, what `get` must print) — the ten stored spellings and their neighbors.
         ("true", "true"),
         ("false", "false"),
         ('"false"', "false"),
@@ -1859,7 +1859,7 @@ class TestTheLaunchStillReceivesAString:
             node="claude", path=p,
         )
         # `env` is a root TABLE, so it is not flat state and cannot ride the
-        # behaviour snapshot as an env variable — a bool in `state` is a BEHAVIOR
+        # behavior snapshot as an env variable — a bool in `state` is a BEHAVIOR
         # value, never an exported one.
         assert level.table == {"model": True}
         assert "FLAG_ON" not in level.table

@@ -2324,7 +2324,7 @@ class TestPreJournalWindowUndoesItsOwnWrites:
             f"  vault_ro: {outside}/vault_ro\n"
             f"  vault_rw: {outside}/vault_rw\n"
         )
-        (outside / "KEPT.txt").write_text("a neighbour's file\n")
+        (outside / "KEPT.txt").write_text("a neighbor's file\n")
         dirs_before = {p for p in _dirs(std.data, path, outside)}
 
         with pytest.MonkeyPatch.context() as mp:
@@ -2335,8 +2335,8 @@ class TestPreJournalWindowUndoesItsOwnWrites:
         assert _dirs(std.data, path, outside) == dirs_before
         assert not (outside / "vault_ro").exists()
         assert not (outside / "vault_rw").exists()
-        # The neighbour's file, and the root itself, are untouched.
-        assert (outside / "KEPT.txt").read_text() == "a neighbour's file\n"
+        # The neighbor's file, and the root itself, are untouched.
+        assert (outside / "KEPT.txt").read_text() == "a neighbor's file\n"
         assert path.is_dir()
         # The pre-existing root file is back to its own bytes, so the re-run reads
         # the user's settings rather than a rewritten one — and completes.
@@ -2353,7 +2353,7 @@ class TestWindowUndoSparesAWriteItDidNotMake:
     """⭐⭐⭐ THE GATE: an undo removes WHAT THIS CREATE MADE, and nothing else.
 
     The window undo once snapshotted whole trees and deleted the set difference, so
-    ANY path that appeared while the window was open went with it — a neighbouring
+    ANY path that appeared while the window was open went with it — a neighboring
     box's file, the user's own source tree.  These tests write into the trees the
     window passes over, at the moment the window is open, and assert the write
     survives; a single-writer run cannot see it, because with no second writer
@@ -2392,7 +2392,7 @@ class TestWindowUndoSparesAWriteItDidNotMake:
 
         return _entry_write
 
-    def test_a_primary_undo_spares_a_neighbouring_boxes_file(self, config_file,
+    def test_a_primary_undo_spares_a_neighboring_boxes_file(self, config_file,
                                                             tmp_home, credentials_dir):
         """⚑ PRIMARY: another box's home is not this create's to delete.
 
@@ -2402,9 +2402,9 @@ class TestWindowUndoSparesAWriteItDidNotMake:
         from kanibako.commands.box._parser import run_create
 
         std = self._std(config_file)
-        neighbour = std.boxes / "other"
-        (neighbour / "home").mkdir(parents=True)
-        (neighbour / "home" / "theirs.txt").write_text("the neighbour's\n")
+        neighbor = std.boxes / "other"
+        (neighbor / "home").mkdir(parents=True)
+        (neighbor / "home" / "theirs.txt").write_text("the neighbor's\n")
 
         with pytest.MonkeyPatch.context() as mp:
             _at_window_end(
@@ -2417,10 +2417,10 @@ class TestWindowUndoSparesAWriteItDidNotMake:
             with pytest.raises(_InterruptCreate):
                 run_create(_create_args(tmp_home / "project", no_vault=False))
 
-        assert (neighbour / "home" / "agent-wrote-this.txt").read_text() == (
+        assert (neighbor / "home" / "agent-wrote-this.txt").read_text() == (
             "written mid-window\n"
         ), "the undo deleted a concurrent write in ANOTHER box's home"
-        assert (neighbour / "home" / "theirs.txt").read_text() == "the neighbour's\n"
+        assert (neighbor / "home" / "theirs.txt").read_text() == "the neighbor's\n"
         # And this create's OWN leaf went, so the undo is not simply disabled.
         assert not (std.boxes / "project").exists()
 

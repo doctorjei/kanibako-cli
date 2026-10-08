@@ -12,7 +12,7 @@ allowed to delete it.
 
 ⚑ EVERY CASE HERE GOES THROUGH A DOOR THAT EXISTS AT THE BASE (``resolve_standalone_project``,
 ``box_metadata_dir``, ``clean.run``), so a base run fails on an ASSERTION about
-behaviour rather than on an import of a name this change introduced.
+behavior rather than on an import of a name this change introduced.
 """
 
 from __future__ import annotations
