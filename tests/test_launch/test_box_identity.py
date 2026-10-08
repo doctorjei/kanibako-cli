@@ -387,8 +387,8 @@ class TestValidateBoxName:
 
     def test_non_ascii_reason_names_the_character_and_the_allowed_set(self) -> None:
         assert box_identity.box_name_reason("café") == (
-            "box name must not contain 'é': only ASCII letters, digits,"
-            " '_', '-', and '.' are allowed")
+            "box name must not contain 'é'; box names must be ASCII letters, digits,"
+            " '_', '-', or '.': container names allow nothing else")
 
     def test_unprintable_character_is_named_by_codepoint(self) -> None:
         reason = box_identity.box_name_reason("a\u00a0b")

@@ -76,8 +76,8 @@ def _box_name_violation(name: str) -> str | None:
     for ch in name:
         if not _NAME_CHAR_RE.fullmatch(ch):
             shown = f"'{ch}'" if ch.isprintable() and not ch.isspace() else f"U+{ord(ch):04X}"
-            return (f"box name must not contain {shown}: only ASCII letters, digits,"
-                    " '_', '-', and '.' are allowed")
+            return (f"box name must not contain {shown}; box names must be ASCII letters,"
+                    " digits, '_', '-', or '.': container names allow nothing else")
 
     if name.startswith("-"):
         return "box name must not start with '-' (collides with CLI flags)"
