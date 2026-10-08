@@ -1914,7 +1914,7 @@ def _to_default(
             unwind.push(
                 lambda: _safe_register_membership(std, mint, old_ws)
             )
-    # Honored --name goes through the per-kind guard; else the auto-suffix path.
+    # Honored --name goes through the per-kind guard; else bare-arm or auto-suffix.
     if mint is not None:
         register_primary_box_name(
             std.primary_workset, mint, new_workspace,
@@ -1922,9 +1922,34 @@ def _to_default(
         )
         project_name = mint
     else:
-        project_name = assign_primary_box_name(
-            std.primary_workset, str(new_workspace), early=_early_scope(std, BoxMode.primary),
+        # ⚑⚑ moveprimaryname: bare-arm PRIMARY relocation — the source still holds
+        # its own name; the auto-suffix below would pick ``beta2`` while the source
+        # keeps ``beta``.  Free the source's name, re-register at the new path, and
+        # queue a re-register-on-unwind so a mid-op failure leaves ``name -> old path``
+        # intact (mirrors the FIX1 branch above).
+        own_name = (
+            _primary_source_own_name(state, std)
+            if state.mode == BoxMode.primary else None
         )
+        if own_name is not None:
+            old_ws = state.workspace_path
+            _safe_unregister(std, own_name)
+            unwind.push(
+                lambda: _safe_register_membership(std, own_name, old_ws)
+            )
+            register_primary_box_name(
+                std.primary_workset, own_name, new_workspace,
+                early=_early_scope(std, BoxMode.primary),
+            )
+            # _remove_old_metadata below unregisters state.name to drop the source's
+            # row; the new entry is at the SAME name — flag the reuse so teardown
+            # keeps the new entry intact.
+            preserved_name = own_name
+            project_name = own_name
+        else:
+            project_name = assign_primary_box_name(
+                std.primary_workset, str(new_workspace), early=_early_scope(std, BoxMode.primary),
+            )
     unwind.push(lambda: _safe_unregister(std, project_name))
     dst_metadata = std.boxes / project_name
 

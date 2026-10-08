@@ -60,6 +60,33 @@ class TestBoxMove:
         assert proj.project_hash == project_hash(str(dest.resolve()))
         assert "project" not in load_doc(proj.metadata_path / "box.yaml")
 
+    def test_bare_move_of_a_primary_keeps_its_name(self, config_file, tmp_home,
+                                                   credentials_dir, capsys):
+        """moveprimaryname: bare ``box move`` of a PRIMARY keeps the stored name."""
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        project_dir = tmp_home / "proj" / "beta"
+        project_dir.mkdir(parents=True)
+        (project_dir / "f.txt").write_text("data")
+        resolve_project(std, config, project_dir=str(project_dir), initialize=True)
+
+        dest = tmp_home / "elsewhere" / "beta"
+        rc = run_move(_move_args(project_dir, dest))
+        assert rc == 0, capsys.readouterr().err
+
+        out = capsys.readouterr().out
+        assert f"Moved 'beta' to {dest}" in out
+        assert "beta2" not in out
+        from kanibako.settings.paths import load_primary_boxes
+        boxes = load_primary_boxes(std.primary_workset,
+                                   early=_early_scope(std, BoxMode.primary))
+        assert boxes.get("beta") == str(dest)
+        assert "beta2" not in boxes
+
+        proj = resolve_project(std, config, project_dir=str(dest), initialize=False)
+        assert proj.name == "beta"
+        assert proj.project_path == dest.resolve()
+
     def test_move_requires_both_paths(self, config_file, tmp_home, credentials_dir):
         """move with a missing path returns an error (no cwd fallback)."""
         rc = run_move(_move_args(str(tmp_home / "dest"), None))
