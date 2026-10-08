@@ -642,6 +642,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **A refused `create` on a fresh install no longer leaves the first-run setup behind.** An invalid `--name`
   and the `$HOME` guard now refuse before setup writes `kanibako.cfg` and the data tree.
 
+- **The cures `box rm` prints for a box with a legacy name now work as printed.** A name the box-name rule no longer
+  allows, such as `my project`, reads as a path, so `box register 'my project'` and `box rm 'my project' --purge` did
+  not find the retained box. Both now fall back to it after every path lookup. Printed commands (`box register`,
+  `box rm --purge`, `rig prep`) now stand on their own lines instead of inside quotes that nested around a quoted name.
+
 - **Registering a standalone box again through a link drops its stale `deregistered` entry.** After `box rm <name>`
   and `box register <link>`, the old entry stayed: `box register <name>` refused, and `box rm <name> --purge` could
   delete the live box's metadata. Registration now drops a retained entry for the same directory, and both commands

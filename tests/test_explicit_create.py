@@ -1391,7 +1391,10 @@ class TestUnregisteredStandaloneRegisterHint:
         _config, std = _std(config_file)
         assert registry_store.standalone_name_for_root(std.registry, root) is None
 
-        found = re.search(r"run '(.*)' to address it by name from elsewhere\.", out, re.S)
+        # The cure is a WHOLE line: wrapped in prose quotes it nests them around
+        # the quoted root and no longer pastes.
+        assert "'kanibako box register" not in out, out
+        found = re.search(r"to address it by name from elsewhere, run:\n  (.*)$", out, re.M)
         assert found, f"no registration hint in {out!r}"
         argv = shlex.split(found.group(1))
         assert argv[:3] == ["kanibako", "box", "register"]

@@ -198,9 +198,9 @@ class TestTheRigPrepCureIsQuoted:
         printed = _printed(["rig", "add", "--name", name, "docker.io/library/alpine:3.19"])
 
         assert f"kanibako rig prep {shlex.quote(name)}" in printed
-        # The message wraps the cure in prose single quotes, which are not part
-        # of what a user copies, so the OPERAND is what lies inside them.
-        operand = re.search(r"kanibako rig prep (.+?)' to pull it", printed).group(1)
+        # The cure is a WHOLE line; prose quotes around it would nest.
+        assert "'kanibako rig" not in printed, printed
+        operand = re.search(r"^  kanibako rig prep (.+)$", printed, re.M).group(1)
         _assert_inert(f"kanibako rig prep {operand}", ["rig", "prep", name],
                       tmp_path / "paste")
 
