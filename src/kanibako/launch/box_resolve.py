@@ -178,7 +178,7 @@ def detect_box_mode(
     """
     # 1. Standalone by the root file's own stored ``workset.registry`` null (OVERRIDES everything).
     if stores_standalone_registry_null(project_dir):
-        return DetectionResult(BoxMode.standalone, project_dir.resolve())
+        return DetectionResult(BoxMode.standalone, Path(literal_path(project_dir)))
 
     # 2. Workset ownership from the per-workset registries.
     owned = _find_owning_box(project_dir, std, config)
@@ -234,7 +234,7 @@ def resolve_box_identity(
         # ⚑ Source from the DETECTED box root, NOT the passed-in *project_dir* —
         # the two diverge when the treewalk finds the marker at an ANCESTOR of a
         # subdir launch.  The orphan branch below mirrors this.
-        box_root = result.project_root.resolve()
+        box_root = result.project_root
         registered_name = registry_store.standalone_name_for_root(
             std.registry, box_root
         )
