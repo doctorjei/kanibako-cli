@@ -102,7 +102,7 @@ class TestWsNameSingleSourceDriftGuard:
         # The token channels derived IS meta.runtime.ws_name (single source) …
         assert floor["meta.runtime.ws_name"] == token
         # … and meta.workset.name anchors into it (not a divergeable literal).
-        assert floor["meta.workset.name"] == "@meta.runtime.ws_name"
+        assert floor["meta.workset.name"] == "{meta.runtime.ws_name}"
         return token
 
     def test_primary(self, primary_proj, std):

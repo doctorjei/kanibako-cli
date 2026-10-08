@@ -1132,7 +1132,7 @@ class TestValueAgentIdentity:
         path_floor = meta_agent_path_floor(PROBE_AGENT)
         name_value = self._identity(PROBE_AGENT)[f"meta.agent.{PROBE_AGENT}.name"]
         assert path_floor[f"meta.agent.{PROBE_AGENT}.path"] == (
-            f"@config.agents/{name_value}"
+            f"{{config.agents}}/{name_value}"
         )
 
         from kanibako.agent_ref import CANONICAL_SEP
@@ -1141,14 +1141,14 @@ class TestValueAgentIdentity:
         node_path_floor = meta_agent_path_floor(node)
         node_name_value = self._identity(node)[f"meta.agent.{node}.name"]
         assert node_path_floor[f"meta.agent.{node}.path"] == (
-            f"@config.agents/{node_name_value}"
+            f"{{config.agents}}/{node_name_value}"
         )
 
     def test_the_set_time_path_floor_carries_the_shell_literal(self):
         """The SET-TIME snapshot's arm, ``meta_agent_path_floor`` — a second producer of
         ``meta.agent.shell.path`` beside the launch identity floor the view reads."""
         assert meta_agent_path_floor("shell") == {
-            "meta.agent.shell.path": "@config.agents/shell",
+            "meta.agent.shell.path": "{config.agents}/shell",
         }
 
     def test_an_absent_agent_name_materializes_no_identity(self):

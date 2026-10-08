@@ -277,19 +277,19 @@ class TestB2bWorksetAnchors:
                               "share": "/ws/ch/share"},
         )
         # Every anchor is the spec's self-resolving @-ref FORMULA (spec §2c).
-        assert floor["workset.boxes"] == "@meta.workset.path/boxes"
-        assert floor["workset.vault_ro"] == "@meta.workset.path/vault/ro"
-        assert floor["workset.vault_rw"] == "@meta.workset.path/vault/rw"
-        assert floor["workset.logs"] == "@meta.workset.path/logs"
+        assert floor["workset.boxes"] == "{meta.workset.path}/boxes"
+        assert floor["workset.vault_ro"] == "{meta.workset.path}/vault/ro"
+        assert floor["workset.vault_rw"] == "{meta.workset.path}/vault/rw"
+        assert floor["workset.logs"] == "{meta.workset.path}/logs"
         # The RO box root: primary/named carry the per-box name leaf.
-        assert floor["meta.box.path"] == "@workset.boxes/@meta.box.name"
+        assert floor["meta.box.path"] == "{workset.boxes}/{meta.box.name}"
         assert floor["workset.channels.common"] == "/ws/ch/common"
         # ⚑ NO construct-time literals here — every anchor is a FORMULA. The
         # retired ``meta.box.helper_log`` was the last one; the helper-log bind
         # now spells itself ``{workset.logs}/{meta.box.name}.jsonl`` (PHASE R).
         assert "meta.box.helper_log" not in floor
         assert all(
-            not isinstance(v, str) or v.startswith("@")
+            not isinstance(v, str) or v.startswith("{")
             for k, v in floor.items()
             if k.startswith("meta.box.") or k.startswith("workset.vault")
         ), floor
@@ -317,14 +317,14 @@ class TestB2bWorksetAnchors:
         )
         # Standalone roots its degenerate workset at the project dir: the box store
         # is the box_data/ marker dir, and the logs live inside the box root itself.
-        assert floor["workset.boxes"] == "@meta.workset.path/box_data"
-        assert floor["workset.logs"] == "@workset.boxes"
+        assert floor["workset.boxes"] == "{meta.workset.path}/box_data"
+        assert floor["workset.logs"] == "{workset.boxes}"
         # The vault roots are UNIFORM with primary/named (only the BIND differs).
-        assert floor["workset.vault_ro"] == "@meta.workset.path/vault/ro"
-        assert floor["workset.vault_rw"] == "@meta.workset.path/vault/rw"
+        assert floor["workset.vault_ro"] == "{meta.workset.path}/vault/ro"
+        assert floor["workset.vault_rw"] == "{meta.workset.path}/vault/rw"
         # The EMPTY LEAF: a BARE whole-value ref — workset.boxes IS the box root, so
         # there is no join, hence no trailing separator and no empty path segment.
-        assert floor["meta.box.path"] == "@workset.boxes"
+        assert floor["meta.box.path"] == "{workset.boxes}"
         assert not floor["meta.box.path"].endswith("/")
         # No invented resolved-literal anchors remain — not for home/vault, and
         # (since PHASE R made the spec's spelling expressible) not for the log

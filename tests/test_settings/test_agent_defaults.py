@@ -468,7 +468,7 @@ class TestLayoutSingleSource:
         ref = agent_category_root_ref("claude", "common")
         anchor = meta_agent_path_floor("claude")["meta.agent.claude.path"]
         assert ref == "@meta.agent.claude.path/common"
-        assert anchor == "@config.agents/claude"
+        assert anchor == "{config.agents}/claude"
         # The ref is the anchor plus the category dirname — nothing else prepends.
         assert ref == f"@meta.agent.claude.path/{agent_category_dirname('common')}"
 
@@ -488,7 +488,7 @@ class TestLayoutSingleSource:
             f"@meta.agent.{node}.path/common"
         )
         anchor = meta_agent_path_floor(node)[f"meta.agent.{node}.path"]
-        assert anchor == "@config.agents/navigator+claude"
+        assert anchor == "{config.agents}/navigator+claude"
         assert store_dirname(node) == "navigator+claude"
 
     @pytest.mark.parametrize("category", ["common", "caches", "seeded"])
