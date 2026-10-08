@@ -867,15 +867,9 @@ _BRACES = re.compile(r"^(?P<head>[^{}]*)\{(?P<alts>[^{}]+)\}(?P<tail>[^{}]*)$")
 def expand_braces(key: str) -> list[str]:
     """The keys a spec row declares -- more than one where it uses brace notation.
 
-    ⚑ A brace group that PARSES AS A REFERENCE is NOT enumeration notation, and
-    since braced-refs step 0 the two collide: §2d writes a dest as
-    `agent.claude.caches[{system.cache}/tweakcc]`, the old notation matched the
-    group as a one-alternative list, and the key came back
-    `…caches[system.cache/tweakcc]` -- the reference dropped and the dest left as
-    a BARE RELATIVE path, the very spelling [R147] refuses. A reference is left
-    exactly as written. Measured across the whole 1.8.0 spec there is no
-    comma-enumeration left in any row key, so this costs nothing today; the
-    notation is kept because §2d still owns the spelling.
+    ⚑ A group that PARSES AS A REFERENCE is not enumeration. §2d writes a dest as
+    `caches[{system.cache}/tweakcc]`; read as a one-alternative list it leaves the
+    dest BARE RELATIVE. No comma-enumeration is left in a 1.8.0 row key.
     """
     match = _BRACES.match(key)
     if match is None:
@@ -1054,12 +1048,11 @@ def classify_spec_cell(key: str, cell: str) -> str:
       - an UNQUOTED cell carrying whitespace, which is every REALIZATION
         (``--model <val>``, ``tier REALIZATION ...``) and every
         ``(none in descriptor) · host_prep=...`` line;
-      - a value that IS a reference -- the old ``@``-prefixed spelling or the braced
-        ``{a.b}`` one (a store-relative reference; ``canon``'s arm is dynamic and
-        lives in ``core_defaults.canon_default_categories``, as
-        ``pseudo_tier_defaults``' own docstring records). ``{}`` is NOT one of
-        these: it parses to no name and stays the ABSENCE cell below, and a
-        ``{$VAR}`` cell is a variable the floor carries verbatim.
+      - a value that IS a reference -- old ``@``-prefixed or braced ``{a.b}`` (a
+        store-relative reference; ``canon``'s arm is dynamic and lives in
+        ``core_defaults.canon_default_categories``, as ``pseudo_tier_defaults``'
+        own docstring records). ``{}`` parses to no name and stays the ABSENCE
+        cell below.
       - a value starting ``(``, or a ``<...>`` that is not ``<None>``: the
         parenthesized host source of a dest-keyed entry, or a ``<runtime-probed …>``
         placeholder.
@@ -1085,12 +1078,9 @@ def classify_spec_cell(key: str, cell: str) -> str:
     if cell.startswith(("@", "(")):
         return NOT_EXPRESSIBLE
     if cell.startswith("{"):
-        # A braced REFERENCE names a key whose value is delivered somewhere else, so
-        # the fence cannot hold the floor to a literal -- the same reason the old
-        # `@`-prefixed cell was never STATED. Two cells must NOT be swept up: `{}`
-        # parses to nothing and is the ABSENCE cell, and `{$TERM}` is a VARIABLE the
-        # floor carries verbatim (it is produced as exactly that string), so only
-        # kind == "ref" moves here.
+        # A braced REFERENCE is delivered elsewhere, so no literal floor -- why the
+        # old `@` cell was never STATED. Only kind == "ref" moves: `{}` stays the
+        # ABSENCE cell.
         from kanibako.settings.settings_resolve import match_braced
 
         braced = match_braced(cell, 0)
