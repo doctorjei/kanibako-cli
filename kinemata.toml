@@ -448,13 +448,7 @@ machinery = [
 # nothing to match -- the same published limit already recorded against
 # `keyspace` above. Every row here is a row `check` never looks at.
 #
-# ⚑ `clause_field = "spec"` IS MEASURED, not copied from `keyspace` above. The
-# records under `categories:` are heterogeneous -- `scopes` is a list and
-# `scopes_spec` is a string, so neither has a field to read -- and the question
-# was whether the loader errors on them. It does not: `_clauses_of` returns an
-# empty tuple for any record that is not a mapping. Measured 2026-09-14 at
-# `71c327e3` through the loader itself: all nine families read their `spec`
-# value, the two above read `()`. The linkage is kept for the nine that have one.
+# ⚑ `clause_field = "spec"`: every one of the nine families carries a `spec` value.
 [[registry]]
 name = "categories"
 kind = "yaml-mapping"
@@ -515,14 +509,11 @@ clause_field = "spec"
 # CATCHES: a family that is bind-shaped on one side and not the other -- the
 # `manifest == code` half of `TestTheCategoriesBlockShape`.
 #
-# 🛑 THE GUARD IS `cli_set`, AND THE ALTERNATIVES ARE MEASURED, NOT ARGUED. The
-# `categories:` section holds two NON-FAMILY records, `scopes` (a list) and
-# `scopes_spec` (a string), which the mapping adapter yields as
-# `extra = {"value": ...}`; `cli_set` is present on all nine families and on
-# neither of those, so guarding on its VALUE partitions exactly the families --
-# the same reasoning, and the same cell, the `[[shape]]` block on `categories`
-# already rests on. It is a THIRD, independent cell: the claim this view makes is
-# about the terminal tails, so the guard reads neither side of its own comparison.
+# 🛑 THE GUARD IS `cli_set`: present on all nine families and `false` on exactly
+# the seven bind-shaped ones -- the same cell the `[[shape]]` block on
+# `categories` rests on. It is a THIRD, independent cell: the claim this view
+# makes is about the terminal tails, so the guard reads neither side of its own
+# comparison.
 #
 # ⚑ UPSTREAM PROPOSED A PROJECT-SUPPLIED PREDICATE HERE AND IT IS DECLINED, by
 # running both rather than by reading them. Their `bind_shaped(entry)` is
@@ -532,14 +523,6 @@ clause_field = "spec"
 # predicate reports `7 declared, 7 produced, in agreement` and `cli_set` reports
 # the identical line, over the identical seven. The declarative guard is kept
 # because it needs no import and therefore cannot refuse the config.
-# ⚑ AND IT SIDESTEPS A ROUGH EDGE UPSTREAM FLAGGED AND WE AGREE IS REAL: a
-# `yaml-mapping` row that is not a mapping arrives as `extra = {"value": <raw>}`,
-# and a mapping row carrying its own `value:` field is spread in with `value`
-# among the others -- every family here carries `value:` -- so the two shapes are
-# indistinguishable by that key and their predicate has to discriminate on the
-# FIELD SET instead. That is a heuristic standing in for a type test, exactly as
-# they say; it happens to be right on this data and nothing makes it stay right.
-# Not filed as a defect upstream by us either: the guard below does not need it.
 [[registry]]
 name = "bind-shaped"
 kind = "yaml-mapping"
@@ -2657,17 +2640,8 @@ where = { holds = "kinemata_views:declares_no_floor_value" }
 # BLOCKS. The identifier group excludes `=` so the greedy split lands in the one
 # place the printed line puts it.
 #
-# ⚑ EXPECTED RED, AND THE RED IS THE FINDING RATHER THAN A FAULT IN THIS TABLE.
-# Measured 2026-09-14 at `71c327e3`, kinemata `a365474`: 0 undeclared, 2
-# unproduced -- `scopes` and `scopes_spec`. RE-MEASURED the same day at
-# `366afce0`, kinemata `00044f2`: unchanged -- 11 declared, 9 produced, in
-# agreement, the same 2 accepted by date. Those two are METADATA sitting
-# inside the table of categories rather than categories themselves, so the
-# manifest declares eleven keys under `categories:` where the code declares nine
-# families. Whether that shape is right is a manifest-and-spec question and is
-# NOT settled here: filtering the two out of the registry above would make the
-# check agree with itself and report nothing, which is the same as not having
-# it. They are accepted BY DATE in `.kinemata-baseline.json`.
+# ⚑ `categories:` holds the nine families and nothing else; the cascade tokens
+# live in the manifest's own `category_scopes:` section, so both sides are nine.
 [[parity]]
 registry = "categories"
 command = ["{python}", "-c", """
@@ -2698,10 +2672,6 @@ authority = "declared"
 
 # Measured 2026-09-15, kinemata `0.1.0`:
 #   `# bind-shaped: 7 declared, 7 produced, in agreement.`  rc=0
-# NEGATIVE CONTROL, same table with `where = { absent = "parametric" }` on the
-# registry: rc=1, `FAIL: 2 disagreement(s)`, naming `scopes` and `scopes_spec`
-# as "declared, produced by nothing" -- the two non-family records, which is the
-# group the `cli_set` guard exists to exclude. The comparison discriminates.
 # ⚑ THE UPSTREAM PREDICATE WAS RUN TOO and reports the identical line over the
 # identical seven; the registry note above records why the guard is kept instead.
 # ⚑ THIS IS THE `manifest == code` HALF OF `TestTheCategoriesBlockShape` ONLY.
@@ -5517,19 +5487,11 @@ registry = "keyspace"
 # added without `dest_keyed`, or a parametric one that acquires a flag it cannot
 # honor. A flag is one line in a record nobody reads until a launch does.
 #
-# 🛑 THE GUARD IS `cli_set`, AND THE OBVIOUS ALTERNATIVE IS WRONG. The
-# `categories:` section also holds TWO NON-FAMILY records -- `scopes` (a list) and
-# `scopes_spec` (a string) -- which the mapping adapter yields as `extra =
-# {"value": ...}`. They carry no flags at all, so `when = { absent = "parametric" }`
-# sweeps both into the bind-shaped group: measured, that guard selects 9 and
-# reports `scopes` and `scopes_spec` as violations, rc=1. `cli_set` is present on
-# the nine families and on neither of the two, so guarding on its VALUE partitions
-# exactly the families -- 7 on `false`, 2 on `true`.
+# 🛑 THE GUARD IS `cli_set`: present on all nine families, 7 on `false`, 2 on
+# `true`, so guarding on its VALUE partitions exactly the bind-shaped seven.
 # ⚑ AND THE GUARD MUST NOT READ WHAT THE CLAIM ASSERTS, or the rule checks a row
 # against itself. `cli_set` is a third, independent cell; `terminal_key` would not
-# be. (The same two records are the KNOWN, accepted red in the `[[parity]]` table
-# below -- 2 unproduced. They are metadata inside the table of categories, and
-# whether that shape is right is a manifest question settled in neither place.)
+# be.
 #
 # ⚑ FOUR RULES FOR TWO FACTS, because one rule carries one claim: asserting both
 # flags on both sides is 2 x 2. Naming them separately is also what makes a

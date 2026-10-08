@@ -150,8 +150,8 @@ def _manifest_rows() -> dict[str, str]:
 def _manifest_tier_categories() -> dict[str, str | None]:
     """The category families the manifest declares AT the ``agent.default`` scope.
 
-    ⚑ NOT AN ALLOWLIST — read out of the manifest's own ``categories:`` table, which
-    carries the family names and the ``scopes`` they exist at.  A category is how the
+    ⚑ NOT AN ALLOWLIST — read out of the manifest's own ``categories:`` table and the
+    ``category_scopes:`` tokens they exist at.  A category is how the
     registry declares ``agent.default.bindings.ro`` and its siblings; they are real rows
     of the Default tier and simply live in a different table from the scalars, so a
     spec-side lookup that consulted only ``keys:`` would report them missing.  The value
@@ -159,12 +159,12 @@ def _manifest_tier_categories() -> dict[str, str | None]:
     """
     table = manifest_doc()["categories"]
     scope = TIER.rstrip(".")
-    if scope not in table["scopes"]:
+    if scope not in manifest_doc()["category_scopes"]["tokens"]:
         return {}
     return {
         f"{TIER}{name}": (_canonical(row["default"]) if "default" in row else None)
         for name, row in table.items()
-        if isinstance(row, dict) and "value" in row
+        if "value" in row
     }
 
 

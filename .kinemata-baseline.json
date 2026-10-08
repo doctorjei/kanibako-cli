@@ -3248,20 +3248,6 @@
       "text": "| general (system store) | `<data>/global/canon/handbook/general/SYS_GENERAL.md` | `\u2026/general/directives/SYS_GENERAL.md`"
     },
     {
-      "registry": "parity:categories:unproduced",
-      "entry": "scopes",
-      "antipattern": "",
-      "path": "categories",
-      "text": "scopes"
-    },
-    {
-      "registry": "parity:categories:unproduced",
-      "entry": "scopes_spec",
-      "antipattern": "",
-      "path": "categories",
-      "text": "scopes_spec"
-    },
-    {
       "registry": "shape:keyspace:per-owner-default-reaches-anchor",
       "entry": "meta.box.container",
       "antipattern": "",
