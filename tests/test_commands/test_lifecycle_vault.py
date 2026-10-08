@@ -212,13 +212,17 @@ class TestVaultCarry:
         assert not state.vault_rw.exists()
 
     def test_standalone_rename_in_place_keeps_vault(self, env):
-        """Reuse-in-place edge: a rename at its own root reuses the vault arms."""
+        """Reuse-in-place edge: a re-establish at its own root reuses the vault arms.
+
+        Driven by the accepted leaf no-op — a standalone box can no longer be
+        renamed through a door (ruling 2026-10-08).
+        """
         config, std, tmp_home = env
         pdir = _make_standalone(env)
         state = resolve_lifecycle_target(str(pdir), std, config)
         seed = _seed_vault(state)
         new = execute_lifecycle(
-            state, TargetSpec(location=INPLACE, ownership="standalone", name="sa2"),
+            state, TargetSpec(location=INPLACE, ownership="standalone", name="sa"),
             std, config, confirm=_conf_yes(),
         )
         assert new.mode == BoxMode.standalone
