@@ -25,11 +25,13 @@ def standalone_root(registry: Path, box_name: str) -> str | None
 def register_standalone(registry: Path, box_name: str, root: Path) -> None
 def unregister_standalone(registry: Path, box_name: str) -> None
 def standalone_name_for_root(registry: Path, root: Path) -> str | None
+def standalone_name_for_same_dir(registry: Path, root: Path) -> str | None
 def load_deregistered(registry: Path) -> dict[str, dict]
 def register_deregistered(registry: Path, box_name: str, *, kind: str, workspace: str | None, metadata: str, image: str | None=None, deregistered_at: str | None=None) -> None
 def unregister_deregistered(registry: Path, box_name: str) -> bool
 def lookup_deregistered(registry: Path, box_name: str) -> dict | None
 def list_deregistered(registry: Path) -> dict[str, dict]
 def _drop_case_twin(entries: dict, box_name: str) -> None
+def _same_directory(a: str, b: str) -> bool
 def _metadata_definitively_gone(path: str) -> bool
 ```
