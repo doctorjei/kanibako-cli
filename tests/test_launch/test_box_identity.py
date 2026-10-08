@@ -387,12 +387,24 @@ class TestValidateBoxName:
 
     def test_non_ascii_reason_names_the_character_and_the_allowed_set(self) -> None:
         assert box_identity.box_name_reason("café") == (
-            "box name must not contain 'é'; box names must be ASCII letters, digits,"
+            "box name must not contain U+00E9; box names must be ASCII letters, digits,"
             " '_', '-', or '.': container names allow nothing else")
 
     def test_unprintable_character_is_named_by_codepoint(self) -> None:
         reason = box_identity.box_name_reason("a\u00a0b")
         assert reason is not None and "U+00A0" in reason
+
+    @pytest.mark.parametrize(("name", "shown"), [
+        ("\u212aelvin", "U+212A"),   # Kelvin sign, prints as 'K'
+        ("a\u0301b", "U+0301"),      # lone combining acute accent
+    ])
+    def test_non_ascii_is_shown_by_codepoint_never_quoted(self, name: str, shown: str) -> None:
+        reason = box_identity.box_name_reason(name)
+        assert reason is not None
+        assert reason.startswith(f"box name must not contain {shown};")
+
+    def test_printable_ascii_is_quoted(self) -> None:
+        assert box_identity.box_name_reason("a/b").startswith("box name must not contain '/';")
 
     # --- control chars ----------------------------------------------------
 
@@ -457,7 +469,7 @@ class TestValidateBoxName:
     # --- uppercase is NOT blocked: a name is validated as the user typed it -----
 
     def test_uppercase_is_valid(self) -> None:
-        # Spec §0: --name is validated AS TYPED, and the blocklist never covered case.
+        # Spec §0: --name is validated AS TYPED, and the allowlist admits either case.
         # This asserted the FOLDED spelling while box create still folded on entry,
         # which left the real question — is `MyApp` a legal box name? — unasked.
         assert box_identity.is_valid_box_name("MyApp") is True

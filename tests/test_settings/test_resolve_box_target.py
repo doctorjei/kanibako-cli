@@ -390,7 +390,7 @@ class TestNonConformingNameFlagged:
     def test_nonconforming_name_resolves_with_warning(
         self, std, config, tmp_home, caplog,
     ):
-        # Register a standalone box whose stored NAME violates the blocklist
+        # Register a standalone box whose stored NAME violates the allowlist
         # (e.g. an interior space) — simulates a box created before the rule.
         root = tmp_home / "legacy"
         root.mkdir()

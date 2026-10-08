@@ -75,7 +75,8 @@ def _box_name_violation(name: str) -> str | None:
 
     for ch in name:
         if not _NAME_CHAR_RE.fullmatch(ch):
-            shown = f"'{ch}'" if ch.isprintable() and not ch.isspace() else f"U+{ord(ch):04X}"
+            # Only printable ASCII is quoted: a lookalike or a combining mark would hide.
+            shown = f"'{ch}'" if " " < ch < "\x7f" else f"U+{ord(ch):04X}"
             return (f"box name must not contain {shown}; box names must be ASCII letters,"
                     " digits, '_', '-', or '.': container names allow nothing else")
 
