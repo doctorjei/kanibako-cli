@@ -1097,9 +1097,13 @@ class TestValueAgentIdentity:
             "@meta.agent.<agent>.path/agent.yaml"
         )
         assert _value("meta.agent.default.name") == "default"
-        assert _value("meta.agent.default.path") == "@config.agents/default"
+        assert _value("meta.agent.default.path") == (
+            "@config.agents/@meta.agent.default.name"
+        )
         assert _value("meta.agent.shell.auth.share_support") is False
-        assert _value("meta.agent.shell.path") == "@config.agents/shell"
+        assert _value("meta.agent.shell.path") == (
+            "@config.agents/@meta.agent.shell.name"
+        )
         assert _value("meta.agent.shell.name") == "shell"
         assert _value("meta.agent.shell.settings") == (
             "@meta.agent.shell.path/agent.yaml"

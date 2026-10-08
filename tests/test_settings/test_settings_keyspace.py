@@ -597,7 +597,7 @@ def test_a_pseudo_agent_keeps_its_meta_rows_and_the_categories(name):
 
 
 def test_the_default_fence_declares_its_path():
-    """§2d ``meta.agent.default.path | "@config.agents/default"`` — a fence row."""
+    """§2d ``meta.agent.default.path`` (through ``@meta.agent.default.name``) — a fence row."""
     assert valid("meta.agent.default.path")
 
 

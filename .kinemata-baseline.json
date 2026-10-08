@@ -3263,20 +3263,6 @@
     },
     {
       "registry": "shape:keyspace:per-owner-default-reaches-anchor",
-      "entry": "meta.agent.default.path",
-      "antipattern": "",
-      "path": "keyspace",
-      "text": "per-owner-default-reaches-anchor: meta.agent.default.path"
-    },
-    {
-      "registry": "shape:keyspace:per-owner-default-reaches-anchor",
-      "entry": "meta.agent.shell.path",
-      "antipattern": "",
-      "path": "keyspace",
-      "text": "per-owner-default-reaches-anchor: meta.agent.shell.path"
-    },
-    {
-      "registry": "shape:keyspace:per-owner-default-reaches-anchor",
       "entry": "meta.box.container",
       "antipattern": "",
       "path": "keyspace",

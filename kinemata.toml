@@ -4416,6 +4416,10 @@ authority = "declared"
 #     escape an allow-list filter let through at rc=0): rc=1, `FAIL: 2
 #     disagreement(s)`, `meta.agent.default.exec` and `meta.agent.shell.exec`:
 #     `produced, declared by nothing`
+# ⚑ `translate` UNROLLS THE NAME HOP, `agent-path-anchor`'s shape: the manifest
+# spells the two fixed paths through `@meta.agent.<node>.name`, as the spec does
+# (keyspec §2d), and the floor emits the node's name in place. The name rows are
+# compared in this same view, so the hop is checked, not assumed.
 [[parity]]
 registry = "agent-identity-literals"
 command = ["{python}", "-c", """
@@ -4437,6 +4441,7 @@ extract = '(?m)^kanibako-agent-identity: ([^\s=]+)=(.+)$'
 field = "value"
 format = "json"
 authority = "declared"
+translate = { pattern = '^@config\.agents/@meta\.agent\.(default|shell)\.name$', replacement = '@config.agents/\1' }
 
 # ⚑ THE MATERIALIZER RUN ON AN EMPTY STORE: its fail-closed arm writes all three
 # keys, and the oracle prints every leaf it wrote -- no name filter. A leaf whose

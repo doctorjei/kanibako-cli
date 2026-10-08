@@ -2242,7 +2242,7 @@ keys:
     origin: construct_time
     type: path
     owner: agent
-    value: "@config.agents/default"
+    value: "@config.agents/@meta.agent.default.name"
     spec: "§2d"
   ## ---- meta.agent.shell.* — the plain-shell identity anchors (§2d fence) ----
   ## Concrete literals, because the parametric meta.agent.<agent>.* rows below are
@@ -2265,7 +2265,7 @@ keys:
     origin: construct_time
     type: path
     owner: agent
-    value: "@config.agents/shell"
+    value: "@config.agents/@meta.agent.shell.name"
     note: "META so agent/workset/box cascade CANNOT override it — the twin formula
            ({config.agents}/{meta.agent.<agent>.name}) with name = shell."
     spec: "§2d (shell fence)"
