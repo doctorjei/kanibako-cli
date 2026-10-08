@@ -28,6 +28,58 @@ class TestContainerRuntime:
         assert rt.cmd == "/usr/bin/podman"
 
 
+class TestListRunningAnchor:
+    def test_default_running_argv_has_no_dash_a(self):
+        from unittest.mock import MagicMock, patch
+        rt = ContainerRuntime(command="/usr/bin/podman")
+        with patch("kanibako.runtime.container.subprocess.run") as m:
+            m.return_value = MagicMock(returncode=0, stdout="")
+            rt.list_running()
+            argv = m.call_args.args[0]
+        assert "-a" not in argv
+        assert "--all" not in argv
+        assert any("name=kb-" in a for a in argv)
+
+    def test_include_stopped_argv_has_dash_a(self):
+        from unittest.mock import MagicMock, patch
+        rt = ContainerRuntime(command="/usr/bin/podman")
+        with patch("kanibako.runtime.container.subprocess.run") as m:
+            m.return_value = MagicMock(returncode=0, stdout="")
+            rt.list_running(include_stopped=True)
+            argv = m.call_args.args[0]
+        assert "-a" in argv
+        assert any("name=kb-" in a for a in argv)
+
+    def test_post_filter_anchors_the_prefix(self):
+        from unittest.mock import MagicMock, patch
+        rt = ContainerRuntime(command="/usr/bin/podman")
+        # The regex-shape ``--filter name=kb-`` would also match ``mykb-cache``;
+        # the post-filter ``startswith("kb-")`` is the gate that rejects it.
+        fake_ps = (
+            "kb-aabbccdd\timg:latest\tUp 5 minutes\n"
+            "mykb-cache\timg:latest\tExited (0) 1 hour ago\n"
+            "kb-11223344\timg:latest\tExited (0) 2 hours ago\n"
+            "totally-other\timg:latest\tUp 1 minute\n"
+        )
+        with patch("kanibako.runtime.container.subprocess.run") as m:
+            m.return_value = MagicMock(returncode=0, stdout=fake_ps)
+            result = rt.list_running(include_stopped=True)
+        names = [r[0] for r in result]
+        assert names == ["kb-aabbccdd", "kb-11223344"]
+        assert "mykb-cache" not in names
+        assert "totally-other" not in names
+
+    def test_post_filter_also_runs_in_running_only(self):
+        from unittest.mock import MagicMock, patch
+        rt = ContainerRuntime(command="/usr/bin/podman")
+        fake_ps = "mykb-cache\timg:latest\tUp 1 minute\nkb-real\timg:latest\tUp 2 minutes\n"
+        with patch("kanibako.runtime.container.subprocess.run") as m:
+            m.return_value = MagicMock(returncode=0, stdout=fake_ps)
+            result = rt.list_running()
+        names = [r[0] for r in result]
+        assert names == ["kb-real"]
+
+
 class TestGetLocalDigest:
     def test_success_podman_format(self):
         """Podman returns a list; extract digest from RepoDigests."""

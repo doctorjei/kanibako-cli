@@ -560,22 +560,25 @@ class ContainerRuntime:
 
     def list_running(
         self, prefix: str = CONTAINER_NAME_PREFIX,
+        *, include_stopped: bool = False,
     ) -> list[tuple[str, str, str]]:
-        """Return running containers matching *prefix* as (name, image, status) tuples."""
-        result = subprocess.run(
-            [
-                self.cmd, "ps",
-                "--filter", f"name={prefix}",
-                "--format", "{{.Names}}\t{{.Image}}\t{{.Status}}",
-            ],
-            capture_output=True,
-            text=True,
-        )
+        """Return containers matching *prefix* (anchored; ``-a`` if *include_stopped*)."""
+        cmd = [self.cmd, "ps"]
+        if include_stopped:
+            cmd.append("-a")
+        cmd.extend([
+            "--filter", f"name={prefix}",
+            "--format", "{{.Names}}\t{{.Image}}\t{{.Status}}",
+        ])
+        result = subprocess.run(cmd, capture_output=True, text=True)
         containers: list[tuple[str, str, str]] = []
         for line in result.stdout.splitlines():
             parts = line.split("\t", 2)
-            if len(parts) == 3:
-                containers.append((parts[0], parts[1], parts[2]))
+            if len(parts) != 3:
+                continue
+            if not parts[0].startswith(prefix):
+                continue
+            containers.append((parts[0], parts[1], parts[2]))
         return containers
 
     # ------------------------------------------------------------------
