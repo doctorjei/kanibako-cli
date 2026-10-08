@@ -2320,7 +2320,7 @@ def _warn_standalone_shadowed(std: StandardPaths, value: str) -> None:
     from kanibako.project import registry_store
 
     root = registry_store.standalone_root(std.registry, value)
-    if root is not None and Path(root).resolve() != Path(value).resolve():
+    if root is not None and literal_path(root) != literal_path(value):
         logger.warning(WARN_SA_SHADOWED_BY_PATH, value, Path(value).resolve(), root)
 
 
@@ -2462,7 +2462,7 @@ def resolve_standalone_project(std: StandardPaths, config: BootstrapConfig,
                                register: bool = True) -> ProjectPaths:
     """Resolve (and optionally initialize) per-project paths for standalone mode."""
     raw = project_dir or os.getcwd()
-    root = Path(raw).resolve()
+    root = Path(literal_path(raw))
 
     if not root.is_dir():
         raise ProjectError(ERR_PROJECT_NO_PATH % root)

@@ -279,7 +279,7 @@ def resolve_name(
     shadow = registry_store.standalone_root(registry, name)
     if (
         kind == "project" and shadow is not None
-        and Path(shadow).resolve() != Path(path).resolve()
+        and literal_path(shadow) != literal_path(path)
     ):
         logger.warning(
             "bare name '%s' resolved to the box at %s; the registered standalone "

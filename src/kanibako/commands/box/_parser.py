@@ -72,7 +72,8 @@ from kanibako.agent_ref import GENERAL_SLOT, harness_of, parse_agent_address, wi
 from kanibako.targets import resolve_target
 from kanibako.utils import (
     WORKSET_SEGMENT_PRIMARY, WORKSET_SEGMENT_STANDALONE,
-    container_name_for, container_name_for_box_name, short_hash, write_project_gitignore,
+    container_name_for, container_name_for_box_name, literal_path, logical_cwd,
+    short_hash, write_project_gitignore,
 )
 
 # ``box duplicate --to`` takes the mode enum's own tokens, never a hand-kept spelling list.
@@ -1131,7 +1132,9 @@ def run_create(args: argparse.Namespace) -> int:
     standalone_name = (getattr(args, "name", None) or "") if standalone_register else ""
 
     # $HOME guard: a home project must be BOTH standalone and an explicit --allow-home.
-    effective_path = Path(project_dir).resolve() if project_dir else Path.cwd().resolve()
+    effective_path = (
+        Path(literal_path(project_dir)) if project_dir else Path(logical_cwd())
+    )
     if effective_path == Path.home().resolve():
         if not args.standalone:
             print(
@@ -2149,7 +2152,7 @@ def _resolve_standalone_target(
     candidate = Path(target)
     if candidate.exists():
         try:
-            detection = detect_project_mode(candidate.resolve(), std, config)
+            detection = detect_project_mode(candidate, std, config)
         except LegacyWorksetIdentityError:
             # ⚑ THE ONE EXCEPTION THE BLANKET MISS MUST NOT EAT: an un-migrated workset
             # root in the walk is a NAMED thing to fix, not a path that failed to be a box.
@@ -2348,7 +2351,7 @@ def _readopt_deregistered(std, name: str, entry: dict) -> int:
     metadata = entry.get("metadata")
 
     if kind == "standalone":
-        root = Path(str(metadata)).resolve() if metadata else None
+        root = Path(str(metadata)) if metadata else None
         # Self-heal: the in-tree marker is gone → nothing to restore, drop the entry.
         if root is None or not stores_standalone_registry_null(root):
             registry_store.unregister_deregistered(std.registry, name)
@@ -2360,7 +2363,7 @@ def _readopt_deregistered(std, name: str, entry: dict) -> int:
             return 1
         # Conflict: an ACTIVE standalone box at a DIFFERENT root — refuse, never clobber.
         other = registry_store.standalone_root(std.registry, name)  # ⚑ case-blind (§0)
-        if other is not None and Path(other).resolve() != root:
+        if other is not None and other != str(root):
             print(
                 f"Error: an active standalone box already owns the name '{name}' "
                 f"({other}); refusing to readopt over it. Purge or move it first.",
@@ -2474,7 +2477,7 @@ def run_register(args: argparse.Namespace) -> int:
     #    ⚑ REUSE ``import_standalone``: it is already index-only + seed-free.
     candidate = Path(target)
     if candidate.is_dir():
-        root = candidate.resolve()
+        root = candidate
         if stores_standalone_registry_null(root):
             already = registry_store.standalone_name_for_root(std.registry, root)
             if already is not None:
