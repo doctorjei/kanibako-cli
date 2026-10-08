@@ -158,7 +158,7 @@ from kanibako.settings.settings_categories import (
     refuse_non_scalar_family_value,
 )
 from kanibako.settings.settings_keyspace import (
-    display_segments, display_store_path, is_var_table, key_validity, shown_key,
+    display_segments, display_store_path, entry_label, is_var_table, key_validity, shown_key,
 )
 from kanibako.settings.keystore import ReservedKeyError
 from kanibako.settings.settings_prefs import PREF_ROOT
@@ -666,13 +666,29 @@ def _command_tier_files(
     return sys_p, agent_p, ws_p, box_p
 
 
+def _dotted_match(node: object, dotted: str) -> "tuple[tuple[str, ...], object] | None":
+    """``(segments, value)`` the joined *dotted* name spells in a settings VIEW, or ``None``.
+
+    ⚑ Matched against the view's own keys: a dest-keyed entry such as ``@box.env`` is one
+    segment that holds dots.
+    """
+    if not isinstance(node, dict):
+        return None
+    for key, value in node.items():
+        seg = str(key)
+        if dotted == seg:
+            return (seg,), value
+        if dotted.startswith(seg + "."):
+            rest = _dotted_match(value, dotted[len(seg) + 1:])
+            if rest is not None:
+                return (seg, *rest[0]), rest[1]
+    return None
+
+
 def _dotted_in(node: object, dotted: str) -> object:
-    """The value at *dotted* inside a settings VIEW, or ``None``."""
-    for seg in dotted.split("."):
-        if not isinstance(node, dict) or seg not in node:
-            return None
-        node = node[seg]
-    return node
+    """The value at *dotted* inside a settings VIEW, or ``None`` (:func:`_dotted_match`)."""
+    found = _dotted_match(node, dotted)
+    return None if found is None else found[1]
 
 
 class _BadEntries(NamedTuple):
@@ -791,8 +807,10 @@ def _cascade_bad_entries(
                        if _dotted_in(view, dotted) is not None), None)
         if holder is None:
             continue
-        stored = render_stored_scalar(_dotted_in(views[holder], dotted))
-        marked.setdefault(paths[holder], []).append(f"{dotted} = {stored}: {reason}")
+        segs, value = _dotted_match(views[holder], dotted) or ((dotted,), None)
+        stored = render_stored_scalar(value)
+        shown = entry_label(".".join(segs[:-1]), segs[-1]) if len(segs) > 1 else dotted
+        marked.setdefault(paths[holder], []).append(f"{shown} = {stored}: {reason}")
         names.append(dotted)
     return _BadEntries(
         grouped, names, lambda dotted: _first_dotted(views, dotted), ill_typed,
