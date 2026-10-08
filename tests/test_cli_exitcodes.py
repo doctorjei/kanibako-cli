@@ -23,6 +23,7 @@ class TestMainExitCodes:
             pytest.raises(SystemExit) as exc_info,
         ):
             args = MagicMock()
+            args.precheck = None
             args.command = "start"
             args.func.side_effect = UserCanceled("nope")
             mock_parser.return_value.parse_args.return_value = args
@@ -39,6 +40,7 @@ class TestMainExitCodes:
             pytest.raises(SystemExit) as exc_info,
         ):
             args = MagicMock()
+            args.precheck = None
             args.command = "start"
             args.func.side_effect = KanibakoError("boom")
             mock_parser.return_value.parse_args.return_value = args
@@ -55,6 +57,7 @@ class TestMainExitCodes:
             pytest.raises(SystemExit) as exc_info,
         ):
             args = MagicMock()
+            args.precheck = None
             args.command = "start"
             args.func.side_effect = KeyboardInterrupt()
             mock_parser.return_value.parse_args.return_value = args
@@ -71,6 +74,7 @@ class TestMainExitCodes:
             pytest.raises(SystemExit) as exc_info,
         ):
             args = MagicMock()
+            args.precheck = None
             args.command = "start"
             args.func.return_value = 0
             mock_parser.return_value.parse_args.return_value = args
@@ -87,6 +91,7 @@ class TestMainExitCodes:
             pytest.raises(SystemExit) as exc_info,
         ):
             args = MagicMock()
+            args.precheck = None
             args.command = "start"
             args.func.return_value = 42
             mock_parser.return_value.parse_args.return_value = args
@@ -107,6 +112,7 @@ class TestMainExitCodes:
             mock_bp.return_value = parser
 
             with_cmd = MagicMock()
+            with_cmd.precheck = None
             with_cmd.command = "start"
             with_cmd.func.return_value = 0
             parser.parse_args.return_value = with_cmd
@@ -187,6 +193,7 @@ class TestLazyInit:
             pytest.raises(SystemExit) as exc_info,
         ):
             args = MagicMock()
+            args.precheck = None
             args.command = "box"
             args.box_command = "list"
             mock_bp.return_value.parse_args.return_value = args
@@ -222,6 +229,7 @@ class TestLazyInit:
             pytest.raises(SystemExit) as exc_info,
         ):
             args = MagicMock()
+            args.precheck = None
             args.command = "box"
             args.box_command = "list"
             mock_bp.return_value.parse_args.return_value = args
@@ -241,6 +249,7 @@ class TestLazyInit:
             pytest.raises(SystemExit) as exc_info,
         ):
             args = MagicMock()
+            args.precheck = None
             args.command = "box"
             args.box_command = "list"
             args.func.return_value = 0
@@ -274,6 +283,7 @@ class TestLazyInit:
             pytest.raises(SystemExit) as exc_info,
         ):
             args = MagicMock()
+            args.precheck = None
             args.command = "box"
             args.box_command = "list"
             mock_bp.return_value.parse_args.return_value = args
@@ -304,6 +314,7 @@ class TestLazyInit:
             pytest.raises(SystemExit) as exc_info,
         ):
             args = MagicMock()
+            args.precheck = None
             args.command = "box"
             args.box_command = "list"
             mock_bp.return_value.parse_args.return_value = args
@@ -323,6 +334,7 @@ class TestLazyInit:
             pytest.raises(SystemExit) as exc_info,
         ):
             args = MagicMock()
+            args.precheck = None
             args.command = "box"
             args.box_command = "list"
             args.func.return_value = 0
@@ -359,6 +371,7 @@ class TestLazyInit:
             pytest.raises(SystemExit) as exc_info,
         ):
             args = MagicMock()
+            args.precheck = None
             args.command = "box"
             args.box_command = "list"
             mock_bp.return_value.parse_args.return_value = args
@@ -377,6 +390,7 @@ class TestLazyInit:
             pytest.raises(SystemExit) as exc_info,
         ):
             args = MagicMock()
+            args.precheck = None
             args.command = "agent"
             args.func.return_value = 0
             mock_bp.return_value.parse_args.return_value = args
@@ -394,6 +408,7 @@ class TestLazyInit:
             pytest.raises(SystemExit) as exc_info,
         ):
             args = MagicMock()
+            args.precheck = None
             args.command = "box"
             args.box_command = "helper"
             args.func.return_value = 0

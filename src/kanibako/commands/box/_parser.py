@@ -185,7 +185,7 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
         help="Finish an interrupted 'create' on this path instead of starting a "
              "new box; it keeps the name and settings the first attempt chose",
     )
-    create_p.set_defaults(func=run_create)
+    create_p.set_defaults(func=run_create, precheck=precheck_create)
 
     # kanibako box list (default behavior)
     list_p = box_sub.add_parser(
@@ -1109,33 +1109,16 @@ def _recovered_standalone_name(std, proj, supplied: str) -> str:
 _STANDALONE_CREATE_EXEMPT_KEYS: frozenset[str] = frozenset({"registry", "template"})
 
 
-def run_create(args: argparse.Namespace) -> int:
-    """Create a new kanibako project (replaces ``kanibako init``)."""
-    config_file = user_config_file()
-    config = load_config(config_file)
-    std = load_std_paths(config)
-
-    enable_vault = not getattr(args, "no_vault", False)
-    project_dir = args.path
-
+def precheck_create(args: argparse.Namespace) -> int | None:
+    """Settings-free ``create`` refusals, run before first-run setup; 1 if refused."""
     # ⚑ --name is VALIDATED AS TYPED and stored that way (spec §0, ⚑ NAMING RULES):
-    # fold to compare, never to store.  The collision checks below compare case-blind,
+    # fold to compare, never to store.  The collision checks compare case-blind,
     # so the case the user typed costs them nothing.
     if getattr(args, "name", None):
         validate_box_name(args.name)
 
-    # ⚑ §D4a: a STANDALONE box is indexed only on ``--register``; the default is an
-    # unregistered, independent box, which is what lets it move freely.  The registry
-    # is the by-name-from-elsewhere index and nothing else, so without it ``--name``
-    # has nothing to name and is ignored (with it, ``--name`` sources the entry).
-    standalone_register = bool(getattr(args, "register", False))
-    standalone_name = (getattr(args, "name", None) or "") if standalone_register else ""
-
     # $HOME guard: a home project must be BOTH standalone and an explicit --allow-home.
-    effective_path = (
-        Path(literal_path(project_dir)) if project_dir else Path(logical_cwd())
-    )
-    if effective_path.resolve() == Path.home().resolve():
+    if _create_target(args).resolve() == Path.home().resolve():
         if not args.standalone:
             print(
                 "Error: Refusing to create a project at $HOME.\n"
@@ -1154,6 +1137,32 @@ def run_create(args: argparse.Namespace) -> int:
                 file=sys.stderr,
             )
             return 1
+    return None
+
+
+def _create_target(args: argparse.Namespace) -> Path:
+    return Path(literal_path(args.path)) if args.path else Path(logical_cwd())
+
+
+def run_create(args: argparse.Namespace) -> int:
+    """Create a new kanibako project (replaces ``kanibako init``)."""
+    refused = precheck_create(args)
+    if refused is not None:
+        return refused
+    config_file = user_config_file()
+    config = load_config(config_file)
+    std = load_std_paths(config)
+
+    enable_vault = not getattr(args, "no_vault", False)
+    project_dir = args.path
+
+    # ⚑ §D4a: a STANDALONE box is indexed only on ``--register``; the default is an
+    # unregistered, independent box, which is what lets it move freely.  The registry
+    # is the by-name-from-elsewhere index and nothing else, so without it ``--name``
+    # has nothing to name and is ignored (with it, ``--name`` sources the entry).
+    standalone_register = bool(getattr(args, "register", False))
+    standalone_name = (getattr(args, "name", None) or "") if standalone_register else ""
+    effective_path = _create_target(args)
 
     # ⚑ BEFORE ANY WRITE
     if args.standalone:

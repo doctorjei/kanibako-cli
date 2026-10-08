@@ -255,6 +255,7 @@ def test_a_packaging_defect_reaches_the_user_as_an_error_line_not_a_traceback(
         pytest.raises(SystemExit) as exc_info,
     ):
         args = MagicMock()
+        args.precheck = None
         args.command = "agent"
         args.agent_command = "info"
         # The adapter is the only seam: below it the production read runs for real.
@@ -297,6 +298,7 @@ def test_the_access_tier_defect_reaches_the_user_as_an_error_line_not_a_tracebac
         pytest.raises(SystemExit) as exc_info,
     ):
         args = MagicMock()
+        args.precheck = None
         args.command = "start"
         # The adapter is the only seam: below it the production read runs for real.
         args.func = lambda _ns: assembly.resolve_access_tier(None)
