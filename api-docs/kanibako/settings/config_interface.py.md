@@ -34,6 +34,7 @@ def _set_time_anchor(anchor_ref: str, *, scope_anchors: 'dict[str, object]', age
 def _bare_relative_path_error(canonical: str, value: 'str | None', *, display_key: str, route_key: str, config_path: Path, system_settings_path: 'Path | None', command_scope: 'ConfigLevel | None', target: 'LaunchInputs | None', agent_path: 'Path | None', agent_name: str, agents_root: 'Path | None') -> 'str | None'
 def _unusable_store_root_error(canonical: str, value: 'str | None') -> 'str | None'
 def _command_tier_files(cmd: 'Path | None', command_scope: 'ConfigLevel | None', *, system_path: 'Path | None', agent_path: 'Path | None', workset_path: 'Path | None', box_path: 'Path | None') -> 'tuple[Path | None, Path | None, Path | None, Path | None]'
+def _dotted_match(node: object, dotted: str) -> 'tuple[tuple[str, ...], object] | None'
 def _dotted_in(node: object, dotted: str) -> object
 def _cascade_bad_entries(cmd: 'Path | None', command_scope: 'ConfigLevel | None', *, system_path: 'Path | None', workset_path: 'Path | None', box_path: 'Path | None', edited: 'str | None'=None, defects: 'Callable[[], Mapping[str, str]] | None'=None) -> _BadEntries
 def _first_dotted(views: 'list[dict]', dotted: str) -> object

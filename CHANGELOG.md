@@ -638,6 +638,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`set` now refuses a stored binding whose destination does not resolve**, as `show --effective` does. With
+  `box: {bindings: {rw: {"@box.env": ["/h"]}}}` in a file the command reads, `system set`, `workset set`, `box set`
+  and `agent set` wrote at rc 0; they now name the entry, write nothing, and accept `--force`.
+
 - **A binding whose source or destination `@`-references a map or a number is now a named refusal**, not a
   bare `AssertionError` traceback. A settings file storing `box: {bindings: {rw: {/c: ["@box.env"]}}}`
   crashed every `set`; the error now names the entry and says the reference resolved to a map, not a path.

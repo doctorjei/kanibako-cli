@@ -158,3 +158,53 @@ def test_box_get_warns_on_a_genuinely_missing_ref(cli):
     proc = cli("box", "get", "b1", "box.env.Z")
     assert proc.returncode == 0, proc.stderr
     assert "do not resolve" in proc.stderr and "box.env.X" in proc.stderr, proc.stderr
+
+
+_NS_DEST = 'box:\n  bindings:\n    rw:\n      "@box.env": ["/h"]\n'
+_NS_REASON = "'box.env' is a namespace, not a key"
+
+
+@pytest.mark.parametrize("stored, entry, reason", [
+    (_NS_DEST, "box.bindings.rw[@box.env] = ['/h']", _NS_REASON),
+    ('box:\n  bindings:\n    rw:\n      "@box.env.FOO": ["/h"]\n',
+     "box.bindings.rw[@box.env.FOO] = ['/h']", "dangling @-reference '@box.env.FOO'"),
+    ('box:\n  env:\n    FOO: null\n  bindings:\n    rw:\n      "@box.env.FOO": ["/h"]\n',
+     "box.bindings.rw[@box.env.FOO] = ['/h']", "references a present-None config key"),
+], ids=["namespace", "absent", "present-none"])
+def test_an_unresolvable_bind_destination_refuses_an_unrelated_set(cli, stored, entry, reason):
+    """A destination key holds dots, so the lenient mark's joined name must be matched against
+    the file's own keys. Red when the scan splits it on every dot: the mark is dropped, rc 0."""
+    path = _system_file(cli)
+    path.write_text("system:\n  agent: shell\n" + stored)
+    before = path.read_bytes()
+    assert cli("system", "show", "--effective").returncode == 1
+    proc = cli("system", "set", "system.agent=goose")
+    assert proc.returncode == 1, proc.stderr
+    assert entry in proc.stderr and reason in proc.stderr, proc.stderr
+    assert path.read_bytes() == before
+
+
+def test_the_workset_box_and_agent_doors_refuse_an_unresolvable_destination(cli):
+    """The same scan serves every ``set`` door that reads a settings file."""
+    assert cli("workset", "create", "ws1").returncode == 0
+    ws_file = cli.home / "ws1" / "workset.yaml"
+    ws_file.write_text(_NS_DEST)
+    before = ws_file.read_bytes()
+    proc = cli("workset", "set", "ws1", "workset.vault_rw=/tmp/x")
+    assert proc.returncode == 1 and _NS_REASON in proc.stderr, proc.stderr
+    assert ws_file.read_bytes() == before
+
+    box_file = _box_file(cli)
+    box_file.write_text(_NS_DEST)
+    before = box_file.read_bytes()
+    proc = cli("box", "set", "b1", "box.shell=bash")
+    assert proc.returncode == 1 and "box.bindings.rw[@box.env]" in proc.stderr, proc.stderr
+    assert box_file.read_bytes() == before
+
+    box_file.write_text("box:\n  shell: zsh\n")
+    _system_file(cli).write_text("system:\n  agent: shell\n" + _NS_DEST)
+    agent_file = cli.home / ".local/share/kanibako/agents/shell/agent.yaml"
+    before = agent_file.read_bytes()
+    proc = cli("agent", "set", "shell", "model=y")
+    assert proc.returncode == 1 and _NS_REASON in proc.stderr, proc.stderr
+    assert agent_file.read_bytes() == before
