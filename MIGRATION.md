@@ -7044,8 +7044,8 @@ finds one and a member connected inside a working set's tree. `workset connect` 
 the path's last component, not its link target's.
 
 A standalone box follows the same rule: its identity is the path it was created or registered at, as given. One
-registered through a link before this release holds the resolved path, and from the link kanibako refuses to import it
-under its own name a second time. Work from the resolved path, or register it again at the link:
+registered through a link before this release holds the resolved path, and from any other link kanibako refuses to
+import it a second time and names the path to work from. Work from the resolved path, or register it again at the link:
 `kanibako box rm <name>`, then `kanibako box register <link>`. Nothing falls back to the resolved spelling.
 
 **`box convert` of a box whose vault directory is a symlink.** The converted box's vault is now a link, either to the

@@ -3,8 +3,7 @@
 A standalone box at ``/data/proj`` reached through ``/home/alias`` (a symlink)
 is found by literal path: ``box info /home/alias`` answers for the box at
 ``/home/alias``, the source file is the link, the path-as-given is the
-identity.  A second standalone box at a different link to the same
-target is its own box (no shadowing).
+identity.  A second link to a registered standalone root is refused ([R188]).
 
 No backward-compat test for pre-1.8.0 boxes that registered the
 RESOLVED path — the brief retracted the dual-match lookup; 1.8.0 is a
@@ -57,7 +56,7 @@ class TestAStandaloneReachedThroughALinkIsFoundByLiteralPath:
         real.mkdir(parents=True)
         link = tmp_home / "alias"
         link.symlink_to(real)
-        _standalone(env, real)
+        _standalone(env, link)
 
         sub = link / "src" / "nested"
         sub.mkdir(parents=True)
@@ -67,29 +66,30 @@ class TestAStandaloneReachedThroughALinkIsFoundByLiteralPath:
         assert det.mode is BoxMode.standalone
         assert det.project_root == link
 
-    def test_a_second_link_to_the_same_target_is_its_own_box(
+    def test_a_second_link_to_a_registered_root_is_refused(
             self, config_file, tmp_home, credentials_dir):
+        """[R188]: in standalone mode a second link to one root is refused, not a second box."""
+        import pytest
+
+        from kanibako.project import registry_store
+        from kanibako.project.import_reconcile import ImportConflictError
+
         config = load_config(config_file)
         std = load_std_paths(config)
         env = (config, std, tmp_home)
         real = tmp_home / "data" / "proj"
         real.mkdir(parents=True)
-        first = tmp_home / "first"
         second = tmp_home / "second"
-        first.symlink_to(real)
         second.symlink_to(real)
         _standalone(env, real)
-        _standalone(env, first)
+        before = registry_store.load_standalone(std.registry)
+        assert list(before.values()) == [str(real)]
 
-        # Detection at the SECOND link yields the second, not the first.
-        det = box_resolve.detect_box_mode(second, std, config)
-        assert det is not None
-        assert det.mode is BoxMode.standalone
-        assert det.project_root == second
-        # The first link is still a different box (its own entry).
-        det_first = box_resolve.detect_box_mode(first, std, config)
-        assert det_first is not None
-        assert det_first.project_root == first
+        from kanibako.settings.paths import detect_project_mode
+        with pytest.raises(ImportConflictError) as exc:
+            detect_project_mode(second, std, config)
+        assert f"Work from {real}." in str(exc.value)
+        assert registry_store.load_standalone(std.registry) == before
 
 
 # ---------------------------------------------------------------------------
@@ -210,3 +210,111 @@ class TestTheHomeGuardComparesResolvedPaths:
         monkeypatch.setenv("HOME", str(linkhome))
         assert run_create(_create_args(linkhome, register=False)) == 1
         assert not (linkhome / "box_data").exists()
+
+
+# ---------------------------------------------------------------------------
+# Re-register through a link: the stale ``deregistered:`` row goes with it
+# ---------------------------------------------------------------------------
+
+def _rm_args(target, **over):
+    import argparse
+    ns = argparse.Namespace(target=str(target), box=None, purge=False, force=False)
+    for k, v in over.items():
+        setattr(ns, k, v)
+    return ns
+
+
+def _register(target) -> int:
+    import argparse
+
+    from kanibako.commands.box._parser import run_register
+    return run_register(argparse.Namespace(target=str(target), box=None))
+
+
+def _deregistered_box(config_file, tmp_home, monkeypatch, link_leaf: str):
+    """A standalone box created at ``<tmp>/real/proj``, then ``rm``'d; a link to it at
+    ``<tmp>/<link_leaf>``.  Returns ``(std, name, real, link)``."""
+    from kanibako.commands.box._parser import run_create, run_rm
+    from kanibako.project import registry_store
+
+    std = load_std_paths(load_config(config_file))
+    real = tmp_home / "real" / "proj"
+    real.mkdir(parents=True)
+    assert run_create(_create_args(real)) == 0
+    (name,) = _standalone_entries(std)
+    assert run_rm(_rm_args(name)) == 0
+    assert name in registry_store.load_deregistered(std.registry)
+    link = tmp_home / link_leaf
+    link.symlink_to(real)
+    _enter(monkeypatch, tmp_home)
+    return std, name, real, link
+
+
+class TestReRegisterThroughALink:
+    def test_register_through_a_link_drops_the_stale_row(
+            self, config_file, tmp_home, credentials_dir, monkeypatch, capsys):
+        from kanibako.project import registry_store
+
+        std, name, _real, link = _deregistered_box(
+            config_file, tmp_home, monkeypatch, "proj")
+        assert _register(link) == 0
+        assert _standalone_entries(std) == {name: str(link)}
+        assert registry_store.load_deregistered(std.registry) == {}
+        capsys.readouterr()
+        # ``register <name>`` no longer meets a stale row and its "Purge" advice.
+        assert _register(name) == 0
+        out = capsys.readouterr()
+        assert "Purge" not in out.err
+        assert f"already registered (standalone box at {link})" in out.out
+
+    def test_purge_by_a_stale_row_never_deletes_the_live_box(
+            self, config_file, tmp_home, credentials_dir, monkeypatch, capsys):
+        """A row parked before this fix: the purge refuses and drops only the row."""
+        from kanibako.commands.box._parser import run_rm
+        from kanibako.project import registry_store
+
+        std, name, real, link = _deregistered_box(
+            config_file, tmp_home, monkeypatch, "elsewhere")
+        stale = registry_store.lookup_deregistered(std.registry, name)
+        assert _register(link) == 0
+        (live,) = _standalone_entries(std)
+        assert live != name
+        registry_store.save_section(std.registry, "deregistered", {name: stale})
+        capsys.readouterr()
+
+        assert run_rm(_rm_args(name, purge=True, force=True)) == 1
+        assert "not purging" in capsys.readouterr().err
+        assert (real / "box_data").is_dir()
+        assert registry_store.load_deregistered(std.registry) == {}
+        assert _standalone_entries(std) == {live: str(link)}
+
+    def test_register_by_a_stale_row_drops_only_the_row(
+            self, config_file, tmp_home, credentials_dir, monkeypatch, capsys):
+        from kanibako.project import registry_store
+
+        std, name, _real, link = _deregistered_box(
+            config_file, tmp_home, monkeypatch, "elsewhere")
+        stale = registry_store.lookup_deregistered(std.registry, name)
+        assert _register(link) == 0
+        (live,) = _standalone_entries(std)
+        registry_store.save_section(std.registry, "deregistered", {name: stale})
+        capsys.readouterr()
+
+        assert _register(name) == 0
+        assert "dropped its stale deregistered entry" in capsys.readouterr().out
+        assert registry_store.load_deregistered(std.registry) == {}
+        assert _standalone_entries(std) == {live: str(link)}
+
+    def test_a_second_link_is_refused_with_the_path_to_work_from(
+            self, config_file, tmp_home, credentials_dir, monkeypatch, capsys):
+        std, _name, real, link = _deregistered_box(
+            config_file, tmp_home, monkeypatch, "proj")
+        assert _register(real) == 0
+        before = _standalone_entries(std)
+        capsys.readouterr()
+
+        assert _register(link) == 1
+        err = capsys.readouterr().err
+        assert f"Work from {real}." in err
+        assert "relocate" not in err
+        assert _standalone_entries(std) == before

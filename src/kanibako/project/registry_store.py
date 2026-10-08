@@ -154,6 +154,15 @@ def register_standalone(registry: Path, box_name: str, root: Path) -> None:
         _drop_case_twin(entries, box_name)
         entries[box_name] = str(root)
         save_section(registry, "standalone", entries)
+        # ⚑ A ``deregistered:`` row for this directory is stale once it is active
+        # again, and a purge by that row would delete the live box's metadata.
+        parked = load_deregistered(registry)
+        stale = [n for n, e in parked.items() if e.get("kind") == "standalone"
+                 and e.get("metadata") and _same_directory(str(e["metadata"]), str(root))]
+        if stale:
+            for n in stale:
+                del parked[n]
+            save_section(registry, "deregistered", parked)
 
 
 def unregister_standalone(registry: Path, box_name: str) -> None:
@@ -174,6 +183,32 @@ def standalone_name_for_root(registry: Path, root: Path) -> str | None:
     target = str(root)
     for name, root_str in load_standalone(registry).items():
         if root_str == target:
+            return name
+    return None
+
+
+def _same_directory(a: str, b: str) -> bool:
+    """True when *a* and *b* name one directory on disk; ``False`` if either is unreadable.
+
+    ⚑ A SAFETY test, never an identity lookup ([R188]): identity stays literal.
+    """
+    import os
+
+    if a == b:
+        return True
+    try:
+        return os.path.samefile(a, b)
+    except OSError:
+        return False
+
+
+def standalone_name_for_same_dir(registry: Path, root: Path) -> str | None:
+    """Return the registered standalone box whose root is *root*'s directory, any spelling."""
+    exact = standalone_name_for_root(registry, root)
+    if exact is not None:
+        return exact
+    for name, root_str in load_standalone(registry).items():
+        if _same_directory(root_str, str(root)):
             return name
     return None
 

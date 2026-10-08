@@ -2068,7 +2068,7 @@ def _purge_deregistered(std, name: str, entry: dict, args: argparse.Namespace) -
     # ⚑ I4 STALE-ENTRY guard: if an ACTIVE box now owns this metadata path, purging by
     # the stale entry would delete a LIVE box's home.  Refuse, and drop the stale entry.
     if kind == "standalone":
-        active_owner = registry_store.standalone_name_for_root(
+        active_owner = registry_store.standalone_name_for_same_dir(
             std.registry, Path(str(metadata)),
         ) if metadata else None
     else:
@@ -2361,6 +2361,16 @@ def _readopt_deregistered(std, name: str, entry: dict) -> int:
                 file=sys.stderr,
             )
             return 1
+        # Stale: the directory is active again under some spelling — drop only the row.
+        owner = registry_store.standalone_name_for_same_dir(std.registry, root)
+        if owner is not None:
+            registry_store.unregister_deregistered(std.registry, name)
+            print(
+                f"'{name}' is already registered as standalone box '{owner}' at "
+                f"{registry_store.standalone_root(std.registry, owner)}; dropped "
+                "its stale deregistered entry."
+            )
+            return 0
         # Conflict: an ACTIVE standalone box at a DIFFERENT root — refuse, never clobber.
         other = registry_store.standalone_root(std.registry, name)  # ⚑ case-blind (§0)
         if other is not None and other != str(root):
