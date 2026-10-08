@@ -23,11 +23,13 @@ lays out the store.
 
 The store is built in a fresh temp directory and .claims-store links to it,
 because a store built under a box's workspace path (/home/agent/workspace)
-collides with that box's own workspace binding. Idempotent: the previous store and link are removed and
-rebuilt on every run. A .claims-store link that resolves anywhere but a
-kanibako-claims-store.* directory under the temp root is refused (exit 2) and
-left alone. The link is gitignored, and every kinemata scan skips
-it.
+collides with that box's own workspace binding. Idempotent: the previous store
+and link are removed and rebuilt on every run. The previous store is deleted
+only if it carries the marker file this script writes into every store it
+makes. Otherwise the run refuses (exit 2) and touches nothing: a link to a
+directory without the marker, a dangling link outside the temp root, or a
+.claims-store that is not a link at all. The link is gitignored, and every
+kinemata scan skips it.
 
 Environment:
   PYTHON  interpreter with kanibako importable (default: python3).
@@ -51,28 +53,38 @@ python=${PYTHON:-python3}
 # box binds its workspace, and `create` refuses a store there: its cache
 # binding would sit inside that workspace binding. A temp directory builds the
 # same store in a box and in CI.
-# The old link's target is deleted only if it resolves to a store this script
-# made: a kanibako-claims-store.* directory directly under the temp root. A
-# link anywhere else was not made here, so the run refuses and touches nothing.
+# The old store is deleted only with proof this script made it: the marker
+# file written into every store right after `mktemp -d`. A name match is not
+# proof, since anyone can make a directory with that name. The script only ever
+# makes .claims-store as a link, so anything else there is the user's. With no
+# proof, the run refuses and touches nothing.
+marker=.kanibako-claims-store
+refuse() {
+  echo "build-claims-store: refusing: $store $1, not a store this script built" >&2
+  exit 2
+}
 tmproot=$(readlink -f "${TMPDIR:-/tmp}")
 if [ -L "$store" ]; then
   old=$(readlink -f "$store" || true)
-  case "$old" in
-    "$tmproot"/kanibako-claims-store.*)
-      if [ "$(dirname "$old")" != "$tmproot" ]; then
-        echo "build-claims-store: refusing: $store links to $old, not a store this script built" >&2
-        exit 2
-      fi
-      rm -rf "$old" ;;
-    *)
-      echo "build-claims-store: refusing: $store links to ${old:-$(readlink "$store")}, not a store this script built" >&2
-      exit 2 ;;
-  esac
+  if [ -n "$old" ] && [ -e "$old" ]; then
+    if [ ! -d "$old" ] || [ -L "$old/$marker" ] || [ ! -f "$old/$marker" ]; then
+      refuse "links to $old, which has no $marker marker"
+    fi
+    rm -rf "$old"
+  else
+    # A dangling link holds nothing, but one pointing outside the temp root
+    # was not made here.
+    case "$old" in
+      "$tmproot"/kanibako-claims-store.*) ;;
+      *) refuse "links to ${old:-$(readlink "$store")}" ;;
+    esac
+  fi
   rm -f "$store"
 elif [ -e "$store" ]; then
-  rm -rf "$store"
+  refuse "is not a link"
 fi
 target=$(mktemp -d "${TMPDIR:-/tmp}/kanibako-claims-store.XXXXXX")
+: >"$target/$marker"
 ln -s "$target" "$store"
 store=$target
 mkdir -p "$store/home" "$store/projects" \
