@@ -963,27 +963,6 @@
       "antipattern": "",
       "path": "keyspace",
       "text": "per-owner-default-reaches-anchor: meta.box.container"
-    },
-    {
-      "registry": "store-layout",
-      "entry": "LOGS_PATH",
-      "antipattern": "logs",
-      "path": "src/kanibako/commands/start.py",
-      "text": "[runtime.cmd, \"logs\", \"--tail\", \"50\", name],"
-    },
-    {
-      "registry": "store-layout",
-      "entry": "LOGS_PATH",
-      "antipattern": "logs",
-      "path": "src/kanibako/settings/config_keys.py",
-      "text": "\"workset.logs\": ((\"workset\",), \"logs\"),"
-    },
-    {
-      "registry": "store-layout",
-      "entry": "LOGS_PATH",
-      "antipattern": "logs",
-      "path": "src/kanibako/settings/settings_keyspace.py",
-      "text": "\"workspaces\", \"boxes\", \"logs\", \"registry\", \"template\", \"canon\","
     }
   ]
 }
