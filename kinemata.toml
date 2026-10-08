@@ -1152,9 +1152,11 @@ kind = "code-patterns"
 #
 # 🛑 EACH ENTRY IS BROADER THAN THE TEST IT COMES FROM, and deliberately so:
 # kinemata scans the whole tree and `home` is an ALLOWLIST, where the tests name
-# a handful of files to scan and assert absence there. There is no way to say
-# "fires only inside these three files". Every entry below therefore bans the
-# spelling EVERYWHERE except its `home`, which is the stronger claim. Where that
+# a handful of files to scan and assert absence there. `only` can say "fires
+# only inside these files", but it is per registry, so it would narrow every
+# entry here at once; `retired-seams` below is split out to use it. Every entry
+# below therefore bans the spelling EVERYWHERE except its `home`, which is the
+# stronger claim. Where that
 # is not the invariant we mean, the entry is marked.
 # 🛑 THE WIDENING IS A DECISION, NOT AN ARTIFACT OF THE TOOL. The broader claim
 # -- this spelling belongs to its `home` and nowhere else -- is the invariant we
@@ -1247,28 +1249,6 @@ kind = "code-patterns"
   home = ["src/kanibako/commands/start.py"]
   note = "create-time sync; joined the forbidden set 2026-08-11"
 
-  # ⚑ NO `home` ON PURPOSE -- a retired mechanism has no sanctioned site. Spec
-  # §2a removed the implicit root prepend; these are the two names it was
-  # spelled with. Measured 2026-09-14: ZERO sites in any `.py` in the tree, so
-  # this entry is INERT TODAY BY DESIGN. It is a deletion instrument, and the
-  # day it reports anything the mechanism came back.
-  # 🛑 `kinemata unused` WILL LIST BOTH as mentioned by nobody. That is this
-  # entry working, not this entry rotting.
-  # ⚑ The names DO survive in `src/kanibako/data/rom/settings/keyspace-manifest.yaml` as
-  # retired-key chain rows. This registry reads `.py` only, so they are out of
-  # reach here -- and they are load-bearing MIGRATION DATA, not a reappearance.
-  [[registry.entry]]
-  id = "scope_roots"
-  antipatterns = ['scope_roots']
-  home = []
-  note = "retired implicit-root-prepend mechanism; must exist nowhere in shipped .py"
-
-  [[registry.entry]]
-  id = "_root_join"
-  antipatterns = ['_root_join']
-  home = []
-  note = "the other half of the same retired mechanism"
-
   # ⚑ THE CONSTANT-JOIN HALF ONLY. The STRING half of these three tripwires is
   # already declared: `store-layout` derives "boxes" / "logs" / "workspaces" /
   # "workspace" / "channels" from `bootstrap.py`, so `pw / "boxes"` is already a
@@ -1319,6 +1299,49 @@ kind = "code-patterns"
   antipatterns = ['''find_identifier\(.*\{\s*(?:["'](?i:shell)["']|GENERAL_SLOT)\s*\}''']
   home = ["src/kanibako/agent_ref.py"]
   note = "a ref that ADDRESSES the shell pseudo-agent parses through agent_ref.parse_agent_address"
+
+# ---------------------------------------------------------------------------
+# FACT: the retired implicit-root-prepend mechanism exists nowhere in shipped
+# `.py`. AUTHORITY: spec §2a removed it; `scope_roots` and `_root_join` are the
+# two names it was spelled with. A retired mechanism has no sanctioned site, so
+# neither entry has a `home`.
+#
+# ⚑ A SEPARATE REGISTRY BECAUSE `only` IS PER REGISTRY. An entry with no `home`
+# reads the test trees despite `[project] exclude` (kinemata 0.5.4), and two
+# tests legitimately spell these names: `tests/test_flawed_oracle.py`, the
+# quarantined frozen copy of the retired resolver, and
+# `tests/test_settings/test_settings_launch.py`'s pytest absence pin. `only`
+# scopes the rule to the shipped source trees, which is the claim and the scope
+# that pytest pin scans. Every other `seams` absence entry still reads the tests.
+# Measured 2026-09-14: ZERO sites in shipped `.py`, so both entries are INERT
+# TODAY BY DESIGN. They are a deletion instrument, and the day one reports
+# anything the mechanism came back.
+# 🛑 `kinemata unused` WILL LIST BOTH as mentioned by nobody. That is this
+# registry working, not this registry rotting.
+# ⚑ The names DO survive in `src/kanibako/data/rom/settings/keyspace-manifest.yaml`
+# as retired-key chain rows. This registry reads `.py` only, so they are out of
+# reach here -- and they are load-bearing MIGRATION DATA, not a reappearance.
+[[registry]]
+name = "retired-seams"
+kind = "code-patterns"
+only = [
+  "/src/",
+  "/packages/agent-claude/src/",
+  "/packages/agent-codex/src/",
+  "/packages/agent-goose/src/",
+]
+
+  [[registry.entry]]
+  id = "scope_roots"
+  antipatterns = ['scope_roots']
+  home = []
+  note = "retired implicit-root-prepend mechanism; must exist nowhere in shipped .py"
+
+  [[registry.entry]]
+  id = "_root_join"
+  antipatterns = ['_root_join']
+  home = []
+  note = "the other half of the same retired mechanism"
 
 # ---------------------------------------------------------------------------
 # FACT: `self` is a FILE-SURFACE alias and nothing else. The per-agent file's
