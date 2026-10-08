@@ -18,6 +18,9 @@ HOME and XDG base set inside it:
   kanibako create <primary box>
   kanibako workset create --name ws1 <workset> + kanibako create (named box)
   kanibako create --standalone <standalone box>
+  kanibako box set --box <each box> box.env.CLAIMS_STORE=1
+`create` writes no box.yaml; `box set` writes one per box kind, since the
+docs cite box.yaml for primary, named, and standalone boxes.
 Nothing in it is written by hand. No container is started; `create` only
 lays out the store.
 
@@ -111,3 +114,6 @@ kanibako create "$store/projects/primarybox"
 kanibako workset create --name ws1 "$store/projects/ws1"
 (cd "$store/projects/ws1" && kanibako create wsbox)
 kanibako create --standalone "$store/projects/solo"
+for box in primarybox ws1/workspaces/wsbox solo; do
+  kanibako box set --box "$store/projects/$box" box.env.CLAIMS_STORE=1
+done
