@@ -33,11 +33,14 @@ def standalone_kuid(name: str) -> str
 def compose_standalone_name(box_kuid: str, root: Path) -> str
 def make_standalone_box_name(root: Path, existing: set[str]) -> str
 def validate_standalone_name(supplied: str, existing: set[str]) -> None
+def refuse_nonleaf_standalone_name(supplied: str, root: Path, *, box_kuid: str | None=None) -> None
+def refuse_standalone_rename(supplied: str, current_name: str) -> None
 def resolve_standalone_name(root: Path, supplied: str, existing: set[str], *, box_kuid: str | None=None) -> str
 def _box_name_violation(name: str) -> str | None
 def _ascii_spelling(ch: str) -> str | None
 def _canonical_name(supplied: str) -> str
 def _refuse_taken(stored: str) -> ProjectError
+def _refuse_directory_name(shown: str) -> ProjectError
 def _generate_with_leaf(leaf: str, existing: set[str]) -> str
 ```
 

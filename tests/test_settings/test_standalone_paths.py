@@ -727,14 +727,15 @@ class TestStandaloneAtomicCreate:
         assert not (project_dir / "box_data").exists()
         assert not (project_dir / "vault").exists()
 
-    def test_free_canonical_name_still_creates(
+    def test_a_supplied_name_never_reaches_the_composition(
         self, std, config, project_dir, credentials_dir,
     ):
-        """A free canonical --name is honored verbatim (no false refusal)."""
+        """⚑ INVERTED 2026-10-08: the root composes the name, not the caller."""
         proj = resolve_standalone_project(
             std, config, str(project_dir), initialize=True, name="abcde_mine",
         )
-        assert proj.name == "abcde_mine"
+        assert proj.name != "abcde_mine"
+        assert proj.name.endswith("_project")
         assert (project_dir / "box_data").is_dir()
 
 
