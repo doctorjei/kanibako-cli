@@ -294,7 +294,7 @@ class TestTheCellClassification:
                 "agent.claude.bindings.ro[~/.local/bin/claude]",
                 "agent.claude.bindings.ro[~/.local/share/claude]",
                 "agent.claude.bootstrap",
-                "agent.claude.caches[@system.cache/tweakcc]",
+                "agent.claude.caches[{system.cache}/tweakcc]",
                 "agent.claude.common[~/.claude/cache]",
                 "agent.claude.common[~/.claude/plugins]",
                 "agent.claude.endpoint",
