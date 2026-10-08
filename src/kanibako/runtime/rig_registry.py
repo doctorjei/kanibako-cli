@@ -20,6 +20,7 @@ from dataclasses import dataclass, fields
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from kanibako._atomic import rmw_lock
 from kanibako.project import registry_store
 
 if TYPE_CHECKING:
@@ -111,9 +112,10 @@ def save_registry(path: Path, records: dict[str, RigRecord]) -> None:
 
 def upsert(path: Path, record: RigRecord) -> None:
     """Insert *record* (or overwrite the existing record with the same name)."""
-    records = load_registry(path)
-    records[record.name] = record
-    save_registry(path, records)
+    with rmw_lock(path):
+        records = load_registry(path)
+        records[record.name] = record
+        save_registry(path, records)
 
 
 def remove(path: Path, name: str) -> bool:
@@ -121,12 +123,13 @@ def remove(path: Path, name: str) -> bool:
 
     Returns ``True`` if a record was removed, ``False`` if it was absent.
     """
-    records = load_registry(path)
-    if name not in records:
-        return False
-    del records[name]
-    save_registry(path, records)
-    return True
+    with rmw_lock(path):
+        records = load_registry(path)
+        if name not in records:
+            return False
+        del records[name]
+        save_registry(path, records)
+        return True
 
 
 def get(path: Path, name: str) -> RigRecord | None:

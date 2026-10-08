@@ -8,10 +8,13 @@ These tests build that file path explicitly from ``tmp_path``.
 from __future__ import annotations
 
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
-from kanibako.project import registry_store
+from kanibako.launch import shells
+from kanibako.project import names, registry_store
+from kanibako.runtime import rig_registry
 from kanibako.settings.config_io import load_doc
 
 
@@ -421,3 +424,95 @@ class TestDeregistered:
         registry_store.register_standalone(reg, "sa", tmp_path)
         # Writing a sibling section preserves deregistered.
         assert registry_store.lookup_deregistered(reg, "keep") is not None
+
+
+def _rig(name):
+    return rig_registry.RigRecord(name=name, kind="image")
+
+
+# Every read-modify-write of the global registry, each run twice at once on a
+# different row.  ``(seed, write, read, expected)``: *seed* prepares rows 0 and 1,
+# *write(reg, i)* acts on row *i*, *read(reg)* returns the row names left.
+_WRITERS = {
+    "register_standalone": (
+        None,
+        lambda reg, i: registry_store.register_standalone(reg, f"b{i}", reg.parent / f"r{i}"),
+        lambda reg: set(registry_store.load_standalone(reg)), {"b0", "b1"}),
+    "unregister_standalone": (
+        lambda reg, i: registry_store.register_standalone(reg, f"b{i}", reg.parent / f"r{i}"),
+        lambda reg, i: registry_store.unregister_standalone(reg, f"b{i}"),
+        lambda reg: set(registry_store.load_standalone(reg)), set()),
+    "register_deregistered": (
+        None,
+        lambda reg, i: registry_store.register_deregistered(
+            reg, f"d{i}", kind="standalone", workspace=None, metadata=str(reg.parent)),
+        lambda reg: set(registry_store.load_deregistered(reg)), {"d0", "d1"}),
+    "unregister_deregistered": (
+        lambda reg, i: registry_store.register_deregistered(
+            reg, f"d{i}", kind="standalone", workspace=None, metadata=str(reg.parent)),
+        lambda reg, i: registry_store.unregister_deregistered(reg, f"d{i}"),
+        lambda reg: set(registry_store.load_deregistered(reg)), set()),
+    "names.register_name": (
+        None,
+        lambda reg, i: names.register_name(
+            reg, f"w{i}", str(reg.parent / f"w{i}")),
+        lambda reg: set(registry_store.load_registry(reg)["worksets"]), {"w0", "w1"}),
+    "names.unregister_name": (
+        lambda reg, i: names.register_name(
+            reg, f"w{i}", str(reg.parent / f"w{i}")),
+        lambda reg, i: names.unregister_name(
+            reg, f"w{i}"),
+        lambda reg: set(registry_store.load_registry(reg)["worksets"]), set()),
+    "rig_registry.upsert": (
+        None,
+        lambda reg, i: rig_registry.upsert(
+            reg, _rig(f"g{i}")),
+        lambda reg: set(registry_store.load_registry(reg)["rigs"]), {"g0", "g1"}),
+    "rig_registry.remove": (
+        lambda reg, i: rig_registry.upsert(
+            reg, _rig(f"g{i}")),
+        lambda reg, i: rig_registry.remove(
+            reg, f"g{i}"),
+        lambda reg: set(registry_store.load_registry(reg)["rigs"]), set()),
+    "shells.save_image_shell": (
+        None,
+        lambda reg, i: shells.save_image_shell(
+            SimpleNamespace(registry=reg), f"k{i}", "bash"),
+        lambda reg: set(registry_store.load_registry(reg)["image_shells"]), {"k0", "k1"}),
+}
+
+
+@pytest.mark.parametrize("writer", sorted(_WRITERS))
+def test_concurrent_writers_never_lose_a_row(writer, tmp_path: Path, monkeypatch) -> None:
+    """Two writers that read the registry at once must not undo each other's row.
+
+    Each read is held until both have read — the interleaving that lost rows when
+    concurrent ``create --standalone --register`` runs shared one registry.
+    """
+    import threading
+
+    seed, write, read, expected = _WRITERS[writer]
+    registry = tmp_path / "registry.yaml"
+    for i in (0, 1):
+        if seed is not None:
+            seed(registry, i)
+    real_load = registry_store.load_registry
+    both_read = threading.Barrier(2, timeout=1)
+
+    def _slow_load(path):
+        got = real_load(path)
+        try:
+            both_read.wait()
+        except threading.BrokenBarrierError:
+            pass  # serialized: the other writer is waiting on the lock
+        return got
+
+    monkeypatch.setattr(registry_store, "load_registry", _slow_load)
+    threads = [threading.Thread(target=write, args=(registry, i)) for i in (0, 1)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    monkeypatch.setattr(registry_store, "load_registry", real_load)
+
+    assert read(registry) == expected
