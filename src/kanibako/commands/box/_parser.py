@@ -150,8 +150,8 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
     create_p.add_argument(
         "--name", default=None,
         help="Project name override (default: auto-assigned from directory name). "
-             "For a standalone box this names the registry entry, so it is inert "
-             "without --register.",
+             "REFUSED on a standalone box: its name is composed from its own "
+             "directory, so rename the directory to rename the box.",
     )
     create_p.add_argument(
         "--standalone", action="store_true",
@@ -160,8 +160,9 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
     create_p.add_argument(
         "--register", action="store_true",
         help="Index a new STANDALONE box in the registry so it resolves by name "
-             "from other directories (default: unregistered and independent; "
-             "--name is ignored without this). Default-mode boxes always register.",
+             "from other directories (default: unregistered and independent). "
+             "The entry is keyed by the box's own <kuid>_<directory> name, never "
+             "by --name. Default-mode boxes always register.",
     )
     create_p.add_argument(
         "-i", "--image", default=None,
