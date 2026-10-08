@@ -29,12 +29,13 @@ from kanibako.settings.config import (
 )
 from kanibako.runtime.container import ContainerRuntime
 from kanibako.identifiers import agent_node_case, find_identifier
-from kanibako.errors import ContainerError, ProjectError, WorksetError
+from kanibako.errors import ContainerError, DerivedBoxNameError, ProjectError, WorksetError
 from kanibako.project.names import read_names
 from kanibako.project.workset import (
     Workset, add_project, list_worksets, load_workset, purge_box_logs,
 )
 from kanibako.settings.messages import (
+    CURE_DERIVED_BOX_NAME,
     ERR_WORKSET_MEMBER_NAME_CONFLICT,
     ERR_WORKSET_MEMBER_NAME_TAKEN,
     ERR_WORKSET_MEMBER_NO_RECOVER,
@@ -61,7 +62,7 @@ from kanibako.settings.paths import (
     load_primary_boxes,
     load_std_paths,
     primary_box_name_for_workspace,
-    refuse_derived_primary_box_name,
+    refuse_derived_box_name,
     resolve_any_project,
     resolve_box_target,
     resolve_project,
@@ -1245,6 +1246,18 @@ def run_create(args: argparse.Namespace) -> int:
             print(f"Error: {e}", file=sys.stderr)
             return 1
 
+    # ⚑ A new primary box takes its directory's name: the box-name rule, before any write.
+    if (_named_spec is None and not args.standalone and not getattr(args, "name", None)
+            and primary_box_name_for_workspace(
+                std.primary_workset, str(effective_path),
+                early=_early_scope(std, BoxMode.primary)) is None):
+        try:
+            refuse_derived_box_name(effective_path.name or "project")
+        except DerivedBoxNameError as e:
+            cure = f"kanibako create {shlex.quote(str(effective_path))} --name <new-name>"
+            print(f"Error: {e.with_cure(CURE_DERIVED_BOX_NAME % cure)}", file=sys.stderr)
+            return 1
+
     # A NAMED member's dir is its workspace under the working set, which
     # ``add_project`` makes — never ``<cwd>/<identifier>``.
     if project_dir is not None and _named_spec is None:
@@ -1253,12 +1266,6 @@ def run_create(args: argparse.Namespace) -> int:
             if not args.standalone:
                 refuse_inherited_per_owner(
                     std.primary_workset, _early_scope(std, BoxMode.primary))
-                if not getattr(args, "name", None):
-                    try:
-                        refuse_derived_primary_box_name(str(effective_path))
-                    except ProjectError as e:
-                        print(f"Error: {e}", file=sys.stderr)
-                        return 1
             target.mkdir(parents=True)
 
     from kanibako.commands.start import (

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import shlex
 import shutil
 import socket
 import threading
@@ -430,6 +431,21 @@ class HelperHub:
         new_path = ctx.project_path.parent / f"{ctx.project_path.name}.{name}"
         if new_path.exists():
             return {"status": "error", "message": f"destination already exists: {new_path}"}
+        # ⚑ The fork is named for its directory: the box-name rule, before the copy.
+        from kanibako.errors import DerivedBoxNameError
+        from kanibako.launch.box_identity import is_valid_box_name
+        from kanibako.settings.messages import CURE_DERIVED_FORK_BOX, CURE_DERIVED_FORK_NAME
+        from kanibako.settings.paths import refuse_derived_box_name
+
+        try:
+            refuse_derived_box_name(new_path.name)
+        except DerivedBoxNameError as e:
+            if is_valid_box_name(f"x.{name}"):
+                cure = CURE_DERIVED_FORK_BOX % (f"kanibako box move {shlex.quote(str(ctx.project_path))} "
+                                                "<new-path> --name <new-name>")
+            else:
+                cure = CURE_DERIVED_FORK_NAME
+            return {"status": "error", "message": e.with_cure(cure)}
 
         # Copy workspace
         try:

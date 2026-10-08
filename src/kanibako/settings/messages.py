@@ -246,8 +246,11 @@ ERR_PROJECT_NEW_HOME = ("Refusing to create project rooted at $HOME: this would 
 ERR_PROJECT_REG_HOME = ("Refusing to register $HOME as a project path: this would mount the " +
                         "entire home directory as the workspace.")
 ERR_PROJECT_NAME_USED = "Name '%s' is already registered"
-ERR_DERIVED_BOX_NAME = ("The directory name '%s' is not a valid box name: %s. " +  # name, reason, cure
-                        "Give the box a valid name:\n  %s")
+ERR_DERIVED_BOX_NAME = "The directory name '%s' is not a valid box name: %s."  # name, reason
+CURE_DERIVED_BOX_NAME = "Give the box a valid name:\n  %s"  # the command, `--name <new-name>` LAST
+CURE_DERIVED_DUP_DEST = "Pick a destination directory whose name is a valid box name."
+CURE_DERIVED_FORK_NAME = "Pick a fork name that is a valid box name."
+CURE_DERIVED_FORK_BOX = "Rename this box first, from the host:\n  %s"  # the box move command
 # ⚑ "one record per project" (spec § Detection & import) asked at the PATH, not the name.
 ERR_PROJECT_PATH_IS_NAMED_BOX = ("Refusing to create a box at %s: it is already the workspace of " +
                          "named box '%s' in workset '%s', and one path is one project's record. " +

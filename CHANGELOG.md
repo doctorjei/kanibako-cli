@@ -12,10 +12,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- **A box named after its directory must have a valid box name.** With no `--name`, `create`, `workset connect`, and
-  `box duplicate --to named` refuse a directory name that breaks the box-name rule (`my project`, `-x`), before
-  anything is written, and print the command with `--name <new-name>`. `workset connect --name` and
-  `box duplicate --to named --name` now check the rule too.
+- **A box named after its directory must have a valid box name.** A directory name that breaks the box-name rule
+  (`my project`, `-x`) is refused before anything is written by `create`, `workset connect`, `box duplicate --to
+  named`, `box extract`, `box move`, and `box convert --default` with no `--name`, each printing its own command
+  ending in `--name <new-name>`; by `box duplicate` to a primary box, which asks for another destination
+  directory; and by the in-box `fork`. `workset connect --name` and `box duplicate --to named --name` now check the
+  rule too. Rename an existing box with `kanibako box move <path> <new-path> --name <new-name>`.
 
 - **Two working sets can no longer be put on one `workset.logs` directory by accident.** `workset set`,
   `system set`, `workset reset`, `system reset` and `workset create` refuse a change that lands two working sets

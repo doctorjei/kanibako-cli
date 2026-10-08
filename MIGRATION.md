@@ -434,9 +434,9 @@ inside boxes. In order of likely impact:
     a box is identified by its path as given, so a directory reached through a different symlink is not that box** —
     see *A duplicate or convert keeps a symlinked workspace or vault as a link*.
 
-43. **`create`, `workset connect`, and `box duplicate --to named` with no `--name` refuse a directory whose name is
-    not a valid box name (`my project`, `-x`), and print the command with `--name`** — see *A box named after its
-    directory must have a valid box name*.
+43. **A command that names a box after its directory refuses a directory name that is not a valid box name (`my
+    project`, `-x`): `create`, `workset connect`, `box duplicate`, `box extract`, `box move`, `box convert`, and
+    `fork`** — see *A box named after its directory must have a valid box name*.
 
 ---
 
@@ -7059,17 +7059,24 @@ still copied, with a warning.
 
 ### A box named after its directory must have a valid box name
 
-With no `--name`, `create`, `workset connect`, and `box duplicate --to named` name the box after its directory.
-Through v1.7.x that name was stored as it was, so a directory named `my project`, `-x`, or `q$(touch x)` made a box
-whose name breaks the box-name rule. Now such a name is refused with the rule it breaks, before anything is
-written, and the refusal prints the same command with `--name <new-name>`:
+Through v1.7.x a box named after its directory took the directory name as it was, so `my project`, `-x`, or
+`q$(touch x)` made a box whose name breaks the box-name rule. Now such a name is refused with the rule it breaks,
+before anything is written, by:
 
-```
-kanibako create --name myproject ~/my\ project
-```
+- `create`, `workset connect`, `box duplicate --to named`, `box extract`, `box move`, and `box convert --default`
+  with no `--name`. Each prints its own command ending in `--name <new-name>`, for example
+  `kanibako create ~/my\ project --name <new-name>`.
+- `box duplicate` to a primary box (the default, or `--to primary`), which asks for a destination directory whose
+  name is a valid box name. `--name` does not name a primary duplicate.
+- `fork` inside a box. A bad fork name asks for another; a box whose own name breaks the rule prints the
+  `box move` command that renames it.
 
 `create --name` takes the same rule as before; `workset connect --name` and `box duplicate --to named --name` now
-take it too. Nothing renames a box created under such a name before this release.
+take it too. A box created under such a name before this release keeps its name until you rename it:
+
+```
+kanibako box move <path> <new-path> --name <new-name>
+```
 
 ---
 

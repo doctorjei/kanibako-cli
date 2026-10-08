@@ -34,15 +34,16 @@ from kanibako.settings.paths import (
     detect_project_mode,
     load_std_paths,
     primary_box_name_for_workspace,
+    refuse_derived_box_name,
     resolve_standalone_project,
     resolve_project,
     resolve_workset_project,
     unregister_primary_box_name,
 )
 from kanibako.utils import confirm_prompt, literal_path
-from kanibako.errors import ProjectError
-from kanibako.launch.box_identity import box_name_reason, validate_box_name
-from kanibako.settings.messages import ERR_DERIVED_BOX_NAME
+from kanibako.errors import DerivedBoxNameError, ProjectError
+from kanibako.launch.box_identity import validate_box_name
+from kanibako.settings.messages import CURE_DERIVED_BOX_NAME, CURE_DERIVED_DUP_DEST
 from kanibako.channels.channels import workset_name_token, workset_root
 from kanibako.settings.workset_dirkeys import EarlyScope, refuse_inherited_per_owner
 
@@ -52,6 +53,16 @@ def _refuse_inherited(std, source, target: tuple[Path, EarlyScope]) -> None:
     refuse_inherited_per_owner(
         workset_root(source, std), EarlyScope(std.early_system, workset_name_token(source)))
     refuse_inherited_per_owner(*target)
+
+
+def _refuse_derived_destination(new_path: Path) -> int | None:
+    """Refuse a PRIMARY duplicate whose destination name breaks the box-name rule (rc 1)."""
+    try:
+        refuse_derived_box_name(new_path.name)
+    except DerivedBoxNameError as e:
+        print(f"Error: {e.with_cure(CURE_DERIVED_DUP_DEST)}", file=sys.stderr)
+        return 1
+    return None
 
 
 def _refuse_existing_destination(path: Path) -> int:
@@ -164,6 +175,8 @@ def _run_duplicate_cross_mode(args: argparse.Namespace, std, config) -> int:
                 file=sys.stderr,
             )
             return 1
+        if (refused := _refuse_derived_destination(new_path)) is not None:
+            return refused
 
     # A standalone target copies the workspace into the destination root's
     # ``workset.workspaces``; a pre-existing root that nulls it has none (Q96).
@@ -591,13 +604,18 @@ def _duplicate_to_workset(args, std, config) -> int:
     proj_name = getattr(args, "project_name", None) or source_path.name
     # ⚑ The box-name rule (spec §0), typed or derived, before any write.
     try:
-        validate_box_name(proj_name)
-    except ProjectError as e:
+        if getattr(args, "project_name", None):
+            validate_box_name(proj_name)
+        else:
+            refuse_derived_box_name(proj_name)
+    except DerivedBoxNameError as e:
         cure = (f"kanibako box duplicate {shlex.quote(str(source_path))} "
                 f"{shlex.quote(literal_path(args.new_path))} --to named "
                 f"--workset {shlex.quote(ws_name)} --name <new-name>")
-        print("Error: " + (str(e) if getattr(args, "project_name", None) else ERR_DERIVED_BOX_NAME % (
-            proj_name, box_name_reason(proj_name), cure)), file=sys.stderr)
+        print(f"Error: {e.with_cure(CURE_DERIVED_BOX_NAME % cure)}", file=sys.stderr)
+        return 1
+    except ProjectError as e:
+        print(f"Error: {e}", file=sys.stderr)
         return 1
 
     # Validate name not taken — case-blind (spec §0), reporting the member as STORED.
@@ -687,6 +705,9 @@ def _duplicate_from_workset(args, source_path, new_path, std, config) -> int:
         return 1
 
     target_mode = BoxMode(args.to_mode)
+    if target_mode == BoxMode.primary and (
+            refused := _refuse_derived_destination(new_path)) is not None:
+        return refused
     if args.force:
         _refuse_inherited(std, src_proj, _local_target(std, target_mode, new_path))
 
@@ -876,6 +897,9 @@ def run_duplicate(args: argparse.Namespace) -> int:
     # 4. Non-bare: destination workspace must not already exist (unless --force).
     if not args.bare and new_path.exists() and not args.force:
         return _refuse_existing_destination(new_path)
+
+    if (refused := _refuse_derived_destination(new_path)) is not None:
+        return refused
 
     # 5. Destination metadata must not already exist (unless --force).
     new_name, new_project_dir = _resolve_local_dir(std, str(new_path))
