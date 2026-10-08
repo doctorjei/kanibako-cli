@@ -21,6 +21,10 @@ import argparse
 import hashlib
 from pathlib import Path
 
+import pytest
+
+from kanibako.errors import ConfigError
+
 from kanibako.commands.box import _duplicate
 from kanibako.settings.config import load_config
 from kanibako.settings.paths import (
@@ -37,7 +41,7 @@ def _primary(env, name="proj"):
     return pdir
 
 
-def _dupe_args(source, dest, *, to_mode=None, force=False, box=None):
+def _dupe_args(source, dest, *, to_mode=None, force=False, box=None, bare=False):
     return argparse.Namespace(
         source_path=str(source),
         new_path=str(dest),
@@ -46,7 +50,7 @@ def _dupe_args(source, dest, *, to_mode=None, force=False, box=None):
         to_default=to_mode is BoxMode.primary,
         to_standalone=to_mode is BoxMode.standalone,
         to_workset=None,
-        bare=False,
+        bare=bare,
         force=force,
     )
 
@@ -110,38 +114,40 @@ class TestAnExistingDestinationIsRefusedCleanly:
         assert "FileExistsError" not in err
 
 
+def _scalar_box_dst(tmp_home: Path) -> Path:
+    dest = tmp_home / "dst"
+    (dest / "box_data").mkdir(parents=True)
+    (dest / "box_data" / BOX_META_FILE).write_text("box: 42\n")
+    return dest
+
+
 class TestAScalarBoxSectionRefusesBeforeAnyCopy:
-    def test_a_scalar_box_in_dst_box_yaml_refuses_before_copying_anything(
+    def test_a_bare_duplicate_onto_a_scalar_box_writes_nothing(
             self, config_file, tmp_home, credentials_dir, capsys, monkeypatch):
-        """Row B: a duplicate onto a dst whose box.yaml has scalar ``box:`` must
-        refuse BEFORE any workspace or home file is copied, so the on-disk
-        dst tree is byte-identical before and after the refused run."""
+        """``--bare`` skips the existence check, so the scalar-``box:`` check is
+        what refuses; it must fire before the home is laid down."""
         env = (load_config(config_file), load_std_paths(load_config(config_file)),
                tmp_home)
         src = _primary(env, "src")
-        # ``dest`` is a directory that already has ``box_data/box.yaml`` with a
-        # scalar ``box:`` — the shape the brief describes.
-        dest = tmp_home / "dst"
-        dest.mkdir()
-        box_data = dest / "box_data"
-        box_data.mkdir()
-        # The scalar ``box:`` value is an INT (any non-table scalar qualifies).
-        (box_data / BOX_META_FILE).write_text("box: 42\n")
-        # Bypass the interactive prompt so the copy step actually runs.
+        dest = _scalar_box_dst(tmp_home)
         monkeypatch.setattr(_duplicate, "confirm_prompt", lambda msg: None)
-        # Hash the destination BEFORE the refused run.
         before = _hash_tree(dest)
+        with pytest.raises(ConfigError, match="box"):
+            _duplicate.run_duplicate(
+                _dupe_args(src, dest, to_mode=BoxMode.standalone, bare=True))
+        assert _hash_tree(dest) == before
+        assert sorted(p.name for p in dest.rglob("*")) == ["box.yaml", "box_data"]
 
+    @pytest.mark.parametrize("bare", [False, True])
+    def test_force_rebuilds_a_scalar_box_destination(
+            self, config_file, tmp_home, credentials_dir, bare):
+        env = (load_config(config_file), load_std_paths(load_config(config_file)),
+               tmp_home)
+        src = _primary(env, "src")
+        dest = _scalar_box_dst(tmp_home)
         rc = _duplicate.run_duplicate(
-            _dupe_args(src, dest, to_mode=BoxMode.standalone))
-        assert rc != 0  # refused
-        err = capsys.readouterr().err
-        # Scalar-section refusal wording, not a traceback.
-        assert "Traceback" not in err
-        assert "FileExistsError" not in err
-        # Hash the destination AFTER the refused run — must be unchanged.
-        after = _hash_tree(dest)
-        assert before == after, (
-            f"refused duplicate wrote to {dest}: "
-            f"before=\n{before}\nafter=\n{after}"
-        )
+            _dupe_args(src, dest, to_mode=BoxMode.standalone, force=True, bare=bare))
+        assert rc == 0
+        box_yaml = dest / "box_data" / BOX_META_FILE
+        assert not box_yaml.exists() or "box: 42" not in box_yaml.read_text()
+        assert (dest / "box_data" / "home").is_dir()

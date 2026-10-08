@@ -50,6 +50,12 @@ def _refuse_inherited(std, source, target: tuple[Path, EarlyScope]) -> None:
     refuse_inherited_per_owner(*target)
 
 
+def _refuse_existing_destination(path: Path) -> int:
+    print(f"Error: destination already exists: {path}", file=sys.stderr)
+    print("  Use --force to overwrite.", file=sys.stderr)
+    return 1
+
+
 def _local_target(std, mode: BoxMode, new_path: Path) -> tuple[Path, EarlyScope]:
     if mode is BoxMode.primary:
         return std.primary_workset, _early_scope(std, BoxMode.primary)
@@ -98,14 +104,8 @@ def _run_duplicate_cross_mode(args: argparse.Namespace, std, config) -> int:
         print(f"Error: source path does not exist as a directory: {source_path}", file=sys.stderr)
         return 1
 
-    # Refuse an existing destination BEFORE any write (matches local-mode step 4).
     if not args.bare and new_path.exists() and not args.force:
-        print(
-            f"Error: destination already exists: {new_path}",
-            file=sys.stderr,
-        )
-        print("  Use --force to overwrite.", file=sys.stderr)
-        return 1
+        return _refuse_existing_destination(new_path)
 
     # Detect source mode and resolve.
     source_mode = detect_project_mode(source_path, std, config).mode
@@ -204,10 +204,9 @@ def _run_duplicate_cross_mode(args: argparse.Namespace, std, config) -> int:
     if target_mode == BoxMode.standalone:
         # ⚑ Route 3: refuse a scalar ``workset:`` root BEFORE the merge, not after.
         refuse_scalar_sections(new_path / WORKSET_META_FILE, ("workset",))
-        # Refuse a scalar ``box:`` in the BOX tier BEFORE the copy — same
-        # refusal ``write_box_enable_vault`` would raise after the home and
-        # workspace are already copied.
-        refuse_scalar_sections(new_path / "box_data" / BOX_META_FILE, ("box",))
+        # Scalar ``box:`` refused pre-copy; --force rebuilds box_data.
+        if not args.force:
+            refuse_scalar_sections(new_path / "box_data" / BOX_META_FILE, ("box",))
         if not args.bare and workspace_src is not None and workspace_src.is_dir():
             # The copy DESTINATION is the destination root's resolved
             # ``workset.workspaces`` (ruled 10, 2026-08-02) — the STANDALONE
@@ -249,8 +248,7 @@ def _run_duplicate_cross_mode(args: argparse.Namespace, std, config) -> int:
             # destination-exists guidance (matching run_duplicate's non-cross-mode
             # message) instead of the raw ``[Errno 17] File exists`` traceback.
             # The dir pre-existed, so new_path_existed is True → no deletion.
-            print(f"Error: destination already exists: {new_path}", file=sys.stderr)
-            print("  Use --force to overwrite.", file=sys.stderr)
+            _refuse_existing_destination(new_path)
             if not new_path_existed and new_path.is_dir():
                 # ⚑ The failure points below are all AFTER the skeleton is created,
                 # so a plain rmtree leaves a half-built box behind (silently, under
@@ -605,9 +603,7 @@ def _duplicate_to_workset(args, std, config) -> int:
         occupied.insert(0, ws.require_workspaces_dir(f"a workspace for '{proj_name}'") / proj_name)
     for leaf in occupied:
         if (leaf.exists() or leaf.is_symlink()) and not args.force:
-            print(f"Error: destination already exists: {leaf}", file=sys.stderr)
-            print("  Use --force to overwrite.", file=sys.stderr)
-            return 1
+            return _refuse_existing_destination(leaf)
 
     # default<->standalone: architectural boundary (centralized vs in-workspace metadata), not re-rooting — kept distinct (#71 B2).
     if source_mode == BoxMode.primary:
@@ -865,12 +861,7 @@ def run_duplicate(args: argparse.Namespace) -> int:
 
     # 4. Non-bare: destination workspace must not already exist (unless --force).
     if not args.bare and new_path.exists() and not args.force:
-        print(
-            f"Error: destination already exists: {new_path}",
-            file=sys.stderr,
-        )
-        print("  Use --force to overwrite.", file=sys.stderr)
-        return 1
+        return _refuse_existing_destination(new_path)
 
     # 5. Destination metadata must not already exist (unless --force).
     new_name, new_project_dir = _resolve_local_dir(std, str(new_path))

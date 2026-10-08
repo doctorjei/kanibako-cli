@@ -6000,6 +6000,19 @@ without regard to case; `--force` does not override it, and nothing is written. 
 **What to do.** For a leftover directory, move it aside, or check what is in it and pass `--force`.
 For a registered name, choose another `--name`.
 
+### An existing directory at `box duplicate --to standalone` needs `--force`
+
+**Read this if `box duplicate --to standalone`, or `box duplicate` of a standalone box, stops with
+`destination already exists: <dst>`.**
+
+**What changed.** A standalone duplicate used to merge into an existing `<dst>`. Now any existing
+`<dst>`, even an empty one, is refused before the prompt, and nothing is written. This matches the
+duplicate into a primary or named box. With `--force` the copy merges into `<dst>` as before.
+`--bare` skips the check. A `<dst>/box_data/box.yaml` whose `box:` is not a table still refuses a
+`--bare` duplicate, now before anything is written.
+
+**What to do.** Give a path that does not exist yet, or check what is in `<dst>` and pass `--force`.
+
 ### A box and a workset may share a name; `--force` is gone from create and register
 
 **Read this if `box create`, `kanibako create`, `box register`, or `kanibako register` now
