@@ -144,8 +144,7 @@ def find_connected_external_box(
         boxes = workset_registry.load_workset_boxes(registry_path)
         for box_name, box_path_str in boxes.items():
             box_path = Path(literal_path(box_path_str))
-            # Skip ONLY members under the CURRENT workspaces dir (literally or
-            # resolved) — ordinary location detection owns those.
+            # Skip members under the CURRENT workspaces dir; location detection owns those.
             if (box_path.is_relative_to(literal_path(workspaces))
                     or box_path.resolve().is_relative_to(workspaces_resolved)):
                 continue

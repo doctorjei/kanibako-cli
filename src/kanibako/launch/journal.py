@@ -128,7 +128,7 @@ def pending_create_for_workspace(
     journal — there is no on-disk meta to read it from.
     """
     # The journal is keyed by box PATH, so a lookup BY WORKSPACE has to scan.  Both
-    # sides are compared literally: twins sharing a target are two workspaces.
+    # sides compare literally: twins are two workspaces.
     target = literal_path(workspace)
     for entry in read_journal(journal_path).values():
         if entry.get("op") != "create":

@@ -6988,7 +6988,8 @@ shell's path).
 
 Boxes, working sets, and connected directories registered before this release were stored under the resolved path,
 even when they were created through a link; `box list` and `workset list` show the stored path. Working from a link
-to one of them now finds no box, and `box create` there makes a second box that shares the files. Run from the stored
+to one of them now finds no box. For a primary box, `box create` there makes a second box that shares the files;
+inside a working set's tree it is refused. Run from the stored
 path, or name the box. New registrations store the path as given.
 
 **`box convert` of a box whose vault directory is a symlink.** The converted box's vault is now a link, either to the
