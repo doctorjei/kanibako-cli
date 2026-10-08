@@ -55,7 +55,8 @@ class TestPathEdgeCases:
         std = load_std_paths(config)
         spaced = tmp_home / "my project"
         spaced.mkdir()
-        proj = resolve_project(std, config, project_dir=str(spaced), initialize=True)
+        proj = resolve_project(std, config, project_dir=str(spaced), initialize=True,
+                               name_override="myproject")
         assert proj.project_path == spaced.resolve()
         assert proj.metadata_path.is_dir()
 

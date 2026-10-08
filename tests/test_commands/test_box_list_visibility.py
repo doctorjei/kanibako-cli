@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import logging
 import shutil
+from unittest.mock import patch
 from pathlib import Path
 
 import pytest
@@ -95,7 +96,9 @@ def sandbox(config_file, tmp_home, credentials_dir, capsys):
     for name in (_ALIVE, _GONE, _STRAY, _LEGACY):
         workspace = tmp_home / name
         workspace.mkdir()
-        resolve_project(std, config, project_dir=str(workspace), initialize=True)
+        # _LEGACY is a name an older ``create`` took from its directory, unchecked.
+        with patch("kanibako.settings.paths.box_name_reason", return_value=None):
+            resolve_project(std, config, project_dir=str(workspace), initialize=True)
     # The membership stays; only the workspace folder goes.
     shutil.rmtree(tmp_home / _GONE)
     # A box with no membership has no recorded workspace to report.  The name comes

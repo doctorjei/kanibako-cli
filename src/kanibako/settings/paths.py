@@ -18,7 +18,7 @@ from kanibako.settings.messages import (PROFILE_CONTENTS, BASHRC_CONTENTS,
                                               ERR_PROJECT_NO_PATH,
                                               ERR_PROJECT_BAD_DESIGNATION,
                                               ERR_PROJECT_NEW_HOME, ERR_PROJECT_REG_HOME,
-                                              ERR_PROJECT_NAME_USED,
+                                              ERR_PROJECT_NAME_USED, ERR_DERIVED_BOX_NAME,
                                               ERR_PROJECT_PATH_IS_NAMED_BOX,
                                               ERR_WORKSET_NO_PROJECT, ERR_WORKSET_NO_WORKSET,
                                               ERR_WORKSET_WS_NOT_BOX, ERR_WORKSET_NOT_IN_BOX,
@@ -50,7 +50,7 @@ from kanibako.settings.settings_resolve import (LevelView, ResolveCtx, SettingsE
                                                 literal_map, resolve_value)
 
 from kanibako.project.names import (resolve_name, resolve_qualified_name)
-from kanibako.launch.box_identity import Designation, classify_designation
+from kanibako.launch.box_identity import Designation, box_name_reason, classify_designation
 from kanibako.utils import literal_path, logical_cwd, project_hash, short_hash
 from kanibako.settings.bootstrap import (BASHRC_FILE, CONFIG_PATH_DEFAULTS,
                                          CREDS_WATCHER_LOG_SUFFIX, HOME_PATH,
@@ -1957,6 +1957,15 @@ def check_workspace_not_named_box(std: StandardPaths, workspace: str) -> None:
         ))
 
 
+def refuse_derived_primary_box_name(workspace: str) -> None:
+    """Refuse *workspace*'s basename as a PRIMARY box name when it fails the box-name rule."""
+    base = Path(workspace).name or "project"
+    reason = box_name_reason(base)
+    if reason is not None:
+        cure = f"kanibako create --name <new-name> {shlex.quote(workspace)}"
+        raise ProjectError(ERR_DERIVED_BOX_NAME % (base, reason, cure))
+
+
 def pick_primary_box_name(primary_workset: Path, workspace: str,
                           boxes_dir: Path | None = None, *, early: EarlyScope,
                           journal: Path | None = None) -> str:
@@ -1965,6 +1974,7 @@ def pick_primary_box_name(primary_workset: Path, workspace: str,
     With *journal*, a name whose ``boxes_dir`` key holds a pending entry is taken too:
     an interrupted create may have claimed it before making its dir.
     """
+    refuse_derived_primary_box_name(workspace)
     base = Path(workspace).name or "project"
     taken_names = load_primary_boxes(primary_workset, early=early)
     pending = set()

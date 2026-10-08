@@ -246,6 +246,8 @@ ERR_PROJECT_NEW_HOME = ("Refusing to create project rooted at $HOME: this would 
 ERR_PROJECT_REG_HOME = ("Refusing to register $HOME as a project path: this would mount the " +
                         "entire home directory as the workspace.")
 ERR_PROJECT_NAME_USED = "Name '%s' is already registered"
+ERR_DERIVED_BOX_NAME = ("The directory name '%s' is not a valid box name: %s. " +  # name, reason, cure
+                        "Give the box a valid name:\n  %s")
 # ⚑ "one record per project" (spec § Detection & import) asked at the PATH, not the name.
 ERR_PROJECT_PATH_IS_NAMED_BOX = ("Refusing to create a box at %s: it is already the workspace of " +
                          "named box '%s' in workset '%s', and one path is one project's record. " +
