@@ -480,10 +480,9 @@ def _set_time_anchor(
     )
 
     if anchor_ref.startswith("{"):
-        # ⚑ THE BRACED SPELLING IS THE REFERENCE NOW. PARSED, not stripped: ``{{`` is a
-        # literal brace and ``{$NAME}`` a VARIABLE, so a blind ``[1:-1]`` would send the
-        # first to the key lookup as a key that cannot exist and the second as a key
-        # literally named ``$NAME``.
+        # ⚑ THE BRACED SPELLING IS A REFERENCE. PARSED, not stripped: ``{{`` is a
+        # literal brace and ``{$NAME}`` a VARIABLE, so a blind ``[1:-1]`` hands
+        # the lookup a bogus key and one named ``$NAME``.
         braced = match_braced(anchor_ref, 0)
         if braced is None:
             return None

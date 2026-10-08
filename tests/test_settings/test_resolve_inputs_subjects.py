@@ -72,12 +72,7 @@ def _system(std) -> LaunchInputs:
 
 
 def _names(prefixes: tuple[str, ...], key: str, value: object) -> bool:
-    """*key* is in one of *prefixes*' namespaces, or its value refs into one.
-
-    ⚑ BOTH GRAMMARS. The filter has to recognise a reference however the floor spells
-    it: `@meta.box.path/canon` and `{meta.box.path}/canon` name the same anchor, and
-    reading only the old form let a braced value slip past the filter unfiltered.
-    """
+    """*key* is in one of *prefixes*' namespaces, or its value refs in either grammar."""
     return key.startswith(prefixes) or (
         isinstance(value, str)
         and any(f"@{p}" in value or ("{" + p) in value for p in prefixes)
