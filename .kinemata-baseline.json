@@ -883,20 +883,6 @@
     {
       "registry": "claims",
       "entry": "claim:path",
-      "antipattern": "shell.d/",
-      "path": "README.md",
-      "text": "Drop `.sh` files into the `shell.d/` directory inside your project's shell"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "shell.d/",
-      "path": "README.md",
-      "text": "support `shell.d/` on the next launch."
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
       "antipattern": "spawn.yaml",
       "path": "README.md",
       "text": "config (`spawn.yaml`) inside the child, enforced at spawn time."
