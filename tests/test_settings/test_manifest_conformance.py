@@ -497,15 +497,15 @@ class TestWorksetChannelDefaults:
         from kanibako.channels import channels as ch
 
         refs: dict[str, object] = {
-            "@meta.workset.path": ch.workset_root(proj, std),
-            "@meta.workset.name": ch.workset_name_token(proj),
-            "@system.channels.mailboxes": std.channels_mailboxes,
-            "@system.channels.share": std.channels_share,
+            "{meta.workset.path}": ch.workset_root(proj, std),
+            "{meta.workset.name}": ch.workset_name_token(proj),
+            "{system.channels.mailboxes}": std.channels_mailboxes,
+            "{system.channels.share}": std.channels_share,
         }
         # The two INTRA-family refs: the family roots itself, which is the shape the
         # manifest declares and the shape a flat re-spelling would silently lose.
-        refs["@workset.channelroot"] = derived["workset.channelroot"]
-        refs["@workset.channels.chat"] = derived["workset.channels.chat"]
+        refs["{workset.channelroot}"] = derived["workset.channelroot"]
+        refs["{workset.channels.chat}"] = derived["workset.channels.chat"]
         return refs
 
     @staticmethod
@@ -784,7 +784,7 @@ class TestBindDefaults:
 
 #: ⚑⚑⚑ (E1) ``NO_ORACLE_PATH_JOIN`` IS GONE (2026-08-29) — THE WHOLE CLASS, not a member.
 #: Its reason was: realized as a ``Path`` join, never as a formula STRING, so there is no
-#: ``"@meta.workset.path/…"`` literal anywhere to compare the manifest to, and an oracle
+#: ``"{meta.workset.path}/…"`` literal anywhere to compare the manifest to, and an oracle
 #: would be a second resolver.  Ten rows were filed under it and every one of them left,
 #: each because the reason was false OR because the conclusion did not follow:
 #:
@@ -963,11 +963,11 @@ class TestValueAnchorFormulas:
     def test_the_manifest_value_is_the_spelled_formula(self):
         """The manifest side, verbatim — a reworded formula reds before any floor runs."""
         assert _per_mode(_value("meta.box.path")) == {
-            "primary": "@workset.boxes/@meta.box.name",
-            "named": "@workset.boxes/@meta.box.name",
-            "standalone": "@workset.boxes",
+            "primary": "{workset.boxes}/{meta.box.name}",
+            "named": "{workset.boxes}/{meta.box.name}",
+            "standalone": "{workset.boxes}",
         }
-        assert _value("meta.box.home") == "@meta.box.path/home"
+        assert _value("meta.box.home") == "{meta.box.path}/home"
 
     def test_the_home_row_is_the_named_key(self):
         """``meta.box.home`` is spelled once, as ``BOX_HOME_KEY`` — the assembly seam and
@@ -997,13 +997,13 @@ class TestValueAuthFormulas:
 
     def test_the_manifest_values_are_the_spelled_formulas(self):
         assert _per_mode(_value("meta.box.auth.workset_path")) == {
-            "primary": "@workset.auth.path/@system.agent",
-            "named": "@workset.auth.path/@system.agent",
+            "primary": "{workset.auth.path}/{system.agent}",
+            "named": "{workset.auth.path}/{system.agent}",
             "standalone": None,
         }
         assert (
             _value("meta.box.agent.auth.share_support")
-            == "@meta.agent.<@system.agent>.auth.share_support"
+            == "{meta.agent.<{system.agent}>.auth.share_support}"
         )
 
 
@@ -1061,10 +1061,10 @@ class TestValueRerootFormulas:
     """
 
     def test_the_manifest_values_are_the_spelled_formulas(self):
-        assert _value("meta.workset.path") == "@meta.runtime.ws_root"
-        assert _value("meta.workset.name") == "@meta.runtime.ws_name"
-        assert _value("meta.workset.settings") == "@meta.workset.path/workset.yaml"
-        assert _value("meta.box.mode") == "@meta.runtime.project_type"
+        assert _value("meta.workset.path") == "{meta.runtime.ws_root}"
+        assert _value("meta.workset.name") == "{meta.runtime.ws_name}"
+        assert _value("meta.workset.settings") == "{meta.workset.path}/workset.yaml"
+        assert _value("meta.box.mode") == "{meta.runtime.project_type}"
 
     def test_the_settings_leaf_is_the_one_carrier(self):
         """The filename is drawn from ``WORKSET_META_FILE``, never re-typed — the spec
@@ -1091,22 +1091,18 @@ class TestValueAgentIdentity:
 
     def test_the_manifest_values_are_the_spelled_formulas(self):
         assert _value("meta.agent.<agent>.path") == (
-            "@config.agents/@meta.agent.<agent>.name"
+            "{config.agents}/{meta.agent.<agent>.name}"
         )
         assert _value("meta.agent.<agent>.settings") == (
-            "@meta.agent.<agent>.path/agent.yaml"
+            "{meta.agent.<agent>.path}/agent.yaml"
         )
         assert _value("meta.agent.default.name") == "default"
-        assert _value("meta.agent.default.path") == (
-            "@config.agents/@meta.agent.default.name"
-        )
+        assert _value("meta.agent.default.path") == "{config.agents}/default"
         assert _value("meta.agent.shell.auth.share_support") is False
-        assert _value("meta.agent.shell.path") == (
-            "@config.agents/@meta.agent.shell.name"
-        )
+        assert _value("meta.agent.shell.path") == "{config.agents}/shell"
         assert _value("meta.agent.shell.name") == "shell"
         assert _value("meta.agent.shell.settings") == (
-            "@meta.agent.shell.path/agent.yaml"
+            "{meta.agent.shell.path}/agent.yaml"
         )
         assert _value("meta.agent.shell.mode") == {}
 
@@ -1213,9 +1209,9 @@ class TestValueBoxAddresses:
         std = _StubChannelPaths()
         derived = TestWorksetChannelDefaults._derived(proj, std)
         return {
-            "@workset.channels.mailboxes": derived["workset.channels.mailboxes"],
-            "@workset.channels.share_global": derived["workset.channels.share_global"],
-            "@meta.box.name": _ProbeNamedBox.name,
+            "{workset.channels.mailboxes}": derived["workset.channels.mailboxes"],
+            "{workset.channels.share_global}": derived["workset.channels.share_global"],
+            "{meta.box.name}": _ProbeNamedBox.name,
         }
 
     @staticmethod
@@ -1223,13 +1219,13 @@ class TestValueBoxAddresses:
         return TestWorksetChannelDefaults._follow(formula, refs)
 
     def test_the_manifest_values_are_the_spelled_formulas(self):
-        assert _value("meta.box.inbox") == "@workset.channels.mailboxes/@meta.box.name"
+        assert _value("meta.box.inbox") == "{workset.channels.mailboxes}/{meta.box.name}"
         assert _value("meta.box.share_global") == (
-            "@workset.channels.share_global/@meta.box.name"
+            "{workset.channels.share_global}/{meta.box.name}"
         )
         assert _per_mode(_value("meta.box.share_workset")) == {
-            "primary": "@workset.channels.share/@meta.box.name",
-            "named": "@workset.channels.share/@meta.box.name",
+            "primary": "{workset.channels.share}/{meta.box.name}",
+            "named": "{workset.channels.share}/{meta.box.name}",
             "standalone": None,
         }
         assert _value("meta.box.settings") == "{meta.box.path}/box.yaml"
