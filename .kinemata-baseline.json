@@ -6,27 +6,6 @@
   "findings": [
     {
       "registry": "canonical",
-      "entry": "CANON_CHAPTER_LEAF",
-      "antipattern": "\"canon/handbook\"",
-      "path": "src/kanibako/launch/templates.py",
-      "text": "\"agent\": (\"template\", \"canon/handbook\", \"common\"),"
-    },
-    {
-      "registry": "canonical",
-      "entry": "CANON_CHAPTER_LEAF",
-      "antipattern": "\"canon/handbook\"",
-      "path": "src/kanibako/launch/templates.py",
-      "text": "\"box\": (\"home\", \"canon/handbook\"),"
-    },
-    {
-      "registry": "canonical",
-      "entry": "CANON_CHAPTER_LEAF",
-      "antipattern": "\"canon/handbook\"",
-      "path": "src/kanibako/launch/templates.py",
-      "text": "\"workset\": (\"template\", \"canon/handbook\"),"
-    },
-    {
-      "registry": "canonical",
       "entry": "SCOPE_CONTAINMENT",
       "antipattern": "\"system\":\\s*0,\\s*\"agent\":\\s*1",
       "path": "src/kanibako/settings/settings_categories.py",
@@ -3267,13 +3246,6 @@
       "antipattern": "\u2026/general/directives/SYS_GENERAL.md",
       "path": "MIGRATION.md",
       "text": "| general (system store) | `<data>/global/canon/handbook/general/SYS_GENERAL.md` | `\u2026/general/directives/SYS_GENERAL.md`"
-    },
-    {
-      "registry": "meta-files",
-      "entry": "SETUP_MARKER_KEY",
-      "antipattern": "system\\.setup_completed",
-      "path": "src/kanibako/settings/defaults_inventory.py",
-      "text": "\"system.agent\", \"system.setup_completed\","
     },
     {
       "registry": "parity:categories:unproduced",

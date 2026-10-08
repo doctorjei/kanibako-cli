@@ -14,7 +14,8 @@ from pathlib import Path
 
 from kanibako.agent_ref import ADDRESSABLE_PSEUDO_AGENTS
 from kanibako.settings.agent_config import store_dirname
-from kanibako.settings.core_defaults import HANDBOOK_REL, ROM_ROOT_PARTS, packaged_data_dir
+from kanibako.settings.core_defaults import (CANON_GUEST_ROOT, HANDBOOK_REL, ROM_ROOT_PARTS,
+                                              packaged_data_dir)
 
 if TYPE_CHECKING:
     from kanibako.settings.paths import ProjectPaths, StandardPaths
@@ -244,9 +245,9 @@ def stage_layers(dest: Path, layers: list[Path]) -> None:
 #: respells them per root through :class:`WorksetStampScope` — which reads its defaults
 #: from HERE.  A repoint MOVES an entry; it never adds one.
 SCOPE_WHITELISTS: dict[str, tuple[str, ...]] = {
-    "box": ("home", "canon/handbook"),
-    "agent": ("template", "canon/handbook", "common"),
-    "workset": ("template", "canon/handbook"),
+    "box": ("home", f"{CANON_GUEST_ROOT}/{HANDBOOK_REL}"),
+    "agent": ("template", f"{CANON_GUEST_ROOT}/{HANDBOOK_REL}", "common"),
+    "workset": ("template", f"{CANON_GUEST_ROOT}/{HANDBOOK_REL}"),
 }
 
 
