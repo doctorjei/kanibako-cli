@@ -2559,10 +2559,10 @@ class TestPersonaShareSymlinks:
             common_binds = {
                 "agent.claude.common": {
                     "/home/agent/.claude/plugins": (
-                        "@meta.agent.claude.path/common/plugins",
+                        "{meta.agent.claude.path}/common/plugins",
                     ),
                     "/home/agent/.claude/cache": (
-                        "@meta.agent.claude.path/common/cache",
+                        "{meta.agent.claude.path}/common/cache",
                     ),
                 },
             }
@@ -2570,7 +2570,7 @@ class TestPersonaShareSymlinks:
             category_binds = {
                 "agent.claude.caches": {
                     "{system.cache}/tweakcc": (
-                        "@meta.agent.claude.path/caches/tweakcc",
+                        "{meta.agent.claude.path}/caches/tweakcc",
                     ),
                 },
             }
@@ -3042,15 +3042,15 @@ class TestPersonaShareSymlinks:
 
     _SEEDS = {
         "agent.claude.seeded": {
-            "/home/agent/seeded": ("@meta.agent.claude.path/seedsrc",),
+            "/home/agent/seeded": ("{meta.agent.claude.path}/seedsrc",),
         },
     }
     _CAT_BINDS = {
         "agent.claude.caches": {
-            "/home/agent/.cache/x": ("@meta.agent.claude.path/caches/x",),
+            "/home/agent/.cache/x": ("{meta.agent.claude.path}/caches/x",),
         },
         "agent.claude.bindings.ro": {
-            "/home/agent/ro": ("@meta.agent.claude.path/robits", "ro"),
+            "/home/agent/ro": ("{meta.agent.claude.path}/robits", "ro"),
         },
     }
 
@@ -3151,7 +3151,7 @@ class TestPersonaShareSymlinks:
         ensure_persona_share_symlinks(std, self._NODE, self._target(
             common_binds={},
             category_binds={"agent.claude.bindings.ro": {
-                "/home/agent/conf": ("@meta.agent.claude.path/conf.toml", "ro"),
+                "/home/agent/conf": ("{meta.agent.claude.path}/conf.toml", "ro"),
             }},
         ))
         node_link = self._node_store(std) / "conf.toml"
@@ -3166,10 +3166,10 @@ class TestPersonaShareSymlinks:
         std = self._std(tmp_path)
         ensure_persona_share_symlinks(std, self._NODE, self._target(
             common_binds={"agent.claude.common": {
-                "/home/agent/one": ("@meta.agent.claude.path/common/shared",),
+                "/home/agent/one": ("{meta.agent.claude.path}/common/shared",),
             }},
             category_binds={"agent.claude.bindings.ro": {
-                "/home/agent/two": ("@meta.agent.claude.path/common/shared", "ro"),
+                "/home/agent/two": ("{meta.agent.claude.path}/common/shared", "ro"),
             }},
         ))
         node_link = self._node_store(std) / "common"

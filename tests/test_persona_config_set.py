@@ -448,14 +448,14 @@ class TestTypedAgentCaseReachesTheLowercaseNode:
         assert list(agents_root.iterdir()) == []
 
     def test_a_refusal_names_the_node_the_key_resolved_to(self, tmp_path, agents_root):
-        # The bare-relative refusal spells the key's store root as an ``@``-ref; it must
+        # The bare-relative refusal spells the key's store root as a braced ref; it must
         # be the lowercase node's, or the cure it offers names a key that is not one.
         msg = set_config_value(
             f"agent.Shell.secret_path.{_TOKEN_VAR}", "x",
             config_path=_cfg_path(tmp_path),
             command_scope=ConfigLevel.system, agents_root=agents_root,
         )
-        assert "'@meta.agent.shell.path/x'" in msg, msg
+        assert "'{meta.agent.shell.path}/x'" in msg, msg
 
 
 # ---------------------------------------------------------------------------

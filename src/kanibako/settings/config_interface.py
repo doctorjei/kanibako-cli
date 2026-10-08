@@ -475,9 +475,22 @@ def _set_time_anchor(
     agents_root: "Path | None",
 ) -> "str | None":
     """The DIRECTORY *anchor_ref* names AT SET TIME, or ``None`` when it is not knowable here."""
-    from kanibako.settings.settings_resolve import SettingsError, match_var
+    from kanibako.settings.settings_resolve import (
+        SettingsError, match_braced, match_var,
+    )
 
-    if anchor_ref.startswith("$"):
+    if anchor_ref.startswith("{"):
+        # ⚑ THE BRACED SPELLING IS THE REFERENCE NOW. PARSED, not stripped: ``{{`` is a
+        # literal brace and ``{$NAME}`` a VARIABLE, so a blind ``[1:-1]`` would send the
+        # first to the key lookup as a key that cannot exist and the second as a key
+        # literally named ``$NAME``.
+        braced = match_braced(anchor_ref, 0)
+        if braced is None:
+            return None
+        kind, ref = braced[0], braced[1]
+        if kind == "var":
+            return _host_xdg_map().get(ref)
+    elif anchor_ref.startswith("$"):
         # ⚑ PARSED, never prefix-matched — the same reader ``is_unambiguous_path_value``
         # admitted the value's own ``$XDG_*`` root with.
         try:
@@ -485,7 +498,9 @@ def _set_time_anchor(
         except SettingsError:
             return None
         return _host_xdg_map().get(name)
-    ref = anchor_ref[1:] if anchor_ref.startswith("@") else anchor_ref
+    else:
+        # The OLD spelling, still read until step 5 retires it.
+        ref = anchor_ref[1:] if anchor_ref.startswith("@") else anchor_ref
     if ref in scope_anchors:
         return str(scope_anchors[ref])
     if ref.startswith("meta.agent.") and ref.endswith(".path"):

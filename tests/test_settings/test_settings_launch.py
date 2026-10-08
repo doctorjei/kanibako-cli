@@ -1935,7 +1935,7 @@ def test_R147_a_hand_edited_bare_relative_workset_auth_path_is_refused(tmp_path)
     # The FILE that carries it is named — ``_auth_snapshot`` writes under tmp_path.
     assert f" in {tmp_path}" in msg
     # BOTH readings are named: the key's own root, and the cwd.
-    assert "@meta.workset.path" in msg
+    assert "{meta.workset.path}" in msg
     assert str(Path.cwd() / "auth") in msg
 
 

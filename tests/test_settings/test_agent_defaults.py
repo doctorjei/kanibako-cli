@@ -70,10 +70,10 @@ class TestLoadCommonRooting:
         assert common_binds == {
             "agent.claude.common": {
                 "/home/agent/.claude/plugins": (
-                    "@meta.agent.claude.path/common/plugins",
+                    "{meta.agent.claude.path}/common/plugins",
                 ),
                 "/home/agent/.claude/cache": (
-                    "@meta.agent.claude.path/common/cache",
+                    "{meta.agent.claude.path}/common/cache",
                 ),
             },
         }
@@ -96,7 +96,7 @@ class TestLoadCommonRooting:
         arm = common_binds["agent.claude.common"]
         assert list(arm) == ["/home/agent/.claude/p"]
         assert arm["/home/agent/.claude/p"][0] == (
-            "@meta.agent.claude.path/common/plugins"
+            "{meta.agent.claude.path}/common/plugins"
         )
 
     def test_leftover_entry_name_is_refused(self, declfile):
@@ -153,7 +153,7 @@ class TestLoadCommonRooting:
         common_binds = agent_defaults.load_common(package, filename, "claude")
         assert common_binds["agent.claude.common"] == {
             "/home/agent/.claude/plugins": (
-                "@meta.agent.claude.path/common/plugins",
+                "{meta.agent.claude.path}/common/plugins",
                 "ro",
             ),
         }
@@ -172,7 +172,7 @@ class TestLoadCommonRooting:
         )
         got = agent_defaults.load_common(package, filename, "goose")
         assert got["agent.goose.common"]["/home/agent/.k"][0] == (
-            "@meta.agent.goose.path/common/leaf"
+            "{meta.agent.goose.path}/common/leaf"
         )
 
 
@@ -467,10 +467,10 @@ class TestLayoutSingleSource:
 
         ref = agent_category_root_ref("claude", "common")
         anchor = meta_agent_path_floor("claude")["meta.agent.claude.path"]
-        assert ref == "@meta.agent.claude.path/common"
+        assert ref == "{meta.agent.claude.path}/common"
         assert anchor == "{config.agents}/claude"
         # The ref is the anchor plus the category dirname — nothing else prepends.
-        assert ref == f"@meta.agent.claude.path/{agent_category_dirname('common')}"
+        assert ref == f"{{meta.agent.claude.path}}/{agent_category_dirname('common')}"
 
     def test_a_persona_node_keeps_the_KEY_spelling_and_the_DIR_spelling_apart(self):
         """⚑ THE SPLIT-STORE GUARD, on the pair that survived.
@@ -485,7 +485,7 @@ class TestLayoutSingleSource:
 
         node = "navigator℘claude"
         assert agent_category_root_ref(node, "common") == (
-            f"@meta.agent.{node}.path/common"
+            f"{{meta.agent.{node}.path}}/common"
         )
         anchor = meta_agent_path_floor(node)[f"meta.agent.{node}.path"]
         assert anchor == "{config.agents}/navigator+claude"

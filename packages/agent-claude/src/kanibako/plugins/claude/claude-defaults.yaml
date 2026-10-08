@@ -235,7 +235,7 @@ category_binds:
   - category: caches
     box_dest: "{system.cache}/tweakcc"
     owner: agent
-    meta_ref: "@meta.agent.claude.path/caches/tweakcc"
+    meta_ref: "{meta.agent.claude.path}/caches/tweakcc"
 
 # The former Route-A `category_binds:` `instructions` entry ({system.instructions} →
 # ~/.claude/KANIBAKO.md) is RETIRED: the box guide now reaches the box INSIDE the RO
