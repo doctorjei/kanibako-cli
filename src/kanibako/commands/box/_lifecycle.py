@@ -269,16 +269,28 @@ def _relocated_own_name(
     return own
 
 
-def _default_landing(state: ProjectState, dest: Path | None) -> Path:
-    """The directory ``_to_default`` receives as the box's workspace (``_run_steps``)."""
+def _workspace_landing(
+    state: ProjectState, dest: Path | None, target_mode: BoxMode, *, records_only: bool,
+) -> Path:
+    """The directory the target owner receives as the box's workspace: ``dest`` when given.
+
+    ⚑⚑ THE STANDALONE ROOT IS ``metadata_path`` (drift I) — NEVER the workspace's PARENT:
+    ``workspace_path`` is the RESOLVED ``workset.workspaces``, so under ``workspaces:
+    nested/deep`` its parent is ``<root>/nested`` and under an ABSOLUTE repoint it is not
+    below the root at all.  An in-place edge OUT of standalone lands at the root unless
+    that repoint put the workspace outside it ([R144]: the box keeps the user's directory);
+    an in-place standalone rename lands at the root, which ``_to_standalone`` reads as such.
+    """
     if dest is not None:
         return dest
+    if records_only or state.mode is not BoxMode.standalone:
+        return state.workspace_path
     root = state.metadata_path
-    if state.mode is BoxMode.standalone and (
-            state.workspace_path.resolve() == root.resolve()
-            or root.resolve() in state.workspace_path.resolve().parents):
+    workspace = state.workspace_path
+    if (target_mode is BoxMode.standalone or workspace.resolve() == root.resolve()
+            or root.resolve() in workspace.resolve().parents):
         return root
-    return state.workspace_path
+    return workspace
 
 
 def _ownership_to_mode(ownership: str) -> tuple[BoxMode, str | None]:
@@ -1019,7 +1031,8 @@ def _validate(
         # ⚑ No name to mint or keep: ``_to_default`` names the box for the directory it
         # lands in, so the box-name rule is checked here, before any file moves.
         if mint is None and _relocated_own_name(state, std, landing_ws, mint) is None:
-            refuse_derived_box_name(_default_landing(state, dest).name or "project")
+            refuse_derived_box_name(_workspace_landing(
+                state, dest, target_mode, records_only=spec.records_only).name or "project")
 
     # --- a disabled vault that still holds data would be left behind (Q64) ---
     stranded = [] if vault_reused or state.enable_vault else [
@@ -1106,10 +1119,9 @@ def _run_steps(
 
     # --- STEP 2 — Move files (only when relocating a real workspace tree) ---
     records_only: bool = spec.records_only
-    new_workspace = state.workspace_path
+    new_workspace = _workspace_landing(state, dest, target_mode, records_only=records_only)
     if records_only and dest is not None:
         # ``remap``: files presumed already at *dest*; copy and remove nothing.
-        new_workspace = dest
         old = state.workspace_path
         if (state.mode is BoxMode.named and not state.is_external and old.is_dir()
                 and old.resolve() != dest.resolve()):
@@ -1139,46 +1151,26 @@ def _run_steps(
             )
         # ⚑ THE UNWIND OWNS ONLY WHAT THIS MOVE CREATED: the copy refuses an existing dest.
         unwind.push(lambda: _unwind_created_root(dest))
-        new_workspace = dest
-    elif relocating and dest is not None and state.is_external:
-        # ⚑ EXTERNAL source: the "workspace" is the USER'S OWN dir — never moved, only
-        # re-recorded. *dest* is the recorded location of an internalizing move.
-        new_workspace = dest
+    # An EXTERNAL source relocating: the "workspace" is the USER'S OWN dir — never moved,
+    # only re-recorded at *dest* (the landing above).
     elif (
         not records_only
         and not relocating
         and state.mode is BoxMode.standalone
     ):
-        # ⚑⚑ THE STANDALONE ROOT IS ``metadata_path`` (drift I) — NEVER the workspace's
-        # PARENT.  ``workspace_path`` is the RESOLVED ``workset.workspaces``, so under
-        # ``workspaces: nested/deep`` its parent is ``<root>/nested`` and under an
-        # ABSOLUTE repoint it is not below the root at all.  Every branch here aims a
-        # step that MOVES USER DIRECTORIES, so the root is READ, never positioned.
         root = state.metadata_path
         workspace = state.workspace_path
-        if target_mode is BoxMode.standalone:
-            # ⚑ In-place standalone rename.  ``_to_standalone`` reads this value as the
-            # ROOT, so handing it the workspace dir laid a SECOND box inside the first.
-            new_workspace = root
-        elif workspace.resolve() == root.resolve():
-            # ``workspaces: .`` — the live workspace already IS the project dir, which is
-            # exactly what every other mode wants.  Nothing to lift.
-            new_workspace = root
-        elif root.resolve() in workspace.resolve().parents:
+        if new_workspace == root and target_mode is not BoxMode.standalone and (
+                root.resolve() in workspace.resolve().parents):
             # ⚑ Reverse of drift H: standalone roots the live workspace UNDER the root,
             # every other mode at the project dir — so an in-place convert OUT must lift.
             _unconsolidate_workspace_subdir(workspace, root, unwind)
-            new_workspace = root
-        else:
+        elif new_workspace == workspace and workspace.resolve() != root.resolve():
             # ⚑ [R144]: an ABSOLUTE ``workset.workspaces`` is a directory the USER named,
-            # and emptying it is the irreversible loss.  Nothing needs to move — the mode
-            # being converted TO roots its workspace at the project dir, and that dir may
-            # be anywhere — so the box simply keeps it.  Reported, because a keep that
-            # cannot name the path as the user's is just a leak.
+            # and emptying it is the irreversible loss, so the box simply keeps it.
             print(f"Note: left the workspace at {workspace} — workset.workspaces "
                   f"pointed it outside {root}, so it is yours and the box keeps "
                   f"it as its project directory.", file=sys.stderr)
-            new_workspace = workspace
 
     # --- STEPS 3+4 — markers INTERLEAVED with ownership: the destination metadata
     #     roots depend on the target owner, so they cannot be separated. ---
