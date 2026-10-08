@@ -616,6 +616,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A binding whose source or destination `@`-references a map or a number is now a named refusal**, not a
+  bare `AssertionError` traceback. A settings file storing `box: {bindings: {rw: {/c: ["@box.env"]}}}`
+  crashed every `set`; the error now names the entry and says the reference resolved to a map, not a path.
 - **`box convert --move` into a workset or into the default workset now re-points a vault link whose target lies in
   the workspace or the box store it carries.** The link names the landed tree instead of leaving a second copy that
   diverges.

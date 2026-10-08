@@ -1770,3 +1770,47 @@ def test_a_name_keyed_bind_host_is_guarded_too() -> None:
     })
     with pytest.raises(SettingsError, match="BARE RELATIVE"):
         expand(snap, _ctx())
+
+
+# --------------------------------------------------------------------------- #
+# A path half that names a non-path key is a NAMED refusal, never an assert    #
+# --------------------------------------------------------------------------- #
+
+_MAP_KEY = {"system": {"channels": {"common": {"x": "/a"}}}, "n": 7}
+
+
+@pytest.mark.parametrize(("leaf", "raw"), [
+    (Bind("@system.channels.common", "/c"), "@system.channels.common"),
+    (Bind("/h", "@system.channels.common"), "@system.channels.common"),
+    (Bind("@n", "/c"), "@n"),
+    (BindEntry("@system.channels.common"), "@system.channels.common"),
+])
+@pytest.mark.parametrize("collect_errors", [False, True])
+def test_a_bind_half_naming_a_non_path_key_is_refused(
+    leaf: Bind | BindEntry, raw: str, collect_errors: bool,
+) -> None:
+    snap = KeyStore({**copy.deepcopy(_MAP_KEY), "box": {"bindings": {"rw": {"/c": leaf}}}})
+    if collect_errors:
+        _expanded, errors = expand(snap, _ctx(), collect_errors=True)
+        message = errors["box.bindings.rw./c"]
+    else:
+        with pytest.raises(SettingsError) as exc:
+            expand(snap, _ctx())
+        message = str(exc.value)
+    assert f"{raw!r}" in message and "not a path" in message
+
+
+@pytest.mark.parametrize("collect_errors", [False, True])
+def test_a_dest_key_naming_a_map_valued_key_is_refused(collect_errors: bool) -> None:
+    snap = KeyStore({
+        **copy.deepcopy(_MAP_KEY),
+        "box": {"bindings": {"rw": {"@system.channels.common": BindEntry("/h/a")}}},
+    })
+    if collect_errors:
+        _expanded, errors = expand(snap, _ctx(), collect_errors=True)
+        message = errors["box.bindings.rw.@system.channels.common"]
+    else:
+        with pytest.raises(SettingsError) as exc:
+            expand(snap, _ctx())
+        message = str(exc.value)
+    assert "'@system.channels.common'" in message and "not a path" in message
