@@ -6664,7 +6664,7 @@ that list running containers see only `kb-` names:
 
 | Command | What it does with a pre-1.8.0 container that is still running |
 |---|---|
-| `kanibako stop --all` | does not see it: prints `No running kanibako containers found.` and exits 0 |
+| `kanibako stop --all` | does not see it: prints `No kanibako containers found.` and exits 0 |
 | `kanibako box list` | shows its box as `stopped` |
 | `kanibako box ps` | leaves its box out |
 | `kanibako stop <box>` | finds no container under the new name; the old one keeps running |
@@ -6696,6 +6696,20 @@ kanibako start <box>
 ```
 
 `kanibako stop` cannot do this for you: it addresses only the new names.
+
+### `stop --all` removes stopped containers and reports both counts
+
+**Read this if a script reads the output of `kanibako stop --all`.**
+
+`stop --all` now also removes stopped `kb-` containers, so its output lines changed:
+
+| v1.7.x | v1.8.0 |
+|---|---|
+| `Stopped <n> container(s).` | `Stopped <n> container(s); removed <m> stopped container(s).` |
+| `No running kanibako containers found.` | `No kanibako containers found.` |
+| `This will stop <n> running container(s):` | `This will stop <n> running container(s) and remove <m> stopped container(s):` |
+
+Each container in the prompt is followed by `(running)` or `(stopped)`.
 
 ### `workset.*` directory keys set with `system set` now reach every reader
 
