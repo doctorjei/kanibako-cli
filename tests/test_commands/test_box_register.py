@@ -518,31 +518,29 @@ class TestCreateStandaloneOptIn:
         # The composed identity: <stored kuid>_<leaf>.
         assert name.partition("_")[0] == self._stored_kuid(root)
 
-    def test_register_honors_name(self, config_file, tmp_home, credentials_dir):
-        """With ``--register``, ``--name`` sources the registry entry's leaf."""
+    def test_register_refuses_a_divergent_name(
+        self, config_file, tmp_home, credentials_dir
+    ):
+        """⚑ INVERTED by ruling 2026-10-08.  This pinned ``--name`` SOURCING the
+        entry's leaf; the ruling says the KEY is composed from the root, so a
+        divergent ``--name`` is REFUSED rather than honored."""
         config, std = _std(config_file)
         root = tmp_home / "sa"
         root.mkdir()
 
         assert run_create(
             _create_args(root, standalone=True, register=True, name="chosen")
-        ) == 0
+        ) == 1
+        assert registry_store.load_standalone(std.registry) == {}
+        assert not (root / "box_data").exists()
+        assert not (root / "workset.yaml").exists()
 
-        registered = registry_store.load_standalone(std.registry)
-        (name,) = registered
-        assert name.partition("_")[2] == "chosen"
-        assert name.partition("_")[2] != root.name
-
-    def test_name_is_a_noop_without_register(
+    def test_name_is_refused_without_register(
         self, config_file, tmp_home, credentials_dir
     ):
-        """⚑ §D4a: ``--name`` names the INDEX ENTRY, so with no entry it does nothing.
-
-        Pinned on the one effect of ``--name`` that would otherwise OUTLIVE the
-        create: a verbatim canonical ``<kuid>_<leaf>`` asserts the box's kuid, and
-        that kuid is persisted as ``workset.kuid``.  Ignored, the box gets a fresh
-        one.
-        """
+        """⚑ INVERTED by ruling 2026-10-08.  ``--name`` used to be a silent no-op
+        with no ``--register``.  A typed flag that does nothing is never silently
+        ignored in 1.8.0, so it is refused with or without the flag."""
         config, std = _std(config_file)
         root = tmp_home / "sa"
         root.mkdir()
@@ -550,20 +548,17 @@ class TestCreateStandaloneOptIn:
 
         assert run_create(
             _create_args(root, standalone=True, name=supplied)
-        ) == 0
+        ) == 1
 
         assert registry_store.load_standalone(std.registry) == {}
-        stored = self._stored_kuid(root)
-        assert stored and stored != _A_KUID
+        assert not (root / "box_data").exists()
+        assert not (root / "workset.yaml").exists()
 
-    def test_name_is_honored_verbatim_with_register(
+    def test_verbatim_canonical_name_is_refused_at_create(
         self, config_file, tmp_home, credentials_dir
     ):
-        """The same canonical ``--name`` WITH ``--register`` is taken verbatim.
-
-        The contrast half of the no-op pin: identical input, opposite outcome, so
-        the difference is the flag and nothing else.
-        """
+        """⚑ INVERTED by ruling 2026-10-08.  At CREATE there is no stored kuid to
+        check a verbatim ``<kuid>_<leaf>`` against, so it is refused."""
         config, std = _std(config_file)
         root = tmp_home / "sa"
         root.mkdir()
@@ -571,10 +566,45 @@ class TestCreateStandaloneOptIn:
 
         assert run_create(
             _create_args(root, standalone=True, register=True, name=supplied)
+        ) == 1
+
+        assert registry_store.load_standalone(std.registry) == {}
+
+    def test_bare_leaf_name_is_accepted_as_a_noop(
+        self, config_file, tmp_home, credentials_dir
+    ):
+        """The accepted no-op: ``--name`` equal to the directory's own basename."""
+        config, std = _std(config_file)
+        root = tmp_home / "sa"
+        root.mkdir()
+
+        assert run_create(
+            _create_args(root, standalone=True, register=True, name="sa")
         ) == 0
 
-        assert registry_store.load_standalone(std.registry) == {supplied: str(root)}
-        assert self._stored_kuid(root) == _A_KUID
+        registered = registry_store.load_standalone(std.registry)
+        (name,) = registered
+        assert name == f"{self._stored_kuid(root)}_sa"
+
+    def test_registry_key_is_the_recomposed_name(
+        self, config_file, tmp_home, credentials_dir
+    ):
+        """THE REPORTED BUG, pinned: ``box list``'s key and ``box info``'s name
+        were different strings.  The producer now composes the key from the root,
+        so the two agree by construction — one carrier, the D1b principle."""
+        config, std = _std(config_file)
+        root = tmp_home / "widget"
+        root.mkdir()
+
+        assert run_create(
+            _create_args(root, standalone=True, register=True)
+        ) == 0
+
+        from kanibako.launch.box_identity import compose_standalone_name
+
+        (key,) = registry_store.load_standalone(std.registry)
+        assert key == compose_standalone_name(self._stored_kuid(root), root)
+        assert key.endswith("_widget")
 
     def test_unregistered_box_is_adopted_by_the_register_verb(
         self, config_file, tmp_home, credentials_dir, capsys

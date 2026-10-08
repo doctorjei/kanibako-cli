@@ -7100,6 +7100,56 @@ A standalone box's name follows its directory, so one in a directory named `caf�
 `<kuid>_cafe` and one in a directory named `東京` is refused until the directory gets an ASCII name; stop such boxes before upgrading,
 and move their channel folders as *A standalone box's name keeps its project directory's case* shows.
 
+### 2.112 A standalone box is named by its directory; `--name` is refused
+
+A standalone box's name is `{workset.kuid}_{leaf of its directory}`, and that string is
+also its registry key — one carrier, not two. Before, `--name` fed the key while the box's
+own name was recomputed from the directory, so `box list` and `box info` could disagree on
+one box: a box in `~/proj` created with `--name sabox` listed as `kh3vv_sabox` and reported
+as `kh3vv_proj`.
+
+**`--name` is now refused on every standalone door**, not silently dropped — a flag you typed
+that does nothing gets an answer, not silence:
+
+```
+Error: a standalone box is named 'kh3vv_proj' after its directory; rename the directory to rename the box
+```
+
+Refused on `create --standalone`, `box create --standalone`, `box move`, `box convert
+--standalone`, `box duplicate --to standalone`, and `box extract`. Two spellings pass as
+no-ops because they ask for what the box gets anyway: the bare directory name (`--name proj`)
+and, where the box already has a kuid, the full `kh3vv_proj`. To rename a standalone box,
+rename the directory.
+
+**If your box is already registered under a `kuid_<other>` key**, the cure is to register it
+again. This is verified end to end — after it, `box list` and `box info` agree and the old
+key is gone:
+
+```
+kanibako box rm <old key>
+kanibako box register <path>
+```
+
+`box rm` without `--purge` keeps your files and the box's metadata; it only unregisters.
+
+Until you run it, each reader behaves like this with a divergent key — none of them lose the
+box, because every one of them addresses it BY key:
+
+| What you run | What it does with the old key |
+|---|---|
+| `box list` | prints the old key as the name — the disagreement you came here about |
+| `box info <path>` | shows the recomposed name; it never read the key |
+| `start <name>` | key-addressed: the old key starts the box, the recomposed name does not resolve |
+| `stop --all` | stops it correctly through the key, reporting the old spelling |
+| `clean`, `box rm`, `workset disconnect` | reverse-resolve root → key and retire that key; correct |
+| `box register <path>` | writes the composed key — this is the cure above |
+
+**A moved root.** `box move` re-keys the entry, so the name follows the directory and the
+registry agrees. If you moved the directory yourself with `mv`, `box list` shows the old entry
+as `missing` rather than a wrong name, and `box info <new path>` picks the box up under its new
+composed name — but `box remap <old name> <new path>` does NOT work here (it resolves the old
+name to the dead path), so use `box rm <old key>` and `box register <new path>`.
+
 ---
 
 ## 3. For plugin authors

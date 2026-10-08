@@ -374,6 +374,97 @@ class TestValidateStandaloneName:
 
 
 # ---------------------------------------------------------------------------
+# refuse_nonleaf_standalone_name / refuse_standalone_rename
+# The door rule (ruling 2026-10-08: Reading A, and a typed flag is never
+# silently ignored).  RED ON BASE: neither helper exists there.
+# ---------------------------------------------------------------------------
+
+class TestRefuseNonleafStandaloneName:
+    """A standalone ``--name`` is refused unless it IS the name the box gets."""
+
+    _MSG = r"after its directory; rename the directory to rename the box"
+
+    def test_empty_is_noop(self) -> None:
+        box_identity.refuse_nonleaf_standalone_name("", Path("/x/proj"))
+
+    def test_bare_leaf_is_a_noop(self) -> None:
+        box_identity.refuse_nonleaf_standalone_name("proj", Path("/x/proj"))
+
+    def test_composed_name_with_kuid_is_a_noop(self) -> None:
+        box_identity.refuse_nonleaf_standalone_name(
+            f"{_VALID_KUID}_proj", Path("/x/proj"), box_kuid=_VALID_KUID)
+
+    def test_divergent_name_is_refused(self) -> None:
+        from kanibako.errors import ProjectError
+
+        with pytest.raises(ProjectError, match=self._MSG):
+            box_identity.refuse_nonleaf_standalone_name("sabox", Path("/x/proj"))
+
+    def test_uppercase_leaf_is_refused_equality_is_exact(self) -> None:
+        from kanibako.errors import ProjectError
+
+        # PROJ is not what directory ``proj`` composes, so it is not a no-op.
+        with pytest.raises(ProjectError, match=self._MSG):
+            box_identity.refuse_nonleaf_standalone_name("PROJ", Path("/x/proj"))
+
+    def test_composed_shape_without_a_kuid_is_refused(self) -> None:
+        from kanibako.errors import ProjectError
+
+        # With no stored kuid there is nothing to check the prefix against.
+        with pytest.raises(ProjectError, match=self._MSG):
+            box_identity.refuse_nonleaf_standalone_name(
+                f"{_VALID_KUID}_proj", Path("/x/proj"))
+
+    def test_refusal_names_the_box_when_kuid_known(self) -> None:
+        from kanibako.errors import ProjectError
+
+        with pytest.raises(ProjectError, match=f"'{_VALID_KUID}_proj'"):
+            box_identity.refuse_nonleaf_standalone_name(
+                "sabox", Path("/x/proj"), box_kuid=_VALID_KUID)
+
+    def test_refusal_shows_the_placeholder_when_kuid_unknown(self) -> None:
+        from kanibako.errors import ProjectError
+
+        with pytest.raises(ProjectError, match=r"'<kuid>_proj'"):
+            box_identity.refuse_nonleaf_standalone_name("sabox", Path("/x/proj"))
+
+
+class TestRefuseStandaloneRename:
+    """The same rule for a door holding the composed NAME instead of a root."""
+
+    _MSG = r"after its directory; rename the directory to rename the box"
+
+    def test_empty_is_noop(self) -> None:
+        box_identity.refuse_standalone_rename("", f"{_VALID_KUID}_proj")
+
+    def test_current_name_is_a_noop(self) -> None:
+        box_identity.refuse_standalone_rename(
+            f"{_VALID_KUID}_proj", f"{_VALID_KUID}_proj")
+
+    def test_leaf_half_is_a_noop(self) -> None:
+        box_identity.refuse_standalone_rename("proj", f"{_VALID_KUID}_proj")
+
+    def test_any_other_name_is_refused(self) -> None:
+        from kanibako.errors import ProjectError
+
+        with pytest.raises(ProjectError, match=self._MSG):
+            box_identity.refuse_standalone_rename("sabox", f"{_VALID_KUID}_proj")
+
+    def test_case_difference_is_refused(self) -> None:
+        from kanibako.errors import ProjectError
+
+        with pytest.raises(ProjectError, match=self._MSG):
+            box_identity.refuse_standalone_rename(
+                f"{_VALID_KUID.upper()}_PROJ", f"{_VALID_KUID}_proj")
+
+    def test_refusal_names_the_current_box(self) -> None:
+        from kanibako.errors import ProjectError
+
+        with pytest.raises(ProjectError, match=f"'{_VALID_KUID}_proj'"):
+            box_identity.refuse_standalone_rename("sabox", f"{_VALID_KUID}_proj")
+
+
+# ---------------------------------------------------------------------------
 # Box-name BLOCKLIST validation (W1 Phase D, §Design 8)
 # ---------------------------------------------------------------------------
 
