@@ -24,7 +24,9 @@ lays out the store.
 The store is built in a fresh temp directory and .claims-store links to it,
 because a store built under a box's workspace path (/home/agent/workspace)
 collides with that box's own workspace binding. Idempotent: the previous store and link are removed and
-rebuilt on every run. The link is gitignored, and every kinemata scan skips
+rebuilt on every run. A .claims-store link that resolves anywhere but a
+kanibako-claims-store.* directory under the temp root is refused (exit 2) and
+left alone. The link is gitignored, and every kinemata scan skips
 it.
 
 Environment:
@@ -49,8 +51,23 @@ python=${PYTHON:-python3}
 # box binds its workspace, and `create` refuses a store there: its cache
 # binding would sit inside that workspace binding. A temp directory builds the
 # same store in a box and in CI.
+# The old link's target is deleted only if it resolves to a store this script
+# made: a kanibako-claims-store.* directory directly under the temp root. A
+# link anywhere else was not made here, so the run refuses and touches nothing.
+tmproot=$(readlink -f "${TMPDIR:-/tmp}")
 if [ -L "$store" ]; then
-  rm -rf "$(readlink "$store")"
+  old=$(readlink -f "$store" || true)
+  case "$old" in
+    "$tmproot"/kanibako-claims-store.*)
+      if [ "$(dirname "$old")" != "$tmproot" ]; then
+        echo "build-claims-store: refusing: $store links to $old, not a store this script built" >&2
+        exit 2
+      fi
+      rm -rf "$old" ;;
+    *)
+      echo "build-claims-store: refusing: $store links to ${old:-$(readlink "$store")}, not a store this script built" >&2
+      exit 2 ;;
+  esac
   rm -f "$store"
 elif [ -e "$store" ]; then
   rm -rf "$store"
