@@ -3262,13 +3262,6 @@
       "text": "scopes_spec"
     },
     {
-      "registry": "parity:reserved-agent-names:overlapping",
-      "entry": "shell",
-      "antipattern": "",
-      "path": "reserved-agent-names",
-      "text": "shell"
-    },
-    {
       "registry": "shape:keyspace:per-owner-default-reaches-anchor",
       "entry": "meta.agent.default.path",
       "antipattern": "",

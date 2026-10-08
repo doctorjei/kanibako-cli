@@ -1552,6 +1552,22 @@ suffixes = [".toml"]
 # `shell` reserves, so the pattern folds with the rule. The parity oracle below
 # folds its produced names the same way, for the same reason.
 
+# FACT: core ships exactly one built-in agent, `shell`, which owns the reserved
+# `shell` slot ([R175]: built-in is a category; [R181] (ii)). The declaration
+# the `core-agent-names` parity compares against.
+# CATCHES (`check`): a `name` property returning `"shell"` outside its home,
+# i.e. a second class claiming the built-in's slot.
+[[registry]]
+name = "core-agent-names"
+kind = "code-patterns"
+suffixes = [".py"]
+
+  [[registry.entry]]
+  id = "shell"
+  antipatterns = ['''(?m)^\s*return\s+["']shell["']\s*$''']
+  home = ["src/kanibako/targets/shell.py"]
+  note = "core's one built-in agent; seeded in targets.discover_targets"
+
 # ---------------------------------------------------------------------------
 # FACT: everything kanibako ships or keeps in this repository uses American
 # spelling -- identifiers, keys, file names, messages, comments, documentation.
@@ -3112,8 +3128,8 @@ extract = '(?m)^ci-python: (\S+)$'
 # name this repository registers, from two places because the product reads two:
 # the `kanibako.agents` entry-point KEYS of the root `pyproject.toml` and of each
 # `packages/*/pyproject.toml` (what `_register` is handed as `ep.name`), and the
-# literal returned by the `name` property of every `Target` subclass under `src/`
-# and `packages/*/src/` (what `_register` is handed by the module scan, and what
+# literal returned by the `name` property of every `Target` subclass under
+# `packages/*/src/` (what `_register` is handed by the module scan, and what
 # `_require_meta_name` validates).
 #
 # ⚑ IT READS THE TREE, NOT THE INSTALLED METADATA, and CI forces that rather
@@ -3148,39 +3164,16 @@ extract = '(?m)^ci-python: (\S+)$'
 # at launch, which raises. It is the sentence "whose `Target.name` spells a
 # reserved name" that reaches further than the mechanism does.
 #
-# Measured 2026-09-25 on this tree, kinemata `0.4.1`:
-#   `# reserved-agent-names: 2 declared, 4 produced, no identifier is both
-#   declared and produced.`  rc=0
-# The 4 are `claude`, `codex`, `goose` and `shell`, printed over 7 lines. Each
-# plugin names itself twice, once as an entry-point key and once as
-# `Target.name`; core's `shell` names itself ONCE, through the AST half alone
-# (`ShellTarget.name` returns a literal and is walked like the rest), because
-# core declares no entry point. That the two halves agree for a plugin is a
-# different fact and is not what this table checks.
-# NEGATIVE CONTROL, run against a scratch tree in /tmp carrying its own copy of
-# this config, so this repository's config was never edited for it: a fourth
-# package declaring `shell = "kanibako.plugins.rogue:RogueTarget"` and a
-# `RogueTarget.name` returning `"default"` gives rc=1, `FAIL: 2 disagreement(s)`
-# -- `default: declared and produced, where neither may be` and the same for
-# `shell`, one reached through the TOML key and one through the AST, so both
-# halves of the oracle are shown discriminating. `kinemata check` over the same
-# tree: rc=1, `shell (1 site)`, naming
-# `packages/agent-rogue/pyproject.toml:5` and quoting the line.
-# VACUITY CONTROL, the same scratch config over a tree that declares no agent at
-# all: rc=1, `BLOCKED: claims no identifier is both declared and produced, and
-# its oracle produced no identifiers at all. Nothing can violate that, so the run
-# would pass by looking at nothing`.
-# ⚑ THE ENTRY-POINT HALF READS THROUGH `kinemata_keyspace.in_tree_agents`
-# (2026-09-25), the walk the keyspace adapter judges agent nodes by, under
-# `agent_ref.AGENT_ENTRY_POINT_GROUP` -- one walk and one group name, not a copy
-# of each here. Re-run under `0.4.1` on a `/tmp` copy: a `packages/agent-rogue`
-# declaring `Default = '...:RogueTarget'` gives rc=1, `default: declared and
-# produced, where neither may be`. A rogue `Shell` does NOT red there, and that
-# is the baseline, not the oracle: the `shell` overlap is an accepted record
-# (`parity:reserved-agent-names:overlapping`), so it masks a planted one.
-# The record is LIVE: ShellTarget.name (targets/shell.py) produces shell through the AST half on a
-# clean tree, so --prune keeps it (R181 (i)). A planted Shell entry point is still reported by
-# check, whose reserved-agent-names pattern is (?mi).
+# ⚑ PLUGINS ONLY ([R181] (ii)). Core's built-in `ShellTarget` is named `shell`,
+# the very slot the reservation protects, so the AST half walks `packages/*/src`
+# and not `src/`; core's built-ins are pinned separately, to exactly `{shell}`, by
+# the `core-agent-names` parity below. The entry-point half still reads every
+# `pyproject.toml`, root included: core seeds its built-in and declares no entry
+# point, so any entry point is a plugin door.
+# NEGATIVE CONTROLS, on a `/tmp` copy of this tree: a `packages/agent-rogue`
+# declaring `Shell = '...:RogueTarget'` reds this parity (`shell: declared and
+# produced, where neither may be`), and so does a `RogueTarget.name` returning
+# `"default"`. Measurements are in the commit that split the halves.
 [[parity]]
 registry = "reserved-agent-names"
 relation = "disjoint"
@@ -3191,7 +3184,8 @@ from kanibako.settings.kinemata_keyspace import in_tree_agents
 for key in sorted(in_tree_agents(pathlib.Path("."))):
     # The reservation folds for comparison ([R172]), so the oracle folds what it produces.
     print(f"agent-name: {key.casefold()}")
-for source in [*sorted(pathlib.Path("src").rglob("*.py")), *sorted(pathlib.Path("packages").glob("*/src/**/*.py"))]:
+# Plugin Target classes only; core's built-ins are the `core-agent-names` parity's.
+for source in sorted(pathlib.Path("packages").glob("*/src/**/*.py")):
     for node in ast.walk(ast.parse(source.read_text())):
         if not (isinstance(node, ast.ClassDef) and any("Target" in ast.unparse(base) for base in node.bases)):
             continue
@@ -3203,6 +3197,28 @@ for source in [*sorted(pathlib.Path("src").rglob("*.py")), *sorted(pathlib.Path(
                         print(f"agent-name: {seen.casefold() if isinstance(seen, str) else seen}")
 """]
 extract = '(?m)^agent-name: (\S+)$'
+
+# Core's built-in agents, pinned to exactly `{shell}` ([R181] (ii)): the one
+# built-in owns the reserved `shell` slot by design (`targets.discover_targets`
+# seeds it). A second core `Target` with a literal `name`, or a renamed
+# `ShellTarget`, reds this `equal`. Same AST walk as above, over `src/`.
+[[parity]]
+registry = "core-agent-names"
+relation = "equal"
+command = ["{python}", "-c", """
+import ast, pathlib
+for source in sorted(pathlib.Path("src").rglob("*.py")):
+    for node in ast.walk(ast.parse(source.read_text())):
+        if not (isinstance(node, ast.ClassDef) and any("Target" in ast.unparse(base) for base in node.bases)):
+            continue
+        for item in ast.walk(node):
+            if isinstance(item, ast.FunctionDef) and item.name == "name":
+                for leaf in ast.walk(item):
+                    if isinstance(leaf, ast.Return) and isinstance(leaf.value, ast.Constant):
+                        seen = leaf.value.value
+                        print(f"core-agent-name: {seen.casefold() if isinstance(seen, str) else seen}")
+"""]
+extract = '(?m)^core-agent-name: (\S+)$'
 
 # ---------------------------------------------------------------------------
 # THE `KEY_TYPES` VALUE-VOCABULARY PIN. `relation = "declared_contains"` is the
