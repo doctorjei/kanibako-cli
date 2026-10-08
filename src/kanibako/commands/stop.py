@@ -327,22 +327,37 @@ def _boxes_rendering_no_name() -> list[str]:
 
 
 def _stop_all(runtime: ContainerRuntime, *, force: bool = False) -> int:
-    """Stop all running kanibako containers."""
+    """Stop every running kanibako container, then clear any EXITED ones holding a name.
+
+    The all-states listing is a reaper: a container left in ``Exited`` still holds
+    the box's name, blocking the next launch.  The same liveness-then-action shape
+    as ``_stop_one`` applies here (read ``is_running`` once, pick the sentence,
+    never run stop on something already exited).
+    """
     # ⚑ SKIP AND CONTINUE: the sweep carries on with every container that has a name.
     for name in _boxes_rendering_no_name():
         print(f"Skipped box '{name}': it has no container name under the box-name rule.")
 
-    containers = runtime.list_running()
+    containers = runtime.list_running(include_stopped=True)
     if not containers:
         print("No running kanibako containers found.")
         return 0
 
-    # Confirmation prompt unless --force
+    # ⚑ LIVENESS ONCE, BEFORE ANYTHING CHANGES IT — the on-stop writeback and the
+    # sentence pick both read it.  Same shape as ``_stop_one`` and the launch guard.
+    liveliness = {
+        name: runtime.is_running(name) for name, _image, _status in containers
+    }
+    running_names = [n for n, live in liveliness.items() if live]
+    stopped_names = [n for n, live in liveliness.items() if not live]
+
     if not force:
-        names = [name for name, _, _ in containers]
-        print(f"This will stop {len(containers)} running container(s):")
-        for n in names:
-            print(f"  {n}")
+        print(f"This will stop {len(running_names)} running container(s) "
+              f"and remove {len(stopped_names)} stopped container(s):")
+        for n in running_names:
+            print(f"  {n}  (running)")
+        for n in stopped_names:
+            print(f"  {n}  (stopped)")
         print()
         try:
             answer = input("Continue? [y/N] ").strip().lower()
@@ -352,16 +367,22 @@ def _stop_all(runtime: ContainerRuntime, *, force: bool = False) -> int:
             print("Aborted.")
             return 2
 
-    stopped = 0
-    for name, image, status in containers:
-        if runtime.stop(name):
-            print(f"Stopped {name}")
-            # Clean up stopped container (persistent containers lack --rm)
-            if runtime.container_exists(name):
-                runtime.rm(name)
-            stopped += 1
+    stopped_count = 0
+    removed_count = 0
+    for name, _image, _status in containers:
+        if liveliness[name]:
+            if runtime.stop(name):
+                print(f"Stopped {name}")
+                if runtime.container_exists(name):
+                    runtime.rm(name)
+                stopped_count += 1
+            else:
+                print(f"Failed to stop {name}", file=sys.stderr)
         else:
-            print(f"Failed to stop {name}", file=sys.stderr)
+            # Reuse the sentence ``_stop_one`` prints for an already-stopped box.
+            print(f"Removed stopped container: {name}")
+            runtime.rm(name)
+            removed_count += 1
 
-    print(f"\nStopped {stopped} container(s).")
+    print(f"\nStopped {stopped_count} container(s); removed {removed_count} stopped container(s).")
     return 0

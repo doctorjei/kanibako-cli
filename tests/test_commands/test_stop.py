@@ -223,6 +223,7 @@ class TestStopAll:
             ("kanibako-aabbccdd", "img:latest", "Up 5 minutes"),
             ("kanibako-11223344", "img:latest", "Up 10 minutes"),
         ]
+        mock_runtime.is_running.side_effect = lambda name: True
         rc = _stop_all(mock_runtime, force=True)
         assert rc == 0
         assert mock_runtime.stop.call_count == 2
@@ -242,6 +243,7 @@ class TestStopAll:
             ("kanibako-aabbccdd", "img:latest", "Up 5 minutes"),
             ("kanibako-11223344", "img:latest", "Up 10 minutes"),
         ]
+        mock_runtime.is_running.side_effect = lambda name: True
         mock_runtime.stop.side_effect = [True, False]
         rc = _stop_all(mock_runtime, force=True)
         assert rc == 0
@@ -254,6 +256,7 @@ class TestStopAll:
         mock_runtime.list_running.return_value = [
             ("kanibako-proj1", "img:latest", "Up 5 minutes"),
         ]
+        mock_runtime.is_running.side_effect = lambda name: True
         monkeypatch.setattr("builtins.input", lambda _: "y")
         rc = _stop_all(mock_runtime, force=False)
         assert rc == 0
@@ -266,6 +269,7 @@ class TestStopAll:
         mock_runtime.list_running.return_value = [
             ("kanibako-proj1", "img:latest", "Up 5 minutes"),
         ]
+        mock_runtime.is_running.side_effect = lambda name: True
         monkeypatch.setattr("builtins.input", lambda _: "n")
         rc = _stop_all(mock_runtime, force=False)
         assert rc == 2
@@ -278,11 +282,46 @@ class TestStopAll:
         mock_runtime.list_running.return_value = [
             ("kanibako-proj1", "img:latest", "Up 5 minutes"),
         ]
+        mock_runtime.is_running.side_effect = lambda name: True
         def raise_eof(_):
             raise EOFError
         monkeypatch.setattr("builtins.input", raise_eof)
         rc = _stop_all(mock_runtime, force=False)
         assert rc == 2
+
+    def test_an_exited_container_is_removed_and_reported(self, mock_runtime, capsys):
+        mock_runtime.list_running.return_value = [
+            ("kanibako-aabbccdd", "img:latest", "Exited (0) 1 hour ago"),
+        ]
+        mock_runtime.is_running.return_value = False
+        rc = _stop_all(mock_runtime, force=True)
+        assert rc == 0
+        mock_runtime.stop.assert_not_called()
+        mock_runtime.rm.assert_called_once_with("kanibako-aabbccdd")
+        out = capsys.readouterr().out
+        assert "Removed stopped container: kanibako-aabbccdd" in out
+        assert "1" in out
+
+    def test_mixed_running_and_exited_prompts_truthfully(self, mock_runtime, capsys, monkeypatch):
+        mock_runtime.list_running.return_value = [
+            ("kanibako-running", "img:latest", "Up 5 minutes"),
+            ("kanibako-exited", "img:latest", "Exited (0) 1 hour ago"),
+        ]
+        def is_running(name):
+            return name == "kanibako-running"
+        mock_runtime.is_running.side_effect = is_running
+        mock_runtime.stop.return_value = True
+        mock_runtime.container_exists.return_value = True
+        monkeypatch.setattr("builtins.input", lambda _: "y")
+        rc = _stop_all(mock_runtime, force=False)
+        assert rc == 0
+        out = capsys.readouterr().out
+        assert "running" in out.lower()
+        assert "exited" in out.lower() or "stopped" in out.lower()
+        mock_runtime.stop.assert_called_once_with("kanibako-running")
+        assert mock_runtime.rm.call_count == 2
+        assert "Stopped 1" in out
+        assert "removed 1" in out
 
 
 class TestRunDispatch:
