@@ -3309,13 +3309,6 @@
       "antipattern": "logs",
       "path": "src/kanibako/settings/settings_keyspace.py",
       "text": "\"workspaces\", \"boxes\", \"logs\", \"registry\", \"template\", \"canon\","
-    },
-    {
-      "registry": "store-layout",
-      "entry": "XDG_STATE_HOME",
-      "antipattern": "XDG_STATE_HOME",
-      "path": "src/kanibako/box_supervisor.py",
-      "text": "(\"XDG_STATE_HOME\", \".local/state\", \"state\"),"
     }
   ]
 }

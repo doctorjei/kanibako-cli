@@ -50,6 +50,7 @@ from kanibako.box_lifecycle import (
     snapshot_attach_state,
 )
 from kanibako.log import get_logger, setup_logging
+from kanibako.settings.bootstrap import XDG_SPEC_DEFAULTS, XDG_STATE_HOME
 
 #: The continue-marker a self-heal restart delivers via ``tmux send-keys`` as a
 #: real acting turn (design §108).  ⚑ Single-sourced HERE — ``commands/start.py``
@@ -77,10 +78,10 @@ KANIBAKO_PKG_MOUNT_ROOT = "/opt/kanibako"
 #: MUST be placed BEFORE one exists.
 #: ⚑ QUARANTINED DUPLICATE of
 #: :data:`kanibako.settings.settings_resolve.BOX_PINNED_ROOT_RELPATH`, deliberately
-#: NOT imported: PID-1 is stdlib-only by contract, and widening the import surface
-#: would put every launch's forward-compat probe at the mercy of the settings
-#: package importing cleanly.  A test pins the two; ``scripts/helper-init.sh``
-#: carries the third (bash can import neither).
+#: NOT imported: of the settings package PID-1 imports only the import-free
+#: ``bootstrap`` leaf, so no launch's forward-compat probe rests on the rest.
+#: A test pins the two; ``scripts/helper-init.sh`` carries the third (bash can
+#: import neither).
 PINNED_ROOT_RELPATH = ".kanibako"
 
 #: The XDG facets served from the pinned root once the box is LIVE:
@@ -88,7 +89,7 @@ PINNED_ROOT_RELPATH = ".kanibako"
 #: ⚑ ONE ROW TODAY, deliberately a TABLE — a second facet is a ROW here, never a
 #: second mechanism.
 XDG_PROJECTIONS: tuple[tuple[str, str, str], ...] = (
-    ("XDG_STATE_HOME", ".local/state", "state"),
+    (XDG_STATE_HOME, XDG_SPEC_DEFAULTS[XDG_STATE_HOME], "state"),
 )
 
 #: The link's own basename under each projected XDG base — ``$XDG_STATE_HOME/kanibako``.

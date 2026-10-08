@@ -2381,6 +2381,16 @@ def test_scrub_pythonpath_noop_when_unset():
 # GUARD: box_supervisor's import chain must stay third-party-free (LOAD-BEARING).
 # ---------------------------------------------------------------------------
 
+PID1_ALLOWED_KANIBAKO = frozenset({
+    "kanibako",
+    "kanibako.box_supervisor",
+    "kanibako.box_lifecycle",
+    "kanibako.log",
+    "kanibako.settings",
+    "kanibako.settings.bootstrap",
+})
+
+
 def test_box_supervisor_import_chain_is_stdlib_only():
     """box_supervisor + its kanibako.* import chain must import ONLY stdlib.
 
@@ -2404,18 +2414,14 @@ def test_box_supervisor_import_chain_is_stdlib_only():
     import sys
     from pathlib import Path
 
-    # The intra-kanibako modules the chain is ALLOWED to reach today.  ``kanibako`` is
-    # the package __init__ (implicitly executed when a submodule is imported); the
-    # other three are the module + its two direct, stdlib-only helpers.  Each is
+    # The intra-kanibako modules the chain is ALLOWED to reach today.  ``kanibako`` and
+    # ``kanibako.settings`` are package __init__s (implicitly executed when a submodule
+    # is imported); the rest are the module, its two direct helpers, and the
+    # import-free ``settings.bootstrap`` leaf that owns the XDG literals.  Each is
     # verified stdlib-only by the recursion below — this set only bounds WHICH kanibako
     # modules may participate, so an accidental new intra-kanibako dependency (which
     # might drag in third-party code) trips the guard.
-    allowed_kanibako = {
-        "kanibako",
-        "kanibako.box_supervisor",
-        "kanibako.box_lifecycle",
-        "kanibako.log",
-    }
+    allowed_kanibako = PID1_ALLOWED_KANIBAKO
 
     def source_of(mod_name: str) -> "str | None":
         spec = importlib.util.find_spec(mod_name)
@@ -2499,6 +2505,32 @@ def test_box_supervisor_import_chain_is_stdlib_only():
         "ImportError and every launch would degrade to the bare-shell fallback — "
         "see this test's docstring"
     )
+
+
+def test_box_supervisor_import_loads_only_allowlisted_kanibako_modules():
+    """The RUNTIME twin of the walk above: import the module the way PID-1 does.
+
+    ``-S`` drops site-packages, as the in-box mount does, so a third-party import
+    fails here too; the loaded ``kanibako.*`` set must be exactly the allowlist.
+    """
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    import kanibako
+
+    src = str(Path(kanibako.__file__).resolve().parent.parent)
+    probe = (
+        "import sys; sys.path.insert(0, sys.argv[1]); import kanibako.box_supervisor; "
+        "print('\\n'.join(sorted(m for m in sys.modules "
+        "if m == 'kanibako' or m.startswith('kanibako.'))))"
+    )
+    done = subprocess.run(
+        [sys.executable, "-S", "-c", probe, src],
+        capture_output=True, text=True, check=False,
+    )
+    assert done.returncode == 0, done.stderr
+    assert set(done.stdout.split()) == PID1_ALLOWED_KANIBAKO
 
 
 # --- zombie-aware liveness probe + PID-1 child reaping (bifrost defect) ------
