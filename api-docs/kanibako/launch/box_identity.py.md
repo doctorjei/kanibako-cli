@@ -14,8 +14,7 @@ _LEAF_CHARS = 'A-Za-z0-9._-'
 _SAFE_CHAR_RE = re.compile(f'[^{_LEAF_CHARS}]')
 _MAX_REGEN_ATTEMPTS = 1000
 _LEAF_RE = re.compile(f'^[{_LEAF_CHARS}]{{1,{_LEAF_CAP}}}$')
-_ALLOWED_PUNCT = frozenset('_-.')
-_BLOCKED_ASCII_PUNCT = frozenset(string.punctuation) - _ALLOWED_PUNCT
+_NAME_CHAR_RE = re.compile(f'[{_LEAF_CHARS}]')
 _NAME_MIN_LEN = 1
 _NAME_MAX_LEN = 64
 ```

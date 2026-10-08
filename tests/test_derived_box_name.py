@@ -14,7 +14,7 @@ import shlex
 
 import pytest
 
-_BAD = ["q$(touch PWNED)", "a b'c", "--purge", "-x"]
+_BAD = ["q$(touch PWNED)", "a b'c", "--purge", "-x", "café"]
 
 
 def _cli(*argv: str) -> "tuple[int, str]":
