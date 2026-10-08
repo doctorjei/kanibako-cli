@@ -1,7 +1,7 @@
 """Box always-on-agent SUPERVISOR — the PID-1 keep-alive that outlives sessions.
 
-PID-1 pair with :mod:`kanibako.box_lifecycle`: pinned flat, STDLIB plus import-free kanibako leaves, invoked in-box
-by dotted literal.  ALSO the single source of the host-side launch literals
+PID-1 pair with :mod:`kanibako.box_lifecycle`: pinned flat, STDLIB plus import-free kanibako
+leaves, invoked in-box by dotted literal.  ALSO the single source of the host-side launch literals
 :data:`CONTINUE_MARKER` and :data:`KANIBAKO_PKG_MOUNT_ROOT`, which ``commands/start.py``
 imports at MODULE scope.  ⚑ :data:`PINNED_ROOT_RELPATH` is NOT one of them — nothing
 host-side imports it; see its own comment below.
