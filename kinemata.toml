@@ -1673,8 +1673,10 @@ suffixes = [
 
   [[registry.entry]]
   id = "single-l"
+  # `(?!l)` keeps all-caps American spellings (ENROLLED, FULFILLED) out: the
+  # case-sensitive tail lookahead lets an uppercase second `L` through.
   antipatterns = [
-    '''(?i)(?:(?<![a-z])|(?-i:(?=[A-Z])))(fulfi[l]|enro[l])(s|ment|ments)?(?-i:(?![a-z]))''',
+    '''(?i)(?:(?<![a-z])|(?-i:(?=[A-Z])))(fulfi[l]|enro[l])(?!l)(s|ment|ments)?(?-i:(?![a-z]))''',
     '''(?i)(skil|wil)[f]ul''',
   ]
   note = "fulfill, enroll, skillful, willful"
