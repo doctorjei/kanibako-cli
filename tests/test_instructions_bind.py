@@ -127,7 +127,7 @@ def _content_lines(text: str) -> list[str]:
 
 def _kickoff_binding(agent: str):
     """The plugin descriptor's ``managed_pointer`` kickoff-loader binding."""
-    desc = resolve_target(agent, None).descriptor
+    desc = resolve_target(agent).descriptor
     assert desc is not None
     ptrs = [b for b in desc.bindings if b.key == "managed_pointer"]
     assert len(ptrs) == 1, f"{agent}: expected exactly one managed_pointer binding"
@@ -224,7 +224,7 @@ def test_directive_final_env_names_native_slot(agent: str):
     Declared as an AGENT-scope settings key, so the slot is one a user could repoint
     by name rather than a value handed straight to the container.
     """
-    envs = resolve_target(agent, None).default_envs()
+    envs = resolve_target(agent).default_envs()
     key = f"agent.{agent}.env.KANIBAKO_DIRECTIVE_FINAL"
     assert envs.get(key) == _EXPECTED_FINAL[agent]
 
@@ -238,7 +238,7 @@ def test_goose_context_file_names_lists_additional_context_md():
     CONTEXT_FILE_NAMES, so `.additionalContext.md` must be listed, and the retired
     KANIBAKO.md must be gone.  The existing keyring disable is untouched.
     """
-    envs = resolve_target("goose", None).default_envs()
+    envs = resolve_target("goose").default_envs()
     val = envs.get("agent.goose.env.CONTEXT_FILE_NAMES")
     assert val is not None, "goose declares no CONTEXT_FILE_NAMES"
     names = json.loads(val)
@@ -256,7 +256,7 @@ def test_goose_context_file_names_lists_additional_context_md():
 @pytest.mark.parametrize("agent", _AGENTS)
 def test_route_a_instructions_bind_retired(agent: str):
     """No plugin emits the old ``@system.instructions`` → native-slot category bind."""
-    binds = resolve_target(agent, None).default_category_binds()
+    binds = resolve_target(agent).default_category_binds()
     # And nothing left points a category bind at @system.instructions.
     assert not any(
         isinstance(v, tuple) and v and v[0] in ("@system.instructions", "{system.instructions}")
@@ -374,7 +374,7 @@ class TestCoreKickoffBind:
         agent box this release.  ⚑ When the follow-up deletes those bindings this
         test flips to asserting the OPPOSITE — that is the signal the gate itself can
         be deleted (see ``kickoff_default_categories``' removal condition)."""
-        desc = resolve_target(agent, None).descriptor
+        desc = resolve_target(agent).descriptor
         assert desc is not None
         assert core_defaults.kickoff_default_categories(desc) == {}
 
@@ -506,7 +506,7 @@ class TestKickoffLaunchWiring:
         the real claude descriptor: ONE mount at the slot, sourced from the PLUGIN,
         and no collision error.  Without the gate this raises ``CategoryCollisionError``
         (proved by ``test_without_the_gate_the_two_binds_are_a_hard_error`` below)."""
-        target = resolve_target("claude", None)
+        target = resolve_target("claude")
         desc = target.descriptor
         assert desc is not None
         # The AGENT_CRITICAL share/launcher binds must-exist (their whole point), so
@@ -556,7 +556,7 @@ class TestKickoffLaunchWiring:
         from kanibako.settings.settings_resolve import SettingsError
         from kanibako.settings.settings_resolve import ResolveCtx
 
-        desc = resolve_target("claude", None).descriptor
+        desc = resolve_target("claude").descriptor
         assert desc is not None
         p = Path("/nonexistent")
         install = AgentInstall(name="claude", binary=p, install_dir=p, launcher=p)

@@ -609,7 +609,7 @@ class TestPluginChapterBind:
     def test_rom_root_resolves_for_every_first_party_harness(self, agent: str):
         """The base ``Target.rom_root`` derives the package from ``__package__``, so
         it works whether the Target class lives in ``target.py`` or ``__init__.py``."""
-        root = resolve_target(agent, None).rom_root()
+        root = resolve_target(agent).rom_root()
         assert root is not None, f"{agent}: rom_root did not resolve"
         assert root.is_dir()
         assert root.name == "rom" and root.parent.name == "data"
@@ -636,7 +636,7 @@ class TestPluginChapterBind:
         Gate-FALSE is not left uncovered: it is exercised by the two temp-plugin tests
         below (bare ``data/rom`` with no marker, and no ``rom_root`` at all), which is
         where it belongs now that no shipped plugin can demonstrate it."""
-        target = resolve_target(agent, None)
+        target = resolve_target(agent)
         root = target.rom_root()
         assert root is not None
         assert (root / PLUGIN_CHAPTER_MARKER_REL).is_file(), (
@@ -657,7 +657,7 @@ class TestPluginChapterBind:
         variant, and this is where it surfaces."""
         digests = {
             agent: (
-                resolve_target(agent, None).rom_root() / PLUGIN_CHAPTER_MARKER_REL
+                resolve_target(agent).rom_root() / PLUGIN_CHAPTER_MARKER_REL
             ).read_bytes()
             for agent in _AGENTS
         }
@@ -674,7 +674,7 @@ class TestPluginChapterBind:
         whole-dir bind exposes whatever is physically in the packaged dir: the
         per-file walk's ``_is_shipped_content`` filter no longer stands between a dev
         checkout's ``__pycache__`` and the box. A plugin chapter is TEXT only."""
-        root = resolve_target(agent, None).rom_root()
+        root = resolve_target(agent).rom_root()
         assert root is not None
         junk = [
             str(p.relative_to(root)) for p in root.rglob("*")

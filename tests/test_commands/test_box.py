@@ -2838,7 +2838,7 @@ class TestCheckPersonaStoreForCreate:
         monkeypatch.setattr(
             parser_mod, "resolve_target", lambda *a, **k: resolved,
         )
-        return _check_persona_store_for_create(ref, tmp_home / "project")
+        return _check_persona_store_for_create(ref)
 
     def _agents_root(self):
         """⚑ The store ROOT production resolves — never one the test composes."""
@@ -3269,12 +3269,10 @@ class TestCreatePersistsAgentSelection:
         assert requested == "claude"
         assert resolve_agent(
             explicit_agent=None, requested=str(requested),
-            project_path=tmp_home / "project",
         ) == "claude"
         # Ephemeral override on top: explicit wins, nothing re-persisted.
         assert resolve_agent(
             explicit_agent="goose", requested=str(requested),
-            project_path=tmp_home / "project",
         ) == "goose"
 
     def test_persona_ref_is_persisted_raw(

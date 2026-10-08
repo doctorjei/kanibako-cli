@@ -778,7 +778,7 @@ class TestFileDropDirectoriesAreNotADiscoveryRoute:
         _write_plugin(proj / "box_data" / "plugins", "projplugin.py", "projplugin")
 
         with patch("kanibako.targets.entry_points", return_value=[]):
-            targets = discover_targets(project_path=proj)
+            targets = discover_targets()
         assert "projplugin" not in targets
 
     def test_the_same_plugin_source_still_loads_from_an_entry_point(self, tmp_path):

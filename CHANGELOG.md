@@ -637,6 +637,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   nothing, while its help described a confirmation prompt that `set` never asks for; `reset`'s own
   `--force` is unchanged and still means "skip the confirmation".
 
+- `kanibako.targets.discover_targets`, `get_target`, and `resolve_target` no longer take a
+  `project_path` argument. Discovery reads only installed packages, so the argument was ignored;
+  a caller that passes it now gets a `TypeError`. Drop the argument.
+
 ### Fixed
 
 - **A refused `create` on a fresh install no longer leaves the first-run setup behind.** An invalid `--name`

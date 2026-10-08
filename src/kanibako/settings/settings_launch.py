@@ -1905,7 +1905,7 @@ def _omit_derived(
                     changed = True
 
 
-def _agent_identity(agent_name: str, project_path: Path | None) -> dict[str, object]:
+def _agent_identity(agent_name: str) -> dict[str, object]:
     """The active agent's ``meta.agent.<a>.*`` identity + launch-grammar floor, off
     its plugin descriptor; EMPTY for a no-agent resolve.
 
@@ -1923,7 +1923,7 @@ def _agent_identity(agent_name: str, project_path: Path | None) -> dict[str, obj
     agent_declared_name: str | None = None
     agent_auth_support = False
     try:
-        agent_target = resolve_target(harness_of(agent_name), project_path)
+        agent_target = resolve_target(harness_of(agent_name))
         agent_declared_name = agent_target.name
         agent_desc = agent_target.descriptor
         agent_auth_support = bool(
@@ -2008,7 +2008,7 @@ def resolve_inputs(
 
     # ONE ctx builder (P7), the box-less arm of the one the BOX subject uses.
     ctx = host_resolve_ctx(std, ws, agent_name)
-    meta_identity = _agent_identity(agent_name, None)
+    meta_identity = _agent_identity(agent_name)
     meta_runtime = meta_runtime_host_floor()
     workset_anchor: dict[str, object] = {}
     cascade_workset_path: Path | None = None
@@ -2162,7 +2162,7 @@ def _box_inputs(*, std, proj, agent_name: str, system_path: Path | None) -> Laun
         box_settings=str(cascade_box_path),
     )
     # The agent half (identity + launch grammar); omitted for a NO-AGENT box.
-    meta_identity.update(_agent_identity(agent_name, proj.project_path))
+    meta_identity.update(_agent_identity(agent_name))
 
     if not proj.name:
         # Primary / named ``meta.box.settings`` is ``@meta.box.path/box.yaml`` (§2c): name-derived,

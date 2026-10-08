@@ -376,8 +376,7 @@ def _proj(tmp_path, *, name: "str | None" = "myproj"):
     """The minimal ``ProjectPaths`` shape ``select_agent`` reads.
 
     It needs exactly: ``mode`` / ``metadata_path`` / ``group`` (for
-    ``box_workset_settings_paths``), ``project_path`` (passed to the
-    installed-set probe) and ``name`` (threaded to the box-level retired-key
+    ``box_workset_settings_paths``) and ``name`` (threaded to the box-level retired-key
     cure — ``None``/``""`` is the real NAMELESS-box case, spec:
     ``settings/paths.py`` falls back to a short hash for one when it is falsy).
     """
@@ -393,7 +392,6 @@ def _proj(tmp_path, *, name: "str | None" = "myproj"):
         mode=BoxMode.primary,
         metadata_path=meta,
         group=_FakeGroup(ws),
-        project_path=tmp_path / "proj",
         name=name,
     )
 

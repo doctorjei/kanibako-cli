@@ -362,7 +362,7 @@ def _resolve_watch_context(box: str | None):
     # it folds at the hop reaching for a node ([R173]); unfolded, this watcher syncs to a
     # store directory the launch never wrote.  Harness only; why: ``agent_address_node``.
     agent = agent_address_node(agent)
-    target = resolve_target(harness_of(agent), proj.project_path)
+    target = resolve_target(harness_of(agent))
     # ⚑ The §1A SELECTION LEVEL is REQUIRED (P7): ``meta.box.auth.workset_path``
     # resolves ``@workset.auth.path/@system.agent``, so without it the per-agent
     # credential SOURCE names the agent the STORED settings select (the workset auth

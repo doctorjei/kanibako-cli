@@ -209,7 +209,7 @@ def _probe(request, std, config_file, mode: str, target=None):
   proj = request.getfixturevalue(f"{mode}_proj")
   termini = _termini(
     std, config_file, proj,
-    resolve_target("claude", None) if target is None else target,
+    resolve_target("claude") if target is None else target,
   )
   return termini, launch_resolve_ctx(std, proj, "claude")
 

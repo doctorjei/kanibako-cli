@@ -95,7 +95,7 @@ def _workset_channel_floor_values(part: 'WorksetPartition', wch: 'WorksetChannel
 def _workset_workspaces_floor_value(mode: str, ws_root_literal: 'str | None', *, early: EarlyScope) -> 'str | None'
 def _box_less_omits(key: str, *, in_workset: bool) -> bool
 def _omit_derived(ctx: ResolveCtx, is_seed: Callable[[str], bool], *floors: dict[str, object]) -> None
-def _agent_identity(agent_name: str, project_path: Path | None) -> dict[str, object]
+def _agent_identity(agent_name: str) -> dict[str, object]
 def _workset_floors(std, *, mode: str, ws_token: str, ws_root: Path, local_channels: 'WorksetChannels | None', agent_name: str) -> tuple[dict[str, object], dict[str, object], dict[str, object]]
 def _box_workset_floors(std, proj, agent_name: str) -> tuple[dict[str, object], dict[str, object], dict[str, object]]
 def _box_inputs(*, std, proj, agent_name: str, system_path: Path | None) -> LaunchInputs

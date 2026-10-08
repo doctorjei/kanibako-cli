@@ -39,7 +39,7 @@ def run_get(args: argparse.Namespace) -> int
 def run_show(args: argparse.Namespace) -> int
 def _add_target_group(parser: argparse.ArgumentParser, *, required: bool=False) -> None
 def _assert_primary_home_free_for_create(std, name: str) -> None
-def _check_persona_store_for_create(agent_ref: str, project_path) -> str | None
+def _check_persona_store_for_create(agent_ref: str) -> str | None
 def _create_recovery_refusal(args, std, probe, *, already: bool, pending: dict | None) -> 'str | None'
 def _orphaned_primary_box_dir(args, std, probe) -> 'Path | None'
 def _named_workset_owning(path: Path, std) -> str | None

@@ -127,7 +127,7 @@ def _writeback_on_stop(
         agent = agent_address_node(agent)
         # The target/plugin is keyed by the HARNESS; ``agent_name=agent`` below
         # keeps the node (keyspace slot).
-        target = resolve_target(harness_of(agent), proj.project_path)
+        target = resolve_target(harness_of(agent))
         # The cascade box/workset tier files are single-sourced mode-aware inside
         # the resolver (P6c) — standalone reads its file as the WORKSET tier.
         # ⚑ The §1A SELECTION LEVEL is REQUIRED (P7): ``meta.box.auth.workset_path``

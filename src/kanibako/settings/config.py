@@ -844,7 +844,6 @@ def resolve_agent(
     *,
     explicit_agent: str | None,
     requested: str | None = None,
-    project_path: Path | None = None,
 ) -> str:
     """Validate the effective agent name against the installed set, or REFUSE (spec §2b).
 
@@ -899,7 +898,7 @@ def resolve_agent(
         # POINT (P3/P4): it answers "is this NAME installed?" and is not in scope on
         # the refusal path below, so the installed-agent count rule cannot be
         # reintroduced there without re-adding this call — which a reader would see.
-        installed = set(discover_targets(project_path).keys())
+        installed = set(discover_targets().keys())
         # ⚑⚑ THIS IS THE HOP WHERE A NAME BECOMES A NODE ([R173]).  ``system.agent``
         # and ``--agent`` carry a NAME — the plugin's declared case, or whatever the
         # user typed — while the registry is keyed by NODE, so the match is case-blind
