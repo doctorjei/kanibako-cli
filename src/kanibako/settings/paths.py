@@ -2443,7 +2443,16 @@ def establish_standalone(std: StandardPaths, root: Path, *, enable_vault: bool |
         root, early=_early_scope(std, BoxMode.standalone))
 
     existing = registry_store.standalone_box_names(std.registry)
-    box_name = box_identity.resolve_standalone_name(root, name, existing)
+    # ⚑ The standalone name is composed from the ROOT, never from a supplied
+    # ``--name`` (keyspec §2c STANDALONE; kanibako ruling 2026-10-08, Reading A).
+    # The registry key IS ``meta.box.name`` — one carrier, the D1b principle — so
+    # composing it HERE is what makes every registry-key reader (``box list``,
+    # ``stop --all``, ``start``, ``clean``) agree with the recomposing readers
+    # (``box info``, import) BY CONSTRUCTION rather than by luck.  A supplied
+    # ``--name`` is refused at the door
+    # (:func:`kanibako.launch.box_identity.refuse_nonleaf_standalone_name`) and is
+    # never consumed here; the parameter stays for call compatibility.
+    box_name = box_identity.make_standalone_box_name(root, existing)
 
     box_settings, settings_file = _standalone_settings_files(
         root, early=_early_scope(std, BoxMode.standalone))
