@@ -6711,6 +6711,9 @@ kanibako start <box>
 
 Each container in the prompt is followed by `(running)` or `(stopped)`.
 
+`stop --all` now exits 1 when any stop or removal fails, after handling every other container and
+printing the summary line; v1.7.x exited 0.
+
 ### `workset.*` directory keys set with `system set` now reach every reader
 
 **Read this if your system settings file (`<data>/global/settings.yaml`) sets a `workset.*` directory
