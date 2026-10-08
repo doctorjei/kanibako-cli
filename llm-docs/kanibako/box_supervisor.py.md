@@ -1,7 +1,7 @@
 # Box Supervisor — the PID-1 keep-alive that outlives sessions
 
 ⚠️ **DROP RULE INVERTED FOR THIS FILE.** `box_supervisor.py` is half of the PID-1 pair (with
-`box_lifecycle.py`), pinned flat on purpose, stdlib-only, and invoked in-box by a dotted literal.
+`box_lifecycle.py`), pinned flat on purpose, stdlib plus import-free kanibako leaves, and invoked in-box by a dotted literal.
 Its notes are overwhelmingly **platform facts about process / signal / PID-1 / tmux / container
 teardown behavior, paid for once in painful debugging and NOT reproducible from the dev box**
 (there is no working podman here). Nothing in that class was dropped. Each such fact is carried here

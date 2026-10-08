@@ -510,7 +510,7 @@ class TestBundledInitScript:
         ``.local/state``). With the dest pinned there is nothing left to derive,
         but the spellings still have to AGREE, so the agreement is asserted
         directly instead of being inferred from a shared function. Two of them
-        CANNOT import the constant -- bash, and stdlib-only PID-1 -- which is
+        CANNOT import the constant -- bash, and the import-light PID-1 -- which is
         exactly why this test exists rather than a shared import.
         """
         from kanibako.box_supervisor import PINNED_ROOT_RELPATH
