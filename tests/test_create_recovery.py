@@ -1331,7 +1331,7 @@ class TestBlankAgentFlagIsGivenAtBothDoors:
 
         seen: dict[str, str] = {}
 
-        def spy_store(agent_ref, project_path):
+        def spy_store(agent_ref):
             seen["checked"] = agent_ref
             return None
 

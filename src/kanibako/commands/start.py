@@ -1359,7 +1359,7 @@ def _resolve_bootstrap_program(
         # resolve_target would auto-detect an agent and read ITS bootstrap for a
         # plain-shell box.
         target = (
-            resolve_target(harness_of(agent_name), proj.project_path)
+            resolve_target(harness_of(agent_name))
             if _sel.has_agent
             else None
         )
@@ -3240,7 +3240,7 @@ def _run_container(
         # incident is on record (bifrost E-NULL) and the shape costs one conjunct —
         # a floor, not a plan.
         target = (
-            resolve_target(harness_of(agent_name), proj.project_path)
+            resolve_target(harness_of(agent_name))
             if agent_selection.has_agent
             else None
         )
@@ -6866,7 +6866,7 @@ def _resolve_box_auth_source(
 
             _auth_persona_values = _persona_values_for(
                 agent_name,
-                resolve_target(harness_of(agent_name), proj.project_path),
+                resolve_target(harness_of(agent_name)),
             )
     except Exception:
         # Includes the ref parse itself: this resolve is reached with a
@@ -8528,7 +8528,7 @@ def persona_create_verdict(
         )
         agent_name = selection.node
         target = (
-            resolve_target(harness_of(agent_name), proj.project_path)
+            resolve_target(harness_of(agent_name))
             if agent_name
             else None
         )
@@ -8608,7 +8608,7 @@ def seed_new_box(std, config, proj, *, explicit_agent: str | None = None) -> Non
         )
         agent_name = selection.node
         target = (
-            resolve_target(harness_of(agent_name), proj.project_path)
+            resolve_target(harness_of(agent_name))
             if agent_name
             else None
         )

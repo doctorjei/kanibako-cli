@@ -286,21 +286,17 @@ def run_code(args: argparse.Namespace) -> int:
     return 0
 
 
-def _extension_for_agent(agent_name: str, project_path) -> str | None:
+def _extension_for_agent(agent_name: str) -> str | None:
     """Resolve *agent_name*'s ``descriptor.vscode_extension`` (or ``None``).
 
     ``agent_name`` is a NODE-name; the plugin/target is keyed by its HARNESS
     (``harness_of``), exactly as ``stop.py`` / ``start.py`` resolve a stamped box.
     A descriptor-less target (the no-agent shell) or an unset extension → ``None``.
-
-    *project_path* seeds any project-scoped plugin lookup; ``None`` (the
-    ``--remote`` seed, which has no LOCAL project) skips the project-dependent
-    fallbacks and resolves the plugin from the global/editable finders only.
     """
     from kanibako.agent_ref import harness_of
     from kanibako.targets import resolve_target
 
-    target = resolve_target(harness_of(agent_name), project_path)
+    target = resolve_target(harness_of(agent_name))
     desc = target.descriptor
     return desc.vscode_extension if desc is not None else None
 
@@ -361,7 +357,7 @@ def _resolve_box_vscode_extension(agent_name: str | None, proj) -> str | None:
     if agent_name is None:
         return None
     try:
-        return _extension_for_agent(agent_name, proj.project_path)
+        return _extension_for_agent(agent_name)
     except Exception:
         get_logger("code").debug(
             "could not resolve box agent VS Code extension; seeding none",
@@ -672,11 +668,8 @@ def _seed_remote_attached_config(engine, container_name: str) -> None:
                 # 🛑 CANONICALIZE ON READ, as the local leg does: the stamp is the
                 # OUTSIDE spelling and ``_extension_for_agent`` takes a NODE-name
                 # (it derives the harness with ``harness_of``, which splits on ``℘``
-                # alone).  No LOCAL project → resolve the plugin with
-                # project_path=None.  Folded to the node, as the local leg does.
-                extension = _extension_for_agent(
-                    agent_address_node(stamp), None,
-                )
+                # alone).  Folded to the node, as the local leg does.
+                extension = _extension_for_agent(agent_address_node(stamp))
         except Exception:
             extension = None
         path = attached_container_config_path(

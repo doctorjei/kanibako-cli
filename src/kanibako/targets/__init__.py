@@ -7,7 +7,6 @@ import logging
 import pkgutil
 import sys
 from importlib.metadata import entry_points
-from pathlib import Path
 
 from kanibako.agent_ref import AGENT_ENTRY_POINT_GROUP, reserved_pseudo_agent_reason
 from kanibako.identifiers import agent_node_case, find_identifier
@@ -180,7 +179,7 @@ def _scan_plugin_modules(
                 )
 
 
-def discover_targets(project_path: Path | None = None) -> dict[str, type[Target]]:
+def discover_targets() -> dict[str, type[Target]]:
     """Scan entry points and plugin modules for targets.
 
     ⚑ **Keyed by NODE — the declared name in lowercase** (``[R173]``, keyspec §0).
@@ -191,8 +190,7 @@ def discover_targets(project_path: Path | None = None) -> dict[str, type[Target]
     ⚑ **A PLUGIN IS INSTALLED CODE, AND ONLY INSTALLED CODE LOADS** (keyspec §2,
     *"Plugins load only from installed packages"*).  Discovery reads no directory
     tree: there is no user plugins dir and no project plugins dir, so a ``.py`` file
-    under either is inert data.  *project_path* is accepted and ignored — it is
-    carried by every caller and stays in the signature.
+    under either is inert data.
     """
     targets: dict[str, type[Target]] = {}
     # node -> (declared name, tier), so ``_register`` can tell a CASE COLLISION from
@@ -267,7 +265,7 @@ def discover_targets(project_path: Path | None = None) -> dict[str, type[Target]
     return targets
 
 
-def get_target(name: str, project_path: Path | None = None) -> type[Target]:
+def get_target(name: str) -> type[Target]:
     """Look up a target class by name, compared WITHOUT REGARD TO CASE (keyspec §0).
 
     *name* is whatever a user typed or a settings value carried, so it arrives in any
@@ -277,7 +275,7 @@ def get_target(name: str, project_path: Path | None = None) -> type[Target]:
 
     Raises ``KeyError`` if no target with that name is registered.
     """
-    targets = discover_targets(project_path)
+    targets = discover_targets()
     node = find_identifier(name, targets)
     if node is None:
         available = ", ".join(sorted(targets)) or "(none)"
@@ -335,9 +333,7 @@ def _require_meta_name(target: Target) -> Target:
     return target
 
 
-def resolve_target(
-    name: str | None = None, project_path: Path | None = None,
-) -> Target:
+def resolve_target(name: str | None = None) -> Target:
     """Instantiate a target by name, or auto-detect.
 
     If *name* is given, looks it up in the registry; otherwise returns the first
@@ -347,11 +343,11 @@ def resolve_target(
     if the resolved target does not declare a legal harness ``name``.
     """
     if name:
-        cls = get_target(name, project_path)
+        cls = get_target(name)
         return _require_meta_name(cls())
 
     # Auto-detect: try each target's detect() and return the first match.
-    targets = discover_targets(project_path)
+    targets = discover_targets()
     for target_name, cls in targets.items():
         instance = cls()
         if instance.detect() is not None:

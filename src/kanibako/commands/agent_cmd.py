@@ -1090,7 +1090,7 @@ def run_reauth(args: argparse.Namespace) -> int:
     # The guard stays because the incident is on record (bifrost E-NULL) and the
     # shape costs one conjunct — a floor under the two-vocabulary seam, not a plan.
     target = (
-        resolve_target(harness_of(selection.node), proj.project_path)
+        resolve_target(harness_of(selection.node))
         if selection.has_agent
         else None
     )

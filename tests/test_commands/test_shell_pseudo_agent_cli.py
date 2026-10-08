@@ -316,9 +316,9 @@ class TestAShellBoxStampIsReadBackAsTheShellAgent:
         real = code_cmd._extension_for_agent
         asked = []
 
-        def spy(agent_name, project_path):
+        def spy(agent_name):
             asked.append(agent_name)
-            return real(agent_name, project_path)
+            return real(agent_name)
 
         with patch.object(code_cmd, "_extension_for_agent", spy):
             code_cmd._seed_remote_attached_config(_FakeRuntime(), cname)

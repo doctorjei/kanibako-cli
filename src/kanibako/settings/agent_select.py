@@ -162,7 +162,6 @@ def select_agent(
     std,
     proj,
     explicit_agent: "str | None" = None,
-    project_path: "Path | None" = None,
 ) -> AgentSelection:
     """Resolve the agent for *proj* — the ONE seam (spec §1A / §2g / §2h).
 
@@ -236,7 +235,6 @@ def select_agent(
     node = resolve_agent(
         explicit_agent=explicit_agent,
         requested=None if requested is __MISSING__ else str(requested),
-        project_path=project_path if project_path is not None else proj.project_path,
     )
     # ⚑ TWO SOURCES, not four: ``resolve_agent`` REFUSES an unset key rather than
     # picking for the user, so a returning call always has a name somebody wrote.

@@ -655,7 +655,7 @@ def fresh_launch_snapshots() -> Any:
         for node in sorted(discover_targets()):
             for mode, proj in projects.items():
                 termini = existing_box_termini(
-                    std, user_config_file(), proj, resolve_target(node, None), node,
+                    std, user_config_file(), proj, resolve_target(node), node,
                 )
                 for terminus, snapshot, cli_level in termini:
                     yield node, mode, terminus, snapshot, cli_level

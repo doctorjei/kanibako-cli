@@ -15,7 +15,7 @@ SELECTION_KEY = 'system.agent'
 ```
 def launch_resolve_ctx(std, proj, agent_name: 'str | None')
 def host_resolve_ctx(std, group: '_WorksetGroup | None', agent_name: 'str | None')
-def select_agent(*, std, proj, explicit_agent: 'str | None'=None, project_path: 'Path | None'=None) -> AgentSelection
+def select_agent(*, std, proj, explicit_agent: 'str | None'=None) -> AgentSelection
 ```
 
 ## Classes

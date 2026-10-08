@@ -83,7 +83,7 @@ def _create_and_launch(
         "@meta.box.workspace/sub": ["@meta.box.workspace"],
     }}
     dump_doc(box_file, doc)
-    target = resolve_target(agent, proj.project_path)
+    target = resolve_target(agent)
     snapshot, deliveries = _resolve_launch_snapshot(
         std=std, proj=proj, agent_name=agent, system_settings_path=std.settings,
         agent_cfg_path=None, desc=desc if desc is not None else target.descriptor,
@@ -139,7 +139,7 @@ def test_an_agent_install_under_the_home_is_delivered_verbatim(odd_root) -> None
         name="claude", binary=binary, install_dir=share, launcher=binary,
     )
     _, mounts, _ = _create_and_launch(odd_root, agent="claude", install=install)
-    desc = resolve_target("claude", None).descriptor
+    desc = resolve_target("claude").descriptor
     assert desc is not None
     probed = {
         b.box_dest: b for b in desc.bindings if b.origin.name in ("BINARY", "LAUNCHER")
@@ -225,7 +225,7 @@ def test_a_literal_origin_source_in_an_installed_package_is_delivered_verbatim(
     kickoff = home / "site-packages" / "kanibako" / "plugins" / "claude" / "KICKOFF.md"
     kickoff.parent.mkdir(parents=True)
     kickoff.write_text("k")
-    desc = resolve_target("claude", None).descriptor
+    desc = resolve_target("claude").descriptor
     assert desc is not None
     literal = [b for b in desc.bindings if b.origin is HostSrcOrigin.LITERAL]
     assert literal, "the claude descriptor declares a literal-origin kickoff source"

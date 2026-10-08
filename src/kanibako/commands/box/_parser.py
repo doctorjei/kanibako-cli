@@ -617,7 +617,7 @@ def _assert_primary_home_free_for_create(std, name: str) -> None:
         )
 
 
-def _check_persona_store_for_create(agent_ref: str, project_path) -> str | None:
+def _check_persona_store_for_create(agent_ref: str) -> str | None:
     """⚑ READ-ONLY create-side persona-grata store CHECK; an ``"Error: …"`` or ``None``."""
     from kanibako.agent_ref import display_agent_ref
     from kanibako.errors import ConfigError
@@ -631,7 +631,7 @@ def _check_persona_store_for_create(agent_ref: str, project_path) -> str | None:
         return f"Error: {e}"
     if entry is None:
         return None  # not a persona / no store entry -> normal create handling
-    target = resolve_target(entry.harness, project_path)
+    target = resolve_target(entry.harness)
     if target is None:
         return None  # harness not installed -> the normal machinery errors
     display = display_agent_ref(entry.node)
@@ -1364,9 +1364,7 @@ def run_create(args: argparse.Namespace) -> int:
         _agent_arg = _agent_arg.strip()
         # ⚑ The store check runs BEFORE the verdict below, so a broken store is reported
         # as itself rather than as the verdict's downstream "no endpoint configured".
-        _store_err = _check_persona_store_for_create(
-            _agent_arg, _probe.project_path,
-        )
+        _store_err = _check_persona_store_for_create(_agent_arg)
         if _store_err is not None:
             print(_store_err, file=sys.stderr)
             return 1
@@ -2640,7 +2638,7 @@ def run_info(args: argparse.Namespace) -> int:
             else f"none — plain shell  (from: {_sel.source})"
         )
         target = (
-            resolve_target(harness_of(agent_name), proj.project_path)
+            resolve_target(harness_of(agent_name))
             if agent_name
             else None
         )
@@ -2905,7 +2903,7 @@ def _run_box_config(args: argparse.Namespace) -> int:
                 effective_selection = select_agent(std=std, proj=proj)
                 agent_name = effective_selection.node
                 target = (
-                    resolve_target(harness_of(agent_name), proj.project_path)
+                    resolve_target(harness_of(agent_name))
                     if agent_name
                     else None
                 )

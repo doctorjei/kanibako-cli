@@ -428,7 +428,7 @@ class TestBoxScalarsResolveAfterSelection:
         snapshot, _ = _resolve_launch_snapshot(
             std=std, proj=proj, agent_name="claude", system_settings_path=std.settings,
             agent_cfg_path=agent_file, desc=None, install=None,
-            target=resolve_target("claude", proj.project_path),
+            target=resolve_target("claude"),
             agent_cfg=agent_record(agent_file, node="claude", purpose=ReadPurpose.RESOLVE),
             guarantee_create=False, cli_level=None,
         )
@@ -12294,7 +12294,6 @@ class TestBlankAgentFlagAtALiveBoxAndAStoppedOne(_RunningBoxDriver):
             assert m.runtime.is_running.return_value is False
             m.resolve_agent.side_effect = lambda **kw: resolve_agent(
                 explicit_agent=kw["explicit_agent"], requested=None,
-                project_path=None,
             )
             with pytest.raises(ConfigError) as ei:
                 self._start(explicit_agent="")

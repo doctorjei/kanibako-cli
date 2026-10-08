@@ -595,7 +595,7 @@ class TestRomBindManifest:
         """
         missing: list[str] = []
         for agent in _BIND_AGENTS:
-            target = resolve_target(agent, None)
+            target = resolve_target(agent)
             root = target.rom_root()
             assert root is not None and root.is_dir(), f"{agent}: no rom_root"
             if not (root / _CHAPTER_MARKER).is_file():
@@ -641,13 +641,13 @@ class TestKickoffLoaderManifest:
     def test_core_yields_so_exactly_one_file_reaches_the_slot(self, agent: str):
         """Two deliveries at one dest is a §0 row-1 collision (a hard launch error),
         so while the plugins still ship theirs the core bind must not be emitted."""
-        desc = resolve_target(agent, None).descriptor
+        desc = resolve_target(agent).descriptor
         assert desc is not None
         assert core_defaults.kickoff_default_categories(desc) == {}
 
     @staticmethod
     def _kickoff_binding(agent: str):
-        desc = resolve_target(agent, None).descriptor
+        desc = resolve_target(agent).descriptor
         assert desc is not None
         ptrs = [b for b in desc.bindings if b.key == "managed_pointer"]
         assert len(ptrs) == 1, f"{agent}: expected exactly one managed_pointer binding"
