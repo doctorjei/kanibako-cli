@@ -869,7 +869,7 @@ keys:
     type: path
     owner: shared
     set: file
-    default: "$XDG_DATA_HOME/kanibako"
+    default: "{$XDG_DATA_HOME}/kanibako"
     why: "root of the persistent data tree; referenced across the keyspace"
     spec: "§1"
   config.settings:
@@ -1010,21 +1010,21 @@ keys:
     type: path
     owner: shared
     set: cli+file
-    default: "$XDG_CACHE_HOME/kanibako"
+    default: "{$XDG_CACHE_HOME}/kanibako"
     spec: "§2g"
   system.state:
     scope: system
     type: path
     owner: shared
     set: cli+file
-    default: "$XDG_STATE_HOME/kanibako"
+    default: "{$XDG_STATE_HOME}/kanibako"
     spec: "§2g"
   system.runtime:
     scope: system
     type: path
     owner: shared
     set: cli+file
-    default: "$XDG_RUNTIME_DIR/kanibako"
+    default: "{$XDG_RUNTIME_DIR}/kanibako"
     note: "helper sockets; XDG_RUNTIME_DIR has NO spec default — fall back + WARN"
     spec: "§2g / §1"
   system.agent:
@@ -2246,7 +2246,7 @@ keys:
     origin: construct_time
     type: path
     owner: agent
-    value: "{config.agents}/default"
+    value: "{config.agents}/{meta.agent.default.name}"
     spec: "§2d"
   ## ---- meta.agent.shell.* — the plain-shell identity anchors (§2d fence) ----
   ## Concrete literals, because the parametric meta.agent.<agent>.* rows below are
@@ -2269,7 +2269,7 @@ keys:
     origin: construct_time
     type: path
     owner: agent
-    value: "{config.agents}/shell"
+    value: "{config.agents}/{meta.agent.shell.name}"
     note: "META so agent/workset/box cascade CANNOT override it — the twin formula
            ({config.agents}/{meta.agent.<agent>.name}) with name = shell."
     spec: "§2d (shell fence)"
@@ -2661,7 +2661,7 @@ bind_default_entries:
     "~/.kanibako/state/helper.sock":
       user_key: true
       owner: box
-      default: "(@system.runtime/<bounded name of \"@{meta.box.name}-@{meta.workset.name}\">, \"\")"
+      default: "({system.runtime}/<bounded name of \"{meta.box.name}-{meta.workset.name}\">, \"\")"
       note: "mount options MUST stay empty ('') — a LIVE unix socket; Z/U
              relabel/chown would break the shared socket topology (core-defaults
              carries the empty 3rd slot). Name rule: companion § \"Box and
@@ -2808,7 +2808,7 @@ category_default_entries:
     "~/":
       user_key: true
       owner: shared
-      default: "(@system.template/box/home)"
+      default: "({system.template}/box/home)"
       note: "layer 1 — base BOX template (global); source = the box/home subtree of
              the system template ROOT (R-1: system.template, NOT the root itself)"
       spec: "§2a (seed layer 1; R-14)"
@@ -2816,7 +2816,7 @@ category_default_entries:
     "~/":
       user_key: true
       owner: shared
-      default: "(@agent.<agent>.template/box/home)"
+      default: "({agent.<agent>.template}/box/home)"
       note: "layer 2 — per-agent (agent = persona + harness); template holds
              settings.json / CLAUDE.md / dirs; SUBSUMES all per-file agent seeds"
       spec: "§2a (seed layer 2; R-14) / §2d"
@@ -2825,7 +2825,7 @@ category_default_entries:
       user_key: true
       owner: shared
       optional: skip_if_absent
-      default: "(@workset.template/box/home)"
+      default: "({workset.template}/box/home)"
       note: "layer 3 — per-workset; the layer is SKIPPED when the source dir is
              absent (cf. workset.template)"
       spec: "§2a (seed layer 3; R-14)"
