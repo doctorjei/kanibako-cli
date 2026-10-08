@@ -25,7 +25,11 @@ from functools import partial
 from pathlib import Path
 from typing import Any, Callable
 
-from kanibako.launch.box_identity import validate_box_name
+from kanibako.launch.box_identity import (
+    refuse_nonleaf_standalone_name,
+    standalone_kuid,
+    validate_box_name,
+)
 from kanibako.runtime.container import remove_box_tree
 from kanibako.settings import bootstrap
 from kanibako.settings.core_defaults import materialize_canon_skeleton
@@ -997,6 +1001,22 @@ def _validate(
                 "aside first: declaring this directory as the vault in the root's "
                 "workset.yaml would not protect it — that only makes it the box's."
             )
+
+    # A STANDALONE target has no user-settable name: refuse --name before any
+    # write (ruling 2026-10-08; see refuse_nonleaf_standalone_name).
+    if target_mode == BoxMode.standalone and spec.name:
+        # Root the box is named from, per ``_run_steps``: *dest*, or in place the
+        # box's own root — ``metadata_path`` standalone, project dir otherwise.
+        landed_root = (
+            dest if dest is not None
+            else (state.metadata_path if state.mode == BoxMode.standalone
+                  else state.workspace_path)
+        )
+        refuse_nonleaf_standalone_name(
+            spec.name, landed_root,
+            box_kuid=standalone_kuid(state.name)
+            if state.mode == BoxMode.standalone else None,
+        )
 
     # --- same-kind name policy on a DEFAULT-mode --name rename edge (F-7) ---
     # ⚑ Checked UP FRONT so a name refusal costs no file copy.

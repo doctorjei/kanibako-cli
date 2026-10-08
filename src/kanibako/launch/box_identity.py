@@ -231,6 +231,17 @@ def _refuse_taken(stored: str) -> ProjectError:
     )
 
 
+def _refuse_directory_name(shown: str) -> ProjectError:
+    """The ONE refusal for a ``--name`` that tries to SET a standalone identity.
+
+    Shared so the ROOT-shaped and the NAME-shaped doors cannot word one rule twice.
+    """
+    return ProjectError(
+        f"a standalone box is named '{shown}' after its directory; "
+        f"rename the directory to rename the box"
+    )
+
+
 def standalone_kuid(name: str) -> str:
     """Return the kuid PREFIX of a standalone box *name* (``<kuid>_<leaf>``)."""
     # Everything up to the FIRST ``_``: unambiguous even when the leaf holds one,
@@ -300,19 +311,15 @@ def refuse_nonleaf_standalone_name(
     """Refuse a standalone ``--name`` that is not the name the box already carries.
 
     Standalone identity is not user-settable: keyspec §2c STANDALONE defines
-    ``meta.box.name`` as ``{workset.kuid}_%leaf({meta.workset.path})%`` — the leaf
-    IS the project directory's basename, nothing else — and system-design
-    §"Detection & import" calls standalone names machine-generated.  So a typed
-    ``--name`` has no identity here to set.  1.8.0 does not silently ignore a flag
-    the user typed, so every standalone door refuses it instead of dropping it.
+    ``meta.box.name`` as ``{workset.kuid}_%leaf({meta.workset.path})%``, and
+    system-design §"Detection & import" calls those names machine-generated.  A
+    typed ``--name`` has nothing to set, and 1.8.0 never silently ignores a flag
+    the user typed — so every standalone door refuses it.
 
-    Two inputs pass as no-ops, because they ask for what the box gets anyway: the
-    bare leaf (``proj`` for ``/x/proj``), and — where *box_kuid* is known — the
-    fully-composed ``<kuid>_<leaf>`` in its stored spelling.
+    No-ops, each asking for what the box gets anyway: the bare leaf (``proj`` for
+    ``/x/proj``) and, where *box_kuid* is known, the composed ``<kuid>_<leaf>``.
 
-    ⚑ Every standalone door routes through here so the wording cannot drift; a
-    door that validates its own copy of this rule is the bug this function exists
-    to prevent.
+    ⚑ Every standalone door routes through here so the wording cannot drift.
     """
     if not supplied:
         return
@@ -330,10 +337,26 @@ def refuse_nonleaf_standalone_name(
         if box_kuid is not None
         else f"<kuid>_{leaf}"
     )
-    raise ProjectError(
-        f"a standalone box is named '{shown}' after its directory; "
-        f"rename the directory to rename the box"
-    )
+    raise _refuse_directory_name(shown)
+
+
+def refuse_standalone_rename(supplied: str, current_name: str) -> None:
+    """Refuse a ``--name`` that would RENAME an existing standalone box.
+
+    :func:`refuse_nonleaf_standalone_name`'s rule for a door that holds the box's
+    composed *current_name* rather than a root to re-derive a leaf from — extract
+    is the one.  No-ops: that name, and its leaf half.  ⚑ EXACT equality;
+    ``PROJ`` is not what directory ``proj`` composes, so it is refused rather
+    than accepted as close enough.
+    """
+    if not supplied:
+        return
+    if supplied == current_name:
+        return
+    leaf = current_name.partition("_")[2]
+    if leaf and supplied == leaf:
+        return
+    raise _refuse_directory_name(current_name)
 
 
 def resolve_standalone_name(
