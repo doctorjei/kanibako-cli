@@ -7068,8 +7068,8 @@ before anything is written, by:
   `kanibako create ~/my\ project --name <new-name>`.
 - `box duplicate` to a primary box (the default, or `--to primary`), which asks for a destination directory whose
   name is a valid box name. `--name` does not name a primary duplicate.
-- `fork` inside a box. A bad fork name asks for another; a box whose own name breaks the rule prints the
-  `box move` command that renames it.
+- `fork` inside a box, which names the fork `<directory>.<fork name>`. A bad fork name asks for another; a box
+  whose directory name breaks the rule prints the `box move` command that moves it to a new directory.
 
 `create --name` takes the same rule as before; `workset connect --name` and `box duplicate --to named --name` now
 take it too. A box created under such a name before this release keeps its name until you rename it:

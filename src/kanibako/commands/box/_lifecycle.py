@@ -66,6 +66,7 @@ from kanibako.settings.paths import (
     check_primary_box_name_free,
     detect_project_mode,
     primary_box_name_for_workspace,
+    refuse_derived_box_name,
     register_primary_box_name,
     report_retained_store,
     resolve_box_enable_vault,
@@ -266,6 +267,18 @@ def _relocated_own_name(
     if own is None or (mint is not None and not _same_box_name(mint, own)):
         return None
     return own
+
+
+def _default_landing(state: ProjectState, dest: Path | None) -> Path:
+    """The directory ``_to_default`` receives as the box's workspace (``_run_steps``)."""
+    if dest is not None:
+        return dest
+    root = state.metadata_path
+    if state.mode is BoxMode.standalone and (
+            state.workspace_path.resolve() == root.resolve()
+            or root.resolve() in state.workspace_path.resolve().parents):
+        return root
+    return state.workspace_path
 
 
 def _ownership_to_mode(ownership: str) -> tuple[BoxMode, str | None]:
@@ -1003,6 +1016,10 @@ def _validate(
                 std.primary_workset, mint, str(landing_ws),
                 early=_early_scope(std, BoxMode.primary),
             )
+        # ⚑ No name to mint or keep: ``_to_default`` names the box for the directory it
+        # lands in, so the box-name rule is checked here, before any file moves.
+        if mint is None and _relocated_own_name(state, std, landing_ws, mint) is None:
+            refuse_derived_box_name(_default_landing(state, dest).name or "project")
 
     # --- a disabled vault that still holds data would be left behind (Q64) ---
     stranded = [] if vault_reused or state.enable_vault else [
