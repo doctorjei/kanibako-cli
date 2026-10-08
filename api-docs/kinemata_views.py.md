@@ -7,7 +7,7 @@ _Signatures only: no comments, no docstrings, no bodies._
 ## Variables
 
 ```
-REF_WORKSET_PATH = '@meta.workset.path'
+REF_WORKSET_PATH = '{meta.workset.path}'
 AGENT_TIER_NODES: tuple[str, ...] = ('claude', 'codex', 'goose', 'shell')
 SPEC_NULL = '<None>'
 SPEC_EMPTY = '{}'
