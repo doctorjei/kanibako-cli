@@ -33,6 +33,7 @@ def _same_box_name(left: str | None, right: str | None) -> bool
 def _default_rename_name(state: ProjectState, std: StandardPaths, landing_ws: Path, requested_name: str) -> str | None
 def _primary_name_at(state: ProjectState, std: StandardPaths, landing_ws: Path) -> str | None
 def _primary_source_own_name(state: ProjectState, std: StandardPaths) -> str | None
+def _relocated_own_name(state: ProjectState, std: StandardPaths, landing_ws: Path, mint: str | None) -> str | None
 def _ownership_to_mode(ownership: str) -> tuple[BoxMode, str | None]
 def _workset_records_member_at(resolved: Path, std: StandardPaths) -> bool
 def _resolve_primary_state(root: Path, std: StandardPaths, config: BootstrapConfig) -> ProjectState

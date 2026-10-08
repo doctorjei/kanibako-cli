@@ -252,6 +252,21 @@ def _primary_source_own_name(
     )
 
 
+def _relocated_own_name(
+    state: ProjectState, std: StandardPaths, landing_ws: Path, mint: str | None,
+) -> str | None:
+    """The source's own name a RELOCATING primary move keeps at *landing_ws*, else ``None``.
+
+    A bare move keeps it, as does a ``--name`` that names it; either reuses the vault.
+    """
+    if _primary_name_at(state, std, landing_ws) is not None:
+        return None
+    own = _primary_source_own_name(state, std)
+    if own is None or (mint is not None and not _same_box_name(mint, own)):
+        return None
+    return own
+
+
 def _ownership_to_mode(ownership: str) -> tuple[BoxMode, str | None]:
     """Map a TargetSpec ownership value to ``(mode, workset_name | None)``."""
     if ownership == "default":
@@ -967,15 +982,20 @@ def _validate(
     )
     if target_mode == BoxMode.primary:
         landing_ws = dest if dest is not None else state.workspace_path
-        mint = _default_rename_name(state, std, landing_ws, requested_name)
-        # ⚑ FIX1: a same-name relocate reuses the SOURCE's OWN registration, so it is
-        # exempt from the same-kind guard.
-        own_name = _primary_source_own_name(state, std)
-        # ⚑ The same-path edge reuses the box in place too (``_to_default``).
         landed = _primary_name_at(state, std, landing_ws)
+        if landed is not None and not _same_box_name(landed, state.name):
+            raise ProjectError(
+                f"Refusing: primary box '{landed}' is registered at {landing_ws}, where "
+                f"'{state.name}' would land. Remove it first (`box rm "
+                f"{shlex.quote(landed)}`), or choose another path."
+            )
+        mint = _default_rename_name(state, std, landing_ws, requested_name)
+        # ⚑ FIX1: a move that keeps the source's OWN name is exempt from the same-kind guard.
+        own_name = _primary_source_own_name(state, std)
+        # The same-path edge and an own-name move both reuse the box's vault (``_to_default``).
         vault_reused = (
-            (landed is not None and landed == state.name)
-            or (mint is not None and _same_box_name(mint, own_name))
+            landed is not None
+            or _relocated_own_name(state, std, landing_ws, mint) is not None
         )
         if mint is not None and not _same_box_name(mint, own_name):
             check_primary_box_name_free(
@@ -1899,57 +1919,34 @@ def _to_default(
     # ⚑⚑ L2 / FIX1: a PRIMARY source's own name is STILL registered here, so register/assign
     # would read the source's OWN entry as a same-kind collision. Free it first.
     preserved_name: str | None = None
+    kept = _relocated_own_name(state, std, new_workspace, mint)
     if state.mode == BoxMode.primary and state.name:
         existing = _primary_name_at(state, std, new_workspace)
         if existing is not None:
             # SAME-PATH in-place convert: free the name so assign reuses it verbatim.
             preserved_name = existing
             _safe_unregister(std, existing)
-        elif mint is not None and mint == _primary_source_own_name(state, std):
-            # ⚑ RELOCATING same-name move: this unwind runs BEFORE any later one, so a
+        elif kept is not None:
+            # ⚑ RELOCATING own-name move: this unwind runs BEFORE any later one, so a
             # failed re-register leaves name -> OLD path intact rather than orphaned.
-            preserved_name = mint
+            preserved_name = kept
             old_ws = state.workspace_path
-            _safe_unregister(std, mint)
+            _safe_unregister(std, kept)
             unwind.push(
-                lambda: _safe_register_membership(std, mint, old_ws)
+                lambda: _safe_register_membership(std, kept, old_ws)
             )
-    # Honored --name goes through the per-kind guard; else bare-arm or auto-suffix.
-    if mint is not None:
+    # The minted or kept name goes through the per-kind guard; else the auto-suffix path.
+    claimed = mint if mint is not None else kept
+    if claimed is not None:
         register_primary_box_name(
-            std.primary_workset, mint, new_workspace,
+            std.primary_workset, claimed, new_workspace,
             early=_early_scope(std, BoxMode.primary),
         )
-        project_name = mint
+        project_name = claimed
     else:
-        # ⚑⚑ moveprimaryname: bare-arm PRIMARY relocation — the source still holds
-        # its own name; the auto-suffix below would pick ``beta2`` while the source
-        # keeps ``beta``.  Free the source's name, re-register at the new path, and
-        # queue a re-register-on-unwind so a mid-op failure leaves ``name -> old path``
-        # intact (mirrors the FIX1 branch above).
-        own_name = (
-            _primary_source_own_name(state, std)
-            if state.mode == BoxMode.primary else None
+        project_name = assign_primary_box_name(
+            std.primary_workset, str(new_workspace), early=_early_scope(std, BoxMode.primary),
         )
-        if own_name is not None:
-            old_ws = state.workspace_path
-            _safe_unregister(std, own_name)
-            unwind.push(
-                lambda: _safe_register_membership(std, own_name, old_ws)
-            )
-            register_primary_box_name(
-                std.primary_workset, own_name, new_workspace,
-                early=_early_scope(std, BoxMode.primary),
-            )
-            # _remove_old_metadata below unregisters state.name to drop the source's
-            # row; the new entry is at the SAME name — flag the reuse so teardown
-            # keeps the new entry intact.
-            preserved_name = own_name
-            project_name = own_name
-        else:
-            project_name = assign_primary_box_name(
-                std.primary_workset, str(new_workspace), early=_early_scope(std, BoxMode.primary),
-            )
     unwind.push(lambda: _safe_unregister(std, project_name))
     dst_metadata = std.boxes / project_name
 
