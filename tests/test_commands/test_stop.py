@@ -228,14 +228,14 @@ class TestStopAll:
         assert rc == 0
         assert mock_runtime.stop.call_count == 2
         out = capsys.readouterr().out
-        assert "Stopped 2 container(s)" in out
+        assert out.endswith("\nStopped 2 container(s); removed 0 stopped container(s).\n")
 
     def test_nothing_running(self, mock_runtime, capsys):
         mock_runtime.list_running.return_value = []
         rc = _stop_all(mock_runtime, force=True)
         assert rc == 0
         out = capsys.readouterr().out
-        assert "No running kanibako containers" in out
+        assert "No kanibako containers found.\n" in out
         mock_runtime.stop.assert_not_called()
 
     def test_partial_failure(self, mock_runtime, capsys):
@@ -248,7 +248,7 @@ class TestStopAll:
         rc = _stop_all(mock_runtime, force=True)
         assert rc == 0
         out = capsys.readouterr().out
-        assert "Stopped 1 container(s)" in out
+        assert out.endswith("\nStopped 1 container(s); removed 0 stopped container(s).\n")
         capsys.readouterr()  # drain stderr
 
     def test_confirmation_prompt_accepted(self, mock_runtime, capsys, monkeypatch):
@@ -300,28 +300,61 @@ class TestStopAll:
         mock_runtime.rm.assert_called_once_with("kanibako-aabbccdd")
         out = capsys.readouterr().out
         assert "Removed stopped container: kanibako-aabbccdd" in out
-        assert "1" in out
+        assert out.endswith(
+            "\nStopped 0 container(s); removed 1 stopped container(s).\n"
+        )
+
+    def test_a_failed_removal_is_reported_and_not_counted(self, mock_runtime, capsys):
+        mock_runtime.list_running.return_value = [
+            ("kanibako-aabbccdd", "img:latest", "Exited (1) 2 hours ago"),
+        ]
+        mock_runtime.is_running.return_value = False
+        mock_runtime.rm.return_value = False
+        rc = _stop_all(mock_runtime, force=True)
+        assert rc == 0
+        captured = capsys.readouterr()
+        assert "Removed stopped container" not in captured.out
+        assert captured.err == "Failed to remove kanibako-aabbccdd\n"
+        assert captured.out.endswith(
+            "\nStopped 0 container(s); removed 0 stopped container(s).\n"
+        )
 
     def test_mixed_running_and_exited_prompts_truthfully(self, mock_runtime, capsys, monkeypatch):
         mock_runtime.list_running.return_value = [
-            ("kanibako-running", "img:latest", "Up 5 minutes"),
-            ("kanibako-exited", "img:latest", "Exited (0) 1 hour ago"),
+            ("kb-running", "img:latest", "Up 5 minutes"),
+            ("kb-exited", "img:latest", "Exited (0) 1 hour ago"),
         ]
         def is_running(name):
-            return name == "kanibako-running"
+            return name == "kb-running"
         mock_runtime.is_running.side_effect = is_running
         mock_runtime.stop.return_value = True
         mock_runtime.container_exists.return_value = True
         monkeypatch.setattr("builtins.input", lambda _: "y")
         rc = _stop_all(mock_runtime, force=False)
         assert rc == 0
-        out = capsys.readouterr().out
-        assert "running" in out.lower()
-        assert "exited" in out.lower() or "stopped" in out.lower()
-        mock_runtime.stop.assert_called_once_with("kanibako-running")
+        lines = capsys.readouterr().out.splitlines()
+        assert lines[:4] == [
+            "This will stop 1 running container(s) and remove 1 stopped container(s):",
+            "  kb-running  (running)",
+            "  kb-exited  (stopped)",
+            "",
+        ]
+        mock_runtime.stop.assert_called_once_with("kb-running")
         assert mock_runtime.rm.call_count == 2
-        assert "Stopped 1" in out
-        assert "removed 1" in out
+        assert lines[-1] == "Stopped 1 container(s); removed 1 stopped container(s)."
+
+    def test_all_help_says_stopped_containers_are_removed(self):
+        import argparse
+        from kanibako.commands.stop import add_parser
+        subparsers = argparse.ArgumentParser().add_subparsers()
+        add_parser(subparsers)
+        stop_parser = subparsers.choices["stop"]
+        all_action = next(
+            a for a in stop_parser._actions if a.dest == "all_containers"
+        )
+        assert all_action.help == (
+            "Stop all running kanibako containers and remove stopped ones"
+        )
 
 
 class TestRunDispatch:

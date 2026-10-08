@@ -60,7 +60,7 @@ class ContainerRuntime:
     def is_running(self, name: str) -> bool
     def inspect_env(self, name: str, key: str) -> str | None
     def container_image(self, name: str) -> str | None
-    def list_running(self, prefix: str=CONTAINER_NAME_PREFIX) -> list[tuple[str, str, str]]
+    def list_running(self, prefix: str=CONTAINER_NAME_PREFIX, *, include_stopped: bool=False) -> list[tuple[str, str, str]]
     def get_local_digests(self, image: str) -> list[str]
     def get_local_digest(self, image: str) -> str | None
     def get_local_created(self, image: str) -> str | None

@@ -31,7 +31,7 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
     )
     p.add_argument(
         "--all", action="store_true", dest="all_containers",
-        help="Stop all running kanibako containers",
+        help="Stop all running kanibako containers and remove stopped ones",
     )
     p.add_argument(
         "--force", action="store_true",
@@ -327,12 +327,10 @@ def _boxes_rendering_no_name() -> list[str]:
 
 
 def _stop_all(runtime: ContainerRuntime, *, force: bool = False) -> int:
-    """Stop every running kanibako container, then clear any EXITED ones holding a name.
+    """Stop and remove each running kanibako container; remove each stopped one.
 
-    The all-states listing is a reaper: a container left in ``Exited`` still holds
-    the box's name, blocking the next launch.  The same liveness-then-action shape
-    as ``_stop_one`` applies here (read ``is_running`` once, pick the sentence,
-    never run stop on something already exited).
+    Containers are handled in listing order.  A stopped container still holds
+    the box's name and blocks the next launch, so it is removed too.
     """
     # ⚑ SKIP AND CONTINUE: the sweep carries on with every container that has a name.
     for name in _boxes_rendering_no_name():
@@ -340,11 +338,10 @@ def _stop_all(runtime: ContainerRuntime, *, force: bool = False) -> int:
 
     containers = runtime.list_running(include_stopped=True)
     if not containers:
-        print("No running kanibako containers found.")
+        print("No kanibako containers found.")
         return 0
 
-    # ⚑ LIVENESS ONCE, BEFORE ANYTHING CHANGES IT — the on-stop writeback and the
-    # sentence pick both read it.  Same shape as ``_stop_one`` and the launch guard.
+    # ⚑ LIVENESS ONCE, BEFORE ANYTHING CHANGES IT — the prompt and the action read it.
     liveliness = {
         name: runtime.is_running(name) for name, _image, _status in containers
     }
@@ -380,9 +377,11 @@ def _stop_all(runtime: ContainerRuntime, *, force: bool = False) -> int:
                 print(f"Failed to stop {name}", file=sys.stderr)
         else:
             # Reuse the sentence ``_stop_one`` prints for an already-stopped box.
-            print(f"Removed stopped container: {name}")
-            runtime.rm(name)
-            removed_count += 1
+            if runtime.rm(name):
+                print(f"Removed stopped container: {name}")
+                removed_count += 1
+            else:
+                print(f"Failed to remove {name}", file=sys.stderr)
 
     print(f"\nStopped {stopped_count} container(s); removed {removed_count} stopped container(s).")
     return 0

@@ -641,6 +641,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`box duplicate --to standalone --bare` onto a `<dst>` whose `box_data/box.yaml` holds a scalar `box:` now refuses
   before writing anything.** Before, it laid down the new home and then refused, leaving those files in `<dst>`.
   `--force` rebuilds `box_data/` and is not refused.
+
+- **`stop --all` now removes stopped kanibako containers, which still held their box's name and blocked the next
+  launch.** It lists containers in every state whose name starts with `kb-`; a container that merely contains `kb-`
+  is no longer matched. The prompt marks each container `(running)` or `(stopped)`, a stopped one is reported as
+  `Removed stopped container: <name>`, and a removal that fails prints `Failed to remove <name>` on stderr. The final
+  line is now `Stopped <n> container(s); removed <m> stopped container(s).`, and with nothing listed the command
+  prints `No kanibako containers found.` The `--all` help reads "Stop all running kanibako containers and remove
+  stopped ones".
 - **`box convert --move` into a workset or into the default workset now re-points a vault link whose target lies in
   the workspace or the box store it carries.** The link names the landed tree instead of leaving a second copy that
   diverges.
