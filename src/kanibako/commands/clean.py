@@ -25,7 +25,7 @@ from kanibako.utils import confirm_prompt
 from kanibako.project.workset import purge_box_logs
 from kanibako.channels.channels import workset_name_token, workset_root
 from kanibako.settings.workset_dirkeys import EarlyScope, refuse_inherited_per_owner
-from kanibako.settings.messages import STATUS_NO_DATA
+from kanibako.settings.messages import MSG_DONE, STATUS_NO_DATA
 
 
 def add_parser(subparsers: argparse._SubParsersAction) -> None:
@@ -220,7 +220,7 @@ def _purge_one(std, config, path: str, *, force: bool) -> int:
     # name → path that would shadow a future box at the same path.
     _unregister_purged(std, proj)
 
-    print("done.")
+    print(MSG_DONE)
     print(f"Session data removed for {proj.project_path or '<None>'}")
     return 0
 
@@ -244,7 +244,7 @@ def _purge_all(std, config, *, force: bool) -> int:
 
     total = len(projects)
     for _, _, project_list in ws_data:
-        total += sum(1 for _, status in project_list if status != "no-data")
+        total += sum(1 for _, status in project_list if status != STATUS_NO_DATA)
 
     print(f"Found {total} project(s):")
     for metadata_path, project_path in projects:
@@ -252,7 +252,7 @@ def _purge_all(std, config, *, force: bool) -> int:
         print(f"  {label}")
     for ws_name, ws, project_list in ws_data:
         for proj_name, status in project_list:
-            if status != "no-data":
+            if status != STATUS_NO_DATA:
                 print(f"  {ws_name}/{proj_name}")
     print()
 
@@ -292,7 +292,7 @@ def _purge_all(std, config, *, force: bool) -> int:
         # M2: drop the now-dangling registry entry for this PRIMARY box.
         _unregister_purged_primary(std, metadata_path, project_path)
 
-        print("done.")
+        print(MSG_DONE)
         removed += 1
 
     # Workset projects.
@@ -301,7 +301,7 @@ def _purge_all(std, config, *, force: bool) -> int:
         # read per workset keeps every member of it judged against the same document.
         boxes_dir, logs_dir = ws.projects_dir, ws.logs_dir
         for proj_name, status in project_list:
-            if status == "no-data":
+            if status == STATUS_NO_DATA:
                 continue
             project_dir = boxes_dir / proj_name
             if project_dir.is_dir():
@@ -313,7 +313,7 @@ def _purge_all(std, config, *, force: bool) -> int:
                 # box's helpers.jsonl mount is bound from; the default leaf is
                 # ``<root>/logs``, not the box's own directory.
                 purge_box_logs(std, logs_dir, proj_name, workset_root=ws.root)
-                print("done.")
+                print(MSG_DONE)
                 removed += 1
 
     print(f"\nPurged session data for {removed} project(s).")
