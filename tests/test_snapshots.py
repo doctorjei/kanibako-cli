@@ -1018,9 +1018,15 @@ class TestPerBoxStore:
         first = create_snapshot(alpha, box_name="alpha")
         assert first is not None
 
+        # r2 item 4 changed the contract: a failed safety copy raises
+        # SnapshotSafetyError ("Nothing was changed") rather than letting the
+        # raw OSError escape.  The cause still carries the underlying error.
+        from kanibako.snapshots import SnapshotSafetyError
+
         with patch("kanibako.snapshots.create_snapshot", side_effect=OSError("disk full")):
-            with pytest.raises(OSError, match="disk full"):
+            with pytest.raises(SnapshotSafetyError, match="Nothing was changed") as caught:
                 restore_snapshot(alpha, first.name, box_name="alpha")
+        assert "disk full" in str(caught.value)
 
         assert (alpha / "keep.txt").read_text() == "live"
 
