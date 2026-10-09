@@ -15,12 +15,7 @@ _CREATE_SHAPING_FLAGS = ('name', 'image', 'agent', 'private', 'no_vault')
 _CREATE_SUBJECT_FLAGS = ('path', 'standalone', 'allow_home', 'register')
 _SHAPING_SET_CURE = {'image': ('box.image=<value>',), 'agent': ('pref.system.agent=<value>',), 'private': ('box.auth.global_enabled=false', 'box.auth.workset_enabled=false'), 'no_vault': ('box.enable_vault=false',)}
 _STANDALONE_CREATE_EXEMPT_KEYS: frozenset[str] = frozenset({'registry', 'template'})
-```
-
-## Types
-```
-_StandaloneTeardown = tuple[list[Path], list[Path], 'Path | None', str]
-
+_VAULT_LABELS = ('vault ro (your files)', 'vault rw (your files)')
 ```
 
 ## Functions
@@ -53,9 +48,11 @@ def _create_target(args: argparse.Namespace) -> Path
 def _list_orphans(projects: list, ws_data: list, std, quiet: bool) -> int
 def _purge_dir(target: Path) -> bool
 def _assert_deletable(path, *, must_be_under: Path | None=None) -> Path
-def _teardown_primary_box(std, name: str, metadata_dir: Path) -> bool
-def _standalone_teardown_plan(root: Path, registered_name: str, *, early: EarlyScope) -> _StandaloneTeardown
-def _teardown_standalone_box(root: Path, plan: _StandaloneTeardown, *, std: 'StandardPaths', early: EarlyScope) -> bool
+def _primary_purge_plan(std, name: str, metadata_dir: Path) -> list[_PurgeStep]
+def _standalone_purge_plan(root: Path, registered_name: str, *, std: StandardPaths, early: EarlyScope) -> list[_PurgeStep]
+def _confirm_purge(steps: list[_PurgeStep], *, force: bool) -> bool
+def _remove_purge_path(path: Path) -> bool
+def _run_purge_plan(steps: list[_PurgeStep]) -> bool
 def _read_box_image(settings_file: Path) -> str | None
 def _read_box_image_tiered(box_tier: Path, workset_tier: Path) -> str | None
 def _purge_deregistered(std, name: str, entry: dict, args: argparse.Namespace) -> int
@@ -71,4 +68,16 @@ def _format_credential_age(creds_path: Path) -> str
 def _check_container_running(proj) -> tuple[bool, str]
 def _resolve_config_subject(std, config, project_dir: str | None)
 def _run_box_config(args: argparse.Namespace) -> int
+```
+
+## Classes
+
+```
+@dataclasses.dataclass(frozen=True)
+class _PurgeStep:
+    kind: str
+    what: str
+    path: Path
+    anchor: bool = False
+    gated: bool = False
 ```

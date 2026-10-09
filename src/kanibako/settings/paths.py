@@ -1518,22 +1518,24 @@ def box_log_files(logs_dir: Path, box: str) -> BoxLogFiles:
     )
 
 
-def remove_box_logs(logs_dir: Path | None, box: str, *, keep: Iterable[Path] = ()) -> list[Path]:
-    """Delete box *box*'s log files from *logs_dir*; returns the ones that existed.
+def box_logs_to_remove(logs_dir: Path | None, box: str, *, keep: Iterable[Path] = ()) -> list[Path]:
+    """The log files :func:`remove_box_logs` deletes: *box*'s files on disk, less *keep*.
 
     A ``None`` *logs_dir* (``workset.logs`` is ``<None>``) holds no logs: nothing to delete.
     *keep* spares files *box* also names elsewhere — see ``purge_box_logs``.
     """
-    removed: list[Path] = []
     if logs_dir is None:
-        return removed
+        return []
     skip = set(keep)
-    for log_file in box_log_files(logs_dir, box):
-        if log_file in skip:
-            continue
-        if log_file.is_file():
-            log_file.unlink()
-            removed.append(log_file)
+    return [log_file for log_file in box_log_files(logs_dir, box)
+            if log_file not in skip and log_file.is_file()]
+
+
+def remove_box_logs(logs_dir: Path | None, box: str, *, keep: Iterable[Path] = ()) -> list[Path]:
+    """Delete :func:`box_logs_to_remove`'s files; returns them."""
+    removed = box_logs_to_remove(logs_dir, box, keep=keep)
+    for log_file in removed:
+        log_file.unlink()
     return removed
 
 

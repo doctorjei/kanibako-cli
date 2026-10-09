@@ -71,7 +71,7 @@ from kanibako.utils import WORKSET_SEGMENT_PRIMARY, WORKSET_SEGMENT_STANDALONE, 
 # its ``project.workset`` imports into function bodies — do not add a module-scope
 # edge back this way.
 from kanibako.settings.paths import (
-    StandardPaths, _workset_box_paths, box_log_files, remove_box_logs,
+    StandardPaths, _workset_box_paths, box_log_files, box_logs_to_remove,
 )
 
 # ⚑⚑ EVERY NAME BELOW IS AN ALIAS, NEVER A VALUE.  The defaults themselves live in
@@ -1119,7 +1119,17 @@ def _logs_share_partners(
 def purge_box_logs(
     std: StandardPaths, logs_dir: Path | None, box: str, *, workset_root: Path | None,
 ) -> list[Path]:
-    """Delete *box*'s log files, keeping any file another working set shares by name.
+    """Delete :func:`box_logs_to_purge`'s files; returns them."""
+    removed = box_logs_to_purge(std, logs_dir, box, workset_root=workset_root)
+    for log_file in removed:
+        log_file.unlink()
+    return removed
+
+
+def box_logs_to_purge(
+    std: StandardPaths, logs_dir: Path | None, box: str, *, workset_root: Path | None,
+) -> list[Path]:
+    """*box*'s log files a purge deletes: any file another working set shares by name is kept.
 
     Keyspec § 0 "Per-owner resources": *"a forced share's destructive verb removes only
     its own instance's part."*  A per-box log is named by BOX NAME ALONE, so once two
@@ -1131,11 +1141,11 @@ def purge_box_logs(
 
     *workset_root* is the root of the workset the verb acts for: ``ws.root``, the
     primary workset, or a STANDALONE box's own root (never in the walk, so it excludes
-    nothing).  Returns what was actually deleted — a kept file is NOT in that list,
-    because every caller prints it as "Removed".
+    nothing).  A kept file is reported here and is NOT in the list, because every
+    caller prints the list as "Removed".
     """
     if logs_dir is None:
-        return remove_box_logs(None, box)
+        return []
     partners = _logs_share_partners(std, logs_dir, box, workset_root=workset_root)
     keep: tuple[Path, ...] = ()
     if partners:
@@ -1148,7 +1158,7 @@ def purge_box_logs(
                 "attributable to one box. Delete it yourself if this purge owns it.",
                 file=sys.stderr,
             )
-    return remove_box_logs(logs_dir, box, keep=keep)
+    return box_logs_to_remove(logs_dir, box, keep=keep)
 
 
 # ---------------------------------------------------------------------------

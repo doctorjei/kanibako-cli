@@ -57,6 +57,7 @@ def refuse_retired_workset_identity(root: Path) -> None
 def find_logs_share(std: StandardPaths, *, value: object, scope: str, target_name: str | None=None, target_root: Path | None=None) -> 'tuple[tuple[str, ...], Path] | None'
 def logs_share_refusal(canonical_key: str, value: object, std: StandardPaths, *, force: bool, scope: str, target_name: str | None=None, target_root: Path | None=None) -> str | None
 def purge_box_logs(std: StandardPaths, logs_dir: Path | None, box: str, *, workset_root: Path | None) -> list[Path]
+def box_logs_to_purge(std: StandardPaths, logs_dir: Path | None, box: str, *, workset_root: Path | None) -> list[Path]
 def is_workset_skeleton(root: Path, *, early: EarlyScope) -> bool
 def create_workset(name: str, root: Path, std: StandardPaths, *, force_logs_share: bool=False) -> Workset
 def load_workset(root: Path, name: str, *, early_system: EarlySystem) -> Workset
