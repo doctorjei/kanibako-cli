@@ -44,7 +44,6 @@ from kanibako.settings.messages import (
     ERR_WORKSET_MEMBER_NAME_TAKEN,
     ERR_WORKSET_MEMBER_NO_RECOVER,
     ERR_WORKSET_NULL_WORKSPACES,
-    WARN_WS_BOX_BAD_NAME,
 )
 from kanibako.settings.paths import (
     IGNORE_FILE,
@@ -79,7 +78,7 @@ from kanibako.agent_ref import GENERAL_SLOT, harness_of, parse_agent_address, wi
 from kanibako.targets import resolve_target
 from kanibako.utils import (
     WORKSET_SEGMENT_PRIMARY, WORKSET_SEGMENT_STANDALONE,
-    container_name_for, container_name_for_box_name, literal_path, logical_cwd,
+    container_name_for, container_name_for_box_name, literal_path, logical_cwd, rename_box_cure,
     short_hash, write_project_gitignore,
 )
 
@@ -2345,12 +2344,16 @@ def run_rm(args: argparse.Namespace) -> int:
 
     if name is None or section is None:
         # ⚑ A stored legacy name is a PATH designation: name its path, never resolve it.
-        for held in (primary_boxes, registry_store.load_standalone(std.registry)):
+        for mode, held in (("primary", primary_boxes),
+                           ("standalone", registry_store.load_standalone(std.registry))):
             legacy = None if by_name else find_identifier(target, held)
-            if legacy is not None:
-                print(f"Error: {WARN_WS_BOX_BAD_NAME % (legacy, box_name_reason(legacy))}\n"
-                      f"Remove it by its path:\n"
-                      f"  kanibako box rm {shlex.quote(str(held[legacy]))}", file=sys.stderr)
+            reason = None if legacy is None else box_name_reason(legacy)
+            if legacy is not None and reason is not None:
+                print(f"Error: box name '{legacy}' does not meet the naming rules ({reason}), "
+                      f"so the box is reached by its path only. Remove it, or give it a "
+                      f"valid name:\n"
+                      f"  kanibako box rm {shlex.quote(str(held[legacy]))}\n"
+                      f"  {rename_box_cure(mode, Path(held[legacy]))}", file=sys.stderr)
                 return 1
         print(f"Error: '{target}' is not a registered box.", file=sys.stderr)
         return 1

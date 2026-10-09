@@ -90,6 +90,15 @@ def renders_no_name(box: str) -> bool:
     return isinstance(box, str) and (not box or box.startswith("-"))
 
 
+def rename_box_cure(mode: str, path: Path | None) -> str:
+    """The command that gives a *mode* box at *path* a new name, by path; bare without one."""
+    if mode == "standalone":
+        return (f"kanibako box convert {shlex.quote(str(path))} --standalone --name <new-name>"
+                if path else "kanibako box convert --standalone --name <new-name>")
+    return (f"kanibako box move {shlex.quote(str(path))} <new-path> --name <new-name>"
+            if path else "kanibako box move <new-path> --name <new-name>")
+
+
 def unrenderable_box_name_refusal(
     box: str, mode: str, path: Path | None,
 ) -> str:
@@ -100,22 +109,10 @@ def unrenderable_box_name_refusal(
     from kanibako.launch.box_identity import box_name_reason
 
     reason = box_name_reason(box) or "box name must not be empty"
-    if mode == "standalone":
-        cure = (
-            f"kanibako box convert {shlex.quote(str(path))} --standalone --name <new-name>"
-            if path else
-            "kanibako box convert --standalone --name <new-name>"
-        )
-    else:
-        cure = (
-            f"kanibako box move {shlex.quote(str(path))} <new-path> --name <new-name>"
-            if path else
-            "kanibako box move <new-path> --name <new-name>"
-        )
     return (
         f"Error: box '{box}' has no container name: {reason}. Give the box a valid "
         f"name, then try again:\n"
-        f"  {cure}"
+        f"  {rename_box_cure(mode, path)}"
     )
 
 
