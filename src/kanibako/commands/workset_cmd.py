@@ -730,23 +730,16 @@ def run_disconnect(args: argparse.Namespace) -> int:
     # ⚑ RESOLVED BEFORE ANYTHING IS DELETED: a ``workset.logs`` that does not resolve
     # refuses the disconnect whole, rather than after the box tree is already gone.
     logs_dir = ws.logs_dir if args.remove_files else None
-    # ⚑ RESOLVED HERE FOR THE SAME REASON: the member's OWN snapshot store.  It is
-    # deliberately NOT part of ``remove_member_store`` — that function is shared with
-    # the relocation retire path, which runs at STEP 4a (``_to_workset`` →
-    # ``_retire_old_store``) while the carry is STEP 4c (``_relocate_snapshot_store``),
-    # so deleting the store there would destroy the only copy before it is carried.
-    # The disconnect owns this removal; the shared function stays as it is.
+    # ⚑ RESOLVED HERE FOR THE SAME REASON: the member's OWN snapshot store.  NOT part
+    # of ``remove_member_store`` — that is shared with the relocation retire path,
+    # which runs at STEP 4a while the carry is STEP 4c; deleting there loses the copy.
     snapshot_store = None
     if args.remove_files:
         from kanibako.project.workset import resolve_workset_vault_pair
         from kanibako.snapshots import box_snapshot_store
         _vault_ro, vault_rw = resolve_workset_vault_pair(ws.root, early=ws.early_scope)
         if vault_rw is not None:
-            # ⚑ ``box_snapshot_store`` takes the box's OWN vault-rw LEAF, the same
-            # value ``clean.py`` passes it — the store is that leaf's SIBLING
-            # (``leaf.parent/.versions/<box>``).  Handing it the workset's ``vault/rw``
-            # BASE instead derives ``<ws>/vault/.versions/<box>``, which never exists,
-            # so the removal below silently does nothing.
+            # The box's OWN vault-rw LEAF — the store is that leaf's sibling.
             snapshot_store = box_snapshot_store(vault_rw / member, member)
     if not args.force:
         label = "and remove files " if args.remove_files else ""
@@ -778,9 +771,7 @@ def run_disconnect(args: argparse.Namespace) -> int:
         purge_box_logs(std, logs_dir, proj.name, workset_root=ws.root)
     if snapshot_store is not None and (
             snapshot_store.is_dir() or snapshot_store.is_symlink()):
-        # ⚑ The box's OWN store only — never the ``.versions`` base it shares, and never
-        # a neighbour's store beside it.  ``remove_path`` unlinks a link rather than
-        # following it.
+        # The box's OWN store only — never the shared base or a neighbour's.
         from kanibako.runtime.container import remove_path
         if not remove_path(snapshot_store):
             print(f"Warning: could not remove the snapshot store at {snapshot_store}.\n"
