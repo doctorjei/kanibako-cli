@@ -5820,6 +5820,42 @@ class TestDetachKeepAlive:
             # The crash (rc != 0) surfaces the captured pane even at the tty.
             assert "DEAD_AGENT_MARKER: crashed" in capsys.readouterr().err
 
+    @pytest.mark.parametrize("code, shown", [(1, True), (0, False)])
+    def test_foreground_crash_prints_the_supervisor_fallback_log(
+        self, start_mocks, capsys, code, shown,
+    ):
+        """A failed supervised box prints its fallback log's tail; a clean one does not."""
+        from kanibako.commands.start import SUPERVISOR_FALLBACK_RELPATH
+
+        with start_mocks() as m, patch(
+            "kanibako.commands.start._interactive_host", return_value=True,
+        ), patch(
+            "kanibako.commands.start._restore_host_terminal",
+        ), patch(
+            "kanibako.commands.start._container_exit_code", return_value=code,
+        ), patch(
+            "kanibako.commands.start._container_logs", return_value="",
+        ):
+            m.target.should_run_setup.return_value = False
+            log = m.proj.shell_path / SUPERVISOR_FALLBACK_RELPATH
+            log.parent.mkdir(parents=True, exist_ok=True)
+            log.write_text("ModuleNotFoundError: No module named 'kanibako'\n")
+
+            def _exec_then_exit(*_a, **_k):
+                m.runtime.is_running.return_value = False
+                return 0
+
+            m.runtime.exec.side_effect = _exec_then_exit
+            rc = _run_container(
+                project_dir=None, entrypoint=None, image_override=None,
+                new_session=False, safe_mode=False, resume_mode=False,
+                extra_args=[], persistent=True, detach=False,
+            )
+            assert rc == code
+            err = capsys.readouterr().err
+            assert ("No module named 'kanibako'" in err) is shown
+            assert ("supervisor fallback log" in err) is shown
+
     def test_detach_implies_persistent_from_nonpersistent_arg(self, start_mocks):
         """detach=True forces the persistent/detached launch even if a caller
         passes persistent=False (defensive guard)."""
@@ -13504,3 +13540,23 @@ class TestStartRefusesALegacyRunningContainer:
             rc = self._start()
         assert rc == 0
         m.runtime.run.assert_called()
+
+
+def test_print_supervisor_fallback_tail_and_silence(tmp_path, capsys):
+    from kanibako.commands.start import (
+        SUPERVISOR_FALLBACK_RELPATH, _print_supervisor_fallback,
+    )
+
+    _print_supervisor_fallback(tmp_path)              # no log: silent
+    log = tmp_path / SUPERVISOR_FALLBACK_RELPATH
+    log.parent.mkdir(parents=True)
+    log.write_text("")
+    _print_supervisor_fallback(tmp_path)              # truncated by a good launch: silent
+    log.write_text("\n  \n")
+    _print_supervisor_fallback(tmp_path)              # whitespace only: silent
+    assert capsys.readouterr().err == ""
+    log.write_text("".join(f"line {i}\n" for i in range(30)))
+    _print_supervisor_fallback(tmp_path)
+    err = capsys.readouterr().err.splitlines()
+    assert err[0] == f"kanibako: supervisor fallback log (~/{SUPERVISOR_FALLBACK_RELPATH}):"
+    assert err[1:] == [f"line {i}" for i in range(10, 30)]

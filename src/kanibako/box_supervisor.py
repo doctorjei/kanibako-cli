@@ -488,6 +488,16 @@ def newcomer_pids(live_pids: set[int], own_pids: set[int]) -> set[int]:
     return live_pids - own_pids
 
 
+def _trim_capture(text: str | None) -> str | None:
+    """A pane capture without tmux's trailing padding and "Pane is dead" line; ``None`` if empty."""
+    if text is None:
+        return None
+    lines = text.rstrip().splitlines()
+    if lines and lines[-1].startswith("Pane is dead"):
+        lines.pop()
+    return "\n".join(lines).rstrip() or None
+
+
 def agent_exit_code(death: str) -> int:
     """PURE: the shell-convention code of a :data:`PANE_DEATH_FORMAT` record.
 
@@ -840,18 +850,22 @@ class BoxSupervisor:
         return self._exit_record
 
     def _exit_hook(self) -> str | None:
-        """A teardown launch's ``pane-died`` hook: record the agent's end, then close its pane.
+        """A teardown launch's ``pane-died`` hook: save the agent's output and end, then close its pane.
 
-        ``run-shell`` without ``-b`` blocks, so the pane closes only AFTER the record
-        exists; closing it spares an attached user the "Pane is dead" screen.
+        ``run-shell`` without ``-b`` blocks, so the pane closes only AFTER the output
+        (``<record>.out``) and the record exist; closing it spares an attached user the
+        "Pane is dead" screen.  The capture runs in the job's shell, so its failure
+        cannot skip the record or the close.
         """
         record = self._exit_record_path()
         if not _HOOK_SAFE_PATH.fullmatch(record):
             # Never fail the agent start over it: the pane probe still answers.
             log.warning("exit record path %r is not shell-safe; arming no exit hook", record)
             return None
+        capture = " ".join(["tmux", *self._capture_argv("#{pane_id}")])
         return (
-            f"run-shell 'echo {PANE_DEATH_FORMAT} >{record}.tmp && mv {record}.tmp {record}'"
+            f"run-shell '{capture} >{record}.out 2>/dev/null ;"
+            f" echo {PANE_DEATH_FORMAT} >{record}.tmp && mv {record}.tmp {record}'"
             " ; kill-pane"
         )
 
@@ -951,23 +965,30 @@ class BoxSupervisor:
             if self._exit_record_dir is not None:
                 shutil.rmtree(self._exit_record_dir, ignore_errors=True)
 
-    def capture_agent_output(self) -> str | None:
-        """Return the agent pane's captured MAIN-screen text (scrollback), or None."""
-        out = self._tmux_output(
-            [
-                "capture-pane", "-p",
-                "-S", f"-{self.config.capture_history}",
+    def _capture_argv(self, target: str) -> list[str]:
+        """The ``capture-pane`` argv for *target*: the pane's last ``capture_history`` lines."""
+        return [
+            "capture-pane", "-p",
+            "-S", f"-{self.config.capture_history}",
             # ⚑ ``-E -`` = capture through the END OF HISTORY.  Without it the end
             # defaults to the VISIBLE screen, which for a dead pane is tmux's "Pane is
             # dead" overlay — the agent's actual output would NOT be returned.
-                "-E", "-",
-                "-t", self.config.session,
-            ]
-        )
-        if out is None:
+            "-E", "-",
+            "-t", target,
+        ]
+
+    def capture_agent_output(self) -> str | None:
+        """Return the agent pane's captured MAIN-screen text (scrollback), or None."""
+        return _trim_capture(self._tmux_output(self._capture_argv(self.config.session)))
+
+    def recorded_agent_output(self) -> str | None:
+        """The pane text the ``pane-died`` hook saved before closing the pane, or ``None``."""
+        if self._exit_record is None:
             return None
-        # Strip tmux's trailing blank padding; keep the body verbatim (the host greps it).
-        return out.rstrip("\n") or None
+        try:
+            return _trim_capture(Path(f"{self._exit_record}.out").read_text(errors="replace"))
+        except OSError:
+            return None
 
     def agent_session_alive(self) -> bool:
         """True iff the agent session EXISTS and its pane is NOT dead."""
@@ -1424,18 +1445,20 @@ class BoxSupervisor:
                                 keepalive_announced = True
                         else:
                             # ⚑ Pane FIRST, record SECOND: the ``pane-died`` hook
-                            # writes the record BEFORE it closes the pane, so a pane
-                            # already gone means its record is already written.
+                            # writes the output and the record BEFORE it closes the
+                            # pane, so a pane already gone means both are written.
+                            # The output is read first: reading the record removes it.
+                            captured = (
+                                self.capture_agent_output() or self.recorded_agent_output()
+                            )
                             code = self.agent_pane_exit_code()
                             if code is None:
                                 code = self.recorded_agent_exit()
                             if code is None:
                                 code = UNDETERMINED_AGENT_EXIT if started else 1
-                            # Echo the captured pane so ``podman logs`` shows WHY the
-                            # agent died; the hook has normally closed the pane, so this
-                            # usually captures nothing (best-effort).
-                            captured = self.capture_agent_output()
-                            if captured:
+                            # A failed agent's last output goes to ``podman logs``, which
+                            # the host prints on a non-zero exit; a clean exit adds none.
+                            if captured and code != 0:
                                 print(captured, flush=True)
                             log.info(
                                 "agent exited under teardown policy; "
