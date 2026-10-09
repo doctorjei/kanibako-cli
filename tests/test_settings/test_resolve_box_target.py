@@ -30,14 +30,15 @@ from kanibako.settings.paths import (
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _make_standalone(std, tmp_home, leaf: str = "sa", name: str = ""):
-    """Create + register a standalone box under tmp_home; return (name, root)."""
+def _make_standalone(std, tmp_home, leaf: str = "sa"):
+    """Create + register a standalone box under tmp_home; return (name, root).
+
+    No ``name`` argument: a standalone box is named from its root, never by the caller.
+    """
     root = tmp_home / leaf
     root.mkdir()
     (root / "box_data").mkdir()
-    box_name, *_ = establish_standalone(
-        std, root, enable_vault=True, name=name,
-    )
+    box_name, *_ = establish_standalone(std, root, enable_vault=True)
     return box_name, root
 
 

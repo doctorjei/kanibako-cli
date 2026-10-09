@@ -2914,3 +2914,82 @@ class TestADuplicateNeverLaysTheRootLink:
             _merge_workspace(src, dst, force=False)
         assert (dst / "mine.txt").read_text() == "MINE"
         assert not (dst / "f.txt").exists()
+
+
+# ---------------------------------------------------------------------------
+# Review r1 item 2 — a standalone move CARRIES its kuid (keyspec ``:811``:
+# "kuid = stable stored prefix; the leaf tracks dir moves").
+#
+# Before, every move re-minted the prefix, so the box became a different identity
+# each time: the refusal named one composed name while the move produced another,
+# and a "full composed name" no-op registered a third.
+# ---------------------------------------------------------------------------
+
+def _move_to(env, root, new_root, ownership="standalone", name=None):
+    """Relocate *root* to *new_root* through the real lifecycle; return (before, after)."""
+    config, std, _tmp_home = env
+    state = resolve_lifecycle_target(str(root), std, config)
+    new_root.parent.mkdir(parents=True, exist_ok=True)
+    new_state = execute_lifecycle(
+        state, TargetSpec(location=new_root, ownership=ownership, name=name),
+        std, config, confirm=_conf_yes(),
+    )
+    return state, new_state
+
+
+class TestStandaloneMoveCarriesItsKuid:
+    def test_a_relocated_move_keeps_the_prefix_and_moves_the_leaf(self, env):
+        from kanibako.launch.box_identity import standalone_kuid
+        from kanibako.project import registry_store
+
+        config, std, tmp_home = env
+        root = _make_standalone(env, name="keepme")
+        before_state, after_state = _move_to(env, root, tmp_home / "elsewhere")
+
+        assert before_state.mode is BoxMode.standalone
+        # ⚑ Same prefix, new leaf — the identity persisted across the move.
+        assert standalone_kuid(after_state.name) == standalone_kuid(before_state.name)
+        assert after_state.name.endswith("_elsewhere")
+        assert after_state.name != before_state.name
+        # The registry agrees: keyed by the new composed name, old key gone.
+        standalone = registry_store.load_standalone(std.registry)
+        assert standalone[after_state.name] == str(tmp_home / "elsewhere")
+        assert before_state.name not in standalone
+
+    def test_a_move_that_keeps_the_leaf_keeps_its_registry_row(self, env):
+        """⚑⚑ THE HAZARD CARRYING THE KUID CREATES.
+
+        The old code guaranteed old-name != new-name because the prefix always changed.
+        Carrying it breaks that: ``/a/proj`` → ``/b/proj`` composes the SAME name.  The
+        teardown unregisters the source name AFTER the establish step registered the new
+        one, so without the guard it deletes the live entry — a running box silently
+        dropped from the registry with its files untouched.
+        """
+        from kanibako.launch.box_identity import standalone_kuid
+        from kanibako.project import registry_store
+
+        config, std, tmp_home = env
+        root = _make_standalone(env, name="sameleaf")
+        before_state, after_state = _move_to(env, root, tmp_home / "moved" / "sameleaf")
+
+        # Same leaf + carried kuid ⇒ the WHOLE name is unchanged.
+        assert after_state.name == before_state.name
+        assert standalone_kuid(after_state.name) == standalone_kuid(before_state.name)
+        # ⚑ And it is STILL REGISTERED — the teardown did not eat its own entry.
+        standalone = registry_store.load_standalone(std.registry)
+        assert standalone.get(after_state.name) == str(tmp_home / "moved" / "sameleaf"), (
+            "the carried-kuid no-op move unregistered the box it had just registered"
+        )
+        assert len([k for k, v in standalone.items() if v == str(tmp_home / "moved" / "sameleaf")]) == 1
+
+    def test_a_convert_to_standalone_still_mints_a_fresh_kuid(self, env):
+        """A primary→standalone convert has no standalone kuid to carry; it mints."""
+        from kanibako import kuid
+        from kanibako.launch.box_identity import standalone_kuid
+
+        config, std, tmp_home = env
+        root = _make_default(env, name="freshy")
+        before_state, after_state = _move_to(env, root, tmp_home / "became_sa")
+
+        assert after_state.mode is BoxMode.standalone
+        assert kuid.is_valid(standalone_kuid(after_state.name))
