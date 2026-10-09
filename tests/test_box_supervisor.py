@@ -29,10 +29,13 @@ from kanibako.box_supervisor import (
     BoxSupervisor,
     DirectiveVerdict,
     DirectiveWatch,
+    PANE_DEATH_FORMAT,
     PanelActionKind,
     PanelAgentState,
     SupervisorConfig,
+    UNDETERMINED_AGENT_EXIT,
     _default_list_marker_pids,
+    agent_exit_code,
     config_from_argv,
     decide,
     decide_directives,
@@ -53,7 +56,7 @@ _MARKER = "[Agent handoff - Continue prior task(s)]"
 
 # The agent start/restart arms ``remain-on-exit`` in ONE tmux invocation that:
 # global-arms BEFORE new-session (to win the instant-crash race), starts the
-# detached session, pins the option SESSION-LOCAL, then REVERTS the global (so
+# detached session, pins the option SESSION-LOCAL, then UNSETS the global (so
 # sibling windows in the box's tmux server don't accumulate dead panes).  These are
 # the exact combined argvs the supervisor emits.
 _START_CALL = [
@@ -61,13 +64,13 @@ _START_CALL = [
     "new-session", "-d", "-s", "kanibako", "--",
     "claude", "--dangerously-skip-permissions", ";",
     "set-option", "-t", "kanibako", "remain-on-exit", "on", ";",
-    "set-option", "-g", "remain-on-exit", "off",
+    "set-option", "-gu", "remain-on-exit",
 ]
 _CONTINUE_CALL = [
     "tmux", "set-option", "-g", "remain-on-exit", "on", ";",
     "new-session", "-d", "-s", "kanibako", "--", "claude", "--continue", ";",
     "set-option", "-t", "kanibako", "remain-on-exit", "on", ";",
-    "set-option", "-g", "remain-on-exit", "off",
+    "set-option", "-gu", "remain-on-exit",
 ]
 
 
@@ -205,34 +208,51 @@ def test_start_agent_session_emits_new_session_detached():
     assert fake.sub_calls("new-session") == [_START_CALL]
 
 
-def test_start_agent_session_teardown_does_not_arm_remain_on_exit():
-    # SOLE / FOREGROUND launch (on_agent_exit="teardown"): NO remain-on-exit is
-    # armed, so the pane closes on ANY exit (clean or crash) and an attached
-    # foreground client returns to the shell instead of stranding on a dead pane.
+def _exit_hook(record: str) -> str:
+    return (
+        f"run-shell 'echo {PANE_DEATH_FORMAT} >{record}.tmp && mv {record}.tmp {record}'"
+        " ; kill-pane"
+    )
+
+
+def test_start_agent_session_teardown_arms_exit_hook_in_one_call(tmp_path):
+    # SOLE / FOREGROUND launch: the pane-died hook is armed globally BEFORE
+    # new-session (an instant exit still dies armed), pinned session-local, and the
+    # globals unset — all in ONE invocation.  The hook records the end, then closes
+    # the pane so an attached client never strands on "Pane is dead".
+    record = str(tmp_path / "record")
+    hook = _exit_hook(record)
     fake = FakeRun()
-    sup = BoxSupervisor(_config(on_agent_exit="teardown"), run=fake)
+    sup = BoxSupervisor(_config(on_agent_exit="teardown"), run=fake, exit_record=record)
     assert sup.start_agent_session() is True
-    # A PLAIN detached new-session — no combined set-option arm around it.
-    assert fake.sub_calls("new-session") == [
-        ["tmux", "new-session", "-d", "-s", "kanibako", "--",
-         "claude", "--dangerously-skip-permissions"]
-    ]
-    # And NO remain-on-exit was set at all (neither global nor session-local).
-    assert fake.sub_calls("set-option") == []
-    assert not any("remain-on-exit" in c for c in fake.calls)
+    assert fake.sub_calls("new-session") == [[
+        "tmux", "set-option", "-g", "remain-on-exit", "on", ";",
+        "set-hook", "-g", "pane-died", hook, ";",
+        "new-session", "-d", "-s", "kanibako", "--",
+        "claude", "--dangerously-skip-permissions", ";",
+        "set-option", "-t", "kanibako", "remain-on-exit", "on", ";",
+        "set-hook", "-t", "kanibako", "pane-died", hook, ";",
+        "set-option", "-gu", "remain-on-exit", ";",
+        "set-hook", "-gu", "pane-died",
+    ]]
 
 
-def test_restart_agent_session_teardown_does_not_arm_remain_on_exit():
-    # A teardown launch never self-heals, but the arming path is shared, so a
-    # (defensive) restart under teardown must ALSO stay plain — no dead pane.
+def test_self_heal_launch_arms_no_exit_hook():
+    # Self-heal keeps the dead pane for its restart; no hook may close it.
     fake = FakeRun()
-    sup = BoxSupervisor(_config(on_agent_exit="teardown"), run=fake)
-    assert sup.restart_agent_session() is True
-    assert fake.sub_calls("new-session") == [
-        ["tmux", "new-session", "-d", "-s", "kanibako", "--", "claude", "--continue"]
-    ]
-    assert not any("remain-on-exit" in c for c in fake.calls)
+    BoxSupervisor(_config(), run=fake).start_agent_session()
+    assert not any("pane-died" in c for c in fake.calls)
 
+
+def test_teardown_exit_record_defaults_to_a_private_temp_dir():
+    sup = BoxSupervisor(_config(on_agent_exit="teardown"), run=FakeRun())
+    assert sup.recorded_agent_exit() is None   # nothing armed, nothing to read
+    sup.start_agent_session()
+    record = sup._exit_record
+    assert record is not None and _os.path.basename(record) == "record"
+    assert _os.path.basename(_os.path.dirname(record)).startswith("kanibako-agent-exit-")
+    assert "'" not in record
+    _os.rmdir(_os.path.dirname(record))
 
 def test_start_agent_session_reports_failure_on_nonzero_rc():
     fake = FakeRun(rc={"new-session": 1})
@@ -258,6 +278,19 @@ def test_start_agent_session_semicolon_in_argv_falls_back_to_plain_form():
     # arm is a SEPARATE per-session set-option (best-effort) after the start.
     assert fake.sub_calls("set-option") == [
         ["tmux", "set-option", "-t", "kanibako", "remain-on-exit", "on"]
+    ]
+
+
+def test_semicolon_argv_teardown_arms_the_hook_per_session(tmp_path):
+    record = str(tmp_path / "record")
+    fake = FakeRun()
+    sup = BoxSupervisor(
+        _config(on_agent_exit="teardown", start_argv=["claude", ";"]),
+        run=fake, exit_record=record,
+    )
+    assert sup.start_agent_session() is True
+    assert fake.sub_calls("set-hook") == [
+        ["tmux", "set-hook", "-t", "kanibako", "pane-died", _exit_hook(record)]
     ]
 
 
@@ -319,33 +352,61 @@ def test_capture_agent_output_tolerant_and_empty_to_none():
     assert BoxSupervisor(_config(), run=FakeRun(stdout={"capture-pane": "\n\n"})).capture_agent_output() is None
 
 
-def test_agent_pane_dead_status_parses_int_none_and_is_tolerant():
-    # dead pane: display-message prints the integer exit code.
-    dead = BoxSupervisor(_config(), run=FakeRun(stdout={"display-message": "37\n"}))
-    assert dead.agent_pane_dead_status() == 37
+def _dead(status: object = "", signal: object = "") -> str:
+    """What tmux prints for :data:`PANE_DEATH_FORMAT` on a DEAD pane."""
+    return f"status={status} signal={signal}\n"
+
+
+@pytest.mark.parametrize(
+    "death, code",
+    [
+        (_dead(0), 0),
+        (_dead(3), 3),
+        (_dead(signal=9), 137),
+        (_dead(signal=15), 143),
+        (_dead(), UNDETERMINED_AGENT_EXIT),
+        ("", UNDETERMINED_AGENT_EXIT),
+        ("status=x signal=", UNDETERMINED_AGENT_EXIT),
+    ],
+)
+def test_agent_exit_code_follows_the_shell_convention(death, code):
+    assert agent_exit_code(death) == code
+
+
+def test_undetermined_agent_exit_is_never_zero():
+    assert UNDETERMINED_AGENT_EXIT != 0
+
+
+def test_agent_pane_exit_code_reads_dead_panes_only_and_is_tolerant():
+    dead = BoxSupervisor(_config(), run=FakeRun(stdout={"display-message": _dead(37)}))
+    assert dead.agent_pane_exit_code() == 37
     assert dead._run.sub_calls("display-message") == [  # type: ignore[attr-defined]
-        ["tmux", "display-message", "-p", "-t", "kanibako", "#{pane_dead_status}"]
+        ["tmux", "display-message", "-p", "-t", "kanibako", PANE_DEATH_FORMAT]
     ]
-    # live pane: empty output -> None (not dead).
-    live = BoxSupervisor(_config(), run=FakeRun(stdout={"display-message": ""}))
-    assert live.agent_pane_dead_status() is None
-    # non-zero rc (no session) -> None.
+    killed = BoxSupervisor(_config(), run=FakeRun(stdout={"display-message": _dead(signal=2)}))
+    assert killed.agent_pane_exit_code() == 130
+    # live pane: the format prints nothing -> None.
+    live = BoxSupervisor(_config(), run=FakeRun(stdout={"display-message": "\n"}))
+    assert live.agent_pane_exit_code() is None
+    # no session / missing tmux -> None (tolerant, never propagates).
     gone = BoxSupervisor(_config(), run=FakeRun(rc={"display-message": 1}))
-    assert gone.agent_pane_dead_status() is None
-    # missing tmux (raises) -> None (tolerant, never propagates).
+    assert gone.agent_pane_exit_code() is None
     notmux = BoxSupervisor(_config(), run=FakeRun(raise_on="display-message"))
-    assert notmux.agent_pane_dead_status() is None
-    # unparseable output -> None.
-    junk = BoxSupervisor(_config(), run=FakeRun(stdout={"display-message": "notanint"}))
-    assert junk.agent_pane_dead_status() is None
+    assert notmux.agent_pane_exit_code() is None
 
 
 def test_agent_session_alive_false_on_dead_pane_true_when_live():
     # has-session rc 0 but the pane is DEAD (remain-on-exit) => NOT alive.
     dead = BoxSupervisor(
-        _config(), run=FakeRun(rc={"has-session": 0}, stdout={"display-message": "1"})
+        _config(), run=FakeRun(rc={"has-session": 0}, stdout={"display-message": _dead(1)})
     )
     assert dead.agent_session_alive() is False
+    # killed by a signal: tmux leaves pane_dead_status EMPTY, yet the pane is dead.
+    killed = BoxSupervisor(
+        _config(),
+        run=FakeRun(rc={"has-session": 0}, stdout={"display-message": _dead(signal=9)}),
+    )
+    assert killed.agent_session_alive() is False
     # has-session rc 0 AND no dead pane (empty status) => alive.
     live = BoxSupervisor(
         _config(), run=FakeRun(rc={"has-session": 0}, stdout={"display-message": ""})
@@ -673,44 +734,87 @@ def test_self_heal_budget_resets_across_separate_deaths():
 # on_agent_exit policy (E2c) — launch-intent-aware teardown vs self-heal.
 # ---------------------------------------------------------------------------
 
-def test_run_forever_teardown_ran_then_exited_returns_zero():
-    # Foreground CLI 'teardown' REALITY: remain-on-exit is NOT armed, so on exit the
-    # pane simply CLOSES and the session VANISHES — there is no dead-pane status to
-    # read.  An agent that CAME UP (alive at startup) and then exited must close the
-    # box with rc 0: a clean quit must NOT masquerade as a failure (the whole point
-    # of dropping the dead pane).  No self-heal while a human-driven CLI is the driver.
-    fake = FakeRun(
-        # startup liveness="" (alive); tick1 has-session rc 1 (session vanished, no pane).
-        rc={"has-session": [0, 1]},
-        stdout={"display-message": [""]},
+def _teardown_after_session_vanished(tmp_path, record: str | None) -> int:
+    """Run a teardown box whose agent came up, then whose session VANISHED.
+
+    The ``pane-died`` hook closes the pane right after recording; *record* is what it
+    left (``None`` = it never ran).  Returns the box's exit code.
+    """
+    path = tmp_path / "record"
+    if record is not None:
+        path.write_text(record)
+    fake = FakeRun(rc={"has-session": [0, 1]}, stdout={"display-message": [""]})
+    sup = BoxSupervisor(
+        _config(on_agent_exit="teardown"), run=fake, proc_cmdlines=[], exit_record=str(path),
     )
-    sup = BoxSupervisor(_config(on_agent_exit="teardown"), run=fake, proc_cmdlines=[])
     restarts: list[int] = []
     sup.restart_agent_session = (  # type: ignore[method-assign]
         lambda: restarts.append(1) or True
     )
-    assert sup.run_forever() == 0
+    code = sup.run_forever()
     assert restarts == []                       # never self-healed
     assert fake.sub_calls("new-session") == []  # and never restarted the agent
+    return code
 
 
-def test_run_forever_teardown_sole_agent_crash_also_returns_zero():
-    # DOCUMENTED tradeoff of "no dead pane ever": with remain-on-exit off a sole-agent
-    # CRASH is INDISTINGUISHABLE from a clean exit (both just vanish the session), so
-    # it ALSO returns rc 0 — until a pipe-pane follow-up restores truthful crash codes.
-    # (Modeled identically to a clean exit: came up, then session gone, no status.)
-    fake = FakeRun(rc={"has-session": [0, 1]}, stdout={"display-message": [""]})
-    sup = BoxSupervisor(_config(on_agent_exit="teardown"), run=fake, proc_cmdlines=[])
-    assert sup.run_forever() == 0
+@pytest.mark.parametrize(
+    "record, code",
+    [(_dead(0), 0), (_dead(3), 3), (_dead(signal=9), 137), (_dead(signal=15), 143)],
+)
+def test_run_forever_teardown_returns_the_recorded_agent_exit(tmp_path, record, code):
+    assert _teardown_after_session_vanished(tmp_path, record) == code
+
+
+@pytest.mark.parametrize("record", [None, "", "garbage\n"])
+def test_run_forever_teardown_unreadable_end_is_never_zero(tmp_path, record):
+    # The agent came up, but how it ended is unknown: no hook record (or junk).
+    code = _teardown_after_session_vanished(tmp_path, record)
+    assert code == UNDETERMINED_AGENT_EXIT
+
+
+def test_run_forever_teardown_pane_closed_between_probes_reads_the_record(tmp_path):
+    # RACE: the tick's liveness probe sees the DEAD pane, then the hook records and
+    # closes it before the exit-code probe — the pane is gone, so the record answers.
+    (tmp_path / "record").write_text(_dead(4))
+    fake = FakeRun(rc={"has-session": [0, 0]}, stdout={"display-message": ["", _dead(4), ""]})
+    sup = BoxSupervisor(
+        _config(on_agent_exit="teardown"), run=fake, proc_cmdlines=[],
+        exit_record=str(tmp_path / "record"),
+    )
+    assert sup.run_forever() == 4
+
+
+def test_run_forever_teardown_dead_pane_before_its_record_answers_itself(tmp_path):
+    # RACE: the supervisor probes the dead pane BEFORE the hook has written the
+    # record; the pane's own status answers and the missing record is never needed.
+    fake = FakeRun(rc={"has-session": [0, 0]}, stdout={"display-message": ["", _dead(signal=6)]})
+    sup = BoxSupervisor(
+        _config(on_agent_exit="teardown"), run=fake, proc_cmdlines=[],
+        exit_record=str(tmp_path / "record"),
+    )
+    assert sup.run_forever() == 134
+
+
+def test_run_forever_teardown_detach_keeps_the_box(tmp_path):
+    # A client DETACH is not an agent exit: the pane lives, so the box stays up.
+    fake = FakeRun(rc={"has-session": 0}, stdout={"display-message": ""})
+    sup = BoxSupervisor(
+        _config(on_agent_exit="teardown"), run=fake, exit_record=str(tmp_path / "record"),
+    )
+    _script_snapshots(sup, [_TM, _NONE])
+    detached: list[int] = []
+    sup._on_detach = lambda: detached.append(1)  # type: ignore[method-assign]
+    sleeps = _stop_after(sup, 3)
+    assert sup.run_forever() == 0       # stopped by the test, not torn down
+    assert len(sleeps) == 3 and detached == [1]
 
 
 def test_run_forever_teardown_honors_present_dead_pane_status():
-    # DEFENSIVE: a teardown launch does not arm remain-on-exit, but if a stale/armed
-    # pane IS somehow present carrying a #{pane_dead_status}, honor it VERBATIM rather
-    # than override — so a real code is never discarded when it happens to exist.
+    # A dead pane the hook has not closed (never armed, or not yet run) answers for
+    # itself, VERBATIM.
     fake = FakeRun(
         rc={"has-session": [0, 0]},
-        stdout={"display-message": ["", "42", "42"]},
+        stdout={"display-message": ["", _dead(42), _dead(42)]},
     )
     sup = BoxSupervisor(_config(on_agent_exit="teardown"), run=fake, proc_cmdlines=[])
     restarts: list[int] = []
@@ -723,14 +827,14 @@ def test_run_forever_teardown_honors_present_dead_pane_status():
 
 
 def test_run_forever_teardown_echoes_present_pane_output_to_stdout(capsys):
-    # DEFENSIVE: if a stale/armed pane is present on teardown, its captured output is
-    # echoed to PID-1's stdout (podman logs) before the box closes so the host can
-    # show WHY the agent died.  (In the normal remain-on-exit-off teardown the pane
-    # has closed and this captures nothing; here a pane is mocked present.)
+    # If the dead pane is still present on teardown, its captured output is echoed
+    # to PID-1's stdout (podman logs) before the box closes so the host can show WHY
+    # the agent died.  (Normally the hook has closed the pane and this captures
+    # nothing; here a pane is mocked present.)
     fake = FakeRun(
         rc={"has-session": [0, 0]},
         stdout={
-            "display-message": ["", "1", "1"],
+            "display-message": ["", _dead(1), _dead(1)],
             "capture-pane": "agent crashed: boom\n",
         },
     )
@@ -744,7 +848,7 @@ def test_run_forever_teardown_tolerates_empty_capture(capsys):
     # teardown or fabricate output — the truthful exit code is still returned.
     fake = FakeRun(
         rc={"has-session": [0, 0]},
-        stdout={"display-message": ["", "3", "3"]},  # capture-pane -> "" (default)
+        stdout={"display-message": ["", _dead(3), _dead(3)]},  # capture-pane -> "" (default)
     )
     sup = BoxSupervisor(_config(on_agent_exit="teardown"), run=fake, proc_cmdlines=[])
     assert sup.run_forever() == 3
@@ -760,7 +864,7 @@ def test_run_forever_self_heal_restarts_after_dead_pane():
         rc={"has-session": [0, 0, 0, 0]},
         # startup=live(""); tick1 liveness=dead("7"); _self_heal recheck=live("");
         # tick2 liveness=live("").
-        stdout={"display-message": ["", "7", "", ""]},
+        stdout={"display-message": ["", _dead(7), "", ""]},
     )
     sup = BoxSupervisor(_config(), run=fake, proc_cmdlines=[])
     _stop_after(sup, 2)
@@ -831,7 +935,7 @@ def test_run_forever_teardown_stays_up_while_panel_attached_then_closes():
     # tear down (stay an agentless keep-alive, no restart); tick2 the panel is GONE
     # → the box tears down and returns the dead-pane code.
     #   snapshots: prev=panel, tick1=panel, tick2=no-surface.
-    #   display-message (pane_dead_status) is consumed once per liveness check AND
+    #   display-message (the pane's death record) is consumed once per liveness check AND
     #   once per teardown re-read, so the script distinguishes WHEN teardown fires:
     #     startup=""(alive); tick1 liveness="1"(dead); tick2 liveness="3"(dead);
     #     tick2 teardown re-read="5" (last sticks).
@@ -841,7 +945,10 @@ def test_run_forever_teardown_stays_up_while_panel_attached_then_closes():
     # stopped by the bounded-tick harness → returns 0 (not 5).  Only the truthful
     # code — no teardown at tick1, teardown at tick2 — returns exactly 5, so
     # asserting == 5 catches BOTH mutants in this one test.
-    fake = FakeRun(rc={"has-session": 0}, stdout={"display-message": ["", "1", "3", "5"]})
+    fake = FakeRun(
+        rc={"has-session": 0},
+        stdout={"display-message": ["", _dead(1), _dead(3), _dead(5)]},
+    )
     sup = BoxSupervisor(_config(on_agent_exit="teardown"), run=fake)
     _script_snapshots(sup, [_VS, _VS, _NONE])
     _stop_after(sup, 5)  # bound a would-be never-tears-down mutant
@@ -857,7 +964,7 @@ def test_run_forever_teardown_stays_up_while_panel_attached_then_closes():
 def test_run_forever_teardown_no_surface_closes_immediately():
     # Regression (E2d intact): agent dead + NO other surface on the first tick →
     # tears down at once and returns the truthful dead-pane code (here 42).
-    fake = FakeRun(rc={"has-session": 0}, stdout={"display-message": ["", "42", "42"]})
+    fake = FakeRun(rc={"has-session": 0}, stdout={"display-message": ["", _dead(42), _dead(42)]})
     sup = BoxSupervisor(_config(on_agent_exit="teardown"), run=fake)
     _script_snapshots(sup, [_NONE, _NONE])
     restarts: list[int] = []
@@ -873,7 +980,7 @@ def test_run_forever_teardown_keepalive_logs_once_not_per_tick(caplog):
     # The agentless keep-alive state must log ONCE on entry, not every poll tick.
     import logging
 
-    fake = FakeRun(rc={"has-session": 0}, stdout={"display-message": ["", "1"]})
+    fake = FakeRun(rc={"has-session": 0}, stdout={"display-message": ["", _dead(1)]})
     sup = BoxSupervisor(_config(on_agent_exit="teardown"), run=fake)
     _script_snapshots(sup, [_VS])  # panel present on every snapshot (never detaches)
     _stop_after(sup, 4)            # several ticks of dead-agent + panel

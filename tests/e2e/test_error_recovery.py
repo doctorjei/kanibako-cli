@@ -58,8 +58,8 @@ class TestContainerDeath:
 
         # NOTE (contract change, 07-14b arc): the crash-output assertion
         # (``"agent-crashed-with-error-42" in result.stderr``) was REMOVED.
-        # The sole-agent teardown path no longer arms tmux remain-on-exit, so
-        # the pane CLOSES on exit and there is no dead-pane capture to surface
+        # The sole-agent teardown path's ``pane-died`` hook closes the pane on
+        # exit, so there is no dead-pane capture to surface
         # — crash-output surfacing is intentionally deferred to the pipe-pane
         # follow-up (tasks.md 07-14b).  RESTORE that assertion when it lands.
 

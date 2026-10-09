@@ -217,8 +217,8 @@ class TestInteractiveAttachOnDeath:
 
         # NOTE (contract change, 07-14b arc): the death-marker assertion
         # (``"DEAD_AGENT_MARKER" in out``) was REMOVED.  The sole-agent
-        # teardown path no longer arms tmux remain-on-exit, so an instant
-        # crash CLOSES the pane before its output can be captured/seen — the
+        # teardown path's ``pane-died`` hook closes the pane on exit, so an
+        # instant crash's output is never captured/seen — the
         # marker never reaches the PTY.  Crash-output surfacing is
         # intentionally deferred to the pipe-pane follow-up (tasks.md
         # 07-14b).  RESTORE the marker assertion when it lands.
