@@ -23,7 +23,7 @@ from pathlib import Path
 from kanibako import kuid
 from kanibako.errors import DerivedBoxNameError, ProjectError
 from kanibako.identifiers import find_identifier
-from kanibako.settings.messages import ERR_DERIVED_BOX_NAME, ERR_LEAF_NOT_ASCII
+from kanibako.settings.messages import BOX_NAME_CHARSET, ERR_DERIVED_BOX_NAME, ERR_LEAF_NOT_ASCII
 
 # Maximum length of the sanitized leaf component.
 _LEAF_CAP = 32
@@ -83,8 +83,7 @@ def _box_name_violation(name: str) -> str | None:
         if not _NAME_CHAR_RE.fullmatch(ch):
             # Only printable ASCII is quoted: a lookalike or a combining mark would hide.
             shown = f"'{ch}'" if " " < ch < "\x7f" else f"U+{ord(ch):04X}"
-            return (f"box name must not contain {shown}; box names must be ASCII letters,"
-                    " digits, '_', '-', or '.': container names allow nothing else")
+            return f"box name must not contain {shown}; {BOX_NAME_CHARSET}"
 
     if name.startswith("-"):
         return "box name must not start with '-' (collides with CLI flags)"
@@ -162,8 +161,9 @@ def _ascii_spelling(ch: str) -> str | None:
 def sanitize_cap(leaf: str) -> str:
     """Sanitize and cap a project-basename *leaf* for a box name, KEEPING its case.
 
-    Latin letters lose their diacritics; whitespace and ASCII punctuation are
-    separators, and each run of them becomes one ``_``.  The ends lose ``_``,
+    Latin letters lose their diacritics, composed or not; whitespace, ASCII
+    punctuation, and Unicode punctuation and separators are separators, and each
+    run of them becomes one ``_``.  The ends lose ``_``,
     ``-`` and ``.``, and an empty result falls back to ``"box"``.  Raises
     :class:`~kanibako.errors.DerivedBoxNameError` when *leaf* holds a character
     with no ASCII spelling, such as kanji; each caller adds its cure.
@@ -173,10 +173,13 @@ def sanitize_cap(leaf: str) -> str:
     two halves are opposite by design and must not be unified.
     """
     parts = []
+    after_letter = False  # a combining mark here belongs to a letter already spelled
     for ch in leaf:
+        if after_letter and unicodedata.combining(ch):
+            continue
         if _NAME_CHAR_RE.fullmatch(ch):
             parts.append(ch)
-        elif ch.isascii() or ch.isspace():
+        elif ch.isascii() or ch.isspace() or unicodedata.category(ch)[0] in "PZ":
             parts.append(_SEP)
         else:
             spelled = _ascii_spelling(ch)
@@ -184,6 +187,7 @@ def sanitize_cap(leaf: str) -> str:
                 raise DerivedBoxNameError(ERR_DERIVED_BOX_NAME % (
                     leaf, ERR_LEAF_NOT_ASCII % f"U+{ord(ch):04X}"))
             parts.append(spelled)
+        after_letter = parts[-1].isalnum()
     collapsed = _SEPARATOR_RUN_RE.sub("_", "".join(parts)).strip(_LEAF_END_CHARS)
     return collapsed[:_LEAF_CAP].strip(_LEAF_END_CHARS) or _EMPTY_LEAF_FALLBACK
 
