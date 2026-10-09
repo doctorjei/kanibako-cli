@@ -1397,16 +1397,9 @@ def delete_workset(name: str, std: StandardPaths, *, remove_files: bool = False)
         refuse_inherited_per_owner(root, early, doc=ws_settings)
     boxes_dir = resolve_workset_boxes(root, ws_settings, early=early) if purge else None
 
-    # Drop the ONE ``worksets`` entry, by the STORED spelling.  Idempotent: a missing
-    # entry is a no-op.
-    unregister_name(std.registry, stored, section="worksets")
-
-    # ⚑ Irreversible step LAST: only after the registry is clean.
     if boxes_dir is not None:
-        import shutil
-
-        # ⚑⚑ BOX TREES FIRST (J-7): a whole-root rmtree hits the root-owned 555 canon
-        # skeleton and leaves the workset half-deleted AFTER its registry entry is gone.
+        # ⚑⚑ BOX TREES FIRST (J-7), BEFORE THE UNREGISTER: a whole-root rmtree hits the
+        # root-owned 555 canon skeleton, and a refusal must leave the workset re-runnable.
         from kanibako.runtime.container import remove_box_tree
 
         # ⚑ RESOLVED, not composed — ``workset.boxes`` is repointable, and looking under
@@ -1422,8 +1415,20 @@ def delete_workset(name: str, std: StandardPaths, *, remove_files: bool = False)
         if (boxes_dir.is_dir() and not boxes_dir.is_symlink()
                 and _strictly_in_tree(boxes_dir, root)):
             for box_tree in sorted(boxes_dir.iterdir()):
-                if box_tree.is_dir() and not box_tree.is_symlink():
-                    remove_box_tree(box_tree)
+                if (box_tree.is_dir() and not box_tree.is_symlink()
+                        and not remove_box_tree(box_tree)):
+                    raise StoreRemovalError(
+                        f"could not remove {box_tree}; try: podman unshare rm -rf "
+                        f"{shlex.quote(str(box_tree))}", box_tree)
+
+    # Drop the ONE ``worksets`` entry, by the STORED spelling.  Idempotent: a missing
+    # entry is a no-op.
+    unregister_name(std.registry, stored, section="worksets")
+
+    # ⚑ The root goes LAST: only after the registry is clean.
+    if boxes_dir is not None:
+        import shutil
+
         shutil.rmtree(root)
 
     return root

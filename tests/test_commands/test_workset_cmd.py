@@ -562,6 +562,49 @@ class TestWorksetRm:
         assert str(root / "workset.yaml") in err
         assert "--purge" in err and "--force" in err
 
+    def test_rm_purge_refusing_box_tree_errors_and_keeps_the_workset(
+        self, config_file, tmp_home, capsys, monkeypatch,
+    ):
+        """⚑ A refusing box tree is an ``Error:`` naming it, not a traceback; still registered."""
+        import kanibako.runtime.container as container_mod
+        from kanibako.commands.workset_cmd import run_rm
+
+        std = load_std_paths(load_config(config_file))
+        ws = create_workset("stuckrm", tmp_home / "ws_stuckrm", std)
+        box_tree = ws.root / "boxes" / "b1"
+        box_tree.mkdir(parents=True)
+        monkeypatch.setattr(container_mod, "remove_box_tree", lambda p: False)
+
+        rc = run_rm(argparse.Namespace(name="stuckrm", purge=True, force=True))
+
+        assert rc == 1
+        assert f"Error: could not remove {box_tree}" in capsys.readouterr().err
+        assert "stuckrm" in list_worksets(std)
+        assert ws.root.is_dir()
+
+    def test_rm_purge_refusing_root_names_the_root_as_the_cure(
+        self, config_file, tmp_home, capsys, monkeypatch,
+    ):
+        """⚑ The root rmtree runs after the unregister: the error says so, no traceback."""
+        import shutil
+
+        from kanibako.commands.workset_cmd import run_rm
+
+        std = load_std_paths(load_config(config_file))
+        ws = create_workset("stuckroot", tmp_home / "ws_stuckroot", std)
+
+        def refusing(path, *a, **k):
+            raise PermissionError(13, "Permission denied", str(path))
+
+        monkeypatch.setattr(shutil, "rmtree", refusing)
+
+        rc = run_rm(argparse.Namespace(name="stuckroot", purge=True, force=True))
+
+        err = capsys.readouterr().err
+        assert rc == 1
+        assert "unregistered working set 'stuckroot' but could not remove its files" in err
+        assert f"podman unshare rm -rf {ws.root}" in err
+
     def test_rm_unknown_error(self, config_file, tmp_home, capsys):
         from kanibako.commands.workset_cmd import run_rm
 
