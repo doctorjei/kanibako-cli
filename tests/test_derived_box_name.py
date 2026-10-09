@@ -253,30 +253,68 @@ def _standalone_box(tmp_home, leaf: str):
 
 
 _DEST = "The directory name '-dup' is not a valid box name"
-_PICK = "Pick a destination directory whose name is a valid box name."
 
 
-def test_duplicate_names_the_destination_cure(tmp_home, config_file, credentials_dir):
-    source = _primary_box(tmp_home)
+@pytest.mark.parametrize("to", [(), ("--to", "primary")])
+def test_duplicate_to_primary_names_its_own_cure_and_the_cure_works(
+        to, tmp_home, config_file, credentials_dir):
+    source = _primary_box(tmp_home) if not to else _standalone_box(tmp_home, "sa")
+    before = dict(_primary_boxes())
     dest = tmp_home / "work" / "-dup"
-    rc, text = _cli("box", "duplicate", str(source), str(dest), "--force")
+    rc, text = _cli("box", "duplicate", str(source), str(dest), *to, "--force")
 
     assert rc == 1, text
-    assert _DEST in text and _PICK in text and "kanibako create" not in text
+    assert _DEST in text
+    assert _cure(text) == ["kanibako", "box", "duplicate", str(source), str(dest), *to,
+                           "--name", "<new-name>"]
+    assert not dest.exists()
+    assert _primary_boxes() == before
+
+    rc, text = _cli(*[w if w != "<new-name>" else "dupok" for w in _cure(text)[1:]], "--force")
+    assert rc == 0, text
+    assert _primary_boxes()["dupok"] == str(dest)
+
+
+@pytest.mark.parametrize("to", [(), ("--to", "primary")])
+def test_duplicate_to_primary_takes_the_typed_name(to, tmp_home, config_file, credentials_dir):
+    source = _primary_box(tmp_home) if not to else _standalone_box(tmp_home, "sa")
+    dest = tmp_home / "work" / "dst"
+    rc, text = _cli("box", "duplicate", str(source), str(dest), *to, "--name", "Custom",
+                    "--force")
+
+    assert rc == 0, text
+    assert _primary_boxes()["Custom"] == str(dest)
+    assert "dst" not in _primary_boxes()
+
+
+def test_duplicate_from_named_to_primary_takes_the_typed_name(
+        tmp_home, config_file, credentials_dir):
+    _workset(tmp_home)
+    rc, text = _cli("box", "duplicate", str(_primary_box(tmp_home)), str(tmp_home / "unused"),
+                    "--to", "named", "--workset", "wsx", "--force")
+    assert rc == 0, text
+    member = (tmp_home / "ws" / "workspaces" / "src").resolve()
+    assert member.is_dir(), text
+    dest = tmp_home / "work" / "dst"
+    rc, text = _cli("box", "duplicate", str(member), str(dest), "--to", "primary",
+                    "--name", "Custom", "--force")
+
+    assert rc == 0, text
+    assert _primary_boxes()["Custom"] == str(dest)
+
+
+@pytest.mark.parametrize("name, said", [("bad name", "Invalid box name 'bad name'"),
+                                        ("SRC", "Name 'SRC' is already registered")])
+def test_duplicate_to_primary_refuses_a_bad_typed_name_before_any_write(
+        name, said, tmp_home, config_file, credentials_dir):
+    source = _primary_box(tmp_home)
+    dest = tmp_home / "work" / "dst"
+    rc, text = _cli("box", "duplicate", str(source), str(dest), "--name", name, "--force")
+
+    assert rc == 1, text
+    assert said in text
     assert not dest.exists()
     assert list(_primary_boxes()) == ["src"]
-
-
-def test_duplicate_to_primary_names_the_destination_cure(
-        tmp_home, config_file, credentials_dir):
-    source = _standalone_box(tmp_home, "sa")
-    dest = tmp_home / "work" / "-dup"
-    rc, text = _cli("box", "duplicate", str(source), str(dest), "--to", "primary", "--force")
-
-    assert rc == 1, text
-    assert _DEST in text and _PICK in text and "kanibako create" not in text
-    assert not dest.exists()
-    assert _primary_boxes() == {}
 
 
 def test_extract_names_its_own_cure_and_the_cure_works(tmp_home, config_file, credentials_dir):
