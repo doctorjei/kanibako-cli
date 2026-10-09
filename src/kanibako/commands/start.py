@@ -827,6 +827,7 @@ def run_shell(args: argparse.Namespace) -> int:
         explicit_ephemeral=explicit_ephemeral,
         cli_env=env_vars,
         box_shell_mode=box_shell_mode,
+        verb="shell",
     )
 
 
@@ -1508,9 +1509,8 @@ def _broken_standalone_error(std: StandardPaths, project_dir: str) -> str | None
     registered under it" message — false, and its ``create <name>`` suggestion
     mkdirs a box named after the token in the CWD.
 
-    ⚑ ``--name`` and ``--register`` are BOTH load-bearing in the cure and indivisible
-    — without the pair the box comes back under a NEW kuid, unregistered.  Both
-    commands are on ONE ``&&`` line so they cannot be half-followed.
+    ⚑ The cure names the ROOT twice and carries ``--register``, on ONE ``&&`` line so
+    it cannot be half-followed.
 
     See ``llm-docs/kanibako/commands/start.py.md`` for the two grammars and the cure.
     """
@@ -1598,14 +1598,13 @@ def _broken_standalone_error(std: StandardPaths, project_dir: str) -> str | None
         return head + _store_move_cure(default_leaf, boxes)
     if boxes != default_leaf:
         return head + _store_move_cure(None, boxes)
-    q_name = shlex.quote(name)
+    # By root, no ``--name``: a stored name may break the rule; create refuses --name.
     q_root = shlex.quote(str(root))
     return head + (
-        f"  Rebuild it:  kanibako box rm {q_name} && kanibako create "
-        f"--standalone --register --name {q_name} {q_root}\n"
+        f"  Rebuild it:  kanibako box rm {q_root} && kanibako create "
+        f"--standalone --register {q_root}\n"
         "  (box_data/ is already gone, so 'box rm' only drops the registry "
-        "entry — your workspace/ and vault/ are not touched, and --name keeps "
-        "the box's identity and channel address.)"
+        "entry — your workspace/ and vault/ are not touched.)"
     )
 
 
@@ -1701,7 +1700,8 @@ def _unregistered_pending_create_error(
     )
 
 
-def _no_box_error(project_dir: str | None, std: StandardPaths | None = None) -> str:
+def _no_box_error(project_dir: str | None, std: StandardPaths | None = None,
+                  verb: str = "start") -> str:
     """The launch-time "no box; run create" error for an ABSENT box target.
 
     ``<path>`` is the resolved target we looked for a box at; the suggested
@@ -1711,8 +1711,8 @@ def _no_box_error(project_dir: str | None, std: StandardPaths | None = None) -> 
     the line carries no wrapping quotes, so the printed command pastes as typed.
 
     ⚑ OTHER SHAPES.  A leaf ``create`` refuses gets the ``--name`` cure; a missing path
-    naming a legacy box (:func:`stored_legacy_box`) gets that box's path.  A designation
-    on the name route (:func:`designation_route`) gets its own message: since
+    naming a legacy box (:func:`stored_legacy_box`) gets that box's path after *verb*.  A
+    designation on the name route (:func:`designation_route`) gets its own message: since
     I3/§D4a a standalone box created without ``--register`` is real and running
     but carries no registry entry, and the registry is the only thing a bare name
     can consult — so that population lands HERE, and for it ``create <name>``
@@ -1766,7 +1766,7 @@ def _no_box_error(project_dir: str | None, std: StandardPaths | None = None) -> 
             )
         legacy = None if std is None else stored_legacy_box(std, project_dir)
         if legacy is not None:
-            return legacy.refusal("Start it by its path", "kanibako start")
+            return legacy.refusal("Reach it by its path", f"kanibako {verb}")
         target = str(Path(project_dir).resolve())
         suggest = f"kanibako create {shlex.quote(project_dir)}"
     else:
@@ -2849,6 +2849,7 @@ def _run_container(
     setup_only: bool = False,
     print_container: bool = False,
     warm_only: bool = False,
+    verb: str = "start",
 ) -> int:
     # ⚑⚑ THE ``-e`` PARSE, ONCE, AT THE DOOR — BEFORE ANY FILE IS READ OR ANY
     # DIRECTORY MADE.  Three sites downstream consume the result (the two exec doors
@@ -2919,7 +2920,7 @@ def _run_container(
     # an EXISTING box is UNCHANGED — the probe passes and the flow continues.
     _existing = _resolve_existing_box(std, config, project_dir)
     if _existing is None:
-        print(_no_box_error(project_dir, std), file=sys.stderr)
+        print(_no_box_error(project_dir, std, verb), file=sys.stderr)
         return 1
     _interrupted = _pending_create_entry(std, _existing)
     if _interrupted is not None:
@@ -3008,7 +3009,7 @@ def _run_container(
     if rendered is None:
         print(
             unrenderable_box_name_refusal(
-                proj.name or "", proj.mode.value, proj.project_path,
+                proj.name or "", proj.mode.value, proj.project_path, project_dir,
             ),
             file=sys.stderr,
         )

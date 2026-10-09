@@ -13359,8 +13359,8 @@ class TestGoneBoxCureIsSafeAfterARepoint:
 
         msg = _no_box_error(name, std)
         assert (
-            f"  Rebuild it:  kanibako box rm {name} && kanibako create "
-            f"--standalone --register --name {name} {root}\n"
+            f"  Rebuild it:  kanibako box rm {root} && kanibako create "
+            f"--standalone --register {root}\n"
         ) in msg
         assert " mv " not in msg
 

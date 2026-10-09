@@ -724,6 +724,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   letters, digits, `.`, `_`, and `-` now become `_`. A payload with an empty or missing session id
   shifted every field by one: the line read `[?/???]` and `context-usage.txt` held `0.00 0.00`.
   It now reads the payload as usual and writes no state file.
+- **Printed cures for a box with a broken name now run.** The "give it a valid name" `box move` line names the
+  box's path even when the box has no workspace directory; it used to omit the old path, which `box move` rejects.
+  `shell` and `code` at a name that breaks the naming rules now print their own verb with the box's path, not
+  `kanibako start`. The "Rebuild it" line for a standalone box whose `box_data/` is gone names the box root in
+  both commands and no longer passes `--name`, which `create` refuses for a standalone box.
 - **`box list` shows a deregistered primary box once, under "Deregistered boxes".** It was also listed in the main
   table as `unknown (no breadcrumb)`, and `box list --orphan` called it an orphan.
 - **Purging a standalone box deletes its `canon/` folder.** `box rm --purge` and `box purge` left the `canon/`

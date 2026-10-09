@@ -362,7 +362,7 @@ class TestStartUnrenderableBoxNameRefusal:
     @staticmethod
     def _text(mode: str = "primary") -> str:
         return unrenderable_box_name_refusal(
-            "-droste", mode, TestStartUnrenderableBoxNameRefusal.PATH,
+            "-droste", mode, TestStartUnrenderableBoxNameRefusal.PATH, None,
         )
 
     def test_it_names_the_box_name_rule(self):
@@ -390,10 +390,18 @@ class TestStartUnrenderableBoxNameRefusal:
             assert "kanibako box move -droste" not in text
             assert "kanibako box convert -droste" not in text
 
-    def test_a_box_with_no_project_path_is_cured_from_inside_itself(self):
-        text = unrenderable_box_name_refusal("-droste", "primary", None)
-        assert "kanibako box move <new-path> --name <new-name>" in text
-        assert "None" not in text
+    @pytest.mark.parametrize("mode", ["named", "standalone"])
+    def test_a_box_with_no_project_path_is_named_by_the_path_that_reached_it(
+        self, mode, tmp_path, monkeypatch,
+    ):
+        """``box move`` needs both <old> and <new>, so the cure always names an <old>."""
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("PWD", raising=False)
+        for designation, old in ((str(tmp_path / "ws"), tmp_path / "ws"),
+                                 ("ws", tmp_path / "ws"), (None, tmp_path)):
+            text = unrenderable_box_name_refusal("-droste", mode, None, designation)
+            assert f"kanibako box move {old} <new-path>" in text
+            assert "None" not in text
 
     def test_it_never_names_a_rename_command(self):
         assert "rename" not in self._text("primary")

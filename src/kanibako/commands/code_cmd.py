@@ -210,7 +210,7 @@ def run_code(args: argparse.Namespace) -> int:
     except ProjectError:
         proj = None
     if proj is None or not proj.name:
-        print(_no_box_error(project_dir, std), file=sys.stderr)
+        print(_no_box_error(project_dir, std, "code"), file=sys.stderr)
         return 1
     cname = container_name_for(proj)
     # ⚑ NOT the start refusal: the row puts that at ``start``.  This door only REPORTS

@@ -251,7 +251,7 @@ class TestTheUnrenderableRefusalCuresAreQuoted:
         from kanibako.utils import unrenderable_box_name_refusal
 
         path = Path("/w") / name
-        text = unrenderable_box_name_refusal("-droste", "standalone", path)
+        text = unrenderable_box_name_refusal("-droste", "standalone", path, None)
 
         assert f"kanibako box move {shlex.quote(str(path))}" in text
         cure = _line(text, "kanibako box move").replace("<new-path>", "/w/moved")
@@ -261,7 +261,7 @@ class TestTheUnrenderableRefusalCuresAreQuoted:
         from kanibako.utils import unrenderable_box_name_refusal
 
         path = Path("/w") / name
-        text = unrenderable_box_name_refusal("-droste", "primary", path)
+        text = unrenderable_box_name_refusal("-droste", "primary", path, None)
 
         cure = (
             _line(text, "kanibako box move")
@@ -334,7 +334,7 @@ def test_a_plain_operand_prints_the_same_bytes_it_did():
     """Quoting is a no-op for an operand that needs none."""
     from kanibako.utils import unrenderable_box_name_refusal
 
-    text = unrenderable_box_name_refusal("-droste", "primary", Path("/home/u/plainbox"))
+    text = unrenderable_box_name_refusal("-droste", "primary", Path("/home/u/plainbox"), None)
     assert "kanibako box move /home/u/plainbox <new-path> --name <new-name>" in text
 
 

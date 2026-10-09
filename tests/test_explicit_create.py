@@ -898,26 +898,70 @@ class TestBrokenStandaloneNoBoxError:
         assert f"its box data ({root / 'box_data'}) is gone" in msg
         assert "A launch will not rebuild it" in msg
 
-    def test_cure_is_one_line_and_keeps_the_name(
-        self, config_file, tmp_home, credentials_dir,
+    @pytest.mark.parametrize("legacy", [False, True], ids=["valid-name", "legacy-name"])
+    def test_the_rebuild_cure_runs_as_printed(
+        self, config_file, tmp_home, credentials_dir, monkeypatch, legacy,
     ):
-        """``--name`` is load-bearing (it preserves the kuid / channel address)
-        and both commands must be on ONE line so the pair cannot be
-        half-followed — the ``rm`` is what FREES the name the ``create`` asks
-        for.
+        """Both halves run on ONE ``&&`` line, by ROOT: a stored name may break the
+        box-name rule, and ``create`` refuses a standalone ``--name``.  ``--register``
+        brings the box back into the registry."""
+        from kanibako.cli import main
+        from kanibako.project import registry_store
 
-        ⚑ ``--register`` is what makes ``--name`` load-bearing (I3/§D4a): create
-        drops the name outright when it is not registering, so without the flag
-        this cure would rebuild the box under a FRESH kuid and leave it out of
-        the registry that named it."""
         std, name, root = self._broken(config_file, tmp_home)
-        msg = _no_box_error(name, std)
-        (cure,) = [ln for ln in msg.splitlines() if "Rebuild it:" in ln]
-        assert (
-            f"kanibako box rm {name} && kanibako create --standalone "
-            f"--register --name {name} {root}"
-        ) in cure
+        if legacy:
+            text = std.registry.read_text().replace(f"{name}:", "'bad name':")
+            std.registry.write_text(text)
+            name = "bad name"
+        (root / "workspace" / "mine.txt").write_text("user data")
+        msg = _no_box_error(str(root), std)
+        (cure,) = [ln.split(":  ", 1)[1] for ln in msg.splitlines() if "Rebuild it:" in ln]
+        steps = cure.split(" && ")
+        assert len(steps) == 2 and "--name" not in cure
+        monkeypatch.chdir(tmp_home)
+        for step in steps:
+            argv = shlex.split(step)
+            assert argv[0] == "kanibako"
+            try:
+                main(argv[1:])
+            except SystemExit as exc:
+                assert not exc.code, step
+        assert registry_store.standalone_name_for_root(std.registry, root)
+        assert (root / "box_data").is_dir()
+        assert (root / "workspace" / "mine.txt").read_text() == "user data"
         assert "your workspace/ and vault/ are not touched" in msg
+
+    @pytest.mark.parametrize("verb", ["start", "shell", "code"])
+    def test_a_legacy_name_is_reached_by_the_verb_that_was_typed(
+        self, config_file, tmp_home, credentials_dir, monkeypatch, verb,
+    ):
+        from kanibako.project import registry_store
+
+        _config, std = _std(config_file)
+        root = (tmp_home / "legacy").resolve()
+        root.mkdir()
+        registry_store.register_standalone(std.registry, "bad name", root)
+        monkeypatch.chdir(tmp_home)
+        msg = _no_box_error("bad name", std, verb)
+        assert f"\n  kanibako {verb} {root}\n" in msg
+
+    @pytest.mark.parametrize("verb", ["start", "shell"])
+    def test_each_launch_verb_names_itself_at_a_legacy_name(
+        self, config_file, tmp_home, credentials_dir, monkeypatch, capsys, verb,
+    ):
+        """The verb reaches the refusal from the CLI, not only from the helper."""
+        from kanibako.cli import main
+        from kanibako.project import registry_store
+
+        _config, std = _std(config_file)
+        root = (tmp_home / "legacy").resolve()
+        root.mkdir()
+        registry_store.register_standalone(std.registry, "bad name", root)
+        monkeypatch.chdir(tmp_home)
+        with pytest.raises(SystemExit) as exc:
+            main([verb, "bad name"])
+        assert exc.value.code == 1
+        assert f"\n  kanibako {verb} {root}\n" in capsys.readouterr().err
 
     @pytest.mark.parametrize("mode", ["standalone", "primary"])
     def test_rule_breaking_stored_name_points_at_its_path(
@@ -1027,7 +1071,7 @@ class TestBrokenStandaloneNoBoxError:
         err = capsys.readouterr().err
         assert f"kanibako create {name}" not in err
         assert (
-            f"kanibako box rm {name} && kanibako create --standalone --register"
+            f"kanibako box rm {root} && kanibako create --standalone --register {root}"
         ) in err
 
 
