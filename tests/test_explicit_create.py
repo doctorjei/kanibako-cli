@@ -943,6 +943,23 @@ class TestBrokenStandaloneNoBoxError:
         assert f"\n  kanibako start {root}\n  kanibako box move {root} <new-path>" in msg
         assert "kanibako create" not in msg
 
+    def test_an_existing_dir_at_the_typed_path_wins_over_a_legacy_box(
+        self, config_file, tmp_home, credentials_dir, monkeypatch,
+    ):
+        from kanibako.settings.paths import register_primary_box_name
+
+        _config, std = _std(config_file)
+        root = (tmp_home / "legacy").resolve()
+        root.mkdir()
+        register_primary_box_name(std.primary_workset, "bad name", str(root),
+                                  early=_early_scope(std, BoxMode.primary))
+        (tmp_home / "bad name").mkdir()
+        monkeypatch.chdir(tmp_home)
+        msg = _no_box_error("bad name", std)
+        assert msg.startswith(f"Error: no box at {tmp_home.resolve() / 'bad name'}. ")
+        assert msg.endswith("\n  kanibako create 'bad name' --name <new-name>")
+        assert str(root) not in msg
+
     def test_by_path_names_the_ruled_cure(
         self, config_file, tmp_home, credentials_dir,
     ):

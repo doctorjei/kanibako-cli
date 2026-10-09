@@ -1710,16 +1710,16 @@ def _no_box_error(project_dir: str | None, std: StandardPaths | None = None) -> 
     from inside the project dir (no spec).  A PATH spec is ``shlex.quote``d and
     the line carries no wrapping quotes, so the printed command pastes as typed.
 
-    ⚑ THREE SHAPES, and only the first is that plain one-liner.  A designation
-    that takes the name route (:func:`designation_route`) gets its own
-    multi-line message: since
+    ⚑ OTHER SHAPES.  A leaf ``create`` refuses gets the ``--name`` cure; a missing path
+    naming a legacy box (:func:`stored_legacy_box`) gets that box's path.  A designation
+    on the name route (:func:`designation_route`) gets its own message: since
     I3/§D4a a standalone box created without ``--register`` is real and running
     but carries no registry entry, and the registry is the only thing a bare name
     can consult — so that population lands HERE, and for it ``create <name>``
     would mkdir a new ``./<name>`` and put a PRIMARY box in it.  The register cure
     leads and ``create`` follows as the other branch.
 
-    ⚑ THE THIRD SHAPE is the reason *std* is a parameter: a REGISTERED
+    ⚑ A BROKEN STANDALONE is the reason *std* is a parameter: a REGISTERED
     STANDALONE box whose ``box_data/`` is gone also lands here (it resolves
     nameless), and for it the copy-pasteable suggestion is actively HARMFUL —
     see :func:`_broken_standalone_error`, which owns that message.  *std* is

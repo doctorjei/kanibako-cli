@@ -432,6 +432,16 @@ class TestPathDesignationIsNeverAName:
             std.primary_workset, early=_early_scope(std, BoxMode.primary),
         )
 
+    def test_rm_of_an_existing_unboxed_dir_is_that_path_not_the_legacy_box(
+        self, config_file, tmp_home, credentials_dir, capsys, monkeypatch,
+    ):
+        """The typed designation names a directory here, so the path wins."""
+        self._hidden_box(config_file, tmp_home, monkeypatch)
+        (tmp_home / "empty" / ".HIDDEN").mkdir()
+        capsys.readouterr()
+        assert run_rm(_rm_args(".HIDDEN")) == 1
+        assert capsys.readouterr().err == "Error: '.HIDDEN' is not a registered box.\n"
+
     def test_rm_names_the_path_of_a_legacy_standalone_name(
         self, config_file, tmp_home, credentials_dir, capsys, monkeypatch,
     ):
