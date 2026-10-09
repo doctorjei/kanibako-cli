@@ -12945,6 +12945,10 @@ class TestShellRunsTheCommand:
             assert not self._ended(err)
             if site == "detach-up":
                 assert rc == 0 and "(keep-alive)" in err
+            elif site == "fg-dies" and agent == "claude":
+                # A supervised box's code is the supervisor's verdict: 0 means the
+                # agent started and exited before the attach, not a crash.
+                assert rc == 0 and "Error:" not in err
             else:
                 assert rc == 1 and self._todays_error(site) in err
 
