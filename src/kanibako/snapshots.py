@@ -150,17 +150,13 @@ def _write_layout_marker(versions: Path) -> None:
 def _unique_snapshot_dest(
     target: Path, name: str, owner: str | None
 ) -> Path:
-    """A path in *target* for snapshot *name* that nothing occupies yet.
+    """A free path in *target* for snapshot *name*.
 
-    ``shutil.move`` onto an existing directory puts the source INSIDE it, so a
-    single-shot suffix can bury one snapshot inside another -- the same merge
-    that per-box stores exist to prevent.  So keep looking until a slot is free.
-
-    *owner* is the box the entry is attributed to, or None where the owner
-    cannot be proven.  A proven owner is named in the suffix; an unproven one
-    gets a bare counter, because ``<ts>-<box>`` inside ``.unsorted`` reads as
-    an attribution the migration cannot make -- the box named there is only the
-    one that happened to run the migration, not the one that wrote the data.
+    ``shutil.move`` onto an existing directory files the source INSIDE it, so
+    a taken suffix can bury one snapshot in another.  *owner* is who the entry
+    is attributed to, or None where that cannot be proven: a proven owner is
+    named, an unproven one gets a counter, because ``<ts>-<box>`` in
+    ``.unsorted`` would credit the migrant with writing it.
     """
     stem = name if owner is None else f"{name}-{owner}"
     dest = target / name
@@ -210,8 +206,7 @@ def _migrate_flat_and_mark(
         target.mkdir(parents=True, exist_ok=True)
         bucket = "attributed" if store_exclusive else "unsorted"
         for entry in sorted(legacy, key=lambda p: p.name):
-            # An exclusive base proves the entry is this box's, so the suffix may
-            # say so; `.unsorted` proves nothing about the owner, so it must not.
+            # An exclusive base proves the box wrote it; `.unsorted` proves not.
             dest = _unique_snapshot_dest(
                 target, entry.name, box_name if store_exclusive else None
             )
@@ -598,8 +593,7 @@ def relocate_snapshot_store(
     # Destination store already exists: merge, never clobber.
     new_store.mkdir(parents=True, exist_ok=True)
     for entry in sorted(carried.iterdir()):
-        # `carried` IS old_box's own store, so naming a displaced entry after
-        # old_box states something this code actually knows.
+        # `carried` IS old_box's own store, so naming it is a fact, not a guess.
         dest = _unique_snapshot_dest(new_store, entry.name, old_box)
         shutil.move(str(entry), str(dest))
     shutil.rmtree(carried, ignore_errors=True)
