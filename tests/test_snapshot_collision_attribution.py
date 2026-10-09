@@ -23,7 +23,7 @@ from kanibako.snapshots import (
 
 TS = "20260101T000000Z"
 BOX = "alpha"
-#: A snapshot directory name, so a buried one can be recognised as such.
+#: A snapshot directory name, so a buried one can be recognized as such.
 TS_RE = re.compile(r"^\d{8}T\d{6}Z$")
 
 
@@ -190,7 +190,7 @@ class TestControlAttributionThatIsTrueStays:
         """A merge knows which store the entry came from, so it may say so.
 
         Deliberately written with only the arguments the reviewed tip already
-        takes, so a pass here is BEHAVIOUR and not a guard on a new parameter.
+        takes, so a pass here is BEHAVIOR and not a guard on a new parameter.
         """
         old_vault = tmp_path / "w2" / "vault" / "rw"
         new_vault = tmp_path / "w" / "vault" / "rw"

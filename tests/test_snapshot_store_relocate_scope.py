@@ -3,7 +3,7 @@
 Each test pins a boundary that ``relocate_snapshot_store`` crossed in review r2:
 whose store is safe to adopt, when a store must be carried, and what a base must
 look like before it is declared per-box.  All three are written against the
-BEHAVIOUR, not the signature, so they fail on the reviewed tip rather than on
+BEHAVIOR, not the signature, so they fail on the reviewed tip rather than on
 an ImportError.
 """
 from __future__ import annotations
@@ -47,7 +47,7 @@ class TestSharedBaseOldNameIsNotOurs:
         """No ``new_base_exclusive`` passed -- a shared base is the DEFAULT case.
 
         ⚑ Deliberately written without the new keyword so it fails at the
-        reviewed tip on BEHAVIOUR, not on a missing argument: the old code
+        reviewed tip on BEHAVIOR, not on a missing argument: the old code
         consulted ``new_base/<old name>`` unconditionally and moved the
         stranger's store out from under them.
         """

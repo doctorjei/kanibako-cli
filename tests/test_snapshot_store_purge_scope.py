@@ -8,10 +8,10 @@ unrelated path, and it lists -- and RESTORES -- the dead box's files.
 ⚑ The other half of the rule is what must SURVIVE.  ``.versions`` is a BASE shared
 by every box writing into the same vault share, and ``.unsorted`` is where the
 boxes nobody could attribute had been filed.  A purge that took either would turn
-one box's cleanup into every neighbour's data loss, so those are pinned too.
+one box's cleanup into every neighbor's data loss, so those are pinned too.
 
 ⚑ EVERY CASE GOES THROUGH A DOOR THAT EXISTS AT THE BASE (``cli.build_parser``
-plus ``args.func``), so a base run fails on an ASSERTION about behaviour rather
+plus ``args.func``), so a base run fails on an ASSERTION about behavior rather
 than on an import of a name this change introduced.  The controls are named as
 controls in their docstrings: they pass at the base and are here to catch the fix
 over-reaching, not to prove the defect.
@@ -194,7 +194,7 @@ class TestPurgeNeverTouchesSharedGround:
             "the purge removed the marker that retires legacy detection"
         )
 
-    def test_CONTROL_a_neighbours_store_survives_my_purge(self, env, tmp_home):
+    def test_CONTROL_a_neighbors_store_survives_my_purge(self, env, tmp_home):
         mine = _primary(env, tmp_home, "minebox", "mine only\n")
         theirs = _primary(env, tmp_home, "theirbox", "theirs only\n")
         their_store = _store(theirs.vault_rw_path, theirs.name)
