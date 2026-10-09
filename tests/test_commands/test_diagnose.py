@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import shlex
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -1828,3 +1829,63 @@ class TestSystemDiagnoseSurvivesBrickedStoreRoots:
         assert rc == 0
         assert "Traceback" not in out, out
         assert "[ok] Journal" in out, out
+
+
+# ---------------------------------------------------------------------------
+# ``box diagnose`` from a cwd whose leaf breaks the box-name rule: today's bare
+# ``kanibako create`` hint would itself be refused.  The same fix as start
+# carries --name, so the printed cure RUNS.
+# ---------------------------------------------------------------------------
+
+
+class TestRunBoxDiagnoseRefusedCure:
+    """``box diagnose`` from a refused-leaf cwd prints a cure that runs with --name."""
+
+    def test_a_refused_leaf_cwd_prints_a_create_cure_with_name(
+        self, config_file, tmp_home, credentials_dir, capsys, monkeypatch
+    ) -> None:
+        """The cure line tokenises to ``kanibako create --name <new-name>`` (i.e. it runs)."""
+        from kanibako.errors import ContainerError
+
+        bad = (tmp_home / "a b").resolve()
+        bad.mkdir()
+        monkeypatch.chdir(bad)
+
+        with patch(
+            "kanibako.runtime.container.ContainerRuntime",
+            side_effect=ContainerError("none"),
+        ):
+            args = argparse.Namespace(project=None, path=None)
+            rc = run_box_diagnose(args)
+
+        out = capsys.readouterr().out
+        assert rc != 0
+        assert "no kanibako project registered" in out
+        # The cure is the LAST INDENTED line starting with eight spaces; tokenised,
+        # it must run as ``kanibako create --name <new-name>``, NOT the bare form.
+        cure = out.rsplit("\n        ", 1)[1].splitlines()[-1].strip()
+        assert shlex.split(cure) == ["kanibako", "create", "--name", "<new-name>"]
+
+    def test_a_valid_leaf_cwd_keeps_todays_plain_create_hint(
+        self, config_file, tmp_home, credentials_dir, capsys, monkeypatch
+    ) -> None:
+        """A valid leaf keeps today's bare ``kanibako create`` hint — no --name."""
+        from kanibako.errors import ContainerError
+
+        ok = (tmp_home / "ok").resolve()
+        ok.mkdir()
+        monkeypatch.chdir(ok)
+
+        with patch(
+            "kanibako.runtime.container.ContainerRuntime",
+            side_effect=ContainerError("none"),
+        ):
+            args = argparse.Namespace(project=None, path=None)
+            rc = run_box_diagnose(args)
+
+        out = capsys.readouterr().out
+        assert rc != 0
+        assert "no kanibako project registered" in out
+        assert "Run 'kanibako create' to initialize a project here" in out
+        assert "--name" not in out
+

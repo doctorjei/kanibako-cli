@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import shlex
 
 import pytest
 
@@ -1876,3 +1877,62 @@ class TestShowListsWhatTheFileHolds:
         assert code == 0
         assert out.strip() == f"Reset {len(rows)} override(s).", out
         assert "agent" not in load_doc(settings), load_doc(settings)
+
+
+# ---------------------------------------------------------------------------
+# The "Or make one: kanibako create" hint keeps today's plain form when the
+# directory's leaf IS a valid box name; when the leaf is NOT (a b, o'brien,
+# .gone, gone.), the suggested create command would itself be refused, so the
+# printed cure must carry --name and run.
+# ---------------------------------------------------------------------------
+
+
+class TestResolveConfigSubjectRefusedCure:
+    """``box config`` from a cwd whose leaf breaks the box-name rule: refuse, then cure."""
+
+    def test_a_refused_leaf_raises_with_a_cure_carrying_name(
+        self, config_file, tmp_home, monkeypatch,
+    ):
+        """`box config` from `/a b` raises ProjectError; its last cure line carries --name."""
+        from kanibako.commands.box._parser import _resolve_config_subject
+        from kanibako.errors import ProjectError
+        from kanibako.settings.paths import load_std_paths
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        bad = (tmp_home / "a b").resolve()
+        bad.mkdir()
+        monkeypatch.chdir(bad)
+
+        with pytest.raises(ProjectError) as exc_info:
+            _resolve_config_subject(std, config, str(bad))
+
+        msg = str(exc_info.value)
+        # The cure is the LAST ``\n  ``-prefixed line of the message; tokenised, it
+        # must run as ``kanibako create --name <new-name>`` (the bare ``kanibako
+        # create`` form would refuse the directory name itself).
+        cure = msg.rsplit("\n  ", 1)[1]
+        assert shlex.split(cure) == ["kanibako", "create", "--name", "<new-name>"]
+
+    def test_a_valid_leaf_keeps_todays_plain_create_hint(
+        self, config_file, tmp_home, monkeypatch,
+    ):
+        """A valid leaf keeps today's hint — no --name (mirrors the precedent for start)."""
+        from kanibako.commands.box._parser import _resolve_config_subject
+        from kanibako.errors import ProjectError
+        from kanibako.settings.paths import load_std_paths
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        ok = (tmp_home / "ok").resolve()
+        ok.mkdir()
+        monkeypatch.chdir(ok)
+
+        with pytest.raises(ProjectError) as exc_info:
+            _resolve_config_subject(std, config, str(ok))
+
+        msg = str(exc_info.value)
+        # Today's plain hint line — no ``--name`` cure, because the bare form runs.
+        assert "\n  Or make one:    kanibako create\n" in msg or msg.endswith("\n  Or make one:    kanibako create")
+        assert "--name" not in msg
+
