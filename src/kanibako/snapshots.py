@@ -13,11 +13,9 @@ snapshots:
 automatically.  Automatic snapshots can be triggered before each container
 launch.
 
-⚑ SNAPSHOTS ARE PER-BOX: they live in ``.versions/<box>/``, not in a flat
-``.versions/``.  The flat store was shared by every box under one vault base, so
-one box could list, prune, or RESTORE another box's snapshots.  Legacy entries
-that cannot be attributed to a box move to ``.versions/unsorted/``, where they
-are listed but never deleted.
+⚑ SNAPSHOTS ARE PER-BOX: ``.versions/<box>/``, not a flat ``.versions/`` shared
+by every box under one base, which let one box list, prune, or RESTORE another's.
+Unattributable legacy entries go to ``.versions/unsorted/``: listed, never deleted.
 
 ⚑ SYMLINKS ARE COPIED VERBATIM, both ways, under the rule in
 :mod:`kanibako.tree_copy` (``cp -a`` and ``rsync -a`` already keep them), so a
@@ -53,9 +51,7 @@ class UnsafeSnapshotNameError(KanibakoError):
 class ForeignSnapshotError(KanibakoError):
     """A snapshot that exists, but belongs to a DIFFERENT box's store.
 
-    Raised by :func:`restore_snapshot` so a timestamp picked out of another box's
-    listing cannot silently replace this box's vault.  The message names the
-    owning box, because that is the one thing the user cannot see from the name.
+    The message names the owner, which is the one thing the name does not show.
     """
 
 
@@ -87,10 +83,8 @@ _LEGACY_TS_RE = re.compile(r"^\d{8}T\d{6}Z$")
 def _box_store(vault_rw_path: Path, box_name: str) -> Path:
     """Return *box_name*'s OWN snapshot store: ``.versions/<box>/``.
 
-    Every box under one vault base used to share a single flat ``.versions/`` keyed
-    by timestamp alone, so one box could list, prune, or RESTORE another box's
-    snapshots.  The per-box store is what closes that; the base itself is only
-    ever a container, never a snapshot directory.
+    The base is only a container, never a snapshot directory; sharing it is what
+    let one box reach another box's snapshots.
     """
     if not box_name or not box_name.strip() or Path(box_name).name != box_name:
         raise UnsafeSnapshotNameError(
@@ -104,14 +98,11 @@ def migrate_legacy_versions(
 ) -> dict[str, list[str]]:
     """Split pre-per-box ``.versions/<timestamp>`` entries out of the SHARED base.
 
-    The old flat store never recorded WHO wrote a snapshot, so attribution is
-    only possible when the store could not have been written by anyone else: a
-    standalone box's ``.versions`` sits inside its own project tree, so its
-    legacy entries are provably its own (``store_exclusive=True``).  Everywhere
-    else -- and every same-second chimera, which by construction holds two boxes'
-    files -- the owner is unknown, so the entry goes to ``unsorted/`` where it is
-    listed but never pruned.  Idempotent: once split, no top-level timestamp
-    directory remains to move.
+    The old store never recorded who wrote a snapshot, so attribution is only
+    possible where no other box could have written: a standalone ``.versions``
+    is inside its own tree (``store_exclusive=True``).  Everywhere else, and
+    every same-second chimera, the owner is unknown and the entry goes to
+    ``unsorted/`` -- listed, never pruned.  Idempotent.
 
     Returns ``{"attributed": [...], "unsorted": [...]}`` of moved entry names.
     """
@@ -282,13 +273,11 @@ def _snapshot_hardlink(vault_rw_path: Path, versions: Path, ts: str) -> Path:
 def _unique_snapshot_name(store: Path, ts: str) -> str:
     """A snapshot name in *store* that does not collide with an existing one.
 
-    The timestamp is second-resolution, so two snapshots of the SAME box inside
-    one second land on the same name -- and neither strategy handles that safely:
-    ``cp --reflink`` copies the vault INTO the existing directory (nesting it a
-    level), and ``rsync`` merges the new files into it.  ``restore`` makes this
-    reachable in ordinary use, because its pre-restore safety copy is taken in
-    the same second as a snapshot the user just made.  A suffixed name keeps both
-    copies whole; ``list`` falls back to showing the raw name for the suffix.
+    Timestamps are second-resolution, so two snapshots of one box in one second
+    share a name, and neither strategy copes: ``cp --reflink`` nests the vault
+    inside the existing directory, ``rsync`` merges into it.  ``restore`` makes
+    that reachable, taking its safety copy in the same second as a snapshot the
+    user just made.  A suffix keeps both copies whole.
     """
     if not (store / ts).exists():
         return ts
@@ -485,9 +474,7 @@ def restore_snapshot(
                 shutil.move(str(backup / name), str(vault_rw_path / name))
             raise
     finally:
-        # The backup is disposable here because the pre-restore snapshot above
-        # already holds these contents in the box's store; removing the temp copy
-        # no longer destroys the only copy of anything.
+        # Disposable: the pre-restore snapshot already holds these in the store.
         shutil.rmtree(staging, ignore_errors=True)
         shutil.rmtree(backup, ignore_errors=True)
 
