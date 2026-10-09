@@ -1530,15 +1530,26 @@ def _broken_standalone_error(std: StandardPaths, project_dir: str) -> str | None
     root = Path(entries[name])
     # ⚑ Asked FIRST: without the marker the root is no standalone, so every store
     # question below would answer for a box kanibako does not see.
+    # A file that will not parse is not asked: the arms below report its own error.
     from kanibako.launch.box_resolve import stores_standalone_registry_null
+    from kanibako.settings.config_io import load_doc
 
+    marker_file = root / WORKSET_META_FILE
     if root.is_dir() and not stores_standalone_registry_null(root):
-        return (
-            f"Error: box '{name}' is registered as a standalone box at {root}, but "
-            f"{root / WORKSET_META_FILE} does not store the standalone marker, so "
-            "kanibako does not see a box there.\n"
-            "  Restore it: add the line 'registry: null' under 'workset:' in that file."
-        )
+        try:
+            load_doc(marker_file)
+        except ConfigError:
+            pass
+        else:
+            if marker_file.exists():
+                fault, cure = "does not store the standalone marker", "add the line"
+            else:
+                fault, cure = "is missing", "create that file with the line"
+            return (
+                f"Error: box '{name}' is registered as a standalone box at {root}, but "
+                f"{marker_file} {fault}, so kanibako does not see a box there.\n"
+                f"  Restore it: {cure} 'registry: null' under 'workset:'."
+            )
     # ⚑ The DEFAULT LEAF, not the resolved store — see the docstring.
     default_leaf = root / STANDALONE_META_DIR
     leaf_present = default_leaf.is_dir()

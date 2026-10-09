@@ -13238,8 +13238,40 @@ class TestGoneBoxCureIsSafeAfterARepoint:
                 f"Error: box '{name}' is registered as a standalone box at {root}, but "
                 f"{root / 'workset.yaml'} does not store the standalone marker, so "
                 "kanibako does not see a box there.\n"
-                "  Restore it: add the line 'registry: null' under 'workset:' in that file."
+                "  Restore it: add the line 'registry: null' under 'workset:'."
             )
+
+    def test_standalone_without_its_root_file_says_create_it(
+        self, config_file, tmp_home, credentials_dir, protected_canon,
+    ):
+        """An ABSENT root ``workset.yaml`` has no line to add to: the cure creates the file."""
+        from kanibako.commands.start import _no_box_error
+
+        std, name, root = self._standalone(config_file, tmp_home)
+        (root / "workset.yaml").unlink()
+
+        for spec in (name, str(root)):
+            assert _no_box_error(spec, std) == (
+                f"Error: box '{name}' is registered as a standalone box at {root}, but "
+                f"{root / 'workset.yaml'} is missing, so kanibako does not see a box there.\n"
+                "  Restore it: create that file with the line 'registry: null' under 'workset:'."
+            )
+
+    def test_standalone_root_file_that_will_not_parse_keeps_its_parse_error(
+        self, config_file, tmp_home, credentials_dir, protected_canon,
+    ):
+        """A root ``workset.yaml`` that will not parse may still hold the marker, so the
+        launch reports the parse error, never a missing marker."""
+        from kanibako.commands.start import _no_box_error
+        from kanibako.errors import ConfigError
+
+        std, name, root = self._standalone(config_file, tmp_home)
+        (root / "workset.yaml").write_text("workset:\n  registry: null\n  boxes: [unclosed\n")
+
+        for spec in (name, str(root)):
+            with pytest.raises(ConfigError, match="is not valid YAML") as exc:
+                _no_box_error(spec, std)
+            assert "standalone marker" not in str(exc.value)
 
     def test_standalone_at_its_default_rebuilds_as_today(
         self, config_file, tmp_home, credentials_dir, protected_canon,
