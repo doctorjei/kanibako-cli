@@ -147,6 +147,33 @@ def _write_layout_marker(versions: Path) -> None:
         marker.write_text(LAYOUT_MARKER_VALUE)
 
 
+def _unique_snapshot_dest(
+    target: Path, name: str, owner: str | None
+) -> Path:
+    """A path in *target* for snapshot *name* that nothing occupies yet.
+
+    ``shutil.move`` onto an existing directory puts the source INSIDE it, so a
+    single-shot suffix can bury one snapshot inside another -- the same merge
+    that per-box stores exist to prevent.  So keep looking until a slot is free.
+
+    *owner* is the box the entry is attributed to, or None where the owner
+    cannot be proven.  A proven owner is named in the suffix; an unproven one
+    gets a bare counter, because ``<ts>-<box>`` inside ``.unsorted`` reads as
+    an attribution the migration cannot make -- the box named there is only the
+    one that happened to run the migration, not the one that wrote the data.
+    """
+    stem = name if owner is None else f"{name}-{owner}"
+    dest = target / name
+    if not dest.exists():
+        return dest
+    if owner is not None and not (target / stem).exists():
+        return target / stem
+    n = 2
+    while (dest := target / f"{stem}-{n}").exists():
+        n += 1
+    return dest
+
+
 def _migrate_flat_and_mark(
     vault_rw_path: Path, *, box_name: str, store_exclusive: bool = False,
 ) -> dict[str, list[str]]:
@@ -183,9 +210,11 @@ def _migrate_flat_and_mark(
         target.mkdir(parents=True, exist_ok=True)
         bucket = "attributed" if store_exclusive else "unsorted"
         for entry in sorted(legacy, key=lambda p: p.name):
-            dest = target / entry.name
-            if dest.exists():
-                dest = target / f"{entry.name}-{box_name}"
+            # An exclusive base proves the entry is this box's, so the suffix may
+            # say so; `.unsorted` proves nothing about the owner, so it must not.
+            dest = _unique_snapshot_dest(
+                target, entry.name, box_name if store_exclusive else None
+            )
             shutil.move(str(entry), str(dest))
             moved[bucket].append(entry.name)
             logger.info(
@@ -569,9 +598,9 @@ def relocate_snapshot_store(
     # Destination store already exists: merge, never clobber.
     new_store.mkdir(parents=True, exist_ok=True)
     for entry in sorted(carried.iterdir()):
-        dest = new_store / entry.name
-        if dest.exists():
-            dest = new_store / f"{entry.name}-{old_box}"
+        # `carried` IS old_box's own store, so naming a displaced entry after
+        # old_box states something this code actually knows.
+        dest = _unique_snapshot_dest(new_store, entry.name, old_box)
         shutil.move(str(entry), str(dest))
     shutil.rmtree(carried, ignore_errors=True)
     return new_store
