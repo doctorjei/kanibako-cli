@@ -131,6 +131,9 @@ class Workset:
     @property
     def registry_path(self) -> Path
 
+class StoreRemovalError(OSError):
+    def __init__(self, message: str, leaf: Path) -> None
+
 class _Unwind:
     def __init__(self) -> None
 

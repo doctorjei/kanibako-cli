@@ -109,7 +109,7 @@ class TestVerbsRouteThroughIt:
     so a verb that quietly reverts to ``shutil.rmtree`` fails here by name.
     """
 
-    def test_workset_remove_project_routes_the_box_tree_only(
+    def test_workset_remove_project_routes_the_tree_and_both_vault_leaves(
         self, tmp_home, std, monkeypatch,
     ):
         """⚑ SCOPED. The escalating deleter is a FALLBACK, and its scope is a box tree
@@ -146,6 +146,59 @@ class TestVerbsRouteThroughIt:
         assert not box_tree.exists()
         assert not (ws.workspaces_dir / "b1").exists()
         assert not (ws.vault_dir / "ro" / "b1").exists()
+
+    def test_failed_store_delete_keeps_the_member_registered_and_rerunnable(
+        self, tmp_home, std, monkeypatch,
+    ):
+        """⚑⚑ A REFUSING store must NOT cost the member its registration.
+
+        Releasing before deleting meant a vault leaf that would not unlink left the
+        member UNREGISTERED with its data still on disk: nothing pointed at the data,
+        and ``disconnect --remove-files`` could not be re-run because the member no
+        longer resolved.  Pinned here: the ``False`` from the deleter raises, the
+        record SURVIVES, the data is still where that record points, the error names
+        the leaf that actually refused, and once the refusal is cleared the SAME call
+        finishes the job.
+        """
+        import kanibako.runtime.container as container_mod
+        from kanibako.project.workset import add_project, create_workset, remove_project
+
+        ws = create_workset("failset", tmp_home / "worksets" / "failset", std)
+        source = tmp_home / "src-fail"
+        source.mkdir()
+        add_project(ws, "b1", source, std)
+        rw_leaf = ws.vault_dir / "rw" / "b1"
+        rw_leaf.mkdir(parents=True, exist_ok=True)
+
+        real = container_mod.remove_path
+
+        def refusing(p: Path) -> bool:
+            # The vault leaf REFUSES the delete; everything else goes through.
+            return False if p == rw_leaf else real(p)
+
+        monkeypatch.setattr(container_mod, "remove_path", refusing)
+
+        with pytest.raises(OSError) as exc:
+            remove_project(ws, "b1", remove_files=True, std=std)
+
+        # ⚑ The record SURVIVES the failed delete — in memory AND on disk.
+        assert [p.name for p in ws.projects] == ["b1"], (
+            f"member was released despite the failed delete: "
+            f"{[p.name for p in ws.projects]}")
+        assert "b1" in ws.registry_path.read_text(), (
+            "the registry row was dropped while the data was still there")
+        # ⚑ The data is still where that record points — not stranded.
+        assert rw_leaf.exists(), "the refused vault leaf vanished"
+        # ⚑ The error names the leaf that ACTUALLY refused, not the box tree.
+        assert exc.value.leaf == rw_leaf, (
+            f"hint names {exc.value.leaf!r}, not the failing leaf")
+
+        # ⚑ Clear the refusal: the SAME command completes, so the user is not locked out.
+        monkeypatch.undo()
+        target = remove_project(ws, "b1", remove_files=True, std=std)
+        assert target.name == "b1"
+        assert ws.projects == []
+        assert not rw_leaf.exists()
 
     def test_delete_workset_clears_box_trees_before_the_root(
         self, tmp_home, std, monkeypatch,

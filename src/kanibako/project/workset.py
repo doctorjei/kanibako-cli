@@ -1742,13 +1742,21 @@ def _member_store_bases(ws: Workset) -> tuple[Path, ...]:
     return tuple(base for base in (ws.projects_dir, vault_ro, vault_rw) if base is not None)
 
 
+class StoreRemovalError(OSError):
+    """A member store leaf REFUSED deletion; :attr:`leaf` is the path that failed."""
+
+    def __init__(self, message: str, leaf: Path) -> None:
+        super().__init__(message)
+        self.leaf = leaf
+
+
 def remove_member_store(
     ws: Workset, name: str, *, bases: tuple[Path, ...] | None = None,
 ) -> None:
     """Delete *name*'s box tree and per-box vault leaves; ⚑ NEVER its workspace leaf.
 
     *bases* is :func:`_member_store_bases`, resolved by a caller that must refuse BEFORE an
-    irreversible step (:func:`remove_project` releases the member first).
+    irreversible step (``remove_project`` deletes under these bases before it releases).
     """
     # ⚑ Per-box vault LEAVES only — never the shared ro/rw parents.
     # ⚑⚑ RESOLVED, and it MUST match ``add_project``: deleting the composed default
@@ -1768,11 +1776,11 @@ def remove_member_store(
     for base in vault_bases:
         leaf = base / name
         if (leaf.is_dir() or leaf.is_symlink()) and not remove_path(leaf):
-            # ⚑ LOUD, never a silent pass: the relocation retire prints its leftover Note
-            # with rc unchanged, and a disconnect exits 1.
-            raise OSError(
+            # ⚑ LOUD, never a silent pass ("rc unchanged" = retire's on_success only).
+            err = StoreRemovalError(
                 f"could not remove {leaf}; try: podman unshare rm -rf "
-                f"{shlex.quote(str(leaf))}")
+                f"{shlex.quote(str(leaf))}", leaf)
+            raise err
 
 
 def remove_project(
@@ -1786,25 +1794,29 @@ def remove_project(
     An external source dir is NEVER touched: its leaf is a link, and a link is unlinked.
     ⚑ *std* is accepted and unused.
     """
-    # ⚑ Resolved BEFORE the release, so a store that refuses (a null ``workset.boxes``)
-    # stops the disconnect while the member is still registered.
-    bases = _member_store_bases(ws) if remove_files else None
-    target = release_project(ws, name)
-    if bases is not None:
-        import shutil
+    # ⚑⚑ DELETE FIRST, RELEASE LAST.  Releasing first made a REFUSING store a locked
+    # door: the member was already unregistered when the delete failed, so its data sat
+    # unrecorded and the command could not be re-run.  Failed delete ⇒ record INTACT.
+    if not remove_files:
+        return release_project(ws, name)
 
-        remove_member_store(ws, name, bases=bases)
-        # ⚑ Under a null ``workset.workspaces`` there is no ``workspaces/<name>``: an in-tree
-        # member's leaf is the path its record holds; an external one has no leaf here.
-        workspaces = ws.workspaces_dir
-        if workspaces is not None:
-            leaf: Path | None = workspaces / name
-        else:
-            in_tree = (source_in_tree(ws, target.source_path)
-                       and target.source_path.resolve() != ws.root.resolve())
-            leaf = target.source_path if in_tree else None
-        if leaf is not None and leaf.is_symlink():
-            leaf.unlink()
-        elif leaf is not None and leaf.is_dir():
-            shutil.rmtree(leaf)
-    return target
+    import shutil
+
+    _ = ws.registry_path
+    bases = _member_store_bases(ws)
+    target = _find_member(ws, name)
+    remove_member_store(ws, name, bases=bases)
+    # ⚑ Under a null ``workset.workspaces`` there is no ``workspaces/<name>``: an in-tree
+    # member's leaf is the path its record holds; an external one has no leaf here.
+    workspaces = ws.workspaces_dir
+    if workspaces is not None:
+        leaf: Path | None = workspaces / name
+    else:
+        in_tree = (source_in_tree(ws, target.source_path)
+                   and target.source_path.resolve() != ws.root.resolve())
+        leaf = target.source_path if in_tree else None
+    if leaf is not None and leaf.is_symlink():
+        leaf.unlink()
+    elif leaf is not None and leaf.is_dir():
+        shutil.rmtree(leaf)
+    return release_project(ws, name)
