@@ -4794,7 +4794,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `registry.standalone` entry buys exactly one thing: addressing the box by name *from another
   directory*. Writing that entry at create assigned a global name to a box whose point is to
   move freely, so **it is now something you ask for**: `kanibako create --standalone --register`.
-  **`--name` is ignored without `--register`** (with it, `--name` sources the entry's name), and
+  The entry is keyed by the box's own `<kuid>_<directory>` name, which `--name` cannot set, and
   a box created independent is adopted later by `kanibako box register <path>` — index-only and
   seed-free, so nothing is re-seeded. Nothing about the box itself changed: same layout, same
   identity, same `workset.kuid`, and working *inside* it never needed the entry — `kanibako
