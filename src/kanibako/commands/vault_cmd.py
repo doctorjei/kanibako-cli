@@ -111,11 +111,7 @@ def _add_vault_subcommands(p: argparse.ArgumentParser) -> None:
 def _resolve_vault_rw(project_dir: str | None):
     """Resolve ``(share-rw path, box name, store-exclusive)`` for the project.
 
-    The box name is the snapshot store key and cannot be derived from the path: a
-    standalone box's share-rw ends in ``vault/rw``, not in its own name.  The
-    store is exclusive only for a standalone box, whose ``.versions`` sits inside
-    its own project tree so no other box could have written there -- the one case
-    where legacy flat-store entries can be attributed rather than filed unsorted.
+    The box name keys the snapshot store, not the path.
     """
     config_file = user_config_file()
     config = load_config(config_file)
@@ -157,8 +153,6 @@ def run_list(args: argparse.Namespace) -> int:
 
     quiet = getattr(args, "quiet", False)
 
-    # Split any pre-per-box flat entries BEFORE listing, so the unattributable
-    # ones are visible in the listing that is their only surface.
     migrate_legacy_versions(vault_rw, box_name=box_name, store_exclusive=exclusive)
 
     snaps = list_snapshots(vault_rw, box_name=box_name)
@@ -173,8 +167,6 @@ def run_list(args: argparse.Namespace) -> int:
                 size_str = _human_size(size)
                 print(f"  {name}  {ts}  {size_str}")
 
-    # Legacy snapshots whose owning box could not be proven. Shown so the data is
-    # not invisible; kept out of --quiet because they are not restorable by name.
     unsorted = [] if quiet else list_unsorted(vault_rw)
     if unsorted:
         print(f"\n  Unsorted (pre-split, owner unknown — kept, never pruned"
@@ -237,8 +229,6 @@ def run_prune(args: argparse.Namespace) -> int:
         return 1
     vault_rw, box_name, exclusive = resolved
 
-    # Migrate first: a legacy flat entry must never be counted as this box's own
-    # and therefore become prunable.
     migrate_legacy_versions(vault_rw, box_name=box_name, store_exclusive=exclusive)
 
     doomed = snapshots_to_prune(vault_rw, args.keep, box_name=box_name)
