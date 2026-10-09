@@ -742,9 +742,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   convert fails; the unwind used to delete it with the user's files. What a failed operation added to a folder
   that already existed is now named in a Note as yours to remove.
 - **A failed in-place `box convert --standalone` can be run again.** It used to leave `workset.yaml`, the vault
-  folders, and the workspace folder at the project root, and every retry said "Nothing to do". The root is now
-  left as it was found, root files the convert rewrote included. A read-only folder in the project no longer
-  stops the convert in either direction; it used to fail and leave the folder copied into the workspace.
+  folders, and the workspace folder at the project root, and every retry said "Nothing to do". A convert that
+  fails before it removes the old box now leaves the root as it was found, root files it rewrote included. A
+  read-only folder in the project no longer stops the convert in either direction; it used to fail and leave the
+  folder copied into the workspace.
 - **A move names what it could not delete at the old place.** When a read-only folder stops the removal of
   the old workspace, the Note now says the move is complete and lists what is left. A convert from primary to
   standalone that cannot fully remove the old vault folder now says so; it used to leave it silently.
