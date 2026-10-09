@@ -201,7 +201,7 @@ class TestClean:
 class TestCleanExtended:
     def test_purge_standalone_project(self, config_file, tmp_home):
         """Purge removes the in-tree artifacts (box_data/, root workset.yaml,
-        vault/) for a standalone project, leaving the project root itself."""
+        canon/, vault/) for a standalone project, leaving the project root itself."""
         from kanibako.commands.clean import run
 
         project_dir = tmp_home / "project"
@@ -210,6 +210,7 @@ class TestCleanExtended:
         # Standalone marker: the ROOT workset.yaml's stored registry null.
         (project_dir / "workset.yaml").write_text('workset:\n  registry: null\n')
         (kanibako_dir / "data.txt").write_text("session-data")
+        (project_dir / "canon" / "handbook").mkdir(parents=True)
 
         args = argparse.Namespace(
             path=str(project_dir), all_projects=False, force=True,
@@ -218,6 +219,7 @@ class TestCleanExtended:
         assert rc == 0
         assert not kanibako_dir.exists()
         assert not (project_dir / "workset.yaml").exists()
+        assert not (project_dir / "canon").exists()
         # The project root itself is NOT deleted.
         assert project_dir.is_dir()
 

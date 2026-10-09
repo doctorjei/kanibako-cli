@@ -183,7 +183,9 @@ def _purge_one(std, config, path: str, *, force: bool) -> int:
         # metadata_path is the project ROOT — remove ONLY the in-tree kanibako artifacts.
         # ⚑ THE ROOT FILE GOES ONLY WITH THE STORE: a retained store leaves the box whole.
         from kanibako.project.workset import (
+            report_retained_canon,
             report_retained_vaults,
+            standalone_canon_teardown,
             standalone_vault_teardown,
         )
 
@@ -191,6 +193,8 @@ def _purge_one(std, config, path: str, *, force: bool) -> int:
         # ⚑⚑ RESOLVE THE VAULT FIRST: the root workset.yaml carries the only copy of a
         # ``workset.vault_*`` repoint.
         removable_vault, retained_vault = standalone_vault_teardown(
+            root, early=_early_scope(std, BoxMode.standalone))
+        removable_canon, retained_canon = standalone_canon_teardown(
             root, early=_early_scope(std, BoxMode.standalone))
         # ⚑ The store holds the box home + its canon skeleton (J-7), so its removal needs
         # the podman-unshare escalation; the removable/retained split is the plan's own.
@@ -200,6 +204,10 @@ def _purge_one(std, config, path: str, *, force: bool) -> int:
             if not remove_box_tree(removable_store):
                 _warn_undeleted(removable_store)
             (root / WORKSET_META_FILE).unlink(missing_ok=True)
+            if removable_canon is not None and not remove_path(removable_canon):
+                _warn_undeleted(removable_canon)
+            if retained_canon is not None:
+                report_retained_canon(retained_canon, root)
         if retained_store is not None:
             report_retained_store(retained_store, root)
         for vault_dir in removable_vault:

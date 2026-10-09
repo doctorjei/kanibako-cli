@@ -368,9 +368,9 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
             "(home, shell config, box.yaml), its vault folders (ro and rw,\n"
             "with every file in them; a vault that is a symlink loses only\n"
             "the link, never its target), and its logs.  For a standalone\n"
-            "box that is the box_data/ folder, the workset.yaml at its root,\n"
-            "and any vault folder inside the project.  Every path is listed\n"
-            "before the confirmation."
+            "box that is the box_data/ folder, the workset.yaml and canon/\n"
+            "folder at its root, and any vault folder inside the project.\n"
+            "Every path is listed before the confirmation."
         ),
     )
     rm_p.add_argument(
@@ -2055,10 +2055,10 @@ def _primary_purge_plan(std, name: str, metadata_dir: Path) -> list[_PurgeStep]:
 def _standalone_purge_plan(
     root: Path, registered_name: str, *, std: StandardPaths, early: EarlyScope,
 ) -> list[_PurgeStep]:
-    """What purging a STANDALONE box deletes: logs, store, root workset.yaml, in-root vaults.
+    """What purging a STANDALONE box deletes: logs, store, root workset.yaml, canon, vaults.
 
     ⚑⚑ RESOLVE BEFORE ANYTHING IS DELETED — or unregistered.  The root workset.yaml the
-    purge unlinks carries the ``workset.vault_*`` and ``workset.logs`` repoints and the
+    purge unlinks carries the ``workset.{vault_*,canon,logs}`` repoints and the
     kuid the box's name is composed from, so a later read answers the composed default;
     and an UNRESOLVABLE value (a bare-relative repoint, a null ``workset.boxes`` the
     standalone logs default chains through) raises here, which must happen while the box
@@ -2066,12 +2066,13 @@ def _standalone_purge_plan(
     """
     from kanibako.launch.box_resolve import standalone_box_name
     from kanibako.project.workset import (
-        _unfollowed, report_retained_vaults, resolve_workset_vault_pair,
-        standalone_vault_teardown)
+        _unfollowed, report_retained_canon, report_retained_vaults,
+        resolve_workset_vault_pair, standalone_canon_teardown, standalone_vault_teardown)
     from kanibako.settings.paths import (
         report_retained_store, standalone_logs_dir, standalone_store_teardown_plan)
 
     removable_vault, retained_vault = standalone_vault_teardown(root, early=early)
+    removable_canon, retained_canon = standalone_canon_teardown(root, early=early)
     # ⚑ Logs are deleted by NAME, so a log under a ``workset.logs`` pointed outside
     # the store goes too.
     steps = [_PurgeStep("log", "log", log_file) for log_file in box_logs_to_purge(
@@ -2091,6 +2092,11 @@ def _standalone_purge_plan(
     settings_file = root / WORKSET_META_FILE
     if settings_file.is_file():
         steps.append(_PurgeStep("metadata", "workset settings", settings_file, gated=True))
+    if removable_canon is not None:
+        steps.append(_PurgeStep("canon", "box canon (kanibako's handbook)", removable_canon,
+                                gated=True))
+    if retained_canon is not None:
+        report_retained_canon(retained_canon, root)
     arms = {_unfollowed(arm): label for arm, label in
             zip(resolve_workset_vault_pair(root, early=early), _VAULT_LABELS) if arm is not None}
     steps += [_PurgeStep("vault", arms.get(vdir, "vault parent folder"), vdir, gated=True)
