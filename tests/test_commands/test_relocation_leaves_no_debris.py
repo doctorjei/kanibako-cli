@@ -201,8 +201,10 @@ class TestAFailedConvertKeepsARepointedStore:
                               std, config, confirm=lambda: True)
         assert (store / "keep.txt").read_text() == "theirs"
 
-    def test_a_later_failure_keeps_the_store(self, env, monkeypatch):
+    def test_a_later_failure_keeps_the_store(self, env, monkeypatch, capsys):
         config, std, pdir, store, state = self._setup(env)
+        (pdir / "workset.yaml").chmod(0o644)
+        doc = (pdir / "workset.yaml").read_bytes()
 
         def boom(*a, **kw):
             raise RuntimeError("late")
@@ -212,6 +214,102 @@ class TestAFailedConvertKeepsARepointedStore:
             execute_lifecycle(state, TargetSpec(location=lc.INPLACE, ownership="standalone"),
                               std, config, confirm=lambda: True)
         assert (store / "keep.txt").read_text() == "theirs"
+        assert (pdir / "workset.yaml").read_bytes() == doc
+        assert stat.S_IMODE((pdir / "workset.yaml").stat().st_mode) == 0o644
+        err = capsys.readouterr().err
+        assert f"Note: {store} existed before this operation; it still holds home, " \
+               "a partial leftover that is yours to remove." in err
+
+
+@needs_non_root
+class TestAFailedInPlaceConvertLeavesTheRootAsFound:
+    """The root ``workset.yaml`` alone reads as standalone: a leftover one makes every retry
+    answer "Nothing to do"."""
+
+    def test_a_late_failure_restores_the_root_and_the_retry_converts(self, env, monkeypatch):
+        config, std, tmp_home = env
+        pdir = _primary(env)
+        (pdir / ".gitignore").write_text("mine\n")
+        before = _tree(pdir)
+
+        def boom(*a, **kw):
+            raise RuntimeError("late")
+
+        with monkeypatch.context() as m:
+            m.setattr(lc, "_carry_vault_contents", boom)
+            with pytest.raises(RuntimeError, match="late"):
+                execute_lifecycle(
+                    resolve_lifecycle_target(str(pdir), std, config),
+                    TargetSpec(location=lc.INPLACE, ownership="standalone"),
+                    std, config, confirm=lambda: True)
+        assert _tree(pdir) == before
+        execute_lifecycle(resolve_lifecycle_target(str(pdir), std, config),
+                          TargetSpec(location=lc.INPLACE, ownership="standalone"),
+                          std, config, confirm=lambda: True)
+        assert (pdir / "workspace" / ".gitignore").read_text() == "mine\n"
+        assert (pdir / "workset.yaml").is_file()
+
+    def test_a_read_only_directory_is_swept_in_and_lifted_out(self, env):
+        config, std, tmp_home = env
+        pdir = _primary(env)
+        execute_lifecycle(resolve_lifecycle_target(str(pdir), std, config),
+                          TargetSpec(location=lc.INPLACE, ownership="standalone"),
+                          std, config, confirm=lambda: True)
+        ro = pdir / "workspace" / "ro"
+        assert (ro / "r.txt").read_text() == "r"
+        assert stat.S_IMODE(ro.stat().st_mode) == 0o555
+        execute_lifecycle(resolve_lifecycle_target(str(pdir), std, config),
+                          TargetSpec(location=lc.INPLACE, ownership="default"),
+                          std, config, confirm=lambda: True)
+        assert (pdir / "ro" / "r.txt").read_text() == "r"
+        assert stat.S_IMODE((pdir / "ro").stat().st_mode) == 0o555
+        assert not (pdir / "workspace").exists()
+
+    def test_a_failed_sweep_puts_a_read_only_directory_back(self, env, monkeypatch):
+        config, std, tmp_home = env
+        pdir = _primary(env)
+        before = _tree(pdir)
+
+        def boom(*a, **kw):
+            raise RuntimeError("late")
+
+        monkeypatch.setattr(lc, "_copy_metadata", boom)
+        with pytest.raises(RuntimeError, match="late"):
+            execute_lifecycle(resolve_lifecycle_target(str(pdir), std, config),
+                              TargetSpec(location=lc.INPLACE, ownership="standalone"),
+                              std, config, confirm=lambda: True)
+        assert _tree(pdir) == before
+
+
+class TestLeftoversInAnExistingDirectoryAreNamed:
+
+    def test_only_what_the_op_added_is_named(self, tmp_path, capsys):
+        (tmp_path / "theirs.txt").write_text("theirs")
+        before = lc._entry_names(tmp_path)
+        (tmp_path / "added").mkdir()
+        lc.note_added_leftovers(tmp_path, before)
+        assert capsys.readouterr().err == (
+            f"Note: {tmp_path} existed before this operation; it still holds added, "
+            "a partial leftover that is yours to remove.\n")
+        assert (tmp_path / "theirs.txt").read_text() == "theirs"
+
+    def test_nothing_added_says_nothing(self, tmp_path, capsys):
+        (tmp_path / "theirs.txt").write_text("theirs")
+        lc.note_added_leftovers(tmp_path, lc._entry_names(tmp_path))
+        assert capsys.readouterr().err == ""
+
+    def test_an_existing_workset_leaf_is_kept_and_named(self, env, capsys):
+        config, std, tmp_home = env
+        ws = create_workset("ws1", tmp_home / "ws1_root", std)
+        leaf = ws.projects_dir / "alpha"
+        leaf.mkdir(parents=True)
+        (leaf / "theirs.txt").write_text("theirs")
+        existed = lc._existing_member_leaves(ws, "alpha")
+        (leaf / "home").mkdir()
+        lc._unwind_target_member(ws, "alpha", existed)
+        assert (leaf / "theirs.txt").read_text() == "theirs"
+        assert f"Note: {leaf} existed before this operation; it still holds home, " \
+               in capsys.readouterr().err
 
 
 @needs_non_root
@@ -262,7 +360,7 @@ class TestAFailedDuplicateRemovesItsDestination:
         assert not dst.exists()
         assert _tree(pdir) == before
 
-    def test_a_duplicate_into_an_existing_directory_keeps_it(self, env, monkeypatch):
+    def test_a_duplicate_into_an_existing_directory_keeps_it(self, env, monkeypatch, capsys):
         config, std, tmp_home = env
         pdir = _primary(env)
         dst = tmp_home / "copy"
@@ -272,3 +370,6 @@ class TestAFailedDuplicateRemovesItsDestination:
         with pytest.raises(KeyboardInterrupt):
             dup.run_duplicate(self._args(pdir, dst))
         assert (dst / "theirs.txt").read_text() == "theirs"
+        err = capsys.readouterr().err
+        assert f"Note: {dst} existed before this operation; it still holds " in err
+        assert "theirs.txt" not in err

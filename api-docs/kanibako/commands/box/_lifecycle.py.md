@@ -29,6 +29,7 @@ def plan_box_mounted_links(name: str, bind_sources: frozenset[str] | None, trees
 def repoint_box_mounted_links(links: list[MountedLink], relocated: Mapping[Path, Path], landed: ProjectState) -> None
 def copy_into_workset(ws: Workset, proj_name: str, metadata_path: Path, shell_path: Path, source_path: Path, source_mode: BoxMode, *, copy_workspace: bool, std: StandardPaths) -> None
 def execute_lifecycle(state: ProjectState, spec: TargetSpec, std: StandardPaths, config: BootstrapConfig | None=None, *, force: bool=False, confirm: Callable[[], bool] | None=None) -> ProjectState
+def note_added_leftovers(path: Path, before: frozenset[str] | None) -> None
 def run_remap(args) -> int
 def run_move(args) -> int
 def run_convert(args) -> int
@@ -53,7 +54,9 @@ def _name_held_in_target_workset(target_mode: BoxMode | None, target_ws: Workset
 def _validate(state: ProjectState, spec: TargetSpec, std: StandardPaths, config: BootstrapConfig, *, force: bool, cwd: Path) -> dict
 def _run_steps(state: ProjectState, spec: TargetSpec, std: StandardPaths, config: BootstrapConfig, plan: dict, unwind: _Unwind) -> ProjectState
 def _retire_old_workspace(old: Path, landed: Path) -> None
-def _leftover_entries(path: Path) -> str
+def _leftover_entries(path: Path, before: Collection[str]=()) -> str
+def _entry_names(path: Path) -> frozenset[str] | None
+def _arm_leftover_note(unwind: _Unwind, path: Path) -> None
 def _apply_ownership_and_markers(state: ProjectState, std: StandardPaths, config: BootstrapConfig, unwind: _Unwind, *, target_mode: BoxMode, target_ws: Workset | None, new_name: str, new_workspace: Path, relocating: bool, dest: Path | None, requested_name: str='') -> ProjectState
 def _unwind_box_tree(path: Path) -> None
 def _unwind_created_root(path: Path) -> None
@@ -82,7 +85,10 @@ def _standalone_root_artifacts(root: Path, *, early: EarlyScope) -> list[tuple[s
 def _artifact_claiming(child: Path, artifacts: list[tuple[str, Path, bool]]) -> tuple[str, Path, bool] | None
 def _consolidate_workspace_subdir(root: Path, workspace_subdir: Path, unwind: _Unwind, *, early: EarlyScope) -> None
 def _undo_consolidate(src_dir: Path, dest_dir: Path, moved: list[Path]) -> None
+def _move_entry(src: Path, dst: Path) -> None
+def _prune_empty_dirs(path: Path, above: Path) -> None
 def _unconsolidate_workspace_subdir(workspace_subdir: Path, root: Path, unwind: _Unwind) -> None
+def _arm_standalone_root_undo(std: StandardPaths, config: BootstrapConfig, root: Path, workspace_subdir: Path, unwind: _Unwind) -> tuple[Callable[[], None], Callable[[str], None]]
 def _to_standalone(state: ProjectState, std: StandardPaths, config: BootstrapConfig, unwind: _Unwind, *, new_name: str, root: Path) -> ProjectState
 def _to_workset(state: ProjectState, std: StandardPaths, config: BootstrapConfig, unwind: _Unwind, *, target_ws: Workset, new_name: str, new_workspace: Path, relocating: bool, dest: Path | None) -> ProjectState
 def _state_ws_token(state: ProjectState) -> str
@@ -92,8 +98,8 @@ def _relocate_snapshot_store(state: ProjectState, new_state: ProjectState) -> No
 def _safe_unregister(std: StandardPaths, name: str) -> None
 def _safe_register_membership(std: StandardPaths, name: str, workspace: Path) -> None
 def _member_leaves(ws: Workset, name: str) -> tuple[Path | None, Path, Path | None, Path | None]
-def _existing_member_leaves(ws: Workset, name: str) -> frozenset[Path]
-def _unwind_target_member(ws: Workset, name: str, existed: frozenset[Path]) -> None
+def _existing_member_leaves(ws: Workset, name: str) -> dict[Path, frozenset[str] | None]
+def _unwind_target_member(ws: Workset, name: str, existed: Mapping[Path, frozenset[str] | None]) -> None
 def _dispose_stash(stash: Path) -> None
 def _convert_target_flags(args) -> list[str]
 def _ownership_from_args(args) -> str | _Sentinel
