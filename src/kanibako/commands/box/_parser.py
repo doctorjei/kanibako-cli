@@ -1170,14 +1170,6 @@ def run_create(args: argparse.Namespace) -> int:
     standalone_name = (getattr(args, "name", None) or "") if standalone_register else ""
     effective_path = _create_target(args)
 
-    # A standalone box is named by its directory, not by --name: refuse, don't drop.
-    if args.standalone and getattr(args, "name", None):
-        try:
-            refuse_nonleaf_standalone_name(args.name, effective_path)
-        except ProjectError as e:
-            print(f"Error: {e}", file=sys.stderr)
-            return 1
-
     # ⚑ BEFORE ANY WRITE
     if args.standalone:
         # A standalone name re-derives its leaf from the directory at every lookup.
