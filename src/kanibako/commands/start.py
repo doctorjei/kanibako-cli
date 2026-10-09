@@ -3967,7 +3967,8 @@ def _run_container(
                 and proj.vault_rw_path.is_dir()):
             from kanibako.snapshots import auto_snapshot, detect_snapshot_strategy
             strategy = detect_snapshot_strategy(proj.vault_rw_path)
-            snap = auto_snapshot(proj.vault_rw_path, strategy=strategy)
+            snap = auto_snapshot(proj.vault_rw_path, box_name=proj.name,
+                                strategy=strategy)
             if snap:
                 print(f"Vault snapshot: {snap.name}", file=sys.stderr)
 

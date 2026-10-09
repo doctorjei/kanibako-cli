@@ -145,7 +145,7 @@ class TestVaultList:
         proj = _init_project_with_vault(config_file, tmp_home, credentials_dir)
 
         from kanibako.snapshots import create_snapshot
-        create_snapshot(proj.vault_rw_path)
+        create_snapshot(proj.vault_rw_path, box_name=proj.name)
 
         parser = build_parser()
         args = parser.parse_args(["box", "vault", "list", str(proj.project_path)])
@@ -163,7 +163,7 @@ class TestVaultList:
         proj = _init_project_with_vault(config_file, tmp_home, credentials_dir)
 
         from kanibako.snapshots import create_snapshot
-        snap = create_snapshot(proj.vault_rw_path)
+        snap = create_snapshot(proj.vault_rw_path, box_name=proj.name)
 
         parser = build_parser()
         args = parser.parse_args(["box", "vault", "list", "-q", str(proj.project_path)])
@@ -188,7 +188,7 @@ class TestVaultRestore:
         proj = _init_project_with_vault(config_file, tmp_home, credentials_dir)
 
         from kanibako.snapshots import create_snapshot
-        snap = create_snapshot(proj.vault_rw_path)
+        snap = create_snapshot(proj.vault_rw_path, box_name=proj.name)
 
         # Modify data
         (proj.vault_rw_path / "data.txt").write_text("modified")
@@ -229,7 +229,7 @@ class TestVaultRestoreRefusal:
     ):
         proj = _init_project_with_vault(config_file, tmp_home, credentials_dir)
         from kanibako.snapshots import create_snapshot
-        create_snapshot(proj.vault_rw_path)
+        create_snapshot(proj.vault_rw_path, box_name=proj.name)
         (proj.vault_rw_path / "keepme.txt").write_text("must-survive")
 
         parser = build_parser()
@@ -247,7 +247,7 @@ class TestVaultRestoreRefusal:
     ):
         proj = _init_project_with_vault(config_file, tmp_home, credentials_dir)
         from kanibako.snapshots import create_snapshot
-        create_snapshot(proj.vault_rw_path)
+        create_snapshot(proj.vault_rw_path, box_name=proj.name)
         (proj.vault_rw_path / "keepme.txt").write_text("must-survive")
         outside = tmp_home / "evil_abs"
         outside.mkdir()
@@ -290,7 +290,7 @@ class TestVaultPrune:
 
         # Create multiple directory snapshots
         import shutil
-        versions = proj.vault_rw_path.parent / ".versions"
+        versions = proj.vault_rw_path.parent / ".versions" / proj.name
         versions.mkdir(parents=True, exist_ok=True)
         for i in range(5):
             name = f"2026010{i + 1}T000000Z"
@@ -322,7 +322,7 @@ def _no_stdin(*_args, **_kwargs):
 
 def _make_snapshots(proj, count: int = 5) -> None:
     import shutil
-    versions = proj.vault_rw_path.parent / ".versions"
+    versions = proj.vault_rw_path.parent / ".versions" / proj.name
     versions.mkdir(parents=True, exist_ok=True)
     for i in range(count):
         snap_dir = versions / f"2026010{i + 1}T000000Z"
@@ -340,7 +340,7 @@ class TestVaultRestoreConfirms:
         proj = _init_project_with_vault(config_file, tmp_home, credentials_dir)
 
         from kanibako.snapshots import create_snapshot
-        snap = create_snapshot(proj.vault_rw_path)
+        snap = create_snapshot(proj.vault_rw_path, box_name=proj.name)
         (proj.vault_rw_path / "data.txt").write_text("modified")
 
         monkeypatch.setattr("builtins.input", lambda *_a: "no")
@@ -360,7 +360,7 @@ class TestVaultRestoreConfirms:
         proj = _init_project_with_vault(config_file, tmp_home, credentials_dir)
 
         from kanibako.snapshots import create_snapshot
-        snap = create_snapshot(proj.vault_rw_path)
+        snap = create_snapshot(proj.vault_rw_path, box_name=proj.name)
         (proj.vault_rw_path / "data.txt").write_text("modified")
 
         def _eof(*_a):
@@ -382,7 +382,7 @@ class TestVaultRestoreConfirms:
         proj = _init_project_with_vault(config_file, tmp_home, credentials_dir)
 
         from kanibako.snapshots import create_snapshot
-        snap = create_snapshot(proj.vault_rw_path)
+        snap = create_snapshot(proj.vault_rw_path, box_name=proj.name)
         (proj.vault_rw_path / "data.txt").write_text("modified")
 
         monkeypatch.setattr("builtins.input", lambda *_a: "yes")
@@ -400,7 +400,7 @@ class TestVaultRestoreConfirms:
         proj = _init_project_with_vault(config_file, tmp_home, credentials_dir)
 
         from kanibako.snapshots import create_snapshot
-        snap = create_snapshot(proj.vault_rw_path)
+        snap = create_snapshot(proj.vault_rw_path, box_name=proj.name)
         (proj.vault_rw_path / "data.txt").write_text("modified")
 
         monkeypatch.setattr("builtins.input", _no_stdin)
@@ -437,7 +437,7 @@ class TestVaultPruneConfirms:
     ):
         proj = _init_project_with_vault(config_file, tmp_home, credentials_dir)
         _make_snapshots(proj)
-        versions = proj.vault_rw_path.parent / ".versions"
+        versions = proj.vault_rw_path.parent / ".versions" / proj.name
 
         monkeypatch.setattr("builtins.input", lambda *_a: "no")
         parser = build_parser()
@@ -455,7 +455,7 @@ class TestVaultPruneConfirms:
     ):
         proj = _init_project_with_vault(config_file, tmp_home, credentials_dir)
         _make_snapshots(proj)
-        versions = proj.vault_rw_path.parent / ".versions"
+        versions = proj.vault_rw_path.parent / ".versions" / proj.name
 
         monkeypatch.setattr("builtins.input", lambda *_a: "yes")
         parser = build_parser()
@@ -471,7 +471,7 @@ class TestVaultPruneConfirms:
                                 monkeypatch):
         proj = _init_project_with_vault(config_file, tmp_home, credentials_dir)
         _make_snapshots(proj)
-        versions = proj.vault_rw_path.parent / ".versions"
+        versions = proj.vault_rw_path.parent / ".versions" / proj.name
 
         monkeypatch.setattr("builtins.input", _no_stdin)
         parser = build_parser()

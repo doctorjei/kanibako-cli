@@ -13,6 +13,12 @@ snapshots:
 automatically.  Automatic snapshots can be triggered before each container
 launch.
 
+⚑ SNAPSHOTS ARE PER-BOX: they live in ``.versions/<box>/``, not in a flat
+``.versions/``.  The flat store was shared by every box under one vault base, so
+one box could list, prune, or RESTORE another box's snapshots.  Legacy entries
+that cannot be attributed to a box move to ``.versions/unsorted/``, where they
+are listed but never deleted.
+
 ⚑ SYMLINKS ARE COPIED VERBATIM, both ways, under the rule in
 :mod:`kanibako.tree_copy` (``cp -a`` and ``rsync -a`` already keep them), so a
 restore puts back every link with exactly the text it had.
@@ -21,6 +27,7 @@ restore puts back every link with exactly the text it had.
 from __future__ import annotations
 
 import os
+import re
 import shutil
 import stat
 import subprocess
@@ -43,6 +50,15 @@ class UnsafeSnapshotNameError(KanibakoError):
 
 
 
+class ForeignSnapshotError(KanibakoError):
+    """A snapshot that exists, but belongs to a DIFFERENT box's store.
+
+    Raised by :func:`restore_snapshot` so a timestamp picked out of another box's
+    listing cannot silently replace this box's vault.  The message names the
+    owning box, because that is the one thing the user cannot see from the name.
+    """
+
+
 # Default maximum number of snapshots to retain.
 _DEFAULT_MAX_SNAPSHOTS = 5
 
@@ -53,8 +69,77 @@ _DEFAULT_MAX_SNAPSHOTS = 5
 
 
 def _versions_dir(vault_rw_path: Path) -> Path:
-    """Return the .versions/ directory for a vault share-rw path."""
+    """Return the SHARED ``.versions/`` base for a vault share-rw path.
+
+    ⚑ This is the base, NOT a box's store. Snapshots live one level down, in
+    :func:`_box_store`; a box must never read or write this directory directly.
+    """
     return vault_rw_path.parent / ".versions"
+
+
+#: Legacy snapshots that could not be attributed to any box land here. Listed, never deleted.
+UNSORTED_DIRNAME = "unsorted"
+
+#: A legacy snapshot directory name: the bare UTC timestamp, and nothing else.
+_LEGACY_TS_RE = re.compile(r"^\d{8}T\d{6}Z$")
+
+
+def _box_store(vault_rw_path: Path, box_name: str) -> Path:
+    """Return *box_name*'s OWN snapshot store: ``.versions/<box>/``.
+
+    Every box under one vault base used to share a single flat ``.versions/`` keyed
+    by timestamp alone, so one box could list, prune, or RESTORE another box's
+    snapshots.  The per-box store is what closes that; the base itself is only
+    ever a container, never a snapshot directory.
+    """
+    if not box_name or not box_name.strip() or Path(box_name).name != box_name:
+        raise UnsafeSnapshotNameError(
+            f"Refused box name {box_name!r}: a store key must be a plain name."
+        )
+    return _versions_dir(vault_rw_path) / box_name
+
+
+def migrate_legacy_versions(
+    vault_rw_path: Path, *, box_name: str, store_exclusive: bool = False,
+) -> dict[str, list[str]]:
+    """Split pre-per-box ``.versions/<timestamp>`` entries out of the SHARED base.
+
+    The old flat store never recorded WHO wrote a snapshot, so attribution is
+    only possible when the store could not have been written by anyone else: a
+    standalone box's ``.versions`` sits inside its own project tree, so its
+    legacy entries are provably its own (``store_exclusive=True``).  Everywhere
+    else -- and every same-second chimera, which by construction holds two boxes'
+    files -- the owner is unknown, so the entry goes to ``unsorted/`` where it is
+    listed but never pruned.  Idempotent: once split, no top-level timestamp
+    directory remains to move.
+
+    Returns ``{"attributed": [...], "unsorted": [...]}`` of moved entry names.
+    """
+    versions = _versions_dir(vault_rw_path)
+    moved: dict[str, list[str]] = {"attributed": [], "unsorted": []}
+    if not versions.is_dir():
+        return moved
+    legacy = [
+        entry for entry in versions.iterdir()
+        if entry.is_dir() and not entry.is_symlink()
+        and _LEGACY_TS_RE.match(entry.name)
+    ]
+    if not legacy:
+        return moved
+    target = _box_store(vault_rw_path, box_name) if store_exclusive \
+        else versions / UNSORTED_DIRNAME
+    target.mkdir(parents=True, exist_ok=True)
+    bucket = "attributed" if store_exclusive else "unsorted"
+    for entry in sorted(legacy, key=lambda p: p.name):
+        dest = target / entry.name
+        if dest.exists():
+            dest = target / f"{entry.name}-{box_name}"
+        shutil.move(str(entry), str(dest))
+        moved[bucket].append(entry.name)
+        logger.info(
+            "Migrated legacy vault snapshot %s to %s.", entry.name, dest.relative_to(versions)
+        )
+    return moved
 
 
 def _snapshot_child(versions: Path, name: str) -> Path:
@@ -194,10 +279,29 @@ def _snapshot_hardlink(vault_rw_path: Path, versions: Path, ts: str) -> Path:
 # ---------------------------------------------------------------------------
 
 
+def _unique_snapshot_name(store: Path, ts: str) -> str:
+    """A snapshot name in *store* that does not collide with an existing one.
+
+    The timestamp is second-resolution, so two snapshots of the SAME box inside
+    one second land on the same name -- and neither strategy handles that safely:
+    ``cp --reflink`` copies the vault INTO the existing directory (nesting it a
+    level), and ``rsync`` merges the new files into it.  ``restore`` makes this
+    reachable in ordinary use, because its pre-restore safety copy is taken in
+    the same second as a snapshot the user just made.  A suffixed name keeps both
+    copies whole; ``list`` falls back to showing the raw name for the suffix.
+    """
+    if not (store / ts).exists():
+        return ts
+    n = 2
+    while (store / f"{ts}-{n}").exists():
+        n += 1
+    return f"{ts}-{n}"
+
+
 def create_snapshot(
-    vault_rw_path: Path, strategy: str = "hardlink",
+    vault_rw_path: Path, *, box_name: str, strategy: str = "hardlink",
 ) -> Path | None:
-    """Create a directory snapshot using the given strategy.
+    """Create a directory snapshot of *vault_rw_path* in *box_name*'s own store.
 
     Returns the path to the snapshot directory, or ``None`` if the directory
     is empty (nothing to snapshot).
@@ -210,30 +314,26 @@ def create_snapshot(
     if not contents:
         return None
 
-    versions = _versions_dir(vault_rw_path)
-    versions.mkdir(parents=True, exist_ok=True)
+    store = _box_store(vault_rw_path, box_name)
+    store.mkdir(parents=True, exist_ok=True)
 
-    ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    ts = _unique_snapshot_name(
+        store, datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    )
 
     if strategy == "reflink":
-        return _snapshot_reflink(vault_rw_path, versions, ts)
-    return _snapshot_hardlink(vault_rw_path, versions, ts)
+        return _snapshot_reflink(vault_rw_path, store, ts)
+    return _snapshot_hardlink(vault_rw_path, store, ts)
 
 
-def list_snapshots(vault_rw_path: Path) -> list[tuple[str, str, int]]:
-    """List snapshots for *vault_rw_path*.
-
-    Returns a list of ``(name, timestamp_iso, size_bytes)`` sorted by time
-    (oldest first).  Only directory snapshots (reflink / hardlink) are listed.
-    """
-    versions = _versions_dir(vault_rw_path)
-    if not versions.is_dir():
+def _snapshot_entries(store: Path) -> list[tuple[str, str, int]]:
+    """Describe the directory snapshots directly inside *store* (oldest first)."""
+    if not store.is_dir():
         return []
-
     snapshots: list[tuple[str, str, int]] = []
-    for entry in sorted(versions.iterdir()):
+    for entry in sorted(store.iterdir()):
         name = entry.name
-        if entry.is_dir():
+        if entry.is_dir() and not entry.is_symlink():
             # Directory snapshot (reflink or hardlink).
             try:
                 dt = datetime.strptime(name, "%Y%m%dT%H%M%SZ")
@@ -252,28 +352,94 @@ def list_snapshots(vault_rw_path: Path) -> list[tuple[str, str, int]]:
     return snapshots
 
 
-def restore_snapshot(vault_rw_path: Path, snapshot_name: str) -> None:
-    """Restore *vault_rw_path* from the named directory snapshot.
+def list_snapshots(vault_rw_path: Path, *, box_name: str) -> list[tuple[str, str, int]]:
+    """List *box_name*'s own snapshots -- and only its own.
 
-    The current contents of share-rw are replaced with the snapshot contents.
-    Raises :class:`UnsafeSnapshotNameError` if *snapshot_name* is not a direct
-    child of the snapshots dir, ``FileNotFoundError`` if it does not exist.
-
-    The restore is rollback-safe: the snapshot contents are first built in
-    a temporary staging directory, the live contents are moved aside to a
-    backup, and only then are the staged contents swapped into place.  If
-    anything fails mid-way the live contents are restored from the backup,
-    so a partial restore can never destroy pre-existing data.  ``vault_rw_path``
-    itself (which may be a mount point) is never removed -- only its contents
-    are swapped.
+    Returns a list of ``(name, timestamp_iso, size_bytes)`` sorted by time
+    (oldest first).  Only directory snapshots (reflink / hardlink) are listed.
     """
+    return _snapshot_entries(_box_store(vault_rw_path, box_name))
+
+
+def list_unsorted(vault_rw_path: Path) -> list[tuple[str, str, int]]:
+    """List legacy snapshots whose owning box could not be proven.
+
+    These are surfaced so the user knows the data exists, but they are never
+    counted by ``prune`` and never restored by name -- see
+    :func:`migrate_legacy_versions`.
+    """
+    return _snapshot_entries(_versions_dir(vault_rw_path) / UNSORTED_DIRNAME)
+
+
+def _find_snapshot_owner(vault_rw_path: Path, snapshot_name: str) -> str | None:
+    """Which box's store (or ``unsorted``) holds *snapshot_name*, if any."""
     versions = _versions_dir(vault_rw_path)
-    snapshot = _snapshot_child(versions, snapshot_name)
+    if not versions.is_dir():
+        return None
+    for entry in sorted(versions.iterdir()):
+        if not entry.is_dir() or entry.is_symlink():
+            continue
+        if (entry / snapshot_name).is_dir():
+            return entry.name
+    return None
+
+
+def restore_snapshot(
+    vault_rw_path: Path, snapshot_name: str, *, box_name: str,
+    store_exclusive: bool = False,
+) -> Path | None:
+    """Restore *vault_rw_path* from *snapshot_name* in *box_name*'s own store.
+
+    Two safety properties the flat shared store did not have:
+
+    * **A foreign snapshot is refused.** A timestamp that lives in another box's
+      store raises :class:`ForeignSnapshotError` naming that box, instead of
+      replacing this box's vault with someone else's data.
+    * **The restore is undoable.** The live contents are snapshotted into this
+      box's store FIRST, so the copy the swap displaces is never the only copy.
+
+    The restore is also rollback-safe: the new contents are built in a temporary
+    staging directory, the live contents are moved aside to a backup, and only
+    then are the staged contents swapped into place.  If anything fails mid-way
+    the live contents are restored from the backup, so a partial restore can
+    never destroy pre-existing data.  ``vault_rw_path`` itself (which may be a
+    mount point) is never removed -- only its contents are swapped.
+
+    Returns the pre-restore safety snapshot's path, or ``None`` if the vault was
+    empty so there was nothing to preserve.
+    """
+    migrate_legacy_versions(
+        vault_rw_path, box_name=box_name, store_exclusive=store_exclusive
+    )
+    store = _box_store(vault_rw_path, box_name)
+    snapshot = _snapshot_child(store, snapshot_name)
 
     if not snapshot.is_dir():
+        owner = _find_snapshot_owner(vault_rw_path, snapshot_name)
+        if owner is not None:
+            where = f"{store.parent / UNSORTED_DIRNAME / snapshot_name}"
+            extra = (
+                f" It is pre-split data of unknown owner, kept at {where} and "
+                f"never restored by name."
+                if owner == UNSORTED_DIRNAME else ""
+            )
+            raise ForeignSnapshotError(
+                f"Snapshot '{snapshot_name}' belongs to '{owner}', not to box "
+                f"'{box_name}'. Snapshots are per-box -- run 'kanibako box vault "
+                f"list' to see '{box_name}'s own snapshots.{extra}"
+            )
         raise FileNotFoundError(f"Snapshot not found: {snapshot_name}")
 
     vault_rw_path.mkdir(parents=True, exist_ok=True)
+
+    # Preserve the live contents BEFORE displacing them, so a restore that turns
+    # out to be the wrong one can itself be undone.  If that copy cannot be made
+    # the restore does not run at all: replacing user data and leaving no copy is
+    # exactly what this step exists to prevent.
+    safety = create_snapshot(
+        vault_rw_path, box_name=box_name,
+        strategy=detect_snapshot_strategy(vault_rw_path),
+    )
 
     # Stage the new contents in a temp sibling of vault_rw_path so the final
     # swap is a same-filesystem rename.
@@ -319,20 +485,28 @@ def restore_snapshot(vault_rw_path: Path, snapshot_name: str) -> None:
                 shutil.move(str(backup / name), str(vault_rw_path / name))
             raise
     finally:
+        # The backup is disposable here because the pre-restore snapshot above
+        # already holds these contents in the box's store; removing the temp copy
+        # no longer destroys the only copy of anything.
         shutil.rmtree(staging, ignore_errors=True)
         shutil.rmtree(backup, ignore_errors=True)
 
+    return safety
 
-def snapshots_to_prune(vault_rw_path: Path, max_keep: int) -> list[Path]:
+
+def snapshots_to_prune(
+    vault_rw_path: Path, max_keep: int, *, box_name: str,
+) -> list[Path]:
     """What :func:`prune_snapshots` removes for *max_keep*, oldest first.
 
-    Any symlink there is skipped: never counted, never deleted.
+    Only *box_name*'s own store is considered -- never another box's, and never
+    ``unsorted/``.  Any symlink there is skipped: never counted, never deleted.
     """
-    versions = _versions_dir(vault_rw_path)
-    if not versions.is_dir():
+    store = _box_store(vault_rw_path, box_name)
+    if not store.is_dir():
         return []
     all_snapshots: list[Path] = []
-    for entry in versions.iterdir():
+    for entry in store.iterdir():
         if entry.is_symlink():
             logger.warning("Skipping in prune: %s is a symlink.", entry)
         elif entry.is_dir():
@@ -344,14 +518,14 @@ def snapshots_to_prune(vault_rw_path: Path, max_keep: int) -> list[Path]:
 
 
 def prune_snapshots(
-    vault_rw_path: Path, max_keep: int = _DEFAULT_MAX_SNAPSHOTS,
+    vault_rw_path: Path, max_keep: int = _DEFAULT_MAX_SNAPSHOTS, *, box_name: str,
 ) -> int:
     """Remove old directory snapshots, keeping at most *max_keep*.
 
     Returns the number of snapshots removed.
     """
     removed = 0
-    for old in snapshots_to_prune(vault_rw_path, max_keep):
+    for old in snapshots_to_prune(vault_rw_path, max_keep, box_name=box_name):
         # Pruning is HOUSEKEEPING and runs inside the launch path
         # (``auto_snapshot`` <- ``start._run_container``).  Failing to reclaim an
         # OLD snapshot is never a reason to refuse to start a box, so a failure
@@ -374,15 +548,16 @@ def prune_snapshots(
 def auto_snapshot(
     vault_rw_path: Path,
     *,
+    box_name: str,
     strategy: str = "hardlink",
     max_keep: int = _DEFAULT_MAX_SNAPSHOTS,
 ) -> Path | None:
-    """Create a snapshot and prune old ones.
+    """Create a snapshot in *box_name*'s store and prune that store's old ones.
 
     Convenience wrapper combining ``create_snapshot`` + ``prune_snapshots``.
     Returns the new snapshot path, or ``None`` if share-rw was empty.
     """
-    result = create_snapshot(vault_rw_path, strategy=strategy)
+    result = create_snapshot(vault_rw_path, box_name=box_name, strategy=strategy)
     if result is not None:
-        prune_snapshots(vault_rw_path, max_keep=max_keep)
+        prune_snapshots(vault_rw_path, max_keep=max_keep, box_name=box_name)
     return result
