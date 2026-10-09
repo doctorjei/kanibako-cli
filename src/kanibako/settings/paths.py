@@ -1942,11 +1942,13 @@ class LegacyBox(NamedTuple):
 def stored_legacy_box(std: StandardPaths, typed: str) -> LegacyBox | None:
     """The box registered case-blind under *typed* when its stored name fails the rule.
 
-    Such a name is a PATH designation, so no name lookup reaches it; the caller names
-    its path instead.  Primary boxes are checked before standalone ones.
+    Such a name is a PATH designation, so no name lookup reaches it; the caller names its
+    path instead, unless *typed* is an existing directory: that path wins.  Primary first.
     """
     from kanibako.project import registry_store
 
+    if Path(typed).is_dir():
+        return None
     primary = load_primary_boxes(std.primary_workset, early=_early_scope(std, BoxMode.primary))
     for mode, held in (("primary", primary),
                        ("standalone", registry_store.load_standalone(std.registry))):
