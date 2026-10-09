@@ -53,7 +53,7 @@ from kanibako.runtime.container import (
 )
 from kanibako.identifiers import agent_node_case, find_identifier
 from kanibako.errors import (AmbiguousNameError, ConfigError, ContainerError,
-                             KanibakoError, ProjectError)
+                             DerivedBoxNameError, KanibakoError, ProjectError)
 from kanibako.log import get_logger
 from kanibako.runtime.rig_registry import load_registry, registry_path
 from kanibako.runtime.rig_resolve import resolve_rig
@@ -1470,7 +1470,8 @@ def _resolve_existing_box(
             std, config, project_dir,
             initialize=False, register=True, warn=False,
         )
-    except AmbiguousNameError:
+    except (AmbiguousNameError, DerivedBoxNameError):
+        # A box that exists but cannot be named is not "no box": its refusal surfaces.
         raise
     except ProjectError:
         # A bare token that names no registered box (initialize=False refuses to

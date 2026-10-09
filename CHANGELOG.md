@@ -24,6 +24,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   refused, naming the character. An existing non-ASCII box is warned about and found by its path; rename it with
   `kanibako box move <path> <new-path> --name <new-name>`.
 
+- **A standalone box's leaf is spelled in ASCII instead of padded with `_`.** Latin letters lose their accents
+  (`café/` → `<kuid>_cafe`, `Zürich Notes/` → `<kuid>_Zurich_Notes`), each run of spaces and punctuation becomes
+  one `_`, and the leaf loses `_`, `-`, and `.` at its ends. A directory name holding a character with no ASCII
+  spelling, such as kanji or kana, is refused: `create --standalone` refuses before writing anything, and every
+  command that finds an existing standalone box by its moved directory refuses with the cure "Rename the directory
+  to an ASCII name (or move it back)."
+
 - **Two working sets can no longer be put on one `workset.logs` directory by accident.** `workset set`,
   `system set`, `workset reset`, `system reset` and `workset create` refuse a change that lands two working sets
   (the default one included) on one logs directory, comparing resolved directories, and name the working sets;

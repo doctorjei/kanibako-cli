@@ -14,10 +14,11 @@ from collections.abc import Iterator
 from pathlib import Path
 from typing import Any, NamedTuple
 
-from kanibako.errors import ConfigError
+from kanibako.errors import ConfigError, DerivedBoxNameError
 from kanibako.project import registry_store, workset_registry
 from kanibako.settings.config import WORKSET_META_FILE, BootstrapConfig
 from kanibako.settings.config_io import load_doc
+from kanibako.settings.messages import CURE_MOVED_LEAF_NOT_ASCII
 from kanibako.settings.paths import (
     BoxMode,
     DetectionResult,
@@ -201,7 +202,9 @@ def standalone_box_name(box_root: Path, registered_name: str | None) -> str:
     LIVE name (P6d) ``<stored workset.kuid>_<current leaf>``, so a MOVED standalone
     keeps its identity.  The kuid comes from the box's own workset.yaml (the workset
     tier for a standalone); a pre-kuid box reads back SENTINEL and falls back to its
-    ``standalone:`` registry KEY (*registered_name*), else the leaf.
+    ``standalone:`` registry KEY (*registered_name*), else the leaf.  Raises
+    :class:`~kanibako.errors.DerivedBoxNameError`, cure included, when the current
+    directory name has no ASCII spelling.
     """
     from kanibako import kuid
     from kanibako.launch import box_identity
@@ -209,7 +212,11 @@ def standalone_box_name(box_root: Path, registered_name: str | None) -> str:
 
     stored_kuid = read_workset_kuid(box_root / WORKSET_META_FILE)
     if stored_kuid != kuid.SENTINEL:
-        return box_identity.compose_standalone_name(stored_kuid, box_root)
+        try:
+            return box_identity.compose_standalone_name(stored_kuid, box_root)
+        except DerivedBoxNameError as e:
+            # ⚑ No fallback name: every door refuses with the one cure.
+            raise DerivedBoxNameError(e.with_cure(CURE_MOVED_LEAF_NOT_ASCII)) from None
     if registered_name is not None:
         return registered_name
     return box_root.name

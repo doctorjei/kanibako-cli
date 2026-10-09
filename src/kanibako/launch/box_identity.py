@@ -17,19 +17,25 @@ from __future__ import annotations
 
 import enum
 import re
+import unicodedata
 from pathlib import Path
 
 from kanibako import kuid
-from kanibako.errors import ProjectError
+from kanibako.errors import DerivedBoxNameError, ProjectError
 from kanibako.identifiers import find_identifier
+from kanibako.settings.messages import ERR_DERIVED_BOX_NAME, ERR_LEAF_NOT_ASCII
 
 # Maximum length of the sanitized leaf component.
 _LEAF_CAP = 32
 # Fallback leaf when the project basename sanitizes to empty.
 _EMPTY_LEAF_FALLBACK = "box"
-# Characters that are NOT replaced during sanitization; the trailing '-' is literal.
+# Characters kept as they are during sanitization; the trailing '-' is literal.
 _LEAF_CHARS = r"A-Za-z0-9._-"
-_SAFE_CHAR_RE = re.compile(rf"[^{_LEAF_CHARS}]")
+# A separator's placeholder; a run holding one, with any ``_`` beside it, becomes one ``_``.
+_SEP = "\0"
+_SEPARATOR_RUN_RE = re.compile(rf"[_{_SEP}]*{_SEP}[_{_SEP}]*")
+# What the leaf loses at either end: a box name may not start with '-' or '.'.
+_LEAF_END_CHARS = "_-."
 # Bound on collision-regeneration attempts before giving up.
 _MAX_REGEN_ATTEMPTS = 1000
 
@@ -143,18 +149,43 @@ def validate_box_name(name: str) -> None:
         raise ProjectError(f"Invalid box name '{name}': {reason}")
 
 
+def _ascii_spelling(ch: str) -> str | None:
+    """*ch*'s ASCII letters once its diacritics are dropped (``é`` → ``e``), else ``None``.
+
+    ⚑ Decomposed one character at a time, and only the ASCII result is used: a kana
+    such as ``が`` decomposes to a non-ASCII base, so it is never split here.
+    """
+    base = "".join(c for c in unicodedata.normalize("NFKD", ch) if not unicodedata.combining(c))
+    return base if base.isascii() and base.isalnum() else None
+
+
 def sanitize_cap(leaf: str) -> str:
     """Sanitize and cap a project-basename *leaf* for a box name, KEEPING its case.
 
-    Non-portable characters become ``_``.  An empty result — an empty or
-    all-illegal basename — falls back to ``"box"``.
+    Latin letters lose their diacritics; whitespace and ASCII punctuation are
+    separators, and each run of them becomes one ``_``.  The ends lose ``_``,
+    ``-`` and ``.``, and an empty result falls back to ``"box"``.  Raises
+    :class:`~kanibako.errors.DerivedBoxNameError` when *leaf* holds a character
+    with no ASCII spelling, such as kanji; each caller adds its cure.
 
     ⚑ The source directory's case is the user's, and it is kept (spec §0,
     ⚑ NAMING RULES).  Only the kuid half of ``<kuid>_<leaf>`` is lowercase; the
     two halves are opposite by design and must not be unified.
     """
-    sanitized = _SAFE_CHAR_RE.sub("_", leaf)[:_LEAF_CAP]
-    return sanitized or _EMPTY_LEAF_FALLBACK
+    parts = []
+    for ch in leaf:
+        if _NAME_CHAR_RE.fullmatch(ch):
+            parts.append(ch)
+        elif ch.isascii() or ch.isspace():
+            parts.append(_SEP)
+        else:
+            spelled = _ascii_spelling(ch)
+            if spelled is None:
+                raise DerivedBoxNameError(ERR_DERIVED_BOX_NAME % (
+                    leaf, ERR_LEAF_NOT_ASCII % f"U+{ord(ch):04X}"))
+            parts.append(spelled)
+    collapsed = _SEPARATOR_RUN_RE.sub("_", "".join(parts)).strip(_LEAF_END_CHARS)
+    return collapsed[:_LEAF_CAP].strip(_LEAF_END_CHARS) or _EMPTY_LEAF_FALLBACK
 
 
 def is_canonical_standalone_name(name: str) -> bool:

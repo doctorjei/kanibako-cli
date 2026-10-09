@@ -247,6 +247,10 @@ ERR_PROJECT_REG_HOME = ("Refusing to register $HOME as a project path: this woul
                         "entire home directory as the workspace.")
 ERR_PROJECT_NAME_USED = "Name '%s' is already registered"
 ERR_DERIVED_BOX_NAME = "The directory name '%s' is not a valid box name: %s."  # name, reason
+ERR_LEAF_NOT_ASCII = ("it holds %s, which kanibako cannot spell in ASCII, and container names " +
+                      "allow only ASCII letters, digits, '_', '-', and '.'")  # the character, as U+XXXX
+CURE_LEAF_NOT_ASCII = "Rename or move the directory to an ASCII name."
+CURE_MOVED_LEAF_NOT_ASCII = "Rename the directory to an ASCII name (or move it back)."
 CURE_DERIVED_BOX_NAME = "Give the box a valid name:\n  %s"  # the command, `--name <new-name>` LAST
 CURE_DERIVED_DUP_DEST = "Pick a destination directory whose name is a valid box name."
 CURE_DERIVED_FORK_NAME = "Pick a fork name that is a valid box name."

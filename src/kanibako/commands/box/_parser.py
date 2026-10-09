@@ -17,7 +17,8 @@ from collections.abc import Callable
 from datetime import datetime, timezone
 from pathlib import Path
 
-from kanibako.launch.box_identity import Designation, classify_designation, validate_box_name
+from kanibako.launch.box_identity import (Designation, classify_designation, sanitize_cap,
+                                          validate_box_name)
 from kanibako.commands.flags import add_null_flag, add_set_force_flag
 from kanibako.settings.config_io import refuse_scalar_sections
 from kanibako.settings.workset_dirkeys import EarlyScope, refuse_inherited_per_owner
@@ -36,6 +37,7 @@ from kanibako.project.workset import (
 )
 from kanibako.settings.messages import (
     CURE_DERIVED_BOX_NAME,
+    CURE_LEAF_NOT_ASCII,
     ERR_WORKSET_MEMBER_NAME_CONFLICT,
     ERR_WORKSET_MEMBER_NAME_TAKEN,
     ERR_WORKSET_MEMBER_NO_RECOVER,
@@ -1168,6 +1170,12 @@ def run_create(args: argparse.Namespace) -> int:
 
     # ⚑ BEFORE ANY WRITE
     if args.standalone:
+        # A standalone name re-derives its leaf from the directory at every lookup.
+        try:
+            sanitize_cap(effective_path.name)
+        except DerivedBoxNameError as e:
+            print(f"Error: {e.with_cure(CURE_LEAF_NOT_ASCII)}", file=sys.stderr)
+            return 1
         refuse_scalar_sections(
             _standalone_settings_files(
                 effective_path, early=_early_scope(std, BoxMode.standalone))[1],
