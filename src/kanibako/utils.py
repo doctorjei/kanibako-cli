@@ -91,10 +91,12 @@ def renders_no_name(box: str) -> bool:
 
 
 def rename_box_cure(mode: str, path: Path | None) -> str:
-    """The command that gives a *mode* box at *path* a new name, by path; bare without one."""
+    """The command that gives a *mode* box at *path* a new name, by path; bare without one.
+
+    A standalone box is named after its directory, so its cure moves the directory."""
     if mode == "standalone":
-        return (f"kanibako box convert {shlex.quote(str(path))} --standalone --name <new-name>"
-                if path else "kanibako box convert --standalone --name <new-name>")
+        return (f"kanibako box move {shlex.quote(str(path))} <new-path>"
+                if path else "kanibako box move <new-path>")
     return (f"kanibako box move {shlex.quote(str(path))} <new-path> --name <new-name>"
             if path else "kanibako box move <new-path> --name <new-name>")
 

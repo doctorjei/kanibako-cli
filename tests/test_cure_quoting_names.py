@@ -4,7 +4,7 @@ The retained-box pair's quoting is pinned in :mod:`tests.test_cure_quoting`.
 This file covers the rest of the family:
 
 * ``rig prep``; ``box set --box``; the reserved-workset ``rm``/``mv``/``cd``
-  steps; the ``unrenderable_box_name_refusal`` convert and move cures; the
+  steps; the ``unrenderable_box_name_refusal`` move cures; the
   retired-key ``box set`` subject;
 * ``_lifecycle``: the ``box convert --move`` / ``box move`` refusals (the
   ``_cure_ref`` operand), the in-place-rename ``box move``, and the
@@ -247,19 +247,15 @@ class TestTheUnrenderableRefusalCuresAreQuoted:
     for a plain word first; what is under test is the PATH operand beside them.
     """
 
-    def test_the_convert_cure_pastes_to_one_argv(self, name, tmp_path):
+    def test_the_standalone_move_cure_pastes_to_one_argv(self, name, tmp_path):
         from kanibako.utils import unrenderable_box_name_refusal
 
         path = Path("/w") / name
         text = unrenderable_box_name_refusal("-droste", "standalone", path)
 
-        assert f"kanibako box convert {shlex.quote(str(path))}" in text
-        cure = _line(text, "kanibako box convert").replace("<new-name>", "mynew")
-        _assert_inert(
-            cure,
-            ["box", "convert", str(path), "--standalone", "--name", "mynew"],
-            tmp_path / "paste",
-        )
+        assert f"kanibako box move {shlex.quote(str(path))}" in text
+        cure = _line(text, "kanibako box move").replace("<new-path>", "/w/moved")
+        _assert_inert(cure, ["box", "move", str(path), "/w/moved"], tmp_path / "paste")
 
     def test_the_move_cure_pastes_to_one_argv(self, name, tmp_path):
         from kanibako.utils import unrenderable_box_name_refusal

@@ -378,10 +378,10 @@ class TestStartUnrenderableBoxNameRefusal:
             self._text("named")
         )
 
-    def test_a_standalone_box_is_cured_by_converting_it_in_place(self):
+    def test_a_standalone_box_is_cured_by_moving_its_directory(self):
         text = self._text("standalone")
-        assert f"kanibako box convert {self.PATH} --standalone --name <new-name>" in text
-        assert "box move" not in text
+        assert text.endswith(f"\n  kanibako box move {self.PATH} <new-path>")
+        assert "--name" not in text
 
     def test_the_cure_never_addresses_the_box_by_the_refused_name(self):
         """A leading ``-`` is read as a flag, so naming the box would not reach it."""

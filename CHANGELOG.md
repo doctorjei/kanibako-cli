@@ -708,6 +708,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `my project`, reads as a path, so `box rm 'my project'` said the box was not registered. It now says the name
   breaks the rule and prints two commands that reach the box by its path: one removes it, one gives it a valid name.
 
+- **The rename command printed for a standalone box with an invalid name now works.** `start` and `stop` printed
+  `box convert <path> --standalone --name <new-name>`, which is always refused because a standalone box is named after
+  its directory. They and `box rm` now print `box move <path> <new-path>`.
+
 - **A refused `create` on a fresh install no longer leaves the first-run setup behind.** An invalid `--name`
   and the `$HOME` guard now refuse before setup writes `kanibako.cfg` and the data tree.
 

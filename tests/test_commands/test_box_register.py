@@ -441,7 +441,7 @@ class TestPathDesignationIsNeverAName:
         assert run_rm(_rm_args("my sa")) == 1
         assert capsys.readouterr().err.endswith(
             f"  kanibako box rm '{root}'\n"
-            f"  kanibako box convert '{root}' --standalone --name <new-name>\n")
+            f"  kanibako box move '{root}' <new-path>\n")
         assert "my sa" in registry_store.load_standalone(std.registry)
 
     @pytest.mark.parametrize("stored, typed", [("strasse", "straße"), ("kit", "\u212ait")])
