@@ -20,7 +20,7 @@ from __future__ import annotations
 import shlex
 import shutil
 from collections.abc import Collection, Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from functools import partial
 from pathlib import Path
 from typing import Any, Callable
@@ -47,7 +47,9 @@ from kanibako.settings.config import (
     write_box_enable_vault,
 )
 from kanibako.identifiers import find_identifier
-from kanibako.errors import BoxNameError, DerivedBoxNameError, ProjectError, WorksetError
+from kanibako.errors import (
+    BoxNameError, DerivedBoxNameError, KanibakoError, ProjectError, WorksetError,
+)
 from kanibako.settings.messages import (
     CURE_MOVED_LEAF_NOT_ASCII,
 )
@@ -170,9 +172,9 @@ class ProjectState:
     #: value would pin an inherited default as a box-scope override the destination
     #: workset can no longer reach.  Mirrors ``box_authored_vault`` in the resolvers.
     box_authored_vault: bool = True
-    #: The host source of every bind mount the box receives; ``None`` when its stored
-    #: settings did not resolve.  Read by :func:`plan_box_mounted_links`.
-    bind_sources: frozenset[str] | None = frozenset()
+    #: The host source of every bind mount the box receives; ``None`` when unknown, which
+    #: is never read as "no binds".  Read by :func:`plan_box_mounted_links`.
+    bind_sources: frozenset[str] | None = None
 
 
 @dataclass
@@ -520,6 +522,18 @@ def box_bind_sources_or_none(std: StandardPaths, proj: ProjectPaths) -> frozense
         return None
 
 
+def _landed_bind_sources(
+    landed: ProjectState, std: StandardPaths, config: BootstrapConfig,
+) -> frozenset[str] | None:
+    """The bind sources of the box *landed* describes, read back from where it landed."""
+    where = (landed.metadata_path if landed.mode is BoxMode.standalone
+             else landed.workspace_path)
+    try:
+        return resolve_lifecycle_target(str(where), std, config).bind_sources
+    except (KanibakoError, OSError):
+        return None
+
+
 def _box_trees(state: ProjectState) -> tuple[Path | None, ...]:
     """The trees a relocation carries, in a fixed order so two states pair by position."""
     return (state.workspace_path, state.metadata_path, state.shell_path,
@@ -548,12 +562,27 @@ def plan_box_mounted_links(
 
 
 def repoint_box_mounted_links(
-    links: list[MountedLink], relocated: Mapping[Path, Path],
+    links: list[MountedLink], relocated: Mapping[Path, Path], landed: ProjectState,
 ) -> None:
-    """Apply :func:`plan_box_mounted_links`'s plan; warn for each link left unchanged."""
+    """Apply :func:`plan_box_mounted_links`'s plan to the links *landed* mounts.
+
+    Warns for each link left unchanged; with *landed*'s bind sources unknown, a Note says
+    the links kept their text.
+    """
     import sys
 
-    for link, reason in repoint_mounted_links(links, relocated):
+    if not links:
+        return
+    if landed.bind_sources is None:
+        print(
+            f"Note: could not resolve the bindings of '{landed.name}' where it landed, so "
+            "every link kept its text; a relative link that is a bind source may stop "
+            f"reaching its target. `kanibako box show --effective {landed.name}` names the "
+            "error.",
+            file=sys.stderr,
+        )
+        return
+    for link, reason in repoint_mounted_links(links, relocated, landed.bind_sources):
         print(f"Warning: could not repoint the mounted link {link} ({reason}); it keeps "
               "its old text and may not reach its target.", file=sys.stderr)
 
@@ -1182,9 +1211,12 @@ def execute_lifecycle(
     unwind = _Unwind()
     try:
         new_state = _run_steps(state, spec, std, config, plan, unwind)
+        if mounted:
+            landed = _landed_bind_sources(new_state, std, config)
+            new_state = replace(new_state, bind_sources=landed)
         repoint_box_mounted_links(mounted, {
             old: new for old, new in zip(_box_trees(state), _box_trees(new_state))
-            if old is not None and new is not None})
+            if old is not None and new is not None}, new_state)
     except BaseException:
         # ⚑⚑ ``BaseException``, not ``Exception``: an interrupt after the release would
         # otherwise skip every compensating action and leave the stash in ``$TMPDIR``.
