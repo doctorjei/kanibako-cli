@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 from kanibako import kuid
-from kanibako.errors import DerivedBoxNameError
+from kanibako.errors import BoxNameError, DerivedBoxNameError
 from kanibako.launch import box_identity
 
 # A fixed VALID kuid prefix (odd parity) and a fixed INVALID one (even parity,
@@ -65,6 +65,10 @@ class TestSanitizeCap:
         ("cafe\u0301", "cafe"),
         ("Zu\u0308rich Notes", "Zurich_Notes"),
         ("cafe\u0301nfd", "cafenfd"),
+        # ...and so do the table letters and kana (romanize.to_ascii, the one spelling).
+        ("Straße", "Strasse"), ("ø", "o"), ("æ", "ae"), ("ı", "i"),
+        ("かにばこ", "kanibako"), ("カニ Notes", "kani_Notes"), ("が", "ga"), ("か\u3099", "ga"),
+        ("ジョン・スミス", "jon-sumisu"),
         # Unicode punctuation and separators are separators.
         ("Bob\u2019s Notes", "Bob_s_Notes"),
         ("a\u2014b\u2026c\uff01d", "a_b_c_d"),
@@ -90,20 +94,15 @@ class TestSanitizeCap:
         assert box_identity.sanitize_cap("x" * 31 + " y") == "x" * 31
 
     @pytest.mark.parametrize("leaf", [
-        "日本語プロジェクト", "my 日本語 app", "東京", "が", "か\u3099",
-        # Letters with no ASCII spelling and symbols (S*) wait for a later lane.
-        "ß", "ø", "æ", "ı", "\u00bd", "\U0001F600",
+        "日本語プロジェクト", "my 日本語 app", "東京", "かに東",
+        # Symbols (S*) and fractions have no spelling.
+        "\u00bd", "\U0001F600",
         # A combining mark with no spelled letter before it.
         "日\u0301", "\u0301x", "_\u0301x",
     ])
     def test_no_ascii_spelling_refuses(self, leaf: str) -> None:
         with pytest.raises(DerivedBoxNameError, match="cannot spell in ASCII"):
             box_identity.sanitize_cap(leaf)
-
-    def test_kana_is_never_split(self) -> None:
-        # NFKD would split が into か + U+3099; the later kana lane needs it whole.
-        assert box_identity._ascii_spelling("が") is None
-        assert box_identity._ascii_spelling("é") == "e"
 
 
 # ---------------------------------------------------------------------------
@@ -598,6 +597,26 @@ class TestValidateBoxName:
     def test_validate_raises_actionable_message(self) -> None:
         with pytest.raises(ProjectError, match=r"Invalid box name 'a/b'"):
             box_identity.validate_box_name("a/b")
+
+
+class TestBoxNameCure:
+    """The cure offers the ASCII spelling (spec §0, ⚑ NAMING RULES), never applies it."""
+
+    @pytest.mark.parametrize("name, cure", [
+        ("café", "Its ASCII spelling works:\n  kanibako create /h/p --name cafe"),
+        ("かに", "Its ASCII spelling works:\n  kanibako create /h/p --name kani"),
+        ("東京", "Give the box a valid name:\n  kanibako create /h/p --name <new-name>"),
+        # A spelling the rule still refuses is no offer.
+        ("my café", "Give the box a valid name:\n  kanibako create /h/p --name <new-name>"),
+        ("-x", "Give the box a valid name:\n  kanibako create /h/p --name <new-name>"),
+    ])
+    def test_cure(self, name: str, cure: str) -> None:
+        assert box_identity.box_name_cure("kanibako create /h/p", name) == cure
+
+    def test_validate_carries_the_name(self) -> None:
+        with pytest.raises(BoxNameError) as exc:
+            box_identity.validate_box_name("かに")
+        assert exc.value.name == "かに"
 
 
 class TestClassifyDesignation:

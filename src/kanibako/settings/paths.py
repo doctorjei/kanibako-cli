@@ -1963,7 +1963,7 @@ def refuse_derived_box_name(base: str) -> None:
     """Refuse *base*, a box name taken from a directory, when it fails the box-name rule."""
     reason = box_name_reason(base)
     if reason is not None:
-        raise DerivedBoxNameError(ERR_DERIVED_BOX_NAME % (base, reason))
+        raise DerivedBoxNameError(ERR_DERIVED_BOX_NAME % (base, reason), base)
 
 
 def pick_primary_box_name(primary_workset: Path, workspace: str,

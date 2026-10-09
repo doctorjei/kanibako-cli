@@ -41,10 +41,10 @@ from kanibako.settings.paths import (
     unregister_primary_box_name,
 )
 from kanibako.utils import confirm_prompt, literal_path
-from kanibako.errors import DerivedBoxNameError, ProjectError
-from kanibako.launch.box_identity import (refuse_nonleaf_standalone_name,
+from kanibako.errors import BoxNameError, DerivedBoxNameError, ProjectError
+from kanibako.launch.box_identity import (box_name_cure, refuse_nonleaf_standalone_name,
                                           validate_box_name)
-from kanibako.settings.messages import CURE_DERIVED_BOX_NAME, CURE_DERIVED_DUP_DEST
+from kanibako.settings.messages import CURE_DERIVED_DUP_DEST
 from kanibako.channels.channels import workset_name_token, workset_root
 from kanibako.settings.workset_dirkeys import EarlyScope, refuse_inherited_per_owner
 
@@ -621,11 +621,11 @@ def _duplicate_to_workset(args, std, config) -> int:
             validate_box_name(proj_name)
         else:
             refuse_derived_box_name(proj_name)
-    except DerivedBoxNameError as e:
+    except BoxNameError as e:
         cure = (f"kanibako box duplicate {shlex.quote(str(source_path))} "
                 f"{shlex.quote(literal_path(args.new_path))} --to named "
-                f"--workset {shlex.quote(ws_name)} --name <new-name>")
-        print(f"Error: {e.with_cure(CURE_DERIVED_BOX_NAME % cure)}", file=sys.stderr)
+                f"--workset {shlex.quote(ws_name)}")
+        print(f"Error: {e.with_cure(box_name_cure(cure, e.name))}", file=sys.stderr)
         return 1
     except ProjectError as e:
         print(f"Error: {e}", file=sys.stderr)

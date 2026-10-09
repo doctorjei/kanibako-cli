@@ -27,6 +27,7 @@ def is_valid_box_name(name: str) -> bool
 def classify_designation(value: str | None) -> Designation
 def box_name_reason(name: str) -> str | None
 def validate_box_name(name: str) -> None
+def box_name_cure(command: str, name: str) -> str
 def sanitize_cap(leaf: str) -> str
 def is_canonical_standalone_name(name: str) -> bool
 def standalone_kuid(name: str) -> str
@@ -38,7 +39,6 @@ def refuse_nonleaf_standalone_name(supplied: str, root: Path, *, box_kuid: str |
 def refuse_standalone_rename(supplied: str, current_name: str) -> None
 def resolve_standalone_name(root: Path, supplied: str, existing: set[str], *, box_kuid: str | None=None) -> str
 def _box_name_violation(name: str) -> str | None
-def _ascii_spelling(ch: str) -> str | None
 def _canonical_name(supplied: str) -> str
 def _refuse_taken(stored: str) -> ProjectError
 def _refuse_directory_name(shown: str) -> ProjectError

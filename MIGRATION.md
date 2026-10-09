@@ -7087,7 +7087,9 @@ A box name is 1–64 characters, each an ASCII letter, digit, `_`, `-`, or `.`. 
 or digit passed (`café`, `日本語`), and the box then failed at `start`: its container name `kb-<workset>-<box>` must
 match podman's `[a-zA-Z0-9][a-zA-Z0-9_.-]*`. Now `create --name café` is refused with the character it breaks on,
 and a box named after a directory named `café` is refused like any other directory name that breaks the rule
-(see *A box named after its directory must have a valid box name*).
+(see *A box named after its directory must have a valid box name*). The refusal offers the ASCII spelling as a
+command to run: Latin letters lose their accents and kana are written in Hepburn, so `café` gives `--name cafe`
+and `かに` gives `--name kani`. Kanji has no spelling, so a name holding it asks for a new one.
 
 A box created under such a name before this release keeps working: each command that resolves it warns that the
 name does not meet the naming rules, and the box is found by its path, not its name. Rename it:
@@ -7096,8 +7098,9 @@ name does not meet the naming rules, and the box is found by its path, not its n
 kanibako box move <path> <new-path> --name <new-name>
 ```
 
-A standalone box's name follows its directory, so one in a directory named `café` goes from `<kuid>_caf_` to
-`<kuid>_cafe` and one in a directory named `東京` is refused until the directory gets an ASCII name; stop such boxes before upgrading,
+A standalone box's name follows its directory, so one in a non-ASCII directory changes its name as if the
+directory were renamed: `café` goes from `<kuid>_caf_` to `<kuid>_cafe`, `かに` gives `<kuid>_kani`, and `東京` is
+refused until the directory gets an ASCII name; stop such boxes before upgrading,
 and move their channel folders as *A standalone box's name keeps its project directory's case* shows.
 
 ### 2.112 A standalone box is named by its directory; `--name` is refused

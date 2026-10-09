@@ -434,7 +434,9 @@ class HelperHub:
         # ⚑ The fork is named for its directory: the box-name rule, before the copy.
         from kanibako.errors import DerivedBoxNameError
         from kanibako.launch.box_identity import is_valid_box_name
-        from kanibako.settings.messages import CURE_DERIVED_FORK_BOX, CURE_DERIVED_FORK_NAME
+        from kanibako.launch.romanize import to_ascii
+        from kanibako.settings.messages import (CURE_DERIVED_FORK_BOX, CURE_DERIVED_FORK_NAME,
+                                                CURE_DERIVED_FORK_NAME_ASCII)
         from kanibako.settings.paths import refuse_derived_box_name
 
         try:
@@ -444,7 +446,10 @@ class HelperHub:
                 cure = CURE_DERIVED_FORK_BOX % (f"kanibako box move {shlex.quote(str(ctx.project_path))} "
                                                 "<new-path> --name <new-name>")
             else:
-                cure = CURE_DERIVED_FORK_NAME
+                spelled = to_ascii(name)
+                cure = (CURE_DERIVED_FORK_NAME_ASCII % spelled
+                        if spelled is not None and is_valid_box_name(f"x.{spelled}")
+                        else CURE_DERIVED_FORK_NAME)
             return {"status": "error", "message": e.with_cure(cure)}
 
         # Copy workspace
