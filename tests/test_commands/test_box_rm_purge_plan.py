@@ -205,10 +205,11 @@ class TestStandalonePurge:
         assert _plan_lines(out.out) == [
             f"box metadata: {root / 'box_data'}",
             f"workset settings: {root / 'workset.yaml'}",
+            f"box canon (kanibako's handbook): {root / 'canon'}",
             f"vault parent folder: {root / 'vault'} → {outside} (link only; target kept)",
         ]
         assert f"left the vault at {outside / 'rw'} in place" in out.err
-        for gone in ("box_data", "workset.yaml", "vault"):
+        for gone in ("box_data", "workset.yaml", "canon", "vault"):
             assert not (root / gone).exists() and not (root / gone).is_symlink()
         assert (outside / "ro").is_dir()
         assert hashlib.sha256((outside / "rw" / "canary.txt").read_bytes()).hexdigest() == digest
@@ -229,6 +230,7 @@ class TestStandalonePurge:
         assert _plan_lines(capsys.readouterr().out) == [
             f"box metadata: {root / 'box_data'}",
             f"workset settings: {root / 'workset.yaml'}",
+            f"box canon (kanibako's handbook): {root / 'canon'}",
             f"vault ro (your files): {inner / 'ro'}",
             f"vault rw (your files): {inner / 'rw'}",
             f"vault parent folder: {root / 'vault'} → {inner} (link only; target kept)",
@@ -268,3 +270,55 @@ class TestStandalonePurge:
         assert f"vault rw (your files): {root / 'data'}" in lines
         assert f"workset settings: {root / 'workset.yaml'}" in lines
         assert not (root / "data").exists()
+
+    def test_canon_folder_is_listed_and_removed(
+        self, config_file, tmp_home, credentials_dir, capsys,
+    ):
+        """The ``canon/`` create made is the box's: listed, then gone; the user's file stays."""
+        root = tmp_home / "sa"
+        _create(root, standalone=True)
+        assert (root / "canon" / "handbook").is_dir()
+        (root / "mine.txt").write_text("mine\n")
+        capsys.readouterr()
+
+        assert _rm(str(root), force=True) == 0
+        lines = _plan_lines(capsys.readouterr().out)
+        assert f"box canon (kanibako's handbook): {root / 'canon'}" in lines
+        listed = [Path(line.split(": ", 1)[1]) for line in lines]
+        assert not any(p.exists() or p.is_symlink() for p in listed)
+        assert (root / "mine.txt").read_text() == "mine\n"
+
+    def test_symlinked_canon_loses_only_the_link(
+        self, config_file, tmp_home, credentials_dir, capsys,
+    ):
+        root = tmp_home / "sa"
+        _create(root, standalone=True)
+        outside = tmp_home / "extcanon"
+        (root / "canon").rename(outside)
+        (root / "canon").symlink_to(outside)
+        (outside / "canary.txt").write_text("keep me\n")
+        capsys.readouterr()
+
+        assert _rm(str(root), force=True) == 0
+        assert (f"box canon (kanibako's handbook): {root / 'canon'} → {outside} "
+                "(link only; target kept)") in _plan_lines(capsys.readouterr().out)
+        assert not (root / "canon").is_symlink() and not (root / "canon").exists()
+        assert (outside / "canary.txt").read_text() == "keep me\n"
+
+    def test_canon_repointed_outside_the_root_is_kept_and_named(
+        self, config_file, tmp_home, credentials_dir, capsys,
+    ):
+        root = tmp_home / "sa"
+        _create(root, standalone=True)
+        outside = tmp_home / "theircanon"
+        outside.mkdir()
+        (outside / "canary.txt").write_text("keep me\n")
+        with (root / "workset.yaml").open("a") as fh:
+            fh.write(f"  canon: '{outside}'\n")
+        capsys.readouterr()
+
+        assert _rm(str(root), force=True) == 0
+        out = capsys.readouterr()
+        assert not any(line.startswith("box canon") for line in _plan_lines(out.out))
+        assert f"left the canon folder at {outside} in place" in out.err
+        assert (outside / "canary.txt").read_text() == "keep me\n"

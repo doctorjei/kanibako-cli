@@ -48,6 +48,8 @@ def resolve_workset_vault_ro(workset_root: Path, workset_settings: Mapping[str, 
 def resolve_workset_vault_rw(workset_root: Path, workset_settings: Mapping[str, Any] | None, *, early: EarlyScope) -> Path | None
 def resolve_workset_vault_pair(workset_root: Path, *, early: EarlyScope) -> tuple[Path | None, Path | None]
 def standalone_vault_teardown(root: Path, *, early: EarlyScope) -> tuple[list[Path], list[Path]]
+def standalone_canon_teardown(root: Path, *, early: EarlyScope) -> tuple[Path | None, Path | None]
+def report_retained_canon(canon: Path, root: Path) -> None
 def retained_vault_reason(root: Path, vault: Path) -> str
 def report_retained_vault(vault: Path, why: str) -> None
 def report_retained_vaults(root: Path, retained: Iterable[Path]) -> None

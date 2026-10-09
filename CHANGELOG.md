@@ -687,6 +687,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **`box list` shows a deregistered primary box once, under "Deregistered boxes".** It was also listed in the main
   table as `unknown (no breadcrumb)`, and `box list --orphan` called it an orphan.
+- **Purging a standalone box deletes its `canon/` folder.** `box rm --purge` and `box purge` left the `canon/`
+  folder that `create` made at the project root. `box rm --purge` now lists it with the other paths and deletes
+  it. A `workset.canon` pointed outside the project is kept, and a note names it.
 
 - **`box duplicate` to a primary box takes its `--name`.** It was ignored, and the copy was named after its
   directory. A taken name is refused before anything is written.

@@ -464,6 +464,30 @@ def standalone_vault_teardown(
     return removable, retained
 
 
+def standalone_canon_teardown(
+    root: Path, *, early: EarlyScope,
+) -> tuple[Path | None, Path | None]:
+    """A STANDALONE box's ``workset.canon`` tier as ``(removable, retained)`` for a teardown.
+
+    The tier ``create`` stamps is the box's own.  Only one STRICTLY BELOW *root* is
+    removable; a repoint outside it, or AT it, is the user's directory.  A null key or a
+    tier not on disk answers ``(None, None)``.  🛑 CALL THIS BEFORE UNLINKING THE ROOT
+    ``workset.yaml``, the only carrier of a repoint.
+    """
+    canon = resolve_workset_canon(root, load_workset_settings_doc(root), early=early)
+    if canon is None or not (canon.exists() or canon.is_symlink()):
+        return None, None
+    if _strictly_in_tree(canon, root):
+        return _unfollowed(canon), None
+    return None, _unfollowed(canon)
+
+
+def report_retained_canon(canon: Path, root: Path) -> None:
+    """The retained-canon Note: the tier is outside *root*, so it stays."""
+    print(f"Note: left the canon folder at {canon} in place — not strictly inside {root}, "
+          f"so it is yours to remove.", file=sys.stderr)
+
+
 def _holds_only_arms(path: Path, arms: set[Path]) -> bool:
     """True when *path* is one of *arms* (RESOLVED), or a real dir holding only such.
 
