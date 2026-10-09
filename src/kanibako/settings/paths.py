@@ -245,13 +245,13 @@ def standalone_store_teardown_plan(
     ``@meta.workset.path/../store`` or a symlinked parent reads as a descendant while
     sitting outside the root.  ``None`` on either arm means nothing to act on.
     """
-    from kanibako.project.workset import _path_in_tree
+    from kanibako.project.workset import _strictly_in_tree
 
     store = standalone_box_store(root, early=early)
     if not store.is_dir() or store.is_symlink():
         return None, None
     resolved = store.resolve()
-    if resolved != root.resolve() and _path_in_tree(resolved, root):
+    if _strictly_in_tree(store, root):
         return resolved, None
     return None, resolved
 

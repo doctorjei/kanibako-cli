@@ -426,8 +426,8 @@ def standalone_vault_teardown(
       must PRINT the retained paths — the defect this replaced was not that the vault
       survived, it was that it survived SILENTLY.
 
-    The literal ``vault/`` skeleton parent is appended to *removable* when it is on
-    disk and holds nothing but removable arms and its ``.gitignore``, so the default
+    The literal ``vault/`` skeleton parent is appended to *removable* when it is a link
+    (removed alone) or holds nothing but removable arms and its ``.gitignore``, so the default
     layout (which is what every pre-repoint box has) is cleared exactly as it was
     before.  ⚑ Anything else in it — the contents of an arm the user has since set to
     ``null`` included — is the user's: the skeleton stays, and each such entry lands
@@ -445,12 +445,14 @@ def standalone_vault_teardown(
             continue
         # ⚑ STRICT: ``arm == root`` must land in *retained*.  A ``vault_ro: .`` would
         # otherwise nominate the user's whole project directory for deletion.
-        if root in arm.parents:
+        if _strictly_in_tree(arm, root):
             removable.append(arm)
         else:
-            retained.append(arm)
+            retained.append(_unfollowed(arm))
     skeleton = root / _VAULT_LEAF
-    if skeleton.is_dir():
+    if skeleton.is_symlink():
+        removable.append(skeleton)
+    elif skeleton.is_dir():
         arms = {arm.resolve() for arm in removable}
         leftover = [child for child in sorted(skeleton.iterdir())
                     if child.name != bootstrap.IGNORE_FILE
@@ -481,7 +483,7 @@ def retained_vault_reason(root: Path, vault: Path) -> str:
     Outside *root* it is the user's own store; inside it is a ``vault/`` entry no
     ``workset.vault_*`` arm of the box names (e.g. one the user set to ``null``).
     """
-    if root in vault.parents:
+    if _strictly_in_tree(vault, root):
         return "not a vault arm of this box"
     return f"outside {root}"
 
@@ -1388,7 +1390,8 @@ def delete_workset(name: str, std: StandardPaths, *, remove_files: bool = False)
         # the same line for the same reason.  KNOWN AND UNCLOSED: those trees outlive
         # ``workset rm --purge``; closing that needs a retained-path report, not a wider
         # rmtree.
-        if root in boxes_dir.parents and boxes_dir.is_dir():
+        if (boxes_dir.is_dir() and not boxes_dir.is_symlink()
+                and _strictly_in_tree(boxes_dir, root)):
             for box_tree in sorted(boxes_dir.iterdir()):
                 if box_tree.is_dir() and not box_tree.is_symlink():
                     remove_box_tree(box_tree)
@@ -1423,6 +1426,17 @@ def is_in_tree_workspace(ws: Workset, path: Path) -> bool:
 def _path_in_tree(path: Path, root: Path) -> bool:
     """True when *path* lies under *root*, both resolved (the in-tree test)."""
     return path.resolve().is_relative_to(root.resolve())
+
+
+def _strictly_in_tree(path: Path, root: Path) -> bool:
+    """True when the entry *path* names sits STRICTLY below *root*.
+
+    A link AT *path* is judged where it sits, anything else resolved: a linked parent
+    leading out of *root* puts *path* outside.  A caller that descends into *path* must
+    also refuse a link there.
+    """
+    entry = _unfollowed(path) if path.is_symlink() else path.resolve()
+    return root.resolve() in entry.parents
 
 
 def refuse_existing_box(source: Path, std: StandardPaths, *, force: bool = False) -> None:
