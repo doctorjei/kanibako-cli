@@ -63,8 +63,9 @@ class TestPathEdgeCases:
     def test_path_with_unicode(self, tmp_home, config_file, credentials_dir):
         config = load_config(config_file)
         std = load_std_paths(config)
-        uni = tmp_home / "projeçt_ñ"
-        uni.mkdir()
+        # A unicode PARENT path is kept as given; the box-name leaf must be ASCII.
+        uni = tmp_home / "projeçt_ñ" / "proj"
+        uni.mkdir(parents=True)
         proj = resolve_project(std, config, project_dir=str(uni), initialize=True)
         assert proj.project_path == uni.resolve()
 
