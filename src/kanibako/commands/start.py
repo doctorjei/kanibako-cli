@@ -2164,10 +2164,11 @@ def _build_supervisor_pid1(
     # correctly resolved claude came up as a bare bash prompt because this probe
     # failed once, and a probe of the SAME import in the SAME container minutes
     # later succeeded.
-    probe_once = f"env {pythonpath} {probe} 2>>{diag}"
+    probe_once = f'env {pythonpath} {probe} 2>>"$kb_diag"'
     script = (
-        # Best-effort diagnostics file; never let its absence change the outcome.
-        f"mkdir -p {diag_dir} 2>/dev/null; : >{diag} 2>/dev/null; "
+        # Best-effort log, never fatal: `true`, not `:`, whose failed open ends sh.
+        f"mkdir -p {diag_dir} 2>/dev/null; kb_diag={diag}; "
+        '{ true >"$kb_diag"; } 2>/dev/null || kb_diag=/dev/null; '
         f"{{ {probe_once} || {{ sleep 1; {probe_once}; }} }} "
         f"&& exec env {pythonpath} {shlex.join(supervisor_argv)} "
         # ⚑ The fallback is now LOUD. It exists as forward-compat for an OLD
@@ -2176,7 +2177,7 @@ def _build_supervisor_pid1(
         # `kanibako start` returns SUCCESS either way, so without this the only
         # symptom is a bash prompt and the reason is gone. stderr reaches
         # `podman logs`; the file is readable HOST-side under the box home.
-        f"|| {{ echo {warning} >&2; echo {warning} >>{diag} 2>/dev/null; "
+        f"|| {{ echo {warning} >&2; echo {warning} >>\"$kb_diag\" 2>/dev/null; "
         f"exec {shlex.join(fallback_argv)}; }}"
     )
     return "sh", ["-c", script]
