@@ -20,12 +20,12 @@ DANGER_PCT=87
 # Function to parse incoming data via jq; normalizes values to numbers.
 JQ_FUNCTION='
     def num: if . == null then 0 elif type == "number" then . else 0 end;
-    [ (.session_id // "")
-    , (.context_window.context_window_size | num)
+    [ (.context_window.context_window_size | num)
     , (.cost.total_cost_usd | num)
     , ((.context_window.current_usage // {}) | .input_tokens | num)
     , ((.context_window.current_usage // {}) | .cache_creation_input_tokens | num)
     , ((.context_window.current_usage // {}) | .cache_read_input_tokens | num)
+    , (.session_id // "")
     ] | @tsv
 '
 
@@ -62,11 +62,13 @@ if [ -z "$PARSED" ]; then
     exit 0
 fi
 
-# Read parsed data into script variables; add input-side token counts together.
-IFS=$'\t' read -r SESSION_ID CTX_SIZE COST IN_T CC_T CR_T <<<"$PARSED"
+# Read parsed data (id last: read drops an empty first field); sum input tokens.
+IFS=$'\t' read -r CTX_SIZE COST IN_T CC_T CR_T SESSION_ID <<<"$PARSED"
 USED_TOKENS=$(awk "BEGIN { printf \"%d\", ${IN_T:-0} + ${CC_T:-0} + ${CR_T:-0} + ${TOKEN_LAG} }")
 
 # Some models/servers emit spurious zeros; hold previous good value for display
+SESSION_ID=${SESSION_ID//[^A-Za-z0-9._-]/_}
+case "$SESSION_ID" in .|..) SESSION_ID="_$SESSION_ID" ;; esac
 if [ -n "$SESSION_ID" ]; then
     GOOD_FILE="$STATE_DIR/$SESSION_ID"
     if [ "$USED_TOKENS" -gt 0 ] 2>/dev/null; then

@@ -719,6 +719,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   is a file, or the instruction slot cannot be written, the start printed a Python traceback twice. It now
   prints `import-directives: manifest not written: <path>: File exists` (or `directives not flattened: …`). The
   box still starts.
+- **The claude statusline keeps its per-session file in its state directory.** It used the session
+  id as the file name unchanged, so an id holding `../` wrote outside it. Characters other than
+  letters, digits, `.`, `_`, and `-` now become `_`. A payload with an empty or missing session id
+  shifted every field by one: the line read `[?/???]` and `context-usage.txt` held `0.00 0.00`.
+  It now reads the payload as usual and writes no state file.
 - **`box list` shows a deregistered primary box once, under "Deregistered boxes".** It was also listed in the main
   table as `unknown (no breadcrumb)`, and `box list --orphan` called it an orphan.
 - **Purging a standalone box deletes its `canon/` folder.** `box rm --purge` and `box purge` left the `canon/`
