@@ -179,3 +179,114 @@ class TestDisconnectTakesTheMembersStore:
         assert _door("workset", "disconnect", ws.name, "alpha", "--force") == 0
         assert store.is_dir(), "a plain disconnect removed the snapshot store"
         assert ro.is_dir(), "a plain disconnect removed the vault leaf"
+
+
+class TestPurgeAllTakesNamedVaultLeaves:
+    """r1 item 1: ``box purge --all`` has its OWN workset loop, and it was not fixed.
+
+    The r1 change touched only ``_purge_one``; ``_purge_all`` removed each member's
+    box tree, logs and store but never ``vault/{ro,rw}/<name>``, so ``--all`` still
+    printed ``Purged session data for N project(s).`` over every member's files.
+    """
+
+    def test_purge_all_removes_every_named_vault_leaf(self, env, tmp_home):
+        """RED at the base: both members' leaves survived a purge that counted them."""
+        _ws, made = _named_pair(env, tmp_home)
+        leaves = [p for box in made for p in made[box][:2]]
+        assert all(p.is_dir() for p in leaves), "fixture did not build the leaves"
+
+        assert _door("box", "purge", "--all", "--force") == 0
+
+        still = [str(p) for p in leaves if p.exists()]
+        assert not still, f"box purge --all left named vault leaves: {still}"
+
+    def test_purge_all_leaves_the_shared_bases_and_marker(self, env, tmp_home):
+        """CONTROL: a shared base is not any one box's to take, even with ``--all``."""
+        ws, made = _named_pair(env, tmp_home)
+        ro_base, rw_base = ws.vault_ro_dir, ws.vault_rw_dir
+        versions = _versions_dir(made["alpha"][1])
+
+        _door("box", "purge", "--all", "--force")
+
+        assert ro_base.is_dir() and rw_base.is_dir(), (
+            "purge --all removed a shared vault base"
+        )
+        assert (versions / LAYOUT_MARKER_NAME).exists(), (
+            "purge --all removed the marker that retires legacy detection"
+        )
+
+
+class TestMemberStoreUsesTheEscalatingDeleter:
+    """r1 item 2: ``remove_member_store`` plain-``rmtree``d each vault leaf.
+
+    A plain ``rmtree`` cannot enter a 555 directory the caller OWNS, so it raised
+    ``PermissionError`` and left the whole leaf behind.  Both callers already account
+    for a raise from here -- the relocation retire prints its leftover Note with rc
+    unchanged, a disconnect exits 1 -- so the cure keeps the LOUD signal and makes
+    the deletion actually work.
+    """
+
+    @staticmethod
+    def _bases(ws):
+        from kanibako.project.workset import _member_store_bases
+
+        return _member_store_bases(ws)
+
+    def test_member_store_removal_takes_a_555_dir_the_caller_owns(self, env, tmp_home):
+        """RED at the base by ``PermissionError``: rmtree cannot enter a 555 dir."""
+        from kanibako.project.workset import remove_member_store
+
+        ws, made = _named_pair(env, tmp_home)
+        _ro, rw, _ = made["alpha"]
+        locked = rw / "locked"
+        locked.mkdir()
+        (locked / "inner.txt").write_text("INNER\n")
+        locked.chmod(0o555)
+        try:
+            remove_member_store(ws, "alpha", bases=self._bases(ws))
+            assert not rw.exists(), (
+                f"the rw leaf survived a 555 dir inside it: {locked}"
+            )
+        finally:
+            # Leave the temp tree cleanable whichever way this went.
+            if locked.exists() and not locked.is_symlink():
+                locked.chmod(0o755)
+
+    def test_member_store_removal_of_a_linked_leaf_takes_only_the_link(
+        self, env, tmp_home
+    ):
+        """CONTROL: the link-first safety survives the change of deleter."""
+        import shutil
+
+        from kanibako.project.workset import remove_member_store
+
+        ws, made = _named_pair(env, tmp_home)
+        _ro, rw, _ = made["alpha"]
+        outside = tmp_home / "member_target"
+        outside.mkdir()
+        (outside / "keep.txt").write_text("KEEP\n")
+        shutil.rmtree(rw)
+        rw.symlink_to(outside)
+
+        remove_member_store(ws, "alpha", bases=self._bases(ws))
+
+        assert not rw.is_symlink(), "the linked vault leaf survived"
+        assert (outside / "keep.txt").read_text() == "KEEP\n", (
+            "the removal wrote through the link into the user's target"
+        )
+
+    def test_member_store_removal_raises_when_a_leaf_cannot_be_removed(
+        self, env, tmp_home, monkeypatch
+    ):
+        """CONTRACT, not a base detector: a ``False`` from the deleter is never quiet.
+
+        Swallowing it would print success over a leaf still on disk -- the exact
+        failure class this lane exists to close.
+        """
+        from kanibako.project.workset import remove_member_store
+
+        ws, _made = _named_pair(env, tmp_home)
+        monkeypatch.setattr("kanibako.runtime.container.remove_path", lambda _p: False)
+
+        with pytest.raises(OSError, match="podman unshare rm -rf"):
+            remove_member_store(ws, "alpha", bases=self._bases(ws))
