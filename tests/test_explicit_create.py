@@ -763,7 +763,7 @@ class TestNoBoxErrorMessage:
         )
         assert "box register" not in msg
 
-    @pytest.mark.parametrize("spec", [".gone", "gone.", "a b", "./gone", "a/b/c"])
+    @pytest.mark.parametrize("spec", ["./gone", "a/b/c"])
     def test_missing_path_designation_gets_the_path_message(
         self, tmp_path, monkeypatch, spec,
     ):
@@ -782,6 +782,28 @@ class TestNoBoxErrorMessage:
             f"run:  kanibako create {shlex.quote(spec)}"
         )
 
+    @pytest.mark.parametrize("spec", [".gone", "gone.", "a b", "o'brien"])
+    def test_a_leaf_create_would_refuse_gets_the_name_cure(self, tmp_path, monkeypatch, spec):
+        """``create <spec>`` names the box after the leaf, and refuses this one."""
+        monkeypatch.chdir(tmp_path)
+        msg = _no_box_error(spec)
+        assert msg.startswith(f"Error: no box at {(tmp_path / spec).resolve()}. "
+                              f"The directory name '{spec}' is not a valid box name: ")
+        cure = msg.rsplit("\n  ", 1)[1]
+        assert shlex.split(cure) == ["kanibako", "create", spec, "--name", "<new-name>"]
+
+    def test_a_leaf_with_an_ascii_spelling_gets_that_spelling(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        assert _no_box_error("Café").endswith(
+            "Its ASCII spelling works:\n  kanibako create 'Café' --name Cafe")
+
+    def test_no_spec_in_a_refused_leaf_cures_with_bare_create(self, tmp_path, monkeypatch):
+        cwd = tmp_path / "my dir"
+        cwd.mkdir()
+        monkeypatch.chdir(cwd)
+        assert _no_box_error(None).endswith(
+            "Give the box a valid name:\n  kanibako create --name <new-name>")
+
     def test_missing_qualified_designation_gets_the_name_message(
         self, tmp_path, monkeypatch,
     ):
@@ -799,15 +821,14 @@ class TestNoBoxErrorMessage:
     def test_spec_with_a_space_is_one_argument_when_pasted(self, tmp_path, monkeypatch):
         """⚑ The SPACE case.  The defect is not the wording but the command a
         reader copies out of the line, so the assertion is on that command: the
-        tail after ``run:  `` must split into exactly THREE tokens whose third
-        is the spec verbatim, or the paste creates a box in a directory the user
-        never named.
+        spec must split out as ONE token, verbatim, or the paste creates a box in
+        a directory the user never named.
         """
         monkeypatch.chdir(tmp_path)
         spec = "a b"
-        printed = _no_box_error(spec).rsplit("run:  ", 1)[1]
-        assert printed == f"kanibako create {shlex.quote(spec)}"
-        assert shlex.split(printed) == ["kanibako", "create", spec]
+        printed = _no_box_error(spec).rsplit("\n  ", 1)[1]
+        assert printed == f"kanibako create {shlex.quote(spec)} --name <new-name>"
+        assert shlex.split(printed)[:3] == ["kanibako", "create", spec]
 
     def test_spec_with_a_quote_is_one_argument_when_pasted(self, tmp_path, monkeypatch):
         """⚑ The QUOTE case, and it is the one that catches a fix which only
@@ -821,9 +842,9 @@ class TestNoBoxErrorMessage:
         """
         monkeypatch.chdir(tmp_path)
         spec = "o'brien"
-        printed = _no_box_error(spec).rsplit("run:  ", 1)[1]
-        assert printed == f"kanibako create {shlex.quote(spec)}"
-        assert shlex.split(printed) == ["kanibako", "create", spec]
+        printed = _no_box_error(spec).rsplit("\n  ", 1)[1]
+        assert printed == f"kanibako create {shlex.quote(spec)} --name <new-name>"
+        assert shlex.split(printed)[:3] == ["kanibako", "create", spec]
 
 
 # ---------------------------------------------------------------------------
@@ -898,25 +919,29 @@ class TestBrokenStandaloneNoBoxError:
         ) in cure
         assert "your workspace/ and vault/ are not touched" in msg
 
-    def test_rule_breaking_standalone_name_is_not_looked_up(
-        self, config_file, tmp_home, credentials_dir, monkeypatch,
+    @pytest.mark.parametrize("mode", ["standalone", "primary"])
+    def test_rule_breaking_stored_name_points_at_its_path(
+        self, config_file, tmp_home, credentials_dir, monkeypatch, mode,
     ):
-        """A designation that breaks the box-name rule is a PATH, so a standalone
-        box REGISTERED under such a name is not found by it."""
+        """A designation that breaks the box-name rule is a PATH, so a box REGISTERED
+        under such a name is not launched by it: the miss names its path, never
+        ``create`` under the refused name."""
         from kanibako.project import registry_store
+        from kanibako.settings.paths import register_primary_box_name
 
         _config, std = _std(config_file)
         root = (tmp_home / "legacy").resolve()
         root.mkdir()
-        registry_store.register_standalone(std.registry, "bad name", root)
+        if mode == "standalone":
+            registry_store.register_standalone(std.registry, "bad name", root)
+        else:
+            register_primary_box_name(std.primary_workset, "bad name", str(root),
+                                      early=_early_scope(std, BoxMode.primary))
         monkeypatch.chdir(tmp_home)
-        msg = _no_box_error("bad name", std)
-        assert "registered as a standalone box" not in msg
-        # ``bad name`` is a PATH, so its spec is quoted in the cure.
-        assert msg == (
-            f"Error: no box at {tmp_home.resolve() / 'bad name'}. To create a new "
-            f"box, run:  kanibako create {shlex.quote('bad name')}"
-        )
+        msg = _no_box_error("BAD NAME", std)
+        assert msg.startswith("Error: box name 'bad name' does not meet the naming rules")
+        assert f"\n  kanibako start {root}\n  kanibako box move {root} <new-path>" in msg
+        assert "kanibako create" not in msg
 
     def test_by_path_names_the_ruled_cure(
         self, config_file, tmp_home, credentials_dir,

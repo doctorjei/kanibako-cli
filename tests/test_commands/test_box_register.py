@@ -401,8 +401,9 @@ class TestPathDesignationIsNeverAName:
         config, std = _std(config_file)
         monkeypatch.chdir(tmp_home)
         (tmp_home / ".hidden").mkdir()
-        monkeypatch.setattr("kanibako.settings.paths.box_name_reason", lambda name: None)
-        assert run_create(_create_args(".hidden")) == 0
+        with monkeypatch.context() as patch:  # the older create; the rule holds again after
+            patch.setattr("kanibako.settings.paths.box_name_reason", lambda name: None)
+            assert run_create(_create_args(".hidden")) == 0
         assert ".hidden" in load_primary_boxes(
             std.primary_workset, early=_early_scope(std, BoxMode.primary),
         )

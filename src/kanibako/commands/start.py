@@ -57,6 +57,7 @@ from kanibako.runtime.container import (
 from kanibako.identifiers import agent_node_case, find_identifier
 from kanibako.errors import (AmbiguousNameError, ConfigError, ContainerError,
                              DerivedBoxNameError, KanibakoError, ProjectError)
+from kanibako.launch.box_identity import box_name_cure
 from kanibako.log import get_logger
 from kanibako.runtime.rig_registry import load_registry, registry_path
 from kanibako.runtime.rig_resolve import resolve_rig
@@ -82,7 +83,9 @@ from kanibako.settings.paths import (
     creds_watcher_log_path,
     designation_route,
     load_std_paths,
+    refuse_derived_box_name,
     resolve_box_target,
+    stored_legacy_box,
 )
 from kanibako.agent_ref import (
     GENERAL_SLOT,
@@ -1761,11 +1764,19 @@ def _no_box_error(project_dir: str | None, std: StandardPaths | None = None) -> 
                 "first:  kanibako box register <path-to-its-box-root>\n"
                 f"  Otherwise create a new box:  kanibako create {shlex.quote(project_dir)}"
             )
+        legacy = None if std is None else stored_legacy_box(std, project_dir)
+        if legacy is not None:
+            return legacy.refusal("Start it by its path", "kanibako start")
         target = str(Path(project_dir).resolve())
         suggest = f"kanibako create {shlex.quote(project_dir)}"
     else:
         target = os.getcwd()
         suggest = "kanibako create"
+    try:
+        # ``create`` names the box after the directory, so it would refuse this one.
+        refuse_derived_box_name(Path(target).name or "project")
+    except DerivedBoxNameError as e:
+        return f"Error: no box at {target}. {e.with_cure(box_name_cure(suggest, e.name))}"
     return f"Error: no box at {target}. To create a new box, run:  {suggest}"
 
 

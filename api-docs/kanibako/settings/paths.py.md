@@ -66,6 +66,7 @@ def box_logs_location(std: StandardPaths, proj: ProjectPaths) -> tuple[Path | No
 def write_vault_gitignore(vault_root: Path, vault_rw_path: Path) -> None
 def detect_project_mode(project_dir: Path, std: StandardPaths, config: BootstrapConfig) -> DetectionResult
 def load_primary_boxes(primary_workset: Path, *, early: EarlyScope) -> dict[str, str]
+def stored_legacy_box(std: StandardPaths, typed: str) -> LegacyBox | None
 def primary_box_name_for_workspace(primary_workset: Path, workspace: str, *, early: EarlyScope) -> str | None
 def check_primary_box_name_free(primary_workset: Path, name: str, workspace: str, *, early: EarlyScope) -> None
 def check_workspace_not_named_box(std: StandardPaths, workspace: str) -> None
@@ -214,6 +215,14 @@ class WorksetSpec:
 class BoxLogFiles(NamedTuple):
     helper: Path
     creds_watcher: Path
+
+class LegacyBox(NamedTuple):
+    mode: str
+    name: str
+    path: str
+    reason: str
+
+    def refusal(self, action: str, verb: str) -> str
 
 class DesignationRoute(Enum):
     CWD = 'cwd'
