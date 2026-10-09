@@ -72,7 +72,7 @@ def _broken_standalone_error(std: StandardPaths, project_dir: str) -> str | None
 def _store_move_cure(old: Path | None, new: Path) -> str
 def _interrupted_create_error(proj: ProjectPaths, pending: dict) -> str
 def _unregistered_pending_create_error(std: StandardPaths, project_dir: str | None) -> str | None
-def _no_box_error(project_dir: str | None, std: StandardPaths | None=None) -> str
+def _no_box_error(project_dir: str | None, std: StandardPaths | None=None, verb: str='start') -> str
 def _unbuilt_box_error(proj: ProjectPaths, std: StandardPaths) -> str | None
 def _refuse_null_workspace_bind(std, proj: ProjectPaths) -> None
 def _launch_issues_path(std, container_name: str) -> Path
@@ -96,7 +96,7 @@ def _assemble_launch_env(*, std, proj, deliveries, env_slots, extra_mounts, logg
 def _start_helper_hub(*, runtime, image, container_name, proj, target, install, binary_mnts, std, container_env, entrypoint, box_shell, agent_id, system_settings_path, agent_cfg_path, auth_src, extra_mounts, selection_level)
 def _persist_or_announce_flags(proj, box_settings_path: Path, *, image_override: str | None, share_images: bool) -> None
 def _launch_selection_level(agent_selection: 'AgentSelection | None') -> 'dict[str, object] | None'
-def _run_container(*, project_dir: str | None, entrypoint: str | None, image_override: str | None, new_session: bool, continue_override: bool=False, safe_mode: bool, autonomous: bool=False, resume_mode: bool, extra_args: list[str], no_helpers: bool=False, no_auto_auth: bool=False, browser: bool=False, share_images: bool=False, persistent: bool=False, explicit_persistent: bool=False, explicit_ephemeral: bool=False, detach: bool=False, restart: bool=False, model_override: str | None=None, cli_env: list[str] | None=None, box_shell_mode: bool=False, explicit_agent: str | None=None, setup_only: bool=False, print_container: bool=False, warm_only: bool=False) -> int
+def _run_container(*, project_dir: str | None, entrypoint: str | None, image_override: str | None, new_session: bool, continue_override: bool=False, safe_mode: bool, autonomous: bool=False, resume_mode: bool, extra_args: list[str], no_helpers: bool=False, no_auto_auth: bool=False, browser: bool=False, share_images: bool=False, persistent: bool=False, explicit_persistent: bool=False, explicit_ephemeral: bool=False, detach: bool=False, restart: bool=False, model_override: str | None=None, cli_env: list[str] | None=None, box_shell_mode: bool=False, explicit_agent: str | None=None, setup_only: bool=False, print_container: bool=False, warm_only: bool=False, verb: str='start') -> int
 def _print_new_session_hint(target, *, is_agent_mode: bool, new_session: bool) -> None
 def _print_setup_did_not_take(target) -> None
 def _spawn_creds_watcher(std, proj) -> None

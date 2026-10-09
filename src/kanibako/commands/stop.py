@@ -224,7 +224,7 @@ def _stop_one(runtime: ContainerRuntime, *, project_dir: str | None) -> int:
     if container_name is None:
         print(
             unrenderable_box_name_refusal(
-                proj.name or "", proj.mode.value, proj.project_path,
+                proj.name or "", proj.mode.value, proj.project_path, project_dir,
             ),
             file=sys.stderr,
         )

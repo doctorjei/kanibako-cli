@@ -91,31 +91,30 @@ def renders_no_name(box: str) -> bool:
     return isinstance(box, str) and (not box or box.startswith("-"))
 
 
-def rename_box_cure(mode: str, path: Path | None) -> str:
-    """The command that gives a *mode* box at *path* a new name, by path; bare without one.
+def rename_box_cure(mode: str, path: Path) -> str:
+    """The command that gives a *mode* box at *path* a new name, by path.
 
     A standalone box is named after its directory, so its cure moves the directory."""
     if mode == "standalone":
-        return (f"kanibako box move {shlex.quote(str(path))} <new-path>"
-                if path else "kanibako box move <new-path>")
-    return (f"kanibako box move {shlex.quote(str(path))} <new-path> --name <new-name>"
-            if path else "kanibako box move <new-path> --name <new-name>")
+        return f"kanibako box move {shlex.quote(str(path))} <new-path>"
+    return f"kanibako box move {shlex.quote(str(path))} <new-path> --name <new-name>"
 
 
 def unrenderable_box_name_refusal(
-    box: str, mode: str, path: Path | None,
+    box: str, mode: str, path: Path | None, designation: str | None,
 ) -> str:
     """The refusal ``start`` and ``stop`` print for a box that renders no name.
 
-    The cure addresses the box by its PROJECT *path*, never by *box*: a leading ``-``
-    reads as a flag.  Without a path the verb prints bare, to run from inside the box."""
+    The cure names the box by PATH, never by *box* (a leading ``-`` reads as a flag):
+    its project *path*, else the *designation* that reached it."""
     from kanibako.launch.box_identity import box_name_reason
 
     reason = box_name_reason(box) or "box name must not be empty"
+    where = path if path is not None else Path(literal_path(designation or "."))
     return (
         f"Error: box '{box}' has no container name: {reason}. Give the box a valid "
         f"name, then try again:\n"
-        f"  {rename_box_cure(mode, path)}"
+        f"  {rename_box_cure(mode, where)}"
     )
 
 
