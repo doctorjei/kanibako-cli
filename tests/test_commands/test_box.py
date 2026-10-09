@@ -199,6 +199,25 @@ class TestBoxList:
         assert "gonebox" in out
         assert "Deregistered" not in out
 
+    @pytest.mark.parametrize("quiet,orphan", [(False, False), (True, False), (False, True)])
+    def test_list_shows_deregistered_box_only_in_its_section(
+        self, config_file, tmp_home, credentials_dir, capsys, quiet, orphan,
+    ):
+        """The retained box dir under std.boxes is not ALSO an active or orphan row."""
+        from kanibako.commands.box import run_list
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        self._park_deregistered(std, tmp_home)
+
+        args = argparse.Namespace(show_all=False, orphan=orphan, quiet=quiet)
+        rc = run_list(args)
+        assert rc == 0
+        out = capsys.readouterr().out
+        assert "(no breadcrumb)" not in out
+        rows = [ln for ln in out.splitlines() if ln.split()[:1] == ["gonebox"]]
+        assert len(rows) == (0 if orphan else 1)
+
     def test_list_only_deregistered_not_no_known_projects(
         self, config_file, tmp_home, credentials_dir, capsys,
     ):

@@ -685,6 +685,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`box list` shows a deregistered primary box once, under "Deregistered boxes".** It was also listed in the main
+  table as `unknown (no breadcrumb)`, and `box list --orphan` called it an orphan.
+
 - **`box duplicate` to a primary box takes its `--name`.** It was ignored, and the copy was named after its
   directory. A taken name is refused before anything is written.
 

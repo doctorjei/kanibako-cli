@@ -1731,10 +1731,12 @@ def run_list(args: argparse.Namespace) -> int:
     # ⚑ STANDALONE boxes are NOT in iter_projects — list them explicitly.
     from kanibako.project import registry_store
     standalone = registry_store.load_standalone(std.registry)
+    deregistered = registry_store.list_deregistered(std.registry)
+    deregistered_dirs = {Path(e["metadata"]).resolve() for e in deregistered.values()}
+    projects = [(m, p) for m, p in projects if m.resolve() not in deregistered_dirs]
     # DEREGISTERED boxes are never active, so they are skipped under an active-only filter.
-    deregistered = (
-        registry_store.list_deregistered(std.registry) if not active_only else {}
-    )
+    if active_only:
+        deregistered = {}
 
     if orphan_only:
         return _list_orphans(projects, ws_data, std, quiet)
