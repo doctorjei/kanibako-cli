@@ -1763,12 +1763,10 @@ def _remove_old_metadata(
     it — for standalone that is the box's home, settings and vault.
 
     ⚑ *new_name* is the name the DESTINATION just registered.  The standalone teardown
-    unregisters the SOURCE's name, and that is correct only while the two differ.  A
-    standalone move now CARRIES its kuid (keyspec ``:811``), so a move that keeps the leaf
-    (``/a/proj`` → ``/b/proj``) composes the SAME name it started with — and unregistering
-    it there deletes the entry the establish step just wrote, silently dropping a live box
-    from the registry while its files are untouched.  Compared case-blind, matching the
-    registry's own lookup.  Before the kuid was carried this could not happen: the prefix
+    unregisters the SOURCE's name, correct only while the two differ.  A move now CARRIES
+    its kuid (``:811``), so a leaf-preserving move composes the SAME name — unregistering
+    it there deletes the entry the establish step just wrote, dropping a live box from the
+    registry with its files untouched.  Case-blind (§0). Before the carry the prefix
     changed on every move, so old != new was an invariant.
 
     *dst_vault* is the destination's ``(ro, rw)`` leaves: a side it has NO leaf for
@@ -2345,12 +2343,10 @@ def _to_standalone(
     # ⚑⚑ The BOX-AUTHORED value: ``establish_standalone`` writes this straight to the box
     # tier ``_deliver_carried_box_settings`` just laid down, so passing the RESOLVED value
     # would undo that carry and pin the source workset's default on a box that has LEFT it.
-    # ⚑⚑ KEEP THE KUID ON A STANDALONE MOVE (keyspec ``:811`` — "kuid = stable stored
-    # prefix; the leaf tracks dir moves").  A standalone source ALREADY owns a kuid;
-    # re-minting it here made the box a different identity every time it moved, so the
-    # refusal named one composed name while the move produced another, and a "full
-    # composed name" no-op registered a third.  A true convert-TO-standalone (primary or
-    # named source) has no standalone kuid to carry, so it mints fresh.
+    # ⚑⚑ KEEP THE KUID ON A STANDALONE MOVE (``:811``: "kuid = stable stored prefix;
+    # the leaf tracks dir moves").  Re-minting it made a moved box a different identity,
+    # so the refusal named one name while the move produced another.  A convert-TO
+    # standalone has none to carry and mints fresh.
     carried_kuid = (
         standalone_kuid(state.name)
         if state.mode is BoxMode.standalone and is_canonical_standalone_name(state.name)
@@ -2847,11 +2843,10 @@ def _dispose_stash(stash: Path) -> None:
 # ---------------------------------------------------------------------------
 
 def _convert_target_flags(args) -> list[str]:
-    """The target flags the user actually typed, as a cure would need to re-run THEIR command.
+    """The target flags the user actually typed, so a printed cure re-runs THEIR command.
 
-    A printed cure that names a different target than the one asked for is worse than no
-    cure: ``convert --workset foo`` failing and advising ``convert … --default`` points the
-    user at a DIFFERENT operation.  Mirrors :func:`_ownership_from_args`.
+    Advising ``--default`` when they asked for ``--workset foo`` points at a different
+    operation.  Mirrors :func:`_ownership_from_args`.
     """
     if getattr(args, "to_default", False):
         return ["--default"]
@@ -3029,15 +3024,13 @@ def run_move(args) -> int:
             confirm=_make_confirm(getattr(args, "force", False), summary),
         )
     except DerivedBoxNameError as e:
-        # ⚑ A STANDALONE TARGET has no `--name` to give.  Its name is composed from the
-        # directory, and the standalone doors REFUSE a `--name` that differs from it
-        # (kanibako ruling 2026-10-09), so the generic `--name <new-name>` cure walked
-        # the user straight back into that refusal: `box move …/q3 …/京都 --name foo`
-        # produced the identical error.  Only the directory can fix a directory-derived
-        # name, so a standalone target gets the directory cure.
-        # ⚑ Keyed on the TARGET mode, not the source's: `box move … --default` is moving
-        # OUT of standalone into a mode where `--name` is a real, working knob, and there
-        # the `--name` cure is correct and must stay.
+        # ⚑ A STANDALONE TARGET has no `--name` to give: its name is composed from the
+        # directory and the standalone doors REFUSE a differing one (ruling 2026-10-09),
+        # so the generic `--name <new-name>` cure walked the user back into that refusal —
+        # `box move …/q3 …/京都 --name foo` gave the identical error.  Only the directory
+        # can fix a directory-derived name.  Keyed on the TARGET mode, not the source's:
+        # `box move … --default` moves OUT of standalone into a mode where `--name` is a
+        # working knob, and there that cure is correct and stays.
         target_is_standalone = (
             state.mode is BoxMode.standalone
             and not getattr(args, "to_default", False)
@@ -3139,9 +3132,8 @@ def run_convert(args) -> int:
         if ownership == "standalone":
             print(f"Error: {e.with_cure(CURE_MOVED_LEAF_NOT_ASCII)}", file=sys.stderr)
             return 1
-        # ⚑ The cure used to hard-code `--default`, which told someone converting to a
-        # NAMED workset to convert to the default instead — a different operation that
-        # answers nothing.  Echo the target they actually asked for.
+        # ⚑ The cure used to hard-code `--default`, advising a different operation than
+        # the one asked for.  Echo the target actually chosen.
         cure = shlex.join(["kanibako", "box", "convert", subject or str(state.workspace_path),
                            *_convert_target_flags(args),
                            *(["--move", str(location)]

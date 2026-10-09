@@ -1162,10 +1162,9 @@ def run_create(args: argparse.Namespace) -> int:
     enable_vault = not getattr(args, "no_vault", False)
     project_dir = args.path
 
-    # ⚑ §D4a: a STANDALONE box is indexed only on ``--register``; the default is an
-    # unregistered, independent box, which is what lets it move freely.  The registry
-    # is the by-name-from-elsewhere index and nothing else, so without it ``--name``
-    # has nothing to name and is ignored (with it, ``--name`` sources the entry).
+    # ⚑ §D4a: a STANDALONE box is indexed only on ``--register``.  CORRECTED 2026-10-09:
+    # ``--register`` does NOT make ``--name`` source the entry — the key is the composed
+    # ``meta.box.name``; a differing ``--name`` is refused, not taken.
     standalone_register = bool(getattr(args, "register", False))
     standalone_name = (getattr(args, "name", None) or "") if standalone_register else ""
     effective_path = _create_target(args)
@@ -1178,10 +1177,7 @@ def run_create(args: argparse.Namespace) -> int:
         except DerivedBoxNameError as e:
             print(f"Error: {e.with_cure(CURE_LEAF_NOT_ASCII)}", file=sys.stderr)
             return 1
-        # A standalone box is named by its directory, not by --name: refuse, don't drop.
-        # ⚑ Placed AFTER the ASCII check above, and a DerivedBoxNameError is re-raised
-        # untouched: that refusal and its CURE_LEAF_NOT_ASCII own a non-ASCII root, so a
-        # typed --name never pre-empts the better cure (kanibako ruling 2026-10-09).
+        # ⚑ AFTER the ASCII check; DerivedBoxNameError re-raises so its own cure wins.
         if getattr(args, "name", None):
             try:
                 refuse_nonleaf_standalone_name(args.name, effective_path)
@@ -2376,11 +2372,8 @@ def run_rm(args: argparse.Namespace) -> int:
 
 
 def _composed_standalone_key(root: Path) -> str | None:
-    """The key a standalone box at *root* should be indexed by: its composed
-    ``meta.box.name`` = ``<stored workset.kuid>_<leaf>``.
-
-    ``None`` when the root carries no usable kuid, or its leaf cannot be spelled in
-    ASCII, so the caller can fall back rather than invent one.
+    """The key a standalone box at *root* is indexed by: composed ``meta.box.name``
+    = ``<stored workset.kuid>_<leaf>``; ``None`` if no usable kuid / unspellable leaf.
     """
     from kanibako import kuid
     from kanibako.errors import DerivedBoxNameError
@@ -2417,12 +2410,8 @@ def _readopt_deregistered(std, name: str, entry: dict) -> int:
                 file=sys.stderr,
             )
             return 1
-        # ⚑⚑ ONE CARRIER: the registry key IS the composed ``meta.box.name`` (kanibako
-        # ruling 2026-10-09).  The DEREGISTERED key is whatever the box was called when
-        # it was removed; for a box whose name had drifted from its composition, that key
-        # IS the mismatch, so re-registering under it restored the bug — `box rm` printed
-        # `box register <old-key>` and running it put the old key back.  Re-compose from
-        # the root's stored kuid + live leaf instead.
+        # ⚑⚑ ONE CARRIER: the key IS the composed ``meta.box.name``.  A drifted box's
+        # deregistered key IS the mismatch, so reusing it restored the bug.
         key = _composed_standalone_key(root) or name
         # Stale: the directory is active again under some spelling — drop only the row.
         owner = registry_store.standalone_name_for_same_dir(std.registry, root)

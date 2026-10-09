@@ -262,19 +262,12 @@ def carry_standalone_name(carried_kuid: str, root: Path, existing: set[str],
                          *, own_name: str | None = None) -> str:
     """Re-compose a MOVING standalone box's name without re-minting its kuid.
 
-    Keyspec ``:811``: "kuid = stable stored prefix; the leaf tracks dir moves".
-    The prefix is the box's persistent identity; only the leaf half is allowed to
-    change, and it changes by itself because it is re-derived from *root*.
-
-    The kuid is re-minted ONLY when the WHOLE composed name is already taken —
-    and "taken" means by ANOTHER box.  *own_name* (the mover's own current name)
-    is excluded from the collision set: on a move that keeps the leaf
-    (``/a/proj`` → ``/b/proj``) the composed name IS the box's own registered
-    name, and treating that as a collision would throw away a perfectly good kuid
-    for a conflict that does not exist.
-
-    ⚑ Collision is tested case-blind via :func:`find_identifier`, matching the
-    registry's own lookup.  ``K1_Proj`` and ``k1_proj`` are the same name here.
+    Keyspec ``:811``: "kuid = stable stored prefix; the leaf tracks dir moves" — the
+    prefix is the persistent identity, and the leaf re-derives itself from *root*.
+    Re-mint only when the WHOLE composed name is taken, and "taken" means by ANOTHER
+    box: *own_name* is excluded, since a leaf-preserving move composes the box's own
+    registered name and calling that a collision would discard a good kuid for a
+    conflict that does not exist.  Case-blind via :func:`find_identifier` (§0).
     """
     leaf = sanitize_cap(root.name)
     others = existing
