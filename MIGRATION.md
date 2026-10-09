@@ -2965,8 +2965,9 @@ displaying one would report a permission tier your next `-S` may not use. Read t
 
 **Read this if a script of yours creates a standalone box and then addresses it by NAME.**
 `kanibako create --standalone` used to write a `registry.standalone` entry as part of the
-create. It no longer does. The new **`--register`** flag asks for the entry, and
-**`--name` is ignored without it**.
+create. It no longer does. The new **`--register`** flag asks for the entry, keyed by the
+box's own `<kuid>_<directory>` name; `--name` cannot set that name (see *A standalone box is
+named by its directory; `--name` is refused*).
 
 **Why.** A standalone box keeps its whole identity inside its own directory — that is what
 makes it drop-in portable. The registry entry buys exactly one thing: addressing the box by
@@ -2976,12 +2977,12 @@ whose whole point is to move freely, so the entry is now something you ask for.
 | what you ran on v1.7.2 | what you get on v1.8.0 | the cure |
 |---|---|---|
 | `kanibako create --standalone ~/proj` | box created, **no registry entry** | add `--register`, or `kanibako box register ~/proj` afterwards |
-| `kanibako create --standalone --name proj ~/proj` | box created, **`--name` ignored**, no entry | add `--register` — with it, `--name` sources the entry's name |
-| `kanibako create --standalone --register --name proj ~/proj` | box created **and** registered as before | nothing |
+| `kanibako create --standalone --name sabox ~/proj` | **refused**: the box is named `<kuid>_proj` after its directory | drop `--name`; rename the directory to rename the box |
+| `kanibako create --standalone --register ~/proj` | box created **and** registered as `<kuid>_proj` | address it by that name |
 
 ```bash
 # Register at create (the v1.7.2 behavior, now explicit):
-kanibako create --standalone --register --name myproj ~/myproj
+kanibako create --standalone --register ~/myproj
 
 # Or create independent and opt in later — index-only, nothing is re-seeded:
 kanibako create --standalone ~/myproj

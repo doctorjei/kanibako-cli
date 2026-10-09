@@ -586,14 +586,15 @@ kanibako create --standalone ~/myproj  # create and initialize a new directory
 A standalone box is **unregistered by default** -- it carries its own identity
 in-tree, so it needs no registry entry and can be moved or copied anywhere.
 The registry entry is only a shortcut for addressing the box **by name from
-another directory**; add it at create time with `--register` (which is also
-what makes `--name` meaningful), or later with `kanibako box register <path>`.
+another directory**; add it at create time with `--register`, or later with
+`kanibako box register <path>`. The entry is the box's own `<kuid>_<directory>`
+name; `--name` cannot change it, so rename the directory to rename the box.
 A registered name is checked last: a primary or workset-member box of the
 same name wins, and so does a same-named path, even at `--box`; a warning
 names the shadowed standalone box.
 
 ```bash
-kanibako create --standalone --register --name myproj ~/myproj
+kanibako create --standalone --register ~/myproj
 kanibako box register ~/myproj         # or opt in afterwards
 ```
 
