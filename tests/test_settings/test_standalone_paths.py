@@ -740,7 +740,7 @@ class TestStandaloneAtomicCreate:
 
 
 # ---------------------------------------------------------------------------
-# TestStandaloneDetection (5d: box_data/ walk marker)
+# TestStandaloneDetection (5d: walk to the marker)
 # ---------------------------------------------------------------------------
 
 class TestStandaloneDetection:

@@ -504,8 +504,8 @@ class TestAddProjectConnectGuard:
 
     @staticmethod
     def _make_standalone(dir_path: Path) -> None:
-        """Stamp *dir_path* with the in-place standalone MARKER (box_data/ +
-        workset.yaml), matching box_resolve.stores_standalone_registry_null."""
+        """Stamp *dir_path* with the standalone MARKER (workset.yaml with a null
+        registry), matching box_resolve.stores_standalone_registry_null."""
         from kanibako.launch.box_resolve import stores_standalone_registry_null
         from kanibako.settings.config import WORKSET_META_FILE
         from kanibako.settings.paths import STANDALONE_META_DIR
@@ -560,7 +560,7 @@ class TestAddProjectConnectGuard:
     ):
         # --force connect (standalone: dropped, boxes: added) → disconnect (boxes:
         # removed) → a resolve finds it standalone without registering it; the import
-        # ``box register`` runs restores the entry (the box_data/ marker is untouched).
+        # ``box register`` runs restores the entry (the marker is untouched).
         from kanibako.project import registry_store
         from kanibako.settings.paths import BoxMode, detect_project_mode
 
@@ -1731,8 +1731,8 @@ class TestWorksetIdentityIsTheGlobalRegistry:
 class TestWorksetSkeletonMarker:
     """``is_workset_skeleton`` — the on-disk marker the ancestor walk looks for.
 
-    ⚑ Presence-only and name-free, exactly like ``_is_standalone_meta_dir``: it
-    answers *"is a workset here"*, never *"what is it called"* ([R139]).
+    ⚑ Presence-only and name-free: it answers *"is a workset here"*, never
+    *"what is it called"* ([R139]).
     """
 
     def test_a_created_workset_root_is_a_skeleton(self, std, tmp_home):
