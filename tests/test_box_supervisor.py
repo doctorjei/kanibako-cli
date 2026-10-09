@@ -210,7 +210,9 @@ def test_start_agent_session_emits_new_session_detached():
 
 def _exit_hook(record: str) -> str:
     return (
-        f"run-shell 'echo {PANE_DEATH_FORMAT} >{record}.tmp && mv {record}.tmp {record}'"
+        "run-shell 'tmux capture-pane -p -S -200 -E - -t #{pane_id}"
+        f" >{record}.out 2>/dev/null ;"
+        f" echo {PANE_DEATH_FORMAT} >{record}.tmp && mv {record}.tmp {record}'"
         " ; kill-pane"
     )
 
@@ -803,6 +805,33 @@ def test_run_forever_teardown_unreadable_end_is_never_zero(tmp_path, record):
     # The agent came up, but how it ended is unknown: no hook record (or junk).
     code = _teardown_after_session_vanished(tmp_path, record)
     assert code == UNDETERMINED_AGENT_EXIT
+
+
+@pytest.mark.parametrize("record, printed", [(_dead(3), True), (_dead(0), False)])
+def test_run_forever_teardown_echoes_the_hook_saved_output_on_failure(
+    tmp_path, capsys, record, printed,
+):
+    # The hook closed the pane after saving its text; a FAILED agent's text reaches
+    # ``podman logs`` (stdout), a clean exit's does not.
+    (tmp_path / "record.out").write_text("agent line\nfatal: boom\n\n\nPane is dead (status 3)\n")
+    _teardown_after_session_vanished(tmp_path, record)
+    out = capsys.readouterr().out
+    assert ("agent line\nfatal: boom\n" == out) is printed
+    if not printed:
+        assert out == ""
+
+
+def test_capture_drops_tmux_padding_and_dead_pane_line():
+    fake = FakeRun(stdout={"capture-pane": "out\n  \n\nPane is dead (status 1, now)\n\n"})
+    assert BoxSupervisor(_config(), run=fake).capture_agent_output() == "out"
+    fake = FakeRun(stdout={"capture-pane": "\nPane is dead (status 1, now)\n"})
+    assert BoxSupervisor(_config(), run=fake).capture_agent_output() is None
+
+
+def test_recorded_agent_output_absent_is_none(tmp_path):
+    assert BoxSupervisor(_config()).recorded_agent_output() is None   # nothing armed
+    sup = BoxSupervisor(_config(), exit_record=str(tmp_path / "record"))
+    assert sup.recorded_agent_output() is None                        # nothing saved
 
 
 def test_run_forever_teardown_pane_closed_between_probes_reads_the_record(tmp_path):

@@ -22,6 +22,7 @@ _ASSEMBLY_ENV: 'tuple[str, ...]' = ('meta', 'assembly', 'env')
 _HOME_OPTIONS: 'str' = 'Z,U'
 _COLLISION_WARNED: 'set[tuple[str, str]]' = set()
 _UNIX_SOCKET_PATH_LIMIT = 104
+_FALLBACK_LOG_TAIL = 20
 _BOOTSTRAP_SESSION = 'kanibako'
 _AGENT_EXIT_STOP_BOUND = 3 * SupervisorConfig.poll_interval + 4.0
 _AGENT_EXIT_STOP_STEP = 0.1
@@ -175,6 +176,7 @@ def _core_default_categories(std, proj, *, guarantee_create: bool=True) -> 'core
 def _canon_reprotect_hook(proj, logger)
 def _kanibako_mounts()
 def _run_setup_command(*, runtime: ContainerRuntime, image: str, proj, container_name: str, setup_entrypoint: str, setup_args: list[str], extra_mounts: list, tmpfs_masks, container_env: dict[str, str]) -> int
+def _print_supervisor_fallback(box_home: Path) -> None
 def _container_logs(runtime: ContainerRuntime, name: str) -> str
 def _bootstrap_session_exists(runtime: ContainerRuntime, name: str) -> bool
 def _agent_exit_rc(runtime: ContainerRuntime, name: str, rc: int, program: str, *, session_seen: bool, supervised: bool) -> int | None

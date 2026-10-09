@@ -62,6 +62,7 @@ def _default_list_marker_pids(markers_dir: str) -> list[int]
 def _default_remove_marker(markers_dir: str, pid: int) -> None
 def _argv_head(argv: Iterable[str]) -> tuple[str, str | None] | None
 def _names_an_agent(argv: Iterable[str], heads: set[tuple[str, str | None]]) -> bool
+def _trim_capture(text: str | None) -> str | None
 def _build_parser() -> argparse.ArgumentParser
 def _directive_watch(ns: argparse.Namespace) -> DirectiveWatch | None
 ```
@@ -133,6 +134,7 @@ class BoxSupervisor:
     def agent_pane_exit_code(self) -> int | None
     def recorded_agent_exit(self) -> int | None
     def capture_agent_output(self) -> str | None
+    def recorded_agent_output(self) -> str | None
     def agent_session_alive(self) -> bool
     def kill_agent_session(self) -> None
     def install_signal_handlers(self) -> None
@@ -151,6 +153,7 @@ class BoxSupervisor:
     def _send_keys_text(self, text: str) -> bool
     def _send_marker(self) -> bool
     def _send_takeover_heads_up(self) -> bool
+    def _capture_argv(self, target: str) -> list[str]
     def _kill_process_group(self, pid: int, sig: int) -> bool
     def _snapshot(self) -> AttachState
     def _other_surface_attached(self, state: AttachState) -> bool

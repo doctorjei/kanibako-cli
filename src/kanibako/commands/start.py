@@ -5390,6 +5390,8 @@ def _run_container(
                 # Every attempt failed with the container still up.  It is left
                 # running so it can be inspected before anything reaps it.
                 writeback_session_credentials(target, proj, auth_src=auth_src)
+                if supervise_agent:
+                    _print_supervisor_fallback(proj.shell_path)
                 print(
                     f"Error: Could not attach to box '{proj.name}' after "
                     f"{_max_exec_attempts} attempts. Its container "
@@ -5449,6 +5451,8 @@ def _run_container(
                     # A session never attached was not seen live: echo it too.
                     if rc != 0 or not attached or not _interactive_host():
                         print(logs, file=sys.stderr)
+                if rc != 0 and supervise_agent:
+                    _print_supervisor_fallback(proj.shell_path)
                 # FIX 2 (launch-validation), as on the never-started path above, and
                 # equally BOUNDED.  Still write back FIRST: a partial in-box login
                 # may have produced credentials worth propagating.
@@ -10050,6 +10054,27 @@ def _run_setup_command(
     if runtime.container_exists(container_name):
         runtime.rm(container_name)
     return rc
+
+
+#: How many trailing lines of the supervisor fallback log a failed launch prints.
+_FALLBACK_LOG_TAIL = 20
+
+
+def _print_supervisor_fallback(box_home: Path) -> None:
+    """Print the tail of the box's supervisor fallback log to stderr, if it holds anything.
+
+    PID 1 truncates the log at every supervised launch and writes it only when the
+    supervisor cannot be imported, so a non-empty log names why the agent did not start.
+    """
+    try:
+        text = (box_home / SUPERVISOR_FALLBACK_RELPATH).read_text(errors="replace")
+    except OSError:
+        return
+    lines = text.strip().splitlines()
+    if not lines:
+        return
+    print(f"kanibako: supervisor fallback log (~/{SUPERVISOR_FALLBACK_RELPATH}):", file=sys.stderr)
+    print("\n".join(lines[-_FALLBACK_LOG_TAIL:]), file=sys.stderr)
 
 
 def _container_logs(runtime: ContainerRuntime, name: str) -> str:

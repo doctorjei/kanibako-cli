@@ -698,6 +698,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Purging a standalone box deletes its `canon/` folder.** `box rm --purge` and `box purge` left the `canon/`
   folder that `create` made at the project root. `box rm --purge` now lists it with the other paths and deletes
   it. A `workset.canon` pointed outside the project is kept, and a note names it.
+- **A foreground agent that fails shows its last output.** When the agent exits non-zero, `kanibako start` prints
+  the agent's final screen before the box is removed; before, the box closed the agent's pane first and the output
+  was lost. If the box fell back to a bare shell because its supervisor would not load, the end of
+  `~/.kanibako/supervisor-fallback.log` is printed too. A clean exit prints nothing new.
 
 - **`box duplicate` to a primary box takes its `--name`.** It was ignored, and the copy was named after its
   directory. A taken name is refused before anything is written.
