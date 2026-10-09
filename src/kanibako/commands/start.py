@@ -5401,8 +5401,14 @@ def _run_container(
                 # supervised agent crash after a brief attach would otherwise leave
                 # rc=0.  Adopt the container's true exit code so a crash surfaces as
                 # a non-zero kanibako rc; `or rc` is non-zero-ONLY, so a clean exit
-                # keeps its rc and we never fabricate a failure.
-                rc = _container_exit_code(runtime, container_name) or rc
+                # keeps its rc and we never fabricate a failure.  A SUPERVISED box's
+                # code is the supervisor's verdict (1 only if the agent never
+                # started), so it is taken as is: an attach's 1 (no session yet)
+                # or 255 (box stopped mid-attach) is never the agent's.
+                code = _container_exit_code(
+                    runtime, container_name, undeterminable=None,
+                )
+                rc = code if supervise_agent and code is not None else (code or rc)
                 # (a) Terminal hygiene: the foreground attach just returned with the
                 # box STOPPED.  A full-screen agent TUI (e.g. claude) that DIED without
                 # restoring the screen leaves the host tty in the alternate screen with
@@ -10065,12 +10071,15 @@ def _agent_exit_rc(
     An attach returns on a detach (the session lives on) or when the session ends
     with its agent; the container's running state lags the agent's exit, so only
     the session tells them apart.  The session existed if the attach succeeded
-    (rc 0) or *session_seen* says so; one that never did may not be created yet,
-    and one whose box outlives the bound is still live — both are ``None``.
+    (rc 0) or *session_seen* says so, or the box is already down; one that never
+    did, on a live box, may not be created yet, and one whose box outlives the
+    bound is still live — both are ``None``.
     Otherwise the box is stopping: wait for it rather than race the supervisor's
     poll, and prefer its exit code, since the attach's rc is tmux's.
     """
-    if program != "tmux" or not (rc == 0 or session_seen):
+    if program != "tmux" or not (
+        rc == 0 or session_seen or not runtime.is_running(name)
+    ):
         return None
     if _bootstrap_session_exists(runtime, name):
         return None

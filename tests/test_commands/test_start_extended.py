@@ -1722,6 +1722,41 @@ class TestForegroundAgentExitStopsTheBox:
             capsys.readouterr().err
         )
 
+    @pytest.mark.parametrize("code", [0, 3])
+    @pytest.mark.parametrize("attach_rc, up_checks", [(1, 2), (1, 1), (255, 1)])
+    def test_an_agent_that_exits_before_any_attach_reports_the_box_code(
+        self, start_mocks, capsys, code, attach_rc, up_checks,
+    ):
+        """No session is ever seen and the box stops: the agent ran and exited
+        before the attach.  rc is the box's code, uncoerced — never the attach's
+        1 or 255.  up_checks=2 reaches the retry's readiness probe; 1 stops the
+        box before the loop's own liveness check."""
+        with start_mocks() as m, patch("time.sleep"), patch(
+            "kanibako.commands.start._container_exit_code", return_value=code,
+        ):
+            m.runtime.session_missing = True
+            states = iter([True] * up_checks)
+
+            def _up(*_x, **_y):
+                up = next(states, False)
+                m.runtime.is_running.return_value = up
+                return up
+
+            def _exec(*_a, **_k):
+                m.runtime.container_exists.return_value = True
+                # From the attach on, every liveness read (readiness probe
+                # included) moves the box toward stopped.
+                m.runtime.is_running.side_effect = _up
+                m.runtime.exec_ready.side_effect = _up
+                return attach_rc
+            m.runtime.exec.side_effect = _exec
+            rc = self._launch()
+            m.runtime.rm.assert_called_once()
+        err = capsys.readouterr().err
+        assert rc == code
+        assert "Error" not in err and "Could not attach" not in err
+        assert ("start -N" in err) is (code != 0)
+
     @pytest.mark.parametrize("session_after, lag", [(False, 5), (True, None)])
     def test_a_reattach_tells_exit_from_detach_too(
         self, start_mocks, session_after, lag,
