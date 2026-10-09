@@ -398,6 +398,26 @@ def test_convert_to_standalone_at_a_non_ascii_leaf_cures_at_the_directory(
     assert "--default" not in text
 
 
+def test_move_with_standalone_from_a_primary_cures_at_the_directory(
+        tmp_home, config_file, credentials_dir):
+    """⚑ `box move <primary> …/大阪 --standalone`: the TARGET is standalone, so no `--name` cure."""
+    from kanibako.settings.messages import CURE_MOVED_LEAF_NOT_ASCII
+
+    src = tmp_home / "work" / "mvprim"
+    src.mkdir(parents=True)
+    rc, text = _cli("create", "--no-vault", "--", str(src))
+    assert rc == 0, text
+    dst = tmp_home / "work" / "大阪"
+
+    rc, text = _cli("box", "move", str(src), str(dst), "--standalone", "--force")
+
+    assert rc == 1, text
+    assert "cannot spell in ASCII" in text
+    assert CURE_MOVED_LEAF_NOT_ASCII in text
+    assert "--name" not in text
+    assert not dst.exists()
+
+
 def test_the_convert_cure_echoes_the_target_that_was_asked_for():
     """⚑ The cure used to hard-code `--default`, so a `--workset ws` failure advised a
     DIFFERENT operation.  It must echo the target the user actually chose."""
