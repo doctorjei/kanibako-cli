@@ -24,6 +24,7 @@ from kanibako.commands.box._lifecycle import (
 from kanibako.project.workset import add_project, create_workset
 from kanibako.settings.config import load_config
 from kanibako.settings.paths import load_std_paths, resolve_project
+from tests.support.protected_trees import reap_box_stores
 
 needs_non_root = pytest.mark.skipif(
     os.geteuid() == 0, reason="root ignores directory permissions")
@@ -64,7 +65,9 @@ def _tree(path):
 
 @pytest.fixture(autouse=True)
 def _reopen(tmp_home):
+    """Reap the protected box stores a convert seeds, then re-open what remains."""
     yield
+    reap_box_stores(tmp_home)
     for root, dirs, _ in os.walk(tmp_home):
         for d in dirs:
             p = os.path.join(root, d)
