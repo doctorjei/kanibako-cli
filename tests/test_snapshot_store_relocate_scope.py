@@ -10,6 +10,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from kanibako.snapshots import (
     LAYOUT_MARKER_NAME,
     UNSORTED_DIRNAME,
@@ -133,6 +135,66 @@ class TestBaseChangeCarriesTheStore:
         names = {p.name for p in landed_root.iterdir() if p.is_dir()}
         assert len(names) == 2, f"expected two entries, got {names}"
 
+
+class TestSafetyCopyFailureIsNotATraceback:
+    """Item 4: the hardlink fallback raises OSError, and that path must be caught.
+
+    The reflink path shells out and raises ``CalledProcessError``; the HARDLINK
+    path -- what ``detect_snapshot_strategy`` picks on ext4, NFS and tmpfs, i.e.
+    most hosts -- falls back to ``copy_tree_keeping_links``, which raises
+    ``PermissionError``/``OSError`` straight out of the copy.  A restore into an
+    unwritable store must report a failed safety copy and change nothing, not
+    die with a traceback.
+    """
+
+    def test_an_unwritable_store_reports_a_failed_safety_copy(self, tmp_path,
+                                                          monkeypatch):
+        from kanibako import snapshots
+        from kanibako.snapshots import (
+            SnapshotSafetyError,
+            create_snapshot,
+            restore_snapshot,
+        )
+
+        vault = _vault(tmp_path, "w")
+        (vault / "live.txt").write_text("do not lose me\n")
+        snap = create_snapshot(vault, box_name="boxy")
+        assert snap is not None
+
+        # What the hardlink fallback does when the store is not writable.
+        def unwritable(*_a, **_k):
+            raise PermissionError(13, "Permission denied: '.versions'")
+
+        monkeypatch.setattr(snapshots, "create_snapshot", unwritable)
+
+        with pytest.raises(SnapshotSafetyError) as caught:
+            restore_snapshot(vault, snap.name, box_name="boxy")
+
+        assert "Nothing was changed" in str(caught.value)
+        # The live vault is untouched -- the restore never started.
+        assert (vault / "live.txt").read_text() == "do not lose me\n"
+
+    def test_an_oserror_from_the_copy_is_not_left_to_escape(self, tmp_path,
+                                                        monkeypatch):
+        """A bare OSError is not a CalledProcessError; it must not escape raw."""
+        from kanibako import snapshots
+        from kanibako.snapshots import SnapshotSafetyError, restore_snapshot
+
+        vault = _vault(tmp_path, "w2")
+        (vault / "live.txt").write_text("keep\n")
+        snap = snapshots.create_snapshot(vault, box_name="boxy")
+        assert snap is not None
+
+        monkeypatch.setattr(
+            snapshots, "create_snapshot",
+            lambda *_a, **_k: (_ for _ in ()).throw(
+                OSError(30, "Read-only file system")
+            ),
+        )
+
+        with pytest.raises(SnapshotSafetyError):
+            restore_snapshot(vault, snap.name, box_name="boxy")
+        assert (vault / "live.txt").read_text() == "keep\n"
 
 class TestMarkingMigratesFirst:
     """Item 3: a base is never declared per-box while it still holds flat entries."""

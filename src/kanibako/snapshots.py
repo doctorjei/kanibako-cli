@@ -629,7 +629,13 @@ def restore_snapshot(
             strategy=detect_snapshot_strategy(vault_rw_path),
             store_exclusive=store_exclusive,
         )
-    except subprocess.CalledProcessError as exc:
+    except (subprocess.CalledProcessError, OSError) as exc:
+        # ⚑ OSError, not just CalledProcessError.  The reflink path shells out and
+        # raises CalledProcessError, but the HARDLINK path -- what
+        # detect_snapshot_strategy picks on ext4, NFS and tmpfs, i.e. most hosts -
+        # - falls back to copy_tree_keeping_links, which raises PermissionError /
+        # OSError straight out of the copy.  Catching only the subprocess error
+        # left that path dying with a raw traceback on an unwritable store.
         raise SnapshotSafetyError(
             f"Could not snapshot the current vault contents before restoring "
             f"'{snapshot_name}': the copy failed ({exc}). Nothing was changed -- "
