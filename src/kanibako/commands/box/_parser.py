@@ -2953,12 +2953,17 @@ def _resolve_config_subject(std, config, project_dir: str | None):
         std, config, project_dir=project_dir, initialize=False,
     )
     if proj.mode is BoxMode.primary and not proj.name:
-        raise ProjectError(
+        head = (
             f"no box at {proj.project_path} — kanibako has no box registered "
             "for this directory, and a setting has to belong to a box.\n"
             "  Name the box:   kanibako box set <box> <key>=<value>\n"
-            "  Or make one:    kanibako create"
         )
+        try:
+            # ``create`` names the box after the directory, so it would refuse this one.
+            refuse_derived_box_name(Path(str(proj.project_path)).name or "project")
+        except DerivedBoxNameError as e:
+            raise ProjectError(head + f"  {box_name_cure('kanibako create', e.name)}") from e
+        raise ProjectError(head + "  Or make one:    kanibako create")
     return proj
 
 
