@@ -2049,6 +2049,10 @@ def _confirm_purge(steps: list[_PurgeStep], *, force: bool) -> bool:
     from kanibako.utils import confirm_prompt
 
     print()
+    if not steps:
+        print("--purge deletes nothing: no path of this box is kanibako's to remove "
+              "(any path kept is noted above).")
+        return True
     print(f"--purge deletes these {len(steps)} paths:")
     for step in steps:
         if step.path.is_symlink():
@@ -2077,13 +2081,17 @@ def _remove_purge_path(path: Path) -> bool:
 
 
 def _run_purge_plan(steps: list[_PurgeStep]) -> bool:
-    """Delete *steps* in order; True when the ANCHOR (box metadata dir) was removed.
+    """Delete *steps* in order; True when every step was removed.
 
-    A GATED step is skipped once the anchor could not be removed.
+    A GATED step is KEPT, and reported, once the ANCHOR (box metadata dir) could not go.
     """
     anchor_removed: bool | None = None
+    all_removed = True
     for step in steps:
         if step.gated and anchor_removed is False:
+            all_removed = False
+            print(f"Kept {step.kind}: {step.path} — the box metadata folder could not be "
+                  "removed.", file=sys.stderr)
             continue
         removed = _remove_purge_path(step.path)
         if step.anchor:
@@ -2091,13 +2099,14 @@ def _run_purge_plan(steps: list[_PurgeStep]) -> bool:
         if removed:
             print(f"Removed {step.kind}: {step.path}")
             continue
+        all_removed = False
         print(
             f"Warning: could not fully remove {step.path} "
             "(it may contain files created inside a container). "
             f"Try: podman unshare rm -rf {shlex.quote(str(step.path))}",
             file=sys.stderr,
         )
-    return anchor_removed is True
+    return all_removed
 
 
 def _read_box_image(settings_file: Path) -> str | None:
@@ -2188,10 +2197,10 @@ def _purge_deregistered(std, name: str, entry: dict, args: argparse.Namespace) -
     if not _confirm_purge(plan, force=args.force):
         print("Aborted (box remains deregistered).")
         return 2
-    _run_purge_plan(plan)
+    removed = _run_purge_plan(plan)
 
     registry_store.unregister_deregistered(std.registry, name)
-    return 0
+    return 0 if removed else 1
 
 
 def _resolve_standalone_target(
@@ -2261,7 +2270,8 @@ def _rm_standalone(std, box_name: str, root, args: argparse.Namespace) -> int:
 
     if args.purge:
         if plan is not None:
-            _run_purge_plan(plan)
+            if not _run_purge_plan(plan):
+                return 1
         else:
             print(f"No metadata directory found at {metadata_dir}")
     elif root_path is not None and metadata_dir is not None and metadata_dir.is_dir():
@@ -2358,7 +2368,8 @@ def run_rm(args: argparse.Namespace) -> int:
 
     if args.purge:
         if plan is not None:
-            _run_purge_plan(plan)
+            if not _run_purge_plan(plan):
+                return 1
         else:
             print(f"No metadata directory found at {metadata_dir}")
     else:
