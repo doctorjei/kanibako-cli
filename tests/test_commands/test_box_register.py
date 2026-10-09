@@ -19,7 +19,8 @@ import hashlib
 from pathlib import Path
 
 from kanibako.project import registry_store
-from kanibako.settings.messages import CURE_LEAF_NOT_ASCII
+from kanibako.launch.box_identity import box_name_reason
+from kanibako.settings.messages import CURE_LEAF_NOT_ASCII, WARN_WS_BOX_BAD_NAME
 from kanibako.commands.box._parser import run_create, run_register, run_rm
 from kanibako.project.names import resolve_name, register_name
 from kanibako.settings.paths import load_primary_boxes
@@ -413,11 +414,26 @@ class TestPathDesignationIsNeverAName:
     ):
         std = self._hidden_box(config_file, tmp_home, monkeypatch)
         capsys.readouterr()
-        assert run_rm(_rm_args(".hidden")) == 1
-        assert "'.hidden' is not a registered box" in capsys.readouterr().err
+        assert run_rm(_rm_args(".HIDDEN")) == 1
+        err = capsys.readouterr().err
+        assert "not a registered box" not in err
+        assert WARN_WS_BOX_BAD_NAME % (".hidden", box_name_reason(".hidden")) in err
+        assert err.endswith(f"Remove it by its path:\n  kanibako box rm {tmp_home / '.hidden'}\n")
         assert ".hidden" in load_primary_boxes(
             std.primary_workset, early=_early_scope(std, BoxMode.primary),
         )
+
+    def test_rm_names_the_path_of_a_legacy_standalone_name(
+        self, config_file, tmp_home, credentials_dir, capsys, monkeypatch,
+    ):
+        _, std = _std(config_file)
+        monkeypatch.chdir(tmp_home)
+        root = tmp_home / "my sa"
+        registry_store.register_standalone(std.registry, "my sa", root)
+        assert run_rm(_rm_args("my sa")) == 1
+        assert capsys.readouterr().err.endswith(
+            f"Remove it by its path:\n  kanibako box rm '{root}'\n")
+        assert "my sa" in registry_store.load_standalone(std.registry)
 
     def test_register_does_not_resolve_it_by_name(
         self, config_file, tmp_home, credentials_dir, capsys, monkeypatch,

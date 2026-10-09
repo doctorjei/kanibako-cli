@@ -18,9 +18,9 @@ from collections.abc import Callable
 from datetime import datetime, timezone
 from pathlib import Path
 
-from kanibako.launch.box_identity import (Designation, box_name_cure, classify_designation,
-                                          refuse_nonleaf_standalone_name, sanitize_cap,
-                                          validate_box_name)
+from kanibako.launch.box_identity import (Designation, box_name_cure, box_name_reason,
+                                          classify_designation, refuse_nonleaf_standalone_name,
+                                          sanitize_cap, validate_box_name)
 from kanibako.commands.flags import add_null_flag, add_set_force_flag
 from kanibako.settings.config_io import refuse_scalar_sections
 from kanibako.settings.workset_dirkeys import EarlyScope, refuse_inherited_per_owner
@@ -44,6 +44,7 @@ from kanibako.settings.messages import (
     ERR_WORKSET_MEMBER_NAME_TAKEN,
     ERR_WORKSET_MEMBER_NO_RECOVER,
     ERR_WORKSET_NULL_WORKSPACES,
+    WARN_WS_BOX_BAD_NAME,
 )
 from kanibako.settings.paths import (
     IGNORE_FILE,
@@ -2343,6 +2344,14 @@ def run_rm(args: argparse.Namespace) -> int:
             )
 
     if name is None or section is None:
+        # ⚑ A stored legacy name is a PATH designation: name its path, never resolve it.
+        for held in (primary_boxes, registry_store.load_standalone(std.registry)):
+            legacy = None if by_name else find_identifier(target, held)
+            if legacy is not None:
+                print(f"Error: {WARN_WS_BOX_BAD_NAME % (legacy, box_name_reason(legacy))}\n"
+                      f"Remove it by its path:\n"
+                      f"  kanibako box rm {shlex.quote(str(held[legacy]))}", file=sys.stderr)
+                return 1
         print(f"Error: '{target}' is not a registered box.", file=sys.stderr)
         return 1
 
