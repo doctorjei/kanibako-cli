@@ -128,6 +128,14 @@ def _run_duplicate_cross_mode(args: argparse.Namespace, std, config) -> int:
     if to_mode is BoxMode.standalone and getattr(args, "project_name", None):
         try:
             refuse_nonleaf_standalone_name(args.project_name, new_path)
+        except DerivedBoxNameError:
+            # ⚑ PROPAGATE, do not catch as ProjectError.  ``refuse_nonleaf_standalone_name``
+            # calls ``sanitize_cap`` on the destination root, which RAISES this for a char
+            # with no ASCII spelling.  It SUBCLASSES ProjectError, so the plain catch below
+            # would print it bare — the right refusal with its ``CURE_LEAF_NOT_ASCII`` cure
+            # stripped.  The door that owns the ASCII rule prints the cure; this one must
+            # not swallow it.
+            raise
         except ProjectError as e:
             print(f"Error: {e}", file=sys.stderr)
             return 1

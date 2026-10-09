@@ -2765,6 +2765,7 @@ class TestStandaloneRootIsNotAPositionInThePath:
         box inside the first — and then the source teardown removed the ORIGINAL's
         ``box_data/``, meta and vault, because the destination was no longer the source.
         """
+        from kanibako.launch.box_identity import standalone_kuid
         from kanibako.project import registry_store
         from kanibako.settings.paths import STANDALONE_META_DIR
 
@@ -2792,7 +2793,17 @@ class TestStandaloneRootIsNotAPositionInThePath:
         assert not (renamed.workspace_path / ".gitignore").exists()
         standalone = registry_store.load_section(std.registry, "standalone")
         assert standalone[renamed.name] == str(root)
-        assert first.name not in standalone
+        # ⚑⚑ The kuid is CARRIED, not re-minted (keyspec ``:811``: "kuid = stable stored
+        # prefix; the leaf tracks dir moves").  This is a LEAF NO-OP — the directory never
+        # moved — so the composed name is the SAME identifier the box started with.
+        # This line used to read ``assert first.name not in standalone``, which was only
+        # ever true because the move RE-MINTED the kuid and so always produced a different
+        # name.  That re-mint is the defect kanibako ruled against on 2026-10-09; the old
+        # assertion was pinning the bug.  What must hold instead: ONE row for this root,
+        # under the box's current name, with the kuid intact.
+        assert renamed.name == first.name
+        assert standalone_kuid(renamed.name) == standalone_kuid(first.name)
+        assert [k for k, v in standalone.items() if v == str(root)] == [renamed.name]
 
     def test_rename_in_place_under_a_repoint_stays_at_the_root(self, env):
         """The same rename with the workspace repointed away from its default leaf — the

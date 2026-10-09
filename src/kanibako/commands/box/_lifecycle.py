@@ -26,6 +26,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from kanibako.launch.box_identity import (
+    is_canonical_standalone_name,
     refuse_nonleaf_standalone_name,
     standalone_kuid,
     validate_box_name,
@@ -46,7 +47,10 @@ from kanibako.settings.config import (
 )
 from kanibako.identifiers import find_identifier
 from kanibako.errors import DerivedBoxNameError, ProjectError, WorksetError
-from kanibako.settings.messages import CURE_DERIVED_BOX_NAME
+from kanibako.settings.messages import (
+    CURE_DERIVED_BOX_NAME,
+    CURE_MOVED_LEAF_NOT_ASCII,
+)
 from kanibako.settings.paths import (
     STANDALONE_META_DIR,
     BoxMode,
@@ -1747,6 +1751,7 @@ def _remove_old_metadata(
     *,
     dst_vault: tuple[Path | None, Path | None],
     preserve_name: str | None = None,
+    new_name: str | None = None,
     preserve_root: Path | None = None,
 ) -> None:
     """Remove the source project's metadata/shell (+ PRIMARY vault), per source mode.
@@ -1756,6 +1761,15 @@ def _remove_old_metadata(
     (whose metadata IS a root, and whose NAME is exactly what an in-place rename changes).
     A destination that reused the source must not then have the source torn out from under
     it — for standalone that is the box's home, settings and vault.
+
+    ⚑ *new_name* is the name the DESTINATION just registered.  The standalone teardown
+    unregisters the SOURCE's name, and that is correct only while the two differ.  A
+    standalone move now CARRIES its kuid (keyspec ``:811``), so a move that keeps the leaf
+    (``/a/proj`` → ``/b/proj``) composes the SAME name it started with — and unregistering
+    it there deletes the entry the establish step just wrote, silently dropping a live box
+    from the registry while its files are untouched.  Compared case-blind, matching the
+    registry's own lookup.  Before the kuid was carried this could not happen: the prefix
+    changed on every move, so old != new was an invariant.
 
     *dst_vault* is the destination's ``(ro, rw)`` leaves: a side it has NO leaf for
     (:func:`_unreceived_vault_leaves`) is retained here, never deleted.
@@ -1770,9 +1784,10 @@ def _remove_old_metadata(
         if preserve_root is not None and preserve_root.resolve() == root.resolve():
             # ⚑⚑ The destination IS this root (an in-place standalone rename): ``box_data/``,
             # the root meta and the vault are the box that was just re-established, and the
-            # only stale thing left is the OLD NAME's registry entry.
+            # only stale thing left is the OLD NAME's registry entry — UNLESS the carried
+            # kuid composed the SAME name, in which case that entry is the LIVE one.
             from kanibako.project import registry_store
-            if state.name:
+            if state.name and not _same_box_name(state.name, new_name):
                 try:
                     registry_store.unregister_standalone(std.registry, state.name)
                 except Exception:  # noqa: BLE001
@@ -1802,8 +1817,10 @@ def _remove_old_metadata(
             ]
         # ⚑ Standalone lives in registry.standalone: drop that entry too,
         # or a standalone→standalone move strands the old name → root mapping.
+        # ⚑ UNLESS the carried kuid composed the same name — then it is the destination's
+        # live entry, not a strand (see the docstring on ``new_name``).
         from kanibako.project import registry_store
-        if state.name:
+        if state.name and not _same_box_name(state.name, new_name):
             try:
                 registry_store.unregister_standalone(std.registry, state.name)
             except Exception:  # noqa: BLE001
@@ -2328,10 +2345,22 @@ def _to_standalone(
     # ⚑⚑ The BOX-AUTHORED value: ``establish_standalone`` writes this straight to the box
     # tier ``_deliver_carried_box_settings`` just laid down, so passing the RESOLVED value
     # would undo that carry and pin the source workset's default on a box that has LEFT it.
+    # ⚑⚑ KEEP THE KUID ON A STANDALONE MOVE (keyspec ``:811`` — "kuid = stable stored
+    # prefix; the leaf tracks dir moves").  A standalone source ALREADY owns a kuid;
+    # re-minting it here made the box a different identity every time it moved, so the
+    # refusal named one composed name while the move produced another, and a "full
+    # composed name" no-op registered a third.  A true convert-TO-standalone (primary or
+    # named source) has no standalone kuid to carry, so it mints fresh.
+    carried_kuid = (
+        standalone_kuid(state.name)
+        if state.mode is BoxMode.standalone and is_canonical_standalone_name(state.name)
+        else None
+    )
     box_name, dst_shell, vault_ro, vault_rw = establish_standalone(
         std, root,
         enable_vault=state.box_authored_vault,
-        name=requested_name,
+        carry_kuid=carried_kuid,
+        own_name=state.name if carried_kuid else None,
     )
     unwind.push(
         lambda: registry_store.unregister_standalone(std.registry, box_name)
@@ -2358,6 +2387,7 @@ def _to_standalone(
 
     _remove_old_metadata(
         state, std, config, unwind, dst_vault=(vault_ro, vault_rw),
+        new_name=box_name,
         preserve_root=root if reused_in_place else None,
     )
 
@@ -2816,6 +2846,21 @@ def _dispose_stash(stash: Path) -> None:
 # CLI entry points: run_remap / run_move / run_convert
 # ---------------------------------------------------------------------------
 
+def _convert_target_flags(args) -> list[str]:
+    """The target flags the user actually typed, as a cure would need to re-run THEIR command.
+
+    A printed cure that names a different target than the one asked for is worse than no
+    cure: ``convert --workset foo`` failing and advising ``convert … --default`` points the
+    user at a DIFFERENT operation.  Mirrors :func:`_ownership_from_args`.
+    """
+    if getattr(args, "to_default", False):
+        return ["--default"]
+    ws = getattr(args, "to_workset", None)
+    if ws:
+        return ["--workset", str(ws)]
+    return []
+
+
 def _ownership_from_args(args) -> str | _Sentinel:
     """Map --default/--standalone/--workset to an ownership value, else :data:`UNCHANGED`."""
     if getattr(args, "to_default", False):
@@ -2984,6 +3029,15 @@ def run_move(args) -> int:
             confirm=_make_confirm(getattr(args, "force", False), summary),
         )
     except DerivedBoxNameError as e:
+        # ⚑ A STANDALONE target has no `--name` to give.  Its name is composed from the
+        # directory, and the standalone doors REFUSE a `--name` that differs from it
+        # (kanibako ruling 2026-10-09), so the generic `--name <new-name>` cure walked
+        # the user straight back into that refusal: `box move …/q3 …/京都 --name foo`
+        # produced the identical error.  Only the directory can fix a directory-derived
+        # name, so a standalone target gets the directory cure.
+        if state.mode is BoxMode.standalone:
+            print(f"Error: {e.with_cure(CURE_MOVED_LEAF_NOT_ASCII)}", file=sys.stderr)
+            return 1
         cure = shlex.join(["kanibako", "box", "move", old, str(new_path),
                            *(["--default"] if getattr(args, "to_default", False) else [])])
         print(f"Error: {e.with_cure(CURE_DERIVED_BOX_NAME % (cure + ' --name <new-name>'))}",
@@ -3072,9 +3126,18 @@ def run_convert(args) -> int:
             confirm=_make_confirm(getattr(args, "force", False), summary),
         )
     except DerivedBoxNameError as e:
+        # ⚑ Same rule as ``run_move``: a standalone target's name comes from its
+        # directory, and `--name` is refused on that door, so the `--name` cure is a loop.
+        if ownership == "standalone":
+            print(f"Error: {e.with_cure(CURE_MOVED_LEAF_NOT_ASCII)}", file=sys.stderr)
+            return 1
+        # ⚑ The cure used to hard-code `--default`, which told someone converting to a
+        # NAMED workset to convert to the default instead — a different operation that
+        # answers nothing.  Echo the target they actually asked for.
         cure = shlex.join(["kanibako", "box", "convert", subject or str(state.workspace_path),
-                           "--default", *(["--move", str(location)]
-                                          if isinstance(location, Path) else [])])
+                           *_convert_target_flags(args),
+                           *(["--move", str(location)]
+                              if isinstance(location, Path) else [])])
         print(f"Error: {e.with_cure(CURE_DERIVED_BOX_NAME % (cure + ' --name <new-name>'))}",
               file=sys.stderr)
         return 1

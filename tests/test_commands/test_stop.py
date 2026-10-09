@@ -741,7 +741,9 @@ class TestStopWithMalformedBoxSettings:
 
         root = tmp_home / "sa"
         (root / "box_data").mkdir(parents=True)
-        name, *_ = establish_standalone(std, root, enable_vault=True, name="sa")
+        # No ``name=``: a standalone box is named from its root, never by the caller
+        # (the kwarg used to exist here and be silently dropped).
+        name, *_ = establish_standalone(std, root, enable_vault=True)
         box_yaml = root / "box_data" / "box.yaml"
         box_yaml.write_text("box:\n  enable_vault: false\n")
         return root, name, box_yaml
