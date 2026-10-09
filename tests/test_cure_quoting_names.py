@@ -440,7 +440,7 @@ class TestTheCureRefIsQuoted:
         text, _ = self._refuse(name, tmp_home, convert=True)
 
         assert f"kanibako box convert {shlex.quote(name)} --workset ws2 --move" in text
-        _assert_inert(_backticked(_line(text, "kanibako box convert"), "kanibako box convert"),
+        _assert_inert(_line(text, "kanibako box convert"),
                       ["box", "convert", name, "--workset", "ws2", "--move"],
                       tmp_path / "paste-convert")
 
@@ -448,7 +448,7 @@ class TestTheCureRefIsQuoted:
                                               config_file, credentials_dir):
         text, leaf = self._refuse(name, tmp_home, convert=False)
 
-        _assert_inert(_backticked(_line(text, "kanibako box move"), "kanibako box move"),
+        _assert_inert(_line(text, "kanibako box move"),
                       ["box", "move", name, str(leaf), "--workset", "ws2"],
                       tmp_path / "paste-move")
 

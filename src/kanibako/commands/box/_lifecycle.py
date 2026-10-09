@@ -802,36 +802,32 @@ def _validate(
                 and dest != (ws_dir / new_name).resolve()):
             leaf = ws_dir / (cure_name or new_name)
             ref = _cure_ref(state)
-            bare = (f"kanibako box convert {ref} --workset {shlex.quote(target_ws.name)} "
-                    f"--move{rename}")
-            # Source at the cure's leaf? bare + move-to-leaf would target the
-            # source's current location and re-fire refusal B.  The rename
-            # route (``box move <ref> <path> --name <name> --force``) is the
-            # only runnable cure here.
-            source_at_cure_leaf = (
-                leaf.resolve() == state.workspace_path.resolve()
-            )
+            ws_q = shlex.quote(target_ws.name)
+            bare = f"kanibako box convert {ref} --workset {ws_q} --move{rename}"
+            fresh = f"kanibako box convert {ref} --workset {ws_q} --move --name <name>"
             if spec.records_only:
-                advice = (f"Move the files to `{leaf}` and run `kanibako box remap` "
-                          "again")
+                advice = f"Move the files to `{leaf}` and run `kanibako box remap` again."
             elif cure_name is None:
-                advice = (f"Run `kanibako box convert {ref} --workset "
-                          f"{shlex.quote(target_ws.name)} --move --name <name>` with a name "
-                          "no member holds")
-            elif source_at_cure_leaf:
-                advice = (f"`{ref}` is at its leaf; the rename route changes it: "
-                          f"`kanibako box move {ref} <path> --name <name> --force`")
+                advice = f"Run, with a name no member holds:\n  {fresh}"
+            elif leaf.resolve() == state.workspace_path.resolve():
+                # A cure to the leaf the box stands at is refused as its current location;
+                # only a new name gives it another leaf.
+                cure = fresh if spec.verb == "convert" else (
+                    f"kanibako box move {ref} {shlex.quote(str(ws_dir))}/<name> "
+                    f"--workset {ws_q} --name <name>")
+                advice = ("The box already lives there; to give it another leaf, run, with a "
+                          f"name no member holds:\n  {cure}")
             elif spec.verb == "convert":
-                advice = f"Run `{bare}`"
+                advice = f"Run:\n  {bare}"
             else:
-                advice = (f"Run `kanibako box move {ref} {shlex.quote(str(leaf))} "
-                          f"--workset {shlex.quote(target_ws.name)}{rename}` (or `{bare}`)")
+                advice = (f"Run either:\n  kanibako box move {ref} {shlex.quote(str(leaf))} "
+                          f"--workset {ws_q}{rename}\n  {bare}")
             raise ProjectError(
                 f"Refusing to record {dest} for a workset member: inside workset "
                 f"'{target_ws.name}' a member would live at `{leaf}`{held_note}, and no other "
-                f"in-tree path is the workspace the box records.\n"
+                "in-tree path is the workspace the box records.\n"
                 f"{advice}\n"
-                f"Or choose a destination outside the workset."
+                "Or choose a destination outside the workset."
             )
 
     # --- ⚑ an IN-PLACE convert records the box only where it stands: any other leaf
