@@ -1921,6 +1921,42 @@ def load_primary_boxes(primary_workset: Path, *, early: EarlyScope) -> dict[str,
     return workset_registry.load_workset_boxes(registry_path)
 
 
+class LegacyBox(NamedTuple):
+    """A registered box whose stored name the box-name rule refuses."""
+
+    mode: str
+    name: str
+    path: str
+    reason: str
+
+    def refusal(self, action: str, verb: str) -> str:
+        """The error naming this box's path: *action* leads the ``<verb> <path>`` line."""
+        from kanibako.utils import rename_box_cure
+
+        return (f"Error: box name '{self.name}' does not meet the naming rules ({self.reason}), "
+                f"so the box is reached by its path only. {action}, or give it a valid name:\n"
+                f"  {verb} {shlex.quote(self.path)}\n"
+                f"  {rename_box_cure(self.mode, Path(self.path))}")
+
+
+def stored_legacy_box(std: StandardPaths, typed: str) -> LegacyBox | None:
+    """The box registered case-blind under *typed* when its stored name fails the rule.
+
+    Such a name is a PATH designation, so no name lookup reaches it; the caller names
+    its path instead.  Primary boxes are checked before standalone ones.
+    """
+    from kanibako.project import registry_store
+
+    primary = load_primary_boxes(std.primary_workset, early=_early_scope(std, BoxMode.primary))
+    for mode, held in (("primary", primary),
+                       ("standalone", registry_store.load_standalone(std.registry))):
+        stored = find_identifier(typed, held)
+        reason = None if stored is None else box_name_reason(stored)
+        if stored is not None and reason is not None:
+            return LegacyBox(mode, stored, str(held[stored]), reason)
+    return None
+
+
 def primary_box_name_for_workspace(primary_workset: Path, workspace: str,
                                    *, early: EarlyScope) -> str | None:
     """Return the PRIMARY box name registered for *workspace*, or ``None`` (resolved-path aware)."""

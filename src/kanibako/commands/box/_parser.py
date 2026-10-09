@@ -19,8 +19,8 @@ from collections.abc import Callable
 from datetime import datetime, timezone
 from pathlib import Path
 
-from kanibako.launch.box_identity import (Designation, box_name_cure, box_name_reason,
-                                          classify_designation, refuse_nonleaf_standalone_name,
+from kanibako.launch.box_identity import (Designation, box_name_cure, classify_designation,
+                                          refuse_nonleaf_standalone_name,
                                           sanitize_cap, validate_box_name)
 from kanibako.commands.flags import add_null_flag, add_set_force_flag
 from kanibako.settings.config_io import refuse_scalar_sections
@@ -73,14 +73,15 @@ from kanibako.settings.paths import (
     resolve_project,
     resolve_standalone_project,
     resolve_workset_project,
+    stored_legacy_box,
     unregister_primary_box_name,
 )
 from kanibako.agent_ref import GENERAL_SLOT, harness_of, parse_agent_address, with_harness
 from kanibako.targets import resolve_target
 from kanibako.utils import (
     WORKSET_SEGMENT_PRIMARY, WORKSET_SEGMENT_STANDALONE,
-    container_name_for, container_name_for_box_name, literal_path, logical_cwd, rename_box_cure,
-    short_hash, write_project_gitignore,
+    container_name_for, container_name_for_box_name, literal_path, logical_cwd, short_hash,
+    write_project_gitignore,
 )
 
 # ``box duplicate --to`` takes the mode enum's own tokens, never a hand-kept spelling list.
@@ -2390,10 +2391,10 @@ def run_rm(args: argparse.Namespace) -> int:
             return _rm_standalone(std, sa_name, sa_root, args)
 
     if name is None:
-        # ⚑ Not active anywhere — a re-`rm` after a plain `rm` must resolve the retained
-        # metadata HERE rather than erroring "not registered".
-        # ⚑ Case-blind (spec §0), and the purge takes the STORED spelling: it names the
-        # box's log files, which a typed case-variant would miss.
+        # ⚑ Not active anywhere: a re-`rm` after a plain `rm` resolves the retained
+        # metadata.
+        # ⚑ Case-blind (spec §0); the purge takes the STORED spelling, which names the
+        # box's log files.
         deregistered = registry_store.load_deregistered(std.registry)
         dereg_name = find_identifier(target, deregistered)
         if dereg_name is not None:
@@ -2402,18 +2403,10 @@ def run_rm(args: argparse.Namespace) -> int:
             )
 
     if name is None or section is None:
-        # ⚑ A stored legacy name is a PATH designation: name its path, never resolve it.
-        for mode, held in (("primary", primary_boxes),
-                           ("standalone", registry_store.load_standalone(std.registry))):
-            legacy = None if by_name else find_identifier(target, held)
-            reason = None if legacy is None else box_name_reason(legacy)
-            if legacy is not None and reason is not None:
-                print(f"Error: box name '{legacy}' does not meet the naming rules ({reason}), "
-                      f"so the box is reached by its path only. Remove it, or give it a "
-                      f"valid name:\n"
-                      f"  kanibako box rm {shlex.quote(str(held[legacy]))}\n"
-                      f"  {rename_box_cure(mode, Path(held[legacy]))}", file=sys.stderr)
-                return 1
+        legacy = None if by_name else stored_legacy_box(std, target)
+        if legacy is not None:
+            print(legacy.refusal("Remove it", "kanibako box rm"), file=sys.stderr)
+            return 1
         print(f"Error: '{target}' is not a registered box.", file=sys.stderr)
         return 1
 
