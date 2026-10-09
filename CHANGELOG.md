@@ -722,6 +722,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   suggested a plain `create`, which makes a PRIMARY box over it.
 - **A launch by a standalone box's directory name names the box.** `start plain` said nothing is registered under
   that name; it now prints the registered `<kuid>_plain` box and the command that reaches it.
+- **`box diagnose` reports a box whose store is gone.** Any box (standalone, primary, or named) whose store was
+  missing, including a standalone whose `workset.boxes` points at a missing folder, passed every check and was told
+  its home would be `created on first run`, but a launch refuses it. It now prints
+  `[!!] Box store: missing (<path>)`.
 - **A codex panel in a box started with `--warm-only` no longer gets a second codex beside it.** The box judged the
   running panel to be a codex helper rather than the session, dropped its liveness marker, and then started
   `codex resume --last` in tmux as if the panel had died. The box now recognizes the panel, and still starts a CLI
