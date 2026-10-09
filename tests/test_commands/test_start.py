@@ -133,7 +133,7 @@ class TestCheckBoxComponents:
 
     def test_missing_settings_file_not_double_checked(self, tmp_path):
         """#3 — the settings-file marker is NOT re-checked at launch: a proj
-        whose workspace + home exist passes even with no box.yaml (the
+        whose workspace + home exist passes even with no workset.yaml (the
         marker's absence is handled at resolution/detection, not double-fired
         here — see box_resolve.stores_standalone_registry_null below)."""
         proj = self._proj(tmp_path)  # no box.yaml written anywhere
@@ -142,9 +142,9 @@ class TestCheckBoxComponents:
 
     def test_marker_absence_is_a_resolution_concern(self, tmp_path):
         """#3 (cont.) — the settings-file marker IS the box signal at the
-        RESOLUTION layer: a standalone root is only recognized as a box when its
-        workset.yaml is present, so a missing marker → 'not a box' there (never
-        double-checked at launch)."""
+        RESOLUTION layer: a standalone root is a box only when its workset.yaml
+        stores a null registry; without it, 'not a box' (never re-checked at
+        launch)."""
         from kanibako.launch import box_resolve
 
         root = tmp_path / "sbox"

@@ -1228,8 +1228,8 @@ def is_workset_skeleton(root: Path, *, early: EarlyScope) -> bool:
     ⚑ Presence-only, and it names nothing.  A workset root records no name anywhere
     (its identity is the global registry's ``worksets:`` entry), so this answers only
     *"is a workset here"* — [R139]: detection and naming are two questions, and
-    answering one does not answer the other.  ``_is_standalone_meta_dir`` is the same
-    shape for the same reason.
+    answering one does not answer the other.  ``_is_standalone_meta_dir`` also names
+    nothing.
     ⚑ ALL are required (four, fewer under a ``<None>`` ``workset.logs`` or
     ``workset.workspaces``): any one of them alone is an ordinary directory name.
     ⚑ Three of the four are RESOLVED through their workset keys, so this finds a root

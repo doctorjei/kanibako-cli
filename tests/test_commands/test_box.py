@@ -1795,7 +1795,7 @@ class TestBoxDuplicateCrossMode:
         rc = run_duplicate(args)
         assert rc == 0
 
-        # (1) Detected as standalone via the on-disk box_data/ marker.
+        # (1) Detected as standalone via the root workset.yaml marker.
         result = detect_project_mode(dst_dir, std, config)
         assert result.mode == BoxMode.standalone
 

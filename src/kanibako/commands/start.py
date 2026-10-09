@@ -1418,9 +1418,9 @@ def _check_box_components(proj) -> str | None:
 
     The **settings-file marker** (the third CRITICAL component per D5) is NOT
     re-checked here: its absence is already handled at resolution/detection time
-    (``box_resolve.stores_standalone_registry_null`` requires the box
-    ``box.yaml`` for a standalone to be recognized as a box at all; the
-    read-side ``box_resolve`` returns ``None`` = "not a box").  A launch resolve
+    (``box_resolve.stores_standalone_registry_null`` requires the root
+    ``workset.yaml`` to store ``workset.registry: null``; the read-side
+    ``box_resolve`` returns ``None`` = "not a box").  A launch resolve
     (``initialize=True``) would recreate a fresh marker, so a marker check here
     would be dead.  The **vault** (NON-CRITICAL) only WARNS, at resolve time,
     via ``paths._flag_missing_vault`` — never here.

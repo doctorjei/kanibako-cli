@@ -394,8 +394,8 @@ def _duplicate_to_standalone(src_proj, new_path, std, force, src_enable_vault, c
     WORKSET tier and carries the source's ``workset.kuid``.  The destination's
     root file is MINTED, not copied — without that fresh mint the destination
     would answer to the source's identity, and detection
-    (``_is_standalone_meta_dir``: ``box_data/`` plus a root ``workset.yaml``,
-    presence-only since D4) would resolve the two boxes to one (BUG#3).
+    (``_is_standalone_meta_dir``: only the root ``workset.yaml`` storing
+    ``workset.registry: null``) would resolve the two boxes to one (BUG#3).
     """
     from kanibako.errors import ProjectError
     from kanibako.settings.paths import establish_standalone, standalone_box_store, write_vault_gitignore
@@ -425,7 +425,7 @@ def _duplicate_to_standalone(src_proj, new_path, std, force, src_enable_vault, c
     # workspace+vault into the box dir AND land the source's WORKSET-tier file at
     # the dest's BOX tier (M-8) — the same guard ``_lifecycle.py`` applies when it
     # re-roots a box.  The stray nested root is not inert: ``<dst>/box_data`` would
-    # then carry BOTH ``box_data/`` and a ``workset.yaml``, i.e. the standalone
+    # then carry a ``workset.yaml`` storing a null registry, i.e. the standalone
     # MARKER (``box_resolve.stores_standalone_registry_null``), under the SOURCE's kuid.
     src_meta_dir = box_metadata_dir(src_proj.mode, src_proj.metadata_path,
                                     early=src_proj._require_early())

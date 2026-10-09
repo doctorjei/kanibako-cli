@@ -852,8 +852,8 @@ class TestDetectBoxMode:
         self, config_file, tmp_home
     ):
         """Regression guard for B2b: a REAL workset box (under the workset tree,
-        NO box_data/ marker) STILL resolves as its named workset box — the new
-        top-of-function standalone check keys on the box_data/ marker signal only,
+        NO standalone marker) STILL resolves as its named workset box — the new
+        top-of-function standalone check keys on the stored-null marker only,
         so a marker-less in-tree dir is unaffected.
         """
         from kanibako.project.workset import create_workset
