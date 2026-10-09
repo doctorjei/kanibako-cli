@@ -970,9 +970,8 @@ class BoxSupervisor:
         return [
             "capture-pane", "-p",
             "-S", f"-{self.config.capture_history}",
-            # ⚑ ``-E -`` = capture through the END OF HISTORY.  Without it the end
-            # defaults to the VISIBLE screen, which for a dead pane is tmux's "Pane is
-            # dead" overlay — the agent's actual output would NOT be returned.
+            # ``-E -`` ends the capture at the end of history.  A dead pane's
+            # "Pane is dead" line is ordinary pane text; ``_trim_capture`` drops it.
             "-E", "-",
             "-t", target,
         ]

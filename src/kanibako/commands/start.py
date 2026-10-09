@@ -2077,6 +2077,12 @@ def _env_flag_enabled(value: str | None) -> bool:
 # ``creds_watcher.CREDS_DIRTY_RELPATH``; same ``.kanibako/`` marker convention.
 SUPERVISOR_FALLBACK_RELPATH = ".kanibako/supervisor-fallback.log"
 
+# The line PID 1 appends to that log ONLY when it falls back; the host keys on it.
+SUPERVISOR_FALLBACK_WARNING = (
+    "kanibako: box_supervisor could not be imported in-box (2 attempts); "
+    "PID 1 is falling back to a bare shell keep-alive, so THE AGENT WILL NOT START."
+)
+
 # In-box path of the directive FLATTENER, which reaches the box on the unconditional
 # ``kani_pkg`` package bind (machinery, not canon — see ``_directive_flatten_shim``).
 # ⚑ The SAME literal is carried by the SessionStart hook command in
@@ -2127,11 +2133,7 @@ def _build_supervisor_pid1(
     diag_path = f"{GUEST_HOME}/{SUPERVISOR_FALLBACK_RELPATH}"
     diag = shlex.quote(diag_path)
     diag_dir = shlex.quote(diag_path.rsplit("/", 1)[0])
-    warning = shlex.quote(
-        "kanibako: box_supervisor could not be imported in-box (2 attempts); "
-        "PID 1 is falling back to a bare shell keep-alive, so THE AGENT WILL "
-        f"NOT START. Reason recorded in {diag_path}."
-    )
+    warning = shlex.quote(f"{SUPERVISOR_FALLBACK_WARNING} Reason recorded in {diag_path}.")
 
     # The probe RETRIES once. It runs at the noisiest moment of a box's life
     # (bind mounts settling, canon seeding, the directive flatten), and a
@@ -10061,18 +10063,20 @@ _FALLBACK_LOG_TAIL = 20
 
 
 def _print_supervisor_fallback(box_home: Path) -> None:
-    """Print the tail of the box's supervisor fallback log to stderr, if it holds anything.
+    """Print the tail of the box's supervisor fallback log to stderr, if PID 1 fell back.
 
-    PID 1 truncates the log at every supervised launch and writes it only when the
-    supervisor cannot be imported, so a non-empty log names why the agent did not start.
+    PID 1 truncates the log at every supervised launch and appends each failed import
+    probe's stderr, so a retry that succeeded still leaves a traceback.  Only
+    :data:`SUPERVISOR_FALLBACK_WARNING`, written when both probes failed, means the
+    agent did not start; without it the log is not printed.
     """
     try:
         text = (box_home / SUPERVISOR_FALLBACK_RELPATH).read_text(errors="replace")
     except OSError:
         return
-    lines = text.strip().splitlines()
-    if not lines:
+    if SUPERVISOR_FALLBACK_WARNING not in text:
         return
+    lines = text.strip().splitlines()
     print(f"kanibako: supervisor fallback log (~/{SUPERVISOR_FALLBACK_RELPATH}):", file=sys.stderr)
     print("\n".join(lines[-_FALLBACK_LOG_TAIL:]), file=sys.stderr)
 

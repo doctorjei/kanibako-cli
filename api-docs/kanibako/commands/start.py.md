@@ -9,6 +9,7 @@ Prose for these symbols lives in `llm-docs/kanibako/commands/start.py.md`.
 
 ```
 SUPERVISOR_FALLBACK_RELPATH = '.kanibako/supervisor-fallback.log'
+SUPERVISOR_FALLBACK_WARNING = 'kanibako: box_supervisor could not be imported in-box (2 attempts); PID 1 is falling back to a bare shell keep-alive, so THE AGENT WILL NOT START.'
 DIRECTIVE_FLATTENER = '/opt/kanibako/kanibako/scripts/import-directives.py'
 DIRECTIVE_MANIFEST_RELPATH = '.kanibako/directive-manifest.json'
 VAULT_MASK_DEST = core_defaults.vault_mask_default()
