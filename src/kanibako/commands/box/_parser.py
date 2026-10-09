@@ -1049,10 +1049,12 @@ def _new_box_undo(
     # ⚑ A REWRITTEN ROOT FILE comes back only while it holds EXACTLY this create's
     # bytes: an append keeps both a prefix and the kuid.  name -> [original, ours].
     rewrites: dict[str, list[bytes]] = {}
+    modes: dict[str, int] = {}  # an atomic rewrite lands a fresh file's mode
     if standalone:
         for fname in (IGNORE_FILE, WORKSET_META_FILE):
             if (root / fname).is_file():
                 rewrites[fname] = [(root / fname).read_bytes()] * 2
+                modes[fname] = (root / fname).stat().st_mode & 0o7777
 
     def wrote(fname: str) -> None:
         if fname in rewrites and (root / fname).is_file():
@@ -1080,6 +1082,7 @@ def _new_box_undo(
             path = root / fname
             if path.is_file() and path.read_bytes() == ours:
                 path.write_bytes(original)
+                path.chmod(modes[fname])
             else:
                 print(f"Note: left {path} as found; it changed after this create "
                       f"wrote it.", file=sys.stderr)

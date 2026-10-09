@@ -265,7 +265,10 @@ def _run_duplicate_cross_mode(args: argparse.Namespace, std, config) -> int:
     # F2/F-3: capture whether the destination dir pre-existed BEFORE the workspace
     # copy, so a refusal/OSError can roll back a copy THIS call created without
     # deleting a pre-existing dir.
+    from kanibako.commands.box._lifecycle import _entry_names
+
     new_path_existed = new_path.exists() or new_path.is_symlink()
+    new_path_before = _entry_names(new_path)
 
     workspace_src = src_proj.project_path
 
@@ -297,8 +300,7 @@ def _run_duplicate_cross_mode(args: argparse.Namespace, std, config) -> int:
                 register=bool(getattr(args, "register", False)),
             )
         except BaseException:
-            if not new_path_existed:
-                _remove_created_root(new_path)
+            _undo_new_path(new_path, new_path_existed, new_path_before)
             raise
     else:
         # PRIMARY (local) target.  F-3: copy the workspace and lay down the
@@ -325,8 +327,7 @@ def _run_duplicate_cross_mode(args: argparse.Namespace, std, config) -> int:
             elif isinstance(e, (ProjectError, OSError)):
                 print(f"Error: {e}", file=sys.stderr)
             # ⚑ An interrupt rolls back too: a half-built box blocks every retry.
-            if not new_path_existed:
-                _remove_created_root(new_path)
+            _undo_new_path(new_path, new_path_existed, new_path_before)
             if isinstance(e, (ProjectError, OSError)):
                 return 1
             raise
@@ -522,6 +523,16 @@ def _duplicate_to_standalone(src_proj, new_path, std, force, src_enable_vault, c
     # therefore the RESOLVED arm, which is why establish_standalone's return value is unpacked.
     if dst_vault_rw is not None:
         write_vault_gitignore(new_path, dst_vault_rw)
+
+
+def _undo_new_path(path: Path, existed: bool, before: frozenset[str] | None) -> None:
+    """After a failed duplicate: remove *path* if it created it, else name what it added."""
+    from kanibako.commands.box._lifecycle import note_added_leftovers
+
+    if existed:
+        note_added_leftovers(path, before)
+    else:
+        _remove_created_root(path)
 
 
 def _remove_created_root(path: Path) -> None:
@@ -1054,7 +1065,10 @@ def run_duplicate(args: argparse.Namespace) -> int:
     # name is already registered above.  A failure at EITHER step unregisters it,
     # so no "registered but no metadata" orphan survives, and removes a workspace
     # this call created.
+    from kanibako.commands.box._lifecycle import _entry_names
+
     new_path_existed = new_path.exists() or new_path.is_symlink()
+    new_path_before = _entry_names(new_path)
     try:
         # Copy workspace (unless --bare).
         if not args.bare:
@@ -1073,8 +1087,7 @@ def run_duplicate(args: argparse.Namespace) -> int:
             materialize_canon_skeleton(_dup_home)
     except BaseException:
         _unwind_local_name(std, dup_name, new_project_dir)
-        if not new_path_existed:
-            _remove_created_root(new_path)
+        _undo_new_path(new_path, new_path_existed, new_path_before)
         raise
 
     _repoint_duplicated_links(source_path, new_path, std, config, bare=args.bare)

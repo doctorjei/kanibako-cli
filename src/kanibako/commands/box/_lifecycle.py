@@ -1380,10 +1380,10 @@ def _retire_old_workspace(old: Path, landed: Path) -> None:
               f"leftover that is yours to remove.", file=sys.stderr)
 
 
-def _leftover_entries(path: Path) -> str:
-    """Name what is still in the directory *path*, for a Note about a partial removal."""
+def _leftover_entries(path: Path, before: Collection[str] = ()) -> str:
+    """Name what is in the directory *path* and not in *before*, for a leftover Note."""
     try:
-        names = sorted(entry.name for entry in path.iterdir())
+        names = sorted(entry.name for entry in path.iterdir() if entry.name not in before)
     except OSError:
         return "entries it could not list"
     if not names:
@@ -1391,6 +1391,35 @@ def _leftover_entries(path: Path) -> str:
     shown = ", ".join(names[:5])
     more = len(names) - 5
     return shown if more <= 0 else f"{shown} and {more} more"
+
+
+def _entry_names(path: Path) -> frozenset[str] | None:
+    """The entry names in the directory *path*, or ``None`` when it cannot be listed."""
+    try:
+        return frozenset(entry.name for entry in path.iterdir())
+    except OSError:
+        return None
+
+
+def note_added_leftovers(path: Path, before: frozenset[str] | None) -> None:
+    """After a failure, name what the op added to *path*, a directory it did NOT create.
+
+    ⚑ Names, never removes: an entry name says this op added it, not that nothing of the
+    user's is inside.  An entry the op merged into is not named.
+    """
+    import sys
+
+    after = _entry_names(path)
+    if before is None or after is None or not after - before:
+        return
+    print(f"Note: {path} existed before this operation; it still holds "
+          f"{_leftover_entries(path, before)}, a partial leftover that is yours to remove.",
+          file=sys.stderr)
+
+
+def _arm_leftover_note(unwind: _Unwind, path: Path) -> None:
+    """Push a :func:`note_added_leftovers` for the existing directory *path*."""
+    unwind.push(partial(note_added_leftovers, path, _entry_names(path)))
 
 
 def _apply_ownership_and_markers(
@@ -1474,6 +1503,8 @@ def _copy_metadata(
     # a pre-existing dir may be a REPOINTED store holding the user's files.
     if not (dst_metadata.exists() or dst_metadata.is_symlink()):
         unwind.push(lambda: _unwind_box_tree(dst_metadata))
+    else:
+        _arm_leftover_note(unwind, dst_metadata)
     copy_tree_keeping_links(
         src_metadata, dst_metadata,
         ignore=shutil.ignore_patterns(".kanibako.lock", "home"),
@@ -2165,6 +2196,8 @@ def _to_default(
                 leaf.mkdir(parents=True)
                 # The carry may trade this empty leaf for a LINK; the unwind takes either.
                 unwind.push(partial(_unwind_created_root, leaf))
+            else:
+                _arm_leftover_note(unwind, leaf)
 
     # ⚑ THE VAULT CARRY (P1 data loss): the leaves above are EMPTY and the source is
     # deleted below -- contents move first, and a vault link follows the landing.
@@ -2340,7 +2373,7 @@ def _consolidate_workspace_subdir(
     workspace_subdir.mkdir(parents=True, exist_ok=True)
     unwind.push(lambda: _undo_consolidate(workspace_subdir, root, movable))
     for child in movable:
-        shutil.move(str(child), str(workspace_subdir / child.name))
+        _move_entry(child, workspace_subdir / child.name)
 
 
 def _undo_consolidate(
@@ -2356,9 +2389,53 @@ def _undo_consolidate(
         src = src_dir / child.name
         if src.exists():
             try:
-                shutil.move(str(src), str(dest_dir / child.name))
+                _move_entry(src, dest_dir / child.name)
             except OSError:
                 pass
+
+
+def _move_entry(src: Path, dst: Path) -> None:
+    """``shutil.move`` *src* to *dst*, a directory without owner write included.
+
+    ⚑ Renaming a directory into another parent rewrites its ``..``, which needs write on
+    the directory ITSELF: a 555 one fails, ``shutil.move`` falls back to copy-then-delete,
+    the delete fails too, and the tree is left in both places.  Its mode gains ``u+w`` for
+    the move and is given back wherever the directory ends up.
+    """
+    import os
+    import stat
+
+    mode = None
+    if src.is_dir() and not src.is_symlink():
+        mode = stat.S_IMODE(src.lstat().st_mode)
+        if mode & stat.S_IWUSR:
+            mode = None
+        else:
+            os.chmod(src, mode | stat.S_IWUSR)
+    landed = dst if not (dst.exists() or dst.is_symlink()) else dst / src.name
+    try:
+        shutil.move(str(src), str(dst))
+    finally:
+        if mode is not None:
+            for path in (src, landed):
+                if path.is_dir() and not path.is_symlink():
+                    try:
+                        os.chmod(path, mode)
+                    except OSError:
+                        pass
+
+
+def _prune_empty_dirs(path: Path, above: Path) -> None:
+    """Remove *path* and each parent strictly below *above* until one holds anything.
+
+    ⚑ ``rmdir`` IS the emptiness test: no user file can go with it.
+    """
+    while path != above and above in path.parents:
+        try:
+            path.rmdir()
+        except OSError:
+            break
+        path = path.parent
 
 
 def _unconsolidate_workspace_subdir(
@@ -2378,21 +2455,46 @@ def _unconsolidate_workspace_subdir(
     moved: list[Path] = []
     unwind.push(lambda: _undo_consolidate(root, workspace_subdir, moved))
     for child in movable:
-        shutil.move(str(child), str(root / child.name))
+        _move_entry(child, root / child.name)
         moved.append(child)
     # Drop the emptied workspace dir so the converted project keeps no stray one — and with
     # it the now-empty directories a repoint interposed (``workspaces: nested/deep`` leaves
     # ``nested/``, which only ever existed to hold the workspace and is meaningless once the
     # root ``workset.yaml`` that named it is gone).
-    # ⚑ ``rmdir`` IS the emptiness test: a parent the user keeps their own files in refuses
-    # to go, and the walk stops at the first one that does.
-    stale = workspace_subdir
-    while stale != root and root in stale.parents:
-        try:
-            stale.rmdir()
-        except OSError:
-            break
-        stale = stale.parent
+    # A parent the user keeps their own files in refuses to go, ending the walk.
+    _prune_empty_dirs(workspace_subdir, root)
+
+
+def _arm_standalone_root_undo(
+    std: StandardPaths,
+    config: BootstrapConfig,
+    root: Path,
+    workspace_subdir: Path,
+    unwind: _Unwind,
+) -> tuple[Callable[[], None], Callable[[str], None]]:
+    """Snapshot what :func:`_to_standalone` lays at *root*; return create's ``(undo, wrote)``.
+
+    ⚑⚑ A failed convert must leave the root as it found it: the root ``workset.yaml``
+    alone reads as standalone, and every retry then answers "Nothing to do".  The undo is
+    CREATE's own (``_new_box_undo``), which names these outputs and restores a rewritten
+    root file; the caller pushes it.  Taken before the sweep, which moves root files.
+
+    ⚑ The workspace is held back from it: create's undo deletes a new dir whole, and the
+    sweep's undo may leave a user file in this one.  It goes only once empty.
+    """
+    from kanibako.commands.box._parser import _new_box_undo
+
+    probe = resolve_standalone_project(std, config, str(root), register=False)
+    undo, wrote = _new_box_undo(std, replace(probe, project_path=None), standalone=True)
+    for leaf in (probe.vault_ro_path, probe.vault_rw_path):
+        if leaf is not None and leaf.is_dir():
+            _arm_leftover_note(unwind, leaf)
+    top = workspace_subdir
+    while not (top.parent.exists() or top.parent.is_symlink()):
+        top = top.parent
+    if not (top.exists() or top.is_symlink()):
+        unwind.push(partial(_prune_empty_dirs, workspace_subdir, top.parent))
+    return undo, wrote
 
 
 def _to_standalone(
@@ -2424,6 +2526,7 @@ def _to_standalone(
     workspace_subdir = _resolve_standalone_workspaces(
         root, load_workset_settings_doc(root), early=_early_scope(std, BoxMode.standalone),
     )
+    root_undo, root_wrote = _arm_standalone_root_undo(std, config, root, workspace_subdir, unwind)
     # ⚑ The box METADATA DIR (``box_data/`` for a standalone source) — the ROOT would
     # strand ``<dst>/box_data/box_data/`` on a standalone→standalone move.
     src_meta_dir = box_metadata_dir(state.mode, state.metadata_path,
@@ -2452,6 +2555,10 @@ def _to_standalone(
         # kanibako's own — starting with the root ``.gitignore`` written below, which
         # the sweep would relocate into the user's workspace.
         _consolidate_workspace_subdir(root, workspace_subdir, unwind, early=_early_scope(std, BoxMode.standalone))
+    # ⚑ Pushed AFTER the sweep, so it runs BEFORE the sweep's undo: a root file the sweep
+    # moved (the user's ``.gitignore``) goes back OVER this restore, never under it.
+    unwind.push(root_undo)
+    if not reused_in_place:
         _copy_metadata(
             src_meta_dir, state.shell_path,
             dst_metadata, shell_into_metadata=True, home_leaf="home", unwind=unwind,
@@ -2488,6 +2595,7 @@ def _to_standalone(
         own_name=state.name if carried_kuid else None,
         register=register,
     )
+    root_wrote(WORKSET_META_FILE)
     if register:
         unwind.push(
             lambda: registry_store.unregister_standalone(std.registry, box_name)
@@ -2495,6 +2603,7 @@ def _to_standalone(
 
     workspace_subdir.mkdir(parents=True, exist_ok=True)
     write_project_gitignore(root)
+    root_wrote(bootstrap.IGNORE_FILE)
     # ⚑ The RESOLVED ``workset.vault_rw`` gates this, never the skeleton's existence: the
     # skeleton is the ``ro`` arm's DEFAULT parent, so ``<root>/vault`` can sit on disk while
     # ``vault_rw`` points elsewhere — and then the file's ``rw/`` claims nothing that is
@@ -2948,20 +3057,24 @@ def _member_leaves(ws: Workset, name: str) -> tuple[Path | None, Path, Path | No
             vault_ro, vault_rw)
 
 
-def _existing_member_leaves(ws: Workset, name: str) -> frozenset[Path]:
-    """Those of :func:`_member_leaves` already on disk (a dangling link counts)."""
-    return frozenset(
-        p for p in _member_leaves(ws, name)
+def _existing_member_leaves(ws: Workset, name: str) -> dict[Path, frozenset[str] | None]:
+    """Those of :func:`_member_leaves` already on disk (a dangling link counts), each
+    mapped to its entry names for :func:`note_added_leftovers`."""
+    return {
+        p: _entry_names(p) for p in _member_leaves(ws, name)
         if p is not None and (p.exists() or p.is_symlink())
-    )
+    }
 
 
-def _unwind_target_member(ws: Workset, name: str, existed: frozenset[Path]) -> None:
+def _unwind_target_member(
+    ws: Workset, name: str, existed: Mapping[Path, frozenset[str] | None],
+) -> None:
     """Undo a target registration: the record, plus each leaf NOT in *existed*.
 
-    ⚑⚑ A leaf that existed before the op is the user's and is never touched.  A link is
-    unlinked, never followed; every tree goes through the escalating ``remove_path``.  Whatever
-    cannot be removed is reported here, because ``_Unwind.run`` swallows errors.
+    ⚑⚑ A leaf that existed before the op is the user's and is never touched; a Note names
+    what the op added to it.  A link is unlinked, never followed; every tree goes through the
+    escalating ``remove_path``.  Whatever cannot be removed is reported here, because
+    ``_Unwind.run`` swallows errors.
     """
     import sys
 
@@ -2972,7 +3085,10 @@ def _unwind_target_member(ws: Workset, name: str, existed: frozenset[Path]) -> N
               f"'{ws.name}': {err}", file=sys.stderr)
     workspace, box_tree, vault_ro, vault_rw = _member_leaves(ws, name)
     for leaf in (workspace, box_tree, vault_ro, vault_rw):
-        if leaf is None or leaf in existed:
+        if leaf is None:
+            continue
+        if leaf in existed:
+            note_added_leftovers(leaf, existed[leaf])
             continue
         try:
             if leaf.is_symlink() or leaf.is_dir():
