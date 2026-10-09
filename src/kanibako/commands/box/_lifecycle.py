@@ -1006,8 +1006,7 @@ def _validate(
                 "workset.yaml would not protect it — that only makes it the box's."
             )
 
-    # A STANDALONE target has no user-settable name: refuse --name before any
-    # write (ruling 2026-10-08; see refuse_nonleaf_standalone_name).
+    # A STANDALONE target has no user-settable name: refuse --name before any write.
     if target_mode == BoxMode.standalone and spec.name:
         # Root the box is named from: *dest*, else its own root (``metadata_path`` alone).
         landed_root = (
@@ -1298,7 +1297,6 @@ def _apply_ownership_and_markers(
         return _to_standalone(
             state, std, config, unwind,
             new_name=new_name, root=new_workspace,
-            requested_name=requested_name,
         )
     return _to_default(
         state, std, config, unwind,
@@ -2267,7 +2265,6 @@ def _to_standalone(
     *,
     new_name: str,
     root: Path,
-    requested_name: str = "",
 ) -> ProjectState:
     """Convert/relocate the project so it becomes standalone (in-tree metadata).
 
@@ -2336,8 +2333,7 @@ def _to_standalone(
     # ⚑⚑ The BOX-AUTHORED value: ``establish_standalone`` writes this straight to the box
     # tier ``_deliver_carried_box_settings`` just laid down, so passing the RESOLVED value
     # would undo that carry and pin the source workset's default on a box that has LEFT it.
-    # ⚑⚑ KEEP THE KUID ON A STANDALONE MOVE (``:811``: stable stored prefix, the leaf
-    # tracks the dir).  Re-minting made a moved box a different identity.
+    # ⚑⚑ KEEP THE KUID ON A STANDALONE MOVE: stable stored prefix, the leaf tracks the dir.
     carried_kuid = (
         standalone_kuid(state.name)
         if state.mode is BoxMode.standalone and is_canonical_standalone_name(state.name)
@@ -2834,8 +2830,7 @@ def _dispose_stash(stash: Path) -> None:
 # ---------------------------------------------------------------------------
 
 def _convert_target_flags(args) -> list[str]:
-    """The target flags the user typed, so a printed cure re-runs THEIR command.
-    Advising ``--default`` when they asked for ``--workset foo`` is a different op."""
+    """The target flags the user typed, so a printed cure re-runs THEIR command."""
     if getattr(args, "to_default", False):
         return ["--default"]
     ws = getattr(args, "to_workset", None)
@@ -3012,16 +3007,10 @@ def run_move(args) -> int:
             confirm=_make_confirm(getattr(args, "force", False), summary),
         )
     except DerivedBoxNameError as e:
-        # ⚑ A STANDALONE TARGET has no `--name` to give: the doors REFUSE a differing one,
-        # so the cure walked the user back into that refusal (`box move …/q3 …/京都
-        # --name foo` → same error).  Keyed on TARGET mode: `--default` leaves standalone,
-        # where `--name` is a working knob and the generic cure stays.
-        target_is_standalone = (
-            state.mode is BoxMode.standalone
-            and not getattr(args, "to_default", False)
-            and not getattr(args, "to_workset", None)
-        )
-        if target_is_standalone:
+        # ⚑ A STANDALONE TARGET has no `--name` to give: the doors REFUSE a differing one.
+        # Keyed on TARGET mode: `--default` leaves standalone, where `--name` works.
+        if ownership == "standalone" or (
+                ownership is UNCHANGED and state.mode is BoxMode.standalone):
             print(f"Error: {e.with_cure(CURE_MOVED_LEAF_NOT_ASCII)}", file=sys.stderr)
             return 1
         cure = shlex.join(["kanibako", "box", "move", old, str(new_path),
@@ -3116,7 +3105,6 @@ def run_convert(args) -> int:
         if ownership == "standalone":
             print(f"Error: {e.with_cure(CURE_MOVED_LEAF_NOT_ASCII)}", file=sys.stderr)
             return 1
-        # ⚑ The cure used to hard-code `--default`; echo the target actually chosen.
         cure = shlex.join(["kanibako", "box", "convert", subject or str(state.workspace_path),
                            *_convert_target_flags(args),
                            *(["--move", str(location)]

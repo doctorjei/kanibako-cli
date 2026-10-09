@@ -77,7 +77,7 @@ def _artifact_claiming(child: Path, artifacts: list[tuple[str, Path, bool]]) -> 
 def _consolidate_workspace_subdir(root: Path, workspace_subdir: Path, unwind: _Unwind, *, early: EarlyScope) -> None
 def _undo_consolidate(src_dir: Path, dest_dir: Path, moved: list[Path]) -> None
 def _unconsolidate_workspace_subdir(workspace_subdir: Path, root: Path, unwind: _Unwind) -> None
-def _to_standalone(state: ProjectState, std: StandardPaths, config: BootstrapConfig, unwind: _Unwind, *, new_name: str, root: Path, requested_name: str='') -> ProjectState
+def _to_standalone(state: ProjectState, std: StandardPaths, config: BootstrapConfig, unwind: _Unwind, *, new_name: str, root: Path) -> ProjectState
 def _to_workset(state: ProjectState, std: StandardPaths, config: BootstrapConfig, unwind: _Unwind, *, target_ws: Workset, new_name: str, new_workspace: Path, relocating: bool, dest: Path | None) -> ProjectState
 def _state_ws_token(state: ProjectState) -> str
 def _state_ws_root(state: ProjectState, std: StandardPaths) -> Path
