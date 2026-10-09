@@ -714,6 +714,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   stayed. Now a create that refuses before the box exists removes the directories it made, while they are still
   empty; a directory that already existed, or that something else made meanwhile, is never removed.
 
+- **A `create` that hits a filesystem error now prints an `Error:` line, not a traceback.** A folder it cannot write
+  (a read-only box store, for one) exits 1 with the error and the cure: fix it, then run the same `create` again.
+
 - **`workset rm --purge` no longer deletes the boxes behind a symlinked box store.** When the folder `workset.boxes`
   names is a symlink, only the link goes; what it points at is kept.
 

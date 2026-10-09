@@ -1623,3 +1623,19 @@ class TestRefusedCreateRemovesTheDirsItMade:
 
         self._refuse(capsys, ["create", "--standalone", "--agent", "bad!x", "rel/a/../b"])
         assert not (tmp_home / "rel").exists()
+
+    def test_a_late_os_error_is_an_error_line_and_leaves_nothing(
+        self, config_file, tmp_home, credentials_dir, capsys, monkeypatch,
+    ):
+        from kanibako.settings import paths
+
+        def denied(*a, **kw):
+            raise PermissionError(13, "Permission denied", "boxes/ws")
+
+        monkeypatch.setattr(paths, "_init_common", denied)
+        target = tmp_home / "new" / "ws"
+
+        err = self._refuse(capsys, ["create", str(target)])
+        assert "Error: [Errno 13] Permission denied: 'boxes/ws'" in err.splitlines()
+        assert "run the same 'kanibako create' again" in err
+        assert not (tmp_home / "new").exists()
