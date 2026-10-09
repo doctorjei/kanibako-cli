@@ -45,6 +45,8 @@ WARN_WS_BOX_BAD_NAME = ("box name '%s' does not meet the naming rules (%s); it r
 WARN_BOX_BAD_KUID =    ("Warning: invalid KUID '%s' for standalone box '%s' (invalid kuid); it " +
                         "still resolves; fix workset.kuid or set workset.skip_kuid_check=true to " +
                         "silence this.")
+WARN_BOX_KUID_HELD =   ("Warning: workset.kuid '%s' in %s belongs to registered box '%s' at %s; "
+                        "this box gets a new kuid.")            # kuid, root file, holder, holder root
 WARN_BOX_NO_VAULT =    ("Warning: cannot find vault for box '%s' (expected at %s); it still " +
                         "launches without a vault; recreate the directory or set " +
                         "box.enable_vault=false to silence.")        # box name, the RW vault path

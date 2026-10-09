@@ -1177,6 +1177,31 @@ class TestStandaloneCureFamily:
         assert self._kuid(root) == before
         assert registry_store.standalone_name_for_root(std.registry, root) == name
 
+    def test_a_copied_workset_yaml_does_not_take_a_registered_boxs_kuid(
+        self, config_file, tmp_home, credentials_dir, monkeypatch, caplog,
+    ):
+        """A kuid held by a registered box at ANOTHER root is not carried: one kuid, one box."""
+        from kanibako.cli import main
+        from kanibako.launch.box_identity import standalone_kuid
+        from kanibako.project import registry_store
+
+        first = (tmp_home / "a" / "proj").resolve()
+        std = self._make(config_file, first, register=True)
+        held = self._kuid(first)
+        other = (tmp_home / "b" / "other").resolve()
+        other.mkdir(parents=True)
+        (other / "workset.yaml").write_text((first / "workset.yaml").read_text())
+        monkeypatch.chdir(tmp_home)
+        try:
+            main(["create", "--standalone", "--register", str(other)])
+        except SystemExit as exc:
+            assert not exc.code
+        assert self._kuid(other) != held
+        name = registry_store.standalone_name_for_root(std.registry, other)
+        assert name is not None and standalone_kuid(name) == self._kuid(other)
+        assert standalone_kuid(registry_store.standalone_name_for_root(std.registry, first)) == held
+        assert f"workset.kuid '{held}'" in caplog.text
+
 
 # ---------------------------------------------------------------------------
 # Q106: a launch REFUSES a box whose workspace resolves through a null

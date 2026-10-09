@@ -11,7 +11,7 @@ from kanibako.settings.messages import (PROFILE_CONTENTS, BASHRC_CONTENTS,
                                               WARN_RELATIVE_XDG, WARN_FALLBACK_RT_DIR,
                                               WARN_RUNDIR_UNUSABLE, WARN_WS_NO_ROOT,
                                               WARN_WS_BAD_LOAD, WARN_WS_BOX_BAD_NAME, WARN_SA_SHADOWED_BY_PATH,
-                                              WARN_BOX_BAD_KUID, WARN_BOX_NO_VAULT,
+                                              WARN_BOX_BAD_KUID, WARN_BOX_KUID_HELD, WARN_BOX_NO_VAULT,
 
                                               ERR_SETTINGS_BAD_PATH, ERR_SETTINGS_BAD_REF,
                                               ERR_CONFIG_NO_FILE, ERR_CONFIG_NULL_PATH_REASON,
@@ -2607,9 +2607,20 @@ def resolve_standalone_project(std: StandardPaths, config: BootstrapConfig,
         # Identity + meta + registration via the shared establish core.  ⚑ A root that
         # already stores a valid kuid keeps it (keyspec ``meta.box.name`` =
         # ``{workset.kuid}_<leaf>``): a rebuild is the same box, not a new one.
+        # ⚑ Not when a registered box at ANOTHER root holds that kuid (a copied
+        # workset.yaml): one kuid is one box.  An UNREGISTERED holder is invisible to
+        # the registry, so this cannot see it.
         from kanibako import kuid
         stored_kuid = read_workset_kuid(project_toml)
         carry_kuid = stored_kuid if kuid.is_valid(stored_kuid) else None
+        if carry_kuid is not None:
+            for held_name, held_root in registry_store.load_standalone(std.registry).items():
+                if (held_root != str(root) and box_identity.standalone_kuid(held_name).lower()
+                        == carry_kuid.lower()):
+                    get_logger(__name__).warning(WARN_BOX_KUID_HELD, carry_kuid, project_toml,
+                                                 held_name, held_root)
+                    carry_kuid = None
+                    break
         box_name, shell_path, vault_ro_path, vault_rw_path = establish_standalone(
             std, root, enable_vault=enable_vault, register=register, carry_kuid=carry_kuid,
             own_name=(registry_store.standalone_name_for_root(std.registry, root)
