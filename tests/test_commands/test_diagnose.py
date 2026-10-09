@@ -1831,20 +1831,13 @@ class TestSystemDiagnoseSurvivesBrickedStoreRoots:
         assert "[ok] Journal" in out, out
 
 
-# ---------------------------------------------------------------------------
-# ``box diagnose`` from a cwd whose leaf breaks the box-name rule: today's bare
-# ``kanibako create`` hint would itself be refused.  The same fix as start
-# carries --name, so the printed cure RUNS.
-# ---------------------------------------------------------------------------
-
-
 class TestRunBoxDiagnoseRefusedCure:
     """``box diagnose`` from a refused-leaf cwd prints a cure that runs with --name."""
 
     def test_a_refused_leaf_cwd_prints_a_create_cure_with_name(
         self, config_file, tmp_home, credentials_dir, capsys, monkeypatch
     ) -> None:
-        """The cure line tokenises to ``kanibako create --name <new-name>`` (i.e. it runs)."""
+        """The cure line tokenizes to ``kanibako create --name <new-name>`` (i.e. it runs)."""
         from kanibako.errors import ContainerError
 
         bad = (tmp_home / "a b").resolve()
@@ -1861,11 +1854,6 @@ class TestRunBoxDiagnoseRefusedCure:
         out = capsys.readouterr().out
         assert rc != 0
         assert "no kanibako project registered" in out
-        # The cure is the 8-space-indented line starting with ``kanibako create``
-        # and containing ``--name`` (the ``Or pass`` alternative printed after
-        # it is the OTHER branch — the cure is one branch; that hint is the
-        # other).  Tokenised, the cure must run as ``kanibako create --name
-        # <new-name>``, NOT the bare form.
         cure_lines = [
             ln.strip() for ln in out.splitlines()
             if ln.startswith("        ") and ln.lstrip().startswith("kanibako create ")
@@ -1894,21 +1882,8 @@ class TestRunBoxDiagnoseRefusedCure:
         out = capsys.readouterr().out
         assert rc != 0
         assert "no kanibako project registered" in out
-        assert "Run 'kanibako create' to initialize a project here" in out
+        assert "To initialize a project here, run:  kanibako create\n" in out, out
         assert "--name" not in out
-
-
-# ---------------------------------------------------------------------------
-# ``box diagnose <dir>`` against a NAMED directory: same fix as start.py —
-# the cure / hint carries the shlex-quoted target.  Three things must hold
-# for the refused-leaf arm:
-#   1. the cure RUNS (carries path AND --name);
-#   2. the alternative ``or pass a project name/path`` is preserved (r0
-#      dropped it when it replaced the second line with the cure);
-#   3. every continuation line in the cure block is indented to 8 spaces
-#      like its neighbours (r0 only prefixed the first line).
-# The valid-leaf arm just carries the path into its plain hint.
-# ---------------------------------------------------------------------------
 
 
 class TestRunBoxDiagnoseNamedTargetCure:
@@ -1922,7 +1897,6 @@ class TestRunBoxDiagnoseNamedTargetCure:
 
         bad = (tmp_home / "a b").resolve()
         bad.mkdir()
-        # Run from a DIFFERENT cwd — the assertion is that the path is in the cure.
         monkeypatch.chdir(tmp_home)
 
         with patch(
@@ -1936,12 +1910,6 @@ class TestRunBoxDiagnoseNamedTargetCure:
         assert rc != 0
         assert "no kanibako project registered" in out
 
-        # The cure is the 8-space-indented line starting with ``kanibako create``
-        # (the ``Or pass`` alternative printed after it is the OTHER branch — the
-        # cure is one branch; that hint is the other).  Tokenised, the cure must
-        # run as ``kanibako create <path> --name <new-name>`` — the bare
-        # ``kanibako create`` form would create a box in cwd, not in <path>.
-        # ``shlex.split`` removes the quotes, so the expected path token is bare.
         cure_lines = [
             ln.strip() for ln in out.splitlines()
             if ln.startswith("        ") and ln.lstrip().startswith("kanibako create ")
@@ -1952,8 +1920,6 @@ class TestRunBoxDiagnoseNamedTargetCure:
             "kanibako", "create", str(bad), "--name", "<new-name>",
         ], out
 
-        # LOST-GUIDANCE guard: the ``or pass a project name/path`` alternative
-        # must survive — the cure is one branch; that hint is the other.
         assert "Or pass a project name/path" in out, out
 
     def test_a_refused_leaf_named_target_indents_every_cure_line_to_eight(
@@ -1975,9 +1941,6 @@ class TestRunBoxDiagnoseNamedTargetCure:
 
         out = capsys.readouterr().out
         assert rc != 0
-        # Locate the cure block: every line from the first ``        `` after
-        # the ``[!!] Project:`` summary up to the empty/next blank line must
-        # start with exactly 8 spaces — no ragged tail.
         block_lines: list[str] = []
         in_block = False
         for line in out.splitlines():
@@ -2018,10 +1981,33 @@ class TestRunBoxDiagnoseNamedTargetCure:
         out = capsys.readouterr().out
         assert rc != 0
         assert "no kanibako project registered" in out
-        # The plain hint MUST carry the shlex-quoted target — without it, the
-        # user runs ``kanibako create`` from cwd and the box lands in cwd, not <ok>.
         assert (
-            f"Run 'kanibako create {shlex.quote(str(ok))}'" in out
+            f"run:  kanibako create {shlex.quote(str(ok))}\n" in out
         ), out
         assert "--name" not in out
 
+    @pytest.mark.parametrize("named", [False, True], ids=["cwd", "named"])
+    def test_a_refused_leaf_prints_no_create_that_would_be_refused(
+        self, named, config_file, tmp_home, credentials_dir, capsys, monkeypatch
+    ) -> None:
+        """Every ``kanibako create`` printed for a refused leaf carries ``--name``."""
+        from kanibako.errors import ContainerError
+
+        bad = (tmp_home / "a b").resolve()
+        bad.mkdir()
+        monkeypatch.chdir(tmp_home if named else bad)
+
+        with patch(
+            "kanibako.runtime.container.ContainerRuntime",
+            side_effect=ContainerError("none"),
+        ):
+            args = argparse.Namespace(project=str(bad) if named else None, path=None)
+            rc = run_box_diagnose(args)
+
+        out = capsys.readouterr().out
+        assert rc != 0
+        creates = [ln for ln in out.splitlines() if "kanibako create" in ln]
+        assert creates, out
+        for ln in creates:
+            assert "--name" in ln, f"create without --name would be refused: {ln!r}"
+        assert "Or pass a project name/path." in out, out

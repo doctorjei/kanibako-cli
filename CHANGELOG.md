@@ -807,11 +807,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `my project`, reads as a path, so `box rm 'my project'` said the box was not registered. It now says the name
   breaks the rule and prints two commands that reach the box by its path: one removes it, one gives it a valid name.
 
-- **`start`, `shell`, and `code` no longer suggest a `create` that would be refused.** When no box is found and
-  the directory's name breaks the box-name rule, the suggested `create` now carries `--name <new-name>`, or the
-  name's ASCII spelling when it has one. When a registered box holds that name and the typed path is not an
-  existing directory, the error prints the two commands that reach the box by its path, as `box rm` does: one
-  starts it, one gives it a valid name. An existing directory there wins, for `box rm` too.
+- **`start`, `shell`, `code`, `box config`, and `box diagnose` no longer suggest a `create` that would be refused.**
+  When no box is found and the directory's name breaks the box-name rule, the suggested `create` now carries
+  `--name <new-name>`, or the name's ASCII spelling when it has one, and names the directory when one was given.
+  When a registered box holds that name and the typed path is not an existing directory, the error prints the two
+  commands that reach the box by its path, as `box rm` does: one starts it, one gives it a valid name. An existing
+  directory there wins, for `box rm` too.
 
 - **The rename command printed for a standalone box with an invalid name now works.** `start` and `stop` printed
   `box convert <path> --standalone --name <new-name>`, which is always refused because a standalone box is named after

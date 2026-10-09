@@ -699,32 +699,19 @@ def run_box_diagnose(args: object) -> int:
     if not is_registered:
         target = proj.project_path if proj.project_path else project_dir
         leaf = Path(str(target)).name
-        # ⚑ Carry the named target into the cure / hint (start.py:1770-1779): a bare
-        # ``kanibako create`` from cwd would create a box in cwd, not in the target.
-        suggest_path = (
+        # A bare ``kanibako create`` would create the box in cwd, not in the named target.
+        suggest = "kanibako create" + (
             f" {shlex.quote(str(target))}" if project_dir and target else ""
         )
+        print(_format_check("!!", "Project", f"no kanibako project registered for {target}"))
         try:
-            # ``create`` names the box after the directory, so it would refuse this one.
             refuse_derived_box_name(leaf or "project")
         except DerivedBoxNameError as e:
-            cure_text = e.with_cure(box_name_cure("kanibako create" + suggest_path, e.name))
-            # ⚑ Re-indent every cure line to 8 spaces — ``with_cure`` joins ``self``
-            # to a template with an internal newline, so without this only the first
-            # line picks up the 8-space prefix.
-            cure_indented = "\n".join(
-                "        " + ln.lstrip() for ln in cure_text.split("\n")
-            )
-            print(_format_check("!!", "Project", f"no kanibako project registered for {target}"))
-            print(cure_indented)
-            # ⚑ Keep the ``Or pass`` alternative — the cure is one branch, that hint the other.
-            print(f"        Or pass a project name/path:  kanibako create{suggest_path}")
-            return 1
-        print(_format_check("!!", "Project", f"no kanibako project registered for {target}"))
-        print(
-            f"        Run 'kanibako create{suggest_path}' to initialize a project here, "
-            "or pass a project name/path."
-        )
+            cure_text = e.with_cure(box_name_cure(suggest, e.name))
+            print("\n".join("        " + ln.lstrip() for ln in cure_text.split("\n")))
+        else:
+            print(f"        To initialize a project here, run:  {suggest}")
+        print("        Or pass a project name/path.")
         return 1
 
     print(f"Box Diagnostics: {proj.project_path or '<None>'}")

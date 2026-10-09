@@ -1879,15 +1879,6 @@ class TestShowListsWhatTheFileHolds:
         assert "agent" not in load_doc(settings), load_doc(settings)
 
 
-# ---------------------------------------------------------------------------
-# When ``box config`` is aimed at a NAMED directory (positional or ``--box``),
-# the leaf is what the refused-leaf gate looks at — but the cure must RUN
-# against that named directory, not against cwd.  ``start.py:1770-1779`` does
-# this by shlex-quoting the target into the command.  Both arms carry it: the
-# refused-leaf cure (a b / o'brien / .gone) and the valid-leaf plain hint.
-# ---------------------------------------------------------------------------
-
-
 class TestResolveConfigSubjectNamedTargetCure:
     """``box config`` against a NAMED target carries the target into both cure arms."""
 
@@ -1903,18 +1894,12 @@ class TestResolveConfigSubjectNamedTargetCure:
         std = load_std_paths(config)
         bad = (tmp_home / "a b").resolve()
         bad.mkdir()
-        # Run from a DIFFERENT cwd so the cure would, if it lost the path, create
-        # the box there — the assertion is that the path IS in the cure.
         monkeypatch.chdir(tmp_home)
 
         with pytest.raises(ProjectError) as exc_info:
             _resolve_config_subject(std, config, str(bad))
 
         msg = str(exc_info.value)
-        # The cure is the LAST ``\n  ``-prefixed line of the message; tokenised,
-        # it must run as ``kanibako create <path> --name <new-name>`` — the
-        # bare ``kanibako create`` form would create a box in cwd, not in <path>.
-        # ``shlex.split`` removes the quotes, so the expected path token is bare.
         cure = msg.rsplit("\n  ", 1)[1]
         assert shlex.split(cure) == [
             "kanibako", "create", str(bad), "--name", "<new-name>",
@@ -1938,11 +1923,8 @@ class TestResolveConfigSubjectNamedTargetCure:
             _resolve_config_subject(std, config, str(ok))
 
         msg = str(exc_info.value)
-        # The plain hint MUST carry the shlex-quoted target — without it, the
-        # user runs ``kanibako create`` from cwd and gets a box there, not in <ok>.
         assert (
             f"\n  Or make one:    kanibako create {shlex.quote(str(ok))}\n" in msg
             or msg.endswith(f"\n  Or make one:    kanibako create {shlex.quote(str(ok))}")
         ), msg
         assert "--name" not in msg
-
