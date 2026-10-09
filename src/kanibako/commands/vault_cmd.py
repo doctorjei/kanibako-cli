@@ -7,11 +7,18 @@ import sys
 
 from kanibako.errors import UserCanceled
 from kanibako.settings.config import user_config_file, load_config
-from kanibako.settings.paths import load_std_paths, resolve_any_project
+from kanibako.settings.paths import (
+    BoxMode,
+    load_std_paths,
+    resolve_any_project,
+)
 from kanibako.snapshots import (
     _DEFAULT_MAX_SNAPSHOTS,
+    UNSORTED_DIRNAME,
+    ForeignSnapshotError,
     create_snapshot,
     list_snapshots,
+    list_unsorted,
     prune_snapshots,
     restore_snapshot,
     snapshots_to_prune,
@@ -101,7 +108,14 @@ def _add_vault_subcommands(p: argparse.ArgumentParser) -> None:
 
 
 def _resolve_vault_rw(project_dir: str | None):
-    """Resolve the vault share-rw path for the current project."""
+    """Resolve ``(share-rw path, box name, store-exclusive)`` for the project.
+
+    The box name is the snapshot store key and cannot be derived from the path: a
+    standalone box's share-rw ends in ``vault/rw``, not in its own name.  The
+    store is exclusive only for a standalone box, whose ``.versions`` sits inside
+    its own project tree so no other box could have written there -- the one case
+    where legacy flat-store entries can be attributed rather than filed unsorted.
+    """
     config_file = user_config_file()
     config = load_config(config_file)
     std = load_std_paths(config)
@@ -114,16 +128,17 @@ def _resolve_vault_rw(project_dir: str | None):
         print("This workset sets workset.vault_rw to null — there is no vault "
               "directory to act on.", file=sys.stderr)
         return None
-    return proj.vault_rw_path
+    return (proj.vault_rw_path, proj.name, proj.mode is BoxMode.standalone)
 
 
 def run_snapshot(args: argparse.Namespace) -> int:
     project_dir = getattr(args, "project", None)
-    vault_rw = _resolve_vault_rw(project_dir)
-    if vault_rw is None:
+    resolved = _resolve_vault_rw(project_dir)
+    if resolved is None:
         return 1
+    vault_rw, box_name, _exclusive = resolved
 
-    snap = create_snapshot(vault_rw)
+    snap = create_snapshot(vault_rw, box_name=box_name)
     if snap is None:
         print("Nothing to snapshot (share-rw is empty or missing).", file=sys.stderr)
         return 0
@@ -134,24 +149,33 @@ def run_snapshot(args: argparse.Namespace) -> int:
 
 def run_list(args: argparse.Namespace) -> int:
     project_dir = getattr(args, "project", None)
-    vault_rw = _resolve_vault_rw(project_dir)
-    if vault_rw is None:
+    resolved = _resolve_vault_rw(project_dir)
+    if resolved is None:
         return 1
+    vault_rw, box_name, _exclusive = resolved
 
     quiet = getattr(args, "quiet", False)
 
-    snaps = list_snapshots(vault_rw)
+    snaps = list_snapshots(vault_rw, box_name=box_name)
     if not snaps:
         if not quiet:
             print("No snapshots found.")
-        return 0
+    else:
+        for name, ts, size in snaps:
+            if quiet:
+                print(name)
+            else:
+                size_str = _human_size(size)
+                print(f"  {name}  {ts}  {size_str}")
 
-    for name, ts, size in snaps:
-        if quiet:
-            print(name)
-        else:
-            size_str = _human_size(size)
-            print(f"  {name}  {ts}  {size_str}")
+    # Legacy snapshots whose owning box could not be proven. Shown so the data is
+    # not invisible; kept out of --quiet because they are not restorable by name.
+    unsorted = [] if quiet else list_unsorted(vault_rw)
+    if unsorted:
+        print(f"\n  Unsorted (pre-split, owner unknown — kept, never pruned"
+              f" by '{UNSORTED_DIRNAME}', not restorable):")
+        for name, ts, size in unsorted:
+            print(f"  {name}  {ts}  {_human_size(size)}")
 
     return 0
 
@@ -170,21 +194,29 @@ def _confirm_destructive(force: bool, message: str) -> bool:
 
 def run_restore(args: argparse.Namespace) -> int:
     project_dir = getattr(args, "project", None)
-    vault_rw = _resolve_vault_rw(project_dir)
-    if vault_rw is None:
+    resolved = _resolve_vault_rw(project_dir)
+    if resolved is None:
         return 1
+    vault_rw, box_name, exclusive = resolved
 
-    known = {name for name, _ts, _size in list_snapshots(vault_rw)}
+    known = {
+        name for name, _ts, _size in list_snapshots(vault_rw, box_name=box_name)
+    }
     if args.name in known and not _confirm_destructive(
         getattr(args, "force", False),
         f"Replace share-rw contents with snapshot {args.name}?\n"
-        "This cannot be undone.\n"
+        "The current contents are snapshotted first, so this can be undone.\n"
         "Type 'yes' to confirm: ",
     ):
         return 2
 
     try:
-        restore_snapshot(vault_rw, args.name)
+        restore_snapshot(
+            vault_rw, args.name, box_name=box_name, store_exclusive=exclusive
+        )
+    except ForeignSnapshotError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return 1
     except FileNotFoundError as e:
         print(f"Error: {e}", file=sys.stderr)
         return 1
@@ -195,11 +227,12 @@ def run_restore(args: argparse.Namespace) -> int:
 
 def run_prune(args: argparse.Namespace) -> int:
     project_dir = getattr(args, "project", None)
-    vault_rw = _resolve_vault_rw(project_dir)
-    if vault_rw is None:
+    resolved = _resolve_vault_rw(project_dir)
+    if resolved is None:
         return 1
+    vault_rw, box_name, _exclusive = resolved
 
-    doomed = snapshots_to_prune(vault_rw, args.keep)
+    doomed = snapshots_to_prune(vault_rw, args.keep, box_name=box_name)
     if doomed and not _confirm_destructive(
         getattr(args, "force", False),
         f"Delete {len(doomed)} snapshot(s), keeping {args.keep} most recent?\n"
@@ -208,7 +241,7 @@ def run_prune(args: argparse.Namespace) -> int:
     ):
         return 2
 
-    removed = prune_snapshots(vault_rw, max_keep=args.keep)
+    removed = prune_snapshots(vault_rw, max_keep=args.keep, box_name=box_name)
     if removed:
         print(f"Pruned {removed} snapshot(s), keeping {args.keep}.")
     else:
