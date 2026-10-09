@@ -31,6 +31,7 @@ def box_name_cure(command: str, name: str) -> str
 def sanitize_cap(leaf: str) -> str
 def is_canonical_standalone_name(name: str) -> bool
 def standalone_kuid(name: str) -> str
+def standalone_names_with_leaf(leaf: str, names: Iterable[str]) -> list[str]
 def compose_standalone_name(box_kuid: str, root: Path) -> str
 def carry_standalone_name(carried_kuid: str, root: Path, existing: set[str], *, own_name: str | None=None) -> str
 def make_standalone_box_name(root: Path, existing: set[str]) -> str

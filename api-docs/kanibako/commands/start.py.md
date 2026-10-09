@@ -71,11 +71,13 @@ def _resolve_bootstrap_program(project_dir: str | None=None, explicit_agent: str
 def _bootstrap_available(program: str | None=None) -> bool
 def _check_box_components(proj) -> str | None
 def _resolve_existing_box(std: StandardPaths, config: BootstrapConfig, project_dir: str | None) -> ProjectPaths | None
+def _probe_box(std: StandardPaths, config: BootstrapConfig, project_dir: str | None) -> ProjectPaths | None
 def _broken_standalone_error(std: StandardPaths, project_dir: str) -> str | None
+def _standalone_store_error(std: StandardPaths, root: Path, name: str | None) -> str | None
 def _store_move_cure(old: Path | None, new: Path) -> str
 def _interrupted_create_error(proj: ProjectPaths, pending: dict) -> str
 def _unregistered_pending_create_error(std: StandardPaths, project_dir: str | None) -> str | None
-def _no_box_error(project_dir: str | None, std: StandardPaths | None=None, verb: str='start') -> str
+def _no_box_error(project_dir: str | None, std: StandardPaths | None=None, verb: str='start', *, probe: ProjectPaths | None=None) -> str
 def _unbuilt_box_error(proj: ProjectPaths, std: StandardPaths) -> str | None
 def _refuse_null_workspace_bind(std, proj: ProjectPaths) -> None
 def _launch_issues_path(std, container_name: str) -> Path

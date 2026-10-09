@@ -1075,6 +1075,109 @@ class TestBrokenStandaloneNoBoxError:
         ) in err
 
 
+class TestStandaloneCureFamily:
+    """The standalone cures name the box that is there and keep its kuid.
+
+    A leaf alone names no ``<kuid>_<leaf>`` box; an UNREGISTERED broken root, or a
+    registered one reached through a symlinked parent, is offered
+    ``create --standalone``, never a plain ``create`` that makes a PRIMARY box; and
+    ``create --standalone`` over a root that stores a kuid keeps it.
+    """
+
+    def _make(self, config_file, root, *, register):
+        """Create a REAL standalone box at *root*, then delete its ``box_data/``."""
+        from kanibako.commands.box._parser import run_create
+
+        root.mkdir(parents=True)
+        ns = argparse.Namespace(
+            path=str(root), standalone=True, no_vault=True,
+            name=None, image=None, agent=None, allow_home=False, register=register,
+        )
+        assert run_create(ns) == 0
+        assert remove_box_tree(root / "box_data")
+        return _std(config_file)[1]
+
+    def _kuid(self, root):
+        from kanibako.settings.config import read_workset_kuid
+
+        return read_workset_kuid(root / "workset.yaml")
+
+    def test_a_leaf_alone_names_the_registered_box(
+        self, config_file, tmp_home, credentials_dir, monkeypatch, capsys,
+    ):
+        from kanibako.project import registry_store
+
+        root = (tmp_home / "plain").resolve()
+        std = self._make(config_file, root, register=True)
+        name = registry_store.standalone_name_for_root(std.registry, root)
+        (tmp_home / "elsewhere").mkdir()
+        monkeypatch.chdir(tmp_home / "elsewhere")
+        capsys.readouterr()
+        assert _launch("plain") == 1
+        err = capsys.readouterr().err
+        assert "nothing is registered under it" not in err
+        assert f"  Registered at {root}:  kanibako start {name}\n" in err
+
+    @pytest.mark.parametrize("how", ["path", "symlinked-parent", "cwd-in-workspace"])
+    def test_an_unregistered_broken_root_is_offered_create_standalone(
+        self, config_file, tmp_home, credentials_dir, monkeypatch, capsys, how,
+    ):
+        real = (tmp_home / "real").resolve()
+        root = real / "u1"
+        self._make(config_file, root, register=False)
+        (tmp_home / "link").symlink_to(real)
+        shown = tmp_home / "link" / "u1" if how == "symlinked-parent" else root
+        monkeypatch.chdir(root / "workspace" if how == "cwd-in-workspace" else tmp_home)
+        capsys.readouterr()
+        assert _launch(None if how == "cwd-in-workspace" else str(shown)) == 1
+        err = capsys.readouterr().err
+        assert f"Rebuild it:  kanibako create --standalone {shown}\n" in err
+        assert "To create a new box, run:  kanibako create" not in err
+
+    def test_a_registered_root_through_a_symlinked_parent_gets_the_broken_message(
+        self, config_file, tmp_home, credentials_dir, monkeypatch, capsys,
+    ):
+        real = (tmp_home / "real").resolve()
+        real.mkdir()
+        (tmp_home / "link").symlink_to(real)
+        root = tmp_home / "link" / "s1"
+        self._make(config_file, root, register=True)
+        monkeypatch.chdir(tmp_home)
+        capsys.readouterr()
+        assert _launch(str(root)) == 1
+        err = capsys.readouterr().err
+        assert f"is registered as a standalone box at {root}" in err
+        assert f"kanibako create --standalone --register {root}" in err
+
+    @pytest.mark.parametrize("register", [False, True], ids=["unregistered", "registered"])
+    def test_create_standalone_keeps_the_stored_kuid(
+        self, config_file, tmp_home, credentials_dir, monkeypatch, register,
+    ):
+        """``create --standalone <root>``, and the registered box's printed rebuild
+        cure run as printed, give back the SAME kuid and name."""
+        from kanibako.cli import main
+        from kanibako.project import registry_store
+
+        root = (tmp_home / "proj").resolve()
+        std = self._make(config_file, root, register=register)
+        before = self._kuid(root)
+        name = registry_store.standalone_name_for_root(std.registry, root)
+        monkeypatch.chdir(tmp_home)
+        steps = [f"kanibako create --standalone {root}"]
+        if register:
+            (cure,) = [ln.split(":  ", 1)[1]
+                       for ln in _no_box_error(str(root), std).splitlines()
+                       if "Rebuild it:" in ln]
+            steps = cure.split(" && ")
+        for step in steps:
+            try:
+                main(shlex.split(step)[1:])
+            except SystemExit as exc:
+                assert not exc.code, step
+        assert self._kuid(root) == before
+        assert registry_store.standalone_name_for_root(std.registry, root) == name
+
+
 # ---------------------------------------------------------------------------
 # Q106: a launch REFUSES a box whose workspace resolves through a null
 # ``workset.workspaces`` — the workspace bind is mounted at every launch

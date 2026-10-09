@@ -2604,9 +2604,16 @@ def resolve_standalone_project(std: StandardPaths, config: BootstrapConfig,
         _init_standalone_project(std, box_data, shell_path, vault_ro_path, vault_rw_path,
                                  project_path, enable_vault=resolved_vault,
                                  workset_root=root)
-        # Identity + meta + registration via the shared establish core (fresh identity here).
+        # Identity + meta + registration via the shared establish core.  ⚑ A root that
+        # already stores a valid kuid keeps it (keyspec ``meta.box.name`` =
+        # ``{workset.kuid}_<leaf>``): a rebuild is the same box, not a new one.
+        from kanibako import kuid
+        stored_kuid = read_workset_kuid(project_toml)
+        carry_kuid = stored_kuid if kuid.is_valid(stored_kuid) else None
         box_name, shell_path, vault_ro_path, vault_rw_path = establish_standalone(
-            std, root, enable_vault=enable_vault, register=register)
+            std, root, enable_vault=enable_vault, register=register, carry_kuid=carry_kuid,
+            own_name=(registry_store.standalone_name_for_root(std.registry, root)
+                      if carry_kuid else None))
         is_new = True
 
     if initialize:

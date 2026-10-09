@@ -19,6 +19,7 @@ import enum
 import re
 import shlex
 import unicodedata
+from collections.abc import Iterable
 from pathlib import Path
 
 from kanibako import kuid
@@ -245,6 +246,13 @@ def standalone_kuid(name: str) -> str:
     # Everything up to the FIRST ``_``: unambiguous even when the leaf holds one,
     # because the kuid alphabet never contains ``_``.
     return name.partition("_")[0]
+
+
+def standalone_names_with_leaf(leaf: str, names: Iterable[str]) -> list[str]:
+    """The canonical standalone names among *names* whose leaf half is *leaf*, case-blind (§0)."""
+    return [n for n in names
+            if is_canonical_standalone_name(n)
+            and find_identifier(leaf, (n.partition("_")[2],)) is not None]
 
 
 def compose_standalone_name(box_kuid: str, root: Path) -> str:

@@ -715,6 +715,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A rebuilt standalone box keeps its name.** `create --standalone` on a root whose `workset.yaml` already stores
+  a kuid now keeps that kuid; it minted a new one, so the box came back under a new name.
+- **A standalone box whose box data is gone is offered `create --standalone`.** A launch of an unregistered one (by
+  path, through a symlinked parent, or from inside its tree), or of a registered one through a symlinked parent,
+  suggested a plain `create`, which makes a PRIMARY box over it.
+- **A launch by a standalone box's directory name names the box.** `start plain` said nothing is registered under
+  that name; it now prints the registered `<kuid>_plain` box and the command that reaches it.
 - **A codex panel in a box started with `--warm-only` no longer gets a second codex beside it.** The box judged the
   running panel to be a codex helper rather than the session, dropped its liveness marker, and then started
   `codex resume --last` in tmux as if the panel had died. The box now recognizes the panel, and still starts a CLI
