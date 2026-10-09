@@ -5825,7 +5825,9 @@ class TestDetachKeepAlive:
         self, start_mocks, capsys, code, shown,
     ):
         """A failed supervised box prints its fallback log's tail; a clean one does not."""
-        from kanibako.commands.start import SUPERVISOR_FALLBACK_RELPATH
+        from kanibako.commands.start import (
+            SUPERVISOR_FALLBACK_RELPATH, SUPERVISOR_FALLBACK_WARNING,
+        )
 
         with start_mocks() as m, patch(
             "kanibako.commands.start._interactive_host", return_value=True,
@@ -5839,7 +5841,10 @@ class TestDetachKeepAlive:
             m.target.should_run_setup.return_value = False
             log = m.proj.shell_path / SUPERVISOR_FALLBACK_RELPATH
             log.parent.mkdir(parents=True, exist_ok=True)
-            log.write_text("ModuleNotFoundError: No module named 'kanibako'\n")
+            log.write_text(
+                f"ModuleNotFoundError: No module named 'kanibako'\n"
+                f"{SUPERVISOR_FALLBACK_WARNING}\n"
+            )
 
             def _exec_then_exit(*_a, **_k):
                 m.runtime.is_running.return_value = False
@@ -5855,6 +5860,36 @@ class TestDetachKeepAlive:
             err = capsys.readouterr().err
             assert ("No module named 'kanibako'" in err) is shown
             assert ("supervisor fallback log" in err) is shown
+
+    def test_an_attach_that_never_lands_prints_the_supervisor_fallback_log(
+        self, start_mocks, capsys,
+    ):
+        """Every attach failing with the box still up prints the fallback log's tail."""
+        from kanibako.commands.start import (
+            SUPERVISOR_FALLBACK_RELPATH, SUPERVISOR_FALLBACK_WARNING,
+        )
+
+        with start_mocks() as m, patch(
+            "kanibako.commands.start._bootstrap_session_exists", return_value=False,
+        ), patch("time.sleep"):
+            log = m.proj.shell_path / SUPERVISOR_FALLBACK_RELPATH
+            log.parent.mkdir(parents=True, exist_ok=True)
+            log.write_text(f"ATTACH_NEVER_LANDED_TRACE\n{SUPERVISOR_FALLBACK_WARNING}\n")
+            def _launch(*_a, **_k):
+                m.runtime.is_running.return_value = True  # up for good once launched
+
+            m.runtime.run.side_effect = _launch
+            m.runtime.exec.return_value = 1
+            rc = _run_container(
+                project_dir=None, entrypoint=None, image_override=None,
+                new_session=False, safe_mode=False, resume_mode=False,
+                extra_args=[], persistent=True, detach=False,
+            )
+            assert rc == 1
+            err = capsys.readouterr().err
+            assert "Could not attach to box" in err
+            assert "ATTACH_NEVER_LANDED_TRACE" in err
+            assert "supervisor fallback log" in err
 
     def test_detach_implies_persistent_from_nonpersistent_arg(self, start_mocks):
         """detach=True forces the persistent/detached launch even if a caller
@@ -13544,7 +13579,8 @@ class TestStartRefusesALegacyRunningContainer:
 
 def test_print_supervisor_fallback_tail_and_silence(tmp_path, capsys):
     from kanibako.commands.start import (
-        SUPERVISOR_FALLBACK_RELPATH, _print_supervisor_fallback,
+        SUPERVISOR_FALLBACK_RELPATH, SUPERVISOR_FALLBACK_WARNING,
+        _print_supervisor_fallback,
     )
 
     _print_supervisor_fallback(tmp_path)              # no log: silent
@@ -13554,9 +13590,11 @@ def test_print_supervisor_fallback_tail_and_silence(tmp_path, capsys):
     _print_supervisor_fallback(tmp_path)              # truncated by a good launch: silent
     log.write_text("\n  \n")
     _print_supervisor_fallback(tmp_path)              # whitespace only: silent
+    log.write_text("Traceback (most recent call last):\nImportError: x\n")
+    _print_supervisor_fallback(tmp_path)              # the retry succeeded: silent
     assert capsys.readouterr().err == ""
-    log.write_text("".join(f"line {i}\n" for i in range(30)))
+    log.write_text("".join(f"line {i}\n" for i in range(29)) + SUPERVISOR_FALLBACK_WARNING)
     _print_supervisor_fallback(tmp_path)
     err = capsys.readouterr().err.splitlines()
     assert err[0] == f"kanibako: supervisor fallback log (~/{SUPERVISOR_FALLBACK_RELPATH}):"
-    assert err[1:] == [f"line {i}" for i in range(10, 30)]
+    assert err[1:] == [f"line {i}" for i in range(10, 29)] + [SUPERVISOR_FALLBACK_WARNING]
