@@ -582,6 +582,32 @@ class TestWorksetRm:
         assert "stuckrm" in list_worksets(std)
         assert ws.root.is_dir()
 
+    def test_rm_purge_oserror_before_the_unregister_keeps_it_registered(
+        self, config_file, tmp_home, capsys, monkeypatch,
+    ):
+        """⚑ An OSError raised while the workset is still registered never says "unregistered"."""
+        import kanibako.runtime.container as container_mod
+        from kanibako.commands.workset_cmd import run_rm
+
+        std = load_std_paths(load_config(config_file))
+        ws = create_workset("stuckpre", tmp_home / "ws_stuckpre", std)
+        box_tree = ws.root / "boxes" / "b1"
+        box_tree.mkdir(parents=True)
+
+        def refusing(path):
+            raise PermissionError(13, "Permission denied", str(path))
+
+        monkeypatch.setattr(container_mod, "remove_box_tree", refusing)
+
+        rc = run_rm(argparse.Namespace(name="stuckpre", purge=True, force=True))
+
+        err = capsys.readouterr().err
+        assert rc == 1
+        assert "unregistered" not in err and "podman unshare" not in err, err
+        assert "could not remove working set 'stuckpre'" in err and str(box_tree) in err
+        assert "stuckpre" in list_worksets(std)
+        assert ws.root.is_dir()
+
     def test_rm_purge_refusing_root_names_the_root_as_the_cure(
         self, config_file, tmp_home, capsys, monkeypatch,
     ):
