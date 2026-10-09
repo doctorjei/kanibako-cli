@@ -725,6 +725,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   directory, now print the YAML error with the file's path and exit 1; nothing is deleted.
 - **Purging a standalone box with `workset.canon: null` names the `canon/` folder it keeps.** The folder was left
   without a word; a note now names it.
+- **Purging a standalone box removes kanibako's line from the project `.gitignore`.** `create` adds `box_data/`
+  to it, and purge left that line behind. `box rm --purge` and `box purge` now remove that line only, and delete
+  the file if nothing else is in it. Your own lines stay. A linked or unreadable `.gitignore` is left alone, with a
+  note.
 
 - **`box duplicate` to a primary box takes its `--name`.** It was ignored, and the copy was named after its
   directory. A taken name is refused before anything is written.

@@ -258,6 +258,7 @@ class TestStandalonePurge:
         assert _plan_lines(out.out) == [
             f"box metadata: {root / 'box_data'}",
             f"workset settings: {root / 'workset.yaml'}",
+            f"kanibako's line in: {root / '.gitignore'}",
             f"box canon (kanibako's handbook): {root / 'canon'}",
             f"vault parent folder: {root / 'vault'} → {outside} (link only; target kept)",
         ]
@@ -283,6 +284,7 @@ class TestStandalonePurge:
         assert _plan_lines(capsys.readouterr().out) == [
             f"box metadata: {root / 'box_data'}",
             f"workset settings: {root / 'workset.yaml'}",
+            f"kanibako's line in: {root / '.gitignore'}",
             f"box canon (kanibako's handbook): {root / 'canon'}",
             f"vault ro (your files): {inner / 'ro'}",
             f"vault rw (your files): {inner / 'rw'}",
@@ -434,3 +436,17 @@ class TestStandalonePurge:
         with pytest.raises(ConfigError, match="is not valid YAML"):
             _rm(str(root), force=True)
         assert sorted(p.relative_to(root) for p in root.rglob("*")) == before
+
+    def test_only_kanibakos_gitignore_line_goes_and_is_listed(
+        self, config_file, tmp_home, credentials_dir, capsys,
+    ):
+        root = tmp_home / "sa"
+        root.mkdir()
+        (root / ".gitignore").write_text("node_modules/\n")
+        _create(root, standalone=True)
+        capsys.readouterr()
+
+        assert _rm(str(root), force=True) == 0
+        assert f"kanibako's line in: {root / '.gitignore'}" in _plan_lines(
+            capsys.readouterr().out)
+        assert (root / ".gitignore").read_text() == "node_modules/\n"

@@ -462,3 +462,72 @@ class TestLegacyContainerNames:
             project_path="/home/user/my-project/workspace",
         )
         assert legacy_container_names(proj) == ("kanibako-ronin-home-user-my-.project",)
+
+
+class TestStripProjectGitignore:
+    """Purge removes only the line ``write_project_gitignore`` wrote to the root file."""
+
+    @pytest.mark.parametrize("before, after", [
+        (None, None),
+        ("node_modules/\n", "node_modules/\n"),
+        ("\n  \n", "\n  \n"),
+        ("node_modules/\r\n", "node_modules/\r\n"),
+        ("node_modules", "node_modules\n"),
+    ])
+    def test_create_then_strip(self, tmp_path, before, after):
+        from kanibako.utils import (
+            project_gitignore_to_strip, strip_project_gitignore, write_project_gitignore,
+        )
+
+        gitignore = tmp_path / ".gitignore"
+        if before is not None:
+            gitignore.write_bytes(before.encode())
+        write_project_gitignore(tmp_path)
+        assert project_gitignore_to_strip(tmp_path) == gitignore
+        assert strip_project_gitignore(gitignore)
+        if after is None or not after.strip():
+            assert not gitignore.exists()
+        else:
+            assert gitignore.read_bytes() == after.encode()
+
+    def test_crlf_line_and_user_lines_around_it(self, tmp_path):
+        from kanibako.utils import project_gitignore_to_strip, strip_project_gitignore
+
+        gitignore = tmp_path / ".gitignore"
+        gitignore.write_bytes(b"a/\r\nbox_data/\r\nb/\r\n")
+        assert strip_project_gitignore(project_gitignore_to_strip(tmp_path))
+        assert gitignore.read_bytes() == b"a/\r\nb/\r\n"
+
+    def test_our_line_absent_plans_nothing(self, tmp_path, capsys):
+        from kanibako.utils import project_gitignore_to_strip
+
+        (tmp_path / ".gitignore").write_text("box_data/old\n")
+        assert project_gitignore_to_strip(tmp_path) is None
+        assert project_gitignore_to_strip(tmp_path / "missing") is None
+        assert capsys.readouterr().err == ""
+
+    def test_symlink_is_not_edited_through(self, tmp_path, capsys):
+        from kanibako.utils import project_gitignore_to_strip
+
+        outside = tmp_path / "outside"
+        outside.write_text("x/\nbox_data/\n")
+        root = tmp_path / "root"
+        root.mkdir()
+        (root / ".gitignore").symlink_to(outside)
+        assert project_gitignore_to_strip(root) is None
+        assert "it is a link" in capsys.readouterr().err
+        assert outside.read_text() == "x/\nbox_data/\n"
+
+    @pytest.mark.skipif(os.geteuid() == 0, reason="root reads a mode-000 file")
+    def test_unreadable_is_noted_not_raised(self, tmp_path, capsys):
+        from kanibako.utils import project_gitignore_to_strip
+
+        gitignore = tmp_path / ".gitignore"
+        gitignore.write_text("box_data/\n")
+        gitignore.chmod(0)
+        try:
+            assert project_gitignore_to_strip(tmp_path) is None
+        finally:
+            gitignore.chmod(0o644)
+        assert "could not read" in capsys.readouterr().err
+        assert gitignore.read_text() == "box_data/\n"
