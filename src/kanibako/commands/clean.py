@@ -24,7 +24,7 @@ from kanibako.settings.paths import (
 from kanibako.utils import (
     confirm_prompt, project_gitignore_to_strip, strip_project_gitignore,
 )
-from kanibako.project.workset import purge_box_logs
+from kanibako.project.workset import purge_box_logs, resolve_workset_vault_pair
 from kanibako.channels.channels import workset_name_token, workset_root
 from kanibako.settings.workset_dirkeys import EarlyScope, refuse_inherited_per_owner
 from kanibako.settings.messages import MSG_DONE, STATUS_NO_DATA
@@ -351,7 +351,9 @@ def _purge_all(std, config, *, force: bool) -> int:
         # ⚑ Hoisted, and RESOLVED: both properties read the root workset.yaml, so one
         # read per workset keeps every member of it judged against the same document.
         boxes_dir, logs_dir = ws.projects_dir, ws.logs_dir
-        vault_ro_base, vault_rw_base = ws.vault_ro_dir, ws.vault_rw_dir
+        # ⚑ One read, not two.
+        vault_ro_base, vault_rw_base = resolve_workset_vault_pair(
+            ws.root, early=_early_scope(std, BoxMode.named, ws_name))
         for proj_name, status in project_list:
             if status == STATUS_NO_DATA:
                 continue

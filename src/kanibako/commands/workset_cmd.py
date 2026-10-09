@@ -38,6 +38,7 @@ from kanibako.project.workset_registry import (
 from kanibako.project.workset import (
     DEFAULT_WORKSET_ALIAS,
     RESERVED_WORKSET_IDENTIFIERS,
+    StoreRemovalError,
     add_project,
     create_workset,
     delete_workset,
@@ -754,15 +755,17 @@ def run_disconnect(args: argparse.Namespace) -> int:
     except WorksetError as e:
         print(f"Error: {e}", file=sys.stderr)
         return 1
+    except StoreRemovalError as e:
+        # ⚑ The message already names the refusing leaf and its cure.
+        print(f"Error: {e}", file=sys.stderr)
+        return 1
     except OSError as e:
         # ⚑ NOT redundant with the WorksetError arm: a box tree can REFUSE deletion
         # (root-owned canon skeleton, or anything the rootless container wrote as root).
         print(f"Error: could not remove project '{member}': {e}", file=sys.stderr)
-        print(
-            f"  Try: podman unshare rm -rf "
-            f"{shlex.quote(str(ws.projects_dir / member))}",
-            file=sys.stderr,
-        )
+        cure = e.filename or str(ws.projects_dir / member)
+        print(f"  Try: podman unshare rm -rf {shlex.quote(str(cure))}",
+              file=sys.stderr)
         return 1
     if logs_dir is not None:
         # ⚑ HERE, not in ``remove_project``/``release_project``: a move releases the box
