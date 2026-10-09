@@ -699,16 +699,30 @@ def run_box_diagnose(args: object) -> int:
     if not is_registered:
         target = proj.project_path if proj.project_path else project_dir
         leaf = Path(str(target)).name
+        # ⚑ Carry the named target into the cure / hint (start.py:1770-1779): a bare
+        # ``kanibako create`` from cwd would create a box in cwd, not in the target.
+        suggest_path = (
+            f" {shlex.quote(str(target))}" if project_dir and target else ""
+        )
         try:
             # ``create`` names the box after the directory, so it would refuse this one.
             refuse_derived_box_name(leaf or "project")
         except DerivedBoxNameError as e:
+            cure_text = e.with_cure(box_name_cure("kanibako create" + suggest_path, e.name))
+            # ⚑ Re-indent every cure line to 8 spaces — ``with_cure`` joins ``self``
+            # to a template with an internal newline, so without this only the first
+            # line picks up the 8-space prefix.
+            cure_indented = "\n".join(
+                "        " + ln.lstrip() for ln in cure_text.split("\n")
+            )
             print(_format_check("!!", "Project", f"no kanibako project registered for {target}"))
-            print(f"        {e.with_cure(box_name_cure('kanibako create', e.name))}")
+            print(cure_indented)
+            # ⚑ Keep the ``Or pass`` alternative — the cure is one branch, that hint the other.
+            print(f"        Or pass a project name/path:  kanibako create{suggest_path}")
             return 1
         print(_format_check("!!", "Project", f"no kanibako project registered for {target}"))
         print(
-            "        Run 'kanibako create' to initialize a project here, "
+            f"        Run 'kanibako create{suggest_path}' to initialize a project here, "
             "or pass a project name/path."
         )
         return 1

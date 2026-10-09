@@ -2953,6 +2953,11 @@ def _resolve_config_subject(std, config, project_dir: str | None):
         std, config, project_dir=project_dir, initialize=False,
     )
     if proj.mode is BoxMode.primary and not proj.name:
+        # ⚑ Carry the named target into the cure / hint: a bare ``kanibako
+        # create`` from cwd would create a box in cwd, not in the directory
+        # the subject named (the same fix start.py:1770-1779 makes).
+        target = str(proj.project_path) if proj.project_path else None
+        suggest_path = f" {shlex.quote(target)}" if target else ""
         head = (
             f"no box at {proj.project_path} — kanibako has no box registered "
             "for this directory, and a setting has to belong to a box.\n"
@@ -2962,8 +2967,10 @@ def _resolve_config_subject(std, config, project_dir: str | None):
             # ``create`` names the box after the directory, so it would refuse this one.
             refuse_derived_box_name(Path(str(proj.project_path)).name or "project")
         except DerivedBoxNameError as e:
-            raise ProjectError(head + f"  {box_name_cure('kanibako create', e.name)}") from e
-        raise ProjectError(head + "  Or make one:    kanibako create")
+            raise ProjectError(
+                head + f"  {box_name_cure('kanibako create' + suggest_path, e.name)}"
+            ) from e
+        raise ProjectError(head + f"  Or make one:    kanibako create{suggest_path}")
     return proj
 
 
