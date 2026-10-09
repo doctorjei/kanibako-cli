@@ -333,6 +333,7 @@ def _run_duplicate_cross_mode(args: argparse.Namespace, std, config) -> int:
                 remove_box_tree(new_path)
             return 1
 
+    _repoint_duplicated_links(source_path, new_path, std, config, bare=args.bare)
     print(f"Duplicated project to {target_mode.value} mode:")
     print(f"  from: {source_path}")
     print(f"    to: {new_path}")
@@ -363,6 +364,32 @@ def _merge_workspace(src: Path, dst: Path, force: bool, *,
         listing = failed_entries(e)
         detail = f"; {listing}" if listing is not None else f": {e}"
         raise ProjectError(f"Could not copy the workspace {src} to {dst}{detail}") from e
+
+
+def _repoint_duplicated_links(source: Path, dest: Path, std, config, *, bare: bool) -> None:
+    """Repoint the source box's directly mounted links in the duplicate at *dest*.
+
+    Run after the copy: the source is untouched, so its plan is the same either side.
+    Vaults are left out because a duplicate does not carry them, and a *bare* duplicate's
+    workspace because it was not copied.
+    """
+    from kanibako.commands.box._lifecycle import (
+        plan_box_mounted_links, repoint_box_mounted_links, resolve_lifecycle_target,
+    )
+    from kanibako.errors import WorksetError
+
+    try:
+        src = resolve_lifecycle_target(str(source), std, config)
+        dst = resolve_lifecycle_target(str(dest), std, config)
+    except (ProjectError, WorksetError, OSError) as e:
+        print(f"Warning: could not check the duplicate for mounted links: {e}",
+              file=sys.stderr)
+        return
+    pairs = [(src.metadata_path, dst.metadata_path), (src.shell_path, dst.shell_path)]
+    if not bare:
+        pairs.append((src.workspace_path, dst.workspace_path))
+    links = plan_box_mounted_links(src.name, src.bind_sources, [old for old, _new in pairs])
+    repoint_box_mounted_links(links, dict(pairs))
 
 
 def _source_authored_vault(src_proj) -> bool:
@@ -733,6 +760,9 @@ def _duplicate_to_workset(args, std, config) -> int:
         ws, proj_name, src_proj.metadata_path, src_proj.shell_path,
         source_path, source_mode, copy_workspace=not args.bare, std=std,
     )
+    _repoint_duplicated_links(
+        source_path, ws.require_workspaces_dir(f"a workspace for '{proj_name}'") / proj_name,
+        std, config, bare=args.bare)
 
     print("Duplicated project to workset:")
     print(f"  from:    {source_path}")
@@ -854,6 +884,7 @@ def _duplicate_from_workset(args, source_path, new_path, std, config) -> int:
             print(f"Error: {e}", file=sys.stderr)
             return 1
 
+    _repoint_duplicated_links(source_path, new_path, std, config, bare=args.bare)
     print(f"Duplicated project to {target_mode.value} mode:")
     print(f"  from: {ws.name}/{proj_name}")
     print(f"    to: {new_path}")
@@ -1036,6 +1067,7 @@ def run_duplicate(args: argparse.Namespace) -> int:
         _unwind_local_name(std, dup_name, new_project_dir)
         raise
 
+    _repoint_duplicated_links(source_path, new_path, std, config, bare=args.bare)
     print("Duplicated project:")
     print(f"  from: {source_path} ({source_name})")
     print(f"    to: {new_path} ({dup_name})")

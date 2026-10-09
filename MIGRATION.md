@@ -5734,7 +5734,9 @@ archive`; a hard link leading out of the archive is still refused.
 - **A link you relied on being copied as its target's contents is now a link.** If the box needs
   the contents, copy them in yourself (`cp -rL <link> <dest>` copies what a link points at).
 - **A relative link that leads out of the copied tree keeps its text**, so it is read from the new
-  location. Check that it still points where you mean after a move or convert.
+  location. Check that it still points where you mean after a move or convert. A link that is
+  itself the source of one of the box's bind mounts is the exception: its text is rewritten to
+  reach the same host path, unless a `Note:` says the box's settings did not resolve.
 - **A duplicate shares what an absolute link points at with its source.** Editing through the link
   in either box changes the same file.
 - **`box duplicate --force` onto an existing directory no longer writes through a link already

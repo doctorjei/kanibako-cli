@@ -3080,47 +3080,15 @@ def _run_box_config(args: argparse.Namespace) -> int:
         agent_id = GENERAL_SLOT
         agent_cfg_path: Path | None = None
         if args.effective:
-            from kanibako.settings.agent_config import agent_settings_path
-            from kanibako.settings.settings_assemble import ReadPurpose, agent_record
-            from kanibako.targets import resolve_target
             from kanibako.commands.start import (
                 _build_config_env,
                 _effective_behavior_for_display,
                 _launch_env_map,
+                stored_box_agent,
             )
-            agent_name = ""
-            effective_selection = None
-            try:
-                from kanibako.settings.agent_select import select_agent
-                # Informational display: tolerate a resolution failure, degrading to
-                # the "shell" no-agent state below.  Still the ONE selection seam.
-                effective_selection = select_agent(std=std, proj=proj)
-                agent_name = effective_selection.node
-                target = (
-                    resolve_target(harness_of(agent_name))
-                    if agent_name
-                    else None
-                )
-            except Exception:
-                target = None
-            # ⚑ The NODE-name keys both the ``agent.<node>.*`` slot and the
-            # ``agents/<node>/`` dir; ``with_harness`` follows the RESOLVED target.
-            # ⚑ ``agent_node_case``, not the declared name: a node is lowercase
-            # ([R173]).  This view reads the same store the launch writes, so an
-            # unfolded spelling here would report a file the launch never opens.
-            agent_id = (
-                with_harness(agent_name, agent_node_case(target.name))
-                if target else GENERAL_SLOT
-            )
-            agent_cfg_path = agent_settings_path(std.agents, agent_id)
-            if target and not agent_cfg_path.exists():
-                agent_cfg = target.generate_agent_config()
-            elif agent_cfg_path.exists():
-                agent_cfg = agent_record(
-                    agent_cfg_path, node=agent_id, purpose=ReadPurpose.RESOLVE,
-                )
-            else:
-                agent_cfg = None
+            # Informational display: a selection failure degrades to the shell slot.
+            stored = stored_box_agent(std, proj)
+            effective_selection, agent_id, target, agent_cfg, agent_cfg_path = stored
             if target is not None and agent_cfg is not None:
                 agent_state = _effective_behavior_for_display(
                     target, agent_cfg,
@@ -3139,10 +3107,7 @@ def _run_box_config(args: argparse.Namespace) -> int:
             # ⚑ Resolved off the SAME launch pipeline a start takes, so the display
             # cannot drift from what mounts.  A collision is REPORTED, never raised —
             # this view IS the detection recipe for that fault.
-            from kanibako.commands.start import (
-                _persona_values_for,
-                _resolve_launch_snapshot,
-            )
+            from kanibako.commands.start import resolve_stored_box_snapshot
             from kanibako.errors import KanibakoError
             from kanibako.settings.agent_select import launch_resolve_ctx
             try:
@@ -3156,31 +3121,10 @@ def _run_box_config(args: argparse.Namespace) -> int:
                 # live right here.  It is not on the snapshot and never can be (a
                 # fourth ``meta.assembly`` leaf is a closed-keyspace addition), so the
                 # display is HANDED it or prints a loss with no key to act on.
-                category_snapshot, deliveries = _resolve_launch_snapshot(
-                    std=std, proj=proj, agent_name=agent_id,
-                    system_settings_path=std.settings,
-                    agent_cfg_path=agent_cfg_path,
-                    desc=None, install=None,
-                    target=target, agent_cfg=agent_cfg,
-                    # ⚑ The SAME persona-store tier the launch resolves against — without
-                    # it this view lists a persona box's mounts MINUS its token.
-                    persona_values=_persona_values_for(agent_id, target),
-                    # ⚑ A DISPLAY verb must not write to disk: create-if-missing is a
-                    # LAUNCH guarantee, not a read one.  The binds are emitted either way.
-                    guarantee_create=False,
-                    # ⚑ The SAME §1A selection level the launch installs (P7): without
-                    # it this display resolves ``@system.agent`` differently from the
-                    # launch it claims to show.
-                    # ⚑ SELECTION ONLY, and for a READ verb that is the WHOLE CLI level
-                    # (P8) — do not add an ephemeral VALUE flag here.
-                    # ⚑ ``--agent`` PARSES here and is silently IGNORED — a pre-existing
-                    # defect of the blanket flag injector, deliberately left as found.
-                    cli_level=(
-                        effective_selection.selection_level
-                        if effective_selection is not None
-                        else None
-                    ),
-                )
+                # ⚑ ``--agent`` PARSES here and is silently IGNORED — a pre-existing
+                # defect of the blanket flag injector, deliberately left as found.
+                category_snapshot, deliveries = resolve_stored_box_snapshot(
+                    std, proj, stored)
                 category_declared_by = deliveries.declared_by
                 category_dest_keys = deliveries.dest_keys
                 # ⚑ The SAME helper the launch uses, off the SAME collapsed leaf

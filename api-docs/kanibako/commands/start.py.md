@@ -41,6 +41,9 @@ def run_start(args: argparse.Namespace) -> int
 def run_shell(args: argparse.Namespace) -> int
 def start_detached(project_dir: str | None, *, explicit_agent: str | None=None, warm_only: bool=True) -> int
 def writeback_session_credentials(target, proj, *, auth_src) -> None
+def stored_box_agent(std: 'StandardPaths', proj: 'ProjectPaths') -> StoredBoxAgent
+def resolve_stored_box_snapshot(std: 'StandardPaths', proj: 'ProjectPaths', agent: StoredBoxAgent)
+def box_bind_sources(std: 'StandardPaths', proj: 'ProjectPaths') -> frozenset[str]
 def reset_collision_warnings() -> None
 def emit_collision_warnings(collisions) -> None
 def persona_create_verdict(std, config, proj, *, explicit_agent: str | None=None) -> str | None
@@ -210,6 +213,13 @@ class PersonaSecretTable(dict):
     __slots__ = ('declared',)
 
     def __init__(self, state: 'Mapping[str, object]', declared: 'tuple[str, ...]')
+
+class StoredBoxAgent(NamedTuple):
+    selection: 'AgentSelection | None'
+    node: str
+    target: 'Target | None'
+    agent_cfg: object
+    agent_cfg_path: Path
 
 class LaunchRealization(NamedTuple):
     effective_state: dict[str, str]

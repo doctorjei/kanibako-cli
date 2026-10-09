@@ -12,9 +12,11 @@ directly mounted."*): relative text names a box path, and every tree copied thro
 at the box path it came from (a relocated vault, home or workspace; a snapshot or a stash once put
 back), so the same text names the same thing there.
 
-⚑ NOT YET HANDLED — the directly mounted link.  Podman resolves it on the host and the box never
-sees it, so its relative text would need repointing to the same host target.  Which links count
-is not yet decided; until it is, such a link is copied verbatim like any other.
+THE EXCEPTION — the directly mounted link: a link whose own host path is the SOURCE of one of
+the box's bind mounts.  Podman resolves it on the host, so after a relocation its relative text
+must name the same HOST target from the link's new place.  A relocating verb takes the plan with
+:func:`plan_mounted_links` before it copies and applies it with :func:`repoint_mounted_links`
+once every tree has landed; the copy itself stays verbatim, so a stash leg needs no plan.
 """
 
 from __future__ import annotations
@@ -24,6 +26,7 @@ import os
 import shutil
 from collections.abc import Callable, Collection, Iterable, Mapping
 from pathlib import Path
+from typing import NamedTuple
 
 
 def copy_tree_keeping_links(
@@ -191,6 +194,76 @@ def lay_root_link(
         return True
     copy_tree_keeping_links(src, dst, keep_root_link=True)
     return True
+
+
+class MountedLink(NamedTuple):
+    """A relative link that is a bind source, as it stood before a relocation."""
+
+    #: The tree it lies in, exactly as the caller named it (a key of *relocated*).
+    root: Path
+    #: Its path below *root*.
+    rel: str
+    #: Its text when planned; a link reading anything else at the landing is not ours.
+    text: str
+    #: The host path it resolves to; a dangling link's target need not exist.
+    target: str
+
+
+def plan_mounted_links(sources: Collection[str], roots: Iterable[Path]) -> list[MountedLink]:
+    """Each RELATIVE link in *sources* that lies below one of *roots*, deepest root first.
+
+    A root that is itself a source is not planned: the root-link copy already repoints it.
+    A link that loops has no host target and keeps its text.
+    """
+    resolved = [(root, os.path.realpath(root)) for root in roots]
+    planned: list[MountedLink] = []
+    for source in sorted(sources):
+        link = os.path.join(os.path.realpath(os.path.dirname(source)), os.path.basename(source))
+        if not os.path.islink(link):
+            continue
+        text = os.readlink(link)
+        if os.path.isabs(text):
+            continue
+        holders = [(root, real) for root, real in resolved
+                   if link != real and _is_under(link, Path(real))]
+        if not holders:
+            continue
+        try:
+            os.path.realpath(link, strict=True)
+        except OSError as err:
+            if err.errno == errno.ELOOP:
+                continue
+        root, real = max(holders, key=lambda pair: len(pair[1]))
+        planned.append(MountedLink(root, os.path.relpath(link, real), text,
+                                   os.path.realpath(link)))
+    return planned
+
+
+def repoint_mounted_links(
+    links: Iterable[MountedLink], relocated: Mapping[Path, Path],
+) -> list[tuple[str, str]]:
+    """Rewrite each landed link in *links* so it names its host target from where it lies.
+
+    *relocated* maps each planned root to where it landed.  A target inside a carried tree
+    follows that tree to its landing.  Returns ``(link, reason)`` for each link that could
+    not be rewritten; the rest are rewritten.
+    """
+    failed: list[tuple[str, str]] = []
+    for link in links:
+        landed_root = relocated.get(link.root)
+        if landed_root is None:
+            continue
+        landed = os.path.join(str(landed_root), link.rel)
+        try:
+            if not os.path.islink(landed) or os.readlink(landed) != link.text:
+                continue
+            target = _relocated_target(link.target, relocated) or link.target
+            text = os.path.relpath(target, os.path.dirname(landed))
+            if text != link.text:
+                _replace_link(landed, text, landed)
+        except OSError as err:
+            failed.append((landed, err.strerror or str(err)))
+    return failed
 
 
 def _is_under(path: str, root: Path) -> bool:
