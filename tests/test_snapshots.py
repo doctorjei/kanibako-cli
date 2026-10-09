@@ -11,8 +11,11 @@ import pytest
 
 from kanibako import snapshots as snapshots_mod
 from kanibako.snapshots import (
+    LAYOUT_MARKER_NAME,
+    LAYOUT_MARKER_VALUE,
     UNSORTED_DIRNAME,
     ForeignSnapshotError,
+    SnapshotSafetyError,
     UnsafeSnapshotNameError,
     _test_reflink,
     auto_snapshot,
@@ -1130,3 +1133,128 @@ class TestLegacyStoreSplit:
         assert s1 != s2
         assert sorted(f.name for f in s1.iterdir()) == ["a.txt"]
         assert sorted(f.name for f in s2.iterdir()) == ["a.txt", "b.txt"]
+
+
+class TestLayoutMarkerAndReservedKeys:
+    """No box name may resolve to the layout bucket or be read as legacy.
+
+    ``unsorted`` and ``20200101T000000Z`` are both LEGAL box names, so a bucket
+    or a name-match that lands on either hands one box another's data.
+    """
+
+    def test_a_box_named_unsorted_does_not_own_the_bucket(
+        self, tmp_path: Path
+    ) -> None:
+        """The bucket is ``.unsorted``, so box ``unsorted``'s prune cannot reach it."""
+        base = tmp_path / "vault" / "rw"
+        box = base / "unsorted"
+        box.mkdir(parents=True)
+        (box / "live.txt").write_text("live")
+        versions = base / ".versions"
+        _make_dir_snapshot(versions, "20260101T000000Z", box)
+        _make_dir_snapshot(versions, "20260102T000000Z", box)
+        migrate_legacy_versions(box, box_name="unsorted")
+
+        assert UNSORTED_DIRNAME == ".unsorted"
+        assert (versions / UNSORTED_DIRNAME / "20260101T000000Z").is_dir()
+
+        prune_snapshots(box, max_keep=0, box_name="unsorted")
+
+        assert (versions / UNSORTED_DIRNAME / "20260101T000000Z").is_dir()
+        assert (versions / UNSORTED_DIRNAME / "20260102T000000Z").is_dir()
+
+    def test_a_reserved_layout_name_is_not_a_box_store_key(
+        self, tmp_path: Path
+    ) -> None:
+        base = tmp_path / "vault" / "rw" / "b"
+        base.mkdir(parents=True)
+
+        with pytest.raises(UnsafeSnapshotNameError, match="layout"):
+            list_snapshots(base, box_name=UNSORTED_DIRNAME)
+        with pytest.raises(UnsafeSnapshotNameError, match="layout"):
+            list_snapshots(base, box_name=LAYOUT_MARKER_NAME)
+
+    def test_a_timestamp_named_box_is_not_swept_by_another_boxs_legacy_pass(
+        self, tmp_path: Path
+    ) -> None:
+        """``20200101T000000Z`` is a valid box name; its store is not a legacy entry."""
+        base = tmp_path / "vault" / "rw"
+        tsbox = base / "20200101T000000Z"
+        tsbox.mkdir(parents=True)
+        (tsbox / "mine.txt").write_text("mine")
+        create_snapshot(tsbox, box_name="20200101T000000Z")
+        mine = list_snapshots(tsbox, box_name="20200101T000000Z")
+        assert len(mine) == 1
+
+        alpha = base / "alpha"
+        alpha.mkdir(parents=True)
+        (alpha / "a.txt").write_text("a")
+        migrate_legacy_versions(alpha, box_name="alpha")
+
+        assert list_snapshots(tsbox, box_name="20200101T000000Z") == mine
+        assert list_unsorted(alpha) == []
+
+    def test_legacy_detection_never_runs_once_the_marker_is_present(
+        self, tmp_path: Path
+    ) -> None:
+        base = tmp_path / "vault" / "rw"
+        alpha = base / "alpha"
+        alpha.mkdir(parents=True)
+        (alpha / "a.txt").write_text("a")
+        versions = base / ".versions"
+        _make_dir_snapshot(versions, "20260101T000000Z", alpha)
+        migrate_legacy_versions(alpha, box_name="alpha")
+        assert (versions / LAYOUT_MARKER_NAME).read_text() == LAYOUT_MARKER_VALUE
+
+        _make_dir_snapshot(versions, "20260102T000000Z", alpha)
+        moved = migrate_legacy_versions(alpha, box_name="alpha")
+
+        assert moved == {"attributed": [], "unsorted": []}
+        assert (versions / "20260102T000000Z").is_dir()
+
+    def test_a_writer_marks_a_base_that_has_nothing_to_migrate(
+        self, tmp_path: Path
+    ) -> None:
+        """Marking only on a real move would leave the first store unprotected."""
+        alpha = tmp_path / "vault" / "rw" / "alpha"
+        alpha.mkdir(parents=True)
+        (alpha / "a.txt").write_text("a")
+
+        create_snapshot(alpha, box_name="alpha")
+
+        assert (alpha.parent / ".versions" / LAYOUT_MARKER_NAME).exists()
+
+    def test_a_reader_does_not_create_the_base(self, tmp_path: Path) -> None:
+        """``list`` / ``migrate`` on a vault with no store must not make one."""
+        alpha = tmp_path / "vault" / "rw" / "alpha"
+        alpha.mkdir(parents=True)
+        (alpha / "a.txt").write_text("a")
+
+        migrate_legacy_versions(alpha, box_name="alpha")
+
+        assert not (alpha.parent / ".versions").exists()
+
+
+class TestSafetyCopyFailure:
+    """A failed pre-restore copy is a refusal with a message, not a traceback."""
+
+    def test_a_failed_safety_copy_raises_a_clean_error(
+        self, tmp_path: Path
+    ) -> None:
+        import subprocess
+
+        alpha = tmp_path / "vault" / "rw" / "alpha"
+        alpha.mkdir(parents=True)
+        (alpha / "keep.txt").write_text("live")
+        snap = create_snapshot(alpha, box_name="alpha")
+        assert snap is not None
+        (alpha / "keep.txt").write_text("changed")
+
+        boom = subprocess.CalledProcessError(1, ["rsync", "--link-dest"])
+        with patch(
+            "kanibako.snapshots.create_snapshot", side_effect=boom
+        ):
+            with pytest.raises(SnapshotSafetyError, match="Nothing was changed"):
+                restore_snapshot(alpha, snap.name, box_name="alpha")
+
+        assert (alpha / "keep.txt").read_text() == "changed"

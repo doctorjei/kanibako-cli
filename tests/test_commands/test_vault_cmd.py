@@ -567,3 +567,30 @@ class TestVaultDisabled:
         assert rc == 1
         captured = capsys.readouterr()
         assert "disabled" in captured.err.lower()
+
+
+class TestUnsortedHeading:
+    """The heading is literal text, not an f-string over the bucket name."""
+
+    def test_the_unsorted_heading_reads_as_english(
+        self, config_file, tmp_home, credentials_dir, capsys,
+    ):
+        import shutil
+
+        from kanibako.snapshots import _versions_dir
+        from kanibako.snapshots import create_snapshot
+
+        proj = _init_project_with_vault(config_file, tmp_home, credentials_dir)
+        snap = create_snapshot(proj.vault_rw_path, box_name=proj.name)
+        versions = _versions_dir(proj.vault_rw_path)
+        shutil.move(str(snap), str(versions / snap.name))
+        (versions / ".layout").unlink()
+
+        parser = build_parser()
+        args = parser.parse_args(["box", "vault", "list", str(proj.project_path)])
+        rc = run_list(args)
+
+        out = capsys.readouterr().out
+        assert rc == 0
+        assert "kept, never pruned, not restorable by name" in out
+        assert "pruned by '" not in out
