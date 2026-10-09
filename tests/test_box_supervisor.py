@@ -252,7 +252,9 @@ def test_teardown_exit_record_defaults_to_a_private_temp_dir():
     assert record is not None and _os.path.basename(record) == "record"
     assert _os.path.basename(_os.path.dirname(record)).startswith("kanibako-agent-exit-")
     assert "'" not in record
-    _os.rmdir(_os.path.dirname(record))
+    assert sup.recorded_agent_exit() is None   # nothing recorded; the dir goes anyway
+    assert not _os.path.exists(_os.path.dirname(record))
+
 
 def test_start_agent_session_reports_failure_on_nonzero_rc():
     fake = FakeRun(rc={"new-session": 1})
@@ -279,6 +281,37 @@ def test_start_agent_session_semicolon_in_argv_falls_back_to_plain_form():
     assert fake.sub_calls("set-option") == [
         ["tmux", "set-option", "-t", "kanibako", "remain-on-exit", "on"]
     ]
+
+
+@pytest.mark.parametrize("tmpdir_name", ["has space", "has'quote", "has#hash"])
+def test_teardown_record_ignores_a_hostile_tmpdir(tmp_path, monkeypatch, tmpdir_name):
+    # $TMPDIR is user-settable via ``env``; the record must not follow it into the
+    # hook's shell line.  The agent starts armed, the code is right, nothing strays.
+    hostile = tmp_path / tmpdir_name
+    hostile.mkdir()
+    monkeypatch.setenv("TMPDIR", str(hostile))
+    monkeypatch.setattr(bs.tempfile, "tempdir", None)
+    fake = FakeRun(rc={"has-session": [1, 1]})
+    sup = BoxSupervisor(_config(on_agent_exit="teardown"), run=fake, proc_cmdlines=[])
+    assert sup.start_agent_session() is True
+    record = sup._exit_record
+    assert record is not None and record.startswith("/tmp/kanibako-agent-exit-")
+    assert any("pane-died" in c for c in fake.calls)
+    _os.makedirs(_os.path.dirname(record), exist_ok=True)
+    _Path(record).write_text(_dead(3))       # what the hook leaves
+    assert sup.recorded_agent_exit() == 3
+    assert not _os.path.exists(_os.path.dirname(record))   # removed once read
+    assert list(hostile.iterdir()) == []
+
+
+@pytest.mark.parametrize("record", ["/tmp/a b/record", "/tmp/it's/record", "/tmp/#{x}/record"])
+def test_unsafe_record_path_arms_no_hook_but_still_starts(record):
+    fake = FakeRun()
+    sup = BoxSupervisor(_config(on_agent_exit="teardown"), run=fake, exit_record=record)
+    assert sup.start_agent_session() is True
+    assert fake.sub_calls("new-session")
+    assert not any("pane-died" in c for c in fake.calls)
+    assert any("remain-on-exit" in c for c in fake.calls)   # the pane probe still answers
 
 
 def test_semicolon_argv_teardown_arms_the_hook_per_session(tmp_path):
