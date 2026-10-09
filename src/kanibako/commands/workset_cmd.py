@@ -559,10 +559,14 @@ def run_rm(args: argparse.Namespace) -> int:
         print(f"Error: {e}", file=sys.stderr)
         return 1
     except OSError as e:
-        cure = registry[stored] if stored is not None else e.filename
+        # ⚑ Worded by the REGISTRY, not the phase: before the unregister it is a refusal.
+        if stored is None or find_identifier(stored, list_worksets(std)) is not None:
+            print(f"Error: could not remove working set '{label_name}': {e}", file=sys.stderr)
+            return 1
         print(f"Error: unregistered working set '{label_name}' but could not remove its "
               f"files: {e}", file=sys.stderr)
-        print(f"  Try: podman unshare rm -rf {shlex.quote(str(cure))}", file=sys.stderr)
+        print(f"  Try: podman unshare rm -rf {shlex.quote(str(registry[stored]))}",
+              file=sys.stderr)
         return 1
     print(f"Deleted working set '{label_name}' (root was {root})")
     return 0
