@@ -13164,6 +13164,13 @@ class TestGoneBoxCureIsSafeAfterARepoint:
         assert name
         return std, name, root
 
+    @staticmethod
+    def _set_boxes(root, value):
+        """Set ``workset.boxes`` in the root file, keeping its ``registry: null`` marker."""
+        from kanibako.settings.config_io import write_nested_key
+
+        write_nested_key(root / "workset.yaml", ("workset",), "boxes", value)
+
     def test_standalone_repointed_moves_the_store_to_the_key_dir(
         self, config_file, tmp_home, credentials_dir, protected_canon,
     ):
@@ -13171,11 +13178,10 @@ class TestGoneBoxCureIsSafeAfterARepoint:
         cure moves the old store TO the key's dir and never from it into ``box_data/``."""
         from kanibako.commands.start import _no_box_error
         from kanibako.runtime.container import remove_box_tree
-        from kanibako.settings.config_io import dump_doc
 
         std, name, root = self._standalone(config_file, tmp_home)
         new = tmp_home / "elsewhere" / "store"
-        dump_doc(root / "workset.yaml", {"workset": {"boxes": str(new)}})
+        self._set_boxes(root, str(new))
         assert remove_box_tree(root / "box_data")
 
         msg = _no_box_error(name, std)
@@ -13187,27 +13193,53 @@ class TestGoneBoxCureIsSafeAfterARepoint:
             "  (Replace OLD_STORE with the directory workset.boxes used to name.)"
         )
 
-    def test_standalone_key_dir_already_there_offers_no_move_and_no_rebuild(
+    def test_standalone_with_its_store_moved_to_the_key_resolves(
         self, config_file, tmp_home, credentials_dir, protected_canon,
     ):
-        """The user followed the key: the store sits at its value.  A ``mv`` into an
-        existing dir would nest, and the reverse would leave the key's place, so neither."""
-        from kanibako.commands.start import _no_box_error
-        from kanibako.settings.config_io import dump_doc
+        """The user followed the key: the store sits at its value and the marker is kept.
+        That box is healthy: the launch probe finds it, so no "no box" refusal is built."""
+        from kanibako.commands.start import _resolve_existing_box
 
         std, name, root = self._standalone(config_file, tmp_home)
         (root / "box_data" / "kept.txt").write_text("data")
         store = tmp_home / "elsewhere" / "store"
         store.parent.mkdir()
-        dump_doc(root / "workset.yaml", {"workset": {"boxes": str(store)}})
+        self._set_boxes(root, str(store))
         (root / "box_data").rename(store)
+        config, std = self._std(config_file)
 
-        msg = _no_box_error(name, std)
-        assert "Rebuild" not in msg
-        assert " mv " not in msg
-        assert msg.endswith(f"It belongs at {store}, which already exists; a move would "
-                            "not land it at that path, so none is offered.")
+        for spec in (name, str(root)):
+            proj = _resolve_existing_box(std, config, spec)
+            assert proj is not None and proj.name == name
+            assert store in proj.shell_path.parents
         assert (store / "kept.txt").read_text() == "data"
+
+    @pytest.mark.parametrize("moved", [False, True], ids=["store-in-place", "store-moved"])
+    def test_standalone_without_its_marker_names_the_marker(
+        self, config_file, tmp_home, credentials_dir, protected_canon, moved,
+    ):
+        """A root ``workset.yaml`` that lost ``registry: null`` is no standalone, wherever
+        the store is: the message names that, not the registry or the store's place."""
+        from kanibako.commands.start import _no_box_error
+        from kanibako.settings.config_io import dump_doc
+
+        std, name, root = self._standalone(config_file, tmp_home)
+        doc = {"workset": {}}
+        if moved:
+            store = tmp_home / "elsewhere" / "store"
+            store.parent.mkdir()
+            (root / "box_data").rename(store)
+            doc["workset"]["boxes"] = str(store)
+        dump_doc(root / "workset.yaml", doc)
+
+        for spec in (name, str(root)):
+            msg = _no_box_error(spec, std)
+            assert msg == (
+                f"Error: box '{name}' is registered as a standalone box at {root}, but "
+                f"{root / 'workset.yaml'} does not store the standalone marker, so "
+                "kanibako does not see a box there.\n"
+                "  Restore it: add the line 'registry: null' under 'workset:' in that file."
+            )
 
     def test_standalone_at_its_default_rebuilds_as_today(
         self, config_file, tmp_home, credentials_dir, protected_canon,
@@ -13232,11 +13264,10 @@ class TestGoneBoxCureIsSafeAfterARepoint:
         and nothing is moved into it either."""
         from kanibako.commands.start import _no_box_error
         from kanibako.runtime.container import remove_box_tree
-        from kanibako.settings.config_io import dump_doc
 
         std, name, root = self._standalone(config_file, tmp_home)
         (root / "workspace" / "mine.txt").write_text("user data")
-        dump_doc(root / "workset.yaml", {"workset": {"boxes": str(root / "workspace")}})
+        self._set_boxes(root, str(root / "workspace"))
         assert remove_box_tree(root / "box_data")
 
         msg = _no_box_error(name, std)
@@ -13252,10 +13283,9 @@ class TestGoneBoxCureIsSafeAfterARepoint:
         cure (the SettingsError arm), and neither a Rebuild nor a move."""
         from kanibako.commands.start import _no_box_error
         from kanibako.runtime.container import remove_box_tree
-        from kanibako.settings.config_io import dump_doc
 
         std, name, root = self._standalone(config_file, tmp_home)
-        dump_doc(root / "workset.yaml", {"workset": {"boxes": None}})
+        self._set_boxes(root, None)
         assert remove_box_tree(root / "box_data")
 
         msg = _no_box_error(name, std)
@@ -13275,12 +13305,11 @@ class TestGoneBoxCureIsSafeAfterARepoint:
         cure moves the leaf TO the key's place; nothing is copied over user content.
         """
         from kanibako.commands.start import _no_box_error
-        from kanibako.settings.config_io import dump_doc
 
         std, name, root = self._standalone(config_file, tmp_home)
         (root / "box_data" / "kept.txt").write_text("user data")
         missing = tmp_home / "gone" / "store"
-        dump_doc(root / "workset.yaml", {"workset": {"boxes": str(missing)}})
+        self._set_boxes(root, str(missing))
 
         msg = _no_box_error(name, std)
         assert "kanibako create" not in msg
@@ -13302,11 +13331,10 @@ class TestGoneBoxCureIsSafeAfterARepoint:
         """A null key resolves to NO store, which is question 2 failing with no
         move to offer: the message carries the refusal, never the create."""
         from kanibako.commands.start import _no_box_error
-        from kanibako.settings.config_io import dump_doc
 
         std, name, root = self._standalone(config_file, tmp_home)
         (root / "box_data" / "kept.txt").write_text("user data")
-        dump_doc(root / "workset.yaml", {"workset": {"boxes": None}})
+        self._set_boxes(root, None)
 
         msg = _no_box_error(name, std)
         assert "kanibako create" not in msg

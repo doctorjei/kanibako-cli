@@ -38,6 +38,7 @@ from kanibako.settings.kb_store import __MISSING__
 from kanibako.box_supervisor import CONTINUE_MARKER, KANIBAKO_PKG_MOUNT_ROOT
 from kanibako.commands.diagnose import probe_missing_executables
 from kanibako.settings.config import (
+    WORKSET_META_FILE,
     coerce_bool,
     user_config_file,
     load_config,
@@ -1527,6 +1528,17 @@ def _broken_standalone_error(std: StandardPaths, project_dir: str) -> str | None
     if name is None:
         return None
     root = Path(entries[name])
+    # ⚑ Asked FIRST: without the marker the root is no standalone, so every store
+    # question below would answer for a box kanibako does not see.
+    from kanibako.launch.box_resolve import stores_standalone_registry_null
+
+    if root.is_dir() and not stores_standalone_registry_null(root):
+        return (
+            f"Error: box '{name}' is registered as a standalone box at {root}, but "
+            f"{root / WORKSET_META_FILE} does not store the standalone marker, so "
+            "kanibako does not see a box there.\n"
+            "  Restore it: add the line 'registry: null' under 'workset:' in that file."
+        )
     # ⚑ The DEFAULT LEAF, not the resolved store — see the docstring.
     default_leaf = root / STANDALONE_META_DIR
     leaf_present = default_leaf.is_dir()
