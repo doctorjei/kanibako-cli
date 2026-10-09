@@ -721,6 +721,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `box convert <path> --standalone --name <new-name>`, which is always refused because a standalone box is named after
   its directory. They and `box rm` now print `box move <path> <new-path>`.
 
+- **A foreground box stops when its agent exits.** An agent that exited while attached sometimes left its box behind
+  as an `Exited` container, because `start` returned before the box had stopped and took it for a detach. `start` now
+  tells the two apart by whether the agent's session still exists, and waits for the box to stop. An attach that
+  missed an agent which had already exited no longer returns 1.
+
 - **A refused `create` on a fresh install no longer leaves the first-run setup behind.** An invalid `--name`
   and the `$HOME` guard now refuse before setup writes `kanibako.cfg` and the data tree.
 

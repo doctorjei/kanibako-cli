@@ -55,6 +55,7 @@ class ContainerRuntime:
     def run(self, image: str, *, shell_path: Path, project_path: Path, vault_ro_path: Path | None, vault_rw_path: Path | None, extra_mounts: list | None=None, tmpfs_masks: list[str] | None=None, enable_vault: bool=True, env: dict[str, str] | None=None, name: str | None=None, entrypoint: str | None=None, cli_args: list[str] | None=None, detach: bool=False, post_start: 'Callable[[], None] | None'=None) -> int
     def exec(self, name: str, command: list[str], *, env: dict[str, str] | None=None, attach: bool=False) -> int
     def exec_ready(self, name: str) -> bool
+    def exec_succeeds(self, name: str, command: list[str]) -> bool
     def container_exists(self, name: str) -> bool
     def stop(self, name: str) -> bool
     def rm(self, name: str) -> bool

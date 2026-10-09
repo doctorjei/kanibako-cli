@@ -1011,6 +1011,17 @@ class TestExecReady:
             rt.exec_ready("mycontainer")
             assert m.call_args.kwargs.get("capture_output") is True
 
+    def test_exec_succeeds_runs_the_command_captured(self):
+        from unittest.mock import MagicMock
+        rt = ContainerRuntime(command="/usr/bin/podman")
+        with patch("kanibako.runtime.container.subprocess.run") as m:
+            m.return_value = MagicMock(returncode=1)
+            assert rt.exec_succeeds("box", ["tmux", "has-session"]) is False
+            assert m.call_args[0][0] == [
+                "/usr/bin/podman", "exec", "box", "tmux", "has-session",
+            ]
+            assert m.call_args.kwargs.get("capture_output") is True
+
 
 class TestContainerExists:
     """Test container_exists() method."""

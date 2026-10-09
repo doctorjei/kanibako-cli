@@ -599,6 +599,11 @@ def start_mocks():
             runtime.exec_ready.side_effect = (
                 lambda *a, **kw: bool(runtime.is_running.return_value)
             )
+            # Likewise the session probe: a running box still holds its session
+            # (an attach returned on DETACH); a stopped one does not.
+            runtime.exec_succeeds.side_effect = (
+                lambda *a, **kw: bool(runtime.is_running.return_value)
+            )
 
             # Simulate container start: after run(), is_running returns True.
             _original_run = runtime.run
