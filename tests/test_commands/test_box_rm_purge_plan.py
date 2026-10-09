@@ -122,6 +122,36 @@ class TestPrimaryPurge:
         assert hashlib.sha256((outside / "canary.txt").read_bytes()).hexdigest() == digest
 
 
+    def test_unremovable_metadata_reports_kept_vaults_and_fails(
+        self, config_file, tmp_home, credentials_dir, capsys, monkeypatch,
+    ):
+        """The metadata dir cannot go: each gated vault is named as KEPT, and rm exits 1."""
+        from kanibako.commands.box import _parser
+
+        _create(tmp_home / "proj")
+        std = _std(config_file)
+        meta = std.boxes / "proj"
+        real = _parser._purge_dir
+        monkeypatch.setattr(_parser, "_purge_dir",
+                            lambda target: False if target == meta else real(target))
+        capsys.readouterr()
+
+        assert _rm("proj", force=True) == 1
+        err = capsys.readouterr().err
+        for arm in (std.primary_vault_ro / "proj", std.primary_vault_rw / "proj"):
+            assert arm.is_dir()
+            assert (f"Kept vault: {arm} — the box metadata folder could not be removed."
+                    in err)
+
+    def test_empty_plan_says_nothing_is_deleted(self, capsys):
+        from kanibako.commands.box._parser import _confirm_purge
+
+        assert _confirm_purge([], force=False) is True
+        out = capsys.readouterr().out
+        assert "--purge deletes nothing" in out
+        assert "Delete these" not in out
+
+
 class TestStandalonePurge:
     def test_declined_question_keeps_the_registration(
         self, config_file, tmp_home, credentials_dir, capsys, monkeypatch,
