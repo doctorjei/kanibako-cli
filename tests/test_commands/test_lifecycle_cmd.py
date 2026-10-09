@@ -1191,6 +1191,55 @@ class TestInTreeLandingRefused:
         assert again.workspace_path == leaf.resolve()
         assert (other / "file.txt").read_text() == "moved by hand"
 
+    def test_a_cure_runs_for_a_source_at_the_canonical_leaf(self, env, capsys):
+        """repointcures: every printed cure must run for the source it's printed for."""
+        import re
+        import shlex
+
+        config, std, tmp_home = env
+        ws = create_workset("ws", tmp_home / "ws_root", std)
+        leaf = _named(env, ws)  # source IS at the canonical leaf
+        stray = ws.root / "other"  # a non-canonical in-tree path
+
+        rc = run_move(_move_args(str(leaf), stray))
+        assert rc == 1
+        err = capsys.readouterr().err
+        assert "Refusing to record" in err
+
+        # On base, the printed cures (box-move-to-leaf, box-convert--move) both target
+        # the source's current location; running either dead-ends at refusal B.  The fix
+        # replaces them with a cure that runs (or refuses for a different reason).
+        for command in re.findall(r"`([^`]+)`", err):
+            argv = shlex.split(command)
+            from kanibako.commands.box._lifecycle import run_move as _run_move
+            from kanibako.commands.box._lifecycle import run_convert as _run_convert
+            if "box" in argv and "move" in argv:
+                old = argv[argv.index("move") + 1]
+                new = argv[argv.index("move") + 2] if argv.index("move") + 2 < len(argv) else None
+                to_workset = None
+                for i, a in enumerate(argv):
+                    if a == "--workset" and i + 1 < len(argv):
+                        to_workset = argv[i + 1]
+                capsys.readouterr()
+                _run_move(_move_args(old, new, to_workset=to_workset))
+                out_cure = capsys.readouterr()
+            elif "box" in argv and "convert" in argv:
+                to_workset = None
+                move = None
+                for i, a in enumerate(argv):
+                    if a == "--workset" and i + 1 < len(argv):
+                        to_workset = argv[i + 1]
+                    if a == "--move":
+                        move = argv[i + 1] if i + 1 < len(argv) and not argv[i + 1].startswith("--") else _BARE_MOVE
+                _run_convert(_convert_args(argv[argv.index("convert") + 1],
+                                            to_workset=to_workset, move=move))
+                out_cure = capsys.readouterr()
+            else:
+                continue
+            assert "current location" not in out_cure.err, (
+                f"cure {command!r} dead-ended at refusal B; full advice: {err!r}"
+            )
+
 
 class TestExternalSourceNotRelocated:
     """D: the user's own directory is never copied, and never re-recorded elsewhere."""

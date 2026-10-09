@@ -804,6 +804,12 @@ def _validate(
             ref = _cure_ref(state)
             bare = (f"kanibako box convert {ref} --workset {shlex.quote(target_ws.name)} "
                     f"--move{rename}")
+            # Source at the canonical leaf? Both bare + move-to-leaf would target
+            # the source's current path and re-fire refusal B.  The only runnable
+            # cure is to move out of the workset.
+            source_at_canonical = (
+                state.workspace_path.resolve() == (ws_dir / new_name).resolve()
+            )
             if spec.records_only:
                 advice = (f"Move the files to `{leaf}` and run `kanibako box remap` "
                           "again")
@@ -811,6 +817,11 @@ def _validate(
                 advice = (f"Run `kanibako box convert {ref} --workset "
                           f"{shlex.quote(target_ws.name)} --move --name <name>` with a name "
                           "no member holds")
+            elif source_at_canonical:
+                advice = (f"`{ref}` is already at the canonical leaf "
+                          f"`{ws_dir / new_name}`; to change its leaf, move it out of "
+                          f"workset '{target_ws.name}' first:\n"
+                          f"  kanibako box move {ref} <path-outside-the-workset>")
             elif spec.verb == "convert":
                 advice = f"Run `{bare}`"
             else:
