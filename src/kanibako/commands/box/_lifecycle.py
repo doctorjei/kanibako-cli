@@ -1268,6 +1268,12 @@ def _run_steps(
         # the DEFAULT layout a standalone's workspace sits one level below the root that
         # carries ``workset.boxes``, so *src* answered the store as the USER'S
         # ``<workspace>/box_data`` and this move deleted it (R1).
+        # ⚑ THE UNWIND OWNS ONLY WHAT THIS MOVE CREATES, and is armed BEFORE the copy: a
+        # copy that fails or is interrupted part-way must not strand a half-copied dest.
+        created = next((p for p in (dest, landing)
+                        if not (p.exists() or p.is_symlink())), None)
+        if created is not None:
+            unwind.push(partial(_unwind_created_root, created))
         if not lay_root_link(src, landing):
             copy_tree_keeping_links(
                 src, landing,
@@ -1275,8 +1281,6 @@ def _run_steps(
                     state.metadata_path, src, mode=state.mode,
                     early=EarlyScope(std.early_system, _state_ws_token(state))),
             )
-        # ⚑ THE UNWIND OWNS ONLY WHAT THIS MOVE CREATED: the copy refuses an existing dest.
-        unwind.push(lambda: _unwind_created_root(dest))
     # An EXTERNAL source relocating: the "workspace" is the USER'S OWN dir — never moved,
     # only re-recorded at *dest* (the landing above).
     elif (
@@ -1371,7 +1375,22 @@ def _retire_old_workspace(old: Path, landed: Path) -> None:
     try:
         shutil.rmtree(old)
     except OSError as err:
-        print(f"Note: could not remove the old workspace {old}: {err}", file=sys.stderr)
+        print(f"Note: could not fully remove the old workspace {old}: {err}. The move is "
+              f"complete at {landed}; {old} still holds {_leftover_entries(old)}, a partial "
+              f"leftover that is yours to remove.", file=sys.stderr)
+
+
+def _leftover_entries(path: Path) -> str:
+    """Name what is still in the directory *path*, for a Note about a partial removal."""
+    try:
+        names = sorted(entry.name for entry in path.iterdir())
+    except OSError:
+        return "entries it could not list"
+    if not names:
+        return "nothing but the empty directory"
+    shown = ", ".join(names[:5])
+    more = len(names) - 5
+    return shown if more <= 0 else f"{shown} and {more} more"
 
 
 def _apply_ownership_and_markers(
@@ -1421,18 +1440,22 @@ def _unwind_box_tree(path: Path) -> None:
 
 
 def _unwind_created_root(path: Path) -> None:
-    """Undo a root this op created that may have been laid as a LINK.
+    """Undo a root this op created, which may be a LINK or a partial copy.
 
-    ``rmtree`` refuses a symlink and moves on under ``ignore_errors``, leaving the pointer
-    standing where the next run expects nothing: a link is UNLINKED, never removed through.
+    A link is UNLINKED, never removed through; a tree goes through the escalating
+    box-tree deleter.  Whatever remains is named in a Note, because a leftover makes
+    every retry fail with "Destination already exists".
     """
-    if path.is_symlink():
-        try:
-            path.unlink()
-        except OSError:
-            pass
-    else:
-        shutil.rmtree(path, ignore_errors=True)
+    import sys
+
+    try:
+        if remove_path(path):
+            return
+    except OSError:
+        pass
+    if path.exists() or path.is_symlink():
+        print(f"Note: could not remove {path}, which this operation created; "
+              f"remove it before you run it again", file=sys.stderr)
 
 
 def _copy_metadata(
@@ -1445,14 +1468,15 @@ def _copy_metadata(
     unwind: _Unwind,
 ) -> Path:
     """Copy metadata (minus lock+home) and shell into *dst_metadata*; return the dest shell."""
+    # ⚑ ESCALATING removal, not a plain rmtree: this function lays a canon skeleton below,
+    # so a plain rmtree would silently fail to clean up its own destination.  Armed
+    # before the copy, which can fail part-way.
+    unwind.push(lambda: _unwind_box_tree(dst_metadata))
     copy_tree_keeping_links(
         src_metadata, dst_metadata,
         ignore=shutil.ignore_patterns(".kanibako.lock", "home"),
         dirs_exist_ok=True,
     )
-    # ⚑ ESCALATING removal, not a plain rmtree: this function lays a canon skeleton below,
-    # so a plain rmtree would silently fail to clean up its own destination.
-    unwind.push(lambda: _unwind_box_tree(dst_metadata))
 
     dst_shell = dst_metadata / home_leaf
     if src_shell.is_dir():
@@ -1985,6 +2009,11 @@ def _remove_old_metadata(
                 report_retained_vault(vault_dir, why)
                 continue
             shutil.rmtree(vault_dir, ignore_errors=True)
+            if vault_dir.exists() or vault_dir.is_symlink():
+                report_retained_vault(
+                    vault_dir, f"it could not be fully removed and still holds "
+                    f"{_leftover_entries(vault_dir)}. The box's new vault holds a copy, so "
+                    f"this partial leftover is yours to remove.")
         if state.shell_path.is_dir() and state.shell_path != state.metadata_path / "home":
             try:
                 state.shell_path.relative_to(state.metadata_path)
@@ -2129,9 +2158,11 @@ def _to_default(
         for leaf in (vault_ro, vault_rw):
             if leaf is None:
                 continue
-            leaf.mkdir(parents=True, exist_ok=True)
-            # The carry may trade this empty leaf for a LINK; the unwind takes either.
-            unwind.push(partial(_unwind_created_root, leaf))
+            # ⚑ A leaf that already exists may be the box's own vault, reused by name.
+            if not (leaf.exists() or leaf.is_symlink()):
+                leaf.mkdir(parents=True)
+                # The carry may trade this empty leaf for a LINK; the unwind takes either.
+                unwind.push(partial(_unwind_created_root, leaf))
 
     # ⚑ THE VAULT CARRY (P1 data loss): the leaves above are EMPTY and the source is
     # deleted below -- contents move first, and a vault link follows the landing.
@@ -2927,7 +2958,7 @@ def _unwind_target_member(ws: Workset, name: str, existed: frozenset[Path]) -> N
     """Undo a target registration: the record, plus each leaf NOT in *existed*.
 
     ⚑⚑ A leaf that existed before the op is the user's and is never touched.  A link is
-    unlinked, never followed; the box tree goes through ``remove_box_tree``.  Whatever
+    unlinked, never followed; every tree goes through the escalating ``remove_path``.  Whatever
     cannot be removed is reported here, because ``_Unwind.run`` swallows errors.
     """
     import sys
@@ -2942,12 +2973,8 @@ def _unwind_target_member(ws: Workset, name: str, existed: frozenset[Path]) -> N
         if leaf is None or leaf in existed:
             continue
         try:
-            if leaf.is_symlink():
-                leaf.unlink()
-            elif leaf == box_tree and leaf.is_dir():
-                remove_box_tree(leaf)
-            elif leaf.is_dir():
-                shutil.rmtree(leaf)
+            if leaf.is_symlink() or leaf.is_dir():
+                remove_path(leaf)
         except OSError:
             pass  # reported just below
         if leaf.exists() or leaf.is_symlink():

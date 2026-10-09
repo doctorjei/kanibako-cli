@@ -1,0 +1,229 @@
+"""A relocation or duplicate that fails part-way leaves no half-copied destination.
+
+A copy that raises or is interrupted must remove the root it created, read-only
+directories included, and never a root that already existed.  Whatever cannot be
+removed, and whatever a successful move leaves behind, is named in a Note.
+"""
+
+from __future__ import annotations
+
+import argparse
+import os
+import shutil
+import stat
+
+import pytest
+
+from kanibako.commands.box import _duplicate as dup
+from kanibako.commands.box import _lifecycle as lc
+from kanibako.commands.box._lifecycle import (
+    TargetSpec,
+    execute_lifecycle,
+    resolve_lifecycle_target,
+)
+from kanibako.project.workset import add_project, create_workset
+from kanibako.settings.config import load_config
+from kanibako.settings.paths import load_std_paths, resolve_project
+
+needs_non_root = pytest.mark.skipif(
+    os.geteuid() == 0, reason="root ignores directory permissions")
+
+
+@pytest.fixture
+def env(config_file, tmp_home, credentials_dir):
+    config = load_config(config_file)
+    return config, load_std_paths(config), tmp_home
+
+
+def _primary(env, name="proj"):
+    config, std, tmp_home = env
+    pdir = tmp_home / name
+    (pdir / "ro").mkdir(parents=True)
+    (pdir / "file.txt").write_text("keep")
+    (pdir / "ro" / "r.txt").write_text("r")
+    (pdir / "ro").chmod(0o555)
+    resolve_project(std, config, project_dir=str(pdir), initialize=True)
+    return pdir
+
+
+def _copy_then(exc):
+    """A tree copier that copies everything, then fails as *exc* would mid-copy."""
+    real = lc.copy_tree_keeping_links
+
+    def copier(src, dst, *a, **kw):
+        real(src, dst, *a, **kw)
+        raise exc
+
+    return copier
+
+
+def _tree(path):
+    return sorted((str(p.relative_to(path)), stat.S_IMODE(p.lstat().st_mode),
+                   p.read_bytes() if p.is_file() else b"") for p in path.rglob("*"))
+
+
+@pytest.fixture(autouse=True)
+def _reopen(tmp_home):
+    yield
+    for root, dirs, _ in os.walk(tmp_home):
+        for d in dirs:
+            p = os.path.join(root, d)
+            if not os.path.islink(p):
+                os.chmod(p, 0o755)
+
+
+class TestAFailedCopyRemovesItsDestination:
+
+    @pytest.mark.parametrize("exc", [KeyboardInterrupt(), shutil.Error([("a", "b", "x")])])
+    @pytest.mark.parametrize("ownership", [None, "standalone"])
+    def test_a_copy_that_fails_leaves_no_destination(self, env, monkeypatch, exc, ownership):
+        config, std, tmp_home = env
+        pdir = _primary(env)
+        before = _tree(pdir)
+        state = resolve_lifecycle_target(str(pdir), std, config)
+        dest = tmp_home / "moved"
+        monkeypatch.setattr(lc, "copy_tree_keeping_links", _copy_then(exc))
+        with pytest.raises(type(exc)):
+            spec = (TargetSpec(location=dest) if ownership is None
+                    else TargetSpec(location=dest, ownership=ownership))
+            execute_lifecycle(state, spec, std, config, confirm=lambda: True)
+        assert not dest.exists()
+        assert _tree(pdir) == before
+
+    def test_an_interrupted_workset_to_workset_move_leaves_no_destination(
+        self, env, monkeypatch,
+    ):
+        config, std, tmp_home = env
+        ws1 = create_workset("ws1", tmp_home / "ws1_root", std)
+        ws2 = create_workset("ws2", tmp_home / "ws2_root", std)
+        leaf = ws1.workspaces_dir / "alpha"
+        (leaf / "ro").mkdir(parents=True)
+        (leaf / "file.txt").write_text("keep")
+        (leaf / "ro").chmod(0o555)
+        add_project(ws1, "alpha", leaf, std)
+        before = _tree(leaf)
+        state = resolve_lifecycle_target(str(leaf), std, config)
+        dest = ws2.workspaces_dir / "alpha"
+        monkeypatch.setattr(lc, "copy_tree_keeping_links", _copy_then(KeyboardInterrupt()))
+        with pytest.raises(KeyboardInterrupt):
+            execute_lifecycle(state, TargetSpec(location=dest, ownership="ws2"),
+                              std, config, confirm=lambda: True)
+        assert not dest.exists()
+        assert _tree(leaf) == before
+
+    def test_the_retry_after_a_failed_copy_succeeds(self, env, monkeypatch):
+        config, std, tmp_home = env
+        pdir = _primary(env)
+        dest = tmp_home / "moved"
+        state = resolve_lifecycle_target(str(pdir), std, config)
+        with monkeypatch.context() as m:
+            m.setattr(lc, "copy_tree_keeping_links", _copy_then(KeyboardInterrupt()))
+            with pytest.raises(KeyboardInterrupt):
+                execute_lifecycle(state, TargetSpec(location=dest), std, config,
+                                  confirm=lambda: True)
+        state = resolve_lifecycle_target(str(pdir), std, config)
+        execute_lifecycle(state, TargetSpec(location=dest), std, config, confirm=lambda: True)
+        assert (dest / "file.txt").read_text() == "keep"
+
+    def test_a_destination_that_appeared_before_the_copy_is_never_removed(self, env):
+        config, std, tmp_home = env
+        pdir = _primary(env)
+        dest = tmp_home / "moved"
+        state = resolve_lifecycle_target(str(pdir), std, config)
+
+        def appears():
+            dest.mkdir()
+            (dest / "theirs.txt").write_text("theirs")
+            return True
+
+        with pytest.raises(FileExistsError):
+            execute_lifecycle(state, TargetSpec(location=dest), std, config, confirm=appears)
+        assert (dest / "theirs.txt").read_text() == "theirs"
+
+    def test_a_leftover_the_unwind_cannot_remove_is_named(self, tmp_path, monkeypatch, capsys):
+        root = tmp_path / "made"
+        root.mkdir()
+        monkeypatch.setattr(lc, "remove_path", lambda p: False)
+        lc._unwind_created_root(root)
+        err = capsys.readouterr().err
+        assert f"Note: could not remove {root}, which this operation created" in err
+
+
+class TestALateFailureKeepsAReusedVault:
+
+    def test_a_primary_move_keeps_its_own_vault_when_a_later_step_fails(self, env, monkeypatch):
+        config, std, tmp_home = env
+        pdir = _primary(env)
+        state = resolve_lifecycle_target(str(pdir), std, config)
+        state.vault_rw.mkdir(parents=True, exist_ok=True)
+        (state.vault_rw / "v.txt").write_text("vault")
+
+        def boom(*a, **kw):
+            raise RuntimeError("late")
+
+        monkeypatch.setattr(lc, "_carry_box_logs", boom)
+        with pytest.raises(RuntimeError, match="late"):
+            execute_lifecycle(state, TargetSpec(location=tmp_home / "moved"), std, config,
+                              confirm=lambda: True)
+        assert (state.vault_rw / "v.txt").read_text() == "vault"
+
+
+@needs_non_root
+class TestLeftoversOfASuccessfulMoveAreNamed:
+
+    def test_the_old_workspace_note_names_what_remains(self, env, capsys):
+        config, std, tmp_home = env
+        pdir = _primary(env)
+        state = resolve_lifecycle_target(str(pdir), std, config)
+        dest = tmp_home / "moved"
+        execute_lifecycle(state, TargetSpec(location=dest), std, config, confirm=lambda: True)
+        err = capsys.readouterr().err
+        assert f"Note: could not fully remove the old workspace {pdir}" in err
+        held = err.split(f"{pdir} still holds ", 1)[1].split(", a partial leftover", 1)[0]
+        assert "ro" in held.split(", ")
+
+    def test_a_primary_to_standalone_convert_names_the_old_vault_it_leaves(self, env, capsys):
+        config, std, tmp_home = env
+        pdir = _primary(env)
+        state = resolve_lifecycle_target(str(pdir), std, config)
+        vault = state.vault_rw
+        (vault / "ro").mkdir(parents=True)
+        (vault / "ro" / "r.txt").write_text("r")
+        (vault / "ro").chmod(0o555)
+        execute_lifecycle(state, TargetSpec(location=tmp_home / "sa", ownership="standalone"),
+                          std, config, confirm=lambda: True)
+        err = capsys.readouterr().err
+        assert vault.is_dir()
+        assert f"Note: left the vault at {vault} in place — it could not be fully removed" in err
+
+
+class TestAFailedDuplicateRemovesItsDestination:
+
+    def _args(self, src, dst, to_mode=None):
+        return argparse.Namespace(
+            source_path=str(src), new_path=str(dst), to_mode=to_mode, bare=False,
+            force=True, box=None, workset=None, project_name=None, register=False)
+
+    @pytest.mark.parametrize("to_mode", [None, "standalone"])
+    def test_an_interrupted_duplicate_leaves_no_destination(self, env, monkeypatch, to_mode):
+        config, std, tmp_home = env
+        pdir = _primary(env)
+        before = _tree(pdir)
+        dst = tmp_home / "copy"
+        monkeypatch.setattr(dup, "copy_tree_keeping_links", _copy_then(KeyboardInterrupt()))
+        with pytest.raises(KeyboardInterrupt):
+            dup.run_duplicate(self._args(pdir, dst, to_mode))
+        assert not dst.exists()
+        assert _tree(pdir) == before
+
+    def test_a_duplicate_into_an_existing_directory_keeps_it(self, env, monkeypatch):
+        config, std, tmp_home = env
+        pdir = _primary(env)
+        dst = tmp_home / "copy"
+        dst.mkdir()
+        (dst / "theirs.txt").write_text("theirs")
+        monkeypatch.setattr(dup, "copy_tree_keeping_links", _copy_then(KeyboardInterrupt()))
+        with pytest.raises(KeyboardInterrupt):
+            dup.run_duplicate(self._args(pdir, dst))
+        assert (dst / "theirs.txt").read_text() == "theirs"
+
