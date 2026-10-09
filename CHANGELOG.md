@@ -21,11 +21,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the link goes, and the vault folders behind it are kept and named.
 
 - **A box named after its directory must have a valid box name.** A directory name that breaks the box-name rule
-  (`my project`, `-x`) is refused before anything is written by `create`, `workset connect`, `box duplicate --to
-  named`, `box extract`, `box move`, and `box convert --default` with no `--name`, each printing its own command
-  ending in `--name <new-name>`; by `box duplicate` to a primary box, which asks for another destination
-  directory; and by the in-box `fork`. `workset connect --name` and `box duplicate --to named --name` now check the
-  rule too. Rename an existing box with `kanibako box move <path> <new-path> --name <new-name>`.
+  (`my project`, `-x`) is refused before anything is written by `create`, `workset connect`, `box duplicate` to a
+  named or primary box, `box extract`, `box move`, and `box convert --default` with no `--name`, each printing its
+  own command ending in `--name <new-name>`; and by the in-box `fork`. `workset connect --name` and `box duplicate
+  --name` now check the rule too. Rename an existing box with `kanibako box move <path> <new-path> --name <new-name>`.
 
 - **A box name is ASCII-only.** A box name's characters are ASCII letters, digits, `_`, `-`, and `.`, the set
   podman allows in a container name; `create --name café` and a box named after a directory named `café` are
@@ -684,6 +683,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   a caller that passes it now gets a `TypeError`. Drop the argument.
 
 ### Fixed
+
+- **`box duplicate` to a primary box takes its `--name`.** It was ignored, and the copy was named after its
+  directory. A taken name is refused before anything is written.
 
 - **`workset rm --purge` no longer deletes the boxes behind a symlinked box store.** When the folder `workset.boxes`
   names is a symlink, only the link goes; what it points at is kept.

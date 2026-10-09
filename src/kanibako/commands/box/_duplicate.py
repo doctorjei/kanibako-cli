@@ -6,7 +6,6 @@ import argparse
 import shlex
 import shutil
 import sys
-from collections.abc import Callable
 from pathlib import Path
 
 from kanibako.settings.bootstrap import STANDALONE_META_DIR
@@ -32,9 +31,11 @@ from kanibako.settings.paths import (
     assign_primary_box_name,
     box_metadata_dir,
     box_workset_settings_paths,
+    check_primary_box_name_free,
     detect_project_mode,
     load_std_paths,
     primary_box_name_for_workspace,
+    register_primary_box_name,
     refuse_derived_box_name,
     resolve_standalone_project,
     resolve_project,
@@ -57,15 +58,45 @@ def _refuse_inherited(std, source, target: tuple[Path, EarlyScope]) -> None:
     refuse_inherited_per_owner(*target)
 
 
-def _refuse_derived_destination(
-        new_path: Path, check: Callable[[str], object] = refuse_derived_box_name) -> int | None:
-    """Refuse a duplicate whose destination name fails *check* (rc 1)."""
+def _refuse_derived_destination(new_path: Path) -> int | None:
+    """Refuse a STANDALONE duplicate whose destination leaf has no ASCII spelling (rc 1)."""
     try:
-        check(new_path.name)
+        sanitize_cap(new_path.name)
     except DerivedBoxNameError as e:
         print(f"Error: {e.with_cure(CURE_DERIVED_DUP_DEST)}", file=sys.stderr)
         return 1
     return None
+
+
+def _refuse_primary_dup_name(args: argparse.Namespace, std, new_path: Path) -> int | None:
+    """Refuse the name a PRIMARY duplicate takes: ``--name`` as typed, else the destination leaf (rc 1)."""
+    name = getattr(args, "project_name", None)
+    try:
+        if not name:
+            refuse_derived_box_name(new_path.name)
+        else:
+            validate_box_name(name)
+            check_primary_box_name_free(std.primary_workset, name, str(new_path),
+                                        early=_early_scope(std, BoxMode.primary))
+    except BoxNameError as e:
+        command = (f"kanibako box duplicate {shlex.quote(literal_path(args.source_path))} "
+                   f"{shlex.quote(literal_path(args.new_path))}"
+                   + (f" --to {args.to_mode}" if getattr(args, "to_mode", None) else ""))
+        print(f"Error: {e.with_cure(box_name_cure(command, e.name))}", file=sys.stderr)
+        return 1
+    except ProjectError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return 1
+    return None
+
+
+def _claim_primary_dup_name(std, new_path: Path, name: str | None) -> str:
+    """Register the duplicate's PRIMARY name — *name* (``--name``) when given, else one minted from *new_path*."""
+    early = _early_scope(std, BoxMode.primary)
+    if name is None:
+        return assign_primary_box_name(std.primary_workset, str(new_path), early=early)
+    register_primary_box_name(std.primary_workset, name, str(new_path), early=early)
+    return name
 
 
 def _refuse_existing_destination(path: Path) -> int:
@@ -127,7 +158,7 @@ def _run_duplicate_cross_mode(args: argparse.Namespace, std, config) -> int:
 
     # A standalone leaf with no ASCII spelling is refused before --name and any write.
     if to_mode is BoxMode.standalone and (
-            rc := _refuse_derived_destination(new_path, sanitize_cap)) is not None:
+            rc := _refuse_derived_destination(new_path)) is not None:
         return rc
 
     # A standalone target mints <kuid>_<leaf> from the dest root; --name is never read.
@@ -196,7 +227,7 @@ def _run_duplicate_cross_mode(args: argparse.Namespace, std, config) -> int:
                 file=sys.stderr,
             )
             return 1
-        if (refused := _refuse_derived_destination(new_path)) is not None:
+        if (refused := _refuse_primary_dup_name(args, std, new_path)) is not None:
             return refused
 
     # A standalone target copies the workspace into the destination root's
@@ -274,7 +305,7 @@ def _run_duplicate_cross_mode(args: argparse.Namespace, std, config) -> int:
         try:
             # ⚑ Route 2: the merge now happens inside ``_duplicate_to_local``.
             _duplicate_to_local(
-                src_proj, new_path, std, config, args.force, carried,
+                src_proj, new_path, std, config, args.force, carried, getattr(args, "project_name", None),
                 workspace_src=(workspace_src
                              if not args.bare and workspace_src is not None
                              and workspace_src.is_dir() else None),
@@ -466,7 +497,7 @@ def _duplicate_to_standalone(src_proj, new_path, std, force, src_enable_vault, c
 def _unwind_local_name(std, project_name: str, dst_project: Path) -> None:
     """Best-effort rollback of a default-mode name registration + partial dir.
 
-    Used when a copy fails after :func:`~kanibako.settings.paths.assign_primary_box_name` has already registered the
+    Used when a copy fails after ``_claim_primary_dup_name`` has already registered the
     duplicate's name (and possibly created a partial metadata dir), to avoid
     leaving a "registered but no metadata" orphan.  Each step is independently
     guarded so one failure does not mask the rest.
@@ -493,7 +524,7 @@ def _assert_dup_home_free(std, name: str) -> None:
     the create-side guard closes.  REUSE that guard here, BEFORE any home
     materializes.
 
-    On a conflict, unwind ONLY the just-registered name (``assign_primary_box_name``
+    On a conflict, unwind ONLY the just-registered name (``_claim_primary_dup_name``
     registered it a moment ago) and re-raise :class:`ProjectError` — NEVER touch
     the occupied home dir, which is the retained data we are protecting (so the
     reused guard is deliberately NOT wrapped in ``_unwind_local_name``, whose
@@ -510,7 +541,7 @@ def _assert_dup_home_free(std, name: str) -> None:
         raise
 
 
-def _duplicate_to_local(src_proj, new_path, std, config, force, carried,
+def _duplicate_to_local(src_proj, new_path, std, config, force, carried, name,
                        workspace_src=None):
     """Copy metadata into default-mode layout for new_path.
 
@@ -525,9 +556,7 @@ def _duplicate_to_local(src_proj, new_path, std, config, force, carried,
     # Assign a new name for the duplicate.  The name MUST be registered first
     # because the destination metadata dir is derived from it (std.boxes/<name>).
     # Registers the PRIMARY membership (the sole store).
-    project_name = assign_primary_box_name(
-        std.primary_workset, str(new_path), early=_early_scope(std, BoxMode.primary),
-    )
+    project_name = _claim_primary_dup_name(std, new_path, name)
     projects_base = std.boxes
     dst_project = projects_base / project_name
 
@@ -548,7 +577,7 @@ def _duplicate_to_local(src_proj, new_path, std, config, force, carried,
     src_meta_dir = box_metadata_dir(src_proj.mode, src_proj.metadata_path,
                                     early=src_proj._require_early())
 
-    # Failure-consistency: a crash AFTER assign_primary_box_name (which registers it)
+    # Failure-consistency: a crash AFTER _claim_primary_dup_name (which registers it)
     # but DURING the workspace or metadata copy below would otherwise strand a
     # "registered but no metadata" orphan.  Unwind the registration + any partial
     # dest dir on failure, then re-raise — duplicate either fully succeeds or
@@ -726,7 +755,7 @@ def _duplicate_from_workset(args, source_path, new_path, std, config) -> int:
 
     target_mode = BoxMode(args.to_mode)
     if target_mode == BoxMode.primary and (
-            refused := _refuse_derived_destination(new_path)) is not None:
+            refused := _refuse_primary_dup_name(args, std, new_path)) is not None:
         return refused
     if args.force:
         _refuse_inherited(std, src_proj, _local_target(std, target_mode, new_path))
@@ -811,7 +840,7 @@ def _duplicate_from_workset(args, source_path, new_path, std, config) -> int:
         from kanibako.errors import ProjectError
         try:
             _duplicate_to_local(
-                src_proj, new_path, std, config, args.force, carried,
+                src_proj, new_path, std, config, args.force, carried, getattr(args, "project_name", None),
                 workspace_src=ws_workspace,
             )
         except ProjectError as e:
@@ -918,7 +947,7 @@ def run_duplicate(args: argparse.Namespace) -> int:
     if not args.bare and new_path.exists() and not args.force:
         return _refuse_existing_destination(new_path)
 
-    if (refused := _refuse_derived_destination(new_path)) is not None:
+    if (refused := _refuse_primary_dup_name(args, std, new_path)) is not None:
         return refused
 
     # 5. Destination metadata must not already exist (unless --force).
@@ -964,9 +993,7 @@ def run_duplicate(args: argparse.Namespace) -> int:
     # otherwise rmtree.
     from kanibako.errors import ProjectError
     try:
-        dup_name = assign_primary_box_name(
-            std.primary_workset, str(new_path), early=_early_scope(std, BoxMode.primary),
-        )
+        dup_name = _claim_primary_dup_name(std, new_path, getattr(args, "project_name", None))
     except ProjectError as e:
         print(f"Error: {e}", file=sys.stderr)
         return 1

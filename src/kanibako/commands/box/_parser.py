@@ -347,7 +347,7 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
     )
     duplicate_p.add_argument(
         "--name", dest="project_name", default=None,
-        help="Project name in workset (default: directory basename)",
+        help="Box name for a named or primary copy (default: directory basename)",
     )
     duplicate_p.set_defaults(func=run_duplicate)
 
