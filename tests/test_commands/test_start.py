@@ -136,8 +136,8 @@ class TestCheckBoxComponents:
         whose workspace + home exist passes even with no workset.yaml (the
         marker's absence is handled at resolution/detection, not double-fired
         here — see box_resolve.stores_standalone_registry_null below)."""
-        proj = self._proj(tmp_path)  # no box.yaml written anywhere
-        assert not (proj.metadata_path / "box.yaml").exists()
+        proj = self._proj(tmp_path)  # writes no workset.yaml marker
+        assert not (proj.metadata_path / "workset.yaml").exists()
         assert _check_box_components(proj) is None
 
     def test_marker_absence_is_a_resolution_concern(self, tmp_path):
