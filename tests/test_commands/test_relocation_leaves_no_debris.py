@@ -269,4 +269,3 @@ class TestAFailedDuplicateRemovesItsDestination:
         with pytest.raises(KeyboardInterrupt):
             dup.run_duplicate(self._args(pdir, dst))
         assert (dst / "theirs.txt").read_text() == "theirs"
-
