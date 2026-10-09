@@ -265,36 +265,41 @@ def _run_duplicate_cross_mode(args: argparse.Namespace, std, config) -> int:
     # F2/F-3: capture whether the destination dir pre-existed BEFORE the workspace
     # copy, so a refusal/OSError can roll back a copy THIS call created without
     # deleting a pre-existing dir.
-    new_path_existed = new_path.is_dir()
+    new_path_existed = new_path.exists() or new_path.is_symlink()
 
     workspace_src = src_proj.project_path
 
     # default<->standalone: architectural boundary (centralized vs in-workspace metadata), not re-rooting — kept distinct (#71 B2).
     if target_mode == BoxMode.standalone:
-        # ⚑ Route 3: refuse a scalar ``workset:`` root BEFORE the merge, not after.
-        refuse_scalar_sections(new_path / WORKSET_META_FILE, ("workset",))
-        # Scalar ``box:`` refused pre-copy; --force rebuilds box_data.
-        if not args.force:
-            refuse_scalar_sections(new_path / STANDALONE_META_DIR / BOX_META_FILE, ("box",))
-        if not args.bare and workspace_src is not None and workspace_src.is_dir():
-            # The copy DESTINATION is the destination root's resolved
-            # ``workset.workspaces`` (ruled 10, 2026-08-02) — the STANDALONE
-            # default ``@meta.workset.path/workspace`` for a fresh root (no
-            # workset.yaml yet); a pre-existing root repoint is honored.
-            from kanibako.project.workset import (
-                load_workset_settings_doc,
-                resolve_workset_workspaces,
+        try:
+            # ⚑ Route 3: refuse a scalar ``workset:`` root BEFORE the merge, not after.
+            refuse_scalar_sections(new_path / WORKSET_META_FILE, ("workset",))
+            # Scalar ``box:`` refused pre-copy; --force rebuilds box_data.
+            if not args.force:
+                refuse_scalar_sections(new_path / STANDALONE_META_DIR / BOX_META_FILE, ("box",))
+            if not args.bare and workspace_src is not None and workspace_src.is_dir():
+                # The copy DESTINATION is the destination root's resolved
+                # ``workset.workspaces`` (ruled 10, 2026-08-02) — the STANDALONE
+                # default ``@meta.workset.path/workspace`` for a fresh root (no
+                # workset.yaml yet); a pre-existing root repoint is honored.
+                from kanibako.project.workset import (
+                    load_workset_settings_doc,
+                    resolve_workset_workspaces,
+                )
+                dest_workspace = resolve_workset_workspaces(
+                    new_path, load_workset_settings_doc(new_path), standalone=True,
+                    early=_early_scope(std, BoxMode.standalone),
+                )
+                assert dest_workspace is not None  # a nulling root refused before the prompt
+                _merge_workspace(workspace_src, dest_workspace, args.force)
+            _duplicate_to_standalone(
+                src_proj, new_path, std, args.force, src_enable_vault, carried,
+                register=bool(getattr(args, "register", False)),
             )
-            dest_workspace = resolve_workset_workspaces(
-                new_path, load_workset_settings_doc(new_path), standalone=True,
-                early=_early_scope(std, BoxMode.standalone),
-            )
-            assert dest_workspace is not None  # a nulling root refused before the prompt
-            _merge_workspace(workspace_src, dest_workspace, args.force)
-        _duplicate_to_standalone(
-            src_proj, new_path, std, args.force, src_enable_vault, carried,
-            register=bool(getattr(args, "register", False)),
-        )
+        except BaseException:
+            if not new_path_existed:
+                _remove_created_root(new_path)
+            raise
     else:
         # PRIMARY (local) target.  F-3: copy the workspace and lay down the
         # metadata inside ONE try that catches BOTH a Guard-1 ProjectError (a late
@@ -311,27 +316,20 @@ def _run_duplicate_cross_mode(args: argparse.Namespace, std, config) -> int:
                              if not args.bare and workspace_src is not None
                              and workspace_src.is_dir() else None),
             )
-        except FileExistsError:
+        except BaseException as e:
             # F-3 (NIT): a no-force copy onto a pre-existing (unregistered) dir
             # raises FileExistsError from copytree — surface the friendly
-            # destination-exists guidance (matching run_duplicate's non-cross-mode
-            # message) instead of the raw ``[Errno 17] File exists`` traceback.
-            # The dir pre-existed, so new_path_existed is True → no deletion.
-            _refuse_existing_destination(new_path)
-            if not new_path_existed and new_path.is_dir():
-                # ⚑ The failure points below are all AFTER the skeleton is created,
-                # so a plain rmtree leaves a half-built box behind (silently, under
-                # ignore_errors) instead of rolling the duplicate back cleanly.
-                remove_box_tree(new_path)
-            return 1
-        except (ProjectError, OSError) as e:
-            print(f"Error: {e}", file=sys.stderr)
-            if not new_path_existed and new_path.is_dir():
-                # ⚑ The failure points below are all AFTER the skeleton is created,
-                # so a plain rmtree leaves a half-built box behind (silently, under
-                # ignore_errors) instead of rolling the duplicate back cleanly.
-                remove_box_tree(new_path)
-            return 1
+            # destination-exists guidance instead of the raw ``[Errno 17]``.
+            if isinstance(e, FileExistsError):
+                _refuse_existing_destination(new_path)
+            elif isinstance(e, (ProjectError, OSError)):
+                print(f"Error: {e}", file=sys.stderr)
+            # ⚑ An interrupt rolls back too: a half-built box blocks every retry.
+            if not new_path_existed:
+                _remove_created_root(new_path)
+            if isinstance(e, (ProjectError, OSError)):
+                return 1
+            raise
 
     _repoint_duplicated_links(source_path, new_path, std, config, bare=args.bare)
     print(f"Duplicated project to {target_mode.value} mode:")
@@ -524,6 +522,13 @@ def _duplicate_to_standalone(src_proj, new_path, std, force, src_enable_vault, c
     # therefore the RESOLVED arm, which is why establish_standalone's return value is unpacked.
     if dst_vault_rw is not None:
         write_vault_gitignore(new_path, dst_vault_rw)
+
+
+def _remove_created_root(path: Path) -> None:
+    """Remove *path*, which this duplicate created, naming in a Note whatever remains."""
+    from kanibako.commands.box._lifecycle import _unwind_created_root
+
+    _unwind_created_root(path)
 
 
 def _unwind_local_name(std, project_name: str, dst_project: Path) -> None:
@@ -1047,7 +1052,9 @@ def run_duplicate(args: argparse.Namespace) -> int:
 
     # Failure-consistency: the workspace copy now shares the unwind, because the
     # name is already registered above.  A failure at EITHER step unregisters it,
-    # so no "registered but no metadata" orphan survives.
+    # so no "registered but no metadata" orphan survives, and removes a workspace
+    # this call created.
+    new_path_existed = new_path.exists() or new_path.is_symlink()
     try:
         # Copy workspace (unless --bare).
         if not args.bare:
@@ -1066,6 +1073,8 @@ def run_duplicate(args: argparse.Namespace) -> int:
             materialize_canon_skeleton(_dup_home)
     except BaseException:
         _unwind_local_name(std, dup_name, new_project_dir)
+        if not new_path_existed:
+            _remove_created_root(new_path)
         raise
 
     _repoint_duplicated_links(source_path, new_path, std, config, bare=args.bare)

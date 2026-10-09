@@ -259,7 +259,8 @@ class TestBoxMove:
         assert (dest / "f.txt").read_text() == "data"
         assert (project_dir / "f.txt").read_text() == "data"
         err = capsys.readouterr().err
-        assert f"Note: could not remove the old workspace {project_dir}" in err
+        assert f"Note: could not fully remove the old workspace {project_dir}" in err
+        assert f"{project_dir} still holds f.txt, a partial leftover" in err
 
 
 def _seed_links(tree, outside):

@@ -733,6 +733,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `shell` and `code` at a name that breaks the naming rules now print their own verb with the box's path, not
   `kanibako start`. The "Rebuild it" line for a standalone box whose `box_data/` is gone names the box root in
   both commands and no longer passes `--name`, which `create` refuses for a standalone box.
+- **A failed or interrupted `box move`, `box convert --move`, or `box duplicate` leaves no half-copied
+  destination.** A copy that hit an unreadable entry, or was stopped with Ctrl-C, used to leave a partial copy,
+  and every retry then failed with "Destination already exists". The copy's destination is now removed,
+  read-only folders included, and anything that cannot be removed is named in a Note. A folder that already
+  existed is never removed. A primary box moved under its own name keeps its vault when a later step fails;
+  the unwind used to delete it.
+- **A move names what it could not delete at the old place.** When a read-only folder stops the removal of
+  the old workspace, the Note now says the move is complete and lists what is left. A convert from primary to
+  standalone that cannot fully remove the old vault folder now says so; it used to leave it silently.
 - **`box list` shows a deregistered primary box once, under "Deregistered boxes".** It was also listed in the main
   table as `unknown (no breadcrumb)`, and `box list --orphan` called it an orphan.
 - **Purging a standalone box deletes its `canon/` folder.** `box rm --purge` and `box purge` left the `canon/`
