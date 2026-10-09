@@ -27,7 +27,7 @@ from kanibako.errors import ConfigError
 
 from kanibako.commands.box import _duplicate
 from kanibako.settings.config import load_config
-from kanibako.settings.messages import CURE_LEAF_NOT_ASCII
+from kanibako.settings.messages import CURE_DERIVED_DUP_DEST
 from kanibako.settings.paths import (
     BOX_META_FILE, BoxMode, load_std_paths, resolve_project,
 )
@@ -155,50 +155,36 @@ class TestAScalarBoxSectionRefusesBeforeAnyCopy:
 
 
 class TestAKanjiLeafDestinationIsRefusedBeforeAnyWrite:
-    """`dupkanji` — row A + row B in one assertion.
+    """`dupkanji`: a standalone destination leaf with no ASCII spelling (``日本語``)
+    refuses with the destination cure before any write, with or without ``--name``.
 
-    A duplicate whose destination LEAF has no ASCII spelling (e.g. ``日本語``)
-    must refuse BEFORE any mkdir/copy/merge AND the refusal must carry the
-    ``CURE_LEAF_NOT_ASCII`` directory cure.  No ``--name``: row A is the
-    no-``--name`` case.
-
-    AT BASE: the code falls through to the copy phase — ``box_data/`` and
-    ``workspace/`` are written (row A), and the bare ``ProjectError`` handler
-    strips the cure so the user gets a refusal with no remedy (row B).
-    AFTER FIX: ``sanitize_cap(new_path.name)`` raises first; the cure is
-    carried; nothing was written under the destination parent.
+    At base, without ``--name`` the copy phase writes under the parent and the cure is
+    stripped; with ``--name`` the ``DerivedBoxNameError`` escapes bare, cure-less.
     """
 
-    def test_refuses_before_any_write_with_the_directory_cure(
-            self, config_file, tmp_home, credentials_dir, capsys, monkeypatch):
+    @pytest.mark.parametrize("project_name", [None, "foo"])
+    def test_refuses_before_any_write_with_the_destination_cure(
+            self, config_file, tmp_home, credentials_dir, capsys, monkeypatch,
+            project_name):
         env = (load_config(config_file), load_std_paths(load_config(config_file)),
                tmp_home)
         src = _primary(env, "src")
-        # An EMPTY parent containing exactly one entry we are about to refuse —
-        # so the `before` hash is non-trivial, and a write under it would change it.
         dest_parent = tmp_home / "kanji_parent"
         dest_parent.mkdir()
         sentinel = dest_parent / "untouched.txt"
         sentinel.write_text("untouched")
         dest = dest_parent / "日本語"
-
         monkeypatch.setattr(_duplicate, "confirm_prompt", lambda msg: None)
-
         before_parent = _hash_tree(dest_parent)
 
-        rc = _duplicate.run_duplicate(
-            _dupe_args(src, dest, to_mode=BoxMode.standalone, force=True))
+        args = _dupe_args(src, dest, to_mode=BoxMode.standalone, force=True)
+        args.project_name = project_name
+        rc = _duplicate.run_duplicate(args)
 
         err = capsys.readouterr().err
-        after_parent = _hash_tree(dest_parent)
-
-        # Row B: the ASCII refusal carries the directory cure.
         assert rc == 1
         assert "cannot spell in ASCII" in err, err
-        assert CURE_LEAF_NOT_ASCII in err, err
-
-        # Row A: nothing was written under the destination parent.  The
-        # untouched sentinel survives, and the kanji leaf never landed.
-        assert after_parent == before_parent
-        assert sentinel.is_file() and sentinel.read_text() == "untouched"
+        assert CURE_DERIVED_DUP_DEST in err, err
+        assert _hash_tree(dest_parent) == before_parent
+        assert sentinel.read_text() == "untouched"
         assert not dest.exists()
