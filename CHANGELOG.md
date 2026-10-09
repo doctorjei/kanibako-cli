@@ -605,7 +605,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   directory became a full copy of that directory, a link to a file became a copy of the file, and
   a dangling link stopped the copy — for `box move` and `box convert`, the whole relocation. Each
   link is now copied with exactly the text it had, absolute or relative, dangling or not, and a
-  linked directory is never entered. `box vault restore` puts links back the same way, as does a
+  linked directory is never entered. The exception is a relative link that is itself the source of
+  one of the box's bind mounts: the host resolves it, so `box move`, `box convert` and
+  `box duplicate` rewrite its text to reach the same host path from its new place. When the box's
+  settings do not resolve, every link keeps its text and a `Note:` says so. `box vault restore` puts links back the same way, as does a
   vault snapshot that falls back to a plain copy because `rsync` is missing or failed (the `cp`
   and `rsync` snapshots already kept them). `box extract` keeps an absolute symlink, or one
   leading out of the archive, as written; in 1.7.2 and 1.8.0-rc2 one such link failed the whole

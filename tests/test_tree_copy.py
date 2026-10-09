@@ -9,7 +9,8 @@ from pathlib import Path
 import pytest
 
 from kanibako.tree_copy import (
-    _relocated_target, copy_tree_keeping_links, failed_entries, lay_root_link, removed_root_of,
+    _relocated_target, copy_tree_keeping_links, failed_entries, lay_root_link,
+    plan_mounted_links, removed_root_of, repoint_mounted_links,
 )
 
 
@@ -399,3 +400,59 @@ class TestRemovedRootIsNotLaidAsADanglingLanding:
         shutil.rmtree(src)
         os.symlink(str(inside), src)
         assert lay_root_link(src, dst) is True
+
+
+class TestMountedLinks:
+    """Q74's exception: a bind-source link is repointed to its HOST target after a relocation."""
+
+    def _moved(self, layout, links):
+        src, outside, dst = layout
+        sources = []
+        for name, text in links.items():
+            (src / name).symlink_to(text)
+            sources.append(str(src / name))
+        plan = plan_mounted_links(sources, [src])
+        copy_tree_keeping_links(src, dst)
+        return plan, src, outside, dst
+
+    def test_a_relative_source_names_its_host_target_from_the_landing(self, layout):
+        plan, src, outside, dst = self._moved(layout, {"m": "../../outside/big.txt"})
+
+        assert repoint_mounted_links(plan, {src: dst}) == []
+
+        assert (dst / "m").read_text() == "outside data"
+        assert os.readlink(dst / "m") == os.path.relpath(outside / "big.txt", dst)
+
+    def test_only_sources_are_planned(self, layout):
+        """An absolute source, the root itself, a looping source and a non-source are not."""
+        src, outside, _dst = layout
+        (src / "plain").symlink_to("../../outside/big.txt")
+        (src / "abs").symlink_to(outside / "big.txt")
+        (src / "loop").symlink_to("loop")
+
+        plan = plan_mounted_links([str(src / "abs"), str(src), str(src / "loop")], [src])
+
+        assert plan == []
+
+    def test_a_target_inside_the_carried_tree_follows_it(self, layout):
+        plan, src, _outside, dst = self._moved(layout, {"m": "sub/inner.txt"})
+
+        repoint_mounted_links(plan, {src: dst})
+
+        assert os.readlink(dst / "m") == "sub/inner.txt"
+
+    def test_a_landed_link_that_is_not_the_planned_one_is_left_alone(self, layout):
+        plan, src, _outside, dst = self._moved(layout, {"m": "../../outside/big.txt"})
+        os.unlink(dst / "m")
+        (dst / "m").symlink_to("elsewhere")
+
+        repoint_mounted_links(plan, {src: dst})
+
+        assert os.readlink(dst / "m") == "elsewhere"
+
+    def test_a_dangling_source_keeps_naming_the_same_host_path(self, layout):
+        plan, src, outside, dst = self._moved(layout, {"m": "../../outside/no-such"})
+
+        repoint_mounted_links(plan, {src: dst})
+
+        assert os.path.realpath(dst / "m") == str(outside / "no-such")

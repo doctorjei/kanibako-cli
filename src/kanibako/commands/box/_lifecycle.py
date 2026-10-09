@@ -89,7 +89,8 @@ from kanibako.settings.paths import (
     write_vault_gitignore,
 )
 from kanibako.tree_copy import (
-    copy_tree_keeping_links, failed_entries, lay_root_link, removed_root_of,
+    MountedLink, copy_tree_keeping_links, failed_entries, lay_root_link,
+    plan_mounted_links, removed_root_of, repoint_mounted_links,
 )
 from kanibako.utils import literal_path, write_project_gitignore
 from kanibako.project.workset import (
@@ -169,6 +170,9 @@ class ProjectState:
     #: value would pin an inherited default as a box-scope override the destination
     #: workset can no longer reach.  Mirrors ``box_authored_vault`` in the resolvers.
     box_authored_vault: bool = True
+    #: The host source of every bind mount the box receives; ``None`` when its stored
+    #: settings did not resolve.  Read by :func:`plan_box_mounted_links`.
+    bind_sources: frozenset[str] | None = frozenset()
 
 
 @dataclass
@@ -341,7 +345,7 @@ def resolve_lifecycle_target(
         proj = resolve_standalone_project(
             std, config, str(detection.project_root), initialize=False,
         )
-        return _state_from_paths("standalone", proj, ws=None, early=_early_scope(std, BoxMode.standalone))
+        return _state_from_paths("standalone", proj, std=std, ws=None, early=_early_scope(std, BoxMode.standalone))
 
     return _resolve_primary_state(detection.project_root, std, config)
 
@@ -375,7 +379,7 @@ def _resolve_primary_state(
     )
     if not proj.metadata_path.is_dir():
         raise ProjectError(f"No project data found for {root}")
-    return _state_from_paths("primary", proj, ws=None, early=_early_scope(std, BoxMode.primary))
+    return _state_from_paths("primary", proj, std=std, ws=None, early=_early_scope(std, BoxMode.primary))
 
 
 def _default_state_from_meta(
@@ -444,7 +448,7 @@ def _resolve_workset_state(
     assert recorded is not None  # refused on the line above
     is_external = not is_in_tree_workspace(ws, recorded)
     return _state_from_paths(
-        owner_token(BoxMode.named, ws.name), proj, ws=ws,
+        owner_token(BoxMode.named, ws.name), proj, std=std, ws=ws,
         early=_early_scope(std, BoxMode.named, ws.name), is_external=is_external,
         workspace=recorded,
     )
@@ -468,6 +472,7 @@ def _state_from_paths(
     owner: str,
     proj: ProjectPaths,
     *,
+    std: StandardPaths,
     ws: Workset | None,
     early: EarlyScope,
     is_external: bool = False,
@@ -497,7 +502,60 @@ def _state_from_paths(
         ws=ws,
         enable_vault=proj.vault_enabled(),
         box_authored_vault=read_box_enable_vault(box_tier),
+        bind_sources=box_bind_sources_or_none(std, proj),
     )
+
+
+def box_bind_sources_or_none(std: StandardPaths, proj: ProjectPaths) -> frozenset[str] | None:
+    """:func:`kanibako.commands.start.box_bind_sources`, or ``None`` when it raises.
+
+    A relocation must not fail on a box whose settings do not resolve; it carries every
+    link verbatim instead and says so (:func:`plan_box_mounted_links`).
+    """
+    from kanibako.commands.start import box_bind_sources
+
+    try:
+        return box_bind_sources(std, proj)
+    except Exception:  # noqa: BLE001 - degraded to verbatim links, and reported
+        return None
+
+
+def _box_trees(state: ProjectState) -> tuple[Path | None, ...]:
+    """The trees a relocation carries, in a fixed order so two states pair by position."""
+    return (state.workspace_path, state.metadata_path, state.shell_path,
+            state.vault_ro, state.vault_rw)
+
+
+def plan_box_mounted_links(
+    name: str, bind_sources: frozenset[str] | None, trees: Collection[Path | None],
+) -> list[MountedLink]:
+    """The box's directly mounted links under *trees*, planned before anything is copied.
+
+    With *bind_sources* ``None`` nothing is planned, and a Note says every link is
+    carried as it is.
+    """
+    import sys
+
+    if bind_sources is None:
+        print(
+            f"Note: could not resolve the bindings of '{name}', so every link is carried as "
+            "it is; a relative link that is a bind source may stop reaching its target. "
+            f"`kanibako box show --effective {name}` names the error.",
+            file=sys.stderr,
+        )
+        return []
+    return plan_mounted_links(bind_sources, [tree for tree in trees if tree is not None])
+
+
+def repoint_box_mounted_links(
+    links: list[MountedLink], relocated: Mapping[Path, Path],
+) -> None:
+    """Apply :func:`plan_box_mounted_links`'s plan; warn for each link left unchanged."""
+    import sys
+
+    for link, reason in repoint_mounted_links(links, relocated):
+        print(f"Warning: could not repoint the mounted link {link} ({reason}); it keeps "
+              "its old text and may not reach its target.", file=sys.stderr)
 
 
 # ---------------------------------------------------------------------------
@@ -1117,9 +1175,16 @@ def execute_lifecycle(
     if confirm is not None and not confirm():
         raise ProjectError("Aborted by user.")
 
+    mounted = (
+        [] if spec.records_only
+        else plan_box_mounted_links(state.name, state.bind_sources, _box_trees(state))
+    )
     unwind = _Unwind()
     try:
         new_state = _run_steps(state, spec, std, config, plan, unwind)
+        repoint_box_mounted_links(mounted, {
+            old: new for old, new in zip(_box_trees(state), _box_trees(new_state))
+            if old is not None and new is not None})
     except BaseException:
         # ⚑⚑ ``BaseException``, not ``Exception``: an interrupt after the release would
         # otherwise skip every compensating action and leave the stash in ``$TMPDIR``.

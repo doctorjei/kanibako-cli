@@ -24,7 +24,7 @@ if TYPE_CHECKING:
     from kanibako.settings.settings_launch import AuthSource
     from kanibako.settings.settings_prefs import PrefRequest
     from kanibako.settings.store_collapse import CollapsedCopy, CollapsedEnvs
-    from kanibako.targets.base import PersonaSpec
+    from kanibako.targets.base import PersonaSpec, Target
     from kanibako.vscode.vscode_config import CodexModelProvider
 
 from kanibako.settings import agent_file
@@ -7708,6 +7708,85 @@ def _resolve_launch_snapshot(
     except (CategoryCollisionError, SettingsError) as exc:
         raise _annotate_pref_origin(exc, prefs) from None
     return snapshot, deliveries
+
+
+class StoredBoxAgent(NamedTuple):
+    """The agent a box's STORED settings select, with what a resolve needs of it."""
+
+    #: ``None`` when selection failed; the box then resolves as a plain shell.
+    selection: "AgentSelection | None"
+    node: str
+    target: "Target | None"
+    agent_cfg: object
+    agent_cfg_path: Path
+
+
+def stored_box_agent(std: "StandardPaths", proj: "ProjectPaths") -> StoredBoxAgent:
+    """Select *proj*'s agent off its stored settings, degrading to the shell slot.
+
+    No launch flag takes part, so this is the box as configured, not one launch of it.
+    """
+    from kanibako.settings.agent_config import agent_settings_path
+    from kanibako.settings.agent_select import select_agent
+    from kanibako.settings.settings_assemble import ReadPurpose, agent_record
+
+    selection = None
+    target = None
+    try:
+        selection = select_agent(std=std, proj=proj)
+        target = resolve_target(harness_of(selection.node)) if selection.node else None
+    except Exception:
+        target = None
+    # ⚑ The NODE name keys both ``agent.<node>.*`` and ``agents/<node>/``; a node is
+    # lowercase ([R173]), so the folded spelling names the file the launch opens.
+    node = (
+        with_harness(selection.node, agent_node_case(target.name))
+        if target is not None and selection is not None else GENERAL_SLOT
+    )
+    agent_cfg_path = agent_settings_path(std.agents, node)
+    if target is not None and not agent_cfg_path.exists():
+        agent_cfg: object = target.generate_agent_config()
+    elif agent_cfg_path.exists():
+        agent_cfg = agent_record(agent_cfg_path, node=node, purpose=ReadPurpose.RESOLVE)
+    else:
+        agent_cfg = None
+    return StoredBoxAgent(selection, node, target, agent_cfg, agent_cfg_path)
+
+
+def resolve_stored_box_snapshot(
+    std: "StandardPaths", proj: "ProjectPaths", agent: StoredBoxAgent,
+):
+    """:func:`_resolve_launch_snapshot` for the box as STORED; writes nothing to disk.
+
+    Returns ``(snapshot, deliveries)`` and raises what the launch resolve raises.
+    """
+    return _resolve_launch_snapshot(
+        std=std, proj=proj, agent_name=agent.node,
+        system_settings_path=std.settings,
+        agent_cfg_path=agent.agent_cfg_path,
+        desc=None, install=None,
+        target=agent.target, agent_cfg=agent.agent_cfg,
+        # The SAME persona-store tier the launch resolves against.
+        persona_values=_persona_values_for(agent.node, agent.target),
+        guarantee_create=False,
+        # SELECTION ONLY: a per-run value flag must not describe stored configuration.
+        cli_level=agent.selection.selection_level if agent.selection is not None else None,
+    )
+
+
+def box_bind_sources(std: "StandardPaths", proj: "ProjectPaths") -> frozenset[str]:
+    """The host source of every bind mount *proj* receives (``meta.assembly.bindings``).
+
+    Raises :class:`~kanibako.errors.KanibakoError` when the stored settings do not resolve.
+    """
+    from kanibako.settings.store_collapse import CollapsedBind, is_mask
+
+    snapshot, _deliveries = resolve_stored_box_snapshot(std, proj, stored_box_agent(std, proj))
+    bindings = _snapshot_assembly_bindings(snapshot) or {}
+    return frozenset(
+        str(bind.src) for bind in bindings.values()
+        if isinstance(bind, CollapsedBind) and not is_mask(bind)
+    )
 
 
 def _annotate_pref_origin(exc, prefs):
