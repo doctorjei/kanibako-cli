@@ -157,6 +157,19 @@ def _remove_snapshot_store(store) -> None:
         _warn_undeleted(store)
 
 
+def _remove_member_vault_leaves(vault_ro, vault_rw) -> None:
+    """Take a NAMED member's OWN ro/rw vault leaves — never a shared arm.
+
+    A purge that skipped these printed ``done`` over the member's files.  ``is_symlink``
+    is tested because a dangling link is neither dir nor file to ``is_dir()``.
+    """
+    for leaf in (vault_ro, vault_rw):
+        if leaf is None or not (leaf.is_dir() or leaf.is_symlink()):
+            continue
+        if not remove_path(leaf):
+            _warn_undeleted(leaf)
+
+
 def _purge_one(std, config, path: str, *, force: bool) -> int:
     """Purge session data for a single project."""
     proj = resolve_any_project(std, config, project_dir=path, initialize=False)
@@ -252,11 +265,7 @@ def _purge_one(std, config, path: str, *, force: bool) -> int:
         # A NAMED member's own vault leaves were never removed here, so the verb
         # printed ``done`` over its files.
         elif proj.mode is BoxMode.named:
-            for box_vault in (proj.vault_ro_path, proj.vault_rw_path):
-                if box_vault is not None and (
-                        box_vault.is_dir() or box_vault.is_symlink()):
-                    if not remove_path(box_vault):
-                        _warn_undeleted(box_vault)
+            _remove_member_vault_leaves(proj.vault_ro_path, proj.vault_rw_path)
         _remove_snapshot_store(snapshot_store)
 
     # M2 (registry hygiene): the box metadata is gone, so drop its registry
@@ -345,7 +354,7 @@ def _purge_all(std, config, *, force: bool) -> int:
         # ⚑ Hoisted, and RESOLVED: both properties read the root workset.yaml, so one
         # read per workset keeps every member of it judged against the same document.
         boxes_dir, logs_dir = ws.projects_dir, ws.logs_dir
-        vault_rw_base = ws.vault_rw_dir
+        vault_ro_base, vault_rw_base = ws.vault_ro_dir, ws.vault_rw_dir
         for proj_name, status in project_list:
             if status == STATUS_NO_DATA:
                 continue
@@ -359,9 +368,12 @@ def _purge_all(std, config, *, force: bool) -> int:
                 # box's helpers.jsonl mount is bound from; the default leaf is
                 # ``<root>/logs``, not the box's own directory.
                 purge_box_logs(std, logs_dir, proj_name, workset_root=ws.root)
-                _remove_snapshot_store(_resolve_snapshot_store(
-                    None if vault_rw_base is None else vault_rw_base / proj_name,
-                    proj_name))
+                # The rw LEAF is derived once: the store is that leaf's sibling.
+                vault_rw_leaf = None if vault_rw_base is None else vault_rw_base / proj_name
+                _remove_member_vault_leaves(
+                    None if vault_ro_base is None else vault_ro_base / proj_name,
+                    vault_rw_leaf)
+                _remove_snapshot_store(_resolve_snapshot_store(vault_rw_leaf, proj_name))
                 print(MSG_DONE)
                 removed += 1
 

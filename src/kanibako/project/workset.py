@@ -1750,17 +1750,17 @@ def remove_member_store(
     *bases* is :func:`_member_store_bases`, resolved by a caller that must refuse BEFORE an
     irreversible step (:func:`remove_project` releases the member first).
     """
-    import shutil
-
     # ⚑ Per-box vault LEAVES only — never the shared ro/rw parents.
     # ⚑⚑ RESOLVED, and it MUST match ``add_project``: deleting the composed default
     # while the box's real vault sits at the repoint leaves the user's data orphaned
     # AND removes a directory the box never used.
     boxes_dir, *vault_bases = bases or _member_store_bases(ws)
-    # ⚑ THE BOX TREE NEEDS THE UNSHARE ESCALATION (J-7): rmtree raises on the 555
-    # canon skeleton EVEN WHEN THE CALLER OWNS IT.  Vault leaves are ordinary user
-    # content and stay on the plain path.
-    from kanibako.runtime.container import remove_box_tree
+    # ⚑ EVERY removal here needs the UNSHARE ESCALATION (J-7).  A plain ``rmtree`` raises
+    # on the 555 canon skeleton EVEN WHEN THE CALLER OWNS IT — and a vault leaf is not the
+    # plain case it was assumed to be: a rootless container writes one as root, and a user's
+    # own 555 dir cannot be entered to unlink its contents.  ``remove_path`` unlinks a link
+    # first, so only the link — never its target — goes.
+    from kanibako.runtime.container import remove_box_tree, remove_path
 
     box_tree = boxes_dir / name
     if box_tree.is_symlink():
@@ -1769,11 +1769,12 @@ def remove_member_store(
         remove_box_tree(box_tree)
     for base in vault_bases:
         leaf = base / name
-        if leaf.is_symlink():
-            # Defensive: only the link is removed, never its target.
-            leaf.unlink()
-        elif leaf.is_dir():
-            shutil.rmtree(leaf)
+        if (leaf.is_dir() or leaf.is_symlink()) and not remove_path(leaf):
+            # ⚑ LOUD, never a silent pass: the relocation retire prints its leftover Note
+            # with rc unchanged, and a disconnect exits 1.
+            raise OSError(
+                f"could not remove {leaf}; try: podman unshare rm -rf "
+                f"{shlex.quote(str(leaf))}")
 
 
 def remove_project(

@@ -735,12 +735,12 @@ def run_disconnect(args: argparse.Namespace) -> int:
     # which runs at STEP 4a while the carry is STEP 4c; deleting there loses the copy.
     snapshot_store = None
     if args.remove_files:
+        from kanibako.commands.clean import _resolve_snapshot_store
         from kanibako.project.workset import resolve_workset_vault_pair
-        from kanibako.snapshots import box_snapshot_store
         _vault_ro, vault_rw = resolve_workset_vault_pair(ws.root, early=ws.early_scope)
         if vault_rw is not None:
             # The box's OWN vault-rw LEAF — the store is that leaf's sibling.
-            snapshot_store = box_snapshot_store(vault_rw / member, member)
+            snapshot_store = _resolve_snapshot_store(vault_rw / member, member)
     if not args.force:
         label = "and remove files " if args.remove_files else ""
         confirm_prompt(
@@ -769,14 +769,11 @@ def run_disconnect(args: argparse.Namespace) -> int:
         # ⚑ HERE, not in ``remove_project``/``release_project``: a move releases the box
         # through ``release_project``, and its logs must survive the move.
         purge_box_logs(std, logs_dir, proj.name, workset_root=ws.root)
-    if snapshot_store is not None and (
-            snapshot_store.is_dir() or snapshot_store.is_symlink()):
-        # The box's OWN store only — never the shared base or a neighbour's.
-        from kanibako.runtime.container import remove_path
-        if not remove_path(snapshot_store):
-            print(f"Warning: could not remove the snapshot store at {snapshot_store}.\n"
-                  f"  Try: podman unshare rm -rf {shlex.quote(str(snapshot_store))}",
-                  file=sys.stderr)
+    if snapshot_store is not None:
+        # The box's OWN store only — never the shared base or a neighbour's; the shared
+        # helper warns on a survivor instead of printing success over it.
+        from kanibako.commands.clean import _remove_snapshot_store
+        _remove_snapshot_store(snapshot_store)
     print(f"Removed project '{proj.name}' from working set '{ws.name}'")
     return 0
 
