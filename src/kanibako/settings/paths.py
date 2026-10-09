@@ -2433,9 +2433,22 @@ STANDALONE_REGISTRY_COMMENT = "REMOVING THIS WILL BREAK A STANDALONE BOX!"
 
 
 def establish_standalone(std: StandardPaths, root: Path, *, enable_vault: bool | None,
-                         name: str = "",
+                         carry_kuid: str | None = None, own_name: str | None = None,
                          register: bool = True) -> tuple[str, Path, Path | None, Path | None]:
-    """Establish a standalone box at *root*: identity + meta + registration (the shared core)."""
+    """Establish a standalone box at *root*: identity + meta + registration (the shared core).
+
+    ⚑ No ``name`` parameter: a standalone box is named after its directory, never by the
+    caller.  A ``name`` argument used to be accepted here and then IGNORED — the name was
+    always composed from *root* — which read like a supported override that did nothing.
+    Every standalone door now refuses a divergent ``--name`` upstream
+    (:func:`kanibako.launch.box_identity.refuse_nonleaf_standalone_name`), so the producer
+    never receives one worth honoring.
+
+    *carry_kuid* / *own_name* are for a MOVING box that already has a kuid (keyspec
+    ``:811``: the kuid is the stable stored prefix, only the leaf tracks the directory).
+    Both ``None`` on a fresh create or a true convert-TO standalone, which mint a new
+    kuid.  See :func:`kanibako.launch.box_identity.carry_standalone_name`.
+    """
     from kanibako.project import registry_store
     from kanibako.launch import box_identity
 
@@ -2443,7 +2456,11 @@ def establish_standalone(std: StandardPaths, root: Path, *, enable_vault: bool |
         root, early=_early_scope(std, BoxMode.standalone))
 
     existing = registry_store.standalone_box_names(std.registry)
-    box_name = box_identity.make_standalone_box_name(root, existing)
+    if carry_kuid:
+        box_name = box_identity.carry_standalone_name(
+            carry_kuid, root, existing, own_name=own_name)
+    else:
+        box_name = box_identity.make_standalone_box_name(root, existing)
 
     box_settings, settings_file = _standalone_settings_files(
         root, early=_early_scope(std, BoxMode.standalone))
@@ -2505,7 +2522,9 @@ def resolve_standalone_project(std: StandardPaths, config: BootstrapConfig,
         from kanibako.launch import box_resolve
         identity = box_resolve.resolve_box_identity(root, std, config)
         box_name = identity["name"] if identity is not None else ""
-    # The user's explicit --name; ignored once the box exists (stored identity is authoritative).
+    # ⚑ The user's explicit --name is NOT a producer input.  It is pre-flighted below only
+    # so a doomed create refuses before its first write; the name itself is COMPOSED from
+    # *root* by ``establish_standalone``.  (It used to be threaded in and silently dropped.)
     requested_name = name
 
     is_new = False
@@ -2550,7 +2569,7 @@ def resolve_standalone_project(std: StandardPaths, config: BootstrapConfig,
                                  workset_root=root)
         # Identity + meta + registration via the shared establish core (fresh identity here).
         box_name, shell_path, vault_ro_path, vault_rw_path = establish_standalone(
-            std, root, enable_vault=enable_vault, name=requested_name, register=register)
+            std, root, enable_vault=enable_vault, register=register)
         is_new = True
 
     if initialize:
