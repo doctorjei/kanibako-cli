@@ -269,3 +269,44 @@ class TestForcedNullKeepsTheMemberGuard:
         assert _cli(["workset", "connect", "ws4", str(tmp_home / "home" / "m2")]) == 1
         assert "workset.registry" in capsys.readouterr().err
         assert _tree(tmp_home) == before
+
+
+class TestMalformedRootFileDetection:
+    """A malformed ``workset.yaml`` is refused only for a dir no registry claims."""
+
+    def _detect(self, config_file, target: Path):
+        from kanibako.settings.config import load_config
+        from kanibako.settings.paths import detect_project_mode, load_std_paths
+
+        config = load_config(config_file)
+        return detect_project_mode(target, load_std_paths(config), config)
+
+    def test_registered_primary_box_still_resolves(
+        self, config_file, tmp_home, credentials_dir,
+    ):
+        from kanibako.settings.paths import BoxMode
+
+        root = tmp_home / "home" / "pb"
+        root.mkdir()
+        assert _cli(["create", str(root)]) == 0
+        (root / WORKSET_META_FILE).write_text("bad: @x\n")
+        result = self._detect(config_file, root)
+        assert (result.mode, result.project_root) == (BoxMode.primary, root)
+
+    def test_unclaimed_dir_is_refused(self, config_file, tmp_home, credentials_dir):
+        root = tmp_home / "home" / "loose"
+        root.mkdir()
+        (root / WORKSET_META_FILE).write_text("bad: @x\n")
+        with pytest.raises(ConfigError, match="is not valid YAML"):
+            self._detect(config_file, root)
+
+    def test_malformed_ancestor_file_stays_lenient(
+        self, config_file, tmp_home, credentials_dir,
+    ):
+        from kanibako.settings.paths import BoxMode
+
+        parent = tmp_home / "home" / "up"
+        (parent / "child").mkdir(parents=True)
+        (parent / WORKSET_META_FILE).write_text("bad: @x\n")
+        result = self._detect(config_file, parent / "child")
+        assert (result.mode, result.project_root) == (BoxMode.primary, parent / "child")

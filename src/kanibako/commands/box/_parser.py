@@ -81,8 +81,9 @@ from kanibako.agent_ref import GENERAL_SLOT, harness_of, parse_agent_address, wi
 from kanibako.targets import resolve_target
 from kanibako.utils import (
     WORKSET_SEGMENT_PRIMARY, WORKSET_SEGMENT_STANDALONE,
-    container_name_for, container_name_for_box_name, literal_path, logical_cwd,
-    project_gitignore_to_strip, short_hash, strip_project_gitignore, write_project_gitignore,
+    container_name_for, container_name_for_box_name, gitignore_holds_only_kanibako, literal_path,
+    logical_cwd, project_gitignore_to_strip, short_hash, strip_project_gitignore,
+    write_project_gitignore,
 )
 
 # ``box duplicate --to`` takes the mode enum's own tokens, never a hand-kept spelling list.
@@ -2043,8 +2044,10 @@ class _PurgeStep:
     path: Path
     anchor: bool = False
     gated: bool = False
+    edit: bool = False
 
 
+_GITIGNORE = "gitignore line"
 _VAULT_LABELS = ("vault ro (your files)", "vault rw (your files)")
 
 
@@ -2108,8 +2111,12 @@ def _standalone_purge_plan(
     if settings_file.is_file():
         steps.append(_PurgeStep("metadata", "workset settings", settings_file, gated=True))
     gitignore = project_gitignore_to_strip(root)
-    if gitignore is not None:
-        steps.append(_PurgeStep("gitignore line", "kanibako's line in", gitignore, gated=True))
+    if gitignore is not None and gitignore_holds_only_kanibako(gitignore):
+        steps.append(_PurgeStep(_GITIGNORE, ".gitignore (it holds only kanibako's line)",
+                                gitignore, gated=True))
+    elif gitignore is not None:
+        steps.append(_PurgeStep(_GITIGNORE, "kanibako's line in", gitignore, gated=True,
+                                edit=True))
     if removable_canon is not None:
         steps.append(_PurgeStep("canon", "box canon (kanibako's handbook)", removable_canon,
                                 gated=True))
@@ -2141,7 +2148,9 @@ def _confirm_purge(steps: list[_PurgeStep], *, force: bool) -> bool:
         print("--purge deletes nothing: no path of this box is kanibako's to remove "
               "(any path kept is noted above).")
         return True
-    print(f"--purge deletes these {len(steps)} paths:")
+    edits = sum(step.edit for step in steps)
+    count = f"{len(steps) - edits} paths" + (f" (and {edits} edit)" if edits else "")
+    print(f"--purge deletes these {count}:")
     for step in steps:
         if step.path.is_symlink():
             print(f"  {step.what}: {step.path} → {os.readlink(step.path)} (link only; target kept)")
@@ -2150,7 +2159,7 @@ def _confirm_purge(steps: list[_PurgeStep], *, force: bool) -> bool:
     if force:
         return True
     try:
-        confirm_prompt(f"Delete these {len(steps)} paths? This cannot be undone.\n"
+        confirm_prompt(f"Delete these {count}? This cannot be undone.\n"
                        "Type 'yes' to confirm: ")
     except UserCanceled:
         return False
@@ -2170,9 +2179,10 @@ def _run_purge_plan(steps: list[_PurgeStep]) -> bool:
             print(f"Kept {step.kind}: {step.path} — the box metadata folder could not be "
                   "removed.", file=sys.stderr)
             continue
-        if step.kind == "gitignore line":
+        if step.kind == _GITIGNORE:
             if strip_project_gitignore(step.path):
-                print(f"Removed kanibako's line in {step.path}")
+                print(f"Removed kanibako's line in {step.path}" if step.path.exists() else
+                      f"Deleted {step.path} (it held only kanibako's line)")
             else:
                 all_removed = False
             continue

@@ -258,7 +258,7 @@ class TestStandalonePurge:
         assert _plan_lines(out.out) == [
             f"box metadata: {root / 'box_data'}",
             f"workset settings: {root / 'workset.yaml'}",
-            f"kanibako's line in: {root / '.gitignore'}",
+            f".gitignore (it holds only kanibako's line): {root / '.gitignore'}",
             f"box canon (kanibako's handbook): {root / 'canon'}",
             f"vault parent folder: {root / 'vault'} → {outside} (link only; target kept)",
         ]
@@ -284,7 +284,7 @@ class TestStandalonePurge:
         assert _plan_lines(capsys.readouterr().out) == [
             f"box metadata: {root / 'box_data'}",
             f"workset settings: {root / 'workset.yaml'}",
-            f"kanibako's line in: {root / '.gitignore'}",
+            f".gitignore (it holds only kanibako's line): {root / '.gitignore'}",
             f"box canon (kanibako's handbook): {root / 'canon'}",
             f"vault ro (your files): {inner / 'ro'}",
             f"vault rw (your files): {inner / 'rw'}",
@@ -447,6 +447,22 @@ class TestStandalonePurge:
         capsys.readouterr()
 
         assert _rm(str(root), force=True) == 0
-        assert f"kanibako's line in: {root / '.gitignore'}" in _plan_lines(
-            capsys.readouterr().out)
+        out = capsys.readouterr().out
+        assert f"kanibako's line in: {root / '.gitignore'}" in _plan_lines(out)
+        assert "--purge deletes these 6 paths (and 1 edit):" in out
+        assert f"Removed kanibako's line in {root / '.gitignore'}" in out
         assert (root / ".gitignore").read_text() == "node_modules/\n"
+
+    def test_gitignore_holding_only_kanibakos_line_is_listed_and_reported_deleted(
+        self, config_file, tmp_home, credentials_dir, capsys,
+    ):
+        root = tmp_home / "sa"
+        _create(root, standalone=True)
+        shutil.rmtree(root / "canon")
+        capsys.readouterr()
+
+        assert _rm(str(root), force=True) == 0
+        out = capsys.readouterr().out
+        assert "--purge deletes these 6 paths:" in out
+        assert f"Deleted {root / '.gitignore'} (it held only kanibako's line)" in out
+        assert not (root / ".gitignore").exists()

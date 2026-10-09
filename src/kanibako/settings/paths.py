@@ -1765,7 +1765,13 @@ def detect_project_mode(project_dir: Path, std: StandardPaths,
 
     # 2. In-place standalone marker AT the resolved dir (D3-mode #1, marker-first): it
     # OVERRIDES workset TREE membership.  Only this dir; ancestors are the step-5 walk.
-    if _is_standalone_meta_dir(resolved, strict=True):
+    # A malformed file is refused only after steps 3-4 find no registry claim on the dir.
+    unreadable: ConfigError | None = None
+    try:
+        standalone_here = _is_standalone_meta_dir(resolved, strict=True)
+    except ConfigError as exc:
+        standalone_here, unreadable = False, exc
+    if standalone_here:
         from kanibako.project import import_reconcile
         import_reconcile.check_standalone(
             std.registry, resolved, journal=std.journal,
@@ -1781,6 +1787,8 @@ def detect_project_mode(project_dir: Path, std: StandardPaths,
     ac_ancestor = _find_local_ancestor(resolved, std)
     if ac_ancestor is not None:
         return DetectionResult(BoxMode.primary, ac_ancestor)
+    if unreadable is not None:
+        raise unreadable
 
     # 5. Walk ancestors for on-disk markers, IMPORTING an unregistered workset (never a
     # standalone box).  STANDALONE is checked first at each level: the root file's own null
