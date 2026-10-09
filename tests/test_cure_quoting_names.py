@@ -580,7 +580,7 @@ class TestTheCleanupCuresAreQuoted:
         from kanibako.settings.config import load_config, user_config_file
         from kanibako.settings.paths import load_std_paths
 
-        monkeypatch.setattr(_parser, "_purge_dir", lambda target: False)
+        monkeypatch.setattr("kanibako.runtime.container.remove_box_tree", lambda target: False)
         std = load_std_paths(load_config(user_config_file()))
         metadata = tmp_path / "boxes" / _SPACED
         metadata.mkdir(parents=True)
@@ -685,7 +685,7 @@ class TestTheRemainingCleanupCuresAreQuoted:
 
         metadata = tmp_path / "boxes" / name
         metadata.mkdir(parents=True)
-        monkeypatch.setattr(_parser, "_purge_dir", lambda target: False)
+        monkeypatch.setattr("kanibako.runtime.container.remove_box_tree", lambda target: False)
         err = io.StringIO()
         with contextlib.redirect_stderr(err), contextlib.redirect_stdout(io.StringIO()):
             assert _parser._run_purge_plan(

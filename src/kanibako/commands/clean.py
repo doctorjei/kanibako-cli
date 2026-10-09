@@ -8,7 +8,7 @@ import shutil
 import sys
 
 from kanibako.settings.config import WORKSET_META_FILE, load_config
-from kanibako.runtime.container import remove_box_tree
+from kanibako.runtime.container import remove_box_tree, remove_path
 from kanibako.errors import UserCanceled
 from kanibako.settings.paths import (
     BoxMode,
@@ -203,7 +203,8 @@ def _purge_one(std, config, path: str, *, force: bool) -> int:
         if retained_store is not None:
             report_retained_store(retained_store, root)
         for vault_dir in removable_vault:
-            shutil.rmtree(vault_dir, ignore_errors=True)
+            if not remove_path(vault_dir):
+                _warn_undeleted(vault_dir)
         report_retained_vaults(root, retained_vault)
     else:
         if not remove_box_tree(proj.metadata_path):

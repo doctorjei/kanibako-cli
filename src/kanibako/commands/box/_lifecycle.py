@@ -31,7 +31,7 @@ from kanibako.launch.box_identity import (
     standalone_kuid,
     validate_box_name,
 )
-from kanibako.runtime.container import remove_box_tree
+from kanibako.runtime.container import remove_box_tree, remove_path
 from kanibako.settings import bootstrap
 from kanibako.settings.core_defaults import materialize_canon_skeleton
 from kanibako.settings.workset_dirkeys import (
@@ -1835,8 +1835,8 @@ def _remove_old_metadata(
         if settings.is_file():
             settings.unlink()
         for vault in removable_vault:
-            if vault.is_dir():
-                shutil.rmtree(vault, ignore_errors=True)
+            if (vault.is_dir() or vault.is_symlink()) and not remove_path(vault):
+                print(f"Warning: could not fully remove {vault}", file=sys.stderr)
         report_retained_vaults(root, retained_vault)
         _report_unreceived_vaults(kept)
         return

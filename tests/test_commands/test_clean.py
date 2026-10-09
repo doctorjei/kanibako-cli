@@ -221,6 +221,23 @@ class TestCleanExtended:
         # The project root itself is NOT deleted.
         assert project_dir.is_dir()
 
+    def test_purge_standalone_unlinks_a_linked_vault(self, config_file, tmp_home):
+        """A ``vault/`` symlink goes as a link; nothing behind it is touched."""
+        from kanibako.commands.clean import run
+
+        project_dir = tmp_home / "project"
+        (project_dir / "box_data").mkdir(parents=True)
+        (project_dir / "workset.yaml").write_text('workset:\n  registry: null\n')
+        outside = tmp_home / "extv"
+        (outside / "rw").mkdir(parents=True)
+        (outside / "rw" / "canary.txt").write_text("keep me\n")
+        (project_dir / "vault").symlink_to(outside)
+
+        args = argparse.Namespace(path=str(project_dir), all_projects=False, force=True)
+        assert run(args) == 0
+        assert not (project_dir / "vault").is_symlink()
+        assert (outside / "rw" / "canary.txt").read_text() == "keep me\n"
+
     def test_purge_all_skips_standalone(self, config_file, tmp_home, credentials_dir, capsys):
         """--all only covers default-mode projects, not standalone."""
         from kanibako.commands.clean import run

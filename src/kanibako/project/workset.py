@@ -446,7 +446,7 @@ def standalone_vault_teardown(
         # ⚑ STRICT: ``arm == root`` must land in *retained*.  A ``vault_ro: .`` would
         # otherwise nominate the user's whole project directory for deletion.
         if _strictly_in_tree(arm, root):
-            removable.append(arm)
+            removable.append(_unfollowed(arm))
         else:
             retained.append(_unfollowed(arm))
     skeleton = root / _VAULT_LEAF

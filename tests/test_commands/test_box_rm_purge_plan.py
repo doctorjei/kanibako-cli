@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import shutil
 from pathlib import Path
 
 import pytest
@@ -126,13 +127,13 @@ class TestPrimaryPurge:
         self, config_file, tmp_home, credentials_dir, capsys, monkeypatch,
     ):
         """The metadata dir cannot go: each gated vault is named as KEPT, and rm exits 1."""
-        from kanibako.commands.box import _parser
+        from kanibako.runtime import container
 
         _create(tmp_home / "proj")
         std = _std(config_file)
         meta = std.boxes / "proj"
-        real = _parser._purge_dir
-        monkeypatch.setattr(_parser, "_purge_dir",
+        real = container.remove_box_tree
+        monkeypatch.setattr(container, "remove_box_tree",
                             lambda target: False if target == meta else real(target))
         capsys.readouterr()
 
@@ -211,6 +212,45 @@ class TestStandalonePurge:
             assert not (root / gone).exists() and not (root / gone).is_symlink()
         assert (outside / "ro").is_dir()
         assert hashlib.sha256((outside / "rw" / "canary.txt").read_bytes()).hexdigest() == digest
+
+    def test_vault_linked_into_the_project_lists_arms_by_their_real_path(
+        self, config_file, tmp_home, credentials_dir, capsys,
+    ):
+        """The list names ``inner/ro|rw``, which go; the link line keeps ``inner/``."""
+        root = tmp_home / "sa"
+        _create(root, standalone=True)
+        inner = root / "inner"
+        (root / "vault").rename(inner)
+        (root / "vault").symlink_to(inner)
+        (inner / "keep.txt").write_text("mine\n")
+        capsys.readouterr()
+
+        assert _rm(str(root), force=True) == 0
+        assert _plan_lines(capsys.readouterr().out) == [
+            f"box metadata: {root / 'box_data'}",
+            f"workset settings: {root / 'workset.yaml'}",
+            f"vault ro (your files): {inner / 'ro'}",
+            f"vault rw (your files): {inner / 'rw'}",
+            f"vault parent folder: {root / 'vault'} → {inner} (link only; target kept)",
+        ]
+        assert not (inner / "ro").exists() and not (inner / "rw").exists()
+        assert not (root / "vault").is_symlink()
+        assert (inner / "keep.txt").read_text() == "mine\n"
+
+    def test_dangling_vault_link_is_listed_and_unlinked(
+        self, config_file, tmp_home, credentials_dir, capsys,
+    ):
+        root = tmp_home / "sa"
+        _create(root, standalone=True)
+        nowhere = tmp_home / "nowhere"
+        shutil.rmtree(root / "vault")
+        (root / "vault").symlink_to(nowhere)
+        capsys.readouterr()
+
+        assert _rm(str(root), force=True) == 0
+        assert (f"vault parent folder: {root / 'vault'} → {nowhere} (link only; target kept)"
+                in _plan_lines(capsys.readouterr().out))
+        assert not (root / "vault").is_symlink()
 
     def test_declared_in_root_arm_is_listed_as_your_files(
         self, config_file, tmp_home, credentials_dir, capsys,

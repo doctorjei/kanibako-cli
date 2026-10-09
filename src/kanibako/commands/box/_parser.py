@@ -30,7 +30,7 @@ from kanibako.settings.config import (
     load_config,
     persist_creation_flags,
 )
-from kanibako.runtime.container import ContainerRuntime
+from kanibako.runtime.container import ContainerRuntime, remove_path
 from kanibako.identifiers import agent_node_case, find_identifier
 from kanibako.errors import ContainerError, DerivedBoxNameError, ProjectError, WorksetError
 from kanibako.project.names import read_names
@@ -2012,7 +2012,8 @@ def _standalone_purge_plan(
     """
     from kanibako.launch.box_resolve import standalone_box_name
     from kanibako.project.workset import (
-        report_retained_vaults, resolve_workset_vault_pair, standalone_vault_teardown)
+        _unfollowed, report_retained_vaults, resolve_workset_vault_pair,
+        standalone_vault_teardown)
     from kanibako.settings.paths import (
         report_retained_store, standalone_logs_dir, standalone_store_teardown_plan)
 
@@ -2036,9 +2037,10 @@ def _standalone_purge_plan(
     settings_file = root / WORKSET_META_FILE
     if settings_file.is_file():
         steps.append(_PurgeStep("metadata", "workset settings", settings_file, gated=True))
-    arms = dict(zip(resolve_workset_vault_pair(root, early=early), _VAULT_LABELS))
+    arms = {_unfollowed(arm): label for arm, label in
+            zip(resolve_workset_vault_pair(root, early=early), _VAULT_LABELS) if arm is not None}
     steps += [_PurgeStep("vault", arms.get(vdir, "vault parent folder"), vdir, gated=True)
-              for vdir in removable_vault if vdir.is_dir()]
+              for vdir in removable_vault if vdir.is_dir() or vdir.is_symlink()]
     report_retained_vaults(root, retained_vault)
     return steps
 
@@ -2069,17 +2071,6 @@ def _confirm_purge(steps: list[_PurgeStep], *, force: bool) -> bool:
     return True
 
 
-def _remove_purge_path(path: Path) -> bool:
-    """Remove one planned path; a symlink loses only the LINK, never its target."""
-    if path.is_symlink():
-        path.unlink()
-        return True
-    if path.is_dir():
-        return _purge_dir(path)
-    path.unlink(missing_ok=True)
-    return True
-
-
 def _run_purge_plan(steps: list[_PurgeStep]) -> bool:
     """Delete *steps* in order; True when every step was removed.
 
@@ -2093,7 +2084,7 @@ def _run_purge_plan(steps: list[_PurgeStep]) -> bool:
             print(f"Kept {step.kind}: {step.path} — the box metadata folder could not be "
                   "removed.", file=sys.stderr)
             continue
-        removed = _remove_purge_path(step.path)
+        removed = remove_path(step.path)
         if step.anchor:
             anchor_removed = removed
         if removed:
