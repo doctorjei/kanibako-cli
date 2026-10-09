@@ -21,7 +21,9 @@ from kanibako.settings.paths import (
     standalone_box_store,
     standalone_store_teardown_plan,
 )
-from kanibako.utils import confirm_prompt
+from kanibako.utils import (
+    confirm_prompt, project_gitignore_to_strip, strip_project_gitignore,
+)
 from kanibako.project.workset import purge_box_logs
 from kanibako.channels.channels import workset_name_token, workset_root
 from kanibako.settings.workset_dirkeys import EarlyScope, refuse_inherited_per_owner
@@ -222,6 +224,9 @@ def _purge_one(std, config, path: str, *, force: bool) -> int:
             if not remove_box_tree(removable_store):
                 _warn_undeleted(removable_store)
             (root / WORKSET_META_FILE).unlink(missing_ok=True)
+            gitignore = project_gitignore_to_strip(root)
+            if gitignore is not None:
+                strip_project_gitignore(gitignore)
             if removable_canon is not None and not remove_path(removable_canon):
                 _warn_undeleted(removable_canon)
             if retained_canon is not None:

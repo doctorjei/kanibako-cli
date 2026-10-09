@@ -34,4 +34,6 @@ def project_hash(project_path: str) -> str
 def literal_path(value: str | os.PathLike[str]) -> str
 def logical_cwd() -> str
 def write_project_gitignore(project_path: Path) -> None
+def project_gitignore_to_strip(project_path: Path) -> Path | None
+def strip_project_gitignore(gitignore: Path) -> bool
 ```

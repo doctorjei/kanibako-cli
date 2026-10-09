@@ -7,6 +7,7 @@ import hashlib
 import os
 import shlex
 import shutil
+import sys
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -251,3 +252,43 @@ def write_project_gitignore(project_path: Path) -> None:
             f.write("\n")
         for line in lines_to_add:
             f.write(line + "\n")
+
+
+def project_gitignore_to_strip(project_path: Path) -> Path | None:
+    """The root .gitignore holding a line :func:`write_project_gitignore` writes, else None.
+
+    A symlinked or unreadable file is left alone with a Note.
+    """
+    gitignore = project_path / IGNORE_FILE
+    if not (gitignore.is_file() or gitignore.is_symlink()):
+        return None
+    try:
+        lines = gitignore.read_bytes().decode("utf-8").splitlines()
+    except (OSError, UnicodeDecodeError) as exc:
+        print(f"Note: could not read {gitignore} ({getattr(exc, 'strerror', None) or exc}); "
+              "any kanibako line in it is yours to remove.", file=sys.stderr)
+        return None
+    if not any(entry in lines for entry in _GITIGNORE_ENTRIES):
+        return None
+    if gitignore.is_symlink():
+        print(f"Note: left {gitignore} in place — it is a link, so kanibako's "
+              f"{', '.join(_GITIGNORE_ENTRIES)} line is yours to remove.", file=sys.stderr)
+        return None
+    return gitignore
+
+
+def strip_project_gitignore(gitignore: Path) -> bool:
+    """Drop kanibako's lines from *gitignore*; unlink it if only whitespace remains."""
+    try:
+        text = gitignore.read_bytes().decode("utf-8")
+        kept = "".join(line for line in text.splitlines(keepends=True)
+                       if line.splitlines()[0] not in _GITIGNORE_ENTRIES)
+        if kept.strip():
+            gitignore.write_bytes(kept.encode("utf-8"))  # in place: keeps its mode
+        else:
+            gitignore.unlink()
+    except (OSError, UnicodeDecodeError) as exc:
+        print(f"Warning: could not remove kanibako's line from {gitignore} ({exc}).",
+              file=sys.stderr)
+        return False
+    return True

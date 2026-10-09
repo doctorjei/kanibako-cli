@@ -81,8 +81,8 @@ from kanibako.agent_ref import GENERAL_SLOT, harness_of, parse_agent_address, wi
 from kanibako.targets import resolve_target
 from kanibako.utils import (
     WORKSET_SEGMENT_PRIMARY, WORKSET_SEGMENT_STANDALONE,
-    container_name_for, container_name_for_box_name, literal_path, logical_cwd, short_hash,
-    write_project_gitignore,
+    container_name_for, container_name_for_box_name, literal_path, logical_cwd,
+    project_gitignore_to_strip, short_hash, strip_project_gitignore, write_project_gitignore,
 )
 
 # ``box duplicate --to`` takes the mode enum's own tokens, never a hand-kept spelling list.
@@ -2107,6 +2107,9 @@ def _standalone_purge_plan(
     settings_file = root / WORKSET_META_FILE
     if settings_file.is_file():
         steps.append(_PurgeStep("metadata", "workset settings", settings_file, gated=True))
+    gitignore = project_gitignore_to_strip(root)
+    if gitignore is not None:
+        steps.append(_PurgeStep("gitignore line", "kanibako's line in", gitignore, gated=True))
     if removable_canon is not None:
         steps.append(_PurgeStep("canon", "box canon (kanibako's handbook)", removable_canon,
                                 gated=True))
@@ -2166,6 +2169,12 @@ def _run_purge_plan(steps: list[_PurgeStep]) -> bool:
             all_removed = False
             print(f"Kept {step.kind}: {step.path} — the box metadata folder could not be "
                   "removed.", file=sys.stderr)
+            continue
+        if step.kind == "gitignore line":
+            if strip_project_gitignore(step.path):
+                print(f"Removed kanibako's line in {step.path}")
+            else:
+                all_removed = False
             continue
         removed = remove_path(step.path)
         if step.anchor:

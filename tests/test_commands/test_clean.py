@@ -293,6 +293,20 @@ class TestCleanExtended:
         assert not (project_dir / "box_data").exists()
         assert (project_dir / "canon" / "mine.txt").read_text() == "mine\n"
 
+    def test_purge_standalone_drops_a_gitignore_holding_only_kanibakos_line(
+        self, config_file, tmp_home,
+    ):
+        from kanibako.commands.clean import run
+
+        project_dir = tmp_home / "project"
+        (project_dir / "box_data").mkdir(parents=True)
+        (project_dir / "workset.yaml").write_text("workset:\n  registry: null\n")
+        (project_dir / ".gitignore").write_text("box_data/\n")
+
+        args = argparse.Namespace(path=str(project_dir), all_projects=False, force=True)
+        assert run(args) == 0
+        assert not (project_dir / ".gitignore").exists()
+
     def test_purge_standalone_refuses_a_malformed_root_file(self, config_file, tmp_home):
         from kanibako.commands.clean import run
         from kanibako.errors import ConfigError
