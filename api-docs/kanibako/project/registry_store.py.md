@@ -29,9 +29,11 @@ def standalone_name_for_same_dir(registry: Path, root: Path) -> str | None
 def load_deregistered(registry: Path) -> dict[str, dict]
 def register_deregistered(registry: Path, box_name: str, *, kind: str, workspace: str | None, metadata: str, image: str | None=None, deregistered_at: str | None=None) -> None
 def unregister_deregistered(registry: Path, box_name: str) -> bool
+def deregistered_standalone_for_dir(registry: Path, root: Path) -> tuple[str, dict] | None
 def lookup_deregistered(registry: Path, box_name: str) -> dict | None
 def list_deregistered(registry: Path) -> dict[str, dict]
 def _drop_case_twin(entries: dict, box_name: str) -> None
 def _same_directory(a: str, b: str) -> bool
+def _parks_standalone_dir(entry: dict, root: Path) -> bool
 def _metadata_definitively_gone(path: str) -> bool
 ```

@@ -157,8 +157,7 @@ def register_standalone(registry: Path, box_name: str, root: Path) -> None:
         # ⚑ A ``deregistered:`` row for this directory is stale once it is active
         # again, and a purge by that row would delete the live box's metadata.
         parked = load_deregistered(registry)
-        stale = [n for n, e in parked.items() if e.get("kind") == "standalone"
-                 and e.get("metadata") and _same_directory(str(e["metadata"]), str(root))]
+        stale = [n for n, e in parked.items() if _parks_standalone_dir(e, root)]
         if stale:
             for n in stale:
                 del parked[n]
@@ -280,6 +279,23 @@ def unregister_deregistered(registry: Path, box_name: str) -> bool:
             save_section(registry, "deregistered", entries)
             return True
         return False
+
+
+def _parks_standalone_dir(entry: dict, root: Path) -> bool:
+    """True when the ``deregistered`` *entry* retains the standalone box at *root*."""
+    return (entry.get("kind") == "standalone" and bool(entry.get("metadata"))
+            and _same_directory(str(entry["metadata"]), str(root)))
+
+
+def deregistered_standalone_for_dir(registry: Path, root: Path) -> tuple[str, dict] | None:
+    """The ``deregistered`` ``(name, entry)`` retaining the standalone box at *root*, or ``None``.
+
+    ``rm <path> --purge`` routes through it so the purge also drops the parked entry.
+    """
+    for name, entry in load_deregistered(registry).items():
+        if _parks_standalone_dir(entry, root):
+            return name, entry
+    return None
 
 
 def lookup_deregistered(registry: Path, box_name: str) -> dict | None:

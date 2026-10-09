@@ -2409,6 +2409,10 @@ def run_rm(args: argparse.Namespace) -> int:
         # ⚑ STANDALONE boxes are not in the name index — resolve them separately.
         sa_name, sa_root, sa_registered = _resolve_standalone_target(std, config, target)
         if sa_name is not None:
+            parked = (registry_store.deregistered_standalone_for_dir(std.registry, sa_root)
+                      if args.purge and not sa_registered and sa_root is not None else None)
+            if parked is not None:
+                return _purge_deregistered(std, parked[0], parked[1], args)
             return _rm_standalone(std, sa_name, sa_root, args, registered=sa_registered)
 
     if name is None:

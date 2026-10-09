@@ -16,8 +16,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   standalone box, by its path or from inside its tree, used to add it to the registry; it now leaves the registry
   alone, and a move keeps the box unregistered. Run `kanibako box register <path>` to register it. `box rm <path>`
   on an unregistered box changes nothing and names `box rm <path> --purge`, which deletes it. `box duplicate`
-  makes an unregistered standalone copy, even of a registered box, unless given its new `--register`. A named
-  workset found on disk is still imported.
+  makes an unregistered standalone copy, even of a registered box, unless given its new `--register`. A registered
+  box that `workset connect --force` absorbed comes back unregistered from `workset disconnect`;
+  `kanibako box register <path>` registers it again. A named workset found on disk is still imported.
 
 - **`box rm --purge` lists every path it will delete before it asks.** The list names the box's metadata folder,
   each vault folder (marked "your files"), its logs, and for a standalone box the root `workset.yaml`; a vault the

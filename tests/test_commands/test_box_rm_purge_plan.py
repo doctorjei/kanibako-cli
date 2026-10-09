@@ -188,6 +188,23 @@ class TestUnregisteredStandalone:
         assert not (root / "box_data").exists()
         assert (registry.read_bytes() if registry.exists() else None) == before
 
+    def test_purge_by_path_after_plain_rm_drops_the_parked_entry(
+        self, config_file, tmp_home, credentials_dir, capsys,
+    ):
+        from kanibako.commands.box._parser import run_rm
+        from kanibako.project import registry_store
+
+        root = tmp_home / "sa"
+        _create(root, standalone=True)
+        registry = _std(config_file).registry
+        assert run_rm(argparse.Namespace(target=str(root), purge=False, force=False)) == 0
+        assert registry_store.load_deregistered(registry)
+
+        assert _rm(str(root), force=True) == 0
+        assert not (root / "box_data").exists()
+        assert registry_store.load_deregistered(registry) == {}
+        assert registry_store.load_standalone(registry) == {}
+
 
 class TestStandalonePurge:
     def test_declined_question_keeps_the_registration(
