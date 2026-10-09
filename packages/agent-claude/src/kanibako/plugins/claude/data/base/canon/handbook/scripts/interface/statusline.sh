@@ -153,7 +153,7 @@ else
     COST_FMT=$(printf '($%.2f)' "$COST" 2>/dev/null || echo "(\$$COST)")
 fi
 
-# Color: green [0,75)%, yellow [75-90)%, red [90-100]%
+# Color: green below CAUTION_PCT, yellow from CAUTION_PCT, red from DANGER_PCT
 if [ "${PCT_OUT%.*}" -ge "${DANGER_PCT}" ]; then
     COLOR='\033[31m'
 elif [ "${PCT_OUT%.*}" -ge "${CAUTION_PCT}" ]; then
