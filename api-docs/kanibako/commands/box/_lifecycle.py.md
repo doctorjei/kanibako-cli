@@ -66,7 +66,7 @@ def _unreceived_vault_leaves(src_arms: tuple[Path | None, Path | None], dst_vaul
 def _report_unreceived_vaults(kept: list[tuple[Path, str]]) -> None
 def _carried_member_store(ws: Workset, name: str, dst_vault: tuple[Path | None, Path | None], *, vault_enabled: bool=True) -> tuple[tuple[Path, ...], list[tuple[Path, str]]]
 def _nulled_arm_stores(ws: Workset, name: str) -> list[tuple[Path, str]]
-def _remove_old_metadata(state: ProjectState, std: StandardPaths, config: BootstrapConfig, unwind: _Unwind, *, dst_vault: tuple[Path | None, Path | None], preserve_name: str | None=None, preserve_root: Path | None=None) -> None
+def _remove_old_metadata(state: ProjectState, std: StandardPaths, config: BootstrapConfig, unwind: _Unwind, *, dst_vault: tuple[Path | None, Path | None], preserve_name: str | None=None, new_name: str | None=None, preserve_root: Path | None=None) -> None
 def _retire_old_store(ws: Workset, name: str, dst_vault: tuple[Path | None, Path | None], vault_enabled: bool=True, *, reraise: bool=False) -> None
 def _report_store_leftovers(ws: Workset, name: str, err: OSError | None=None, *, keep: list[tuple[Path, str]] | None=None) -> None
 def _to_default(state: ProjectState, std: StandardPaths, config: BootstrapConfig, unwind: _Unwind, *, new_name: str, new_workspace: Path, requested_name: str='') -> ProjectState
@@ -88,6 +88,7 @@ def _member_leaves(ws: Workset, name: str) -> tuple[Path | None, Path, Path | No
 def _existing_member_leaves(ws: Workset, name: str) -> frozenset[Path]
 def _unwind_target_member(ws: Workset, name: str, existed: frozenset[Path]) -> None
 def _dispose_stash(stash: Path) -> None
+def _convert_target_flags(args) -> list[str]
 def _ownership_from_args(args) -> str | _Sentinel
 def _validated_name(args) -> str | None
 def _make_confirm(force: bool, summary: str)
