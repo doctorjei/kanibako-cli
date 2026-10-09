@@ -760,8 +760,8 @@ def run_disconnect(args: argparse.Namespace) -> int:
         print(f"Error: {e}", file=sys.stderr)
         return 1
     except OSError as e:
-        # ⚑ NOT redundant with the WorksetError arm: a box tree can REFUSE deletion
-        # (root-owned canon skeleton, or anything the rootless container wrote as root).
+        # ⚑ NOT redundant with the WorksetError arm: the WORKSPACE leaf's plain
+        # ``rmtree`` can refuse (a store leaf refusing is the arm above).
         print(f"Error: could not remove project '{member}': {e}", file=sys.stderr)
         cure = e.filename or str(ws.projects_dir / member)
         print(f"  Try: podman unshare rm -rf {shlex.quote(str(cure))}",
@@ -772,7 +772,7 @@ def run_disconnect(args: argparse.Namespace) -> int:
         # through ``release_project``, and its logs must survive the move.
         purge_box_logs(std, logs_dir, proj.name, workset_root=ws.root)
     if snapshot_store is not None:
-        # The box's OWN store only — never the shared base or a neighbour's.
+        # The box's OWN store only — never the shared base or a neighbor's.
         from kanibako.commands.clean import _remove_snapshot_store
         _remove_snapshot_store(snapshot_store)
     print(f"Removed project '{proj.name}' from working set '{ws.name}'")

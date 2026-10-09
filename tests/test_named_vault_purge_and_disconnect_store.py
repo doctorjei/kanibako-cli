@@ -71,7 +71,7 @@ def _named_pair(env, tmp_home: Path, wsname: str = "plws"):
     config, std = env
     ws = create_workset(wsname, tmp_home / f"{wsname}_root", std)
     made = {}
-    for box in ("alpha", "neighbour"):
+    for box in ("alpha", "neighbor"):
         source = tmp_home / f"{box}_src"
         source.mkdir()
         add_project(ws, box, source, std)
@@ -102,15 +102,15 @@ class TestNamedPurgeTakesOwnVaultLeaves:
             f"named-member purge left the box's own vault rw leaf: {rw}"
         )
 
-    def test_named_purge_leaves_a_neighbours_vault_intact(self, env, tmp_home):
+    def test_named_purge_leaves_a_neighbors_vault_intact(self, env, tmp_home):
         """CONTROL: purging one member must not reach another's leaves."""
         _ws, made = _named_pair(env, tmp_home)
-        n_ro, n_rw, _ = made["neighbour"]
+        n_ro, n_rw, _ = made["neighbor"]
 
         _door("box", "purge", "alpha", "--force")
 
-        assert (n_ro / "r.txt").read_text() == "RO-neighbour\n"
-        assert (n_rw / "w.txt").read_text() == "RW-neighbour\n"
+        assert (n_ro / "r.txt").read_text() == "RO-neighbor\n"
+        assert (n_rw / "w.txt").read_text() == "RW-neighbor\n"
 
     def test_named_purge_leaves_the_shared_versions_base(self, env, tmp_home):
         """CONTROL: the ``.versions`` base and its marker are not the box's to take."""
@@ -161,14 +161,14 @@ class TestDisconnectTakesTheMembersStore:
             f"disconnect --remove-files left the member's snapshot store: {store}"
         )
 
-    def test_disconnect_remove_files_leaves_a_neighbours_store(self, env, tmp_home):
+    def test_disconnect_remove_files_leaves_a_neighbors_store(self, env, tmp_home):
         """CONTROL: the neighbor's store and its listing survive."""
         ws, made = _named_pair(env, tmp_home)
-        n_store = made["neighbour"][2]
+        n_store = made["neighbor"][2]
 
         _door("workset", "disconnect", ws.name, "alpha", "--remove-files", "--force")
 
-        assert n_store.is_dir(), "the disconnect took a neighbour's store"
+        assert n_store.is_dir(), "the disconnect took a neighbor's store"
 
     def test_disconnect_without_remove_files_leaves_the_store(self, env, tmp_home):
         """CONTROL: a plain disconnect removes no files, store included."""
@@ -290,3 +290,37 @@ class TestMemberStoreUsesTheEscalatingDeleter:
 
         with pytest.raises(OSError, match="podman unshare rm -rf"):
             remove_member_store(ws, "alpha", bases=self._bases(ws))
+
+    def test_disconnect_refuses_when_the_box_tree_refuses(
+        self, env, tmp_home, monkeypatch, capsys
+    ):
+        """RED at the base: a refused box-tree delete was DISCARDED (rc 0, released).
+
+        ``remove_box_tree`` reports a refusal by returning ``False``, never by raising;
+        the box tree must fail the same LOUD way a vault leaf does, and the member
+        stays registered so the command can be re-run.
+        """
+        import kanibako.runtime.container as container
+        from kanibako.project.workset import load_workset
+
+        _config, std = env
+        ws, _made = _named_pair(env, tmp_home)
+        tree = ws.projects_dir / "alpha"
+        tree.mkdir(parents=True, exist_ok=True)
+        real = container.remove_box_tree
+        monkeypatch.setattr(
+            container, "remove_box_tree", lambda p: False if p == tree else real(p))
+
+        assert _door("workset", "disconnect", ws.name, "alpha",
+                    "--remove-files", "--force") == 1
+        err = capsys.readouterr().err
+        assert f"could not remove {tree}" in err and "podman unshare rm -rf" in err
+        assert tree.is_dir(), "the refused box tree vanished"
+        members = [p.name for p in load_workset(
+            ws.root, ws.name, early_system=std.early_system).projects]
+        assert "alpha" in members, "a refused delete released the member"
+
+        monkeypatch.setattr(container, "remove_box_tree", real)
+        assert _door("workset", "disconnect", ws.name, "alpha",
+                    "--remove-files", "--force") == 0
+        assert not tree.exists()
