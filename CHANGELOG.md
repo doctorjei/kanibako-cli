@@ -28,6 +28,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   target, and the list says so. The same holds when a standalone box's `vault/` folder is itself a symlink: only
   the link goes, and the vault folders behind it are kept and named.
 
+- **Vault snapshots are per-box, and a restore keeps a copy of what it replaces.** Snapshots used to
+  share one flat `.versions` store per vault base, named by timestamp alone, so one box could list,
+  prune, or RESTORE another box's snapshots — a `restore` on box A replaced A's files with B's data at
+  exit code 0 with no warning, and two boxes snapshotting in the same second merged into one directory
+  holding both. Snapshots now live in `.versions/<box-name>/<timestamp>`; `list`, `prune`, and
+  `restore` see only the addressed box's own store, and `restore` refuses a snapshot belonging to
+  another box, naming the owner. `restore` now snapshots the live contents first, so the copy it
+  displaces is never the only copy and the restore can be undone by restoring that snapshot; if the
+  safety copy cannot be made, the restore does not run. Legacy snapshots are split on first use —
+  attributed to the box where provable (a standalone box), otherwise kept in `.versions/unsorted`,
+  which is listed, never pruned, and not restorable by name. See MIGRATION §2.113.
+
 - **A box named after its directory must have a valid box name.** A directory name that breaks the box-name rule
   (`my project`, `-x`) is refused before anything is written by `create`, `workset connect`, `box duplicate` to a
   named or primary box, `box extract`, `box move`, and `box convert --default` with no `--name`, each printing its
