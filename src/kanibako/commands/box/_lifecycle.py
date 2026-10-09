@@ -678,9 +678,22 @@ class _Unwind:
 
     actions: list[Callable[[], None]] = field(default_factory=list)
     cleanups: list[Callable[[], None]] = field(default_factory=list)
+    sealed: bool = False
 
     def push(self, action: Callable[[], None]) -> None:
         self.actions.append(action)
+
+    def push_until_sealed(self, action: Callable[[], None]) -> None:
+        """Push *action*, skipped once :meth:`seal` has run."""
+        self.actions.append(lambda: None if self.sealed else action())
+
+    def seal(self) -> None:
+        """Mark the source teardown: from here the destination may hold the ONLY copy.
+
+        ⚑ A failure after this point must neither delete nor call "yours to remove" a
+        destination tree, so every :meth:`push_until_sealed` action is dropped.
+        """
+        self.sealed = True
 
     def on_success(self, action: Callable[[], None]) -> None:
         """Register an action to run only when the whole op succeeds.
@@ -1419,7 +1432,7 @@ def note_added_leftovers(path: Path, before: frozenset[str] | None) -> None:
 
 def _arm_leftover_note(unwind: _Unwind, path: Path) -> None:
     """Push a :func:`note_added_leftovers` for the existing directory *path*."""
-    unwind.push(partial(note_added_leftovers, path, _entry_names(path)))
+    unwind.push_until_sealed(partial(note_added_leftovers, path, _entry_names(path)))
 
 
 def _apply_ownership_and_markers(
@@ -1970,6 +1983,7 @@ def _remove_old_metadata(
                            or vault.resolve() in arm.parents
                            for arm in held)
             ]
+        unwind.seal()
         # ⚑ Standalone lives in registry.standalone: drop that entry too,
         # or a standalone→standalone move strands the old name → root mapping.
         # ⚑ Unless it is the destination's own live entry (see ``new_name``).
@@ -2010,6 +2024,7 @@ def _remove_old_metadata(
                 pass
         if reused_in_place:
             return
+        unwind.seal()
         if state.metadata_path.is_dir():
             remove_box_tree(state.metadata_path)
         # ⚑⚑ The PRIMARY vault is NOT under metadata_path: it is a per-box ``<name>`` LEAF
@@ -2410,10 +2425,10 @@ def _move_entry(src: Path, dst: Path) -> None:
         mode = stat.S_IMODE(src.lstat().st_mode)
         if mode & stat.S_IWUSR:
             mode = None
-        else:
-            os.chmod(src, mode | stat.S_IWUSR)
     landed = dst if not (dst.exists() or dst.is_symlink()) else dst / src.name
     try:
+        if mode is not None:
+            os.chmod(src, mode | stat.S_IWUSR)
         shutil.move(str(src), str(dst))
     finally:
         if mode is not None:
@@ -2486,14 +2501,14 @@ def _arm_standalone_root_undo(
 
     probe = resolve_standalone_project(std, config, str(root), register=False)
     undo, wrote = _new_box_undo(std, replace(probe, project_path=None), standalone=True)
-    for leaf in (probe.vault_ro_path, probe.vault_rw_path):
+    for leaf in (probe.vault_ro_path, probe.vault_rw_path, root / bootstrap.VAULT_PATH):
         if leaf is not None and leaf.is_dir():
             _arm_leftover_note(unwind, leaf)
     top = workspace_subdir
     while not (top.parent.exists() or top.parent.is_symlink()):
         top = top.parent
     if not (top.exists() or top.is_symlink()):
-        unwind.push(partial(_prune_empty_dirs, workspace_subdir, top.parent))
+        unwind.push_until_sealed(partial(_prune_empty_dirs, workspace_subdir, top.parent))
     return undo, wrote
 
 
@@ -2557,7 +2572,7 @@ def _to_standalone(
         _consolidate_workspace_subdir(root, workspace_subdir, unwind, early=_early_scope(std, BoxMode.standalone))
     # ⚑ Pushed AFTER the sweep, so it runs BEFORE the sweep's undo: a root file the sweep
     # moved (the user's ``.gitignore``) goes back OVER this restore, never under it.
-    unwind.push(root_undo)
+    unwind.push_until_sealed(root_undo)
     if not reused_in_place:
         _copy_metadata(
             src_meta_dir, state.shell_path,
@@ -2772,7 +2787,8 @@ def _to_workset(
     # leaf is the source's own, intact workspace.
     existed = _existing_member_leaves(target_ws, new_name)
     add_project(target_ws, new_name, source_for_add, std, force=True)
-    unwind.push(lambda: _unwind_target_member(target_ws, new_name, existed))
+    unwind.push(lambda: _unwind_target_member(target_ws, new_name, existed,
+                                              name_leftovers=not unwind.sealed))
 
     dst_project = target_ws.projects_dir / new_name
     # Copy metadata (minus lock+home) into the workset boxes dir.
@@ -3068,6 +3084,7 @@ def _existing_member_leaves(ws: Workset, name: str) -> dict[Path, frozenset[str]
 
 def _unwind_target_member(
     ws: Workset, name: str, existed: Mapping[Path, frozenset[str] | None],
+    *, name_leftovers: bool = True,
 ) -> None:
     """Undo a target registration: the record, plus each leaf NOT in *existed*.
 
@@ -3088,7 +3105,8 @@ def _unwind_target_member(
         if leaf is None:
             continue
         if leaf in existed:
-            note_added_leftovers(leaf, existed[leaf])
+            if name_leftovers:
+                note_added_leftovers(leaf, existed[leaf])
             continue
         try:
             if leaf.is_symlink() or leaf.is_dir():
