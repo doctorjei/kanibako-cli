@@ -7172,18 +7172,26 @@ name to the dead path), so use `box rm <old key>` and `box register <new path>`.
 
 ### 2.113 Vault snapshots are per-box; a restore keeps a copy of what it replaces
 
-**What changed.** Vault snapshots used to live in one flat `.versions` directory one level above
-`vault/rw`, named by UTC timestamp alone. Every box's `vault/rw` is a direct child of the same vault
-base, so all primary boxes shared one store, and so did all named members of one workset; only a
-standalone box was isolated, because its store sits inside its own project tree. Measured before the
-fix: `box vault list` on one box listed another box's snapshots, `box vault restore` on one box
-installed another box's data and destroyed the first box's own files at exit code 0 with no warning,
-and `box vault prune` on one box deleted another box's snapshots. Two boxes snapshotted inside the same
-second also landed on the same name and merged into one directory holding both boxes' files.
+**What changed.** Vault snapshots used to be named by UTC timestamp alone and filed in a `.versions`
+directory beside the box's own `vault/rw` — that is, `<vault base>/vault/rw/.versions` for a primary or
+named box, and `<project>/vault/.versions` for a standalone one. Every primary and named box's `rw` is a
+direct child of the same vault base, so all primary boxes shared one store, and so did all named members
+of one workset; only a standalone box was isolated, because its store sits inside its own project tree.
+Measured before the fix: `box vault list` on one box listed another box's snapshots, `box vault restore`
+on one box installed another box's data and destroyed the first box's own files at exit code 0 with no
+warning, and `box vault prune` on one box deleted another box's snapshots. Two boxes snapshotted inside
+the same second also landed on the same name and merged into one directory holding both boxes' files.
 
 Snapshots now live in a per-box store, `.versions/<box-name>/<timestamp>`. `list`, `prune`, and
 `restore` traverse only the addressed box's own store, and `restore` refuses a snapshot that belongs to
 a different box, naming the owner.
+
+**The base remembers its layout.** The first time kanibako converts a `.versions` base it writes a
+`.versions/.layout` marker in it, and once that marker is present the old flat-name detection never runs
+again. This matters because a box name can itself look like a timestamp — `20200101T000000Z` is a legal
+box name — and a box can be called `unsorted`. The bucket for unattributable data is therefore named
+`.unsorted`, which no box name can reach, and the marker retires the name match after the one conversion
+it is for, so a timestamp-named box's store can never be swept into the bucket by some other box's pass.
 
 **What you must do.** Nothing for new snapshots. If you have snapshots taken before this change, they
 are split automatically the first time you run `box vault list`, `prune`, or `restore`:
@@ -7191,20 +7199,33 @@ are split automatically the first time you run `box vault list`, `prune`, or `re
 | Your situation | What happens |
 |---|---|
 | Standalone box | Its legacy snapshots are provably its own (the store is inside its project tree) and move into its box store. They stay listed and restorable by name. |
-| Primary or named box | The old store never recorded which box wrote a snapshot, so the owner cannot be proven. Those entries move to `.versions/unsorted`. |
+| Primary or named box | The old store never recorded which box wrote a snapshot, so the owner cannot be proven. Those entries move to `.versions/.unsorted`. |
 
-`.versions/unsorted` is **listed** by `box vault list` under a heading of its own, is **never deleted**
+`.versions/.unsorted` is **listed** by `box vault list` under a heading of its own, is **never deleted**
 by `prune` — not even `--keep 0` — and is **not restorable by name**, because its owner is unknown. The
 refusal prints the on-disk path so you can recover a file from it by hand. If you know which box a
 legacy snapshot belonged to, move that directory into the box's own store and it becomes a normal
 snapshot.
 
+**A rename carries the store.** A box's snapshots are keyed on the box, so `box move` and `box convert`
+move `.versions/<old-name>` to `.versions/<new-name>` with the box, across bases when the convert moves
+the vault. A standalone box's store lives inside its own tree, so renaming that directory by hand carries
+the store but not its key; the box adopts it on the next vault command, matching on the kuid, which is
+the half of the name that survives a rename. Nothing is adopted when the tree holds more than one store
+carrying that kuid, and nothing is overwritten where the destination name is already taken — the entries
+merge under a suffixed name instead.
+
 **A restore is now undoable.** `box vault restore` snapshots the current contents into your box's store
 before replacing them, so the copy it displaces is no longer the only copy; restoring that safety
-snapshot puts the displaced work back. If the safety copy cannot be made, the restore does not run. The
-confirmation prompt no longer says the operation cannot be undone. Note that the safety snapshot counts
-toward your retention limit, so a `prune --keep 1` after a restore can remove it — prune before you
-restore, or keep one more.
+snapshot puts the displaced work back. If the safety copy cannot be made, the restore does not run and
+says so instead of failing with a traceback. The confirmation prompt no longer says the operation cannot
+be undone. ⚑ Note that the safety snapshot counts toward the retention limit, and a box launch takes an
+automatic snapshot that prunes to five: a safety snapshot you make today is therefore gone after five
+starts of that box. Keep one more than you think you need if you want the undo to outlive that.
+
+A snapshot taken in the same second as one that already exists gets a `-2`, `-3`, … suffix so the two
+copies stay separate. Those names do not parse as timestamps, so `box vault list` shows the raw name in
+the time column rather than a formatted one.
 
 ---
 

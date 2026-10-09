@@ -36,9 +36,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `restore` see only the addressed box's own store, and `restore` refuses a snapshot belonging to
   another box, naming the owner. `restore` now snapshots the live contents first, so the copy it
   displaces is never the only copy and the restore can be undone by restoring that snapshot; if the
-  safety copy cannot be made, the restore does not run. Legacy snapshots are split on first use —
-  attributed to the box where provable (a standalone box), otherwise kept in `.versions/unsorted`,
-  which is listed, never pruned, and not restorable by name. See MIGRATION §2.113.
+  safety copy cannot be made, the restore does not run and says so rather than failing with a traceback.
+  A box's store follows the box: `box move` and `box convert` carry it, and a standalone box whose
+  directory was renamed adopts the store already in its own tree. Legacy snapshots are split on first
+  use — attributed to the box where provable (a standalone box), otherwise kept in
+  `.versions/.unsorted`, which is listed, never pruned, and not restorable by name. See MIGRATION,
+  "Vault snapshots are per-box; a restore keeps a copy of what it replaces".
 
 - **A box named after its directory must have a valid box name.** A directory name that breaks the box-name rule
   (`my project`, `-x`) is refused before anything is written by `create`, `workset connect`, `box duplicate` to a
