@@ -1878,11 +1878,12 @@ class TestRollbacksDeleteOnlyWhatTheOpCreated:
         assert f"Note: could not remove {stash}; it may hold credentials" in (
             capsys.readouterr().err)
 
-    def test_a_source_box_tree_left_by_the_release_is_reported(
-        self, env, monkeypatch, capsys,
+    def test_a_source_box_tree_the_release_cannot_remove_unwinds(
+        self, env, monkeypatch,
     ):
-        """ws→ws: a False from the box-tree deleter in leg 1 names the leftover tree."""
+        """ws→ws: a False from the box-tree deleter in leg 1 fails the move, which unwinds."""
         import kanibako.runtime.container as container
+        from kanibako.project.workset import StoreRemovalError
 
         config, std, tmp_home = env
         ws1 = _make_workset(env, "ws1", "ws1_root")
@@ -1894,12 +1895,14 @@ class TestRollbacksDeleteOnlyWhatTheOpCreated:
             container, "remove_box_tree",
             lambda p: False if p == src_tree else real_remove(p),
         )
-        execute_lifecycle(
-            state, TargetSpec(location=BARE_INTO_WS, ownership="ws2"),
-            std, config, confirm=_conf_yes(),
-        )
-        assert (f"Note: could not remove the old store of 'alpha'; left {src_tree}"
-                in capsys.readouterr().err)
+        with pytest.raises(StoreRemovalError, match=f"could not remove {src_tree}"):
+            execute_lifecycle(
+                state, TargetSpec(location=BARE_INTO_WS, ownership="ws2"),
+                std, config, confirm=_conf_yes(),
+            )
+        self._assert_source_whole(ws1, leaf, state)
+        assert [p.name for p in load_workset(
+            ws1.root, ws1.name, early_system=std.early_system).projects] == ["alpha"]
 
     def test_store_removal_failure_after_success_is_a_note(
         self, env, monkeypatch, capsys,

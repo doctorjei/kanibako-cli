@@ -2106,8 +2106,8 @@ def _report_store_leftovers(
 ) -> None:
     """Print a Note naming each of member *name*'s store leaves still on disk.
 
-    ⚑ ``remove_member_store`` does not pass on a ``False`` from ``remove_box_tree``, so
-    only the disk says whether the box tree (which may hold credentials) is gone.
+    ⚑ The disk, not *err*, says what is left: ``remove_member_store`` stops at the
+    first leaf that refuses, so every leaf after it remains too.
     ⚑ *keep* holds the leaves this operation RETAINED on purpose; the retained-vault
     Note already accounts for them, and a second Note would call a deliberate keep a
     failure.

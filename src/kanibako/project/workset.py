@@ -1758,25 +1758,17 @@ def remove_member_store(
     *bases* is :func:`_member_store_bases`, resolved by a caller that must refuse BEFORE an
     irreversible step (``remove_project`` deletes under these bases before it releases).
     """
-    # ⚑ Per-box vault LEAVES only — never the shared ro/rw parents.
-    # ⚑⚑ RESOLVED, and it MUST match ``add_project``: deleting the composed default
-    # while the box's real vault sits at the repoint leaves the user's data orphaned
-    # AND removes a directory the box never used.
-    boxes_dir, *vault_bases = bases or _member_store_bases(ws)
-    # ⚑ EVERY removal here needs the UNSHARE ESCALATION (J-7): a plain ``rmtree`` cannot
-    # enter a 555 dir the caller OWNS, and a container writes vault content as root.
-    # ``remove_path`` also spares a linked leaf's target.
-    from kanibako.runtime.container import remove_box_tree, remove_path
+    # ⚑ Per-box LEAVES only, never the shared parents.  ⚑⚑ RESOLVED to match
+    # ``add_project``, or a repointed vault is orphaned and an unused dir removed.
+    # ⚑ EVERY removal needs the UNSHARE ESCALATION (J-7): ``rmtree`` cannot enter a 555
+    # dir the caller OWNS, and a container writes as root.  ``remove_path`` spares a
+    # linked leaf's target.
+    from kanibako.runtime.container import remove_path
 
-    box_tree = boxes_dir / name
-    if box_tree.is_symlink():
-        box_tree.unlink()
-    elif box_tree.is_dir():
-        remove_box_tree(box_tree)
-    for base in vault_bases:
+    for base in bases or _member_store_bases(ws):
         leaf = base / name
         if (leaf.is_dir() or leaf.is_symlink()) and not remove_path(leaf):
-            # ⚑ LOUD, never a silent pass ("rc unchanged" = retire's on_success only).
+            # ⚑ LOUD, never a silent pass.
             err = StoreRemovalError(
                 f"could not remove {leaf}; try: podman unshare rm -rf "
                 f"{shlex.quote(str(leaf))}", leaf)

@@ -749,6 +749,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **A move names what it could not delete at the old place.** When a read-only folder stops the removal of
   the old workspace, the Note now says the move is complete and lists what is left. A convert from primary to
   standalone that cannot fully remove the old vault folder now says so; it used to leave it silently.
+- **`workset disconnect --remove-files` fails when the box's own tree cannot be deleted.** It printed `Removed
+  project` with exit code 0, released the box, and left its `boxes/` tree behind. It now exits 1 with the path and
+  a `podman unshare rm -rf` cure, and keeps the box registered so the same command can be re-run. A move between
+  worksets that cannot delete the old tree now fails and restores the box where it was.
 - **`box list` shows a deregistered primary box once, under "Deregistered boxes".** It was also listed in the main
   table as `unknown (no breadcrumb)`, and `box list --orphan` called it an orphan.
 - **Purging a standalone box deletes its `canon/` folder.** `box rm --purge` and `box purge` left the `canon/`
