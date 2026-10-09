@@ -3719,6 +3719,7 @@ def _run_container(
         ended_rc = _agent_exit_rc(
             runtime, container_name, reattach_rc, bootstrap_program,
             session_seen=session_seen,
+            supervised=bool(stored_agent) and is_agent_mode and has_plugin(target),
         )
         if ended_rc is not None:
             reattach_rc = ended_rc
@@ -5300,6 +5301,7 @@ def _run_container(
             # fully ready for exec even though is_running() returned True
             # (podman race: "container state improper").  Retry a few times.
             _max_exec_attempts = 5
+            attached = False
             for _exec_attempt in range(1, _max_exec_attempts + 1):
                 # Readiness probe (CAPTURED) before the TTY-inheriting
                 # interactive exec.  exec_ready runs the same operation with
@@ -5347,9 +5349,10 @@ def _run_container(
                 rc = runtime.exec(
                     container_name, _bootstrap_attach(bootstrap_program), attach=True
                 )
+                attached = attached or session_seen or rc == 0
                 ended_rc = _agent_exit_rc(
                     runtime, container_name, rc, bootstrap_program,
-                    session_seen=session_seen,
+                    session_seen=session_seen, supervised=supervise_agent,
                 )
                 if ended_rc is not None:
                     rc = ended_rc
@@ -5432,7 +5435,8 @@ def _run_container(
                     # _restore_host_terminal(), so we MUST still surface the logs — the
                     # death cause — even at a tty (restores commit 05f7f04's contract;
                     # the FF-10 suppression over-reached to the crash path).
-                    if rc != 0 or not _interactive_host():
+                    # A session never attached was not seen live: echo it too.
+                    if rc != 0 or not attached or not _interactive_host():
                         print(logs, file=sys.stderr)
                 # FIX 2 (launch-validation), as on the never-started path above, and
                 # equally BOUNDED.  Still write back FIRST: a partial in-box login
@@ -10064,21 +10068,21 @@ def _bootstrap_session_exists(runtime: ContainerRuntime, name: str) -> bool:
 
 def _agent_exit_rc(
     runtime: ContainerRuntime, name: str, rc: int, program: str, *,
-    session_seen: bool,
+    session_seen: bool, supervised: bool,
 ) -> int | None:
     """After a tmux attach to box *name* returned *rc*: the agent-exit rc, or ``None``.
 
     An attach returns on a detach (the session lives on) or when the session ends
     with its agent; the container's running state lags the agent's exit, so only
     the session tells them apart.  The session existed if the attach succeeded
-    (rc 0) or *session_seen* says so, or the box is already down; one that never
-    did, on a live box, may not be created yet, and one whose box outlives the
-    bound is still live — both are ``None``.
+    (rc 0) or *session_seen* says so, or a *supervised* box is already down (its
+    code is the supervisor's verdict); one that never did may not be created yet,
+    and one whose box outlives the bound is still live — both are ``None``.
     Otherwise the box is stopping: wait for it rather than race the supervisor's
     poll, and prefer its exit code, since the attach's rc is tmux's.
     """
     if program != "tmux" or not (
-        rc == 0 or session_seen or not runtime.is_running(name)
+        rc == 0 or session_seen or (supervised and not runtime.is_running(name))
     ):
         return None
     if _bootstrap_session_exists(runtime, name):

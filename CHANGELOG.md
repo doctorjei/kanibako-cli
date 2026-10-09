@@ -723,8 +723,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **A foreground box stops when its agent exits.** An agent that exited while attached sometimes left its box behind
   as an `Exited` container, because `start` returned before the box had stopped and took it for a detach. `start` now
-  tells the two apart by whether the agent's session still exists, and waits for the box to stop. An attach that
-  missed an agent which had already exited no longer returns 1.
+  tells the two apart by whether the agent's session still exists, and waits for the box to stop. When a supervised
+  agent exits before `start` can attach, `start` returns the box's code, not 1, and prints the box's logs.
 
 - **A refused `create` on a fresh install no longer leaves the first-run setup behind.** An invalid `--name`
   and the `$HOME` guard now refuse before setup writes `kanibako.cfg` and the data tree.

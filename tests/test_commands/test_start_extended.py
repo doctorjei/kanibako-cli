@@ -1757,6 +1757,69 @@ class TestForegroundAgentExitStopsTheBox:
         assert "Error" not in err and "Could not attach" not in err
         assert ("start -N" in err) is (code != 0)
 
+    @staticmethod
+    def _unsupervised(m):
+        """The ``--agent shell`` shape: no plugin, so no supervisor."""
+        m.target.descriptor = None
+        m.target.default_entrypoint = None
+        m.runtime.inspect_env.return_value = "shell"
+
+    @pytest.mark.parametrize("supervised", [True, False])
+    @pytest.mark.parametrize("live_at_launch", [False, True])
+    @pytest.mark.parametrize("code", [0, 3])
+    @pytest.mark.parametrize("attach_rc", [1, 255])
+    def test_a_box_down_at_the_first_read_after_the_attach(
+        self, start_mocks, supervised, live_at_launch, code, attach_rc,
+    ):
+        """No session seen, and the box is down when the attach returns.  A
+        supervised box reports its code as is; an unsupervised one keeps
+        ``code or rc``.  live_at_launch: a reattach rather than a fresh launch."""
+        with start_mocks() as m, patch("time.sleep"), patch(
+            "kanibako.commands.start._container_exit_code", return_value=code,
+        ):
+            if not supervised:
+                self._unsupervised(m)
+            m.runtime.is_running.return_value = live_at_launch
+            m.runtime.session_missing = True
+
+            def _exec(*_a, **_k):
+                m.runtime.container_exists.return_value = True
+                m.runtime.is_running.return_value = False
+                return attach_rc
+            m.runtime.exec.side_effect = _exec
+            rc = self._launch()
+            assert m.runtime.run.called is not live_at_launch
+            assert m.runtime.exec.call_count == 1
+            m.runtime.rm.assert_called_once()
+        if supervised:
+            assert rc == code
+        else:
+            assert rc == (code or attach_rc if not live_at_launch else attach_rc)
+
+    @pytest.mark.parametrize("seen", [False, True])
+    def test_logs_of_a_session_never_seen_are_echoed_at_a_tty(
+        self, start_mocks, capsys, seen,
+    ):
+        """A clean exit skips the log echo at a tty because the user watched the
+        session; one that never attached was not watched, so its logs print."""
+        with start_mocks() as m, patch("time.sleep"), patch(
+            "kanibako.commands.start._container_exit_code", return_value=0,
+        ), patch(
+            "kanibako.commands.start._interactive_host", return_value=True,
+        ), patch(
+            "kanibako.commands.start._container_logs", return_value="agent said bye",
+        ):
+            m.runtime.session_missing = not seen
+
+            def _exec(*_a, **_k):
+                m.runtime.container_exists.return_value = True
+                m.runtime.is_running.return_value = False
+                return 0 if seen else 1
+            m.runtime.exec.side_effect = _exec
+            rc = self._launch()
+        assert rc == 0
+        assert ("agent said bye" in capsys.readouterr().err) is not seen
+
     @pytest.mark.parametrize("session_after, lag", [(False, 5), (True, None)])
     def test_a_reattach_tells_exit_from_detach_too(
         self, start_mocks, session_after, lag,

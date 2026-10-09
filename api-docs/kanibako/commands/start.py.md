@@ -177,7 +177,7 @@ def _kanibako_mounts()
 def _run_setup_command(*, runtime: ContainerRuntime, image: str, proj, container_name: str, setup_entrypoint: str, setup_args: list[str], extra_mounts: list, tmpfs_masks, container_env: dict[str, str]) -> int
 def _container_logs(runtime: ContainerRuntime, name: str) -> str
 def _bootstrap_session_exists(runtime: ContainerRuntime, name: str) -> bool
-def _agent_exit_rc(runtime: ContainerRuntime, name: str, rc: int, program: str, *, session_seen: bool) -> int | None
+def _agent_exit_rc(runtime: ContainerRuntime, name: str, rc: int, program: str, *, session_seen: bool, supervised: bool) -> int | None
 def _await_box_stop(runtime: ContainerRuntime, name: str) -> bool
 def _persistent_command_ended(shell_command: str | None, rc: int, runtime: ContainerRuntime, name: str) -> bool
 @overload
