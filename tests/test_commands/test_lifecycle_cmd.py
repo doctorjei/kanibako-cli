@@ -1153,13 +1153,15 @@ class TestInTreeLandingRefused:
         assert rc == 1
         err = capsys.readouterr().err
         assert f"Run `kanibako box move proj {leaf} --workset ws` (or {bare})" in err
-        assert ", or choose a destination outside the workset." in err
+        assert "Or choose a destination outside the workset." in err
 
         rc = run_convert(_convert_args(str(pdir), to_workset="ws",
                                        move=str(ws.root / "proj")))
         assert rc == 1
         err = capsys.readouterr().err
-        assert f"Run {bare}, or choose a destination outside the workset." in err
+        # `bare` is already wrapped in backticks; assert it is on its own line.
+        assert f"Run {bare}" in err
+        assert "Or choose a destination outside the workset." in err
         assert "kanibako box move" not in err
         assert (pdir / "file.txt").read_text() == "primary"
 
@@ -1190,55 +1192,6 @@ class TestInTreeLandingRefused:
         again = resolve_lifecycle_target(str(leaf), std, config)
         assert again.workspace_path == leaf.resolve()
         assert (other / "file.txt").read_text() == "moved by hand"
-
-    def test_a_cure_runs_for_a_source_at_the_canonical_leaf(self, env, capsys):
-        """repointcures: every printed cure must run for the source it's printed for."""
-        import re
-        import shlex
-
-        config, std, tmp_home = env
-        ws = create_workset("ws", tmp_home / "ws_root", std)
-        leaf = _named(env, ws)  # source IS at the canonical leaf
-        stray = ws.root / "other"  # a non-canonical in-tree path
-
-        rc = run_move(_move_args(str(leaf), stray))
-        assert rc == 1
-        err = capsys.readouterr().err
-        assert "Refusing to record" in err
-
-        # On base, the printed cures (box-move-to-leaf, box-convert--move) both target
-        # the source's current location; running either dead-ends at refusal B.  The fix
-        # replaces them with a cure that runs (or refuses for a different reason).
-        for command in re.findall(r"`([^`]+)`", err):
-            argv = shlex.split(command)
-            from kanibako.commands.box._lifecycle import run_move as _run_move
-            from kanibako.commands.box._lifecycle import run_convert as _run_convert
-            if "box" in argv and "move" in argv:
-                old = argv[argv.index("move") + 1]
-                new = argv[argv.index("move") + 2] if argv.index("move") + 2 < len(argv) else None
-                to_workset = None
-                for i, a in enumerate(argv):
-                    if a == "--workset" and i + 1 < len(argv):
-                        to_workset = argv[i + 1]
-                capsys.readouterr()
-                _run_move(_move_args(old, new, to_workset=to_workset))
-                out_cure = capsys.readouterr()
-            elif "box" in argv and "convert" in argv:
-                to_workset = None
-                move = None
-                for i, a in enumerate(argv):
-                    if a == "--workset" and i + 1 < len(argv):
-                        to_workset = argv[i + 1]
-                    if a == "--move":
-                        move = argv[i + 1] if i + 1 < len(argv) and not argv[i + 1].startswith("--") else _BARE_MOVE
-                _run_convert(_convert_args(argv[argv.index("convert") + 1],
-                                            to_workset=to_workset, move=move))
-                out_cure = capsys.readouterr()
-            else:
-                continue
-            assert "current location" not in out_cure.err, (
-                f"cure {command!r} dead-ended at refusal B; full advice: {err!r}"
-            )
 
 
 class TestExternalSourceNotRelocated:
@@ -1833,6 +1786,53 @@ class TestCuresAvoidAHeldName:
             "gamma": gamma.resolve(), "beta": beta.resolve(), "delta": delta.resolve(),
         }
         assert (delta / "file.txt").read_text() == "keep"
+
+    def test_in_tree_landing_cure_runs_when_source_is_at_the_canonical_leaf(
+        self, env, capsys,
+    ):
+        """D2: rename route is the cure when the source is at the canonical leaf."""
+        from kanibako.commands.box._lifecycle import run_move as _rm
+
+        config, std, tmp_home = env
+        ws = create_workset("ws", tmp_home / "ws_root", std)
+        leaf = _named(env, ws)  # source IS at the canonical leaf
+        stray = ws.root / "other"
+
+        assert _rm(_move_args(str(leaf), stray)) == 1
+        err = capsys.readouterr().err
+        assert f"would live at `{ws.workspaces_dir / 'proj'}`" in err
+        routes = _printed_routes(err)
+        assert len(routes) == 1
+        gamma_leaf = ws.workspaces_dir / "gamma"
+        assert _run_printed(routes[0], move_dest=str(gamma_leaf), name="gamma") == 0
+        assert (gamma_leaf / "file.txt").read_text() == "wsdata"
+        assert self._members(env, ws) == {"gamma": gamma_leaf.resolve()}
+
+    def test_in_tree_landing_cure_runs_when_a_held_name_falls_back_to_source(
+        self, env, capsys,
+    ):
+        """D1: held name falls back to the source's name; rename route is the cure."""
+        from kanibako.commands.box._lifecycle import run_move as _rm
+
+        config, std, tmp_home = env
+        ws = create_workset("ws", tmp_home / "ws_root", std)
+        held = _named(env, ws, name="renamed")
+        leaf = _named(env, ws, name="beta")  # source IS at the canonical leaf
+        stray = ws.root / "other"
+
+        assert _rm(_move_args(str(leaf), stray, to_workset="ws",
+                              name="renamed", force=True)) == 1
+        err = capsys.readouterr().err
+        assert f"would live at `{ws.workspaces_dir / 'beta'}`" in err
+        routes = _printed_routes(err)
+        assert len(routes) == 1
+        fresh_leaf = ws.workspaces_dir / "gamma"
+        assert _run_printed(routes[0], move_dest=str(fresh_leaf), name="gamma") == 0
+        assert (fresh_leaf / "file.txt").read_text() == "wsdata"
+        assert self._members(env, ws) == {
+            "renamed": held.resolve(),
+            "gamma": fresh_leaf.resolve(),
+        }
 
 
 class TestRelocationOutOfTheLandingLeaf:
