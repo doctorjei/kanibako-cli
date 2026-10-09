@@ -691,6 +691,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   cures, and the settings refusals' read-back commands) now stand on their own lines instead of inside quotes that
   nested around a quoted name; a read-back key or entry name is shell-quoted where it needs it.
 
+- **`box move` and `box convert --move` to an in-tree path print a cure that runs when the box already stands at its
+  leaf.** Both printed cures targeted that leaf and failed with "Destination is the project's current location";
+  the refusal now prints the refused command with `--name <name>`, a name no member holds. Its cures stand on their
+  own lines.
+
 - **Registering a standalone box again through a link drops its stale `deregistered` entry.** After `box rm <name>`
   and `box register <link>`, the old entry stayed: `box register <name>` refused, and `box rm <name> --purge` could
   delete the live box's metadata. Registration now drops a retained entry for the same directory, and both commands

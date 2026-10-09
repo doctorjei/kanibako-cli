@@ -1147,22 +1147,21 @@ class TestInTreeLandingRefused:
         ws = create_workset("ws", tmp_home / "ws_root", std)
         pdir = _default(env, contents="primary")
         leaf = ws.workspaces_dir / "proj"
-        bare = "`kanibako box convert proj --workset ws --move`"
+        bare = "kanibako box convert proj --workset ws --move"
 
         rc = run_move(_move_args(pdir, ws.root / "proj", to_workset="ws"))
         assert rc == 1
         err = capsys.readouterr().err
-        assert f"Run `kanibako box move proj {leaf} --workset ws` (or {bare})" in err
-        assert "Or choose a destination outside the workset." in err
+        assert _printed_routes(err) == [f"kanibako box move proj {leaf} --workset ws", bare]
+        assert "\n  kanibako box move" in err and f"\n  {bare}\n" in err
+        assert err.rstrip().endswith("\nOr choose a destination outside the workset.")
 
         rc = run_convert(_convert_args(str(pdir), to_workset="ws",
                                        move=str(ws.root / "proj")))
         assert rc == 1
         err = capsys.readouterr().err
-        # `bare` is already wrapped in backticks; assert it is on its own line.
-        assert f"Run {bare}" in err
-        assert "Or choose a destination outside the workset." in err
-        assert "kanibako box move" not in err
+        assert _printed_routes(err) == [bare]
+        assert f"\n  {bare}\n" in err
         assert (pdir / "file.txt").read_text() == "primary"
 
     def test_the_advice_carries_a_rename(self, env, capsys):
@@ -1171,10 +1170,10 @@ class TestInTreeLandingRefused:
         pdir = _default(env, contents="primary")
         rc = run_move(_move_args(pdir, ws.root / "x", to_workset="ws", name="renamed"))
         assert rc == 1
-        err = capsys.readouterr().err
-        assert (f"`kanibako box move proj {ws.workspaces_dir / 'renamed'} --workset ws "
-                "--name renamed`") in err
-        assert "`kanibako box convert proj --workset ws --move --name renamed`" in err
+        assert _printed_routes(capsys.readouterr().err) == [
+            f"kanibako box move proj {ws.workspaces_dir / 'renamed'} --workset ws --name renamed",
+            "kanibako box convert proj --workset ws --move --name renamed",
+        ]
 
     def test_remap_onto_a_non_canonical_in_tree_path(self, env, capsys):
         """``remap`` records records only, but still not a workspace that never was."""
@@ -1484,23 +1483,25 @@ class TestPrimaryBoxUnderARepointedWorkspaces:
 
 def _printed_routes(err):
     """The ``kanibako box …`` commands a refusal printed, in the order printed."""
-    return re.findall(r"`(kanibako box (?:convert|move) [^`]+)`", err)
+    return [a or b for a, b in re.findall(
+        r"`(kanibako box (?:convert|move) [^`]+)`|^  (kanibako box (?:convert|move) .+)$",
+        err, re.M)]
 
 
 def _run_printed(route, *, move_dest=None, name=None):
     """Re-dispatch a printed route to the entry point it names.
 
     PIN BY RUNNING, NOT BY TEXT: the argv the refusal printed is what reaches
-    ``run_convert`` / ``run_move``.  Only ``<path>`` is filled in — a refusal
-    prints a placeholder where the user supplies their own destination — and
-    ``force`` stands in for the confirmation a human types.
+    ``run_convert`` / ``run_move``.  Only the ``<path>`` and ``<name>`` placeholders
+    are filled in, as the user would, and ``force`` stands in for the confirmation a
+    human types.
     """
     argv = route.split()[2:]  # drop the leading `kanibako box`
     verb, rest = argv[0], list(argv[1:])
     if move_dest is not None:
         rest = [move_dest if a == "<path>" else a for a in rest]
     if name is not None:
-        rest = [name if a == "<name>" else a for a in rest]
+        rest = [a.replace("<name>", name) for a in rest]
 
     def flag(name):
         return rest[rest.index(name) + 1] if name in rest else None
@@ -1603,6 +1604,35 @@ class TestRefusalCuresReachTheBoxTheyName:
         leaf = tmp_home / "extws" / proj.name
         assert Path(members[0].source_path).resolve() == leaf.resolve()
         assert not (tmp_home / "extws" / "other").exists()
+
+    @pytest.mark.parametrize("verb", ["move", "convert"])
+    @pytest.mark.parametrize("held", [False, True])
+    def test_the_in_tree_landing_cure_runs_for_a_member_at_its_leaf(
+        self, env, capsys, verb, held,
+    ):
+        """PIN: a cure to the leaf a member already stands at is refused as its current
+        location, so the cure is a new name, in the refused verb.  *held*: the asked
+        ``--name`` is another member's, so the cure's leaf falls back to the box's own."""
+        config, std, tmp_home = env
+        ws = create_workset("ws", tmp_home / "ws_root", std)
+        others = {"renamed": _named(env, ws, name="renamed").resolve()} if held else {}
+        leaf = _named(env, ws)
+        name = "renamed" if held else None
+        if verb == "move":
+            rc = run_move(_move_args(str(leaf), ws.root / "other", name=name))
+        else:
+            rc = run_convert(_convert_args(str(leaf), to_workset="ws",
+                                           move=str(ws.root / "other"), name=name))
+        assert rc == 1
+        routes = _printed_routes(capsys.readouterr().err)
+        assert routes[0].split()[2] == verb
+
+        assert _run_printed(routes[0], name="gamma") == 0
+        gamma = ws.workspaces_dir / "gamma"
+        members = load_workset(ws.root, "ws", early_system=std.early_system).projects
+        assert {p.name: Path(p.source_path).resolve() for p in members} == {
+            **others, "gamma": gamma.resolve()}
+        assert (gamma / "file.txt").read_text() == "wsdata"
 
     def test_the_cure_is_a_reference_the_resolver_takes_back(self, env, capsys):
         """PIN: the reference printed resolves to the SAME box the refusal fired
@@ -1786,53 +1816,6 @@ class TestCuresAvoidAHeldName:
             "gamma": gamma.resolve(), "beta": beta.resolve(), "delta": delta.resolve(),
         }
         assert (delta / "file.txt").read_text() == "keep"
-
-    def test_in_tree_landing_cure_runs_when_source_is_at_the_canonical_leaf(
-        self, env, capsys,
-    ):
-        """D2: rename route is the cure when the source is at the canonical leaf."""
-        from kanibako.commands.box._lifecycle import run_move as _rm
-
-        config, std, tmp_home = env
-        ws = create_workset("ws", tmp_home / "ws_root", std)
-        leaf = _named(env, ws)  # source IS at the canonical leaf
-        stray = ws.root / "other"
-
-        assert _rm(_move_args(str(leaf), stray)) == 1
-        err = capsys.readouterr().err
-        assert f"would live at `{ws.workspaces_dir / 'proj'}`" in err
-        routes = _printed_routes(err)
-        assert len(routes) == 1
-        gamma_leaf = ws.workspaces_dir / "gamma"
-        assert _run_printed(routes[0], move_dest=str(gamma_leaf), name="gamma") == 0
-        assert (gamma_leaf / "file.txt").read_text() == "wsdata"
-        assert self._members(env, ws) == {"gamma": gamma_leaf.resolve()}
-
-    def test_in_tree_landing_cure_runs_when_a_held_name_falls_back_to_source(
-        self, env, capsys,
-    ):
-        """D1: held name falls back to the source's name; rename route is the cure."""
-        from kanibako.commands.box._lifecycle import run_move as _rm
-
-        config, std, tmp_home = env
-        ws = create_workset("ws", tmp_home / "ws_root", std)
-        held = _named(env, ws, name="renamed")
-        leaf = _named(env, ws, name="beta")  # source IS at the canonical leaf
-        stray = ws.root / "other"
-
-        assert _rm(_move_args(str(leaf), stray, to_workset="ws",
-                              name="renamed", force=True)) == 1
-        err = capsys.readouterr().err
-        assert f"would live at `{ws.workspaces_dir / 'beta'}`" in err
-        routes = _printed_routes(err)
-        assert len(routes) == 1
-        fresh_leaf = ws.workspaces_dir / "gamma"
-        assert _run_printed(routes[0], move_dest=str(fresh_leaf), name="gamma") == 0
-        assert (fresh_leaf / "file.txt").read_text() == "wsdata"
-        assert self._members(env, ws) == {
-            "renamed": held.resolve(),
-            "gamma": fresh_leaf.resolve(),
-        }
 
 
 class TestRelocationOutOfTheLandingLeaf:
