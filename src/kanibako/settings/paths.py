@@ -2435,19 +2435,9 @@ STANDALONE_REGISTRY_COMMENT = "REMOVING THIS WILL BREAK A STANDALONE BOX!"
 def establish_standalone(std: StandardPaths, root: Path, *, enable_vault: bool | None,
                          carry_kuid: str | None = None, own_name: str | None = None,
                          register: bool = True) -> tuple[str, Path, Path | None, Path | None]:
-    """Establish a standalone box at *root*: identity + meta + registration (the shared core).
-
-    ⚑ No ``name`` parameter: a standalone box is named after its directory, never by the
-    caller.  A ``name`` argument used to be accepted here and then IGNORED — the name was
-    always composed from *root* — which read like a supported override that did nothing.
-    Every standalone door now refuses a divergent ``--name`` upstream
-    (:func:`kanibako.launch.box_identity.refuse_nonleaf_standalone_name`), so the producer
-    never receives one worth honoring.
-
-    *carry_kuid* / *own_name* are for a MOVING box that already has a kuid (keyspec
-    ``:811``: the kuid is the stable stored prefix, only the leaf tracks the directory).
-    Both ``None`` on a fresh create or a true convert-TO standalone, which mint a new
-    kuid.  See :func:`kanibako.launch.box_identity.carry_standalone_name`.
+    """Establish a standalone box at *root*: identity + meta + registration (shared core).
+    No ``name`` param — named after its directory, never the caller; one IGNORED.
+    *carry_kuid*/*own_name*: a mover's kuid (``:811``).
     """
     from kanibako.project import registry_store
     from kanibako.launch import box_identity
@@ -2522,9 +2512,7 @@ def resolve_standalone_project(std: StandardPaths, config: BootstrapConfig,
         from kanibako.launch import box_resolve
         identity = box_resolve.resolve_box_identity(root, std, config)
         box_name = identity["name"] if identity is not None else ""
-    # ⚑ The user's explicit --name is NOT a producer input.  It is pre-flighted below only
-    # so a doomed create refuses before its first write; the name itself is COMPOSED from
-    # *root* by ``establish_standalone``.  (It used to be threaded in and silently dropped.)
+    # --name is NOT a producer input: pre-flighted below so a doomed create refuses first.
     requested_name = name
 
     is_new = False
