@@ -42,11 +42,10 @@ from kanibako.settings.paths import (
 )
 from kanibako.utils import confirm_prompt, literal_path
 from kanibako.errors import DerivedBoxNameError, ProjectError
-from kanibako.launch.box_identity import validate_box_name
+from kanibako.launch.box_identity import (refuse_nonleaf_standalone_name,
+                                          validate_box_name)
 from kanibako.settings.messages import CURE_DERIVED_BOX_NAME, CURE_DERIVED_DUP_DEST
 from kanibako.channels.channels import workset_name_token, workset_root
-from kanibako.errors import ProjectError
-from kanibako.launch.box_identity import refuse_nonleaf_standalone_name
 from kanibako.settings.workset_dirkeys import EarlyScope, refuse_inherited_per_owner
 
 
