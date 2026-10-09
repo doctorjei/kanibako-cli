@@ -3968,7 +3968,8 @@ def _run_container(
             from kanibako.snapshots import auto_snapshot, detect_snapshot_strategy
             strategy = detect_snapshot_strategy(proj.vault_rw_path)
             snap = auto_snapshot(proj.vault_rw_path, box_name=proj.name,
-                                strategy=strategy)
+                               strategy=strategy,
+                               store_exclusive=proj.mode is BoxMode.standalone)
             if snap:
                 print(f"Vault snapshot: {snap.name}", file=sys.stderr)
 

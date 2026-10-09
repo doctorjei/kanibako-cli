@@ -15,7 +15,9 @@ launch.
 
 ⚑ SNAPSHOTS ARE PER-BOX: ``.versions/<box>/``, not a flat ``.versions/`` shared
 by every box under one base, which let one box list, prune, or RESTORE another's.
-Unattributable legacy entries go to ``.versions/unsorted/``: listed, never deleted.
+Unattributable legacy entries go to ``.versions/.unsorted/``: listed, never
+deleted.  A ``.versions/.layout`` marker retires legacy detection on a base once
+that base has been converted.
 
 ⚑ SYMLINKS ARE COPIED VERBATIM, both ways, under the rule in
 :mod:`kanibako.tree_copy` (``cp -a`` and ``rsync -a`` already keep them), so a
@@ -55,6 +57,16 @@ class ForeignSnapshotError(KanibakoError):
     """
 
 
+class SnapshotSafetyError(KanibakoError):
+    """The pre-restore safety copy could not be made, so the restore did not run.
+
+    ``restore`` refuses to displace live data it cannot preserve, so a failure of
+    that copy means NOTHING CHANGED.  Surfacing the raw ``CalledProcessError``
+    instead prints a traceback for a state that is entirely safe, and reads as a
+    crash rather than the refusal it is.
+    """
+
+
 # Default maximum number of snapshots to retain.
 _DEFAULT_MAX_SNAPSHOTS = 5
 
@@ -73,11 +85,36 @@ def _versions_dir(vault_rw_path: Path) -> Path:
     return vault_rw_path.parent / ".versions"
 
 
-#: Legacy snapshots that could not be attributed to any box land here. Listed, never deleted.
-UNSORTED_DIRNAME = "unsorted"
+#: Legacy snapshots that could not be attributed to any box land here.  Listed,
+#: never deleted.
+#:
+#: ⚑ The LEADING DOT is the load-bearing part: :func:`
+#: kanibako.launch.box_identity.is_valid_box_name` refuses a box name that starts
+#: with ``.``, so no box can ever be named into the bucket.  A bucket called
+#: ``unsorted`` WAS a valid box name, so a box named ``unsorted`` owned the very
+#: directory every other box's unattributable data was filed into, and its own
+#: ``prune`` deleted data promised never to be.
+UNSORTED_DIRNAME = ".unsorted"
+
+#: Written into ``.versions/`` the first time this code touches a base.  Once it is
+#: present, legacy detection NEVER runs again on that base.
+#:
+#: Legacy detection is a name match (``_LEGACY_TS_RE``) over the base, and a box
+#: name can be a perfectly valid timestamp -- ``20200101T000000Z`` is a legal box
+#: name -- so without a marker the next legacy pass by ANY box on the base sweeps a
+#: timestamp-named box's whole store into the bucket, and later passes nest it
+#: further.  The marker retires the name match after the one conversion it is for.
+LAYOUT_MARKER_NAME = ".layout"
+
+#: Marker contents: which layout the base was converted to.  Written, not read.
+LAYOUT_MARKER_VALUE = "per-box-v1\n"
 
 #: A legacy snapshot directory name: the bare UTC timestamp, and nothing else.
 _LEGACY_TS_RE = re.compile(r"^\d{8}T\d{6}Z$")
+
+#: Base-level names that are layout, not a box store.  A box must never be keyed on
+#: one of these even if the box-name rule ever allowed it.
+RESERVED_STORE_KEYS = (UNSORTED_DIRNAME, LAYOUT_MARKER_NAME)
 
 
 def _box_store(vault_rw_path: Path, box_name: str) -> Path:
@@ -90,7 +127,25 @@ def _box_store(vault_rw_path: Path, box_name: str) -> Path:
         raise UnsafeSnapshotNameError(
             f"Refused box name {box_name!r}: a store key must be a plain name."
         )
+    if box_name in RESERVED_STORE_KEYS:
+        raise UnsafeSnapshotNameError(
+            f"Refused box name {box_name!r}: {box_name!r} is a layout entry of "
+            f"the snapshot base, not a box store."
+        )
     return _versions_dir(vault_rw_path) / box_name
+
+
+def _is_migrated(versions: Path) -> bool:
+    """True once *versions* carries the per-box layout marker."""
+    return (versions / LAYOUT_MARKER_NAME).exists()
+
+
+def _write_layout_marker(versions: Path) -> None:
+    """Declare *versions* a per-box base, so legacy detection never runs on it."""
+    versions.mkdir(parents=True, exist_ok=True)
+    marker = versions / LAYOUT_MARKER_NAME
+    if not marker.exists():
+        marker.write_text(LAYOUT_MARKER_VALUE)
 
 
 def migrate_legacy_versions(
@@ -102,34 +157,41 @@ def migrate_legacy_versions(
     possible where no other box could have written: a standalone ``.versions``
     is inside its own tree (``store_exclusive=True``).  Everywhere else, and
     every same-second chimera, the owner is unknown and the entry goes to
-    ``unsorted/`` -- listed, never pruned.  Idempotent.
+    ``.unsorted/`` -- listed, never pruned.
 
-    Returns ``{"attributed": [...], "unsorted": [...]}`` of moved entry names.
+    ⚑ An EXISTING base is MARKED whether or not anything moved.  A base with
+    nothing to migrate still gets the marker, so a timestamp-named box created
+    afterwards cannot be swept by some later caller's legacy pass.  An ABSENT
+    base is left absent -- that is a writer's job, and :func:`create_snapshot`
+    marks the base as it creates it.
     """
     versions = _versions_dir(vault_rw_path)
     moved: dict[str, list[str]] = {"attributed": [], "unsorted": []}
-    if not versions.is_dir():
+    # An absent base has nothing to split AND nothing to declare: a reader must not
+    # create it.  A writer marks it itself, on creating it.
+    if _is_migrated(versions) or not versions.is_dir():
         return moved
     legacy = [
-        entry for entry in versions.iterdir()
+        entry for entry in (versions.iterdir() if versions.is_dir() else [])
         if entry.is_dir() and not entry.is_symlink()
         and _LEGACY_TS_RE.match(entry.name)
     ]
-    if not legacy:
-        return moved
-    target = _box_store(vault_rw_path, box_name) if store_exclusive \
-        else versions / UNSORTED_DIRNAME
-    target.mkdir(parents=True, exist_ok=True)
-    bucket = "attributed" if store_exclusive else "unsorted"
-    for entry in sorted(legacy, key=lambda p: p.name):
-        dest = target / entry.name
-        if dest.exists():
-            dest = target / f"{entry.name}-{box_name}"
-        shutil.move(str(entry), str(dest))
-        moved[bucket].append(entry.name)
-        logger.info(
-            "Migrated legacy vault snapshot %s to %s.", entry.name, dest.relative_to(versions)
-        )
+    if legacy:
+        target = _box_store(vault_rw_path, box_name) if store_exclusive \
+            else versions / UNSORTED_DIRNAME
+        target.mkdir(parents=True, exist_ok=True)
+        bucket = "attributed" if store_exclusive else "unsorted"
+        for entry in sorted(legacy, key=lambda p: p.name):
+            dest = target / entry.name
+            if dest.exists():
+                dest = target / f"{entry.name}-{box_name}"
+            shutil.move(str(entry), str(dest))
+            moved[bucket].append(entry.name)
+            logger.info(
+                "Migrated legacy vault snapshot %s to %s.", entry.name,
+                dest.relative_to(versions)
+            )
+    _write_layout_marker(versions)
     return moved
 
 
@@ -289,8 +351,15 @@ def _unique_snapshot_name(store: Path, ts: str) -> str:
 
 def create_snapshot(
     vault_rw_path: Path, *, box_name: str, strategy: str = "hardlink",
+    store_exclusive: bool = False,
 ) -> Path | None:
     """Create a directory snapshot of *vault_rw_path* in *box_name*'s own store.
+
+    ⚑ Every write migrates the base first, so a base this code writes into is a
+    per-box base before the first snapshot lands in it.  Writing a store without
+    marking the base would leave the marker to some later reader, and a
+    timestamp-named box created in between could be swept by that reader's legacy
+    pass.
 
     Returns the path to the snapshot directory, or ``None`` if the directory
     is empty (nothing to snapshot).
@@ -302,6 +371,15 @@ def create_snapshot(
     contents = list(vault_rw_path.iterdir())
     if not contents:
         return None
+
+    migrate_legacy_versions(
+        vault_rw_path, box_name=box_name, store_exclusive=store_exclusive
+    )
+    # The base is per-box from the moment this writer creates it.  Leaving the
+    # marker to the migration above would miss the case where the base does not
+    # exist yet -- it creates no base, so a timestamp-named store made here would
+    # still be legacy to the next reader's pass.
+    _write_layout_marker(_versions_dir(vault_rw_path))
 
     store = _box_store(vault_rw_path, box_name)
     store.mkdir(parents=True, exist_ok=True)
@@ -425,10 +503,19 @@ def restore_snapshot(
     # out to be the wrong one can itself be undone.  If that copy cannot be made
     # the restore does not run at all: replacing user data and leaving no copy is
     # exactly what this step exists to prevent.
-    safety = create_snapshot(
-        vault_rw_path, box_name=box_name,
-        strategy=detect_snapshot_strategy(vault_rw_path),
-    )
+    try:
+        safety = create_snapshot(
+            vault_rw_path, box_name=box_name,
+            strategy=detect_snapshot_strategy(vault_rw_path),
+            store_exclusive=store_exclusive,
+        )
+    except subprocess.CalledProcessError as exc:
+        raise SnapshotSafetyError(
+            f"Could not snapshot the current vault contents before restoring "
+            f"'{snapshot_name}': the copy failed ({exc}). Nothing was changed -- "
+            f"your current files are still in place. Restore again once the "
+            f"snapshot store is writable and has room."
+        ) from exc
 
     # Stage the new contents in a temp sibling of vault_rw_path so the final
     # swap is a same-filesystem rename.
@@ -538,13 +625,17 @@ def auto_snapshot(
     box_name: str,
     strategy: str = "hardlink",
     max_keep: int = _DEFAULT_MAX_SNAPSHOTS,
+    store_exclusive: bool = False,
 ) -> Path | None:
     """Create a snapshot in *box_name*'s store and prune that store's old ones.
 
     Convenience wrapper combining ``create_snapshot`` + ``prune_snapshots``.
     Returns the new snapshot path, or ``None`` if share-rw was empty.
     """
-    result = create_snapshot(vault_rw_path, box_name=box_name, strategy=strategy)
+    result = create_snapshot(
+        vault_rw_path, box_name=box_name, strategy=strategy,
+        store_exclusive=store_exclusive,
+    )
     if result is not None:
         prune_snapshots(vault_rw_path, max_keep=max_keep, box_name=box_name)
     return result

@@ -14,8 +14,8 @@ from kanibako.settings.paths import (
 )
 from kanibako.snapshots import (
     _DEFAULT_MAX_SNAPSHOTS,
-    UNSORTED_DIRNAME,
     ForeignSnapshotError,
+    SnapshotSafetyError,
     create_snapshot,
     list_snapshots,
     list_unsorted,
@@ -133,9 +133,9 @@ def run_snapshot(args: argparse.Namespace) -> int:
     resolved = _resolve_vault_rw(project_dir)
     if resolved is None:
         return 1
-    vault_rw, box_name, _exclusive = resolved
+    vault_rw, box_name, exclusive = resolved
 
-    snap = create_snapshot(vault_rw, box_name=box_name)
+    snap = create_snapshot(vault_rw, box_name=box_name, store_exclusive=exclusive)
     if snap is None:
         print("Nothing to snapshot (share-rw is empty or missing).", file=sys.stderr)
         return 0
@@ -169,8 +169,8 @@ def run_list(args: argparse.Namespace) -> int:
 
     unsorted = [] if quiet else list_unsorted(vault_rw)
     if unsorted:
-        print(f"\n  Unsorted (pre-split, owner unknown — kept, never pruned"
-              f" by '{UNSORTED_DIRNAME}', not restorable):")
+        print("\n  Unsorted (pre-split, owner unknown — kept, never pruned,"
+              " not restorable by name):")
         for name, ts, size in unsorted:
             print(f"  {name}  {ts}  {_human_size(size)}")
 
@@ -196,6 +196,12 @@ def run_restore(args: argparse.Namespace) -> int:
         return 1
     vault_rw, box_name, exclusive = resolved
 
+    # ⚑ Migrate BEFORE reading the store.  ``known`` decides whether the
+    # confirmation prompt runs at all; computed on the un-migrated store it misses
+    # a legacy name that this very call is about to move into the box's store, and
+    # the restore then runs straight past a prompt the user was owed.
+    migrate_legacy_versions(vault_rw, box_name=box_name, store_exclusive=exclusive)
+
     known = {
         name for name, _ts, _size in list_snapshots(vault_rw, box_name=box_name)
     }
@@ -212,6 +218,9 @@ def run_restore(args: argparse.Namespace) -> int:
             vault_rw, args.name, box_name=box_name, store_exclusive=exclusive
         )
     except ForeignSnapshotError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return 1
+    except SnapshotSafetyError as e:
         print(f"Error: {e}", file=sys.stderr)
         return 1
     except FileNotFoundError as e:
