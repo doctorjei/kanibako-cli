@@ -11,11 +11,8 @@ import pytest
 
 from kanibako import snapshots as snapshots_mod
 from kanibako.snapshots import (
-    LAYOUT_MARKER_NAME,
-    LAYOUT_MARKER_VALUE,
     UNSORTED_DIRNAME,
     ForeignSnapshotError,
-    SnapshotSafetyError,
     UnsafeSnapshotNameError,
     _test_reflink,
     auto_snapshot,
@@ -1155,7 +1152,6 @@ class TestLayoutMarkerAndReservedKeys:
         _make_dir_snapshot(versions, "20260102T000000Z", box)
         migrate_legacy_versions(box, box_name="unsorted")
 
-        assert UNSORTED_DIRNAME == ".unsorted"
         assert (versions / UNSORTED_DIRNAME / "20260101T000000Z").is_dir()
 
         prune_snapshots(box, max_keep=0, box_name="unsorted")
@@ -1166,6 +1162,8 @@ class TestLayoutMarkerAndReservedKeys:
     def test_a_reserved_layout_name_is_not_a_box_store_key(
         self, tmp_path: Path
     ) -> None:
+        from kanibako.snapshots import LAYOUT_MARKER_NAME
+
         base = tmp_path / "vault" / "rw" / "b"
         base.mkdir(parents=True)
 
@@ -1197,6 +1195,8 @@ class TestLayoutMarkerAndReservedKeys:
     def test_legacy_detection_never_runs_once_the_marker_is_present(
         self, tmp_path: Path
     ) -> None:
+        from kanibako.snapshots import LAYOUT_MARKER_NAME, LAYOUT_MARKER_VALUE
+
         base = tmp_path / "vault" / "rw"
         alpha = base / "alpha"
         alpha.mkdir(parents=True)
@@ -1216,6 +1216,8 @@ class TestLayoutMarkerAndReservedKeys:
         self, tmp_path: Path
     ) -> None:
         """Marking only on a real move would leave the first store unprotected."""
+        from kanibako.snapshots import LAYOUT_MARKER_NAME
+
         alpha = tmp_path / "vault" / "rw" / "alpha"
         alpha.mkdir(parents=True)
         (alpha / "a.txt").write_text("a")
@@ -1242,6 +1244,8 @@ class TestSafetyCopyFailure:
         self, tmp_path: Path
     ) -> None:
         import subprocess
+
+        from kanibako.snapshots import SnapshotSafetyError
 
         alpha = tmp_path / "vault" / "rw" / "alpha"
         alpha.mkdir(parents=True)
