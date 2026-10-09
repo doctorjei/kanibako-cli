@@ -1252,12 +1252,37 @@ class TestBoxDuplicateCrossMode:
     """Tests for cross-mode duplication (kanibako box duplicate --to)."""
 
     def _make_args(self, source, dest, to_mode, bare=False, force=True,
-                    workset=None, project_name=None):
+                    workset=None, project_name=None, register=False):
         return argparse.Namespace(
             source_path=str(source), new_path=str(dest),
             to_mode=to_mode, bare=bare, force=force,
-            workset=workset, project_name=project_name,
+            workset=workset, project_name=project_name, register=register,
         )
+
+    @pytest.mark.parametrize("src_registered", [False, True])
+    @pytest.mark.parametrize("register", [False, True])
+    def test_standalone_copy_registers_only_on_register(
+        self, config_file, tmp_home, credentials_dir, src_registered, register,
+    ):
+        """A standalone copy is a NEW box: unregistered unless ``--register``, whatever the source's state."""
+        from kanibako.commands.box import run_duplicate
+        from kanibako.project.registry_store import load_standalone
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        src_dir = tmp_home / "reg_src"
+        src_dir.mkdir()
+        resolve_standalone_project(
+            std, config, project_dir=str(src_dir), initialize=True, register=src_registered,
+        )
+        before = set(load_standalone(std.registry).values())
+        dst_dir = tmp_home / "reg_dst"
+
+        assert run_duplicate(self._make_args(src_dir, dst_dir, "standalone", register=register)) == 0
+
+        after = set(load_standalone(std.registry).values())
+        assert after - before == ({str(dst_dir)} if register else set())
+        assert before <= after
 
     def test_duplicate_local_to_standalone(self, config_file, tmp_home, credentials_dir):
         from kanibako.commands.box import run_duplicate
@@ -1744,7 +1769,7 @@ class TestBoxDuplicateCrossMode:
     def test_duplicate_primary_to_standalone_is_detectable_and_registered(
         self, config_file, tmp_home, credentials_dir,
     ):
-        """BUG#3: duplicating a PRIMARY box --standalone must ESTABLISH a real
+        """BUG#3: duplicating a PRIMARY box --standalone --register must ESTABLISH a real
         standalone box — detected as standalone, registered in
         ``registry.standalone``, ``mode=standalone``, with a FRESH
         ``<kuid>_<leaf>`` name distinct from the source (which is unregistered
@@ -1766,7 +1791,7 @@ class TestBoxDuplicateCrossMode:
 
         dst_dir = tmp_home / "b3_dst"
 
-        args = self._make_args(src_dir, dst_dir, "standalone")
+        args = self._make_args(src_dir, dst_dir, "standalone", register=True)
         rc = run_duplicate(args)
         assert rc == 0
 
@@ -2611,17 +2636,17 @@ class TestBoxDuplicateFromWorkset:
 class TestBoxDuplicateNoToMode:
     """Bare `box duplicate <src> <dst>` (no --to) for non-primary sources (BUG-B)."""
 
-    def _make_args(self, source, dest, bare=False, force=True):
+    def _make_args(self, source, dest, bare=False, force=True, register=False):
         return argparse.Namespace(
             source_path=str(source), new_path=str(dest),
             bare=bare, force=force, to_mode=None,
-            workset=None, project_name=None,
+            workset=None, project_name=None, register=register,
         )
 
     def test_standalone_source_without_to_duplicates(
         self, config_file, tmp_home, credentials_dir,
     ):
-        """A standalone source resolves without --to and lands a fresh standalone."""
+        """A standalone source resolves without --to and lands a fresh standalone (``--register`` indexes it)."""
         from kanibako.project import registry_store
         from kanibako.commands.box import run_duplicate
 
@@ -2637,7 +2662,7 @@ class TestBoxDuplicateNoToMode:
         (src_proj.project_path / "code.py").write_text("print('sa')")
 
         dst_dir = tmp_home / "sa_dst"
-        rc = run_duplicate(self._make_args(src_dir, dst_dir))
+        rc = run_duplicate(self._make_args(src_dir, dst_dir, register=True))
         assert rc == 0
 
         # Workspace copied into the dst workspace/ subdir + a fresh standalone

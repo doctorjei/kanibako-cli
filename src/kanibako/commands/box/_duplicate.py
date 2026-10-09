@@ -293,6 +293,7 @@ def _run_duplicate_cross_mode(args: argparse.Namespace, std, config) -> int:
             _merge_workspace(workspace_src, dest_workspace, args.force)
         _duplicate_to_standalone(
             src_proj, new_path, std, args.force, src_enable_vault, carried,
+            register=bool(getattr(args, "register", False)),
         )
     else:
         # PRIMARY (local) target.  F-3: copy the workspace and lay down the
@@ -375,7 +376,8 @@ def _source_authored_vault(src_proj) -> bool:
     return read_box_enable_vault(src_box)
 
 
-def _duplicate_to_standalone(src_proj, new_path, std, force, src_enable_vault, carried):
+def _duplicate_to_standalone(src_proj, new_path, std, force, src_enable_vault, carried, *,
+                             register: bool):
     """Establish a fresh standalone box at *new_path*.
 
     A duplicate is a NEW box, so this mirrors ``create --standalone`` /
@@ -387,7 +389,7 @@ def _duplicate_to_standalone(src_proj, new_path, std, force, src_enable_vault, c
     the destination ROOT ``workset.yaml`` — drift I: the workset tier lives at
     ``<root>/workset.yaml``, NOT in ``box_data/`` — with a freshly generated
     ``<kuid>_<leaf>`` identity, never the source's, and registers the box in
-    ``registry.standalone``.
+    ``registry.standalone`` only when *register* (``--register``) says so.
     ⚑ The source's own ``workset.yaml`` does NOT travel: it is the source's
     WORKSET tier and carries the source's ``workset.kuid``.  The destination's
     root file is MINTED, not copied — without that fresh mint the destination
@@ -460,7 +462,7 @@ def _duplicate_to_standalone(src_proj, new_path, std, force, src_enable_vault, c
 
     # Establish the canonical standalone shape (the root marker file, a FRESH
     # <kuid>_<leaf> identity even from a standalone source, the standalone
-    # path table) + register it, via the shared core.  ⚑ It WRITES the destination
+    # path table) + register it on --register, via the shared core.  ⚑ It WRITES the destination
     # ROOT workset.yaml — nothing above copies one there, and nothing should: the
     # source's root file is the SOURCE's workset tier.
     # ⚑⚑ ``enable_vault`` is the BOX-AUTHORED value — ``src_box`` alone, NEVER
@@ -475,6 +477,7 @@ def _duplicate_to_standalone(src_proj, new_path, std, force, src_enable_vault, c
     _box_name, _dst_shell, _dst_vault_ro, dst_vault_rw = establish_standalone(
         std, new_path,
         enable_vault=src_enable_vault,
+        register=register,
     )
 
     write_project_gitignore(new_path)
@@ -491,7 +494,8 @@ def _duplicate_to_standalone(src_proj, new_path, std, force, src_enable_vault, c
     # rather than replacing it, so a ``workset.vault_rw`` repoint survives the duplicate — the
     # same pre-existing repoint the workspace copy above deliberately honors.  The gate is
     # therefore the RESOLVED arm, which is why establish_standalone's return value is unpacked.
-    write_vault_gitignore(new_path, dst_vault_rw)
+    if dst_vault_rw is not None:
+        write_vault_gitignore(new_path, dst_vault_rw)
 
 
 def _unwind_local_name(std, project_name: str, dst_project: Path) -> None:
@@ -835,6 +839,7 @@ def _duplicate_from_workset(args, source_path, new_path, std, config) -> int:
                              share_root_link=True)
         _duplicate_to_standalone(
             src_proj, new_path, std, args.force, src_enable_vault, carried,
+            register=bool(getattr(args, "register", False)),
         )
     else:
         from kanibako.errors import ProjectError

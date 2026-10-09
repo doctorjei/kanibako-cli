@@ -705,7 +705,7 @@ class TestTheRemainingCleanupCuresAreQuoted:
                             lambda root, early: store)
         with pytest.raises(ProjectError) as refused:
             _duplicate._duplicate_to_standalone(
-                MagicMock(), tmp_path / "dst", MagicMock(), True, False, {})
+                MagicMock(), tmp_path / "dst", MagicMock(), True, False, {}, register=False)
         cure = _pasteable(_line(str(refused.value), "Try: podman unshare"), "Try: ")
 
         _assert_unshare_inert(cure, store, tmp_path / "scratch")

@@ -3003,7 +3003,9 @@ entry they report the token as unresolvable rather than finding the box.
 its own tree. It no longer does: the box stays unregistered, reached by its path or from
 inside its tree, until you run `kanibako box register <path>` (or created it with
 `--register`). Moving it keeps it unregistered, and `box rm <path>` has nothing to remove —
-`box rm <path> --purge` deletes it. Named worksets are still imported when found.
+`box rm <path> --purge` deletes it. A standalone copy made by `box duplicate` is a new box:
+unregistered, even when the source is registered, unless you pass `--register`. Named
+worksets are still imported when found.
 
 ⚑ **`--register` is standalone-only.** A default-mode box's registration is its workset
 membership, which is not optional; the flag is accepted and does nothing there.
