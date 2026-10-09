@@ -2168,13 +2168,13 @@ def _purge_deregistered(std, name: str, entry: dict, args: argparse.Namespace) -
         print(f"Error: {e}", file=sys.stderr)
         return 1
 
-    if kind == "standalone":
-        exists = standalone_box_store(
-            root, early=_early_scope(std, BoxMode.standalone)).is_dir()
-    else:
-        exists = metadata_dir.is_dir()
+    def tracked_left() -> bool:
+        if kind == "standalone":
+            return standalone_box_store(
+                root, early=_early_scope(std, BoxMode.standalone)).is_dir()
+        return metadata_dir.is_dir()
 
-    if not exists:
+    if not tracked_left():
         # Idempotent: the dir is already gone → drop the stale entry, no error, no prompt.
         registry_store.unregister_deregistered(std.registry, name)
         print(f"No metadata directory found for '{name}' (dropped stale entry).")
@@ -2191,7 +2191,12 @@ def _purge_deregistered(std, name: str, entry: dict, args: argparse.Namespace) -
         return 2
     removed = _run_purge_plan(plan)
 
-    registry_store.unregister_deregistered(std.registry, name)
+    if removed or not tracked_left():
+        registry_store.unregister_deregistered(std.registry, name)
+    else:
+        print(f"'{name}' stays deregistered (metadata retained at {metadata}).",
+              file=sys.stderr)
+        print(_retained_box_cure_lines(name), file=sys.stderr)
     return 0 if removed else 1
 
 

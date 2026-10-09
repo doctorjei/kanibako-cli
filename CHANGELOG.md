@@ -687,6 +687,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`box duplicate` to a primary box takes its `--name`.** It was ignored, and the copy was named after its
   directory. A taken name is refused before anything is written.
 
+- **A deregistered box whose `box rm --purge` fails partway stays deregistered.** While its metadata folder
+  remains, the box is still listed as deregistered and the printed `box rm <name> --purge` retries the delete.
+
 - **`workset rm --purge` no longer deletes the boxes behind a symlinked box store.** When the folder `workset.boxes`
   names is a symlink, only the link goes; what it points at is kept.
 
