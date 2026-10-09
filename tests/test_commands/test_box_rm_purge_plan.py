@@ -322,3 +322,30 @@ class TestStandalonePurge:
         assert not any(line.startswith("box canon") for line in _plan_lines(out.out))
         assert f"left the canon folder at {outside} in place" in out.err
         assert (outside / "canary.txt").read_text() == "keep me\n"
+
+    @pytest.mark.parametrize("via_link", [False, True], ids=["at-root", "linked-parent"])
+    def test_canon_at_the_root_or_behind_a_linked_parent_is_kept(
+        self, config_file, tmp_home, credentials_dir, capsys, via_link,
+    ):
+        """Only a tier STRICTLY below the root goes: one AT it, or reached out through a
+        linked parent, is kept and named."""
+        root = tmp_home / "sa"
+        _create(root, standalone=True)
+        (root / "mine.txt").write_text("mine\n")
+        outside = tmp_home / "ext"
+        (outside / "canon").mkdir(parents=True)
+        (outside / "canon" / "canary.txt").write_text("keep me\n")
+        if via_link:
+            (root / "lnk").symlink_to(outside)
+        canon, kept = (root / "lnk" / "canon", outside / "canon") if via_link else (root, root)
+        with (root / "workset.yaml").open("a") as fh:
+            fh.write(f"  canon: '{canon}'\n")
+        capsys.readouterr()
+
+        assert _rm(str(root), force=True) == 0
+        out = capsys.readouterr()
+        assert not any(line.startswith("box canon") for line in _plan_lines(out.out))
+        assert f"left the canon folder at {kept} in place" in out.err
+        assert (root / "mine.txt").read_text() == "mine\n"
+        assert (outside / "canon" / "canary.txt").read_text() == "keep me\n"
+        assert (root / "lnk").is_symlink() == via_link
