@@ -351,6 +351,14 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
         "--name", dest="project_name", default=None,
         help="Box name for a named or primary copy (default: directory basename)",
     )
+    duplicate_p.add_argument(
+        "--register", action="store_true",
+        help="Index a STANDALONE copy in the registry so it resolves by name "
+             "from other directories (default: unregistered, like "
+             "'create --standalone'). The copy is a new box, so a registered "
+             "source does not make it registered. Primary and named copies "
+             "always register.",
+    )
     duplicate_p.set_defaults(func=run_duplicate)
 
     # kanibako box rm (was: forget)
