@@ -1033,6 +1033,7 @@ class TestPersistentMode:
     def test_persistent_exec_exhausts_retries(self, start_mocks, capsys):
         """After exhausting retries, returns last non-zero exit code."""
         with start_mocks() as m:
+            m.runtime.session_missing = True
             m.runtime.exec.return_value = 1
             rc = _run_container(
                 project_dir=None, entrypoint=None, image_override=None,
@@ -1543,6 +1544,7 @@ class TestPersistentAttachFailureIsSaid:
     ):
         """tmux has no session, every attempt: the box stays up and the user is told so."""
         with start_mocks() as m:
+            m.runtime.session_missing = True
             m.runtime.exec.return_value = 1
             rc = self._launch()
             teardown_rm = m.runtime.rm.called
@@ -1561,6 +1563,7 @@ class TestPersistentAttachFailureIsSaid:
         """A failed attach into a RUNNING container is a missing session, not a
         not-ready container — it is also what a box whose agent already died shows."""
         with start_mocks() as m:
+            m.runtime.session_missing = True
             m.runtime.exec.return_value = 1
             self._launch()
         err = capsys.readouterr().err
@@ -1584,6 +1587,7 @@ class TestPersistentAttachFailureIsSaid:
     ):
         """``-N`` already given: the attach error still prints, the ``-N`` hint does not."""
         with start_mocks() as m:
+            m.runtime.session_missing = True
             m.runtime.exec.return_value = 1
             rc = self._launch(new_session=True)
         err = capsys.readouterr().err
@@ -1692,6 +1696,31 @@ class TestForegroundAgentExitStopsTheBox:
             m.runtime.rm.assert_not_called()
             m.sleep.assert_not_called()
         assert rc == 0
+
+    def test_a_session_not_created_yet_is_retried_without_a_stall(
+        self, start_mocks, capsys,
+    ):
+        """has-session fails on a live box (the supervisor has not created the
+        session yet): the attach is retried, not read as an agent exit."""
+        from kanibako.commands.start import _AGENT_EXIT_STOP_STEP
+        with start_mocks() as m, patch("time.sleep") as m_sleep:
+            m.runtime.session_missing = True
+            attaches = iter([1, 0])
+
+            def _exec(*_a, **_k):
+                rc = next(attaches)
+                if rc == 0:  # the session exists by the second attempt
+                    m.runtime.session_missing = False
+                return rc
+            m.runtime.exec.side_effect = _exec
+            rc = self._launch()
+            assert m.runtime.exec.call_count == 2
+            m.runtime.rm.assert_not_called()
+            assert (_AGENT_EXIT_STOP_STEP,) not in [c.args for c in m_sleep.call_args_list]
+        assert rc == 0
+        assert "could not attach to the agent session (attempt 1/5)" in (
+            capsys.readouterr().err
+        )
 
     @pytest.mark.parametrize("session_after, lag", [(False, 5), (True, None)])
     def test_a_reattach_tells_exit_from_detach_too(

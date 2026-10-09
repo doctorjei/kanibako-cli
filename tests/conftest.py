@@ -599,10 +599,12 @@ def start_mocks():
             runtime.exec_ready.side_effect = (
                 lambda *a, **kw: bool(runtime.is_running.return_value)
             )
-            # Likewise the session probe: a running box still holds its session
-            # (an attach returned on DETACH); a stopped one does not.
-            runtime.exec_succeeds.side_effect = (
-                lambda *a, **kw: bool(runtime.is_running.return_value)
+            # Likewise the session probe (``tmux has-session``): a running box holds
+            # its session unless a test says tmux has none (``session_missing``),
+            # as on a live box whose supervisor has not created it yet.
+            runtime.session_missing = False
+            runtime.exec_succeeds.side_effect = lambda *a, **kw: (
+                bool(runtime.is_running.return_value) and not runtime.session_missing
             )
 
             # Simulate container start: after run(), is_running returns True.

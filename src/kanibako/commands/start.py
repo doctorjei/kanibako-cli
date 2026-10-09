@@ -3715,6 +3715,7 @@ def _run_container(
         )
         ended_rc = _agent_exit_rc(
             runtime, container_name, reattach_rc, bootstrap_program,
+            session_seen=False,
         )
         if ended_rc is not None:
             reattach_rc = ended_rc
@@ -5335,11 +5336,17 @@ def _run_container(
                         )
                         time.sleep(0.5)
                     continue
+                # Seen BEFORE the attach, a session that then vanishes is an agent
+                # exit; never seen, it may not be created yet (retried below).
+                session_seen = bootstrap_program == "tmux" and _bootstrap_session_exists(
+                    runtime, container_name,
+                )
                 rc = runtime.exec(
                     container_name, _bootstrap_attach(bootstrap_program), attach=True
                 )
                 ended_rc = _agent_exit_rc(
                     runtime, container_name, rc, bootstrap_program,
+                    session_seen=session_seen,
                 )
                 if ended_rc is not None:
                     rc = ended_rc
@@ -10039,42 +10046,39 @@ _AGENT_EXIT_STOP_BOUND = 3 * SupervisorConfig.poll_interval + 4.0
 _AGENT_EXIT_STOP_STEP = 0.1
 
 
-def _agent_session_ended(runtime: ContainerRuntime, name: str) -> bool:
-    """True iff box *name* no longer holds the bootstrap tmux session.
-
-    A ``tmux attach`` returns for two reasons: the client detached (the session
-    lives on) or the session ended with its agent.  Only the session's existence
-    tells them apart; the container's running state lags the agent's exit.
-    """
-    return not runtime.exec_succeeds(
+def _bootstrap_session_exists(runtime: ContainerRuntime, name: str) -> bool:
+    """True iff box *name* holds the bootstrap tmux session."""
+    return runtime.exec_succeeds(
         name, ["tmux", "has-session", "-t", _BOOTSTRAP_SESSION],
     )
 
 
 def _agent_exit_rc(
-    runtime: ContainerRuntime, name: str, rc: int, program: str,
+    runtime: ContainerRuntime, name: str, rc: int, program: str, *,
+    session_seen: bool,
 ) -> int | None:
-    """After a tmux attach to box *name* returned *rc*: ``None`` on a detach, else the rc.
+    """After a tmux attach to box *name* returned *rc*: the agent-exit rc, or ``None``.
 
-    The agent ended (before or during the attach), so the box is stopping: wait for
-    it rather than race the supervisor's poll, then prefer the box's exit code,
-    since the attach's own rc is tmux's, never the agent's.
+    An attach returns on a detach (the session lives on) or when the session ends
+    with its agent; the container's running state lags the agent's exit, so only
+    the session tells them apart.  The session existed if the attach succeeded
+    (rc 0) or *session_seen* says so; one that never did may not be created yet,
+    and one whose box outlives the bound is still live — both are ``None``.
+    Otherwise the box is stopping: wait for it rather than race the supervisor's
+    poll, and prefer its exit code, since the attach's rc is tmux's.
     """
-    if program != "tmux" or not _agent_session_ended(runtime, name):
+    if program != "tmux" or not (rc == 0 or session_seen):
         return None
-    if _await_box_stop(runtime, name):
-        code = _container_exit_code(runtime, name, undeterminable=None)
-        if code is not None:
-            return code
-    return rc
+    if _bootstrap_session_exists(runtime, name):
+        return None
+    if not _await_box_stop(runtime, name):
+        return None
+    code = _container_exit_code(runtime, name, undeterminable=None)
+    return rc if code is None else code
 
 
 def _await_box_stop(runtime: ContainerRuntime, name: str) -> bool:
-    """Wait, bounded, for box *name* to stop; True iff it did.
-
-    A box that outlives the bound is kept by its supervisor on purpose (another
-    surface is attached), so the caller treats it as still live.
-    """
+    """Wait, bounded, for box *name* to stop; True iff it did."""
     import time
     for _ in range(round(_AGENT_EXIT_STOP_BOUND / _AGENT_EXIT_STOP_STEP)):
         if not runtime.is_running(name):
