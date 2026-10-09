@@ -19,6 +19,7 @@ from kanibako.snapshots import (
     create_snapshot,
     list_snapshots,
     list_unsorted,
+    migrate_legacy_versions,
     prune_snapshots,
     restore_snapshot,
     snapshots_to_prune,
@@ -152,9 +153,13 @@ def run_list(args: argparse.Namespace) -> int:
     resolved = _resolve_vault_rw(project_dir)
     if resolved is None:
         return 1
-    vault_rw, box_name, _exclusive = resolved
+    vault_rw, box_name, exclusive = resolved
 
     quiet = getattr(args, "quiet", False)
+
+    # Split any pre-per-box flat entries BEFORE listing, so the unattributable
+    # ones are visible in the listing that is their only surface.
+    migrate_legacy_versions(vault_rw, box_name=box_name, store_exclusive=exclusive)
 
     snaps = list_snapshots(vault_rw, box_name=box_name)
     if not snaps:
@@ -230,7 +235,11 @@ def run_prune(args: argparse.Namespace) -> int:
     resolved = _resolve_vault_rw(project_dir)
     if resolved is None:
         return 1
-    vault_rw, box_name, _exclusive = resolved
+    vault_rw, box_name, exclusive = resolved
+
+    # Migrate first: a legacy flat entry must never be counted as this box's own
+    # and therefore become prunable.
+    migrate_legacy_versions(vault_rw, box_name=box_name, store_exclusive=exclusive)
 
     doomed = snapshots_to_prune(vault_rw, args.keep, box_name=box_name)
     if doomed and not _confirm_destructive(

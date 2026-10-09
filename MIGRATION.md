@@ -7170,6 +7170,44 @@ name to the dead path), so use `box rm <old key>` and `box register <new path>`.
 
 ---
 
+### 2.113 Vault snapshots are per-box; a restore keeps a copy of what it replaces
+
+**What changed.** Vault snapshots used to live in one flat `.versions` directory one level above
+`vault/rw`, named by UTC timestamp alone. Every box's `vault/rw` is a direct child of the same vault
+base, so all primary boxes shared one store, and so did all named members of one workset; only a
+standalone box was isolated, because its store sits inside its own project tree. Measured before the
+fix: `box vault list` on one box listed another box's snapshots, `box vault restore` on one box
+installed another box's data and destroyed the first box's own files at exit code 0 with no warning,
+and `box vault prune` on one box deleted another box's snapshots. Two boxes snapshotted inside the same
+second also landed on the same name and merged into one directory holding both boxes' files.
+
+Snapshots now live in a per-box store, `.versions/<box-name>/<timestamp>`. `list`, `prune`, and
+`restore` traverse only the addressed box's own store, and `restore` refuses a snapshot that belongs to
+a different box, naming the owner.
+
+**What you must do.** Nothing for new snapshots. If you have snapshots taken before this change, they
+are split automatically the first time you run `box vault list`, `prune`, or `restore`:
+
+| Your situation | What happens |
+|---|---|
+| Standalone box | Its legacy snapshots are provably its own (the store is inside its project tree) and move into its box store. They stay listed and restorable by name. |
+| Primary or named box | The old store never recorded which box wrote a snapshot, so the owner cannot be proven. Those entries move to `.versions/unsorted`. |
+
+`.versions/unsorted` is **listed** by `box vault list` under a heading of its own, is **never deleted**
+by `prune` — not even `--keep 0` — and is **not restorable by name**, because its owner is unknown. The
+refusal prints the on-disk path so you can recover a file from it by hand. If you know which box a
+legacy snapshot belonged to, move that directory into the box's own store and it becomes a normal
+snapshot.
+
+**A restore is now undoable.** `box vault restore` snapshots the current contents into your box's store
+before replacing them, so the copy it displaces is no longer the only copy; restoring that safety
+snapshot puts the displaced work back. If the safety copy cannot be made, the restore does not run. The
+confirmation prompt no longer says the operation cannot be undone. Note that the safety snapshot counts
+toward your retention limit, so a `prune --keep 1` after a restore can remove it — prune before you
+restore, or keep one more.
+
+---
+
 ## 3. For plugin authors
 
 A plugin must return a `PluginDescriptor` from `descriptor` and a program from
