@@ -1593,8 +1593,8 @@ def add_project(
                 )
 
             # ⚑ --force absorb: MOVE the registration — a box lives in EXACTLY ONE
-            # registry.  The in-place marker STAYS (intrinsic identity), so disconnect
-            # re-imports it as standalone: a clean round-trip.
+            # registry.  The in-place marker STAYS (intrinsic identity), so after a
+            # disconnect the box is standalone again, but unregistered.
             from kanibako.launch import box_resolve as _box_resolve
 
             if force and _box_resolve.stores_standalone_registry_null(

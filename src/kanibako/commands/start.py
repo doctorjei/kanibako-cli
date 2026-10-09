@@ -1460,7 +1460,7 @@ def _resolve_existing_box(
       alone (re-running ``create`` completes it); the launch path must treat a
       not-fully-registered box as "no box" → error.  ⚑ This holds for PRIMARY and
       NAMED (registration IS the signal); a half-created STANDALONE box resolves
-      by name from its disk marker, which ``import_standalone`` leaves unregistered,
+      by name from its disk marker, which detection never registers,
       so the caller refuses it on its pending create entry instead.
     * ``warn=False`` — a pure probe never doubles the non-conforming-name flag.
 
