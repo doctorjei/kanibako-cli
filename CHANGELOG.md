@@ -722,7 +722,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `~/.kanibako/supervisor-fallback.log` is printed too. A clean exit prints nothing new.
 - **A standalone box whose `workset.yaml` does not parse is refused by name.** `box purge` printed "No session data
   found" and exited 0, and `box rm --purge` called the box unregistered. Both, and every other command given that
-  directory, now print the YAML error with the file's path and exit 1; nothing is deleted.
+  directory, now print the YAML error with the file's path and exit 1; nothing is deleted. A directory the
+  registry already holds as a primary or working-set box still resolves as that box.
 - **Purging a standalone box with `workset.canon: null` names the `canon/` folder it keeps.** The folder was left
   without a word; a note now names it.
 - **Purging a standalone box removes kanibako's line from the project `.gitignore`.** `create` adds `box_data/`

@@ -277,12 +277,24 @@ def project_gitignore_to_strip(project_path: Path) -> Path | None:
     return gitignore
 
 
+def _gitignore_kept_text(gitignore: Path) -> str:
+    text = gitignore.read_bytes().decode("utf-8")
+    return "".join(line for line in text.splitlines(keepends=True)
+                   if line.splitlines()[0] not in _GITIGNORE_ENTRIES)
+
+
+def gitignore_holds_only_kanibako(gitignore: Path) -> bool:
+    """True when stripping *gitignore* leaves only whitespace, so the file is deleted."""
+    try:
+        return not _gitignore_kept_text(gitignore).strip()
+    except (OSError, UnicodeDecodeError):
+        return False
+
+
 def strip_project_gitignore(gitignore: Path) -> bool:
     """Drop kanibako's lines from *gitignore*; unlink it if only whitespace remains."""
     try:
-        text = gitignore.read_bytes().decode("utf-8")
-        kept = "".join(line for line in text.splitlines(keepends=True)
-                       if line.splitlines()[0] not in _GITIGNORE_ENTRIES)
+        kept = _gitignore_kept_text(gitignore)
         if kept.strip():
             gitignore.write_bytes(kept.encode("utf-8"))  # in place: keeps its mode
         else:

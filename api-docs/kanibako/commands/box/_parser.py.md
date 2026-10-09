@@ -15,6 +15,7 @@ _CREATE_SHAPING_FLAGS = ('name', 'image', 'agent', 'private', 'no_vault')
 _CREATE_SUBJECT_FLAGS = ('path', 'standalone', 'allow_home', 'register')
 _SHAPING_SET_CURE = {'image': ('box.image=<value>',), 'agent': ('pref.system.agent=<value>',), 'private': ('box.auth.global_enabled=false', 'box.auth.workset_enabled=false'), 'no_vault': ('box.enable_vault=false',)}
 _STANDALONE_CREATE_EXEMPT_KEYS: frozenset[str] = frozenset({'registry', 'template'})
+_GITIGNORE = 'gitignore line'
 _VAULT_LABELS = ('vault ro (your files)', 'vault rw (your files)')
 ```
 
@@ -87,4 +88,5 @@ class _PurgeStep:
     path: Path
     anchor: bool = False
     gated: bool = False
+    edit: bool = False
 ```
