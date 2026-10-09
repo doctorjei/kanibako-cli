@@ -43,8 +43,8 @@ from kanibako.settings.paths import (
 from kanibako.utils import confirm_prompt, literal_path
 from kanibako.errors import BoxNameError, DerivedBoxNameError, ProjectError
 from kanibako.launch.box_identity import (box_name_cure, refuse_nonleaf_standalone_name,
-                                          validate_box_name)
-from kanibako.settings.messages import CURE_DERIVED_DUP_DEST
+                                          sanitize_cap, validate_box_name)
+from kanibako.settings.messages import CURE_DERIVED_DUP_DEST, CURE_LEAF_NOT_ASCII
 from kanibako.channels.channels import workset_name_token, workset_root
 from kanibako.settings.workset_dirkeys import EarlyScope, refuse_inherited_per_owner
 
@@ -134,6 +134,17 @@ def _run_duplicate_cross_mode(args: argparse.Namespace, std, config) -> int:
             raise
         except ProjectError as e:
             print(f"Error: {e}", file=sys.stderr)
+            return 1
+
+    # Row A+B: refuse a destination LEAF with no ASCII spelling BEFORE any mkdir/copy/merge.
+    # Gate matches the existing `--name` block above; the `--name` block refuses the typed
+    # name, this one refuses the directory.  DerivedBoxNameError subclasses ProjectError,
+    # so the cure must be carried here — no generic catch allowed.
+    if to_mode is BoxMode.standalone:
+        try:
+            sanitize_cap(new_path.name)
+        except DerivedBoxNameError as e:
+            print(f"Error: {e.with_cure(CURE_LEAF_NOT_ASCII)}", file=sys.stderr)
             return 1
 
     # Detect source mode and resolve.
