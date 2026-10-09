@@ -3023,7 +3023,7 @@ def run_move(args) -> int:
                   file=sys.stderr)
             return 1
         cure = shlex.join(["kanibako", "box", "move", old, str(new_path),
-                           *(["--default"] if getattr(args, "to_default", False) else [])])
+                           *_convert_target_flags(args)])
         print(f"Error: {e.with_cure(box_name_cure(cure, e.name))}", file=sys.stderr)
         return 1
     except (ProjectError, WorksetError) as e:
