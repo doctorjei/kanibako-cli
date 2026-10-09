@@ -690,6 +690,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **A deregistered box whose `box rm --purge` fails partway stays deregistered.** While its metadata folder
   remains, the box is still listed as deregistered and the printed `box rm <name> --purge` retries the delete.
 
+- **A `box rm --purge` that fails partway leaves the box deregistered.** While its metadata folder remains, the
+  box is listed as deregistered, as after a plain `box rm`, and the printed `box rm <name> --purge` retries the
+  delete. Before, a registered box was dropped from the registry with nothing to find it by, and an already
+  deregistered box lost its entry.
+
 - **`workset rm --purge` no longer deletes the boxes behind a symlinked box store.** When the folder `workset.boxes`
   names is a symlink, only the link goes; what it points at is kept.
 
