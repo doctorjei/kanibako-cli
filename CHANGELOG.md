@@ -720,6 +720,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the agent's final screen before the box is removed; before, the box closed the agent's pane first and the output
   was lost. If the box fell back to a bare shell because its supervisor would not load, the end of
   `~/.kanibako/supervisor-fallback.log` is printed too. A clean exit prints nothing new.
+- **A standalone box whose `workset.yaml` does not parse is refused by name.** `box purge` printed "No session data
+  found" and exited 0, and `box rm --purge` called the box unregistered. Both, and every other command given that
+  directory, now print the YAML error with the file's path and exit 1; nothing is deleted.
+- **Purging a standalone box with `workset.canon: null` names the `canon/` folder it keeps.** The folder was left
+  without a word; a note now names it.
 
 - **`box duplicate` to a primary box takes its `--name`.** It was ignored, and the copy was named after its
   directory. A taken name is refused before anything is written.

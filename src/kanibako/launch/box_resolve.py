@@ -33,11 +33,12 @@ from kanibako.utils import literal_path
 _PRIMARY_WORKSET_NAME = "default"
 
 
-def stores_standalone_registry_null(project_dir: Path) -> bool:
+def stores_standalone_registry_null(project_dir: Path, *, strict: bool = False) -> bool:
     """True iff *project_dir*'s OWN ``workset.yaml`` stores ``workset.registry`` as null.
 
     ⚑ That stored null DEFINES standalone (system-design § Detection & import): this
     file only, never the cascade, so a null in a containing or system file never counts.
+    A malformed file reads as not standalone unless *strict*, which refuses it.
     """
     settings = project_dir / WORKSET_META_FILE
     if not settings.is_file():
@@ -45,6 +46,8 @@ def stores_standalone_registry_null(project_dir: Path) -> bool:
     try:
         table = load_doc(settings).get("workset")
     except ConfigError:
+        if strict:
+            raise
         return False
     return isinstance(table, dict) and "registry" in table and table["registry"] is None
 

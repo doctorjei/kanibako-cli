@@ -108,6 +108,12 @@ class TestDetection:
         (tmp_path / WORKSET_META_FILE).write_text("workset:\n  registry: null\n")
         assert box_resolve.stores_standalone_registry_null(tmp_path) is True
 
+    def test_malformed_file_is_refused_only_when_strict(self, tmp_path):
+        (tmp_path / WORKSET_META_FILE).write_text("workset:\n  registry: null\n  canon: @x\n")
+        assert box_resolve.stores_standalone_registry_null(tmp_path) is False
+        with pytest.raises(ConfigError, match="is not valid YAML"):
+            box_resolve.stores_standalone_registry_null(tmp_path, strict=True)
+
     def test_a_system_file_null_is_not_the_roots_own_marker(
         self, config_file, tmp_home, credentials_dir, capsys,
     ):
