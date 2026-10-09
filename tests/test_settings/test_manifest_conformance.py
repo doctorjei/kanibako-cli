@@ -1280,7 +1280,7 @@ class TestValueBoxAddresses:
         composer's own helper, so the leaf grammar is pinned too."""
         from kanibako.launch.box_identity import compose_standalone_name
 
-        assert compose_standalone_name("7xk9q", Path("/ws/my proj!")) == "7xk9q_my_proj_"
+        assert compose_standalone_name("7xk9q", Path("/ws/my proj!")) == "7xk9q_my_proj"
 
 
 #: (E6) ``value:`` rows whose cell is PROSE, not a comparable literal.  The
