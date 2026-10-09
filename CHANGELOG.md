@@ -695,6 +695,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   delete. Before, a registered box was dropped from the registry with nothing to find it by, and an already
   deregistered box lost its entry.
 
+- **A refused `box move --workset <ws>` prints a cure that still moves into `<ws>`.** The printed command kept
+  only `--default`, so it moved the box into the primary workset instead.
+
 - **`workset rm --purge` no longer deletes the boxes behind a symlinked box store.** When the folder `workset.boxes`
   names is a symlink, only the link goes; what it points at is kept.
 

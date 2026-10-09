@@ -552,3 +552,24 @@ def test_the_convert_cure_echoes_the_target_that_was_asked_for():
     # A standalone target needs no target flag here; it never reaches the --name cure.
     assert _convert_target_flags(SimpleNamespace(to_standalone=True)) == []
     assert _convert_target_flags(SimpleNamespace()) == []
+
+
+def test_the_move_cure_echoes_the_workset_that_was_asked_for(
+        tmp_home, config_file, credentials_dir):
+    """⚑ `box move … --workset ws` must print a cure that still targets `ws`; dropping
+    the flag advised a move into the PRIMARY workset, a different operation."""
+    src = tmp_home / "work" / "mvws"
+    src.mkdir(parents=True)
+    rc, text = _cli("create", "--no-vault", "--", str(src))
+    assert rc == 0, text
+    rc, text = _cli("workset", "create", str(tmp_home / "ws" / "wsx"))
+    assert rc == 0, text
+    dst = tmp_home / "work" / "dst"
+
+    rc, text = _cli("box", "move", str(src), str(dst), "--workset", "wsx",
+                    "--name", "かに", "--force")
+
+    assert rc == 1, text
+    assert _cure(text, _SPELLED) == [
+        "kanibako", "box", "move", str(src), str(dst), "--workset", "wsx", "--name", "kani"]
+    assert not dst.exists()
