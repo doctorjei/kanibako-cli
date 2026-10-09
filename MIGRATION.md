@@ -2998,11 +2998,12 @@ resolves it from its in-tree marker, exactly as before.
 `kanibako box info <name>` and `--box <name>` are the registry's only readers, and with no
 entry they report the token as unresolvable rather than finding the box.
 
-⚑ **The box is not permanently invisible.** Drop-in detection (§6 of the 1.6.0 runbook
-below) still indexes a standalone
-box the first time kanibako resolves one from its own tree, so an unregistered box acquires
-an entry on first use and is addressable by name from then on. `--register` is what makes
-that entry exist *immediately*, and it is the only way to choose the name.
+⚑ **A command that finds the box no longer registers it.** Drop-in detection (§6 of the
+1.6.0 runbook below) used to index a standalone box the first time kanibako resolved one from
+its own tree. It no longer does: the box stays unregistered, reached by its path or from
+inside its tree, until you run `kanibako box register <path>` (or created it with
+`--register`). Moving it keeps it unregistered, and `box rm <path>` has nothing to remove —
+`box rm <path> --purge` deletes it. Named worksets are still imported when found.
 
 ⚑ **`--register` is standalone-only.** A default-mode box's registration is its workset
 membership, which is not optional; the flag is accepted and does nothing there.

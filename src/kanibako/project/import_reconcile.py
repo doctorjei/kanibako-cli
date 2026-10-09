@@ -6,10 +6,11 @@ is **imported** on discovery: registered, ALERTed to stderr, no confirmation
 prompt.  That is what lets a user move a tree to a new location (or machine) and
 have kanibako re-discover it.
 
-Two live modes, one uniform mechanism (no per-mode special-casing):
-:func:`import_standalone` and :func:`import_named_workset`, both called lazily
-during the resolver's ancestor walk.  A retired third **PRIMARY** mode is
-sequestered in ``salvage/primary_reconcile.py`` — do not revive it here.
+Two live modes: :func:`import_named_workset`, called lazily during the resolver's
+ancestor walk, and :func:`import_standalone`, called only by ``box register`` — a
+standalone box is unregistered by default, so the walk only CHECKS one
+(:func:`check_standalone`) and never registers it.  A retired third **PRIMARY**
+mode is sequestered in ``salvage/primary_reconcile.py`` — do not revive it here.
 
 ⚑ The two modes differ in where the NAME comes from, and only there.  A standalone
 box composes one from its stored ``workset.kuid`` plus the live dir leaf.  A workset
@@ -136,6 +137,33 @@ def _clear_stale_import(journal: Path | None, box_path: Path) -> None:
 # STANDALONE
 # ---------------------------------------------------------------------------
 
+def _refuse_second_link(registry: Path, root: Path) -> None:
+    """[R188]: a second link to a registered standalone root is refused, not a second box."""
+    owner = registry_store.standalone_name_for_same_dir(registry, root)
+    if owner is not None:
+        owner_root = registry_store.standalone_root(registry, owner)
+        raise ImportConflictError(
+            f"{root} is another path to standalone box '{owner}', registered at "
+            f"{owner_root}; a standalone box has one path. Work from {owner_root}."
+        )
+
+
+def check_standalone(
+    registry: Path, root: Path, *, journal: Path | None = None,
+    early: "EarlyScope",
+) -> None:
+    """The resolver's pass over a standalone root at *root*: it never registers one.
+
+    A registered root gets its stale J2 entry cleared; an unregistered one is
+    refused only when it is a second link to a registered root ([R188]).
+    """
+    root = Path(literal_path(root))
+    if registry_store.standalone_name_for_root(registry, root) is not None:
+        _clear_stale_import(journal, standalone_box_store(root, early=early))
+        return
+    _refuse_second_link(registry, root)
+
+
 def import_standalone(
     registry: Path, root: Path, *, journal: Path | None = None,
     early: "EarlyScope",
@@ -172,14 +200,7 @@ def import_standalone(
         if journal_mod.pending_create(journal, store) is not None:
             return None
 
-    # ⚑ [R188]: a second link to a registered standalone root is refused, not a second box.
-    owner = registry_store.standalone_name_for_same_dir(registry, root)
-    if owner is not None:
-        owner_root = registry_store.standalone_root(registry, owner)
-        raise ImportConflictError(
-            f"{root} is another path to standalone box '{owner}', registered at "
-            f"{owner_root}; a standalone box has one path. Work from {owner_root}."
-        )
+    _refuse_second_link(registry, root)
 
     # ⚑ The LIVE name, by THE one naming rule; an unregistered box has no stored
     # registry name, so a pre-kuid box falls back to its leaf.

@@ -57,8 +57,8 @@ def _run_purge_plan(steps: list[_PurgeStep]) -> bool
 def _read_box_image(settings_file: Path) -> str | None
 def _read_box_image_tiered(box_tier: Path, workset_tier: Path) -> str | None
 def _purge_deregistered(std, name: str, entry: dict, args: argparse.Namespace) -> int
-def _resolve_standalone_target(std, config, target: str) -> tuple[str | None, Path | None]
-def _rm_standalone(std, box_name: str, root, args: argparse.Namespace) -> int
+def _resolve_standalone_target(std, config, target: str) -> tuple[str | None, Path | None, bool]
+def _rm_standalone(std, box_name: str, root, args: argparse.Namespace, *, registered: bool) -> int
 def _composed_standalone_key(root: Path) -> str | None
 def _readopt_deregistered(std, name: str, entry: dict) -> int
 def _box_register_cure(target: str) -> str

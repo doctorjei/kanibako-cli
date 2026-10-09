@@ -1758,7 +1758,7 @@ def detect_project_mode(project_dir: Path, std: StandardPaths,
     homes = {Path.home().resolve(), Path(literal_path(Path.home()))}
 
     # 1. Connected-external check.  ⚑ MUST run BEFORE the step-2 marker check: otherwise
-    # import_standalone re-creates the very dual registration that --force removed.
+    # the box resolves standalone, the very dual identity that --force removed.
     from kanibako.launch import box_resolve
     if box_resolve.find_connected_external_box(resolved, std) is not None:
         return DetectionResult(BoxMode.named, resolved)
@@ -1767,7 +1767,7 @@ def detect_project_mode(project_dir: Path, std: StandardPaths,
     # OVERRIDES workset TREE membership.  Only this dir; ancestors are the step-5 walk.
     if _is_standalone_meta_dir(resolved):
         from kanibako.project import import_reconcile
-        import_reconcile.import_standalone(
+        import_reconcile.check_standalone(
             std.registry, resolved, journal=std.journal,
             early=_early_scope(std, BoxMode.standalone))
         return DetectionResult(BoxMode.standalone, resolved)
@@ -1782,8 +1782,9 @@ def detect_project_mode(project_dir: Path, std: StandardPaths,
     if ac_ancestor is not None:
         return DetectionResult(BoxMode.primary, ac_ancestor)
 
-    # 5. Walk ancestors for on-disk markers, IMPORTING what is unregistered.  STANDALONE is
-    # checked first at each level: the root file's own null defines it, skeleton or not.
+    # 5. Walk ancestors for on-disk markers, IMPORTING an unregistered workset (never a
+    # standalone box).  STANDALONE is checked first at each level: the root file's own null
+    # defines it, skeleton or not.
     from kanibako.project import import_reconcile
     from kanibako.project.workset import (
         is_workset_skeleton, refuse_retired_workset_identity,
@@ -1801,7 +1802,7 @@ def detect_project_mode(project_dir: Path, std: StandardPaths,
 
         # STANDALONE: the root file's own stored ``workset.registry`` null; box_data/ is not the marker.
         if _is_standalone_meta_dir(current):
-            import_reconcile.import_standalone(
+            import_reconcile.check_standalone(
                 std.registry, current, journal=std.journal,
                 early=_early_scope(std, BoxMode.standalone))
             return DetectionResult(BoxMode.standalone, current)

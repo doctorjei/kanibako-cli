@@ -2332,7 +2332,7 @@ def _to_standalone(
 
     # Establish identity + meta + registration through the shared core; it writes
     # ``workset.kuid`` to <root>/workset.yaml and a sparse ``box.enable_vault`` to the box
-    # tier, then registers the box.  ⚑ NO mode is persisted anywhere — standalone is
+    # tier, then registers the box when *register* says so.  ⚑ NO mode is persisted anywhere — standalone is
     # detected from the MARKER (that root file beside ``box_data/``), never from a stored key.
     # ⚑⚑ The BOX-AUTHORED value: ``establish_standalone`` writes this straight to the box
     # tier ``_deliver_carried_box_settings`` just laid down, so passing the RESOLVED value
@@ -2343,15 +2343,21 @@ def _to_standalone(
         if state.mode is BoxMode.standalone and is_canonical_standalone_name(state.name)
         else None
     )
+    # A standalone source keeps its registration state: an unregistered box stays unregistered.
+    register = (state.mode is not BoxMode.standalone
+                or registry_store.standalone_name_for_root(std.registry, state.metadata_path)
+                is not None)
     box_name, dst_shell, vault_ro, vault_rw = establish_standalone(
         std, root,
         enable_vault=state.box_authored_vault,
         carry_kuid=carried_kuid,
         own_name=state.name if carried_kuid else None,
+        register=register,
     )
-    unwind.push(
-        lambda: registry_store.unregister_standalone(std.registry, box_name)
-    )
+    if register:
+        unwind.push(
+            lambda: registry_store.unregister_standalone(std.registry, box_name)
+        )
 
     workspace_subdir.mkdir(parents=True, exist_ok=True)
     write_project_gitignore(root)

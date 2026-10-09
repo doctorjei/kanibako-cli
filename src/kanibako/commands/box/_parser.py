@@ -2262,8 +2262,8 @@ def _purge_deregistered(std, name: str, entry: dict, args: argparse.Namespace) -
 
 def _resolve_standalone_target(
     std, config, target: str,
-) -> tuple[str | None, Path | None]:
-    """Resolve a ``box rm`` *target* (NAME or PATH) to ``(box_name, root)``, else two ``None``."""
+) -> tuple[str | None, Path | None, bool]:
+    """Resolve a ``box rm`` *target* to ``(box_name, root, registered)``; unregistered by PATH only."""
     from kanibako.errors import LegacyWorksetIdentityError
     from kanibako.project import registry_store
     from kanibako.settings.paths import BoxMode, detect_project_mode
@@ -2274,7 +2274,7 @@ def _resolve_standalone_target(
     if designation_route(target, name_first=True) is DesignationRoute.NAME:
         stored = find_identifier(target, entries)
         if stored is not None:
-            return stored, Path(entries[stored])
+            return stored, Path(entries[stored]), True
 
     # 2) PATH target: detect the box by ancestor-walk, then match its registered root.
     candidate = Path(target)
@@ -2287,22 +2287,33 @@ def _resolve_standalone_target(
             # NAMED thing to fix, not a path that failed to be a box.
             raise
         except Exception:  # noqa: BLE001 - a non-project path is simply a miss
-            return None, None
+            return None, None, False
         if detection.mode is BoxMode.standalone:
+            from kanibako.launch.box_resolve import standalone_box_name
             root = detection.project_root
             sa_name = registry_store.standalone_name_for_root(std.registry, root)
             if sa_name is not None:
-                return sa_name, root
-    return None, None
+                return sa_name, root, True
+            return standalone_box_name(root, None), root, False
+    return None, None, False
 
 
-def _rm_standalone(std, box_name: str, root, args: argparse.Namespace) -> int:
-    """Remove a standalone box: always drop its registry entry, its ``box_data/`` on --purge."""
+def _rm_standalone(std, box_name: str, root, args: argparse.Namespace, *,
+                   registered: bool) -> int:
+    """Remove a standalone box: drop its registry entry if any, its ``box_data/`` on --purge.
+
+    An unregistered box has no entry to drop, so a plain ``rm`` changes nothing.
+    """
     from datetime import datetime, timezone
 
     from kanibako.project import registry_store
     from kanibako.settings.paths import standalone_box_store
 
+    if not registered and not args.purge:
+        print(f"Error: standalone box '{box_name}' at {root} is not registered; nothing to "
+              f"remove. To delete it:\n  kanibako box rm {shlex.quote(str(root))} --purge",
+              file=sys.stderr)
+        return 1
     print(f"Removing standalone box: {box_name} ({root})")
     root_path = Path(root) if root is not None else None
     metadata_dir = (standalone_box_store(root_path, early=_early_scope(std, BoxMode.standalone))
@@ -2322,8 +2333,9 @@ def _rm_standalone(std, box_name: str, root, args: argparse.Namespace) -> int:
         *_standalone_settings_files(root_path, early=_early_scope(std, BoxMode.standalone))
     ) if not args.purge and root_path is not None and metadata_dir is not None
         and metadata_dir.is_dir() else None)
-    registry_store.unregister_standalone(std.registry, box_name)
-    print(f"Removed '{box_name}' from the registry")
+    if registered:
+        registry_store.unregister_standalone(std.registry, box_name)
+        print(f"Removed '{box_name}' from the registry")
 
     if args.purge:
         if plan is None:
@@ -2331,7 +2343,8 @@ def _rm_standalone(std, box_name: str, root, args: argparse.Namespace) -> int:
             return 0
         if _run_purge_plan(plan):
             return 0
-    if root_path is not None and metadata_dir is not None and metadata_dir.is_dir():
+    if (registered and root_path is not None and metadata_dir is not None
+            and metadata_dir.is_dir()):
         # Park a deregistered entry (no --purge, or a purge that left the metadata): the
         # index was dropped above, so BY NAME is the only way back to the metadata.
         registry_store.register_deregistered(
@@ -2386,9 +2399,9 @@ def run_rm(args: argparse.Namespace) -> int:
 
     if name is None:
         # ⚑ STANDALONE boxes are not in the name index — resolve them separately.
-        sa_name, sa_root = _resolve_standalone_target(std, config, target)
+        sa_name, sa_root, sa_registered = _resolve_standalone_target(std, config, target)
         if sa_name is not None:
-            return _rm_standalone(std, sa_name, sa_root, args)
+            return _rm_standalone(std, sa_name, sa_root, args, registered=sa_registered)
 
     if name is None:
         # ⚑ Not active anywhere: a re-`rm` after a plain `rm` resolves the retained

@@ -4,8 +4,8 @@ Import/connect REGISTER an externally-seeded box and NEVER seed (CONVENTIONS
 "Seed model" B7).  J2 brackets the register-only seam with a write-ahead
 ``op: import`` / ``op: connect`` journal entry: write entry -> register-if-absent
 -> clear, with NO seed.  A crash before the entry clears leaves it; the next
-resolve re-enters the (idempotent) import and replays it — register-if-absent ->
-clear, NEVER a seed.  The op TYPE (import/connect, not create) is exactly what
+import (a resolve for a workset, ``box register`` for a standalone box) re-enters
+it and replays it — register-if-absent -> clear, NEVER a seed.  The op TYPE (import/connect, not create) is exactly what
 keeps "import never seeds" true: the register-only replay table has no seed step.
 
 These tests are NON-VACUOUS: rc / registry / journal state and the "seed NOT
@@ -76,9 +76,15 @@ class TestImportBehavioralEquivalence:
         registry_store.save_section(std.registry, "standalone", {})
         capsys.readouterr()
 
-        # Resolve re-discovers + imports; journal must be EMPTY at rest.
+        # Resolve never registers a standalone box; ``box register``'s import does,
+        # and the journal must be EMPTY at rest after either.
         result = detect_project_mode(project_dir, std, config)
         assert result.mode is BoxMode.standalone
+        assert registry_store.load_standalone(std.registry) == {}
+        assert journal.read_journal(std.journal) == {}
+        import_reconcile.import_standalone(
+            std.registry, project_dir.resolve(), journal=std.journal,
+            early=_early_scope(std, BoxMode.standalone))
         assert registry_store.load_standalone(std.registry).get(name) == str(
             project_dir.resolve()
         )
@@ -254,9 +260,9 @@ class TestStandaloneImportRecovery:
     def test_interrupted_import_completes_and_clears_no_seed(
         self, std, config, project_dir, credentials_dir, capsys, seed_tripwire,
     ):
-        """STANDALONE import interrupted (entry left, NOT registered):
-        re-resolve registers + clears the entry; seed NEVER called.  All asserts
-        UNCONDITIONAL."""
+        """STANDALONE import interrupted (entry left, NOT registered): a resolve
+        leaves both alone; re-running the import registers + clears the entry;
+        seed NEVER called.  All asserts UNCONDITIONAL."""
         # Build a real standalone box, then wipe the registry → unregistered.
         proj = resolve_standalone_project(
             std, config, str(project_dir), initialize=True,
@@ -279,10 +285,15 @@ class TestStandaloneImportRecovery:
         assert journal.pending_import(std.journal, box_key) is not None
         assert registry_store.load_standalone(std.registry) == {}
 
-        # Recovery: re-resolve re-enters the idempotent import → register + clear.
         result = detect_project_mode(project_dir, std, config)
-
         assert result.mode is BoxMode.standalone
+        assert registry_store.load_standalone(std.registry) == {}
+        assert journal.pending_import(std.journal, box_key) is not None
+
+        # Recovery: ``box register`` re-enters the idempotent import → register + clear.
+        import_reconcile.import_standalone(
+            std.registry, project_dir.resolve(), journal=std.journal,
+            early=_early_scope(std, BoxMode.standalone))
         # Registered exactly once.
         registered = registry_store.load_standalone(std.registry)
         assert registered.get(name) == str(project_dir.resolve())
