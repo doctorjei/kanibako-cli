@@ -20,7 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   rule too. Rename an existing box with `kanibako box move <path> <new-path> --name <new-name>`.
 
 - **A box name is ASCII-only.** A box name's characters are ASCII letters, digits, `_`, `-`, and `.`, the set
-  podman allows in a container name; `create --name café` and a box named after a directory such as `café/` are
+  podman allows in a container name; `create --name café` and a box named after a directory named `café` are
   refused, naming the character. An existing non-ASCII box is warned about and found by its path; rename it with
   `kanibako box move <path> <new-path> --name <new-name>`.
 

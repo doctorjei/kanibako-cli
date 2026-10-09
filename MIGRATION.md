@@ -439,7 +439,7 @@ inside boxes. In order of likely impact:
     `fork`** — see *A box named after its directory must have a valid box name*.
 
 44. **A box name is ASCII-only: a letter, digit, `_`, `-`, or `.`. `create --name café` is refused, and so is a
-    box named after a directory such as `café/`** — see *A box name is ASCII-only*.
+    box named after a directory named `café`** — see *A box name is ASCII-only*.
 
 ---
 
@@ -7086,7 +7086,7 @@ kanibako box move <path> <new-path> --name <new-name>
 A box name is 1–64 characters, each an ASCII letter, digit, `_`, `-`, or `.`. Through v1.7.x any Unicode letter
 or digit passed (`café`, `日本語`), and the box then failed at `start`: its container name `kb-<workset>-<box>` must
 match podman's `[a-zA-Z0-9][a-zA-Z0-9_.-]*`. Now `create --name café` is refused with the character it breaks on,
-and a box named after a directory such as `café/` is refused like any other directory name that breaks the rule
+and a box named after a directory named `café` is refused like any other directory name that breaks the rule
 (see *A box named after its directory must have a valid box name*).
 
 A box created under such a name before this release keeps working: each command that resolves it warns that the
