@@ -2266,14 +2266,14 @@ def _rm_standalone(std, box_name: str, root, args: argparse.Namespace) -> int:
     print(f"Removed '{box_name}' from the registry")
 
     if args.purge:
-        if plan is not None:
-            if not _run_purge_plan(plan):
-                return 1
-        else:
+        if plan is None:
             print(f"No metadata directory found at {metadata_dir}")
-    elif root_path is not None and metadata_dir is not None and metadata_dir.is_dir():
-        # Park a deregistered entry: the index was dropped above, so BY NAME is the
-        # only way a later `rm --purge` / `register` can find the retained metadata.
+            return 0
+        if _run_purge_plan(plan):
+            return 0
+    if root_path is not None and metadata_dir is not None and metadata_dir.is_dir():
+        # Park a deregistered entry (no --purge, or a purge that left the metadata): the
+        # index was dropped above, so BY NAME is the only way back to the metadata.
         registry_store.register_deregistered(
             std.registry,
             box_name,
@@ -2285,7 +2285,7 @@ def _rm_standalone(std, box_name: str, root, args: argparse.Namespace) -> int:
         )
         print(f"Deregistered '{box_name}' (metadata retained).")
         print(_retained_box_cure_lines(box_name))
-    return 0
+    return 1 if args.purge else 0
 
 
 def run_rm(args: argparse.Namespace) -> int:
@@ -2364,28 +2364,26 @@ def run_rm(args: argparse.Namespace) -> int:
     print(f"Removed '{name}' from the registry")
 
     if args.purge:
-        if plan is not None:
-            if not _run_purge_plan(plan):
-                return 1
-        else:
+        if plan is None:
             print(f"No metadata directory found at {metadata_dir}")
-    else:
-        # No --purge: retain the metadata and park a ``deregistered`` entry for a later
-        # `rm --purge` / `register`.
-        if metadata_dir.is_dir():
-            registry_store.register_deregistered(
-                std.registry,
-                name,
-                kind="primary",
-                workspace=path,
-                metadata=str(metadata_dir),
-                image=image,
-                deregistered_at=datetime.now(tz=timezone.utc).isoformat(),
-            )
-            print(f"Deregistered '{name}' (metadata retained).")
-            print(_retained_box_cure_lines(name))
-
-    return 0
+            return 0
+        if _run_purge_plan(plan):
+            return 0
+    # No --purge, or a purge that left the metadata: park a ``deregistered`` entry for
+    # a later `rm --purge` / `register`.
+    if metadata_dir.is_dir():
+        registry_store.register_deregistered(
+            std.registry,
+            name,
+            kind="primary",
+            workspace=path,
+            metadata=str(metadata_dir),
+            image=image,
+            deregistered_at=datetime.now(tz=timezone.utc).isoformat(),
+        )
+        print(f"Deregistered '{name}' (metadata retained).")
+        print(_retained_box_cure_lines(name))
+    return 1 if args.purge else 0
 
 
 def _composed_standalone_key(root: Path) -> str | None:
