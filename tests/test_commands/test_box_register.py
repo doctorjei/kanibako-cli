@@ -19,6 +19,7 @@ import hashlib
 from pathlib import Path
 
 from kanibako.project import registry_store
+from kanibako.settings.messages import CURE_LEAF_NOT_ASCII
 from kanibako.commands.box._parser import run_create, run_register, run_rm
 from kanibako.project.names import resolve_name, register_name
 from kanibako.settings.paths import load_primary_boxes
@@ -569,6 +570,36 @@ class TestCreateStandaloneOptIn:
         ) == 1
 
         assert registry_store.load_standalone(std.registry) == {}
+
+    def test_non_ascii_root_takes_the_ascii_refusal_not_the_directory_rule(
+        self, config_file, tmp_home, credentials_dir, capsys
+    ):
+        """Ruling 2026-10-09: on a non-ASCII standalone root, the ASCII refusal wins.
+
+        ``refuse_nonleaf_standalone_name`` computes ``sanitize_cap(root.name)`` BEFORE it
+        compares ``--name``, so a root with no ASCII spelling raises ``DerivedBoxNameError``
+        first — with or without a typed name.  The door must let that error keep its own
+        ``CURE_LEAF_NOT_ASCII`` and must NOT print the generic "rename the directory to
+        rename the box" cure: that would send someone with a 東京 directory chasing the
+        wrong problem.  Asserted against the imported constants, not a paraphrase, so the
+        two messages cannot silently drift into one another.
+        """
+        config, std = _std(config_file)
+        root = tmp_home / "東京"
+        root.mkdir()
+
+        assert run_create(
+            _create_args(root, standalone=True, register=True, name="x")
+        ) == 1
+
+        err = capsys.readouterr().err
+        assert CURE_LEAF_NOT_ASCII in err, err
+        assert "cannot spell in ASCII" in err, err
+        assert "rename the directory to rename the box" not in err, err
+
+        assert registry_store.load_standalone(std.registry) == {}
+        assert not (root / "box_data").exists()
+        assert not (root / "workset.yaml").exists()
 
     def test_bare_leaf_name_is_accepted_as_a_noop(
         self, config_file, tmp_home, credentials_dir
