@@ -19,7 +19,7 @@ from kanibako.launch.romanize import to_ascii
     ("ラーメン", "raamen"), ("ファイル", "fairu"), ("ティー", "tii"), ("チェ", "che"),
     ("ヴァ", "va"), ("ウィ", "wi"), ("ジョン・スミス", "jon-sumisu"),
     ("とうきょう", "toukyou"), ("おおさか", "oosaka"), ("しんぶん", "shinbun"),
-    ("きんえん", "kinen"), ("ーあ", "a"), ("あっ", "a"), ("ぁ", "a"), ("ゃ", "ya"),
+    ("ーあ", "a"), ("あっ", "a"), ("ぁ", "a"), ("ゃ", "ya"),
 ])
 def test_spelling(text: str, spelled: str) -> None:
     assert to_ascii(text) == spelled
@@ -44,6 +44,19 @@ def test_extended_katakana(text: str, spelled: str) -> None:
     assert to_ascii(text) == spelled
 
 
+@pytest.mark.parametrize("text, spelled", [
+    # ん before a vowel or a y-kana is n_, so the n is not read with what follows.
+    ("きんや", "kin_ya"), ("きんえん", "kin_en"), ("ほんや", "hon_ya"), ("かんい", "kan_i"),
+    ("ﾎﾝﾔ", "hon_ya"), ("ンャ", "n_ya"), ("ンァ", "n_a"), ("んを", "n_o"),
+    # Before any other kana, at the end, or before what is not kana, ん is n.
+    ("きねん", "kinen"), ("しんぶん", "shinbun"), ("こんにちは", "konnichiha"),
+    ("きにゃ", "kinya"), ("ンヴァ", "nva"), ("んー", "n"), ("ん・あ", "n-a"),
+    ("んa", "na"), ("ん1", "n1"),
+])
+def test_n_before_a_vowel_or_y_is_n_underscore(text: str, spelled: str) -> None:
+    assert to_ascii(text) == spelled
+
+
 @pytest.mark.parametrize("text", ["東京", "かに東", "日本語プロジェクト", "\U0001F600", "́x"])
 def test_no_spelling_is_none(text: str) -> None:
     assert to_ascii(text) is None
@@ -62,5 +75,5 @@ def test_no_table_spelling_has_more_bytes_than_its_source() -> None:
         for source, spelled in table.items():
             assert len(spelled.encode()) <= len(source.encode()), source
     # Joined kana and sokuon/choon units stay within their sources' bytes too.
-    for text in ["しょ", "っちゃ", "ヴァー", "ｶﾞｯ", "ウィ", "ちぇ"]:
+    for text in ["しょ", "っちゃ", "ヴァー", "ｶﾞｯ", "ウィ", "ちぇ", "んや", "ンャ", "ﾝｱ", "っんあ"]:
         assert len(to_ascii(text).encode()) <= len(text.encode()), text

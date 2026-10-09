@@ -26,6 +26,7 @@ def to_ascii(text: str, *, strict: Literal[False]) -> str
 def to_ascii(text: str, *, strict: bool=True) -> str | None
 def to_ascii(text: str, *, strict: bool=True) -> str | None
 def _with_katakana(hiragana: dict[str, str]) -> dict[str, str]
+def _opens_on_vowel_or_y(kana: str) -> bool
 def _join_small(base: str, small: str) -> str
 def _is_ascii_alnum(text: str) -> bool
 def _latin_spelling(ch: str) -> str | None

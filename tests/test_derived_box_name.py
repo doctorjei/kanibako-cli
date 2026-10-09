@@ -76,7 +76,8 @@ def test_create_in_an_existing_directory_refuses_and_registers_nothing(
     assert not (tmp_home / "work" / "PWNED").exists()
 
 
-@pytest.mark.parametrize("name, spelled", [("café", "cafe"), ("かにばこ", "kanibako")])
+@pytest.mark.parametrize("name, spelled", [
+    ("café", "cafe"), ("かにばこ", "kanibako"), ("きんや", "kin_ya")])
 def test_create_offers_the_ascii_spelling_and_the_offer_creates_the_box(
         name, spelled, tmp_home, config_file, credentials_dir):
     path = tmp_home / "work" / name
@@ -111,7 +112,8 @@ def test_a_name_with_no_spelling_gets_the_generic_cure(tmp_home, config_file, cr
     assert _cure(text) == ["kanibako", "create", str(path), "--name", "<new-name>"]
 
 
-@pytest.mark.parametrize("leaf, spelled", [("かに", "kani"), ("Straße", "Strasse")])
+@pytest.mark.parametrize("leaf, spelled", [
+    ("かに", "kani"), ("Straße", "Strasse"), ("きんや", "kin_ya")])
 def test_standalone_create_writes_the_leaf_in_its_ascii_spelling(
         leaf, spelled, tmp_home, config_file, credentials_dir):
     from kanibako.launch.box_resolve import standalone_box_name

@@ -68,7 +68,7 @@ class TestSanitizeCap:
         # ...and so do the table letters and kana (romanize.to_ascii, the one spelling).
         ("Straße", "Strasse"), ("ø", "o"), ("æ", "ae"), ("ı", "i"),
         ("かにばこ", "kanibako"), ("カニ Notes", "kani_Notes"), ("が", "ga"), ("か\u3099", "ga"),
-        ("ジョン・スミス", "jon-sumisu"),
+        ("ジョン・スミス", "jon-sumisu"), ("きんや", "kin_ya"), ("ほんや ノート", "hon_ya_nooto"),
         # Unicode punctuation and separators are separators.
         ("Bob\u2019s Notes", "Bob_s_Notes"),
         ("a\u2014b\u2026c\uff01d", "a_b_c_d"),
