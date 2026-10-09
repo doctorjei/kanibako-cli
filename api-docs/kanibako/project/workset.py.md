@@ -86,6 +86,7 @@ def _with_logs(doc: Mapping[str, Any] | None, value: object) -> dict
 def _logs_share_partners(std: StandardPaths, logs_dir: Path, box: str, *, workset_root: Path | None) -> tuple[str, ...]
 def _workset_skeleton_dirs(root: Path, *, early: EarlyScope) -> tuple[Path, ...]
 def _path_in_tree(path: Path, root: Path) -> bool
+def _strictly_in_tree(path: Path, root: Path) -> bool
 def _detach_project(ws: Workset, name: str) -> None
 def _find_member(ws: Workset, name: str) -> WorksetProject
 def _unfollowed(path: Path) -> Path

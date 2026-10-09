@@ -175,6 +175,24 @@ class TestVerbsRouteThroughIt:
         assert seen == [ws.projects_dir / "b1", ws.projects_dir / "b2"], seen
         assert not root.exists(), "the workset root must be fully gone"
 
+    def test_delete_workset_never_clears_box_trees_behind_a_linked_store(
+        self, tmp_home, std,
+    ):
+        """A ``boxes/`` that is a link out of the root keeps everything behind it."""
+        from kanibako.project.workset import create_workset, delete_workset
+
+        ws = create_workset("linkset", tmp_home / "worksets" / "linkset", std)
+        outside = tmp_home / "elsewhere"
+        (outside / "b1").mkdir(parents=True)
+        (outside / "b1" / "canary.txt").write_text("keep me\n")
+        shutil.rmtree(ws.projects_dir)
+        ws.projects_dir.symlink_to(outside)
+
+        root = delete_workset("linkset", std, remove_files=True)
+
+        assert not root.exists()
+        assert (outside / "b1" / "canary.txt").read_text() == "keep me\n"
+
     @pytest.mark.parametrize(
         "module,func",
         [

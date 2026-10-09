@@ -186,6 +186,32 @@ class TestStandalonePurge:
         assert not arm.is_symlink() and not arm.exists()
         assert hashlib.sha256((outside / "canary.txt").read_bytes()).hexdigest() == digest
 
+    def test_symlinked_vault_parent_keeps_everything_behind_it(
+        self, config_file, tmp_home, credentials_dir, capsys,
+    ):
+        """A linked ``vault/`` loses only the link; the list is exactly what goes."""
+        root = tmp_home / "sa"
+        _create(root, standalone=True)
+        outside = tmp_home / "extv"
+        (root / "vault").rename(outside)
+        (root / "vault").symlink_to(outside)
+        (outside / "rw" / "canary.txt").write_text("keep me\n")
+        digest = hashlib.sha256((outside / "rw" / "canary.txt").read_bytes()).hexdigest()
+        capsys.readouterr()
+
+        assert _rm(str(root), force=True) == 0
+        out = capsys.readouterr()
+        assert _plan_lines(out.out) == [
+            f"box metadata: {root / 'box_data'}",
+            f"workset settings: {root / 'workset.yaml'}",
+            f"vault parent folder: {root / 'vault'} → {outside} (link only; target kept)",
+        ]
+        assert f"left the vault at {outside / 'rw'} in place" in out.err
+        for gone in ("box_data", "workset.yaml", "vault"):
+            assert not (root / gone).exists() and not (root / gone).is_symlink()
+        assert (outside / "ro").is_dir()
+        assert hashlib.sha256((outside / "rw" / "canary.txt").read_bytes()).hexdigest() == digest
+
     def test_declared_in_root_arm_is_listed_as_your_files(
         self, config_file, tmp_home, credentials_dir, capsys,
     ):

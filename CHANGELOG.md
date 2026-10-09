@@ -17,7 +17,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   box was given inside the project, such as a folder named `data`, is listed and deleted as before. `--force`
   skips only the question; the list still prints. The question now comes before the box is unregistered, so
   answering no leaves the box exactly as it was. A vault folder that is a symlink loses only the link, never its
-  target, and the list says so.
+  target, and the list says so. The same holds when a standalone box's `vault/` folder is itself a symlink: only
+  the link goes, and the vault folders behind it are kept and named.
 
 - **A box named after its directory must have a valid box name.** A directory name that breaks the box-name rule
   (`my project`, `-x`) is refused before anything is written by `create`, `workset connect`, `box duplicate --to
@@ -680,6 +681,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   a caller that passes it now gets a `TypeError`. Drop the argument.
 
 ### Fixed
+
+- **`workset rm --purge` no longer deletes the boxes behind a symlinked box store.** When `workset.boxes` is a
+  symlink, only the link goes; what it points at is kept.
 
 - **A refused `create` on a fresh install no longer leaves the first-run setup behind.** An invalid `--name`
   and the `$HOME` guard now refuse before setup writes `kanibako.cfg` and the data tree.

@@ -2458,6 +2458,20 @@ class TestStandaloneVaultTeardownSkeleton:
         assert root / "vault" in removable
         assert retained == []
 
+    def test_a_linked_skeleton_loses_only_the_link(self, tmp_path):
+        """Arms reached only through a linked ``vault/`` are kept, named where they are."""
+        from kanibako.project.workset import retained_vault_reason, standalone_vault_teardown
+
+        root = self._root(tmp_path)
+        outside = tmp_path / "extv"
+        (root / "vault").rename(outside)
+        (root / "vault").symlink_to(outside)
+        removable, retained = standalone_vault_teardown(root,
+                early=early_record(tmp_path, mode=BoxMode.standalone))
+        assert removable == [root / "vault"]
+        assert retained == [outside / "ro", outside / "rw"]
+        assert retained_vault_reason(root, outside / "rw") == f"outside {root}"
+
 
 class TestCreateUnderASystemBoxesValue:
     """A system ``workset.boxes`` shapes the skeleton ``create_workset`` stamps in each new root."""
