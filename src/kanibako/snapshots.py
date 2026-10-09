@@ -129,6 +129,11 @@ def _box_store(vault_rw_path: Path, box_name: str) -> Path:
     return _versions_dir(vault_rw_path) / box_name
 
 
+def box_snapshot_store(vault_rw_path: Path, box_name: str) -> Path:
+    """*box_name*'s own store under the base *vault_rw_path* shares, never the base."""
+    return _box_store(vault_rw_path, box_name)
+
+
 def _is_migrated(versions: Path) -> bool:
     """True once *versions* carries the per-box layout marker."""
     return (versions / LAYOUT_MARKER_NAME).exists()

@@ -39,6 +39,7 @@ from kanibako.project.names import read_names
 from kanibako.project.workset import (
     Workset, add_project, box_logs_to_purge, list_worksets, load_workset,
 )
+from kanibako.snapshots import box_snapshot_store
 from kanibako.settings.messages import (
     CURE_LEAF_NOT_ASCII,
     ERR_WORKSET_MEMBER_NAME_CONFLICT,
@@ -2055,6 +2056,11 @@ def _primary_purge_plan(std, name: str, metadata_dir: Path) -> list[_PurgeStep]:
     for what, vdir in zip(_VAULT_LABELS, (vault_ro, vault_rw)):
         if vdir is not None and vdir.is_dir():
             steps.append(_PurgeStep("vault", what, vdir, gated=True))
+    # The store is not an arm: it hangs off the vault BASE, beside the per-box leaf.
+    if vault_rw is not None:
+        store = box_snapshot_store(vault_rw, name)
+        if store.is_dir() or store.is_symlink():
+            steps.append(_PurgeStep("vault", "vault snapshots", store, gated=True))
     # The per-box logs, keyed by the registry name.
     steps += [_PurgeStep("log", "log", log_file) for log_file in box_logs_to_purge(
         std, std.primary_logs, name, workset_root=std.primary_workset)]
@@ -2075,7 +2081,7 @@ def _standalone_purge_plan(
     """
     from kanibako.launch.box_resolve import standalone_box_name
     from kanibako.project.workset import (
-        _unfollowed, report_retained_canon, report_retained_vaults,
+        _strictly_in_tree, _unfollowed, report_retained_canon, report_retained_vaults,
         resolve_workset_vault_pair, standalone_canon_teardown, standalone_vault_teardown)
     from kanibako.settings.paths import (
         report_retained_store, standalone_logs_dir, standalone_store_teardown_plan)
@@ -2106,10 +2112,18 @@ def _standalone_purge_plan(
                                 gated=True))
     if retained_canon is not None:
         report_retained_canon(retained_canon, root)
+    vault_pair = resolve_workset_vault_pair(root, early=early)
     arms = {_unfollowed(arm): label for arm, label in
-            zip(resolve_workset_vault_pair(root, early=early), _VAULT_LABELS) if arm is not None}
+            zip(vault_pair, _VAULT_LABELS) if arm is not None}
     steps += [_PurgeStep("vault", arms.get(vdir, "vault parent folder"), vdir, gated=True)
               for vdir in removable_vault if vdir.is_dir() or vdir.is_symlink()]
+    # A standalone keeps its store one level UP, keyed on the composed name;
+    # only an in-tree one is ours.
+    if vault_pair[1] is not None:
+        store = box_snapshot_store(vault_pair[1],
+                                  standalone_box_name(root, registered_name))
+        if (store.is_dir() or store.is_symlink()) and _strictly_in_tree(store, root):
+            steps.append(_PurgeStep("vault", "vault snapshots", store, gated=True))
     report_retained_vaults(root, retained_vault)
     return steps
 
