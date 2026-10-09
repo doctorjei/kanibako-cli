@@ -51,7 +51,6 @@ def _assert_deletable(path, *, must_be_under: Path | None=None) -> Path
 def _primary_purge_plan(std, name: str, metadata_dir: Path) -> list[_PurgeStep]
 def _standalone_purge_plan(root: Path, registered_name: str, *, std: StandardPaths, early: EarlyScope) -> list[_PurgeStep]
 def _confirm_purge(steps: list[_PurgeStep], *, force: bool) -> bool
-def _remove_purge_path(path: Path) -> bool
 def _run_purge_plan(steps: list[_PurgeStep]) -> bool
 def _read_box_image(settings_file: Path) -> str | None
 def _read_box_image_tiered(box_tier: Path, workset_tier: Path) -> str | None

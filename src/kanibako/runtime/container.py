@@ -691,6 +691,17 @@ class ContainerRuntime:
         return images
 
 
+def remove_path(path: Path) -> bool:
+    """Remove *path*; a symlink loses only the link, never its target.  True when gone."""
+    if path.is_symlink():
+        path.unlink()
+        return True
+    if path.is_dir():
+        return remove_box_tree(path)
+    path.unlink(missing_ok=True)
+    return True
+
+
 def remove_box_tree(target: Path) -> bool:
     """Remove *target*, tolerating files a rootless container created — THE box-tree deleter.
 

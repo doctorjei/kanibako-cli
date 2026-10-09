@@ -20,6 +20,7 @@ _CANON_SEED_DENY_GUEST_PREFIXES = tuple((f'{GUEST_HOME}/{rel}' for rel in CANON_
 ## Functions
 ```
 def image_ref_or_none(raw: str) -> str | None
+def remove_path(path: Path) -> bool
 def remove_box_tree(target: Path) -> bool
 def detect_shadowed_mounts(shell_path: Path, project_path: Path, extra_mounts: list | None, enable_vault: bool) -> list[str]
 def _run_post_start(hook: 'Callable[[], None]') -> None

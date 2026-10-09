@@ -682,8 +682,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- **`workset rm --purge` no longer deletes the boxes behind a symlinked box store.** When `workset.boxes` is a
-  symlink, only the link goes; what it points at is kept.
+- **`workset rm --purge` no longer deletes the boxes behind a symlinked box store.** When the folder `workset.boxes`
+  names is a symlink, only the link goes; what it points at is kept.
 
 - **A refused `create` on a fresh install no longer leaves the first-run setup behind.** An invalid `--name`
   and the `$HOME` guard now refuse before setup writes `kanibako.cfg` and the data tree.
