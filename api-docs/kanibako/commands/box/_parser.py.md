@@ -78,6 +78,7 @@ def _run_box_config(args: argparse.Namespace) -> int
 class _CreateOutcome:
     made: list[Path] = dataclasses.field(default_factory=list)
     committed: bool = False
+    recover: str = ''
 
 @dataclasses.dataclass(frozen=True)
 class _PurgeStep:

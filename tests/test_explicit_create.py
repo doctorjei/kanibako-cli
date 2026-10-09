@@ -1639,3 +1639,26 @@ class TestRefusedCreateRemovesTheDirsItMade:
         assert "Error: [Errno 13] Permission denied: 'boxes/ws'" in err.splitlines()
         assert "run the same 'kanibako create' again" in err
         assert not (tmp_home / "new").exists()
+
+    def test_an_os_error_after_the_commit_names_the_recover_line(
+        self, config_file, tmp_home, credentials_dir, capsys, monkeypatch,
+    ):
+        """Past the commit a re-run is refused, so the cure is the ``--recover`` line, and it runs."""
+        import shlex
+
+        from kanibako.cli import main
+        from kanibako.commands import start
+
+        def denied(*a, **kw):
+            raise PermissionError(13, "Permission denied", "registry")
+
+        target = tmp_home / "new" / "ws"
+        with monkeypatch.context() as m:
+            m.setattr(start, "_register_new_box", denied)
+            err = self._refuse(capsys, ["create", str(target)])
+        cure = f"kanibako create --recover {shlex.quote(str(target))}"
+        assert f"  Fix that, then run: {cure}" in err.splitlines()
+
+        with pytest.raises(SystemExit) as exc:
+            main(shlex.split(cure)[1:])
+        assert exc.value.code == 0

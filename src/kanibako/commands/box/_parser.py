@@ -1165,9 +1165,10 @@ def _create_target(args: argparse.Namespace) -> Path:
 
 @dataclasses.dataclass
 class _CreateOutcome:
-    """What :func:`run_create` made for ``<path>``, root first, and whether it committed."""
+    """What :func:`run_create` made for ``<path>``, root first, and once committed, its cure."""
     made: list[Path] = dataclasses.field(default_factory=list)
     committed: bool = False
+    recover: str = ""
 
 
 def _mkdir_recording(target: Path, made: list[Path]) -> None:
@@ -1185,8 +1186,8 @@ def _unmakes_its_dirs_on_failure(
 ) -> Callable[[argparse.Namespace], int]:
     """A *create* that never committed removes the dirs it made, while they are empty.
 
-    An ``OSError`` from *create* exits 1 with an error line whose cure is a re-run, which
-    either succeeds or is refused naming the ``--recover`` line.
+    An ``OSError`` from *create* exits 1 with an error line naming its cure: a re-run, or
+    once committed, the ``--recover`` line a re-run would be refused with.
     """
     @functools.wraps(create)
     def run(args: argparse.Namespace) -> int:
@@ -1194,8 +1195,9 @@ def _unmakes_its_dirs_on_failure(
         try:
             return create(args, outcome)
         except OSError as e:
-            print(f"Error: {e}\n  Fix that, then run the same 'kanibako create' again.",
-                  file=sys.stderr)
+            cure = (f"run: {outcome.recover}" if outcome.committed
+                    else "run the same 'kanibako create' again.")
+            print(f"Error: {e}\n  Fix that, then {cure}", file=sys.stderr)
             return 1
         finally:
             if not outcome.committed:
@@ -1353,6 +1355,7 @@ def run_create(args: argparse.Namespace, outcome: _CreateOutcome) -> int:
         _primary_probe_named,
         _register_new_box,
         persona_create_verdict,
+        recover_cure,
         seed_new_box,
     )
     from kanibako.settings.core_defaults import materialize_canon_skeleton
@@ -1653,6 +1656,7 @@ def run_create(args: argparse.Namespace, outcome: _CreateOutcome) -> int:
         # state → seed → register → clear entry.  Clearing is IMMEDIATE after the
         # registry write (HARD INVARIANT: registered ==> no pending entry at rest).
         outcome.committed = True
+        outcome.recover = recover_cure(_entry_probe)
     finally:
         # ⚑ ONE cleanup path, for a refusal's ``return`` and a raise alike; a kill
         # runs none of it and leaves the entry.
