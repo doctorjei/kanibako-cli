@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import dataclasses
+import functools
 import os
 import shlex
 import shutil
@@ -1162,6 +1163,40 @@ def _create_target(args: argparse.Namespace) -> Path:
     return Path(literal_path(args.path)) if args.path else Path(logical_cwd())
 
 
+def _dirs_mkdir_would_make(target: Path) -> list[Path]:
+    """What ``target.mkdir(parents=True)`` makes, deepest first."""
+    missing: list[Path] = []
+    for path in (target, *target.parents):
+        if path.exists() or path.is_symlink():
+            break
+        missing.append(path)
+    return missing
+
+
+def _unmakes_its_dirs_on_failure(
+    create: Callable[[argparse.Namespace], int],
+) -> Callable[[argparse.Namespace], int]:
+    """A failed *create* removes the dirs ``<path>`` lacked before it ran, while empty."""
+    @functools.wraps(create)
+    def run(args: argparse.Namespace) -> int:
+        made = _dirs_mkdir_would_make(_create_target(args))
+        rc = 1
+        try:
+            rc = create(args)
+        finally:
+            if rc != 0:
+                for path in made:
+                    try:
+                        path.rmdir()
+                    except FileNotFoundError:
+                        continue
+                    except OSError:
+                        break
+        return rc
+    return run
+
+
+@_unmakes_its_dirs_on_failure
 def run_create(args: argparse.Namespace) -> int:
     """Create a new kanibako project (replaces ``kanibako init``)."""
     refused = precheck_create(args)

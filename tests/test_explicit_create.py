@@ -1525,3 +1525,55 @@ class TestStandaloneCreatePerOwnerBeforeTheDir:
         assert sorted(p.name for p in cwd.iterdir()) == ["user.txt"], (
             f"{key} refused the create but wrote into {cwd}"
         )
+
+
+class TestRefusedCreateRemovesTheDirsItMade:
+    """A refused ``create <path>`` leaves no directory it made, and no other one is touched.
+
+    The refusals below land after ``<path>`` is made: the probes need it to exist.
+    """
+
+    _OUT_OF_ROOT_CANON = "/srv/x/{meta.workset.path}"
+
+    def _refuse(self, capsys, argv: list[str]) -> str:
+        from kanibako.cli import main
+
+        capsys.readouterr()
+        with pytest.raises(SystemExit) as exc:
+            main(argv)
+        assert exc.value.code == 1
+        return capsys.readouterr().err
+
+    def test_out_of_root_canon_leaves_no_path(self, config_file, tmp_home, credentials_dir,
+                                              capsys):
+        TestStandaloneCreatePerOwnerBeforeTheDir._system_workset_key(
+            config_file, "canon", self._OUT_OF_ROOT_CANON)
+        target = tmp_home / "new" / "deep"
+
+        err = self._refuse(capsys, ["create", "--standalone", str(target)])
+        assert "workset.canon" in err and "OUTSIDE the workset root" in err
+        assert not (tmp_home / "new").exists()
+
+    def test_out_of_root_canon_keeps_a_pre_existing_target_as_found(
+        self, config_file, tmp_home, credentials_dir, capsys,
+    ):
+        TestStandaloneCreatePerOwnerBeforeTheDir._system_workset_key(
+            config_file, "canon", self._OUT_OF_ROOT_CANON)
+        target = tmp_home / "mine"
+        target.mkdir()
+        (target / "user.txt").write_text("the user's own file\n")
+
+        self._refuse(capsys, ["create", "--standalone", str(target)])
+        assert sorted(p.name for p in target.iterdir()) == ["user.txt"]
+
+    @pytest.mark.parametrize("mode", [[], ["--standalone"]])
+    @pytest.mark.parametrize("flags", [["--agent", "bad!x"], ["--recover"]])
+    def test_refusal_removes_only_the_dirs_it_made(
+        self, config_file, tmp_home, credentials_dir, capsys, mode, flags,
+    ):
+        parent = tmp_home / "existing"
+        parent.mkdir()
+        target = parent / "new" / "deep"
+
+        self._refuse(capsys, ["create", *mode, *flags, str(target)])
+        assert parent.is_dir() and not any(parent.iterdir())

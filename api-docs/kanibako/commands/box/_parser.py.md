@@ -22,6 +22,7 @@ _VAULT_LABELS = ('vault ro (your files)', 'vault rw (your files)')
 ```
 def add_parser(subparsers: argparse._SubParsersAction) -> None
 def precheck_create(args: argparse.Namespace) -> int | None
+@_unmakes_its_dirs_on_failure
 def run_create(args: argparse.Namespace) -> int
 def run_ps(args: argparse.Namespace) -> int
 def run_list(args: argparse.Namespace) -> int
@@ -45,6 +46,8 @@ def _new_box_undo(std, probe, *, standalone: bool) -> tuple[Callable[[], None], 
 def _claim_create_entry(std, probe, state: dict, *, primary: bool) -> 'dict | None'
 def _recovered_standalone_name(std, proj, supplied: str) -> str
 def _create_target(args: argparse.Namespace) -> Path
+def _dirs_mkdir_would_make(target: Path) -> list[Path]
+def _unmakes_its_dirs_on_failure(create: Callable[[argparse.Namespace], int]) -> Callable[[argparse.Namespace], int]
 def _list_orphans(projects: list, ws_data: list, std, quiet: bool) -> int
 def _assert_deletable(path, *, must_be_under: Path | None=None) -> Path
 def _primary_purge_plan(std, name: str, metadata_dir: Path) -> list[_PurgeStep]
