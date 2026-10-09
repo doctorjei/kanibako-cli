@@ -32,7 +32,9 @@ import argparse
 import hashlib
 import json
 import os
+import re
 import shlex
+import shutil
 import signal
 import subprocess
 import sys
@@ -69,6 +71,9 @@ TAKEOVER_HEADS_UP = (
 #: How the agent pane's process ended: EMPTY while it lives, else ``status=N signal=S``
 #: (one blank).  The pane probe and the ``pane-died`` hook both emit it.
 PANE_DEATH_FORMAT = "#{?pane_dead,status=#{pane_dead_status} signal=#{pane_dead_signal},}"
+
+#: What the ``pane-died`` hook may paste into its shell line: no space, quote, or ``#``.
+_HOOK_SAFE_PATH = re.compile(r"[A-Za-z0-9_./-]+")
 
 #: PID 1's code when HOW the agent ended is unknown (sysexits ``EX_SOFTWARE``); never 0.
 UNDETERMINED_AGENT_EXIT = 70
@@ -755,8 +760,9 @@ class BoxSupervisor:
     ) -> None:
         self.config = config
         # The ``pane-died`` hook's record (:meth:`_exit_hook`); ``None`` ⇒ a temp dir
-        # made on first arm.  ⚑ tmux single-quotes it, so it must contain no quote.
+        # under ``/tmp`` made on first arm, and removed once read.
         self._exit_record = exit_record
+        self._exit_record_dir: str | None = None
         self._run = run
         self._sleep = sleep
         # A fixed process-cmdline listing for snapshot_attach_state (tests skip /proc);
@@ -824,20 +830,26 @@ class BoxSupervisor:
         return proc.stdout
 
     def _exit_record_path(self) -> str:
-        """The exit-record path, creating its private temp dir on first use."""
+        """The exit-record path, creating its private temp dir on first use.
+
+        ⚑ Under a FIXED ``/tmp``, never ``$TMPDIR``: a user's ``env`` sets that.
+        """
         if self._exit_record is None:
-            self._exit_record = os.path.join(
-                tempfile.mkdtemp(prefix="kanibako-agent-exit-"), "record"
-            )
+            self._exit_record_dir = tempfile.mkdtemp(prefix="kanibako-agent-exit-", dir="/tmp")
+            self._exit_record = os.path.join(self._exit_record_dir, "record")
         return self._exit_record
 
-    def _exit_hook(self) -> str:
+    def _exit_hook(self) -> str | None:
         """A teardown launch's ``pane-died`` hook: record the agent's end, then close its pane.
 
         ``run-shell`` without ``-b`` blocks, so the pane closes only AFTER the record
         exists; closing it spares an attached user the "Pane is dead" screen.
         """
         record = self._exit_record_path()
+        if not _HOOK_SAFE_PATH.fullmatch(record):
+            # Never fail the agent start over it: the pane probe still answers.
+            log.warning("exit record path %r is not shell-safe; arming no exit hook", record)
+            return None
         return (
             f"run-shell 'echo {PANE_DEATH_FORMAT} >{record}.tmp && mv {record}.tmp {record}'"
             " ; kill-pane"
@@ -846,8 +858,9 @@ class BoxSupervisor:
     def _session_arms(self) -> list[tuple[str, str, str]]:
         """``(command, name, value)`` per tmux option/hook armed on the agent session."""
         arms = [("set-option", "remain-on-exit", "on")]
-        if self.config.on_agent_exit == "teardown":
-            arms.append(("set-hook", "pane-died", self._exit_hook()))
+        hook = self._exit_hook() if self.config.on_agent_exit == "teardown" else None
+        if hook is not None:
+            arms.append(("set-hook", "pane-died", hook))
         return arms
 
     def _start_session_argv(self, session_argv: list[str]) -> list[str]:
@@ -934,6 +947,9 @@ class BoxSupervisor:
             return agent_exit_code(Path(self._exit_record).read_text())
         except OSError:
             return None
+        finally:
+            if self._exit_record_dir is not None:
+                shutil.rmtree(self._exit_record_dir, ignore_errors=True)
 
     def capture_agent_output(self) -> str | None:
         """Return the agent pane's captured MAIN-screen text (scrollback), or None."""

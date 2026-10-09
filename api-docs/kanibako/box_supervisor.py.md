@@ -19,6 +19,7 @@ XDG_LINK_NAME = 'kanibako'
 log = get_logger('box_supervisor')
 DIRECTIVE_MANIFEST_VERSION = 1
 FLATTEN_TIMEOUT = 60.0
+_HOOK_SAFE_PATH = re.compile('[A-Za-z0-9_./-]+')
 ```
 
 ## Types
@@ -143,7 +144,7 @@ class BoxSupervisor:
     def _run_tmux(self, args: list[str]) -> int | None
     def _tmux_output(self, args: list[str]) -> str | None
     def _exit_record_path(self) -> str
-    def _exit_hook(self) -> str
+    def _exit_hook(self) -> str | None
     def _session_arms(self) -> list[tuple[str, str, str]]
     def _start_session_argv(self, session_argv: list[str]) -> list[str]
     def _arm_and_start_session(self, session_argv: list[str]) -> int | None
