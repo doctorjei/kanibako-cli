@@ -538,3 +538,23 @@ class TestBoxMoveOfTheWorksetsOwnWorkspace:
         assert after == before
         assert f"alpha: {leaf}" in after
         assert f"alpha: {real}" not in after
+
+
+class TestUnregisteredStandaloneMove:
+    def test_move_keeps_the_box_unregistered(self, config_file, tmp_home, credentials_dir):
+        """A standalone box keeps its registration state across a move: none stays none."""
+        from kanibako.project import registry_store
+        from kanibako.settings.paths import detect_project_mode, resolve_standalone_project
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        root = tmp_home / "sa"
+        root.mkdir()
+        resolve_standalone_project(std, config, str(root), initialize=True, register=False)
+        assert registry_store.load_standalone(std.registry) == {}
+
+        dest = tmp_home / "moved"
+        assert run_move(_move_args(root, dest)) == 0
+
+        assert registry_store.load_standalone(std.registry) == {}
+        assert detect_project_mode(dest, std, config).mode is BoxMode.standalone

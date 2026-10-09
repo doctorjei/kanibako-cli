@@ -28,13 +28,13 @@ def _std(config_file):
     return load_std_paths(load_config(config_file))
 
 
-def _create(path: Path, *, standalone: bool = False) -> None:
+def _create(path: Path, *, standalone: bool = False, register: bool = True) -> None:
     from kanibako.commands.box._parser import run_create
 
     path.mkdir(parents=True, exist_ok=True)
     assert run_create(argparse.Namespace(
         path=str(path), standalone=standalone, no_vault=False, name=None, image=None,
-        agent=None, allow_home=False, register=standalone, recover=False,
+        agent=None, allow_home=False, register=standalone and register, recover=False,
     )) == 0
 
 
@@ -151,6 +151,42 @@ class TestPrimaryPurge:
         out = capsys.readouterr().out
         assert "--purge deletes nothing" in out
         assert "Delete these" not in out
+
+
+class TestUnregisteredStandalone:
+    """An unregistered standalone box is reached by its path; ``rm`` adds no entry."""
+
+    def test_plain_rm_changes_nothing_and_names_the_purge(
+        self, config_file, tmp_home, credentials_dir, capsys,
+    ):
+        from kanibako.commands.box._parser import run_rm
+
+        root = tmp_home / "sa"
+        _create(root, standalone=True, register=False)
+        registry = _std(config_file).registry
+        before = registry.read_bytes() if registry.exists() else None
+        capsys.readouterr()
+
+        assert run_rm(argparse.Namespace(target=str(root), purge=False, force=False)) == 1
+        err = capsys.readouterr().err
+        assert "is not registered; nothing to remove" in err
+        assert f"kanibako box rm {root} --purge" in err
+        assert (registry.read_bytes() if registry.exists() else None) == before
+        assert (root / "box_data").is_dir()
+
+    def test_purge_deletes_the_store_and_adds_no_entry(
+        self, config_file, tmp_home, credentials_dir, capsys,
+    ):
+        root = tmp_home / "sa"
+        _create(root, standalone=True, register=False)
+        registry = _std(config_file).registry
+        before = registry.read_bytes() if registry.exists() else None
+        capsys.readouterr()
+
+        assert _rm(str(root), force=True) == 0
+        assert "from the registry" not in capsys.readouterr().out
+        assert not (root / "box_data").exists()
+        assert (registry.read_bytes() if registry.exists() else None) == before
 
 
 class TestStandalonePurge:

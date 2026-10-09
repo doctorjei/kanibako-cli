@@ -12,6 +12,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **A standalone box is no longer registered when a command finds it.** A command run on an unregistered
+  standalone box, by its path or from inside its tree, used to add it to the registry; it now leaves the registry
+  alone, and a move keeps the box unregistered. Run `kanibako box register <path>` to register it. `box rm <path>`
+  on an unregistered box changes nothing and names `box rm <path> --purge`, which deletes it. A named workset
+  found on disk is still imported.
+
 - **`box rm --purge` lists every path it will delete before it asks.** The list names the box's metadata folder,
   each vault folder (marked "your files"), its logs, and for a standalone box the root `workset.yaml`; a vault the
   box was given inside the project, such as a folder named `data`, is listed and deleted as before. `--force`

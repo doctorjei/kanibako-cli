@@ -32,7 +32,7 @@ from kanibako.project.workset import create_workset
 # ---------------------------------------------------------------------------
 
 class TestStandaloneImport:
-    def test_dropin_import_registers_and_alerts(
+    def test_dropin_detection_resolves_without_registering(
         self, std, config, project_dir, credentials_dir, capsys,
     ):
         # Create a standalone box, then wipe the registry's standalone section
@@ -40,19 +40,17 @@ class TestStandaloneImport:
         proj = resolve_standalone_project(
             std, config, str(project_dir), initialize=True,
         )
-        name = proj.name
         registry_store.save_section(std.registry, "standalone", {})
+        before = std.registry.read_bytes()
         capsys.readouterr()  # drain init output
 
-        # Detection walks to the box_data/ marker and imports it.
+        # Detection walks to the marker and resolves it; it never registers a standalone box.
         result = detect_project_mode(project_dir, std, config)
         assert result.mode is BoxMode.standalone
+        assert result.project_root == Path(proj.metadata_path)
 
-        standalone = registry_store.load_standalone(std.registry)
-        assert standalone.get(name) == str(project_dir.resolve())
-        err = capsys.readouterr().err
-        assert f"Imported standalone box '{name}'" in err
-        assert str(project_dir.resolve()) in err
+        assert std.registry.read_bytes() == before
+        assert "Imported" not in capsys.readouterr().err
 
     def test_import_is_idempotent_no_op(
         self, std, config, project_dir, credentials_dir, capsys,

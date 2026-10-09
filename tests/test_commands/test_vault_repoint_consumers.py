@@ -289,7 +289,7 @@ class TestStandalonePurgeFollowsAnInRootRepoint:
         (proj.vault_ro_path / "keep.txt").write_text("vault data")
 
         _rm_standalone(std, "sa_store", root,
-                       argparse.Namespace(purge=True, force=True))
+                       argparse.Namespace(purge=True, force=True), registered=True)
         capsys.readouterr()
         assert not (root / "store" / "ro").exists()
         assert not (root / "store" / "rw").exists()
@@ -304,7 +304,7 @@ class TestStandalonePurgeFollowsAnInRootRepoint:
         )
         assert vro == root / "vault" / "ro"
         _rm_standalone(std, "sa_plain", root,
-                       argparse.Namespace(purge=True, force=True))
+                       argparse.Namespace(purge=True, force=True), registered=True)
         capsys.readouterr()
         assert not (root / "vault").exists()
         assert not (root / "box_data").exists()
@@ -324,7 +324,7 @@ class TestStandalonePurgeFollowsAnInRootRepoint:
         )
         assert vro == outside / "ro"
         _rm_standalone(std, "sa_out", root,
-                       argparse.Namespace(purge=True, force=True))
+                       argparse.Namespace(purge=True, force=True), registered=True)
         out = capsys.readouterr()
         assert (outside / "ro" / "keep.txt").read_text() == "vault data"
         assert (outside / "rw" / "keep.txt").read_text() == "vault data"
@@ -348,7 +348,7 @@ class TestStandalonePurgeFollowsAnInRootRepoint:
         _repoint(root, "vault_rw", str(nowhere))
         _repoint(root, "vault_ro", str(dangling))
         _rm_standalone(std, "sa_gone", root,
-                       argparse.Namespace(purge=True, force=True))
+                       argparse.Namespace(purge=True, force=True), registered=True)
         err = capsys.readouterr().err
         assert not (root / "box_data").exists()  # anti-vacuity: the purge ran
         assert str(nowhere) not in err
@@ -379,7 +379,7 @@ class TestTeardownResolvesBeforeItDeletes:
         std, config, root = self._poisoned(config_file, tmp_home, "poisoned")
         with pytest.raises(SettingsError) as exc:
             _rm_standalone(std, "poisoned", root,
-                           argparse.Namespace(purge=True, force=True))
+                           argparse.Namespace(purge=True, force=True), registered=True)
         capsys.readouterr()
         # The error NAMES the key...
         assert "workset.vault_ro" in str(exc.value)
@@ -405,7 +405,7 @@ class TestTeardownResolvesBeforeItDeletes:
         [name] = [n for n, r in registered.items() if r == str(root)]
         write_nested_key(root / "workset.yaml", ("workset",), "boxes", None)
         with pytest.raises(SettingsError, match="workset.boxes"):
-            _rm_standalone(std, name, root, argparse.Namespace(purge=True, force=True))
+            _rm_standalone(std, name, root, argparse.Namespace(purge=True, force=True), registered=True)
         capsys.readouterr()
         assert registry_store.load_standalone(std.registry) == registered
         assert (root / "box_data").is_dir()
@@ -422,7 +422,7 @@ class TestTeardownResolvesBeforeItDeletes:
         )
         (root / "workset.yaml").unlink()
         _rm_standalone(std, "nofile", root,
-                       argparse.Namespace(purge=True, force=True))
+                       argparse.Namespace(purge=True, force=True), registered=True)
         capsys.readouterr()
         assert not (root / "vault").exists()
 
@@ -789,7 +789,7 @@ class TestANullSourceArmKeepsItsLeftoverData:
         from kanibako.commands.box._parser import _rm_standalone
 
         std, root, vro, vrw = self._nulled_after_data(config_file, tmp_home, "sa_nul")
-        _rm_standalone(std, "sa_nul", root, argparse.Namespace(purge=True, force=True))
+        _rm_standalone(std, "sa_nul", root, argparse.Namespace(purge=True, force=True), registered=True)
         self._assert_named(capsys.readouterr().err, vrw)
         assert (vrw / "keep.txt").read_text() == "vault data"
         # The arm the box still names is its own, and it went.
@@ -818,7 +818,7 @@ class TestANullSourceArmKeepsItsLeftoverData:
         std, root, vro, vrw = self._nulled_after_data(config_file, tmp_home, "sa_loose")
         loose = root / "vault" / "loose-note.txt"
         loose.write_text("the user's own file")
-        _rm_standalone(std, "sa_loose", root, argparse.Namespace(purge=True, force=True))
+        _rm_standalone(std, "sa_loose", root, argparse.Namespace(purge=True, force=True), registered=True)
         err = capsys.readouterr().err
         self._assert_named(err, loose)
         self._assert_named(err, vrw)  # the directory beside it is still named

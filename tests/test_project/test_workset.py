@@ -555,12 +555,12 @@ class TestAddProjectConnectGuard:
         # And the global standalone: registration is GONE — NOT dual-registered.
         assert "kx_standalone_box" not in registry_store.load_standalone(std.registry)
 
-    def test_force_roundtrip_disconnect_reimports_standalone(
+    def test_force_roundtrip_disconnect_leaves_standalone_for_box_register(
         self, std, tmp_home, config
     ):
         # --force connect (standalone: dropped, boxes: added) → disconnect (boxes:
-        # removed) → a resolve re-imports the box back to standalone: (clean
-        # round-trip; the box_data/ marker is untouched throughout).
+        # removed) → a resolve finds it standalone without registering it; the import
+        # ``box register`` runs restores the entry (the box_data/ marker is untouched).
         from kanibako.project import registry_store
         from kanibako.settings.paths import BoxMode, detect_project_mode
 
@@ -575,9 +575,14 @@ class TestAddProjectConnectGuard:
         # Disconnect removes the boxes: entry.
         remove_project(ws, "sb", std=std)
 
-        # A resolve now walks to the marker and re-imports it as standalone.
         result = detect_project_mode(external, std, config)
         assert result.mode is BoxMode.standalone
+        assert registry_store.standalone_name_for_root(std.registry, external) is None
+
+        from kanibako.project import import_reconcile
+        from kanibako.settings.paths import _early_scope
+        import_reconcile.import_standalone(
+            std.registry, external, early=_early_scope(std, BoxMode.standalone))
         assert (
             registry_store.standalone_name_for_root(std.registry, external)
             is not None
@@ -2127,7 +2132,7 @@ class TestRetiredWorksetIdentityLocation:
         # …and an ordinary non-project path is still a plain miss.
         plain = tmp_home / "plain"
         plain.mkdir()
-        assert _resolve_standalone_target(std, config, str(plain)) == (None, None)
+        assert _resolve_standalone_target(std, config, str(plain)) == (None, None, False)
 
 
 # ---------------------------------------------------------------------------
