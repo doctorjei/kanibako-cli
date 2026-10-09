@@ -1382,6 +1382,33 @@ class TestBoxDeregisterPurge:
         out = capsys.readouterr().out
         assert "stale entry" in out.lower() or "No metadata" in out
 
+    def test_partly_failed_purge_keeps_deregistered_entry(
+        self, config_file, tmp_home, credentials_dir, capsys, monkeypatch
+    ):
+        """A re-purge whose metadata dir survives keeps the entry, so a retry finds it."""
+        from kanibako.project import registry_store
+        from kanibako.commands.box import _parser
+        from kanibako.commands.box._parser import run_rm
+
+        std, proj = self._make_primary(config_file, tmp_home)
+        metadata_dir = proj.metadata_path
+        run_rm(argparse.Namespace(target="project", purge=False, force=False))
+        capsys.readouterr()
+
+        real_remove = _parser.remove_path
+        monkeypatch.setattr(_parser, "remove_path",
+                            lambda p: False if p == metadata_dir else real_remove(p))
+        rc = run_rm(argparse.Namespace(target="project", purge=True, force=True))
+        assert rc == 1
+        assert metadata_dir.is_dir()
+        assert registry_store.lookup_deregistered(std.registry, "project") is not None
+        assert "box rm project --purge" in capsys.readouterr().err
+
+        monkeypatch.setattr(_parser, "remove_path", real_remove)
+        assert run_rm(argparse.Namespace(target="project", purge=True, force=True)) == 0
+        assert not metadata_dir.is_dir()
+        assert registry_store.lookup_deregistered(std.registry, "project") is None
+
     def test_re_rm_without_purge_shows_guidance(self, config_file, tmp_home, credentials_dir, capsys):
         """A second `rm` (no --purge) on a deregistered box guides, never errors."""
         from kanibako.commands.box._parser import run_rm
@@ -1534,6 +1561,23 @@ class TestStandaloneDeregisterPurge:
         assert root.is_dir()
         assert (root / "keep.txt").read_text() == "workspace file"
         assert registry_store.lookup_deregistered(std.registry, "k_box") is None
+
+    def test_standalone_partly_failed_purge_keeps_entry(
+        self, config_file, tmp_home, credentials_dir, monkeypatch
+    ):
+        from kanibako.project import registry_store
+        from kanibako.commands.box import _parser
+        from kanibako.commands.box._parser import run_rm
+        from kanibako.settings.paths import STANDALONE_META_DIR
+
+        std, root = self._make_standalone(config_file, tmp_home)
+        assert run_rm(argparse.Namespace(target="k_box", purge=False, force=False)) == 0
+
+        monkeypatch.setattr(_parser, "remove_path", lambda p: False)
+        rc = run_rm(argparse.Namespace(target="k_box", purge=True, force=True))
+        assert rc == 1
+        assert (root / STANDALONE_META_DIR).is_dir()
+        assert registry_store.lookup_deregistered(std.registry, "k_box") is not None
 
 
 class TestRmPurgeDeletesTheBoxLogsByName:
