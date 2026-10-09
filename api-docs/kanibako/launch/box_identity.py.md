@@ -11,7 +11,9 @@ Prose for these symbols lives in `llm-docs/kanibako/launch/box_identity.py.md`.
 _LEAF_CAP = 32
 _EMPTY_LEAF_FALLBACK = 'box'
 _LEAF_CHARS = 'A-Za-z0-9._-'
-_SAFE_CHAR_RE = re.compile(f'[^{_LEAF_CHARS}]')
+_SEP = '\x00'
+_SEPARATOR_RUN_RE = re.compile(f'[_{_SEP}]*{_SEP}[_{_SEP}]*')
+_LEAF_END_CHARS = '_-.'
 _MAX_REGEN_ATTEMPTS = 1000
 _LEAF_RE = re.compile(f'^[{_LEAF_CHARS}]{{1,{_LEAF_CAP}}}$')
 _NAME_CHAR_RE = re.compile(f'[{_LEAF_CHARS}]')
@@ -33,6 +35,7 @@ def make_standalone_box_name(root: Path, existing: set[str]) -> str
 def validate_standalone_name(supplied: str, existing: set[str]) -> None
 def resolve_standalone_name(root: Path, supplied: str, existing: set[str], *, box_kuid: str | None=None) -> str
 def _box_name_violation(name: str) -> str | None
+def _ascii_spelling(ch: str) -> str | None
 def _canonical_name(supplied: str) -> str
 def _refuse_taken(stored: str) -> ProjectError
 def _generate_with_leaf(leaf: str, existing: set[str]) -> str

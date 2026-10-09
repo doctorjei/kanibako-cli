@@ -7096,6 +7096,10 @@ name does not meet the naming rules, and the box is found by its path, not its n
 kanibako box move <path> <new-path> --name <new-name>
 ```
 
+A standalone box's name follows its directory, so one in `café/` goes from `<kuid>_caf_` to `<kuid>_cafe` and one
+in a directory such as `東京/` is refused until the directory gets an ASCII name; stop such boxes before upgrading,
+and move their channel folders as *A standalone box's name keeps its project directory's case* shows.
+
 ---
 
 ## 3. For plugin authors

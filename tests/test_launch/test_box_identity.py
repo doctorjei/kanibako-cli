@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 
 from kanibako import kuid
+from kanibako.errors import DerivedBoxNameError
 from kanibako.launch import box_identity
 
 # A fixed VALID kuid prefix (odd parity) and a fixed INVALID one (even parity,
@@ -49,34 +50,46 @@ class TestStandaloneKuidHelpers:
 # ---------------------------------------------------------------------------
 
 class TestSanitizeCap:
-    def test_passes_portable_chars(self) -> None:
-        assert box_identity.sanitize_cap("my-app_1.0") == "my-app_1.0"
-
-    def test_keeps_case(self) -> None:
-        # Spec §0, ⚑ NAMING RULES: the leaf carries the SOURCE DIRECTORY's case, and
-        # only the kuid half of <kuid>_<leaf> is lowercase. This folded until the
-        # entry fold came out; a fold restored here is the retired [R171] cure.
-        assert box_identity.sanitize_cap("MyProj") == "MyProj"
-        assert box_identity.sanitize_cap("ALL-CAPS_1.0") == "ALL-CAPS_1.0"
-
-    def test_replaces_illegal_chars(self) -> None:
-        assert box_identity.sanitize_cap("my app!@#") == "my_app___"
-
-    def test_replaces_slashes_and_spaces(self) -> None:
-        assert box_identity.sanitize_cap("a/b c") == "a_b_c"
+    @pytest.mark.parametrize(("leaf", "expected"), [
+        ("my-app_1.0", "my-app_1.0"),
+        ("my-app", "my-app"),
+        ("a.b", "a.b"),
+        ("my__app", "my__app"),  # the user's own underscores are not separators
+        # Spec §0, ⚑ NAMING RULES: the leaf carries the SOURCE DIRECTORY's case.
+        ("MyProj", "MyProj"),
+        ("ALL-CAPS_1.0", "ALL-CAPS_1.0"),
+        # Latin letters drop their diacritics.
+        ("café", "cafe"),
+        ("Zürich Notes", "Zurich_Notes"),
+        # A run of separators is one '_'; the ends lose '_', '-' and '.'.
+        ("a  b!!c", "a_b_c"),
+        ("my app!@#", "my_app"),
+        ("a/b c", "a_b_c"),
+        ("a _b", "a_b"),
+        ("..-foo-.", "foo"),
+        # Empty after trimming falls back to "box".
+        ("", "box"),
+        ("!!!", "box"),
+        ("///", "box"),
+    ])
+    def test_leaf(self, leaf: str, expected: str) -> None:
+        assert box_identity.sanitize_cap(leaf) == expected
 
     def test_caps_at_32_chars(self) -> None:
-        long_leaf = "x" * 100
-        out = box_identity.sanitize_cap(long_leaf)
-        assert len(out) == 32
-        assert out == "x" * 32
+        assert box_identity.sanitize_cap("x" * 100) == "x" * 32
 
-    def test_empty_leaf_falls_back_to_box(self) -> None:
-        assert box_identity.sanitize_cap("") == "box"
+    def test_ends_are_trimmed_after_the_cap(self) -> None:
+        assert box_identity.sanitize_cap("x" * 31 + " y") == "x" * 31
 
-    def test_all_illegal_then_capped_is_not_empty(self) -> None:
-        # All-illegal sanitizes to underscores (not empty), so no fallback.
-        assert box_identity.sanitize_cap("///") == "___"
+    @pytest.mark.parametrize("leaf", ["日本語プロジェクト", "my 日本語 app", "東京", "が", "ß"])
+    def test_no_ascii_spelling_refuses(self, leaf: str) -> None:
+        with pytest.raises(DerivedBoxNameError, match="cannot spell in ASCII"):
+            box_identity.sanitize_cap(leaf)
+
+    def test_kana_is_never_split(self) -> None:
+        # NFKD would split が into か + U+3099; the later kana lane needs it whole.
+        assert box_identity._ascii_spelling("が") is None
+        assert box_identity._ascii_spelling("é") == "e"
 
 
 # ---------------------------------------------------------------------------
@@ -216,16 +229,19 @@ class TestLeafGrammarTracksGenerator:
         survivors = 0
         for cp in range(0x20, 0x7F):  # ASCII printable — the survivor set's range
             ch = chr(cp)
-            kept = box_identity.sanitize_cap(ch) == ch
+            # Inside a word, so the end trim does not hide a kept character.
+            kept = box_identity.sanitize_cap(f"a{ch}a") == f"a{ch}a"
             accepted = box_identity.is_canonical_standalone_name(f"{_VALID_KUID}_{ch}")
             assert accepted == kept, f"{ch!r} (U+{cp:04X}): sanitize kept={kept}"
             survivors += kept
         assert survivors > 0  # the scan really did find the survivor set
 
-    def test_non_ascii_letters_are_replaced_and_then_refused(self) -> None:
-        # Same rule as the scan above, outside the range it covers.
+    def test_non_ascii_letters_are_spelled_or_refused(self) -> None:
+        # Outside the range the scan above covers: the generator never emits them.
+        assert box_identity.sanitize_cap("é") == "e"
+        with pytest.raises(DerivedBoxNameError):
+            box_identity.sanitize_cap("日")
         for ch in ("é", "日"):
-            assert box_identity.sanitize_cap(ch) == "_"
             assert not box_identity.is_canonical_standalone_name(f"{_VALID_KUID}_{ch}")
 
 
@@ -255,7 +271,7 @@ class TestResolveStandaloneName:
         name = box_identity.resolve_standalone_name(
             Path("/x/p"), "has spaces!", set()
         )
-        assert name.endswith("_has_spaces_")
+        assert name.endswith("_has_spaces")
 
     def test_over_long_supplied_is_not_canonical_so_used_as_leaf(self) -> None:
         # A valid-kuid prefix shape but an over-long leaf fails the matcher → the

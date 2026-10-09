@@ -85,6 +85,21 @@ def test_the_named_cure_creates_the_box(tmp_home, config_file, credentials_dir):
     assert list(_primary_boxes()) == ["okbox"]
 
 
+
+@pytest.mark.parametrize("name", ["日本語プロジェクト", "my 日本語 app", "東京"])
+@pytest.mark.parametrize("register", [(), ("--register",)])
+def test_standalone_create_refuses_a_leaf_with_no_ascii_spelling(
+        name, register, tmp_home, config_file, credentials_dir):
+    path = tmp_home / "work" / name
+    path.mkdir(parents=True)
+    rc, text = _cli("create", "--standalone", *register, "--no-vault", "--", str(path))
+
+    assert rc == 1, text
+    assert f"The directory name '{name}' is not a valid box name" in text
+    assert "cannot spell in ASCII" in text
+    assert text.rstrip().endswith("Rename or move the directory to an ASCII name.")
+    assert list(path.iterdir()) == []
+
 def _workset(tmp_home):
     from kanibako.project.workset import create_workset
     from kanibako.settings.config import load_config, user_config_file

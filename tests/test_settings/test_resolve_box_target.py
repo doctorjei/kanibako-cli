@@ -12,7 +12,7 @@ from pathlib import Path
 import pytest
 
 from kanibako.project import registry_store
-from kanibako.errors import AmbiguousNameError, ProjectError
+from kanibako.errors import AmbiguousNameError, DerivedBoxNameError, ProjectError
 from kanibako.settings.paths import (
     BoxMode,
     _early_scope,
@@ -726,3 +726,34 @@ class TestBoxAndWorksetShareAName:
         code, _out, err = _cli(["box", "info", "lone"], capsys)
         assert code != 0
         assert "'lone' is a workset, not a single project box" in err, err
+
+
+# ---------------------------------------------------------------------------
+# A standalone box moved to a directory name with no ASCII spelling
+# ---------------------------------------------------------------------------
+
+class TestMovedToNonAsciiLeaf:
+    def _moved(self, std, tmp_home):
+        _, root = _make_standalone(std, tmp_home, leaf="movee")
+        moved = root.rename(tmp_home / "東京")
+        return root, moved
+
+    def test_every_lookup_refuses_with_the_cure(self, std, config, tmp_home):
+        from kanibako.commands.start import _resolve_existing_box
+
+        _, moved = self._moved(std, tmp_home)
+        registry_before = std.registry.read_bytes()
+        for resolve in (lambda: resolve_box_target(std, config, str(moved)),
+                        lambda: _resolve_existing_box(std, config, str(moved))):
+            with pytest.raises(DerivedBoxNameError) as exc:
+                resolve()
+            assert "cannot spell in ASCII" in str(exc.value)
+            assert "Rename the directory to an ASCII name (or move it back)." in str(exc.value)
+        assert std.registry.read_bytes() == registry_before
+
+    def test_moving_back_to_an_ascii_name_restores_the_box(self, std, config, tmp_home):
+        _, moved = self._moved(std, tmp_home)
+        back = moved.rename(tmp_home / "movee2")
+        proj = resolve_box_target(std, config, str(back))
+        assert proj.mode is BoxMode.standalone
+        assert proj.name.endswith("_movee2")
