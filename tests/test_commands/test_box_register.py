@@ -18,9 +18,11 @@ import argparse
 import hashlib
 from pathlib import Path
 
+import pytest
+
 from kanibako.project import registry_store
 from kanibako.launch.box_identity import box_name_reason
-from kanibako.settings.messages import CURE_LEAF_NOT_ASCII, WARN_WS_BOX_BAD_NAME
+from kanibako.settings.messages import CURE_LEAF_NOT_ASCII
 from kanibako.commands.box._parser import run_create, run_register, run_rm
 from kanibako.project.names import resolve_name, register_name
 from kanibako.settings.paths import load_primary_boxes
@@ -417,8 +419,14 @@ class TestPathDesignationIsNeverAName:
         assert run_rm(_rm_args(".HIDDEN")) == 1
         err = capsys.readouterr().err
         assert "not a registered box" not in err
-        assert WARN_WS_BOX_BAD_NAME % (".hidden", box_name_reason(".hidden")) in err
-        assert err.endswith(f"Remove it by its path:\n  kanibako box rm {tmp_home / '.hidden'}\n")
+        path = tmp_home / ".hidden"
+        assert err == (
+            f"Error: box name '.hidden' does not meet the naming rules "
+            f"({box_name_reason('.hidden')}), so the box is reached by its path only. "
+            f"Remove it, or give it a valid name:\n"
+            f"  kanibako box rm {path}\n"
+            f"  kanibako box move {path} <new-path> --name <new-name>\n"
+        )
         assert ".hidden" in load_primary_boxes(
             std.primary_workset, early=_early_scope(std, BoxMode.primary),
         )
@@ -432,8 +440,25 @@ class TestPathDesignationIsNeverAName:
         registry_store.register_standalone(std.registry, "my sa", root)
         assert run_rm(_rm_args("my sa")) == 1
         assert capsys.readouterr().err.endswith(
-            f"Remove it by its path:\n  kanibako box rm '{root}'\n")
+            f"  kanibako box rm '{root}'\n"
+            f"  kanibako box convert '{root}' --standalone --name <new-name>\n")
         assert "my sa" in registry_store.load_standalone(std.registry)
+
+    @pytest.mark.parametrize("stored, typed", [("strasse", "straße"), ("kit", "\u212ait")])
+    def test_a_casefold_match_on_a_valid_name_is_not_legacy(
+        self, stored, typed, config_file, tmp_home, credentials_dir, capsys, monkeypatch,
+    ):
+        """An invalid typed target that only casefolds onto a VALID stored name is a plain miss."""
+        _, std = _std(config_file)
+        monkeypatch.chdir(tmp_home)
+        (tmp_home / stored).mkdir()
+        assert run_create(_create_args(stored)) == 0
+        capsys.readouterr()
+        assert run_rm(_rm_args(typed)) == 1
+        assert capsys.readouterr().err == f"Error: '{typed}' is not a registered box.\n"
+        assert stored in load_primary_boxes(
+            std.primary_workset, early=_early_scope(std, BoxMode.primary),
+        )
 
     def test_register_does_not_resolve_it_by_name(
         self, config_file, tmp_home, credentials_dir, capsys, monkeypatch,

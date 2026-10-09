@@ -20,6 +20,7 @@ def confirm_prompt(message: str) -> None
 def deep_merge(base: dict, override: dict) -> dict
 def short_hash(full_hash: str, length: int=8) -> str
 def renders_no_name(box: str) -> bool
+def rename_box_cure(mode: str, path: Path | None) -> str
 def unrenderable_box_name_refusal(box: str, mode: str, path: Path | None) -> str
 def name_segment(segment: str) -> str
 def workset_segment(mode: str, group_name: str | None) -> str

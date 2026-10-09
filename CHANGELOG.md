@@ -706,7 +706,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **`box rm` names the path of a registered box whose name the box-name rule no longer allows.** Such a name, like
   `my project`, reads as a path, so `box rm 'my project'` said the box was not registered. It now says the name
-  breaks the rule and prints the `box rm` command that removes the box by its path.
+  breaks the rule and prints two commands that reach the box by its path: one removes it, one gives it a valid name.
 
 - **A refused `create` on a fresh install no longer leaves the first-run setup behind.** An invalid `--name`
   and the `$HOME` guard now refuse before setup writes `kanibako.cfg` and the data tree.
