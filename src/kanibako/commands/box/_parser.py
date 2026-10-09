@@ -2286,7 +2286,7 @@ def _resolve_standalone_target(
     std, config, target: str,
 ) -> tuple[str | None, Path | None, bool]:
     """Resolve a ``box rm`` *target* to ``(box_name, root, registered)``; unregistered by PATH only."""
-    from kanibako.errors import LegacyWorksetIdentityError
+    from kanibako.errors import ConfigError, LegacyWorksetIdentityError
     from kanibako.project import registry_store
     from kanibako.settings.paths import BoxMode, detect_project_mode
 
@@ -2303,10 +2303,10 @@ def _resolve_standalone_target(
     if candidate.exists():
         try:
             detection = detect_project_mode(candidate, std, config)
-        except (LegacyWorksetIdentityError, DerivedBoxNameError):
+        except (LegacyWorksetIdentityError, DerivedBoxNameError, ConfigError):
             # ⚑ THE EXCEPTIONS THE BLANKET MISS MUST NOT EAT: an un-migrated workset root
-            # in the walk, or a standalone box whose directory has no ASCII spelling, is a
-            # NAMED thing to fix, not a path that failed to be a box.
+            # in the walk, a standalone box whose directory has no ASCII spelling, or a
+            # malformed root file, is a NAMED thing to fix, not a path that failed to be a box.
             raise
         except Exception:  # noqa: BLE001 - a non-project path is simply a miss
             return None, None, False

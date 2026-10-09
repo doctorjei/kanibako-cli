@@ -402,3 +402,35 @@ class TestStandalonePurge:
         assert (root / "mine.txt").read_text() == "mine\n"
         assert (outside / "canon" / "canary.txt").read_text() == "keep me\n"
         assert (root / "lnk").is_symlink() == via_link
+
+    def test_canon_left_by_a_null_key_is_kept_and_named(
+        self, config_file, tmp_home, credentials_dir, capsys,
+    ):
+        root = tmp_home / "sa"
+        _create(root, standalone=True)
+        (root / "canon" / "mine.txt").write_text("mine\n")
+        with (root / "workset.yaml").open("a") as fh:
+            fh.write("  canon: null\n")
+        capsys.readouterr()
+
+        assert _rm(str(root), force=True) == 0
+        out = capsys.readouterr()
+        assert not any(line.startswith("box canon") for line in _plan_lines(out.out))
+        assert (f"left the canon folder at {root / 'canon'} in place — not the canon "
+                "tier of this box") in out.err
+        assert (root / "canon" / "mine.txt").read_text() == "mine\n"
+
+    def test_malformed_root_file_is_refused_not_a_miss(
+        self, config_file, tmp_home, credentials_dir,
+    ):
+        from kanibako.errors import ConfigError
+
+        root = tmp_home / "sa"
+        _create(root, standalone=True)
+        with (root / "workset.yaml").open("a") as fh:
+            fh.write("  canon: @meta.workset.path/canon\n")
+        before = sorted(p.relative_to(root) for p in root.rglob("*"))
+
+        with pytest.raises(ConfigError, match="is not valid YAML"):
+            _rm(str(root), force=True)
+        assert sorted(p.relative_to(root) for p in root.rglob("*")) == before

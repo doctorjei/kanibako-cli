@@ -274,6 +274,40 @@ class TestCleanExtended:
         assert (project_dir / "lnk").is_symlink()
         assert (outside / "canon" / "canary.txt").read_text() == "keep me\n"
 
+    def test_purge_standalone_names_a_canon_left_by_a_null_key(
+        self, config_file, tmp_home, capsys,
+    ):
+        from kanibako.commands.clean import run
+
+        project_dir = tmp_home / "project"
+        (project_dir / "box_data").mkdir(parents=True)
+        (project_dir / "canon").mkdir()
+        (project_dir / "canon" / "mine.txt").write_text("mine\n")
+        (project_dir / "workset.yaml").write_text(
+            "workset:\n  registry: null\n  canon: null\n")
+
+        args = argparse.Namespace(path=str(project_dir), all_projects=False, force=True)
+        assert run(args) == 0
+        assert (f"left the canon folder at {project_dir / 'canon'} in place — not the "
+                "canon tier of this box") in capsys.readouterr().err
+        assert not (project_dir / "box_data").exists()
+        assert (project_dir / "canon" / "mine.txt").read_text() == "mine\n"
+
+    def test_purge_standalone_refuses_a_malformed_root_file(self, config_file, tmp_home):
+        from kanibako.commands.clean import run
+        from kanibako.errors import ConfigError
+
+        project_dir = tmp_home / "project"
+        (project_dir / "box_data").mkdir(parents=True)
+        bad = "workset:\n  registry: null\n  canon: @meta.workset.path/canon\n"
+        (project_dir / "workset.yaml").write_text(bad)
+
+        args = argparse.Namespace(path=str(project_dir), all_projects=False, force=True)
+        with pytest.raises(ConfigError, match="is not valid YAML"):
+            run(args)
+        assert (project_dir / "box_data").is_dir()
+        assert (project_dir / "workset.yaml").read_text() == bad
+
     def test_purge_all_skips_standalone(self, config_file, tmp_home, credentials_dir, capsys):
         """--all only covers default-mode projects, not standalone."""
         from kanibako.commands.clean import run

@@ -470,12 +470,15 @@ def standalone_canon_teardown(
     """A STANDALONE box's ``workset.canon`` tier as ``(removable, retained)`` for a teardown.
 
     The tier ``create`` stamps is the box's own.  Only one STRICTLY BELOW *root* is
-    removable; a repoint outside it, or AT it, is the user's directory.  A null key or a
-    tier not on disk answers ``(None, None)``.  🛑 CALL THIS BEFORE UNLINKING THE ROOT
-    ``workset.yaml``, the only carrier of a repoint.
+    removable; a repoint outside it, or AT it, is the user's directory.  A null key
+    retains the literal ``canon/``, as a nulled vault arm does.  A tier not on disk answers
+    ``(None, None)``.  🛑 CALL THIS BEFORE UNLINKING THE ROOT ``workset.yaml``.
     """
     canon = resolve_workset_canon(root, load_workset_settings_doc(root), early=early)
-    if canon is None or not (canon.exists() or canon.is_symlink()):
+    if canon is None:
+        literal = root / _CANON_LEAF
+        return None, (_unfollowed(literal) if literal.exists() or literal.is_symlink() else None)
+    if not (canon.exists() or canon.is_symlink()):
         return None, None
     if _strictly_in_tree(canon, root):
         return _unfollowed(canon), None
@@ -483,8 +486,10 @@ def standalone_canon_teardown(
 
 
 def report_retained_canon(canon: Path, root: Path) -> None:
-    """The retained-canon Note: the tier is outside *root*, so it stays."""
-    print(f"Note: left the canon folder at {canon} in place — not strictly inside {root}, "
+    """The retained-canon Note: the tier is outside *root*, or not this box's tier."""
+    why = ("not the canon tier of this box" if _strictly_in_tree(canon, root)
+           else f"not strictly inside {root}")
+    print(f"Note: left the canon folder at {canon} in place — {why}, "
           f"so it is yours to remove.", file=sys.stderr)
 
 

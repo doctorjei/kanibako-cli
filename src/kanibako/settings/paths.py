@@ -1745,10 +1745,10 @@ def _find_local_ancestor(target: Path, std: StandardPaths) -> Path | None:
     return best
 
 
-def _is_standalone_meta_dir(root: Path) -> bool:
+def _is_standalone_meta_dir(root: Path, *, strict: bool = False) -> bool:
     """True only if *root*'s own ``workset.yaml`` stores the standalone ``workset.registry`` null."""
     from kanibako.launch import box_resolve
-    return box_resolve.stores_standalone_registry_null(root)
+    return box_resolve.stores_standalone_registry_null(root, strict=strict)
 
 
 def detect_project_mode(project_dir: Path, std: StandardPaths,
@@ -1765,7 +1765,7 @@ def detect_project_mode(project_dir: Path, std: StandardPaths,
 
     # 2. In-place standalone marker AT the resolved dir (D3-mode #1, marker-first): it
     # OVERRIDES workset TREE membership.  Only this dir; ancestors are the step-5 walk.
-    if _is_standalone_meta_dir(resolved):
+    if _is_standalone_meta_dir(resolved, strict=True):
         from kanibako.project import import_reconcile
         import_reconcile.check_standalone(
             std.registry, resolved, journal=std.journal,
