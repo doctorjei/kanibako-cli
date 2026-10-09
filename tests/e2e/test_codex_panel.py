@@ -186,11 +186,25 @@ def _find_box_codex_config(
     return candidates[0]
 
 
+_DRIFTS = (
+    (b'trusted_hash = "sha256:', b'trusted_hash = "sha256:0'),
+    (b'approval_policy = "never"', b'approval_policy = "on-request"'),
+)
+
+
+def _drift_managed_bytes(cfg: bytes) -> bytes:
+    """*cfg* with one managed value per launch seam knocked off its delivered state."""
+    for old, new in _DRIFTS:
+        assert old in cfg, f"nothing to drift: {old!r} not delivered"
+        cfg = cfg.replace(old, new, 1)
+    return cfg
+
+
 def test_codex_delivery_real_box(e2e_env):
     """Real `start --agent codex` delivers the FULL managed config.toml:
     directive + D2 marker SessionStart groups, both trust entries, project
-    trust, approval parity — and a restart is byte-identical (idempotent on the
-    real path)."""
+    trust, approval parity — and a restart re-delivers it byte-identically
+    (both seams reconverge on the real path)."""
     env, project, box = e2e_env["env"], e2e_env["project"], "codexpanel-deliv"
     _seed_codex_stub(e2e_env)
     run_install(env)
@@ -229,13 +243,13 @@ def test_codex_delivery_real_box(e2e_env):
         assert data["sandbox_mode"] == "danger-full-access"
         assert "SessionEnd" not in first.decode()  # codex has no such event
 
-        # restart → byte-identical (both seams idempotent on the real path).
-        # ⚑ VACUOUSLY SATISFIABLE: a restart that never ran leaves the bytes trivially
-        # identical. No discriminator is testable without a real box; boarded.
+        # restart → byte-identical.  ⚑ Drift a value each seam owns first: untouched
+        # bytes also match after a restart that never ran.
+        cfg_path.write_bytes(_drift_managed_bytes(first))
         r = run_kanibako(["start", box, "--agent", "codex"], env=env, timeout=90)
         assert cfg_path.read_bytes() == first, (
-            f"restart changed delivered bytes (restart: rc={r.returncode} "
-            f"stderr={r.stderr[-300:]!r})"
+            f"restart did not re-deliver the original bytes (restart: "
+            f"rc={r.returncode} stderr={r.stderr[-300:]!r})"
         )
     finally:
         rm(box_container(box))
