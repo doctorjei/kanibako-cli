@@ -123,18 +123,14 @@ def _run_duplicate_cross_mode(args: argparse.Namespace, std, config) -> int:
     if not args.bare and new_path.exists() and not args.force:
         return _refuse_existing_destination(new_path)
 
-    # A standalone target mints <kuid>_<leaf> from the destination root and never
-    # reads --name: refuse, don't ask approval of a flag that does nothing.
+    # A standalone target mints <kuid>_<leaf> from the dest root; --name is never read.
     if to_mode is BoxMode.standalone and getattr(args, "project_name", None):
         try:
             refuse_nonleaf_standalone_name(args.project_name, new_path)
         except DerivedBoxNameError:
-            # ⚑ PROPAGATE, do not catch as ProjectError.  ``refuse_nonleaf_standalone_name``
-            # calls ``sanitize_cap`` on the destination root, which RAISES this for a char
-            # with no ASCII spelling.  It SUBCLASSES ProjectError, so the plain catch below
-            # would print it bare — the right refusal with its ``CURE_LEAF_NOT_ASCII`` cure
-            # stripped.  The door that owns the ASCII rule prints the cure; this one must
-            # not swallow it.
+            # ⚑ PROPAGATE.  ``sanitize_cap`` on the destination root raises this for a
+            # char with no ASCII spelling; it SUBCLASSES ProjectError, so the plain catch
+            # below would print it bare, cure stripped.
             raise
         except ProjectError as e:
             print(f"Error: {e}", file=sys.stderr)
@@ -268,7 +264,6 @@ def _run_duplicate_cross_mode(args: argparse.Namespace, std, config) -> int:
         # Roll back only when new_path did NOT pre-exist (F2: never delete a dir
         # the user already had); _duplicate_to_local's own unwind already cleans
         # the boxes/<name> metadata dir + its registration.
-        # A local ProjectError import would shadow the module binding function-wide.
         try:
             # ⚑ Route 2: the merge now happens inside ``_duplicate_to_local``.
             _duplicate_to_local(
