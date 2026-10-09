@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import contextlib
+import os
+import shutil
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -3143,7 +3145,8 @@ class TestDetachedSupervisor:
             script = self._detach_script(m)
             # Forward-compat import gate.
             assert "import kanibako.box_supervisor" in script
-            assert "2>>/home/agent/.kanibako/supervisor-fallback.log" in script
+            assert "kb_diag=/home/agent/.kanibako/supervisor-fallback.log;" in script
+            assert '2>>"$kb_diag"' in script
             # Supervisor PID-1 invocation (NOT tmux-wrapped).
             assert 'exec env "PYTHONPATH=/opt/kanibako${PYTHONPATH:+:$PYTHONPATH}" python3 -m kanibako.box_supervisor' in script
             assert "--session kanibako" in script
@@ -3351,8 +3354,8 @@ class TestBuildSupervisorPid1:
         )
         script = args[1]
         # The reason is kept, not thrown away.
-        assert "2>/dev/null " not in script.split("&& exec", 1)[0]
-        assert f"2>>/home/agent/{SUPERVISOR_FALLBACK_RELPATH}" in script
+        assert script.count("import kanibako.box_supervisor' 2>>\"$kb_diag\"") == 2
+        assert f"kb_diag=/home/agent/{SUPERVISOR_FALLBACK_RELPATH};" in script
         # And the fallback announces itself on stderr (-> `podman logs`).
         fallback_branch = script.rsplit("|| {", 1)[1]
         assert "echo " in fallback_branch
@@ -3412,6 +3415,42 @@ class TestBuildSupervisorPid1:
         assert after_tokens[2:] == supervisor_argv
         fb = script.split("2>/dev/null; exec ", 1)[1].rstrip(" ;}")
         assert shlex.split(fb) == fallback_argv
+
+
+_POSIX_SHELLS = [["sh"]] + ([["bash", "--posix"]] if shutil.which("bash") else [])
+
+
+@pytest.mark.parametrize("shell", _POSIX_SHELLS, ids=" ".join)
+@pytest.mark.parametrize("import_ok", [True, False], ids=["import-ok", "import-fails"])
+@pytest.mark.parametrize("log_dir_is_file", [False, True], ids=["log-ok", "log-dir-is-file"])
+def test_pid1_script_runs_whatever_the_log_can_do(
+    tmp_path, monkeypatch, shell, import_ok, log_dir_is_file,
+):
+    """PID 1 reaches the supervisor or the fallback even when the log cannot open.
+
+    Measured: with the box home's ``.kanibako`` a FILE, the ``: >log`` truncate
+    (``:`` is a special builtin) ended the POSIX shell, rc=1, and neither ran.
+    """
+    import subprocess
+
+    from kanibako.commands import start
+
+    log_dir = tmp_path / ".kanibako"
+    if log_dir_is_file:
+        log_dir.write_text("")
+    log = log_dir / "supervisor-fallback.log"
+    monkeypatch.setattr(start, "_supervisor_fallback_guest_path", lambda: str(log))
+    _ep, args = start._build_supervisor_pid1(
+        ["sh", "-c", "echo SUPERVISOR"], ["sh", "-c", "echo FALLBACK"],
+    )
+    env = dict(os.environ, PYTHONPATH=str(Path(start.__file__).parents[2]))
+    if not import_ok:
+        env["PYTHONHOME"] = "/nonexistent"
+    out = subprocess.run([*shell, *args], capture_output=True, text=True, env=env)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout == ("SUPERVISOR\n" if import_ok else "FALLBACK\n")
+    if not log_dir_is_file and not import_ok:
+        assert start.SUPERVISOR_FALLBACK_WARNING in log.read_text()
 
 
 class TestFallbackNotice:
