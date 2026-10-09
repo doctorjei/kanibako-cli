@@ -16,6 +16,8 @@ from kanibako.snapshots import (
     LAYOUT_MARKER_NAME,
     UNSORTED_DIRNAME,
     _versions_dir,
+    list_snapshots,
+    migrate_legacy_versions,
     relocate_snapshot_store,
 )
 
@@ -222,6 +224,24 @@ class TestMarkingMigratesFirst:
             "timestamp prunes it for good"
         )
         assert (new_base / UNSORTED_DIRNAME / LEGACY_TS / "old.txt").exists()
+
+    def test_a_relocate_into_an_absent_base_marks_the_base_it_makes(self, tmp_path):
+        """An unmarked new base lets the next reader sweep a timestamp-named store."""
+        old_vault = _vault(tmp_path, "w2")
+        new_vault = _vault(tmp_path, "w")
+        _make_snapshot(old_vault, "mover", "20240101T000000Z", "mine.txt")
+        new_base = _versions_dir(new_vault)
+        assert not new_base.exists()
+
+        relocate_snapshot_store(
+            old_vault, new_vault, old_box="mover", new_box=LEGACY_TS,
+        )
+        migrate_legacy_versions(new_vault, box_name="other")
+
+        assert (new_base / LAYOUT_MARKER_NAME).exists()
+        assert [n for n, _, _ in list_snapshots(new_vault, box_name=LEGACY_TS)] \
+            == ["20240101T000000Z"]
+        assert not (new_base / UNSORTED_DIRNAME).exists()
 
     def test_a_legacy_entry_survives_the_mark_as_unsorted(self, tmp_path):
         """Migrated means filed away, not deleted -- it must still be readable."""
