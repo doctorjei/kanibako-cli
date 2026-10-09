@@ -13,11 +13,9 @@ snapshots:
 automatically.  Automatic snapshots can be triggered before each container
 launch.
 
-⚑ SNAPSHOTS ARE PER-BOX: ``.versions/<box>/``, not a flat ``.versions/`` shared
-by every box under one base, which let one box list, prune, or RESTORE another's.
+⚑ SNAPSHOTS ARE PER-BOX: ``.versions/<box>/``, so no box reaches another's.
 Unattributable legacy entries go to ``.versions/.unsorted/``: listed, never
-deleted.  A ``.versions/.layout`` marker retires legacy detection on a base once
-that base has been converted.
+deleted.  A ``.versions/.layout`` marker retires legacy detection on a base.
 
 ⚑ SYMLINKS ARE COPIED VERBATIM, both ways, under the rule in
 :mod:`kanibako.tree_copy` (``cp -a`` and ``rsync -a`` already keep them), so a
@@ -61,9 +59,7 @@ class ForeignSnapshotError(KanibakoError):
 class SnapshotSafetyError(KanibakoError):
     """The pre-restore safety copy could not be made, so the restore did not run.
 
-    ``restore`` refuses to displace live data it cannot preserve, so a failure of
-    that copy means NOTHING CHANGED -- a raw ``CalledProcessError`` here reads as
-    a crash rather than the refusal it is.
+    NOTHING CHANGED: ``restore`` never displaces live data it cannot preserve.
     """
 
 
@@ -89,16 +85,12 @@ def _versions_dir(vault_rw_path: Path) -> Path:
 #: never deleted.
 #:
 #: ⚑ The LEADING DOT is load-bearing: a box name can never start with ``.``, so
-#: no box can be named into the bucket.  ``unsorted`` WAS a legal box name, so a
-#: box by that name owned the directory every other box's data was filed into.
+#: no box can be named into the bucket.
 UNSORTED_DIRNAME = ".unsorted"
 
-#: Written into ``.versions/`` the first time this code converts a base; once it is
-#: present, legacy detection never runs on that base again.
-#:
-#: Legacy detection is a NAME match (``_LEGACY_TS_RE``) over the base, and
-#: ``20200101T000000Z`` is a legal box name, so without the marker the next
-#: legacy pass by ANY box sweeps a timestamp-named box's whole store away.
+#: ⚑ Once present, legacy detection never runs on that base again.  Detection is
+#: a NAME match and a timestamp is a legal box name, so an unmarked base lets
+#: any box's pass sweep a timestamp-named box's store away.
 LAYOUT_MARKER_NAME = ".layout"
 
 #: Marker contents: which layout the base was converted to.  Written, not read.
@@ -152,11 +144,9 @@ def _unique_snapshot_dest(
 ) -> Path:
     """A free path in *target* for snapshot *name*.
 
-    ``shutil.move`` onto an existing directory files the source INSIDE it, so
-    a taken suffix can bury one snapshot in another.  *owner* is who the entry
-    is attributed to, or None where that cannot be proven: a proven owner is
-    named, an unproven one gets a counter, because ``<ts>-<box>`` in
-    ``.unsorted`` would credit the migrant with writing it.
+    ``shutil.move`` onto an existing directory files the source INSIDE it.  A
+    proven *owner* is named in the suffix; None gets a counter, so ``.unsorted``
+    never credits a box with an entry it may not have written.
     """
     stem = name if owner is None else f"{name}-{owner}"
     dest = target / name
@@ -172,31 +162,31 @@ def _unique_snapshot_dest(
 
 def _migrate_flat_and_mark(
     vault_rw_path: Path, *, box_name: str, store_exclusive: bool = False,
+    create_base: bool = False,
 ) -> dict[str, list[str]]:
     """Split any legacy flat ``.versions/<timestamp>`` entries out of the base,
     then declare that base per-box.
 
-    ⚑ THIS IS THE ONLY LEGAL WAY TO MARK A BASE.  A marker written over a base
-    that still holds flat entries freezes them un-migrated: they disappear from
-    every listing, and the next box named like the timestamp prunes them for
-    good.  Any site that marks must come through here.
+    ⚑ THE ONLY LEGAL WAY TO MARK A BASE: a marker over flat entries hides them
+    from every listing, and a box named like the timestamp prunes them.
 
-    Attribution follows *store_exclusive*: a base inside this box's own tree can
-    only have been written by this box, so its legacy entries are ATTRIBUTED to
-    it; a shared base cannot prove that, so they go to ``.unsorted`` -- listed,
-    never pruned.
+    *store_exclusive* (a base in this box's own tree) attributes legacy entries
+    to this box; otherwise they go to ``.unsorted`` -- listed, never pruned.
 
-    ⚑ An EXISTING base is MARKED whether or not anything moved, so a
-    timestamp-named box created afterwards cannot be swept by a later pass.  An
-    ABSENT base is left absent; a writer marks one as it makes it.
+    ⚑ An existing base ends MARKED even when nothing moved, or a later pass
+    sweeps a timestamp-named box.  An absent base is created marked only with
+    *create_base* (a writer); a reader must never create one.
     """
     versions = _versions_dir(vault_rw_path)
     moved: dict[str, list[str]] = {"attributed": [], "unsorted": []}
-    # A reader must not create an absent base; a writer marks one as it makes it.
-    if _is_migrated(versions) or not versions.is_dir():
+    if _is_migrated(versions):
+        return moved
+    if not versions.is_dir():
+        if create_base:
+            _write_layout_marker(versions)
         return moved
     legacy = [
-        entry for entry in (versions.iterdir() if versions.is_dir() else [])
+        entry for entry in versions.iterdir()
         if entry.is_dir() and not entry.is_symlink()
         and _LEGACY_TS_RE.match(entry.name)
     ]
@@ -206,7 +196,6 @@ def _migrate_flat_and_mark(
         target.mkdir(parents=True, exist_ok=True)
         bucket = "attributed" if store_exclusive else "unsorted"
         for entry in sorted(legacy, key=lambda p: p.name):
-            # An exclusive base proves the box wrote it; `.unsorted` proves not.
             dest = _unique_snapshot_dest(
                 target, entry.name, box_name if store_exclusive else None
             )
@@ -222,6 +211,7 @@ def _migrate_flat_and_mark(
 
 def migrate_legacy_versions(
     vault_rw_path: Path, *, box_name: str, store_exclusive: bool = False,
+    create_base: bool = False,
 ) -> dict[str, list[str]]:
     """Split pre-per-box ``.versions/<timestamp>`` entries out of the SHARED base.
 
@@ -235,11 +225,10 @@ def migrate_legacy_versions(
     legacy conversion, so it must run even on an already-marked base.
     """
     if store_exclusive:
-        # A renamed standalone DIRECTORY: identity, not a legacy conversion, so
-        # this runs whether or not the base is marked.
         adopt_standalone_store(vault_rw_path, box_name=box_name)
     return _migrate_flat_and_mark(
-        vault_rw_path, box_name=box_name, store_exclusive=store_exclusive
+        vault_rw_path, box_name=box_name, store_exclusive=store_exclusive,
+        create_base=create_base,
     )
 
 
@@ -286,17 +275,9 @@ def _force_writable_dirs(root: Path) -> None:
 def _rmtree_force(path: Path) -> None:
     """``shutil.rmtree`` that also removes trees containing READ-ONLY directories.
 
-    Vault content is arbitrary user data, and a read-only directory in it is
-    perfectly legitimate -- copying one in is enough to make a snapshot of it
-    undeletable, because ``rmtree`` cannot unlink through a parent that denies
-    write.  Measured 2026-08-17: a read-only tree under ``vault/rw`` propagated
-    into ``.versions/`` and made ``prune_snapshots`` raise ``PermissionError``
-    from inside the launch path, so ``kanibako start`` could not start the box
-    at all until the offending directories were moved out BY HAND.
-
-    The plain ``rmtree`` is attempted FIRST so the overwhelmingly common case is
-    byte-identical to before; the widening pass runs only after a
-    ``PermissionError``, and only over the tree we were already asked to delete.
+    A read-only directory in user data is legitimate, and ``rmtree`` cannot
+    unlink through a parent that denies write.  The widening pass runs only
+    after a ``PermissionError``, and only over the tree being deleted.
     """
     try:
         shutil.rmtree(path)
@@ -419,13 +400,9 @@ def create_snapshot(
         return None
 
     migrate_legacy_versions(
-        vault_rw_path, box_name=box_name, store_exclusive=store_exclusive
+        vault_rw_path, box_name=box_name, store_exclusive=store_exclusive,
+        create_base=True,
     )
-    # The base is per-box from the moment this writer creates it.  Leaving the
-    # marker to the migration above would miss the case where the base does not
-    # exist yet -- it creates no base, so a timestamp-named store made here would
-    # still be legacy to the next reader's pass.
-    _write_layout_marker(_versions_dir(vault_rw_path))
 
     store = _box_store(vault_rw_path, box_name)
     store.mkdir(parents=True, exist_ok=True)
@@ -527,11 +504,8 @@ def adopt_standalone_store(vault_rw_path: Path, *, box_name: str) -> Path | None
         return None
     store.parent.mkdir(parents=True, exist_ok=True)
     shutil.move(str(candidates[0]), str(store))
-    # Mark through the helper so any legacy flat entries still sitting in this
-    # base get migrated instead of frozen un-migrated behind the marker.  Runs
-    # AFTER the move on purpose: the helper's attribution target is this box's
-    # store, and doing it first would have the helper create that store and then
-    # drop the adopted one inside it.
+    # AFTER the move: run first, the helper would create this store and the
+    # adopted one would land inside it.
     _migrate_flat_and_mark(
         vault_rw_path, box_name=box_name, store_exclusive=True
     )
@@ -544,22 +518,15 @@ def relocate_snapshot_store(
 ) -> Path | None:
     """Carry *old_box*'s snapshot store to *new_box* across a rename or a move.
 
-    A store is keyed on the box, so a verb that renames the box or relocates its
-    vault leaves the store under the OLD key: the box lists no snapshots, and the
-    next box to take that name inherits them -- the cross-box reach D1 exists to
-    prevent.
+    Left under the OLD key, the box lists nothing and the next box of that name
+    inherits the snapshots.
 
-    ⚑ *new_base_exclusive* says the NEW base sits inside this box's OWN tree.
-    That is the ONLY case in which a store found at ``new_base/<old name>`` is
-    ours: a relocation that COPIED the tree carried it there.  In a base shared
-    with other boxes that path belongs to whoever else is already using that name,
-    and adopting it would hand this box another box's snapshots.
+    ⚑ *new_base_exclusive*: the NEW base is in this box's OWN tree, the ONLY case
+    where ``new_base/<old name>`` is ours (a tree copy carried it).  In a shared
+    base that path is another box's store.
 
-    ⚑ A BASE changing carries a store just as surely as a NAME changing.  A
-    convert that keeps the name still moves the store from one base to another;
-    gating the whole function on ``new_box != old_box`` strands it, and MIGRATION
-    promises it moves.  Never overwrites -- an entry whose destination name is
-    taken goes under a suffix.
+    ⚑ A BASE change carries the store even when the name is kept.  Never
+    overwrites: a taken destination name gets a suffix.
     """
     old_base = _versions_dir(old_vault_rw)
     new_base = _versions_dir(new_vault_rw)
@@ -567,7 +534,6 @@ def relocate_snapshot_store(
 
     carried = None
     if new_base_exclusive and new_box != old_box:
-        # Only our own tree can have carried our old key along in a copy.
         in_new_base = new_base / old_box
         if in_new_base.is_dir() and not in_new_base.is_symlink():
             carried = in_new_base
@@ -579,21 +545,17 @@ def relocate_snapshot_store(
     if carried is None:
         return None
 
-    # Migrate the destination base through the helper rather than marking it
-    # directly, so legacy flat entries already living there are split out instead
-    # of being frozen un-migrated behind a fresh marker.
     _migrate_flat_and_mark(
-        new_vault_rw, box_name=new_box, store_exclusive=new_base_exclusive
+        new_vault_rw, box_name=new_box, store_exclusive=new_base_exclusive,
+        create_base=True,
     )
     if not new_store.exists():
-        new_store.parent.mkdir(parents=True, exist_ok=True)
         shutil.move(str(carried), str(new_store))
         return new_store
 
     # Destination store already exists: merge, never clobber.
     new_store.mkdir(parents=True, exist_ok=True)
     for entry in sorted(carried.iterdir()):
-        # `carried` IS old_box's own store, so naming it is a fact, not a guess.
         dest = _unique_snapshot_dest(new_store, entry.name, old_box)
         shutil.move(str(entry), str(dest))
     shutil.rmtree(carried, ignore_errors=True)
@@ -605,8 +567,6 @@ def restore_snapshot(
     store_exclusive: bool = False,
 ) -> Path | None:
     """Restore *vault_rw_path* from *snapshot_name* in *box_name*'s own store.
-
-    Two safety properties the flat shared store did not have:
 
     * **A foreign snapshot is refused.** A timestamp that lives in another box's
       store raises :class:`ForeignSnapshotError` naming that box, instead of
@@ -647,10 +607,7 @@ def restore_snapshot(
 
     vault_rw_path.mkdir(parents=True, exist_ok=True)
 
-    # Preserve the live contents BEFORE displacing them, so a restore that turns
-    # out to be the wrong one can itself be undone.  If that copy cannot be made
-    # the restore does not run at all: replacing user data and leaving no copy is
-    # exactly what this step exists to prevent.
+    # No safety copy, no restore.
     try:
         safety = create_snapshot(
             vault_rw_path, box_name=box_name,
@@ -658,12 +615,7 @@ def restore_snapshot(
             store_exclusive=store_exclusive,
         )
     except (subprocess.CalledProcessError, OSError) as exc:
-        # ⚑ OSError, not just CalledProcessError.  The reflink path shells out and
-        # raises CalledProcessError, but the HARDLINK path -- what
-        # detect_snapshot_strategy picks on ext4, NFS and tmpfs, i.e. most hosts -
-        # - falls back to copy_tree_keeping_links, which raises PermissionError /
-        # OSError straight out of the copy.  Catching only the subprocess error
-        # left that path dying with a raw traceback on an unwritable store.
+        # ⚑ OSError too: the hardlink path's copy fallback raises it directly.
         raise SnapshotSafetyError(
             f"Could not snapshot the current vault contents before restoring "
             f"'{snapshot_name}': the copy failed ({exc}). Nothing was changed -- "
@@ -754,12 +706,8 @@ def prune_snapshots(
     """
     removed = 0
     for old in snapshots_to_prune(vault_rw_path, max_keep, box_name=box_name):
-        # Pruning is HOUSEKEEPING and runs inside the launch path
-        # (``auto_snapshot`` <- ``start._run_container``).  Failing to reclaim an
-        # OLD snapshot is never a reason to refuse to start a box, so a failure
-        # here is reported and skipped rather than propagated -- but it is NOT
-        # swallowed: an undeletable snapshot means the retention limit is no
-        # longer being honored, and the user has to be told which one.
+        # ⚑ Runs in the launch path: a failure is warned and skipped, never
+        # raised (it must not block a start) and never silent (retention broke).
         try:
             _rmtree_force(old)
         except OSError as exc:

@@ -39,9 +39,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   safety copy cannot be made, the restore does not run and says so rather than failing with a traceback.
   A box's store follows the box: `box move` and `box convert` carry it, and a standalone box whose
   directory was renamed adopts the store already in its own tree. A purge takes it back off: `box purge`,
-  `box purge --all`, and `box rm --purge` remove the box's own `.versions/<box>` and list it among the
-  paths they delete, so a new box that later takes the same name no longer finds and restores the old
-  one's snapshots. Legacy snapshots are split on first
+  `box purge --all`, and `box rm --purge` remove the box's own `.versions/<box>` (`box rm --purge` lists
+  it among the paths it deletes), so a new box that later takes the same name no longer finds and
+  restores the old one's snapshots. Legacy snapshots are split on first
   use — attributed to the box where provable (a standalone box), otherwise kept in
   `.versions/.unsorted`, which is listed, never pruned, and not restorable by name. See MIGRATION,
   "Vault snapshots are per-box; a restore keeps a copy of what it replaces".
