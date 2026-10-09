@@ -112,9 +112,9 @@ class TestVerbsRouteThroughIt:
     def test_workset_remove_project_routes_the_box_tree_only(
         self, tmp_home, std, monkeypatch,
     ):
-        """⚑ SCOPED. Only ``projects_dir/<name>`` is a box tree; the workspace and
-        vault dirs are ordinary user content and must stay on the plain path — the
-        escalation is not a blanket upgrade.
+        """⚑ SCOPED. The escalating deleter is a FALLBACK, and its scope is a box tree
+        plus a member's OWN vault leaves — the workspace leaf and the shared ro/rw arms
+        never escalate.
 
         Driven through the REAL ``create_workset``/``add_project``/``remove_project``
         chain, so a change to what ``remove_project`` deletes shows up here.
@@ -141,7 +141,8 @@ class TestVerbsRouteThroughIt:
 
         remove_project(ws, "b1", remove_files=True, std=std)
 
-        assert seen == [box_tree], f"only the BOX tree may escalate, got {seen}"
+        assert seen == [box_tree, ws.vault_dir / "ro" / "b1",
+                      ws.vault_dir / "rw" / "b1"], f"unexpected escalations: {seen}"
         assert not box_tree.exists()
         assert not (ws.workspaces_dir / "b1").exists()
         assert not (ws.vault_dir / "ro" / "b1").exists()
