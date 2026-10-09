@@ -1834,6 +1834,7 @@ def flatten(
         return 2
     src = given.resolve()
 
+    failed = False
     fl = Flattener()
     fl.collect(src)
     result = fl.render(src)
@@ -1879,21 +1880,28 @@ def flatten(
             unchanged = dest_path.read_text(encoding="utf-8") == result
         except (OSError, UnicodeDecodeError):
             unchanged = False
-        if not unchanged:
-            atomic_write_text(dest_path, result)
-        if manifest is not None:
-            # DEST FIRST, receipt second, always.  The reverse order can strand a
-            # receipt that claims an output which was never written: the watcher
-            # would then read "inputs unchanged, DEST differs" -- its hand-edited
-            # verdict -- and leave the wrong file in place indefinitely.
-            atomic_write_text(
-                Path(os.path.expanduser(manifest)),
-                json.dumps(build_manifest(fl, given, dest_path, result), indent=2) + "\n",
-            )
+        what, target = "directives not flattened", dest_path
+        try:
+            if not unchanged:
+                atomic_write_text(dest_path, result)
+            if manifest is not None:
+                # DEST FIRST, receipt second, always.  The reverse order can strand a
+                # receipt that claims an output which was never written: the watcher
+                # would then read "inputs unchanged, DEST differs" -- its hand-edited
+                # verdict -- and leave the wrong file in place indefinitely.
+                what, target = "manifest not written", Path(os.path.expanduser(manifest))
+                atomic_write_text(
+                    target,
+                    json.dumps(build_manifest(fl, given, dest_path, result), indent=2) + "\n",
+                )
+        except OSError as exc:
+            # One line, not a traceback: the launch shim runs this on every start.
+            fl.warnings.append(f"{what}: {exc.filename or target}: {exc.strerror or exc}")
+            failed = True
 
     for w in fl.warnings:
         sys.stderr.write(f"import-directives: {w}\n")
-    return 0
+    return 1 if failed else 0
 
 
 _USAGE = (

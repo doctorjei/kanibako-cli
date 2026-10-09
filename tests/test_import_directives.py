@@ -795,6 +795,37 @@ class TestAtomicAndUnchangedWrites:
         assert dest.stat().st_ino != before_ino
         assert "second" in dest.read_text(encoding="utf-8")
 
+    def test_unwritable_manifest_is_one_line_not_a_traceback(self, home, capsys):
+        """A home whose ``.kanibako`` is a FILE: the launch shim ran this and printed
+        an unhandled ``FileExistsError`` traceback on every start."""
+        (home / "root.md").write_text("body", encoding="utf-8")
+        (home / ".kanibako").write_text("", encoding="utf-8")
+        dest = home / "out.md"
+        rc = flattener.flatten(
+            str(home / "root.md"), str(dest),
+            manifest=str(home / ".kanibako" / "manifest.json"),
+        )
+        assert rc == 1
+        assert capsys.readouterr().err == (
+            f"import-directives: manifest not written: {home / '.kanibako'}: "
+            "File exists\n"
+        )
+        assert "body" in dest.read_text(encoding="utf-8")
+
+    def test_unwritable_dest_reports_and_writes_no_receipt(self, home, capsys):
+        (home / "root.md").write_text("body", encoding="utf-8")
+        (home / "slot").write_text("", encoding="utf-8")
+        man = home / "manifest.json"
+        rc = flattener.flatten(
+            str(home / "root.md"), str(home / "slot" / "out.md"), manifest=str(man),
+        )
+        assert rc == 1
+        assert capsys.readouterr().err == (
+            f"import-directives: directives not flattened: {home / 'slot'}: "
+            "File exists\n"
+        )
+        assert not man.exists()   # DEST first, receipt second -- never a stranded one
+
 
 # --------------------------------------------------------------------------
 # ``[Display Text](@path/file.md)`` — the form that INCLUDES *and* LINKS.

@@ -715,6 +715,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   running panel to be a codex helper rather than the session, dropped its liveness marker, and then started
   `codex resume --last` in tmux as if the panel had died. The box now recognizes the panel, and still starts a CLI
   agent when the panel really dies while VS Code stays connected.
+- **A directive flatten that cannot write prints one line, not a traceback.** When the box home's `.kanibako`
+  is a file, or the instruction slot cannot be written, the start printed a Python traceback twice. It now
+  prints `import-directives: manifest not written: <path>: File exists` (or `directives not flattened: …`). The
+  box still starts.
 - **`box list` shows a deregistered primary box once, under "Deregistered boxes".** It was also listed in the main
   table as `unknown (no breadcrumb)`, and `box list --orphan` called it an orphan.
 - **Purging a standalone box deletes its `canon/` folder.** `box rm --purge` and `box purge` left the `canon/`
