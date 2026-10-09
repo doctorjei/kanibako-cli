@@ -160,8 +160,7 @@ def _remove_snapshot_store(store) -> None:
 def _remove_member_vault_leaves(vault_ro, vault_rw) -> None:
     """Take a NAMED member's OWN ro/rw vault leaves — never a shared arm.
 
-    A purge that skipped these printed ``done`` over the member's files.  ``is_symlink``
-    is tested because a dangling link is neither dir nor file to ``is_dir()``.
+    ``is_symlink`` is tested: a dangling link is neither dir nor file.
     """
     for leaf in (vault_ro, vault_rw):
         if leaf is None or not (leaf.is_dir() or leaf.is_symlink()):
@@ -262,8 +261,6 @@ def _purge_one(std, config, path: str, *, force: bool) -> int:
             for box_vault in (proj.vault_ro_path, proj.vault_rw_path):
                 if box_vault is not None and box_vault.is_dir():
                     shutil.rmtree(box_vault, ignore_errors=True)
-        # A NAMED member's own vault leaves were never removed here, so the verb
-        # printed ``done`` over its files.
         elif proj.mode is BoxMode.named:
             _remove_member_vault_leaves(proj.vault_ro_path, proj.vault_rw_path)
         _remove_snapshot_store(snapshot_store)
@@ -368,7 +365,7 @@ def _purge_all(std, config, *, force: bool) -> int:
                 # box's helpers.jsonl mount is bound from; the default leaf is
                 # ``<root>/logs``, not the box's own directory.
                 purge_box_logs(std, logs_dir, proj_name, workset_root=ws.root)
-                # The rw LEAF is derived once: the store is that leaf's sibling.
+                # The store is the rw LEAF's sibling, so derive it once.
                 vault_rw_leaf = None if vault_rw_base is None else vault_rw_base / proj_name
                 _remove_member_vault_leaves(
                     None if vault_ro_base is None else vault_ro_base / proj_name,

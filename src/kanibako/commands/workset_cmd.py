@@ -727,12 +727,11 @@ def run_disconnect(args: argparse.Namespace) -> int:
     if args.remove_files:
         from kanibako.settings.workset_dirkeys import refuse_inherited_per_owner
         refuse_inherited_per_owner(ws.root, ws.early_scope)
-    # ⚑ RESOLVED BEFORE ANYTHING IS DELETED: a ``workset.logs`` that does not resolve
-    # refuses the disconnect whole, rather than after the box tree is already gone.
+    # ⚑ RESOLVED BEFORE ANYTHING IS DELETED: an unresolvable ``workset.logs`` refuses
+    # the disconnect whole, not after the box tree is already gone.
     logs_dir = ws.logs_dir if args.remove_files else None
-    # ⚑ RESOLVED HERE FOR THE SAME REASON: the member's OWN snapshot store.  NOT part
-    # of ``remove_member_store`` — that is shared with the relocation retire path,
-    # which runs at STEP 4a while the carry is STEP 4c; deleting there loses the copy.
+    # ⚑ RESOLVED HERE TOO: its OWN store, NOT in ``remove_member_store``
+    # (shared with the relocation retire path, STEP 4a, before the 4c carry).
     snapshot_store = None
     if args.remove_files:
         from kanibako.commands.clean import _resolve_snapshot_store
@@ -770,8 +769,7 @@ def run_disconnect(args: argparse.Namespace) -> int:
         # through ``release_project``, and its logs must survive the move.
         purge_box_logs(std, logs_dir, proj.name, workset_root=ws.root)
     if snapshot_store is not None:
-        # The box's OWN store only — never the shared base or a neighbour's; the shared
-        # helper warns on a survivor instead of printing success over it.
+        # The box's OWN store only — never the shared base or a neighbour's.
         from kanibako.commands.clean import _remove_snapshot_store
         _remove_snapshot_store(snapshot_store)
     print(f"Removed project '{proj.name}' from working set '{ws.name}'")

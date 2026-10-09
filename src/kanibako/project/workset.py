@@ -1755,11 +1755,9 @@ def remove_member_store(
     # while the box's real vault sits at the repoint leaves the user's data orphaned
     # AND removes a directory the box never used.
     boxes_dir, *vault_bases = bases or _member_store_bases(ws)
-    # ⚑ EVERY removal here needs the UNSHARE ESCALATION (J-7).  A plain ``rmtree`` raises
-    # on the 555 canon skeleton EVEN WHEN THE CALLER OWNS IT — and a vault leaf is not the
-    # plain case it was assumed to be: a rootless container writes one as root, and a user's
-    # own 555 dir cannot be entered to unlink its contents.  ``remove_path`` unlinks a link
-    # first, so only the link — never its target — goes.
+    # ⚑ EVERY removal here needs the UNSHARE ESCALATION (J-7): a plain ``rmtree`` cannot
+    # enter a 555 dir the caller OWNS, and a container writes vault content as root.
+    # ``remove_path`` also spares a linked leaf's target.
     from kanibako.runtime.container import remove_box_tree, remove_path
 
     box_tree = boxes_dir / name
