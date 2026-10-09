@@ -1733,6 +1733,15 @@ class TestForegroundAgentExitStopsTheBox:
             assert m.runtime.rm.called is not session_after
         assert rc == (0 if session_after else 3)
 
+    def test_a_missed_reattach_stops_the_box(self, start_mocks):
+        """Reattach: the session was there before the attach, gone when it ran (rc 1)."""
+        with self._box(start_mocks, attach_rc=1, lag=3) as m:
+            m.runtime.is_running.return_value = True  # a live box: the reattach path
+            rc = self._launch()
+            m.runtime.run.assert_not_called()
+            m.runtime.rm.assert_called_once()
+        assert rc == 3
+
     def test_a_missed_attach_reports_the_agents_code(self, start_mocks, capsys):
         """The agent ended before tmux attached: the attach's own failure (1) is
         not the agent's code, and the box still stops."""

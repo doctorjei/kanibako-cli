@@ -3710,12 +3710,15 @@ def _run_container(
                 )
             else:
                 target.refresh_credentials(proj.shell_path)
+        session_seen = bootstrap_program == "tmux" and _bootstrap_session_exists(
+            runtime, container_name,
+        )
         reattach_rc = runtime.exec(
             container_name, _bootstrap_attach(bootstrap_program), attach=True
         )
         ended_rc = _agent_exit_rc(
             runtime, container_name, reattach_rc, bootstrap_program,
-            session_seen=False,
+            session_seen=session_seen,
         )
         if ended_rc is not None:
             reattach_rc = ended_rc
