@@ -254,8 +254,10 @@ ERR_LEAF_NOT_ASCII = "it holds %s, which kanibako cannot spell in ASCII; " + BOX
 CURE_LEAF_NOT_ASCII = "Rename or move the directory to an ASCII name."
 CURE_MOVED_LEAF_NOT_ASCII = "Rename the directory to an ASCII name (or move it back)."
 CURE_DERIVED_BOX_NAME = "Give the box a valid name:\n  %s"  # the command, `--name <new-name>` LAST
+CURE_BOX_NAME_ASCII = "Its ASCII spelling works:\n  %s"  # the command, `--name <spelling>` LAST
 CURE_DERIVED_DUP_DEST = "Pick a destination directory whose name is a valid box name."
 CURE_DERIVED_FORK_NAME = "Pick a fork name that is a valid box name."
+CURE_DERIVED_FORK_NAME_ASCII = "Pick a fork name that is a valid box name; '%s' works."  # spelling
 CURE_DERIVED_FORK_BOX = "Move this box to a directory whose name is a valid box name, from the host:\n  %s"  # the box move command
 # ⚑ "one record per project" (spec § Detection & import) asked at the PATH, not the name.
 ERR_PROJECT_PATH_IS_NAMED_BOX = ("Refusing to create a box at %s: it is already the workspace of " +

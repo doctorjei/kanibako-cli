@@ -17,13 +17,17 @@ from __future__ import annotations
 
 import enum
 import re
+import shlex
 import unicodedata
 from pathlib import Path
 
 from kanibako import kuid
-from kanibako.errors import DerivedBoxNameError, ProjectError
+from kanibako.errors import BoxNameError, DerivedBoxNameError, ProjectError
 from kanibako.identifiers import find_identifier
-from kanibako.settings.messages import BOX_NAME_CHARSET, ERR_DERIVED_BOX_NAME, ERR_LEAF_NOT_ASCII
+from kanibako.launch.romanize import to_ascii
+from kanibako.settings.messages import (BOX_NAME_CHARSET, CURE_BOX_NAME_ASCII,
+                                        CURE_DERIVED_BOX_NAME, ERR_DERIVED_BOX_NAME,
+                                        ERR_LEAF_NOT_ASCII)
 
 # Maximum length of the sanitized leaf component.
 _LEAF_CAP = 32
@@ -139,31 +143,32 @@ def box_name_reason(name: str) -> str | None:
 
 
 def validate_box_name(name: str) -> None:
-    """Raise :class:`~kanibako.errors.ProjectError` if *name* is an invalid box name.
+    """Raise :class:`~kanibako.errors.BoxNameError` if *name* is an invalid box name.
 
     Enforced at creation and at ``--name`` — i.e. on NEW names only.
     """
     reason = _box_name_violation(name)
     if reason is not None:
-        raise ProjectError(f"Invalid box name '{name}': {reason}")
+        raise BoxNameError(f"Invalid box name '{name}': {reason}.", name)
 
 
-def _ascii_spelling(ch: str) -> str | None:
-    """*ch*'s ASCII letters once its diacritics are dropped (``é`` → ``e``), else ``None``.
+def box_name_cure(command: str, name: str) -> str:
+    """The cure for refused *name*: *command* ``--name`` its ASCII spelling, else ``<new-name>``.
 
-    ⚑ Decomposed one character at a time, and only the ASCII result is used: a kana
-    such as ``が`` decomposes to a non-ASCII base, so it is never split here.
+    The spelling is offered, never applied: a typed or derived name is the user's.
     """
-    base = "".join(c for c in unicodedata.normalize("NFKD", ch) if not unicodedata.combining(c))
-    return base if base.isascii() and base.isalnum() else None
+    spelled = to_ascii(name)
+    if spelled is not None and spelled != name and is_valid_box_name(spelled):
+        return CURE_BOX_NAME_ASCII % f"{command} --name {shlex.quote(spelled)}"
+    return CURE_DERIVED_BOX_NAME % f"{command} --name <new-name>"
 
 
 def sanitize_cap(leaf: str) -> str:
     """Sanitize and cap a project-basename *leaf* for a box name, KEEPING its case.
 
-    Latin letters lose their diacritics, composed or not; whitespace, ASCII
-    punctuation, and Unicode punctuation and separators are separators, and each
-    run of them becomes one ``_``.  The ends lose ``_``,
+    The leaf is written in its ASCII spelling (:func:`~kanibako.launch.romanize.to_ascii`);
+    whitespace, ASCII punctuation, and Unicode punctuation and separators are
+    separators, and each run of them becomes one ``_``.  The ends lose ``_``,
     ``-`` and ``.``, and an empty result falls back to ``"box"``.  Raises
     :class:`~kanibako.errors.DerivedBoxNameError` when *leaf* holds a character
     with no ASCII spelling, such as kanji; each caller adds its cure.
@@ -173,21 +178,14 @@ def sanitize_cap(leaf: str) -> str:
     two halves are opposite by design and must not be unified.
     """
     parts = []
-    after_letter = False  # a combining mark here belongs to a letter already spelled
-    for ch in leaf:
-        if after_letter and unicodedata.combining(ch):
-            continue
+    for ch in to_ascii(leaf, strict=False):
         if _NAME_CHAR_RE.fullmatch(ch):
             parts.append(ch)
         elif ch.isascii() or ch.isspace() or unicodedata.category(ch)[0] in "PZ":
             parts.append(_SEP)
         else:
-            spelled = _ascii_spelling(ch)
-            if spelled is None:
-                raise DerivedBoxNameError(ERR_DERIVED_BOX_NAME % (
-                    leaf, ERR_LEAF_NOT_ASCII % f"U+{ord(ch):04X}"))
-            parts.append(spelled)
-        after_letter = parts[-1].isalnum()
+            raise DerivedBoxNameError(ERR_DERIVED_BOX_NAME % (
+                leaf, ERR_LEAF_NOT_ASCII % f"U+{ord(ch):04X}"), leaf)
     collapsed = _SEPARATOR_RUN_RE.sub("_", "".join(parts)).strip(_LEAF_END_CHARS)
     return collapsed[:_LEAF_CAP].strip(_LEAF_END_CHARS) or _EMPTY_LEAF_FALLBACK
 

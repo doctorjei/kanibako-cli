@@ -26,6 +26,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from kanibako.launch.box_identity import (
+    box_name_cure,
     is_canonical_standalone_name,
     refuse_nonleaf_standalone_name,
     standalone_kuid,
@@ -46,9 +47,8 @@ from kanibako.settings.config import (
     write_box_enable_vault,
 )
 from kanibako.identifiers import find_identifier
-from kanibako.errors import DerivedBoxNameError, ProjectError, WorksetError
+from kanibako.errors import BoxNameError, DerivedBoxNameError, ProjectError, WorksetError
 from kanibako.settings.messages import (
-    CURE_DERIVED_BOX_NAME,
     CURE_MOVED_LEAF_NOT_ASCII,
 )
 from kanibako.settings.paths import (
@@ -3013,17 +3013,18 @@ def run_move(args) -> int:
             force=getattr(args, "force", False),
             confirm=_make_confirm(getattr(args, "force", False), summary),
         )
-    except DerivedBoxNameError as e:
+    except BoxNameError as e:
         # ⚑ A STANDALONE TARGET has no `--name` to give: the doors REFUSE a differing one.
         # Keyed on TARGET mode: `--default` leaves standalone, where `--name` works.
         if ownership == "standalone" or (
                 ownership is UNCHANGED and state.mode is BoxMode.standalone):
-            print(f"Error: {e.with_cure(CURE_MOVED_LEAF_NOT_ASCII)}", file=sys.stderr)
+            derived = isinstance(e, DerivedBoxNameError)
+            print(f"Error: {e.with_cure(CURE_MOVED_LEAF_NOT_ASCII) if derived else e}",
+                  file=sys.stderr)
             return 1
         cure = shlex.join(["kanibako", "box", "move", old, str(new_path),
                            *(["--default"] if getattr(args, "to_default", False) else [])])
-        print(f"Error: {e.with_cure(CURE_DERIVED_BOX_NAME % (cure + ' --name <new-name>'))}",
-              file=sys.stderr)
+        print(f"Error: {e.with_cure(box_name_cure(cure, e.name))}", file=sys.stderr)
         return 1
     except (ProjectError, WorksetError) as e:
         print(f"Error: {e}", file=sys.stderr)
@@ -3107,17 +3108,18 @@ def run_convert(args) -> int:
             force=getattr(args, "force", False),
             confirm=_make_confirm(getattr(args, "force", False), summary),
         )
-    except DerivedBoxNameError as e:
+    except BoxNameError as e:
         # ⚑ Same rule as ``run_move``: a `--name` cure on that door is a loop.
         if ownership == "standalone":
-            print(f"Error: {e.with_cure(CURE_MOVED_LEAF_NOT_ASCII)}", file=sys.stderr)
+            derived = isinstance(e, DerivedBoxNameError)
+            print(f"Error: {e.with_cure(CURE_MOVED_LEAF_NOT_ASCII) if derived else e}",
+                  file=sys.stderr)
             return 1
         cure = shlex.join(["kanibako", "box", "convert", subject or str(state.workspace_path),
                            *_convert_target_flags(args),
                            *(["--move", str(location)]
                               if isinstance(location, Path) else [])])
-        print(f"Error: {e.with_cure(CURE_DERIVED_BOX_NAME % (cure + ' --name <new-name>'))}",
-              file=sys.stderr)
+        print(f"Error: {e.with_cure(box_name_cure(cure, e.name))}", file=sys.stderr)
         return 1
     except (ProjectError, WorksetError) as e:
         print(f"Error: {e}", file=sys.stderr)

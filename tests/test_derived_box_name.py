@@ -3,7 +3,8 @@
 ``create``, ``workset connect``, ``box duplicate``, ``box extract``, ``box move``,
 ``box convert``, and the helper fork name a box after a directory when no ``--name``
 is given.  A basename the rule refuses is refused before anything is written, and
-each command prints its OWN cure, with ``--name <new-name>`` last.
+each command prints its OWN cure, with ``--name`` last: the name's ASCII spelling
+when it has one, else ``<new-name>``.
 """
 
 from __future__ import annotations
@@ -14,7 +15,7 @@ import shlex
 
 import pytest
 
-_BAD = ["q$(touch PWNED)", "a b'c", "--purge", "-x", "café"]
+_BAD = ["q$(touch PWNED)", "a b'c", "--purge", "-x", "東京"]
 
 
 def _cli(*argv: str) -> "tuple[int, str]":
@@ -39,10 +40,12 @@ def _primary_boxes() -> dict:
     return load_primary_boxes(std.primary_workset, early=_early_scope(std, BoxMode.primary))
 
 
-def _cure(text: str) -> "list[str]":
+def _cure(text: str, prose: str = "Give the box a valid name:") -> "list[str]":
     lines = text.splitlines()
-    return shlex.split(lines[lines.index(next(
-        ln for ln in lines if ln.endswith("Give the box a valid name:"))) + 1])
+    return shlex.split(lines[lines.index(next(ln for ln in lines if ln.endswith(prose))) + 1])
+
+
+_SPELLED = "Its ASCII spelling works:"
 
 
 @pytest.mark.parametrize("name", _BAD)
@@ -71,6 +74,54 @@ def test_create_in_an_existing_directory_refuses_and_registers_nothing(
     assert _cure(text) == ["kanibako", "create", str(path), "--name", "<new-name>"]
     assert _primary_boxes() == {}
     assert not (tmp_home / "work" / "PWNED").exists()
+
+
+@pytest.mark.parametrize("name, spelled", [("café", "cafe"), ("かにばこ", "kanibako")])
+def test_create_offers_the_ascii_spelling_and_the_offer_creates_the_box(
+        name, spelled, tmp_home, config_file, credentials_dir):
+    path = tmp_home / "work" / name
+    rc, text = _cli("create", "--no-vault", "--", str(path))
+
+    assert rc == 1, text
+    assert f"The directory name '{name}' is not a valid box name" in text
+    assert _cure(text, _SPELLED) == ["kanibako", "create", str(path), "--name", spelled]
+    assert _primary_boxes() == {}
+
+    rc, text = _cli(*_cure(text, _SPELLED)[1:], "--no-vault")
+    assert rc == 0, text
+    assert list(_primary_boxes()) == [spelled]
+
+
+def test_create_offers_the_spelling_of_a_typed_name(tmp_home, config_file, credentials_dir):
+    path = tmp_home / "work" / "ok"
+    rc, text = _cli("create", "--no-vault", str(path), "--name", "かに")
+
+    assert rc == 1, text
+    assert "Invalid box name 'かに'" in text
+    assert _cure(text, _SPELLED) == ["kanibako", "create", str(path), "--name", "kani"]
+    assert _primary_boxes() == {}
+
+
+def test_a_name_with_no_spelling_gets_the_generic_cure(tmp_home, config_file, credentials_dir):
+    path = tmp_home / "work" / "ok"
+    rc, text = _cli("create", "--no-vault", str(path), "--name", "かに東")
+
+    assert rc == 1, text
+    assert _SPELLED not in text
+    assert _cure(text) == ["kanibako", "create", str(path), "--name", "<new-name>"]
+
+
+@pytest.mark.parametrize("leaf, spelled", [("かに", "kani"), ("Straße", "Strasse")])
+def test_standalone_create_writes_the_leaf_in_its_ascii_spelling(
+        leaf, spelled, tmp_home, config_file, credentials_dir):
+    from kanibako.launch.box_resolve import standalone_box_name
+
+    path = tmp_home / "work" / leaf
+    path.mkdir(parents=True)
+    rc, text = _cli("create", "--standalone", "--no-vault", "--", str(path))
+
+    assert rc == 0, text
+    assert standalone_box_name(path, None).endswith(f"_{spelled}")
 
 
 def test_the_named_cure_creates_the_box(tmp_home, config_file, credentials_dir):
@@ -146,6 +197,18 @@ def test_connect_refuses_a_derived_name(tmp_home, config_file, credentials_dir):
     assert rc == 1, text
     assert _cure(text) == ["kanibako", "workset", "connect", "wsx", str(source),
                            "--name", "<new-name>"]
+    assert _members(ws, std) == []
+
+
+def test_connect_offers_the_spelling_of_a_typed_name(tmp_home, config_file, credentials_dir):
+    ws, std = _workset(tmp_home)
+    source = tmp_home / "work" / "ok"
+    source.mkdir(parents=True)
+    rc, text = _cli("workset", "connect", "wsx", str(source), "--name=Łódź")
+
+    assert rc == 1, text
+    assert _cure(text, _SPELLED) == ["kanibako", "workset", "connect", "wsx", str(source),
+                                     "--name", "Lodz"]
     assert _members(ws, std) == []
 
 
@@ -267,6 +330,17 @@ def test_move_names_its_own_cure_and_the_cure_works(tmp_home, config_file, crede
     assert list(_primary_boxes()) == ["mvok"]
 
 
+def test_move_offers_the_spelling_of_a_typed_name(tmp_home, config_file, credentials_dir):
+    source = _standalone_box(tmp_home, "sa")
+    dest = tmp_home / "work" / "m2"
+    rc, text = _cli("box", "move", str(source), str(dest), "--default", "--name", "かに", "--force")
+
+    assert rc == 1, text
+    assert _cure(text, _SPELLED) == ["kanibako", "box", "move", str(source), str(dest),
+                                     "--default", "--name", "kani"]
+    assert not dest.exists()
+
+
 def test_convert_names_its_own_cure_and_leaves_the_box_as_it_was(
         tmp_home, config_file, credentials_dir):
     source = _standalone_box(tmp_home, "-c1")
@@ -336,6 +410,15 @@ def test_fork_with_a_rule_breaking_name_asks_for_another(tmp_home, config_file, 
     assert reply["status"] == "error"
     assert reply["message"].endswith("Pick a fork name that is a valid box name.")
     assert not (tmp_home / "work" / "app.a b").exists()
+
+
+def test_fork_with_a_kana_name_offers_its_spelling(tmp_home, config_file, credentials_dir):
+    workspace = tmp_home / "work" / "app"
+    workspace.mkdir(parents=True)
+    reply = _fork_hub(tmp_home, workspace)._handle_fork({"name": "かに"})
+
+    assert reply["status"] == "error"
+    assert reply["message"].endswith("Pick a fork name that is a valid box name; 'kani' works.")
 
 
 # ---------------------------------------------------------------------------

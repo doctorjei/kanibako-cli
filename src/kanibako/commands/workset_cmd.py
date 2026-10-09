@@ -17,9 +17,9 @@ from typing import TYPE_CHECKING
 
 from kanibako.commands.flags import add_null_flag, add_set_force_flag
 from kanibako.settings.config import user_config_file, load_config
-from kanibako.launch.box_identity import validate_box_name
-from kanibako.settings.messages import CURE_DERIVED_BOX_NAME, ERR_WS_CONNECT_PATH_IS_PRIMARY_BOX
-from kanibako.errors import ConfigError, DerivedBoxNameError, ProjectError, WorksetError
+from kanibako.launch.box_identity import box_name_cure, validate_box_name
+from kanibako.settings.messages import ERR_WS_CONNECT_PATH_IS_PRIMARY_BOX
+from kanibako.errors import BoxNameError, ConfigError, ProjectError, WorksetError
 from kanibako.settings.settings_resolve import UNSET
 from kanibako.settings.paths import (
     BoxMode,
@@ -588,10 +588,9 @@ def run_connect(args: argparse.Namespace) -> int:
             validate_box_name(project_name)
         else:
             refuse_derived_box_name(project_name)
-    except DerivedBoxNameError as e:
-        cure = (f"kanibako workset connect {shlex.quote(stored)} "
-                f"{shlex.quote(str(source))} --name <new-name>")
-        print(f"Error: {e.with_cure(CURE_DERIVED_BOX_NAME % cure)}", file=sys.stderr)
+    except BoxNameError as e:
+        cure = f"kanibako workset connect {shlex.quote(stored)} {shlex.quote(str(source))}"
+        print(f"Error: {e.with_cure(box_name_cure(cure, e.name))}", file=sys.stderr)
         return 1
     except ProjectError as e:
         print(f"Error: {e}", file=sys.stderr)

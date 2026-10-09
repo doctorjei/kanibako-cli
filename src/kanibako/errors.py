@@ -36,11 +36,19 @@ class ProjectError(KanibakoError):
     """Project cannot be resolved, or its name/location is refused."""
 
 
-class DerivedBoxNameError(ProjectError):
-    """A box name taken from a directory breaks the box-name rule; each caller adds its cure."""
+class BoxNameError(ProjectError):
+    """A new box name breaks the box-name rule; each caller adds its cure."""
+
+    def __init__(self, message: str, name: str) -> None:
+        super().__init__(message)
+        self.name = name
 
     def with_cure(self, cure: str) -> str:
         return f"{self} {cure}"
+
+
+class DerivedBoxNameError(BoxNameError):
+    """A box name taken from a directory breaks the box-name rule."""
 
 
 class AmbiguousNameError(ProjectError):

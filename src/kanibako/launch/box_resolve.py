@@ -216,7 +216,7 @@ def standalone_box_name(box_root: Path, registered_name: str | None) -> str:
             return box_identity.compose_standalone_name(stored_kuid, box_root)
         except DerivedBoxNameError as e:
             # ⚑ No fallback name: every door refuses with the one cure.
-            raise DerivedBoxNameError(e.with_cure(CURE_MOVED_LEAF_NOT_ASCII)) from None
+            raise DerivedBoxNameError(e.with_cure(CURE_MOVED_LEAF_NOT_ASCII), e.name) from None
     if registered_name is not None:
         return registered_name
     return box_root.name

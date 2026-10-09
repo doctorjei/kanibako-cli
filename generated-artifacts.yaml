@@ -104,6 +104,7 @@ artifacts:
   api-docs/kanibako/launch/creds_watcher.py.md:
   api-docs/kanibako/launch/hygiene.py.md:
   api-docs/kanibako/launch/journal.py.md:
+  api-docs/kanibako/launch/romanize.py.md:
   api-docs/kanibako/launch/shells.py.md:
   api-docs/kanibako/launch/templates.py.md:
   api-docs/kanibako/log.py.md:

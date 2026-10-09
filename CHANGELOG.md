@@ -29,13 +29,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **A box name is ASCII-only.** A box name's characters are ASCII letters, digits, `_`, `-`, and `.`, the set
   podman allows in a container name; `create --name café` and a box named after a directory named `café` are
-  refused, naming the character. An existing non-ASCII box is warned about and found by its path; rename it with
+  refused, naming the character. The refusal offers the name's ASCII spelling as a command to run (`café` gives
+  `--name cafe`, `かに` gives `--name kani`); a name with no spelling, such as kanji, asks for a new name. An
+  existing non-ASCII box is warned about and found by its path; rename it with
   `kanibako box move <path> <new-path> --name <new-name>`.
 
 - **A standalone box's leaf is spelled in ASCII instead of padded with `_`.** Latin letters lose their accents
-  (a directory named `café` gives `<kuid>_cafe`, one named `Zürich Notes` gives `<kuid>_Zurich_Notes`), each run of
-  spaces and punctuation becomes one `_`, and the leaf loses `_`, `-`, and `.` at its ends. A directory name holding a character with no ASCII
-  spelling, such as kanji or kana, is refused: `create --standalone` refuses before writing anything, and every
+  (a directory named `café` gives `<kuid>_cafe`, one named `Zürich Notes` gives `<kuid>_Zurich_Notes`, `ß` gives
+  `ss`), kana are written in Hepburn, kana by kana (`かに` gives `<kuid>_kani`, `とうきょう` gives `toukyou`), each run
+  of spaces and punctuation becomes one `_`, and the leaf loses `_`, `-`, and `.` at its ends. A directory name
+  holding a character with no ASCII spelling, such as kanji, is refused: `create --standalone` refuses before writing anything, and every
   command that finds an existing standalone box by its moved directory refuses with the cure "Rename the directory
   to an ASCII name (or move it back)."
 

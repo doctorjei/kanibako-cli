@@ -19,8 +19,12 @@ class TemplateScopeError(ConfigError):
 
 class ProjectError(KanibakoError):
 
-class DerivedBoxNameError(ProjectError):
+class BoxNameError(ProjectError):
+    def __init__(self, message: str, name: str) -> None
+
     def with_cure(self, cure: str) -> str
+
+class DerivedBoxNameError(BoxNameError):
 
 class AmbiguousNameError(ProjectError):
 

@@ -18,7 +18,7 @@ from collections.abc import Callable
 from datetime import datetime, timezone
 from pathlib import Path
 
-from kanibako.launch.box_identity import (Designation, classify_designation,
+from kanibako.launch.box_identity import (Designation, box_name_cure, classify_designation,
                                           refuse_nonleaf_standalone_name, sanitize_cap,
                                           validate_box_name)
 from kanibako.commands.flags import add_null_flag, add_set_force_flag
@@ -32,13 +32,13 @@ from kanibako.settings.config import (
 )
 from kanibako.runtime.container import ContainerRuntime, remove_path
 from kanibako.identifiers import agent_node_case, find_identifier
-from kanibako.errors import ContainerError, DerivedBoxNameError, ProjectError, WorksetError
+from kanibako.errors import (BoxNameError, ContainerError, DerivedBoxNameError, ProjectError,
+                             WorksetError)
 from kanibako.project.names import read_names
 from kanibako.project.workset import (
     Workset, add_project, box_logs_to_purge, list_worksets, load_workset,
 )
 from kanibako.settings.messages import (
-    CURE_DERIVED_BOX_NAME,
     CURE_LEAF_NOT_ASCII,
     ERR_WORKSET_MEMBER_NAME_CONFLICT,
     ERR_WORKSET_MEMBER_NAME_TAKEN,
@@ -1125,7 +1125,15 @@ def precheck_create(args: argparse.Namespace) -> int | None:
     # fold to compare, never to store.  The collision checks compare case-blind,
     # so the case the user typed costs them nothing.
     if getattr(args, "name", None):
-        validate_box_name(args.name)
+        try:
+            validate_box_name(args.name)
+        except BoxNameError as e:
+            if args.standalone:  # --name is refused there; no spelling would pass
+                raise
+            command = f"kanibako create {shlex.quote(args.path or logical_cwd())}"
+            cure = box_name_cure(command, e.name)
+            print(f"Error: {e.with_cure(cure)}", file=sys.stderr)
+            return 1
 
     # $HOME guard: a home project must be BOTH standalone and an explicit --allow-home.
     if _create_target(args).resolve() == Path.home().resolve():
@@ -1276,8 +1284,8 @@ def run_create(args: argparse.Namespace) -> int:
         try:
             refuse_derived_box_name(effective_path.name or "project")
         except DerivedBoxNameError as e:
-            cure = f"kanibako create {shlex.quote(str(effective_path))} --name <new-name>"
-            print(f"Error: {e.with_cure(CURE_DERIVED_BOX_NAME % cure)}", file=sys.stderr)
+            cure = box_name_cure(f"kanibako create {shlex.quote(str(effective_path))}", e.name)
+            print(f"Error: {e.with_cure(cure)}", file=sys.stderr)
             return 1
 
     # A NAMED member's dir is its workspace under the working set, which
