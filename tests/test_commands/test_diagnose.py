@@ -1861,10 +1861,18 @@ class TestRunBoxDiagnoseRefusedCure:
         out = capsys.readouterr().out
         assert rc != 0
         assert "no kanibako project registered" in out
-        # The cure is the LAST INDENTED line starting with eight spaces; tokenised,
-        # it must run as ``kanibako create --name <new-name>``, NOT the bare form.
-        cure = out.rsplit("\n        ", 1)[1].splitlines()[-1].strip()
-        assert shlex.split(cure) == ["kanibako", "create", "--name", "<new-name>"]
+        # The cure is the 8-space-indented line starting with ``kanibako create``
+        # and containing ``--name`` (the ``Or pass`` alternative printed after
+        # it is the OTHER branch — the cure is one branch; that hint is the
+        # other).  Tokenised, the cure must run as ``kanibako create --name
+        # <new-name>``, NOT the bare form.
+        cure_lines = [
+            ln.strip() for ln in out.splitlines()
+            if ln.startswith("        ") and ln.lstrip().startswith("kanibako create ")
+            and "--name" in ln
+        ]
+        assert cure_lines, f"no cure line in:\n{out}"
+        assert shlex.split(cure_lines[0]) == ["kanibako", "create", "--name", "<new-name>"]
 
     def test_a_valid_leaf_cwd_keeps_todays_plain_create_hint(
         self, config_file, tmp_home, credentials_dir, capsys, monkeypatch
@@ -1887,5 +1895,133 @@ class TestRunBoxDiagnoseRefusedCure:
         assert rc != 0
         assert "no kanibako project registered" in out
         assert "Run 'kanibako create' to initialize a project here" in out
+        assert "--name" not in out
+
+
+# ---------------------------------------------------------------------------
+# ``box diagnose <dir>`` against a NAMED directory: same fix as start.py —
+# the cure / hint carries the shlex-quoted target.  Three things must hold
+# for the refused-leaf arm:
+#   1. the cure RUNS (carries path AND --name);
+#   2. the alternative ``or pass a project name/path`` is preserved (r0
+#      dropped it when it replaced the second line with the cure);
+#   3. every continuation line in the cure block is indented to 8 spaces
+#      like its neighbours (r0 only prefixed the first line).
+# The valid-leaf arm just carries the path into its plain hint.
+# ---------------------------------------------------------------------------
+
+
+class TestRunBoxDiagnoseNamedTargetCure:
+    """``box diagnose <dir>`` carries the target into both cure arms."""
+
+    def test_a_refused_leaf_named_target_runs_carries_path_and_preserves_alternative(
+        self, config_file, tmp_home, credentials_dir, capsys, monkeypatch
+    ) -> None:
+        """Cure carries path AND --name; alternative guidance is preserved."""
+        from kanibako.errors import ContainerError
+
+        bad = (tmp_home / "a b").resolve()
+        bad.mkdir()
+        # Run from a DIFFERENT cwd — the assertion is that the path is in the cure.
+        monkeypatch.chdir(tmp_home)
+
+        with patch(
+            "kanibako.runtime.container.ContainerRuntime",
+            side_effect=ContainerError("none"),
+        ):
+            args = argparse.Namespace(project=str(bad), path=None)
+            rc = run_box_diagnose(args)
+
+        out = capsys.readouterr().out
+        assert rc != 0
+        assert "no kanibako project registered" in out
+
+        # The cure is the 8-space-indented line starting with ``kanibako create``
+        # (the ``Or pass`` alternative printed after it is the OTHER branch — the
+        # cure is one branch; that hint is the other).  Tokenised, the cure must
+        # run as ``kanibako create <path> --name <new-name>`` — the bare
+        # ``kanibako create`` form would create a box in cwd, not in <path>.
+        # ``shlex.split`` removes the quotes, so the expected path token is bare.
+        cure_lines = [
+            ln.strip() for ln in out.splitlines()
+            if ln.startswith("        ") and ln.lstrip().startswith("kanibako create ")
+            and "--name" in ln
+        ]
+        assert cure_lines, f"no cure line in:\n{out}"
+        assert shlex.split(cure_lines[0]) == [
+            "kanibako", "create", str(bad), "--name", "<new-name>",
+        ], out
+
+        # LOST-GUIDANCE guard: the ``or pass a project name/path`` alternative
+        # must survive — the cure is one branch; that hint is the other.
+        assert "Or pass a project name/path" in out, out
+
+    def test_a_refused_leaf_named_target_indents_every_cure_line_to_eight(
+        self, config_file, tmp_home, credentials_dir, capsys, monkeypatch
+    ) -> None:
+        """Every continuation line of the cure block is indented to 8 spaces."""
+        from kanibako.errors import ContainerError
+
+        bad = (tmp_home / "a b").resolve()
+        bad.mkdir()
+        monkeypatch.chdir(tmp_home)
+
+        with patch(
+            "kanibako.runtime.container.ContainerRuntime",
+            side_effect=ContainerError("none"),
+        ):
+            args = argparse.Namespace(project=str(bad), path=None)
+            rc = run_box_diagnose(args)
+
+        out = capsys.readouterr().out
+        assert rc != 0
+        # Locate the cure block: every line from the first ``        `` after
+        # the ``[!!] Project:`` summary up to the empty/next blank line must
+        # start with exactly 8 spaces — no ragged tail.
+        block_lines: list[str] = []
+        in_block = False
+        for line in out.splitlines():
+            if line.startswith("[!!] Project:"):
+                in_block = True
+                continue
+            if in_block:
+                if line == "":
+                    break
+                block_lines.append(line)
+        assert block_lines, f"no cure block found in:\n{out}"
+        for ln in block_lines:
+            assert ln.startswith("        "), (
+                f"ragged indent in cure block: {ln!r}\nfull block:\n"
+                + "\n".join(block_lines)
+            )
+            assert not ln.startswith("         "), (
+                f"over-indented in cure block: {ln!r}"
+            )
+
+    def test_a_valid_leaf_named_target_carries_path_into_the_plain_create_hint(
+        self, config_file, tmp_home, credentials_dir, capsys, monkeypatch
+    ) -> None:
+        """A valid leaf carries the shlex-quoted target into the plain hint."""
+        from kanibako.errors import ContainerError
+
+        ok = (tmp_home / "ok").resolve()
+        ok.mkdir()
+        monkeypatch.chdir(tmp_home)
+
+        with patch(
+            "kanibako.runtime.container.ContainerRuntime",
+            side_effect=ContainerError("none"),
+        ):
+            args = argparse.Namespace(project=str(ok), path=None)
+            rc = run_box_diagnose(args)
+
+        out = capsys.readouterr().out
+        assert rc != 0
+        assert "no kanibako project registered" in out
+        # The plain hint MUST carry the shlex-quoted target — without it, the
+        # user runs ``kanibako create`` from cwd and the box lands in cwd, not <ok>.
+        assert (
+            f"Run 'kanibako create {shlex.quote(str(ok))}'" in out
+        ), out
         assert "--name" not in out
 
