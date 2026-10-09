@@ -711,6 +711,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A codex panel in a box started with `--warm-only` no longer gets a second codex beside it.** The box judged the
+  running panel to be a codex helper rather than the session, dropped its liveness marker, and then started
+  `codex resume --last` in tmux as if the panel had died. The box now recognizes the panel, and still starts a CLI
+  agent when the panel really dies while VS Code stays connected.
 - **`box list` shows a deregistered primary box once, under "Deregistered boxes".** It was also listed in the main
   table as `unknown (no breadcrumb)`, and `box list --orphan` called it an orphan.
 - **Purging a standalone box deletes its `canon/` folder.** `box rm --purge` and `box purge` left the `canon/`

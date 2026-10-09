@@ -3537,10 +3537,21 @@ class TestWarmOnlyPanelWatch:
         sup = script.split("&& exec ", 1)[1].rsplit(" || {", 1)[0]
         return shlex.split(sup)
 
+    @staticmethod
+    def _supervisor_config(argv: list[str]):
+        """The :class:`SupervisorConfig` PID 1 parses out of *argv*."""
+        from kanibako.box_supervisor import config_from_argv
+
+        return config_from_argv(argv[argv.index("kanibako.box_supervisor") + 1:])
+
     def test_start_detached_warm_up_is_agentless_panel_watch(self, start_mocks):
         """REGRESSION-PIN (the bug no test caught): the warm-up supervisor is
-        AGENTLESS — panel-watch, NO agent runs at start.  Mutation-proof: a warm-up
-        that ran the CLI agent would emit a trailing ``-- <agent argv>`` payload."""
+        AGENTLESS — panel-watch, NO agent runs at start.  The panel-watch loop is
+        what keeps it agentless (``test_panel_watch_startup_is_agentless_and_stays_up``);
+        the START grammar still rides along, because the marker scan judges the
+        panel's session by it — without it a codex panel's live marker was reaped
+        and a second agent self-healed beside it."""
+        from kanibako.box_supervisor import agent_launch_heads
         from kanibako.commands.start import AGENT_MARKERS_DIR, start_detached
 
         with start_mocks() as m:
@@ -3551,14 +3562,14 @@ class TestWarmOnlyPanelWatch:
             # Panel-watch, agent-independent warm-up.
             assert "--panel-watch" in argv
             assert argv[argv.index("--agent-markers-dir") + 1] == AGENT_MARKERS_DIR
-            # MUTATION-PROOF: NO agent runs at start — there is NO standalone `--`
-            # payload separator, so the supervisor starts agentless.
-            assert "--" not in argv
+            cfg = self._supervisor_config(argv)
+            assert cfg.panel_watch is True
+            assert "claude" in cfg.start_argv
+            assert ("claude", None) in agent_launch_heads(cfg.start_argv)
 
     def test_warm_up_self_heal_grammar_is_the_box_agent(self, start_mocks):
         """The panel-death self-heal launches the BOX's agent: --continue-cmd carries
-        claude's grammar (a panel-watch box has no start-argv fallback, so an explicit
-        self-heal grammar is mandatory)."""
+        claude's grammar."""
         import shlex
 
         from kanibako.commands.start import start_detached
@@ -3654,8 +3665,10 @@ class TestWarmOnlyPanelWatch:
             # Panel-watch, agent-independent — the start_detached(warm_only=True) shape.
             assert "--panel-watch" in argv
             assert argv[argv.index("--agent-markers-dir") + 1] == AGENT_MARKERS_DIR
-            # Agentless: no standalone `--` agent payload runs at start.
-            assert "--" not in argv
+            # The same panel-watch config, start grammar included.
+            cfg = self._supervisor_config(argv)
+            assert cfg.panel_watch is True
+            assert "claude" in cfg.start_argv
             # The shared marker env is seeded (E2g write side == this read side).
             env = m.runtime.run.call_args.kwargs["env"]
             assert env["KANIBAKO_AGENT_MARKERS_DIR"] == AGENT_MARKERS_DIR
