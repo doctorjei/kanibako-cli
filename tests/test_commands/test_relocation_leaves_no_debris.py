@@ -281,6 +281,49 @@ class TestAFailedInPlaceConvertLeavesTheRootAsFound:
         assert _tree(pdir) == before
 
 
+    def test_an_interrupt_after_the_source_teardown_keeps_the_carried_vault(
+        self, env, monkeypatch, capsys,
+    ):
+        config, std, tmp_home = env
+        pdir = tmp_home / "proj"
+        pdir.mkdir()
+        (pdir / "file.txt").write_text("keep")
+        resolve_project(std, config, project_dir=str(pdir), initialize=True)
+        state = resolve_lifecycle_target(str(pdir), std, config)
+        state.vault_rw.mkdir(parents=True, exist_ok=True)
+        (state.vault_rw / "precious.txt").write_text("precious")
+
+        def boom(*a, **kw):
+            raise KeyboardInterrupt()
+
+        monkeypatch.setattr(lc, "_relocate_channel_partition", boom)
+        with pytest.raises(KeyboardInterrupt):
+            execute_lifecycle(state, TargetSpec(location=lc.INPLACE, ownership="standalone"),
+                              std, config, confirm=lambda: True)
+        assert not state.vault_rw.exists()
+        assert (pdir / "vault" / "rw" / "precious.txt").read_text() == "precious"
+        assert "yours to remove" not in capsys.readouterr().err
+
+    def test_a_claim_in_an_existing_vault_folder_is_named(self, env, monkeypatch, capsys):
+        config, std, tmp_home = env
+        pdir = tmp_home / "proj"
+        (pdir / "vault").mkdir(parents=True)
+        (pdir / "vault" / "notes.txt").write_text("note")
+        resolve_project(std, config, project_dir=str(pdir), initialize=True)
+
+        def boom(*a, **kw):
+            raise RuntimeError("late")
+
+        monkeypatch.setattr(lc, "_carry_vault_contents", boom)
+        with pytest.raises(RuntimeError, match="late"):
+            execute_lifecycle(resolve_lifecycle_target(str(pdir), std, config),
+                              TargetSpec(location=lc.INPLACE, ownership="standalone"),
+                              std, config, confirm=lambda: True)
+        assert (pdir / "vault" / "notes.txt").read_text() == "note"
+        assert f"Note: {pdir / 'vault'} existed before this operation; it still holds " \
+               ".gitignore, a partial leftover" in capsys.readouterr().err
+
+
 class TestLeftoversInAnExistingDirectoryAreNamed:
 
     def test_only_what_the_op_added_is_named(self, tmp_path, capsys):

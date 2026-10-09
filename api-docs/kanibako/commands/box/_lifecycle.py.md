@@ -99,7 +99,7 @@ def _safe_unregister(std: StandardPaths, name: str) -> None
 def _safe_register_membership(std: StandardPaths, name: str, workspace: Path) -> None
 def _member_leaves(ws: Workset, name: str) -> tuple[Path | None, Path, Path | None, Path | None]
 def _existing_member_leaves(ws: Workset, name: str) -> dict[Path, frozenset[str] | None]
-def _unwind_target_member(ws: Workset, name: str, existed: Mapping[Path, frozenset[str] | None]) -> None
+def _unwind_target_member(ws: Workset, name: str, existed: Mapping[Path, frozenset[str] | None], *, name_leftovers: bool=True) -> None
 def _dispose_stash(stash: Path) -> None
 def _convert_target_flags(args) -> list[str]
 def _ownership_from_args(args) -> str | _Sentinel
@@ -148,8 +148,11 @@ class _Sentinel:
 class _Unwind:
     actions: list[Callable[[], None]] = field(default_factory=list)
     cleanups: list[Callable[[], None]] = field(default_factory=list)
+    sealed: bool = False
 
     def push(self, action: Callable[[], None]) -> None
+    def push_until_sealed(self, action: Callable[[], None]) -> None
+    def seal(self) -> None
     def on_success(self, action: Callable[[], None]) -> None
     def run(self) -> None
     def finish(self) -> None
