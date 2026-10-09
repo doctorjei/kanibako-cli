@@ -336,3 +336,78 @@ def test_fork_with_a_rule_breaking_name_asks_for_another(tmp_home, config_file, 
     assert reply["status"] == "error"
     assert reply["message"].endswith("Pick a fork name that is a valid box name.")
     assert not (tmp_home / "work" / "app.a b").exists()
+
+
+# ---------------------------------------------------------------------------
+# Review r1 item 1 — the ASCII cure must not loop on a standalone door.
+#
+# The generic cure is `Give the box a valid name: … --name <new-name>`.  A
+# standalone box's name is composed from its directory and the standalone doors
+# REFUSE a --name that differs from it, so printing that cure here told the user to
+# run a command that produces the identical error.  kanibako's example:
+#   box move …/q3 …/京都 --name foo
+# A standalone name can only be fixed at the directory, so that is what the cure
+# must name.
+# ---------------------------------------------------------------------------
+
+def _make_standalone_box(_cli, tmp_home, leaf):
+    src = tmp_home / "work" / leaf
+    src.mkdir(parents=True)
+    rc, text = _cli("create", "--standalone", "--register", "--no-vault", "--", str(src))
+    assert rc == 0, text
+    return src
+
+
+def test_move_to_a_non_ascii_leaf_cures_at_the_directory_not_with_a_name(
+        tmp_home, config_file, credentials_dir):
+    """⚑ `box move` onto a non-ASCII destination must NOT print a `--name` cure."""
+    from kanibako.settings.messages import CURE_MOVED_LEAF_NOT_ASCII
+
+    src = _make_standalone_box(_cli, tmp_home, "mvsrc")
+    dst = tmp_home / "work" / "京都"
+
+    rc, text = _cli("box", "move", str(src), str(dst), "--force")
+
+    assert rc == 1, text
+    assert "cannot spell in ASCII" in text
+    # The imported constant, not a paraphrase, so the two cannot drift.
+    assert CURE_MOVED_LEAF_NOT_ASCII in text
+    # ⚑ The loop is gone: no `--name` anywhere in the refusal.
+    assert "--name" not in text
+    assert not dst.exists()
+
+
+def test_convert_to_standalone_at_a_non_ascii_leaf_cures_at_the_directory(
+        tmp_home, config_file, credentials_dir):
+    """⚑ Same rule at the convert door; the cure must not hard-code `--default` either."""
+    from kanibako.settings.messages import CURE_MOVED_LEAF_NOT_ASCII
+
+    src = tmp_home / "work" / "cvsrc"
+    src.mkdir(parents=True)
+    rc, text = _cli("create", "--no-vault", "--", str(src))
+    assert rc == 0, text
+    dst = tmp_home / "work" / "大阪"
+
+    rc, text = _cli("box", "convert", str(src), "--standalone",
+                   "--move", str(dst), "--force")
+
+    assert rc == 1, text
+    assert "cannot spell in ASCII" in text
+    assert CURE_MOVED_LEAF_NOT_ASCII in text
+    assert "--name" not in text
+    assert "--default" not in text
+
+
+def test_the_convert_cure_echoes_the_target_that_was_asked_for():
+    """⚑ The cure used to hard-code `--default`, so a `--workset ws` failure advised a
+    DIFFERENT operation.  It must echo the target the user actually chose."""
+    from types import SimpleNamespace
+
+    from kanibako.commands.box._lifecycle import _convert_target_flags
+
+    assert _convert_target_flags(SimpleNamespace(to_default=True)) == ["--default"]
+    assert _convert_target_flags(
+        SimpleNamespace(to_default=False, to_workset="wsx")) == ["--workset", "wsx"]
+    # A standalone target needs no target flag here; it never reaches the --name cure.
+    assert _convert_target_flags(SimpleNamespace(to_standalone=True)) == []
+    assert _convert_target_flags(SimpleNamespace()) == []

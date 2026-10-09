@@ -2375,6 +2375,28 @@ def run_rm(args: argparse.Namespace) -> int:
     return 0
 
 
+def _composed_standalone_key(root: Path) -> str | None:
+    """The key a standalone box at *root* should be indexed by: its composed
+    ``meta.box.name`` = ``<stored workset.kuid>_<leaf>``.
+
+    ``None`` when the root carries no usable kuid, or its leaf cannot be spelled in
+    ASCII, so the caller can fall back rather than invent one.
+    """
+    from kanibako import kuid
+    from kanibako.errors import DerivedBoxNameError
+    from kanibako.launch.box_identity import compose_standalone_name
+    from kanibako.settings.config import read_workset_kuid
+    from kanibako.settings.paths import WORKSET_META_FILE
+
+    stored = read_workset_kuid(root / WORKSET_META_FILE)
+    if not kuid.is_valid(stored):
+        return None
+    try:
+        return compose_standalone_name(stored, root)
+    except DerivedBoxNameError:
+        return None
+
+
 def _readopt_deregistered(std, name: str, entry: dict) -> int:
     """⚑ INDEX-ONLY, SEED-FREE readopt: move a box from ``deregistered`` back to active."""
     from kanibako.project import registry_store
@@ -2395,6 +2417,13 @@ def _readopt_deregistered(std, name: str, entry: dict) -> int:
                 file=sys.stderr,
             )
             return 1
+        # ⚑⚑ ONE CARRIER: the registry key IS the composed ``meta.box.name`` (kanibako
+        # ruling 2026-10-09).  The DEREGISTERED key is whatever the box was called when
+        # it was removed; for a box whose name had drifted from its composition, that key
+        # IS the mismatch, so re-registering under it restored the bug — `box rm` printed
+        # `box register <old-key>` and running it put the old key back.  Re-compose from
+        # the root's stored kuid + live leaf instead.
+        key = _composed_standalone_key(root) or name
         # Stale: the directory is active again under some spelling — drop only the row.
         owner = registry_store.standalone_name_for_same_dir(std.registry, root)
         if owner is not None:
@@ -2406,17 +2435,17 @@ def _readopt_deregistered(std, name: str, entry: dict) -> int:
             )
             return 0
         # Conflict: an ACTIVE standalone box at a DIFFERENT root — refuse, never clobber.
-        other = registry_store.standalone_root(std.registry, name)  # ⚑ case-blind (§0)
+        other = registry_store.standalone_root(std.registry, key)  # ⚑ case-blind (§0)
         if other is not None and other != str(root):
             print(
-                f"Error: an active standalone box already owns the name '{name}' "
+                f"Error: an active standalone box already owns the name '{key}' "
                 f"({other}); refusing to readopt over it. Purge or move it first.",
                 file=sys.stderr,
             )
             return 1
-        registry_store.register_standalone(std.registry, name, root)
+        registry_store.register_standalone(std.registry, key, root)
         registry_store.unregister_deregistered(std.registry, name)
-        print(f"Registered standalone box '{name}' at {root}.")
+        print(f"Registered standalone box '{key}' at {root}.")
         return 0
 
     # PRIMARY (default) box.

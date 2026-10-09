@@ -3029,13 +3029,21 @@ def run_move(args) -> int:
             confirm=_make_confirm(getattr(args, "force", False), summary),
         )
     except DerivedBoxNameError as e:
-        # ⚑ A STANDALONE target has no `--name` to give.  Its name is composed from the
+        # ⚑ A STANDALONE TARGET has no `--name` to give.  Its name is composed from the
         # directory, and the standalone doors REFUSE a `--name` that differs from it
         # (kanibako ruling 2026-10-09), so the generic `--name <new-name>` cure walked
         # the user straight back into that refusal: `box move …/q3 …/京都 --name foo`
         # produced the identical error.  Only the directory can fix a directory-derived
         # name, so a standalone target gets the directory cure.
-        if state.mode is BoxMode.standalone:
+        # ⚑ Keyed on the TARGET mode, not the source's: `box move … --default` is moving
+        # OUT of standalone into a mode where `--name` is a real, working knob, and there
+        # the `--name` cure is correct and must stay.
+        target_is_standalone = (
+            state.mode is BoxMode.standalone
+            and not getattr(args, "to_default", False)
+            and not getattr(args, "to_workset", None)
+        )
+        if target_is_standalone:
             print(f"Error: {e.with_cure(CURE_MOVED_LEAF_NOT_ASCII)}", file=sys.stderr)
             return 1
         cure = shlex.join(["kanibako", "box", "move", old, str(new_path),

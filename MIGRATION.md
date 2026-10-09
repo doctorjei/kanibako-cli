@@ -7132,6 +7132,11 @@ kanibako box register <path>
 
 `box rm` without `--purge` keeps your files and the box's metadata; it only unregisters.
 
+⚑ **`box register <old key>` works too** — you can paste the cure `box rm` printed verbatim.
+Registering a standalone box by NAME re-composes the key from the box's own stored
+`workset.kuid` and its directory leaf, so `box register kh3vv_sabox` lands `kh3vv_proj`, not
+the stale name you typed. Both doors produce the same key; neither trusts the spelling you gave.
+
 Until you run it, each reader behaves like this with a divergent key — none of them lose the
 box, because every one of them addresses it BY key:
 
@@ -7143,9 +7148,13 @@ box, because every one of them addresses it BY key:
 | `stop --all` | stops it correctly through the key, reporting the old spelling |
 | `clean`, `box rm`, `workset disconnect` | reverse-resolve root → key and retire that key; correct |
 | `box register <path>` | writes the composed key — this is the cure above |
+| `box register <old key>` | also writes the composed key; the typed key is only a lookup, never the stored one |
 
 **A moved root.** `box move` re-keys the entry, so the name follows the directory and the
-registry agrees. If you moved the directory yourself with `mv`, `box list` shows the old entry
+registry agrees. The **kuid is carried**, not re-minted: a box that was `kh3vv_proj` and is
+moved to `~/elsewhere` becomes `kh3vv_elsewhere` — same prefix, new leaf — where before it got
+a fresh prefix and became an unrelated identity. A move that keeps the leaf keeps the whole name.
+If you moved the directory yourself with `mv`, `box list` shows the old entry
 as `missing` rather than a wrong name, and `box info <new path>` picks the box up under its new
 composed name — but `box remap <old name> <new path>` does NOT work here (it resolves the old
 name to the dead path), so use `box rm <old key>` and `box register <new path>`.

@@ -623,3 +623,40 @@ class TestClassifyDesignation:
     def test_nul_is_neither_name_nor_path(self) -> None:
         assert (box_identity.classify_designation("foo\0bar")
                 is box_identity.Designation.INVALID)
+
+
+class TestCarryStandaloneName:
+    """``:811`` — the kuid is the stable prefix; re-mint only on a whole-name collision."""
+
+    def test_the_carried_kuid_survives_a_new_leaf(self, tmp_path):
+        root = tmp_path / "elsewhere"
+        name = box_identity.carry_standalone_name("abcde", root, set())
+        assert name == "abcde_elsewhere"
+
+    def test_a_collision_with_ANOTHER_box_re_mints_the_kuid(self, tmp_path):
+        root = tmp_path / "proj"
+        taken = {"zzzzz_proj"}
+        # ⚑ The collision is on the WHOLE composed name.  Another box holding
+        # ``zzzzz_proj`` does NOT block ``abcde_proj`` — only the same name does.
+        assert box_identity.carry_standalone_name("abcde", root, taken) == "abcde_proj"
+        name = box_identity.carry_standalone_name("abcde", root, {"abcde_proj"})
+        assert name != "abcde_proj"
+        assert name.endswith("_proj")
+        assert len(name.partition("_")[0]) == 5
+
+    def test_the_movers_OWN_name_is_not_a_collision(self, tmp_path):
+        """⚑ The no-op move.  ``/a/proj`` → ``/b/proj`` composes the box's OWN
+        registered name; treating that as a collision would throw away a good kuid
+        for a conflict that does not exist."""
+        root = tmp_path / "b" / "proj"
+        own = "abcde_proj"
+        name = box_identity.carry_standalone_name("abcde", root, {own}, own_name=own)
+        assert name == own
+
+    def test_the_collision_test_is_case_blind(self, tmp_path):
+        """``abcde_Proj`` and ``ABCDE_proj`` are one name (§0), so the second is a
+        collision and must re-mint rather than land a case-variant twin."""
+        root = tmp_path / "Proj"
+        name = box_identity.carry_standalone_name("abcde", root, {"ABCDE_proj"})
+        assert name != "abcde_Proj"
+        assert name.endswith("_Proj")
