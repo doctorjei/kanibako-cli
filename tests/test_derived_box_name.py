@@ -100,6 +100,28 @@ def test_standalone_create_refuses_a_leaf_with_no_ascii_spelling(
     assert text.rstrip().endswith("Rename or move the directory to an ASCII name.")
     assert list(path.iterdir()) == []
 
+
+def test_rm_of_a_standalone_box_moved_to_a_non_ascii_name_refuses_with_the_cure(
+        tmp_home, config_file, credentials_dir):
+    from kanibako.settings.config import load_config, user_config_file
+    from kanibako.settings.paths import load_std_paths
+
+    root = tmp_home / "work" / "movee"
+    root.mkdir(parents=True)
+    rc, text = _cli("create", "--standalone", "--register", "--no-vault", "--", str(root))
+    assert rc == 0, text
+    moved = root.rename(root.with_name("東京"))
+    registry = load_std_paths(load_config(user_config_file())).registry
+    before = registry.read_bytes()
+
+    rc, text = _cli("box", "rm", str(moved))
+
+    assert rc == 1, text
+    assert "cannot spell in ASCII" in text
+    assert text.rstrip().endswith("Rename the directory to an ASCII name (or move it back).")
+    assert registry.read_bytes() == before
+
+
 def _workset(tmp_home):
     from kanibako.project.workset import create_workset
     from kanibako.settings.config import load_config, user_config_file

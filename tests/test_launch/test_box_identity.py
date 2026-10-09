@@ -61,6 +61,14 @@ class TestSanitizeCap:
         # Latin letters drop their diacritics.
         ("café", "cafe"),
         ("Zürich Notes", "Zurich_Notes"),
+        # ...decomposed too: a combining mark after a spelled letter is dropped.
+        ("cafe\u0301", "cafe"),
+        ("Zu\u0308rich Notes", "Zurich_Notes"),
+        ("cafe\u0301nfd", "cafenfd"),
+        # Unicode punctuation and separators are separators.
+        ("Bob\u2019s Notes", "Bob_s_Notes"),
+        ("a\u2014b\u2026c\uff01d", "a_b_c_d"),
+        ("a\u3000b", "a_b"),
         # A run of separators is one '_'; the ends lose '_', '-' and '.'.
         ("a  b!!c", "a_b_c"),
         ("my app!@#", "my_app"),
@@ -81,7 +89,13 @@ class TestSanitizeCap:
     def test_ends_are_trimmed_after_the_cap(self) -> None:
         assert box_identity.sanitize_cap("x" * 31 + " y") == "x" * 31
 
-    @pytest.mark.parametrize("leaf", ["日本語プロジェクト", "my 日本語 app", "東京", "が", "ß"])
+    @pytest.mark.parametrize("leaf", [
+        "日本語プロジェクト", "my 日本語 app", "東京", "が", "か\u3099",
+        # Letters with no ASCII spelling and symbols (S*) wait for a later lane.
+        "ß", "ø", "æ", "ı", "\u00bd", "\U0001F600",
+        # A combining mark with no spelled letter before it.
+        "日\u0301", "\u0301x", "_\u0301x",
+    ])
     def test_no_ascii_spelling_refuses(self, leaf: str) -> None:
         with pytest.raises(DerivedBoxNameError, match="cannot spell in ASCII"):
             box_identity.sanitize_cap(leaf)
