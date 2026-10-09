@@ -1219,6 +1219,11 @@ def _run_steps(
     #   box name, so the new address is only readable off ``new_state``. ---
     _relocate_channel_partition(state, new_state, std)
 
+    # --- STEP 4c — Carry this box's OWN vault snapshot store (D1 keys the store
+    # on the box, so a rename that leaves it behind strands every snapshot the box
+    # has and hands the old key to whatever box takes the name next).
+    _relocate_snapshot_store(state, new_state)
+
     # --- STEP 5 — Retire the old workspace step 2 copied, ON SUCCESS ONLY.
     # ⚑ Never a user's EXTERNAL source. ---
     if not records_only and relocating and dest is not None and not state.is_external:
@@ -2749,6 +2754,38 @@ def _relocate_channel_partition(
                 f"({src_dir} -> {dst_dir}): {e}",
                 file=sys.stderr,
             )
+
+
+def _relocate_snapshot_store(state: ProjectState, new_state: ProjectState) -> None:
+    """Carry this box's OWN vault snapshot store across a rename or a move.
+
+    ⚑ MUST run AFTER identity is finalized, for the same reason step 4b does: a
+    standalone convert REGENERATES the box name, so the key the store has to land
+    under is only readable off *new_state*.
+
+    Best-effort, like the channel step: the store is not lost when this fails, it
+    is stranded, and a stranded store is a loud Note rather than an aborted move.
+    """
+    import sys
+
+    from kanibako.snapshots import relocate_snapshot_store
+
+    if state.vault_rw is None or new_state.vault_rw is None:
+        return
+    if state.name == new_state.name and state.vault_rw == new_state.vault_rw:
+        return
+    try:
+        relocate_snapshot_store(
+            state.vault_rw, new_state.vault_rw,
+            old_box=state.name, new_box=new_state.name,
+        )
+    except Exception as e:  # noqa: BLE001 - best-effort, mirrors step 4b
+        print(
+            f"Warning: could not move the vault snapshots from '{state.name}' to "
+            f"'{new_state.name}': {e}. They are still on disk under the old name "
+            f"and 'kanibako box vault list' will not show them.",
+            file=sys.stderr,
+        )
 
 
 def _safe_unregister(std: StandardPaths, name: str) -> None:

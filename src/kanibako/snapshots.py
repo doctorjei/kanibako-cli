@@ -34,6 +34,7 @@ import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
 
+from kanibako import kuid
 from kanibako.errors import KanibakoError
 from kanibako.log import get_logger
 from kanibako.tree_copy import copy_tree_keeping_links
@@ -167,6 +168,10 @@ def migrate_legacy_versions(
     """
     versions = _versions_dir(vault_rw_path)
     moved: dict[str, list[str]] = {"attributed": [], "unsorted": []}
+    if store_exclusive:
+        # A standalone box whose DIRECTORY was renamed: identity, not a legacy
+        # conversion, so it runs whether or not the base is marked.
+        adopt_standalone_store(vault_rw_path, box_name=box_name)
     # An absent base has nothing to split AND nothing to declare: a reader must not
     # create it.  A writer marks it itself, on creating it.
     if _is_migrated(versions) or not versions.is_dir():
@@ -449,6 +454,98 @@ def _find_snapshot_owner(vault_rw_path: Path, snapshot_name: str) -> str | None:
         if (entry / snapshot_name).is_dir():
             return entry.name
     return None
+
+
+def adopt_standalone_store(vault_rw_path: Path, *, box_name: str) -> Path | None:
+    """Give a renamed standalone box the store already sitting in its own tree.
+
+    A standalone box's store is INSIDE its project tree, so a raw ``mv`` of that
+    directory carries the store along but not its KEY: the box re-derives
+    ``<kuid>_<new-leaf>`` from the directory it now lives in, while the store is
+    still ``<kuid>_<old-leaf>``.  The box then lists no snapshots and refuses its
+    own data as foreign.
+
+    The kuid is the identity that survives the rename -- it is read from the box's
+    own settings, not from the directory name -- so a store in this box's tree
+    carrying this box's kuid is this box's store.  ⚑ More than one such store is
+    not a rename but a coincidence, so nothing is guessed.
+
+    Returns the store path it moved into, or ``None`` when there was nothing to
+    adopt.
+    """
+    store = _box_store(vault_rw_path, box_name)
+    if store.exists():
+        return None
+    prefix, sep, _leaf = box_name.partition("_")
+    if not sep or not kuid.is_valid(prefix):
+        return None
+    versions = _versions_dir(vault_rw_path)
+    if not versions.is_dir():
+        return None
+    candidates = [
+        entry for entry in sorted(versions.iterdir())
+        if entry.is_dir() and not entry.is_symlink()
+        and entry.name != box_name
+        and entry.name.partition("_")[0].lower() == prefix.lower()
+    ]
+    if len(candidates) != 1:
+        return None
+    _write_layout_marker(versions)
+    store.parent.mkdir(parents=True, exist_ok=True)
+    shutil.move(str(candidates[0]), str(store))
+    return store
+
+
+def relocate_snapshot_store(
+    old_vault_rw: Path, new_vault_rw: Path, *, old_box: str, new_box: str,
+) -> Path | None:
+    """Carry *old_box*'s snapshot store to *new_box* across a rename or a move.
+
+    A store is keyed on the box, so a verb that renames the box or relocates its
+    vault leaves the store behind under the OLD key: the box then lists no
+    snapshots, and the next box to take the old name inherits them, which is the
+    cross-box reach D1 exists to prevent.
+
+    ⚑ A relocation that COPIED the tree (``box move`` / ``box convert``) has
+    already carried the store into the new base under the old key, so the new base
+    is looked at FIRST.  The old tree is retired only on success, so its copy is
+    the live one by the time this runs.
+
+    Never overwrites: where the destination already holds that name the entry is
+    kept under a suffixed name instead.  Returns the destination store, or
+    ``None`` when there was nothing to carry.
+    """
+    old_base = _versions_dir(old_vault_rw)
+    new_base = _versions_dir(new_vault_rw)
+    new_store = _box_store(new_vault_rw, new_box)
+
+    carried = None
+    if new_box != old_box:
+        in_new_base = new_base / old_box
+        if in_new_base.is_dir() and not in_new_base.is_symlink():
+            carried = in_new_base
+        else:
+            old_store = old_base / old_box
+            if old_store.is_dir() and not old_store.is_symlink():
+                carried = old_store
+    if carried is None:
+        return None
+
+    _write_layout_marker(new_base)
+    if not new_store.exists():
+        new_store.parent.mkdir(parents=True, exist_ok=True)
+        shutil.move(str(carried), str(new_store))
+        return new_store
+
+    # Destination store already exists: merge, never clobber.
+    new_store.mkdir(parents=True, exist_ok=True)
+    for entry in sorted(carried.iterdir()):
+        dest = new_store / entry.name
+        if dest.exists():
+            dest = new_store / f"{entry.name}-{old_box}"
+        shutil.move(str(entry), str(dest))
+    shutil.rmtree(carried, ignore_errors=True)
+    return new_store
 
 
 def restore_snapshot(
