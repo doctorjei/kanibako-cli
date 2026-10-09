@@ -738,7 +738,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and every retry then failed with "Destination already exists". The copy's destination is now removed,
   read-only folders included, and anything that cannot be removed is named in a Note. A folder that already
   existed is never removed. A primary box moved under its own name keeps its vault when a later step fails;
-  the unwind used to delete it.
+  the unwind used to delete it. A box store that `workset.boxes` points at an existing folder is kept when a
+  convert fails; the unwind used to delete it with the user's files.
 - **A move names what it could not delete at the old place.** When a read-only folder stops the removal of
   the old workspace, the Note now says the move is complete and lists what is left. A convert from primary to
   standalone that cannot fully remove the old vault folder now says so; it used to leave it silently.

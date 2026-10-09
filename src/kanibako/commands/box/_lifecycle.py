@@ -1470,8 +1470,10 @@ def _copy_metadata(
     """Copy metadata (minus lock+home) and shell into *dst_metadata*; return the dest shell."""
     # ⚑ ESCALATING removal, not a plain rmtree: this function lays a canon skeleton below,
     # so a plain rmtree would silently fail to clean up its own destination.  Armed
-    # before the copy, which can fail part-way.
-    unwind.push(lambda: _unwind_box_tree(dst_metadata))
+    # before the copy, which can fail part-way, and ONLY for a dir this copy creates:
+    # a pre-existing dir may be a REPOINTED store holding the user's files.
+    if not (dst_metadata.exists() or dst_metadata.is_symlink()):
+        unwind.push(lambda: _unwind_box_tree(dst_metadata))
     copy_tree_keeping_links(
         src_metadata, dst_metadata,
         ignore=shutil.ignore_patterns(".kanibako.lock", "home"),

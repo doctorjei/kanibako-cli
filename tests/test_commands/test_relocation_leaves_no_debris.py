@@ -168,6 +168,49 @@ class TestALateFailureKeepsAReusedVault:
         assert (state.vault_rw / "v.txt").read_text() == "vault"
 
 
+class TestAFailedConvertKeepsARepointedStore:
+    """``workset.boxes`` repointed at a dir that already exists: the store is the user's."""
+
+    def _setup(self, env):
+        config, std, tmp_home = env
+        pdir = tmp_home / "proj"
+        pdir.mkdir()
+        (pdir / "file.txt").write_text("keep")
+        resolve_project(std, config, project_dir=str(pdir), initialize=True)
+        store = tmp_home / "store"
+        store.mkdir()
+        (store / "keep.txt").write_text("theirs")
+        (pdir / "workset.yaml").write_text(f"workset:\n  boxes: {store}\n")
+        return config, std, pdir, store, resolve_lifecycle_target(str(pdir), std, config)
+
+    def test_a_failed_metadata_copy_keeps_the_store(self, env, monkeypatch):
+        config, std, pdir, store, state = self._setup(env)
+        real = lc.copy_tree_keeping_links
+
+        def copier(src, dst, *a, **kw):
+            real(src, dst, *a, **kw)
+            if dst == store:
+                raise shutil.Error([("a", "b", "x")])
+
+        monkeypatch.setattr(lc, "copy_tree_keeping_links", copier)
+        with pytest.raises(shutil.Error):
+            execute_lifecycle(state, TargetSpec(location=lc.INPLACE, ownership="standalone"),
+                              std, config, confirm=lambda: True)
+        assert (store / "keep.txt").read_text() == "theirs"
+
+    def test_a_later_failure_keeps_the_store(self, env, monkeypatch):
+        config, std, pdir, store, state = self._setup(env)
+
+        def boom(*a, **kw):
+            raise RuntimeError("late")
+
+        monkeypatch.setattr(lc, "_carry_vault_contents", boom)
+        with pytest.raises(RuntimeError, match="late"):
+            execute_lifecycle(state, TargetSpec(location=lc.INPLACE, ownership="standalone"),
+                              std, config, confirm=lambda: True)
+        assert (store / "keep.txt").read_text() == "theirs"
+
+
 @needs_non_root
 class TestLeftoversOfASuccessfulMoveAreNamed:
 
