@@ -2214,12 +2214,9 @@ def _undo_consolidate(
 ) -> None:
     """Move *moved*'s leaves back from *src_dir* to *dest_dir* — the reversal of either sweep.
 
-    ⚑ *dest_dir* is RE-CREATED first: the unconsolidate direction REMOVES it once emptied
-    (with any repoint parents), so a restore would otherwise have nowhere to land and every
-    move would fail silently.
+    ⚑ *dest_dir* is RE-CREATED first, even with nothing *moved*: the unconsolidate
+    direction REMOVES it once emptied (with any repoint parents), EMPTY or not.
     """
-    if not moved:
-        return
     dest_dir.mkdir(parents=True, exist_ok=True)
     for child in moved:
         src = src_dir / child.name

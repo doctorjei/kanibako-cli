@@ -1844,3 +1844,31 @@ class TestRelocationOutOfTheLandingLeaf:
         member = next(p for p in load_workset(ws.root, "wsa", early_system=std.early_system).projects
                       if p.name == "beta")
         assert Path(member.source_path).resolve() == dest.resolve()
+
+
+class TestInPlaceConvertRollbackKeepsAnEmptyWorkspace:
+    """A late failure in an in-place convert OUT of standalone restores ``workspace/``,
+    empty or not: the lift removes the emptied dir either way."""
+
+    @pytest.mark.parametrize("contents", [False, True], ids=["empty", "with-a-file"])
+    def test_the_workspace_dir_comes_back(self, env, capsys, monkeypatch, contents):
+        config, std, tmp_home = env
+        pdir = tmp_home / "sa"
+        pdir.mkdir()
+        resolve_standalone_project(std, config, project_dir=str(pdir), initialize=True)
+        workspace = pdir / "workspace"
+        assert workspace.is_dir()
+        if contents:
+            (workspace / "file.txt").write_text("x")
+        before = sorted(p.name for p in workspace.iterdir())
+
+        def boom(*_a, **_k):
+            raise PermissionError(13, "Permission denied", "/nowhere/blocked")
+
+        # Runs after the lift (step 2), so the unwind must undo it.
+        monkeypatch.setattr(_lifecycle, "_apply_ownership_and_markers", boom)
+        rc = run_convert(_convert_args(pdir, to_default=True))
+
+        assert rc == 1, capsys.readouterr().err
+        assert workspace.is_dir()
+        assert sorted(p.name for p in workspace.iterdir()) == before
