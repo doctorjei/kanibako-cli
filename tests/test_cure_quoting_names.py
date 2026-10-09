@@ -575,7 +575,7 @@ class TestTheCleanupCuresAreQuoted:
     def test_the_primary_teardown_cure_keeps_one_operand(self, tmp_path, monkeypatch,
                                                          tmp_home, config_file,
                                                          credentials_dir):
-        """``_parser._teardown_primary_box``, with the removal forced to fail."""
+        """``_parser._run_purge_plan`` over a PRIMARY plan, with the removal forced to fail."""
         from kanibako.commands.box import _parser
         from kanibako.settings.config import load_config, user_config_file
         from kanibako.settings.paths import load_std_paths
@@ -586,7 +586,7 @@ class TestTheCleanupCuresAreQuoted:
         metadata.mkdir(parents=True)
         err = io.StringIO()
         with contextlib.redirect_stderr(err):
-            _parser._teardown_primary_box(std, "x ~", metadata)
+            _parser._run_purge_plan(_parser._primary_purge_plan(std, "x ~", metadata))
         cure = _pasteable(_line(err.getvalue(), "Try: podman unshare"), "Try: ")
 
         assert f"podman unshare rm -rf {shlex.quote(str(metadata))}" in err.getvalue()
@@ -680,20 +680,16 @@ class TestTheRemainingCleanupCuresAreQuoted:
     """The ``podman unshare`` cures of standalone teardown, duplicate, and extract."""
 
     def test_the_standalone_teardown_cure_keeps_one_operand(self, name, tmp_path, monkeypatch):
-        """``_parser._teardown_standalone_box`` with the removal forced to fail."""
+        """``_parser._run_purge_plan`` over a store step, with the removal forced to fail."""
         from kanibako.commands.box import _parser
 
         metadata = tmp_path / "boxes" / name
         metadata.mkdir(parents=True)
         monkeypatch.setattr(_parser, "_purge_dir", lambda target: False)
-        monkeypatch.setattr(_parser, "purge_box_logs",
-                          lambda std, logs, box, *, workset_root: [])
-        monkeypatch.setattr("kanibako.settings.paths.standalone_store_teardown_plan",
-                            lambda root, early: (metadata, None))
         err = io.StringIO()
         with contextlib.redirect_stderr(err), contextlib.redirect_stdout(io.StringIO()):
-            assert _parser._teardown_standalone_box(
-                tmp_path, ([], [], tmp_path / "logs", name), std=None, early=None) is False
+            assert _parser._run_purge_plan(
+                [_parser._PurgeStep("metadata", "box metadata", metadata, anchor=True)]) is False
         cure = _pasteable(_line(err.getvalue(), "Try: podman unshare"), "Try: ")
 
         _assert_unshare_inert(cure, metadata, tmp_path / "scratch")

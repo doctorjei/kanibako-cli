@@ -12,6 +12,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **`box rm --purge` lists every path it will delete before it asks.** The list names the box's metadata folder,
+  each vault folder (marked "your files"), its logs, and for a standalone box the root `workset.yaml`; a vault the
+  box was given inside the project, such as a folder named `data`, is listed and deleted as before. `--force`
+  skips only the question; the list still prints. The question now comes before the box is unregistered, so
+  answering no leaves the box exactly as it was. A vault folder that is a symlink loses only the link, never its
+  target, and the list says so.
+
 - **A box named after its directory must have a valid box name.** A directory name that breaks the box-name rule
   (`my project`, `-x`) is refused before anything is written by `create`, `workset connect`, `box duplicate --to
   named`, `box extract`, `box move`, and `box convert --default` with no `--name`, each printing its own command

@@ -673,7 +673,7 @@ class TestNullArmIsNoSuchDir:
         self, config_file, tmp_home, credentials_dir, capsys,
     ):
         """``box rm``'s PRIMARY teardown: no vault leaf is named, and the metadata goes."""
-        from kanibako.commands.box._parser import _teardown_primary_box
+        from kanibako.commands.box._parser import _primary_purge_plan, _run_purge_plan
 
         std, config = _reload(config_file)
         _repoint(std.primary_workset, "vault_ro", None)
@@ -683,7 +683,9 @@ class TestNullArmIsNoSuchDir:
         meta.mkdir(parents=True)
         (meta / "box.yaml").write_text("{}\n")
 
-        assert _teardown_primary_box(std, "nullarm", meta) is True
+        plan = _primary_purge_plan(std, "nullarm", meta)
+        assert "vault ro (your files)" not in [step.what for step in plan]
+        assert _run_purge_plan(plan) is True
         out = capsys.readouterr().out
         assert "Removed metadata" in out
         assert not meta.exists()

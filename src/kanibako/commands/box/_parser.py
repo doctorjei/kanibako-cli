@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import dataclasses
+import os
 import shlex
 import shutil
 import sys
@@ -34,7 +35,7 @@ from kanibako.identifiers import agent_node_case, find_identifier
 from kanibako.errors import ContainerError, DerivedBoxNameError, ProjectError, WorksetError
 from kanibako.project.names import read_names
 from kanibako.project.workset import (
-    Workset, add_project, list_worksets, load_workset, purge_box_logs,
+    Workset, add_project, box_logs_to_purge, list_worksets, load_workset,
 )
 from kanibako.settings.messages import (
     CURE_DERIVED_BOX_NAME,
@@ -354,18 +355,21 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
     rm_p = box_sub.add_parser(
         "rm",
         aliases=["delete"],
-        help="Unregister a project (optionally purge its metadata)",
+        help="Unregister a project (--purge also deletes its metadata, vaults, and logs)",
         description=(
             "Unregister a project from the default workset or a standalone box\n"
             "from the global registry.  A box that belongs to a named workset\n"
             "cannot be found and errors accordingly.  ⚑ A WORKSET is not a box:\n"
             "remove one with 'kanibako workset rm <name>'.  The project's own\n"
-            "files are never deleted; without --purge, kanibako metadata is\n"
-            "kept so the box can be restored with 'kanibako box register\n"
-            "<name>'.  With --purge, also delete kanibako metadata (shell\n"
-            "config, box.yaml, vault symlinks, logs).  For a standalone box\n"
-            "kanibako's metadata lives in the box_data/ folder inside the\n"
-            "project, and --purge deletes it."
+            "workspace is never deleted; without --purge, kanibako metadata\n"
+            "is kept so the box can be restored with 'kanibako box register\n"
+            "<name>'.  With --purge, also delete the box's metadata folder\n"
+            "(home, shell config, box.yaml), its vault folders (ro and rw,\n"
+            "with every file in them; a vault that is a symlink loses only\n"
+            "the link, never its target), and its logs.  For a standalone\n"
+            "box that is the box_data/ folder, the workset.yaml at its root,\n"
+            "and any vault folder inside the project.  Every path is listed\n"
+            "before the confirmation."
         ),
     )
     rm_p.add_argument(
@@ -374,11 +378,11 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
     )
     rm_p.add_argument(
         "--purge", action="store_true",
-        help="Also delete kanibako metadata for this project",
+        help="Also delete the box's metadata, vault folders, and logs (listed first)",
     )
     rm_p.add_argument(
         "--force", action="store_true",
-        help="Skip confirmation prompt (only relevant with --purge)",
+        help="Skip the --purge confirmation question (the list still prints)",
     )
     rm_p.set_defaults(func=run_rm)
 
@@ -1966,101 +1970,134 @@ def _assert_deletable(path, *, must_be_under: Path | None = None) -> Path:
     return resolved
 
 
-def _teardown_primary_box(std, name: str, metadata_dir: Path) -> bool:
-    """Delete a PRIMARY box's metadata: box dir + vault ro/rw + per-box logs."""
-    removed = _purge_dir(metadata_dir)
-    if removed:
-        print(f"Removed metadata: {metadata_dir}")
-        # ⚑ The PRIMARY vault is NOT under metadata_dir — remove it separately.
-        # ⚑ A NULL ARM NAMES NO DIR.
-        _shell, vault_ro, vault_rw = _primary_box_paths(std, metadata_dir, name)
-        for vdir in (vault_ro, vault_rw):
-            if vdir is not None and vdir.is_dir():
-                _purge_dir(vdir)
-    else:
-        print(
-            f"Warning: could not fully remove {metadata_dir} "
-            "(it may contain files created inside a container). "
-            f"Try: podman unshare rm -rf {shlex.quote(str(metadata_dir))}",
-            file=sys.stderr,
-        )
+@dataclasses.dataclass(frozen=True)
+class _PurgeStep:
+    """One path ``box rm --purge`` deletes: listed before the question, then removed as listed."""
+
+    kind: str
+    what: str
+    path: Path
+    anchor: bool = False
+    gated: bool = False
+
+
+_VAULT_LABELS = ("vault ro (your files)", "vault rw (your files)")
+
+
+def _primary_purge_plan(std, name: str, metadata_dir: Path) -> list[_PurgeStep]:
+    """What purging a PRIMARY box deletes: box dir, vault ro/rw, per-box logs."""
+    steps = [_PurgeStep("metadata", "box metadata", metadata_dir, anchor=True)]
+    # ⚑ The PRIMARY vault is NOT under metadata_dir.  ⚑ A NULL ARM NAMES NO DIR.
+    _shell, vault_ro, vault_rw = _primary_box_paths(std, metadata_dir, name)
+    for what, vdir in zip(_VAULT_LABELS, (vault_ro, vault_rw)):
+        if vdir is not None and vdir.is_dir():
+            steps.append(_PurgeStep("vault", what, vdir, gated=True))
     # The per-box logs, keyed by the registry name.
-    for log_file in purge_box_logs(std, std.primary_logs, name,
-                                   workset_root=std.primary_workset):
-        print(f"Removed log: {log_file}")
-    return removed
+    steps += [_PurgeStep("log", "log", log_file) for log_file in box_logs_to_purge(
+        std, std.primary_logs, name, workset_root=std.primary_workset)]
+    return steps
 
 
-_StandaloneTeardown = tuple[list[Path], list[Path], "Path | None", str]
-
-
-def _standalone_teardown_plan(
-    root: Path, registered_name: str, *, early: EarlyScope,
-) -> _StandaloneTeardown:
-    """Resolve what :func:`_teardown_standalone_box` deletes — vault split, logs dir, box name.
+def _standalone_purge_plan(
+    root: Path, registered_name: str, *, std: StandardPaths, early: EarlyScope,
+) -> list[_PurgeStep]:
+    """What purging a STANDALONE box deletes: logs, store, root workset.yaml, in-root vaults.
 
     ⚑⚑ RESOLVE BEFORE ANYTHING IS DELETED — or unregistered.  The root workset.yaml the
-    teardown unlinks carries the ``workset.vault_*`` and ``workset.logs`` repoints and the
+    purge unlinks carries the ``workset.vault_*`` and ``workset.logs`` repoints and the
     kuid the box's name is composed from, so a later read answers the composed default;
     and an UNRESOLVABLE value (a bare-relative repoint, a null ``workset.boxes`` the
     standalone logs default chains through) raises here, which must happen while the box
-    is still whole.
+    is still whole.  What stays is reported here, before the question.
     """
     from kanibako.launch.box_resolve import standalone_box_name
-    from kanibako.project.workset import standalone_vault_teardown
-    from kanibako.settings.paths import standalone_logs_dir
+    from kanibako.project.workset import (
+        report_retained_vaults, resolve_workset_vault_pair, standalone_vault_teardown)
+    from kanibako.settings.paths import (
+        report_retained_store, standalone_logs_dir, standalone_store_teardown_plan)
 
     removable_vault, retained_vault = standalone_vault_teardown(root, early=early)
-    return (removable_vault, retained_vault, standalone_logs_dir(root, early=early),
-            standalone_box_name(root, registered_name))
-
-
-def _teardown_standalone_box(
-    root: Path, plan: _StandaloneTeardown, *, std: "StandardPaths", early: EarlyScope,
-) -> bool:
-    """Delete a STANDALONE box's in-tree metadata + its logs; the workspace and *root* stay.
-
-    *plan* is :func:`_standalone_teardown_plan`, resolved by the caller before an
-    irreversible step of its own.
-    """
-    from kanibako.project.workset import report_retained_vaults
-    from kanibako.settings.paths import (
-        report_retained_store, standalone_store_teardown_plan)
-
-    # ⚑ Only a store STRICTLY BELOW *root* is removed — the split and its reason are
-    # :func:`standalone_store_teardown_plan`'s.  A ``None`` store means RETAINED, so the
-    # ROOT workset.yaml must stay.
-    metadata_dir, retained_store = standalone_store_teardown_plan(root, early=early)
-    removable_vault, retained_vault, logs_dir, box_name = plan
     # ⚑ Logs are deleted by NAME, so a log under a ``workset.logs`` pointed outside
     # the store goes too.
-    for log_file in purge_box_logs(std, logs_dir, box_name, workset_root=root):
-        print(f"Removed log: {log_file}")
+    steps = [_PurgeStep("log", "log", log_file) for log_file in box_logs_to_purge(
+        std, standalone_logs_dir(root, early=early),
+        standalone_box_name(root, registered_name), workset_root=root)]
+    # ⚑ Only a store STRICTLY BELOW *root* is removed — the split and its reason are
+    # :func:`standalone_store_teardown_plan`'s.  A ``None`` store means RETAINED, so the
+    # ROOT workset.yaml and the vault must stay.
+    metadata_dir, retained_store = standalone_store_teardown_plan(root, early=early)
     if retained_store is not None:
         report_retained_store(retained_store, root)
     if metadata_dir is None:
-        return False
-    if _purge_dir(metadata_dir):
-        print(f"Removed metadata: {metadata_dir}")
-        # ⚑ The ROOT workset.yaml is the WORKSET tier AND half the §5 detection marker —
-        # drop it too, or the box is re-detected.  (The BOX tier went with the store.)
-        settings_file = root / WORKSET_META_FILE
-        if settings_file.is_file():
-            settings_file.unlink()
-            print(f"Removed metadata: {settings_file}")
-        for vault_dir in removable_vault:
-            if vault_dir.is_dir():
-                _purge_dir(vault_dir)
-                print(f"Removed vault: {vault_dir}")
-        report_retained_vaults(root, retained_vault)
+        return steps
+    steps.append(_PurgeStep("metadata", "box metadata", metadata_dir, anchor=True))
+    # ⚑ The ROOT workset.yaml is the WORKSET tier AND half the §5 detection marker —
+    # drop it too, or the box is re-detected.  (The BOX tier goes with the store.)
+    settings_file = root / WORKSET_META_FILE
+    if settings_file.is_file():
+        steps.append(_PurgeStep("metadata", "workset settings", settings_file, gated=True))
+    arms = dict(zip(resolve_workset_vault_pair(root, early=early), _VAULT_LABELS))
+    steps += [_PurgeStep("vault", arms.get(vdir, "vault parent folder"), vdir, gated=True)
+              for vdir in removable_vault if vdir.is_dir()]
+    report_retained_vaults(root, retained_vault)
+    return steps
+
+
+def _confirm_purge(steps: list[_PurgeStep], *, force: bool) -> bool:
+    """List every path *steps* deletes, then ask unless *force*; False when declined."""
+    from kanibako.errors import UserCanceled
+    from kanibako.utils import confirm_prompt
+
+    print()
+    print(f"--purge deletes these {len(steps)} paths:")
+    for step in steps:
+        if step.path.is_symlink():
+            print(f"  {step.what}: {step.path} → {os.readlink(step.path)} (link only; target kept)")
+        else:
+            print(f"  {step.what}: {step.path}")
+    if force:
         return True
-    print(
-        f"Warning: could not fully remove {metadata_dir} "
-        "(it may contain files created inside a container). "
-        f"Try: podman unshare rm -rf {shlex.quote(str(metadata_dir))}",
-        file=sys.stderr,
-    )
-    return False
+    try:
+        confirm_prompt(f"Delete these {len(steps)} paths? This cannot be undone.\n"
+                       "Type 'yes' to confirm: ")
+    except UserCanceled:
+        return False
+    return True
+
+
+def _remove_purge_path(path: Path) -> bool:
+    """Remove one planned path; a symlink loses only the LINK, never its target."""
+    if path.is_symlink():
+        path.unlink()
+        return True
+    if path.is_dir():
+        return _purge_dir(path)
+    path.unlink(missing_ok=True)
+    return True
+
+
+def _run_purge_plan(steps: list[_PurgeStep]) -> bool:
+    """Delete *steps* in order; True when the ANCHOR (box metadata dir) was removed.
+
+    A GATED step is skipped once the anchor could not be removed.
+    """
+    anchor_removed: bool | None = None
+    for step in steps:
+        if step.gated and anchor_removed is False:
+            continue
+        removed = _remove_purge_path(step.path)
+        if step.anchor:
+            anchor_removed = removed
+        if removed:
+            print(f"Removed {step.kind}: {step.path}")
+            continue
+        print(
+            f"Warning: could not fully remove {step.path} "
+            "(it may contain files created inside a container). "
+            f"Try: podman unshare rm -rf {shlex.quote(str(step.path))}",
+            file=sys.stderr,
+        )
+    return anchor_removed is True
 
 
 def _read_box_image(settings_file: Path) -> str | None:
@@ -2085,9 +2122,7 @@ def _read_box_image_tiered(box_tier: Path, workset_tier: Path) -> str | None:
 def _purge_deregistered(std, name: str, entry: dict, args: argparse.Namespace) -> int:
     """Handle ``rm <name>`` when *name* resolves only to a deregistered entry."""
     from kanibako.project import registry_store
-    from kanibako.errors import UserCanceled
     from kanibako.settings.paths import standalone_box_store
-    from kanibako.utils import confirm_prompt
 
     kind = entry.get("kind")
     metadata = entry.get("metadata")
@@ -2144,26 +2179,16 @@ def _purge_deregistered(std, name: str, entry: dict, args: argparse.Namespace) -
         print(f"No metadata directory found for '{name}' (dropped stale entry).")
         return 0
 
-    if not args.force:
-        target_desc = root if kind == "standalone" else metadata_dir
-        print(f"Removing deregistered box: {name}")
-        print()
-        try:
-            confirm_prompt(
-                f"Delete metadata at {target_desc}? This cannot be undone.\n"
-                "Type 'yes' to confirm: "
-            )
-        except UserCanceled:
-            print("Aborted (box remains deregistered).")
-            return 2
-
+    print(f"Removing deregistered box: {name}")
     if kind == "standalone":
-        _teardown_standalone_box(
-            root, _standalone_teardown_plan(
-                root, name, early=_early_scope(std, BoxMode.standalone)),
-            std=std, early=_early_scope(std, BoxMode.standalone))
+        plan = _standalone_purge_plan(root, name, std=std,
+                                      early=_early_scope(std, BoxMode.standalone))
     else:
-        _teardown_primary_box(std, name, metadata_dir)
+        plan = _primary_purge_plan(std, name, metadata_dir)
+    if not _confirm_purge(plan, force=args.force):
+        print("Aborted (box remains deregistered).")
+        return 2
+    _run_purge_plan(plan)
 
     registry_store.unregister_deregistered(std.registry, name)
     return 0
@@ -2210,9 +2235,7 @@ def _rm_standalone(std, box_name: str, root, args: argparse.Namespace) -> int:
     from datetime import datetime, timezone
 
     from kanibako.project import registry_store
-    from kanibako.errors import UserCanceled
     from kanibako.settings.paths import standalone_box_store
-    from kanibako.utils import confirm_prompt
 
     print(f"Removing standalone box: {box_name} ({root})")
     root_path = Path(root) if root is not None else None
@@ -2220,11 +2243,15 @@ def _rm_standalone(std, box_name: str, root, args: argparse.Namespace) -> int:
                     if root_path is not None else None)
     if args.purge and root_path is not None:
         refuse_inherited_per_owner(root_path, _early_scope(std, BoxMode.standalone))
-    # ⚑ Resolved BEFORE the unregister: a teardown that refuses stops ``rm`` while the
-    # box is still registered (see :func:`_standalone_teardown_plan`).
+    # ⚑ Planned and confirmed BEFORE the unregister: a plan that refuses, or a declined
+    # question, leaves the box registered (see :func:`_standalone_purge_plan`).
     plan = None
     if args.purge and root_path is not None and metadata_dir is not None and metadata_dir.is_dir():
-        plan = _standalone_teardown_plan(root_path, box_name, early=_early_scope(std, BoxMode.standalone))
+        plan = _standalone_purge_plan(root_path, box_name, std=std,
+                                      early=_early_scope(std, BoxMode.standalone))
+        if not _confirm_purge(plan, force=args.force):
+            print("Aborted (nothing changed).")
+            return 2
     image = (_read_box_image_tiered(
         *_standalone_settings_files(root_path, early=_early_scope(std, BoxMode.standalone))
     ) if not args.purge and root_path is not None and metadata_dir is not None
@@ -2233,19 +2260,8 @@ def _rm_standalone(std, box_name: str, root, args: argparse.Namespace) -> int:
     print(f"Removed '{box_name}' from the registry")
 
     if args.purge:
-        if plan is not None and root_path is not None:
-            if not args.force:
-                print()
-                try:
-                    confirm_prompt(
-                        f"Delete metadata at {metadata_dir}? This cannot be undone.\n"
-                        "Type 'yes' to confirm: "
-                    )
-                except UserCanceled:
-                    print("Aborted (box was already unregistered).")
-                    return 2
-            _teardown_standalone_box(root_path, plan, std=std,
-                                    early=_early_scope(std, BoxMode.standalone))
+        if plan is not None:
+            _run_purge_plan(plan)
         else:
             print(f"No metadata directory found at {metadata_dir}")
     elif root_path is not None and metadata_dir is not None and metadata_dir.is_dir():
@@ -2270,7 +2286,6 @@ def run_rm(args: argparse.Namespace) -> int:
     from datetime import datetime, timezone
 
     from kanibako.project import registry_store
-    from kanibako.utils import confirm_prompt
 
     config_file = user_config_file()
     config = load_config(config_file)
@@ -2331,25 +2346,19 @@ def run_rm(args: argparse.Namespace) -> int:
     metadata_dir = std.boxes / name
     image = (_read_box_image(_box_settings_files(BoxMode.primary, metadata_dir, None)[0])
              if not args.purge and metadata_dir.is_dir() else None)
+    # ⚑ Planned and confirmed BEFORE the unregister: a declined question changes nothing.
+    plan = None
+    if args.purge and metadata_dir.is_dir():
+        plan = _primary_purge_plan(std, name, metadata_dir)
+        if not _confirm_purge(plan, force=args.force):
+            print("Aborted (nothing changed).")
+            return 2
     unregister_primary_box_name(std.primary_workset, name, early=_early_scope(std, BoxMode.primary))
     print(f"Removed '{name}' from the registry")
 
     if args.purge:
-        if metadata_dir.is_dir():
-            if not args.force:
-                from kanibako.errors import UserCanceled
-                print()
-                try:
-                    confirm_prompt(
-                        f"Delete metadata at {metadata_dir}? This cannot be undone.\n"
-                        "Type 'yes' to confirm: "
-                    )
-                except UserCanceled:
-                    print("Aborted (name was already unregistered).")
-                    return 2
-
-            # The shared teardown — same paths/order/guards as the deregistered purge.
-            _teardown_primary_box(std, name, metadata_dir)
+        if plan is not None:
+            _run_purge_plan(plan)
         else:
             print(f"No metadata directory found at {metadata_dir}")
     else:

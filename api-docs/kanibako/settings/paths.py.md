@@ -58,6 +58,7 @@ def resolve_project(std: StandardPaths, config: BootstrapConfig, project_dir: st
 def helper_log_path(std: StandardPaths, proj: ProjectPaths) -> Path | None
 def creds_watcher_log_path(std: StandardPaths, proj: ProjectPaths) -> Path | None
 def box_log_files(logs_dir: Path, box: str) -> BoxLogFiles
+def box_logs_to_remove(logs_dir: Path | None, box: str, *, keep: Iterable[Path]=()) -> list[Path]
 def remove_box_logs(logs_dir: Path | None, box: str, *, keep: Iterable[Path]=()) -> list[Path]
 def standalone_logs_dir(root: Path, *, early: EarlyScope) -> Path | None
 def box_logs_dir_for(std: StandardPaths, mode: BoxMode, metadata_path: Path, ws_root: Path | None, *, workset_name: str | None=None) -> Path | None
