@@ -6,6 +6,7 @@ import argparse
 import shlex
 import shutil
 import sys
+from collections.abc import Callable
 from pathlib import Path
 
 from kanibako.settings.bootstrap import STANDALONE_META_DIR
@@ -44,7 +45,7 @@ from kanibako.utils import confirm_prompt, literal_path
 from kanibako.errors import BoxNameError, DerivedBoxNameError, ProjectError
 from kanibako.launch.box_identity import (box_name_cure, refuse_nonleaf_standalone_name,
                                           sanitize_cap, validate_box_name)
-from kanibako.settings.messages import CURE_DERIVED_DUP_DEST, CURE_LEAF_NOT_ASCII
+from kanibako.settings.messages import CURE_DERIVED_DUP_DEST
 from kanibako.channels.channels import workset_name_token, workset_root
 from kanibako.settings.workset_dirkeys import EarlyScope, refuse_inherited_per_owner
 
@@ -56,10 +57,11 @@ def _refuse_inherited(std, source, target: tuple[Path, EarlyScope]) -> None:
     refuse_inherited_per_owner(*target)
 
 
-def _refuse_derived_destination(new_path: Path) -> int | None:
-    """Refuse a PRIMARY duplicate whose destination name breaks the box-name rule (rc 1)."""
+def _refuse_derived_destination(
+        new_path: Path, check: Callable[[str], object] = refuse_derived_box_name) -> int | None:
+    """Refuse a duplicate whose destination name fails *check* (rc 1)."""
     try:
-        refuse_derived_box_name(new_path.name)
+        check(new_path.name)
     except DerivedBoxNameError as e:
         print(f"Error: {e.with_cure(CURE_DERIVED_DUP_DEST)}", file=sys.stderr)
         return 1
@@ -123,6 +125,11 @@ def _run_duplicate_cross_mode(args: argparse.Namespace, std, config) -> int:
     if not args.bare and new_path.exists() and not args.force:
         return _refuse_existing_destination(new_path)
 
+    # A standalone leaf with no ASCII spelling is refused before --name and any write.
+    if to_mode is BoxMode.standalone and (
+            rc := _refuse_derived_destination(new_path, sanitize_cap)) is not None:
+        return rc
+
     # A standalone target mints <kuid>_<leaf> from the dest root; --name is never read.
     if to_mode is BoxMode.standalone and getattr(args, "project_name", None):
         try:
@@ -134,17 +141,6 @@ def _run_duplicate_cross_mode(args: argparse.Namespace, std, config) -> int:
             raise
         except ProjectError as e:
             print(f"Error: {e}", file=sys.stderr)
-            return 1
-
-    # Row A+B: refuse a destination LEAF with no ASCII spelling BEFORE any mkdir/copy/merge.
-    # Gate matches the existing `--name` block above; the `--name` block refuses the typed
-    # name, this one refuses the directory.  DerivedBoxNameError subclasses ProjectError,
-    # so the cure must be carried here — no generic catch allowed.
-    if to_mode is BoxMode.standalone:
-        try:
-            sanitize_cap(new_path.name)
-        except DerivedBoxNameError as e:
-            print(f"Error: {e.with_cure(CURE_LEAF_NOT_ASCII)}", file=sys.stderr)
             return 1
 
     # Detect source mode and resolve.

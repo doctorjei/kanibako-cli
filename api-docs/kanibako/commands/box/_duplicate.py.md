@@ -8,7 +8,7 @@ _Signatures only: no comments, no docstrings, no bodies._
 ```
 def run_duplicate(args: argparse.Namespace) -> int
 def _refuse_inherited(std, source, target: tuple[Path, EarlyScope]) -> None
-def _refuse_derived_destination(new_path: Path) -> int | None
+def _refuse_derived_destination(new_path: Path, check: Callable[[str], object]=refuse_derived_box_name) -> int | None
 def _refuse_existing_destination(path: Path) -> int
 def _local_target(std, mode: BoxMode, new_path: Path) -> tuple[Path, EarlyScope]
 def _source_is_external(args: argparse.Namespace, std) -> bool
