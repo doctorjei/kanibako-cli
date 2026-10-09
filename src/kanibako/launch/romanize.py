@@ -1,7 +1,8 @@
 """ASCII spellings for non-ASCII text (spec §0, ⚑ NAMING RULES).
 
 Latin letters drop their accents (``café`` → ``cafe``) and kana are written in
-Hepburn, kana by kana (``とうきょう`` → ``toukyou``).  Kanji has no spelling.
+Hepburn, kana by kana (``とうきょう`` → ``toukyou``), except that ``ん`` before a vowel
+or a y-kana is ``n_`` (``きんや`` → ``kin_ya``, ``きねん`` → ``kinen``).  Kanji has no spelling.
 
 Pure and stdlib-only.
 """
@@ -62,7 +63,7 @@ def to_ascii(text: str, *, strict: bool = True) -> str | None:
     kana_units: set[int] = set()
     sokuons: list[int] = []
     joinable = False  # the last unit is a kana a small kana may still join
-    for ch in text:
+    for k, ch in enumerate(text):
         if ch in _SMALL_Y or ch in _SMALL_VOWEL:
             if joinable:
                 out[-1] = _join_small(out[-1], ch)
@@ -73,7 +74,8 @@ def to_ascii(text: str, *, strict: bool = True) -> str | None:
         joinable = ch in _KANA and _KANA[ch][-1] in _VOWELS  # not ン or ・
         if ch in _KANA:
             kana_units.add(len(out))
-            out.append(_KANA[ch])
+            nasal_split = _KANA[ch] == "n" and _opens_on_vowel_or_y(text[k + 1:k + 2])
+            out.append(_KANA[ch] + ("_" if nasal_split else ""))
         elif ch in _SOKUON:
             sokuons.append(len(out))
             out.append("")
@@ -96,6 +98,12 @@ def to_ascii(text: str, *, strict: bool = True) -> str | None:
         doubled = nxt[:1] if nxt[:1].isalpha() and nxt[:1] not in _VOWELS else ""
         out[i] = "t" if nxt.startswith("ch") else doubled
     return "".join(out)
+
+
+def _opens_on_vowel_or_y(kana: str) -> bool:
+    """True when kana *kana* is spelled from a vowel or ``y``: ``ん`` before it is ``n_``."""
+    spelled = _KANA.get(kana) or ("y" if kana in _SMALL_Y else _SMALL_VOWEL.get(kana, ""))
+    return spelled[:1] in tuple(_VOWELS + "y")
 
 
 def _join_small(base: str, small: str) -> str:
