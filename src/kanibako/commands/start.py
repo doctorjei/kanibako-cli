@@ -2099,6 +2099,31 @@ DIRECTIVE_FLATTENER = "/opt/kanibako/kanibako/scripts/import-directives.py"
 DIRECTIVE_MANIFEST_RELPATH = ".kanibako/directive-manifest.json"
 
 
+def _supervisor_fallback_guest_path() -> str:
+    """The in-box path of the supervisor fallback log."""
+    from kanibako.settings.settings_resolve import GUEST_HOME
+
+    return f"{GUEST_HOME}/{SUPERVISOR_FALLBACK_RELPATH}"
+
+
+def _fallback_notice_shim(prog: str, prog_args: list[str]) -> tuple[str, list[str]]:
+    """Wrap the fallback keep-alive so its pane first shows why the agent did not start.
+
+    The fallback runs only after both import probes failed, and the user attaches
+    straight to its tmux pane; the warning on PID 1's stderr reaches only
+    ``podman logs``.  Prints the log's tail (which ends with the warning), or the
+    warning alone if the log does not carry it, then ``exec``s *prog*.
+    """
+    diag = shlex.quote(_supervisor_fallback_guest_path())
+    warning = shlex.quote(SUPERVISOR_FALLBACK_WARNING)
+    notice = (
+        f"if grep -qF {warning} {diag} 2>/dev/null; "
+        f"then tail -n {_FALLBACK_LOG_TAIL} {diag}; else echo {warning}; fi; "
+        'exec "$@"'
+    )
+    return "sh", ["-c", notice, "sh", prog, *prog_args]
+
+
 def _build_supervisor_pid1(
     supervisor_argv: list[str], fallback_argv: list[str],
 ) -> tuple[str, list[str]]:
@@ -2125,12 +2150,10 @@ def _build_supervisor_pid1(
     See ``llm-docs/kanibako/commands/start.py.md``, "``_build_supervisor_pid1``",
     for the measurement and the forward-compat argument.
     """
-    from kanibako.settings.settings_resolve import GUEST_HOME
-
     pythonpath = f'"PYTHONPATH={KANIBAKO_PKG_MOUNT_ROOT}${{PYTHONPATH:+:$PYTHONPATH}}"'
     probe = shlex.join(["python3", "-c", "import kanibako.box_supervisor"])
 
-    diag_path = f"{GUEST_HOME}/{SUPERVISOR_FALLBACK_RELPATH}"
+    diag_path = _supervisor_fallback_guest_path()
     diag = shlex.quote(diag_path)
     diag_dir = shlex.quote(diag_path.rsplit("/", 1)[0])
     warning = shlex.quote(f"{SUPERVISOR_FALLBACK_WARNING} Reason recorded in {diag_path}.")
@@ -4943,11 +4966,13 @@ def _run_container(
                 agent_ep, agent_argv = _apply_persistent_shims(
                     entrypoint, list(cli_args or []),
                 )
-                # 2. Fallback bare-shell keep-alive = TODAY'S EXACT detached command
-                #    (box.shell + the same shims + tmux/bootstrap wrap), preserved
-                #    byte-for-byte as the forward-compat `|| exec` degrade path.  For
-                #    warm-only this is the correct case-3a floor (agent-INDEPENDENT).
-                fb_cmd, fb_args = _apply_persistent_shims(box_shell, [])
+                # 2. Fallback bare-shell keep-alive = the detached no-agent command
+                #    (box.shell + the same shims + tmux/bootstrap wrap), behind a
+                #    notice that shows the attaching user why the agent did not
+                #    start.  For warm-only this is the case-3a floor (agent-INDEPENDENT).
+                fb_cmd, fb_args = _fallback_notice_shim(
+                    *_apply_persistent_shims(box_shell, []),
+                )
                 fallback_ep, fallback_argv = _bootstrap_wrap(
                     bootstrap_program, fb_cmd, fb_args,
                 )

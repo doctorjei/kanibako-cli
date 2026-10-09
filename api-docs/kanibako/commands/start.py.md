@@ -83,6 +83,8 @@ def _persist_shadow_issues(std, container_name: str, shadowed: list[str]) -> Non
 def _print_shadow_issues(std, container_name: str) -> None
 def _bootstrap_wrap(program: str, inner_cmd: str, cli_args: list[str]) -> tuple[str, list[str]]
 def _env_flag_enabled(value: str | None) -> bool
+def _supervisor_fallback_guest_path() -> str
+def _fallback_notice_shim(prog: str, prog_args: list[str]) -> tuple[str, list[str]]
 def _build_supervisor_pid1(supervisor_argv: list[str], fallback_argv: list[str]) -> tuple[str, list[str]]
 def _bootstrap_attach(program: str) -> list[str]
 def _tweakcc_cache_dir(std, agent_id: str) -> Path

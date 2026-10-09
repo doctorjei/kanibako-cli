@@ -3414,6 +3414,62 @@ class TestBuildSupervisorPid1:
         assert shlex.split(fb) == fallback_argv
 
 
+class TestFallbackNotice:
+    """The fallback keep-alive shows the attaching user why the agent did not start.
+
+    Measured on bifrost: with both import probes failing, PID 1's fallback tmux
+    session ran a bare bash, the host attach succeeded, and the warning reached only
+    ``podman logs``.
+    """
+
+    @staticmethod
+    def _run_notice(tmp_path, monkeypatch, log_text):
+        import subprocess
+
+        from kanibako.commands import start
+
+        log = tmp_path / "supervisor-fallback.log"
+        if log_text is not None:
+            log.write_text(log_text)
+        monkeypatch.setattr(start, "_supervisor_fallback_guest_path", lambda: str(log))
+        prog, args = start._fallback_notice_shim("sh", ["-c", "echo SHELL-STARTED"])
+        out = subprocess.run([prog, *args], capture_output=True, text=True, check=True)
+        return out.stdout.splitlines()
+
+    def test_log_tail_then_shell(self, tmp_path, monkeypatch):
+        from kanibako.commands.start import SUPERVISOR_FALLBACK_WARNING
+
+        lines = [f"trace {i}" for i in range(30)] + [SUPERVISOR_FALLBACK_WARNING + " Reason."]
+        out = self._run_notice(tmp_path, monkeypatch, "\n".join(lines) + "\n")
+        assert out == lines[-20:] + ["SHELL-STARTED"]
+
+    def test_warning_alone_when_log_lacks_it(self, tmp_path, monkeypatch):
+        from kanibako.commands.start import SUPERVISOR_FALLBACK_WARNING
+
+        for log_text in (None, "stale line from an earlier launch\n"):
+            out = self._run_notice(tmp_path, monkeypatch, log_text)
+            assert out == [SUPERVISOR_FALLBACK_WARNING, "SHELL-STARTED"]
+
+    def test_detached_fallback_pane_runs_the_notice(self, start_mocks):
+        import shlex
+
+        from kanibako.commands.start import SUPERVISOR_FALLBACK_RELPATH
+
+        with start_mocks() as m:
+            rc = _run_container(
+                project_dir=None, entrypoint=None, image_override=None,
+                new_session=False, safe_mode=False, resume_mode=False,
+                extra_args=[], persistent=True, detach=True,
+            )
+            assert rc == 0
+            script = TestDetachedSupervisor._detach_script(m)
+        fb = shlex.split(script.split("2>/dev/null; exec ", 1)[1].rstrip(" ;}"))
+        inner = fb[fb.index("--") + 1:]
+        assert inner[:2] == ["sh", "-c"]
+        assert f"tail -n 20 /home/agent/{SUPERVISOR_FALLBACK_RELPATH}" in inner[2]
+        assert inner[2].endswith('exec "$@"')
+
+
 class TestWarmOnlyPanelWatch:
     """`kanibako code` warm-up fronts the box AGENT-INDEPENDENTLY (E2f).
 
@@ -3486,7 +3542,8 @@ class TestWarmOnlyPanelWatch:
             assert start_detached(None) == 0
             script = self._pid1_script(m)
             fallback = script.split("2>/dev/null; exec ", 1)[1].rstrip(" ;}")
-            assert "box_supervisor" not in fallback       # no agent, no supervisor
+            # No supervisor run (the notice's warning text names the module).
+            assert "-m kanibako.box_supervisor" not in fallback
             assert "new-session -s kanibako" in fallback   # bare-shell tmux keep-alive
 
     def test_warm_up_seeds_agent_markers_dir_env(self, start_mocks):
