@@ -538,8 +538,7 @@ class TestPostStartCallSites:
 
 
 class TestRemoveBoxTree:
-    """``container.remove_box_tree`` — THE box-tree deleter (the body formerly inline
-    in ``commands.box._parser._purge_dir``, moved so every verb can reuse it).
+    """``container.remove_box_tree`` — THE box-tree deleter every verb reuses.
 
     Since J-7 every box home carries the root-owned canon skeleton, so this is no
     longer a rare has-a-root-owned-file case: a bare ``rmtree`` of ANY box home fails.
@@ -574,16 +573,6 @@ class TestRemoveBoxTree:
             mock_rt.return_value.unshare_rm.return_value = False
             assert remove_box_tree(d) is False
             assert d.exists()
-
-    def test_purge_dir_still_delegates_here(self, tmp_path):
-        """``_purge_dir`` is kept as a name (rm's call sites + tests read against it);
-        the behavior must be the moved body, not a second implementation."""
-        from unittest.mock import patch as _p
-
-        from kanibako.commands.box._parser import _purge_dir
-        with _p("kanibako.runtime.container.remove_box_tree", return_value=True) as m:
-            assert _purge_dir(tmp_path / "box") is True
-            m.assert_called_once_with(tmp_path / "box")
 
 
 class TestRunEnvFlags:

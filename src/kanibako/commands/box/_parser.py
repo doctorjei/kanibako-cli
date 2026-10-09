@@ -1944,13 +1944,6 @@ def _list_orphans(
     return 0
 
 
-def _purge_dir(target: Path) -> bool:
-    """Thin alias for :func:`kanibako.runtime.container.remove_box_tree`, kept for its callers."""
-    from kanibako.runtime.container import remove_box_tree
-
-    return remove_box_tree(target)
-
-
 def _assert_deletable(path, *, must_be_under: Path | None = None) -> Path:
     """⚑ DESTRUCTIVE-SAFETY gate: validate *path* is safe to ``rm -rf``, return it resolved."""
     raw = str(path).strip()
