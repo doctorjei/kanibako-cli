@@ -55,7 +55,7 @@ class TestSharedBaseOldNameIsNotOurs:
         new_vault = _vault(tmp_path, "w")
 
         # The moving box's own store, in its own old base.
-        mine = _make_snapshot(old_vault, "projA", "20240101T000000Z", "mine.txt")
+        _make_snapshot(old_vault, "projA", "20240101T000000Z", "mine.txt")
 
         # A DIFFERENT box already named projA lives in the destination workset.
         theirs = _make_snapshot(new_vault, "projA", "20230101T000000Z", "theirs.txt")
