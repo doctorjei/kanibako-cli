@@ -142,16 +142,21 @@ def _write_layout_marker(versions: Path) -> None:
         marker.write_text(LAYOUT_MARKER_VALUE)
 
 
-def migrate_legacy_versions(
+def _migrate_flat_and_mark(
     vault_rw_path: Path, *, box_name: str, store_exclusive: bool = False,
 ) -> dict[str, list[str]]:
-    """Split pre-per-box ``.versions/<timestamp>`` entries out of the SHARED base.
+    """Split any legacy flat ``.versions/<timestamp>`` entries out of the base,
+    then declare that base per-box.
 
-    The old store never recorded who wrote a snapshot, so attribution is only
-    possible where no other box could have written: a standalone ``.versions``
-    is inside its own tree (``store_exclusive=True``).  Everywhere else, and
-    every same-second chimera, the owner is unknown and the entry goes to
-    ``.unsorted/`` -- listed, never pruned.
+    ⚑ THIS IS THE ONLY LEGAL WAY TO MARK A BASE.  A marker written over a base
+    that still holds flat entries freezes them un-migrated: they disappear from
+    every listing, and the next box named like the timestamp prunes them for
+    good.  Any site that marks must come through here.
+
+    Attribution follows *store_exclusive*: a base inside this box's own tree can
+    only have been written by this box, so its legacy entries are ATTRIBUTED to
+    it; a shared base cannot prove that, so they go to ``.unsorted`` -- listed,
+    never pruned.
 
     ⚑ An EXISTING base is MARKED whether or not anything moved, so a
     timestamp-named box created afterwards cannot be swept by a later pass.  An
@@ -159,10 +164,6 @@ def migrate_legacy_versions(
     """
     versions = _versions_dir(vault_rw_path)
     moved: dict[str, list[str]] = {"attributed": [], "unsorted": []}
-    if store_exclusive:
-        # A renamed standalone DIRECTORY: identity, not a legacy conversion, so
-        # this runs whether or not the base is marked.
-        adopt_standalone_store(vault_rw_path, box_name=box_name)
     # A reader must not create an absent base; a writer marks one as it makes it.
     if _is_migrated(versions) or not versions.is_dir():
         return moved
@@ -188,6 +189,29 @@ def migrate_legacy_versions(
             )
     _write_layout_marker(versions)
     return moved
+
+
+def migrate_legacy_versions(
+    vault_rw_path: Path, *, box_name: str, store_exclusive: bool = False,
+) -> dict[str, list[str]]:
+    """Split pre-per-box ``.versions/<timestamp>`` entries out of the SHARED base.
+
+    The old store never recorded who wrote a snapshot, so attribution is only
+    possible where no other box could have written: a standalone ``.versions``
+    is inside its own tree (``store_exclusive=True``).  Everywhere else, and
+    every same-second chimera, the owner is unknown and the entry goes to
+    ``.unsorted/`` -- listed, never pruned.
+
+    A standalone DIRECTORY RENAME is settled first: it is identity rather than a
+    legacy conversion, so it must run even on an already-marked base.
+    """
+    if store_exclusive:
+        # A renamed standalone DIRECTORY: identity, not a legacy conversion, so
+        # this runs whether or not the base is marked.
+        adopt_standalone_store(vault_rw_path, box_name=box_name)
+    return _migrate_flat_and_mark(
+        vault_rw_path, box_name=box_name, store_exclusive=store_exclusive
+    )
 
 
 def _snapshot_child(versions: Path, name: str) -> Path:
@@ -472,14 +496,22 @@ def adopt_standalone_store(vault_rw_path: Path, *, box_name: str) -> Path | None
     ]
     if len(candidates) != 1:
         return None
-    _write_layout_marker(versions)
     store.parent.mkdir(parents=True, exist_ok=True)
     shutil.move(str(candidates[0]), str(store))
+    # Mark through the helper so any legacy flat entries still sitting in this
+    # base get migrated instead of frozen un-migrated behind the marker.  Runs
+    # AFTER the move on purpose: the helper's attribution target is this box's
+    # store, and doing it first would have the helper create that store and then
+    # drop the adopted one inside it.
+    _migrate_flat_and_mark(
+        vault_rw_path, box_name=box_name, store_exclusive=True
+    )
     return store
 
 
 def relocate_snapshot_store(
     old_vault_rw: Path, new_vault_rw: Path, *, old_box: str, new_box: str,
+    new_base_exclusive: bool = False,
 ) -> Path | None:
     """Carry *old_box*'s snapshot store to *new_box* across a rename or a move.
 
@@ -488,28 +520,42 @@ def relocate_snapshot_store(
     next box to take that name inherits them -- the cross-box reach D1 exists to
     prevent.
 
-    ⚑ A relocation that COPIED the tree has already carried the store into the new
-    base under the old key, so the new base is looked at FIRST; the old tree is
-    retired only on success.  Never overwrites -- an entry whose destination name
-    is taken goes under a suffix.
+    ⚑ *new_base_exclusive* says the NEW base sits inside this box's OWN tree.
+    That is the ONLY case in which a store found at ``new_base/<old name>`` is
+    ours: a relocation that COPIED the tree carried it there.  In a base shared
+    with other boxes that path belongs to whoever else is already using that name,
+    and adopting it would hand this box another box's snapshots.
+
+    ⚑ A BASE changing carries a store just as surely as a NAME changing.  A
+    convert that keeps the name still moves the store from one base to another;
+    gating the whole function on ``new_box != old_box`` strands it, and MIGRATION
+    promises it moves.  Never overwrites -- an entry whose destination name is
+    taken goes under a suffix.
     """
     old_base = _versions_dir(old_vault_rw)
     new_base = _versions_dir(new_vault_rw)
     new_store = _box_store(new_vault_rw, new_box)
 
     carried = None
-    if new_box != old_box:
+    if new_base_exclusive and new_box != old_box:
+        # Only our own tree can have carried our old key along in a copy.
         in_new_base = new_base / old_box
         if in_new_base.is_dir() and not in_new_base.is_symlink():
             carried = in_new_base
-        else:
-            old_store = old_base / old_box
-            if old_store.is_dir() and not old_store.is_symlink():
-                carried = old_store
+    if carried is None:
+        old_store = old_base / old_box
+        if (old_store != new_store and old_store.is_dir()
+                and not old_store.is_symlink()):
+            carried = old_store
     if carried is None:
         return None
 
-    _write_layout_marker(new_base)
+    # Migrate the destination base through the helper rather than marking it
+    # directly, so legacy flat entries already living there are split out instead
+    # of being frozen un-migrated behind a fresh marker.
+    _migrate_flat_and_mark(
+        new_vault_rw, box_name=new_box, store_exclusive=new_base_exclusive
+    )
     if not new_store.exists():
         new_store.parent.mkdir(parents=True, exist_ok=True)
         shutil.move(str(carried), str(new_store))

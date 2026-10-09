@@ -2774,6 +2774,7 @@ def _relocate_snapshot_store(state: ProjectState, new_state: ProjectState) -> No
         relocate_snapshot_store(
             state.vault_rw, new_state.vault_rw,
             old_box=state.name, new_box=new_state.name,
+            new_base_exclusive=new_state.mode is BoxMode.standalone,
         )
     except Exception as e:  # noqa: BLE001 - best-effort, mirrors step 4b
         print(
