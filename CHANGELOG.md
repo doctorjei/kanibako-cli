@@ -730,6 +730,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   to it, and purge left that line behind. `box rm --purge` and `box purge` now remove that line only, and delete
   the file if nothing else is in it. Your own lines stay. A linked or unreadable `.gitignore` is left alone, with a
   note.
+  `~/.kanibako/supervisor-fallback.log` is printed too. A clean exit prints nothing new. A box that falls back
+  shows the same log tail, which ends with the warning that the agent will not start, in its shell before the
+  first prompt; before, the user attached to a bare prompt and the warning reached only `podman logs`.
 
 - **`box duplicate` to a primary box takes its `--name`.** It was ignored, and the copy was named after its
   directory. A taken name is refused before anything is written.
