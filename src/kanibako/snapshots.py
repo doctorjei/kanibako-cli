@@ -62,9 +62,8 @@ class SnapshotSafetyError(KanibakoError):
     """The pre-restore safety copy could not be made, so the restore did not run.
 
     ``restore`` refuses to displace live data it cannot preserve, so a failure of
-    that copy means NOTHING CHANGED.  Surfacing the raw ``CalledProcessError``
-    instead prints a traceback for a state that is entirely safe, and reads as a
-    crash rather than the refusal it is.
+    that copy means NOTHING CHANGED -- a raw ``CalledProcessError`` here reads as
+    a crash rather than the refusal it is.
     """
 
 
@@ -80,8 +79,8 @@ _DEFAULT_MAX_SNAPSHOTS = 5
 def _versions_dir(vault_rw_path: Path) -> Path:
     """Return the SHARED ``.versions/`` base for a vault share-rw path.
 
-    ⚑ This is the base, NOT a box's store. Snapshots live one level down, in
-    :func:`_box_store`; a box must never read or write this directory directly.
+    ⚑ The base, NOT a box's store; snapshots live one level down in
+    :func:`_box_store`.
     """
     return vault_rw_path.parent / ".versions"
 
@@ -89,22 +88,17 @@ def _versions_dir(vault_rw_path: Path) -> Path:
 #: Legacy snapshots that could not be attributed to any box land here.  Listed,
 #: never deleted.
 #:
-#: ⚑ The LEADING DOT is the load-bearing part: :func:`
-#: kanibako.launch.box_identity.is_valid_box_name` refuses a box name that starts
-#: with ``.``, so no box can ever be named into the bucket.  A bucket called
-#: ``unsorted`` WAS a valid box name, so a box named ``unsorted`` owned the very
-#: directory every other box's unattributable data was filed into, and its own
-#: ``prune`` deleted data promised never to be.
+#: ⚑ The LEADING DOT is load-bearing: a box name can never start with ``.``, so
+#: no box can be named into the bucket.  ``unsorted`` WAS a legal box name, so a
+#: box by that name owned the directory every other box's data was filed into.
 UNSORTED_DIRNAME = ".unsorted"
 
-#: Written into ``.versions/`` the first time this code touches a base.  Once it is
-#: present, legacy detection NEVER runs again on that base.
+#: Written into ``.versions/`` the first time this code converts a base; once it is
+#: present, legacy detection never runs on that base again.
 #:
-#: Legacy detection is a name match (``_LEGACY_TS_RE``) over the base, and a box
-#: name can be a perfectly valid timestamp -- ``20200101T000000Z`` is a legal box
-#: name -- so without a marker the next legacy pass by ANY box on the base sweeps a
-#: timestamp-named box's whole store into the bucket, and later passes nest it
-#: further.  The marker retires the name match after the one conversion it is for.
+#: Legacy detection is a NAME match (``_LEGACY_TS_RE``) over the base, and
+#: ``20200101T000000Z`` is a legal box name, so without the marker the next
+#: legacy pass by ANY box sweeps a timestamp-named box's whole store away.
 LAYOUT_MARKER_NAME = ".layout"
 
 #: Marker contents: which layout the base was converted to.  Written, not read.
@@ -113,8 +107,7 @@ LAYOUT_MARKER_VALUE = "per-box-v1\n"
 #: A legacy snapshot directory name: the bare UTC timestamp, and nothing else.
 _LEGACY_TS_RE = re.compile(r"^\d{8}T\d{6}Z$")
 
-#: Base-level names that are layout, not a box store.  A box must never be keyed on
-#: one of these even if the box-name rule ever allowed it.
+#: Base-level names that are layout, not a box store.
 RESERVED_STORE_KEYS = (UNSORTED_DIRNAME, LAYOUT_MARKER_NAME)
 
 
@@ -130,8 +123,8 @@ def _box_store(vault_rw_path: Path, box_name: str) -> Path:
         )
     if box_name in RESERVED_STORE_KEYS:
         raise UnsafeSnapshotNameError(
-            f"Refused box name {box_name!r}: {box_name!r} is a layout entry of "
-            f"the snapshot base, not a box store."
+            f"Refused box name {box_name!r}: that is a layout entry of the "
+            f"snapshot base, not a box store."
         )
     return _versions_dir(vault_rw_path) / box_name
 
@@ -160,20 +153,17 @@ def migrate_legacy_versions(
     every same-second chimera, the owner is unknown and the entry goes to
     ``.unsorted/`` -- listed, never pruned.
 
-    ⚑ An EXISTING base is MARKED whether or not anything moved.  A base with
-    nothing to migrate still gets the marker, so a timestamp-named box created
-    afterwards cannot be swept by some later caller's legacy pass.  An ABSENT
-    base is left absent -- that is a writer's job, and :func:`create_snapshot`
-    marks the base as it creates it.
+    ⚑ An EXISTING base is MARKED whether or not anything moved, so a
+    timestamp-named box created afterwards cannot be swept by a later pass.  An
+    ABSENT base is left absent; a writer marks one as it makes it.
     """
     versions = _versions_dir(vault_rw_path)
     moved: dict[str, list[str]] = {"attributed": [], "unsorted": []}
     if store_exclusive:
-        # A standalone box whose DIRECTORY was renamed: identity, not a legacy
-        # conversion, so it runs whether or not the base is marked.
+        # A renamed standalone DIRECTORY: identity, not a legacy conversion, so
+        # this runs whether or not the base is marked.
         adopt_standalone_store(vault_rw_path, box_name=box_name)
-    # An absent base has nothing to split AND nothing to declare: a reader must not
-    # create it.  A writer marks it itself, on creating it.
+    # A reader must not create an absent base; a writer marks one as it makes it.
     if _is_migrated(versions) or not versions.is_dir():
         return moved
     legacy = [
@@ -361,10 +351,8 @@ def create_snapshot(
     """Create a directory snapshot of *vault_rw_path* in *box_name*'s own store.
 
     ⚑ Every write migrates the base first, so a base this code writes into is a
-    per-box base before the first snapshot lands in it.  Writing a store without
-    marking the base would leave the marker to some later reader, and a
-    timestamp-named box created in between could be swept by that reader's legacy
-    pass.
+    per-box base before the first snapshot lands in it.  Leaving the marker to a
+    later reader would let a timestamp-named box made in between be swept.
 
     Returns the path to the snapshot directory, or ``None`` if the directory
     is empty (nothing to snapshot).
@@ -459,19 +447,13 @@ def _find_snapshot_owner(vault_rw_path: Path, snapshot_name: str) -> str | None:
 def adopt_standalone_store(vault_rw_path: Path, *, box_name: str) -> Path | None:
     """Give a renamed standalone box the store already sitting in its own tree.
 
-    A standalone box's store is INSIDE its project tree, so a raw ``mv`` of that
-    directory carries the store along but not its KEY: the box re-derives
-    ``<kuid>_<new-leaf>`` from the directory it now lives in, while the store is
-    still ``<kuid>_<old-leaf>``.  The box then lists no snapshots and refuses its
-    own data as foreign.
-
-    The kuid is the identity that survives the rename -- it is read from the box's
-    own settings, not from the directory name -- so a store in this box's tree
-    carrying this box's kuid is this box's store.  ⚑ More than one such store is
-    not a rename but a coincidence, so nothing is guessed.
-
-    Returns the store path it moved into, or ``None`` when there was nothing to
-    adopt.
+    A standalone box's store is INSIDE its project tree, so a raw ``mv`` carries
+    the store but not its KEY: the box re-derives ``<kuid>_<new-leaf>`` from the
+    directory while the store is still ``<kuid>_<old-leaf>``, so it lists nothing
+    and refuses its own data as foreign.  The kuid survives the rename -- it comes
+    from the box's own settings, not the directory -- so a store in this box's
+    tree carrying this box's kuid is this box's store.  ⚑ More than one is
+    coincidence, not rename, so nothing is guessed.
     """
     store = _box_store(vault_rw_path, box_name)
     if store.exists():
@@ -502,18 +484,14 @@ def relocate_snapshot_store(
     """Carry *old_box*'s snapshot store to *new_box* across a rename or a move.
 
     A store is keyed on the box, so a verb that renames the box or relocates its
-    vault leaves the store behind under the OLD key: the box then lists no
-    snapshots, and the next box to take the old name inherits them, which is the
-    cross-box reach D1 exists to prevent.
+    vault leaves the store under the OLD key: the box lists no snapshots, and the
+    next box to take that name inherits them -- the cross-box reach D1 exists to
+    prevent.
 
-    ⚑ A relocation that COPIED the tree (``box move`` / ``box convert``) has
-    already carried the store into the new base under the old key, so the new base
-    is looked at FIRST.  The old tree is retired only on success, so its copy is
-    the live one by the time this runs.
-
-    Never overwrites: where the destination already holds that name the entry is
-    kept under a suffixed name instead.  Returns the destination store, or
-    ``None`` when there was nothing to carry.
+    ⚑ A relocation that COPIED the tree has already carried the store into the new
+    base under the old key, so the new base is looked at FIRST; the old tree is
+    retired only on success.  Never overwrites -- an entry whose destination name
+    is taken goes under a suffix.
     """
     old_base = _versions_dir(old_vault_rw)
     new_base = _versions_dir(new_vault_rw)
@@ -564,8 +542,7 @@ def restore_snapshot(
 
     The restore is also rollback-safe: the new contents are built in a temporary
     staging directory, the live contents are moved aside to a backup, and only
-    then are the staged contents swapped into place.  If anything fails mid-way
-    the live contents are restored from the backup, so a partial restore can
+    then are the staged contents swapped into place, so a partial restore can
     never destroy pre-existing data.  ``vault_rw_path`` itself (which may be a
     mount point) is never removed -- only its contents are swapped.
 

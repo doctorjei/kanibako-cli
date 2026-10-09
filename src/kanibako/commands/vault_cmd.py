@@ -1,4 +1,4 @@
-"""kanibako vault: manage vault snapshots."""
+"""kanibako vault: snapshot commands."""
 
 from __future__ import annotations
 
@@ -109,10 +109,7 @@ def _add_vault_subcommands(p: argparse.ArgumentParser) -> None:
 
 
 def _resolve_vault_rw(project_dir: str | None):
-    """Resolve ``(share-rw path, box name, store-exclusive)`` for the project.
-
-    The box name keys the snapshot store, not the path.
-    """
+    """Resolve ``(share-rw path, box name, store-exclusive)``; the name keys the store."""
     config_file = user_config_file()
     config = load_config(config_file)
     std = load_std_paths(config)
@@ -178,7 +175,7 @@ def run_list(args: argparse.Namespace) -> int:
 
 
 def _confirm_destructive(force: bool, message: str) -> bool:
-    """Gate a destructive vault command; ``force`` skips the prompt and nothing else."""
+    """Gate a destructive vault command; ``force`` skips the prompt only."""
     if force:
         return True
     try:
@@ -196,10 +193,7 @@ def run_restore(args: argparse.Namespace) -> int:
         return 1
     vault_rw, box_name, exclusive = resolved
 
-    # ⚑ Migrate BEFORE reading the store.  ``known`` decides whether the
-    # confirmation prompt runs at all; computed on the un-migrated store it misses
-    # a legacy name that this very call is about to move into the box's store, and
-    # the restore then runs straight past a prompt the user was owed.
+    # ⚑ Migrate first: ``known`` gates the prompt, and the move makes names visible.
     migrate_legacy_versions(vault_rw, box_name=box_name, store_exclusive=exclusive)
 
     known = {

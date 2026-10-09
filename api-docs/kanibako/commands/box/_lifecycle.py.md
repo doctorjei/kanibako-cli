@@ -82,6 +82,7 @@ def _to_workset(state: ProjectState, std: StandardPaths, config: BootstrapConfig
 def _state_ws_token(state: ProjectState) -> str
 def _state_ws_root(state: ProjectState, std: StandardPaths) -> Path
 def _relocate_channel_partition(old: ProjectState, new: ProjectState, std: StandardPaths) -> None
+def _relocate_snapshot_store(state: ProjectState, new_state: ProjectState) -> None
 def _safe_unregister(std: StandardPaths, name: str) -> None
 def _safe_register_membership(std: StandardPaths, name: str, workspace: Path) -> None
 def _member_leaves(ws: Workset, name: str) -> tuple[Path | None, Path, Path | None, Path | None]

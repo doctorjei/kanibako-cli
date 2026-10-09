@@ -1219,9 +1219,8 @@ def _run_steps(
     #   box name, so the new address is only readable off ``new_state``. ---
     _relocate_channel_partition(state, new_state, std)
 
-    # --- STEP 4c — Carry this box's OWN vault snapshot store (D1 keys the store
-    # on the box, so a rename that leaves it behind strands every snapshot the box
-    # has and hands the old key to whatever box takes the name next).
+    # --- STEP 4c — Carry this box's OWN snapshot store: D1 keys it on box
+    # so a rename that leaves it behind strands the box's snapshots
     _relocate_snapshot_store(state, new_state)
 
     # --- STEP 5 — Retire the old workspace step 2 copied, ON SUCCESS ONLY.
@@ -2759,12 +2758,9 @@ def _relocate_channel_partition(
 def _relocate_snapshot_store(state: ProjectState, new_state: ProjectState) -> None:
     """Carry this box's OWN vault snapshot store across a rename or a move.
 
-    ⚑ MUST run AFTER identity is finalized, for the same reason step 4b does: a
-    standalone convert REGENERATES the box name, so the key the store has to land
-    under is only readable off *new_state*.
-
-    Best-effort, like the channel step: the store is not lost when this fails, it
-    is stranded, and a stranded store is a loud Note rather than an aborted move.
+    ⚑ MUST run AFTER identity is finalized, as step 4b does: a standalone convert
+    REGENERATES the box name, so the key the store lands under is only readable off
+    *new_state*.  Best-effort: a failure strands the store rather than losing it.
     """
     import sys
 
