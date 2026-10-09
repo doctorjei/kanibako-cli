@@ -1634,6 +1634,100 @@ class TestPersistentAttachFailureIsSaid:
         assert "start -N" in err
 
 
+class TestForegroundAgentExitStopsTheBox:
+    """SD "A foreground box stops when its agent exits" — even when the attach
+    returns before the supervisor's poll has stopped the container.
+
+    The session's existence, not the container's running state, tells an agent
+    exit from a detach; an agent exit then waits (bounded) for the box to stop.
+    """
+
+    @staticmethod
+    def _launch(**over):
+        kw = dict(
+            project_dir=None, entrypoint=None, image_override=None,
+            new_session=False, safe_mode=False, resume_mode=False,
+            extra_args=[], persistent=True,
+        )
+        kw.update(over)
+        return _run_container(**kw)
+
+    @contextlib.contextmanager
+    def _box(self, start_mocks, *, attach_rc=0, session_after=False, lag=None,
+             code=3):
+        """The attach returns *attach_rc*; afterwards the session lives iff
+        *session_after*, and the container runs for *lag* more checks (None: forever)."""
+        with start_mocks() as m, patch("time.sleep") as m_sleep, patch(
+            "kanibako.commands.start._container_exit_code", return_value=code,
+        ):
+            def _exec(*_a, **_k):
+                m.runtime.container_exists.return_value = True
+                states = iter([True] * lag) if lag is not None else None
+                m.runtime.is_running.side_effect = (
+                    (lambda *_x, **_y: next(states, False)) if states is not None
+                    else (lambda *_x, **_y: True)
+                )
+                m.runtime.exec_succeeds.side_effect = lambda *_x, **_y: session_after
+                return attach_rc
+            m.runtime.exec.side_effect = _exec
+            m.sleep = m_sleep
+            yield m
+
+    def test_agent_exit_after_the_check_still_stops_the_box(self, start_mocks):
+        """The race: the container still runs when the attach returns."""
+        with self._box(start_mocks, lag=5) as m:
+            rc = self._launch()
+            m.runtime.rm.assert_called_once()
+        assert rc == 3
+
+    def test_agent_exit_before_the_check_stops_the_box(self, start_mocks):
+        with self._box(start_mocks, lag=0) as m:
+            rc = self._launch()
+            m.runtime.rm.assert_called_once()
+        assert rc == 3
+
+    def test_detach_leaves_the_box_running(self, start_mocks):
+        with self._box(start_mocks, session_after=True) as m:
+            rc = self._launch()
+            m.runtime.rm.assert_not_called()
+            m.sleep.assert_not_called()
+        assert rc == 0
+
+    @pytest.mark.parametrize("session_after, lag", [(False, 5), (True, None)])
+    def test_a_reattach_tells_exit_from_detach_too(
+        self, start_mocks, session_after, lag,
+    ):
+        with self._box(start_mocks, session_after=session_after, lag=lag) as m:
+            m.runtime.is_running.return_value = True  # a live box: the reattach path
+            rc = self._launch()
+            m.runtime.run.assert_not_called()
+            assert m.runtime.rm.called is not session_after
+        assert rc == (0 if session_after else 3)
+
+    def test_a_missed_attach_reports_the_agents_code(self, start_mocks, capsys):
+        """The agent ended before tmux attached: the attach's own failure (1) is
+        not the agent's code, and the box still stops."""
+        with self._box(start_mocks, attach_rc=1, lag=3, code=0) as m:
+            rc = self._launch()
+            m.runtime.rm.assert_called_once()
+            assert m.runtime.exec.call_count == 1
+        assert rc == 0
+        assert "Could not attach" not in capsys.readouterr().err
+
+    def test_the_wait_is_bounded_and_keeps_a_box_that_stays_up(self, start_mocks):
+        """A supervisor that keeps the box up (another surface attached) does not
+        hang the launch; the box is kept."""
+        from kanibako.commands.start import (
+            _AGENT_EXIT_STOP_BOUND, _AGENT_EXIT_STOP_STEP,
+        )
+        with self._box(start_mocks) as m:
+            self._launch()
+            m.runtime.rm.assert_not_called()
+            waits = [c for c in m.sleep.call_args_list
+                     if c.args == (_AGENT_EXIT_STOP_STEP,)]
+        assert len(waits) == round(_AGENT_EXIT_STOP_BOUND / _AGENT_EXIT_STOP_STEP)
+
+
 class TestInteractivePersistentGuard:
     """Interactive mode rejects launch when a container already exists.
 

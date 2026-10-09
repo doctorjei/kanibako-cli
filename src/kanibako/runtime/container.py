@@ -469,8 +469,12 @@ class ContainerRuntime:
 
     def exec_ready(self, name: str) -> bool:
         """Probe whether the container can accept an exec session right now."""
+        return self.exec_succeeds(name, ["true"])
+
+    def exec_succeeds(self, name: str, command: list[str]) -> bool:
+        """True iff *command* exits 0 in *name*, output captured."""
         result = subprocess.run(
-            [self.cmd, "exec", name, "true"],
+            [self.cmd, "exec", name, *command],
             capture_output=True,
         )
         return result.returncode == 0

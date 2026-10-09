@@ -35,7 +35,9 @@ from kanibako.settings.agent_config import (
     store_dirname,
 )
 from kanibako.settings.kb_store import __MISSING__
-from kanibako.box_supervisor import CONTINUE_MARKER, KANIBAKO_PKG_MOUNT_ROOT
+from kanibako.box_supervisor import (
+    CONTINUE_MARKER, KANIBAKO_PKG_MOUNT_ROOT, SupervisorConfig,
+)
 from kanibako.commands.diagnose import probe_missing_executables
 from kanibako.settings.config import (
     WORKSET_META_FILE,
@@ -2040,7 +2042,7 @@ def _bootstrap_wrap(program: str, inner_cmd: str, cli_args: list[str]) -> tuple[
     for whatever session/multiplexing semantics it wants.
     """
     if program == "tmux":
-        args = ["new-session", "-s", "kanibako", "--", inner_cmd, *cli_args]
+        args = ["new-session", "-s", _BOOTSTRAP_SESSION, "--", inner_cmd, *cli_args]
         return "tmux", args
     return program, [inner_cmd, *cli_args]
 
@@ -2152,7 +2154,7 @@ def _bootstrap_attach(program: str) -> list[str]:
     bare (best-effort) — non-tmux reattach is not a guaranteed feature.
     """
     if program == "tmux":
-        return ["tmux", "attach", "-t", "kanibako"]
+        return ["tmux", "attach", "-t", _BOOTSTRAP_SESSION]
     return [program]
 
 
@@ -3711,6 +3713,11 @@ def _run_container(
         reattach_rc = runtime.exec(
             container_name, _bootstrap_attach(bootstrap_program), attach=True
         )
+        ended_rc = _agent_exit_rc(
+            runtime, container_name, reattach_rc, bootstrap_program,
+        )
+        if ended_rc is not None:
+            reattach_rc = ended_rc
         # FIX 1: the reattach session has ended (detach or in-box exit).
         # An in-box login during this attach must reach the host, so write
         # back here too — the reattach path (4a32871) previously skipped the
@@ -4933,7 +4940,7 @@ def _run_container(
                 #    — but it is passed for a uniform, forward-compatible argv.)
                 supervisor_argv = [
                     "python3", "-m", "kanibako.box_supervisor",
-                    "--session", "kanibako",
+                    "--session", _BOOTSTRAP_SESSION,
                     "--marker", CONTINUE_MARKER,
                     "--on-agent-exit", "self-heal" if detach else "teardown",
                 ]
@@ -5331,6 +5338,12 @@ def _run_container(
                 rc = runtime.exec(
                     container_name, _bootstrap_attach(bootstrap_program), attach=True
                 )
+                ended_rc = _agent_exit_rc(
+                    runtime, container_name, rc, bootstrap_program,
+                )
+                if ended_rc is not None:
+                    rc = ended_rc
+                    break
                 if rc == 0:
                     break
                 # Non-zero interactive exec exit — if the container died, fall
@@ -10015,6 +10028,59 @@ def _container_logs(runtime: ContainerRuntime, name: str) -> str:
         capture_output=True, text=True,
     )
     return (result.stdout + result.stderr).strip() if result.returncode == 0 else ""
+
+
+#: The tmux session a persistent box runs its agent (or shell) in.
+_BOOTSTRAP_SESSION = "kanibako"
+
+#: How long a foreground launch waits for its box to stop once the agent's session
+#: is gone: the supervisor sees the exit within one poll, then the container exits.
+_AGENT_EXIT_STOP_BOUND = 3 * SupervisorConfig.poll_interval + 4.0
+_AGENT_EXIT_STOP_STEP = 0.1
+
+
+def _agent_session_ended(runtime: ContainerRuntime, name: str) -> bool:
+    """True iff box *name* no longer holds the bootstrap tmux session.
+
+    A ``tmux attach`` returns for two reasons: the client detached (the session
+    lives on) or the session ended with its agent.  Only the session's existence
+    tells them apart; the container's running state lags the agent's exit.
+    """
+    return not runtime.exec_succeeds(
+        name, ["tmux", "has-session", "-t", _BOOTSTRAP_SESSION],
+    )
+
+
+def _agent_exit_rc(
+    runtime: ContainerRuntime, name: str, rc: int, program: str,
+) -> int | None:
+    """After a tmux attach to box *name* returned *rc*: ``None`` on a detach, else the rc.
+
+    The agent ended (before or during the attach), so the box is stopping: wait for
+    it rather than race the supervisor's poll, then prefer the box's exit code,
+    since the attach's own rc is tmux's, never the agent's.
+    """
+    if program != "tmux" or not _agent_session_ended(runtime, name):
+        return None
+    if _await_box_stop(runtime, name):
+        code = _container_exit_code(runtime, name, undeterminable=None)
+        if code is not None:
+            return code
+    return rc
+
+
+def _await_box_stop(runtime: ContainerRuntime, name: str) -> bool:
+    """Wait, bounded, for box *name* to stop; True iff it did.
+
+    A box that outlives the bound is kept by its supervisor on purpose (another
+    surface is attached), so the caller treats it as still live.
+    """
+    import time
+    for _ in range(round(_AGENT_EXIT_STOP_BOUND / _AGENT_EXIT_STOP_STEP)):
+        if not runtime.is_running(name):
+            return True
+        time.sleep(_AGENT_EXIT_STOP_STEP)
+    return not runtime.is_running(name)
 
 
 # M1: a persistent ``-- <command>`` that ended before the host could attach.
