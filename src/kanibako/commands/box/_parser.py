@@ -1183,12 +1183,20 @@ def _mkdir_recording(target: Path, made: list[Path]) -> None:
 def _unmakes_its_dirs_on_failure(
     create: Callable[[argparse.Namespace, _CreateOutcome], int],
 ) -> Callable[[argparse.Namespace], int]:
-    """A *create* that never committed removes the dirs it made, while they are empty."""
+    """A *create* that never committed removes the dirs it made, while they are empty.
+
+    An ``OSError`` from *create* exits 1 with an error line whose cure is a re-run, which
+    either succeeds or is refused naming the ``--recover`` line.
+    """
     @functools.wraps(create)
     def run(args: argparse.Namespace) -> int:
         outcome = _CreateOutcome()
         try:
             return create(args, outcome)
+        except OSError as e:
+            print(f"Error: {e}\n  Fix that, then run the same 'kanibako create' again.",
+                  file=sys.stderr)
+            return 1
         finally:
             if not outcome.committed:
                 for path in reversed(outcome.made):
