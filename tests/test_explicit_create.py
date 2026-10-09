@@ -1577,3 +1577,49 @@ class TestRefusedCreateRemovesTheDirsItMade:
 
         self._refuse(capsys, ["create", *mode, *flags, str(target)])
         assert parent.is_dir() and not any(parent.iterdir())
+
+    def test_a_raise_after_the_commit_keeps_the_workspace(
+        self, config_file, tmp_home, credentials_dir, monkeypatch,
+    ):
+        """A registered box keeps its workspace even if the create raises afterwards."""
+        from kanibako.cli import main
+        from kanibako.commands import start
+
+        real = start._clear_create_entry
+
+        def clear_then_break(*a, **kw):
+            real(*a, **kw)
+            raise BrokenPipeError("stdout closed")
+
+        monkeypatch.setattr(start, "_clear_create_entry", clear_then_break)
+        target = tmp_home / "new" / "ws"
+
+        with pytest.raises((SystemExit, BrokenPipeError)):
+            main(["create", str(target)])
+        assert target.is_dir()
+
+    def test_a_dir_made_by_someone_else_meanwhile_survives(
+        self, config_file, tmp_home, credentials_dir, capsys, monkeypatch,
+    ):
+        """Only the dirs the create's own mkdir made are removed, not ones made since it began."""
+        from kanibako.commands.box import _parser
+
+        theirs = tmp_home / "theirs"
+        real = _parser.refuse_inherited_per_owner
+
+        def make_theirs_first(*a, **kw):
+            theirs.mkdir(exist_ok=True)
+            return real(*a, **kw)
+
+        monkeypatch.setattr(_parser, "refuse_inherited_per_owner", make_theirs_first)
+
+        self._refuse(capsys, ["create", "--agent", "bad!x", str(theirs / "deep")])
+        assert theirs.is_dir() and not any(theirs.iterdir())
+
+    def test_a_dotdot_path_leaves_nothing(
+        self, config_file, tmp_home, credentials_dir, capsys, monkeypatch,
+    ):
+        monkeypatch.chdir(tmp_home)
+
+        self._refuse(capsys, ["create", "--standalone", "--agent", "bad!x", "rel/a/../b"])
+        assert not (tmp_home / "rel").exists()

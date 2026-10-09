@@ -1163,41 +1163,46 @@ def _create_target(args: argparse.Namespace) -> Path:
     return Path(literal_path(args.path)) if args.path else Path(logical_cwd())
 
 
-def _dirs_mkdir_would_make(target: Path) -> list[Path]:
-    """What ``target.mkdir(parents=True)`` makes, deepest first."""
-    missing: list[Path] = []
-    for path in (target, *target.parents):
-        if path.exists() or path.is_symlink():
-            break
-        missing.append(path)
-    return missing
+@dataclasses.dataclass
+class _CreateOutcome:
+    """What :func:`run_create` made for ``<path>``, root first, and whether it committed."""
+    made: list[Path] = dataclasses.field(default_factory=list)
+    committed: bool = False
+
+
+def _mkdir_recording(target: Path, made: list[Path]) -> None:
+    """``target.mkdir(parents=True)``, appending to *made* each dir this call created."""
+    for path in (*reversed(target.parents), target):
+        try:
+            path.mkdir()
+        except FileExistsError:
+            continue
+        made.append(path)
 
 
 def _unmakes_its_dirs_on_failure(
-    create: Callable[[argparse.Namespace], int],
+    create: Callable[[argparse.Namespace, _CreateOutcome], int],
 ) -> Callable[[argparse.Namespace], int]:
-    """A failed *create* removes the dirs ``<path>`` lacked before it ran, while empty."""
+    """A *create* that never committed removes the dirs it made, while they are empty."""
     @functools.wraps(create)
     def run(args: argparse.Namespace) -> int:
-        made = _dirs_mkdir_would_make(_create_target(args))
-        rc = 1
+        outcome = _CreateOutcome()
         try:
-            rc = create(args)
+            return create(args, outcome)
         finally:
-            if rc != 0:
-                for path in made:
+            if not outcome.committed:
+                for path in reversed(outcome.made):
                     try:
                         path.rmdir()
                     except FileNotFoundError:
                         continue
                     except OSError:
                         break
-        return rc
     return run
 
 
 @_unmakes_its_dirs_on_failure
-def run_create(args: argparse.Namespace) -> int:
+def run_create(args: argparse.Namespace, outcome: _CreateOutcome) -> int:
     """Create a new kanibako project (replaces ``kanibako init``)."""
     refused = precheck_create(args)
     if refused is not None:
@@ -1331,7 +1336,7 @@ def run_create(args: argparse.Namespace) -> int:
             if not args.standalone:
                 refuse_inherited_per_owner(
                     std.primary_workset, _early_scope(std, BoxMode.primary))
-            target.mkdir(parents=True)
+            _mkdir_recording(target, outcome.made)
 
     from kanibako.commands.start import (
         _clear_create_entry,
@@ -1521,7 +1526,6 @@ def run_create(args: argparse.Namespace) -> int:
         _undo_box, _box_wrote = _new_box_undo(
             std, _entry_probe, standalone=bool(args.standalone))
 
-    _committed = False
     try:
         if _named_spec is not None and not _named_existing:
             assert _member is not None and _named_ws is not None
@@ -1640,11 +1644,11 @@ def run_create(args: argparse.Namespace) -> int:
         # ⚑ THE J1 WRITE-AHEAD ORDER, AND IT IS THE WHOLE MECHANISM: entry (above) →
         # state → seed → register → clear entry.  Clearing is IMMEDIATE after the
         # registry write (HARD INVARIANT: registered ==> no pending entry at rest).
-        _committed = True
+        outcome.committed = True
     finally:
         # ⚑ ONE cleanup path, for a refusal's ``return`` and a raise alike; a kill
         # runs none of it and leaves the entry.
-        if not _committed and not is_recovery:
+        if not outcome.committed and not is_recovery:
             _undone = True
             for _undo, _what in ((_undo_member, f"the member '{_member}'"),
                                  (_undo_box, "the box tree")):

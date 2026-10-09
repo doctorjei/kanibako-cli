@@ -707,8 +707,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **A refused `create <path>` no longer leaves `<path>` behind.** When `create` made the directory and then refused
   (an out-of-root `workset.canon`, an invalid `--agent`, `--recover` with nothing to resume), the empty directory
-  stayed. Now the directories `create` made are removed while they are still empty; a directory that already
-  existed is never removed.
+  stayed. Now a create that refuses before the box exists removes the directories it made, while they are still
+  empty; a directory that already existed, or that something else made meanwhile, is never removed.
 
 - **`workset rm --purge` no longer deletes the boxes behind a symlinked box store.** When the folder `workset.boxes`
   names is a symlink, only the link goes; what it points at is kept.
