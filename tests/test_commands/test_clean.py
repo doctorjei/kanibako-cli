@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import argparse
 
+import pytest
+
 
 from kanibako.settings.config import load_config
 from kanibako.settings.paths import WorksetSpec, load_std_paths, resolve_project, resolve_workset_project
@@ -239,6 +241,38 @@ class TestCleanExtended:
         assert run(args) == 0
         assert not (project_dir / "vault").is_symlink()
         assert (outside / "rw" / "canary.txt").read_text() == "keep me\n"
+
+    @pytest.mark.parametrize("where", ["outside", "at-root", "linked-parent"])
+    def test_purge_standalone_keeps_a_canon_not_strictly_inside(
+        self, config_file, tmp_home, capsys, where,
+    ):
+        """A ``workset.canon`` outside the root, AT it, or reached out through a linked
+        parent is kept and named; the rest of the purge still happens."""
+        from kanibako.commands.clean import run
+
+        project_dir = tmp_home / "project"
+        (project_dir / "box_data").mkdir(parents=True)
+        (project_dir / "mine.txt").write_text("mine\n")
+        outside = tmp_home / "ext"
+        (outside / "canon").mkdir(parents=True)
+        (outside / "canon" / "canary.txt").write_text("keep me\n")
+        (project_dir / "lnk").symlink_to(outside)
+        canon, kept = {
+            "outside": (outside / "canon", outside / "canon"),
+            "at-root": (project_dir, project_dir),
+            "linked-parent": (project_dir / "lnk" / "canon", outside / "canon"),
+        }[where]
+        (project_dir / "workset.yaml").write_text(
+            f"workset:\n  registry: null\n  canon: '{canon}'\n")
+
+        args = argparse.Namespace(path=str(project_dir), all_projects=False, force=True)
+        assert run(args) == 0
+        assert f"left the canon folder at {kept} in place" in capsys.readouterr().err
+        assert not (project_dir / "box_data").exists()
+        assert not (project_dir / "workset.yaml").exists()
+        assert (project_dir / "mine.txt").read_text() == "mine\n"
+        assert (project_dir / "lnk").is_symlink()
+        assert (outside / "canon" / "canary.txt").read_text() == "keep me\n"
 
     def test_purge_all_skips_standalone(self, config_file, tmp_home, credentials_dir, capsys):
         """--all only covers default-mode projects, not standalone."""
