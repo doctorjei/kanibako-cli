@@ -11,6 +11,8 @@ def run(args: argparse.Namespace) -> int
 def _unregister_purged(std, proj) -> None
 def _unregister_purged_primary(std, metadata_path, project_path) -> None
 def _warn_undeleted(path) -> None
+def _resolve_snapshot_store(vault_rw, box_name: str | None)
+def _remove_snapshot_store(store) -> None
 def _purge_one(std, config, path: str, *, force: bool) -> int
 def _purge_all(std, config, *, force: bool) -> int
 ```
