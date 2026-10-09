@@ -249,6 +249,17 @@ def _purge_one(std, config, path: str, *, force: bool) -> int:
             for box_vault in (proj.vault_ro_path, proj.vault_rw_path):
                 if box_vault is not None and box_vault.is_dir():
                     shutil.rmtree(box_vault, ignore_errors=True)
+        # A NAMED member's own vault leaves live at ``<ws>/vault/{ro,rw}/<box>`` and
+        # nothing here removed them, so the verb printed ``done`` over the box's files.
+        # ``remove_path``, not ``rmtree``: a leaf that is a LINK loses only the link.
+        # ⚑ The two LEAVES only — ``resolve_workset_vault_pair`` already resolved past
+        # any repoint, so the shared arms and a neighbour's leaves are not reachable.
+        elif proj.mode is BoxMode.named:
+            for box_vault in (proj.vault_ro_path, proj.vault_rw_path):
+                if box_vault is not None and (
+                        box_vault.is_dir() or box_vault.is_symlink()):
+                    if not remove_path(box_vault):
+                        _warn_undeleted(box_vault)
         _remove_snapshot_store(snapshot_store)
 
     # M2 (registry hygiene): the box metadata is gone, so drop its registry
