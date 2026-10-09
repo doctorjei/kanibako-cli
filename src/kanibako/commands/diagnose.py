@@ -6,7 +6,9 @@ import shlex
 import shutil
 from pathlib import Path
 
-from kanibako.errors import KanibakoError
+from kanibako.errors import DerivedBoxNameError, KanibakoError
+from kanibako.launch.box_identity import box_name_cure
+from kanibako.settings.paths import refuse_derived_box_name
 from kanibako.targets.base import _validate_agent_binary
 from kanibako.vscode.vscode_config import load_jsonc as _load_jsonc
 
@@ -696,6 +698,14 @@ def run_box_diagnose(args: object) -> int:
     ) is not None
     if not is_registered:
         target = proj.project_path if proj.project_path else project_dir
+        leaf = Path(str(target)).name
+        try:
+            # ``create`` names the box after the directory, so it would refuse this one.
+            refuse_derived_box_name(leaf or "project")
+        except DerivedBoxNameError as e:
+            print(_format_check("!!", "Project", f"no kanibako project registered for {target}"))
+            print(f"        {e.with_cure(box_name_cure('kanibako create', e.name))}")
+            return 1
         print(_format_check("!!", "Project", f"no kanibako project registered for {target}"))
         print(
             "        Run 'kanibako create' to initialize a project here, "
