@@ -803,6 +803,71 @@ class TestRunBoxDiagnose:
         assert "[ok] Project directory" not in out
 
 
+class TestRunBoxDiagnoseStoreGone:
+    """A box whose store is gone gets a failing verdict, never an all-clear."""
+
+    @staticmethod
+    def _diagnose(target: Path, capsys) -> str:
+        from kanibako.errors import ContainerError
+
+        with patch(
+            "kanibako.runtime.container.ContainerRuntime",
+            side_effect=ContainerError("none"),
+        ):
+            run_box_diagnose(argparse.Namespace(project=str(target), path=None))
+        return capsys.readouterr().out
+
+    @staticmethod
+    def _assert_store_gone(out: str, store: Path) -> None:
+        assert f"[!!] Box store: missing ({store})" in out, out
+        # Its shell is not "created on first run": a launch refuses this box.
+        assert "Shell directory" not in out, out
+
+    @pytest.mark.parametrize("registered", [False, True], ids=["unregistered", "registered"])
+    @pytest.mark.parametrize("via_link", [False, True], ids=["by-path", "symlinked-parent"])
+    def test_a_standalone_whose_box_data_is_gone(
+        self, config_file, tmp_home, credentials_dir, capsys, registered, via_link,
+    ) -> None:
+        import shutil
+
+        from kanibako.settings.config import load_config
+        from kanibako.settings.paths import load_std_paths, resolve_standalone_project
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        real = tmp_home / "real"
+        (real / "sa").mkdir(parents=True)
+        (tmp_home / "link").symlink_to(real)
+        parent = tmp_home / "link" if via_link else real
+        resolve_standalone_project(std, config, str(parent / "sa"), initialize=True,
+                                   register=registered)
+        shutil.rmtree(real / "sa" / "box_data")
+
+        out = self._diagnose(parent / "sa", capsys)
+        self._assert_store_gone(out, parent / "sa" / "box_data")
+
+    def test_a_primary_whose_store_is_gone(
+        self, config_file, tmp_home, credentials_dir, capsys,
+    ) -> None:
+        import shutil
+
+        from kanibako.settings.config import load_config
+        from kanibako.settings.paths import load_std_paths, resolve_project
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        project = tmp_home / "project"
+        with patch(
+            "kanibako.runtime.container.ContainerRuntime",
+            side_effect=Exception("no runtime"),
+        ):
+            proj = resolve_project(std, config, project_dir=str(project), initialize=True)
+        shutil.rmtree(proj.metadata_path)
+
+        out = self._diagnose(project, capsys)
+        self._assert_store_gone(out, proj.metadata_path)
+
+
 class TestProbeMissingExecutables:
     """probe_missing_executables: one ephemeral run, partition the result."""
 

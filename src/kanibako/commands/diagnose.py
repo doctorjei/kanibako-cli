@@ -729,7 +729,13 @@ def run_box_diagnose(args: object) -> int:
     # Shell directory: for a registered project, an absent shell is NORMAL
     # before the first launch (it is created on first run / initialize=True),
     # so report it informationally rather than as an error.
-    if proj.shell_path and proj.shell_path.is_dir():
+    # ⚑ Not when the box STORE is gone: a launch refuses that box rather than
+    # rebuilding it, so nothing is created on first run.
+    from kanibako.settings.paths import box_metadata_dir
+    store = box_metadata_dir(proj.mode, proj.metadata_path, early=proj._require_early())
+    if not store.is_dir():
+        print(_format_check("!!", "Box store", f"missing ({store})"))
+    elif proj.shell_path and proj.shell_path.is_dir():
         print(_format_check("ok", "Shell directory", str(proj.shell_path)))
     else:
         print(
