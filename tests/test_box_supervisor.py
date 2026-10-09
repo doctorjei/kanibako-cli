@@ -1654,6 +1654,39 @@ def test_panel_agent_state_dead_is_an_edge_not_a_level(tmp_path):
     assert sup.panel_agent_state() is PanelAgentState.NONE
 
 
+# The codex panel's app-server as measured on a live box (its marker's pid).
+_CODEX_PANEL_ARGV = [
+    "/home/agent/.vscode-server/extensions/openai.chatgpt-26.5/bin/linux-x86_64/codex",
+    "-c", "features.code_mode_host=true", "app-server", "--analytics-default-enabled",
+]
+
+
+def test_codex_panel_marker_is_judged_by_the_start_grammar(tmp_path):
+    # A warm-only codex box continues as `codex resume`, but its panel runs flags-first
+    # — the bare START head.  Without the start grammar the scan read the live panel as
+    # a codex helper, reaped its marker, and the DEAD that followed self-healed a
+    # second agent beside it.
+    warm = [
+        "--session", "kanibako", "--marker", _MARKER, "--panel-watch",
+        "--agent-markers-dir", str(tmp_path), "--continue-cmd", "codex resume --last",
+    ]
+
+    def sup(argv: list[str]) -> BoxSupervisor:
+        return BoxSupervisor(
+            config_from_argv(argv),
+            run=FakeRun(rc={"has-session": 1}),
+            proc_cmdlines=[],
+            pid_alive=lambda _pid: True,
+            cmdline_of={484: _CODEX_PANEL_ARGV}.get,
+        )
+
+    (tmp_path / "484").write_text("484")
+    assert sup([*warm, "--", "codex"]).panel_agent_state() is PanelAgentState.ALIVE
+    assert (tmp_path / "484").exists()
+    assert sup(warm).panel_agent_state() is PanelAgentState.DEAD
+    assert not (tmp_path / "484").exists()
+
+
 def test_panel_watch_self_heals_once_for_a_leaked_marker_then_stops(tmp_path):
     # HAZARD 1 end-to-end on the REAL panel-watch loop: a leaked marker used to hold
     # DEAD forever, re-spawning a CLI agent the box never asked for on every tick it

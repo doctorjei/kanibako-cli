@@ -1245,9 +1245,8 @@ Parse *argv* (without the program name) into a `SupervisorConfig`.
 Splits on the FIRST standalone `--`: everything before it is parsed as options, everything after is
 the agent `start_argv`. `--continue-cmd` is shlex-split into `continue_argv` (defaulting to a copy of
 `start_argv` when absent). A missing `--` / empty trailing argv is an error (there is no agent to
-run) — **EXCEPT under `--panel-watch`** (E2f), which starts NO agent at launch, so it takes an empty
-`start_argv` and relies on `--continue-cmd` for its self-heal grammar (the host always threads one
-through).
+run) — **EXCEPT under `--panel-watch`** (E2f), which starts NO agent at launch, so an empty
+`start_argv` is accepted there.
 
 ```main(argv: list[str] | None = None) -> int```
 CLI: parse args, build the supervisor, run the watch loop forever.
@@ -1259,8 +1258,10 @@ python3 -m kanibako.box_supervisor --session NAME --marker 'STR' [--poll SEC]
   [--agent-markers-dir DIR] [--creds-flag PATH] -- <agent entrypoint + argv...>
 ```
 
-In `--panel-watch` mode (E2f) the trailing `-- <agent argv>` is OMITTED (no agent starts at launch);
-`--continue-cmd` carries the self-heal grammar.
+In `--panel-watch` mode (E2f) the host still passes `-- <agent argv>`, but the panel-watch loop never
+runs it: it is the self-heal fallback and, through `agent_launch_heads`, the head a panel session is
+judged by. A codex panel runs flags-first (the bare start head), not as `codex resume`; judged by the
+continue grammar alone, its live marker was reaped and a second agent self-healed beside it.
 
 **Three ordered calls before the loop, all load-bearing:**
 

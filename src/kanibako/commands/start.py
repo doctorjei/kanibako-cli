@@ -4961,9 +4961,7 @@ def _run_container(
                 # supervisor manages tmux itself.
                 assert box_shell is not None
                 assert entrypoint is not None  # supervise_agent guarantees it
-                # 1. Supervised AGENT command = entrypoint + cli_args + shims.  On a
-                #    WARM-ONLY launch (E2f) NO agent runs at start (the panel is the
-                #    agent), so this is used only as the SELF-HEAL grammar fallback.
+                # 1. Supervised AGENT command = entrypoint + cli_args + shims.
                 agent_ep, agent_argv = _apply_persistent_shims(
                     entrypoint, list(cli_args or []),
                 )
@@ -4981,9 +4979,8 @@ def _run_container(
                 #    itself).  --session "kanibako" keeps attach/reattach compat.
                 #    --on-agent-exit encodes the launch-intent policy: DETACHED
                 #    self-heals (always-on), FOREGROUND tears down on agent exit
-                #    (the attaching human is the driver).  (In warm-only PANEL-WATCH
-                #    the policy is inert — the panel-watch loop ignores on-agent-exit
-                #    — but it is passed for a uniform, forward-compatible argv.)
+                #    (the attaching human is the driver).  Warm-only PANEL-WATCH
+                #    ignores it.
                 supervisor_argv = [
                     "python3", "-m", "kanibako.box_supervisor",
                     "--session", _BOOTSTRAP_SESSION,
@@ -5072,19 +5069,8 @@ def _run_container(
                     supervisor_argv += [
                         "--continue-cmd", shlex.join([cont_ep, *cont_argv]),
                     ]
-                elif warm_only:
-                    # Panel-watch has NO trailing `-- start argv` to fall back on for
-                    # self-heal, so it ALWAYS needs an explicit self-heal grammar —
-                    # use the (shimmed) START grammar when the descriptor exposes no
-                    # continue mode, so a panel-death self-heal still launches the box's
-                    # agent.
-                    supervisor_argv += [
-                        "--continue-cmd", shlex.join([agent_ep, *agent_argv]),
-                    ]
-                if not warm_only:
-                    # Non-warm (E2b/E2c): the supervised agent runs at start, as the
-                    # `-- <agent argv>` payload.  Warm-only OMITS it (agentless start).
-                    supervisor_argv += ["--", agent_ep, *agent_argv]
+                # Panel-watch never runs it; marker scans judge a panel by it.
+                supervisor_argv += ["--", agent_ep, *agent_argv]
                 # 4. Compose PID-1 as an import-gated `sh -c` (forward-compat: an
                 #    old image lacking the supervisor module degrades to the
                 #    fallback).  SKIPS _bootstrap_wrap — the supervisor IS PID-1.
