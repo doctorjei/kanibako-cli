@@ -229,6 +229,38 @@ class TestVerbsRouteThroughIt:
         assert seen == [ws.projects_dir / "b1", ws.projects_dir / "b2"], seen
         assert not root.exists(), "the workset root must be fully gone"
 
+    def test_delete_workset_refusing_box_tree_keeps_it_registered_and_rerunnable(
+        self, tmp_home, std, monkeypatch,
+    ):
+        """⚑⚑ A box tree that REFUSES stops the purge BEFORE the unregister.
+
+        The ``False`` was ignored, so the root rmtree raised a bare traceback after the
+        workset was already unregistered: half-deleted, and no re-run could reach it.
+        """
+        import kanibako.runtime.container as container_mod
+        from kanibako.project.workset import (
+            StoreRemovalError, add_project, create_workset, delete_workset, list_worksets,
+        )
+
+        ws = create_workset("stuckset", tmp_home / "worksets" / "stuckset", std)
+        source = tmp_home / "src-stuck"
+        source.mkdir()
+        add_project(ws, "b1", source, std)
+        box_tree = ws.projects_dir / "b1"
+        monkeypatch.setattr(container_mod, "remove_box_tree", lambda p: False)
+
+        with pytest.raises(StoreRemovalError) as exc:
+            delete_workset("stuckset", std, remove_files=True)
+
+        assert exc.value.leaf == box_tree
+        assert "stuckset" in list_worksets(std), "unregistered despite the refusal"
+        assert box_tree.is_dir() and ws.root.is_dir(), "the root was purged anyway"
+
+        monkeypatch.undo()
+        root = delete_workset("stuckset", std, remove_files=True)
+        assert not root.exists()
+        assert "stuckset" not in list_worksets(std)
+
     def test_delete_workset_never_clears_box_trees_behind_a_linked_store(
         self, tmp_home, std,
     ):

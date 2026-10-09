@@ -753,6 +753,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   project` with exit code 0, released the box, and left its `boxes/` tree behind. It now exits 1 with the path and
   a `podman unshare rm -rf` cure, and keeps the box registered so the same command can be re-run. A move between
   worksets that cannot delete the old tree now fails and restores the box where it was.
+- **`workset rm --purge` fails cleanly when a box's tree cannot be deleted.** It printed a traceback after it had
+  already unregistered the workset and deleted most of its files, so it could not be re-run. It now exits 1 with
+  the path and a `podman unshare rm -rf` cure before anything is unregistered, and the same command can be
+  re-run. If the workset folder itself cannot be removed, it exits 1 and names that folder.
 - **`box list` shows a deregistered primary box once, under "Deregistered boxes".** It was also listed in the main
   table as `unknown (no breadcrumb)`, and `box list --orphan` called it an orphan.
 - **Purging a standalone box deletes its `canon/` folder.** `box rm --purge` and `box purge` left the `canon/`
