@@ -25,6 +25,25 @@ def test_spelling(text: str, spelled: str) -> None:
     assert to_ascii(text) == spelled
 
 
+@pytest.mark.parametrize("text, spelled", [
+    # Any base + small ゃゅょ: the base's consonant, then y and the vowel.
+    ("デュオ", "dyuo"), ("フュージョン", "fyuujon"), ("テューバ", "tyuuba"), ("ヴュ", "vyu"),
+    ("キャ", "kya"), ("シュ", "shu"), ("チョ", "cho"), ("ジャ", "ja"), ("ヂャ", "ja"),
+    # イ + small vowel: y + vowel; ウ + small vowel: w + vowel.
+    ("イェール", "yeeru"), ("ウェ", "we"), ("ウォ", "wo"),
+    # ク/グ + small vowel: kw/gw + vowel.
+    ("クァ", "kwa"), ("クィ", "kwi"), ("クェ", "kwe"), ("クォ", "kwo"), ("グァ", "gwa"),
+    # i-row + small ェ: consonant + ye, or + e after sh/ch/j.
+    ("キェ", "kye"), ("ギェ", "gye"), ("ニェ", "nye"), ("シェ", "she"), ("チェ", "che"),
+    ("ジェ", "je"),
+    # Any other base + small vowel: the base's consonant + that vowel.
+    ("ファ", "fa"), ("フィ", "fi"), ("フォ", "fo"), ("ツァ", "tsa"), ("ティ", "ti"),
+    ("ディ", "di"), ("トゥ", "tu"), ("ドゥ", "du"), ("スィ", "si"), ("ヴォ", "vo"),
+])
+def test_extended_katakana(text: str, spelled: str) -> None:
+    assert to_ascii(text) == spelled
+
+
 @pytest.mark.parametrize("text", ["東京", "かに東", "日本語プロジェクト", "\U0001F600", "́x"])
 def test_no_spelling_is_none(text: str) -> None:
     assert to_ascii(text) is None
@@ -35,7 +54,7 @@ def test_non_strict_leaves_what_it_cannot_spell() -> None:
 
 
 def test_no_table_spelling_has_more_bytes_than_its_source() -> None:
-    # A name never grows on the way to ASCII (system-design § socket name).
+    # Table spellings never grow (system-design § socket name); NFKD ones can (Ⅷ → VIII).
     tables = [romanize._KANA, romanize._SMALL_VOWEL,
               {k: "y" + v for k, v in romanize._SMALL_Y.items()},
               {chr(k): v for k, v in romanize._LATIN.items()}]

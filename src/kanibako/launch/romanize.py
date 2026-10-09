@@ -70,8 +70,8 @@ def to_ascii(text: str, *, strict: bool = True) -> str | None:
                 out.append("y" + _SMALL_Y[ch] if ch in _SMALL_Y else _SMALL_VOWEL[ch])
             joinable = False
             continue
-        joinable = ch in _KANA
-        if joinable:
+        joinable = ch in _KANA and _KANA[ch][-1] in _VOWELS  # not ン or ・
+        if ch in _KANA:
             kana_units.add(len(out))
             out.append(_KANA[ch])
         elif ch in _SOKUON:
@@ -99,18 +99,25 @@ def to_ascii(text: str, *, strict: bool = True) -> str | None:
 
 
 def _join_small(base: str, small: str) -> str:
-    """Kana *base* followed by the small kana *small* (``き`` + ``ょ`` → ``kyo``)."""
+    """Kana *base*, which ends in a vowel, followed by the small kana *small*.
+
+    ``キョ`` kyo, ``デュ`` dyu, ``キェ`` kye, ``ファ`` fa, ``クァ`` kwa, ``ウィ`` wi, ``イェ`` ye.
+    """
+    stem, own = base[:-1], base[-1]
+    palatal = (own == "i" and stem.endswith(("sh", "ch", "j"))) or stem == "y"  # シ チ ジ ヤ: no y
     if small in _SMALL_Y:
-        if len(base) > 1 and base.endswith("i"):
-            stem = base[:-1]
-            return stem + ("" if stem.endswith(("sh", "ch", "j")) else "y") + _SMALL_Y[small]
-        return base + "y" + _SMALL_Y[small]
+        vowel = _SMALL_Y[small]
+        return stem + ("" if palatal else "y") + vowel if stem else base + "y" + vowel
     vowel = _SMALL_VOWEL[small]
-    if base == "u":
-        return "w" + vowel
-    if len(base) > 1 and base[-1] in _VOWELS:
-        return base[:-1] + vowel
-    return base + vowel
+    if not stem:
+        return {"u": "w", "i": "y"}.get(base, base) + vowel if vowel != base else base + vowel
+    if vowel == own:
+        return base
+    if own == "i":
+        return stem + ("" if palatal else "y") + vowel
+    if own == "u" and stem in ("k", "g"):
+        return stem + "w" + vowel
+    return stem + vowel
 
 
 def _is_ascii_alnum(text: str) -> bool:
