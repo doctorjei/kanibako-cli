@@ -10,6 +10,8 @@ Prose for these symbols lives in `llm-docs/kanibako/box_supervisor.py.md`.
 ```
 CONTINUE_MARKER = '[Agent handoff - Continue prior task(s)]'
 TAKEOVER_HEADS_UP = '[Session takeover - another surface is taking over this session; wind down and checkpoint now if you have work in progress]'
+PANE_DEATH_FORMAT = '#{?pane_dead,status=#{pane_dead_status} signal=#{pane_dead_signal},}'
+UNDETERMINED_AGENT_EXIT = 70
 KANIBAKO_PKG_MOUNT_ROOT = '/opt/kanibako'
 PINNED_ROOT_RELPATH = '.kanibako'
 XDG_PROJECTIONS: tuple[tuple[str, str, str], ...] = ((XDG_STATE_HOME, XDG_SPEC_DEFAULTS[XDG_STATE_HOME], 'state'),)
@@ -45,6 +47,7 @@ def agent_launch_heads(*argvs: Iterable[str]) -> set[tuple[str, str | None]]
 def agent_session_verdict(argv: Iterable[str], heads: set[tuple[str, str | None]]) -> bool | None
 def scan_marker_pids(markers_dir: str, *, list_pids: _MarkersLister, pid_alive: _PidAlive, is_agent: _AgentCheck | None=None, remove: _MarkerRemover | None=None) -> tuple[set[int], set[int]]
 def newcomer_pids(live_pids: set[int], own_pids: set[int]) -> set[int]
+def agent_exit_code(death: str) -> int
 def decide(prev_state: AttachState, cur_state: AttachState, agent_alive: bool) -> SupervisorAction
 def decide_panel(tmux_alive: bool, panel: PanelAgentState, vscode_server: bool, any_attached: bool, seen_surface: bool) -> PanelAction
 def decide_directives(manifest: object, seed: str, dest: str, probe: Mapping[str, str | None]) -> DirectiveVerdict
@@ -122,11 +125,12 @@ class DirectiveVerdict(Enum):
     HAND_EDITED = 'hand_edited'
 
 class BoxSupervisor:
-    def __init__(self, config: SupervisorConfig, *, run: _Runner=subprocess.run, sleep: _Sleeper=time.sleep, proc_cmdlines: Iterable[str] | None=None, pid_alive: _PidAlive=_default_pid_alive, list_marker_pids: _MarkersLister=_default_list_marker_pids, cmdline_of: _CmdlineOf=_proc_cmdline, remove_marker: _MarkerRemover=_default_remove_marker, kill: _Signaler=os.kill, killpg: _Signaler=os.killpg, getpgid: _GroupOf=os.getpgid, getpgrp: _OwnGroup=os.getpgrp, reap: _Reaper=reap_zombie_children) -> None
+    def __init__(self, config: SupervisorConfig, *, run: _Runner=subprocess.run, sleep: _Sleeper=time.sleep, proc_cmdlines: Iterable[str] | None=None, pid_alive: _PidAlive=_default_pid_alive, list_marker_pids: _MarkersLister=_default_list_marker_pids, cmdline_of: _CmdlineOf=_proc_cmdline, remove_marker: _MarkerRemover=_default_remove_marker, kill: _Signaler=os.kill, killpg: _Signaler=os.killpg, getpgid: _GroupOf=os.getpgid, getpgrp: _OwnGroup=os.getpgrp, reap: _Reaper=reap_zombie_children, exit_record: str | None=None) -> None
 
     def start_agent_session(self) -> bool
     def restart_agent_session(self) -> bool
-    def agent_pane_dead_status(self) -> int | None
+    def agent_pane_exit_code(self) -> int | None
+    def recorded_agent_exit(self) -> int | None
     def capture_agent_output(self) -> str | None
     def agent_session_alive(self) -> bool
     def kill_agent_session(self) -> None
@@ -138,6 +142,9 @@ class BoxSupervisor:
 
     def _run_tmux(self, args: list[str]) -> int | None
     def _tmux_output(self, args: list[str]) -> str | None
+    def _exit_record_path(self) -> str
+    def _exit_hook(self) -> str
+    def _session_arms(self) -> list[tuple[str, str, str]]
     def _start_session_argv(self, session_argv: list[str]) -> list[str]
     def _arm_and_start_session(self, session_argv: list[str]) -> int | None
     def _send_keys_text(self, text: str) -> bool

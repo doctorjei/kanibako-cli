@@ -36,6 +36,7 @@ import shlex
 import signal
 import subprocess
 import sys
+import tempfile
 import time
 from collections.abc import Callable, Iterable, Mapping, MutableMapping
 from dataclasses import dataclass
@@ -64,6 +65,13 @@ TAKEOVER_HEADS_UP = (
     "[Session takeover - another surface is taking over this session; "
     "wind down and checkpoint now if you have work in progress]"
 )
+
+#: How the agent pane's process ended: EMPTY while it lives, else ``status=N signal=S``
+#: (one blank).  The pane probe and the ``pane-died`` hook both emit it.
+PANE_DEATH_FORMAT = "#{?pane_dead,status=#{pane_dead_status} signal=#{pane_dead_signal},}"
+
+#: PID 1's code when HOW the agent ended is unknown (sysexits ``EX_SOFTWARE``); never 0.
+UNDETERMINED_AGENT_EXIT = 70
 
 #: In-box read-only bind-mount ROOT of the HOST kanibako package.
 #: ⚑ Single-sourced HERE, the lowest module that needs it: ``commands/start.py``
@@ -475,6 +483,23 @@ def newcomer_pids(live_pids: set[int], own_pids: set[int]) -> set[int]:
     return live_pids - own_pids
 
 
+def agent_exit_code(death: str) -> int:
+    """PURE: the shell-convention code of a :data:`PANE_DEATH_FORMAT` record.
+
+    ``status=N`` ⇒ N; ``signal=S`` ⇒ 128+S; neither ⇒ :data:`UNDETERMINED_AGENT_EXIT`.
+    """
+    fields: dict[str, str] = {}
+    for field in death.split():
+        name, _, value = field.partition("=")
+        fields[name] = value
+    status, sig = fields.get("status", ""), fields.get("signal", "")
+    if status.isdigit():
+        return int(status)
+    if sig.isdigit():
+        return 128 + int(sig)
+    return UNDETERMINED_AGENT_EXIT
+
+
 # ---------------------------------------------------------------------------
 # Config.
 # ---------------------------------------------------------------------------
@@ -726,8 +751,12 @@ class BoxSupervisor:
         getpgid: _GroupOf = os.getpgid,
         getpgrp: _OwnGroup = os.getpgrp,
         reap: _Reaper = reap_zombie_children,
+        exit_record: str | None = None,
     ) -> None:
         self.config = config
+        # The ``pane-died`` hook's record (:meth:`_exit_hook`); ``None`` ⇒ a temp dir
+        # made on first arm.  ⚑ tmux single-quotes it, so it must contain no quote.
+        self._exit_record = exit_record
         self._run = run
         self._sleep = sleep
         # A fixed process-cmdline listing for snapshot_attach_state (tests skip /proc);
@@ -794,31 +823,59 @@ class BoxSupervisor:
             return None
         return proc.stdout
 
+    def _exit_record_path(self) -> str:
+        """The exit-record path, creating its private temp dir on first use."""
+        if self._exit_record is None:
+            self._exit_record = os.path.join(
+                tempfile.mkdtemp(prefix="kanibako-agent-exit-"), "record"
+            )
+        return self._exit_record
+
+    def _exit_hook(self) -> str:
+        """A teardown launch's ``pane-died`` hook: record the agent's end, then close its pane.
+
+        ``run-shell`` without ``-b`` blocks, so the pane closes only AFTER the record
+        exists; closing it spares an attached user the "Pane is dead" screen.
+        """
+        record = self._exit_record_path()
+        return (
+            f"run-shell 'echo {PANE_DEATH_FORMAT} >{record}.tmp && mv {record}.tmp {record}'"
+            " ; kill-pane"
+        )
+
+    def _session_arms(self) -> list[tuple[str, str, str]]:
+        """``(command, name, value)`` per tmux option/hook armed on the agent session."""
+        arms = [("set-option", "remain-on-exit", "on")]
+        if self.config.on_agent_exit == "teardown":
+            arms.append(("set-hook", "pane-died", self._exit_hook()))
+        return arms
+
     def _start_session_argv(self, session_argv: list[str]) -> list[str]:
-        """tmux argv that arms ``remain-on-exit``, starts the detached session, and SCOPES the arm."""
-        return [
-            "set-option", "-g", "remain-on-exit", "on", ";",
-            "new-session", "-d", "-s", self.config.session, "--", *session_argv, ";",
-            "set-option", "-t", self.config.session, "remain-on-exit", "on", ";",
-            "set-option", "-g", "remain-on-exit", "off",
-        ]
+        """ONE tmux argv: arm globally, start the session, scope each arm to it, unset globals.
+
+        One invocation, so an agent that exits at once still dies armed.
+        """
+        arms = self._session_arms()
+        argv: list[str] = []
+        for command, name, value in arms:
+            argv += [command, "-g", name, value, ";"]
+        argv += ["new-session", "-d", "-s", self.config.session, "--", *session_argv]
+        for command, name, value in arms:
+            argv += [";", command, "-t", self.config.session, name, value]
+        for command, name, _value in arms:
+            argv += [";", command, "-gu", name]
+        return argv
 
     def _arm_and_start_session(self, session_argv: list[str]) -> int | None:
-        """Arm ``remain-on-exit`` (NOT under the teardown policy) + start the session; return the rc."""
-        if self.config.on_agent_exit == "teardown":
-            # No remain-on-exit: the pane closes on exit, no dead pane ever.
-            return self._run_tmux(
-                ["new-session", "-d", "-s", self.config.session, "--", *session_argv]
-            )
+        """Start the session with :meth:`_session_arms` armed; return the rc."""
         if ";" not in session_argv:
             return self._run_tmux(self._start_session_argv(session_argv))
         rc = self._run_tmux(
             ["new-session", "-d", "-s", self.config.session, "--", *session_argv]
         )
         if rc == 0:
-            self._run_tmux(
-                ["set-option", "-t", self.config.session, "remain-on-exit", "on"]
-            )
+            for command, name, value in self._session_arms():
+                self._run_tmux([command, "-t", self.config.session, name, value])
         return rc
 
     def start_agent_session(self) -> bool:
@@ -860,20 +917,22 @@ class BoxSupervisor:
         """Send the 4b takeover heads-up (:data:`TAKEOVER_HEADS_UP`) to the CLI incumbent."""
         return self._send_keys_text(TAKEOVER_HEADS_UP)
 
-    def agent_pane_dead_status(self) -> int | None:
-        """Return the agent pane's DEAD exit status, or ``None`` when it is not dead."""
+    def agent_pane_exit_code(self) -> int | None:
+        """The DEAD agent pane's :func:`agent_exit_code`; ``None`` while it lives or is gone."""
         out = self._tmux_output(
-            ["display-message", "-p", "-t", self.config.session, "#{pane_dead_status}"]
+            ["display-message", "-p", "-t", self.config.session, PANE_DEATH_FORMAT]
         )
-        if out is None:
+        if out is None or not out.strip():
             return None
-        out = out.strip()
-        if not out:
+        return agent_exit_code(out)
+
+    def recorded_agent_exit(self) -> int | None:
+        """The :func:`agent_exit_code` the ``pane-died`` hook recorded, or ``None``."""
+        if self._exit_record is None:
             return None
         try:
-            return int(out)
-        except ValueError:
-            log.debug("agent_pane_dead_status: unparseable pane_dead_status %r", out)
+            return agent_exit_code(Path(self._exit_record).read_text())
+        except OSError:
             return None
 
     def capture_agent_output(self) -> str | None:
@@ -898,7 +957,7 @@ class BoxSupervisor:
         """True iff the agent session EXISTS and its pane is NOT dead."""
         if self._run_tmux(["has-session", "-t", self.config.session]) != 0:
             return False
-        return self.agent_pane_dead_status() is None
+        return self.agent_pane_exit_code() is None
 
     def _kill_process_group(self, pid: int, sig: int) -> bool:
         """Send *sig* to *pid*'s whole PROCESS GROUP (child-kill-with-parent); tolerant."""
@@ -1288,8 +1347,7 @@ class BoxSupervisor:
         # Startup runs BEFORE the per-tick guard, so guard it too — a raising probe must
         # not kill PID-1 before the loop begins; degrade to "no attach" and enter it.
         # ⚑ ``started`` = did the agent ever COME UP?  It separates a NEVER-STARTED
-        # failure (rc 1) from a ran-then-exited quit (rc 0) in the teardown branch.
-        # Defaults True so a startup hiccup prefers 0 — never fabricate a failure.
+        # failure (rc 1) from an agent that ran and ended in the teardown branch.
         started = True
         try:
             if not self.agent_session_alive():
@@ -1349,26 +1407,23 @@ class BoxSupervisor:
                                 )
                                 keepalive_announced = True
                         else:
-                            # ⚑ Truthful-as-possible code: honor a present dead-pane
-                            # status; else 0 if the agent CAME UP and exited (a clean
-                            # quit must not read as failure — a sole-agent CRASH also
-                            # lands here as 0 until pipe-pane restores crash codes);
-                            # else 1, it never came up.
-                            status = self.agent_pane_dead_status()
-                            if status is not None:
-                                code = status
-                            else:
-                                code = 0 if started else 1
+                            # ⚑ Pane FIRST, record SECOND: the ``pane-died`` hook
+                            # writes the record BEFORE it closes the pane, so a pane
+                            # already gone means its record is already written.
+                            code = self.agent_pane_exit_code()
+                            if code is None:
+                                code = self.recorded_agent_exit()
+                            if code is None:
+                                code = UNDETERMINED_AGENT_EXIT if started else 1
                             # Echo the captured pane so ``podman logs`` shows WHY the
-                            # agent died; under teardown the pane has closed, so this
-                            # normally captures nothing (best-effort).
+                            # agent died; the hook has normally closed the pane, so this
+                            # usually captures nothing (best-effort).
                             captured = self.capture_agent_output()
                             if captured:
                                 print(captured, flush=True)
                             log.info(
-                                "agent exited under teardown policy (dead_status=%s); "
+                                "agent exited under teardown policy; "
                                 "no other surface attached — closing box with rc %d",
-                                status,
                                 code,
                             )
                             return code
