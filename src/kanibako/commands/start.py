@@ -100,7 +100,7 @@ from kanibako.targets import assembly, credsync, resolve_target
 from kanibako.targets.assembly import BindingSourceError
 from kanibako.targets.base import _scrub_endpoint_userinfo, descriptor_floor, has_plugin
 from kanibako.utils import (
-    container_name_for, container_name_segments, legacy_container_names,
+    container_name_for, container_name_segments, legacy_container_names, literal_path,
     render_socket_identity, short_hash, unrenderable_box_name_refusal,
 )
 # The box-local AGENT LIVENESS MARKERS directory (per-PID).  Canonically owned by
@@ -1472,8 +1472,20 @@ def _resolve_existing_box(
     path-ify it under ``initialize=False`` (it raises :class:`ProjectError`),
     which we also read as "no box".
     """
+    proj = _probe_box(std, config, project_dir)
+    return proj if proj is not None and proj.name else None
+
+
+def _probe_box(
+    std: StandardPaths, config: BootstrapConfig, project_dir: str | None,
+) -> ProjectPaths | None:
+    """:func:`_resolve_existing_box`'s probe, NAMELESS results included.
+
+    ⚑ A nameless result is no box to launch, but it says WHERE kanibako looked —
+    :func:`_no_box_error` reads a nameless standalone's root from it.
+    """
     try:
-        proj = resolve_box_target(
+        return resolve_box_target(
             std, config, project_dir,
             initialize=False, register=True, warn=False,
         )
@@ -1487,17 +1499,41 @@ def _resolve_existing_box(
         # project spec — is intentionally NOT caught here: it carries its own
         # actionable message and must surface unchanged.)
         return None
-    return proj if proj.name else None
 
 
 def _broken_standalone_error(std: StandardPaths, project_dir: str) -> str | None:
-    """The BROKEN-STANDALONE refusal for *project_dir*, or ``None``.
+    """The BROKEN-STANDALONE refusal for a REGISTERED box *project_dir* names, or ``None``.
 
-    A standalone box whose ``box_data/`` was deleted keeps its REGISTRY entry but
-    resolves NAMELESS, so the explicit-create gate reads it as "no box at all" — the
-    one state :func:`_unbuilt_box_error` structurally cannot see.  Without this
-    branch the generic "no box" message suggests ``kanibako create <name>``, which
-    creates a DIRECTORY literally named ``<name>`` in the CWD.
+    *project_dir* is matched as a registered NAME, then as a registered ROOT taken
+    literally (links unfollowed, as the registry stores it).  The refusal itself is
+    :func:`_standalone_store_error`'s.
+    """
+    from kanibako.project import registry_store
+
+    entries = registry_store.load_standalone(std.registry)
+    # ⚑ Case-blind (spec §0), and *name* becomes the STORED spelling — it keys the
+    # root lookup below.
+    name: str | None = None
+    if designation_route(project_dir, name_first=True) is DesignationRoute.NAME:
+        name = find_identifier(project_dir, entries)
+    if name is None:
+        candidate = Path(literal_path(project_dir))
+        if candidate.exists():
+            name = registry_store.standalone_name_for_root(std.registry, candidate)
+    if name is None:
+        return None
+    return _standalone_store_error(std, Path(entries[name]), name)
+
+
+def _standalone_store_error(std: StandardPaths, root: Path, name: str | None) -> str | None:
+    """The refusal for a standalone box at *root* that resolves NAMELESS, or ``None``.
+
+    *name* is its registry name, or ``None`` for an UNREGISTERED root, whose own
+    ``registry: null`` is what made the probe standalone.  Such a box reads as "no
+    box at all" to the explicit-create gate — the one state :func:`_unbuilt_box_error`
+    structurally cannot see.  Without this refusal the generic "no box" message
+    suggests ``kanibako create <spec>``, which makes a PRIMARY box (or a directory
+    literally named ``<name>`` in the CWD).
 
     ⚑ TWO QUESTIONS decide BROKEN, and the cure branches on WHICH one fails: is
     the DEFAULT ``box_data/`` leaf gone, and is the KEY-RESOLVED store missing?
@@ -1514,25 +1550,8 @@ def _broken_standalone_error(std: StandardPaths, project_dir: str) -> str | None
 
     See ``llm-docs/kanibako/commands/start.py.md`` for the two grammars and the cure.
     """
-    from kanibako.project import registry_store
     from kanibako.settings.paths import BoxMode, STANDALONE_META_DIR
 
-    entries = registry_store.load_standalone(std.registry)
-    # ⚑ Case-blind (spec §0), and *name* becomes the STORED spelling — it keys the
-    # root lookup below.
-    name: str | None = None
-    if designation_route(project_dir, name_first=True) is DesignationRoute.NAME:
-        name = find_identifier(project_dir, entries)
-    if name is None:
-        # Not a registered NAME — try the ROOT PATH grammar (``start <root>``).
-        candidate = Path(project_dir)
-        if candidate.exists():
-            name = registry_store.standalone_name_for_root(
-                std.registry, candidate.resolve(),
-            )
-    if name is None:
-        return None
-    root = Path(entries[name])
     # ⚑ Asked FIRST: without the marker the root is no standalone, so every store
     # question below would answer for a box kanibako does not see.
     # A file that will not parse is not asked: the arms below report its own error.
@@ -1540,7 +1559,7 @@ def _broken_standalone_error(std: StandardPaths, project_dir: str) -> str | None
     from kanibako.settings.config_io import load_doc
 
     marker_file = root / WORKSET_META_FILE
-    if root.is_dir() and not stores_standalone_registry_null(root):
+    if name is not None and root.is_dir() and not stores_standalone_registry_null(root):
         try:
             load_doc(marker_file)
         except ConfigError:
@@ -1565,17 +1584,17 @@ def _broken_standalone_error(std: StandardPaths, project_dir: str) -> str | None
     from kanibako.project.workset import load_workset_settings_doc, resolve_workset_boxes
     from kanibako.settings.settings_resolve import SettingsError
 
+    who = (f"{root} is an unregistered standalone box" if name is None
+           else f"box '{name}' is registered as a standalone box at {root}")
     gone_head = (
-        f"Error: box '{name}' is registered as a standalone box at {root}, but "
-        f"its box data ({default_leaf}) is gone.\n"
+        f"Error: {who}, but its box data ({default_leaf}) is gone.\n"
         "  A launch will not rebuild it — rebuilding a box is a repair, and a "
         "repair has to be asked for by name.\n"
     )
     # ⚑ The second question's head.  The leaf is HERE, so no line may read as if it
     # were gone; the data is reachable by hand and only the KEY is wrong.
     here_head = (
-        f"Error: box '{name}' is registered as a standalone box at {root}, and its "
-        f"box data is at {default_leaf}, but this launch cannot reach it: "
+        f"Error: {who}, and its box data is at {default_leaf}, but this launch cannot reach it: "
         "workset.boxes does not resolve to that directory.\n"
         "  A launch will not repair that on its own, and a repair has to be asked "
         "for by name.\n"
@@ -1599,7 +1618,13 @@ def _broken_standalone_error(std: StandardPaths, project_dir: str) -> str | None
     if boxes != default_leaf:
         return head + _store_move_cure(None, boxes)
     # By root, no ``--name``: a stored name may break the rule; create refuses --name.
+    # ``create`` keeps the root's stored kuid, so the rebuilt box has its old name.
     q_root = shlex.quote(str(root))
+    if name is None:
+        return head + (
+            f"  Rebuild it:  kanibako create --standalone {q_root}\n"
+            "  (box_data/ is already gone; your workspace/ and vault/ are not touched.)"
+        )
     return head + (
         f"  Rebuild it:  kanibako box rm {q_root} && kanibako create "
         f"--standalone --register {q_root}\n"
@@ -1701,7 +1726,7 @@ def _unregistered_pending_create_error(
 
 
 def _no_box_error(project_dir: str | None, std: StandardPaths | None = None,
-                  verb: str = "start") -> str:
+                  verb: str = "start", *, probe: ProjectPaths | None = None) -> str:
     """The launch-time "no box; run create" error for an ABSENT box target.
 
     ``<path>`` is the resolved target we looked for a box at; the suggested
@@ -1731,7 +1756,20 @@ def _no_box_error(project_dir: str | None, std: StandardPaths | None = None,
     reached registration has no box to name, so it lands here too — but
     ``create --recover`` is what finishes it, not ``create``.  See
     :func:`_unregistered_pending_create_error`, which owns that message.
+
+    ⚑ *probe* is the launch gate's nameless resolve (:func:`_probe_box`).  A
+    STANDALONE one names the root kanibako found — by path, by link, or by walking
+    up from the cwd — registered or not, and :func:`_standalone_store_error` owns
+    its message: a plain ``create`` there would put a PRIMARY box over it.
     """
+    if std is not None and probe is not None and probe.mode is BoxMode.standalone:
+        from kanibako.project import registry_store
+
+        root = probe.metadata_path
+        stored = _standalone_store_error(
+            std, root, registry_store.standalone_name_for_root(std.registry, root))
+        if stored is not None:
+            return stored
     if project_dir and std is not None:
         broken = _broken_standalone_error(std, project_dir)
         if broken is not None:
@@ -1756,6 +1794,24 @@ def _no_box_error(project_dir: str | None, std: StandardPaths | None = None,
             # ``./<name>`` and put a PRIMARY box in it, which is the harm this
             # function's own contract already names.  ⚑ The root cannot be known
             # from a name, so that cure carries a PLACEHOLDER and does not paste.
+            # ⚑ A standalone name is ``<kuid>_<leaf>``, so the leaf alone is no
+            # name; a registered box with this leaf is named in full instead.
+            if std is not None:
+                from kanibako.launch.box_identity import standalone_names_with_leaf
+                from kanibako.project import registry_store
+
+                entries = registry_store.load_standalone(std.registry)
+                held = standalone_names_with_leaf(project_dir, entries)
+                if held:
+                    return (
+                        f"Error: no box is named {project_dir}.\n"
+                        "  A standalone box's name starts with its kuid, so its "
+                        "directory name alone does not name it.\n"
+                        + "".join(f"  Registered at {entries[n]}:  kanibako {verb} "
+                                  f"{shlex.quote(n)}\n" for n in held)
+                        + f"  Otherwise create a new box:  kanibako create "
+                        f"{shlex.quote(project_dir)}"
+                    )
             return (
                 f"Error: no box at {project_dir}.\n"
                 "  A bare name is resolved through the registry, and nothing "
@@ -2918,9 +2974,10 @@ def _run_container(
     # cwd.  This single chokepoint covers every launch route (``start`` / bare
     # ``kanibako`` / ``code`` → start_detached → here / ``shell``).  Auto-START of
     # an EXISTING box is UNCHANGED — the probe passes and the flow continues.
-    _existing = _resolve_existing_box(std, config, project_dir)
+    _probe = _probe_box(std, config, project_dir)
+    _existing = _probe if _probe is not None and _probe.name else None
     if _existing is None:
-        print(_no_box_error(project_dir, std, verb), file=sys.stderr)
+        print(_no_box_error(project_dir, std, verb, probe=_probe), file=sys.stderr)
         return 1
     _interrupted = _pending_create_entry(std, _existing)
     if _interrupted is not None:
