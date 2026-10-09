@@ -367,10 +367,11 @@ def _merge_workspace(src: Path, dst: Path, force: bool, *,
 
 
 def _repoint_duplicated_links(source: Path, dest: Path, std, config, *, bare: bool) -> None:
-    """Repoint the source box's directly mounted links in the duplicate at *dest*.
+    """Repoint, in the duplicate at *dest*, each source link the duplicate itself mounts.
 
-    Run after the copy: the source is untouched, so its plan is the same either side.
-    Vaults are left out because a duplicate does not carry them, and a *bare* duplicate's
+    Run after the copy: the source is untouched, so its plan is the same either side, and
+    a link counts only where its copy is one of the duplicate's own bind sources.  Vaults
+    are left out because a duplicate does not carry them, and a *bare* duplicate's
     workspace because it was not copied.
     """
     from kanibako.commands.box._lifecycle import (
@@ -389,7 +390,7 @@ def _repoint_duplicated_links(source: Path, dest: Path, std, config, *, bare: bo
     if not bare:
         pairs.append((src.workspace_path, dst.workspace_path))
     links = plan_box_mounted_links(src.name, src.bind_sources, [old for old, _new in pairs])
-    repoint_box_mounted_links(links, dict(pairs))
+    repoint_box_mounted_links(links, dict(pairs), dst)
 
 
 def _source_authored_vault(src_proj) -> bool:

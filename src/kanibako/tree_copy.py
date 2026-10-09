@@ -218,7 +218,7 @@ def plan_mounted_links(sources: Collection[str], roots: Iterable[Path]) -> list[
     resolved = [(root, os.path.realpath(root)) for root in roots]
     planned: list[MountedLink] = []
     for source in sorted(sources):
-        link = os.path.join(os.path.realpath(os.path.dirname(source)), os.path.basename(source))
+        link = _host_path(source)
         if not os.path.islink(link):
             continue
         text = os.readlink(link)
@@ -240,20 +240,24 @@ def plan_mounted_links(sources: Collection[str], roots: Iterable[Path]) -> list[
 
 
 def repoint_mounted_links(
-    links: Iterable[MountedLink], relocated: Mapping[Path, Path],
+    links: Iterable[MountedLink], relocated: Mapping[Path, Path], sources: Collection[str],
 ) -> list[tuple[str, str]]:
     """Rewrite each landed link in *links* so it names its host target from where it lies.
 
-    *relocated* maps each planned root to where it landed.  A target inside a carried tree
-    follows that tree to its landing.  Returns ``(link, reason)`` for each link that could
-    not be rewritten; the rest are rewritten.
+    *relocated* maps each planned root to where it landed, and *sources* are the landed
+    box's bind sources: a link whose landed path is not one of them is not mounted there
+    and keeps its text.  A target inside a carried tree follows that tree to its landing.
+    Returns ``(link, reason)`` for each link that could not be rewritten.
     """
+    mounted = {_host_path(source) for source in sources}
     failed: list[tuple[str, str]] = []
     for link in links:
         landed_root = relocated.get(link.root)
         if landed_root is None:
             continue
         landed = os.path.join(str(landed_root), link.rel)
+        if _host_path(landed) not in mounted:
+            continue
         try:
             if not os.path.islink(landed) or os.readlink(landed) != link.text:
                 continue
@@ -264,6 +268,11 @@ def repoint_mounted_links(
         except OSError as err:
             failed.append((landed, err.strerror or str(err)))
     return failed
+
+
+def _host_path(path: str) -> str:
+    """*path* with its parent resolved and its last part kept, so a link stays itself."""
+    return os.path.join(os.path.realpath(os.path.dirname(path)), os.path.basename(path))
 
 
 def _is_under(path: str, root: Path) -> bool:

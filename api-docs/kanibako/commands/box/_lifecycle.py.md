@@ -26,7 +26,7 @@ def resolve_lifecycle_target(old: str | None, std: StandardPaths, config: Bootst
 def recorded_workspace_for(ws: '_WorksetLike', box_name: str, resolved: Path | None) -> Path | None
 def box_bind_sources_or_none(std: StandardPaths, proj: ProjectPaths) -> frozenset[str] | None
 def plan_box_mounted_links(name: str, bind_sources: frozenset[str] | None, trees: Collection[Path | None]) -> list[MountedLink]
-def repoint_box_mounted_links(links: list[MountedLink], relocated: Mapping[Path, Path]) -> None
+def repoint_box_mounted_links(links: list[MountedLink], relocated: Mapping[Path, Path], landed: ProjectState) -> None
 def copy_into_workset(ws: Workset, proj_name: str, metadata_path: Path, shell_path: Path, source_path: Path, source_mode: BoxMode, *, copy_workspace: bool, std: StandardPaths) -> None
 def execute_lifecycle(state: ProjectState, spec: TargetSpec, std: StandardPaths, config: BootstrapConfig | None=None, *, force: bool=False, confirm: Callable[[], bool] | None=None) -> ProjectState
 def run_remap(args) -> int
@@ -44,6 +44,7 @@ def _resolve_primary_state(root: Path, std: StandardPaths, config: BootstrapConf
 def _default_state_from_meta(workspace: Path, std: StandardPaths) -> ProjectState | None
 def _resolve_workset_state(raw_path: Path, std: StandardPaths, config: BootstrapConfig) -> ProjectState
 def _state_from_paths(owner: str, proj: ProjectPaths, *, std: StandardPaths, ws: Workset | None, early: EarlyScope, is_external: bool=False, workspace: Path | None=None) -> ProjectState
+def _landed_bind_sources(landed: ProjectState, std: StandardPaths, config: BootstrapConfig) -> frozenset[str] | None
 def _box_trees(state: ProjectState) -> tuple[Path | None, ...]
 def _workspace_copy_ignore(metadata_root: Path, copied_root: Path, *, mode: BoxMode, early: EarlyScope) -> Callable[[str, list[str]], set[str]]
 def _resolve_target_workset(name: str, std: StandardPaths) -> Workset
@@ -119,7 +120,7 @@ class ProjectState:
     ws: Workset | None = None
     enable_vault: bool = True
     box_authored_vault: bool = True
-    bind_sources: frozenset[str] | None = frozenset()
+    bind_sources: frozenset[str] | None = None
 
 @dataclass
 class TargetSpec:

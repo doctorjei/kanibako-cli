@@ -171,3 +171,68 @@ class TestUnresolvedBindingsCarryLinksVerbatim:
         for name, text in texts.items():
             assert os.readlink(dest / name) == text
         assert "could not resolve the bindings of" in capsys.readouterr().err
+
+
+class TestOnlyTheLandedBoxsSourcesAreRepointed:
+    """A link is repointed only where its LANDED path is a bind source of the LANDED box."""
+
+    def _with_fixed_source(self, config_file, tmp_home):
+        """A ``{meta.box.workspace}`` source plus a fixed absolute one that stays put."""
+        std, project_dir, texts = _primary(config_file, tmp_home)
+        fixed_text = os.path.relpath(tmp_home / "outside", project_dir)
+        (project_dir / "fixed").symlink_to(fixed_text)
+        box_dir = resolve_project(
+            std, load_config(config_file), project_dir=str(project_dir)).metadata_path
+        _bind(box_dir, "{meta.box.workspace}/mounted", str(project_dir / "fixed"))
+        return project_dir, texts, fixed_text
+
+    def test_a_duplicate_does_not_repoint_a_link_only_the_source_mounts(
+        self, config_file, tmp_home, credentials_dir,
+    ):
+        project_dir, texts, fixed_text = self._with_fixed_source(config_file, tmp_home)
+        dest = tmp_home / "d" / "e" / "twin"
+        dest.parent.mkdir(parents=True)
+
+        rc = run_duplicate(argparse.Namespace(
+            source_path=str(project_dir), new_path=str(dest), to_mode=None,
+            bare=False, force=True, box=None, project_name=None))
+
+        assert rc == 0
+        assert os.readlink(dest / "fixed") == fixed_text
+        assert os.readlink(dest / "mounted") == os.path.relpath(
+            tmp_home / "outside", os.path.realpath(dest))
+        assert os.readlink(project_dir / "fixed") == fixed_text
+
+    def test_a_move_whose_binding_names_the_old_path_keeps_the_text(
+        self, config_file, tmp_home, credentials_dir,
+    ):
+        project_dir, _texts, fixed_text = self._with_fixed_source(config_file, tmp_home)
+        dest = tmp_home / "a" / "b" / "moved"
+        dest.parent.mkdir(parents=True)
+
+        assert run_move(_move_args(project_dir, dest)) == 0
+
+        assert os.readlink(dest / "fixed") == fixed_text
+        assert os.readlink(dest / "mounted") == os.path.relpath(
+            tmp_home / "outside", os.path.realpath(dest))
+
+    def test_a_landed_box_whose_sources_are_unknown_keeps_the_text(self, tmp_path, capsys):
+        """Unknown (``None``) is never "no binds": nothing is rewritten, and a Note says so."""
+        from kanibako.commands.box._lifecycle import ProjectState, repoint_box_mounted_links
+        from kanibako.settings.paths import BoxMode
+        from kanibako.tree_copy import copy_tree_keeping_links, plan_mounted_links
+
+        src, dst = tmp_path / "src", tmp_path / "a" / "dst"
+        src.mkdir()
+        (src / "m").symlink_to("../outside")
+        plan = plan_mounted_links([str(src / "m")], [src])
+        copy_tree_keeping_links(src, dst)
+        landed = ProjectState(
+            owner="primary", mode=BoxMode.primary, name="dst", workspace_path=dst,
+            metadata_path=dst, shell_path=dst, vault_ro=None, vault_rw=None)
+
+        repoint_box_mounted_links(plan, {src: dst}, landed)
+
+        assert landed.bind_sources is None
+        assert os.readlink(dst / "m") == "../outside"
+        assert "could not resolve the bindings of 'dst' where it landed" in capsys.readouterr().err

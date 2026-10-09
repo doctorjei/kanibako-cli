@@ -605,22 +605,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   directory became a full copy of that directory, a link to a file became a copy of the file, and
   a dangling link stopped the copy — for `box move` and `box convert`, the whole relocation. Each
   link is now copied with exactly the text it had, absolute or relative, dangling or not, and a
-  linked directory is never entered. The exception is a relative link that is itself the source of
-  one of the box's bind mounts: the host resolves it, so `box move`, `box convert` and
-  `box duplicate` rewrite its text to reach the same host path from its new place. When the box's
-  settings do not resolve, every link keeps its text and a `Note:` says so. `box vault restore` puts links back the same way, as does a
-  vault snapshot that falls back to a plain copy because `rsync` is missing or failed (the `cp`
-  and `rsync` snapshots already kept them). `box extract` keeps an absolute symlink, or one
-  leading out of the archive, as written; in 1.7.2 and 1.8.0-rc2 one such link failed the whole
-  extract with `Error: Failed to extract archive`. It still refuses a hard link that leads out of
-  the archive. `box duplicate --force` onto an existing directory no longer writes through a link
-  already there, and never copies a file into a directory of the same name; a link from the source
-  replaces an existing file or link of its name, never an existing directory. An entry it cannot
-  copy is reported: `box duplicate` copies everything else, then stops with `Error: Could not copy
-  the workspace <src> to <dst>; …` and names the entries, exit code 1. In 1.7.2 and 1.8.0-rc2 a
-  failed workspace copy ended in a Python traceback, except a duplicate into a primary box from
-  another mode, which printed the raw list of failures. See `MIGRATION.md` § *2.88 `box move`,
-  `convert`, `duplicate` and `extract` copy a symlink as a symlink*.
+  linked directory is never entered. The exception is a relative link that, where it lands, is
+  itself the source of one of the box's bind mounts: the host resolves it, so `box move`,
+  `box convert`, and `box duplicate` rewrite its text to reach the same host path from its new
+  place. When the box's settings do not resolve, every link keeps its text and a `Note:` says so.
+  `box vault restore` puts links back the same way, as does a vault snapshot that falls back to a
+  plain copy because `rsync` is missing or failed (the `cp` and `rsync` snapshots already kept
+  them). `box extract` keeps an absolute symlink, or one leading out of the archive, as written; in
+  1.7.2 and 1.8.0-rc2 one such link failed the whole extract with `Error: Failed to extract
+  archive`. It still refuses a hard link that leads out of the archive. `box duplicate --force` onto
+  an existing directory no longer writes through a link already there, and never copies a file into
+  a directory of the same name; a link from the source replaces an existing file or link of its
+  name, never an existing directory. An entry it cannot copy is reported: `box duplicate` copies
+  everything else, then stops with `Error: Could not copy the workspace <src> to <dst>; …` and names
+  the entries, exit code 1. In 1.7.2 and 1.8.0-rc2 a failed workspace copy ended in a Python
+  traceback, except a duplicate into a primary box from another mode, which printed the raw list of
+  failures. See `MIGRATION.md` § *2.88 `box move`, `convert`, `duplicate` and `extract` copy a
+  symlink as a symlink*.
 
 - **`box duplicate --to named` refuses an occupied destination without `--force`.** An existing
   `workspaces/<name>` (unless `--bare`) or `boxes/<name>` in the working set now stops the

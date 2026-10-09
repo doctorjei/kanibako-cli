@@ -415,10 +415,15 @@ class TestMountedLinks:
         copy_tree_keeping_links(src, dst)
         return plan, src, outside, dst
 
+    @staticmethod
+    def _landed(dst, *names):
+        """The landed box's bind sources: the same links, now under *dst*."""
+        return [str(dst / name) for name in names]
+
     def test_a_relative_source_names_its_host_target_from_the_landing(self, layout):
         plan, src, outside, dst = self._moved(layout, {"m": "../../outside/big.txt"})
 
-        assert repoint_mounted_links(plan, {src: dst}) == []
+        assert repoint_mounted_links(plan, {src: dst}, self._landed(dst, "m")) == []
 
         assert (dst / "m").read_text() == "outside data"
         assert os.readlink(dst / "m") == os.path.relpath(outside / "big.txt", dst)
@@ -437,7 +442,7 @@ class TestMountedLinks:
     def test_a_target_inside_the_carried_tree_follows_it(self, layout):
         plan, src, _outside, dst = self._moved(layout, {"m": "sub/inner.txt"})
 
-        repoint_mounted_links(plan, {src: dst})
+        repoint_mounted_links(plan, {src: dst}, self._landed(dst, "m"))
 
         assert os.readlink(dst / "m") == "sub/inner.txt"
 
@@ -446,13 +451,21 @@ class TestMountedLinks:
         os.unlink(dst / "m")
         (dst / "m").symlink_to("elsewhere")
 
-        repoint_mounted_links(plan, {src: dst})
+        repoint_mounted_links(plan, {src: dst}, self._landed(dst, "m"))
 
         assert os.readlink(dst / "m") == "elsewhere"
 
     def test_a_dangling_source_keeps_naming_the_same_host_path(self, layout):
         plan, src, outside, dst = self._moved(layout, {"m": "../../outside/no-such"})
 
-        repoint_mounted_links(plan, {src: dst})
+        repoint_mounted_links(plan, {src: dst}, self._landed(dst, "m"))
 
         assert os.path.realpath(dst / "m") == str(outside / "no-such")
+
+    def test_a_landed_link_the_landed_box_does_not_mount_keeps_its_text(self, layout):
+        """The source's binding names the OLD path, so the copy is mounted by nothing."""
+        plan, src, _outside, dst = self._moved(layout, {"m": "../../outside/big.txt"})
+
+        repoint_mounted_links(plan, {src: dst}, [str(src / "m")])
+
+        assert os.readlink(dst / "m") == "../../outside/big.txt"
