@@ -300,11 +300,10 @@ system-design § "Detection & import" detection marker,
   has to land while the box is still whole. Resolving mid-teardown left a half-purged box behind
   the traceback. An arm outside `root` is printed as `Note: left the vault at …` and left alone.
 
-`_purge_dir` is a thin alias for `kanibako.runtime.container.remove_box_tree`, which is where the
-body lives so EVERY box-tree deleter can reuse it — `extract`, `move`, `duplicate` and `purge` all
-need the same `podman unshare` escalation, and since J-7 they need it on every box (the canon
-skeleton is root-owned by construction, not only when an agent happened to write as root). The
-name is kept because `rm`'s call sites and tests read against it.
+A purge step is removed by `kanibako.runtime.container.remove_path`: a link loses only the link,
+and a folder goes through `remove_box_tree`, which EVERY box-tree deleter shares — `extract`,
+`move`, `duplicate` and `purge` all need the same `podman unshare` escalation, and since J-7 they
+need it on every box (the canon skeleton is root-owned by construction).
 
 ## The listing
 
@@ -565,12 +564,6 @@ Normalize a path (Path or str, possibly None) for row-identity keys.
 
 ```_list_orphans(projects: list, ws_data: list, std, quiet: bool) -> int```
 List only orphaned projects (the `--orphan` handler).
-
-```_purge_dir(target: Path) -> bool```
-Thin alias for `kanibako.runtime.container.remove_box_tree`, kept for its callers.
-
-Removes *target*, tolerating files a rootless container created. See "Purge safety" above for why
-the body lives in `runtime.container` and why the alias survives.
 
 ```_assert_deletable(path, *, must_be_under: Path | None = None) -> Path```
 ⚑ DESTRUCTIVE-SAFETY gate: validate *path* is safe to `rm -rf`, return it resolved.

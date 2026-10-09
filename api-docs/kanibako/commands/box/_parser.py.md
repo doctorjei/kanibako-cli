@@ -46,7 +46,6 @@ def _claim_create_entry(std, probe, state: dict, *, primary: bool) -> 'dict | No
 def _recovered_standalone_name(std, proj, supplied: str) -> str
 def _create_target(args: argparse.Namespace) -> Path
 def _list_orphans(projects: list, ws_data: list, std, quiet: bool) -> int
-def _purge_dir(target: Path) -> bool
 def _assert_deletable(path, *, must_be_under: Path | None=None) -> Path
 def _primary_purge_plan(std, name: str, metadata_dir: Path) -> list[_PurgeStep]
 def _standalone_purge_plan(root: Path, registered_name: str, *, std: StandardPaths, early: EarlyScope) -> list[_PurgeStep]
