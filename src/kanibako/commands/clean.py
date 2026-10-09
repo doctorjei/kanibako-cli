@@ -26,6 +26,7 @@ from kanibako.project.workset import purge_box_logs
 from kanibako.channels.channels import workset_name_token, workset_root
 from kanibako.settings.workset_dirkeys import EarlyScope, refuse_inherited_per_owner
 from kanibako.settings.messages import MSG_DONE, STATUS_NO_DATA
+from kanibako.snapshots import box_snapshot_store
 
 
 def add_parser(subparsers: argparse._SubParsersAction) -> None:
@@ -141,6 +142,19 @@ def _warn_undeleted(path) -> None:
     )
 
 
+def _resolve_snapshot_store(vault_rw, box_name: str | None):
+    """*box_name*'s own store under the base *vault_rw* shares; ``None`` with no vault."""
+    if vault_rw is None or not box_name:
+        return None
+    return box_snapshot_store(vault_rw, box_name)
+
+
+def _remove_snapshot_store(store) -> None:
+    """Delete the box's OWN store — never the shared base, nor ``.unsorted``."""
+    if store is not None and not remove_path(store):
+        _warn_undeleted(store)
+
+
 def _purge_one(std, config, path: str, *, force: bool) -> int:
     """Purge session data for a single project."""
     proj = resolve_any_project(std, config, project_dir=path, initialize=False)
@@ -159,6 +173,9 @@ def _purge_one(std, config, path: str, *, force: bool) -> int:
 
     refuse_inherited_per_owner(
         workset_root(proj, std), EarlyScope(std.early_system, workset_name_token(proj)))
+
+    # Resolve before the question: a purge that leaves the store hands it on.
+    snapshot_store = _resolve_snapshot_store(proj.vault_rw_path, proj.name)
 
     if not force:
         print(f"Project: {proj.project_path or '<None>'}")
@@ -183,6 +200,7 @@ def _purge_one(std, config, path: str, *, force: bool) -> int:
         # metadata_path is the project ROOT — remove ONLY the in-tree kanibako artifacts.
         # ⚑ THE ROOT FILE GOES ONLY WITH THE STORE: a retained store leaves the box whole.
         from kanibako.project.workset import (
+            _strictly_in_tree,
             report_retained_canon,
             report_retained_vaults,
             standalone_canon_teardown,
@@ -213,6 +231,9 @@ def _purge_one(std, config, path: str, *, force: bool) -> int:
         for vault_dir in removable_vault:
             if not remove_path(vault_dir):
                 _warn_undeleted(vault_dir)
+        # The store sits beside the vault arms, so the removals above miss it.
+        if snapshot_store is not None and _strictly_in_tree(snapshot_store, root):
+            _remove_snapshot_store(snapshot_store)
         report_retained_vaults(root, retained_vault)
     else:
         if not remove_box_tree(proj.metadata_path):
@@ -223,6 +244,7 @@ def _purge_one(std, config, path: str, *, force: bool) -> int:
             for box_vault in (proj.vault_ro_path, proj.vault_rw_path):
                 if box_vault is not None and box_vault.is_dir():
                     shutil.rmtree(box_vault, ignore_errors=True)
+        _remove_snapshot_store(snapshot_store)
 
     # M2 (registry hygiene): the box metadata is gone, so drop its registry
     # entry too — otherwise registry.{projects,standalone} keeps a dangling
@@ -292,6 +314,7 @@ def _purge_all(std, config, *, force: bool) -> int:
         for vault_dir in (vault_ro, vault_rw):
             if vault_dir is not None and vault_dir.is_dir():
                 shutil.rmtree(vault_dir, ignore_errors=True)
+        _remove_snapshot_store(_resolve_snapshot_store(vault_rw, metadata_path.name))
 
         # The per-box logs, under the PRIMARY workset's resolved ``workset.logs``
         # (box == metadata dir name).
@@ -309,6 +332,7 @@ def _purge_all(std, config, *, force: bool) -> int:
         # ⚑ Hoisted, and RESOLVED: both properties read the root workset.yaml, so one
         # read per workset keeps every member of it judged against the same document.
         boxes_dir, logs_dir = ws.projects_dir, ws.logs_dir
+        vault_rw_base = ws.vault_rw_dir
         for proj_name, status in project_list:
             if status == STATUS_NO_DATA:
                 continue
@@ -322,6 +346,9 @@ def _purge_all(std, config, *, force: bool) -> int:
                 # box's helpers.jsonl mount is bound from; the default leaf is
                 # ``<root>/logs``, not the box's own directory.
                 purge_box_logs(std, logs_dir, proj_name, workset_root=ws.root)
+                _remove_snapshot_store(_resolve_snapshot_store(
+                    None if vault_rw_base is None else vault_rw_base / proj_name,
+                    proj_name))
                 print(MSG_DONE)
                 removed += 1
 
