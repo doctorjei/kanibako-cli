@@ -104,8 +104,9 @@ def _swept(child: Path, artifacts: list[tuple[str, Path, bool]]) -> bool
 def _holds_anything(path: Path) -> bool
 def _artifact_claiming(child: Path, artifacts: list[tuple[str, Path, bool]]) -> tuple[str, Path, bool] | None
 def _consolidate_workspace_subdir(root: Path, workspace_subdir: Path, unwind: _Unwind, *, early: EarlyScope) -> None
-def _undo_consolidate(src_dir: Path, dest_dir: Path, moved: list[Path]) -> None
-def _move_entry(src: Path, dst: Path) -> None
+def _undo_consolidate(src_dir: Path, dest_dir: Path, moved: list[Path], *, root: Path) -> None
+def _move_entry(src: Path, dst: Path, *, root: Path) -> None
+def _rename_escalated(src: Path, dst: Path, root: Path) -> bool
 def _prune_empty_dirs(path: Path, above: Path) -> None
 def _hold_root_gitignore(root: Path, workspace: Path, unwind: _Unwind) -> Callable[[], object] | None
 def _unconsolidate_workspace_subdir(workspace_subdir: Path, root: Path, unwind: _Unwind) -> None

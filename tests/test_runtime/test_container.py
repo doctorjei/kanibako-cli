@@ -246,6 +246,53 @@ class TestUnshareRm:
             m.assert_not_called()
 
 
+class TestUnshareRename:
+    """``unshare_rename`` is ``rename(2)`` run as namespace root: never ``mv``, never a copy."""
+
+    def test_argv_is_an_in_namespace_os_rename(self):
+        import sys
+        from unittest.mock import MagicMock
+        rt = ContainerRuntime(command="/usr/bin/podman")
+        with patch("kanibako.runtime.container.subprocess.run") as m:
+            m.return_value = MagicMock(returncode=0)
+            assert rt.unshare_rename(Path("/r/a"), Path("/r/w/a")) is True
+        assert m.call_args[0][0] == [
+            "/usr/bin/podman", "unshare", sys.executable, "-I", "-c",
+            "import os,sys; os.rename(*sys.argv[1:])", "/r/a", "/r/w/a",
+        ]
+
+    def test_the_argv_body_renames_and_never_copies(self, tmp_path):
+        import subprocess
+        from unittest.mock import MagicMock
+        rt = ContainerRuntime(command="/usr/bin/podman")
+        with patch("kanibako.runtime.container.subprocess.run") as m:
+            m.return_value = MagicMock(returncode=0)
+            rt.unshare_rename(tmp_path / "a", tmp_path / "b")
+        body = m.call_args[0][0][2:]
+        (tmp_path / "a").mkdir()
+        (tmp_path / "a" / "f").write_text("x")
+        ino = (tmp_path / "a").stat().st_ino
+        assert subprocess.run(body).returncode == 0
+        assert not (tmp_path / "a").exists()
+        assert (tmp_path / "b").stat().st_ino == ino
+        (tmp_path / "c").mkdir()
+        (tmp_path / "other").mkdir()
+        cross = [*body[:-2], str(tmp_path / "c"), str(tmp_path / "other" / "x" / "c")]
+        assert subprocess.run(cross, capture_output=True).returncode != 0
+        assert (tmp_path / "c").is_dir()
+
+    def test_false_on_nonzero_and_on_docker(self):
+        from unittest.mock import MagicMock
+        rt = ContainerRuntime(command="/usr/bin/podman")
+        with patch("kanibako.runtime.container.subprocess.run") as m:
+            m.return_value = MagicMock(returncode=1)
+            assert rt.unshare_rename(Path("/r/a"), Path("/r/b")) is False
+        rt = ContainerRuntime(command="/usr/bin/docker")
+        with patch("kanibako.runtime.container.subprocess.run") as m:
+            assert rt.unshare_rename(Path("/r/a"), Path("/r/b")) is False
+            m.assert_not_called()
+
+
 @pytest.mark.no_unshare_sim
 class TestUnshareChownChmod:
     """``unshare_chown`` / ``unshare_chmod`` — the WRITE-side counterparts of
@@ -573,6 +620,26 @@ class TestRemoveBoxTree:
             mock_rt.return_value.unshare_rm.return_value = False
             assert remove_box_tree(d) is False
             assert d.exists()
+
+    def test_a_symlink_root_loses_only_the_link(self, tmp_path):
+        """R1: the link is unlinked; nothing inside its target is chmodded or removed."""
+        from unittest.mock import patch as _p
+        from kanibako.runtime.container import remove_box_tree
+        outside = tmp_path / "outside"
+        (outside / "locked").mkdir(parents=True)
+        (outside / "locked" / "f").write_text("keep")
+        (outside / "locked").chmod(0o500)
+        link = tmp_path / "box"
+        link.symlink_to(outside)
+        try:
+            with _p("kanibako.runtime.container.ContainerRuntime") as mock_rt:
+                assert remove_box_tree(link) is True
+                mock_rt.return_value.unshare_rm.assert_not_called()
+            assert not link.is_symlink() and not link.exists()
+            assert (outside / "locked").stat().st_mode & 0o777 == 0o500
+            assert (outside / "locked" / "f").read_text() == "keep"
+        finally:
+            (outside / "locked").chmod(0o700)
 
 
 class TestRunEnvFlags:

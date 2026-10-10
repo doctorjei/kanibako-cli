@@ -202,11 +202,15 @@ root, so the operation succeeds.
   but inside `podman unshare` those subuids are ordinary namespace uids.
 * `unshare_chmod` — runs inside the namespace because the paths are, by then, owned by a subuid the
   host user cannot chmod directly.
+* `unshare_rename` — renaming a directory into another parent rewrites its `..`, which needs write on
+  the directory itself; for one in-box root owns, only namespace root has it. The body is an
+  in-namespace `python -I -c os.rename`: `rename(2)` and nothing else, so it can never fall back to a
+  copy (`mv` would, across devices).
 
 ⚑ **NO `-R`, on either mutating call.** Callers pass an EXPLICIT, enumerated path list — a recursive
 sweep of `~/canon` would take the seeded, agent-owned `notebook/` and `workbook/` books with it.
 
-All three are podman-only and return False for docker, for an empty *paths*, or on any failure.
+All four are podman-only and return False for docker, for an empty *paths*, or on any failure.
 
 ## `remove_box_tree` — THE box-tree deleter
 
@@ -233,6 +237,9 @@ any of those paths is a bug: it fails on the canon skeleton and leaves a half-de
 
 The mode-reopening walk is bounded to *target*'s own subtree and is best-effort per entry; a dir
 owned by someone else simply fails the chmod and is skipped, which is attempt 3's job.
+
+⚑ A SYMLINK *target* is unlinked before any attempt and nothing else runs: `os.walk` enters a
+linked root, so attempt 2 would otherwise chmod directories inside the link's target.
 
 ⚑ **NEVER chmod THROUGH a symlink.** `os.chmod` follows links, so a symlinked dir inside the box
 home would have its TARGET re-opened — possibly somewhere outside the tree being deleted. On Linux
@@ -479,9 +486,14 @@ ContainerRuntime.unshare_chmod(paths: list[Path], mode: str) -> bool
 `chmod mode` an EXPLICIT list of *paths* inside the namespace. ⚑ Never recursive.
 
 ```python
+ContainerRuntime.unshare_rename(src: Path, dst: Path) -> bool
+```
+`rename(2)` *src* to *dst* inside the namespace. ⚑ Never a copy; callers own the guards.
+
+```python
 ContainerRuntime._unshare_apply(argv: list[str], paths: list[Path]) -> bool
 ```
-The shared body of the two mutating `unshare` calls: refuses an empty *paths* and refuses docker
+The shared body of the three mutating `unshare` calls: refuses an empty *paths* and refuses docker
 before spawning anything.
 
 ```python
@@ -640,7 +652,8 @@ substring on the whole line.
 ```python
 remove_box_tree(target: Path) -> bool
 ```
-THE box-tree deleter; three escalating attempts. True iff *target* is gone afterwards. ⚑ Every
+THE box-tree deleter; three escalating attempts. True iff *target* is gone afterwards. A symlink
+*target* loses only the link. ⚑ Every
 box-deleting verb must route through it, and a False return does NOT mean the tree is untouched.
 
 ```python

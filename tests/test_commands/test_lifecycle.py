@@ -1711,6 +1711,185 @@ class TestRetireOldWorkspace:
         assert not old.exists()
         assert (landed / "f.txt").read_text() == "mine"
 
+    def test_a_tree_rmtree_cannot_clear_goes_to_the_escalating_deleter(self, tmp_path, capsys):
+        """Row B: an entry the plain rmtree cannot unlink no longer leaves the old tree."""
+        old = tmp_path / "old"
+        (old / "rootdir").mkdir(parents=True)
+        (old / "rootdir" / "r.txt").write_text("in-box root")
+        (old / "rootdir").chmod(0o555)
+        landed = tmp_path / "landed"
+        landed.mkdir()
+        lc._retire_old_workspace(old, landed)
+        assert not old.exists()
+        assert "could not fully remove" not in capsys.readouterr().err
+
+    def test_a_failed_escalation_notes_the_original_error(self, tmp_path, monkeypatch, capsys):
+        old = tmp_path / "old"
+        (old / "rootdir").mkdir(parents=True)
+        (old / "rootdir" / "r.txt").write_text("x")
+        (old / "rootdir").chmod(0o555)
+        seen: list[object] = []
+        monkeypatch.setattr(lc, "remove_box_tree", lambda p: seen.append(p) or False)
+        try:
+            lc._retire_old_workspace(old, tmp_path / "landed")
+        finally:
+            (old / "rootdir").chmod(0o755)
+        assert seen == [old]
+        err = capsys.readouterr().err
+        assert f"could not fully remove the old workspace {old}: [Errno 13]" in err
+        assert "r.txt" in err
+
+    def test_a_non_dir_old_never_reaches_the_escalating_deleter(self, tmp_path, monkeypatch, capsys):
+        old = tmp_path / "old"
+        old.write_text("a file")
+        seen: list[object] = []
+        monkeypatch.setattr(lc, "remove_box_tree", lambda p: seen.append(p) or True)
+        lc._retire_old_workspace(old, tmp_path / "landed")
+        assert seen == []
+        assert old.read_text() == "a file"
+        assert "could not fully remove" in capsys.readouterr().err
+
+
+class TestMoveEntryEscalation:
+    """Row C: ``_move_entry`` renames an in-box-root dir in the namespace, never copies it.
+
+    The plain rename is refused with an injected EACCES; ``unshare_rename`` is faked with a
+    real rename, so each test shows the route and the guards, not ownership (bifrost's).
+    """
+
+    @pytest.fixture
+    def rig(self, tmp_path, monkeypatch):
+        import errno
+        import shutil
+
+        from kanibako.runtime.container import ContainerRuntime
+
+        real_rename = os.rename
+        calls: dict[str, list] = {"unshare": [], "copy": []}
+        refused: set[str] = set()
+
+        def rename(src, dst):
+            if str(src) in refused:
+                raise PermissionError(errno.EACCES, "Permission denied", str(src))
+            return real_rename(src, dst)
+
+        def unshare_rename(self, src, dst):
+            calls["unshare"].append((src, dst))
+            if calls.get("fail"):
+                return False
+            real_rename(src, dst)
+            return True
+
+        def no_copy(*a, **kw):
+            calls["copy"].append(a)
+            raise AssertionError("copied")
+
+        monkeypatch.setenv("KANIBAKO_DOCKER_CMD", "podman")
+        monkeypatch.setattr(os, "rename", rename)
+        monkeypatch.setattr(ContainerRuntime, "unshare_rename", unshare_rename, raising=False)
+        monkeypatch.setattr(shutil, "copytree", no_copy)
+        monkeypatch.setattr(shutil, "copy2", no_copy)
+        root = tmp_path / "root"
+        (root / "workspace").mkdir(parents=True)
+        (root / "rootdir").mkdir()
+        (root / "rootdir" / "r.txt").write_text("in-box root")
+        return root, refused, calls
+
+    def test_a_refused_dir_rename_escalates_and_lands_whole(self, rig):
+        root, refused, calls = rig
+        src, dst = root / "rootdir", root / "workspace" / "rootdir"
+        ino = src.stat().st_ino
+        refused.add(str(src))
+        lc._move_entry(src, dst, root=root)
+        assert not src.exists()
+        assert dst.stat().st_ino == ino
+        assert calls["unshare"] == [(src.resolve(), dst.resolve())]
+        assert calls["copy"] == []
+
+    def test_the_undo_escalates_too(self, rig):
+        root, refused, calls = rig
+        moved = root / "workspace" / "rootdir"
+        (root / "rootdir").rename(moved)
+        refused.add(str(moved))
+        lc._undo_consolidate(root / "workspace", root, [moved], root=root)
+        assert (root / "rootdir" / "r.txt").read_text() == "in-box root"
+        assert len(calls["unshare"]) == 1
+
+    @pytest.mark.parametrize("shape", ["link", "outside", "file", "unshare_false"])
+    def test_a_guard_raises_the_original_error_and_copies_nothing(self, rig, tmp_path, shape):
+        root, refused, calls = rig
+        src, dst = root / "rootdir", root / "workspace" / "rootdir"
+        if shape == "link":
+            src = root / "link"
+            src.symlink_to(root / "rootdir")
+            dst = root / "workspace" / "link"
+        elif shape == "outside":
+            dst = tmp_path / "elsewhere" / "rootdir"
+            dst.parent.mkdir()
+        elif shape == "file":
+            src, dst = root / "rootdir" / "r.txt", root / "workspace" / "r.txt"
+        else:
+            calls["fail"] = True
+        refused.add(str(src))
+        with pytest.raises(PermissionError) as info:
+            lc._move_entry(src, dst, root=root)
+        assert info.value.filename == str(src)
+        assert src.exists() or src.is_symlink()
+        assert not (dst.exists() or dst.is_symlink())
+        assert calls["copy"] == []
+        assert len(calls["unshare"]) == (1 if shape == "unshare_false" else 0)
+
+    def test_an_existing_destination_is_never_escalated_over(self, rig):
+        root, refused, calls = rig
+        src, dst = root / "rootdir", root / "workspace" / "rootdir"
+        dst.mkdir()
+        assert lc._rename_escalated(src, dst, root) is False
+        assert dst.is_dir() and (src / "r.txt").exists()
+        assert calls["unshare"] == []
+
+    def test_a_cross_device_pair_is_never_escalated(self, rig, monkeypatch):
+        from types import SimpleNamespace
+
+        root, refused, calls = rig
+        src, dst = root / "rootdir", root / "workspace" / "rootdir"
+        real_stat = os.stat
+        far = str((root / "workspace").resolve())
+
+        def stat(p, *a, **kw):
+            st = real_stat(p, *a, **kw)
+            return SimpleNamespace(st_dev=st.st_dev + 1) if str(p) == far else st
+
+        monkeypatch.setattr(os, "stat", stat)
+        assert lc._rename_escalated(src, dst, root) is False
+        assert calls["unshare"] == []
+
+    def test_exdev_still_takes_the_copying_move(self, rig, monkeypatch):
+        import errno
+        import shutil
+
+        root, refused, calls = rig
+        src, dst = root / "rootdir", root / "workspace" / "rootdir"
+        moved: list[tuple] = []
+
+        def exdev(a, b):
+            raise OSError(errno.EXDEV, "Invalid cross-device link")
+
+        monkeypatch.setattr(os, "rename", exdev)
+        monkeypatch.setattr(shutil, "move", lambda a, b: moved.append((a, b)))
+        lc._move_entry(src, dst, root=root)
+        assert moved == [(str(src), str(dst))]
+        assert calls["unshare"] == []
+
+    def test_an_owned_555_dir_still_moves_without_escalation(self, rig):
+        root, refused, calls = rig
+        src, dst = root / "rootdir", root / "workspace" / "rootdir"
+        src.chmod(0o555)
+        lc._move_entry(src, dst, root=root)
+        assert (dst / "r.txt").exists()
+        assert dst.stat().st_mode & 0o777 == 0o555
+        assert calls["unshare"] == []
+        dst.chmod(0o755)
+
 
 class TestRollbacksDeleteOnlyWhatTheOpCreated:
     """A failed relocation restores the source store; nothing that existed is deleted.
@@ -1746,6 +1925,125 @@ class TestRollbacksDeleteOnlyWhatTheOpCreated:
         assert (leaf / "file.txt").read_text() == "keep"
         assert (state.shell_path / "h.txt").read_text() == "home"
         assert (state.vault_rw / "v.txt").read_text() == "vault"
+
+    def _remnant(self, store, rel, content="stale"):
+        """Lay a part-removed store: a 555 dir holding a 444 file, as rmtree left it."""
+        f = store / rel
+        f.parent.mkdir(parents=True, exist_ok=True)
+        f.write_text(content)
+        f.chmod(0o444)
+        f.parent.chmod(0o555)
+
+    def test_a_remnant_the_copy_cannot_write_is_replaced_from_the_stash(
+        self, env, monkeypatch, tmp_path, capsys,
+    ):
+        """Row A: the store removal stops at a 555/444 remnant; the restore still lands whole."""
+        from kanibako.runtime.container import remove_box_tree
+
+        config, std, tmp_home = env
+        ws1 = _make_workset(env, "ws1", "ws1_root")
+        create_workset("ws2", tmp_home / "ws2_root", std)
+        leaf, state = self._member(env, ws1)
+        stash_root = self._stash_dir(tmp_path, monkeypatch)
+        skeletons: list[Path] = []
+        monkeypatch.setattr(lc, "materialize_canon_skeleton", skeletons.append)
+
+        def part_way(ws, name, *, bases=None):
+            store = ws.projects_dir / name
+            remove_box_tree(store)
+            self._remnant(store, "home/h.txt")
+            (state.vault_rw / "v.txt").chmod(0o444)
+            state.vault_rw.chmod(0o555)
+            raise KeyboardInterrupt
+
+        monkeypatch.setattr(lc, "remove_member_store", part_way)
+        with pytest.raises(KeyboardInterrupt):
+            execute_lifecycle(
+                state, TargetSpec(location=BARE_INTO_WS, ownership="ws2"),
+                std, config, confirm=_conf_yes(),
+            )
+        self._assert_source_whole(ws1, leaf, state)
+        assert skeletons == [ws1.projects_dir / "alpha" / "home"]
+        assert "Note: could not restore" not in capsys.readouterr().err
+        assert list(stash_root.iterdir()) == []
+
+    def test_a_link_vault_leaf_is_never_replaced(self, env, monkeypatch, tmp_path, capsys):
+        """A copy-back that fails through a LINK leaf keeps the link and the stash."""
+        config, std, tmp_home = env
+        ws1 = _make_workset(env, "ws1", "ws1_root")
+        create_workset("ws2", tmp_home / "ws2_root", std)
+        leaf, state = self._member(env, ws1)
+        stash_root = self._stash_dir(tmp_path, monkeypatch)
+        real_copy = lc._copy_vault_leaf_contents
+        outside = tmp_path / "outside"
+
+        def part_way(ws, name, *, bases=None):
+            outside.mkdir()
+            (outside / "v.txt").write_text("theirs")
+            (outside / "v.txt").chmod(0o444)
+            outside.chmod(0o555)
+            for p in state.vault_rw.iterdir():
+                p.unlink()
+            state.vault_rw.rmdir()
+            state.vault_rw.symlink_to(outside)
+            raise KeyboardInterrupt
+
+        def copy_into_real(src, dst, *a, **kw):
+            if dst == state.vault_rw and dst.is_symlink():
+                return real_copy(src, outside, *a, **kw)
+            return real_copy(src, dst, *a, **kw)
+
+        monkeypatch.setattr(lc, "remove_member_store", part_way)
+        monkeypatch.setattr(lc, "_copy_vault_leaf_contents", copy_into_real)
+        try:
+            with pytest.raises(KeyboardInterrupt):
+                execute_lifecycle(
+                    state, TargetSpec(location=BARE_INTO_WS, ownership="ws2"),
+                    std, config, confirm=_conf_yes(),
+                )
+            assert state.vault_rw.is_symlink()
+            assert (outside / "v.txt").read_text() == "theirs"
+            err = capsys.readouterr().err
+            assert f"Note: could not restore the read-write vault at {state.vault_rw}" in err
+            [stash] = list(stash_root.iterdir())
+            assert f"Note: kept {stash}" in err
+        finally:
+            outside.chmod(0o755)
+
+    def test_the_skeleton_remnant_restores_whole_under_protected_modes(
+        self, env, monkeypatch, tmp_path, capsys, protected_canon,
+    ):
+        """Row A, S cell: SIGINT after the rmtree left the 555 canon skeleton behind."""
+        import shutil
+        import stat
+        from kanibako.settings.core_defaults import (
+            canon_skeleton_rels, materialize_canon_skeleton,
+        )
+
+        config, std, tmp_home = env
+        ws1 = _make_workset(env, "ws1", "ws1_root")
+        create_workset("ws2", tmp_home / "ws2_root", std)
+        leaf, state = self._member(env, ws1)
+        materialize_canon_skeleton(state.shell_path)
+        stash_root = self._stash_dir(tmp_path, monkeypatch)
+
+        def part_way(ws, name, *, bases=None):
+            shutil.rmtree(ws.projects_dir / name, ignore_errors=True)
+            assert (ws.projects_dir / name).exists()
+            raise KeyboardInterrupt
+
+        monkeypatch.setattr(lc, "remove_member_store", part_way)
+        with pytest.raises(KeyboardInterrupt):
+            execute_lifecycle(
+                state, TargetSpec(location=BARE_INTO_WS, ownership="ws2"),
+                std, config, confirm=_conf_yes(),
+            )
+        self._assert_source_whole(ws1, leaf, state)
+        assert "Note: could not restore" not in capsys.readouterr().err
+        rel, is_dir = next((r, d) for r, d in canon_skeleton_rels() if d)
+        mode = stat.S_IMODE((state.shell_path / rel).stat().st_mode)
+        assert mode == 0o555
+        assert list(stash_root.iterdir()) == []
 
     def test_leg1_failure_restores_the_box_from_the_stash(
         self, env, monkeypatch, tmp_path,

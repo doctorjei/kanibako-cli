@@ -43,6 +43,7 @@ class ContainerRuntime:
     def unshare_rm(self, path: Path) -> bool
     def unshare_chown(self, paths: list[Path], uid: int, gid: int) -> bool
     def unshare_chmod(self, paths: list[Path], mode: str) -> bool
+    def unshare_rename(self, src: Path, dst: Path) -> bool
     def build(self, image: str, containerfile: Path, context: Path) -> None
     def rebuild(self, image: str, containerfile: Path, context: Path, build_args: dict[str, str] | None=None) -> int
     def run_interactive(self, image: str, *, container_name: str | None=None) -> int
