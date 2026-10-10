@@ -7,6 +7,7 @@ These exercise the thin ``run_remap`` / ``run_move`` / ``run_convert`` wrappers
 from __future__ import annotations
 
 import argparse
+import fcntl
 import os
 import re
 import shutil
@@ -352,12 +353,15 @@ class TestConvert:
 
 class TestLockGuard:
     def _lock(self, env, pdir):
-        """Plant a .kanibako.lock in the project's metadata dir."""
+        """Plant a .kanibako.lock in the project's metadata dir, held as a live session holds it."""
         config, std, _ = env
         proj = resolve_project(std, config, project_dir=str(pdir), initialize=False)
         lock = proj.metadata_path / ".kanibako.lock"
         lock.parent.mkdir(parents=True, exist_ok=True)
-        lock.write_text("box-container\n")
+        self._held = open(lock, "w")
+        self._held.write("box-container\n")
+        self._held.flush()
+        fcntl.flock(self._held, fcntl.LOCK_EX | fcntl.LOCK_NB)
         return lock
 
     def test_move_locked_aborts_and_keeps_source(self, env):
@@ -1240,8 +1244,9 @@ class TestExternalSourceNotRelocated:
         ext = _external_member(env, ws)
         state = resolve_lifecycle_target(str(ext), std, config)
         state.metadata_path.mkdir(parents=True, exist_ok=True)
-        (state.metadata_path / ".kanibako.lock").write_text("")
-        rc = run_move(_move_args(str(ext), tmp_home / "somewhere", force=False))
+        with open(state.metadata_path / ".kanibako.lock", "w") as held:
+            fcntl.flock(held, fcntl.LOCK_EX | fcntl.LOCK_NB)  # a live session holds it
+            rc = run_move(_move_args(str(ext), tmp_home / "somewhere", force=False))
         assert rc == 2
         err = capsys.readouterr().err
         assert "lock file found" in err

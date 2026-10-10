@@ -1296,7 +1296,10 @@ def _run_steps(
                 root.resolve() in workspace.resolve().parents):
             # ⚑ Reverse of drift H: standalone roots the live workspace UNDER the root,
             # every other mode at the project dir — so an in-place convert OUT must lift.
+            merge_gitignore = _hold_root_gitignore(root, workspace, unwind)
             _unconsolidate_workspace_subdir(workspace, root, unwind)
+            if merge_gitignore is not None:
+                merge_gitignore()
         elif new_workspace == workspace and workspace.resolve() != root.resolve():
             # ⚑ [R144]: an ABSOLUTE ``workset.workspaces`` is a directory the USER named,
             # and emptying it is the irreversible loss, so the box simply keeps it.
@@ -2337,6 +2340,14 @@ def _finish_relocation(
     landed = [p.resolve() for p in (new_state.workspace_path, new_state.metadata_path,
                                     new_state.shell_path, new_state.vault_ro,
                                     new_state.vault_rw) if p is not None]
+    # A finished session's lock is stale once the root is no longer the box's metadata dir.
+    stale = plan.old_root / ".kanibako.lock" if plan.old_root is not None else None
+    if (stale is not None and stale.parent.resolve() != new_state.metadata_path.resolve()
+            and not _session_lock_held(stale)):
+        try:
+            stale.unlink(missing_ok=True)
+        except OSError:
+            pass
     # ⚑ An in-place convert out lands the box AT or under the old root.
     if plan.old_root is not None and not _holds_any(plan.old_root.resolve(), landed):
         try:  # a started box's stale watcher lock alone would keep the root
@@ -2800,6 +2811,44 @@ def _prune_empty_dirs(path: Path, above: Path) -> None:
         path = path.parent
 
 
+def _hold_root_gitignore(
+    root: Path, workspace: Path, unwind: _Unwind,
+) -> Callable[[], object] | None:
+    """Keep the root ``.gitignore`` that lifting *workspace*'s own one will replace.
+
+    The user's file wins the root.  The returned step, run after the lift, appends the
+    lines the root file held beyond kanibako's; the tail strips kanibako's as before.
+    The restore is pushed BEFORE the lift's undo, so a rollback puts both files back.
+    """
+    import os
+
+    ours, theirs = root / bootstrap.IGNORE_FILE, workspace / bootstrap.IGNORE_FILE
+    if not (ours.is_file() and not ours.is_symlink()
+            and (theirs.exists() or theirs.is_symlink())):
+        return None
+    held, mode = ours.read_bytes(), ours.stat().st_mode & 0o7777
+    their_bytes = theirs.read_bytes() if theirs.is_file() and not theirs.is_symlink() else None
+
+    def _put_back() -> None:
+        if their_bytes is not None and theirs.is_file() and not theirs.is_symlink():
+            theirs.write_bytes(their_bytes)
+        if not (ours.exists() or ours.is_symlink()):
+            ours.write_bytes(held)
+            os.chmod(ours, mode)
+
+    unwind.push(_put_back)
+    if their_bytes is None or gitignore_holds_only_kanibako(ours):
+        return None
+    their_lines = their_bytes.decode("utf-8", "replace").splitlines()
+    extra = [line for line in held.decode("utf-8", "replace").splitlines()
+             if line.strip() and line not in their_lines]
+    if not extra:
+        return None
+    sep = b"" if not their_bytes or their_bytes.endswith(b"\n") else b"\n"
+    merged = their_bytes + sep + "".join(f"{line}\n" for line in extra).encode()
+    return partial(ours.write_bytes, merged)
+
+
 def _unconsolidate_workspace_subdir(
     workspace_subdir: Path,
     root: Path,
@@ -2889,6 +2938,18 @@ def _to_standalone(
     workspace_subdir = _resolve_standalone_workspaces(
         root, load_workset_settings_doc(root), early=_early_scope(std, BoxMode.standalone),
     )
+    # ⚑ The canon tier create stamps, through create's own pre-flight and stamp.  A
+    # standalone source carries its tier instead (:func:`_carry_standalone_canon`), and a
+    # tier already at the root is never written into.
+    from kanibako.channels.channels import WS_TOKEN_STANDALONE
+    from kanibako.launch.templates import check_workset_template, install_workset_template
+
+    canon = resolve_workset_canon(root, load_workset_settings_doc(root),
+                                  early=_early_scope(std, BoxMode.standalone))
+    stamp_canon = state.mode is not BoxMode.standalone and not (
+        canon is not None and (canon.exists() or canon.is_symlink()))
+    if stamp_canon:
+        check_workset_template(std, root, workset_name=WS_TOKEN_STANDALONE, canon_only=True)
     root_undo, root_wrote = _arm_standalone_root_undo(std, config, root, workspace_subdir, unwind)
     # ⚑ The box METADATA DIR (``box_data/`` for a standalone source) — the ROOT would
     # strand ``<dst>/box_data/box_data/`` on a standalone→standalone move.
@@ -2921,6 +2982,8 @@ def _to_standalone(
     # ⚑ Pushed AFTER the sweep, so it runs BEFORE the sweep's undo: a root file the sweep
     # moved (the user's ``.gitignore``) goes back OVER this restore, never under it.
     unwind.push(root_undo)
+    if stamp_canon:  # after the sweep, under the root undo, which owns a new tier
+        install_workset_template(std, root, workset_name=WS_TOKEN_STANDALONE, canon_only=True)
     if not reused_in_place:
         _copy_metadata(
             src_meta_dir, state.shell_path,
@@ -3602,12 +3665,34 @@ def _load_env():
     return config, std
 
 
+def _session_lock_held(lock_file: Path) -> bool:
+    """True while a ``box start`` session holds *lock_file*'s ``flock``.
+
+    The file outlives its session (start never deletes it), so only the lock says the box
+    runs.  A file that cannot be probed counts as held.
+    """
+    import fcntl
+
+    if not lock_file.exists():
+        return False
+    try:
+        with open(lock_file, "rb") as fd:
+            try:
+                fcntl.flock(fd, fcntl.LOCK_SH | fcntl.LOCK_NB)
+            except BlockingIOError:
+                return True
+            fcntl.flock(fd, fcntl.LOCK_UN)
+    except OSError:
+        return True
+    return False
+
+
 def _abort_if_locked(state: ProjectState, force: bool) -> bool:
     """Refuse a destructive relocation while a box may be running; True ⇒ caller aborts."""
     import sys
 
     lock_file = state.metadata_path / ".kanibako.lock"
-    if lock_file.exists():
+    if _session_lock_held(lock_file):
         print(
             "Warning: lock file found — a container may be running for this "
             "project. Moving/converting it would copy then DELETE the live "
