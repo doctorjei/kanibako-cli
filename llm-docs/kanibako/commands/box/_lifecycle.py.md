@@ -782,6 +782,11 @@ BECOMING the standalone root. That uniformity is what lets one call serve every 
 Best-effort reversal of EITHER sweep — *moved*'s leaves go back from *src_dir* to *dest_dir*.
 ⚑ *dest_dir* is RE-CREATED first: the unconsolidate direction removes it (with any repoint parents)
 once emptied, so a restore would otherwise land nowhere and every move would fail silently.
+Every entry is tried, even past a `KeyboardInterrupt` (re-raised at the end, as `_Unwind.run`
+does); an entry left behind gets `Note: <name> did not go back to <dest_dir>; it is at <src>`.
+`_restore_primary_rows` and `_restore_standalone_rows` hold an interrupt the same way, with a `Note`
+per registry row it left unrestored. `_restore_standalone_rows` also Notes a row an ordinary error
+left unrestored; in `_restore_primary_rows` the `_safe_*` helpers swallow such an error silently.
 
 ```def _unconsolidate_workspace_subdir(workspace_subdir: Path, root: Path, unwind: _Unwind) -> None```
 Lift the standalone workspace dir's contents back up to *root*.

@@ -2116,26 +2116,52 @@ def _plan_source_teardown(
 def _restore_standalone_rows(std: StandardPaths, before: Mapping[str, str]) -> None:
     """Undo what a register did to the ``standalone`` section: drop each row *before*
     lacked, and put back each row it changed.  A row it removed is not its to restore."""
+    import sys
+
     from kanibako.project import registry_store
 
+    held: KeyboardInterrupt | None = None
     for name, root in registry_store.load_standalone(std.registry).items():
-        stored = find_identifier(name, before)
-        if stored is None:
-            registry_store.unregister_standalone(std.registry, name)
-        elif before[stored] != root:
-            registry_store.register_standalone(std.registry, stored, Path(before[stored]))
+        try:
+            stored = find_identifier(name, before)
+            if stored is None:
+                registry_store.unregister_standalone(std.registry, name)
+            elif before[stored] != root:
+                registry_store.register_standalone(std.registry, stored, Path(before[stored]))
+        except KeyboardInterrupt as exc:
+            held = held or exc
+            print(f"Note: may not have restored the standalone registry row '{name}': "
+                  f"interrupted", file=sys.stderr)
+        except Exception as err:  # noqa: BLE001 - reported, and the other rows still go
+            print(f"Note: could not restore the standalone registry row '{name}': {err}",
+                  file=sys.stderr)
+    if held is not None:
+        raise held
 
 
 def _restore_primary_rows(std: StandardPaths, before: Mapping[str, str]) -> None:
     """Put the PRIMARY membership back to *before*: drop each row it lacked, restore each
     row it held."""
+    import sys
+
     now = load_primary_boxes(std.primary_workset, early=_early_scope(std, BoxMode.primary))
-    for name in now:
-        if find_identifier(name, before) is None:
-            _safe_unregister(std, name)
-    for name, workspace in before.items():
-        if now.get(find_identifier(name, now) or "") != workspace:
-            _safe_register_membership(std, name, Path(workspace))
+    undo: list[tuple[str, Callable[[], None]]] = [
+        (name, partial(_safe_unregister, std, name))
+        for name in now if find_identifier(name, before) is None]
+    undo += [
+        (name, partial(_safe_register_membership, std, name, Path(workspace)))
+        for name, workspace in before.items()
+        if now.get(find_identifier(name, now) or "") != workspace]
+    held: KeyboardInterrupt | None = None
+    for name, step in undo:
+        try:
+            step()
+        except KeyboardInterrupt as exc:
+            held = held or exc
+            print(f"Note: may not have restored the primary registry row '{name}': "
+                  f"interrupted", file=sys.stderr)
+    if held is not None:
+        raise held
 
 
 def _safe_unregister_standalone(std: StandardPaths, name: str) -> None:
@@ -2686,14 +2712,24 @@ def _undo_consolidate(
     ⚑ *dest_dir* is RE-CREATED first, even with nothing *moved*: the unconsolidate
     direction REMOVES it once emptied (with any repoint parents), EMPTY or not.
     """
+    import sys
+
     dest_dir.mkdir(parents=True, exist_ok=True)
+    held: KeyboardInterrupt | None = None
     for child in moved:
         src = src_dir / child.name
-        if src.exists():
-            try:
+        try:
+            if src.exists() or src.is_symlink():
                 _move_entry(src, dest_dir / child.name)
-            except OSError:
-                pass
+        except KeyboardInterrupt as exc:
+            held = held or exc
+        except OSError:
+            pass
+        if src.exists() or src.is_symlink():
+            print(f"Note: {child.name} did not go back to {dest_dir}; it is at {src}",
+                  file=sys.stderr)
+    if held is not None:
+        raise held
 
 
 def _move_entry(src: Path, dst: Path) -> None:
