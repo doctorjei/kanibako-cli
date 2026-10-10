@@ -43,11 +43,11 @@ def _reload(config_file):
 
 
 # ---------------------------------------------------------------------------
-# ITEM 1 — the PRIMARY move/convert source cleanup (``_remove_old_metadata``)
+# ITEM 1 — the PRIMARY move/convert source cleanup (``_plan_source_teardown``)
 # ---------------------------------------------------------------------------
 
 class TestPrimarySourceCleanupFollowsTheRepoint:
-    """``_lifecycle._remove_old_metadata`` guards its vault ``rmtree`` with a containment
+    """``_lifecycle._plan_source_teardown`` guards its vault ``rmtree`` with a containment
     test.  The subject WAS the workset root, which could never fail while the arms were
     composed under it; a repoint out of the root now makes it skip."""
 
@@ -66,9 +66,9 @@ class TestPrimarySourceCleanupFollowsTheRepoint:
         self, config_file, tmp_home, credentials_dir,
     ):
         from kanibako.commands.box._lifecycle import (
-            _Unwind,
             _default_state_from_meta,
-            _remove_old_metadata,
+            _finish_relocation,
+            _plan_source_teardown,
         )
 
         std, config, workspace, proj = self._box_with_repointed_vault(config_file, tmp_home)
@@ -80,11 +80,10 @@ class TestPrimarySourceCleanupFollowsTheRepoint:
         state = _default_state_from_meta(workspace, std)
         assert state is not None
         # The destination took both sides, so the teardown owns both source leaves.
-        _remove_old_metadata(
-            state, std, config, _Unwind(),
-            dst_vault=(std.primary_vault_ro / "moved",
-                      std.primary_vault_rw / "moved"),
-        )
+        _finish_relocation(state, state, std, _plan_source_teardown(
+            state, std, (std.primary_vault_ro / "moved",
+                         std.primary_vault_rw / "moved"),
+        ), [])
 
         # The per-box LEAVES went with the box...
         assert not proj.vault_ro_path.exists()
@@ -98,9 +97,9 @@ class TestPrimarySourceCleanupFollowsTheRepoint:
     ):
         """Anti-vacuity twin: the default layout must behave as it does today."""
         from kanibako.commands.box._lifecycle import (
-            _Unwind,
             _default_state_from_meta,
-            _remove_old_metadata,
+            _finish_relocation,
+            _plan_source_teardown,
         )
 
         std, config, workspace, proj = self._box_with_repointed_vault(
@@ -111,11 +110,10 @@ class TestPrimarySourceCleanupFollowsTheRepoint:
 
         state = _default_state_from_meta(workspace, std)
         # The destination took both sides, so the teardown owns both source leaves.
-        _remove_old_metadata(
-            state, std, config, _Unwind(),
-            dst_vault=(std.primary_vault_ro / "moved",
-                      std.primary_vault_rw / "moved"),
-        )
+        _finish_relocation(state, state, std, _plan_source_teardown(
+            state, std, (std.primary_vault_ro / "moved",
+                         std.primary_vault_rw / "moved"),
+        ), [])
 
         assert not proj.vault_ro_path.exists()
         assert not proj.vault_rw_path.exists()
@@ -127,9 +125,9 @@ class TestPrimarySourceCleanupFollowsTheRepoint:
         """🛑 STRICT containment.  A leafless vault path is the SHARED arm — deleting it
         would take every box's vault.  ``relative_to`` alone ACCEPTS an equal path."""
         from kanibako.commands.box._lifecycle import (
-            _Unwind,
             _default_state_from_meta,
-            _remove_old_metadata,
+            _finish_relocation,
+            _plan_source_teardown,
         )
 
         std, config, workspace, proj = self._box_with_repointed_vault(
@@ -145,11 +143,10 @@ class TestPrimarySourceCleanupFollowsTheRepoint:
         state.vault_ro = std.primary_vault_ro
         state.vault_rw = std.primary_vault_rw
         # The destination took both sides, so the teardown owns both source leaves.
-        _remove_old_metadata(
-            state, std, config, _Unwind(),
-            dst_vault=(std.primary_vault_ro / "moved",
-                      std.primary_vault_rw / "moved"),
-        )
+        _finish_relocation(state, state, std, _plan_source_teardown(
+            state, std, (std.primary_vault_ro / "moved",
+                         std.primary_vault_rw / "moved"),
+        ), [])
 
         assert std.primary_vault_ro.is_dir()
         assert (other / "keep.txt").read_text() == "another box's data"
@@ -474,7 +471,7 @@ class TestCleanPurgeFollowsTheRepoint:
 
 
 class TestStandaloneMoveSourceCleanupFollowsTheRepoint:
-    """``_remove_old_metadata``'s STANDALONE branch — the same composition, on move."""
+    """``_plan_source_teardown``'s STANDALONE branch — the same composition, on move."""
 
     def test_move_out_of_a_standalone_root_takes_an_in_root_repointed_vault(
         self, config_file, tmp_home, credentials_dir, capsys,

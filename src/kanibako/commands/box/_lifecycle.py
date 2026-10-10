@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import shlex
 import shutil
-from collections.abc import Collection, Mapping
+from collections.abc import Collection, Iterable, Mapping
 from dataclasses import dataclass, field, replace
 from functools import partial
 from pathlib import Path
@@ -525,13 +525,25 @@ def box_bind_sources_or_none(std: StandardPaths, proj: ProjectPaths) -> frozense
 def _landed_bind_sources(
     landed: ProjectState, std: StandardPaths, config: BootstrapConfig,
 ) -> frozenset[str] | None:
-    """The bind sources of the box *landed* describes, read back from where it landed."""
-    where = (landed.metadata_path if landed.mode is BoxMode.standalone
-             else landed.workspace_path)
+    """The bind sources of the box *landed* describes, resolved by its identity.
+
+    ⚑ By identity, never by path: the source row is still registered while the links are
+    repointed, and path detection would answer the source.
+    """
     try:
-        return resolve_lifecycle_target(str(where), std, config).bind_sources
+        if landed.mode is BoxMode.standalone:
+            proj = resolve_standalone_project(
+                std, config, str(landed.metadata_path), initialize=False)
+        elif landed.mode is BoxMode.named and landed.ws is not None:
+            proj = resolve_workset_project(
+                WorksetSpec.from_workset(landed.ws), landed.name, std, config,
+                initialize=False)
+        else:
+            proj = resolve_project(
+                std, config, project_dir=str(landed.workspace_path), initialize=False)
     except (KanibakoError, OSError):
         return None
+    return box_bind_sources_or_none(std, proj)
 
 
 def _box_trees(state: ProjectState) -> tuple[Path | None, ...]:
@@ -676,24 +688,15 @@ def copy_into_workset(
 class _Unwind:
     """A LIFO stack of compensating actions for failure-consistency."""
 
-    actions: list[Callable[[], None]] = field(default_factory=list)
+    actions: list[Callable[[], object]] = field(default_factory=list)
     cleanups: list[Callable[[], None]] = field(default_factory=list)
-    sealed: bool = False
 
-    def push(self, action: Callable[[], None]) -> None:
+    def push(self, action: Callable[[], object]) -> None:
         self.actions.append(action)
 
-    def push_until_sealed(self, action: Callable[[], None]) -> None:
-        """Push *action*, skipped once :meth:`seal` has run."""
-        self.actions.append(lambda: None if self.sealed else action())
-
-    def seal(self) -> None:
-        """Mark the source teardown: from here the destination may hold the ONLY copy.
-
-        ⚑ A failure after this point must neither delete nor call "yours to remove" a
-        destination tree, so every :meth:`push_until_sealed` action is dropped.
-        """
-        self.sealed = True
+    def push_first(self, action: Callable[[], object]) -> None:
+        """Push *action* under every other, so it runs LAST: after the destination is gone."""
+        self.actions.insert(0, action)
 
     def on_success(self, action: Callable[[], None]) -> None:
         """Register an action to run only when the whole op succeeds.
@@ -1223,13 +1226,17 @@ def execute_lifecycle(
     )
     unwind = _Unwind()
     try:
-        new_state = _run_steps(state, spec, std, config, plan, unwind)
+        new_state, teardown = _run_steps(state, spec, std, config, plan, unwind)
         if mounted:
             landed = _landed_bind_sources(new_state, std, config)
             new_state = replace(new_state, bind_sources=landed)
         repoint_box_mounted_links(mounted, {
             old: new for old, new in zip(_box_trees(state), _box_trees(new_state))
             if old is not None and new is not None}, new_state)
+        # ⚑⚑ THE POINT OF NO RETURN, and the LAST statement here: before it an interrupt
+        # unwinds to the source alone, after it only the destination row exists and
+        # nothing is unwound.  The source's files go in the success tail.
+        _drop_source_row(teardown, unwind)
     except BaseException:
         # ⚑⚑ ``BaseException``, not ``Exception``: an interrupt after the release would
         # otherwise skip every compensating action and leave the stash in ``$TMPDIR``.
@@ -1246,7 +1253,7 @@ def _run_steps(
     config: BootstrapConfig,
     plan: dict,
     unwind: _Unwind,
-) -> ProjectState:
+) -> tuple[ProjectState, _SourceTeardown | None]:
     import sys
 
     target_mode: BoxMode = plan["target_mode"]
@@ -1317,7 +1324,7 @@ def _run_steps(
 
     # --- STEPS 3+4 — markers INTERLEAVED with ownership: the destination metadata
     #     roots depend on the target owner, so they cannot be separated. ---
-    new_state = _apply_ownership_and_markers(
+    new_state, teardown = _apply_ownership_and_markers(
         state, std, config, unwind,
         target_mode=target_mode,
         target_ws=target_ws,
@@ -1328,31 +1335,26 @@ def _run_steps(
         requested_name=requested_name,
     )
 
-    # --- STEP 4b — Relocate this box's OWN channel partition (best-effort, D-M10).
-    # ⚑ MUST run AFTER identity is finalized (A9): a standalone convert REGENERATES the
-    #   box name, so the new address is only readable off ``new_state``. ---
-    _relocate_channel_partition(state, new_state, std)
-
-    # --- STEP 4c — Carry this box's OWN snapshot store: D1 keys it on box
-    # so a rename that leaves it behind strands the box's snapshots
-    _relocate_snapshot_store(state, new_state)
-
     # --- STEP 5 — Retire the old workspace step 2 copied, ON SUCCESS ONLY.
     # ⚑ Never a user's EXTERNAL source. ---
+    later: list[Callable[[], None]] = []
     if not records_only and relocating and dest is not None and not state.is_external:
         old_ws = state.workspace_path
-        unwind.on_success(lambda: _retire_old_workspace(old_ws, dest))
+        later.append(lambda: _retire_old_workspace(old_ws, dest))
     # ⚑ An external landing whose ``workspaces/<name>`` was held by the leaf just retired
-    #   gets its discoverability link now, after the retire (registration order).
+    #   gets its discoverability link now, after the retire.
     if target_mode is BoxMode.named and target_ws is not None and new_state.is_external:
         link_ws = target_ws
 
         def _link() -> None:
             ensure_discoverability_link(link_ws, new_name, new_state.workspace_path)
 
-        unwind.on_success(_link)
+        later.append(_link)
 
-    return new_state
+    # ⚑ ONE tail, run once the source row is dropped: steps 4b and 4c (AFTER identity is
+    # final, A9: a standalone convert regenerates the name), the source teardown, STEP 5.
+    unwind.on_success(partial(_finish_relocation, state, new_state, std, teardown, later))
+    return new_state, teardown
 
 
 def _retire_old_workspace(old: Path, landed: Path) -> None:
@@ -1432,7 +1434,7 @@ def note_added_leftovers(path: Path, before: frozenset[str] | None) -> None:
 
 def _arm_leftover_note(unwind: _Unwind, path: Path) -> None:
     """Push a :func:`note_added_leftovers` for the existing directory *path*."""
-    unwind.push_until_sealed(partial(note_added_leftovers, path, _entry_names(path)))
+    unwind.push(partial(note_added_leftovers, path, _entry_names(path)))
 
 
 def _apply_ownership_and_markers(
@@ -1448,8 +1450,9 @@ def _apply_ownership_and_markers(
     relocating: bool,
     dest: Path | None,
     requested_name: str = "",
-) -> ProjectState:
-    """Re-root metadata/shell/vault into the target owner + rewrite markers."""
+) -> tuple[ProjectState, _SourceTeardown | None]:
+    """Re-root metadata/shell/vault into the target owner + rewrite markers; return the
+    new state and the source teardown the success tail runs."""
     if target_mode == BoxMode.named:
         return _to_workset(
             state, std, config, unwind,
@@ -1650,7 +1653,7 @@ def _vault_carry_pairs(
     substitute for the copy, and neither is a refusal: the vault is a STORE that follows
     the project.
 
-    ⚑ MIRRORS the teardown guards in :func:`_remove_old_metadata`: extends their
+    ⚑ MIRRORS the teardown guards in :func:`_plan_source_teardown`: extends their
     risk model to the copy.
     * primary/named: the box's vault is a per-box LEAF strictly under the source
       arm.  A source NOT strictly under its arm is shared or foreign ground the
@@ -1737,6 +1740,7 @@ def _carry_vault_contents(
     std: StandardPaths,
     dst_ro: Path | None,
     dst_rw: Path | None,
+    teardown: _SourceTeardown,
     relocated: Mapping[Path, Path] | None = None,
 ) -> None:
     """Carry the source vault's contents into the freshly created destination leaves.
@@ -1747,22 +1751,11 @@ def _carry_vault_contents(
 
     ``relocated`` (``{old_root: new_root}``) says where the carried trees LAND, so a
     vault link into one is re-pointed under its landing instead of becoming a second
-    copy that diverges.  A link into a tree the teardown removes and nothing lands
+    copy that diverges.  A link into a tree *teardown* removes and nothing lands
     copies the bytes and warns; a link to anything that SURVIVES keeps its pointer.
     """
-    removed = _torn_down_roots(state, std)
     for src, dst in _vault_carry_pairs(state, std, dst_ro, dst_rw):
-        _copy_vault_leaf_contents(src, dst, removed=removed, relocated=relocated)
-
-
-def _torn_down_roots(state: ProjectState, std: StandardPaths) -> list[Path]:
-    """The trees :func:`_remove_old_metadata` deletes, from the plans it deletes by."""
-    if state.mode != BoxMode.standalone:
-        return [state.metadata_path]
-    scope = _early_scope(std, BoxMode.standalone)
-    store, _kept = standalone_store_teardown_plan(state.metadata_path, early=scope)
-    vaults, _kept_vaults = standalone_vault_teardown(state.metadata_path, early=scope)
-    return [path for path in (store, *vaults) if path is not None]
+        _copy_vault_leaf_contents(src, dst, removed=teardown.removed, relocated=relocated)
 
 
 def _landings(*pairs: tuple[Path, Path]) -> dict[Path, Path] | None:
@@ -1772,8 +1765,9 @@ def _landings(*pairs: tuple[Path, Path]) -> dict[Path, Path] | None:
 
 
 def _move_log_back(dst: Path, src: Path) -> None:
-    """Undo one carried log file. :func:`shutil.move` returns a path; ``_Unwind`` wants ``None``."""
-    shutil.move(dst, src)
+    """Undo one carried log file, if it was carried."""
+    if dst.is_file() and not src.exists():
+        shutil.move(dst, src)
 
 
 def _carry_box_logs(
@@ -1817,8 +1811,9 @@ def _carry_box_logs(
             )
             continue
         dst.parent.mkdir(parents=True, exist_ok=True)
-        shutil.move(src, dst)
+        # Armed before the move: an interrupt between the two must still bring it back.
         unwind.push(partial(_move_log_back, dst, src))
+        shutil.move(src, dst)
 
 
 #: The ``workset.`` keys the two vault arms resolve from, in the ``(ro, rw)`` order
@@ -1918,18 +1913,47 @@ def _nulled_arm_stores(ws: Workset, name: str) -> list[tuple[Path, str]]:
     return out
 
 
-def _remove_old_metadata(
+@dataclass(frozen=True)
+class _SourceTeardown:
+    """What a relocation's source leaves to remove, planned while the source is whole.
+
+    ⚑ The try drops the source row LAST (:func:`_drop_source_row`); the success tail
+    removes the rest (:func:`_finish_relocation`).  Nothing planned here is ever unwound.
+    """
+
+    name: str
+    #: The trees the vault carry treats as torn down (``removed_root_of``).
+    removed: tuple[Path, ...] = ()
+    #: Box trees, through the escalating deleter.
+    trees: tuple[Path, ...] = ()
+    vaults: tuple[Path, ...] = ()
+    vault_deleter: Callable[[Path], object] = remove_path
+    #: A standalone root's ``workset.yaml``, which alone reads as a box.
+    marker: Path | None = None
+    stash: Path | None = None
+    #: A workset source, whose store :func:`_retire_old_store` removes.
+    member: Workset | None = None
+    dst_vault: tuple[Path | None, Path | None] = (None, None)
+    vault_enabled: bool = True
+    #: The Notes for what the teardown keeps on purpose.
+    keeps: tuple[Callable[[], None], ...] = ()
+    drop: Callable[[], object] | None = None
+    restore: Callable[[], object] | None = None
+
+
+def _plan_source_teardown(
     state: ProjectState,
     std: StandardPaths,
-    config: BootstrapConfig,
-    unwind: _Unwind,
-    *,
     dst_vault: tuple[Path | None, Path | None],
+    *,
     preserve_name: str | None = None,
     new_name: str | None = None,
     preserve_root: Path | None = None,
-) -> None:
-    """Remove the source project's metadata/shell (+ PRIMARY vault), per source mode.
+) -> _SourceTeardown:
+    """Plan the removal of the source's metadata/shell (+ vault) and the drop of its row.
+
+    ⚑ Runs once, before the vault carry: every resolution that can raise happens here,
+    while the unwind still restores a whole source.
 
     ⚑ Each mode's reuse signal is its own IDENTITY on disk: *preserve_name* for a primary
     source (whose metadata dir is named after the box), *preserve_root* for a standalone one
@@ -1937,41 +1961,39 @@ def _remove_old_metadata(
     A destination that reused the source must not then have the source torn out from under
     it — for standalone that is the box's home, settings and vault.
 
-    ⚑ *new_name* is what the DESTINATION just registered.  The teardown unregisters the
-    SOURCE's name, correct only while they differ — a carried-kuid move (``:811``) can
-    compose the SAME name, and unregistering it then deletes the live entry.  Case-blind.
+    ⚑ *new_name* is what the DESTINATION just registered.  The source's name is dropped
+    only while they differ — a carried-kuid move (``:811``) can compose the SAME name, and
+    dropping it then deletes the live entry.  Case-blind.
     *dst_vault* is the destination's ``(ro, rw)`` leaves: a side it has NO leaf for
-    (:func:`_unreceived_vault_leaves`) is retained here, never deleted.
+    (:func:`_unreceived_vault_leaves`) is retained, never deleted.
     """
     import sys
+
+    from kanibako.project import registry_store
 
     if state.mode == BoxMode.standalone:
         # ⚑⚑ ``metadata_path`` IS the standalone ROOT (drift I). Remove only the kanibako
         # artifacts inside it — deleting the root would wipe the user's whole project dir
         # AND the already-converted destination.
         root = state.metadata_path
+        drop = restore = None
+        prior = registry_store.standalone_root(std.registry, state.name) if state.name else None
+        if prior is not None and not _same_box_name(state.name, new_name):
+            drop = partial(_safe_unregister_standalone, std, state.name)
+            restore = partial(registry_store.register_standalone, std.registry, state.name,
+                              Path(prior))
         if preserve_root is not None and preserve_root.resolve() == root.resolve():
-            # ⚑⚑ The destination IS this root (an in-place standalone rename): ``box_data/``,
-            # the root meta and the vault are the box that was just re-established, and the
-            # only stale thing left is the OLD NAME's registry entry, if it differs.
-            from kanibako.project import registry_store
-            if state.name and not _same_box_name(state.name, new_name):
-                try:
-                    registry_store.unregister_standalone(std.registry, state.name)
-                except Exception:  # noqa: BLE001
-                    pass
-            return
-        # ⚑⚑ RESOLVE THE VAULT BEFORE ANYTHING IS DROPPED — including the registry entry.
-        # The root ``workset.yaml`` unlinked below IS the standalone workset tier and the
-        # only carrier of a ``workset.vault_*`` repoint, so a later read answers the
-        # composed default; and an UNRESOLVABLE repoint raises here, which must happen
-        # while the source is still whole and the unwind still has something to restore.
-        removable_vault, retained_vault = standalone_vault_teardown(root, early=_early_scope(std, BoxMode.standalone))
-        # ⚑⚑ A SIDE THE DESTINATION NEVER RECEIVED IS NOT THIS TEARDOWN'S TO DELETE
-        # (a standalone box's vault IS its arm, so the retention question is asked of
-        # the arm itself).  A parent of a retained arm leaves *removable* with it: the
-        # ``vault/`` skeleton parent is on that list, and ``rmtree`` there would take
-        # the store down with the dir.
+            # ⚑⚑ The destination IS this root (an in-place standalone rename): only the
+            # OLD NAME's registry entry is stale.
+            return _SourceTeardown(name=state.name, drop=drop, restore=restore)
+        # ⚑⚑ RESOLVE THE VAULT BEFORE ANYTHING IS DROPPED.  The root ``workset.yaml`` IS
+        # the standalone workset tier and the only carrier of a ``workset.vault_*``
+        # repoint, and an UNRESOLVABLE repoint raises here, while the source is whole.
+        scope = _early_scope(std, BoxMode.standalone)
+        removable_vault, retained_vault = standalone_vault_teardown(root, early=scope)
+        # ⚑⚑ A SIDE THE DESTINATION NEVER RECEIVED IS NOT THIS TEARDOWN'S TO DELETE.  A
+        # parent of a retained arm leaves *removable* with it: the ``vault/`` skeleton
+        # parent is on that list, and removing it would take the store down with the dir.
         kept = _unreceived_vault_leaves(
             (state.vault_ro, state.vault_rw), dst_vault, vault_enabled=state.enable_vault,
         )
@@ -1979,59 +2001,40 @@ def _remove_old_metadata(
             held = {arm.resolve() for arm, _key in kept}
             removable_vault = [
                 vault for vault in removable_vault
-                if not any(vault.resolve() == arm
-                           or vault.resolve() in arm.parents
+                if not any(vault.resolve() == arm or vault.resolve() in arm.parents
                            for arm in held)
             ]
-        unwind.seal()
-        # ⚑ Standalone lives in registry.standalone: drop that entry too,
-        # or a standalone→standalone move strands the old name → root mapping.
-        # ⚑ Unless it is the destination's own live entry (see ``new_name``).
-        from kanibako.project import registry_store
-        if state.name and not _same_box_name(state.name, new_name):
-            try:
-                registry_store.unregister_standalone(std.registry, state.name)
-            except Exception:  # noqa: BLE001
-                pass
-        # ⚑ Resolved; the strictly-below split and its reason are
+        # ⚑ The strictly-below split and its reason are
         # :func:`standalone_store_teardown_plan`'s.
-        removable_store, retained_store = standalone_store_teardown_plan(
-            root, early=_early_scope(std, BoxMode.standalone))
-        if removable_store is not None:
-            # ⚑ Escalating removal: the root-owned canon skeleton makes a bare rmtree
-            # fail with EACCES and leave the old box behind (J-7).
-            remove_box_tree(removable_store)
+        removable_store, retained_store = standalone_store_teardown_plan(root, early=scope)
+        keeps: list[Callable[[], None]] = []
         if retained_store is not None:
-            report_retained_store(retained_store, root)
-        settings = root / WORKSET_META_FILE
-        if settings.is_file():
-            settings.unlink()
-        for vault in removable_vault:
-            if (vault.is_dir() or vault.is_symlink()) and not remove_path(vault):
-                print(f"Warning: could not fully remove {vault}", file=sys.stderr)
-        report_retained_vaults(root, retained_vault)
-        _report_unreceived_vaults(kept)
-        return
+            keeps.append(partial(report_retained_store, retained_store, root))
+        keeps += [partial(report_retained_vaults, root, retained_vault),
+                  partial(_report_unreceived_vaults, kept)]
+        trees = (removable_store,) if removable_store is not None else ()
+        marker = root / WORKSET_META_FILE
+        return _SourceTeardown(
+            name=state.name, removed=(*trees, *removable_vault), trees=trees,
+            vaults=tuple(removable_vault), marker=marker if marker.is_file() else None,
+            keeps=tuple(keeps), drop=drop, restore=restore,
+        )
 
     if state.mode == BoxMode.primary:
         # ⚑⚑ L2: on a same-name in-place convert the destination metadata/vault IS the
-        # source — dropping them here would delete the box just written.
+        # source — dropping them would delete the box just written.
         reused_in_place = preserve_name is not None and state.name == preserve_name
-        if state.name and not reused_in_place:
-            try:
-                unregister_primary_box_name(std.primary_workset, state.name, early=_early_scope(std, BoxMode.primary))
-            except Exception:  # noqa: BLE001
-                pass
         if reused_in_place:
-            return
-        unwind.seal()
-        if state.metadata_path.is_dir():
-            remove_box_tree(state.metadata_path)
+            return _SourceTeardown(name=state.name, removed=(state.metadata_path,))
+        trees_p = [state.metadata_path]
+        if (state.shell_path != state.metadata_path / "home"
+                and not state.shell_path.is_relative_to(state.metadata_path)):
+            trees_p.append(state.shell_path)
         # ⚑⚑ The PRIMARY vault is NOT under metadata_path: it is a per-box ``<name>`` LEAF
         # under the primary workset's RESOLVED ``@workset.{vault_ro,vault_rw}``.  Remove the
         # leaf only — the arm is shared and holds EVERY box's vault.
-        # ⚑ The guard's subject is the ARM: naming it admits exactly the leaves this loop
-        # may delete, and a root-subject guard would skip an out-of-root repoint and
+        # ⚑ The guard's subject is the ARM: naming it admits exactly the leaves that may be
+        # deleted, and a root-subject guard would skip an out-of-root repoint and
         # silently leave the box's real vault behind.
         # ⚑ Containment must be STRICT — ``relative_to`` ACCEPTS an equal path, so a
         # leafless ``vault_dir`` would take every box's vault with it.
@@ -2040,6 +2043,8 @@ def _remove_old_metadata(
         unreceived = {leaf.resolve(): why for leaf, why in _unreceived_vault_leaves(
             (state.vault_ro, state.vault_rw), dst_vault, vault_enabled=state.enable_vault,
         )}
+        vaults: list[Path] = []
+        primary_keeps: list[Callable[[], None]] = []
         for vault_dir, arm in ((state.vault_ro, std.primary_vault_ro),
                                (state.vault_rw, std.primary_vault_rw)):
             if vault_dir is None or arm is None or not vault_dir.is_dir():
@@ -2047,35 +2052,195 @@ def _remove_old_metadata(
             if arm not in vault_dir.parents:
                 # ⚑ Reported, never silent: a skipped vault is data the user still owns
                 # and would otherwise never learn was orphaned.
-                print(f"Warning: leaving {vault_dir} in place — it is not a per-box "
-                      f"directory under {arm}", file=sys.stderr)
+                primary_keeps.append(partial(
+                    print, f"Warning: leaving {vault_dir} in place — it is not a per-box "
+                    f"directory under {arm}", file=sys.stderr))
                 continue
             why = unreceived.get(vault_dir.resolve())
             if why is not None:
-                # ⚑ Foreign ground above is not a per-box leaf at all; this one IS, and
-                # the destination holds no copy of it.
-                report_retained_vault(vault_dir, why)
+                primary_keeps.append(partial(report_retained_vault, vault_dir, why))
                 continue
-            shutil.rmtree(vault_dir, ignore_errors=True)
-            if vault_dir.exists() or vault_dir.is_symlink():
-                report_retained_vault(
-                    vault_dir, f"it could not be fully removed and still holds "
-                    f"{_leftover_entries(vault_dir)}. The box's new vault holds a copy, so "
-                    f"this partial leftover is yours to remove.")
-        if state.shell_path.is_dir() and state.shell_path != state.metadata_path / "home":
-            try:
-                state.shell_path.relative_to(state.metadata_path)
-            except ValueError:
-                remove_box_tree(state.shell_path)
-        return
+            vaults.append(vault_dir)
+        name, workspace = state.name, state.workspace_path
+        return _SourceTeardown(
+            name=name, removed=(state.metadata_path,), trees=tuple(trees_p),
+            vaults=tuple(vaults), vault_deleter=partial(shutil.rmtree, ignore_errors=True),
+            keeps=tuple(primary_keeps),
+            drop=partial(_safe_unregister, std, name) if name else None,
+            restore=partial(_safe_register_membership, std, name, workspace) if name else None,
+        )
 
-    # Workset source: drop the registration now; the store goes only once the op succeeded
-    # (a failed removal part-way would otherwise take the box with it).  ⚑ The workspace
-    # leaf is NOT deleted here — a relocation retires it on success (``_retire_old_workspace``).
+    # Workset source: the release is the source row; the store goes in the success tail.
+    # ⚑ The workspace leaf is NOT deleted here — a relocation retires it on success
+    # (``_retire_old_workspace``).
     if state.ws is not None:
-        src_ws, src_name, enabled = state.ws, state.name, state.enable_vault
-        release_project(src_ws, src_name)
-        unwind.on_success(lambda: _retire_old_store(src_ws, src_name, dst_vault, enabled))
+        return _SourceTeardown(
+            name=state.name, removed=(state.metadata_path,), member=state.ws,
+            dst_vault=dst_vault, vault_enabled=state.enable_vault,
+            drop=partial(release_project, state.ws, state.name),
+            restore=partial(add_project, state.ws, state.name, state.workspace_path, std,
+                            restoring=True),
+        )
+    return _SourceTeardown(name=state.name, removed=(state.metadata_path,))
+
+
+def _restore_standalone_rows(std: StandardPaths, before: Mapping[str, str]) -> None:
+    """Undo what a register did to the ``standalone`` section: drop each row *before*
+    lacked, and put back each row it changed.  A row it removed is not its to restore."""
+    from kanibako.project import registry_store
+
+    for name, root in registry_store.load_standalone(std.registry).items():
+        stored = find_identifier(name, before)
+        if stored is None:
+            registry_store.unregister_standalone(std.registry, name)
+        elif before[stored] != root:
+            registry_store.register_standalone(std.registry, stored, Path(before[stored]))
+
+
+def _safe_unregister_standalone(std: StandardPaths, name: str) -> None:
+    from kanibako.project import registry_store
+
+    try:
+        registry_store.unregister_standalone(std.registry, name)
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def _stash_source_marker(teardown: _SourceTeardown, unwind: _Unwind) -> _SourceTeardown:
+    """Move the standalone source's root marker into a relocation stash; the undo puts it back.
+
+    ⚑ The marker alone reads as a box, so the old root must not keep it once the box has
+    landed; the stash goes in the success tail.
+    """
+    import tempfile
+
+    marker = teardown.marker
+    if marker is None or not marker.is_file():
+        return teardown
+    stash = Path(tempfile.mkdtemp(prefix="kanibako-unwind-"))
+    held = stash / marker.name
+
+    def _put_back() -> None:
+        if held.is_file():
+            shutil.move(str(held), str(marker))
+        _dispose_stash(stash)
+
+    unwind.push(_put_back)
+    shutil.move(str(marker), str(held))
+    return replace(teardown, stash=stash)
+
+
+def _drop_source_row(teardown: _SourceTeardown | None, unwind: _Unwind) -> None:
+    """Drop the source's registry row, its restore pushed first (it runs last)."""
+    if teardown is None or teardown.drop is None:
+        return
+    if teardown.restore is not None:
+        unwind.push_first(teardown.restore)
+    teardown.drop()
+
+
+def _finish_relocation(
+    state: ProjectState,
+    new_state: ProjectState,
+    std: StandardPaths,
+    teardown: _SourceTeardown | None,
+    later: list[Callable[[], None]],
+) -> None:
+    """The success tail: steps 4b and 4c, the source teardown, then *later*, then the stash.
+
+    ⚑ The destination is the box by now, so a failed step is passed over and the Note
+    names what it left; an interrupt prints that Note and re-raises.  Steps 4b and 4c
+    have no finishing command.
+    """
+    plan = teardown or _SourceTeardown(name=state.name)
+    snapshots: list[Path] = []
+    current = ""
+
+    def holds_snapshots(path: Path) -> bool:
+        return any(path == store or path in store.parents for store in snapshots)
+
+    def remove(paths: tuple[Path, ...], deleter: Callable[[Path], object]) -> None:
+        for path in paths:
+            if holds_snapshots(path):
+                # ⚑ A failed 4c keeps the old store, so "still on disk" stays true.
+                report_retained_vault(path, "it holds the vault snapshots still under "
+                                            f"the old name '{state.name}'.")
+            elif path.is_dir() or path.is_symlink():
+                deleter(path)
+
+    def snapshots_step() -> None:
+        kept = _relocate_snapshot_store(state, new_state)
+        if kept is not None:
+            snapshots.append(kept)
+
+    def vaults_step() -> None:
+        remove(plan.vaults, plan.vault_deleter)
+        for keep in plan.keeps:
+            keep()
+
+    def member_step() -> None:
+        if plan.member is not None:
+            _retire_old_store(plan.member, plan.name, plan.dst_vault, plan.vault_enabled)
+
+    steps: list[tuple[str, Callable[[], None]]] = [
+        ("4b", partial(_relocate_channel_partition, state, new_state, std)),
+        ("4c", snapshots_step),
+        ("store", partial(remove, plan.trees, remove_path)),
+        ("vaults", vaults_step),
+        ("member", member_step),
+        *(("later", step) for step in later),
+        ("stash", partial(_dispose_stash, plan.stash) if plan.stash else lambda: None),
+    ]
+    planned = (*plan.trees, *plan.vaults)
+    try:
+        for current, step in steps:
+            try:
+                step()
+            except Exception:  # noqa: BLE001 - the Note below names what it left
+                pass
+    except BaseException:
+        left = [p for p in planned if not holds_snapshots(p)]
+        if plan.member is not None and current not in ("later", "stash"):
+            left += [p for p in _member_leaves(plan.member, plan.name)[1:] if p is not None]
+        if plan.stash is not None:
+            left.append(plan.stash)
+        _report_store_leftovers(
+            plan.name, _on_disk(left), ": interrupted",
+            unmoved=[*_unmoved_partitions(state, new_state, std),
+                     *_unmoved_snapshots(state, new_state)],
+        )
+        raise
+    _report_store_leftovers(plan.name, _on_disk(p for p in planned if not holds_snapshots(p)))
+
+
+def _on_disk(paths: Iterable[Path]) -> list[Path]:
+    """Those of *paths* still on disk, a dangling link included."""
+    return [p for p in paths if p.exists() or p.is_symlink()]
+
+
+def _unmoved_partitions(old: ProjectState, new: ProjectState, std: StandardPaths) -> list[str]:
+    """The channel dirs step 4b leaves at *old*'s address, as Note text."""
+    from kanibako.channels.channels import own_partition_dirs
+
+    try:
+        if _state_ws_token(old) == _state_ws_token(new) and old.name == new.name:
+            return []
+        src = own_partition_dirs(std, _state_ws_token(old), old.name,
+                                 ws_root=_state_ws_root(old, std))
+    except Exception:  # noqa: BLE001 - nothing it can name
+        return []
+    return [f"its channel {label} is still at {path}"
+            for path, label in ((src.mailbox, "mailbox"), (src.share_global, "share"))
+            if path is not None and path.is_dir()]
+
+
+def _unmoved_snapshots(old: ProjectState, new: ProjectState) -> list[str]:
+    """The snapshot store step 4c leaves under *old*'s name, as Note text."""
+    store = _old_snapshot_store(old, new)
+    if store is None or not store.is_dir():
+        return []
+    return [f"its vault snapshots are still at {store} under the old name, and "
+            "'kanibako box vault list' will not show them"]
 
 
 def _retire_old_store(
@@ -2084,43 +2249,48 @@ def _retire_old_store(
 ) -> None:
     """Delete relocated-from member *name*'s store and name each leaf it leaves.
 
-    A failed removal prints a Note naming every leaf left behind; rc is unchanged.
-    With *reraise* the failure propagates instead, for a caller whose unwind
-    restores the store.
+    A failed removal prints a Note naming every leaf left behind; rc is unchanged.  An
+    interrupt is the success tail's to name.  With *reraise* the failure propagates
+    instead, for a caller whose unwind restores the store.
     """
     bases, kept = _carried_member_store(ws, name, dst_vault, vault_enabled=vault_enabled)
+    # ⚑ *kept* holds the leaves this operation RETAINED on purpose; the retained-vault
+    # Note accounts for them, and naming them again would call a keep a failure.
+    spared = {leaf for leaf, _key in kept}
+
+    def left() -> list[Path]:
+        # ⚑ ``remove_member_store`` does not pass on a ``False`` from ``remove_box_tree``,
+        # so only the disk says whether the box tree (which may hold credentials) is gone.
+        return _on_disk(p for p in _member_leaves(ws, name)[1:]
+                        if p is not None and p not in spared)
+
     try:
         remove_member_store(ws, name, bases=bases)
     except OSError as err:
         if reraise:
             raise
-        _report_store_leftovers(ws, name, err, keep=kept)
+        _report_store_leftovers(name, left(), f": {err}")
     else:
-        _report_store_leftovers(ws, name, keep=kept)
+        _report_store_leftovers(name, left())
     _report_unreceived_vaults(kept)
 
 
 def _report_store_leftovers(
-    ws: Workset, name: str, err: OSError | None = None, *,
-    keep: list[tuple[Path, str]] | None = None,
+    name: str, left: Collection[Path], why: str = "", *, unmoved: Collection[str] = (),
 ) -> None:
-    """Print a Note naming each of member *name*'s store leaves still on disk.
+    """THE Note for what a relocation leaves of *name*'s old store: *left*, and *unmoved*.
 
-    ⚑ The disk, not *err*, says what is left: ``remove_member_store`` stops at the
-    first leaf that refuses, so every leaf after it remains too.
-    ⚑ *keep* holds the leaves this operation RETAINED on purpose; the retained-vault
-    Note already accounts for them, and a second Note would call a deliberate keep a
-    failure.
+    *why* follows the name (``": <error>"``); *unmoved* names steps 4b and 4c's leftovers.
     """
     import sys
 
-    spared = {leaf for leaf, _key in keep or ()}
-    left = [p for p in _member_leaves(ws, name)[1:]
-            if p is not None and p not in spared and (p.exists() or p.is_symlink())]
+    parts = []
     if left:
-        why = f": {err}" if err is not None else ""
-        print(f"Note: could not remove the old store of '{name}'{why}; left "
-              f"{', '.join(map(str, left))}", file=sys.stderr)
+        parts.append(f"could not remove the old store of '{name}'{why}; left "
+                     f"{', '.join(map(str, left))}")
+    parts += unmoved
+    if parts:
+        print(f"Note: {'; '.join(parts)}", file=sys.stderr)
 
 
 def _to_default(
@@ -2132,7 +2302,7 @@ def _to_default(
     new_name: str,
     new_workspace: Path,
     requested_name: str = "",
-) -> ProjectState:
+) -> tuple[ProjectState, _SourceTeardown | None]:
     """Convert/relocate the project so its owner becomes the default workset."""
     # ⚑ ORDER: decide the mint BEFORE the reuse-unregister below, or the same-path reuse
     # case stops being detectable (it is detected BY the source's live registration).
@@ -2146,7 +2316,9 @@ def _to_default(
         if existing is not None:
             # SAME-PATH in-place convert: free the name so assign reuses it verbatim.
             preserved_name = existing
+            source_ws = state.workspace_path
             _safe_unregister(std, existing)
+            unwind.push(lambda: _safe_register_membership(std, existing, source_ws))
         elif kept is not None:
             # ⚑ RELOCATING own-name move: this unwind runs BEFORE any later one, so a
             # failed re-register leaves name -> OLD path intact rather than orphaned.
@@ -2214,19 +2386,17 @@ def _to_default(
             else:
                 _arm_leftover_note(unwind, leaf)
 
+    teardown = _plan_source_teardown(
+        state, std, (vault_ro, vault_rw), preserve_name=preserved_name)
     # ⚑ THE VAULT CARRY (P1 data loss): the leaves above are EMPTY and the source is
-    # deleted below -- contents move first, and a vault link follows the landing.
+    # deleted on success -- contents move first, and a vault link follows the landing.
     _carry_vault_contents(
-        state, std, vault_ro, vault_rw,
+        state, std, vault_ro, vault_rw, teardown,
         relocated=_landings((state.workspace_path, new_workspace),
                             (src_meta_dir, dst_metadata)),
     )
     _carry_box_logs(state, std, unwind, dst_logs=std.primary_logs, dst_name=project_name)
-
-    _remove_old_metadata(
-        state, std, config, unwind, dst_vault=(vault_ro, vault_rw),
-        preserve_name=preserved_name,
-    )
+    teardown = _stash_source_marker(teardown, unwind)
 
     return ProjectState(
         owner="primary", mode=BoxMode.primary, name=project_name,
@@ -2235,7 +2405,7 @@ def _to_default(
         is_external=False, ws=None,
         enable_vault=state.enable_vault,
         box_authored_vault=state.box_authored_vault,
-    )
+    ), teardown
 
 
 #: What a standalone root keeps whatever ``workset.*`` says: the ``workset.boxes`` DEFAULT
@@ -2470,8 +2640,9 @@ def _unconsolidate_workspace_subdir(
     moved: list[Path] = []
     unwind.push(lambda: _undo_consolidate(root, workspace_subdir, moved))
     for child in movable:
-        _move_entry(child, root / child.name)
+        # Recorded before the move, as the undo skips an entry that never left.
         moved.append(child)
+        _move_entry(child, root / child.name)
     # Drop the emptied workspace dir so the converted project keeps no stray one — and with
     # it the now-empty directories a repoint interposed (``workspaces: nested/deep`` leaves
     # ``nested/``, which only ever existed to hold the workspace and is meaningless once the
@@ -2508,7 +2679,7 @@ def _arm_standalone_root_undo(
     while not (top.parent.exists() or top.parent.is_symlink()):
         top = top.parent
     if not (top.exists() or top.is_symlink()):
-        unwind.push_until_sealed(partial(_prune_empty_dirs, workspace_subdir, top.parent))
+        unwind.push(partial(_prune_empty_dirs, workspace_subdir, top.parent))
     return undo, wrote
 
 
@@ -2520,7 +2691,7 @@ def _to_standalone(
     *,
     new_name: str,
     root: Path,
-) -> ProjectState:
+) -> tuple[ProjectState, _SourceTeardown | None]:
     """Convert/relocate the project so it becomes standalone (in-tree metadata).
 
     ⚑⚑ *root* is the standalone ROOT, not the live workspace — this is the ONE target mode
@@ -2572,7 +2743,7 @@ def _to_standalone(
         _consolidate_workspace_subdir(root, workspace_subdir, unwind, early=_early_scope(std, BoxMode.standalone))
     # ⚑ Pushed AFTER the sweep, so it runs BEFORE the sweep's undo: a root file the sweep
     # moved (the user's ``.gitignore``) goes back OVER this restore, never under it.
-    unwind.push_until_sealed(root_undo)
+    unwind.push(root_undo)
     if not reused_in_place:
         _copy_metadata(
             src_meta_dir, state.shell_path,
@@ -2603,6 +2774,11 @@ def _to_standalone(
     register = (state.mode is not BoxMode.standalone
                 or registry_store.standalone_name_for_root(std.registry, state.metadata_path)
                 is not None)
+    # ⚑ Armed BEFORE the register, which may OVERWRITE the source's own row (a same-leaf
+    # move keeps the name): the rollback restores the section's rows as they were.
+    if register:
+        unwind.push(partial(_restore_standalone_rows, std,
+                            registry_store.load_standalone(std.registry)))
     box_name, dst_shell, vault_ro, vault_rw = establish_standalone(
         std, root,
         enable_vault=state.box_authored_vault,
@@ -2611,10 +2787,6 @@ def _to_standalone(
         register=register,
     )
     root_wrote(WORKSET_META_FILE)
-    if register:
-        unwind.push(
-            lambda: registry_store.unregister_standalone(std.registry, box_name)
-        )
 
     workspace_subdir.mkdir(parents=True, exist_ok=True)
     write_project_gitignore(root)
@@ -2627,20 +2799,19 @@ def _to_standalone(
     if vault_rw is not None:  # a null arm has no skeleton to describe
         write_vault_gitignore(root, vault_rw)
 
+    teardown = _plan_source_teardown(
+        state, std, (vault_ro, vault_rw), new_name=box_name,
+        preserve_root=root if reused_in_place else None,
+    )
     # ⚑ THE VAULT CARRY (P1 data loss) — see ``_to_default``: the destination
-    # vault is fresh and the teardown below deletes the source, so contents
+    # vault is fresh and the source is deleted on success, so contents
     # move first.  A reuse-in-place rename collapses to a same-path no-op.
-    _carry_vault_contents(state, std, vault_ro, vault_rw)
+    _carry_vault_contents(state, std, vault_ro, vault_rw, teardown)
     _carry_box_logs(
         state, std, unwind, dst_logs=standalone_logs_dir(root, early=_early_scope(std, BoxMode.standalone)),
         dst_name=box_name,
     )
-
-    _remove_old_metadata(
-        state, std, config, unwind, dst_vault=(vault_ro, vault_rw),
-        new_name=box_name,
-        preserve_root=root if reused_in_place else None,
-    )
+    teardown = _stash_source_marker(teardown, unwind)
 
     return ProjectState(
         owner="standalone", mode=BoxMode.standalone, name=box_name,
@@ -2652,7 +2823,7 @@ def _to_standalone(
         # default did not travel.
         enable_vault=state.box_authored_vault,
         box_authored_vault=state.box_authored_vault,
-    )
+    ), teardown
 
 
 def _to_workset(
@@ -2666,7 +2837,7 @@ def _to_workset(
     new_workspace: Path,
     relocating: bool,
     dest: Path | None,
-) -> ProjectState:
+) -> tuple[ProjectState, _SourceTeardown | None]:
     """Convert/relocate the project into *target_ws* (std-aware external wiring)."""
     internal = is_in_tree_workspace(target_ws, new_workspace)
 
@@ -2776,8 +2947,6 @@ def _to_workset(
         _retire_old_store(
             src_ws, src_name, dst_vault, state.enable_vault, reraise=True,
         )
-        # Discard the stash on success (kept intact while unwind may need it).
-        unwind.on_success(lambda: _dispose_stash(stash))
 
     # ⚑ ``force=True``: an absorb INTO a workset must override the standalone-marker
     # connect guard (B2a) — a standalone source still carries its root ``workset.yaml`` marker
@@ -2786,9 +2955,18 @@ def _to_workset(
     # adopts an existing one, and on a same-workset, same-name relocation the workspace
     # leaf is the source's own, intact workspace.
     existed = _existing_member_leaves(target_ws, new_name)
+    if state.mode is BoxMode.standalone:
+        # ⚑ ``force`` MOVES a standalone source's row into the workset; a rollback puts it
+        # back once the target member is gone (pushed under it, so it runs after).
+        from kanibako.project import registry_store
+
+        prior = registry_store.standalone_root(std.registry, state.name)
+        if prior is not None:
+            unwind.push(partial(registry_store.register_standalone, std.registry,
+                                state.name, Path(prior)))
+    # Armed before the register, which creates leaves before it records the member.
+    unwind.push(lambda: _unwind_target_member(target_ws, new_name, existed))
     add_project(target_ws, new_name, source_for_add, std, force=True)
-    unwind.push(lambda: _unwind_target_member(target_ws, new_name, existed,
-                                              name_leftovers=not unwind.sealed))
 
     dst_project = target_ws.projects_dir / new_name
     # Copy metadata (minus lock+home) into the workset boxes dir.
@@ -2870,18 +3048,23 @@ def _to_workset(
                                   workset_name=target_ws.name),
         dst_name=new_name,
     )
+    # ⚑ ws->ws: the source is already released and stash-backed; the success tail
+    # discards the stash, which the unwind may still need until then.
+    teardown = (_SourceTeardown(name=state.name, stash=stash)
+                if source_is_workset and state.ws is not None else None)
     if not source_is_workset:
+        teardown = _plan_source_teardown(state, std, dst_vault)
         # ⚑ THE VAULT CARRY (P1 data loss) — see ``_to_default``: contents move
-        # before the teardown below deletes the source.  The workspace LANDS at
+        # before the success tail deletes the source.  The workspace LANDS at
         # ``recorded_workspace``, so a vault link that pointed into the source
         # workspace is re-aimed at the same relative position under that landing
         # instead of becoming a second copy of a tree that moved.
         _carry_vault_contents(
-            state, std, vault_ro, vault_rw,
+            state, std, vault_ro, vault_rw, teardown,
             relocated=_landings((state.workspace_path, recorded_workspace),
                                 (store_source, dst_project)),
         )
-        _remove_old_metadata(state, std, config, unwind, dst_vault=dst_vault)
+        teardown = _stash_source_marker(teardown, unwind)
 
     return ProjectState(
         owner=owner_token(BoxMode.named, target_ws.name),
@@ -2891,7 +3074,7 @@ def _to_workset(
         is_external=not internal, ws=target_ws,
         enable_vault=state.enable_vault,
         box_authored_vault=state.box_authored_vault,
-    )
+    ), teardown
 
 
 # -- small helpers ----------------------------------------------------------
@@ -3010,21 +3193,22 @@ def _relocate_channel_partition(
             )
 
 
-def _relocate_snapshot_store(state: ProjectState, new_state: ProjectState) -> None:
+def _relocate_snapshot_store(state: ProjectState, new_state: ProjectState) -> Path | None:
     """Carry this box's OWN vault snapshot store across a rename or a move.
 
     ⚑ MUST run AFTER identity is finalized, as step 4b does: a standalone convert
     REGENERATES the box name, so the key the store lands under is only readable off
-    *new_state*.  Best-effort: a failure strands the store rather than losing it.
+    *new_state*.  Best-effort: a failure strands the store rather than losing it, and
+    the old store still on disk is returned so the teardown keeps it.
     """
     import sys
 
     from kanibako.snapshots import relocate_snapshot_store
 
-    if state.vault_rw is None or new_state.vault_rw is None:
-        return
-    if state.name == new_state.name and state.vault_rw == new_state.vault_rw:
-        return
+    old_store = _old_snapshot_store(state, new_state)
+    if old_store is None:
+        return None
+    assert state.vault_rw is not None and new_state.vault_rw is not None
     try:
         relocate_snapshot_store(
             state.vault_rw, new_state.vault_rw,
@@ -3038,6 +3222,21 @@ def _relocate_snapshot_store(state: ProjectState, new_state: ProjectState) -> No
             f"and 'kanibako box vault list' will not show them.",
             file=sys.stderr,
         )
+    return old_store if old_store.is_dir() else None
+
+
+def _old_snapshot_store(old: ProjectState, new: ProjectState) -> Path | None:
+    """*old*'s snapshot store when step 4c carries it; ``None`` when it stays the box's."""
+    from kanibako.snapshots import box_snapshot_store
+
+    if old.vault_rw is None or new.vault_rw is None:
+        return None
+    if old.name == new.name and old.vault_rw == new.vault_rw:
+        return None
+    try:
+        return box_snapshot_store(old.vault_rw, old.name)
+    except KanibakoError:
+        return None
 
 
 def _safe_unregister(std: StandardPaths, name: str) -> None:
@@ -3084,7 +3283,6 @@ def _existing_member_leaves(ws: Workset, name: str) -> dict[Path, frozenset[str]
 
 def _unwind_target_member(
     ws: Workset, name: str, existed: Mapping[Path, frozenset[str] | None],
-    *, name_leftovers: bool = True,
 ) -> None:
     """Undo a target registration: the record, plus each leaf NOT in *existed*.
 
@@ -3096,7 +3294,8 @@ def _unwind_target_member(
     import sys
 
     try:
-        release_project(ws, name, keep_link=True)
+        if find_identifier(name, (p.name for p in ws.projects)) is not None:
+            release_project(ws, name, keep_link=True)
     except Exception as err:  # noqa: BLE001 - reported; the leaves below still go
         print(f"Note: could not drop the record of '{name}' from workset "
               f"'{ws.name}': {err}", file=sys.stderr)
@@ -3105,8 +3304,7 @@ def _unwind_target_member(
         if leaf is None:
             continue
         if leaf in existed:
-            if name_leftovers:
-                note_added_leftovers(leaf, existed[leaf])
+            note_added_leftovers(leaf, existed[leaf])
             continue
         try:
             if leaf.is_symlink() or leaf.is_dir():

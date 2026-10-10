@@ -752,6 +752,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the unwind used to delete it. A box store that `workset.boxes` points at an existing folder is kept when a
   convert fails; the unwind used to delete it with the user's files. What a failed operation added to a folder
   that already existed is now named in a Note as yours to remove.
+- **An interrupted `box move` or `box convert` no longer deletes the box.** Ctrl-C after the old box was
+  removed rolled back the new one too, deleting the box's home and vault, and sometimes left it in no
+  registry. The old box is now removed only after the move is complete. Ctrl-C before that point leaves the box
+  as it was, still registered, and running the command again works. Ctrl-C after it leaves the box at its new
+  place; a Note names what is left of the old box, and any channel mailbox or vault snapshots that were not
+  moved. A box that keeps its name when moved, and a standalone box converted into a workset, are registered
+  again when the move rolls back.
 - **A failed in-place `box convert --standalone` can be run again.** It used to leave `workset.yaml`, the vault
   folders, and the workspace folder at the project root, and every retry said "Nothing to do". A convert that
   fails before it removes the old box now leaves the root as it was found, root files it rewrote included. A
