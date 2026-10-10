@@ -1577,6 +1577,8 @@ def add_project(
         raise WorksetError(
             f"Project '{held}' already exists in workset '{ws.name}'."
         )
+    if not restoring:
+        _refuse_case_variant_store(ws, name)
 
     resolved_source = source_path.resolve()
     literal_source = Path(literal_path(source_path))
@@ -1723,6 +1725,30 @@ def add_project(
         raise
 
     return proj
+
+
+def _refuse_case_variant_store(ws: Workset, name: str) -> None:
+    """Refuse *name* when *ws* keeps a store (box dir or vault leaf) under a case variant.
+
+    ⚑ Case-blind (§0): ``PROJ`` after a plain disconnect of ``proj`` would build a second
+    store beside the kept one and orphan it.  The exact spelling re-adopts it instead.
+    """
+    vault_ro, vault_rw = resolve_workset_vault_pair(ws.root, early=ws.early_scope)
+    found = sorted(
+        entry
+        for parent in (ws.projects_dir, vault_ro, vault_rw)
+        if parent is not None and parent.is_dir()
+        for entry in parent.iterdir()
+        if entry.name != name and find_identifier(name, (entry.name,)) is not None
+    )
+    if found:
+        shown = ", ".join(str(p) for p in found)
+        raise WorksetError(
+            f"Project '{name}' would build a second store beside the kept store of "
+            f"'{found[0].name}' in workset '{ws.name}' (names compare case-blind): "
+            f"{shown}. Use the existing spelling '{found[0].name}' to re-adopt it, "
+            f"or remove those directories first."
+        )
 
 
 def _warn_adopted_vault_leaves(name: str, leaves: Iterable[Path | None]) -> None:

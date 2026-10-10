@@ -1340,6 +1340,48 @@ class TestWorksetConnect:
         assert sorted(str(p) for p in root.rglob("*")) == before
         assert journal.read_journal(std.journal) == {}
 
+    def test_connect_case_variant_of_a_kept_store_refuses_writing_nothing(
+        self, config_file, tmp_home, capsys,
+    ):
+        """``--name PROJ`` after a plain disconnect of ``proj`` once built a PARALLEL store."""
+        from kanibako.commands.workset_cmd import run_connect, run_disconnect
+        from kanibako.launch import journal
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        root = (tmp_home / "ws_kept").resolve()
+        ws = create_workset("keptws", root, std)
+        ext = (tmp_home / "ext_kept").resolve()
+        ext.mkdir()
+        assert run_connect(argparse.Namespace(
+            workset="keptws", source=str(ext), project_name="proj", force=False)) == 0
+        assert run_disconnect(argparse.Namespace(
+            workset="keptws", project="proj", remove_files=False, force=True)) == 0
+        capsys.readouterr()
+        before = sorted(str(p) for p in root.rglob("*"))
+
+        rc = run_connect(argparse.Namespace(
+            workset="keptws", source=str(ext), project_name="PROJ", force=False))
+
+        assert rc == 1
+        kept = ", ".join(str(p) for p in sorted(
+            [root / "boxes" / "proj", root / "vault" / "ro" / "proj",
+             root / "vault" / "rw" / "proj"]))
+        assert capsys.readouterr().err.strip() == (
+            f"Error: Project 'PROJ' would build a second store beside the kept store of "
+            f"'proj' in workset 'keptws' (names compare case-blind): {kept}. Use the "
+            f"existing spelling 'proj' to re-adopt it, or remove those directories first."
+        )
+        assert sorted(str(p) for p in root.rglob("*")) == before
+        assert _workset_boxes(ws) == {}
+        assert journal.read_journal(std.journal) == {}
+
+        # The exact spelling re-adopts the kept store, silently.
+        assert run_connect(argparse.Namespace(
+            workset="keptws", source=str(ext), project_name="proj", force=False)) == 0
+        assert "Warning" not in capsys.readouterr().err
+        assert _workset_boxes(ws) == {"proj": str(ext)}
+
     def test_connect_refused_inside_the_journal_bracket_leaves_no_entry(
         self, config_file, tmp_home, capsys,
     ):
