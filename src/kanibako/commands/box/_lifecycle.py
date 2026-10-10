@@ -1936,7 +1936,6 @@ class _SourceTeardown:
     #: Box trees, through the escalating deleter.
     trees: tuple[Path, ...] = ()
     vaults: tuple[Path, ...] = ()
-    vault_deleter: Callable[[Path], object] = remove_path
     #: A standalone root's ``workset.yaml``, which alone reads as a box.
     marker: Path | None = None
     stash: Path | None = None
@@ -1945,6 +1944,8 @@ class _SourceTeardown:
     canon: Path | None = None
     #: A standalone root's ``.gitignore`` holding kanibako's line; the tail strips it.
     gitignore: Path | None = None
+    #: A relocated standalone source's ROOT, which the tail removes once it is empty.
+    old_root: Path | None = None
     #: A standalone source's own channel partition, or the error resolving it raised.
     partition: OwnPartition | Exception | None = None
     #: A workset source, whose store :func:`_retire_old_store` removes.
@@ -2046,7 +2047,7 @@ def _plan_source_teardown(
             name=state.name, removed=(*trees, *removable_vault), trees=trees,
             vaults=tuple(removable_vault), marker=marker if marker.is_file() else None,
             canon=canon, gitignore=project_gitignore_to_strip(root), partition=partition,
-            keeps=tuple(keeps), drop=drop, restore=restore,
+            keeps=tuple(keeps), drop=drop, restore=restore, old_root=root,
         )
 
     if state.mode == BoxMode.primary:
@@ -2093,8 +2094,7 @@ def _plan_source_teardown(
         name, workspace = state.name, state.workspace_path
         return _SourceTeardown(
             name=name, removed=(state.metadata_path,), trees=tuple(trees_p),
-            vaults=tuple(vaults), vault_deleter=partial(shutil.rmtree, ignore_errors=True),
-            keeps=tuple(primary_keeps),
+            vaults=tuple(vaults), keeps=tuple(primary_keeps),
             drop=partial(_safe_unregister, std, name) if name else None,
             restore=partial(_safe_register_membership, std, name, workspace) if name else None,
         )
@@ -2271,18 +2271,28 @@ def _finish_relocation(
     names what it left.  An interrupt is named by :func:`_note_interrupted_tail`, which
     reads *progress*.  Steps 4b and 4c have no finishing command.
     """
+    import sys
+
     progress = progress or _TailProgress()
     snapshots = progress.snapshots
     plan = teardown or _SourceTeardown(name=state.name)
 
-    def remove(paths: tuple[Path, ...], deleter: Callable[[Path], object]) -> None:
+    def remove(paths: tuple[Path, ...]) -> None:
+        links = {path: path.resolve() for path in paths if path.is_symlink()}
         for path in paths:
             if _holds_any(path, snapshots):
                 # ⚑ A failed 4c keeps the old store, so "still on disk" stays true.
                 report_retained_vault(path, "it holds the vault snapshots still under "
                                             f"the old name '{state.name}'.")
             elif path.is_dir() or path.is_symlink():
-                deleter(path)
+                try:
+                    remove_path(path)
+                except OSError:  # the leftover Note below names it
+                    pass
+        for link, target in links.items():
+            if not link.is_symlink():
+                print(f"Note: removed the link {link}; left its target {target}, which is "
+                      "yours", file=sys.stderr)
 
     def snapshots_step() -> None:
         kept = _relocate_snapshot_store(state, new_state)
@@ -2290,7 +2300,7 @@ def _finish_relocation(
             snapshots.append(kept)
 
     def vaults_step() -> None:
-        remove(plan.vaults, plan.vault_deleter)
+        remove(plan.vaults)
         for keep in plan.keeps:
             keep()
 
@@ -2308,7 +2318,7 @@ def _finish_relocation(
     steps: list[tuple[str, Callable[[], None]]] = [
         ("4b", partial(_relocate_channel_partition, state, new_state, std, plan)),
         ("4c", snapshots_step),
-        ("store", partial(remove, plan.trees, remove_path)),
+        ("store", partial(remove, plan.trees)),
         ("vaults", vaults_step),
         ("root", root_files_step),
         ("member", member_step),
@@ -2320,6 +2330,12 @@ def _finish_relocation(
             step()
         except Exception:  # noqa: BLE001 - the Note below names what it left
             pass
+    landed = [p.resolve() for p in (new_state.workspace_path, new_state.metadata_path,
+                                    new_state.shell_path, new_state.vault_ro,
+                                    new_state.vault_rw) if p is not None]
+    # ⚑ An in-place convert out lands the box AT or under the old root.
+    if plan.old_root is not None and not _holds_any(plan.old_root.resolve(), landed):
+        _prune_empty_dirs(plan.old_root, plan.old_root.parent)
     _report_store_leftovers(
         plan.name, _on_disk(p for p in (*plan.trees, *plan.vaults) if not _holds_any(p, snapshots)))
 
@@ -3652,6 +3668,36 @@ def run_remap(args) -> int:
     return 0
 
 
+def _completed_move(old: str, new_path: Path, std: StandardPaths,
+                    config: BootstrapConfig, args) -> str | None:
+    """Why a retried move has nothing to do, or ``None``: *new_path* already is the box.
+
+    *old* resolved to no box.  The box at *new_path* counts only when its name is
+    registered there and it matches any ``--name`` or owner flag.
+    """
+    try:
+        landed = resolve_lifecycle_target(str(new_path), std, config)
+        registered = Path(literal_path(resolve_designation(
+            std, landed.name, unknown_name_is_path=False, name_first=True)))
+    except (ProjectError, WorksetError, OSError):
+        return None
+    at = {landed.workspace_path.resolve(), landed.metadata_path.resolve()}
+    if registered.resolve() not in at or new_path not in at:
+        return None
+    name = getattr(args, "name", None)
+    if name and not _same_box_name(name, landed.name):
+        return None
+    ownership = _ownership_from_args(args)
+    if ownership is not UNCHANGED:
+        mode, ws_name = _ownership_to_mode(ownership)  # type: ignore[arg-type]
+        if mode is not landed.mode or (ws_name is not None and (
+                landed.ws is None or landed.ws.name != ws_name)):
+            return None
+    # ⚑ Nothing records where a box came from, so this cannot tell a retry from a typo.
+    return (f"Nothing to do: no box is at {old}, and {new_path} already is box "
+            f"'{landed.name}'; a move that put it there is complete.")
+
+
 def run_move(args) -> int:
     """``box move <old> <new>`` (alias ``mv``) — physically relocate files."""
     import sys
@@ -3669,7 +3715,8 @@ def run_move(args) -> int:
     try:
         state = resolve_lifecycle_target(old, std, config)
     except (ProjectError, WorksetError) as e:
-        print(f"Error: {e}", file=sys.stderr)
+        done = _completed_move(old, new_path, std, config, args)
+        print(f"Error: {done or e}", file=sys.stderr)
         return 1
     except OSError as e:
         print(_relocation_failure(e), file=sys.stderr)

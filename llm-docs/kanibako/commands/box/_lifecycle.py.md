@@ -690,7 +690,8 @@ out from under it.
 * **Standalone source** — removes the in-tree kanibako artifacts (the `box_data/` marker dir, the
   root `workset.yaml`, and the vault) and **NOT the project root itself**. For a standalone the root
   IS `metadata_path`: deleting it would wipe the user's whole project directory AND the
-  already-converted destination.
+  already-converted destination. The success tail `rmdir`s the root last (`old_root`), so it goes
+  only when nothing is left in it.
   ⚑ `preserve_root` naming THIS root (an in-place rename) drops the OLD name's `registry.standalone`
   entry and returns: `box_data/`, the root meta and the vault are the box just re-established, and
   the only stale thing is the name.
@@ -702,8 +703,9 @@ out from under it.
   pointed OUTSIDE the root is reported and left — see that function for why.
 * **Primary source** — unregisters the name, removes the `boxes/` metadata dir, and removes the
   per-box leaf under the primary workset's resolved vault arms (Phase 5 moved it out of the
-  workspace). `preserve_name` (L2) suppresses both when the converted box reuses its own name in
-  place.
+  workspace), through `remove_path` like every other mode: a linked leaf loses only its link, and
+  the tail's Note names the target it left. `preserve_name` (L2) suppresses both when the
+  converted box reuses its own name in place.
 * **Workset source** — `release_project` (the registration, and an external member's
   discoverability link) in-op; the store (box tree, vault leaves) goes on success through
   `_retire_old_store`. **The workspace leaf is NEVER deleted here** — in-tree or external; a
@@ -1030,6 +1032,10 @@ the new location. It does NOT move files and never changes ownership. *new* defa
 BOTH paths are required. An optional target flag (`--default` / `--standalone` / `--workset`) also
 changes ownership. ⚑ REFUSES an external-connected project outright: its workspace is the user's own
 directory, so the message redirects to `box remap` (records) or `box convert` (ownership).
+A retry of a move that already landed — *old* is no box, and *new* is a box registered under its
+name that matches the flags — says `Nothing to do` (`_completed_move`) instead of the resolve error.
+Nothing records where a box came from, so a mistyped *old* beside an existing box gets the same
+answer; the message says only what is on disk.
 
 ```def run_convert(args) -> int```
 `box convert [<old>] (--default|--standalone|--workset <ws>) [--move [path]]`.
