@@ -1916,8 +1916,9 @@ def _unreceived_vault_leaves(
     # deleting it drops the user's pointer.
     named = {leaf for leaf, _why in kept}
     return kept + [
-        (arm / leaf_name, f"it links outside {arm}, so the move did not carry it.")
-        for arm in src_arms
+        (arm / leaf_name, f"it links outside {arm}, so the move did not carry it."
+         if arm / leaf_name != dst else f"it links outside {arm} and stays the box's vault.")
+        for arm, dst in zip(src_arms, dst_vault)
         if arm is not None and arm / leaf_name not in named
         and _on_disk([arm / leaf_name]) and not _is_per_box_leaf(arm / leaf_name, arm)
     ]
