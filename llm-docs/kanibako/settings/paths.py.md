@@ -1106,8 +1106,17 @@ Drop *box_name* from *ws_root*'s per-workset registry (compensating action).
 
 The inverse of `_register_workset_box_membership`: resolves the workset's `workset.registry` path
 (honoring a repoint via its `workset.yaml`) and removes the box's `boxes:` membership. Idempotent —
-`unregister_workset_box` is a no-op when the file/entry is absent. Used to unwind a connect register
-and to drop a disconnected external box's D10 connection record.
+`unregister_workset_box` is a no-op when the file/entry is absent. Used to drop a disconnected
+external box's D10 connection record.
+
+```python
+def _workset_box_membership_undo(ws_root: Path, box_name: str, workspace: Path, *, early: EarlyScope) -> Callable[[], None]
+```
+The undo of a membership register, armed BEFORE the write so an interrupt just after it is still
+undone. It snapshots the box's row at call time. The undo puts a prior row back as it was (the
+register may have overwritten it: re-registration is idempotent, a move overwrites); with no prior
+row it drops only a row that still holds *workspace*, so it never removes a row this call did not
+write. `add_project` uses it.
 
 ## The PRIMARY-box name registry
 

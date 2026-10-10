@@ -1695,11 +1695,12 @@ def add_project(
         # must not emit a ``connect`` entry.
         from kanibako.settings.paths import (
             _register_workset_box_membership,
-            _unregister_workset_box_membership,
+            _workset_box_membership_undo,
         )
 
+        unwind.push(_workset_box_membership_undo(
+            ws.root, name, recorded_workspace, early=ws.early_scope))
         _register_workset_box_membership(ws.root, name, recorded_workspace, early=ws.early_scope)
-        unwind.push(lambda: _unregister_workset_box_membership(ws.root, name, early=ws.early_scope))
 
         proj = WorksetProject(name=name, source_path=recorded_workspace)
         ws.projects.append(proj)
