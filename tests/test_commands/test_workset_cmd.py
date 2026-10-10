@@ -1340,6 +1340,30 @@ class TestWorksetConnect:
         assert sorted(str(p) for p in root.rglob("*")) == before
         assert journal.read_journal(std.journal) == {}
 
+    def test_connect_refused_inside_the_journal_bracket_leaves_no_entry(
+        self, config_file, tmp_home, capsys,
+    ):
+        """``add_project``'s "already connected" refusal fires inside the bracket; it clears."""
+        from kanibako.commands.workset_cmd import run_connect
+        from kanibako.launch import journal
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        create_workset("wsa", tmp_home / "ws_a", std)
+        create_workset("wsb", tmp_home / "ws_b", std)
+        ext = (tmp_home / "ext").resolve()
+        ext.mkdir()
+        assert run_connect(argparse.Namespace(
+            workset="wsa", source=str(ext), project_name="p1", force=False)) == 0
+        capsys.readouterr()
+
+        rc = run_connect(argparse.Namespace(
+            workset="wsb", source=str(ext), project_name="p2", force=False))
+
+        assert rc == 1
+        assert "already connected as project 'p1'" in capsys.readouterr().err
+        assert journal.read_journal(std.journal) == {}
+
     def test_reconnect_after_disconnect_adopts_its_kept_store_silently(
         self, config_file, tmp_home, capsys,
     ):
