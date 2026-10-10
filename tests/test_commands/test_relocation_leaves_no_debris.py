@@ -374,14 +374,17 @@ class TestLeftoversOfASuccessfulMoveAreNamed:
         held = err.split(f"{pdir} still holds ", 1)[1].split(", a partial leftover", 1)[0]
         assert "ro" in held.split(", ")
 
-    def test_a_primary_to_standalone_convert_names_the_old_vault_it_leaves(self, env, capsys):
+    def test_a_primary_to_standalone_convert_names_the_old_vault_it_leaves(
+            self, env, capsys, monkeypatch):
         config, std, tmp_home = env
         pdir = _primary(env)
         state = resolve_lifecycle_target(str(pdir), std, config)
         vault = state.vault_rw
         (vault / "ro").mkdir(parents=True)
         (vault / "ro" / "r.txt").write_text("r")
-        (vault / "ro").chmod(0o555)
+        # The escalating remover's own verdict on an entry it cannot take (in-box root).
+        real = lc.remove_path
+        monkeypatch.setattr(lc, "remove_path", lambda p: p != vault and real(p))
         execute_lifecycle(state, TargetSpec(location=tmp_home / "sa", ownership="standalone"),
                           std, config, confirm=lambda: True)
         err = capsys.readouterr().err

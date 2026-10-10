@@ -124,6 +124,7 @@ def _make_confirm(force: bool, summary: str)
 def _load_env()
 def _abort_if_locked(state: ProjectState, force: bool) -> bool
 def _relocation_failure(err: OSError) -> str
+def _completed_move(old: str, new_path: Path, std: StandardPaths, config: BootstrapConfig, args) -> str | None
 ```
 
 ## Classes
@@ -166,11 +167,11 @@ class _SourceTeardown:
     removed: tuple[Path, ...] = ()
     trees: tuple[Path, ...] = ()
     vaults: tuple[Path, ...] = ()
-    vault_deleter: Callable[[Path], object] = remove_path
     marker: Path | None = None
     stash: Path | None = None
     canon: Path | None = None
     gitignore: Path | None = None
+    old_root: Path | None = None
     partition: OwnPartition | Exception | None = None
     member: Workset | None = None
     dst_vault: tuple[Path | None, Path | None] = (None, None)
