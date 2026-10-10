@@ -1227,15 +1227,31 @@ def execute_lifecycle(
         _drop_source_row(teardown, unwind)
         sealed = True
         unwind.finish()
-    except BaseException:
+    except BaseException as exc:
         # ⚑⚑ ``BaseException``, not ``Exception``: an interrupt after the release would
         # otherwise skip every compensating action and leave the stash in ``$TMPDIR``.
         if sealed:
             unwind.note_interrupted()
         else:
             unwind.run()
+            if isinstance(exc, KeyboardInterrupt) and not unwind.failed:
+                _note_interrupt_undone(state, spec)
         raise
     return new_state
+
+
+def _note_interrupt_undone(state: ProjectState, spec: TargetSpec) -> None:
+    """Tell the user an interrupt was undone in full: the CLI's rc 130 prints nothing."""
+    import sys
+
+    where = state.workspace_path
+    if spec.verb == "move":
+        done = f"the move was undone; '{state.name}' is back at {where}"
+    elif spec.verb == "convert":
+        done = f"the conversion was undone; '{state.name}' is back at {where}"
+    else:  # remap: records only, no files moved
+        done = f"the remap was undone; '{state.name}' is registered at {where} again"
+    print(f"Interrupted: {done}", file=sys.stderr)
 
 
 def _run_steps(
@@ -2135,14 +2151,18 @@ def _plan_source_teardown(
     return _SourceTeardown(name=state.name, removed=(state.metadata_path,))
 
 
-def _restore_standalone_rows(std: StandardPaths, before: Mapping[str, str]) -> None:
+def _restore_standalone_rows(std: StandardPaths, before: Mapping[str, str]) -> bool:
     """Undo what a register did to the ``standalone`` section: drop each row *before*
-    lacked, and put back each row it changed.  A row it removed is not its to restore."""
+    lacked, and put back each row it changed.  A row it removed is not its to restore.
+
+    Returns ``False`` when a row it reported could not be restored.
+    """
     import sys
 
     from kanibako.project import registry_store
 
     held: KeyboardInterrupt | None = None
+    restored = True
     for name, root in registry_store.load_standalone(std.registry).items():
         try:
             stored = find_identifier(name, before)
@@ -2155,19 +2175,21 @@ def _restore_standalone_rows(std: StandardPaths, before: Mapping[str, str]) -> N
             print(f"Note: may not have restored the standalone registry row '{name}': "
                   f"interrupted", file=sys.stderr)
         except Exception as err:  # noqa: BLE001 - reported, and the other rows still go
+            restored = False
             print(f"Note: could not restore the standalone registry row '{name}': {err}",
                   file=sys.stderr)
     if held is not None:
         raise held
+    return restored
 
 
-def _restore_primary_rows(std: StandardPaths, before: Mapping[str, str]) -> None:
+def _restore_primary_rows(std: StandardPaths, before: Mapping[str, str]) -> bool:
     """Put the PRIMARY membership back to *before*: drop each row it lacked, restore each
-    row it held."""
+    row it held.  Returns ``False`` when a row could not be put back."""
     import sys
 
     now = load_primary_boxes(std.primary_workset, early=_early_scope(std, BoxMode.primary))
-    undo: list[tuple[str, Callable[[], None]]] = [
+    undo: list[tuple[str, Callable[[], bool]]] = [
         (name, partial(_safe_unregister, std, name))
         for name in now if find_identifier(name, before) is None]
     undo += [
@@ -2175,15 +2197,17 @@ def _restore_primary_rows(std: StandardPaths, before: Mapping[str, str]) -> None
         for name, workspace in before.items()
         if now.get(find_identifier(name, now) or "") != workspace]
     held: KeyboardInterrupt | None = None
+    restored = True
     for name, step in undo:
         try:
-            step()
+            restored = step() and restored
         except KeyboardInterrupt as exc:
             held = held or exc
             print(f"Note: may not have restored the primary registry row '{name}': "
                   f"interrupted", file=sys.stderr)
     if held is not None:
         raise held
+    return restored
 
 
 def _safe_unregister_standalone(std: StandardPaths, name: str) -> None:
@@ -2832,16 +2856,18 @@ def _consolidate_workspace_subdir(
 
 def _undo_consolidate(
     src_dir: Path, dest_dir: Path, moved: list[Path], *, root: Path,
-) -> None:
+) -> bool:
     """Move *moved*'s leaves back from *src_dir* to *dest_dir* — the reversal of either sweep.
 
     ⚑ *dest_dir* is RE-CREATED first, even with nothing *moved*: the unconsolidate
     direction REMOVES it once emptied (with any repoint parents), EMPTY or not.
+    Returns ``False`` when a leaf it reported did not go back.
     """
     import sys
 
     dest_dir.mkdir(parents=True, exist_ok=True)
     held: KeyboardInterrupt | None = None
+    restored = True
     for child in moved:
         src = src_dir / child.name
         try:
@@ -2852,10 +2878,12 @@ def _undo_consolidate(
         except OSError:
             pass
         if src.exists() or src.is_symlink():
+            restored = False
             print(f"Note: {child.name} did not go back to {dest_dir}; it is at {src}",
                   file=sys.stderr)
     if held is not None:
         raise held
+    return restored
 
 
 def _move_entry(src: Path, dst: Path, *, root: Path) -> None:
@@ -3269,7 +3297,7 @@ def _to_workset(
         metadata_source = stash_boxes
         shell_source = stash_boxes / "home"
 
-        def _restore_source() -> None:
+        def _restore_source() -> bool:
             # ⚑ Each step runs even when an earlier one failed, and reports its own
             # failure: ``_Unwind.run`` swallows whatever an action raises.
             import sys
@@ -3331,6 +3359,7 @@ def _to_workset(
                       f"the move (it may hold credentials)", file=sys.stderr)
             if held is not None:
                 raise held
+            return clean
 
         # ⚑⚑ Pushed BEFORE the release (L1): once it starts, the stash holds the only copy
         # of the store, so a failure part-way through must restore from it, never drop it.
@@ -3645,21 +3674,25 @@ def _old_snapshot_store(old: ProjectState, new: ProjectState) -> Path | None:
         return None
 
 
-def _safe_unregister(std: StandardPaths, name: str) -> None:
+def _safe_unregister(std: StandardPaths, name: str) -> bool:
+    """Best-effort drop of *name* from the PRIMARY membership; ``False`` if it raised."""
     try:
         unregister_primary_box_name(std.primary_workset, name, early=_early_scope(std, BoxMode.primary))
     except Exception:  # noqa: BLE001
-        pass
+        return False
+    return True
 
 
 def _safe_register_membership(
     std: StandardPaths, name: str, workspace: Path,
-) -> None:
-    """Best-effort re-register *name* -> *workspace* in the PRIMARY membership (FIX1)."""
+) -> bool:
+    """Best-effort re-register *name* -> *workspace* in the PRIMARY membership (FIX1);
+    ``False`` if it raised."""
     try:
         _register_workset_box_membership(std.primary_workset, name, workspace, early=_early_scope(std, BoxMode.primary))
     except Exception:  # noqa: BLE001
-        pass
+        return False
+    return True
 
 
 def _member_leaves(ws: Workset, name: str) -> tuple[Path | None, Path, Path | None, Path | None]:
@@ -3689,17 +3722,19 @@ def _existing_member_leaves(ws: Workset, name: str) -> dict[Path, frozenset[str]
 
 def _unwind_target_member(
     ws: Workset, name: str, existed: Mapping[Path, frozenset[str] | None],
-) -> None:
+) -> bool:
     """Undo a target registration: the record, plus each leaf NOT in *existed*.
 
     ⚑⚑ A leaf that existed before the op is the user's and is never touched; a Note names
     what the op added to it.  A link is unlinked, never followed; every tree goes through the
     escalating ``remove_path``.  Whatever cannot be removed is reported here, because
-    ``_Unwind.run`` swallows errors.
+    ``_Unwind.run`` swallows errors.  Returns ``False`` when the record could not be
+    dropped; a leftover destination leaf does not count.
     """
     import sys
 
     held: KeyboardInterrupt | None = None
+    dropped = True
     try:
         if find_identifier(name, (p.name for p in ws.projects)) is not None:
             release_project(ws, name, keep_link=True)
@@ -3708,6 +3743,7 @@ def _unwind_target_member(
         print(f"Note: may not have dropped the record of '{name}' from workset "
               f"'{ws.name}': interrupted", file=sys.stderr)
     except Exception as err:  # noqa: BLE001 - reported; the leaves below still go
+        dropped = False
         print(f"Note: could not drop the record of '{name}' from workset "
               f"'{ws.name}': {err}", file=sys.stderr)
     workspace, box_tree, vault_ro, vault_rw = _member_leaves(ws, name)
@@ -3732,6 +3768,7 @@ def _unwind_target_member(
                   file=sys.stderr)
     if held is not None:
         raise held
+    return dropped
 
 
 def _dispose_stash(stash: Path) -> None:

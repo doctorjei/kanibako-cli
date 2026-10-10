@@ -55,6 +55,7 @@ def _resolve_target_workset(name: str, std: StandardPaths) -> Workset
 def _cure_ref(state: ProjectState) -> str
 def _name_held_in_target_workset(target_mode: BoxMode | None, target_ws: Workset | None, state: ProjectState, new_name: str) -> str | None
 def _validate(state: ProjectState, spec: TargetSpec, std: StandardPaths, config: BootstrapConfig, *, force: bool, cwd: Path) -> dict
+def _note_interrupt_undone(state: ProjectState, spec: TargetSpec) -> None
 def _run_steps(state: ProjectState, spec: TargetSpec, std: StandardPaths, config: BootstrapConfig, plan: dict, unwind: _Unwind) -> tuple[ProjectState, _SourceTeardown | None]
 def _retire_old_workspace(old: Path, landed: Path) -> None
 def _leftover_entries(path: Path, before: Collection[str]=()) -> str
@@ -79,8 +80,8 @@ def _report_unreceived_vaults(kept: list[tuple[Path, str]]) -> None
 def _carried_member_store(ws: Workset, name: str, dst_vault: tuple[Path | None, Path | None], *, vault_enabled: bool=True) -> tuple[tuple[Path, ...], list[tuple[Path, str]]]
 def _nulled_arm_stores(ws: Workset, name: str) -> list[tuple[Path, str]]
 def _plan_source_teardown(state: ProjectState, std: StandardPaths, dst_vault: tuple[Path | None, Path | None], *, preserve_name: str | None=None, new_name: str | None=None, preserve_root: Path | None=None) -> _SourceTeardown
-def _restore_standalone_rows(std: StandardPaths, before: Mapping[str, str]) -> None
-def _restore_primary_rows(std: StandardPaths, before: Mapping[str, str]) -> None
+def _restore_standalone_rows(std: StandardPaths, before: Mapping[str, str]) -> bool
+def _restore_primary_rows(std: StandardPaths, before: Mapping[str, str]) -> bool
 def _safe_unregister_standalone(std: StandardPaths, name: str) -> None
 def _standalone_source_row(std: StandardPaths, name: str, root: Path, new_name: str | None) -> tuple[str, str] | None
 def _carry_standalone_canon(teardown: _SourceTeardown, std: StandardPaths, src_root: Path, dst_root: Path) -> _SourceTeardown
@@ -104,7 +105,7 @@ def _swept(child: Path, artifacts: list[tuple[str, Path, bool]]) -> bool
 def _holds_anything(path: Path) -> bool
 def _artifact_claiming(child: Path, artifacts: list[tuple[str, Path, bool]]) -> tuple[str, Path, bool] | None
 def _consolidate_workspace_subdir(root: Path, workspace_subdir: Path, unwind: _Unwind, *, early: EarlyScope) -> None
-def _undo_consolidate(src_dir: Path, dest_dir: Path, moved: list[Path], *, root: Path) -> None
+def _undo_consolidate(src_dir: Path, dest_dir: Path, moved: list[Path], *, root: Path) -> bool
 def _move_entry(src: Path, dst: Path, *, root: Path) -> None
 def _rename_escalated(src: Path, dst: Path, root: Path) -> bool
 def _prune_empty_dirs(path: Path, above: Path) -> None
@@ -120,11 +121,11 @@ def _old_partition(old: ProjectState, std: StandardPaths, plan: _SourceTeardown)
 def _relocate_channel_partition(old: ProjectState, new: ProjectState, std: StandardPaths, plan: _SourceTeardown) -> None
 def _relocate_snapshot_store(state: ProjectState, new_state: ProjectState) -> Path | None
 def _old_snapshot_store(old: ProjectState, new: ProjectState) -> Path | None
-def _safe_unregister(std: StandardPaths, name: str) -> None
-def _safe_register_membership(std: StandardPaths, name: str, workspace: Path) -> None
+def _safe_unregister(std: StandardPaths, name: str) -> bool
+def _safe_register_membership(std: StandardPaths, name: str, workspace: Path) -> bool
 def _member_leaves(ws: Workset, name: str) -> tuple[Path | None, Path, Path | None, Path | None]
 def _existing_member_leaves(ws: Workset, name: str) -> dict[Path, frozenset[str] | None]
-def _unwind_target_member(ws: Workset, name: str, existed: Mapping[Path, frozenset[str] | None]) -> None
+def _unwind_target_member(ws: Workset, name: str, existed: Mapping[Path, frozenset[str] | None]) -> bool
 def _dispose_stash(stash: Path) -> None
 def _convert_target_flags(args) -> list[str]
 def _ownership_from_args(args) -> str | _Sentinel
