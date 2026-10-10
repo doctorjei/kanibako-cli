@@ -245,3 +245,56 @@ class TestUnwindTargetMemberHoldsInterrupt:
             lc._unwind_target_member(ws, "alpha", {})
         assert len(calls) >= 2
         assert not leaves[1].exists()
+
+
+class TestUndoConsolidateHoldsInterrupt:
+    def test_interrupted_entry_still_moves_the_rest_back(self, tmp_path, monkeypatch, capsys):
+        import kanibako.commands.box._lifecycle as lc
+
+        src_dir, dest_dir = tmp_path / "moved-to", tmp_path / "workspace"
+        src_dir.mkdir()
+        names = ["a.txt", "b.txt", "c.txt"]
+        for name in names:
+            (src_dir / name).write_text(name)
+        real = lc._move_entry
+        calls: list[object] = []
+
+        def first_interrupted(src, dst):
+            calls.append(src)
+            if len(calls) == 1:
+                raise KeyboardInterrupt
+            real(src, dst)
+
+        monkeypatch.setattr(lc, "_move_entry", first_interrupted)
+        with pytest.raises(KeyboardInterrupt):
+            lc._undo_consolidate(src_dir, dest_dir, [src_dir / n for n in names])
+        assert sorted(p.name for p in dest_dir.iterdir()) == ["b.txt", "c.txt"]
+        err = capsys.readouterr().err
+        assert f"a.txt did not go back to {dest_dir}; it is at {src_dir / 'a.txt'}" in err
+
+
+class TestRestoreRowsHoldInterrupt:
+    def test_standalone_rows_all_restored_past_an_interrupt(
+        self, std, tmp_home, monkeypatch, capsys,
+    ):
+        import kanibako.commands.box._lifecycle as lc
+        from kanibako.project import registry_store
+
+        for name in ("one", "two"):
+            registry_store.register_standalone(std.registry, name, tmp_home / name)
+        real = registry_store.unregister_standalone
+        calls: list[str] = []
+
+        def first_interrupted(registry, name):
+            calls.append(name)
+            if len(calls) == 1:
+                raise KeyboardInterrupt
+            real(registry, name)
+
+        monkeypatch.setattr(registry_store, "unregister_standalone", first_interrupted)
+        with pytest.raises(KeyboardInterrupt):
+            lc._restore_standalone_rows(std, {})
+        left = registry_store.load_standalone(std.registry)
+        assert list(left) == [calls[0]]
+        assert f"may not have restored the standalone registry row '{calls[0]}'" in (
+            capsys.readouterr().err)
