@@ -156,6 +156,7 @@ class _Unwind:
     cleanups: list[tuple[Callable[[], None], Callable[[], None] | None]] = field(default_factory=list)
     finished: int = 0
     failed: int = 0
+    errors: list[Exception] = field(default_factory=list)
 
     def push(self, action: Callable[[], object]) -> None
     def push_first(self, action: Callable[[], object]) -> None

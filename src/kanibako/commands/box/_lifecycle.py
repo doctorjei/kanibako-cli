@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import shlex
 import shutil
-from collections.abc import Collection, Iterable, Mapping
+from collections.abc import Collection, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from functools import partial
 from pathlib import Path
@@ -1239,7 +1239,10 @@ def execute_lifecycle(
             unwind.note_interrupted()
         else:
             unwind.run()
-            if isinstance(exc, KeyboardInterrupt) and not unwind.failed:
+            if unwind.failed:
+                _note_unwind_incomplete(state, spec, plan["dest"], unwind.errors,
+                                        interrupted=isinstance(exc, KeyboardInterrupt))
+            elif isinstance(exc, KeyboardInterrupt):
                 _note_interrupt_undone(state, spec)
         raise
     return new_state
@@ -1257,6 +1260,33 @@ def _note_interrupt_undone(state: ProjectState, spec: TargetSpec) -> None:
     else:  # remap: records only, no files moved
         done = f"the remap was undone; '{state.name}' is registered at {where} again"
     print(f"Interrupted: {done}", file=sys.stderr)
+
+
+def _note_unwind_incomplete(
+    state: ProjectState, spec: TargetSpec, dest: Path | None,
+    errors: Sequence[Exception], *, interrupted: bool,
+) -> None:
+    """Tell the user the rollback left work undone, and where to look.
+
+    ⚑ A step that returned ``False`` printed its own Note; one that RAISED is named here
+    from *errors*.  The CLI then exits 130 on an interrupt, or prints the error.
+    """
+    import sys
+
+    noun = {"move": "move", "convert": "conversion"}.get(spec.verb or "", "remap")
+    for err in errors:
+        print(f"Note: could not undo a step of the {noun}: {err}", file=sys.stderr)
+    src = state.workspace_path
+    if noun == "remap":
+        where = f"'{state.name}' may still be registered at {dest or src}"
+    elif dest is None or dest == src:
+        where = f"check '{state.name}' at {src}"
+    else:
+        where = f"check '{state.name}' at {src} and at {dest}"
+    lead = (f"Interrupted: the {noun} was not fully undone" if interrupted
+            else f"Note: the {noun} failed and was not fully undone")
+    print(f"{lead}; {where} (the notes above name what the rollback could not put "
+          "back)", file=sys.stderr)
 
 
 def _run_steps(
@@ -1518,28 +1548,28 @@ def _apply_ownership_and_markers(
 
 # -- per-target-mode ownership steps ---------------------------------------
 
-def _unwind_box_tree(path: Path) -> None:
-    """Best-effort box-tree removal shaped for ``_Unwind.push`` (discards the bool)."""
-    remove_box_tree(path)
-
-
-def _unwind_created_root(path: Path) -> None:
+def _unwind_created_root(
+    path: Path, remove: Callable[[Path], bool] | None = None,
+) -> bool:
     """Undo a root this op created, which may be a LINK or a partial copy.
 
     A link is UNLINKED, never removed through; a tree goes through the escalating
-    box-tree deleter.  Whatever remains is named in a Note, because a leftover makes
-    every retry fail with "Destination already exists".
+    *remove* (``remove_path`` by default).  Whatever remains is named in a Note, because
+    a leftover makes every retry fail with "Destination already exists".  Returns
+    ``False`` then.
     """
     import sys
 
     try:
-        if remove_path(path):
-            return
+        if (remove or remove_path)(path):
+            return True
     except OSError:
         pass
     if path.exists() or path.is_symlink():
         print(f"Note: could not remove {path}, which this operation created; "
               f"remove it before you run it again", file=sys.stderr)
+        return False
+    return True
 
 
 def _copy_metadata(
@@ -1557,7 +1587,7 @@ def _copy_metadata(
     # before the copy, which can fail part-way, and ONLY for a dir this copy creates:
     # a pre-existing dir may be a REPOINTED store holding the user's files.
     if not (dst_metadata.exists() or dst_metadata.is_symlink()):
-        unwind.push(lambda: _unwind_box_tree(dst_metadata))
+        unwind.push(partial(_unwind_created_root, dst_metadata, remove_box_tree))
     else:
         _arm_leftover_note(unwind, dst_metadata)
     copy_tree_keeping_links(
@@ -2239,7 +2269,10 @@ def _restore_primary_rows(std: StandardPaths, before: Mapping[str, str]) -> bool
     restored = True
     for name, step in undo:
         try:
-            restored = step() and restored
+            if not step():
+                restored = False
+                print(f"Note: could not restore the primary registry row '{name}'",
+                      file=sys.stderr)
         except KeyboardInterrupt as exc:
             held = held or exc
             print(f"Note: may not have restored the primary registry row '{name}': "
@@ -3768,7 +3801,7 @@ def _unwind_target_member(
     what the op added to it.  A link is unlinked, never followed; every tree goes through the
     escalating ``remove_path``.  Whatever cannot be removed is reported here, because
     ``_Unwind.run`` swallows errors.  Returns ``False`` when the record could not be
-    dropped; a leftover destination leaf does not count.
+    dropped or a leaf this op created remains.
     """
     import sys
 
@@ -3803,6 +3836,7 @@ def _unwind_target_member(
         except OSError:
             pass  # reported just below
         if leaf.exists() or leaf.is_symlink():
+            dropped = False
             print(f"Note: could not remove {leaf}, which this operation created",
                   file=sys.stderr)
     if held is not None:

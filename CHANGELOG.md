@@ -723,6 +723,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A rollback that fails says so.** When a `box move`, `box convert`, or `box remap` failed or was stopped
+  with Ctrl-C and a rollback step then failed, the command printed nothing about it, or said the move was
+  undone while a partial destination or a new workset leaf stayed behind. It now prints a Note for each step
+  it could not undo, then `Interrupted: the move was not fully undone; check '<name>' at <source> and at
+  <destination>` (`Note: the move failed and was not fully undone; …` for an error). Ctrl-C still exits 130.
 - **A symlink loop in a vault no longer crashes `box move` or `box convert`.** A loop at the vault link or
   anywhere above it (a looped `vault` folder or a workset's shared `vault/rw`) stopped the command with a
   `RuntimeError` traceback on Python 3.11. The loop is now left in place with a Note saying so, as `box purge`

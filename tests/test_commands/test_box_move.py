@@ -671,10 +671,12 @@ class TestInterruptedMoveIsNamed:
             std.primary_workset, early=_early_scope(std, BoxMode.primary))
         assert boxes.get("beta") == str(project_dir)
 
-    def test_a_failed_unwind_step_claims_nothing(
+    def test_a_failed_unwind_step_is_named_not_claimed_undone(
         self, config_file, tmp_home, credentials_dir, monkeypatch, capsys,
     ):
-        """⚑ THE INVERSE: an unwind step that fails voids the claim the box is back."""
+        """⚑ THE INVERSE: a step that raises voids the claim the box is back, and is named;
+        the CLI still exits 130."""
+        from kanibako.cli import main
         from kanibako.commands.box import _lifecycle
 
         _std, project_dir = self._box(config_file, tmp_home)
@@ -688,15 +690,21 @@ class TestInterruptedMoveIsNamed:
 
         monkeypatch.setattr(_lifecycle, "write_box_enable_vault", interrupt)
         monkeypatch.setattr(_lifecycle, "_unwind_created_root", fail)
-        with pytest.raises(KeyboardInterrupt):
-            run_move(_move_args(project_dir, dest))
-        assert "Interrupted:" not in capsys.readouterr().err
+        with pytest.raises(SystemExit) as exc_info:
+            main(["box", "move", str(project_dir), str(dest), "--force"])
+        assert exc_info.value.code == 130
+        err = capsys.readouterr().err
+        assert "was undone;" not in err
+        assert "Note: could not undo a step of the move: injected" in err, err
+        assert (f"Interrupted: the move was not fully undone; check 'beta' at "
+                f"{project_dir} and at {dest} (the notes above name what the rollback "
+                "could not put back)") in err, err
 
-    def test_an_unrestored_primary_row_claims_nothing(
+    def test_an_unrestored_primary_row_is_named(
         self, config_file, tmp_home, credentials_dir, monkeypatch, capsys,
     ):
-        """⚑ The primary-row restore swallows its errors; a row left unrestored still
-        voids the claim, though it prints nothing of its own."""
+        """⚑ The primary-row restore swallows its errors; a row left unrestored voids
+        the claim and is named."""
         from kanibako.commands.box import _lifecycle
 
         _std, project_dir = self._box(config_file, tmp_home)
@@ -713,7 +721,70 @@ class TestInterruptedMoveIsNamed:
         monkeypatch.setattr(_lifecycle, "write_box_enable_vault", interrupt)
         with pytest.raises(KeyboardInterrupt):
             run_move(_move_args(project_dir, dest))
-        assert "Interrupted:" not in capsys.readouterr().err
+        err = capsys.readouterr().err
+        assert "was undone;" not in err
+        assert "Note: could not restore the primary registry row 'beta'" in err, err
+        assert "Interrupted: the move was not fully undone; check 'beta' at" in err, err
+
+    def test_a_failed_step_under_an_ordinary_error_is_named_too(
+        self, config_file, tmp_home, credentials_dir, monkeypatch, capsys,
+    ):
+        from kanibako.commands.box import _lifecycle
+        from kanibako.errors import ProjectError
+
+        _std, project_dir = self._box(config_file, tmp_home)
+        dest = tmp_home / "elsewhere" / "beta"
+
+        def boom(*_a, **_kw):
+            raise ProjectError("mid-move")
+
+        def fail(*_a, **_kw):
+            raise OSError("injected")
+
+        monkeypatch.setattr(_lifecycle, "write_box_enable_vault", boom)
+        monkeypatch.setattr(_lifecycle, "_unwind_created_root", fail)
+        assert run_move(_move_args(project_dir, dest)) == 1
+        err = capsys.readouterr().err
+        assert "Interrupted" not in err
+        assert "Error: mid-move" in err, err
+        assert "Note: could not undo a step of the move: injected" in err, err
+        assert "Note: the move failed and was not fully undone; check 'beta' at" in err, err
+
+    @pytest.mark.parametrize(("verb", "said"), [
+        ("move", "Interrupted: the move was not fully undone; check 'beta' at {p} and at {d}"),
+        ("convert", "Interrupted: the conversion was not fully undone; check 'beta' at {p}"
+                    " and at {d}"),
+        (None, "Interrupted: the remap was not fully undone; 'beta' may still be "
+               "registered at {d}"),
+    ])
+    def test_each_verb_names_an_incomplete_rollback(self, tmp_path, capsys, verb, said):
+        from types import SimpleNamespace
+
+        from kanibako.commands.box import _lifecycle
+
+        dest = tmp_path / "dest"
+        state = SimpleNamespace(name="beta", workspace_path=tmp_path)
+        _lifecycle._note_unwind_incomplete(
+            state, SimpleNamespace(verb=verb), dest, [OSError("x")],  # type: ignore[arg-type]
+            interrupted=True)
+        noun = {"move": "move", "convert": "conversion"}.get(verb or "", "remap")
+        assert capsys.readouterr().err == (
+            f"Note: could not undo a step of the {noun}: x\n"
+            + said.format(p=tmp_path, d=dest)
+            + " (the notes above name what the rollback could not put back)\n")
+
+    def test_an_in_place_rollback_names_one_place(self, tmp_path, capsys):
+        from types import SimpleNamespace
+
+        from kanibako.commands.box import _lifecycle
+
+        state = SimpleNamespace(name="beta", workspace_path=tmp_path)
+        _lifecycle._note_unwind_incomplete(
+            state, SimpleNamespace(verb="convert"), None, [],  # type: ignore[arg-type]
+            interrupted=True)
+        assert capsys.readouterr().err == (
+            f"Interrupted: the conversion was not fully undone; check 'beta' at {tmp_path}"
+            " (the notes above name what the rollback could not put back)\n")
 
     @pytest.mark.parametrize(("verb", "said"), [
         ("move", "Interrupted: the move was undone; 'beta' is back at {p}"),

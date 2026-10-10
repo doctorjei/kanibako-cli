@@ -56,14 +56,14 @@ def _cure_ref(state: ProjectState) -> str
 def _name_held_in_target_workset(target_mode: BoxMode | None, target_ws: Workset | None, state: ProjectState, new_name: str) -> str | None
 def _validate(state: ProjectState, spec: TargetSpec, std: StandardPaths, config: BootstrapConfig, *, force: bool, cwd: Path) -> dict
 def _note_interrupt_undone(state: ProjectState, spec: TargetSpec) -> None
+def _note_unwind_incomplete(state: ProjectState, spec: TargetSpec, dest: Path | None, errors: Sequence[Exception], *, interrupted: bool) -> None
 def _run_steps(state: ProjectState, spec: TargetSpec, std: StandardPaths, config: BootstrapConfig, plan: dict, unwind: _Unwind) -> tuple[ProjectState, _SourceTeardown | None]
 def _retire_old_workspace(old: Path, landed: Path) -> None
 def _leftover_entries(path: Path, before: Collection[str]=()) -> str
 def _entry_names(path: Path) -> frozenset[str] | None
 def _arm_leftover_note(unwind: _Unwind, path: Path) -> None
 def _apply_ownership_and_markers(state: ProjectState, std: StandardPaths, config: BootstrapConfig, unwind: _Unwind, *, target_mode: BoxMode, target_ws: Workset | None, new_name: str, new_workspace: Path, relocating: bool, dest: Path | None, requested_name: str='') -> tuple[ProjectState, _SourceTeardown | None]
-def _unwind_box_tree(path: Path) -> None
-def _unwind_created_root(path: Path) -> None
+def _unwind_created_root(path: Path, remove: Callable[[Path], bool] | None=None) -> bool
 def _copy_metadata(src_metadata: Path, src_shell: Path, dst_metadata: Path, *, shell_into_metadata: bool, home_leaf: str='home', unwind: _Unwind) -> Path
 def _deliver_carried_box_settings(state: ProjectState, dst_box_tier: Path, *, early: EarlyScope) -> None
 def _vault_leaf_has_contents(leaf: Path) -> bool

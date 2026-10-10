@@ -148,9 +148,18 @@ class TestAFailedCopyRemovesItsDestination:
         root = tmp_path / "made"
         root.mkdir()
         monkeypatch.setattr(lc, "remove_path", lambda p: False)
-        lc._unwind_created_root(root)
+        assert lc._unwind_created_root(root) is False
         err = capsys.readouterr().err
         assert f"Note: could not remove {root}, which this operation created" in err
+
+    def test_the_metadata_tree_remover_reports_its_leftover_too(self, tmp_path, capsys):
+        """The escalating box-tree remover goes through the same verdict and Note."""
+        root = tmp_path / "made"
+        root.mkdir()
+        assert lc._unwind_created_root(root, lambda p: False) is False
+        assert f"Note: could not remove {root}" in capsys.readouterr().err
+        assert lc._unwind_created_root(root, lc.remove_box_tree) is True
+        assert not root.exists()
 
 
 class TestALateFailureKeepsAReusedVault:

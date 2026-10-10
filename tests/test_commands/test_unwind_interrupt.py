@@ -47,6 +47,15 @@ class TestRunHoldsInterrupt:
         assert ran == ["b", "a"]
         assert unwind.failed == 1
 
+    def test_an_ordinary_failure_is_kept_for_the_report(self):
+        boom = OSError("boom")
+        unwind = _Unwind()
+        unwind.push(lambda: False)
+        unwind.push(_record([], "b", boom))
+        unwind.run()
+        assert unwind.failed == 2
+        assert unwind.errors == [boom]
+
     def test_a_partial_restore_counts_as_failed(self):
         """An action returning ``False`` restored only part; ``None`` is a success."""
         unwind = _Unwind()
@@ -278,6 +287,21 @@ class TestUnwindTargetMemberVerdict:
         ws = ws_mod.create_workset("ws3", tmp_home / "worksets" / "ws3", std)
         ws_mod.add_project(ws, "alpha", ws.workspaces_dir / "alpha")
         assert lc._unwind_target_member(ws, "alpha", {}) is True
+        assert not any(leaf is not None and leaf.exists()
+                       for leaf in lc._member_leaves(ws, "alpha"))
+
+    def test_a_created_leaf_left_behind_returns_false(
+        self, std, tmp_home, monkeypatch, capsys,
+    ):
+        """A leftover the op created voids the claim the rollback is whole."""
+        import kanibako.commands.box._lifecycle as lc
+        import kanibako.project.workset as ws_mod
+
+        ws = ws_mod.create_workset("ws3", tmp_home / "worksets" / "ws3", std)
+        ws_mod.add_project(ws, "alpha", ws.workspaces_dir / "alpha")
+        monkeypatch.setattr(lc, "remove_path", lambda p: False)
+        assert lc._unwind_target_member(ws, "alpha", {}) is False
+        assert "which this operation created" in capsys.readouterr().err
 
 
 class TestUndoConsolidateHoldsInterrupt:
