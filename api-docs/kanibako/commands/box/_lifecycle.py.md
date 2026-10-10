@@ -100,6 +100,7 @@ def _consolidate_workspace_subdir(root: Path, workspace_subdir: Path, unwind: _U
 def _undo_consolidate(src_dir: Path, dest_dir: Path, moved: list[Path]) -> None
 def _move_entry(src: Path, dst: Path) -> None
 def _prune_empty_dirs(path: Path, above: Path) -> None
+def _hold_root_gitignore(root: Path, workspace: Path, unwind: _Unwind) -> Callable[[], object] | None
 def _unconsolidate_workspace_subdir(workspace_subdir: Path, root: Path, unwind: _Unwind) -> None
 def _arm_standalone_root_undo(std: StandardPaths, config: BootstrapConfig, root: Path, workspace_subdir: Path, unwind: _Unwind) -> tuple[Callable[[], None], Callable[[str], None]]
 def _to_standalone(state: ProjectState, std: StandardPaths, config: BootstrapConfig, unwind: _Unwind, *, new_name: str, root: Path) -> tuple[ProjectState, _SourceTeardown | None]
@@ -122,6 +123,7 @@ def _ownership_from_args(args) -> str | _Sentinel
 def _validated_name(args) -> str | None
 def _make_confirm(force: bool, summary: str)
 def _load_env()
+def _session_lock_held(lock_file: Path) -> bool
 def _abort_if_locked(state: ProjectState, force: bool) -> bool
 def _relocation_failure(err: OSError) -> str
 def _completed_move(old: str, new_path: Path, std: StandardPaths, config: BootstrapConfig, args) -> str | None

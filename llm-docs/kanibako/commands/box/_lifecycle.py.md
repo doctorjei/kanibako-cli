@@ -797,7 +797,9 @@ Lift the standalone workspace dir's contents back up to *root*.
 The inverse of `_consolidate_workspace_subdir`, used when converting OUT of standalone in place: the
 workspace files return to the project root (where a non-standalone box roots them) and the
 now-empty subdir is removed so the converted project keeps no stray one. A no-op when the subdir is
-absent or empty; each move is pushed onto *unwind*.
+absent or empty; each move is pushed onto *unwind*. The caller first runs `_hold_root_gitignore`:
+the user's `.gitignore` wins the root, lines the root file held beyond kanibako's are appended to it,
+and a rollback restores both files.
 
 ⚑ *root* is the caller's READ root, never a parent counted off *workspace_subdir* — see the
 standalone arm of **STEP 2**. The removal walks UP from the workspace dir, so the directories a
@@ -1018,7 +1020,8 @@ Refuse a destructive relocation while a box may be running.
 
 `move` / `convert` copy then `rmtree` the source workspace, which for a RUNNING box would delete the
 live bind-mounted directory out from under it. Mirrors `box duplicate`'s lock pre-flight
-(`_duplicate.py`): if the project's `.kanibako.lock` is present, warn and abort unless *force*.
+(`_duplicate.py`): if a session HOLDS the project's `.kanibako.lock` (a non-blocking `flock`
+probe), warn and abort unless *force*. The file outlives its session, so an unheld one passes.
 Returns True when the caller should abort (and has been warned).
 
 ```def run_remap(args) -> int```
