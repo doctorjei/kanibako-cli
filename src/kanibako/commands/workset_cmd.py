@@ -47,6 +47,7 @@ from kanibako.project.workset import (
     load_workset,
     logs_share_refusal,
     purge_box_logs,
+    refuse_case_variant_store,
     refuse_existing_box,
     refuse_null_workspaces,
     remove_project,
@@ -684,6 +685,12 @@ def run_connect(args: argparse.Namespace) -> int:
             ),
             file=sys.stderr,
         )
+        return 1
+
+    try:
+        refuse_case_variant_store(ws, project_name, std)
+    except WorksetError as e:
+        print(f"Error: {e}", file=sys.stderr)
         return 1
 
     # ⚑ THE J2 WRITE-AHEAD BRACKET, AND IT BELONGS HERE, NOT IN ``add_project``: entry

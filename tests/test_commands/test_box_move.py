@@ -559,3 +559,30 @@ class TestUnregisteredStandaloneMove:
 
         assert registry_store.load_standalone(std.registry) == {}
         assert detect_project_mode(dest, std, config).mode is BoxMode.standalone
+
+
+class TestCaseOnlyRenameKeepsItsOwnLeaf:
+    def test_a_case_only_rename_keeping_an_outside_vault_link_moves(
+        self, config_file, tmp_home, credentials_dir,
+    ):
+        """``a1`` → ``A1`` keeps its outside-linked ``vault/rw/a1``; that is not a kept store."""
+        from kanibako.project.workset import add_project, create_workset
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        ws = create_workset("ws1", tmp_home / "ws1_root", std)
+        leaf = ws.workspaces_dir / "a1"
+        leaf.mkdir(parents=True)
+        add_project(ws, "a1", leaf, std)
+        outside = tmp_home / "outside_a1"
+        outside.mkdir()
+        (outside / "f").write_text("data")
+        rw = ws.root.resolve() / "vault" / "rw" / "a1"
+        rw.rmdir()
+        rw.symlink_to(outside)
+
+        assert run_move(_move_args(leaf, ws.workspaces_dir / "A1", name="A1")) == 0
+
+        assert (ws.workspaces_dir / "A1").is_dir()
+        assert (ws.root.resolve() / "boxes" / "A1").is_dir()
+        assert (outside / "f").read_text() == "data"

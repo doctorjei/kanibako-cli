@@ -658,7 +658,10 @@ def _duplicate_to_local(src_proj, new_path, std, config, force, carried, name,
 def _duplicate_to_workset(args, std, config) -> int:
     """Duplicate a project into a workset (source untouched)."""
     from kanibako.commands.box._lifecycle import copy_into_workset
-    from kanibako.project.workset import list_worksets, load_workset
+    from kanibako.errors import WorksetError
+    from kanibako.project.workset import (
+        list_worksets, load_workset, refuse_case_variant_store,
+    )
 
     ws_name = getattr(args, "workset", None)
     if not ws_name:
@@ -719,6 +722,11 @@ def _duplicate_to_workset(args, std, config) -> int:
     held = find_identifier(proj_name, (p.name for p in ws.projects))
     if held is not None:
         print(f"Error: project '{held}' already exists in workset '{ws_name}'.", file=sys.stderr)
+        return 1
+    try:
+        refuse_case_variant_store(ws, proj_name, std)
+    except WorksetError as e:
+        print(f"Error: {e}", file=sys.stderr)
         return 1
 
     # An occupied landing needs --force, as on the primary path (``run_duplicate``).

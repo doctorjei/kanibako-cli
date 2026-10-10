@@ -71,6 +71,7 @@ def source_in_tree(ws: Workset, source_path: Path) -> bool
 def is_in_tree_workspace(ws: Workset, path: Path) -> bool
 def refuse_existing_box(source: Path, std: StandardPaths, *, force: bool=False) -> None
 def add_project(ws: Workset, name: str, source_path: Path, std: StandardPaths | None=None, force: bool=False, *, restoring: bool=False) -> WorksetProject
+def refuse_case_variant_store(ws: Workset, name: str, std: StandardPaths) -> None
 def ensure_discoverability_link(ws: Workset, name: str, target: Path) -> Path | None
 def release_project(ws: Workset, name: str, *, keep_link: bool=False) -> WorksetProject
 def remove_member_store(ws: Workset, name: str, *, bases: tuple[Path, ...] | None=None) -> None
@@ -89,7 +90,7 @@ def _logs_share_partners(std: StandardPaths, logs_dir: Path, box: str, *, workse
 def _workset_skeleton_dirs(root: Path, *, early: EarlyScope) -> tuple[Path, ...]
 def _path_in_tree(path: Path, root: Path) -> bool
 def _strictly_in_tree(path: Path, root: Path) -> bool
-def _refuse_case_variant_store(ws: Workset, name: str) -> None
+def _live_member_stores(std: StandardPaths, bases: set[Path]) -> set[tuple[Path, str]]
 def _warn_adopted_vault_leaves(name: str, leaves: Iterable[Path | None]) -> None
 def _detach_project(ws: Workset, name: str) -> None
 def _find_member(ws: Workset, name: str) -> WorksetProject
