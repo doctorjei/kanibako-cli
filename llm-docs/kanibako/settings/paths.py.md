@@ -977,12 +977,11 @@ def _is_standalone_meta_dir(root: Path) -> bool
 ```
 True only if *root* carries the standalone box MARKER (presence-based).
 
-P5a: the marker is a `box_data/` directory under *root* PLUS a root `workset.yaml` AT THE ROOT
-(`<root>/workset.yaml`, NOT inside `box_data/`), both PRESENT. The FILE's existence is the
-standalone self-declaration (design D4) — the former `box.mode == "standalone"` field read is
-DROPPED (that field is gone). A box's own in-place settings file is the highest-precedence,
-authoritative standalone signal and OVERRIDES any workset determination (D3-mode #1); requiring both
-parts keeps an unrelated `box_data/` directory from being mistaken for a marker. Delegates to
+P5a: the marker is a STORED `workset.registry: null` in the root `workset.yaml` AT *root*
+(`<root>/workset.yaml`, NOT inside `box_data/`), PRESENT. The FILE (carrying that null)
+is the standalone self-declaration (design D4; the former `box.mode == "standalone"` read was
+DROPPED). The settings file OVERRIDES any workset determination (D3-mode #1); reading the
+stored null keeps an unrelated `box_data/` from being mistaken for a marker. Delegates to
 `box_resolve.stores_standalone_registry_null` (the single definition of the presence check).
 
 ```python
@@ -1000,7 +999,7 @@ Detection order:
 1. **Connected-external** — *project_dir* (or an ancestor) is an external directory bound to a
    workset by a live `boxes:` connection record. Runs FIRST so a force-connected box (which keeps
    its on-disk marker) resolves as its workset box, never re-imported as standalone.
-2. **In-place standalone marker** — a `box_data/` + root `workset.yaml` marker AT *project_dir*
+2. **In-place standalone marker** — a root `workset.yaml` storing `registry: null` AT *project_dir*
    declares it standalone (D3-mode #1); OVERRIDES workset tree membership. Imported (registered) on
    discovery.
 3. **Workset** — *project_dir* lives inside a registered workset root (`workspaces/` subdirectory
@@ -1018,7 +1017,7 @@ Detection order:
 
 The connected-external check MUST run BEFORE the standalone-marker check to preserve the
 single-registry invariant. A FORCE-CONNECTED standalone box (absorbed via
-`workset.add_project(force=True)`) deliberately KEEPS its on-disk `box_data/` + root `workset.yaml`
+`workset.add_project(force=True)`) deliberately KEEPS its on-disk root `workset.yaml`
 marker while its global `standalone:` registry entry is DROPPED and a per-workset `boxes:`
 connection entry is written — the box lives in EXACTLY ONE registry (no dual registration). Such a
 box is EXTERNAL (outside the workset tree), so the workset-tree check (step 3) does NOT match it;
@@ -1034,9 +1033,9 @@ self-declaration and OVERRIDES any workset TREE determination — a workset (eve
 physically CONTAINS this box) must NOT be able to "steal" a box that declares itself standalone. (A
 LIVE connection is the one exception, resolved by step 1.) This mirrors the marker-first precedence
 of `box_resolve.detect_box_mode` (its step 1) and keys on the SAME standalone-marker signal
-(`box_data/` + root `workset.yaml`, via `_is_standalone_meta_dir` →
-`box_resolve.stores_standalone_registry_null`), so a workset/primary box (which never carries
-`box_data/`) is unaffected. Only the resolved dir itself is inspected there (an ancestor marker is
+(`workset.yaml` storing `registry: null`, via `_is_standalone_meta_dir` →
+`box_resolve.stores_standalone_registry_null`) — workset/primary boxes don't store null.
+Only the resolved dir itself is inspected there (an ancestor marker is
 still handled by the step-5 walk); this matches `detect_box_mode`, which likewise honors the
 in-place marker only at `project_dir` before the workset scan. A GENUINE nested standalone (with NO
 connection record) is authoritative on disk → import (register) on discovery, exactly as the step-5
@@ -1627,8 +1626,8 @@ consequence of the rule, never its reason. ALL THREE resolvers go through the sa
 system-tier value); standalone alone then PERSISTS the RESOLVED value — that write IS the M-8
 migration, landing the root file's value at the box tier.
 
-**Box identity name (P8a):** sourced from `box_resolve` for a MATERIALIZED standalone (`box_data/` +
-`workset.yaml` present — the same gate `stores_standalone_registry_null` uses). `box_resolve` composes
+**Box identity name (P8a):** sourced from `box_resolve` for a MATERIALIZED standalone — the
+`workset.yaml`-stored `workset.registry: null` (`stores_standalone_registry_null`'s gate). `box_resolve` composes
 the name LIVE (P6d) as `<stored workset.kuid>_<live leaf>` — the kuid is the STABLE stored prefix
 (from the box's OWN `workset.yaml`, design D6) and the leaf is re-derived from the CURRENT root
 basename, so a moved standalone tree keeps its kuid identity while the leaf tracks the new dir (spec
