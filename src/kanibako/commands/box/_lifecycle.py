@@ -690,7 +690,10 @@ class _Unwind:
     """A LIFO stack of compensating actions for failure-consistency."""
 
     actions: list[Callable[[], object]] = field(default_factory=list)
-    cleanups: list[Callable[[], None]] = field(default_factory=list)
+    cleanups: list[tuple[Callable[[], None], Callable[[], None] | None]] = field(
+        default_factory=list)
+    #: How many cleanups have returned.
+    finished: int = 0
 
     def push(self, action: Callable[[], object]) -> None:
         self.actions.append(action)
@@ -699,12 +702,15 @@ class _Unwind:
         """Push *action* under every other, so it runs LAST: after the destination is gone."""
         self.actions.insert(0, action)
 
-    def on_success(self, action: Callable[[], None]) -> None:
+    def on_success(self, action: Callable[[], None], *,
+                   interrupted: Callable[[], None] | None = None) -> None:
         """Register an action to run only when the whole op succeeds.
 
-        ⚑ Includes DESTRUCTIVE work — ``_retire_old_workspace`` — not just scratch disposal.
+        *interrupted* names what *action* leaves when an interrupt stops it, or stops the
+        op before *action* starts.  ⚑ Includes DESTRUCTIVE work, so register only the
+        relocation tail; anything else runs inside it.
         """
-        self.cleanups.append(action)
+        self.cleanups.append((action, interrupted))
 
     def run(self) -> None:
         while self.actions:
@@ -716,11 +722,21 @@ class _Unwind:
 
     def finish(self) -> None:
         """Run success cleanups (best-effort)."""
-        for action in self.cleanups:
+        for action, _ in self.cleanups:
             try:
                 action()
             except Exception:  # noqa: BLE001
                 pass
+            self.finished += 1
+
+    def note_interrupted(self) -> None:
+        """Name what each cleanup not yet returned leaves; an interrupt stopped them."""
+        for _, interrupted in self.cleanups[self.finished:]:
+            if interrupted is not None:
+                try:
+                    interrupted()
+                except Exception:  # noqa: BLE001 - the interrupt still propagates
+                    pass
 
 
 # ---------------------------------------------------------------------------
@@ -1226,6 +1242,7 @@ def execute_lifecycle(
         else plan_box_mounted_links(state.name, state.bind_sources, _box_trees(state))
     )
     unwind = _Unwind()
+    sealed = False
     try:
         new_state, teardown = _run_steps(state, spec, std, config, plan, unwind)
         if mounted:
@@ -1234,16 +1251,21 @@ def execute_lifecycle(
         repoint_box_mounted_links(mounted, {
             old: new for old, new in zip(_box_trees(state), _box_trees(new_state))
             if old is not None and new is not None}, new_state)
-        # ⚑⚑ THE POINT OF NO RETURN, and the LAST statement here: before it an interrupt
-        # unwinds to the source alone, after it only the destination row exists and
-        # nothing is unwound.  The source's files go in the success tail.
+        # ⚑⚑ THE POINT OF NO RETURN: before it an interrupt unwinds to the source alone,
+        # after it only the destination row exists and nothing is unwound.  The source's
+        # files go in the success tail, inside this try so an interrupt at its call is
+        # named too.
         _drop_source_row(teardown, unwind)
+        sealed = True
+        unwind.finish()
     except BaseException:
         # ⚑⚑ ``BaseException``, not ``Exception``: an interrupt after the release would
         # otherwise skip every compensating action and leave the stash in ``$TMPDIR``.
-        unwind.run()
+        if sealed:
+            unwind.note_interrupted()
+        else:
+            unwind.run()
         raise
-    unwind.finish()
     return new_state
 
 
@@ -1264,6 +1286,9 @@ def _run_steps(
     new_name: str = plan["new_name"]
     requested_name: str = plan["requested_name"]
 
+    # The success tail's own steps, after the source teardown.
+    later: list[Callable[[], None]] = []
+
     # --- STEP 2 — Move files (only when relocating a real workspace tree) ---
     records_only: bool = spec.records_only
     new_workspace = _workspace_landing(state, dest, target_mode, records_only=records_only)
@@ -1272,7 +1297,7 @@ def _run_steps(
         old = state.workspace_path
         if (state.mode is BoxMode.named and not state.is_external and old.is_dir()
                 and old.resolve() != dest.resolve()):
-            unwind.on_success(lambda: print(
+            later.append(lambda: print(
                 f"Note: left {old}; remap deletes nothing", file=sys.stderr))
     elif relocating and dest is not None and not state.is_external:
         src = state.workspace_path
@@ -1336,13 +1361,15 @@ def _run_steps(
         requested_name=requested_name,
     )
 
-    # --- STEP 5 — Retire the old workspace step 2 copied, ON SUCCESS ONLY.
-    # ⚑ Never a user's EXTERNAL source. ---
-    later: list[Callable[[], None]] = []
-    retired: Path | None = None
+    # --- STEP 5 — Retire the old workspace step 2 or ``_to_workset`` copied, ON SUCCESS
+    # ONLY.  ⚑ Never a user's EXTERNAL source. ---
+    retired: list[tuple[Path, Path]] = []
     if not records_only and relocating and dest is not None and not state.is_external:
-        old_ws = retired = state.workspace_path
-        later.append(lambda: _retire_old_workspace(old_ws, dest))
+        retired.append((state.workspace_path, dest))
+    if teardown is not None and teardown.old_leaf is not None:
+        retired.append(teardown.old_leaf)
+    for old_ws, landed in retired:
+        later.append(partial(_retire_old_workspace, old_ws, landed))
     # ⚑ An external landing whose ``workspaces/<name>`` was held by the leaf just retired
     #   gets its discoverability link now, after the retire.
     if target_mode is BoxMode.named and target_ws is not None and new_state.is_external:
@@ -1355,15 +1382,19 @@ def _run_steps(
 
     # ⚑ ONE tail, run once the source row is dropped: steps 4b and 4c (AFTER identity is
     # final, A9: a standalone convert regenerates the name), the source teardown, STEP 5.
-    unwind.on_success(partial(_finish_relocation, state, new_state, std, teardown, later,
-                              retired))
+    progress = _TailProgress()
+    unwind.on_success(
+        partial(_finish_relocation, state, new_state, std, teardown, later, progress),
+        interrupted=partial(_note_interrupted_tail, state, new_state, std, teardown,
+                            [old for old, _ in retired], progress),
+    )
     return new_state, teardown
 
 
 def _retire_old_workspace(old: Path, landed: Path) -> None:
     """Delete the relocated-from workspace *old*, whose copy landed at *landed*.
 
-    ⚑⚑ An ``_Unwind.on_success`` action ONLY — a failed op never reaches it.  Skips an
+    ⚑⚑ A success-tail step ONLY — a failed op never reaches it.  Skips an
     absent *old*, and an *old* that is or holds *landed* (a move into its own subtree;
     ``_validate`` refuses that first).  A symlink is unlinked, never followed.  A failed
     delete prints a Note and stops: no second deleter, rc unchanged.
@@ -1938,6 +1969,8 @@ class _SourceTeardown:
     member: Workset | None = None
     dst_vault: tuple[Path | None, Path | None] = (None, None)
     vault_enabled: bool = True
+    #: ``(old, landed)``: an in-tree workset leaf ``_to_workset`` copied; STEP 5 retires it.
+    old_leaf: tuple[Path, Path] | None = None
     #: The Notes for what the teardown keeps on purpose.
     keeps: tuple[Callable[[], None], ...] = ()
     drop: Callable[[], object] | None = None
@@ -2154,79 +2187,98 @@ def _drop_source_row(teardown: _SourceTeardown | None, unwind: _Unwind) -> None:
     teardown.drop()
 
 
+@dataclass
+class _TailProgress:
+    """How far the success tail got: the step it is in, and the snapshot stores 4c kept."""
+
+    step: str = ""
+    snapshots: list[Path] = field(default_factory=list)
+
+
 def _finish_relocation(
     state: ProjectState,
     new_state: ProjectState,
     std: StandardPaths,
     teardown: _SourceTeardown | None,
     later: list[Callable[[], None]],
-    old_workspace: Path | None = None,
+    progress: _TailProgress | None = None,
 ) -> None:
     """The success tail: steps 4b and 4c, the source teardown, then *later*, then the stash.
 
     ⚑ The destination is the box by now, so a failed step is passed over and the Note
-    names what it left; an interrupt prints that Note and re-raises.  Steps 4b and 4c
-    have no finishing command.  *old_workspace* is what STEP 5 (in *later*) retires.
+    names what it left.  An interrupt is named by :func:`_note_interrupted_tail`, which
+    reads *progress*.  Steps 4b and 4c have no finishing command.
     """
-    current = ""
-    snapshots: list[Path] = []
-    try:
-        plan = teardown or _SourceTeardown(name=state.name)
+    progress = progress or _TailProgress()
+    snapshots = progress.snapshots
+    plan = teardown or _SourceTeardown(name=state.name)
 
-        def remove(paths: tuple[Path, ...], deleter: Callable[[Path], object]) -> None:
-            for path in paths:
-                if _holds_any(path, snapshots):
-                    # ⚑ A failed 4c keeps the old store, so "still on disk" stays true.
-                    report_retained_vault(path, "it holds the vault snapshots still under "
-                                                f"the old name '{state.name}'.")
-                elif path.is_dir() or path.is_symlink():
-                    deleter(path)
+    def remove(paths: tuple[Path, ...], deleter: Callable[[Path], object]) -> None:
+        for path in paths:
+            if _holds_any(path, snapshots):
+                # ⚑ A failed 4c keeps the old store, so "still on disk" stays true.
+                report_retained_vault(path, "it holds the vault snapshots still under "
+                                            f"the old name '{state.name}'.")
+            elif path.is_dir() or path.is_symlink():
+                deleter(path)
 
-        def snapshots_step() -> None:
-            kept = _relocate_snapshot_store(state, new_state)
-            if kept is not None:
-                snapshots.append(kept)
+    def snapshots_step() -> None:
+        kept = _relocate_snapshot_store(state, new_state)
+        if kept is not None:
+            snapshots.append(kept)
 
-        def vaults_step() -> None:
-            remove(plan.vaults, plan.vault_deleter)
-            for keep in plan.keeps:
-                keep()
+    def vaults_step() -> None:
+        remove(plan.vaults, plan.vault_deleter)
+        for keep in plan.keeps:
+            keep()
 
-        def member_step() -> None:
-            if plan.member is not None:
-                _retire_old_store(plan.member, plan.name, plan.dst_vault, plan.vault_enabled)
+    def member_step() -> None:
+        if plan.member is not None:
+            _retire_old_store(plan.member, plan.name, plan.dst_vault, plan.vault_enabled)
 
-        steps: list[tuple[str, Callable[[], None]]] = [
-            ("4b", partial(_relocate_channel_partition, state, new_state, std)),
-            ("4c", snapshots_step),
-            ("store", partial(remove, plan.trees, remove_path)),
-            ("vaults", vaults_step),
-            ("member", member_step),
-            *(("later", step) for step in later),
-            ("stash", partial(_dispose_stash, plan.stash) if plan.stash else lambda: None),
-        ]
-        for current, step in steps:
-            try:
-                step()
-            except Exception:  # noqa: BLE001 - the Note below names what it left
-                pass
-    except BaseException:
-        plan = teardown or _SourceTeardown(name=state.name)
-        left = [p for p in (*plan.trees, *plan.vaults) if not _holds_any(p, snapshots)]
-        if plan.member is not None and current not in ("later", "stash"):
-            left += [p for p in _member_leaves(plan.member, plan.name)[1:] if p is not None]
-        if old_workspace is not None and current != "stash":
-            left.append(old_workspace)
-        if plan.stash is not None:
-            left.append(plan.stash)
-        _report_store_leftovers(
-            plan.name, _on_disk(left), ": interrupted",
-            unmoved=[*_unmoved_partitions(state, new_state, std),
-                     *_unmoved_snapshots(state, new_state)],
-        )
-        raise
+    steps: list[tuple[str, Callable[[], None]]] = [
+        ("4b", partial(_relocate_channel_partition, state, new_state, std)),
+        ("4c", snapshots_step),
+        ("store", partial(remove, plan.trees, remove_path)),
+        ("vaults", vaults_step),
+        ("member", member_step),
+        *(("later", step) for step in later),
+        ("stash", partial(_dispose_stash, plan.stash) if plan.stash else lambda: None),
+    ]
+    for progress.step, step in steps:
+        try:
+            step()
+        except Exception:  # noqa: BLE001 - the Note below names what it left
+            pass
     _report_store_leftovers(
         plan.name, _on_disk(p for p in (*plan.trees, *plan.vaults) if not _holds_any(p, snapshots)))
+
+
+def _note_interrupted_tail(
+    state: ProjectState,
+    new_state: ProjectState,
+    std: StandardPaths,
+    teardown: _SourceTeardown | None,
+    old_workspaces: list[Path],
+    progress: _TailProgress,
+) -> None:
+    """THE Note for a success tail an interrupt stopped at *progress*, or before it began.
+
+    *old_workspaces* are what STEP 5 (in the tail's ``later``) retires.
+    """
+    plan = teardown or _SourceTeardown(name=state.name)
+    left = [p for p in (*plan.trees, *plan.vaults) if not _holds_any(p, progress.snapshots)]
+    if plan.member is not None and progress.step not in ("later", "stash"):
+        left += [p for p in _member_leaves(plan.member, plan.name)[1:] if p is not None]
+    if progress.step != "stash":
+        left += old_workspaces
+    if plan.stash is not None:
+        left.append(plan.stash)
+    _report_store_leftovers(
+        plan.name, _on_disk(left), ": interrupted",
+        unmoved=[*_unmoved_partitions(state, new_state, std),
+                 *_unmoved_snapshots(state, new_state)],
+    )
 
 
 def _holds_any(path: Path, stores: Collection[Path]) -> bool:
@@ -2280,8 +2332,9 @@ def _retire_old_store(
     spared = {leaf for leaf, _key in kept}
 
     def left() -> list[Path]:
-        # ⚑ ``remove_member_store`` does not pass on a ``False`` from ``remove_box_tree``,
-        # so only the disk says whether the box tree (which may hold credentials) is gone.
+        # ⚑ ``remove_member_store`` raises ``StoreRemovalError`` (an ``OSError``) at the
+        # first leaf that refuses, so every leaf after it remains too; only the disk says
+        # whether the box tree (which may hold credentials) is gone.
         return _on_disk(p for p in _member_leaves(ws, name)[1:]
                         if p is not None and p not in spared)
 
@@ -3003,6 +3056,7 @@ def _to_workset(
         # ⚑ The copy carries the canon skeleton's MODES but not its OWNERSHIP (J-7).
         materialize_canon_skeleton(dst_shell)
 
+    old_leaf: tuple[Path, Path] | None = None
     if (copy_workspace and in_tree_leaf is not None):
         dst_workspace = in_tree_leaf
         ignore = None
@@ -3014,11 +3068,10 @@ def _to_workset(
             copy_tree_keeping_links(
                 state.workspace_path, dst_workspace, ignore=ignore, dirs_exist_ok=True,
             )
-        # ⚑ An in-tree workset source's leaf is retired on success, like step 2's copy;
-        # other sources keep their tree (an in-place convert deletes nothing).
+        # ⚑ An in-tree workset source's leaf is retired in the success tail, like step 2's
+        # copy; other sources keep their tree (an in-place convert deletes nothing).
         if source_is_workset and not state.is_external:
-            old_leaf = state.workspace_path
-            unwind.on_success(lambda: _retire_old_workspace(old_leaf, dst_workspace))
+            old_leaf = (state.workspace_path, dst_workspace)
 
     # Determine the recorded workspace.
     if in_tree_leaf is not None:
@@ -3067,7 +3120,7 @@ def _to_workset(
     )
     # ⚑ ws->ws: the source is already released and stash-backed; the success tail
     # discards the stash, which the unwind may still need until then.
-    teardown = (_SourceTeardown(name=state.name, stash=stash)
+    teardown = (_SourceTeardown(name=state.name, stash=stash, old_leaf=old_leaf)
                 if source_is_workset and state.ws is not None else None)
     if not source_is_workset:
         teardown = _plan_source_teardown(state, std, dst_vault)

@@ -498,6 +498,11 @@ class _Scenario:
             src.mkdir()
             (src / "aaa.txt").write_text("a")
             resolve_project(std, config, project_dir=str(src), initialize=True)
+        elif kind == "WR":
+            ws = create_workset("W", p / "W", std)
+            src = ws.workspaces_dir / "k"
+            src.mkdir(parents=True)
+            add_project(ws, "k", src, std)
         elif kind == "WW":
             ws1 = create_workset("W1", p / "W1", std)
             create_workset("W2", p / "W2", std)
@@ -528,8 +533,10 @@ class _Scenario:
             "F": TargetSpec(location=inplace, ownership="standalone"),
             "WW": TargetSpec(location=lc.BARE_INTO_WS, ownership="W2"),
             "PM": TargetSpec(location=p / "k2"),
+            # An in-tree member renamed in its own workset: its leaf is copied and retired.
+            "WR": TargetSpec(location=inplace, ownership="W", name="k3"),
         }[kind]
-        self.inplace = kind not in ("B", "Bs", "WW", "PM")
+        self.inplace = kind not in ("B", "Bs", "WW", "PM", "WR")
         self.state = resolve_lifecycle_target(str(src), std, config)
         self.digests, self.src_homes = _seed(self.state, std, kind)
         self.src_rows = _rows(tmp_home)
@@ -546,7 +553,7 @@ _BEFORE = [("_carry_box_logs", "after"), ("_stash_source_marker", "after"),
 _REGISTRY = [("_safe_unregister", "after"), ("register_primary_box_name", "after"),
              ("assign_primary_box_name", "after"), ("add_project", "after"),
              ("release_project", "after")]
-_TAIL = [("_relocate_channel_partition", "before"), ("_relocate_snapshot_store", "before"),
+_TAIL = [("_finish_relocation", "before"), ("_relocate_channel_partition", "before"), ("_relocate_snapshot_store", "before"),
          ("_relocate_snapshot_store", "after"), ("remove_path", "after"),
          ("_retire_old_store", "before"), ("_retire_old_workspace", "before"),
          ("_dispose_stash", "before")]
@@ -591,7 +598,7 @@ class TestAnInterruptLosesNothingAndLeavesOneRow:
 
     @pytest.mark.parametrize("point", _BEFORE + _REGISTRY + _TAIL,
                              ids=lambda p: f"{p[0]}-{p[1]}")
-    @pytest.mark.parametrize("kind", ["A", "B", "Bs", "C", "D", "E", "F", "WW", "PM"])
+    @pytest.mark.parametrize("kind", ["A", "B", "Bs", "C", "D", "E", "F", "WW", "PM", "WR"])
     def test_every_point(self, env, monkeypatch, capsys, kind, point):
         sc = _Scenario(env, kind)
         capsys.readouterr()

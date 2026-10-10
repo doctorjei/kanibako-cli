@@ -80,7 +80,8 @@ def _restore_primary_rows(std: StandardPaths, before: Mapping[str, str]) -> None
 def _safe_unregister_standalone(std: StandardPaths, name: str) -> None
 def _stash_source_marker(teardown: _SourceTeardown, unwind: _Unwind) -> _SourceTeardown
 def _drop_source_row(teardown: _SourceTeardown | None, unwind: _Unwind) -> None
-def _finish_relocation(state: ProjectState, new_state: ProjectState, std: StandardPaths, teardown: _SourceTeardown | None, later: list[Callable[[], None]], old_workspace: Path | None=None) -> None
+def _finish_relocation(state: ProjectState, new_state: ProjectState, std: StandardPaths, teardown: _SourceTeardown | None, later: list[Callable[[], None]], progress: _TailProgress | None=None) -> None
+def _note_interrupted_tail(state: ProjectState, new_state: ProjectState, std: StandardPaths, teardown: _SourceTeardown | None, old_workspaces: list[Path], progress: _TailProgress) -> None
 def _holds_any(path: Path, stores: Collection[Path]) -> bool
 def _on_disk(paths: Iterable[Path]) -> list[Path]
 def _unmoved_partitions(old: ProjectState, new: ProjectState, std: StandardPaths) -> list[str]
@@ -157,13 +158,15 @@ class _Sentinel:
 @dataclass
 class _Unwind:
     actions: list[Callable[[], object]] = field(default_factory=list)
-    cleanups: list[Callable[[], None]] = field(default_factory=list)
+    cleanups: list[tuple[Callable[[], None], Callable[[], None] | None]] = field(default_factory=list)
+    finished: int = 0
 
     def push(self, action: Callable[[], object]) -> None
     def push_first(self, action: Callable[[], object]) -> None
-    def on_success(self, action: Callable[[], None]) -> None
+    def on_success(self, action: Callable[[], None], *, interrupted: Callable[[], None] | None=None) -> None
     def run(self) -> None
     def finish(self) -> None
+    def note_interrupted(self) -> None
 
 @dataclass(frozen=True)
 class _SourceTeardown:
@@ -177,7 +180,13 @@ class _SourceTeardown:
     member: Workset | None = None
     dst_vault: tuple[Path | None, Path | None] = (None, None)
     vault_enabled: bool = True
+    old_leaf: tuple[Path, Path] | None = None
     keeps: tuple[Callable[[], None], ...] = ()
     drop: Callable[[], object] | None = None
     restore: Callable[[], object] | None = None
+
+@dataclass
+class _TailProgress:
+    step: str = ''
+    snapshots: list[Path] = field(default_factory=list)
 ```
