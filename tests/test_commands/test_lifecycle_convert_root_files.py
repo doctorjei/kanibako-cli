@@ -10,7 +10,14 @@ import fcntl
 import pytest
 
 from kanibako.commands.box import _lifecycle
-from kanibako.commands.box._lifecycle import resolve_lifecycle_target, run_convert, run_move
+from kanibako.commands.box._lifecycle import (
+    TargetSpec,
+    execute_lifecycle,
+    resolve_lifecycle_target,
+    run_convert,
+    run_move,
+)
+from kanibako.errors import ProjectError
 from kanibako.settings.config import load_config
 from kanibako.settings.paths import load_std_paths, resolve_project, resolve_standalone_project
 from kanibako.utils import write_project_gitignore
@@ -40,6 +47,14 @@ def _convert(root, **target):
     return run_convert(args)
 
 
+def _execute(env, path, *, ownership):
+    """Run the engine on *path* in place, so a refusal surfaces as its exception."""
+    config, std, _ = env
+    state = resolve_lifecycle_target(str(path), std, config)
+    return execute_lifecycle(state, TargetSpec(ownership=ownership, verb="convert"), std, config,
+                             force=True)
+
+
 def _tree(path):
     return sorted(str(p.relative_to(path)) for p in path.rglob("*"))
 
@@ -55,16 +70,6 @@ class TestConvertIntoStandaloneStampsCanon:
 
         assert _convert(pdir, to_standalone=True) == 0
         assert _tree(pdir / "canon") == _tree(created / "canon")
-
-    def test_a_canon_dir_already_at_the_root_is_not_written_into(self, env):
-        config, std, tmp_home = env
-        pdir = tmp_home / "proj"
-        (pdir / "canon").mkdir(parents=True)
-        (pdir / "canon" / "mine.md").write_text("mine")
-        resolve_project(std, config, project_dir=str(pdir), initialize=True)
-
-        assert _convert(pdir, to_standalone=True) == 0
-        assert _tree(pdir / "canon") == ["mine.md"]
 
     def test_a_failed_convert_takes_the_stamped_canon_back(self, env, monkeypatch):
         config, std, tmp_home = env
@@ -113,6 +118,18 @@ class TestConvertOutOfStandaloneGitignore:
         assert (root / "workspace" / ".gitignore").read_bytes() == _USER
 
 
+def _runtime_says(monkeypatch, running):
+    """Answer the running-box check as a live runtime would."""
+    detail = "running (kb-x: img)" if running else "not running (kb-x)"
+    monkeypatch.setattr("kanibako.commands.box._parser._check_container_running",
+                        lambda _proj: (running, detail))
+
+
+def _move_args(old, new, force=False):
+    return argparse.Namespace(old=str(old), new=str(new), force=force, to_default=False,
+                              to_standalone=False, to_workset=None, name=None)
+
+
 class TestFinishedSessionLock:
     def _locked(self, env, name):
         root = _standalone(env, name)
@@ -120,28 +137,44 @@ class TestFinishedSessionLock:
         lock.write_text("box-container\n")
         return root, lock
 
-    def test_an_unheld_lock_needs_no_force_and_goes_with_the_root(self, env, monkeypatch):
+    def test_an_unheld_lock_of_a_stopped_box_needs_no_force(self, env, monkeypatch):
         config, std, tmp_home = env
         root, _lock = self._locked(env, "sa")
+        _runtime_says(monkeypatch, running=False)
         monkeypatch.setattr("kanibako.utils.confirm_prompt", lambda _msg: None)
-        args = argparse.Namespace(old=str(root), new=str(tmp_home / "sa2"), force=False,
-                                  to_default=False, to_standalone=False, to_workset=None,
-                                  name=None)
-        assert run_move(args) == 0
+        assert run_move(_move_args(root, tmp_home / "sa2")) == 0
         assert not root.exists()
         assert not (tmp_home / "sa2" / ".kanibako.lock").exists()
 
-    def test_a_held_lock_still_refuses(self, env, capsys):
+    def test_a_held_lock_still_refuses(self, env, capsys, monkeypatch):
         config, std, tmp_home = env
         root, lock = self._locked(env, "sa")
-        args = argparse.Namespace(old=str(root), new=str(tmp_home / "sa2"), force=False,
-                                  to_default=False, to_standalone=False, to_workset=None,
-                                  name=None)
+        _runtime_says(monkeypatch, running=False)
         with open(lock, "w") as fd:
             fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-            assert run_move(args) == 2
-        assert "lock file found" in capsys.readouterr().err
+            assert run_move(_move_args(root, tmp_home / "sa2")) == 2
+        assert "a kanibako session holds its lock file" in capsys.readouterr().err
         assert (root / "workset.yaml").is_file() and not (tmp_home / "sa2").exists()
+
+    @pytest.mark.parametrize("lock", [False, True])
+    def test_a_running_container_refuses_with_or_without_a_lock_file(
+            self, env, capsys, monkeypatch, lock):
+        config, std, tmp_home = env
+        root = _standalone(env)
+        if lock:
+            (root / ".kanibako.lock").write_text("box-container\n")
+        _runtime_says(monkeypatch, running=True)
+        assert run_move(_move_args(root, tmp_home / "sa2")) == 2
+        assert "its container is running (kb-x: img)" in capsys.readouterr().err
+        assert (root / "workset.yaml").is_file() and not (tmp_home / "sa2").exists()
+
+    def test_with_no_runtime_a_lock_file_refuses(self, env, capsys):
+        # The conftest default answers "no runtime".
+        config, std, tmp_home = env
+        root, _lock = self._locked(env, "sa")
+        assert run_move(_move_args(root, tmp_home / "sa2")) == 2
+        assert "no container runtime is available" in capsys.readouterr().err
+        assert (root / "workset.yaml").is_file()
 
     def test_an_in_place_convert_out_drops_the_stale_lock(self, env):
         config, std, tmp_home = env
@@ -149,3 +182,82 @@ class TestFinishedSessionLock:
         assert _convert(root, to_default=True) == 0
         assert resolve_lifecycle_target(str(root), std, config).workspace_path == root
         assert not lock.exists()
+
+
+class TestRootNameCollisions:
+    @pytest.mark.parametrize("entry", ["workset.yaml", "box_data", "vault", "canon"])
+    def test_a_convert_out_refuses_a_workspace_entry_named_like_a_root_one(self, env, entry):
+        config, std, tmp_home = env
+        root = _standalone(env)
+        target = root / "workspace" / entry
+        if "." in entry:
+            target.write_text("mine: true\n")
+        else:
+            target.mkdir()
+            (target / "mine.txt").write_text("mine")
+        before = _tree(root)
+        with pytest.raises(ProjectError, match=f"Refusing: {entry} in "):
+            _execute(env, root, ownership="default")
+        assert _tree(root) == before
+
+    @pytest.mark.parametrize("held, refusal", [
+        ("canon/mine.md", "Refusing: canon in "),
+        ("box_data/mine.txt", "Refusing: box_data in "),
+        # The existing vault-arm refusal owns these; pinned so the class stays covered.
+        ("vault/ro/mine.txt", "already exists and this operation did not create it"),
+        ("vault/rw/mine.txt", "already exists and this operation did not create it"),
+    ])
+    def test_a_convert_into_standalone_refuses_user_data_at_a_tier_path(
+            self, env, held, refusal):
+        config, std, tmp_home = env
+        pdir = tmp_home / "proj"
+        (pdir / held).parent.mkdir(parents=True)
+        (pdir / held).write_text("mine")
+        resolve_project(std, config, project_dir=str(pdir), initialize=True)
+        before = _tree(pdir)
+        with pytest.raises(ProjectError, match=refusal):
+            _execute(env, pdir, ownership="standalone")
+        assert _tree(pdir) == before
+
+    def test_a_user_file_beside_the_vault_arms_is_not_refused(self, env):
+        # Teardown keeps a skeleton holding anything but its arms, so nothing is adopted.
+        config, std, tmp_home = env
+        pdir = tmp_home / "proj"
+        (pdir / "vault").mkdir(parents=True)
+        (pdir / "vault" / "notes.txt").write_text("mine")
+        resolve_project(std, config, project_dir=str(pdir), initialize=True)
+        _execute(env, pdir, ownership="standalone")
+        assert (pdir / "vault" / "notes.txt").read_text() == "mine"
+
+
+class TestDuplicateSharesThePreflight:
+    def _args(self, src, dst, force=False):
+        return argparse.Namespace(source_path=str(src), new_path=str(dst), bare=False,
+                                  force=force, to_mode=None, workset=None,
+                                  project_name=None, register=False)
+
+    def _source(self, env):
+        config, std, tmp_home = env
+        src = tmp_home / "src"
+        src.mkdir()
+        proj = resolve_project(std, config, project_dir=str(src), initialize=True)
+        (proj.metadata_path / ".kanibako.lock").write_text("box-container\n")
+        return src
+
+    def test_an_unheld_lock_of_a_stopped_box_does_not_refuse(self, env, monkeypatch):
+        from kanibako.commands.box import run_duplicate
+
+        config, std, tmp_home = env
+        src = self._source(env)
+        _runtime_says(monkeypatch, running=False)
+        monkeypatch.setattr("kanibako.commands.box._duplicate.confirm_prompt", lambda _msg: None)
+        assert run_duplicate(self._args(src, tmp_home / "dst")) == 0
+
+    def test_a_running_container_refuses(self, env, capsys, monkeypatch):
+        from kanibako.commands.box import run_duplicate
+
+        config, std, tmp_home = env
+        src = self._source(env)
+        _runtime_says(monkeypatch, running=True)
+        assert run_duplicate(self._args(src, tmp_home / "dst")) == 2
+        assert "its container is running" in capsys.readouterr().err

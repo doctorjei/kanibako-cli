@@ -1235,13 +1235,14 @@ class TestBoxInfo:
         std = load_std_paths(config)
         project_dir = str(tmp_home / "project")
         proj = resolve_project(std, config, project_dir=project_dir, initialize=True)
-        (proj.metadata_path / ".kanibako.lock").touch()
+        import fcntl
 
         args = argparse.Namespace(path=project_dir)
-        with patch(
+        with open(proj.metadata_path / ".kanibako.lock", "w") as held, patch(
             "kanibako.commands.box._parser._check_container_running",
             return_value=(False, "not running (kanibako-test)"),
         ):
+            fcntl.flock(held, fcntl.LOCK_EX | fcntl.LOCK_NB)  # a live session holds it
             rc = run_info(args)
         assert rc == 0
         out = capsys.readouterr().out

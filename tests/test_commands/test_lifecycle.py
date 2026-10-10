@@ -2436,7 +2436,8 @@ class TestConsolidateResolvesTheRootsOwnKeys:
     def test_no_repoint_keeps_the_default_canon_tree(self, env):
         """⚑ NO repoint is involved: ``canon`` was simply never in the name set, so a
         round trip out of standalone and back swept kanibako's own canon tree into the
-        user's workspace."""
+        user's workspace.  The way out leaves that tree as the user's, so the way back in
+        refuses to adopt it rather than sweeping or claiming it."""
         config, std, tmp_home = env
         root = _make_standalone(env, name="rt")
         (root / "canon" / "MARKER").write_text("CANON")
@@ -2447,12 +2448,13 @@ class TestConsolidateResolvesTheRootsOwnKeys:
             state, TargetSpec(location=INPLACE, ownership="default"),
             std, config, confirm=_conf_yes(),
         )
-        # … and back in, which consolidates.
-        _convert_to_standalone_in_place(env, root)
+        # … and back in, which refuses before the sweep.
+        with pytest.raises(ProjectError, match="Refusing: canon in "):
+            _convert_to_standalone_in_place(env, root)
 
         assert (root / "canon" / "MARKER").read_text() == "CANON"
-        assert not (root / "workspace" / "canon").exists()
-        assert (root / "workspace" / "file.txt").is_file()
+        assert not (root / "workspace").exists()
+        assert (root / "file.txt").is_file()
 
     def test_in_root_repoint_keeps_the_directory_that_holds_the_arm(self, env, capsys):
         """``vault_ro: @meta.workset.path/store/ro`` makes the root child ``store`` — a

@@ -1195,6 +1195,28 @@ def _scrub_delivered_host_signals(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def _no_host_container_runtime(monkeypatch):
+    """Answer ``_parser._check_container_running`` as "no runtime" unless the test names one.
+
+    Otherwise move/convert/duplicate/info ask whatever ``podman`` the host has.  A test that
+    sets ``KANIBAKO_DOCKER_CMD`` to a stub gets the real check against it; one needing a
+    plain running or stopped answer patches the function itself.
+    """
+    import os
+
+    from kanibako.commands.box import _parser
+
+    real = _parser._check_container_running
+
+    def _answer(proj):
+        if os.environ.get("KANIBAKO_DOCKER_CMD"):
+            return real(proj)
+        return False, _parser.NO_RUNTIME
+
+    monkeypatch.setattr(_parser, "_check_container_running", _answer)
+
+
+@pytest.fixture(autouse=True)
 def _isolate_user_dirs(request, tmp_path_factory, monkeypatch):
     """Point ``HOME`` and every ``XDG_*`` base dir at a fresh tree for EVERY test.
 

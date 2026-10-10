@@ -2755,6 +2755,10 @@ def _format_credential_age(creds_path: Path) -> str:
     return f"{age} ({dt.strftime('%Y-%m-%d %H:%M:%S UTC')})"
 
 
+#: :func:`_check_container_running`'s detail when no runtime could be asked.
+NO_RUNTIME = "unknown (no container runtime)"
+
+
 def _check_container_running(proj) -> tuple[bool, str]:
     """Is a kanibako container running for this project? Returns ``(is_running, detail)``."""
     container_name = container_name_for(proj)
@@ -2763,7 +2767,7 @@ def _check_container_running(proj) -> tuple[bool, str]:
     try:
         runtime = ContainerRuntime()
     except ContainerError:
-        return False, "unknown (no container runtime)"
+        return False, NO_RUNTIME
     containers = runtime.list_running()
     for name, image, status in containers:
         if name == container_name:
@@ -2822,8 +2826,11 @@ def run_info(args: argparse.Namespace) -> int:
             print("This directory has not been initialized.")
         return 1
 
+    from kanibako.commands.box._lifecycle import session_lock_held
+
     lock_file = proj.metadata_path / ".kanibako.lock"
-    lock_held = lock_file.exists()
+    lock_state = ("ACTIVE" if session_lock_held(lock_file)
+                  else "stale (no session holds it)" if lock_file.exists() else "none")
 
     container_running, container_detail = _check_container_running(proj)
 
@@ -2880,7 +2887,7 @@ def run_info(args: argparse.Namespace) -> int:
     ]
     rows.extend([
         ("Image", merged.box_image),
-        ("Lock", "ACTIVE" if lock_held else "none"),
+        ("Lock", lock_state),
         ("Container", container_detail),
         ("Agent", agent_display),
         ("Credentials", cred_age),

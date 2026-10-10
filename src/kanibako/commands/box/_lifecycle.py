@@ -185,6 +185,9 @@ class ProjectState:
     #: The host source of every bind mount the box receives; ``None`` when unknown, which
     #: is never read as "no binds".  Read by :func:`plan_box_mounted_links`.
     bind_sources: frozenset[str] | None = None
+    #: The resolved paths this state came from, for :func:`box_running_reason`'s
+    #: container check; ``None`` when built from records alone.
+    paths: ProjectPaths | None = field(default=None, repr=False, compare=False)
 
 
 @dataclass
@@ -515,6 +518,7 @@ def _state_from_paths(
         enable_vault=proj.vault_enabled(),
         box_authored_vault=read_box_enable_vault(box_tier),
         bind_sources=box_bind_sources_or_none(std, proj),
+        paths=proj,
     )
 
 
@@ -1138,6 +1142,10 @@ def _validate(
         if mint is None and _relocated_own_name(state, std, landing_ws, mint) is None:
             refuse_derived_box_name(_workspace_landing(
                 state, dest, target_mode, records_only=spec.records_only).name or "project")
+
+    # --- a user entry under a name the standalone root reserves, either direction ---
+    if not relocating and not spec.records_only:
+        _refuse_root_name_collisions(state, std, target_mode)
 
     # --- a disabled vault that still holds data would be left behind (Q64) ---
     stranded = [] if vault_reused or state.enable_vault else [
@@ -2343,7 +2351,7 @@ def _finish_relocation(
     # A finished session's lock is stale once the root is no longer the box's metadata dir.
     stale = plan.old_root / ".kanibako.lock" if plan.old_root is not None else None
     if (stale is not None and stale.parent.resolve() != new_state.metadata_path.resolve()
-            and not _session_lock_held(stale)):
+            and not session_lock_held(stale)):
         try:
             stale.unlink(missing_ok=True)
         except OSError:
@@ -2681,6 +2689,59 @@ def _standalone_root_artifacts(
     return out
 
 
+def _refuse_root_name_collisions(
+    state: ProjectState, std: StandardPaths, target_mode: BoxMode,
+) -> None:
+    """Refuse an in-place convert that would overwrite, nest, or adopt a user entry.
+
+    OUT of standalone, the lift moves each workspace entry to the root: one named like a
+    root entry, or a name the root reserves, would overwrite kanibako's or nest in it, and
+    the tail then deletes it.  The user's ``.gitignore`` is merged instead.
+    INTO standalone, a root entry the layout reserves would be adopted as kanibako's own
+    and deleted with it by a purge.
+    """
+    early = _early_scope(std, BoxMode.standalone)
+    if state.mode is BoxMode.standalone and target_mode is not BoxMode.standalone:
+        root, where = state.metadata_path, state.workspace_path
+        if not where.is_dir() or root.resolve() not in where.resolve().parents:
+            return
+        artifacts = _standalone_root_artifacts(root, early=early)
+        hits = [child for child in where.iterdir() if child != where / bootstrap.IGNORE_FILE and (
+            (root / child.name).exists() or (root / child.name).is_symlink()
+            or child.name in _STANDALONE_FIXED_ARTIFACTS
+            or _artifact_claiming(root / child.name, artifacts) is not None)]
+        why = f"each would overwrite or land inside kanibako's entry of that name at {root}"
+    elif target_mode is BoxMode.standalone and state.mode is not BoxMode.standalone:
+        # A ``workset.yaml`` here IS the layout, and a path it repoints is declared.  A
+        # DEFAULT store or canon path already holding something is the user's, and purge
+        # deletes it whole.  An existing vault arm is refused above, on its own terms.
+        where = state.workspace_path
+        if not where.is_dir():
+            return
+        owned = [path for key, path, repointed in _standalone_root_artifacts(where, early=early)
+                 if key in {"workset.boxes", "workset.canon"} and not repointed
+                 and (path.exists() or path.is_symlink()) and _holds_anything(path)]
+        hits = [child for child in where.iterdir()
+                if child.name in _STANDALONE_FIXED_ARTIFACTS - {WORKSET_META_FILE}
+                or any(child == path or child in path.parents for path in owned)]
+        why = "the standalone layout claims those names, so kanibako would adopt them as its own"
+    else:
+        return
+    if hits:
+        names = ", ".join(sorted(child.name for child in hits))
+        raise ProjectError(
+            f"Refusing: {names} in {where}: {why}. Rename or move them out of {where}, "
+            f"and run it again."
+        )
+
+
+def _holds_anything(path: Path) -> bool:
+    """A file or link, or a directory with one anywhere below it; bare directories are not."""
+    if path.is_symlink() or not path.is_dir():
+        return True
+    return any(p.is_symlink() or not p.is_dir() for p in path.rglob("*"))
+
+
 def _artifact_claiming(
     child: Path, artifacts: list[tuple[str, Path, bool]],
 ) -> tuple[str, Path, bool] | None:
@@ -2939,15 +3000,12 @@ def _to_standalone(
         root, load_workset_settings_doc(root), early=_early_scope(std, BoxMode.standalone),
     )
     # ⚑ The canon tier create stamps, through create's own pre-flight and stamp.  A
-    # standalone source carries its tier instead (:func:`_carry_standalone_canon`), and a
-    # tier already at the root is never written into.
+    # standalone source carries its tier instead (:func:`_carry_standalone_canon`); a
+    # user ``canon/`` already at the root was refused in :func:`_validate`.
     from kanibako.channels.channels import WS_TOKEN_STANDALONE
     from kanibako.launch.templates import check_workset_template, install_workset_template
 
-    canon = resolve_workset_canon(root, load_workset_settings_doc(root),
-                                  early=_early_scope(std, BoxMode.standalone))
-    stamp_canon = state.mode is not BoxMode.standalone and not (
-        canon is not None and (canon.exists() or canon.is_symlink()))
+    stamp_canon = state.mode is not BoxMode.standalone
     if stamp_canon:
         check_workset_template(std, root, workset_name=WS_TOKEN_STANDALONE, canon_only=True)
     root_undo, root_wrote = _arm_standalone_root_undo(std, config, root, workspace_subdir, unwind)
@@ -3665,7 +3723,7 @@ def _load_env():
     return config, std
 
 
-def _session_lock_held(lock_file: Path) -> bool:
+def session_lock_held(lock_file: Path) -> bool:
     """True while a ``box start`` session holds *lock_file*'s ``flock``.
 
     The file outlives its session (start never deletes it), so only the lock says the box
@@ -3687,22 +3745,51 @@ def _session_lock_held(lock_file: Path) -> bool:
     return False
 
 
-def _abort_if_locked(state: ProjectState, force: bool) -> bool:
-    """Refuse a destructive relocation while a box may be running; True ⇒ caller aborts."""
+def box_running_reason(proj: ProjectPaths | None, lock_file: Path) -> str | None:
+    """Why the box behind *lock_file* may be running, else ``None`` — the ONE pre-flight.
+
+    A session holding the lock, or the box's container running
+    (``_parser._check_container_running``), says it runs.  With no runtime to ask, or no
+    *proj* to name the container, a lock file on disk still counts, as it always did.
+    """
+    if session_lock_held(lock_file):
+        return "a kanibako session holds its lock file"
+    if proj is not None:
+        from kanibako.commands.box._parser import NO_RUNTIME, _check_container_running
+
+        running, detail = _check_container_running(proj)
+        if running:
+            return f"its container is {detail}"
+        if detail != NO_RUNTIME:
+            return None
+    if lock_file.exists():
+        return ("a lock file exists and no container runtime is available to "
+                "tell whether its container runs")
+    return None
+
+
+def abort_if_box_running(
+    proj: ProjectPaths | None, lock_file: Path, force: bool, consequence: str,
+) -> bool:
+    """Warn when :func:`box_running_reason` answers; True ⇒ the caller aborts (no *force*)."""
     import sys
 
-    lock_file = state.metadata_path / ".kanibako.lock"
-    if _session_lock_held(lock_file):
-        print(
-            "Warning: lock file found — a container may be running for this "
-            "project. Moving/converting it would copy then DELETE the live "
-            "workspace. Stop the box first (kanibako stop), or pass --force.",
-            file=sys.stderr,
-        )
-        if not force:
-            print("Aborted.")
-            return True
-    return False
+    reason = box_running_reason(proj, lock_file)
+    if reason is None:
+        return False
+    print(f"Warning: this box may be running: {reason}. {consequence} "
+          "Stop the box first (kanibako stop), or pass --force.", file=sys.stderr)
+    if force:
+        return False
+    print("Aborted.")
+    return True
+
+
+def _abort_if_locked(state: ProjectState, force: bool) -> bool:
+    """Refuse a destructive relocation while a box may be running; True ⇒ caller aborts."""
+    return abort_if_box_running(
+        state.paths, state.metadata_path / ".kanibako.lock", force,
+        "Moving/converting it would copy then DELETE the live workspace.")
 
 
 def _relocation_failure(err: OSError) -> str:

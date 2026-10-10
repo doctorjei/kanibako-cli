@@ -352,6 +352,13 @@ class TestConvert:
 # ---------------------------------------------------------------------------
 
 class TestLockGuard:
+    @pytest.fixture(autouse=True)
+    def _close_held(self):
+        self._held = None
+        yield
+        if self._held is not None:
+            self._held.close()
+
     def _lock(self, env, pdir):
         """Plant a .kanibako.lock in the project's metadata dir, held as a live session holds it."""
         config, std, _ = env
@@ -1249,7 +1256,7 @@ class TestExternalSourceNotRelocated:
             rc = run_move(_move_args(str(ext), tmp_home / "somewhere", force=False))
         assert rc == 2
         err = capsys.readouterr().err
-        assert "lock file found" in err
+        assert "a kanibako session holds its lock file" in err
         assert "external-connected" not in err
 
 

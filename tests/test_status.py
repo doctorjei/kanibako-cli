@@ -262,7 +262,23 @@ class TestRunInfo:
         assert "Credentials:" in out
 
     def test_lock_active(self, initialized_project, capsys):
-        """Info shows ACTIVE lock when lock file exists."""
+        """Info shows ACTIVE while a session holds the lock."""
+        import fcntl
+
+        lock_file = initialized_project.proj.metadata_path / ".kanibako.lock"
+        args = argparse.Namespace(path=initialized_project.project_dir)
+        with open(lock_file, "w") as held, patch(
+            "kanibako.commands.box._parser._check_container_running",
+            return_value=(False, "not running (kanibako-test)"),
+        ):
+            fcntl.flock(held, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            rc = run_info(args)
+        assert rc == 0
+        out = capsys.readouterr().out
+        assert "ACTIVE" in out
+
+    def test_lock_file_no_session_holds_is_stale(self, initialized_project, capsys):
+        """A lock file outlives its session; info calls an unheld one stale, not ACTIVE."""
         lock_file = initialized_project.proj.metadata_path / ".kanibako.lock"
         lock_file.write_text("kanibako-test\n")
         args = argparse.Namespace(path=initialized_project.project_dir)
@@ -273,7 +289,7 @@ class TestRunInfo:
             rc = run_info(args)
         assert rc == 0
         out = capsys.readouterr().out
-        assert "ACTIVE" in out
+        assert "stale (no session holds it)" in out and "ACTIVE" not in out
 
     def test_with_path_arg(self, initialized_project, capsys):
         """Info with path argument pointing to a project directory."""
