@@ -1208,9 +1208,9 @@ def _no_host_container_runtime(monkeypatch):
 
     real = _parser._check_container_running
 
-    def _answer(proj):
+    def _answer(proj, **kwargs):
         if os.environ.get("KANIBAKO_DOCKER_CMD"):
-            return real(proj)
+            return real(proj, **kwargs)
         return False, _parser.NO_RUNTIME
 
     monkeypatch.setattr(_parser, "_check_container_running", _answer)

@@ -564,9 +564,10 @@ class ContainerRuntime:
 
     def list_running(
         self, prefix: str = CONTAINER_NAME_PREFIX,
-        *, include_stopped: bool = False,
+        *, include_stopped: bool = False, check: bool = False,
     ) -> list[tuple[str, str, str]]:
-        """Return containers matching *prefix* (anchored; ``-a`` if *include_stopped*)."""
+        """Return containers matching *prefix* (anchored; ``-a`` if *include_stopped*); *check*
+        raises ``ContainerError`` when the runtime fails or prints a line it cannot parse."""
         cmd = [self.cmd, "ps"]
         if include_stopped:
             cmd.append("-a")
@@ -574,11 +575,21 @@ class ContainerRuntime:
             "--filter", f"name={prefix}",
             "--format", "{{.Names}}\t{{.Image}}\t{{.Status}}",
         ])
-        result = subprocess.run(cmd, capture_output=True, text=True)
+        try:
+            result = subprocess.run(cmd, capture_output=True, text=True)
+        except OSError as exc:
+            if check:
+                raise ContainerError(f"{self.cmd} ps did not run: {exc}") from exc
+            raise
+        if check and result.returncode != 0:
+            raise ContainerError(f"{self.cmd} ps exited {result.returncode}: "
+                                 f"{result.stderr.strip() or 'no message'}")
         containers: list[tuple[str, str, str]] = []
         for line in result.stdout.splitlines():
             parts = line.split("\t", 2)
             if len(parts) != 3:
+                if check and line.strip():
+                    raise ContainerError(f"{self.cmd} ps printed a line it cannot parse: {line!r}")
                 continue
             if not parts[0].startswith(prefix):
                 continue
