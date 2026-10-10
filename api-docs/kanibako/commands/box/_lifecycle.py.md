@@ -76,10 +76,12 @@ def _carried_member_store(ws: Workset, name: str, dst_vault: tuple[Path | None, 
 def _nulled_arm_stores(ws: Workset, name: str) -> list[tuple[Path, str]]
 def _plan_source_teardown(state: ProjectState, std: StandardPaths, dst_vault: tuple[Path | None, Path | None], *, preserve_name: str | None=None, new_name: str | None=None, preserve_root: Path | None=None) -> _SourceTeardown
 def _restore_standalone_rows(std: StandardPaths, before: Mapping[str, str]) -> None
+def _restore_primary_rows(std: StandardPaths, before: Mapping[str, str]) -> None
 def _safe_unregister_standalone(std: StandardPaths, name: str) -> None
 def _stash_source_marker(teardown: _SourceTeardown, unwind: _Unwind) -> _SourceTeardown
 def _drop_source_row(teardown: _SourceTeardown | None, unwind: _Unwind) -> None
-def _finish_relocation(state: ProjectState, new_state: ProjectState, std: StandardPaths, teardown: _SourceTeardown | None, later: list[Callable[[], None]]) -> None
+def _finish_relocation(state: ProjectState, new_state: ProjectState, std: StandardPaths, teardown: _SourceTeardown | None, later: list[Callable[[], None]], old_workspace: Path | None=None) -> None
+def _holds_any(path: Path, stores: Collection[Path]) -> bool
 def _on_disk(paths: Iterable[Path]) -> list[Path]
 def _unmoved_partitions(old: ProjectState, new: ProjectState, std: StandardPaths) -> list[str]
 def _unmoved_snapshots(old: ProjectState, new: ProjectState) -> list[str]
