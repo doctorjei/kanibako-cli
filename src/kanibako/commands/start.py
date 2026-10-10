@@ -100,7 +100,7 @@ from kanibako.targets import assembly, credsync, resolve_target
 from kanibako.targets.assembly import BindingSourceError
 from kanibako.targets.base import _scrub_endpoint_userinfo, descriptor_floor, has_plugin
 from kanibako.utils import (
-    container_name_for, container_name_segments, legacy_container_names, literal_path,
+    container_name_for, container_name_segments, legacy_container_names, literal_path, logical_cwd,
     render_socket_identity, short_hash, unrenderable_box_name_refusal,
 )
 # The box-local AGENT LIVENESS MARKERS directory (per-PID).  Canonically owned by
@@ -1702,10 +1702,10 @@ def _unregistered_pending_create_error(
     if project_dir and designation_route(project_dir) is not DesignationRoute.PATH:
         # A bare NAME resolves through the registry, never as a workspace on disk.
         return None
-    # ⚑ THE CURE'S ROOT IS THE RESOLVED WORKSPACE — what
-    # :func:`_create_designation` gives a PRIMARY probe — so the line runs from
+    # ⚑ THE CURE'S ROOT IS THE ABSOLUTE WORKSPACE AS GIVEN ([R188]: never its resolved
+    # spelling, which the journal's literal compare would miss), so the line runs from
     # any directory.
-    workspace = str(Path(project_dir or os.getcwd()).resolve())
+    workspace = literal_path(project_dir) if project_dir else logical_cwd()
     try:
         pending = journal.pending_create_for_workspace(std.journal, workspace)
     except ConfigError:
@@ -1729,8 +1729,8 @@ def _no_box_error(project_dir: str | None, std: StandardPaths | None = None,
                   verb: str = "start", *, probe: ProjectPaths | None = None) -> str:
     """The launch-time "no box; run create" error for an ABSENT box target.
 
-    ``<path>`` is the resolved target we looked for a box at; the suggested
-    ``create`` carries the user's own spec so it is copy-pasteable — an explicit
+    ``<path>`` is the path AS GIVEN (links not followed) we looked for a box at; the
+    suggested ``create`` carries the user's own spec so it is copy-pasteable — an explicit
     ``kanibako create <spec>`` when they named a PATH, a bare ``kanibako create``
     from inside the project dir (no spec).  A PATH spec is ``shlex.quote``d and
     the line carries no wrapping quotes, so the printed command pastes as typed.
@@ -1782,8 +1782,8 @@ def _no_box_error(project_dir: str | None, std: StandardPaths | None = None,
         if pending is not None:
             return pending
     if project_dir:
-        # A PATH shows its resolved dir; a NAME shows the spec verbatim — either way
-        # copy-pasteable.
+        # A PATH shows the path as given (links not followed); a NAME shows the spec
+        # verbatim — either way copy-pasteable.
         if designation_route(project_dir) is not DesignationRoute.PATH:
             # NAME-SHAPED MISS.  Since I3/§D4a this is the UNREGISTERED-STANDALONE
             # population's message: a box created without ``--register`` is real,
@@ -1823,10 +1823,11 @@ def _no_box_error(project_dir: str | None, std: StandardPaths | None = None,
         legacy = None if std is None else stored_legacy_box(std, project_dir)
         if legacy is not None:
             return legacy.refusal("Reach it by its path", f"kanibako {verb}")
-        target = str(Path(project_dir).resolve())
+        # [R188]: the path as given, never its resolved spelling.
+        target = literal_path(project_dir)
         suggest = f"kanibako create {shlex.quote(project_dir)}"
     else:
-        target = os.getcwd()
+        target = logical_cwd()
         suggest = "kanibako create"
     try:
         # ``create`` names the box after the directory, so it would refuse this one.
