@@ -27,7 +27,7 @@ _VALUE_END = re.compile('\\s{2,}')
 _BRACES = re.compile('^(?P<head>[^{}]*)\\{(?P<alts>[^{}]+)\\}(?P<tail>[^{}]*)$')
 _SENTINEL_VALUES: tuple[object, ...] = (None, True, False, {})
 _TREE = Path(__file__).resolve().parents[1]
-_RETIRED_FILE_NAMES = ('box_data/settings.yaml', 'connected.yaml', 'general.yaml', 'general/settings.yaml', 'global/base_template', 'image-shells.yaml', 'kanibako.yaml', 'names.yaml', 'project-path.txt', 'project.yaml', 'rigs.yaml', 'worksets.yaml')
+_RETIRED_FILE_NAMES = ('box_data/settings.yaml', 'comms', 'connected.yaml', 'general.yaml', 'general/settings.yaml', 'global/base_template', 'image-shells.yaml', 'kanibako.yaml', 'names.yaml', 'project-path.txt', 'project.yaml', 'rigs.yaml', 'shared', 'worksets.yaml')
 ```
 
 ## Functions
@@ -95,10 +95,18 @@ class EntryOwners(_ViewRegistry):
 
     def _rows(self) -> list[dict[str, object]]
 
-class AgentCredFiles(_ViewRegistry):
+class AgentCredFiles(_TailRegistry):
     def __init__(self, *, name: str='agent-cred-files', **options: object) -> None
 
-    def declared(self, identifier: str) -> bool
+    def _rows(self) -> list[dict[str, object]]
+
+class ChannelPaths(_TailRegistry):
+    def __init__(self, *, name: str='channel-paths', **options: object) -> None
+
+    def _rows(self) -> list[dict[str, object]]
+
+class AgentStoreEntries(_TailRegistry):
+    def __init__(self, *, name: str='agent-store-entries', **options: object) -> None
 
     def _rows(self) -> list[dict[str, object]]
 
@@ -133,4 +141,7 @@ class _ViewRegistry:
 
 class _AgentRegistry(_ViewRegistry):
     def __init__(self, *, node: str, name: str='agent-tier', **options: object) -> None
+
+class _TailRegistry(_ViewRegistry):
+    def declared(self, identifier: str) -> bool
 ```

@@ -1411,14 +1411,25 @@ class EntryOwners(_ViewRegistry):
         return out
 
 
-class AgentCredFiles(_ViewRegistry):
+class _TailRegistry(_ViewRegistry):
+    """A registry whose `declared` takes a key or any trailing whole-segment part of one,
+    with `~/` and a trailing `/` dropped: prose names `.credentials.json` for
+    `.claude/.credentials.json`, and `chat/broadcast.md` for `channels/chat/broadcast.md`.
+    """
+
+    def declared(self, identifier: str) -> bool:
+        tail = identifier.removeprefix("~/").rstrip("/")
+        if not tail:
+            return False
+        keys = (str(row["key"]) for row in self.rows)
+        return any(key == tail or key.endswith(f"/{tail}") for key in keys)
+
+
+class AgentCredFiles(_TailRegistry):
     """The HOST-side agent credential files: every plugin descriptor's `cred_files` row,
     keyed by its `host_rel`. `[claims] declared_in` names this registry, so a doc citing
     `auth.json` or `custom_providers/` settles against the descriptors that declare them
     -- the claims store never holds a host user's credentials.
-
-    `declared` takes a key or any trailing whole-segment part of one, with `~/` and a
-    trailing `/` dropped: prose names `.credentials.json` for `.claude/.credentials.json`.
     """
 
     def __init__(self, *, name: str = "agent-cred-files", **options: object) -> None:
@@ -1434,19 +1445,84 @@ class AgentCredFiles(_ViewRegistry):
                 out.append({"key": str(cred["host_rel"]), "source": source})
         return out
 
-    def declared(self, identifier: str) -> bool:
-        tail = identifier.removeprefix("~/").rstrip("/")
-        if not tail:
-            return False
-        keys = (str(row["key"]) for row in self.rows)
-        return any(key == tail or key.endswith(f"/{tail}") for key in keys)
+
+class ChannelPaths(_TailRegistry):
+    """The in-box channel tree. `kanibako start` lays it out and nothing else does, so the
+    claims store (built without a container) holds none of it. `[claims] declared_in`
+    names this registry, so a doc citing `chat/broadcast.md` or `mailboxes/` settles
+    against the code that lays the tree out.
+
+    Rows: every `~/channels/...` bind destination `channel_default_categories` emits for a
+    NAMED box (the mode with both scopes), plus, in each chat dir, the default log
+    (`CHAT_GENERAL_LEAF`) and the broadcast log named by that scope's
+    `<scope>.channels.broadcast` manifest default.
+    """
+
+    def __init__(self, *, name: str = "channel-paths", **options: object) -> None:
+        super().__init__(name=name, **options)
+
+    def _rows(self) -> list[dict[str, object]]:
+        import os
+        import tempfile
+
+        from kanibako.channels.channels import CHAT_GENERAL_LEAF
+        from kanibako.settings.core_defaults import channel_default_categories
+        from kanibako.settings.keyspace_manifest import manifest_doc
+
+        manifest = manifest_doc()["keys"]
+        here = os.getcwd()
+        with tempfile.TemporaryDirectory() as scratch:
+            os.chdir(scratch)
+            try:
+                binds = channel_default_categories(
+                    ref_token_standard_paths("named"),
+                    ref_token_project(
+                        "named", workset_name="{meta.workset.name}", box_name="{meta.box.name}",
+                    ),
+                )
+            finally:
+                os.chdir(here)
+        out: list[dict[str, object]] = []
+        for dest, (host_src, *_) in guest_bind_arm(binds, "bindings.rw"):
+            if not dest.startswith("~/channels/"):
+                continue
+            key = dest.removeprefix("~/")
+            out.append({"key": key, "source": host_src})
+            chat = re.fullmatch(r"\(?\{(system|workset)\.channels\.chat\}\)?", host_src)
+            if chat is None:
+                continue
+            scope = chat.group(1)
+            chat_ref = f"{{{scope}.channels.chat}}/"
+            broadcast = _mode_arm(manifest[f"{scope}.channels.broadcast"], "named")
+            if not isinstance(broadcast, str) or not broadcast.startswith(chat_ref):
+                raise ValueError(f"{scope}.channels.broadcast no longer defaults inside "
+                                 f"{scope}.channels.chat: {broadcast!r}")
+            for leaf in (CHAT_GENERAL_LEAF, broadcast.removeprefix(chat_ref)):
+                out.append({"key": f"{key}/{leaf}", "source": host_src})
+        return out
 
 
-#: Store-relative file names kanibako NO LONGER reads or writes, cited by MIGRATION.md and the
-#: llm-docs as history. Hand-written: no source in the tree lists them, except the v1.7 user
-#: config name, which `bootstrap.LEGACY_CONFIG_FILE` owns and `RetiredFileNames` reads there.
+class AgentStoreEntries(_TailRegistry):
+    """The entries an agent store root may hold (`templates.SCOPE_WHITELISTS["agent"]`),
+    under `agents/<agent>/`. `common/` there is created at `kanibako start`, so the claims
+    store holds none; `[claims] declared_in` names this registry to settle it.
+    """
+
+    def __init__(self, *, name: str = "agent-store-entries", **options: object) -> None:
+        super().__init__(name=name, **options)
+
+    def _rows(self) -> list[dict[str, object]]:
+        from kanibako.launch.templates import SCOPE_WHITELISTS
+
+        return [{"key": f"agents/<agent>/{entry}"} for entry in SCOPE_WHITELISTS["agent"]]
+
+
+#: Store-relative file and dir names kanibako NO LONGER reads or writes, cited by MIGRATION.md
+#: and the llm-docs as history. Hand-written: no source in the tree lists them, except the v1.7
+#: user config name, which `bootstrap.LEGACY_CONFIG_FILE` owns and `RetiredFileNames` reads there.
 _RETIRED_FILE_NAMES = (
     "box_data/settings.yaml",   # moved to <root>/settings.yaml
+    "comms",                    # the old comm dir and ~/comms/ mount, now channels/
     "connected.yaml",           # consolidated into registry.yaml, then dropped
     "general.yaml",             # the old `general` agent file
     "general/settings.yaml",    # its interim spelling; the `general` slot itself is retired
@@ -1457,6 +1533,7 @@ _RETIRED_FILE_NAMES = (
     "project-path.txt",         # the old workspace breadcrumb
     "project.yaml",             # per-box meta, now settings.yaml
     "rigs.yaml",                # consolidated into registry.yaml
+    "shared",                   # the old <data>/shared/ store, now per-agent stores
     "worksets.yaml",            # consolidated into registry.yaml
 )
 
@@ -1468,7 +1545,8 @@ class RetiredFileNames(_ViewRegistry):
 
     ⚑ NARROW ON PURPOSE. `declared` takes the whole name only (a trailing `/` dropped), never
     a part of one, so `foo/names.yaml` stays a claim to check. A name the code still reads must
-    never be here: `_rows` refuses one that equals a live bootstrap or spawn file name.
+    never be here: `_rows` refuses one that equals a live bootstrap or spawn file name, or a
+    segment of a `ChannelPaths` or `AgentStoreEntries` row.
     """
 
     def __init__(self, *, name: str = "retired-file-names", **options: object) -> None:
@@ -1480,10 +1558,12 @@ class RetiredFileNames(_ViewRegistry):
 
         live = {bootstrap.CONFIG_FILE, bootstrap.SITE_CONFIG_FILE, bootstrap.SITE_SETTINGS_FILE,
                 SPAWN_CONFIG_FILENAME}
+        for registry in (ChannelPaths(), AgentStoreEntries()):
+            live.update(seg for row in registry.rows for seg in str(row["key"]).split("/"))
         names = (*_RETIRED_FILE_NAMES, bootstrap.LEGACY_CONFIG_FILE)
         clash = sorted(live.intersection(names))
         if clash:
-            raise ValueError(f"retired-file-names lists a live file name: {', '.join(clash)}")
+            raise ValueError(f"retired-file-names lists a live name: {', '.join(clash)}")
         return [{"key": name} for name in names]
 
     def declared(self, identifier: str) -> bool:

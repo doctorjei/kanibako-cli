@@ -236,11 +236,20 @@ historical = [
 # `config.yaml` mentions too.
 #
 # RETIRED FILE NAMES: MIGRATION.md and the llm-docs cite files kanibako no longer
-# uses (`names.yaml`, `project.yaml`, ...) as history. A path claim of one of them
-# is asked of `retired-file-names`, matched WHOLE only. Its view refuses only a
-# name equal to a live bootstrap or spawn file name (the four its `_rows` lists);
-# any other name added here must be checked by hand against what the code reads.
-declared_in = ["agent-cred-files", "retired-file-names"]
+# uses (`names.yaml`, `project.yaml`, `comms/`, ...) as history. A path claim of
+# one of them is asked of `retired-file-names`, matched WHOLE only. Its view refuses
+# a name equal to a live bootstrap or spawn file name (the four its `_rows` lists)
+# or to a segment of a `channel-paths` or `agent-store-entries` row; any other name
+# added here must be checked by hand against what the code reads.
+#
+# CHANNEL PATHS: `kanibako start` alone lays out the channel tree and an agent
+# store's `common/`, and the store above starts no container, so it holds neither.
+# A path claim of them is asked of `channel-paths` (the channel bind destinations
+# `channel_default_categories` emits, plus each chat dir's two logs) and
+# `agent-store-entries` (`SCOPE_WHITELISTS["agent"]`), matched whole or by a
+# trailing whole segment, as `agent-cred-files` is.
+declared_in = ["agent-cred-files", "retired-file-names", "channel-paths",
+               "agent-store-entries"]
 
 # Before/after, measured 2026-09-09 against an older tree: 929 failing claims ->
 # 769. The 160 suppressed are ALL positively classified as historicity false
@@ -1994,6 +2003,21 @@ target = "kinemata_views:AgentCredFiles"
 name = "retired-file-names"
 kind = "import"
 target = "kinemata_views:RetiredFileNames"
+
+# FACT: the in-box channel tree `kanibako start` lays out. Read by `[claims]
+# declared_in` alone: no antipattern and an empty `detect`, so `check` gains nothing
+# from it.
+[[registry]]
+name = "channel-paths"
+kind = "import"
+target = "kinemata_views:ChannelPaths"
+
+# FACT: the entries an agent store root may hold. Read by `[claims] declared_in`
+# alone: no antipattern and an empty `detect`, so `check` gains nothing from it.
+[[registry]]
+name = "agent-store-entries"
+kind = "import"
+target = "kinemata_views:AgentStoreEntries"
 
 # FACT: `config_keys._KEY_ROUTES` routes exactly the fixed-scope `set: cli+file`
 # rows. `test_manifest_conformance` `test_every_routed_key_is_a_declared_manifest_row`

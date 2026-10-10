@@ -70,20 +70,6 @@
     {
       "registry": "claims",
       "entry": "claim:path",
-      "antipattern": "broadcast.md",
-      "path": "llm-docs/kanibako/channels/channels.py.md",
-      "text": "default chat log. It is joined onto the RESOLVED chat dir, and its sibling `broadcast.md` must"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "broadcast.md",
-      "path": "src/kanibako/data/rom/canon/charter/general/directives/IDENTITY.md",
-      "text": "| **Chat** | `~/channels/chat/*.md` | Append-style logs. `general.md` is the default; `broadcast.md` reaches everyone in"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
       "antipattern": "caches/",
       "path": "llm-docs/kanibako/launch/templates.py.md",
       "text": "| AGENT | `agent.yaml` = `meta.agent.<a>.settings` (CORRECTNESS); `caches/`. |"
@@ -91,114 +77,9 @@
     {
       "registry": "claims",
       "entry": "claim:path",
-      "antipattern": "chat/",
-      "path": "MIGRATION.md",
-      "text": "the `chat/` dir) and a **format** change (`.log` \u2192 `.md`). Move the old"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "chat/",
-      "path": "src/kanibako/data/rom/canon/charter/general/directives/IDENTITY.md",
-      "text": "If your box belongs to a **workset** (named group of projects), you'll have a workset-local tree at `~/channels/workset/"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "chat/broadcast.md",
-      "path": "MIGRATION.md",
-      "text": "2. **`broadcast.log` \u2192 `chat/broadcast.md`.** Both a **location** change (now inside"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "chat/broadcast.md",
-      "path": "MIGRATION.md",
-      "text": "| **Broadcast** | a scope | read-append\\* | `chat/broadcast.md` (system + workset) |"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "chat/broadcast.md",
-      "path": "MIGRATION.md",
-      "text": "| Comm system | single `~/comms/` mount (`mailbox/<box>`, `broadcast.log`) | **channels** \u2014 5 types under `~/channels/` "
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "chat/broadcast.md",
-      "path": "src/kanibako/data/rom/canon/charter/general/directives/IDENTITY.md",
-      "text": "If your box belongs to a **workset** (named group of projects), you'll have a workset-local tree at `~/channels/workset/"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
       "antipattern": "claude.caches.~/",
       "path": "llm-docs/kanibako/settings/settings_categories.py.md",
       "text": "parses node=`claude.caches.~/`), and a greedy node would swallow everything up to the LAST one."
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "common/",
-      "path": "MIGRATION.md",
-      "text": "(If you launch first, an empty `common/` is guarantee-created; it sits beside your old, populated"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "common/",
-      "path": "MIGRATION.md",
-      "text": "an empty `common/` is created, silently; it sits beside your old, populated `commons/` (\u00a72.3). Any"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "common/",
-      "path": "MIGRATION.md",
-      "text": "dirs move one level down, into a `common/` subdir of the agent's store dir:"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "common/",
-      "path": "MIGRATION.md",
-      "text": "in the diagram below (both the system and workset trees) is `common/` as of"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "common/",
-      "path": "llm-docs/kanibako/launch/templates.py.md",
-      "text": "`template/` is only one entry \u2014 it also carries `canon/handbook/` and may carry `common/` \u2014 so"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "common/",
-      "path": "llm-docs/kanibako/launch/templates.py.md",
-      "text": "inert until a box is created, whereas `common/` is bound RW and SHARED by every box running that"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "common/",
-      "path": "llm-docs/kanibako/launch/templates.py.md",
-      "text": "\u2691 The sets are NOT one uniform rule. `common/` is allowed at AGENT scope only (Jei: there are use"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "common/",
-      "path": "src/kanibako/data/rom/canon/charter/general/directives/IDENTITY.md",
-      "text": "If your box belongs to a **workset** (named group of projects), you'll have a workset-local tree at `~/channels/workset/"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "comms/",
-      "path": "MIGRATION.md",
-      "text": "| Primary store | scattered `boxes/`, `comms/`, `share_*/` under data root | **PRIMARY workset** is a real dir at `@syst"
     },
     {
       "registry": "claims",
@@ -213,34 +94,6 @@
       "antipattern": "dist/",
       "path": "docs/RELEASING.md",
       "text": "`agent-codex` are accepted), builds **only** that package into `dist/`, refuses"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "general.md",
-      "path": "MIGRATION.md",
-      "text": "| **Chat** | a scope | read-append\\* | `chat/*.md` (system + workset); default `general.md` |"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "general.md",
-      "path": "llm-docs/kanibako/channels/channels.py.md",
-      "text": "`broadcast` KEY), `chat_general` (the non-key `general.md` inside the resolved chat dir), and"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "general.md",
-      "path": "llm-docs/kanibako/channels/channels.py.md",
-      "text": "`general.md` is the ONE leaf still joined by hand (`CHAT_GENERAL_LEAF`): no key declares the"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "general.md",
-      "path": "src/kanibako/data/rom/canon/charter/general/directives/IDENTITY.md",
-      "text": "| **Chat** | `~/channels/chat/*.md` | Append-style logs. `general.md` is the default; `broadcast.md` reaches everyone in"
     },
     {
       "registry": "claims",
@@ -262,13 +115,6 @@
       "antipattern": "home/playbook/box/",
       "path": "MIGRATION.md",
       "text": "- \u2691 **A box older than the three-part handbook keeps everything under `home/playbook/box/`,"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "mailboxes/",
-      "path": "MIGRATION.md",
-      "text": "now plural (`mailboxes/`) and **partitioned by workset name** first. `<ws>` is"
     },
     {
       "registry": "claims",
@@ -304,27 +150,6 @@
       "antipattern": "settings_base.yaml",
       "path": "llm-docs/kanibako/settings/config.py.md",
       "text": "`base.cfg` / `settings_base.yaml` base tiers, resolved on the PATH side; this scalar"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "share/",
-      "path": "src/kanibako/data/rom/canon/charter/general/directives/IDENTITY.md",
-      "text": "If your box belongs to a **workset** (named group of projects), you'll have a workset-local tree at `~/channels/workset/"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "shared/",
-      "path": "llm-docs/kanibako/launch/templates.py.md",
-      "text": "`(namespaced-relative-path, file-bytes)` pair under a source-distinct prefix (`base/` / `shared/` /"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "shared/",
-      "path": "llm-docs/kanibako/settings/paths.py.md",
-      "text": "files derive from this root (F4). `local_shared_base` stays the data path (the legacy `shared/`"
     },
     {
       "registry": "claims",

@@ -849,9 +849,9 @@ It enumerates every packaged file the setup gate must watch — the base seed tr
 the RO packaged canon (`_packaged_shared_bundle`, which is bind-mounted rather than installed but
 still needs drift detection; it carries the box guide at
 `canon/charter/general/ROM_GENERAL.md`). Each file contributes ONE
-`(namespaced-relative-path, file-bytes)` pair under a source-distinct prefix (`base/` / `shared/` /
-`agent/<name>/`), so no file is double-counted; the pairs are SORTED so the manifest is
-deterministic across runs and machines regardless of filesystem walk order.
+`(namespaced-relative-path, file-bytes)` pair under a source-distinct key prefix (`base/{rel}` /
+`shared/{rel}` / `agent/{name}/{rel}`), so no file is double-counted; the pairs are SORTED so the
+manifest is deterministic across runs and machines regardless of filesystem walk order.
 
 The RO packaged canon (bound live as the `~/canon/COLLECTION.md` file bind plus one bind per
 `~/canon/charter` CHAPTER — the book root itself is not bound — and never installed) is
