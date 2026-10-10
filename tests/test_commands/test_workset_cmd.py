@@ -1307,6 +1307,63 @@ class TestWorksetConnect:
         assert rc == 0
         assert _workset_boxes(ws).get("sb") == str(external)
 
+    def test_connect_case_variant_of_a_member_refuses_writing_nothing(
+        self, config_file, tmp_home, capsys,
+    ):
+        """``--name Proj`` beside member ``proj`` refuses; it once REPLACED proj's row."""
+        from kanibako.commands.workset_cmd import run_connect
+        from kanibako.launch import journal
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        root = (tmp_home / "ws_case").resolve()
+        ws = create_workset("casews", root, std)
+        ext1 = (tmp_home / "ext1").resolve()
+        ext2 = (tmp_home / "ext2").resolve()
+        ext1.mkdir()
+        ext2.mkdir()
+        assert run_connect(argparse.Namespace(
+            workset="casews", source=str(ext1), project_name="proj", force=False)) == 0
+        capsys.readouterr()
+        before = sorted(str(p) for p in root.rglob("*"))
+
+        rc = run_connect(argparse.Namespace(
+            workset="casews", source=str(ext2), project_name="Proj", force=False))
+
+        assert rc == 1
+        assert capsys.readouterr().err.strip() == (
+            f"Error: Cannot connect '{ext2}' as 'Proj': project 'proj' already exists in "
+            f"working set 'casews' (names compare case-blind). Pick another name with "
+            f"--name, or disconnect it first: kanibako workset disconnect casews proj"
+        )
+        assert _workset_boxes(ws) == {"proj": str(ext1)}
+        assert sorted(str(p) for p in root.rglob("*")) == before
+        assert journal.read_journal(std.journal) == {}
+
+    def test_reconnect_after_disconnect_adopts_its_kept_store_silently(
+        self, config_file, tmp_home, capsys,
+    ):
+        """A plain disconnect keeps the box dir and vault; re-connect adopts them, no Warning."""
+        from kanibako.commands.workset_cmd import run_connect
+        from kanibako.project.workset import load_workset, remove_project
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        root = (tmp_home / "ws_re").resolve()
+        create_workset("rews", root, std)
+        ext = (tmp_home / "ext").resolve()
+        ext.mkdir()
+        args = argparse.Namespace(
+            workset="rews", source=str(ext), project_name="proj", force=False)
+        assert run_connect(args) == 0
+        (root / "vault" / "rw" / "proj" / "kept").write_text("data\n")
+        remove_project(load_workset(root, "rews", early_system=std.early_system), "proj")
+        capsys.readouterr()
+
+        assert run_connect(args) == 0
+        assert "Warning" not in capsys.readouterr().err
+        assert (root / "vault" / "rw" / "proj" / "kept").read_text() == "data\n"
+
 
 class TestWorksetDisconnect:
     def test_disconnect_success(self, config_file, tmp_home, capsys):

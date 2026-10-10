@@ -607,6 +607,19 @@ def run_connect(args: argparse.Namespace) -> int:
         print(f"Error: {e}", file=sys.stderr)
         return 1
 
+    # ⚑ Case-blind (§0): ``Proj`` IS member ``proj``, and connect never replaces a member.
+    held = find_identifier(project_name, (p.name for p in ws.projects))
+    if held is not None:
+        blind = " (names compare case-blind)" if held != project_name else ""
+        print(
+            f"Error: Cannot connect '{source}' as '{project_name}': project "
+            f"'{held}' already exists in working set '{ws.name}'{blind}. Pick another "
+            f"name with --name, or disconnect it first: kanibako workset disconnect "
+            f"{shlex.quote(ws.name)} {shlex.quote(held)}",
+            file=sys.stderr,
+        )
+        return 1
+
     # ⚑ EVERY REFUSAL BELOW FIRES BEFORE THE JOURNAL BRACKET, so a refused connect leaves
     # no pending ``connect`` entry behind (``add_project`` refuses the same null case for
     # its other callers).

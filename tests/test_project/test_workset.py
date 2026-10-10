@@ -441,6 +441,45 @@ class TestAddProject:
         names = {p.name for p in loaded.projects}
         assert names == {"alpha", "beta"}
 
+    def test_case_variant_name_raises_naming_the_stored_member(self, std, tmp_home):
+        root = tmp_home / "worksets" / "my-set"
+        ws = create_workset("my-set", root, std)
+        add_project(ws, "proj", tmp_home / "project")
+
+        with pytest.raises(WorksetError, match="Project 'proj' already exists"):
+            add_project(ws, "Proj", tmp_home / "other")
+        assert [p.name for p in ws.projects] == ["proj"]
+        assert not (root.resolve() / "boxes" / "Proj").exists()
+
+    def test_new_member_warns_on_adopting_a_leftover_vault_leaf(
+        self, std, tmp_home, capsys,
+    ):
+        """A vault leaf with no box dir was left by another box: adopted, with a Warning."""
+        root = tmp_home / "worksets" / "my-set"
+        ws = create_workset("my-set", root, std)
+        outside = tmp_home / "outside"
+        outside.mkdir()
+        leaf = root.resolve() / "vault" / "rw" / "b1"
+        leaf.parent.mkdir(parents=True, exist_ok=True)
+        leaf.symlink_to(outside)
+        stale = root.resolve() / "vault" / "ro" / "b1"
+        stale.mkdir(parents=True)
+
+        add_project(ws, "b1", tmp_home / "project")
+
+        err = capsys.readouterr().err
+        assert (f"Warning: project 'b1' adopts an existing vault directory it did not "
+                f"create: {leaf} -> {outside}") in err
+        assert (f"Warning: project 'b1' adopts an existing vault directory it did not "
+                f"create: {stale}\n") in err
+        assert leaf.is_symlink() and leaf.readlink() == outside
+
+    def test_new_member_with_fresh_vault_leaves_does_not_warn(self, std, tmp_home, capsys):
+        root = tmp_home / "worksets" / "my-set"
+        ws = create_workset("my-set", root, std)
+        add_project(ws, "fresh", tmp_home / "project")
+        assert "Warning" not in capsys.readouterr().err
+
 
 class TestAddProjectConnectGuard:
     """add_project refuses external sources that would mis-resolve."""
