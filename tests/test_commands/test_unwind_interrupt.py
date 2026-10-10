@@ -201,3 +201,47 @@ class TestAddProjectRowUndo:
         with pytest.raises(_Boom):
             ws_mod.add_project(ws, "proj", ws.workspaces_dir / "proj")
         assert ws.registry_path.read_bytes() == before
+
+
+class TestUnwindTargetMemberHoldsInterrupt:
+    def _member(self, std, tmp_home):
+        import kanibako.project.workset as ws_mod
+
+        ws = ws_mod.create_workset("ws2", tmp_home / "worksets" / "ws2", std)
+        ws_mod.add_project(ws, "alpha", ws.workspaces_dir / "alpha")
+        leaves = [ws.workspaces_dir / "alpha", ws.projects_dir / "alpha"]
+        assert all(leaf.is_dir() for leaf in leaves)
+        return ws, leaves
+
+    def test_interrupted_release_still_removes_the_leaves(
+        self, std, tmp_home, monkeypatch, capsys,
+    ):
+        import kanibako.commands.box._lifecycle as lc
+
+        ws, leaves = self._member(std, tmp_home)
+        monkeypatch.setattr(lc, "release_project", _interrupt)
+        with pytest.raises(KeyboardInterrupt):
+            lc._unwind_target_member(ws, "alpha", {})
+        assert not any(leaf.exists() for leaf in leaves)
+        assert "may not have dropped the record of 'alpha'" in capsys.readouterr().err
+
+    def test_interrupted_leaf_removal_still_removes_the_rest(
+        self, std, tmp_home, monkeypatch,
+    ):
+        import kanibako.commands.box._lifecycle as lc
+
+        ws, leaves = self._member(std, tmp_home)
+        real = lc.remove_path
+        calls: list[object] = []
+
+        def first_interrupted(path, *a, **k):
+            calls.append(path)
+            if len(calls) == 1:
+                raise KeyboardInterrupt
+            return real(path, *a, **k)
+
+        monkeypatch.setattr(lc, "remove_path", first_interrupted)
+        with pytest.raises(KeyboardInterrupt):
+            lc._unwind_target_member(ws, "alpha", {})
+        assert len(calls) >= 2
+        assert not leaves[1].exists()

@@ -1833,6 +1833,38 @@ class TestRollbacksDeleteOnlyWhatTheOpCreated:
         [stash] = list(stash_root.iterdir())
         assert f"Note: kept {stash}" in err
 
+    def test_an_interrupted_restore_step_still_runs_the_rest(
+        self, env, monkeypatch, tmp_path, capsys,
+    ):
+        """A second Ctrl-C in the re-register still copies the store back and keeps the stash."""
+        config, std, tmp_home = env
+        ws1 = _make_workset(env, "ws1", "ws1_root")
+        create_workset("ws2", tmp_home / "ws2_root", std)
+        leaf, state = self._member(env, ws1)
+        stash_root = self._stash_dir(tmp_path, monkeypatch)
+        real_add = lc.add_project
+
+        def add_interrupted_for_source(ws, *a, **kw):
+            if ws.name == "ws1":
+                raise KeyboardInterrupt
+            return real_add(ws, *a, **kw)
+
+        def boom(*a, **kw):
+            raise RuntimeError("injected late failure")
+
+        monkeypatch.setattr(lc, "add_project", add_interrupted_for_source)
+        monkeypatch.setattr(lc, "write_box_enable_vault", boom)
+        with pytest.raises(KeyboardInterrupt):
+            execute_lifecycle(
+                state, TargetSpec(location=BARE_INTO_WS, ownership="ws2"),
+                std, config, confirm=_conf_yes(),
+            )
+        self._assert_source_whole(ws1, leaf, state)
+        err = capsys.readouterr().err
+        assert "Note: may not have restored the record of 'alpha' in workset 'ws1'" in err
+        [stash] = list(stash_root.iterdir())
+        assert f"Note: kept {stash}" in err
+
     @pytest.mark.skipif(os.geteuid() == 0, reason="root removes a 0o555 dir anyway")
     def test_a_read_only_stash_is_removed_after_success(
         self, env, monkeypatch, tmp_path,

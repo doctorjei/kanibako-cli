@@ -263,7 +263,9 @@ nothing can still need it.**
 * **`_restore_source`** runs its four steps (re-register, box-tree copy-back, the two vault
   copy-backs) independently: each failure prints `Note: could not restore <what> at <where>: <err>`
   and the rest still run, so a raising `add_project` never skips the copy-back. It disposes of the
-  stash only when every step succeeded; otherwise it prints `Note: kept <stash>; ...`.
+  stash only when every step succeeded; otherwise it prints `Note: kept <stash>; ...`. A
+  `KeyboardInterrupt` in a step counts as that step's failure (`Note: may not have restored ...:
+  interrupted`) and is re-raised after the Note, as `_Unwind.run` does.
 * **The stash** is disposed of through `remove_box_tree` (`_dispose_stash`), because it holds a copy
   of the box home and its 0o555 canon dirs defeat a plain `rmtree`. A `False` prints
   `Note: could not remove <stash>; it may hold credentials`.
@@ -964,7 +966,8 @@ Those of `_member_leaves` already on disk; a dangling link counts.
 Undo a target registration (`_to_workset`, `copy_into_workset`): `release_project` with
 `keep_link=True`, then each leaf NOT in *existed* — so a pre-existing `workspaces/<name>` symlink
 survives a same-workset rollback. See **Rollbacks delete only what the op created**. A failed release or a leaf it
-cannot remove is reported in a `Note`; the other leaves still go.
+cannot remove is reported in a `Note`; the other leaves still go, even past a `KeyboardInterrupt`,
+which is re-raised at the end.
 
 ```def _dispose_stash(stash: Path) -> None```
 Delete a ws→ws stash through `remove_box_tree`; a `False` prints a `Note` naming it, because the

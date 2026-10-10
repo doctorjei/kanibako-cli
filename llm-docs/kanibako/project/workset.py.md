@@ -180,14 +180,15 @@ writes are torn-file-safe (atomic temp + `os.replace`, via `config_io.dump_doc`)
 an orphan symlink, or an external path locked out by a dangling connection record.
 
 Each forward step pushes a compensating action; on any exception or interrupt (`BaseException`) they
-run in reverse (best-effort, secondary failures swallowed) and the original exception re-raises,
-leaving the op either fully applied or fully rolled back. `create_workset` pushes its name drop
-BEFORE the write, so an interrupt that lands just after the write is still undone; the drop removes
-the entry only while it still points at this root, so a losing concurrent create cannot drop the
-winner's. The sequences are short — two pushes for `create_workset`, up to seven for `add_project`.
-A `KeyboardInterrupt` from an action is held until every action has run, then re-raised. ⚑ This is
-the ONLY `_Unwind`: `commands/box/_lifecycle.py` imports it and also uses its relocation tail
-(`push_first`, `on_success`, `finish`, `note_interrupted`); see that module's **The unwind stack**.
+run in reverse (best-effort, secondary failures swallowed) and the original exception re-raises (or,
+if an action was itself interrupted, that first `KeyboardInterrupt`, raised once every action has
+run), leaving the op either fully applied or fully rolled back. `create_workset` pushes its name
+drop BEFORE the write, so an interrupt that lands just after the write is still undone; the drop
+removes the entry only while it still points at this root, so a losing concurrent create cannot drop
+the winner's. The sequences are short — two pushes for `create_workset`, up to seven for
+`add_project`. ⚑ This is the ONLY `_Unwind`: `commands/box/_lifecycle.py` imports it and also uses
+its relocation tail (`push_first`, `on_success`, `finish`, `note_interrupted`); see that module's
+**The unwind stack**.
 
 ## ⚑⚑ Identity is the GLOBAL registry; nothing under the root records a name
 
