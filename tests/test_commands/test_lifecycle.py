@@ -1739,15 +1739,43 @@ class TestRetireOldWorkspace:
         assert f"could not fully remove the old workspace {old}: [Errno 13]" in err
         assert "r.txt" in err
 
-    def test_a_non_dir_old_never_reaches_the_escalating_deleter(self, tmp_path, monkeypatch, capsys):
+    def test_a_plain_file_old_is_removed(self, tmp_path, monkeypatch, capsys):
+        """A plain file as old is unlinked; the escalating deleter is not consulted."""
         old = tmp_path / "old"
         old.write_text("a file")
         seen: list[object] = []
         monkeypatch.setattr(lc, "remove_box_tree", lambda p: seen.append(p) or True)
         lc._retire_old_workspace(old, tmp_path / "landed")
         assert seen == []
-        assert old.read_text() == "a file"
-        assert "could not fully remove" in capsys.readouterr().err
+        assert not old.exists()
+        assert "could not remove" not in capsys.readouterr().err
+
+    def test_a_fifo_old_is_removed(self, tmp_path, monkeypatch, capsys):
+        """A FIFO as old takes the non-directory unlink path; no ``entries`` Note prints."""
+        old = tmp_path / "old"
+        os.mkfifo(old)
+        seen: list[object] = []
+        monkeypatch.setattr(lc, "remove_box_tree", lambda p: seen.append(p) or True)
+        lc._retire_old_workspace(old, tmp_path / "landed")
+        assert seen == []
+        assert not os.path.lexists(old)
+        err = capsys.readouterr().err
+        assert "entries" not in err
+        assert "could not remove" not in err
+
+    def test_a_plain_file_unlink_failure_notes_the_file(self, tmp_path, capsys):
+        """On unlink failure the note describes a file, never ``entries``."""
+        old = tmp_path / "old"
+        old.write_text("a file")
+        tmp_path.chmod(0o555)
+        try:
+            lc._retire_old_workspace(old, tmp_path / "landed")
+        finally:
+            tmp_path.chmod(0o755)
+        err = capsys.readouterr().err
+        assert f"could not remove the old workspace {old}:" in err
+        assert "entries" not in err
+        assert old.exists()
 
 
 class TestMoveEntryEscalation:
