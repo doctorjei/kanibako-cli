@@ -409,6 +409,12 @@ def core_default_categories(
             # ⚡ A NULL ARM STILL EMITS ITS ENTRY — its ``@workset.vault_*`` source
             # resolves to null, so the collapse omits the bind and §2a warns.
             src_path = vault_dir[src_name]
+            # ⚑ A dangling link or a non-directory there gets NO bind, on display and launch
+            # alike, and nothing at it is touched: the box launches without that vault, as
+            # ``paths._flag_missing_vault`` warns.
+            from kanibako.settings.paths import unusable_dir_finding
+            if src_path is not None and unusable_dir_finding(src_path) is not None:
+                continue
             # ⚑ *guarantee_create* False suppresses ONLY this mkdir — the bind is still emitted;
             # a DISPLAY verb (``box show --effective``) must not write to disk.
             if guarantee_create and src_path is not None:

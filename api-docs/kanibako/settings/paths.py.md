@@ -83,6 +83,7 @@ def designation_route(value: str | None, *, name_first: bool=False) -> Designati
 def resolve_designation(std: StandardPaths, value: str | None, *, unknown_name_is_path: bool, name_first: bool=False) -> str
 def resolve_any_project(std: StandardPaths, config: BootstrapConfig, project_dir: str | None=None, *, initialize: bool=False, register: bool=True, name_override: str | None=None) -> ProjectPaths
 def resolve_box_target(std: StandardPaths, config: BootstrapConfig, value: str | None=None, *, initialize: bool=False, register: bool=True, warn: bool=True) -> ProjectPaths
+def unusable_dir_finding(path: Path) -> str | None
 def establish_standalone(std: StandardPaths, root: Path, *, enable_vault: bool | None, carry_kuid: str | None=None, own_name: str | None=None, register: bool=True) -> tuple[str, Path, Path | None, Path | None]
 def resolve_standalone_project(std: StandardPaths, config: BootstrapConfig, project_dir: str | None=None, *, initialize: bool=False, enable_vault: bool | None=None, name: str='', register: bool=True) -> ProjectPaths
 def _default_project_group(std: StandardPaths) -> ProjectGroup

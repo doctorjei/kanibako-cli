@@ -339,6 +339,38 @@ class TestSkipIfAbsentEmission:
         assert any("does not exist" in r.message for r in caplog.records)
 
 
+class TestUncreatableReadWriteSourceIsDropped:
+    """An rw source the guarantee-create cannot make is dropped with a warning, like a
+    missing ro source, never handed to podman. RED before: the failed ``mkdir`` was
+    swallowed and the bind emitted."""
+
+    _DEST = f"{GUEST_HOME}/data"
+
+    def test_a_dangling_link_source_is_dropped_and_named(self, tmp_path, caplog):
+        import os
+
+        from kanibako.commands.start import (
+            _bind_map_from_mounts,
+            _emit_category_mounts,
+        )
+
+        src = tmp_path / "link"
+        src.symlink_to(tmp_path / "gone")
+        entry = _entry(
+            category="bindings.rw", scope="box", box_dest=self._DEST,
+            host_src=str(src), delivery="MOUNT", options="Z,U",
+            name=self._DEST, key_segments=("box", "bindings", "rw", self._DEST),
+        )
+        with caplog.at_level(logging.WARNING):
+            mounts = _emit_category_mounts(
+                _bind_map_from_mounts([entry]), label="category",
+            )
+        assert mounts == []
+        assert any(f"is a dangling link to {tmp_path / 'gone'}; dropping mount"
+                   in r.message for r in caplog.records), [r.message for r in caplog.records]
+        assert os.readlink(src) == str(tmp_path / "gone")
+
+
 class TestReadOnlyIsDecidedByTokenNotEquality:
     """A ``ro`` entry is DROPPED when its source is missing — however options are spelled.
 

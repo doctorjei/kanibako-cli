@@ -668,6 +668,31 @@ class TestMissingVaultAdvisory:
         proj = self._proj(tmp_path, enable_vault=True, make_vault=True)
         assert not self._warned(caplog, proj)
 
+    @pytest.mark.parametrize("arm", ["rw", "ro"])
+    def test_a_dangling_link_is_named_with_its_target(self, tmp_path, caplog, arm):
+        """RED before: an rw link said only "cannot find vault", an ro one nothing."""
+        proj = self._proj(tmp_path, enable_vault=True, make_vault=True)
+        leaf = proj.vault_rw_path if arm == "rw" else proj.vault_ro_path
+        leaf.rmdir()
+        leaf.symlink_to(tmp_path / "gone")
+        self._warned(caplog, proj)
+        [msg] = [r.getMessage() for r in caplog.records if "vault" in r.getMessage()]
+        assert f"the {arm} vault for box 'aaaaa_box' at {leaf} is a dangling link to " \
+               f"{tmp_path / 'gone'};" in msg
+        assert "launches without that vault" in msg
+        assert leaf.is_symlink()
+
+    @pytest.mark.parametrize("arm", ["rw", "ro"])
+    def test_a_file_is_named_as_not_a_directory(self, tmp_path, caplog, arm):
+        proj = self._proj(tmp_path, enable_vault=True, make_vault=True)
+        leaf = proj.vault_rw_path if arm == "rw" else proj.vault_ro_path
+        leaf.rmdir()
+        leaf.write_text("x")
+        self._warned(caplog, proj)
+        [msg] = [r.getMessage() for r in caplog.records if "vault" in r.getMessage()]
+        assert f"the {arm} vault for box 'aaaaa_box' at {leaf} is not a directory;" in msg
+        assert leaf.read_text() == "x"
+
     def test_disabled_and_absent_silent(self, tmp_path, caplog):
         # Mutation: drop the ``enable_vault`` guard in _flag_missing_vault → a
         # vault-disabled box with no vault dir would WARN → this goes RED.

@@ -50,6 +50,9 @@ WARN_BOX_KUID_HELD =   ("Warning: workset.kuid '%s' in %s belongs to registered 
 WARN_BOX_NO_VAULT =    ("Warning: cannot find vault for box '%s' (expected at %s); it still " +
                         "launches without a vault; recreate the directory or set " +
                         "box.enable_vault=false to silence.")        # box name, the RW vault path
+WARN_BOX_VAULT_UNUSABLE = ("Warning: the %s vault for box '%s' at %s is %s; it launches without " +
+                           "that vault; fix the path or set box.enable_vault=false to silence.")
+                                         # "rw" | "ro", box name, the vault path, unusable_dir_finding()
 
 # ⚑ The 1st arg of each pair below is a LAYER DISCRIMINATOR, not a value; BAD_REF's is spliced
 # INSIDE the @-sigil, so "" is load-bearing punctuation ("Unknown @-reference:").

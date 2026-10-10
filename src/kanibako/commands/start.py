@@ -8362,8 +8362,15 @@ def _emit_category_mounts(
             # rw bind: create the host source dir (L7 guarantee-create).
             try:
                 src.mkdir(parents=True, exist_ok=True)
-            except OSError:
-                pass  # best-effort; podman will surface a genuinely bad source
+            except OSError as exc:
+                # ⚑ A source that could not be created (a dangling link is the common
+                # case) is DROPPED like a missing ro source: podman would only abort on it.
+                from kanibako.settings.paths import unusable_dir_finding
+                logging.getLogger(__name__).warning(
+                    "%s %s: read-write source %s is %s; dropping mount",
+                    label, dest, bind.src, unusable_dir_finding(src) or f"uncreatable ({exc})",
+                )
+                continue
         mounts.append(
             Mount(source=src, destination=dest, options=bind.opts or "")
         )
@@ -10071,9 +10078,9 @@ def _core_default_categories(
     shipped system/core defaults file (``core:`` list); the loader injects the
     runtime-probed host sources off ``ProjectPaths``.  Injected through the category
     resolver (D-B1 precedence + depth-sort + L7 guarantee-create) exactly like
-    masks/common/channels.  home + workspace are unconditional; the vault binds are
-    gated on ``proj.vault_enabled()`` AND the source dir existing (reproducing the old
-    hardwired ``if enable_vault and path.is_dir()`` skip-if-missing behavior).
+    masks/common/channels.  home + workspace are unconditional; a vault bind is
+    gated on ``proj.vault_enabled()``, its missing source is created, and a source
+    holding a dangling link or a non-directory gets no bind.
     """
     return core_defaults.core_default_categories(
         std, proj, enable_vault=proj.vault_enabled(), mode=proj.mode.value,
