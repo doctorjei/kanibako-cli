@@ -766,25 +766,26 @@ class TestLeftoverDefaultCanon:
         with (root / "workset.yaml").open("a") as fh:
             fh.write("  canon: '@meta.workset.path/mycanon'\n")
 
+    @pytest.mark.xfail(strict=True, reason="root canon stamp not recognized: bugfixes row "
+                       "'Purge keeps the default root canon/ with a false Note'")
     def test_a_create_stamp_left_by_a_repoint_is_removed(self, config_file, tmp_home,
                                                       credentials_dir, capsys):
-        """⚑ THE REAL ``create`` STAMP, materialized by the real installer — not an empty
-        dir standing in for it.  The old test passed because its ``create`` skipped the
-        stamp, so it proved the rmdir path, not the stamp rule.
+        """⚑ THE REAL ROOT ``canon/`` — what ``kanibako setup`` + ``create`` lay down: the
+        workset mold copied into the root, ``handbook/SYS_WORKSET.md`` carrying the template
+        text.  ``materialize_canon_skeleton`` is the BOX-HOME skeleton and never runs on a
+        root, so building this from it proved a layout no ``create`` makes.
         """
-        from kanibako.settings.core_defaults import (
-            CANON_GUEST_ROOT, canon_skeleton_rels, materialize_canon_skeleton,
-        )
+        from kanibako.launch.templates import install_packaged_templates
+        from kanibako.settings.config import load_config
+        from kanibako.settings.paths import load_std_paths
 
+        install_packaged_templates(load_std_paths(load_config(config_file)), [])
         root = tmp_home / "sa"
         _create(root, standalone=True)
         self._repoint_canon(root)
-        materialize_canon_skeleton(root)
-        stamped = sorted(rel.split("/", 1)[1] for rel, _d in canon_skeleton_rels()
-                        if rel.startswith(f"{CANON_GUEST_ROOT}/"))
-        assert (root / "canon").is_dir() and stamped
-        assert all((root / "canon" / rel).exists() for rel in stamped), \
-            "the real stamp did not land — this test would prove nothing"
+        stamped = root / "canon" / "handbook" / "SYS_WORKSET.md"
+        assert stamped.is_file() and stamped.stat().st_size > 0, \
+            "the real root stamp did not land — this test would prove nothing"
         capsys.readouterr()
 
         assert _rm(str(root), force=True) == 0
@@ -933,14 +934,21 @@ class TestEarlyDeleteFailure:
     with the registry already rewritten."""
 
     def test_a_read_only_root_degrades_to_a_kept_anchor_and_the_retry_finishes(
-        self, config_file, tmp_home, credentials_dir, capsys,
+        self, config_file, tmp_home, credentials_dir, capsys, monkeypatch,
     ):
+        from kanibako.runtime.container import ContainerRuntime
+
         root = tmp_home / "sa"
         _create(root, standalone=True)
         capsys.readouterr()
         os.chmod(root, 0o500)  # readable, but nothing inside can be unlinked
         try:
-            rc = _rm(str(root), force=True)
+            # ⚑ A working ``podman unshare rm`` ignores modes and would delete through the
+            # read-only root (CI has one): this run models the host where it fails too.
+            # The retry below keeps it — the protected canon needs it there.
+            with monkeypatch.context() as mp:
+                mp.setattr(ContainerRuntime, "unshare_rm", lambda self, path: False)
+                rc = _rm(str(root), force=True)
             out = capsys.readouterr()
         finally:
             os.chmod(root, 0o700)

@@ -517,10 +517,11 @@ class TestPurgeAnchorLast:
     """
 
     def test_a_failed_purge_keeps_the_store_so_the_retry_can_actually_run(
-        self, config_file, tmp_home, credentials_dir, capsys,
+        self, config_file, tmp_home, credentials_dir, capsys, monkeypatch,
     ):
         from kanibako.commands.clean import _purge_one
         from kanibako.project import registry_store
+        from kanibako.runtime.container import ContainerRuntime
         from kanibako.settings.config import load_config
         from kanibako.settings.paths import (
             load_std_paths,
@@ -541,7 +542,11 @@ class TestPurgeAnchorLast:
         _chmod_tree(vault, 0o555)
         try:
             capsys.readouterr()
-            rc1 = _purge_one(std, config, str(root), force=True)
+            # ⚑ A working ``podman unshare rm`` ignores modes and would delete the 555
+            # vault (CI has one): this run models the host where it fails too.
+            with monkeypatch.context() as mp:
+                mp.setattr(ContainerRuntime, "unshare_rm", lambda self, path: False)
+                rc1 = _purge_one(std, config, str(root), force=True)
             first = capsys.readouterr()
 
             assert rc1 != 0, "a purge that kept a folder must not report success"
