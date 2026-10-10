@@ -16,6 +16,7 @@ import pytest
 
 from kanibako.commands.box import _lifecycle
 from kanibako.commands.box._lifecycle import (
+    UNCHANGED,
     TargetSpec,
     execute_lifecycle,
     resolve_lifecycle_target,
@@ -182,3 +183,21 @@ def test_a_named_to_primary_convert_keeps_the_pointer(env):
         std, config, confirm=lambda: True,
     )
     _assert_pointer(leaf, text, target, digest)
+
+
+@pytest.mark.parametrize("kind", KINDS)
+def test_a_same_workset_move_keeps_the_pointer_as_the_box_vault(env, kind, capsys):
+    """Same workset, same name: the leaf is the box's own, so it stays its live vault."""
+    config, std, tmp_home = env
+    state, ws_a, _ws_b, leaf, text, target, digest = _linked_member(env, kind)
+    (tmp_home / "ext").mkdir()
+    new = execute_lifecycle(
+        state, TargetSpec(location=tmp_home / "ext" / "b1", ownership=UNCHANGED),
+        std, config, confirm=lambda: True,
+    )
+    _assert_pointer(leaf, text, target, digest)
+    assert new.vault_rw == leaf
+    assert _member_of(env, ws_a)
+    err = capsys.readouterr().err
+    assert "stays the box's vault" in err
+    assert "did not carry" not in err
