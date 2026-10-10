@@ -2010,6 +2010,64 @@ class TestRollbacksDeleteOnlyWhatTheOpCreated:
         finally:
             outside.chmod(0o755)
 
+    def test_a_repointed_vault_outside_the_store_is_never_replaced(
+        self, env, monkeypatch, tmp_path, capsys,
+    ):
+        """The remove-and-recopy acts only on the source's own store leaves (hard rule).
+
+        The carry skips a leaf outside the arm, so the stash leg is forced here to reach
+        the restore's own guard.
+        """
+        import dataclasses
+        import hashlib
+
+        config, std, tmp_home = env
+        ws1 = _make_workset(env, "ws1", "ws1_root")
+        create_workset("ws2", tmp_home / "ws2_root", std)
+        leaf, state = self._member(env, ws1)
+        outside = tmp_path / "theirs"
+        outside.mkdir()
+        (outside / "v.txt").write_text("vault")
+        state = dataclasses.replace(state, vault_rw=outside)
+        stash_root = self._stash_dir(tmp_path, monkeypatch)
+
+        def digest():
+            h = hashlib.sha256()
+            for p in sorted(outside.rglob("*")):
+                st = p.lstat()
+                h.update(f"{p.relative_to(outside)}:{st.st_mode:o}:{st.st_ino}".encode())
+                if p.is_file():
+                    h.update(p.read_bytes())
+            # The leaf's own mode is left out: the PLAIN copy's ``copystat`` resets it
+            # before the guard is reached, as it did before this lane.
+            h.update(f"{outside.lstat().st_ino}".encode())
+            return h.hexdigest()
+
+        def part_way(ws, name, *, bases=None):
+            (outside / "v.txt").chmod(0o444)
+            outside.chmod(0o555)
+            seen.append(digest())
+            raise KeyboardInterrupt
+
+        seen: list[str] = []
+        monkeypatch.setattr(lc, "remove_member_store", part_way)
+        monkeypatch.setattr(lc, "_vault_carry_pairs",
+                            lambda state, std, ro, rw: [(outside, rw)])
+        try:
+            with pytest.raises(KeyboardInterrupt):
+                execute_lifecycle(
+                    state, TargetSpec(location=BARE_INTO_WS, ownership="ws2"),
+                    std, config, confirm=_conf_yes(),
+                )
+            assert (outside / "v.txt").read_text() == "vault"
+            err = capsys.readouterr().err
+            assert f"Note: could not restore the read-write vault at {outside}" in err
+            [stash] = list(stash_root.iterdir())
+            assert f"Note: kept {stash}" in err
+            assert seen == [digest()]
+        finally:
+            outside.chmod(0o755)
+
     def test_the_skeleton_remnant_restores_whole_under_protected_modes(
         self, env, monkeypatch, tmp_path, capsys, protected_canon,
     ):
