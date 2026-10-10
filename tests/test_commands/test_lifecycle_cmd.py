@@ -172,7 +172,7 @@ class TestRemap:
         assert rc == 0
         # Files preserved (never moved/deleted by remap).
         assert (new_ext / "f.txt").read_text() == "ext"
-        # connected.yaml now points at the new external path.
+        # the connection now points at the new external path.
         connected = _connected_index(std)
         assert str(new_ext.resolve()) in connected
 

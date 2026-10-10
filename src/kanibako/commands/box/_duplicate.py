@@ -769,7 +769,7 @@ def _duplicate_to_workset(args, std, config) -> int:
     # Re-root the project into the workset group (copy workspace unless --bare).
     # std-aware: the duplicate always lands a fresh INTERNAL workspace (a copy,
     # never a connection); a bare duplicate of an external-connected source is
-    # refused upstream in run_duplicate per the 1:1 connected.yaml policy.
+    # refused in run_duplicate; a connection is 1:1 (an external path is one box's).
     copy_into_workset(
         ws, proj_name, src_proj.metadata_path, src_proj.shell_path,
         source_path, source_mode, copy_workspace=not args.bare, std=std,
@@ -910,7 +910,7 @@ def run_duplicate(args: argparse.Namespace) -> int:
     )
 
     # Refuse --bare on an external-connected source ONLY when the bare copy
-    # would alias the same external dir.  connected.yaml is a 1:1 mapping
+    # would alias the same external dir; a connection is 1:1
     # (external path -> one {workset, project}); a bare duplicate has no
     # workspace of its own, so it could only point at the SAME external dir as
     # the original -> would violate the 1:1 mapping.  This does NOT apply when

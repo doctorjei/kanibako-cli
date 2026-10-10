@@ -2198,7 +2198,7 @@ class TestBoxDuplicateExternal:
 
     Phase 3 repointed ``_duplicate_to_workset`` at the std-aware
     ``copy_into_workset`` helper and added the refuse-``--bare``-external policy
-    (connected.yaml is 1:1).
+    (a connection is 1:1).
     """
 
     def _make_external_connected(self, tmp_home, std, config,
@@ -2206,13 +2206,13 @@ class TestBoxDuplicateExternal:
         """Create a workset with an EXTERNAL-connected project, return paths.
 
         Returns ``(ws, ext_dir, proj_name)`` where *ext_dir* lives outside the
-        workset root and is registered in connected.yaml.
+        workset root and lives in the workset's per-workset ``boxes:`` entry.
         """
         ws, _ = _make_workset(tmp_home, std, ws_name)
         ext_dir = tmp_home / f"{proj_name}_external"
         ext_dir.mkdir()
         (ext_dir / "code.py").write_text("print('external')")
-        # Outside the workset root + std -> external wiring (connected.yaml etc.).
+        # Outside the workset root + std -> per-workset ``boxes:`` external entry.
         add_project(ws, proj_name, ext_dir, std)
         return ws, ext_dir, proj_name
 
@@ -2223,7 +2223,7 @@ class TestBoxDuplicateExternal:
 
         Even when the source lives outside the workset root, a duplicate is a
         copy (not a connection): ``workspaces/<name>`` is a real directory, not a
-        symlink, and no ``connected.yaml`` entry is written.
+        symlink, and no connection entry is written.
         """
         from kanibako.commands.box._lifecycle import copy_into_workset
         from kanibako.settings.paths import BoxMode
@@ -2371,7 +2371,7 @@ class TestBoxDuplicateExternal:
 
         The std-aware helper must keep producing a real ``workspaces/<name>``
         directory (not an external symlink) for an ordinary out-of-workset
-        source, with no connected.yaml entry.
+        source, with no connection written.
         """
         from kanibako.commands.box import run_duplicate
 
@@ -2468,7 +2468,7 @@ class TestBoxDuplicateExternal:
         """``--bare --to primary`` of an external source succeeds (no aliasing).
 
         The bare result makes ``new_path`` itself the workspace, so the 1:1
-        connected.yaml refusal does NOT apply.  Metadata only, no crash, no
+        refusal does NOT apply.  Metadata only, no crash, no
         WorksetError.
         """
         from kanibako.commands.box import run_duplicate
