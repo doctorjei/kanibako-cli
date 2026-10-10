@@ -485,10 +485,11 @@ def standalone_canon_teardown(
     return None, _unfollowed(canon)
 
 
-def report_retained_canon(canon: Path, root: Path) -> None:
-    """The retained-canon Note: the tier is outside *root*, or not this box's tier."""
-    why = ("not the canon tier of this box" if _strictly_in_tree(canon, root)
-           else f"not strictly inside {root}")
+def report_retained_canon(canon: Path, root: Path, why: str | None = None) -> None:
+    """The retained-canon Note: the tier is outside *root*, not this box's tier, or *why*."""
+    if why is None:
+        why = ("not the canon tier of this box" if _strictly_in_tree(canon, root)
+               else f"not strictly inside {root}")
     print(f"Note: left the canon folder at {canon} in place — {why}, "
           f"so it is yours to remove.", file=sys.stderr)
 

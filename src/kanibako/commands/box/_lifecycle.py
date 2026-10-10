@@ -23,7 +23,7 @@ from collections.abc import Collection, Iterable, Mapping
 from dataclasses import dataclass, field, replace
 from functools import partial
 from pathlib import Path
-from typing import Any, Callable
+from typing import TYPE_CHECKING, Any, Callable
 
 from kanibako.launch.box_identity import (
     box_name_cure,
@@ -95,7 +95,10 @@ from kanibako.tree_copy import (
     MountedLink, copy_tree_keeping_links, failed_entries, lay_root_link,
     plan_mounted_links, removed_root_of, repoint_mounted_links,
 )
-from kanibako.utils import literal_path, write_project_gitignore
+from kanibako.utils import (
+    gitignore_holds_only_kanibako, literal_path, project_gitignore_to_strip,
+    strip_project_gitignore, write_project_gitignore,
+)
 from kanibako.project.workset import (
     Workset,
     add_project,
@@ -108,6 +111,7 @@ from kanibako.project.workset import (
     release_project,
     remove_member_store,
     _member_store_bases,
+    report_retained_canon,
     report_retained_vault,
     report_retained_vaults,
     resolve_workset_boxes,
@@ -116,9 +120,13 @@ from kanibako.project.workset import (
     resolve_workset_vault_ro,
     resolve_workset_vault_rw,
     resolve_workset_workspaces,
+    standalone_canon_teardown,
     standalone_vault_teardown,
     _path_in_tree,
 )
+
+if TYPE_CHECKING:
+    from kanibako.channels.channels import OwnPartition
 
 
 # ---------------------------------------------------------------------------
@@ -1965,6 +1973,13 @@ class _SourceTeardown:
     #: A standalone root's ``workset.yaml``, which alone reads as a box.
     marker: Path | None = None
     stash: Path | None = None
+    #: A standalone root's in-tree ``workset.canon`` tier, until
+    #: :func:`_carry_standalone_canon` takes it; the tail names one still here.
+    canon: Path | None = None
+    #: A standalone root's ``.gitignore`` holding kanibako's line; the tail strips it.
+    gitignore: Path | None = None
+    #: A standalone source's own channel partition, or the error resolving it raised.
+    partition: OwnPartition | Exception | None = None
     #: A workset source, whose store :func:`_retire_old_store` removes.
     member: Workset | None = None
     dst_vault: tuple[Path | None, Path | None] = (None, None)
@@ -2013,15 +2028,22 @@ def _plan_source_teardown(
         # AND the already-converted destination.
         root = state.metadata_path
         drop = restore = None
-        prior = registry_store.standalone_root(std.registry, state.name) if state.name else None
-        if prior is not None and not _same_box_name(state.name, new_name):
-            drop = partial(_safe_unregister_standalone, std, state.name)
-            restore = partial(registry_store.register_standalone, std.registry, state.name,
-                              Path(prior))
+        row = _standalone_source_row(std, state.name, root, new_name)
+        if row is not None and not _same_box_name(row[0], new_name):
+            drop = partial(_safe_unregister_standalone, std, row[0])
+            restore = partial(registry_store.register_standalone, std.registry, row[0],
+                              Path(row[1]))
+        # ⚑⚑ Read through the root ``workset.yaml``, which the stash takes before step 4b.
+        partition: OwnPartition | Exception
+        try:
+            partition = _own_partition(state, std)
+        except Exception as err:  # noqa: BLE001 - step 4b warns with it and skips
+            partition = err
         if preserve_root is not None and preserve_root.resolve() == root.resolve():
             # ⚑⚑ The destination IS this root (an in-place standalone rename): only the
             # OLD NAME's registry entry is stale.
-            return _SourceTeardown(name=state.name, drop=drop, restore=restore)
+            return _SourceTeardown(name=state.name, drop=drop, restore=restore,
+                                   partition=partition)
         # ⚑⚑ RESOLVE THE VAULT BEFORE ANYTHING IS DROPPED.  The root ``workset.yaml`` IS
         # the standalone workset tier and the only carrier of a ``workset.vault_*``
         # repoint, and an UNRESOLVABLE repoint raises here, while the source is whole.
@@ -2048,11 +2070,15 @@ def _plan_source_teardown(
             keeps.append(partial(report_retained_store, retained_store, root))
         keeps += [partial(report_retained_vaults, root, retained_vault),
                   partial(_report_unreceived_vaults, kept)]
+        canon, retained_canon = standalone_canon_teardown(root, early=scope)
+        if retained_canon is not None:
+            keeps.append(partial(report_retained_canon, retained_canon, root))
         trees = (removable_store,) if removable_store is not None else ()
         marker = root / WORKSET_META_FILE
         return _SourceTeardown(
             name=state.name, removed=(*trees, *removable_vault), trees=trees,
             vaults=tuple(removable_vault), marker=marker if marker.is_file() else None,
+            canon=canon, gitignore=project_gitignore_to_strip(root), partition=partition,
             keeps=tuple(keeps), drop=drop, restore=restore,
         )
 
@@ -2154,6 +2180,49 @@ def _safe_unregister_standalone(std: StandardPaths, name: str) -> None:
         pass
 
 
+def _standalone_source_row(
+    std: StandardPaths, name: str, root: Path, new_name: str | None,
+) -> tuple[str, str] | None:
+    """The source's ``standalone:`` row as ``(key, root)``: its name, else the row at *root*.
+
+    ⚑ A legacy key is not the name the root's kuid composes, so only *root* finds it; the
+    row the destination just registered (*new_name*) is never the source's.
+    """
+    from kanibako.project import registry_store
+
+    rows = registry_store.load_standalone(std.registry)
+    key = find_identifier(name, rows) if name else None
+    if key is None:
+        key = next((k for k, r in rows.items()
+                    if r == str(root) and not _same_box_name(k, new_name)), None)
+    return None if key is None else (key, rows[key])
+
+
+def _carry_standalone_canon(
+    teardown: _SourceTeardown, std: StandardPaths, src_root: Path, dst_root: Path,
+) -> _SourceTeardown:
+    """Copy the source's ``workset.canon`` tier to the standalone *dst_root*'s; the tail
+    then removes the old one.
+
+    ⚑ Carried like the vault, never re-stamped: it holds the user's directives.  The root
+    undo (:func:`_arm_standalone_root_undo`) owns the tier this creates.  A destination
+    tier already on disk, or nulled, is not written: the old one stays, named.
+    """
+    src = teardown.canon
+    if src is None:
+        return teardown
+    dst = resolve_workset_canon(dst_root, load_workset_settings_doc(dst_root),
+                                early=_early_scope(std, BoxMode.standalone))
+    if dst is None or dst.exists() or dst.is_symlink():
+        why = ("workset.canon is null at the new root" if dst is None
+               else f"{dst} already exists")
+        return replace(teardown, canon=None, keeps=(
+            *teardown.keeps, partial(report_retained_canon, src, src_root, why)))
+    copy_tree_keeping_links(src, dst, keep_root_link=True)
+    return replace(teardown, canon=None, trees=(*teardown.trees, src),
+                   removed=(*teardown.removed, src))
+
+
 def _stash_source_marker(teardown: _SourceTeardown, unwind: _Unwind) -> _SourceTeardown:
     """Move the standalone source's root marker into a relocation stash; the undo puts it back.
 
@@ -2232,15 +2301,23 @@ def _finish_relocation(
         for keep in plan.keeps:
             keep()
 
+    def root_files_step() -> None:
+        if plan.canon is not None:
+            report_retained_canon(plan.canon, state.metadata_path,
+                                  "this box is no longer standalone")
+        if plan.gitignore is not None:
+            strip_project_gitignore(plan.gitignore)
+
     def member_step() -> None:
         if plan.member is not None:
             _retire_old_store(plan.member, plan.name, plan.dst_vault, plan.vault_enabled)
 
     steps: list[tuple[str, Callable[[], None]]] = [
-        ("4b", partial(_relocate_channel_partition, state, new_state, std)),
+        ("4b", partial(_relocate_channel_partition, state, new_state, std, plan)),
         ("4c", snapshots_step),
         ("store", partial(remove, plan.trees, remove_path)),
         ("vaults", vaults_step),
+        ("root", root_files_step),
         ("member", member_step),
         *(("later", step) for step in later),
         ("stash", partial(_dispose_stash, plan.stash) if plan.stash else lambda: None),
@@ -2274,11 +2351,14 @@ def _note_interrupted_tail(
         left += old_workspaces
     if plan.stash is not None:
         left.append(plan.stash)
-    _report_store_leftovers(
-        plan.name, _on_disk(left), ": interrupted",
-        unmoved=[*_unmoved_partitions(state, new_state, std),
-                 *_unmoved_snapshots(state, new_state)],
-    )
+    unmoved = [*_unmoved_partitions(state, new_state, std, plan),
+               *_unmoved_snapshots(state, new_state)]
+    if plan.gitignore is not None and progress.step not in ("member", "later", "stash"):
+        if gitignore_holds_only_kanibako(plan.gitignore):
+            left.append(plan.gitignore)
+        elif progress.step != "root":
+            unmoved.append(f"kanibako's line is still in {plan.gitignore}")
+    _report_store_leftovers(plan.name, _on_disk(left), ": interrupted", unmoved=unmoved)
 
 
 def _holds_any(path: Path, stores: Collection[Path]) -> bool:
@@ -2291,15 +2371,14 @@ def _on_disk(paths: Iterable[Path]) -> list[Path]:
     return [p for p in paths if p.exists() or p.is_symlink()]
 
 
-def _unmoved_partitions(old: ProjectState, new: ProjectState, std: StandardPaths) -> list[str]:
+def _unmoved_partitions(
+    old: ProjectState, new: ProjectState, std: StandardPaths, plan: _SourceTeardown,
+) -> list[str]:
     """The channel dirs step 4b leaves at *old*'s address, as Note text."""
-    from kanibako.channels.channels import own_partition_dirs
-
     try:
         if _state_ws_token(old) == _state_ws_token(new) and old.name == new.name:
             return []
-        src = own_partition_dirs(std, _state_ws_token(old), old.name,
-                                 ws_root=_state_ws_root(old, std))
+        src = _old_partition(old, std, plan)
     except Exception:  # noqa: BLE001 - nothing it can name
         return []
     return [f"its channel {label} is still at {path}"
@@ -2873,6 +2952,7 @@ def _to_standalone(
         state, std, (vault_ro, vault_rw), new_name=box_name,
         preserve_root=root if reused_in_place else None,
     )
+    teardown = _carry_standalone_canon(teardown, std, state.metadata_path, root)
     # ⚑ THE VAULT CARRY (P1 data loss) — see ``_to_default``: the destination
     # vault is fresh and the source is deleted on success, so contents
     # move first.  A reuse-in-place rename collapses to a same-path no-op.
@@ -3186,8 +3266,26 @@ def _state_ws_root(state: ProjectState, std: StandardPaths) -> Path:
     return std.primary_workset
 
 
+def _own_partition(state: ProjectState, std: StandardPaths) -> OwnPartition:
+    """*state*'s own channel partition, read through its workset's keys."""
+    from kanibako.channels.channels import own_partition_dirs
+
+    return own_partition_dirs(std, _state_ws_token(state), state.name,
+                              ws_root=_state_ws_root(state, std))
+
+
+def _old_partition(old: ProjectState, std: StandardPaths, plan: _SourceTeardown) -> OwnPartition:
+    """*old*'s own partition: the one *plan* resolved before the stash, else resolved now.
+
+    Raises what that resolution raised.
+    """
+    if isinstance(plan.partition, Exception):
+        raise plan.partition
+    return plan.partition if plan.partition is not None else _own_partition(old, std)
+
+
 def _relocate_channel_partition(
-    old: ProjectState, new: ProjectState, std: StandardPaths,
+    old: ProjectState, new: ProjectState, std: StandardPaths, plan: _SourceTeardown,
 ) -> None:
     """Best-effort relocate THIS box's OWN channel partition (D-M10, §6).
 
@@ -3200,13 +3298,9 @@ def _relocate_channel_partition(
     """
     import sys
 
-    from kanibako.channels.channels import own_partition_dirs
-
     try:
         old_token = _state_ws_token(old)
         new_token = _state_ws_token(new)
-        old_root = _state_ws_root(old, std)
-        new_root = _state_ws_root(new, std)
     except ValueError as e:  # cannot derive an address → nothing to relocate
         print(f"Warning: skipping channel relocation: {e}", file=sys.stderr)
         return
@@ -3223,8 +3317,8 @@ def _relocate_channel_partition(
     # that is otherwise complete, so it warns with the key's own message and skips —
     # the same treatment the per-directory move below already gives an OSError.
     try:
-        src = own_partition_dirs(std, old_token, old.name, ws_root=old_root)
-        dst = own_partition_dirs(std, new_token, new.name, ws_root=new_root)
+        src = _old_partition(old, std, plan)
+        dst = _own_partition(new, std)
     except Exception as e:  # noqa: BLE001 - best-effort (D-M10)
         print(
             f"Warning: skipping channel relocation, a channel key did not "

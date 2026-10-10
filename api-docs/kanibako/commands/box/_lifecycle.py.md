@@ -78,13 +78,15 @@ def _plan_source_teardown(state: ProjectState, std: StandardPaths, dst_vault: tu
 def _restore_standalone_rows(std: StandardPaths, before: Mapping[str, str]) -> None
 def _restore_primary_rows(std: StandardPaths, before: Mapping[str, str]) -> None
 def _safe_unregister_standalone(std: StandardPaths, name: str) -> None
+def _standalone_source_row(std: StandardPaths, name: str, root: Path, new_name: str | None) -> tuple[str, str] | None
+def _carry_standalone_canon(teardown: _SourceTeardown, std: StandardPaths, src_root: Path, dst_root: Path) -> _SourceTeardown
 def _stash_source_marker(teardown: _SourceTeardown, unwind: _Unwind) -> _SourceTeardown
 def _drop_source_row(teardown: _SourceTeardown | None, unwind: _Unwind) -> None
 def _finish_relocation(state: ProjectState, new_state: ProjectState, std: StandardPaths, teardown: _SourceTeardown | None, later: list[Callable[[], None]], progress: _TailProgress | None=None) -> None
 def _note_interrupted_tail(state: ProjectState, new_state: ProjectState, std: StandardPaths, teardown: _SourceTeardown | None, old_workspaces: list[Path], progress: _TailProgress) -> None
 def _holds_any(path: Path, stores: Collection[Path]) -> bool
 def _on_disk(paths: Iterable[Path]) -> list[Path]
-def _unmoved_partitions(old: ProjectState, new: ProjectState, std: StandardPaths) -> list[str]
+def _unmoved_partitions(old: ProjectState, new: ProjectState, std: StandardPaths, plan: _SourceTeardown) -> list[str]
 def _unmoved_snapshots(old: ProjectState, new: ProjectState) -> list[str]
 def _retire_old_store(ws: Workset, name: str, dst_vault: tuple[Path | None, Path | None], vault_enabled: bool=True, *, reraise: bool=False) -> None
 def _report_store_leftovers(name: str, left: Collection[Path], why: str='', *, unmoved: Collection[str]=()) -> None
@@ -103,7 +105,9 @@ def _to_standalone(state: ProjectState, std: StandardPaths, config: BootstrapCon
 def _to_workset(state: ProjectState, std: StandardPaths, config: BootstrapConfig, unwind: _Unwind, *, target_ws: Workset, new_name: str, new_workspace: Path, relocating: bool, dest: Path | None) -> tuple[ProjectState, _SourceTeardown | None]
 def _state_ws_token(state: ProjectState) -> str
 def _state_ws_root(state: ProjectState, std: StandardPaths) -> Path
-def _relocate_channel_partition(old: ProjectState, new: ProjectState, std: StandardPaths) -> None
+def _own_partition(state: ProjectState, std: StandardPaths) -> OwnPartition
+def _old_partition(old: ProjectState, std: StandardPaths, plan: _SourceTeardown) -> OwnPartition
+def _relocate_channel_partition(old: ProjectState, new: ProjectState, std: StandardPaths, plan: _SourceTeardown) -> None
 def _relocate_snapshot_store(state: ProjectState, new_state: ProjectState) -> Path | None
 def _old_snapshot_store(old: ProjectState, new: ProjectState) -> Path | None
 def _safe_unregister(std: StandardPaths, name: str) -> None
@@ -177,6 +181,9 @@ class _SourceTeardown:
     vault_deleter: Callable[[Path], object] = remove_path
     marker: Path | None = None
     stash: Path | None = None
+    canon: Path | None = None
+    gitignore: Path | None = None
+    partition: OwnPartition | Exception | None = None
     member: Workset | None = None
     dst_vault: tuple[Path | None, Path | None] = (None, None)
     vault_enabled: bool = True

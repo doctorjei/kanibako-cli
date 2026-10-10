@@ -715,6 +715,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Moving or converting a standalone box no longer leaves its root files behind.** A move to a new standalone
+  root carries the `canon/` folder there; it used to stay at the old root and the new root had none. Kanibako's
+  `box_data/` line leaves the old root's `.gitignore`, and a `.gitignore` holding only that line is deleted. A
+  convert out of standalone keeps `canon/` and names it as yours to remove. A repointed
+  `workset.channels.mailboxes` or `share_global` is now the folder that moves; the default one moved instead. A
+  standalone box registered under a legacy name no longer keeps that registry row at the old root after a move.
 - **A rebuilt standalone box keeps its name.** `create --standalone` on a root whose `workset.yaml` already stores
   a kuid now keeps that kuid; it minted a new one, so the box came back under a new name.
 - **`create --standalone` refuses a second link to a registered standalone root.** Given another spelling of the
