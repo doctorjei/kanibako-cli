@@ -134,9 +134,16 @@ class Workset:
 class StoreRemovalError(OSError):
     def __init__(self, message: str, leaf: Path) -> None
 
+@dataclass
 class _Unwind:
-    def __init__(self) -> None
+    actions: list[Callable[[], object]] = field(default_factory=list)
+    cleanups: list[tuple[Callable[[], None], Callable[[], None] | None]] = field(default_factory=list)
+    finished: int = 0
 
-    def push(self, action: Callable[[], None]) -> None
+    def push(self, action: Callable[[], object]) -> None
+    def push_first(self, action: Callable[[], object]) -> None
+    def on_success(self, action: Callable[[], None], *, interrupted: Callable[[], None] | None=None) -> None
     def run(self) -> None
+    def finish(self) -> None
+    def note_interrupted(self) -> None
 ```

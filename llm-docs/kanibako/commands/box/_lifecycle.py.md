@@ -225,8 +225,8 @@ occupied leaf it is a no-op.
 
 ## The unwind stack (`_Unwind`)
 
-A LIFO stack of compensating actions for failure-consistency. Each pushed action is a zero-arg
-callable that reverses a forward step. On `run()` actions execute in REVERSE order, and individual
+A LIFO stack of compensating actions for failure-consistency, defined in `project/workset.py` and
+imported here. Each pushed action is a zero-arg callable that reverses a forward step. On `run()` actions execute in REVERSE order, and individual
 failures are swallowed — best-effort restore, so one bad unwind does not mask the rest.
 A `KeyboardInterrupt` from an action (a second Ctrl-C) is held until every action has run, then
 re-raised; `note_interrupted` does the same, so a second interrupt neither stops the unwind part-way
@@ -570,14 +570,6 @@ that existed before `add_project`, so a `--bare` or `--force` duplicate that ado
 never deletes it (see **Rollbacks delete only what the op created**). `run_duplicate` refuses an
 occupied `workspaces/<name>` (unless `--bare`) or `boxes/<name>` without `--force`, as its primary
 path does.
-
-```class _Unwind```
-See **The unwind stack**, above.
-
-```def push(self, action: Callable[[], None]) -> None```
-```def on_success(self, action: Callable[[], None]) -> None```
-```def run(self) -> None```
-```def finish(self) -> None```
 
 ```def _resolve_target_workset(name: str, std: StandardPaths) -> Workset```
 Load a named workset from the registry, or raise `WorksetError`.
