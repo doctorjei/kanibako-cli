@@ -582,7 +582,8 @@ class TestTheCleanupCuresAreQuoted:
         metadata.mkdir(parents=True)
         err = io.StringIO()
         with contextlib.redirect_stderr(err):
-            _parser._run_purge_plan(_parser._primary_purge_plan(std, "x ~", metadata))
+            _parser._run_purge_plan(_parser._primary_purge_plan(std, "x ~", metadata),
+                                    std)
         cure = _pasteable(_line(err.getvalue(), "Try: podman unshare"), "Try: ")
 
         assert f"podman unshare rm -rf {shlex.quote(str(metadata))}" in err.getvalue()
@@ -675,17 +676,23 @@ def _assert_unshare_inert(cure: str, target: Path, scratch: Path) -> None:
 class TestTheRemainingCleanupCuresAreQuoted:
     """The ``podman unshare`` cures of standalone teardown, duplicate, and extract."""
 
-    def test_the_standalone_teardown_cure_keeps_one_operand(self, name, tmp_path, monkeypatch):
+    def test_the_standalone_teardown_cure_keeps_one_operand(self, name, tmp_path, monkeypatch,
+                                                          config_file):
         """``_parser._run_purge_plan`` over a store step, with the removal forced to fail."""
         from kanibako.commands.box import _parser
+        from kanibako.settings.config import load_config
+        from kanibako.settings.paths import load_std_paths
 
+        # ⚑ The plan runner takes std: one step kind removes against the LIVE mold.
+        std = load_std_paths(load_config(config_file))
         metadata = tmp_path / "boxes" / name
         metadata.mkdir(parents=True)
         monkeypatch.setattr("kanibako.runtime.container.remove_box_tree", lambda target: False)
         err = io.StringIO()
         with contextlib.redirect_stderr(err), contextlib.redirect_stdout(io.StringIO()):
             assert _parser._run_purge_plan(
-                [_parser._PurgeStep("metadata", "box metadata", metadata, anchor=True)]) is False
+                [_parser._PurgeStep("metadata", "box metadata", metadata, anchor=True)],
+                std) is False
         cure = _pasteable(_line(err.getvalue(), "Try: podman unshare"), "Try: ")
 
         _assert_unshare_inert(cure, metadata, tmp_path / "scratch")

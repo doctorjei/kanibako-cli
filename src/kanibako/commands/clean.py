@@ -281,6 +281,8 @@ def _purge_one(std, config, path: str, *, force: bool) -> int:
     purge_box_logs(std, *box_logs_location(std, proj), workset_root=workset_root(proj, std))
 
     if proj.mode is BoxMode.standalone:
+        # ⚑ Close the unterminated progress line: this branch prints notices mid-sentence.
+        print(flush=True)
         # metadata_path is the project ROOT — remove ONLY the in-tree kanibako artifacts.
         # ⚑ THE ROOT FILE GOES ONLY WITH THE STORE: a retained store leaves the box whole.
         from kanibako.project.workset import (
@@ -293,13 +295,12 @@ def _purge_one(std, config, path: str, *, force: bool) -> int:
             standalone_canon_teardown,
             standalone_vault_teardown,
             vault_keep_reason,
-            DEFAULT_CANON_LEFTOVER_WHY,
+            DEFAULT_CANON_REMOVED_LINE,
         )
 
         root = proj.metadata_path
         early = _early_scope(std, BoxMode.standalone)
-        # ⚑⚑ RESOLVE THE VAULT FIRST: the root workset.yaml carries the only copy of a
-        # ``workset.vault_*`` repoint.
+        # ⚑⚑ RESOLVE THE VAULT FIRST: the root workset.yaml carries the only ``vault_*`` repoint.
         removable_vault, retained_vault = standalone_vault_teardown(root, early=early)
         removable_canon, retained_canon = standalone_canon_teardown(root, early=early)
         # ⚑ The store holds the box home + its canon skeleton (J-7), so its removal needs
@@ -311,8 +312,8 @@ def _purge_one(std, config, path: str, *, force: bool) -> int:
         canon_why = (canon_keep_reason(root, retained_canon, early=early)
                     if retained_canon is not None else None)
         vault_whys = [(v, vault_keep_reason(root, v, early=early)) for v in retained_vault]
-        leftover_canon_rm, leftover_canon_keep = leftover_default_canon(
-            root, removable_canon, retained_canon)
+        leftover_canon_rm, leftover_canon_keep, leftover_canon_why = leftover_default_canon(
+            root, removable_canon, retained_canon, std)
         if removable_store is not None:
             gitignore = project_gitignore_to_strip(root)
             if gitignore is not None and not strip_project_gitignore(gitignore):
@@ -321,12 +322,14 @@ def _purge_one(std, config, path: str, *, force: bool) -> int:
             if removable_canon is not None and not remove_path(removable_canon):
                 _warn_undeleted(removable_canon)
                 failed = True
-            # ⚑ A repointed canon leaves the default ``canon/``: take it when it holds ONLY
-            # ``create``'s stamp, name it when it holds anything else.
-            if leftover_canon_rm is not None and not remove_default_canon_stamp(
-                    leftover_canon_rm):
-                _warn_undeleted(leftover_canon_rm)
-                failed = True
+            # ⚑ A repointed canon leaves the default ``canon/``: take it when it holds
+            # ONLY ``create``'s stamp, name it when it holds anything else.
+            if leftover_canon_rm is not None:
+                if remove_default_canon_stamp(leftover_canon_rm, std):
+                    print(f"{DEFAULT_CANON_REMOVED_LINE}: {leftover_canon_rm}")
+                else:
+                    _warn_undeleted(leftover_canon_rm)
+                    failed = True
             # ⚑ The watcher lock sits in the ROOT, outside the store, so nothing else
             # claims it.  Kanibako's file, but only an UNHELD one goes.
             from kanibako.commands.box._lifecycle import session_lock_held
@@ -365,7 +368,7 @@ def _purge_one(std, config, path: str, *, force: bool) -> int:
             report_retained_canon(retained_canon, root, canon_why)
         if leftover_canon_keep is not None and (leftover_canon_keep.exists()
                                               or leftover_canon_keep.is_symlink()):
-            report_retained_canon(leftover_canon_keep, root, DEFAULT_CANON_LEFTOVER_WHY)
+            report_retained_canon(leftover_canon_keep, root, leftover_canon_why)
         for vault_dir, why in vault_whys:
             if vault_dir.exists() or vault_dir.is_symlink():
                 report_retained_vault(vault_dir, why)

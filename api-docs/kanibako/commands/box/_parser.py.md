@@ -59,7 +59,7 @@ def _primary_purge_plan(std, name: str, metadata_dir: Path) -> list[_PurgeStep]
 def _standalone_purge_plan(root: Path, registered_name: str, *, std: StandardPaths, early: EarlyScope) -> tuple[list[_PurgeStep], list[tuple[str, Path, str | None]]]
 def _report_retained_roles(root: Path, retained: 'list[tuple[str, Path, str | None]]', *, early=None) -> None
 def _confirm_purge(steps: list[_PurgeStep], *, force: bool, retained: Sequence[tuple[str, Path, str | None]]=()) -> bool
-def _run_purge_plan(steps: list[_PurgeStep]) -> bool
+def _run_purge_plan(steps: list[_PurgeStep], std: StandardPaths) -> bool
 def _read_box_image(settings_file: Path) -> str | None
 def _read_box_image_tiered(box_tier: Path, workset_tier: Path) -> str | None
 def _purge_deregistered(std, name: str, entry: dict, args: argparse.Namespace, *, config) -> int

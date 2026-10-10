@@ -702,7 +702,7 @@ class TestNullArmIsNoSuchDir:
 
         plan = _primary_purge_plan(std, "nullarm", meta)
         assert "vault ro (your files)" not in [step.what for step in plan]
-        assert _run_purge_plan(plan) is True
+        assert _run_purge_plan(plan, std) is True
         out = capsys.readouterr().out
         assert "Removed metadata" in out
         assert not meta.exists()

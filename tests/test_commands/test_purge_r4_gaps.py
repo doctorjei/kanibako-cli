@@ -291,17 +291,21 @@ class TestCredsLockReProbedAtDeleteTime:
     """
 
     def test_a_lock_held_only_at_delete_time_is_kept_and_named(
-        self, tmp_path, monkeypatch, capsys,
+        self, tmp_path, monkeypatch, capsys, config_file,
     ):
         from kanibako.commands.box import _parser as P
+        from kanibako.settings.config import load_config
+        from kanibako.settings.paths import load_std_paths
 
+        # ⚑ The plan runner takes std: the leftover-canon step removes against the LIVE mold.
+        std = load_std_paths(load_config(config_file))
         lock = tmp_path / "creds.lock"
         lock.write_text("")
         monkeypatch.setattr("kanibako.commands.box._lifecycle.session_lock_held",
                            lambda p: True)
         step = P._PurgeStep(P._CREDS_LOCK, "creds watcher lock", lock, gated=True)
         capsys.readouterr()
-        P._run_purge_plan([step])
+        P._run_purge_plan([step], std)
         err = capsys.readouterr().err
         assert "Kept" in err and str(lock) in err, err
         assert lock.exists(), "a HELD lock must survive the purge"
@@ -312,28 +316,43 @@ class TestLeftoverDefaultCanonBranch:
     else is the user's and is retained."""
 
     def test_a_stamp_only_leftover_is_removable_and_a_filled_one_is_retained(
-        self, tmp_path,
+        self, tmp_path, config_file,
     ):
         from kanibako.project.workset import leftover_default_canon
+        from kanibako.settings.config import load_config
+        from kanibako.settings.paths import load_std_paths
 
+        std = load_std_paths(load_config(config_file))
+        # ⚑ Seed the LIVE mold: with no mold the honest answer is "no template installed",
+        # which is a different case than the one this test is about.
+        from kanibako.launch.templates import install_packaged_templates
+        install_packaged_templates(std, [])
         root = tmp_path / "box"
         leaf = root / "canon"
         leaf.mkdir(parents=True)
         # Not what `create` stamped -> the user's folder: retained, never removable.
         (leaf / "mine.txt").write_text("user content")
-        removable, retained = leftover_default_canon(root, None, None)
+        removable, retained, why = leftover_default_canon(root, None, None, std)
         assert removable is None
         assert retained is not None
+        # ⚑ A path the stamp never named. r3 item 3: the Note says only that the current
+        # template does not hold it — it does not claim who put it there.
+        assert "holds files the current template does not" in why, why
 
-    def test_a_leftover_is_not_handled_twice_when_the_tier_is_the_leaf(self, tmp_path):
+    def test_a_leftover_is_not_handled_twice_when_the_tier_is_the_leaf(
+        self, tmp_path, config_file,
+    ):
         from kanibako.project.workset import leftover_default_canon
+        from kanibako.settings.config import load_config
+        from kanibako.settings.paths import load_std_paths
 
+        std = load_std_paths(load_config(config_file))
         root = tmp_path / "box2"
         leaf = root / "canon"
         leaf.mkdir(parents=True)
-        # The default IS the tier being acted on -> nothing handled here.
-        assert leftover_default_canon(root, leaf, None) == (None, None)
-        assert leftover_default_canon(root, None, leaf) == (None, None)
+        # The default IS the tier being acted on -> nothing handled here, no reason spoken.
+        assert leftover_default_canon(root, leaf, None, std) == (None, None, None)
+        assert leftover_default_canon(root, None, leaf, std) == (None, None, None)
 
 
 class TestKeptFolderSurvivesEachLaterStep:
@@ -363,6 +382,11 @@ class TestKeptFolderSurvivesEachLaterStep:
                            lambda *a, **k: (calls.append(1), ret)[1])
         config = load_config(config_file)
         std = load_std_paths(config)
+        # ⚑ Seed the LIVE mold: the stamp is read from it, so with no mold the leftover is
+        # never judged removable and the patched step is never reached -- the vacuous green
+        # this test exists to prevent.
+        from kanibako.launch.templates import install_packaged_templates
+        install_packaged_templates(std, [])
         root = tmp_home / "item1"
         root.mkdir()
         resolve_standalone_project(std, config, project_dir=str(root),

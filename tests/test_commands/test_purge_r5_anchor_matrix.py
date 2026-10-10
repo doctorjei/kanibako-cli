@@ -244,7 +244,11 @@ class TestStandaloneLaterStepFailure:
         elif step == "leftover_canon":
             # Repoint the canon AFTER create so the default `root/canon` becomes a
             # leftover; otherwise `leftover_canon_rm` is None and the step never runs.
+            # ⚑ Seed the LIVE mold first: the stamp is read from it, so with no mold the
+            # leftover is never judged removable and the patched step is never reached.
+            from kanibako.launch.templates import install_packaged_templates
             from kanibako.settings.config_io import write_nested_key
+            install_packaged_templates(std, [])
             write_nested_key(root / "workset.yaml", ("workset",), "canon",
                             str(tmp_home / "sa_matrix_out_canon"))
             st = _fail_callable(monkeypatch,
@@ -364,37 +368,55 @@ class TestNamedLaterStepFailure:
 # R4 item 1 — the stamp-bytes fix had NO test at all.
 # --------------------------------------------------------------------------- #
 class TestAStampFileWithBytesIsNotDeleted:
-    """`remove_default_canon_stamp` must re-apply the planner's size rule at the
+    """`remove_default_canon_stamp` must re-apply the planner's BYTE rule at the
     instant of `unlink`.  A stamp file the box wrote into is the user's folder."""
 
-    def _a_stamp_file_rel(self):
+    def _a_stamp_file(self, std):
+        """(rel path, shipped bytes) for one real stamp FILE in the canon stamp map.
+
+        ⚑ The bytes come from the SAME live mold the stamp is derived from, so the setup
+        cannot drift from what `create` actually lays.
+        """
+        from kanibako.launch.templates import workset_mold_canon_source
         from kanibako.project.workset import _create_canon_stamp
 
-        for rel, is_dir in _create_canon_stamp().items():
-            if is_dir is False:
-                return rel
+        src = workset_mold_canon_source(std)
+        for rel, (is_dir, digest) in _create_canon_stamp(std).items():
+            if not is_dir and digest:
+                return rel, (src / rel).read_bytes()
         pytest.skip("no stamp FILE in the canon stamp map")  # pragma: no cover
 
     def test_a_stamp_file_holding_bytes_is_kept_and_the_walk_refuses(
-        self, tmp_path,
+        self, tmp_path, config_file,
     ):
         from kanibako.project.workset import remove_default_canon_stamp
 
-        rel = self._a_stamp_file_rel()
+        std = load_std_paths(load_config(config_file))
+        # ⚑ Seed the LIVE mold the way `create` does; the stamp is read from it, so with no
+        # mold seeded there is no stamp and this test would skip instead of testing.
+        from kanibako.launch.templates import install_packaged_templates
+        install_packaged_templates(std, [])
+        rel, shipped = self._a_stamp_file(std)
         leaf = tmp_path / "canon"
         victim = leaf / rel
         victim.parent.mkdir(parents=True)
-        victim.write_bytes(b"")  # exactly what `create` leaves
-        assert remove_default_canon_stamp(leaf) is True, (
+        # ⚑ THE REAL SHIPPED BYTES.  `create` lays a template file that is NOT empty, so
+        # writing b"" here would satisfy the byte rule by accident on any mold whose file is
+        # also empty, and the setup assert would pass for the wrong reason.
+        assert shipped, "setup: the shipped stamp file is not empty"
+        victim.write_bytes(shipped)
+        assert remove_default_canon_stamp(leaf, std) is True, (
             "setup: a pure stamp must come away clean")
         assert not victim.exists()
 
-        # Now the same walk over a stamp file that has BYTES in it.
+        # Now the same walk over a stamp file that has been WRITTEN INTO: same path the
+        # stamp names, different bytes, so only the digest can tell them apart.
         leaf.mkdir(parents=True, exist_ok=True)
         victim.parent.mkdir(parents=True, exist_ok=True)
         victim.write_bytes(b"the box wrote into this")
-        assert remove_default_canon_stamp(leaf) is False, (
-            "a stamp file with bytes is the user's; the delete verb must refuse it")
+        assert remove_default_canon_stamp(leaf, std) is False, (
+            "a stamp file whose bytes differ from the mold is the user's; the delete verb "
+            "must refuse it")
         assert victim.exists(), "the bytes must survive — this is the data at stake"
         assert victim.read_bytes() == b"the box wrote into this"
 
@@ -407,8 +429,12 @@ class TestCleanLeftoverCanonBranchBothHalves:
     These drive ``_purge_one`` and assert both."""
 
     def _repointed_standalone(self, config, std, tmp_home, name):
+        from kanibako.launch.templates import install_packaged_templates
         from kanibako.settings.config_io import write_nested_key
 
+        # ⚑ Seed the LIVE mold: the stamp is read from it, so with no mold seeded nothing
+        # is recognized as create's and both halves of this pair pass for the wrong reason.
+        install_packaged_templates(std, [])
         root = tmp_home / name
         root.mkdir()
         resolve_standalone_project(std, config, project_dir=str(root),

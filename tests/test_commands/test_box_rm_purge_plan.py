@@ -766,8 +766,6 @@ class TestLeftoverDefaultCanon:
         with (root / "workset.yaml").open("a") as fh:
             fh.write("  canon: '@meta.workset.path/mycanon'\n")
 
-    @pytest.mark.xfail(strict=True, reason="root canon stamp not recognized: bugfixes row "
-                       "'Purge keeps the default root canon/ with a false Note'")
     def test_a_create_stamp_left_by_a_repoint_is_removed(self, config_file, tmp_home,
                                                       credentials_dir, capsys):
         """⚑ THE REAL ROOT ``canon/`` — what ``kanibako setup`` + ``create`` lay down: the
@@ -793,9 +791,52 @@ class TestLeftoverDefaultCanon:
         assert f"Removed the default canon folder `create` made: {root / 'canon'}" in out
         assert not (root / "canon").exists()
 
+    def test_one_changed_byte_in_the_template_is_kept_and_named(
+        self, config_file, tmp_home, credentials_dir, capsys,
+    ):
+        """⚑ THE BYTE RULE, on the REAL template: a stamp file the box wrote into is the
+        user's even though every PATH in the folder is still a stamp path.  Same length,
+        one byte different — so nothing but a content comparison can tell them apart.
+
+        ⚑⚑ The Note reads ``differs from the current template``, NOT ``content kanibako
+        did not put there``.  Every path here IS one create installed, so the old claim
+        would be false; and kanibako cannot tell this folder from one a box made BEFORE a
+        template change — the two are the same bytes on disk.  It says only what it can
+        see.  Kept either way; the byte rule that keeps it is unchanged.
+        """
+        from kanibako.launch.templates import install_packaged_templates
+        from kanibako.settings.config import load_config
+        from kanibako.settings.paths import load_std_paths
+
+        install_packaged_templates(load_std_paths(load_config(config_file)), [])
+        root = tmp_home / "sa"
+        _create(root, standalone=True)
+        self._repoint_canon(root)
+        stamped = root / "canon" / "handbook" / "SYS_WORKSET.md"
+        original = stamped.read_bytes()
+        assert len(original) > 1, "setup: the shipped template is not empty"
+        flipped = bytes([original[0] ^ 0x01]) + original[1:]
+        assert len(flipped) == len(original) and flipped != original
+        stamped.write_bytes(flipped)
+        capsys.readouterr()
+
+        assert _rm(str(root), force=True) == 0
+        err = capsys.readouterr().err
+        assert "differs from the current template" in err, err
+        assert "content kanibako did not put there" not in err, err
+        assert stamped.read_bytes() == flipped, "the edited template must survive"
+        assert (root / "canon").is_dir(), "the folder is kept, not emptied"
+
     def test_a_filled_default_canon_left_by_a_repoint_is_named_never_taken(
         self, config_file, tmp_home, credentials_dir, capsys,
     ):
+        from kanibako.launch.templates import install_packaged_templates
+        from kanibako.settings.config import load_config
+        from kanibako.settings.paths import load_std_paths
+
+        # ⚑ Seed the LIVE mold so the Note can honestly say the template does not hold
+        # the added file; with no mold installed the reason is "no template" instead.
+        install_packaged_templates(load_std_paths(load_config(config_file)), [])
         root = tmp_home / "sa"
         _create(root, standalone=True)
         self._repoint_canon(root)
@@ -806,7 +847,9 @@ class TestLeftoverDefaultCanon:
         err = capsys.readouterr().err
         assert (root / "canon" / "user.txt").read_text() == "mine\n"
         assert f"left the default canon folder {root / 'canon'} in place" not in err
-        assert "content kanibako did not put there" in err
+        # ⚑ r3 item 3: reworded to make NO authorship claim. A user file and a file the
+        # mold no longer ships are the same fact from here — the template does not have it.
+        assert "holds files the current template does not" in err, err
 
     def test_an_unrepointed_default_canon_is_not_double_handled(
         self, config_file, tmp_home, credentials_dir, capsys,
@@ -831,8 +874,14 @@ class TestLeftoverDefaultCanon:
         never handed to the box-tree remover, which is the verb that would recurse into
         whatever had appeared in it since the plan judged it empty.
         """
+        from kanibako.launch.templates import install_packaged_templates
         from kanibako.runtime import container
+        from kanibako.settings.config import load_config
+        from kanibako.settings.paths import load_std_paths
 
+        # ⚑ Seed the LIVE mold: the stamp is read from it, so with no mold the leftover is
+        # never judged removable and this test would prove nothing about the rmdir promise.
+        install_packaged_templates(load_std_paths(load_config(config_file)), [])
         root = tmp_home / "sa"
         _create(root, standalone=True)
         self._repoint_canon(root)

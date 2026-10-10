@@ -560,69 +560,190 @@ def standalone_canon_teardown(
     return None, _unfollowed(canon)
 
 
-def _create_canon_stamp() -> dict[str, bool]:
-    """What ``create`` installs under the default ``canon/``, as {canon-relative path: is_dir}.
+def _sha256_file(path: Path) -> str:
+    """The file's content digest; ``OSError`` propagates to the caller's fail-closed arm."""
+    import hashlib
 
-    ⚑ DERIVED from :func:`kanibako.settings.core_defaults.canon_skeleton_rels`, the SAME
-    constant the skeleton is built from — a restated list drifts when the skeleton grows.
+    h = hashlib.sha256()
+    with path.open("rb") as fh:
+        for chunk in iter(lambda: fh.read(65536), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def _create_canon_stamp(std: StandardPaths) -> dict[str, tuple[bool, "str | None"]]:
+    """What ``create`` installs under the default ``canon/``: {rel path: (is_dir, sha256|None)}.
+
+    ⚑ DERIVED from the workset MOLD's canon half -- the tree ``install_workset_template``
+    copies -- never a restated list.  ⚑⚑ NOT ``canon_skeleton_rels``: that is the BOX-HOME
+    skeleton (0-byte mountpoints, ``SYS_WORKSET`` under ``handbook/workset/``) and never
+    runs on a root, so building the stamp from it matched a layout no ``create`` makes.
+    ⚑ BYTES, not emptiness: one byte off the shipped template makes it the user's.
+    ⚑ A mold file that cannot be READ stamps ``(False, None)``: kanibako cannot say what
+    it ships, so the audit answers UNREADABLE and the folder is kept, never a traceback.
+    ⚑⚑ THE LIVE MOLD, NOT THE PACKAGED ONE: ``create`` copies ``std.template/workset/canon``
+    (:func:`workset_mold_canon_source`), which ``install_packaged_templates`` seeds once and
+    an operator may edit afterwards.  Reading the copy inside the distribution instead would
+    call a box's perfectly-stamped folder "content kanibako did not put there" the moment
+    the live mold diverges — a false Note about bytes kanibako itself wrote.
     """
-    from kanibako.settings.core_defaults import CANON_GUEST_ROOT, canon_skeleton_rels
+    from kanibako.launch.templates import is_copyable_file, workset_mold_canon_source
+    from kanibako.settings.core_defaults import HANDBOOK_REL
 
-    prefix = f"{CANON_GUEST_ROOT}/"
-    return {rel[len(prefix):]: is_dir for rel, is_dir in canon_skeleton_rels()
-            if rel.startswith(prefix) and rel != CANON_GUEST_ROOT}
+    src = workset_mold_canon_source(std)
+    if not src.is_dir():
+        return {}
+    stamp: dict[str, tuple[bool, "str | None"]] = {}
+    for entry in src.rglob("*"):
+        rel = entry.relative_to(src).as_posix()
+        if entry.is_symlink():
+            continue
+        if entry.is_dir():
+            stamp[rel] = (True, None)
+        # ⚑ THE COPIER'S OWN FILTER (see ``is_copyable_file``), and KIND BEFORE OPEN: a
+        # FIFO in the mold is neither copied nor stamped, so it is never opened here.
+        elif is_copyable_file(entry):
+            try:
+                stamp[rel] = (False, _sha256_file(entry))
+            except OSError:
+                stamp[rel] = (False, None)
+    # ``install_workset_template`` guarantee-creates the chapter dir even from an EMPTY
+    # mold, so it is part of the stamp whether or not the mold ships anything under it.
+    stamp.setdefault(HANDBOOK_REL, (True, None))
+    return stamp
 
 
-def holds_only_create_stamp(leaf: Path) -> bool:
+def _stamp_audit(leaf: Path,
+                 stamp: dict[str, tuple[bool, "str | None"]]) -> tuple[bool, bool, bool]:
+    """Walk *leaf* once against *stamp*: ``(every_path_shipped, every_byte_matches, checkable)``.
+
+    ⚑ The three questions are INDEPENDENT and the Note has to be able to ask them apart.
+
+    ``every_path_shipped`` goes False on an entry the stamp does not name, a symlink, or a
+    KIND the copier would never have copied — a FIFO, a socket, a device, a dir where a file
+    belongs.  ⚑⚑ The kind is read by ``lstat`` BEFORE any open: opening a FIFO to hash it
+    BLOCKS on a reader that never arrives, which is how one FIFO at a stamp path turned
+    ``box purge`` into a timeout instead of a kept folder.
+
+    ``every_byte_matches`` goes False on a stamp file whose digest differs — that says ONLY
+    that it differs, not who made it differ: a template changed under the box, or the box
+    wrote into the file.
+
+    ``checkable`` goes False when a file — the box's or the mold's — could not be read at
+    all.  ⚑ Unreadable is NOT "differs" — kanibako knows nothing about those bytes — so it
+    must not borrow the drift Note, and it must not raise: the caller has a folder to keep
+    and a user to tell.
+    """
+    from kanibako.launch.templates import is_copyable_file
+
+    every_path_shipped = True
+    every_byte_matches = True
+    checkable = True
+    for p in leaf.rglob("*"):
+        want = stamp.get(p.relative_to(leaf).as_posix())
+        if want is None or p.is_symlink() or p.is_dir() != want[0]:
+            every_path_shipped = False
+            continue
+        if want[0]:
+            continue
+        if not is_copyable_file(p):
+            every_path_shipped = False
+            continue
+        if want[1] is None:
+            checkable = False
+            continue
+        try:
+            if _sha256_file(p) != want[1]:
+                every_byte_matches = False
+        except OSError:
+            checkable = False
+    return every_path_shipped, every_byte_matches, checkable
+
+
+def holds_only_create_stamp(leaf: Path, std: StandardPaths) -> bool:
     """True when EVERY entry under *leaf* is the stamp ``create`` left, byte-for-byte.
 
     ⚑ This is what "kanibako's own leftover" MEANS.  A file outside the stamp, a stamp file
-    the box has written into (any byte), a symlink, or a dir where a file belongs all make it
-    the USER'S folder — which is the whole content of the ``did not put there`` claim.
+    the box has written into (any byte), a symlink, a non-regular file, or a file that
+    cannot be read all make it the USER'S folder.
     """
-    stamp = _create_canon_stamp()
-    for p in leaf.rglob("*"):
-        rel = p.relative_to(leaf).as_posix()
-        want = stamp.get(rel)
-        if want is None or p.is_symlink():
-            return False
-        if p.is_dir() != want:
-            return False
-        if not want and p.stat().st_size != 0:
-            return False
-    return True
+    stamp = _create_canon_stamp(std)
+    if not stamp:
+        # ⚑ An empty stamp validates NOTHING: a leftover we cannot attribute is the user's.
+        return False
+    shipped, matching, checkable = _stamp_audit(leaf, stamp)
+    return shipped and matching and checkable
+
+
+#: A kept leftover default ``canon/`` holding what the current template does not.
+#: ⚑ NO AUTHORSHIP CLAIM — mold-deleted, never-shipped and user-added files look identical.
+DEFAULT_CANON_LEFTOVER_WHY = ("it is the default canon folder `create` made, and it holds "
+                             "files the current template does not")
+
+#: Every path is one ``create`` installed, but the bytes are not what the mold ships now.
+DEFAULT_CANON_DRIFT_WHY = ("it is the default canon folder `create` made, and it differs "
+                          "from the current template")
+
+#: No template installed, so neither "does not hold" nor "differs" is knowable.
+DEFAULT_CANON_NO_TEMPLATE_WHY = ("it is the default canon folder `create` made, and "
+                                "kanibako cannot check it against a template because none "
+                                "is installed")
+
+#: Template present, but a file cannot be read — kanibako has not seen those bytes.
+DEFAULT_CANON_UNREADABLE_WHY = ("it is the default canon folder `create` made, and "
+                               "kanibako cannot check it against a template because a file "
+                               "in it cannot be read")
+
+#: Both purge doors print this, shared so two doors cannot tell one folder two stories.
+DEFAULT_CANON_REMOVED_LINE = "Removed the default canon folder `create` made"
+
+
+def default_canon_leftover_why(leaf: Path, std: StandardPaths) -> str:
+    """The true reason a kept leftover default ``canon/`` is being kept.
+
+    ⚑ Only ever spoken about a folder that was NOT removable, and chosen from the SAME audit
+    that made that decision rather than picked by the caller.  ⚑ The order is the order of
+    confidence: what kanibako can SEE beats what it can only INFER.
+    """
+    stamp = _create_canon_stamp(std)
+    if not stamp:
+        return DEFAULT_CANON_NO_TEMPLATE_WHY
+    shipped, _matching, checkable = _stamp_audit(leaf, stamp)
+    if not shipped:
+        return DEFAULT_CANON_LEFTOVER_WHY
+    if not checkable:
+        return DEFAULT_CANON_UNREADABLE_WHY
+    return DEFAULT_CANON_DRIFT_WHY
 
 
 def leftover_default_canon(root: Path, removable: Path | None,
-                          retained: Path | None) -> tuple[Path | None, Path | None]:
+                          retained: Path | None,
+                          std: StandardPaths) -> tuple[Path | None, Path | None, "str | None"]:
     """The default ``canon/`` a ``create`` stamped, LEFT OVER by a repoint, as
-    ``(removable, retained)``.
+    ``(removable, retained, why_kept)``.
 
     ⚑ A box that repoints ``workset.canon`` leaves the default directory behind with no
     Note on it.  ⚑ "Left over" means it holds NOTHING BUT the stamp ``create`` installed
     (:func:`holds_only_create_stamp`) — a fresh one is never literally empty, it ships a
     ``handbook/``.  Anything else in it is the user's: NAMED, never taken.
-    ``None, None`` when the default IS the tier being acted on, so nothing is handled twice.
+    ``None, None, None`` when the default IS the tier being acted on, so nothing is handled
+    twice.  ⚑ The WHY rides back with the decision: both doors report after the run, and by
+    then the mold they would re-read is the same one, but the folder may not be — so the
+    reason is computed here, once, from the audit that decided it.
     """
     leaf = root / _CANON_LEAF
     if removable is not None:
-        return None, None
+        return None, None, None
     if retained is not None and _unfollowed(retained) == _unfollowed(leaf):
-        return None, None
+        return None, None, None
     if not leaf.is_dir() or leaf.is_symlink():
-        return None, None
-    if holds_only_create_stamp(leaf):
-        return _unfollowed(leaf), None
-    return None, _unfollowed(leaf)
+        return None, None, None
+    if holds_only_create_stamp(leaf, std):
+        return _unfollowed(leaf), None, None
+    return None, _unfollowed(leaf), default_canon_leftover_why(leaf, std)
 
 
-#: What a kept leftover default ``canon/`` is called in its Note — shared so the purge and
-#: the cleaner cannot tell two stories about one folder.
-DEFAULT_CANON_LEFTOVER_WHY = ("it is the default canon folder `create` made, and it holds "
-                             "content kanibako did not put there")
-
-
-def remove_default_canon_stamp(leaf: Path) -> bool:
+def remove_default_canon_stamp(leaf: Path, std: StandardPaths) -> bool:
     """Take a leftover default ``canon/`` BOTTOM-UP: each stamp file by name, each directory
     only while empty; True only when the whole thing came down.
 
@@ -632,20 +753,30 @@ def remove_default_canon_stamp(leaf: Path) -> bool:
     ⚑ The stamp lands 555/444 (J-7) and ``unlink`` needs WRITE ON THE PARENT, so a stamp
     directory is re-opened for its owner before its files are taken.  Only stamp-owned paths
     are chmod-ed — user content is neither written nor widened.
+    ⚑ The stamp is re-read from the LIVE mold HERE, at the delete, not carried from the plan:
+    the mold is the authority on what may go, and a folder that cannot be matched to it now
+    does not go.
     """
     import os
     import stat
 
-    stamp = _create_canon_stamp()
+    from kanibako.launch.templates import is_copyable_file
+
+    stamp = _create_canon_stamp(std)
+    if not stamp:
+        # ⚑ Same rule as the planner: an empty stamp validates NOTHING, so an empty leaf
+        # would otherwise come away with no mold to say kanibako made it.
+        return False
     # ⚑ The leaf's OWN stamp files (COLLECTION.md sits directly in it) are taken by the
-    # same walk; ``rglob`` never yields the root, so append it last.  The stamp map keys
-    # the canon root one level UP, so it is not re-checked here.
+    # same walk; ``rglob`` never yields the root, so append it last.
     dirs = sorted((d for d in leaf.rglob("*") if d.is_dir() and not d.is_symlink()),
                   key=lambda d: len(d.parts), reverse=True)
     dirs.append(leaf)
     for d in dirs:
-        if d != leaf and stamp.get(d.relative_to(leaf).as_posix()) is not True:
-            return False
+        if d != leaf:
+            want_dir = stamp.get(d.relative_to(leaf).as_posix())
+            if want_dir is None or want_dir[0] is not True:
+                return False
         if not os.access(d, os.W_OK):
             try:
                 d.chmod(stat.S_IMODE(os.lstat(d).st_mode) | stat.S_IWUSR)
@@ -653,12 +784,18 @@ def remove_default_canon_stamp(leaf: Path) -> bool:
                 return False
         for f in sorted(d.iterdir()):
             rel = f.relative_to(leaf).as_posix()
-            if f.is_symlink() or stamp.get(rel) is not False:
+            want = stamp.get(rel)
+            if f.is_symlink() or want is None or want[0] is not False:
                 return False
-            # ⚑ The planner's size rule, RE-APPLIED at delete time: bytes can arrive
+            # ⚑ KIND BEFORE OPEN: a FIFO swapped in here would block this open forever.
+            if not is_copyable_file(f):
+                return False
+            # ⚑ The planner's BYTE rule, RE-APPLIED at delete time: bytes can arrive
             # between the two, and a written-into stamp file is the user's.
+            if want[1] is None:
+                return False
             try:
-                if f.stat().st_size != 0:
+                if _sha256_file(f) != want[1]:
                     return False
             except OSError:
                 return False

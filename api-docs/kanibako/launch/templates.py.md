@@ -33,8 +33,10 @@ _FENCE_RE = re.compile('(^|\\n)(```|~~~)[^\\n]*\\n.*?(\\n\\2[^\\n]*(?=\\n|$))', 
 def agent_template_defaults(agent_id: str | None) -> dict[str, object]
 def template_seed_defaults(proj: ProjectPaths, agent_id: str | None) -> dict[str, object]
 def stage_layers(dest: Path, layers: list[Path]) -> None
+def is_copyable_file(entry: Path) -> bool
 def copy_tree(src: Path, dest: Path, *, overwrite: bool=False, scope: str | WorksetStampScope | None=None, dest_root: Path | None=None, check_only: bool=False) -> None
 def packaged_box_home_template() -> Path | None
+def workset_mold_canon_source(std: StandardPaths) -> Path
 def ensure_agent_stores(std: StandardPaths, agent_names: 'Iterable[str]') -> list[str]
 def check_workset_template(std: StandardPaths, workset_path: Path, *, workset_name: str, canon_only: bool=False) -> None
 def install_workset_template(std: StandardPaths, workset_path: Path, *, workset_name: str, canon_only: bool=False) -> None

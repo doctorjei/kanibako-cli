@@ -2109,7 +2109,7 @@ def _standalone_purge_plan(
     from kanibako.project.workset import (
         _strictly_in_tree, _unfollowed, canon_keep_reason, leftover_default_canon,
         resolve_workset_vault_pair, standalone_canon_teardown, standalone_vault_teardown,
-        vault_keep_reason, DEFAULT_CANON_LEFTOVER_WHY)
+        vault_keep_reason)
     from kanibako.settings.paths import standalone_logs_dir, standalone_store_teardown_plan
     from kanibako.commands.box._lifecycle import session_lock_held
     from kanibako.settings.bootstrap import CREDS_WATCHER_LOCK_FILE
@@ -2121,10 +2121,10 @@ def _standalone_purge_plan(
     if retained_canon is not None:
         retained.append(("canon", retained_canon,
                         canon_keep_reason(root, retained_canon, early=early)))
-    leftover_canon_rm, leftover_canon_keep = leftover_default_canon(
-        root, removable_canon, retained_canon)
+    leftover_canon_rm, leftover_canon_keep, leftover_canon_why = leftover_default_canon(
+        root, removable_canon, retained_canon, std)
     if leftover_canon_keep is not None:
-        retained.append(("canon", leftover_canon_keep, DEFAULT_CANON_LEFTOVER_WHY))
+        retained.append(("canon", leftover_canon_keep, leftover_canon_why))
     retained.extend(("vault", v, vault_keep_reason(root, v, early=early))
                     for v in retained_vault)
     # ⚑ Logs are deleted by NAME, so one under a ``workset.logs`` outside the store goes.
@@ -2245,10 +2245,13 @@ def _confirm_purge(steps: list[_PurgeStep], *, force: bool,
     return True
 
 
-def _run_purge_plan(steps: list[_PurgeStep]) -> bool:
+def _run_purge_plan(steps: list[_PurgeStep], std: StandardPaths) -> bool:
     """Delete *steps* in order; True when every step was removed.
 
     A GATED step is KEPT and reported once the ANCHOR could not go; both gate to the END.
+
+    ⚑ *std* rides along because one step kind — the leftover default ``canon/`` — can only be
+    removed against the LIVE mold stamp, which is a per-host path, not a property of the step.
     """
     anchor_removed: bool | None = None
     all_removed = True
@@ -2276,10 +2279,13 @@ def _run_purge_plan(steps: list[_PurgeStep]) -> bool:
             continue
         if step.kind == _EMPTY_CANON:
             # ⚑ rmdir only, bottom-up, each directory verified empty at this instant.
-            from kanibako.project.workset import remove_default_canon_stamp
+            from kanibako.project.workset import (
+                DEFAULT_CANON_REMOVED_LINE,
+                remove_default_canon_stamp,
+            )
 
-            if remove_default_canon_stamp(step.path):
-                print(f"Removed the default canon folder `create` made: {step.path}")
+            if remove_default_canon_stamp(step.path, std):
+                print(f"{DEFAULT_CANON_REMOVED_LINE}: {step.path}")
             else:
                 all_removed = False
                 print(f"Warning: left the default canon folder {step.path} in place — it "
@@ -2425,7 +2431,7 @@ def _purge_deregistered(std, name: str, entry: dict, args: argparse.Namespace, *
     if not _confirm_purge(plan, force=args.force, retained=retained):
         print("Aborted (box remains deregistered).")
         return 2
-    removed = _run_purge_plan(plan)
+    removed = _run_purge_plan(plan, std)
     if kind == "standalone":
         _report_retained_roles(root, retained,
                               early=_early_scope(std, BoxMode.standalone))
@@ -2600,7 +2606,7 @@ def _rm_standalone(std, box_name: str, root, args: argparse.Namespace, *,
         if plan is None:
             print(f"No metadata directory found at {metadata_dir}")
             return 0
-        purge_ok = _run_purge_plan(plan)
+        purge_ok = _run_purge_plan(plan, std)
         if root_path is not None:
             _report_retained_roles(root_path, retained,
                                   early=_early_scope(std, BoxMode.standalone))
@@ -2739,7 +2745,7 @@ def run_rm(args: argparse.Namespace) -> int:
         if plan is None:
             print(f"No metadata directory found at {metadata_dir}")
             return 0
-        if _run_purge_plan(plan):
+        if _run_purge_plan(plan, std):
             return 0
     # No --purge, or a purge that left the metadata: park a ``deregistered`` entry for
     # a later `rm --purge` / `register`.

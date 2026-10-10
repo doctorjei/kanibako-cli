@@ -358,6 +358,21 @@ def _assert_contained(target: Path, root: Path, *, what: str) -> None:
         )
 
 
+def is_copyable_file(entry: Path) -> bool:
+    """THE copier's filter, shared. ``copy_tree`` copies exactly what this accepts.
+
+    ⚑⚑ A REGULAR file only — ``is_file()`` is ``S_ISREG``, so a directory, a symlink, a
+    FIFO, a socket and a device all answer False, and none of them is opened.  The canon
+    STAMP is built with this same predicate rather than its own list, because the stamp's
+    whole claim is "what ``create`` put here", and a stamp that counts a different set of
+    files from the copier is false on its face.
+    ⚑ NOT :func:`walk_shipped_files`: that drops ``__pycache__``, ``*.pyc``/``*.pyo`` and
+    ``.DS_Store``.  ``copy_tree`` copies those, so a mold carrying one installs it while
+    the stamp denies it — a pristine ``create`` then reads as the user's own folder.
+    """
+    return entry.is_file()
+
+
 def copy_tree(
     src: Path,
     dest: Path,
@@ -411,7 +426,7 @@ def copy_tree(
                 f"exfiltration escape spec §2a closes. Copy refused; replace the "
                 f"symlink with a real file or remove it."
             )
-        if not entry.is_file():
+        if not is_copyable_file(entry):
             continue
         rel = entry.relative_to(src)
         target = dest / rel
@@ -544,6 +559,21 @@ def packaged_box_home_template() -> Path | None:
         return None
     path = base / PACKAGED_BOX_TEMPLATE / "home"
     return path if path.is_dir() else None
+
+
+def workset_mold_canon_source(std: StandardPaths) -> Path:
+    """The LIVE workset mold's canon half — the tree ``create`` lays at a root ``canon/``.
+
+    ⚑⚑ THE ONE EXPRESSION :func:`_workset_stamp_copy` copies FROM, spelled once so a
+    consumer that has to predict what landed cannot pick a different tree.  ⚑⚑⚑ It is the
+    LIVE mold under ``std.template``, NOT the packaged copy inside the installed
+    distribution: ``install_packaged_templates`` seeds the live mold once, and an operator
+    who edits it afterwards changes what ``create`` installs from then on.  A leftover
+    matched against the packaged tree is then matched against bytes kanibako never
+    installed, and a folder holding nothing but what ``create`` wrote gets called the
+    user's.  Only the tree the copier reads can vouch for a stamp.
+    """
+    return std.template / PACKAGED_WORKSET_TEMPLATE / _MOLD_CANON_ROOT
 
 
 def _packaged_shared_bundle() -> Path | None:
@@ -789,15 +819,16 @@ def _workset_stamp_copy(std: StandardPaths, workset_path: Path, canon_only: bool
     narrowing the copy to the canon tier must not narrow the frame it is judged in — do
     that and every entry looks top-level and the deny-by-default predicate goes blind.
 
-    ⚑ The SOURCE stays :data:`_MOLD_CANON_ROOT` while the DEST is the resolved
-    ``workset.canon``: the mold is one SYSTEM tree shared by every workset, so a
-    per-workset repoint moves where content lands, never where it is read from.
+    ⚑ The SOURCE stays the mold's canon tier (:func:`workset_mold_canon_source`) while the
+    DEST is the resolved ``workset.canon``: the mold is one SYSTEM tree shared by every
+    workset, so a per-workset repoint moves where content lands, never where it is read
+    from.
     """
     mold = std.template / PACKAGED_WORKSET_TEMPLATE
     if canon_root is None:
         return None
     if canon_only:
-        return mold / _MOLD_CANON_ROOT, canon_root
+        return workset_mold_canon_source(std), canon_root
     return mold, workset_path
 
 

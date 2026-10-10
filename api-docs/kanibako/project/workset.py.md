@@ -9,7 +9,11 @@ Prose for these symbols lives in `llm-docs/kanibako/project/workset.py.md`.
 
 ```
 BOXES_DIR_NAME = bootstrap.BOXES_PATH
-DEFAULT_CANON_LEFTOVER_WHY = 'it is the default canon folder `create` made, and it holds content kanibako did not put there'
+DEFAULT_CANON_LEFTOVER_WHY = 'it is the default canon folder `create` made, and it holds files the current template does not'
+DEFAULT_CANON_DRIFT_WHY = 'it is the default canon folder `create` made, and it differs from the current template'
+DEFAULT_CANON_NO_TEMPLATE_WHY = 'it is the default canon folder `create` made, and kanibako cannot check it against a template because none is installed'
+DEFAULT_CANON_UNREADABLE_WHY = 'it is the default canon folder `create` made, and kanibako cannot check it against a template because a file in it cannot be read'
+DEFAULT_CANON_REMOVED_LINE = 'Removed the default canon folder `create` made'
 SYMLINK_LOOP_WHY = 'it is a symlink loop that kanibako cannot resolve, so it is left in place for you to look at.'
 DEFAULT_WORKSET_ID = '__default__'
 DEFAULT_WORKSET_ALIAS = 'default'
@@ -53,9 +57,10 @@ def resolve_workset_vault_pair(workset_root: Path, *, early: EarlyScope, setting
 def declared_repoint_key(root: Path, path: Path, *, early: EarlyScope) -> str | None
 def standalone_vault_teardown(root: Path, *, early: EarlyScope) -> tuple[list[Path], list[Path]]
 def standalone_canon_teardown(root: Path, *, early: EarlyScope) -> tuple[Path | None, Path | None]
-def holds_only_create_stamp(leaf: Path) -> bool
-def leftover_default_canon(root: Path, removable: Path | None, retained: Path | None) -> tuple[Path | None, Path | None]
-def remove_default_canon_stamp(leaf: Path) -> bool
+def holds_only_create_stamp(leaf: Path, std: StandardPaths) -> bool
+def default_canon_leftover_why(leaf: Path, std: StandardPaths) -> str
+def leftover_default_canon(root: Path, removable: Path | None, retained: Path | None, std: StandardPaths) -> tuple[Path | None, Path | None, 'str | None']
+def remove_default_canon_stamp(leaf: Path, std: StandardPaths) -> bool
 def vault_keep_reason(root: Path, vault: Path, *, early: EarlyScope) -> str
 def canon_keep_reason(root: Path, canon: Path, *, early: EarlyScope) -> str
 def report_retained_canon(canon: Path, root: Path, why: str | None=None, *, early: EarlyScope | None=None) -> None
@@ -88,7 +93,9 @@ def remove_project(ws: Workset, name: str, *, remove_files: bool=False, std: Sta
 def _workspaces_null_file(workset_root: Path, *, early: EarlyScope) -> Path | None
 def _is_role_folder(entry: Path, root: Path, leaf: str) -> bool
 def _users_own_repoint(root: Path, resolved: Path, doc: 'Mapping[str, Any] | None', key: str, leaf: str, *, early: EarlyScope) -> bool
-def _create_canon_stamp() -> dict[str, bool]
+def _sha256_file(path: Path) -> str
+def _create_canon_stamp(std: StandardPaths) -> dict[str, tuple[bool, 'str | None']]
+def _stamp_audit(leaf: Path, stamp: dict[str, tuple[bool, 'str | None']]) -> tuple[bool, bool, bool]
 def _symlink_loop(path: Path) -> bool
 def _holds_only_arms(path: Path, arms: set[Path]) -> bool
 @contextmanager

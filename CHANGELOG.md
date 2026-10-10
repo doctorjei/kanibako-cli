@@ -749,8 +749,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   default was deleted when it sat inside the project, so `canon: src` took your source tree. It is now kept, and a
   note says why. `box rm --purge` lists every kept folder before it asks.
 - **Purging a standalone box removes its leftover default `canon/` and creds watcher lock.** A `canon/` folder that
-  `create` made and that holds only what `create` put there is removed when `workset.canon` points elsewhere; one
-  holding anything else is kept and named. The creds watcher lock file at the project root is removed when no
+  `create` made and that holds only what `create` put there is removed when `workset.canon` points elsewhere, and
+  both `box rm --purge` and `box purge` say so. "Only what `create` put there" means every file matches the
+  installed workset template byte for byte. Any other folder is kept and named, and its note says why: it holds
+  files the template does not, it differs from the template, or kanibako cannot check it because no template is
+  installed or a file cannot be read. The creds watcher lock file at the project root is removed when no
   watcher holds it.
 - **A purge takes a symlinked vault folder as a link.** It removes the link, leaves the target untouched, and
   says so; `box purge` used to leave a symlinked primary vault folder behind without a word. A vault folder that
