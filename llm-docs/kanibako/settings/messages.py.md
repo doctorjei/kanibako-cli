@@ -300,8 +300,8 @@ Conditions that DEGRADE a box rather than stop it.
 
 ⚑ **All five say the thing still works, and that is the design.** Each names a defect, states that
 resolution or launch proceeds anyway, and gives a concrete way to silence it (*"rename it when
-convenient"* · *"fix workset.kuid or set workset.skip_kuid_check=true"* · *"recreate the directory or
-set box.enable_vault=false"*). A warning a user can neither act on nor silence becomes noise on every
+convenient"* · *"fix workset.kuid or set workset.skip_kuid_check=true"* · *"restore the old one first,
+or set box.enable_vault=false to silence"*). A warning a user can neither act on nor silence becomes noise on every
 launch, which is what these are shaped to avoid — so a NEW warning here owes a cure clause too. The
 two `WARN_WS_*` pair go to stderr via `print`; the three box advisories go through the logger.
 

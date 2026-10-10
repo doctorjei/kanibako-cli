@@ -23,7 +23,7 @@ WARN_SA_SHADOWED_BY_PATH = "'%s' resolved to the path %s; the registered standal
 WARN_WS_BOX_BAD_NAME = "box name '%s' does not meet the naming rules (%s); it resolves by its " + 'path only, not by that name. Rename it.'
 WARN_BOX_BAD_KUID = "Warning: invalid KUID '%s' for standalone box '%s' (invalid kuid); it " + 'still resolves; fix workset.kuid or set workset.skip_kuid_check=true to ' + 'silence this.'
 WARN_BOX_KUID_HELD = "Warning: workset.kuid '%s' in %s belongs to registered box '%s' at %s; this box gets a new kuid."
-WARN_BOX_NO_VAULT = "Warning: cannot find vault for box '%s' (expected at %s); it still " + 'launches without a vault; recreate the directory or set ' + 'box.enable_vault=false to silence.'
+WARN_BOX_NO_VAULT = "Warning: cannot find vault for box '%s' (expected at %s); a launch " + 'creates a new, empty vault there; restore the old one first, or set ' + 'box.enable_vault=false to silence.'
 WARN_BOX_VAULT_UNUSABLE = "Warning: the %s vault for box '%s' at %s is %s; it launches without " + 'that vault; fix the path or set box.enable_vault=false to silence.'
 ERR_SETTINGS_BAD_PATH = 'Unresolvable %s path: %s'
 ERR_SETTINGS_BAD_REF = 'Unknown @%s-reference: %s'
