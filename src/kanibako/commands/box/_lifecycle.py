@@ -32,7 +32,7 @@ from kanibako.launch.box_identity import (
     standalone_kuid,
     validate_box_name,
 )
-from kanibako.runtime.container import remove_box_tree, remove_path
+from kanibako.runtime.container import ContainerRuntime, remove_box_tree, remove_path
 from kanibako.settings import bootstrap
 from kanibako.settings.core_defaults import materialize_canon_skeleton
 from kanibako.settings.workset_dirkeys import (
@@ -1368,8 +1368,9 @@ def _retire_old_workspace(old: Path, landed: Path) -> None:
 
     ⚑⚑ A success-tail step ONLY — a failed op never reaches it.  Skips an
     absent *old*, and an *old* that is or holds *landed* (a move into its own subtree;
-    ``_validate`` refuses that first).  A symlink is unlinked, never followed.  A failed
-    delete prints a Note and stops: no second deleter, rc unchanged.
+    ``_validate`` refuses that first).  A symlink is unlinked, never followed.  A real dir
+    the rmtree cannot clear (in-box root owns entries) goes to ``remove_box_tree``; if that
+    fails too, a Note names the rmtree's error and stops: rc unchanged.
 
     ⚑ A LINKED *old* is judged by its own path: after a link-preserving copy it names the
     same target as *landed* but is not it, and an unlink cannot reach *landed*.
@@ -1396,6 +1397,8 @@ def _retire_old_workspace(old: Path, landed: Path) -> None:
     try:
         shutil.rmtree(old)
     except OSError as err:
+        if old.is_dir() and remove_box_tree(old):
+            return
         print(f"Note: could not fully remove the old workspace {old}: {err}. The move is "
               f"complete at {landed}; {old} still holds {_leftover_entries(old)}, a partial "
               f"leftover that is yours to remove.", file=sys.stderr)
@@ -2822,13 +2825,13 @@ def _consolidate_workspace_subdir(
         return
 
     workspace_subdir.mkdir(parents=True, exist_ok=True)
-    unwind.push(lambda: _undo_consolidate(workspace_subdir, root, movable))
+    unwind.push(lambda: _undo_consolidate(workspace_subdir, root, movable, root=root))
     for child in movable:
-        _move_entry(child, workspace_subdir / child.name)
+        _move_entry(child, workspace_subdir / child.name, root=root)
 
 
 def _undo_consolidate(
-    src_dir: Path, dest_dir: Path, moved: list[Path],
+    src_dir: Path, dest_dir: Path, moved: list[Path], *, root: Path,
 ) -> None:
     """Move *moved*'s leaves back from *src_dir* to *dest_dir* — the reversal of either sweep.
 
@@ -2843,7 +2846,7 @@ def _undo_consolidate(
         src = src_dir / child.name
         try:
             if src.exists() or src.is_symlink():
-                _move_entry(src, dest_dir / child.name)
+                _move_entry(src, dest_dir / child.name, root=root)
         except KeyboardInterrupt as exc:
             held = held or exc
         except OSError:
@@ -2855,27 +2858,40 @@ def _undo_consolidate(
         raise held
 
 
-def _move_entry(src: Path, dst: Path) -> None:
-    """``shutil.move`` *src* to *dst*, a directory without owner write included.
+def _move_entry(src: Path, dst: Path, *, root: Path) -> None:
+    """Move *src* to *dst* like ``shutil.move``, a directory without owner write included.
 
     ⚑ Renaming a directory into another parent rewrites its ``..``, which needs write on
-    the directory ITSELF: a 555 one fails, ``shutil.move`` falls back to copy-then-delete,
-    the delete fails too, and the tree is left in both places.  Its mode gains ``u+w`` for
-    the move and is given back wherever the directory ends up.
+    the directory ITSELF: one we own gains ``u+w`` for the move and gets its mode back
+    wherever it ends up.  One in-box root owns is renamed inside the user namespace
+    (:func:`_rename_escalated`).  Only a cross-device rename falls back to copying; any
+    other refusal raises with nothing copied, so no tree is ever left in both places.
     """
+    import errno
     import os
     import stat
 
     mode = None
     if src.is_dir() and not src.is_symlink():
-        mode = stat.S_IMODE(src.lstat().st_mode)
-        if mode & stat.S_IWUSR:
+        st = src.lstat()
+        mode = stat.S_IMODE(st.st_mode)
+        if mode & stat.S_IWUSR or st.st_uid != os.getuid():
             mode = None
-    landed = dst if not (dst.exists() or dst.is_symlink()) else dst / src.name
+    landed = dst / src.name if dst.is_dir() else dst
     try:
         if mode is not None:
             os.chmod(src, mode | stat.S_IWUSR)
-        shutil.move(str(src), str(dst))
+        if landed.exists() or landed.is_symlink():
+            shutil.move(str(src), str(dst))
+            return
+        try:
+            os.rename(src, landed)
+        except OSError as err:
+            if err.errno == errno.EXDEV:
+                shutil.move(str(src), str(dst))
+            elif not (err.errno in (errno.EACCES, errno.EPERM)
+                      and _rename_escalated(src, landed, root)):
+                raise
     finally:
         if mode is not None:
             for path in (src, landed):
@@ -2884,6 +2900,29 @@ def _move_entry(src: Path, dst: Path) -> None:
                         os.chmod(path, mode)
                     except OSError:
                         pass
+
+
+def _rename_escalated(src: Path, dst: Path, root: Path) -> bool:
+    """Rename the real dir *src* to the absent *dst* as namespace root; ``False`` if refused.
+
+    ⚑ Only inside the box's own tree: both parents must resolve under *root* and share a
+    device, *src* must not be a link, and nothing may sit at *dst* (a rename would replace
+    an empty dir).  Never a copy.
+    """
+    import os
+
+    if src.is_symlink() or not src.is_dir() or dst.exists() or dst.is_symlink():
+        return False
+    top = root.resolve()
+    src_parent, dst_parent = src.parent.resolve(), dst.parent.resolve()
+    if not all(p == top or top in p.parents for p in (src_parent, dst_parent)):
+        return False
+    if os.stat(src_parent).st_dev != os.stat(dst_parent).st_dev:
+        return False
+    try:
+        return ContainerRuntime().unshare_rename(src_parent / src.name, dst_parent / dst.name)
+    except ContainerError:
+        return False
 
 
 def _prune_empty_dirs(path: Path, above: Path) -> None:
@@ -2952,11 +2991,11 @@ def _unconsolidate_workspace_subdir(
         return
     movable = list(workspace_subdir.iterdir())
     moved: list[Path] = []
-    unwind.push(lambda: _undo_consolidate(root, workspace_subdir, moved))
+    unwind.push(lambda: _undo_consolidate(root, workspace_subdir, moved, root=root))
     for child in movable:
         # Recorded before the move, as the undo skips an entry that never left.
         moved.append(child)
-        _move_entry(child, root / child.name)
+        _move_entry(child, root / child.name, root=root)
     # Drop the emptied workspace dir so the converted project keeps no stray one — and with
     # it the now-empty directories a repoint interposed (``workspaces: nested/deep`` leaves
     # ``nested/``, which only ever existed to hold the workspace and is meaningless once the
@@ -3235,10 +3274,24 @@ def _to_workset(
             # failure: ``_Unwind.run`` swallows whatever an action raises.
             import sys
 
+            def _copy_back(dst: Path | None, copy: Callable[[], object]) -> None:
+                # A real-dir *dst* the copy cannot write into (a skeleton remnant) is
+                # replaced whole from the stash; a link leaf is never replaced.
+                try:
+                    copy()
+                except (OSError, ProjectError):
+                    if dst is None or dst.is_symlink() or not dst.is_dir():
+                        raise
+                    remove_path(dst)
+                    copy()
+
             def _box_tree() -> None:
                 if stash_boxes.is_dir():
-                    copy_tree_keeping_links(
-                        stash_boxes, src_ws.projects_dir / src_name, dirs_exist_ok=True)
+                    dst = src_ws.projects_dir / src_name
+                    _copy_back(dst, partial(
+                        copy_tree_keeping_links, stash_boxes, dst, dirs_exist_ok=True))
+                    if shell_source.is_dir():
+                        materialize_canon_skeleton(dst / "home")
 
             steps: list[tuple[str, Path | None, Callable[[], object]]] = [
                 (f"the record of '{src_name}' in workset '{src_ws.name}'",
@@ -3248,9 +3301,11 @@ def _to_workset(
                 # ⚑ THE VAULT CARRY, unwind leg (P1 data loss): leg 1 released the source
                 # leaves into the stash; no-ops when leg 1 carried nothing.
                 ("the read-only vault", state.vault_ro,
-                 lambda: _copy_vault_leaf_contents(stash_vault_ro, state.vault_ro)),
+                 lambda: _copy_back(state.vault_ro, partial(
+                     _copy_vault_leaf_contents, stash_vault_ro, state.vault_ro))),
                 ("the read-write vault", state.vault_rw,
-                 lambda: _copy_vault_leaf_contents(stash_vault_rw, state.vault_rw)),
+                 lambda: _copy_back(state.vault_rw, partial(
+                     _copy_vault_leaf_contents, stash_vault_rw, state.vault_rw))),
             ]
             clean = True
             held: KeyboardInterrupt | None = None

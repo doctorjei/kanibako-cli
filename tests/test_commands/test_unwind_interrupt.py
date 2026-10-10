@@ -259,15 +259,15 @@ class TestUndoConsolidateHoldsInterrupt:
         real = lc._move_entry
         calls: list[object] = []
 
-        def first_interrupted(src, dst):
+        def first_interrupted(src, dst, *, root):
             calls.append(src)
             if len(calls) == 1:
                 raise KeyboardInterrupt
-            real(src, dst)
+            real(src, dst, root=root)
 
         monkeypatch.setattr(lc, "_move_entry", first_interrupted)
         with pytest.raises(KeyboardInterrupt):
-            lc._undo_consolidate(src_dir, dest_dir, [src_dir / n for n in names])
+            lc._undo_consolidate(src_dir, dest_dir, [src_dir / n for n in names], root=tmp_path)
         assert sorted(p.name for p in dest_dir.iterdir()) == ["b.txt", "c.txt"]
         err = capsys.readouterr().err
         assert f"a.txt did not go back to {dest_dir}; it is at {src_dir / 'a.txt'}" in err

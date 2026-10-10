@@ -185,6 +185,13 @@ class ContainerRuntime:
         # ⚑ Same no-``-R`` rule as :meth:`unshare_chown`.
         return self._unshare_apply(["chmod", mode], paths)
 
+    def unshare_rename(self, src: Path, dst: Path) -> bool:
+        """``rename(2)`` *src* to *dst* from within the rootless user namespace; never a copy."""
+        return self._unshare_apply(
+            [sys.executable, "-I", "-c", "import os,sys; os.rename(*sys.argv[1:])"],
+            [src, dst],
+        )
+
     def _unshare_apply(self, argv: list[str], paths: list[Path]) -> bool:
         if not paths:
             return False
@@ -722,7 +729,14 @@ def remove_box_tree(target: Path) -> bool:
 
     ⚑ EVERY verb deleting a box home or metadata tree must come through here; a bare
     ``rmtree`` on those paths is a bug.  THREE ESCALATING ATTEMPTS — see the llm-doc.
+    A symlink *target* loses only the link, never anything it points at.
     """
+    if target.is_symlink():
+        try:
+            target.unlink()
+        except OSError:
+            return False
+        return True
     try:
         shutil.rmtree(target)
         return True

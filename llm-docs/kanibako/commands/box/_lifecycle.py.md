@@ -266,6 +266,10 @@ nothing can still need it.**
   stash only when every step succeeded; otherwise it prints `Note: kept <stash>; ...`. A
   `KeyboardInterrupt` in a step counts as that step's failure (`Note: may not have restored ...:
   interrupted`) and is re-raised after the Note, as `_Unwind.run` does.
+  A copy-back into a REAL-dir destination it cannot write (the 555/444 canon skeleton a
+  part-way removal left) removes that destination through `remove_path` and copies again from the
+  stash; a link leaf is never replaced. The box-tree step then re-asserts the canon skeleton
+  (`materialize_canon_skeleton`), because a copy carries modes but not ownership.
 * **The stash** is disposed of through `remove_box_tree` (`_dispose_stash`), because it holds a copy
   of the box home and its 0o555 canon dirs defeat a plain `rmtree`. A `False` prints
   `Note: could not remove <stash>; it may hold credentials`.
@@ -631,10 +635,11 @@ only; see **STEP 5**.
 It skips an absent *old*, and an *old* that is or holds *landed* or *recorded* — the workspace the
 box now records. The *recorded* guard covers a same-workset, same-name move that lands back on its
 own leaf, and a `workspaces` dir repointed inside the moving box's own tree. A symlink is unlinked, never followed, and `Note: left <target>; it is yours` names what
-stays. A directory goes through a plain `shutil.rmtree` — it is user content, not a box tree, so
-`remove_box_tree`'s escalation does not apply. A failure prints `Note: could not remove the old
-workspace <old>: <err>` and stops: the op already succeeded, so the exit code stays 0, and falling
-back to another deleter would widen what a relocation may delete. It prints its own Notes because
+stays. A directory goes through a plain `shutil.rmtree`; when that fails (in-box root owns entries
+the host user cannot unlink) it goes to `remove_box_tree`, which may act only on *old*, a real dir
+already copied to *landed*. A non-directory *old* never reaches it. A failure of both prints
+`Note: could not fully remove the old workspace <old>: <err>` naming the rmtree's error and stops:
+the op already succeeded, so the exit code stays 0. It prints its own Notes because
 `_Unwind.finish` swallows exceptions.
 
 ```def _apply_ownership_and_markers(state: ProjectState, std: StandardPaths, config: BootstrapConfig, unwind: _Unwind, *, target_mode: BoxMode, target_ws: Workset | None, new_name: str, new_workspace: Path, relocating: bool, dest: Path | None, requested_name: str = "", force: bool = False) -> ProjectState```
@@ -781,7 +786,7 @@ null from ever reading as the default.
 source dir; relocating: the copy STEP 2 made at *dest*; external-in-place: the external dir that is
 BECOMING the standalone root. That uniformity is what lets one call serve every transition.
 
-```def _undo_consolidate(src_dir: Path, dest_dir: Path, moved: list[Path]) -> None```
+```def _undo_consolidate(src_dir: Path, dest_dir: Path, moved: list[Path], *, root: Path) -> None```
 Best-effort reversal of EITHER sweep — *moved*'s leaves go back from *src_dir* to *dest_dir*.
 ⚑ *dest_dir* is RE-CREATED first: the unconsolidate direction removes it (with any repoint parents)
 once emptied, so a restore would otherwise land nowhere and every move would fail silently.
@@ -790,6 +795,18 @@ does); an entry left behind gets `Note: <name> did not go back to <dest_dir>; it
 `_restore_primary_rows` and `_restore_standalone_rows` hold an interrupt the same way, with a `Note`
 per registry row it left unrestored. `_restore_standalone_rows` also Notes a row an ordinary error
 left unrestored; in `_restore_primary_rows` the `_safe_*` helpers swallow such an error silently.
+
+```def _move_entry(src: Path, dst: Path, *, root: Path) -> None```
+One entry of either sweep, with `shutil.move`'s destination rule. An owned dir without `u+w` gains
+it for the rename and gets its mode back. The plain `rename(2)` comes first; only EXDEV falls back
+to `shutil.move`'s copy. EACCES/EPERM goes to `_rename_escalated`, and any other refusal re-raises
+the original error with nothing copied — a copy that cannot delete its source is the tree in two
+places, and the undo then aims one level too deep.
+
+```def _rename_escalated(src: Path, dst: Path, root: Path) -> bool```
+`ContainerRuntime.unshare_rename` under guards: *src* a real dir (not a link), nothing at *dst*
+(rename replaces an empty dir), both parents resolving under the box *root*, one device. False when
+a guard fails, on docker, or when the rename fails.
 
 ```def _unconsolidate_workspace_subdir(workspace_subdir: Path, root: Path, unwind: _Unwind) -> None```
 Lift the standalone workspace dir's contents back up to *root*.

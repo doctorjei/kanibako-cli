@@ -363,10 +363,13 @@ class TestLeftoversInAnExistingDirectoryAreNamed:
 @needs_non_root
 class TestLeftoversOfASuccessfulMoveAreNamed:
 
-    def test_the_old_workspace_note_names_what_remains(self, env, capsys):
+    def test_the_old_workspace_note_names_what_remains(self, env, capsys, monkeypatch):
         config, std, tmp_home = env
         pdir = _primary(env)
         state = resolve_lifecycle_target(str(pdir), std, config)
+        # The escalating remover's own verdict on an entry it cannot take (in-box root).
+        real = lc.remove_box_tree
+        monkeypatch.setattr(lc, "remove_box_tree", lambda p: p != pdir and real(p))
         dest = tmp_home / "moved"
         execute_lifecycle(state, TargetSpec(location=dest), std, config, confirm=lambda: True)
         err = capsys.readouterr().err
