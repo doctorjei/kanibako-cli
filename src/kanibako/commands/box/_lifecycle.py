@@ -1163,6 +1163,11 @@ def _validate(
         state.mode == BoxMode.standalone and target_mode == BoxMode.standalone
         and (dest is None or dest == state.metadata_path.resolve())
     )
+    # --- a standalone source's canon tier must resolve before the first write ---
+    # ⚑ The teardown plan reads it again after the destination is written; a repoint
+    # that refuses there is a rollback, here it is a refusal.
+    if state.mode == BoxMode.standalone and not vault_reused:
+        standalone_canon_teardown(state.metadata_path, early=_early_scope(std, BoxMode.standalone))
     if target_mode == BoxMode.primary:
         landing_ws = dest if dest is not None else state.workspace_path
         landed = _primary_name_at(state, std, landing_ws)
@@ -2353,10 +2358,11 @@ def _note_interrupted_tail(
         left.append(plan.stash)
     unmoved = [*_unmoved_partitions(state, new_state, std, plan),
                *_unmoved_snapshots(state, new_state)]
-    if plan.gitignore is not None and progress.step not in ("member", "later", "stash"):
+    # ⚑ Decided by the file's content now, not by the step: the strip may or may not have run.
+    if plan.gitignore is not None and project_gitignore_to_strip(plan.gitignore.parent):
         if gitignore_holds_only_kanibako(plan.gitignore):
             left.append(plan.gitignore)
-        elif progress.step != "root":
+        else:
             unmoved.append(f"kanibako's line is still in {plan.gitignore}")
     _report_store_leftovers(plan.name, _on_disk(left), ": interrupted", unmoved=unmoved)
 
