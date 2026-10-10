@@ -41,6 +41,8 @@ import textwrap
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Final, Literal, Mapping, NoReturn, Sequence
 
+from kanibako.settings.kb_store import SCOPE_CONTAINMENT
+
 if TYPE_CHECKING:  # pragma: no cover - typing only
     from kanibako.settings.kb_store import Bind
     from kanibako.settings.keystore import KeyStore
@@ -218,8 +220,8 @@ SECRET_KEY_RE = re.compile(
 #: validation must be re-checked before it reaches the shell.  Keep the two in sync.
 SECRET_VAR_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
-# Apply order: REVERSE of precedence (most-specific scope lands LAST).
-_SCOPE_APPLY_ORDER = {"system": 0, "agent": 1, "workset": 2, "box": 3}
+# Apply order: REVERSE of precedence (most-specific scope lands LAST) — containment order, derived.
+_SCOPE_APPLY_ORDER = {scope: rank for rank, scope in enumerate(SCOPE_CONTAINMENT)}
 
 # The CONCRETE MOUNT categories — the layer §0 calls the SOURCE OF TRUTH.  A mount is
 # emitted from a ``bindings.{ro,rw}`` declaration and from nothing else; the abstract

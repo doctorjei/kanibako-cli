@@ -701,15 +701,24 @@ _CONSTRUCT_TIME = frozenset({
     "<generated at creation>", "<construct-time>", "<the user's real project dir>",
 })
 _AGENT = "anyagent"
+# Keyspec §2c `meta.box.container`: `<W>` and `<B>` are RENDERED placeholders, not refs
+# (director ruling, 151st) -- `<W>` renders the box's workset (`primary` and `standalone`
+# name the one partition of that mode) and `<B>` its name. Read as the anchors they render.
+_RENDERED = {"<W>": "{meta.workset.name}", "<B>": "{meta.box.name}"}
 
 
 def _mode_arm(row: Any, mode: str) -> Any:
-    """*row*'s `default:` (else `value:`) for *mode*, with `<agent>` spelled `_AGENT`."""
+    """*row*'s `default:` (else `value:`) for *mode*, with `<agent>` spelled `_AGENT`
+    and each `_RENDERED` placeholder spelled as the anchor it renders."""
     cell = row.get("default")
     if cell is None:
         cell = row.get("value")
     arm = cell.get(mode) if isinstance(cell, dict) else cell
-    return arm.replace("<agent>", _AGENT) if isinstance(arm, str) else arm
+    if not isinstance(arm, str):
+        return arm
+    for placeholder, anchor in _RENDERED.items():
+        arm = arm.replace(placeholder, anchor)
+    return arm.replace("<agent>", _AGENT)
 
 
 def default_reaches_anchor(entry: Any) -> bool:
@@ -1400,3 +1409,34 @@ class EntryOwners(_ViewRegistry):
                     continue
                 out.append({"key": key, "owner": row["owner"]})
         return out
+
+
+class AgentCredFiles(_ViewRegistry):
+    """The HOST-side agent credential files: every plugin descriptor's `cred_files` row,
+    keyed by its `host_rel`. `[claims] declared_in` names this registry, so a doc citing
+    `auth.json` or `custom_providers/` settles against the descriptors that declare them
+    -- the claims store never holds a host user's credentials.
+
+    `declared` takes a key or any trailing whole-segment part of one, with `~/` and a
+    trailing `/` dropped: prose names `.credentials.json` for `.claude/.credentials.json`.
+    """
+
+    def __init__(self, *, name: str = "agent-cred-files", **options: object) -> None:
+        super().__init__(name=name, **options)
+
+    def _rows(self) -> list[dict[str, object]]:
+        import yaml
+
+        out: list[dict[str, object]] = []
+        for source in plugin_descriptors():
+            doc = yaml.safe_load((_TREE / source).read_text()) or {}
+            for cred in (doc.get("descriptor") or {}).get("cred_files") or []:
+                out.append({"key": str(cred["host_rel"]), "source": source})
+        return out
+
+    def declared(self, identifier: str) -> bool:
+        tail = identifier.removeprefix("~/").rstrip("/")
+        if not tail:
+            return False
+        keys = (str(row["key"]) for row in self.rows)
+        return any(key == tail or key.endswith(f"/{tail}") for key in keys)
