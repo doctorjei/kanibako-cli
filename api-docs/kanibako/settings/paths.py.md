@@ -117,6 +117,7 @@ def _workset_box_name_for_workspace(ws_root: Path, workspace: str, *, early: Ear
 def _workset_box_workspace_for_name(ws_root: Path, box_name: str, *, early: EarlyScope) -> str | None
 def _register_workset_box_membership(ws_root: Path, box_name: str, workspace: Path, *, early: EarlyScope) -> None
 def _unregister_workset_box_membership(ws_root: Path, box_name: str, *, early: EarlyScope) -> None
+def _workset_box_membership_undo(ws_root: Path, box_name: str, workspace: Path, *, early: EarlyScope) -> Callable[[], None]
 def _init_workset_project(std: StandardPaths, metadata_path: Path, shell_path: Path) -> None
 def _find_workset_for_path(project_dir: Path, std: StandardPaths) -> tuple[_WorksetLike, str | None]
 def _resolve_workset_or_connected(project_dir: Path, std: StandardPaths) -> tuple[_WorksetLike, str | None]

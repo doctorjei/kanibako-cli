@@ -161,3 +161,43 @@ class TestWorksetFirstInterruptRollsBack:
         with pytest.raises(Exception, match="already registered"):
             ws_mod.create_workset("my-set", tmp_home / "worksets" / "my-set", std)
         assert read_names(std.registry)["worksets"].get("my-set") == other
+
+
+class _Boom(Exception):
+    pass
+
+
+class TestAddProjectRowUndo:
+    def test_interrupt_after_the_row_write_leaves_no_row(self, std, tmp_home, monkeypatch):
+        import kanibako.project.workset as ws_mod
+        import kanibako.settings.paths as paths_mod
+        from kanibako.project import workset_registry
+
+        ws = ws_mod.create_workset("my-set", tmp_home / "worksets" / "my-set", std)
+        real = paths_mod._register_workset_box_membership
+
+        def write_then_interrupt(*a, **k):
+            real(*a, **k)
+            raise KeyboardInterrupt
+
+        monkeypatch.setattr(paths_mod, "_register_workset_box_membership", write_then_interrupt)
+        with pytest.raises(KeyboardInterrupt):
+            ws_mod.add_project(ws, "proj", ws.workspaces_dir / "proj")
+        assert "proj" not in workset_registry.load_workset_boxes(ws.registry_path)
+
+    def test_failure_after_the_write_restores_a_prior_row(self, std, tmp_home, monkeypatch):
+        import kanibako.project.workset as ws_mod
+        from kanibako.project import workset_registry
+
+        ws = ws_mod.create_workset("my-set", tmp_home / "worksets" / "my-set", std)
+        workset_registry.register_workset_box(
+            ws.registry_path, "proj", tmp_home / "prior-workspace")
+        before = ws.registry_path.read_bytes()
+
+        def boom(*a, **k):
+            raise _Boom
+
+        monkeypatch.setattr(ws_mod, "WorksetProject", boom)
+        with pytest.raises(_Boom):
+            ws_mod.add_project(ws, "proj", ws.workspaces_dir / "proj")
+        assert ws.registry_path.read_bytes() == before

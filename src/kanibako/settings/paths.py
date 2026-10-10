@@ -1916,6 +1916,36 @@ def _unregister_workset_box_membership(ws_root: Path, box_name: str,
     workset_registry.unregister_workset_box(registry_path, box_name)
 
 
+def _workset_box_membership_undo(ws_root: Path, box_name: str, workspace: Path,
+                                 *, early: EarlyScope) -> Callable[[], None]:
+    """Snapshot *box_name*'s row now; return the undo of registering it → *workspace*.
+
+    The undo puts a prior row back as it was, or, with none, drops only a row that still
+    holds *workspace*.  Arm it BEFORE the write.
+    """
+    from kanibako.project import workset_registry
+    from kanibako.settings.config_io import load_doc
+
+    registry_path = workset_registry.resolve_workset_registry_path(
+        ws_root, load_doc(ws_root / WORKSET_META_FILE), early=early)
+    before = workset_registry.load_workset_boxes(registry_path)
+    stored = find_identifier(box_name, before)
+    prior = None if stored is None else (stored, before[stored])
+
+    def undo() -> None:
+        now = workset_registry.load_workset_boxes(registry_path)
+        held = find_identifier(box_name, now)
+        current = None if held is None else (held, now[held])
+        if current == prior:
+            return
+        if prior is not None:
+            workset_registry.register_workset_box(registry_path, prior[0], Path(prior[1]))
+        elif current is not None and current[1] == str(workspace):
+            workset_registry.unregister_workset_box(registry_path, current[0])
+
+    return undo
+
+
 # ---------------------------------------------------------------------------
 # PRIMARY-box name registry (the primary per-workset ``boxes:`` membership).
 # ---------------------------------------------------------------------------
