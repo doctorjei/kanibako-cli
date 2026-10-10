@@ -493,7 +493,7 @@ class _Scenario:
         p = tmp_home / "p"
         p.mkdir(exist_ok=True)
         inplace = lc.INPLACE
-        if kind in ("A", "D", "F"):
+        if kind in ("A", "D", "F", "PM"):
             src = p / "k"
             src.mkdir()
             (src / "aaa.txt").write_text("a")
@@ -527,8 +527,9 @@ class _Scenario:
             "E": TargetSpec(location=inplace, ownership="W"),
             "F": TargetSpec(location=inplace, ownership="standalone"),
             "WW": TargetSpec(location=lc.BARE_INTO_WS, ownership="W2"),
+            "PM": TargetSpec(location=p / "k2"),
         }[kind]
-        self.inplace = kind not in ("B", "Bs", "WW")
+        self.inplace = kind not in ("B", "Bs", "WW", "PM")
         self.state = resolve_lifecycle_target(str(src), std, config)
         self.digests, self.src_homes = _seed(self.state, std, kind)
         self.src_rows = _rows(tmp_home)
@@ -541,6 +542,10 @@ class _Scenario:
 #: Points before the source row is dropped (rolled back) and after it (the success tail).
 _BEFORE = [("_carry_box_logs", "after"), ("_stash_source_marker", "after"),
            ("repoint_box_mounted_links", "before"), ("_drop_source_row", "after")]
+#: The registry writes: each must be undone, whatever it wrote, from the moment it returns.
+_REGISTRY = [("_safe_unregister", "after"), ("register_primary_box_name", "after"),
+             ("assign_primary_box_name", "after"), ("add_project", "after"),
+             ("release_project", "after")]
 _TAIL = [("_relocate_channel_partition", "before"), ("_relocate_snapshot_store", "before"),
          ("_relocate_snapshot_store", "after"), ("remove_path", "after"),
          ("_retire_old_store", "before"), ("_retire_old_workspace", "before"),
@@ -566,8 +571,10 @@ def _interrupt_at(monkeypatch, name, when):
 
 
 def _named(path, err, root):
-    """*path*, or a directory holding it, is named in *err*."""
-    return any(str(p) in err for p in (path, *path.parents) if root in p.parents)
+    """*path*, or a directory holding it, is named in *err* as a whole path."""
+    import re
+    named = set(re.findall(r"/[^\s,;]+", err))
+    return any(str(p) in named for p in (path, *path.parents) if root in p.parents)
 
 
 @pytest.fixture
@@ -582,8 +589,9 @@ class TestAnInterruptLosesNothingAndLeavesOneRow:
     """Before the source row is dropped an interrupt unwinds to the source alone; after it
     the destination is the box, nothing is unwound, and the Note names what is left."""
 
-    @pytest.mark.parametrize("point", _BEFORE + _TAIL, ids=lambda p: f"{p[0]}-{p[1]}")
-    @pytest.mark.parametrize("kind", ["A", "B", "Bs", "C", "D", "E", "F", "WW"])
+    @pytest.mark.parametrize("point", _BEFORE + _REGISTRY + _TAIL,
+                             ids=lambda p: f"{p[0]}-{p[1]}")
+    @pytest.mark.parametrize("kind", ["A", "B", "Bs", "C", "D", "E", "F", "WW", "PM"])
     def test_every_point(self, env, monkeypatch, capsys, kind, point):
         sc = _Scenario(env, kind)
         capsys.readouterr()
@@ -596,9 +604,9 @@ class TestAnInterruptLosesNothingAndLeavesOneRow:
         err = capsys.readouterr().err
         rows = _rows(sc.tmp_home)
         assert len(rows) == 1, rows
-        rolled_back = bool(fired) and point in _BEFORE
+        rolled_back = bool(fired) and point not in _TAIL
         if rolled_back:
-            assert rows == sc.src_rows
+            assert sorted(rows) == sorted(sc.src_rows)
         _section, _name, where = rows[0]
         box = resolve_lifecycle_target(where, sc.std, sc.config)
         homes = _homes(box, sc.std)
@@ -612,12 +620,13 @@ class TestAnInterruptLosesNothingAndLeavesOneRow:
             assert _named(sc.src_homes[seed], err, sc.tmp_home), (seed, err)
         assert homes["log"].read_text() == f"{kind}-log"
         if fired and not rolled_back:
-            for seed in ("XRW", "XRO", "XHOME"):
+            # A move's old workspace is a full copy of the user's files until STEP 5.
+            for seed in ("XRW", "XRO", "XHOME", *(() if sc.inplace else ("XWS",))):
                 left = sc.src_homes[seed]
                 if left.exists() and left != homes[seed]:
                     assert _named(left, err, sc.tmp_home), (seed, err)
         if rolled_back:
-            assert _rows(sc.tmp_home) == sc.src_rows
+            assert sorted(_rows(sc.tmp_home)) == sorted(sc.src_rows)
             new = sc.run()
             assert _digest(_homes(new, sc.std)["XHOME"] / "XHOME") == sc.digests["XHOME"]
         elif sc.inplace:

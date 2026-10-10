@@ -75,6 +75,7 @@ from kanibako.settings.paths import (
     box_workset_settings_paths,
     check_primary_box_name_free,
     detect_project_mode,
+    load_primary_boxes,
     primary_box_name_for_workspace,
     refuse_derived_box_name,
     register_primary_box_name,
@@ -1338,8 +1339,9 @@ def _run_steps(
     # --- STEP 5 — Retire the old workspace step 2 copied, ON SUCCESS ONLY.
     # ⚑ Never a user's EXTERNAL source. ---
     later: list[Callable[[], None]] = []
+    retired: Path | None = None
     if not records_only and relocating and dest is not None and not state.is_external:
-        old_ws = state.workspace_path
+        old_ws = retired = state.workspace_path
         later.append(lambda: _retire_old_workspace(old_ws, dest))
     # ⚑ An external landing whose ``workspaces/<name>`` was held by the leaf just retired
     #   gets its discoverability link now, after the retire.
@@ -1353,7 +1355,8 @@ def _run_steps(
 
     # ⚑ ONE tail, run once the source row is dropped: steps 4b and 4c (AFTER identity is
     # final, A9: a standalone convert regenerates the name), the source teardown, STEP 5.
-    unwind.on_success(partial(_finish_relocation, state, new_state, std, teardown, later))
+    unwind.on_success(partial(_finish_relocation, state, new_state, std, teardown, later,
+                              retired))
     return new_state, teardown
 
 
@@ -2097,6 +2100,18 @@ def _restore_standalone_rows(std: StandardPaths, before: Mapping[str, str]) -> N
             registry_store.register_standalone(std.registry, stored, Path(before[stored]))
 
 
+def _restore_primary_rows(std: StandardPaths, before: Mapping[str, str]) -> None:
+    """Put the PRIMARY membership back to *before*: drop each row it lacked, restore each
+    row it held."""
+    now = load_primary_boxes(std.primary_workset, early=_early_scope(std, BoxMode.primary))
+    for name in now:
+        if find_identifier(name, before) is None:
+            _safe_unregister(std, name)
+    for name, workspace in before.items():
+        if now.get(find_identifier(name, now) or "") != workspace:
+            _safe_register_membership(std, name, Path(workspace))
+
+
 def _safe_unregister_standalone(std: StandardPaths, name: str) -> None:
     from kanibako.project import registry_store
 
@@ -2145,63 +2160,63 @@ def _finish_relocation(
     std: StandardPaths,
     teardown: _SourceTeardown | None,
     later: list[Callable[[], None]],
+    old_workspace: Path | None = None,
 ) -> None:
     """The success tail: steps 4b and 4c, the source teardown, then *later*, then the stash.
 
     ⚑ The destination is the box by now, so a failed step is passed over and the Note
     names what it left; an interrupt prints that Note and re-raises.  Steps 4b and 4c
-    have no finishing command.
+    have no finishing command.  *old_workspace* is what STEP 5 (in *later*) retires.
     """
-    plan = teardown or _SourceTeardown(name=state.name)
-    snapshots: list[Path] = []
     current = ""
-
-    def holds_snapshots(path: Path) -> bool:
-        return any(path == store or path in store.parents for store in snapshots)
-
-    def remove(paths: tuple[Path, ...], deleter: Callable[[Path], object]) -> None:
-        for path in paths:
-            if holds_snapshots(path):
-                # ⚑ A failed 4c keeps the old store, so "still on disk" stays true.
-                report_retained_vault(path, "it holds the vault snapshots still under "
-                                            f"the old name '{state.name}'.")
-            elif path.is_dir() or path.is_symlink():
-                deleter(path)
-
-    def snapshots_step() -> None:
-        kept = _relocate_snapshot_store(state, new_state)
-        if kept is not None:
-            snapshots.append(kept)
-
-    def vaults_step() -> None:
-        remove(plan.vaults, plan.vault_deleter)
-        for keep in plan.keeps:
-            keep()
-
-    def member_step() -> None:
-        if plan.member is not None:
-            _retire_old_store(plan.member, plan.name, plan.dst_vault, plan.vault_enabled)
-
-    steps: list[tuple[str, Callable[[], None]]] = [
-        ("4b", partial(_relocate_channel_partition, state, new_state, std)),
-        ("4c", snapshots_step),
-        ("store", partial(remove, plan.trees, remove_path)),
-        ("vaults", vaults_step),
-        ("member", member_step),
-        *(("later", step) for step in later),
-        ("stash", partial(_dispose_stash, plan.stash) if plan.stash else lambda: None),
-    ]
-    planned = (*plan.trees, *plan.vaults)
+    snapshots: list[Path] = []
     try:
+        plan = teardown or _SourceTeardown(name=state.name)
+
+        def remove(paths: tuple[Path, ...], deleter: Callable[[Path], object]) -> None:
+            for path in paths:
+                if _holds_any(path, snapshots):
+                    # ⚑ A failed 4c keeps the old store, so "still on disk" stays true.
+                    report_retained_vault(path, "it holds the vault snapshots still under "
+                                                f"the old name '{state.name}'.")
+                elif path.is_dir() or path.is_symlink():
+                    deleter(path)
+
+        def snapshots_step() -> None:
+            kept = _relocate_snapshot_store(state, new_state)
+            if kept is not None:
+                snapshots.append(kept)
+
+        def vaults_step() -> None:
+            remove(plan.vaults, plan.vault_deleter)
+            for keep in plan.keeps:
+                keep()
+
+        def member_step() -> None:
+            if plan.member is not None:
+                _retire_old_store(plan.member, plan.name, plan.dst_vault, plan.vault_enabled)
+
+        steps: list[tuple[str, Callable[[], None]]] = [
+            ("4b", partial(_relocate_channel_partition, state, new_state, std)),
+            ("4c", snapshots_step),
+            ("store", partial(remove, plan.trees, remove_path)),
+            ("vaults", vaults_step),
+            ("member", member_step),
+            *(("later", step) for step in later),
+            ("stash", partial(_dispose_stash, plan.stash) if plan.stash else lambda: None),
+        ]
         for current, step in steps:
             try:
                 step()
             except Exception:  # noqa: BLE001 - the Note below names what it left
                 pass
     except BaseException:
-        left = [p for p in planned if not holds_snapshots(p)]
+        plan = teardown or _SourceTeardown(name=state.name)
+        left = [p for p in (*plan.trees, *plan.vaults) if not _holds_any(p, snapshots)]
         if plan.member is not None and current not in ("later", "stash"):
             left += [p for p in _member_leaves(plan.member, plan.name)[1:] if p is not None]
+        if old_workspace is not None and current != "stash":
+            left.append(old_workspace)
         if plan.stash is not None:
             left.append(plan.stash)
         _report_store_leftovers(
@@ -2210,7 +2225,13 @@ def _finish_relocation(
                      *_unmoved_snapshots(state, new_state)],
         )
         raise
-    _report_store_leftovers(plan.name, _on_disk(p for p in planned if not holds_snapshots(p)))
+    _report_store_leftovers(
+        plan.name, _on_disk(p for p in (*plan.trees, *plan.vaults) if not _holds_any(p, snapshots)))
+
+
+def _holds_any(path: Path, stores: Collection[Path]) -> bool:
+    """*path* is, or holds, one of *stores*."""
+    return any(path == store or path in store.parents for store in stores)
 
 
 def _on_disk(paths: Iterable[Path]) -> list[Path]:
@@ -2311,23 +2332,20 @@ def _to_default(
     # would read the source's OWN entry as a same-kind collision. Free it first.
     preserved_name: str | None = None
     kept = _relocated_own_name(state, std, new_workspace, mint)
+    # ⚑⚑ Armed BEFORE the first write below: the rollback puts the PRIMARY membership
+    # back as it was, the name freed here and the one registered or assigned included.
+    unwind.push(partial(_restore_primary_rows, std, load_primary_boxes(
+        std.primary_workset, early=_early_scope(std, BoxMode.primary))))
     if state.mode == BoxMode.primary and state.name:
         existing = _primary_name_at(state, std, new_workspace)
         if existing is not None:
             # SAME-PATH in-place convert: free the name so assign reuses it verbatim.
             preserved_name = existing
-            source_ws = state.workspace_path
             _safe_unregister(std, existing)
-            unwind.push(lambda: _safe_register_membership(std, existing, source_ws))
         elif kept is not None:
-            # ⚑ RELOCATING own-name move: this unwind runs BEFORE any later one, so a
-            # failed re-register leaves name -> OLD path intact rather than orphaned.
+            # RELOCATING own-name move.
             preserved_name = kept
-            old_ws = state.workspace_path
             _safe_unregister(std, kept)
-            unwind.push(
-                lambda: _safe_register_membership(std, kept, old_ws)
-            )
     # The minted or kept name goes through the per-kind guard; else the auto-suffix path.
     claimed = mint if mint is not None else kept
     if claimed is not None:
@@ -2340,7 +2358,6 @@ def _to_default(
         project_name = assign_primary_box_name(
             std.primary_workset, str(new_workspace), early=_early_scope(std, BoxMode.primary),
         )
-    unwind.push(lambda: _safe_unregister(std, project_name))
     dst_metadata = std.boxes / project_name
 
     # ⚑ Copy from the box METADATA DIR, never ``metadata_path``: for a standalone source
