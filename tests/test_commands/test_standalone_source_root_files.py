@@ -134,3 +134,55 @@ class TestALegacyNamedStandaloneMoveDropsItsRow:
         new = _run(env, root, TargetSpec(location=tmp_home / "moved", ownership="standalone"))
         assert registry_store.load_standalone(std.registry) == {
             new.name: str(tmp_home / "moved")}
+
+
+class TestAFailedMoveLeavesTheCanonAsFound:
+
+    def test_an_unresolvable_canon_repoint_refuses_before_any_write(self, env):
+        _config, std, tmp_home = env
+        root = _standalone(env)
+        _repoint(root, "workset.canon", "@nosuch.ref/x")
+        before = _snapshot(tmp_home)
+        with pytest.raises(Exception, match="workset.canon"):
+            _run(env, root, TargetSpec(location=INPLACE, ownership="default"))
+        assert _snapshot(tmp_home) == before
+
+    def test_a_later_failure_removes_the_carried_canon(self, env, monkeypatch):
+        root = _standalone(env)
+        (root / "canon" / "handbook" / "MINE.md").write_text("my directives")
+
+        def boom(*_a, **_kw):
+            raise RuntimeError("late failure")
+
+        monkeypatch.setattr(lc, "_carry_vault_contents", boom)
+        with pytest.raises(RuntimeError):
+            _run(env, root, TargetSpec(location=env[2] / "moved", ownership="standalone"))
+        assert (root / "canon" / "handbook" / "MINE.md").read_text() == "my directives"
+        assert not (env[2] / "moved" / "canon").exists()
+
+
+class TestAnInterruptBeforeTheStripNamesTheGitignore:
+
+    @pytest.mark.parametrize("user_lines", ["", "*.log\n"])
+    def test_the_note_names_it(self, env, monkeypatch, capsys, user_lines):
+        root = _standalone(env)
+        gitignore = root / ".gitignore"
+        gitignore.write_text(user_lines + gitignore.read_text())
+
+        def boom(*_a, **_kw):
+            raise KeyboardInterrupt()
+
+        monkeypatch.setattr(lc, "strip_project_gitignore", boom)
+        capsys.readouterr()
+        with pytest.raises(KeyboardInterrupt):
+            _run(env, root, TargetSpec(location=env[2] / "moved", ownership="standalone"))
+        err = capsys.readouterr().err
+        if user_lines:
+            assert f"kanibako's line is still in {gitignore}" in err
+        else:
+            assert f"left {gitignore}" in err or f", {gitignore}" in err
+
+
+def _snapshot(top):
+    return sorted((str(p.relative_to(top)), p.read_bytes() if p.is_file() else None)
+                  for p in top.rglob("*") if not p.is_symlink())
