@@ -1370,7 +1370,7 @@ class TestWorksetConnect:
         assert capsys.readouterr().err.strip() == (
             f"Error: Project 'PROJ' would build a second store beside the kept store of "
             f"'proj' in workset 'keptws' (names compare case-blind): {kept}. Use the "
-            f"existing spelling 'proj' to re-adopt it, or remove those directories first."
+            f"existing spelling to re-adopt it, or remove those directories first."
         )
         assert sorted(str(p) for p in root.rglob("*")) == before
         assert _workset_boxes(ws) == {}
@@ -1381,6 +1381,53 @@ class TestWorksetConnect:
             workset="keptws", source=str(ext), project_name="proj", force=False)) == 0
         assert "Warning" not in capsys.readouterr().err
         assert _workset_boxes(ws) == {"proj": str(ext)}
+
+    def test_connect_beside_a_live_member_on_a_shared_arm_is_not_refused(
+        self, config_file, tmp_home, capsys,
+    ):
+        """``/shared/zed`` is ws2's LIVE member's vault, not a kept store of ws3."""
+        from kanibako.commands.workset_cmd import run_connect
+        from kanibako.settings.config_io import dump_doc, load_doc
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        shared = (tmp_home / "shared").resolve()
+        shared.mkdir()
+        for name in ("ws2", "ws3"):
+            ws = create_workset(name, tmp_home / f"{name}_root", std)
+            data = load_doc(ws.root / "workset.yaml")
+            data.setdefault("workset", {})["vault_rw"] = str(shared)
+            dump_doc(ws.root / "workset.yaml", data)
+        for name in ("zed", "zed2"):
+            (tmp_home / name).mkdir()
+        assert run_connect(argparse.Namespace(
+            workset="ws2", source=str(tmp_home / "zed"), project_name="zed",
+            force=False)) == 0
+
+        assert run_connect(argparse.Namespace(
+            workset="ws3", source=str(tmp_home / "zed2"), project_name="ZED",
+            force=False)) == 0
+        assert "kept store" not in capsys.readouterr().err
+
+    def test_connect_names_every_case_variant_kept(self, config_file, tmp_home, capsys):
+        """Two kept variants, ``Proj`` and ``proj``, are both named."""
+        from kanibako.commands.workset_cmd import run_connect
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        root = (tmp_home / "ws_two").resolve()
+        create_workset("twows", root, std)
+        (root / "boxes" / "Proj").mkdir(parents=True)
+        (root / "boxes" / "proj").mkdir()
+        ext = (tmp_home / "ext_two").resolve()
+        ext.mkdir()
+
+        assert run_connect(argparse.Namespace(
+            workset="twows", source=str(ext), project_name="PROJ", force=False)) == 1
+
+        err = capsys.readouterr().err
+        assert "beside the kept store of 'Proj', 'proj' in workset 'twows'" in err
+        assert f"{root / 'boxes' / 'Proj'}, {root / 'boxes' / 'proj'}" in err
 
     def test_connect_refused_inside_the_journal_bracket_leaves_no_entry(
         self, config_file, tmp_home, capsys,

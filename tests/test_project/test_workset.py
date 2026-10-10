@@ -451,8 +451,10 @@ class TestAddProject:
         assert [p.name for p in ws.projects] == ["proj"]
         assert not (root.resolve() / "boxes" / "Proj").exists()
 
-    def test_case_variant_of_a_kept_vault_leaf_raises_creating_nothing(self, std, tmp_home):
+    def test_case_variant_of_a_kept_vault_leaf_is_refused(self, std, tmp_home):
         """A lone kept vault leaf ``proj`` (no box dir) still refuses ``Proj``."""
+        from kanibako.project.workset import refuse_case_variant_store
+
         root = tmp_home / "worksets" / "my-set"
         ws = create_workset("my-set", root, std)
         leaf = root.resolve() / "vault" / "rw" / "proj"
@@ -462,10 +464,8 @@ class TestAddProject:
                 r"Project 'Proj' would build a second store beside the kept store of "
                 r"'proj' in workset 'my-set' \(names compare case-blind\): "
                 + str(leaf))):
-            add_project(ws, "Proj", tmp_home / "project")
-        assert ws.projects == []
-        assert not (root.resolve() / "boxes" / "Proj").exists()
-        assert not (root.resolve() / "vault" / "rw" / "Proj").exists()
+            refuse_case_variant_store(ws, "Proj", std)
+        refuse_case_variant_store(ws, "proj", std)  # the exact spelling re-adopts
 
     def test_new_member_warns_on_adopting_a_leftover_vault_leaf(
         self, std, tmp_home, capsys,

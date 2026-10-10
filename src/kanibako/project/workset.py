@@ -1577,8 +1577,6 @@ def add_project(
         raise WorksetError(
             f"Project '{held}' already exists in workset '{ws.name}'."
         )
-    if not restoring:
-        _refuse_case_variant_store(ws, name)
 
     resolved_source = source_path.resolve()
     literal_source = Path(literal_path(source_path))
@@ -1727,28 +1725,49 @@ def add_project(
     return proj
 
 
-def _refuse_case_variant_store(ws: Workset, name: str) -> None:
-    """Refuse *name* when *ws* keeps a store (box dir or vault leaf) under a case variant.
+def refuse_case_variant_store(ws: Workset, name: str, std: StandardPaths) -> None:
+    """Refuse NEW member *name* when *ws* keeps a store under a case variant of it.
 
     ⚑ Case-blind (§0): ``PROJ`` after a plain disconnect of ``proj`` would build a second
-    store beside the kept one and orphan it.  The exact spelling re-adopts it instead.
+    store beside the kept one and orphan it.  Called by the callers that mint a member
+    (connect, named create, duplicate), never by a relocation: a move may keep the
+    box's own leaf on purpose.  A leaf a LIVE member of any workset owns (a shared arm)
+    is that box's store, not a kept one.
     """
-    vault_ro, vault_rw = resolve_workset_vault_pair(ws.root, early=ws.early_scope)
-    found = sorted(
-        entry
-        for parent in (ws.projects_dir, vault_ro, vault_rw)
-        if parent is not None and parent.is_dir()
-        for entry in parent.iterdir()
-        if entry.name != name and find_identifier(name, (entry.name,)) is not None
-    )
+    bases = _member_store_bases(ws)
+    found = [entry
+             for base in bases if base.is_dir()
+             for entry in sorted(base.iterdir())
+             if entry.name != name and find_identifier(name, (entry.name,)) is not None]
     if found:
-        shown = ", ".join(str(p) for p in found)
+        live = _live_member_stores(std, {base.resolve() for base in bases})
+        found = [entry for entry in found
+                 if (entry.parent.resolve(), entry.name) not in live]
+    if found:
+        spellings = ", ".join(f"'{s}'" for s in dict.fromkeys(e.name for e in found))
         raise WorksetError(
             f"Project '{name}' would build a second store beside the kept store of "
-            f"'{found[0].name}' in workset '{ws.name}' (names compare case-blind): "
-            f"{shown}. Use the existing spelling '{found[0].name}' to re-adopt it, "
-            f"or remove those directories first."
+            f"{spellings} in workset '{ws.name}' (names compare case-blind): "
+            f"{', '.join(str(e) for e in found)}. Use the existing spelling to "
+            f"re-adopt it, or remove those directories first."
         )
+
+
+def _live_member_stores(std: StandardPaths, bases: set[Path]) -> set[tuple[Path, str]]:
+    """``(base, member)`` for each live member of any workset that stores under *bases*."""
+    live: set[tuple[Path, str]] = set()
+    named: list[tuple[str, Path | None]] = [("", None), *list_worksets(std).items()]
+    for ws_name, root in named:
+        try:
+            other = (default_workset(std) if root is None
+                     else load_workset(root, ws_name, early_system=std.early_system))
+            other_bases = _member_store_bases(other)
+        except (WorksetError, ConfigError):
+            continue  # unreadable: its stores stay counted, so the check refuses
+        for base in other_bases:
+            if base.resolve() in bases:
+                live.update((base.resolve(), p.name) for p in other.projects)
+    return live
 
 
 def _warn_adopted_vault_leaves(name: str, leaves: Iterable[Path | None]) -> None:

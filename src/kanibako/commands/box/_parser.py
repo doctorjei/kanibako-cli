@@ -38,6 +38,7 @@ from kanibako.errors import (BoxNameError, ContainerError, DerivedBoxNameError, 
 from kanibako.project.names import read_names
 from kanibako.project.workset import (
     Workset, add_project, box_logs_to_purge, list_worksets, load_workset,
+    refuse_case_variant_store,
 )
 from kanibako.snapshots import box_snapshot_store
 from kanibako.settings.messages import (
@@ -933,6 +934,11 @@ def _plan_workset_member(std, workset: str, name: str,
         print("Error: " + ERR_WORKSET_NULL_WORKSPACES % (
             ws.root / WORKSET_META_FILE, f"a workspace for '{name}'",
         ), file=sys.stderr)
+        return None
+    try:
+        refuse_case_variant_store(ws, name, std)
+    except WorksetError as e:
+        print(f"Error: {e}", file=sys.stderr)
         return None
     return ws, name, False
 
