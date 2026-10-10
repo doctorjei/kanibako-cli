@@ -237,7 +237,56 @@ class TestBoxMove:
     def test_a_failed_retire_is_a_note_and_the_move_succeeds(
         self, config_file, tmp_home, credentials_dir, monkeypatch, capsys,
     ):
-        """The old workspace's delete failing leaves it, names it, and keeps rc 0."""
+        """The rmtree AND its ``remove_box_tree`` escalation failing leaves the old
+        workspace, names it, and keeps rc 0.
+
+        ⚑ The escalation is pinned to fail: unpatched, it reaches a real ``podman
+        unshare rm`` on a host that has podman and deletes the tree (CI red).
+        """
+        from kanibako.commands.box import _lifecycle
+
+        project_dir, dest = self._stuck_move(config_file, tmp_home, monkeypatch)
+        escalated = []
+        monkeypatch.setattr(
+            _lifecycle, "remove_box_tree", lambda path: escalated.append(path) or False,
+        )
+        assert run_move(_move_args(project_dir, dest)) == 0
+        assert escalated == [project_dir]
+        assert (dest / "f.txt").read_text() == "data"
+        assert (project_dir / "f.txt").read_text() == "data"
+        err = capsys.readouterr().err
+        assert f"Note: could not fully remove the old workspace {project_dir}" in err
+        assert f"{project_dir} still holds f.txt, a partial leftover" in err
+
+
+    def test_a_failed_rmtree_escalates_and_the_retire_is_silent(
+        self, config_file, tmp_home, credentials_dir, monkeypatch, capsys,
+    ):
+        """The rmtree failing hands the old workspace to ``remove_box_tree``; when that
+        removes it, the move succeeds with no Note."""
+        import shutil
+
+        from kanibako.commands.box import _lifecycle
+
+        real_rmtree = shutil.rmtree  # before ``_stuck_move`` patches it
+        project_dir, dest = self._stuck_move(config_file, tmp_home, monkeypatch)
+        escalated = []
+
+        def remove_box_tree(path):
+            escalated.append(path)
+            real_rmtree(path)
+            return True
+
+        monkeypatch.setattr(_lifecycle, "remove_box_tree", remove_box_tree)
+        assert run_move(_move_args(project_dir, dest)) == 0
+        assert escalated == [project_dir]
+        assert (dest / "f.txt").read_text() == "data"
+        assert not project_dir.exists()
+        assert "could not fully remove the old workspace" not in capsys.readouterr().err
+
+    @staticmethod
+    def _stuck_move(config_file, tmp_home, monkeypatch):
+        """Make a box at ``stuck`` whose ``shutil.rmtree`` raises; return it and a dest."""
         import shutil
 
         config = load_config(config_file)
@@ -254,13 +303,7 @@ class TestBoxMove:
             return real_rmtree(path, *a, **kw)
 
         monkeypatch.setattr(shutil, "rmtree", rmtree)
-        dest = tmp_home / "unstuck"
-        assert run_move(_move_args(project_dir, dest)) == 0
-        assert (dest / "f.txt").read_text() == "data"
-        assert (project_dir / "f.txt").read_text() == "data"
-        err = capsys.readouterr().err
-        assert f"Note: could not fully remove the old workspace {project_dir}" in err
-        assert f"{project_dir} still holds f.txt, a partial leftover" in err
+        return project_dir, tmp_home / "unstuck"
 
 
 def _seed_links(tree, outside):
