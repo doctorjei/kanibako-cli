@@ -534,7 +534,7 @@ def _undo_new_path(path: Path, existed: bool, before: frozenset[str] | None) -> 
 
 def _remove_created_root(path: Path) -> None:
     """Remove *path*, which this duplicate created, naming in a Note whatever remains."""
-    from kanibako.commands.box._lifecycle import _unwind_created_root
+    from kanibako.project.workset import _unwind_created_root
 
     _unwind_created_root(path)
 

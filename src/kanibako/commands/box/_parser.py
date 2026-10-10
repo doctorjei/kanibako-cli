@@ -1574,6 +1574,7 @@ def run_create(args: argparse.Namespace, outcome: _CreateOutcome) -> int:
             try:
                 add_project(
                     _named_ws, _member, _named_ws.workspaces_dir / _member, std,
+                    noun="box creation",
                 )
             except WorksetError as e:
                 _undo_member = None  # ``add_project`` unwinds its own writes

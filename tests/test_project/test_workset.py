@@ -610,6 +610,30 @@ class TestAddProjectConnectGuard:
         # And the global standalone: registration is GONE — NOT dual-registered.
         assert "kx_standalone_box" not in registry_store.load_standalone(std.registry)
 
+    @pytest.mark.parametrize("covered", [False, True])
+    def test_an_outer_row_is_left_to_the_outer_unwind(
+        self, std, tmp_home, monkeypatch, covered,
+    ):
+        """Under *outer*, the absorbed row is restored here unless *outer_row* names it."""
+        import kanibako.settings.paths as paths_mod
+        from kanibako.project import registry_store
+        from kanibako.project.workset import _Unwind
+
+        ws = create_workset("my-set", tmp_home / "worksets" / "my-set", std)
+        external = (tmp_home / "standalone_box").resolve()
+        self._make_standalone(external)
+        registry_store.register_standalone(std.registry, "kx_standalone_box", external)
+
+        def boom(*a, **k):
+            raise RuntimeError("boxes: registration failed")
+
+        monkeypatch.setattr(paths_mod, "_register_workset_box_membership", boom)
+        row = ("KX_standalone_box", str(external)) if covered else None
+        with pytest.raises(RuntimeError):
+            add_project(ws, "sb", external, std, force=True, outer=_Unwind(), outer_row=row)
+        assert ("kx_standalone_box" in registry_store.load_standalone(std.registry)) \
+            is not covered
+
     def test_force_roundtrip_disconnect_leaves_standalone_for_box_register(
         self, std, tmp_home, config
     ):
@@ -2377,6 +2401,33 @@ class TestCreateWorksetFailConsistent:
         from kanibako.project.names import read_names
         assert "my-set" not in read_names(std.registry).get("worksets", {})
 
+    def test_a_root_the_unwind_cannot_remove_is_named(self, std, tmp_home, monkeypatch,
+                                                       capsys):
+        import os
+
+        import kanibako.project.workset as ws_mod
+
+        parent = tmp_home / "worksets"
+        root = parent / "my-set"
+
+        def boom(*a, **k):
+            os.chmod(parent, 0o555)  # the unwind's rmtree cannot unlink *root* now
+            raise _Boom("register_name failed")
+
+        monkeypatch.setattr(ws_mod, "register_name", boom)
+        try:
+            with pytest.raises(_Boom):
+                create_workset("my-set", root, std)
+        finally:
+            os.chmod(parent, 0o755)
+
+        assert root.is_dir()
+        assert capsys.readouterr().err == (
+            f"Note: could not remove {root}, which this operation created; remove it "
+            "before you run it again\n"
+            f"Note: the workset creation failed and was not fully undone; check 'my-set' "
+            f"at {root} (the notes above name what the rollback could not put back)\n")
+
 
 class TestDeleteWorksetSelfHealing:
     def test_irreversible_rmtree_after_registries_clean(self, std, tmp_home, monkeypatch):
@@ -2447,6 +2498,95 @@ class TestAddProjectFailConsistent:
         assert all(p.name != "extproj" for p in ws.projects)
         assert external.is_dir()
         assert (external / "keep.txt").read_text() == "keep me"
+
+    @staticmethod
+    def _fail_locked(monkeypatch, boxes):
+        """The membership write fails, and ``boxes/<name>`` cannot be removed after it."""
+        import os
+
+        import kanibako.settings.paths as paths_mod
+
+        def boom(*a, **k):
+            os.chmod(boxes, 0o555)
+            raise _Boom("boxes: registration failed")
+
+        monkeypatch.setattr(paths_mod, "_register_workset_box_membership", boom)
+
+    def test_a_box_dir_the_unwind_cannot_remove_is_named(self, std, tmp_home, monkeypatch,
+                                                         capsys):
+        import os
+
+        ws = create_workset("my-set", tmp_home / "worksets" / "my-set", std)
+        boxes = ws.projects_dir
+        self._fail_locked(monkeypatch, boxes)
+        try:
+            with pytest.raises(_Boom):
+                add_project(ws, "proj", ws.workspaces_dir / "proj", noun="workset connect")
+        finally:
+            os.chmod(boxes, 0o755)
+
+        assert (boxes / "proj").is_dir()
+        assert not (ws.workspaces_dir / "proj").exists()
+        assert capsys.readouterr().err == (
+            f"Note: could not remove {boxes / 'proj'}, which this operation created; "
+            "remove it before you run it again\n"
+            f"Note: the workset connect failed and was not fully undone; check 'proj' in "
+            f"workset 'my-set' at {ws.root} (the notes above name what the rollback could "
+            "not put back)\n")
+
+    def test_a_restore_names_its_leftover_and_hands_errors_to_the_outer_unwind(
+        self, std, tmp_home, monkeypatch, capsys,
+    ):
+        """A move's restore prints no summary of its own; a RAISING undo step goes to *outer*."""
+        import os
+
+        import kanibako.settings.paths as paths_mod
+        from kanibako.project.workset import _Unwind
+
+        ws = create_workset("my-set", tmp_home / "worksets" / "my-set", std)
+        boxes = ws.projects_dir
+        undo_err = OSError("membership undo failed")
+
+        def raising_undo(*a, **k):
+            def undo():
+                raise undo_err
+            return undo
+
+        monkeypatch.setattr(paths_mod, "_workset_box_membership_undo", raising_undo)
+        outer = _Unwind()
+        self._fail_locked(monkeypatch, boxes)
+        try:
+            with pytest.raises(_Boom):
+                add_project(ws, "proj", ws.workspaces_dir / "proj", restoring=True,
+                            outer=outer)
+        finally:
+            os.chmod(boxes, 0o755)
+
+        assert capsys.readouterr().err == (
+            f"Note: could not remove {boxes / 'proj'}, which this operation created; "
+            "remove it before you run it again\n")
+        assert outer.errors == [undo_err]
+        assert outer.failed == 2
+
+    def test_an_outer_unwind_owns_the_leaves(self, std, tmp_home, monkeypatch, capsys):
+        """With *outer* (not restoring), the created leaves are the outer unwind's to remove."""
+        import os
+
+        from kanibako.project.workset import _Unwind
+
+        ws = create_workset("my-set", tmp_home / "worksets" / "my-set", std)
+        boxes = ws.projects_dir
+        outer = _Unwind()
+        self._fail_locked(monkeypatch, boxes)
+        try:
+            with pytest.raises(_Boom):
+                add_project(ws, "proj", ws.workspaces_dir / "proj", outer=outer)
+        finally:
+            os.chmod(boxes, 0o755)
+
+        assert capsys.readouterr().err == ""
+        assert (boxes / "proj").is_dir() and (ws.workspaces_dir / "proj").is_dir()
+        assert outer.failed == 0
 
 
 class TestRemoveProjectFailConsistent:

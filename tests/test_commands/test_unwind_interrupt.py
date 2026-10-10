@@ -65,6 +65,20 @@ class TestRunHoldsInterrupt:
         assert unwind.failed == 1
 
 
+class TestFinishKeepsErrors:
+    def test_a_failed_cleanup_is_kept_for_the_report(self):
+        """A success cleanup that raises is kept in ``errors``; the next still runs."""
+        boom = OSError("boom")
+        ran: list[str] = []
+        unwind = _Unwind()
+        unwind.on_success(_record(ran, "a", boom))
+        unwind.on_success(_record(ran, "b"))
+        unwind.finish()
+        assert ran == ["a", "b"]
+        assert unwind.errors == [boom]
+        assert unwind.finished == 2
+
+
 class TestNoteInterruptedHoldsInterrupt:
     def test_interrupted_note_does_not_drop_the_rest(self):
         ran: list[str] = []

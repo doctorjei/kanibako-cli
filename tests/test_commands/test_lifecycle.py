@@ -1463,6 +1463,164 @@ class TestNoWorkspaceLossBeforeSuccess:
         assert (dest / "file.txt").read_text() == "keep"
         assert leaf.is_symlink() and leaf.resolve() == dest.resolve()
 
+    def test_a_tail_step_that_fails_is_named(self, env, monkeypatch, capsys):
+        """A success-tail step that raises gets a Note; the move still lands."""
+        import os
+
+        config, std, tmp_home = env
+        ws = _make_workset(env)
+        leaf, state = self._member(env, ws)
+        dest = tmp_home / "ext" / "alpha"
+        real_retire = lc._retire_old_workspace
+
+        def retire_then_lock(old, landed):
+            real_retire(old, landed)
+            os.chmod(ws.workspaces_dir, 0o555)  # the discoverability link cannot land now
+
+        monkeypatch.setattr(lc, "_retire_old_workspace", retire_then_lock)
+        try:
+            new = execute_lifecycle(state, TargetSpec(location=dest, verb="move"), std,
+                                    config, confirm=_conf_yes())
+        finally:
+            os.chmod(ws.workspaces_dir, 0o755)
+        assert new.is_external
+        assert (dest / "file.txt").read_text() == "keep"
+        assert not leaf.exists() and not leaf.is_symlink()
+        err = capsys.readouterr().err
+        assert ("Note: could not finish a step of the move: [Errno 13] Permission denied: "
+                f"'{dest}' -> '{leaf}'\n") in err
+
+    def test_a_target_leaf_left_by_the_unwind_is_named_once(self, env, monkeypatch, capsys):
+        """A move into a workset whose membership write fails names ``boxes/<name>`` once."""
+        import os
+
+        import kanibako.settings.paths as paths_mod
+
+        config, std, tmp_home = env
+        pdir = _make_default(env)
+        ws = _make_workset(env)
+        boxes = ws.projects_dir
+        real = paths_mod._register_workset_box_membership
+
+        def locked(ws_root, *a, **k):
+            if Path(ws_root) == ws.root:
+                os.chmod(boxes, 0o555)  # the unwind cannot remove boxes/proj now
+                os.chmod(ws.root, 0o555)  # and the membership write fails for real
+            return real(ws_root, *a, **k)
+
+        monkeypatch.setattr(paths_mod, "_register_workset_box_membership", locked)
+        state = resolve_lifecycle_target(str(pdir), std, config)
+        try:
+            with pytest.raises(PermissionError):
+                execute_lifecycle(state, TargetSpec(location=ws.workspaces_dir / "proj",
+                                                    ownership="ws", verb="move"),
+                                  std, config, confirm=_conf_yes())
+        finally:
+            os.chmod(ws.root, 0o755)
+            os.chmod(boxes, 0o755)
+        err = capsys.readouterr().err
+        assert err.count(f"could not remove {boxes / 'proj'}") == 1, err
+        assert "Note: the move failed and was not fully undone" in err, err
+
+    def test_a_target_link_left_by_the_unwind_is_named_once(self, env, monkeypatch, capsys):
+        """An external move into a workset names its leftover discoverability link once."""
+        import os
+
+        import kanibako.settings.paths as paths_mod
+
+        config, std, tmp_home = env
+        pdir = _make_default(env)
+        ws = _make_workset(env)
+        link = ws.workspaces_dir / "proj"
+        real = paths_mod._register_workset_box_membership
+
+        def locked(ws_root, *a, **k):
+            if Path(ws_root) == ws.root:
+                os.chmod(ws.workspaces_dir, 0o555)  # the unwind cannot unlink the link now
+                os.chmod(ws.root, 0o555)  # and the membership write fails for real
+            return real(ws_root, *a, **k)
+
+        monkeypatch.setattr(paths_mod, "_register_workset_box_membership", locked)
+        state = resolve_lifecycle_target(str(pdir), std, config)
+        try:
+            with pytest.raises(PermissionError):
+                execute_lifecycle(state, TargetSpec(location=tmp_home / "ext" / "proj",
+                                                    ownership="ws", verb="move"),
+                                  std, config, confirm=_conf_yes())
+        finally:
+            os.chmod(ws.root, 0o755)
+            os.chmod(ws.workspaces_dir, 0o755)
+        err = capsys.readouterr().err
+        assert link.is_symlink()
+        assert err.count(str(link)) == 1, err
+        assert f"Note: could not remove {link}, which this operation created" in err, err
+
+    def test_a_standalone_row_left_unrestored_is_named_once(self, env, monkeypatch, capsys):
+        """An in-place convert of a registered standalone box into a workset names its row once."""
+        import os
+
+        import kanibako.settings.paths as paths_mod
+        from kanibako.project import registry_store
+
+        config, std, tmp_home = env
+        ws = _make_workset(env)
+        root = tmp_home / "solo"
+        root.mkdir()
+        resolve_standalone_project(std, config, project_dir=str(root), initialize=True)
+        state = resolve_lifecycle_target(str(root), std, config)
+        assert registry_store.standalone_root(std.registry, state.name) is not None
+        regdir = std.registry.parent
+        real = paths_mod._register_workset_box_membership
+
+        def locked(ws_root, *a, **k):
+            if Path(ws_root) == ws.root:
+                os.chmod(regdir, 0o555)  # neither re-register of the row can land now
+                os.chmod(ws.root, 0o555)  # and the membership write fails for real
+            return real(ws_root, *a, **k)
+
+        monkeypatch.setattr(paths_mod, "_register_workset_box_membership", locked)
+        try:
+            with pytest.raises(PermissionError):
+                execute_lifecycle(state, TargetSpec(ownership="ws", verb="convert"),
+                                  std, config, confirm=_conf_yes())
+        finally:
+            os.chmod(ws.root, 0o755)
+            os.chmod(regdir, 0o755)
+        err = capsys.readouterr().err
+        assert err.count(f"could not undo a step of the conversion: [Errno 13] Permission "
+                         f"denied: '{regdir}") == 1, err
+
+    def test_a_raising_undo_in_the_member_restore_is_named(self, env, monkeypatch, capsys):
+        """The restore's own add_project undo hands a raising step to the move's unwind."""
+        import kanibako.settings.paths as paths_mod
+
+        config, std, tmp_home = env
+        ws = _make_workset(env)
+        _leaf, state = self._member(env, ws)
+
+        def raising_undo(*a, **k):
+            def undo():
+                raise OSError("membership undo failed")
+            return undo
+
+        def refuse(*a, **k):
+            raise OSError("membership write failed")
+
+        def late(*a, **k):
+            monkeypatch.setattr(paths_mod, "_workset_box_membership_undo", raising_undo)
+            monkeypatch.setattr(paths_mod, "_register_workset_box_membership", refuse)
+            raise RuntimeError("injected late failure")
+
+        monkeypatch.setattr(lc, "write_box_enable_vault", late)
+        with pytest.raises(RuntimeError, match="injected"):
+            execute_lifecycle(state, TargetSpec(location=tmp_home / "ext" / "alpha",
+                                                verb="move"),
+                              std, config, confirm=_conf_yes())
+        err = capsys.readouterr().err
+        assert "Note: could not restore the record of 'alpha'" in err, err
+        assert "Note: could not undo a step of the move: membership undo failed" in err, err
+        assert err.count("was not fully undone") == 1, err
+
     def test_remap_deletes_nothing_and_says_so(self, env, capsys):
         """M1: remapping a named box to a copy leaves the old in-tree leaf and names it."""
         import shutil

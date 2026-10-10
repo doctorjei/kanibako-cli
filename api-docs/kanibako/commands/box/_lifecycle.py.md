@@ -57,13 +57,13 @@ def _name_held_in_target_workset(target_mode: BoxMode | None, target_ws: Workset
 def _validate(state: ProjectState, spec: TargetSpec, std: StandardPaths, config: BootstrapConfig, *, force: bool, cwd: Path) -> dict
 def _note_interrupt_undone(state: ProjectState, spec: TargetSpec) -> None
 def _note_unwind_incomplete(state: ProjectState, spec: TargetSpec, dest: Path | None, errors: Sequence[Exception], *, interrupted: bool) -> None
+def _verb_noun(spec: TargetSpec) -> str
 def _run_steps(state: ProjectState, spec: TargetSpec, std: StandardPaths, config: BootstrapConfig, plan: dict, unwind: _Unwind) -> tuple[ProjectState, _SourceTeardown | None]
 def _retire_old_workspace(old: Path, landed: Path) -> None
 def _leftover_entries(path: Path, before: Collection[str]=()) -> str
 def _entry_names(path: Path) -> frozenset[str] | None
 def _arm_leftover_note(unwind: _Unwind, path: Path) -> None
 def _apply_ownership_and_markers(state: ProjectState, std: StandardPaths, config: BootstrapConfig, unwind: _Unwind, *, target_mode: BoxMode, target_ws: Workset | None, new_name: str, new_workspace: Path, relocating: bool, dest: Path | None, requested_name: str='') -> tuple[ProjectState, _SourceTeardown | None]
-def _unwind_created_root(path: Path, remove: Callable[[Path], bool] | None=None) -> bool
 def _copy_metadata(src_metadata: Path, src_shell: Path, dst_metadata: Path, *, shell_into_metadata: bool, home_leaf: str='home', unwind: _Unwind) -> Path
 def _deliver_carried_box_settings(state: ProjectState, dst_box_tier: Path, *, early: EarlyScope) -> None
 def _vault_leaf_has_contents(leaf: Path) -> bool
@@ -87,7 +87,7 @@ def _standalone_source_row(std: StandardPaths, name: str, root: Path, new_name: 
 def _carry_standalone_canon(teardown: _SourceTeardown, std: StandardPaths, src_root: Path, dst_root: Path) -> _SourceTeardown
 def _stash_source_marker(teardown: _SourceTeardown, unwind: _Unwind) -> _SourceTeardown
 def _drop_source_row(teardown: _SourceTeardown | None, unwind: _Unwind) -> None
-def _finish_relocation(state: ProjectState, new_state: ProjectState, std: StandardPaths, teardown: _SourceTeardown | None, later: list[Callable[[], None]], progress: _TailProgress | None=None) -> None
+def _finish_relocation(state: ProjectState, new_state: ProjectState, std: StandardPaths, teardown: _SourceTeardown | None, later: list[Callable[[], None]], progress: _TailProgress | None=None, errors: list[Exception] | None=None) -> None
 def _note_interrupted_tail(state: ProjectState, new_state: ProjectState, std: StandardPaths, teardown: _SourceTeardown | None, old_workspaces: list[Path], progress: _TailProgress) -> None
 def _holds_any(path: Path, stores: Collection[Path]) -> bool
 def _on_disk(paths: Iterable[Path]) -> list[Path]

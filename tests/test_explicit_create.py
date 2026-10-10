@@ -1876,3 +1876,36 @@ class TestRefusedCreateRemovesTheDirsItMade:
         with pytest.raises(SystemExit) as exc:
             main(shlex.split(cure)[1:])
         assert exc.value.code == 0
+
+
+def test_a_member_create_names_its_failed_rollback_as_a_create(
+    config_file, tmp_home, credentials_dir, capsys, monkeypatch,
+):
+    """``box create`` of a member whose membership write fails names the create, not a connect."""
+    import os
+
+    import kanibako.settings.paths as paths_mod
+    from kanibako.commands.box._parser import run_create
+    from kanibako.project.workset import create_workset
+
+    _config, std = _std(config_file)
+    ws = create_workset("gamma", tmp_home / "gamma", std)
+    boxes = ws.projects_dir
+    real = paths_mod._register_workset_box_membership
+
+    def locked(*a, **k):
+        os.chmod(boxes, 0o555)  # the unwind cannot remove boxes/alpha now
+        os.chmod(ws.root, 0o555)  # and the membership write itself fails for real
+        return real(*a, **k)
+
+    monkeypatch.setattr(paths_mod, "_register_workset_box_membership", locked)
+    monkeypatch.chdir(ws.root)
+    try:
+        assert run_create(_create_args("alpha")) == 1
+    finally:
+        os.chmod(ws.root, 0o755)
+        os.chmod(boxes, 0o755)
+    err = capsys.readouterr().err
+    assert (f"Note: the box creation failed and was not fully undone; check 'alpha' in "
+            f"workset 'gamma' at {ws.root}") in err, err
+    assert "workset connect" not in err

@@ -128,6 +128,9 @@ from kanibako.project.workset import (
     _symlink_loop,
     SYMLINK_LOOP_WHY,
     _Unwind,
+    _note_unwind_errors,
+    _note_unwind_incomplete as _note_rollback_incomplete,
+    _unwind_created_root,
 )
 
 if TYPE_CHECKING:
@@ -662,9 +665,8 @@ def copy_into_workset(
     # ⚑ Taken BEFORE add_project, which adopts an existing leaf: the rollback deletes only
     # the leaves this call created (a ``--bare`` or ``--force`` duplicate adopts on purpose).
     existed = _existing_member_leaves(ws, proj_name)
-    # ⚑ Register the IN-TREE workspace dir: a duplicate is always INTERNAL, so add_project
-    # makes a real directory instead of symlinking back at the source.
-    add_project(ws, proj_name, workspace, std)
+    # ⚑ The IN-TREE dir: a duplicate is INTERNAL, so add_project makes it, never a link.
+    add_project(ws, proj_name, workspace, std, noun="duplicate")
 
     # ⚑ Failure-consistency: a crash after add_project but during the copies would strand a
     # registered-but-incomplete project. Roll registration + created dirs back, then re-raise.
@@ -1232,6 +1234,7 @@ def execute_lifecycle(
         _drop_source_row(teardown, unwind)
         sealed = True
         unwind.finish()
+        _note_unwind_errors(f"finish a step of the {_verb_noun(spec)}", unwind.errors)
     except BaseException as exc:
         # ⚑⚑ ``BaseException``, not ``Exception``: an interrupt after the release would
         # otherwise skip every compensating action and leave the stash in ``$TMPDIR``.
@@ -1268,14 +1271,10 @@ def _note_unwind_incomplete(
 ) -> None:
     """Tell the user the rollback left work undone, and where to look.
 
-    ⚑ A step that returned ``False`` printed its own Note; one that RAISED is named here
-    from *errors*.  The CLI then exits 130 on an interrupt, or prints the error.
+    The Note is :func:`kanibako.project.workset._note_unwind_incomplete`'s.  The CLI then
+    exits 130 on an interrupt, or prints the error.
     """
-    import sys
-
-    noun = {"move": "move", "convert": "conversion"}.get(spec.verb or "", "remap")
-    for err in errors:
-        print(f"Note: could not undo a step of the {noun}: {err}", file=sys.stderr)
+    noun = _verb_noun(spec)
     src = state.workspace_path
     if noun == "remap":
         where = f"'{state.name}' may still be registered at {dest or src}"
@@ -1283,10 +1282,12 @@ def _note_unwind_incomplete(
         where = f"check '{state.name}' at {src}"
     else:
         where = f"check '{state.name}' at {src} and at {dest}"
-    lead = (f"Interrupted: the {noun} was not fully undone" if interrupted
-            else f"Note: the {noun} failed and was not fully undone")
-    print(f"{lead}; {where} (the notes above name what the rollback could not put "
-          "back)", file=sys.stderr)
+    _note_rollback_incomplete(noun, where, errors, interrupted=interrupted)
+
+
+def _verb_noun(spec: TargetSpec) -> str:
+    """The noun a Note uses for *spec*'s verb: move, conversion, or remap."""
+    return {"move": "move", "convert": "conversion"}.get(spec.verb or "", "remap")
 
 
 def _run_steps(
@@ -1407,7 +1408,8 @@ def _run_steps(
     # final, A9: a standalone convert regenerates the name), the source teardown, STEP 5.
     progress = _TailProgress()
     unwind.on_success(
-        partial(_finish_relocation, state, new_state, std, teardown, later, progress),
+        partial(_finish_relocation, state, new_state, std, teardown, later, progress,
+                unwind.errors),
         interrupted=partial(_note_interrupted_tail, state, new_state, std, teardown,
                             [old for old, _ in retired], progress),
     )
@@ -1547,30 +1549,6 @@ def _apply_ownership_and_markers(
 
 
 # -- per-target-mode ownership steps ---------------------------------------
-
-def _unwind_created_root(
-    path: Path, remove: Callable[[Path], bool] | None = None,
-) -> bool:
-    """Undo a root this op created, which may be a LINK or a partial copy.
-
-    A link is UNLINKED, never removed through; a tree goes through the escalating
-    *remove* (``remove_path`` by default).  Whatever remains is named in a Note, because
-    a leftover makes every retry fail with "Destination already exists".  Returns
-    ``False`` then.
-    """
-    import sys
-
-    try:
-        if (remove or remove_path)(path):
-            return True
-    except OSError:
-        pass
-    if path.exists() or path.is_symlink():
-        print(f"Note: could not remove {path}, which this operation created; "
-              f"remove it before you run it again", file=sys.stderr)
-        return False
-    return True
-
 
 def _copy_metadata(
     src_metadata: Path,
@@ -2382,12 +2360,14 @@ def _finish_relocation(
     teardown: _SourceTeardown | None,
     later: list[Callable[[], None]],
     progress: _TailProgress | None = None,
+    errors: list[Exception] | None = None,
 ) -> None:
     """The success tail: steps 4b and 4c, the source teardown, then *later*, then the stash.
 
-    ⚑ The destination is the box by now, so a failed step is passed over and the Note
-    names what it left.  An interrupt is named by :func:`_note_interrupted_tail`, which
-    reads *progress*.  Steps 4b and 4c have no finishing command.
+    ⚑ The destination is the box by now, so a failed step is passed over: the Note below
+    names the store it left, and the step's error goes to *errors* for its own Note.  An
+    interrupt is named by :func:`_note_interrupted_tail`, which reads *progress*.  Steps
+    4b and 4c have no finishing command.
     """
     import os
     import sys
@@ -2447,8 +2427,9 @@ def _finish_relocation(
     for progress.step, step in steps:
         try:
             step()
-        except Exception:  # noqa: BLE001 - the Note below names what it left
-            pass
+        except Exception as err:  # noqa: BLE001 - kept for the caller's Note
+            if errors is not None:
+                errors.append(err)
     landed = [p.resolve() for p in (new_state.workspace_path, new_state.metadata_path,
                                     new_state.shell_path, new_state.vault_ro,
                                     new_state.vault_rw) if p is not None]
@@ -3370,8 +3351,7 @@ def _to_workset(
         shell_source = stash_boxes / "home"
 
         def _restore_source() -> bool:
-            # ⚑ Each step runs even when an earlier one failed, and reports its own
-            # failure: ``_Unwind.run`` swallows whatever an action raises.
+            # ⚑ Each step runs even when an earlier one failed, and reports its own failure.
             import sys
 
             def _copy_back(dst: Path | None, copy: Callable[[], object]) -> None:
@@ -3400,7 +3380,8 @@ def _to_workset(
             steps: list[tuple[str, Path | None, Callable[[], object]]] = [
                 (f"the record of '{src_name}' in workset '{src_ws.name}'",
                  src_source_path,
-                 lambda: add_project(src_ws, src_name, src_source_path, std, restoring=True)),
+                 lambda: add_project(src_ws, src_name, src_source_path, std, restoring=True,
+                                     outer=unwind)),
                 ("the box tree", src_ws.projects_dir / src_name, _box_tree),
                 # ⚑ THE VAULT CARRY, unwind leg (P1 data loss): leg 1 released the source
                 # leaves into the stash; no-ops when leg 1 carried nothing.
@@ -3441,13 +3422,13 @@ def _to_workset(
             src_ws, src_name, dst_vault, state.enable_vault, reraise=True,
         )
 
-    # ⚑ ``force=True``: an absorb INTO a workset must override the standalone-marker
-    # connect guard (B2a) — a standalone source still carries its root ``workset.yaml`` marker
-    # here, since the marker is removed LATER in the convert. No-op for other modes.
+    # ⚑ ``force=True``: an absorb INTO a workset overrides the marker connect guard (B2a); a
+    # standalone source's root ``workset.yaml`` marker goes LATER in the convert; else no-op.
     # ⚑ The unwind deletes a target leaf only when THIS op created it — ``add_project``
     # adopts an existing one, and on a same-workset, same-name relocation the workspace
     # leaf is the source's own, intact workspace.
     existed = _existing_member_leaves(target_ws, new_name)
+    outer_row: tuple[str, str] | None = None
     if state.mode is BoxMode.standalone:
         # ⚑ ``force`` MOVES a standalone source's row into the workset; a rollback puts it
         # back once the target member is gone (pushed under it, so it runs after).
@@ -3457,9 +3438,11 @@ def _to_workset(
         if prior is not None:
             unwind.push(partial(registry_store.register_standalone, std.registry,
                                 state.name, Path(prior)))
+            outer_row = (state.name, prior)
     # Armed before the register, which creates leaves before it records the member.
     unwind.push(lambda: _unwind_target_member(target_ws, new_name, existed))
-    add_project(target_ws, new_name, source_for_add, std, force=True)
+    add_project(target_ws, new_name, source_for_add, std, force=True, outer=unwind,
+                outer_row=outer_row)
 
     dst_project = target_ws.projects_dir / new_name
     # Copy metadata (minus lock+home) into the workset boxes dir.

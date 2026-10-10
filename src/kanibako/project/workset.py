@@ -44,6 +44,7 @@ import sys
 from collections.abc import Iterable, Mapping
 from contextlib import contextmanager
 from dataclasses import dataclass, field, replace
+from functools import partial
 from pathlib import Path
 from typing import Any, Callable
 
@@ -989,12 +990,13 @@ class _Unwind:
             raise held
 
     def finish(self) -> None:
-        """Run success cleanups (best-effort)."""
+        """Run success cleanups (best-effort); a raise is kept in ``errors`` for the report."""
         for action, _ in self.cleanups:
             try:
                 action()
-            except Exception:  # noqa: BLE001
-                pass
+            except Exception as exc:  # noqa: BLE001 - best-effort; kept for the report
+                self.failed += 1
+                self.errors.append(exc)
             self.finished += 1
 
     def note_interrupted(self) -> None:
@@ -1010,6 +1012,50 @@ class _Unwind:
                     pass
         if held is not None:
             raise held
+
+
+def _note_unwind_errors(what: str, errors: Iterable[Exception]) -> None:
+    """Print ``Note: could not <what>: <error>`` for each of *errors*."""
+    for err in errors:
+        print(f"Note: could not {what}: {err}", file=sys.stderr)
+
+
+def _note_unwind_incomplete(
+    noun: str, where: str, errors: Iterable[Exception], *, interrupted: bool,
+) -> None:
+    """THE Note for a rollback that left work undone: a line per error in *errors*, then *where*.
+
+    ⚑ A step that returned ``False`` printed its own Note; one that RAISED is named here.
+    """
+    _note_unwind_errors(f"undo a step of the {noun}", errors)
+    lead = (f"Interrupted: the {noun} was not fully undone" if interrupted
+            else f"Note: the {noun} failed and was not fully undone")
+    print(f"{lead}; {where} (the notes above name what the rollback could not put "
+          "back)", file=sys.stderr)
+
+
+def _unwind_created_root(
+    path: Path, remove: Callable[[Path], bool] | None = None,
+) -> bool:
+    """Undo a root this op created, which may be a LINK or a partial copy.
+
+    A link is UNLINKED, never removed through; a tree goes through the escalating
+    *remove* (``remove_path`` by default).  Whatever remains is named in a Note, because
+    a leftover makes every retry fail with "Destination already exists".  Returns
+    ``False`` then.
+    """
+    from kanibako.runtime.container import remove_path
+
+    try:
+        if (remove or remove_path)(path):
+            return True
+    except OSError:
+        pass
+    if path.exists() or path.is_symlink():
+        print(f"Note: could not remove {path}, which this operation created; "
+              f"remove it before you run it again", file=sys.stderr)
+        return False
+    return True
 
 
 @contextmanager
@@ -1745,8 +1791,6 @@ def create_workset(
 
     # Multi-step: disk skeleton, then the ONE global registration.  A crash between
     # them would orphan dirs, so unwind in reverse: all-or-nothing.
-    import shutil
-
     unwind = _Unwind()
     try:
         # ⚑ Skeleton = the FOUR dirs of :func:`_workset_skeleton_dirs`, which is also
@@ -1754,7 +1798,7 @@ def create_workset(
         # is written at all — no workset.yaml (a workset root need not have one) and
         # no registry.yaml (a workset with no members has no membership to record).
         root.mkdir(parents=True)
-        unwind.push(lambda: shutil.rmtree(root, ignore_errors=True))
+        unwind.push(partial(_unwind_created_root, root))
         ws = Workset(name=name, root=root, early_system=std.early_system)
         # ⚑ *root* was just created empty, so it has no workset.yaml; a resolved leaf
         # differs from its default only through the system file.  A leaf outside *root*
@@ -1774,8 +1818,12 @@ def create_workset(
         # workset, because the name→root entry it writes IS the workset's identity.
         # ⚑ ONE section serves BOTH name lookup AND discovery/list — hence one call.
         register_name(std.registry, name, str(root), section="worksets")
-    except BaseException:
+    except BaseException as exc:
         unwind.run()
+        if unwind.failed:
+            _note_unwind_incomplete("workset creation", f"check '{name}' at {root}",
+                                    unwind.errors,
+                                    interrupted=isinstance(exc, KeyboardInterrupt))
         raise
 
     return ws
@@ -1964,12 +2012,23 @@ def add_project(
     force: bool = False,
     *,
     restoring: bool = False,
+    noun: str | None = None,
+    outer: _Unwind | None = None,
+    outer_row: tuple[str, str] | None = None,
 ) -> WorksetProject:
     """Add a project to a workset; an EXTERNAL *source_path* (with *std*) is CONNECTED instead.
 
     *restoring* marks an unwind re-registering a member it just released: that creates no
     workspace, so a null ``workset.workspaces`` must not block it.  A linked vault leaf
     is kept as it stands.
+
+    A failed unwind of this call is reported by the caller's operation: *noun* names it in
+    the Note printed here, or *outer* (an enclosing unwind) takes the errors for its own.
+    With neither, the caller names the failure itself.  ⚑ An *outer* removes the member's
+    leaves itself (``_unwind_target_member``), so this call does not; a *restoring* call's
+    outer has no such step, so there this call removes what it created.  *outer_row* is
+    the standalone ``(name, root)`` row *outer* re-registers; a forced absorb of that row
+    leaves its restore to *outer*, so a failed re-register is named once.
     """
     # ⚑ Case-blind (§0): the registry write treats ``Proj`` as member ``proj`` and
     # replaces its row, orphaning ``proj``'s store.
@@ -2021,17 +2080,16 @@ def add_project(
 
     # Multi-step: the external case touches a symlink + the box dirs before the
     # durable membership write.  Unwind in reverse so the connect is all-or-nothing.
-    import shutil
-
     unwind = _Unwind()
+    own_leaves = outer is None or restoring
     try:
         # Box dir always real.  exist_ok keeps it idempotent; unwind only rmtrees
         # what we may have created.
         proj_box = ws.projects_dir / name
         existed_box = proj_box.exists()
         proj_box.mkdir(parents=True, exist_ok=True)
-        if not existed_box:
-            unwind.push(lambda: shutil.rmtree(proj_box, ignore_errors=True))
+        if not existed_box and own_leaves:
+            unwind.push(partial(_unwind_created_root, proj_box))
 
         # Vault nests ro/rw ABOVE the box name, matching PRIMARY and STANDALONE.
         # ⚑ Unwind removes the per-box LEAVES only — never the shared ro/rw parents.
@@ -2045,20 +2103,20 @@ def add_project(
         if vault_ro_proj is not None and not vault_ro_proj.is_symlink():
             existed_vault_ro = vault_ro_proj.exists()
             vault_ro_proj.mkdir(parents=True, exist_ok=True)
-            if not existed_vault_ro:
-                unwind.push(lambda: shutil.rmtree(vault_ro_proj, ignore_errors=True))
+            if not existed_vault_ro and own_leaves:
+                unwind.push(partial(_unwind_created_root, vault_ro_proj))
         if vault_rw_proj is not None and not vault_rw_proj.is_symlink():
             existed_vault_rw = vault_rw_proj.exists()
             vault_rw_proj.mkdir(parents=True, exist_ok=True)
-            if not existed_vault_rw:
-                unwind.push(lambda: shutil.rmtree(vault_rw_proj, ignore_errors=True))
+            if not existed_vault_rw and own_leaves:
+                unwind.push(partial(_unwind_created_root, vault_rw_proj))
 
         if is_external:
             # ⚑ workspaces/{name} is a discoverability SYMLINK — never mounted.
             # is_external implies std is not None, but mypy can't track that.
             assert std is not None
             link = ensure_discoverability_link(ws, name, literal_source)
-            if link is not None:
+            if link is not None and own_leaves:
                 unwind.push(
                     lambda: link.unlink() if link.is_symlink() else None
                 )
@@ -2090,14 +2148,17 @@ def add_project(
                             std.registry, dropped_name, Path(dropped_root)
                         )
 
-                    unwind.push(_restore_standalone)
+                    if outer_row is None or not (
+                            find_identifier(dropped_name, (outer_row[0],)) is not None
+                            and dropped_root == outer_row[1]):
+                        unwind.push(_restore_standalone)
         else:
             # Internal (or no std): a real workspace directory.
             ws_dir = recorded_workspace
             existed_ws = ws_dir.exists()
             ws_dir.mkdir(parents=True, exist_ok=True)
-            if not existed_ws:
-                unwind.push(lambda: shutil.rmtree(ws_dir, ignore_errors=True))
+            if not existed_ws and own_leaves:
+                unwind.push(partial(_unwind_created_root, ws_dir))
 
         # ⚑ Durable registry write LAST, so a failure leaves no orphaned record.
         # ⚑⚑ ONE WRITE FOR EVERY MEMBER, in-tree and external alike: the P7/D10
@@ -2119,8 +2180,15 @@ def add_project(
         proj = WorksetProject(name=name, source_path=recorded_workspace)
         ws.projects.append(proj)
         unwind.push(lambda: _detach_project(ws, name))
-    except BaseException:
+    except BaseException as exc:
         unwind.run()
+        if outer is not None:
+            outer.failed += unwind.failed
+            outer.errors += unwind.errors
+        elif unwind.failed and noun is not None:
+            _note_unwind_incomplete(
+                noun, f"check '{name}' in workset '{ws.name}' at {ws.root}",
+                unwind.errors, interrupted=isinstance(exc, KeyboardInterrupt))
         raise
 
     return proj

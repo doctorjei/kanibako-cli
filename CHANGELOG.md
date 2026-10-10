@@ -728,6 +728,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   undone while a partial destination or a new workset leaf stayed behind. It now prints a Note for each step
   it could not undo, then `Interrupted: the move was not fully undone; check '<name>' at <source> and at
   <destination>` (`Note: the move failed and was not fully undone; …` for an error). Ctrl-C still exits 130.
+- **`workset create`, `workset connect`, and adding a box to a workset say when their rollback fails.** When
+  `workset create`, `workset connect`, `box create` of a workset box, or `box duplicate` into a workset failed and
+  a folder it had created could not be removed, or a record could not be put back, nothing was printed. Each now
+  names the folder (`Note: could not remove <path>, which this operation created; remove it before you run it
+  again`) or the step, then `Note: the workset creation failed and was not fully undone; check '<name>' at
+  <root>` (`the workset connect failed …`, `the box creation failed …`, `the duplicate failed …`). A step
+  that fails after a `box move`, `box convert`, or `box remap` has landed, such as linking the box into its
+  workset, now prints `Note: could not finish a step of the move: <error>` instead of nothing.
 - **A symlink loop in a vault no longer crashes `box move` or `box convert`.** A loop at the vault link or
   anywhere above it (a looped `vault` folder or a workset's shared `vault/rw`) stopped the command with a
   `RuntimeError` traceback on Python 3.11. The loop is now left in place with a Note saying so, as `box purge`

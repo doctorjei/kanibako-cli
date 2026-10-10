@@ -22,6 +22,7 @@ from kanibako.commands.box._lifecycle import (
     resolve_lifecycle_target,
 )
 from kanibako.errors import ProjectError
+from kanibako.runtime import container as container_mod
 from kanibako.project.workset import add_project, create_workset
 from kanibako.settings.config import load_config
 from kanibako.settings.paths import load_std_paths, resolve_project
@@ -147,7 +148,7 @@ class TestAFailedCopyRemovesItsDestination:
     def test_a_leftover_the_unwind_cannot_remove_is_named(self, tmp_path, monkeypatch, capsys):
         root = tmp_path / "made"
         root.mkdir()
-        monkeypatch.setattr(lc, "remove_path", lambda p: False)
+        monkeypatch.setattr(container_mod, "remove_path", lambda p: False)
         assert lc._unwind_created_root(root) is False
         err = capsys.readouterr().err
         assert f"Note: could not remove {root}, which this operation created" in err
