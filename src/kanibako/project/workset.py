@@ -619,7 +619,10 @@ def _journal_connect(
     workset: str | None = None,
     workspace: str | None = None,
 ):
-    """Bracket a ``connect`` register with a J2 write-ahead journal entry (no seed step)."""
+    """Bracket a ``connect`` register with a J2 write-ahead journal entry (no seed step).
+
+    ⚑ A raise clears it too: ``add_project`` unwinds its writes, and recovery only clears.
+    """
     if journal is None:
         yield
         return
@@ -629,8 +632,10 @@ def _journal_connect(
         journal, box_path, op="connect", name=name, mode="named",
         workset=workset, workspace=workspace,
     )
-    yield
-    journal_mod.clear_entry(journal, box_path)
+    try:
+        yield
+    finally:
+        journal_mod.clear_entry(journal, box_path)
 
 
 # Identity of the synthesized "default" workset — ⚑ VIRTUAL, never written to disk.
@@ -1719,9 +1724,8 @@ def add_project(
 def _warn_adopted_vault_leaves(name: str, leaves: Iterable[Path | None]) -> None:
     """Warn that new member *name* adopts each vault leaf in *leaves* already present.
 
-    ⚑ Adopting is by design (connect never clobbers), so this warns and never refuses.
-    The caller asks only when the box dir is new: a kept box dir means the leaves are
-    the member's own store, kept by a plain disconnect.
+    ⚑ Adopting is by design, so never a refusal.  Called only for a new box dir: a kept
+    one means a plain disconnect kept the member's own store.
     """
     for leaf in leaves:
         if leaf is None or not (leaf.exists() or leaf.is_symlink()):
