@@ -1687,6 +1687,15 @@ def _vault_copy_failure_message(src: Path, dst: Path, err: shutil.Error) -> str:
     )
 
 
+def _is_per_box_leaf(leaf: Path, arm: Path) -> bool:
+    """True when *leaf* RESOLVES strictly under *arm*: the only leaf a carry may take.
+
+    ⚑ STRICT: ``relative_to`` accepts an equal path, so a leafless arm would take the
+    whole shared dir.  A leaf that fails it is not carried, so nothing may delete it.
+    """
+    return arm.resolve() in leaf.resolve().parents
+
+
 def _vault_carry_pairs(
     state: ProjectState,
     std: StandardPaths,
@@ -1764,11 +1773,7 @@ def _vault_carry_pairs(
         src, dst = side
         if src.resolve() == dst.resolve():
             continue
-        # ⚑ STRICT mirror of the teardown guard below: ``relative_to`` ACCEPTS an
-        # equal path, so a leafless arm would take the whole shared dir.  Resolved
-        # on both sides (the teardown compares as stored); the model — hands off
-        # anything not strictly under the arm — is the same.
-        if arm.resolve() not in src.resolve().parents:
+        if not _is_per_box_leaf(src, arm):
             # ⚑ The teardown prints its own leaving-in-place warning for the same
             # path; this one says the contents were not carried.
             if src.is_dir() and _vault_leaf_has_contents(src):
@@ -1890,18 +1895,31 @@ def _unreceived_vault_leaves(
     holds nothing to lose and is not retained.
 
     *src_arms* is the SOURCE's resolved ``(ro, rw)``; *leaf_name* is the per-box leaf
-    a named or primary mode nests under each arm (STANDALONE's vault IS its arm).
+    a named or primary mode nests under each arm (STANDALONE's vault IS its arm).  With
+    a *leaf_name*, a leaf the carry refuses is retained too.
     """
     if not vault_enabled:
-        return [
+        kept = [
             (arm / leaf_name, _DISABLED_VAULT_WHY)
             for arm in src_arms
             if arm is not None and _vault_leaf_has_contents(arm / leaf_name)
         ]
-    return [
-        (arm / leaf_name, f"{key} is null at the destination, so nothing received its contents.")
-        for arm, key, leaf in zip(src_arms, _VAULT_ARM_KEYS, dst_vault)
-        if arm is not None and leaf is None
+    else:
+        kept = [
+            (arm / leaf_name, f"{key} is null at the destination, so nothing received its contents.")
+            for arm, key, leaf in zip(src_arms, _VAULT_ARM_KEYS, dst_vault)
+            if arm is not None and leaf is None
+        ]
+    if not leaf_name:
+        return kept
+    # ⚑⚑ A leaf the carry refused (a link aimed outside the arm) reached no destination;
+    # deleting it drops the user's pointer.
+    named = {leaf for leaf, _why in kept}
+    return kept + [
+        (arm / leaf_name, f"it links outside {arm}, so the move did not carry it.")
+        for arm in src_arms
+        if arm is not None and arm / leaf_name not in named
+        and _on_disk([arm / leaf_name]) and not _is_per_box_leaf(arm / leaf_name, arm)
     ]
 
 
@@ -1928,7 +1946,7 @@ def _carried_member_store(
     )
     held = {leaf.parent for leaf, _why in unreceived}
     bases = tuple(base for base in (boxes_dir, *arms) if base not in held)
-    kept = [entry for entry in unreceived if entry[0].exists()]
+    kept = [entry for entry in unreceived if _on_disk([entry[0]])]
     return bases, kept + _nulled_arm_stores(ws, name)
 
 
