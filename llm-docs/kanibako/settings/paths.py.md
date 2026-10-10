@@ -1521,10 +1521,11 @@ Advisory (never fatal): warn when a box that EXPECTS a vault has none on disk (s
 NON-CRITICAL integrity tier).
 
 A vault is OPTIONAL storage, not a launch prerequisite — so a box whose `enable_vault` is on but
-whose vault directory is absent still resolves and launches; the missing vault is merely FLAGGED
-(`warning: cannot find vault`). A box with `enable_vault` OFF expects no vault, so nothing is warned
-(the `enable_vault` guard is load-bearing: without it every vault-disabled box would warn). Fires at
-resolve time alongside the other `_flag` advisories. Returns *proj* unchanged.
+whose vault directory is absent still resolves and launches, and the launch creates the directory
+empty; the missing vault is merely FLAGGED (`warning: cannot find vault`). A box with
+`enable_vault` OFF expects no vault, so nothing is warned (the `enable_vault` guard is
+load-bearing: without it every vault-disabled box would warn). Fires at resolve time alongside the
+other `_flag` advisories. Returns *proj* unchanged.
 
 ```python
 def establish_standalone(

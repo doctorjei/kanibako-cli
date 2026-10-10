@@ -664,6 +664,24 @@ class TestMissingVaultAdvisory:
         assert f"expected at {proj.vault_rw_path})" in msg
         assert f"expected at {proj.vault_rw_path.parent})" not in msg
 
+    def test_warning_says_what_a_launch_does(self, tmp_path, caplog):
+        """RED before: the warning said the box "still launches without a vault",
+        but the launch's core table creates the absent rw dir and binds it."""
+        from kanibako.settings import core_defaults
+
+        proj = self._proj(tmp_path, enable_vault=True, make_vault=False)
+        assert self._warned(caplog, proj)
+        [msg] = [r.getMessage() for r in caplog.records if "cannot find vault" in r.getMessage()]
+        assert "a launch creates a new, empty vault there" in msg
+        assert "without a vault" not in msg
+        # The claim, checked against the launch path itself.
+        binds = core_defaults.core_default_categories(
+            None, proj, enable_vault=True, mode="standalone",
+        )
+        assert proj.vault_rw_path.is_dir()
+        assert list(proj.vault_rw_path.iterdir()) == []
+        assert "/home/agent/vault/rw" in binds["box.bindings.rw"]
+
     def test_enabled_and_present_silent(self, tmp_path, caplog):
         proj = self._proj(tmp_path, enable_vault=True, make_vault=True)
         assert not self._warned(caplog, proj)

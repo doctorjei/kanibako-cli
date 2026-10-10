@@ -512,7 +512,8 @@ def _duplicate_to_standalone(src_proj, new_path, std, force, src_enable_vault, c
     # Write the vault ``.gitignore`` if the skeleton is there.  ⚑ On a FRESH destination it
     # never is, and that is CONFIRMED INTENDED (2026-08-27): a duplicate does NOT carry the
     # source's vault.  establish_standalone does not create the vault dirs, so a duplicated
-    # box with enable_vault true starts without one and _flag_missing_vault advises the user.
+    # box with enable_vault true has none until its first launch creates an empty one;
+    # _flag_missing_vault warns before that.
     # _duplicate_to_local does not carry a vault either.  Do NOT "fix" this by copying the
     # source's vault across -- vaults do not travel on duplicate.
     # ⚑ A destination that ALREADY held a standalone box is the case that made this reachable:
