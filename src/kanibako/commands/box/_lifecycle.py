@@ -3045,9 +3045,14 @@ def _to_workset(
                  lambda: _copy_vault_leaf_contents(stash_vault_rw, state.vault_rw)),
             ]
             clean = True
+            held: KeyboardInterrupt | None = None
             for what, where, step in steps:
                 try:
                     step()
+                except KeyboardInterrupt as exc:
+                    held, clean = held or exc, False
+                    print(f"Note: may not have restored {what} at {where}: interrupted",
+                          file=sys.stderr)
                 except Exception as err:  # noqa: BLE001 - reported, and the rest still run
                     clean = False
                     print(f"Note: could not restore {what} at {where}: {err}",
@@ -3057,6 +3062,8 @@ def _to_workset(
             else:
                 print(f"Note: kept {stash}; it holds the box's store as it was before "
                       f"the move (it may hold credentials)", file=sys.stderr)
+            if held is not None:
+                raise held
 
         # ⚑⚑ Pushed BEFORE the release (L1): once it starts, the stash holds the only copy
         # of the store, so a failure part-way through must restore from it, never drop it.
@@ -3425,9 +3432,14 @@ def _unwind_target_member(
     """
     import sys
 
+    held: KeyboardInterrupt | None = None
     try:
         if find_identifier(name, (p.name for p in ws.projects)) is not None:
             release_project(ws, name, keep_link=True)
+    except KeyboardInterrupt as exc:
+        held = exc
+        print(f"Note: may not have dropped the record of '{name}' from workset "
+              f"'{ws.name}': interrupted", file=sys.stderr)
     except Exception as err:  # noqa: BLE001 - reported; the leaves below still go
         print(f"Note: could not drop the record of '{name}' from workset "
               f"'{ws.name}': {err}", file=sys.stderr)
@@ -3436,16 +3448,23 @@ def _unwind_target_member(
         if leaf is None:
             continue
         if leaf in existed:
-            note_added_leftovers(leaf, existed[leaf])
+            try:
+                note_added_leftovers(leaf, existed[leaf])
+            except KeyboardInterrupt as exc:
+                held = held or exc
             continue
         try:
             if leaf.is_symlink() or leaf.is_dir():
                 remove_path(leaf)
+        except KeyboardInterrupt as exc:
+            held = held or exc
         except OSError:
             pass  # reported just below
         if leaf.exists() or leaf.is_symlink():
             print(f"Note: could not remove {leaf}, which this operation created",
                   file=sys.stderr)
+    if held is not None:
+        raise held
 
 
 def _dispose_stash(stash: Path) -> None:
