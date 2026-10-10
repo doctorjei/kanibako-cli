@@ -55,7 +55,7 @@ from kanibako.errors import (
     ConfigError, LegacyWorksetIdentityError, ReservedWorksetNameError, WorksetError,
 )
 from kanibako.identifiers import find_identifier
-from kanibako.project.names import register_name, unregister_name
+from kanibako.project.names import read_names, register_name, unregister_name
 from kanibako.settings.config import WORKSET_META_FILE
 from kanibako.settings.messages import (
     ERR_CONFIG_NULL_PATH, ERR_NULL_WORKSPACE_BIND, ERR_STANDALONE_NULL_WORKSPACES,
@@ -1355,16 +1355,16 @@ def create_workset(
             if _path_in_tree(subdir_path, root) and subdir_path.resolve() != root.resolve():
                 subdir_path.mkdir(parents=True, exist_ok=True)
 
+        def _drop_workset() -> None:
+            if read_names(std.registry).get("worksets", {}).get(name) == str(root):
+                unregister_name(std.registry, name, section="worksets", exact=True)
+
+        unwind.push(_drop_workset)
         # ⚑⚑ THE REGISTRATION IS THE CREATION: this line is what makes the directory a
         # workset, because the name→root entry it writes IS the workset's identity.
         # ⚑ ONE section serves BOTH name lookup AND discovery/list — hence one call.
         register_name(std.registry, name, str(root), section="worksets")
-
-        def _drop_workset() -> None:
-            unregister_name(std.registry, name, section="worksets")
-
-        unwind.push(_drop_workset)
-    except Exception:
+    except BaseException:
         unwind.run()
         raise
 
@@ -1704,7 +1704,7 @@ def add_project(
         proj = WorksetProject(name=name, source_path=recorded_workspace)
         ws.projects.append(proj)
         unwind.push(lambda: _detach_project(ws, name))
-    except Exception:
+    except BaseException:
         unwind.run()
         raise
 
