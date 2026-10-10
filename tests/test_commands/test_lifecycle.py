@@ -551,7 +551,7 @@ class TestConvertInPlace:
         # workset registration removed.
         ws2 = load_workset(ws.root, ws.name, early_system=std.early_system)
         assert not any(p.name == "ep" for p in ws2.projects)
-        # connected.yaml cleared.
+        # connection cleared.
         assert str(external.resolve()) not in _connected_index(std)
 
     def test_workset_to_standalone(self, env):
@@ -600,7 +600,7 @@ class TestWorksetToWorkset:
             ws_a.root, ws_a.name, early_system=std.early_system).projects)
         assert any(p.name == "p" for p in load_workset(
             tmp_home / "wsb_root", "wsb", early_system=std.early_system).projects)
-        # connected.yaml points at wsb now.
+        # wsb's ``boxes:`` now owns it.
         entry = _connected_index(std)[str(external.resolve())]
         assert entry["workset"] == "wsb"
 
