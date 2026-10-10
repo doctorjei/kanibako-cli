@@ -1384,9 +1384,11 @@ def _retire_old_workspace(old: Path, landed: Path) -> None:
 
     ⚑⚑ A success-tail step ONLY — a failed op never reaches it.  Skips an
     absent *old*, and an *old* that is or holds *landed* (a move into its own subtree;
-    ``_validate`` refuses that first).  A symlink is unlinked, never followed.  A real dir
-    the rmtree cannot clear (in-box root owns entries) goes to ``remove_box_tree``; if that
-    fails too, a Note names the rmtree's error and stops: rc unchanged.
+    ``_validate`` refuses that first).  A symlink is unlinked, never followed.  A
+    non-directory (a file, FIFO, or socket) is unlinked; if that fails, a Note names the
+    path (never ``entries``) and stops: rc unchanged.  A real dir the rmtree cannot clear
+    (in-box root owns entries) goes to ``remove_box_tree``; if that fails too, a Note
+    names the rmtree's error and stops: rc unchanged.
 
     ⚑ A LINKED *old* is judged by its own path: after a link-preserving copy it names the
     same target as *landed* but is not it, and an unlink cannot reach *landed*.
@@ -1405,6 +1407,13 @@ def _retire_old_workspace(old: Path, landed: Path) -> None:
             print(f"Note: left {target}; it is yours", file=sys.stderr)
         except OSError as err:
             print(f"Note: could not remove the old workspace {old}: {err}", file=sys.stderr)
+        return
+    if not old.is_dir():
+        try:
+            old.unlink()
+        except OSError as err:
+            print(f"Note: could not remove the old workspace {old}: {err}. The move is "
+                  f"complete at {landed}; it is yours to remove.", file=sys.stderr)
         return
     old_r = old.resolve()
     landed_r = landed.resolve()

@@ -728,6 +728,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `Interrupted: the move was undone; '<name>' is back at <path>` (a convert says "the conversion was undone"; a
   remap says "the remap was undone; '<name>' is registered at <path> again"), and still exits 130. The line is
   left out when any part of the rollback failed.
+- **`box move` removes an old workspace that became a non-directory mid-move.** It was left behind with a Note
+  that it "still holds entries it could not list"; it is now removed, and a failed removal names the path.
 - **Moving or converting a standalone box no longer leaves its root files behind.** A move to a new standalone
   root carries the `canon/` folder there; it used to stay at the old root and the new root had none. Kanibako's
   `box_data/` line leaves the old root's `.gitignore`, and a `.gitignore` holding only that line is deleted. A
