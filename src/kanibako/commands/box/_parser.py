@@ -2759,8 +2759,8 @@ def _format_credential_age(creds_path: Path) -> str:
 NO_RUNTIME = "unknown (no container runtime)"
 
 
-def _check_container_running(proj) -> tuple[bool, str]:
-    """Is a kanibako container running for this project? Returns ``(is_running, detail)``."""
+def _check_container_running(proj, *, fail_closed: bool = False) -> tuple[bool, str]:
+    """Is the project's container running? ``(running, detail)``; *fail_closed* raises on no answer."""
     container_name = container_name_for(proj)
     if container_name is None:
         return False, "no container name (the box-name rule renders none)"
@@ -2768,7 +2768,7 @@ def _check_container_running(proj) -> tuple[bool, str]:
         runtime = ContainerRuntime()
     except ContainerError:
         return False, NO_RUNTIME
-    containers = runtime.list_running()
+    containers = runtime.list_running(check=fail_closed)
     for name, image, status in containers:
         if name == container_name:
             return True, f"running ({container_name}: {image})"

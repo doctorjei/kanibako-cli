@@ -68,7 +68,7 @@ def _box_rm_purge_cure(target: str) -> str
 def _retained_box_cures(target: str) -> 'tuple[str, str]'
 def _retained_box_cure_lines(target: str) -> str
 def _format_credential_age(creds_path: Path) -> str
-def _check_container_running(proj) -> tuple[bool, str]
+def _check_container_running(proj, *, fail_closed: bool=False) -> tuple[bool, str]
 def _resolve_config_subject(std, config, project_dir: str | None)
 def _run_box_config(args: argparse.Namespace) -> int
 ```

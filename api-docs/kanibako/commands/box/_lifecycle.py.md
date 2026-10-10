@@ -99,6 +99,8 @@ def _resolve_standalone_workspaces(root: Path, doc: Mapping[str, Any] | None, *,
 def _resolve_standalone_boxes(root: Path, doc: Mapping[str, Any] | None, *, early: EarlyScope) -> Path
 def _standalone_root_artifacts(root: Path, *, early: EarlyScope) -> list[tuple[str, Path, bool]]
 def _refuse_root_name_collisions(state: ProjectState, std: StandardPaths, target_mode: BoxMode) -> None
+def _refuse_names(names: list[str], where: Path, why: str) -> None
+def _swept(child: Path, artifacts: list[tuple[str, Path, bool]]) -> bool
 def _holds_anything(path: Path) -> bool
 def _artifact_claiming(child: Path, artifacts: list[tuple[str, Path, bool]]) -> tuple[str, Path, bool] | None
 def _consolidate_workspace_subdir(root: Path, workspace_subdir: Path, unwind: _Unwind, *, early: EarlyScope) -> None

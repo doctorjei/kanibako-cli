@@ -122,7 +122,15 @@ def _runtime_says(monkeypatch, running):
     """Answer the running-box check as a live runtime would."""
     detail = "running (kb-x: img)" if running else "not running (kb-x)"
     monkeypatch.setattr("kanibako.commands.box._parser._check_container_running",
-                        lambda _proj: (running, detail))
+                        lambda _proj, **_kw: (running, detail))
+
+
+def _stub_runtime(monkeypatch, tmp_path, ps):
+    """A runtime whose ``ps`` runs *ps* and whose ``inspect`` finds nothing."""
+    stub = tmp_path / "runtime.sh"
+    stub.write_text(f'#!/bin/sh\nif [ "$1" = ps ]; then {ps}; fi\nexit 1\n')
+    stub.chmod(0o755)
+    monkeypatch.setenv("KANIBAKO_DOCKER_CMD", str(stub))
 
 
 def _move_args(old, new, force=False):
@@ -176,6 +184,30 @@ class TestFinishedSessionLock:
         assert "no container runtime is available" in capsys.readouterr().err
         assert (root / "workset.yaml").is_file()
 
+    @pytest.mark.parametrize("ps", ["echo broken >&2; exit 125", "echo garbage"])
+    def test_a_runtime_that_cannot_answer_counts_as_none(
+            self, env, capsys, monkeypatch, tmp_path, ps):
+        config, std, tmp_home = env
+        root, lock = self._locked(env, "sa")
+        _stub_runtime(monkeypatch, tmp_path, ps)
+        assert run_move(_move_args(root, tmp_home / "sa2")) == 2
+        assert "the container runtime could not tell" in capsys.readouterr().err
+        assert (root / "workset.yaml").is_file() and not (tmp_home / "sa2").exists()
+        lock.unlink()
+        monkeypatch.setattr("kanibako.utils.confirm_prompt", lambda _msg: None)
+        assert run_move(_move_args(root, tmp_home / "sa2")) == 0
+
+    def test_box_info_still_reads_a_failing_runtime_as_not_running(
+            self, env, monkeypatch, tmp_path):
+        from kanibako.commands.box._parser import _check_container_running
+
+        config, std, tmp_home = env
+        root = _standalone(env)
+        _stub_runtime(monkeypatch, tmp_path, "exit 125")
+        proj = resolve_standalone_project(std, config, project_dir=str(root))
+        running, detail = _check_container_running(proj)
+        assert not running and detail.startswith("not running")
+
     def test_an_in_place_convert_out_drops_the_stale_lock(self, env):
         config, std, tmp_home = env
         root, lock = self._locked(env, "sa")
@@ -216,6 +248,22 @@ class TestRootNameCollisions:
         resolve_project(std, config, project_dir=str(pdir), initialize=True)
         before = _tree(pdir)
         with pytest.raises(ProjectError, match=refusal):
+            _execute(env, pdir, ownership="standalone")
+        assert _tree(pdir) == before
+
+    def test_a_convert_into_standalone_refuses_a_name_its_workspace_already_holds(self, env):
+        config, std, tmp_home = env
+        pdir = tmp_home / "proj"
+        (pdir / "workspace" / "src").mkdir(parents=True)
+        (pdir / "workspace" / "main.py").write_text("theirs")
+        (pdir / "workspace" / "src" / "a.py").write_text("theirs")
+        (pdir / "main.py").write_text("mine")
+        (pdir / "src").mkdir()
+        (pdir / "src" / "a.py").write_text("mine")
+        (pdir / "notes.txt").write_text("mine")
+        resolve_project(std, config, project_dir=str(pdir), initialize=True)
+        before = _tree(pdir)
+        with pytest.raises(ProjectError, match=r"Refusing: main\.py, src in .*workspace"):
             _execute(env, pdir, ownership="standalone")
         assert _tree(pdir) == before
 

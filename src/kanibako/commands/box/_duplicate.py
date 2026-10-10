@@ -202,19 +202,15 @@ def _run_duplicate_cross_mode(args: argparse.Namespace, std, config) -> int:
     if _refuse_live_source(src_proj, src_proj.metadata_path, args.force):
         return 2
 
-    # Confirm with user.
     target_mode = to_mode
     if args.force:
         _refuse_inherited(std, src_proj, _local_target(std, target_mode, new_path))
 
-    # F-3 (guard-before-copy): for a PRIMARY (local) target, front-run the
-    # one-box-per-workspace-path (Guard-1) refusal BEFORE prompting or copying, so
-    # a duplicate onto an ALREADY-registered primary workspace costs no prompt and
-    # no copy.  assign_primary_box_name raises this same ProjectError, but only
-    # AFTER the workspace copy — and a no-force copy onto an existing dir would
-    # first raise FileExistsError (an OSError), stranding the copy uncaught.
-    # Standalone targets mint a fresh <kuid> identity outside the primary
-    # membership, so the guard does not apply to them.
+    # F-3 (guard-before-copy): a PRIMARY target front-runs the one-box-per-workspace-path
+    # (Guard-1) refusal, so an ALREADY-registered workspace costs no prompt and no copy.
+    # assign_primary_box_name raises the same ProjectError only AFTER the copy, and a
+    # no-force copy onto an existing dir first raises FileExistsError, stranding it.  A
+    # standalone target mints a fresh <kuid> outside the primary membership: no guard.
     if target_mode == BoxMode.primary:
         existing_box = primary_box_name_for_workspace(
             std.primary_workset, str(new_path), early=_early_scope(std, BoxMode.primary),
@@ -1020,12 +1016,9 @@ def run_duplicate(args: argparse.Namespace) -> int:
             print("Aborted.")
             return 2
 
-    # 8. Registration runs BEFORE anything is copied.  Both refusals below used to
-    # arrive AFTER ``_merge_workspace``, so `--force` had already replaced the
-    # destination's files by the time the command said "already registered"
-    # (task-dupforce).  Minting the name first also lets the home-free check run
-    # early: it needs the minted name, and guards a retained home `--force` would
-    # otherwise rmtree.
+    # 8. Registration runs BEFORE anything is copied: refused after ``_merge_workspace``,
+    # `--force` would already have replaced the destination's files (task-dupforce).  The
+    # minted name also lets the home-free check run early, guarding a retained home from rmtree.
     try:
         dup_name = _claim_primary_dup_name(std, new_path, getattr(args, "project_name", None))
     except ProjectError as e:

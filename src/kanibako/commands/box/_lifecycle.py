@@ -48,7 +48,7 @@ from kanibako.settings.config import (
 )
 from kanibako.identifiers import find_identifier
 from kanibako.errors import (
-    BoxNameError, DerivedBoxNameError, KanibakoError, ProjectError, WorksetError,
+    BoxNameError, ContainerError, DerivedBoxNameError, KanibakoError, ProjectError, WorksetError,
 )
 from kanibako.settings.messages import (
     CURE_MOVED_LEAF_NOT_ASCII,
@@ -2698,7 +2698,8 @@ def _refuse_root_name_collisions(
     root entry, or a name the root reserves, would overwrite kanibako's or nest in it, and
     the tail then deletes it.  The user's ``.gitignore`` is merged instead.
     INTO standalone, a root entry the layout reserves would be adopted as kanibako's own
-    and deleted with it by a purge.
+    and deleted with it by a purge, and one the sweep moves into a workspace dir already
+    holding that name would overwrite or nest in it.
     """
     early = _early_scope(std, BoxMode.standalone)
     if state.mode is BoxMode.standalone and target_mode is not BoxMode.standalone:
@@ -2725,14 +2726,35 @@ def _refuse_root_name_collisions(
                 if child.name in _STANDALONE_FIXED_ARTIFACTS - {WORKSET_META_FILE}
                 or any(child == path or child in path.parents for path in owned)]
         why = "the standalone layout claims those names, so kanibako would adopt them as its own"
+        workspace = _resolve_standalone_workspaces(
+            where, load_workset_settings_doc(where), early=early)
+        if workspace.is_dir() and workspace.resolve() != where.resolve():
+            artifacts = _standalone_root_artifacts(where, early=early)
+            clash = sorted(child.name for child in where.iterdir()
+                           if _swept(child, artifacts) and child not in hits
+                           and ((workspace / child.name).exists()
+                                or (workspace / child.name).is_symlink()))
+            if clash:
+                _refuse_names(clash, where, f"each would overwrite or land inside the entry of "
+                                            f"that name in {workspace}")
     else:
         return
     if hits:
-        names = ", ".join(sorted(child.name for child in hits))
-        raise ProjectError(
-            f"Refusing: {names} in {where}: {why}. Rename or move them out of {where}, "
-            f"and run it again."
-        )
+        _refuse_names(sorted(child.name for child in hits), where, why)
+
+
+def _refuse_names(names: list[str], where: Path, why: str) -> None:
+    """Raise the collision refusal naming *names* in *where*."""
+    raise ProjectError(
+        f"Refusing: {', '.join(names)} in {where}: {why}. Rename or move them out of "
+        f"{where}, and run it again."
+    )
+
+
+def _swept(child: Path, artifacts: list[tuple[str, Path, bool]]) -> bool:
+    """Does the INTO-standalone sweep move root *child* into the workspace dir?"""
+    return (child.name not in _STANDALONE_FIXED_ARTIFACTS
+            and _artifact_claiming(child, artifacts) is None)
 
 
 def _holds_anything(path: Path) -> bool:
@@ -3749,22 +3771,26 @@ def box_running_reason(proj: ProjectPaths | None, lock_file: Path) -> str | None
     """Why the box behind *lock_file* may be running, else ``None`` — the ONE pre-flight.
 
     A session holding the lock, or the box's container running
-    (``_parser._check_container_running``), says it runs.  With no runtime to ask, or no
-    *proj* to name the container, a lock file on disk still counts, as it always did.
+    (``_parser._check_container_running``), says it runs.  When the runtime is absent or
+    cannot answer, or no *proj* names the container, a lock file on disk still counts.
     """
     if session_lock_held(lock_file):
         return "a kanibako session holds its lock file"
+    unanswered = "no container runtime is available to tell whether its container runs"
     if proj is not None:
         from kanibako.commands.box._parser import NO_RUNTIME, _check_container_running
 
-        running, detail = _check_container_running(proj)
+        try:
+            running, detail = _check_container_running(proj, fail_closed=True)
+        except ContainerError as exc:
+            running, detail = False, NO_RUNTIME
+            unanswered = f"the container runtime could not tell whether its container runs ({exc})"
         if running:
             return f"its container is {detail}"
         if detail != NO_RUNTIME:
             return None
     if lock_file.exists():
-        return ("a lock file exists and no container runtime is available to "
-                "tell whether its container runs")
+        return f"a lock file exists and {unanswered}"
     return None
 
 
