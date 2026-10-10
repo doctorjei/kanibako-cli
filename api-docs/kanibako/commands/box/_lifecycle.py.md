@@ -52,12 +52,12 @@ def _resolve_target_workset(name: str, std: StandardPaths) -> Workset
 def _cure_ref(state: ProjectState) -> str
 def _name_held_in_target_workset(target_mode: BoxMode | None, target_ws: Workset | None, state: ProjectState, new_name: str) -> str | None
 def _validate(state: ProjectState, spec: TargetSpec, std: StandardPaths, config: BootstrapConfig, *, force: bool, cwd: Path) -> dict
-def _run_steps(state: ProjectState, spec: TargetSpec, std: StandardPaths, config: BootstrapConfig, plan: dict, unwind: _Unwind) -> ProjectState
+def _run_steps(state: ProjectState, spec: TargetSpec, std: StandardPaths, config: BootstrapConfig, plan: dict, unwind: _Unwind) -> tuple[ProjectState, _SourceTeardown | None]
 def _retire_old_workspace(old: Path, landed: Path) -> None
 def _leftover_entries(path: Path, before: Collection[str]=()) -> str
 def _entry_names(path: Path) -> frozenset[str] | None
 def _arm_leftover_note(unwind: _Unwind, path: Path) -> None
-def _apply_ownership_and_markers(state: ProjectState, std: StandardPaths, config: BootstrapConfig, unwind: _Unwind, *, target_mode: BoxMode, target_ws: Workset | None, new_name: str, new_workspace: Path, relocating: bool, dest: Path | None, requested_name: str='') -> ProjectState
+def _apply_ownership_and_markers(state: ProjectState, std: StandardPaths, config: BootstrapConfig, unwind: _Unwind, *, target_mode: BoxMode, target_ws: Workset | None, new_name: str, new_workspace: Path, relocating: bool, dest: Path | None, requested_name: str='') -> tuple[ProjectState, _SourceTeardown | None]
 def _unwind_box_tree(path: Path) -> None
 def _unwind_created_root(path: Path) -> None
 def _copy_metadata(src_metadata: Path, src_shell: Path, dst_metadata: Path, *, shell_into_metadata: bool, home_leaf: str='home', unwind: _Unwind) -> Path
@@ -66,8 +66,7 @@ def _vault_leaf_has_contents(leaf: Path) -> bool
 def _copy_vault_leaf_contents(src: Path, dst: Path | None, removed: Collection[Path]=(), relocated: Mapping[Path, Path] | None=None) -> None
 def _vault_copy_failure_message(src: Path, dst: Path, err: shutil.Error) -> str
 def _vault_carry_pairs(state: ProjectState, std: StandardPaths, dst_ro: Path | None, dst_rw: Path | None) -> list[tuple[Path, Path]]
-def _carry_vault_contents(state: ProjectState, std: StandardPaths, dst_ro: Path | None, dst_rw: Path | None, relocated: Mapping[Path, Path] | None=None) -> None
-def _torn_down_roots(state: ProjectState, std: StandardPaths) -> list[Path]
+def _carry_vault_contents(state: ProjectState, std: StandardPaths, dst_ro: Path | None, dst_rw: Path | None, teardown: _SourceTeardown, relocated: Mapping[Path, Path] | None=None) -> None
 def _landings(*pairs: tuple[Path, Path]) -> dict[Path, Path] | None
 def _move_log_back(dst: Path, src: Path) -> None
 def _carry_box_logs(state: ProjectState, std: StandardPaths, unwind: _Unwind, *, dst_logs: Path | None, dst_name: str) -> None
@@ -75,10 +74,18 @@ def _unreceived_vault_leaves(src_arms: tuple[Path | None, Path | None], dst_vaul
 def _report_unreceived_vaults(kept: list[tuple[Path, str]]) -> None
 def _carried_member_store(ws: Workset, name: str, dst_vault: tuple[Path | None, Path | None], *, vault_enabled: bool=True) -> tuple[tuple[Path, ...], list[tuple[Path, str]]]
 def _nulled_arm_stores(ws: Workset, name: str) -> list[tuple[Path, str]]
-def _remove_old_metadata(state: ProjectState, std: StandardPaths, config: BootstrapConfig, unwind: _Unwind, *, dst_vault: tuple[Path | None, Path | None], preserve_name: str | None=None, new_name: str | None=None, preserve_root: Path | None=None) -> None
+def _plan_source_teardown(state: ProjectState, std: StandardPaths, dst_vault: tuple[Path | None, Path | None], *, preserve_name: str | None=None, new_name: str | None=None, preserve_root: Path | None=None) -> _SourceTeardown
+def _restore_standalone_rows(std: StandardPaths, before: Mapping[str, str]) -> None
+def _safe_unregister_standalone(std: StandardPaths, name: str) -> None
+def _stash_source_marker(teardown: _SourceTeardown, unwind: _Unwind) -> _SourceTeardown
+def _drop_source_row(teardown: _SourceTeardown | None, unwind: _Unwind) -> None
+def _finish_relocation(state: ProjectState, new_state: ProjectState, std: StandardPaths, teardown: _SourceTeardown | None, later: list[Callable[[], None]]) -> None
+def _on_disk(paths: Iterable[Path]) -> list[Path]
+def _unmoved_partitions(old: ProjectState, new: ProjectState, std: StandardPaths) -> list[str]
+def _unmoved_snapshots(old: ProjectState, new: ProjectState) -> list[str]
 def _retire_old_store(ws: Workset, name: str, dst_vault: tuple[Path | None, Path | None], vault_enabled: bool=True, *, reraise: bool=False) -> None
-def _report_store_leftovers(ws: Workset, name: str, err: OSError | None=None, *, keep: list[tuple[Path, str]] | None=None) -> None
-def _to_default(state: ProjectState, std: StandardPaths, config: BootstrapConfig, unwind: _Unwind, *, new_name: str, new_workspace: Path, requested_name: str='') -> ProjectState
+def _report_store_leftovers(name: str, left: Collection[Path], why: str='', *, unmoved: Collection[str]=()) -> None
+def _to_default(state: ProjectState, std: StandardPaths, config: BootstrapConfig, unwind: _Unwind, *, new_name: str, new_workspace: Path, requested_name: str='') -> tuple[ProjectState, _SourceTeardown | None]
 def _resolve_standalone_workspaces(root: Path, doc: Mapping[str, Any] | None, *, early: EarlyScope) -> Path
 def _resolve_standalone_boxes(root: Path, doc: Mapping[str, Any] | None, *, early: EarlyScope) -> Path
 def _standalone_root_artifacts(root: Path, *, early: EarlyScope) -> list[tuple[str, Path, bool]]
@@ -89,17 +96,18 @@ def _move_entry(src: Path, dst: Path) -> None
 def _prune_empty_dirs(path: Path, above: Path) -> None
 def _unconsolidate_workspace_subdir(workspace_subdir: Path, root: Path, unwind: _Unwind) -> None
 def _arm_standalone_root_undo(std: StandardPaths, config: BootstrapConfig, root: Path, workspace_subdir: Path, unwind: _Unwind) -> tuple[Callable[[], None], Callable[[str], None]]
-def _to_standalone(state: ProjectState, std: StandardPaths, config: BootstrapConfig, unwind: _Unwind, *, new_name: str, root: Path) -> ProjectState
-def _to_workset(state: ProjectState, std: StandardPaths, config: BootstrapConfig, unwind: _Unwind, *, target_ws: Workset, new_name: str, new_workspace: Path, relocating: bool, dest: Path | None) -> ProjectState
+def _to_standalone(state: ProjectState, std: StandardPaths, config: BootstrapConfig, unwind: _Unwind, *, new_name: str, root: Path) -> tuple[ProjectState, _SourceTeardown | None]
+def _to_workset(state: ProjectState, std: StandardPaths, config: BootstrapConfig, unwind: _Unwind, *, target_ws: Workset, new_name: str, new_workspace: Path, relocating: bool, dest: Path | None) -> tuple[ProjectState, _SourceTeardown | None]
 def _state_ws_token(state: ProjectState) -> str
 def _state_ws_root(state: ProjectState, std: StandardPaths) -> Path
 def _relocate_channel_partition(old: ProjectState, new: ProjectState, std: StandardPaths) -> None
-def _relocate_snapshot_store(state: ProjectState, new_state: ProjectState) -> None
+def _relocate_snapshot_store(state: ProjectState, new_state: ProjectState) -> Path | None
+def _old_snapshot_store(old: ProjectState, new: ProjectState) -> Path | None
 def _safe_unregister(std: StandardPaths, name: str) -> None
 def _safe_register_membership(std: StandardPaths, name: str, workspace: Path) -> None
 def _member_leaves(ws: Workset, name: str) -> tuple[Path | None, Path, Path | None, Path | None]
 def _existing_member_leaves(ws: Workset, name: str) -> dict[Path, frozenset[str] | None]
-def _unwind_target_member(ws: Workset, name: str, existed: Mapping[Path, frozenset[str] | None], *, name_leftovers: bool=True) -> None
+def _unwind_target_member(ws: Workset, name: str, existed: Mapping[Path, frozenset[str] | None]) -> None
 def _dispose_stash(stash: Path) -> None
 def _convert_target_flags(args) -> list[str]
 def _ownership_from_args(args) -> str | _Sentinel
@@ -146,14 +154,28 @@ class _Sentinel:
 
 @dataclass
 class _Unwind:
-    actions: list[Callable[[], None]] = field(default_factory=list)
+    actions: list[Callable[[], object]] = field(default_factory=list)
     cleanups: list[Callable[[], None]] = field(default_factory=list)
-    sealed: bool = False
 
-    def push(self, action: Callable[[], None]) -> None
-    def push_until_sealed(self, action: Callable[[], None]) -> None
-    def seal(self) -> None
+    def push(self, action: Callable[[], object]) -> None
+    def push_first(self, action: Callable[[], object]) -> None
     def on_success(self, action: Callable[[], None]) -> None
     def run(self) -> None
     def finish(self) -> None
+
+@dataclass(frozen=True)
+class _SourceTeardown:
+    name: str
+    removed: tuple[Path, ...] = ()
+    trees: tuple[Path, ...] = ()
+    vaults: tuple[Path, ...] = ()
+    vault_deleter: Callable[[Path], object] = remove_path
+    marker: Path | None = None
+    stash: Path | None = None
+    member: Workset | None = None
+    dst_vault: tuple[Path | None, Path | None] = (None, None)
+    vault_enabled: bool = True
+    keeps: tuple[Callable[[], None], ...] = ()
+    drop: Callable[[], object] | None = None
+    restore: Callable[[], object] | None = None
 ```

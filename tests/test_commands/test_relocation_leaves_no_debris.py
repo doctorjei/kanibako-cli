@@ -21,6 +21,7 @@ from kanibako.commands.box._lifecycle import (
     execute_lifecycle,
     resolve_lifecycle_target,
 )
+from kanibako.errors import ProjectError
 from kanibako.project.workset import add_project, create_workset
 from kanibako.settings.config import load_config
 from kanibako.settings.paths import load_std_paths, resolve_project
@@ -281,7 +282,7 @@ class TestAFailedInPlaceConvertLeavesTheRootAsFound:
         assert _tree(pdir) == before
 
 
-    def test_an_interrupt_after_the_source_teardown_keeps_the_carried_vault(
+    def test_an_interrupt_in_the_success_tail_keeps_both_vaults_and_names_the_old(
         self, env, monkeypatch, capsys,
     ):
         config, std, tmp_home = env
@@ -300,9 +301,13 @@ class TestAFailedInPlaceConvertLeavesTheRootAsFound:
         with pytest.raises(KeyboardInterrupt):
             execute_lifecycle(state, TargetSpec(location=lc.INPLACE, ownership="standalone"),
                               std, config, confirm=lambda: True)
-        assert not state.vault_rw.exists()
+        assert (state.vault_rw / "precious.txt").read_text() == "precious"
         assert (pdir / "vault" / "rw" / "precious.txt").read_text() == "precious"
-        assert "yours to remove" not in capsys.readouterr().err
+        err = capsys.readouterr().err
+        assert "yours to remove" not in err
+        assert (f"Note: could not remove the old store of '{state.name}': interrupted; left "
+                in err)
+        assert str(state.vault_rw) in err
 
     def test_a_claim_in_an_existing_vault_folder_is_named(self, env, monkeypatch, capsys):
         config, std, tmp_home = env
@@ -381,7 +386,8 @@ class TestLeftoversOfASuccessfulMoveAreNamed:
                           std, config, confirm=lambda: True)
         err = capsys.readouterr().err
         assert vault.is_dir()
-        assert f"Note: left the vault at {vault} in place — it could not be fully removed" in err
+        assert f"Note: could not remove the old store of '{state.name}'; left " in err
+        assert str(vault) in err
 
 
 class TestAFailedDuplicateRemovesItsDestination:
@@ -416,3 +422,294 @@ class TestAFailedDuplicateRemovesItsDestination:
         err = capsys.readouterr().err
         assert f"Note: {dst} existed before this operation; it still holds " in err
         assert "theirs.txt" not in err
+
+
+# ---------------------------------------------------------------------------
+# The point of no return: an interrupt anywhere loses nothing and leaves one row
+# ---------------------------------------------------------------------------
+
+_SEEDS = ("XWS", "XRW", "XRO", "XHOME", "XSNAP", "XMAIL")
+
+
+def _digest(path):
+    import hashlib
+    h = hashlib.sha256()
+    for p in sorted(path.rglob("*")):
+        if p.is_file():
+            h.update(str(p.relative_to(path)).encode() + p.read_bytes())
+    return h.hexdigest()
+
+
+def _rows(tmp_home):
+    """Every box row of every registry: ``(section, name, path)``."""
+    import yaml
+    out = []
+    for f in sorted(tmp_home.rglob("*.yaml")):
+        if (tmp_home / "t") in f.parents:
+            continue
+        doc = yaml.safe_load(f.read_text()) or {}
+        if not isinstance(doc, dict):
+            continue
+        for section in ("standalone", "boxes"):
+            if isinstance(doc.get(section), dict):
+                out += [(section, name, path) for name, path in doc[section].items()]
+    return out
+
+
+def _homes(state, std):
+    """Where each seed lives for the box *state* describes."""
+    from kanibako.channels.channels import own_partition_dirs
+    from kanibako.settings.paths import box_log_files, box_logs_dir_for
+    from kanibako.snapshots import box_snapshot_store
+
+    logs = box_logs_dir_for(std, state.mode, state.metadata_path,
+                            state.ws.root if state.ws else None,
+                            workset_name=state.ws.name if state.ws else None)
+    mail = own_partition_dirs(std, lc._state_ws_token(state), state.name,
+                              ws_root=lc._state_ws_root(state, std)).mailbox
+    return {"XWS": state.workspace_path, "XRW": state.vault_rw, "XRO": state.vault_ro,
+            "XHOME": state.shell_path, "XSNAP": box_snapshot_store(state.vault_rw, state.name),
+            "XMAIL": mail, "log": box_log_files(logs, state.name)[0]}
+
+
+def _seed(state, std, tag):
+    """Seed every tree the box *state* describes; return ``{seed: digest}`` and its homes."""
+    homes = _homes(state, std)
+    for seed in _SEEDS:
+        (homes[seed] / seed / "sub").mkdir(parents=True, exist_ok=True)
+        (homes[seed] / seed / "f1").write_text(f"{tag}-{seed}")
+        (homes[seed] / seed / "sub" / "f2").write_text(f"{tag}-{seed}-2")
+    homes["log"].parent.mkdir(parents=True, exist_ok=True)
+    homes["log"].write_text(f"{tag}-log")
+    return {seed: _digest(homes[seed] / seed) for seed in _SEEDS}, homes
+
+
+class _Scenario:
+    """One relocation: its source, its spec, and whether it stays where it is."""
+
+    def __init__(self, env, kind):
+        config, std, tmp_home = env
+        self.std, self.config, self.tmp_home, self.kind = std, config, tmp_home, kind
+        p = tmp_home / "p"
+        p.mkdir(exist_ok=True)
+        inplace = lc.INPLACE
+        if kind in ("A", "D", "F"):
+            src = p / "k"
+            src.mkdir()
+            (src / "aaa.txt").write_text("a")
+            resolve_project(std, config, project_dir=str(src), initialize=True)
+        elif kind == "WW":
+            ws1 = create_workset("W1", p / "W1", std)
+            create_workset("W2", p / "W2", std)
+            src = ws1.workspaces_dir / "m"
+            src.mkdir(parents=True)
+            add_project(ws1, "m", src, std)
+        else:
+            from kanibako.settings.paths import resolve_standalone_project
+            src = p / "s"
+            src.mkdir()
+            resolve_standalone_project(std, config, str(src), initialize=True)
+        if kind in ("D", "E", "F"):
+            create_workset("W", p / "W", std)
+        if kind == "F":
+            execute_lifecycle(resolve_lifecycle_target(str(src), std, config),
+                              TargetSpec(location=inplace, ownership="W"), std, config,
+                              confirm=lambda: True)
+        if kind == "Bs":
+            (p / "x").mkdir()
+        self.src = src
+        self.spec = {
+            "A": TargetSpec(location=inplace, ownership="standalone"),
+            "B": TargetSpec(location=p / "s2", ownership="standalone"),
+            "Bs": TargetSpec(location=p / "x" / "s", ownership="standalone"),
+            "C": TargetSpec(location=inplace, ownership="default"),
+            "D": TargetSpec(location=inplace, ownership="W"),
+            "E": TargetSpec(location=inplace, ownership="W"),
+            "F": TargetSpec(location=inplace, ownership="standalone"),
+            "WW": TargetSpec(location=lc.BARE_INTO_WS, ownership="W2"),
+        }[kind]
+        self.inplace = kind not in ("B", "Bs", "WW")
+        self.state = resolve_lifecycle_target(str(src), std, config)
+        self.digests, self.src_homes = _seed(self.state, std, kind)
+        self.src_rows = _rows(tmp_home)
+
+    def run(self):
+        return execute_lifecycle(resolve_lifecycle_target(str(self.src), self.std, self.config),
+                                 self.spec, self.std, self.config, confirm=lambda: True)
+
+
+#: Points before the source row is dropped (rolled back) and after it (the success tail).
+_BEFORE = [("_carry_box_logs", "after"), ("_stash_source_marker", "after"),
+           ("repoint_box_mounted_links", "before"), ("_drop_source_row", "after")]
+_TAIL = [("_relocate_channel_partition", "before"), ("_relocate_snapshot_store", "before"),
+         ("_relocate_snapshot_store", "after"), ("remove_path", "after"),
+         ("_retire_old_store", "before"), ("_retire_old_workspace", "before"),
+         ("_dispose_stash", "before")]
+
+
+def _interrupt_at(monkeypatch, name, when):
+    fired = []
+    real = getattr(lc, name)
+
+    def wrapped(*a, **kw):
+        if when == "before" and not fired:
+            fired.append(name)
+            raise KeyboardInterrupt(name)
+        out = real(*a, **kw)
+        if not fired:
+            fired.append(name)
+            raise KeyboardInterrupt(name)
+        return out
+
+    monkeypatch.setattr(lc, name, wrapped)
+    return fired
+
+
+def _named(path, err, root):
+    """*path*, or a directory holding it, is named in *err*."""
+    return any(str(p) in err for p in (path, *path.parents) if root in p.parents)
+
+
+@pytest.fixture
+def stash_dir(tmp_home, monkeypatch):
+    import tempfile
+    (tmp_home / "t").mkdir()
+    monkeypatch.setattr(tempfile, "tempdir", str(tmp_home / "t"))
+
+
+@pytest.mark.usefixtures("stash_dir")
+class TestAnInterruptLosesNothingAndLeavesOneRow:
+    """Before the source row is dropped an interrupt unwinds to the source alone; after it
+    the destination is the box, nothing is unwound, and the Note names what is left."""
+
+    @pytest.mark.parametrize("point", _BEFORE + _TAIL, ids=lambda p: f"{p[0]}-{p[1]}")
+    @pytest.mark.parametrize("kind", ["A", "B", "Bs", "C", "D", "E", "F", "WW"])
+    def test_every_point(self, env, monkeypatch, capsys, kind, point):
+        sc = _Scenario(env, kind)
+        capsys.readouterr()
+        with monkeypatch.context() as m:
+            fired = _interrupt_at(m, *point)
+            try:
+                sc.run()
+            except KeyboardInterrupt:
+                assert fired
+        err = capsys.readouterr().err
+        rows = _rows(sc.tmp_home)
+        assert len(rows) == 1, rows
+        rolled_back = bool(fired) and point in _BEFORE
+        if rolled_back:
+            assert rows == sc.src_rows
+        _section, _name, where = rows[0]
+        box = resolve_lifecycle_target(where, sc.std, sc.config)
+        homes = _homes(box, sc.std)
+        for seed in _SEEDS:
+            if _digest(homes[seed] / seed) == sc.digests[seed]:
+                continue
+            # Only steps 4b and 4c have no finishing command: interrupted in the tail,
+            # they leave the source copy and the Note names it.
+            assert fired and not rolled_back and seed in ("XSNAP", "XMAIL"), (seed, err)
+            assert _digest(sc.src_homes[seed] / seed) == sc.digests[seed]
+            assert _named(sc.src_homes[seed], err, sc.tmp_home), (seed, err)
+        assert homes["log"].read_text() == f"{kind}-log"
+        if fired and not rolled_back:
+            for seed in ("XRW", "XRO", "XHOME"):
+                left = sc.src_homes[seed]
+                if left.exists() and left != homes[seed]:
+                    assert _named(left, err, sc.tmp_home), (seed, err)
+        if rolled_back:
+            assert _rows(sc.tmp_home) == sc.src_rows
+            new = sc.run()
+            assert _digest(_homes(new, sc.std)["XHOME"] / "XHOME") == sc.digests["XHOME"]
+        elif sc.inplace:
+            with pytest.raises(ProjectError, match="Nothing to do"):
+                sc.run()
+
+
+class TestTheTailKeepsWhatItCouldNotCarry:
+
+    @pytest.mark.usefixtures("stash_dir")
+    def test_a_failed_snapshot_carry_keeps_the_old_store(self, env, monkeypatch, capsys):
+        import kanibako.snapshots as snapshots
+
+        sc = _Scenario(env, "B")
+
+        def boom(*a, **kw):
+            raise RuntimeError("no snapshots today")
+
+        monkeypatch.setattr(snapshots, "relocate_snapshot_store", boom)
+        sc.run()
+        assert _digest(sc.src_homes["XSNAP"] / "XSNAP") == sc.digests["XSNAP"]
+        err = capsys.readouterr().err
+        assert "could not move the vault snapshots" in err
+        assert "still on disk under the old name" in err
+
+    @pytest.mark.usefixtures("stash_dir")
+    @pytest.mark.parametrize("kind", ["A", "B", "C", "E", "F"])
+    def test_a_successful_relocation_carries_the_snapshots(self, env, kind):
+        sc = _Scenario(env, kind)
+        new = sc.run()
+        homes = _homes(new, sc.std)
+        assert _digest(homes["XSNAP"] / "XSNAP") == sc.digests["XSNAP"]
+        assert not (sc.src_homes["XSNAP"] / "XSNAP").exists()
+        assert len(_rows(sc.tmp_home)) == 1
+
+    @pytest.mark.usefixtures("stash_dir")
+    def test_a_rolled_back_same_leaf_move_keeps_the_source_row(self, env, monkeypatch):
+        from kanibako.project import registry_store
+
+        sc = _Scenario(env, "Bs")
+        name = sc.state.name
+        assert registry_store.standalone_root(sc.std.registry, name) == str(sc.src)
+        _interrupt_at(monkeypatch, "_carry_box_logs", "after")
+        with pytest.raises(KeyboardInterrupt):
+            sc.run()
+        assert registry_store.standalone_root(sc.std.registry, name) == str(sc.src)
+        assert (sc.src / "workset.yaml").is_file()
+
+
+class TestLandedBindsResolveByIdentity:
+    """While the links are repointed the source row is still registered, so the landed
+    box is resolved by its identity; its bind set is the one it shows after the op."""
+
+    @pytest.mark.usefixtures("stash_dir")
+    @pytest.mark.parametrize("kind", ["C", "E", "F"])
+    def test_the_landed_set_is_the_shown_set(self, env, monkeypatch, kind):
+        import yaml
+
+        sc = _Scenario(env, kind)
+        outside = sc.tmp_home / "outside"
+        outside.mkdir()
+        (outside / "f.txt").write_text("host")
+        ws = sc.state.workspace_path
+        (ws / "mounted").symlink_to(os.path.relpath(outside, os.path.realpath(ws)))
+        bind = {"box": {"bindings": {"ro": {"/opt/m0": ["{meta.box.workspace}/mounted"]}}}}
+        if kind == "F":
+            # A W-tier binding: the member mounts it, the standalone it becomes does not.
+            tier = sc.state.ws.root / "workset.yaml"
+            doc = (yaml.safe_load(tier.read_text()) if tier.is_file() else None) or {}
+            doc.update(bind)
+            tier.write_text(yaml.safe_dump(doc))
+        else:
+            box_tier = lc.box_metadata_dir(
+                sc.state.mode, sc.state.metadata_path,
+                early=lc._early_scope(sc.std, sc.state.mode,
+                                      sc.state.ws.name if sc.state.ws else None)) / "box.yaml"
+            box_tier.write_text(yaml.safe_dump(bind))
+        before = resolve_lifecycle_target(str(sc.src), sc.std, sc.config).bind_sources
+        assert before
+        landed = []
+        real = lc._landed_bind_sources
+        monkeypatch.setattr(lc, "_landed_bind_sources",
+                            lambda *a: landed.append(real(*a)) or landed[-1])
+        new = sc.run()
+        shown = resolve_lifecycle_target(str(new.metadata_path if new.mode is lc.BoxMode.standalone
+                                             else new.workspace_path),
+                                         sc.std, sc.config).bind_sources
+        assert landed == [shown]
+        link = new.workspace_path / "mounted"
+        if kind == "F":
+            assert shown != before
+            assert str(link) not in shown
+        else:
+            assert str(link) in shown
+            assert (link / "f.txt").read_text() == "host"

@@ -175,7 +175,7 @@ class TestLogCarry:
             raise OSError("injected post-carry teardown failure")
 
         monkeypatch.setattr(
-            "kanibako.commands.box._lifecycle._remove_old_metadata", _fail,
+            "kanibako.commands.box._lifecycle._stash_source_marker", _fail,
         )
         with pytest.raises(OSError, match="injected post-carry"):
             execute_lifecycle(
@@ -204,13 +204,13 @@ class TestLogCarry:
         )
         assert dst_logs != src_logs
 
-        # ⚑ STEP 4b runs after the carry and inside the same unwind, so a failure
+        # ⚑ The link repoint runs after the carry and inside the same unwind, so a failure
         # there is what a rolled-back ws→ws move looks like from here.
         def _fail(*args, **kwargs):
-            raise OSError("injected post-carry step-4b failure")
+            raise OSError("injected post-carry repoint failure")
 
         monkeypatch.setattr(
-            "kanibako.commands.box._lifecycle._relocate_channel_partition", _fail,
+            "kanibako.commands.box._lifecycle.repoint_box_mounted_links", _fail,
         )
         with pytest.raises(OSError, match="injected post-carry"):
             execute_lifecycle(
@@ -266,10 +266,10 @@ class TestLogCarry:
         _seed_logs(dst_logs, "b2", text="resident")
 
         def _fail(*args, **kwargs):
-            raise OSError("injected post-carry step-4b failure")
+            raise OSError("injected post-carry repoint failure")
 
         monkeypatch.setattr(
-            "kanibako.commands.box._lifecycle._relocate_channel_partition", _fail,
+            "kanibako.commands.box._lifecycle.repoint_box_mounted_links", _fail,
         )
         with pytest.raises(OSError, match="injected post-carry"):
             execute_lifecycle(
