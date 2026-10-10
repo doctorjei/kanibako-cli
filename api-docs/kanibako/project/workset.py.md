@@ -10,6 +10,7 @@ Prose for these symbols lives in `llm-docs/kanibako/project/workset.py.md`.
 ```
 BOXES_DIR_NAME = bootstrap.BOXES_PATH
 DEFAULT_CANON_LEFTOVER_WHY = 'it is the default canon folder `create` made, and it holds content kanibako did not put there'
+SYMLINK_LOOP_WHY = 'it is a symlink loop that kanibako cannot resolve, so it is left in place for you to look at.'
 DEFAULT_WORKSET_ID = '__default__'
 DEFAULT_WORKSET_ALIAS = 'default'
 RESERVED_WORKSET_IDENTIFIERS = frozenset({DEFAULT_WORKSET_ID, DEFAULT_WORKSET_ALIAS})

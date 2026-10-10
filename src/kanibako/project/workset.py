@@ -515,7 +515,9 @@ def standalone_vault_teardown(
         else:
             retained.append(_unfollowed(arm))
     skeleton = root / _VAULT_LEAF
-    if skeleton.is_symlink():
+    if _symlink_loop(skeleton):
+        retained = [p for p in retained if skeleton not in p.parents] + [skeleton]
+    elif skeleton.is_symlink():
         removable.append(skeleton)
     elif skeleton.is_dir():
         arms = {arm.resolve() for arm in removable}
@@ -677,19 +679,21 @@ def remove_default_canon_stamp(leaf: Path) -> bool:
             return False
     return not leaf.exists()
 
-def _symlink_loop(path: Path) -> bool:
-    """True when *path* is a symlink that cannot be resolved because it LOOPS.
+SYMLINK_LOOP_WHY = ("it is a symlink loop that kanibako cannot resolve, so it is left "
+                    "in place for you to look at.")
 
-    ⚑ ``resolve(strict=False)`` HIDES a loop: it returns the link itself, which reads as
-    an ordinary in-tree directory.  ``strict=True`` raises ``OSError(ELOOP)`` (3.13) or
-    ``RuntimeError`` (3.11) — catch both, so a loop is NAMED, never crashed on or removed.
-    Dangling is ENOENT, not a loop.
+
+def _symlink_loop(path: Path) -> bool:
+    """True when *path* cannot be resolved because a link on it — itself or above — LOOPS.
+
+    ⚑ ``resolve(strict=False)`` HIDES a loop on 3.13 (it returns the path, which reads as
+    an ordinary directory) and RAISES ``RuntimeError`` on 3.11.  ``realpath(strict=True)``
+    raises ``OSError(ELOOP)`` on both, so a loop is NAMED, never crashed on or removed.
+    Dangling is ENOENT, not a loop.  ``SYMLINK_LOOP_WHY`` is why one is kept.
     """
     import errno
     import os
 
-    if not os.path.islink(path):
-        return False
     try:
         os.path.realpath(path, strict=True)
     except OSError as e:
@@ -706,8 +710,7 @@ def vault_keep_reason(root: Path, vault: Path, *, early: EarlyScope) -> str:
     the declaration, so a later reason calls the box's own arm "not a vault arm".
     """
     if _symlink_loop(vault):
-        return ("it is a symlink loop that kanibako cannot resolve, so it is left "
-                "in place for you to look at.")
+        return SYMLINK_LOOP_WHY
     key = declared_repoint_key(root, vault, early=early)
     if key is not None:
         return (f"your {WORKSET_META_FILE} points workset.{key} here; kanibako does "
@@ -2074,8 +2077,10 @@ def _find_member(ws: Workset, name: str) -> WorksetProject:
 
 
 def _unfollowed(path: Path) -> Path:
-    """*path* with its PARENT resolved and the leaf NOT followed (a link stays a link)."""
-    return path.parent.resolve() / path.name
+    """*path* with its PARENT resolved and the leaf NOT followed (a link stays a link).
+    A parent on a loop cannot resolve, so it stays as given."""
+    parent = path.parent
+    return (parent if _symlink_loop(parent) else parent.resolve()) / path.name
 
 
 def release_project(ws: Workset, name: str, *, keep_link: bool = False) -> WorksetProject:

@@ -125,6 +125,8 @@ from kanibako.project.workset import (
     standalone_canon_teardown,
     standalone_vault_teardown,
     _path_in_tree,
+    _symlink_loop,
+    SYMLINK_LOOP_WHY,
     _Unwind,
 )
 
@@ -1074,7 +1076,9 @@ def _validate(
         ):
             if arm is None:
                 continue
-            if mine is not None and arm.resolve() == mine.resolve():
+            # ⚑ A loop is never the same path as anything: ``resolve`` raises on it (3.11).
+            if (mine is not None and not _symlink_loop(arm) and not _symlink_loop(mine)
+                    and arm.resolve() == mine.resolve()):
                 continue
             declared, _carrier = early_repoint(state.workspace_path, doc, key, early=early)
             if declared is not UNSET:
@@ -1680,7 +1684,10 @@ def _is_per_box_leaf(leaf: Path, arm: Path) -> bool:
 
     ⚑ STRICT: ``relative_to`` accepts an equal path, so a leafless arm would take the
     whole shared dir.  A leaf that fails it is not carried, so nothing may delete it.
+    A symlink loop resolves nowhere, so it fails.
     """
+    if _symlink_loop(leaf):
+        return False
     return arm.resolve() in leaf.resolve().parents
 
 
@@ -1734,6 +1741,10 @@ def _vault_carry_pairs(
             if side is None:
                 continue
             src, dst = side
+            # ⚑ A LOOP is retained by the teardown, which names it; it holds nothing to
+            # carry, and ``resolve`` raises on it under Python 3.11.
+            if _symlink_loop(src):
+                continue
             if src.resolve() == dst.resolve():
                 continue
             if src.resolve() not in removable_roots:
@@ -1761,6 +1772,8 @@ def _vault_carry_pairs(
         if side is None or arm is None:
             continue
         src, dst = side
+        if _symlink_loop(src):
+            continue
         if src.resolve() == dst.resolve():
             continue
         if not _is_per_box_leaf(src, arm):
@@ -1906,11 +1919,13 @@ def _unreceived_vault_leaves(
     # deleting it drops the user's pointer.
     named = {leaf for leaf, _why in kept}
     return kept + [
-        (arm / leaf_name, f"it links outside {arm}, so the move did not carry it."
+        (arm / leaf_name, SYMLINK_LOOP_WHY if _symlink_loop(arm / leaf_name)
+         else f"it links outside {arm}, so the move did not carry it."
          if arm / leaf_name != dst else f"it links outside {arm} and stays the box's vault.")
         for arm, dst in zip(src_arms, dst_vault)
         if arm is not None and arm / leaf_name not in named
-        and _on_disk([arm / leaf_name]) and not _is_per_box_leaf(arm / leaf_name, arm)
+        and (_on_disk([arm / leaf_name]) or _symlink_loop(arm / leaf_name))
+        and not _is_per_box_leaf(arm / leaf_name, arm)
     ]
 
 
@@ -1937,7 +1952,8 @@ def _carried_member_store(
     )
     held = {leaf.parent for leaf, _why in unreceived}
     bases = tuple(base for base in (boxes_dir, *arms) if base not in held)
-    kept = [entry for entry in unreceived if _on_disk([entry[0]])]
+    kept = [entry for entry in unreceived
+            if _on_disk([entry[0]]) or _symlink_loop(entry[0])]
     return bases, kept + _nulled_arm_stores(ws, name)
 
 
@@ -2071,7 +2087,7 @@ def _plan_source_teardown(
             (state.vault_ro, state.vault_rw), dst_vault, vault_enabled=state.enable_vault,
         )
         if kept:
-            held = {arm.resolve() for arm, _key in kept}
+            held = {arm if _symlink_loop(arm) else arm.resolve() for arm, _key in kept}
             removable_vault = [
                 vault for vault in removable_vault
                 if not any(vault.resolve() == arm or vault.resolve() in arm.parents
@@ -2120,7 +2136,9 @@ def _plan_source_teardown(
         # ⚑ Keyed RESOLVED, as the lookup below is: a symlink anywhere in the vault path
         # would otherwise miss here and send an unreceived leaf to removal.
         # ⚑ By ARM and leaf name, so a leaf the carry refused is retained too.
-        unreceived = {leaf.resolve(): why for leaf, why in _unreceived_vault_leaves(
+        # ⚑ A loop is keyed as it sits: ``resolve`` raises on it (3.11).
+        unreceived = {leaf if _symlink_loop(leaf) else leaf.resolve(): why
+                      for leaf, why in _unreceived_vault_leaves(
             (std.primary_vault_ro if state.vault_ro is not None else None,
              std.primary_vault_rw if state.vault_rw is not None else None),
             dst_vault, state.name, vault_enabled=state.enable_vault,
@@ -2129,7 +2147,14 @@ def _plan_source_teardown(
         primary_keeps: list[Callable[[], None]] = []
         for vault_dir, arm in ((state.vault_ro, std.primary_vault_ro),
                                (state.vault_rw, std.primary_vault_rw)):
-            if vault_dir is None or arm is None or not vault_dir.is_dir():
+            if vault_dir is None or arm is None:
+                continue
+            if _symlink_loop(vault_dir):
+                if vault_dir in unreceived:
+                    primary_keeps.append(partial(
+                        report_retained_vault, vault_dir, unreceived[vault_dir]))
+                continue
+            if not vault_dir.is_dir():
                 continue
             if arm not in vault_dir.parents:
                 # ⚑ Reported, never silent: a skipped vault is data the user still owns

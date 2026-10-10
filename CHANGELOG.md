@@ -723,6 +723,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A symlink loop in a vault no longer crashes `box move` or `box convert`.** A loop at the vault link or
+  anywhere above it (a looped `vault` folder or a workset's shared `vault/rw`) stopped the command with a
+  `RuntimeError` traceback on Python 3.11. The loop is now left in place with a Note saying so, as `box purge`
+  already does, and the rest of the box moves. `box rm --purge` now keeps a looped `vault` folder too; before, it
+  crashed on 3.11 and removed the folder on 3.13.
 - **A purge that fails partway can be re-run to finish.** `box rm --purge` and `box purge` now delete the box's
   metadata folder and the root `workset.yaml` last, and only when everything else was removed. Before, a failed
   delete could leave the box with no record, or a re-run that read default paths and deleted a folder it had

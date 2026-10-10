@@ -728,3 +728,131 @@ class TestInterruptedMoveIsNamed:
         state = SimpleNamespace(name="beta", workspace_path=tmp_path)
         _lifecycle._note_interrupt_undone(state, SimpleNamespace(verb=verb))  # type: ignore[arg-type]
         assert capsys.readouterr().err == said.format(p=tmp_path) + "\n"
+
+
+@pytest.fixture
+def resolve_as_on_311(monkeypatch):
+    """``Path.resolve`` as Python 3.11 has it: a symlink loop RAISES ``RuntimeError``.
+
+    ⚑ 3.13 returns the loop's own path instead, which hides the crash this pins.
+    """
+    import errno
+    import pathlib
+
+    real = pathlib.Path.resolve
+
+    def resolve(self, strict=False):
+        try:
+            os.path.realpath(self, strict=True)
+        except OSError as e:
+            if e.errno == errno.ELOOP:
+                raise RuntimeError(f"Symlink loop from {str(self)!r}") from None
+        return real(self, strict=strict)
+
+    monkeypatch.setattr(pathlib.Path, "resolve", resolve)
+
+
+def _cli(*argv: str) -> int:
+    from kanibako.cli import main
+
+    with pytest.raises(SystemExit) as info:
+        main(list(argv))
+    return int(info.value.code or 0)
+
+
+def _self_loop(path):
+    """Replace *path* with a link to its own name: a loop."""
+    import shutil
+
+    shutil.rmtree(path)
+    path.symlink_to(path.name)
+
+
+class TestAVaultSymlinkLoopIsKeptAndNamed:
+    """A vault that is a symlink loop is kept and named, never crashed on (3.11)."""
+
+    _WHY = ("it is a symlink loop that kanibako cannot resolve, so it is left in place "
+            "for you to look at.")
+
+    def test_a_standalone_move(self, config_file, tmp_home, credentials_dir,
+                               resolve_as_on_311, capsys):
+        root, dest = tmp_home / "p" / "k", tmp_home / "p" / "k2"
+        root.mkdir(parents=True)
+        assert _cli("create", "--standalone", "--register", str(root)) == 0
+        loop = root / "vault" / "rw"
+        _self_loop(loop)
+        capsys.readouterr()
+
+        assert _cli("box", "move", "--force", str(root), str(dest)) == 0
+        err = capsys.readouterr().err
+        assert "Traceback" not in err
+        assert f"Note: left the vault at {loop} in place — {self._WHY}" in err, err
+        assert loop.is_symlink() and os.readlink(loop) == "rw"
+        assert (dest / "workset.yaml").is_file()
+
+    def test_a_named_member_converted_to_standalone(
+        self, config_file, tmp_home, credentials_dir, resolve_as_on_311, capsys,
+    ):
+        member = tmp_home / "p" / "m"
+        member.mkdir(parents=True)
+        assert _cli("workset", "create", "--name", "ws", str(tmp_home / "ws")) == 0
+        assert _cli("workset", "connect", "ws", str(member)) == 0
+        loop = tmp_home / "ws" / "vault" / "rw" / "m"
+        _self_loop(loop)
+        capsys.readouterr()
+
+        assert _cli("box", "convert", "--force", "--standalone", "--box", "m") == 0
+        err = capsys.readouterr().err
+        assert f"Note: left the vault at {loop} in place — {self._WHY}" in err, err
+        assert loop.is_symlink()
+
+    def test_a_primary_move_under_a_new_name(
+        self, config_file, tmp_home, credentials_dir, resolve_as_on_311, capsys,
+    ):
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        project_dir, dest = tmp_home / "p" / "k", tmp_home / "p" / "k2"
+        project_dir.mkdir(parents=True)
+        resolve_project(std, config, project_dir=str(project_dir), initialize=True)
+        loop = std.primary_vault_rw / "k"
+        _self_loop(loop)
+        capsys.readouterr()
+
+        assert _cli("box", "move", "--force", "--name", "k3",
+                    str(project_dir), str(dest)) == 0
+        err = capsys.readouterr().err
+        assert f"Note: left the vault at {loop} in place — {self._WHY}" in err, err
+        assert loop.is_symlink()
+
+    def test_a_standalone_move_with_the_vault_folder_looped(
+        self, config_file, tmp_home, credentials_dir, resolve_as_on_311, capsys,
+    ):
+        """The loop sits ABOVE both arms: it is named once, and kept."""
+        root, dest = tmp_home / "p" / "k", tmp_home / "p" / "k2"
+        root.mkdir(parents=True)
+        assert _cli("create", "--standalone", "--register", str(root)) == 0
+        loop = root / "vault"
+        _self_loop(loop)
+        capsys.readouterr()
+
+        assert _cli("box", "move", "--force", str(root), str(dest)) == 0
+        err = capsys.readouterr().err
+        assert err.count("Note: left the vault at") == 1, err
+        assert f"Note: left the vault at {loop} in place — {self._WHY}" in err, err
+        assert loop.is_symlink() and os.readlink(loop) == "vault"
+
+    def test_a_named_member_converted_with_its_shared_arm_looped(
+        self, config_file, tmp_home, credentials_dir, resolve_as_on_311, capsys,
+    ):
+        member = tmp_home / "p" / "m"
+        member.mkdir(parents=True)
+        assert _cli("workset", "create", "--name", "ws", str(tmp_home / "ws")) == 0
+        assert _cli("workset", "connect", "ws", str(member)) == 0
+        arm = tmp_home / "ws" / "vault" / "rw"
+        _self_loop(arm)
+        capsys.readouterr()
+
+        assert _cli("box", "convert", "--force", "--standalone", "--box", "m") == 0
+        err = capsys.readouterr().err
+        assert f"Note: left the vault at {arm / 'm'} in place — {self._WHY}" in err, err
+        assert arm.is_symlink() and os.readlink(arm) == "rw"
