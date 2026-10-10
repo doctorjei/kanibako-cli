@@ -22,6 +22,7 @@ _CLI_TYPED = frozenset({'bool', 'int', 'path'})
 _ROOT_ATTRIBUTE = {'primary': 'primary_workset', 'named': 'group_root', 'standalone': 'metadata_path'}
 _CONSTRUCT_TIME = frozenset({'<generated at creation>', '<construct-time>', "<the user's real project dir>"})
 _AGENT = 'anyagent'
+_RENDERED = {'<W>': '{meta.workset.name}', '<B>': '{meta.box.name}'}
 _VALUE_END = re.compile('\\s{2,}')
 _BRACES = re.compile('^(?P<head>[^{}]*)\\{(?P<alts>[^{}]+)\\}(?P<tail>[^{}]*)$')
 _SENTINEL_VALUES: tuple[object, ...] = (None, True, False, {})
@@ -90,6 +91,13 @@ class EntryOwners(_ViewRegistry):
     VIEWS = ('all', 'core', 'creds')
 
     def __init__(self, *, rows: str, name: str='entry-owners', **options: object) -> None
+
+    def _rows(self) -> list[dict[str, object]]
+
+class AgentCredFiles(_ViewRegistry):
+    def __init__(self, *, name: str='agent-cred-files', **options: object) -> None
+
+    def declared(self, identifier: str) -> bool
 
     def _rows(self) -> list[dict[str, object]]
 

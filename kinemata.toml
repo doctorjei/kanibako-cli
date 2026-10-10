@@ -224,6 +224,18 @@ historical = [
   "docs/plans/",
 ]
 
+# HOST CREDENTIAL FILES: `.credentials.json`, `auth.json`, `secrets.yaml` and the
+# like live in the HOST user's agent home, which the store above never holds (it
+# is built under an isolated HOME, and copying a real credential into it is not
+# an option). A path claim neither the tree nor the store settles is asked of
+# `agent-cred-files` -- every plugin descriptor's `cred_files` `host_rel`, matched
+# whole or by a trailing whole segment -- so the descriptors that declare the
+# file are what settles its citation.
+# ⚑ Bare `config.yaml` claims resolve via goose's template file today; if
+# that file leaves the tree, this registry would settle the retired workset
+# `config.yaml` mentions too.
+declared_in = ["agent-cred-files"]
+
 # Before/after, measured 2026-09-09 against an older tree: 929 failing claims ->
 # 769. The 160 suppressed are ALL positively classified as historicity false
 # positives. Nothing is suppressed that could not be classified.
@@ -1960,6 +1972,14 @@ name = "cred-entry-owners"
 kind = "import"
 target = "kinemata_views:EntryOwners"
 rows = "creds"
+
+# FACT: the host-side agent credential files are the plugin descriptors'
+# `cred_files` rows, by `host_rel`. Read by `[claims] declared_in` alone: it
+# carries no antipattern and `detect` is empty, so `check` gains nothing from it.
+[[registry]]
+name = "agent-cred-files"
+kind = "import"
+target = "kinemata_views:AgentCredFiles"
 
 # FACT: `config_keys._KEY_ROUTES` routes exactly the fixed-scope `set: cli+file`
 # rows. `test_manifest_conformance` `test_every_routed_key_is_a_declared_manifest_row`

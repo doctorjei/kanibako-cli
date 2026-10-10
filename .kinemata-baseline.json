@@ -5,27 +5,6 @@
   "note": "Q59: parity reserved-agent-names shell disagreement accepted short-term; live carrier is the no_agent scrub row until scoping vocabulary (ii) exists; until extended to 2026-09-30 on his word (Q66), which covered only the three parity disagreements. keyspace registry closed (authored 2026-09-22, kind-import row step 4) - the pre-existing undeclared:keyspace strays (filename-shaped identifiers) accepted by the director (Kirobo) as day-one cost; Q67 answered 2026-09-24 (candidates are whole key-shaped literals and @-refs, filenames are declared constants), and the entries then left were declaration homes of meta-files / agent-plugin-files / docker-context-files constants that undeclared could not see across registries - reported to kinemata 2026-09-24 (from-kanibako-2026-09-24-undeclared-flags-another-registrys-declaration-home.md); vscode_remote.py's meta.json became the docker-context-files constant DOCKER_CONTEXT_META_FILE later that day, after the letter, and its declaration line was the same gap. 2026-09-24: the nine system._boxes / system._primary_* records (live code uses of manifest not_keys.code_residue names, accepted earlier that day by the director (Kirobo)) were cleared the same day by renaming the four path-tier table entries to the non-key names _primary_boxes / _primary_vault_ro / _primary_vault_rw / _primary_logs; no record of them remains. The re-record also offered 10 claims + 3 api-doc parity findings from concurrent commits; left for their owners, not accepted here. 2026-09-24, kinemata 0.4.1: `kinemata baseline --prune` dropped the five filename declaration-line records (box.yaml, workset.yaml, config.toml, config.yaml, meta.json) once keyspace's defer_to handed them to the filenames registry, and one canon-layout record, templates.py's `_CANON_CHAPTER_LEAF = \"handbook\"`, which now reads core_defaults.HANDBOOK_REL; no undeclared:keyspace record remains. 2026-09-30: until moved to 2026-10-04 (Sunday) on his word this session, at his instruction; it covers the 610 findings carried in this file. 2026-10-03: until moved to 2026-10-11 on his word (140th). 2026-10-06 (151st), director (Kirobo) ruling: three per-owner-default-reaches-anchor shape findings accepted - meta.box.container: <W>/<B> are rendered placeholders, not refs (DESIGN \u00a7 7; renderer reaches the box identity); meta.agent.default.path and meta.agent.shell.path: literal agent name equals the agent identity for a fixed node; spec spelling via {meta.agent.<x>.name} is a candidate tidy (no behavior change). 2026-10-06 (152nd, task 152-write-baseline), director (Kirobo): `kinemata baseline --prune` dropped 18 records no longer present (15 claims, two WORKSPACES_PATH, one XDG_DATA_HOME); until unchanged. Same task: six stale path claims in llm-docs/ and docs/architecture.md were cured in the text (full package paths, or the retired path named as such) and their records pruned. Same task: 18 MIGRATION.md records for retired store paths (base_template/, commons/, rules/, playbook/scripts/, the pre-1.6.0 registry files, kanibako_config.yaml, general.yaml) cured by naming each path as old in its own clause, line count unchanged and no heading touched; records pruned. Same task: llm-docs citations of canon files outside the repo (the 1.8.0 specs, workbook designs and plans, archived plans, dev-tools scripts) now give the file's full ~/canon/ path, which also corrects the ones that had moved (plans/ to designs/ or archives/); one stale citation in launch/journal.py.md is named as stale. Their records go by prune; the one record of another claim on an edited line was re-recorded with the new line text, director (Kirobo). Same task, review fix: three current-path records that the MIGRATION.md slice had muted by putting \"old\" within reach of the new path (common/ twice, general/settings.yaml) are re-recorded on their restructured lines, and each edited line now keeps its current paths checked. until moved 2026-10-11 \u2192 2026-10-12 by the owner (one-day bridge, 2026-10-10). until moved 2026-10-12 \u2192 2026-10-14 by the owner (2026-10-10, 164th).",
   "findings": [
     {
-      "registry": "canonical",
-      "entry": "SCOPE_CONTAINMENT",
-      "antipattern": "\"system\":\\s*0,\\s*\"agent\":\\s*1",
-      "path": "src/kanibako/settings/settings_categories.py",
-      "text": "_SCOPE_APPLY_ORDER = {\"system\": 0, \"agent\": 1, \"workset\": 2, \"box\": 3}"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": ".codex/auth.json",
-      "path": "llm-docs/kanibako/plugins/codex/target.py.md",
-      "text": "`--model` FLAG; the single SYNC `.codex/auth.json` cred file (`filtered=False`, a wholesale copy,"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": ".credentials.json",
-      "path": "MIGRATION.md",
-      "text": "**Credential SYNC** (separate from host-config import): claude `.credentials.json`,"
-    },
-    {
       "registry": "claims",
       "entry": "claim:path",
       "antipattern": ".kanibako.lock",
@@ -66,13 +45,6 @@
       "antipattern": "archives/",
       "path": "src/kanibako/data/templates/system/canon/handbook/general/directives/LOWER_CANON.md",
       "text": "| `archives/` | Completed plans & historical devnotes, documents, & information (i.e., \"the archive\" or \"archives\"); **a"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "auth.json",
-      "path": "MIGRATION.md",
-      "text": "codex `auth.json`, and goose `secrets.yaml` are two-way synced on every launch."
     },
     {
       "registry": "claims",
@@ -248,20 +220,6 @@
       "antipattern": "connected.yaml",
       "path": "MIGRATION.md",
       "text": "| Registry | `names.yaml` + `worksets.yaml` + `connected.yaml` | one `registry.yaml` (`@system.registry`, superseded in "
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "custom_providers/",
-      "path": "llm-docs/kanibako/plugins/goose/target.py.md",
-      "text": "* the three two-way SYNC cred files \u2014 `secrets.yaml`, `config.yaml` and `custom_providers/` \u2014 which"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "custom_providers/",
-      "path": "llm-docs/kanibako/plugins/goose/target.py.md",
-      "text": "`secrets.yaml` and `custom_providers/` stay unfiltered wholesale copies \u2014 and the engine calls this"
     },
     {
       "registry": "claims",
@@ -504,41 +462,6 @@
     {
       "registry": "claims",
       "entry": "claim:path",
-      "antipattern": "secrets.yaml",
-      "path": "MIGRATION.md",
-      "text": "> env-var *names*; the secret value still lives only in `secrets.yaml`."
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "secrets.yaml",
-      "path": "MIGRATION.md",
-      "text": "codex `auth.json`, and goose `secrets.yaml` are two-way synced on every launch."
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "secrets.yaml",
-      "path": "llm-docs/kanibako/plugins/goose/target.py.md",
-      "text": "* the three two-way SYNC cred files \u2014 `secrets.yaml`, `config.yaml` and `custom_providers/` \u2014 which"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "secrets.yaml",
-      "path": "llm-docs/kanibako/plugins/goose/target.py.md",
-      "text": "`secrets.yaml` and `custom_providers/` stay unfiltered wholesale copies \u2014 and the engine calls this"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "secrets.yaml",
-      "path": "llm-docs/kanibako/plugins/goose/target.py.md",
-      "text": "descriptor-bearing, so its `secrets.yaml` host\u2194box SYNC is the `CredFileSpec` set in"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
       "antipattern": "settings_base.yaml",
       "path": "MIGRATION.md",
       "text": "\ud83d\uded1 **`settings_base.yaml` keeps its name, and it sits in the same directory as the file that"
@@ -647,13 +570,6 @@
       "antipattern": "\u2026/general/directives/SYS_GENERAL.md",
       "path": "MIGRATION.md",
       "text": "| general (system store) | `<data>/global/canon/handbook/general/SYS_GENERAL.md` | `\u2026/general/directives/SYS_GENERAL.md`"
-    },
-    {
-      "registry": "shape:keyspace:per-owner-default-reaches-anchor",
-      "entry": "meta.box.container",
-      "antipattern": "",
-      "path": "keyspace",
-      "text": "per-owner-default-reaches-anchor: meta.box.container"
     }
   ]
 }
