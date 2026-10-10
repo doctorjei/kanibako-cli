@@ -107,6 +107,7 @@ from kanibako.project.workset import (
     list_worksets,
     load_workset,
     load_workset_settings_doc,
+    refuse_case_variant_store,
     refuse_null_workspaces,
     release_project,
     remove_member_store,
@@ -1011,6 +1012,10 @@ def _validate(
             f"Project '{held}' already exists in workset "
             f"'{target_ws.name}'."
         )
+    # ⚑ Entering another workset mints a member; a same-workset move keeps its own leaf.
+    if (target_mode == BoxMode.named and target_ws is not None
+            and (state.ws is None or state.ws.name != target_ws.name)):
+        refuse_case_variant_store(target_ws, new_name, std)
 
     # --- an UNREGISTERED leaf of the target's new name is the same collision on disk:
     #     ``add_project`` adopts whatever is already there.  ⚑ ``records_only`` is exempt
