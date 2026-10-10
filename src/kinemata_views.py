@@ -1440,3 +1440,51 @@ class AgentCredFiles(_ViewRegistry):
             return False
         keys = (str(row["key"]) for row in self.rows)
         return any(key == tail or key.endswith(f"/{tail}") for key in keys)
+
+
+#: Store-relative file names kanibako NO LONGER reads or writes, cited by MIGRATION.md and the
+#: llm-docs as history. Hand-written: no source in the tree lists them, except the v1.7 user
+#: config name, which `bootstrap.LEGACY_CONFIG_FILE` owns and `RetiredFileNames` reads there.
+_RETIRED_FILE_NAMES = (
+    "box_data/settings.yaml",   # moved to <root>/settings.yaml
+    "connected.yaml",           # consolidated into registry.yaml, then dropped
+    "general.yaml",             # the old `general` agent file
+    "general/settings.yaml",    # its interim spelling; the `general` slot itself is retired
+    "global/base_template",     # template root, now global/template (M-11)
+    "image-shells.yaml",        # consolidated into registry.yaml
+    "kanibako.yaml",            # the old single config file
+    "names.yaml",               # consolidated into registry.yaml
+    "project-path.txt",         # the old workspace breadcrumb
+    "project.yaml",             # per-box meta, now settings.yaml
+    "rigs.yaml",                # consolidated into registry.yaml
+    "worksets.yaml",            # consolidated into registry.yaml
+)
+
+
+class RetiredFileNames(_ViewRegistry):
+    """File names kanibako used to read or write and no longer does. `[claims] declared_in`
+    names this registry, so a doc citing `names.yaml` or `project.yaml` AS HISTORY settles
+    here -- neither the tree nor the store can hold a file that no longer exists.
+
+    ⚑ NARROW ON PURPOSE. `declared` takes the whole name only (a trailing `/` dropped), never
+    a part of one, so `foo/names.yaml` stays a claim to check. A name the code still reads must
+    never be here: `_rows` refuses one that equals a live bootstrap or spawn file name.
+    """
+
+    def __init__(self, *, name: str = "retired-file-names", **options: object) -> None:
+        super().__init__(name=name, **options)
+
+    def _rows(self) -> list[dict[str, object]]:
+        from kanibako.channels.helpers import SPAWN_CONFIG_FILENAME
+        from kanibako.settings import bootstrap
+
+        live = {bootstrap.CONFIG_FILE, bootstrap.SITE_CONFIG_FILE, bootstrap.SITE_SETTINGS_FILE,
+                SPAWN_CONFIG_FILENAME}
+        names = (*_RETIRED_FILE_NAMES, bootstrap.LEGACY_CONFIG_FILE)
+        clash = sorted(live.intersection(names))
+        if clash:
+            raise ValueError(f"retired-file-names lists a live file name: {', '.join(clash)}")
+        return [{"key": name} for name in names]
+
+    def declared(self, identifier: str) -> bool:
+        return super().declared(identifier.rstrip("/"))

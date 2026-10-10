@@ -70,20 +70,6 @@
     {
       "registry": "claims",
       "entry": "claim:path",
-      "antipattern": "box_data/settings.yaml",
-      "path": "MIGRATION.md",
-      "text": "- **`settings.yaml` moved from `box_data/settings.yaml` to `<root>/settings.yaml`.**"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "box_data/settings.yaml",
-      "path": "MIGRATION.md",
-      "text": "pre-existing standalone tree to the new shape by hand: move `box_data/settings.yaml`"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
       "antipattern": "broadcast.md",
       "path": "llm-docs/kanibako/channels/channels.py.md",
       "text": "default chat log. It is joined onto the RESOLVED chat dir, and its sibling `broadcast.md` must"
@@ -217,13 +203,6 @@
     {
       "registry": "claims",
       "entry": "claim:path",
-      "antipattern": "connected.yaml",
-      "path": "MIGRATION.md",
-      "text": "| Registry | `names.yaml` + `worksets.yaml` + `connected.yaml` | one `registry.yaml` (`@system.registry`, superseded in "
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
       "antipattern": "data/logs/",
       "path": "MIGRATION.md",
       "text": "`vault/`). The shared top-level `data/logs/` tree (and the `.../helper-messages.jsonl`"
@@ -266,65 +245,9 @@
     {
       "registry": "claims",
       "entry": "claim:path",
-      "antipattern": "general.yaml",
-      "path": "llm-docs/kanibako/settings/config_io.py.md",
-      "text": "1. **`general.yaml`** (module docstring file list) \u2014 the file does not exist. Whole-repo search"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "general.yaml",
-      "path": "llm-docs/kanibako/settings/config_io.py.md",
-      "text": "a file that no longer exists anywhere in the tree (`MIGRATION.md`: *\"The default `general.yaml`"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "general.yaml",
-      "path": "llm-docs/kanibako/settings/config_io.py.md",
-      "text": "config files \u2026 are serialized \u2026 through `load_doc`/`dump_doc`\" and enumerated `general.yaml` \u2014"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "general/settings.yaml",
-      "path": "MIGRATION.md",
-      "text": "(The default `general.yaml` is renamed too; it becomes `general/settings.yaml`.) If you"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "general/settings.yaml",
-      "path": "llm-docs/kanibako/settings/config_io.py.md",
-      "text": "likewise becomes `general/settings.yaml`\"*) \u2014 and listed `settings.yaml` twice. See the false-claim"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "general/settings.yaml",
-      "path": "llm-docs/kanibako/settings/config_io.py.md",
-      "text": "which states it *becomes* `general/settings.yaml`. Zero references in `src/` (other than the"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
       "antipattern": "ghcr.io%2fdoctorjei%2fkanibako-oci%3alatest.json",
       "path": "llm-docs/kanibako/vscode/vscode_config.py.md",
       "text": "`ghcr.io%2fdoctorjei%2fkanibako-oci%3alatest.json`. Python's `urllib.parse.quote` emits UPPERCASE"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "global/base_template/",
-      "path": "MIGRATION.md",
-      "text": "12. **The box template root moved and restructured** (`global/base_template/` \u2192"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "global/base_template/",
-      "path": "llm-docs/kanibako/settings/paths.py.md",
-      "text": "an existing install's populated (possibly user-edited) `global/base_template/` is ORPHANED by the"
     },
     {
       "registry": "claims",
@@ -343,41 +266,6 @@
     {
       "registry": "claims",
       "entry": "claim:path",
-      "antipattern": "image-shells.yaml",
-      "path": "MIGRATION.md",
-      "text": "`rigs.yaml` / `image-shells.yaml`."
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "image-shells.yaml",
-      "path": "MIGRATION.md",
-      "text": "`rigs.yaml`, and `image-shells.yaml` into the appropriate sections of"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "kanibako.yaml",
-      "path": "MIGRATION.md",
-      "text": "| Config files | one `kanibako.yaml` (paths + behavior mixed) | **config** files (`system.*` only) vs **settings** files"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "kanibako.yaml",
-      "path": "MIGRATION.md",
-      "text": "| `[shared]` in the config cascade (`kanibako.yaml` / workset `config.yaml` / `settings.yaml`) | GLOBAL cache, mounted f"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "kanibako_config.yaml",
-      "path": "llm-docs/kanibako/settings/messages.py.md",
-      "text": "Layer-1 bootstrap paths, prefix `config.*`, living in `kanibako_config.yaml`, resolved by the flat"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
       "antipattern": "mailboxes/",
       "path": "MIGRATION.md",
       "text": "now plural (`mailboxes/`) and **partitioned by workset name** first. `<ws>` is"
@@ -392,20 +280,6 @@
     {
       "registry": "claims",
       "entry": "claim:path",
-      "antipattern": "names.yaml",
-      "path": "MIGRATION.md",
-      "text": "| Registry | `names.yaml` + `worksets.yaml` + `connected.yaml` | one `registry.yaml` (`@system.registry`, superseded in "
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "names.yaml",
-      "path": "llm-docs/kanibako/project/registry_store.py.md",
-      "text": "* `_NAME_SECTIONS` \u2014 name \u2192 path sections, sorted on write, matching the legacy `names.yaml`"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
       "antipattern": "nested/",
       "path": "llm-docs/kanibako/commands/box/_lifecycle.py.md",
       "text": "repoint interposed (`workspaces: @meta.workset.path/nested/deep` leaves `nested/`) go too: they"
@@ -416,48 +290,6 @@
       "antipattern": "playbook/",
       "path": "MIGRATION.md",
       "text": "### 2.44 Helper boxes: the entrypoint script moved out of `playbook/`"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "project-path.txt",
-      "path": "llm-docs/kanibako/settings/paths.py.md",
-      "text": "`read_project_meta` (`settings.yaml` `resolved.workspace`) + legacy `project-path.txt` breadcrumb"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "project.yaml",
-      "path": "MIGRATION.md",
-      "text": "### 4.6 `project.yaml` \u2192 per-box `settings.yaml`"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "project.yaml",
-      "path": "MIGRATION.md",
-      "text": "### 9.2 Per-box meta file `project.yaml` \u2192 `settings.yaml`"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "project.yaml",
-      "path": "MIGRATION.md",
-      "text": "| Per-box meta file | `project.yaml` (mode/layout/paths/...) | per-box `settings.yaml` (`[project]` + `[resolved]` secti"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "rigs.yaml",
-      "path": "MIGRATION.md",
-      "text": "`rigs.yaml` / `image-shells.yaml`."
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "rigs.yaml",
-      "path": "MIGRATION.md",
-      "text": "`rigs.yaml`, and `image-shells.yaml` into the appropriate sections of"
     },
     {
       "registry": "claims",
@@ -528,20 +360,6 @@
       "antipattern": "temp/",
       "path": "src/kanibako/data/templates/system/canon/handbook/general/directives/LOWER_CANON.md",
       "text": "| `temp/` | Temporary storage (volatile between sessions) | No |"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "worksets.yaml",
-      "path": "MIGRATION.md",
-      "text": "| Registry | `names.yaml` + `worksets.yaml` + `connected.yaml` | one `registry.yaml` (`@system.registry`, superseded in "
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "worksets.yaml",
-      "path": "llm-docs/kanibako/project/registry_store.py.md",
-      "text": "`worksets.yaml` (workset name \u2192 root). Neither is read or written any more."
     },
     {
       "registry": "claims",

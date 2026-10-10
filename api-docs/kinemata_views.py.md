@@ -27,6 +27,7 @@ _VALUE_END = re.compile('\\s{2,}')
 _BRACES = re.compile('^(?P<head>[^{}]*)\\{(?P<alts>[^{}]+)\\}(?P<tail>[^{}]*)$')
 _SENTINEL_VALUES: tuple[object, ...] = (None, True, False, {})
 _TREE = Path(__file__).resolve().parents[1]
+_RETIRED_FILE_NAMES = ('box_data/settings.yaml', 'connected.yaml', 'general.yaml', 'general/settings.yaml', 'global/base_template', 'image-shells.yaml', 'kanibako.yaml', 'names.yaml', 'project-path.txt', 'project.yaml', 'rigs.yaml', 'worksets.yaml')
 ```
 
 ## Functions
@@ -96,6 +97,13 @@ class EntryOwners(_ViewRegistry):
 
 class AgentCredFiles(_ViewRegistry):
     def __init__(self, *, name: str='agent-cred-files', **options: object) -> None
+
+    def declared(self, identifier: str) -> bool
+
+    def _rows(self) -> list[dict[str, object]]
+
+class RetiredFileNames(_ViewRegistry):
+    def __init__(self, *, name: str='retired-file-names', **options: object) -> None
 
     def declared(self, identifier: str) -> bool
 

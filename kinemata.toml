@@ -234,7 +234,13 @@ historical = [
 # ⚑ Bare `config.yaml` claims resolve via goose's template file today; if
 # that file leaves the tree, this registry would settle the retired workset
 # `config.yaml` mentions too.
-declared_in = ["agent-cred-files"]
+#
+# RETIRED FILE NAMES: MIGRATION.md and the llm-docs cite files kanibako no longer
+# uses (`names.yaml`, `project.yaml`, ...) as history. A path claim of one of them
+# is asked of `retired-file-names`, matched WHOLE only. Its view refuses only a
+# name equal to a live bootstrap or spawn file name (the four its `_rows` lists);
+# any other name added here must be checked by hand against what the code reads.
+declared_in = ["agent-cred-files", "retired-file-names"]
 
 # Before/after, measured 2026-09-09 against an older tree: 929 failing claims ->
 # 769. The 160 suppressed are ALL positively classified as historicity false
@@ -1980,6 +1986,14 @@ rows = "creds"
 name = "agent-cred-files"
 kind = "import"
 target = "kinemata_views:AgentCredFiles"
+
+# FACT: the store-relative file names kanibako no longer reads or writes. Read by
+# `[claims] declared_in` alone: no antipattern and an empty `detect`, so `check`
+# gains nothing from it.
+[[registry]]
+name = "retired-file-names"
+kind = "import"
+target = "kinemata_views:RetiredFileNames"
 
 # FACT: `config_keys._KEY_ROUTES` routes exactly the fixed-scope `set: cli+file`
 # rows. `test_manifest_conformance` `test_every_routed_key_is_a_declared_manifest_row`
