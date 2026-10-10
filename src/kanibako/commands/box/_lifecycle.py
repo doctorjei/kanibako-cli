@@ -721,12 +721,17 @@ class _Unwind:
         self.cleanups.append((action, interrupted))
 
     def run(self) -> None:
+        held: KeyboardInterrupt | None = None
         while self.actions:
             action = self.actions.pop()
             try:
                 action()
+            except KeyboardInterrupt as exc:
+                held = held or exc
             except Exception:  # noqa: BLE001 - best-effort restore
                 pass
+        if held is not None:
+            raise held
 
     def finish(self) -> None:
         """Run success cleanups (best-effort)."""
@@ -739,12 +744,17 @@ class _Unwind:
 
     def note_interrupted(self) -> None:
         """Name what each cleanup not yet returned leaves; an interrupt stopped them."""
+        held: KeyboardInterrupt | None = None
         for _, interrupted in self.cleanups[self.finished:]:
             if interrupted is not None:
                 try:
                     interrupted()
+                except KeyboardInterrupt as exc:
+                    held = held or exc
                 except Exception:  # noqa: BLE001 - the interrupt still propagates
                     pass
+        if held is not None:
+            raise held
 
 
 # ---------------------------------------------------------------------------

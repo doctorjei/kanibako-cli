@@ -228,6 +228,9 @@ occupied leaf it is a no-op.
 A LIFO stack of compensating actions for failure-consistency. Each pushed action is a zero-arg
 callable that reverses a forward step. On `run()` actions execute in REVERSE order, and individual
 failures are swallowed — best-effort restore, so one bad unwind does not mask the rest.
+A `KeyboardInterrupt` from an action (a second Ctrl-C) is held until every action has run, then
+re-raised; `note_interrupted` does the same, so a second interrupt neither stops the unwind part-way
+nor drops a `Note`.
 
 `on_success` is the second list: actions that run only when the WHOLE operation succeeds. It exists
 for work that must wait for completion: discarding the ws→ws stash (`_dispose_stash`), removing a
