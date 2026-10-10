@@ -1247,6 +1247,15 @@ def run_create(args: argparse.Namespace, outcome: _CreateOutcome) -> int:
 
     # ⚑ BEFORE ANY WRITE
     if args.standalone:
+        # [R188]: another spelling of a registered root is refused, as a launch refuses it.
+        from kanibako.project import import_reconcile
+        try:
+            import_reconcile.check_standalone(
+                std.registry, effective_path, journal=std.journal,
+                early=_early_scope(std, BoxMode.standalone))
+        except import_reconcile.ImportConflictError as e:
+            print(f"Error: {e}", file=sys.stderr)
+            return 1
         # A standalone name re-derives its leaf from the directory at every lookup.
         try:
             sanitize_cap(effective_path.name)

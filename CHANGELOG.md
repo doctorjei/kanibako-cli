@@ -717,6 +717,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **A rebuilt standalone box keeps its name.** `create --standalone` on a root whose `workset.yaml` already stores
   a kuid now keeps that kuid; it minted a new one, so the box came back under a new name.
+- **`create --standalone` refuses a second link to a registered standalone root.** Given another spelling of the
+  root (a symlinked parent, or the real path of a box registered through a link), it made a box with a fresh kuid
+  that the registry did not match. It now refuses, as a launch does, naming the registered path to work from.
+- **A launch's "no box" error names the path as given.** `start <link>/p` and a launch from `cd <link>/p` printed
+  `no box at <real>/p`; they now print `<link>/p`, the path the suggested `create` acts on. A pending `create` at a
+  link spelling is now found and named the same way; one journaled at the real spelling is no longer found from a
+  link spelling.
 - **A standalone box whose box data is gone is offered `create --standalone`.** A launch of an unregistered one (by
   path, through a symlinked parent, or from inside its tree), or of a registered one through a symlinked parent,
   suggested a plain `create`, which makes a PRIMARY box over it.
