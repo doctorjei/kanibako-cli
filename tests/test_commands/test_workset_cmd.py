@@ -1364,6 +1364,33 @@ class TestWorksetConnect:
         assert "already connected as project 'p1'" in capsys.readouterr().err
         assert journal.read_journal(std.journal) == {}
 
+    def test_connect_registry_refusal_clears_its_entry(
+        self, config_file, tmp_home, monkeypatch,
+    ):
+        """The membership write's own ``ProjectError`` refusal clears the entry too.
+
+        A crash (any other raise) leaves it: ``test_import_recovery.py`` pins that.
+        """
+        from kanibako.commands.workset_cmd import run_connect
+        from kanibako.errors import ProjectError
+        from kanibako.launch import journal
+        from kanibako.settings import paths as paths_mod
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        create_workset("wsr", tmp_home / "ws_r", std)
+        ext = (tmp_home / "ext").resolve()
+        ext.mkdir()
+
+        def refuse(*a, **k):
+            raise ProjectError("one box per workspace path")
+
+        monkeypatch.setattr(paths_mod, "_register_workset_box_membership", refuse)
+        with pytest.raises(ProjectError):
+            run_connect(argparse.Namespace(
+                workset="wsr", source=str(ext), project_name="p", force=False))
+        assert journal.read_journal(std.journal) == {}
+
     def test_reconnect_after_disconnect_adopts_its_kept_store_silently(
         self, config_file, tmp_home, capsys,
     ):
