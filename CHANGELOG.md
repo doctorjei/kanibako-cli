@@ -335,6 +335,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   An interrupted create is finished with `create --recover <name>`. See *`create` inside a named
   workset's path space* in [MIGRATION.md](MIGRATION.md).
 
+- **`box move`, `box convert`, and `box duplicate` tell a running box by its session and its container, not
+  by a lock file alone.** Without `--force`, each refuses while a kanibako session holds the box's
+  `.kanibako.lock` or the box's container is running, even with no lock file. A lock file that no session
+  holds, left by a box that has stopped, no longer needs `--force`, and a standalone box's old root does not
+  keep it after a move or convert. When no container runtime is available, or the runtime fails or prints
+  output it cannot read, a lock file still refuses, and the warning says why. `box info` shows the lock as
+  `ACTIVE`, `stale (no session holds it)`, or `none`; it showed `ACTIVE` for any lock file.
+
 - **`box move`, `box convert --move <path>` and `box remap` refuse a destination inside a workset
   unless it is the box's own `workspaces/<name>`.** This applies to a box that is, or is becoming, a
   workset member. Any other path in that workset used to be accepted: its root, a directory directly
@@ -780,6 +788,50 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **A move names what it could not delete at the old place.** When a read-only folder stops the removal of
   the old workspace, the Note now says the move is complete and lists what is left. A convert from primary to
   standalone that cannot fully remove the old vault folder now says so; it used to leave it silently.
+- **A retried `box move` that already finished says "Nothing to do".** When `<old>` holds no box and `<new>` is
+  already the registered box, matching any `--name` or target flag given, the error now reads `Nothing to do: no
+  box is at <old>, and <new> is already box '<name>'.` instead of saying no project data was found.
+- **A move cleans up the old place fully.** A standalone box moved to a new root no longer leaves the old root
+  behind as an empty folder; it is removed once nothing else is in it, and a started box's leftover
+  `.kanibako-creds-watcher.lock` no longer keeps it. A primary box's old vault folders are removed like every
+  other mode's: a folder that is a symlink loses only its link, and a Note names the target it left, where the
+  link used to stay and be reported as "could not remove"; a read-only folder that stops the removal is named
+  in a Note instead of being left without a word. A primary vault folder that links outside its vault
+  directory, which the move does not carry, is kept, as its Note says; the move used to unlink it.
+- **`workset connect` refuses a name that differs from a member's only in case.** `workset connect --name Proj`
+  beside member `proj` replaced `proj`'s entry and orphaned its store. It now refuses before writing anything,
+  naming the member, and offers another `--name` or `kanibako workset disconnect <workset> proj`. A new member
+  whose vault folder already exists, such as a leftover or a symlink, now adopts it with a `Warning:` naming the
+  folder. A box connected again after a plain `workset disconnect` adopts its own kept store silently.
+- **A new member whose name case-varies a store its working set kept is refused.** After a plain
+  `workset disconnect` of `proj`, `workset connect --name PROJ` built a second store beside the kept `proj` one
+  and orphaned it, with no warning. `workset connect`, `create` inside a named workset, `box duplicate` into a
+  workset, and `box move` or `box convert` into a different workset now refuse before writing, naming each kept
+  directory; use the kept spelling to adopt that store again, or remove those directories first. A move within
+  one workset, a case-only rename included, is not refused, and a folder that a live member of any workset uses
+  as its store does not count as kept.
+- **`box convert --standalone` on a primary or named box stamps `canon/` as `create --standalone` does.** The
+  converted box got no `canon/` folder at its root. A `canon/` already there is not written into, and a failed
+  convert takes the stamped one back.
+- **An in-place `box convert` out of standalone keeps the lines of both `.gitignore` files.** Your
+  `workspace/.gitignore` still becomes the root's, but any lines the root file held beyond kanibako's
+  `box_data/` were lost; they are now appended to it, and kanibako's line is removed as before. A failed convert
+  lost the root file; it now puts both files back as they were.
+- **An in-place `box convert` refuses names that would collide at the root, before changing anything.** Out of
+  standalone, a workspace entry named like an entry at the root, or like a name the standalone layout
+  reserves (`box_data`, `box.yaml`, `workset.yaml`, `.kanibako.lock`), would overwrite kanibako's entry or
+  land inside it, and could be lost. Into standalone, a project entry named `box_data`, `box.yaml`, or
+  `.kanibako.lock`, or your data at the default `canon/` path, would be adopted as kanibako's own and deleted
+  by a purge; an entry whose name the workspace folder already holds would overwrite or land inside it.
+  Each refusal names every entry: `Refusing: <names> in <dir>: <why>. Rename or move them out of <dir>, and
+  run it again.`
+- **Files the box's root user created no longer stop a convert or a move.** Such entries are owned by a
+  subordinate uid on the host, which the user cannot rename or delete directly. An in-place convert now renames
+  them through `podman unshare`, only within the box's own tree and never by copying; anything else that refuses
+  the rename fails with nothing copied. The old workspace's removal after a move escalates the same way. A
+  failed move between worksets that finds a read-only folder of the box's own store at the old place replaces
+  it from the saved copy, so the box is restored. A box or vault folder that is a symlink loses only its link
+  when kanibako deletes it; the delete could leave the link and open the permissions of folders behind it.
 - **`workset disconnect --remove-files` fails when the box's own tree cannot be deleted.** It printed `Removed
   project` with exit code 0, released the box, and left its `boxes/` tree behind. It now exits 1 with the path and
   a `podman unshare rm -rf` cure, and keeps the box registered so the same command can be re-run. A move between
