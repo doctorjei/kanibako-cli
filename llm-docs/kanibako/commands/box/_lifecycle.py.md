@@ -268,7 +268,8 @@ nothing can still need it.**
   interrupted`) and is re-raised after the Note, as `_Unwind.run` does.
   A copy-back into a REAL-dir destination it cannot write (the 555/444 canon skeleton a
   part-way removal left) removes that destination through `remove_path` and copies again from the
-  stash; a link leaf is never replaced. The box-tree step then re-asserts the canon skeleton
+  stash — only when it is one of the source's own store leaves (`_member_store_bases` / name, what
+  `remove_member_store` deletes); a link or repointed leaf is never replaced, and its step Notes. The box-tree step then re-asserts the canon skeleton
   (`materialize_canon_skeleton`), because a copy carries modes but not ownership.
 * **The stash** is disposed of through `remove_box_tree` (`_dispose_stash`), because it holds a copy
   of the box home and its 0o555 canon dirs defeat a plain `rmtree`. A `False` prints

@@ -3276,11 +3276,15 @@ def _to_workset(
 
             def _copy_back(dst: Path | None, copy: Callable[[], object]) -> None:
                 # A real-dir *dst* the copy cannot write into (a skeleton remnant) is
-                # replaced whole from the stash; a link leaf is never replaced.
+                # replaced whole from the stash — only a leaf of the source's own store
+                # (what ``remove_member_store`` deletes); a link or repointed leaf never.
                 try:
                     copy()
                 except (OSError, ProjectError):
                     if dst is None or dst.is_symlink() or not dst.is_dir():
+                        raise
+                    own = {base.resolve() / src_name for base in _member_store_bases(src_ws)}
+                    if dst.parent.resolve() / dst.name not in own:
                         raise
                     remove_path(dst)
                     copy()
