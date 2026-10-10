@@ -1561,11 +1561,13 @@ def add_project(
     workspace, so a null ``workset.workspaces`` must not block it.  A linked vault leaf
     is kept as it stands.
     """
-    for p in ws.projects:
-        if p.name == name:
-            raise WorksetError(
-                f"Project '{name}' already exists in workset '{ws.name}'."
-            )
+    # ⚑ Case-blind (§0): the registry write treats ``Proj`` as member ``proj`` and
+    # replaces its row, orphaning ``proj``'s store.
+    held = find_identifier(name, (p.name for p in ws.projects))
+    if held is not None:
+        raise WorksetError(
+            f"Project '{held}' already exists in workset '{ws.name}'."
+        )
 
     resolved_source = source_path.resolve()
     literal_source = Path(literal_path(source_path))
@@ -1628,6 +1630,8 @@ def add_project(
         _shell, vault_ro_proj, vault_rw_proj = _workset_box_paths(
             proj_box, *resolve_workset_vault_pair(ws.root, early=ws.early_scope), name,
         )
+        if not existed_box and not restoring:
+            _warn_adopted_vault_leaves(name, (vault_ro_proj, vault_rw_proj))
         if vault_ro_proj is not None and not vault_ro_proj.is_symlink():
             existed_vault_ro = vault_ro_proj.exists()
             vault_ro_proj.mkdir(parents=True, exist_ok=True)
@@ -1710,6 +1714,21 @@ def add_project(
         raise
 
     return proj
+
+
+def _warn_adopted_vault_leaves(name: str, leaves: Iterable[Path | None]) -> None:
+    """Warn that new member *name* adopts each vault leaf in *leaves* already present.
+
+    ⚑ Adopting is by design (connect never clobbers), so this warns and never refuses.
+    The caller asks only when the box dir is new: a kept box dir means the leaves are
+    the member's own store, kept by a plain disconnect.
+    """
+    for leaf in leaves:
+        if leaf is None or not (leaf.exists() or leaf.is_symlink()):
+            continue
+        shown = f"{leaf} -> {leaf.readlink()}" if leaf.is_symlink() else str(leaf)
+        print(f"Warning: project '{name}' adopts an existing vault directory it did "
+              f"not create: {shown}", file=sys.stderr)
 
 
 def ensure_discoverability_link(ws: Workset, name: str, target: Path) -> Path | None:
