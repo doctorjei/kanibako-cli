@@ -65,6 +65,7 @@ def _deliver_carried_box_settings(state: ProjectState, dst_box_tier: Path, *, ea
 def _vault_leaf_has_contents(leaf: Path) -> bool
 def _copy_vault_leaf_contents(src: Path, dst: Path | None, removed: Collection[Path]=(), relocated: Mapping[Path, Path] | None=None) -> None
 def _vault_copy_failure_message(src: Path, dst: Path, err: shutil.Error) -> str
+def _is_per_box_leaf(leaf: Path, arm: Path) -> bool
 def _vault_carry_pairs(state: ProjectState, std: StandardPaths, dst_ro: Path | None, dst_rw: Path | None) -> list[tuple[Path, Path]]
 def _carry_vault_contents(state: ProjectState, std: StandardPaths, dst_ro: Path | None, dst_rw: Path | None, teardown: _SourceTeardown, relocated: Mapping[Path, Path] | None=None) -> None
 def _landings(*pairs: tuple[Path, Path]) -> dict[Path, Path] | None

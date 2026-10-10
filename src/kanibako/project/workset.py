@@ -1513,7 +1513,8 @@ def add_project(
     """Add a project to a workset; an EXTERNAL *source_path* (with *std*) is CONNECTED instead.
 
     *restoring* marks an unwind re-registering a member it just released: that creates no
-    workspace, so a null ``workset.workspaces`` must not block it.
+    workspace, so a null ``workset.workspaces`` must not block it, and keeps a linked
+    vault leaf as it stands.
     """
     for p in ws.projects:
         if p.name == name:
@@ -1582,12 +1583,12 @@ def add_project(
         _shell, vault_ro_proj, vault_rw_proj = _workset_box_paths(
             proj_box, *resolve_workset_vault_pair(ws.root, early=ws.early_scope), name,
         )
-        if vault_ro_proj is not None:
+        if vault_ro_proj is not None and not (restoring and vault_ro_proj.is_symlink()):
             existed_vault_ro = vault_ro_proj.exists()
             vault_ro_proj.mkdir(parents=True, exist_ok=True)
             if not existed_vault_ro:
                 unwind.push(lambda: shutil.rmtree(vault_ro_proj, ignore_errors=True))
-        if vault_rw_proj is not None:
+        if vault_rw_proj is not None and not (restoring and vault_rw_proj.is_symlink()):
             existed_vault_rw = vault_rw_proj.exists()
             vault_rw_proj.mkdir(parents=True, exist_ok=True)
             if not existed_vault_rw:
