@@ -556,6 +556,9 @@ class _Unwind:
         default_factory=list)
     #: How many cleanups have returned.
     finished: int = 0
+    #: How many actions :meth:`run` saw fail: raise an ordinary exception, or return
+    #: ``False`` (an action that restored only part, and named what it left).
+    failed: int = 0
 
     def push(self, action: Callable[[], object]) -> None:
         self.actions.append(action)
@@ -579,11 +582,12 @@ class _Unwind:
         while self.actions:
             action = self.actions.pop()
             try:
-                action()
+                if action() is False:
+                    self.failed += 1
             except KeyboardInterrupt as exc:
                 held = held or exc
             except Exception:  # noqa: BLE001 - best-effort restore
-                pass
+                self.failed += 1
         if held is not None:
             raise held
 

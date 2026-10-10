@@ -45,6 +45,15 @@ class TestRunHoldsInterrupt:
         unwind.push(_record(ran, "b", OSError("boom")))
         unwind.run()
         assert ran == ["b", "a"]
+        assert unwind.failed == 1
+
+    def test_a_partial_restore_counts_as_failed(self):
+        """An action returning ``False`` restored only part; ``None`` is a success."""
+        unwind = _Unwind()
+        unwind.push(lambda: None)
+        unwind.push(lambda: False)
+        unwind.run()
+        assert unwind.failed == 1
 
 
 class TestNoteInterruptedHoldsInterrupt:
@@ -247,6 +256,30 @@ class TestUnwindTargetMemberHoldsInterrupt:
         assert not leaves[1].exists()
 
 
+class TestUnwindTargetMemberVerdict:
+    def test_an_undropped_record_returns_false(self, std, tmp_home, monkeypatch, capsys):
+        import kanibako.commands.box._lifecycle as lc
+        import kanibako.project.workset as ws_mod
+
+        ws = ws_mod.create_workset("ws3", tmp_home / "worksets" / "ws3", std)
+        ws_mod.add_project(ws, "alpha", ws.workspaces_dir / "alpha")
+
+        def refuse(*_a, **_k):
+            raise OSError("injected")
+
+        monkeypatch.setattr(lc, "release_project", refuse)
+        assert lc._unwind_target_member(ws, "alpha", {}) is False
+        assert "could not drop the record of 'alpha'" in capsys.readouterr().err
+
+    def test_a_dropped_record_returns_true(self, std, tmp_home):
+        import kanibako.commands.box._lifecycle as lc
+        import kanibako.project.workset as ws_mod
+
+        ws = ws_mod.create_workset("ws3", tmp_home / "worksets" / "ws3", std)
+        ws_mod.add_project(ws, "alpha", ws.workspaces_dir / "alpha")
+        assert lc._unwind_target_member(ws, "alpha", {}) is True
+
+
 class TestUndoConsolidateHoldsInterrupt:
     def test_interrupted_entry_still_moves_the_rest_back(self, tmp_path, monkeypatch, capsys):
         import kanibako.commands.box._lifecycle as lc
@@ -271,6 +304,32 @@ class TestUndoConsolidateHoldsInterrupt:
         assert sorted(p.name for p in dest_dir.iterdir()) == ["b.txt", "c.txt"]
         err = capsys.readouterr().err
         assert f"a.txt did not go back to {dest_dir}; it is at {src_dir / 'a.txt'}" in err
+
+
+class TestUndoConsolidateReportsAPartialRestore:
+    def test_an_entry_left_behind_returns_false(self, tmp_path, monkeypatch):
+        import kanibako.commands.box._lifecycle as lc
+
+        src_dir, dest_dir = tmp_path / "moved-to", tmp_path / "workspace"
+        src_dir.mkdir()
+        (src_dir / "a.txt").write_text("a")
+
+        def refuse(*_a, **_k):
+            raise OSError("injected")
+
+        monkeypatch.setattr(lc, "_move_entry", refuse)
+        assert lc._undo_consolidate(src_dir, dest_dir, [src_dir / "a.txt"],
+                                    root=tmp_path) is False
+
+    def test_a_full_restore_returns_true(self, tmp_path):
+        import kanibako.commands.box._lifecycle as lc
+
+        src_dir, dest_dir = tmp_path / "moved-to", tmp_path / "workspace"
+        src_dir.mkdir()
+        (src_dir / "a.txt").write_text("a")
+        assert lc._undo_consolidate(src_dir, dest_dir, [src_dir / "a.txt"],
+                                    root=tmp_path) is True
+        assert (dest_dir / "a.txt").read_text() == "a"
 
 
 class TestRestoreRowsHoldInterrupt:

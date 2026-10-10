@@ -142,6 +142,7 @@ class _Unwind:
     actions: list[Callable[[], object]] = field(default_factory=list)
     cleanups: list[tuple[Callable[[], None], Callable[[], None] | None]] = field(default_factory=list)
     finished: int = 0
+    failed: int = 0
 
     def push(self, action: Callable[[], object]) -> None
     def push_first(self, action: Callable[[], object]) -> None

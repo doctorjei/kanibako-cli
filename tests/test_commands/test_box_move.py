@@ -629,3 +629,102 @@ class TestCaseOnlyRenameKeepsItsOwnLeaf:
         assert (ws.workspaces_dir / "A1").is_dir()
         assert (ws.root.resolve() / "boxes" / "A1").is_dir()
         assert (outside / "f").read_text() == "data"
+
+
+class TestInterruptedMoveIsNamed:
+    """An interrupt the unwind undoes in full says so; the CLI still exits 130."""
+
+    def _box(self, config_file, tmp_home):
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        project_dir = tmp_home / "proj" / "beta"
+        project_dir.mkdir(parents=True)
+        (project_dir / "f.txt").write_text("data")
+        resolve_project(std, config, project_dir=str(project_dir), initialize=True)
+        return std, project_dir
+
+    def test_an_undone_interrupt_names_the_source(
+        self, config_file, tmp_home, credentials_dir, monkeypatch, capsys,
+    ):
+        from kanibako.cli import main
+        from kanibako.commands.box import _lifecycle
+        from kanibako.settings.paths import load_primary_boxes
+
+        std, project_dir = self._box(config_file, tmp_home)
+        dest = tmp_home / "elsewhere" / "beta"
+
+        def interrupt(*_a, **_kw):
+            assert (dest / "f.txt").is_file()  # mid-move: the copy has landed
+            raise KeyboardInterrupt
+
+        monkeypatch.setattr(_lifecycle, "write_box_enable_vault", interrupt)
+        with pytest.raises(SystemExit) as exc_info:
+            main(["box", "move", str(project_dir), str(dest), "--force"])
+
+        assert exc_info.value.code == 130
+        err = capsys.readouterr().err
+        assert (f"Interrupted: the move was undone; 'beta' is back at {project_dir}"
+                in err), err
+        assert (project_dir / "f.txt").read_text() == "data"
+        assert not dest.exists()
+        boxes = load_primary_boxes(
+            std.primary_workset, early=_early_scope(std, BoxMode.primary))
+        assert boxes.get("beta") == str(project_dir)
+
+    def test_a_failed_unwind_step_claims_nothing(
+        self, config_file, tmp_home, credentials_dir, monkeypatch, capsys,
+    ):
+        """⚑ THE INVERSE: an unwind step that fails voids the claim the box is back."""
+        from kanibako.commands.box import _lifecycle
+
+        _std, project_dir = self._box(config_file, tmp_home)
+        dest = tmp_home / "elsewhere" / "beta"
+
+        def interrupt(*_a, **_kw):
+            raise KeyboardInterrupt
+
+        def fail(*_a, **_kw):
+            raise OSError("injected")
+
+        monkeypatch.setattr(_lifecycle, "write_box_enable_vault", interrupt)
+        monkeypatch.setattr(_lifecycle, "_unwind_created_root", fail)
+        with pytest.raises(KeyboardInterrupt):
+            run_move(_move_args(project_dir, dest))
+        assert "Interrupted:" not in capsys.readouterr().err
+
+    def test_an_unrestored_primary_row_claims_nothing(
+        self, config_file, tmp_home, credentials_dir, monkeypatch, capsys,
+    ):
+        """⚑ The primary-row restore swallows its errors; a row left unrestored still
+        voids the claim, though it prints nothing of its own."""
+        from kanibako.commands.box import _lifecycle
+
+        _std, project_dir = self._box(config_file, tmp_home)
+        dest = tmp_home / "elsewhere" / "beta"
+
+        def fail(*_a, **_kw):
+            raise OSError("injected")
+
+        def interrupt(*_a, **_kw):
+            monkeypatch.setattr(_lifecycle, "_register_workset_box_membership", fail)
+            monkeypatch.setattr(_lifecycle, "unregister_primary_box_name", fail)
+            raise KeyboardInterrupt
+
+        monkeypatch.setattr(_lifecycle, "write_box_enable_vault", interrupt)
+        with pytest.raises(KeyboardInterrupt):
+            run_move(_move_args(project_dir, dest))
+        assert "Interrupted:" not in capsys.readouterr().err
+
+    @pytest.mark.parametrize(("verb", "said"), [
+        ("move", "Interrupted: the move was undone; 'beta' is back at {p}"),
+        ("convert", "Interrupted: the conversion was undone; 'beta' is back at {p}"),
+        (None, "Interrupted: the remap was undone; 'beta' is registered at {p} again"),
+    ])
+    def test_each_verb_names_what_was_undone(self, tmp_path, capsys, verb, said):
+        from types import SimpleNamespace
+
+        from kanibako.commands.box import _lifecycle
+
+        state = SimpleNamespace(name="beta", workspace_path=tmp_path)
+        _lifecycle._note_interrupt_undone(state, SimpleNamespace(verb=verb))  # type: ignore[arg-type]
+        assert capsys.readouterr().err == said.format(p=tmp_path) + "\n"
