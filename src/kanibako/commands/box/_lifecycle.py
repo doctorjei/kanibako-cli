@@ -2069,9 +2069,12 @@ def _plan_source_teardown(
         # ⚑ Containment must be STRICT — ``relative_to`` ACCEPTS an equal path, so a
         # leafless ``vault_dir`` would take every box's vault with it.
         # ⚑ Keyed RESOLVED, as the lookup below is: a symlink anywhere in the vault path
-        # would otherwise miss here and send an unreceived leaf to the ``rmtree``.
+        # would otherwise miss here and send an unreceived leaf to removal.
+        # ⚑ By ARM and leaf name, so a leaf the carry refused is retained too.
         unreceived = {leaf.resolve(): why for leaf, why in _unreceived_vault_leaves(
-            (state.vault_ro, state.vault_rw), dst_vault, vault_enabled=state.enable_vault,
+            (std.primary_vault_ro if state.vault_ro is not None else None,
+             std.primary_vault_rw if state.vault_rw is not None else None),
+            dst_vault, state.name, vault_enabled=state.enable_vault,
         )}
         vaults: list[Path] = []
         primary_keeps: list[Callable[[], None]] = []
@@ -2271,6 +2274,7 @@ def _finish_relocation(
     names what it left.  An interrupt is named by :func:`_note_interrupted_tail`, which
     reads *progress*.  Steps 4b and 4c have no finishing command.
     """
+    import os
     import sys
 
     progress = progress or _TailProgress()
@@ -2278,7 +2282,7 @@ def _finish_relocation(
     plan = teardown or _SourceTeardown(name=state.name)
 
     def remove(paths: tuple[Path, ...]) -> None:
-        links = {path: path.resolve() for path in paths if path.is_symlink()}
+        links = {path: os.readlink(path) for path in paths if path.is_symlink()}
         for path in paths:
             if _holds_any(path, snapshots):
                 # ⚑ A failed 4c keeps the old store, so "still on disk" stays true.
@@ -2291,8 +2295,8 @@ def _finish_relocation(
                     pass
         for link, target in links.items():
             if not link.is_symlink():
-                print(f"Note: removed the link {link}; left its target {target}, which is "
-                      "yours", file=sys.stderr)
+                print(f"Note: removed the link {link}; left its target {target} untouched",
+                      file=sys.stderr)
 
     def snapshots_step() -> None:
         kept = _relocate_snapshot_store(state, new_state)
@@ -2335,6 +2339,10 @@ def _finish_relocation(
                                     new_state.vault_rw) if p is not None]
     # ⚑ An in-place convert out lands the box AT or under the old root.
     if plan.old_root is not None and not _holds_any(plan.old_root.resolve(), landed):
+        try:  # a started box's stale watcher lock alone would keep the root
+            (plan.old_root / bootstrap.CREDS_WATCHER_LOCK_FILE).unlink(missing_ok=True)
+        except OSError:
+            pass
         _prune_empty_dirs(plan.old_root, plan.old_root.parent)
     _report_store_leftovers(
         plan.name, _on_disk(p for p in (*plan.trees, *plan.vaults) if not _holds_any(p, snapshots)))
@@ -3694,8 +3702,7 @@ def _completed_move(old: str, new_path: Path, std: StandardPaths,
                 landed.ws is None or landed.ws.name != ws_name)):
             return None
     # ⚑ Nothing records where a box came from, so this cannot tell a retry from a typo.
-    return (f"Nothing to do: no box is at {old}, and {new_path} already is box "
-            f"'{landed.name}'; a move that put it there is complete.")
+    return f"Nothing to do: no box is at {old}, and {new_path} is already box '{landed.name}'."
 
 
 def run_move(args) -> int:

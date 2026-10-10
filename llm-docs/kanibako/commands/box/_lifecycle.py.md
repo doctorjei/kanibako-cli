@@ -691,7 +691,7 @@ out from under it.
   root `workset.yaml`, and the vault) and **NOT the project root itself**. For a standalone the root
   IS `metadata_path`: deleting it would wipe the user's whole project directory AND the
   already-converted destination. The success tail `rmdir`s the root last (`old_root`), so it goes
-  only when nothing is left in it.
+  only when nothing is left in it; it first deletes a started box's stale `CREDS_WATCHER_LOCK_FILE`.
   ⚑ `preserve_root` naming THIS root (an in-place rename) drops the OLD name's `registry.standalone`
   entry and returns: `box_data/`, the root meta and the vault are the box just re-established, and
   the only stale thing is the name.
@@ -703,8 +703,9 @@ out from under it.
   pointed OUTSIDE the root is reported and left — see that function for why.
 * **Primary source** — unregisters the name, removes the `boxes/` metadata dir, and removes the
   per-box leaf under the primary workset's resolved vault arms (Phase 5 moved it out of the
-  workspace), through `remove_path` like every other mode: a linked leaf loses only its link, and
-  the tail's Note names the target it left. `preserve_name` (L2) suppresses both when the
+  workspace), through `remove_path` like every other mode. A leaf linking outside its arm was not
+  carried, so `_unreceived_vault_leaves` (given the arms and the box name) retains it with a Note.
+  A carried link loses only the link, and the tail's Note names the target it left. `preserve_name` (L2) suppresses both when the
   converted box reuses its own name in place.
 * **Workset source** — `release_project` (the registration, and an external member's
   discoverability link) in-op; the store (box tree, vault leaves) goes on success through
