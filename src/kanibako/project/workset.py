@@ -52,7 +52,8 @@ from kanibako.settings import bootstrap
 from kanibako.settings.config_io import load_doc
 from kanibako.channels.channels import WS_TOKEN_PRIMARY, WS_TOKEN_STANDALONE
 from kanibako.errors import (
-    ConfigError, LegacyWorksetIdentityError, ReservedWorksetNameError, WorksetError,
+    ConfigError, LegacyWorksetIdentityError, ProjectError, ReservedWorksetNameError,
+    WorksetError,
 )
 from kanibako.identifiers import find_identifier
 from kanibako.project.names import read_names, register_name, unregister_name
@@ -621,7 +622,8 @@ def _journal_connect(
 ):
     """Bracket a ``connect`` register with a J2 write-ahead journal entry (no seed step).
 
-    ⚑ A raise clears it too: ``add_project`` unwinds its writes, and recovery only clears.
+    ⚑ A REFUSAL clears it too (``WorksetError``, or the registry's ``ProjectError``): both
+    fire before the membership write.  Any other raise leaves it, as a crash would.
     """
     if journal is None:
         yield
@@ -634,8 +636,10 @@ def _journal_connect(
     )
     try:
         yield
-    finally:
+    except (WorksetError, ProjectError):
         journal_mod.clear_entry(journal, box_path)
+        raise
+    journal_mod.clear_entry(journal, box_path)
 
 
 # Identity of the synthesized "default" workset — ⚑ VIRTUAL, never written to disk.
