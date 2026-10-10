@@ -12,6 +12,7 @@ from kanibako.settings.messages import (PROFILE_CONTENTS, BASHRC_CONTENTS,
                                               WARN_RUNDIR_UNUSABLE, WARN_WS_NO_ROOT,
                                               WARN_WS_BAD_LOAD, WARN_WS_BOX_BAD_NAME, WARN_SA_SHADOWED_BY_PATH,
                                               WARN_BOX_BAD_KUID, WARN_BOX_KUID_HELD, WARN_BOX_NO_VAULT,
+                                              WARN_BOX_VAULT_UNUSABLE,
 
                                               ERR_SETTINGS_BAD_PATH, ERR_SETTINGS_BAD_REF,
                                               ERR_CONFIG_NO_FILE, ERR_CONFIG_NULL_PATH_REASON,
@@ -2464,14 +2465,39 @@ def _flag_invalid_kuid(proj: ProjectPaths) -> ProjectPaths:
     return proj
 
 
+def unusable_dir_finding(path: Path) -> str | None:
+    """What sits at *path* that no directory can be made or bound at, or None.
+
+    None for a directory (a link to one included) and for NOTHING at all, which a launch
+    creates. Otherwise a dangling link (named with its target) or a non-directory: the
+    guarantee-create ``mkdir`` cannot replace either, and podman cannot bind it as a dir.
+    """
+    if path.is_dir() or not os.path.lexists(path):
+        return None
+    if path.is_symlink():
+        target = os.readlink(path)
+        return (f"a dangling link to {target}" if not path.exists()
+                else f"a link to {target}, which is not a directory")
+    return "not a directory"
+
+
 def _flag_missing_vault(proj: ProjectPaths) -> ProjectPaths:
-    """Advisory (never fatal): warn when a box that EXPECTS a vault has none on disk (spec D5)."""
+    """Advisory (never fatal): warn when a box that EXPECTS a vault has none on disk (spec D5).
+
+    ⚑ An arm whose path holds a dangling link or a non-directory is never bound
+    (``core_defaults.core_default_categories``), so its warning names what is there.
+    """
     try:
+        if not proj.vault_enabled():
+            return proj
+        name = proj.name or str(proj.project_path or "<None>")
         # ⚑ A NULL ARM IS NO SUCH DIR, not a missing one to warn about.
-        if (proj.vault_enabled() and proj.vault_rw_path is not None
-                and not proj.vault_rw_path.is_dir()):
-            get_logger(__name__).warning(WARN_BOX_NO_VAULT, proj.name or str(proj.project_path or "<None>"),
-                                         proj.vault_rw_path)
+        for arm, path in (("rw", proj.vault_rw_path), ("ro", proj.vault_ro_path)):
+            finding = None if path is None else unusable_dir_finding(path)
+            if finding is not None:
+                get_logger(__name__).warning(WARN_BOX_VAULT_UNUSABLE, arm, name, path, finding)
+            elif arm == "rw" and path is not None and not path.is_dir():
+                get_logger(__name__).warning(WARN_BOX_NO_VAULT, name, path)
     except SettingsError:
         pass
 

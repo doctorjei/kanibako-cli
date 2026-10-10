@@ -1287,6 +1287,42 @@ class TestGuaranteeCreateIsALaunchGuaranteeNotAReadOne:
                 v[1:] for v in launch[arm].values()
             ], arm
 
+    @pytest.mark.parametrize("guarantee_create", [True, False])
+    @pytest.mark.parametrize("kind", ["dangling", "file"])
+    @pytest.mark.parametrize("arm", ["rw", "ro"])
+    def test_an_unusable_vault_leaf_gets_no_bind_and_is_untouched(
+        self, tmp_path, arm, kind, guarantee_create,
+    ):
+        """A dangling link or a file at a vault arm: no bind for THAT arm (so the box
+        really launches without it, as the warning says), the other arm intact, and
+        nothing at the leaf changed. RED before: the launch ``mkdir`` raised
+        ``FileExistsError``, and the display still listed the bind."""
+        import os
+
+        from kanibako.settings import core_defaults
+
+        proj = self._P(tmp_path)
+        leaf = proj.vault_rw_path if arm == "rw" else proj.vault_ro_path
+        leaf.parent.mkdir(parents=True)
+        if kind == "dangling":
+            leaf.symlink_to(tmp_path / "gone")
+        else:
+            leaf.write_text("x")
+
+        binds = core_defaults.core_default_categories(
+            None, proj, enable_vault=True, mode="standalone",
+            guarantee_create=guarantee_create,
+        )
+
+        dests = {dest for arm_map in binds.values() for dest in arm_map}
+        other = "ro" if arm == "rw" else "rw"
+        assert f"{GUEST_HOME}/vault/{arm}" not in dests
+        assert f"{GUEST_HOME}/vault/{other}" in dests
+        if kind == "dangling":
+            assert os.readlink(leaf) == str(tmp_path / "gone")
+        else:
+            assert leaf.read_text() == "x"
+
 
 class TestEffectiveBlockAgainstARealAgentPlugin:
     """N1 — the declaration/derivation pairing, driven by a REAL ``ClaudeTarget``.
