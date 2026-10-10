@@ -1818,6 +1818,7 @@ class TestPurgeStaleDeregisteredGuard:
             std, "dup",
             registry_store.lookup_deregistered(std.registry, "dup"),
             argparse.Namespace(purge=True, force=True),
+            config=config,
         )
         assert rc == 1
         # The live box's home is INTACT; the stale entry was dropped.
@@ -1851,6 +1852,7 @@ class TestPurgeStaleDeregisteredGuard:
             std, "sabox",
             registry_store.lookup_deregistered(std.registry, "sabox"),
             argparse.Namespace(purge=True, force=True),
+            config=config,
         )
         assert rc == 1
         assert (root / STANDALONE_META_DIR / "KEEP.txt").read_text() == "standalone-live"

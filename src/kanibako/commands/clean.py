@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 import argparse
+import os
 import shlex
 import shutil
 import sys
+from pathlib import Path
 
 from kanibako.settings.config import WORKSET_META_FILE, load_config
+from kanibako.settings.bootstrap import CREDS_LOCK_KEPT_WHY, CREDS_WATCHER_LOCK_FILE
 from kanibako.runtime.container import remove_box_tree, remove_path
 from kanibako.errors import UserCanceled
 from kanibako.settings.paths import (
@@ -64,7 +67,7 @@ def run(args: argparse.Namespace) -> int:
     return _purge_one(std, config, args.path, force=args.force)
 
 
-def _unregister_purged(std, proj) -> None:
+def _unregister_purged(std, proj, *, park: bool = False) -> None:
     """Drop a purged box's registry entry (M2 orphan-cleanup).
 
     PRIMARY boxes live in the PRIMARY-workset ``boxes:`` membership (name →
@@ -74,11 +77,23 @@ def _unregister_purged(std, proj) -> None:
     is what the membership stores), falling back to the resolved/ metadata-dir
     name, and remove it. Best-effort: a missing or already-clean entry is a no-op.
     """
+    from datetime import datetime, timezone
+
     from kanibako.project import registry_store
     from kanibako.settings.paths import (
         primary_box_name_for_workspace,
         unregister_primary_box_name,
     )
+
+    def _park(name: str, kind: str, workspace: str, metadata: str) -> None:
+        registry_store.register_deregistered(
+            std.registry, name, kind=kind, workspace=workspace, metadata=metadata,
+            deregistered_at=datetime.now(tz=timezone.utc).isoformat(),
+        )
+
+    def _drop_parked(name: str) -> None:
+        # ⚑ A completed purge drops the row an earlier failed pass parked.
+        registry_store.unregister_deregistered(std.registry, name)
 
     try:
         if proj.mode is BoxMode.standalone:
@@ -87,6 +102,11 @@ def _unregister_purged(std, proj) -> None:
             ) or proj.name
             if name:
                 registry_store.unregister_standalone(std.registry, name)
+                if park:
+                    _park(name, "standalone", str(proj.metadata_path),
+                          str(proj.metadata_path))
+                else:
+                    _drop_parked(name)
             return
 
         # PRIMARY (named-workset boxes are unregistered via remove_project, not
@@ -97,6 +117,11 @@ def _unregister_purged(std, proj) -> None:
         ) or (proj.name or proj.metadata_path.name)
         if name:
             unregister_primary_box_name(std.primary_workset, name, early=early)
+            if park:
+                _park(name, "primary", str(proj.project_path),
+                      str(proj.metadata_path))
+            else:
+                _drop_parked(name)
     except Exception:  # noqa: BLE001 - cleanup must never break a purge
         pass
 
@@ -151,22 +176,46 @@ def _resolve_snapshot_store(vault_rw, box_name: str | None):
     return box_snapshot_store(vault_rw, box_name)
 
 
-def _remove_snapshot_store(store) -> None:
+def _remove_snapshot_store(store) -> bool:
     """Delete the box's OWN store — never the shared base, nor ``.unsorted``."""
-    if store is not None and not remove_path(store):
-        _warn_undeleted(store)
+    if store is None:
+        return True
+    if remove_path(store):
+        return True
+    _warn_undeleted(store)
+    return False
 
 
-def _remove_member_vault_leaves(vault_ro, vault_rw) -> None:
+def _remove_member_vault_leaves(vault_ro, vault_rw) -> bool:
     """Take a NAMED member's OWN ro/rw vault leaves — never a shared arm.
 
     ``is_symlink`` is tested: a dangling link is neither dir nor file.
     """
+    all_gone = True
     for leaf in (vault_ro, vault_rw):
         if leaf is None or not (leaf.is_dir() or leaf.is_symlink()):
             continue
         if not remove_path(leaf):
             _warn_undeleted(leaf)
+            all_gone = False
+    return all_gone
+
+
+def _parked_reentries(std, path: str) -> "list[tuple[str, dict]]":
+    """EVERY parked entry *path* addresses, not just one."""
+    from kanibako.project import registry_store
+
+    return registry_store.deregistered_matches_for_workspace(std.registry, Path(path))
+
+
+def _purge_parked(std, config, parked: "tuple[str, dict]", *, force: bool) -> int:
+    """Finish a parked box via ``_purge_deregistered`` — the ONE parked-entry purge."""
+    from kanibako.commands.box._parser import _purge_deregistered
+
+    name, entry = parked
+    return _purge_deregistered(std, name, dict(entry),
+                              argparse.Namespace(purge=True, force=force),
+                              config=config)
 
 
 def _purge_one(std, config, path: str, *, force: bool) -> int:
@@ -182,11 +231,31 @@ def _purge_one(std, config, path: str, *, force: bool) -> int:
             print(f"No session data found for project {proj.project_path or '<None>'}")
             return 0
     elif not proj.metadata_path.is_dir():
+        # ⚑ "No session data" is about the RECORD: the park is the retry's address.
+        parked = _parked_reentries(std, path)
+        if len(parked) > 1:
+            from kanibako.commands.box._parser import refuse_ambiguous_parked_purge
+            return refuse_ambiguous_parked_purge(parked, path)
+        if parked:
+            return _purge_parked(std, config, parked[0], force=force)
         print(f"No session data found for project {proj.project_path}")
         return 0
 
     refuse_inherited_per_owner(
         workset_root(proj, std), EarlyScope(std.early_system, workset_name_token(proj)))
+
+    # ⚑ S6r: the SAME running-box pre-flight the other verbs use — no second probe.  A
+    # live-container purge takes its vaults and canon mid-write; the lock sits with the
+    # store, as ``box rm --purge`` reads it.
+    from kanibako.commands.box._lifecycle import abort_if_box_running
+
+    _lock_home = (standalone_box_store(proj.metadata_path,
+                                      early=_early_scope(std, BoxMode.standalone))
+                 if proj.mode is BoxMode.standalone else proj.metadata_path)
+    if abort_if_box_running(proj, _lock_home / ".kanibako.lock", force,
+                            "Purging this box would delete its vaults and canon while "
+                            "writes are in flight."):
+        return 1
 
     # Resolve before the question: a purge that leaves the store hands it on.
     snapshot_store = _resolve_snapshot_store(proj.vault_rw_path, proj.name)
@@ -205,6 +274,7 @@ def _purge_one(std, config, path: str, *, force: bool) -> int:
             print("Aborted.")
             return 2
 
+    failed = False
     print("Removing session data... ", end="", flush=True)
     # Remove the per-box logs first (their paths are derived from the box's
     # tree, which the rmtree below may take with it for standalone).
@@ -215,61 +285,162 @@ def _purge_one(std, config, path: str, *, force: bool) -> int:
         # ⚑ THE ROOT FILE GOES ONLY WITH THE STORE: a retained store leaves the box whole.
         from kanibako.project.workset import (
             _strictly_in_tree,
+            canon_keep_reason,
+            leftover_default_canon,
+            remove_default_canon_stamp,
             report_retained_canon,
-            report_retained_vaults,
+            report_retained_vault,
             standalone_canon_teardown,
             standalone_vault_teardown,
+            vault_keep_reason,
+            DEFAULT_CANON_LEFTOVER_WHY,
         )
 
         root = proj.metadata_path
+        early = _early_scope(std, BoxMode.standalone)
         # ⚑⚑ RESOLVE THE VAULT FIRST: the root workset.yaml carries the only copy of a
         # ``workset.vault_*`` repoint.
-        removable_vault, retained_vault = standalone_vault_teardown(
-            root, early=_early_scope(std, BoxMode.standalone))
-        removable_canon, retained_canon = standalone_canon_teardown(
-            root, early=_early_scope(std, BoxMode.standalone))
+        removable_vault, retained_vault = standalone_vault_teardown(root, early=early)
+        removable_canon, retained_canon = standalone_canon_teardown(root, early=early)
         # ⚑ The store holds the box home + its canon skeleton (J-7), so its removal needs
         # the podman-unshare escalation; the removable/retained split is the plan's own.
-        removable_store, retained_store = standalone_store_teardown_plan(
-            root, early=_early_scope(std, BoxMode.standalone))
+        removable_store, retained_store = standalone_store_teardown_plan(root, early=early)
+        # ⚑⚑ EVERY kept-path reason is computed HERE, before one unlink: the root
+        # workset.yaml IS what those reasons read, so later they would call the box's own
+        # repointed arm "not a vault arm of this box".
+        canon_why = (canon_keep_reason(root, retained_canon, early=early)
+                    if retained_canon is not None else None)
+        vault_whys = [(v, vault_keep_reason(root, v, early=early)) for v in retained_vault]
+        leftover_canon_rm, leftover_canon_keep = leftover_default_canon(
+            root, removable_canon, retained_canon)
         if removable_store is not None:
-            if not remove_box_tree(removable_store):
-                _warn_undeleted(removable_store)
-            (root / WORKSET_META_FILE).unlink(missing_ok=True)
             gitignore = project_gitignore_to_strip(root)
-            if gitignore is not None:
-                strip_project_gitignore(gitignore)
+            if gitignore is not None and not strip_project_gitignore(gitignore):
+                _warn_undeleted(gitignore)
+                failed = True
             if removable_canon is not None and not remove_path(removable_canon):
                 _warn_undeleted(removable_canon)
-            if retained_canon is not None:
-                report_retained_canon(retained_canon, root)
-        if retained_store is not None:
-            report_retained_store(retained_store, root)
+                failed = True
+            # ⚑ A repointed canon leaves the default ``canon/``: take it when it holds ONLY
+            # ``create``'s stamp, name it when it holds anything else.
+            if leftover_canon_rm is not None and not remove_default_canon_stamp(
+                    leftover_canon_rm):
+                _warn_undeleted(leftover_canon_rm)
+                failed = True
+            # ⚑ The watcher lock sits in the ROOT, outside the store, so nothing else
+            # claims it.  Kanibako's file, but only an UNHELD one goes.
+            from kanibako.commands.box._lifecycle import session_lock_held
+
+            creds_lock = root / CREDS_WATCHER_LOCK_FILE
+            if creds_lock.exists() or creds_lock.is_symlink():
+                if session_lock_held(creds_lock):
+                    print(f"Note: left the creds watcher lock at {creds_lock} in place — "
+                          f"{CREDS_LOCK_KEPT_WHY}.", file=sys.stderr)
+                else:
+                    try:
+                        creds_lock.unlink()
+                        print(f"Removed creds watcher lock: {creds_lock}")
+                    except OSError as exc:
+                        # ⚑ A lock that won't unlink is KEPT, not a crash.
+                        print(f"Warning: could not remove the creds watcher lock at "
+                              f"{creds_lock}: {exc} — left in place.", file=sys.stderr)
+                        failed = True
         for vault_dir in removable_vault:
             if not remove_path(vault_dir):
                 _warn_undeleted(vault_dir)
+                failed = True
         # The store sits beside the vault arms, so the removals above miss it.
         if snapshot_store is not None and _strictly_in_tree(snapshot_store, root):
-            _remove_snapshot_store(snapshot_store)
-        report_retained_vaults(root, retained_vault)
+            if not _remove_snapshot_store(snapshot_store):
+                failed = True
+        # ⚑ THE STORE GOES LAST *AND ONLY IF NOTHING ABOVE FAILED*: `box_data/` is the
+        # anchor `_purge_one` needs in order to see a standalone at all, so removing it
+        # over a kept folder makes the retry this function just promised unrunnable.
+        if removable_store is not None and not failed:
+            if not remove_box_tree(removable_store):
+                _warn_undeleted(removable_store)
+                failed = True
+        if retained_canon is not None and (retained_canon.exists()
+                                         or retained_canon.is_symlink()):
+            report_retained_canon(retained_canon, root, canon_why)
+        if leftover_canon_keep is not None and (leftover_canon_keep.exists()
+                                              or leftover_canon_keep.is_symlink()):
+            report_retained_canon(leftover_canon_keep, root, DEFAULT_CANON_LEFTOVER_WHY)
+        for vault_dir, why in vault_whys:
+            if vault_dir.exists() or vault_dir.is_symlink():
+                report_retained_vault(vault_dir, why)
+        if retained_store is not None:
+            report_retained_store(retained_store, root)
+        # ⚑⚑ THE ROOT workset.yaml GOES LAST, ONLY with the store and ONLY if nothing above
+        # failed: it carries every repoint this block read, plus half the detection marker.
+        # Take it early and a re-run resolves composed DEFAULTS and eats a kept folder.
+        if removable_store is None:
+            pass  # goes only with the store; report_retained_store above already names it
+        elif failed:
+            print(f"Kept {root / WORKSET_META_FILE} — something above could not be "
+                  "removed, so the box's declarations are kept and re-running the purge "
+                  "can finish.", file=sys.stderr)
+        else:
+            try:
+                (root / WORKSET_META_FILE).unlink(missing_ok=True)
+            except OSError as exc:
+                print(f"Warning: could not remove {root / WORKSET_META_FILE}: {exc} — "
+                      "left in place.", file=sys.stderr)
+                # ⚑ A kept declaration is a failed purge.
+                failed = True
     else:
-        if not remove_box_tree(proj.metadata_path):
-            _warn_undeleted(proj.metadata_path)
         # Phase 5: PRIMARY vault lives under @config.primary_workset (not under
         # metadata_path), so remove the per-box ro/rw dirs explicitly.
         if proj.mode is BoxMode.primary:
             for box_vault in (proj.vault_ro_path, proj.vault_rw_path):
-                if box_vault is not None and box_vault.is_dir():
-                    shutil.rmtree(box_vault, ignore_errors=True)
+                if box_vault is None or not (box_vault.is_dir() or box_vault.is_symlink()):
+                    continue
+                # ⚑ THROUGH THE BOX-TREE REMOVER, never a bare ``rmtree``: that REFUSES a
+                # symlink outright, so with ``ignore_errors=True`` a symlinked leaf just
+                # stayed.  ``remove_path`` takes the link and spares the target.
+                was_link = box_vault.is_symlink()
+                link_target = os.readlink(box_vault) if was_link else None
+                try:
+                    removed = remove_path(box_vault)
+                except OSError:
+                    _warn_undeleted(box_vault)
+                    failed = True
+                    continue
+                if not removed:
+                    _warn_undeleted(box_vault)
+                    failed = True
+                    continue
+                if was_link:
+                    print(f"Note: removed the link {box_vault}; left its target "
+                          f"{link_target} untouched.", file=sys.stderr)
         elif proj.mode is BoxMode.named:
-            _remove_member_vault_leaves(proj.vault_ro_path, proj.vault_rw_path)
-        _remove_snapshot_store(snapshot_store)
+            if not _remove_member_vault_leaves(proj.vault_ro_path, proj.vault_rw_path):
+                failed = True
+        if not _remove_snapshot_store(snapshot_store):
+            failed = True
+        # ⚑ ANCHOR LAST, ONLY IF NOTHING ABOVE FAILED — the store above's rule.
+        # Take it early and the parked entry points at a dir already gone.
+        if failed:
+            print(f"Kept {proj.metadata_path} — something above could not be removed, "
+                  "so the box's metadata is kept and re-running the purge can finish.",
+                  file=sys.stderr)
+        elif not remove_box_tree(proj.metadata_path):
+            _warn_undeleted(proj.metadata_path)
+            failed = True
 
     # M2 (registry hygiene): the box metadata is gone, so drop its registry
     # entry too — otherwise registry.{projects,standalone} keeps a dangling
-    # name → path that would shadow a future box at the same path.
-    _unregister_purged(std, proj)
+    # name → path that would shadow a future box at the same path.  ⚑ When
+    # something was KEPT the entry is parked instead: dropping it leaves the retry
+    # this function just promised with no address to re-enter by.
+    _unregister_purged(std, proj, park=failed)
 
+    if failed:
+        # ⚑ CLOSE THE LINE: every later line here is stderr, so stdout ended mid-sentence.
+        print(flush=True)
+        print("Purge incomplete: something was kept, so the box is parked — re-run "
+              "the purge to finish.", file=sys.stderr)
+        return 1
     print(MSG_DONE)
     print(f"Session data removed for {proj.project_path or '<None>'}")
     return 0

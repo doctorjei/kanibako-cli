@@ -125,6 +125,9 @@ RUN_USER_UID_PATH = "/run/user/%d"
 CREDS_WATCHER_LOG_SUFFIX = ".creds-watcher.log"
 # The watcher's single-instance flock file, in the box's host-only ``proj.metadata_path``.
 CREDS_WATCHER_LOCK_FILE = ".kanibako-creds-watcher.lock"
+# ⚑ ONE reason for every verb that leaves the file alone while HELD, so the pre-run
+# KEPT list, the run-time keep, and the after-run Note cannot drift apart.
+CREDS_LOCK_KEPT_WHY = "a live creds watcher holds it, so kanibako does not remove it"
 
 # The STANDALONE box-store dir name — ``@meta.box.path`` and half the detection
 # marker (``system-design-1.8.0.md`` § "Detection & import").

@@ -114,7 +114,8 @@ from kanibako.project.workset import (
     _member_store_bases,
     report_retained_canon,
     report_retained_vault,
-    report_retained_vaults,
+    canon_keep_reason,
+    vault_keep_reason,
     resolve_workset_boxes,
     resolve_workset_canon,
     resolve_workset_vault_pair,
@@ -1727,7 +1728,9 @@ def _vault_carry_pairs(
         removable, _retained = standalone_vault_teardown(state.metadata_path, early=_early_scope(std, BoxMode.standalone))
         removable_roots = {p.resolve() for p in removable}
         out: list[tuple[Path, Path]] = []
-        for side in sides:
+        # ⚑ Each arm is NAMED in its own Note: two arms left behind printed two
+        # character-identical lines, which read as one line twice.
+        for arm_label, side in zip(("vault ro", "vault rw"), sides):
             if side is None:
                 continue
             src, dst = side
@@ -1739,8 +1742,8 @@ def _vault_carry_pairs(
                 # something is actually stored.
                 if src.is_dir() and _vault_leaf_has_contents(src):
                     print(
-                        f"Note: the new vault starts empty — kept the existing "
-                        f"store at {src} in place.",
+                        f"Note: the new {arm_label} starts empty — the store that was "
+                        "here is left where it is, named with the rest below.",
                         file=sys.stderr,
                     )
                 continue
@@ -2080,11 +2083,13 @@ def _plan_source_teardown(
         keeps: list[Callable[[], None]] = []
         if retained_store is not None:
             keeps.append(partial(report_retained_store, retained_store, root))
-        keeps += [partial(report_retained_vaults, root, retained_vault),
+        keeps += [partial(report_retained_vault, v, vault_keep_reason(root, v, early=scope))
+                 for v in retained_vault] + [
                   partial(_report_unreceived_vaults, kept)]
         canon, retained_canon = standalone_canon_teardown(root, early=scope)
         if retained_canon is not None:
-            keeps.append(partial(report_retained_canon, retained_canon, root))
+            keeps.append(partial(report_retained_canon, retained_canon, root,
+                                canon_keep_reason(root, retained_canon, early=scope)))
         trees = (removable_store,) if removable_store is not None else ()
         marker = root / WORKSET_META_FILE
         return _SourceTeardown(
@@ -2347,7 +2352,7 @@ def _finish_relocation(
                     pass
         for link, target in links.items():
             if not link.is_symlink():
-                print(f"Note: removed the link {link}; left its target {target} untouched",
+                print(f"Note: removed the link {link}; left its target {target} untouched.",
                       file=sys.stderr)
 
     def snapshots_step() -> None:
@@ -3877,21 +3882,30 @@ def session_lock_held(lock_file: Path) -> bool:
     return False
 
 
-def box_running_reason(proj: ProjectPaths | None, lock_file: Path) -> str | None:
+def box_running_reason(
+    proj: ProjectPaths | None, lock_file: Path,
+    *, container_name: str | None = None,
+) -> str | None:
     """Why the box behind *lock_file* may be running, else ``None`` — the ONE pre-flight.
 
     A session holding the lock, or the box's container running
     (``_parser._check_container_running``), says it runs.  When the runtime is absent or
     cannot answer, or no *proj* names the container, a lock file on disk still counts.
+    *container_name* asks about that container instead of the one *proj* renders.
     """
     if session_lock_held(lock_file):
         return "a kanibako session holds its lock file"
     unanswered = "no container runtime is available to tell whether its container runs"
-    if proj is not None:
+    if proj is not None or container_name is not None:
         from kanibako.commands.box._parser import NO_RUNTIME, _check_container_running
 
         try:
-            running, detail = _check_container_running(proj, fail_closed=True)
+            # Pass the name only when there is one: older stubs take (proj, fail_closed).
+            if container_name is None:
+                running, detail = _check_container_running(proj, fail_closed=True)
+            else:
+                running, detail = _check_container_running(
+                    proj, fail_closed=True, container_name=container_name)
         except ContainerError as exc:
             running, detail = False, NO_RUNTIME
             unanswered = f"the container runtime could not tell whether its container runs ({exc})"
@@ -3906,11 +3920,12 @@ def box_running_reason(proj: ProjectPaths | None, lock_file: Path) -> str | None
 
 def abort_if_box_running(
     proj: ProjectPaths | None, lock_file: Path, force: bool, consequence: str,
+    *, container_name: str | None = None,
 ) -> bool:
     """Warn when :func:`box_running_reason` answers; True ⇒ the caller aborts (no *force*)."""
     import sys
 
-    reason = box_running_reason(proj, lock_file)
+    reason = box_running_reason(proj, lock_file, container_name=container_name)
     if reason is None:
         return False
     print(f"Warning: this box may be running: {reason}. {consequence} "

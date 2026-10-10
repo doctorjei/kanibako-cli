@@ -144,30 +144,38 @@ class TestPurgeWithARelocatedStore:
         assert (root / "workset.yaml").is_file()
         assert (root / "user_code.py").is_file()
 
-    def test_purge_removes_the_root_file_when_the_store_is_removed(
+    def test_purge_keeps_the_root_file_when_an_in_root_store_is_kept(
             self, config, std, tmp_home):
-        """The inverse: with the store gone the root is unworkable, so its file goes too."""
+        """The inverse case turned on its head: an IN-ROOT store the box's own key nominates
+        is retained, so the root that points at it stays workable and its file stays too."""
         root, _name = _make_standalone(config, std, tmp_home, "sa_purge_drops_root")
-        _relocate(root, root / "inside_store")
+        store = _relocate(root, root / "inside_store")
 
         rc = _purge(root)
 
         assert rc == 0
-        assert not (root / "workset.yaml").exists()
+        assert store.is_dir()
+        assert (root / "workset.yaml").is_file()
+        assert (root / "user_code.py").is_file()
 
-    def test_a_store_relocated_inside_the_root_is_removed(self, config, std, tmp_home):
-        """The inverse: a store strictly below the root IS kanibako's, so it goes — and
-        only it goes: an unrelated sibling in the same parent survives."""
+    def test_a_store_relocated_inside_the_root_is_kept_and_named(self, config, std, tmp_home,
+                                                             capsys):
+        """⚑ Ruled (A) 2026-10-10: being strictly below the root does NOT make a store
+        kanibako's.  The box's OWN ``workset.boxes`` nominated it, so purge keeps it and
+        NAMES it — a leftover that is named is recoverable, a deleted user folder is not."""
         root, _name = _make_standalone(config, std, tmp_home, "sa_purge_inside")
         store = _relocate(root, root / "inside_store")
+        (store / "MY_OWN_NOTES.md").write_text("mine\n")
         (store.parent / "UNRELATED_SIBLING.txt").write_text("not the store\n")
 
         rc = _purge(root)
 
         assert rc == 0
-        assert not store.exists()
+        assert store.is_dir()
+        assert (store / "MY_OWN_NOTES.md").read_text() == "mine\n"
         assert (store.parent / "UNRELATED_SIBLING.txt").is_file()
         assert (root / "user_code.py").is_file()
+        assert str(store) in capsys.readouterr().err
 
 
 class TestCreateDoesNotFollowTheStoreParent:

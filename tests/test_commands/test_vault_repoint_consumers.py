@@ -9,9 +9,14 @@ real vault is orphaned while a directory it never used is what gets removed.
 
 * A per-box LEAF under a resolved arm is kanibako's to delete — it followed the repoint,
   so the deletion must follow it too (PRIMARY, NAMED).
-* An ARM ITSELF that the user pointed OUT OF the box root is the USER'S store, and no
-  verb may ``rm -rf`` it (STANDALONE, whose arm *is* the box's vault, with no leaf).
-  It is reported and left, never silently skipped and never deleted.
+* A STANDALONE role folder is removable by ROLE IDENTITY, not by location: only the folder
+  kanibako's DEFAULT layout stamps for the role (``canon/``, ``vault/ro``, ``vault/rw``,
+  ``box_data``), or one whose key is UNSET / inherited from the SYSTEM tier.  A folder the
+  box's OWN ``workset.yaml`` repoints at — INSIDE the root or out — is the user's and is
+  never deleted; it is kept and NAMED as left in place.  ⚑ Ruled 2026-10-10 (163rd): a
+  leftover that is NAMED is recoverable, a deleted user folder is not.  The old doctrine
+  here read "an IN-ROOT repoint is unambiguously kanibako's to delete"; that was the data
+  loss, and it lived only in this header, never in the spec.
 """
 
 from __future__ import annotations
@@ -264,13 +269,14 @@ def _standalone_with_vault(config_file, tmp_home, name, vault_repoint=None):
 
 
 class TestStandalonePurgeFollowsAnInRootRepoint:
-    """An IN-ROOT repoint (``vault_ro: @meta.workset.path/store/ro``) is unambiguously
-    kanibako's to delete: it is inside the box root the purge is already clearing.
+    """An IN-ROOT repoint (``vault_ro: @meta.workset.path/store/ro``) is the USER'S folder:
+    the box's own ``workset.yaml`` nominated it, so purge KEEPS it and NAMES it.
 
     ⚑ The repoint used to read ``store/ro``; [R147] refuses a bare relative, so the
-    workset-root anchor it always meant is now stated. Same directory, same case."""
+    workset-root anchor it always meant is now stated. Same directory, same case.
+    ⚑ This case used to assert the folder was DELETED — see the file header for the ruling."""
 
-    def test_purge_removes_an_in_root_repoint(
+    def test_purge_keeps_an_in_root_repoint_and_names_it(
         self, config_file, tmp_home, credentials_dir, capsys,
     ):
         from kanibako.commands.box._parser import _rm_standalone
@@ -284,12 +290,18 @@ class TestStandalonePurgeFollowsAnInRootRepoint:
                                           initialize=True)
         assert proj.vault_ro_path == root / "store" / "ro"
         (proj.vault_ro_path / "keep.txt").write_text("vault data")
+        (proj.vault_rw_path / "keep.txt").write_text("vault data")
 
         _rm_standalone(std, "sa_store", root,
-                       argparse.Namespace(purge=True, force=True), registered=True)
-        capsys.readouterr()
-        assert not (root / "store" / "ro").exists()
-        assert not (root / "store" / "rw").exists()
+                       argparse.Namespace(purge=True, force=True), registered=True, config=config)
+        err = capsys.readouterr().err
+        # Kept, byte-identical, and NAMED as the user's to remove.
+        assert (root / "store" / "ro" / "keep.txt").read_text() == "vault data"
+        assert (root / "store" / "rw" / "keep.txt").read_text() == "vault data"
+        assert str(root / "store" / "ro") in err
+        assert str(root / "store" / "rw") in err
+        # Anti-vacuity: the purge itself ran — kanibako's own folder went.
+        assert not (root / "box_data").exists()
 
     def test_purge_of_the_default_layout_is_unchanged(
         self, config_file, tmp_home, credentials_dir, capsys,
@@ -301,7 +313,7 @@ class TestStandalonePurgeFollowsAnInRootRepoint:
         )
         assert vro == root / "vault" / "ro"
         _rm_standalone(std, "sa_plain", root,
-                       argparse.Namespace(purge=True, force=True), registered=True)
+                       argparse.Namespace(purge=True, force=True), registered=True, config=config)
         capsys.readouterr()
         assert not (root / "vault").exists()
         assert not (root / "box_data").exists()
@@ -321,7 +333,7 @@ class TestStandalonePurgeFollowsAnInRootRepoint:
         )
         assert vro == outside / "ro"
         _rm_standalone(std, "sa_out", root,
-                       argparse.Namespace(purge=True, force=True), registered=True)
+                       argparse.Namespace(purge=True, force=True), registered=True, config=config)
         out = capsys.readouterr()
         assert (outside / "ro" / "keep.txt").read_text() == "vault data"
         assert (outside / "rw" / "keep.txt").read_text() == "vault data"
@@ -345,7 +357,7 @@ class TestStandalonePurgeFollowsAnInRootRepoint:
         _repoint(root, "vault_rw", str(nowhere))
         _repoint(root, "vault_ro", str(dangling))
         _rm_standalone(std, "sa_gone", root,
-                       argparse.Namespace(purge=True, force=True), registered=True)
+                       argparse.Namespace(purge=True, force=True), registered=True, config=config)
         err = capsys.readouterr().err
         assert not (root / "box_data").exists()  # anti-vacuity: the purge ran
         assert str(nowhere) not in err
@@ -376,7 +388,8 @@ class TestTeardownResolvesBeforeItDeletes:
         std, config, root = self._poisoned(config_file, tmp_home, "poisoned")
         with pytest.raises(SettingsError) as exc:
             _rm_standalone(std, "poisoned", root,
-                           argparse.Namespace(purge=True, force=True), registered=True)
+                           argparse.Namespace(purge=True, force=True),
+                           registered=True, config=config)
         capsys.readouterr()
         # The error NAMES the key...
         assert "workset.vault_ro" in str(exc.value)
@@ -402,7 +415,8 @@ class TestTeardownResolvesBeforeItDeletes:
         [name] = [n for n, r in registered.items() if r == str(root)]
         write_nested_key(root / "workset.yaml", ("workset",), "boxes", None)
         with pytest.raises(SettingsError, match="workset.boxes"):
-            _rm_standalone(std, name, root, argparse.Namespace(purge=True, force=True), registered=True)
+            _rm_standalone(std, name, root, argparse.Namespace(purge=True, force=True),
+                           registered=True, config=config)
         capsys.readouterr()
         assert registry_store.load_standalone(std.registry) == registered
         assert (root / "box_data").is_dir()
@@ -419,13 +433,13 @@ class TestTeardownResolvesBeforeItDeletes:
         )
         (root / "workset.yaml").unlink()
         _rm_standalone(std, "nofile", root,
-                       argparse.Namespace(purge=True, force=True), registered=True)
+                       argparse.Namespace(purge=True, force=True), registered=True, config=config)
         capsys.readouterr()
         assert not (root / "vault").exists()
 
 
 class TestCleanPurgeFollowsTheRepoint:
-    def test_clean_purge_removes_an_in_root_repoint(
+    def test_clean_purge_keeps_an_in_root_repoint_and_names_it(
         self, config_file, tmp_home, credentials_dir, capsys,
     ):
         from kanibako.commands.clean import _purge_one
@@ -440,8 +454,11 @@ class TestCleanPurgeFollowsTheRepoint:
         (proj.vault_ro_path / "keep.txt").write_text("vault data")
 
         assert _purge_one(std, config, str(root), force=True) == 0
-        capsys.readouterr()
-        assert not (root / "store" / "ro").exists()
+        err = capsys.readouterr().err
+        assert (root / "store" / "ro" / "keep.txt").read_text() == "vault data"
+        assert str(root / "store" / "ro") in err
+        # Anti-vacuity: the purge ran — kanibako's own folder went.
+        assert not (root / "box_data").exists()
 
     def test_clean_purge_of_the_default_layout_is_unchanged(
         self, config_file, tmp_home, credentials_dir, capsys,
@@ -473,7 +490,7 @@ class TestCleanPurgeFollowsTheRepoint:
 class TestStandaloneMoveSourceCleanupFollowsTheRepoint:
     """``_plan_source_teardown``'s STANDALONE branch — the same composition, on move."""
 
-    def test_move_out_of_a_standalone_root_takes_an_in_root_repointed_vault(
+    def test_move_out_of_a_standalone_root_keeps_an_in_root_repointed_vault(
         self, config_file, tmp_home, credentials_dir, capsys,
     ):
         from kanibako.commands.box._lifecycle import run_move
@@ -487,14 +504,17 @@ class TestStandaloneMoveSourceCleanupFollowsTheRepoint:
         proj = resolve_standalone_project(std, config, project_dir=str(root),
                                           initialize=True)
         assert proj.vault_ro_path == root / "store" / "ro"
+        (proj.vault_ro_path / "keep.txt").write_text("vault data")
 
         dest = tmp_home / "mv_dest"
         assert run_move(argparse.Namespace(
             old=str(root), new=str(dest), force=True, to_default=True,
             to_standalone=False, to_workset=None, name=None,
         )) == 0
-        capsys.readouterr()
-        assert not (root / "store" / "ro").exists()
+        err = capsys.readouterr().err
+        # A move must not delete what a purge would keep: kept, intact, and NAMED.
+        assert (root / "store" / "ro" / "keep.txt").read_text() == "vault data"
+        assert str(root / "store" / "ro") in err
 
     def test_move_out_of_a_default_layout_standalone_is_unchanged(
         self, config_file, tmp_home, credentials_dir, capsys,
@@ -786,7 +806,9 @@ class TestANullSourceArmKeepsItsLeftoverData:
         from kanibako.commands.box._parser import _rm_standalone
 
         std, root, vro, vrw = self._nulled_after_data(config_file, tmp_home, "sa_nul")
-        _rm_standalone(std, "sa_nul", root, argparse.Namespace(purge=True, force=True), registered=True)
+        config = load_config(config_file)
+        _rm_standalone(std, "sa_nul", root, argparse.Namespace(purge=True, force=True),
+                       registered=True, config=config)
         self._assert_named(capsys.readouterr().err, vrw)
         assert (vrw / "keep.txt").read_text() == "vault data"
         # The arm the box still names is its own, and it went.
@@ -813,9 +835,11 @@ class TestANullSourceArmKeepsItsLeftoverData:
         from kanibako.commands.box._parser import _rm_standalone
 
         std, root, vro, vrw = self._nulled_after_data(config_file, tmp_home, "sa_loose")
+        config = load_config(config_file)
         loose = root / "vault" / "loose-note.txt"
         loose.write_text("the user's own file")
-        _rm_standalone(std, "sa_loose", root, argparse.Namespace(purge=True, force=True), registered=True)
+        _rm_standalone(std, "sa_loose", root, argparse.Namespace(purge=True, force=True),
+                       registered=True, config=config)
         err = capsys.readouterr().err
         self._assert_named(err, loose)
         self._assert_named(err, vrw)  # the directory beside it is still named

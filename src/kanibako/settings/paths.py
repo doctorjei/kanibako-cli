@@ -32,7 +32,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
 from collections.abc import Callable, Iterable, Mapping, Sequence
-from typing import TYPE_CHECKING, NamedTuple, Protocol, overload
+from typing import TYPE_CHECKING, Any, NamedTuple, Protocol, overload
 
 from kanibako.identifiers import find_identifier
 from kanibako.log import get_logger
@@ -220,18 +220,21 @@ def box_tree_materialized(proj: ProjectPaths) -> bool:
                             early=proj._require_early()).is_dir()
 
 
-def standalone_box_store(root: Path, *, early: EarlyScope) -> Path:
+def standalone_box_store(root: Path, *, early: EarlyScope,
+                         settings_doc: "Mapping[str, Any] | None" = None) -> Path:
     """The RESOLVED ``workset.boxes`` of the standalone box rooted at *root* — ITS store.
 
     ⭐ THE ONE PLACE A STANDALONE STORE PATH IS ANSWERED; every reader and deleter goes
     through here or :func:`box_metadata_dir`, which calls it.  Composing ``box_data/``
     instead names a directory the box never uses.  Deferred import: the paths/workset
-    cycle.
+    cycle.  ⚑ *settings_doc* is a ``workset.yaml`` the caller ALREADY read, so the
+    resolver and its own guard cannot answer two versions.
     """
     from kanibako.project.workset import load_workset_settings_doc, resolve_workset_boxes
 
-    return resolve_workset_boxes(root, load_workset_settings_doc(root), standalone=True,
-                                 early=early)
+    return resolve_workset_boxes(
+        root, load_workset_settings_doc(root) if settings_doc is None else settings_doc,
+        standalone=True, early=early)
 
 
 def standalone_store_teardown_plan(
@@ -239,19 +242,27 @@ def standalone_store_teardown_plan(
 ) -> tuple[Path | None, Path | None]:
     """The standalone box store as ``(removable, retained)`` for a teardown — ONE split.
 
-    ⚑⚑ ONLY A STORE STRICTLY BELOW *root* IS REMOVABLE; anything else is the USER'S OWN
-    directory and no verb ``rm -rf``\\ s it on their behalf — the line
-    ``standalone_vault_teardown`` draws for a vault arm and ``delete_workset`` for a
-    workset store.  BOTH ENDS ARE RESOLVED: the key is answered as it was SPELLED, so
-    ``@meta.workset.path/../store`` or a symlinked parent reads as a descendant while
-    sitting outside the root.  ``None`` on either arm means nothing to act on.
+    ⚑⚑ ONLY THE STORE kanibako CREATED FOR THIS ROLE IS REMOVABLE — the default
+    ``box_data/``, or a repoint that RESOLVES back to it.  A store the box's OWN
+    ``workset.yaml`` repoints elsewhere is the USER'S OWN directory, wherever it sits,
+    and no verb ``rm -rf``\\ s it on their behalf.  A value inherited from the SYSTEM
+    tier is not that nomination, so it stays removable.  BOTH ENDS ARE RESOLVED: the key
+    is answered as it was SPELLED, so ``@meta.workset.path/../store`` or a symlinked
+    parent reads as a descendant while sitting outside the root.  ``None`` on either arm
+    means nothing to act on.
     """
-    from kanibako.project.workset import _strictly_in_tree
+    from kanibako.project.workset import (
+        _strictly_in_tree, _users_own_repoint, load_workset_settings_doc)
 
-    store = standalone_box_store(root, early=early)
+    # ⚑ ONE read feeds the resolution AND the tier guard.
+    doc = load_workset_settings_doc(root)
+    store = standalone_box_store(root, early=early, settings_doc=doc)
     if not store.is_dir() or store.is_symlink():
         return None, None
     resolved = store.resolve()
+    if _users_own_repoint(root, store, doc, bootstrap.BOXES_PATH, STANDALONE_META_DIR,
+                         early=early):
+        return None, resolved
     if _strictly_in_tree(store, root):
         return resolved, None
     return None, resolved
@@ -263,8 +274,8 @@ def report_retained_store(store: Path, root: Path) -> None:
     """
     import sys
 
-    print(f"Note: left the box store at {store} in place — not strictly inside {root}, "
-          f"so it is yours to remove.", file=sys.stderr)
+    print(f"Note: left the box store at {store} in place — not the store kanibako created "
+          f"for this box under {root}, so it is yours to remove.", file=sys.stderr)
 
 
 def _standalone_settings_files(root: Path, *, early: EarlyScope) -> tuple[Path, Path]:

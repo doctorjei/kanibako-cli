@@ -9,6 +9,7 @@ Prose for these symbols lives in `llm-docs/kanibako/project/workset.py.md`.
 
 ```
 BOXES_DIR_NAME = bootstrap.BOXES_PATH
+DEFAULT_CANON_LEFTOVER_WHY = 'it is the default canon folder `create` made, and it holds content kanibako did not put there'
 DEFAULT_WORKSET_ID = '__default__'
 DEFAULT_WORKSET_ALIAS = 'default'
 RESERVED_WORKSET_IDENTIFIERS = frozenset({DEFAULT_WORKSET_ID, DEFAULT_WORKSET_ALIAS})
@@ -28,6 +29,7 @@ _VAULT_RO_KEY = 'vault_ro'
 _VAULT_RW_KEY = 'vault_rw'
 _VAULT_RO_LEAF = f'{_VAULT_LEAF}/{bootstrap.RO_PATH}'
 _VAULT_RW_LEAF = f'{_VAULT_LEAF}/{bootstrap.RW_PATH}'
+_REPOINTED_ROLES = ((_VAULT_RO_KEY, _VAULT_RO_LEAF, resolve_workset_vault_ro), (_VAULT_RW_KEY, _VAULT_RW_LEAF, resolve_workset_vault_rw), (_CANON_LEAF, _CANON_LEAF, resolve_workset_canon))
 _UNDROPPABLE: set[tuple[Path, str]] = set()
 ```
 
@@ -46,13 +48,19 @@ def resolve_workset_canon(workset_root: Path, workset_settings: Mapping[str, Any
 def resolve_workset_template(workset_root: Path, workset_settings: Mapping[str, Any] | None, *, early: EarlyScope) -> Path | None
 def resolve_workset_vault_ro(workset_root: Path, workset_settings: Mapping[str, Any] | None, *, early: EarlyScope) -> Path | None
 def resolve_workset_vault_rw(workset_root: Path, workset_settings: Mapping[str, Any] | None, *, early: EarlyScope) -> Path | None
-def resolve_workset_vault_pair(workset_root: Path, *, early: EarlyScope) -> tuple[Path | None, Path | None]
+def resolve_workset_vault_pair(workset_root: Path, *, early: EarlyScope, settings_doc: Mapping[str, Any] | None=None) -> tuple[Path | None, Path | None]
+def declared_repoint_key(root: Path, path: Path, *, early: EarlyScope) -> str | None
 def standalone_vault_teardown(root: Path, *, early: EarlyScope) -> tuple[list[Path], list[Path]]
 def standalone_canon_teardown(root: Path, *, early: EarlyScope) -> tuple[Path | None, Path | None]
-def report_retained_canon(canon: Path, root: Path, why: str | None=None) -> None
+def holds_only_create_stamp(leaf: Path) -> bool
+def leftover_default_canon(root: Path, removable: Path | None, retained: Path | None) -> tuple[Path | None, Path | None]
+def remove_default_canon_stamp(leaf: Path) -> bool
+def vault_keep_reason(root: Path, vault: Path, *, early: EarlyScope) -> str
+def canon_keep_reason(root: Path, canon: Path, *, early: EarlyScope) -> str
+def report_retained_canon(canon: Path, root: Path, why: str | None=None, *, early: EarlyScope | None=None) -> None
 def retained_vault_reason(root: Path, vault: Path) -> str
 def report_retained_vault(vault: Path, why: str) -> None
-def report_retained_vaults(root: Path, retained: Iterable[Path]) -> None
+def report_retained_vaults(root: Path, retained: Iterable[Path], *, early: EarlyScope | None=None) -> None
 def is_reserved_workset_name(name: str) -> bool
 def refuse_reserved_registered_name(name: str, root: Path, *, early_system: EarlySystem) -> None
 def refuse_retired_workset_identity(root: Path) -> None
@@ -77,6 +85,10 @@ def release_project(ws: Workset, name: str, *, keep_link: bool=False) -> Workset
 def remove_member_store(ws: Workset, name: str, *, bases: tuple[Path, ...] | None=None) -> None
 def remove_project(ws: Workset, name: str, *, remove_files: bool=False, std: StandardPaths | None=None) -> WorksetProject
 def _workspaces_null_file(workset_root: Path, *, early: EarlyScope) -> Path | None
+def _is_role_folder(entry: Path, root: Path, leaf: str) -> bool
+def _users_own_repoint(root: Path, resolved: Path, doc: 'Mapping[str, Any] | None', key: str, leaf: str, *, early: EarlyScope) -> bool
+def _create_canon_stamp() -> dict[str, bool]
+def _symlink_loop(path: Path) -> bool
 def _holds_only_arms(path: Path, arms: set[Path]) -> bool
 @contextmanager
 def _journal_connect(journal: Path | None, box_path: Path, *, name: str, workset: str | None=None, workspace: str | None=None)

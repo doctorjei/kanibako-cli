@@ -31,8 +31,8 @@ def copy_into_workset(ws: Workset, proj_name: str, metadata_path: Path, shell_pa
 def execute_lifecycle(state: ProjectState, spec: TargetSpec, std: StandardPaths, config: BootstrapConfig | None=None, *, force: bool=False, confirm: Callable[[], bool] | None=None) -> ProjectState
 def note_added_leftovers(path: Path, before: frozenset[str] | None) -> None
 def session_lock_held(lock_file: Path) -> bool
-def box_running_reason(proj: ProjectPaths | None, lock_file: Path) -> str | None
-def abort_if_box_running(proj: ProjectPaths | None, lock_file: Path, force: bool, consequence: str) -> bool
+def box_running_reason(proj: ProjectPaths | None, lock_file: Path, *, container_name: str | None=None) -> str | None
+def abort_if_box_running(proj: ProjectPaths | None, lock_file: Path, force: bool, consequence: str, *, container_name: str | None=None) -> bool
 def run_remap(args) -> int
 def run_move(args) -> int
 def run_convert(args) -> int

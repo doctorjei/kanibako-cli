@@ -17,6 +17,8 @@ _CREATE_SUBJECT_FLAGS = ('path', 'standalone', 'allow_home', 'register')
 _SHAPING_SET_CURE = {'image': ('box.image=<value>',), 'agent': ('pref.system.agent=<value>',), 'private': ('box.auth.global_enabled=false', 'box.auth.workset_enabled=false'), 'no_vault': ('box.enable_vault=false',)}
 _STANDALONE_CREATE_EXEMPT_KEYS: frozenset[str] = frozenset({'registry', 'template'})
 _GITIGNORE = 'gitignore line'
+_EMPTY_CANON = 'default canon folder'
+_CREDS_LOCK = 'creds watcher lock'
 _VAULT_LABELS = ('vault ro (your files)', 'vault rw (your files)')
 ```
 
@@ -28,6 +30,7 @@ def precheck_create(args: argparse.Namespace) -> int | None
 def run_create(args: argparse.Namespace, outcome: _CreateOutcome) -> int
 def run_ps(args: argparse.Namespace) -> int
 def run_list(args: argparse.Namespace) -> int
+def refuse_ambiguous_parked_purge(matches, target: str) -> int
 def run_rm(args: argparse.Namespace) -> int
 def run_register(args: argparse.Namespace) -> int
 def run_info(args: argparse.Namespace) -> int
@@ -53,14 +56,18 @@ def _unmakes_its_dirs_on_failure(create: Callable[[argparse.Namespace, _CreateOu
 def _list_orphans(projects: list, ws_data: list, std, quiet: bool) -> int
 def _assert_deletable(path, *, must_be_under: Path | None=None) -> Path
 def _primary_purge_plan(std, name: str, metadata_dir: Path) -> list[_PurgeStep]
-def _standalone_purge_plan(root: Path, registered_name: str, *, std: StandardPaths, early: EarlyScope) -> list[_PurgeStep]
-def _confirm_purge(steps: list[_PurgeStep], *, force: bool) -> bool
+def _standalone_purge_plan(root: Path, registered_name: str, *, std: StandardPaths, early: EarlyScope) -> tuple[list[_PurgeStep], list[tuple[str, Path, str | None]]]
+def _report_retained_roles(root: Path, retained: 'list[tuple[str, Path, str | None]]', *, early=None) -> None
+def _confirm_purge(steps: list[_PurgeStep], *, force: bool, retained: Sequence[tuple[str, Path, str | None]]=()) -> bool
 def _run_purge_plan(steps: list[_PurgeStep]) -> bool
 def _read_box_image(settings_file: Path) -> str | None
 def _read_box_image_tiered(box_tier: Path, workset_tier: Path) -> str | None
-def _purge_deregistered(std, name: str, entry: dict, args: argparse.Namespace) -> int
+def _purge_deregistered(std, name: str, entry: dict, args: argparse.Namespace, *, config) -> int
 def _resolve_standalone_target(std, config, target: str) -> tuple[str | None, Path | None, bool]
-def _rm_standalone(std, box_name: str, root, args: argparse.Namespace, *, registered: bool) -> int
+def _refuse_purge_while_live(std, config, proj_target: str | None, metadata_dir: Path, force: bool, what: str, *, container_name: str | None=None) -> bool
+def _resolve_purge_probe_target(std, config, proj_target: str)
+def _parked_probe_container(name: str) -> str | None
+def _rm_standalone(std, box_name: str, root, args: argparse.Namespace, *, registered: bool, config) -> int
 def _composed_standalone_key(root: Path) -> str | None
 def _readopt_deregistered(std, name: str, entry: dict) -> int
 def _box_register_cure(target: str) -> str
@@ -68,7 +75,7 @@ def _box_rm_purge_cure(target: str) -> str
 def _retained_box_cures(target: str) -> 'tuple[str, str]'
 def _retained_box_cure_lines(target: str) -> str
 def _format_credential_age(creds_path: Path) -> str
-def _check_container_running(proj, *, fail_closed: bool=False) -> tuple[bool, str]
+def _check_container_running(proj, *, fail_closed: bool=False, container_name: str | None=None) -> tuple[bool, str]
 def _resolve_config_subject(std, config, project_dir: str | None)
 def _run_box_config(args: argparse.Namespace) -> int
 ```

@@ -291,11 +291,29 @@ def deregistered_standalone_for_dir(registry: Path, root: Path) -> tuple[str, di
     """The ``deregistered`` ``(name, entry)`` retaining the standalone box at *root*, or ``None``.
 
     ``rm <path> --purge`` routes through it so the purge also drops the parked entry.
+    A FILTER over :func:`deregistered_matches_for_workspace`: ONE place scans claims.
     """
-    for name, entry in load_deregistered(registry).items():
+    for name, entry in deregistered_matches_for_workspace(registry, root):
         if _parks_standalone_dir(entry, root):
             return name, entry
     return None
+
+
+def deregistered_matches_for_workspace(registry: Path, path: Path) -> list[tuple[str, dict]]:
+    """EVERY ``deregistered`` ``(name, entry)`` naming *path* as ``workspace``/``metadata``.
+
+    ⚑⚑ A LIST, not first match: a partial purge leaves the parked entry as the retry's
+    only address, and MORE THAN ONE can name one path — a rewritten PRIMARY plus a
+    STANDALONE rooted there.  The first deletes a box nobody named.
+    """
+    out: list[tuple[str, dict]] = []
+    for name, entry in load_deregistered(registry).items():
+        for field in ("workspace", "metadata"):
+            held = entry.get(field)
+            if held and _same_directory(str(held), str(path)):
+                out.append((name, entry))
+                break
+    return out
 
 
 def lookup_deregistered(registry: Path, box_name: str) -> dict | None:

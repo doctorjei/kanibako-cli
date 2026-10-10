@@ -723,6 +723,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A purge that fails partway can be re-run to finish.** `box rm --purge` and `box purge` now delete the box's
+  metadata folder and the root `workset.yaml` last, and only when everything else was removed. Before, a failed
+  delete could leave the box with no record, or a re-run that read default paths and deleted a folder it had
+  kept. `box purge` now exits 1 when something was kept and leaves the box deregistered, and running the
+  purge again finishes the job.
+- **`box rm --purge` and `box purge` refuse a running box.** A box whose session holds its lock, or whose
+  container the runtime reports as running, is refused unless `--force` is given. This includes detached boxes
+  and deregistered primary boxes.
+- **A purge by path refuses a path that more than one deregistered box names.** It lists them and asks for a
+  purge by name, rather than picking one. `box rm <path> --purge` on a registered standalone box notes any
+  deregistered box still at that path, and leaves it alone.
+- **Purging a standalone box keeps folders its `workset.yaml` points at, inside the project too.** A
+  `workset.canon`, `workset.vault_ro`, `workset.vault_rw`, or `workset.boxes` pointed at a folder other than the
+  default was deleted when it sat inside the project, so `canon: src` took your source tree. It is now kept, and a
+  note says why. `box rm --purge` lists every kept folder before it asks.
+- **Purging a standalone box removes its leftover default `canon/` and creds watcher lock.** A `canon/` folder that
+  `create` made and that holds only what `create` put there is removed when `workset.canon` points elsewhere; one
+  holding anything else is kept and named. The creds watcher lock file at the project root is removed when no
+  watcher holds it.
+- **A purge takes a symlinked vault folder as a link.** It removes the link, leaves the target untouched, and
+  says so; `box purge` used to leave a symlinked primary vault folder behind without a word. A vault folder that
+  is a symlink loop is kept and named; the purge could crash on it.
 - **A `box move`, `box convert`, or `box remap` stopped with Ctrl-C says it was undone.** When the rollback
   completed, the command exited 130 and printed nothing. It now prints
   `Interrupted: the move was undone; '<name>' is back at <path>` (a convert says "the conversion was undone"; a
@@ -851,7 +873,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   table as `unknown (no breadcrumb)`, and `box list --orphan` called it an orphan.
 - **Purging a standalone box deletes its `canon/` folder.** `box rm --purge` and `box purge` left the `canon/`
   folder that `create` made at the project root. `box rm --purge` now lists it with the other paths and deletes
-  it. A `workset.canon` pointed outside the project is kept, and a note names it.
+  it. A `workset.canon` pointed anywhere else is kept, and a note names it.
 - **A detached box starts even when its fallback log cannot be written.** If `~/.kanibako` in the box
   home was a file, or the log could not be opened, the box's first process exited at once and neither the agent
   nor the fallback shell started; now the log is skipped and the box starts as usual.

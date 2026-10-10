@@ -434,3 +434,138 @@ class TestCleanWorkset:
         rc = run(args)
         assert rc == 0
         assert not ws_proj.metadata_path.exists()
+
+
+class TestCleanCredsWatcherLock:
+    """``clean`` leaves the same root-level orphan ``box rm --purge`` used to: the lock
+    sits in the ROOT, outside the store the purge takes.  Unheld it goes; held it is
+    named and stays."""
+
+    def _standalone(self, tmp_home):
+        from kanibako.settings.bootstrap import CREDS_WATCHER_LOCK_FILE
+
+        project_dir = tmp_home / "project"
+        (project_dir / "box_data").mkdir(parents=True)
+        (project_dir / "workset.yaml").write_text('workset:\n  registry: null\n')
+        (project_dir / "box_data" / "data.txt").write_text("session-data")
+        return project_dir / CREDS_WATCHER_LOCK_FILE
+
+    def test_an_unheld_lock_goes_with_the_purge(self, config_file, tmp_home, capsys):
+        from kanibako.commands.clean import run
+
+        lock = self._standalone(tmp_home)
+        lock.write_text("stale\n")
+        capsys.readouterr()
+
+        assert run(argparse.Namespace(path=str(tmp_home / "project"),
+                                    all_projects=False, force=True)) == 0
+        out = capsys.readouterr()
+        assert not lock.exists()
+        assert "Removed creds watcher lock" in out.out
+
+    def test_a_held_lock_is_named_and_stays(self, config_file, tmp_home, capsys):
+        import subprocess
+        import sys
+
+        from kanibako.commands.clean import run
+
+        lock = self._standalone(tmp_home)
+        lock.write_text("held\n")
+        holder = subprocess.Popen(
+            [sys.executable, "-c",
+             f"import fcntl,sys;fd=open({str(lock)!r},'a');fcntl.flock(fd,fcntl.LOCK_EX);"
+             "sys.stdout.write('HELD\\n');sys.stdout.flush();sys.stdin.readline()"],
+            stdout=subprocess.PIPE, stdin=subprocess.PIPE, text=True,
+        )
+        try:
+            assert holder.stdout.readline().strip() == "HELD"
+            capsys.readouterr()
+            assert run(argparse.Namespace(path=str(tmp_home / "project"),
+                                        all_projects=False, force=True)) == 0
+            out = capsys.readouterr()
+        finally:
+            holder.stdin.write("stop\n")
+            holder.stdin.flush()
+            holder.wait(timeout=10)
+
+        assert lock.exists(), "clean removed a HELD lock"
+        # ⚑ The held-lock Note goes to STDERR with every other kept-file Note.
+        assert "a live creds watcher holds it" in out.err
+
+
+def _chmod_tree(root, mode):
+    """Best-effort chmod of *root* and every directory under it, shallowest first."""
+    if not root.exists():
+        return
+    for d in sorted([p for p in root.rglob("*") if p.is_dir()] + [root],
+                   key=lambda p: len(p.parts)):
+        try:
+            d.chmod(mode)
+        except OSError:
+            pass
+
+
+class TestPurgeAnchorLast:
+    """D2: a purge that KEEPS something must leave the box DETECTABLE, or the retry it
+    prints is a promise it cannot keep.
+
+    ``_purge_one`` sees a standalone only through ``box_data/``.  The store used to go
+    FIRST, so a later failure left the declarations behind with nothing that could find
+    them: pass 1 printed "re-running the purge can finish" and ``done.`` with rc 0, and
+    pass 2 printed "No session data found" with rc 0.  Both passes reported success and
+    the box was stranded.
+    """
+
+    def test_a_failed_purge_keeps_the_store_so_the_retry_can_actually_run(
+        self, config_file, tmp_home, credentials_dir, capsys,
+    ):
+        from kanibako.commands.clean import _purge_one
+        from kanibako.project import registry_store
+        from kanibako.settings.config import load_config
+        from kanibako.settings.paths import (
+            load_std_paths,
+            resolve_standalone_project,
+        )
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        root = tmp_home / "d2_retry"
+        root.mkdir()
+        resolve_standalone_project(std, config, project_dir=str(root),
+                                   initialize=True)
+        assert (root / "box_data").is_dir()
+        # A 555 vault parent makes the vault removal fail.  The store sits elsewhere and
+        # would come away cleanly -- which is exactly the trap: a clean store removal is
+        # the worst possible thing to do while something else is being kept.
+        vault = root / "vault"
+        _chmod_tree(vault, 0o555)
+        try:
+            capsys.readouterr()
+            rc1 = _purge_one(std, config, str(root), force=True)
+            first = capsys.readouterr()
+
+            assert rc1 != 0, "a purge that kept a folder must not report success"
+            assert "done." not in first.out.lower(), first.out
+            assert (root / "workset.yaml").is_file()
+            assert (root / "box_data").is_dir(), (
+                "box_data/ is the anchor `_purge_one` detects a standalone by; it has "
+                "to survive a failed step or the retry cannot find the box at all")
+            parked = registry_store.load_deregistered(std.registry)
+            assert any(str(root) in str(e.get("metadata", ""))
+                      for e in dict(parked).values()), (
+                "a purge that kept something parks the entry rather than dropping the "
+                "trail: %s" % (dict(parked),))
+
+            # The retry is real: the same command, once unblocked, finishes the job.
+            _chmod_tree(vault, 0o755)
+            capsys.readouterr()
+            rc2 = _purge_one(std, config, str(root), force=True)
+            second = capsys.readouterr()
+            assert "No session data found" not in second.out, (
+                "the retry must still see the box -- base printed exactly this: %s"
+                % second.out)
+            assert rc2 == 0, second.out
+            assert not (root / "box_data").exists()
+            assert not (root / "workset.yaml").exists()
+        finally:
+            _chmod_tree(vault, 0o755)

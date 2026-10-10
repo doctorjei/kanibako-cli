@@ -80,24 +80,30 @@ def _point_at_verbatim(root: Path, value: str, target: Path) -> Path:
 
 
 class TestBoxRmReadsTheStore:
-    def test_a_store_relocated_inside_the_root_is_removed_not_left_behind(
-            self, config, std, tmp_home):
-        """⚑ THE PIN: ``rm --purge`` takes the RESOLVED store, and takes only it.
+    def test_a_store_relocated_inside_the_root_is_kept_and_named(
+            self, config, std, tmp_home, capsys):
+        """⚑ THE PIN, flipped by the 163rd ruling: ``rm --purge`` does NOT take a store the
+        box's OWN ``workset.boxes`` nominated, even one strictly below the root.
 
         Base composed ``<root>/box_data``, so it removed the composed DEFAULT LEAF and left
-        the box's real metadata on disk — the teardown reported success over a live store.
+        the box's real metadata on disk.  The cure is not to delete the resolved store —
+        it is the user's — but to NAME it, so the teardown no longer reports success over a
+        store it silently left behind.
         """
         root = _make_standalone(config, std, tmp_home, "rm_inside")
         store = _relocate(root, root / "inside_store")
+        (store / "MY_OWN_NOTES.md").write_text("mine\n")
         (store.parent / "UNRELATED_SIBLING.txt").write_text("not the store\n")
 
         rc = _rm(root, "--purge")
 
         assert rc == 0
-        assert not store.exists(), "the resolved store must not be left behind"
+        assert store.is_dir(), "a box-declared store is the user's; purge must not remove it"
+        assert (store / "MY_OWN_NOTES.md").read_text() == "mine\n"
         assert (store.parent / "UNRELATED_SIBLING.txt").is_file()
         assert (root / "user_code.py").is_file()
         assert (root / "USER_DOCS.md").is_file()
+        assert str(store) in capsys.readouterr().err
 
     def test_a_store_outside_the_root_survives_and_is_named(
             self, config, std, tmp_home, capsys):
@@ -151,26 +157,31 @@ class TestBoxRmReadsTheStore:
         assert len(parked) == 1
         assert next(iter(parked.values()))["metadata"] == str(root)
 
-    def test_purging_a_deregistered_entry_deletes_the_resolved_store(
-            self, config, std, tmp_home):
-        """⚑ THE SECOND DOOR: ``rm --purge`` of a parked entry, addressed by NAME.
+    def test_purging_a_deregistered_entry_keeps_the_resolved_store_and_names_it(
+            self, config, std, tmp_home, capsys):
+        """⚑ THE SECOND DOOR, flipped with the first: ``rm --purge`` of a parked entry keeps
+        the store its own key nominates, and NAMES it.
 
         Its existence check composed ``box_data/``, so with the store moved and an empty
-        ``box_data/`` left behind it deleted that directory — one the box never used — and
-        left the real store behind under a success message.
+        ``box_data/`` left behind it deleted that directory — one the box never used.  The
+        fix was reading the key; the ruling then settled what the key is worth: a declared
+        store is the user's, kept and named rather than removed.
         """
         from kanibako.project import registry_store
 
         root = _make_standalone(config, std, tmp_home, "rm_dereg")
         store = _relocate(root, root / "dereg_store")
+        (store / "MY_OWN_NOTES.md").write_text("mine\n")
         assert _rm(root) == 0
         name = next(iter(registry_store.load_deregistered(std.registry)))
 
         rc = _rm_by_name(name, "--purge")
 
         assert rc == 0
-        assert not store.exists(), "the parked root's resolved store must be deleted"
+        assert store.is_dir(), "the parked root's declared store is the user's"
+        assert (store / "MY_OWN_NOTES.md").read_text() == "mine\n"
         assert (root / "user_code.py").is_file()
+        assert str(store) in capsys.readouterr().err
 
 
 class TestAStoreThatLeavesTheRootIsNeverRemoved:
@@ -247,12 +258,13 @@ class TestAStoreThatLeavesTheRootIsNeverRemoved:
         assert (root / "user_code.py").is_file()
         assert (root / "USER_DOCS.md").is_file()
 
-    def test_the_root_itself_reached_through_a_symlink_still_loses_its_own_store(
+    def test_a_symlinked_root_address_still_keeps_a_declared_store(
             self, config, std, tmp_home):
-        """⚑ THE INVERSE, so the containment test is not merely the cautious one.
+        """⚑ The old inverse — "resolving must not cost kanibako its own store" — is VOID
+        under the 163rd rule: the store here is a box-declared non-default, so it is the
+        user's whether the box is ADDRESSED through a symlink or by its real path.
 
-        Resolving must not cost kanibako its own store when the box is ADDRESSED through
-        a symlink: the store is strictly below the resolved root, so it goes.
+        Kept, not removed; the over-retention is the accepted price of ruling (A).
         """
         from kanibako.settings.paths import standalone_store_teardown_plan
 
@@ -265,13 +277,13 @@ class TestAStoreThatLeavesTheRootIsNeverRemoved:
         removable, retained = standalone_store_teardown_plan(
             via, early=_early_scope(std, BoxMode.standalone))
 
-        assert removable == store.resolve()
-        assert retained is None
+        assert removable is None
+        assert retained is not None and retained.resolve() == store.resolve()
 
-    def test_an_absolute_store_path_below_a_symlinked_root_is_still_removed(
+    def test_an_absolute_declared_store_below_a_symlinked_root_is_kept(
             self, config, std, tmp_home):
-        """The same box, spelled by its REAL path — strictly below the resolved root, so
-        kanibako's own store and removable."""
+        """The same box spelled by its REAL path: same answer, because the rule reads the
+        DECLARATION, not the spelling or the location."""
         from kanibako.settings.paths import standalone_store_teardown_plan
 
         root = _make_standalone(config, std, tmp_home, "esc_real_spelling")
@@ -283,5 +295,5 @@ class TestAStoreThatLeavesTheRootIsNeverRemoved:
         removable, retained = standalone_store_teardown_plan(
             via, early=_early_scope(std, BoxMode.standalone))
 
-        assert removable == store.resolve()
-        assert retained is None
+        assert removable is None
+        assert retained is not None and retained.resolve() == store.resolve()

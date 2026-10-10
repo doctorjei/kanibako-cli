@@ -218,7 +218,8 @@ def _at_rm_deregistered(name: str, capsys) -> str:
     from kanibako.settings.config import load_config, user_config_file
     from kanibako.settings.paths import load_std_paths
 
-    std = load_std_paths(load_config(user_config_file()))
+    config = load_config(user_config_file())
+    std = load_std_paths(config)
     metadata = std.boxes / name
     metadata.mkdir(parents=True, exist_ok=True)
     registry_store.register_deregistered(
@@ -229,6 +230,7 @@ def _at_rm_deregistered(name: str, capsys) -> str:
     capsys.readouterr()
     rc = _purge_deregistered(
         std, name, dict(registry_store.lookup_deregistered(std.registry, name)), args,
+        config=config,
     )
     assert rc == 0
     return capsys.readouterr().out

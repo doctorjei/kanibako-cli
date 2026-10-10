@@ -15,7 +15,7 @@ import os
 import shlex
 import shutil
 import sys
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -24,6 +24,7 @@ from kanibako.launch.box_identity import (Designation, box_name_cure, classify_d
                                           sanitize_cap, validate_box_name)
 from kanibako.commands.flags import add_null_flag, add_set_force_flag
 from kanibako.settings.config_io import refuse_scalar_sections
+from kanibako.settings.bootstrap import CREDS_LOCK_KEPT_WHY
 from kanibako.settings.workset_dirkeys import EarlyScope, refuse_inherited_per_owner
 from kanibako.settings.config import (
     WORKSET_META_FILE,
@@ -2066,12 +2067,17 @@ class _PurgeStep:
 
 
 _GITIGNORE = "gitignore line"
+_EMPTY_CANON = "default canon folder"      # rmdir only, never a tree delete
+_CREDS_LOCK = "creds watcher lock"         # removed only UNHELD; re-probed at deletion
 _VAULT_LABELS = ("vault ro (your files)", "vault rw (your files)")
 
 
 def _primary_purge_plan(std, name: str, metadata_dir: Path) -> list[_PurgeStep]:
-    """What purging a PRIMARY box deletes: box dir, vault ro/rw, per-box logs."""
-    steps = [_PurgeStep("metadata", "box metadata", metadata_dir, anchor=True)]
+    """What purging a PRIMARY box deletes: box dir, vault ro/rw, per-box logs.
+
+    ⚑ THE ANCHOR IS APPENDED LAST: it is the box's RETRY address (as in the standalone).
+    """
+    steps: list[_PurgeStep] = []
     # ⚑ The PRIMARY vault is NOT under metadata_dir.  ⚑ A NULL ARM NAMES NO DIR.
     _shell, vault_ro, vault_rw = _primary_box_paths(std, metadata_dir, name)
     for what, vdir in zip(_VAULT_LABELS, (vault_ro, vault_rw)):
@@ -2085,49 +2091,64 @@ def _primary_purge_plan(std, name: str, metadata_dir: Path) -> list[_PurgeStep]:
     # The per-box logs, keyed by the registry name.
     steps += [_PurgeStep("log", "log", log_file) for log_file in box_logs_to_purge(
         std, std.primary_logs, name, workset_root=std.primary_workset)]
+    steps.append(_PurgeStep("metadata", "box metadata", metadata_dir, anchor=True))
     return steps
 
 
 def _standalone_purge_plan(
     root: Path, registered_name: str, *, std: StandardPaths, early: EarlyScope,
-) -> list[_PurgeStep]:
+) -> tuple[list[_PurgeStep], list[tuple[str, Path, str | None]]]:
     """What purging a STANDALONE box deletes: logs, store, root workset.yaml, canon, vaults.
 
-    ⚑⚑ RESOLVE BEFORE ANYTHING IS DELETED — or unregistered.  The root workset.yaml the
-    purge unlinks carries the ``workset.{vault_*,canon,logs}`` repoints and the
-    kuid the box's name is composed from, so a later read answers the composed default;
-    and an UNRESOLVABLE value (a bare-relative repoint, a null ``workset.boxes`` the
-    standalone logs default chains through) raises here, which must happen while the box
-    is still whole.  What stays is reported here, before the question.
+    Returns ``(steps, retained)``; *retained* is reported by :func:`_report_retained_roles`.
+
+    ⚑⚑ RESOLVE BEFORE ANYTHING IS DELETED or unregistered: the root workset.yaml carries
+    the repoints and the composed-name kuid, so a later read answers composed defaults.
     """
     from kanibako.launch.box_resolve import standalone_box_name
     from kanibako.project.workset import (
-        _strictly_in_tree, _unfollowed, report_retained_canon, report_retained_vaults,
-        resolve_workset_vault_pair, standalone_canon_teardown, standalone_vault_teardown)
-    from kanibako.settings.paths import (
-        report_retained_store, standalone_logs_dir, standalone_store_teardown_plan)
+        _strictly_in_tree, _unfollowed, canon_keep_reason, leftover_default_canon,
+        resolve_workset_vault_pair, standalone_canon_teardown, standalone_vault_teardown,
+        vault_keep_reason, DEFAULT_CANON_LEFTOVER_WHY)
+    from kanibako.settings.paths import standalone_logs_dir, standalone_store_teardown_plan
+    from kanibako.commands.box._lifecycle import session_lock_held
+    from kanibako.settings.bootstrap import CREDS_WATCHER_LOCK_FILE
 
     removable_vault, retained_vault = standalone_vault_teardown(root, early=early)
     removable_canon, retained_canon = standalone_canon_teardown(root, early=early)
-    # ⚑ Logs are deleted by NAME, so a log under a ``workset.logs`` pointed outside
-    # the store goes too.
+    # ⚑ Every reason is computed HERE: after the run it reads a file this plan unlinked.
+    retained: list[tuple[str, Path, str | None]] = []
+    if retained_canon is not None:
+        retained.append(("canon", retained_canon,
+                        canon_keep_reason(root, retained_canon, early=early)))
+    leftover_canon_rm, leftover_canon_keep = leftover_default_canon(
+        root, removable_canon, retained_canon)
+    if leftover_canon_keep is not None:
+        retained.append(("canon", leftover_canon_keep, DEFAULT_CANON_LEFTOVER_WHY))
+    retained.extend(("vault", v, vault_keep_reason(root, v, early=early))
+                    for v in retained_vault)
+    # ⚑ Logs are deleted by NAME, so one under a ``workset.logs`` outside the store goes.
     steps = [_PurgeStep("log", "log", log_file) for log_file in box_logs_to_purge(
         std, standalone_logs_dir(root, early=early),
         standalone_box_name(root, registered_name), workset_root=root)]
-    # ⚑ Only a store STRICTLY BELOW *root* is removed — the split and its reason are
-    # :func:`standalone_store_teardown_plan`'s.  A ``None`` store means RETAINED, so the
-    # ROOT workset.yaml and the vault must stay.
+    # ⚑ The lock sits in the ROOT, which no step removes — ours, but only UNHELD.
+    creds_lock = root / CREDS_WATCHER_LOCK_FILE
+    if creds_lock.exists() or creds_lock.is_symlink():
+        if session_lock_held(creds_lock):
+            retained.append(("creds lock", creds_lock, CREDS_LOCK_KEPT_WHY))
+        else:
+            steps.append(_PurgeStep(_CREDS_LOCK, "creds watcher lock", creds_lock,
+                                   gated=True))
+    # ⚑ Only a store kanibako CREATED for this role is removed; ``None`` means RETAINED.
     metadata_dir, retained_store = standalone_store_teardown_plan(root, early=early)
     if retained_store is not None:
-        report_retained_store(retained_store, root)
+        retained.append(("store", retained_store, None))
     if metadata_dir is None:
-        return steps
-    steps.append(_PurgeStep("metadata", "box metadata", metadata_dir, anchor=True))
-    # ⚑ The ROOT workset.yaml is the WORKSET tier AND half the §5 detection marker —
-    # drop it too, or the box is re-detected.  (The BOX tier goes with the store.)
+        return steps, retained
+    # ⚑ ROOT workset.yaml = WORKSET tier + half the §5 detection marker, so it goes LAST,
+    # AFTER the anchor.  ⚑⚑ Delete it early and a later failure makes the retry resolve
+    # composed DEFAULTS: a kept-and-named folder becomes "kanibako's own skeleton".
     settings_file = root / WORKSET_META_FILE
-    if settings_file.is_file():
-        steps.append(_PurgeStep("metadata", "workset settings", settings_file, gated=True))
     gitignore = project_gitignore_to_strip(root)
     if gitignore is not None and gitignore_holds_only_kanibako(gitignore):
         steps.append(_PurgeStep(_GITIGNORE, ".gitignore (it holds only kanibako's line)",
@@ -2138,8 +2159,9 @@ def _standalone_purge_plan(
     if removable_canon is not None:
         steps.append(_PurgeStep("canon", "box canon (kanibako's handbook)", removable_canon,
                                 gated=True))
-    if retained_canon is not None:
-        report_retained_canon(retained_canon, root)
+    if leftover_canon_rm is not None:
+        steps.append(_PurgeStep(_EMPTY_CANON, "default canon folder (kanibako's own stamp)",
+                              leftover_canon_rm, gated=True))
     vault_pair = resolve_workset_vault_pair(root, early=early)
     arms = {_unfollowed(arm): label for arm, label in
             zip(vault_pair, _VAULT_LABELS) if arm is not None}
@@ -2152,19 +2174,58 @@ def _standalone_purge_plan(
                                   standalone_box_name(root, registered_name))
         if (store.is_dir() or store.is_symlink()) and _strictly_in_tree(store, root):
             steps.append(_PurgeStep("vault", "vault snapshots", store, gated=True))
-    report_retained_vaults(root, retained_vault)
-    return steps
+    steps.append(_PurgeStep("metadata", "box metadata", metadata_dir, anchor=True))
+    # ⚑ LAST OF ALL, after the anchor, gated: see the note above on the retry's need.
+    if settings_file.is_file():
+        steps.append(_PurgeStep("metadata", "workset settings", settings_file, gated=True))
+    return steps, retained
 
 
-def _confirm_purge(steps: list[_PurgeStep], *, force: bool) -> bool:
-    """List every path *steps* deletes, then ask unless *force*; False when declined."""
+def _report_retained_roles(root: Path, retained: "list[tuple[str, Path, str | None]]", *,
+                          early=None) -> None:
+    """Print each retained-role Note AFTER the run, for what is STILL on disk.
+
+    Each *why* was computed before the run; *early* covers those without one.
+    """
+    from kanibako.project.workset import (
+        report_retained_canon, report_retained_vault, report_retained_vaults)
+    from kanibako.settings.paths import report_retained_store
+
+    for role, path, why in retained:
+        if not (path.exists() or path.is_symlink()):
+            continue
+        if role == "store":
+            report_retained_store(path, root)
+        elif role == "canon":
+            report_retained_canon(path, root, why, early=early)
+        elif role == "creds lock":
+            print(f"Note: left the creds watcher lock at {path} in place — "
+                  f"{CREDS_LOCK_KEPT_WHY}.", file=sys.stderr)
+        elif why is not None:
+            report_retained_vault(path, why)
+        else:
+            report_retained_vaults(root, [path], early=early)
+
+
+def _confirm_purge(steps: list[_PurgeStep], *, force: bool,
+                  retained: Sequence[tuple[str, Path, str | None]] = ()) -> bool:
+    """List what *steps* deletes AND what the run keeps, then ask unless *force*.
+
+    ⚑ The KEPT list prints HERE, before the question: asking without it is a blind delete.
+    """
     from kanibako.errors import UserCanceled
     from kanibako.utils import confirm_prompt
 
     print()
+    kept = [(role, path) for role, path, _why in retained
+            if path.exists() or path.is_symlink()]
+    if kept:
+        print(f"--purge KEEPS these {len(kept)} (left in place, yours to remove):")
+        for role, path in kept:
+            print(f"  kept {role}: {path}")
     if not steps:
-        print("--purge deletes nothing: no path of this box is kanibako's to remove "
-              "(any path kept is noted above).")
+        print("--purge deletes nothing: no path of this box is kanibako's to remove"
+              + (" (everything it found is listed above)." if kept else "."))
         return True
     edits = sum(step.edit for step in steps)
     count = f"{len(steps) - edits} paths" + (f" (and {edits} edit)" if edits else "")
@@ -2187,7 +2248,7 @@ def _confirm_purge(steps: list[_PurgeStep], *, force: bool) -> bool:
 def _run_purge_plan(steps: list[_PurgeStep]) -> bool:
     """Delete *steps* in order; True when every step was removed.
 
-    A GATED step is KEPT, and reported, once the ANCHOR (box metadata dir) could not go.
+    A GATED step is KEPT and reported once the ANCHOR could not go; both gate to the END.
     """
     anchor_removed: bool | None = None
     all_removed = True
@@ -2197,6 +2258,15 @@ def _run_purge_plan(steps: list[_PurgeStep]) -> bool:
             print(f"Kept {step.kind}: {step.path} — the box metadata folder could not be "
                   "removed.", file=sys.stderr)
             continue
+        if step.anchor and not all_removed:
+            all_removed = False
+            # ⚑ Record the failure, not just skip: a gated step listed AFTER the anchor is
+            # gated on THIS value; None let it go, so the retry ate a kept folder.
+            anchor_removed = False
+            print(f"Kept {step.kind}: {step.path} — something else could not be removed, "
+                  "so this box's metadata is kept and re-running the purge can finish.",
+                  file=sys.stderr)
+            continue
         if step.kind == _GITIGNORE:
             if strip_project_gitignore(step.path):
                 print(f"Removed kanibako's line in {step.path}" if step.path.exists() else
@@ -2204,15 +2274,45 @@ def _run_purge_plan(steps: list[_PurgeStep]) -> bool:
             else:
                 all_removed = False
             continue
-        removed = remove_path(step.path)
+        if step.kind == _EMPTY_CANON:
+            # ⚑ rmdir only, bottom-up, each directory verified empty at this instant.
+            from kanibako.project.workset import remove_default_canon_stamp
+
+            if remove_default_canon_stamp(step.path):
+                print(f"Removed the default canon folder `create` made: {step.path}")
+            else:
+                all_removed = False
+                print(f"Warning: left the default canon folder {step.path} in place — it "
+                      "is not empty, so its contents are yours to remove.", file=sys.stderr)
+            continue
+        if step.kind == _CREDS_LOCK:
+            from kanibako.commands.box._lifecycle import session_lock_held
+
+            # ⚑ Re-probed at deletion: a watcher started after the plan keeps its lock.
+            if session_lock_held(step.path):
+                print(f"Kept {step.kind}: {step.path} — {CREDS_LOCK_KEPT_WHY}.",
+                      file=sys.stderr)
+                continue
+        # ⚑ A symlinked vault leaf loses ONLY the link; capture that BEFORE the delete.
+        was_link = step.kind == "vault" and step.path.is_symlink()
+        link_target = os.readlink(step.path) if was_link else None
+        try:
+            removed, err = remove_path(step.path), ""
+        except OSError as exc:
+            # ⚑ With the anchor LAST an early step is the run's first real unlink, and a
+            # read-only parent RAISES here; uncaught, it killed the purge mid-run.
+            removed, err = False, f": {exc}"
         if step.anchor:
             anchor_removed = removed
         if removed:
             print(f"Removed {step.kind}: {step.path}")
+            if was_link:
+                print(f"Note: removed the link {step.path}; left its target "
+                      f"{link_target} untouched.", file=sys.stderr)
             continue
         all_removed = False
         print(
-            f"Warning: could not fully remove {step.path} "
+            f"Warning: could not fully remove {step.path}{err} "
             "(it may contain files created inside a container). "
             f"Try: podman unshare rm -rf {shlex.quote(str(step.path))}",
             file=sys.stderr,
@@ -2239,7 +2339,8 @@ def _read_box_image_tiered(box_tier: Path, workset_tier: Path) -> str | None:
     return _read_box_image(box_tier) or _read_box_image(workset_tier)
 
 
-def _purge_deregistered(std, name: str, entry: dict, args: argparse.Namespace) -> int:
+def _purge_deregistered(std, name: str, entry: dict, args: argparse.Namespace, *,
+                       config) -> int:
     """Handle ``rm <name>`` when *name* resolves only to a deregistered entry."""
     from kanibako.project import registry_store
     from kanibako.settings.paths import standalone_box_store
@@ -2299,23 +2400,47 @@ def _purge_deregistered(std, name: str, entry: dict, args: argparse.Namespace) -
         print(f"No metadata directory found for '{name}' (dropped stale entry).")
         return 0
 
-    print(f"Removing deregistered box: {name}")
+    # ⚑ A PARKED entry says nothing about the CONTAINER — one can still be running.
+    # Same probe every other destructive verb uses, before the plan.
+    lock_home = (standalone_box_store(root, early=_early_scope(std, BoxMode.standalone))
+                 if kind == "standalone" else metadata_dir)
+    # ⚑⚑ PROBE BY KIND: a primary's name is only in this parked key, not in its path.
     if kind == "standalone":
-        plan = _standalone_purge_plan(root, name, std=std,
+        probe_target: "str | None" = str(root)
+        probe_container: "str | None" = None
+    else:
+        probe_target = None
+        probe_container = _parked_probe_container(name)
+    if _refuse_purge_while_live(std, config, probe_target, lock_home, args.force,
+                               "Purging this box", container_name=probe_container):
+        return 1
+
+    print(f"Removing deregistered box: {name}")
+    retained: "list[tuple[str, Path, str | None]]" = []
+    if kind == "standalone":
+        plan, retained = _standalone_purge_plan(root, name, std=std,
                                       early=_early_scope(std, BoxMode.standalone))
     else:
         plan = _primary_purge_plan(std, name, metadata_dir)
-    if not _confirm_purge(plan, force=args.force):
+    if not _confirm_purge(plan, force=args.force, retained=retained):
         print("Aborted (box remains deregistered).")
         return 2
     removed = _run_purge_plan(plan)
+    if kind == "standalone":
+        _report_retained_roles(root, retained,
+                              early=_early_scope(std, BoxMode.standalone))
 
     if removed or not tracked_left():
         registry_store.unregister_deregistered(std.registry, name)
-    else:
+    elif Path(str(metadata)).exists():
         print(f"'{name}' stays deregistered (metadata retained at {metadata}).",
               file=sys.stderr)
         print(_retained_box_cure_lines(name), file=sys.stderr)
+    else:
+        # ⚑ The anchor went but a delete did not — never claim a gone path is retained.
+        print(f"'{name}' stays deregistered: its metadata is already gone but a delete "
+              "failed, so the entry is kept rather than dropping the trail. "
+              "Re-run the purge to finish.", file=sys.stderr)
     return 0 if removed else 1
 
 
@@ -2357,11 +2482,79 @@ def _resolve_standalone_target(
     return None, None, False
 
 
+def _refuse_purge_while_live(std, config, proj_target: str | None, metadata_dir: Path,
+                            force: bool, what: str,
+                            *, container_name: str | None = None) -> bool:
+    """The move/convert/duplicate running-box pre-flight, reused for a PURGE.
+
+    ⚑ ONE PROBE — the same :func:`abort_if_box_running` every destructive verb uses, so
+    one question never gets two answers; a purge under a live container takes its vaults
+    and canon mid-write.  With no ``proj`` the guard still reads the lock file.
+    *container_name* replaces the path probe with a name probe.
+    """
+    from kanibako.commands.box._lifecycle import abort_if_box_running
+
+    proj = None
+    unresolved = False
+    if container_name is None and proj_target is not None:
+        try:
+            proj = _resolve_purge_probe_target(std, config, proj_target)
+        except Exception:  # noqa: BLE001 - see below
+            proj = None
+            unresolved = True
+    consequence = f"{what} would delete its vaults and canon while writes are in flight."
+    if abort_if_box_running(proj, metadata_dir / ".kanibako.lock", force, consequence,
+                            container_name=container_name):
+        return True
+    # ⚑ A resolver that FAILS must never mean "not running" -- no lock is not proof.
+    if unresolved and not (metadata_dir / ".kanibako.lock").exists():
+        print(f"Warning: this box may be running: {proj_target} does not resolve, so its "
+              f"container was never asked, and it holds no lock file to check. "
+              f"{consequence} Stop the box first (kanibako stop), or pass --force.",
+              file=sys.stderr)
+        if force:
+            return False
+        print("Aborted.")
+        return True
+    return False
+
+
+def _resolve_purge_probe_target(std, config, proj_target: str):
+    """A ``ProjectPaths`` for the running-box probe; standalone first, then primary."""
+    from kanibako.settings.paths import resolve_project, resolve_standalone_project
+
+    try:
+        return resolve_standalone_project(std, config, proj_target)
+    except Exception:  # noqa: BLE001 - try the primary resolver next
+        return resolve_project(std, config, proj_target)
+
+
+def _parked_probe_container(name: str) -> str | None:
+    """The container a PARKED PRIMARY runs as: ``kb-primary-<name>``, from the parked KEY."""
+    return container_name_for_box_name(name, WORKSET_SEGMENT_PRIMARY)
+
+
+def refuse_ambiguous_parked_purge(matches, target: str) -> int:
+    """Refuse a BY-PATH purge that MORE THAN ONE parked entry names. ONE rule, both doors.
+
+    ⚑⚑ SHARED, NOT COPIED -- taking the first match deletes a box nobody named.
+    """
+    listed = "; ".join(f"'{m[0]}' ({m[1].get('kind', 'unknown')})"
+                      for m in sorted(matches, key=lambda m: m[0]))
+    print(f"Error: {len(matches)} deregistered boxes all name {target}: {listed}. "
+          f"Refusing to guess which one to purge — nothing was deleted.  "
+          f"Purge one by name instead: kanibako box rm <name> --purge",
+          file=sys.stderr)
+    return 1
+
+
 def _rm_standalone(std, box_name: str, root, args: argparse.Namespace, *,
-                   registered: bool) -> int:
+                   registered: bool, config) -> int:
     """Remove a standalone box: drop its registry entry if any, its ``box_data/`` on --purge.
 
     An unregistered box has no entry to drop, so a plain ``rm`` changes nothing.
+    ⚑ *config* is REQUIRED — without it the probe cannot see a live box, and the lock
+    alone would not stop the purge.
     """
     from datetime import datetime, timezone
 
@@ -2379,13 +2572,20 @@ def _rm_standalone(std, box_name: str, root, args: argparse.Namespace, *,
                     if root_path is not None else None)
     if args.purge and root_path is not None:
         refuse_inherited_per_owner(root_path, _early_scope(std, BoxMode.standalone))
-    # ⚑ Planned and confirmed BEFORE the unregister: a plan that refuses, or a declined
-    # question, leaves the box registered (see :func:`_standalone_purge_plan`).
+        # ⚑ S6r: a purge under a live container takes its vaults and canon mid-write.
+        # Same pre-flight move/convert/duplicate use; --force overrides.
+        if metadata_dir is not None and _refuse_purge_while_live(
+                std, config, str(root_path), metadata_dir, args.force,
+                "Purging this box"):
+            return 1
+    # ⚑ Planned and confirmed BEFORE the unregister: a refusal or a declined question
+    # leaves the box registered.
     plan = None
+    retained: "list[tuple[str, Path, str | None]]" = []
     if args.purge and root_path is not None and metadata_dir is not None and metadata_dir.is_dir():
-        plan = _standalone_purge_plan(root_path, box_name, std=std,
+        plan, retained = _standalone_purge_plan(root_path, box_name, std=std,
                                       early=_early_scope(std, BoxMode.standalone))
-        if not _confirm_purge(plan, force=args.force):
+        if not _confirm_purge(plan, force=args.force, retained=retained):
             print("Aborted (nothing changed).")
             return 2
     image = (_read_box_image_tiered(
@@ -2400,7 +2600,11 @@ def _rm_standalone(std, box_name: str, root, args: argparse.Namespace, *,
         if plan is None:
             print(f"No metadata directory found at {metadata_dir}")
             return 0
-        if _run_purge_plan(plan):
+        purge_ok = _run_purge_plan(plan)
+        if root_path is not None:
+            _report_retained_roles(root_path, retained,
+                                  early=_early_scope(std, BoxMode.standalone))
+        if purge_ok:
             return 0
     if (registered and root_path is not None and metadata_dir is not None
             and metadata_dir.is_dir()):
@@ -2463,20 +2667,44 @@ def run_rm(args: argparse.Namespace) -> int:
             parked = (registry_store.deregistered_standalone_for_dir(std.registry, sa_root)
                       if args.purge and not sa_registered and sa_root is not None else None)
             if parked is not None:
-                return _purge_deregistered(std, parked[0], parked[1], args)
-            return _rm_standalone(std, sa_name, sa_root, args, registered=sa_registered)
+                return _purge_deregistered(std, parked[0], parked[1], args,
+                                         config=config)
+            if parked is None and args.purge and sa_root is not None:
+                # ⚑ A LIVE standalone owns this path, so only its own folders are purged.
+                # A parked entry may name the same path, and silence about it reads as
+                # "nothing else is here" -- name it, do not touch it.
+                also = [m for m in registry_store.deregistered_matches_for_workspace(
+                           std.registry, Path(sa_root))
+                       if m[0] != sa_name]
+                if also:
+                    listed = "; ".join(f"'{m[0]}' ({m[1].get('kind', 'unknown')})"
+                                      for m in sorted(also, key=lambda m: m[0]))
+                    print(f"Note: '{sa_name}' owns {sa_root}, so only its own folders "
+                          f"are purged; still parked at this path: {listed}. Purge one "
+                          f"by name: kanibako box rm <name> --purge", file=sys.stderr)
+            return _rm_standalone(std, sa_name, sa_root, args,
+                              registered=sa_registered, config=config)
 
     if name is None:
         # ⚑ Not active anywhere: a re-`rm` after a plain `rm` resolves the retained
-        # metadata.
-        # ⚑ Case-blind (spec §0); the purge takes the STORED spelling, which names the
-        # box's log files.
+        # metadata, case-blind (spec §0), in the STORED spelling that names the log files.
         deregistered = registry_store.load_deregistered(std.registry)
         dereg_name = find_identifier(target, deregistered)
         if dereg_name is not None:
             return _purge_deregistered(
                 std, dereg_name, dict(deregistered[dereg_name]), args,
+                config=config,
             )
+
+    if name is None and args.purge and not by_name:
+        # ⚑ A part-way purge leaves the parked entry as the retry's only address.
+        matches = registry_store.deregistered_matches_for_workspace(std.registry,
+                                                                  Path(target))
+        if len(matches) > 1:
+            return refuse_ambiguous_parked_purge(matches, target)
+        if matches:
+            return _purge_deregistered(std, matches[0][0], dict(matches[0][1]), args,
+                                     config=config)
 
     if name is None or section is None:
         legacy = None if by_name else stored_legacy_box(std, target)
@@ -2486,11 +2714,15 @@ def run_rm(args: argparse.Namespace) -> int:
         print(f"Error: '{target}' is not a registered box.", file=sys.stderr)
         return 1
 
+    metadata_dir = std.boxes / name
     if args.purge:
         refuse_inherited_per_owner(std.primary_workset, _early_scope(std, BoxMode.primary))
+        # ⚑ S6r: the same running-box pre-flight move/convert/duplicate use.
+        if _refuse_purge_while_live(std, config, name, metadata_dir, args.force,
+                                   "Purging this box"):
+            return 1
     print(f"Removing project: {name} ({path})")
 
-    metadata_dir = std.boxes / name
     image = (_read_box_image(_box_settings_files(BoxMode.primary, metadata_dir, None)[0])
              if not args.purge and metadata_dir.is_dir() else None)
     # ⚑ Planned and confirmed BEFORE the unregister: a declined question changes nothing.
@@ -2765,9 +2997,14 @@ def _format_credential_age(creds_path: Path) -> str:
 NO_RUNTIME = "unknown (no container runtime)"
 
 
-def _check_container_running(proj, *, fail_closed: bool = False) -> tuple[bool, str]:
-    """Is the project's container running? ``(running, detail)``; *fail_closed* raises on no answer."""
-    container_name = container_name_for(proj)
+def _check_container_running(proj, *, fail_closed: bool = False,
+                            container_name: str | None = None) -> tuple[bool, str]:
+    """Is *proj*'s container running? ``(running, detail)``; *fail_closed* raises on no answer.
+
+    *container_name* overrides *proj*'s rendered name.
+    """
+    if container_name is None:
+        container_name = container_name_for(proj)
     if container_name is None:
         return False, "no container name (the box-name rule renders none)"
     try:
@@ -2780,9 +3017,10 @@ def _check_container_running(proj, *, fail_closed: bool = False) -> tuple[bool, 
             return True, f"running ({container_name}: {image})"
     # An exited container still holds the name.
     if runtime.container_exists(container_name):
+        stop_handle = (getattr(proj, "name", "") or "").strip() or container_name
         return False, (
             f"exited, still holding the name ({container_name}); "
-            f"clear it: kanibako stop {shlex.quote(proj.name)}"
+            f"clear it: kanibako stop {shlex.quote(stop_handle)}"
         )
     return False, f"not running ({container_name})"
 

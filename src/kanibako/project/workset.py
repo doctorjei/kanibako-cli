@@ -394,6 +394,7 @@ def resolve_workset_vault_rw(
 
 def resolve_workset_vault_pair(
     workset_root: Path, *, early: EarlyScope,
+    settings_doc: Mapping[str, Any] | None = None,
 ) -> tuple[Path | None, Path | None]:
     """The resolved ``(vault_ro, vault_rw)`` for *workset_root*, off ONE workset.yaml read.
 
@@ -401,10 +402,63 @@ def resolve_workset_vault_pair(
     once per arm opens a window for the two to disagree about the same document — the
     same reason ``_workset_skeleton_dirs`` takes one read for its three resolutions.
     ⚑ Either arm may be ``None``: a workset may null one arm and not the other.
+    ⚑ *settings_doc* extends the one-read rule across consumers: a caller holding the doc
+    passes it here, so arms and guard cannot answer two versions of one file.
     """
-    settings_doc = load_workset_settings_doc(workset_root)
+    if settings_doc is None:
+        settings_doc = load_workset_settings_doc(workset_root)
     return (resolve_workset_vault_ro(workset_root, settings_doc, early=early),
             resolve_workset_vault_rw(workset_root, settings_doc, early=early))
+
+
+def _is_role_folder(entry: Path, root: Path, leaf: str) -> bool:
+    """True when *entry* IS the folder ``create`` stamps at *leaf* under *root* — judged
+    where the entry SITS (parent resolved, leaf not followed), so a link AT the default is
+    still the default.
+    """
+    return _unfollowed(entry) == root.resolve() / leaf
+
+
+def _users_own_repoint(
+    root: Path, resolved: Path, doc: "Mapping[str, Any] | None", key: str, leaf: str,
+    *, early: EarlyScope,
+) -> bool:
+    """True when the box's OWN ``workset.yaml`` points ``workset.<key>`` at a folder that
+    is NOT the default *leaf* — one kanibako never created for the role.  UNSET or a
+    SYSTEM-tier value is not that nomination: kanibako placed that folder itself, so the
+    containment rule stands.
+    """
+    from kanibako.settings.workset_dirkeys import UNSET
+
+    value, where = early_repoint(root, doc, key, early=early)
+    if value is UNSET or value is None:
+        return False
+    return where == root / WORKSET_META_FILE and not _is_role_folder(resolved, root, leaf)
+
+
+#: The role folders a box's own ``workset.yaml`` can point elsewhere, as
+#: ``(key, default leaf, resolver)`` — the table a keep reads to say WHO asked for it.
+_REPOINTED_ROLES = (
+    (_VAULT_RO_KEY, _VAULT_RO_LEAF, resolve_workset_vault_ro),
+    (_VAULT_RW_KEY, _VAULT_RW_LEAF, resolve_workset_vault_rw),
+    (_CANON_LEAF, _CANON_LEAF, resolve_workset_canon),
+)
+
+
+def declared_repoint_key(root: Path, path: Path, *, early: EarlyScope) -> str | None:
+    """The role KEY whose declaration in THIS box's own ``workset.yaml`` names *path*.
+
+    ⚑ A keep has to say who asked, and neither old phrase can: a repointed arm IS this
+    box's arm, and one inside the tree is not "outside" either.  The key names the file.
+    """
+    doc = load_workset_settings_doc(root)
+    for key, leaf, resolve in _REPOINTED_ROLES:
+        resolved = resolve(root, doc, early=early)
+        if resolved is None or _unfollowed(resolved) != path:
+            continue
+        if _users_own_repoint(root, resolved, doc, key, leaf, early=early):
+            return key
+    return None
 
 
 def standalone_vault_teardown(
@@ -419,13 +473,13 @@ def standalone_vault_teardown(
     ever removed and the arm outlives every box on it.  That difference is why this
     returns a SPLIT and not a list:
 
-    * an arm STRICTLY BELOW *root* is kanibako's own skeleton, inside the tree the
-      teardown is already clearing — it goes with the box, repointed or not;
-    * an arm the user pointed OUTSIDE *root* (or AT *root*) is the USER'S STORE.  No
-      verb ``rm -rf``\\ s that on their behalf: an absolute ``vault_rw: ~/store`` would
-      make ``box rm --purge`` delete a directory the user merely nominated.  ⚑ Callers
-      must PRINT the retained paths — the defect this replaced was not that the vault
-      survived, it was that it survived SILENTLY.
+    * an arm at its DEFAULT leaf (``vault/ro`` / ``vault/rw``) is kanibako's own
+      skeleton, inside the tree the teardown is already clearing — it goes with the box;
+    * an arm the box's OWN ``workset.yaml`` REPOINTED — inside *root* or out — is the
+      USER'S FOLDER.  ⚑ The old rule read "strictly below *root* … goes with the box,
+      repointed or not", and that is the data loss.  ⚑ Callers must PRINT the retained
+      paths — the defect this replaced was not that the vault survived, that it survived
+      SILENTLY.
 
     The literal ``vault/`` skeleton parent is appended to *removable* when it is a link
     (removed alone) or holds nothing but removable arms and its ``.gitignore``, so the default
@@ -440,13 +494,23 @@ def standalone_vault_teardown(
     """
     removable: list[Path] = []
     retained: list[Path] = []
-    for arm in resolve_workset_vault_pair(root, early=early):
+    doc = load_workset_settings_doc(root)
+    # ⚑ The arms come from THE ONE pair resolver, fed the SAME doc the guards below read.
+    for arm, key, leaf in zip(resolve_workset_vault_pair(root, early=early,
+                                                        settings_doc=doc),
+                             (_VAULT_RO_KEY, _VAULT_RW_KEY),
+                             (_VAULT_RO_LEAF, _VAULT_RW_LEAF)):
         # ⚑ A NULL ARM IS NO SUCH DIR: it names nothing to remove and nothing to keep.
         if arm is None:
             continue
-        # ⚑ STRICT: ``arm == root`` must land in *retained*.  A ``vault_ro: .`` would
-        # otherwise nominate the user's whole project directory for deletion.
-        if _strictly_in_tree(arm, root):
+        # ⚑ A LOOP IS NOT REMOVABLE: unresolvable, so it is named, not deleted.
+        # Checked FIRST because every test below resolves.
+        if _symlink_loop(arm):
+            retained.append(_unfollowed(arm))
+        # ⚑ ROLE IDENTITY, NOT LOCATION: a box-declared non-default arm is the user's.
+        elif _users_own_repoint(root, arm, doc, key, leaf, early=early):
+            retained.append(_unfollowed(arm))
+        elif _strictly_in_tree(arm, root):
             removable.append(_unfollowed(arm))
         else:
             retained.append(_unfollowed(arm))
@@ -462,7 +526,9 @@ def standalone_vault_teardown(
             retained.extend(leftover)
         else:
             removable.append(skeleton)
-    return removable, retained
+    # ⚑ A path can reach *retained* twice (an unresolvable arm is also a leftover in the
+    # skeleton it sits in); name each kept path ONCE.
+    return removable, list(dict.fromkeys(retained))
 
 
 def standalone_canon_teardown(
@@ -470,24 +536,206 @@ def standalone_canon_teardown(
 ) -> tuple[Path | None, Path | None]:
     """A STANDALONE box's ``workset.canon`` tier as ``(removable, retained)`` for a teardown.
 
-    The tier ``create`` stamps is the box's own.  Only one STRICTLY BELOW *root* is
-    removable; a repoint outside it, or AT it, is the user's directory.  A null key
-    retains the literal ``canon/``, as a nulled vault arm does.  A tier not on disk answers
-    ``(None, None)``.  🛑 CALL THIS BEFORE UNLINKING THE ROOT ``workset.yaml``.
+    The tier ``create`` stamps is the box's own.  Only the tier at the DEFAULT leaf
+    (``canon/``) is removable; one the box's OWN ``workset.yaml`` repoints elsewhere is
+    the user's directory wherever it sits — ``canon: '<root>/src'`` is the user's source
+    tree, not kanibako's handbook.  A null key retains the literal ``canon/``, as a
+    nulled vault arm does.  A tier not on disk answers ``(None, None)``.  🛑 CALL THIS
+    BEFORE UNLINKING THE ROOT ``workset.yaml``.
     """
-    canon = resolve_workset_canon(root, load_workset_settings_doc(root), early=early)
+    doc = load_workset_settings_doc(root)
+    canon = resolve_workset_canon(root, doc, early=early)
     if canon is None:
         literal = root / _CANON_LEAF
         return None, (_unfollowed(literal) if literal.exists() or literal.is_symlink() else None)
     if not (canon.exists() or canon.is_symlink()):
         return None, None
+    # ⚑ The canon key's NAME is its default leaf, so key and leaf are the same string.
+    if _users_own_repoint(root, canon, doc, _CANON_LEAF, _CANON_LEAF, early=early):
+        return None, _unfollowed(canon)
     if _strictly_in_tree(canon, root):
         return _unfollowed(canon), None
     return None, _unfollowed(canon)
 
 
-def report_retained_canon(canon: Path, root: Path, why: str | None = None) -> None:
-    """The retained-canon Note: the tier is outside *root*, not this box's tier, or *why*."""
+def _create_canon_stamp() -> dict[str, bool]:
+    """What ``create`` installs under the default ``canon/``, as {canon-relative path: is_dir}.
+
+    ⚑ DERIVED from :func:`kanibako.settings.core_defaults.canon_skeleton_rels`, the SAME
+    constant the skeleton is built from — a restated list drifts when the skeleton grows.
+    """
+    from kanibako.settings.core_defaults import CANON_GUEST_ROOT, canon_skeleton_rels
+
+    prefix = f"{CANON_GUEST_ROOT}/"
+    return {rel[len(prefix):]: is_dir for rel, is_dir in canon_skeleton_rels()
+            if rel.startswith(prefix) and rel != CANON_GUEST_ROOT}
+
+
+def holds_only_create_stamp(leaf: Path) -> bool:
+    """True when EVERY entry under *leaf* is the stamp ``create`` left, byte-for-byte.
+
+    ⚑ This is what "kanibako's own leftover" MEANS.  A file outside the stamp, a stamp file
+    the box has written into (any byte), a symlink, or a dir where a file belongs all make it
+    the USER'S folder — which is the whole content of the ``did not put there`` claim.
+    """
+    stamp = _create_canon_stamp()
+    for p in leaf.rglob("*"):
+        rel = p.relative_to(leaf).as_posix()
+        want = stamp.get(rel)
+        if want is None or p.is_symlink():
+            return False
+        if p.is_dir() != want:
+            return False
+        if not want and p.stat().st_size != 0:
+            return False
+    return True
+
+
+def leftover_default_canon(root: Path, removable: Path | None,
+                          retained: Path | None) -> tuple[Path | None, Path | None]:
+    """The default ``canon/`` a ``create`` stamped, LEFT OVER by a repoint, as
+    ``(removable, retained)``.
+
+    ⚑ A box that repoints ``workset.canon`` leaves the default directory behind with no
+    Note on it.  ⚑ "Left over" means it holds NOTHING BUT the stamp ``create`` installed
+    (:func:`holds_only_create_stamp`) — a fresh one is never literally empty, it ships a
+    ``handbook/``.  Anything else in it is the user's: NAMED, never taken.
+    ``None, None`` when the default IS the tier being acted on, so nothing is handled twice.
+    """
+    leaf = root / _CANON_LEAF
+    if removable is not None:
+        return None, None
+    if retained is not None and _unfollowed(retained) == _unfollowed(leaf):
+        return None, None
+    if not leaf.is_dir() or leaf.is_symlink():
+        return None, None
+    if holds_only_create_stamp(leaf):
+        return _unfollowed(leaf), None
+    return None, _unfollowed(leaf)
+
+
+#: What a kept leftover default ``canon/`` is called in its Note — shared so the purge and
+#: the cleaner cannot tell two stories about one folder.
+DEFAULT_CANON_LEFTOVER_WHY = ("it is the default canon folder `create` made, and it holds "
+                             "content kanibako did not put there")
+
+
+def remove_default_canon_stamp(leaf: Path) -> bool:
+    """Take a leftover default ``canon/`` BOTTOM-UP: each stamp file by name, each directory
+    only while empty; True only when the whole thing came down.
+
+    ⚑ The ONLY verb that removes this path, and never a tree delete: every file is removed
+    BY THE STAMP PATH and every directory is empty at the instant it goes, so content that
+    appears mid-walk — or a non-stamp file — stops it and leaves the rest untouched.
+    ⚑ The stamp lands 555/444 (J-7) and ``unlink`` needs WRITE ON THE PARENT, so a stamp
+    directory is re-opened for its owner before its files are taken.  Only stamp-owned paths
+    are chmod-ed — user content is neither written nor widened.
+    """
+    import os
+    import stat
+
+    stamp = _create_canon_stamp()
+    # ⚑ The leaf's OWN stamp files (COLLECTION.md sits directly in it) are taken by the
+    # same walk; ``rglob`` never yields the root, so append it last.  The stamp map keys
+    # the canon root one level UP, so it is not re-checked here.
+    dirs = sorted((d for d in leaf.rglob("*") if d.is_dir() and not d.is_symlink()),
+                  key=lambda d: len(d.parts), reverse=True)
+    dirs.append(leaf)
+    for d in dirs:
+        if d != leaf and stamp.get(d.relative_to(leaf).as_posix()) is not True:
+            return False
+        if not os.access(d, os.W_OK):
+            try:
+                d.chmod(stat.S_IMODE(os.lstat(d).st_mode) | stat.S_IWUSR)
+            except OSError:
+                return False
+        for f in sorted(d.iterdir()):
+            rel = f.relative_to(leaf).as_posix()
+            if f.is_symlink() or stamp.get(rel) is not False:
+                return False
+            # ⚑ The planner's size rule, RE-APPLIED at delete time: bytes can arrive
+            # between the two, and a written-into stamp file is the user's.
+            try:
+                if f.stat().st_size != 0:
+                    return False
+            except OSError:
+                return False
+            try:
+                f.unlink()
+            except OSError:
+                return False
+        # ⚑ ``rmdir`` needs W+X on the PARENT: the chmod above opens *d* for its own
+        # children, the wrong door.  Deepest-first leaves a 555 parent; an EMPTY dir EACCES.
+        if d != leaf and not os.access(d.parent, os.W_OK):
+            try:
+                d.parent.chmod(stat.S_IMODE(os.lstat(d.parent).st_mode) | stat.S_IWUSR)
+            except OSError:
+                return False
+        try:
+            d.rmdir()
+        except OSError:
+            return False
+    return not leaf.exists()
+
+def _symlink_loop(path: Path) -> bool:
+    """True when *path* is a symlink that cannot be resolved because it LOOPS.
+
+    ⚑ ``resolve(strict=False)`` HIDES a loop: it returns the link itself, which reads as
+    an ordinary in-tree directory.  ``strict=True`` raises ``OSError(ELOOP)`` (3.13) or
+    ``RuntimeError`` (3.11) — catch both, so a loop is NAMED, never crashed on or removed.
+    Dangling is ENOENT, not a loop.
+    """
+    import errno
+    import os
+
+    if not os.path.islink(path):
+        return False
+    try:
+        os.path.realpath(path, strict=True)
+    except OSError as e:
+        return getattr(e, "errno", None) == errno.ELOOP
+    except RuntimeError:
+        return True
+    return False
+
+
+def vault_keep_reason(root: Path, vault: Path, *, early: EarlyScope) -> str:
+    """The full ``why`` for keeping *vault*: named by its declaring key, if it has one.
+
+    ⚑ COMPUTE THIS BEFORE THE RUN: the purge unlinks the root ``workset.yaml``, which IS
+    the declaration, so a later reason calls the box's own arm "not a vault arm".
+    """
+    if _symlink_loop(vault):
+        return ("it is a symlink loop that kanibako cannot resolve, so it is left "
+                "in place for you to look at.")
+    key = declared_repoint_key(root, vault, early=early)
+    if key is not None:
+        return (f"your {WORKSET_META_FILE} points workset.{key} here; kanibako does "
+                "not remove where it points, so it is yours to remove.")
+    return f"it is {retained_vault_reason(root, vault)} and is yours to remove."
+
+
+def canon_keep_reason(root: Path, canon: Path, *, early: EarlyScope) -> str:
+    """The ``why`` for keeping a canon tier — the declaration if there is one.
+
+    :func:`report_retained_canon` appends its own ", so it is yours to remove", so
+    the phrase returned here stops short of that.
+    """
+    if declared_repoint_key(root, canon, early=early) == _CANON_LEAF:
+        return (f"your {WORKSET_META_FILE} points workset.{_CANON_LEAF} here and "
+                "kanibako does not remove where it points")
+    return ("not the canon tier of this box" if _strictly_in_tree(canon, root)
+            else f"not strictly inside {root}")
+
+
+def report_retained_canon(canon: Path, root: Path, why: str | None = None, *,
+                         early: EarlyScope | None = None) -> None:
+    """The retained-canon Note: the tier is outside *root*, not this box's tier, or *why*.
+
+    ⚑ *why* comes from :func:`canon_keep_reason`, which names a box-declared repoint.
+    """
+    if why is None and early is not None:
+        why = canon_keep_reason(root, canon, early=early)
     if why is None:
         why = ("not the canon tier of this box" if _strictly_in_tree(canon, root)
                else f"not strictly inside {root}")
@@ -501,6 +749,8 @@ def _holds_only_arms(path: Path, arms: set[Path]) -> bool:
     ⚑ An empty dir qualifies (nothing in it to lose); a file or a symlink that is not
     an arm does not.
     """
+    if _symlink_loop(path):
+        return False
     if path.resolve() in arms:
         return True
     if path.is_symlink() or not path.is_dir():
@@ -513,6 +763,8 @@ def retained_vault_reason(root: Path, vault: Path) -> str:
 
     Outside *root* it is the user's own store; inside it is a ``vault/`` entry no
     ``workset.vault_*`` arm of the box names (e.g. one the user set to ``null``).
+    ⚑ Neither phrase fits a DECLARED repoint — that one IS an arm — so those go
+    through :func:`declared_repoint_key` at the report, not through here.
     """
     if _strictly_in_tree(vault, root):
         return "not a vault arm of this box"
@@ -529,18 +781,21 @@ def report_retained_vault(vault: Path, why: str) -> None:
     print(f"Note: left the vault at {vault} in place — {why}", file=sys.stderr)
 
 
-def report_retained_vaults(root: Path, retained: Iterable[Path]) -> None:
+def report_retained_vaults(root: Path, retained: Iterable[Path], *,
+                          early: EarlyScope | None = None) -> None:
     """Print the retained-vault Note for every path in *retained* that is on disk.
 
     ⚑⚑ *retained* HOLDS FILES: an ``is_dir()`` test before printing drops one.  It also
     holds out-of-root arms that may not exist; a dangling symlink counts as on disk.
+    ⚑ A DECLARED repoint is named by its own key: it IS this box's arm, so the
+    "not an arm" phrase below would misdescribe the very folder it is asking to keep.
     """
     for vault in retained:
         if not (vault.exists() or vault.is_symlink()):
             continue
         report_retained_vault(
-            vault, f"it is {retained_vault_reason(root, vault)} and is yours to remove.",
-        )
+            vault, vault_keep_reason(root, vault, early=early) if early is not None
+            else f"it is {retained_vault_reason(root, vault)} and is yours to remove.")
 
 
 # ---------------------------------------------------------------------------

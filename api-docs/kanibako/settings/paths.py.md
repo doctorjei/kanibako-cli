@@ -31,7 +31,7 @@ def workset_settings_path(group: _WorksetRooted) -> Path
 def workset_settings_path(group: None) -> None
 def workset_settings_path(group: _WorksetRooted | None) -> Path | None
 def box_tree_materialized(proj: ProjectPaths) -> bool
-def standalone_box_store(root: Path, *, early: EarlyScope) -> Path
+def standalone_box_store(root: Path, *, early: EarlyScope, settings_doc: 'Mapping[str, Any] | None'=None) -> Path
 def standalone_store_teardown_plan(root: Path, *, early: EarlyScope) -> tuple[Path | None, Path | None]
 def report_retained_store(store: Path, root: Path) -> None
 def box_metadata_dir(mode: BoxMode, metadata_path: Path, *, early: EarlyScope) -> Path

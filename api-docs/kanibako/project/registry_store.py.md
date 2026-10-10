@@ -30,6 +30,7 @@ def load_deregistered(registry: Path) -> dict[str, dict]
 def register_deregistered(registry: Path, box_name: str, *, kind: str, workspace: str | None, metadata: str, image: str | None=None, deregistered_at: str | None=None) -> None
 def unregister_deregistered(registry: Path, box_name: str) -> bool
 def deregistered_standalone_for_dir(registry: Path, root: Path) -> tuple[str, dict] | None
+def deregistered_matches_for_workspace(registry: Path, path: Path) -> list[tuple[str, dict]]
 def lookup_deregistered(registry: Path, box_name: str) -> dict | None
 def list_deregistered(registry: Path) -> dict[str, dict]
 def _drop_case_twin(entries: dict, box_name: str) -> None
