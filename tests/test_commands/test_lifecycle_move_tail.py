@@ -79,7 +79,7 @@ def _move_args(old, new, *, name=None, to_workset=None):
 
 
 class TestPrimaryOldVaultLeaves:
-    def test_a_linked_leaf_loses_only_its_link_and_the_note_says_so(self, env, capsys):
+    def test_a_leaf_linking_outside_its_arm_is_kept_with_its_note(self, env, capsys):
         state = _primary(env)
         leaf = state.vault_rw
         outside = env[2] / "outside"
@@ -94,10 +94,11 @@ class TestPrimaryOldVaultLeaves:
         _rename_move(env, state)
 
         err = capsys.readouterr().err
-        assert not leaf.is_symlink() and not leaf.exists()
+        assert os.readlink(leaf) == str(outside)
         assert _digest(outside) == before
-        assert f"removed the link {leaf}; left its target {outside}" in err
-        assert "could not remove" not in err
+        assert f"they remain at {leaf}." in err
+        assert f"left the vault at {leaf} in place — it links outside" in err
+        assert "removed the link" not in err and "could not remove" not in err
 
     def test_a_leaf_holding_a_read_only_dir_is_removed(self, env, capsys):
         state = _primary(env)
@@ -130,10 +131,40 @@ class TestPrimaryOldVaultLeaves:
         assert f"could not remove the old store of 'proj'; left {leaf}" in capsys.readouterr().err
 
 
+def test_a_standalone_link_the_carry_takes_loses_only_the_old_link(env, capsys):
+    config, std, tmp_home = env
+    root = _standalone(env)
+    rw = resolve_lifecycle_target(str(root), std, config).vault_rw
+    outside = tmp_home / "outside"
+    outside.mkdir()
+    (outside / "canary.txt").write_text("user data")
+    before = _digest(outside)
+    remove_box_tree(rw)
+    rw.symlink_to(outside)
+
+    assert run_move(_move_args(root, tmp_home / "sa2")) == 0
+
+    err = capsys.readouterr().err
+    assert not rw.is_symlink()
+    landed = resolve_lifecycle_target(str(tmp_home / "sa2"), std, config).vault_rw
+    assert os.readlink(landed) == str(outside)
+    assert _digest(outside) == before
+    assert f"removed the link {rw}; left its target {outside} untouched" in err
+
+
 class TestStandaloneOldRoot:
     def test_an_emptied_old_root_is_removed(self, env):
         config, std, tmp_home = env
         root = _standalone(env)
+        assert run_move(_move_args(root, tmp_home / "sa2")) == 0
+        assert not root.exists()
+
+    def test_a_started_roots_watcher_lock_does_not_keep_it(self, env):
+        from kanibako.settings.bootstrap import CREDS_WATCHER_LOCK_FILE
+
+        config, std, tmp_home = env
+        root = _standalone(env)
+        (root / CREDS_WATCHER_LOCK_FILE).write_text("")
         assert run_move(_move_args(root, tmp_home / "sa2")) == 0
         assert not root.exists()
 
@@ -174,7 +205,8 @@ class TestRetryOfACompletedMove:
         assert run_move(_move_args(root, dest)) == 1
 
         err = capsys.readouterr().err
-        assert f"Nothing to do: no box is at {root}, and {dest} already is box" in err
+        name = resolve_lifecycle_target(str(dest), std, config).name
+        assert err == f"Error: Nothing to do: no box is at {root}, and {dest} is already box '{name}'.\n"
         assert _digest(tmp_home) == before
 
     def test_a_primary_retry_has_nothing_to_do(self, env, capsys):
