@@ -1724,20 +1724,25 @@ class TestRetireOldWorkspace:
         assert "could not fully remove" not in capsys.readouterr().err
 
     def test_a_failed_escalation_notes_the_original_error(self, tmp_path, monkeypatch, capsys):
+        import errno
+
         old = tmp_path / "old"
-        (old / "rootdir").mkdir(parents=True)
-        (old / "rootdir" / "r.txt").write_text("x")
-        (old / "rootdir").chmod(0o555)
+        old.mkdir()
         seen: list[object] = []
+        # Plant a sentinel ``OSError`` whose ``str`` is unmistakable, and assert that
+        # exact ``str`` appears in the Note.  Proves the Note carries the actual error
+        # OBJECT — not merely any matching errno number — and is version-proof by
+        # construction (both the error and the expectation live in this test).
+        sentinel = OSError(errno.EACCES, "sentinel-marker-py313assert-FOO")
+
+        def fake_rmtree(p):
+            raise sentinel
+
+        monkeypatch.setattr(lc.shutil, "rmtree", fake_rmtree)
         monkeypatch.setattr(lc, "remove_box_tree", lambda p: seen.append(p) or False)
-        try:
-            lc._retire_old_workspace(old, tmp_path / "landed")
-        finally:
-            (old / "rootdir").chmod(0o755)
+        lc._retire_old_workspace(old, tmp_path / "landed")
         assert seen == [old]
-        err = capsys.readouterr().err
-        assert f"could not fully remove the old workspace {old}: [Errno 13]" in err
-        assert "r.txt" in err
+        assert f"{old}: {sentinel}" in capsys.readouterr().err
 
     def test_a_plain_file_old_is_removed(self, tmp_path, monkeypatch, capsys):
         """A plain file as old is unlinked; the escalating deleter is not consulted."""
