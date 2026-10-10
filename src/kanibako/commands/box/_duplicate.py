@@ -51,6 +51,14 @@ from kanibako.channels.channels import workset_name_token, workset_root
 from kanibako.settings.workset_dirkeys import EarlyScope, refuse_inherited_per_owner
 
 
+def _refuse_live_source(proj, metadata_dir: Path, force: bool) -> bool:
+    """The move/convert pre-flight for a duplicate source; True ⇒ the caller aborts."""
+    from kanibako.commands.box._lifecycle import abort_if_box_running
+
+    return abort_if_box_running(proj, metadata_dir / ".kanibako.lock", force,
+                                "Duplicating it would copy a workspace still in use.")
+
+
 def _refuse_inherited(std, source, target: tuple[Path, EarlyScope]) -> None:
     """Before ``--force`` overwrites: refuse a collided value the source's or target's workset inherits."""
     refuse_inherited_per_owner(
@@ -191,16 +199,8 @@ def _run_duplicate_cross_mode(args: argparse.Namespace, std, config) -> int:
         print(f"Error: no project data found for source path: {source_path}", file=sys.stderr)
         return 1
 
-    # Lock file warning.
-    lock_file = src_proj.metadata_path / ".kanibako.lock"
-    if lock_file.exists():
-        print(
-            "Warning: lock file found — a container may be running for this project.",
-            file=sys.stderr,
-        )
-        if not args.force:
-            print("Aborted.")
-            return 2
+    if _refuse_live_source(src_proj, src_proj.metadata_path, args.force):
+        return 2
 
     # Confirm with user.
     target_mode = to_mode
@@ -747,16 +747,8 @@ def _duplicate_to_workset(args, std, config) -> int:
     if args.force:
         _refuse_inherited(std, src_proj, (ws.root, ws.early_scope))
 
-    # Lock file warning.
-    lock_file = src_proj.metadata_path / ".kanibako.lock"
-    if lock_file.exists():
-        print(
-            "Warning: lock file found — a container may be running for this project.",
-            file=sys.stderr,
-        )
-        if not args.force:
-            print("Aborted.")
-            return 2
+    if _refuse_live_source(src_proj, src_proj.metadata_path, args.force):
+        return 2
 
     if not args.force:
         mode = "metadata only (bare)" if args.bare else "workspace + metadata"
@@ -812,16 +804,8 @@ def _duplicate_from_workset(args, source_path, new_path, std, config) -> int:
     if args.force:
         _refuse_inherited(std, src_proj, _local_target(std, target_mode, new_path))
 
-    # Lock file warning.
-    lock_file = src_proj.metadata_path / ".kanibako.lock"
-    if lock_file.exists():
-        print(
-            "Warning: lock file found — a container may be running for this project.",
-            file=sys.stderr,
-        )
-        if not args.force:
-            print("Aborted.")
-            return 2
+    if _refuse_live_source(src_proj, src_proj.metadata_path, args.force):
+        return 2
 
     src_enable_vault = (
         _source_authored_vault(src_proj) if target_mode == BoxMode.standalone else None
@@ -1015,16 +999,13 @@ def run_duplicate(args: argparse.Namespace) -> int:
         print("  Use --force to overwrite.", file=sys.stderr)
         return 1
 
-    # 6. Lock file warning.
-    lock_file = source_project_dir / ".kanibako.lock"
-    if lock_file.exists():
-        print(
-            "Warning: lock file found — a container may be running for this project.",
-            file=sys.stderr,
-        )
-        if not args.force:
-            print("Aborted.")
-            return 2
+    # 6. A running source.
+    try:
+        src_paths = resolve_project(std, config, project_dir=str(source_path), initialize=False)
+    except (ProjectError, OSError):
+        src_paths = None
+    if _refuse_live_source(src_paths, source_project_dir, args.force):
+        return 2
 
     # 7. User confirmation.
     if not args.force:
@@ -1045,7 +1026,6 @@ def run_duplicate(args: argparse.Namespace) -> int:
     # (task-dupforce).  Minting the name first also lets the home-free check run
     # early: it needs the minted name, and guards a retained home `--force` would
     # otherwise rmtree.
-    from kanibako.errors import ProjectError
     try:
         dup_name = _claim_primary_dup_name(std, new_path, getattr(args, "project_name", None))
     except ProjectError as e:

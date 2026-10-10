@@ -7,6 +7,7 @@ _Signatures only: no comments, no docstrings, no bodies._
 ## Functions
 ```
 def run_duplicate(args: argparse.Namespace) -> int
+def _refuse_live_source(proj, metadata_dir: Path, force: bool) -> bool
 def _refuse_inherited(std, source, target: tuple[Path, EarlyScope]) -> None
 def _refuse_derived_destination(new_path: Path) -> int | None
 def _refuse_primary_dup_name(args: argparse.Namespace, std, new_path: Path) -> int | None

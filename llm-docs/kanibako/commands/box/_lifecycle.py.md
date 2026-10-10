@@ -1020,8 +1020,9 @@ Refuse a destructive relocation while a box may be running.
 
 `move` / `convert` copy then `rmtree` the source workspace, which for a RUNNING box would delete the
 live bind-mounted directory out from under it. Mirrors `box duplicate`'s lock pre-flight
-(`_duplicate.py`): if a session HOLDS the project's `.kanibako.lock` (a non-blocking `flock`
-probe), warn and abort unless *force*. The file outlives its session, so an unheld one passes.
+(`_duplicate.py`) through `box_running_reason`: a session HOLDING `.kanibako.lock` (a non-blocking
+`flock` probe) or a running container (`_parser._check_container_running`) warns and aborts unless
+*force*. With no runtime to ask, a lock file alone still refuses.
 Returns True when the caller should abort (and has been warned).
 
 ```def run_remap(args) -> int```

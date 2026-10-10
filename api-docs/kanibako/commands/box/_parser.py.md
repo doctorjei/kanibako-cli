@@ -8,6 +8,7 @@ Prose for these symbols lives in `llm-docs/kanibako/commands/box/_parser.py.md`.
 ## Variables
 
 ```
+NO_RUNTIME = 'unknown (no container runtime)'
 _MODE_CHOICES = [m.value for m in BoxMode]
 _SHOW_ALL_HELP = 'Include every box, not just the running ones'
 _MISSING_WORKSPACE = 'missing workspace'

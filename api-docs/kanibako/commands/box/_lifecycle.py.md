@@ -30,6 +30,9 @@ def repoint_box_mounted_links(links: list[MountedLink], relocated: Mapping[Path,
 def copy_into_workset(ws: Workset, proj_name: str, metadata_path: Path, shell_path: Path, source_path: Path, source_mode: BoxMode, *, copy_workspace: bool, std: StandardPaths) -> None
 def execute_lifecycle(state: ProjectState, spec: TargetSpec, std: StandardPaths, config: BootstrapConfig | None=None, *, force: bool=False, confirm: Callable[[], bool] | None=None) -> ProjectState
 def note_added_leftovers(path: Path, before: frozenset[str] | None) -> None
+def session_lock_held(lock_file: Path) -> bool
+def box_running_reason(proj: ProjectPaths | None, lock_file: Path) -> str | None
+def abort_if_box_running(proj: ProjectPaths | None, lock_file: Path, force: bool, consequence: str) -> bool
 def run_remap(args) -> int
 def run_move(args) -> int
 def run_convert(args) -> int
@@ -95,6 +98,8 @@ def _to_default(state: ProjectState, std: StandardPaths, config: BootstrapConfig
 def _resolve_standalone_workspaces(root: Path, doc: Mapping[str, Any] | None, *, early: EarlyScope) -> Path
 def _resolve_standalone_boxes(root: Path, doc: Mapping[str, Any] | None, *, early: EarlyScope) -> Path
 def _standalone_root_artifacts(root: Path, *, early: EarlyScope) -> list[tuple[str, Path, bool]]
+def _refuse_root_name_collisions(state: ProjectState, std: StandardPaths, target_mode: BoxMode) -> None
+def _holds_anything(path: Path) -> bool
 def _artifact_claiming(child: Path, artifacts: list[tuple[str, Path, bool]]) -> tuple[str, Path, bool] | None
 def _consolidate_workspace_subdir(root: Path, workspace_subdir: Path, unwind: _Unwind, *, early: EarlyScope) -> None
 def _undo_consolidate(src_dir: Path, dest_dir: Path, moved: list[Path]) -> None
@@ -123,7 +128,6 @@ def _ownership_from_args(args) -> str | _Sentinel
 def _validated_name(args) -> str | None
 def _make_confirm(force: bool, summary: str)
 def _load_env()
-def _session_lock_held(lock_file: Path) -> bool
 def _abort_if_locked(state: ProjectState, force: bool) -> bool
 def _relocation_failure(err: OSError) -> str
 def _completed_move(old: str, new_path: Path, std: StandardPaths, config: BootstrapConfig, args) -> str | None
@@ -147,6 +151,7 @@ class ProjectState:
     enable_vault: bool = True
     box_authored_vault: bool = True
     bind_sources: frozenset[str] | None = None
+    paths: ProjectPaths | None = field(default=None, repr=False, compare=False)
 
 @dataclass
 class TargetSpec:
