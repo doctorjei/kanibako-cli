@@ -82,3 +82,82 @@ class TestWorksetUnwindHoldsInterrupt:
         with pytest.raises(KeyboardInterrupt):
             unwind.run()
         assert ran == ["last", "middle", "first"]
+
+
+def _interrupt(*a, **k):
+    raise KeyboardInterrupt
+
+
+class TestWorksetFirstInterruptRollsBack:
+    def test_create_workset_rolls_back(self, std, tmp_home, monkeypatch):
+        import kanibako.project.workset as ws_mod
+        from kanibako.project.names import read_names
+
+        root = tmp_home / "worksets" / "my-set"
+        monkeypatch.setattr(ws_mod, "register_name", _interrupt)
+        with pytest.raises(KeyboardInterrupt):
+            ws_mod.create_workset("my-set", root, std)
+        assert not root.exists()
+        assert "my-set" not in read_names(std.registry).get("worksets", {})
+
+    def test_add_project_rolls_back(self, std, tmp_home, monkeypatch):
+        import kanibako.project.workset as ws_mod
+        import kanibako.settings.paths as paths_mod
+
+        root = tmp_home / "worksets" / "my-set"
+        ws = ws_mod.create_workset("my-set", root, std)
+        monkeypatch.setattr(paths_mod, "_register_workset_box_membership", _interrupt)
+        with pytest.raises(KeyboardInterrupt):
+            ws_mod.add_project(ws, "proj", ws.workspaces_dir / "proj")
+        resolved = root.resolve()
+        for leaf in ("boxes", "workspaces", "vault/ro", "vault/rw"):
+            assert not (resolved / leaf / "proj").exists(), leaf
+        assert all(p.name != "proj" for p in ws.projects)
+
+    def test_external_connect_rolls_back_link(self, std, tmp_home, monkeypatch):
+        import kanibako.project.workset as ws_mod
+        import kanibako.settings.paths as paths_mod
+
+        ws = ws_mod.create_workset("ext-set", tmp_home / "worksets" / "ext-set", std)
+        external = (tmp_home / "external_repo").resolve()
+        external.mkdir()
+        (external / "keep.txt").write_text("keep me")
+        monkeypatch.setattr(paths_mod, "_register_workset_box_membership", _interrupt)
+        with pytest.raises(KeyboardInterrupt):
+            ws_mod.add_project(ws, "extproj", external, std)
+        assert not (ws.workspaces_dir / "extproj").is_symlink()
+        assert not (ws.projects_dir / "extproj").exists()
+        assert (external / "keep.txt").read_text() == "keep me"
+
+    def test_interrupt_after_the_name_write_rolls_back(self, std, tmp_home, monkeypatch):
+        import kanibako.project.workset as ws_mod
+        from kanibako.project.names import read_names
+
+        real = ws_mod.register_name
+
+        def write_then_interrupt(*a, **k):
+            real(*a, **k)
+            raise KeyboardInterrupt
+
+        root = tmp_home / "worksets" / "my-set"
+        monkeypatch.setattr(ws_mod, "register_name", write_then_interrupt)
+        with pytest.raises(KeyboardInterrupt):
+            ws_mod.create_workset("my-set", root, std)
+        assert not root.exists()
+        assert "my-set" not in read_names(std.registry).get("worksets", {})
+
+    def test_failed_name_write_keeps_another_roots_entry(self, std, tmp_home, monkeypatch):
+        import kanibako.project.workset as ws_mod
+        from kanibako.project.names import read_names, register_name
+
+        other = str(tmp_home / "elsewhere")
+        real = ws_mod.register_name
+
+        def lose_the_race(registry, name, path, section="worksets"):
+            register_name(registry, name, other, section=section)
+            real(registry, name, path, section=section)
+
+        monkeypatch.setattr(ws_mod, "register_name", lose_the_race)
+        with pytest.raises(Exception, match="already registered"):
+            ws_mod.create_workset("my-set", tmp_home / "worksets" / "my-set", std)
+        assert read_names(std.registry)["worksets"].get("my-set") == other
