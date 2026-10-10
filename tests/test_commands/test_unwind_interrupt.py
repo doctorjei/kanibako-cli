@@ -68,3 +68,17 @@ class TestNoteInterruptedHoldsInterrupt:
         unwind.finished = 1
         unwind.note_interrupted()
         assert ran == ["pending"]
+
+
+class TestWorksetUnwindHoldsInterrupt:
+    def test_workset_unwind_does_not_skip_the_rest(self):
+        from kanibako.project.workset import _Unwind as WorksetUnwind
+
+        ran: list[str] = []
+        unwind = WorksetUnwind()
+        unwind.push(_record(ran, "first"))
+        unwind.push(_record(ran, "middle", KeyboardInterrupt()))
+        unwind.push(_record(ran, "last"))
+        with pytest.raises(KeyboardInterrupt):
+            unwind.run()
+        assert ran == ["last", "middle", "first"]

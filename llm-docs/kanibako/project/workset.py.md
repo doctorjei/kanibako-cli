@@ -179,12 +179,13 @@ writes are torn-file-safe (atomic temp + `os.replace`, via `config_io.dump_doc`)
 *between* steps could strand a half-applied cross-file state: the registry says X while disk says Y,
 an orphan symlink, or an external path locked out by a dangling connection record.
 
-The stack mirrors the pattern in `commands/box/_lifecycle.py::_Unwind`: each forward step pushes a
-compensating action; on any exception they run in reverse (best-effort, secondary failures
-swallowed) and the original exception re-raises, leaving the op either fully applied or fully rolled
-back. The sequences are short — two pushes for `create_workset`, up to seven for `add_project` — so
-this stays deliberately small rather than a generic framework. ⚑ It is the SIMPLER of the two
-`_Unwind`s: no `on_success` list and no `finish`.
+Each forward step pushes a compensating action; on any exception they run in reverse (best-effort,
+secondary failures swallowed) and the original exception re-raises, leaving the op either fully
+applied or fully rolled back. The sequences are short — two pushes for `create_workset`, up to seven
+for `add_project`. A `KeyboardInterrupt` from an action is held until every action has run, then
+re-raised. ⚑ This is the ONLY `_Unwind`: `commands/box/_lifecycle.py` imports it and also uses its
+relocation tail (`push_first`, `on_success`, `finish`, `note_interrupted`); see that module's
+**The unwind stack**.
 
 ## ⚑⚑ Identity is the GLOBAL registry; nothing under the root records a name
 
@@ -322,13 +323,18 @@ auto-suffixing.
 ## Classes
 
 ```python
+@dataclass
 class _Unwind
 ```
-LIFO stack of compensating actions for fail-consistent mutations. See **Failure-consistency**.
+LIFO stack of compensating actions for failure-consistency. See **Failure-consistency**.
 
 ```python
-def push(self, action: Callable[[], None]) -> None
+def push(self, action: Callable[[], object]) -> None
+def push_first(self, action: Callable[[], object]) -> None
+def on_success(self, action: Callable[[], None], *, interrupted: Callable[[], None] | None = None) -> None
 def run(self) -> None
+def finish(self) -> None
+def note_interrupted(self) -> None
 ```
 
 ```python

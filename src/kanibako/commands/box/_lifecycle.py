@@ -123,6 +123,7 @@ from kanibako.project.workset import (
     standalone_canon_teardown,
     standalone_vault_teardown,
     _path_in_tree,
+    _Unwind,
 )
 
 if TYPE_CHECKING:
@@ -687,74 +688,6 @@ def copy_into_workset(
     except BaseException:
         _unwind_target_member(ws, proj_name, existed)
         raise
-
-
-# ---------------------------------------------------------------------------
-# Unwind stack
-# ---------------------------------------------------------------------------
-
-@dataclass
-class _Unwind:
-    """A LIFO stack of compensating actions for failure-consistency."""
-
-    actions: list[Callable[[], object]] = field(default_factory=list)
-    cleanups: list[tuple[Callable[[], None], Callable[[], None] | None]] = field(
-        default_factory=list)
-    #: How many cleanups have returned.
-    finished: int = 0
-
-    def push(self, action: Callable[[], object]) -> None:
-        self.actions.append(action)
-
-    def push_first(self, action: Callable[[], object]) -> None:
-        """Push *action* under every other, so it runs LAST: after the destination is gone."""
-        self.actions.insert(0, action)
-
-    def on_success(self, action: Callable[[], None], *,
-                   interrupted: Callable[[], None] | None = None) -> None:
-        """Register an action to run only when the whole op succeeds.
-
-        *interrupted* names what *action* leaves when an interrupt stops it, or stops the
-        op before *action* starts.  ⚑ Includes DESTRUCTIVE work, so register only the
-        relocation tail; anything else runs inside it.
-        """
-        self.cleanups.append((action, interrupted))
-
-    def run(self) -> None:
-        held: KeyboardInterrupt | None = None
-        while self.actions:
-            action = self.actions.pop()
-            try:
-                action()
-            except KeyboardInterrupt as exc:
-                held = held or exc
-            except Exception:  # noqa: BLE001 - best-effort restore
-                pass
-        if held is not None:
-            raise held
-
-    def finish(self) -> None:
-        """Run success cleanups (best-effort)."""
-        for action, _ in self.cleanups:
-            try:
-                action()
-            except Exception:  # noqa: BLE001
-                pass
-            self.finished += 1
-
-    def note_interrupted(self) -> None:
-        """Name what each cleanup not yet returned leaves; an interrupt stopped them."""
-        held: KeyboardInterrupt | None = None
-        for _, interrupted in self.cleanups[self.finished:]:
-            if interrupted is not None:
-                try:
-                    interrupted()
-                except KeyboardInterrupt as exc:
-                    held = held or exc
-                except Exception:  # noqa: BLE001 - the interrupt still propagates
-                    pass
-        if held is not None:
-            raise held
 
 
 # ---------------------------------------------------------------------------
