@@ -52,7 +52,9 @@ from kanibako.settings.settings_resolve import (LevelView, ResolveCtx, SettingsE
 
 from kanibako.project.names import (resolve_name, resolve_qualified_name)
 from kanibako.launch.box_identity import Designation, box_name_reason, classify_designation
-from kanibako.utils import literal_path, logical_cwd, project_hash, short_hash
+from kanibako.utils import (
+    literal_path, logical_cwd, project_hash, short_hash, stat_unless_gone,
+)
 from kanibako.settings.bootstrap import (BASHRC_FILE, CONFIG_PATH_DEFAULTS,
                                          CREDS_WATCHER_LOG_SUFFIX, HOME_PATH,
                                          IGNORE_FILE, KANIBAKO_PATH, KIND_PROJECT, KIND_WORKSET,
@@ -2390,7 +2392,8 @@ def designation_route(value: str | None, *, name_first: bool = False) -> Designa
     (:func:`resolve_designation`).  Only ``create`` leaves it unset, and then an existing
     path takes the PATH route, else the NAME route.  A
     PATH of the form ``<workset>/<box>``, both segments IDENTIFIERs, that does not exist
-    takes the QUALIFIED route.  Reads the filesystem (``exists``), nothing else.
+    takes the QUALIFIED route.  Reads the filesystem (a stat), nothing else, and only when
+    the answer depends on it; a path it cannot stat (EACCES) refuses, naming it.
     """
     kind = classify_designation(value)
     if kind is Designation.ABSENT:
@@ -2398,12 +2401,15 @@ def designation_route(value: str | None, *, name_first: bool = False) -> Designa
     if kind is Designation.INVALID:
         return DesignationRoute.INVALID
     assert value is not None
-    on_disk = Path(value).exists()
+
+    def on_disk() -> bool:
+        return stat_unless_gone(value) is not None
+
     if kind is Designation.IDENTIFIER:
-        return DesignationRoute.NAME if name_first or not on_disk else DesignationRoute.PATH
+        return DesignationRoute.NAME if name_first or not on_disk() else DesignationRoute.PATH
     workset, sep, box = value.partition("/")
-    if (sep and not on_disk and classify_designation(workset) is Designation.IDENTIFIER
-            and classify_designation(box) is Designation.IDENTIFIER):
+    if (sep and classify_designation(workset) is Designation.IDENTIFIER
+            and classify_designation(box) is Designation.IDENTIFIER and not on_disk()):
         return DesignationRoute.QUALIFIED
     return DesignationRoute.PATH
 

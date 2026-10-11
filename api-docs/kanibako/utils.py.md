@@ -32,11 +32,13 @@ def container_name_for(proj: ProjectPaths) -> str | None
 def legacy_container_names(proj: ProjectPaths) -> tuple[str, ...]
 def project_hash(project_path: str) -> str
 def stat_unless_gone(path: str | os.PathLike[str]) -> os.stat_result | None
+def refuse_unreadable_file(path: str | os.PathLike[str]) -> None
 def literal_path(value: str | os.PathLike[str]) -> str
 def logical_cwd() -> str
 def write_project_gitignore(project_path: Path) -> None
 def project_gitignore_to_strip(project_path: Path) -> Path | None
 def gitignore_holds_only_kanibako(gitignore: Path) -> bool
 def strip_project_gitignore(gitignore: Path) -> bool
+def _unreadable_path_error(path: str | os.PathLike[str], exc: OSError) -> ConfigError
 def _gitignore_kept_text(gitignore: Path) -> str
 ```

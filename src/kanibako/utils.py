@@ -1,5 +1,5 @@
 """Utility functions: cp_if_newer, confirm_prompt, deep_merge, short_hash, container
-naming, stat_unless_gone."""
+naming, stat_unless_gone, refuse_unreadable_file."""
 
 from __future__ import annotations
 
@@ -8,6 +8,7 @@ import hashlib
 import os
 import shlex
 import shutil
+import stat
 import sys
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -215,10 +216,30 @@ def stat_unless_gone(path: str | os.PathLike[str]) -> os.stat_result | None:
     except OSError as exc:
         if exc.errno in (errno.ENOENT, errno.ENOTDIR):
             return None
-        raise ConfigError(
-            f"{os.fspath(path)} could not be read ({exc.strerror}). Make it and its parent "
-            "directories readable, then retry."
-        ) from exc
+        raise _unreadable_path_error(path, exc) from exc
+
+
+def refuse_unreadable_file(path: str | os.PathLike[str]) -> None:
+    """Refuse, as :func:`stat_unless_gone` does, a regular file at *path* that cannot be read.
+
+    A gone path or a non-file passes: this answers only "is it there but unreadable",
+    which a reader that maps any failure to "absent" or "malformed" cannot tell apart.
+    """
+    st = stat_unless_gone(path)
+    if st is None or not stat.S_ISREG(st.st_mode):
+        return
+    try:
+        with open(path, "rb"):
+            pass
+    except OSError as exc:
+        raise _unreadable_path_error(path, exc) from exc
+
+
+def _unreadable_path_error(path: str | os.PathLike[str], exc: OSError) -> ConfigError:
+    return ConfigError(
+        f"{os.fspath(path)} could not be read ({exc.strerror}). Make it and its parent "
+        "directories readable, then retry."
+    )
 
 
 def literal_path(value: str | os.PathLike[str]) -> str:

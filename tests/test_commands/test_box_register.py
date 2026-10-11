@@ -552,6 +552,69 @@ def test_an_unreadable_primary_box_dir_is_refused_by_name_and_keeps_the_entry(
     assert metadata.is_dir()
 
 
+def _cli_refusal(*argv: str) -> None:
+    """Run the CLI and assert it exits 1."""
+    from kanibako.cli import main
+
+    with pytest.raises(SystemExit) as info:
+        main(list(argv))
+    assert info.value.code == 1
+
+
+_UNREADABLE = ("Error: {} could not be read (Permission denied). Make it and its parent "
+               "directories readable, then retry.\n")
+
+
+def test_register_by_path_under_an_unreadable_parent_is_refused_by_name(
+    config_file, tmp_home, credentials_dir, capsys,
+):
+    import os
+
+    if os.geteuid() == 0:
+        pytest.skip("root reads a mode-000 directory")
+    _config, std = _std(config_file)
+    root = (tmp_home / "p" / "sa").resolve()
+    root.mkdir(parents=True)
+    assert run_create(_create_args(root, standalone=True)) == 0
+    capsys.readouterr()
+
+    root.parent.chmod(0)
+    try:
+        _cli_refusal("box", "register", str(root))
+    finally:
+        root.parent.chmod(0o755)
+    assert capsys.readouterr().err == _UNREADABLE.format(root)
+    assert registry_store.load_standalone(std.registry) == {}
+
+
+def test_an_unreadable_marker_file_is_refused_and_keeps_the_parked_entry(
+    config_file, tmp_home, credentials_dir, capsys,
+):
+    """A ``workset.yaml`` that cannot be read is not "not standalone": nothing is dropped."""
+    import os
+
+    if os.geteuid() == 0:
+        pytest.skip("root reads a mode-000 file")
+    _config, std = _std(config_file)
+    root = (tmp_home / "sa").resolve()
+    root.mkdir()
+    assert run_create(_create_args(root, standalone=True, register=True)) == 0
+    name = registry_store.standalone_name_for_root(std.registry, root)
+    assert name and run_rm(_rm_args(name)) == 0
+    before = registry_store.lookup_deregistered(std.registry, name)
+    marker = root / "workset.yaml"
+    capsys.readouterr()
+
+    marker.chmod(0)
+    try:
+        _cli_refusal("box", "register", name)
+    finally:
+        marker.chmod(0o644)
+    assert capsys.readouterr().err == _UNREADABLE.format(marker)
+    assert registry_store.lookup_deregistered(std.registry, name) == before
+    assert run_register(_register_args(name)) == 0
+
+
 # ---------------------------------------------------------------------------
 # I3 / §D4a: `create --standalone` registers only on --register
 # ---------------------------------------------------------------------------

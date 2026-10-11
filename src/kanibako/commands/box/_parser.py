@@ -88,8 +88,8 @@ from kanibako.targets import resolve_target
 from kanibako.utils import (
     WORKSET_SEGMENT_PRIMARY, WORKSET_SEGMENT_STANDALONE,
     container_name_for, container_name_for_box_name, gitignore_holds_only_kanibako, literal_path,
-    logical_cwd, project_gitignore_to_strip, short_hash, stat_unless_gone,
-    strip_project_gitignore, write_project_gitignore,
+    logical_cwd, project_gitignore_to_strip, refuse_unreadable_file, short_hash,
+    stat_unless_gone, strip_project_gitignore, write_project_gitignore,
 )
 
 # ``box duplicate --to`` takes the mode enum's own tokens, never a hand-kept spelling list.
@@ -3088,7 +3088,8 @@ def _readopt_deregistered(std, name: str, entry: dict) -> int:
     if kind == "standalone":
         root = Path(str(metadata)) if metadata else None
         if root is not None:
-            stat_unless_gone(root / WORKSET_META_FILE)  # ⚑ EACCES refuses; never "gone"
+            # ⚑ EACCES refuses: the probe below reads an unreadable marker as "no marker".
+            refuse_unreadable_file(root / WORKSET_META_FILE)
         # Self-heal: the in-tree marker is gone → nothing to restore, drop the entry.
         if root is None or not stores_standalone_registry_null(root):
             registry_store.unregister_deregistered(std.registry, name)
@@ -3305,8 +3306,9 @@ def run_register(args: argparse.Namespace) -> int:
     # 3. STANDALONE register-later — a PATH to an on-disk box with no index entry.
     #    ⚑ REUSE ``import_standalone``: it is already index-only + seed-free.
     candidate = Path(target)
-    if candidate.is_dir():
+    if _is_dir_unless_gone(candidate):  # ⚑ EACCES refuses, naming the path
         root = Path(literal_path(target))
+        refuse_unreadable_file(root / WORKSET_META_FILE)
         if stores_standalone_registry_null(root):
             already = registry_store.standalone_name_for_root(std.registry, root)
             if already is not None:
