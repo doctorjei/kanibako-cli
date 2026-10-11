@@ -18,15 +18,11 @@ from kanibako.bun_sea import (
 )
 
 
-def _build_fake_sea(tmp_path: Path, modules: list[tuple[str, bytes]]) -> Path:
-    """Build a minimal fake Bun SEA binary for testing.
+def _build_payload(modules: list[tuple[str, bytes]]) -> bytes:
+    """Build a Bun SEA payload: ``[data][OFFSETS][marker]``.
 
     *modules* is a list of (name, content) tuples.
     """
-    path = tmp_path / "fake-bun-sea"
-
-    # ELF stub (just some bytes so data_start > 0)
-    elf_stub = b"\x7fELF" + b"\x00" * 60
 
     # Build module content and name blobs
     blob_parts: list[bytes] = []
@@ -83,17 +79,55 @@ def _build_fake_sea(tmp_path: Path, modules: list[tuple[str, bytes]]) -> Path:
         0,  # flags
     )
 
-    # Total file
-    total_byte_count = len(elf_stub) + len(data_blob) + len(offsets) + len(_BUN_MARKER) + 8
-    file_content = (
-        elf_stub
-        + data_blob
-        + offsets
-        + _BUN_MARKER
-        + struct.pack("<Q", total_byte_count)
-    )
+    return data_blob + offsets + _BUN_MARKER
 
-    path.write_bytes(file_content)
+
+def _build_fake_sea(tmp_path: Path, modules: list[tuple[str, bytes]]) -> Path:
+    """Build a fake Bun SEA binary in the appended layout (marker 8 bytes before EOF)."""
+    path = tmp_path / "fake-bun-sea"
+
+    # ELF stub (just some bytes so data_start > 0)
+    elf_stub = b"\x7fELF" + b"\x00" * 60
+    payload = _build_payload(modules)
+    total_byte_count = len(elf_stub) + len(payload) + 8
+    path.write_bytes(elf_stub + payload + struct.pack("<Q", total_byte_count))
+    return path
+
+
+def _build_fake_elf_section_sea(
+    tmp_path: Path,
+    modules: list[tuple[str, bytes]],
+    *,
+    section_name: bytes = b".bun",
+    declared_len: int | None = None,
+) -> Path:
+    """Build a fake ELF64 whose payload sits in a ``.bun`` section, not at EOF.
+
+    Layout: [ELF header][.bun: u64 len][payload][.shstrtab][section headers].
+    *declared_len* overrides the u64 length prefix.
+    """
+    path = tmp_path / "fake-bun-elf"
+    payload = _build_payload(modules)
+    bun_off = 64
+    bun_section = struct.pack("<Q", len(payload) if declared_len is None else declared_len) + payload
+    shstrtab = b"\0" + section_name + b"\0.shstrtab\0"
+    strtab_off = bun_off + len(bun_section)
+    shoff = strtab_off + len(shstrtab)
+
+    def shdr(name: int, sh_type: int, offset: int, size: int) -> bytes:
+        return struct.pack("<IIQQQQIIQQ", name, sh_type, 0, 0, offset, size, 0, 0, 1, 0)
+
+    headers = (
+        shdr(0, 0, 0, 0)
+        + shdr(1, 1, bun_off, len(bun_section))
+        + shdr(2 + len(section_name), 3, strtab_off, len(shstrtab))
+    )
+    ident = b"\x7fELF" + bytes([2, 1, 1]) + b"\0" * 9
+    elf_header = ident + struct.pack(
+        "<HHIQQQIHHHHHH", 2, 0x3E, 1, 0, 0, shoff, 0, 64, 56, 0, 64, 3, 2,
+    )
+    assert len(elf_header) == 64
+    path.write_bytes(elf_header + bun_section + shstrtab + headers)
     return path
 
 
@@ -163,6 +197,67 @@ class TestCliJsHash:
         path = _build_fake_sea(tmp_path, [("cli.js", content)])
         expected = hashlib.sha256(content).hexdigest()
         assert cli_js_hash(path) == expected
+
+
+class TestElfSectionLayout:
+    """Current Linux builds keep the payload in a ``.bun`` section, so the marker is not at EOF."""
+
+    MODS = [
+        ("/$bunfs/root/src/entrypoints/cli.js", b"// cli code"),
+        ("/$bunfs/root/other.js", b"other"),
+    ]
+
+    def test_marker_is_not_at_eof(self, tmp_path):
+        path = _build_fake_elf_section_sea(tmp_path, self.MODS)
+        data = path.read_bytes()
+        assert _BUN_MARKER in data
+        assert data[-8 - len(_BUN_MARKER) : -8] != _BUN_MARKER
+
+    def test_lists_and_extracts(self, tmp_path):
+        path = _build_fake_elf_section_sea(tmp_path, self.MODS)
+        assert [m.name for m in list_modules(path)] == [n for n, _ in self.MODS]
+        assert extract_cli_js(path) == b"// cli code"
+        assert cli_js_hash(path) == hashlib.sha256(b"// cli code").hexdigest()
+
+    def test_no_bun_section_raises(self, tmp_path):
+        path = _build_fake_elf_section_sea(tmp_path, self.MODS, section_name=b".nub")
+        with pytest.raises(BunSEAError, match="marker not found"):
+            list_modules(path)
+
+    def test_length_past_section_raises(self, tmp_path):
+        path = _build_fake_elf_section_sea(tmp_path, self.MODS, declared_len=10**6)
+        with pytest.raises(BunSEAError, match="exceeds its section"):
+            list_modules(path)
+
+    def test_wrong_length_misses_marker(self, tmp_path):
+        payload_len = len(_build_payload(self.MODS))
+        path = _build_fake_elf_section_sea(tmp_path, self.MODS, declared_len=payload_len - 1)
+        with pytest.raises(BunSEAError, match="marker not found"):
+            list_modules(path)
+
+
+class TestChunkedBuildHash:
+    """A build split into chunks has no ``cli.js``; the hash covers the whole payload."""
+
+    MODS = [("/$bunfs/root/cli", b"import './chunk-a.js'"), ("/$bunfs/root/chunk-a.js", b"a")]
+
+    def test_hash_covers_payload_section_layout(self, tmp_path):
+        path = _build_fake_elf_section_sea(tmp_path, self.MODS)
+        expected = hashlib.sha256(_build_payload(self.MODS)).hexdigest()
+        assert cli_js_hash(path) == expected
+
+    def test_hash_covers_payload_appended_layout(self, tmp_path):
+        path = _build_fake_sea(tmp_path, self.MODS)
+        expected = hashlib.sha256(_build_payload(self.MODS)).hexdigest()
+        assert cli_js_hash(path) == expected
+
+    def test_hash_changes_with_any_chunk(self, tmp_path):
+        (tmp_path / "a").mkdir()
+        (tmp_path / "b").mkdir()
+        changed = [self.MODS[0], ("/$bunfs/root/chunk-a.js", b"b")]
+        before = _build_fake_elf_section_sea(tmp_path / "a", self.MODS)
+        after = _build_fake_elf_section_sea(tmp_path / "b", changed)
+        assert cli_js_hash(before) != cli_js_hash(after)
 
 
 class TestRealBinary:

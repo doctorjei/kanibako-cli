@@ -760,6 +760,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`box rm` refuses a box that may be running.** A plain `box rm` deregistered a running box, so its container
   ran on with no box name to reach it. It now asks the runtime first, as `box rm --purge` does; a box that runs
   or holds its lock is refused, with its `kanibako stop` command. `--force` removes it anyway.
+- **tweakcc patching works again with current claude binaries.** Current Linux builds keep their bundle in an ELF
+  `.bun` section and split it into chunks, so every start failed with "Bun SEA marker not found" and ran unpatched.
+  Kanibako now reads both layouts; it still needs a tweakcc release that can patch such builds.
 - **`box purge` of a named-workset box leaves a primary box of the same name alone.** Purging `<workset>/<name>`
   unregistered a primary box called `<name>`, leaving its data unreachable by name. A named box's purge now
   changes no primary registration, and a purge that keeps something no longer files the named box as a

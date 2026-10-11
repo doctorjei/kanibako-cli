@@ -9,6 +9,7 @@ _Signatures only: no comments, no docstrings, no bodies._
 ```
 _BUN_MARKER = b'\n---- Bun! ----\n'
 _OFFSETS_SIZE = 32
+_ELF_SECTION = b'.bun'
 _MODULE_STRUCT_SIZE = 52
 ```
 
@@ -18,7 +19,8 @@ def list_modules(binary_path: Path) -> list[BunModule]
 def extract_module(binary_path: Path, name_suffix: str='cli.js') -> bytes
 def extract_cli_js(binary_path: Path) -> bytes
 def cli_js_hash(binary_path: Path) -> str
-def _parse_header(f) -> tuple[int, int, int]
+def _section_trailer_end(f, size: int) -> int | None
+def _parse_header(f) -> tuple[int, int, int, int]
 ```
 
 ## Classes
