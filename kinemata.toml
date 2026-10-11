@@ -87,7 +87,7 @@ root = "."
 # They are named because the reason of kind above is exactly as true of a
 # plugin's tests as of this project's own, and because dropping them changes
 # what this line removes. Measured, not assumed, 2026-09-14: with `/tests/`
-# alone `check` stays rc=0 and `claims` stays at 1652, and what moves is the
+# alone `check` stays rc=0 and the `claims` count holds; what moves is the
 # weak-signal tally, 28 to 29. So the three are not inert -- but nothing this
 # gate fails on rests on them today, and a reader who finds them silent should
 # know that before deciding they are decoration.
@@ -126,8 +126,8 @@ root = "."
 #
 # ⚑ WHAT ANCHORING RECOVERED, measured 2026-09-14 under kinemata
 # `0.1.0a2.dev1` (the published wheel, file-identical to upstream `f6fc5f7`):
-# the documentation gate checks 1652 claims against these four fragments and
-# 1650 against the old `["tests/"]`, the 2 being those two plan documents.
+# the documentation gate checks 2 more claims against these four fragments than
+# against the old `["tests/"]`, the 2 being those two plan documents.
 # `unused` and `ids` are byte-identical across the change, and `check` differs
 # by exactly one line -- the advisory the new build prints when a fragment
 # removes paths by substring rather than by directory, which named nine such
@@ -160,7 +160,7 @@ root = "."
 # and `ids` (byte-identical output either way), and removes 17 claims from the
 # documentation gate by way of salvage/README.md. Anchoring the `exclude` above
 # moved the pair those 17 sit in, so it is re-measured under it the same day:
-# 1652 claims checked with the directory in, 1635 with it out. So the exclusion
+# still 17 fewer claims checked with the directory out. So the exclusion
 # buys nothing and costs seventeen claims' worth of coverage.
 # ⇒ IF IT EVER LIGHTS UP, EXAMINE THE FINDING. Do not reflexively restore the
 # exclude line: a finding out of `salvage/` is either a real second spelling in
@@ -341,7 +341,7 @@ declared_in = ["agent-cred-files", "retired-file-names", "channel-paths",
 #        this entry.
 #
 # 3. exclude = ["llm-docs/", "api-docs/"] -- REFUSED as tuning-to-green. Their
-#    findings are real (see the api-docs generator defect in the report).
+#    findings were real (see the api-docs generator defect in the report).
 #    ⚑ MEASURED 2026-09-14 at `75f7da94`, so the size of the refusal is on the
 #    record rather than implied: of 772 failing claims, 336 are in `llm-docs/`
 #    and 217 in `api-docs/`. That is 553 -- 72% -- and by a wide margin the
@@ -354,8 +354,9 @@ declared_in = ["agent-cred-files", "retired-file-names", "channel-paths",
 #    2026-09-19) `.toml`, and those directories hold neither, so the
 #    registry-side exclude was inert and there was never a second position to
 #    hold. One `exclude` now serves both scans and this refusal is the only
-#    position either of them takes on the two directories -- they are scanned,
-#    and they are red.
+#    position either of them takes on the two directories -- they are scanned.
+#    Both resolved clean on 2026-10-11; the refusal stands, because an exclude would hide
+#    their next failure too.
 #
 # 4. [[promise]] for docs/architecture.md:71 -- NOT ADDED. The path
 #    `src/kanibako/deprecation.py` is conditional on an EVENT ("when the first
@@ -3170,6 +3171,12 @@ extract = '(?m)^kanibako-known: (\S+)$'
 # The first three are the staleness question. The FOURTH is the closed-world
 # half, and it is the reason the declared side is a declaration and not a
 # listing of `api-docs/`.
+# A FIFTH CONTROL, 2026-10-11, kinemata `0.5.4`: a module deleted with its row,
+# its page left behind (`box_supervisor.py`). This table stays rc=0 (`143
+# declared, 143 produced`), and so does `--check --all`: both iterate SOURCES.
+# `claims` catches it: rc=1, `api-docs/kanibako/box_supervisor.py.md:1: path
+# does not resolve: src/kanibako/box_supervisor.py`. So the header of
+# `generated-artifacts.yaml` counts the page's `git rm` as part of a removal.
 #
 # ⚑ `extract` IS ANCHORED ON THE ARTIFACT SHAPE, not on `(\S+)`. stdout and
 # stderr are JOINED, and the generator's one stderr line is `PARSE ERROR:
@@ -5785,8 +5792,8 @@ registry = "entry-owners"
 # header belongs to that gate, not to `[claims]`. Placed between `suffixes` and
 # `historical` -- which is where they first went, in the claims config that has
 # since merged into this one -- they silently adopted the `historical` list, the
-# suppression stopped applying, and the claim count moved 1652 -> 1991 with
-# nothing in the output saying a table had changed owner. Add a `[claims]` key
+# suppression stopped applying, and the claim count moved with nothing in the
+# output saying a table had changed owner. Add a `[claims]` key
 # up beside `[claims]` at the top of this file, never here.
 #
 # What this buys, stated honestly because the tool's own docs are blunt about it:

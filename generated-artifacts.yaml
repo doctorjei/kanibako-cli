@@ -22,8 +22,11 @@
 #
 # ⇒ ADDING A MODULE UNDER `src/` OR `packages/*/src/` OWES A ROW HERE. Until it
 # has one, `kinemata parity` reports the new artifact as `produced, declared by
-# nothing`. Removing a module owes the row's removal. Neither is busywork: the
-# closed-world half is what makes this a declaration rather than a file listing.
+# nothing`. Removing a module owes the row's removal AND a `git rm` of its
+# page: a page left behind is in neither set, so parity stays green over it
+# (only `claims` reds; control 5 in the `[[parity]]` note). Neither is
+# busywork: the closed-world half is what makes this a declaration rather than
+# a file listing.
 #
 # ⚑ THE MIRROR RULE, so a row can be written by hand: everything up to and
 # including the first `src` component is dropped, and `.md` is appended.
