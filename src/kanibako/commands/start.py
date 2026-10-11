@@ -5740,8 +5740,9 @@ def writeback_session_credentials(
     from kanibako.launch.creds_watcher import clear_creds_dirty, creds_store_lock
     try:
         with creds_store_lock(*dests):
+            ok = True
             if desc is not None:
-                credsync.writeback_box_credentials(
+                ok = credsync.writeback_box_credentials(
                     desc, target, auth=auth_src, host_home=host_home,
                     project_home=proj.shell_path,
                 )
@@ -5774,7 +5775,9 @@ def writeback_session_credentials(
             # processed.  This covers EVERY host writeback path (start detach / clean
             # exit / reattach, stop) AND the watcher itself (it calls this) — a
             # universal safety net for foreground / old-image / dead-watcher boxes.
-            clear_creds_dirty(proj.shell_path)
+            # A spec that failed (already warned) keeps the flag, for a retry.
+            if ok:
+                clear_creds_dirty(proj.shell_path)
     except Exception as exc:  # never crash a teardown path on writeback
         get_logger("start").warning("Credential writeback failed: %s", exc)
 

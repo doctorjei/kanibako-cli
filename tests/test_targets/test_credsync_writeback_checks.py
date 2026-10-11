@@ -201,7 +201,7 @@ class TestWritebackChecks:
         assert "larger than" in caplog.text and str(box) in caplog.text
 
     def test_failed_backup_leaves_the_store_as_it_was(
-        self, make, rel, ok, wrong, tmp_path: Path, monkeypatch,
+        self, make, rel, ok, wrong, tmp_path: Path, monkeypatch, caplog,
     ) -> None:
         real_mkstemp = tempfile.mkstemp
 
@@ -211,10 +211,11 @@ class TestWritebackChecks:
             return real_mkstemp(*a, **k)
 
         monkeypatch.setattr(credsync.tempfile, "mkstemp", no_space_for_bak)
-        with pytest.raises(OSError):
+        with caplog.at_level(logging.WARNING):
             _run(make, tmp_path, rel, ok)
         store = tmp_path / "host" / rel
         assert store.read_text() == "STORE-OLD"
+        assert "No space left" in caplog.text and str(tmp_path / "proj" / rel) in caplog.text
         assert sorted(p.name for p in store.parent.iterdir()) == [store.name]
 
     def test_symlinked_store_file_stays_a_link(
@@ -307,3 +308,70 @@ def test_goose_custom_providers_dir_itself_a_link_is_refused(
         writeback_cred_files(target.descriptor, target, source_root=host, project_home=proj)
     assert not (host / ".config/goose/custom_providers").exists()
     assert "symlink" in caplog.text
+
+
+def _engine_writeback(target, tmp_path: Path, monkeypatch) -> Path:
+    """Run the real session-end writeback (global tier) for *target*; the box home."""
+    from types import SimpleNamespace
+
+    from kanibako.commands.start import writeback_session_credentials
+    from kanibako.settings.settings_launch import AuthSource
+
+    monkeypatch.setenv("HOME", str(tmp_path / "host"))
+    auth = AuthSource(tier="global", global_enabled=True, workset_enabled=False,
+                      global_sync=False, workset_source=None)
+    proj = tmp_path / "proj"
+    writeback_session_credentials(target, SimpleNamespace(shell_path=proj), auth_src=auth)
+    return proj
+
+
+@pytest.mark.parametrize("rel, host_text, box_text", [
+    pytest.param(".config/goose/config.yaml", "GOOSE_MODE: approve\nX: 1\n",
+                 "GOOSE_MODE: auto\nX: 1\n", id="goose-filtered-noop"),
+    pytest.param(".config/goose/secrets.yaml", _GOOSE_OK, _GOOSE_OK,
+                 id="goose-unfiltered-same"),
+])
+def test_unchanged_result_leaves_the_store_file_alone(
+    rel, host_text, box_text, tmp_path: Path, monkeypatch,
+) -> None:
+    store = _write(tmp_path / "host" / rel, host_text, mtime=1000)
+    _write(tmp_path / "proj" / rel, box_text, mtime=2000)
+    before = store.stat()
+    _engine_writeback(_goose(), tmp_path, monkeypatch)
+    after = store.stat()
+    assert (after.st_ino, after.st_mtime) == (before.st_ino, 1000)
+    assert store.read_text() == host_text
+    assert not store.with_name(store.name + ".bak").exists()
+
+
+def test_a_failed_spec_skips_only_itself_and_keeps_the_dirty_flag(
+    tmp_path: Path, monkeypatch, caplog,
+) -> None:
+    from kanibako.launch.creds_watcher import creds_dirty_flag_path
+
+    secrets = _write(tmp_path / "host/.config/goose/secrets.yaml", "STORE-OLD", mtime=100)
+    config = _write(tmp_path / "host/.config/goose/config.yaml", "X: 1\n", mtime=100)
+    _write(tmp_path / "proj/.config/goose/secrets.yaml", _GOOSE_OK, mtime=200)
+    _write(tmp_path / "proj/.config/goose/config.yaml", "X: 2\n", mtime=200)
+    flag = creds_dirty_flag_path(tmp_path / "proj")
+    flag.parent.mkdir(parents=True, exist_ok=True)
+    flag.write_text("")
+    real_mkstemp = tempfile.mkstemp
+
+    def no_space_for_secrets_bak(*a, **k):
+        if k.get("prefix", "").startswith(".secrets.yaml.bak"):
+            raise OSError(28, "No space left on device")
+        return real_mkstemp(*a, **k)
+
+    monkeypatch.setattr(credsync.tempfile, "mkstemp", no_space_for_secrets_bak)
+    with caplog.at_level(logging.WARNING):
+        proj = _engine_writeback(_goose(), tmp_path, monkeypatch)
+    assert secrets.read_text() == "STORE-OLD"
+    assert config.read_text() == "X: 2\n"
+    assert str(proj / ".config/goose/secrets.yaml") in caplog.text
+    assert flag.exists()
+
+    monkeypatch.setattr(credsync.tempfile, "mkstemp", real_mkstemp)
+    _engine_writeback(_goose(), tmp_path, monkeypatch)
+    assert secrets.read_text() == _GOOSE_OK
+    assert not flag.exists()

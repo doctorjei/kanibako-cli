@@ -196,7 +196,7 @@ def writeback_cred_files(
     *,
     source_root: Path | None,
     project_home: Path,
-) -> None:
+) -> bool:
     """Post-session project->source sync of SYNC-cadence credential files.
 
     Replaces ``writeback_credentials``.  No-op when *source_root* is ``None`` (the
@@ -211,46 +211,64 @@ def writeback_cred_files(
     a box file reached through a symlink is refused, and so is one the harness's
     :meth:`~kanibako.targets.base.Target.cred_writeback_error` rejects.  A refusal
     warns, naming the file, and leaves the store as it was.  A replaced store file
-    keeps its previous content as ``<file>.bak``.
+    keeps its previous content as ``<file>.bak``.  A spec that fails (a failed
+    backup, a full disk) warns, naming it, and the remaining specs still run.
+
+    Returns ``False`` when a spec failed, so the caller can leave the box's
+    creds-dirty flag set for a retry; a refusal is not a failure.
     """
     if source_root is None:
-        return
+        return True
 
+    ok = True
     for spec in descriptor.cred_files:
         if spec.cadence is not Cadence.SYNC:
             continue
         src = project_home / spec.home_rel
         dst = source_root / spec.host_rel
-        if spec.is_dir:
-            # Directory spec: mirror the box dir back to the source (no mtime
-            # gate; see _copy_dir).  Skip silently when the box dir is absent.
-            link = _linked_part(project_home, spec.home_rel)
-            if link is not None:
-                logger.warning("credential writeback skipped %s: %s is a symlink",
-                               src, link)
-            elif src.is_dir() and not _box_dir_too_big(src):
-                dst.parent.mkdir(parents=True, exist_ok=True)
-                _copy_dir(src, dst, skip_links=True)
-            continue
-        box = _read_box_file(project_home, spec.home_rel)
-        if box is None:
-            continue
-        data, box_stat = box
-        if (
-            spec.mtime_gate
-            and dst.is_file()
-            and box_stat.st_mtime <= dst.stat().st_mtime
-        ):
-            continue
-        reason = target.cred_writeback_error(spec, data)
-        if reason is not None:
-            logger.warning(
-                "credential writeback skipped: %s is not a valid %s credential file "
-                "(%s); %s is unchanged", src, target.name, reason, dst,
-            )
-            continue
-        dst.parent.mkdir(parents=True, exist_ok=True)
-        _replace_store_file(spec, target, data, box_stat, dst)
+        try:
+            _writeback_one(spec, target, project_home, src, dst)
+        except Exception as exc:
+            logger.warning("credential writeback of %s to %s failed: %s",
+                           src, dst, exc)
+            ok = False
+    return ok
+
+
+def _writeback_one(
+    spec: CredFileSpec, target: Target, project_home: Path, src: Path, dst: Path,
+) -> None:
+    """Write the box's copy of one SYNC *spec* (*src*) back to the store (*dst*)."""
+    if spec.is_dir:
+        # Directory spec: mirror the box dir back to the source (no mtime
+        # gate; see _copy_dir).  Skip silently when the box dir is absent.
+        link = _linked_part(project_home, spec.home_rel)
+        if link is not None:
+            logger.warning("credential writeback skipped %s: %s is a symlink",
+                           src, link)
+        elif src.is_dir() and not _box_dir_too_big(src):
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            _copy_dir(src, dst, skip_links=True)
+        return
+    box = _read_box_file(project_home, spec.home_rel)
+    if box is None:
+        return
+    data, box_stat = box
+    if (
+        spec.mtime_gate
+        and dst.is_file()
+        and box_stat.st_mtime <= dst.stat().st_mtime
+    ):
+        return
+    reason = target.cred_writeback_error(spec, data)
+    if reason is not None:
+        logger.warning(
+            "credential writeback skipped: %s is not a valid %s credential file "
+            "(%s); %s is unchanged", src, target.name, reason, dst,
+        )
+        return
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    _replace_store_file(spec, target, data, box_stat, dst)
 
 
 def _linked_part(root: Path, rel: str) -> Path | None:
@@ -358,8 +376,9 @@ def _replace_store_file(
     file's times as ``copy2`` carried them.  Filtered: the plugin's
     ``transform_cred(..., "out")`` reads a copy of *data*, never the box file, and
     writes over a copy of the store.  An existing store keeps its mode; a new one is
-    0600.  When the content changed, the previous content first becomes
-    ``<dst>.bak`` (0600), replacing any older one; if that fails, the store is
+    0600.  Unchanged content leaves the store alone (its inode and times, which the
+    refresh's mtime gate reads).  Changed content first saves the previous content
+    as ``<dst>.bak`` (0600), replacing any older one; if that fails, the store is
     left as it was.
     """
     real = Path(os.path.realpath(dst))
@@ -381,9 +400,11 @@ def _replace_store_file(
         else:
             new.write_bytes(data)
             os.utime(new, ns=(box_stat.st_atime_ns, box_stat.st_mtime_ns))
-        os.chmod(new, stat.S_IMODE(old_stat.st_mode) if old_stat else 0o600)
-        if old is not None and new.read_bytes() != old:
+        if old is not None:
+            if new.read_bytes() == old:
+                return
             _write_backup(dst, old)
+        os.chmod(new, stat.S_IMODE(old_stat.st_mode) if old_stat else 0o600)
         os.replace(new, real)
     finally:
         shutil.rmtree(work, ignore_errors=True)
@@ -484,20 +505,20 @@ def _sync_workset_dir_to_global(
     *,
     auth: AuthSource,
     host_home: Path,
-) -> None:
+) -> bool:
     """BOTTOM-UP hop: write the WORKSET auth dir back TO global (design SYNC).
 
     Runs only for the WORKSET tier with ``global_sync`` on. The mirror of
     :func:`_sync_workset_dir_from_global` via ``writeback_cred_files`` (project =
-    the workset dir, dest = global/host home).
+    the workset dir, dest = global/host home).  ``False`` when a spec failed.
     """
     if (
         auth.tier != "workset"
         or not auth.global_sync
         or auth.workset_source is None
     ):
-        return
-    writeback_cred_files(
+        return True
+    return writeback_cred_files(
         descriptor, target,
         source_root=host_home,
         project_home=Path(auth.workset_source),
@@ -662,18 +683,18 @@ def writeback_box_credentials(
     auth: AuthSource,
     host_home: Path,
     project_home: Path,
-) -> None:
+) -> bool:
     """Post-session writeback to the SELECTED tier source (design step 4).
 
     BOTTOM-UP: write the box back TO the selected source root first, then (for the
     global-synced workset tier) write the workset dir back UP to global. A private
-    box is a no-op.
+    box is a no-op.  ``False`` when a spec failed in either hop.
     """
-    writeback_cred_files(
+    ok = writeback_cred_files(
         descriptor, target,
         source_root=selected_source_root(auth, host_home=host_home),
         project_home=project_home,
     )
-    _sync_workset_dir_to_global(
+    return _sync_workset_dir_to_global(
         descriptor, target, auth=auth, host_home=host_home
-    )
+    ) and ok
