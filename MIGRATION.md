@@ -445,13 +445,14 @@ inside boxes. In order of likely impact:
     moved, so the first start re-patches the binary once.** Nothing to do unless a helper script read the old
     path — see *The tweakcc cache mounts at `~/.kanibako/cache/tweakcc` in the box*.
 
-46. **`box remap` onto another box's workspace, root, or store exits 1, and inside another box's tree it needs
-    `--force`** — see *`box remap` onto another box's path is refused*.
+46. **`box remap` onto another box's workspace or standalone root exits 1 even with `--force`; into, or onto a
+    directory holding, another box's tree it needs `--force`** — see *`box remap` onto another box's path is
+    refused*.
 
 47. **A `box purge` that cannot remove something exits 1 and parks the box; v1.7.x could exit 0** — see
     *A `box purge` that cannot remove everything exits 1 and parks the box*.
 
-47. **`box purge` and `box rm --purge` exit 1 on a running box unless `--force`** — see
+48. **`box purge` and `box rm --purge` exit 1 on a running box unless `--force`** — see
     *`box purge` and `box rm --purge` refuse a running box*.
 
 ---
@@ -6158,26 +6159,45 @@ refusal names another box, remove it with `box rm <other>` or choose another pat
 
 ### `box remap` onto another box's path is refused
 
-**Read this if a `box remap` now stops with `Cannot remap '<box>' onto '<path>': it is …`.**
+**Read this if a `box remap` or `box convert --standalone` now stops with `Cannot remap '<box>' onto
+'<path>': it is …` or `Cannot convert '<box>' to standalone in place: …`.**
 
-**What changed.** A remap onto another box's path recorded the box there, and either dropped the
-other box's registry row or left two boxes at one path. It now exits 1 before writing anything:
+**What changed.** In v1.7.x a remap onto another box's path recorded the box there, and either
+dropped the other box's registry row or left two boxes at one path. It now exits 1 before writing
+anything, and names the other box.
 
-- onto a primary box's workspace, or another standalone box's root, it is refused even with
-  `--force`, and the refusal names that box:
+Refused even with `--force`:
+
+- onto another box's workspace (a primary box's, a workset member's, or a standalone box's
+  `workspace/`), or onto a standalone box's root or a link to it:
   `Error: Cannot remap 'beta' onto '/w/alpha': it is the workspace of primary box 'alpha'. A remap
   is not a takeover, and no flag overrides this. First delete that box (`kanibako box rm alpha
   --purge`, which deletes that box's own data, its vault included, but not its workspace), then
-  run the remap again.`
-- inside any box's store (`box_data`) it is refused even with `--force`;
-- inside a primary box's workspace, or inside a standalone box's root (its `workspace/`, say), it
-  needs `--force`, which shares that tree between the two boxes.
+  run the remap again.` For a member, the cure is `kanibako workset disconnect <workset> <box>
+  --force`, which deletes no files;
+- a standalone box remapped into its own root or store;
+- a standalone box remapped onto a directory holding another box's workspace, root, or store, or a
+  workset root. Its layout moves what sits at its new root into `workspace/`, which would break
+  that box. A box already under that `workspace/` does not move, so it needs only `--force`, and a
+  symlink moves as a link, so a link to another box's tree is not refused;
+- `box convert --standalone` in place, when the workspace holds another box's workspace, root,
+  store, or workset root, for the same reason;
+- a destination kanibako cannot read: `… <path> cannot be read (Permission denied), and nothing
+  has moved.`
+
+Refused unless `--force`, which records the path and keeps both boxes: a path inside another box's
+workspace, standalone root, or store (a primary box's `boxes/<name>`, its own included, or a
+standalone box's `box_data`, directly or through a link), or a directory holding another box's
+workspace or standalone root.
 
 A remap records the path as given: onto a symlink to another box's workspace, it records the link,
 and both boxes keep their rows and share the files.
 
-**What to do.** Choose another path, or remove the other box first with `box rm <box>`. To share a
-directory inside another box's tree on purpose, add `--force`.
+**What to do.** Choose another path, or remove the other box first (`box rm <box> --purge`, or
+`workset disconnect` for a member). To share a directory inside another box's tree on purpose, add
+`--force`. A workset member is still refused inside another member's directory, even with
+`--force`: `Cannot connect '<path>': it is already connected as project '<box>' in workset '<ws>'.
+Disconnect it first.`
 
 ### A `box purge` that cannot remove everything exits 1 and parks the box
 
