@@ -209,17 +209,28 @@ class TestTheRoutesThatStayOpen:
 
 @pytest.fixture
 def parked_with_hard_linked_copy(config_file, tmp_home, credentials_dir, capsys):
-    """Box created and parked at ``real/sa2``; ``hl`` is a ``cp -al`` of it afterwards."""
-    import subprocess
+    """Box created and parked at ``real/sa2``; ``hl`` is a copy of it whose ``workset.yaml``
+    is a hard link to the original's, the one file the identity check reads.
+
+    ⚑ Not ``cp -al``: GitHub runners refuse hard-linking the seeded canon files
+    (``fs.protected_hardlinks``), so only ``workset.yaml`` is linked, and it must be ours.
+    """
+    import shutil
 
     real, hl = tmp_home / "real" / "sa2", tmp_home / "hl"
     std, name = _park(config_file, capsys, real, real)
-    subprocess.run(["cp", "-al", str(real), str(hl)], check=True)
+    shutil.copytree(real, hl, symlinks=True)
+    meta = real / "workset.yaml"
+    st = meta.lstat()
+    assert meta.is_file() and not meta.is_symlink()
+    assert st.st_uid == os.getuid() and st.st_mode & 0o600 == 0o600
+    (hl / "workset.yaml").unlink()
+    os.link(meta, hl / "workset.yaml")
     return std, name, real, hl
 
 
 class TestAHardLinkedCopyOfAParkedRoot:
-    """``cp -al`` shares the root ``workset.yaml`` file: one identity ([R188]) in another
+    """A hard-linked ``workset.yaml`` (as ``cp -al`` makes) is one identity ([R188]) in another
     directory.  Registered, [R188] refuses it; parked, the identity pass does."""
 
     def test_start_resolution_is_refused(self, parked_with_hard_linked_copy, monkeypatch):
