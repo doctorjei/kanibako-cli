@@ -36,7 +36,6 @@ def mark_helper_stopped(helpers_dir: Path, helper_num: int) -> None
 def create_helper_dirs(helpers_dir: Path, helper_num: int) -> Path
 def create_broadcast_dirs(helpers_dir: Path) -> Path
 def create_peer_channels(helpers_dir: Path, new_helper: int, existing_helpers: list[int]) -> None
-def link_broadcast(helpers_dir: Path, helper_num: int) -> None
 def remove_helper_dirs(helpers_dir: Path, helper_num: int, sibling_helpers: list[int]) -> None
 def bundled_init_script() -> Path
 def resolve_init_script(parent_scripts_dir: Path | None) -> Path

@@ -21,7 +21,6 @@ from kanibako.channels.helpers import (
     create_helper_dirs,
     create_peer_channels,
     effective_breadth,
-    link_broadcast,
     read_helper_number,
     read_helper_state,
     read_spawn_budget,
@@ -325,7 +324,6 @@ def run_spawn(args: argparse.Namespace) -> int:
     create_helper_dirs(helpers_dir, helper_num)
     create_broadcast_dirs(helpers_dir)
     create_peer_channels(helpers_dir, helper_num, existing)
-    link_broadcast(helpers_dir, helper_num)
 
     # Hand the child its own (decremented) budget, as the declared keys
     child_cfg = child_budget(budget)

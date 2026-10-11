@@ -385,14 +385,6 @@ def _link_peer(helpers_dir: Path, helper_num: int, name: str, target: Path) -> N
         link.symlink_to(target.resolve())
 
 
-def link_broadcast(helpers_dir: Path, helper_num: int) -> None:
-    """Create an ``all`` symlink in a helper's filesystem pointing to broadcast dirs."""
-    all_dir = helpers_dir / "all"
-    link = helpers_dir / str(helper_num) / "all"
-    if not link.exists():
-        link.symlink_to(all_dir.resolve())
-
-
 def remove_helper_dirs(
     helpers_dir: Path,
     helper_num: int,

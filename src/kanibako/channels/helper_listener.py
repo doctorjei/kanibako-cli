@@ -733,10 +733,13 @@ def _build_helper_mounts(ctx: HelperContext, helper_num: int,
     if peers_dir.is_dir():
         mounts.append(Mount(peers_dir, f"{GUEST_HOME}/peers", "Z,U"))
 
-    # Broadcast directory
-    all_link = helper_root / "all"
-    if all_link.exists():
-        mounts.append(Mount(all_link, f"{GUEST_HOME}/all", "Z,U"))
+    # Broadcast directory: the REAL ``helpers/all`` the parent shares with all its
+    # helpers, never a link under the helper root.  A link there is written in-box and
+    # does not resolve on the host, and the launch's stub step replaces whatever sits at
+    # a mount's destination with an empty dir, so a source at that path binds nothing.
+    all_dir = helpers_dir / "all"
+    if all_dir.is_dir():
+        mounts.append(Mount(all_dir, f"{GUEST_HOME}/all", "Z,U"))
 
     # The SPAWN DOCUMENT: the budget the PARENT wrote into this helper's home
     # (``commands.helper_cmd``) and the number the hub wrote beside it, mounted at the dest and options of the director's own

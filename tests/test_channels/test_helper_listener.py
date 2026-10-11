@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 import socket
 import time
 from pathlib import Path
@@ -251,16 +252,15 @@ class TestBuildHelperMounts:
         mounts = _build_helper_mounts(ctx, 1, helpers_dir)
         assert any(m.destination == "/usr/bin/claude" for m in mounts)
 
-    def test_broadcast_mount(self, tmp_path):
+    def _broadcast_ctx(self, tmp_path):
         helpers_dir = tmp_path / "helpers"
         helper_root = helpers_dir / "1"
-        helper_root.mkdir(parents=True)
-        # Create broadcast dir and link
+        for leaf in ("workspace", "vault/ro", "vault/rw", "peers"):
+            (helper_root / leaf).mkdir(parents=True)
         all_dir = helpers_dir / "all"
         (all_dir / "rw").mkdir(parents=True)
         (all_dir / "ro").mkdir(parents=True)
-        (helper_root / "all").symlink_to(all_dir)
-
+        (all_dir / "ro" / "startup.sh").write_text("echo hi\n")
         ctx = HelperContext(
             runtime=MagicMock(),
             image="test:latest",
@@ -271,9 +271,56 @@ class TestBuildHelperMounts:
             binary_mounts=[],
             early=early_record(tmp_path, mode=BoxMode.primary),
         )
+        return ctx, helpers_dir, helper_root, all_dir
+
+    def _after_stubs(self, helpers_dir, helper_root, ctx):
+        """The mounts as the runtime gets them: after the launch's stub step."""
+        from kanibako.runtime.container import _precreate_mount_stubs
 
         mounts = _build_helper_mounts(ctx, 1, helpers_dir)
-        assert any(m.destination == "/home/agent/all" for m in mounts)
+        _precreate_mount_stubs(
+            helper_root, helper_root / "workspace", mounts, True,
+            helper_root / "vault/ro", helper_root / "vault/rw", [],
+        )
+        return {m.destination: m for m in mounts}
+
+    def test_broadcast_mount_binds_the_real_broadcast_dir(self, tmp_path):
+        ctx, helpers_dir, helper_root, all_dir = self._broadcast_ctx(tmp_path)
+
+        by_dest = self._after_stubs(helpers_dir, helper_root, ctx)
+
+        source = by_dest["/home/agent/all"].source
+        assert source == all_dir
+        assert (source / "ro" / "startup.sh").read_text() == "echo hi\n"
+
+    def test_a_parents_in_box_link_does_not_hide_the_broadcast(self, tmp_path):
+        """A parent box wrote ``helpers/<N>/all`` as an IN-BOX absolute path, which does
+        not resolve on the host; the hub's mount must not depend on it."""
+        ctx, helpers_dir, helper_root, all_dir = self._broadcast_ctx(tmp_path)
+        (helper_root / "all").symlink_to("/home/agent/helpers/all")
+
+        by_dest = self._after_stubs(helpers_dir, helper_root, ctx)
+
+        assert "/home/agent/all" in by_dest
+        assert (by_dest["/home/agent/all"].source / "ro" / "startup.sh").is_file()
+
+    def test_a_relative_link_is_not_mounted_onto_itself(self, tmp_path):
+        """The stub step replaces a link at a mount's destination with an empty dir, so a
+        source at the same path would bind that empty dir."""
+        ctx, helpers_dir, helper_root, all_dir = self._broadcast_ctx(tmp_path)
+        (helper_root / "all").symlink_to("../all")
+
+        by_dest = self._after_stubs(helpers_dir, helper_root, ctx)
+
+        assert (by_dest["/home/agent/all"].source / "ro" / "startup.sh").is_file()
+
+    def test_no_broadcast_mount_without_the_broadcast_dir(self, tmp_path):
+        ctx, helpers_dir, helper_root, all_dir = self._broadcast_ctx(tmp_path)
+        shutil.rmtree(all_dir)
+
+        mounts = _build_helper_mounts(ctx, 1, helpers_dir)
+
+        assert all(m.destination != "/home/agent/all" for m in mounts)
 
     def test_socket_mount(self, tmp_path):
         """Socket is mounted when it exists on the host."""

@@ -19,7 +19,6 @@ from kanibako.channels.helpers import (
     create_helper_dirs,
     create_peer_channels,
     effective_breadth,
-    link_broadcast,
     parent_of,
     read_helper_number,
     read_spawn_budget,
@@ -412,28 +411,6 @@ class TestCreatePeerChannels:
         # No peer symlinks created
         peers = list((helpers / "1" / "peers").iterdir())
         assert peers == []
-
-
-class TestLinkBroadcast:
-    def test_creates_symlink(self, tmp_path):
-        helpers = tmp_path / "helpers"
-        helpers.mkdir()
-        create_helper_dirs(helpers, 1)
-        create_broadcast_dirs(helpers)
-        link_broadcast(helpers, 1)
-        link_path = helpers / "1" / "all"
-        assert link_path.is_symlink()
-        assert (link_path / "rw").is_dir()
-        assert (link_path / "ro").is_dir()
-
-    def test_idempotent(self, tmp_path):
-        helpers = tmp_path / "helpers"
-        helpers.mkdir()
-        create_helper_dirs(helpers, 1)
-        create_broadcast_dirs(helpers)
-        link_broadcast(helpers, 1)
-        link_broadcast(helpers, 1)  # no error
-        assert (helpers / "1" / "all").is_symlink()
 
 
 class TestRemoveHelperDirs:

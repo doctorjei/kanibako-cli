@@ -166,9 +166,6 @@ class TestRunSpawn:
         assert (helpers / "all" / "rw").is_dir()
         assert (helpers / "all" / "ro").is_dir()
 
-        # Broadcast linked
-        assert (helpers / "1" / "all").is_symlink()
-
     def test_spawn_multiple(self, helpers_env, capsys):
         args = _make_args(depth=None, breadth=None, model=None)
         run_spawn(args)
@@ -439,18 +436,6 @@ class TestRunCleanup:
         rc = run_cleanup(_make_args(number=99))
         assert rc == 1
         assert "does not exist" in capsys.readouterr().err
-
-    def test_cleanup_cleans_broadcast_link(self, helpers_env, capsys):
-        """Cleanup removes the helper's broadcast symlink along with the dir."""
-        run_spawn(_make_args(depth=None, breadth=None, model=None))
-        capsys.readouterr()
-
-        helpers = helpers_env / "helpers"
-        assert (helpers / "1" / "all").is_symlink()
-
-        run_cleanup(_make_args(number=1))
-        # Entire dir is gone, including the all/ symlink
-        assert not (helpers / "1").exists()
 
 
 class TestRunRespawn:
