@@ -445,6 +445,12 @@ inside boxes. In order of likely impact:
     moved, so the first start re-patches the binary once.** Nothing to do unless a helper script read the old
     path — see *The tweakcc cache mounts at `~/.kanibako/cache/tweakcc` in the box*.
 
+46. **`box remap` onto another box's workspace, root, or store exits 1, and inside another box's tree it needs
+    `--force`** — see *`box remap` onto another box's path is refused*.
+
+47. **A `box purge` that cannot remove something exits 1 and parks the box; v1.7.x could exit 0** — see
+    *A `box purge` that cannot remove everything exits 1 and parks the box*.
+
 ---
 
 ## 2. Per-area detail
@@ -6146,6 +6152,44 @@ refused with exit 1, naming that box; before, one of the two boxes lost its regi
 
 **What to do.** To rename a box as it moves, run `box move <box> <new-path> --name <new>`. If the
 refusal names another box, remove it with `box rm <other>` or choose another path.
+
+### `box remap` onto another box's path is refused
+
+**Read this if a `box remap` now stops with `Cannot remap '<box>' onto '<path>': it is …`.**
+
+**What changed.** A remap onto another box's path recorded the box there, and either dropped the
+other box's registry row or left two boxes at one path. It now exits 1 before writing anything:
+
+- onto a primary box's workspace, or another standalone box's root, it is refused even with
+  `--force`, and the refusal names that box:
+  `Error: Cannot remap 'beta' onto '/w/alpha': it is the workspace of primary box 'alpha'. A remap
+  is not a takeover, and no flag overrides this. First delete that box (`kanibako box rm alpha
+  --purge`, which deletes that box's own data, its vault included, but not its workspace), then
+  run the remap again.`
+- inside any box's store (`box_data`) it is refused even with `--force`;
+- inside a primary box's workspace, or inside a standalone box's root (its `workspace/`, say), it
+  needs `--force`, which shares that tree between the two boxes.
+
+A remap records the path as given: onto a symlink to another box's workspace, it records the link,
+and both boxes keep their rows and share the files.
+
+**What to do.** Choose another path, or remove the other box first with `box rm <box>`. To share a
+directory inside another box's tree on purpose, add `--force`.
+
+### A `box purge` that cannot remove everything exits 1 and parks the box
+
+**Read this if a script runs `kanibako box purge` and reads its exit status, or a purge ends with
+`Purge incomplete`.**
+
+**What changed.** In v1.7.x a purge skipped a vault it could not delete, removed the box's record,
+and exited 0; a log it could not delete stopped it with a traceback. Now anything the purge cannot
+remove, a log included, is named with a warning and left; the box's metadata is kept, the box is
+parked as deregistered, and the purge exits 1:
+`Purge incomplete: something was kept, so the box is parked — re-run the purge to finish.`
+
+**What to do.** Fix what the warning names, then finish with `kanibako box rm <box> --purge`, or
+`kanibako box purge <path>`. A parked box is no longer found by name, so `box purge <box>` reports
+it unknown.
 
 ### 2.95 The `agent` verbs refuse an agent file with an undeclared key, as the launch does
 
