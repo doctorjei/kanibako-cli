@@ -46,6 +46,13 @@ if TYPE_CHECKING:
 
 logger = get_logger("credsync")
 
+# Writeback caps on what a box can hand the host (no-host-touch design § 4): the
+# bytes are read into host memory to be checked, and a box can plant a sparse file
+# that costs it no disk.
+_BOX_FILE_MAX_BYTES = 1 << 20
+_BOX_DIR_MAX_BYTES = 4 << 20
+_BOX_DIR_MAX_ENTRIES = 256
+
 
 def _chmod_600(path: Path) -> None:
     """Set 0600 (owner read/write) permissions on *path*, best-effort."""
@@ -221,7 +228,7 @@ def writeback_cred_files(
             if link is not None:
                 logger.warning("credential writeback skipped %s: %s is a symlink",
                                src, link)
-            elif src.is_dir():
+            elif src.is_dir() and not _box_dir_too_big(src):
                 dst.parent.mkdir(parents=True, exist_ok=True)
                 _copy_dir(src, dst, skip_links=True)
             continue
@@ -262,6 +269,29 @@ def _linked_part(root: Path, rel: str) -> Path | None:
     return None
 
 
+def _box_dir_too_big(src: Path) -> bool:
+    """Whether the box dir *src* is over the writeback caps; warns when it is.
+
+    Counts every entry and the size of every regular file, never following a link.
+    """
+    entries = size = 0
+    for d, dirs, files in os.walk(src):
+        for name in dirs + files:
+            entries += 1
+            try:
+                st = os.lstat(os.path.join(d, name))
+            except OSError:
+                continue
+            if stat.S_ISREG(st.st_mode):
+                size += st.st_size
+        if entries > _BOX_DIR_MAX_ENTRIES or size > _BOX_DIR_MAX_BYTES:
+            logger.warning(
+                "credential writeback skipped %s: more than %d entries or %d bytes",
+                src, _BOX_DIR_MAX_ENTRIES, _BOX_DIR_MAX_BYTES)
+            return True
+    return False
+
+
 def _read_box_file(
     root: Path, rel: str,
 ) -> tuple[bytes, os.stat_result] | None:
@@ -270,8 +300,10 @@ def _read_box_file(
     The box controls everything under *root*, so each component is opened with
     ``O_NOFOLLOW`` relative to the last: a symlink anywhere below *root* is
     refused, as is anything but a regular file (``O_NONBLOCK`` keeps a FIFO from
-    hanging the open).  A missing file is ``None`` with no warning; a refusal warns,
-    naming the file.  The bytes returned are the bytes checked and written.
+    hanging the open), and so is a file over ``_BOX_FILE_MAX_BYTES``, by its size
+    and by what a read returns, since the file can grow after the check.  A missing
+    file is ``None`` with no warning; a refusal warns, naming the file.  The bytes
+    returned are the bytes checked and written.
     """
     parts = Path(rel).parts
     path = root / rel
@@ -299,8 +331,14 @@ def _read_box_file(
         if not stat.S_ISREG(st.st_mode):
             logger.warning("credential writeback skipped %s: not a regular file", path)
             return None
-        with os.fdopen(leaf, "rb", closefd=False) as fh:
-            return fh.read(), st
+        if st.st_size <= _BOX_FILE_MAX_BYTES:
+            with os.fdopen(leaf, "rb", closefd=False) as fh:
+                data = fh.read(_BOX_FILE_MAX_BYTES + 1)
+            if len(data) <= _BOX_FILE_MAX_BYTES:
+                return data, st
+        logger.warning("credential writeback skipped %s: larger than %d bytes",
+                       path, _BOX_FILE_MAX_BYTES)
+        return None
     except OSError as exc:
         logger.warning("credential writeback skipped %s: %s", path, exc)
         return None
@@ -314,31 +352,45 @@ def _replace_store_file(
 ) -> None:
     """Write checked box *data* over the store file *dst*, keeping one backup.
 
-    Unfiltered: the bytes are written IN PLACE (a store file the user made a symlink
-    stays one), a new file at 0600, with the box file's times as ``copy2`` carried
-    them.  Filtered: *data* goes to a private temp copy beside *dst*, and the
-    plugin's ``transform_cred(..., "out")`` reads that copy, never the box file.
-    When *dst* changed, its previous content becomes ``<dst>.bak`` (0600), replacing
-    any older one.
+    The new content is built in a private temp dir beside the file *dst* names (a
+    store file the user made a symlink stays one) and renamed over it, so the store
+    is never written in place.  Unfiltered: the new content is *data*, with the box
+    file's times as ``copy2`` carried them.  Filtered: the plugin's
+    ``transform_cred(..., "out")`` reads a copy of *data*, never the box file, and
+    writes over a copy of the store.  An existing store keeps its mode; a new one is
+    0600.  When the content changed, the previous content first becomes
+    ``<dst>.bak`` (0600), replacing any older one; if that fails, the store is
+    left as it was.
     """
-    old = dst.read_bytes() if dst.is_file() else None
-    if spec.filtered:
-        fd, tmp = tempfile.mkstemp(prefix=f".{dst.name}.", suffix=".writeback",
-                                   dir=dst.parent)
-        try:
-            with os.fdopen(fd, "wb") as fh:
-                fh.write(data)
-            os.utime(tmp, ns=(box_stat.st_atime_ns, box_stat.st_mtime_ns))
-            target.transform_cred(spec, Path(tmp), dst, "out")
-        finally:
-            Path(tmp).unlink(missing_ok=True)
-    else:
-        fd = os.open(dst, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-        with os.fdopen(fd, "wb") as fh:
-            fh.write(data)
-        os.utime(dst, ns=(box_stat.st_atime_ns, box_stat.st_mtime_ns))
-    if old is None or not dst.is_file() or dst.read_bytes() == old:
-        return
+    real = Path(os.path.realpath(dst))
+    old_stat = real.stat() if real.is_file() else None
+    old = real.read_bytes() if old_stat is not None else None
+    work = Path(tempfile.mkdtemp(prefix=f".{real.name}.", suffix=".writeback",
+                                 dir=real.parent))
+    try:
+        new = work / "out"
+        if spec.filtered:
+            box_copy = work / "in"
+            box_copy.write_bytes(data)
+            os.utime(box_copy, ns=(box_stat.st_atime_ns, box_stat.st_mtime_ns))
+            if old is not None:
+                new.write_bytes(old)
+            target.transform_cred(spec, box_copy, new, "out")
+            if not new.is_file():
+                return
+        else:
+            new.write_bytes(data)
+            os.utime(new, ns=(box_stat.st_atime_ns, box_stat.st_mtime_ns))
+        os.chmod(new, stat.S_IMODE(old_stat.st_mode) if old_stat else 0o600)
+        if old is not None and new.read_bytes() != old:
+            _write_backup(dst, old)
+        os.replace(new, real)
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
+
+
+def _write_backup(dst: Path, old: bytes) -> None:
+    """Write *old* to ``<dst>.bak`` (0600) by temp and rename."""
     bak = dst.with_name(dst.name + ".bak")
     fd, tmp = tempfile.mkstemp(prefix=f".{bak.name}.", dir=dst.parent)
     try:

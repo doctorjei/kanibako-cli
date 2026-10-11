@@ -10,11 +10,14 @@ from __future__ import annotations
 import json
 import logging
 import os
+import resource
 import stat
+import tempfile
 from pathlib import Path
 
 import pytest
 
+import kanibako.targets.credsync as credsync
 from kanibako.targets.credsync import writeback_cred_files
 
 _CLAUDE_OK = json.dumps({"claudeAiOauth": {"accessToken": "new"}})
@@ -161,6 +164,118 @@ class TestWritebackChecks:
         assert store.read_text() == ok
         assert stat.S_IMODE(store.stat().st_mode) == 0o600
         assert not store.with_name(store.name + ".bak").exists()
+
+    def test_sparse_oversize_box_file_is_refused_unread(
+        self, make, rel, ok, wrong, tmp_path: Path, caplog,
+    ) -> None:
+        box = tmp_path / "proj" / rel
+        box.parent.mkdir(parents=True)
+        with open(box, "wb") as fh:
+            fh.truncate(256 << 20)  # costs the box no disk
+        os.utime(box, (200, 200))
+        before = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+        with caplog.at_level(logging.WARNING):
+            _, _, store = _run(make, tmp_path, rel, None)
+        grown_kib = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss - before
+        assert grown_kib < 64 << 10
+        assert store.read_text() == "STORE-OLD"
+        assert "larger than" in caplog.text and str(box) in caplog.text
+
+    def test_box_file_grown_after_its_size_check_is_refused(
+        self, make, rel, ok, wrong, tmp_path: Path, caplog, monkeypatch,
+    ) -> None:
+        box = _write(tmp_path / "proj" / rel, ok, mtime=200)
+        real_fstat = os.fstat
+
+        def fstat_then_grow(fd):
+            st = real_fstat(fd)
+            with open(box, "a") as fh:  # trailing blanks keep it parseable
+                fh.write(" " * (2 << 20))
+            return st
+
+        monkeypatch.setattr(credsync.os, "fstat", fstat_then_grow)
+        with caplog.at_level(logging.WARNING):
+            _, _, store = _run(make, tmp_path, rel, None)
+        monkeypatch.undo()
+        assert store.read_text() == "STORE-OLD"
+        assert "larger than" in caplog.text and str(box) in caplog.text
+
+    def test_failed_backup_leaves_the_store_as_it_was(
+        self, make, rel, ok, wrong, tmp_path: Path, monkeypatch,
+    ) -> None:
+        real_mkstemp = tempfile.mkstemp
+
+        def no_space_for_bak(*a, **k):
+            if ".bak" in k.get("prefix", ""):
+                raise OSError(28, "No space left on device")
+            return real_mkstemp(*a, **k)
+
+        monkeypatch.setattr(credsync.tempfile, "mkstemp", no_space_for_bak)
+        with pytest.raises(OSError):
+            _run(make, tmp_path, rel, ok)
+        store = tmp_path / "host" / rel
+        assert store.read_text() == "STORE-OLD"
+        assert sorted(p.name for p in store.parent.iterdir()) == [store.name]
+
+    def test_symlinked_store_file_stays_a_link(
+        self, make, rel, ok, wrong, tmp_path: Path,
+    ) -> None:
+        host, proj = tmp_path / "host", tmp_path / "proj"
+        kept = _write(tmp_path / "dotfiles" / "cred", "STORE-OLD", mtime=100)
+        store = host / rel
+        store.parent.mkdir(parents=True)
+        store.symlink_to(kept)
+        _write(proj / rel, ok, mtime=200)
+        target = make()
+        writeback_cred_files(target.descriptor, target, source_root=host, project_home=proj)
+        assert store.is_symlink() and kept.read_text() == ok
+        assert store.with_name(store.name + ".bak").read_text() == "STORE-OLD"
+
+
+def _providers(tmp_path: Path) -> tuple[Path, Path]:
+    return (tmp_path / "proj/.config/goose/custom_providers",
+            tmp_path / "host/.config/goose/custom_providers")
+
+
+def _goose_writeback(tmp_path: Path) -> None:
+    target = _goose()
+    writeback_cred_files(target.descriptor, target, source_root=tmp_path / "host",
+                         project_home=tmp_path / "proj")
+
+
+def test_goose_custom_providers_over_256_entries_is_refused(
+    tmp_path: Path, caplog,
+) -> None:
+    box, out = _providers(tmp_path)
+    box.mkdir(parents=True)
+    for i in range(257):
+        (box / f"p{i}.json").write_text("{}")
+    with caplog.at_level(logging.WARNING):
+        _goose_writeback(tmp_path)
+    assert not out.exists()
+    assert str(box) in caplog.text
+
+
+def test_goose_custom_providers_over_4_mib_is_refused(tmp_path: Path, caplog) -> None:
+    box, out = _providers(tmp_path)
+    box.mkdir(parents=True)
+    with open(box / "big.json", "wb") as fh:
+        fh.truncate((4 << 20) + 1)
+    with caplog.at_level(logging.WARNING):
+        _goose_writeback(tmp_path)
+    assert not out.exists()
+    assert str(box) in caplog.text
+
+
+def test_goose_custom_providers_at_the_caps_is_copied(tmp_path: Path) -> None:
+    box, out = _providers(tmp_path)
+    box.mkdir(parents=True)
+    for i in range(255):
+        (box / f"p{i}.json").write_text("{}")
+    with open(box / "big.json", "wb") as fh:
+        fh.truncate((4 << 20) - 2 * 255)
+    _goose_writeback(tmp_path)
+    assert len(list(out.iterdir())) == 256
 
 
 def test_goose_custom_providers_skips_planted_links(tmp_path: Path, caplog) -> None:

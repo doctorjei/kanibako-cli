@@ -8,6 +8,9 @@ _Signatures only: no comments, no docstrings, no bodies._
 
 ```
 logger = get_logger('credsync')
+_BOX_FILE_MAX_BYTES = 1 << 20
+_BOX_DIR_MAX_BYTES = 4 << 20
+_BOX_DIR_MAX_ENTRIES = 256
 ```
 
 ## Functions
@@ -22,8 +25,10 @@ def writeback_box_credentials(descriptor: PluginDescriptor, target: Target, *, a
 def _chmod_600(path: Path) -> None
 def _copy_dir(src: Path, dst: Path, *, skip_links: bool=False) -> None
 def _linked_part(root: Path, rel: str) -> Path | None
+def _box_dir_too_big(src: Path) -> bool
 def _read_box_file(root: Path, rel: str) -> tuple[bytes, os.stat_result] | None
 def _replace_store_file(spec: CredFileSpec, target: Target, data: bytes, box_stat: os.stat_result, dst: Path) -> None
+def _write_backup(dst: Path, old: bytes) -> None
 def _sync_workset_dir_from_global(descriptor: PluginDescriptor, target: Target, *, auth: AuthSource, host_home: Path) -> None
 def _sync_workset_dir_to_global(descriptor: PluginDescriptor, target: Target, *, auth: AuthSource, host_home: Path) -> None
 def _box_from_source(primitive: Callable[..., None], descriptor: PluginDescriptor, target: Target, *, auth: AuthSource, host_home: Path, project_home: Path) -> None
