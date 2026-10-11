@@ -49,7 +49,7 @@ class HelperHub:
     def _client_reader(self, conn: socket.socket) -> None
     def _dispatch(self, conn: socket.socket, request: dict, current_helper: int | None) -> tuple[dict | None, int | None]
     def _register(self, helper_num: int, conn: socket.socket) -> None
-    def _unregister(self, helper_num: int) -> None
+    def _unregister(self, helper_num: int, conn: socket.socket) -> None
     def _route_message(self, sender: int, recipient: int, payload: dict) -> None
     def _broadcast_message(self, sender: int, payload: dict) -> None
     def _handle_spawn(self, request: dict) -> dict

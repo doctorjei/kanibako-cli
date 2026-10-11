@@ -316,6 +316,38 @@ class TestBuildHelperMounts:
         assert not any(m.destination == "/home/agent/.kanibako/state/helper.sock" for m in mounts)
 
 
+class TestRegistrationLifetime:
+    def test_a_closing_old_connection_keeps_the_newer_registration(self, hub_and_sock):
+        """A respawned helper registers its number on a new connection; the old
+        connection closing after that must not unregister the new one."""
+        import time
+
+        hub, sock_path, _ = hub_and_sock
+
+        def _register() -> socket.socket:
+            s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+            s.connect(str(sock_path))
+            s.settimeout(5.0)
+            s.sendall(json.dumps({"action": "register", "helper_num": 1}).encode() + b"\n")
+            assert json.loads(s.recv(4096).split(b"\n")[0]) == {"status": "ok"}
+            return s
+
+        old = _register()
+        new = _register()
+        try:
+            old.close()
+            time.sleep(0.5)  # the old connection's reader sees EOF and runs its cleanup
+            assert hub._connections.get(1) is not None
+            new.close()
+            deadline = time.monotonic() + 5
+            while 1 in hub._connections and time.monotonic() < deadline:
+                time.sleep(0.02)
+            assert 1 not in hub._connections
+        finally:
+            old.close()
+            new.close()
+
+
 class TestHubSocketProtocol:
     def test_register(self, hub_and_sock):
         hub, sock_path, ctx = hub_and_sock

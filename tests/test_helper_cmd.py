@@ -28,6 +28,7 @@ from kanibako.commands.helper_cmd import (
     run_stop,
 )
 import kanibako.commands.helper_cmd as helper_cmd
+from kanibako.channels.helper_client import send_request as _REAL_SEND_REQUEST
 from kanibako.channels.helpers import SpawnBudget, write_helper_number, write_spawn_budget
 from tests.support.filenames import CONFIG_FILENAME
 
@@ -589,34 +590,71 @@ class TestRunBroadcast:
 
 
 class TestRunRegister:
-    def test_register_no_socket(self, helpers_env):
+    def test_register_no_socket(self, helpers_env, capsys):
         _no_hub(helpers_env)
         rc = run_register(_make_args(number=1))
         assert rc == 1
+        assert "Cannot register helper 1: no helper hub listens" in capsys.readouterr().err
 
-    def test_register_success(self, helpers_env):
-        sock = helpers_env / ".kanibako" / "state" / "helper.sock"
-        sock.parent.mkdir(parents=True, exist_ok=True)
-        sock.touch()
+    @staticmethod
+    def _real_hub(home: Path, monkeypatch):
+        """A real hub at the pinned socket path (bound in a short /tmp dir, linked in),
+        and the real one-shot ``send_request`` back in place of the fixture's stub."""
+        from unittest.mock import MagicMock
 
-        with patch("kanibako.channels.helper_client.send_request") as m:
-            m.return_value = {"status": "ok"}
-            rc = run_register(_make_args(number=1))
-        assert rc == 0
-        m.assert_called_once()
-        req = m.call_args[0][1]
-        assert req["action"] == "register"
-        assert req["helper_num"] == 1
+        from kanibako.channels import helper_client
+        from kanibako.channels.helper_listener import HelperHub
 
-    def test_register_failure(self, helpers_env):
-        sock = helpers_env / ".kanibako" / "state" / "helper.sock"
-        sock.parent.mkdir(parents=True, exist_ok=True)
-        sock.touch()
+        monkeypatch.setattr(helper_client, "send_request", _REAL_SEND_REQUEST)
+        real = Path(tempfile.mkdtemp(prefix="kbr-", dir="/tmp")) / "s"
+        hub = HelperHub()
+        hub.start(real, MagicMock())
+        link = home / ".kanibako" / "state" / "helper.sock"
+        link.unlink()
+        link.symlink_to(real)
+        return hub, real
 
-        with patch("kanibako.channels.helper_client.send_request") as m:
-            m.return_value = {"status": "error", "message": "bad"}
-            rc = run_register(_make_args(number=1))
+    def test_the_registration_is_held_until_the_hub_goes(self, helpers_env, monkeypatch):
+        """The hub drops a registration when its connection closes, so a register that
+        returned would leave the helper unreachable at once.  It must still hold after
+        a message to it, and end (rc 0) only when the hub goes."""
+        import threading
+        import time
+
+        hub, real = self._real_hub(helpers_env, monkeypatch)
+        result: list[int] = []
+        holder = threading.Thread(
+            target=lambda: result.append(run_register(_make_args(number=1))), daemon=True,
+        )
+        try:
+            holder.start()
+            deadline = time.monotonic() + 10
+            while 1 not in hub._connections and holder.is_alive() and time.monotonic() < deadline:
+                time.sleep(0.02)
+            time.sleep(0.5)
+            assert 1 in hub._connections and holder.is_alive(), result
+            resp = _REAL_SEND_REQUEST(real, {"action": "send", "to": 1, "payload": {"text": "hi"}})
+            assert resp == {"status": "ok"}
+            time.sleep(0.2)
+            assert 1 in hub._connections and holder.is_alive()
+        finally:
+            hub.stop()
+            holder.join(timeout=10)
+            shutil.rmtree(real.parent, ignore_errors=True)
+        assert result == [0]
+        assert 1 not in hub._connections
+
+    def test_a_refused_registration_says_why(self, helpers_env, monkeypatch, capsys):
+        hub, real = self._real_hub(helpers_env, monkeypatch)
+        try:
+            rc = run_register(_make_args(number=-1))
+        finally:
+            hub.stop()
+            shutil.rmtree(real.parent, ignore_errors=True)
         assert rc == 1
+        assert "Cannot register helper -1: Registration failed: invalid helper_num" in (
+            capsys.readouterr().err
+        )
 
 
 class TestRunLog:

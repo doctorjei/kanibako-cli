@@ -143,11 +143,12 @@ def add_helper_subparsers(p: argparse.ArgumentParser) -> None:
     )
     log_p.set_defaults(func=run_log)
 
-    # helper register <N>  (used by helper-init.sh, hidden from help)
+    # helper register <N>  (used by helper-init.sh, hidden from help; holds until the hub goes)
     register_p = ss.add_parser(
         "register",
         help=argparse.SUPPRESS,
-        description="Register this helper with the hub (used by helper-init.sh).",
+        description="Register this helper with the hub and hold the registration "
+                    "until the hub closes it (used by helper-init.sh).",
     )
     register_p.add_argument("number", type=int, help="Helper number to register")
     register_p.set_defaults(func=run_register)
@@ -610,20 +611,34 @@ def run_broadcast(args: argparse.Namespace) -> int:
 
 
 def run_register(args: argparse.Namespace) -> int:
-    """Register this helper with the hub (one-shot)."""
+    """Register this helper with the hub and HOLD the registration until the hub goes.
+
+    The hub ties a registration to the connection that made it and drops it when
+    that connection closes, so a one-shot register is undone at once.  This command
+    therefore does not return while the hub is up: ``helper-init.sh`` runs it in the
+    background for the helper's life, and a dead helper's connection closes with it.
+    Pushes that arrive are drained unread (the hub's message log, ``box helper log``,
+    carries every message); draining keeps the hub's writes from blocking.
+    """
+    helper_num = args.number
     if not _check_helpers_enabled():
+        print(f"Cannot register helper {helper_num}: no helper hub listens on "
+              f"{_socket_path()}.", file=sys.stderr)
         return 1
 
-    from kanibako.channels.helper_client import send_request
+    from kanibako.channels.helper_client import HelperConnection
+    conn = HelperConnection()
     try:
-        resp = send_request(_socket_path(), {
-            "action": "register",
-            "helper_num": args.number,
-        })
-        if resp.get("status") != "ok":
-            return 1
-    except Exception:
+        conn.connect(_socket_path(), helper_num=helper_num)
+    except (OSError, ConnectionError) as e:
+        conn.close()
+        print(f"Cannot register helper {helper_num}: {e}", file=sys.stderr)
         return 1
+    try:
+        while conn.recv() is not None:
+            pass
+    finally:
+        conn.close()
     return 0
 
 

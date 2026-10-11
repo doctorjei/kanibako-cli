@@ -51,9 +51,13 @@ if [ "$_kb_link" != "$_kb_pin" ]; then
 fi
 unset _kb_pin _kb_xdg _kb_link
 
-# Register with the hub via kanibako CLI (one-shot)
+# Register with the hub.  The hub drops a registration when the connection that
+# made it closes, so the register command HOLDS it: it runs in the background for
+# the helper's life and ends when the hub (or this container) goes.  Its stderr is
+# kept, so a refused registration shows in the helper's output; it is not fatal,
+# because the hub's message log (`kanibako box helper log`) carries every message.
 if [ -S "$SOCKET_PATH" ] && command -v kanibako >/dev/null 2>&1; then
-    kanibako helper register "$HELPER_NUM" 2>/dev/null || true
+    kanibako box helper register "$HELPER_NUM" >/dev/null &
 fi
 
 # Source parent startup script from broadcast channel if present

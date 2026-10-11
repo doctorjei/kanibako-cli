@@ -509,7 +509,7 @@ class TestBundledInitScript:
 
     def test_bundled_socket_path_matches_mount_dest(self):
         # The hub socket is mounted under the FIXED pinned root, so the script must
-        # check exactly that path for `kanibako helper register` to run and the
+        # check exactly that path for `kanibako box helper register` to run and the
         # helper to join the hub. An ${XDG_STATE_HOME:-...} form here would re-open
         # the host-vs-box guess the pin deleted, so its ABSENCE is asserted too --
         # the script runs at ENTRYPOINT, before the post-boot XDG projection is
@@ -589,6 +589,56 @@ class TestBundledInitScript:
         mount_log = declared["helper_log"].replace("~", GUEST_HOME, 1)
         assert shell_dest == cli_sock == mount_sock
         assert cli_log == mount_log
+
+
+    def test_it_registers_through_the_real_cli_spelling_and_shows_a_refusal(self):
+        """The script registers via ``kanibako box helper register <N>`` (the spelling
+        the real parser routes to ``run_register``), in the background so the agent
+        still starts, and keeps the command's stderr: a refused registration is
+        visible in the helper's output, not swallowed, and not fatal."""
+        import shutil
+        import socket
+        import subprocess
+        import tempfile
+
+        from kanibako.cli import build_parser
+        from kanibako.commands.helper_cmd import run_register
+
+        home = Path(tempfile.mkdtemp(prefix="kbi-", dir="/tmp"))
+        listener = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        try:
+            (home / ".kanibako" / "state").mkdir(parents=True)
+            listener.bind(str(home / ".kanibako" / "state" / "helper.sock"))
+            listener.listen(1)
+            fakebin = home / "bin"
+            fakebin.mkdir()
+            (fakebin / "kanibako").write_text(
+                "#!/bin/sh\n"
+                "printf '%s\\n' \"$@\" > \"$HOME/argv.tmp\"\n"
+                "mv \"$HOME/argv.tmp\" \"$HOME/argv\"\n"
+                "echo 'kanibako: fake refusal' >&2\n"
+                "exit 2\n"
+            )
+            (fakebin / "kanibako").chmod(0o755)
+            wait_for_record = (
+                'i=0; while [ ! -e "$HOME/argv" ] && [ $i -lt 100 ]; do '
+                "sleep 0.1; i=$((i+1)); done; sleep 0.3"
+            )
+            proc = subprocess.run(
+                ["bash", str(bundled_init_script()), "7", "sh", "-c", wait_for_record],
+                env={"HOME": str(home), "PATH": f"{fakebin}:/usr/bin:/bin"},
+                capture_output=True, text=True, timeout=60,
+            )
+            assert proc.returncode == 0, proc.stderr
+            argv = (home / "argv").read_text().splitlines()
+        finally:
+            listener.close()
+            shutil.rmtree(home, ignore_errors=True)
+        assert argv == ["box", "helper", "register", "7"]
+        args = build_parser().parse_args(argv)
+        assert (args.func, args.number) == (run_register, 7)
+        assert "kanibako: fake refusal" in proc.stderr
+        assert "Helper 7 initialized." in proc.stderr
 
 
 class TestResolveInitScript:

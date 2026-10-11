@@ -131,9 +131,15 @@ class HelperHub:
                         pass
                 self._containers.clear()
 
-        # Close all client connections
+        # Close all client connections.  ``shutdown()`` first: a bare ``close()``
+        # neither wakes this side's blocked reader nor sends the peer an EOF, so a
+        # helper holding its registration open would never learn the hub is gone.
         with self._conn_lock:
             for conn in self._connections.values():
+                try:
+                    conn.shutdown(socket.SHUT_RDWR)
+                except OSError:
+                    pass
                 try:
                     conn.close()
                 except Exception:
@@ -202,7 +208,7 @@ class HelperHub:
                         _send_json(conn, response)
         finally:
             if helper_num is not None:
-                self._unregister(helper_num)
+                self._unregister(helper_num, conn)
                 if self._log:
                     self._log.log_control("disconnect", helper_num)
             try:
@@ -262,9 +268,12 @@ class HelperHub:
         with self._conn_lock:
             self._connections[helper_num] = conn
 
-    def _unregister(self, helper_num: int) -> None:
+    def _unregister(self, helper_num: int, conn: socket.socket) -> None:
+        """Drop *helper_num* only while *conn* still holds it: a respawned helper
+        that registered on a new connection before the old one closed keeps it."""
         with self._conn_lock:
-            self._connections.pop(helper_num, None)
+            if self._connections.get(helper_num) is conn:
+                del self._connections[helper_num]
 
     def _route_message(self, sender: int, recipient: int,
                        payload: dict) -> None:

@@ -736,6 +736,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **A helper launched by the hub starts again.** It exited 127 (`helper-init.sh` not found) because the hub bound
   no home into it. Its home, workspace, and vault are bound again, at the same places and with the same options
   as the director's.
+- **A helper registers with the hub and stays registered.** `helper-init.sh` called `kanibako helper register`,
+  which does not exist, and hid the error, so no helper ever registered. It now calls `box helper register`,
+  which holds its connection for the helper's life: the hub drops a registration when that connection closes,
+  so a dead helper still drops out. A refused registration prints its reason in the helper's output.
 - **`box helper spawn` and `respawn` refuse in a box with no helper hub.** A persistent start runs no hub, so
   they printed `Spawned helper N` with exit 0 and launched nothing. They now refuse, say why, and write nothing.
   A socket file with no hub listening on it (the mount stub an ephemeral start leaves, or a dead hub's socket)
