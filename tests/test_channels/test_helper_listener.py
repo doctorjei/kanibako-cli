@@ -869,14 +869,41 @@ class TestHubWritesTheHelperNumber:
 class TestHubStop:
     def test_stop_success(self, hub_and_sock):
         hub, sock_path, ctx = hub_and_sock
+        _helper_tree(ctx.helpers_dir / "1")
+        name = _connect_and_send(sock_path, {"action": "spawn", "helper_num": 1})["container_name"]
         resp = _connect_and_send(sock_path, {
             "action": "stop",
-            "container_name": "kanibako-testproj-helper-1",
+            "container_name": name,
             "helper_num": 1,
         })
         assert resp["status"] == "ok"
-        ctx.runtime.stop.assert_called_with("kanibako-testproj-helper-1")
-        ctx.runtime.rm.assert_called_with("kanibako-testproj-helper-1")
+        ctx.runtime.stop.assert_called_with(name)
+        ctx.runtime.rm.assert_called_with(name)
+
+    def test_a_container_this_hub_did_not_launch_is_refused(self, mock_ctx):
+        """The name comes from the box: only this box's own helpers may be stopped."""
+        hub = HelperHub()
+        hub._ctx = mock_ctx
+        hub._log = MagicMock()
+        hub._containers.append("kb-primary-testproj-helper-1")
+        for name in ("kb-primary-otherbox", "kb-primary-otherbox-helper-1"):
+            resp = hub._handle_stop({"action": "stop", "container_name": name, "helper_num": 1})
+            assert resp["status"] == "error"
+            assert name in resp["message"]
+        mock_ctx.runtime.stop.assert_not_called()
+        mock_ctx.runtime.rm.assert_not_called()
+        hub._log.log_control.assert_not_called()
+        assert hub._containers == ["kb-primary-testproj-helper-1"]
+
+    def test_a_stopped_helper_cannot_be_stopped_twice(self, mock_ctx):
+        hub = HelperHub()
+        hub._ctx = mock_ctx
+        hub._containers.append("kb-primary-testproj-helper-1")
+        request = {"action": "stop", "container_name": "kb-primary-testproj-helper-1",
+                   "helper_num": 1}
+        assert hub._handle_stop(request)["status"] == "ok"
+        assert hub._handle_stop(request)["status"] == "error"
+        assert mock_ctx.runtime.stop.call_count == 1
 
     def test_stop_missing_name(self, hub_and_sock):
         hub, sock_path, ctx = hub_and_sock
@@ -889,6 +916,7 @@ class TestHubStop:
         hub = HelperHub()
         hub._ctx = mock_ctx
         hub._log = MagicMock()
+        hub._containers.append("kanibako-testproj-helper-3")
         resp = hub._handle_stop({
             "action": "stop",
             "container_name": "kanibako-testproj-helper-3",
@@ -902,6 +930,7 @@ class TestHubStop:
         hub = HelperHub()
         hub._ctx = mock_ctx
         hub._log = MagicMock()
+        hub._containers.append("kanibako-testproj-helper-3")
         resp = hub._handle_stop({
             "action": "stop",
             "container_name": "kanibako-testproj-helper-3",

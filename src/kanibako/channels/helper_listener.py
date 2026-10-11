@@ -453,6 +453,17 @@ class HelperHub:
         if not container_name:
             return {"status": "error", "message": "missing container_name"}
 
+        # ⚑ The name comes from the box, so the hub acts only on a container it launched
+        # itself and still holds: anything else (another box, the director's own
+        # container, a helper already stopped) is refused before the runtime sees it.
+        with self._containers_lock:
+            if container_name not in self._containers:
+                logger.warning("refused helper stop of %r: this hub did not launch it, "
+                               "or it is already stopped", container_name)
+                return {"status": "error",
+                        "message": f"refusing to stop {container_name!r}: it is not a "
+                                   f"running helper of this box"}
+
         ctx.runtime.stop(container_name)
         ctx.runtime.rm(container_name)
 
