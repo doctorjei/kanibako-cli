@@ -439,7 +439,7 @@ first):
 
 A box or workset REQUESTS an agent with `pref.system.agent` (a request to set a key
 that resolves earlier than the file making it); `system.agent` is the host-global
-default and `--agent` is the per-run override on `start`, `box start` and `agent
+default and `--agent` is the per-run override on `start`, `box start`, and `agent
 reauth`. The two spellings of `create` are the exception: `kanibako create --agent
 <name>` persists the request into the new box, so a plain `kanibako start` runs it
 -- change it afterwards with `kanibako box set pref.system.agent=<name>`.
@@ -753,7 +753,7 @@ kanibako start -e EDITOR=vim -e DEBUG=1
 ```
 
 The scope is part of the key: `<scope>.env.<VAR>`, where `<scope>` is
-`system`, `workset` or `box` (an agent's own vars are
+`system`, `workset`, or `box` (an agent's own vars are
 `agent.<agent>.env.<VAR>`).  The most specific scope wins, so a box var
 overrides a workset one, which overrides the global one.
 
@@ -1044,7 +1044,7 @@ kanibako system reset --all             # reset all global settings
 
 `system.*` LAYOUT-PATH keys — `system.template`, `system.channelroot`,
 `system.backup`, `system.cache`, `system.state`, `system.runtime`,
-`system.canon` and the `system.channels.*` type-roots — are ordinary
+`system.canon`, and the `system.channels.*` type-roots — are ordinary
 system-scope settings, not config keys: `kanibako system set
 system.template=<path>` writes one to the system settings file, and `get` and
 `reset` read and clear it there. They do not belong in `~/.config/kanibako.cfg`.
@@ -1067,7 +1067,7 @@ is `.yaml`.
 - **Per-agent settings**: `$XDG_DATA_HOME/kanibako/agents/{agent}/agent.yaml`
 - **Per-box settings**: `boxes/{name}/box.yaml` (standalone: `<root>/box_data/box.yaml`)
 - **Template root**: `$XDG_DATA_HOME/kanibako/global/template/` (the `box`,
-  `workset` and `agent` molds new stores are stamped from)
+  `workset`, and `agent` molds new stores are stamped from)
 - **System handbook**: `$XDG_DATA_HOME/kanibako/global/canon/handbook/` -- your
   own system-wide directives, delivered read-only into every box
 
@@ -1077,7 +1077,7 @@ is `.yaml`.
 |-----|---------|-------------|
 | `continue_mode` | `true` | Continue the previous session (`true`) vs. start fresh (`false`) |
 | `model` | platform default | Agent model name |
-| `access` | `full` | Permission tier -- `restricted`, `editing` or `full` |
+| `access` | `full` | Permission tier -- `restricted`, `editing`, or `full` |
 | `box.image` | `kanibako-oci:latest` | Container rig |
 | `box.shell` | (auto-detect) | Login shell for a launch that runs no agent program -- `kanibako shell`, or `kanibako start` at a box whose agent has no entrypoint of its own (`--agent shell`). An explicit `--entrypoint` runs *that* instead. Resolved `box.shell` → the image's recorded login shell → `sh`. The value is a **program path** (`/bin/bash`) and one word: on a shell launch a `box.shell` carrying arguments (`bash -l`) **fails**, because the render step runs that value as one program word (`exec "$@"`) and the box finds no program *named* `bash -l`. With `-- <cmd>` the command runs as `<shell> -lc "<cmd>"`, so a shell that rejects `-lc` (csh, tcsh) needs `box.shell: /bin/sh` |
 | `pref.system.agent` | (unset) | Agent target plugin requested for this box or workset; part of the resolution cascade (see [Agent Selection](#agent-selection)) |
