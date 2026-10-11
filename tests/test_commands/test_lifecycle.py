@@ -1495,6 +1495,7 @@ class TestNoWorkspaceLossBeforeSuccess:
         import os
 
         import kanibako.settings.paths as paths_mod
+        from kanibako.runtime.container import ContainerRuntime
 
         config, std, tmp_home = env
         pdir = _make_default(env)
@@ -1511,7 +1512,10 @@ class TestNoWorkspaceLossBeforeSuccess:
         monkeypatch.setattr(paths_mod, "_register_workset_box_membership", locked)
         state = resolve_lifecycle_target(str(pdir), std, config)
         try:
-            with pytest.raises(PermissionError):
+            # ⚑ A working ``podman unshare rm`` ignores modes and would delete through the
+            # read-only ``boxes/`` (CI has one): this run models the host where it fails too.
+            with monkeypatch.context() as mp, pytest.raises(PermissionError):
+                mp.setattr(ContainerRuntime, "unshare_rm", lambda self, path: False)
                 execute_lifecycle(state, TargetSpec(location=ws.workspaces_dir / "proj",
                                                     ownership="ws", verb="move"),
                                   std, config, confirm=_conf_yes())

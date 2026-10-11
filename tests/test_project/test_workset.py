@@ -2406,6 +2406,7 @@ class TestCreateWorksetFailConsistent:
         import os
 
         import kanibako.project.workset as ws_mod
+        from kanibako.runtime.container import ContainerRuntime
 
         parent = tmp_home / "worksets"
         root = parent / "my-set"
@@ -2416,7 +2417,10 @@ class TestCreateWorksetFailConsistent:
 
         monkeypatch.setattr(ws_mod, "register_name", boom)
         try:
-            with pytest.raises(_Boom):
+            # ⚑ A working ``podman unshare rm`` ignores modes and would delete through the
+            # read-only parent (CI has one): this run models the host where it fails too.
+            with monkeypatch.context() as mp, pytest.raises(_Boom):
+                mp.setattr(ContainerRuntime, "unshare_rm", lambda self, path: False)
                 create_workset("my-set", root, std)
         finally:
             os.chmod(parent, 0o755)
@@ -2505,12 +2509,17 @@ class TestAddProjectFailConsistent:
         import os
 
         import kanibako.settings.paths as paths_mod
+        from kanibako.runtime.container import ContainerRuntime
 
         def boom(*a, **k):
             os.chmod(boxes, 0o555)
             raise _Boom("boxes: registration failed")
 
         monkeypatch.setattr(paths_mod, "_register_workset_box_membership", boom)
+        # ⚑ A working ``podman unshare rm`` ignores modes and would delete through the
+        # read-only ``boxes/`` (CI has one): the rest of the test models the host where it
+        # fails too.  Callers set up their workset BEFORE calling this.
+        monkeypatch.setattr(ContainerRuntime, "unshare_rm", lambda self, path: False)
 
     def test_a_box_dir_the_unwind_cannot_remove_is_named(self, std, tmp_home, monkeypatch,
                                                          capsys):

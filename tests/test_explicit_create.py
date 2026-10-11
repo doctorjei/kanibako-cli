@@ -1887,6 +1887,7 @@ def test_a_member_create_names_its_failed_rollback_as_a_create(
     import kanibako.settings.paths as paths_mod
     from kanibako.commands.box._parser import run_create
     from kanibako.project.workset import create_workset
+    from kanibako.runtime.container import ContainerRuntime
 
     _config, std = _std(config_file)
     ws = create_workset("gamma", tmp_home / "gamma", std)
@@ -1901,7 +1902,11 @@ def test_a_member_create_names_its_failed_rollback_as_a_create(
     monkeypatch.setattr(paths_mod, "_register_workset_box_membership", locked)
     monkeypatch.chdir(ws.root)
     try:
-        assert run_create(_create_args("alpha")) == 1
+        # ⚑ A working ``podman unshare rm`` ignores modes and would delete through the
+        # read-only ``boxes/`` (CI has one): this run models the host where it fails too.
+        with monkeypatch.context() as mp:
+            mp.setattr(ContainerRuntime, "unshare_rm", lambda self, path: False)
+            assert run_create(_create_args("alpha")) == 1
     finally:
         os.chmod(ws.root, 0o755)
         os.chmod(boxes, 0o755)
