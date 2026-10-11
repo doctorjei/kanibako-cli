@@ -239,6 +239,8 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
             "file is copied or deleted, a previous workspace is left where it is,\n"
             "and ownership never changes. For a standalone box, <new> becomes its\n"
             "root: the files already there move into its workspace directory.\n"
+            "If you moved a standalone box's root, <new> is that root and nothing\n"
+            "moves; a copy is refused while the original is still in place.\n"
             "Inside a workset, <new> must be the box's own {workset.workspaces}/<name>;\n"
             "any other in-tree path is refused."
         ),

@@ -388,11 +388,12 @@ def _moved_standalone_state(
 ) -> ProjectState | None:
     """Registered standalone *old* as found at *dest*, where the user moved its root, else ``None``.
 
-    After ``mv`` the box's row names a gone root; after ``cp -a`` *dest* reads as an
-    unregistered standalone root.  Either way *dest* holds the box's own store under the
-    row's ``workset.kuid``, the stable box id (keyspace ``workset.kuid``), so ``remap``
-    takes it as the box: :func:`_to_standalone` reuses it in place and moves nothing.
-    *dest* must be no registered root, in any spelling, and not the old root itself.
+    After ``mv`` the box's row names a gone root, and *dest* holds a store under the row's
+    ``workset.kuid`` (keyspace ``workset.kuid``), so ``remap`` takes it as the box:
+    :func:`_to_standalone` reuses it in place and moves nothing.  *dest* must be no
+    registered root, in any spelling, and not the old root itself.
+    ⚑ Only while the registered root is GONE: a kuid is 5 characters, so with the box
+    still at its root *dest* is a copy or a stranger, and taking it is a takeover — refused.
     """
     from kanibako.launch import box_resolve
     from kanibako.project import registry_store
@@ -412,9 +413,20 @@ def _moved_standalone_state(
                 or read_workset_kuid(dest / WORKSET_META_FILE).lower()
                 != standalone_kuid(name).lower()):
             return None
-        proj = resolve_standalone_project(std, config, str(dest), initialize=False)
+        still_there = old_root.exists() or old_root.is_symlink()
+        proj = (None if still_there
+                else resolve_standalone_project(std, config, str(dest), initialize=False))
     except (KanibakoError, OSError):
         return None  # not this box's moved root: the usual resolution answers
+    if proj is None:
+        raise ProjectError(
+            f"Cannot remap '{name}' onto '{dest}': it is a standalone root carrying this "
+            f"box's id, and the box is still at {old_root}. A remap is not a takeover, and "
+            "no flag overrides this: it re-points a box you moved. To keep the copy as this "
+            f"box, move the original away (then run the remap again), or delete it "
+            f"(`kanibako box rm {shlex.quote(name)} --purge`, which deletes its own data, "
+            "its vault included, but not its workspace) and register the copy "
+            f"(`kanibako box register {shlex.quote(str(dest))}`).")
     state = _state_from_paths("standalone", proj, std=std, ws=None,
                               early=_early_scope(std, BoxMode.standalone))
     return replace(state, name=name, moved_from=old_root)
@@ -1634,7 +1646,7 @@ def _note_interrupt_undone(state: ProjectState, spec: TargetSpec) -> None:
         done = f"the move was undone; '{state.name}' is back at {where}"
     elif spec.verb == "convert":
         done = f"the conversion was undone; '{state.name}' is back at {where}"
-    else:  # remap: records only, no files moved
+    else:  # remap
         done = f"the remap was undone; '{state.name}' is registered at {where} again"
     print(f"Interrupted: {done}", file=sys.stderr)
 
@@ -2442,7 +2454,8 @@ def _plan_source_teardown(
         # AND the already-converted destination.
         root = state.metadata_path
         drop = restore = None
-        row = _standalone_source_row(std, state.name, root, new_name)
+        row = _standalone_source_row(std, state.name, root, new_name,
+                                     moved_from=state.moved_from)
         if row is not None and not _same_box_name(row[0], new_name):
             drop = partial(_drop_registry_row, row[0], partial(
                 registry_store.unregister_standalone, std.registry, row[0]))
@@ -2655,16 +2668,25 @@ def _drop_registry_row(name: str, unregister: Callable[[], object]) -> None:
 
 def _standalone_source_row(
     std: StandardPaths, name: str, root: Path, new_name: str | None,
+    *, moved_from: Path | None = None,
 ) -> tuple[str, str] | None:
     """The source's ``standalone:`` row as ``(key, root)``: its name, else the row at *root*.
 
     ⚑ A legacy key is not the name the root's kuid composes, so only *root* finds it; the
     row the destination just registered (*new_name*) is never the source's.
+    ⚑ A row found by NAME is the source's only when its root is *root* (or *moved_from*,
+    the root a moved box left): a copy under another folder composes the original's name,
+    and dropping that row would deregister the original.
     """
     from kanibako.project import registry_store
 
     rows = registry_store.load_standalone(std.registry)
+    own = [p for p in (root, moved_from) if p is not None]
     key = find_identifier(name, rows) if name else None
+    if key is not None and not any(
+            rows[key] == str(p) or _resolved_unless_loop(Path(literal_path(rows[key])))
+            == _resolved_unless_loop(p) for p in own):
+        key = None
     if key is None:
         key = next((k for k, r in rows.items()
                     if r == str(root) and not _same_box_name(k, new_name)), None)
@@ -4421,9 +4443,9 @@ def run_remap(args) -> int:
     new = getattr(args, "new", None) or "./"
     new_path = Path(literal_path(new))
 
-    # A standalone root the user moved (``mv`` or ``cp -a``) is the box itself at <new>.
-    state = _moved_standalone_state(old, new_path, std, config)
     try:
+        # A standalone root the user moved is the box itself at <new>.
+        state = _moved_standalone_state(old, new_path, std, config)
         if state is None:
             state = resolve_lifecycle_target(old, std, config)
     except (ProjectError, WorksetError) as e:
@@ -4462,8 +4484,6 @@ def run_remap(args) -> int:
         print(_relocation_failure(e), file=sys.stderr)
         return 1
 
-    if state.moved_from is not None and state.moved_from.exists():
-        print(f"Note: left {state.moved_from}; remap deletes nothing", file=sys.stderr)
     print(f"Remapped '{new_state.name}' to {new_state.workspace_path}")
     return 0
 

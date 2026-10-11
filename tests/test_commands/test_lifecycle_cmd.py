@@ -1060,6 +1060,7 @@ class TestRemap:
         registry_store.register_standalone(std.registry, proj.name, solo)
         (solo / "workspace" / "mine.txt").write_text("keep")
         new = tmp_home / leaf
+        new.parent.mkdir(parents=True, exist_ok=True)
         if how == "mv":
             solo.rename(new)
         else:
@@ -1067,18 +1068,15 @@ class TestRemap:
         return solo, new, proj.name
 
     @pytest.mark.parametrize("by", ["name", "path"])
-    @pytest.mark.parametrize("how", ["mv", "cp"])
-    def test_remap_standalone_whose_root_was_moved(self, env, capsys, monkeypatch, how, by):
-        """The remap verb re-points a standalone the user moved by hand: after ``mv`` its
-        row named a gone root, and after ``cp -a`` the copy read as an unregistered box.
-        The row now names the new root, under the name its leaf composes, nothing at the
-        new root moves into ``workspace/``, and a ``cp -a`` source is left as it was."""
+    def test_remap_standalone_whose_root_was_moved(self, env, capsys, monkeypatch, by):
+        """The remap verb re-points a standalone the user moved by ``mv``: its row named a
+        gone root.  The row now names the new root, under the name its leaf composes, and
+        nothing at the new root moves into ``workspace/``."""
         from kanibako.project import registry_store
 
         asked = self._confirms(monkeypatch)
         _config, std, _tmp = env
-        solo, new, name = self._moved_standalone(env, how)
-        old_before = self._tree_digest(solo) if how == "cp" else None
+        solo, new, name = self._moved_standalone(env, "mv")
         new_before = self._tree_digest(new)
 
         rc = run_remap(_remap_args(name if by == "name" else str(solo), str(new), force=False))
@@ -1095,11 +1093,84 @@ class TestRemap:
             k: v for k, v in new_before.items() if k.startswith("workspace")}
         assert asked and "(the box is already there; no files moved)" in asked[0]
         assert f"from: {solo}" in asked[0]
-        if how == "cp":
-            assert self._tree_digest(solo) == old_before
-            assert f"Note: left {solo}; remap deletes nothing" in captured.err
+
+    @pytest.mark.parametrize("stranger", [False, True])
+    def test_remap_onto_a_root_with_its_kuid_while_the_box_is_in_place_refused(
+            self, env, capsys, monkeypatch, stranger):
+        """With the box still at its root, a root carrying its kuid is a ``cp -a`` copy or a
+        stranger sharing 5 characters: taking it is a takeover, refused even with --force,
+        and nothing changes."""
+        from kanibako.project import registry_store
+
+        self._confirms(monkeypatch)
+        config, std, tmp_home = env
+        solo, new, name = self._moved_standalone(env, "cp")
+        if stranger:
+            shutil.rmtree(new)
+            new.mkdir()
+            resolve_standalone_project(std, config, project_dir=str(new), initialize=True,
+                                       register=False)
+            doc = load_doc(new / "workset.yaml")
+            doc["workset"]["kuid"] = name.partition("_")[0]
+            dump_doc(new / "workset.yaml", doc)
+        rows = registry_store.load_standalone(std.registry)
+        before = self._tree_digest(tmp_home)
+
+        assert run_remap(_remap_args(name, str(new), force=True)) == 1
+        err = capsys.readouterr().err
+        assert (f"Cannot remap '{name}' onto '{new}': it is a standalone root carrying this "
+                f"box's id, and the box is still at {solo}.") in err
+        assert "no flag overrides this: it re-points a box you moved" in err
+        assert registry_store.load_standalone(std.registry) == rows
+        assert self._tree_digest(tmp_home) == before
+
+    @pytest.mark.parametrize("cure", ["move", "delete"])
+    def test_remap_onto_a_copy_printed_cures_work(self, env, capsys, monkeypatch, cure):
+        """Both cures the copy refusal names work: move the original away and remap again,
+        or run the printed `box rm` then `box register`; the copy is then the box."""
+        import shlex
+
+        from kanibako.project import registry_store
+
+        self._confirms(monkeypatch)
+        monkeypatch.setattr("builtins.input", lambda *a: "yes")
+        _config, std, tmp_home = env
+        solo, new, name = self._moved_standalone(env, "cp")
+
+        assert run_remap(_remap_args(name, str(new), force=False)) == 1
+        err = capsys.readouterr().err
+        if cure == "move":
+            solo.rename(tmp_home / "elsewhere")
+            assert run_remap(_remap_args(name, str(new), force=False)) == 0, capsys.readouterr()
         else:
-            assert "Note: left" not in captured.err
+            for verb in ("box rm", "box register"):
+                printed = re.search(rf"`kanibako ({verb} [^`]*)`", err)
+                assert printed is not None, err
+                args = build_parser().parse_args(shlex.split(printed.group(1)))
+                assert int(args.func(args) or 0) == 0, capsys.readouterr()
+        assert registry_store.load_standalone(std.registry) == {
+            name.replace("_solo", "_moved"): str(new)}
+        assert (new / "workspace" / "mine.txt").read_text() == "keep"
+
+    @pytest.mark.parametrize("verb", ["remap", "move"])
+    def test_relocating_a_copy_keeps_the_originals_row(self, env, capsys, monkeypatch, verb):
+        """A ``cp -a`` copy under another folder composes the original's name; relocating the
+        copy drops no row but its own, so the original stays registered at its root."""
+        from kanibako.project import registry_store
+
+        self._confirms(monkeypatch)
+        _config, std, tmp_home = env
+        solo, copy, name = self._moved_standalone(env, "cp", leaf="y/solo")
+        dest = tmp_home / "z" / "solo3"
+        if verb == "remap":
+            dest.mkdir(parents=True)
+            rc = run_remap(_remap_args(str(copy), str(dest), force=True))
+        else:
+            dest.parent.mkdir()
+            rc = run_move(_move_args(str(copy), str(dest), force=True))
+
+        assert rc == 0, capsys.readouterr()
+        assert registry_store.load_standalone(std.registry) == {name: str(solo)}
 
     def test_remap_moved_standalone_inside_another_box_needs_force(
             self, env, capsys, monkeypatch):
