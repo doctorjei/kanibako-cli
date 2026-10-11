@@ -195,6 +195,9 @@ class ProjectState:
     #: The host source of every bind mount the box receives; ``None`` when unknown, which
     #: is never read as "no binds".  Read by :func:`plan_box_mounted_links`.
     bind_sources: frozenset[str] | None = None
+    #: A standalone ``remap`` whose root the user moved: the registered root it left
+    #: (:func:`_moved_standalone_state`).  The state is the box as found at its new root.
+    moved_from: Path | None = None
     #: The resolved paths this state came from, for :func:`box_running_reason`'s
     #: container check; ``None`` when built from records alone.
     paths: ProjectPaths | None = field(default=None, repr=False, compare=False)
@@ -378,6 +381,43 @@ def resolve_lifecycle_target(
         return _state_from_paths("standalone", proj, std=std, ws=None, early=_early_scope(std, BoxMode.standalone))
 
     return _resolve_primary_state(detection.project_root, std, config)
+
+
+def _moved_standalone_state(
+    old: str | None, dest: Path, std: StandardPaths, config: BootstrapConfig,
+) -> ProjectState | None:
+    """Registered standalone *old* as found at *dest*, where the user moved its root, else ``None``.
+
+    After ``mv`` the box's row names a gone root; after ``cp -a`` *dest* reads as an
+    unregistered standalone root.  Either way *dest* holds the box's own store under the
+    row's ``workset.kuid``, the stable box id (keyspace ``workset.kuid``), so ``remap``
+    takes it as the box: :func:`_to_standalone` reuses it in place and moves nothing.
+    *dest* must be no registered root, in any spelling, and not the old root itself.
+    """
+    from kanibako.launch import box_resolve
+    from kanibako.project import registry_store
+    from kanibako.settings.config import read_workset_kuid
+
+    try:
+        old_root = Path(literal_path(resolve_designation(
+            std, old, unknown_name_is_path=True, name_first=True)))
+        name = registry_store.standalone_name_for_root(std.registry, old_root)
+        if (name is None or not is_canonical_standalone_name(name)
+                or _resolved_unless_loop(dest) == _resolved_unless_loop(old_root)
+                or not box_resolve.stores_standalone_registry_null(dest)
+                or not standalone_box_store(
+                    dest, early=_early_scope(std, BoxMode.standalone)).is_dir()
+                or registry_store.standalone_name_for_same_dir(std.registry, dest) is not None
+                or registry_store.standalone_identity_holder(std.registry, dest) is not None
+                or read_workset_kuid(dest / WORKSET_META_FILE).lower()
+                != standalone_kuid(name).lower()):
+            return None
+        proj = resolve_standalone_project(std, config, str(dest), initialize=False)
+    except (KanibakoError, OSError):
+        return None  # not this box's moved root: the usual resolution answers
+    state = _state_from_paths("standalone", proj, std=std, ws=None,
+                              early=_early_scope(std, BoxMode.standalone))
+    return replace(state, name=name, moved_from=old_root)
 
 
 def _workset_records_member_at(resolved: Path, std: StandardPaths) -> bool:
@@ -3570,7 +3610,7 @@ def _to_standalone(
         else None
     )
     # A standalone source keeps its registration state: an unregistered box stays unregistered.
-    register = (state.mode is not BoxMode.standalone
+    register = (state.mode is not BoxMode.standalone or state.moved_from is not None
                 or registry_store.standalone_name_for_root(std.registry, state.metadata_path)
                 is not None)
     # ⚑ Armed BEFORE the register, which may OVERWRITE the source's own row (a same-leaf
@@ -4381,8 +4421,11 @@ def run_remap(args) -> int:
     new = getattr(args, "new", None) or "./"
     new_path = Path(literal_path(new))
 
+    # A standalone root the user moved (``mv`` or ``cp -a``) is the box itself at <new>.
+    state = _moved_standalone_state(old, new_path, std, config)
     try:
-        state = resolve_lifecycle_target(old, std, config)
+        if state is None:
+            state = resolve_lifecycle_target(old, std, config)
     except (ProjectError, WorksetError) as e:
         print(f"Error: {e}", file=sys.stderr)
         return 1
@@ -4391,10 +4434,19 @@ def run_remap(args) -> int:
         return 1
 
     spec = TargetSpec(location=new_path, ownership=UNCHANGED, records_only=True)
+    if state.moved_from is not None:
+        what, was = "the box is already there; no files moved", state.moved_from
+    elif state.mode is BoxMode.standalone:
+        # The help's and MIGRATION's account: <new> becomes the root, its files move in.
+        what = ("the new path becomes its root: the files already there move into its "
+                "workspace directory, and its box data moves from the old root")
+        was = state.workspace_path
+    else:
+        what, was = "no files moved", state.workspace_path
     summary = (
-        "Remap project records (no files moved):\n"
+        f"Remap project records ({what}):\n"
         f"  project: {state.name}\n"
-        f"     from: {state.workspace_path}\n"
+        f"     from: {was}\n"
         f"       to: {new_path}"
     )
     try:
@@ -4410,6 +4462,8 @@ def run_remap(args) -> int:
         print(_relocation_failure(e), file=sys.stderr)
         return 1
 
+    if state.moved_from is not None and state.moved_from.exists():
+        print(f"Note: left {state.moved_from}; remap deletes nothing", file=sys.stderr)
     print(f"Remapped '{new_state.name}' to {new_state.workspace_path}")
     return 0
 

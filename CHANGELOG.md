@@ -757,6 +757,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`workset disconnect --remove-files` names a workspace it keeps behind a symlink loop.** When the workset's
   `workspaces/` folder is a looping link, the box's workspace cannot be reached, so it is kept; the command used to
   say only "Removed project". It now names the kept path and why.
+- **`box remap` re-points a standalone box whose root you moved.** After `mv` it said "Project path … does not
+  exist", and after `cp -a` it refused the copy as an unregistered standalone box. A new root that holds the
+  box's own `workset.kuid` is now recorded as the box, under the name its new folder composes, and nothing
+  there moves; a `cp -a` original is left as it was. The confirmation for a standalone remap now says the files
+  at the new path move into its workspace directory, not "no files moved".
 - **A purge names the box's inbox and share folders it keeps.** `box rm --purge`, `box purge` (`--all` too), and
   `workset disconnect --remove-files` left the box's mailbox and share folders in place without a word. They are
   still kept, since they lie outside the box's folder; each one present is now listed as kept before the

@@ -1047,6 +1047,147 @@ class TestRemap:
         with pytest.raises(ImportConflictError, match="is another path to standalone box"):
             args.func(args)
 
+    @staticmethod
+    def _moved_standalone(env, how: str, leaf: str = "moved") -> tuple[Path, Path, str]:
+        """A registered standalone ``solo`` whose root the user moved to *leaf* (``mv`` or
+        ``cp -a``): ``(old root, new root, registered name)``."""
+        from kanibako.project import registry_store
+
+        config, std, tmp_home = env
+        solo = tmp_home / "solo"
+        solo.mkdir()
+        proj = resolve_standalone_project(std, config, project_dir=str(solo), initialize=True)
+        registry_store.register_standalone(std.registry, proj.name, solo)
+        (solo / "workspace" / "mine.txt").write_text("keep")
+        new = tmp_home / leaf
+        if how == "mv":
+            solo.rename(new)
+        else:
+            shutil.copytree(solo, new, symlinks=True)
+        return solo, new, proj.name
+
+    @pytest.mark.parametrize("by", ["name", "path"])
+    @pytest.mark.parametrize("how", ["mv", "cp"])
+    def test_remap_standalone_whose_root_was_moved(self, env, capsys, monkeypatch, how, by):
+        """The remap verb re-points a standalone the user moved by hand: after ``mv`` its
+        row named a gone root, and after ``cp -a`` the copy read as an unregistered box.
+        The row now names the new root, under the name its leaf composes, nothing at the
+        new root moves into ``workspace/``, and a ``cp -a`` source is left as it was."""
+        from kanibako.project import registry_store
+
+        asked = self._confirms(monkeypatch)
+        _config, std, _tmp = env
+        solo, new, name = self._moved_standalone(env, how)
+        old_before = self._tree_digest(solo) if how == "cp" else None
+        new_before = self._tree_digest(new)
+
+        rc = run_remap(_remap_args(name if by == "name" else str(solo), str(new), force=False))
+
+        captured = capsys.readouterr()
+        assert rc == 0, captured
+        moved_name = name.replace("_solo", "_moved")
+        assert registry_store.load_standalone(std.registry) == {moved_name: str(new)}
+        assert f"Remapped '{moved_name}' to {new / 'workspace'}" in captured.out
+        assert (new / "workspace" / "mine.txt").read_text() == "keep"
+        assert not (new / "workspace" / "workspace").exists()
+        new_after = self._tree_digest(new)
+        assert {k: v for k, v in new_after.items() if k.startswith("workspace")} == {
+            k: v for k, v in new_before.items() if k.startswith("workspace")}
+        assert asked and "(the box is already there; no files moved)" in asked[0]
+        assert f"from: {solo}" in asked[0]
+        if how == "cp":
+            assert self._tree_digest(solo) == old_before
+            assert f"Note: left {solo}; remap deletes nothing" in captured.err
+        else:
+            assert "Note: left" not in captured.err
+
+    def test_remap_moved_standalone_inside_another_box_needs_force(
+            self, env, capsys, monkeypatch):
+        """A moved root inside another box's workspace is a share: refused without --force,
+        and with it the remap records the root and moves nothing of the other box."""
+        from kanibako.project import registry_store
+
+        self._confirms(monkeypatch)
+        _config, std, tmp_home = env
+        other = _default(env, "other")
+        solo, _new, name = self._moved_standalone(env, "mv", leaf="parked")
+        inside = other / "moved"
+        (tmp_home / "parked").rename(inside)
+        before = self._tree_digest(tmp_home)
+
+        assert run_remap(_remap_args(name, str(inside), force=False)) == 1
+        assert "inside the workspace of primary box 'other'" in capsys.readouterr().err
+        assert self._tree_digest(tmp_home) == before
+
+        other_before = {k: v for k, v in self._tree_digest(other).items()
+                        if not k.startswith("moved/")}
+        assert run_remap(_remap_args(name, str(inside), force=True)) == 0, capsys.readouterr()
+        assert registry_store.load_standalone(std.registry) == {
+            name.replace("_solo", "_moved"): str(inside)}
+        assert {k: v for k, v in self._tree_digest(other).items()
+                if not k.startswith("moved/")} == other_before
+
+    def test_remap_moved_standalone_holding_another_box_moves_nothing(
+            self, env, capsys, monkeypatch):
+        """A moved root holding another box's workspace is a share (--force), and the
+        standalone layout is already laid, so that workspace stays where it is."""
+        self._confirms(monkeypatch)
+        config, std, _tmp = env
+        _solo, new, name = self._moved_standalone(env, "mv")
+        inner = new / "inner"
+        inner.mkdir()
+        (inner / "theirs.txt").write_text("theirs")
+        resolve_project(std, config, project_dir=str(inner), initialize=True)
+
+        assert run_remap(_remap_args(name, str(new), force=False)) == 1
+        assert "a directory holding the workspace of box" in capsys.readouterr().err
+        assert run_remap(_remap_args(name, str(new), force=True)) == 0, capsys.readouterr()
+        assert (inner / "theirs.txt").read_text() == "theirs"
+        assert not (new / "workspace" / "inner").exists()
+
+    def test_remap_moved_standalone_onto_a_registered_root_with_its_kuid_refused(
+            self, env, capsys, monkeypatch):
+        """A kuid match is no license to take a REGISTERED root: another box keeps its row
+        and nothing on disk changes."""
+        from kanibako.project import registry_store
+
+        self._confirms(monkeypatch)
+        config, std, tmp_home = env
+        _solo, new, name = self._moved_standalone(env, "mv")
+        held = tmp_home / "held"
+        held.mkdir()
+        proj = resolve_standalone_project(std, config, project_dir=str(held), initialize=True)
+        registry_store.register_standalone(std.registry, proj.name, held)
+        doc = load_doc(held / "workset.yaml")
+        doc["workset"]["kuid"] = name.partition("_")[0]
+        dump_doc(held / "workset.yaml", doc)
+        rows = registry_store.load_standalone(std.registry)
+        before = self._tree_digest(tmp_home)
+
+        assert run_remap(_remap_args(name, str(held), force=True)) == 1
+        assert registry_store.load_standalone(std.registry) == rows
+        assert self._tree_digest(tmp_home) == before
+
+    def test_remap_confirmation_says_what_moves(self, env, capsys, monkeypatch):
+        """A standalone remap says the files at the new path move into its workspace
+        directory, as the help and MIGRATION do; a primary remap still moves none."""
+        asked = self._confirms(monkeypatch)
+        _config, _std, tmp_home = env
+        solo = _standalone(env, "solo")
+        dest = tmp_home / "landing"
+        dest.mkdir()
+        prim = _default(env, "prim")
+        prim_dest = tmp_home / "prim2"
+        prim.rename(prim_dest)
+
+        assert run_remap(_remap_args(str(solo), str(dest), force=False)) == 0, capsys.readouterr()
+        assert run_remap(_remap_args(str(prim), str(prim_dest), force=False)) == 0, (
+            capsys.readouterr())
+        assert "no files moved" not in asked[0]
+        assert ("the new path becomes its root: the files already there move into its "
+                "workspace directory") in asked[0]
+        assert "(no files moved)" in asked[1]
+
     def test_remap_into_its_own_external_dir_is_not_refused(self, env, monkeypatch):
         """A member is no other box to itself: a subdir of its own external dir remaps."""
         monkeypatch.setattr(_lifecycle, "_make_confirm", lambda force, summary: lambda: True)

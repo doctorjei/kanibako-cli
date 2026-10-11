@@ -43,6 +43,7 @@ def _primary_source_own_name(state: ProjectState, std: StandardPaths) -> str | N
 def _relocated_own_name(state: ProjectState, std: StandardPaths, landing_ws: Path, mint: str | None) -> str | None
 def _workspace_landing(state: ProjectState, dest: Path | None, target_mode: BoxMode, *, records_only: bool) -> Path
 def _ownership_to_mode(ownership: str) -> tuple[BoxMode, str | None]
+def _moved_standalone_state(old: str | None, dest: Path, std: StandardPaths, config: BootstrapConfig) -> ProjectState | None
 def _workset_records_member_at(resolved: Path, std: StandardPaths) -> bool
 def _resolve_primary_state(root: Path, std: StandardPaths, config: BootstrapConfig) -> ProjectState
 def _default_state_from_meta(workspace: Path, std: StandardPaths) -> ProjectState | None
@@ -159,6 +160,7 @@ class ProjectState:
     enable_vault: bool = True
     box_authored_vault: bool = True
     bind_sources: frozenset[str] | None = None
+    moved_from: Path | None = None
     paths: ProjectPaths | None = field(default=None, repr=False, compare=False)
 
 @dataclass
