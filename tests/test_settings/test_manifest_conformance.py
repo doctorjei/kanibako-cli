@@ -1707,7 +1707,11 @@ class TestKinemataCarrier:
         """
         import json
 
-        baseline = json.loads(KINEMATA_BASELINE.read_text(encoding="utf-8"))
+        # No file is an empty baseline, as kinemata reads it.
+        baseline = (
+            json.loads(KINEMATA_BASELINE.read_text(encoding="utf-8"))
+            if KINEMATA_BASELINE.is_file() else {"findings": []}
+        )
         registries = _kinemata_config_registries()
         views = set(_carrying_views()) | {
             str(parity["registry"]) for parity in _kinemata_config().get("parity", [])

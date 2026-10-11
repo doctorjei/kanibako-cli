@@ -57,7 +57,7 @@ jobs:
   # one immutable artifact on PyPI; anything looser hands the job a tool nobody
   # chose. Bump this pin deliberately, as its own commit.
   #
-  # ONE config and one baseline, so every command below runs plainly. There were
+  # ONE config and no baseline, so every command below runs plainly. There were
   # two until 2026-09-14, on the ground that `exclude` is global to a config and
   # the registry scan needed `api-docs/` and `llm-docs/` excluded where the
   # documentation gate must not. That premise was false -- a registry scan reads
@@ -97,13 +97,15 @@ jobs:
       # ⚑ 0.1.1 REPORTS MORE THAN 0.1.0 ON THE SAME TREE, NEVER LESS: files that
       # a gitignored directory's name was removing from the file index are back.
       # Expect findings to APPEAR on a bump, read them at source, and do not tune
-      # them away. The mechanism is in `.kinemata-baseline.json`'s note, residue (4).
+      # them away. The mechanism is in the note of `.kinemata-baseline.json`,
+      # residue (4), in the file's git history.
       # Measured at the 0.1.2 bump: it produced none, and that was a reading
       # rather than luck. Its two behavior changes were an advisory line no
       # section this config declared could trigger, and an illustration role no
       # document in this tree marked a span with -- so all four commands below
       # printed output byte-identical to 0.1.1's. The record of what that bump
-      # decided is in `.kinemata-baseline.json`'s note, residue (3).
+      # decided is in the note of `.kinemata-baseline.json`, residue (3), in the
+      # file's git history.
       # 🛑 THE 0.2.0 BUMP IS THE ONE THAT EXERCISES THAT RULE, AND IT IS THE FIRST
       # THAT IS NOT BYTE-IDENTICAL. Measured 2026-09-19 on this tree: all four
       # commands below read rc 0, `check`, `parity` and `shape` print exactly what
@@ -118,7 +120,8 @@ jobs:
       # it is the half of a release an existing config observes and cannot
       # discover from a feature list. Those sites are being read at source by a
       # separate pass, which is what the rule above asks for, and the record of
-      # what this bump decided is in `.kinemata-baseline.json`'s note, residue (5).
+      # what this bump decided is in the note of `.kinemata-baseline.json`,
+      # residue (5), in the file's git history.
       # ⚑ THE 0.4.0 BUMP MOVED NO VERDICT AND NO LINE A STEP HERE PRINTS.
       # Measured 2026-09-24 on this tree: all five commands below printed output
       # byte-identical to 0.3.0's, plain and under `-v`, every one rc 0. Its two
@@ -166,8 +169,10 @@ jobs:
       # measurement is in the `filenames` registry's note. `[claims] declared_in`
       # needs `0.5.2`, where it is new. `0.5.4` makes an entry with no `home` read
       # the test trees despite `exclude`; `retired-seams` keeps its rule on
-      # shipped source with `only`.
-      - run: pip install "kinemata[yaml]==0.5.4"
+      # shipped source with `only`. `0.6.0` makes `only` scope a `declared_in`
+      # registry; below it the three unstored-path registries settle their names
+      # in every `.md` file.
+      - run: pip install "kinemata[yaml]==0.6.0"
       # ⚑ THE PROJECT ITSELF IS INSTALLED HERE BECAUSE THE PARITY ORACLE IMPORTS
       # IT. `parity` runs a command that prints what the code produces, and an
       # oracle it cannot run is a FAILURE that no baseline can accept -- so a

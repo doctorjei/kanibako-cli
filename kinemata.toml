@@ -6,8 +6,10 @@
 # `clusters`. ⚑ A command added to CI needs its `[[gate]]` block here, or the
 # inventory agrees with itself -- which is exactly how `shape` ran nowhere.
 #
-# ⚑ THERE IS EXACTLY ONE CONFIG IN THIS REPOSITORY, and one baseline
-# (`.kinemata-baseline.json`, the default name). Every command is run plainly --
+# ⚑ THERE IS EXACTLY ONE CONFIG IN THIS REPOSITORY, and no baseline. Its last
+# records were settled 2026-10-11 and `.kinemata-baseline.json` (the default name)
+# was deleted, because kinemata fails `check` on a lapsed baseline even when it
+# is empty; a missing file reads as an empty one. Every command is run plainly --
 # `kinemata check`, `kinemata claims` -- with no `-c` and no custom baseline.
 #
 # ---------------------------------------------------------------------------
@@ -260,8 +262,13 @@ historical = [
 # `spawn.yaml` exists only inside a spawned helper, so the store holds none of them.
 # A path claim of one is asked of `live-config-files`, which reads the names from
 # `bootstrap` and `channels/helpers`, matched WHOLE only.
+#
+# UNSTORED PATHS: `archives/`, `temp/`, `dist/`, and `.kanibako.lock` are asked of
+# `canon-template-paths`, `release-paths`, and `lock-paths`, each only in the file
+# that cites the name.
 declared_in = ["agent-cred-files", "retired-file-names", "channel-paths",
-               "agent-store-entries", "example-names", "live-config-files"]
+               "agent-store-entries", "example-names", "live-config-files",
+               "canon-template-paths", "release-paths", "lock-paths"]
 
 # Before/after, measured 2026-09-09 against an older tree: 929 failing claims ->
 # 769. The 160 suppressed are ALL positively classified as historicity false
@@ -367,8 +374,8 @@ declared_in = ["agent-cred-files", "retired-file-names", "channel-paths",
 #    really creates the path. Measured 2026-10-08 on `ea3b5171` plus this
 #    change: `claims` accepted 464 baseline claims before, 138 after; the 326
 #    the store settles were pruned from `.kinemata-baseline.json`. The rest
-#    name paths that store does not hold (bare `box.yaml` leads) and stay
-#    accepted by date there.
+#    named paths that store does not hold (bare `box.yaml` leads); the last four
+#    are declared in `canon-template-paths`, `release-paths`, and `lock-paths`.
 #
 # 6. external = true -- NOT SET, and this is a scope decision rather than a
 #    judgment. Turning it on reaches the network on every run, which an
@@ -421,7 +428,7 @@ declared_in = ["agent-cred-files", "retired-file-names", "channel-paths",
 # two places: the conceded plugin leaves, and the not_keys.renamed spellings, which the adapter
 # recognizes so they can be refused with their cure.
 #
-# NO STRAY OF THIS REGISTRY IS ACCEPTED IN `.kinemata-baseline.json`. Measured
+# NO STRAY OF THIS REGISTRY IS ACCEPTED; there is no baseline. Measured
 # 2026-09-24 under kinemata `0.4.1`: `undeclared` is clean with no record behind
 # it. Two kinds were accepted there by date until then, and both are gone. The
 # `not_keys.code_residue` uses were renamed out of the key namespace. The
@@ -850,8 +857,8 @@ modules = [
 # place that declares a filename.
 # CATCHES: nothing new in `check`, whose every finding here duplicates one from
 # the registry that owns the fact (see `only` below). It changes what
-# `undeclared` reports, and it is the reason `.kinemata-baseline.json` carries
-# no filename records.
+# `undeclared` reports, and it is the reason the baseline, while one existed,
+# carried no filename records; a future baseline needs none either.
 #
 # ⚑ WHY `defer_to` LOSES NOTHING. `defer_to` hands `undeclared`'s candidate
 # over BY VALUE, wherever the literal is, so the respelling it stops
@@ -2046,6 +2053,37 @@ target = "kinemata_views:AgentStoreEntries"
 name = "example-names"
 kind = "import"
 target = "kinemata_views:ExampleNames"
+
+# FACT: path names the docs cite that neither the tree nor the claims store holds:
+# the notebook and workbook dirs an agent creates (`canon-template-paths`), the
+# directory a release job builds into (`release-paths`), and the lock file
+# `kanibako start` holds in a box's metadata dir while it runs (`lock-paths`).
+# The names are `kinemata_views._UNSTORED_PATHS`. Read by `[claims] declared_in`
+# alone: no antipattern and an empty `detect`, so `check` gains nothing from them.
+# Each registry's `only` is the one file that cites its names, so the same name in
+# any other file is still a finding (`only` scopes `declared_in` from kinemata
+# 0.6.0). `suffixes = [".md"]` is required: kinemata refuses an `only` that matches
+# no file the registry reads, and a registry reads `.py` by default.
+[[registry]]
+name = "canon-template-paths"
+kind = "import"
+target = "kinemata_views:CanonTemplatePaths"
+suffixes = [".md"]
+only = ["src/kanibako/data/templates/system/canon/handbook/general/directives/LOWER_CANON.md"]
+
+[[registry]]
+name = "release-paths"
+kind = "import"
+target = "kinemata_views:ReleasePaths"
+suffixes = [".md"]
+only = ["docs/RELEASING.md"]
+
+[[registry]]
+name = "lock-paths"
+kind = "import"
+target = "kinemata_views:LockPaths"
+suffixes = [".md"]
+only = ["llm-docs/kanibako/commands/box/_lifecycle.py.md"]
 
 # FACT: `config_keys._KEY_ROUTES` routes exactly the fixed-scope `set: cli+file`
 # rows. `test_manifest_conformance` `test_every_routed_key_is_a_declared_manifest_row`

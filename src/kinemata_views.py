@@ -1553,6 +1553,47 @@ class ExampleNames(_ViewRegistry):
         return super().declared(identifier.rstrip("/"))
 
 
+#: Paths one document cites that no store the claims run builds holds, by registry. Each
+#: registry's `only` in kinemata.toml is the citing document, so a name settles there alone.
+_UNSTORED_PATHS = {
+    # LOWER_CANON.md template: notebook and workbook dirs an agent creates; kanibako
+    # seeds neither.
+    "canon-template-paths": ("archives", "temp"),
+    # docs/RELEASING.md: the directory a release job builds packages into.
+    "release-paths": ("dist",),
+    # _lifecycle.py.md: the lock `kanibako start` holds in a box's metadata dir while
+    # the box runs; the store starts no box.
+    "lock-paths": (".kanibako.lock",),
+}
+
+
+class _UnstoredPaths(_ViewRegistry):
+    """A `_UNSTORED_PATHS` row set. `[claims] declared_in` names each subclass's registry;
+    `declared` takes a name whole only (a trailing `/` dropped), as `ExampleNames` does.
+    """
+
+    def _rows(self) -> list[dict[str, object]]:
+        return [{"key": name} for name in _UNSTORED_PATHS[self.name]]
+
+    def declared(self, identifier: str) -> bool:
+        return super().declared(identifier.rstrip("/"))
+
+
+class CanonTemplatePaths(_UnstoredPaths):
+    def __init__(self, *, name: str = "canon-template-paths", **options: object) -> None:
+        super().__init__(name=name, **options)
+
+
+class ReleasePaths(_UnstoredPaths):
+    def __init__(self, *, name: str = "release-paths", **options: object) -> None:
+        super().__init__(name=name, **options)
+
+
+class LockPaths(_UnstoredPaths):
+    def __init__(self, *, name: str = "lock-paths", **options: object) -> None:
+        super().__init__(name=name, **options)
+
+
 class LiveConfigFiles(_ViewRegistry):
     """Config file names kanibako reads outside any store the claims run builds: the site
     base tier in `bootstrap.SITE_CONFIG_DIR` (`/etc/kanibako`) and a helper's spawn config.
