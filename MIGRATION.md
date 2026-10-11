@@ -4753,7 +4753,7 @@ refuses.
 **Upgrading from v1.7.2, only part (a) concerns you, and it needs nothing done:** the canon books
 are new in v1.8.0 (§2.4), so you have no file, box, or settings entry that spells the old paths.
 Parts (b) to (e) are for anyone who ran **`1.8.0rc1` or `rc2`**, which shipped the book as `bible`
-and the handbook one level deeper.
+and the handbook one level deeper. Part (e) also applies to a box made on `1.8.0.dev98`.
 
 **(a) `~/canon/bible/` is now `~/canon/charter/`.** The same book with the same chapters —
 `general/`, `workset/`, `box/`, plus the `agent/` chapter your agent plugin contributes — and the
@@ -4776,9 +4776,15 @@ before your next start:
 $ sed -i 's|canon/bible/|canon/charter/|g' <box_dir>/home/.claude/settings.json
 ```
 
-The two paths in that file that name `~/canon/handbook/` — the `check-comms.sh` behavior hook and
-the statusline — are unchanged, and the `sed` above leaves them alone. A box created on v1.8.0
+The `sed` leaves the `check-comms.sh` behavior hook alone; it still names `~/canon/handbook/`. The
+statusline is now seeded at `~/canon/charter/agent/scripts/interface/statusline.sh`; the handbook
+copy an rc2 box names still ships, so that box's statusline keeps working. A box created on v1.8.0
 proper is seeded with the new paths and needs nothing.
+
+A box made on `1.8.0.dev98` has no `bible` paths, so the `sed` does nothing there. Its
+`settings.json` was seeded with only `$schema` and `includeCoAuthoredBy`, so it lacks the hooks and
+the statusline. Merge the shipped claude `settings.json` into
+`<box_dir>/home/.claude/settings.json` by hand, and keep any keys you added.
 
 **(c) The handbook's per-scope entry files moved up out of `directives/`.** Each scope contributes
 one chapter to the handbook, and that chapter's entry file now sits at the chapter root:

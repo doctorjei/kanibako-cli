@@ -114,9 +114,11 @@ class TestPurgeAllRefusesWhileABoxRuns:
         _no_question(monkeypatch)
 
         assert _purge_all() == 1
-        err = capsys.readouterr().err
+        out = capsys.readouterr()
+        err = out.err
         _all_intact(boxes)
         assert "2 box(es) may be running" in err, err
+        assert out.out.count("Aborted.") == 1, "one refusal, one Aborted line: " + out.out
         assert str(boxes["pq"].project_path) in err and "paws/bar" in err, err
         assert "kanibako stop pk" not in err, "a stopped box is not named"
 

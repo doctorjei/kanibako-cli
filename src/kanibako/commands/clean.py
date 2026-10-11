@@ -506,10 +506,12 @@ def _purge_all(std, config, *, force: bool) -> int:
             if abort_if_box_running(None, lock, force,
                                     "Purging it would delete its vaults and canon while "
                                     "writes are in flight.",
-                                    container_name=container, cure_ref=ref)]
+                                    container_name=container, cure_ref=ref,
+                                    announce_abort=False)]
     if live:
         print(f"Error: {len(live)} box(es) may be running: {', '.join(live)}. Nothing was "
               "purged. Stop each one, or pass --force.", file=sys.stderr)
+        print("Aborted.")
         return 1
 
     if not force:

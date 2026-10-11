@@ -177,7 +177,7 @@ def _assert_kept_then_retry_finishes(std, config, target, anchor, identity, retr
 
     *retry* is a callable taking the parked name and returning the pass-2 rc.  It
     differs by mode because the routes differ: a standalone is re-found from disk, a
-    primary/named member is re-found from its parked registry entry.
+    primary from its parked registry entry.
     """
     from kanibako.commands.clean import _purge_one
 

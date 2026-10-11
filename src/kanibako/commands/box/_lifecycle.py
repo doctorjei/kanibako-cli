@@ -4095,12 +4095,15 @@ def box_running_reason(
 def abort_if_box_running(
     proj: ProjectPaths | None, lock_file: Path, force: bool, consequence: str,
     *, container_name: str | None = None, cure_ref: str | None = None,
+    announce_abort: bool = True,
 ) -> bool:
     """Warn when :func:`box_running_reason` answers; True ⇒ the caller aborts (no *force*).
 
     The stop cure names *proj* by :func:`project_cure_ref`, so it reaches that box from
     any cwd.  With no *proj* it names *cure_ref*, an already-quoted ref the caller holds
     for a box that did not resolve.  With neither, the cure stays a bare ``kanibako stop``.
+    A caller that probes many boxes passes ``announce_abort=False`` and prints
+    ``Aborted.`` once itself.
     """
     import sys
 
@@ -4114,7 +4117,8 @@ def abort_if_box_running(
           f"{stop}, or pass --force.", file=sys.stderr)
     if force:
         return False
-    print("Aborted.")
+    if announce_abort:
+        print("Aborted.")
     return True
 
 
