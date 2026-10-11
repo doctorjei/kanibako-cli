@@ -128,9 +128,10 @@ RUN if [ "$VARIANT" = "min" ]; then \
         && rm -rf /var/lib/apt/lists/*; \
     fi
 
-# tweakcc: custom Claude Code patching tool (requires node/npm)
+# tweakcc: custom Claude Code patching tool (requires node/npm). 4.4.0 is the
+# first release that patches code-split builds in an ELF .bun section.
 RUN if command -v npm >/dev/null 2>&1; then \
-        npm install -g tweakcc 2>/dev/null || true; \
+        npm install -g tweakcc@4.4.0 2>/dev/null || true; \
     fi
 
 # LXC-specific fixes: mask failing units, enable DHCP, configure rootless Podman
