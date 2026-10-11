@@ -9,13 +9,6 @@
       "entry": "claim:path",
       "antipattern": ".kanibako.lock",
       "path": "llm-docs/kanibako/commands/box/_lifecycle.py.md",
-      "text": "(`_duplicate.py`): if the project's `.kanibako.lock` is present, warn and abort unless *force*."
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": ".kanibako.lock",
-      "path": "llm-docs/kanibako/commands/box/_lifecycle.py.md",
       "text": "`workset.yaml` and `box.yaml` (drift I), and `.kanibako.lock`. A name test is correct for these"
     },
     {
@@ -84,13 +77,6 @@
     {
       "registry": "claims",
       "entry": "claim:path",
-      "antipattern": "data/logs/",
-      "path": "MIGRATION.md",
-      "text": "`vault/`). The shared top-level `data/logs/` tree (and the `.../helper-messages.jsonl`"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
       "antipattern": "dist/",
       "path": "docs/RELEASING.md",
       "text": "`agent-codex` are accepted), builds **only** that package into `dist/`, refuses"
@@ -105,20 +91,6 @@
     {
       "registry": "claims",
       "entry": "claim:path",
-      "antipattern": "home/playbook/CONTENTS.md",
-      "path": "MIGRATION.md",
-      "text": "| `home/playbook/CONTENTS.md` | nothing to carry \u2014 the canon index (`~/canon/COLLECTION.md`) supersedes it |"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "home/playbook/box/",
-      "path": "MIGRATION.md",
-      "text": "- \u2691 **A box older than the three-part handbook keeps everything under `home/playbook/box/`,"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
       "antipattern": "myagent/",
       "path": "docs/writing-targets.md",
       "text": "files \u2014 the base package owns those. Only your leaf package (`myagent/`) gets"
@@ -129,13 +101,6 @@
       "antipattern": "nested/",
       "path": "llm-docs/kanibako/commands/box/_lifecycle.py.md",
       "text": "repoint interposed (`workspaces: @meta.workset.path/nested/deep` leaves `nested/`) go too: they"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "playbook/",
-      "path": "MIGRATION.md",
-      "text": "### 2.44 Helper boxes: the entrypoint script moved out of `playbook/`"
     },
     {
       "registry": "claims",
@@ -185,34 +150,6 @@
       "antipattern": "temp/",
       "path": "src/kanibako/data/templates/system/canon/handbook/general/directives/LOWER_CANON.md",
       "text": "| `temp/` | Temporary storage (volatile between sessions) | No |"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "\u2026/canon/handbook/directives/SYS_AGENT.md",
-      "path": "MIGRATION.md",
-      "text": "| agent | `<data>/agents/<node>/canon/handbook/SYS_AGENT.md` | `\u2026/canon/handbook/directives/SYS_AGENT.md` |"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "\u2026/canon/handbook/directives/SYS_BOX.md",
-      "path": "MIGRATION.md",
-      "text": "| box | `<box_dir>/canon/handbook/SYS_BOX.md` | `\u2026/canon/handbook/directives/SYS_BOX.md` |"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "\u2026/canon/handbook/directives/SYS_WORKSET.md",
-      "path": "MIGRATION.md",
-      "text": "| workset | `<workset>/canon/handbook/SYS_WORKSET.md` | `\u2026/canon/handbook/directives/SYS_WORKSET.md` |"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "\u2026/general/directives/SYS_GENERAL.md",
-      "path": "MIGRATION.md",
-      "text": "| general (system store) | `<data>/global/canon/handbook/general/SYS_GENERAL.md` | `\u2026/general/directives/SYS_GENERAL.md`"
     }
   ]
 }

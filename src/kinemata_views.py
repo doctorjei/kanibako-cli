@@ -1411,6 +1411,11 @@ class EntryOwners(_ViewRegistry):
         return out
 
 
+def _ends_with(path: str, tail: str) -> bool:
+    """`True` iff *tail* is *path* or its trailing whole segments."""
+    return path == tail or path.endswith(f"/{tail}")
+
+
 class _TailRegistry(_ViewRegistry):
     """A registry whose `declared` takes a key or any trailing whole-segment part of one,
     with `~/` and a trailing `/` dropped: prose names `.credentials.json` for
@@ -1422,7 +1427,7 @@ class _TailRegistry(_ViewRegistry):
         if not tail:
             return False
         keys = (str(row["key"]) for row in self.rows)
-        return any(key == tail or key.endswith(f"/{tail}") for key in keys)
+        return any(_ends_with(key, tail) for key in keys)
 
 
 class AgentCredFiles(_TailRegistry):
@@ -1537,16 +1542,38 @@ _RETIRED_FILE_NAMES = (
     "worksets.yaml",            # consolidated into registry.yaml
 )
 
+#: Store-relative PATHS kanibako no longer lays out, each as the MIGRATION.md entry that
+#: retires it names it. Hand-written, like the names above.
+_RETIRED_PATHS = (
+    # "The handbook's per-scope entry files moved up out of `directives/`"
+    "canon/handbook/directives/SYS_AGENT.md",
+    "canon/handbook/directives/SYS_BOX.md",
+    "canon/handbook/directives/SYS_WORKSET.md",
+    "general/directives/SYS_GENERAL.md",
+    # "Helper message log relocated: shared `data/logs/<id>/` → per-box, per-mode"
+    "data/logs",
+    # "Helper boxes: the entrypoint script moved out of `playbook/`", and the pre-canon
+    # box layout whose `home/playbook/` the canon migration table maps away
+    "playbook",
+    "home/playbook/CONTENTS.md",
+    "home/playbook/box",
+)
+
 
 class RetiredFileNames(_ViewRegistry):
     """File names kanibako used to read or write and no longer does. `[claims] declared_in`
     names this registry, so a doc citing `names.yaml` or `project.yaml` AS HISTORY settles
     here -- neither the tree nor the store can hold a file that no longer exists.
 
-    ⚑ NARROW ON PURPOSE. `declared` takes the whole name only (a trailing `/` dropped), never
+    ⚑ NARROW ON PURPOSE. `declared` takes a name whole only (a trailing `/` dropped), never
     a part of one, so `foo/names.yaml` stays a claim to check. A name the code still reads must
     never be here: `_rows` refuses one that equals a live bootstrap or spawn file name, or a
     segment of a `ChannelPaths` or `AgentStoreEntries` row.
+
+    A retired PATH matches whole, after a leading `~/` or `…/` is dropped:
+    `…/canon/handbook/directives/SYS_AGENT.md` settles; `directives/SYS_AGENT.md` and
+    `notes/playbook/` do not. `_rows` refuses a path that equals or ends a live one: a path under `src/` or
+    `packages/` (the templates kanibako stamps), or a `ChannelPaths` or `AgentStoreEntries` row.
     """
 
     def __init__(self, *, name: str = "retired-file-names", **options: object) -> None:
@@ -1562,9 +1589,20 @@ class RetiredFileNames(_ViewRegistry):
             live.update(seg for row in registry.rows for seg in str(row["key"]).split("/"))
         names = (*_RETIRED_FILE_NAMES, bootstrap.LEGACY_CONFIG_FILE)
         clash = sorted(live.intersection(names))
+        live_paths = [str(row["key"]) for registry in (ChannelPaths(), AgentStoreEntries())
+                      for row in registry.rows]
+        for top in ("src", "packages"):
+            live_paths.extend(p.relative_to(_TREE).as_posix() for p in (_TREE / top).rglob("*"))
+        clash += [path for path in _RETIRED_PATHS
+                  if any(_ends_with(live_path, path) for live_path in live_paths)]
         if clash:
             raise ValueError(f"retired-file-names lists a live name: {', '.join(clash)}")
-        return [{"key": name} for name in names]
+        return ([{"key": name} for name in names]
+                + [{"key": path, "path": True} for path in _RETIRED_PATHS])
 
     def declared(self, identifier: str) -> bool:
-        return super().declared(identifier.rstrip("/"))
+        whole = identifier.rstrip("/")
+        tail = whole.removeprefix("~/").removeprefix("…/")
+        return any(str(row["key"]) == whole
+                   or (row.get("path") and tail == str(row["key"]))
+                   for row in self.rows)

@@ -28,6 +28,7 @@ _BRACES = re.compile('^(?P<head>[^{}]*)\\{(?P<alts>[^{}]+)\\}(?P<tail>[^{}]*)$')
 _SENTINEL_VALUES: tuple[object, ...] = (None, True, False, {})
 _TREE = Path(__file__).resolve().parents[1]
 _RETIRED_FILE_NAMES = ('box_data/settings.yaml', 'comms', 'connected.yaml', 'general.yaml', 'general/settings.yaml', 'global/base_template', 'image-shells.yaml', 'kanibako.yaml', 'names.yaml', 'project-path.txt', 'project.yaml', 'rigs.yaml', 'shared', 'worksets.yaml')
+_RETIRED_PATHS = ('canon/handbook/directives/SYS_AGENT.md', 'canon/handbook/directives/SYS_BOX.md', 'canon/handbook/directives/SYS_WORKSET.md', 'general/directives/SYS_GENERAL.md', 'data/logs', 'playbook', 'home/playbook/CONTENTS.md', 'home/playbook/box')
 ```
 
 ## Functions
@@ -78,6 +79,7 @@ def _strip_html_comments(lines: list[str]) -> list[str]
 def _node_fence_marker(node: str) -> str
 def _is_absent(value: object) -> bool
 def _agent_tier_floors(node: str) -> dict[str, str | None]
+def _ends_with(path: str, tail: str) -> bool
 ```
 
 ## Classes

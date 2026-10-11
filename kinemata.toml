@@ -240,7 +240,11 @@ historical = [
 # one of them is asked of `retired-file-names`, matched WHOLE only. Its view refuses
 # a name equal to a live bootstrap or spawn file name (the four its `_rows` lists)
 # or to a segment of a `channel-paths` or `agent-store-entries` row; any other name
-# added here must be checked by hand against what the code reads.
+# added here must be checked by hand against what the code reads. Its retired
+# PATHS (`data/logs/`, `playbook/`, `…/canon/handbook/directives/SYS_AGENT.md`)
+# match whole after a leading `~/` or `…/` is dropped, and a path equal to or
+# ending a live one under `src/` or `packages/` is refused. ⚑ The registry is global, not
+# scoped to MIGRATION.md: a present-tense claim of a retired path settles too.
 #
 # CHANNEL PATHS: `kanibako start` alone lays out the channel tree and an agent
 # store's `common/`, and the store above starts no container, so it holds neither.
