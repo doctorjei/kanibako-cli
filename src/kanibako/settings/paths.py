@@ -2646,6 +2646,12 @@ def resolve_standalone_project(std: StandardPaths, config: BootstrapConfig,
         refuse_null_workspaces(root, f"a workspace for '{root.name}'", standalone=True,
                                early=standalone_early)
         assert project_path is not None  # a null root refused on the line above
+        # ⚑ The kuid copy guard's refusal half, BEFORE the first write: a root whose
+        # ``workset.yaml`` IS a registered box's (a link, a bind mount, a hard link) is that
+        # box by another spelling, not a copy to re-mint.  A genuine copy passes, and the
+        # warn-and-re-mint below handles it.
+        from kanibako.project import import_reconcile
+        import_reconcile.refuse_second_link(std.registry, root)
         # ⚑ The WORKSET CANON tier, stamped CANON-ONLY.  ``workset.canon`` is UNIFORM
         # IN EVERY MODE (spec ``:962``) so a lone box has one; ``workset.template`` is
         # <None> in standalone (spec ``:936``), so the template half is NOT stamped —

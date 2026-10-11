@@ -2530,11 +2530,16 @@ def _purge_deregistered(std, name: str, entry: dict, args: argparse.Namespace, *
 
 
 def _resolve_standalone_target(
-    std, config, target: str,
+    std, config, target: str, *, purge: bool = True,
 ) -> tuple[str | None, Path | None, bool]:
-    """Resolve a ``box rm`` *target* to ``(box_name, root, registered)``; unregistered by PATH only."""
+    """Resolve a ``box rm`` *target* to ``(box_name, root, registered)``; unregistered by PATH only.
+
+    ⚑ Without *purge*, a row registered at the literal *target* resolves even when it is
+    another spelling of a registered box's identity: dropping that row is the cure.
+    """
     from kanibako.errors import ConfigError, LegacyWorksetIdentityError
     from kanibako.project import registry_store
+    from kanibako.project.import_reconcile import ImportConflictError
     from kanibako.settings.paths import BoxMode, detect_project_mode
 
     # 1) Direct standalone-NAME lookup — case-blind (spec §0), returning the name as
@@ -2550,6 +2555,14 @@ def _resolve_standalone_target(
     if candidate.exists():
         try:
             detection = detect_project_mode(candidate, std, config)
+        except ImportConflictError:
+            # ⚑ Another spelling of a registered box's identity is a NAMED thing to fix,
+            # never a miss; only a plain ``rm`` of the row at that spelling goes ahead.
+            literal_row = (None if purge else registry_store.standalone_name_for_root(
+                std.registry, Path(literal_path(candidate))))
+            if literal_row is None:
+                raise
+            return literal_row, Path(literal_path(candidate)), True
         except (LegacyWorksetIdentityError, DerivedBoxNameError, ConfigError):
             # ⚑ THE EXCEPTIONS THE BLANKET MISS MUST NOT EAT: an un-migrated workset root
             # in the walk, a standalone box whose directory has no ASCII spelling, or a
@@ -2651,6 +2664,16 @@ def _rm_standalone(std, box_name: str, root, args: argparse.Namespace, *,
               f"remove. To delete it:\n  kanibako box rm {shlex.quote(str(root))} --purge",
               file=sys.stderr)
         return 1
+    if args.purge and root is not None:
+        # ⚑ By NAME this door skips the resolver, so its refusal of another spelling of a
+        # registered box is repeated here: that purge deletes the other box's tree.  A
+        # plain ``rm`` only drops the row, which is the cure, so it is not refused.
+        from kanibako.project.import_reconcile import ImportConflictError, refuse_second_link
+        try:
+            refuse_second_link(std.registry, Path(root))
+        except ImportConflictError as e:
+            print(f"Error: {e}", file=sys.stderr)
+            return 1
     print(f"Removing standalone box: {box_name} ({root})")
     root_path = Path(root) if root is not None else None
     metadata_dir = (standalone_box_store(root_path, early=_early_scope(std, BoxMode.standalone))
@@ -2747,7 +2770,8 @@ def run_rm(args: argparse.Namespace) -> int:
 
     if name is None:
         # ⚑ STANDALONE boxes are not in the name index — resolve them separately.
-        sa_name, sa_root, sa_registered = _resolve_standalone_target(std, config, target)
+        sa_name, sa_root, sa_registered = _resolve_standalone_target(
+            std, config, target, purge=bool(args.purge))
         if sa_name is not None:
             parked = (registry_store.deregistered_standalone_for_dir(std.registry, sa_root)
                       if args.purge and not sa_registered and sa_root is not None else None)

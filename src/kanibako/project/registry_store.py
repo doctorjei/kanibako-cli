@@ -201,6 +201,53 @@ def _same_directory(a: str, b: str) -> bool:
         return False
 
 
+def _same_identity(a: str, b: str) -> bool:
+    """True when roots *a* and *b* are one directory or share one ``workset.yaml`` file.
+
+    ⚑ Keyed on the file, not the path: a link, a bind mount, or a hard-linked
+    ``workset.yaml`` is one identity file by another spelling.  A copy is not.
+    """
+    import os
+
+    from kanibako.settings.config import WORKSET_META_FILE
+
+    if _same_directory(a, b):
+        return True
+    try:
+        return os.path.samefile(os.path.join(a, WORKSET_META_FILE),
+                                os.path.join(b, WORKSET_META_FILE))
+    except OSError:
+        return False
+
+
+def standalone_identity_holder(registry: Path, root: Path) -> str | None:
+    """The registered standalone box at ANOTHER spelling of *root*'s identity, if any.
+
+    The row registered at *root* itself is never its own holder.  A REGISTERED *root*
+    whose own leaf is not a link keeps its identity against a holder whose leaf is:
+    that row is the second spelling, and *root* is the box.  ⚑ The LEAF only, so a
+    linked ancestor (``/home -> /var/home``) spells both alike and decides nothing.
+    """
+    target = str(root)
+    rows = load_standalone(registry)
+    keeps = not _leaf_is_link(target) and target in rows.values()
+    for name, root_str in rows.items():
+        if root_str == target or not _same_identity(root_str, target):
+            continue
+        if keeps and _leaf_is_link(root_str):
+            continue
+        return name
+    return None
+
+
+def _leaf_is_link(path: str) -> bool:
+    """True when *path*'s own last component is a link; its ancestors are not asked."""
+    import os
+
+    parent, leaf = os.path.split(path)
+    return os.path.realpath(path) != os.path.join(os.path.realpath(parent), leaf)
+
+
 def standalone_name_for_same_dir(registry: Path, root: Path) -> str | None:
     """Return the registered standalone box whose root is *root*'s directory, any spelling."""
     exact = standalone_name_for_root(registry, root)

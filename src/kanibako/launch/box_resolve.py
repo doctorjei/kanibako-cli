@@ -267,6 +267,32 @@ def standalone_box_name(box_root: Path, registered_name: str | None) -> str:
     return box_root.name
 
 
+def held_standalone_stores(registry: Path, own_root: Path) -> dict[str, str]:
+    """``{store name: root}`` for every OTHER registered standalone whose root holds a kuid.
+
+    The name is the one :func:`standalone_box_name` composes, so it is the snapshot store
+    that box owns; ``snapshots.adopt_standalone_store`` never moves one.  A root with no
+    valid kuid, an unreadable ``workset.yaml``, or a leaf with no ASCII spelling, holds
+    nothing.
+    """
+    from kanibako import kuid
+    from kanibako.launch import box_identity
+    from kanibako.settings.config import read_workset_kuid
+
+    held: dict[str, str] = {}
+    for name, root_str in registry_store.load_standalone(registry).items():
+        if root_str == str(own_root):
+            continue
+        root = Path(root_str)
+        try:
+            stored = read_workset_kuid(root / WORKSET_META_FILE)
+            if kuid.is_valid(stored):
+                held[box_identity.compose_standalone_name(stored, root)] = root_str
+        except (ConfigError, DerivedBoxNameError, OSError):
+            continue  # another box's broken root holds nothing; it is not this box's error
+    return held
+
+
 def resolve_box_identity(
     project_dir: Path,
     std: StandardPaths,

@@ -4054,9 +4054,13 @@ def _run_container(
                 and proj.vault_rw_path.is_dir()):
             from kanibako.snapshots import auto_snapshot, detect_snapshot_strategy
             strategy = detect_snapshot_strategy(proj.vault_rw_path)
+            held: dict[str, str] = {}
+            if proj.mode is BoxMode.standalone:
+                from kanibako.launch.box_resolve import held_standalone_stores
+                held = held_standalone_stores(std.registry, proj.metadata_path)
             snap = auto_snapshot(proj.vault_rw_path, box_name=proj.name,
                                strategy=strategy,
-                               store_exclusive=proj.mode is BoxMode.standalone)
+                               store_exclusive=proj.mode is BoxMode.standalone, held=held)
             if snap:
                 print(f"Vault snapshot: {snap.name}", file=sys.stderr)
 

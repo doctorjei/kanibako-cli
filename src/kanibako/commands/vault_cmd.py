@@ -109,7 +109,11 @@ def _add_vault_subcommands(p: argparse.ArgumentParser) -> None:
 
 
 def _resolve_vault_rw(project_dir: str | None):
-    """Resolve ``(share-rw path, box name, store-exclusive)``; the name keys the store."""
+    """Resolve ``(share-rw path, box name, store-exclusive, held stores)``; the name keys the store.
+
+    ⚑ The held stores are the ones other registered standalone boxes compose
+    (``box_resolve.held_standalone_stores``): a standalone never adopts one.
+    """
     config_file = user_config_file()
     config = load_config(config_file)
     std = load_std_paths(config)
@@ -122,7 +126,12 @@ def _resolve_vault_rw(project_dir: str | None):
         print("This workset sets workset.vault_rw to null — there is no vault "
               "directory to act on.", file=sys.stderr)
         return None
-    return (proj.vault_rw_path, proj.name, proj.mode is BoxMode.standalone)
+    exclusive = proj.mode is BoxMode.standalone
+    held: dict[str, str] = {}
+    if exclusive:
+        from kanibako.launch.box_resolve import held_standalone_stores
+        held = held_standalone_stores(std.registry, proj.metadata_path)
+    return (proj.vault_rw_path, proj.name, exclusive, held)
 
 
 def run_snapshot(args: argparse.Namespace) -> int:
@@ -130,9 +139,9 @@ def run_snapshot(args: argparse.Namespace) -> int:
     resolved = _resolve_vault_rw(project_dir)
     if resolved is None:
         return 1
-    vault_rw, box_name, exclusive = resolved
+    vault_rw, box_name, exclusive, held = resolved
 
-    snap = create_snapshot(vault_rw, box_name=box_name, store_exclusive=exclusive)
+    snap = create_snapshot(vault_rw, box_name=box_name, store_exclusive=exclusive, held=held)
     if snap is None:
         print("Nothing to snapshot (share-rw is empty or missing).", file=sys.stderr)
         return 0
@@ -146,11 +155,11 @@ def run_list(args: argparse.Namespace) -> int:
     resolved = _resolve_vault_rw(project_dir)
     if resolved is None:
         return 1
-    vault_rw, box_name, exclusive = resolved
+    vault_rw, box_name, exclusive, held = resolved
 
     quiet = getattr(args, "quiet", False)
 
-    migrate_legacy_versions(vault_rw, box_name=box_name, store_exclusive=exclusive)
+    migrate_legacy_versions(vault_rw, box_name=box_name, store_exclusive=exclusive, held=held)
 
     snaps = list_snapshots(vault_rw, box_name=box_name)
     if not snaps:
@@ -191,10 +200,10 @@ def run_restore(args: argparse.Namespace) -> int:
     resolved = _resolve_vault_rw(project_dir)
     if resolved is None:
         return 1
-    vault_rw, box_name, exclusive = resolved
+    vault_rw, box_name, exclusive, held = resolved
 
     # ⚑ Migrate first: ``known`` gates the prompt, and the move makes names visible.
-    migrate_legacy_versions(vault_rw, box_name=box_name, store_exclusive=exclusive)
+    migrate_legacy_versions(vault_rw, box_name=box_name, store_exclusive=exclusive, held=held)
 
     known = {
         name for name, _ts, _size in list_snapshots(vault_rw, box_name=box_name)
@@ -209,7 +218,7 @@ def run_restore(args: argparse.Namespace) -> int:
 
     try:
         restore_snapshot(
-            vault_rw, args.name, box_name=box_name, store_exclusive=exclusive
+            vault_rw, args.name, box_name=box_name, store_exclusive=exclusive, held=held,
         )
     except ForeignSnapshotError as e:
         print(f"Error: {e}", file=sys.stderr)
@@ -230,9 +239,9 @@ def run_prune(args: argparse.Namespace) -> int:
     resolved = _resolve_vault_rw(project_dir)
     if resolved is None:
         return 1
-    vault_rw, box_name, exclusive = resolved
+    vault_rw, box_name, exclusive, held = resolved
 
-    migrate_legacy_versions(vault_rw, box_name=box_name, store_exclusive=exclusive)
+    migrate_legacy_versions(vault_rw, box_name=box_name, store_exclusive=exclusive, held=held)
 
     doomed = snapshots_to_prune(vault_rw, args.keep, box_name=box_name)
     if doomed and not _confirm_destructive(

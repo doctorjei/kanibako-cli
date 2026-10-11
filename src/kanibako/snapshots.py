@@ -29,11 +29,13 @@ import re
 import shutil
 import stat
 import subprocess
+from collections.abc import Mapping
 from datetime import datetime, timezone
 from pathlib import Path
 
 from kanibako import kuid
 from kanibako.errors import KanibakoError
+from kanibako.identifiers import find_identifier
 from kanibako.log import get_logger
 from kanibako.tree_copy import copy_tree_keeping_links
 
@@ -211,7 +213,7 @@ def _migrate_flat_and_mark(
 
 def migrate_legacy_versions(
     vault_rw_path: Path, *, box_name: str, store_exclusive: bool = False,
-    create_base: bool = False,
+    create_base: bool = False, held: Mapping[str, str] | None = None,
 ) -> dict[str, list[str]]:
     """Split pre-per-box ``.versions/<timestamp>`` entries out of the SHARED base.
 
@@ -222,10 +224,11 @@ def migrate_legacy_versions(
     ``.unsorted/`` -- listed, never pruned.
 
     A standalone DIRECTORY RENAME is settled first: it is identity rather than a
-    legacy conversion, so it must run even on an already-marked base.
+    legacy conversion, so it must run even on an already-marked base.  *held* is
+    passed through to :func:`adopt_standalone_store`.
     """
     if store_exclusive:
-        adopt_standalone_store(vault_rw_path, box_name=box_name)
+        adopt_standalone_store(vault_rw_path, box_name=box_name, held=held)
     return _migrate_flat_and_mark(
         vault_rw_path, box_name=box_name, store_exclusive=store_exclusive,
         create_base=create_base,
@@ -380,7 +383,7 @@ def _unique_snapshot_name(store: Path, ts: str) -> str:
 
 def create_snapshot(
     vault_rw_path: Path, *, box_name: str, strategy: str = "hardlink",
-    store_exclusive: bool = False,
+    store_exclusive: bool = False, held: Mapping[str, str] | None = None,
 ) -> Path | None:
     """Create a directory snapshot of *vault_rw_path* in *box_name*'s own store.
 
@@ -401,7 +404,7 @@ def create_snapshot(
 
     migrate_legacy_versions(
         vault_rw_path, box_name=box_name, store_exclusive=store_exclusive,
-        create_base=True,
+        create_base=True, held=held,
     )
 
     store = _box_store(vault_rw_path, box_name)
@@ -474,7 +477,9 @@ def _find_snapshot_owner(vault_rw_path: Path, snapshot_name: str) -> str | None:
     return None
 
 
-def adopt_standalone_store(vault_rw_path: Path, *, box_name: str) -> Path | None:
+def adopt_standalone_store(
+    vault_rw_path: Path, *, box_name: str, held: Mapping[str, str] | None = None,
+) -> Path | None:
     """Give a renamed standalone box the store already sitting in its own tree.
 
     A standalone box's store is INSIDE its project tree, so a raw ``mv`` carries
@@ -484,6 +489,10 @@ def adopt_standalone_store(vault_rw_path: Path, *, box_name: str) -> Path | None
     from the box's own settings, not the directory -- so a store in this box's
     tree carrying this box's kuid is this box's store.  ⚑ More than one is
     coincidence, not rename, so nothing is guessed.
+
+    ⚑ *held* maps a store name to the root of ANOTHER box that composes it (the caller
+    knows the registry; this module does not).  That store is that box's, reached here
+    by another spelling of one tree, so it is never moved: a Note names the holder.
     """
     store = _box_store(vault_rw_path, box_name)
     if store.exists():
@@ -501,6 +510,11 @@ def adopt_standalone_store(vault_rw_path: Path, *, box_name: str) -> Path | None
         and entry.name.partition("_")[0].lower() == prefix.lower()
     ]
     if len(candidates) != 1:
+        return None
+    holder = find_identifier(candidates[0].name, held or {})
+    if holder is not None:
+        logger.warning("Note: snapshot store %s is the store of the box registered at %s; "
+                       "it is not adopted as %s.", candidates[0], (held or {})[holder], box_name)
         return None
     store.parent.mkdir(parents=True, exist_ok=True)
     shutil.move(str(candidates[0]), str(store))
@@ -564,7 +578,7 @@ def relocate_snapshot_store(
 
 def restore_snapshot(
     vault_rw_path: Path, snapshot_name: str, *, box_name: str,
-    store_exclusive: bool = False,
+    store_exclusive: bool = False, held: Mapping[str, str] | None = None,
 ) -> Path | None:
     """Restore *vault_rw_path* from *snapshot_name* in *box_name*'s own store.
 
@@ -584,7 +598,7 @@ def restore_snapshot(
     empty so there was nothing to preserve.
     """
     migrate_legacy_versions(
-        vault_rw_path, box_name=box_name, store_exclusive=store_exclusive
+        vault_rw_path, box_name=box_name, store_exclusive=store_exclusive, held=held,
     )
     store = _box_store(vault_rw_path, box_name)
     snapshot = _snapshot_child(store, snapshot_name)
@@ -612,7 +626,7 @@ def restore_snapshot(
         safety = create_snapshot(
             vault_rw_path, box_name=box_name,
             strategy=detect_snapshot_strategy(vault_rw_path),
-            store_exclusive=store_exclusive,
+            store_exclusive=store_exclusive, held=held,
         )
     except (subprocess.CalledProcessError, OSError) as exc:
         # ⚑ OSError too: the hardlink path's copy fallback raises it directly.
@@ -728,6 +742,7 @@ def auto_snapshot(
     strategy: str = "hardlink",
     max_keep: int = _DEFAULT_MAX_SNAPSHOTS,
     store_exclusive: bool = False,
+    held: Mapping[str, str] | None = None,
 ) -> Path | None:
     """Create a snapshot in *box_name*'s store and prune that store's old ones.
 
@@ -736,7 +751,7 @@ def auto_snapshot(
     """
     result = create_snapshot(
         vault_rw_path, box_name=box_name, strategy=strategy,
-        store_exclusive=store_exclusive,
+        store_exclusive=store_exclusive, held=held,
     )
     if result is not None:
         prune_snapshots(vault_rw_path, max_keep=max_keep, box_name=box_name)

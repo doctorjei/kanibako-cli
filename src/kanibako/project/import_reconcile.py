@@ -137,14 +137,21 @@ def _clear_stale_import(journal: Path | None, box_path: Path) -> None:
 # STANDALONE
 # ---------------------------------------------------------------------------
 
-def _refuse_second_link(registry: Path, root: Path) -> None:
-    """[R188]: a second link to a registered standalone root is refused, not a second box."""
-    owner = registry_store.standalone_name_for_same_dir(registry, root)
+def refuse_second_link(registry: Path, root: Path) -> None:
+    """[R188]: another spelling of a registered standalone's identity is refused, not a box.
+
+    A link, a bind mount, or a hard-linked ``workset.yaml`` alike
+    (:func:`~kanibako.project.registry_store.standalone_identity_holder`).
+    """
+    owner = registry_store.standalone_identity_holder(registry, root)
     if owner is not None:
         owner_root = registry_store.standalone_root(registry, owner)
+        mine = registry_store.standalone_name_for_root(registry, root)
+        drop = (f", or drop this registration with 'kanibako box rm {mine}'"
+                if mine is not None else "")
         raise ImportConflictError(
             f"{root} is another path to standalone box '{owner}', registered at "
-            f"{owner_root}; a standalone box has one path. Work from {owner_root}."
+            f"{owner_root}; a standalone box has one path. Work from {owner_root}{drop}."
         )
 
 
@@ -154,14 +161,14 @@ def check_standalone(
 ) -> None:
     """The resolver's pass over a standalone root at *root*: it never registers one.
 
-    A registered root gets its stale J2 entry cleared; an unregistered one is
-    refused only when it is a second link to a registered root ([R188]).
+    Another spelling of a registered root's identity is refused ([R188]), registered
+    or not, before anything is written; a registered root then gets its stale J2 entry
+    cleared.
     """
     root = Path(literal_path(root))
+    refuse_second_link(registry, root)
     if registry_store.standalone_name_for_root(registry, root) is not None:
         _clear_stale_import(journal, standalone_box_store(root, early=early))
-        return
-    _refuse_second_link(registry, root)
 
 
 def import_standalone(
@@ -200,7 +207,7 @@ def import_standalone(
         if journal_mod.pending_create(journal, store) is not None:
             return None
 
-    _refuse_second_link(registry, root)
+    refuse_second_link(registry, root)
 
     # ⚑ The LIVE name, by THE one naming rule; an unregistered box has no stored
     # registry name, so a pre-kuid box falls back to its leaf.

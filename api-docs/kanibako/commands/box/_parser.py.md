@@ -63,7 +63,7 @@ def _run_purge_plan(steps: list[_PurgeStep], std: StandardPaths) -> bool
 def _read_box_image(settings_file: Path) -> str | None
 def _read_box_image_tiered(box_tier: Path, workset_tier: Path) -> str | None
 def _purge_deregistered(std, name: str, entry: dict, args: argparse.Namespace, *, config) -> int
-def _resolve_standalone_target(std, config, target: str) -> tuple[str | None, Path | None, bool]
+def _resolve_standalone_target(std, config, target: str, *, purge: bool=True) -> tuple[str | None, Path | None, bool]
 def _refuse_purge_while_live(std, config, proj_target: str | None, metadata_dir: Path, force: bool, what: str, *, container_name: str | None=None) -> bool
 def _resolve_purge_probe_target(std, config, proj_target: str)
 def _parked_probe_container(name: str) -> str | None
