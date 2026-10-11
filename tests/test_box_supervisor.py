@@ -962,6 +962,89 @@ def test_run_forever_self_heal_policy_does_not_teardown_on_agent_exit():
 
 
 # ---------------------------------------------------------------------------
+# Box lifecycle: a clean exit with a client attached ends the box; a detached
+# box otherwise restarts an exited agent.
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize(
+    "cur, exit_code, expected",
+    [
+        (_TM, 0, ActionKind.END),
+        (_BOTH, 0, ActionKind.END),
+        (_TM, 7, ActionKind.SELF_HEAL),
+        (_TM, UNDETERMINED_AGENT_EXIT, ActionKind.SELF_HEAL),
+        (_TM, None, ActionKind.SELF_HEAL),
+        (_NONE, 0, ActionKind.SELF_HEAL),
+        (_VS, 0, ActionKind.SELF_HEAL),
+    ],
+)
+def test_decide_clean_exit_with_a_terminal_attached_ends(cur, exit_code, expected):
+    assert decide(_TM, cur, agent_alive=False, exit_code=exit_code).kind is expected
+
+
+def test_decide_live_agent_ignores_the_exit_code():
+    assert decide(_TM, _TM, agent_alive=True, exit_code=0).kind is ActionKind.NONE
+
+
+def _self_heal_box(display: list[str], states: list[AttachState]):
+    fake = FakeRun(rc={"has-session": 0}, stdout={"display-message": display})
+    sup = BoxSupervisor(_config(), run=fake)  # the detached (self-heal) policy
+    _script_snapshots(sup, states)
+    _stop_after(sup, 5)
+    restarts: list[int] = []
+    sup.restart_agent_session = (  # type: ignore[method-assign]
+        lambda: restarts.append(1) or True
+    )
+    return fake, sup, restarts
+
+
+def test_run_forever_detached_box_stops_on_a_clean_exit_with_a_terminal_attached():
+    # The user is attached to a detached box's agent and types `exit`: the pane is
+    # dead with status 0 and the terminal is still on it.  The box stops (rc 0);
+    # no second agent is started.
+    fake, sup, restarts = _self_heal_box(["", _dead(0)], [_TM, _TM])
+    assert sup.run_forever() == 0
+    assert restarts == []
+    assert fake.sub_calls("new-session") == []
+    assert sup._stop is False  # ended by the policy, not by the tick bound
+
+
+def test_run_forever_detached_box_restarts_a_crash_with_a_terminal_attached():
+    fake, sup, restarts = _self_heal_box(["", _dead(7), ""], [_TM, _TM, _TM])
+    sup.run_forever()
+    assert restarts == [1]
+
+
+def test_run_forever_detached_box_restarts_a_clean_exit_nobody_watched():
+    fake, sup, restarts = _self_heal_box(["", _dead(0), ""], [_NONE, _NONE, _NONE])
+    sup.run_forever()
+    assert restarts == [1]
+
+
+def test_run_forever_detached_clean_exit_keeps_the_box_for_a_panel_then_stops():
+    # The terminal user exits cleanly while a VS Code panel is attached: the box
+    # stays up agentless (no restart, even after the terminal leaves), then stops
+    # once the panel goes.
+    fake, sup, restarts = _self_heal_box(
+        ["", _dead(0)], [_BOTH, _BOTH, _VS, _VS, _NONE],
+    )
+    assert sup.run_forever() == 0
+    assert restarts == []
+    assert fake.sub_calls("new-session") == []
+    assert sup._stop is False
+
+
+def test_run_forever_ended_box_closes_with_rc_zero_after_its_session_vanished():
+    # The clean code is remembered: a session gone by the closing tick does not turn
+    # the user's clean exit into an undetermined (non-zero) one.
+    fake, sup, restarts = _self_heal_box(["", _dead(0)], [_BOTH, _BOTH, _VS, _NONE])
+    fake._rc["has-session"] = [0, 0, 1]
+    assert sup.run_forever() == 0
+    assert restarts == []
+    assert sup._stop is False
+
+
+# ---------------------------------------------------------------------------
 # surface-aware teardown (E2e) — CLI↔panel ref-count (principle B / FF-8).
 # ---------------------------------------------------------------------------
 

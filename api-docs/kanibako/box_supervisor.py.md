@@ -49,7 +49,7 @@ def agent_session_verdict(argv: Iterable[str], heads: set[tuple[str, str | None]
 def scan_marker_pids(markers_dir: str, *, list_pids: _MarkersLister, pid_alive: _PidAlive, is_agent: _AgentCheck | None=None, remove: _MarkerRemover | None=None) -> tuple[set[int], set[int]]
 def newcomer_pids(live_pids: set[int], own_pids: set[int]) -> set[int]
 def agent_exit_code(death: str) -> int
-def decide(prev_state: AttachState, cur_state: AttachState, agent_alive: bool) -> SupervisorAction
+def decide(prev_state: AttachState, cur_state: AttachState, agent_alive: bool, exit_code: int | None=None) -> SupervisorAction
 def decide_panel(tmux_alive: bool, panel: PanelAgentState, vscode_server: bool, any_attached: bool, seen_surface: bool) -> PanelAction
 def decide_directives(manifest: object, seed: str, dest: str, probe: Mapping[str, str | None]) -> DirectiveVerdict
 def config_from_argv(argv: list[str]) -> SupervisorConfig
@@ -101,6 +101,7 @@ class SupervisorConfig:
 class ActionKind(Enum):
     NONE = 'none'
     SELF_HEAL = 'self_heal'
+    END = 'end'
 
 @dataclass(frozen=True)
 class SupervisorAction:
