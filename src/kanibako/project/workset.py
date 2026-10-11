@@ -856,7 +856,8 @@ def _symlink_loop(path: Path) -> bool:
 
 
 def _resolved_unless_loop(path: Path) -> Path:
-    """*path* resolved, or only made absolute on a loop, for ``_validate`` to refuse."""
+    """*path* resolved, or only made absolute when it runs through a symlink loop, so a caller can
+    name the loop instead of crashing."""
     return path.absolute() if _symlink_loop(path) else path.resolve()
 
 

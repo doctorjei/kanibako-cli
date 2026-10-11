@@ -1115,8 +1115,8 @@ caches).  A settings table left in a `.cfg` file is an error that names it.
 ## Helper Spawning
 
 Kanibako containers can spawn child instances for parallel workloads.
-Each child gets its own directory tree, peer communication channels,
-and spawn budget. Helpers are enabled by default -- the host runs a
+Each child gets its own directory tree and spawn budget; messages to
+siblings go through the hub. Helpers are enabled by default -- the host runs a
 Unix socket hub alongside the director container, and helpers connect
 to it for orchestration and messaging. Only an ephemeral start
 (`kanibako start --ephemeral`) runs the hub; in a persistent box,

@@ -86,7 +86,7 @@ def add_helper_subparsers(p: argparse.ArgumentParser) -> None:
     cleanup_p = ss.add_parser(
         "cleanup",
         help="Stop and remove a helper",
-        description="Stop a helper and remove its directory structure and peer channels.",
+        description="Stop a helper and remove its directory structure.",
     )
     cleanup_p.add_argument("number", type=int, help="Helper number to clean up")
     cleanup_p.add_argument(

@@ -7280,9 +7280,9 @@ column, `box helper spawn` no longer prints `peers:`, and a helper's `state.json
 `peers` entry.
 
 **What to do.** Send a sibling a message through the hub: `kanibako box helper send N "..."`. To
-share files with every helper, use the broadcast directory, `~/all/` in a helper. A `~/helpers/channels/`
-or `~/helpers/<N>/peers/` left by an older spawn is unused; delete it, or let `box helper cleanup N`
-remove the helper's tree.
+share files with every helper, use the broadcast directory, `~/all/` in a helper. A
+`~/helpers/<N>/peers/` left by an older spawn goes when `box helper cleanup N` removes that helper's own
+tree. Cleanup does not touch `~/helpers/channels/`; delete a leftover one by hand.
 
 ---
 

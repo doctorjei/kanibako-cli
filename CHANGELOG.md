@@ -12,6 +12,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **A detached box now stops when the attached user exits the agent cleanly.** A crash, or an exit with nobody
+  attached, still restarts the agent.
+
 - **Your image-baseline overlay is read from `<config.data>/global/image-baseline.yaml`.** It follows a
   `config.data` repoint; `~/.config/kanibako/image-baseline.yaml` is no longer read, and `kanibako rig diagnose`
   names a file left there and where to move it. See `MIGRATION.md`, "Your image-baseline overlay moved to
