@@ -308,7 +308,7 @@ never acceptable on *any* plugin, shipped or third-party: an opinionated `model`
 default.  Kanibako imposes no model — set none (`default=UNSET`, from
 `kanibako.settings.settings_resolve`, or no `default:` in YAML) so `model`
 inherits `agent.default.model` and the harness picks its own unless the user
-names one, exactly as codex, claude and goose all do.  A `None` there would
+names one, exactly as codex, claude, and goose all do.  A `None` there would
 shadow a user's `agent.default.model`.
 
 For agents whose host config or auth files mix portable and non-portable
@@ -325,7 +325,7 @@ box's non-credential config comes from the agent's curated template
 `name` is the short machine-readable identifier (`"codex"`, `"goose"`), used in
 configuration (`pref.system.agent=codex`) and entry-point registration; it must be
 unique, and it must not be `default` or `shell`.  Those two are the
-pseudo-agent names, reserved by the keyspec to any agent, persona or harness; a
+pseudo-agent names, reserved by the keyspec to any agent, persona, or harness; a
 target claiming either is **skipped at discovery** with a warning to stderr, so
 the plugin simply never registers rather than failing at install time.
 `display_name` is the human-readable name shown in status output.
@@ -416,7 +416,7 @@ rather than repoint it, a user present-`null`s that destination inside the value
 
 **Prefer the defaults file to Python.**  The shipped plugins declare `common:`
 and `env:` in their `<agent>-defaults.yaml` and read them with the loaders, which
-apply the rooting, the `$GUEST_HOME` expansion, the destination normalization
+apply the rooting, the `$GUEST_HOME` expansion, the destination normalization,
 and — for `env:` — the closed-keyspace check for you:
 
 ```python
@@ -492,7 +492,7 @@ def setting_descriptors(self) -> list[TargetSetting]:
 wrong choice for this example: it is one of the names core already declares.)
 
 > **A key you declare here is a key on YOUR agent, and on no other.**  kanibako itself
-> declares the universal vocabulary — `model`, `access`, `endpoint`, `transform` and the
+> declares the universal vocabulary — `model`, `access`, `endpoint`, `transform`, and the
 > rest — which is a key on every agent.  Anything you add is reachable only as
 > `agent.<your-agent>.<key>`, never as `agent.default.<key>` and never under another
 > plugin's agent.  Where your plugin is not installed, your keys are *conceded* rather

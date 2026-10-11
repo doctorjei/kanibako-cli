@@ -43,7 +43,7 @@ string, default empty). Every job self-gates:
 | `images-verify` | push of a **bare** `v<ver>` tag | Requires all four rc images for this commit to exist and to carry its revision label. Writes nothing. |
 | `tests-gate` | push of a **bare** `v<ver>` tag | Waits for the **Tests** run on the tag's SHA and requires every required job to have succeeded. Writes nothing. |
 | `promote` | push of a **bare** `v<ver>` tag (no `-rc`), after `tests-gate` | Builds and publishes all five packages to **prod PyPI** (OIDC) and publishes the GitHub release, deleting the rc draft. |
-| `images-promote` | push of a **bare** `v<ver>` tag, after `tests-gate` and `images-verify` | Copies the verified rc images **by digest** to `:<ver>`, `:latest` and `:edge`. No rebuild. |
+| `images-promote` | push of a **bare** `v<ver>` tag, after `tests-gate` and `images-verify` | Copies the verified rc images **by digest** to `:<ver>`, `:latest`, and `:edge`. No rebuild. |
 | `publish-agent` | **manual dispatch** with `agent=agent-goose\|agent-codex` | Builds and publishes that one agent package at its static version. |
 
 The three `images-*` jobs call `.github/workflows/images.yml`, and every one of
@@ -191,7 +191,7 @@ git push origin main && git push origin v1.8.0-rc1
 ```
 
 This fires `rc-pypi-check` + `rc-release` (build, `twine check`, draft
-prerelease), `images-rc` (publishes the `:1.8.0-rc1` images to GHCR) and the
+prerelease), `images-rc` (publishes the `:1.8.0-rc1` images to GHCR), and the
 **Tests** workflow, including `e2e`. Nothing is uploaded to PyPI.
 
 ### 3.3 Confirm the tag's Tests run is GREEN
@@ -236,7 +236,7 @@ gh workflow run release.yml --ref v1.8.0-rc1 -f publish=true
 - The dispatch **ref** decides the version: an rc tag `v<X.Y.Z>-rc<N>` builds
   the PEP 440 pre-release `<X.Y.Z>rc<N>` — never the bare `<X.Y.Z>`, which is
   reserved for the gated prod promote.
-- `kanibako-cli`, `kanibako-agent-claude` and `kanibako` (meta) are stamped to
+- `kanibako-cli`, `kanibako-agent-claude`, and `kanibako` (meta) are stamped to
   `<X.Y.Z>rc<N>`; `kanibako-agent-goose` and `kanibako-agent-codex` are built
   and published **unstamped**, at their own static versions, with
   `skip-existing`.
@@ -292,7 +292,7 @@ The images are not exposed to this: they bundle the tree's own wheel, never a
 PyPI download.
 
 *Proven on `v1.8.0-rc1` (2026-08-01): tag pushed, Tests confirmed green by
-hand, publish dispatched on the tag — `kanibako-cli`, `kanibako-agent-claude`
+hand, publish dispatched on the tag — `kanibako-cli`, `kanibako-agent-claude`,
 and `kanibako` went out as `1.8.0rc1` pre-releases, while
 `kanibako-agent-goose` and `kanibako-agent-codex` published unstamped at
 `0.3.0`.*
@@ -343,8 +343,8 @@ wait on each other.
 
 **The shared gate, `tests-gate`: GREEN Tests for this exact commit.** It polls
 the **Tests** workflow run for the tag's SHA (30s interval, 45-minute deadline)
-until it completes, then requires `test`, `conformance`, `integration` **and**
-`e2e` to each report `conclusion == success`. A missing, skipped or renamed
+until it completes, then requires `test`, `conformance`, `integration`, **and**
+`e2e` to each report `conclusion == success`. A missing, skipped, or renamed
 required job counts as a failure — the gate is fail-safe by design, because both
 workflows fire independently on the tag and a red Tests job would otherwise not
 block a prod publish. Both `promote` and `images-promote` need it.
@@ -384,7 +384,7 @@ after `tests-gate`:
    matching `v<ver>-rc*` draft prereleases.
 
 Once `tests-gate` and `images-verify` both succeed, `images-promote` verifies
-the rc images again and copies them by digest to `:1.8.0`, `:latest` and
+the rc images again and copies them by digest to `:1.8.0`, `:latest`, and
 `:edge`. It does not wait for `promote`, so `:latest` can lead PyPI: for
 minutes on every release (a digest copy beats a build plus PyPI's index lag),
 and until the PyPI publish is fixed if it fails. The image bundles its own
@@ -393,7 +393,7 @@ re-run `promote`.
 
 ### 4.3 Verify + broadcast
 
-- Prod PyPI shows `<ver>` for `kanibako-cli`, `kanibako-agent-claude` and
+- Prod PyPI shows `<ver>` for `kanibako-cli`, `kanibako-agent-claude`, and
   `kanibako`, and the agent packages at their own versions:
 
   ```bash
@@ -487,7 +487,7 @@ the images build only on a release tag or a manual dispatch.
   `images-verify`, and its own call re-checks that all four rc images exist and
   carry the release commit's revision label before it copies anything.
 - **Image-only changes ride a cli release.** A droste base bump, a
-  Containerfile fix or a security rebuild ships with the next cli release, or
+  Containerfile fix, or a security rebuild ships with the next cli release, or
   with a patch release cut for it. There is no image-only release path.
 - **Never re-tag in place.** `images-rc` refuses to overwrite an existing rc
   tag, so a broken rc image means cutting the next rc. `images-promote` is an
@@ -542,7 +542,7 @@ have no part in any publish or promote step.
 ## 8. Discipline rules
 
 - **Never push the rc tag and the release tag back-to-back.** The point of the
-  rc is to be published, soaked and confirmed green *before* the same commit is
+  rc is to be published, soaked, and confirmed green *before* the same commit is
   promoted. `release-rc.sh` never pushes for you precisely so you control the
   timing.
 - **Confirm Tests green before dispatching an rc publish.** The rc path has no
@@ -605,7 +605,7 @@ secret is required** in this repo.
 The image jobs push with the same built-in `GITHUB_TOKEN` (job-level
 `packages: write`), which reaches a GHCR package only if the package grants
 this repo access. For **each** of `kanibako-min`, `kanibako-oci`,
-`kanibako-lxc` and `kanibako-vm`: open the package on GitHub → **Package
+`kanibako-lxc`, and `kanibako-vm`: open the package on GitHub → **Package
 settings** → **Manage Actions access** → add the `kanibako-cli` repository with
 the **Write** role, or **Admin** if `images-prune-tags.yml` is to delete
 versions. Without it, the first image push fails with a 403. This must be done
