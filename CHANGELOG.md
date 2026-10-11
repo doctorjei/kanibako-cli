@@ -12,6 +12,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **A new claude box no longer adds a `Claude-Session` trailer.** The seeded `~/.claude/settings.json` sets
+  `attribution.sessionUrl` to `false`, so commits and PRs made from a Remote Control session carry no session
+  link. An existing box keeps its file; see `MIGRATION.md`, "A new claude box turns off the session-link
+  trailer".
+
 - **A detached box now stops when the attached user exits the agent cleanly.** A crash, or an exit with nobody
   attached, still restarts the agent.
 

@@ -1,4 +1,4 @@
-"""What the SEEDED claude template may declare about the MODEL — which is nothing.
+"""What the SEEDED claude template may declare: no MODEL, and no attribution.
 
 WHY THIS MODULE EXISTS
 ----------------------
@@ -38,4 +38,14 @@ def test_shipped_seed_declares_no_model():
         f"({settings['model']!r}); the box's model is resolved through "
         "agent.<node>.model and delivered at launch, so any literal here either goes "
         "stale or silently overrides the cascade"
+    )
+
+
+def test_shipped_seed_turns_off_every_attribution():
+    """No AI trailer or link from a seeded box: ``commit`` and ``pr`` are empty, and
+    ``sessionUrl`` is ``false`` — its default ``true`` appends a ``Claude-Session``
+    trailer to commits made from a Remote Control session."""
+    attribution = shipped_settings().get("attribution")
+    assert attribution == {"commit": "", "pr": "", "sessionUrl": False}, (
+        f"the shipped claude seed's attribution block is {attribution!r}"
     )

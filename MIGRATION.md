@@ -7295,6 +7295,21 @@ share files with every helper, use the broadcast directory, `~/all/` in a helper
 `~/helpers/<N>/peers/` left by an older spawn goes when `box helper cleanup N` removes that helper's own
 tree. Cleanup does not touch `~/helpers/channels/`; delete a leftover one by hand.
 
+### A new claude box turns off the session-link trailer
+
+A claude box created by this version seeds `"sessionUrl": false` in `~/.claude/settings.json`, beside
+the empty `commit` and `pr`, so a commit or PR made from a Remote Control session carries no
+`Claude-Session` trailer or link. The seed is written once, at create, so an existing box keeps its
+own file. Add the line to its `attribution` block by hand:
+
+```json
+"attribution": {
+  "commit": "",
+  "pr": "",
+  "sessionUrl": false
+}
+```
+
 ---
 
 ## 3. For plugin authors
