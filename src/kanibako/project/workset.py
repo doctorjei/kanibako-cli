@@ -1094,11 +1094,14 @@ def _journal_connect(
 ):
     """Bracket a ``connect`` register with a J2 write-ahead journal entry (no seed step).
 
-    ⚑ A REFUSAL clears it too (``WorksetError``, or the registry's ``ProjectError``): both
-    fire before the membership write.  Any other raise leaves it, as a crash would.
+    Yields the ``rollback`` tally to hand ``add_project``.  ⚑ A REFUSAL clears the entry
+    too (``WorksetError``, or the registry's ``ProjectError``): both fire before the
+    membership write.  So does an ``OSError`` whose rollback finished, which leaves nothing
+    to complete.  Any other raise, or a rollback that failed, leaves it, as a crash would.
     """
+    rollback = _Unwind()
     if journal is None:
-        yield
+        yield rollback
         return
     from kanibako.launch import journal as journal_mod
 
@@ -1107,9 +1110,13 @@ def _journal_connect(
         workset=workset, workspace=workspace,
     )
     try:
-        yield
+        yield rollback
     except (WorksetError, ProjectError):
         journal_mod.clear_entry(journal, box_path)
+        raise
+    except OSError:
+        if not rollback.failed:
+            journal_mod.clear_entry(journal, box_path)
         raise
     journal_mod.clear_entry(journal, box_path)
 
@@ -2050,6 +2057,7 @@ def add_project(
     noun: str | None = None,
     outer: _Unwind | None = None,
     outer_row: tuple[str, str] | None = None,
+    rollback: _Unwind | None = None,
 ) -> WorksetProject:
     """Add a project to a workset; an EXTERNAL *source_path* (with *std*) is CONNECTED instead.
 
@@ -2063,7 +2071,9 @@ def add_project(
     leaves itself (``_unwind_target_member``), so this call does not; a *restoring* call's
     outer has no such step, so there this call removes what it created.  *outer_row* is
     the standalone ``(name, root)`` row *outer* re-registers; a forced absorb of that row
-    leaves its restore to *outer*, so a failed re-register is named once.
+    leaves its restore to *outer*, so a failed re-register is named once.  *rollback*
+    only counts this call's failed undo steps, so a caller can tell a clean failure from a
+    partial one.
     """
     # ⚑ Case-blind (§0): the registry write treats ``Proj`` as member ``proj`` and
     # replaces its row, orphaning ``proj``'s store.
@@ -2219,10 +2229,11 @@ def add_project(
         unwind.push(lambda: _detach_project(ws, name))
     except BaseException as exc:
         unwind.run()
-        if outer is not None:
-            outer.failed += unwind.failed
-            outer.errors += unwind.errors
-        elif unwind.failed and noun is not None:
+        for tally in (outer, rollback):
+            if tally is not None:
+                tally.failed += unwind.failed
+                tally.errors += unwind.errors
+        if outer is None and unwind.failed and noun is not None:
             _note_unwind_incomplete(
                 noun, f"check '{name}' in workset '{ws.name}' at {ws.root}",
                 unwind.errors, interrupted=isinstance(exc, KeyboardInterrupt))

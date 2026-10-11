@@ -87,7 +87,7 @@ def delete_workset(name: str, std: StandardPaths, *, remove_files: bool=False) -
 def source_in_tree(ws: Workset, source_path: Path) -> bool
 def is_in_tree_workspace(ws: Workset, path: Path) -> bool
 def refuse_existing_box(source: Path, std: StandardPaths, *, force: bool=False) -> None
-def add_project(ws: Workset, name: str, source_path: Path, std: StandardPaths | None=None, force: bool=False, *, restoring: bool=False, noun: str | None=None, outer: _Unwind | None=None, outer_row: tuple[str, str] | None=None) -> WorksetProject
+def add_project(ws: Workset, name: str, source_path: Path, std: StandardPaths | None=None, force: bool=False, *, restoring: bool=False, noun: str | None=None, outer: _Unwind | None=None, outer_row: tuple[str, str] | None=None, rollback: _Unwind | None=None) -> WorksetProject
 def refuse_case_variant_store(ws: Workset, name: str, std: StandardPaths) -> None
 def ensure_discoverability_link(ws: Workset, name: str, target: Path) -> Path | None
 def release_project(ws: Workset, name: str, *, keep_link: bool=False) -> WorksetProject

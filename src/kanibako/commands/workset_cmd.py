@@ -707,9 +707,9 @@ def run_connect(args: argparse.Namespace) -> int:
             std.journal, ws.projects_dir / project_name,
             name=project_name, workset=ws.name,
             workspace=literal_path(source),
-        ):
+        ) as rollback:
             proj = add_project(ws, project_name, source, std, force=args.force,
-                               noun="workset connect")
+                               noun="workset connect", rollback=rollback)
     except WorksetError as e:
         print(f"Error: {e}", file=sys.stderr)
         return 1

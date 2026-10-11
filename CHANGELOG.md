@@ -723,6 +723,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A failed `workset connect` no longer leaves an interrupted connect behind.** When the connect failed on a
+  disk error and undid its own work, `system diagnose` still reported an interrupted connect that nothing would
+  finish. It now does so only when the undo itself failed.
 - **`box remap` onto another standalone box's root is refused.** It recorded the remapped box there and
   silently dropped the standalone box's registry row, or, for a standalone source, left two boxes at one root.
   It now refuses before writing anything, with or without `--force`, names the other box, and prints the two

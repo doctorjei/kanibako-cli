@@ -441,6 +441,39 @@ class TestConnectJournal:
         # Entry LEFT (the membership write never completed).
         assert journal.pending_import(std.journal, box_key) is not None
 
+    @pytest.mark.parametrize("undo_fails", [False, True])
+    def test_connect_oserror_entry_follows_rollback(
+        self, config_file, tmp_home, capsys, monkeypatch, undo_fails,
+    ):
+        """An OSError the command reports clears the entry when the rollback finished,
+        and leaves it when a rollback step failed (something is left to complete)."""
+        from kanibako.commands.workset_cmd import run_connect
+        from kanibako.project import workset as workset_mod
+        from kanibako.settings.config import load_config
+        from kanibako.settings.paths import load_std_paths
+        from kanibako.settings import paths as paths_mod
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        create_workset("cjws4", tmp_home / "cj_ws4", std)
+        src = tmp_home / "cj_src4"
+        src.mkdir()
+        box_key = str(tmp_home / "cj_ws4" / "boxes" / "cjproj4")
+
+        def disk_full(*a, **k):
+            raise OSError(28, "No space left on device")
+
+        monkeypatch.setattr(paths_mod, "_register_workset_box_membership", disk_full)
+        if undo_fails:
+            monkeypatch.setattr(workset_mod, "_unwind_created_root", lambda *a, **k: False)
+
+        rc = run_connect(_connect_args("cjws4", src, "cjproj4"))
+
+        assert rc == 1
+        assert "No space left on device" in capsys.readouterr().err
+        pending = journal.pending_import(std.journal, box_key)
+        assert (pending is not None) is undo_fails
+
 
 class TestConnectSelfHealOnResolve:
     """FIX 1: a stale ``connect`` entry on an already-MEMBER box self-heals when
