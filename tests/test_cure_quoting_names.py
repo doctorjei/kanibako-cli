@@ -1220,3 +1220,67 @@ def test_the_unresolved_purge_stop_cure_names_its_box(target, std, config, tmp_h
     found = re.search(r"Stop the box first: (kanibako stop .*?), or pass --force", err)
     assert found, err
     _assert_inert(found.group(1), ["stop", target], tmp_path)
+
+
+def _three_boxes(std, config, tmp_home):
+    """A primary ``bar``, a named member ``wsx/bar``, and a standalone rooted at ``my proj``."""
+    from kanibako.project.workset import add_project, create_workset
+    from kanibako.settings.paths import (
+        WorksetSpec, establish_standalone, resolve_box_target, resolve_project,
+        resolve_workset_project)
+
+    primary_src = tmp_home / "bar"
+    primary_src.mkdir()
+    primary = resolve_project(std, config, str(primary_src), initialize=True,
+                              name_override="bar")
+    ws = create_workset("wsx", tmp_home / "worksets" / "wsx", std)
+    member_src = tmp_home / "wsx-src"
+    member_src.mkdir()
+    add_project(ws, "bar", member_src)
+    member = resolve_workset_project(WorksetSpec.from_workset(ws), "bar", std, config,
+                                     initialize=True)
+    root = tmp_home / "my proj"
+    root.mkdir()
+    establish_standalone(std, root, enable_vault=False)
+    standalone = resolve_box_target(std, config, str(root), initialize=False)
+    return {"primary": primary, "named": member, "standalone": standalone}
+
+
+@pytest.mark.parametrize("kind", ["primary", "named", "standalone"])
+def test_the_running_box_stop_cure_resolves_its_box_from_anywhere(
+        kind, std, config, tmp_home, credentials_dir, tmp_path, monkeypatch, capsys):
+    """``abort_if_box_running``'s stop cure names *proj* by a ref that resolves from ``~``.
+
+    A primary ``bar`` and a named ``wsx/bar`` share a leaf name, so a ref that drops the
+    workset lands on the wrong box; the standalone root has a space in it.
+    """
+    from kanibako.commands.box import _parser as P
+    from kanibako.commands.box._lifecycle import abort_if_box_running
+    from kanibako.settings.paths import resolve_box_target
+
+    proj = _three_boxes(std, config, tmp_home)[kind]
+    monkeypatch.setattr(P, "_check_container_running",
+                        lambda proj, fail_closed=True, container_name=None: (True, "running"))
+    capsys.readouterr()
+    assert abort_if_box_running(proj, tmp_path / ".kanibako.lock", False, "It would hurt.")
+    err = capsys.readouterr().err
+    found = re.search(r"Stop the box first: (kanibako stop .*?), or pass --force", err)
+    assert found, err
+    argv = shlex.split(found.group(1))
+    assert len(argv) == 3, argv
+
+    outside = tmp_home / "outside"
+    outside.mkdir()
+    monkeypatch.chdir(outside)
+    landed = resolve_box_target(std, config, argv[2], initialize=False)
+    assert landed.metadata_path == proj.metadata_path, (argv, landed.metadata_path)
+
+
+def test_a_box_with_no_paths_keeps_the_bare_stop_cure(tmp_path, capsys):
+    """With no *proj* there is no ref; the lock file alone answers, and the cure is bare."""
+    from kanibako.commands.box._lifecycle import abort_if_box_running
+
+    lock = tmp_path / ".kanibako.lock"
+    lock.write_text("")
+    assert abort_if_box_running(None, lock, False, "It would hurt.")
+    assert "Stop the box first (kanibako stop), or pass --force." in capsys.readouterr().err
