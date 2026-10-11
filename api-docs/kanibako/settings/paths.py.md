@@ -56,6 +56,7 @@ def resolve_cache_path(*, config_home: Path | None=None, data_home: Path | None=
 def load_std_paths(config: BootstrapConfig | None=None, *, tolerate_bad_settings: bool=False) -> StandardPaths
 def resolve_project(std: StandardPaths, config: BootstrapConfig, project_dir: str | None=None, *, initialize: bool=False, enable_vault: bool | None=None, name_override: str | None=None, register: bool=True) -> ProjectPaths
 def helper_log_path(std: StandardPaths, proj: ProjectPaths) -> Path | None
+def helper_budget_path(proj: ProjectPaths) -> Path
 def creds_watcher_log_path(std: StandardPaths, proj: ProjectPaths) -> Path | None
 def box_log_files(logs_dir: Path, box: str) -> BoxLogFiles
 def box_logs_to_remove(logs_dir: Path | None, box: str, *, keep: Iterable[Path]=()) -> list[Path]

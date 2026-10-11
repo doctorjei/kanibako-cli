@@ -1170,7 +1170,10 @@ content. View the conversation in real-time with `kanibako box helper log --foll
 **Spawn budget:** Each helper gets a depth/breadth budget controlling
 how many levels deep it can spawn and how many siblings are allowed.
 Depth decrements with each level. The budget is written as a read-only
-config (`spawn.yaml`) inside the child, enforced at spawn time.
+config (`spawn.yaml`) inside each box, enforced at spawn time.
+The host budget is the keys `system.helpers.depth` and `system.helpers.breadth`
+(default 4 each; `-1` is unlimited). Set them host-wide with
+`kanibako system set system.helpers.depth=2`.
 
 **Peer channels:** Helpers communicate through shared directories.
 Each pair of siblings gets three channels (A-reads, B-reads, shared-rw).

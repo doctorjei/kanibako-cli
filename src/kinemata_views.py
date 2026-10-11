@@ -424,15 +424,17 @@ def guest_bind_arm(binds: Any, arm: str) -> list[tuple[str, tuple[str, ...]]]:
 
 def sentinel_helper_binds() -> Any:
     """`core_defaults.helper_default_categories` fed the socket `helper_socket_path`
-    names for a NAMED sentinel box, under a run dir spelled `{system.runtime}`.
+    names (plus the log and the spawn budget) for a NAMED sentinel box, under a run
+    dir spelled `{system.runtime}`.
 
     The box and workset names are the braced refs the socket cell embeds
-    (`{meta.box.name}`, `{meta.workset.name}`). Both sources are created, because
+    (`{meta.box.name}`, `{meta.workset.name}`). All three sources are created, because
     the emitter binds only a source that exists, and they are created RELATIVE to
     the working directory -- so the caller runs this in a scratch cwd.
     """
     from pathlib import Path
 
+    from kanibako.channels.helpers import SPAWN_CONFIG_FILENAME
     from kanibako.commands.start import helper_socket_path
     from kanibako.settings.core_defaults import helper_default_categories
 
@@ -447,7 +449,11 @@ def sentinel_helper_binds() -> Any:
     socket.touch()
     log = Path("helpers.jsonl")
     log.touch()
-    return helper_default_categories(socket_path=socket, log_path=log)
+    budget = Path(SPAWN_CONFIG_FILENAME)
+    budget.touch()
+    return helper_default_categories(
+        socket_path=socket, log_path=log, budget_path=budget,
+    )
 
 
 def box_address_floor(mode: str) -> dict[str, Any]:

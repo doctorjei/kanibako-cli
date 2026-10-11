@@ -19,6 +19,7 @@ if TYPE_CHECKING:
     from kanibako.settings.agent_select import AgentSelection
     from kanibako.persona_store import PersonaBundle
     from kanibako.settings.config import BootstrapConfig, KanibakoConfig
+    from kanibako.channels.helpers import SpawnBudget
     from kanibako.settings.keystore import KeyStore
     from kanibako.settings.paths import ProjectPaths, StandardPaths
     from kanibako.settings.settings_launch import AuthSource
@@ -46,6 +47,7 @@ from kanibako.settings.config import (
     load_config,
     persist_creation_flags,
     read_system_agent,
+    system_helpers_leaf_int,
 )
 from kanibako.settings.settings_launch import load_merged_config
 from kanibako.settings import core_defaults
@@ -2659,7 +2661,8 @@ def _start_helper_hub(
 ):
     """Start the helper hub + append its mounts; return the started ``HelperHub``.
 
-    SIDE EFFECT: extends the caller's ``extra_mounts`` list IN PLACE.
+    SIDE EFFECT: extends the caller's ``extra_mounts`` list IN PLACE.  The spawn-budget
+    bind is NOT this hub's: every start delivers it (:func:`_deliver_spawn_budget`).
     """
     from kanibako.channels.helper_listener import HelperContext, HelperHub, MessageLog
 
@@ -2776,6 +2779,79 @@ def _start_helper_hub(
     )
     extra_mounts.extend(helper_hub_mounts)
     return hub
+
+
+def _deliver_spawn_budget(
+    *,
+    std,
+    proj,
+    snapshot: "KeyStore",
+    agent_id,
+    system_settings_path,
+    agent_cfg_path,
+    auth_src,
+    extra_mounts,
+    selection_level,
+) -> None:
+    """Write the box's resolved spawn budget and bind it ro at ``~/spawn.yaml``.
+
+    Spec §2c ``box.bindings.ro[~/spawn.yaml] | ({meta.box.path}/spawn.yaml)`` and the
+    companion's "The spawn-budget bind": EACH start writes the budget, hub or not — a
+    persistent start runs no hub, yet its in-box ``box helper spawn`` reads the same
+    document.  ⚑ THE ONE WRITE SITE for a director's document; a helper's copy is its
+    parent's (``helper_cmd.run_spawn``).  A malformed host value stops the start here.
+
+    The document is written BEFORE the resolve: the row's ``.exists()`` gate reads it.
+    It sits outside the home and in no cascade tier, so nothing is re-seeded or
+    persisted.  SIDE EFFECT: extends the caller's ``extra_mounts`` list IN PLACE.
+    """
+    from kanibako.channels.helpers import write_spawn_budget
+    from kanibako.settings.paths import helper_budget_path
+
+    budget_path = helper_budget_path(proj)
+    write_spawn_budget(budget_path, _spawn_budget_of(snapshot, system_settings_path))
+    # Late, NARROW resolve carrying ONLY the declared ``helper_budget`` row
+    # (no *socket_path* ⇒ no hub rows), emitting only that row's dest.
+    _budget_snap, _budget_deliveries = _resolve_launch_snapshot(
+        std=std,
+        proj=proj,
+        agent_name=agent_id,
+        system_settings_path=system_settings_path,
+        agent_cfg_path=agent_cfg_path,
+        desc=None,
+        install=None,
+        target=None,
+        budget_path=budget_path,
+        deliver_creds=auth_src.creds_shared,
+        include_base_families=False,
+        # The SELECTION only: every resolve folds the auth chain (P8 — no flag).
+        cli_level=selection_level,
+        narrow_bind_dests=core_defaults.spawn_budget_bind_dests(),
+        # No persona tier (audit): one pinned dest no persona bundle can name.
+    )
+    extra_mounts.extend(_emit_category_mounts(
+        _budget_deliveries.narrow_bindings, label="spawn budget",
+    ))
+
+
+def _spawn_budget_of(
+    snapshot: "KeyStore", system_settings_path: Path | None,
+) -> "SpawnBudget":
+    """The box's RESOLVED spawn budget, read off the launch *snapshot*.
+
+    ``settings_launch.SYSTEM_SCALAR_FLOOR`` puts both ``system.helpers.*`` leaves in
+    every resolve, so the host's settings win when set and the built-in 4/4 applies
+    otherwise.  This is what the start delivers through the spawn-budget bind.
+    A leaf ``int()`` cannot take is refused by the raw reader's own check, naming
+    *system_settings_path*, the host file it came from.
+    """
+    from kanibako.channels.helpers import SpawnBudget
+
+    helpers = _plain_table(snapshot.system.helpers)
+    return SpawnBudget(
+        depth=system_helpers_leaf_int("depth", helpers["depth"], system_settings_path),
+        breadth=system_helpers_leaf_int("breadth", helpers["breadth"], system_settings_path),
+    )
 
 
 def _persist_or_announce_flags(
@@ -4791,6 +4867,19 @@ def _run_container(
             env_slots=_launch_env_map(_snapshot),
             extra_mounts=extra_mounts,
             logger=logger,
+        )
+
+        # The spawn-budget bind: EVERY start, before the hub (a persistent start has none).
+        _deliver_spawn_budget(
+            std=std,
+            proj=proj,
+            snapshot=_snapshot,
+            agent_id=agent_id,
+            system_settings_path=system_settings_path,
+            agent_cfg_path=agent_cfg_path,
+            auth_src=auth_src,
+            extra_mounts=extra_mounts,
+            selection_level=selection_level,
         )
 
         # Helper hub: start listener before director, mount socket
@@ -7322,6 +7411,7 @@ def _resolve_launch_snapshot(
     persona_values: "Mapping[str, str] | None" = None,
     socket_path=None,
     log_path=None,
+    budget_path=None,
     graph_root=None,
     storage_conf_path=None,
     deliver_creds: bool = True,
@@ -7592,13 +7682,15 @@ def _resolve_launch_snapshot(
             default_categories, extra_default_categories,
             family="narrow injection", origins=cat_origins,
         )
-    # ⚑ *socket_path* alone gates the helper table; a ``None`` *log_path* (``workset.logs``
-    # is ``<None>``) leaves the log bind's ``<None>`` source for the collapse to omit.
-    if socket_path is not None:
+    # ⚑ *socket_path* gates the helper table's HUB rows; a ``None`` *log_path*
+    # (``workset.logs`` is ``<None>``) leaves the log bind's ``<None>`` source for the
+    # collapse to omit.  *budget_path* alone carries the spawn-budget row (every start).
+    if socket_path is not None or budget_path is not None:
         _merge_default_categories(
             default_categories, core_defaults.helper_default_categories(
                 socket_path=socket_path,
                 log_path=log_path,
+                budget_path=budget_path,
             ), family="helpers", origins=cat_origins,
         )
     # 11a: *storage_conf_path* alone gates the image table — *graph_root* may be

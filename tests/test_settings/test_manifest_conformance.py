@@ -648,10 +648,10 @@ class TestBindDefaults:
     """
 
     def test_the_corpus_is_the_measured_size(self):
-        """Anti-vacuity: 30 bind DESTS, 19 of them carrying a ``default:``."""
+        """Anti-vacuity: 31 bind DESTS, 20 of them carrying a ``default:``."""
         entries = manifest_doc()["bind_default_entries"]
-        assert sum(len(a) for a in entries.values()) == 30
-        assert len(_manifest_bind_defaults()) == 19
+        assert sum(len(a) for a in entries.values()) == 31
+        assert len(_manifest_bind_defaults()) == 20
 
     def test_every_bind_default_is_carried_or_named(self):
         """Carried ∪ exempt == every ``bind_default_entries`` row with a ``default:``.
@@ -678,7 +678,7 @@ class TestBindDefaults:
             f"exempted as having no carrier, yet compared by a kinemata view: "
             f"{sorted(carried & exempt)}"
         )
-        assert (len(carried), len(exempt)) == (18, 1)
+        assert (len(carried), len(exempt)) == (19, 1)
 
     def test_every_exemption_names_a_row_that_exists(self):
         """A stale exemption is worse than none — it silently un-pins a live row."""

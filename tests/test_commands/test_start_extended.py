@@ -2398,12 +2398,18 @@ class TestVaultTmpfsMode:
             masks = m.runtime.run.call_args.kwargs.get("tmpfs_masks")
             assert masks is None
 
-    def test_standalone_mode_has_no_mask(self, start_mocks):
+    def test_standalone_mode_has_no_mask(self, start_mocks, tmp_path):
         from kanibako.settings.paths import BoxMode
 
         with start_mocks() as m:
             m.proj.mode = BoxMode.standalone
             m.proj.group = None
+            # A REAL standalone layout: its ``{meta.box.path}`` is
+            # ``<metadata_path>/box_data``, which every start's spawn-budget bind
+            # resolves; a MagicMock ``metadata_path`` makes it a relative mock string.
+            m.proj.metadata_path = tmp_path / ".kanibako"
+            m.proj.shell_path = m.proj.metadata_path / "box_data" / "home"
+            m.proj.shell_path.mkdir(parents=True)
             _run_container(
                 project_dir=None, entrypoint=None, image_override=None,
                 new_session=False, safe_mode=False, resume_mode=False,

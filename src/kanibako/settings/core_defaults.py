@@ -1163,13 +1163,22 @@ def internal_bind_keys() -> frozenset[tuple[str, str]]:
 
 
 def helper_bind_dests() -> frozenset[str]:
-    """The HELPER table's own dests — the helper-hub resolve's EMISSION filter.
+    """The HELPER table's HUB dests — the helper-hub resolve's EMISSION filter.
 
     A narrow resolve emits ONLY the dests its own injected table declares
     (``commands.start._narrow_bind_map``); everything the user's cascade puts
     elsewhere belongs to the main path, which emits it from the collapse.
+    ⚑ The spawn-budget row is NOT a hub dest: every start delivers it through its own
+    narrow resolve (:func:`spawn_budget_bind_dests`), hub or not.
     """
-    return _table_bind_dests("helpers")
+    return _table_bind_dests("helpers") - spawn_budget_bind_dests()
+
+
+def spawn_budget_bind_dests() -> frozenset[str]:
+    """The spawn-budget row's dest — the every-start budget resolve's EMISSION filter."""
+    from kanibako.settings.settings_resolve import normalize_bind_dest
+
+    return frozenset({normalize_bind_dest(helper_budget_dest()[0])})
 
 
 def image_bind_dests() -> frozenset[str]:
@@ -1177,16 +1186,41 @@ def image_bind_dests() -> frozenset[str]:
     return _table_bind_dests("images")
 
 
+def helper_budget_dest() -> tuple[str, str]:
+    """``(box_dest, options)`` of the spawn-budget row — the ONE carrier of the slot.
+
+    The director's bind is emitted from this row by :func:`helper_default_categories`
+    on every start (``commands.start._deliver_spawn_budget``); the helper hub mounts each helper's parent-written copy at the same dest and options
+    (``channels.helper_listener._build_helper_mounts``), so a moved dest moves both.
+    """
+    found = [
+        e for e in _load_doc().get("helpers") or [] if e.get("key") == "helper_budget"
+    ]
+    if len(found) != 1:
+        raise PackagingError(
+            f"{CORE_DEFAULTS_FILENAME} must have exactly one 'helpers' row keyed "
+            f"'helper_budget' (the spawn-budget bind, spec §2c); found {len(found)}"
+        )
+    return str(found[0]["box_dest"]), str(found[0]["options"])
+
+
 def helper_default_categories(
     *,
-    socket_path: Path,
+    socket_path: Path | None,
     log_path: Path | None,
+    budget_path: Path | None = None,
 ) -> BindArmTable:
-    """Build the helper hub binds — the live unix SOCKET + the per-box message LOG (Phase B).
+    """Build the ``helpers`` table's binds — the hub's live unix SOCKET and per-box
+    message LOG (Phase B), and the SPAWN BUDGET document (spec §2c
+    ``box.bindings.ro[~/spawn.yaml]``).
 
-    A ``None`` *log_path* (``workset.logs`` is ``<None>``) still emits the ``helper_log``
+    A ``None`` *socket_path* means NO HUB: neither hub row is emitted, which is how the
+    every-start budget resolve carries the budget row alone.  With a hub, a ``None``
+    *log_path* (``workset.logs`` is ``<None>``) still emits the ``helper_log``
     FORMULA: its ``<None>`` source makes the entry ``None`` at expand, so the collapse
     omits it and ``settings_launch`` gives the [R185] warning when the entry is not null.
+    A ``None`` or absent *budget_path* emits no budget entry: the start writes the
+    document before this runs, so its absence means no budget was delivered.
 
     ⚠ ``helper_sock`` options MUST be ``""``: a ``Z``/``U`` relabel/chown would break the
     shared socket topology of a LIVE unix socket the hub listens on.
@@ -1197,15 +1231,20 @@ def helper_default_categories(
         # symbolic source name -> probed host source (the DEST is in the file)
         "helper_sock": socket_path,
         "helper_log": log_path,
+        "helper_budget": budget_path,
     }
+    # Sources whose ``None`` means "nothing to deliver" rather than a ``<None>`` formula.
+    skip_if_none = {"helper_budget"}
 
     binds: BindArmTable = {}
     for entry in _load_doc().get("helpers", []):
+        if socket_path is None and entry["source"] != "helper_budget":
+            continue  # no hub: its socket and log rows have nothing to bind
         src_path = sources[entry["source"]]
         # Skip-if-missing (parity with the old `.exists()`-guarded appends).  A ``<None>``
         # source is not skipped HERE: omitting it here was the silent second route.
         if src_path is None:
-            if "meta_ref" not in entry:
+            if "meta_ref" not in entry or entry["source"] in skip_if_none:
                 continue
         elif not src_path.exists():
             continue

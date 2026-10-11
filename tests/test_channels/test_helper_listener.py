@@ -113,6 +113,73 @@ class TestBuildHelperMounts:
         assert "/home/agent/peers" in dests
         assert "/home/agent/spawn.yaml" in dests
 
+    def _budget_ctx(self, tmp_path):
+        helpers_dir = tmp_path / "helpers"
+        helper_root = helpers_dir / "1"
+        helper_root.mkdir(parents=True)
+        sock = tmp_path / "helper.sock"
+        sock.touch()
+        ctx = HelperContext(
+            runtime=MagicMock(),
+            image="test:latest",
+            container_name_segments=("primary", "testproj"),
+            shell_path=tmp_path,
+            helpers_dir=helpers_dir,
+            socket_path=sock,
+            binary_mounts=[],
+            early=early_record(tmp_path, mode=BoxMode.primary),
+        )
+        return ctx, helpers_dir, helper_root
+
+    def test_the_budget_mount_follows_the_declared_row(self, tmp_path, monkeypatch):
+        """Dest and options come from the director's ``helper_budget`` row, not a
+        hand-spelled literal: move the row and the helper mount moves with it."""
+        import copy
+
+        from kanibako.channels.helpers import SpawnBudget, write_spawn_budget
+        from kanibako.settings import core_defaults
+
+        ctx, helpers_dir, helper_root = self._budget_ctx(tmp_path)
+        doc = helper_root / "spawn.yaml"
+        write_spawn_budget(doc, SpawnBudget(1, 1))
+        moved = copy.deepcopy(core_defaults._load_doc())
+        for row in moved["helpers"]:
+            if row["key"] == "helper_budget":
+                row["box_dest"] = "~/x.yaml"
+                row["options"] = "ro,z"
+        monkeypatch.setattr(core_defaults, "_load_doc", lambda: moved)
+
+        by_dest = {m.destination: m for m in _build_helper_mounts(ctx, 1, helpers_dir)}
+        assert "/home/agent/spawn.yaml" not in by_dest
+        assert by_dest["/home/agent/x.yaml"].source == doc
+        assert by_dest["/home/agent/x.yaml"].options == "ro,z"
+
+    def test_the_chain_hands_each_helper_a_decremented_ro_copy(self, tmp_path):
+        """Director 2/1 -> helper 1 gets 1/1, read-only at ~/spawn.yaml -> its own
+        child would get 0/1, which refuses."""
+        from kanibako.channels.helpers import (
+            SpawnBudget,
+            check_spawn_allowed,
+            child_budget,
+            read_spawn_budget,
+            write_spawn_budget,
+        )
+
+        ctx, helpers_dir, helper_root = self._budget_ctx(tmp_path)
+        director = SpawnBudget(depth=2, breadth=1)
+        write_spawn_budget(helper_root / "spawn.yaml", child_budget(director))
+
+        by_dest = {m.destination: m for m in _build_helper_mounts(ctx, 1, helpers_dir)}
+        budget = by_dest["/home/agent/spawn.yaml"]
+        assert budget.options == "ro"
+        handed = read_spawn_budget(budget.source)
+        assert handed == SpawnBudget(depth=1, breadth=1)
+        assert check_spawn_allowed(handed, 0) is None
+        assert child_budget(handed) == SpawnBudget(depth=0, breadth=1)
+        assert check_spawn_allowed(child_budget(handed), 0) == (
+            "spawn depth exhausted (depth=0)"
+        )
+
     def test_includes_binary_mounts(self, tmp_path):
         from kanibako.targets.base import Mount
         helpers_dir = tmp_path / "helpers"
@@ -729,6 +796,59 @@ class TestHelperDefaultCategories:
         assert "/home/agent/.kanibako/state/helpers.jsonl" in (
             cats["box.bindings.ro"]
         )
+
+    def test_budget_routes_ro_through_the_spec_formula(self, tmp_path):
+        # Spec §2c ``box.bindings.ro[~/spawn.yaml] | ({meta.box.path}/spawn.yaml)``:
+        # an existing budget document emits the spec FORMULA, read-only, at ~/spawn.yaml.
+        from kanibako.settings import core_defaults
+
+        sock, log = self._sources(tmp_path)
+        budget = tmp_path / "spawn.yaml"
+        budget.touch()
+        cats = core_defaults.helper_default_categories(
+            socket_path=sock, log_path=log, budget_path=budget,
+        )
+        assert cats["box.bindings.ro"]["/home/agent/spawn.yaml"] == (
+            "{meta.box.path}/spawn.yaml",
+            "ro",
+        )
+
+    def test_absent_budget_emits_no_entry(self, tmp_path):
+        # Absent document or no path: nothing was delivered, so no bind (and no
+        # empty mountpoint) — unlike ``helper_log``, whose ``None`` is a formula.
+        from kanibako.settings import core_defaults
+
+        sock, log = self._sources(tmp_path)
+        for budget in (tmp_path / "missing.yaml", None):
+            cats = core_defaults.helper_default_categories(
+                socket_path=sock, log_path=log, budget_path=budget,
+            )
+            assert "/home/agent/spawn.yaml" not in cats["box.bindings.ro"], budget
+
+    def test_budget_dest_reads_the_row(self):
+        from kanibako.settings import core_defaults
+
+        assert core_defaults.helper_budget_dest() == ("~/spawn.yaml", "ro")
+        # Not a HUB dest: every start delivers it through its own narrow resolve.
+        assert core_defaults.spawn_budget_bind_dests() == {"/home/agent/spawn.yaml"}
+        assert "/home/agent/spawn.yaml" not in core_defaults.helper_bind_dests()
+
+    def test_no_socket_emits_the_budget_row_alone(self, tmp_path):
+        # A start with no hub (``socket_path=None``) carries ONLY the budget row: the
+        # hub's socket and log rows (the log's ``<None>`` formula too) stay out.
+        from kanibako.settings import core_defaults
+
+        _, log = self._sources(tmp_path)
+        budget = tmp_path / "spawn.yaml"
+        budget.touch()
+        cats = core_defaults.helper_default_categories(
+            socket_path=None, log_path=log, budget_path=budget,
+        )
+        assert cats == {
+            "box.bindings.ro": {
+                "/home/agent/spawn.yaml": ("{meta.box.path}/spawn.yaml", "ro"),
+            },
+        }
 
     def test_emitted_mount_options_empty_through_the_narrow_route(self, tmp_path):
         # End-to-end through the resolver: the helper_sock entry survives the NARROW

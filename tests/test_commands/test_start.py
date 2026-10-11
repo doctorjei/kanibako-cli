@@ -4295,6 +4295,166 @@ class TestRuntimeRootReachesTheHelperHub:
         assert all(c.kwargs["log_path"] is None for c in m_table.call_args_list)
 
 
+class TestSpawnBudgetReachesTheDirector:
+    """The box's RESOLVED ``system.helpers.*`` reaches it through the spawn-budget bind.
+
+    Spec §2c ``box.bindings.ro[~/spawn.yaml] | ({meta.box.path}/spawn.yaml)`` and the
+    companion's "The spawn-budget bind": each start writes the resolved budget to the
+    source, and the delivered budget outranks the box's own settings.
+    """
+
+    def _snapshot(self, tmp_path, system_path):
+        from kanibako.settings.settings_launch import build_launch_snapshot
+        from kanibako.settings.settings_resolve import ResolveCtx
+
+        ctx = ResolveCtx(
+            agent_name="claude", workset_name=None, host_home=str(tmp_path),
+            xdg={"XDG_DATA_HOME": str(tmp_path / "data")},
+        )
+        return build_launch_snapshot(
+            agent_name="claude", ctx=ctx,
+            system_path=system_path, agent_path=None, workset_path=None,
+            box_path=None, default_categories={},
+        )
+
+    def test_the_host_system_tier_is_the_resolved_budget(self, tmp_path):
+        """Host ``system.helpers`` 1/1 resolves to 1/1; unset resolves to 4/4."""
+        from kanibako.channels.helpers import SpawnBudget, write_spawn_budget
+        from kanibako.commands.start import _spawn_budget_of
+
+        host = tmp_path / "system.yaml"
+        write_spawn_budget(host, SpawnBudget(depth=1, breadth=1))
+        assert _spawn_budget_of(self._snapshot(tmp_path, host), host) == SpawnBudget(1, 1)
+        assert _spawn_budget_of(self._snapshot(tmp_path, None), None) == SpawnBudget(4, 4)
+
+    @pytest.mark.parametrize("raw, shown", [
+        ("abc", "'abc'"), ("null", "None"), ("{x: 1}", "got {'x': 1}"),
+    ])
+    def test_a_host_leaf_int_cannot_take_is_refused_by_name(
+        self, tmp_path, raw, shown,
+    ):
+        """A host ``system.helpers.depth`` that is a string, a null, or a table is a
+        ConfigError naming the leaf, the file, and the value — the raw reader's wording."""
+        from kanibako.commands.start import _spawn_budget_of
+        from kanibako.errors import ConfigError
+
+        host = tmp_path / "system.yaml"
+        host.write_text(f"system:\n  helpers:\n    depth: {raw}\n")
+        with pytest.raises(ConfigError) as exc:
+            _spawn_budget_of(self._snapshot(tmp_path, host), host)
+        msg = str(exc.value)
+        assert msg.startswith(f"system.helpers.depth in {host} must be a whole number, got ")
+        assert shown in msg
+
+    def _start(self, start_mocks, tmp_path, budget=None, stale=None, **launch):
+        """One mocked start with ``allow_helpers`` ON; *budget* stands in for the host
+        tier and *stale* is a document a previous start left at the box's budget path.
+        *launch* reaches ``_run_container`` (``persistent``/``detach`` force the hub off).
+        """
+        from kanibako.channels import helper_listener as helper_listener_mod
+        from kanibako.channels.helpers import write_spawn_budget
+
+        with start_mocks() as m, patch.object(
+            helper_listener_mod, "HelperHub",
+        ) as m_hub_cls:
+            m.agent_cfg.state["allow_helpers"] = "true"
+            m.load_std_paths.return_value.runtime = tmp_path / "run"
+            doc = m.proj.shell_path.parent / "spawn.yaml"
+            if stale is not None:
+                write_spawn_budget(doc, stale)
+            if budget is not None:
+                stub = m.resolve_launch_snapshot.side_effect
+
+                def _host_tier(*a, **kw):
+                    snap, deliveries = stub(*a, **kw)
+                    if kw.get("include_base_families", True):
+                        snap.system.helpers.depth = budget.depth
+                        snap.system.helpers.breadth = budget.breadth
+                    return snap, deliveries
+
+                m.resolve_launch_snapshot.side_effect = _host_tier
+            assert _run_container(
+                project_dir=None, entrypoint=None, image_override=None,
+                new_session=False, safe_mode=False, resume_mode=False,
+                extra_args=[], **launch,
+            ) == 0
+            self.hub_starts = m_hub_cls.return_value.start.call_count
+            mounts = m.runtime.run.call_args.kwargs.get("extra_mounts") or []
+            from kanibako.channels.helpers import read_spawn_budget
+            return doc, read_spawn_budget(doc), mounts
+
+    def test_the_start_writes_the_resolved_budget_and_binds_it_ro(
+        self, start_mocks, tmp_path,
+    ):
+        from kanibako.channels.helpers import SpawnBudget
+
+        doc, delivered, mounts = self._start(start_mocks, tmp_path, SpawnBudget(1, 1))
+        assert self.hub_starts == 1, "the hub must start"
+        self._assert_delivered(doc, delivered, mounts, SpawnBudget(1, 1))
+
+    @staticmethod
+    def _assert_delivered(doc, delivered, mounts, budget):
+        assert delivered == budget
+        budget_mounts = [
+            mt for mt in mounts if str(mt.destination) == "/home/agent/spawn.yaml"
+        ]
+        assert len(budget_mounts) == 1, [str(mt.destination) for mt in mounts]
+        assert str(budget_mounts[0].source) == str(doc)
+        assert budget_mounts[0].options == "ro"
+
+    def test_a_persistent_start_without_the_hub_writes_and_binds_it_too(
+        self, start_mocks, tmp_path,
+    ):
+        """Spec: "Each start writes the box's resolved budget".  A ``--detach`` start forces
+        the hub off (``no_helpers``), yet still writes 1/1 and binds it ro once.
+        (Bifrost 168 Step 5 C1: no document and no bind on ``--detach``.)"""
+        from kanibako.channels.helpers import SpawnBudget
+
+        doc, delivered, mounts = self._start(
+            start_mocks, tmp_path, SpawnBudget(1, 1), persistent=True, detach=True,
+        )
+        assert self.hub_starts == 0, "a persistent start runs no hub"
+        self._assert_delivered(doc, delivered, mounts, SpawnBudget(1, 1))
+
+    def test_an_unset_host_delivers_the_built_in(self, start_mocks, tmp_path):
+        from kanibako.channels.helpers import SpawnBudget
+
+        _, delivered, _ = self._start(start_mocks, tmp_path)
+        assert delivered == SpawnBudget(4, 4)
+
+    def test_a_restart_with_the_host_unset_rewrites_a_stale_document(
+        self, start_mocks, tmp_path,
+    ):
+        """No stale value outlives its launch: a 1/1 document left by an earlier start
+        is rewritten to the built-in 4/4 when the host no longer sets the keys."""
+        from kanibako.channels.helpers import SpawnBudget
+
+        _, delivered, _ = self._start(
+            start_mocks, tmp_path, stale=SpawnBudget(1, 1),
+        )
+        assert delivered == SpawnBudget(4, 4)
+
+    @pytest.mark.parametrize("launch", [
+        {}, {"persistent": True, "detach": True},
+    ], ids=["hub", "detach-no-hub"])
+    @pytest.mark.parametrize("raw", ["abc", None])
+    def test_a_malformed_host_leaf_stops_the_start_with_a_config_error(
+        self, start_mocks, tmp_path, raw, launch,
+    ):
+        """``depth: abc`` and ``depth: null`` stop the start with the named
+        ConfigError the CLI prints, not a ValueError/TypeError traceback."""
+        from types import SimpleNamespace
+
+        from kanibako.errors import ConfigError
+
+        with pytest.raises(ConfigError) as exc:
+            self._start(
+                start_mocks, tmp_path, SimpleNamespace(depth=raw, breadth=4), **launch,
+            )
+        assert "system.helpers.depth in " in str(exc.value)
+        assert str(exc.value).endswith(f"must be a whole number, got {raw!r}")
+
+
 class TestPackagedCanonSafeFail:
     """A missing packaged canon source -> clean PackagingError, no container."""
 

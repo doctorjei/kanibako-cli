@@ -80,6 +80,8 @@ def test_an_explicitly_empty_options_entry_does_NOT_take_the_category_default(
   sock.touch()  # the producer gates each entry on ``.exists()``
   log = tmp_path / "helpers.jsonl"
   log.touch()
+  budget = tmp_path / "spawn.yaml"
+  budget.touch()
   ctx = ResolveCtx(
     agent_name="claude", workset_name=None, host_home=str(tmp_path),
     xdg={"XDG_DATA_HOME": str(tmp_path / "data")},
@@ -88,7 +90,7 @@ def test_an_explicitly_empty_options_entry_does_NOT_take_the_category_default(
     agent_name="claude", ctx=ctx,
     system_path=None, agent_path=None, workset_path=None, box_path=None,
     default_categories=core_defaults.helper_default_categories(
-      socket_path=sock, log_path=log,
+      socket_path=sock, log_path=log, budget_path=budget,
     ),
   )
   entries = snapshot_category_entries(snap, active_agent="claude", box_ctx=ctx)
@@ -106,6 +108,8 @@ def test_an_explicitly_empty_options_entry_does_NOT_take_the_category_default(
   # ``@``-ref source needs the workset floor this narrow harness omits, so it is
   # pinned here at the entry rather than at the emitted Mount.)
   assert options[log_dest] == "ro", options
+  # The spawn-budget bind is read-only too: a box must not rewrite its budget.
+  assert options["/home/agent/spawn.yaml"] == "ro", options
 
   # And the value survives DELIVERY: the falsy-drop in ``Mount.to_volume_arg``
   # yields the 2-field form, because ``src:dst:`` is rejected outright by podman.

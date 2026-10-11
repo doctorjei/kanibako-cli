@@ -437,7 +437,7 @@ def _merge_floor(floor: dict, table) -> None:
             floor[key] = value
 
 
-def _probe_snapshot(mode, proj, ws_root, helper_log):
+def _probe_snapshot(mode, proj, ws_root, helper_log, budget=None):
     """Build the LIVE launch snapshot for *proj* from the REAL shipped defaults."""
     from kanibako.settings import core_defaults
     from kanibako.settings.settings_launch import (
@@ -461,6 +461,7 @@ def _probe_snapshot(mode, proj, ws_root, helper_log):
     _merge_floor(floor, core_defaults.helper_default_categories(
         socket_path=helper_log,  # any existing path; the socket bind is not asserted
         log_path=helper_log,
+        budget_path=budget,
     ))
     _merge_floor(floor, meta_runtime_floor(
         mode=mode, ws_name="__X__",
@@ -478,10 +479,10 @@ def _probe_snapshot(mode, proj, ws_root, helper_log):
     return snap, ctx
 
 
-def _probe_mounts(mode, proj, ws_root, helper_log):
+def _probe_mounts(mode, proj, ws_root, helper_log, budget=None):
     from kanibako.settings.settings_launch import snapshot_category_entries
 
-    snap, ctx = _probe_snapshot(mode, proj, ws_root, helper_log)
+    snap, ctx = _probe_snapshot(mode, proj, ws_root, helper_log, budget)
     # ⚑ READ OFF THE ENTRIES. What these cases probe is the ANCHOR CHAIN — that a
     # declared source RESOLVES to the right absolute path — and that is settled by
     # ``build_launch_snapshot`` + the adapter, before any delivery seam. Going
@@ -523,6 +524,16 @@ class TestP1BoxRootAnchor:
             assert by_dest["/home/agent/vault/rw"] == str(proj.vault_rw_path), mode
             log_dest = "/home/agent/.kanibako/state/helpers.jsonl"
             assert by_dest[log_dest] == str(hl), mode
+
+    def test_budget_bind_resolves_beside_the_home_in_all_three_modes(self, tmp_path):
+        """``{meta.box.path}/spawn.yaml`` lands where the start writes it: the box root,
+        ``proj.shell_path.parent`` — the probed path and the formula agree per mode."""
+        for mode, proj, ws_root, hl in _probe_cases(tmp_path):
+            budget = proj.shell_path.parent / "spawn.yaml"
+            budget.parent.mkdir(parents=True, exist_ok=True)
+            budget.touch()
+            by_dest = _probe_mounts(mode, proj, ws_root, hl, budget)
+            assert by_dest["/home/agent/spawn.yaml"] == str(budget), mode
 
     def test_home_bind_declaration_is_mode_independent(self):
         """The DUPLICATION is retired at the source, not merely at resolution.

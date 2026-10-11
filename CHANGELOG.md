@@ -12,6 +12,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **A director's spawn budget comes from the host.** Each `start` binds the host's resolved
+  `system.helpers.*` read-only at `~/spawn.yaml`, and helpers inherit it; nothing in the box can change it, and a
+  host value that is not a whole number stops `start`. See `MIGRATION.md`, "A director's spawn budget comes from
+  the host".
+
 - **A standalone box is no longer registered when a command finds it.** A command run on an unregistered
   standalone box, by its path or from inside its tree, used to add it to the registry; it now leaves the registry
   alone, and a move keeps the box unregistered. Run `kanibako box register <path>` to register it. `box rm <path>`
@@ -2963,8 +2968,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   settings document. **Upgrading:** a helper directory created by v1.7.2 still holds the old
   `spawn:` spelling, which is no longer a budget — `kanibako box helper respawn` against such a
   directory gives that helper the built-in budget rather than the one it was handed. Spawning a new
-  helper writes the new spelling; there is nothing to migrate on the host, where the budget never
-  had a file of its own in any release.
+  helper writes the new spelling. A v1.7.2 `spawn:` table in a director's
+  `~/.config/kanibako_config.yaml` is no longer read; see `MIGRATION.md`, "A director's spawn
+  budget comes from the host".
 
 - **A persona endpoint that is not a well-formed URL is refused at the store boundary, naming the
   file and the cure.** Kanibako checked only that an endpoint was *present*; a scheme-less value

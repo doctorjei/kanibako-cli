@@ -330,7 +330,7 @@ class TestBindRows:
             len(arm) for name, arm in doc["category_default_entries"].items()
             if name != "parametric_keys"
         )
-        assert binds == 30 and cats == 3
+        assert binds == 31 and cats == 3
         assert len(bind_rows()) == binds + cats
 
     def test_the_internal_entries_are_marked_and_are_the_manifest_s(self):

@@ -74,8 +74,10 @@ def bind_dest_families() -> dict[str, str]
 def bind_dest_owners() -> dict[str, str]
 def internal_bind_keys() -> frozenset[tuple[str, str]]
 def helper_bind_dests() -> frozenset[str]
+def spawn_budget_bind_dests() -> frozenset[str]
 def image_bind_dests() -> frozenset[str]
-def helper_default_categories(*, socket_path: Path, log_path: Path | None) -> BindArmTable
+def helper_budget_dest() -> tuple[str, str]
+def helper_default_categories(*, socket_path: Path | None, log_path: Path | None, budget_path: Path | None=None) -> BindArmTable
 def image_default_categories(*, graph_root: Path | None, storage_conf_path: Path) -> dict[str, object]
 @lru_cache(maxsize=1)
 def _parse_doc() -> dict[str, Any]

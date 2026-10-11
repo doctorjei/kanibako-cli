@@ -731,18 +731,28 @@ def read_system_helpers(settings_path: Path | None) -> dict[str, int]:
         node = node.get(section)
     if not isinstance(node, dict):
         return {}
-    out: dict[str, int] = {}
-    for leaf in sorted(DECLARED_SYSTEM_HELPERS_LEAVES):
-        if leaf not in node:
-            continue
-        try:
-            out[leaf] = int(node[leaf])
-        except (TypeError, ValueError):
-            raise ConfigError(
-                f"system.helpers.{leaf} in {settings_path} must be a whole number, "
-                f"got {node[leaf]!r}"
-            ) from None
-    return out
+    return {
+        leaf: system_helpers_leaf_int(leaf, node[leaf], settings_path)
+        for leaf in sorted(DECLARED_SYSTEM_HELPERS_LEAVES)
+        if leaf in node
+    }
+
+
+def system_helpers_leaf_int(leaf: str, value: object, settings_path: Path | None) -> int:
+    """One ``system.helpers.<leaf>`` value as ``int``, or a :class:`ConfigError` naming it.
+
+    ⚑ ONE refusal for the raw reader above and the start's resolved budget
+    (``commands/start._spawn_budget_of``): anything ``int()`` cannot take — a string, a
+    null, a nested table — is refused by leaf and value.  ``int()``'s own leniency
+    (a float truncates, a bool is 0/1) is kept: the in-box reader has the same parity.
+    """
+    try:
+        return int(value)  # type: ignore[call-overload]
+    except (TypeError, ValueError):
+        raise ConfigError(
+            f"system.helpers.{leaf} in {settings_path} must be a whole number, "
+            f"got {value!r}"
+        ) from None
 
 
 def read_setup_completed(settings_path: Path | None) -> str | None:

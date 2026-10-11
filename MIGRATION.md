@@ -4664,6 +4664,28 @@ is now `kanibako.cfg`. A file still under the old name is ignored rather than re
 rename is what surfaces the message that tells you what to delete. §1's item 1 walks both steps
 in that order.
 
+### A director's spawn budget comes from the host
+
+Each `start` writes the host's resolved `system.helpers.depth` and `.breadth` into the box
+read-only at `~/spawn.yaml`, and its helpers inherit that budget. Inside the director, these
+no longer change it:
+
+- a v1.7.2 `spawn:` table in `~/.config/kanibako_config.yaml` (in `kanibako.cfg` it is
+  refused; see *Anything in `kanibako.cfg` that is not a declared `config.*` key stops the
+  command*);
+- `kanibako system set system.helpers.*` and `kanibako box helper spawn --depth` / `--breadth`;
+- a file you put at `~/spawn.yaml`, which the bind hides.
+
+Delete them, set the keys on the host, and restart the box:
+
+```bash
+kanibako system set system.helpers.depth=2
+kanibako system set system.helpers.breadth=3
+```
+
+A host value that is not a whole number stops `start`:
+`system.helpers.depth in <file> must be a whole number, got '<value>'`.
+
 ### 2.69 A malformed `env:` entry an older kanibako wrote for you now stops the box
 
 **Read this if you ever ran `kanibako … set agent.<agent>.env.<something>` on a 1.8.0 development

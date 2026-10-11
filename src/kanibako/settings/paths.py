@@ -1500,6 +1500,19 @@ def helper_log_path(std: StandardPaths, proj: ProjectPaths) -> Path | None:
     return None if logs_dir is None else box_log_files(logs_dir, box).helper
 
 
+def helper_budget_path(proj: ProjectPaths) -> Path:
+    """HOST path of the box's spawn-budget document — the ``~/spawn.yaml`` bind source.
+
+    Spec §2c ``box.bindings.ro[~/spawn.yaml] | ({meta.box.path}/spawn.yaml)``: beside
+    ``box.yaml``, OUTSIDE the home, so the box cannot rewrite it.  ``meta.box.home`` is
+    ``{meta.box.path}/home`` in every mode, so the box root is ``proj.shell_path.parent``.
+    ⚑ THE ONE CARRIER for the start's writer and the bind table's ``.exists()`` gate.
+    """
+    from kanibako.channels.helpers import SPAWN_CONFIG_FILENAME
+
+    return proj.shell_path.parent / SPAWN_CONFIG_FILENAME
+
+
 def creds_watcher_log_path(std: StandardPaths, proj: ProjectPaths) -> Path | None:
     """Per-box HOST log of the detached creds watcher — its stderr, beside the helper log.
 

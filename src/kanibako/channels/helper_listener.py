@@ -15,7 +15,12 @@ from kanibako.channels.helpers import HELPER_SCRIPTS_RELPATH, INIT_SCRIPT_NAME, 
 from kanibako.errors import ContainerError
 from kanibako.runtime.container import ContainerRuntime
 from kanibako.log import get_logger
-from kanibako.settings.settings_resolve import BOX_PINNED_STATE_RELPATH, GUEST_HOME
+from kanibako.settings.core_defaults import helper_budget_dest
+from kanibako.settings.settings_resolve import (
+    BOX_PINNED_STATE_RELPATH,
+    GUEST_HOME,
+    normalize_bind_dest,
+)
 from kanibako.targets.base import Mount
 from kanibako.utils import render_container_name
 
@@ -587,7 +592,10 @@ def _build_helper_mounts(ctx: HelperContext, helper_num: int,
     """Build bind mounts for a helper container.
 
     DOCUMENTED BLOCKER (core-mounts-bindings Phase C — bespoke route kept by
-    design, per the plan's "lower priority / possible follow-up").  A box launch
+    design, per the plan's "lower priority / possible follow-up") for the PEERS,
+    BROADCAST and SOCKET mounts.  The spawn-budget mount is not exempt: it takes its
+    dest and options from the declared ``helper_budget`` row
+    (:func:`~kanibako.settings.core_defaults.helper_budget_dest`).  A box launch
     routes its mounts through the category keyspace: ``commands.start``'s ONE
     resolve (``_resolve_launch_snapshot``) adapts the launch snapshot to
     ``CategoryEntry`` rows, the ASSEMBLY COLLAPSE folds them into
@@ -642,25 +650,16 @@ def _build_helper_mounts(ctx: HelperContext, helper_num: int,
     if all_link.exists():
         mounts.append(Mount(all_link, f"{GUEST_HOME}/all", "Z,U"))
 
-    # The handed-down SPAWN BUDGET (read-only). ⚑ BOTH ends take the constant: in-box
-    # the file is read as ``Path.home() / SPAWN_CONFIG_FILENAME``, so a dest spelled by
-    # hand would land where the reader never looks — helpers would silently get default
-    # budgets. Encoded rather than asserted in prose (P15).
-    #
-    # ⚑ SINCE 2026-09-19 THE DOCUMENT IS AN ORDINARY SETTINGS DOCUMENT carrying the two
-    # DECLARED ``system.helpers.*`` keys (spec §2g); the undeclared ``spawn:`` table it
-    # used to carry was a §0 closed-keyspace violation. The MOUNT is still hand-built —
-    # it inherits this function's documented single-route exemption above, and closing
-    # THAT is a separate change: the declarative bind tables in ``core-defaults.yaml``
-    # describe what a BOX gets (every dest there must appear in the manifest's
-    # ``bind_default_entries``), and a helper is not one.
-    # ⚑ ``ro`` IS LOAD-BEARING: a helper must not be able to raise the budget it was
-    # handed. ``_build_helper_mounts`` is the ONLY delivery into a helper — the runtime
-    # binds no home for one — so dropping this row would not fall back to the home bind,
-    # it would drop the budget entirely.
+    # The handed-down SPAWN BUDGET: the copy the PARENT wrote into this helper's home
+    # (``commands.helper_cmd``), mounted at the dest and options of the director's own
+    # declared row, spec §2c ``box.bindings.ro[~/spawn.yaml]`` — one row for both, so
+    # this mount is NOT under the exemption above.  For a helper the dest is the
+    # source's own path, so the ``ro`` bind covers the only in-box path to the file: a
+    # helper must not be able to raise the budget it was handed.
     budget_doc = helper_root / SPAWN_CONFIG_FILENAME
     if budget_doc.is_file():
-        mounts.append(Mount(budget_doc, f"{GUEST_HOME}/{SPAWN_CONFIG_FILENAME}", "ro"))
+        budget_dest, budget_options = helper_budget_dest()
+        mounts.append(Mount(budget_doc, normalize_bind_dest(budget_dest), budget_options))
 
     # Helper socket — mount the hub socket into the helper.  The box-side dest is
     # the FIXED pinned root, the same path ``core-defaults.yaml`` declares for the

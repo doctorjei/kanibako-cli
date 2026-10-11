@@ -1058,9 +1058,10 @@ keys:
     set: cli+file
     default: 4
     note: "helper-hub SPAWN BUDGET — how many GENERATIONS may be spawned below a
-           box. -1 is unlimited; 0 refuses the spawn. A parent hands its child a
-           DECREMENTED copy at the child's own system tier, so the budget runs out
-           on its own. ⚑ DECLARED 2026-09-19: the pair was LIVE and UNDECLARED,
+           box. -1 is unlimited; 0 refuses the spawn. A box gets its resolved
+           budget, and a child its parent's DECREMENTED copy, through the
+           spawn-budget bind (§2c box.bindings.ro[~/spawn.yaml]), so the budget
+           runs out on its own. ⚑ DECLARED 2026-09-19: the pair was LIVE and UNDECLARED,
            read by channels/helpers.py from a bespoke spawn.yaml `spawn:` table
            (§0 violation, the system.templates_stamp shape). The built-in value is
            channels/helpers.DEFAULT_DEPTH, applied when no tier carries the key."
@@ -2600,6 +2601,15 @@ bind_default_entries:
              coerce to ''. There is NO meta.box.helper_log key
              (not_keys.never_a_key)."
       spec: "§2c (ALL PROJECTS; R-23 / R-28)"
+    "~/spawn.yaml":
+      user_key: true
+      owner: box
+      default: "({meta.box.path}/spawn.yaml)"
+      note: "the spawn-budget bind. Each start writes the box's resolved
+             system.helpers.* to the source, which outranks the box's own
+             settings; a helper gets the same dest sourced from the copy its
+             parent wrote (core_defaults.helper_budget_dest)."
+      spec: "§2c (ALL PROJECTS) / companion § \"Box and helper identity\""
     "/opt/kanibako/kanibako":
       user_key: false
       owner: shared

@@ -2586,6 +2586,16 @@ source = "src/kanibako/data/rom/settings/keyspace-manifest.yaml"
 section = ["bind_default_entries", "box.bindings.ro"]
 where = { id_matches = '^~/\.kanibako/state/' }
 
+# FACT: the SPAWN-BUDGET bind row (§2c `box.bindings.ro[~/spawn.yaml]`) is what
+# `core_defaults.helper_default_categories` emits into `box.bindings.ro` when the start
+# has written the document.
+[[registry]]
+name = "helper-budget-bind"
+kind = "yaml-mapping"
+source = "src/kanibako/data/rom/settings/keyspace-manifest.yaml"
+section = ["bind_default_entries", "box.bindings.ro"]
+where = { id_matches = '^~/spawn\.yaml$' }
+
 # FACT: the helper SOCKET's mount OPTIONS are the ones the manifest declares -- the
 # half of the cell `helper-socket-bind` does not compare. (`""`: a relabel or chown
 # would break the live socket the hub listens on.)
@@ -5039,14 +5049,42 @@ translate = { pattern = '^\((.*)\)$', replacement = '\1' }
 registry = "helper-log-bind"
 command = ["{python}", "-c", """
 import os, tempfile
+from kanibako.settings.core_defaults import helper_budget_dest
 from kinemata_views import guest_bind_arm, sentinel_helper_binds
 with tempfile.TemporaryDirectory() as scratch:
     os.chdir(scratch)
     binds = sentinel_helper_binds()
+budget_dest, _ = helper_budget_dest()
 for dest, (host_src, *_) in guest_bind_arm(binds, "bindings.ro"):
-    print(f"kanibako-helper-log: {dest}={host_src}")
+    if dest != budget_dest:  # the budget row is `helper-budget-bind`'s
+        print(f"kanibako-helper-log: {dest}={host_src}")
 """]
 extract = '(?m)^kanibako-helper-log: ([^\s=]+)=(\S+)$'
+field = "default"
+authority = "declared"
+translate = { pattern = '^\((.*)\)$', replacement = '\1' }
+
+# ⚑ `helper-log-bind`'s emitter and inputs, the budget row of the same arm.
+#   `# helper-budget-bind: 1 declared, 1 produced, in agreement, agreeing on default.`
+#   rc=0
+# NEGATIVE CONTROL, code, `helper_budget`'s ref -> `{meta.box.path}/spawn2.yaml`:
+# `~/spawn.yaml: default declared '{meta.box.path}/spawn.yaml', code produces
+# '{meta.box.path}/spawn2.yaml'`.
+[[parity]]
+registry = "helper-budget-bind"
+command = ["{python}", "-c", """
+import os, tempfile
+from kanibako.settings.core_defaults import helper_budget_dest
+from kinemata_views import guest_bind_arm, sentinel_helper_binds
+with tempfile.TemporaryDirectory() as scratch:
+    os.chdir(scratch)
+    binds = sentinel_helper_binds()
+budget_dest, _ = helper_budget_dest()
+for dest, (host_src, *_) in guest_bind_arm(binds, "bindings.ro"):
+    if dest == budget_dest:
+        print(f"kanibako-helper-budget: {dest}={host_src}")
+"""]
+extract = '(?m)^kanibako-helper-budget: ([^\s=]+)=(\S+)$'
 field = "default"
 authority = "declared"
 translate = { pattern = '^\((.*)\)$', replacement = '\1' }
@@ -5248,14 +5286,17 @@ translate = { pattern = '^\((.*)\)$', replacement = '\1' }
 registry = "helper-log-writer"
 command = ["{python}", "-c", """
 import os, pathlib, tempfile
+from kanibako.settings.core_defaults import helper_budget_dest
 from kanibako.settings.paths import box_log_files
 from kinemata_views import guest_bind_arm, sentinel_helper_binds
 with tempfile.TemporaryDirectory() as scratch:
     os.chdir(scratch)
     binds = sentinel_helper_binds()
 log = box_log_files(pathlib.Path("{workset.logs}"), "{meta.box.name}").helper
+budget_dest, _ = helper_budget_dest()
 for dest, _ in guest_bind_arm(binds, "bindings.ro"):
-    print(f"kanibako-helper-log-writer: {dest}={log}")
+    if dest != budget_dest:  # the budget row is `helper-budget-bind`'s
+        print(f"kanibako-helper-log-writer: {dest}={log}")
 """]
 extract = '(?m)^kanibako-helper-log-writer: ([^\s=]+)=(\S+)$'
 field = "default"

@@ -414,6 +414,19 @@ helpers:
     box_dest: "~/.kanibako/state/helpers.jsonl"
     owner: box
     options: "ro"
+  # Spawn budget → ~/spawn.yaml (ro).  Spec §2c: {meta.box.path}/spawn.yaml, the
+  # document the host writes from the box's resolved `system.helpers.*` at each start
+  # (`channels.helpers.write_spawn_budget`).  It sits beside box.yaml, OUTSIDE the home,
+  # so the box cannot rewrite it.  The helper hub mounts each helper's parent-written
+  # copy at this row's dest and options (`core_defaults.helper_budget_dest`), so one
+  # row carries the slot for directors and helpers alike.
+  - key: helper_budget
+    category: bindings.ro
+    source: helper_budget
+    meta_ref: "{meta.box.path}/spawn.yaml"
+    box_dest: "~/spawn.yaml"
+    owner: box
+    options: "ro"
 
 # Image-sharing bind (Phase B, D-M8).  The host image store + the GENERATED
 # `storage.conf` (additionalImageStores), routed through the category resolver

@@ -179,8 +179,8 @@ def _check_helpers_enabled() -> bool:
 def _ro_spawn_config_path(helpers_dir: Path, helper_num: int) -> Path:
     """The settings document carrying the budget this parent hands helper *helper_num*.
 
-    Written here, mounted RO into that helper's home by the hub, and read back there
-    through the same ``system.helpers.*`` keys any settings file carries.
+    Written here, mounted RO at the spawn-budget bind's dest by the hub, and read back
+    there through the same ``system.helpers.*`` keys any settings file carries.
     """
     return helpers_dir / str(helper_num) / SPAWN_CONFIG_FILENAME
 
@@ -237,7 +237,8 @@ def run_spawn(args: argparse.Namespace) -> int:
     # Resolve own spawn budget from the two DECLARED ``system.helpers.*`` tiers
     # (spec §2g).  Both are ordinary settings documents, so one reader answers both.
     #
-    # Tier 1 — what a PARENT handed this box: present only when this box IS a helper.
+    # Tier 1 — the DELIVERED budget (the spawn-budget bind): the host's resolved budget
+    # in a director, the parent's decremented copy in a helper.  It outranks tier 2.
     handed_down = read_spawn_budget(Path.home() / SPAWN_CONFIG_FILENAME)
     # Tier 2 — this box's own system settings file (``@config.settings``).
     own_settings = read_spawn_budget(system_settings_path())

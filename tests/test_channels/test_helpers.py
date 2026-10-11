@@ -514,6 +514,7 @@ class TestBundledInitScript:
         exactly why this test exists rather than a shared import.
         """
         from kanibako.box_supervisor import PINNED_ROOT_RELPATH
+        from kanibako.channels.helpers import SPAWN_CONFIG_FILENAME
         from kanibako.commands.helper_cmd import _log_path, _socket_path
         from kanibako.settings import core_defaults
         from kanibako.settings.settings_resolve import (
@@ -533,6 +534,9 @@ class TestBundledInitScript:
         assert declared == {
             "helper_sock": f"~/{BOX_PINNED_STATE_RELPATH}/helper.sock",
             "helper_log": f"~/{BOX_PINNED_STATE_RELPATH}/helpers.jsonl",
+            # The spawn-budget bind: the in-box reader is ``Path.home() /
+            # SPAWN_CONFIG_FILENAME`` (``helper_cmd.run_spawn``), so dest and reader agree.
+            "helper_budget": f"~/{SPAWN_CONFIG_FILENAME}",
         }
 
         # 3. The box-side SHELL literal, resolved with the box's HOME.

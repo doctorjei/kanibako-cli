@@ -46,6 +46,7 @@ def agent_settings_of(data: dict, agent_name: str) -> dict[str, str]
 def system_settings_path() -> Path
 def read_system_agent(system_path: Path | None) -> str | None
 def read_system_helpers(settings_path: Path | None) -> dict[str, int]
+def system_helpers_leaf_int(leaf: str, value: object, settings_path: Path | None) -> int
 def read_setup_completed(settings_path: Path | None) -> str | None
 def setup_compat_gate(settings_path: Path | None, legacy_config: Path | None=None) -> str | None
 def resolve_agent(*, explicit_agent: str | None, requested: str | None=None) -> str

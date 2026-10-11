@@ -52,11 +52,11 @@ def parent_of(agent: int, breadth: int) -> int | None:
 DEFAULT_DEPTH = SPAWN_BUDGET_DEFAULTS["depth"]
 DEFAULT_BREADTH = SPAWN_BUDGET_DEFAULTS["breadth"]
 
-#: The RO budget filename — the document a PARENT writes into its child's home,
-#: carrying that child's decremented budget.  ⚑ BOTH ENDS TAKE THIS CONSTANT: the
-#: helper reads it at ``Path.home() / SPAWN_CONFIG_FILENAME`` and the hub mounts it
-#: at the matching guest dest, so a dest spelled by hand would land where the reader
-#: never looks (``helper_listener._build_helper_mounts``).
+#: The RO budget filename — the spawn-budget bind's document (spec §2c
+#: ``box.bindings.ro[~/spawn.yaml]``): the host writes a director's resolved budget
+#: beside its ``box.yaml``, and a PARENT writes its child's decremented copy into the
+#: child's home.  The box reads it at ``Path.home() / SPAWN_CONFIG_FILENAME``; both
+#: mounts take their dest from the one declared row (``core_defaults.helper_budget_dest``).
 #:
 #: ⚑ ITS CONTENT IS A SETTINGS DOCUMENT, not a bespoke shape: the two declared
 #: ``system.helpers.*`` keys in their ordinary ``system: helpers:`` table, which is why
@@ -139,13 +139,14 @@ def read_spawn_budget(path: Path) -> SpawnBudget | None:
 def write_spawn_budget(path: Path, budget: SpawnBudget) -> None:
     """Write *budget* as the two declared ``system.helpers.*`` keys.
 
-    ⚑ *path* is never a cascade file: it is the per-child DELIVERY document at
-    ``helpers/<N>/spawn.yaml``, mounted RO into that helper and read back by explicit
-    path.  No cascade assembles it, so nothing this writes can reach a user's settings,
-    and the guard on every ``config_io`` writer
-    (``tests/test_settings/test_defaults_enforcement.py``) exempts this file as
-    non-settings.  A child's budget is runtime-computed (``child_budget``), so writing a
-    cascade file from here would be the defaults leak that guard exists to catch.
+    ⚑ *path* is never a cascade file: it is a DELIVERY document — a director's at
+    ``{meta.box.path}/spawn.yaml``, a helper's at ``helpers/<N>/spawn.yaml`` — mounted
+    RO through the spawn-budget bind and read back by explicit path.  No cascade
+    assembles it, so nothing this writes can reach a user's settings, and the guard on
+    every ``config_io`` writer (``tests/test_settings/test_defaults_enforcement.py``)
+    exempts this file as non-settings.  The budget is runtime-computed (the launch's
+    resolve, or ``child_budget``), so writing a cascade file from here would be the
+    defaults leak that guard exists to catch.
     """
     doc = load_doc(path)
     node = doc
