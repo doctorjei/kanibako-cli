@@ -10,6 +10,7 @@
 from __future__ import annotations
 
 import argparse
+import errno
 import shlex
 import sys
 from pathlib import Path
@@ -812,10 +813,22 @@ def run_disconnect(args: argparse.Namespace) -> int:
         candidates = [base / member for base in _member_store_bases(ws)]
         if snapshot_store is not None:
             candidates.append(snapshot_store)
-        keep = {path for path in candidates if kept_for_recorded_workspace(std, path)}
-        if (leaf is not None and not leaf.is_symlink()
-                and kept_for_recorded_workspace(std, leaf, own=f"{ws.name}/{member}")):
-            keep.add(leaf)
+        try:
+            keep = {path for path in candidates if kept_for_recorded_workspace(std, path)}
+            if (leaf is not None and not leaf.is_symlink()
+                    and kept_for_recorded_workspace(std, leaf, own=f"{ws.name}/{member}")):
+                keep.add(leaf)
+        except OSError as e:
+            # ⚑ REFUSED BEFORE ANY DELETE: a path that cannot be checked could hold
+            # another box's workspace, so nothing is removed until it can be.
+            where = shlex.quote(str(e.filename or leaf or ws.root))
+            print(f"Error: could not check {where} before removing files: "
+                  f"{e.strerror or e}; nothing was removed.", file=sys.stderr)
+            fix = ("replace the looping link at" if e.errno == errno.ELOOP
+                   else "fix the permissions on")
+            print(f"  Try: {fix} {where} and its parent directory, then re-run.",
+                  file=sys.stderr)
+            return 1
         if snapshot_store in keep:
             snapshot_store = None
     if _refuse_disconnect_while_live(std, ws, member, force=args.force,

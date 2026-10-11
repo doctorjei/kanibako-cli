@@ -1634,6 +1634,61 @@ class TestWorksetDisconnect:
         assert "fix the permissions" in err, err
         assert (src / "ws.txt").read_text() == "mine"
 
+    @pytest.mark.skipif(os.geteuid() == 0, reason="root ignores mode 000")
+    def test_remove_files_refuses_an_uncheckable_leaf_before_deleting(
+        self, config_file, tmp_home, capsys,
+    ):
+        """EACCES in the keep pre-flight is a refusal naming the path, not a traceback."""
+        from kanibako.commands.workset_cmd import run_disconnect
+
+        std = load_std_paths(load_config(config_file))
+        ws = create_workset("eaccws", tmp_home / "ws_eacc", std)
+        src = ws.workspaces_dir / "it1"
+        src.mkdir(parents=True)
+        (src / "ws.txt").write_text("mine")
+        add_project(ws, "it1", src)
+
+        ws.workspaces_dir.chmod(0)
+        try:
+            rc = run_disconnect(argparse.Namespace(
+                workset="eaccws", project="it1", remove_files=True, force=True))
+        finally:
+            ws.workspaces_dir.chmod(0o755)
+        err = capsys.readouterr().err
+        assert rc == 1, err
+        assert f"could not check {src} before removing files" in err, err
+        assert f"Try: fix the permissions on {src}" in err, err
+        assert (src / "ws.txt").read_text() == "mine"
+        assert (ws.projects_dir / "it1").is_dir()
+        assert "it1" in _workset_boxes(ws)
+
+    def test_remove_files_refuses_a_looping_path_before_deleting(
+        self, config_file, tmp_home, capsys, monkeypatch,
+    ):
+        """ELOOP in the keep pre-flight names the loop as the thing to fix."""
+        import errno
+
+        from kanibako.commands.box import _parser
+        from kanibako.commands.workset_cmd import run_disconnect
+
+        std = load_std_paths(load_config(config_file))
+        ws = create_workset("loopws", tmp_home / "ws_loop", std)
+        src = tmp_home / "loop_src"
+        src.mkdir()
+        add_project(ws, "it1", src)
+        looping = ws.projects_dir / "it1"
+
+        def loop(_std, path, **_kw):
+            raise OSError(errno.ELOOP, "Too many levels of symbolic links", str(looping))
+
+        monkeypatch.setattr(_parser, "kept_for_recorded_workspace", loop)
+        rc = run_disconnect(argparse.Namespace(
+            workset="loopws", project="it1", remove_files=True, force=True))
+        err = capsys.readouterr().err
+        assert rc == 1, err
+        assert f"Try: replace the looping link at {looping}" in err, err
+        assert looping.is_dir() and "it1" in _workset_boxes(ws)
+
     def test_disconnect_unknown_error(self, config_file, tmp_home, capsys):
         from kanibako.commands.workset_cmd import run_disconnect
 
