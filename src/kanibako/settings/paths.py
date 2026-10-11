@@ -1862,8 +1862,13 @@ def detect_project_mode(project_dir: Path, std: StandardPaths,
 
 
 def _relative_to_either(path: Path, root: Path) -> Path | None:
-    """*path* relative to *root* as stored or resolved; ``None`` under neither."""
-    for form in (root, root.resolve()):
+    """*path* relative to *root* as stored or resolved; ``None`` under neither.
+
+    A looped *root* is compared as stored: it holds no path, so it is no obstacle here.
+    """
+    from kanibako.commands.box._lifecycle import _resolved_unless_loop  # lazy: layering
+
+    for form in (root, _resolved_unless_loop(root)):
         if path.is_relative_to(form):
             return path.relative_to(form)
     return None
