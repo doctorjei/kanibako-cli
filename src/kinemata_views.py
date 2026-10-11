@@ -1550,6 +1550,27 @@ class ExampleNames(_ViewRegistry):
         return super().declared(identifier.rstrip("/"))
 
 
+class LiveConfigFiles(_ViewRegistry):
+    """Config file names kanibako reads outside any store the claims run builds: the site
+    base tier in `bootstrap.SITE_CONFIG_DIR` (`/etc/kanibako`) and a helper's spawn config.
+    `[claims] declared_in` names this registry; `declared` takes a name whole only (a
+    trailing `/` dropped), so `etc/base.cfg` or `old-spawn.yaml` stays a claim to check.
+    """
+
+    def __init__(self, *, name: str = "live-config-files", **options: object) -> None:
+        super().__init__(name=name, **options)
+
+    def _rows(self) -> list[dict[str, object]]:
+        from kanibako.channels.helpers import SPAWN_CONFIG_FILENAME
+        from kanibako.settings import bootstrap
+
+        names = (bootstrap.SITE_CONFIG_FILE, bootstrap.SITE_SETTINGS_FILE, SPAWN_CONFIG_FILENAME)
+        return [{"key": name} for name in names]
+
+    def declared(self, identifier: str) -> bool:
+        return super().declared(identifier.rstrip("/"))
+
+
 #: Store-relative file and dir names kanibako NO LONGER reads or writes, cited by MIGRATION.md
 #: and the llm-docs as history. Hand-written: no source in the tree lists them, except the v1.7
 #: user config name, which `bootstrap.LEGACY_CONFIG_FILE` owns and `RetiredFileNames` reads there.
@@ -1608,11 +1629,9 @@ class RetiredFileNames(_ViewRegistry):
         super().__init__(name=name, **options)
 
     def _rows(self) -> list[dict[str, object]]:
-        from kanibako.channels.helpers import SPAWN_CONFIG_FILENAME
         from kanibako.settings import bootstrap
 
-        live = {bootstrap.CONFIG_FILE, bootstrap.SITE_CONFIG_FILE, bootstrap.SITE_SETTINGS_FILE,
-                SPAWN_CONFIG_FILENAME}
+        live = {bootstrap.CONFIG_FILE, *(str(row["key"]) for row in LiveConfigFiles().rows)}
         for registry in (ChannelPaths(), AgentStoreEntries()):
             live.update(seg for row in registry.rows for seg in str(row["key"]).split("/"))
         names = (*_RETIRED_FILE_NAMES, bootstrap.LEGACY_CONFIG_FILE)

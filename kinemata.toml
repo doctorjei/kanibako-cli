@@ -238,7 +238,7 @@ historical = [
 # RETIRED FILE NAMES: MIGRATION.md and the llm-docs cite files kanibako no longer
 # uses (`names.yaml`, `project.yaml`, `comms/`, ...) as history. A path claim of
 # one of them is asked of `retired-file-names`, matched WHOLE only. Its view refuses
-# a name equal to a live bootstrap or spawn file name (the four its `_rows` lists)
+# a name equal to `kanibako.cfg` or a `live-config-files` row,
 # or to a segment of a `channel-paths` or `agent-store-entries` row; any other name
 # added here must be checked by hand against what the code reads. Its retired
 # PATHS (`data/logs/`, `playbook/`, `…/canon/handbook/directives/SYS_AGENT.md`)
@@ -255,8 +255,13 @@ historical = [
 #
 # EXAMPLE NAMES: `example-names` lists, by exact literal, the example values the
 # docs spell as paths (`myagent/`); any other spelling stays a claim.
+#
+# LIVE CONFIG FILES: `base.cfg` and `settings_base.yaml` sit in `/etc/kanibako`, and
+# `spawn.yaml` exists only inside a spawned helper, so the store holds none of them.
+# A path claim of one is asked of `live-config-files`, which reads the names from
+# `bootstrap` and `channels/helpers`, matched WHOLE only.
 declared_in = ["agent-cred-files", "retired-file-names", "channel-paths",
-               "agent-store-entries", "example-names"]
+               "agent-store-entries", "example-names", "live-config-files"]
 
 # Before/after, measured 2026-09-09 against an older tree: 929 failing claims ->
 # 769. The 160 suppressed are ALL positively classified as historicity false
@@ -2010,6 +2015,15 @@ target = "kinemata_views:AgentCredFiles"
 name = "retired-file-names"
 kind = "import"
 target = "kinemata_views:RetiredFileNames"
+
+# FACT: the config file names kanibako reads outside the claims store: the site base
+# tier (`bootstrap.SITE_CONFIG_FILE`, `SITE_SETTINGS_FILE`) and a helper's spawn
+# config (`channels/helpers.SPAWN_CONFIG_FILENAME`). Read by `[claims] declared_in`
+# alone: no antipattern and an empty `detect`, so `check` gains nothing from it.
+[[registry]]
+name = "live-config-files"
+kind = "import"
+target = "kinemata_views:LiveConfigFiles"
 
 # FACT: the in-box channel tree `kanibako start` lays out. Read by `[claims]
 # declared_in` alone: no antipattern and an empty `detect`, so `check` gains nothing

@@ -35,58 +35,9 @@
     {
       "registry": "claims",
       "entry": "claim:path",
-      "antipattern": "base.cfg",
-      "path": "MIGRATION.md",
-      "text": "### 2.68 The bootstrap config files are renamed: `kanibako.cfg` and `base.cfg`"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "base.cfg",
-      "path": "llm-docs/kanibako/settings/config.py.md",
-      "text": "`base.cfg` / `settings_base.yaml` base tiers, resolved on the PATH side; this scalar"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "base.cfg",
-      "path": "llm-docs/kanibako/settings/paths.py.md",
-      "text": "set: `/etc` `base.cfg` < user-global. A user with only `~/.config/kanibako.cfg` gets the"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
       "antipattern": "dist/",
       "path": "docs/RELEASING.md",
       "text": "`agent-codex` are accepted), builds **only** that package into `dist/`, refuses"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "settings_base.yaml",
-      "path": "MIGRATION.md",
-      "text": "\ud83d\uded1 **`settings_base.yaml` keeps its name, and it sits in the same directory as the file that"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "settings_base.yaml",
-      "path": "llm-docs/kanibako/settings/config.py.md",
-      "text": "`base.cfg` / `settings_base.yaml` base tiers, resolved on the PATH side; this scalar"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "spawn.yaml",
-      "path": "README.md",
-      "text": "config (`spawn.yaml`) inside the child, enforced at spawn time."
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "spawn.yaml",
-      "path": "llm-docs/kanibako/settings/config_io.py.md",
-      "text": "(`spawn.yaml`) \u2014 is read by `load_doc` and written by `dump_doc`. Serialization is PyYAML"
     },
     {
       "registry": "claims",

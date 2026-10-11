@@ -120,6 +120,13 @@ class ExampleNames(_ViewRegistry):
 
     def _rows(self) -> list[dict[str, object]]
 
+class LiveConfigFiles(_ViewRegistry):
+    def __init__(self, *, name: str='live-config-files', **options: object) -> None
+
+    def declared(self, identifier: str) -> bool
+
+    def _rows(self) -> list[dict[str, object]]
+
 class RetiredFileNames(_ViewRegistry):
     def __init__(self, *, name: str='retired-file-names', **options: object) -> None
 
