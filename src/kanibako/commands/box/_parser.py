@@ -2829,6 +2829,8 @@ def _rm_standalone(std, box_name: str, root, args: argparse.Namespace, *,
         *_standalone_settings_files(root_path, early=_early_scope(std, BoxMode.standalone))
     ) if not args.purge and root_path is not None and metadata_dir is not None
         and metadata_dir.is_dir() else None)
+    # ⚑ After every refusal and the confirmation, so no refusal follows the progress line.
+    print(f"Removing standalone box: {box_name} ({root})")
     if registered:
         registry_store.unregister_standalone(std.registry, box_name)
         print(f"Removed '{box_name}' from the registry")
@@ -3195,8 +3197,8 @@ def _retained_box_advice(std, target: str, entry: dict) -> "tuple[str, tuple[str
     is back (``register`` before that drops the entry); one that will not parse is fixed
     first, since ``register`` drops the entry and the purge refuses the file.  Its purge
     is refused (I4) while an active box holds its directory, and ``register`` then only
-    drops the entry.  A directory kanibako cannot read (EACCES)
-    gets the generic advice: it is neither gone nor known to lack the marker.
+    drops the entry.  A directory or ``workset.yaml`` kanibako cannot read (EACCES, a
+    loop) gets the generic advice: it is neither gone nor known to lack the marker.
     """
     from kanibako.errors import ConfigError
     from kanibako.launch.box_resolve import (
@@ -3218,7 +3220,12 @@ def _retained_box_advice(std, target: str, entry: dict) -> "tuple[str, tuple[str
         if not root.is_dir():
             return f"It cannot be restored: {root} is gone. Delete its entry", (purge_cure,)
         owner = registry_store.standalone_name_for_same_dir(std.registry, root)
-        if stores_standalone_registry_null(root):
+        try:
+            marked = stores_standalone_registry_null(root)
+        except ConfigError:
+            # ⚑ Its unreadable-path refusal: advice, never "will not parse" (the arm below).
+            return _GENERIC_PARKED_SENTENCE, (register_cure, purge_cure)
+        if marked:
             if owner is None:
                 return _GENERIC_PARKED_SENTENCE, (register_cure, purge_cure)
             return (f"Its files are standalone box '{owner}'; drop this stale entry",

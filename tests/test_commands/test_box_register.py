@@ -615,6 +615,75 @@ def test_an_unreadable_marker_file_is_refused_and_keeps_the_parked_entry(
     assert run_register(_register_args(name)) == 0
 
 
+@pytest.mark.parametrize("unreadable", ["root", "marker"])
+def test_a_parked_standalone_behind_an_unreadable_path_still_gets_its_advice(
+    config_file, tmp_home, credentials_dir, capsys, unreadable,
+):
+    """``box list`` and ``box rm <parked>`` give the generic advice, never a refusal."""
+    import os
+
+    from kanibako.cli import main
+
+    if os.geteuid() == 0:
+        pytest.skip("root reads a mode-000 path")
+    _config, std = _std(config_file)
+    root = (tmp_home / "sa").resolve()
+    root.mkdir()
+    assert run_create(_create_args(root, standalone=True, register=True)) == 0
+    name = registry_store.standalone_name_for_root(std.registry, root)
+    assert name and run_rm(_rm_args(name)) == 0
+    capsys.readouterr()
+
+    target = root if unreadable == "root" else root / "workset.yaml"
+    target.chmod(0)
+    try:
+        for argv in (("box", "list"), ("box", "rm", name)):
+            with pytest.raises(SystemExit) as info:
+                main(list(argv))
+            assert info.value.code == 0, argv
+            out, err = capsys.readouterr()
+            assert err == "", argv
+            if argv[1] == "list":
+                assert f"  {name} " in out
+                assert "Recover with 'kanibako box register <name>'" in out
+            else:
+                assert out.endswith(
+                    "Restore it or delete it:\n"
+                    f"  kanibako box register {name}\n"
+                    f"  kanibako box rm {name} --purge\n")
+    finally:
+        target.chmod(0o755 if unreadable == "root" else 0o644)
+    assert registry_store.lookup_deregistered(std.registry, name) is not None
+
+
+@pytest.mark.parametrize("purge", [False, True], ids=["rm", "purge"])
+def test_rm_of_a_standalone_with_an_unreadable_marker_refuses_before_its_progress_line(
+    config_file, tmp_home, credentials_dir, capsys, purge,
+):
+    import os
+
+    if os.geteuid() == 0:
+        pytest.skip("root reads a mode-000 file")
+    _config, std = _std(config_file)
+    root = (tmp_home / "sa").resolve()
+    root.mkdir()
+    assert run_create(_create_args(root, standalone=True, register=True)) == 0
+    name = registry_store.standalone_name_for_root(std.registry, root)
+    marker = root / "workset.yaml"
+    capsys.readouterr()
+
+    marker.chmod(0)
+    try:
+        argv = ("box", "rm", name) + (("--purge", "--force") if purge else ())
+        _cli_refusal(*argv)
+    finally:
+        marker.chmod(0o644)
+    out, err = capsys.readouterr()
+    assert "Removing standalone box" not in out
+    assert err == _UNREADABLE.format(marker)
+    assert registry_store.standalone_name_for_root(std.registry, root) == name
+
+
 _LOOP = (": it is a symlink loop that kanibako cannot resolve. Remove or repair the link, "
          "then retry.\n")
 
