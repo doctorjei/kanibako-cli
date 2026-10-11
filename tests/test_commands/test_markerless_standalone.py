@@ -213,3 +213,53 @@ def test_a_gone_directory_offers_only_the_purge_and_it_works(unmarked, capsys):
     assert _printed_cures(out) == [["kanibako", "box", "rm", name, "--purge"]]
     assert _cli("box", "rm", name, "--purge", "--force") == 0, capsys.readouterr().err
     assert registry_store.lookup_deregistered(std.registry, name) is None
+
+
+@pytest.fixture
+def unreadable_parent(unmarked, capsys):
+    """*unmarked*, parked by a plain rm, with its parent directory made unreadable (EACCES)."""
+    import os
+
+    if os.geteuid() == 0:
+        pytest.skip("root reads a mode-000 directory")
+    root, name, std = unmarked
+    assert _cli("box", "rm", name) == 0
+    capsys.readouterr()
+    root.parent.chmod(0)
+    yield root, name, std
+    root.parent.chmod(0o755)
+
+
+def test_an_unreadable_directory_is_not_called_gone_and_does_not_crash(unreadable_parent, capsys):
+    """Only ENOENT/ENOTDIR prove "gone"; EACCES gets the generic advice, never a traceback."""
+    _root, name, std = unreadable_parent
+
+    assert _cli("box", "rm", name) == 0
+    out = capsys.readouterr().out
+    assert "gone" not in out
+    assert "Restore it or delete it:" in out
+    assert _printed_cures(out) == [
+        ["kanibako", "box", "register", name], ["kanibako", "box", "rm", name, "--purge"]]
+
+    assert _cli("box", "list") == 0
+    out = capsys.readouterr().out
+    assert name in out and "gone" not in out
+    assert registry_store.lookup_deregistered(std.registry, name) is not None
+
+
+def test_an_unparsable_marker_file_is_not_told_to_add_a_line(unmarked, capsys):
+    """A line added to unparsable YAML leaves it unparsable, and both routes refuse it: fix it first."""
+    root, name, std = unmarked
+    assert _cli("box", "rm", name) == 0
+    (root / "workset.yaml").write_text("workset: [unclosed\n")
+    capsys.readouterr()
+
+    assert _cli("box", "rm", name) == 0
+    out = capsys.readouterr().out
+    assert "add the line" not in out
+    assert (f"{root / 'workset.yaml'} will not parse. Fix it, then restore the box (it "
+            "needs the line 'registry: null' under 'workset:') or delete it:") in out
+    register, _purge = _printed_cures(out)
+    (root / "workset.yaml").write_text("workset:\n  registry: null\n")
+    assert _cli(*register[1:]) == 0, capsys.readouterr().err
+    assert registry_store.standalone_root(std.registry, name) == str(root)

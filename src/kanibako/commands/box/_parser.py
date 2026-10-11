@@ -3002,29 +3002,51 @@ def _retained_box_advice(std, target: str, entry: dict) -> "tuple[str, tuple[str
     """The sentence and commands for parked *entry*: only the routes that work for IT.
 
     A standalone whose ``workset.yaml`` lacks the marker is restored once the marker
-    is back (``register`` before that drops the entry).  Its purge is refused (I4) while
-    an active box holds its directory, and ``register`` then only drops the entry.
+    is back (``register`` before that drops the entry); one that will not parse is fixed
+    first, since ``register`` drops the entry and the purge refuses the file.  Its purge
+    is refused (I4) while an active box holds its directory, and ``register`` then only
+    drops the entry.  A directory kanibako cannot read (EACCES)
+    gets the generic advice: it is neither gone nor known to lack the marker.
     """
+    from kanibako.errors import ConfigError
     from kanibako.launch.box_resolve import (
         standalone_marker_repair,
         stores_standalone_registry_null,
     )
     from kanibako.project import registry_store
+    from kanibako.settings.config_io import load_doc
 
     register_cure, purge_cure = _retained_box_cures(target)
     metadata = entry.get("metadata")
     if entry.get("kind") != "standalone" or not metadata:
         return _GENERIC_PARKED_SENTENCE, (register_cure, purge_cure)
     root = Path(str(metadata))
-    if not root.is_dir():
+    # ⚑ Only ENOENT/ENOTDIR prove "gone"; a stat or read that fails otherwise is unverified.
+    if registry_store._metadata_definitively_gone(str(root)):
         return f"It cannot be restored: {root} is gone. Delete its entry", (purge_cure,)
-    owner = registry_store.standalone_name_for_same_dir(std.registry, root)
-    if stores_standalone_registry_null(root):
-        if owner is None:
-            return _GENERIC_PARKED_SENTENCE, (register_cure, purge_cure)
-        return (f"Its files are standalone box '{owner}'; drop this stale entry",
-                (register_cure,))
-    fault, cure = standalone_marker_repair(root)
+    try:
+        if not root.is_dir():
+            return f"It cannot be restored: {root} is gone. Delete its entry", (purge_cure,)
+        owner = registry_store.standalone_name_for_same_dir(std.registry, root)
+        if stores_standalone_registry_null(root):
+            if owner is None:
+                return _GENERIC_PARKED_SENTENCE, (register_cure, purge_cure)
+            return (f"Its files are standalone box '{owner}'; drop this stale entry",
+                    (register_cure,))
+        try:
+            load_doc(root / WORKSET_META_FILE)
+        except ConfigError:
+            # Both routes refuse an unparsable file, and a line added to it stays unparsable.
+            broken = f"{root / WORKSET_META_FILE} will not parse"
+            if owner is None:
+                return (f"{broken}. Fix it, then restore the box (it needs the line "
+                        "'registry: null' under 'workset:') or delete it",
+                        (register_cure, purge_cure))
+            return (f"Its files are standalone box '{owner}', and {broken}; fix it, then "
+                    "drop this stale entry", (register_cure,))
+        fault, cure = standalone_marker_repair(root)
+    except OSError:
+        return _GENERIC_PARKED_SENTENCE, (register_cure, purge_cure)
     marker = f"{root / WORKSET_META_FILE} {fault}"
     if owner is None:
         return (f"{marker}. Restore the box (first {cure}) or delete it",
