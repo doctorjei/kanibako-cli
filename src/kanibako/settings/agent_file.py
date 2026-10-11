@@ -752,7 +752,8 @@ def save(path: Path, cfg: AgentConfig) -> None:
 # ---------------------------------------------------------------------------
 
 def _nested_agent_cure(
-    category: str | None, sub_key: str, *, var: str, value: str
+    category: str | None, sub_key: str, *, entries: list[tuple[str, str]],
+    rest: list[str],
 ) -> str:
     """The ARM-APPROPRIATE fix for a refused ``self.<sub>:`` sub-table [spec:15-21, "self"].
 
@@ -765,6 +766,9 @@ def _nested_agent_cure(
     *category* is ``None`` when the refused sub-table holds nothing that is a category at all
     (state knobs, a typo, another node's name): there is no table to point at, so the cure is the
     rule itself.
+
+    ⚑ *entries* is EVERY ``(var, value)`` of the category table, and *rest* names every other
+    entry of the sub-table: a cure that quotes one entry loses the others to its own delete.
     """
     from kanibako.settings.config_keys import AGENT_DEFAULT_SUB
 
@@ -775,23 +779,37 @@ def _nested_agent_cure(
             f"move what is inside it UP ONE LEVEL. The state knobs sit DIRECTLY under "
             f"`{_ROOT}:` (`model: opus`), and so does every category table;"
         )
-    by_hand = (
-        f"in the FLAT table (`{_ROOT}:` expands to `agent.{sub_key}`, so the "
-        f"{category} table sits DIRECTLY under it):\n"
-        f"    {_ROOT}:\n      {category}:\n        {var}: {value}"
-    )
+    def lines(indent: str) -> str:
+        return "".join(f"\n{indent}{var}: {value}" for var, value in entries)
+
+    others = ", ".join(f"`{k}`" for k in rest)
     if sub_key == AGENT_DEFAULT_SUB:
+        moved = (
+            f"\n  and move the rest of it ({others}) into that `agent: default:` table too;"
+            if rest else ""
+        )
         return (
             f"the all-agents tier is written in the SYSTEM settings file, not the "
             f"agent file:\n"
-            f"    agent:\n      default:\n        {category}:\n          {var}: {value}"
+            f"    agent:\n      default:\n        {category}:{lines('          ')}{moved}"
         )
-    # ⚑ The verb is named ONLY where it works — see :data:`_VERB_WRITABLE_CATEGORIES`.
-    if category in _VERB_WRITABLE_CATEGORIES:
-        return (
-            f"kanibako agent set {sub_key} {category}.{var}={value}\n"
-            f"  — or by hand, {by_hand}"
+    moved = (
+        f"\n  and move the rest of it ({others}) UP ONE LEVEL too, directly under `{_ROOT}:`;"
+        if rest else ""
+    )
+    by_hand = (
+        f"in the FLAT table (`{_ROOT}:` expands to `agent.{sub_key}`, so the "
+        f"{category} table sits DIRECTLY under it):\n"
+        f"    {_ROOT}:\n      {category}:{lines('        ')}{moved}"
+    )
+    # ⚑ The verb is named ONLY where it works — see :data:`_VERB_WRITABLE_CATEGORIES` — and
+    # only when the category is ALL the sub-table holds: the ``set`` arm deletes first, which
+    # would destroy any *rest* before the user could move it.
+    if category in _VERB_WRITABLE_CATEGORIES and not rest:
+        sets = "\n       ".join(  # under the first, past "  Fix: "
+            f"kanibako agent set {sub_key} {category}.{var}={value}" for var, value in entries
         )
+        return f"{sets}\n  — or by hand, {by_hand}"
     return f"by hand, {by_hand}"
 
 
@@ -804,8 +822,8 @@ def _refused_category(sub_tbl: dict) -> str | None:
 
 
 def _nested_table_steps(
-    category: str | None, sub_key: str, *, var: str, value: str, path: Path | None,
-    node: str | None,
+    category: str | None, sub_key: str, *, entries: list[tuple[str, str]], rest: list[str],
+    path: Path | None, node: str | None,
 ) -> str:
     """The fix + delete pair, in the order THIS arm's cure actually needs.
 
@@ -814,7 +832,7 @@ def _nested_table_steps(
     The other arms MOVE the content (up one level, or into the SYSTEM file) or hand-edit
     it — deleting first would destroy what the user was just told to move.
     """
-    cure = _nested_agent_cure(category, sub_key, var=var, value=value)
+    cure = _nested_agent_cure(category, sub_key, entries=entries, rest=rest)
     where = path if path is not None else "the agent settings file"
     if cure.lstrip().startswith("kanibako "):
         # ⚑ The parent here is the file's own ``self:`` root: delete the sub-table and
@@ -865,8 +883,11 @@ def _refuse_nested_tables(
         var_ph, value_ph = _CATEGORY_PLACEHOLDER.get(
             category or "", _DEST_KEYED_PLACEHOLDER,
         )
-        var = sorted(str(k) for k in table)[0] if table else var_ph
-        value = str(table[var]) if var in table else value_ph
+        entries = (
+            [(str(k), str(table[k])) for k in sorted(table, key=str)]
+            if table else [(var_ph, value_ph)]
+        )
+        rest = sorted(str(k) for k in sub_val if k != category) if category else []
         held = ", ".join(sorted(str(k) for k in sub_val)) or "(nothing)"
         # ⚑⚑ ONE EXPLANATION FOR EVERY ARM — the alias semantics of [spec:15-21, "self"],
         # not a redundancy argument: the spelling expands to a key that cannot exist, and that is
@@ -896,7 +917,7 @@ def _refuse_nested_tables(
             f"{path if path is not None else '<agent settings>'}; it holds: "
             f"{held}.\n"
             f"{history}\n"
-            f"{_nested_table_steps(category, sub_key, var=var, value=value, path=path, node=node)}"
+            f"{_nested_table_steps(category, sub_key, entries=entries, rest=rest, path=path, node=node)}"
         )
 
 

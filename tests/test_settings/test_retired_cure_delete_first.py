@@ -469,3 +469,78 @@ def test_the_reserved_default_cure_is_the_only_spelling_the_cli_takes(tree) -> N
     out = proc.stdout + proc.stderr
     assert proc.returncode == 1
     assert "reserved any-agent tier" in out
+
+
+# --------------------------------------------------------------------------- #
+# 4 · the nested-table cure carries EVERY entry, so following it loses nothing
+# --------------------------------------------------------------------------- #
+#
+# The cure used to quote ONE entry of the sub-table (the first by sort), so a user who
+# followed it — delete, then the one printed ``set`` — lost every other entry. The
+# probes below are the bugfixes row's own shape: ``self.<node>.env`` with two entries.
+
+_ALL_FIX_CMDS = re.compile(r"^\s*(?:Fix: )?(kanibako agent set [^\n]+)$", re.MULTILINE)
+
+
+def test_the_nested_set_arm_prints_one_set_per_entry(tmp_path) -> None:
+    msg = _nested_refusal(
+        {"goose": {"env": {"FOO": "bar", "BAZ": "qux"}}}, path=tmp_path / "agent.yaml",
+    )
+    assert _ALL_FIX_CMDS.findall(msg) == [
+        "kanibako agent set goose env.BAZ=qux",
+        "kanibako agent set goose env.FOO=bar",
+    ]
+    assert "        BAZ: qux\n        FOO: bar" in msg, "the by-hand table drops an entry"
+
+
+def test_the_hand_edit_arm_lists_every_entry(tmp_path) -> None:
+    msg = _nested_refusal(
+        {"foo": {"caches": {"a": "/x", "b": "/y"}}}, path=tmp_path / "agent.yaml",
+    )
+    assert "        a: /x\n        b: /y" in msg
+
+
+def test_the_default_arm_lists_every_entry(tmp_path) -> None:
+    msg = _nested_refusal(
+        {"default": {"env": {"X": "1", "Y": "2"}}}, path=tmp_path / "agent.yaml",
+    )
+    assert "          X: 1\n          Y: 2" in msg
+
+
+def test_entries_beside_the_category_are_named_and_never_deleted_first(tmp_path) -> None:
+    """A sub-table holding MORE than the one category: the delete-first ``set`` arm
+    would destroy the rest before the user could move it, so the cure is the by-hand
+    move, it names every other entry, and the delete comes last."""
+    msg = _nested_refusal(
+        {"goose": {"env": {"FOO": "bar"}, "model": "opus", "caches": {"a": "/x"}}},
+        path=tmp_path / "agent.yaml",
+    )
+    assert "FIRST" not in msg
+    assert msg.index("Fix: ") < msg.index("then delete the `self.goose` table")
+    assert "`caches`, `model`" in msg, "the rest of the sub-table goes unnamed"
+
+
+def test_a_two_entry_nested_set_arm_cures_itself_end_to_end(tree) -> None:
+    """The row's probe: follow EVERY printed step on a real two-entry file, and both
+    entries read back — nothing the sub-table held is lost."""
+    stale_file = tree.agent_file("shell")
+    stale_file.write_text(
+        'self:\n  claude:\n    env:\n      FOO: "bar"\n      BAZ: "qux"\n',
+    )
+    tree.agent_file("claude").write_text("self:\n  model: opus\n")
+
+    first = tree.cli("agent", "show", "shell")
+    refusal = first.stdout + first.stderr
+    assert first.returncode != 0, f"the nested table was not refused:\n{refusal}"
+
+    perform_printed_delete(stale_file, refusal)
+    printed = _ALL_FIX_CMDS.findall(refusal)
+    assert len(printed) == 2, f"expected one set per entry in:\n{refusal}"
+    for command in printed:
+        ran = tree.cli(*command.split()[1:])
+        assert ran.returncode == 0, f"{command!r} failed:\n{ran.stdout}{ran.stderr}"
+
+    for var, value in (("FOO", "bar"), ("BAZ", "qux")):
+        read = tree.cli("agent", "get", "claude", f"env.{var}")
+        assert read.returncode == 0, f"env.{var} was lost:\n{read.stdout}{read.stderr}"
+        assert read.stdout.strip() == value
