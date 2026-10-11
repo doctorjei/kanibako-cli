@@ -1288,6 +1288,15 @@ class Target(ABC):
     def invalidate_credentials(self, home: Path) -> None:
         """Remove credential files when switching to distinct auth. Default: no-op."""
 
+    def cred_writeback_error(self, spec: CredFileSpec, data: bytes) -> str | None:
+        """Why the box's *data* for *spec* must not replace the store copy, or `None`.
+
+        The writeback engine asks before a box file reaches a store; a reason keeps
+        the store as it was.  A harness checks its own credential format, read the
+        way its own code reads it.  Default: no check.
+        """
+        return None
+
     def transform_cred(
         self,
         spec: CredFileSpec,

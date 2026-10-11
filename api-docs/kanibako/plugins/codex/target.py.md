@@ -50,6 +50,7 @@ class CodexTarget(Target):
     def setup_args(self) -> list[str]
     def should_run_setup(self, output: str) -> bool
     def detect(self) -> AgentInstall | None
+    def cred_writeback_error(self, spec: CredFileSpec, data: bytes) -> str | None
     def check_auth(self) -> bool
     def read_persona_settings(self, config_dir: Path) -> PersonaReadOutcome
     def verify_persona(self, endpoint: str, token_path: Path | None, model: str | None, *, env: Mapping[str, str] | None=None, timeout: float=5.0) -> PersonaProbeOutcome

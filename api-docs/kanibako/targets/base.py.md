@@ -289,6 +289,7 @@ class Target(ABC):
     def read_persona_settings(self, config_dir: Path) -> PersonaReadOutcome
     def verify_persona(self, endpoint: str, token_path: Path | None, model: str | None, *, env: Mapping[str, str] | None=None, timeout: float=5.0) -> PersonaProbeOutcome
     def invalidate_credentials(self, home: Path) -> None
+    def cred_writeback_error(self, spec: CredFileSpec, data: bytes) -> str | None
     def transform_cred(self, spec: CredFileSpec, src: Path | None, dst: Path, direction: str) -> None
     def refresh_credentials(self, home: Path) -> None
     def writeback_credentials(self, home: Path) -> None

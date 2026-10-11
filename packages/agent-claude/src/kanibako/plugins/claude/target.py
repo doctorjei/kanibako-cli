@@ -38,6 +38,7 @@ from kanibako.targets.base import (
 )
 
 from kanibako.plugins.claude.credentials import (
+    credentials_error,
     merge_oauth_account_out,
     merge_oauth_in,
     refresh_host_to_project,
@@ -179,7 +180,8 @@ class ClaudeTarget(Target):
         * ``.credentials.json`` "in": claudeAiOauth merge host->project via
           :func:`merge_oauth_in` (the gate-free refresh content op).
         * ``.credentials.json`` "out": wholesale project->host copy (the gate-
-          free writeback content op).
+          free writeback content op).  *src* is the engine's host-side copy of the
+          box file, already checked by :meth:`cred_writeback_error`.
 
         Defensive throughout: never raises on a malformed file (matching the
         warn-and-skip helpers).
@@ -200,6 +202,12 @@ class ClaudeTarget(Target):
             if src is not None and Path(src).is_file():
                 merge_oauth_in(src, dst)
             return
+
+    def cred_writeback_error(self, spec: CredFileSpec, data: bytes) -> str | None:
+        """Refuse a box ``.credentials.json`` that is not one claude can use."""
+        if spec.home_rel.endswith(".credentials.json"):
+            return credentials_error(data)
+        return None
 
     def writeback_extra(self, *, project_home: Path, host_home: Path) -> None:
         """Merge the box's ``.claude.json`` ``oauthAccount`` back to the host.

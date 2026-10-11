@@ -7,6 +7,7 @@ _Signatures only: no comments, no docstrings, no bodies._
 ## Functions
 ```
 def merge_oauth_in(src: Path, dst: Path) -> bool
+def credentials_error(data: bytes) -> str | None
 def refresh_host_to_project(host_creds: Path, project_creds: Path) -> bool
 def writeback_project_to_host(project_creds: Path) -> None
 def merge_oauth_account_out(project_json: Path, host_json: Path) -> bool

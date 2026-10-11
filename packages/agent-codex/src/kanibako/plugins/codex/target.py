@@ -39,6 +39,7 @@ from kanibako.targets.base import (
     AccessReport,
     AgentInstall,
     CategoryBindDefaults,
+    CredFileSpec,
     PersonaProbeOutcome,
     PersonaReadOutcome,
     PersonaSettings,
@@ -402,6 +403,24 @@ class CodexTarget(Target):
             binary=binary,
             install_dir=binary.parent,
         )
+
+    def cred_writeback_error(self, spec: CredFileSpec, data: bytes) -> str | None:
+        """Refuse a box ``auth.json`` that is not a non-empty JSON object.
+
+        The plugin reads no field of the file; :meth:`check_auth` asks only that it
+        be non-empty, and an object with nothing in it is empty.
+        """
+        import json
+
+        if not spec.home_rel.endswith("auth.json"):
+            return None
+        try:
+            doc = json.loads(data)
+        except ValueError as exc:
+            return f"not JSON: {exc}"
+        if not isinstance(doc, dict) or not doc:
+            return "not a non-empty JSON object"
+        return None
 
     def check_auth(self) -> bool:
         """Lenient credential presence check for Codex.

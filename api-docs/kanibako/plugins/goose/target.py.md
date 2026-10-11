@@ -26,6 +26,7 @@ class GooseTarget(Target):
     def default_category_binds(self) -> CategoryBindDefaults
     def default_envs(self) -> dict[str, str]
     def transform_cred(self, spec: 'CredFileSpec', src: 'Path | None', dst: Path, direction: str) -> None
+    def cred_writeback_error(self, spec: 'CredFileSpec', data: bytes) -> str | None
     @property
     def name(self) -> str
     @property

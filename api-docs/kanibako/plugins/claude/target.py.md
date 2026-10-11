@@ -38,6 +38,7 @@ class ClaudeTarget(Target):
     @property
     def descriptor(self) -> PluginDescriptor | None
     def transform_cred(self, spec: CredFileSpec, src: Path | None, dst: Path, direction: str) -> None
+    def cred_writeback_error(self, spec: CredFileSpec, data: bytes) -> str | None
     def writeback_extra(self, *, project_home: Path, host_home: Path) -> None
     @property
     def default_entrypoint(self) -> str | None

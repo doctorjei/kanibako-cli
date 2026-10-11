@@ -122,6 +122,18 @@ class GooseTarget(Target):
             return
         write_yaml(dst, box_cfg)
 
+    def cred_writeback_error(self, spec: "CredFileSpec", data: bytes) -> str | None:
+        """Refuse a box ``secrets.yaml`` that is not a non-empty YAML mapping.
+
+        The mapping is what :func:`~kanibako.plugins.goose.credentials.read_yaml`
+        reads; an empty one is refused as the ``config.yaml`` writeback refuses one.
+        """
+        from kanibako.plugins.goose.credentials import parse_yaml
+
+        if spec.home_rel.endswith("secrets.yaml") and not parse_yaml(data):
+            return "not a non-empty YAML mapping"
+        return None
+
     @property
     def name(self) -> str:
         return "goose"

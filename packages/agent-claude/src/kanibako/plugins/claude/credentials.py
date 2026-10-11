@@ -61,6 +61,23 @@ def merge_oauth_in(src: Path, dst: Path) -> bool:
     return True
 
 
+def credentials_error(data: bytes) -> str | None:
+    """Why *data* is not a ``.credentials.json`` claude can use, or ``None``.
+
+    The test :func:`merge_oauth_in` applies to a host file: JSON whose
+    ``claudeAiOauth`` block is present, here required to be an object.
+    """
+    try:
+        doc = json.loads(data)
+    except ValueError as exc:
+        return f"not JSON: {exc}"
+    if not isinstance(doc, dict):
+        return "not a JSON object"
+    if not isinstance(doc.get("claudeAiOauth"), dict):
+        return "no 'claudeAiOauth' object"
+    return None
+
+
 def refresh_host_to_project(host_creds: Path, project_creds: Path) -> bool:
     """Merge claudeAiOauth from host credentials into project credentials.
 

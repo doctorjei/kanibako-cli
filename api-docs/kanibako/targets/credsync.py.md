@@ -20,7 +20,10 @@ def seed_box_credentials(descriptor: PluginDescriptor, target: Target, *, auth: 
 def refresh_box_credentials(descriptor: PluginDescriptor, target: Target, *, auth: AuthSource, host_home: Path, project_home: Path, suppress_oauth: bool=False) -> None
 def writeback_box_credentials(descriptor: PluginDescriptor, target: Target, *, auth: AuthSource, host_home: Path, project_home: Path) -> None
 def _chmod_600(path: Path) -> None
-def _copy_dir(src: Path, dst: Path) -> None
+def _copy_dir(src: Path, dst: Path, *, skip_links: bool=False) -> None
+def _linked_part(root: Path, rel: str) -> Path | None
+def _read_box_file(root: Path, rel: str) -> tuple[bytes, os.stat_result] | None
+def _replace_store_file(spec: CredFileSpec, target: Target, data: bytes, box_stat: os.stat_result, dst: Path) -> None
 def _sync_workset_dir_from_global(descriptor: PluginDescriptor, target: Target, *, auth: AuthSource, host_home: Path) -> None
 def _sync_workset_dir_to_global(descriptor: PluginDescriptor, target: Target, *, auth: AuthSource, host_home: Path) -> None
 def _box_from_source(primitive: Callable[..., None], descriptor: PluginDescriptor, target: Target, *, auth: AuthSource, host_home: Path, project_home: Path) -> None

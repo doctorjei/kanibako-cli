@@ -18,14 +18,22 @@ except ImportError:
         "PyYAML is required for the Goose plugin. Install it with: pip install pyyaml"
     )
 
+def parse_yaml(text: str | bytes) -> dict:
+    """Parse YAML text as a mapping, returning {} for anything else or an error."""
+    try:
+        data = yaml.safe_load(text)
+    except yaml.YAMLError:
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
 def read_yaml(path: Path) -> dict:
     """Read a YAML file, returning {} on any error."""
     if not path.is_file():
         return {}
     try:
-        data = yaml.safe_load(path.read_text())
-        return data if isinstance(data, dict) else {}
-    except (yaml.YAMLError, OSError):
+        return parse_yaml(path.read_text())
+    except OSError:
         return {}
 
 

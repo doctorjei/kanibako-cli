@@ -26,8 +26,11 @@ primitives are bypassed on the descriptor path.
 
 from __future__ import annotations
 
+import errno
+import os
 import shutil
 import stat
+import tempfile
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -39,7 +42,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable
 
     from kanibako.settings.settings_launch import AuthSource
-    from kanibako.targets.base import PluginDescriptor, Target
+    from kanibako.targets.base import CredFileSpec, PluginDescriptor, Target
 
 logger = get_logger("credsync")
 
@@ -52,7 +55,7 @@ def _chmod_600(path: Path) -> None:
         logger.debug("credsync: chmod 0600 failed for %s: %s", path, exc)
 
 
-def _copy_dir(src: Path, dst: Path) -> None:
+def _copy_dir(src: Path, dst: Path, *, skip_links: bool = False) -> None:
     """Recursively copy directory *src* into *dst*, merging into an existing dst.
 
     Used for ``is_dir`` cred specs (e.g. goose ``custom_providers/``).  A
@@ -60,8 +63,18 @@ def _copy_dir(src: Path, dst: Path) -> None:
     the source tree is the authority and is mirrored wholesale on every sync.
     Each copied file is chmod 0600 (these dirs hold config that may reference
     secrets, so we keep the same conservative perms as the file path).
+    *skip_links* leaves out every symlink in the tree, with a warning: a writeback
+    reads a box tree, and a link a box planted would copy the host file it names.
     """
-    shutil.copytree(str(src), str(dst), dirs_exist_ok=True)
+    def _links(d: str, names: list[str]) -> list[str]:
+        links = [n for n in names if os.path.islink(os.path.join(d, n))]
+        for n in links:
+            logger.warning("credential writeback skipped %s: it is a symlink",
+                           os.path.join(d, n))
+        return links
+
+    shutil.copytree(str(src), str(dst), dirs_exist_ok=True,
+                    ignore=_links if skip_links else None)
     for child in dst.rglob("*"):
         if child.is_file():
             _chmod_600(child)
@@ -185,8 +198,13 @@ def writeback_cred_files(
     host home for GLOBAL, the workset source dir for WORKSET) the destination.  The
     project file must exist and (when ``mtime_gate``) be strictly newer than the
     dest; filtered specs route through ``transform_cred(..., "out")``, unfiltered
-    specs are a wholesale copy (NO dest chmod — writeback is wholesale, matching
-    ``cp_if_newer``).
+    specs are a wholesale copy (an existing dest keeps its mode).
+
+    🛑 The box writes everything under *project_home*, so nothing there is trusted:
+    a box file reached through a symlink is refused, and so is one the harness's
+    :meth:`~kanibako.targets.base.Target.cred_writeback_error` rejects.  A refusal
+    warns, naming the file, and leaves the store as it was.  A replaced store file
+    keeps its previous content as ``<file>.bak``.
     """
     if source_root is None:
         return
@@ -199,23 +217,137 @@ def writeback_cred_files(
         if spec.is_dir:
             # Directory spec: mirror the box dir back to the source (no mtime
             # gate; see _copy_dir).  Skip silently when the box dir is absent.
-            if src.is_dir():
+            link = _linked_part(project_home, spec.home_rel)
+            if link is not None:
+                logger.warning("credential writeback skipped %s: %s is a symlink",
+                               src, link)
+            elif src.is_dir():
                 dst.parent.mkdir(parents=True, exist_ok=True)
-                _copy_dir(src, dst)
+                _copy_dir(src, dst, skip_links=True)
             continue
-        if not src.is_file():
+        box = _read_box_file(project_home, spec.home_rel)
+        if box is None:
             continue
+        data, box_stat = box
         if (
             spec.mtime_gate
             and dst.is_file()
-            and src.stat().st_mtime <= dst.stat().st_mtime
+            and box_stat.st_mtime <= dst.stat().st_mtime
         ):
             continue
+        reason = target.cred_writeback_error(spec, data)
+        if reason is not None:
+            logger.warning(
+                "credential writeback skipped: %s is not a valid %s credential file "
+                "(%s); %s is unchanged", src, target.name, reason, dst,
+            )
+            continue
         dst.parent.mkdir(parents=True, exist_ok=True)
-        if spec.filtered:
-            target.transform_cred(spec, src, dst, "out")
-        else:
-            shutil.copy2(str(src), str(dst))
+        _replace_store_file(spec, target, data, box_stat, dst)
+
+
+def _linked_part(root: Path, rel: str) -> Path | None:
+    """The first symlink on the path from *root* down to *root*/*rel*, or ``None``.
+
+    *root* itself is trusted; a missing component ends the walk with ``None``.
+    """
+    path = root
+    for part in Path(rel).parts:
+        path = path / part
+        try:
+            if stat.S_ISLNK(os.lstat(path).st_mode):
+                return path
+        except FileNotFoundError:
+            return None
+    return None
+
+
+def _read_box_file(
+    root: Path, rel: str,
+) -> tuple[bytes, os.stat_result] | None:
+    """Read the box file *root*/*rel* without following a link, or ``None``.
+
+    The box controls everything under *root*, so each component is opened with
+    ``O_NOFOLLOW`` relative to the last: a symlink anywhere below *root* is
+    refused, as is anything but a regular file (``O_NONBLOCK`` keeps a FIFO from
+    hanging the open).  A missing file is ``None`` with no warning; a refusal warns,
+    naming the file.  The bytes returned are the bytes checked and written.
+    """
+    parts = Path(rel).parts
+    path = root / rel
+    try:
+        fd = os.open(root, os.O_RDONLY | os.O_DIRECTORY)
+    except OSError:
+        return None
+    try:
+        for part in parts[:-1]:
+            nxt = os.open(part, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=fd)
+            os.close(fd)
+            fd = nxt
+        leaf = os.open(parts[-1], os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=fd)
+    except OSError as exc:
+        if exc.errno == errno.ENOENT:
+            return None
+        why = "it or a directory above it is a symlink" if exc.errno in (
+            errno.ELOOP, errno.ENOTDIR) else exc.strerror
+        logger.warning("credential writeback skipped %s: %s", path, why)
+        return None
+    finally:
+        os.close(fd)
+    try:
+        st = os.fstat(leaf)
+        if not stat.S_ISREG(st.st_mode):
+            logger.warning("credential writeback skipped %s: not a regular file", path)
+            return None
+        with os.fdopen(leaf, "rb", closefd=False) as fh:
+            return fh.read(), st
+    except OSError as exc:
+        logger.warning("credential writeback skipped %s: %s", path, exc)
+        return None
+    finally:
+        os.close(leaf)
+
+
+def _replace_store_file(
+    spec: CredFileSpec, target: Target, data: bytes,
+    box_stat: os.stat_result, dst: Path,
+) -> None:
+    """Write checked box *data* over the store file *dst*, keeping one backup.
+
+    Unfiltered: the bytes are written IN PLACE (a store file the user made a symlink
+    stays one), a new file at 0600, with the box file's times as ``copy2`` carried
+    them.  Filtered: *data* goes to a private temp copy beside *dst*, and the
+    plugin's ``transform_cred(..., "out")`` reads that copy, never the box file.
+    When *dst* changed, its previous content becomes ``<dst>.bak`` (0600), replacing
+    any older one.
+    """
+    old = dst.read_bytes() if dst.is_file() else None
+    if spec.filtered:
+        fd, tmp = tempfile.mkstemp(prefix=f".{dst.name}.", suffix=".writeback",
+                                   dir=dst.parent)
+        try:
+            with os.fdopen(fd, "wb") as fh:
+                fh.write(data)
+            os.utime(tmp, ns=(box_stat.st_atime_ns, box_stat.st_mtime_ns))
+            target.transform_cred(spec, Path(tmp), dst, "out")
+        finally:
+            Path(tmp).unlink(missing_ok=True)
+    else:
+        fd = os.open(dst, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, "wb") as fh:
+            fh.write(data)
+        os.utime(dst, ns=(box_stat.st_atime_ns, box_stat.st_mtime_ns))
+    if old is None or not dst.is_file() or dst.read_bytes() == old:
+        return
+    bak = dst.with_name(dst.name + ".bak")
+    fd, tmp = tempfile.mkstemp(prefix=f".{bak.name}.", dir=dst.parent)
+    try:
+        with os.fdopen(fd, "wb") as fh:
+            fh.write(old)
+        os.replace(tmp, bak)
+    except BaseException:
+        Path(tmp).unlink(missing_ok=True)
+        raise
 
 
 # --------------------------------------------------------------------------- #

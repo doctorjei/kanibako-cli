@@ -7428,6 +7428,22 @@ it is then absent. That discards your edits to the file, and the refresh also re
 shipped templates; plain `kanibako setup` is not enough (see
 "A store set up by `1.8.0rc2` has a broken comms hook, and upgrading does not replace it").
 
+### Credential writeback checks the box's file and keeps a backup
+
+**Read this if a box's credential file is a symlink, or if you keep files named `*.bak` beside your
+credential store.**
+
+**What changed.** When a session ends, a box's credential file (claude `.credentials.json`, codex
+`auth.json`, goose `secrets.yaml`) replaces the store copy only if it parses as that agent's format: JSON
+with a `claudeAiOauth` object for claude, a non-empty JSON object for codex, a non-empty YAML mapping for
+goose. A box file that is a symlink, or sits under one, is refused, and so is a link inside goose's
+`custom_providers/`. A refusal keeps the store copy and logs a warning naming the box file. Any synced
+file a writeback changes, goose's `config.yaml` included, keeps its previous content as `<file>.bak`
+(0600), overwriting the last one.
+
+**What to do.** Nothing, unless you linked a credential file inside a box home: make it a regular file,
+or the store stops receiving that box's logins. To undo a bad writeback, copy `<file>.bak` over the file.
+
 ### The tweakcc cache mounts at `~/.kanibako/cache/tweakcc` in the box
 
 **Read this if you use tweakcc and a script in a helper box reads the patched-binary cache, or if you
