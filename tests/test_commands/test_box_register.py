@@ -684,6 +684,23 @@ def test_rm_of_a_standalone_with_an_unreadable_marker_refuses_before_its_progres
     assert registry_store.standalone_name_for_root(std.registry, root) == name
 
 
+@pytest.mark.parametrize("purge", [False, True], ids=["rm", "purge"])
+def test_rm_of_a_standalone_prints_its_progress_line_once(
+    config_file, tmp_home, credentials_dir, capsys, purge,
+):
+    _config, std = _std(config_file)
+    root = (tmp_home / "sa").resolve()
+    root.mkdir()
+    assert run_create(_create_args(root, standalone=True, register=True)) == 0
+    name = registry_store.standalone_name_for_root(std.registry, root)
+    capsys.readouterr()
+
+    assert run_rm(_rm_args(name, purge=purge, force=purge)) == 0
+    out, _err = capsys.readouterr()
+    assert out.count(f"Removing standalone box: {name} ({root})\n") == 1, out
+    assert out.count("Removing standalone box") == 1, out
+
+
 _LOOP = (": it is a symlink loop that kanibako cannot resolve. Remove or repair the link, "
          "then retry.\n")
 

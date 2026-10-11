@@ -2814,7 +2814,6 @@ def _rm_standalone(std, box_name: str, root, args: argparse.Namespace, *,
                 "Purging this box",
                 consequence=None if args.purge else _DEREGISTER_LIVE)):
         return 1
-    print(f"Removing standalone box: {box_name} ({root})")
     # ⚑ Planned and confirmed BEFORE the unregister: a refusal or a declined question
     # leaves the box registered.
     plan = None
