@@ -931,3 +931,49 @@ class TestDesignationCascade:
         assert probe.project_path.resolve() == (here / "foo").resolve()
         proj = resolve_project(std, config, project_dir="foo", initialize=True)
         assert proj.project_path.resolve() == (here / "foo").resolve()
+
+
+# ---------------------------------------------------------------------------
+# A printed cure names its box by a reference that resolves from anywhere
+# ---------------------------------------------------------------------------
+
+class TestCureRefResolvesFromAnywhere:
+    """``project_cure_ref`` (every ``kanibako <verb> <box>`` cure a launch prints) must
+    reach the SAME box from a cwd outside the box's path space: a named member's bare
+    name is S8b's error there, so its cure is ``<workset>/<box>``."""
+
+    def test_each_mode_resolves_from_outside_its_space(
+        self, std, config, tmp_home, monkeypatch,
+    ):
+        import shlex
+
+        from kanibako.project.workset import add_project, create_workset
+        from kanibako.settings.paths import (
+            WorksetSpec, project_cure_ref, resolve_workset_project,
+        )
+
+        ws = create_workset("wsx", tmp_home / "worksets" / "wsx", std)
+        source = tmp_home / "bar-src"
+        source.mkdir()
+        add_project(ws, "bar", source)
+        member = resolve_workset_project(
+            WorksetSpec.from_workset(ws), "bar", std, config, initialize=True,
+        )
+        primary_ws = tmp_home / "elsewhere" / "pbox"
+        _make_primary(std, config, primary_ws)
+        primary = resolve_project(std, config, project_dir=str(primary_ws))
+        _box_name, sa_root = _make_standalone(std, tmp_home, leaf="saref")
+        standalone = resolve_box_target(std, config, str(sa_root))
+
+        outside = tmp_home / "outside"
+        outside.mkdir()
+        _cd(monkeypatch, outside)
+        assert project_cure_ref(member) == "wsx/bar"
+        with pytest.raises(AmbiguousNameError, match="'wsx/bar'"):
+            resolve_box_target(std, config, "bar", initialize=False)
+        for proj in (member, primary, standalone):
+            ref = shlex.split(project_cure_ref(proj))
+            assert len(ref) == 1, ref
+            back = resolve_box_target(std, config, ref[0], initialize=False)
+            assert (back.mode, back.name, back.metadata_path) == (
+                proj.mode, proj.name, proj.metadata_path), ref

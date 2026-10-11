@@ -214,6 +214,27 @@ class ProjectPaths:
         return self._early
 
 
+def box_cure_ref(mode: BoxMode, name: str, workset: str | None, root: Path) -> str:
+    """The reference a printed cure reaches a box by, QUOTED for the shell.
+
+    ⚑ A standalone's name is in no registry every route reads, and its nested workspace
+    resolves through the path space its *root* sits in, so it is the box root.  A named
+    member's bare name resolves only inside its own path space (the designation
+    cascade), so it is ``<workset>/<box>``, which resolves from anywhere.
+    """
+    if mode is BoxMode.standalone:
+        return shlex.quote(str(root))
+    if mode is BoxMode.named and workset is not None:
+        return shlex.quote(f"{workset}/{name}")
+    return shlex.quote(name)
+
+
+def project_cure_ref(proj: ProjectPaths) -> str:
+    """:func:`box_cure_ref` for *proj*."""
+    return box_cure_ref(proj.mode, proj.name, proj.group.name if proj.group else None,
+                        proj.metadata_path)
+
+
 def box_tree_materialized(proj: ProjectPaths) -> bool:
     """True when the box tree a ``create`` would materialize is ALREADY on disk."""
     return box_metadata_dir(proj.mode, proj.metadata_path,

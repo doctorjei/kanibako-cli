@@ -221,6 +221,7 @@ class TestTheBoxSetShapingCureIsQuoted:
 
             mode = BoxMode.primary
             name = root.name
+            group = None
             project_path = root
             metadata_path = root
             shell_path = root / "home"
@@ -485,8 +486,10 @@ class TestTheBoxInfoClearItCureIsQuoted:
             run_info(argparse.Namespace(path=str(leaf), box=None))
         printed = out.getvalue()
         assert "clear it: kanibako stop" in printed, printed
+        # ⚑ A named member's cure is ``<workset>/<box>``: its bare name is S8b's error
+        # outside the workset's path space.
         _assert_inert(_pasteable(_line(printed, "clear it:"), "clear it:"),
-                      ["stop", name], tmp_path / "paste")
+                      ["stop", f"ws/{name}"], tmp_path / "paste")
 
 
 #: A name holding a SPACE.  The cleanup cures' claim is the stronger one: an

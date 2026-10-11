@@ -25,7 +25,7 @@ def owner_token(mode: BoxMode, ws_name: str | None=None) -> str
 def resolve_lifecycle_target(old: str | None, std: StandardPaths, config: BootstrapConfig | None=None) -> ProjectState
 def recorded_workspace_for(ws: '_WorksetLike', box_name: str, resolved: Path | None) -> Path | None
 def box_bind_sources_or_none(std: StandardPaths, proj: ProjectPaths) -> frozenset[str] | None
-def plan_box_mounted_links(name: str, bind_sources: frozenset[str] | None, trees: Collection[Path | None]) -> list[MountedLink]
+def plan_box_mounted_links(state: ProjectState, trees: Collection[Path | None]) -> list[MountedLink]
 def repoint_box_mounted_links(links: list[MountedLink], relocated: Mapping[Path, Path], landed: ProjectState) -> None
 def copy_into_workset(ws: Workset, proj_name: str, metadata_path: Path, shell_path: Path, source_path: Path, source_mode: BoxMode, *, copy_workspace: bool, std: StandardPaths) -> None
 def execute_lifecycle(state: ProjectState, spec: TargetSpec, std: StandardPaths, config: BootstrapConfig | None=None, *, force: bool=False, confirm: Callable[[], bool] | None=None) -> ProjectState

@@ -728,6 +728,22 @@ class TestStandaloneNameResolution:
         assert got == (str(workspace), "project")
         assert any("shadowed" in r.getMessage() for r in caplog.records)
 
+    def test_the_shadowed_path_is_warned_once_per_process(
+        self, registry: Path, tmp_path: Path, caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """One command resolves its box in several passes; the warning prints once."""
+        primary = tmp_path / "primary_workset"
+        workspace = tmp_path / "elsewhere" / "foo"
+        workspace.mkdir(parents=True)
+        _register_primary_box(primary, "foo", workspace)
+        (tmp_path / "foo").mkdir()
+
+        with caplog.at_level("WARNING"):
+            for _ in range(3):
+                resolve_name(registry, "foo", cwd=tmp_path, primary_workset=primary,
+                             path=str(tmp_path / "foo"), early_system=early_record(tmp_path))
+        assert len([r for r in caplog.records if "shadowed" in r.getMessage()]) == 1
+
     def test_a_primary_box_outranks_a_registered_standalone(
         self, registry: Path, tmp_path: Path,
         caplog: pytest.LogCaptureFixture,

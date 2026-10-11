@@ -58,6 +58,7 @@ from kanibako.settings.paths import (
     STANDALONE_META_DIR,
     BoxMode,
     ProjectPaths,
+    box_cure_ref,
     StandardPaths,
     WorksetSpec,
     _WorksetLike,
@@ -579,20 +580,21 @@ def _box_trees(state: ProjectState) -> tuple[Path | None, ...]:
 
 
 def plan_box_mounted_links(
-    name: str, bind_sources: frozenset[str] | None, trees: Collection[Path | None],
+    state: ProjectState, trees: Collection[Path | None],
 ) -> list[MountedLink]:
     """The box's directly mounted links under *trees*, planned before anything is copied.
 
-    With *bind_sources* ``None`` nothing is planned, and a Note says every link is
-    carried as it is.
+    With *state*'s bind sources ``None`` nothing is planned, and a Note says every link
+    is carried as it is.
     """
     import sys
 
+    bind_sources = state.bind_sources
     if bind_sources is None:
         print(
-            f"Note: could not resolve the bindings of '{name}', so every link is carried as "
-            "it is; a relative link that is a bind source may stop reaching its target. "
-            f"`kanibako box show --effective {name}` names the error.",
+            f"Note: could not resolve the bindings of '{state.name}', so every link is "
+            "carried as it is; a relative link that is a bind source may stop reaching its "
+            f"target. `kanibako box show --effective {_cure_ref(state)}` names the error.",
             file=sys.stderr,
         )
         return []
@@ -615,8 +617,8 @@ def repoint_box_mounted_links(
         print(
             f"Note: could not resolve the bindings of '{landed.name}' where it landed, so "
             "every link kept its text; a relative link that is a bind source may stop "
-            f"reaching its target. `kanibako box show --effective {landed.name}` names the "
-            "error.",
+            f"reaching its target. `kanibako box show --effective {_cure_ref(landed)}` names "
+            "the error.",
             file=sys.stderr,
         )
         return
@@ -738,18 +740,9 @@ def _resolve_target_workset(
 
 
 def _cure_ref(state: ProjectState) -> str:
-    """The reference a printed cure reaches *state* by, QUOTED for the shell.
-
-    ⚑ A standalone's name is in no registry the route reads, and its nested workspace
-    resolves through the path space its root sits in, so it is the box root.  A named
-    member's bare name resolves only inside its own path space (the designation
-    cascade), so it is ``<workset>/<box>``, which resolves from anywhere.
-    """
-    if state.mode is BoxMode.standalone:
-        return shlex.quote(str(state.metadata_path))
-    if state.mode is BoxMode.named and state.ws is not None:
-        return shlex.quote(f"{state.ws.name}/{state.name}")
-    return shlex.quote(state.name)
+    """:func:`~kanibako.settings.paths.box_cure_ref` for *state*."""
+    return box_cure_ref(state.mode, state.name, state.ws.name if state.ws else None,
+                        state.metadata_path)
 
 
 def _name_held_in_target_workset(
@@ -1347,7 +1340,7 @@ def execute_lifecycle(
 
     mounted = (
         [] if spec.records_only
-        else plan_box_mounted_links(state.name, state.bind_sources, _box_trees(state))
+        else plan_box_mounted_links(state, _box_trees(state))
     )
     unwind = _Unwind()
     sealed = False

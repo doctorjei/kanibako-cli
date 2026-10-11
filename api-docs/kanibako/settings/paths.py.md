@@ -30,6 +30,8 @@ def workset_settings_path(group: _WorksetRooted) -> Path
 @overload
 def workset_settings_path(group: None) -> None
 def workset_settings_path(group: _WorksetRooted | None) -> Path | None
+def box_cure_ref(mode: BoxMode, name: str, workset: str | None, root: Path) -> str
+def project_cure_ref(proj: ProjectPaths) -> str
 def box_tree_materialized(proj: ProjectPaths) -> bool
 def standalone_box_store(root: Path, *, early: EarlyScope, settings_doc: 'Mapping[str, Any] | None'=None) -> Path
 def standalone_store_teardown_plan(root: Path, *, early: EarlyScope) -> tuple[Path | None, Path | None]

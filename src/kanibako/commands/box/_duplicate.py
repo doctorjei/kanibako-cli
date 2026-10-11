@@ -400,7 +400,7 @@ def _repoint_duplicated_links(source: Path, dest: Path, std, config, *, bare: bo
     pairs = [(src.metadata_path, dst.metadata_path), (src.shell_path, dst.shell_path)]
     if not bare:
         pairs.append((src.workspace_path, dst.workspace_path))
-    links = plan_box_mounted_links(src.name, src.bind_sources, [old for old, _new in pairs])
+    links = plan_box_mounted_links(src, [old for old, _new in pairs])
     repoint_box_mounted_links(links, dict(pairs), dst)
 
 

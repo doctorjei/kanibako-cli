@@ -84,6 +84,7 @@ from kanibako.settings.paths import (
     creds_watcher_log_path,
     designation_route,
     load_std_paths,
+    project_cure_ref,
     refuse_derived_box_name,
     resolve_box_target,
     stored_legacy_box,
@@ -3186,7 +3187,7 @@ def _run_container(
             print(
                 f"Error: --restart could not stop box '{proj.name}' — it is "
                 f"still running. Stop it manually (`kanibako stop "
-                f"{shlex.quote(proj.name)}`), then start it again.",
+                f"{project_cure_ref(proj)}`), then start it again.",
                 file=sys.stderr,
             )
             return 1
@@ -3251,7 +3252,7 @@ def _run_container(
                     f"Box '{proj.name}' is already running agent "
                     f"'{display_agent_ref(stored_agent)}'; cannot reattach with "
                     f"--agent '{display_agent_ref(explicit_agent)}'. Stop it first "
-                    f"(`kanibako stop {shlex.quote(proj.name)}`) to relaunch with a "
+                    f"(`kanibako stop {project_cure_ref(proj)}`) to relaunch with a "
                     f"different agent."
                 )
             explicit_agent = stored_agent
@@ -3373,8 +3374,8 @@ def _run_container(
                 f"{', '.join(_rejected)} cannot be applied to it (a running "
                 f"box keeps the container and the agent session it was "
                 f"launched with).\n"
-                f"  Restart it: kanibako --restart {shlex.quote(proj.name)}\n"
-                f"  Or stop it: kanibako stop {shlex.quote(proj.name)}",
+                f"  Restart it: kanibako --restart {project_cure_ref(proj)}\n"
+                f"  Or stop it: kanibako stop {project_cure_ref(proj)}",
                 file=sys.stderr,
             )
             return 1
@@ -4080,7 +4081,7 @@ def _run_container(
                     "Error: This project's box is not running, but a stopped "
                     f"container is still holding its name ({container_name}), "
                     "which blocks a new launch.\n"
-                    f"  Clear it:  kanibako stop {shlex.quote(proj.name)}\n"
+                    f"  Clear it:  kanibako stop {project_cure_ref(proj)}\n"
                     "  Then run your command again.",
                     file=sys.stderr,
                 )
@@ -5379,9 +5380,9 @@ def _run_container(
             )
             print(
                 f"{_started}\n"
-                f"  Attach:    kanibako start {shlex.quote(proj.name)}\n"
-                f"  VS Code:   kanibako code {shlex.quote(proj.name)}\n"
-                f"  Stop it:   kanibako stop {shlex.quote(proj.name)}",
+                f"  Attach:    kanibako start {project_cure_ref(proj)}\n"
+                f"  VS Code:   kanibako code {project_cure_ref(proj)}\n"
+                f"  Stop it:   kanibako stop {project_cure_ref(proj)}",
                 file=sys.stderr,
             )
             # D Part 2: a detached launch leaves no foreground host process to write
@@ -5553,8 +5554,8 @@ def _run_container(
                     f"{_max_exec_attempts} attempts. Its container "
                     f"({container_name}) is still running; the agent inside may "
                     f"have exited.\n"
-                    f"  Look inside:  kanibako shell {shlex.quote(proj.name)}\n"
-                    f"  Stop it:      kanibako stop {shlex.quote(proj.name)}\n"
+                    f"  Look inside:  kanibako shell {project_cure_ref(proj)}\n"
+                    f"  Stop it:      kanibako stop {project_cure_ref(proj)}\n"
                     f"  Then start it again.",
                     file=sys.stderr,
                 )

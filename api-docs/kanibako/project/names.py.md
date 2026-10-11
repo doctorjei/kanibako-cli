@@ -8,6 +8,7 @@ _Signatures only: no comments, no docstrings, no bodies._
 
 ```
 logger = get_logger('names')
+_WARNED_PATH_SHADOWS: set[tuple[str, str, str, str]] = set()
 ```
 
 ## Functions

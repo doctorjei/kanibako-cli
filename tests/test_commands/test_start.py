@@ -13169,6 +13169,28 @@ class TestShellRunsTheCommand:
                 f"  Stop it:   kanibako stop {box}",
             ]
 
+    def test_a_detached_named_member_s_cures_name_it_by_workset(
+        self, start_mocks, capsys,
+    ):
+        """``start -d wsx/bar`` from ``~``: every printed cure must work from ``~``, where
+        the bare member name is S8b's error — so each names ``wsx/bar``."""
+        from kanibako.settings.paths import ProjectGroup
+
+        with self._site(start_mocks, 0) as m:
+            m.proj.mode = BoxMode.named
+            m.proj.group = ProjectGroup(name="wsx", root=Path("/data/wsx"), is_default=False,
+                                        local_shared_base=Path("/data/wsx"))
+            m.proj.name = "bar"
+            rc, err, _ = self._end(m, capsys, site="detach-up")
+            assert rc == 0
+            lines = err.splitlines()
+            first = lines.index(self._M3.format(box="bar"))
+            assert lines[first + 1:first + 4] == [
+                "  Attach:    kanibako start wsx/bar",
+                "  VS Code:   kanibako code wsx/bar",
+                "  Stop it:   kanibako stop wsx/bar",
+            ]
+
     @pytest.mark.parametrize("site, code, run_rc", [
         ("fg-gone", 1, 0), ("fg-dies", 1, 0), ("detach-gone", 1, 0),
         # inspect cannot read the code although ``podman run`` succeeded

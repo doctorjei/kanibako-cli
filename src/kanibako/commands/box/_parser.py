@@ -52,6 +52,9 @@ from kanibako.settings.messages import (
 from kanibako.settings.paths import (
     IGNORE_FILE,
     BoxMode,
+    ProjectPaths,
+    box_cure_ref,
+    project_cure_ref,
     DesignationRoute,
     StandardPaths,
     WorksetSpec,
@@ -829,10 +832,10 @@ def _create_recovery_refusal(
             )
         cures = [key for f in given for key in _SHAPING_SET_CURE.get(f, ())]
         if cures:
+            ref = box_cure_ref(probe.mode, name, probe.group.name if probe.group else None,
+                               probe.metadata_path)
             lines.append("Or change them afterwards:")
-            lines += [
-                f"  kanibako box set --box {shlex.quote(name)} {key}" for key in cures
-            ]
+            lines += [f"  kanibako box set --box {ref} {key}" for key in cures]
     lines += ["Inspect it first:", "  kanibako box diagnose"]
     return "\n".join(lines)
 
@@ -3258,10 +3261,12 @@ def _check_container_running(proj, *, fail_closed: bool = False,
             return True, f"running ({container_name}: {image})"
     # An exited container still holds the name.
     if runtime.container_exists(container_name):
-        stop_handle = (getattr(proj, "name", "") or "").strip() or container_name
+        named = (getattr(proj, "name", "") or "").strip()
+        stop_handle = (project_cure_ref(proj) if named and isinstance(proj, ProjectPaths)
+                       else shlex.quote(named or container_name))
         return False, (
             f"exited, still holding the name ({container_name}); "
-            f"clear it: kanibako stop {shlex.quote(stop_handle)}"
+            f"clear it: kanibako stop {stop_handle}"
         )
     return False, f"not running ({container_name})"
 

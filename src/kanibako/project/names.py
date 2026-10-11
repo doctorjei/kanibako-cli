@@ -270,11 +270,14 @@ def resolve_name(
     if primary_hit is not None and path is not None:
         if space_boxes is not None and _records_member_at(space_boxes, path):
             return path, "path"
-        if Path(literal_path(path)).resolve() != Path(primary_hit).resolve():
+        shown = (name, primary_hit, literal_path(path), name)
+        if (Path(literal_path(path)).resolve() != Path(primary_hit).resolve()
+                and shown not in _WARNED_PATH_SHADOWS):
+            # ⚑ Once per process: one command resolves its box in several passes.
+            _WARNED_PATH_SHADOWS.add(shown)
             logger.warning(
                 "bare name '%s' resolved to the primary box at %s; the path %s is "
-                "shadowed — reach it as ./%s or by its full path.",
-                name, primary_hit, literal_path(path), name,
+                "shadowed — reach it as ./%s or by its full path.", *shown,
             )
         return _warn_standalone_shadow(registry, name, primary_hit), "project"
     if primary_hit is not None:
@@ -292,6 +295,10 @@ def resolve_name(
     if stored_ws is not None:
         return names["worksets"][stored_ws], "workset"
     raise ProjectError(f"Unknown project or workset: '{name}'")
+
+
+#: The path-shadowed-by-a-primary-box warnings this process has printed.
+_WARNED_PATH_SHADOWS: set[tuple[str, str, str, str]] = set()
 
 
 def _warn_standalone_shadow(registry: Path, name: str, path: str) -> str:

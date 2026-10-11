@@ -94,7 +94,7 @@ class TestNamedPurgeTakesOwnVaultLeaves:
         _ws, made = _named_pair(env, tmp_home)
         ro, rw, _store_path = made["alpha"]
 
-        assert _door("box", "purge", "alpha", "--force") == 0
+        assert _door("box", "purge", "plws/alpha", "--force") == 0
         assert not ro.exists(), (
             f"named-member purge left the box's own vault ro leaf: {ro}"
         )
@@ -107,7 +107,7 @@ class TestNamedPurgeTakesOwnVaultLeaves:
         _ws, made = _named_pair(env, tmp_home)
         n_ro, n_rw, _ = made["neighbor"]
 
-        _door("box", "purge", "alpha", "--force")
+        _door("box", "purge", "plws/alpha", "--force")
 
         assert (n_ro / "r.txt").read_text() == "RO-neighbor\n"
         assert (n_rw / "w.txt").read_text() == "RW-neighbor\n"
@@ -117,7 +117,7 @@ class TestNamedPurgeTakesOwnVaultLeaves:
         _ws, made = _named_pair(env, tmp_home)
         versions = _versions_dir(made["alpha"][1])
 
-        _door("box", "purge", "alpha", "--force")
+        _door("box", "purge", "plws/alpha", "--force")
 
         assert versions.is_dir(), "the shared .versions base was removed"
         assert (versions / LAYOUT_MARKER_NAME).exists(), (
@@ -138,7 +138,7 @@ class TestNamedPurgeTakesOwnVaultLeaves:
         shutil.rmtree(rw)
         rw.symlink_to(outside)
 
-        _door("box", "purge", "alpha", "--force")
+        _door("box", "purge", "plws/alpha", "--force")
 
         assert not rw.exists(), "the linked vault leaf survived"
         assert (outside / "keep.txt").read_text() == "OUTSIDE\n", (

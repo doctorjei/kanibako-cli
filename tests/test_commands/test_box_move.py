@@ -843,7 +843,7 @@ class TestAVaultSymlinkLoopIsKeptAndNamed:
         self_loop(loop)
         capsys.readouterr()
 
-        assert _cli("box", "convert", "--force", "--standalone", "--box", "m") == 0
+        assert _cli("box", "convert", "--force", "--standalone", "--box", "ws/m") == 0
         err = capsys.readouterr().err
         assert f"Note: left the vault at {loop} in place — {self._WHY}" in err, err
         assert loop.is_symlink()
@@ -894,7 +894,7 @@ class TestAVaultSymlinkLoopIsKeptAndNamed:
         self_loop(arm)
         capsys.readouterr()
 
-        assert _cli("box", "convert", "--force", "--standalone", "--box", "m") == 0
+        assert _cli("box", "convert", "--force", "--standalone", "--box", "ws/m") == 0
         err = capsys.readouterr().err
         assert f"Note: left the vault at {arm / 'm'} in place — {self._WHY}" in err, err
         assert arm.is_symlink() and os.readlink(arm) == "rw"
