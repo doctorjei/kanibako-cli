@@ -165,12 +165,14 @@ def _find_owning_box(
     return None
 
 
-def recorded_workspaces_under(std: StandardPaths, tree: Path) -> list[tuple[str, Path]]:
+def recorded_workspaces_under(std: StandardPaths, tree: Path, *, standalone: bool = True,
+                              ) -> list[tuple[str, Path]]:
     """Every box whose RECORDED workspace is *tree* or lies under it, as ``(owner, path)``.
 
-    Covers the primary registry, every named workset's, and the standalone section.
-    *owner* is the box name, ``<workset>/<name>`` for a named member.  Paths compare both
-    literal and resolved: a safety test, so a workspace reached through a link still counts.
+    Covers the primary registry, every named workset's, and, unless *standalone* is false,
+    the standalone section, whose rows record a root.  *owner* is the box name,
+    ``<workset>/<name>`` for a named member.  Paths compare both literal and resolved: a
+    safety test, so a workspace reached through a link still counts.
     """
     from kanibako.channels.channels import workset_token
     from kanibako.project.workset import _resolved_unless_loop
@@ -200,9 +202,10 @@ def recorded_workspaces_under(std: StandardPaths, tree: Path) -> list[tuple[str,
             if inside(recorded):
                 owner = box_name if mode is BoxMode.primary else f"{workset_name}/{box_name}"
                 found.append((owner, Path(recorded)))
-    found.extend((name, Path(root_str))
-                 for name, root_str in registry_store.load_standalone(std.registry).items()
-                 if inside(root_str))
+    if standalone:
+        found.extend((name, Path(root_str))
+                     for name, root_str in registry_store.load_standalone(std.registry).items()
+                     if inside(root_str))
     return found
 
 

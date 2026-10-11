@@ -776,10 +776,14 @@ def _remap_dest_holder(
 
     Returns ``(why, forceable)``: *why* completes "Cannot remap … onto …: it is …".
     Keyspace § 0 "Per-owner resources": another box's workspace (identical workspaces) and a
-    standalone root (or a link to one) are refused whatever the flag.  A path inside another
-    box's workspace, root, or store, the box's own store included, shares that tree, so
-    *forceable*: refused unless --force.  A standalone's own store is not: its store moves
-    with its root, so a root inside it would be copied into itself.
+    standalone root (or a link to one) are refused whatever the flag.  A workspace inside
+    another box's workspace, root, or store, or holding another box's workspace or root,
+    shares that tree, so *forceable*: refused unless --force.  The box's own primary store
+    is forceable too.  A standalone's own root and store are not: they move with the root,
+    so a root inside them would be copied into itself.  Every unforceable check runs first,
+    so --force never passes one.
+    ⚑ A standalone records *dest* as its root and the root's ``workset.workspaces`` as its
+    workspace; the identical-workspace checks compare both.
     ⚑ [R188]: *dest* is the path as given, and a workspace's identity is its path, so a link
     to one is a twin, not a collision.  A standalone root holds its box's metadata, so it is
     found by content and a link to it is refused; the store test resolves (a safety test).
@@ -787,13 +791,15 @@ def _remap_dest_holder(
     from kanibako.launch import box_resolve
     from kanibako.project import registry_store
 
-    own_root = (_resolved_unless_loop(state.metadata_path)
-                if state.mode is BoxMode.standalone else None)
+    standalone = state.mode is BoxMode.standalone
+    own_root = _resolved_unless_loop(state.metadata_path) if standalone else None
     no_flag = "A remap is not a takeover, and no flag overrides this. "
     share = "Both boxes would claim it: pass --force to share it, or choose another path."
     takeover = (no_flag + "First delete that box (`kanibako box rm {0} --purge`, which deletes "
                 "that box's own data, its vault included, but not its workspace), then run "
                 "the remap again.")
+    identical = ("Identical workspaces are refused, and no flag overrides this. Choose "
+                 "another path.")
 
     def standalone_at(root: Path) -> str | None:
         """The standalone box rooted at *root*: its name, ``""`` if unregistered."""
@@ -815,62 +821,104 @@ def _remap_dest_holder(
             return None  # an unreadable root is refused where that box is used
         return None if workspace is None else Path(literal_path(workspace))
 
-    identical = ("Identical workspaces are refused, and no flag overrides this. Choose "
-                 "another path.")
+    # The workspace this remap records, and every tree it claims (a standalone's root too).
+    recorded = (standalone_workspace(dest) or dest) if standalone else dest
+    trees = list(dict.fromkeys((recorded, dest)))
+    # Only the source's OWN registry row is exempt: a primary, a named member, and a
+    # standalone may share a name.
+    own_ref = (None if standalone else f"{state.ws.name}/{state.name}"
+               if state.mode is BoxMode.named and state.ws else state.name)
+    standalones = {
+        name: Path(literal_path(root_str))
+        for name, root_str in registry_store.load_standalone(std.registry).items()
+        if not (standalone and _same_box_name(name, state.name)
+                and _resolved_unless_loop(Path(literal_path(root_str))) == own_root)}
+    early = _early_scope(std, BoxMode.primary)
 
+    def own_member(owned: Any) -> bool:
+        return (state.ws is not None and owned.workset_name == state.ws.name
+                and _same_box_name(owned.box_name, state.name))
+
+    # --- Refused whatever the flag. ---
     other = standalone_at(dest)
     if other is not None:
         return (f"the root of {standalone_who(other)}. "
                 + takeover.format(shlex.quote(other or str(dest))), False)
+    landing = _resolved_unless_loop(dest)
+    for name, held_root in standalones.items():
+        if _resolved_unless_loop(held_root) == landing:  # a root whose marker is gone
+            # The cure names the path: a primary box may share the standalone's name.
+            return (f"the root of {standalone_who(name)}. "
+                    + takeover.format(shlex.quote(str(held_root))), False)
 
-    early = _early_scope(std, BoxMode.primary)
-    primary = next(((p, name) for p in (dest, *dest.parents)
-                    if (name := primary_box_name_for_workspace(
-                        std.primary_workset, str(p), early=early)) is not None), None)
-    if primary is not None and not (state.mode is BoxMode.primary
-                                    and _same_box_name(primary[1], state.name)):
-        at, box = primary
-        if at == dest:
-            return (f"the workspace of primary box '{box}'. "
-                    + takeover.format(shlex.quote(box)), False)
-        return f"inside the workspace of primary box '{box}' ({at}). " + share, True
+    def workspace_of(path: Path) -> str | None:
+        """Why *path* is another box's recorded workspace, as given, else ``None``."""
+        box = primary_box_name_for_workspace(std.primary_workset, str(path), early=early)
+        if box is not None and not (state.mode is BoxMode.primary
+                                    and _same_box_name(box, state.name)):
+            return f"the workspace of primary box '{box}'. " + takeover.format(shlex.quote(box))
+        owned = box_resolve.find_connected_external_box(path, std)
+        if (owned is not None and not own_member(owned)
+                and Path(literal_path(owned.box_path)) == path):
+            return (f"the workspace of member '{owned.box_name}' of workset "
+                    f"'{owned.workset_name}'. " + no_flag + "First disconnect it (`kanibako "
+                    f"workset disconnect {shlex.quote(owned.workset_name)} "
+                    f"{shlex.quote(owned.box_name)} --force`, which deletes no files), then "
+                    "run the remap again.")
+        held = next((owner for owner, recorded_at
+                     in box_resolve.recorded_workspaces_under(std, path, standalone=False)
+                     if Path(literal_path(recorded_at)) == path
+                     and not _same_box_name(owner, own_ref)), None)
+        if held is not None:
+            return f"the workspace of box '{held}'. " + identical
+        for name, held_root in standalones.items():
+            if standalone_workspace(held_root) == path:
+                return f"the workspace of {standalone_who(name)}. " + identical
+        # Detection's ancestor walk, as given, stops at the first ``workset.yaml``.
+        marked = next((p for p in path.parents if (p / WORKSET_META_FILE).is_file()), None)
+        other = standalone_at(marked) if marked is not None else None
+        if marked is not None and other is not None and standalone_workspace(marked) == path:
+            return f"the workspace of {standalone_who(other)}. " + identical
+        return None
 
-    owned = box_resolve.find_connected_external_box(dest, std)
-    if owned is not None and not (state.ws is not None
-                                  and owned.workset_name == state.ws.name
-                                  and _same_box_name(owned.box_name, state.name)):
-        member = f"member '{owned.box_name}' of workset '{owned.workset_name}'"
-        if Path(literal_path(owned.box_path)) != dest:
-            return f"inside the workspace of {member} ({owned.box_path}). " + share, True
-        return (f"the workspace of {member}. " + no_flag + "First disconnect it (`kanibako "
-                f"workset disconnect {shlex.quote(owned.workset_name)} "
-                f"{shlex.quote(owned.box_name)} --force`, which deletes no files), then run "
-                "the remap again.", False)
-
-    # Any other box recording *dest* as its workspace, as given (identical workspaces).
-    own_ref = (f"{state.ws.name}/{state.name}" if state.mode is BoxMode.named and state.ws
-               else state.name)
-    held = next((owner for owner, path in box_resolve.recorded_workspaces_under(std, dest)
-                 if Path(literal_path(path)) == dest and not _same_box_name(owner, own_ref)),
-                None)
-    if held is not None:
-        return f"the workspace of box '{held}'. " + identical, False
-    # A standalone records its root; its workspace is that root's ``workset.workspaces``.
-    for name, root_str in registry_store.load_standalone(std.registry).items():
-        held_root = Path(literal_path(root_str))
-        if (_resolved_unless_loop(held_root) != own_root
-                and standalone_workspace(held_root) == dest):
-            return f"the workspace of {standalone_who(name)}. " + identical, False
+    # A standalone's root is held to this too: it would lay the box's store and markers
+    # in the other box's workspace.
+    for tree in trees:
+        why = workspace_of(tree)
+        if why is not None:
+            return (why if tree == dest
+                    else f"a standalone root whose workspace ({tree}) is {why}"), False
 
     # The store tests follow links: a link to a box's store is still that store.
-    landing = _resolved_unless_loop(dest)
+    if own_root is not None:
+        own_store = _resolved_unless_loop(box_metadata_dir(
+            BoxMode.standalone, state.metadata_path, early=_early_scope(std, BoxMode.standalone)))
+        if landing == own_store or own_store in landing.parents:
+            # Not the § 0 refusal: a standalone's store moves with its root, into itself.
+            return (f"inside its own store ({own_store}). A standalone box's store moves with "
+                    "its root, so it would be copied into itself, and no flag overrides this. "
+                    "Choose another path.", False)
+        if own_root in landing.parents:
+            return (f"inside its own root ({own_root}). A standalone box's root moves with "
+                    "it, so it would be copied into itself, and no flag overrides this. "
+                    "Choose another path.", False)
+
+    # --- Refused unless --force: one tree inside or holding another. ---
+    for tree in trees:
+        primary = next(((p, holder) for p in (tree, *tree.parents)
+                        if (holder := primary_box_name_for_workspace(
+                            std.primary_workset, str(p), early=early)) is not None
+                        and not (state.mode is BoxMode.primary
+                                 and _same_box_name(holder, state.name))), None)
+        if primary is not None:
+            return (f"inside the workspace of primary box '{primary[1]}' ({primary[0]}). "
+                    + share, True)
+        owned = box_resolve.find_connected_external_box(tree, std)
+        if owned is not None and not own_member(owned):
+            return (f"inside the workspace of member '{owned.box_name}' of workset "
+                    f"'{owned.workset_name}' ({owned.box_path}). " + share, True)
 
     def store_note(own: bool, whose: str, store: Path) -> tuple[str, bool]:
-        if own and state.mode is BoxMode.standalone:
-            # Not the § 0 refusal: a standalone's store moves with its root, into itself.
-            return (f"inside its own store ({store}). A standalone box's store moves with its "
-                    "root, so it would be copied into itself, and no flag overrides this. "
-                    "Choose another path.", False)
         if own:
             return (f"inside its own store ({store}). A box's store is not its workspace: "
                     "pass --force to use it anyway, or choose another path.", True)
@@ -881,26 +929,43 @@ def _remap_dest_holder(
         if landing == store or store in landing.parents:
             return store_note(state.mode is BoxMode.primary and _same_box_name(name, state.name),
                               f"primary box '{name}'", store)
-
     for top in (landing, *landing.parents):
-        own = top == own_root
-        owner = state.name if own else standalone_at(top)
+        if top == own_root:
+            break
+        owner = standalone_at(top)
         if owner is None:
             continue
         store = _resolved_unless_loop(box_metadata_dir(
             BoxMode.standalone, top, early=_early_scope(std, BoxMode.standalone)))
         if landing == store or store in landing.parents:
-            return store_note(own, standalone_who(owner), store)
+            return store_note(False, standalone_who(owner), store)
         break
 
-    # Detection's ancestor walk, as given, stops at the first ``workset.yaml``.
-    root = next((p for p in dest.parents if (p / WORKSET_META_FILE).is_file()), None)
-    other = standalone_at(root) if root is not None else None
-    if root is None or other is None:
-        return None
-    if standalone_workspace(root) == dest:
-        return f"the workspace of {standalone_who(other)}. " + identical, False
-    return f"inside the root of {standalone_who(other)} ({root}). " + share, True
+    def below(path: Path, tree: Path) -> bool:
+        """*path* strictly under *tree*, literal or resolved: a twin (link) is not below."""
+        if path == tree or _resolved_unless_loop(path) == _resolved_unless_loop(tree):
+            return False
+        return (path.is_relative_to(tree)
+                or _resolved_unless_loop(path).is_relative_to(_resolved_unless_loop(tree)))
+
+    for tree in trees:
+        nested = next(((owner, path) for owner, path
+                       in box_resolve.recorded_workspaces_under(std, tree, standalone=False)
+                       if not _same_box_name(owner, own_ref)
+                       and below(Path(literal_path(path)), tree)), None)
+        if nested is not None:
+            return (f"a directory holding the workspace of box '{nested[0]}' ({nested[1]}). "
+                    + share, True)
+        nested_root = next(((name, root) for name, root in standalones.items()
+                            if below(root, tree)), None)
+        if nested_root is not None:
+            return (f"a directory holding the root of {standalone_who(nested_root[0])} "
+                    f"({nested_root[1]}). " + share, True)
+        root = next((p for p in tree.parents if (p / WORKSET_META_FILE).is_file()), None)
+        other = standalone_at(root) if root is not None else None
+        if other is not None:
+            return f"inside the root of {standalone_who(other)} ({root}). " + share, True
+    return None
 
 
 def _validate(

@@ -732,6 +732,146 @@ class TestRemap:
         assert asked == []
         assert self._tree_digest(tmp_home) == before
 
+    @pytest.mark.parametrize("force", [False, True])
+    @pytest.mark.parametrize("leaf", ["sub", "workspace"])
+    def test_remap_standalone_inside_its_own_root_refused(
+            self, env, capsys, monkeypatch, leaf, force):
+        """A standalone's root moves with it, so a root inside its own root (its workspace
+        included) would be copied into itself: refused with or without --force, nothing
+        written."""
+        asked = self._confirms(monkeypatch)
+        _config, std, tmp_home = env
+        _std, _ext, solo, solo_name = self._member_and_registered_standalone(env)
+        dest = solo / leaf
+        dest.mkdir(exist_ok=True)
+        before = self._tree_digest(tmp_home)
+
+        assert run_remap(_remap_args(str(solo), str(dest), force=force)) == 1
+        err = capsys.readouterr().err
+        assert (f"Cannot remap '{solo_name}' onto '{dest}': it is inside its own root "
+                f"({solo.resolve()}). A standalone box's root moves with it, so it would be "
+                "copied into itself, and no flag overrides this.") in err
+        assert asked == []
+        assert self._tree_digest(tmp_home) == before
+
+    @pytest.mark.parametrize("force", [False, True])
+    @pytest.mark.parametrize("holder", ["primary", "member"])
+    def test_remap_standalone_onto_a_root_whose_workspace_another_box_records_refused(
+            self, env, capsys, monkeypatch, holder, force):
+        """A standalone records its root's `workspace/`: a root whose `workspace/` another box
+        records is identical workspaces (keyspace § 0), refused with or without --force."""
+        asked = self._confirms(monkeypatch)
+        _config, std, tmp_home = env
+        _std, _ext, solo, solo_name = self._member_and_registered_standalone(env)
+        dest = tmp_home / "T"
+        dest.mkdir()
+        if holder == "primary":
+            held = _default(env, "T/workspace")
+            name = primary_box_name_for_workspace(
+                std.primary_workset, str(held), early=_early_scope(std, BoxMode.primary))
+            who = f"primary box '{name}'"
+        else:
+            held = dest / "workspace"
+            held.mkdir()
+            ws = load_workset(tmp_home / "ws_root", "ws", early_system=std.early_system)
+            add_project(ws, "beta", held, std)
+            who = "member 'beta' of workset 'ws'"
+        before = self._tree_digest(tmp_home)
+
+        assert run_remap(_remap_args(str(solo), str(dest), force=force)) == 1
+        err = capsys.readouterr().err
+        assert (f"Cannot remap '{solo_name}' onto '{dest}': it is a standalone root whose "
+                f"workspace ({dest / 'workspace'}) is the workspace of {who}. ") in err
+        assert "no flag overrides this" in err
+        assert asked == []
+        assert self._tree_digest(tmp_home) == before
+
+    @pytest.mark.parametrize("force", [False, True])
+    def test_remap_onto_an_unmarked_standalone_root_of_the_same_name_refused(
+            self, env, capsys, monkeypatch, force):
+        """A registered standalone root whose marker is gone is still that box's root, even
+        for a primary box of the same name: only the source's own registry row is exempt.
+        Refused with or without --force; the cure names the root, since the name reaches
+        the primary box."""
+        from kanibako.project import registry_store
+
+        asked = self._confirms(monkeypatch)
+        _config, std, tmp_home = env
+        prim = _default(env, "prim")
+        name = primary_box_name_for_workspace(
+            std.primary_workset, str(prim), early=_early_scope(std, BoxMode.primary))
+        _std, _ext, solo, solo_name = self._member_and_registered_standalone(env)
+        registry_store.unregister_standalone(std.registry, solo_name)
+        registry_store.register_standalone(std.registry, name, solo)
+        (solo / "workset.yaml").unlink()
+        before = self._tree_digest(tmp_home)
+
+        assert run_remap(_remap_args(str(prim), str(solo), force=force)) == 1
+        err = capsys.readouterr().err
+        assert (f"onto '{solo}': it is the root of standalone box '{name}'. A remap is not a "
+                f"takeover, and no flag overrides this. First delete that box (`kanibako box "
+                f"rm {solo} --purge`") in err
+        assert asked == []
+        assert self._tree_digest(tmp_home) == before
+
+    @pytest.mark.parametrize("held", ["primary", "standalone"])
+    def test_remap_onto_a_dir_holding_another_box_needs_force(
+            self, env, capsys, monkeypatch, held):
+        """A workspace holding another box's workspace or standalone root shares that box's
+        tree (keyspace § 0 refuses either direction of nesting): refused before the prompt
+        and any write unless --force, which records it and keeps both rows."""
+        from kanibako.project import registry_store
+
+        asked = self._confirms(monkeypatch)
+        config, std, tmp_home = env
+        prim = _default(env, "prim")
+        dest = tmp_home / "Y"
+        dest.mkdir()
+        if held == "primary":
+            inner = _default(env, "Y/inner")
+            name = primary_box_name_for_workspace(
+                std.primary_workset, str(inner), early=_early_scope(std, BoxMode.primary))
+            what = f"the workspace of box '{name}' ({inner})"
+        else:
+            inner = dest / "inner"
+            inner.mkdir()
+            proj = resolve_standalone_project(std, config, project_dir=str(inner),
+                                              initialize=True)
+            registry_store.register_standalone(std.registry, proj.name, inner)
+            what = f"the root of standalone box '{proj.name}' ({inner})"
+        before = self._tree_digest(tmp_home)
+
+        assert run_remap(_remap_args(str(prim), str(dest), force=False)) == 1
+        err = capsys.readouterr().err
+        assert (f"onto '{dest}': it is a directory holding {what}. Both boxes would claim it: "
+                "pass --force to share it") in err
+        assert asked == []
+        assert self._tree_digest(tmp_home) == before
+
+        assert run_remap(_remap_args(str(prim), str(dest), force=True)) == 0, capsys.readouterr()
+        boxes = load_primary_boxes(std.primary_workset, early=_early_scope(std, BoxMode.primary))
+        assert boxes["prim"] == str(dest)
+        if held == "primary":
+            assert boxes[name] == str(inner)
+        else:
+            assert registry_store.load_standalone(std.registry)[proj.name] == str(inner)
+
+    def test_remap_onto_a_dir_holding_its_own_workspace_passes(self, env, capsys, monkeypatch):
+        """The nesting test exempts the source's own row: a box remapped to the parent of the
+        workspace it records now is not refused."""
+        asked = self._confirms(monkeypatch)
+        _config, std, tmp_home = env
+        (tmp_home / "Y").mkdir()
+        inner = _default(env, "Y/inner")
+        name = primary_box_name_for_workspace(
+            std.primary_workset, str(inner), early=_early_scope(std, BoxMode.primary))
+
+        assert run_remap(_remap_args(str(inner), str(tmp_home / "Y"), force=False)) == 0, \
+            capsys.readouterr()
+        assert len(asked) == 1
+        boxes = load_primary_boxes(std.primary_workset, early=_early_scope(std, BoxMode.primary))
+        assert boxes[name] == str(tmp_home / "Y")
+
     def test_remap_standalone_onto_a_link_to_its_own_root_moves_its_spelling(
             self, env, capsys, monkeypatch):
         """PIN: a standalone remapped onto a link to its OWN root is re-registered at the
