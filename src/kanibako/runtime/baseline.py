@@ -6,7 +6,7 @@ overlays are merged on top **additively** (the scoped-category spirit in
 :mod:`kanibako.settings.settings_categories`): later layers add new packages or override an
 existing package's executable list.  Precedence, least- to most-specific:
 
-    built-in default  <  /etc/kanibako/image-baseline.yaml  <  ~/.config/kanibako/image-baseline.yaml
+    built-in default  <  /etc/kanibako/image-baseline.yaml  <  {config.data}/global/image-baseline.yaml
 
 The package NAME is what ``apt-get install`` consumes (auto-install assumes
 apt/debian); the EXECUTABLE values are what ``command -v`` probes (verify is
@@ -23,7 +23,7 @@ from kanibako.errors import ConfigError
 from kanibako.settings.bootstrap import SITE_CONFIG_DIR
 from kanibako.settings.config_io import load_doc
 from kanibako.settings.core_defaults import PACKAGED_SETTINGS_PARTS, packaged_data_dir
-from kanibako.settings.paths import user_config_home
+from kanibako.settings.paths import resolve_data_path
 
 # Filename used both for the shipped default (under ``PACKAGED_SETTINGS_PARTS``) and the overlays.
 BASELINE_FILENAME = "image-baseline.yaml"
@@ -77,20 +77,21 @@ def _shipped_default() -> dict[str, list[str]]:
     return _read_doc(Path(str(ref)))
 
 
+def user_overlay_path() -> Path:
+    """The user's overlay, ``{config.data}/global/image-baseline.yaml``."""
+    return resolve_data_path() / "global" / BASELINE_FILENAME
+
+
 def _overlay_paths() -> list[Path]:
     """Overlay locations, in additive merge order (machine then user)."""
-    config_home = user_config_home()
-    return [
-        Path(SITE_CONFIG_DIR) / BASELINE_FILENAME,
-        config_home / "kanibako" / BASELINE_FILENAME,
-    ]
+    return [Path(SITE_CONFIG_DIR) / BASELINE_FILENAME, user_overlay_path()]
 
 
 def load_baseline() -> dict[str, list[str]]:
     """Return the merged baseline ``{package: [executables]}``.
 
     Starts from the shipped default, then additively merges the machine (``/etc``) and
-    user (``~/.config``) overlays: a later layer adds a package or replaces its list.
+    user (``{config.data}/global``) overlays: a later layer adds a package or replaces its list.
     """
     merged = _shipped_default()
     for path in _overlay_paths():

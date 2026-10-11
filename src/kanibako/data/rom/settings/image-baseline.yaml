@@ -20,7 +20,7 @@
 # of the baseline (cifs-utils, nfs-common, nodejs, npm, sshpass, ...) stay
 # explicit in the image's Containerfile, not here.  Site/host overlays may add
 # packages or override an existing package's executable list via
-# /etc/kanibako/image-baseline.yaml and ~/.config/kanibako/image-baseline.yaml.
+# /etc/kanibako/image-baseline.yaml and <config.data>/global/image-baseline.yaml.
 
 tmux: [tmux]
 inotify-tools: [inotifywait, inotifywatch]

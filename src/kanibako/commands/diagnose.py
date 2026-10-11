@@ -823,6 +823,7 @@ def _diagnose_baseline(args: object, errors: _SettingsErrorLog) -> None:
     naming every check it broke.  The caller emits it.
     """
     from kanibako.runtime import baseline as baseline_mod
+    from kanibako.settings.paths import user_config_home
     from kanibako.settings.settings_launch import load_merged_config
     from kanibako.runtime.container import ContainerRuntime
 
@@ -831,6 +832,13 @@ def _diagnose_baseline(args: object, errors: _SettingsErrorLog) -> None:
     all_images = getattr(args, "all_images", False)
 
     print("Baseline:")
+    # The user overlay's old home. It is never read; name the move instead.
+    retired = user_config_home() / "kanibako" / baseline_mod.BASELINE_FILENAME
+    if retired.is_file():
+        print(_format_check(
+            "!!", "  Baseline overlay",
+            f"{retired} is no longer read; move it to {baseline_mod.user_overlay_path()}",
+        ))
     try:
         baseline = baseline_mod.load_baseline()
     except KanibakoError as e:

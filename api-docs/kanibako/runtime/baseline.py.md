@@ -12,6 +12,7 @@ BASELINE_FILENAME = 'image-baseline.yaml'
 
 ## Functions
 ```
+def user_overlay_path() -> Path
 def load_baseline() -> dict[str, list[str]]
 def packages() -> list[str]
 def executables() -> list[tuple[str, str]]

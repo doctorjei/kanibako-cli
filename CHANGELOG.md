@@ -12,6 +12,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Your image-baseline overlay is read from `<config.data>/global/image-baseline.yaml`.** It follows a
+  `config.data` repoint; `~/.config/kanibako/image-baseline.yaml` is no longer read, and `kanibako rig diagnose`
+  names a file left there and where to move it. See `MIGRATION.md`, "Your image-baseline overlay moved to
+  `<config.data>/global/`".
+
 - **A director's spawn budget comes from the host.** Each `start` binds the host's resolved
   `system.helpers.*` read-only at `~/spawn.yaml`, and helpers inherit it; nothing in the box can change it, and a
   host value that is not a whole number stops `start`. See `MIGRATION.md`, "A director's spawn budget comes from

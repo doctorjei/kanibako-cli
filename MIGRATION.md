@@ -6188,7 +6188,7 @@ merged one; that is YAML's own rule, not a repeat.
 both held settings you need), and delete the other.
 
 This now also covers the image-baseline overlays, `/etc/kanibako/image-baseline.yaml` and
-`~/.config/kanibako/image-baseline.yaml`, which `kanibako start` and `kanibako rig diagnose` read.
+`<config.data>/global/image-baseline.yaml`, which `kanibako start` and `kanibako rig diagnose` read.
 An overlay that is a list or a single value is refused too (`the config file <path> is a list, not
 a mapping of keys`, or `… is a single value, not a mapping of keys`), where v1.8.0-rc2 read it as
 empty and added nothing. Rewrite it as a mapping from package to its executables. A missing or
@@ -7250,6 +7250,24 @@ starts of that box. Keep one more than you think you need if you want the undo t
 A snapshot taken in the same second as one that already exists gets a `-2`, `-3`, … suffix so the two
 copies stay separate. Those names do not parse as timestamps, so `box vault list` shows the raw name in
 the time column rather than a formatted one.
+
+### Your image-baseline overlay moved to `<config.data>/global/`
+
+Your own image-baseline overlay is read from `<config.data>/global/image-baseline.yaml`
+(`~/.local/share/kanibako/global/image-baseline.yaml` by default) and follows a `config.data`
+repoint. `~/.config/kanibako/image-baseline.yaml` is no longer read, so the packages it adds drop out
+of `kanibako baseline` and `kanibako start`'s baseline check. `/etc/kanibako/image-baseline.yaml`
+is unchanged.
+
+Move the file:
+
+```bash
+mkdir -p ~/.local/share/kanibako/global
+mv ~/.config/kanibako/image-baseline.yaml ~/.local/share/kanibako/global/
+```
+
+If you repointed `config.data`, move it under that directory's `global/` instead.
+`kanibako rig diagnose` names a file left at the old path and the path to move it to.
 
 ---
 

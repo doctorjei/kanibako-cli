@@ -1068,10 +1068,10 @@ class TestDiagnoseBaseline:
     def _break_baseline_overlay(self, tmp_home: Path, text: str) -> Path:
         """Write *text* as the USER image-baseline overlay and return its path.
 
-        The real XDG path, not a patched one, so these fail if the load stops
-        reaching ``load_baseline`` at all.
+        The real ``{config.data}/global/`` path, not a patched one, so these fail if
+        the load stops reaching ``load_baseline`` at all.
         """
-        overlay = tmp_home / "config" / "kanibako" / "image-baseline.yaml"
+        overlay = tmp_home / "data" / "kanibako" / "global" / "image-baseline.yaml"
         overlay.parent.mkdir(parents=True, exist_ok=True)
         overlay.write_text(text)
         return overlay
@@ -1138,7 +1138,7 @@ class TestDiagnoseBaseline:
     ) -> None:
         """A NUL in an overlay executable name names itself and leaves the rest of the run.
 
-        Real XDG overlay, real ``load_baseline``, real ``run_rig_diagnose`` -- so this
+        Real user overlay, real ``load_baseline``, real ``run_rig_diagnose`` -- so this
         is the refusal the ``rig diagnose`` baseline section actually reports.
         """
         from kanibako.errors import ContainerError
@@ -1161,6 +1161,37 @@ class TestDiagnoseBaseline:
         assert "Rig (Image) Diagnostics" in out
         assert "Container runtime" in out
         assert "Baseline:" in out
+
+    def _rig_diagnose_out(self, capsys) -> str:
+        from kanibako.errors import ContainerError
+
+        with patch(
+            "kanibako.runtime.container.ContainerRuntime",
+            side_effect=ContainerError("none"),
+        ):
+            assert run_rig_diagnose(argparse.Namespace()) == 0
+        return capsys.readouterr().out
+
+    def test_overlay_at_the_retired_path_is_named_with_its_new_home(
+        self, config_file, tmp_home, credentials_dir, capsys
+    ) -> None:
+        """An overlay left at the old XDG config path is not read; diagnose names the move."""
+        old = tmp_home / "config" / "kanibako" / "image-baseline.yaml"
+        old.parent.mkdir(parents=True, exist_ok=True)
+        old.write_text("git: [git]\n")
+        new = tmp_home / "data" / "kanibako" / "global" / "image-baseline.yaml"
+        out = self._rig_diagnose_out(capsys)
+        assert (
+            f"[!!]   Baseline overlay: {old} is no longer read; move it to {new}"
+        ) in out
+        assert "Error:" not in out
+
+    def test_no_overlay_at_the_retired_path_prints_no_notice(
+        self, config_file, tmp_home, credentials_dir, capsys
+    ) -> None:
+        out = self._rig_diagnose_out(capsys)
+        assert "Baseline:" in out
+        assert "Baseline overlay" not in out
 
 
 class TestCheckVscode:

@@ -374,7 +374,7 @@ class TestRunVerifyRefusesUnprobeableNames:
     def test_nul_in_an_overlay_name_never_reaches_the_probe(
         self, tmp_home, monkeypatch
     ) -> None:
-        """Real XDG overlay, real ``run_verify``: the refusal lands, the probe never runs.
+        """Real user overlay, real ``run_verify``: the refusal lands, the probe never runs.
 
         Without the refusal the NUL reaches ``subprocess.run`` as an argv entry and
         the whole command dies on an embedded-null ValueError instead of naming the
@@ -382,7 +382,7 @@ class TestRunVerifyRefusesUnprobeableNames:
         """
         from kanibako.errors import ConfigError
 
-        overlay = tmp_home / "config" / "kanibako" / "image-baseline.yaml"
+        overlay = tmp_home / "data" / "kanibako" / "global" / "image-baseline.yaml"
         overlay.parent.mkdir(parents=True, exist_ok=True)
         overlay.write_text('git: ["rg\\0sh"]\n')
 

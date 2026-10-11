@@ -8,6 +8,7 @@ import pytest
 
 from kanibako.errors import ConfigError
 from kanibako.runtime import baseline
+from tests.support.filenames import CONFIG_FILENAME
 
 
 # Locked universal contract shipped as package data.
@@ -96,6 +97,38 @@ class TestOverlayMerge:
     def test_missing_overlay_tolerated(self, overlay_dirs) -> None:
         # Neither file written — must not raise.
         assert baseline.load_baseline() == _SHIPPED
+
+
+class TestUserOverlayPath:
+    """The user overlay lives under ``{config.data}/global/``, through the real resolver."""
+
+    @pytest.fixture(autouse=True)
+    def _no_site_config(self, tmp_path, monkeypatch) -> None:
+        """Keep the host's /etc base config out of the ``config.data`` resolve."""
+        import kanibako.settings.config as cfg_mod
+
+        monkeypatch.setattr(cfg_mod, "config_base_path", lambda: tmp_path / "etc_absent.yaml")
+
+    @staticmethod
+    def _plant(path: Path) -> None:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("htop: [htop]\n")
+
+    def test_overlay_under_config_data_global_is_merged(self, tmp_home) -> None:
+        self._plant(tmp_home / "data" / "kanibako" / "global" / baseline.BASELINE_FILENAME)
+        assert baseline.load_baseline()["htop"] == ["htop"]
+
+    def test_overlay_at_the_old_config_path_is_not_read(self, tmp_home) -> None:
+        self._plant(tmp_home / "config" / "kanibako" / baseline.BASELINE_FILENAME)
+        assert "htop" not in baseline.load_baseline()
+
+    def test_overlay_follows_a_config_data_repoint(self, tmp_home) -> None:
+        store = tmp_home / "srv" / "store"
+        (tmp_home / "config" / CONFIG_FILENAME).write_text(f'config:\n  data: "{store}"\n')
+        self._plant(tmp_home / "data" / "kanibako" / "global" / baseline.BASELINE_FILENAME)
+        assert "htop" not in baseline.load_baseline()
+        self._plant(store / "global" / baseline.BASELINE_FILENAME)
+        assert baseline.load_baseline()["htop"] == ["htop"]
 
 
 class TestVerify:
