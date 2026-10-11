@@ -180,25 +180,34 @@ jobs:
         # blocked a prod publish — rc10..rc12 shipped while the e2e had been broken
         # for weeks, and rc15 shipped with a RED `integration` while the gate only
         # checked `e2e`. REFUSE to release unless EVERY required Tests job SUCCEEDED
-        # for THIS exact commit. The required set mirrors test.yml's `jobs:` keys
-        # (test, conformance, integration, e2e). Both workflows start together on the tag push,
-        # so poll the Tests run for this SHA until it concludes, then require each
-        # required job == success. Checking per-job (not just the run conclusion)
-        # is FAIL-SAFE: a skipped/renamed/missing critical job yields a non-success
-        # (or empty) conclusion and REJECTS, rather than a run-level "success" that
+        # for THIS exact commit. The required set mirrors test.yml's job names
+        # (test (3.11), test (3.13), conformance, integration, e2e). Both
+        # workflows start together on the tag push, so poll the Tests run for
+        # this SHA until it concludes, then require each required job == success.
+        # Checking per-job (not just the run conclusion) is FAIL-SAFE: a
+        # skipped/renamed/missing critical job yields a non-success (or empty) conclusion and REJECTS, rather than a run-level "success" that
         # a skipped critical job could produce.
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # The Tests jobs that MUST be green before a prod release. Keep in sync
-          # with test.yml's `jobs:` keys (job name defaults to the key).
+          # The Tests jobs that MUST be green before a prod release, ONE NAME PER
+          # LINE (a matrix name holds spaces). Keep in sync with test.yml's job
+          # names: a job's name defaults to its key, and a matrix job is named
+          # `<key> (<value>)` per leg, so every `python-version` in the `test`
+          # matrix is its own line here.
           # ⚑ THIS LIST DRIFTED ONCE AND THE DRIFT WAS SILENT: `conformance` was
           # added to test.yml and never added here, so a red kinemata gate could
           # not block a publish. Adding a job to test.yml means adding it here.
-          REQUIRED_JOBS: "test conformance integration e2e"
+          REQUIRED_JOBS: |
+            test (3.11)
+            test (3.13)
+            conformance
+            integration
+            e2e
         run: |
           set -euo pipefail
           sha="$GITHUB_SHA"
-          echo "Requiring green Tests jobs ($REQUIRED_JOBS) for $sha before releasing…"
+          echo "Requiring green Tests jobs for $sha before releasing:"
+          sed 's/^/  /' <<<"$REQUIRED_JOBS"
           deadline=$(( $(date +%s) + 45*60 ))   # e2e ~13m + queue/runner headroom
           while :; do
             run_id=$(gh api \
@@ -209,7 +218,9 @@ jobs:
               if [ "$status" = "completed" ]; then
                 echo "Tests run $run_id completed; checking required job conclusions…"
                 all_ok=1
-                for job in $REQUIRED_JOBS; do
+                # fd 3, so `gh` cannot read the list off stdin.
+                while IFS= read -r job <&3; do
+                  [ -n "$job" ] || continue
                   concl=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run_id/jobs?per_page=100" \
                     --jq ".jobs[] | select(.name==\"$job\") | .conclusion" | head -n1)
                   echo "  job '$job' conclusion: ${concl:-<none>}"
@@ -217,7 +228,7 @@ jobs:
                     echo "REFUSING to release: the '$job' job is '${concl:-missing}', not success." >&2
                     all_ok=0
                   fi
-                done
+                done 3<<<"$REQUIRED_JOBS"
                 if [ "$all_ok" = "1" ]; then
                   echo "All required Tests jobs are green — the publishes may proceed."
                   break
