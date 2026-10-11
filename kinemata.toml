@@ -1506,6 +1506,28 @@ source = "pyproject.toml"
 path = ["project", "requires-python"]
 
 # ---------------------------------------------------------------------------
+# FACT: every distribution under `packages/` declares a byte-identical
+# `kanibako-cli` requirement (`Q14`, his answer: assert identity).
+# AUTHORITY: the meta package's `dependencies` is the declared side -- the
+# release train rewrites all four together, and meta is what `pip install
+# kanibako` resolves through. Each `packages/agent-*/pyproject.toml` is the
+# code side.
+# CATCHES: a core floor bumped in one package and not the others, which
+# resolves an OLD plugin onto a new core (the release-order gate). A plugin that
+# legitimately needs a different floor reds here on purpose: the divergence is
+# a decision, not drift.
+#
+# ⚑ The registry is meta's WHOLE dependency list, because `toml-value` reads a
+# flat list and has no filter. That is why the parity below is
+# `declared_contains`: each `kanibako-cli` requirement a plugin declares must be
+# AMONG meta's strings, and only meta's own `kanibako-cli` string can match one.
+[[registry]]
+name = "core-requirement"
+kind = "toml-value"
+source = "packages/meta/pyproject.toml"
+path = ["project", "dependencies"]
+
+# ---------------------------------------------------------------------------
 # FACT: no agent name this repository ships spells a RESERVED PSEUDO-AGENT name.
 # The two pseudo-agents, `default` and `shell` (keyspec §2d), already own an
 # `agent.<name>.*` cascade slot and a store dir of their own, so a real agent
@@ -3275,6 +3297,34 @@ for v in sorted(seen):
     print(f"ci-python: {v}")
 """]
 extract = '(?m)^ci-python: (\S+)$'
+
+# The oracle for `core-requirement`: every `kanibako-cli` requirement string in
+# each `packages/agent-*/pyproject.toml`, verbatim. It globs, so a new plugin is
+# in scope the day it lands, and reads the files with `tomllib` -- CI's
+# conformance job installs no plugin, so installed metadata would see nothing.
+# A plugin with NO `kanibako-cli` requirement prints `MISSING in <dir>`, which
+# meta never declares, so dropping the requirement reds rather than shrinking
+# the produced set to a green. The name match is PEP 503 normalized
+# (`kanibako_cli`, `Kanibako.CLI` are the same project); the string compared is
+# the one written.
+#
+# Measured 2026-10-11, kinemata `0.6.0`: `4 declared, 1 produced`, rc 0. Each
+# control is a temp copy with one edit, and each reds with rc 1 naming the
+# string: goose's floor `>=1.7.0`; meta's floor `>=1.9.0`; codex's requirement
+# deleted (`MISSING in agent-codex`); claude's spelled `kanibako_cli >=...`.
+[[parity]]
+registry = "core-requirement"
+relation = "declared_contains"
+command = ["{python}", "-c", """
+import pathlib, re, tomllib
+for pp in sorted(pathlib.Path("packages").glob("agent-*/pyproject.toml")):
+    deps = tomllib.loads(pp.read_text())["project"].get("dependencies", [])
+    hits = [d for d in deps
+            if re.sub(r"[-_.]+", "-", re.match(r"\\s*([A-Za-z0-9._-]+)", d).group(1)).lower() == "kanibako-cli"]
+    for d in hits or [f"MISSING in {pp.parent.name}"]:
+        print(f"core-req: {d}")
+"""]
+extract = '(?m)^core-req: (.+)$'
 
 # The oracle for the reserved-name declaration above. It enumerates every agent
 # name this repository registers, from two places because the product reads two:
