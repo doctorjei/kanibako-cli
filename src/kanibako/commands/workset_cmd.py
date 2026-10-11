@@ -560,7 +560,13 @@ def run_rm(args: argparse.Namespace) -> int:
             f"Unregister {label}working set '{label_name}'? Type 'yes' to confirm: "
         )
     try:
-        root = delete_workset(args.name, std, remove_files=args.purge)
+        from kanibako.commands.box._parser import kept_for_recorded_workspace
+
+        # ⚑ A tree holding ANOTHER box's recorded workspace is kept and named (keyspec
+        # § 0); this workset's own members go with it, as --purge says.
+        root = delete_workset(
+            args.name, std, remove_files=args.purge,
+            keeps=lambda path: kept_for_recorded_workspace(std, path, own_workset=stored))
     except (WorksetError, StoreRemovalError) as e:
         print(f"Error: {e}", file=sys.stderr)
         return 1
@@ -790,6 +796,26 @@ def run_disconnect(args: argparse.Namespace) -> int:
         if vault_rw is not None:
             # The box's OWN vault-rw LEAF — the store is that leaf's sibling.
             snapshot_store = _resolve_snapshot_store(vault_rw / member, member)
+    # ⚑ A folder holding ANOTHER box's recorded workspace is kept and named (keyspec § 0),
+    # decided before the question; the member's own workspace leaf goes on purpose.
+    keep: set[Path] = set()
+    if args.remove_files:
+        from kanibako.commands.box._parser import kept_for_recorded_workspace
+        from kanibako.project.workset import _member_store_bases, member_workspace_leaf
+        try:
+            leaf = member_workspace_leaf(ws, member)
+        except WorksetError as e:
+            print(f"Error: {e}", file=sys.stderr)
+            return 1
+        candidates = [base / member for base in _member_store_bases(ws)]
+        if snapshot_store is not None:
+            candidates.append(snapshot_store)
+        keep = {path for path in candidates if kept_for_recorded_workspace(std, path)}
+        if (leaf is not None and not leaf.is_symlink()
+                and kept_for_recorded_workspace(std, leaf, own=f"{ws.name}/{member}")):
+            keep.add(leaf)
+        if snapshot_store in keep:
+            snapshot_store = None
     if not args.force:
         label = "and remove files " if args.remove_files else ""
         confirm_prompt(
@@ -799,7 +825,7 @@ def run_disconnect(args: argparse.Namespace) -> int:
 
     try:
         proj = remove_project(
-            ws, member, remove_files=args.remove_files, std=std,
+            ws, member, remove_files=args.remove_files, std=std, keep=keep,
         )
     except WorksetError as e:
         print(f"Error: {e}", file=sys.stderr)

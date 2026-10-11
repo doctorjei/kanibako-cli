@@ -42,7 +42,7 @@ _TS = "2026-10-10T00:00:00+00:00"
 # "fail" to False to un-block the retry; "calls" proves the step was reached.
 # --------------------------------------------------------------------------- #
 def _fail_one_path(monkeypatch, victim):
-    """Make ``clean.remove_path`` return False for exactly ONE path.
+    """Make ``remove_path`` return False for exactly ONE path, in both purge modules.
 
     Every other removal — including the anchor's own — still runs for real, so the
     only thing simulated is "this one step did not come away".
@@ -58,7 +58,10 @@ def _fail_one_path(monkeypatch, victim):
                 return False
         return real_remove(path, *args, **kwargs)
 
+    # ``box purge`` and ``rm --purge`` share ``_run_purge_plan``; the named-member and
+    # ``--all`` paths still delete from ``clean``.
     monkeypatch.setattr("kanibako.commands.clean.remove_path", _rp)
+    monkeypatch.setattr("kanibako.commands.box._parser.remove_path", _rp)
     return st
 
 
@@ -238,7 +241,7 @@ class TestStandaloneLaterStepFailure:
             assert project_gitignore_to_strip(root) is not None, \
                 "setup: no kanibako gitignore line, so the step is unreachable"
             st = _fail_callable(monkeypatch,
-                               "kanibako.commands.clean.strip_project_gitignore")
+                               "kanibako.commands.box._parser.strip_project_gitignore")
         elif step == "canon":
             st = _fail_one_path(monkeypatch, root / "canon")
         elif step == "leftover_canon":
@@ -262,6 +265,7 @@ class TestStandaloneLaterStepFailure:
         elif step == "snapshot_store":
             store = box_snapshot_store(proj.vault_rw_path, proj.name)
             assert store is not None, "setup: no snapshot store to fail"
+            store.mkdir(parents=True, exist_ok=True)  # the plan lists only a store on disk
             st = _fail_one_path(monkeypatch, store)
         else:  # pragma: no cover
             pytest.fail(f"unknown step {step!r}")
@@ -298,6 +302,7 @@ class TestPrimaryLaterStepFailure:
             st = _fail_one_path(monkeypatch, proj.vault_rw_path)
         elif step == "snapshot_store":
             store = box_snapshot_store(proj.vault_rw_path, proj.name)
+            store.mkdir(parents=True, exist_ok=True)  # the plan lists only a store on disk
             st = _fail_one_path(monkeypatch, store)
         else:  # pragma: no cover
             pytest.fail(f"unknown step {step!r}")

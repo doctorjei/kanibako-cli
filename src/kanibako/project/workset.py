@@ -41,7 +41,7 @@ from __future__ import annotations
 import copy
 import shlex
 import sys
-from collections.abc import Iterable, Mapping
+from collections.abc import Collection, Iterable, Mapping
 from contextlib import contextmanager
 from dataclasses import dataclass, field, replace
 from functools import partial
@@ -1706,14 +1706,18 @@ def _logs_share_partners(
 
 def purge_box_logs(
     std: StandardPaths, logs_dir: Path | None, box: str, *, workset_root: Path | None,
+    files: list[Path] | None = None,
 ) -> bool:
     """Delete :func:`box_logs_to_purge`'s files; True when none of them is left.
 
+    *files* is that list when the caller already listed it, so its Notes print once.
     A file that will not go is named and left, never raised: it is a failed purge, which
     the caller owns.
     """
     all_removed = True
-    for log_file in box_logs_to_purge(std, logs_dir, box, workset_root=workset_root):
+    if files is None:
+        files = box_logs_to_purge(std, logs_dir, box, workset_root=workset_root)
+    for log_file in files:
         try:
             log_file.unlink()
         except OSError as exc:
@@ -1944,8 +1948,15 @@ def resolve_workset_name(name: str, std: StandardPaths) -> Workset:
     return load_workset(registry[stored], stored, early_system=std.early_system)
 
 
-def delete_workset(name: str, std: StandardPaths, *, remove_files: bool = False) -> Path:
-    """Unregister a workset and optionally remove its tree; returns the deleted root path."""
+def delete_workset(
+    name: str, std: StandardPaths, *, remove_files: bool = False,
+    keeps: Callable[[Path], bool] | None = None,
+) -> Path:
+    """Unregister a workset and optionally remove its tree; returns the deleted root path.
+
+    *keeps* is asked of each box tree and of the root before any of them is deleted;
+    a path it answers True for is left in place (the caller has named it).
+    """
     registry = _load_registry(std)
     stored = find_identifier(name, registry)
     if stored is None:
@@ -1966,6 +1977,7 @@ def delete_workset(name: str, std: StandardPaths, *, remove_files: bool = False)
         refuse_inherited_per_owner(root, early, doc=ws_settings)
     boxes_dir = resolve_workset_boxes(root, ws_settings, early=early) if purge else None
 
+    kept: set[Path] = set()
     if boxes_dir is not None:
         # ⚑⚑ BOX TREES FIRST (J-7), BEFORE THE UNREGISTER: a whole-root rmtree hits the
         # root-owned 555 canon skeleton, and a refusal must leave the workset re-runnable.
@@ -1981,11 +1993,14 @@ def delete_workset(name: str, std: StandardPaths, *, remove_files: bool = False)
         # the same line for the same reason.  KNOWN AND UNCLOSED: those trees outlive
         # ``workset rm --purge``; closing that needs a retained-path report, not a wider
         # rmtree.
-        if (boxes_dir.is_dir() and not boxes_dir.is_symlink()
-                and _strictly_in_tree(boxes_dir, root)):
-            for box_tree in sorted(boxes_dir.iterdir()):
-                if (box_tree.is_dir() and not box_tree.is_symlink()
-                        and not remove_box_tree(box_tree)):
+        box_trees = ([t for t in sorted(boxes_dir.iterdir()) if t.is_dir() and not t.is_symlink()]
+                     if (boxes_dir.is_dir() and not boxes_dir.is_symlink()
+                         and _strictly_in_tree(boxes_dir, root)) else [])
+        # ⚑ Asked of EVERY path before ONE is deleted: a box tree holding another box's
+        # recorded workspace is kept, and so is the root, which holds it too.
+        kept = {path for path in (*box_trees, root) if keeps is not None and keeps(path)}
+        for box_tree in box_trees:
+            if box_tree not in kept and not remove_box_tree(box_tree):
                     raise StoreRemovalError(
                         f"could not remove {box_tree}; try: podman unshare rm -rf "
                         f"{shlex.quote(str(box_tree))}", box_tree)
@@ -1995,7 +2010,7 @@ def delete_workset(name: str, std: StandardPaths, *, remove_files: bool = False)
     unregister_name(std.registry, stored, section="worksets")
 
     # ⚑ The root goes LAST: only after the registry is clean.
-    if boxes_dir is not None:
+    if boxes_dir is not None and root not in kept:
         import shutil
 
         shutil.rmtree(root)
@@ -2426,11 +2441,13 @@ class StoreRemovalError(OSError):
 
 def remove_member_store(
     ws: Workset, name: str, *, bases: tuple[Path, ...] | None = None,
+    keep: Collection[Path] = (),
 ) -> None:
     """Delete *name*'s box tree and per-box vault leaves; ⚑ NEVER its workspace leaf.
 
     *bases* is :func:`_member_store_bases`, resolved by a caller that must refuse BEFORE an
     irreversible step (``remove_project`` deletes under these bases before it releases).
+    A leaf in *keep* (the caller already named it) is left in place.
     """
     # ⚑ Per-box LEAVES only, never the shared parents.  ⚑⚑ RESOLVED to match
     # ``add_project``, or a repointed vault is orphaned and an unused dir removed.
@@ -2441,6 +2458,8 @@ def remove_member_store(
 
     for base in bases or _member_store_bases(ws):
         leaf = base / name
+        if leaf in keep:
+            continue
         if (leaf.is_dir() or leaf.is_symlink()) and not remove_path(leaf):
             # ⚑ LOUD, never a silent pass.
             err = StoreRemovalError(
@@ -2452,12 +2471,15 @@ def remove_member_store(
 def remove_project(
     ws: Workset, name: str, *, remove_files: bool = False,
     std: StandardPaths | None = None,  # noqa: ARG001 - caller parity with add_project
+    keep: Collection[Path] = (),
 ) -> WorksetProject:
     """Disconnect *name*; with *remove_files*, also delete its store AND workspace leaf.
 
     ⚑⚑ The one deleter of a workspace leaf, for ``workset disconnect --remove-files`` —
     a relocation composes :func:`release_project` + :func:`remove_member_store` instead.
     An external source dir is NEVER touched: its leaf is a link, and a link is unlinked.
+    A path in *keep* (a store leaf, or the workspace leaf) is left in place: the caller
+    found another box's recorded workspace inside it and named it.
     ⚑ *std* is accepted and unused.
     """
     # ⚑⚑ DELETE FIRST, RELEASE LAST.  Releasing first made a REFUSING store a locked
@@ -2470,19 +2492,25 @@ def remove_project(
 
     _ = ws.registry_path
     bases = _member_store_bases(ws)
-    target = _find_member(ws, name)
-    remove_member_store(ws, name, bases=bases)
-    # ⚑ Under a null ``workset.workspaces`` there is no ``workspaces/<name>``: an in-tree
-    # member's leaf is the path its record holds; an external one has no leaf here.
-    workspaces = ws.workspaces_dir
-    if workspaces is not None:
-        leaf: Path | None = workspaces / name
-    else:
-        in_tree = (source_in_tree(ws, target.source_path)
-                   and target.source_path.resolve() != ws.root.resolve())
-        leaf = target.source_path if in_tree else None
+    leaf = member_workspace_leaf(ws, name)  # ⚑ before any delete: it finds the member
+    remove_member_store(ws, name, bases=bases, keep=keep)
     if leaf is not None and leaf.is_symlink():
         leaf.unlink()
-    elif leaf is not None and leaf.is_dir():
+    elif leaf is not None and leaf.is_dir() and leaf not in keep:
         shutil.rmtree(leaf)
     return release_project(ws, name)
+
+
+def member_workspace_leaf(ws: Workset, name: str) -> Path | None:
+    """The workspace leaf :func:`remove_project` deletes for *name*; ``None`` if none.
+
+    ⚑ Under a null ``workset.workspaces`` there is no ``workspaces/<name>``: an in-tree
+    member's leaf is the path its record holds; an external one has no leaf here.
+    """
+    target = _find_member(ws, name)
+    workspaces = ws.workspaces_dir
+    if workspaces is not None:
+        return workspaces / name
+    in_tree = (source_in_tree(ws, target.source_path)
+               and target.source_path.resolve() != ws.root.resolve())
+    return target.source_path if in_tree else None

@@ -2085,6 +2085,37 @@ class _PurgeStep:
     edit: bool = False
 
 
+def kept_for_recorded_workspace(std: StandardPaths, path: Path, *,
+                                own: str | None = None,
+                                own_workset: str | None = None) -> bool:
+    """True when *path* holds a box's recorded workspace: a purge keeps it, named here.
+
+    Keyspec § 0 "Per-owner resources": a forced share's destructive verb removes only its
+    own part.  A folder holding any box's recorded workspace (the purged box's own
+    included) is kept WHOLE and named, as :func:`box_logs_to_purge` keeps a shared log.
+    *own* exempts one owner, and *own_workset* every member of one workset: the verb
+    deletes those workspaces on purpose.
+    """
+    from kanibako.launch.box_resolve import recorded_workspaces_under
+
+    holders = [(owner, workspace) for owner, workspace in recorded_workspaces_under(std, path)
+               if owner != own
+               and not (own_workset is not None and owner.startswith(f"{own_workset}/"))]
+    sys.stdout.flush()  # piped, stdout is buffered: the Note would jump ahead
+    for owner, workspace in holders:
+        what = ("it" if literal_path(workspace) == literal_path(path)
+                else f"{workspace} inside it")
+        print(f"Note: kept {path} — box '{owner}' records {what} as its workspace. "
+              "Delete it yourself once that box no longer uses it.", file=sys.stderr)
+    return bool(holders)
+
+
+def _without_recorded_workspaces(steps: list[_PurgeStep],
+                                 std: StandardPaths) -> list[_PurgeStep]:
+    """*steps* less each one whose path holds a recorded workspace (kept and named)."""
+    return [step for step in steps if not kept_for_recorded_workspace(std, step.path)]
+
+
 _GITIGNORE = "gitignore line"
 _EMPTY_CANON = "default canon folder"      # rmdir only, never a tree delete
 _CREDS_LOCK = "creds watcher lock"         # removed only UNHELD; re-probed at deletion
@@ -2114,7 +2145,8 @@ def _primary_purge_plan(std, name: str, metadata_dir: Path,
             if loop_keeps is not None:
                 loop_keeps.append(("vault", vdir, None))
             continue
-        if vdir.is_dir():
+        # ⚑ A DANGLING link is neither dir nor file, and still ours to unlink.
+        if vdir.is_dir() or vdir.is_symlink():
             steps.append(_PurgeStep("vault", what, vdir, gated=True))
     # The store hangs off the vault BASE beside the leaf, so a looped leaf leaves it reachable.
     if vault_rw is not None:
@@ -2128,7 +2160,7 @@ def _primary_purge_plan(std, name: str, metadata_dir: Path,
     steps += [_PurgeStep("log", "log", log_file) for log_file in box_logs_to_purge(
         std, std.primary_logs, name, workset_root=std.primary_workset)]
     steps.append(_PurgeStep("metadata", "box metadata", metadata_dir, anchor=True))
-    return steps
+    return _without_recorded_workspaces(steps, std)
 
 
 def _standalone_purge_plan(
@@ -2185,7 +2217,7 @@ def _standalone_purge_plan(
     if retained_store is not None:
         retained.append(("store", retained_store, None))
     if metadata_dir is None:
-        return steps, retained
+        return _without_recorded_workspaces(steps, std), retained
     # ⚑ ROOT workset.yaml = WORKSET tier + half the §5 detection marker, so it goes LAST,
     # AFTER the anchor.  ⚑⚑ Delete it early and a later failure makes the retry resolve
     # composed DEFAULTS: a kept-and-named folder becomes "kanibako's own skeleton".
@@ -2216,7 +2248,7 @@ def _standalone_purge_plan(
     # ⚑ LAST OF ALL, after the anchor, gated: see the note above on the retry's need.
     if settings_file.is_file():
         steps.append(_PurgeStep("metadata", "workset settings", settings_file, gated=True))
-    return steps, retained
+    return _without_recorded_workspaces(steps, std), retained
 
 
 def _report_retained_roles(root: Path, retained: "list[tuple[str, Path, str | None]]", *,

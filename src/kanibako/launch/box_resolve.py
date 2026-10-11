@@ -112,6 +112,47 @@ def _find_owning_box(
     return None
 
 
+def recorded_workspaces_under(std: StandardPaths, tree: Path) -> list[tuple[str, Path]]:
+    """Every box whose RECORDED workspace is *tree* or lies under it, as ``(owner, path)``.
+
+    Covers the primary registry, every named workset's, and the standalone section.
+    *owner* is the box name, ``<workset>/<name>`` for a named member.  Paths compare both
+    literal and resolved: a safety test, so a workspace reached through a link still counts.
+    """
+    from kanibako.channels.channels import workset_token
+    from kanibako.commands.box._lifecycle import _resolved_unless_loop
+    from kanibako.settings.workset_dirkeys import EarlyScope
+
+    literal = Path(literal_path(tree))
+    resolved = _resolved_unless_loop(literal)
+
+    def inside(recorded: str) -> bool:
+        path = Path(literal_path(recorded))
+        return (path.is_relative_to(literal)
+                or _resolved_unless_loop(path).is_relative_to(resolved))
+
+    found: list[tuple[str, Path]] = []
+    for workset_name, root, mode in _enumerate_worksets(std):
+        try:
+            settings: Any = load_doc(root / WORKSET_META_FILE)
+        except ConfigError:
+            # ⚑ An unreadable file still has members: read the DEFAULT registry path,
+            # as ``delete_workset`` does, rather than refusing a purge elsewhere.
+            settings = None
+        registry_path = workset_registry.resolve_workset_registry_path(
+            root, settings,
+            early=EarlyScope(std.early_system, workset_token(mode, workset_name)),
+        )
+        for box_name, recorded in workset_registry.load_workset_boxes(registry_path).items():
+            if inside(recorded):
+                owner = box_name if mode is BoxMode.primary else f"{workset_name}/{box_name}"
+                found.append((owner, Path(recorded)))
+    found.extend((name, Path(root_str))
+                 for name, root_str in registry_store.load_standalone(std.registry).items()
+                 if inside(root_str))
+    return found
+
+
 def find_connected_external_box(
     project_dir: Path,
     std: StandardPaths,

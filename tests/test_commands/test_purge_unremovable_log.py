@@ -68,7 +68,8 @@ class TestAnUnremovableLogIsNamedNotRaised:
         err = capsys.readouterr().err
 
         assert rc == 1, "a log left behind is a failed purge"
-        assert f"could not remove the log {logs.helper}" in err
+        # ``box purge <box>`` runs ``rm --purge``'s plan, so it warns in that plan's words.
+        assert f"could not fully remove {logs.helper}" in err
         assert logs.helper.is_file()
         assert not logs.creds_watcher.exists(), "the other log still goes"
         assert proj.metadata_path.is_dir(), "the anchor stays so a re-run can finish"
@@ -104,7 +105,9 @@ def test_piped_the_warning_never_splits_a_progress_line(env, tmp_home, argv):
     finally:
         logs.helper.parent.chmod(0o755)
 
-    warning = merged.index(f"Warning: could not remove the log {logs.helper}")
+    # One box runs ``rm --purge``'s plan and warns in its words; ``--all`` keeps its own.
+    warning = merged.index(f"Warning: could not fully remove {logs.helper}" if "--all" not in argv
+                           else f"Warning: could not remove the log {logs.helper}")
     if "--all" in argv:
         assert merged.index("Found 1 project(s)") < warning
     for line in merged.splitlines():

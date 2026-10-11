@@ -194,6 +194,33 @@ class TestPrimaryPurge:
         assert "Delete these" not in out
 
 
+    @pytest.mark.parametrize("verb", ["rm --purge", "box purge"])
+    def test_dangling_vault_link_is_listed_and_unlinked(
+        self, verb, config_file, tmp_home, credentials_dir, capsys,
+    ):
+        """The primary twin of the standalone case: a vault leaf linking nowhere is listed
+        and unlinked, never skipped as "not a dir"."""
+        _create(tmp_home / "proj")
+        std = _std(config_file)
+        leaf = std.primary_vault_ro / "proj"
+        nowhere = tmp_home / "nowhere"
+        shutil.rmtree(leaf)
+        leaf.symlink_to(nowhere)
+        capsys.readouterr()
+
+        if verb == "rm --purge":
+            assert _rm("proj", force=True) == 0
+        else:
+            from kanibako import cli
+
+            args = cli.build_parser().parse_args(
+                ["box", "purge", str(tmp_home / "proj"), "--force"])
+            assert int(args.func(args) or 0) == 0
+        assert (f"vault ro (your files): {leaf} → {nowhere} (link only; target kept)"
+                in _plan_lines(capsys.readouterr().out))
+        assert not leaf.is_symlink()
+
+
 class TestUnregisteredStandalone:
     """An unregistered standalone box is reached by its path; ``rm`` adds no entry."""
 
