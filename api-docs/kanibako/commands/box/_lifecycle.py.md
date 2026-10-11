@@ -82,7 +82,7 @@ def _nulled_arm_stores(ws: Workset, name: str) -> list[tuple[Path, str]]
 def _plan_source_teardown(state: ProjectState, std: StandardPaths, dst_vault: tuple[Path | None, Path | None], *, preserve_name: str | None=None, new_name: str | None=None, preserve_root: Path | None=None) -> _SourceTeardown
 def _restore_standalone_rows(std: StandardPaths, before: Mapping[str, str]) -> bool
 def _restore_primary_rows(std: StandardPaths, before: Mapping[str, str]) -> bool
-def _safe_unregister_standalone(std: StandardPaths, name: str) -> None
+def _drop_registry_row(name: str, unregister: Callable[[], object]) -> None
 def _standalone_source_row(std: StandardPaths, name: str, root: Path, new_name: str | None) -> tuple[str, str] | None
 def _carry_standalone_canon(teardown: _SourceTeardown, std: StandardPaths, src_root: Path, dst_root: Path) -> _SourceTeardown
 def _stash_source_marker(teardown: _SourceTeardown, unwind: _Unwind) -> _SourceTeardown

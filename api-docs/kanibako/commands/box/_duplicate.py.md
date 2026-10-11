@@ -22,7 +22,7 @@ def _source_authored_vault(src_proj) -> bool
 def _duplicate_to_standalone(src_proj, new_path, std, force, src_enable_vault, carried, *, register: bool)
 def _undo_new_path(path: Path, existed: bool, before: frozenset[str] | None) -> None
 def _remove_created_root(path: Path) -> None
-def _unwind_local_name(std, project_name: str, dst_project: Path) -> None
+def _unwind_local_name(std, project_name: str, dst_project: Path, exc: BaseException) -> None
 def _assert_dup_home_free(std, name: str) -> None
 def _duplicate_to_local(src_proj, new_path, std, config, force, carried, name, workspace_src=None)
 def _duplicate_to_workset(args, std, config) -> int

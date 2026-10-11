@@ -893,6 +893,42 @@ class TestBoxDuplicate:
         # No partial dest metadata dir.
         assert not (std.boxes / "orphan_dst").exists()
 
+    def test_duplicate_rollback_names_what_it_could_not_undo_once(
+        self, config_file, tmp_home, credentials_dir, capsys,
+    ):
+        """A failed duplicate's rollback names the name it could not unregister and the
+        dir it could not remove, each once, then one summary."""
+        from kanibako.commands.box import run_duplicate
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        src_dir = tmp_home / "stuck_src"
+        src_dir.mkdir()
+        resolve_project(std, config, project_dir=str(src_dir), initialize=True)
+        dst_dir = tmp_home / "stuck_dst"
+
+        def _boom(src, dst, *a, **kw):
+            from pathlib import Path
+            Path(dst).mkdir(parents=True, exist_ok=True)
+            raise RuntimeError("boom")
+
+        def _locked(*a, **kw):
+            raise OSError("registry locked")
+
+        with patch("kanibako.commands.box._duplicate.shutil.copytree", side_effect=_boom), \
+                patch("kanibako.commands.box._duplicate.unregister_primary_box_name",
+                      side_effect=_locked), \
+                patch("kanibako.commands.box._duplicate.remove_box_tree", return_value=False):
+            with pytest.raises(RuntimeError, match="boom"):
+                run_duplicate(self._make_args(src_dir, dst_dir, bare=True, force=True))
+        err = capsys.readouterr().err
+        left = std.boxes / "stuck_dst"
+        assert left.is_dir()
+        assert err.count("Note: could not undo a step of the duplicate: registry locked\n") == 1, err
+        assert err.count(f"Note: could not remove {left}, which this operation created") == 1, err
+        assert err.count("Note: the duplicate failed and was not fully undone; check the box "
+                         f"'stuck_dst' and {left}") == 1, err
+
 
     def test_registered_dest_refuses_before_the_workspace_is_written(
         self, config_file, tmp_home, credentials_dir,

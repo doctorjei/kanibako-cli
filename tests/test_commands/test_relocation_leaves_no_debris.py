@@ -566,7 +566,8 @@ class _Scenario:
 _BEFORE = [("_carry_box_logs", "after"), ("_stash_source_marker", "after"),
            ("repoint_box_mounted_links", "before"), ("_drop_source_row", "after")]
 #: The registry writes: each must be undone, whatever it wrote, from the moment it returns.
-_REGISTRY = [("_safe_unregister", "after"), ("register_primary_box_name", "after"),
+_REGISTRY = [("_safe_unregister", "after"), ("_drop_registry_row", "after"),
+             ("register_primary_box_name", "after"),
              ("assign_primary_box_name", "after"), ("add_project", "after"),
              ("release_project", "after")]
 _TAIL = [("_finish_relocation", "before"), ("_relocate_channel_partition", "before"), ("_relocate_snapshot_store", "before"),

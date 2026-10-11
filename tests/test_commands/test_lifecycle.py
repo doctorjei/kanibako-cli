@@ -3581,3 +3581,50 @@ class TestStandaloneMoveCarriesItsKuid:
 
         assert after_state.mode is BoxMode.standalone
         assert kuid.is_valid(standalone_kuid(after_state.name))
+
+
+class TestAnUndroppedSourceRowIsNamed:
+    """The source row's drop is the point of no return: a drop that fails leaves the old
+    row, and one Note names it and the cure; the op still lands."""
+
+    def test_a_primary_row(self, env, monkeypatch, capsys):
+        config, std, tmp_home = env
+        pdir = _make_default(env)
+        state = resolve_lifecycle_target(str(pdir), std, config)
+
+        def locked(*a, **k):
+            raise OSError("registry locked")
+
+        monkeypatch.setattr(lc, "unregister_primary_box_name", locked)
+        new = execute_lifecycle(state, TargetSpec(location=INPLACE, ownership="standalone",
+                                                  verb="convert"),
+                                std, config, confirm=_conf_yes())
+        assert new.mode == BoxMode.standalone
+        assert state.name in load_primary_boxes(
+            std.primary_workset, early=_early_scope(std, BoxMode.primary))
+        err = capsys.readouterr().err
+        note = (f"Note: could not drop the old registry row '{state.name}': registry "
+                f"locked; remove it with 'kanibako box rm {state.name}'\n")
+        assert err.count(note) == 1, err
+        assert err.count("Note:") == 1, err
+
+    def test_a_standalone_row(self, env, monkeypatch, capsys):
+        from kanibako.project import registry_store
+
+        config, std, tmp_home = env
+        root = _make_standalone(env)
+        state = resolve_lifecycle_target(str(root), std, config)
+        assert registry_store.standalone_root(std.registry, state.name) == str(root)
+
+        def locked(*a, **k):
+            raise OSError("registry locked")
+
+        monkeypatch.setattr(registry_store, "unregister_standalone", locked)
+        new = execute_lifecycle(state, TargetSpec(ownership="default", verb="convert"),
+                                std, config, confirm=_conf_yes())
+        assert new.mode == BoxMode.primary
+        assert registry_store.standalone_root(std.registry, state.name) == str(root)
+        err = capsys.readouterr().err
+        note = (f"Note: could not drop the old registry row '{state.name}': registry "
+                f"locked; remove it with 'kanibako box rm {state.name}'\n")
+        assert err.count(note) == 1, err

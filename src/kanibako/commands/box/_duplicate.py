@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+from functools import partial
 import shlex
 import shutil
 import sys
@@ -539,23 +540,27 @@ def _remove_created_root(path: Path) -> None:
     _unwind_created_root(path)
 
 
-def _unwind_local_name(std, project_name: str, dst_project: Path) -> None:
-    """Best-effort rollback of a default-mode name registration + partial dir.
+def _unwind_local_name(std, project_name: str, dst_project: Path,
+                       exc: BaseException) -> None:
+    """Roll back a default-mode name registration + partial dir; *exc* is what failed.
 
     Used when a copy fails after ``_claim_primary_dup_name`` has already registered the
     duplicate's name (and possibly created a partial metadata dir), to avoid
-    leaving a "registered but no metadata" orphan.  Each step is independently
-    guarded so one failure does not mask the rest.
+    leaving a "registered but no metadata" orphan.  Each step runs even when an earlier
+    one failed, and what either leaves is named once.
     """
-    try:
-        unregister_primary_box_name(std.primary_workset, project_name, early=_early_scope(std, BoxMode.primary))
-    except Exception:  # noqa: BLE001 - best-effort restore
-        pass
-    try:
-        if dst_project.exists():
-            remove_box_tree(dst_project)
-    except Exception:  # noqa: BLE001 - best-effort restore
-        pass
+    from kanibako.project.workset import _note_unwind_incomplete, _unwind_created_root, _Unwind
+
+    unwind = _Unwind()
+    if dst_project.exists() or dst_project.is_symlink():
+        unwind.push(partial(_unwind_created_root, dst_project, remove_box_tree))
+    unwind.push(partial(unregister_primary_box_name, std.primary_workset, project_name,
+                        early=_early_scope(std, BoxMode.primary)))
+    unwind.run()
+    if unwind.failed:
+        _note_unwind_incomplete(
+            "duplicate", f"check the box '{project_name}' and {dst_project}",
+            unwind.errors, interrupted=isinstance(exc, KeyboardInterrupt))
 
 
 def _assert_dup_home_free(std, name: str) -> None:
@@ -650,8 +655,8 @@ def _duplicate_to_local(src_proj, new_path, std, config, force, carried, name,
             if not dst_home.is_dir() and not lay_root_link(src_proj.shell_path, dst_home):
                 copy_tree_keeping_links(src_proj.shell_path, dst_home)
             materialize_canon_skeleton(dst_home)
-    except BaseException:
-        _unwind_local_name(std, project_name, dst_project)
+    except BaseException as exc:
+        _unwind_local_name(std, project_name, dst_project, exc)
         raise
 
 
@@ -1067,9 +1072,10 @@ def run_duplicate(args: argparse.Namespace) -> int:
         _dup_home = new_project_dir / "home"
         if _dup_home.is_dir():
             materialize_canon_skeleton(_dup_home)
-    except BaseException:
-        _unwind_local_name(std, dup_name, new_project_dir)
+    except BaseException as exc:
+        # ⚑ The workspace first: the summary Note comes last.
         _undo_new_path(new_path, new_path_existed, new_path_before)
+        _unwind_local_name(std, dup_name, new_project_dir, exc)
         raise
 
     _repoint_duplicated_links(source_path, new_path, std, config, bare=args.bare)

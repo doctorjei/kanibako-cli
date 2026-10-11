@@ -2069,7 +2069,8 @@ def _plan_source_teardown(
         drop = restore = None
         row = _standalone_source_row(std, state.name, root, new_name)
         if row is not None and not _same_box_name(row[0], new_name):
-            drop = partial(_safe_unregister_standalone, std, row[0])
+            drop = partial(_drop_registry_row, row[0], partial(
+                registry_store.unregister_standalone, std.registry, row[0]))
             restore = partial(registry_store.register_standalone, std.registry, row[0],
                               Path(row[1]))
         # ⚑⚑ Read through the root ``workset.yaml``, which the stash takes before step 4b.
@@ -2180,7 +2181,9 @@ def _plan_source_teardown(
         return _SourceTeardown(
             name=name, removed=(state.metadata_path,), trees=tuple(trees_p),
             vaults=tuple(vaults), keeps=tuple(primary_keeps),
-            drop=partial(_safe_unregister, std, name) if name else None,
+            drop=partial(_drop_registry_row, name, partial(
+                unregister_primary_box_name, std.primary_workset, name,
+                early=_early_scope(std, BoxMode.primary))) if name else None,
             restore=partial(_safe_register_membership, std, name, workspace) if name else None,
         )
 
@@ -2260,13 +2263,19 @@ def _restore_primary_rows(std: StandardPaths, before: Mapping[str, str]) -> bool
     return restored
 
 
-def _safe_unregister_standalone(std: StandardPaths, name: str) -> None:
-    from kanibako.project import registry_store
+def _drop_registry_row(name: str, unregister: Callable[[], object]) -> None:
+    """Drop the source's registry row *name*; a failure is a Note naming the stale row.
+
+    ⚑ The drop is the point of no return: the destination row is written, so a row this
+    cannot drop is left for the user, never unwound.
+    """
+    import sys
 
     try:
-        registry_store.unregister_standalone(std.registry, name)
-    except Exception:  # noqa: BLE001
-        pass
+        unregister()
+    except Exception as err:  # noqa: BLE001 - named; the destination is the box
+        print(f"Note: could not drop the old registry row '{name}': {err}; remove it "
+              f"with 'kanibako box rm {name}'", file=sys.stderr)
 
 
 def _standalone_source_row(

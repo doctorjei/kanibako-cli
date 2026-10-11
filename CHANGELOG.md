@@ -740,6 +740,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   it also printed `Warning: could not undo the member '<name>' this create added: Project '<name>' not found in
   workset '<workset>'`, about a member the rollback had already removed. That Warning is gone. A box folder a
   later failure's rollback cannot remove is now named too.
+- **A failed `box duplicate` and a source row a move cannot drop are named.** When a `box duplicate` in the
+  default workset failed and its rollback could not unregister the new name or remove the copied folder, nothing
+  was printed; each is now named, then `Note: the duplicate failed and was not fully undone; …`. When `box move`
+  or `box convert` cannot drop the source's old registry row after the box has landed, it now prints `Note: could
+  not drop the old registry row '<name>': <error>; remove it with 'kanibako box rm <name>'` instead of nothing.
 - **A symlink loop in a vault no longer crashes `box move` or `box convert`.** A loop at the vault link or
   anywhere above it (a looped `vault` folder or a workset's shared `vault/rw`) stopped the command with a
   `RuntimeError` traceback on Python 3.11. The loop is now left in place with a Note saying so, as `box purge`
