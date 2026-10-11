@@ -61,8 +61,9 @@ Two consequences worth internalizing:
   ([section 3.3](#33-confirm-the-tags-tests-run-is-green)).
 
 The test gates live in `.github/workflows/test.yml` — workflow name **Tests**,
-jobs `test` (ruff + mypy + unit pytest), `conformance` (kinemata),
-`integration`, and `e2e`. It runs on
+jobs `test` (ruff + mypy + unit pytest, a matrix that GitHub names
+`test (3.11)` and `test (3.13)`), `conformance` (kinemata), `integration`, and
+`e2e`. It runs on
 pushes to `main`, on pull requests, and on every `v*` tag. `e2e` is tag-gated:
 it runs only on a `v*` tag or a dispatch with `run_e2e=true`, and it exercises
 the **HEAD** code by pulling `ghcr.io/doctorjei/kanibako-oci:latest` and
@@ -209,8 +210,8 @@ gh api "repos/doctorjei/kanibako-cli/actions/workflows/test.yml/runs?head_sha=$S
 commit; a bare "what concluded at this SHA" query can report a run that is not
 **Tests**. The query above (and `gh run list --workflow=test.yml --commit
 $SHA`) scopes to the right workflow. To be thorough, check the individual job
-conclusions — `test`, `conformance`, `integration`, `e2e` — the same four
-`tests-gate` requires on the final tag:
+conclusions — `test (3.11)`, `test (3.13)`, `conformance`, `integration`,
+`e2e` — the same five `tests-gate` requires on the final tag:
 
 ```bash
 RUN=$(gh api "repos/doctorjei/kanibako-cli/actions/workflows/test.yml/runs?head_sha=$SHA" \
@@ -343,8 +344,8 @@ wait on each other.
 
 **The shared gate, `tests-gate`: GREEN Tests for this exact commit.** It polls
 the **Tests** workflow run for the tag's SHA (30s interval, 45-minute deadline)
-until it completes, then requires `test`, `conformance`, `integration`, **and**
-`e2e` to each report `conclusion == success`. A missing, skipped, or renamed
+until it completes, then requires `test (3.11)`, `test (3.13)`, `conformance`,
+`integration`, **and** `e2e` to each report `conclusion == success`. A missing, skipped, or renamed
 required job counts as a failure — the gate is fail-safe by design, because both
 workflows fire independently on the tag and a red Tests job would otherwise not
 block a prod publish. Both `promote` and `images-promote` need it.
