@@ -125,15 +125,12 @@ def _resolve_vault_rw(project_dir: str | None, usage: str):
     std = load_std_paths(config)
     proj = resolve_any_project(std, config, project_dir, initialize=False)
 
-    # ⚑ The nameless primary is the ``__unregistered__`` phantom (as in
-    # ``box._parser._resolve_config_subject``): no box, so no store key to refuse.
-    if proj.mode is BoxMode.primary and not proj.name:
-        raise ProjectError(
-            f"no box at {proj.project_path} — kanibako has no box registered "
-            "for this directory, and a vault belongs to a box.\n"
-            f"  Name the box:   kanibako box vault {usage} <box>\n"
-            "  Or run it inside a box's directory."
-        )
+    # ⚑ The nameless primary is the ``__unregistered__`` phantom: no box, so no store key.
+    from kanibako.launch.box_resolve import unregistered_box_refusal
+    head = unregistered_box_refusal(
+        proj, "a vault belongs to a box", f"kanibako box vault {usage} <box>")
+    if head is not None:
+        raise ProjectError(head + "  Or run it inside a box's directory.")
     if not proj.vault_enabled():
         print("Vault is disabled for this project.", file=sys.stderr)
         return None

@@ -945,6 +945,13 @@ class TestBoxConfigRefusesThePhantomBox:
         err = capsys.readouterr().err
         assert "no box at" in err
         assert str(elsewhere) in err
+        # ⚑ The whole text, pinned: the head comes from ``box_resolve.unregistered_box_refusal``.
+        assert (
+            f"no box at {elsewhere} — kanibako has no box registered for this directory, "
+            "and a setting has to belong to a box.\n"
+            "  Name the box:   kanibako box set <box> <key>=<value>\n"
+            f"  Or make one:    kanibako create {elsewhere}"
+        ) in err
         assert not (std.boxes / "__unregistered__").exists(), (
             "the __unregistered__ sentinel must never be materialized as a real box"
         )

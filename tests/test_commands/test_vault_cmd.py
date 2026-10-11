@@ -629,3 +629,10 @@ class TestVaultNoBoxHere:
         assert f"kanibako box vault {usage} <box>" in msg
         assert "run it inside a box" in msg
         assert "Refused box name" not in msg
+        # ⚑ The whole text, pinned: the head comes from ``box_resolve.unregistered_box_refusal``.
+        assert msg == (
+            f"no box at {nobox} — kanibako has no box registered for this directory, "
+            "and a vault belongs to a box.\n"
+            f"  Name the box:   kanibako box vault {usage} <box>\n"
+            "  Or run it inside a box's directory."
+        )

@@ -26,6 +26,7 @@ from kanibako.settings.messages import CURE_MOVED_LEAF_NOT_ASCII
 from kanibako.settings.paths import (
     BoxMode,
     DetectionResult,
+    ProjectPaths,
     StandardPaths,
     detect_project_mode,
 )
@@ -390,6 +391,21 @@ def held_standalone_stores(registry: Path, own_root: Path) -> dict[str, str]:
         except (ConfigError, DerivedBoxNameError, OSError):
             continue  # another box's broken root holds nothing; it is not this box's error
     return held
+
+
+def unregistered_box_refusal(proj: ProjectPaths, belongs: str, name_cure: str) -> str | None:
+    """The refusal head for the nameless primary (the ``__unregistered__`` phantom), else ``None``.
+
+    *belongs* finishes "…, and" (``"a vault belongs to a box"``); *name_cure* is the command
+    that names the box.  The caller appends its own last cure line.
+    """
+    if proj.mode is not BoxMode.primary or proj.name:
+        return None
+    return (
+        f"no box at {proj.project_path} — kanibako has no box registered "
+        f"for this directory, and {belongs}.\n"
+        f"  Name the box:   {name_cure}\n"
+    )
 
 
 def resolve_box_identity(

@@ -3610,15 +3610,14 @@ def _resolve_config_subject(std, config, project_dir: str | None):
     proj = resolve_any_project(
         std, config, project_dir=project_dir, initialize=False,
     )
-    if proj.mode is BoxMode.primary and not proj.name:
+    from kanibako.launch.box_resolve import unregistered_box_refusal
+
+    head = unregistered_box_refusal(
+        proj, "a setting has to belong to a box", "kanibako box set <box> <key>=<value>")
+    if head is not None:
         # ⚑ Name the target in the cure: a bare ``kanibako create`` uses cwd.
         target = str(proj.project_path) if proj.project_path else None
         suggest_path = f" {shlex.quote(target)}" if target else ""
-        head = (
-            f"no box at {proj.project_path} — kanibako has no box registered "
-            "for this directory, and a setting has to belong to a box.\n"
-            "  Name the box:   kanibako box set <box> <key>=<value>\n"
-        )
         try:
             refuse_derived_box_name(Path(str(proj.project_path)).name or "project")
         except DerivedBoxNameError as e:

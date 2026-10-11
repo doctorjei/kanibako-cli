@@ -347,3 +347,30 @@ def test_box_resolve_is_wired_into_the_resolvers():
     assert "paths.py" in referencers, (
         f"box_resolve should be wired into paths.py; referencers: {referencers}"
     )
+
+
+# ---------------------------------------------------------------------------
+# unregistered_box_refusal — the one carrier of the nameless-primary refusal head
+# ---------------------------------------------------------------------------
+
+
+def _proj(mode: BoxMode, name: str, path: str = "/w/here"):
+    from types import SimpleNamespace
+
+    return SimpleNamespace(mode=mode, name=name, project_path=Path(path))
+
+
+def test_unregistered_box_refusal_names_the_phantom():
+    head = box_resolve.unregistered_box_refusal(
+        _proj(BoxMode.primary, ""), "a vault belongs to a box", "kanibako box vault list <box>")
+    assert head == (
+        "no box at /w/here — kanibako has no box registered for this directory, "
+        "and a vault belongs to a box.\n"
+        "  Name the box:   kanibako box vault list <box>\n"
+    )
+
+
+def test_unregistered_box_refusal_passes_a_real_box():
+    for proj in (_proj(BoxMode.primary, "alpha"), _proj(BoxMode.named, ""),
+                 _proj(BoxMode.standalone, "")):
+        assert box_resolve.unregistered_box_refusal(proj, "x", "y") is None

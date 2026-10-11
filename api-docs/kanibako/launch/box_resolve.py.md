@@ -23,6 +23,7 @@ def detect_box_mode(project_dir: Path, std: StandardPaths, config: BootstrapConf
 def detect_box_or_default(project_dir: Path, std: StandardPaths, config: BootstrapConfig) -> DetectionResult
 def standalone_box_name(box_root: Path, registered_name: str | None) -> str
 def held_standalone_stores(registry: Path, own_root: Path) -> dict[str, str]
+def unregistered_box_refusal(proj: ProjectPaths, belongs: str, name_cure: str) -> str | None
 def resolve_box_identity(project_dir: Path, std: StandardPaths, config: BootstrapConfig) -> dict[str, Any] | None
 def _enumerate_worksets(std: StandardPaths) -> Iterator[tuple[str, Path, BoxMode]]
 def _find_owning_box(project_dir: Path, std: StandardPaths, config: BootstrapConfig, *, workset: str | None=None) -> _OwnedBox | None
