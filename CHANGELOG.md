@@ -752,7 +752,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **A purge names the box's inbox and share folders it keeps.** `box rm --purge`, `box purge` (`--all` too), and
   `workset disconnect --remove-files` left the box's mailbox and share folders in place without a word. They are
   still kept, since they lie outside the box's folder; each one present is now listed as kept before the
-  question and named after the run.
+  question and named after the run; one that cannot be checked is named as such.
 - **A deregistered standalone box is refused at a hard-linked copy of its root.** After `box rm`, a `cp -al` copy
   of the box's tree started as a second box, because the check for a parked box compared directories only. A
   copy that shares the box's `workset.yaml` file is now refused as another path to that box, as it is while the

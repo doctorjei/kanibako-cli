@@ -64,6 +64,7 @@ def _unmakes_its_dirs_on_failure(create: Callable[[argparse.Namespace, _CreateOu
 def _list_orphans(projects: list, ws_data: list, std, quiet: bool) -> int
 def _assert_deletable(path, *, must_be_under: Path | None=None) -> Path
 def _without_recorded_workspaces(steps: list[_PurgeStep], std: StandardPaths) -> list[_PurgeStep]
+def _channel_on_disk(path: Path) -> 'bool | OSError'
 def _primary_purge_plan(std, name: str, metadata_dir: Path, loop_keeps: 'list[tuple[str, Path, str | None]] | None'=None) -> list[_PurgeStep]
 def _standalone_purge_plan(root: Path, registered_name: str, *, std: StandardPaths, early: EarlyScope) -> tuple[list[_PurgeStep], list[tuple[str, Path, str | None]]]
 def _report_retained_roles(root: Path, retained: 'list[tuple[str, Path, str | None]]', *, early=None) -> None

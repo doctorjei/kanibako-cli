@@ -2161,12 +2161,35 @@ def box_channel_keeps(std: StandardPaths, mode: BoxMode, ws_root: Path, name: st
     return [(role, path, None) for role, path in found if path is not None]
 
 
+def _channel_on_disk(path: Path) -> "bool | OSError":
+    """Whether a kept channel dir is on disk: True, False, or the stat's OSError.
+
+    ⚑ AN UNSTATABLE PATH IS "MAY BE PRESENT", NEVER A RAISE: on 3.11 ``Path.exists()``
+    raises on EACCES (and 3.13 answers False, hiding the dir).  ``lstat`` also counts a
+    dangling or looping leaf link as present.
+    """
+    try:
+        os.lstat(path)
+    except (FileNotFoundError, NotADirectoryError):
+        return False
+    except OSError as e:
+        return e
+    return True
+
+
 def report_kept_channel(role: str, path: Path) -> None:
     """The after-run Note for one :func:`box_channel_keeps` dir still on disk."""
-    if path.exists() or path.is_symlink():
-        sys.stdout.flush()  # piped, stdout is buffered: this Note would jump ahead
+    found = _channel_on_disk(path)
+    if found is False:
+        return
+    sys.stdout.flush()  # piped, stdout is buffered: this Note would jump ahead
+    if found is True:
         print(f"Note: kept the box's {role} at {path} — it is outside the box's root, so "
               "it is kept; yours to remove.", file=sys.stderr)
+    else:
+        print(f"Note: could not check the box's {role} at {path} ({found.strerror or found}); if it "
+              "is there, it is outside the box's root, so it is kept; yours to remove.",
+              file=sys.stderr)
 
 
 def report_primary_keeps(retained: "list[tuple[str, Path, str | None]]") -> None:
@@ -2327,6 +2350,9 @@ def _report_retained_roles(root: Path, retained: "list[tuple[str, Path, str | No
 
     sys.stdout.flush()  # piped, stdout is buffered: these Notes would come out first
     for role, path, why in retained:
+        if role in _CHANNEL_ROLES:  # before the probe below: an unstatable one is named
+            report_kept_channel(role, path)
+            continue
         if not (path.exists() or path.is_symlink()):
             continue
         if role == "snapshot folder":
@@ -2356,12 +2382,19 @@ def _confirm_purge(steps: list[_PurgeStep], *, force: bool,
     from kanibako.utils import confirm_prompt
 
     print()
-    kept = [(role, path) for role, path, _why in retained
-            if path.exists() or path.is_symlink() or _symlink_loop(path)]
+    kept: list[tuple[str, Path, str]] = []
+    for role, path, _why in retained:
+        if role in _CHANNEL_ROLES:
+            found = _channel_on_disk(path)
+            if found is not False:
+                kept.append((role, path, "" if found is True
+                             else f" (could not be checked: {found.strerror or found})"))
+        elif path.exists() or path.is_symlink() or _symlink_loop(path):
+            kept.append((role, path, ""))
     if kept:
         print(f"--purge KEEPS these {len(kept)} (left in place, yours to remove):")
-        for role, path in kept:
-            print(f"  kept {role}: {path}")
+        for role, path, unchecked in kept:
+            print(f"  kept {role}: {path}{unchecked}")
     if not steps:
         print("--purge deletes nothing: no path of this box is kanibako's to remove"
               + (" (everything it found is listed above)." if kept else "."))

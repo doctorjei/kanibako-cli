@@ -193,3 +193,45 @@ class TestNamedMember:
             workset="nws", project="bar", box=None, remove_files=True, force=True)) == 0
         out, err = capsys.readouterr()
         _assert_kept_and_named(dirs, out, err, listed=False)
+
+
+class TestUnstatableChannelDir:
+    """An inbox whose parent cannot be searched is named, never crashed on (3.11 raises,
+    3.13 hides it).  The stat fails, so it is named as unchecked, before and after."""
+
+    @staticmethod
+    def _lock(inbox: Path):
+        inbox.parent.chmod(0)
+        with pytest.raises(PermissionError):  # setup: root would see through it
+            inbox.lstat()
+        return inbox.parent
+
+    def test_box_rm_purge(self, config_file, tmp_home, credentials_dir, capsys):
+        std, proj = _primary(config_file, tmp_home)
+        inbox = _fill_channels(std, proj)[0]
+        locked = self._lock(inbox)
+        try:
+            capsys.readouterr()
+            assert _box_rm("pk") == 0
+            out, err = capsys.readouterr()
+        finally:
+            locked.chmod(0o755)
+        assert f"kept channel inbox: {inbox} (could not be checked: " in out, out
+        assert f"could not check the box's channel inbox at {inbox} (" in err, err
+        assert (inbox / "msg.md").read_text() == "mail from another box"
+
+    def test_disconnect_remove_files(self, config_file, tmp_home, credentials_dir, capsys):
+        from kanibako.commands.workset_cmd import run_disconnect
+
+        std, _ws, member = _member(config_file, tmp_home)
+        inbox = _fill_channels(std, member)[0]
+        locked = self._lock(inbox)
+        try:
+            capsys.readouterr()
+            assert run_disconnect(argparse.Namespace(
+                workset="nws", project="bar", box=None, remove_files=True, force=True)) == 0
+            _out, err = capsys.readouterr()
+        finally:
+            locked.chmod(0o755)
+        assert f"could not check the box's channel inbox at {inbox} (" in err, err
+        assert (inbox / "msg.md").read_text() == "mail from another box"
