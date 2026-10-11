@@ -350,7 +350,7 @@ def resolve_lifecycle_target(
         from kanibako.settings.config import user_config_file, load_config
         config = load_config(user_config_file())
 
-    raw = resolve_designation(std, old, unknown_name_is_path=True)
+    raw = resolve_designation(std, old, unknown_name_is_path=True, name_first=True)
     raw_path = Path(literal_path(raw))
 
     from kanibako.launch import box_resolve
@@ -741,10 +741,14 @@ def _cure_ref(state: ProjectState) -> str:
     """The reference a printed cure reaches *state* by, QUOTED for the shell.
 
     ⚑ A standalone's name is in no registry the route reads, and its nested workspace
-    resolves through the path space its root sits in, so it is the box root.
+    resolves through the path space its root sits in, so it is the box root.  A named
+    member's bare name resolves only inside its own path space (the designation
+    cascade), so it is ``<workset>/<box>``, which resolves from anywhere.
     """
     if state.mode is BoxMode.standalone:
         return shlex.quote(str(state.metadata_path))
+    if state.mode is BoxMode.named and state.ws is not None:
+        return shlex.quote(f"{state.ws.name}/{state.name}")
     return shlex.quote(state.name)
 
 

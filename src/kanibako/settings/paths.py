@@ -1298,6 +1298,7 @@ def resolve_project(std: StandardPaths, config: BootstrapConfig, project_dir: st
                     initialize: bool = False, enable_vault: bool | None = None,
                     name_override: str | None = None, register: bool = True) -> ProjectPaths:
     """Resolve (and optionally initialize) per-project paths (PRIMARY mode)."""
+    # ⚑ Exists-first (no *name_first*): ``create`` probes and materializes through here.
     raw = resolve_designation(std, project_dir, unknown_name_is_path=True)
     project_path = Path(literal_path(raw))
 
@@ -2363,8 +2364,10 @@ class DesignationRoute(Enum):
 def designation_route(value: str | None, *, name_first: bool = False) -> DesignationRoute:
     """Decide how a box designation is resolved; the one place that decides it.
 
-    An IDENTIFIER is ambiguous between a box name and a relative path: it takes the
-    NAME route when *name_first* or when no such path exists, else the PATH route.  A
+    An IDENTIFIER is ambiguous between a box name and a relative path.  A lookup of an
+    existing box passes *name_first*: the NAME route, whose cascade ranks the path
+    (:func:`resolve_designation`).  Only ``create`` leaves it unset, and then an existing
+    path takes the PATH route, else the NAME route.  A
     PATH of the form ``<workset>/<box>``, both segments IDENTIFIERs, that does not exist
     takes the QUALIFIED route.  Reads the filesystem (``exists``), nothing else.
     """
@@ -2410,24 +2413,24 @@ def resolve_designation(std: StandardPaths, value: str | None, *, unknown_name_i
             return resolve_qualified_name(std.registry, value, early_system=std.early_system)[0]
         except ProjectError:
             return value
+    # ⚑ THE CASCADE, not ``exists()``, ranks a same-named path (spec § Box designation;
+    # plan S8): ``resolve_name`` places it after the space's registry and primary boxes,
+    # and before a registered standalone name.
     on_disk = Path(value).exists()
     try:
-        # A registered standalone name ranks after a same-named path (spec § Box designation).
         resolved, kind = resolve_name(std.registry, value, cwd=Path(logical_cwd()),
-                                      primary_workset=std.primary_workset, standalone=not on_disk,
+                                      primary_workset=std.primary_workset,
+                                      path=value if on_disk else None,
                                       early_system=std.early_system)
     except AmbiguousNameError:
         raise
     except ProjectError:
-        if on_disk:
-            _warn_standalone_shadowed(std, value)
-            return value
         if unknown_name_is_path:
             return value
         raise
     if kind == KIND_PROJECT:
         return resolved
-    if kind == KIND_WORKSET and not on_disk:
+    if kind == KIND_WORKSET:
         raise WorksetError(ERR_WORKSET_WS_NOT_BOX % (value, value))
     _warn_standalone_shadowed(std, value)
     return value
@@ -2448,7 +2451,8 @@ def resolve_any_project(std: StandardPaths, config: BootstrapConfig, project_dir
     """Auto-detect project mode and resolve paths accordingly."""
     # An unknown name on the READ path is refused rather than path-ified into a phantom
     # hash-named box; the CREATE path (*initialize*) still path-ifies it.
-    raw = resolve_designation(std, project_dir, unknown_name_is_path=initialize)
+    raw = resolve_designation(std, project_dir, unknown_name_is_path=initialize,
+                              name_first=not initialize)
     return _resolve_designated_path(std, config, raw, initialize=initialize,
                                     register=register, name_override=name_override)
 
@@ -2487,9 +2491,8 @@ def resolve_box_target(std: StandardPaths, config: BootstrapConfig, value: str |
             _flag_missing_vault(proj)
         return proj
 
-    # A registered box name wins over a same-named folder, hence *name_first* — except a
-    # registered standalone name, which the spec ranks after primary workset boxes AND
-    # paths (system-design § Box designation & workset path space), so the folder wins.
+    # *name_first*: the designation cascade ranks a same-named folder (plan S8) —
+    # after the space's registry and primary boxes, before a registered standalone.
     raw = resolve_designation(std, value, unknown_name_is_path=initialize, name_first=True)
     return _flag(_resolve_designated_path(std, config, raw, initialize=initialize,
                                           register=register))

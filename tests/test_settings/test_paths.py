@@ -1641,12 +1641,13 @@ class TestA0RepointStrandedMembers:
     def test_bare_name_resolves_stranded_member(
         self, config_file, tmp_home, monkeypatch
     ):
-        """Surface 2 (bare name from outside): ``box info boxa``-shape resolution
-        lands on the REGISTERED workspace (pre-fix: the name resolved but the
-        location attribution died on "not in a specific project workspace")."""
+        """Surface 2 (qualified name from outside): ``box info b2ws/boxa``-shape
+        resolution lands on the REGISTERED workspace (pre-fix: the name resolved but
+        the location attribution died on "not in a specific project workspace").
+        A bare ``boxa`` from outside is S8b's error (plan Q4)."""
         config, std, _ws, internal = self._setup(config_file, tmp_home)
         monkeypatch.chdir(tmp_home)  # outside any workset
-        proj = resolve_any_project(std, config, project_dir="boxa")
+        proj = resolve_any_project(std, config, project_dir="b2ws/boxa")
         assert proj.mode is BoxMode.named
         assert proj.name == "boxa"
         assert proj.project_path.resolve() == internal

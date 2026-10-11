@@ -435,9 +435,10 @@ class TestTheCureRefIsQuoted:
                                                       credentials_dir):
         text, _ = self._refuse(name, tmp_home, convert=True)
 
-        assert f"kanibako box convert {shlex.quote(name)} --workset ws2 --move" in text
+        # A named member's cure reference is ``<workset>/<box>`` (``_cure_ref``).
+        assert f"kanibako box convert {shlex.quote('ws1/' + name)} --workset ws2 --move" in text
         _assert_inert(_line(text, "kanibako box convert"),
-                      ["box", "convert", name, "--workset", "ws2", "--move"],
+                      ["box", "convert", "ws1/" + name, "--workset", "ws2", "--move"],
                       tmp_path / "paste-convert")
 
     def test_the_move_cure_pastes_to_one_argv(self, name, tmp_path, tmp_home,
@@ -445,7 +446,7 @@ class TestTheCureRefIsQuoted:
         text, leaf = self._refuse(name, tmp_home, convert=False)
 
         _assert_inert(_line(text, "kanibako box move"),
-                      ["box", "move", name, str(leaf), "--workset", "ws2"],
+                      ["box", "move", "ws1/" + name, str(leaf), "--workset", "ws2"],
                       tmp_path / "paste-move")
 
 

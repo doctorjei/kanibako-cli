@@ -262,11 +262,14 @@ class TestResolveTarget:
         assert "<workset>/dup" in message
 
     def test_unambiguous_member_name_still_resolves(self, env, monkeypatch):
-        """The control: ONE workset is not ambiguous, so the name still resolves.
+        """The control: ONE workset, outside its space, is S8b's error naming the
+        qualified spelling (plan Q4), and that spelling resolves.
 
         Mutation proof for the test above -- exempting ``ProjectError`` broadly, or
         keying the exemption on anything but the ambiguity TYPE, breaks this.
         """
+        from kanibako.errors import AmbiguousNameError
+
         config, std, tmp_home = env
         workspace = _make_materialized_member(env, "solo", "solo-box")
 
@@ -274,7 +277,9 @@ class TestResolveTarget:
         cwd.mkdir()
         monkeypatch.chdir(cwd)
 
-        state = resolve_lifecycle_target("solo-box", std, config)
+        with pytest.raises(AmbiguousNameError, match="'solo/solo-box'"):
+            resolve_lifecycle_target("solo-box", std, config)
+        state = resolve_lifecycle_target("solo/solo-box", std, config)
         assert state.owner == "workset:solo"
         assert state.workspace_path == workspace.resolve()
 

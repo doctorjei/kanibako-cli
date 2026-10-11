@@ -72,6 +72,7 @@ def _refuse_purge_while_live(std, config, proj_target: str | None, metadata_dir:
 def _resolve_purge_probe_target(std, config, proj_target: str)
 def _parked_probe_container(name: str) -> str | None
 def _rm_standalone(std, box_name: str, root, args: argparse.Namespace, *, registered: bool, config) -> int
+def _named_member_refusal(std, config, target: str, *, purge: bool) -> str | None
 def _composed_standalone_key(root: Path) -> str | None
 def _readopt_deregistered(std, name: str, entry: dict) -> int
 def _box_register_cure(target: str) -> str

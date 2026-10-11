@@ -89,8 +89,10 @@ class TestNamedSites:
         assert box_resolve._find_owning_box(outside, std, load_config(config_file)) is not None
         assert names.resolve_qualified_name(std.registry, "team/ext",
                                             early_system=std.early_system)[1] == "team"
-        assert names.resolve_name(std.registry, "ext", early_system=std.early_system)[0] == \
-            str(outside)
+        # Outside its space, the bare name is S8b's error naming the qualified spelling.
+        from kanibako.errors import AmbiguousNameError
+        with pytest.raises(AmbiguousNameError, match="'team/ext'"):
+            names.resolve_name(std.registry, "ext", early_system=std.early_system)
         assert "team" in early_reads
         assert set(early_reads) <= {"team", WS_TOKEN_PRIMARY}
 

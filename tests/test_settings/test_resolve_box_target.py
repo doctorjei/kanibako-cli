@@ -180,7 +180,7 @@ class TestWorksetMemberFromOutside:
     def test_member_box_name_resolves_from_outside(
         self, std, config, tmp_home, monkeypatch,
     ):
-        """`stop <name>`/`start <name>` reach a workset member from ~ (BUG-B).
+        """`stop <ws>/<name>`/`start <ws>/<name>` reach a workset member from ~ (BUG-B).
 
         Builds a NAMED workset with an internal member box, materializes it
         (writing the per-workset ``boxes:`` entry the launch path records), then
@@ -202,12 +202,15 @@ class TestWorksetMemberFromOutside:
             initialize=True,
         )
 
-        # cwd OUTSIDE the workset tree.
+        # cwd OUTSIDE the workset tree: the bare name is S8b's error, naming the
+        # qualified spelling, which resolves.
         outside = tmp_home / "outside"
         outside.mkdir()
         monkeypatch.chdir(outside)
 
-        proj = resolve_box_target(std, config, "cluster2", initialize=False)
+        with pytest.raises(AmbiguousNameError, match="'cluster/cluster2'"):
+            resolve_box_target(std, config, "cluster2", initialize=False)
+        proj = resolve_box_target(std, config, "cluster/cluster2", initialize=False)
         assert proj.mode is BoxMode.named
         assert proj.name == "cluster2"
         # The container name is now the real kb-cluster-cluster2, not a hash.
@@ -298,7 +301,7 @@ class TestNamePrecedence:
     def test_workset_member_name_wins_over_folder(
         self, std, config, tmp_home, monkeypatch,
     ):
-        """A registered workset-member box name wins over a same-named folder in cwd.
+        """In its own path space, a member's name wins over a same-named folder (S8 step 1).
 
         Regression: bare-name resolution in resolve_any_project is skipped when
         the token matches an existing path (e.g. ./myproj), but a registered box
@@ -317,12 +320,10 @@ class TestNamePrecedence:
             initialize=True,
         )
 
-        # A plain directory of the same name exists in cwd.
-        cwd = tmp_home / "cwd"
-        cwd.mkdir()
-        clash_dir = cwd / "myproj"
+        # A plain directory of the same name exists in cwd, the workset's root.
+        clash_dir = ws_root / "myproj"
         clash_dir.mkdir()
-        monkeypatch.chdir(cwd)
+        monkeypatch.chdir(ws_root)
 
         # The box NAME resolves to the registered workset member, NOT ./myproj.
         proj = resolve_box_target(std, config, "myproj", initialize=False)
@@ -438,7 +439,7 @@ class TestNonConformingNameFlagged:
 # ---------------------------------------------------------------------------
 
 class TestAmbiguousNameNotShadowedByFolder:
-    def test_ambiguous_member_name_with_same_named_folder_raises(
+    def test_ambiguous_member_name_without_a_folder_raises(
         self, std, config, tmp_home, monkeypatch,
     ):
         """A name that is a member of TWO worksets errors, even beside a folder.
@@ -460,8 +461,6 @@ class TestAmbiguousNameNotShadowedByFolder:
 
         cwd = tmp_home / "cwd"
         cwd.mkdir()
-        folder = cwd / "alpha"
-        folder.mkdir()
         monkeypatch.chdir(cwd)
 
         with pytest.raises(AmbiguousNameError) as excinfo:
@@ -475,28 +474,22 @@ class TestAmbiguousNameNotShadowedByFolder:
         assert "cluster-b/alpha" in message
         assert "<workset>/alpha" in message
 
-    def test_unambiguous_member_name_with_same_named_folder_still_wins(
+    def test_a_same_named_folder_outranks_members_outside_the_space(
         self, std, config, tmp_home, monkeypatch,
     ):
-        """The control half of the pairing: ONE workset is not ambiguous.
-
-        Mutation proof for the test above: exempting ``ProjectError`` broadly, or
-        keying the exemption on "the token is a folder" instead of on the
-        ambiguity TYPE, makes either this resolve raise or the folder-shadowing
-        case return ``./alpha``.
-        """
-        workspace = _make_member(std, config, tmp_home, "solo", "gamma")
+        """S8: the path (it exists, a valid path in the spec's terms) ranks before
+        the out-of-space member error, so ``./alpha`` is the designation."""
+        _make_member(std, config, tmp_home, "cluster-a", "alpha")
+        _make_member(std, config, tmp_home, "cluster-b", "alpha")
 
         cwd = tmp_home / "cwd"
-        cwd.mkdir()
-        folder = cwd / "gamma"
-        folder.mkdir()
+        folder = cwd / "alpha"
+        folder.mkdir(parents=True)
         monkeypatch.chdir(cwd)
 
-        proj = resolve_box_target(std, config, "gamma", initialize=False)
-        assert proj.mode is BoxMode.named
-        assert proj.name == "gamma"
-        assert proj.project_path == workspace.resolve()
+        proj = resolve_box_target(std, config, "alpha", initialize=False)
+        assert proj.mode is BoxMode.primary
+        assert proj.project_path == folder.resolve()
 
     def test_ambiguous_member_name_raises_through_resolve_any_project(
         self, std, config, tmp_home, monkeypatch,
@@ -758,3 +751,183 @@ class TestMovedToNonAsciiLeaf:
         proj = resolve_box_target(std, config, str(back))
         assert proj.mode is BoxMode.standalone
         assert proj.name.endswith("_movee2")
+
+
+# ---------------------------------------------------------------------------
+# The designation cascade (plan § 1 S8/S8b; system-design § Box designation)
+# ---------------------------------------------------------------------------
+
+def _cd(monkeypatch, where: Path) -> None:
+    """Enter *where* as a shell does: ``chdir`` AND ``$PWD`` (else ``logical_cwd`` falls back)."""
+    monkeypatch.chdir(where)
+    monkeypatch.setenv("PWD", str(where))
+
+
+def _make_primary(std, config, workspace: Path) -> str:
+    """Create a PRIMARY box at *workspace*; return its registered name."""
+    workspace.mkdir(parents=True, exist_ok=True)
+    return resolve_project(std, config, project_dir=str(workspace), initialize=True).name
+
+
+def _lifecycle_workspace(std, config, value: str) -> Path:
+    from kanibako.commands.box._lifecycle import resolve_lifecycle_target
+    return resolve_lifecycle_target(value, std, config).workspace_path
+
+
+def _box_target_workspace(std, config, value: str) -> Path:
+    return resolve_box_target(std, config, value, warn=False).project_path
+
+
+def _any_project_workspace(std, config, value: str) -> Path:
+    return resolve_any_project(std, config, value).project_path
+
+
+# One verb per route: start/info/connect (``resolve_box_target``), archive/purge/vault
+# (``resolve_any_project``), move/convert/duplicate/remap (``resolve_lifecycle_target``).
+_ROUTES = pytest.mark.parametrize("route", [
+    _box_target_workspace, _any_project_workspace, _lifecycle_workspace,
+], ids=["box_target", "any_project", "lifecycle"])
+
+
+class TestDesignationCascade:
+    """S8: an identifier on a non-create op is ranked by the cascade, never by ``exists()``."""
+
+    def _space(self, std, tmp_home):
+        from kanibako.project.workset import create_workset
+        return create_workset("wsx", tmp_home / "worksets" / "wsx", std)
+
+    @_ROUTES
+    def test_primary_space_a_primary_box_outranks_a_same_named_path(
+        self, std, config, tmp_home, monkeypatch, route, caplog,
+    ):
+        """Primary space: P, then the path.  ``exists()`` used to hand two routes the path."""
+        p_ws = tmp_home / "elsewhere" / "foo"
+        assert _make_primary(std, config, p_ws) == "foo"
+        here = tmp_home / "here"
+        _make_primary(std, config, here / "foo")  # registered as foo2: ./foo is a box
+        _cd(monkeypatch, here)
+        with caplog.at_level(logging.WARNING):
+            got = route(std, config, "foo")
+        assert Path(got).resolve() == p_ws.resolve()
+        assert any("shadowed" in r.getMessage() and str(here / "foo") in r.getMessage()
+                   for r in caplog.records)
+
+    @_ROUTES
+    def test_primary_space_the_path_when_no_primary_box_holds_the_name(
+        self, std, config, tmp_home, monkeypatch, route,
+    ):
+        here = tmp_home / "here"
+        _make_primary(std, config, here / "foo")
+        _cd(monkeypatch, here)
+        assert Path(route(std, config, "foo")).resolve() == (here / "foo").resolve()
+
+    @_ROUTES
+    def test_primary_space_a_path_outranks_a_registered_standalone_name(
+        self, std, config, tmp_home, monkeypatch, route,
+    ):
+        _sa_name, _root = _make_standalone(std, tmp_home, leaf="sa")
+        here = tmp_home / "here"
+        _make_primary(std, config, here / _sa_name)
+        _cd(monkeypatch, here)
+        assert Path(route(std, config, _sa_name)).resolve() == (here / _sa_name).resolve()
+
+    @_ROUTES
+    def test_s8b_a_member_of_another_workset_errors_naming_the_qualified_spelling(
+        self, std, config, tmp_home, monkeypatch, route,
+    ):
+        """S8b (plan Q4, his text "Otherwise, error"): never resolved from outside its space."""
+        _make_member(std, config, tmp_home, "wsx", "foo")
+        here = tmp_home / "here"
+        here.mkdir()
+        _cd(monkeypatch, here)
+        with pytest.raises(AmbiguousNameError, match=r"'wsx/foo'"):
+            route(std, config, "foo")
+
+    def test_s8b_a_registered_standalone_name_comes_before_the_error(
+        self, std, config, tmp_home, monkeypatch,
+    ):
+        sa_name, root = _make_standalone(std, tmp_home, leaf="sa")
+        _make_member(std, config, tmp_home, "wsx", sa_name)
+        here = tmp_home / "here"
+        here.mkdir()
+        _cd(monkeypatch, here)
+        assert resolve_box_target(std, config, sa_name, warn=False).metadata_path == root.resolve()
+
+    @_ROUTES
+    def test_named_space_the_space_registry_comes_first(
+        self, std, config, tmp_home, monkeypatch, route,
+    ):
+        member = _make_member(std, config, tmp_home, "wsx", "foo")
+        _make_primary(std, config, tmp_home / "elsewhere" / "foo")
+        ws_root = tmp_home / "worksets" / "wsx"
+        _cd(monkeypatch, ws_root)
+        assert Path(route(std, config, "foo")).resolve() == member.resolve()
+
+    @_ROUTES
+    def test_named_space_a_member_path_outranks_a_primary_box(
+        self, std, config, tmp_home, monkeypatch, route,
+    ):
+        """S8 (a): ``./foo`` is the recorded workspace of the space's member ``bar``
+        (a record the CLI's connect refuses to write, so it is written here)."""
+        from kanibako.project import workset_registry
+        from kanibako.project.workset import load_workset
+
+        member = _make_member(std, config, tmp_home, "wsx", "bar")
+        ws_root = tmp_home / "worksets" / "wsx"
+        ws = load_workset(ws_root, "wsx", early_system=std.early_system)
+        member.rename(ws_root / "foo")
+        workset_registry.unregister_workset_box(ws.registry_path, "bar")
+        workset_registry.register_workset_box(ws.registry_path, "bar", ws_root / "foo")
+        _make_primary(std, config, tmp_home / "elsewhere" / "foo")
+        _cd(monkeypatch, ws_root)
+        assert Path(route(std, config, "foo")) == ws_root / "foo"
+
+    @_ROUTES
+    def test_named_space_a_link_to_a_member_is_not_that_member(
+        self, std, config, tmp_home, monkeypatch, route,
+    ):
+        """S8 (a) compares literally ([R188]): ``./foo -> workspaces/bar`` is another
+        spelling, not the member, so ``P``'s ``foo`` wins."""
+        member = _make_member(std, config, tmp_home, "wsx", "bar")
+        ws_root = tmp_home / "worksets" / "wsx"
+        (ws_root / "foo").symlink_to(member)
+        p_ws = tmp_home / "elsewhere" / "foo"
+        _make_primary(std, config, p_ws)
+        _cd(monkeypatch, ws_root)
+        assert Path(route(std, config, "foo")).resolve() == p_ws.resolve()
+
+    @_ROUTES
+    def test_named_space_a_primary_box_outranks_a_non_member_path(
+        self, std, config, tmp_home, monkeypatch, route,
+    ):
+        """S8 (b): ``./foo`` is a PRIMARY box, so ``P``'s ``foo`` wins."""
+        ws = self._space(std, tmp_home)
+        p_ws = tmp_home / "elsewhere" / "foo"
+        _make_primary(std, config, p_ws)
+        _make_primary(std, config, ws.root / "foo")
+        _cd(monkeypatch, ws.root)
+        assert Path(route(std, config, "foo")).resolve() == p_ws.resolve()
+
+    @_ROUTES
+    def test_named_space_exactly_one_match_wins(
+        self, std, config, tmp_home, monkeypatch, route,
+    ):
+        ws = self._space(std, tmp_home)
+        p_ws = tmp_home / "elsewhere" / "foo"
+        _make_primary(std, config, p_ws)
+        _cd(monkeypatch, ws.root)
+        assert Path(route(std, config, "foo")).resolve() == p_ws.resolve()
+
+    def test_create_still_takes_an_existing_path(self, std, config, tmp_home, monkeypatch):
+        """``name_first`` matters only for create: an existing ``./foo`` is the create target."""
+        _make_primary(std, config, tmp_home / "elsewhere" / "foo")
+        here = tmp_home / "here"
+        (here / "foo").mkdir(parents=True)
+        _cd(monkeypatch, here)
+        assert designation_route("foo") is DesignationRoute.PATH
+        assert designation_route("foo", name_first=True) is DesignationRoute.NAME
+        # create's own probe (``initialize=False``) also takes the path, not P's foo.
+        probe = resolve_project(std, config, project_dir="foo")
+        assert probe.project_path.resolve() == (here / "foo").resolve()
+        proj = resolve_project(std, config, project_dir="foo", initialize=True)
+        assert proj.project_path.resolve() == (here / "foo").resolve()

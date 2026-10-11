@@ -15,7 +15,7 @@ import shutil
 import pytest
 from pathlib import Path
 
-from kanibako.errors import ProjectError
+from kanibako.errors import AmbiguousNameError, ProjectError
 from kanibako.project.names import (
     lookup_by_path,
     read_names,
@@ -375,21 +375,17 @@ class TestResolveName:
         workset_registry.register_workset_box(reg_path, box_name, box_ws)
         return box_ws
 
-    def test_workset_member_resolves_from_outside(
+    def test_workset_member_from_outside_names_the_qualified_spelling(
         self, registry: Path, tmp_path: Path
     ) -> None:
-        """A workset-MEMBER box name resolves from OUTSIDE its workset (BUG-B).
-
-        Mutation proof: deleting the step-3 workset-membership fallback in
-        ``resolve_name`` makes this raise ``ProjectError`` instead of resolving.
-        """
-        box_ws = self._register_ws_member(registry, tmp_path, "myws", "cluster2")
+        """S8b (plan Q4): a member's bare name outside its space errors, naming
+        ``<workset>/<box>``; the member stays reachable by that spelling."""
+        self._register_ws_member(registry, tmp_path, "myws", "cluster2")
 
         # cwd is OUTSIDE the workset (tmp_path is the parent of the ws root).
-        path, kind = resolve_name(registry, "cluster2", cwd=tmp_path,
-                early_system=early_record(tmp_path))
-        assert kind == "project"
-        assert Path(path).resolve() == box_ws.resolve()
+        with pytest.raises(AmbiguousNameError, match="'myws/cluster2'"):
+            resolve_name(registry, "cluster2", cwd=tmp_path,
+                         early_system=early_record(tmp_path))
 
     def test_workset_member_ambiguous_across_worksets_raises(
         self, registry: Path, tmp_path: Path
@@ -479,39 +475,37 @@ class TestResolveName:
     def test_one_workset_sharing_a_target_is_not_ambiguous(
         self, registry: Path, tmp_path: Path
     ) -> None:
-        """Two worksets naming ONE box resolve; qualification must not split it.
+        """Two worksets naming ONE box are one candidate; qualification must not split it.
 
         A symlinked workspace normalizes to the same path from both worksets.
-        That is one box, so the collapse on the resolved path stands — naming
-        the candidates by workset must not report it as a choice between two.
+        That is one box, so the collapse on the resolved path stands — the error
+        names one qualified spelling, not a choice between two.
         """
         shared = tmp_path / "shared-ws" / "dup"
         shared.mkdir(parents=True)
         for ws_name in ("ws1", "ws2"):
             self._register_member_at(registry, tmp_path, ws_name, "dup", shared)
 
-        path, kind = resolve_name(registry, "dup", cwd=tmp_path,
-                early_system=early_record(tmp_path))
-        assert kind == "project"
-        assert Path(path).resolve() == shared.resolve()
+        with pytest.raises(AmbiguousNameError) as excinfo:
+            resolve_name(registry, "dup", cwd=tmp_path, early_system=early_record(tmp_path))
+        message = str(excinfo.value)
+        assert "'ws1/dup'" in message
+        assert "Ambiguous" not in message
 
-    def test_missing_workspace_folder_still_resolves(
+    def test_missing_workspace_folder_is_still_a_member(
         self, registry: Path, tmp_path: Path
     ) -> None:
-        """A registered member whose workspace is gone still resolves.
+        """A registered member whose workspace is gone is still named.
 
         MEMBERSHIP IS REGISTRY-BORNE: the ``boxes:`` entry is the record, so a
-        missing folder is not grounds to stop resolving the box.  Pinned so the
-        label in the ambiguity message is never mistaken for a filter.
+        missing folder does not turn the qualified-spelling error into a plain miss.
         """
         box_ws = self._register_ws_member(registry, tmp_path, "ws1", "gone")
         shutil.rmtree(box_ws)
         assert not box_ws.exists()
 
-        path, kind = resolve_name(registry, "gone", cwd=tmp_path,
-                early_system=early_record(tmp_path))
-        assert kind == "project"
-        assert path == str(box_ws)
+        with pytest.raises(AmbiguousNameError, match="'ws1/gone'"):
+            resolve_name(registry, "gone", cwd=tmp_path, early_system=early_record(tmp_path))
 
     def test_ambiguity_labels_a_missing_workspace(
         self, registry: Path, tmp_path: Path
@@ -692,13 +686,13 @@ class TestStandaloneNameResolution:
     def test_a_member_box_outranks_its_workset_s_name(
         self, registry: Path, tmp_path: Path,
     ) -> None:
-        """A member box sharing its workset's name resolves to the box, not the workset."""
-        member = self._register_ws_member(registry, tmp_path, "same", "same")
+        """A member box sharing its workset's name is the box, not the workset: outside
+        its space that is the qualified-spelling error, never the workset."""
+        self._register_ws_member(registry, tmp_path, "same", "same")
 
-        path, kind = resolve_name(registry, "same", cwd=tmp_path.parent,
-                early_system=early_record(tmp_path))
-        assert kind == "project"
-        assert Path(path).resolve() == member.resolve()
+        with pytest.raises(AmbiguousNameError, match="'same/same'"):
+            resolve_name(registry, "same", cwd=tmp_path.parent,
+                         early_system=early_record(tmp_path))
 
     def test_a_workset_name_no_box_holds_still_reports_the_workset(
         self, registry: Path, tmp_path: Path,
@@ -709,15 +703,30 @@ class TestStandaloneNameResolution:
         assert resolve_name(registry, "lone",
                 early_system=early_record(tmp_path)) == (str(tmp_path / "ws"), "workset")
 
-    def test_the_standalone_step_can_be_skipped(
+    def test_a_same_named_path_outranks_the_standalone_step(
         self, registry: Path, tmp_path: Path,
     ) -> None:
-        """``standalone=False`` (a same-named path exists) leaves the name a miss."""
+        """*path* (a same-named path exists) ranks before a registered standalone name."""
         self._register_standalone(registry, tmp_path, "solo_box")
 
-        with pytest.raises(ProjectError, match="Unknown project"):
-            resolve_name(registry, "solo_box", standalone=False,
-                    early_system=early_record(tmp_path))
+        assert resolve_name(registry, "solo_box", path="solo_box",
+                            early_system=early_record(tmp_path)) == ("solo_box", "path")
+
+    def test_a_primary_box_outranks_a_same_named_path_and_warns(
+        self, registry: Path, tmp_path: Path, caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """Primary space (plan S8): P before the path; the shadowed path is named."""
+        primary = tmp_path / "primary_workset"
+        workspace = tmp_path / "elsewhere" / "foo"
+        workspace.mkdir(parents=True)
+        _register_primary_box(primary, "foo", workspace)
+        (tmp_path / "foo").mkdir()
+
+        with caplog.at_level("WARNING"):
+            got = resolve_name(registry, "foo", cwd=tmp_path, primary_workset=primary,
+                               path=str(tmp_path / "foo"), early_system=early_record(tmp_path))
+        assert got == (str(workspace), "project")
+        assert any("shadowed" in r.getMessage() for r in caplog.records)
 
     def test_a_primary_box_outranks_a_registered_standalone(
         self, registry: Path, tmp_path: Path,
@@ -742,23 +751,16 @@ class TestStandaloneNameResolution:
         assert "standalone" in warnings[0] and "shadowed" in warnings[0]
         assert str(root) in warnings[0]
 
-    def test_a_workset_member_outranks_a_registered_standalone(
+    def test_a_registered_standalone_outranks_a_member_outside_its_space(
         self, registry: Path, tmp_path: Path,
-        caplog: pytest.LogCaptureFixture,
     ) -> None:
-        """A workset-MEMBER box (step 3) wins over a same-named registered
-        standalone — the member is the earlier, more specific claim."""
-        member = self._register_ws_member(registry, tmp_path, "myws", "solo_box")
-        self._register_standalone(registry, tmp_path, "solo_box")
+        """The member-of-another-workset error comes AFTER the standalone step (plan Q4)."""
+        self._register_ws_member(registry, tmp_path, "myws", "solo_box")
+        root = self._register_standalone(registry, tmp_path, "solo_box")
 
-        with caplog.at_level("WARNING"):
-            path, kind = resolve_name(registry, "solo_box", cwd=tmp_path,
-                    early_system=early_record(tmp_path))
-        assert kind == "project"
-        assert Path(path).resolve() == member.resolve()
-        warnings = [r.getMessage() for r in caplog.records if r.levelname == "WARNING"]
-        assert len(warnings) == 1, warnings
-        assert "standalone" in warnings[0]
+        path, kind = resolve_name(registry, "solo_box", cwd=tmp_path,
+                                  early_system=early_record(tmp_path))
+        assert (path, kind) == (str(root), "project")
 
     def test_an_unregistered_standalone_does_not_resolve_by_name(
         self, registry: Path, tmp_path: Path,
@@ -772,21 +774,17 @@ class TestStandaloneNameResolution:
             resolve_name(registry, "unregistered_box",
                     early_system=early_record(tmp_path))
 
-    def test_an_ambiguous_member_name_is_not_broken_by_a_standalone(
+    def test_a_standalone_resolves_before_out_of_space_members(
         self, registry: Path, tmp_path: Path,
     ) -> None:
-        """PIN: standing LAST does not settle someone else's tie.  A name that is a
-        member of TWO worksets stays ``AmbiguousNameError`` even when a standalone
-        happens to hold the same name — the standalone is not a tiebreaker."""
-        from kanibako.errors import AmbiguousNameError
-
+        """Members of TWO worksets outside the space do not outrank a registered
+        standalone: their error is the cascade's last box step (plan Q4)."""
         self._register_ws_member(registry, tmp_path, "ws1", "dup")
         self._register_ws_member(registry, tmp_path, "ws2", "dup")
-        self._register_standalone(registry, tmp_path, "dup")
+        root = self._register_standalone(registry, tmp_path, "dup")
 
-        with pytest.raises(AmbiguousNameError):
-            resolve_name(registry, "dup", cwd=tmp_path,
-                    early_system=early_record(tmp_path))
+        assert resolve_name(registry, "dup", cwd=tmp_path,
+                            early_system=early_record(tmp_path)) == (str(root), "project")
 
 
 # ---------------------------------------------------------------------------

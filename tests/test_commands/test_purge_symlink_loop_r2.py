@@ -99,8 +99,8 @@ class TestItem1LoopedRwArmOnEveryDoor:
 
     def test_door_b_cannot_reach_a_named_member(self, config_file, tmp_home,
                                               credentials_dir, capsys):
-        # ⚑ ``box rm`` addresses registered boxes only, so door B never reaches the
-        # member's leaf: this pins the refusal, not a purge.
+        # ⚑ ``box rm`` refuses a named member, naming ``workset disconnect``, so door B
+        # never reaches the member's leaf: this pins the refusal, not a purge.
         member, wsdir = _named_member(tmp_home, "wsB", "mb")
         loop = wsdir / "vault" / "rw" / "mb"
         _loop(loop)
@@ -109,7 +109,7 @@ class TestItem1LoopedRwArmOnEveryDoor:
             ("box", "rm", "--purge", "--force", str(member)), capsys)
         assert raised is None, text
         assert rc != 0, text
-        assert "is not a registered box" in text, text
+        assert "'wsB/mb'" in text and "kanibako workset disconnect wsB mb" in text, text
         assert loop.is_symlink(), "the looped leaf must survive"
 
     def test_primary_door_b(self, config_file, tmp_home, credentials_dir, capsys):

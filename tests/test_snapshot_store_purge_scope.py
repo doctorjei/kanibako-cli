@@ -110,7 +110,7 @@ class TestPurgeTakesTheStore:
         store = _store(vault_rw, "nbox")
         assert store.is_dir()
 
-        _door("box", "purge", "nbox", "--force")
+        _door("box", "purge", "purgews/nbox", "--force")
 
         assert not store.exists(), (
             "a named member's purge left its store under the shared base"

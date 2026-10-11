@@ -373,7 +373,7 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
         description=(
             "Unregister a project from the default workset or a standalone box\n"
             "from the global registry.  A box that belongs to a named workset\n"
-            "cannot be found and errors accordingly.  ⚑ A WORKSET is not a box:\n"
+            "is refused, naming 'kanibako workset disconnect'.  ⚑ A WORKSET is not a box:\n"
             "remove one with 'kanibako workset rm <name>'.  The project's own\n"
             "workspace is never deleted; without --purge, kanibako metadata\n"
             "is kept so the box can be restored with 'kanibako box register\n"
@@ -2547,8 +2547,10 @@ def _resolve_standalone_target(
 
     # 1) Direct standalone-NAME lookup — case-blind (spec §0), returning the name as
     #    REGISTERED so everything downstream addresses the box the registry knows.
+    #    ⚑ A same-named PATH ranks first (the designation cascade, plan S8): step 2.
     entries = registry_store.load_standalone(std.registry)
-    if designation_route(target, name_first=True) is DesignationRoute.NAME:
+    if (designation_route(target, name_first=True) is DesignationRoute.NAME
+            and not Path(target).exists()):
         stored = find_identifier(target, entries)
         if stored is not None:
             return stored, Path(entries[stored]), True
@@ -2744,6 +2746,44 @@ def _rm_standalone(std, box_name: str, root, args: argparse.Namespace, *,
     return 1 if args.purge else 0
 
 
+def _named_member_refusal(std, config, target: str, *, purge: bool) -> str | None:
+    """The ``box rm`` refusal for a *target* the designation cascade resolves to a
+    NAMED-workset member, or ``None``.
+
+    A bare name outside the member's path space raises :class:`AmbiguousNameError`
+    from the cascade, whose message names ``<workset>/<box>``; that is the refusal.
+    Any other miss is ``None``, left to ``run_rm``'s own lookups.
+    """
+    from kanibako.errors import AmbiguousNameError
+    from kanibako.launch.box_resolve import detect_box_or_default
+    from kanibako.settings.paths import (
+        _resolve_workset_or_connected,
+        resolve_designation,
+    )
+
+    try:
+        raw = resolve_designation(std, target, unknown_name_is_path=False, name_first=True)
+    except AmbiguousNameError as e:
+        return f"Error: {e}"
+    except Exception:  # noqa: BLE001 - any other miss is left to run_rm's own lookups
+        return None
+    raw_dir = Path(literal_path(raw))
+    try:
+        detection = detect_box_or_default(raw_dir, std, config)
+        if detection.mode is not BoxMode.named:
+            return None
+        ws, member = _resolve_workset_or_connected(raw_dir, std)
+    except Exception:  # noqa: BLE001 - not a named member; run_rm's own lookups decide
+        return None
+    if member is None:
+        return None
+    cure = (f"kanibako workset disconnect {shlex.quote(ws.name)} {shlex.quote(member)}"
+            + (" --remove-files" if purge else ""))
+    return (f"Error: '{target}' is box '{ws.name}/{member}', a member of named workset "
+            f"'{ws.name}'; 'box rm' removes primary and standalone boxes only. "
+            f"Disconnect it from its workset instead:\n  {cure}")
+
+
 def run_rm(args: argparse.Namespace) -> int:
     """Unregister a box (primary or standalone), optionally purging metadata."""
     from datetime import datetime, timezone
@@ -2758,6 +2798,12 @@ def run_rm(args: argparse.Namespace) -> int:
     target = resolve_subject_value(args.target, getattr(args, "box", None))
     if not target:
         print("Error: no box specified to remove.", file=sys.stderr)
+        return 1
+    # ⚑ A NAMED-workset member is not ``box rm``'s to remove: the designation cascade
+    # finds it by every spelling, and the refusal names the verb that removes it.
+    named = _named_member_refusal(std, config, target, purge=bool(args.purge))
+    if named is not None:
+        print(named, file=sys.stderr)
         return 1
     # Boxes only, never the ``worksets`` section: a name that is only a workset
     # is refused as not found below.  ``workset rm`` removes worksets.

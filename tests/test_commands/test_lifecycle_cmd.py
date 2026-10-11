@@ -1678,7 +1678,7 @@ class TestExternalSourceNotRelocated:
         ws1 = create_workset("ws1", tmp_home / "ws1_root", std)
         ws2 = create_workset("ws2", tmp_home / "ws2_root", std)
         ext = _external_member(env, ws1)
-        rc = run_convert(_convert_args("proj", to_workset="ws2", move=_BARE_MOVE))
+        rc = run_convert(_convert_args("ws1/proj", to_workset="ws2", move=_BARE_MOVE))
         assert rc == 1
         err = capsys.readouterr().err
         assert "external-connected project" in err
@@ -1693,7 +1693,7 @@ class TestExternalSourceNotRelocated:
         ws = create_workset("ws", tmp_home / "ws_root", std)
         ext = _external_member(env, ws)
         dest = tmp_home / "newp"
-        rc = run_convert(_convert_args("proj", to_default=True, move=str(dest)))
+        rc = run_convert(_convert_args("ws/proj", to_default=True, move=str(dest)))
         assert rc == 1
         assert "external-connected project" in capsys.readouterr().err
         assert not dest.exists()
@@ -1704,7 +1704,7 @@ class TestExternalSourceNotRelocated:
         ws = create_workset("ws", tmp_home / "ws_root", std)
         ext = _external_member(env, ws)
         dest = tmp_home / "newsa"
-        rc = run_convert(_convert_args("proj", to_standalone=True, move=str(dest)))
+        rc = run_convert(_convert_args("ws/proj", to_standalone=True, move=str(dest)))
         assert rc == 1
         assert "external-connected project" in capsys.readouterr().err
         assert not dest.exists()
@@ -1736,7 +1736,7 @@ class TestOccupiedLandingRefused:
         occupied = ws.workspaces_dir / "beta"
         occupied.mkdir(parents=True)
         (occupied / "keep.txt").write_text("keep")
-        rc = run_convert(_convert_args("alpha", to_workset="ws", name="beta"))
+        rc = run_convert(_convert_args("ws/alpha", to_workset="ws", name="beta"))
         assert rc == 1
         err = capsys.readouterr().err
         assert "Refusing to land 'beta'" in err

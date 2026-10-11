@@ -242,171 +242,191 @@ def resolve_name(
     primary_workset: Path | None = None,
     *,
     early_system: EarlySystem,
-    standalone: bool = True,
+    path: str | None = None,
 ) -> tuple[str, str]:
-    """Look up a bare name and return ``(path, kind)``.
+    """Look up a bare identifier and return ``(path, kind)``; the designation cascade.
 
-    Resolution order (system-design § Box designation & workset path space): the box
-    steps of :func:`_resolve_before_standalone`, then a REGISTERED standalone box
-    (skipped unless *standalone*: the caller checks a same-named path first); an
-    unregistered one is reachable only by path.  A registered standalone shadowed
-    by an earlier BOX is warned about (it stays reachable by path).  Box and
-    workset names are per-kind namespaces, so a workset name is matched only when
-    no box holds the name, letting a box verb name the workset in its refusal.
+    Order (system-design § Box designation & workset path space; plan § 1 S8):
 
-    *kind* is ``"project"`` or ``"workset"``.
-    Raises ``ProjectError`` if no match is found, or ``AmbiguousNameError`` if
-    the name is a member of more than one workset.
+    1. *cwd* in a NAMED workset's path space → that workset's registry.
+    2. A PRIMARY box (*primary_workset*'s membership) and *path*, a same-named path
+       the caller found on disk.  Exactly one ⇒ that one.  Both ⇒ in a named space,
+       the path if that workset records a member there, else the primary box; in the
+       primary space, the primary box.  A shadowed path is warned about.
+    3. A REGISTERED standalone box; an unregistered one is reachable only by path.
+    4. A member of some OTHER named workset ⇒ :class:`AmbiguousNameError` naming the
+       qualified ``<workset>/<box>`` spelling (never resolved from outside its space).
+    5. A workset name (box and workset names are per-kind namespaces).
+
+    *kind* is ``"project"``, ``"path"`` (*path* won; the caller resolves it), or
+    ``"workset"``.  Raises ``ProjectError`` on no match.
     """
-    try:
-        path, kind = _resolve_before_standalone(
-            registry, name, cwd=cwd, primary_workset=primary_workset,
-            early_system=early_system,
-        )
-    except AmbiguousNameError:
-        # The standalone step does not break an earlier step's tie.
-        raise
-    except ProjectError:
-        root = registry_store.standalone_root(registry, name) if standalone else None
-        if root is not None:
-            return root, "project"
-        worksets = _load(registry)["worksets"]
-        stored_ws = find_identifier(name, worksets)  # ⚑ case-blind (§0)
-        if stored_ws is None:
-            raise
-        return worksets[stored_ws], "workset"
+    names = _load(registry)
+    hit, space_boxes = _space_member(names, name, cwd, early_system=early_system)
+    if hit is not None:
+        return _warn_standalone_shadow(registry, name, hit), "project"
 
+    primary_hit = _primary_member(name, primary_workset, early_system=early_system)
+    if primary_hit is not None and path is not None:
+        if space_boxes is not None and _records_member_at(space_boxes, path):
+            return path, "path"
+        if Path(literal_path(path)).resolve() != Path(primary_hit).resolve():
+            logger.warning(
+                "bare name '%s' resolved to the primary box at %s; the path %s is "
+                "shadowed — reach it as ./%s or by its full path.",
+                name, primary_hit, literal_path(path), name,
+            )
+        return _warn_standalone_shadow(registry, name, primary_hit), "project"
+    if primary_hit is not None:
+        return _warn_standalone_shadow(registry, name, primary_hit), "project"
+    if path is not None:
+        return path, "path"
+
+    root = registry_store.standalone_root(registry, name)
+    if root is not None:
+        return root, "project"
+
+    _refuse_other_space_member(names, name, early_system=early_system)
+
+    stored_ws = find_identifier(name, names["worksets"])  # ⚑ case-blind (§0)
+    if stored_ws is not None:
+        return names["worksets"][stored_ws], "workset"
+    raise ProjectError(f"Unknown project or workset: '{name}'")
+
+
+def _warn_standalone_shadow(registry: Path, name: str, path: str) -> str:
+    """Warn when the box at *path* shadows a registered standalone of the same name."""
     shadow = registry_store.standalone_root(registry, name)
-    if (
-        kind == "project" and shadow is not None
-        and literal_path(shadow) != literal_path(path)
-    ):
+    if shadow is not None and literal_path(shadow) != literal_path(path):
         logger.warning(
             "bare name '%s' resolved to the box at %s; the registered standalone "
             "box of the same name at %s is shadowed — reach it by path.",
             name, path, shadow,
         )
-    return path, kind
+    return path
 
 
-def _resolve_before_standalone(
-    registry: Path,
+def _records_member_at(boxes: dict[str, str], path: str) -> bool:
+    """Whether a workset's ``boxes:`` membership records a member AT *path*, literally:
+    another spelling of a member's directory is not that member (box identity, [R188])."""
+    target = literal_path(path)
+    return any(literal_path(recorded) == target for recorded in boxes.values())
+
+
+def _space_member(
+    names: dict[str, dict[str, str]],
     name: str,
-    cwd: Path | None = None,
-    primary_workset: Path | None = None,
+    cwd: Path | None,
     *,
     early_system: EarlySystem,
-) -> tuple[str, str]:
-    """The box steps of :func:`resolve_name` before the standalone section.
+) -> tuple[str | None, dict[str, str] | None]:
+    """Step 1: *name* in the named workset whose path space holds *cwd*.
 
-    Resolution order:
-
-    1. If *cwd* is inside a workset → check that workset's projects first
-    2. PRIMARY default-mode boxes: a bare name in the primary per-workset
-       ``boxes:`` membership (was the retired global ``[projects]`` section) —
-       consulted only when *primary_workset* is supplied
-    3. Workset-MEMBER boxes: a bare name registered in some NAMED workset's
-       per-workset registry ``boxes:`` membership (so a member box is
-       addressable from OUTSIDE its workset)
-
-    *kind* is ``"project"``.  Raises ``ProjectError`` if no
-    match is found, or ``AmbiguousNameError`` if the name is a member of more
-    than one workset.
+    Returns ``(member workspace or None, that workset's boxes)``; ``(None, None)``
+    when *cwd* is in no named workset's space.  "Inside" covers the root AND the
+    resolved ``workset.workspaces`` dir, which a repoint can place outside the root.
+    The ``boxes:`` record is read first, then a workspace subdir of that name.
     """
-    names = _load(registry)
+    if cwd is None:
+        return None, None
+    from kanibako.launch.box_resolve import stores_standalone_registry_null
+    from kanibako.project import workset_registry
+    from kanibako.project.workset import (
+        _symlink_loop,
+        load_workset_settings_doc,
+        resolve_workspaces_locator,
+    )
 
-    # 1. Context-aware: if cwd is inside a registered workset, check its
-    #    projects first.  "Inside" covers BOTH the workset root AND its resolved
-    #    ``workset.workspaces`` dir — an absolute repoint places the workspaces
-    #    dir OUTSIDE the root, and a cwd there is workset context too (the S-2
-    #    cwd-asymmetry).  The member consult reads the per-workset registry
-    #    ``boxes:`` membership FIRST (the authoritative name → workspace store,
-    #    honoring paths any composition epoch recorded — bifrost A0), then falls
-    #    back to a workspace subdir under the resolved composition.
-    if cwd is not None:
-        from kanibako.project import workset_registry
-        from kanibako.project.workset import (
-            load_workset_settings_doc,
-            resolve_workspaces_locator,
+    # Literal cwd against the literal arms (box identity, [R188]), then resolved
+    # against resolved (containment): a link spelling of either side still lands.
+    cwd_literal = Path(literal_path(cwd))
+    cwd_resolved = cwd.resolve()
+    space_boxes: dict[str, str] | None = None
+    for ws_name, ws_root in names["worksets"].items():
+        ws_path = Path(ws_root)
+        if not ws_path.is_absolute():
+            continue  # a relative root names no place; joining the cwd would hold every cwd
+        if _symlink_loop(ws_path):
+            continue  # a looped root holds no cwd, and resolving it raises on 3.11
+        if stores_standalone_registry_null(ws_path):
+            continue
+        settings_doc = load_workset_settings_doc(ws_path)
+        ws_early = _early(early_system, ws_name)
+        ws_workspaces = resolve_workspaces_locator(ws_path, settings_doc, early=ws_early)
+        literal_arms = (Path(literal_path(ws_path)), Path(literal_path(ws_workspaces)))
+        inside = (
+            any(cwd_literal.is_relative_to(arm) for arm in literal_arms)
+            or any(cwd_resolved.is_relative_to(arm.resolve()) for arm in literal_arms)
         )
-
-        # Literal cwd against the literal arms (box identity, [R188]), then resolved
-        # against resolved (containment): a link spelling of either side still lands.
-        cwd_literal = Path(literal_path(cwd))
-        cwd_resolved = cwd.resolve()
-        for ws_name, ws_root in names["worksets"].items():
-            ws_path = Path(ws_root)
-            if not ws_path.is_absolute():
-                continue  # a relative root names no place; joining the cwd would hold every cwd
-            from kanibako.launch.box_resolve import stores_standalone_registry_null
-            if stores_standalone_registry_null(ws_path):
-                continue
-            settings_doc = load_workset_settings_doc(ws_path)
-            ws_early = _early(early_system, ws_name)
-            ws_workspaces = resolve_workspaces_locator(ws_path, settings_doc, early=ws_early)
-            literal_arms = (Path(literal_path(ws_path)), Path(literal_path(ws_workspaces)))
-            inside = (
-                any(cwd_literal.is_relative_to(arm) for arm in literal_arms)
-                or any(cwd_resolved.is_relative_to(arm.resolve()) for arm in literal_arms)
-            )
-            if not inside:
-                continue
-            registry_path = workset_registry.resolve_workset_registry_path(
-                ws_path, settings_doc, early=ws_early,
-            )
-            registered = workset_registry.workset_box_path(registry_path, name)
-            if registered is not None:
-                return registered, "project"
-            candidate = ws_workspaces / name
-            if candidate.is_dir():
-                return str(candidate), "project"
-
-    # 2. PRIMARY default-mode boxes (the primary per-workset membership — the
-    #    store that succeeded the retired ``[projects]`` section, at the SAME
-    #    precedence position).  Only consulted when the caller passes the primary
-    #    workset root (a lookup with no *primary_workset* skips this step).
-    if primary_workset is not None:
-        from kanibako.channels.channels import WS_TOKEN_PRIMARY
-        from kanibako.project import workset_registry
-        from kanibako.settings.config_io import load_doc
-
-        primary_reg = workset_registry.resolve_workset_registry_path(
-            primary_workset, load_doc(primary_workset / WORKSET_META_FILE),
-            early=_early(early_system, WS_TOKEN_PRIMARY),
+        if not inside:
+            continue
+        registry_path = workset_registry.resolve_workset_registry_path(
+            ws_path, settings_doc, early=ws_early,
         )
-        primary_path = workset_registry.workset_box_path(primary_reg, name)
-        if primary_path is not None:
-            # ⚑ Per-kind namespaces (spec § Detection & import): a same-named workset is
-            # not a collision, and its noun-scoped ``workset`` commands reach it.
-            return primary_path, "project"
+        boxes = workset_registry.load_workset_boxes(registry_path)
+        if space_boxes is None:
+            space_boxes = boxes
+        registered = workset_registry.workset_box_path(registry_path, name)
+        if registered is not None:
+            return registered, boxes
+        candidate = ws_workspaces / name
+        if candidate.is_dir():
+            return str(candidate), boxes
+    return None, space_boxes
 
-    # 3. Workset-MEMBER boxes.  A bare name that is a member of a NAMED workset
-    #    is otherwise unaddressable from outside that workset (the cwd-inside
-    #    case is handled by step 1) — resolve it to the member's registered
-    #    WORKSPACE path, the form ``resolve_project`` takes.
+
+def _primary_member(
+    name: str, primary_workset: Path | None, *, early_system: EarlySystem,
+) -> str | None:
+    """Step 2's box half: *name* in the PRIMARY membership; skipped without *primary_workset*."""
+    if primary_workset is None:
+        return None
+    from kanibako.channels.channels import WS_TOKEN_PRIMARY
+    from kanibako.project import workset_registry
+    from kanibako.settings.config_io import load_doc
+
+    primary_reg = workset_registry.resolve_workset_registry_path(
+        primary_workset, load_doc(primary_workset / WORKSET_META_FILE),
+        early=_early(early_system, WS_TOKEN_PRIMARY),
+    )
+    return workset_registry.workset_box_path(primary_reg, name)
+
+
+def _refuse_other_space_member(
+    names: dict[str, dict[str, str]], name: str, *, early_system: EarlySystem,
+) -> None:
+    """Step 4: refuse *name* when it is a member of a named workset outside this space.
+
+    Its own space would resolve it (step 1), so outside one the bare name errors and
+    names the ``<workset>/<box>`` spelling that reaches it (plan Q4, his text).
+    """
     members = _workset_member_paths(names["worksets"], name, early_system=early_system)
-    if members:
-        # Collapse identical paths, keeping the first workset claiming each so a shared
-        # box is named once; distinct paths ⇒ a member of multiple worksets → ambiguous.
-        targets: dict[str, tuple[str, str, str]] = {}
-        for member in members:
-            targets.setdefault(literal_path(member[2]), member)
-        if len(targets) == 1:
-            return members[0][2], "project"
-        # ``workset.workspaces`` is settable, so a registered path need not name its
-        # workset: candidates are ``<workset>/<box>`` STORED spellings (§0), the command
-        # a user runs.  The existence check is a LABEL — membership is registry-borne.
-        candidates: list[str] = []
-        for ws_name, box_name, member_path in targets.values():
-            missing = "" if Path(member_path).is_dir() else " [workspace missing]"
-            candidates.append(f"{ws_name}/{box_name}{missing}")
+    if not members:
+        return
+    # Collapse identical paths, keeping the first workset claiming each so a shared
+    # box is named once.  ``workset.workspaces`` is settable, so a registered path need
+    # not name its workset: candidates are ``<workset>/<box>`` STORED spellings (§0),
+    # the command a user runs.  The existence check is a LABEL — membership is
+    # registry-borne.
+    targets: dict[str, tuple[str, str, str]] = {}
+    for member in members:
+        targets.setdefault(literal_path(member[2]), member)
+    candidates: list[str] = []
+    for ws_name, box_name, member_path in targets.values():
+        missing = "" if Path(member_path).is_dir() else " [workspace missing]"
+        candidates.append(f"{ws_name}/{box_name}{missing}")
+    if len(candidates) == 1:
+        ws_name, box_name, _path = next(iter(targets.values()))
         raise AmbiguousNameError(
-            f"Ambiguous box name '{name}': it is a member of multiple worksets "
-            f"({', '.join(candidates)}). Qualify it as '<workset>/{name}' or run "
-            f"the command from inside the intended workset."
+            f"Box name '{name}' is not in this workset path space: it is a member of "
+            f"workset '{ws_name}'. Name it as '{ws_name}/{box_name}' or run the "
+            f"command from inside that workset."
         )
-
-    raise ProjectError(f"Unknown project or workset: '{name}'")
+    raise AmbiguousNameError(
+        f"Ambiguous box name '{name}': it is a member of multiple worksets "
+        f"({', '.join(candidates)}). Qualify it as '<workset>/{name}' or run "
+        f"the command from inside the intended workset."
+    )
 
 
 def resolve_qualified_name(

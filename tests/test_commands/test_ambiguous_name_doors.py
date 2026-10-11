@@ -102,13 +102,16 @@ class TestStartDoorAmbiguity:
     def test_start_door_unique_name_still_resolves(
         self, std, config, tmp_home, monkeypatch,
     ):
-        """ONE workset is not ambiguous: the door resolves the box, unchanged."""
+        """ONE workset, outside its space: the door surfaces the qualified-spelling
+        error (S8b), and that spelling resolves the box."""
         from kanibako.commands.start import _resolve_existing_box
 
         _make_member(std, config, tmp_home, "solo", "foo")
         monkeypatch.chdir(tmp_home)
 
-        proj = _resolve_existing_box(std, config, "foo")
+        with pytest.raises(AmbiguousNameError, match="'solo/foo'"):
+            _resolve_existing_box(std, config, "foo")
+        proj = _resolve_existing_box(std, config, "solo/foo")
         assert proj is not None
         assert proj.name == "foo"
 
@@ -152,7 +155,7 @@ class TestCodeDoorAmbiguity:
     def test_code_door_unique_name_passes_the_resolve(
         self, std, config, tmp_home, monkeypatch, working_runtime, capsys,
     ):
-        """ONE workset is not ambiguous: the door gets past the resolve.
+        """ONE workset: its qualified spelling gets the door past the resolve (S8b).
 
         The missing ``code`` CLI is the discriminator -- it is reported only
         once the door holds a resolved box, so the ambiguous case never gets
@@ -164,7 +167,9 @@ class TestCodeDoorAmbiguity:
         monkeypatch.chdir(tmp_home)
         capsys.readouterr()
 
-        rc = run_code(_args(project="foo"))
+        with pytest.raises(AmbiguousNameError, match="'solo/foo'"):
+            run_code(_args(project="foo"))
+        rc = run_code(_args(project="solo/foo"))
         err = capsys.readouterr().err
         assert rc == 1
         assert "Ambiguous box name" not in err
@@ -239,3 +244,46 @@ class TestAmbiguityReachesTheUser:
         _assert_actionable(out.err, "foo")
         # The generic no-box cure must NOT be what the user is told to do.
         assert "kanibako create" not in out.err
+
+
+class TestBoxRmNamedMember:
+    """``box rm`` finds a NAMED-workset member by every spelling the cascade resolves
+    (conformance row "`box rm` cannot address a box in a named workset") and refuses,
+    naming the verb that removes it; the membership is untouched."""
+
+    def _rm(self, target, *, purge=False):
+        from kanibako.commands.box._parser import run_rm
+        return run_rm(argparse.Namespace(target=target, box=None, purge=purge, force=True))
+
+    def _members(self, std, tmp_home):
+        from kanibako.project.workset import load_workset
+        ws = load_workset(tmp_home / "worksets" / "wsx", "wsx", early_system=std.early_system)
+        return [p.name for p in ws.projects]
+
+    @pytest.mark.parametrize("spelling", ["qualified", "name_in_space", "path"])
+    def test_every_spelling_reaches_the_member(
+        self, std, config, tmp_home, monkeypatch, capsys, spelling,
+    ):
+        member = _make_member(std, config, tmp_home, "wsx", "foo")
+        where = tmp_home / "worksets" / "wsx" if spelling == "name_in_space" else tmp_home
+        monkeypatch.chdir(where)
+        monkeypatch.setenv("PWD", str(where))
+        target = {"qualified": "wsx/foo", "name_in_space": "foo", "path": str(member)}[spelling]
+        assert self._rm(target, purge=True) == 1
+        err = capsys.readouterr().err
+        assert "'wsx/foo'" in err
+        assert "kanibako workset disconnect wsx foo --remove-files" in err
+        assert "is not a registered box" not in err
+        assert self._members(std, tmp_home) == ["foo"]
+
+    def test_a_bare_name_outside_its_space_names_the_qualified_spelling(
+        self, std, config, tmp_home, monkeypatch, capsys,
+    ):
+        _make_member(std, config, tmp_home, "wsx", "foo")
+        monkeypatch.chdir(tmp_home)
+        monkeypatch.setenv("PWD", str(tmp_home))
+        assert self._rm("foo") == 1
+        err = capsys.readouterr().err
+        assert "'wsx/foo'" in err
+        assert "is not a registered box" not in err
+        assert self._members(std, tmp_home) == ["foo"]

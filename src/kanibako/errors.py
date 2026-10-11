@@ -56,7 +56,8 @@ class UnmarkedStandaloneError(ProjectError):
 
 
 class AmbiguousNameError(ProjectError):
-    """A bare box NAME matched several boxes — exclude when catching ProjectError."""
+    """A bare box NAME matched several boxes, or only a member of a workset outside the
+    path space (its message names ``<workset>/<box>``) — exclude when catching ProjectError."""
 
 
 class ContainerError(KanibakoError):
