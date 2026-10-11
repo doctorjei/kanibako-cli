@@ -983,14 +983,21 @@ class TestVerifyPersonaTwoAxes:
 
     _PATHS = {ClaudeTarget: ("/v1/models", "/v1/messages"), CodexTarget: ("/models", "/responses")}
 
-    @pytest.mark.parametrize("target_cls", [ClaudeTarget, CodexTarget])
-    def test_a_verified_key_refused_for_an_alias_is_the_H1_cell(self, token_file, target_cls):
+    @pytest.mark.parametrize(("target_cls", "verdict"), [
+        # H1 = C: claude may map the alias to another id in the box, so it warns;
+        # codex sends the id verbatim, so the refusal is the box's own and blocks.
+        (ClaudeTarget, PersonaProbeVerdict.INCONCLUSIVE),
+        (CodexTarget, PersonaProbeVerdict.REJECTED),
+    ])
+    def test_a_verified_key_refused_for_an_alias_is_the_H1_cell(
+        self, token_file, target_cls, verdict,
+    ):
         server = _ProbeServer(script=_VERIFIED_THEN_REFUSED)
         try:
             outcome = _probe(target_cls(), server, token_file, model="sonnet")
         finally:
             server.close()
-        assert outcome.verdict is PersonaProbeVerdict.REJECTED  # H1 pending: today's verdict
+        assert outcome.verdict is verdict
         assert outcome.access is not None
         assert outcome.access.general.state is GeneralAccess.VERIFIED
         assert outcome.access.model.state is ModelAccess.DENIED
@@ -1103,6 +1110,16 @@ class TestVerifyPersonaTwoAxes:
         finally:
             server.close()
         assert seen == [exact]
+
+    def test_a_verified_key_refused_for_a_real_claude_id_still_refuses(self, token_file):
+        """H1 = C keeps the refusal where the probe sent exactly what the box sends."""
+        server = _ProbeServer(script=_VERIFIED_THEN_REFUSED)
+        try:
+            outcome = _probe(ClaudeTarget(), server, token_file, model="claude-sonnet-4-5")
+        finally:
+            server.close()
+        assert outcome.access.general.state is GeneralAccess.VERIFIED
+        assert outcome.verdict is PersonaProbeVerdict.REJECTED
 
 
 class TestProbeEvidence:

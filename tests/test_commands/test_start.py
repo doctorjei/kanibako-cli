@@ -11303,6 +11303,40 @@ class TestPersonaPreflightBundle:
         assert "could not verify" in err_out
         assert "the endpoint imploded" in err_out
 
+    @pytest.mark.parametrize("model_exact", [True, False])
+    def test_a_verified_key_refused_for_its_model_follows_H1(
+        self, tmp_path, capsys, model_exact,
+    ):
+        """His H1 = C, through the launch door: the credential verified without a
+        model, the model request refused (row 4).  An exact model id blocks the
+        launch; an id the probe could not match to the box's warns and launches.
+        """
+        from kanibako.targets.base import (
+            AccessReport, AxisResult, GeneralAccess, ModelAccess, ProbeEvidence,
+            access_outcome,
+        )
+
+        tok = self._token(tmp_path)
+        sent = ProbeEvidence(endpoint=self._ENDPOINT, model="sonnet", token_path=tok)
+        report = AccessReport(
+            AxisResult(GeneralAccess.VERIFIED, sent, 401),
+            AxisResult(ModelAccess.DENIED, ProbeEvidence(
+                endpoint=self._ENDPOINT, model="sonnet", token_path=tok, status=403,
+            )),
+        )
+        target = self._Target(outcome=access_outcome(report, model_exact=model_exact))
+        ep, err, _p = self._run(
+            self._cfg(secret_path={"ANTHROPIC_AUTH_TOKEN": str(tok)}),
+            probe=True, target=target,
+        )
+        warned = capsys.readouterr().err
+        if model_exact:
+            assert err is not None and "refused the probe with HTTP 403" in err
+        else:
+            assert err is None and ep == self._ENDPOINT
+            assert "launching unverified" in warned
+            assert "refused the request for model 'sonnet' with HTTP 403" in warned
+
     def test_a_NOT_APPLICABLE_probe_is_SILENT_and_proceeds(self, tmp_path, capsys):
         """⚑ The defect this arm exists to kill.
 

@@ -910,7 +910,8 @@ def access_outcome(report: AccessReport, *, model_exact: bool) -> PersonaProbeOu
     Outside the cells marked below, the verdict is today's `probe_outcome` /
     `probe_outcome_no_model` on the MODEL response, exactly.  A refusal of the model-free
     request alone never refuses a box.  *model_exact* says the model request carried the id
-    the box itself sends; it decides the cells pending his ruling (H1).
+    the box itself sends: with the credential verified and the model request refused
+    (rows 4, 10), True refuses and False warns.
     Every outcome carries *report* as `access`.
     """
     general = report.general
@@ -924,8 +925,19 @@ def access_outcome(report: AccessReport, *, model_exact: bool) -> PersonaProbeOu
     )
     if model.state is ModelAccess.DENIED and state is GeneralAccess.VERIFIED:
         # H1 (rows 4, 10): the credential was verified and the model request refused.
-        # PENDING HIS RULING — today's REJECTED holds for every *model_exact*.
-        outcome = today
+        # Refuse when the probe sent the box's own id; warn when it could not.
+        if model_exact:
+            outcome = today
+        else:
+            refused = f"the request for model '{sent.model}'" if sent.model else (
+                "a request that named no model"
+            )
+            outcome = PersonaProbeOutcome.inconclusive(
+                f"the endpoint accepted this credential without a model but refused "
+                f"{refused} with HTTP {sent.status}, and the probe could not send the "
+                f"model id the box will use",
+                sent,
+            )
     elif model.state is ModelAccess.MODEL_REQUIRED and state is GeneralAccess.VERIFIED:
         # Δ: authorization verified without a model — rule 3 itself.
         outcome = PersonaProbeOutcome.passed()

@@ -272,13 +272,13 @@ _ROWS = [
   (1, True, "m", G.VERIFIED, M.OK, V.PASS),
   (2, True, "m", G.OPEN, M.OK, V.PASS),
   (3, True, "m", G.DENIED, M.OK, V.PASS),
-  (4, True, "m", G.VERIFIED, M.DENIED, V.REJECTED),   # H1 pending: today's verdict
+  (4, True, "m", G.VERIFIED, M.DENIED, V.REJECTED),   # H1: model_exact; else INCONCLUSIVE
   (5, True, "m", G.OPEN, M.DENIED, V.REJECTED),
   (6, True, "m", G.DENIED, M.DENIED, V.REJECTED),
   (7, True, None, G.VERIFIED, M.OK, V.PASS),
   (8, True, None, G.OPEN, M.OK, V.PASS),
   (9, True, None, G.DENIED, M.OK, V.PASS),
-  (10, True, None, G.VERIFIED, M.DENIED, V.REJECTED),  # H1 pending: today's verdict
+  (10, True, None, G.VERIFIED, M.DENIED, V.REJECTED),  # H1: model_exact; else INCONCLUSIVE
   (11, True, None, G.OPEN, M.DENIED, V.REJECTED),
   (12, True, None, G.DENIED, M.DENIED, V.REJECTED),
   (13, False, "m", G.OPEN, M.OK, V.PASS),
@@ -301,12 +301,46 @@ class TestAccessOutcomeRows:
   def test_row(self, row, token, model_id, general, model, verdict, model_exact):
     report = _report(general, model, token=token, model_id=model_id)
     outcome = access_outcome(report, model_exact=model_exact)
+    if row in (4, 10) and not model_exact:
+      verdict = V.INCONCLUSIVE
     assert outcome.verdict is verdict
     assert outcome.access is report
     if verdict is V.REJECTED:
       # The deciding request is the model request: refusal_phrase reads its status.
       assert outcome.evidence == report.model.evidence
       assert outcome.refusal_phrase("http://e.example") == "refused the probe with HTTP 403"
+
+
+class TestAccessOutcomeH1:
+  """His H1 = C: a verified credential whose model request is refused (rows 4, 10)
+  REFUSES when the probe sent the box's own model id and WARNS when it could not.
+  """
+
+  @pytest.mark.parametrize("model_id", ["m", None], ids=["row4", "row10"])
+  def test_an_exact_model_refuses(self, model_id):
+    report = _report(G.VERIFIED, M.DENIED, model_id=model_id)
+    outcome = access_outcome(report, model_exact=True)
+    assert outcome == _today(report)._replace(access=report)
+    assert outcome.verdict is V.REJECTED
+
+  @pytest.mark.parametrize(("model_id", "refused"), [
+    ("m", "refused the request for model 'm' with HTTP 403"),
+    (None, "refused a request that named no model with HTTP 403"),
+  ], ids=["row4", "row10"])
+  def test_an_inexact_model_warns_and_launches(self, model_id, refused):
+    report = _report(G.VERIFIED, M.DENIED, model_id=model_id)
+    outcome = access_outcome(report, model_exact=False)
+    assert outcome.verdict is V.INCONCLUSIVE
+    assert "accepted this credential without a model" in outcome.reason
+    assert refused in outcome.reason
+    assert "token" not in outcome.reason  # never blames the token
+    assert outcome.evidence == report.model.evidence
+    assert outcome.access is report
+
+  @pytest.mark.parametrize("general", [G.OPEN, G.UNTESTED, G.DENIED, G.NO_ANSWER])
+  def test_an_inexact_model_still_refuses_without_a_verified_credential(self, general):
+    report = _report(general, M.DENIED)
+    assert access_outcome(report, model_exact=False).verdict is V.REJECTED
 
 
 _MODEL_STATES = list(M)
@@ -379,8 +413,10 @@ def _model_state(status: int | None, omitted: bool) -> ModelAccess:
   return M.AMBIGUOUS
 
 
-def _changed(general: GeneralAccess, model: ModelAccess) -> bool:
-  """The cells whose verdict differs from today's (the H1 cells do not, until ruled)."""
+def _changed(general: GeneralAccess, model: ModelAccess, model_exact: bool) -> bool:
+  """The cells whose verdict differs from today's (the H1 cells only for an inexact model)."""
+  if model is M.DENIED and general is G.VERIFIED:
+    return not model_exact
   return model is M.MODEL_REQUIRED and general in (G.VERIFIED, G.DENIED)
 
 
@@ -392,7 +428,7 @@ class TestNoRegression:
   def test_every_other_cell_keeps_todays_verdict(self, general, status, model_id,
                                                  model_exact):
     model = _model_state(status, omitted=not model_id)
-    if _changed(general, model):
+    if _changed(general, model, model_exact):
       pytest.skip("a changed cell")
     report = _report(general, model, model_id=model_id, model_status=status)
     outcome = access_outcome(report, model_exact=model_exact)
