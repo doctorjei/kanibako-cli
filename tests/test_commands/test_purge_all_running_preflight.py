@@ -191,3 +191,13 @@ def test_the_probe_runs_before_any_delete(
     else:
         assert rc == 1 and removed == []
         _all_intact(boxes)
+
+
+def test_the_all_help_says_standalone_boxes_are_skipped(capsys):
+    """``--all`` skips standalone boxes on purpose (``test_purge_all_skips_standalone``)."""
+    from kanibako.cli import build_parser
+
+    with pytest.raises(SystemExit):
+        build_parser().parse_args(["box", "purge", "--help"])
+    out = " ".join(capsys.readouterr().out.split())
+    assert "standalone boxes are skipped (purge each one by its path)" in out, out

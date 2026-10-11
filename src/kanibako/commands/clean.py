@@ -46,7 +46,8 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
     p.add_argument("path", nargs="?", default=None, help="Path to the project directory")
     p.add_argument(
         "--all", action="store_true", dest="all_projects",
-        help="Purge session data for every known project",
+        help="Purge every primary and named-workset box; standalone boxes are skipped "
+             "(purge each one by its path)",
     )
     p.add_argument(
         "--force", action="store_true", help="Skip confirmation prompt"
