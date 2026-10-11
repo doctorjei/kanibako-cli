@@ -11,6 +11,7 @@ Prose for these symbols lives in `llm-docs/kanibako/settings/store_collapse.py.m
 MASK: Final[CollapsedBind] = CollapsedBind(None, None)
 CLI_PROVENANCE_SCOPE: Final[str] = 'cli'
 HOME_DEST: Final[str] = normalize_bind_dest('~')
+HOME_OPTIONS: Final[str] = 'Z,U'
 DERIVED_MOUNT: Final[str] = 'mount'
 DERIVED_COPY: Final[str] = 'copy'
 DERIVED_MASKED: Final[str] = 'masked'

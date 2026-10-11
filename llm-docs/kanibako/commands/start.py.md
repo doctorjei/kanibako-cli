@@ -235,7 +235,7 @@ the rest. Deleting the row removes the duplication at its source: home does **no
 foundation itself —
 
 ```python
-home_bind = BindEntry(_snapshot_home(snapshot), _HOME_OPTIONS)
+home_bind = BindEntry(_snapshot_home(snapshot), HOME_OPTIONS)
 ```
 
 — from the RO DERIVED key `meta.box.home`, which `settings_launch.workset_anchor_floor` materializes
@@ -243,7 +243,7 @@ as `@meta.box.path/home`. 🛑 **That key is the ONE spelling of the derivation.
 foundation from `proj.shell_path`, and never re-inline `@meta.box.path/home` here; `settings_launch`
 says so in terms at the floor line, and A9 existed precisely to remove the second spelling.
 
-`_HOME_OPTIONS` is a BARE `Z,U` — no `rw` token. The foundation is pre-seeded into the collapse map
+`HOME_OPTIONS` (`store_collapse`) is a BARE `Z,U` — no `rw` token. The foundation is pre-seeded into the collapse map
 and never passes `_merge_bindings`' `fold_opt`, which is exactly what distinguishes it from every
 rw bind that folds over it (`Z,U,rw`). Mount options are SEAM MACHINERY, not part of any key — which
 is why the literal lives beside the seam and not in the keyspace.

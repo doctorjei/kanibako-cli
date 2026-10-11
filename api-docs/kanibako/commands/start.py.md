@@ -20,7 +20,6 @@ _ASSEMBLY_BINDINGS: 'tuple[str, ...]' = ('meta', 'assembly', 'bindings')
 _ASSEMBLY_SEEDED: 'tuple[str, ...]' = ('meta', 'assembly', 'seeded')
 _ASSEMBLY_SYNCED: 'tuple[str, ...]' = ('meta', 'assembly', 'synced')
 _ASSEMBLY_ENV: 'tuple[str, ...]' = ('meta', 'assembly', 'env')
-_HOME_OPTIONS: 'str' = 'Z,U'
 _COLLISION_WARNED: 'set[tuple[str, str]]' = set()
 _UNIX_SOCKET_PATH_LIMIT = 104
 _FALLBACK_LOG_TAIL = 20

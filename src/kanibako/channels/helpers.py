@@ -184,6 +184,17 @@ HELPER_SCRIPTS_RELPATH = "scripts"
 PARENT_SCRIPTS_RELPATH = f"{CANON_GUEST_ROOT}/{NOTEBOOK_SCRIPTS_REL}"
 
 
+#: A helper's workspace and vault leaves, root-relative, keyed by the ``source`` symbol
+#: of the ``core:`` row that declares the director's bind of the same slot.  The helper
+#: root IS the helper's home (the hub binds it at ``~``), and the hub binds each leaf
+#: at its row's dest and options (``channels.helper_listener._build_helper_mounts``).
+HELPER_CORE_LEAVES: dict[str, str] = {
+    "project_path": "workspace",
+    "vault_ro_path": "vault/ro",
+    "vault_rw_path": "vault/rw",
+}
+
+
 def create_helper_dirs(helpers_dir: Path, helper_num: int) -> Path:
     """Create the directory layout for a single helper.
 
@@ -193,14 +204,9 @@ def create_helper_dirs(helpers_dir: Path, helper_num: int) -> Path:
     root = helpers_dir / str(helper_num)
     root.mkdir(parents=True, exist_ok=True)
 
-    # Vault with communication channels
-    vault = root / "vault"
-    vault.mkdir(exist_ok=True)
-    (vault / "ro").mkdir(exist_ok=True)
-    (vault / "rw").mkdir(exist_ok=True)
-
-    # Standard layout
-    (root / "workspace").mkdir(exist_ok=True)
+    # Workspace and vault (with communication channels)
+    for leaf in HELPER_CORE_LEAVES.values():
+        (root / leaf).mkdir(parents=True, exist_ok=True)
     (root / HELPER_SCRIPTS_RELPATH).mkdir(exist_ok=True)
 
     # Peers directory

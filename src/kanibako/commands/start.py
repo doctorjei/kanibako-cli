@@ -8036,14 +8036,6 @@ _ASSEMBLY_SYNCED: "tuple[str, ...]" = ("meta", "assembly", "synced")
 _ASSEMBLY_ENV: "tuple[str, ...]" = ("meta", "assembly", "env")
 
 
-#: The pid-0 FOUNDATION's mount options — SEAM MACHINERY, not part of any key
-#: (spec ``:1015``). Home does not route through ``bindings.rw``, so this string is
-#: never folded by ``store_collapse._merge_bindings``: it reaches the box BARE, with
-#: no ``rw`` arm token appended, which is exactly what distinguishes the foundation
-#: from every bind that folds over it.
-_HOME_OPTIONS: "str" = "Z,U"
-
-
 def _install_assembly_collapse(
     snapshot, entries, *, whole_box: bool,
     cli_env: "Mapping[str, str] | None" = None,
@@ -8088,6 +8080,7 @@ def _install_assembly_collapse(
     """
     from kanibako.settings.kb_store import BindEntry
     from kanibako.settings.store_collapse import (
+        HOME_OPTIONS,
         collapse_env,
         collapse_seeded,
         collapse_store_shapes,
@@ -8135,7 +8128,7 @@ def _install_assembly_collapse(
     # 🛑 READ THE KEY — never re-derive from ``proj.shell_path`` and never re-inline
     # ``@meta.box.path/home``. ``settings_launch.workset_anchor_floor`` is the ONE
     # spelling of that derivation; a second one here is what A9 removed.
-    home_bind = BindEntry(_snapshot_home(snapshot), _HOME_OPTIONS)
+    home_bind = BindEntry(_snapshot_home(snapshot), HOME_OPTIONS)
     # ⚑ Recomputes the seed list and discards it — the SAME pure concatenation over
     # the SAME shapes, so it cannot differ. One implementation beats one saved
     # traversal.

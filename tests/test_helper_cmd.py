@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import shutil
+import socket
+import tempfile
 from pathlib import Path
 from unittest.mock import patch
 
@@ -59,7 +62,42 @@ def helpers_env(tmp_path, monkeypatch):
     config_file.write_text("")
     monkeypatch.setenv("XDG_CONFIG_HOME", str(config_dir))
     monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "data"))
-    return home
+
+    # A LIVE HUB by default: a spawn with no hub refuses (see ``TestNoHub``), so the
+    # box these tests model has a LISTENING socket at the pinned path, and the hub
+    # answers every launch "ok".  The socket is bound in a short ``/tmp`` dir and
+    # linked in, because an AF_UNIX path is capped near 108 bytes and ``tmp_path`` is
+    # not.  Nobody accepts on it: a connect still succeeds into the backlog, and that
+    # is all the CLI's liveness probe asks.
+    sock = home / ".kanibako" / "state" / "helper.sock"
+    sock.parent.mkdir(parents=True)
+    listener, real = _listening_socket()
+    sock.symlink_to(real)
+
+    def _hub(_path, request):
+        if request.get("action") == "spawn":
+            return {"status": "ok", "container_name": f"kb-t-helper-{request['helper_num']}"}
+        return {"status": "ok"}
+
+    monkeypatch.setattr("kanibako.channels.helper_client.send_request", _hub)
+    monkeypatch.delenv("KANIBAKO_HELPER_NUM", raising=False)
+    yield home
+    listener.close()
+    shutil.rmtree(real.parent, ignore_errors=True)
+
+
+def _listening_socket() -> tuple[socket.socket, Path]:
+    """A listening AF_UNIX socket in a fresh short ``/tmp`` dir, and its path."""
+    real = Path(tempfile.mkdtemp(prefix="kbh-", dir="/tmp")) / "s"
+    listener = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    listener.bind(str(real))
+    listener.listen(8)
+    return listener, real
+
+
+def _no_hub(home: Path) -> None:
+    """Take the hub away: the box a persistent start leaves (no socket)."""
+    (home / ".kanibako" / "state" / "helper.sock").unlink()
 
 
 class TestGetExistingHelpers:
@@ -267,7 +305,7 @@ class TestHelperState:
         args = _make_args(depth=None, breadth=None, model="sonnet")
         run_spawn(args)
         state = _read_state(helpers_env / "helpers", 1)
-        assert state["status"] == "spawned"
+        assert state["status"] == "running"
         assert state["model"] == "sonnet"
         assert state["depth"] == 3  # default 4, decremented to 3
 
@@ -304,7 +342,7 @@ class TestRunList:
         out = capsys.readouterr().out
         assert "1" in out
         assert "2" in out
-        assert "spawned" in out
+        assert "running" in out
 
     def test_list_shows_model(self, helpers_env, capsys):
         spawn_args = _make_args(depth=None, breadth=None, model="sonnet")
@@ -422,7 +460,7 @@ class TestRunRespawn:
         assert "Respawned helper 1" in capsys.readouterr().out
 
         state = _read_state(helpers_env / "helpers", 1)
-        assert state["status"] == "respawned"
+        assert state["status"] == "running"
 
     def test_respawn_running_refused(self, helpers_env, capsys):
         run_spawn(_make_args(depth=None, breadth=None, model=None))
@@ -490,6 +528,7 @@ class TestCascadeCleanup:
 class TestRunSend:
     def test_send_no_socket(self, helpers_env, capsys):
         """Send fails gracefully when helpers not enabled."""
+        _no_hub(helpers_env)
         rc = run_send(_make_args(number=1, message="hello"))
         assert rc == 1
         assert "not enabled" in capsys.readouterr().err
@@ -497,7 +536,7 @@ class TestRunSend:
     def test_send_with_socket(self, helpers_env, capsys):
         """Send succeeds when socket exists and mock returns ok."""
         sock = helpers_env / ".kanibako" / "state" / "helper.sock"
-        sock.parent.mkdir(parents=True)
+        sock.parent.mkdir(parents=True, exist_ok=True)
         sock.touch()
 
         with patch("kanibako.channels.helper_client.send_request") as m:
@@ -508,7 +547,7 @@ class TestRunSend:
 
     def test_send_failure(self, helpers_env, capsys):
         sock = helpers_env / ".kanibako" / "state" / "helper.sock"
-        sock.parent.mkdir(parents=True)
+        sock.parent.mkdir(parents=True, exist_ok=True)
         sock.touch()
 
         with patch("kanibako.channels.helper_client.send_request") as m:
@@ -520,13 +559,14 @@ class TestRunSend:
 
 class TestRunBroadcast:
     def test_broadcast_no_socket(self, helpers_env, capsys):
+        _no_hub(helpers_env)
         rc = run_broadcast(_make_args(message="all hands"))
         assert rc == 1
         assert "not enabled" in capsys.readouterr().err
 
     def test_broadcast_success(self, helpers_env, capsys):
         sock = helpers_env / ".kanibako" / "state" / "helper.sock"
-        sock.parent.mkdir(parents=True)
+        sock.parent.mkdir(parents=True, exist_ok=True)
         sock.touch()
 
         with patch("kanibako.channels.helper_client.send_request") as m:
@@ -538,12 +578,13 @@ class TestRunBroadcast:
 
 class TestRunRegister:
     def test_register_no_socket(self, helpers_env):
+        _no_hub(helpers_env)
         rc = run_register(_make_args(number=1))
         assert rc == 1
 
     def test_register_success(self, helpers_env):
         sock = helpers_env / ".kanibako" / "state" / "helper.sock"
-        sock.parent.mkdir(parents=True)
+        sock.parent.mkdir(parents=True, exist_ok=True)
         sock.touch()
 
         with patch("kanibako.channels.helper_client.send_request") as m:
@@ -557,7 +598,7 @@ class TestRunRegister:
 
     def test_register_failure(self, helpers_env):
         sock = helpers_env / ".kanibako" / "state" / "helper.sock"
-        sock.parent.mkdir(parents=True)
+        sock.parent.mkdir(parents=True, exist_ok=True)
         sock.touch()
 
         with patch("kanibako.channels.helper_client.send_request") as m:
@@ -574,7 +615,7 @@ class TestRunLog:
 
     def test_log_displays_entries(self, helpers_env, capsys):
         log_file = helpers_env / ".kanibako" / "state" / "helpers.jsonl"
-        log_file.parent.mkdir(parents=True)
+        log_file.parent.mkdir(parents=True, exist_ok=True)
         import json
         entries = [
             {"ts": "2026-02-25T12:35:10Z", "type": "message", "from": 0, "to": 1, "payload": {"text": "Analyze auth."}},
@@ -592,7 +633,7 @@ class TestRunLog:
 
     def test_log_filter_by_helper(self, helpers_env, capsys):
         log_file = helpers_env / ".kanibako" / "state" / "helpers.jsonl"
-        log_file.parent.mkdir(parents=True)
+        log_file.parent.mkdir(parents=True, exist_ok=True)
         import json
         entries = [
             {"ts": "T12:00:00Z", "type": "message", "from": 0, "to": 1, "payload": {"text": "a"}},
@@ -609,7 +650,7 @@ class TestRunLog:
 
     def test_log_last_n(self, helpers_env, capsys):
         log_file = helpers_env / ".kanibako" / "state" / "helpers.jsonl"
-        log_file.parent.mkdir(parents=True)
+        log_file.parent.mkdir(parents=True, exist_ok=True)
         import json
         entries = [
             {"ts": "T12:00:00Z", "type": "message", "from": 0, "to": 1, "payload": {"text": "first"}},
@@ -626,7 +667,7 @@ class TestRunLog:
 
     def test_log_control_entries(self, helpers_env, capsys):
         log_file = helpers_env / ".kanibako" / "state" / "helpers.jsonl"
-        log_file.parent.mkdir(parents=True)
+        log_file.parent.mkdir(parents=True, exist_ok=True)
         import json
         entries = [
             {"ts": "T12:00:00Z", "type": "control", "event": "spawn", "helper": 1, "model": "sonnet"},
@@ -666,7 +707,7 @@ class TestSocketWiring:
     def test_spawn_with_socket(self, helpers_env, capsys):
         """Spawn calls socket client when socket exists."""
         sock = helpers_env / ".kanibako" / "state" / "helper.sock"
-        sock.parent.mkdir(parents=True)
+        sock.parent.mkdir(parents=True, exist_ok=True)
         sock.touch()
 
         with patch("kanibako.channels.helper_client.send_request") as m:
@@ -682,7 +723,7 @@ class TestSocketWiring:
     def test_spawn_socket_failure(self, helpers_env, capsys):
         """Spawn records 'failed' when socket returns error."""
         sock = helpers_env / ".kanibako" / "state" / "helper.sock"
-        sock.parent.mkdir(parents=True)
+        sock.parent.mkdir(parents=True, exist_ok=True)
         sock.touch()
 
         with patch("kanibako.channels.helper_client.send_request") as m:
@@ -690,14 +731,45 @@ class TestSocketWiring:
             args = _make_args(depth=None, breadth=None, model=None)
             rc = run_spawn(args)
 
-        assert rc == 0  # spawn itself succeeds (dirs created)
+        # A helper that did not launch is not "Spawned": no success line, rc 1.  The
+        # directory stays, marked failed with the hub's reason, until ``cleanup``.
+        assert rc == 1
+        out, err = capsys.readouterr()
+        assert "Spawned" not in out
+        assert "Cannot spawn: helper 1 did not launch: image not found" in err
+        assert "cleanup 1" in err
         state = _read_state(helpers_env / "helpers", 1)
         assert state["status"] == "failed"
+        assert state["error"] == "image not found"
+
+    def test_spawn_connection_failure(self, helpers_env, capsys):
+        """A hub that drops the connection mid-request is a failed launch, too."""
+        with patch("kanibako.channels.helper_client.send_request") as m:
+            m.side_effect = ConnectionError("Connection closed before response")
+            rc = run_spawn(_make_args(depth=None, breadth=None, model=None))
+        assert rc == 1
+        out, err = capsys.readouterr()
+        assert "Spawned" not in out
+        assert "did not launch: Connection closed before response" in err
+        assert _read_state(helpers_env / "helpers", 1)["status"] == "failed"
+
+    def test_respawn_failure(self, helpers_env, capsys):
+        run_spawn(_make_args(depth=None, breadth=None, model=None))
+        run_stop(_make_args(number=1))
+        capsys.readouterr()
+        with patch("kanibako.channels.helper_client.send_request") as m:
+            m.return_value = {"status": "error", "message": "image not found"}
+            rc = run_respawn(_make_args(number=1))
+        assert rc == 1
+        out, err = capsys.readouterr()
+        assert "Respawned" not in out
+        assert "Cannot respawn: helper 1 did not launch: image not found" in err
+        assert _read_state(helpers_env / "helpers", 1)["status"] == "failed"
 
     def test_stop_with_socket(self, helpers_env, capsys):
         """Stop calls socket client for container stop."""
         sock = helpers_env / ".kanibako" / "state" / "helper.sock"
-        sock.parent.mkdir(parents=True)
+        sock.parent.mkdir(parents=True, exist_ok=True)
         sock.touch()
 
         # Spawn first (without socket active for dir creation)
@@ -723,7 +795,7 @@ class TestSocketWiring:
     def test_respawn_with_socket(self, helpers_env, capsys):
         """Respawn calls socket client for container relaunch."""
         sock = helpers_env / ".kanibako" / "state" / "helper.sock"
-        sock.parent.mkdir(parents=True)
+        sock.parent.mkdir(parents=True, exist_ok=True)
         sock.touch()
 
         run_spawn(_make_args(depth=None, breadth=None, model=None))
@@ -748,6 +820,132 @@ class TestInitScriptNameCopySite:
             run_spawn(_make_args(depth=None, breadth=None, model=None))
         init = helpers_env / "helpers" / "1" / "scripts" / "init-check.sh"
         assert init.is_file()
+
+
+class TestNoHub:
+    """A box with no helper hub (a persistent start runs none) cannot launch a helper,
+    so spawn and respawn REFUSE, naming why, before they write anything (bifrost hb5:
+    ``Spawned helper 1`` rc 0 with no container)."""
+
+    def test_spawn_refuses_and_writes_nothing(self, helpers_env, capsys):
+        _no_hub(helpers_env)
+        rc = run_spawn(_make_args(depth=None, breadth=None, model=None))
+        assert rc == 1
+        out, err = capsys.readouterr()
+        assert "Spawned" not in out
+        assert "Cannot spawn: this box runs no helper hub" in err
+        assert "--ephemeral" in err
+        assert not (helpers_env / "helpers").exists()
+
+    def test_respawn_refuses_and_keeps_the_stopped_state(self, helpers_env, capsys):
+        run_spawn(_make_args(depth=None, breadth=None, model=None))
+        run_stop(_make_args(number=1))
+        _no_hub(helpers_env)
+        capsys.readouterr()
+
+        rc = run_respawn(_make_args(number=1))
+        assert rc == 1
+        out, err = capsys.readouterr()
+        assert "Respawned" not in out
+        assert "Cannot respawn: this box runs no helper hub" in err
+        assert _read_state(helpers_env / "helpers", 1)["status"] == "stopped"
+
+    def test_the_leftover_socket_stub_is_not_a_hub(self, helpers_env, capsys):
+        """An ephemeral start pre-creates the socket's mount stub (a plain FILE) in the
+        persistent home; the next persistent start runs no hub, but the file stays."""
+        sock = helpers_env / ".kanibako" / "state" / "helper.sock"
+        sock.unlink()
+        sock.touch()
+        rc = run_spawn(_make_args(depth=None, breadth=None, model=None))
+        assert rc == 1
+        out, err = capsys.readouterr()
+        assert "Spawned" not in out
+        assert "Cannot spawn: this box runs no helper hub" in err
+        assert not (helpers_env / "helpers").exists()
+
+    def test_a_dead_hubs_socket_is_not_a_hub(self, helpers_env, capsys):
+        """A real socket file that nothing listens on (the hub died) refuses the same way."""
+        sock = helpers_env / ".kanibako" / "state" / "helper.sock"
+        sock.unlink()
+        listener, real = _listening_socket()
+        listener.close()  # the file stays; a connect now gets ECONNREFUSED
+        try:
+            sock.symlink_to(real)
+            rc = run_spawn(_make_args(depth=None, breadth=None, model=None))
+        finally:
+            shutil.rmtree(real.parent, ignore_errors=True)
+        assert rc == 1
+        assert "Cannot spawn: this box runs no helper hub" in capsys.readouterr().err
+        assert not (helpers_env / "helpers").exists()
+
+    def test_a_spent_budget_still_names_the_budget(self, helpers_env, capsys):
+        """The budget refusal comes first: it holds with or without a hub."""
+        _no_hub(helpers_env)
+        write_spawn_budget(helpers_env / "spawn.yaml", SpawnBudget(depth=0, breadth=4))
+        assert run_spawn(_make_args(depth=None, breadth=None, model=None)) == 1
+        assert "spawn depth exhausted" in capsys.readouterr().err
+
+
+class TestTreeWideNumbering:
+    """keyspec ``meta.box.helper_num``: "helper index, unique across the director's
+    helper tree".  Helper *p* numbers its children ``p*B+1 .. p*B+B`` (B = breadth),
+    so no two helpers in the tree share a number, and the spawn names the requester."""
+
+    def test_the_director_numbers_from_one_and_names_no_requester(self, helpers_env):
+        with patch("kanibako.channels.helper_client.send_request") as m:
+            m.return_value = {"status": "ok", "container_name": "c"}
+            assert run_spawn(_make_args(depth=None, breadth=None, model=None)) == 0
+        req = m.call_args[0][1]
+        assert req["helper_num"] == 1
+        assert req.get("requester") is None
+
+    def test_a_helper_numbers_its_children_in_its_own_block(
+        self, helpers_env, monkeypatch, capsys,
+    ):
+        monkeypatch.setenv("KANIBAKO_HELPER_NUM", "2")
+        write_spawn_budget(helpers_env / "spawn.yaml", SpawnBudget(depth=2, breadth=3))
+        with patch("kanibako.channels.helper_client.send_request") as m:
+            m.return_value = {"status": "ok", "container_name": "c"}
+            assert run_spawn(_make_args(depth=None, breadth=None, model=None)) == 0
+            assert run_spawn(_make_args(depth=None, breadth=None, model=None)) == 0
+        assert [c[0][1]["helper_num"] for c in m.call_args_list] == [7, 8]
+        assert [c[0][1]["requester"] for c in m.call_args_list] == [2, 2]
+        assert "Spawned helper 7" in capsys.readouterr().out
+        assert (helpers_env / "helpers" / "7").is_dir()
+
+    def test_respawn_names_the_requester(self, helpers_env, monkeypatch):
+        monkeypatch.setenv("KANIBAKO_HELPER_NUM", "1")
+        run_spawn(_make_args(depth=None, breadth=None, model=None))
+        run_stop(_make_args(number=5))
+        with patch("kanibako.channels.helper_client.send_request") as m:
+            m.return_value = {"status": "ok", "container_name": "c"}
+            assert run_respawn(_make_args(number=5)) == 0
+        req = m.call_args[0][1]
+        assert (req["helper_num"], req["requester"]) == (5, 1)
+
+    def test_helper_init_exports_the_number_the_hub_launched_it_with(self, tmp_path):
+        """The CLI reads its own number from ``HELPER_NUM_ENV``; ``helper-init.sh`` (the
+        helper's entrypoint, handed the number by the hub) is what sets it."""
+        import subprocess
+        from kanibako.channels.helpers import bundled_init_script
+
+        env = {"HOME": str(tmp_path), "PATH": "/usr/bin:/bin"}
+
+        def run(arg: str) -> subprocess.CompletedProcess:
+            return subprocess.run(
+                ["bash", str(bundled_init_script()), arg, "printenv", helper_cmd.HELPER_NUM_ENV],
+                env=env, capture_output=True, text=True, timeout=30,
+            )
+
+        assert run("7").stdout.strip() == "7"
+        assert run("unknown").returncode != 0  # not a number: not exported
+
+    def test_the_numbering_blocks(self):
+        budget = SpawnBudget(depth=3, breadth=4)
+        assert _next_helper_number([], budget, own=0) == 1
+        assert _next_helper_number([], budget, own=1) == 5
+        assert _next_helper_number([5, 6], budget, own=1) == 7
+        assert _next_helper_number([], SpawnBudget(depth=1, breadth=-1), own=1) == 2**16 + 1
 
 
 def _make_args(**kwargs):

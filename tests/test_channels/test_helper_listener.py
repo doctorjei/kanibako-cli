@@ -180,6 +180,48 @@ class TestBuildHelperMounts:
             "spawn depth exhausted (depth=0)"
         )
 
+    def test_home_workspace_and_vault_are_bound_from_the_helper_root(self, tmp_path):
+        """Home is the pid-0 foundation (its dest and options are the director's); the
+        workspace and vault take dest and options from the declared ``core:`` rows."""
+        from kanibako.channels.helpers import create_helper_dirs
+
+        ctx, helpers_dir, helper_root = self._budget_ctx(tmp_path)
+        create_helper_dirs(helpers_dir, 1)
+
+        by_dest = {m.destination: m for m in _build_helper_mounts(ctx, 1, helpers_dir)}
+        assert (by_dest["/home/agent"].source, by_dest["/home/agent"].options) == (
+            helper_root, "Z,U",
+        )
+        ws = by_dest["/home/agent/workspace"]
+        assert (ws.source, ws.options) == (helper_root / "workspace", "Z,U")
+        ro = by_dest["/home/agent/vault/ro"]
+        assert (ro.source, ro.options) == (helper_root / "vault" / "ro", "ro")
+        rw = by_dest["/home/agent/vault/rw"]
+        assert (rw.source, rw.options) == (helper_root / "vault" / "rw", "Z,U")
+        # The foundation goes first, so every deeper bind lands on top of it.
+        assert _build_helper_mounts(ctx, 1, helpers_dir)[0].destination == "/home/agent"
+
+    def test_the_core_binds_follow_the_declared_rows(self, tmp_path, monkeypatch):
+        """Move the ``core:`` vault row and the helper's vault bind moves with it."""
+        import copy
+
+        from kanibako.channels.helpers import create_helper_dirs
+        from kanibako.settings import core_defaults
+
+        ctx, helpers_dir, helper_root = self._budget_ctx(tmp_path)
+        create_helper_dirs(helpers_dir, 1)
+        moved = copy.deepcopy(core_defaults._load_doc())
+        for row in moved["core"]:
+            if row["source"] == "vault_ro_path":
+                row["box_dest"] = "~/ref"
+                row["options"] = "ro,z"
+        monkeypatch.setattr(core_defaults, "_load_doc", lambda: moved)
+
+        by_dest = {m.destination: m for m in _build_helper_mounts(ctx, 1, helpers_dir)}
+        assert "/home/agent/vault/ro" not in by_dest
+        assert by_dest["/home/agent/ref"].source == helper_root / "vault" / "ro"
+        assert by_dest["/home/agent/ref"].options == "ro,z"
+
     def test_includes_binary_mounts(self, tmp_path):
         from kanibako.targets.base import Mount
         helpers_dir = tmp_path / "helpers"
@@ -479,6 +521,97 @@ class TestHubSpawn:
 
         call_kwargs = ctx.runtime.run.call_args[1]
         assert call_kwargs["cli_args"] == ["1", "claude"]
+
+    def test_the_entrypoint_reaches_the_helper_through_its_home_bind(self, hub_and_sock):
+        """bifrost hb5: ``helper-init.sh`` not found, exit 127 — no home was bound.
+
+        The entrypoint is a path in the helper's home, so some mount must carry it: the
+        home bind, whose source is the helper root the parent copied the script into.
+        """
+        hub, sock_path, ctx = hub_and_sock
+        helper_root = ctx.helpers_dir / "1"
+        for leaf in ("workspace", "vault/ro", "vault/rw", "scripts"):
+            (helper_root / leaf).mkdir(parents=True)
+        (helper_root / "scripts" / "helper-init.sh").write_text("#!/usr/bin/env bash\n")
+
+        resp = _connect_and_send(sock_path, {"action": "spawn", "helper_num": 1})
+        assert resp["status"] == "ok"
+
+        call_kwargs = ctx.runtime.run.call_args[1]
+        entry = call_kwargs["entrypoint"]
+        by_dest = {m.destination: m for m in call_kwargs["extra_mounts"]}
+        assert by_dest["/home/agent"].source == helper_root
+        rel = Path(entry).relative_to("/home/agent")
+        assert (by_dest["/home/agent"].source / rel).is_file()
+
+
+def _helper_tree(root: Path) -> None:
+    """The leaves a parent creates for one helper (``create_helper_dirs``)."""
+    for leaf in ("workspace", "vault/ro", "vault/rw"):
+        (root / leaf).mkdir(parents=True, exist_ok=True)
+
+
+class TestHubTreeSpawn:
+    """keyspec ``meta.box.helper_num``: "unique across the director's helper tree".
+    One hub serves the whole tree, so a helper's child lands under THAT helper's home
+    (the request names its ``requester``), never on the director's slot."""
+
+    def test_a_helpers_child_launches_under_the_helpers_home(self, hub_and_sock):
+        hub, sock_path, ctx = hub_and_sock
+        _helper_tree(ctx.helpers_dir / "1")
+        assert _connect_and_send(sock_path, {"action": "spawn", "helper_num": 1})["status"] == "ok"
+        child_root = ctx.helpers_dir / "1" / "helpers" / "5"
+        _helper_tree(child_root)
+
+        resp = _connect_and_send(sock_path, {
+            "action": "spawn", "helper_num": 5, "requester": 1,
+            "helpers_dir": "/home/agent/helpers",
+        })
+        assert resp == {"status": "ok", "container_name": "kb-primary-testproj-helper-5"}
+        call_kwargs = ctx.runtime.run.call_args[1]
+        assert call_kwargs["shell_path"] == child_root
+        by_dest = {m.destination: m for m in call_kwargs["extra_mounts"]}
+        assert by_dest["/home/agent"].source == child_root
+        assert call_kwargs["cli_args"][0] == "5"
+
+    def test_a_grandchild_maps_through_two_homes(self, hub_and_sock):
+        hub, sock_path, ctx = hub_and_sock
+        _helper_tree(ctx.helpers_dir / "1")
+        _helper_tree(ctx.helpers_dir / "1" / "helpers" / "5")
+        deep = ctx.helpers_dir / "1" / "helpers" / "5" / "helpers" / "21"
+        _helper_tree(deep)
+        for req in ({"helper_num": 1}, {"helper_num": 5, "requester": 1},
+                    {"helper_num": 21, "requester": 5}):
+            assert _connect_and_send(sock_path, {"action": "spawn", **req})["status"] == "ok"
+        assert ctx.runtime.run.call_args[1]["shell_path"] == deep
+
+    def test_an_unknown_requester_is_refused(self, hub_and_sock):
+        hub, sock_path, ctx = hub_and_sock
+        resp = _connect_and_send(sock_path, {
+            "action": "spawn", "helper_num": 5, "requester": 1,
+        })
+        assert resp["status"] == "error"
+        assert "helper 1" in resp["message"]
+        ctx.runtime.run.assert_not_called()
+
+    def test_a_number_already_in_the_tree_is_refused(self, hub_and_sock):
+        hub, sock_path, ctx = hub_and_sock
+        _helper_tree(ctx.helpers_dir / "1")
+        _helper_tree(ctx.helpers_dir / "1" / "helpers" / "1")
+        assert _connect_and_send(sock_path, {"action": "spawn", "helper_num": 1})["status"] == "ok"
+        resp = _connect_and_send(sock_path, {
+            "action": "spawn", "helper_num": 1, "requester": 1,
+        })
+        assert resp["status"] == "error"
+        assert "already" in resp["message"]
+        assert ctx.runtime.run.call_count == 1
+
+    def test_a_respawn_reuses_its_own_number(self, hub_and_sock):
+        hub, sock_path, ctx = hub_and_sock
+        _helper_tree(ctx.helpers_dir / "1")
+        for _ in range(2):
+            assert _connect_and_send(sock_path, {"action": "spawn", "helper_num": 1})["status"] == "ok"
+        assert ctx.runtime.run.call_count == 2
 
 
 class TestHubStop:

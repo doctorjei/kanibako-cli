@@ -22,6 +22,14 @@ set -euo pipefail
 HELPER_NUM="${1:-unknown}"
 shift || true
 
+# This helper's number, for the in-box CLI: it numbers this helper's own helpers in
+# its block (N*B+1 .. N*B+B) and names it as the spawn's requester, so the hub
+# launches them under THIS home.  Must match helper_cmd.HELPER_NUM_ENV.
+case "$HELPER_NUM" in
+    ''|*[!0-9]*) ;;
+    *) export KANIBAKO_HELPER_NUM="$HELPER_NUM" ;;
+esac
+
 # PINNED — the hub socket lives under the fixed resolve-before-liveness root
 # ~/.kanibako/state/, never under $XDG_STATE_HOME: the mount destination is written
 # into the container runtime's arguments before this box exists, so the host cannot

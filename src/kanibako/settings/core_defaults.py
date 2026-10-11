@@ -1204,6 +1204,25 @@ def helper_budget_dest() -> tuple[str, str]:
     return str(found[0]["box_dest"]), str(found[0]["options"])
 
 
+def core_bind_slots() -> dict[str, tuple[str, str]]:
+    """Each ``core:`` row's ``source`` symbol → its ``(box_dest, options)``.
+
+    The director's workspace and vault binds are emitted from these rows by
+    :func:`core_default_categories`; the helper hub binds a helper's own leaves at the
+    same dests and options (``channels.helper_listener._build_helper_mounts``), so a
+    moved row moves both.
+    """
+    slots: dict[str, tuple[str, str]] = {}
+    for entry in _load_doc().get("core") or []:
+        source = str(entry["source"])
+        if source in slots:
+            raise PackagingError(
+                f"{CORE_DEFAULTS_FILENAME} has two 'core' rows with 'source: {source}'"
+            )
+        slots[source] = (str(entry["box_dest"]), str(entry["options"]))
+    return slots
+
+
 def helper_default_categories(
     *,
     socket_path: Path | None,
