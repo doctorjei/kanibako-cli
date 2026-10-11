@@ -942,6 +942,21 @@ class TestTreeWideNumbering:
         assert [c[0][1]["helper_num"] for c in m.call_args_list] == [1, 2, 3]
         assert {c[0][1]["requester"] for c in m.call_args_list} == {None}
 
+    def test_a_planted_number_does_not_survive_the_directors_start(self, helpers_env):
+        """A ``meta.box.helper_num`` hand-planted in the director's document is gone
+        once a start delivers the budget (``start._deliver_spawn_budget`` writes it
+        through ``write_spawn_budget``), so the director still allocates ``1..B``."""
+        doc = helpers_env / "spawn.yaml"
+        write_spawn_budget(doc, SpawnBudget(depth=2, breadth=3))
+        write_helper_number(doc, 5)
+        write_spawn_budget(doc, SpawnBudget(depth=2, breadth=3))  # the start's delivery
+        with patch("kanibako.channels.helper_client.send_request") as m:
+            m.return_value = {"status": "ok", "container_name": "c"}
+            for _ in range(3):
+                assert run_spawn(_make_args(depth=None, breadth=None, model=None)) == 0
+        assert [c[0][1]["helper_num"] for c in m.call_args_list] == [1, 2, 3]
+        assert {c[0][1]["requester"] for c in m.call_args_list} == {None}
+
     def test_a_helper_numbers_its_children_in_its_own_block(
         self, helpers_env, capsys,
     ):

@@ -234,17 +234,17 @@ class TestSpawnBudgetIO:
         with pytest.raises(ConfigError, match="system.helpers.depth"):
             read_spawn_budget(path)
 
-    def test_preserves_other_sections(self, tmp_path):
-        path = tmp_path / "settings.yaml"
-        path.write_text("other:\n  foo: 1\nsystem:\n  agent: claude\n")
-        write_spawn_budget(path, SpawnBudget(depth=2, breadth=3))
-        result = read_spawn_budget(path)
-        assert result == SpawnBudget(depth=2, breadth=3)
-        # A real settings file's other tiers — and its other ``system`` leaves — survive.
+    def test_a_write_replaces_the_document_whole(self, tmp_path):
+        """A delivery document, not a merge target: a planted ``meta.box.helper_num``
+        (UNSET for a top-level box) and any other content are gone after the write."""
         from kanibako.settings.config_io import load_doc
-        data = load_doc(path)
-        assert data["other"]["foo"] == 1
-        assert data["system"]["agent"] == "claude"
+
+        path = tmp_path / "spawn.yaml"
+        path.write_text("other:\n  foo: 1\nsystem:\n  agent: claude\n")
+        write_helper_number(path, 5)
+        write_spawn_budget(path, SpawnBudget(depth=2, breadth=3))
+        assert load_doc(path) == {"system": {"helpers": {"depth": 2, "breadth": 3}}}
+        assert read_helper_number(path) is None
 
     def test_unlimited_values(self, tmp_path):
         path = tmp_path / "unlimited.yaml"

@@ -61,7 +61,9 @@ DEFAULT_BREADTH = SPAWN_BUDGET_DEFAULTS["breadth"]
 #:
 #: ⚑ ITS CONTENT IS A SETTINGS DOCUMENT, not a bespoke shape: the two declared
 #: ``system.helpers.*`` keys in their ordinary ``system: helpers:`` table, which is why
-#: :func:`read_spawn_budget` also answers a box's own ``@config.settings``.
+#: :func:`read_spawn_budget` also answers a box's own ``@config.settings``.  A helper's
+#: copy also carries its ``meta.box.helper_num`` (:func:`write_helper_number`); a
+#: director's never does.
 SPAWN_CONFIG_FILENAME = "spawn.yaml"
 
 
@@ -138,7 +140,13 @@ def read_spawn_budget(path: Path) -> SpawnBudget | None:
 
 
 def write_spawn_budget(path: Path, budget: SpawnBudget) -> None:
-    """Write *budget* as the two declared ``system.helpers.*`` keys.
+    """Write the document at *path* WHOLE: the two declared ``system.helpers.*`` keys
+    and nothing else.
+
+    ⚑ A replace, not a merge: a director's start rewrites its document this way, so a
+    ``meta.box.helper_num`` planted there (keyspec: UNSET for a top-level box) cannot
+    survive a start and make the director act as a helper.  A helper's number is the
+    hub's to add at each launch (:func:`write_helper_number`), after the parent's write.
 
     ⚑ *path* is never a cascade file: it is a DELIVERY document — a director's at
     ``{meta.box.path}/spawn.yaml``, a helper's at ``helpers/<N>/spawn.yaml`` — mounted
@@ -149,7 +157,7 @@ def write_spawn_budget(path: Path, budget: SpawnBudget) -> None:
     resolve, or ``child_budget``), so writing a cascade file from here would be the
     defaults leak that guard exists to catch.
     """
-    doc = load_doc(path)
+    doc: dict = {}
     node = _table(doc, SYSTEM_HELPERS_SECTION)
     node["depth"] = budget.depth
     node["breadth"] = budget.breadth

@@ -2781,8 +2781,9 @@ def _deliver_spawn_budget(
     Spec §2c ``box.bindings.ro[~/spawn.yaml] | ({meta.box.path}/spawn.yaml)`` and the
     companion's "The spawn-budget bind": EACH start writes the budget, hub or not — a
     persistent start runs no hub, yet its in-box ``box helper spawn`` reads the same
-    document.  ⚑ THE ONE WRITE SITE for a director's document; a helper's copy is its
-    parent's (``helper_cmd.run_spawn``).  A malformed host value stops the start here.
+    document, written WHOLE (no ``meta.box.helper_num``).  ⚑ THE ONE WRITE SITE for a
+    director's document; a helper's copy is its parent's (``helper_cmd.run_spawn``).
+    A malformed host value stops the start here.
 
     The document is written BEFORE the resolve: the row's ``.exists()`` gate reads it.
     It sits outside the home and in no cascade tier, so nothing is re-seeded or

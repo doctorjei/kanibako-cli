@@ -4346,9 +4346,12 @@ class TestSpawnBudgetReachesTheDirector:
         assert msg.startswith(f"system.helpers.depth in {host} must be a whole number, got ")
         assert shown in msg
 
-    def _start(self, start_mocks, tmp_path, budget=None, stale=None, **launch):
+    def _start(
+        self, start_mocks, tmp_path, budget=None, stale=None, stale_num=None, **launch,
+    ):
         """One mocked start with ``allow_helpers`` ON; *budget* stands in for the host
-        tier and *stale* is a document a previous start left at the box's budget path.
+        tier and *stale* is a document a previous start left at the box's budget path,
+        with *stale_num* planted at ``meta.box.helper_num`` in it.
         *launch* reaches ``_run_container`` (``persistent``/``detach`` force the hub off).
         """
         from kanibako.channels import helper_listener as helper_listener_mod
@@ -4362,6 +4365,11 @@ class TestSpawnBudgetReachesTheDirector:
             doc = m.proj.shell_path.parent / "spawn.yaml"
             if stale is not None:
                 write_spawn_budget(doc, stale)
+            if stale_num is not None:
+                from kanibako.channels.helpers import read_helper_number, write_helper_number
+
+                write_helper_number(doc, stale_num)
+                assert read_helper_number(doc) == stale_num
             if budget is not None:
                 stub = m.resolve_launch_snapshot.side_effect
 
@@ -4380,7 +4388,9 @@ class TestSpawnBudgetReachesTheDirector:
             ) == 0
             self.hub_starts = m_hub_cls.return_value.start.call_count
             mounts = m.runtime.run.call_args.kwargs.get("extra_mounts") or []
-            from kanibako.channels.helpers import read_spawn_budget
+            from kanibako.channels.helpers import read_helper_number, read_spawn_budget
+            # Read inside the mocks: the box root is a temp dir they remove on exit.
+            self.helper_num = read_helper_number(doc)
             return doc, read_spawn_budget(doc), mounts
 
     def test_the_start_writes_the_resolved_budget_and_binds_it_ro(
@@ -4433,6 +4443,19 @@ class TestSpawnBudgetReachesTheDirector:
             start_mocks, tmp_path, stale=SpawnBudget(1, 1),
         )
         assert delivered == SpawnBudget(4, 4)
+
+    def test_a_start_drops_a_number_planted_in_the_directors_document(
+        self, start_mocks, tmp_path,
+    ):
+        """keyspec ``meta.box.helper_num``: UNSET for a top-level box.  A number planted
+        in the director's document does not survive the start's delivery."""
+        from kanibako.channels.helpers import SpawnBudget
+
+        _, delivered, _ = self._start(
+            start_mocks, tmp_path, stale=SpawnBudget(1, 1), stale_num=5,
+        )
+        assert delivered == SpawnBudget(4, 4)
+        assert self.helper_num is None
 
     @pytest.mark.parametrize("launch", [
         {}, {"persistent": True, "detach": True},
