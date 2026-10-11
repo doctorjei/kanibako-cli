@@ -1196,7 +1196,7 @@ A broadcast channel (`~/helpers/all/`) is available to all helpers.
     vault/rw/           # read-write vault share
     scripts/            # helper-init.sh (entrypoint wrapper)
     peers/              # symlinks to peer channels
-    all -> ../all/      # broadcast channel
+    all/                # mountpoint: the helper's ~/all binds ~/helpers/all/
     spawn.yaml          # RO spawn budget
     state.json          # status, model, depth, peers
   all/ro/               # broadcast read-only

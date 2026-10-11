@@ -1055,17 +1055,47 @@ class TestHubStopMarksHelpersStopped:
             assert state["container_name"].endswith(f"-helper-{root.name}")
             assert state["peers"] == []
 
-    def test_a_helper_whose_container_did_not_stop_stays_running(self, hub_and_sock):
+    @pytest.mark.parametrize("command, status", [
+        ("/bin/true", "stopped"),             # stop and rm exit 0
+        ("/bin/false", "running"),            # the runtime refuses both
+        ("/nonexistent/podman", "running"),   # no runtime binary: subprocess raises
+    ])
+    def test_the_mark_follows_what_the_real_runtime_reports(
+        self, hub_and_sock, command, status,
+    ):
+        from kanibako.runtime.container import ContainerRuntime
+
         hub, sock_path, ctx = hub_and_sock
         _helper_tree(ctx.helpers_dir / "1")
         resp = _connect_and_send(sock_path, {"action": "spawn", "helper_num": 1})
         _running_state(ctx.helpers_dir / "1", resp["container_name"])
-        ctx.runtime.stop.side_effect = RuntimeError("podman gone")
+        ctx.runtime = ContainerRuntime(command)
 
         hub.stop()
 
         state = json.loads((ctx.helpers_dir / "1" / "state.json").read_text())
-        assert state["status"] == "running"
+        assert state["status"] == status
+
+    @pytest.mark.parametrize("stopped, removed, status", [
+        (True, True, "stopped"),
+        (True, False, "stopped"),    # stopped (or already exited), not removed
+        (False, True, "stopped"),    # removed, so not running
+        (False, False, "running"),
+    ])
+    def test_the_mark_follows_the_runtime_answers(
+        self, hub_and_sock, stopped, removed, status,
+    ):
+        hub, sock_path, ctx = hub_and_sock
+        _helper_tree(ctx.helpers_dir / "1")
+        resp = _connect_and_send(sock_path, {"action": "spawn", "helper_num": 1})
+        _running_state(ctx.helpers_dir / "1", resp["container_name"])
+        ctx.runtime.stop.return_value = stopped
+        ctx.runtime.rm.return_value = removed
+
+        hub.stop()
+
+        state = json.loads((ctx.helpers_dir / "1" / "state.json").read_text())
+        assert state["status"] == status
 
     def test_no_state_document_is_invented(self, hub_and_sock):
         hub, sock_path, ctx = hub_and_sock

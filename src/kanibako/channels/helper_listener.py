@@ -122,7 +122,11 @@ class HelperHub:
         self._shutdown.set()
 
         # Stop all tracked helper containers, and mark each one ``stopped`` in its state
-        # document: the container is gone, and ``respawn`` and ``list`` read that file.
+        # document, which ``respawn`` and ``list`` read.  ⚑ The mark follows what the
+        # runtime REPORTS, since ``stop``/``rm`` return a bool and do not raise: a stop
+        # that exits 0 means the container is not running (an already-exited one
+        # included), and an ``rm`` that exits 0 means it is gone.  When the runtime
+        # refuses both, the helper may still run, so its state is left as it was.
         if self._ctx:
             with self._containers_lock:
                 launched = {
@@ -133,11 +137,11 @@ class HelperHub:
                 }
                 for name in self._containers:
                     try:
-                        self._ctx.runtime.stop(name)
-                        self._ctx.runtime.rm(name)
+                        stopped = self._ctx.runtime.stop(name)
+                        removed = self._ctx.runtime.rm(name)
                     except Exception:
                         continue
-                    if name not in launched:
+                    if not (stopped or removed) or name not in launched:
                         continue
                     num, home = launched[name]
                     try:
