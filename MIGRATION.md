@@ -505,9 +505,9 @@ its own text it asks whether anything more specific is known about the file, whi
 there is. It asks only of the tables the file actually contributes: a block your settings drop
 before the merge (§0 directional enforcement, or a `pref:` outside a workset or box file) never
 supplies the message, because a cure for a line that was already doing nothing would send you to
-fix the wrong thing. One consequence is visible in the cure: the refusal happens before kanibako has settled
-which box it is looking at, so the verb's subject is always a `<box>` / `<workset>` placeholder.
-Fill it in from the file path the message prints.
+fix the wrong thing. Once the box is resolved (`start`), the cure names it as it resolves anywhere:
+`<workset>/<box>` for a named member, the root path for a standalone. Earlier (`box info`), it is a
+`<box>` / `<workset>` placeholder; use the file path.
 
 The cure is level-appropriate, with your own stored value interpolated so it is copy-pasteable.
 It names the verb that matches the file it found the key in, and always carries that verb's

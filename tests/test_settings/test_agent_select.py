@@ -749,8 +749,8 @@ class TestABlankExplicitRefIsGivenNotUnset:
 # DIRECTLY — that machinery is correct but was NOT WIRED: the production caller,
 # ``select_agent``, never passed ``box_ref``, so the user-visible cure line stayed
 # the bare form regardless. These three drive ``select_agent`` itself, so deleting
-# the ``box_ref=proj.name if level == "box" else None`` splice from its refusal
-# loop reddens them even though every test above stays green.
+# its ``box_ref=project_cure_ref(proj) if proj.name else None`` argument to
+# ``read_settings_files`` reddens them even though every test above stays green.
 
 
 class TestSelectAgentSeamBoxArgument:

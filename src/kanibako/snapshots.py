@@ -579,12 +579,15 @@ def relocate_snapshot_store(
 def restore_snapshot(
     vault_rw_path: Path, snapshot_name: str, *, box_name: str,
     store_exclusive: bool = False, held: Mapping[str, str] | None = None,
+    box_ref: str | None = None,
 ) -> Path | None:
     """Restore *vault_rw_path* from *snapshot_name* in *box_name*'s own store.
 
     * **A foreign snapshot is refused.** A timestamp that lives in another box's
       store raises :class:`ForeignSnapshotError` naming that box, instead of
-      replacing this box's vault with someone else's data.
+      replacing this box's vault with someone else's data.  Its ``vault list``
+      cure names *box_ref* (``paths.project_cure_ref``), a ``<box>`` placeholder
+      without one.
     * **The restore is undoable.** The live contents are snapshotted into this
       box's store FIRST, so the copy the swap displaces is never the only copy.
 
@@ -614,8 +617,8 @@ def restore_snapshot(
             )
             raise ForeignSnapshotError(
                 f"Snapshot '{snapshot_name}' belongs to '{owner}', not to box "
-                f"'{box_name}'. Snapshots are per-box -- run 'kanibako box vault "
-                f"list' to see '{box_name}'s own snapshots.{extra}"
+                f"'{box_name}'.{extra} Snapshots are per-box; list '{box_name}'s "
+                f"own with:\n  kanibako box vault list {box_ref or '<box>'}"
             )
         raise FileNotFoundError(f"Snapshot not found: {snapshot_name}")
 

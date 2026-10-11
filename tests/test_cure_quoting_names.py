@@ -1153,3 +1153,70 @@ def test_a_settings_read_back_cure_is_a_whole_pasteable_line(produce, argv):
     last = message.splitlines()[-1]
     assert last.startswith("  kanibako "), message
     assert shlex.split(last) == ["kanibako", *argv]
+
+
+# ---------------------------------------------------------------------------
+# A cure that names its box resolves from anywhere — the vault and purge doors.
+# ---------------------------------------------------------------------------
+
+_FOREIGN_TS = "20260101T000000Z"
+
+
+def test_the_foreign_snapshot_cure_lists_the_named_member_from_anywhere(
+        std, config, tmp_home, credentials_dir, monkeypatch, capsys):
+    """``box vault restore``'s foreign-snapshot cure lists ``wsx/bar``, not the cwd's box."""
+    from kanibako.commands.vault_cmd import run_restore
+    from kanibako.project.workset import add_project, create_workset
+    from kanibako.settings.paths import WorksetSpec, resolve_workset_project
+    from kanibako.snapshots import _versions_dir, create_snapshot
+
+    ws = create_workset("wsx", tmp_home / "worksets" / "wsx", std)
+    source = tmp_home / "wsx-src"
+    source.mkdir()
+    add_project(ws, "bar", source)
+    proj = resolve_workset_project(WorksetSpec.from_workset(ws), "bar", std, config,
+                                   initialize=True)
+    assert proj.vault_rw_path is not None
+    proj.vault_rw_path.mkdir(parents=True, exist_ok=True)
+    (proj.vault_rw_path / "f.txt").write_text("bar's")
+    own = create_snapshot(proj.vault_rw_path, box_name="bar")
+    assert own is not None
+    (_versions_dir(proj.vault_rw_path) / "other" / _FOREIGN_TS).mkdir(parents=True)
+
+    outside = tmp_home / "outside"
+    outside.mkdir()
+    monkeypatch.chdir(outside)
+    capsys.readouterr()
+    rc = run_restore(argparse.Namespace(project="wsx/bar", name=_FOREIGN_TS, force=True))
+    err = capsys.readouterr().err
+    assert rc == 1, err
+    cure = _line(err, "kanibako box vault list")
+    assert cure == "kanibako box vault list wsx/bar", err
+
+    listed = _printed(shlex.split(cure)[1:])
+    assert own.name in listed, listed
+
+
+@pytest.mark.parametrize("target", ["ghost", "{home}/my proj"])
+def test_the_unresolved_purge_stop_cure_names_its_box(target, std, config, tmp_home,
+                                                      tmp_path, monkeypatch, capsys):
+    """``_refuse_purge_while_live``'s stop cure carries the box it could not resolve.
+
+    The callers hand it a primary's NAME or a standalone's ROOT, both of which reach
+    the box from any cwd; a bare ``kanibako stop`` acts on the cwd's box instead.
+    """
+    from kanibako.commands.box import _parser as P
+
+    target = target.format(home=tmp_home)
+    md = tmp_path / "md"
+    md.mkdir()
+    monkeypatch.setattr(P, "_resolve_purge_probe_target",
+                        lambda *a, **k: (_ for _ in ()).throw(RuntimeError("nope")))
+    monkeypatch.setattr(P, "_check_container_running",
+                        lambda proj, fail_closed=True, container_name=None: (False, "down"))
+    capsys.readouterr()
+    assert P._refuse_purge_while_live(std, config, target, md, False, "Purging this box")
+    err = capsys.readouterr().err
+    found = re.search(r"Stop the box first: (kanibako stop .*?), or pass --force", err)
+    assert found, err
+    _assert_inert(found.group(1), ["stop", target], tmp_path)

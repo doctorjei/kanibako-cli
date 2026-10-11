@@ -2601,22 +2601,23 @@ def _refuse_purge_while_live(std, config, proj_target: str | None, metadata_dir:
     from kanibako.commands.box._lifecycle import abort_if_box_running
 
     proj = None
-    unresolved = False
+    unresolved: str | None = None  # the target that failed to resolve
     if container_name is None and proj_target is not None:
         try:
             proj = _resolve_purge_probe_target(std, config, proj_target)
         except Exception:  # noqa: BLE001 - see below
             proj = None
-            unresolved = True
+            unresolved = proj_target
     consequence = f"{what} would delete its vaults and canon while writes are in flight."
     if abort_if_box_running(proj, metadata_dir / ".kanibako.lock", force, consequence,
                             container_name=container_name):
         return True
     # ⚑ A resolver that FAILS must never mean "not running" -- no lock is not proof.
-    if unresolved and not (metadata_dir / ".kanibako.lock").exists():
+    if unresolved is not None and not (metadata_dir / ".kanibako.lock").exists():
         print(f"Warning: this box may be running: {proj_target} does not resolve, so its "
               f"container was never asked, and it holds no lock file to check. "
-              f"{consequence} Stop the box first (kanibako stop), or pass --force.",
+              f"{consequence} Stop the box first: kanibako stop {shlex.quote(unresolved)}, "
+              f"or pass --force.",
               file=sys.stderr)
         if force:
             return False

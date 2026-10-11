@@ -15,6 +15,7 @@ from kanibako.settings.agent_config import (
     agents_dir,
 )
 from kanibako.settings.agent_file import save as write_agent_config
+from kanibako.settings.paths import BoxMode
 from kanibako.settings.settings_launch import AuthSource
 
 # Auth 3-tier SHARING fixtures replacing the old ``effective_group_auth`` bool
@@ -1748,7 +1749,12 @@ class TestRunReauth:
             mock_target.return_value = target
 
             with patch("kanibako.settings.paths.resolve_box_target") as mock_proj:
+                # ⚑ The real ``select_agent`` builds a cure ref from these three, so a
+                # bare MagicMock (whose ``name`` is a MagicMock) cannot stand in.
                 proj = MagicMock()
+                proj.name = "reauth-box"
+                proj.mode = BoxMode.primary
+                proj.group = None
                 mock_proj.return_value = proj
 
                 rc = run_reauth(args)
