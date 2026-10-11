@@ -910,6 +910,32 @@ class TestRemap:
         assert asked == []
         assert self._tree_digest(tmp_home) == before
 
+    def test_remap_standalone_onto_a_dir_linking_another_root_passes_with_force(
+            self, env, capsys, monkeypatch):
+        """A link at the dest moves as a link, so a link to another box's root moves nothing
+        of that box (keyspace § 0 compares paths without substituting link targets): --force
+        remaps, and that root is untouched."""
+        from kanibako.project import registry_store
+
+        self._confirms(monkeypatch)
+        config, std, tmp_home = env
+        _std, _ext, solo, solo_name = self._member_and_registered_standalone(env)
+        other = _standalone(env, "other")
+        proj = resolve_standalone_project(std, config, project_dir=str(other))
+        registry_store.register_standalone(std.registry, proj.name, other)
+        dest = tmp_home / "Y"
+        dest.mkdir()
+        (dest / "tl").symlink_to(other)
+        (dest / "up").symlink_to(tmp_home)
+        before = self._tree_digest(other)
+
+        assert run_remap(_remap_args(str(solo), str(dest), force=True)) == 0, \
+            capsys.readouterr()
+        assert (dest / "workspace" / "tl").is_symlink()
+        assert (dest / "workspace" / "up").is_symlink()
+        assert self._tree_digest(other) == before
+        assert str(other) in registry_store.load_standalone(std.registry).values()
+
     def test_remap_standalone_onto_a_root_whose_workspace_holds_another_box_needs_force(
             self, env, capsys, monkeypatch):
         """A box under the root's `workspace/` does not move (the layout keeps that dir), so
@@ -1120,6 +1146,39 @@ class TestConvert:
         assert (pdir / "workset.yaml").is_file()
         assert (pdir / "box_data").is_dir()
         assert any(root == str(pdir) for root in load_standalone(std.registry).values())
+
+    @pytest.mark.parametrize("force", [False, True])
+    @pytest.mark.parametrize("held", ["primary", "standalone"])
+    def test_convert_to_standalone_inplace_holding_another_box_refused(self, env, capsys, held,
+                                                                        force):
+        """An in-place convert to standalone moves the workspace's entries into
+        `workspace/`: another box's workspace or root there would move and break that box,
+        so it is refused with or without --force, nothing moved."""
+        from kanibako.project import registry_store
+
+        config, std, tmp_home = env
+        pdir = _default(env, "C")
+        own = primary_box_name_for_workspace(
+            std.primary_workset, str(pdir), early=_early_scope(std, BoxMode.primary))
+        if held == "primary":
+            inner = _default(env, "C/inner")
+            name = primary_box_name_for_workspace(
+                std.primary_workset, str(inner), early=_early_scope(std, BoxMode.primary))
+            what = f"the workspace of box '{name}' ({inner})"
+        else:
+            inner = _standalone(env, "C/inner")
+            proj = resolve_standalone_project(std, config, project_dir=str(inner))
+            registry_store.register_standalone(std.registry, proj.name, inner)
+            what = f"the root of standalone box '{proj.name}' ({inner})"
+        before = TestRemap._tree_digest(tmp_home)
+
+        assert run_convert(_convert_args(pdir, to_standalone=True, force=force)) == 1
+        err = capsys.readouterr().err
+        assert (f"Cannot convert '{own}' to standalone in place: its workspace holds {what}. "
+                f"Converting would move it into {pdir / 'workspace'}/ and break that box, "
+                "so no flag overrides this.") in err
+        assert TestRemap._tree_digest(tmp_home) == before
+        assert not (pdir / "workspace").exists()
 
     def test_convert_to_default_inplace(self, env):
         config, std, tmp_home = env

@@ -971,52 +971,69 @@ def _remap_dest_holder(
     return None
 
 
-def _remap_sweeps_other_box(
-    state: ProjectState, dest: Path, std: StandardPaths, own_store: Path,
-    standalones: Mapping[str, Path],
-) -> str | None:
-    """Why laying the standalone layout at *dest* would move ANOTHER box's tree, else ``None``.
+def _sweep_moves_other_box(
+    root: Path, std: StandardPaths, standalones: Mapping[str, Path], *,
+    own_ref: str | None = None,
+) -> tuple[str, Path, Path] | None:
+    """What of ANOTHER box laying the standalone layout at *root* would move, else ``None``.
 
-    ``_to_standalone`` moves every entry at a root that is not its own store into the
-    workspace dir.  Another box's workspace, root, store, or workset root among them would
-    move and break that box: that is not a share (keyspace § 0, "each instance's destructive
-    verb removes only its own part"), so --force does not pass it.  *standalones* excludes
-    the source's own row.
+    Returns ``(what, path, workspace)``.  ``_to_standalone`` moves every entry at a root
+    that is not its own store into *workspace*.  Another box's workspace, root, store, or
+    workset root among them would move and break that box: that is not a share (keyspace
+    § 0, "each instance's destructive verb removes only its own part"), so --force does not
+    pass it.  *standalones* and *own_ref* (a registry owner) exclude the source's own rows.
+    ⚑ A swept symlink moves as a link (``_move_entry``), so it is compared by where it sits,
+    never by its target (§ 0); a box recorded THROUGH the link still moves.
     """
     from kanibako.launch import box_resolve
 
     early = _early_scope(std, BoxMode.standalone)
-    if _resolved_unless_loop(standalone_box_store(dest, early=early)) == own_store:
-        return None  # ``_to_standalone`` reuses its own root in place: nothing moves
     try:
         workspace = _resolve_standalone_workspaces(
-            dest, load_workset_settings_doc(dest), early=early)
-        swept, _kept = _consolidation_sweep(dest, workspace, early=early)
+            root, load_workset_settings_doc(root), early=early)
+        swept, _kept = _consolidation_sweep(root, workspace, early=early)
     except (KanibakoError, OSError):
         return None  # ``_to_standalone`` refuses that root before it moves anything
     if not swept:
         return None
     others = [(f"the workspace of box '{owner}'", Path(literal_path(str(path))))
               for owner, path in box_resolve.recorded_workspaces_under(
-                  std, dest, standalone=False)]
-    others += [(f"the root of standalone box '{name}'", root)
-               for name, root in standalones.items()]
+                  std, root, standalone=False)
+              if own_ref is None or not _same_box_name(owner, own_ref)]
+    others += [(f"the root of standalone box '{name}'", root_at)
+               for name, root_at in standalones.items()]
     others += [(f"the store of primary box '{name}'", std.boxes / name)
                for name in load_primary_boxes(
-                   std.primary_workset, early=_early_scope(std, BoxMode.primary))]
-    others += [(f"the root of workset '{name}'", root)
-               for name, root, _mode in box_resolve._enumerate_worksets(std)]
+                   std.primary_workset, early=_early_scope(std, BoxMode.primary))
+               if own_ref is None or not _same_box_name(name, own_ref)]
+    others += [(f"the root of workset '{name}'", root_at)
+               for name, root_at, _mode in box_resolve._enumerate_worksets(std)]
 
     def within(path: Path, entry: Path) -> bool:
-        return (path.is_relative_to(entry)
-                or _resolved_unless_loop(path).is_relative_to(_resolved_unless_loop(entry)))
+        sits = _resolved_unless_loop(entry.parent) / entry.name
+        return path.is_relative_to(entry) or _resolved_unless_loop(path).is_relative_to(sits)
 
     hit = next(((what, path) for what, path in others
                 if any(within(path, entry) for entry in swept)), None)
+    return None if hit is None else (hit[0], hit[1], workspace)
+
+
+def _remap_sweeps_other_box(
+    state: ProjectState, dest: Path, std: StandardPaths, own_store: Path,
+    standalones: Mapping[str, Path],
+) -> str | None:
+    """Why remapping standalone *state* onto *dest* would move ANOTHER box's tree, else ``None``.
+
+    :func:`_sweep_moves_other_box` judges it; *standalones* excludes the source's own row.
+    """
+    early = _early_scope(std, BoxMode.standalone)
+    if _resolved_unless_loop(standalone_box_store(dest, early=early)) == own_store:
+        return None  # ``_to_standalone`` reuses its own root in place: nothing moves
+    hit = _sweep_moves_other_box(dest, std, standalones)
     if hit is None:
         return None
     return (f"a directory holding {hit[0]} ({hit[1]}). Remapping standalone box "
-            f"'{state.name}' here would move it into {workspace}/ and break that box, "
+            f"'{state.name}' here would move it into {hit[2]}/ and break that box, "
             "so no flag overrides this. Choose another path.")
 
 
@@ -1286,6 +1303,21 @@ def _validate(
             and state.mode != BoxMode.standalone):
         refuse_null_workspaces(state.workspace_path, f"a workspace for '{new_name}'",
                                standalone=True, early=_early_scope(std, BoxMode.standalone))
+        from kanibako.project import registry_store
+
+        own_ref = (f"{state.ws.name}/{state.name}"
+                   if state.mode is BoxMode.named and state.ws else state.name)
+        swept = _sweep_moves_other_box(
+            state.workspace_path, std,
+            {name: Path(literal_path(root_str))
+             for name, root_str in registry_store.load_standalone(std.registry).items()},
+            own_ref=own_ref)
+        if swept is not None:
+            raise ProjectError(
+                f"Cannot convert '{state.name}' to standalone in place: its workspace "
+                f"holds {swept[0]} ({swept[1]}). Converting would move it into "
+                f"{swept[2]}/ and break that box, so no flag overrides this. Move it out "
+                "of this workspace first, or convert to another path.")
 
     # --- CWD-inside-<old> guard (move is copytree+rmtree, not rename) ---
     # ⚑ ``records_only`` exempt: ``remap`` removes nothing, so it cannot strand the shell.

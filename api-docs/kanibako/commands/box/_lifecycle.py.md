@@ -55,6 +55,7 @@ def _resolve_target_workset(name: str, std: StandardPaths) -> Workset
 def _cure_ref(state: ProjectState) -> str
 def _name_held_in_target_workset(target_mode: BoxMode | None, target_ws: Workset | None, state: ProjectState, new_name: str) -> str | None
 def _remap_dest_holder(state: ProjectState, dest: Path, std: StandardPaths) -> tuple[str, bool] | None
+def _sweep_moves_other_box(root: Path, std: StandardPaths, standalones: Mapping[str, Path], *, own_ref: str | None=None) -> tuple[str, Path, Path] | None
 def _remap_sweeps_other_box(state: ProjectState, dest: Path, std: StandardPaths, own_store: Path, standalones: Mapping[str, Path]) -> str | None
 def _validate(state: ProjectState, spec: TargetSpec, std: StandardPaths, config: BootstrapConfig, *, force: bool, cwd: Path) -> dict
 def _note_interrupt_undone(state: ProjectState, spec: TargetSpec) -> None

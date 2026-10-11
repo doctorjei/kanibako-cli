@@ -236,8 +236,9 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
             "Records-only relocation. Use this when you have ALREADY moved or\n"
             "renamed a project's directory and just need kanibako to catch up.\n"
             "Updates the recorded workspace path, hash, and markers. No workspace\n"
-            "file is moved, copied, or deleted, a previous workspace is left\n"
-            "where it is, and ownership never changes.\n"
+            "file is copied or deleted, a previous workspace is left where it is,\n"
+            "and ownership never changes. For a standalone box, <new> becomes its\n"
+            "root: the files already there move into its workspace directory.\n"
             "Inside a workset, <new> must be the box's own {workset.workspaces}/<name>;\n"
             "any other in-tree path is refused."
         ),
