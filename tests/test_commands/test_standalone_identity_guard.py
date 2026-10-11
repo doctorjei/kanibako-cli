@@ -158,7 +158,7 @@ class TestTheSecondSpellingIsRefused:
 
     def test_plain_rm_unregisters_the_second_spelling(self, twin):
         """CONTROL (the cure): ``rm`` without ``--purge`` drops ``b`` and deletes nothing,
-        and the parked entry cannot purge ``solo`` afterwards (the I4 guard)."""
+        and a purge by ``b``'s name cannot reach ``solo`` afterwards."""
         std, solo, _b, b_name = twin
         before = _digest(solo)
         assert _door("box", "rm", b_name) == 0
@@ -295,3 +295,92 @@ class TestCreateOverAnotherSpellingOfTheKuidFile:
             resolve_standalone_project(std, load_config(config_file), str(c), initialize=True)
 
         assert sorted(p.name for p in c.iterdir()) == ["workset.yaml"]
+
+
+class TestAPlainRmOfTheSecondSpellingParksNothing:
+    """The second spelling's files are ``solo``'s: there is nothing to restore or purge,
+    so no entry is parked and no register/purge advice is printed."""
+
+    @pytest.mark.parametrize("by", ["name", "path"])
+    def test_no_entry_and_no_advice(self, twin, capsys, by):
+        from kanibako.project import registry_store
+
+        std, solo, b, b_name = twin
+        before = _digest(solo)
+        assert _door("box", "rm", b_name if by == "name" else str(b)) == 0
+        out = capsys.readouterr().out
+
+        assert registry_store.lookup_deregistered(std.registry, b_name) is None
+        assert "kanibako box register" not in out and "--purge" not in out
+        assert "its files are standalone box '" in out and f"at {solo}" in out
+        assert _digest(solo) == before
+
+    def test_a_stale_entry_offers_only_the_register_that_drops_it(self, twin, capsys):
+        """An entry parked at ``solo``'s directory (an older kanibako) cannot be purged
+        (the I4 guard); the one printed route drops it."""
+        import shlex
+
+        from kanibako.project import registry_store
+
+        std, solo, b, b_name = twin
+        assert _door("box", "rm", b_name) == 0
+        registry_store.register_deregistered(
+            std.registry, b_name, kind="standalone", workspace=str(b), metadata=str(b))
+        capsys.readouterr()
+        assert _door("box", "rm", b_name) == 0
+        cures = [shlex.split(line) for line in capsys.readouterr().out.splitlines()
+                 if line.startswith("  kanibako ")]
+
+        assert cures == [["kanibako", "box", "register", b_name]]
+        assert _door(*cures[0][1:]) == 0
+        assert registry_store.lookup_deregistered(std.registry, b_name) is None
+
+    def test_a_stale_entry_at_an_unmarked_owner_names_the_marker_first(self, twin, capsys):
+        """``register`` checks the marker before the owner: with the marker gone it would
+        drop the entry and fail, so the advice restores the marker first."""
+        import shlex
+
+        from kanibako.project import registry_store
+
+        std, solo, b, b_name = twin
+        assert _door("box", "rm", b_name) == 0
+        registry_store.register_deregistered(
+            std.registry, b_name, kind="standalone", workspace=str(b), metadata=str(b))
+        marker = solo / "workset.yaml"
+        kept = marker.read_text()
+        marker.unlink()
+        capsys.readouterr()
+        assert _door("box", "rm", b_name) == 0
+        out = capsys.readouterr().out
+        cures = [shlex.split(line) for line in out.splitlines()
+                 if line.startswith("  kanibako ")]
+
+        owner = registry_store.standalone_name_for_same_dir(std.registry, solo)
+        assert (f"Its files are standalone box '{owner}', and {b / 'workset.yaml'} is missing; create "
+                "that file with the line 'registry: null' under 'workset:', then drop "
+                "this stale entry:") in out
+        assert cures == [["kanibako", "box", "register", b_name]]
+        marker.write_text(kept)
+        assert _door(*cures[0][1:]) == 0
+        assert registry_store.lookup_deregistered(std.registry, b_name) is None
+
+    def test_the_purge_note_does_not_offer_a_refused_purge(self, twin, capsys):
+        """A stale entry parked at a live box's root cannot be purged by name (I4), so
+        the purge's note points at ``rm <name>`` instead."""
+        from kanibako.project import registry_store
+
+        std, solo, _b, _b_name = twin
+        registry_store.register_deregistered(
+            std.registry, "stale", kind="standalone", workspace=str(solo),
+            metadata=str(solo))
+        assert _door("box", "rm", "stale", "--purge", "--force") == 1  # the I4 refusal
+        registry_store.register_deregistered(
+            std.registry, "stale", kind="standalone", workspace=str(solo),
+            metadata=str(solo))
+        capsys.readouterr()
+        assert _door("box", "rm", str(solo), "--purge", "--force") == 0
+        err = capsys.readouterr().err
+
+        assert "still parked at this path: 'stale' (standalone)." in err
+        assert "Purge one by name" not in err
+        assert "For the commands that restore or delete one: kanibako box rm <name>" in err

@@ -122,3 +122,94 @@ def test_the_printed_rm_cure_unregisters_it_and_keeps_its_files(unmarked, capsys
     assert name not in registry_store.load_standalone(std.registry)
     assert (root / "box_data").is_dir()
     assert (root / "vault").is_dir()
+
+
+def _printed_cures(text: str) -> "list[list[str]]":
+    """Every ``kanibako ...`` command line in *text*, split as a shell would."""
+    import shlex
+
+    return [shlex.split(line) for line in text.splitlines()
+            if line.startswith("  kanibako ")]
+
+
+_RESTORE = "Restore the box (first create that file with the line 'registry: null' under 'workset:') or delete it"
+
+
+@pytest.mark.parametrize("route", ["restore", "delete"])
+@pytest.mark.parametrize("second_rm", [False, True], ids=["at-rm", "re-rm-of-parked"])
+def test_a_plain_rm_names_the_marker_restore_and_each_route_works(
+        unmarked, capsys, second_rm, route):
+    """``register`` restores a box with no marker once the marker is back, so the advice
+    names that step first; the purge stays the delete route."""
+    root, name, std = unmarked
+    assert _cli("box", "rm", name) == 0
+    if second_rm:
+        capsys.readouterr()
+        assert _cli("box", "rm", name) == 0
+    out = capsys.readouterr().out
+
+    assert f"{root / 'workset.yaml'} is missing. {_RESTORE}:" in out
+    assert "cannot be restored" not in out
+    register, purge = _printed_cures(out)
+    assert register == ["kanibako", "box", "register", name]
+    assert purge == ["kanibako", "box", "rm", name, "--purge"]
+    if route == "restore":
+        (root / "workset.yaml").write_text("workset:\n  registry: null\n")
+        assert _cli(*register[1:]) == 0, capsys.readouterr().err
+        assert registry_store.standalone_root(std.registry, name) == str(root)
+        assert (root / "box_data").is_dir()
+    else:
+        assert _cli(*purge[1:], "--force") == 0, capsys.readouterr().err
+        assert not (root / "box_data").exists()
+    assert registry_store.lookup_deregistered(std.registry, name) is None
+
+
+def test_the_create_refusal_names_the_marker_restore(unmarked, capsys):
+    from kanibako.commands.box._parser import _assert_primary_home_free_for_create
+    from kanibako.errors import ProjectError
+
+    root, name, std = unmarked
+    assert _cli("box", "rm", name) == 0
+    with pytest.raises(ProjectError) as raised:
+        _assert_primary_home_free_for_create(std, name)
+
+    assert f"{root / 'workset.yaml'} is missing. {_RESTORE}, then retry:" in str(raised.value)
+    assert _printed_cures(str(raised.value)) == [
+        ["kanibako", "box", "register", name], ["kanibako", "box", "rm", name, "--purge"]]
+
+
+def test_a_marker_that_lost_its_line_is_named_as_such(unmarked, capsys):
+    """A ``workset.yaml`` that exists without the marker gets "add the line", not "create"."""
+    root, name, _std = unmarked
+    (root / "workset.yaml").write_text("workset: {}\n")
+    assert _cli("box", "rm", name) == 0
+
+    assert (f"{root / 'workset.yaml'} does not store the standalone marker. Restore the "
+            "box (first add the line 'registry: null' under 'workset:') or delete it:"
+            ) in capsys.readouterr().out
+
+
+def test_box_list_does_not_offer_the_register_that_fails(unmarked, capsys):
+    """The list's generic pair would offer ``register``; it points at ``rm <name>``."""
+    _root, name, _std = unmarked
+    assert _cli("box", "rm", name) == 0
+    capsys.readouterr()
+    assert _cli("box", "list") == 0
+    out = capsys.readouterr().out
+
+    assert "box register" not in out
+    assert "For the commands that restore or delete one: kanibako box rm <name>" in out
+
+
+def test_a_gone_directory_offers_only_the_purge_and_it_works(unmarked, capsys):
+    root, name, std = unmarked
+    assert _cli("box", "rm", name) == 0
+    root.rename(root.with_name("moved-away"))
+    capsys.readouterr()
+    assert _cli("box", "rm", name) == 0
+    out = capsys.readouterr().out
+
+    assert f"It cannot be restored: {root} is gone. Delete its entry:" in out
+    assert _printed_cures(out) == [["kanibako", "box", "rm", name, "--purge"]]
+    assert _cli("box", "rm", name, "--purge", "--force") == 0, capsys.readouterr().err
+    assert registry_store.lookup_deregistered(std.registry, name) is None

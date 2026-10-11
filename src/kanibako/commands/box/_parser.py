@@ -15,7 +15,7 @@ import os
 import shlex
 import shutil
 import sys
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Iterable, Sequence
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -607,13 +607,12 @@ def _assert_primary_home_free_for_create(std, name: str) -> None:
 
     # ⚑ ORDER: this refusal MUST precede the pending-create allow below — a STALE
     # create entry would FALSE-ALLOW a merge into a deregistered box's home.
-    if registry_store.lookup_deregistered(std.registry, name) is not None:
-        register_cure, purge_cure = _retained_box_cures(name)
+    parked = registry_store.lookup_deregistered(std.registry, name)
+    if parked is not None:
         raise ProjectError(
             f"a box named '{name}' already exists as a deregistered box "
-            f"(metadata retained by 'rm'). Recover it or delete it, then retry:\n"
-            f"  {register_cure}\n"
-            f"  {purge_cure}"
+            f"(metadata retained by 'rm'). "
+            + _retained_box_cure_lines(std, name, parked, then=", then retry")
         )
 
     # A half-create being recovered is the legitimate re-entry — never refuse it.
@@ -1981,10 +1980,13 @@ def run_list(args: argparse.Namespace) -> int:
                 entry = deregistered[box_name]
                 path = str(entry.get("workspace") or entry.get("metadata") or "")
                 print(f"  {box_name:<{dr_width}} {'deregistered':<14} {path}")
-            print(
-                "  Recover with 'kanibako box register <name>', or delete with "
-                "'kanibako box rm <name> --purge'."
-            )
+            if _pair_works_for_all(std, deregistered.items()):
+                print(
+                    "  Recover with 'kanibako box register <name>', or delete with "
+                    "'kanibako box rm <name> --purge'."
+                )
+            else:
+                print(f"  {_PARKED_CURE_POINTER}")
 
     if not any_output and not quiet:
         if active_only:
@@ -2431,7 +2433,7 @@ def _purge_deregistered(std, name: str, entry: dict, args: argparse.Namespace, *
 
     if not args.purge:
         print(f"'{name}' is already deregistered (metadata retained at {metadata}).")
-        print(_retained_box_cure_lines(name))
+        print(_retained_box_cure_lines(std, name, entry))
         return 0
 
     if kind == "standalone" and metadata:
@@ -2520,7 +2522,7 @@ def _purge_deregistered(std, name: str, entry: dict, args: argparse.Namespace, *
     elif Path(str(metadata)).exists():
         print(f"'{name}' stays deregistered (metadata retained at {metadata}).",
               file=sys.stderr)
-        print(_retained_box_cure_lines(name), file=sys.stderr)
+        print(_retained_box_cure_lines(std, name, entry), file=sys.stderr)
     else:
         # ⚑ The anchor went but a delete did not — never claim a gone path is retained.
         print(f"'{name}' stays deregistered: its metadata is already gone but a delete "
@@ -2715,7 +2717,15 @@ def _rm_standalone(std, box_name: str, root, args: argparse.Namespace, *,
                                   early=_early_scope(std, BoxMode.standalone))
         if purge_ok:
             return 0
-    if (registered and root_path is not None and metadata_dir is not None
+    holder = (registry_store.standalone_name_for_same_dir(std.registry, root_path)
+              if registered and root_path is not None else None)
+    if holder is not None:
+        # ⚑ Another spelling of a box that stays registered: its files are that box's,
+        # so a parked entry could neither be restored nor purged (I4).  Park nothing.
+        print(f"Nothing retained: its files are standalone box '{holder}' at "
+              f"{registry_store.standalone_root(std.registry, holder)}, which stays "
+              "registered.")
+    elif (registered and root_path is not None and metadata_dir is not None
             and metadata_dir.is_dir()):
         # Park a deregistered entry (no --purge, or a purge that left the metadata): the
         # index was dropped above, so BY NAME is the only way back to the metadata.
@@ -2729,7 +2739,8 @@ def _rm_standalone(std, box_name: str, root, args: argparse.Namespace, *,
             deregistered_at=datetime.now(tz=timezone.utc).isoformat(),
         )
         print(f"Deregistered '{box_name}' (metadata retained).")
-        print(_retained_box_cure_lines(box_name))
+        print(_retained_box_cure_lines(
+            std, box_name, {"kind": "standalone", "metadata": str(root_path)}))
     return 1 if args.purge else 0
 
 
@@ -2789,9 +2800,11 @@ def run_rm(args: argparse.Namespace) -> int:
                 if also:
                     listed = "; ".join(f"'{m[0]}' ({m[1].get('kind', 'unknown')})"
                                       for m in sorted(also, key=lambda m: m[0]))
+                    hint = ("Purge one by name: kanibako box rm <name> --purge"
+                            if _pair_works_for_all(std, also) else _PARKED_CURE_POINTER)
                     print(f"Note: '{sa_name}' owns {sa_root}, so only its own folders "
-                          f"are purged; still parked at this path: {listed}. Purge one "
-                          f"by name: kanibako box rm <name> --purge", file=sys.stderr)
+                          f"are purged; still parked at this path: {listed}. {hint}",
+                          file=sys.stderr)
             return _rm_standalone(std, sa_name, sa_root, args,
                               registered=sa_registered, config=config)
 
@@ -2868,7 +2881,7 @@ def run_rm(args: argparse.Namespace) -> int:
             deregistered_at=datetime.now(tz=timezone.utc).isoformat(),
         )
         print(f"Deregistered '{name}' (metadata retained).")
-        print(_retained_box_cure_lines(name))
+        print(_retained_box_cure_lines(std, name, {"kind": "primary"}))
     return 1 if args.purge else 0
 
 
@@ -2985,9 +2998,55 @@ def _retained_box_cures(target: str) -> "tuple[str, str]":
     return _box_register_cure(target), _box_rm_purge_cure(target)
 
 
-def _retained_box_cure_lines(target: str) -> str:
+def _retained_box_advice(std, target: str, entry: dict) -> "tuple[str, tuple[str, ...]]":
+    """The sentence and commands for parked *entry*: only the routes that work for IT.
+
+    A standalone whose ``workset.yaml`` lacks the marker is restored once the marker
+    is back (``register`` before that drops the entry).  Its purge is refused (I4) while
+    an active box holds its directory, and ``register`` then only drops the entry.
+    """
+    from kanibako.launch.box_resolve import (
+        standalone_marker_repair,
+        stores_standalone_registry_null,
+    )
+    from kanibako.project import registry_store
+
     register_cure, purge_cure = _retained_box_cures(target)
-    return f"Restore it or delete it:\n  {register_cure}\n  {purge_cure}"
+    metadata = entry.get("metadata")
+    if entry.get("kind") != "standalone" or not metadata:
+        return _GENERIC_PARKED_SENTENCE, (register_cure, purge_cure)
+    root = Path(str(metadata))
+    if not root.is_dir():
+        return f"It cannot be restored: {root} is gone. Delete its entry", (purge_cure,)
+    owner = registry_store.standalone_name_for_same_dir(std.registry, root)
+    if stores_standalone_registry_null(root):
+        if owner is None:
+            return _GENERIC_PARKED_SENTENCE, (register_cure, purge_cure)
+        return (f"Its files are standalone box '{owner}'; drop this stale entry",
+                (register_cure,))
+    fault, cure = standalone_marker_repair(root)
+    marker = f"{root / WORKSET_META_FILE} {fault}"
+    if owner is None:
+        return (f"{marker}. Restore the box (first {cure}) or delete it",
+                (register_cure, purge_cure))
+    return (f"Its files are standalone box '{owner}', and {marker}; {cure}, then drop "
+            "this stale entry", (register_cure,))
+
+
+_GENERIC_PARKED_SENTENCE = "Restore it or delete it"
+_PARKED_CURE_POINTER = "For the commands that restore or delete one: kanibako box rm <name>"
+
+
+def _pair_works_for_all(std, entries: Iterable[tuple[str, dict]]) -> bool:
+    """Whether generic register/purge advice holds for every parked ``(name, entry)``."""
+    return all(_retained_box_advice(std, n, e)[0] == _GENERIC_PARKED_SENTENCE
+               for n, e in entries)
+
+
+def _retained_box_cure_lines(std, target: str, entry: dict, *, then: str = "") -> str:
+    """:func:`_retained_box_advice` as printed: the sentence (+ *then*), one command per line."""
+    sentence, cures = _retained_box_advice(std, target, entry)
+    return f"{sentence}{then}:" + "".join(f"\n  {cure}" for cure in cures)
 
 
 def run_register(args: argparse.Namespace) -> int:

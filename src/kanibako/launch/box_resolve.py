@@ -73,17 +73,26 @@ def standalone_marker_error(root: Path, name: str) -> str | None:
         load_doc(marker_file)
     except ConfigError:
         return None
-    if marker_file.exists():
-        fault, cure = "does not store the standalone marker", "add the line"
-    else:
-        fault, cure = "is missing", "create that file with the line"
+    fault, cure = standalone_marker_repair(root)
     return (
         f"box '{name}' is registered as a standalone box at {root}, but "
         f"{marker_file} {fault}, so kanibako does not see a box there.\n"
-        f"  Restore it: {cure} 'registry: null' under 'workset:'. "
+        f"  Restore it: {cure}. "
         f"Or unregister it, keeping its files:\n"
         f"  kanibako box rm {shlex.quote(name)}"
     )
+
+
+def standalone_marker_repair(root: Path) -> tuple[str, str]:
+    """``(fault, cure)`` for *root*'s ``workset.yaml``, which lacks the standalone marker.
+
+    *fault* follows the file's path ("is missing"); *cure* is the edit that restores it.
+    """
+    if (root / WORKSET_META_FILE).exists():
+        fault, cure = "does not store the standalone marker", "add the line"
+    else:
+        fault, cure = "is missing", "create that file with the line"
+    return fault, f"{cure} 'registry: null' under 'workset:'"
 
 
 def registered_standalone_marker_error(root: Path, std: StandardPaths) -> str | None:

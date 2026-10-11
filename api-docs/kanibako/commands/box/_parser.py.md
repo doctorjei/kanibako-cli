@@ -20,6 +20,8 @@ _GITIGNORE = 'gitignore line'
 _EMPTY_CANON = 'default canon folder'
 _CREDS_LOCK = 'creds watcher lock'
 _VAULT_LABELS = ('vault ro (your files)', 'vault rw (your files)')
+_GENERIC_PARKED_SENTENCE = 'Restore it or delete it'
+_PARKED_CURE_POINTER = 'For the commands that restore or delete one: kanibako box rm <name>'
 ```
 
 ## Functions
@@ -75,7 +77,9 @@ def _readopt_deregistered(std, name: str, entry: dict) -> int
 def _box_register_cure(target: str) -> str
 def _box_rm_purge_cure(target: str) -> str
 def _retained_box_cures(target: str) -> 'tuple[str, str]'
-def _retained_box_cure_lines(target: str) -> str
+def _retained_box_advice(std, target: str, entry: dict) -> 'tuple[str, tuple[str, ...]]'
+def _pair_works_for_all(std, entries: Iterable[tuple[str, dict]]) -> bool
+def _retained_box_cure_lines(std, target: str, entry: dict, *, then: str='') -> str
 def _format_credential_age(creds_path: Path) -> str
 def _check_container_running(proj, *, fail_closed: bool=False, container_name: str | None=None) -> tuple[bool, str]
 def _resolve_config_subject(std, config, project_dir: str | None)
