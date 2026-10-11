@@ -810,18 +810,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `workset disconnect --remove-files` stopped with a traceback when a box's log file could not be deleted.
   They now print `Warning: could not remove the log <path>: <reason> — left in place.` and go on. `box purge`
   then keeps the box's metadata, parks the box, and exits 1.
-- **`box remap` onto another standalone box's root is refused.** It recorded the remapped box there and
-  silently dropped the standalone box's registry row, or, for a standalone source, left two boxes at one root.
-  It now refuses before writing anything, with or without `--force`, names the other box, and prints the
-  cure: delete that box's own data with `box rm --purge`, which keeps its workspace. A standalone box
-  remapped onto its own root is unaffected.
-- **`box remap` onto another box's workspace is refused before anything is written.** Onto a primary
-  box's workspace it succeeded and recorded two boxes at one path; it is now refused with or without
-  `--force`, with the same cure. Onto another workset member's external directory it was refused only
-  after the prompt and a rolled-back release; it is now refused up front, naming the member and the
-  `workset disconnect` cure. Inside another box's tree (a primary box's workspace, or a standalone box's
-  root, such as its `workspace/`), it now needs `--force` to share that tree; inside a standalone box's
-  store (`box_data`) it is refused, with or without `--force`.
+- **`box remap` onto another box's workspace or standalone root is refused before anything is written.**
+  Onto a primary box's workspace, a workset member's, or a standalone box's `workspace/`, it recorded two
+  boxes at one path; onto another standalone box's root it dropped that box's registry row, or, for a
+  standalone source, left two boxes at one root; onto a member's external directory it was refused only after
+  the prompt and a rolled-back release. Each is now refused up front, with or without `--force`, naming the
+  other box and the cure: `box rm --purge` (which keeps that box's workspace) or `workset disconnect`. A
+  standalone root counts directly, through a link, or with its `workset.yaml` gone. A standalone box is
+  checked by the workspace its new root records. A standalone box remapped onto its own root is unaffected.
+- **`box remap` into, or above, another box's tree needs `--force`.** A path inside another box's
+  workspace, standalone root, or store (a primary box's store, the remapped box's own included, or a
+  standalone box's `box_data`, directly or through a link), or a directory holding another box's workspace
+  or standalone root, is refused and names that box. `--force` records the path and keeps both boxes.
+- **A standalone box cannot be remapped into itself.** Into its own root (its `workspace/` included) it was
+  re-rooted inside itself. That, and a remap into its own store, are refused with or without `--force`.
 - **`box remap` records the path as given, not its symlink target.** A remap onto a link to another
   box's workspace now records the link: the two are twins that share content, and both keep their rows.
   A link to another standalone box's root or store is still refused, since those hold the box's own data.
