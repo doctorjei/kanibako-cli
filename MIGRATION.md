@@ -1234,9 +1234,10 @@ value that DIFFERS is now, by definition, a deliberate user override: keep it if
   reader carries no `env`.)
 - Deleting a value from the store now simply stops it resolving on the next launch.
 - **A refused model can warn instead of block.** When the endpoint accepts the token on a request
-  that names no model but refuses the model request, and the persona's model is a claude tier alias
-  (`sonnet`, `opus`), `start` warns and launches: the box may map that alias to an id the probe
-  could not send. A full model id, and every codex persona, still blocks on the refusal.
+  that names no model but refuses the model request, `start` warns and launches if the probe could
+  not send the box's own model id: the persona names no model (the box sends its default), or a
+  claude tier alias (`sonnet`, `opus`) the box may map to another id. A full model id, and any
+  codex model, still blocks on the refusal.
 
 ### 2.16 A generated agent settings file no longer carries a model default
 

@@ -394,9 +394,11 @@ class ClaudeTarget(Target):
         each with its own *timeout*, bearer-authed with the token at *token_path*
         when one is configured — the same delivery shape the box uses
         (``ANTHROPIC_AUTH_TOKEN`` → ``Authorization: Bearer``).  The verdict is
-        :func:`~kanibako.targets.base.access_outcome`'s; ``model_exact`` is False
-        for a tier alias, resolved or not, since a rung above the store can map it
-        to another id in the box.
+        :func:`~kanibako.targets.base.access_outcome`'s; ``model_exact`` is True only
+        for a full model id.  It is False for a tier alias, resolved or not, since a
+        rung above the store can map it to another id in the box, and False with no
+        model, since the box then rides the harness default, which the probe cannot
+        send.
 
         ⚑ **A PRESENT-null *token_path* (2026-08-17 ruling) is still PROBED,
         with the ``Authorization`` header OMITTED** — a persona whose
@@ -410,9 +412,11 @@ class ClaudeTarget(Target):
         key OMITTED from the body** — claude declares ``model_required: false``
         and a third-party ``ANTHROPIC_BASE_URL`` endpoint may serve exactly one
         model or apply its own.  Declining to probe would let a DEAD token reach
-        the box, which is the one thing this gate is for; the answer is read
-        through :func:`~kanibako.targets.base.probe_outcome_no_model` so a
-        "model required" reply is silent rather than a permanent warning.
+        the box, which is the one thing this gate is for.  A "model required"
+        reply then passes if the model-free request verified the credential, warns
+        if that request was refused, and is otherwise NOT_APPLICABLE rather than a
+        permanent warning; a refusal warns if the model-free request verified the
+        credential.
         ⚑ NEVER substitute a placeholder/default/guessed model id to make the
         call go through: a server with a hardwired model can REJECT an id it
         does not serve, and a false ``REJECTED`` is a hard error that would
@@ -477,7 +481,7 @@ class ClaudeTarget(Target):
         )
         return access_outcome(
             AccessReport(general, access),
-            model_exact=not (model and _is_tier_alias(model.strip())),
+            model_exact=bool(wire_model) and not _is_tier_alias((model or "").strip()),
         )
 
     def invalidate_credentials(self, home: Path) -> None:

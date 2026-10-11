@@ -1083,13 +1083,16 @@ class TestVerifyPersonaTwoAxes:
     @pytest.mark.parametrize(("target_cls", "model", "exact"), [
         (ClaudeTarget, "sonnet", False),
         (ClaudeTarget, "claude-sonnet-4-5", True),
-        (ClaudeTarget, None, True),
+        (ClaudeTarget, None, False),
+        (ClaudeTarget, "", False),
         (CodexTarget, "sonnet", True),
         (CodexTarget, "gpt-5", True),
-        (CodexTarget, None, True),
+        (CodexTarget, None, False),
+        (CodexTarget, "", False),
     ])
     def test_model_exact(self, token_file, monkeypatch, target_cls, model, exact):
-        """``model_exact`` is False only for a claude tier alias — even a resolved one."""
+        """``model_exact`` is True only when the probe sent the box's own id: never with
+        no model, and never for a claude tier alias — even a resolved one."""
         import importlib
 
         module = importlib.import_module(target_cls.__module__)
@@ -1110,6 +1113,20 @@ class TestVerifyPersonaTwoAxes:
         finally:
             server.close()
         assert seen == [exact]
+
+    @pytest.mark.parametrize("target_cls", [ClaudeTarget, CodexTarget])
+    def test_a_verified_key_refused_with_no_model_warns(self, token_file, target_cls):
+        """Row 10: with no model the box sends a default the probe cannot send, so it warns."""
+        server = _ProbeServer(script=_VERIFIED_THEN_REFUSED)
+        try:
+            outcome = _probe(target_cls(), server, token_file, model=None)
+        finally:
+            server.close()
+        assert outcome.access.general.state is GeneralAccess.VERIFIED
+        assert outcome.access.model.state is ModelAccess.DENIED
+        assert outcome.verdict is PersonaProbeVerdict.INCONCLUSIVE
+        assert "refused a request that named no model with HTTP 403" in outcome.reason
+        assert "model" not in json.loads(server.log[-1][4])
 
     def test_a_verified_key_refused_for_a_real_claude_id_still_refuses(self, token_file):
         """H1 = C keeps the refusal where the probe sent exactly what the box sends."""

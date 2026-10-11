@@ -513,8 +513,9 @@ class CodexTarget(Target):
         credential).  The MODEL axis is a genuine few-token completion on the
         RESPONSES wire — the only wire current codex speaks (``wire_api =
         "responses"``).  Both always run, each with its own *timeout*.  The verdict
-        is :func:`~kanibako.targets.base.access_outcome`'s, with ``model_exact``
-        always True: codex sends its configured id verbatim.
+        is :func:`~kanibako.targets.base.access_outcome`'s, with ``model_exact`` True
+        exactly when the persona names a model: codex sends that id verbatim, and
+        with none the box sends its catalog default, which the probe cannot send.
 
         ⚑ *endpoint* is the provider ``base_url``, which by codex's convention
         ALREADY carries the ``/v1``-style prefix this appends ``/models`` and
@@ -527,9 +528,10 @@ class CodexTarget(Target):
         ⚑ **A persona that names no *model* is still PROBED, with the ``model``
         key OMITTED from the body** — an endpoint may serve exactly one model or
         apply its own, and declining to probe would let a DEAD token reach the
-        box.  The answer is read through
-        :func:`~kanibako.targets.base.probe_outcome_no_model` so a "model
-        required" reply is silent rather than a permanent warning.
+        box.  A "model required" reply then passes if the model-free request
+        verified the credential, warns if that request was refused, and is
+        otherwise NOT_APPLICABLE rather than a permanent warning; a refusal warns
+        if the model-free request verified the credential.
 
         ⚑ NEVER substitute a placeholder credential or model id to make either
         call go through: a hardwired-auth or hardwired-model server can REJECT one
@@ -584,7 +586,7 @@ class CodexTarget(Target):
             sent=sent,
             timeout=timeout,
         )
-        return access_outcome(AccessReport(general, access), model_exact=True)
+        return access_outcome(AccessReport(general, access), model_exact=bool(model))
 
     def generate_agent_config(self) -> AgentConfig:
         """Return default Codex agent configuration.
