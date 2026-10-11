@@ -19,6 +19,7 @@ _UNREADABLE = '(withheld — the reply could not be decoded, so it could not be 
 _REFUSAL_STATUSES = (401, 403)
 _SCHEME = re.compile('[A-Za-z][A-Za-z0-9+.-]*')
 _MODEL_REQUIRED_STATUSES = (400, 422)
+_GENERAL_NOTE: dict[GeneralAccess | ModelAccess, str] = {GeneralAccess.VERIFIED: 'the model-free check verified the credential', GeneralAccess.OPEN: 'the model-free check was answered without a credential', GeneralAccess.UNTESTED: 'the model-free check was answered with the credential and not decided without it'}
 ```
 
 ## Types
@@ -31,9 +32,12 @@ CategoryBindDefaults = dict[str, BindArm]
 ## Functions
 ```
 def descriptor_floor(descriptors: Iterable[TargetSetting], *, plugin: str='') -> dict[str, str | None]
-def http_probe(url: str, *, headers: dict[str, str], body: dict, timeout: float) -> ProbeResponse
+def http_probe(url: str, *, headers: dict[str, str], body: dict | None=None, timeout: float) -> ProbeResponse
 def probe_outcome(response: ProbeResponse, sent: ProbeEvidence) -> PersonaProbeOutcome
 def probe_outcome_no_model(response: ProbeResponse, sent: ProbeEvidence) -> PersonaProbeOutcome
+def probe_general_access(list_url: str, *, headers: dict[str, str], credential: tuple[str, str] | None, sent: ProbeEvidence, timeout: float) -> AxisResult
+def probe_model_access(url: str, *, headers: dict[str, str], body: dict, sent: ProbeEvidence, timeout: float) -> AxisResult
+def access_outcome(report: AccessReport, *, model_exact: bool) -> PersonaProbeOutcome
 def has_plugin(target: Target | None) -> bool
 def _request_secrets(headers: Mapping[str, str]) -> tuple[str, ...]
 def _scrub(text: str, secrets: tuple[str, ...]) -> str
@@ -44,6 +48,7 @@ def _survives(text: str, secrets: tuple[str, ...]) -> bool
 def _provider_text(raw: bytes, headers: Mapping[str, str]) -> str
 def _tilde(path: Path) -> str
 def _scrub_endpoint_userinfo(endpoint: str) -> str
+def _request_line(method: str, url: str) -> str
 def _validate_agent_binary(binary: Path) -> str | None
 ```
 
@@ -163,14 +168,44 @@ class ProbeEvidence:
     token_path: Path | None = None
     status: int | None = None
     provider_text: str = ''
+    request: str = ''
 
     def lines(self, indent: str='  ', *, resolved_from: str='') -> tuple[str, ...]
     def block(self, indent: str='  ', *, resolved_from: str='') -> str
+
+class GeneralAccess(Enum):
+    VERIFIED = 'verified'
+    OPEN = 'open'
+    UNTESTED = 'untested'
+    DENIED = 'denied'
+    NO_ANSWER = 'no_answer'
+
+class ModelAccess(Enum):
+    OK = 'ok'
+    DENIED = 'denied'
+    MODEL_REQUIRED = 'model_required'
+    AMBIGUOUS = 'ambiguous'
+    UNREACHABLE = 'unreachable'
+
+@dataclass(frozen=True)
+class AxisResult:
+    state: GeneralAccess | ModelAccess
+    evidence: ProbeEvidence
+    control_status: int | None = None
+
+@dataclass(frozen=True)
+class AccessReport:
+    general: AxisResult
+    model: AxisResult
+
+    @property
+    def control_status(self) -> int | None
 
 class PersonaProbeOutcome(NamedTuple):
     verdict: PersonaProbeVerdict
     reason: str | None = None
     evidence: 'ProbeEvidence | None' = None
+    access: AccessReport | None = None
 
     @classmethod
     def passed(cls) -> 'PersonaProbeOutcome'

@@ -316,9 +316,22 @@ class _ProbeServer:
 
     Records the last request (path, auth header, JSON body) and answers with a
     scripted status — or hangs (timeout case).  Runs on 127.0.0.1:<ephemeral>.
+
+    GET and POST are both served.  *log* records every request as
+    ``(method, path, Authorization or None, Content-Type or None, raw body)``.
+    *script* overrides *status* per ``(method, has_credential)``; *hangs* overrides
+    *hang* per method.
     """
 
-    def __init__(self, status: int = 200, hang: float = 0.0, body: bytes = b"{}"):
+    def __init__(
+        self,
+        status: int = 200,
+        hang: float = 0.0,
+        body: bytes = b"{}",
+        *,
+        script: dict[tuple[str, bool], int] | None = None,
+        hangs: dict[str, float] | None = None,
+    ):
         import json
         import threading
         from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -327,30 +340,45 @@ class _ProbeServer:
         self.status = status
         self.hang = hang
         self.body = body
+        self.script = dict(script or {})
+        self.hangs = dict(hangs or {})
+        self.log: list[tuple[str, str, str | None, str | None, bytes]] = []
         self.last_path: str | None = None
         self.last_auth: str | None = None
         self.last_version: str | None = None
         self.last_body: dict | None = None
 
         class _Handler(BaseHTTPRequestHandler):
-            def do_POST(self):  # noqa: N802 (http.server API name)
+            def _answer(self, method: str) -> None:
                 import time
 
                 length = int(self.headers.get("Content-Length", 0))
-                raw = self.rfile.read(length)
+                raw = self.rfile.read(length) if length else b""
+                auth = self.headers.get("Authorization")
+                outer.log.append(
+                    (method, self.path, auth, self.headers.get("Content-Type"), raw),
+                )
                 outer.last_path = self.path
-                outer.last_auth = self.headers.get("Authorization")
+                outer.last_auth = auth
                 outer.last_version = self.headers.get("anthropic-version")
                 try:
                     outer.last_body = json.loads(raw)
                 except ValueError:
                     outer.last_body = None
-                if outer.hang:
-                    time.sleep(outer.hang)
-                self.send_response(outer.status)
+                hang = outer.hangs.get(method, outer.hang)
+                if hang:
+                    time.sleep(hang)
+                status = outer.script.get((method, auth is not None), outer.status)
+                self.send_response(status)
                 self.send_header("Content-Length", str(len(outer.body)))
                 self.end_headers()
                 self.wfile.write(outer.body)
+
+            def do_POST(self):  # noqa: N802 (http.server API name)
+                self._answer("POST")
+
+            def do_GET(self):  # noqa: N802 (http.server API name)
+                self._answer("GET")
 
             def log_message(self, *args):  # silence test output
                 pass

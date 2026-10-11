@@ -435,10 +435,13 @@ def http_probe(
     url: str,
     *,
     headers: dict[str, str],
-    body: dict,
+    body: dict | None = None,
     timeout: float,
 ) -> ProbeResponse:
-    """POST *body* as JSON to *url*; return the HTTP status and the provider's error text.
+    """POST *body* as JSON to *url* — or GET *url* when *body* is `None`; return the HTTP
+    status and the provider's error text.
+
+    ⚑ A GET carries no body and no `Content-Type`; everything below holds for both methods.
 
     ⚑ NEVER raises, and never logs the request: *headers* carry credentials.
     ⚑ The returned text is scrubbed of EVERY caller-supplied header value, not just
@@ -457,12 +460,13 @@ def http_probe(
         def redirect_request(self, req, fp, code, msg, headers, newurl):  # type: ignore[override]
             return None
 
-    data = _json.dumps(body).encode("utf-8")
+    data = None if body is None else _json.dumps(body).encode("utf-8")
     try:
-        req = urllib.request.Request(url, data=data, method="POST")
+        req = urllib.request.Request(url, data=data, method="GET" if data is None else "POST")
         for key, value in headers.items():
             req.add_header(key, value)
-        req.add_header("Content-Type", "application/json")
+        if data is not None:
+            req.add_header("Content-Type", "application/json")
         opener = urllib.request.build_opener(_NoRedirects)
         with opener.open(req, timeout=timeout) as resp:  # noqa: S310
             return ProbeResponse(int(resp.status))
@@ -566,6 +570,7 @@ class ProbeEvidence:
     token_path: Path | None = None  # None = a KEYLESS probe (no credential header at all)
     status: int | None = None       # None = the endpoint was never reached
     provider_text: str = ""
+    request: str = ""               # method and path, e.g. "GET /v1/models"; "" = not recorded
 
     def lines(self, indent: str = "  ", *, resolved_from: str = "") -> tuple[str, ...]:
         """The evidence block: one labeled line per input, then the provider's own words.
@@ -637,6 +642,52 @@ class ProbeEvidence:
         return "\n".join(self.lines(indent, resolved_from=resolved_from))
 
 
+class GeneralAccess(Enum):
+    """What the model-free request (a GET of the model list) showed about access."""
+
+    VERIFIED = "verified"    # 2xx with the credential, 401/403 without it: the one proof of a key
+    OPEN = "open"            # 2xx with no credential: the list is public, so it tests no key
+    UNTESTED = "untested"    # 2xx with the credential; the request without it did not decide
+    DENIED = "denied"        # 401/403 on the first request
+    NO_ANSWER = "no_answer"  # first request unreachable, or any other status (3xx, 404, 5xx…)
+
+
+class ModelAccess(Enum):
+    """What the model request (today's completion probe) showed."""
+
+    OK = "ok"                          # 2xx
+    DENIED = "denied"                  # 401/403
+    MODEL_REQUIRED = "model_required"  # 400/422 to a request that OMITTED the model
+    AMBIGUOUS = "ambiguous"            # any other status
+    UNREACHABLE = "unreachable"        # no status
+
+
+@dataclass(frozen=True)
+class AxisResult:
+    """One axis of a persona probe: its state and the evidence of the request that decided it.
+
+    *control_status* is the general axis's request WITHOUT the credential: `None` when it was
+    not sent or not answered.  Always `None` on the model axis.
+    """
+
+    state: GeneralAccess | ModelAccess
+    evidence: ProbeEvidence
+    control_status: int | None = None
+
+
+@dataclass(frozen=True)
+class AccessReport:
+    """Both axes of a persona probe — the input `access_outcome` decides from."""
+
+    general: AxisResult
+    model: AxisResult
+
+    @property
+    def control_status(self) -> int | None:
+        """The status of the general axis's request without the credential."""
+        return self.general.control_status
+
+
 class PersonaProbeOutcome(NamedTuple):
     """The result of `Target.verify_persona`: a verdict, a named cause, and its evidence."""
 
@@ -644,6 +695,8 @@ class PersonaProbeOutcome(NamedTuple):
     reason: str | None = None   # set for the two non-answer arms; interpolates into a sentence
     # ⚑ REQUIRED for a REJECTED — `rejected` takes it POSITIONALLY (llm-doc).
     evidence: "ProbeEvidence | None" = None
+    # Both axes, when the verdict came from `access_outcome`; `None` for a one-request probe.
+    access: AccessReport | None = None
 
     @classmethod
     def passed(cls) -> "PersonaProbeOutcome":
@@ -748,6 +801,154 @@ def probe_outcome_no_model(
             f"the persona names none"
         )
     return probe_outcome(response, sent)
+
+
+def _request_line(method: str, url: str) -> str:
+    """`ProbeEvidence.request` for *url*: the method and the path, never the host or query."""
+    from urllib.parse import urlsplit
+
+    return f"{method} {urlsplit(url).path or '/'}"
+
+
+def probe_general_access(
+    list_url: str,
+    *,
+    headers: dict[str, str],
+    credential: tuple[str, str] | None,
+    sent: ProbeEvidence,
+    timeout: float,
+) -> AxisResult:
+    """The general axis: GET *list_url*, a request that names no model.
+
+    With a *credential* (header name, value): a GET carrying it, then — only if that
+    answered 2xx — the CONTROL GET without it.  Without one: a single bare GET.  The two
+    GETs share ONE budget of *timeout*.  *headers* must not carry the credential; any
+    header named like it is dropped from the control request.
+    *sent* is the request half of the evidence; the evidence returned describes the FIRST
+    GET, with no model (none was sent).
+    ⚑ Never raises (`http_probe`).  No reply body decides anything; only statuses do.
+    """
+    import time
+
+    deadline = time.monotonic() + timeout
+    first_headers = dict(headers)
+    if credential is not None:
+        first_headers[credential[0]] = credential[1]
+    first = http_probe(list_url, headers=first_headers, timeout=timeout)
+    evidence = replace(
+        sent, model=None, model_origin="", status=first.status,
+        provider_text=first.body, request=_request_line("GET", list_url),
+    )
+    if first.status is None:
+        return AxisResult(GeneralAccess.NO_ANSWER, evidence)
+    if first.status in _REFUSAL_STATUSES:
+        return AxisResult(GeneralAccess.DENIED, evidence)
+    if not 200 <= first.status < 300:
+        return AxisResult(GeneralAccess.NO_ANSWER, evidence)
+    if credential is None:
+        return AxisResult(GeneralAccess.OPEN, evidence)
+    remaining = deadline - time.monotonic()
+    if remaining <= 0:
+        return AxisResult(GeneralAccess.UNTESTED, evidence)
+    name = credential[0].lower()
+    bare = {key: value for key, value in headers.items() if key.lower() != name}
+    control = http_probe(list_url, headers=bare, timeout=remaining).status
+    if control in _REFUSAL_STATUSES:
+        state = GeneralAccess.VERIFIED
+    elif control is not None and 200 <= control < 300:
+        state = GeneralAccess.OPEN
+    else:
+        state = GeneralAccess.UNTESTED
+    return AxisResult(state, evidence, control)
+
+
+def probe_model_access(
+    url: str,
+    *,
+    headers: dict[str, str],
+    body: dict,
+    sent: ProbeEvidence,
+    timeout: float,
+) -> AxisResult:
+    """The model axis: POST *body* to *url* — today's completion probe, unchanged in shape.
+
+    The model counts as OMITTED when *sent* names none (`sent.model` empty), and only
+    then can a 400/422 read as `MODEL_REQUIRED`.  ⚑ Never raises (`http_probe`).
+    """
+    response = http_probe(url, headers=headers, body=body, timeout=timeout)
+    evidence = replace(
+        sent, status=response.status, provider_text=response.body,
+        request=_request_line("POST", url),
+    )
+    status = response.status
+    if status is None:
+        state = ModelAccess.UNREACHABLE
+    elif 200 <= status < 300:
+        state = ModelAccess.OK
+    elif status in _REFUSAL_STATUSES:
+        state = ModelAccess.DENIED
+    elif not sent.model and status in _MODEL_REQUIRED_STATUSES:
+        state = ModelAccess.MODEL_REQUIRED
+    else:
+        state = ModelAccess.AMBIGUOUS
+    return AxisResult(state, evidence)
+
+
+#: How an INCONCLUSIVE reason names the general axis's result.
+_GENERAL_NOTE: dict[GeneralAccess | ModelAccess, str] = {
+    GeneralAccess.VERIFIED: "the model-free check verified the credential",
+    GeneralAccess.OPEN: "the model-free check was answered without a credential",
+    GeneralAccess.UNTESTED: (
+        "the model-free check was answered with the credential and not decided without it"
+    ),
+}
+
+
+def access_outcome(report: AccessReport, *, model_exact: bool) -> PersonaProbeOutcome:
+    """The verdict of a two-axis persona probe — THE one carrier of the Q29 verdict table.
+
+    Outside the cells marked below, the verdict is today's `probe_outcome` /
+    `probe_outcome_no_model` on the MODEL response, exactly.  A refusal of the model-free
+    request alone never refuses a box.  *model_exact* says the model request carried the id
+    the box itself sends; it decides the cells pending his ruling (H1).
+    Every outcome carries *report* as `access`.
+    """
+    general = report.general
+    model = report.model
+    state = GeneralAccess.OPEN if general.state is GeneralAccess.UNTESTED else general.state
+    sent = model.evidence
+    response = ProbeResponse(sent.status, sent.provider_text)
+    today = (
+        probe_outcome(response, sent) if sent.model
+        else probe_outcome_no_model(response, sent)
+    )
+    if model.state is ModelAccess.DENIED and state is GeneralAccess.VERIFIED:
+        # H1 (rows 4, 10): the credential was verified and the model request refused.
+        # PENDING HIS RULING — today's REJECTED holds for every *model_exact*.
+        outcome = today
+    elif model.state is ModelAccess.MODEL_REQUIRED and state is GeneralAccess.VERIFIED:
+        # Δ: authorization verified without a model — rule 3 itself.
+        outcome = PersonaProbeOutcome.passed()
+    elif model.state is ModelAccess.MODEL_REQUIRED and state is GeneralAccess.DENIED:
+        # Δ: the model-free request was refused and the model check could not decide.
+        outcome = PersonaProbeOutcome.inconclusive(
+            f"the endpoint refused the model-free check with HTTP "
+            f"{general.evidence.status} and requires a model in the request "
+            f"(HTTP {sent.status}), which the persona does not name",
+            general.evidence,
+        )
+    elif (
+        model.state in (ModelAccess.AMBIGUOUS, ModelAccess.UNREACHABLE)
+        and general.state is not GeneralAccess.NO_ANSWER
+    ):
+        note = _GENERAL_NOTE.get(
+            general.state,
+            f"the model-free check was refused with HTTP {general.evidence.status}",
+        )
+        outcome = today._replace(reason=f"{today.reason} ({note})")
+    else:
+        outcome = today
+    return outcome._replace(access=report)
 
 
 @dataclass(frozen=True)
