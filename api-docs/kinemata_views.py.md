@@ -27,6 +27,7 @@ _VALUE_END = re.compile('\\s{2,}')
 _BRACES = re.compile('^(?P<head>[^{}]*)\\{(?P<alts>[^{}]+)\\}(?P<tail>[^{}]*)$')
 _SENTINEL_VALUES: tuple[object, ...] = (None, True, False, {})
 _TREE = Path(__file__).resolve().parents[1]
+_EXAMPLE_NAMES = ('myagent', 'nested', 'ghcr.io%2fdoctorjei%2fkanibako-oci%3alatest.json')
 _RETIRED_FILE_NAMES = ('box_data/settings.yaml', 'comms', 'connected.yaml', 'general.yaml', 'general/settings.yaml', 'global/base_template', 'image-shells.yaml', 'kanibako.yaml', 'names.yaml', 'project-path.txt', 'project.yaml', 'rigs.yaml', 'shared', 'worksets.yaml')
 _RETIRED_PATHS = ('canon/handbook/directives/SYS_AGENT.md', 'canon/handbook/directives/SYS_BOX.md', 'canon/handbook/directives/SYS_WORKSET.md', 'general/directives/SYS_GENERAL.md', 'data/logs', 'playbook', 'home/playbook/CONTENTS.md', 'home/playbook/box')
 ```
@@ -109,6 +110,13 @@ class ChannelPaths(_TailRegistry):
 
 class AgentStoreEntries(_TailRegistry):
     def __init__(self, *, name: str='agent-store-entries', **options: object) -> None
+
+    def _rows(self) -> list[dict[str, object]]
+
+class ExampleNames(_ViewRegistry):
+    def __init__(self, *, name: str='example-names', **options: object) -> None
+
+    def declared(self, identifier: str) -> bool
 
     def _rows(self) -> list[dict[str, object]]
 

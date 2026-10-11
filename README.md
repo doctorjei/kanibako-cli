@@ -1174,7 +1174,7 @@ config (`spawn.yaml`) inside the child, enforced at spawn time.
 
 **Peer channels:** Helpers communicate through shared directories.
 Each pair of siblings gets three channels (A-reads, B-reads, shared-rw).
-A broadcast channel (`all/`) is available to all helpers.
+A broadcast channel (`~/helpers/all/`) is available to all helpers.
 
 **Directory layout** (inside a container):
 ```

@@ -28,13 +28,6 @@
     {
       "registry": "claims",
       "entry": "claim:path",
-      "antipattern": "all/",
-      "path": "README.md",
-      "text": "A broadcast channel (`all/`) is available to all helpers."
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
       "antipattern": "archives/",
       "path": "src/kanibako/data/templates/system/canon/handbook/general/directives/LOWER_CANON.md",
       "text": "| `archives/` | Completed plans & historical devnotes, documents, & information (i.e., \"the archive\" or \"archives\"); **a"
@@ -63,13 +56,6 @@
     {
       "registry": "claims",
       "entry": "claim:path",
-      "antipattern": "caches/",
-      "path": "llm-docs/kanibako/launch/templates.py.md",
-      "text": "| AGENT | `agent.yaml` = `meta.agent.<a>.settings` (CORRECTNESS); `caches/`. |"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
       "antipattern": "claude.caches.~/",
       "path": "llm-docs/kanibako/settings/settings_categories.py.md",
       "text": "parses node=`claude.caches.~/`), and a greedy node would swallow everything up to the LAST one."
@@ -80,27 +66,6 @@
       "antipattern": "dist/",
       "path": "docs/RELEASING.md",
       "text": "`agent-codex` are accepted), builds **only** that package into `dist/`, refuses"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "ghcr.io%2fdoctorjei%2fkanibako-oci%3alatest.json",
-      "path": "llm-docs/kanibako/vscode/vscode_config.py.md",
-      "text": "`ghcr.io%2fdoctorjei%2fkanibako-oci%3alatest.json`. Python's `urllib.parse.quote` emits UPPERCASE"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "myagent/",
-      "path": "docs/writing-targets.md",
-      "text": "files \u2014 the base package owns those. Only your leaf package (`myagent/`) gets"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "nested/",
-      "path": "llm-docs/kanibako/commands/box/_lifecycle.py.md",
-      "text": "repoint interposed (`workspaces: @meta.workset.path/nested/deep` leaves `nested/`) go too: they"
     },
     {
       "registry": "claims",

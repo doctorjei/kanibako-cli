@@ -1508,9 +1508,11 @@ class ChannelPaths(_TailRegistry):
 
 
 class AgentStoreEntries(_TailRegistry):
-    """The entries an agent store root may hold (`templates.SCOPE_WHITELISTS["agent"]`),
-    under `agents/<agent>/`. `common/` there is created at `kanibako start`, so the claims
-    store holds none; `[claims] declared_in` names this registry to settle it.
+    """The entries an agent store root may hold, under `agents/<agent>/`: what a template may
+    stamp (`templates.SCOPE_WHITELISTS["agent"]`) and the category dirs
+    (`agent_config.AGENT_CATEGORY_DIRNAME`). `common/` and `caches/` there are created at
+    `kanibako start`, so the claims store holds none; `[claims] declared_in` names this
+    registry to settle them.
     """
 
     def __init__(self, *, name: str = "agent-store-entries", **options: object) -> None:
@@ -1518,8 +1520,34 @@ class AgentStoreEntries(_TailRegistry):
 
     def _rows(self) -> list[dict[str, object]]:
         from kanibako.launch.templates import SCOPE_WHITELISTS
+        from kanibako.settings.agent_config import AGENT_CATEGORY_DIRNAME
 
-        return [{"key": f"agents/<agent>/{entry}"} for entry in SCOPE_WHITELISTS["agent"]]
+        entries = dict.fromkeys((*SCOPE_WHITELISTS["agent"], *AGENT_CATEGORY_DIRNAME.values()))
+        return [{"key": f"agents/<agent>/{entry}"} for entry in entries]
+
+
+#: Example values the docs write as paths, matched whole: none names a file in a store.
+_EXAMPLE_NAMES = (
+    "myagent",          # docs/writing-targets.md: a plugin's leaf package
+    "nested",           # _lifecycle.py.md: a repointed workspace's interposed dir
+    "ghcr.io%2fdoctorjei%2fkanibako-oci%3alatest.json",  # vscode_config.py.md: one encoding
+)
+
+
+class ExampleNames(_ViewRegistry):
+    """Example values the docs spell as paths. `[claims] declared_in` names this registry;
+    `declared` takes a name whole only (a trailing `/` dropped), so `nested/deep` or
+    `myagent2/` stays a claim to check.
+    """
+
+    def __init__(self, *, name: str = "example-names", **options: object) -> None:
+        super().__init__(name=name, **options)
+
+    def _rows(self) -> list[dict[str, object]]:
+        return [{"key": name} for name in _EXAMPLE_NAMES]
+
+    def declared(self, identifier: str) -> bool:
+        return super().declared(identifier.rstrip("/"))
 
 
 #: Store-relative file and dir names kanibako NO LONGER reads or writes, cited by MIGRATION.md

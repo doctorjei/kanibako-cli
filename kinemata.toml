@@ -250,10 +250,13 @@ historical = [
 # store's `common/`, and the store above starts no container, so it holds neither.
 # A path claim of them is asked of `channel-paths` (the channel bind destinations
 # `channel_default_categories` emits, plus each chat dir's two logs) and
-# `agent-store-entries` (`SCOPE_WHITELISTS["agent"]`), matched whole or by a
-# trailing whole segment, as `agent-cred-files` is.
+# `agent-store-entries` (`SCOPE_WHITELISTS["agent"]` and the category dirs),
+# matched whole or by a trailing whole segment, as `agent-cred-files` is.
+#
+# EXAMPLE NAMES: `example-names` lists, by exact literal, the example values the
+# docs spell as paths (`myagent/`); any other spelling stays a claim.
 declared_in = ["agent-cred-files", "retired-file-names", "channel-paths",
-               "agent-store-entries"]
+               "agent-store-entries", "example-names"]
 
 # Before/after, measured 2026-09-09 against an older tree: 929 failing claims ->
 # 769. The 160 suppressed are ALL positively classified as historicity false
@@ -2022,6 +2025,13 @@ target = "kinemata_views:ChannelPaths"
 name = "agent-store-entries"
 kind = "import"
 target = "kinemata_views:AgentStoreEntries"
+
+# FACT: example values the docs spell as paths. Read by `[claims] declared_in`
+# alone: no antipattern and an empty `detect`, so `check` gains nothing from it.
+[[registry]]
+name = "example-names"
+kind = "import"
+target = "kinemata_views:ExampleNames"
 
 # FACT: `config_keys._KEY_ROUTES` routes exactly the fixed-scope `set: cli+file`
 # rows. `test_manifest_conformance` `test_every_routed_key_is_a_declared_manifest_row`
