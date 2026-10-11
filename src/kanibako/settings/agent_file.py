@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import shlex
 from dataclasses import dataclass, field
+from datetime import date
 from functools import partial
 from pathlib import Path
 from typing import Any, Callable, Final, Iterable, Iterator
@@ -755,15 +756,17 @@ def save(path: Path, cfg: AgentConfig) -> None:
 # ---------------------------------------------------------------------------
 
 def _set_word(value: object) -> str | None:
-    """*value* as the word ``agent set`` stores back as the SAME value, or ``None`` if none does.
+    """*value* as the word whose ``agent set`` DELIVERS the same text, or ``None`` if none does.
 
     ``set`` stores the text after ``=`` verbatim as a string (measured: ``env.E=1`` stores
-    ``'1'``, ``env.B=`` stores ``''``), so a string is its own word and a bool is the lowercase
-    spelling ``set`` accepts back. A null has no ``set`` word at all — it is the ``--null`` flag.
+    ``'1'``, ``env.B=`` stores ``''``), and the launch delivers ``str(value)``, so a word works
+    only where it IS ``str(value)``: a string, a number, a date. NOT A BOOL: the file's ``true``
+    delivers ``True``, which no lowercase word reproduces, and a null has no word at all (it is
+    the ``--null`` flag) — both take the by-hand YAML, which stores the value itself.
     """
-    if value is None:
+    if isinstance(value, bool) or not isinstance(value, (str, int, float, date)):
         return None
-    return render_stored_scalar(value) if value != "" else ""
+    return str(value)
 
 
 def _yaml_block(doc: dict, indent: str) -> str:
@@ -776,26 +779,70 @@ def _yaml_block(doc: dict, indent: str) -> str:
     return "".join(f"\n{indent}{line}" for line in _dump_text(doc).splitlines())
 
 
-def _sub_home(sub_key: str, *, node: str | None, path: Path | None) -> str | None:
-    """Where ``agent.<sub_key>``'s flat ``self:`` table lives, when that is NOT this file.
+@dataclass(frozen=True)
+class _SubHome:
+    """Whose content a refused ``self.<sub>:`` table is, and where it belongs [spec:15-21, "self"].
 
-    ``None`` when the refused sub-table names the file's OWN node, so its content belongs one
-    level up in this very file. Otherwise the content is ANOTHER agent's, and moving it up
-    here would land it on this file's node instead [spec:15-21, "self"]: the answer names that
-    agent's own file — composed, never opened.
+    *name* is the agent the sub key REACHES — case folded (Q87), so ``Claude`` is ``claude`` —
+    spelled as ``agent set`` and ``agent.<name>`` take it. *where* names that agent's own file,
+    ``None`` when it is THIS file (the sub key is the file's own node). *settable*: that file
+    exists, so a printed ``agent set <name>`` finds it. *known*: some agent answers to *name* —
+    its file exists, or its harness is installed — so a cure may send content there at all.
     """
-    if node is not None and _node_identity(sub_key) == _node_identity(node):
-        return None
+
+    name: str
+    where: str | None
+    settable: bool
+    known: bool
+
+
+def _installed(node: str) -> bool:
+    """Whether an installed target (built-in ``shell`` included) runs *node*."""
+    from kanibako.agent_ref import parse_agent_ref
+    from kanibako.errors import ConfigError
+    from kanibako.targets import discover_targets  # ⚑ Lazy: targets imports settings.
+
+    targets = discover_targets()
+    if node in targets:
+        return True
+    try:
+        _, harness = parse_agent_ref(node)
+    except ConfigError:
+        return False
+    return harness in targets
+
+
+def _sub_home(sub_key: str, *, node: str | None, path: Path | None) -> _SubHome:
+    """Where ``agent.<sub_key>``'s flat ``self:`` table lives — composed, never opened.
+
+    THIS file when the sub key names the file's OWN node: its content belongs one level up.
+    Otherwise the content is ANOTHER agent's, and moving it up here would land it on this
+    file's node instead: the answer names that agent's own file, built from the CANONICAL node
+    — a raw ``Claude`` would name ``agents/Claude/``, a store nothing reads.
+    """
+    canon = _node_identity(sub_key)
+    name = display_agent_ref(canon)
+    if node is not None and canon == _node_identity(node):
+        return _SubHome(name, None, settable=True, known=True)
     if path is None or path.name != AGENT_META_FILE:
-        return f"the {sub_key} agent's own settings file"
-    home = agent_settings_path(path.parent.parent, sub_key)
-    return None if node is None and home == path else f"the {sub_key} agent's own file, {home}"
+        return _SubHome(
+            name, f"the {name} agent's own settings file", settable=False,
+            known=_installed(canon),
+        )
+    home = agent_settings_path(path.parent.parent, canon)
+    if node is None and home == path:
+        return _SubHome(name, None, settable=True, known=True)
+    if home.is_file():
+        return _SubHome(name, f"the {name} agent's own file, {home}", settable=True, known=True)
+    return _SubHome(
+        name, f"the {name} agent's own file, {home} — a NEW file: create it —",
+        settable=False, known=_installed(canon),
+    )
 
 
 def _nested_agent_cure(
     category: str | None, sub_key: str, *, entries: list[tuple[Any, Any]],
-    rest: list[str], placeholder: bool = False, node: str | None = None,
-    path: Path | None = None,
+    rest: list[str], placeholder: bool = False, home: _SubHome | None = None,
 ) -> str:
     """The ARM-APPROPRIATE fix for a refused ``self.<sub>:`` sub-table [spec:15-21, "self"].
 
@@ -813,20 +860,20 @@ def _nested_agent_cure(
     the table holds none and they are the shape), and *rest* names every other entry of the
     sub-table: a cure that quotes one entry loses the others to its own delete.
 
-    ⚑ *node* and *path* say WHOSE file this is: a ``self.<sub>`` table in ANOTHER agent's file
-    is that agent's content, so every arm sends it to ``agent.<sub>``'s own file
-    (:func:`_sub_home`), never up one level here.
+    ⚑ *home* (:func:`_sub_home`; ``None`` only for the all-agents tier) says WHOSE content
+    this is: a ``self.<sub>`` table in ANOTHER agent's file is that agent's, so every arm sends
+    it to that agent's own file, never up one level here — and spells the agent as *home*
+    does, never as the raw sub key.
     """
     from kanibako.settings.config_keys import AGENT_DEFAULT_SUB
 
-    home = None if sub_key == AGENT_DEFAULT_SUB else _sub_home(sub_key, node=node, path=path)
     if category is None:
         # ⚑ A MOVE, not a set: the caller keeps this arm's delete AFTER the fix, since
         # deleting first would destroy the content being moved up.
         where = (
-            "UP ONE LEVEL" if home is None
-            else f"into the `{_ROOT}:` table of {home} (there `{_ROOT}:` expands to "
-            f"`agent.{sub_key}`)"
+            "UP ONE LEVEL" if home is None or home.where is None
+            else f"into the `{_ROOT}:` table of {home.where} (there `{_ROOT}:` expands to "
+            f"`agent.{home.name}`)"
         )
         return (
             f"move what is inside it {where}. The state knobs sit DIRECTLY under "
@@ -847,7 +894,7 @@ def _nested_agent_cure(
         return _yaml_block(doc, indent)
 
     others = ", ".join(f"`{k}`" for k in rest)
-    if sub_key == AGENT_DEFAULT_SUB:
+    if home is None or sub_key == AGENT_DEFAULT_SUB:
         moved = (
             f"\n  and move the rest of it ({others}) into that `agent: default:` table too;"
             if rest else ""
@@ -856,13 +903,13 @@ def _nested_agent_cure(
             f"the all-agents tier is written in the SYSTEM settings file, not the "
             f"agent file:{block('agent', 'default', indent='    ')}{moved}"
         )
-    if home is None:
+    if home.where is None:
         moved = (
             f"\n  and move the rest of it ({others}) UP ONE LEVEL too, directly under `{_ROOT}:`;"
             if rest else ""
         )
         by_hand = (
-            f"in the FLAT table (`{_ROOT}:` expands to `agent.{sub_key}`, so the "
+            f"in the FLAT table (`{_ROOT}:` expands to `agent.{home.name}`, so the "
             f"{category} table sits DIRECTLY under it):"
         )
     else:
@@ -871,21 +918,21 @@ def _nested_agent_cure(
             f"directly under it;" if rest else ""
         )
         by_hand = (
-            f"in the FLAT table of {home} (there `{_ROOT}:` expands to `agent.{sub_key}`, "
+            f"in the FLAT table of {home.where} (there `{_ROOT}:` expands to `agent.{home.name}`, "
             f"so the {category} table sits DIRECTLY under it):"
         )
     by_hand += f"{block(_ROOT, indent='    ')}{moved}"
     # ⚑ The verb is named ONLY where it works — see :data:`_VERB_WRITABLE_CATEGORIES` — and
     # only when the category is ALL the sub-table holds: the ``set`` arm deletes first, which
-    # would destroy any *rest* before the user could move it. Each argument is SHELL-quoted,
-    # so the line runs as printed (``two words`` is one argument), and a value ``set`` cannot
-    # store back (a null) leaves the by-hand route alone.
+    # would destroy any *rest* before the user could move it — and only into a file that
+    # EXISTS, since ``set`` refuses an agent with none. Each argument is SHELL-quoted, so the
+    # line runs as printed (``two words`` is one argument), and a value no word delivers
+    # unchanged (a null, a bool: :func:`_set_word`) leaves the by-hand route alone.
     words = [(var, _set_word(value)) for var, value in entries]
-    if category in _VERB_WRITABLE_CATEGORIES and not rest and not placeholder and all(
-        word is not None for _, word in words
-    ):
+    if category in _VERB_WRITABLE_CATEGORIES and home.settable and not rest \
+            and not placeholder and all(word is not None for _, word in words):
         sets = "\n       ".join(  # under the first, past "  Fix: "
-            f"kanibako agent set {shlex.quote(sub_key)} "
+            f"kanibako agent set {shlex.quote(home.name)} "
             f"{shlex.quote(f'{category}.{var}={word}')}"
             for var, word in words
         )
@@ -903,37 +950,46 @@ def _refused_category(sub_tbl: dict) -> str | None:
 
 def _nested_table_steps(
     category: str | None, sub_key: str, *, entries: list[tuple[Any, Any]], rest: list[str],
-    placeholder: bool, path: Path | None, node: str | None,
+    placeholder: bool, path: Path | None, home: _SubHome | None,
 ) -> str:
     """The fix + delete pair, in the order THIS arm's cure actually needs.
 
     ⚑ Delete-first is correct ONLY when the cure is a runnable ``set``: when *sub_key* is
-    *node*, that command reads the file the stale table is still in, so it refuses the write.
-    The other arms MOVE the content (up one level, or into the SYSTEM file) or hand-edit
-    it — deleting first would destroy what the user was just told to move.
+    the file's own node, that command reads the file the stale table is still in, so it
+    refuses the write. The other arms MOVE the content (up one level, into another agent's
+    file, into the SYSTEM file) or hand-edit it — deleting first would destroy what the user
+    was just told to move. A ``set`` is printed only into a file that EXISTS
+    (``home.settable``): ``set`` refuses an agent with none, after the delete.
+
+    ⚑ A sub key no agent answers to (``home.known`` false: a typo, a non-string key) gets NO
+    move: following one would create an agent of that name. The refusal names the key and
+    leaves the choice — a misspelled name, or this agent's own entries — to the user.
     """
-    cure = _nested_agent_cure(
-        category, sub_key, entries=entries, rest=rest, placeholder=placeholder,
-        node=node, path=path,
-    )
     where = path if path is not None else "the agent settings file"
-    if cure.lstrip().startswith("kanibako "):
+    table = f"`{file_spelling(sub_key)}` table"
+    if home is not None and not home.known:
+        return (
+            f"  Fix: `{sub_key}` names no agent — no agent store holds it and no installed "
+            f"agent runs it — so there is no agent to move it to. If it misspells an agent's "
+            f"name, correct the name in {where} and run again for that agent's cure; if its "
+            f"entries are this agent's own, move them UP ONE LEVEL, directly under "
+            f"`{_ROOT}:`, then delete the {table}."
+        )
+    cure = _nested_agent_cure(
+        category, sub_key, entries=entries, rest=rest, placeholder=placeholder, home=home,
+    )
+    if cure.startswith("kanibako "):
         # ⚑ The parent here is the file's own ``self:`` root: delete the sub-table and
         # nothing else, and the file is left as ``self:`` with nothing under it — a null
         # root, refused in its own right, on the very verb this step just cleared the way for.
         return (
             delete_before_set_step(
-                f"`{file_spelling(sub_key)}` table", where=where,
-                parents=[f"`{_ROOT}:`"],
-                collides_with="a bad entry" if node is not None
-                and _node_identity(sub_key) == _node_identity(node) else None,
+                table, where=where, parents=[f"`{_ROOT}:`"],
+                collides_with="a bad entry" if home is not None and home.where is None else None,
             )
             + f"\n  Fix: {cure}"
         )
-    return (
-        f"  Fix: {cure}\n"
-        f"  then delete the `{file_spelling(sub_key)}` table from {where}."
-    )
+    return f"  Fix: {cure}\n  then delete the {table} from {where}."
 
 
 def _refuse_nested_tables(
@@ -960,7 +1016,15 @@ def _refuse_nested_tables(
         if sub_key in _ROOT_TABLES or not isinstance(sub_val, dict):
             continue
         category = _refused_category(sub_val)
-        spelling = file_spelling(sub_key, category or "")
+        # ⚑ A YAML key need not be a string (``1:``, ``true:``): it is quoted as the file
+        # spells it, and never reaches :func:`_sub_home` — no agent is named by one.
+        sub = sub_key if isinstance(sub_key, str) else render_stored_scalar(sub_key)
+        home = (
+            None if sub_key == AGENT_DEFAULT_SUB
+            else _sub_home(sub_key, node=node, path=path) if isinstance(sub_key, str)
+            else _SubHome(sub, None, settable=False, known=False)
+        )
+        spelling = file_spelling(sub, category or "")
         table = sub_val.get(category) if category else None
         table = table if isinstance(table, dict) else {}
         var_ph, value_ph = _CATEGORY_PLACEHOLDER.get(
@@ -975,7 +1039,7 @@ def _refuse_nested_tables(
         # ⚑⚑ ONE EXPLANATION FOR EVERY ARM — the alias semantics of [spec:15-21, "self"],
         # not a redundancy argument: the spelling expands to a key that cannot exist, and that is
         # equally true of ``default``. Only the HISTORY and the CURE split by arm.
-        expansion = f"agent.{agent}.{sub_key}" + (f".{category}" if category else "")
+        expansion = f"agent.{agent}.{sub}" + (f".{category}" if category else "")
         if sub_key == AGENT_DEFAULT_SUB:
             history = (
                 "Refusing rather than running: it used to resolve as though it were "
@@ -985,22 +1049,22 @@ def _refuse_nested_tables(
         else:
             history = (
                 f"Refusing rather than running: it used to resolve to the same "
-                f"`agent.{sub_key}.*` keys as the flat tables, and in a file carrying "
-                f"BOTH the flat one REPLACED it wholesale — every entry spelled only "
+                f"`agent.{home.name if home else sub}.*` keys as the flat tables, and in "
+                f"a file carrying BOTH the flat one REPLACED it wholesale — every entry spelled only "
                 f"here vanished without a word."
             )
         raise SettingsError(
             f"`{spelling}` is not a settings key, so kanibako will not read it.\n"
             f"`{_ROOT}:` is NOT a key — it is an ALIAS that substitutes to "
             f"`agent.{agent}`. So `{spelling}` reads `{expansion}`, which is never "
-            f"syntactically correct: `agent.{agent}` does not contain a `{sub_key}` "
+            f"syntactically correct: `agent.{agent}` does not contain a `{sub}` "
             f"level. Nothing nests under `{_ROOT}:` but the categories themselves "
             f"(spec §0, closed keyspace).\n"
-            f"Found in the {sub_key} sub-table of "
+            f"Found in the {sub} sub-table of "
             f"{path if path is not None else '<agent settings>'}; it holds: "
             f"{held}.\n"
             f"{history}\n"
-            f"{_nested_table_steps(category, sub_key, entries=entries, rest=rest, placeholder=not table, path=path, node=node)}"
+            f"{_nested_table_steps(category, sub, entries=entries, rest=rest, placeholder=not table, path=path, home=home)}"
         )
 
 

@@ -56,10 +56,11 @@ def _spelled_sections(slot: AgentFileSlot, sections: tuple[str, ...], leaf: str)
 def _own_node_settings(own: dict, scope: Any, *, node: str) -> dict
 def _set_word(value: object) -> str | None
 def _yaml_block(doc: dict, indent: str) -> str
-def _sub_home(sub_key: str, *, node: str | None, path: Path | None) -> str | None
-def _nested_agent_cure(category: str | None, sub_key: str, *, entries: list[tuple[Any, Any]], rest: list[str], placeholder: bool=False, node: str | None=None, path: Path | None=None) -> str
+def _installed(node: str) -> bool
+def _sub_home(sub_key: str, *, node: str | None, path: Path | None) -> _SubHome
+def _nested_agent_cure(category: str | None, sub_key: str, *, entries: list[tuple[Any, Any]], rest: list[str], placeholder: bool=False, home: _SubHome | None=None) -> str
 def _refused_category(sub_tbl: dict) -> str | None
-def _nested_table_steps(category: str | None, sub_key: str, *, entries: list[tuple[Any, Any]], rest: list[str], placeholder: bool, path: Path | None, node: str | None) -> str
+def _nested_table_steps(category: str | None, sub_key: str, *, entries: list[tuple[Any, Any]], rest: list[str], placeholder: bool, path: Path | None, home: _SubHome | None) -> str
 def _refuse_nested_tables(root_tbl: dict, *, node: str | None, path: Path | None) -> None
 def _refuse_stray_roots(raw: dict, *, node: str | None, path: Path | None) -> None
 def _contribution(raw: Any, *, node: str | None, path: Path | None) -> dict
@@ -93,4 +94,11 @@ class AgentFileLevel:
     scope: dict = field(default_factory=dict)
     state: dict = field(default_factory=dict)
     contained: dict = field(default_factory=dict)
+
+@dataclass(frozen=True)
+class _SubHome:
+    name: str
+    where: str | None
+    settable: bool
+    known: bool
 ```
