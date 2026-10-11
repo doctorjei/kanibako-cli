@@ -14,6 +14,7 @@ from kanibako.settings.paths import (
     BoxMode,
     _early_scope,
     _primary_box_paths,
+    box_cure_ref,
     box_logs_location,
     load_std_paths,
     resolve_any_project,
@@ -21,6 +22,7 @@ from kanibako.settings.paths import (
 )
 from kanibako.utils import (
     confirm_prompt,
+    container_name_for_box_name,
 )
 from kanibako.project.workset import (
     _symlink_loop,
@@ -432,13 +434,16 @@ def _purge_all(std, config, *, force: bool) -> int:
                 print(f"  {ws_name}/{proj_name}")
     print()
 
-    from kanibako.commands.box._parser import kept_for_recorded_workspace
+    from kanibako.commands.box._parser import (
+        _primary_probe_container, kept_for_recorded_workspace)
 
     # ⚑ EVERY BOX IS PLANNED BEFORE THE QUESTION AND BEFORE ANY DELETE: a box purged
     # first is unregistered, and its workspace inside a later box must still be kept.
     # (label, logs dir, box, workset root, metadata, vault leaves, store, primary entry)
     jobs: list[tuple[str, Path | None, str, Path, Path, tuple[Path | None, Path | None],
                      Path | None, tuple[Path, Path | None] | None]] = []
+    # (label, lock file, container, quoted stop ref): what the running-box probe asks.
+    probes: list[tuple[str, Path, str | None, str]] = []
     for metadata_path, project_path in projects:
         # Phase 5: PRIMARY vault lives under @config.primary_workset/vault/
         # {ro,rw}/<name> (name == metadata dir name), not under metadata_path.
@@ -450,6 +455,9 @@ def _purge_all(std, config, *, force: bool) -> int:
                      metadata_path, (vault_ro, vault_rw),
                      _resolve_snapshot_store(vault_rw, metadata_path.name),
                      (metadata_path, project_path)))
+        probes.append((jobs[-1][0], metadata_path / ".kanibako.lock",
+                       _primary_probe_container(metadata_path.name),
+                       box_cure_ref(BoxMode.primary, metadata_path.name, None, metadata_path)))
     for ws_name, ws, project_list in ws_data:
         # ⚑ Hoisted, and RESOLVED: both properties read the root workset.yaml, so one
         # read per workset keeps every member of it judged against the same document.
@@ -468,9 +476,27 @@ def _purge_all(std, config, *, force: bool) -> int:
             jobs.append((f"{ws_name}/{proj_name}", logs_dir, proj_name, ws.root,
                          boxes_dir / proj_name, (vault_ro_leaf, vault_rw_leaf),
                          _resolve_snapshot_store(vault_rw_leaf, proj_name), None))
+            probes.append((jobs[-1][0], boxes_dir / proj_name / ".kanibako.lock",
+                           container_name_for_box_name(proj_name, ws_name),
+                           box_cure_ref(BoxMode.named, proj_name, ws_name, ws.root)))
     # A folder holding a recorded workspace is KEPT whole and named (keyspec § 0).
     kept = {path for job in jobs for path in (*job[5], job[6], job[4])
             if path is not None and kept_for_recorded_workspace(std, path)}
+
+    # ⚑ EVERY BOX IS PROBED BEFORE THE QUESTION, by the one pre-flight ``_purge_one``
+    # uses.  One live box refuses the whole run: nothing is deleted, each live box is named
+    # with its stop cure, and --force overrides (each warning still prints).
+    from kanibako.commands.box._lifecycle import abort_if_box_running
+
+    live = [label for label, lock, container, ref in probes
+            if abort_if_box_running(None, lock, force,
+                                    "Purging it would delete its vaults and canon while "
+                                    "writes are in flight.",
+                                    container_name=container, cure_ref=ref)]
+    if live:
+        print(f"Error: {len(live)} box(es) may be running: {', '.join(live)}. Nothing was "
+              "purged. Stop each one, or pass --force.", file=sys.stderr)
+        return 1
 
     if not force:
         try:

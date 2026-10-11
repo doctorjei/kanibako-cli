@@ -744,6 +744,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`box purge --all` refuses while a box may be running.** It deleted a running box's vaults and box folder
+  without asking the runtime. It now checks every box before its question, as `box purge <path>` does; if any box
+  runs or holds its lock, nothing is deleted and each such box is named with its `kanibako stop` command.
+  `--force` purges anyway.
 - **A helper launched by the hub starts again.** It exited 127 (`helper-init.sh` not found) because the hub bound
   no home into it. Its home, workspace, and vault are bound again, at the same places and with the same options
   as the director's.
