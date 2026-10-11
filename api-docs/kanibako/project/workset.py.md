@@ -76,7 +76,7 @@ def refuse_reserved_registered_name(name: str, root: Path, *, early_system: Earl
 def refuse_retired_workset_identity(root: Path) -> None
 def find_logs_share(std: StandardPaths, *, value: object, scope: str, target_name: str | None=None, target_root: Path | None=None) -> 'tuple[tuple[str, ...], Path] | None'
 def logs_share_refusal(canonical_key: str, value: object, std: StandardPaths, *, force: bool, scope: str, target_name: str | None=None, target_root: Path | None=None) -> str | None
-def purge_box_logs(std: StandardPaths, logs_dir: Path | None, box: str, *, workset_root: Path | None) -> bool
+def purge_box_logs(std: StandardPaths, logs_dir: Path | None, box: str, *, workset_root: Path | None, files: list[Path] | None=None) -> bool
 def box_logs_to_purge(std: StandardPaths, logs_dir: Path | None, box: str, *, workset_root: Path | None) -> list[Path]
 def is_workset_skeleton(root: Path, *, early: EarlyScope) -> bool
 def create_workset(name: str, root: Path, std: StandardPaths, *, force_logs_share: bool=False) -> Workset
@@ -84,7 +84,7 @@ def load_workset(root: Path, name: str, *, early_system: EarlySystem) -> Workset
 def list_worksets(std: StandardPaths) -> dict[str, Path]
 def default_workset(std: StandardPaths) -> Workset
 def resolve_workset_name(name: str, std: StandardPaths) -> Workset
-def delete_workset(name: str, std: StandardPaths, *, remove_files: bool=False) -> Path
+def delete_workset(name: str, std: StandardPaths, *, remove_files: bool=False, keeps: Callable[[Path], bool] | None=None) -> Path
 def source_in_tree(ws: Workset, source_path: Path) -> bool
 def is_in_tree_workspace(ws: Workset, path: Path) -> bool
 def refuse_existing_box(source: Path, std: StandardPaths, *, force: bool=False) -> None
@@ -92,8 +92,9 @@ def add_project(ws: Workset, name: str, source_path: Path, std: StandardPaths | 
 def refuse_case_variant_store(ws: Workset, name: str, std: StandardPaths) -> None
 def ensure_discoverability_link(ws: Workset, name: str, target: Path) -> Path | None
 def release_project(ws: Workset, name: str, *, keep_link: bool=False) -> WorksetProject
-def remove_member_store(ws: Workset, name: str, *, bases: tuple[Path, ...] | None=None) -> None
-def remove_project(ws: Workset, name: str, *, remove_files: bool=False, std: StandardPaths | None=None) -> WorksetProject
+def remove_member_store(ws: Workset, name: str, *, bases: tuple[Path, ...] | None=None, keep: Collection[Path]=()) -> None
+def remove_project(ws: Workset, name: str, *, remove_files: bool=False, std: StandardPaths | None=None, keep: Collection[Path]=()) -> WorksetProject
+def member_workspace_leaf(ws: Workset, name: str) -> Path | None
 def _workspaces_null_file(workset_root: Path, *, early: EarlyScope) -> Path | None
 def _is_role_folder(entry: Path, root: Path, leaf: str) -> bool
 def _users_own_repoint(root: Path, resolved: Path, doc: 'Mapping[str, Any] | None', key: str, leaf: str, *, early: EarlyScope) -> bool
