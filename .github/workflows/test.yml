@@ -15,11 +15,16 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    # ⚑ 3.11 is the `requires-python` floor; 3.13 covers its newer end.
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.13"]
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-python@v6
         with:
-          python-version: "3.11"
+          python-version: ${{ matrix.python-version }}
       - run: pip install -e '.[dev]' -e packages/agent-claude/ -e packages/agent-goose/ -e packages/agent-codex/
       - run: ruff check src/ tests/ packages/
       - run: mypy src/kanibako/
