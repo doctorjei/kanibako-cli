@@ -41,6 +41,7 @@ from kanibako.box_supervisor import (
 )
 from kanibako.commands.diagnose import probe_missing_executables
 from kanibako.settings.config import (
+    TWEAKCC_CONFIG_FILE,
     coerce_bool,
     user_config_file,
     load_config,
@@ -51,6 +52,7 @@ from kanibako.settings.config import (
 from kanibako.settings.settings_launch import load_merged_config
 from kanibako.settings import core_defaults
 from kanibako.runtime.container import (
+    KEEP_ID_USERNS,
     ContainerRuntime,
     _guest_dest_to_host,
     detect_shadowed_mounts,
@@ -2241,19 +2243,28 @@ def _apply_tweakcc(install, transform_settings, cache_dir, image, runtime_cmd, l
 
         entry = cache.get(key)
         if entry is None:
-            # Write merged config to cache dir (will be mounted into container)
-            config_file = cache_dir / f".config-{key}.json"
-            write_merged_config(merged_config, config_file)
-
             def patch_fn(staging_dir, staging_binary):
-                """Run tweakcc --apply inside a throwaway container."""
+                """Run ``tweakcc --apply --yes`` inside a throwaway container.
+
+                ``--entrypoint``: the rig's entrypoint is ``exec /bin/bash "$@"``,
+                which would read the node script as shell.  ``KEEP_ID_USERNS``
+                (the box's own userns) maps the host user onto the container
+                user, so ``/work`` is writable.  tweakcc reads AND writes its
+                config dir (``config.json``, the binary backup), so the dir sits
+                in the staging dir and ``TWEAKCC_CONFIG_DIR`` names it; no HOME
+                lookup.  ``--yes``: without a TTY, ``--apply`` refuses to run.
+                """
+                write_merged_config(
+                    merged_config, staging_dir / ".tweakcc" / TWEAKCC_CONFIG_FILE,
+                )
                 cmd = [
-                    runtime_cmd, "run", "--rm", "--network=none",
+                    runtime_cmd, "run", "--rm", "--network=none", KEEP_ID_USERNS,
                     "-v", f"{staging_dir}:/work:rw",
-                    "-v", f"{config_file}:/root/.tweakcc/config.json:ro",
+                    "-e", "TWEAKCC_CONFIG_DIR=/work/.tweakcc",
                     "-e", f"TWEAKCC_CC_INSTALLATION_PATH=/work/{staging_binary.name}",
+                    "--entrypoint", "tweakcc",
                     image,
-                    "tweakcc", "--apply",
+                    "--apply", "--yes",
                 ]
                 logger.debug("Running tweakcc via container: %s", cmd)
                 result = subprocess.run(

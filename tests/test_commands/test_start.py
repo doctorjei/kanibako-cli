@@ -4708,6 +4708,74 @@ class TestApplyTweakcc:
             MockCache.assert_called_once_with(tmp_path)
 
 
+class TestApplyTweakccContainerLaunch:
+    """The ``patch_fn`` argv: tweakcc must actually RUN in the rig (173rd bifrost-tk)."""
+
+    def _patch_argv(self, tmp_path):
+        """Drive ``_apply_tweakcc`` on a cache miss; run its ``patch_fn``; return the argv."""
+        from kanibako.settings.agent_config import AgentConfig
+
+        install = MagicMock()
+        install.name = "claude"
+        install.binary = tmp_path / "claude"
+        install.install_dir = tmp_path / "install"
+        cfg = AgentConfig(transform_settings={
+            "enabled": True, "settings": {"misc": {"mcpConnectionNonBlocking": True}},
+        })
+        staging = tmp_path / "staging"
+        staging.mkdir()
+        argvs = []
+
+        def fake_put(key, source, patch_fn):
+            patch_fn(staging, staging / "2.1.296")
+            return MagicMock(path=tmp_path / "cached")
+
+        with (
+            patch("kanibako.bun_sea.cli_js_hash", return_value="abc"),
+            patch("kanibako.tweakcc_cache.TweakccCache") as MockCache,
+            patch(
+                "kanibako.commands.start.subprocess.run",
+                side_effect=lambda cmd, **kw: argvs.append(cmd) or MagicMock(returncode=0),
+            ),
+        ):
+            MockCache.return_value.cache_key.return_value = "k"
+            MockCache.return_value.get.return_value = None
+            MockCache.return_value.put.side_effect = fake_put
+            result = _apply_tweakcc(
+                install, cfg.transform_settings, tmp_path / "cache", "rig:1", "podman", MagicMock(),
+            )
+        assert result is not None
+        assert len(argvs) == 1
+        return argvs[0], staging
+
+    def test_entrypoint_is_tweakcc_not_the_rig_bash(self, tmp_path):
+        argv, _ = self._patch_argv(tmp_path)
+        i = argv.index("--entrypoint")
+        assert argv[i + 1] == "tweakcc"
+        # Options precede the image; tweakcc's own args follow it.
+        assert i < argv.index("rig:1")
+        assert argv[argv.index("rig:1") + 1:] == ["--apply", "--yes"]
+
+    def test_runs_in_the_box_userns(self, tmp_path):
+        from kanibako.runtime.container import KEEP_ID_USERNS
+
+        argv, _ = self._patch_argv(tmp_path)
+        assert KEEP_ID_USERNS in argv
+        assert argv.index(KEEP_ID_USERNS) < argv.index("rig:1")
+
+    def test_config_dir_is_named_by_env_and_writable(self, tmp_path):
+        import json
+
+        argv, staging = self._patch_argv(tmp_path)
+        envs = [argv[i + 1] for i, a in enumerate(argv) if a == "-e"]
+        assert "TWEAKCC_CONFIG_DIR=/work/.tweakcc" in envs
+        assert "TWEAKCC_CC_INSTALLATION_PATH=/work/2.1.296" in envs
+        vols = [argv[i + 1] for i, a in enumerate(argv) if a == "-v"]
+        assert vols == [f"{staging}:/work:rw"]
+        assert not any("/root/" in a for a in argv)
+        written = json.loads((staging / ".tweakcc" / "config.json").read_text())
+        assert written["settings"]["misc"]["mcpConnectionNonBlocking"] is True
+
 class TestTweakccCacheDir:
     """Unit tests for the ``_tweakcc_cache_dir`` composer."""
 

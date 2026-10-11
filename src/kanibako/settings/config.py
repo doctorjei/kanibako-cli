@@ -36,6 +36,8 @@ WORKSET_META_FILE = "workset.yaml"
 # meta.agent.<agent>.settings).  ⚑ The SYSTEM tier is NOT here: it stays
 # @config.settings = global/settings.yaml.
 AGENT_META_FILE = "agent.yaml"
+# tweakcc's own config file, inside its config dir (``TWEAKCC_CONFIG_DIR``).
+TWEAKCC_CONFIG_FILE = "config.json"
 
 # Shared truth tables: the typed `config set` writer AND the box.meta writer.
 _BOOL_TRUE = frozenset({"true", "1", "yes", "on"})

@@ -307,7 +307,7 @@ class TestRunVerify:
         used_images: list[str] = []
 
         def fake_run(cmd, **kwargs):
-            used_images.append(cmd[3])  # podman run --rm <image> ...
+            used_images.append(cmd[5])  # podman run --rm --entrypoint sh <image> ...
             return MagicMock(returncode=0)
 
         merged = MagicMock()
@@ -365,7 +365,19 @@ class TestProbeTreatsNameAsOneWord:
         script = mrun.call_args[0][0][-1]
         assert script == "command -v 'weird name;rm -rf /'"
         # Still a LOGIN shell: -l is what makes the probe see a session's PATH.
-        assert mrun.call_args[0][0][-3:-1] == ["sh", "-lc"]
+        assert mrun.call_args[0][0][-2] == "-lc"
+
+    def test_probe_overrides_the_rig_entrypoint(self, tmp_path) -> None:
+        """``sh`` is the ENTRYPOINT, never an argument to the rig's ``exec /bin/bash "$@"``."""
+        from kanibako.commands.baseline_cmd import _make_probe
+        from tests.support.probe_shim import local_sh_runtime
+
+        probe = _make_probe(local_sh_runtime(tmp_path), "img")
+        with patch("subprocess.run", return_value=MagicMock(returncode=0)) as mrun:
+            probe("tmux")
+
+        argv = mrun.call_args[0][0]
+        assert argv[1:6] == ["run", "--rm", "--entrypoint", "sh", "img"]
 
 
 class TestRunVerifyRefusesUnprobeableNames:

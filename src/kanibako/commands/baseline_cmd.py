@@ -121,14 +121,15 @@ def run_list(args: argparse.Namespace) -> int:
 def _make_probe(runtime, image: str):
     """Return a ``probe(exe) -> bool`` that runs an ephemeral container.
 
-    Each probe runs ``<runtime> run --rm <image> sh -lc 'command -v <exe>'``
-    and reports success on a zero exit code.
+    Each probe runs ``<runtime> run --rm --entrypoint sh <image> -lc 'command -v <exe>'``
+    and reports success on a zero exit code.  ``--entrypoint``: a rig's entrypoint is
+    ``exec /bin/bash "$@"``, which would hand ``sh`` to bash as a script file.
     """
     def probe(exe: str) -> bool:
         result = subprocess.run(
             [
-                runtime.cmd, "run", "--rm", image,
-                "sh", "-lc", f"command -v {shlex.quote(exe)}",
+                runtime.cmd, "run", "--rm", "--entrypoint", "sh", image,
+                "-lc", f"command -v {shlex.quote(exe)}",
             ],
             capture_output=True,
             text=True,

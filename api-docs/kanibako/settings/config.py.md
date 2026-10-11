@@ -11,6 +11,7 @@ Prose for these symbols lives in `llm-docs/kanibako/settings/config.py.md`.
 BOX_META_FILE = 'box.yaml'
 WORKSET_META_FILE = 'workset.yaml'
 AGENT_META_FILE = 'agent.yaml'
+TWEAKCC_CONFIG_FILE = 'config.json'
 SYSTEM_HELPERS_SECTION: 'tuple[str, ...]' = ('system', 'helpers')
 STANDARD_BIND_SOURCE_KEYS: frozenset[str] = frozenset({'system.canon', 'system.channels.chat', 'system.channels.common', 'system.channels.mailboxes', 'system.channels.share'})
 _BOOL_TRUE = frozenset({'true', '1', 'yes', 'on'})
