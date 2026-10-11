@@ -628,7 +628,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   everything else, then stops with `Error: Could not copy the workspace <src> to <dst>; …` and names
   the entries, exit code 1. In 1.7.2 and 1.8.0-rc2 a failed workspace copy ended in a Python
   traceback, except a duplicate into a primary box from another mode, which printed the raw list of
-  failures. See `MIGRATION.md` § *2.88 `box move`, `convert`, `duplicate` and `extract` copy a
+  failures. See `MIGRATION.md` § *2.88 `box move`, `convert`, `duplicate`, and `extract` copy a
   symlink as a symlink*.
 
 - **`box duplicate --to named` refuses an occupied destination without `--force`.** An existing
@@ -690,7 +690,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   it is and print its path. Before, they copied its contents into the default directory. A
   standalone box whose `<root>/vault/` folder still holds data under an arm set to `null` keeps
   that data through `box move`, `box convert`, `box rm --purge` and `box purge`, each of which
-  names what it left. See *A `null` workset vault, canon, template or channel root means no directory* in
+  names what it left. See *A `null` workset vault, canon, template, or channel root means no directory* in
   [MIGRATION.md](MIGRATION.md).
 
 - **A settings file that stores an entry which is not a key now stops `set`, and `--force` means
@@ -5212,7 +5212,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   launch by name, while `agent list`/`info` still display the file and `agent reset --all`
   remains the recovery. Also fixed: a dotted destination reads back whole (`agent get claude
   "bindings.ro.~/.cache/uv"`), where it used to print "(not set)". See
-  [MIGRATION.md](MIGRATION.md) § *2.38 The `agent` verbs joined the closed keyspace: `set`, `get`
+  [MIGRATION.md](MIGRATION.md) § *2.38 The `agent` verbs joined the closed keyspace: `set`, `get`,
   and `reset` refuse what is not a key*.
 
 - **BREAKING: the permission axis is a tier, not a boolean — `auto_approve` is now `access`.** The
@@ -5261,7 +5261,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   indistinguishable from a harness you have not installed**, so both `agent: goose: zippity:` and a
   typo'd `agent: clade: zippity:` resolve on a machine without goose, and `zippity` refuses on one
   with it. There is no list of every agent that will ever exist to check a name against.
-  `agent: default:` is judged everywhere. [MIGRATION.md](MIGRATION.md) § *2.38 The `agent` verbs joined the closed keyspace: `set`, `get` and `reset` refuse what is not a key* closed this same
+  `agent: default:` is judged everywhere. [MIGRATION.md](MIGRATION.md) § *2.38 The `agent` verbs joined the closed keyspace: `set`, `get`, and `reset` refuse what is not a key* closed this same
   passthrough for the per-agent `agent.yaml` file; this is the same rule over every settings file
   and the whole resolved snapshot. See [MIGRATION.md](MIGRATION.md) § *2.47 An undeclared key in a
   settings file now stops the command, and the cure is a hand-edit*.
