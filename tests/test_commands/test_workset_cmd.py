@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import argparse
+import os
+from pathlib import Path
 
 import pytest
 
@@ -3288,3 +3290,103 @@ class TestWorksetShowEffectiveReadsNoLayer1AsABoxTier:
             fh.write(f"config:\n  journal: {tmp_home / 'journal'}\n")
         assert run_show(argparse.Namespace(workset="cfgtbl", effective=True)) == 0
         assert "config.* entries" not in capsys.readouterr().err
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root writes through a read-only mode")
+class TestWorksetCreateConnectReadOnlyRegistry:
+    """``workset create`` and ``workset connect`` catch a real OSError from the registry
+    write as one ``Error: ...`` line plus its cure line and exit 1, with no traceback.
+
+    The read-only target is REAL: a ``chmod``-ed file on this box (uid 1000) raises a
+    genuine ``PermissionError`` (verified via ``id -u`` at task intake), so the doors'
+    narrow exception arms (create: ``TemplateScopeError``, ``WorksetError``; connect:
+    ``WorksetError``), which never cover ``OSError``, get an actual refusal, not a
+    synthetic one.
+    """
+
+    @staticmethod
+    def _lock(file_path: Path) -> None:
+        """Make *file_path* unwritable: a 0o555 parent blocks both creating it (the
+        atomic-write path's ``mkstemp`` in ``file_path.parent``) and writing to an
+        existing copy (``os.replace`` needs the parent writable).  Existing files
+        also get a 0o444 mode so even a direct open-for-write would refuse — only an
+        at-rest restore (which restores the parent first) can free the path."""
+        file_path.parent.mkdir(parents=True, exist_ok=True)
+        if file_path.exists() or file_path.is_symlink():
+            file_path.chmod(0o444)
+        file_path.parent.chmod(0o555)
+
+    @staticmethod
+    def _unlock(file_path: Path) -> None:
+        file_path.parent.chmod(0o755)
+        if file_path.exists() or file_path.is_symlink():
+            file_path.chmod(0o644)
+
+    def test_create_catches_unwritable_global_registry_as_one_error_line(
+        self, config_file, tmp_home, capsys,
+    ):
+        """``workset create`` against a read-only global registry exits 1, prints one
+        ``Error: ...`` line, and does NOT print ``Traceback``.
+
+        Before the fix the ``OSError`` from the registry ``register_name`` write
+        escapes the door: rc 1 with a full traceback on stderr.
+        """
+        from kanibako.commands.workset_cmd import run_create
+
+        std = load_std_paths(load_config(config_file))
+        registry = std.registry
+        self._lock(registry)
+        try:
+            rc = run_create(argparse.Namespace(
+                path=str(tmp_home / "ro_target"),
+                name="ro_create",
+                standalone=False, image=None, no_vault=False, force=False,
+            ))
+        finally:
+            self._unlock(registry)
+
+        captured = capsys.readouterr()
+        assert rc == 1, (captured.out, captured.err)
+        assert "Traceback" not in captured.err, captured.err
+        assert "Error:" in captured.err, captured.err
+        assert ("  Fix that, then run the same 'kanibako workset create' again."
+                in captured.err.splitlines()), captured.err
+
+    def test_connect_catches_unwritable_per_workset_registry_as_one_error_line(
+        self, config_file, tmp_home, capsys,
+    ):
+        """``workset connect`` against a read-only per-workset ``registry.yaml`` exits 1,
+        prints one ``Error: ...`` line, and does NOT print ``Traceback``.
+
+        A read-only global registry would not trip the connect path: the create call
+        writes the global name, but the membership ``boxes:`` row the connect adds lands
+        in ``<ws_root>/registry.yaml`` — the file ``add_project`` re-opens for every
+        membership, and a fresh workset has none yet.
+        """
+        from kanibako.commands.workset_cmd import run_connect
+
+        std = load_std_paths(load_config(config_file))
+        ws_root = tmp_home / "lockws"
+        create_workset("lockws", ws_root, std)
+
+        external = tmp_home / "lockws-src"
+        external.mkdir()
+
+        per_ws_registry = ws_root / "registry.yaml"
+        self._lock(per_ws_registry)
+        try:
+            rc = run_connect(argparse.Namespace(
+                workset="lockws",
+                source=str(external),
+                project_name="lockproj",
+                force=True,
+            ))
+        finally:
+            self._unlock(per_ws_registry)
+
+        captured = capsys.readouterr()
+        assert rc == 1, (captured.out, captured.err)
+        assert "Traceback" not in captured.err, captured.err
+        assert "Error:" in captured.err, captured.err
+        assert ("  Fix that, then run the same 'kanibako workset connect' again."
+                in captured.err.splitlines()), captured.err

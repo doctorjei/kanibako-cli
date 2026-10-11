@@ -422,6 +422,10 @@ def run_create(args: argparse.Namespace) -> int:
     except WorksetError as e:
         print(f"Error: {e}", file=sys.stderr)
         return 1
+    except OSError as e:
+        print(f"Error: {e}\n  Fix that, then run the same 'kanibako workset create' again.",
+              file=sys.stderr)
+        return 1
 
     # J-6 A-action (INSTANTIATION): stamp the new workset store from the host mold.
     install_workset_template(std, ws.root, workset_name=ws.name)
@@ -708,6 +712,10 @@ def run_connect(args: argparse.Namespace) -> int:
                                noun="workset connect")
     except WorksetError as e:
         print(f"Error: {e}", file=sys.stderr)
+        return 1
+    except OSError as e:
+        print(f"Error: {e}\n  Fix that, then run the same 'kanibako workset connect' again.",
+              file=sys.stderr)
         return 1
     print(f"Added project '{proj.name}' to working set '{ws.name}'")
     return 0
