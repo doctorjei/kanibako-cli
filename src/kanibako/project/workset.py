@@ -855,6 +855,11 @@ def _symlink_loop(path: Path) -> bool:
     return False
 
 
+def _resolved_unless_loop(path: Path) -> Path:
+    """*path* resolved, or only made absolute on a loop, for ``_validate`` to refuse."""
+    return path.absolute() if _symlink_loop(path) else path.resolve()
+
+
 def vault_keep_reason(root: Path, vault: Path, *, early: EarlyScope) -> str:
     """The full ``why`` for keeping *vault*: named by its declaring key, if it has one.
 

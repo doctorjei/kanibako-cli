@@ -102,6 +102,7 @@ def _sha256_file(path: Path) -> str
 def _create_canon_stamp(std: StandardPaths) -> dict[str, tuple[bool, 'str | None']]
 def _stamp_audit(leaf: Path, stamp: dict[str, tuple[bool, 'str | None']]) -> tuple[bool, bool, bool]
 def _symlink_loop(path: Path) -> bool
+def _resolved_unless_loop(path: Path) -> Path
 def _holds_only_arms(path: Path, arms: set[Path]) -> bool
 def _note_unwind_errors(what: str, errors: Iterable[Exception]) -> None
 def _note_unwind_incomplete(noun: str, where: str, errors: Iterable[Exception], *, interrupted: bool) -> None

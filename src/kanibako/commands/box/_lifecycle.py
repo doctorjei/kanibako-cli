@@ -128,6 +128,7 @@ from kanibako.project.workset import (
     standalone_vault_teardown,
     _path_in_tree,
     _symlink_loop,
+    _resolved_unless_loop,
     SYMLINK_LOOP_WHY,
     _Unwind,
     _note_unwind_errors,
@@ -766,11 +767,6 @@ def _name_held_in_target_workset(
     ):
         return None
     return find_identifier(new_name, (p.name for p in target_ws.projects))
-
-
-def _resolved_unless_loop(path: Path) -> Path:
-    """*path* resolved, or only made absolute on a loop, for ``_validate`` to refuse."""
-    return path.absolute() if _symlink_loop(path) else path.resolve()
 
 
 def _remap_dest_holder(

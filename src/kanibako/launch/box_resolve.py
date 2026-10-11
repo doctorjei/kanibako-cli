@@ -173,7 +173,7 @@ def recorded_workspaces_under(std: StandardPaths, tree: Path) -> list[tuple[str,
     literal and resolved: a safety test, so a workspace reached through a link still counts.
     """
     from kanibako.channels.channels import workset_token
-    from kanibako.commands.box._lifecycle import _resolved_unless_loop
+    from kanibako.project.workset import _resolved_unless_loop
     from kanibako.settings.workset_dirkeys import EarlyScope
 
     literal = Path(literal_path(tree))

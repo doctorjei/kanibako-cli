@@ -1888,7 +1888,7 @@ def _relative_to_either(path: Path, root: Path) -> Path | None:
 
     A looped *root* is compared as stored: it holds no path, so it is no obstacle here.
     """
-    from kanibako.commands.box._lifecycle import _resolved_unless_loop  # lazy: layering
+    from kanibako.project.workset import _resolved_unless_loop  # lazy: layering
 
     for form in (root, _resolved_unless_loop(root)):
         if path.is_relative_to(form):
