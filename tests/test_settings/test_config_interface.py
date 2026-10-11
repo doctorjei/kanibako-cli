@@ -1147,6 +1147,51 @@ class TestResetAll:
         assert msg == "Reset 3 override(s).", msg
         assert "agent" not in load_doc(ssp), load_doc(ssp)
 
+    @pytest.mark.parametrize("value", [None, 3])
+    @pytest.mark.parametrize("scope,token", [
+        (ConfigLevel.system, "workset"),
+        (ConfigLevel.workset, "workset"),
+        (ConfigLevel.workset, "box"),
+        (ConfigLevel.box, "box"),
+    ])
+    def test_reset_all_removes_and_counts_a_value_where_a_table_goes(
+        self, tmp_path, scope, token, value,
+    ):
+        # The shape ``agent reset --all`` takes (``agent_file.clear_overrides``): a VALUE at a
+        # scope token is removed and counted as one leaf. It used to be skipped, leaving the
+        # value in place under "No overrides to reset."
+        cf = tmp_path / "kanibako.cfg"
+        f = tmp_path / "settings.yaml"
+        dump_doc(f, {token: value})
+        msg = reset_all(
+            config_path=cf if scope is ConfigLevel.system else f, force=True,
+            system_settings_path=f if scope is ConfigLevel.system else None,
+            command_scope=scope,
+        )
+        assert msg == "No overrides to reset; also removed 1 undeclared entry.", msg
+        assert load_doc(f) == {}, load_doc(f)
+
+    @pytest.mark.parametrize("doc,expected", [
+        ({"agent": None}, "No overrides to reset; also removed 1 undeclared entry."),
+        (
+            {"agent": {"claude": None, "goose": {"model": "x"}}},
+            "Reset 1 override(s); also removed 1 undeclared entry.",
+        ),
+    ])
+    def test_reset_all_removes_and_counts_a_value_where_an_agent_table_goes(
+        self, tmp_path, doc, expected,
+    ):
+        # The agent pass had the same skip: ``agent: null`` and a non-table node stayed.
+        cf = tmp_path / "kanibako.cfg"
+        ssp = tmp_path / "system.yaml"
+        dump_doc(ssp, doc)
+        msg = reset_all(
+            config_path=cf, force=True, system_settings_path=ssp,
+            command_scope=ConfigLevel.system,
+        )
+        assert msg == expected, msg
+        assert load_doc(ssp) == {}, load_doc(ssp)
+
     def test_reset_all_without_scope_leaves_nested_tables(self, tmp_path):
         # Backward-compat: command_scope=None (no scope context) does NOT touch a
         # nested scope table (the guard can't be evaluated) — flat/agent/env

@@ -2715,6 +2715,9 @@ def _clear_writable_tables(
     ⚑ IT RETURNS WHICH TABLES WENT, not only how many leaves they held: the caller has
     to name the undeclared entries its sweep removed, and the pass that dropped them is
     the honest source of that.
+
+    ⚑ A VALUE where a table goes (``workset: null``) goes too, as one leaf — the shape
+    :func:`agent_file.clear_overrides` takes; the readers refuse it, and reset repairs it.
     """
     if command_scope is None or not path.exists():
         return {}
@@ -2733,10 +2736,7 @@ def _clear_writable_tables(
     for token in list(data):
         if token not in allowed or token == "agent":
             continue
-        table = data.get(token)
-        if not isinstance(table, dict):
-            continue
-        removed[token] = count_leaves(table)
+        removed[token] = count_leaves(data.get(token))
         data.pop(token, None)
         dropped = True
     if dropped:
@@ -2799,13 +2799,19 @@ def reset_all(
         if isinstance(agent_tbl, dict):
             # The agent table is agent-keyed; clear every agent's subsection, "default" included.
             for agent, sec in list(agent_tbl.items()):
+                # ⚑ COUNTED PER NODE, ONCE, and BEFORE the removals; *count* already
+                # holds the rows ``show`` lists for these leaves.
+                swept.add("agent")
+                removed += count_leaves(sec)
                 if isinstance(sec, dict):
-                    # ⚑ COUNTED PER NODE, ONCE, and BEFORE the removals; *count* already
-                    # holds the rows ``show`` lists for these leaves.
-                    swept.add("agent")
-                    removed += count_leaves(sec)
                     for k in list(sec):
                         remove_nested_key(settings_dest, ("agent", agent), k)
+                else:
+                    remove_nested_key(settings_dest, ("agent",), agent)
+        elif "agent" in data:
+            swept.add("agent")
+            removed += count_leaves(agent_tbl)
+            remove_nested_key(settings_dest, (), "agent")
 
     # ⚑ The nested SCOPE tables and the ``pref:`` table need their own pass.
     cleared = _clear_writable_tables(settings_dest, command_scope)

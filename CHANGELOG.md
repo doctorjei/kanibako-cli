@@ -723,6 +723,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`reset --all` removes a value where a table belongs.** A hand-edited `workset: null` or `workset: 3` in the
+  system settings file (or `box:`/`agent:` written the same way, at any scope) survived `system`, `workset`, and
+  `box reset --all` under "No overrides to reset." It is now removed and counted, as `agent reset --all` does.
 - **A failed `workset connect` no longer leaves an interrupted connect behind.** When the connect failed on a
   disk error and undid its own work, `system diagnose` still reported an interrupted connect that nothing would
   finish. It now does so only when the undo itself failed.

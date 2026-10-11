@@ -58,7 +58,8 @@ _SANCTIONED: dict[tuple[str, str], int] = {
     # ``agent.default`` env/secret_path ``set`` arms ride the same dispatch (§0, §2a).
     (_CONFIG_INTERFACE, "write_nested_key"): 8,
     (_CONFIG_INTERFACE, "write_root_key"): 1,
-    (_CONFIG_INTERFACE, "remove_nested_key"): 8,
+    # ``reset --all`` also removes a value where the agent table or a node belongs.
+    (_CONFIG_INTERFACE, "remove_nested_key"): 10,
     (_CONFIG_INTERFACE, "remove_root_key"): 1,
     (_CONFIG_INTERFACE, "dump_doc"): 1,  # ``reset --all`` dropping whole scope tables
     # ``agents/<node>/agent.yaml`` — user intent only (FILE-PURITY): leaf write/remove, ``save``
