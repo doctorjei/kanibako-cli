@@ -53,7 +53,8 @@ from kanibako.settings.settings_resolve import (LevelView, ResolveCtx, SettingsE
 from kanibako.project.names import (resolve_name, resolve_qualified_name)
 from kanibako.launch.box_identity import Designation, box_name_reason, classify_designation
 from kanibako.utils import (
-    literal_path, logical_cwd, project_hash, short_hash, stat_unless_gone,
+    is_dir_unless_gone, iterdir_unless_gone, literal_path, logical_cwd, project_hash,
+    short_hash, stat_unless_gone,
 )
 from kanibako.settings.bootstrap import (BASHRC_FILE, CONFIG_PATH_DEFAULTS,
                                          CREDS_WATCHER_LOG_SUFFIX, HOME_PATH,
@@ -2261,8 +2262,9 @@ def _init_workset_project(std: StandardPaths, metadata_path: Path, shell_path: P
 
 def iter_projects(std: StandardPaths, config: BootstrapConfig) -> list[tuple[Path, Path | None]]:
     """Return ``(metadata_path, project_path | None)`` for every known project."""
-    projects_dir = std.boxes
-    if not projects_dir.is_dir():
+    # ⚑ An unlistable ``boxes/`` (or box dir) refuses, naming it: never "no boxes".
+    listed = iterdir_unless_gone(std.boxes)
+    if listed is None:
         return []
     # P8a: box → workspace comes SOLELY from the PRIMARY per-workset registry, read directly
     # (it is keyed by workspace PATH, so ``resolve_box_identity`` cannot answer from a box dir).
@@ -2274,8 +2276,8 @@ def iter_projects(std: StandardPaths, config: BootstrapConfig) -> list[tuple[Pat
         early=_early_scope(std, BoxMode.primary))
     registered = workset_registry.load_workset_boxes(primary_registry)
     results: list[tuple[Path, Path | None]] = []
-    for entry in sorted(projects_dir.iterdir()):
-        if not entry.is_dir():
+    for entry in sorted(listed):
+        if not is_dir_unless_gone(entry):
             continue
         # ⚑ The box dir's LEAF is a path segment; matching it to a registered box name is
         # an identifier question, so it compares case-blind (spec §0).  The directory name
@@ -2443,7 +2445,13 @@ def resolve_designation(std: StandardPaths, value: str | None, *, unknown_name_i
     # ⚑ THE CASCADE, not ``exists()``, ranks a same-named path (spec § Box designation;
     # plan S8): ``resolve_name`` places it after the space's registry and primary boxes,
     # and before a registered standalone name.
-    on_disk = Path(value).exists()
+    # ⚑ A path kanibako cannot stat (EACCES, a loop) is never "no such path", but it ranks
+    # after the names too: it refuses, naming it, only when no name answers.
+    unreadable: ConfigError | None = None
+    try:
+        on_disk = stat_unless_gone(value) is not None
+    except ConfigError as exc:
+        on_disk, unreadable = False, exc
     try:
         resolved, kind = resolve_name(std.registry, value, cwd=Path(logical_cwd()),
                                       primary_workset=std.primary_workset,
@@ -2452,6 +2460,8 @@ def resolve_designation(std: StandardPaths, value: str | None, *, unknown_name_i
     except AmbiguousNameError:
         raise
     except ProjectError:
+        if unreadable is not None:
+            raise unreadable
         if unknown_name_is_path:
             return value
         raise

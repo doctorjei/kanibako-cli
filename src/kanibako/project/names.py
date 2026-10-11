@@ -35,7 +35,7 @@ from kanibako.project import registry_store
 from kanibako.settings.config import WORKSET_META_FILE
 from kanibako.errors import AmbiguousNameError, ProjectError
 from kanibako.log import get_logger
-from kanibako.utils import literal_path
+from kanibako.utils import is_dir_unless_gone, literal_path
 
 if TYPE_CHECKING:
     from kanibako.settings.workset_dirkeys import EarlyScope, EarlySystem
@@ -377,7 +377,7 @@ def _space_member(
         if registered is not None:
             return registered, boxes
         candidate = ws_workspaces / name
-        if candidate.is_dir():
+        if is_dir_unless_gone(candidate):  # ⚑ EACCES refuses, naming the path
             return str(candidate), boxes
     return None, space_boxes
 
@@ -487,7 +487,7 @@ def resolve_qualified_name(
     # (repoint honored — §3.3) — e.g. an in-tree connect before its first start
     # (no ``boxes:`` entry yet).
     candidate = resolve_workspaces_locator(ws_root, settings_doc, early=ws_early) / proj_name
-    if not candidate.is_dir():
+    if not is_dir_unless_gone(candidate):  # ⚑ EACCES refuses, naming the path
         raise ProjectError(
             f"Project '{proj_name}' not found in workset '{stored_ws}'"
         )

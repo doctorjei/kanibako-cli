@@ -4123,9 +4123,13 @@ def _member_leaves(ws: Workset, name: str) -> tuple[Path | None, Path, Path | No
 def _existing_member_leaves(ws: Workset, name: str) -> dict[Path, frozenset[str] | None]:
     """Those of :func:`_member_leaves` already on disk (a dangling link counts), each
     mapped to its entry names for :func:`note_added_leftovers`."""
+    from kanibako.project import registry_store
+
     return {
         p: _entry_names(p) for p in _member_leaves(ws, name)
-        if p is not None and (p.exists() or p.is_symlink())
+        # ⚑ A leaf kanibako cannot stat (EACCES) is ON disk: the user's, never removed.
+        if p is not None and (not registry_store._metadata_definitively_gone(str(p))
+                              or p.is_symlink())
     }
 
 
@@ -4260,12 +4264,11 @@ def session_lock_held(lock_file: Path) -> bool:
     """True while a ``box start`` session holds *lock_file*'s ``flock``.
 
     The file outlives its session (start never deletes it), so only the lock says the box
-    runs.  A file that cannot be probed counts as held.
+    runs.  A file that cannot be probed counts as held; only a definitively absent one
+    (``ENOENT``/``ENOTDIR``) is free.
     """
     import fcntl
 
-    if not lock_file.exists():
-        return False
     try:
         with open(lock_file, "rb") as fd:
             try:
@@ -4273,6 +4276,8 @@ def session_lock_held(lock_file: Path) -> bool:
             except BlockingIOError:
                 return True
             fcntl.flock(fd, fcntl.LOCK_UN)
+    except (FileNotFoundError, NotADirectoryError):
+        return False
     except OSError:
         return True
     return False
@@ -4289,6 +4294,8 @@ def box_running_reason(
     cannot answer, or no *proj* names the container, a lock file on disk still counts.
     *container_name* asks about that container instead of the one *proj* renders.
     """
+    from kanibako.project import registry_store
+
     if session_lock_held(lock_file):
         return "a kanibako session holds its lock file"
     unanswered = "no container runtime is available to tell whether its container runs"
@@ -4309,7 +4316,7 @@ def box_running_reason(
             return f"its container is {detail}"
         if detail != NO_RUNTIME:
             return None
-    if lock_file.exists():
+    if not registry_store._metadata_definitively_gone(str(lock_file)):  # ⚑ EACCES: present
         return f"a lock file exists and {unanswered}"
     return None
 

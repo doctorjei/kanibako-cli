@@ -615,6 +615,150 @@ def test_an_unreadable_marker_file_is_refused_and_keeps_the_parked_entry(
     assert run_register(_register_args(name)) == 0
 
 
+_LOOP = (": it is a symlink loop that kanibako cannot resolve. Remove or repair the link, "
+         "then retry.\n")
+
+
+@pytest.mark.parametrize("verb", [("box", "create", "lp"), ("start", "lp"),
+                                  ("box", "register", "lp")],
+                         ids=["create", "start", "register"])
+def test_a_symlink_loop_in_the_cwd_is_named_as_a_loop_not_unreadable(
+    config_file, tmp_home, credentials_dir, capsys, monkeypatch, verb,
+):
+    """``lp -> lp`` is no permission problem: the refusal names the loop and its cure."""
+    import os
+
+    here = tmp_home / "loops"
+    here.mkdir()
+    os.symlink("lp", here / "lp")
+    monkeypatch.chdir(here)
+    _cli_refusal(*verb)
+    # ``create`` names its target as it records it: absolute, links unfollowed.
+    named = str(here / "lp") if verb[1:2] == ("create",) else "lp"
+    assert capsys.readouterr().err.endswith(f"Error: {named}{_LOOP}")
+    assert os.readlink(here / "lp") == "lp"
+
+
+def test_a_registered_name_still_resolves_past_a_same_named_loop(
+    config_file, tmp_home, credentials_dir, monkeypatch,
+):
+    """The registry ranks before a path: a loop refuses only when no name answers."""
+    import os
+
+    _config, std = _std(config_file)
+    proj_dir = tmp_home / "proj"
+    proj_dir.mkdir()
+    assert run_create(_create_args(proj_dir, name="lp")) == 0
+    here = tmp_home / "loops"
+    here.mkdir()
+    os.symlink("lp", here / "lp")
+    monkeypatch.chdir(here)
+    assert run_rm(_rm_args("lp")) == 0
+    assert registry_store.lookup_deregistered(std.registry, "lp") is not None
+
+
+def test_register_of_a_markerless_parked_standalone_keeps_the_entry_and_names_the_marker(
+    config_file, tmp_home, credentials_dir, capsys,
+):
+    """Its files are there; only the marker is gone, so the entry (its only handle) stays."""
+    _config, std = _std(config_file)
+    root = (tmp_home / "sa").resolve()
+    root.mkdir()
+    assert run_create(_create_args(root, standalone=True, register=True)) == 0
+    name = registry_store.standalone_name_for_root(std.registry, root)
+    assert name and run_rm(_rm_args(name)) == 0
+    before = registry_store.lookup_deregistered(std.registry, name)
+    marker = root / "workset.yaml"
+    kept = marker.read_text()
+    marker.unlink()
+    capsys.readouterr()
+
+    assert run_register(_register_args(name)) == 1
+    assert capsys.readouterr().err == (
+        f"Error: deregistered standalone box '{name}' is at {root}, but {marker} is missing, "
+        "so kanibako does not see a box there.\n"
+        "  Restore it: create that file with the line 'registry: null' under 'workset:'. "
+        f"Then retry:  kanibako box register {name}\n")
+    assert registry_store.lookup_deregistered(std.registry, name) == before
+    marker.write_text(kept)
+    assert run_register(_register_args(name)) == 0
+    assert registry_store.standalone_root(std.registry, name) == str(root)
+
+
+def test_box_list_with_an_unlistable_boxes_dir_is_refused_by_name(
+    config_file, tmp_home, credentials_dir, capsys,
+):
+    import os
+
+    if os.geteuid() == 0:
+        pytest.skip("root reads a mode-000 directory")
+    _config, std = _std(config_file)
+    proj_dir = tmp_home / "proj"
+    proj_dir.mkdir()
+    assert run_create(_create_args(proj_dir, name="mybox")) == 0
+    capsys.readouterr()
+
+    std.boxes.chmod(0)
+    try:
+        _cli_refusal("box", "list")
+    finally:
+        std.boxes.chmod(0o755)
+    assert capsys.readouterr().err.endswith(_UNREADABLE.format(std.boxes))
+
+
+def test_a_qualified_box_under_an_unreadable_workspaces_dir_is_refused_by_name(
+    config_file, tmp_home, credentials_dir, capsys, monkeypatch,
+):
+    """The QUALIFIED route's workspace fallback: EACCES is never "not found"."""
+    import os
+
+    from kanibako.cli import main
+
+    if os.geteuid() == 0:
+        pytest.skip("root reads a mode-000 directory")
+    parent = tmp_home / "wsp"
+    parent.mkdir()
+    monkeypatch.chdir(parent)
+    with pytest.raises(SystemExit) as made:
+        main(["workset", "create", "nws"])
+    assert made.value.code in (0, None)
+    workspaces = parent / "nws" / "workspaces"
+    (workspaces / "bar").mkdir()
+    capsys.readouterr()
+
+    workspaces.chmod(0)
+    try:
+        _cli_refusal("box", "info", "nws/bar")
+    finally:
+        workspaces.chmod(0o755)
+    assert capsys.readouterr().err.endswith(_UNREADABLE.format(workspaces / "bar"))
+
+
+@pytest.mark.parametrize("verb", [("box", "create"), ("box", "rm"), ("start",)],
+                         ids=["create", "rm", "start"])
+def test_a_path_under_an_unreadable_parent_is_refused_by_name(
+    config_file, tmp_home, credentials_dir, capsys, verb,
+):
+    """The PATH routes' own probes: EACCES is never "no such path"."""
+    import os
+
+    if os.geteuid() == 0:
+        pytest.skip("root reads a mode-000 directory")
+    root = (tmp_home / "p" / "sa").resolve()
+    root.mkdir(parents=True)
+    capsys.readouterr()
+
+    root.parent.chmod(0)
+    try:
+        _cli_refusal(*verb, str(root))
+    finally:
+        root.parent.chmod(0o755)
+    # ``start`` probes the box's own marker first; the others, the path itself.
+    named = root / "workset.yaml" if verb == ("start",) else root
+    assert capsys.readouterr().err.endswith(_UNREADABLE.format(named))
+    assert os.listdir(root) == []
+
+
 # ---------------------------------------------------------------------------
 # I3 / §D4a: `create --standalone` registers only on --register
 # ---------------------------------------------------------------------------

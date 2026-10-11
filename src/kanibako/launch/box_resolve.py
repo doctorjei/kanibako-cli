@@ -11,6 +11,7 @@ replaced, and the full case enumeration: ``llm-docs/kanibako/launch/box_resolve.
 from __future__ import annotations
 
 import shlex
+import stat
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Any, NamedTuple
@@ -29,7 +30,7 @@ from kanibako.settings.paths import (
     StandardPaths,
     detect_project_mode,
 )
-from kanibako.utils import literal_path
+from kanibako.utils import literal_path, stat_unless_gone
 
 # The PRIMARY workset's NAME (not a mode).  Anchored by ``config.primary_workset``,
 # not listed in the global ``worksets:`` section — so the enumeration yields it
@@ -45,7 +46,9 @@ def stores_standalone_registry_null(project_dir: Path, *, strict: bool = False) 
     A malformed file reads as not standalone unless *strict*, which refuses it.
     """
     settings = project_dir / WORKSET_META_FILE
-    if not settings.is_file():
+    # ⚑ EACCES refuses, naming the file (:func:`stat_unless_gone`): never "no marker".
+    st = stat_unless_gone(settings)
+    if st is None or not stat.S_ISREG(st.st_mode):
         return False
     try:
         table = load_doc(settings).get("workset")

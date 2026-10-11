@@ -10,6 +10,7 @@ file and which nested slot a config KEY maps to is answered by
 """
 from __future__ import annotations
 
+import errno
 from pathlib import Path
 from typing import Callable
 
@@ -223,12 +224,22 @@ def parse_doc_text(text: str) -> object:
 
 def load_doc(path: Path | None) -> dict:
     """Load a config document → dict. Missing/empty → {}; any other non-mapping, a repeated key,
-    a self-reference, or unbounded nesting raises."""
-    if path is None or not path.exists():
+    a self-reference, or unbounded nesting raises.
+
+    ⚑ Only ``ENOENT``/``ENOTDIR`` read as missing, never ``Path.exists()``: a file kanibako
+    cannot reach (EACCES on it or a parent, a link loop) refuses, naming it."""
+    if path is None:
         return {}
     try:
         text = path.read_text()
+    except (FileNotFoundError, NotADirectoryError):
+        return {}
     except OSError as exc:
+        if exc.errno in (errno.EACCES, errno.EPERM, errno.ELOOP):
+            # ⚑ The file may be fine: the cure is to make the path reachable, not to edit it.
+            from kanibako.utils import unreadable_path_error
+
+            raise unreadable_path_error(path, exc) from exc
         raise ConfigError(
             f"the config file {path} could not be read ({exc.strerror}). "
             "Fix or remove the file, then retry."

@@ -103,7 +103,7 @@ from kanibako.targets.assembly import BindingSourceError
 from kanibako.targets.base import _scrub_endpoint_userinfo, descriptor_floor, has_plugin
 from kanibako.utils import (
     container_name_for, container_name_segments, legacy_container_names, literal_path, logical_cwd,
-    render_socket_identity, short_hash, unrenderable_box_name_refusal,
+    render_socket_identity, short_hash, stat_unless_gone, unrenderable_box_name_refusal,
 )
 # The box-local AGENT LIVENESS MARKERS directory (per-PID).  Canonically owned by
 # :mod:`kanibako.vscode.vscode_config`, the low-level module that also owns the marker
@@ -1523,7 +1523,7 @@ def _broken_standalone_error(std: StandardPaths, project_dir: str) -> str | None
         name = find_identifier(project_dir, entries)
     if name is None:
         candidate = Path(literal_path(project_dir))
-        if candidate.exists():
+        if stat_unless_gone(candidate) is not None:  # ⚑ EACCES refuses, naming the path
             name = registry_store.standalone_name_for_root(std.registry, candidate)
     if name is None:
         return None

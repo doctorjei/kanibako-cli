@@ -177,12 +177,9 @@ def refuse_inherited_per_owner(
     An own file that cannot be checked (``EACCES``) refuses, naming it; it is never absent.
     """
     from kanibako.settings.config_keys import KEY_OWNERS
-    from kanibako.utils import stat_unless_gone
 
     if isinstance(doc, _Unset):
-        own_file = workset_root / WORKSET_META_FILE
-        stat_unless_gone(own_file)
-        doc = load_doc(own_file)
+        doc = load_doc(workset_root / WORKSET_META_FILE)
     for key in sorted(WORKSET_EARLY_KEYS):
         if key in exclude:
             continue

@@ -1,5 +1,5 @@
 """Utility functions: cp_if_newer, confirm_prompt, deep_merge, short_hash, container
-naming, stat_unless_gone, refuse_unreadable_file."""
+naming, the unless-gone filesystem probes, refuse_unreadable_file."""
 
 from __future__ import annotations
 
@@ -216,7 +216,27 @@ def stat_unless_gone(path: str | os.PathLike[str]) -> os.stat_result | None:
     except OSError as exc:
         if exc.errno in (errno.ENOENT, errno.ENOTDIR):
             return None
-        raise _unreadable_path_error(path, exc) from exc
+        raise unreadable_path_error(path, exc) from exc
+
+
+def is_dir_unless_gone(path: str | os.PathLike[str]) -> bool:
+    """Whether *path* is a directory; refuses (:func:`stat_unless_gone`) when it cannot tell."""
+    st = stat_unless_gone(path)
+    return st is not None and stat.S_ISDIR(st.st_mode)
+
+
+def iterdir_unless_gone(path: Path) -> list[Path] | None:
+    """*path*'s entries, or ``None`` when it is definitively absent or no directory.
+
+    ⚑ NOT ``Path.iterdir()``: an unlistable directory raises a bare ``PermissionError``.
+    Any failure but absence refuses, naming *path*, as :func:`stat_unless_gone` does.
+    """
+    if not is_dir_unless_gone(path):
+        return None
+    try:
+        return list(path.iterdir())
+    except OSError as exc:
+        raise unreadable_path_error(path, exc) from exc
 
 
 def refuse_unreadable_file(path: str | os.PathLike[str]) -> None:
@@ -232,10 +252,19 @@ def refuse_unreadable_file(path: str | os.PathLike[str]) -> None:
         with open(path, "rb"):
             pass
     except OSError as exc:
-        raise _unreadable_path_error(path, exc) from exc
+        raise unreadable_path_error(path, exc) from exc
 
 
-def _unreadable_path_error(path: str | os.PathLike[str], exc: OSError) -> ConfigError:
+def unreadable_path_error(path: str | os.PathLike[str], exc: OSError) -> ConfigError:
+    """The refusal for *path*, which *exc* says kanibako cannot reach: a loop, or unreadable."""
+    if exc.errno == errno.ELOOP:
+        # ⚑ A loop is no permission problem: "make it readable" would be the wrong cure.
+        from kanibako.project.workset import CANON_SYMLINK_LOOP_WHY
+
+        return ConfigError(
+            f"{os.fspath(path)}: {CANON_SYMLINK_LOOP_WHY}. Remove or repair the link, "
+            "then retry."
+        )
     return ConfigError(
         f"{os.fspath(path)} could not be read ({exc.strerror}). Make it and its parent "
         "directories readable, then retry."

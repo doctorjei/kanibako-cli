@@ -14,7 +14,6 @@ import functools
 import os
 import shlex
 import shutil
-import stat
 import sys
 from collections.abc import Callable, Iterable, Sequence
 from datetime import datetime, timezone
@@ -88,8 +87,8 @@ from kanibako.targets import resolve_target
 from kanibako.utils import (
     WORKSET_SEGMENT_PRIMARY, WORKSET_SEGMENT_STANDALONE,
     container_name_for, container_name_for_box_name, gitignore_holds_only_kanibako, literal_path,
-    logical_cwd, project_gitignore_to_strip, refuse_unreadable_file, short_hash,
-    stat_unless_gone, strip_project_gitignore, write_project_gitignore,
+    is_dir_unless_gone, logical_cwd, project_gitignore_to_strip, refuse_unreadable_file,
+    short_hash, stat_unless_gone, strip_project_gitignore, write_project_gitignore,
 )
 
 # ``box duplicate --to`` takes the mode enum's own tokens, never a hand-kept spelling list.
@@ -1170,6 +1169,9 @@ def precheck_create(args: argparse.Namespace) -> int | None:
             print(f"Error: {e.with_cure(cure)}", file=sys.stderr)
             return 1
 
+    # ⚑ A target kanibako cannot reach (EACCES, a loop) refuses, naming it, before the
+    # ``resolve()`` below raises on it (3.11: ``RuntimeError`` on a loop).
+    stat_unless_gone(_create_target(args))
     # $HOME guard: a home project must be BOTH standalone and an explicit --allow-home.
     if _create_target(args).resolve() == Path.home().resolve():
         if not args.standalone:
@@ -1393,7 +1395,7 @@ def run_create(args: argparse.Namespace, outcome: _CreateOutcome) -> int:
     # ``add_project`` makes — never ``<cwd>/<identifier>``.
     if project_dir is not None and _named_spec is None:
         target = Path(project_dir)
-        if not target.exists():
+        if stat_unless_gone(target) is None:  # ⚑ EACCES refuses, naming the path
             if not args.standalone:
                 refuse_inherited_per_owner(
                     std.primary_workset, _early_scope(std, BoxMode.primary))
@@ -2572,9 +2574,9 @@ def _purge_deregistered(std, name: str, entry: dict, args: argparse.Namespace, *
     def tracked_left() -> bool:
         # ⚑ EACCES refuses, naming the path: an unreadable store is not a gone one.
         if kind == "standalone":
-            return _is_dir_unless_gone(standalone_box_store(
+            return is_dir_unless_gone(standalone_box_store(
                 root, early=_early_scope(std, BoxMode.standalone)))
-        return _is_dir_unless_gone(metadata_dir)
+        return is_dir_unless_gone(metadata_dir)
 
     if not tracked_left():
         # Idempotent: the dir is already gone → drop the stale entry, no error, no prompt.
@@ -2650,14 +2652,14 @@ def _resolve_standalone_target(
     #    ⚑ A same-named PATH ranks first (the designation cascade, plan S8): step 2.
     entries = registry_store.load_standalone(std.registry)
     if (designation_route(target, name_first=True) is DesignationRoute.NAME
-            and not Path(target).exists()):
+            and stat_unless_gone(target) is None):  # ⚑ EACCES refuses, naming the path
         stored = find_identifier(target, entries)
         if stored is not None:
             return stored, Path(entries[stored]), True
 
     # 2) PATH target: detect the box by ancestor-walk, then match its registered root.
     candidate = Path(target)
-    if candidate.exists():
+    if stat_unless_gone(candidate) is not None:
         try:
             detection = detect_box_or_default(candidate, std, config)
         except ImportConflictError:
@@ -3079,7 +3081,9 @@ def _composed_standalone_key(root: Path) -> str | None:
 def _readopt_deregistered(std, name: str, entry: dict) -> int:
     """⚑ INDEX-ONLY, SEED-FREE readopt: move a box from ``deregistered`` back to active."""
     from kanibako.project import registry_store
-    from kanibako.launch.box_resolve import stores_standalone_registry_null
+    from kanibako.launch.box_resolve import (
+        standalone_marker_repair, stores_standalone_registry_null,
+    )
 
     kind = entry.get("kind")
     workspace = entry.get("workspace")
@@ -3090,12 +3094,23 @@ def _readopt_deregistered(std, name: str, entry: dict) -> int:
         if root is not None:
             # ⚑ EACCES refuses: the probe below reads an unreadable marker as "no marker".
             refuse_unreadable_file(root / WORKSET_META_FILE)
-        # Self-heal: the in-tree marker is gone → nothing to restore, drop the entry.
-        if root is None or not stores_standalone_registry_null(root):
+        # Self-heal: the box dir is gone → nothing to restore, drop the entry.  ⚑ EACCES refuses.
+        if root is None or not is_dir_unless_gone(root):
             registry_store.unregister_deregistered(std.registry, name)
             print(
                 f"No standalone metadata found for '{name}' (dropped stale entry); "
                 "nothing to restore.",
+                file=sys.stderr,
+            )
+            return 1
+        # The files are there but the marker is not: KEEP the entry, its only handle, and
+        # name the marker step.  A malformed file raises its own refusal (strict).
+        if not stores_standalone_registry_null(root, strict=True):
+            fault, cure = standalone_marker_repair(root)
+            print(
+                f"Error: deregistered standalone box '{name}' is at {root}, but "
+                f"{root / WORKSET_META_FILE} {fault}, so kanibako does not see a box there.\n"
+                f"  Restore it: {cure}. Then retry:  {_box_register_cure(name)}",
                 file=sys.stderr,
             )
             return 1
@@ -3131,7 +3146,7 @@ def _readopt_deregistered(std, name: str, entry: dict) -> int:
 
     metadata_dir = Path(str(metadata)).resolve() if metadata else None
     # Self-heal: the box dir is gone → nothing to restore, drop the entry.  ⚑ EACCES refuses.
-    if metadata_dir is None or not _is_dir_unless_gone(metadata_dir):
+    if metadata_dir is None or not is_dir_unless_gone(metadata_dir):
         registry_store.unregister_deregistered(std.registry, name)
         print(
             f"No metadata directory found for '{name}' (dropped stale entry); "
@@ -3158,12 +3173,6 @@ def _readopt_deregistered(std, name: str, entry: dict) -> int:
     registry_store.unregister_deregistered(std.registry, name)
     print(f"Registered primary box '{name}' at {workspace}.")
     return 0
-
-
-def _is_dir_unless_gone(path: Path) -> bool:
-    """Whether *path* is a directory; refuses (:func:`stat_unless_gone`) when it cannot tell."""
-    st = stat_unless_gone(path)
-    return st is not None and stat.S_ISDIR(st.st_mode)
 
 
 def _box_register_cure(target: str) -> str:
@@ -3306,7 +3315,7 @@ def run_register(args: argparse.Namespace) -> int:
     # 3. STANDALONE register-later — a PATH to an on-disk box with no index entry.
     #    ⚑ REUSE ``import_standalone``: it is already index-only + seed-free.
     candidate = Path(target)
-    if _is_dir_unless_gone(candidate):  # ⚑ EACCES refuses, naming the path
+    if is_dir_unless_gone(candidate):  # ⚑ EACCES refuses, naming the path
         root = Path(literal_path(target))
         refuse_unreadable_file(root / WORKSET_META_FILE)
         if stores_standalone_registry_null(root):
