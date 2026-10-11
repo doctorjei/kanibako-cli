@@ -821,6 +821,11 @@ def run_disconnect(args: argparse.Namespace) -> int:
     if _refuse_disconnect_while_live(std, ws, member, force=args.force,
                                      remove_files=args.remove_files):
         return 1
+    # The member's channel dirs are outside its tree: kept, and named after the run.
+    channels: list = []
+    if args.remove_files:
+        from kanibako.commands.box._parser import box_channel_keeps
+        channels = box_channel_keeps(std, BoxMode.named, ws.root, member, workset=ws.name)
     if not args.force:
         label = "and remove files " if args.remove_files else ""
         confirm_prompt(
@@ -858,6 +863,11 @@ def run_disconnect(args: argparse.Namespace) -> int:
     print(f"Removed project '{proj.name}' from working set '{ws.name}'")
     if not args.remove_files:
         _print_disconnect_leftovers(ws, proj)
+    if channels:
+        from kanibako.commands.box._parser import report_kept_channel
+        sys.stdout.flush()  # piped, stdout is buffered: the Notes would come out first
+        for role, path, _why in channels:
+            report_kept_channel(role, path)
     return 0
 
 

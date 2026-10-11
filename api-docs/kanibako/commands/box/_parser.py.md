@@ -20,6 +20,7 @@ _GITIGNORE = 'gitignore line'
 _EMPTY_CANON = 'default canon folder'
 _CREDS_LOCK = 'creds watcher lock'
 _VAULT_LABELS = ('vault ro (your files)', 'vault rw (your files)')
+_CHANNEL_ROLES = ('channel inbox', 'channel share', 'workset channel share')
 _DEREGISTER_LIVE = 'A running box cannot be deregistered: its container would run on with no box name to reach it.'
 _GENERIC_PARKED_SENTENCE = 'Restore it or delete it'
 _PARKED_CURE_POINTER = 'For the commands that restore or delete one: kanibako box rm <name>'
@@ -34,6 +35,9 @@ def run_create(args: argparse.Namespace, outcome: _CreateOutcome) -> int
 def run_ps(args: argparse.Namespace) -> int
 def run_list(args: argparse.Namespace) -> int
 def kept_for_recorded_workspace(std: StandardPaths, path: Path, *, own: str | None=None, own_workset: str | None=None) -> bool
+def box_channel_keeps(std: StandardPaths, mode: BoxMode, ws_root: Path, name: str, *, workset: str | None=None) -> 'list[tuple[str, Path, str | None]]'
+def report_kept_channel(role: str, path: Path) -> None
+def report_primary_keeps(retained: 'list[tuple[str, Path, str | None]]') -> None
 def refuse_ambiguous_parked_purge(matches, target: str) -> int
 def run_rm(args: argparse.Namespace) -> int
 def run_register(args: argparse.Namespace) -> int

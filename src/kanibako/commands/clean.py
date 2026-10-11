@@ -289,12 +289,18 @@ def _purge_one(std, config, path: str, *, force: bool) -> int:
                             "writes are in flight."):
         return 1
 
+    channels: "list[tuple[str, Path, str | None]]" = []  # named only: the plans name theirs
     if proj.mode is not BoxMode.named:
         failed = _purge_by_plan(std, proj, force=force)
         if failed is None:
             return 2
     else:
-        named = _purge_named_member(std, proj, force=force)
+        from kanibako.commands.box._parser import box_channel_keeps
+
+        channels = box_channel_keeps(
+            std, BoxMode.named, workset_root(proj, std), proj.name,
+            workset=proj.group.name if proj.group is not None else None)
+        named = _purge_named_member(std, proj, force=force, channels=channels)
         if named is None:
             return 2
         failed = named
@@ -315,13 +321,24 @@ def _purge_one(std, config, path: str, *, force: bool) -> int:
             print(f"Purge incomplete: something was kept, so {ref} stays a member of "
                   f"its workset — re-run the purge to finish: kanibako box purge {ref}",
                   file=sys.stderr)
+            _report_kept_channels(channels)
             return 1
         print("Purge incomplete: something was kept, so the box is parked — re-run "
               "the purge to finish.", file=sys.stderr)
         return 1
     print(MSG_DONE)
     print(f"Session data removed for {proj.project_path or '<None>'}")
+    _report_kept_channels(channels)
     return 0
+
+
+def _report_kept_channels(channels: "list[tuple[str, Path, str | None]]") -> None:
+    """Name each kept channel dir still on disk, after the run's own lines."""
+    from kanibako.commands.box._parser import report_kept_channel
+
+    sys.stdout.flush()  # piped, stdout is buffered: the Notes would come out first
+    for role, path, _why in channels:
+        report_kept_channel(role, path)
 
 
 def _purge_by_plan(std, proj, *, force: bool) -> bool | None:
@@ -332,7 +349,7 @@ def _purge_by_plan(std, proj, *, force: bool) -> bool | None:
     """
     from kanibako.commands.box._parser import (
         _confirm_purge, _primary_purge_plan, _report_retained_roles, _run_purge_plan,
-        _standalone_purge_plan)
+        _standalone_purge_plan, report_primary_keeps)
     from kanibako.project import registry_store
 
     retained: "list[tuple[str, Path, str | None]]" = []
@@ -357,14 +374,15 @@ def _purge_by_plan(std, proj, *, force: bool) -> bool | None:
         _report_retained_roles(proj.metadata_path, retained,
                               early=_early_scope(std, BoxMode.standalone))
     else:
-        for what, kept, _why in retained:
-            report_retained_loop(kept, what)
+        report_primary_keeps(retained)
     return not removed
 
 
-def _purge_named_member(std, proj, *, force: bool) -> bool | None:
+def _purge_named_member(std, proj, *, force: bool,
+                        channels: "list[tuple[str, Path, str | None]]") -> bool | None:
     """A NAMED member: its vault leaves, own store, logs, then its box tree LAST.
 
+    *channels* (:func:`box_channel_keeps`) is listed as kept; the caller names it after.
     Returns whether something was left behind, or ``None`` when declined.
     """
     from kanibako.commands.box._parser import (
@@ -390,7 +408,7 @@ def _purge_named_member(std, proj, *, force: bool) -> bool | None:
         print(f"Project: {proj.project_path or '<None>'}")
         if proj.name:
             print(f"Name: {proj.name}")
-    if not _confirm_purge(listed, force=force):
+    if not _confirm_purge(listed, force=force, retained=channels):
         print("Aborted.")
         return None
 
@@ -449,7 +467,7 @@ def _purge_all(std, config, *, force: bool) -> int:
     print()
 
     from kanibako.commands.box._parser import (
-        _primary_probe_container, kept_for_recorded_workspace)
+        _primary_probe_container, box_channel_keeps, kept_for_recorded_workspace)
 
     # ⚑ EVERY BOX IS PLANNED BEFORE THE QUESTION AND BEFORE ANY DELETE: a box purged
     # first is unregistered, and its workspace inside a later box must still be kept.
@@ -458,6 +476,8 @@ def _purge_all(std, config, *, force: bool) -> int:
                      Path | None, tuple[Path, Path | None] | None]] = []
     # (label, lock file, container, quoted stop ref): what the running-box probe asks.
     probes: list[tuple[str, Path, str | None, str]] = []
+    # Every box's channel dirs: never deleted, named after the run.
+    channels: "list[tuple[str, Path, str | None]]" = []
     for metadata_path, project_path in projects:
         # Phase 5: PRIMARY vault lives under @config.primary_workset/vault/
         # {ro,rw}/<name> (name == metadata dir name), not under metadata_path.
@@ -472,6 +492,8 @@ def _purge_all(std, config, *, force: bool) -> int:
         probes.append((jobs[-1][0], metadata_path / ".kanibako.lock",
                        _primary_probe_container(metadata_path.name),
                        box_cure_ref(BoxMode.primary, metadata_path.name, None, metadata_path)))
+        channels += box_channel_keeps(std, BoxMode.primary, std.primary_workset,
+                                      metadata_path.name)
     for ws_name, ws, project_list in ws_data:
         # ⚑ Hoisted, and RESOLVED: both properties read the root workset.yaml, so one
         # read per workset keeps every member of it judged against the same document.
@@ -493,6 +515,8 @@ def _purge_all(std, config, *, force: bool) -> int:
             probes.append((jobs[-1][0], boxes_dir / proj_name / ".kanibako.lock",
                            container_name_for_box_name(proj_name, ws_name),
                            box_cure_ref(BoxMode.named, proj_name, ws_name, ws.root)))
+            channels += box_channel_keeps(std, BoxMode.named, ws.root, proj_name,
+                                          workset=ws_name)
     # A folder holding a recorded workspace is KEPT whole and named (keyspec § 0).
     kept = {path for job in jobs for path in (*job[5], job[6], job[4])
             if path is not None and kept_for_recorded_workspace(std, path)}
@@ -555,6 +579,7 @@ def _purge_all(std, config, *, force: bool) -> int:
         removed += 1
 
     print(f"\nPurged session data for {removed} project(s).")
+    _report_kept_channels(channels)
     if failures:
         sys.stdout.flush()  # piped, stdout is buffered: the summary line comes first
         print(f"Purge incomplete: {failures} could not be fully purged; each kept its "

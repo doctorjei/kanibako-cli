@@ -2129,10 +2129,61 @@ _CREDS_LOCK = "creds watcher lock"         # removed only UNHELD; re-probed at d
 _VAULT_LABELS = ("vault ro (your files)", "vault rw (your files)")
 
 
+#: The retained roles :func:`box_channel_keeps` reports: never deleted, always named.
+_CHANNEL_ROLES = ("channel inbox", "channel share", "workset channel share")
+
+
+def box_channel_keeps(std: StandardPaths, mode: BoxMode, ws_root: Path, name: str, *,
+                      workset: str | None = None) -> "list[tuple[str, Path, str | None]]":
+    """The box's inbox and share dirs, in the *retained* shape of :func:`_confirm_purge`.
+
+    system-design § "Box lifecycle": a destructive verb keeps any path outside the box's
+    root and reports it; the channel dirs are outside every mode's root (HIS 171-RM Q2).
+    Read through the box's own channel keys, as a launch mounts them; *workset* names a
+    named box's workset.  A key that does
+    not resolve is warned about and names nothing: these dirs are never deleted anyway.
+    """
+    from kanibako.channels.channels import (
+        own_partition_dirs, workset_channels_at, workset_token)
+
+    try:
+        ws_token = workset_token(mode, workset)
+        own = own_partition_dirs(std, ws_token, name, ws_root=ws_root)
+        local = (None if mode is BoxMode.standalone else workset_channels_at(
+            ws_root, early=EarlyScope(std.early_system, ws_token)))
+    except Exception as e:  # noqa: BLE001 - reporting only; nothing here is deleted
+        print(f"Warning: could not resolve the box's channel dirs ({e}); they are kept, "
+              "never deleted.", file=sys.stderr)
+        return []
+    found = zip(_CHANNEL_ROLES, (own.mailbox, own.share_global,
+                                 None if local is None or local.share is None
+                                 else local.share / name))
+    return [(role, path, None) for role, path in found if path is not None]
+
+
+def report_kept_channel(role: str, path: Path) -> None:
+    """The after-run Note for one :func:`box_channel_keeps` dir still on disk."""
+    if path.exists() or path.is_symlink():
+        sys.stdout.flush()  # piped, stdout is buffered: this Note would jump ahead
+        print(f"Note: kept the box's {role} at {path} — it is outside the box's root, so "
+              "it is kept; yours to remove.", file=sys.stderr)
+
+
+def report_primary_keeps(retained: "list[tuple[str, Path, str | None]]") -> None:
+    """After a PRIMARY purge's run: name each looped leaf and each kept channel dir."""
+    for what, kept, _why in retained:
+        if what in _CHANNEL_ROLES:
+            report_kept_channel(what, kept)
+        else:
+            report_retained_loop(kept, what)
+
+
 def _primary_purge_plan(std, name: str, metadata_dir: Path,
                        loop_keeps: "list[tuple[str, Path, str | None]] | None" = None,
                        ) -> list[_PurgeStep]:
     """What purging a PRIMARY box deletes: box dir, vault ro/rw, per-box logs.
+
+    *loop_keeps* also gets the box's channel dirs (:func:`box_channel_keeps`).
 
     ⚑ THE ANCHOR IS APPENDED LAST: it is the box's RETRY address (as in the standalone).
     ⚑ A LOOPED VAULT LEAF OR STORE IS KEPT, and pushed into *loop_keeps* (the *retained*
@@ -2167,6 +2218,9 @@ def _primary_purge_plan(std, name: str, metadata_dir: Path,
     steps += [_PurgeStep("log", "log", log_file) for log_file in box_logs_to_purge(
         std, std.primary_logs, name, workset_root=std.primary_workset)]
     steps.append(_PurgeStep("metadata", "box metadata", metadata_dir, anchor=True))
+    if loop_keeps is not None:
+        loop_keeps.extend(box_channel_keeps(std, BoxMode.primary, std.primary_workset,
+                                            name))
     return _without_recorded_workspaces(steps, std)
 
 
@@ -2201,8 +2255,10 @@ def _standalone_purge_plan(
     if leftover_canon_keep is not None:
         retained.append(("canon", leftover_canon_keep, leftover_canon_why))
     vault_pair = resolve_workset_vault_pair(root, early=early)
+    box_name = standalone_box_name(root, registered_name)
+    retained.extend(box_channel_keeps(std, BoxMode.standalone, root, box_name))
     store = (None if vault_pair[1] is None else
-             box_snapshot_store(vault_pair[1], standalone_box_name(root, registered_name)))
+             box_snapshot_store(vault_pair[1], box_name))
     retained.extend(("snapshot folder", v, None)
                     if store is not None and v == store.parent and not _symlink_loop(v)
                     else ("vault", v, vault_keep_reason(root, v, early=early))
@@ -2279,6 +2335,8 @@ def _report_retained_roles(root: Path, retained: "list[tuple[str, Path, str | No
             report_retained_store(path, root)
         elif role == "canon":
             report_retained_canon(path, root, why, early=early)
+        elif role in _CHANNEL_ROLES:
+            report_kept_channel(role, path)
         elif role == "creds lock":
             print(f"Note: left the creds watcher lock at {path} in place — "
                   f"{CREDS_LOCK_KEPT_WHY}.", file=sys.stderr)
@@ -2518,8 +2576,7 @@ def _purge_deregistered(std, name: str, entry: dict, args: argparse.Namespace, *
     removed = _run_purge_plan(plan, std)
     sys.stdout.flush()
     if kind != "standalone":
-        for what, kept, _why in retained:
-            report_retained_loop(kept, what)
+        report_primary_keeps(retained)
     if kind == "standalone":
         _report_retained_roles(root, retained,
                               early=_early_scope(std, BoxMode.standalone))
@@ -2944,8 +3001,7 @@ def run_rm(args: argparse.Namespace) -> int:
             print(f"No metadata directory found at {metadata_dir}")
             return 0
         ran = _run_purge_plan(plan, std)
-        for what, kept, _why in loop_keeps:
-            report_retained_loop(kept, what)
+        report_primary_keeps(loop_keeps)
         if ran:
             return 0
     # No --purge, or a purge that left the metadata: park a ``deregistered`` entry for
