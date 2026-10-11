@@ -22,8 +22,8 @@ class TestCommsConfig:
         """A ``system.channelroot`` repoint takes effect — read from the SETTINGS file.
 
         🛑 NOT FROM ``kanibako.cfg`` (R153, 2026-08-31).  Spec §1 gives Layer 1
-        the ``config.*`` bootstrap paths ALONE and names ``system.channelroot`` among the
-        Layer-2 keys that KEEP the ``system.*`` name, so the bootstrap file cannot carry
+        the ``config.*`` bootstrap paths ALONE, and §2g declares ``system.channelroot`` a
+        Layer-2 ``system.*`` settings key, so the bootstrap file cannot carry
         it and now REFUSES it.  This case planted it there and read it back through
         ``load_config(...).config_paths``, never touching ``bootstrap_config_paths`` —
         which is why deleting that read's ``config.``-prefix filter would NOT have
