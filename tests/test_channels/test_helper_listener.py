@@ -614,6 +614,94 @@ class TestHubTreeSpawn:
         assert ctx.runtime.run.call_count == 2
 
 
+#: A user's own ``~/canon/notebook/scripts/helper-init.sh`` (``resolve_init_script``):
+#: it registers nothing and exports nothing, and only execs the agent command.
+_CUSTOM_INIT = "#!/usr/bin/env bash\nshift\nexec \"$@\"\n"
+
+
+def _fake_podman(tmp_path: Path) -> tuple[Path, Path]:
+    """A podman stand-in: ``run`` records its argv, ``inspect`` reports the recorded
+    ``-e`` pairs as ``.Config.Env``.  Returns ``(binary, record)``."""
+    import sys
+
+    rec = tmp_path / "podman-run.argv"
+    binary = tmp_path / "fake-podman"
+    binary.write_text(
+        "#!/bin/sh\n"
+        "case \"$1\" in\n"
+        f"  run) shift; printf '%s\\n' \"$@\" > '{rec}'; echo cid ;;\n"
+        f"  inspect) exec '{sys.executable}' -c 'import json,sys; a=open(sys.argv[1]).read()"
+        f".split(chr(10)); print(json.dumps([a[i+1] for i,x in enumerate(a) if x==\"-e\"]))'"
+        f" '{rec}' ;;\n"
+        "  *) exit 0 ;;\n"
+        "esac\n"
+    )
+    binary.chmod(0o755)
+    return binary, rec
+
+
+class TestHubStampsTheHelperNumber:
+    """system-design § Delivery at launch: the ``KANIBAKO_*`` stamps a launch derives
+    install as entries of the launch env, and nothing in the box writes a variable after
+    that.  A helper's number is derived by the hub, so the hub stamps it onto the
+    helper's launch env, and no entrypoint script has to export it."""
+
+    def test_the_launch_env_carries_the_helpers_number(self, hub_and_sock):
+        hub, sock_path, ctx = hub_and_sock
+        ctx.env = {"FOO": "bar", "KANIBAKO_HELPER_NUM": "9"}
+        _helper_tree(ctx.helpers_dir / "1")
+        assert _connect_and_send(sock_path, {"action": "spawn", "helper_num": 1})["status"] == "ok"
+        env = ctx.runtime.run.call_args[1]["env"]
+        assert env == {"FOO": "bar", "KANIBAKO_HELPER_NUM": "1"}
+        # The director's snapshot is shared by every helper: never written through.
+        assert ctx.env == {"FOO": "bar", "KANIBAKO_HELPER_NUM": "9"}
+
+    def test_a_custom_init_script_still_yields_the_right_number(self, tmp_path, mock_ctx):
+        """Fake podman: the stamp is on the container (``inspect_env``), and a helper whose
+        entrypoint is a user's script with no export still reads its own number."""
+        import subprocess
+        import sys
+
+        from kanibako.runtime.container import ContainerRuntime
+
+        binary, rec = _fake_podman(tmp_path)
+        mock_ctx.runtime = ContainerRuntime(command=str(binary))
+        mock_ctx.env = {"FOO": "bar"}
+        child = mock_ctx.helpers_dir / "1" / "helpers" / "5"
+        for home in (mock_ctx.helpers_dir / "1", child):
+            _helper_tree(home)
+            (home / "scripts").mkdir()
+            (home / "scripts" / "helper-init.sh").write_text(_CUSTOM_INIT)
+        hub = HelperHub()
+        sock_path = tmp_path / "helper.sock"
+        hub.start(sock_path, mock_ctx)
+        try:
+            assert _connect_and_send(sock_path, {"action": "spawn", "helper_num": 1})["status"] == "ok"
+            resp = _connect_and_send(sock_path, {
+                "action": "spawn", "helper_num": 5, "requester": 1,
+            })
+        finally:
+            hub.stop()
+        assert resp == {"status": "ok", "container_name": "kb-primary-testproj-helper-5"}
+        assert mock_ctx.runtime.inspect_env(resp["container_name"], "KANIBAKO_HELPER_NUM") == "5"
+
+        # Run the helper's own entrypoint as the container would: its recorded env, the
+        # number the hub passed, and the in-box CLI's read of its own number.
+        argv = rec.read_text().split("\n")
+        box_env = dict(argv[i + 1].split("=", 1) for i, a in enumerate(argv) if a == "-e")
+        box_env.update(PATH="/usr/bin:/bin", HOME=str(child),
+                       PYTHONPATH=str(Path(helper_listener.__file__).parents[2]))
+        number_arg = argv[argv.index("test:latest") + 1]
+        probe = ("from kanibako.commands.helper_cmd import _own_helper_number;"
+                 "print(_own_helper_number())")
+        out = subprocess.run(
+            ["bash", str(child / "scripts" / "helper-init.sh"), number_arg,
+             sys.executable, "-c", probe],
+            env=box_env, capture_output=True, text=True, timeout=60,
+        )
+        assert (out.returncode, out.stdout.strip()) == (0, "5"), out.stderr
+
+
 class TestHubStop:
     def test_stop_success(self, hub_and_sock):
         hub, sock_path, ctx = hub_and_sock

@@ -531,7 +531,20 @@ class TestRunSend:
         _no_hub(helpers_env)
         rc = run_send(_make_args(number=1, message="hello"))
         assert rc == 1
-        assert "not enabled" in capsys.readouterr().err
+        assert "Cannot send: this box runs no helper hub" in capsys.readouterr().err
+
+    @pytest.mark.parametrize("verb", ["send", "broadcast"])
+    def test_a_stub_or_dead_socket_gets_the_no_hub_wording(self, helpers_env, capsys, verb):
+        """The socket FILE exists (a stub, or a dead hub's socket): "no socket found"
+        would be false; the cause is the same as with no file, so is the sentence."""
+        sock = helpers_env / ".kanibako" / "state" / "helper.sock"
+        sock.unlink()
+        sock.touch()
+        run = run_send if verb == "send" else run_broadcast
+        assert run(_make_args(number=1, message="hello")) == 1
+        err = capsys.readouterr().err
+        assert f"Cannot {verb}: this box runs no helper hub" in err
+        assert "no socket" not in err
 
     def test_send_with_socket(self, helpers_env, capsys):
         """Send succeeds when socket exists and mock returns ok."""
@@ -562,7 +575,7 @@ class TestRunBroadcast:
         _no_hub(helpers_env)
         rc = run_broadcast(_make_args(message="all hands"))
         assert rc == 1
-        assert "not enabled" in capsys.readouterr().err
+        assert "Cannot broadcast: this box runs no helper hub" in capsys.readouterr().err
 
     def test_broadcast_success(self, helpers_env, capsys):
         sock = helpers_env / ".kanibako" / "state" / "helper.sock"
@@ -764,7 +777,24 @@ class TestSocketWiring:
         out, err = capsys.readouterr()
         assert "Respawned" not in out
         assert "Cannot respawn: helper 1 did not launch: image not found" in err
-        assert _read_state(helpers_env / "helpers", 1)["status"] == "failed"
+        # A helper that worked before keeps its directory AND stays respawnable: the
+        # message names the retry, never ``cleanup`` (which deletes the directory).
+        assert "cleanup" not in err
+        assert "kanibako box helper respawn 1" in err
+        state = _read_state(helpers_env / "helpers", 1)
+        assert (state["status"], state["error"]) == ("stopped", "image not found")
+
+    def test_a_failed_respawn_can_be_retried(self, helpers_env, capsys):
+        run_spawn(_make_args(depth=None, breadth=None, model=None))
+        run_stop(_make_args(number=1))
+        with patch("kanibako.channels.helper_client.send_request") as m:
+            m.return_value = {"status": "error", "message": "image not found"}
+            assert run_respawn(_make_args(number=1)) == 1
+            m.return_value = {"status": "ok", "container_name": "c"}
+            assert run_respawn(_make_args(number=1)) == 0
+        state = _read_state(helpers_env / "helpers", 1)
+        assert state["status"] == "running"
+        assert "error" not in state
 
     def test_stop_with_socket(self, helpers_env, capsys):
         """Stop calls socket client for container stop."""
@@ -923,22 +953,33 @@ class TestTreeWideNumbering:
         req = m.call_args[0][1]
         assert (req["helper_num"], req["requester"]) == (5, 1)
 
-    def test_helper_init_exports_the_number_the_hub_launched_it_with(self, tmp_path):
-        """The CLI reads its own number from ``HELPER_NUM_ENV``; ``helper-init.sh`` (the
-        helper's entrypoint, handed the number by the hub) is what sets it."""
-        import subprocess
+    def test_helper_init_exports_nothing(self):
+        """The hub stamps the number on the helper's launch env (system-design § Delivery
+        at launch: nothing writes a variable after the channel); the bundled entrypoint
+        must not write it a second time."""
         from kanibako.channels.helpers import bundled_init_script
 
-        env = {"HOME": str(tmp_path), "PATH": "/usr/bin:/bin"}
+        assert helper_cmd.HELPER_NUM_ENV not in bundled_init_script().read_text()
 
-        def run(arg: str) -> subprocess.CompletedProcess:
-            return subprocess.run(
-                ["bash", str(bundled_init_script()), arg, "printenv", helper_cmd.HELPER_NUM_ENV],
-                env=env, capture_output=True, text=True, timeout=30,
-            )
+    @pytest.mark.parametrize("verb", ["spawn", "respawn"])
+    def test_a_malformed_number_is_a_clean_refusal(self, helpers_env, monkeypatch, verb):
+        """``KANIBAKO_HELPER_NUM=x1``: a KanibakoError naming the value (the CLI's
+        ``Error:`` line, rc 1), never a traceback; nothing is written for a spawn."""
+        from kanibako.errors import KanibakoError
 
-        assert run("7").stdout.strip() == "7"
-        assert run("unknown").returncode != 0  # not a number: not exported
+        if verb == "respawn":
+            run_spawn(_make_args(depth=None, breadth=None, model=None))
+            run_stop(_make_args(number=1))
+        monkeypatch.setenv("KANIBAKO_HELPER_NUM", "x1")
+        with pytest.raises(KanibakoError, match="'x1'"):
+            if verb == "spawn":
+                run_spawn(_make_args(depth=None, breadth=None, model=None))
+            else:
+                run_respawn(_make_args(number=1))
+        if verb == "spawn":
+            assert not (helpers_env / "helpers").exists()
+        else:
+            assert _read_state(helpers_env / "helpers", 1)["status"] == "stopped"
 
     def test_the_numbering_blocks(self):
         budget = SpawnBudget(depth=3, breadth=4)

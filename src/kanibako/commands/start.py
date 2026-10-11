@@ -9783,7 +9783,9 @@ def _core_env_default_categories(*, proj, target, agent_id) -> dict[str, str]:
     'KANIBAKO_' stuff should be in system.env"*).  They are ordinary system-scope
     floor keys, so they enter the ONE env channel with everything else.  Nothing
     above the channel may write these variables; adding a fifth stamp anywhere else
-    is the bug this function exists to prevent.
+    is the bug this function exists to prevent.  The one per-HELPER variable,
+    ``KANIBAKO_HELPER_NUM``, is not a fifth: a helper launch runs no resolve, so the hub
+    stamps it on the helper's launch env (``helper_listener.HelperHub._handle_spawn``).
 
     The values are RESOLVED LITERALS, not ``@``-refs (the ``meta_identity_floor``
     pattern): what a launch derives, it derives once, here; the box name enters as

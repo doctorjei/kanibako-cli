@@ -330,6 +330,12 @@ def remove_helper_dirs(
 
 INIT_SCRIPT_NAME = "helper-init.sh"
 
+#: A helper's own number, in its box's environment.  The hub stamps it on the helper's
+#: launch env (``helper_listener``), as a launch stamps its other ``KANIBAKO_*``
+#: variables; nothing in the box writes it, so a user's own init script need not.
+#: Unset in the director (keyspec ``meta.box.helper_num``: "UNSET for a top-level box").
+HELPER_NUM_ENV = "KANIBAKO_HELPER_NUM"
+
 
 def bundled_init_script() -> Path:
     """Return the path to the bundled default ``helper-init.sh``."""

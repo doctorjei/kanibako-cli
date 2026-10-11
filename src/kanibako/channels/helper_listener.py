@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING, Any
 
 from kanibako.channels.helpers import (
     HELPER_CORE_LEAVES,
+    HELPER_NUM_ENV,
     HELPER_SCRIPTS_RELPATH,
     INIT_SCRIPT_NAME,
     SPAWN_CONFIG_FILENAME,
@@ -385,7 +386,12 @@ class HelperHub:
                 vault_rw_path=helper_home / HELPER_CORE_LEAVES["vault_rw_path"],
                 extra_mounts=mounts or None,
                 enable_vault=True,
-                env=ctx.env,
+                # The director's realized env, plus this helper's own stamp: its
+                # number is derived HERE, per helper, so the hub installs it on the
+                # launch env as a launch installs its ``KANIBAKO_*`` stamps (system-design
+                # § Delivery at launch).  It beats an inherited value, and the shared
+                # snapshot is never written through.
+                env={**(ctx.env or {}), HELPER_NUM_ENV: str(helper_num)},
                 name=container_name,
                 entrypoint=init_script,
                 cli_args=cli_args,

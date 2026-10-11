@@ -11,6 +11,7 @@ import sys
 from pathlib import Path
 
 from kanibako.channels.helpers import (
+    HELPER_NUM_ENV,
     HELPER_SCRIPTS_RELPATH,
     INIT_SCRIPT_NAME,
     PARENT_SCRIPTS_RELPATH,
@@ -29,6 +30,7 @@ from kanibako.channels.helpers import (
     resolve_spawn_budget,
     write_spawn_budget,
 )
+from kanibako.errors import KanibakoError
 from kanibako.settings.config import system_settings_path
 from kanibako.settings.settings_resolve import BOX_PINNED_STATE_RELPATH
 
@@ -204,29 +206,37 @@ def _check_helpers_enabled() -> bool:
 #: A hub runs only on a start that is not persistent, with helpers allowed
 #: (``commands.start``: a persistent start forces ``no_helpers``).
 _NO_HUB = (
-    "Cannot %s: this box runs no helper hub, so no helper can launch. "
+    "Cannot %s: this box runs no helper hub. "
     "A hub runs only on an ephemeral start (`kanibako start --ephemeral`) with helpers allowed."
 )
 
-#: Why a spawn or respawn fails when the hub could not start the helper's container.
-_LAUNCH_FAILED = (
-    "Cannot %s: helper %d did not launch: %s. Its directory is kept, marked failed; "
+#: Why a spawn fails when the hub could not start the helper's container.
+_SPAWN_FAILED = (
+    "Cannot spawn: helper %d did not launch: %s. Its directory is kept, marked failed; "
     "`kanibako box helper cleanup %d` removes it."
 )
 
-#: THIS helper's own number, exported by ``helper-init.sh`` from the number the hub
-#: launched it with.  Unset in the director (keyspec ``meta.box.helper_num``: "UNSET
-#: for a top-level box").
-HELPER_NUM_ENV = "KANIBAKO_HELPER_NUM"
+#: Why a respawn fails.  The helper ran before, so its directory holds its work: it
+#: stays stopped and respawnable, and ``cleanup`` (which deletes it) is not the cure.
+_RESPAWN_FAILED = (
+    "Cannot respawn: helper %d did not launch: %s. It stays stopped, the reason in its "
+    "state.json; fix the cause and retry `kanibako box helper respawn %d`."
+)
 
 
 def _own_helper_number() -> int | None:
-    """This box's own helper number, or ``None`` in the director."""
+    """This box's own helper number, or ``None`` in the director.
+
+    Raises :class:`KanibakoError` (the CLI's ``Error:`` line, rc 1) when the variable
+    is set to anything but digits."""
     raw = os.environ.get(HELPER_NUM_ENV, "")
     if not raw:
         return None
     if not raw.isdigit():
-        raise ValueError(f"{HELPER_NUM_ENV}={raw!r} is not a helper number")
+        raise KanibakoError(
+            f"{HELPER_NUM_ENV}={raw!r} is not a helper number; "
+            f"the hub sets it to digits at a helper's launch."
+        )
     return int(raw)
 
 
@@ -383,7 +393,7 @@ def run_spawn(args: argparse.Namespace) -> int:
         state["status"] = "failed"
         state["error"] = failure
         _write_state(helpers_dir, helper_num, state)
-        print(_LAUNCH_FAILED % ("spawn", helper_num, failure, helper_num), file=sys.stderr)
+        print(_SPAWN_FAILED % (helper_num, failure, helper_num), file=sys.stderr)
         return 1
     state["status"] = "running"
     state["container_name"] = container_name
@@ -546,10 +556,11 @@ def run_respawn(args: argparse.Namespace) -> int:
         "helpers_dir": str(helpers_dir),
     })
     if failure is not None:
-        state["status"] = "failed"
+        # Still ``stopped``, so a retry is a respawn: a ``failed`` helper cannot be
+        # respawned, which would leave only ``cleanup``.
         state["error"] = failure
         _write_state(helpers_dir, helper_num, state)
-        print(_LAUNCH_FAILED % ("respawn", helper_num, failure, helper_num), file=sys.stderr)
+        print(_RESPAWN_FAILED % (helper_num, failure, helper_num), file=sys.stderr)
         return 1
     state["status"] = "running"
     state["container_name"] = container_name
@@ -562,7 +573,7 @@ def run_respawn(args: argparse.Namespace) -> int:
 def run_send(args: argparse.Namespace) -> int:
     """Send a message to a specific helper."""
     if not _check_helpers_enabled():
-        print("Helpers not enabled (no socket found).", file=sys.stderr)
+        print(_NO_HUB % "send", file=sys.stderr)
         return 1
 
     from kanibako.channels.helper_client import send_request
@@ -586,7 +597,7 @@ def run_send(args: argparse.Namespace) -> int:
 def run_broadcast(args: argparse.Namespace) -> int:
     """Broadcast a message to all helpers."""
     if not _check_helpers_enabled():
-        print("Helpers not enabled (no socket found).", file=sys.stderr)
+        print(_NO_HUB % "broadcast", file=sys.stderr)
         return 1
 
     from kanibako.channels.helper_client import send_request

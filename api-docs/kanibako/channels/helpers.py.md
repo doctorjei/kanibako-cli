@@ -15,6 +15,7 @@ HELPER_SCRIPTS_RELPATH = 'scripts'
 PARENT_SCRIPTS_RELPATH = f'{CANON_GUEST_ROOT}/{NOTEBOOK_SCRIPTS_REL}'
 HELPER_CORE_LEAVES: dict[str, str] = {'project_path': 'workspace', 'vault_ro_path': 'vault/ro', 'vault_rw_path': 'vault/rw'}
 INIT_SCRIPT_NAME = 'helper-init.sh'
+HELPER_NUM_ENV = 'KANIBAKO_HELPER_NUM'
 ```
 
 ## Functions
