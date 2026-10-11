@@ -848,9 +848,15 @@ def run_disconnect(args: argparse.Namespace) -> int:
         # ⚑ NOT redundant with the WorksetError arm: the WORKSPACE leaf's plain
         # ``rmtree`` can refuse (a store leaf refusing is the arm above).
         print(f"Error: could not remove project '{member}': {e}", file=sys.stderr)
-        cure = e.filename or str(ws.projects_dir / member)
-        print(f"  Try: podman unshare rm -rf {shlex.quote(str(cure))}",
-              file=sys.stderr)
+        cure = Path(e.filename or ws.projects_dir / member)
+        # ⚑⚑ A DELETING cure only where deleting was asked for: a plain disconnect
+        # promises to keep the workspace, and a path the caller kept stays kept.
+        if args.remove_files and cure not in keep:
+            print(f"  Try: podman unshare rm -rf {shlex.quote(str(cure))}",
+                  file=sys.stderr)
+        else:
+            print(f"  Try: fix the permissions on {shlex.quote(str(cure))} and its "
+                  "parent directory, then re-run (it is kept).", file=sys.stderr)
         return 1
     if logs_dir is not None:
         # ⚑ HERE, not in ``remove_project``/``release_project``: a move releases the box

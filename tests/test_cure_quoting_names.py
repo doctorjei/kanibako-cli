@@ -754,7 +754,7 @@ class TestTheCleanupCuresAreQuoted:
     def test_the_disconnect_cure_keeps_one_operand(self, tmp_path, monkeypatch,
                                                    tmp_home, config_file,
                                                    credentials_dir):
-        """``workset disconnect``'s OSError arm, whose operand is the member's dir."""
+        """``workset disconnect --remove-files``'s OSError arm, whose operand is the member's dir."""
         from kanibako.commands import workset_cmd
         from kanibako.project.workset import add_project, create_workset
         from kanibako.settings.config import load_config, user_config_file
@@ -777,7 +777,7 @@ class TestTheCleanupCuresAreQuoted:
         ):
             rc = workset_cmd.run_disconnect(argparse.Namespace(
                 workset="ws", project=_SPACED, box=None,
-                force=True, remove_files=False))
+                force=True, remove_files=True))
         printed = err.getvalue()
         assert rc == 1 and "could not remove project" in printed, printed
         cure = _pasteable(_line(printed, "unshare"), "Try: ")

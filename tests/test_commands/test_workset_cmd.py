@@ -1608,6 +1608,32 @@ class TestWorksetDisconnect:
         assert (ws.projects_dir / "badlogsproj").is_dir()
         assert "badlogsproj" in _workset_boxes(ws)
 
+    @pytest.mark.skipif(os.geteuid() == 0, reason="root ignores mode 000")
+    def test_a_plain_disconnect_failure_never_prints_a_deleting_cure(
+        self, config_file, tmp_home, capsys,
+    ):
+        """A plain disconnect keeps the workspace, so its EACCES cure must not ``rm -rf`` it."""
+        from kanibako.commands.workset_cmd import run_disconnect
+
+        std = load_std_paths(load_config(config_file))
+        ws = create_workset("keepws", tmp_home / "ws_keep", std)
+        src = ws.workspaces_dir / "it1"
+        src.mkdir(parents=True)
+        (src / "ws.txt").write_text("mine")
+        add_project(ws, "it1", src)
+
+        ws.workspaces_dir.chmod(0)
+        try:
+            rc = run_disconnect(argparse.Namespace(
+                workset="keepws", project="it1", remove_files=False, force=True))
+        finally:
+            ws.workspaces_dir.chmod(0o755)
+        err = capsys.readouterr().err
+        assert rc == 1 and "could not remove project 'it1'" in err, err
+        assert "rm " not in err, err
+        assert "fix the permissions" in err, err
+        assert (src / "ws.txt").read_text() == "mine"
+
     def test_disconnect_unknown_error(self, config_file, tmp_home, capsys):
         from kanibako.commands.workset_cmd import run_disconnect
 
