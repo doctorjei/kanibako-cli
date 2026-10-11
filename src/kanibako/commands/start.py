@@ -5095,7 +5095,8 @@ def _run_container(
                 #     to see any error); no self-heal loop while a CLI is the driver.
                 # ⚑ SEMANTICS (both): reattach (`kanibako start` → `tmux attach -t
                 # kanibako`) attaches to the AGENT's session; Ctrl-B D leaves it
-                # running.  In DETACHED mode the agent exiting self-heals; teardown
+                # running.  In DETACHED mode the agent exiting self-heals, unless it
+                # exits cleanly with a terminal attached (the box then stops); teardown
                 # is an explicit `kanibako stop`.  box_shell is resolved above for the
                 # supervised launch (fallback keep-alive), and a real agent
                 # guarantees a non-None entrypoint.  _bootstrap_wrap is SKIPPED — the

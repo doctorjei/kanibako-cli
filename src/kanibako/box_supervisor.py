@@ -603,6 +603,8 @@ class ActionKind(Enum):
 
     NONE = "none"
     SELF_HEAL = "self_heal"
+    #: The agent exited cleanly with a terminal attached: end it, start no other.
+    END = "end"
 
 
 @dataclass(frozen=True)
@@ -617,10 +619,20 @@ def decide(
     prev_state: AttachState,
     cur_state: AttachState,
     agent_alive: bool,
+    exit_code: int | None = None,
 ) -> SupervisorAction:
-    """PURE: decide a tick's action from the attach-state transition + agent liveness."""
+    """PURE: decide a tick's action from the attach-state transition + agent liveness.
+
+    A dead agent whose *exit_code* is 0 while a terminal is still attached to its
+    session ENDS (the user exited it); any other death self-heals.
+    """
     fire_detach_hook = classify_transition(prev_state, cur_state) is LifecycleEvent.DETACH
-    kind = ActionKind.NONE if agent_alive else ActionKind.SELF_HEAL
+    if agent_alive:
+        kind = ActionKind.NONE
+    elif exit_code == 0 and cur_state.tmux_terminal:
+        kind = ActionKind.END
+    else:
+        kind = ActionKind.SELF_HEAL
     return SupervisorAction(kind=kind, fire_detach_hook=fire_detach_hook)
 
 
@@ -1378,6 +1390,9 @@ class BoxSupervisor:
             # is untouched (only reached when NOT panel_watch).
             return self._run_panel_watch()
         teardown_on_exit = self.config.on_agent_exit == "teardown"
+        # Latched once an attached user exits the agent cleanly: from then on the box
+        # only waits out any other surface, then stops — it never restarts the agent.
+        ended = False
         # One-shot guard so the agentless keep-alive state logs ONCE on entry, not per tick.
         keepalive_announced = False
         # Startup runs BEFORE the per-tick guard, so guard it too — a raising probe must
@@ -1425,11 +1440,21 @@ class BoxSupervisor:
                     else:
                         # Flag OFF (default): 4a LOG-ONLY — no signals, no kills.
                         self._log_newcomers(live_markers, own)
-                action = decide(prev, cur, alive)
+                # The dead pane's status, read only where it can change the decision:
+                # a self-heal box with a terminal still on the pane (remain-on-exit).
+                exit_code = (
+                    self.agent_pane_exit_code()
+                    if not alive and not teardown_on_exit and cur.tmux_terminal
+                    else None
+                )
+                action = decide(prev, cur, alive, exit_code)
                 if action.fire_detach_hook:
                     self._safe_on_detach()
-                if action.kind is ActionKind.SELF_HEAL:
-                    if teardown_on_exit:
+                if action.kind is ActionKind.END and not ended:
+                    log.info("agent exited cleanly with a terminal attached; not restarting it")
+                    ended = True
+                if action.kind is not ActionKind.NONE:
+                    if teardown_on_exit or ended:
                         # ⚑ SURFACE-AWARE teardown: the agent is dead, but a box must
                         # PERSIST while any OTHER surface (a panel) is still attached.
                         if self._other_surface_attached(cur):
@@ -1450,7 +1475,8 @@ class BoxSupervisor:
                             captured = (
                                 self.capture_agent_output() or self.recorded_agent_output()
                             )
-                            code = self.agent_pane_exit_code()
+                            # An ended agent's code was read as 0 on the tick it ended.
+                            code = 0 if ended else self.agent_pane_exit_code()
                             if code is None:
                                 code = self.recorded_agent_exit()
                             if code is None:
@@ -1460,8 +1486,9 @@ class BoxSupervisor:
                             if captured and code != 0:
                                 print(captured, flush=True)
                             log.info(
-                                "agent exited under teardown policy; "
+                                "agent exited under %s policy; "
                                 "no other surface attached — closing box with rc %d",
+                                "teardown" if teardown_on_exit else "end",
                                 code,
                             )
                             return code
@@ -1583,7 +1610,8 @@ def _build_parser() -> argparse.ArgumentParser:
         default="self-heal",
         help=(
             "policy when the agent exits: 'self-heal' (default; detached — bounded-retry "
-            "restart) or 'teardown' (foreground CLI — close the box on agent exit)"
+            "restart, except that a clean exit with a terminal attached closes the box) "
+            "or 'teardown' (foreground CLI — close the box on agent exit)"
         ),
     )
     parser.add_argument(
