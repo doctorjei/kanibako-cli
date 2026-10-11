@@ -91,20 +91,6 @@
     {
       "registry": "claims",
       "entry": "claim:path",
-      "antipattern": "std.boxes/",
-      "path": "llm-docs/kanibako/commands/box/_parser.py.md",
-      "text": "and is rejected. Strict containment matters because deleting `std.boxes/` itself would take every"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "std.boxes/",
-      "path": "llm-docs/kanibako/commands/box/_parser.py.md",
-      "text": "under `std.boxes/`."
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
       "antipattern": "temp/",
       "path": "src/kanibako/data/templates/system/canon/handbook/general/directives/LOWER_CANON.md",
       "text": "| `temp/` | Temporary storage (volatile between sessions) | No |"

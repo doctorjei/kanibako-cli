@@ -273,7 +273,7 @@ is UNTRUSTED — a corrupt or crafted registry must never let purge delete outsi
 metadata. `_assert_deletable` refuses (rather than silently no-op-deleting) when the resolved path
 is empty, `/`, `$HOME`, or — when `must_be_under` is given — not a STRICT descendant of that root.
 `resolve()` collapses `..` and follows symlinks, so a `..`/symlink escape resolves OUTSIDE the root
-and is rejected. Strict containment matters because deleting `std.boxes/` itself would take every
+and is rejected. Strict containment matters because deleting `std.boxes` itself would take every
 box with it.
 
 `_purge_deregistered` also carries an I4 belt-and-suspenders check: the name may have been REUSED
@@ -621,7 +621,7 @@ stale-active-owner refusal is described in "Purge safety" above.
 
 For a standalone entry the stored `metadata` is the in-tree ROOT: only fixed children are deleted,
 but a bare or protected root is still refused. For a primary entry the metadata must be strictly
-under `std.boxes/`.
+under `std.boxes`.
 
 ```_resolve_standalone_target(std, config, target: str) -> tuple[str | None, Path | None]```
 Resolve a `box rm` *target* (NAME or PATH) to `(box_name, root)`, else two `None`.
