@@ -13473,7 +13473,9 @@ class TestGoneBoxCureIsSafeAfterARepoint:
                 f"Error: box '{name}' is registered as a standalone box at {root}, but "
                 f"{root / 'workset.yaml'} does not store the standalone marker, so "
                 "kanibako does not see a box there.\n"
-                "  Restore it: add the line 'registry: null' under 'workset:'."
+                "  Restore it: add the line 'registry: null' under 'workset:'. "
+                "Or unregister it, keeping its files:\n"
+                f"  kanibako box rm {name}"
             )
 
     def test_standalone_without_its_root_file_says_create_it(
@@ -13489,8 +13491,32 @@ class TestGoneBoxCureIsSafeAfterARepoint:
             assert _no_box_error(spec, std) == (
                 f"Error: box '{name}' is registered as a standalone box at {root}, but "
                 f"{root / 'workset.yaml'} is missing, so kanibako does not see a box there.\n"
-                "  Restore it: create that file with the line 'registry: null' under 'workset:'."
+                "  Restore it: create that file with the line 'registry: null' under 'workset:'. "
+                "Or unregister it, keeping its files:\n"
+                f"  kanibako box rm {name}"
             )
+
+    def test_standalone_without_its_root_file_refused_from_its_own_dir(
+        self, config_file, tmp_home, credentials_dir, protected_canon, monkeypatch,
+    ):
+        """S1c from the root itself (no spec): the standalone registry still names the
+        path (D3-mode 2), so the launch refuses naming the file, not with a create cure."""
+        from kanibako.commands.start import _no_box_error, _probe_box
+
+        std, name, root = self._standalone(config_file, tmp_home)
+        (root / "workset.yaml").unlink()
+        monkeypatch.chdir(root)
+        monkeypatch.setenv("PWD", str(root))
+        config, std = self._std(config_file)
+
+        probe = _probe_box(std, config, None)
+        assert _no_box_error(None, std, probe=probe) == (
+            f"Error: box '{name}' is registered as a standalone box at {root}, but "
+            f"{root / 'workset.yaml'} is missing, so kanibako does not see a box there.\n"
+            "  Restore it: create that file with the line 'registry: null' under 'workset:'. "
+            "Or unregister it, keeping its files:\n"
+            f"  kanibako box rm {name}"
+        )
 
     def test_standalone_root_file_that_will_not_parse_keeps_its_parse_error(
         self, config_file, tmp_home, credentials_dir, protected_canon,

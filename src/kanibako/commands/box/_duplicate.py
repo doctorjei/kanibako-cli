@@ -19,12 +19,14 @@ from kanibako.settings.config import (
     read_box_enable_vault,
 )
 from kanibako.identifiers import find_identifier
+from kanibako.launch.box_resolve import detect_box_or_default, registered_standalone_marker_error
 from kanibako.settings.config_io import dump_doc, refuse_scalar_sections
 from kanibako.runtime.container import remove_box_tree
 from kanibako.settings.core_defaults import materialize_canon_skeleton
 from kanibako.tree_copy import copy_tree_keeping_links, failed_entries, lay_root_link
 from kanibako.settings.paths import (
     BoxMode,
+    DetectionResult,
     WorksetSpec,
     _early_scope,
     _resolve_local_dir,
@@ -33,7 +35,6 @@ from kanibako.settings.paths import (
     box_metadata_dir,
     box_workset_settings_paths,
     check_primary_box_name_free,
-    detect_project_mode,
     load_std_paths,
     primary_box_name_for_workspace,
     register_primary_box_name,
@@ -143,6 +144,17 @@ def _source_is_external(args: argparse.Namespace, std) -> bool:
 
 # -- Cross-mode duplicate helpers --
 
+def _refuse_unmarked_source(source: DetectionResult, std) -> int | None:
+    """Print the D4 state 3 refusal and return ``1`` for a registered standalone source whose marker is gone."""
+    if source.mode is not BoxMode.standalone:
+        return None
+    unmarked = registered_standalone_marker_error(source.project_root, std)
+    if unmarked is None:
+        return None
+    print(f"Error: {unmarked}", file=sys.stderr)
+    return 1
+
+
 def _run_duplicate_cross_mode(args: argparse.Namespace, std, config) -> int:
     """Duplicate a project into a different mode layout."""
     to_mode = BoxMode(args.to_mode)
@@ -184,7 +196,10 @@ def _run_duplicate_cross_mode(args: argparse.Namespace, std, config) -> int:
             return 1
 
     # Detect source mode and resolve.
-    source_mode = detect_project_mode(source_path, std, config).mode
+    source = detect_box_or_default(source_path, std, config)
+    if (rc := _refuse_unmarked_source(source, std)) is not None:
+        return rc
+    source_mode = source.mode
 
     # Duplicate FROM workset: separate code path.
     if source_mode == BoxMode.named:
@@ -696,7 +711,10 @@ def _duplicate_to_workset(args, std, config) -> int:
         print(f"Error: source path does not exist as a directory: {source_path}", file=sys.stderr)
         return 1
 
-    source_mode = detect_project_mode(source_path, std, config).mode
+    source = detect_box_or_default(source_path, std, config)
+    if (rc := _refuse_unmarked_source(source, std)) is not None:
+        return rc
+    source_mode = source.mode
     if source_mode == BoxMode.named:
         print("Error: source is already a workset project.", file=sys.stderr)
         return 1
@@ -953,7 +971,7 @@ def run_duplicate(args: argparse.Namespace) -> int:
     # (matching `--to primary`).
     src_for_detect = Path(args.source_path)
     if src_for_detect.is_dir():
-        src_mode = detect_project_mode(src_for_detect, std, config).mode
+        src_mode = detect_box_or_default(src_for_detect, std, config).mode
         if src_mode is BoxMode.standalone:
             args.to_mode = BoxMode.standalone.value
             return _run_duplicate_cross_mode(args, std, config)

@@ -2540,7 +2540,8 @@ def _resolve_standalone_target(
     from kanibako.errors import ConfigError, LegacyWorksetIdentityError
     from kanibako.project import registry_store
     from kanibako.project.import_reconcile import ImportConflictError
-    from kanibako.settings.paths import BoxMode, detect_project_mode
+    from kanibako.launch.box_resolve import detect_box_or_default
+    from kanibako.settings.paths import BoxMode
 
     # 1) Direct standalone-NAME lookup — case-blind (spec §0), returning the name as
     #    REGISTERED so everything downstream addresses the box the registry knows.
@@ -2554,7 +2555,7 @@ def _resolve_standalone_target(
     candidate = Path(target)
     if candidate.exists():
         try:
-            detection = detect_project_mode(candidate, std, config)
+            detection = detect_box_or_default(candidate, std, config)
         except ImportConflictError:
             # ⚑ Another spelling of a registered box's identity is a NAMED thing to fix,
             # never a miss; only a plain ``rm`` of the row at that spelling goes ahead.

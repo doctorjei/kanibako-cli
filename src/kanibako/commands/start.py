@@ -41,7 +41,6 @@ from kanibako.box_supervisor import (
 )
 from kanibako.commands.diagnose import probe_missing_executables
 from kanibako.settings.config import (
-    WORKSET_META_FILE,
     coerce_bool,
     user_config_file,
     load_config,
@@ -1423,10 +1422,9 @@ def _check_box_components(proj) -> str | None:
     dirs, refuses.
 
     The **settings-file marker** (the third CRITICAL component per D5) is NOT
-    re-checked here: its absence is already handled at resolution/detection time
-    (``box_resolve.stores_standalone_registry_null`` requires the root
-    ``workset.yaml`` to store ``workset.registry: null``; the read-side
-    ``box_resolve`` returns ``None`` = "not a box").  A launch resolve
+    re-checked here: a registered standalone root without it resolves NAMELESS, so
+    the explicit-create gate refuses it first (``box_resolve.standalone_marker_error``),
+    and an unregistered root without it is no box at all.  A launch resolve
     (``initialize=True``) would recreate a fresh marker, so a marker check here
     would be dead.  The **vault** (NON-CRITICAL) only WARNS, at resolve time,
     via ``paths._flag_missing_vault`` — never here.
@@ -1561,25 +1559,10 @@ def _standalone_store_error(std: StandardPaths, root: Path, name: str | None) ->
     # ⚑ Asked FIRST: without the marker the root is no standalone, so every store
     # question below would answer for a box kanibako does not see.
     # A file that will not parse is not asked: the arms below report its own error.
-    from kanibako.launch.box_resolve import stores_standalone_registry_null
-    from kanibako.settings.config_io import load_doc
+    from kanibako.launch.box_resolve import standalone_marker_error
 
-    marker_file = root / WORKSET_META_FILE
-    if name is not None and root.is_dir() and not stores_standalone_registry_null(root):
-        try:
-            load_doc(marker_file)
-        except ConfigError:
-            pass
-        else:
-            if marker_file.exists():
-                fault, cure = "does not store the standalone marker", "add the line"
-            else:
-                fault, cure = "is missing", "create that file with the line"
-            return (
-                f"Error: box '{name}' is registered as a standalone box at {root}, but "
-                f"{marker_file} {fault}, so kanibako does not see a box there.\n"
-                f"  Restore it: {cure} 'registry: null' under 'workset:'."
-            )
+    if name is not None and (unmarked := standalone_marker_error(root, name)) is not None:
+        return f"Error: {unmarked}"
     # ⚑ The DEFAULT LEAF, not the resolved store — see the docstring.
     default_leaf = root / STANDALONE_META_DIR
     leaf_present = default_leaf.is_dir()

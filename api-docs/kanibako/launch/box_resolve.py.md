@@ -14,14 +14,18 @@ _PRIMARY_WORKSET_NAME = 'default'
 ## Functions
 ```
 def stores_standalone_registry_null(project_dir: Path, *, strict: bool=False) -> bool
+def standalone_marker_error(root: Path, name: str) -> str | None
+def registered_standalone_marker_error(root: Path, std: StandardPaths) -> str | None
 def recorded_workspaces_under(std: StandardPaths, tree: Path) -> list[tuple[str, Path]]
 def find_connected_external_box(project_dir: Path, std: StandardPaths) -> _OwnedBox | None
 def detect_box_mode(project_dir: Path, std: StandardPaths, config: BootstrapConfig) -> DetectionResult | None
+def detect_box_or_default(project_dir: Path, std: StandardPaths, config: BootstrapConfig) -> DetectionResult
 def standalone_box_name(box_root: Path, registered_name: str | None) -> str
 def held_standalone_stores(registry: Path, own_root: Path) -> dict[str, str]
 def resolve_box_identity(project_dir: Path, std: StandardPaths, config: BootstrapConfig) -> dict[str, Any] | None
 def _enumerate_worksets(std: StandardPaths) -> Iterator[tuple[str, Path, BoxMode]]
-def _find_owning_box(project_dir: Path, std: StandardPaths, config: BootstrapConfig) -> _OwnedBox | None
+def _find_owning_box(project_dir: Path, std: StandardPaths, config: BootstrapConfig, *, workset: str | None=None) -> _OwnedBox | None
+def _path_space_workset(project_dir: Path, std: StandardPaths) -> str
 ```
 
 ## Classes

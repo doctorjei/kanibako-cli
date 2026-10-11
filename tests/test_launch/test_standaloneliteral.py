@@ -23,9 +23,10 @@ from kanibako.settings.paths import (
 )
 
 
-def _standalone(env, path: Path) -> None:
+def _standalone(env, path: Path, *, register: bool = True) -> None:
     config, std, _tmp_home = env
-    resolve_standalone_project(std, config, project_dir=str(path), initialize=True)
+    resolve_standalone_project(std, config, project_dir=str(path), initialize=True,
+                               register=register)
 
 
 class TestAStandaloneReachedThroughALinkIsFoundByLiteralPath:
@@ -38,10 +39,11 @@ class TestAStandaloneReachedThroughALinkIsFoundByLiteralPath:
         real.mkdir(parents=True)
         link = tmp_home / "alias"
         link.symlink_to(real)
-        _standalone(env, real)
+        # Unregistered: a link to a REGISTERED root is another spelling of it, refused
+        # ([R188], the last test below).
+        _standalone(env, real, register=False)
 
-        # ``detect_box_mode`` short-circuits on the standalone marker and would
-        # (on base) return the resolved target; the fix returns the link.
+        # The in-place marker answers for the path as given, never the resolved target.
         det = box_resolve.detect_box_mode(link, std, config)
         assert det is not None
         assert det.mode is BoxMode.standalone
@@ -86,9 +88,10 @@ class TestAStandaloneReachedThroughALinkIsFoundByLiteralPath:
         assert list(before.values()) == [str(real)]
 
         from kanibako.settings.paths import detect_project_mode
-        with pytest.raises(ImportConflictError) as exc:
-            detect_project_mode(second, std, config)
-        assert f"Work from {real}." in str(exc.value)
+        for detect in (detect_project_mode, box_resolve.detect_box_mode):
+            with pytest.raises(ImportConflictError) as exc:
+                detect(second, std, config)
+            assert f"Work from {real}." in str(exc.value)
         assert registry_store.load_standalone(std.registry) == before
 
 

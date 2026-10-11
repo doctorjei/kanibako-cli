@@ -3,14 +3,13 @@
 These build boxes DIRECTLY in the NEW-format registries (per-workset
 ``workset_registry`` ``boxes:`` membership + the global ``standalone:`` index) —
 NOT via the legacy ``write_project_meta`` — and exercise the D3-mode precedence,
-the steal-prevention override, and the identity sourcing (name = registry KEY,
+the path-space registry before the settings file, and the identity sourcing (name = registry KEY,
 registered = membership).
 
-Mutation proof (D3-mode precedence): reorder :func:`detect_box_mode` cases 1 and
-2 (workset scan BEFORE the settings-file check) and
-``test_steal_prevention_settings_file_overrides_workset`` goes RED — the box,
-being path-listed in a workset registry, is then detected as the workset's mode
-instead of STANDALONE.
+Mutation proof (D3-mode precedence): move the settings-file check of
+:func:`detect_box_mode` ahead of the path-space registry and
+``test_path_space_registry_beats_marker_primary`` goes RED — the box, listed in
+the primary registry, is then detected as STANDALONE.
 """
 
 from __future__ import annotations
@@ -20,7 +19,9 @@ from pathlib import Path
 from kanibako.project import registry_store, workset_registry
 from kanibako.launch import box_resolve
 from kanibako.settings.config import WORKSET_META_FILE
-from kanibako.settings.paths import BoxMode, STANDALONE_META_DIR, _early_scope
+from kanibako.settings.paths import (
+    BoxMode, STANDALONE_META_DIR, _early_scope, register_primary_box_name,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -86,20 +87,44 @@ class TestStoresStandaloneRegistryNull:
 # ---------------------------------------------------------------------------
 
 class TestDetectBoxMode:
-    def test_steal_prevention_settings_file_overrides_workset(
-        self, std, config, tmp_home
-    ):
-        """THE key case: a dir that BOTH has an in-place settings file AND is
-        path-listed in a workset registry → STANDALONE, not the workset.
+    def test_path_space_registry_beats_marker_primary(self, std, config, tmp_home):
+        """S1: a marker AND a primary-registry entry at the path → the PRIMARY box.
 
-        Mutation proof: reorder cases 1 and 2 in ``detect_box_mode`` (scan the
-        workset before the settings-file check) → this asserts STANDALONE but
-        gets ``named`` → RED.
+        D3-mode 1: the path space's registry comes first.  Mutation proof: check the
+        settings file first → STANDALONE → RED.
+        """
+        box = tmp_home / "p"
+        box.mkdir()
+        _make_standalone_marker(box)
+        register_primary_box_name(std.primary_workset, "p", str(box),
+                                  early=_early_scope(std, BoxMode.primary))
+
+        result = box_resolve.detect_box_mode(box, std, config)
+        assert result is not None
+        assert result.mode is BoxMode.primary
+        assert result.project_root == box
+
+    def test_path_space_registry_beats_marker_named(self, std, config, tmp_home):
+        """A marker at a member path INSIDE the named workset's root → the member (W's space)."""
+        ws_root = tmp_home / "ws"
+        reg = _make_named_workset(std, ws_root, "greedy")
+        box = ws_root / "workspaces" / "member"
+        box.mkdir(parents=True)
+        _make_standalone_marker(box)
+        _register_box(reg, "member", box)
+
+        result = box_resolve.detect_box_mode(box, std, config)
+        assert result is not None
+        assert result.mode is BoxMode.named
+        assert result.project_root == box
+
+    def test_other_space_registry_does_not_beat_marker(self, std, config, tmp_home):
+        """S1b (Q1 = only the path space's registry): an external connect outside the
+        workset root is in the PRIMARY space, so its marker wins → STANDALONE.
         """
         box = tmp_home / "declares_standalone"
         box.mkdir()
         _make_standalone_marker(box)
-        # ALSO list it in a workset's registry (the "steal" attempt).
         ws_root = tmp_home / "ws"
         reg = _make_named_workset(std, ws_root, "greedy")
         _register_box(reg, "declares_standalone", box)
@@ -108,6 +133,39 @@ class TestDetectBoxMode:
         assert result is not None
         assert result.mode is BoxMode.standalone
         assert result.project_root == box.resolve()
+
+    def test_standalone_registry_hit_without_marker_is_that_box(self, std, config, tmp_home):
+        """S1c: the standalone registry names the path but its ``workset.yaml`` is gone →
+        that STANDALONE box (D3-mode 2), never "not a box" (which offers a create).  The
+        launch gate then refuses it, naming the file (``test_start``).
+        """
+        box = tmp_home / "solo"
+        box.mkdir()
+        registry_store.register_standalone(std.registry, "solo", box)
+
+        result = box_resolve.detect_box_mode(box, std, config)
+        assert result is not None
+        assert result.mode is BoxMode.standalone
+        assert result.project_root == box
+
+    def test_ancestor_primary_box_from_a_subdir(self, std, config, tmp_home):
+        """The treewalk's primary ANCESTOR match is a box, not the create default."""
+        box = tmp_home / "anc"
+        sub = box / "deep" / "sub"
+        sub.mkdir(parents=True)
+        register_primary_box_name(std.primary_workset, "anc", str(box),
+                                  early=_early_scope(std, BoxMode.primary))
+        (std.boxes / "anc").mkdir(parents=True)
+
+        result = box_resolve.detect_box_mode(sub, std, config)
+        assert result is not None
+        assert result.mode is BoxMode.primary
+        assert result.project_root == box
+
+        identity = box_resolve.resolve_box_identity(sub, std, config)
+        assert identity is not None
+        assert identity["name"] == "anc"
+        assert identity["registered"] is True
 
     def test_standalone_by_presence_no_registry(self, std, config, project_dir):
         _make_standalone_marker(project_dir)

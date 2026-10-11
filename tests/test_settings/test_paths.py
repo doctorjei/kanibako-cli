@@ -826,8 +826,8 @@ class TestDetectBoxMode:
         tree-membership (step 1) BEFORE the standalone marker, so a box under a
         workset root was wrongly claimed by the workset ("Inside workset ... but
         not in a specific project workspace") and NEVER resolved standalone. The
-        in-place marker is the highest-precedence signal (spec D3-mode #1) and
-        must OVERRIDE any workset determination, matching box_resolve.detect_box_mode.
+        in-place marker (spec D3-mode 3) precedes the treewalk (D3-mode 4), so it
+        OVERRIDES workset TREE membership; only a registry entry at the path beats it.
         """
         from kanibako.project.workset import create_workset
         config = load_config(config_file)

@@ -1933,11 +1933,12 @@ class TestPrimaryBoxUnderARepointedWorkspaces:
         assert state.owner == "workset:wsa2"
         assert state.workspace_path == leaf.resolve()
 
-    def test_a_connected_external_member_keeps_the_workset(self, env):
-        """PIN: the EXTERNAL connect record is a membership too — the one no path
-        containment finds, since the leaf is outside every workset root."""
+    def test_a_connected_external_member_yields_to_the_primary_box(self, env):
+        """PIN (D3-mode 1; only the path space's registry): the leaf is outside every
+        workset root, so its path space is the PRIMARY one, and the primary box recorded
+        AT the path wins over the external connect record."""
         from kanibako.settings.paths import (
-            WorksetSpec, register_primary_box_name, resolve_workset_project,
+            WorksetSpec, resolve_project, resolve_workset_project,
         )
 
         config, std, tmp_home = env
@@ -1949,10 +1950,11 @@ class TestPrimaryBoxUnderARepointedWorkspaces:
         resolve_workset_project(
             WorksetSpec.from_workset(ws), "delta", std, config, initialize=True,
         )
-        register_primary_box_name(std.primary_workset, "delta", leaf, early=_early_scope(std, BoxMode.primary))
+        resolve_project(std, config, project_dir=str(leaf), initialize=True,
+                        name_override="delta")
         state = resolve_lifecycle_target("delta", std, config)
-        assert state.mode is BoxMode.named
-        assert state.owner == "workset:wsa3"
+        assert state.mode is BoxMode.primary
+        assert state.workspace_path == leaf
 
 
 # ---------------------------------------------------------------------------

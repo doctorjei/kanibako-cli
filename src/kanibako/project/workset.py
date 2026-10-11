@@ -2069,9 +2069,9 @@ def refuse_existing_box(source: Path, std: StandardPaths, *, force: bool = False
     from kanibako.launch import box_resolve
 
     resolved_source = source.resolve()
-    # ⚑ D3-mode #1: an in-place standalone MARKER is the box's authoritative
-    # self-declaration; connecting it would be a silent "steal" + dual registration.
-    # The guard ALONE fixes it — with no ``boxes:`` entry, resolution finds the marker.
+    # ⚑ An in-place standalone MARKER is the box's self-declaration; connecting it would
+    # be a silent "steal" + dual registration.  Refused, nothing is written, so the box
+    # stays standalone.
     if not force and box_resolve.stores_standalone_registry_null(resolved_source):
         raise WorksetError(
             f"Cannot connect '{resolved_source}': it is a standalone box "

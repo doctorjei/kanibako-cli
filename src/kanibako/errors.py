@@ -51,6 +51,10 @@ class DerivedBoxNameError(BoxNameError):
     """A box name taken from a directory breaks the box-name rule."""
 
 
+class UnmarkedStandaloneError(ProjectError):
+    """A registered standalone root lost its marker (D4 state 3): refused, never "no box"."""
+
+
 class AmbiguousNameError(ProjectError):
     """A bare box NAME matched several boxes — exclude when catching ProjectError."""
 

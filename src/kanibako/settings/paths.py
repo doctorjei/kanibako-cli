@@ -1788,8 +1788,8 @@ def detect_project_mode(project_dir: Path, std: StandardPaths,
     if box_resolve.find_connected_external_box(resolved, std) is not None:
         return DetectionResult(BoxMode.named, resolved)
 
-    # 2. In-place standalone marker AT the resolved dir (D3-mode #1, marker-first): it
-    # OVERRIDES workset TREE membership.  Only this dir; ancestors are the step-5 walk.
+    # 2. In-place standalone marker AT the resolved dir (D3-mode 3 precedes the treewalk):
+    # it OVERRIDES workset TREE membership.  Only this dir; ancestors are the step-5 walk.
     # A malformed file is refused only after steps 3-4 find no registry claim on the dir.
     unreadable: ConfigError | None = None
     try:
@@ -2452,8 +2452,9 @@ def _resolve_designated_path(std: StandardPaths, config: BootstrapConfig, raw: s
                              initialize: bool, register: bool,
                              name_override: str | None = None) -> ProjectPaths:
     """Resolve the path a designation resolved to, by the mode detected there."""
+    from kanibako.launch import box_resolve  # lazy: box_resolve imports this module
     raw_dir = Path(literal_path(raw))
-    detection = detect_project_mode(raw_dir, std, config)
+    detection = box_resolve.detect_box_or_default(raw_dir, std, config)
     root_str = str(detection.project_root)
 
     if detection.mode == BoxMode.named:
@@ -2638,10 +2639,14 @@ def resolve_standalone_project(std: StandardPaths, config: BootstrapConfig,
     # Box identity name (P8a): composed LIVE by ``box_resolve`` for a MATERIALIZED standalone;
     # a not-yet-materialized root yields "" and the create block below assigns it.
     box_name = ""
-    if box_data.is_dir() and project_toml.is_file():
-        from kanibako.launch import box_resolve
-        identity = box_resolve.resolve_box_identity(root, std, config)
-        box_name = identity["name"] if identity is not None else ""
+    from kanibako.launch import box_resolve
+    if (box_data.is_dir() and project_toml.is_file()
+            and box_resolve.stores_standalone_registry_null(root)):
+        # ⚑ Named from THIS root, not by detection: a move's own probe of its landing root
+        # (a link to the box's registered root) is no second spelling to refuse ([R188]).
+        from kanibako.project import registry_store
+        box_name = box_resolve.standalone_box_name(
+            root, registry_store.standalone_name_for_root(std.registry, root))
     # --name is NOT a producer input: pre-flighted below so a doomed create refuses first.
     requested_name = name
 

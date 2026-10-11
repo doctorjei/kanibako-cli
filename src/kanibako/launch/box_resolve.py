@@ -10,11 +10,15 @@ replaced, and the full case enumeration: ``llm-docs/kanibako/launch/box_resolve.
 
 from __future__ import annotations
 
+import shlex
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Any, NamedTuple
 
-from kanibako.errors import ConfigError, DerivedBoxNameError
+from kanibako.errors import (
+    ConfigError, DerivedBoxNameError, LegacyRegistryIdentityError, LegacyWorksetIdentityError,
+    ReservedWorksetNameError, WorksetError,
+)
 from kanibako.project import registry_store, workset_registry
 from kanibako.settings.config import WORKSET_META_FILE, BootstrapConfig
 from kanibako.settings.config_io import load_doc
@@ -52,6 +56,42 @@ def stores_standalone_registry_null(project_dir: Path, *, strict: bool = False) 
     return isinstance(table, dict) and "registry" in table and table["registry"] is None
 
 
+def standalone_marker_error(root: Path, name: str) -> str | None:
+    """Why standalone box *name*, registered at *root*, is no box: its marker is gone.
+
+    ``None`` when *root* stores the marker, is no dir, or holds a ``workset.yaml`` that
+    will not parse (that file's own error reports it).  The one message for D4 state 3:
+    a launch, ``duplicate``, ``move``, ``convert``, and ``remap`` refuse with it, while
+    ``rm`` (with or without ``--purge``) and ``info`` still act on the box.  The second
+    cure, ``box rm`` without ``--purge``, unregisters it and keeps its files.  No
+    ``Error:`` prefix.
+    """
+    marker_file = root / WORKSET_META_FILE
+    if not root.is_dir() or stores_standalone_registry_null(root):
+        return None
+    try:
+        load_doc(marker_file)
+    except ConfigError:
+        return None
+    if marker_file.exists():
+        fault, cure = "does not store the standalone marker", "add the line"
+    else:
+        fault, cure = "is missing", "create that file with the line"
+    return (
+        f"box '{name}' is registered as a standalone box at {root}, but "
+        f"{marker_file} {fault}, so kanibako does not see a box there.\n"
+        f"  Restore it: {cure} 'registry: null' under 'workset:'. "
+        f"Or unregister it, keeping its files:\n"
+        f"  kanibako box rm {shlex.quote(name)}"
+    )
+
+
+def registered_standalone_marker_error(root: Path, std: StandardPaths) -> str | None:
+    """:func:`standalone_marker_error` for *root* when the standalone registry holds it, else ``None``."""
+    name = registry_store.standalone_name_for_root(std.registry, root)
+    return None if name is None else standalone_marker_error(root, name)
+
+
 def _enumerate_worksets(
     std: StandardPaths,
 ) -> Iterator[tuple[str, Path, BoxMode]]:
@@ -82,8 +122,10 @@ def _find_owning_box(
     project_dir: Path,
     std: StandardPaths,
     config: BootstrapConfig,  # noqa: ARG001 — signature parity; enumeration is std-sourced
+    *,
+    workset: str | None = None,
 ) -> _OwnedBox | None:
-    """Scan every workset's per-workset registry for a box AT *project_dir*.
+    """Scan every workset's per-workset registry (only *workset*'s, when given) for a box AT *project_dir*.
 
     Honors a ``workset.registry`` repoint; matches the literal path (links
     unfollowed), so twins sharing a target stay two boxes.
@@ -94,6 +136,8 @@ def _find_owning_box(
 
     target = literal_path(project_dir)
     for workset_name, root, mode in _enumerate_worksets(std):
+        if workset is not None and workset_name != workset:
+            continue
         settings: Any = load_doc(root / WORKSET_META_FILE)
         registry_path = workset_registry.resolve_workset_registry_path(
             root, settings,
@@ -212,32 +256,73 @@ def find_connected_external_box(
     return best
 
 
+def _path_space_workset(project_dir: Path, std: StandardPaths) -> str:
+    """The workset whose path space holds *project_dir*: the named one containing it, else primary.
+
+    The same lookup ``create`` uses (``_find_workset_for_path``); a workset the lookup
+    cannot read is an error to show, not a miss.
+    """
+    from kanibako.settings.paths import _find_workset_for_path
+
+    try:
+        ws, _member = _find_workset_for_path(project_dir, std)
+    except (ReservedWorksetNameError, LegacyWorksetIdentityError, LegacyRegistryIdentityError):
+        raise
+    except WorksetError:
+        return _PRIMARY_WORKSET_NAME
+    return ws.name
+
+
 def detect_box_mode(
     project_dir: Path,
     std: StandardPaths,
     config: BootstrapConfig,
 ) -> DetectionResult | None:
-    """Detect *project_dir*'s box mode by the D3-mode PRECEDENCE (first wins).
+    """Detect *project_dir*'s box mode by the D3-mode order (first match wins).
 
-    Standalone marker, else workset-registry ownership, else the treewalk, else
-    ``None`` (not a box).  The four cases in full: the llm-doc.
+    The ONE carrier of that order (system-design § Detection & import): the path space's
+    registry, the standalone registry, an in-place settings file, then the treewalk.
+    Every path compares literally (links unfollowed).  ``None`` = not a box (the
+    caller's create path).
     """
-    # 1. Standalone by the root file's own stored ``workset.registry`` null (OVERRIDES everything).
-    if stores_standalone_registry_null(project_dir):
-        return DetectionResult(BoxMode.standalone, Path(literal_path(project_dir)))
+    from kanibako.project import import_reconcile
+    from kanibako.settings.paths import _early_scope
 
-    # 2. Workset ownership from the per-workset registries.
-    owned = _find_owning_box(project_dir, std, config)
+    literal = Path(literal_path(project_dir))
+
+    # 1. The path space's registry has a box AT this path.
+    owned = _find_owning_box(literal, std, config, workset=_path_space_workset(literal, std))
     if owned is not None:
         return DetectionResult(owned.mode, owned.box_path)
 
-    # 3. Treewalk detection (compose — do not duplicate).  ⚑ A PRIMARY result is
-    # the no-marker default → NOT a box in the new model → None, which is the
-    # caller's create path.  Primary membership lives solely in the registry
-    # scanned at case 2.
-    result = detect_project_mode(project_dir, std, config)
-    if result.mode is BoxMode.primary:
+    # 2. The standalone registry has a box AT this path, marker or not: a root that lost
+    # its marker is that box, broken (D4 state 3), never "not a box" with a create cure.
+    # It resolves nameless, so the launch gate refuses it naming the file (D5).
+    # 3. Else an in-place settings file.
+    if (registry_store.standalone_name_for_root(std.registry, literal) is not None
+            or stores_standalone_registry_null(literal)):
+        import_reconcile.check_standalone(
+            std.registry, literal, journal=std.journal,
+            early=_early_scope(std, BoxMode.standalone))
+        return DetectionResult(BoxMode.standalone, literal)
+
+    # 4. The treewalk (compose, do not duplicate).  A PRIMARY result AT the path is its
+    # no-marker default, so not a box; at an ANCESTOR it is that box (a subdir launch).
+    result = detect_project_mode(literal, std, config)
+    if result.mode is BoxMode.primary and Path(literal_path(result.project_root)) == literal:
         return None
+    return result
+
+
+def detect_box_or_default(
+    project_dir: Path,
+    std: StandardPaths,
+    config: BootstrapConfig,
+) -> DetectionResult:
+    """:func:`detect_box_mode`, with "not a box" as primary AT *project_dir* (the create default)."""
+    result = detect_box_mode(project_dir, std, config)
+    if result is None:
+        return DetectionResult(BoxMode.primary, Path(literal_path(project_dir)))
     return result
 
 
@@ -323,8 +408,11 @@ def resolve_box_identity(
             "registered": registered_name is not None,
         }
 
-    # Workset box (primary or named): identity from the per-workset registry.
-    owned = _find_owning_box(project_dir, std, config)
+    # Workset box (primary or named): identity from the per-workset registry, at the
+    # DETECTED root (an ancestor box for a subdir), the path space's registry first.
+    root = result.project_root
+    owned = (_find_owning_box(root, std, config, workset=_path_space_workset(root, std))
+             or _find_owning_box(root, std, config))
     if owned is not None:
         return {
             "mode": owned.mode,

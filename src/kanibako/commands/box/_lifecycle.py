@@ -48,7 +48,8 @@ from kanibako.settings.config import (
 )
 from kanibako.identifiers import find_identifier
 from kanibako.errors import (
-    BoxNameError, ContainerError, DerivedBoxNameError, KanibakoError, ProjectError, WorksetError,
+    BoxNameError, ContainerError, DerivedBoxNameError, KanibakoError, ProjectError,
+    UnmarkedStandaloneError, WorksetError,
 )
 from kanibako.settings.messages import (
     CURE_MOVED_LEAF_NOT_ASCII, ERR_LOOP_LANDING, ERR_LOOP_SOURCE,
@@ -74,7 +75,6 @@ from kanibako.settings.paths import (
     box_logs_dir_for,
     box_workset_settings_paths,
     check_primary_box_name_free,
-    detect_project_mode,
     load_primary_boxes,
     primary_box_name_for_workspace,
     refuse_derived_box_name,
@@ -353,7 +353,8 @@ def resolve_lifecycle_target(
     raw = resolve_designation(std, old, unknown_name_is_path=True)
     raw_path = Path(literal_path(raw))
 
-    detection = detect_project_mode(raw_path, std, config)
+    from kanibako.launch import box_resolve
+    detection = box_resolve.detect_box_or_default(raw_path, std, config)
 
     if detection.mode == BoxMode.named:
         # ⚑ A ``workset.workspaces`` path is where a member MAY live; only a ``boxes:``
@@ -364,6 +365,10 @@ def resolve_lifecycle_target(
             return _resolve_primary_state(raw_path, std, config)
         return _resolve_workset_state(raw_path, std, config)
     if detection.mode == BoxMode.standalone:
+        # ⚑ D4 state 3: a registered root whose marker is gone is refused, not acted on.
+        unmarked = box_resolve.registered_standalone_marker_error(detection.project_root, std)
+        if unmarked is not None:
+            raise UnmarkedStandaloneError(unmarked)
         proj = resolve_standalone_project(
             std, config, str(detection.project_root), initialize=False,
         )
@@ -4219,6 +4224,10 @@ def run_move(args) -> int:
 
     try:
         state = resolve_lifecycle_target(old, std, config)
+    except UnmarkedStandaloneError as e:
+        # ⚑ *old* IS a box, so this is never the retry ``_completed_move`` reports.
+        print(f"Error: {e}", file=sys.stderr)
+        return 1
     except (ProjectError, WorksetError) as e:
         done = _completed_move(old, new_path, std, config, args)
         print(f"Error: {done or e}", file=sys.stderr)
