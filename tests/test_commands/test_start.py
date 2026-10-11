@@ -6198,9 +6198,7 @@ class TestRunStartDetachFlag:
         from kanibako.commands.start import run_start
         with patch(
             "kanibako.commands.start._run_container", return_value=0,
-        ) as m_run, patch(
-            "kanibako.commands.start._bootstrap_available", return_value=True,
-        ):
+        ) as m_run:
             rc = run_start(self._args(detach=True))
         assert rc == 0
         assert m_run.call_args.kwargs.get("detach") is True
@@ -6210,9 +6208,7 @@ class TestRunStartDetachFlag:
         from kanibako.commands.start import run_start
         with patch(
             "kanibako.commands.start._run_container", return_value=0,
-        ) as m_run, patch(
-            "kanibako.commands.start._bootstrap_available", return_value=True,
-        ):
+        ) as m_run:
             run_start(self._args(detach=False))
         assert m_run.call_args.kwargs.get("detach") is False
 
@@ -6220,9 +6216,7 @@ class TestRunStartDetachFlag:
         from kanibako.commands.start import run_start
         with patch(
             "kanibako.commands.start._run_container", return_value=0,
-        ) as m_run, patch(
-            "kanibako.commands.start._bootstrap_available", return_value=True,
-        ):
+        ) as m_run:
             rc = run_start(self._args(detach=True, ephemeral=True))
         assert rc == 1
         m_run.assert_not_called()
@@ -6234,9 +6228,7 @@ class TestRunStartDetachFlag:
         from kanibako.commands.start import run_start
         with patch(
             "kanibako.commands.start._run_container", return_value=0,
-        ) as m_run, patch(
-            "kanibako.commands.start._bootstrap_available", return_value=True,
-        ):
+        ) as m_run:
             run_start(self._args(detach=False))
         assert m_run.call_args.kwargs.get("detach") is False
 
@@ -6247,9 +6239,7 @@ class TestRunStartDetachFlag:
         from kanibako.commands.start import run_start
         with patch(
             "kanibako.commands.start._run_container", return_value=0,
-        ) as m_run, patch(
-            "kanibako.commands.start._bootstrap_available", return_value=True,
-        ):
+        ) as m_run:
             rc = run_start(self._args(warm_only=True))
         assert rc == 0
         assert m_run.call_args.kwargs.get("warm_only") is True
@@ -6262,9 +6252,7 @@ class TestRunStartDetachFlag:
         from kanibako.commands.start import run_start
         with patch(
             "kanibako.commands.start._run_container", return_value=0,
-        ) as m_run, patch(
-            "kanibako.commands.start._bootstrap_available", return_value=True,
-        ):
+        ) as m_run:
             run_start(self._args(detach=True))
         assert m_run.call_args.kwargs.get("warm_only") is False
 
@@ -6274,9 +6262,7 @@ class TestRunStartDetachFlag:
         from kanibako.commands.start import run_start
         with patch(
             "kanibako.commands.start._run_container", return_value=0,
-        ) as m_run, patch(
-            "kanibako.commands.start._bootstrap_available", return_value=True,
-        ):
+        ) as m_run:
             rc = run_start(self._args(warm_only=True, ephemeral=True))
         assert rc == 1
         m_run.assert_not_called()
@@ -6289,9 +6275,7 @@ class TestRunStartDetachFlag:
         from kanibako.commands.start import run_start
         with patch(
             "kanibako.commands.start._run_container", return_value=0,
-        ) as m_run, patch(
-            "kanibako.commands.start._bootstrap_available", return_value=True,
-        ):
+        ) as m_run:
             rc = run_start(self._args(warm_only=True, detach=False))
         assert rc == 1
         m_run.assert_not_called()
@@ -12267,9 +12251,7 @@ class TestDetachAtALiveBoxRefusesThePerRunFlags(_RunningBoxDriver):
             ephemeral=False, detach=None, warm_only=True, agent=None,
             restart=False,
         )
-        with start_mocks() as m, patch(
-            "kanibako.commands.start._bootstrap_available", return_value=True,
-        ):
+        with start_mocks() as m:
             self._running(m)
             rc = run_start(ns)
         err = capsys.readouterr().err
@@ -12376,9 +12358,7 @@ class TestRestartFlag(_RunningBoxDriver):
         )
         with patch(
             "kanibako.commands.start._run_container", return_value=0,
-        ) as m_run, patch(
-            "kanibako.commands.start._bootstrap_available", return_value=True,
-        ):
+        ) as m_run:
             assert run_start(ns) == 0
         assert m_run.call_args.kwargs.get("restart") is True
 
@@ -12402,9 +12382,7 @@ class TestRestartFlag(_RunningBoxDriver):
         for over, exp_p, exp_e, exp_derived in cases:
             with patch(
                 "kanibako.commands.start._run_container", return_value=0,
-            ) as m_run, patch(
-                "kanibako.commands.start._bootstrap_available", return_value=True,
-            ):
+            ) as m_run:
                 run_start(argparse.Namespace(**{**base, **over}))
             kw = m_run.call_args.kwargs
             assert kw.get("explicit_persistent") is exp_p

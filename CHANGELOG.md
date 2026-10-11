@@ -12,6 +12,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **kanibako no longer needs tmux on the host.** The bootstrap program runs inside the box, so a plain `start` is
+  persistent whenever one is set, and `start --persistent` no longer exits 1 on a host without tmux. Pass
+  `--ephemeral`, or set `agent.<agent>.bootstrap` to `none`, for foreground mode. See `MIGRATION.md`, "`start` no
+  longer looks for tmux on the host".
+
 - **A new claude box no longer adds a `Claude-Session` trailer.** The seeded `~/.claude/settings.json` sets
   `attribution.sessionUrl` to `false`, so commits and PRs made from a Remote Control session carry no session
   link. An upgrade keeps the host's seed copy and each existing box's file; see `MIGRATION.md`, "A new claude

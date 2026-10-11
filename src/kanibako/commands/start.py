@@ -659,14 +659,9 @@ def run_start(args: argparse.Namespace) -> int:
         # keep-alive with no attached terminal), so --ephemeral is a direct
         # contradiction (foreground single-use vs. background keep-alive).
         #
-        # Unlike --persistent, detach does NOT require the bootstrap program on the
-        # HOST: --persistent checks the host because it RE-ATTACHES this terminal
-        # into an in-box tmux, but detach never attaches — the keep-alive tmux runs
-        # entirely IN-BOX as PID-1, so only the IMAGE must carry the program, and
-        # _run_container's tier-1 baseline probe already verifies that for every
-        # persistent launch.  This also keeps the two detach entry points aligned:
-        # `kanibako code`'s auto-start goes through start_detached ->
-        # _run_container with no host check.  No bootstrap program — the `none`
+        # The bootstrap program runs IN-BOX as PID-1, so only the IMAGE must carry
+        # it, and _run_container's tier-1 baseline probe verifies that for every
+        # persistent launch.  No bootstrap program — the `none`
         # opt-out, or a `null` / `""` value — leaves no in-box bootstrap to keep
         # alive, so it is still a genuine error, surfaced early here for a clean
         # message and re-guarded by _run_container.
@@ -686,13 +681,10 @@ def run_start(args: argparse.Namespace) -> int:
             return 1
         persistent = True
     elif explicit_persistent:
-        # An explicit reattach request needs a working bootstrap program on the
-        # HOST (reattach shells out to it).  Two distinct failures, both clean
-        # here rather than a downstream crash:
-        #   * no program (`none` opt-out, or no value) — persistent is a
-        #     contradiction.
-        #   * a real program absent on the host (host-missing, NOT image-missing:
-        #     don't conflate with the tier-1 in-image hard-stop).
+        # The bootstrap program runs IN-BOX (reattach and session checks exec it
+        # inside the container), so the host needs no copy of it; the image is
+        # checked by _run_container's tier-1 baseline probe.  No program (`none`
+        # opt-out, or no value) makes persistent a contradiction: refuse cleanly.
         if no_bootstrap:
             print(
                 f"Error: --persistent requires a bootstrap program, but "
@@ -700,44 +692,13 @@ def run_start(args: argparse.Namespace) -> int:
                 file=sys.stderr,
             )
             return 1
-        if not _bootstrap_available(bootstrap_program):
-            print(
-                f"Error: --persistent needs '{bootstrap_program}' on this host "
-                f"(reattach runs it), but it is not installed. Install "
-                f"'{bootstrap_program}', or run without --persistent for "
-                f"foreground single-use mode.",
-                file=sys.stderr,
-            )
-            return 1
         persistent = True
     elif explicit_ephemeral:
         persistent = False
-    elif no_bootstrap:
-        # No program — the `none` opt-out, or a supplied no-value: foreground
-        # single-use, no note, and no host probe (the settings chose this).
-        persistent = False
-    elif _bootstrap_available(bootstrap_program):
-        # Default: persistent when the configured bootstrap program is present.
-        persistent = True
     else:
-        # Configured program absent on the host: fall back to foreground
-        # single-use (today's silent behavior) but CLUE THE USER IN once — name
-        # the program, the consequence, and both remedies (install it, or make
-        # foreground explicit with ``none`` at the setting that supplied the
-        # program, see :func:`_bootstrap_setting`).  A fail-soft resolve names no
-        # setting, so only the install remedy is printed.
-        persistent = False
-        setting = _bootstrap_setting(bootstrap)
-        opt_out = (
-            f", or set {setting} to none to make foreground mode explicit"
-            if setting is not None else ""
-        )
-        print(
-            f"Note: '{bootstrap_program}' not found on this host; running in "
-            f"the foreground (single-use, no reattach). Install "
-            f"'{bootstrap_program}' for persistent sessions{opt_out}.",
-            file=sys.stderr,
-        )
+        # Default: persistent whenever a bootstrap program is set; the `none`
+        # opt-out, or a supplied no-value, chooses foreground single-use.
+        persistent = not no_bootstrap
     env_vars = getattr(args, "env", None) or []
     # ``project_dir`` + ``explicit_agent`` were resolved above (the persistence-mode
     # heuristic needs them for the agent-scope ``bootstrap`` lookup).  Agent
@@ -1387,18 +1348,6 @@ def _resolve_bootstrap_program(
         proj, system_settings_path, agent_id, std=std,
         selection_level=_sel.selection_level, agent_path=agent_path,
     )
-
-
-def _bootstrap_available(program: str | None = None) -> bool:
-    """Check if the host-side bootstrap program is installed.
-
-    Used to decide the default persistence mode (persistent only when the
-    bootstrap program is present on the host, since reattach shells out to it).
-    ⚑ Both production callers pass the RESOLVED program; the ``None`` arm exists
-    for a bare probe and takes the DECLARED default rather than re-materializing
-    it (spec §2d ``agent.default.bootstrap``).
-    """
-    return shutil.which(program or _bootstrap_default()) is not None
 
 
 def _check_box_components(proj) -> str | None:

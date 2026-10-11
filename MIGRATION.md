@@ -455,6 +455,9 @@ inside boxes. In order of likely impact:
 48. **`box purge` and `box rm --purge` exit 1 on a running box unless `--force`** — see
     *`box purge` and `box rm --purge` refuse a running box*.
 
+49. **kanibako no longer needs tmux on the host; a plain `start` is persistent without it** — see
+    *`start` no longer looks for tmux on the host*.
+
 ---
 
 ## 2. Per-area detail
@@ -6226,6 +6229,19 @@ kanibako stop eps, or pass --force.` A lock file with no runtime to ask counts t
 
 **What to do.** Run the printed `kanibako stop <box>` first, or add `--force`, which also skips the
 confirmation prompt.
+
+### `start` no longer looks for tmux on the host
+
+**Read this if your host has no tmux, or you relied on `start` falling back to the foreground.**
+
+**What changed.** The bootstrap program (`tmux` by default) runs inside the box, and reattach runs it
+there too. In v1.7.x `start` still looked for it on the host: without it, a plain `start` ran in the
+foreground with `Note: 'tmux' not found on this host`, and `start --persistent` exited 1. Now neither
+looks at the host: a plain `start` is persistent whenever a bootstrap program is set, and
+`--persistent` works on a host without tmux.
+
+**What to do.** Nothing, unless you want foreground mode: pass `--ephemeral`, or set the agent's
+`bootstrap` key to `none`.
 
 ### 2.95 The `agent` verbs refuse an agent file with an undeclared key, as the launch does
 
