@@ -293,11 +293,11 @@ def _purge_one(std, config, path: str, *, force: bool) -> int:
             print("Aborted.")
             return 2
 
-    failed = False
+    # The per-box logs go first: their paths derive from the box's tree, which the
+    # rmtree below may take, and a log's Warning must not split the progress line.
+    failed = not purge_box_logs(std, *box_logs_location(std, proj),
+                                workset_root=workset_root(proj, std))
     print("Removing session data... ", end="", flush=True)
-    # Remove the per-box logs first (their paths are derived from the box's
-    # tree, which the rmtree below may take with it for standalone).
-    purge_box_logs(std, *box_logs_location(std, proj), workset_root=workset_root(proj, std))
 
     if proj.mode is BoxMode.standalone:
         # ⚑ Close the unterminated progress line: this branch prints notices mid-sentence.
@@ -448,6 +448,7 @@ def _purge_one(std, config, path: str, *, force: bool) -> int:
         # ⚑ ANCHOR LAST, ONLY IF NOTHING ABOVE FAILED — the store above's rule.
         # Take it early and the parked entry points at a dir already gone.
         if failed:
+            print(flush=True)  # end the progress line before the stderr Kept line
             print(f"Kept {proj.metadata_path} — something above could not be removed, "
                   "so the box's metadata is kept and re-running the purge can finish.",
                   file=sys.stderr)
@@ -520,6 +521,10 @@ def _purge_all(std, config, *, force: bool) -> int:
     # PRIMARY-mode projects.
     for metadata_path, project_path in projects:
         label = str(project_path) if project_path else metadata_path.name
+        # The per-box logs, under the PRIMARY workset's resolved ``workset.logs``
+        # (box == metadata dir name), before the progress line its Warning would split.
+        purge_box_logs(std, std.primary_logs, metadata_path.name,
+                       workset_root=std.primary_workset)
         print(f"Removing {label}... ", end="", flush=True)
         if not remove_box_tree(metadata_path):
             _warn_undeleted(metadata_path)
@@ -532,11 +537,6 @@ def _purge_all(std, config, *, force: bool) -> int:
             if vault_dir is not None and vault_dir.is_dir():
                 shutil.rmtree(vault_dir, ignore_errors=True)
         _remove_snapshot_store(_resolve_snapshot_store(vault_rw, metadata_path.name))
-
-        # The per-box logs, under the PRIMARY workset's resolved ``workset.logs``
-        # (box == metadata dir name).
-        purge_box_logs(std, std.primary_logs, metadata_path.name,
-                       workset_root=std.primary_workset)
 
         # M2: drop the now-dangling registry entry for this PRIMARY box.
         _unregister_purged_primary(std, metadata_path, project_path)
@@ -558,13 +558,13 @@ def _purge_all(std, config, *, force: bool) -> int:
             project_dir = boxes_dir / proj_name
             if project_dir.is_dir():
                 label = f"{ws_name}/{proj_name}"
-                print(f"Removing {label}... ", end="", flush=True)
-                if not remove_box_tree(project_dir):
-                    _warn_undeleted(project_dir)
                 # ⚑ NAMED logs — the RESOLVED ``workset.logs``, which is what the
                 # box's helpers.jsonl mount is bound from; the default leaf is
                 # ``<root>/logs``, not the box's own directory.
                 purge_box_logs(std, logs_dir, proj_name, workset_root=ws.root)
+                print(f"Removing {label}... ", end="", flush=True)
+                if not remove_box_tree(project_dir):
+                    _warn_undeleted(project_dir)
                 # The store is the rw LEAF's sibling, so derive it once.
                 vault_rw_leaf = None if vault_rw_base is None else vault_rw_base / proj_name
                 _remove_member_vault_leaves(

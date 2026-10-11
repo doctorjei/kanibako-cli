@@ -308,9 +308,10 @@ class TestAForcedSharesPurgeTakesOnlyItsOwnPart:
         seed_log(shared, "alpha")
         seed_log(shared, "beta")
 
-        removed = purge_box_logs(std, shared, "alpha", workset_root=a.root)
+        assert purge_box_logs(std, shared, "alpha", workset_root=a.root) is True
 
-        assert sorted(p.name for p in removed) == ["alpha.creds-watcher.log", "alpha.jsonl"]
+        assert sorted(p.name for p in shared.iterdir()) == [
+            "beta.creds-watcher.log", "beta.jsonl"]
         assert (shared / "beta.jsonl").is_file(), "B's box's log is not this verb's to take"
         assert (shared / "beta.creds-watcher.log").is_file()
 
@@ -322,9 +323,8 @@ class TestAForcedSharesPurgeTakesOnlyItsOwnPart:
         add_project(b, "alpha", tmp_home / "src2" / "alpha")
         written = seed_log(shared, "alpha")
 
-        removed = purge_box_logs(std, shared, "alpha", workset_root=a.root)
+        assert purge_box_logs(std, shared, "alpha", workset_root=a.root) is True
 
-        assert removed == [], "nothing may be deleted when the file has two owners"
         for path, text in written.items():
             assert path.read_text() == text, f"{path.name} must survive byte for byte"
 
@@ -336,10 +336,10 @@ class TestAForcedSharesPurgeTakesOnlyItsOwnPart:
         add_project(b, "alpha", tmp_home / "src2" / "alpha")
         seed_log(shared, "alpha")
 
-        removed = purge_box_logs(std, shared, "alpha", workset_root=a.root)
+        assert purge_box_logs(std, shared, "alpha", workset_root=a.root) is True
         err = capsys.readouterr().err
 
-        assert removed == []
+        assert all(p.is_file() for p in box_log_files(shared, "alpha"))
         assert "kept" in err.lower()
         assert "'B'" in err, "the report must name the other working set"
         for path in box_log_files(shared, "alpha"):
@@ -353,7 +353,7 @@ class TestAForcedSharesPurgeTakesOnlyItsOwnPart:
         add_project(b, "alpha", tmp_home / "src2" / "alpha")
         written = seed_log(shared, "alpha")
 
-        assert purge_box_logs(std, shared, "alpha", workset_root=b.root) == []
+        assert purge_box_logs(std, shared, "alpha", workset_root=b.root) is True
         assert all(p.read_text() == t for p, t in written.items())
 
     def test_with_no_share_the_purge_deletes_normally(self, std, tmp_home, capsys):
@@ -362,9 +362,8 @@ class TestAForcedSharesPurgeTakesOnlyItsOwnPart:
         add_project(a, "alpha", tmp_home / "src" / "alpha")
         written = seed_log(a.logs_dir, "alpha")
 
-        removed = purge_box_logs(std, a.logs_dir, "alpha", workset_root=a.root)
+        assert purge_box_logs(std, a.logs_dir, "alpha", workset_root=a.root) is True
 
-        assert sorted(p.name for p in removed) == ["alpha.creds-watcher.log", "alpha.jsonl"]
         assert not any(p.exists() for p in written)
         assert "kept" not in capsys.readouterr().err.lower()
 
@@ -377,14 +376,14 @@ class TestAForcedSharesPurgeTakesOnlyItsOwnPart:
         add_project(b, "alpha", tmp_home / "src2" / "alpha")
         written = seed_log(a.root / "logs", "alpha")
 
-        removed = purge_box_logs(std, a.root / "logs", "alpha", workset_root=b.root)
+        assert purge_box_logs(std, a.root / "logs", "alpha", workset_root=b.root) is True
 
-        assert sorted(removed) == sorted(written)
+        assert not any(p.exists() for p in written)
 
     def test_a_null_log_directory_holds_nothing_to_delete(self, std, tmp_home):
         a, _b = two_worksets(std, tmp_home)
 
-        assert purge_box_logs(std, None, "alpha", workset_root=a.root) == []
+        assert purge_box_logs(std, None, "alpha", workset_root=a.root) is True
 
     def test_a_workset_that_is_not_in_the_walk_shares_with_whoever_is(self, std, tmp_home):
         """A STANDALONE box's degenerate workset is not walked, so it excludes nothing."""
@@ -394,9 +393,10 @@ class TestAForcedSharesPurgeTakesOnlyItsOwnPart:
         add_project(a, "alpha", tmp_home / "src" / "alpha")
         seed_log(shared, "alpha")
 
-        removed = purge_box_logs(std, shared, "alpha", workset_root=tmp_home / "elsewhere")
+        assert purge_box_logs(std, shared, "alpha", workset_root=tmp_home / "elsewhere") is True
 
-        assert removed == [], "A holds the same name, and A is not the one purging"
+        assert all(p.is_file() for p in box_log_files(shared, "alpha")), \
+            "A holds the same name, and A is not the one purging"
 
 
 @pytest.mark.parametrize("value", [
@@ -446,6 +446,6 @@ class TestTheDefaultWorksetResolvesUnderTheTokenItsBoxesRead:
         std, a, written = self._primary_box_and_a(config_file, tmp_home)
         set_own_logs(a.root, str(std.primary_logs))
 
-        assert purge_box_logs(std, std.primary_logs, "alpha", workset_root=a.root) == []
+        assert purge_box_logs(std, std.primary_logs, "alpha", workset_root=a.root) is True
         for path, text in written.items():
             assert path.read_text() == text, f"{path.name} must survive byte for byte"

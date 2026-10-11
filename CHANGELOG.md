@@ -730,6 +730,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `workspaces` directory, that runs through a symlink loop crashed the connect on Python 3.11 and got a misleading
   error on newer versions. The connect is now refused with the looped path named, before anything is written. A
   loop in a store directory no longer crashes the check for a case-variant store.
+- **A box log that cannot be deleted no longer crashes a purge.** `box purge`, `box purge --all`, and
+  `workset disconnect --remove-files` stopped with a traceback when a box's log file could not be deleted.
+  They now print `Warning: could not remove the log <path>: <reason> — left in place.` and go on. `box purge`
+  then keeps the box's metadata, parks the box, and exits 1.
 - **`box remap` onto another standalone box's root is refused.** It recorded the remapped box there and
   silently dropped the standalone box's registry row, or, for a standalone source, left two boxes at one root.
   It now refuses before writing anything, with or without `--force`, names the other box, and prints the two

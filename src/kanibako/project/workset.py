@@ -1687,12 +1687,22 @@ def _logs_share_partners(
 
 def purge_box_logs(
     std: StandardPaths, logs_dir: Path | None, box: str, *, workset_root: Path | None,
-) -> list[Path]:
-    """Delete :func:`box_logs_to_purge`'s files; returns them."""
-    removed = box_logs_to_purge(std, logs_dir, box, workset_root=workset_root)
-    for log_file in removed:
-        log_file.unlink()
-    return removed
+) -> bool:
+    """Delete :func:`box_logs_to_purge`'s files; True when none of them is left.
+
+    A file that will not go is named and left, never raised: it is a failed purge, which
+    the caller owns.
+    """
+    all_removed = True
+    for log_file in box_logs_to_purge(std, logs_dir, box, workset_root=workset_root):
+        try:
+            log_file.unlink()
+        except OSError as exc:
+            sys.stdout.flush()
+            print(f"Warning: could not remove the log {log_file}: {exc.strerror or exc} "
+                  "— left in place.", file=sys.stderr)
+            all_removed = False
+    return all_removed
 
 
 def box_logs_to_purge(
