@@ -7286,10 +7286,18 @@ tree. Cleanup does not touch `~/helpers/channels/`; delete a leftover one by han
 
 ### A new claude box turns off the session-link trailer
 
-A claude box created by this version seeds `"sessionUrl": false` in `~/.claude/settings.json`, beside
-the empty `commit` and `pr`, so a commit or PR made from a Remote Control session carries no
-`Claude-Session` trailer or link. The seed is written once, at create, so an existing box keeps its
-own file. Add the line to its `attribution` block by hand:
+This version ships `"sessionUrl": false` in the claude box seed `~/.claude/settings.json`, beside the
+empty `commit` and `pr`, so a commit or PR made from a Remote Control session carries no
+`Claude-Session` trailer or link.
+
+**Upgrading does not change your existing copies.** A new box seeds from the host copy,
+`~/.local/share/kanibako/agents/claude/template/box/home/.claude/settings.json` (unless you
+repointed `config.data` or `config.agents`). The installer treats that file as yours and
+writes it create-if-absent, so an upgrade keeps the old one, and so does
+`kanibako setup --refresh-templates`. Each box's own file is seeded once, at create, and kept after.
+
+**To take the change,** add the line to the `attribution` block of the host copy (for new boxes) and
+of each existing box's `~/.claude/settings.json`:
 
 ```json
 "attribution": {
@@ -7298,6 +7306,11 @@ own file. Add the line to its `attribution` block by hand:
   "sessionUrl": false
 }
 ```
+
+Or delete the host copy and run `kanibako setup --refresh-templates`, which lays the new file because
+it is then absent. That discards your edits to the file, and the refresh also replaces edits to other
+shipped templates; plain `kanibako setup` is not enough (see
+"A store set up by `1.8.0rc2` has a broken comms hook, and upgrading does not replace it").
 
 ---
 
