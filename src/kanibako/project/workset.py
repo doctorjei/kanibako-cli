@@ -2041,7 +2041,10 @@ def is_in_tree_workspace(ws: Workset, path: Path) -> bool:
     repointed it puts a member's leaf outside the root, and a relocation reads it as
     EXTERNAL).  Each root is tested twice — *path* resolved, and its PARENT
     resolved with the leaf not followed — so a symlinked leaf is in-tree.
+    ⚑ A LOOPED root has no ``workset.yaml`` to read and holds nothing: never in tree.
     """
+    if _symlink_loop(ws.root):
+        return False
     roots = [ws.root]
     workspaces = ws.workspaces_dir
     if workspaces is not None:

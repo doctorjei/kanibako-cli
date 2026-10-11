@@ -1900,12 +1900,21 @@ def _relative_to_either(path: Path, root: Path) -> Path | None:
 
 
 def _workset_arms(std: StandardPaths, ws_name: str, root: Path) -> tuple[Path, Path]:
-    """A registered workset's literal ``(workspaces, root)``, the repoint honored (§3.3)."""
-    from kanibako.project.workset import load_workset_settings_doc, resolve_workspaces_locator
+    """A registered workset's literal ``(workspaces, root)``, the repoint honored (§3.3).
+
+    ⚑ A LOOPED root holds no ``workset.yaml`` to read, so it takes the default arms: a walk
+    over every registered workset must not refuse on one it is not asked about. A path
+    that does run through the loop still refuses when that workset is loaded.
+    """
+    from kanibako.project.workset import (
+        _symlink_loop,
+        load_workset_settings_doc,
+        resolve_workspaces_locator,
+    )
 
     ws_root = Path(literal_path(root))
     ws_workspaces = resolve_workspaces_locator(
-        ws_root, load_workset_settings_doc(ws_root),
+        ws_root, None if _symlink_loop(ws_root) else load_workset_settings_doc(ws_root),
         early=_early_scope(std, BoxMode.named, ws_name),
     )
     return Path(literal_path(ws_workspaces)), ws_root

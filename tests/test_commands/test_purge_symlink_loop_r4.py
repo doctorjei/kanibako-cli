@@ -116,7 +116,8 @@ class TestRelocationOnALoop:
         store.rename(root / "box_data.real")
         store.symlink_to("box_data")
         text = _refused(("box", "move", "--force", str(root), str(tmp_home / "d")), capsys)
-        assert f"{store} is a symlink loop" in text, text
+        # Refused by name when the store's ``box.yaml`` is read through the loop.
+        assert f"{store}/" in text and "is a symlink loop" in text, text
         assert not (tmp_home / "d").exists()
 
     def test_remap_recovers_a_box_whose_workspace_loops(self, config_file, tmp_home,
@@ -179,6 +180,19 @@ class TestALoopedWorksetRootElsewhere:
         rc, raised, text = _run_purge(("box", "move", "--force", str(ws), str(new)), capsys)
         assert (raised, rc) == (None, 0), text
         assert (new / "f.txt").is_file(), text
+
+    def test_a_looped_workset_file_in_a_reachable_root_still_refuses(
+            self, config_file, tmp_home, credentials_dir, capsys):
+        """Only a looped ROOT is skipped: a reachable root's looped ``workset.yaml`` may
+        hold a repoint, so the walk cannot tell and refuses it by name."""
+        ws, _std = _primary_box(tmp_home, config_file, "q")
+        ws3 = tmp_home / "ws3"
+        assert _cli("workset", "create", "--name", "ws3", str(ws3)) == 0
+        _loop(ws3 / "workset.yaml")
+        new = tmp_home / "newp"
+        text = _refused(("box", "move", "--force", str(ws), str(new)), capsys)
+        assert f"{ws3 / 'workset.yaml'}: it is a symlink loop" in text, text
+        assert (ws / "f.txt").is_file() and not new.exists(), text
 
     def test_rm_purge(self, config_file, tmp_home, credentials_dir, capsys):
         _ws, std = _primary_box(tmp_home, config_file, "q")

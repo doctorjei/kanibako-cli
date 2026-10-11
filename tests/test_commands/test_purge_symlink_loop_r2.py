@@ -308,21 +308,37 @@ class TestCopyIgnoreLoopBranch:
 
         early = _early_scope(load_std_paths(load_config(config_file)),
                             BoxMode.standalone)
-        root = tmp_home / "boxroot"
-        store = root / "vault"
-        store.mkdir(parents=True)
-        _loop(store)
-        ignore = _lifecycle._workspace_copy_ignore(store, root, mode=BoxMode.standalone,
-                                                 early=early)
-        # The store is DERIVED (``box_metadata_dir``), not the loop itself -- assert on
-        # what the helper actually named, not on the path I happened to loop.
         from kanibako.settings.paths import box_metadata_dir
-        raw = box_metadata_dir(BoxMode.standalone, store, early=early)
+
+        root = tmp_home / "boxroot"
+        root.mkdir()
+        # The store is DERIVED (``box_metadata_dir``): loop what the helper names.
+        raw = box_metadata_dir(BoxMode.standalone, root, early=early)
+        raw.mkdir()
+        _loop(raw)
         assert W._symlink_loop(raw), f"probe setup did not loop the store: {raw}"
+        ignore = _lifecycle._workspace_copy_ignore(root, root, mode=BoxMode.standalone,
+                                                 early=early)
         # copytree passes the directory it is scanning, as given.
         assert ignore(str(raw.parent), [raw.name]) == {raw.name}
         assert ignore(str(raw.parent), ["other"]) == set()
-        assert store.is_symlink(), "the ignore must not have touched the link"
+        assert raw.is_symlink(), "the ignore must not have touched the link"
+
+    def test_a_looped_box_root_refuses_by_name(self, config_file, tmp_home, credentials_dir):
+        """A loop on the ROOT hides its ``workset.yaml``: refused by name, never "absent"."""
+        from kanibako.commands.box import _lifecycle
+        from kanibako.errors import ConfigError
+        from kanibako.settings.config import load_config
+        from kanibako.settings.paths import BoxMode, _early_scope, load_std_paths
+
+        early = _early_scope(load_std_paths(load_config(config_file)),
+                            BoxMode.standalone)
+        root = tmp_home / "boxroot"
+        root.mkdir()
+        _loop(root)
+        with pytest.raises(ConfigError, match="workset.yaml: it is a symlink loop"):
+            _lifecycle._workspace_copy_ignore(root, root.parent, mode=BoxMode.standalone,
+                                              early=early)
 
 
 class TestALoopedLandingIsRefused:

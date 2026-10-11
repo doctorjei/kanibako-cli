@@ -110,13 +110,14 @@ def _enumerate_worksets(
     """Yield ``(workset_name, workset_root, mode)`` for EVERY reachable workset.
 
     PRIMARY first, then every NAMED workset :func:`list_worksets` returns; a root
-    storing the standalone ``workset.registry`` null is skipped.
+    storing the standalone ``workset.registry`` null is skipped.  ⚑ A LOOPED root has no
+    marker to read and is yielded as named, never refused: it is not the box asked about.
     """
-    from kanibako.project.workset import list_worksets
+    from kanibako.project.workset import _symlink_loop, list_worksets
 
     yield (_PRIMARY_WORKSET_NAME, std.primary_workset, BoxMode.primary)
     for name, root in list_worksets(std).items():
-        if not stores_standalone_registry_null(root):
+        if _symlink_loop(root) or not stores_standalone_registry_null(root):
             yield (name, root, BoxMode.named)
 
 
@@ -146,9 +147,12 @@ def _find_owning_box(
     from kanibako.channels.channels import workset_token
     from kanibako.settings.workset_dirkeys import EarlyScope
 
+    from kanibako.project.workset import _symlink_loop
+
     target = literal_path(project_dir)
     for workset_name, root, mode in _enumerate_worksets(std):
-        if workset is not None and workset_name != workset:
+        # ⚑ A looped root holds no registry to read: no box is recorded there.
+        if (workset is not None and workset_name != workset) or _symlink_loop(root):
             continue
         settings: Any = load_doc(root / WORKSET_META_FILE)
         registry_path = workset_registry.resolve_workset_registry_path(
@@ -178,7 +182,7 @@ def recorded_workspaces_under(std: StandardPaths, tree: Path, *, standalone: boo
     safety test, so a workspace reached through a link still counts.
     """
     from kanibako.channels.channels import workset_token
-    from kanibako.project.workset import _resolved_unless_loop
+    from kanibako.project.workset import _resolved_unless_loop, _symlink_loop
     from kanibako.settings.workset_dirkeys import EarlyScope
 
     literal = Path(literal_path(tree))
@@ -191,6 +195,8 @@ def recorded_workspaces_under(std: StandardPaths, tree: Path, *, standalone: boo
 
     found: list[tuple[str, Path]] = []
     for workset_name, root, mode in _enumerate_worksets(std):
+        if _symlink_loop(root):
+            continue  # ⚑ No registry to read through a loop: it records no box.
         try:
             settings: Any = load_doc(root / WORKSET_META_FILE)
         except ConfigError:
@@ -235,7 +241,8 @@ def find_connected_external_box(
     best: _OwnedBox | None = None
     best_depth = -1
     for name, root in list_worksets(std).items():
-        if stores_standalone_registry_null(root):
+        # ⚑ A looped root holds no registry to read: no box is recorded there.
+        if _symlink_loop(root) or stores_standalone_registry_null(root):
             continue
         settings: Any = load_doc(root / WORKSET_META_FILE)
         early = EarlyScope(std.early_system, name)

@@ -435,12 +435,18 @@ def test_the_nested_table_arm_runs_end_to_end(tree) -> None:
 @pytest.mark.parametrize(
     ("node", "refuses"), [("shell", False), ("claude", True), ("Claude", True)],
 )
-def test_the_nested_table_arm_promises_a_refusal_only_in_its_own_file(node, refuses) -> None:
+def test_the_nested_table_arm_promises_a_refusal_only_in_its_own_file(
+    node, refuses, tmp_path,
+) -> None:
     """``agent set claude`` writes claude's file: measured rc 1 while that file still
-    stores ``self.claude``, rc 0 when shell's does. Case folds as the node does."""
+    stores ``self.claude``, rc 0 when shell's does. Case folds as the node does.
+    claude's file EXISTS: a ``set`` is printed only into one that does."""
+    (tmp_path / "claude").mkdir()
+    (tmp_path / "claude" / "agent.yaml").write_text("self:\n  model: opus\n")
     with pytest.raises(SettingsError) as exc:
         _refuse_nested_tables(
-            {"claude": {"env": {"KANI_PROBE": "yes"}}}, node=node, path=Path("/x/agent.yaml"),
+            {"claude": {"env": {"KANI_PROBE": "yes"}}}, node=node,
+            path=tmp_path / node / "agent.yaml",
         )
     msg = str(exc.value)
     assert (_PROMISES_BAD_ENTRY_REFUSAL in msg) is refuses
