@@ -386,7 +386,8 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
             "the link, never its target), and its logs.  For a standalone\n"
             "box that is the box_data/ folder, the workset.yaml and canon/\n"
             "folder at its root, and any vault folder inside the project.\n"
-            "Every path is listed before the confirmation."
+            "Every path is listed before the confirmation.  A box that may be\n"
+            "running is refused, with or without --purge: stop it first.\n"
         ),
     )
     rm_p.add_argument(
@@ -399,7 +400,8 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
     )
     rm_p.add_argument(
         "--force", action="store_true",
-        help="Skip the --purge confirmation question (the list still prints)",
+        help="Skip the --purge confirmation question (the list still prints), and remove "
+             "a box that may be running",
     )
     rm_p.set_defaults(func=run_rm)
 
@@ -2593,8 +2595,12 @@ def _resolve_standalone_target(
 def _refuse_purge_while_live(std, config, standalone_root: str | None, metadata_dir: Path,
                             force: bool, what: str,
                             *, container_name: str | None = None,
-                            cure_ref: str | None = None) -> bool:
+                            cure_ref: str | None = None,
+                            consequence: str | None = None) -> bool:
     """The move/convert/duplicate running-box pre-flight, reused for a PURGE.
+
+    A plain ``box rm`` asks it too, passing *consequence* (it deletes nothing): a running
+    box is never deregistered (HIS 171-RM Q1).
 
     ⚑ ONE PROBE — the same :func:`abort_if_box_running` every destructive verb uses, so
     one question never gets two answers; a purge under a live container takes its vaults
@@ -2614,7 +2620,8 @@ def _refuse_purge_while_live(std, config, standalone_root: str | None, metadata_
         except Exception:  # noqa: BLE001 - see below
             proj = None
             unresolved = standalone_root
-    consequence = f"{what} would delete its vaults and canon while writes are in flight."
+    if consequence is None:
+        consequence = f"{what} would delete its vaults and canon while writes are in flight."
     stop_ref = shlex.quote(unresolved) if unresolved is not None else cure_ref
     if abort_if_box_running(proj, metadata_dir / ".kanibako.lock", force, consequence,
                             container_name=container_name, cure_ref=stop_ref):
@@ -2631,6 +2638,11 @@ def _refuse_purge_while_live(std, config, standalone_root: str | None, metadata_
         print("Aborted.")
         return True
     return False
+
+
+#: The consequence a plain ``box rm`` names when it refuses a running box.
+_DEREGISTER_LIVE = ("A running box cannot be deregistered: its container would run on "
+                    "with no box name to reach it.")
 
 
 def _resolve_purge_probe_target(std, config, standalone_root: str):
@@ -2690,18 +2702,24 @@ def _rm_standalone(std, box_name: str, root, args: argparse.Namespace, *,
         except ImportConflictError as e:
             print(f"Error: {e}", file=sys.stderr)
             return 1
-    print(f"Removing standalone box: {box_name} ({root})")
     root_path = Path(root) if root is not None else None
     metadata_dir = (standalone_box_store(root_path, early=_early_scope(std, BoxMode.standalone))
                     if root_path is not None else None)
     if args.purge and root_path is not None:
         refuse_inherited_per_owner(root_path, _early_scope(std, BoxMode.standalone))
-        # ⚑ S6r: a purge under a live container takes its vaults and canon mid-write.
-        # Same pre-flight move/convert/duplicate use; --force overrides.
-        if metadata_dir is not None and _refuse_purge_while_live(
+    # ⚑ S6r: a purge under a live container takes its vaults and canon mid-write, and a
+    # plain rm never deregisters a running box (HIS 171-RM Q1).  Same pre-flight
+    # move/convert/duplicate use, before any question; --force overrides.  A plain rm of
+    # another spelling's row leaves the box registered under its holder: nothing to ask.
+    if (root_path is not None and metadata_dir is not None
+            and (args.purge or registry_store.standalone_identity_holder(
+                std.registry, root_path) is None)
+            and _refuse_purge_while_live(
                 std, config, str(root_path), metadata_dir, args.force,
-                "Purging this box"):
-            return 1
+                "Purging this box",
+                consequence=None if args.purge else _DEREGISTER_LIVE)):
+        return 1
+    print(f"Removing standalone box: {box_name} ({root})")
     # ⚑ Planned and confirmed BEFORE the unregister: a refusal or a declined question
     # leaves the box registered.
     plan = None
@@ -2897,13 +2915,15 @@ def run_rm(args: argparse.Namespace) -> int:
     metadata_dir = std.boxes / name
     if args.purge:
         refuse_inherited_per_owner(std.primary_workset, _early_scope(std, BoxMode.primary))
-        # ⚑ S6r: the same running-box pre-flight move/convert/duplicate use.  Probed by
-        # the NAME resolved above, never re-resolved: a cwd ``name/`` is another box.
-        if _refuse_purge_while_live(
-                std, config, None, metadata_dir, args.force, "Purging this box",
-                container_name=_primary_probe_container(name),
-                cure_ref=box_cure_ref(BoxMode.primary, name, None, metadata_dir)):
-            return 1
+    # ⚑ S6r: the same running-box pre-flight move/convert/duplicate use, for a purge and
+    # a plain rm alike (HIS 171-RM Q1: a running box is never deregistered).  Probed by
+    # the NAME resolved above, never re-resolved: a cwd ``name/`` is another box.
+    if _refuse_purge_while_live(
+            std, config, None, metadata_dir, args.force, "Purging this box",
+            container_name=_primary_probe_container(name),
+            cure_ref=box_cure_ref(BoxMode.primary, name, None, metadata_dir),
+            consequence=None if args.purge else _DEREGISTER_LIVE):
+        return 1
     print(f"Removing project: {name} ({path})")
 
     image = (_read_box_image(_box_settings_files(BoxMode.primary, metadata_dir, None)[0])
