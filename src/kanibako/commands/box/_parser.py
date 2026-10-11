@@ -14,6 +14,7 @@ import functools
 import os
 import shlex
 import shutil
+import stat
 import sys
 from collections.abc import Callable, Iterable, Sequence
 from datetime import datetime, timezone
@@ -87,8 +88,8 @@ from kanibako.targets import resolve_target
 from kanibako.utils import (
     WORKSET_SEGMENT_PRIMARY, WORKSET_SEGMENT_STANDALONE,
     container_name_for, container_name_for_box_name, gitignore_holds_only_kanibako, literal_path,
-    logical_cwd, project_gitignore_to_strip, short_hash, strip_project_gitignore,
-    write_project_gitignore,
+    logical_cwd, project_gitignore_to_strip, short_hash, stat_unless_gone,
+    strip_project_gitignore, write_project_gitignore,
 )
 
 # ``box duplicate --to`` takes the mode enum's own tokens, never a hand-kept spelling list.
@@ -2569,10 +2570,11 @@ def _purge_deregistered(std, name: str, entry: dict, args: argparse.Namespace, *
         return 1
 
     def tracked_left() -> bool:
+        # ⚑ EACCES refuses, naming the path: an unreadable store is not a gone one.
         if kind == "standalone":
-            return standalone_box_store(
-                root, early=_early_scope(std, BoxMode.standalone)).is_dir()
-        return metadata_dir.is_dir()
+            return _is_dir_unless_gone(standalone_box_store(
+                root, early=_early_scope(std, BoxMode.standalone)))
+        return _is_dir_unless_gone(metadata_dir)
 
     if not tracked_left():
         # Idempotent: the dir is already gone → drop the stale entry, no error, no prompt.
@@ -3085,6 +3087,8 @@ def _readopt_deregistered(std, name: str, entry: dict) -> int:
 
     if kind == "standalone":
         root = Path(str(metadata)) if metadata else None
+        if root is not None:
+            stat_unless_gone(root / WORKSET_META_FILE)  # ⚑ EACCES refuses; never "gone"
         # Self-heal: the in-tree marker is gone → nothing to restore, drop the entry.
         if root is None or not stores_standalone_registry_null(root):
             registry_store.unregister_deregistered(std.registry, name)
@@ -3125,8 +3129,8 @@ def _readopt_deregistered(std, name: str, entry: dict) -> int:
     from kanibako.settings.paths import register_primary_box_name
 
     metadata_dir = Path(str(metadata)).resolve() if metadata else None
-    # Self-heal: the box dir is gone → nothing to restore, drop the entry.
-    if metadata_dir is None or not metadata_dir.is_dir():
+    # Self-heal: the box dir is gone → nothing to restore, drop the entry.  ⚑ EACCES refuses.
+    if metadata_dir is None or not _is_dir_unless_gone(metadata_dir):
         registry_store.unregister_deregistered(std.registry, name)
         print(
             f"No metadata directory found for '{name}' (dropped stale entry); "
@@ -3153,6 +3157,12 @@ def _readopt_deregistered(std, name: str, entry: dict) -> int:
     registry_store.unregister_deregistered(std.registry, name)
     print(f"Registered primary box '{name}' at {workspace}.")
     return 0
+
+
+def _is_dir_unless_gone(path: Path) -> bool:
+    """Whether *path* is a directory; refuses (:func:`stat_unless_gone`) when it cannot tell."""
+    st = stat_unless_gone(path)
+    return st is not None and stat.S_ISDIR(st.st_mode)
 
 
 def _box_register_cure(target: str) -> str:

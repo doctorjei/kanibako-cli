@@ -31,6 +31,7 @@ def container_name_segments(proj: ProjectPaths) -> tuple[str, str]
 def container_name_for(proj: ProjectPaths) -> str | None
 def legacy_container_names(proj: ProjectPaths) -> tuple[str, ...]
 def project_hash(project_path: str) -> str
+def stat_unless_gone(path: str | os.PathLike[str]) -> os.stat_result | None
 def literal_path(value: str | os.PathLike[str]) -> str
 def logical_cwd() -> str
 def write_project_gitignore(project_path: Path) -> None

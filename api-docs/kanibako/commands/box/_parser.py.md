@@ -81,6 +81,7 @@ def _rm_standalone(std, box_name: str, root, args: argparse.Namespace, *, regist
 def _named_member_refusal(std, config, target: str, *, purge: bool) -> str | None
 def _composed_standalone_key(root: Path) -> str | None
 def _readopt_deregistered(std, name: str, entry: dict) -> int
+def _is_dir_unless_gone(path: Path) -> bool
 def _box_register_cure(target: str) -> str
 def _box_rm_purge_cure(target: str) -> str
 def _retained_box_cures(target: str) -> 'tuple[str, str]'

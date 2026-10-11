@@ -174,11 +174,15 @@ def refuse_inherited_per_owner(
     Runs :func:`early_repoint` over every per-owner key in :data:`WORKSET_EARLY_KEYS` less
     *exclude*; raises its :class:`~kanibako.errors.ConfigError`.  *doc*: the own file's
     document, if read.  *exclude*: the keys a door reaching only a SUBSET does not walk.
+    An own file that cannot be checked (``EACCES``) refuses, naming it; it is never absent.
     """
     from kanibako.settings.config_keys import KEY_OWNERS
+    from kanibako.utils import stat_unless_gone
 
     if isinstance(doc, _Unset):
-        doc = load_doc(workset_root / WORKSET_META_FILE)
+        own_file = workset_root / WORKSET_META_FILE
+        stat_unless_gone(own_file)
+        doc = load_doc(own_file)
     for key in sorted(WORKSET_EARLY_KEYS):
         if key in exclude:
             continue

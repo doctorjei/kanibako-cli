@@ -516,6 +516,42 @@ class TestSelfHeal:
         assert "mybox" not in registry_store.load_deregistered(std.registry)
 
 
+@pytest.mark.parametrize("verb", [("box", "register", "mybox"),
+                                  ("box", "rm", "mybox", "--purge", "--force")],
+                         ids=["register", "purge"])
+def test_an_unreadable_primary_box_dir_is_refused_by_name_and_keeps_the_entry(
+    config_file, tmp_home, credentials_dir, capsys, verb,
+):
+    """EACCES on the parked box's parent is not "gone": the entry and the box stay."""
+    import os
+
+    from kanibako.cli import main
+
+    if os.geteuid() == 0:
+        pytest.skip("root reads a mode-000 directory")
+    _config, std = _std(config_file)
+    proj_dir = tmp_home / "proj"
+    proj_dir.mkdir()
+    assert run_create(_create_args(proj_dir, name="mybox")) == 0
+    assert run_rm(_rm_args("mybox")) == 0
+    before = registry_store.lookup_deregistered(std.registry, "mybox")
+    metadata = Path(before["metadata"])
+    capsys.readouterr()
+
+    metadata.parent.chmod(0)
+    try:
+        with pytest.raises(SystemExit) as info:
+            main(list(verb))
+    finally:
+        metadata.parent.chmod(0o755)
+    assert info.value.code == 1
+    err = capsys.readouterr().err
+    assert err == (f"Error: {metadata} could not be read (Permission denied). Make it and "
+                   "its parent directories readable, then retry.\n")
+    assert registry_store.lookup_deregistered(std.registry, "mybox") == before
+    assert metadata.is_dir()
+
+
 # ---------------------------------------------------------------------------
 # I3 / §D4a: `create --standalone` registers only on --register
 # ---------------------------------------------------------------------------

@@ -383,14 +383,13 @@ def _metadata_definitively_gone(path: str) -> bool:
     a live box and lose the only handle left to ``register`` or ``purge`` it.
     Only ``ENOENT`` / ``ENOTDIR`` prove removal; anything else KEEPS the entry.
     """
-    import errno
-    import os
+    from kanibako.errors import ConfigError
+    from kanibako.utils import stat_unless_gone
 
     try:
-        os.stat(path)
-    except OSError as exc:
-        return exc.errno in (errno.ENOENT, errno.ENOTDIR)
-    return False
+        return stat_unless_gone(path) is None
+    except ConfigError:
+        return False
 
 
 def list_deregistered(registry: Path) -> dict[str, dict]:

@@ -1,8 +1,9 @@
 """Utility functions: cp_if_newer, confirm_prompt, deep_merge, short_hash, container
-naming."""
+naming, stat_unless_gone."""
 
 from __future__ import annotations
 
+import errno
 import hashlib
 import os
 import shlex
@@ -11,7 +12,7 @@ import sys
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from kanibako.errors import UserCanceled
+from kanibako.errors import ConfigError, UserCanceled
 from kanibako.settings.bootstrap import IGNORE_FILE
 
 if TYPE_CHECKING:
@@ -200,6 +201,24 @@ def legacy_container_names(proj: ProjectPaths) -> tuple[str, ...]:
 def project_hash(project_path: str) -> str:
     """SHA-256 hex digest of the project path string."""
     return hashlib.sha256(project_path.encode()).hexdigest()
+
+
+def stat_unless_gone(path: str | os.PathLike[str]) -> os.stat_result | None:
+    """*path*'s stat, or ``None`` when it is DEFINITIVELY absent (``ENOENT``/``ENOTDIR``).
+
+    ⚑ NOT ``Path.exists()``/``is_dir()``: they raise a bare ``PermissionError`` on an
+    unreadable parent.  Any other failure refuses, naming *path*: a box kanibako cannot
+    see is never "gone".
+    """
+    try:
+        return os.stat(path)
+    except OSError as exc:
+        if exc.errno in (errno.ENOENT, errno.ENOTDIR):
+            return None
+        raise ConfigError(
+            f"{os.fspath(path)} could not be read ({exc.strerror}). Make it and its parent "
+            "directories readable, then retry."
+        ) from exc
 
 
 def literal_path(value: str | os.PathLike[str]) -> str:

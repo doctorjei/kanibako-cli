@@ -247,6 +247,24 @@ def test_an_unreadable_directory_is_not_called_gone_and_does_not_crash(unreadabl
     assert registry_store.lookup_deregistered(std.registry, name) is not None
 
 
+@pytest.mark.parametrize("verb", [("box", "rm", "{name}", "--purge", "--force"),
+                                  ("box", "register", "{name}")], ids=["purge", "register"])
+def test_an_unreadable_directory_is_refused_by_name_and_keeps_the_entry(
+        unreadable_parent, capsys, verb):
+    """A purge or register of a parked box under an unreadable parent refuses, naming the
+    path and the cure; EACCES is never read as "gone", so the entry stays."""
+    root, name, std = unreadable_parent
+    before = registry_store.lookup_deregistered(std.registry, name)
+
+    assert _cli(*(a.format(name=name) for a in verb)) == 1
+    assert capsys.readouterr().err == (
+        f"Error: {root / 'workset.yaml'} could not be read (Permission denied). Make it and "
+        "its parent directories readable, then retry.\n")
+    assert registry_store.lookup_deregistered(std.registry, name) == before
+    root.parent.chmod(0o755)
+    assert (root / "box_data").is_dir()
+
+
 def test_an_unparsable_marker_file_is_not_told_to_add_a_line(unmarked, capsys):
     """A line added to unparsable YAML leaves it unparsable, and both routes refuse it: fix it first."""
     root, name, std = unmarked
