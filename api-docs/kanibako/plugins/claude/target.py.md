@@ -45,7 +45,6 @@ class ClaudeTarget(Target):
     def has_resumable_session(self, home: Path) -> bool
     @property
     def config_dir_name(self) -> str
-    def deliver_panel_permissions(self, *, config_root: Path, access: str) -> bool
     def deliver_directive_hook(self, *, config_root: Path, access: str, model_provider: 'CodexModelProvider | None'=None) -> bool
     def credential_check_path(self, home: Path) -> Path | None
     def read_persona_settings(self, config_dir: Path) -> PersonaReadOutcome

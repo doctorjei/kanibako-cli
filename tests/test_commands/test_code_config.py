@@ -27,17 +27,14 @@ from kanibako.vscode.vscode_config import (
     CodexModelProvider,
     _encode_image_ref,
     attached_container_config_path,
-    clear_permission_mode,
     codex_trusted_hash,
     merge_attached_container_config,
-    merge_permission_mode,
     merge_codex_config,
     merge_codex_model_provider,
     merge_marker_remove_hook,
     merge_marker_write_hook,
     merge_session_start_hook,
     seed_attached_container_config,
-    seed_claude_permission_mode,
     seed_codex_approval,
     seed_codex_config,
     seed_session_start_hook,
@@ -202,164 +199,6 @@ def test_seed_tolerates_corrupt_existing(tmp_path):
         "extensions": [_EXT],
         "workspaceFolder": _WS,
     }
-
-
-# --- Ph4b Vector A: in-box claude settings.json permission modes -----------
-
-def test_merge_mode_into_empty():
-    assert merge_permission_mode({}, "bypassPermissions") == {
-        "permissions": {"defaultMode": "bypassPermissions"},
-    }
-    assert merge_permission_mode({}, "acceptEdits") == {
-        "permissions": {"defaultMode": "acceptEdits"},
-    }
-
-
-def test_merge_mode_preserves_other_top_level_keys():
-    """The curated template keys ($schema, includeCoAuthoredBy) are preserved."""
-    existing = {
-        "$schema": "https://json.schemastore.org/claude-code-settings.json",
-        "includeCoAuthoredBy": False,
-    }
-    merged = merge_permission_mode(existing, "bypassPermissions")
-    assert merged["$schema"] == existing["$schema"]
-    assert merged["includeCoAuthoredBy"] is False
-    assert merged["permissions"]["defaultMode"] == "bypassPermissions"
-
-
-def test_merge_mode_preserves_other_permissions_subkeys():
-    """Sibling permissions.* sub-keys (allow/deny) are preserved."""
-    existing = {"permissions": {"allow": ["Bash(ls)"], "deny": ["Bash(rm)"]}}
-    merged = merge_permission_mode(existing, "bypassPermissions")
-    assert merged["permissions"]["allow"] == ["Bash(ls)"]
-    assert merged["permissions"]["deny"] == ["Bash(rm)"]
-    assert merged["permissions"]["defaultMode"] == "bypassPermissions"
-
-
-def test_merge_mode_does_not_mutate_input():
-    existing = {"permissions": {"allow": ["x"]}}
-    merge_permission_mode(existing, "bypassPermissions")
-    assert existing == {"permissions": {"allow": ["x"]}}
-
-
-def test_seed_mode_writes_and_merges_template(tmp_path):
-    """Merges into the curated seed, preserving its keys; returns True."""
-    path = tmp_path / ".claude" / "settings.json"
-    path.parent.mkdir(parents=True)
-    path.write_text(json.dumps({
-        "$schema": "https://json.schemastore.org/claude-code-settings.json",
-        "includeCoAuthoredBy": False,
-    }))
-    wrote = seed_claude_permission_mode(path, access="full")
-    assert wrote is True
-    written = json.loads(path.read_text())
-    assert written["includeCoAuthoredBy"] is False
-    assert written["permissions"]["defaultMode"] == "bypassPermissions"
-
-
-def test_seed_mode_idempotent(tmp_path):
-    path = tmp_path / "settings.json"
-    assert seed_claude_permission_mode(path, access="full") is True
-    before = path.read_text()
-    assert seed_claude_permission_mode(path, access="full") is False
-    assert path.read_text() == before
-
-
-def test_seed_mode_tolerates_corrupt(tmp_path):
-    path = tmp_path / "settings.json"
-    path.write_text("not json {{{")
-    assert seed_claude_permission_mode(path, access="full") is True
-    assert json.loads(path.read_text()) == {
-        "permissions": {"defaultMode": "bypassPermissions"},
-    }
-
-
-# --- Ph4b Vector A OFF-direction: clear_bypass_permissions (pure) -----------
-
-def test_clear_removes_only_our_managed_value():
-    """Our exact ``bypassPermissions`` value is removed; permissions dropped when
-    it was created only by us (empty after removal)."""
-    assert clear_permission_mode(
-        {"permissions": {"defaultMode": "bypassPermissions"}},
-    ) == {}
-
-
-def test_clear_preserves_user_chosen_mode():
-    """A mode we never write is NOT touched.
-
-    ⚑ ``acceptEdits`` LEFT this list at R-41: it is now the ``editing`` tier's
-    managed value, so the clear is entitled (and required) to remove it — see
-    ``test_clear_removes_a_stale_editing_value``.  "User-chosen" means "outside
-    the managed SET", which is exactly what the clear tests against.
-    """
-    for mode in ("plan", "default", "dontAsk", "auto"):
-        existing = {"permissions": {"defaultMode": mode}}
-        assert clear_permission_mode(existing) == existing
-
-
-def test_clear_removes_a_stale_editing_value():
-    """The managed SET, not a single value: the ``acceptEdits`` WE wrote for the
-    ``editing`` tier is removed when the box drops to ``restricted`` — otherwise
-    a tier change would silently leave the middle tier in force."""
-    assert clear_permission_mode(
-        {"permissions": {"defaultMode": "acceptEdits"}},
-    ) == {}
-
-
-def test_clear_keeps_sibling_permissions_and_drops_only_default_mode():
-    """defaultMode==bypass is cleared but allow/deny (and the permissions block) stay."""
-    existing = {
-        "permissions": {
-            "defaultMode": "bypassPermissions",
-            "allow": ["Bash(ls)"],
-            "deny": ["Bash(rm)"],
-        },
-        "includeCoAuthoredBy": False,
-    }
-    cleared = clear_permission_mode(existing)
-    assert "defaultMode" not in cleared["permissions"]
-    assert cleared["permissions"]["allow"] == ["Bash(ls)"]
-    assert cleared["permissions"]["deny"] == ["Bash(rm)"]
-    assert cleared["includeCoAuthoredBy"] is False
-
-
-def test_clear_no_permissions_is_noop():
-    assert clear_permission_mode({"includeCoAuthoredBy": False}) == {
-        "includeCoAuthoredBy": False,
-    }
-
-
-def test_clear_does_not_mutate_input():
-    existing = {"permissions": {"defaultMode": "bypassPermissions", "allow": ["x"]}}
-    clear_permission_mode(existing)
-    assert existing == {"permissions": {"defaultMode": "bypassPermissions", "allow": ["x"]}}
-
-
-def test_restricted_tier_absent_file_noop(tmp_path):
-    """No file → no-op, and the file is NOT created."""
-    path = tmp_path / "settings.json"
-    assert seed_claude_permission_mode(path, access="restricted") is False
-    assert not path.exists()
-
-
-def test_restricted_tier_writes_when_present(tmp_path):
-    path = tmp_path / "settings.json"
-    path.write_text(json.dumps({
-        "includeCoAuthoredBy": False,
-        "permissions": {"defaultMode": "bypassPermissions", "allow": ["x"]},
-    }))
-    assert seed_claude_permission_mode(path, access="restricted") is True
-    written = json.loads(path.read_text())
-    assert "defaultMode" not in written["permissions"]
-    assert written["permissions"]["allow"] == ["x"]
-    assert written["includeCoAuthoredBy"] is False
-
-
-def test_restricted_tier_idempotent(tmp_path):
-    path = tmp_path / "settings.json"
-    path.write_text(json.dumps({"permissions": {"defaultMode": "plan"}}))
-    # A user's own mode → no change, no write.
-    assert seed_claude_permission_mode(path, access="restricted") is False
 
 
 # --- merge_session_start_hook (pure, increment 2b) -------------------------

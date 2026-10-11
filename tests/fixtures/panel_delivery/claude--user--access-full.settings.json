@@ -5,7 +5,7 @@
     "allow": [
       "Bash(ls:*)"
     ],
-    "defaultMode": "bypassPermissions"
+    "defaultMode": "plan"
   },
   "hooks": {
     "SessionStart": [

@@ -60,6 +60,12 @@ DELIBERATE content changes so far (each = a reviewed regeneration commit):
   gets it as the ``GOOSE_MODE`` env var): the 6 ``goose--*`` fixtures are deleted
   and ``test_goose_delivers_nothing`` pins the absence.
 
+* claude stops writing ``permissions.defaultMode`` (the launched claude gets every
+  tier as a flag; ``restricted`` is ``--permission-mode default``): the 3
+  ``claude--*--access-full`` and 3 ``--access-editing`` fixtures lose the key or
+  keep the user's "plan", so each claude pre-state is now the same bytes at all
+  three tiers; the ``--access-restricted`` fixtures are byte-UNCHANGED.
+
 Matrix per agent (delivered file: claude ``.claude/settings.json``, codex
 ``.codex/config.toml``).  goose delivers NOTHING — its tier reaches the launched
 goose as the ``GOOSE_MODE`` env var only — so it has no fixtures; the module's
@@ -188,8 +194,7 @@ _IDS = [_cell_stem(a, p, t, pr) for a, p, t, pr in _MATRIX]
 # --------------------------------------------------------------------------- #
 
 # claude: existing user settings + a user hook group + a user-chosen
-# ``permissions.defaultMode`` ("plan": overwritten by full/editing, PRESERVED by
-# restricted — "plan" is not a value kanibako manages).
+# ``permissions.defaultMode`` ("plan"), which no tier touches.
 _CLAUDE_USER_SETTINGS = (
     json.dumps(
         {
@@ -320,13 +325,10 @@ def _sanity_check(
             for h in group["hooks"]
         ]
         assert any("import-directives.py" in c for c in commands)
+        # No tier writes ``defaultMode`` (the launch flag carries it): absent
+        # stays absent and the user's own "plan" survives at every tier.
         mode = doc.get("permissions", {}).get("defaultMode")
-        if tier == "full":
-            assert mode == "bypassPermissions"
-        elif tier == "editing":
-            assert mode == "acceptEdits"
-        else:
-            assert mode not in ("bypassPermissions", "acceptEdits")
+        assert mode in (None, "plan")
     else:  # codex
         assert "# >>> kanibako-managed (instruction-delivery hook + trust)" in text
         # approval_policy is TIER-driven and set at EVERY tier (one distinct

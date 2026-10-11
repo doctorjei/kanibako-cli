@@ -118,61 +118,6 @@ def seed_attached_container_config(
     return True
 
 
-# ---------------------------------------------------------------------------
-# claude panel permissions: the in-box ~/.claude/settings.json projection.
-# ---------------------------------------------------------------------------
-
-# ⚑ Driven by the box's CASCADE-resolved ``access``, NEVER the ephemeral ``-S``/``-A``:
-# a projection outlives the launch (spec §1A). A tier ABSENT here means CLEAR.
-_CLAUDE_MODE_BY_TIER: "dict[str, str]" = {
-    "editing": "acceptEdits",
-    "full": "bypassPermissions",
-}
-
-#: Every value kanibako may have written here — what the CLEAR path may remove.
-_MANAGED_MODES: frozenset[str] = frozenset(_CLAUDE_MODE_BY_TIER.values())
-
-
-def _claude_managed_mode(access: str) -> "str | None":
-    """The managed ``defaultMode`` for *access*, or ``None`` to CLEAR; RAISES on unknown."""
-    if access == "restricted":
-        return None
-    mode = _CLAUDE_MODE_BY_TIER.get(access)
-    if mode is None:
-        raise ConfigError(
-            f"claude panel permissions: unknown access tier {access!r} "
-            f"(expected restricted | editing | full)."
-        )
-    return mode
-
-
-def merge_permission_mode(settings: dict, mode: str) -> dict:
-    """UNION-MERGE ``permissions.defaultMode = <mode>``, returning a NEW dict."""
-    merged = copy.deepcopy(settings)
-    current = merged.get("permissions")
-    perms = dict(current) if isinstance(current, dict) else {}
-    perms["defaultMode"] = mode
-    merged["permissions"] = perms
-    return merged
-
-
-def clear_permission_mode(settings: dict) -> dict:
-    """Return a NEW dict with kanibako's MANAGED ``permissions.defaultMode`` removed."""
-    merged = copy.deepcopy(settings)
-    current = merged.get("permissions")
-    # ⚑ Only a value WE manage is removed — a user-chosen mode we never write survives.
-    if not isinstance(current, dict) or current.get("defaultMode") not in _MANAGED_MODES:
-        return merged
-    perms = dict(current)
-    del perms["defaultMode"]
-    # An emptied ``permissions`` was ours to create, so it goes; one with siblings stays.
-    if perms:
-        merged["permissions"] = perms
-    else:
-        del merged["permissions"]
-    return merged
-
-
 def _write_if_changed(path: Path, existing: dict, merged: dict) -> bool:
     """Write *merged* to *path* as pretty JSON iff it differs from disk (idempotent)."""
     if path.exists() and merged == existing:
@@ -180,23 +125,6 @@ def _write_if_changed(path: Path, existing: dict, merged: dict) -> bool:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(merged, indent=2) + "\n")
     return True
-
-
-def seed_claude_permission_mode(settings_path: Path, *, access: str) -> bool:
-    """Project the box's ``access`` tier into the box's claude ``settings.json``."""
-    mode = _claude_managed_mode(access)
-    if mode is None:
-        # CLEAR is a NO-OP on an absent file — never create one just to clear it.
-        if not settings_path.exists():
-            return False
-        existing = _read_existing_config(settings_path)
-        return _write_if_changed(
-            settings_path, existing, clear_permission_mode(existing),
-        )
-    existing = _read_existing_config(settings_path)
-    return _write_if_changed(
-        settings_path, existing, merge_permission_mode(existing, mode),
-    )
 
 
 # ---------------------------------------------------------------------------

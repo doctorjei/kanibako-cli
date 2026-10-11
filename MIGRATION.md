@@ -458,8 +458,8 @@ inside boxes. In order of likely impact:
 49. **kanibako no longer needs tmux on the host; a plain `start` is persistent without it** — see
     *`start` no longer looks for tmux on the host*.
 
-50. **goose's VS Code panel uses the box's own `GOOSE_MODE`, not the box's `access` tier.** The launched goose
-    still gets the tier — see *goose's VS Code panel uses the box's own `GOOSE_MODE`*.
+50. **The goose and claude VS Code panels use the box's own permission setting, not the box's `access` tier.**
+    The launched agent still gets the tier — see *The VS Code panel uses the box's own permission setting*.
 
 ---
 
@@ -7466,16 +7466,22 @@ binary once more and caches it there.
 - A helper script that read the old path should read `~/.kanibako/cache/tweakcc`.
 - The old `$XDG_CACHE_HOME/kanibako/tweakcc` is no longer read; delete it if you want the space back.
 
-### goose's VS Code panel uses the box's own `GOOSE_MODE`
+### The VS Code panel uses the box's own permission setting
 
-**What changed.** A start no longer writes the box's `access` tier into goose's
-`~/.config/goose/config.yaml`. A goose that kanibako launches still gets the tier, as the
-`GOOSE_MODE` environment variable, which overrides the file. The goose panel is started by VS Code
-without that variable, so it uses the file's `GOOSE_MODE`, or goose's default `auto` if there is none.
+**What changed.** A start no longer writes the box's `access` tier into the agent's own config file:
 
-**What you must do.** To set the panel's mode, set `GOOSE_MODE` in your host
-`~/.config/goose/config.yaml`; kanibako copies that file into the box. A box started under an earlier
-release keeps the value kanibako wrote there until the host file is next copied in.
+| Agent | File | Key | How the launched agent gets the tier |
+|---|---|---|---|
+| goose | `~/.config/goose/config.yaml` | `GOOSE_MODE` | the `GOOSE_MODE` environment variable |
+| claude | `~/.claude/settings.json` | `permissions.defaultMode` | a flag: `--dangerously-skip-permissions`, `--permission-mode acceptEdits`, or `--permission-mode default` |
+
+The variable and the flags override the file. A panel is started by VS Code without them, so it uses the file's
+value, or the agent's default if there is none. A new claude box's file comes from the seed template, which sets
+`bypassPermissions`, so its panel runs without prompts at every tier.
+
+**What you must do.** To set a panel's mode, set the key in the file. For goose, set `GOOSE_MODE` in your host
+`~/.config/goose/config.yaml`; kanibako copies that file into the box. For claude, edit the box's
+`~/.claude/settings.json`. A box started under an earlier release keeps the value kanibako last wrote there.
 
 ---
 

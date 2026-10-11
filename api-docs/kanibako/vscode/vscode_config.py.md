@@ -10,8 +10,6 @@ Prose for these symbols lives in `llm-docs/kanibako/vscode/vscode_config.py.md`.
 ```
 AGENT_MARKERS_DIR = '/tmp/kanibako/agents'
 _IMAGE_CONFIGS_SUBPATH = 'Code/User/globalStorage/ms-vscode-remote.remote-containers/imageConfigs'
-_CLAUDE_MODE_BY_TIER: 'dict[str, str]' = {'editing': 'acceptEdits', 'full': 'bypassPermissions'}
-_MANAGED_MODES: frozenset[str] = frozenset(_CLAUDE_MODE_BY_TIER.values())
 _SESSION_START_MATCHER = 'startup|resume|clear|compact'
 _SESSION_START_COMMAND = 'python3 "/opt/kanibako/kanibako/scripts/import-directives.py" --additional-context "$KANIBAKO_DIRECTIVE_SEED" || true'
 _SESSION_START_RETIRED_COMMANDS: 'frozenset[str]' = frozenset({'python3 "$HOME/playbook/kanibako/scripts/import-directives.py" --additional-context "$KANIBAKO_DIRECTIVE_SEED" || true'})
@@ -39,9 +37,6 @@ def load_jsonc(text: str) -> object | None
 def attached_container_config_path(image_ref: str, config_home: Path) -> Path
 def merge_attached_container_config(existing: dict, *, workspace_folder: str, extension: str | None) -> dict
 def seed_attached_container_config(path: Path, *, workspace_folder: str, extension: str | None) -> bool
-def merge_permission_mode(settings: dict, mode: str) -> dict
-def clear_permission_mode(settings: dict) -> dict
-def seed_claude_permission_mode(settings_path: Path, *, access: str) -> bool
 def merge_session_start_hook(settings: dict) -> dict
 def merge_marker_write_hook(settings: dict) -> dict
 def merge_marker_remove_hook(settings: dict) -> dict
@@ -54,7 +49,6 @@ def seed_codex_approval(config_path: Path, *, access: str) -> bool
 def _strip_jsonc(text: str) -> str
 def _encode_image_ref(ref: str) -> str
 def _read_existing_config(path: Path) -> dict
-def _claude_managed_mode(access: str) -> 'str | None'
 def _write_if_changed(path: Path, existing: dict, merged: dict) -> bool
 def _is_retired_command(entry: object, retired: 'frozenset[str]') -> bool
 def _drop_retired_hooks(groups: list, retired: 'frozenset[str]') -> list

@@ -87,15 +87,18 @@ descriptor:
   # "acceptEdits", "auto", "bypassPermissions", "manual", "dontAsk", "plan".
   #   full       -> --dangerously-skip-permissions (today's bypass, unchanged)
   #   editing    -> --permission-mode acceptEdits  (edits free, boundaries ask)
-  #   restricted -> EMIT NOTHING: claude's own default already prompts for
-  #                 everything, so the empty row is the correct realization (and
-  #                 it is byte-identical to the pre-R-41 `-S` behavior, which
-  #                 declared no secure_flag).
+  #   restricted -> --permission-mode default (everything prompts).  `default`
+  #                 is the config value of the mode `--help` calls "manual"; the
+  #                 CLI accepts both.  The flag is needed because the box's own
+  #                 settings.json may hold any `permissions.defaultMode` (the
+  #                 seed template ships bypassPermissions), and the flag
+  #                 "Overrides `defaultMode` from settings files" (claude CLI
+  #                 reference).  kanibako writes no tier into that file.
   access_realization:
     channel: flag
     setting_key: access
     tiers:
-      restricted: {}
+      restricted: {flag: ["--permission-mode", "default"]}
       editing: {flag: ["--permission-mode", "acceptEdits"]}
       full: {flag: ["--dangerously-skip-permissions"]}
 

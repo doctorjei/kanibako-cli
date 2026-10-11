@@ -5,7 +5,7 @@
     "allow": [
       "Bash(ls:*)"
     ],
-    "defaultMode": "acceptEdits"
+    "defaultMode": "plan"
   },
   "hooks": {
     "SessionStart": [

@@ -265,28 +265,6 @@ class ClaudeTarget(Target):
     def config_dir_name(self) -> str:
         return ".claude"
 
-    def deliver_panel_permissions(
-        self, *, config_root: Path, access: str,
-    ) -> bool:
-        """Mirror the box's CASCADE-resolved ``access`` TIER into the box's
-        in-box ``~/.claude/settings.json`` so the VS Code claude-code PANEL
-        reflects the configured tier (Ph4b Vector A — the panel spawns its own
-        claude without kanibako's launch flags).
-
-        THREE-VALUED (R-41): ``full`` SETs ``permissions.defaultMode=
-        bypassPermissions``, ``editing`` SETs ``acceptEdits``, ``restricted``
-        CLEARS the managed mode (no-op on an absent file), so changing the tier
-        takes effect in the panel.  The tier→mode table lives in the core
-        emitter (:func:`kanibako.vscode.vscode_config.seed_claude_permission_mode`),
-        which merges (never clobbers user settings), is idempotent, and RAISES on
-        an unknown tier rather than defaulting either way.
-        """
-        from kanibako.vscode.vscode_config import seed_claude_permission_mode
-
-        return seed_claude_permission_mode(
-            config_root / ".claude" / "settings.json", access=access,
-        )
-
     def deliver_directive_hook(
         self,
         *,

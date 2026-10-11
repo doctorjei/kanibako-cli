@@ -2382,8 +2382,7 @@ def _deliver_panel_permissions(
     home as seen from the host — the one root every surface lives under.
 
     ORDER is load-bearing: panel permissions FIRST, directive hook SECOND
-    (claude's two writes hit the same ``settings.json``; codex's approval keys
-    land before the managed region write — the byte-order the golden fixtures
+    (codex's approval keys land before the managed region write — the byte-order the golden fixtures
     freeze).  *provider* is the launch's resolved persona model-provider
     (``None`` for bare / non-persona ⇒ byte-identical write); this call site is
     reached whenever a box is (re)started — first launch after create and start

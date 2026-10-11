@@ -761,16 +761,31 @@ class TestDescriptor:
         assert d.operations["exec"].fragment == ("-p",)
 
     def test_access_realization_access_rows(self):
-        # The three VERIFIED claude rows (claude 2.1.220 --help: both
-        # --dangerously-skip-permissions and --permission-mode acceptEdits).
+        # Every tier is a FLAG: the box's settings.json may hold any
+        # ``defaultMode``, and the flag overrides it.
         ar = ClaudeTarget().descriptor.access_realization
         assert ar is not None
         assert ar.channel == Channel.FLAG
         assert ar.setting_key == "access"
         assert ar.full.flag == ("--dangerously-skip-permissions",)
         assert ar.editing.flag == ("--permission-mode", "acceptEdits")
-        assert ar.restricted.flag == ()          # declared, emits nothing
+        assert ar.restricted.flag == ("--permission-mode", "default")
         assert ar.rendered_tiers() == ("restricted", "editing", "full")
+
+    @pytest.mark.parametrize(("tier", "flags"), [
+        ("restricted", ["--permission-mode", "default"]),
+        ("editing", ["--permission-mode", "acceptEdits"]),
+        ("full", ["--dangerously-skip-permissions"]),
+    ])
+    @pytest.mark.parametrize("op", [None, ("-p",)])
+    def test_each_tier_reaches_the_argv(self, tier, flags, op):
+        from kanibako.targets import assembly
+
+        argv = assembly.assemble_argv(
+            ClaudeTarget().descriptor, mode_fragment=[], access=tier,
+            setting_values={}, op_fragment=op, extra_args=[], agent="claude",
+        )
+        assert argv == [*(op or ()), *flags]
 
     def test_settings_model(self):
         d = ClaudeTarget().descriptor
@@ -863,64 +878,37 @@ class TestTransformCred:
 
 
 class TestDeliverySeams:
-    """T1 seams: ClaudeTarget's panel-permission + directive-hook deliveries
-    (thin dispatch over the core emitters in :mod:`kanibako.vscode.vscode_config`)."""
+    """T1 seams: ClaudeTarget writes no panel permissions (the tier is a launch
+    flag) and seeds the directive hook (thin dispatch over
+    :mod:`kanibako.vscode.vscode_config`)."""
 
     def _settings(self, config_root: Path) -> Path:
         return config_root / ".claude" / "settings.json"
 
-    def test_panel_permissions_full_sets_bypass(self, tmp_path):
-        t = ClaudeTarget()
-        assert t.deliver_panel_permissions(
-            config_root=tmp_path, access="full",
-        ) is True
-        doc = json.loads(self._settings(tmp_path).read_text())
-        assert doc["permissions"]["defaultMode"] == "bypassPermissions"
-
-    def test_panel_permissions_editing_sets_accept_edits(self, tmp_path):
-        # The MIDDLE tier on the PROJECTED surface (R-41).
-        t = ClaudeTarget()
-        assert t.deliver_panel_permissions(
-            config_root=tmp_path, access="editing",
-        ) is True
-        doc = json.loads(self._settings(tmp_path).read_text())
-        assert doc["permissions"]["defaultMode"] == "acceptEdits"
-
-    def test_panel_permissions_restricted_clears_managed_value(self, tmp_path):
-        t = ClaudeTarget()
-        t.deliver_panel_permissions(config_root=tmp_path, access="full")
-        assert t.deliver_panel_permissions(
-            config_root=tmp_path, access="restricted",
-        ) is True
-        doc = json.loads(self._settings(tmp_path).read_text())
-        assert "defaultMode" not in doc.get("permissions", {})
-
-    def test_panel_permissions_restricted_clears_a_stale_editing_value(
-        self, tmp_path,
+    @pytest.mark.parametrize("tier", ["restricted", "editing", "full"])
+    @pytest.mark.parametrize("mode", ["plan", "bypassPermissions", "acceptEdits"])
+    def test_panel_permissions_leave_the_users_mode_alone(
+        self, tmp_path, tier, mode,
     ):
-        # ⚑ The tier-set clear: going editing → restricted must remove the
-        # ``acceptEdits`` WE wrote, not leave a stale middle tier persisted.
-        t = ClaudeTarget()
-        t.deliver_panel_permissions(config_root=tmp_path, access="editing")
-        assert t.deliver_panel_permissions(
-            config_root=tmp_path, access="restricted",
-        ) is True
-        doc = json.loads(self._settings(tmp_path).read_text())
-        assert "defaultMode" not in doc.get("permissions", {})
-
-    def test_panel_permissions_restricted_absent_is_inert(self, tmp_path):
+        """No tier writes ``permissions.defaultMode``: the launch flag carries the
+        tier, so a user's own value survives a start byte-identical."""
+        path = self._settings(tmp_path)
+        path.parent.mkdir(parents=True)
+        path.write_text(json.dumps(
+            {"permissions": {"defaultMode": mode, "allow": ["x"]}}, indent=2,
+        ) + "\n")
+        before = path.read_bytes()
         assert ClaudeTarget().deliver_panel_permissions(
-            config_root=tmp_path, access="restricted",
+            config_root=tmp_path, access=tier,
         ) is False
-        assert not self._settings(tmp_path).exists()
+        assert path.read_bytes() == before
 
-    def test_panel_permissions_unknown_tier_raises(self, tmp_path):
-        from kanibako.errors import ConfigError
-
-        with pytest.raises(ConfigError):
-            ClaudeTarget().deliver_panel_permissions(
-                config_root=tmp_path, access="bogus",
-            )
+    @pytest.mark.parametrize("tier", ["restricted", "editing", "full"])
+    def test_panel_permissions_create_no_file(self, tmp_path, tier):
+        assert ClaudeTarget().deliver_panel_permissions(
+            config_root=tmp_path, access=tier,
+        ) is False
+        assert not (tmp_path / ".claude").exists()
 
     def test_directive_hook_seeds_managed_hook_set(self, tmp_path):
         assert ClaudeTarget().deliver_directive_hook(
