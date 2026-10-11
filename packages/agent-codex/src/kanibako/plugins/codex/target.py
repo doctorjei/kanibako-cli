@@ -264,27 +264,19 @@ class CodexTarget(Target):
     def deliver_panel_permissions(
         self, *, config_root: Path, access: str,
     ) -> bool:
-        """Mirror the box's CASCADE-resolved ``access`` TIER into the managed
-        ``approval_policy``/``sandbox_mode`` root keys of the box's in-box
-        ``~/.codex/config.toml``.
+        """Force the box invariant ``sandbox_mode = "danger-full-access"`` into the
+        box's in-box ``~/.codex/config.toml``; *access* is unused.
 
-        The panel spawns its own in-box codex without kanibako's launch flags, so
-        this parity is the ONLY way it sees the box's tier.  The SOLE writer of
-        those two keys (the directive-hook write below is hook/trust/provider
-        only).  ``approval_policy`` is TIER-gated (``full`` → ``"never"``,
-        ``editing`` → ``"on-request"``, ``restricted`` → removed while it still
-        equals a value WE manage, preserving a user-chosen one); ``sandbox_mode``
-        is a BOX INVARIANT forced to ``"danger-full-access"`` ALWAYS, independent
-        of *access*.  ⚑ That invariant is why the panel's middle tier rides the
-        APPROVAL axis while the CLI's rides ``-s workspace-write``: writing
-        workspace-write here is the configuration that hangs the app-server.  See
-        :func:`kanibako.vscode.vscode_config.seed_codex_approval`.
+        The panel spawns its own in-box codex without kanibako's launch flags, and a
+        ``workspace-write`` sandbox there hangs the app-server (no nested bubblewrap
+        under podman). ``approval_policy`` is NOT written: the tier reaches the CLI as
+        ``-c approval_policy=...`` on the argv (``codex-defaults.yaml``), and the panel
+        reads the user's own value. See
+        :func:`kanibako.vscode.vscode_config.seed_codex_sandbox_mode`.
         """
-        from kanibako.vscode.vscode_config import seed_codex_approval
+        from kanibako.vscode.vscode_config import seed_codex_sandbox_mode
 
-        return seed_codex_approval(
-            config_root / ".codex" / CODEX_CONFIG_FILE, access=access,
-        )
+        return seed_codex_sandbox_mode(config_root / ".codex" / CODEX_CONFIG_FILE)
 
     def deliver_directive_hook(
         self,
@@ -297,7 +289,7 @@ class CodexTarget(Target):
         ``[[hooks.SessionStart]]`` group, its pre-computed trust hash, the
         directory trust, and (for a codex persona) the *model_provider* region.
 
-        ⚑ NEVER the approval/sandbox keys — those belong to
+        ⚑ NEVER the ``sandbox_mode`` key — it belongs to
         :meth:`deliver_panel_permissions` alone, so no managed key has two writers
         (*access* is accepted per the seam contract but unused here).  The
         box-side literals codex keys its trust entries on (the in-box config path

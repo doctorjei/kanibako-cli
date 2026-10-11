@@ -20,11 +20,8 @@ _AGENT_MARKER_REMOVE_COMMAND = f'{_PID_SCRIPT_DIR}/pid-rm.sh "$PPID" || true'
 _AGENT_MARKER_WRITE_RETIRED_COMMANDS: 'frozenset[str]' = frozenset({'~/canon/bible/general/scripts/util/pid-add.sh "$PPID" || true', 'd="${KANIBAKO_AGENT_MARKERS_DIR:-/tmp/kanibako/agents}"; mkdir -p "$d" && printf %s "$PPID" > "$d/$PPID" || true'})
 _AGENT_MARKER_REMOVE_RETIRED_COMMANDS: 'frozenset[str]' = frozenset({'~/canon/bible/general/scripts/util/pid-rm.sh "$PPID" || true', 'd="${KANIBAKO_AGENT_MARKERS_DIR:-/tmp/kanibako/agents}"; rm -f "$d/$PPID" || true'})
 _CODEX_EVENT_KEY = 'session_start'
-_CODEX_APPROVAL_POLICY_KEY = 'approval_policy'
 _CODEX_SANDBOX_MODE_KEY = 'sandbox_mode'
 _CODEX_SANDBOX_MODE = 'danger-full-access'
-_CODEX_APPROVAL_BY_TIER: 'dict[str, str]' = {'restricted': 'untrusted', 'editing': 'on-request', 'full': 'never'}
-_CODEX_MANAGED_APPROVALS: frozenset[str] = frozenset(_CODEX_APPROVAL_BY_TIER.values())
 _CODEX_REGION_BEGIN = '# >>> kanibako-managed (instruction-delivery hook + trust) — do not edit >>>'
 _CODEX_REGION_END = '# <<< kanibako-managed (instruction-delivery hook + trust) <<<'
 _CODEX_PROVIDER_REGION_BEGIN = '# >>> kanibako-managed (model provider) — do not edit >>>'
@@ -45,7 +42,7 @@ def codex_trusted_hash(event_key: str, matcher: str | None, command: str, timeou
 def merge_codex_config(text: str, *, box_config_path: str, codex_cwd: str, model_provider: CodexModelProvider | None=None) -> str
 def merge_codex_model_provider(text: str, *, provider_id: str, name: str, base_url: str, wire_api: str, env_key: str, model: str) -> str
 def seed_codex_config(config_path: Path, *, box_config_path: str, codex_cwd: str, model_provider: CodexModelProvider | None=None) -> bool
-def seed_codex_approval(config_path: Path, *, access: str) -> bool
+def seed_codex_sandbox_mode(config_path: Path) -> bool
 def _strip_jsonc(text: str) -> str
 def _encode_image_ref(ref: str) -> str
 def _read_existing_config(path: Path) -> dict
@@ -59,8 +56,7 @@ def _extract_delimited_region(text: str, begin: str, end: str) -> tuple[str, str
 def _strip_delimited_region(text: str, begin: str, end: str) -> str
 def _assemble_codex_managed(body: str, regions: list[str]) -> str
 def _strip_codex_region(text: str) -> str
-def _codex_managed_approval(access: str) -> str
-def _reconcile_codex_approval(text: str, access: str) -> str
+def _reconcile_codex_sandbox_mode(text: str) -> str
 def _apply_root_key(lines: list[str], key: str, *, desired: 'str | None', managed: 'tuple[str, ...]', unconditional: bool=False) -> list[str]
 def _count_session_start_groups(text: str) -> int
 def _build_codex_managed_region(*, box_config_path: str, codex_cwd: str, group_index: int) -> str

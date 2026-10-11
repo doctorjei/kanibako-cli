@@ -291,9 +291,9 @@ The runtime helper and fork verbs (formerly under `crab`) now live under `box`:
 > sessions with no cross-process locking). Codex offers no knob to hide the
 > CLI's sessions from the panel, so this is a documented limit: while a CLI
 > codex runs in the box, don't resume its session from the panel sidebar
-> (start a new panel conversation instead). The box's permission parity
-> (`approval_policy`/`sandbox_mode`) and kanibako's managed hooks reach the
-> panel automatically via the shared `~/.codex/config.toml`.
+> (start a new panel conversation instead). The panel reads the box's
+> `~/.codex/config.toml`: your own `approval_policy`, kanibako's forced
+> `sandbox_mode = "danger-full-access"`, and kanibako's managed hooks.
 
 `kanibako code [project]` opens your **host** VS Code attached to the box
 (Dev Containers "Attach to Running Container"), at the box's `~/workspace`.

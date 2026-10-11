@@ -1,8 +1,8 @@
 # user config — hands off
 model_reasoning_effort = "high"
 sandbox_mode = "danger-full-access"
+approval_policy = "never"
 
-approval_policy = "untrusted"
 [profiles.fast]
 model = "gpt-5-codex"
 

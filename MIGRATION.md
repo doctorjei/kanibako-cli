@@ -458,7 +458,7 @@ inside boxes. In order of likely impact:
 49. **kanibako no longer needs tmux on the host; a plain `start` is persistent without it** — see
     *`start` no longer looks for tmux on the host*.
 
-50. **The goose and claude VS Code panels use the box's own permission setting, not the box's `access` tier.**
+50. **The goose, claude, and codex VS Code panels use the box's own permission setting, not the box's `access` tier.**
     The launched agent still gets the tier — see *The VS Code panel uses the box's own permission setting*.
 
 ---
@@ -7474,14 +7474,21 @@ binary once more and caches it there.
 |---|---|---|---|
 | goose | `~/.config/goose/config.yaml` | `GOOSE_MODE` | the `GOOSE_MODE` environment variable |
 | claude | `~/.claude/settings.json` | `permissions.defaultMode` | a flag: `--dangerously-skip-permissions`, `--permission-mode acceptEdits`, or `--permission-mode default` |
+| codex | `~/.codex/config.toml` | `approval_policy` | flags: `--dangerously-bypass-approvals-and-sandbox`, `-c approval_policy="on-request" -s workspace-write`, or `-c approval_policy="on-request" -s read-only` |
 
 The variable and the flags override the file. A panel is started by VS Code without them, so it uses the file's
 value, or the agent's default if there is none. A new claude box's file comes from the seed template, which sets
-`bypassPermissions`, so its panel runs without prompts at every tier.
+`bypassPermissions`, so its panel runs without prompts at every tier. codex's `restricted` was
+`approval_policy = "untrusted"`, which codex 0.158 no longer accepts; it is now `on-request` with a read-only
+sandbox. kanibako still forces codex's `sandbox_mode = "danger-full-access"` in the file, because a nested sandbox
+hangs the panel.
 
 **What you must do.** To set a panel's mode, set the key in the file. For goose, set `GOOSE_MODE` in your host
 `~/.config/goose/config.yaml`; kanibako copies that file into the box. For claude, edit the box's
-`~/.claude/settings.json`. A box started under an earlier release keeps the value kanibako last wrote there.
+`~/.claude/settings.json`. For codex, set `approval_policy` in the box's `~/.codex/config.toml`. A box started
+under an earlier release keeps the value kanibako last wrote there. For a codex box started at `restricted`, that
+value is `approval_policy = "untrusted"`, and codex 0.158 refuses it in the panel ("no longer supported"). Change
+the line to `on-request` or delete it. The CLI is unaffected, because its flag overrides the file.
 
 ---
 

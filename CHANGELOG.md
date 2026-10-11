@@ -17,10 +17,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `--ephemeral`, or set `agent.<agent>.bootstrap` to `none`, for foreground mode. See `MIGRATION.md`, "`start` no
   longer looks for tmux on the host".
 
-- **A start no longer writes the `access` tier into goose's `config.yaml` or claude's `settings.json`.** The
-  launched goose gets it as `GOOSE_MODE`; the launched claude gets every tier as a flag, with `restricted` as
-  `--permission-mode default`. Each VS Code panel uses its file's own value. See `MIGRATION.md`, "The VS Code
-  panel uses the box's own permission setting".
+- **A start no longer writes the `access` tier into goose's `config.yaml`, claude's `settings.json`, or codex's
+  `config.toml`.** The launched goose gets it as `GOOSE_MODE`; the launched claude gets every tier as a flag, with
+  `restricted` as `--permission-mode default`; the launched codex gets every tier as flags, with `restricted` as
+  `-c approval_policy="on-request" -s read-only` (codex 0.158 no longer accepts `untrusted`). Each VS Code panel
+  uses its file's own value. See `MIGRATION.md`, "The VS Code panel uses the box's own permission setting".
 
 - **A new claude box no longer adds a `Claude-Session` trailer.** The seeded `~/.claude/settings.json` sets
   `attribution.sessionUrl` to `false`, so commits and PRs made from a Remote Control session carry no session

@@ -19,7 +19,6 @@ import urllib.parse
 from pathlib import Path
 from typing import NamedTuple
 
-from kanibako.errors import ConfigError
 
 
 def _strip_jsonc(text: str) -> str:
@@ -326,29 +325,14 @@ def seed_session_start_hook(settings_path: Path) -> bool:
 # config.toml table key is PascalCase (``[hooks.SessionStart]``).
 _CODEX_EVENT_KEY = "session_start"
 
-# ⚑ Both managed root keys are kanibako-OWNED: OVERWRITTEN at every tier, never merged.
-_CODEX_APPROVAL_POLICY_KEY = "approval_policy"
+# ⚑ The one managed root key; kanibako-OWNED: OVERWRITTEN at every start, never merged.
+# ``approval_policy`` is NOT managed: the tier reaches the CLI as ``-c`` on the argv, and
+# the panel reads the user's own value.
 _CODEX_SANDBOX_MODE_KEY = "sandbox_mode"
 # ⚑ BOX INVARIANT, not a tier value: ``workspace-write`` makes the panel's own in-box
 # ``codex app-server`` attempt a NESTED bubblewrap sandbox that podman blocks, and it
 # stalls ("could not find bubblewrap"). The container IS the sandbox.
 _CODEX_SANDBOX_MODE = "danger-full-access"
-
-# ⚑ Exact members of the codex approval enum, verbatim from ``codex --help`` (0.141.0);
-# the table is TOTAL over ACCESS_TIERS, which is what makes "kanibako owns this key" real.
-# ⚑ The VOCABULARY is verified; the tier↔value PAIRING beyond ``never``/``full`` is NOT —
-# confirm on the bifrost matrix.
-_CODEX_APPROVAL_BY_TIER: "dict[str, str]" = {
-    "restricted": "untrusted",
-    "editing": "on-request",
-    "full": "never",
-}
-
-#: Every ``approval_policy`` value kanibako may have written. ⚑ Currently UNCONSULTED —
-#: both managed root keys are SET at every tier, so no CLEAR path reads this allowlist.
-_CODEX_MANAGED_APPROVALS: frozenset[str] = frozenset(
-    _CODEX_APPROVAL_BY_TIER.values()
-)
 
 # Delimiters of the regenerated managed region; everything OUTSIDE it is preserved verbatim.
 _CODEX_REGION_BEGIN = (
@@ -443,30 +427,11 @@ def _strip_codex_region(text: str) -> str:
     return _strip_delimited_region(text, _CODEX_REGION_BEGIN, _CODEX_REGION_END)
 
 
-def _codex_managed_approval(access: str) -> str:
-    """The managed ``approval_policy`` for *access* — one per tier; RAISES on unknown."""
-    policy = _CODEX_APPROVAL_BY_TIER.get(access)
-    if policy is None:
-        raise ConfigError(
-            f"codex panel approval: unknown access tier {access!r} "
-            f"(expected restricted | editing | full)."
-        )
-    return policy
-
-
-def _reconcile_codex_approval(text: str, access: str) -> str:
-    """Reconcile the managed ``sandbox_mode`` (invariant) and ``approval_policy`` (tier) keys."""
-    lines = text.split("\n")
-    # ⚑ ORDER IS LOAD-BEARING: emitting the unconditional invariant FIRST makes a fresh
-    # insert land ``sandbox_mode`` above ``approval_policy`` — the canonical byte order.
+def _reconcile_codex_sandbox_mode(text: str) -> str:
+    """Force the managed ``sandbox_mode`` root key to the box invariant."""
     lines = _apply_root_key(
-        lines, _CODEX_SANDBOX_MODE_KEY,
+        text.split("\n"), _CODEX_SANDBOX_MODE_KEY,
         desired=_CODEX_SANDBOX_MODE, managed=(_CODEX_SANDBOX_MODE,),
-    )
-    lines = _apply_root_key(
-        lines, _CODEX_APPROVAL_POLICY_KEY,
-        desired=_codex_managed_approval(access),
-        managed=tuple(sorted(_CODEX_MANAGED_APPROVALS)),
     )
     return "\n".join(lines)
 
@@ -725,8 +690,8 @@ def seed_codex_config(
     return True
 
 
-def seed_codex_approval(config_path: Path, *, access: str) -> bool:
-    """Write ONLY the managed codex approval/sandbox parity keys; the SOLE writer of them."""
+def seed_codex_sandbox_mode(config_path: Path) -> bool:
+    """Write ONLY the managed codex ``sandbox_mode`` invariant; the SOLE writer of it."""
     try:
         existing = config_path.read_text()
     except OSError:
@@ -740,7 +705,7 @@ def seed_codex_approval(config_path: Path, *, access: str) -> bool:
         body, _CODEX_PROVIDER_REGION_BEGIN, _CODEX_PROVIDER_REGION_END,
     )
     clean = body.rstrip("\n")
-    reconciled = _reconcile_codex_approval(clean, access)
+    reconciled = _reconcile_codex_sandbox_mode(clean)
     if reconciled == clean:
         # Already correct — NEVER rewrite: no gratuitous normalization of user bytes.
         return False

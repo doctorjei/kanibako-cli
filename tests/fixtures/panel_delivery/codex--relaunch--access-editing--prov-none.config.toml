@@ -1,6 +1,5 @@
 
 sandbox_mode = "danger-full-access"
-approval_policy = "on-request"
 
 # >>> kanibako-managed (instruction-delivery hook + trust) — do not edit >>>
 [[hooks.SessionStart]]

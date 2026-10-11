@@ -64,31 +64,21 @@ descriptor:
       fragment: ["exec"]
 
   # The `access` permission TIER (spec §2d, R-41) — codex realizes all three on
-  # the FLAG channel.  Vocabulary VERIFIED against the real CLI (codex-cli
-  # 0.141.0; evidence: plans/ratification-implementation-b7b-codex-surface.md):
-  #   full       -> --dangerously-bypass-approvals-and-sandbox  (verbatim in
-  #                 `--help`: "Skip all confirmation prompts and execute commands
-  #                 without sandboxing … solely for … externally sandboxed"; a
-  #                 kanibako box IS that outer sandbox)
-  #   editing    -> -s workspace-write, the MIDDLE step of the verified sandbox
-  #                 enum [read-only | workspace-write | danger-full-access]
-  #   restricted -> EMIT NOTHING on the argv — the pre-R-41 `-S` behavior,
-  #                 unchanged.
-  # ⚑ The APPROVAL axis is deliberately NOT on the argv: `-a/--ask-for-approval`
-  # is ABSENT from `codex exec` (verified: "error: unexpected argument '-a'"),
-  # and the launch appends these flags to the exec fragment too, so emitting it
-  # would break the standalone op path.  Approval is carried by the PROJECTED
-  # surface instead (~/.codex/config.toml approval_policy) — codex persists
-  # uniformly, per the 2026-06-27 collapse ruling carried over to `access`.
-  # ⚑ FLAG FOR THE LIVE MATRIX (`restricted`): with nothing on the argv, what the
-  # CLI does at this tier rests on codex's OWN default approval/sandbox policy —
-  # and that default is stated NOWHERE in 0.141.0's local help.  The scout
-  # captured the flag/value VOCABULARY, never the defaults, so "codex's own
-  # default already prompts" is UNVERIFIED and is no longer asserted here.  The
-  # tier's actual guarantee comes from the PROJECTED surface, which SETS
-  # `approval_policy = "untrusted"` EXPLICITLY rather than trusting that unknown
-  # default (vscode_config `_CODEX_APPROVAL_BY_TIER`); the bifrost matrix must
-  # still confirm what the bare CLI does.
+  # the FLAG channel, verified against codex-cli 0.158.0:
+  #   full       -> --dangerously-bypass-approvals-and-sandbox  ("Skip all
+  #                 confirmation prompts and execute commands without sandboxing";
+  #                 a kanibako box IS that outer sandbox)
+  #   editing    -> approval on-request + sandbox workspace-write
+  #   restricted -> approval on-request + sandbox read-only
+  # ⚑ The APPROVAL half rides `-c approval_policy=...`, NOT `-a`: these flags
+  # follow the op fragment too, and `codex exec` rejects `-a` ("unexpected
+  # argument '-a'") while interactive, `resume`, and `exec` all accept `-c`.
+  # `-c` parses its value as TOML, so the argv element carries the quotes; a CLI
+  # override beats ~/.codex/config.toml (`codex debug prompt-input` with a file
+  # `approval_policy = "never"` and this flag reports on-request).  0.158 accepts
+  # only on-request | never on `-a`; `untrusted` is unsupported.  `codex exec`
+  # validates the `-c` value but always runs at approval never (its header prints
+  # `approval: never`), so on exec the `-s` sandbox is the tier's guard.
   # ⚑ NEVER emit `--full-auto` / `--yolo` — but NOT because they are absent or
   # undocumented.  Verified on 0.141.0 (2026-08-02): neither appears in
   # `codex --help` or `codex exec --help`, yet BOTH parse (`--yolo` at the top
@@ -111,8 +101,8 @@ descriptor:
     channel: flag
     setting_key: access
     tiers:
-      restricted: {}
-      editing: {flag: ["-s", "workspace-write"]}
+      restricted: {flag: ["-c", 'approval_policy="on-request"', "-s", "read-only"]}
+      editing: {flag: ["-c", 'approval_policy="on-request"', "-s", "workspace-write"]}
       full: {flag: ["--dangerously-bypass-approvals-and-sandbox"]}
 
   settings:
@@ -174,10 +164,10 @@ descriptor:
   # so it also installs under a code-server/Open-VSX attach flow.  It bundles its
   # own codex binary (spawns `codex app-server`) and runs container-side; panel
   # auth is container-side (`~/.codex/auth.json`, shared with the CLI) and its
-  # approval_policy/sandbox_mode come from `~/.codex/config.toml` (kanibako's
-  # config manager seeds approval_policy from the box's `access` tier and forces
-  # sandbox_mode = "danger-full-access" as a box invariant — the container IS the
-  # sandbox, so the panel app-server must not attempt a nested one).
+  # approval_policy/sandbox_mode come from `~/.codex/config.toml`: approval_policy
+  # is the user's own, and kanibako forces sandbox_mode = "danger-full-access" as
+  # a box invariant — the container IS the sandbox, so the panel app-server must
+  # not attempt a nested one.
   vscode_extension: openai.chatgpt
 
 # The former Route-A `category_binds:` `instructions` entry ({system.instructions} →

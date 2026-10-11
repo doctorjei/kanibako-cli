@@ -72,11 +72,11 @@ _SHIMS: list[tuple[str, str, tuple[str, ...]]] = [
         (
             "CodexModelProvider",
             "seed_session_start_hook",
-            "seed_codex_approval",
             "seed_codex_config",
-            # The rc1 wheels also imported ``seed_goose_mode``; it is RETIRED (goose's
-            # tier rides the GOOSE_MODE env var only), and those wheels already fail
-            # at their module-scope ``kanibako.agent_defaults`` import below.
+            # The rc1 wheels also imported ``seed_goose_mode`` and
+            # ``seed_codex_approval``; both are RETIRED (each tier rides the launch
+            # argv or env only), and those wheels already fail at their
+            # module-scope ``kanibako.agent_defaults`` import below.
         ),
     ),
     (

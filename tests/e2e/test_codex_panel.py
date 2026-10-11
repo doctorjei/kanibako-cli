@@ -6,7 +6,7 @@ Two automated halves of the §P2.3 e2e boundary (``codex-vscode-BUILD.md``):
    ``start.py → Target seams → ~/.codex/config.toml`` pipeline against a real
    launch: BOTH managed ``[[hooks.SessionStart]]`` groups (instruction delivery
    + the D2 per-PID liveness marker), both pre-computed ``[hooks.state]`` trust
-   entries, directory trust, approval parity — and byte-stability across a
+   entries, directory trust, the sandbox invariant — and byte-stability across a
    restart.  The "codex binary" is a copied ``/bin/true`` (a real ELF, so
    ``CodexTarget.detect``'s primary standalone-ELF path accepts it); the box
    exits immediately, which is fine — delivery happens host-side before exec
@@ -188,7 +188,7 @@ def _find_box_codex_config(
 
 _DRIFTS = (
     (b'trusted_hash = "sha256:', b'trusted_hash = "sha256:0'),
-    (b'approval_policy = "never"', b'approval_policy = "on-request"'),
+    (b'sandbox_mode = "danger-full-access"', b'sandbox_mode = "read-only"'),
 )
 
 
@@ -203,7 +203,7 @@ def _drift_managed_bytes(cfg: bytes) -> bytes:
 def test_codex_delivery_real_box(e2e_env):
     """Real `start --agent codex` delivers the FULL managed config.toml:
     directive + D2 marker SessionStart groups, both trust entries, project
-    trust, approval parity — and a restart re-delivers it byte-identically
+    trust, the sandbox invariant — and a restart re-delivers it byte-identically
     (both seams reconverge on the real path)."""
     env, project, box = e2e_env["env"], e2e_env["project"], "codexpanel-deliv"
     _seed_codex_stub(e2e_env)
@@ -237,8 +237,8 @@ def test_codex_delivery_real_box(e2e_env):
         for entry in data["hooks"]["state"].values():
             assert entry["trusted_hash"].startswith("sha256:")
         assert data["projects"][f"{GUEST_HOME}/workspace"]["trust_level"] == "trusted"
-        # default access=full → the panel-permission seam delivered parity.
-        assert data["approval_policy"] == "never"
+        # No tier writes approval_policy (the launch flag carries it).
+        assert "approval_policy" not in data
         # sandbox_mode is a box invariant (danger-full-access), not yolo-gated.
         assert data["sandbox_mode"] == "danger-full-access"
         assert "SessionEnd" not in first.decode()  # codex has no such event

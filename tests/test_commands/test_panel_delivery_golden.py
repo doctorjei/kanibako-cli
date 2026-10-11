@@ -66,6 +66,13 @@ DELIBERATE content changes so far (each = a reviewed regeneration commit):
   keep the user's "plan", so each claude pre-state is now the same bytes at all
   three tiers; the ``--access-restricted`` fixtures are byte-UNCHANGED.
 
+* codex stops writing ``approval_policy`` (the launched codex gets every tier as
+  flags; the approval half is ``-c approval_policy="on-request"``): the 12
+  absent/relaunch ``codex--*`` fixtures lose the line, and the user pre-state
+  gains a user ``approval_policy = "never"`` that survives unchanged, so each
+  codex (pre-state, provider) cell is now the same bytes at all three tiers
+  (``test_codex_fixtures_identical_across_tiers``).
+
 Matrix per agent (delivered file: claude ``.claude/settings.json``, codex
 ``.codex/config.toml``).  goose delivers NOTHING — its tier reaches the launched
 goose as the ``GOOSE_MODE`` env var only — so it has no fixtures; the module's
@@ -231,6 +238,7 @@ _CODEX_USER_CONFIG = """\
 # user config — hands off
 model_reasoning_effort = "high"
 sandbox_mode = "read-only"
+approval_policy = "never"
 
 [profiles.fast]
 model = "gpt-5-codex"
@@ -331,14 +339,12 @@ def _sanity_check(
         assert mode in (None, "plan")
     else:  # codex
         assert "# >>> kanibako-managed (instruction-delivery hook + trust)" in text
-        # approval_policy is TIER-driven and set at EVERY tier (one distinct
-        # value each); sandbox_mode is a BOX INVARIANT always forced to
-        # danger-full-access (independent of the tier).
-        policy = {
-            "restricted": "untrusted", "editing": "on-request", "full": "never",
-        }[tier]
-        assert f'approval_policy = "{policy}"' in text
-        assert text.count("approval_policy") == 1
+        # No tier writes approval_policy (the launch flag carries it): absent
+        # stays absent and the user's own "never" survives at every tier.
+        # sandbox_mode is a BOX INVARIANT always forced to danger-full-access.
+        assert text.count("approval_policy") == text.count(
+            'approval_policy = "never"'
+        ) <= 1
         assert 'sandbox_mode = "danger-full-access"' in text
         assert ("# >>> kanibako-managed (model provider)" in text) == (
             provider is not None
@@ -392,6 +398,19 @@ def test_delivered_bytes_match_golden(tmp_path, agent, pre, tier, provider):
         f"delivered bytes drifted from golden {fixture.name} — if intentional, "
         f"regenerate with {_UPDATE_ENV}=1 and commit the fixture diff"
     )
+
+
+@pytest.mark.parametrize("pre", ["absent", "user", "relaunch"])
+@pytest.mark.parametrize("prov", ["none", "nav"])
+def test_codex_fixtures_identical_across_tiers(pre, prov):
+    """codex's config.toml no longer carries the tier, so each (pre-state,
+    provider) cell is the same bytes at every tier."""
+    blobs = {
+        (FIXTURES_DIR / f"codex--{pre}--access-{tier}--prov-{prov}.config.toml")
+        .read_bytes()
+        for tier in ("restricted", "editing", "full")
+    }
+    assert len(blobs) == 1
 
 
 def test_fixture_inventory_matches_matrix():

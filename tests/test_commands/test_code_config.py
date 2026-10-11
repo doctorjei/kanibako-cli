@@ -35,8 +35,8 @@ from kanibako.vscode.vscode_config import (
     merge_marker_write_hook,
     merge_session_start_hook,
     seed_attached_container_config,
-    seed_codex_approval,
     seed_codex_config,
+    seed_codex_sandbox_mode,
     seed_session_start_hook,
 )
 
@@ -846,8 +846,8 @@ def test_codex_merge_command_roundtrips_through_toml_unexpanded():
 
 
 def test_codex_merge_never_writes_approval_keys():
-    """T1 seam split: the directive merge NEVER writes the approval/sandbox
-    parity keys — those have exactly one writer, ``seed_codex_approval``."""
+    """T1 seam split: the directive merge NEVER writes ``sandbox_mode`` (its one
+    writer is ``seed_codex_sandbox_mode``) and nothing writes ``approval_policy``."""
     data = tomllib.loads(_merge(_TEMPLATE))
     assert "approval_policy" not in data
     assert "sandbox_mode" not in data
@@ -856,7 +856,7 @@ def test_codex_merge_never_writes_approval_keys():
 
 
 def test_codex_merge_passes_existing_approval_keys_through(tmp_path):
-    """Keys already in the file (whoever wrote them — the approval seeder or
+    """Keys already in the file (whoever wrote them — the sandbox seeder or
     the user) pass through the directive merge byte-untouched."""
     text = 'approval_policy = "never"\nsandbox_mode = "read-only"\n'
     data = tomllib.loads(_merge(text))
@@ -1342,243 +1342,119 @@ def test_seed_codex_config_with_provider_writes_region(tmp_path):
     assert data["model_providers"]["navigator"]["env_key"] == "NAVIGATOR_API_KEY"
 
 
-# --- T1 seam Step 2: seed_codex_approval (standalone approval writer) --------
+# --- T1 seam Step 2: seed_codex_sandbox_mode (standalone invariant writer) ----
 #
-# The codex panel-permissions emitter behind ``Target.deliver_panel_permissions``.
-# The SOLE writer of approval_policy/sandbox_mode; the directive write
-# (seed_codex_config) never touches them.
+# The codex panel emitter behind ``Target.deliver_panel_permissions``: the SOLE
+# writer of ``sandbox_mode``; the directive write (seed_codex_config) never touches
+# it, and nothing writes ``approval_policy`` (the tier rides ``-c`` on the argv).
 
 
-def test_seed_codex_approval_on_absent_creates_approval_only(tmp_path):
+def test_seed_codex_sandbox_mode_on_absent_creates_the_invariant_only(tmp_path):
     path = tmp_path / ".codex" / "config.toml"
-    assert seed_codex_approval(path, access="full") is True
-    data = tomllib.loads(path.read_text())
-    assert data["approval_policy"] == "never"
-    assert data["sandbox_mode"] == "danger-full-access"
-    assert "hooks" not in data  # approval ONLY — no region, no trust
+    assert seed_codex_sandbox_mode(path) is True
+    assert tomllib.loads(path.read_text()) == {"sandbox_mode": "danger-full-access"}
 
 
-def test_seed_codex_approval_restricted_absent_writes_both_managed_keys(tmp_path):
-    """``restricted`` on an absent file CREATES the config with BOTH keys.
-
-    ``sandbox_mode`` is the BOX INVARIANT (the panel app-server needs
-    ``danger-full-access`` at every tier), and ``approval_policy`` is now SET
-    ``untrusted`` rather than left absent: with the sandbox forced open, leaving
-    approval to codex's own undocumented default is not a ``restricted`` the box
-    can promise."""
-    path = tmp_path / ".codex" / "config.toml"
-    assert seed_codex_approval(path, access="restricted") is True
-    data = tomllib.loads(path.read_text())
-    assert data["sandbox_mode"] == "danger-full-access"
-    assert data["approval_policy"] == "untrusted"
-    assert "hooks" not in data
-
-
-def test_seed_codex_approval_idempotent(tmp_path):
+def test_seed_codex_sandbox_mode_idempotent(tmp_path):
     path = tmp_path / "config.toml"
-    assert seed_codex_approval(path, access="full") is True
+    assert seed_codex_sandbox_mode(path) is True
     before = path.read_bytes()
-    assert seed_codex_approval(path, access="full") is False
+    assert seed_codex_sandbox_mode(path) is False
     assert path.read_bytes() == before
 
 
-def test_seed_codex_approval_restricted_replaces_full_tier_values(tmp_path):
-    """full → restricted rewrites BOTH managed keys down to the tier.
-
-    ``approval_policy`` goes ``never`` → ``untrusted`` (not removed), and a
-    prior ``sandbox_mode = "read-only"`` is migrated to the invariant."""
-    path = tmp_path / "config.toml"
-    path.write_text('approval_policy = "never"\nsandbox_mode = "read-only"\n')
-    assert seed_codex_approval(path, access="restricted") is True
-    data = tomllib.loads(path.read_text())
-    assert data["approval_policy"] == "untrusted"
-    assert data["sandbox_mode"] == "danger-full-access"  # kanibako-owned → forced
-
-
-def test_seed_codex_approval_owns_the_key_and_overwrites_a_user_value(tmp_path):
-    """kanibako OWNS ``approval_policy`` — a user value is REPLACED, not kept.
-
-    ⚑ DELIBERATE CHANGE, and the direction matters.  While ``restricted`` merely
-    CLEARED, a value outside kanibako's managed set survived; now every tier
-    SETS, so the box's configured tier always wins.  The example is
-    ``on-failure`` — a real member of the codex enum (its own help marks it
-    DEPRECATED) that kanibako never writes, i.e. unambiguously a user's value.
-    Overwriting it is the point: the panel must reflect the tier the box was
-    configured with, not a stale hand edit in the box's in-box config.
-    """
-    path = tmp_path / "config.toml"
-    path.write_text('approval_policy = "on-failure"\n')
-    assert seed_codex_approval(path, access="restricted") is True
-    data = tomllib.loads(path.read_text())
-    assert data["approval_policy"] == "untrusted"
-    assert data["sandbox_mode"] == "danger-full-access"
-
-
-def test_seed_codex_approval_editing_sets_on_request(tmp_path):
-    """The MIDDLE tier (R-41): approval_policy = ``on-request`` (verbatim from
-    codex 0.141.0's approval enum), sandbox_mode still the box invariant."""
-    path = tmp_path / "config.toml"
-    assert seed_codex_approval(path, access="editing") is True
-    data = tomllib.loads(path.read_text())
-    assert data["approval_policy"] == "on-request"
-    assert data["sandbox_mode"] == "danger-full-access"
-
-
-def test_seed_codex_approval_restricted_replaces_a_stale_editing_value(tmp_path):
-    """editing → restricted rewrites the ``on-request`` WE wrote to ``untrusted``.
-
-    The value must not survive the downgrade — it is more permissive than
-    ``restricted`` asked for.  Replacing rather than removing also makes the
-    three tiers mutually DISTINCT on this surface: a removal would have left
-    ``restricted`` byte-indistinguishable from "kanibako never ran here".
-    """
-    path = tmp_path / "config.toml"
-    assert seed_codex_approval(path, access="editing") is True
-    assert seed_codex_approval(path, access="restricted") is True
-    data = tomllib.loads(path.read_text())
-    assert data["approval_policy"] == "untrusted"
-    assert data["sandbox_mode"] == "danger-full-access"
-
-
 @pytest.mark.parametrize(
-    ("tier", "policy"),
-    [("restricted", "untrusted"), ("editing", "on-request"), ("full", "never")],
+    "policy", ["untrusted", "on-request", "never", "on-failure"],
 )
-def test_seed_codex_approval_sets_a_distinct_policy_at_every_tier(
-    tmp_path, tier, policy
-):
-    """The tier→policy table is TOTAL and INJECTIVE on this surface.
-
-    Total: no tier leaves ``approval_policy`` to codex's own default. Injective:
-    no two tiers deliver the same bytes, so ``restricted`` can never be
-    byte-equivalent to ``editing`` (the shape the clear-at-restricted discipline
-    allowed).
-    """
-    path = tmp_path / f"config-{tier}.toml"
-    assert seed_codex_approval(path, access=tier) is True
-    data = tomllib.loads(path.read_text())
-    assert data["approval_policy"] == policy
-    assert data["sandbox_mode"] == "danger-full-access"
-
-
-def test_seed_codex_approval_unknown_tier_raises(tmp_path):
-    from kanibako.errors import ConfigError
-
+def test_seed_codex_sandbox_mode_keeps_any_approval_policy(tmp_path, policy):
+    """``approval_policy`` is the user's, whatever its value — including the
+    values kanibako used to write.  Only ``sandbox_mode`` is forced."""
     path = tmp_path / "config.toml"
-    with pytest.raises(ConfigError):
-        seed_codex_approval(path, access="bogus")
-    assert not path.exists()
+    path.write_text(f'approval_policy = "{policy}"\nsandbox_mode = "read-only"\n')
+    assert seed_codex_sandbox_mode(path) is True
+    assert path.read_text() == (
+        f'approval_policy = "{policy}"\nsandbox_mode = "danger-full-access"\n'
+    )
 
 
-def test_seed_codex_approval_migrates_old_workspace_write(tmp_path):
-    """MIGRATION: a config carrying the OLD kanibako-managed
-    ``sandbox_mode = "workspace-write"`` reconciles to ``danger-full-access``
-    at EVERY tier (the invariant is independent of ``access``)."""
-    for tier in ("full", "editing", "restricted"):
-        path = tmp_path / f"config-{tier}.toml"
-        path.write_text('sandbox_mode = "workspace-write"\n')
-        assert seed_codex_approval(path, access=tier) is True
-        assert tomllib.loads(path.read_text())["sandbox_mode"] == (
-            "danger-full-access"
-        )
-
-
-def test_seed_codex_approval_no_op_never_normalizes_user_bytes(tmp_path):
-    """Short-circuit contract: when the reconciled state already matches
-    (approval_policy correct AND sandbox_mode already the invariant) the seeder
-    must NOT rewrite (no trailing-newline normalization, no region relocation)."""
+def test_seed_codex_sandbox_mode_migrates_old_workspace_write(tmp_path):
+    """MIGRATION: the OLD kanibako-managed ``sandbox_mode = "workspace-write"``
+    reconciles to ``danger-full-access``."""
     path = tmp_path / "config.toml"
-    # already-correct restricted state: BOTH managed keys already at their
-    # tier values, plus extra trailing newlines that must NOT be normalized away.
+    path.write_text('sandbox_mode = "workspace-write"\n')
+    assert seed_codex_sandbox_mode(path) is True
+    assert tomllib.loads(path.read_text())["sandbox_mode"] == "danger-full-access"
+
+
+def test_seed_codex_sandbox_mode_no_op_never_normalizes_user_bytes(tmp_path):
+    """Short-circuit contract: when ``sandbox_mode`` already holds the invariant
+    the seeder must NOT rewrite (no trailing-newline normalization)."""
+    path = tmp_path / "config.toml"
     odd = (
         '# mine\nsandbox_mode = "danger-full-access"\n'
         'approval_policy = "untrusted"\nfoo = "bar"\n\n\n'
     )
     path.write_text(odd)
-    assert seed_codex_approval(path, access="restricted") is False
+    assert seed_codex_sandbox_mode(path) is False
     assert path.read_text() == odd
 
 
-def test_seed_codex_approval_keys_land_outside_managed_region(tmp_path):
+def test_seed_codex_sandbox_mode_key_lands_outside_managed_region(tmp_path):
     """The insert-inside-region hazard: a region-bearing file with NO user
     tables — a naive root-key insert would land after the region's BEGIN marker
-    (the first ``[`` line is the region's own table) and be swallowed by the
-    next regeneration.  The seeder must extract the region, edit the clean
-    body, and carry the region through VERBATIM."""
+    and be swallowed by the next regeneration.  The seeder extracts the region,
+    edits the clean body, and carries the region through VERBATIM."""
     path = tmp_path / "config.toml"
-    seed_codex_config(
-        path, box_config_path=_BOX_CFG, codex_cwd=_CODEX_CWD,
-    )
+    seed_codex_config(path, box_config_path=_BOX_CFG, codex_cwd=_CODEX_CWD)
     region_only = path.read_text()
     assert region_only.lstrip().startswith("# >>> kanibako-managed")
-    assert seed_codex_approval(path, access="full") is True
+    assert seed_codex_sandbox_mode(path) is True
     out = path.read_text()
-    # keys present, and BEFORE the region begin marker (root section):
-    assert out.index("approval_policy") < out.index("# >>> kanibako-managed")
-    # region carried through verbatim:
+    assert out.index("sandbox_mode") < out.index("# >>> kanibako-managed")
     begin = out.index("# >>> kanibako-managed")
     assert out[begin:] == region_only.lstrip("\n").rstrip("\n") + "\n"
-    # ...and a subsequent directive re-merge does NOT swallow the keys:
-    seed_codex_config(
-        path, box_config_path=_BOX_CFG, codex_cwd=_CODEX_CWD,
-    )
-    data = tomllib.loads(path.read_text())
-    assert data["approval_policy"] == "never"
-    assert data["sandbox_mode"] == "danger-full-access"
+    seed_codex_config(path, box_config_path=_BOX_CFG, codex_cwd=_CODEX_CWD)
+    assert tomllib.loads(path.read_text())["sandbox_mode"] == "danger-full-access"
 
 
-def test_seed_codex_approval_keys_never_land_inside_provider_region(tmp_path):
-    """``seed_codex_approval`` extracts BOTH managed regions before the root-key
-    surgery, so its approval keys land in the TRUE root section — never INSIDE
-    the provider region (the legacy insert lost them there; the hazard was
-    deleted at plan Step 5).  Under D1 the provider region only exists on a
-    PERSONA launch (a bare launch WIPES it), so the region-present cell is a
-    persona launch: start from a ``restricted`` history, raise the tier to
-    ``full``, and confirm the keys sit OUTSIDE (before) the provider region."""
+def test_seed_codex_sandbox_mode_key_never_lands_inside_provider_region(tmp_path):
+    """Both managed regions are extracted before the root-key surgery, so the
+    key lands in the TRUE root section — never INSIDE the provider region, and
+    a regenerated provider region (persona relaunch) or a wiped one (bare
+    relaunch, D1) does not take it along."""
     path = tmp_path / "config.toml"
-    # Persona launch with a ``restricted`` history (which itself writes both
-    # managed keys — approval_policy = "untrusted"):
-    seed_codex_approval(path, access="restricted")
     seed_codex_config(
         path, box_config_path=_BOX_CFG, codex_cwd=_CODEX_CWD,
         model_provider=CodexModelProvider(**_NAVIGATOR),
     )
-    # Raise the tier on the provider-region-bearing file — the keys must NOT land
-    # inside the provider region:
-    assert seed_codex_approval(path, access="full") is True
+    assert seed_codex_sandbox_mode(path) is True
     out = path.read_text()
-    assert out.index("approval_policy") < out.index(
+    assert out.index("sandbox_mode") < out.index(
         "# >>> kanibako-managed (model provider)"
     )
-    # …and a subsequent PERSONA launch (provider region regenerated) must NOT
-    # swallow them — the exact loss the legacy insert position caused:
     seed_codex_config(
         path, box_config_path=_BOX_CFG, codex_cwd=_CODEX_CWD,
         model_provider=CodexModelProvider(**_NAVIGATOR),
     )
-    data = tomllib.loads(path.read_text())
-    assert data["approval_policy"] == "never"
-    assert data["sandbox_mode"] == "danger-full-access"
-    # D1: a BARE relaunch WIPES the provider region but the approval/sandbox keys
-    # (owned by the separate approval seam, not the provider projection) SURVIVE.
+    assert tomllib.loads(path.read_text())["sandbox_mode"] == "danger-full-access"
     seed_codex_config(path, box_config_path=_BOX_CFG, codex_cwd=_CODEX_CWD)
     wiped = tomllib.loads(path.read_text())
     assert "model_providers" not in wiped
-    assert wiped["approval_policy"] == "never"
     assert wiped["sandbox_mode"] == "danger-full-access"
 
 
-def test_seed_codex_approval_carries_provider_region_and_root_keys(tmp_path):
-    """Both managed regions (hook + model provider) survive an approval toggle
+def test_seed_codex_sandbox_mode_carries_provider_region_and_root_keys(tmp_path):
+    """Both managed regions (hook + model provider) survive the sandbox write
     verbatim, provider root keys included."""
     path = tmp_path / "config.toml"
     seed_codex_config(
         path, box_config_path=_BOX_CFG, codex_cwd=_CODEX_CWD,
         model_provider=CodexModelProvider(**_NAVIGATOR),
     )
-    assert seed_codex_approval(path, access="full") is True
+    assert seed_codex_sandbox_mode(path) is True
     data = tomllib.loads(path.read_text())
-    assert data["approval_policy"] == "never"
+    assert data["sandbox_mode"] == "danger-full-access"
+    assert "approval_policy" not in data
     assert data["model_provider"] == "navigator"
     assert data["model_providers"]["navigator"]["base_url"] == (
         _NAVIGATOR["base_url"]
@@ -1589,54 +1465,22 @@ def test_seed_codex_approval_carries_provider_region_and_root_keys(tmp_path):
 
 # --- T1 seam: the composed codex writes are stable -------------------------
 #
-# The legacy-vs-seam byte-equivalence matrix retired WITH the legacy write
-# (plan Step 5); the golden fixtures (test_panel_delivery_golden.py) carry the
-# byte-identity guarantee permanently.  What stays unit-pinned here is the
-# composition's stability: a relaunch over the two writers' own output is a
-# byte-level no-op (no writer fights the other).
+# The golden fixtures (test_panel_delivery_golden.py) carry the byte-identity
+# guarantee; what stays unit-pinned here is the composition's stability: a
+# relaunch over the two writers' own output is a byte-level no-op.
 
 
 def test_codex_seam_composition_relaunch_is_no_op(tmp_path):
     """Second seam pass over its own output: neither call writes."""
     path = tmp_path / "config.toml"
-    seed_codex_approval(path, access="full")
-    seed_codex_config(
-        path, box_config_path=_BOX_CFG, codex_cwd=_CODEX_CWD,
-    )
+    seed_codex_sandbox_mode(path)
+    seed_codex_config(path, box_config_path=_BOX_CFG, codex_cwd=_CODEX_CWD)
     before = path.read_bytes()
-    assert seed_codex_approval(path, access="full") is False
+    assert seed_codex_sandbox_mode(path) is False
     assert seed_codex_config(
         path, box_config_path=_BOX_CFG, codex_cwd=_CODEX_CWD,
     ) is False
     assert path.read_bytes() == before
-
-
-def test_seed_codex_approval_on_overrides_user_value(tmp_path):
-    """``full`` SETS the managed value even over a user-chosen one (mirrors
-    claude merge_bypass_permissions ON-direction).
-
-    The pre-state is ``on-failure`` — a real enum member kanibako never writes,
-    so it is unambiguously a user's value.  (It used to be ``untrusted``; since
-    that is now the ``restricted`` tier's managed value, it would no longer
-    demonstrate the user-value case.)
-    """
-    path = tmp_path / "config.toml"
-    path.write_text('approval_policy = "on-failure"\n')
-    assert seed_codex_approval(path, access="full") is True
-    data = tomllib.loads(path.read_text())
-    assert data["approval_policy"] == "never"
-    assert data["sandbox_mode"] == "danger-full-access"
-
-
-def test_seed_codex_approval_toggle_on_off_on_round_trips(tmp_path):
-    """ON → OFF → ON round-trips back to the ON bytes (the toggle discipline
-    that lived in the retired coupled merge, now the seeder's contract)."""
-    path = tmp_path / "config.toml"
-    seed_codex_approval(path, access="full")
-    on1 = path.read_bytes()
-    assert seed_codex_approval(path, access="restricted") is True
-    assert seed_codex_approval(path, access="full") is True
-    assert path.read_bytes() == on1
 
 
 # --- Phase 2 D2: codex liveness-marker SessionStart group ---------------------
@@ -1687,17 +1531,17 @@ def test_codex_merge_no_marker_remove_hook_anywhere():
     assert _AGENT_MARKER_REMOVE_COMMAND not in out
 
 
-def test_codex_marker_group_composes_with_approval_and_provider(tmp_path):
-    """Full composed file (panel approval + directive region with marker +
-    provider) parses and carries everything — the Phase-2 super-set cell."""
+def test_codex_marker_group_composes_with_sandbox_and_provider(tmp_path):
+    """Full composed file (panel sandbox invariant + directive region with
+    marker + provider) parses and carries everything — the super-set cell."""
     path = tmp_path / "config.toml"
-    seed_codex_approval(path, access="full")
+    seed_codex_sandbox_mode(path)
     seed_codex_config(
         path, box_config_path=_BOX_CFG, codex_cwd=_CODEX_CWD,
         model_provider=CodexModelProvider(**_NAVIGATOR),
     )
     data = tomllib.loads(path.read_text())
-    assert data["approval_policy"] == "never"
+    assert data["sandbox_mode"] == "danger-full-access"
     assert data["model_provider"] == "navigator"
     assert [g["hooks"][0]["command"] for g in data["hooks"]["SessionStart"]] == [
         _SESSION_START_COMMAND, _AGENT_MARKER_WRITE_COMMAND,
