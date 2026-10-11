@@ -333,15 +333,10 @@ class TestNamedLaterStepFailure:
     def test_a_named_later_step_failure_keeps_the_anchor(
         self, step, config_file, tmp_home, credentials_dir, capsys, monkeypatch,
     ):
-        """A named member re-enters a parked purge through the BY-PATH door.
+        """A named member is NOT parked: it stays a member, and the by-path re-run finishes.
 
-        ⚑ The BY-NAME door is NOT exercised here: it is F2, which kanibako boarded
-        separately in the r6 letter ("leave them").  ``_unregister_purged`` has no
-        named branch, so a named member is parked as ``kind: "primary"`` and
-        ``box rm <name> --purge`` applies ``must_be_under=std.boxes`` to a
-        workset-local metadata path and refuses.  That defect is pinned on its own in
-        :func:`test_a_parked_named_member_is_finished_by_the_by_name_door` so it cannot be
-        lost, and un-marked when F2 lands.
+        ⚑ Parking it filed it as ``kind: "primary"``, which no door could finish; its
+        membership row is the retry's address instead (``test_purge_named_member_registry``).
         """
         from kanibako.project.workset import add_project, create_workset
 
@@ -360,13 +355,28 @@ class TestNamedLaterStepFailure:
         victim = proj.vault_ro_path if step == "member_ro_leaf" else proj.vault_rw_path
         st = _fail_one_path(monkeypatch, victim)
 
-        def _retry(_parked_name):
-            from kanibako.commands.clean import _purge_one
-            return _purge_one(std, config, str(proj.project_path), force=True)
+        from kanibako.commands.clean import _purge_one
 
-        _assert_kept_then_retry_finishes(
-            std, config, str(proj.project_path), anchor, anchor,
-            _retry, st, capsys, f"named/{step}/by_path")
+        cell = f"named/{step}/by_path"
+        capsys.readouterr()
+        assert _purge_one(std, config, str(proj.project_path), force=True) != 0, cell
+        first = capsys.readouterr()
+        assert st["calls"], f"{cell}: the injected step was never reached — vacuous case"
+        assert "done." not in first.out.lower(), f"{cell}: {first.out!r}"
+        assert anchor.exists(), f"{cell}: the anchor must survive a failed step"
+        assert _parked_for(std, anchor) is None, f"{cell}: a named member is never parked"
+        from kanibako.project.workset import load_workset
+        assert "namedone" in {p.name for p in load_workset(
+            ws.root, ws.name, early_system=std.early_system).projects}, (
+            f"{cell}: the member stays registered, its retry's address")
+
+        st["fail"] = False
+        capsys.readouterr()
+        rc2 = _purge_one(std, config, str(proj.project_path), force=True)
+        second = capsys.readouterr()
+        assert rc2 == 0, f"{cell}: the retry must finish: {second.out!r} {second.err!r}"
+        assert not anchor.exists(), f"{cell}: the retry must take the anchor"
+        assert _parked_for(std, anchor) is None, cell
 
 
 # --------------------------------------------------------------------------- #
@@ -875,53 +885,6 @@ class TestThePurgeProbeAsksTheBoxTheVerbResolved:
         assert "kb-primary-bar" in asked, f"the probe asked {asked!r}"
         self._assert_refused(rc, prompted, err, md, cwd_kind)
         assert "kanibako stop bar," in err, err
-
-
-@pytest.mark.xfail(
-    strict=False,
-    reason="F2 — boarded SEPARATELY by kanibako (r6 letter: \"F2 … boarded separately; "
-           "leave them\"), so it is pinned here rather than fixed.  "
-           "``_unregister_purged`` has no NAMED branch, so a named member is parked as "
-           "``kind: \"primary\"``; ``box rm <name> --purge`` then applies "
-           "``must_be_under=std.boxes`` to a workset-local metadata path and refuses "
-           "with \"not contained under …/primary_workset/boxes\".  The guard is right, "
-           "the label is wrong.  This asserts what SHOULD happen, so it XFAILS today; "
-           "when F2 lands it turns XPASS and should become a normal test.",
-)
-def test_a_parked_named_member_is_finished_by_the_by_name_door(
-    config_file, tmp_home, credentials_dir, capsys, monkeypatch,
-):
-    """A named member parked by a failed purge should be finishable by NAME, as a
-    primary is.  Reproduced against the real park, not asserted from the report."""
-    from kanibako.project.workset import add_project, create_workset
-
-    config = load_config(config_file)
-    std = load_std_paths(config)
-    ws = create_workset("r6-f2-ws", tmp_home / "worksets" / "r6-f2-ws", std)
-    source = tmp_home / "r6_f2_src"
-    source.mkdir()
-    add_project(ws, "f2member", source)
-    proj = resolve_workset_project(WorksetSpec.from_workset(ws), "f2member",
-                                  std, config, initialize=True)
-    assert proj.mode is BoxMode.named
-    st = _fail_one_path(monkeypatch, proj.vault_ro_path)
-
-    from kanibako.commands.clean import _purge_one
-
-    capsys.readouterr()
-    assert _purge_one(std, config, str(proj.project_path), force=True) != 0
-    capsys.readouterr()
-    assert st["calls"], "setup: the injected step was never reached"
-    assert proj.metadata_path.is_dir(), "setup: pass 1 kept the anchor"
-
-    st["fail"] = False
-    rc = _retry_parked_by_name("f2member")
-    out = capsys.readouterr()
-    assert rc == 0, (
-        f"F2: the by-name door must finish a parked named member; rc={rc} "
-        f"err={out.err!r}")
-    assert not proj.metadata_path.exists(), (
-        "F2: the anchor is still on disk after a retry that claimed to finish")
 
 
 def test_a_failed_purge_ends_its_stdout_line(

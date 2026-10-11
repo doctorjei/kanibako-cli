@@ -744,6 +744,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`box purge` of a named-workset box leaves a primary box of the same name alone.** Purging `<workset>/<name>`
+  unregistered a primary box called `<name>`, leaving its data unreachable by name. A named box's purge now
+  changes no primary registration, and a purge that keeps something no longer files the named box as a
+  deregistered primary box.
 - **`box purge --all` refuses while a box may be running.** It deleted a running box's vaults and box folder
   without asking the runtime. It now checks every box before its question, as `box purge <path>` does; if any box
   runs or holds its lock, nothing is deleted and each such box is named with its `kanibako stop` command.

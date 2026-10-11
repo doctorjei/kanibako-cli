@@ -78,6 +78,10 @@ def _unregister_purged(std, proj, *, park: bool = False) -> None:
     Resolve the registered name by reverse path lookup first (the workspace path
     is what the membership stores), falling back to the resolved/ metadata-dir
     name, and remove it. Best-effort: a missing or already-clean entry is a no-op.
+
+    ⚑ A NAMED member touches neither registry: its membership is its workset's, and it
+    stays registered, so its path is the retry's address.  Running the primary branch
+    for it unregistered a same-named PRIMARY box and parked the member as a primary.
     """
     from datetime import datetime, timezone
 
@@ -97,6 +101,8 @@ def _unregister_purged(std, proj, *, park: bool = False) -> None:
         # ⚑ A completed purge drops the row an earlier failed pass parked.
         registry_store.unregister_deregistered(std.registry, name)
 
+    if proj.mode is BoxMode.named:
+        return
     try:
         if proj.mode is BoxMode.standalone:
             name = registry_store.standalone_name_for_root(
@@ -111,8 +117,7 @@ def _unregister_purged(std, proj, *, park: bool = False) -> None:
                     _drop_parked(name)
             return
 
-        # PRIMARY (named-workset boxes are unregistered via remove_project, not
-        # purge): the membership maps name → workspace path, so reverse-resolve.
+        # PRIMARY: the membership maps name → workspace path, so reverse-resolve.
         early = _early_scope(std, BoxMode.primary)
         name = primary_box_name_for_workspace(
             std.primary_workset, str(proj.project_path), early=early,
