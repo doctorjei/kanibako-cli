@@ -1197,13 +1197,13 @@ def test_the_foreign_snapshot_cure_lists_the_named_member_from_anywhere(
     assert own.name in listed, listed
 
 
-@pytest.mark.parametrize("target", ["ghost", "{home}/my proj"])
+@pytest.mark.parametrize("target", ["{home}/ghost", "{home}/my proj"])
 def test_the_unresolved_purge_stop_cure_names_its_box(target, std, config, tmp_home,
                                                       tmp_path, monkeypatch, capsys):
     """``_refuse_purge_while_live``'s stop cure carries the box it could not resolve.
 
-    The callers hand it a primary's NAME or a standalone's ROOT, both of which reach
-    the box from any cwd; a bare ``kanibako stop`` acts on the cwd's box instead.
+    Only a standalone's ROOT reaches the resolver (a primary is probed by its name), and
+    a root reaches the box from any cwd; a bare ``kanibako stop`` acts on the cwd's box.
     """
     from kanibako.commands.box import _parser as P
 
@@ -1286,10 +1286,10 @@ def test_a_box_with_no_paths_keeps_the_bare_stop_cure(tmp_path, capsys):
     assert "Stop the box first (kanibako stop), or pass --force." in capsys.readouterr().err
 
 
-@pytest.mark.parametrize("target", ["ghost", "{home}/my proj"])
+@pytest.mark.parametrize("target", ["{home}/ghost", "{home}/my proj"])
 def test_an_unresolved_purge_target_with_a_lock_names_it_in_the_stop_cure(
         target, std, config, tmp_home, tmp_path, monkeypatch, capsys):
-    """The lock-file answer for a target that did not resolve carries that target's ref."""
+    """The lock-file answer for a standalone root that did not resolve carries that root."""
     from kanibako.commands.box import _parser as P
 
     target = target.format(home=tmp_home)

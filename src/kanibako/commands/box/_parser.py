@@ -2491,12 +2491,14 @@ def _purge_deregistered(std, name: str, entry: dict, args: argparse.Namespace, *
     lock_home = (standalone_box_store(root, early=_early_scope(std, BoxMode.standalone))
                  if kind == "standalone" else metadata_dir)
     # ⚑⚑ PROBE BY KIND: a primary's name is only in this parked key, not in its path.
+    # ⚑ A standalone at its STORED spelling: its container name is the link it was
+    # registered at, and ``root`` is the link's target.
     if kind == "standalone":
-        probe_target: "str | None" = str(root)
+        probe_target: "str | None" = literal_path(str(metadata))
         probe_container: "str | None" = None
     else:
         probe_target = None
-        probe_container = _parked_probe_container(name)
+        probe_container = _primary_probe_container(name)
     if _refuse_purge_while_live(std, config, probe_target, lock_home, args.force,
                                "Purging this box", container_name=probe_container):
         return 1
@@ -2588,34 +2590,38 @@ def _resolve_standalone_target(
     return None, None, False
 
 
-def _refuse_purge_while_live(std, config, proj_target: str | None, metadata_dir: Path,
+def _refuse_purge_while_live(std, config, standalone_root: str | None, metadata_dir: Path,
                             force: bool, what: str,
-                            *, container_name: str | None = None) -> bool:
+                            *, container_name: str | None = None,
+                            cure_ref: str | None = None) -> bool:
     """The move/convert/duplicate running-box pre-flight, reused for a PURGE.
 
     ⚑ ONE PROBE — the same :func:`abort_if_box_running` every destructive verb uses, so
     one question never gets two answers; a purge under a live container takes its vaults
     and canon mid-write.  With no ``proj`` the guard still reads the lock file.
-    *container_name* replaces the path probe with a name probe.
+    *standalone_root* is a standalone root in its stored (literal) spelling, the only
+    target this helper resolves.  *container_name* replaces the path probe with a name
+    probe, and *cure_ref* (already quoted) names that box in the stop cure.
+    ⚑⚑ Never hand it a NAME: a name resolved as a path reads the cwd's same-named directory.
     """
     from kanibako.commands.box._lifecycle import abort_if_box_running
 
     proj = None
     unresolved: str | None = None  # the target that failed to resolve
-    if container_name is None and proj_target is not None:
+    if container_name is None and standalone_root is not None:
         try:
-            proj = _resolve_purge_probe_target(std, config, proj_target)
+            proj = _resolve_purge_probe_target(std, config, standalone_root)
         except Exception:  # noqa: BLE001 - see below
             proj = None
-            unresolved = proj_target
+            unresolved = standalone_root
     consequence = f"{what} would delete its vaults and canon while writes are in flight."
-    stop_ref = shlex.quote(unresolved) if unresolved is not None else None
+    stop_ref = shlex.quote(unresolved) if unresolved is not None else cure_ref
     if abort_if_box_running(proj, metadata_dir / ".kanibako.lock", force, consequence,
                             container_name=container_name, cure_ref=stop_ref):
         return True
     # ⚑ A resolver that FAILS must never mean "not running" -- no lock is not proof.
-    if stop_ref is not None and not (metadata_dir / ".kanibako.lock").exists():
-        print(f"Warning: this box may be running: {proj_target} does not resolve, so its "
+    if unresolved is not None and not (metadata_dir / ".kanibako.lock").exists():
+        print(f"Warning: this box may be running: {standalone_root} does not resolve, so its "
               f"container was never asked, and it holds no lock file to check. "
               f"{consequence} Stop the box first: kanibako stop {stop_ref}, "
               f"or pass --force.",
@@ -2627,18 +2633,18 @@ def _refuse_purge_while_live(std, config, proj_target: str | None, metadata_dir:
     return False
 
 
-def _resolve_purge_probe_target(std, config, proj_target: str):
-    """A ``ProjectPaths`` for the running-box probe; standalone first, then primary."""
-    from kanibako.settings.paths import resolve_project, resolve_standalone_project
+def _resolve_purge_probe_target(std, config, standalone_root: str):
+    """A ``ProjectPaths`` for the running-box probe of the standalone at *standalone_root*."""
+    from kanibako.settings.paths import resolve_standalone_project
 
-    try:
-        return resolve_standalone_project(std, config, proj_target)
-    except Exception:  # noqa: BLE001 - try the primary resolver next
-        return resolve_project(std, config, proj_target)
+    return resolve_standalone_project(std, config, standalone_root)
 
 
-def _parked_probe_container(name: str) -> str | None:
-    """The container a PARKED PRIMARY runs as: ``kb-primary-<name>``, from the parked KEY."""
+def _primary_probe_container(name: str) -> str | None:
+    """The container a primary named *name* runs as, registered or parked: ``kb-primary-<name>``.
+
+    ⚑ A function of the NAME alone, so it answers when the workspace is gone.
+    """
     return container_name_for_box_name(name, WORKSET_SEGMENT_PRIMARY)
 
 
@@ -2891,9 +2897,12 @@ def run_rm(args: argparse.Namespace) -> int:
     metadata_dir = std.boxes / name
     if args.purge:
         refuse_inherited_per_owner(std.primary_workset, _early_scope(std, BoxMode.primary))
-        # ⚑ S6r: the same running-box pre-flight move/convert/duplicate use.
-        if _refuse_purge_while_live(std, config, name, metadata_dir, args.force,
-                                   "Purging this box"):
+        # ⚑ S6r: the same running-box pre-flight move/convert/duplicate use.  Probed by
+        # the NAME resolved above, never re-resolved: a cwd ``name/`` is another box.
+        if _refuse_purge_while_live(
+                std, config, None, metadata_dir, args.force, "Purging this box",
+                container_name=_primary_probe_container(name),
+                cure_ref=box_cure_ref(BoxMode.primary, name, None, metadata_dir)):
             return 1
     print(f"Removing project: {name} ({path})")
 

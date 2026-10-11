@@ -645,6 +645,238 @@ class TestAParkedPrimaryIsProbedByPathNotByName:
         assert not md.exists(), "--force must still be able to purge"
 
 
+# --------------------------------------------------------------------------- #
+# 171 — ``box rm <primary> --purge`` probes the box the verb resolved, never a
+# same-named directory in the cwd; a parked standalone is probed at its stored spelling.
+# --------------------------------------------------------------------------- #
+class TestThePurgeProbeAsksTheBoxTheVerbResolved:
+    """``run_rm`` resolves a primary by NAME, then the probe re-read that name as a
+    cwd-relative directory.  A cwd holding ``bar/`` made the probe ask that directory's
+    ``kb-standalone-…`` container instead of ``kb-primary-bar``: a running primary was
+    purged, a stopped one was refused for another box, and the cure named the cwd's
+    directory.  Each cell runs the REAL liveness body against a stand-in runtime.
+    """
+
+    def _primary(self, std, config, tmp_home, name="bar"):
+        ws = tmp_home / "code" / name
+        ws.mkdir(parents=True)
+        proj = resolve_project(std, config, str(ws), initialize=True, name_override=name)
+        assert proj.mode is BoxMode.primary and proj.name == name, "setup"
+        md = std.boxes / name
+        assert md.is_dir(), f"setup: a created primary has its metadata at {md}"
+        (md / "keep.txt").write_text("must survive")
+        return md, ws
+
+    def _cwd(self, monkeypatch, where):
+        where.mkdir(parents=True, exist_ok=True)
+        monkeypatch.chdir(where)
+        monkeypatch.setenv("PWD", str(where))
+
+    def _run(self, monkeypatch, P, target):
+        from kanibako.commands.box._parser import run_rm
+
+        prompted = []
+        monkeypatch.setattr(P, "_confirm_purge",
+                           lambda *a, **k: (prompted.append(True), False)[1])
+        rc = run_rm(argparse.Namespace(target=target, box=None, purge=True, force=False))
+        return rc, prompted
+
+    def _assert_refused(self, rc, prompted, err, md, cell):
+        assert not prompted, f"{cell}: the purge question was reached: {err!r}"
+        assert rc == 1, f"{cell}: rc={rc} err={err!r}"
+        assert "may be running" in err, f"{cell}: {err!r}"
+        assert (md / "keep.txt").read_text() == "must survive", cell
+
+    def _trap(self, std, config, parent, name="bar"):
+        root = parent / name
+        root.mkdir(parents=True)
+        trap = resolve_standalone_project(std, config, project_dir=str(root),
+                                          initialize=True)
+        assert trap.mode is BoxMode.standalone and trap.name, "setup: trap standalone"
+        return trap
+
+    def test_t1_a_running_primary_is_refused_from_a_cwd_holding_its_name(
+        self, config_file, tmp_home, tmp_path, credentials_dir, capsys, monkeypatch,
+    ):
+        from kanibako.commands.box import _parser as P
+
+        std, config = _reload(config_file)
+        md, _ws = self._primary(std, config, tmp_home)
+        self._cwd(monkeypatch, tmp_home / "elsewhere")
+        (tmp_home / "elsewhere" / "bar").mkdir()
+        asked = _asked_container_names(monkeypatch, tmp_path, P, ["kb-primary-bar"])
+        capsys.readouterr()
+
+        rc, prompted = self._run(monkeypatch, P, "bar")
+        err = capsys.readouterr().err
+        assert asked == ["kb-primary-bar"], f"the probe asked {asked!r}"
+        self._assert_refused(rc, prompted, err, md, "T1")
+        assert "kanibako stop bar," in err, err
+
+    def test_t2_a_registered_standalone_of_the_same_name_in_the_cwd_is_not_asked(
+        self, config_file, tmp_home, tmp_path, credentials_dir, capsys, monkeypatch,
+    ):
+        from kanibako.commands.box import _parser as P
+
+        std, config = _reload(config_file)
+        md, _ws = self._primary(std, config, tmp_home)
+        self._trap(std, config, tmp_home / "trap")
+        self._cwd(monkeypatch, tmp_home / "trap")
+        asked = _asked_container_names(monkeypatch, tmp_path, P, ["kb-primary-bar"])
+        capsys.readouterr()
+
+        rc, prompted = self._run(monkeypatch, P, "bar")
+        err = capsys.readouterr().err
+        assert asked == ["kb-primary-bar"], f"the probe asked {asked!r}"
+        self._assert_refused(rc, prompted, err, md, "T2")
+
+    def test_t3_a_running_trap_box_does_not_refuse_a_stopped_primary(
+        self, config_file, tmp_home, tmp_path, credentials_dir, capsys, monkeypatch,
+    ):
+        from kanibako.commands.box import _parser as P
+
+        std, config = _reload(config_file)
+        self._primary(std, config, tmp_home)
+        trap = self._trap(std, config, tmp_home / "trap")
+        self._cwd(monkeypatch, tmp_home / "trap")
+        asked = _asked_container_names(monkeypatch, tmp_path, P,
+                                       [f"kb-standalone-{trap.name}"])
+        capsys.readouterr()
+
+        rc, prompted = self._run(monkeypatch, P, "bar")
+        err = capsys.readouterr().err
+        assert asked == ["kb-primary-bar"], f"the probe asked {asked!r}"
+        assert "may be running" not in err, f"T3: a false refusal: {err!r}"
+        assert prompted and rc == 2, f"T3: the question must be reached: rc={rc} {err!r}"
+
+    def test_t4_the_workspace_path_door_probes_the_primary_too(
+        self, config_file, tmp_home, tmp_path, credentials_dir, capsys, monkeypatch,
+    ):
+        from kanibako.commands.box import _parser as P
+
+        std, config = _reload(config_file)
+        md, ws = self._primary(std, config, tmp_home)
+        self._cwd(monkeypatch, tmp_home / "elsewhere")
+        (tmp_home / "elsewhere" / "bar").mkdir()
+        asked = _asked_container_names(monkeypatch, tmp_path, P, ["kb-primary-bar"])
+        capsys.readouterr()
+
+        rc, prompted = self._run(monkeypatch, P, str(ws))
+        err = capsys.readouterr().err
+        assert asked == ["kb-primary-bar"], f"the probe asked {asked!r}"
+        self._assert_refused(rc, prompted, err, md, "T4")
+
+    def test_t5_a_held_lock_cure_names_the_primary_not_the_cwd_directory(
+        self, config_file, tmp_home, tmp_path, credentials_dir, capsys, monkeypatch,
+    ):
+        import fcntl
+
+        from kanibako.commands.box import _parser as P
+
+        std, config = _reload(config_file)
+        md, _ws = self._primary(std, config, tmp_home)
+        cwd = tmp_home / "elsewhere"
+        self._cwd(monkeypatch, cwd)
+        (cwd / "bar").mkdir()
+        _asked_container_names(monkeypatch, tmp_path, P, [])
+        capsys.readouterr()
+
+        with open(md / ".kanibako.lock", "wb") as held:
+            fcntl.flock(held, fcntl.LOCK_EX)
+            rc, prompted = self._run(monkeypatch, P, "bar")
+        err = capsys.readouterr().err
+        self._assert_refused(rc, prompted, err, md, "T5")
+        assert "kanibako stop bar," in err, err
+        assert str(cwd / "bar") not in err, f"T5: the cure names the cwd's dir: {err!r}"
+
+    @pytest.mark.parametrize("cwd_kind", ["dir", "home"])
+    def test_t6_t7_a_primary_whose_workspace_is_gone_is_asked_by_its_name(
+        self, cwd_kind, config_file, tmp_home, tmp_path, credentials_dir, capsys,
+        monkeypatch,
+    ):
+        """T6 (cwd holds ``bar/``) and T7 (cwd = home): the workspace is gone, but a
+        primary's container is a function of its name, so the runtime is still asked."""
+        import shutil
+
+        from kanibako.commands.box import _parser as P
+
+        std, config = _reload(config_file)
+        md, ws = self._primary(std, config, tmp_home)
+        shutil.rmtree(ws)
+        if cwd_kind == "dir":
+            self._cwd(monkeypatch, tmp_home / "elsewhere")
+            (tmp_home / "elsewhere" / "bar").mkdir()
+        else:
+            self._cwd(monkeypatch, tmp_home / "home")
+        asked = _asked_container_names(monkeypatch, tmp_path, P, ["kb-primary-bar"])
+        capsys.readouterr()
+
+        rc, prompted = self._run(monkeypatch, P, "bar")
+        err = capsys.readouterr().err
+        assert asked == ["kb-primary-bar"], f"the probe asked {asked!r}"
+        self._assert_refused(rc, prompted, err, md, cwd_kind)
+        assert "its container is running (kb-primary-bar" in err, err
+        assert "does not resolve" not in err, err
+
+    def test_t8_a_parked_standalone_is_probed_at_its_stored_spelling(
+        self, config_file, tmp_home, tmp_path, credentials_dir, capsys, monkeypatch,
+    ):
+        """Registered at a symlink, the box runs as ``…_<link>``; the parked probe used
+        the resolved root and asked ``…_<target>``."""
+        from kanibako.commands.box import _parser as P
+        from kanibako.commands.box._parser import run_rm
+
+        std, config = _reload(config_file)
+        real = tmp_home / "sa2"
+        real.mkdir()
+        lnk = tmp_home / "lnk"
+        lnk.symlink_to(real)
+        proj = resolve_standalone_project(std, config, project_dir=str(lnk),
+                                          initialize=True)
+        assert proj.name and proj.name.endswith("_lnk"), f"setup: {proj.name!r}"
+        live = f"kb-standalone-{proj.name}"
+        self._cwd(monkeypatch, tmp_home / "home")
+        assert run_rm(argparse.Namespace(target=str(lnk), box=None, purge=False,
+                                         force=False)) == 0, "setup: park"
+        assert proj.name in registry_store.load_deregistered(std.registry), "setup"
+        store = standalone_box_store(real, early=_early_scope(std, BoxMode.standalone))
+        assert store.is_dir(), "setup"
+        asked = _asked_container_names(monkeypatch, tmp_path, P, [live])
+        capsys.readouterr()
+
+        rc, prompted = self._run(monkeypatch, P, proj.name)
+        err = capsys.readouterr().err
+        assert asked == [live], f"the probe asked {asked!r}"
+        assert not prompted and rc == 1, f"T8: rc={rc} err={err!r}"
+        assert "may be running" in err, err
+        assert store.is_dir(), "the refused purge must leave the store alone"
+
+    @pytest.mark.parametrize("cwd_kind", ["home", "in", "other"])
+    def test_t9_control_a_running_primary_is_refused_from_a_plain_cwd(
+        self, cwd_kind, config_file, tmp_home, tmp_path, credentials_dir, capsys,
+        monkeypatch,
+    ):
+        from kanibako.commands.box import _parser as P
+
+        std, config = _reload(config_file)
+        md, ws = self._primary(std, config, tmp_home)
+        if cwd_kind == "home":
+            self._cwd(monkeypatch, tmp_home / "home")
+        elif cwd_kind == "in":
+            self._cwd(monkeypatch, ws)
+        else:
+            other = self._trap(std, config, tmp_home / "o", name="other")
+            self._cwd(monkeypatch, other.metadata_path)
+        asked = _asked_container_names(monkeypatch, tmp_path, P, ["kb-primary-bar"])
+        capsys.readouterr()
+
+        rc, prompted = self._run(monkeypatch, P, "bar")
+        err = capsys.readouterr().err
+        assert "kb-primary-bar" in asked, f"the probe asked {asked!r}"
+        self._assert_refused(rc, prompted, err, md, cwd_kind)
+        assert "kanibako stop bar," in err, err
+
+
 @pytest.mark.xfail(
     strict=False,
     reason="F2 — boarded SEPARATELY by kanibako (r6 letter: \"F2 … boarded separately; "
