@@ -723,6 +723,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`box remap` onto another standalone box's root is refused.** It recorded the remapped box there and
+  silently dropped the standalone box's registry row, or, for a standalone source, left two boxes at one root.
+  It now refuses before writing anything, with or without `--force`, names the other box, and prints the two
+  cures: move that box with `box move`, or delete its own data with `box rm --purge`. A standalone box
+  remapped onto its own root is unaffected.
 - **A rollback that fails says so.** When a `box move`, `box convert`, or `box remap` failed or was stopped
   with Ctrl-C and a rollback step then failed, the command printed nothing about it, or said the move was
   undone while a partial destination or a new workset leaf stayed behind. It now prints a Note for each step

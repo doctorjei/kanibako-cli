@@ -860,6 +860,24 @@ def _validate(
         if dest.exists():
             raise ProjectError(f"Destination already exists: {dest}")
 
+    # --- remap onto ANOTHER standalone box's root; --force does not override it
+    if (spec.records_only and dest is not None
+            and not (state.mode is BoxMode.standalone
+                     and dest == state.metadata_path.resolve())):
+        from kanibako.launch import box_resolve
+        from kanibako.project import registry_store
+        if box_resolve.stores_standalone_registry_null(dest):
+            other = registry_store.standalone_name_for_same_dir(std.registry, dest)
+            ref = shlex.quote(other or str(dest))
+            who = f"standalone box '{other}'" if other else "an unregistered standalone box"
+            raise ProjectError(
+                f"Cannot remap '{state.name}' onto '{dest}': it is the root of {who}. "
+                "A remap is not a takeover, and no flag overrides this. First move that box "
+                f"elsewhere (`kanibako box move {ref} <new-path>`) or delete it (`kanibako box "
+                f"rm {ref} --purge`, which deletes that box's own data, its vault included, "
+                "but not its workspace), then run the remap again."
+            )
+
     # The name a printed cure lands under: the one asked for, else the box's own, else
     # none — a name the collision guard below refuses is no cure.
     asked = [new_name] + ([] if _same_box_name(new_name, state.name) else [state.name])

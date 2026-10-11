@@ -176,6 +176,109 @@ class TestRemap:
         connected = _connected_index(std)
         assert str(new_ext.resolve()) in connected
 
+    @staticmethod
+    def _member_and_registered_standalone(env):
+        """An external member ``alpha`` of workset ``ws``, and a registered standalone box."""
+        from kanibako.project import registry_store
+
+        config, std, tmp_home = env
+        ws = create_workset("ws", tmp_home / "ws_root", std)
+        ext = tmp_home / "ext1"
+        ext.mkdir()
+        add_project(ws, "alpha", ext, std)
+        solo = tmp_home / "solo"
+        solo.mkdir()
+        proj = resolve_standalone_project(std, config, project_dir=str(solo), initialize=True)
+        registry_store.register_standalone(std.registry, proj.name, solo)
+        return std, ext, solo, proj.name
+
+    @staticmethod
+    def _tree_digest(root: Path) -> dict[str, str]:
+        import hashlib
+        return {str(p.relative_to(root)): hashlib.sha256(p.read_bytes()).hexdigest()
+                for p in sorted(root.rglob("*")) if p.is_file()}
+
+    @pytest.mark.parametrize("force", [False, True])
+    def test_remap_onto_another_standalone_root_refused(self, env, capsys, monkeypatch, force):
+        """A remap onto another box's standalone root is refused before any write, with
+        or without --force: nothing under the home changes, and no flag is offered."""
+        # The user answers yes: only the refusal, not the prompt, may stop it.
+        monkeypatch.setattr(_lifecycle, "_make_confirm", lambda force, summary: lambda: True)
+        std, ext, solo, solo_name = self._member_and_registered_standalone(env)
+        tmp_home = env[2]
+        before = self._tree_digest(tmp_home)
+
+        rc = run_remap(_remap_args(str(ext), str(solo), force=force))
+
+        assert rc == 1
+        err = capsys.readouterr().err
+        assert (f"Cannot remap 'alpha' onto '{solo.resolve()}': it is the root of "
+                f"standalone box '{solo_name}'") in err
+        assert "no flag overrides this" in err
+        assert f"`kanibako box rm {solo_name} --purge`, which deletes that box's own data" in err
+        assert f"`kanibako box move {solo_name} <new-path>`" in err
+        assert "--force" not in err
+        assert self._tree_digest(tmp_home) == before
+
+    @pytest.mark.parametrize("registered", [True, False])
+    @pytest.mark.parametrize("cure", ["rm", "move"])
+    def test_remap_onto_another_standalone_root_printed_cure_works(
+            self, env, capsys, monkeypatch, registered, cure):
+        """Running the cure the refusal prints, as printed, lets the remap through."""
+        import shlex
+
+        from kanibako.project import registry_store
+
+        monkeypatch.setattr(_lifecycle, "_make_confirm", lambda force, summary: lambda: True)
+        monkeypatch.setattr("builtins.input", lambda *a: "yes")
+        std, ext, solo, solo_name = self._member_and_registered_standalone(env)
+        if not registered:
+            registry_store.unregister_standalone(std.registry, solo_name)
+
+        assert run_remap(_remap_args(str(ext), str(solo), force=False)) == 1
+        err = capsys.readouterr().err
+        printed = re.search(rf"`kanibako (box {cure} [^`]*)`", err)
+        assert printed is not None, err
+        argv = shlex.split(printed.group(1).replace("<new-path>", str(env[2] / "moved")))
+        args = build_parser().parse_args(argv)
+        assert int(args.func(args) or 0) == 0, capsys.readouterr()
+
+        assert run_remap(_remap_args(str(ext), str(solo), force=False)) == 0
+        assert str(solo.resolve()) in _connected_index(std)
+
+    @pytest.mark.parametrize("force", [False, True])
+    def test_remap_standalone_onto_another_repointed_standalone_refused(
+            self, env, capsys, monkeypatch, force):
+        """A STANDALONE source is exempt only on its own root: onto another standalone
+        box, its store repointed via ``workset.boxes``, the remap is refused unwritten."""
+        from kanibako.project import registry_store
+
+        monkeypatch.setattr(_lifecycle, "_make_confirm", lambda force, summary: lambda: True)
+        config, std, tmp_home = env
+        names = {}
+        for leaf in ("solo", "solo2"):
+            root = tmp_home / "p" / leaf
+            root.mkdir(parents=True)
+            proj = resolve_standalone_project(std, config, project_dir=str(root), initialize=True)
+            registry_store.register_standalone(std.registry, proj.name, root)
+            names[leaf] = (root, proj.name)
+        solo, solo_name = names["solo"]
+        away = tmp_home / "away"
+        away.mkdir()
+        (solo / "box_data").rename(away / "box_data")
+        marker = solo / "workset.yaml"
+        doc = load_doc(marker)
+        doc["workset"]["boxes"] = str(away / "box_data")
+        dump_doc(marker, doc)
+        before = self._tree_digest(tmp_home)
+
+        rc = run_remap(_remap_args(str(names["solo2"][0]), str(solo), force=force))
+
+        assert rc == 1
+        err = capsys.readouterr().err
+        assert f"it is the root of standalone box '{solo_name}'" in err
+        assert self._tree_digest(tmp_home) == before
+
     def test_remap_missing_project(self, env):
         config, std, tmp_home = env
         plain = tmp_home / "plain"
