@@ -730,6 +730,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `workspaces` directory, that runs through a symlink loop crashed the connect on Python 3.11 and got a misleading
   error on newer versions. The connect is now refused with the looped path named, before anything is written. A
   loop in a store directory no longer crashes the check for a case-variant store.
+- **A standalone purge names the kept snapshot folder truthfully.** After `box rm --purge` or `box purge` deleted
+  the box's snapshots, it named `vault/.versions` as `Note: left the vault at <path> in place — it is not a vault
+  arm of this box`, and when the output was piped the Note came out before the list of paths it deletes. It now
+  prints, after the run, `Note: left the snapshot folder at <path> in place — it holds only kanibako's snapshot
+  layout marker and is yours to remove.` (or `it holds nothing`, or `it holds snapshots this purge did not
+  delete`), and the plan lists the folder as `kept snapshot folder`. Piped, the Warning and Kept lines of a
+  `box rm --purge` run also stay below the list of paths it deletes.
 - **A box log that cannot be deleted no longer crashes a purge.** `box purge`, `box purge --all`, and
   `workset disconnect --remove-files` stopped with a traceback when a box's log file could not be deleted.
   They now print `Warning: could not remove the log <path>: <reason> — left in place.` and go on. `box purge`

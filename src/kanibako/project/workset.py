@@ -941,6 +941,25 @@ def report_retained_vault(vault: Path, why: str) -> None:
     print(f"Note: left the vault at {vault} in place — {why}", file=sys.stderr)
 
 
+def report_retained_snapshot_base(base: Path) -> None:
+    """The Note for a box's kept snapshot base, worded from what *base* holds NOW.
+
+    Call it after the run: the base is not a vault arm, and the purge has just taken
+    the box's own store out of it.
+    """
+    from kanibako.snapshots import LAYOUT_MARKER_NAME
+
+    try:
+        names = {entry.name for entry in base.iterdir()}
+        what = ("nothing" if not names
+                else "only kanibako's snapshot layout marker" if names == {LAYOUT_MARKER_NAME}
+                else "snapshots this purge did not delete")
+    except OSError:
+        what = "entries kanibako could not list"
+    print(f"Note: left the snapshot folder at {base} in place — it holds {what} and is "
+          "yours to remove.", file=sys.stderr)
+
+
 def report_retained_loop(path: Path, what: str) -> None:
     """The ONE Note for a path kept because it is a loop; *what* names its role."""
     print(f"Note: left the {what} at {path} in place — {SYMLINK_LOOP_WHY}",

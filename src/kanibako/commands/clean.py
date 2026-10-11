@@ -310,6 +310,7 @@ def _purge_one(std, config, path: str, *, force: bool) -> int:
             leftover_default_canon,
             remove_default_canon_stamp,
             report_retained_canon,
+            report_retained_snapshot_base,
             report_retained_vault,
             standalone_canon_teardown,
             standalone_vault_teardown,
@@ -382,6 +383,7 @@ def _purge_one(std, config, path: str, *, force: bool) -> int:
             if not remove_box_tree(removable_store):
                 _warn_undeleted(removable_store)
                 failed = True
+        sys.stdout.flush()  # piped, stdout is buffered: these Notes would come out first
         if retained_canon is not None and (retained_canon.exists()
                                          or retained_canon.is_symlink()):
             report_retained_canon(retained_canon, root, canon_why)
@@ -389,7 +391,12 @@ def _purge_one(std, config, path: str, *, force: bool) -> int:
                                               or leftover_canon_keep.is_symlink()):
             report_retained_canon(leftover_canon_keep, root, leftover_canon_why)
         for vault_dir, why in vault_whys:
-            if vault_dir.exists() or vault_dir.is_symlink():
+            if not (vault_dir.exists() or vault_dir.is_symlink()):
+                continue
+            if (snapshot_store is not None and vault_dir == snapshot_store.parent
+                    and not _symlink_loop(vault_dir)):
+                report_retained_snapshot_base(vault_dir)
+            else:
                 report_retained_vault(vault_dir, why)
         if retained_store is not None:
             report_retained_store(retained_store, root)

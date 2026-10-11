@@ -2153,7 +2153,12 @@ def _standalone_purge_plan(
         root, removable_canon, retained_canon, std)
     if leftover_canon_keep is not None:
         retained.append(("canon", leftover_canon_keep, leftover_canon_why))
-    retained.extend(("vault", v, vault_keep_reason(root, v, early=early))
+    vault_pair = resolve_workset_vault_pair(root, early=early)
+    store = (None if vault_pair[1] is None else
+             box_snapshot_store(vault_pair[1], standalone_box_name(root, registered_name)))
+    retained.extend(("snapshot folder", v, None)
+                    if store is not None and v == store.parent and not _symlink_loop(v)
+                    else ("vault", v, vault_keep_reason(root, v, early=early))
                     for v in retained_vault)
     # ⚑ Logs are deleted by NAME, so one under a ``workset.logs`` outside the store goes.
     steps = [_PurgeStep("log", "log", log_file) for log_file in box_logs_to_purge(
@@ -2190,16 +2195,13 @@ def _standalone_purge_plan(
     if leftover_canon_rm is not None:
         steps.append(_PurgeStep(_EMPTY_CANON, "default canon folder (kanibako's own stamp)",
                               leftover_canon_rm, gated=True))
-    vault_pair = resolve_workset_vault_pair(root, early=early)
     arms = {_unfollowed(arm): label for arm, label in
             zip(vault_pair, _VAULT_LABELS) if arm is not None}
     steps += [_PurgeStep("vault", arms.get(vdir, "vault parent folder"), vdir, gated=True)
               for vdir in removable_vault if vdir.is_dir() or vdir.is_symlink()]
     # A standalone keeps its store one level UP, keyed on the composed name;
     # only an in-tree one is ours.
-    if vault_pair[1] is not None:
-        store = box_snapshot_store(vault_pair[1],
-                                  standalone_box_name(root, registered_name))
+    if store is not None:
         if (store.is_dir() or store.is_symlink()) and _strictly_in_tree(store, root):
             steps.append(_PurgeStep("vault", "vault snapshots", store, gated=True))
     steps.append(_PurgeStep("metadata", "box metadata", metadata_dir, anchor=True))
@@ -2216,13 +2218,17 @@ def _report_retained_roles(root: Path, retained: "list[tuple[str, Path, str | No
     Each *why* was computed before the run; *early* covers those without one.
     """
     from kanibako.project.workset import (
-        report_retained_canon, report_retained_vault, report_retained_vaults)
+        report_retained_canon, report_retained_snapshot_base, report_retained_vault,
+        report_retained_vaults)
     from kanibako.settings.paths import report_retained_store
 
+    sys.stdout.flush()  # piped, stdout is buffered: these Notes would come out first
     for role, path, why in retained:
         if not (path.exists() or path.is_symlink()):
             continue
-        if role == "store":
+        if role == "snapshot folder":
+            report_retained_snapshot_base(path)
+        elif role == "store":
             report_retained_store(path, root)
         elif role == "canon":
             report_retained_canon(path, root, why, early=early)
@@ -2284,6 +2290,7 @@ def _run_purge_plan(steps: list[_PurgeStep], std: StandardPaths) -> bool:
     anchor_removed: bool | None = None
     all_removed = True
     for step in steps:
+        sys.stdout.flush()  # piped, stdout is buffered: a step's stderr line would jump ahead
         if step.gated and anchor_removed is False:
             all_removed = False
             print(f"Kept {step.kind}: {step.path} — the box metadata folder could not be "
@@ -2339,7 +2346,7 @@ def _run_purge_plan(steps: list[_PurgeStep], std: StandardPaths) -> bool:
         if step.anchor:
             anchor_removed = removed
         if removed:
-            print(f"Removed {step.kind}: {step.path}")
+            print(f"Removed {step.kind}: {step.path}", flush=was_link)
             if was_link:
                 print(f"Note: removed the link {step.path}; left its target "
                       f"{link_target} untouched.", file=sys.stderr)
@@ -2460,6 +2467,7 @@ def _purge_deregistered(std, name: str, entry: dict, args: argparse.Namespace, *
         print("Aborted (box remains deregistered).")
         return 2
     removed = _run_purge_plan(plan, std)
+    sys.stdout.flush()
     if kind != "standalone":
         for what, kept, _why in retained:
             report_retained_loop(kept, what)
