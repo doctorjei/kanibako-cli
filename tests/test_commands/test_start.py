@@ -8690,6 +8690,8 @@ class TestPersonaCreateVerdict:
     def _ctx(self, tmp_path, agent):
         proj = MagicMock()
         proj.project_path = tmp_path
+        # A primary box's identity: the retired-key cure names it by its cure reference.
+        proj.name, proj.mode = "myproj", BoxMode.primary
         return MagicMock(), MagicMock(), proj  # std, config, proj
 
     def test_unloadable_explicit_persona_returns_error(self, tmp_path, monkeypatch):
@@ -9759,8 +9761,10 @@ class TestRetiredBehaviorRefusalWiring:
             agent_path=agent_file,
             workset_path=root / "workset.yaml",
             box_path=box_file,
-            # The box's name rides the caller's identity floor, as the launch's does.
+            # The box's name rides the caller's identity floor, as the launch's does;
+            # the cure names it by its reference (``LaunchInputs.box_ref``).
             meta_identity={"meta.box.name": "myproj"},
+            box_ref="myproj",
         )
 
     def test_a_clean_set_of_files_passes(self, tmp_path):
@@ -9805,13 +9809,12 @@ class TestRetiredBehaviorRefusalWiring:
         assert "pref.agent.claude.auto_approve" in str(exc.value)
 
     def test_the_BOX_cure_names_the_box_this_launch_is_for(self, tmp_path):
-        """WIRING: a resolve whose identity floor names the box (every
-        ``resolve_inputs`` caller) puts the real name in the ``box set``
-        positional rather than the ``<box>`` placeholder a caller with no identity
-        emits.  Pasted from another directory, the placeholder line writes to
+        """WIRING: a resolve whose inputs carry the box's cure reference (every
+        ``resolve_inputs`` caller) puts it in the ``box set`` positional rather
+        than the ``<box>`` placeholder a caller with no box emits.  Pasted from another directory, the placeholder line writes to
         whatever box the cwd resolves to.
 
-        INVERT: drop ``box_name=`` from the builder's call and this reddens.
+        INVERT: drop ``box_ref=`` from the builder's call and this reddens.
         """
         from kanibako.settings.settings_resolve import SettingsError
 

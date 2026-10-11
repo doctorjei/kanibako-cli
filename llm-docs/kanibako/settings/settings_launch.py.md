@@ -1239,7 +1239,7 @@ ways — reading the raw doc reds the two dropped-table pins, and a `cascade_vie
 nothing reds all five retirement pins plus the control, so the fix is a narrowing rather than a
 silencing.
 
-⚑ **NEITHER SUBJECT IS GUESSED, AND THE COST IS USER-VISIBLE.** `box_name` and the agent `subject`
+⚑ **NEITHER SUBJECT IS GUESSED, AND THE COST IS USER-VISIBLE.** `box_ref` and the agent `subject`
 keep their `<box>` / `<agent>` placeholders. 🛑 **THE REASON IS ORDERING, NOT ABSENCE.**
 `commands/start.py:6394` DOES build `meta_identity` carrying `meta.box.name` and DOES pass it to
 `build_launch_snapshot` (`:6075`, `:6161`, `:6819`) — the claim that "no production path arrives

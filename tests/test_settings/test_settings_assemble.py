@@ -1635,7 +1635,7 @@ class TestRefuseRetiredBehaviorKeys:
         ⚑ EVERY level's cure names the NODE THE ENTRY IS STORED UNDER — here
         ``default``, the RESERVED any-agent tier, which the system verb sets by
         its BARE key and which is not *subject*'s ``claude``; the verb's own
-        SUBJECT POSITIONAL is a separate argument (*box_name*, not passed here),
+        SUBJECT POSITIONAL is a separate argument (*box_ref*, not passed here),
         so the pref-legal cures carry the ``<box>`` / ``<workset>`` placeholder
         rather than dropping it.
         """
@@ -1691,7 +1691,7 @@ class TestRefuseRetiredBehaviorKeys:
         with pytest.raises(SettingsError) as named:
             self._refuse(
                 raw, level="box", path=tmp_path / "box.yaml", subject="claude",
-                box_name="myproj",
+                box_ref="myproj",
             )
         assert (
             "kanibako box set myproj pref.agent.claude.access=full"
@@ -1707,13 +1707,13 @@ class TestRefuseRetiredBehaviorKeys:
         )
 
     def test_a_box_name_is_ignored_off_the_box_level(self, tmp_path) -> None:
-        """No SINGLE box is being refused for at workset scope, so a *box_name*
+        """No SINGLE box is being refused for at workset scope, so a *box_ref*
         passed anyway must not reach the ``workset set`` positional."""
         with pytest.raises(SettingsError) as exc:
             self._refuse(
                 {"agent": {"default": {"auto_approve": True}}},
                 level="workset", path=tmp_path / "s.yaml", subject="claude",
-                box_name="myproj",
+                box_ref="myproj",
             )
         msg = str(exc.value)
         assert "myproj" not in msg

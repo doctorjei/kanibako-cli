@@ -98,6 +98,7 @@ from kanibako.settings.paths import (
     box_workset_settings_paths,
     host_xdg_map,
     load_std_paths,
+    project_cure_ref,
     system_path_floor,
     workset_settings_path,
 )
@@ -1769,6 +1770,7 @@ class _LaunchInputKwargs(TypedDict):
     meta_identity: Mapping[str, object] | None
     workset_anchor: Mapping[str, object] | None
     prefs: Sequence[PrefRequest] | None
+    box_ref: str | None
 
 
 @dataclass(frozen=True)
@@ -1789,6 +1791,9 @@ class LaunchInputs:
     *system_floor* is the resolved ``system.*`` path tier
     (``paths.system_path_floor``); it is not a :func:`build_launch_snapshot`
     keyword, so each caller folds it into its own ``default_categories``.
+
+    *box_ref* is the box's shell-quoted cure reference (``paths.project_cure_ref``),
+    ``None`` for a resolve with no named box; a retired spelling's cure names it.
     """
 
     subject: ResolveSubject
@@ -1802,6 +1807,7 @@ class LaunchInputs:
     cascade_box_path: Path | None
     cascade_workset_path: Path | None
     prefs: tuple[PrefRequest, ...]
+    box_ref: str | None = None
 
     def as_kwargs(self) -> _LaunchInputKwargs:
         """The :func:`build_launch_snapshot` keywords these inputs supply."""
@@ -1816,6 +1822,7 @@ class LaunchInputs:
             "meta_identity": self.meta_identity,
             "workset_anchor": self.workset_anchor,
             "prefs": self.prefs,
+            "box_ref": self.box_ref,
         }
 
 
@@ -2190,6 +2197,7 @@ def _box_inputs(*, std, proj, agent_name: str, system_path: Path | None) -> Laun
         # ``pref.*`` REQUESTS (spec §2h), collected ONCE per inputs, so the resolves
         # sharing them cannot disagree about what was requested.
         prefs=tuple(collect_prefs(cascade_workset_path, cascade_box_path)),
+        box_ref=project_cure_ref(proj) if proj.name else None,
     )
 
 
@@ -2465,6 +2473,7 @@ def build_launch_snapshot(
     dest_keys: DestKeys | None = None,
     written_out: "list[_WrittenLevel] | None" = None,
     descriptor: "PluginDescriptor | None" = None,
+    box_ref: str | None = None,
 ) -> KeyStore:
     """Build the ONE expanded launch snapshot.
 
@@ -2552,8 +2561,8 @@ def build_launch_snapshot(
     # refuse here, before the resolve. The cure names the agent, except under ``GENERAL_SLOT``:
     # that name is also the agent-less system, workset, and box-scalar resolves
     # (``resolve_box_scalars``, ``workset_cmd``), so it cannot tell a selected ``shell`` from
-    # no agent, and ``<agent>`` is right for both; at the box tier the subject is the box.
-    box_name = (meta_identity or {}).get("meta.box.name")
+    # no agent, and ``<agent>`` is right for both; at the box tier the subject is the box,
+    # by *box_ref* (``meta.box.name`` is BARE, which misses a member from outside its set).
     files = cascade_files(
         purpose=ReadPurpose.RESOLVE,
         system_path=system_path,
@@ -2562,7 +2571,7 @@ def build_launch_snapshot(
         box_path=box_path,
         base_path=settings_base_path(),
         subject=agent_name if agent_name and agent_name != GENERAL_SLOT else None,
-        box_name=box_name if isinstance(box_name, str) else None,
+        box_ref=box_ref,
     )
 
     cascade = assemble_cascade(

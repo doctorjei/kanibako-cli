@@ -355,8 +355,10 @@ class TestTheRetiredKeySubjectIsQuoted:
     def test_the_printed_subject_pastes_to_one_argv(self, name, tmp_path):
         from kanibako.settings.settings_assemble import _retired_key_cure
 
+        # *box_ref* is ``paths.project_cure_ref``'s answer, already quoted: the cure
+        # uses it as given, so it reaches the shell quoted EXACTLY once.
         cure = _retired_key_cure("box.agent_name", level="box", value="claude",
-                                 box_name=name)
+                                 box_ref=shlex.quote(name))
 
         assert f"kanibako box set {shlex.quote(name)} pref.system.agent=claude" in cure
         _assert_inert(cure, ["box", "set", name, "pref.system.agent=claude"],
@@ -377,6 +379,131 @@ def test_the_cure_subject_placeholder_is_left_unquoted():
     # At workset scope a name is not the positional either, so the placeholder
     # wins over a name it would otherwise splice in.
     assert _cure_subject("workset", "any name") == "<workset>"
+
+
+# ---------------------------------------------------------------------------
+# The retired-key subject REACHES the box from outside its working set.
+# ---------------------------------------------------------------------------
+# A named member's bare name resolves only inside its own path space (S8b), so a
+# cure that printed it sent a reader in ``~`` to a refusal, or to a same-named
+# primary box. The cure is RUN here, from outside, the way the reader pastes it.
+
+_FIX = re.compile(r"^\s*Fix: (kanibako [^\n]+)$", re.MULTILINE)
+
+
+def _member_with_retired(std, config, tmp_home, leaf_yaml: str):
+    """A materialized ``wsx/bar`` member whose box file holds *leaf_yaml*."""
+    from kanibako.project.workset import add_project, create_workset
+    from kanibako.settings.paths import (
+        WorksetSpec, box_workset_settings_paths, resolve_workset_project)
+
+    ws = create_workset("wsx", tmp_home / "worksets" / "wsx", std)
+    source = tmp_home / "wsx-src"
+    source.mkdir()
+    add_project(ws, "bar", source)
+    proj = resolve_workset_project(WorksetSpec.from_workset(ws), "bar", std, config,
+                                   initialize=True)
+    box_path, _ = box_workset_settings_paths(proj)
+    box_path.parent.mkdir(parents=True, exist_ok=True)
+    box_path.write_text(leaf_yaml)
+    return proj, box_path
+
+
+def _run_fix_from_outside(refusal: str, box_path: Path, tmp_home: Path, monkeypatch):
+    """Delete the stored entry, then run the printed ``Fix:`` line from outside the set."""
+    import yaml
+
+    found = _FIX.search(refusal)
+    assert found, refusal
+    argv = shlex.split(found.group(1))
+    box_path.write_text("")
+    outside = tmp_home / "outside"
+    outside.mkdir(exist_ok=True)
+    monkeypatch.chdir(outside)
+    assert _run(argv[1:]) == 0, found.group(1)
+    return argv, yaml.safe_load(box_path.read_text()) or {}
+
+
+def test_the_selection_cure_runs_from_outside_the_workset(std, config, tmp_home,
+                                                          credentials_dir, monkeypatch):
+    """``agent_select``'s retired ``box.agent_name`` cure names ``wsx/bar``, and it runs."""
+    from kanibako.settings.agent_select import select_agent
+    from kanibako.settings.settings_resolve import SettingsError
+
+    proj, box_path = _member_with_retired(std, config, tmp_home,
+                                          "box:\n  agent_name: claude\n")
+    with pytest.raises(SettingsError) as refused:
+        select_agent(std=std, proj=proj)
+
+    argv, doc = _run_fix_from_outside(str(refused.value), box_path, tmp_home, monkeypatch)
+    assert argv[:4] == ["kanibako", "box", "set", "wsx/bar"], argv
+    assert doc["pref"]["system"]["agent"] == "claude", doc
+
+
+@pytest.mark.writes_undeclared(
+    "pref.agent.claude.auto_approve",
+    reason="the retired leaf is parsed into the request store before the resolve "
+           "refusal names it; the refusal and its cure are what this test runs.",
+)
+def test_the_resolve_cure_runs_from_outside_the_workset(std, config, tmp_home,
+                                                        credentials_dir, monkeypatch):
+    """The resolve seam's retired ``auto_approve`` cure names ``wsx/bar``, and it runs."""
+    from kanibako.settings import settings_launch
+    from kanibako.settings.settings_resolve import SettingsError
+
+    proj, box_path = _member_with_retired(
+        std, config, tmp_home, "pref:\n  agent:\n    claude:\n      auto_approve: true\n")
+    inputs = settings_launch.resolve_inputs(
+        subject=settings_launch.ResolveSubject.BOX, std=std, proj=proj,
+        agent_name="claude", system_path=std.settings)
+    with pytest.raises(SettingsError) as refused:
+        settings_launch.build_launch_snapshot(
+            **inputs.as_kwargs(), agent_name="claude", agent_path=None)
+
+    argv, doc = _run_fix_from_outside(str(refused.value), box_path, tmp_home, monkeypatch)
+    assert argv[:4] == ["kanibako", "box", "set", "wsx/bar"], argv
+    assert doc["pref"]["agent"]["claude"]["access"] == "full", doc
+
+
+def test_a_standalone_root_with_a_space_is_quoted_exactly_once(std, config, tmp_home,
+                                                               credentials_dir, monkeypatch):
+    """A standalone's cure subject is its ROOT; a space in it reaches the shell as ONE word."""
+    from kanibako.settings.agent_select import select_agent
+    from kanibako.settings.paths import (
+        box_workset_settings_paths, establish_standalone, resolve_box_target)
+    from kanibako.settings.settings_resolve import SettingsError
+
+    root = tmp_home / "my proj"
+    root.mkdir()
+    establish_standalone(std, root, enable_vault=False)
+    proj = resolve_box_target(std, config, str(root), initialize=False)
+    box_path, _ = box_workset_settings_paths(proj)
+    box_path.parent.mkdir(parents=True, exist_ok=True)
+    box_path.write_text("box:\n  agent_name: claude\n")
+    with pytest.raises(SettingsError) as refused:
+        select_agent(std=std, proj=proj)
+
+    text = str(refused.value)
+    assert f"box set {shlex.quote(str(root))} pref" in text, text
+    argv, doc = _run_fix_from_outside(text, box_path, tmp_home, monkeypatch)
+    assert argv[3] == str(root), argv
+    assert doc["pref"]["system"]["agent"] == "claude", doc
+
+
+@pytest.mark.parametrize("name", _HOSTILE)
+def test_the_undropped_registry_row_cure_pastes_to_one_argv(name, tmp_path):
+    """``_lifecycle._drop_registry_row``: a legacy row name reaches ``box rm`` as ONE word."""
+    from kanibako.commands.box._lifecycle import _drop_registry_row
+
+    def refuse():
+        raise OSError("read-only")
+
+    err = io.StringIO()
+    with contextlib.redirect_stderr(err):
+        _drop_registry_row(name, refuse)
+
+    _assert_inert(_backticked(err.getvalue(), "kanibako box rm"), ["box", "rm", name],
+                  tmp_path / "paste")
 
 
 def test_a_plain_cure_subject_prints_bare():

@@ -15,7 +15,6 @@ here (S3/S7/S8/S9/S13/S14) & the dest-keying depth rule: llm-docs.
 from __future__ import annotations
 
 import logging
-import shlex
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
@@ -216,14 +215,18 @@ def _cure_assignment(sub: str, value: Any) -> str:
     return f"{sub}={spelled}" if spelled else f"{sub}=<value>"
 
 
-def _cure_subject(level: str, box_name: str | None) -> str:
+def _cure_subject(level: str, box_ref: str | None) -> str:
     """The REQUIRED subject positional for ``kanibako <level> set`` — ONE derivation, shared by
     every cure this module emits.
 
     ⚑ BOTH pref-legal verbs take a subject — ``box set <box>`` and ``workset set <workset>`` — and
     the verb is the LEVEL, never a hardcoded ``box``. Only a box-level refusal whose CALLER knows
-    the box has a subject to name (*box_name*, threaded by both retired-key cures); anything else
+    the box has a subject to name (*box_ref*, threaded by both retired-key cures); anything else
     is a PLACEHOLDER, never nothing.
+
+    ⚑ *box_ref* is :func:`kanibako.settings.paths.project_cure_ref`'s answer, ALREADY quoted:
+    it is used as given. A bare member name resolves only inside its own working set, so a
+    cure printed from anywhere must name ``<workset>/<box>`` (or a standalone's root).
 
     ⚑ MEASURED, and it is why this cannot be checked by reading: dropping the positional does NOT
     fail loudly at either level. ``workset set`` binds the KEY to its ``workset`` positional and
@@ -231,8 +234,8 @@ def _cure_subject(level: str, box_name: str | None) -> str:
     ``box set`` takes its arguments as a LIST, so the key alone parses and the write lands on
     whatever box the reader's cwd resolves to — a different box, silently.
     """
-    if level == "box" and box_name:
-        return shlex.quote(box_name)
+    if level == "box" and box_ref:
+        return box_ref
     return f"<{level}>"
 
 
@@ -241,7 +244,7 @@ _REMOVE_IT = "REMOVE it —"
 
 
 def _retired_mirror_cure(
-    *, level: str, box_name: str | None, table: "dict[Any, Any]",
+    *, level: str, box_ref: str | None, table: "dict[Any, Any]",
 ) -> str:
     """The LEVEL-APPROPRIATE fix for a TABLE-valued ``box.agent`` — the RETIRED settable agent
     MIRROR ``box.agent.<key>`` (R-4), whose replacement is the §2h per-agent request.
@@ -252,7 +255,7 @@ def _retired_mirror_cure(
     """
     tails = [_cure_assignment(str(sub), val) for sub, val in table.items()] or ["<key>=<value>"]
     if level in PREF_LEGAL_LEVELS:
-        subject = _cure_subject(level, box_name)
+        subject = _cure_subject(level, box_ref)
         return "; ".join(
             f"kanibako {level} set {subject} pref.agent.<agent>.{tail}" for tail in tails
         )
@@ -266,12 +269,13 @@ def _retired_mirror_cure(
 
 
 def _retired_key_cure(
-    key: str, *, level: str, value: str, box_name: str | None = None,
+    key: str, *, level: str, value: str, box_ref: str | None = None,
     mirror: "dict[Any, Any] | None" = None,
 ) -> str:
     """The LEVEL-APPROPRIATE fix for a retired key (M-4).
 
-    *box_name* is the addressable box the cure is FOR — ``kanibako box set`` needs it as its
+    *box_ref* is the addressable box the cure is FOR, as the shell-quoted reference
+    :func:`kanibako.settings.paths.project_cure_ref` gives — ``kanibako box set`` needs it as its
     ``[project]`` positional (spec: the box argument is REQUIRED unless the caller's cwd already
     resolves to that box; Jei hit exactly that gap live). Threaded ONLY for a box-level refusal
     (``None`` at any other *level*, where no single box is being refused for) — a WORKSET-level
@@ -282,7 +286,7 @@ def _retired_key_cure(
     SCALAR agent-name spelling, and every other retired key.
     """
     if mirror is not None:
-        return _retired_mirror_cure(level=level, box_name=box_name, table=mirror)
+        return _retired_mirror_cure(level=level, box_ref=box_ref, table=mirror)
     if key == "system.default_agent":
         # Always the same cure: the replacement is a SYSTEM-scope key wherever the stale leaf was.
         return f"kanibako system set system.agent={value}"
@@ -294,7 +298,7 @@ def _retired_key_cure(
     # selection REFUSES to launch (spec §2b), so that half sent the user from one
     # error to another.
     if level in PREF_LEGAL_LEVELS:
-        subject = _cure_subject(level, box_name)
+        subject = _cure_subject(level, box_ref)
         return f"kanibako {level} set {subject} pref.system.agent={value}"
     # M-4: no legal pref equivalent at base/system/agent — FLAG it, never silently relocate it.
     # No single box is in scope here, so the box arm takes the placeholder.
@@ -362,7 +366,7 @@ def _file_spelled_parents(parts: "tuple[str, ...]") -> "list[str]":
 
 
 def refuse_retired_keys(
-    raw: Any, *, level: str, path: Path | None, box_name: str | None = None,
+    raw: Any, *, level: str, path: Path | None, box_ref: str | None = None,
 ) -> None:
     """RAISE when *raw* still carries a RETIRED agent-selection or agent-mirror key (P7); the
     three are :data:`RETIRED_FILE_KEYS`.
@@ -370,7 +374,7 @@ def refuse_retired_keys(
     Never a warning and never a silent drop; called at the SELECTION seam
     (:mod:`kanibako.settings.agent_select`), NOT inside :func:`assemble_levels`. Why both: llm-docs.
 
-    *box_name* is passed straight through to :func:`_retired_key_cure` — see its docstring for why
+    *box_ref* is passed straight through to :func:`_retired_key_cure` — see its docstring for why
     it is only meaningful at ``level="box"``.
     """
     if not isinstance(raw, dict):
@@ -386,7 +390,7 @@ def refuse_retired_keys(
         # present-``None`` has no value to quote → the shape.
         value = _stored_spelling(found)
         cure = _retired_key_cure(
-            key, level=level, value=value or "<name>", box_name=box_name, mirror=mirror,
+            key, level=level, value=value or "<name>", box_ref=box_ref, mirror=mirror,
         )
         where = path if path is not None else "<settings>"
         raise SettingsError(
@@ -464,7 +468,7 @@ def _behavior_leaf_sites(
 
 def _retired_behavior_cure(
     successor: str, *, level: str, tier: str, subject: str | None,
-    box_name: str | None = None, node: str | None = None,
+    box_ref: str | None = None, node: str | None = None,
 ) -> str:
     """The LEVEL-APPROPRIATE fix for a retired BEHAVIOR key (M-22); per-level reasons in llm-docs.
 
@@ -483,9 +487,9 @@ def _retired_behavior_cure(
         return f"kanibako agent set {agent} {successor}={tier}"
     if level in PREF_LEGAL_LEVELS:
         # ⚑ *agent* is the AGENT inside the key; the verb's own required positional is
-        # the BOX or WORKSET — *box_name*, or a PLACEHOLDER (:func:`_cure_subject`).
+        # the BOX or WORKSET — *box_ref*, or a PLACEHOLDER (:func:`_cure_subject`).
         return (
-            f"kanibako {level} set {_cure_subject(level, box_name)} "
+            f"kanibako {level} set {_cure_subject(level, box_ref)} "
             f"pref.agent.{agent}.{successor}={tier}"
         )
     return f"kanibako system set agent.{agent}.{successor}={tier}"
@@ -509,17 +513,17 @@ def _behavior_cure_checks_file(level: str, *, node: str | None, subject: str | N
 
 def refuse_retired_behavior_keys(
     raw: Any, *, level: str, path: Path | None, subject: str | None = None,
-    box_name: str | None = None,
+    box_ref: str | None = None,
 ) -> None:
     """RAISE when *raw* still carries a RETIRED behavior key (R-41 / RQ-2) —
     :data:`RETIRED_BEHAVIOR_KEYS`.
 
     *subject* is the agent being RESOLVED; only the agent file's root stores no node, and
-    it is the one shape cured under *subject*. *box_name* is the DIFFERENT subject the
+    it is the one shape cured under *subject*. *box_ref* is the DIFFERENT subject the
     ``box set`` verb needs as its positional, passed straight through to
     :func:`_retired_behavior_cure` → :func:`_cure_subject` — meaningful only at
-    ``level="box"``, and deliberately omitted by the identity-free resolve seam
-    (``settings_launch._refuse_retired_spelling``), which has no name to give.
+    ``level="box"``. The resolve seam passes it when its inputs name a box
+    (``settings_launch.LaunchInputs.box_ref``); without one the cure keeps ``<box>``.
     """
     from kanibako.settings.config import coerce_bool
 
@@ -549,7 +553,7 @@ def refuse_retired_behavior_keys(
                     f"restricted | editing | full."
                 )
             cure = _retired_behavior_cure(
-                successor, level=level, tier=tier, subject=subject, box_name=box_name,
+                successor, level=level, tier=tier, subject=subject, box_ref=box_ref,
                 node=node,
             )
             raise SettingsError(
@@ -980,11 +984,11 @@ def read_settings_files(
     *,
     purpose: ReadPurpose,
     subject: str | None = None,
-    box_name: str | None = None,
+    box_ref: str | None = None,
 ) -> tuple[SettingsFile, ...]:
     """Read *files* (``(level, path)`` pairs) for *purpose*, in its file order.
 
-    *subject* (the agent node) and *box_name* only fill the cures a retired spelling's
+    *subject* (the agent node) and *box_ref* only fill the cures a retired spelling's
     refusal prints. Each phase runs over every file before the next phase starts.
     """
     by_level = {level: Path(path) if path is not None else None for level, path in files}
@@ -1012,12 +1016,12 @@ def read_settings_files(
         if purpose is ReadPurpose.RESOLVE:
             refuse_retired_behavior_keys(
                 views[level], level=level, path=path, subject=subject,
-                box_name=box_name if level == "box" else None,
+                box_ref=box_ref if level == "box" else None,
             )
         elif purpose is ReadPurpose.SELECT:
             refuse_retired_keys(
                 views[level], level=level, path=path,
-                box_name=box_name if level == "box" else None,
+                box_ref=box_ref if level == "box" else None,
             )
     if purpose is ReadPurpose.NARROW:
         # ``assemble_levels``' own phases: every ``pref:`` drop, then every upward drop.
@@ -1703,7 +1707,7 @@ def cascade_files(
     box_path: Path | None,
     base_path: Path | None = None,
     subject: str | None = None,
-    box_name: str | None = None,
+    box_ref: str | None = None,
 ) -> tuple[SettingsFile, ...]:
     """The five cascade files read for *purpose*; *base_path* defaults to the site base file."""
     return read_settings_files(
@@ -1714,7 +1718,7 @@ def cascade_files(
             ("system", system_path),
             ("base", base_path if base_path is not None else settings_base_path()),
         ),
-        purpose=purpose, subject=subject, box_name=box_name,
+        purpose=purpose, subject=subject, box_ref=box_ref,
     )
 
 

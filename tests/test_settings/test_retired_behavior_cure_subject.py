@@ -38,11 +38,11 @@ def _node(key: str) -> str:
     return segments[-2]
 
 
-def _cure(raw, *, level, subject=None, box_name=None, path=None) -> str:
+def _cure(raw, *, level, subject=None, box_ref=None, path=None) -> str:
     """The ``Fix:`` line *raw* is refused with."""
     with pytest.raises(SettingsError) as exc:
         refuse_retired_behavior_keys(
-            raw, level=level, path=path, subject=subject, box_name=box_name,
+            raw, level=level, path=path, subject=subject, box_ref=box_ref,
         )
     return str(exc.value).split("Fix: ", 1)[1].splitlines()[0].strip()
 
@@ -71,7 +71,7 @@ def test_the_box_cure_still_carries_the_box_positional_the_caller_knows() -> Non
     """The box name is the verb's positional; the pref KEY's node comes from the entry."""
     assert _cure(
         {"pref": {"agent": {"shell": {"auto_approve": True}}}},
-        level="box", subject="claude", box_name="myproj",
+        level="box", subject="claude", box_ref="myproj",
     ) == "kanibako box set myproj pref.agent.shell.access=full"
 
 
@@ -188,11 +188,11 @@ def test_a_clean_file_still_passes() -> None:
 # --------------------------------------------------------------------------- #
 
 
-def _refusal(raw, *, level, path, subject=None, box_name=None) -> str:
+def _refusal(raw, *, level, path, subject=None, box_ref=None) -> str:
     """The WHOLE message *raw* is refused with — both steps, in the order printed."""
     with pytest.raises(SettingsError) as exc:
         refuse_retired_behavior_keys(
-            raw, level=level, path=path, subject=subject, box_name=box_name,
+            raw, level=level, path=path, subject=subject, box_ref=box_ref,
         )
     return str(exc.value)
 

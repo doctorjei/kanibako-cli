@@ -268,7 +268,7 @@ def test_a_pref_request_still_spells_the_reserved_tier_as_data(level) -> None:
     """§2h requests carry the node as data, so the bare-key rule must NOT reach them."""
     cure = _retired_behavior_cure(
         "access", level=level, tier="full", subject="claude",
-        box_name="mybox", node="default",
+        box_ref="mybox", node="default",
     )
     assert "pref.agent.default.access=full" in cure
 

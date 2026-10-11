@@ -199,9 +199,9 @@ their file. Called at the SELECTION seam (`settings.agent_select`) and, since th
 was armed, from `settings_launch._refuse_retired_spelling` — which in practice reaches it first,
 because `load_merged_config` resolves before selection runs. NOT inside `assemble_levels`: a raise
 there would break `config set`, i.e. the very command the message prescribes as the cure.
-⚑ The resolve seam passes no *box_name*, so its cure carries the `<box>` placeholder; the selection
-seam threads `proj.name`. That difference is visible to users and is documented in `MIGRATION.md`
-§2.1 rather than left for them to notice.
+⚑ Both seams thread *box_ref* = `paths.project_cure_ref(proj)` (already shell-quoted; a member is
+`<workset>/<box>`, a standalone its root), and the resolve seam passes none for a box-less resolve,
+whose cure carries the `<box>` placeholder.
 
 ⚑⚑ **`box.agent` is TWO retirements sharing ONE file path, and the VALUE'S SHAPE is the
 discriminator.** Both are manifest `renamed` rows:
@@ -358,14 +358,14 @@ CLI parses. A nested TABLE has no single-token spelling at all, so its tail stay
 level deeper (`<sub>.<key>=<value>`) rather than a repr that cannot work. Both of those were caught
 by PROBING the emitted commands rather than reading them; a cure is a command a user pastes.
 
-```_cure_subject(level: str, box_name: str | None) -> str```
+```_cure_subject(level: str, box_ref: str | None) -> str```
 The REQUIRED subject positional for `kanibako <level> set` — ONE derivation, shared by every cure
 this module emits.
 
 ⚑ **THE VERB IS THE LEVEL, and the subject is never optional.** Both pref-legal verbs take a
 subject — `box set <box>`, `workset set <workset>` — and only a box-level refusal knows what it is
-(`_retired_key_cure`'s *box_name*). Anything else renders `<box>` / `<workset>`: a PLACEHOLDER,
-never nothing.
+(`_retired_key_cure`'s *box_ref*, `paths.project_cure_ref`'s answer, used as given because it is
+already quoted). Anything else renders `<box>` / `<workset>`: a PLACEHOLDER, never nothing.
 
 Why nothing is the worst of the three options, and why it is not caught by reading: dropping the
 positional does not fail loudly at either level. `workset set` binds the KEY to its `workset`
@@ -378,7 +378,7 @@ were measured against the real parser; both read fine on the page.
 correctly while `_retired_key_cure` hardcoded `box` and populated the positional only at box level,
 so a workset file got `box set` with no subject. One derivation, so they cannot drift again.
 
-```_retired_mirror_cure(*, level: str, box_name: str | None, table: dict[Any, Any]) -> str```
+```_retired_mirror_cure(*, level: str, box_ref: str | None, table: dict[Any, Any]) -> str```
 The LEVEL-APPROPRIATE fix for a TABLE-valued `box.agent` — the retired settable agent MIRROR (R-4).
 
 One `_cure_assignment` tail per leaf in the stored table (an empty table falls back to the bare
@@ -392,7 +392,7 @@ carrying this table most needs kanibako not to make.
 
 ⚑ The verb and its subject come from `_cure_subject`.
 
-```_retired_key_cure(key: str, *, level: str, value: str, box_name: str | None = None, mirror: dict[Any, Any] | None = None) -> str```
+```_retired_key_cure(key: str, *, level: str, value: str, box_ref: str | None = None, mirror: dict[Any, Any] | None = None) -> str```
 The LEVEL-APPROPRIATE fix for a retired key (M-4).
 
 *mirror* is the TABLE a `box.agent` leaf holds when that is its shape — the ONE discriminator
@@ -405,7 +405,7 @@ stale leaf was found. A scalar `box.agent` / `box.agent_name` gets the §2h requ
 request may be written. Elsewhere, M-4: *"A `box.agent_name` found in a system or agent file has no
 legal pref equivalent — flag it rather than silently relocating it."*
 
-*box_name* is the addressable box the cure is FOR: `kanibako box set` takes the box as a REQUIRED
+*box_ref* is the addressable box the cure is FOR: `kanibako box set` takes the box as a REQUIRED
 `[project]` positional unless the caller's cwd already resolves to that box, and Jei hit that gap
 live on a cure that omitted it. Threaded ONLY for a box-level refusal — `None` at any other *level*,
 where no single box is being refused for. The verb and its subject then come from `_cure_subject`,
@@ -419,7 +419,7 @@ Read *raw* at the nested *parts* path, or `_NO_LEAF` when ABSENT.
 
 Distinguishes ABSENT from PRESENT-`None` (see `_NO_LEAF`).
 
-```refuse_retired_keys(raw: Any, *, level: str, path: Path | None, box_name: str | None = None) -> None```
+```refuse_retired_keys(raw: Any, *, level: str, path: Path | None, box_ref: str | None = None) -> None```
 RAISE when *raw* still carries a RETIRED agent-selection or agent-mirror key (P7).
 
 The three keys are `RETIRED_FILE_KEYS`. The message names the KEY, the FILE, the fact that THE RULE
@@ -436,7 +436,7 @@ constant that opens it, and the *mirror* argument that steers the cure.
 The cure carries the value the user ACTUALLY has, so it is copy-pasteable rather than a shape to fill
 in; a present-`None` (an empty `agent_name:` leaf) has no value to quote, so it gets the shape.
 
-*box_name* is passed straight through to `_retired_key_cure`, and is only meaningful at
+*box_ref* is passed straight through to `_retired_key_cure`, and is only meaningful at
 `level="box"`.
 
 ```_behavior_leaf_sites(raw: Any, leaf: str) -> list[tuple[tuple[str, ...], Any]]```

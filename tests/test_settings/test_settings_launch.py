@@ -3274,7 +3274,7 @@ def test_a_box_file_box_agent_table_is_REFUSED_BY_NAME(tmp_path: Path):
     box = _yaml(tmp_path / "box.yaml", {"box": {"agent": {"model": "sonnet"}}})
     with pytest.raises(SettingsError) as ei:
         refuse_retired_keys(
-            yaml.safe_load(box.read_text()), level="box", path=box, box_name="mybox",
+            yaml.safe_load(box.read_text()), level="box", path=box, box_ref="mybox",
         )
     msg = str(ei.value)
     assert "'box.agent' is RETIRED" in msg
@@ -3302,7 +3302,7 @@ def test_a_box_file_box_agent_SCALAR_gets_the_selection_story(tmp_path: Path):
     box = _yaml(tmp_path / "box.yaml", {"box": {"agent": "claude"}})
     with pytest.raises(SettingsError) as ei:
         refuse_retired_keys(
-            yaml.safe_load(box.read_text()), level="box", path=box, box_name="mybox",
+            yaml.safe_load(box.read_text()), level="box", path=box, box_ref="mybox",
         )
     msg = str(ei.value)
     assert "'box.agent' is RETIRED" in msg
@@ -4786,7 +4786,7 @@ class TestPrefLevelPrecedence:
         with pytest.raises(SettingsError) as ei:
             refuse_retired_keys(
                 yaml.safe_load(box.read_text()), level="box", path=box,
-                box_name="mybox",
+                box_ref="mybox",
             )
         msg = str(ei.value)
         assert "'box.agent' is RETIRED" in msg
@@ -4831,7 +4831,7 @@ class TestPrefLevelPrecedence:
         with pytest.raises(SettingsError) as ei:
             refuse_retired_keys(
                 yaml.safe_load(box.read_text()), level="box", path=box,
-                box_name="mybox",
+                box_ref="mybox",
             )
         msg = str(ei.value)
         assert "'box.agent' is RETIRED" in msg

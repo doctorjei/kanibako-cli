@@ -7,6 +7,7 @@ remap / move / convert commands (Phase 1 — no CLI wiring yet).
 from __future__ import annotations
 
 import os
+import shlex
 from pathlib import Path
 
 import pytest
@@ -3609,7 +3610,7 @@ class TestAnUndroppedSourceRowIsNamed:
             std.primary_workset, early=_early_scope(std, BoxMode.primary))
         err = capsys.readouterr().err
         note = (f"Note: could not drop the old registry row '{state.name}': registry "
-                f"locked; remove it with 'kanibako box rm {state.name}'\n")
+                f"locked; remove it with `kanibako box rm {shlex.quote(state.name)}`\n")
         assert err.count(note) == 1, err
         assert err.count("Note:") == 1, err
 
@@ -3631,5 +3632,5 @@ class TestAnUndroppedSourceRowIsNamed:
         assert registry_store.standalone_root(std.registry, state.name) == str(root)
         err = capsys.readouterr().err
         note = (f"Note: could not drop the old registry row '{state.name}': registry "
-                f"locked; remove it with 'kanibako box rm {state.name}'\n")
+                f"locked; remove it with `kanibako box rm {shlex.quote(state.name)}`\n")
         assert err.count(note) == 1, err

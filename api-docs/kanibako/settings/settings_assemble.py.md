@@ -32,8 +32,8 @@ _H_AUDITED_LEVELS: tuple[str, ...] = ('box', 'workset', 'system', 'base')
 
 ## Functions
 ```
-def refuse_retired_keys(raw: Any, *, level: str, path: Path | None, box_name: str | None=None) -> None
-def refuse_retired_behavior_keys(raw: Any, *, level: str, path: Path | None, subject: str | None=None, box_name: str | None=None) -> None
+def refuse_retired_keys(raw: Any, *, level: str, path: Path | None, box_ref: str | None=None) -> None
+def refuse_retired_behavior_keys(raw: Any, *, level: str, path: Path | None, subject: str | None=None, box_ref: str | None=None) -> None
 def stored_config_entries(raw: Any) -> dict[str, object]
 def config_entry_groups(keys: Iterable[str]) -> list[tuple[str, list[str]]]
 def refuse_config_table(raw: Any, *, level: str, path: Path | None) -> None
@@ -41,7 +41,7 @@ def reset_drop_warnings() -> None
 def announce_drop_once(path: Path | None, token: str) -> bool
 def fold_agent_nodes(raw: Any, *, path: Path | None) -> Any
 def refuse_doubled_agent_nodes(raw: Any, *, path: Path | None) -> None
-def read_settings_files(files: Iterable[tuple[str, Path | None]], *, purpose: ReadPurpose, subject: str | None=None, box_name: str | None=None) -> tuple[SettingsFile, ...]
+def read_settings_files(files: Iterable[tuple[str, Path | None]], *, purpose: ReadPurpose, subject: str | None=None, box_ref: str | None=None) -> tuple[SettingsFile, ...]
 def refuse_undeclared_per_file(files: Iterable[SettingsFile]) -> None
 def refuse_undeclared_entries(view: Any, *, level: str, path: Path | None, stored: Any=None) -> None
 def undeclared_listing(findings: Sequence[tuple[tuple[str, ...], Judgment]]) -> tuple[str, str, str]
@@ -50,17 +50,17 @@ def parse_bind_map(raw: Any, *, category: str='bindings', root_ref: str | None=N
 def dotted_partial(floor: dict[str, object] | None) -> KeyStore
 def assemble_levels(*, agent_name: str, files: Iterable[SettingsFile], floor: dict[str, object] | None=None) -> list[KeyStore]
 def agent_record(path: Path, *, node: str, purpose: ReadPurpose) -> AgentConfig
-def cascade_files(*, purpose: ReadPurpose, system_path: Path | None, agent_path: Path | None, workset_path: Path | None, box_path: Path | None, base_path: Path | None=None, subject: str | None=None, box_name: str | None=None) -> tuple[SettingsFile, ...]
+def cascade_files(*, purpose: ReadPurpose, system_path: Path | None, agent_path: Path | None, workset_path: Path | None, box_path: Path | None, base_path: Path | None=None, subject: str | None=None, box_ref: str | None=None) -> tuple[SettingsFile, ...]
 def _declaration_root_ref(path: tuple[str, ...], category: str) -> str | None
 def _stored_spelling(raw: Any) -> str
 def _cure_assignment(sub: str, value: Any) -> str
-def _cure_subject(level: str, box_name: str | None) -> str
-def _retired_mirror_cure(*, level: str, box_name: str | None, table: 'dict[Any, Any]') -> str
-def _retired_key_cure(key: str, *, level: str, value: str, box_name: str | None=None, mirror: 'dict[Any, Any] | None'=None) -> str
+def _cure_subject(level: str, box_ref: str | None) -> str
+def _retired_mirror_cure(*, level: str, box_ref: str | None, table: 'dict[Any, Any]') -> str
+def _retired_key_cure(key: str, *, level: str, value: str, box_ref: str | None=None, mirror: 'dict[Any, Any] | None'=None) -> str
 def _nested_present(raw: Any, parts: 'tuple[str, ...]') -> Any
 def _file_spelled_parents(parts: 'tuple[str, ...]') -> 'list[str]'
 def _behavior_leaf_sites(raw: Any, leaf: str) -> 'list[tuple[tuple[str, ...], Any]]'
-def _retired_behavior_cure(successor: str, *, level: str, tier: str, subject: str | None, box_name: str | None=None, node: str | None=None) -> str
+def _retired_behavior_cure(successor: str, *, level: str, tier: str, subject: str | None, box_ref: str | None=None, node: str | None=None) -> str
 def _behavior_cure_checks_file(level: str, *, node: str | None, subject: str | None) -> bool
 def _warn_upward_drops(raw: Any, *, file_scope: str, path: Path | None) -> None
 def _node_table(raw: dict, address: tuple[str, ...]) -> dict | None

@@ -294,11 +294,11 @@ class TestRetiredKeyRefusal:
 
     def test_box_level_cure_interpolates_the_box_argument(self, tmp_path):
         """Jei's own ruling: ``box set`` needs the box positional to be copy-pasteable
-        from outside the box's own cwd — the caller supplies it via *box_name*."""
+        from outside the box's own cwd — the caller supplies it via *box_ref*."""
         f = _yaml(tmp_path / "box.yaml", {"box": {"agent_name": "goose"}})
         with pytest.raises(SettingsError) as ei:
             refuse_retired_keys(
-                yaml.safe_load(f.read_text()), level="box", path=f, box_name="myproj",
+                yaml.safe_load(f.read_text()), level="box", path=f, box_ref="myproj",
             )
         msg = str(ei.value)
         assert "kanibako box set myproj pref.system.agent=goose" in msg
@@ -309,11 +309,11 @@ class TestRetiredKeyRefusal:
 
     def test_box_name_is_ignored_off_the_box_level(self, tmp_path):
         """No SINGLE box is being refused for at workset/system/base/agent scope, so a
-        *box_name* passed in anyway must not leak into the cure."""
+        *box_ref* passed in anyway must not leak into the cure."""
         f = _yaml(tmp_path / "workset.yaml", {"box": {"agent_name": "goose"}})
         with pytest.raises(SettingsError) as ei:
             refuse_retired_keys(
-                yaml.safe_load(f.read_text()), level="workset", path=f, box_name="myproj",
+                yaml.safe_load(f.read_text()), level="workset", path=f, box_ref="myproj",
             )
         msg = str(ei.value)
         assert "myproj" not in msg
@@ -747,9 +747,9 @@ class TestABlankExplicitRefIsGivenNotUnset:
 # ⚑ ``TestRetiredKeyCureIsLevelAppropriate`` (and ``settings_assemble``'s own
 # mutation-proved unit tests) drove ``_retired_key_cure`` / ``refuse_retired_keys``
 # DIRECTLY — that machinery is correct but was NOT WIRED: the production caller,
-# ``select_agent``, never passed ``box_name``, so the user-visible cure line stayed
+# ``select_agent``, never passed ``box_ref``, so the user-visible cure line stayed
 # the bare form regardless. These three drive ``select_agent`` itself, so deleting
-# the ``box_name=proj.name if level == "box" else None`` splice from its refusal
+# the ``box_ref=proj.name if level == "box" else None`` splice from its refusal
 # loop reddens them even though every test above stays green.
 
 

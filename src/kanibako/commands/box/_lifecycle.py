@@ -2401,7 +2401,7 @@ def _drop_registry_row(name: str, unregister: Callable[[], object]) -> None:
         unregister()
     except Exception as err:  # noqa: BLE001 - named; the destination is the box
         print(f"Note: could not drop the old registry row '{name}': {err}; remove it "
-              f"with 'kanibako box rm {name}'", file=sys.stderr)
+              f"with `kanibako box rm {shlex.quote(name)}`", file=sys.stderr)
 
 
 def _standalone_source_row(

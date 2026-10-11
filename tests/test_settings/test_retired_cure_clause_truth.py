@@ -69,7 +69,7 @@ def _behavior_refusal(level, *, node_entry=None, subject="goose"):
     with pytest.raises(SettingsError) as exc:
         refuse_retired_behavior_keys(
             raw, level=level, path=Path("/x/settings.yaml"),
-            subject=subject, box_name="mybox",
+            subject=subject, box_ref="mybox",
         )
     return str(exc.value)
 

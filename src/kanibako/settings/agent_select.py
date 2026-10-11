@@ -178,7 +178,7 @@ def select_agent(
     """
     from kanibako.errors import AgentNoDefaultError
     from kanibako.settings.config import resolve_agent, settings_base_path
-    from kanibako.settings.paths import box_workset_settings_paths
+    from kanibako.settings.paths import box_workset_settings_paths, project_cure_ref
     from kanibako.settings.settings_assemble import ReadPurpose, read_settings_files
     from kanibako.settings.settings_launch import resolve_selected_agent
 
@@ -196,7 +196,8 @@ def select_agent(
             ("box", box_path),
         ),
         purpose=ReadPurpose.SELECT,
-        box_name=proj.name,
+        # The cure's subject is the reference that reaches the box from ANY cwd.
+        box_ref=project_cure_ref(proj) if proj.name else None,
     )
 
     requested: object = __MISSING__
