@@ -902,6 +902,9 @@ def _remap_dest_holder(
             return (f"inside its own root ({own_root}). A standalone box's root moves with "
                     "it, so it would be copied into itself, and no flag overrides this. "
                     "Choose another path.", False)
+        moved = _remap_sweeps_other_box(state, dest, std, own_store, standalones)
+        if moved is not None:
+            return moved, False
 
     # --- Refused unless --force: one tree inside or holding another. ---
     for tree in trees:
@@ -966,6 +969,55 @@ def _remap_dest_holder(
         if other is not None:
             return f"inside the root of {standalone_who(other)} ({root}). " + share, True
     return None
+
+
+def _remap_sweeps_other_box(
+    state: ProjectState, dest: Path, std: StandardPaths, own_store: Path,
+    standalones: Mapping[str, Path],
+) -> str | None:
+    """Why laying the standalone layout at *dest* would move ANOTHER box's tree, else ``None``.
+
+    ``_to_standalone`` moves every entry at a root that is not its own store into the
+    workspace dir.  Another box's workspace, root, store, or workset root among them would
+    move and break that box: that is not a share (keyspace § 0, "each instance's destructive
+    verb removes only its own part"), so --force does not pass it.  *standalones* excludes
+    the source's own row.
+    """
+    from kanibako.launch import box_resolve
+
+    early = _early_scope(std, BoxMode.standalone)
+    if _resolved_unless_loop(standalone_box_store(dest, early=early)) == own_store:
+        return None  # ``_to_standalone`` reuses its own root in place: nothing moves
+    try:
+        workspace = _resolve_standalone_workspaces(
+            dest, load_workset_settings_doc(dest), early=early)
+        swept, _kept = _consolidation_sweep(dest, workspace, early=early)
+    except (KanibakoError, OSError):
+        return None  # ``_to_standalone`` refuses that root before it moves anything
+    if not swept:
+        return None
+    others = [(f"the workspace of box '{owner}'", Path(literal_path(str(path))))
+              for owner, path in box_resolve.recorded_workspaces_under(
+                  std, dest, standalone=False)]
+    others += [(f"the root of standalone box '{name}'", root)
+               for name, root in standalones.items()]
+    others += [(f"the store of primary box '{name}'", std.boxes / name)
+               for name in load_primary_boxes(
+                   std.primary_workset, early=_early_scope(std, BoxMode.primary))]
+    others += [(f"the root of workset '{name}'", root)
+               for name, root, _mode in box_resolve._enumerate_worksets(std)]
+
+    def within(path: Path, entry: Path) -> bool:
+        return (path.is_relative_to(entry)
+                or _resolved_unless_loop(path).is_relative_to(_resolved_unless_loop(entry)))
+
+    hit = next(((what, path) for what, path in others
+                if any(within(path, entry) for entry in swept)), None)
+    if hit is None:
+        return None
+    return (f"a directory holding {hit[0]} ({hit[1]}). Remapping standalone box "
+            f"'{state.name}' here would move it into {workspace}/ and break that box, "
+            "so no flag overrides this. Choose another path.")
 
 
 def _validate(
@@ -1091,6 +1143,22 @@ def _validate(
 
     # --- remap onto ANOTHER box's path, refused before any write ---
     if spec.records_only and dest is not None:
+        # The checks below read *dest*'s ``workset.yaml``, and a standalone's layout lists
+        # *dest*; a path they cannot read is refused by name here, before anything moves.
+        import errno
+        import os
+        reads: list[Callable[[], object]] = [lambda: os.stat(dest / WORKSET_META_FILE)]
+        if state.mode is BoxMode.standalone:
+            reads.append(lambda: os.listdir(dest))
+        for read in reads:
+            try:
+                read()
+            except OSError as err:
+                if err.errno in (errno.EACCES, errno.ELOOP):
+                    raise ProjectError(
+                        f"Cannot remap '{state.name}' onto '{dest}': {err.filename} cannot "
+                        f"be read ({err.strerror}), and nothing has moved. Choose a path "
+                        "kanibako can read.") from None
         holder = _remap_dest_holder(state, dest, std)
         if holder is not None and not (holder[1] and force):
             raise ProjectError(f"Cannot remap '{state.name}' onto '{dest}': it is {holder[0]}")
@@ -3109,6 +3177,32 @@ def _artifact_claiming(
     return None
 
 
+def _consolidation_sweep(
+    root: Path, workspace_subdir: Path, *, early: EarlyScope,
+) -> tuple[list[Path], list[tuple[Path, str]]]:
+    """The *root* entries the standalone layout moves into *workspace_subdir*, and the
+    repointed ``(entry, key)`` keeps it leaves at the root.  Moves nothing."""
+    if not root.is_dir():
+        return [], []
+    # ⚑ A ``workset.workspaces`` that resolves AT the root means the workspace already IS the
+    # root: there is nothing to consolidate, and moving each child onto itself would fail.
+    if workspace_subdir.resolve() == root.resolve():
+        return [], []
+
+    artifacts = _standalone_root_artifacts(root, early=early)
+    movable: list[Path] = []
+    kept: list[tuple[Path, str]] = []
+    for child in root.iterdir():
+        if child.name in _STANDALONE_FIXED_ARTIFACTS:
+            continue
+        claim = _artifact_claiming(child, artifacts)
+        if claim is None:
+            movable.append(child)
+        elif claim[2]:
+            kept.append((child, claim[0]))
+    return movable, kept
+
+
 def _consolidate_workspace_subdir(
     root: Path,
     workspace_subdir: Path,
@@ -3119,29 +3213,13 @@ def _consolidate_workspace_subdir(
     """Move the project's top-level files into the standalone workspace dir (drift H)."""
     import sys
 
-    if not root.is_dir():
-        return
-    # ⚑ A ``workset.workspaces`` that resolves AT the root means the workspace already IS the
-    # root: there is nothing to consolidate, and moving each child onto itself would fail.
-    if workspace_subdir.resolve() == root.resolve():
-        return
-
-    artifacts = _standalone_root_artifacts(root, early=early)
-    movable: list[Path] = []
-    for child in root.iterdir():
-        if child.name in _STANDALONE_FIXED_ARTIFACTS:
-            continue
-        claim = _artifact_claiming(child, artifacts)
-        if claim is None:
-            movable.append(child)
-            continue
-        key, _path, repointed = claim
-        if repointed:
-            # ⚑ [R144]: the user put it there, so the keep is REPORTED and names the key —
-            # otherwise a directory sitting outside the workspace after a convert that says it
-            # consolidated everything is unexplained.  Default-layout keeps stay silent.
-            print(f"Note: left {child} at the standalone root — {key} resolves "
-                  f"inside it.", file=sys.stderr)
+    movable, kept = _consolidation_sweep(root, workspace_subdir, early=early)
+    for child, key in kept:
+        # ⚑ [R144]: the user put it there, so the keep is REPORTED and names the key —
+        # otherwise a directory sitting outside the workspace after a convert that says it
+        # consolidated everything is unexplained.  Default-layout keeps stay silent.
+        print(f"Note: left {child} at the standalone root — {key} resolves "
+              f"inside it.", file=sys.stderr)
     if not movable:
         return
 

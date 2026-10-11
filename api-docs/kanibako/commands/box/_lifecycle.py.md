@@ -55,6 +55,7 @@ def _resolve_target_workset(name: str, std: StandardPaths) -> Workset
 def _cure_ref(state: ProjectState) -> str
 def _name_held_in_target_workset(target_mode: BoxMode | None, target_ws: Workset | None, state: ProjectState, new_name: str) -> str | None
 def _remap_dest_holder(state: ProjectState, dest: Path, std: StandardPaths) -> tuple[str, bool] | None
+def _remap_sweeps_other_box(state: ProjectState, dest: Path, std: StandardPaths, own_store: Path, standalones: Mapping[str, Path]) -> str | None
 def _validate(state: ProjectState, spec: TargetSpec, std: StandardPaths, config: BootstrapConfig, *, force: bool, cwd: Path) -> dict
 def _note_interrupt_undone(state: ProjectState, spec: TargetSpec) -> None
 def _note_unwind_incomplete(state: ProjectState, spec: TargetSpec, dest: Path | None, errors: Sequence[Exception], *, interrupted: bool) -> None
@@ -105,6 +106,7 @@ def _refuse_names(names: list[str], where: Path, why: str) -> None
 def _swept(child: Path, artifacts: list[tuple[str, Path, bool]]) -> bool
 def _holds_anything(path: Path) -> bool
 def _artifact_claiming(child: Path, artifacts: list[tuple[str, Path, bool]]) -> tuple[str, Path, bool] | None
+def _consolidation_sweep(root: Path, workspace_subdir: Path, *, early: EarlyScope) -> tuple[list[Path], list[tuple[Path, str]]]
 def _consolidate_workspace_subdir(root: Path, workspace_subdir: Path, unwind: _Unwind, *, early: EarlyScope) -> None
 def _undo_consolidate(src_dir: Path, dest_dir: Path, moved: list[Path], *, root: Path) -> bool
 def _move_entry(src: Path, dst: Path, *, root: Path) -> None

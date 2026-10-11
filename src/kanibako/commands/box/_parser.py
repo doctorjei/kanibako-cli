@@ -253,7 +253,8 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
     remap_p.add_argument(
         "--force", action="store_true",
         help="Skip confirmation; also leave a disabled vault's data in place, and share "
-             "a path inside, or holding, another box's workspace, root, or store",
+             "a path inside, or holding, another box's workspace, root, or store (never "
+             "one a standalone box's layout would move)",
     )
     remap_p.set_defaults(func=run_remap)
 

@@ -872,6 +872,130 @@ class TestRemap:
         boxes = load_primary_boxes(std.primary_workset, early=_early_scope(std, BoxMode.primary))
         assert boxes[name] == str(tmp_home / "Y")
 
+    @pytest.mark.parametrize("force", [False, True])
+    @pytest.mark.parametrize("held", ["primary", "standalone"])
+    def test_remap_standalone_onto_a_dir_holding_another_box_refused(
+            self, env, capsys, monkeypatch, held, force):
+        """A standalone remap lays its layout at the root and moves what sits there into
+        `workspace/`: another box's workspace or root there would move and break that box.
+        That is not a share, so it is refused with or without --force, nothing moved."""
+        from kanibako.project import registry_store
+
+        asked = self._confirms(monkeypatch)
+        config, std, tmp_home = env
+        _std, _ext, solo, solo_name = self._member_and_registered_standalone(env)
+        dest = tmp_home / "Y"
+        dest.mkdir()
+        if held == "primary":
+            inner = _default(env, "Y/inner")
+            name = primary_box_name_for_workspace(
+                std.primary_workset, str(inner), early=_early_scope(std, BoxMode.primary))
+            what = f"the workspace of box '{name}' ({inner})"
+        else:
+            inner = dest / "inner"
+            inner.mkdir()
+            (inner / "file.txt").write_text("x")
+            proj = resolve_standalone_project(std, config, project_dir=str(inner),
+                                              initialize=True)
+            registry_store.register_standalone(std.registry, proj.name, inner)
+            what = f"the root of standalone box '{proj.name}' ({inner})"
+        before = self._tree_digest(tmp_home)
+
+        assert run_remap(_remap_args(str(solo), str(dest), force=force)) == 1
+        err = capsys.readouterr().err
+        assert (f"Cannot remap '{solo_name}' onto '{dest}': it is a directory holding {what}. "
+                f"Remapping standalone box '{solo_name}' here would move it into "
+                f"{dest / 'workspace'}/ and break that box, so no flag overrides this.") in err
+        assert "--force to share" not in err
+        assert asked == []
+        assert self._tree_digest(tmp_home) == before
+
+    def test_remap_standalone_onto_a_root_whose_workspace_holds_another_box_needs_force(
+            self, env, capsys, monkeypatch):
+        """A box under the root's `workspace/` does not move (the layout keeps that dir), so
+        the standalone shares its tree: refused unless --force, which records it."""
+        asked = self._confirms(monkeypatch)
+        _config, std, tmp_home = env
+        _std, _ext, solo, solo_name = self._member_and_registered_standalone(env)
+        dest = tmp_home / "U"
+        (dest / "workspace").mkdir(parents=True)
+        inner = _default(env, "U/workspace/inner")
+
+        assert run_remap(_remap_args(str(solo), str(dest), force=False)) == 1
+        assert "pass --force to share it" in capsys.readouterr().err
+        assert asked == []
+
+        assert run_remap(_remap_args(str(solo), str(dest), force=True)) == 0, \
+            capsys.readouterr()
+        assert (inner / "file.txt").read_text() == "hi"
+        name = primary_box_name_for_workspace(
+            std.primary_workset, str(inner), early=_early_scope(std, BoxMode.primary))
+        assert name is not None
+
+    @pytest.mark.skipif(os.geteuid() == 0, reason="root reads any directory")
+    @pytest.mark.parametrize("unreadable", ["dest", "parent"])
+    @pytest.mark.parametrize("source", ["primary", "standalone"])
+    def test_remap_onto_an_unsearchable_dest_refused_by_name(
+            self, env, capsys, monkeypatch, source, unreadable):
+        """A dest the checks cannot search into is refused by name before anything moves,
+        not reported as a failed relocation."""
+        asked = self._confirms(monkeypatch)
+        _config, _std, tmp_home = env
+        if source == "primary":
+            old = _default(env, "prim")
+            name = primary_box_name_for_workspace(
+                _std.primary_workset, str(old), early=_early_scope(_std, BoxMode.primary))
+        else:
+            _s, _ext, old, name = self._member_and_registered_standalone(env)
+        dest = tmp_home / "L" / "d"
+        dest.mkdir(parents=True)
+        locked = dest if unreadable == "dest" else dest.parent
+        before = self._tree_digest(tmp_home)
+        locked.chmod(0)
+        try:
+            rc = run_remap(_remap_args(str(old), str(dest), force=True))
+        finally:
+            locked.chmod(0o755)
+
+        assert rc == 1
+        err = capsys.readouterr().err
+        assert (f"Cannot remap '{name}' onto '{dest}': {dest / 'workset.yaml'} cannot be read "
+                "(Permission denied), and nothing has moved.") in err
+        assert "relocation failed" not in err
+        assert asked == []
+        assert self._tree_digest(tmp_home) == before
+
+    @pytest.mark.skipif(os.geteuid() == 0, reason="root reads any directory")
+    @pytest.mark.parametrize("case", ["unlistable", "looped-marker"])
+    def test_remap_standalone_onto_an_unreadable_dest_refused_by_name(
+            self, env, capsys, monkeypatch, case):
+        """A standalone's layout lists its root: a root it may enter but not list, or whose
+        `workset.yaml` is a symlink loop, is refused by name before anything moves."""
+        asked = self._confirms(monkeypatch)
+        _config, _std, tmp_home = env
+        _s, _ext, solo, name = self._member_and_registered_standalone(env)
+        dest = tmp_home / "L"
+        dest.mkdir()
+        if case == "looped-marker":
+            (dest / "workset.yaml").symlink_to("loop")
+            (dest / "loop").symlink_to("workset.yaml")
+            named, why = dest / "workset.yaml", "Too many levels of symbolic links"
+        else:
+            named, why = dest, "Permission denied"
+        before = self._tree_digest(tmp_home)
+        if case == "unlistable":
+            dest.chmod(0o311)
+        try:
+            rc = run_remap(_remap_args(str(solo), str(dest), force=True))
+        finally:
+            dest.chmod(0o755)
+
+        assert rc == 1
+        assert (f"Cannot remap '{name}' onto '{dest}': {named} cannot be read ({why}), and "
+                "nothing has moved.") in capsys.readouterr().err
+        assert asked == []
+        assert self._tree_digest(tmp_home) == before
+
     def test_remap_standalone_onto_a_link_to_its_own_root_moves_its_spelling(
             self, env, capsys, monkeypatch):
         """PIN: a standalone remapped onto a link to its OWN root is re-registered at the

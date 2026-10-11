@@ -822,6 +822,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   workspace, standalone root, or store (a primary box's store, the remapped box's own included, or a
   standalone box's `box_data`, directly or through a link), or a directory holding another box's workspace
   or standalone root, is refused and names that box. `--force` records the path and keeps both boxes.
+  A standalone box is the exception: its layout moves what sits at its new root into `workspace/`, so with
+  `--force` it moved the other box's files and broke that box. It is now refused with or without `--force`.
+- **`box remap` onto a path it cannot read is refused by name.** A destination kanibako could not search
+  into failed with `the relocation failed: [Errno 13]`; it now names the path and says nothing has moved.
 - **A standalone box cannot be remapped into itself.** Into its own root (its `workspace/` included) it was
   re-rooted inside itself. That, and a remap into its own store, are refused with or without `--force`.
 - **`box remap` records the path as given, not its symlink target.** A remap onto a link to another
