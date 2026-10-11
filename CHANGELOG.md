@@ -731,6 +731,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `project_path` argument. Discovery reads only installed packages, so the argument was ignored;
   a caller that passes it now gets a `TypeError`. Drop the argument.
 
+### Removed
+
+- **Helper peer links.** A helper no longer gets a `~/peers/` directory of links to its siblings, and the parent no
+  longer creates `helpers/channels/`. The links never worked: their targets were not mounted into the helper.
+  Helpers talk to each other through the hub, `kanibako box helper send N "..."`. `box helper list` drops its
+  `PEERS` column, `box helper spawn` no longer prints a `peers:` line, and a helper's `state.json` no longer
+  records `peers`. See `MIGRATION.md`, "Helper peer links are gone; helpers talk through the hub".
+
 ### Fixed
 
 - **A helper launched by the hub starts again.** It exited 127 (`helper-init.sh` not found) because the hub bound

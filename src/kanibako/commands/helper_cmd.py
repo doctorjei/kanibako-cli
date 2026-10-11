@@ -19,7 +19,6 @@ from kanibako.channels.helpers import (
     child_budget,
     create_broadcast_dirs,
     create_helper_dirs,
-    create_peer_channels,
     effective_breadth,
     read_helper_number,
     read_helper_state,
@@ -323,7 +322,6 @@ def run_spawn(args: argparse.Namespace) -> int:
     # Create directory structure
     create_helper_dirs(helpers_dir, helper_num)
     create_broadcast_dirs(helpers_dir)
-    create_peer_channels(helpers_dir, helper_num, existing)
 
     # Hand the child its own (decremented) budget, as the declared keys
     child_cfg = child_budget(budget)
@@ -347,7 +345,6 @@ def run_spawn(args: argparse.Namespace) -> int:
         "model": args.model,
         "depth": child_cfg.depth,
         "breadth": child_cfg.breadth,
-        "peers": existing,
     }
     write_helper_state(helpers_dir, helper_num, state)
 
@@ -373,7 +370,6 @@ def run_spawn(args: argparse.Namespace) -> int:
     if args.model:
         print(f"  model: {args.model}")
     print(f"  depth: {child_cfg.depth}, breadth: {child_cfg.breadth}")
-    print(f"  peers: {existing}")
     if container_name:
         print(f"  container: {container_name}")
     return 0
@@ -388,18 +384,13 @@ def run_list(args: argparse.Namespace) -> int:
         print("No helpers.")
         return 0
 
-    print(f"{'NUM':<6} {'STATUS':<10} {'MODEL':<10} {'DEPTH':<6} {'PEERS'}")
+    print(f"{'NUM':<6} {'STATUS':<10} {'MODEL':<10} {'DEPTH'}")
     for num in existing:
         state = read_helper_state(helpers_dir, num)
         status = state.get("status", "unknown")
         model = state.get("model") or "-"
         depth = state.get("depth", "?")
-        # Count peer symlinks
-        peers_dir = helpers_dir / str(num) / "peers"
-        peer_count = 0
-        if peers_dir.is_dir():
-            peer_count = sum(1 for p in peers_dir.iterdir() if p.is_symlink())
-        print(f"{num:<6} {status:<10} {model:<10} {depth!s:<6} {peer_count} ch")
+        print(f"{num:<6} {status:<10} {model:<10} {depth!s}")
     return 0
 
 
@@ -466,9 +457,7 @@ def run_cleanup(args: argparse.Namespace) -> int:
         removed = _cascade_cleanup(helpers_dir, helper_num)
         print(f"Cleaned up helper {helper_num} and {len(removed) - 1} descendant(s).")
     else:
-        existing = _get_existing_helpers(helpers_dir)
-        siblings = [n for n in existing if n != helper_num]
-        remove_helper_dirs(helpers_dir, helper_num, siblings)
+        remove_helper_dirs(helpers_dir, helper_num)
         print(f"Cleaned up helper {helper_num}.")
     return 0
 
@@ -487,9 +476,7 @@ def _cascade_cleanup(helpers_dir: Path, helper_num: int) -> list[int]:
             removed.extend(_cascade_cleanup(child_helpers_dir, child))
 
     # Now clean up this helper itself
-    existing = _get_existing_helpers(helpers_dir)
-    siblings = [n for n in existing if n != helper_num]
-    remove_helper_dirs(helpers_dir, helper_num, siblings)
+    remove_helper_dirs(helpers_dir, helper_num)
     removed.append(helper_num)
     return removed
 

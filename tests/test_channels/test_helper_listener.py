@@ -100,6 +100,8 @@ class TestBuildHelperMounts:
         helpers_dir = tmp_path / "helpers"
         helper_root = helpers_dir / "1"
         helper_root.mkdir(parents=True)
+        # A ``peers/`` dir a pre-1.8.0 spawn left behind is not mounted: helpers talk
+        # only through the hub (``box helper send``)
         (helper_root / "peers").mkdir()
         (helper_root / "workspace").mkdir()
         spawn_toml = helper_root / "spawn.yaml"
@@ -120,7 +122,7 @@ class TestBuildHelperMounts:
 
         mounts = _build_helper_mounts(ctx, 1, helpers_dir)
         dests = [m.destination for m in mounts]
-        assert "/home/agent/peers" in dests
+        assert "/home/agent/peers" not in dests
         assert "/home/agent/spawn.yaml" in dests
 
     def _budget_ctx(self, tmp_path):
@@ -255,7 +257,7 @@ class TestBuildHelperMounts:
     def _broadcast_ctx(self, tmp_path):
         helpers_dir = tmp_path / "helpers"
         helper_root = helpers_dir / "1"
-        for leaf in ("workspace", "vault/ro", "vault/rw", "peers"):
+        for leaf in ("workspace", "vault/ro", "vault/rw"):
             (helper_root / leaf).mkdir(parents=True)
         all_dir = helpers_dir / "all"
         (all_dir / "rw").mkdir(parents=True)
@@ -1026,7 +1028,7 @@ class TestHubLifecycle:
 def _running_state(root: Path, container_name: str) -> None:
     """The state document the in-box ``box helper spawn`` leaves after a launch."""
     (root / "state.json").write_text(json.dumps({
-        "status": "running", "model": None, "depth": 0, "breadth": 4, "peers": [],
+        "status": "running", "model": None, "depth": 0, "breadth": 4,
         "container_name": container_name,
     }))
 
@@ -1053,7 +1055,7 @@ class TestHubStopMarksHelpersStopped:
             state = json.loads((root / "state.json").read_text())
             assert state["status"] == "stopped"
             assert state["container_name"].endswith(f"-helper-{root.name}")
-            assert state["peers"] == []
+            assert state["breadth"] == 4
 
     @pytest.mark.parametrize("command, status", [
         ("/bin/true", "stopped"),             # stop and rm exit 0

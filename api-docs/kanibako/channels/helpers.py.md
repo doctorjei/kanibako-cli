@@ -35,12 +35,10 @@ def write_helper_state(helpers_dir: Path, helper_num: int, state: dict) -> None
 def mark_helper_stopped(helpers_dir: Path, helper_num: int) -> None
 def create_helper_dirs(helpers_dir: Path, helper_num: int) -> Path
 def create_broadcast_dirs(helpers_dir: Path) -> Path
-def create_peer_channels(helpers_dir: Path, new_helper: int, existing_helpers: list[int]) -> None
-def remove_helper_dirs(helpers_dir: Path, helper_num: int, sibling_helpers: list[int]) -> None
+def remove_helper_dirs(helpers_dir: Path, helper_num: int) -> None
 def bundled_init_script() -> Path
 def resolve_init_script(parent_scripts_dir: Path | None) -> Path
 def _table(doc: dict, sections: tuple[str, ...]) -> dict
-def _link_peer(helpers_dir: Path, helper_num: int, name: str, target: Path) -> None
 ```
 
 ## Classes

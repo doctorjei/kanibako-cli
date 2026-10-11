@@ -5,7 +5,7 @@
 # parent agent.  It runs as the container entrypoint.
 #
 # The parent creates the directory structure (vault, workspace, scripts,
-# peers, broadcast channels) before launching the helper.  This script
+# broadcast channels) before launching the helper.  This script
 # handles registration with the hub and additional bootstrap, then execs
 # the agent command.
 #

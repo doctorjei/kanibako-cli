@@ -240,7 +240,7 @@ def read_helper_number(path: Path) -> int | None:
 #: keys off the presence of a ``canon/`` dir, so putting the script under one would turn
 #: that no-op into a real skeleton materialization — "a silent layout change made by the
 #: wrong seam", in that function's own words.  The rest of a helper root is flat plain
-#: dirs (``workspace``, ``vault``, ``peers``) and this belongs with them.  It replaces a
+#: dirs (``workspace``, ``vault``) and this belongs with them.  It replaces a
 #: vestigial two-level path whose first level carried nothing at all.
 HELPER_SCRIPTS_RELPATH = "scripts"
 
@@ -308,8 +308,8 @@ def mark_helper_stopped(helpers_dir: Path, helper_num: int) -> None:
 def create_helper_dirs(helpers_dir: Path, helper_num: int) -> Path:
     """Create the directory layout for a single helper.
 
-    Creates vault (with ro, rw), workspace, ``scripts``,
-    and peers directories.  Returns the helper's root directory.
+    Creates vault (with ro, rw), workspace, and ``scripts``
+    directories.  Returns the helper's root directory.
     """
     root = helpers_dir / str(helper_num)
     root.mkdir(parents=True, exist_ok=True)
@@ -318,9 +318,6 @@ def create_helper_dirs(helpers_dir: Path, helper_num: int) -> Path:
     for leaf in HELPER_CORE_LEAVES.values():
         (root / leaf).mkdir(parents=True, exist_ok=True)
     (root / HELPER_SCRIPTS_RELPATH).mkdir(exist_ok=True)
-
-    # Peers directory
-    (root / "peers").mkdir(exist_ok=True)
 
     return root
 
@@ -337,90 +334,10 @@ def create_broadcast_dirs(helpers_dir: Path) -> Path:
     return all_dir
 
 
-def create_peer_channels(
-    helpers_dir: Path,
-    new_helper: int,
-    existing_helpers: list[int],
-) -> None:
-    """Create peer channels between *new_helper* and each existing sibling.
-
-    For each pair (A, B) where A < B, creates:
-    - ``A:B-ro`` directory (A writes, B reads)
-    - ``B:A-ro`` directory (B writes, A reads)
-    - ``A:B-rw`` directory (shared read-write, owned by lower number)
-
-    The directories are created under ``helpers_dir`` and symlinked into
-    each helper's ``peers/`` directory.
-    """
-    channels_dir = helpers_dir / "channels"
-    channels_dir.mkdir(exist_ok=True)
-
-    for existing in existing_helpers:
-        lower = min(new_helper, existing)
-        higher = max(new_helper, existing)
-
-        # Create the three channel directories
-        ro_low_high = channels_dir / f"{lower}:{higher}-ro"
-        ro_high_low = channels_dir / f"{higher}:{lower}-ro"
-        rw_shared = channels_dir / f"{lower}:{higher}-rw"
-
-        ro_low_high.mkdir(exist_ok=True)
-        ro_high_low.mkdir(exist_ok=True)
-        rw_shared.mkdir(exist_ok=True)
-
-        # Symlink into each helper's peers/
-        _link_peer(helpers_dir, lower, f"{lower}:{higher}-ro", ro_low_high)
-        _link_peer(helpers_dir, lower, f"{higher}:{lower}-ro", ro_high_low)
-        _link_peer(helpers_dir, lower, f"{lower}:{higher}-rw", rw_shared)
-
-        _link_peer(helpers_dir, higher, f"{lower}:{higher}-ro", ro_low_high)
-        _link_peer(helpers_dir, higher, f"{higher}:{lower}-ro", ro_high_low)
-        _link_peer(helpers_dir, higher, f"{lower}:{higher}-rw", rw_shared)
-
-
-def _link_peer(helpers_dir: Path, helper_num: int, name: str, target: Path) -> None:
-    """Create a symlink in helper's peers/ pointing to a channel directory."""
-    link = helpers_dir / str(helper_num) / "peers" / name
-    if not link.exists():
-        link.symlink_to(target.resolve())
-
-
-def remove_helper_dirs(
-    helpers_dir: Path,
-    helper_num: int,
-    sibling_helpers: list[int],
-) -> None:
-    """Remove a helper's directory tree and clean up its peer channels.
-
-    Removes:
-    - The helper's root directory (``helpers/{N}/``)
-    - Channel directories involving this helper
-    - Peer symlinks in siblings that pointed to removed channels
-    """
+def remove_helper_dirs(helpers_dir: Path, helper_num: int) -> None:
+    """Remove a helper's directory tree (``helpers/{N}/``), if it exists."""
     import shutil
 
-    # Remove peer symlinks in siblings and channel dirs
-    channels_dir = helpers_dir / "channels"
-    for sibling in sibling_helpers:
-        lower = min(helper_num, sibling)
-        higher = max(helper_num, sibling)
-        channel_names = [
-            f"{lower}:{higher}-ro",
-            f"{higher}:{lower}-ro",
-            f"{lower}:{higher}-rw",
-        ]
-        # Remove symlinks from the sibling's peers/
-        for name in channel_names:
-            link = helpers_dir / str(sibling) / "peers" / name
-            if link.is_symlink():
-                link.unlink()
-        # Remove channel directories
-        for name in channel_names:
-            chan = channels_dir / name
-            if chan.exists():
-                shutil.rmtree(chan)
-
-    # Remove the helper's root directory
     helper_root = helpers_dir / str(helper_num)
     if helper_root.exists():
         shutil.rmtree(helper_root)

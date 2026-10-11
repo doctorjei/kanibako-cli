@@ -156,7 +156,8 @@ class TestRunSpawn:
         assert (helpers / "1" / "vault" / "ro").is_dir()
         assert (helpers / "1" / "vault" / "rw").is_dir()
         assert (helpers / "1" / "workspace").is_dir()
-        assert (helpers / "1" / "peers").is_dir()
+        # No peer links: helpers talk only through the hub (``box helper send``)
+        assert not (helpers / "1" / "peers").exists()
 
         # RO spawn config written
         ro_config = helpers / "1" / "spawn.yaml"
@@ -175,9 +176,10 @@ class TestRunSpawn:
         assert (helpers / "1").is_dir()
         assert (helpers / "2").is_dir()
 
-        # Peer channels between 1 and 2
-        assert (helpers / "1" / "peers" / "1:2-ro").is_symlink()
-        assert (helpers / "2" / "peers" / "1:2-rw").is_symlink()
+        # No peer channels between siblings, in either helper or under helpers/
+        assert not (helpers / "1" / "peers").exists()
+        assert not (helpers / "2" / "peers").exists()
+        assert not (helpers / "channels").exists()
 
     def test_depth_zero_refused(self, helpers_env, capsys):
         # A parent handed this box depth=0
@@ -316,12 +318,12 @@ class TestHelperState:
         state = read_helper_state(helpers_env / "helpers", 1)
         assert state["model"] is None
 
-    def test_state_records_peers(self, helpers_env):
+    def test_state_records_no_peers(self, helpers_env):
         args = _make_args(depth=None, breadth=None, model=None)
         run_spawn(args)
         run_spawn(args)
         state2 = read_helper_state(helpers_env / "helpers", 2)
-        assert state2["peers"] == [1]
+        assert "peers" not in state2
 
 
 class TestRunList:
@@ -407,30 +409,18 @@ class TestRunCleanup:
         assert "Cleaned up helper 1" in capsys.readouterr().out
         assert not (helpers / "1").exists()
 
-    def test_cleanup_removes_peer_channels(self, helpers_env, capsys):
-        """Cleanup removes peer symlinks from siblings."""
+    def test_cleanup_leaves_siblings_alone(self, helpers_env, capsys):
+        """Cleaning up one helper removes only its own tree."""
         run_spawn(_make_args(depth=None, breadth=None, model=None))
         run_spawn(_make_args(depth=None, breadth=None, model=None))
         capsys.readouterr()
 
         helpers = helpers_env / "helpers"
-        # Helper 1 should have peer links to helper 2
-        assert any(
-            p.is_symlink() for p in (helpers / "1" / "peers").iterdir()
-        )
-
-        # Clean up helper 2
         rc = run_cleanup(_make_args(number=2))
         assert rc == 0
         assert not (helpers / "2").exists()
-
-        # Helper 1's peer links to helper 2 should be gone
-        remaining_peers = [
-            p.name for p in (helpers / "1" / "peers").iterdir()
-            if p.is_symlink()
-        ]
-        for name in remaining_peers:
-            assert "2" not in name.split(":")[0] and "2" not in name.split(":")[1].split("-")[0]
+        assert (helpers / "1" / "workspace").is_dir()
+        assert (helpers / "all" / "rw").is_dir()
 
     def test_cleanup_nonexistent(self, helpers_env, capsys):
         rc = run_cleanup(_make_args(number=99))

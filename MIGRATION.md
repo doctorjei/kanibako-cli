@@ -7269,6 +7269,21 @@ mv ~/.config/kanibako/image-baseline.yaml ~/.local/share/kanibako/global/
 If you repointed `config.data`, move it under that directory's `global/` instead.
 `kanibako rig diagnose` names a file left at the old path and the path to move it to.
 
+### Helper peer links are gone; helpers talk through the hub
+
+**Read this if a helper script or prompt reads or writes `~/peers/`.**
+
+**What changed.** A helper no longer gets `~/peers/`, and the parent no longer creates
+`~/helpers/channels/`. The links in `~/peers/` pointed at paths that were not mounted into the helper,
+so nothing written there ever reached a sibling. `kanibako box helper list` no longer has a `PEERS`
+column, `box helper spawn` no longer prints `peers:`, and a helper's `state.json` no longer has a
+`peers` entry.
+
+**What to do.** Send a sibling a message through the hub: `kanibako box helper send N "..."`. To
+share files with every helper, use the broadcast directory, `~/all/` in a helper. A `~/helpers/channels/`
+or `~/helpers/<N>/peers/` left by an older spawn is unused; delete it, or let `box helper cleanup N`
+remove the helper's tree.
+
 ---
 
 ## 3. For plugin authors

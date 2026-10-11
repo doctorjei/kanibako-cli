@@ -665,7 +665,7 @@ def _build_helper_mounts(ctx: HelperContext, helper_num: int,
     """Build bind mounts for a helper container.
 
     DOCUMENTED BLOCKER (core-mounts-bindings Phase C — bespoke route kept by
-    design, per the plan's "lower priority / possible follow-up") for the PEERS,
+    design, per the plan's "lower priority / possible follow-up") for the
     BROADCAST and SOCKET mounts.  The home, workspace, vault and spawn-budget mounts
     are not exempt: home takes the director's foundation dest and options
     (``store_collapse.HOME_DEST``/``HOME_OPTIONS``), and the others the declared
@@ -731,11 +731,6 @@ def _build_helper_mounts(ctx: HelperContext, helper_num: int,
         if leaf_dir.is_dir():
             dest, options = slots[source]
             mounts.append(Mount(leaf_dir, normalize_bind_dest(dest), options))
-
-    # Peers directory
-    peers_dir = helper_root / "peers"
-    if peers_dir.is_dir():
-        mounts.append(Mount(peers_dir, f"{GUEST_HOME}/peers", "Z,U"))
 
     # Broadcast directory: the REAL ``helpers/all`` the parent shares with all its
     # helpers, never a link under the helper root.  A link there is written in-box and

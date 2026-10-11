@@ -1154,11 +1154,11 @@ its entrypoint -- the script registers with the hub, sources broadcast
 startup scripts, then execs the agent command.
 
 Two communication layers work together:
-- **Directories** -- file sharing (workspace, vault, peers, broadcast).
+- **Directories** -- file sharing (workspace, vault, broadcast).
   Persistent, async. Good for sharing code, configs, results.
 - **Socket** -- control plane (spawn/stop) + real-time messaging
-  (peer-to-peer, parent-child, broadcast). The host listener acts as
-  a central message router.
+  (helper-to-helper, parent-child, broadcast). The host listener acts as
+  the central message router; helpers have no direct links to each other.
 
 **Logging:** All inter-agent messages are logged to a JSONL file on the
 host. Each entry records sender, recipient(s), timestamp, and message
@@ -1183,9 +1183,10 @@ The host budget is the keys `system.helpers.depth` and `system.helpers.breadth`
 (default 4 each; `-1` is unlimited). Set them host-wide with
 `kanibako system set system.helpers.depth=2`.
 
-**Peer channels:** Helpers communicate through shared directories.
-Each pair of siblings gets three channels (A-reads, B-reads, shared-rw).
-A broadcast channel (`~/helpers/all/`) is available to all helpers.
+**Helper-to-helper messages:** Helpers talk to each other only through
+the hub: `kanibako box helper send N "..."`. There are no shared
+directories between siblings. A broadcast channel (`~/helpers/all/`) is
+available to all helpers.
 
 **Directory layout** (inside a container):
 ```
@@ -1195,13 +1196,11 @@ A broadcast channel (`~/helpers/all/`) is available to all helpers.
     vault/ro/           # read-only vault share
     vault/rw/           # read-write vault share
     scripts/            # helper-init.sh (entrypoint wrapper)
-    peers/              # symlinks to peer channels
     all/                # mountpoint: the helper's ~/all binds ~/helpers/all/
     spawn.yaml          # RO spawn budget
-    state.json          # status, model, depth, peers
+    state.json          # status, model, depth, breadth
   all/ro/               # broadcast read-only
   all/rw/               # broadcast read-write
-  channels/             # raw peer channel directories
 $XDG_STATE_HOME/kanibako/
   helper.sock           # hub socket (mounted from host)
   helpers.jsonl         # message log (mounted read-only)
