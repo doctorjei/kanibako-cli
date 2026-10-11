@@ -31,6 +31,7 @@ from kanibako.settings.settings_resolve import (
 )
 from kanibako.settings.store_collapse import HOME_DEST, HOME_OPTIONS
 from kanibako.targets.base import Mount
+from kanibako.tree_copy import copy_tree_keeping_links
 from kanibako.utils import render_container_name, utc_stamp
 
 if TYPE_CHECKING:
@@ -535,9 +536,12 @@ class HelperHub:
                         else CURE_DERIVED_FORK_NAME)
             return {"status": "error", "message": e.with_cure(cure)}
 
-        # Copy workspace
+        # Copy workspace.  ⚑ LINKS AS LINKS, both copies: the box writes these trees and
+        # the host runs the copy, so a followed link would pull a host file or
+        # directory into the fork.  A carried link names in the fork what it named in
+        # the source, which is what the fork's box sees when it binds the tree.
         try:
-            shutil.copytree(ctx.project_path, new_path)
+            copy_tree_keeping_links(ctx.project_path, new_path)
         except Exception as e:
             return {"status": "error", "message": f"workspace copy failed: {e}"}
 
@@ -584,7 +588,7 @@ class HelperHub:
             new_meta_dir = boxes_base / new_name
             try:
                 if not new_meta_dir.exists():
-                    shutil.copytree(
+                    copy_tree_keeping_links(
                         source_meta_dir, new_meta_dir,
                         ignore=shutil.ignore_patterns(
                             ".kanibako.lock", "helpers",

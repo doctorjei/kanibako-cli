@@ -269,6 +269,57 @@ class TestHandleFork:
 # Source metadata dir — the shell_path fallback arm
 # ---------------------------------------------------------------------------
 
+class TestForkKeepsLinks:
+    """The box can write its workspace and home, and the host runs the copy: a link
+    there must land in the fork as the same link, never as a copy of its target."""
+
+    @staticmethod
+    def _plant(tmp_path, ctx):
+        canary = tmp_path / "hosthome" / ".ssh"
+        canary.mkdir(parents=True)
+        (canary / "id_ed25519").write_text("SECRET-CANARY\n")
+        links = {
+            ctx.project_path / "dotssh": str(canary),
+            ctx.project_path / "src" / "key": str(canary / "id_ed25519"),
+            ctx.boxes / "myapp" / "home" / ".ssh": str(canary),
+            ctx.boxes / "myapp" / "home" / "rel": "../../../hosthome/.ssh/id_ed25519",
+        }
+        for link, target in links.items():
+            link.symlink_to(target)
+        return links
+
+    @staticmethod
+    def _leaked(tree):
+        return [p for p in tree.rglob("*")
+                if p.is_file() and not p.is_symlink() and "SECRET-CANARY" in p.read_text()]
+
+    def test_links_are_copied_as_links(self, tmp_path, fork_ctx):
+        links = self._plant(tmp_path, fork_ctx)
+        hub = HelperHub()
+        hub._ctx = fork_ctx
+        resp = hub._handle_fork({"action": "fork", "name": "linked"})
+        assert resp["status"] == "ok", resp
+        new_path = Path(resp["path"])
+        new_meta = fork_ctx.boxes / resp["name"]
+        for link, target in links.items():
+            src_root = (fork_ctx.project_path if link.is_relative_to(fork_ctx.project_path)
+                        else fork_ctx.boxes / "myapp")
+            dst_root = new_path if src_root == fork_ctx.project_path else new_meta
+            copied = dst_root / link.relative_to(src_root)
+            assert copied.is_symlink(), copied
+            assert copied.readlink() == Path(target)
+        assert self._leaked(new_path) == []
+        assert self._leaked(new_meta) == []
+
+    def test_a_dangling_link_is_carried_not_fatal(self, tmp_path, fork_ctx):
+        (fork_ctx.project_path / "gone").symlink_to(tmp_path / "nowhere")
+        hub = HelperHub()
+        hub._ctx = fork_ctx
+        resp = hub._handle_fork({"action": "fork", "name": "dangling"})
+        assert resp["status"] == "ok", resp
+        assert (Path(resp["path"]) / "gone").readlink() == tmp_path / "nowhere"
+
+
 class TestForkSourceMetaDirFallback:
     """When the membership lookup misses, the fallback must still find the metadata dir."""
 
