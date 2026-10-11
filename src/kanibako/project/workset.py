@@ -60,7 +60,8 @@ from kanibako.identifiers import find_identifier
 from kanibako.project.names import read_names, register_name, unregister_name
 from kanibako.settings.config import WORKSET_META_FILE
 from kanibako.settings.messages import (
-    ERR_CONFIG_NULL_PATH, ERR_NULL_WORKSPACE_BIND, ERR_STANDALONE_NULL_WORKSPACES,
+    ERR_CONFIG_NULL_PATH, ERR_LOOP_WORKSPACE_BIND, ERR_NULL_WORKSPACE_BIND,
+    ERR_STANDALONE_NULL_WORKSPACES,
     ERR_WORKSET_NULL_WORKSPACES,
 )
 from kanibako.settings.settings_resolve import UNSET, SettingsError
@@ -230,11 +231,14 @@ def refuse_null_box_workspace(
     box with no workspace cannot run.  Standalone's workspace IS ``@workset.workspaces``; a
     named member's is ``@workset.workspaces/<name>`` unless it is EXTERNAL — its recorded
     *workspace* lies outside *workset_root* and resolves through no key, so it still launches.
-    Primary is not asked: its workspace is the project dir.
+    Primary is not asked: its workspace is the project dir.  ⚑ A LOOP REFUSES: True means
+    raise here, and :func:`_path_in_tree` answers a loop False.
     """
     null_file = _workspaces_null_file(workset_root, early=early)
     if null_file is None:
         return
+    if workspace is not None and _symlink_loop(workspace):
+        raise WorksetError(ERR_LOOP_WORKSPACE_BIND % (box, workspace))
     if standalone or workspace is None or _path_in_tree(workspace, workset_root):
         raise WorksetError(ERR_NULL_WORKSPACE_BIND % (box, null_file))
 
@@ -711,6 +715,10 @@ def default_canon_leftover_why(leaf: Path, std: StandardPaths) -> str:
         return DEFAULT_CANON_NO_TEMPLATE_WHY
     shipped, _matching, checkable = _stamp_audit(leaf, stamp)
     if not shipped:
+        # ⚑ A loop INSIDE the tier is what the user must fix: name the loop's own path.
+        inner = next((p for p in leaf.rglob("*") if _symlink_loop(p)), None)
+        if inner is not None:
+            return CANON_HOLDS_LOOP_WHY % inner
         return DEFAULT_CANON_LEFTOVER_WHY
     if not checkable:
         return DEFAULT_CANON_UNREADABLE_WHY
@@ -820,6 +828,12 @@ def remove_default_canon_stamp(leaf: Path, std: StandardPaths) -> bool:
 SYMLINK_LOOP_WHY = ("it is a symlink loop that kanibako cannot resolve, so it is left "
                     "in place for you to look at.")
 
+#: :data:`SYMLINK_LOOP_WHY` without the tail the canon Note appends itself.
+CANON_SYMLINK_LOOP_WHY = "it is a symlink loop that kanibako cannot resolve"
+
+#: The same, for a tier that resolves but HOLDS a loop.
+CANON_HOLDS_LOOP_WHY = "it holds a symlink loop at %s that kanibako cannot resolve"
+
 
 def _symlink_loop(path: Path) -> bool:
     """True when *path* cannot be resolved because a link on it — itself or above — LOOPS.
@@ -862,6 +876,8 @@ def canon_keep_reason(root: Path, canon: Path, *, early: EarlyScope) -> str:
     :func:`report_retained_canon` appends its own ", so it is yours to remove", so
     the phrase returned here stops short of that.
     """
+    if _symlink_loop(canon):
+        return CANON_SYMLINK_LOOP_WHY
     if declared_repoint_key(root, canon, early=early) == _CANON_LEAF:
         return (f"your {WORKSET_META_FILE} points workset.{_CANON_LEAF} here and "
                 "kanibako does not remove where it points")
@@ -878,7 +894,8 @@ def report_retained_canon(canon: Path, root: Path, why: str | None = None, *,
     if why is None and early is not None:
         why = canon_keep_reason(root, canon, early=early)
     if why is None:
-        why = ("not the canon tier of this box" if _strictly_in_tree(canon, root)
+        why = (CANON_SYMLINK_LOOP_WHY if _symlink_loop(canon)
+               else "not the canon tier of this box" if _strictly_in_tree(canon, root)
                else f"not strictly inside {root}")
     print(f"Note: left the canon folder at {canon} in place — {why}, "
           f"so it is yours to remove.", file=sys.stderr)
@@ -907,6 +924,8 @@ def retained_vault_reason(root: Path, vault: Path) -> str:
     ⚑ Neither phrase fits a DECLARED repoint — that one IS an arm — so those go
     through :func:`declared_repoint_key` at the report, not through here.
     """
+    if _symlink_loop(vault):
+        return SYMLINK_LOOP_WHY
     if _strictly_in_tree(vault, root):
         return "not a vault arm of this box"
     return f"outside {root}"
@@ -920,6 +939,12 @@ def report_retained_vault(vault: Path, why: str) -> None:
     subject and *why* qualifies it.
     """
     print(f"Note: left the vault at {vault} in place — {why}", file=sys.stderr)
+
+
+def report_retained_loop(path: Path, what: str) -> None:
+    """The ONE Note for a path kept because it is a loop; *what* names its role."""
+    print(f"Note: left the {what} at {path} in place — {SYMLINK_LOOP_WHY}",
+          file=sys.stderr)
 
 
 def report_retained_vaults(root: Path, retained: Iterable[Path], *,
@@ -1617,13 +1642,16 @@ def _logs_share_partners(
     COUNTS: a table that will not open cannot prove the file is no one else's.  A
     workset with no logs dir, or one that will not resolve, writes no logs: no partner.
     """
+    if _symlink_loop(Path(logs_dir)):
+        return ()
     try:
         shared = Path(logs_dir).resolve()
     except OSError:
         return ()
     partners: list[str] = []
     for name, root in _logs_walk_targets(std).items():
-        if workset_root is not None and Path(workset_root).resolve() == root.resolve():
+        if _symlink_loop(root) or (
+                workset_root is not None and Path(workset_root).resolve() == root.resolve()):
             continue
         try:
             early = _walk_scope(std.early_system, name, root)
@@ -1631,7 +1659,8 @@ def _logs_share_partners(
             resolved = resolve_workset_logs(root, doc, early=early)
         except (ConfigError, SettingsError, OSError):
             continue
-        if resolved is None or Path(resolved).resolve() != shared:
+        if (resolved is None or _symlink_loop(Path(resolved))
+                or Path(resolved).resolve() != shared):
             continue
         from kanibako.launch.box_resolve import stores_standalone_registry_null
         try:
@@ -1962,7 +1991,10 @@ def is_in_tree_workspace(ws: Workset, path: Path) -> bool:
 
 
 def _path_in_tree(path: Path, root: Path) -> bool:
-    """True when *path* lies under *root*, both resolved (the in-tree test)."""
+    """True when *path* lies under *root*, both resolved (the in-tree test).
+    ⚑ A LOOP on either answers False: a caller where True means REFUSE tests it first."""
+    if _symlink_loop(path) or _symlink_loop(root):
+        return False
     return path.resolve().is_relative_to(root.resolve())
 
 
@@ -1972,7 +2004,10 @@ def _strictly_in_tree(path: Path, root: Path) -> bool:
     A link AT *path* is judged where it sits, anything else resolved: a linked parent
     leading out of *root* puts *path* outside.  A caller that descends into *path* must
     also refuse a link there.
+    ⚑ A LOOP is never in tree: ``_unfollowed`` would put a looped link below *root*.
     """
+    if _symlink_loop(path) or _symlink_loop(root):
+        return False
     entry = _unfollowed(path) if path.is_symlink() else path.resolve()
     return root.resolve() in entry.parents
 
@@ -2053,6 +2088,8 @@ def add_project(
     if std is not None and is_external:
         target_root = ws.root.resolve()
         for other_name, other_root in _load_registry(std).items():
+            if _symlink_loop(Path(other_root)):
+                continue
             other_root = Path(other_root).resolve()
             if other_root == target_root:
                 continue

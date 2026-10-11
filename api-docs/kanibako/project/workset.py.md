@@ -15,6 +15,8 @@ DEFAULT_CANON_NO_TEMPLATE_WHY = 'it is the default canon folder `create` made, a
 DEFAULT_CANON_UNREADABLE_WHY = 'it is the default canon folder `create` made, and kanibako cannot check it against a template because a file in it cannot be read'
 DEFAULT_CANON_REMOVED_LINE = 'Removed the default canon folder `create` made'
 SYMLINK_LOOP_WHY = 'it is a symlink loop that kanibako cannot resolve, so it is left in place for you to look at.'
+CANON_SYMLINK_LOOP_WHY = 'it is a symlink loop that kanibako cannot resolve'
+CANON_HOLDS_LOOP_WHY = 'it holds a symlink loop at %s that kanibako cannot resolve'
 DEFAULT_WORKSET_ID = '__default__'
 DEFAULT_WORKSET_ALIAS = 'default'
 RESERVED_WORKSET_IDENTIFIERS = frozenset({DEFAULT_WORKSET_ID, DEFAULT_WORKSET_ALIAS})
@@ -66,6 +68,7 @@ def canon_keep_reason(root: Path, canon: Path, *, early: EarlyScope) -> str
 def report_retained_canon(canon: Path, root: Path, why: str | None=None, *, early: EarlyScope | None=None) -> None
 def retained_vault_reason(root: Path, vault: Path) -> str
 def report_retained_vault(vault: Path, why: str) -> None
+def report_retained_loop(path: Path, what: str) -> None
 def report_retained_vaults(root: Path, retained: Iterable[Path], *, early: EarlyScope | None=None) -> None
 def is_reserved_workset_name(name: str) -> bool
 def refuse_reserved_registered_name(name: str, root: Path, *, early_system: EarlySystem) -> None

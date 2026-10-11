@@ -88,6 +88,9 @@ ERR_WORKSET_MEMBER_NO_RECOVER = "--recover found no interrupted 'create' of '%s'
 ERR_WORKSET_NULL_WORKSPACES = '%s sets workset.workspaces to null, so it has no workspace ' + 'directory and cannot hold %s.\nConnect a directory outside ' + 'it instead, delete that line to use the default, or set the ' + 'path you mean.'
 ERR_STANDALONE_NULL_WORKSPACES = '%s sets workset.workspaces to null, so this standalone box has ' + 'no workspace directory and cannot hold %s.\nDelete that line ' + 'to use the default, or set the path you mean.'
 ERR_NULL_WORKSPACE_BIND = "Cannot launch box '%s': %s sets workset.workspaces to null, so the " + 'box has no workspace to mount at ~/workspace.\nDelete that line ' + 'to use the default, or set the path you mean.'
+ERR_LOOP_WORKSPACE_BIND = "Cannot launch box '%s': its workspace %s is a symlink loop " + 'that kanibako cannot resolve, so there is nothing to mount at ' + '~/workspace.\nReplace the loop with the directory you mean.'
+ERR_LOOP_LANDING = "Refusing to land '%s' at %s: that path runs through a symlink loop " + 'that kanibako cannot resolve, so it cannot be checked against any ' + 'workset.\nReplace the loop with the directory you mean.'
+ERR_LOOP_SOURCE = "Cannot carry box '%s': %s is a symlink loop that kanibako cannot " + 'resolve, so there is nothing to copy.\nReplace the loop with the ' + 'directory you mean, or record where the files are with ' + '`kanibako box remap`.'
 BASHRC_CONTENTS = '# kanibako shell environment\n' + '[ -f /etc/bashrc ] && . /etc/bashrc\n' + 'export PS1="${KANIBAKO_PS1:-(kanibako) \\u@\\h:\\w\\$ }"\n' + '# Source user init scripts\n%s\n' % _SHELL_D_SOURCE_LINE
 SHELL_D_CONTENTS = '# Source user init scripts\n%s\n' % _SHELL_D_SOURCE_LINE
 PROFILE_CONTENTS = '# kanibako login profile\n' + '[ -f ~/.bashrc ] && . ~/.bashrc\n'

@@ -304,6 +304,42 @@ def mock_runtime():
 
 
 @pytest.fixture
+def resolve_as_on_311(monkeypatch):
+    """``Path.resolve`` as Python 3.11 has it: a symlink loop RAISES ``RuntimeError``.
+
+    ⚑ 3.13 returns the loop's own path instead, which hides the crash this pins.
+    ⚑ Patched on the CLASS, so it covers EVERY ``.resolve()`` in a call — both arguments
+    of a two-path predicate, not just the one a test happens to build.
+    """
+    import errno
+    import os
+    import pathlib
+
+    real = pathlib.Path.resolve
+
+    def resolve(self, strict=False):
+        try:
+            os.path.realpath(self, strict=True)
+        except OSError as e:
+            if e.errno == errno.ELOOP:
+                raise RuntimeError(f"Symlink loop from {str(self)!r}") from None
+        return real(self, strict=strict)
+
+    monkeypatch.setattr(pathlib.Path, "resolve", resolve)
+
+
+def self_loop(path):
+    """Replace *path* with a link to its own name: a loop.
+
+    ⚑ Relative, so it stays a loop wherever the tree moves — the shape 3.11 chokes on.
+    """
+    import shutil
+
+    shutil.rmtree(path)
+    path.symlink_to(path.name)
+
+
+@pytest.fixture
 def start_mocks():
     """Context-manager fixture that patches all external deps of _run_container.
 

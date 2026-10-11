@@ -54,6 +54,7 @@ def _workspace_copy_ignore(metadata_root: Path, copied_root: Path, *, mode: BoxM
 def _resolve_target_workset(name: str, std: StandardPaths) -> Workset
 def _cure_ref(state: ProjectState) -> str
 def _name_held_in_target_workset(target_mode: BoxMode | None, target_ws: Workset | None, state: ProjectState, new_name: str) -> str | None
+def _resolved_unless_loop(path: Path) -> Path
 def _validate(state: ProjectState, spec: TargetSpec, std: StandardPaths, config: BootstrapConfig, *, force: bool, cwd: Path) -> dict
 def _note_interrupt_undone(state: ProjectState, spec: TargetSpec) -> None
 def _note_unwind_incomplete(state: ProjectState, spec: TargetSpec, dest: Path | None, errors: Sequence[Exception], *, interrupted: bool) -> None

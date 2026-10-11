@@ -51,7 +51,7 @@ from kanibako.errors import (
     BoxNameError, ContainerError, DerivedBoxNameError, KanibakoError, ProjectError, WorksetError,
 )
 from kanibako.settings.messages import (
-    CURE_MOVED_LEAF_NOT_ASCII,
+    CURE_MOVED_LEAF_NOT_ASCII, ERR_LOOP_LANDING, ERR_LOOP_SOURCE,
 )
 from kanibako.settings.paths import (
     STANDALONE_META_DIR,
@@ -426,7 +426,7 @@ def _default_state_from_meta(
     )
     return ProjectState(
         owner="primary", mode=BoxMode.primary, name=name,
-        workspace_path=workspace.resolve(), metadata_path=metadata_path,
+        workspace_path=_resolved_unless_loop(workspace), metadata_path=metadata_path,
         shell_path=shell_path, vault_ro=vault_ro, vault_rw=vault_rw,
         is_external=False, ws=None,
         enable_vault=resolve_box_enable_vault(
@@ -635,9 +635,20 @@ def _workspace_copy_ignore(
     lies inside *copied_root* (``_path_in_tree``).  A primary's store sits OUTSIDE its
     workspace, so it excludes nothing.  A ``box_data/`` left behind after the store was
     repointed is ordinary content and travels: excluding it, then retiring the source,
-    deleted whatever the user kept there.
+    deleted whatever the user kept there.  ⚑ A LOOPED store still never travels: it is
+    excluded by its LITERAL path, since it has no resolved one.
     """
-    store = box_metadata_dir(mode, metadata_root, early=early).resolve()
+    raw_store = box_metadata_dir(mode, metadata_root, early=early)
+    if _symlink_loop(raw_store):
+        loop_parent, loop_name = raw_store.parent, raw_store.name
+
+        def ignore_loop(directory: str, names: list[str]) -> set[str]:
+            return ({loop_name} if Path(directory) == loop_parent and loop_name in names
+                    else set())
+
+        return ignore_loop
+
+    store = raw_store.resolve()
     copied = copied_root.resolve()
     inside = (store,) if store != copied and _path_in_tree(store, copied) else ()
 
@@ -754,6 +765,11 @@ def _name_held_in_target_workset(
     return find_identifier(new_name, (p.name for p in target_ws.projects))
 
 
+def _resolved_unless_loop(path: Path) -> Path:
+    """*path* resolved, or only made absolute on a loop, for ``_validate`` to refuse."""
+    return path.absolute() if _symlink_loop(path) else path.resolve()
+
+
 def _validate(
     state: ProjectState,
     spec: TargetSpec,
@@ -794,12 +810,25 @@ def _validate(
     dest: Path | None = None
     if spec.location is BARE_INTO_WS:
         assert target_ws is not None
-        dest = (target_ws.require_workspaces_dir(f"a workspace for '{new_name}'")
-                / new_name).resolve()
+        dest = _resolved_unless_loop(
+            target_ws.require_workspaces_dir(f"a workspace for '{new_name}'") / new_name)
     elif isinstance(spec.location, Path):
-        dest = spec.location.resolve()
+        dest = _resolved_unless_loop(spec.location)
 
     relocating = dest is not None
+
+    # --- ⚑ a LOOPED landing refuses here: the in-tree guards below refuse on True, and
+    #     ``is_in_tree_workspace`` answers a loop False.
+    landing = dest if dest is not None else state.workspace_path
+    if _symlink_loop(landing):
+        raise ProjectError(ERR_LOOP_LANDING % (state.name, landing))
+    if not spec.records_only:
+        carried = [box_metadata_dir(state.mode, state.metadata_path, early=EarlyScope(
+            std.early_system, _state_ws_token(state)))]
+        carried += [state.workspace_path] if relocating else []
+        looped = next((p for p in carried if _symlink_loop(p)), None)
+        if looped is not None:
+            raise ProjectError(ERR_LOOP_SOURCE % (state.name, looped))
 
     if not spec.records_only:
         refuse_inherited_per_owner(
@@ -863,7 +892,7 @@ def _validate(
     # --- remap onto ANOTHER standalone box's root; --force does not override it
     if (spec.records_only and dest is not None
             and not (state.mode is BoxMode.standalone
-                     and dest == state.metadata_path.resolve())):
+                     and dest == _resolved_unless_loop(state.metadata_path))):
         from kanibako.launch import box_resolve
         from kanibako.project import registry_store
         if box_resolve.stores_standalone_registry_null(dest):
@@ -898,7 +927,7 @@ def _validate(
     if target_mode == BoxMode.named and target_ws is not None and dest is not None:
         ws_dir = target_ws.workspaces_dir
         if (ws_dir is not None and is_in_tree_workspace(target_ws, dest)
-                and dest != (ws_dir / new_name).resolve()):
+                and dest != _resolved_unless_loop(ws_dir / new_name)):
             leaf = ws_dir / (cure_name or new_name)
             ref = _cure_ref(state)
             ws_q = shlex.quote(target_ws.name)
@@ -908,7 +937,7 @@ def _validate(
                 advice = f"Move the files to `{leaf}` and run `kanibako box remap` again."
             elif cure_name is None:
                 advice = f"Run, with a name no member holds:\n  {fresh}"
-            elif leaf.resolve() == state.workspace_path.resolve():
+            elif _resolved_unless_loop(leaf) == state.workspace_path.resolve():
                 # A cure to the leaf the box stands at is refused as its current location;
                 # only a new name gives it another leaf.
                 cure = fresh if spec.verb == "convert" else (
@@ -937,14 +966,15 @@ def _validate(
         landing_leaf = target_ws.workspaces_dir
         if (landing_leaf is not None
                 and is_in_tree_workspace(target_ws, state.workspace_path)
-                and (landing_leaf / new_name).resolve() != state.workspace_path.resolve()):
+                and _resolved_unless_loop(landing_leaf / new_name)
+                != state.workspace_path.resolve()):
             ref = _cure_ref(state)
             ws_q = shlex.quote(target_ws.name)
             leaf = landing_leaf / (cure_name or new_name)
             if cure_name is None:
                 cure = (f"Run `kanibako box convert {ref} --workset {ws_q} --move --name "
                         "<name>` with a name no member holds")
-            elif leaf.resolve() == state.workspace_path.resolve():
+            elif _resolved_unless_loop(leaf) == state.workspace_path.resolve():
                 cure = (f"Run `kanibako box convert {ref} --workset {ws_q}` to convert it "
                         f"where it stands as '{state.name}'")
                 leaf = landing_leaf / new_name
@@ -962,12 +992,11 @@ def _validate(
 
     # --- membership guard: refuse landing inside a workset the project is
     #     not (becoming) a member of ---
-    landing = dest if dest is not None else state.workspace_path
     owning_ws_root: Path | None = None
     if target_mode == BoxMode.named and target_ws is not None:
         owning_ws_root = target_ws.root.resolve()
     for ws_name, ws_root in list_worksets(std).items():
-        ws_root = Path(ws_root).resolve()
+        ws_root = _resolved_unless_loop(Path(ws_root))
         if owning_ws_root is not None and ws_root == owning_ws_root:
             continue
         # ⚑ In-tree: a repointed ``workset.workspaces`` dir, or a link.
@@ -1059,7 +1088,8 @@ def _validate(
             )
         landing_leaf = target_ws.workspaces_dir
         if (landing_leaf is not None
-                and (landing_leaf / new_name).resolve() == state.workspace_path.resolve()):
+                and _resolved_unless_loop(landing_leaf / new_name)
+                == state.workspace_path.resolve()):
             own = own | {state.workspace_path}
         taken = [p for p in sorted(_existing_member_leaves(target_ws, new_name))
                  if p not in own]
@@ -1841,7 +1871,8 @@ def _carry_vault_contents(
 
 def _landings(*pairs: tuple[Path, Path]) -> dict[Path, Path] | None:
     """``{old: new}`` for each carried tree that actually moves; None when none does."""
-    moved = {old: new for old, new in pairs if old.resolve() != new.resolve()}
+    moved = {old: new for old, new in pairs
+             if _resolved_unless_loop(old) != _resolved_unless_loop(new)}
     return moved or None
 
 
@@ -4033,7 +4064,7 @@ def run_remap(args) -> int:
     from kanibako.commands.flags import resolve_subject_value
     old = resolve_subject_value(getattr(args, "old", None), getattr(args, "box", None))
     new = getattr(args, "new", None) or "./"
-    new_path = Path(new).resolve()
+    new_path = _resolved_unless_loop(Path(new))
 
     try:
         state = resolve_lifecycle_target(old, std, config)
@@ -4109,7 +4140,7 @@ def run_move(args) -> int:
     if not old or not new:
         print("Error: move requires both <old> and <new>.", file=sys.stderr)
         return 1
-    new_path = Path(new).resolve()
+    new_path = _resolved_unless_loop(Path(new))
 
     try:
         state = resolve_lifecycle_target(old, std, config)
@@ -4195,7 +4226,7 @@ def run_convert(args) -> int:
             return 1
         location = BARE_INTO_WS
     else:
-        location = Path(move_val).resolve()
+        location = _resolved_unless_loop(Path(move_val))
 
     from kanibako.commands.flags import resolve_subject_value
     subject = resolve_subject_value(

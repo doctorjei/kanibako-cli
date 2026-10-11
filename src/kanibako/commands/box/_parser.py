@@ -39,7 +39,7 @@ from kanibako.errors import (BoxNameError, ContainerError, DerivedBoxNameError, 
 from kanibako.project.names import read_names
 from kanibako.project.workset import (
     Workset, add_project, box_logs_to_purge, list_worksets, load_workset,
-    refuse_case_variant_store,
+    refuse_case_variant_store, report_retained_loop, _symlink_loop,
 )
 from kanibako.snapshots import box_snapshot_store
 from kanibako.settings.messages import (
@@ -2083,21 +2083,38 @@ _CREDS_LOCK = "creds watcher lock"         # removed only UNHELD; re-probed at d
 _VAULT_LABELS = ("vault ro (your files)", "vault rw (your files)")
 
 
-def _primary_purge_plan(std, name: str, metadata_dir: Path) -> list[_PurgeStep]:
+def _primary_purge_plan(std, name: str, metadata_dir: Path,
+                       loop_keeps: "list[tuple[str, Path, str | None]] | None" = None,
+                       ) -> list[_PurgeStep]:
     """What purging a PRIMARY box deletes: box dir, vault ro/rw, per-box logs.
 
     ⚑ THE ANCHOR IS APPENDED LAST: it is the box's RETRY address (as in the standalone).
+    ⚑ A LOOPED VAULT LEAF OR STORE IS KEPT, and pushed into *loop_keeps* (the *retained*
+    shape of :func:`_confirm_purge`) for the caller to list and NAME after the run.
+    ``is_dir()`` is False on a loop, so before this the leaf was simply skipped: kept, and
+    named by nothing — the user saw "Removed vault: …/ro/q" and no word about the one
+    that stayed.  Reported by the CALLER, not here, because a plan that is
+    declined at the confirmation printed nothing happened.
     """
     steps: list[_PurgeStep] = []
     # ⚑ The PRIMARY vault is NOT under metadata_dir.  ⚑ A NULL ARM NAMES NO DIR.
     _shell, vault_ro, vault_rw = _primary_box_paths(std, metadata_dir, name)
     for what, vdir in zip(_VAULT_LABELS, (vault_ro, vault_rw)):
-        if vdir is not None and vdir.is_dir():
+        if vdir is None:
+            continue
+        if _symlink_loop(vdir):
+            if loop_keeps is not None:
+                loop_keeps.append(("vault", vdir, None))
+            continue
+        if vdir.is_dir():
             steps.append(_PurgeStep("vault", what, vdir, gated=True))
-    # The store is not an arm: it hangs off the vault BASE, beside the per-box leaf.
+    # The store hangs off the vault BASE beside the leaf, so a looped leaf leaves it reachable.
     if vault_rw is not None:
         store = box_snapshot_store(vault_rw, name)
-        if store.is_dir() or store.is_symlink():
+        if _symlink_loop(store):
+            if loop_keeps is not None:
+                loop_keeps.append(("box store", store, None))
+        elif store.is_dir() or store.is_symlink():
             steps.append(_PurgeStep("vault", "vault snapshots", store, gated=True))
     # The per-box logs, keyed by the registry name.
     steps += [_PurgeStep("log", "log", log_file) for log_file in box_logs_to_purge(
@@ -2229,7 +2246,7 @@ def _confirm_purge(steps: list[_PurgeStep], *, force: bool,
 
     print()
     kept = [(role, path) for role, path, _why in retained
-            if path.exists() or path.is_symlink()]
+            if path.exists() or path.is_symlink() or _symlink_loop(path)]
     if kept:
         print(f"--purge KEEPS these {len(kept)} (left in place, yours to remove):")
         for role, path in kept:
@@ -2438,11 +2455,14 @@ def _purge_deregistered(std, name: str, entry: dict, args: argparse.Namespace, *
         plan, retained = _standalone_purge_plan(root, name, std=std,
                                       early=_early_scope(std, BoxMode.standalone))
     else:
-        plan = _primary_purge_plan(std, name, metadata_dir)
+        plan = _primary_purge_plan(std, name, metadata_dir, retained)
     if not _confirm_purge(plan, force=args.force, retained=retained):
         print("Aborted (box remains deregistered).")
         return 2
     removed = _run_purge_plan(plan, std)
+    if kind != "standalone":
+        for what, kept, _why in retained:
+            report_retained_loop(kept, what)
     if kind == "standalone":
         _report_retained_roles(root, retained,
                               early=_early_scope(std, BoxMode.standalone))
@@ -2744,9 +2764,10 @@ def run_rm(args: argparse.Namespace) -> int:
              if not args.purge and metadata_dir.is_dir() else None)
     # ⚑ Planned and confirmed BEFORE the unregister: a declined question changes nothing.
     plan = None
+    loop_keeps: "list[tuple[str, Path, str | None]]" = []
     if args.purge and metadata_dir.is_dir():
-        plan = _primary_purge_plan(std, name, metadata_dir)
-        if not _confirm_purge(plan, force=args.force):
+        plan = _primary_purge_plan(std, name, metadata_dir, loop_keeps)
+        if not _confirm_purge(plan, force=args.force, retained=loop_keeps):
             print("Aborted (nothing changed).")
             return 2
     unregister_primary_box_name(std.primary_workset, name, early=_early_scope(std, BoxMode.primary))
@@ -2756,7 +2777,10 @@ def run_rm(args: argparse.Namespace) -> int:
         if plan is None:
             print(f"No metadata directory found at {metadata_dir}")
             return 0
-        if _run_purge_plan(plan, std):
+        ran = _run_purge_plan(plan, std)
+        for what, kept, _why in loop_keeps:
+            report_retained_loop(kept, what)
+        if ran:
             return 0
     # No --purge, or a purge that left the metadata: park a ``deregistered`` entry for
     # a later `rm --purge` / `register`.

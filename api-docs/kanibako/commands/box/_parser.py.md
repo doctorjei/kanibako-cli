@@ -55,7 +55,7 @@ def _mkdir_recording(target: Path, made: list[Path]) -> None
 def _unmakes_its_dirs_on_failure(create: Callable[[argparse.Namespace, _CreateOutcome], int]) -> Callable[[argparse.Namespace], int]
 def _list_orphans(projects: list, ws_data: list, std, quiet: bool) -> int
 def _assert_deletable(path, *, must_be_under: Path | None=None) -> Path
-def _primary_purge_plan(std, name: str, metadata_dir: Path) -> list[_PurgeStep]
+def _primary_purge_plan(std, name: str, metadata_dir: Path, loop_keeps: 'list[tuple[str, Path, str | None]] | None'=None) -> list[_PurgeStep]
 def _standalone_purge_plan(root: Path, registered_name: str, *, std: StandardPaths, early: EarlyScope) -> tuple[list[_PurgeStep], list[tuple[str, Path, str | None]]]
 def _report_retained_roles(root: Path, retained: 'list[tuple[str, Path, str | None]]', *, early=None) -> None
 def _confirm_purge(steps: list[_PurgeStep], *, force: bool, retained: Sequence[tuple[str, Path, str | None]]=()) -> bool

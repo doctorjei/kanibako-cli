@@ -1870,10 +1870,10 @@ def _workset_arms(std: StandardPaths, ws_name: str, root: Path) -> tuple[Path, P
 
 def _check_workset(resolved_dir: Path, std: StandardPaths) -> DetectionResult | None:
     """Check whether *resolved_dir* is inside a registered workset (``workspaces/`` first)."""
-    from kanibako.project.workset import list_worksets
+    from kanibako.project.workset import _symlink_loop, list_worksets
 
     for ws_name, root in list_worksets(std).items():
-        if _is_standalone_meta_dir(root.resolve()):
+        if _symlink_loop(root) or _is_standalone_meta_dir(root.resolve()):
             continue
         ws_workspaces, ws_root = _workset_arms(std, ws_name, root)
         if (_relative_to_either(resolved_dir, ws_workspaces) is not None
@@ -2160,14 +2160,15 @@ def resolve_workset_project(ws: WorksetSpec, project_name: str, std: StandardPat
 
     # Hash the workspace (identity): a null must not rename the box.
     phash = project_hash(literal_path(workspace))
-    # None for an in-tree member under a null ``workset.workspaces`` (Q106).
+    # Q106: None for an in-tree member under a null workspaces key; a LOOP keeps it: launch names it.
     project_path: Path | None = workspace
-    from kanibako.project.workset import refuse_null_box_workspace
+    from kanibako.project.workset import _symlink_loop, refuse_null_box_workspace
     try:
         refuse_null_box_workspace(ws.root, workspace, project_name, standalone=False,
                                   early=ws_early)
     except WorksetError:
-        project_path = None
+        if not _symlink_loop(workspace):
+            project_path = None
 
     is_new = False
     if initialize and not shell_path.is_dir():

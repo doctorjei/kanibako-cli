@@ -13,6 +13,7 @@ from kanibako.settings.config_io import load_doc
 from kanibako.settings.paths import load_std_paths, resolve_project
 from kanibako.settings.paths import BoxMode, _early_scope
 from kanibako.utils import project_hash
+from tests.conftest import self_loop
 
 
 def _move_args(old, new, *, force=True, to_default=False, to_standalone=False,
@@ -801,42 +802,12 @@ class TestInterruptedMoveIsNamed:
         assert capsys.readouterr().err == said.format(p=tmp_path) + "\n"
 
 
-@pytest.fixture
-def resolve_as_on_311(monkeypatch):
-    """``Path.resolve`` as Python 3.11 has it: a symlink loop RAISES ``RuntimeError``.
-
-    ⚑ 3.13 returns the loop's own path instead, which hides the crash this pins.
-    """
-    import errno
-    import pathlib
-
-    real = pathlib.Path.resolve
-
-    def resolve(self, strict=False):
-        try:
-            os.path.realpath(self, strict=True)
-        except OSError as e:
-            if e.errno == errno.ELOOP:
-                raise RuntimeError(f"Symlink loop from {str(self)!r}") from None
-        return real(self, strict=strict)
-
-    monkeypatch.setattr(pathlib.Path, "resolve", resolve)
-
-
 def _cli(*argv: str) -> int:
     from kanibako.cli import main
 
     with pytest.raises(SystemExit) as info:
         main(list(argv))
     return int(info.value.code or 0)
-
-
-def _self_loop(path):
-    """Replace *path* with a link to its own name: a loop."""
-    import shutil
-
-    shutil.rmtree(path)
-    path.symlink_to(path.name)
 
 
 class TestAVaultSymlinkLoopIsKeptAndNamed:
@@ -851,7 +822,7 @@ class TestAVaultSymlinkLoopIsKeptAndNamed:
         root.mkdir(parents=True)
         assert _cli("create", "--standalone", "--register", str(root)) == 0
         loop = root / "vault" / "rw"
-        _self_loop(loop)
+        self_loop(loop)
         capsys.readouterr()
 
         assert _cli("box", "move", "--force", str(root), str(dest)) == 0
@@ -869,7 +840,7 @@ class TestAVaultSymlinkLoopIsKeptAndNamed:
         assert _cli("workset", "create", "--name", "ws", str(tmp_home / "ws")) == 0
         assert _cli("workset", "connect", "ws", str(member)) == 0
         loop = tmp_home / "ws" / "vault" / "rw" / "m"
-        _self_loop(loop)
+        self_loop(loop)
         capsys.readouterr()
 
         assert _cli("box", "convert", "--force", "--standalone", "--box", "m") == 0
@@ -886,7 +857,7 @@ class TestAVaultSymlinkLoopIsKeptAndNamed:
         project_dir.mkdir(parents=True)
         resolve_project(std, config, project_dir=str(project_dir), initialize=True)
         loop = std.primary_vault_rw / "k"
-        _self_loop(loop)
+        self_loop(loop)
         capsys.readouterr()
 
         assert _cli("box", "move", "--force", "--name", "k3",
@@ -903,7 +874,7 @@ class TestAVaultSymlinkLoopIsKeptAndNamed:
         root.mkdir(parents=True)
         assert _cli("create", "--standalone", "--register", str(root)) == 0
         loop = root / "vault"
-        _self_loop(loop)
+        self_loop(loop)
         capsys.readouterr()
 
         assert _cli("box", "move", "--force", str(root), str(dest)) == 0
@@ -920,7 +891,7 @@ class TestAVaultSymlinkLoopIsKeptAndNamed:
         assert _cli("workset", "create", "--name", "ws", str(tmp_home / "ws")) == 0
         assert _cli("workset", "connect", "ws", str(member)) == 0
         arm = tmp_home / "ws" / "vault" / "rw"
-        _self_loop(arm)
+        self_loop(arm)
         capsys.readouterr()
 
         assert _cli("box", "convert", "--force", "--standalone", "--box", "m") == 0

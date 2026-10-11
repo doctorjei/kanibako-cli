@@ -311,6 +311,18 @@ ERR_NULL_WORKSPACE_BIND = ("Cannot launch box '%s': %s sets workset.workspaces t
                            "box has no workspace to mount at ~/workspace.\nDelete that line " +
                            "to use the default, or set the path you mean.")
                                                     # the box label, the workset.yaml path
+ERR_LOOP_WORKSPACE_BIND = ("Cannot launch box '%s': its workspace %s is a symlink loop " +
+                          "that kanibako cannot resolve, so there is nothing to mount at " +
+                          "~/workspace.\nReplace the loop with the directory you mean.")
+ERR_LOOP_LANDING = ("Refusing to land '%s' at %s: that path runs through a symlink loop " +
+                    "that kanibako cannot resolve, so it cannot be checked against any " +
+                    "workset.\nReplace the loop with the directory you mean.")
+                                                    # the box name, the landing path
+ERR_LOOP_SOURCE = ("Cannot carry box '%s': %s is a symlink loop that kanibako cannot " +
+                   "resolve, so there is nothing to copy.\nReplace the loop with the " +
+                   "directory you mean, or record where the files are with " +
+                   "`kanibako box remap`.")
+                                                    # the box name, its workspace or store
 
 # The `~/.shell.d/*.sh` user/template extension point for a box's INTERACTIVE shell.
 # ⚑ INTERACTIVE ONLY — it never reaches the agent; use `env.<VAR>` / `secret_path` for that.

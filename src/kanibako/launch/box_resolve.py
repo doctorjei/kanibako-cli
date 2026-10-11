@@ -128,7 +128,7 @@ def find_connected_external_box(
     NOT "under the workset root".  Widening it strands members registered under an
     OLD composition — bifrost A0, 2026-08-02.  Reasoning: the llm-doc.
     """
-    from kanibako.project.workset import list_worksets, resolve_workspaces_locator
+    from kanibako.project.workset import _symlink_loop, list_worksets, resolve_workspaces_locator
     from kanibako.settings.workset_dirkeys import EarlyScope
 
     target = Path(literal_path(project_dir))
@@ -144,13 +144,14 @@ def find_connected_external_box(
         )
         # No mapping check needed: ``load_doc`` returns a mapping or refuses the file.
         workspaces = resolve_workspaces_locator(root, settings, early=early)
-        workspaces_resolved = workspaces.resolve()
+        workspaces_resolved = None if _symlink_loop(workspaces) else workspaces.resolve()
         boxes = workset_registry.load_workset_boxes(registry_path)
         for box_name, box_path_str in boxes.items():
             box_path = Path(literal_path(box_path_str))
             # Skip members under the CURRENT workspaces dir; location detection owns those.
             if (box_path.is_relative_to(literal_path(workspaces))
-                    or box_path.resolve().is_relative_to(workspaces_resolved)):
+                    or (workspaces_resolved is not None and not _symlink_loop(box_path)
+                        and box_path.resolve().is_relative_to(workspaces_resolved))):
                 continue
             # Ancestor match: the registered path IS *target* or an ancestor.
             try:

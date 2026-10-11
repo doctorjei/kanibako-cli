@@ -27,7 +27,12 @@ from kanibako.settings.paths import (
 from kanibako.utils import (
     confirm_prompt, project_gitignore_to_strip, strip_project_gitignore,
 )
-from kanibako.project.workset import purge_box_logs, resolve_workset_vault_pair
+from kanibako.project.workset import (
+    _symlink_loop,
+    purge_box_logs,
+    report_retained_loop,
+    resolve_workset_vault_pair,
+)
 from kanibako.channels.channels import workset_name_token, workset_root
 from kanibako.settings.workset_dirkeys import EarlyScope, refuse_inherited_per_owner
 from kanibako.settings.messages import MSG_DONE, STATUS_NO_DATA
@@ -177,8 +182,17 @@ def _resolve_snapshot_store(vault_rw, box_name: str | None):
 
 
 def _remove_snapshot_store(store) -> bool:
-    """Delete the box's OWN store — never the shared base, nor ``.unsorted``."""
+    """Delete the box's OWN store — never the shared base, nor ``.unsorted``.
+
+    ⚑ A LOOP ON OR ABOVE the store makes it unreachable, not absent: ``unlink`` on a path
+    under a loop raises ``ELOOP``, and a purge that crashes stops partway with the rest of
+    the box still standing.  Kept and NAMED instead — the same answer every door gives a
+    loop, and not a failure: kanibako never had a path to it.
+    """
     if store is None:
+        return True
+    if _symlink_loop(store):
+        report_retained_loop(store, "box store")
         return True
     if remove_path(store):
         return True
@@ -190,10 +204,15 @@ def _remove_member_vault_leaves(vault_ro, vault_rw) -> bool:
     """Take a NAMED member's OWN ro/rw vault leaves — never a shared arm.
 
     ``is_symlink`` is tested: a dangling link is neither dir nor file.
+    ⚑ A LOOPED LEAF IS KEPT AND NAMED.  Before this it went away silently: a self-loop is
+    a symlink, so ``is_symlink()`` let it through to ``remove_path``, and nothing was said.
     """
     all_gone = True
     for leaf in (vault_ro, vault_rw):
         if leaf is None or not (leaf.is_dir() or leaf.is_symlink()):
+            continue
+        if _symlink_loop(leaf):
+            report_retained_loop(leaf, "vault")
             continue
         if not remove_path(leaf):
             _warn_undeleted(leaf)
@@ -401,6 +420,11 @@ def _purge_one(std, config, path: str, *, force: bool) -> int:
                 # ⚑ THROUGH THE BOX-TREE REMOVER, never a bare ``rmtree``: that REFUSES a
                 # symlink outright, so with ``ignore_errors=True`` a symlinked leaf just
                 # stayed.  ``remove_path`` takes the link and spares the target.
+                # ⚑ A LOOP IS KEPT FIRST.  Without this a self-loop was deleted and the
+                # Note below claimed it "left its target untouched" — a self-loop has none.
+                if _symlink_loop(box_vault):
+                    report_retained_loop(box_vault, "vault")
+                    continue
                 was_link = box_vault.is_symlink()
                 link_target = os.readlink(box_vault) if was_link else None
                 try:
