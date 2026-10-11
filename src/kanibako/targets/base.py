@@ -45,22 +45,31 @@ class TargetSetting:
     choices: tuple[str, ...] = ()  # Valid values; empty = freeform
 
 
-def descriptor_floor(descriptors: Iterable[TargetSetting]) -> dict[str, str | None]:
+def descriptor_floor(
+    descriptors: Iterable[TargetSetting], *, plugin: str = "",
+) -> dict[str, str | None]:
     """The plugin's ``agent.<active>`` floor: each row's default, minus the rows that inherit.
 
     ⚑ A row naming no default INHERITS ``agent.default.<key>`` or is REFUSED BY
-    NAME, never floorless — by
-    :func:`~kanibako.settings.agent_defaults.refuse_floorless_default`, the one rule
-    the YAML loader applies to the same rows.  ⚑ Function-local import: that module imports this one.
+    NAME, never floorless; a ``None`` that repeats ``agent.default``'s ``<None>`` is
+    REFUSED too.  Both are the rules the YAML loader applies to the same rows
+    (:mod:`~kanibako.settings.agent_defaults`).  *plugin* names the origin in a
+    refusal.  ⚑ Function-local import: that module imports this one.
     """
-    from kanibako.settings.agent_defaults import refuse_floorless_default
+    from kanibako.settings.agent_defaults import (
+        refuse_floorless_default,
+        refuse_shadowing_null,
+    )
 
+    where = f" (plugin {plugin!r})" if plugin else ""
     floor: dict[str, str | None] = {}
     for row in descriptors:
         if isinstance(row.default, _Unset):
-            refuse_floorless_default(row.key)
-        else:
-            floor[row.key] = row.default
+            refuse_floorless_default(row.key, where)
+            continue
+        if row.default is None:
+            refuse_shadowing_null(row.key, where)
+        floor[row.key] = row.default
     return floor
 
 

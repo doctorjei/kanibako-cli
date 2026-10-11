@@ -726,6 +726,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`reset --all` removes a value where a table belongs.** A hand-edited `workset: null` or `workset: 3` in the
   system settings file (or `box:`/`agent:` written the same way, at any scope) survived `system`, `workset`, and
   `box reset --all` under "No overrides to reset." It is now removed and counted, as `agent reset --all` does.
+- **A plugin's Python `TargetSetting(default=None)` is refused when `agent.default` already leaves the key
+  `<None>`.** The same row written in a defaults file (`default: null`) was already refused; the Python
+  spelling slipped through and shadowed a user's `agent.default.<key>`. Both refusals now come from one check
+  and name the key, and the Python one names the plugin. Omit `default` so the key inherits instead.
 - **A failed `workset connect` no longer leaves an interrupted connect behind.** When the connect failed on a
   disk error and undid its own work, `system diagnose` still reported an interrupted connect that nothing would
   finish. It now does so only when the undo itself failed.

@@ -342,7 +342,7 @@ def refuse_floorless_default(named: str, where: str = "") -> None:
     ⚑ ONE RULE PER DECLARATION: a row carries a floor or inherits
     ``agent.default.<key>``.  A plugin-only key has no tier below to inherit from,
     so it is REFUSED BY NAME, in YAML and in Python alike.  *where* names the
-    defaults file to fix; a Python-built row passes none.
+    origin to fix: the defaults file, or the plugin.
     """
     if named in behavior_defaults():
         return
@@ -351,6 +351,24 @@ def refuse_floorless_default(named: str, where: str = "") -> None:
         f"'agent.default' declares no {named!r} for it to inherit. Write the "
         f"value, or 'default: null' if the key deliberately has none (goose "
         f"pins no provider so its own config.yaml keeps owning it)."
+    )
+
+
+def refuse_shadowing_null(named: str, where: str = "") -> None:
+    """Refuse a ``None`` default for a key ``agent.default`` already leaves ``<None>``.
+
+    ⚑ ONE RULE, YAML and Python alike (Q105): such a row adds nothing but a shadow
+    over a user's ``agent.default.<key>``.  *where* names the origin to fix — the
+    defaults file, or the plugin.
+    """
+    core = behavior_defaults()
+    if named not in core or core[named] is not None:
+        return
+    raise SettingsError(
+        f"behavior entry {named!r}{where} declares 'default: null', but "
+        f"'agent.default.{named}' is already <None>. Omit 'default:' so the "
+        f"key inherits 'agent.default.{named}'; a null here would shadow a "
+        f"user's 'agent.default.{named}'."
     )
 
 
@@ -373,8 +391,9 @@ def _build_behavior(entry: dict[str, Any], *, source: str = "") -> TargetSetting
     For a key that table declares, an omitted ``default:`` means the plugin sets no
     floor (:data:`~kanibako.settings.settings_resolve.UNSET`) and the key inherits
     ``agent.default.<key>``; a ``null`` is refused when ``agent.default`` already
-    supplies ``<None>`` (Q105).  A key the table does NOT declare is refused by
-    name when it names no floor (:func:`refuse_floorless_default`).  A real default
+    supplies ``<None>`` (Q105, :func:`refuse_shadowing_null`).  A key the table does
+    NOT declare is refused by name when it names no floor
+    (:func:`refuse_floorless_default`).  A real default
     is kept either way: it lands at ``agent.<active>.<key>`` and beats a user's
     ``agent.default.<key>`` ([Q91]).
 
@@ -411,7 +430,6 @@ def _build_behavior(entry: dict[str, Any], *, source: str = "") -> TargetSetting
                 f"behavior setting is a DECLARED agent key and its description "
                 f"is what 'kanibako config' shows for it."
             )
-    core = behavior_defaults()
     if "default" not in entry:
         refuse_floorless_default(named, where)
         return TargetSetting(
@@ -419,13 +437,8 @@ def _build_behavior(entry: dict[str, Any], *, source: str = "") -> TargetSetting
             choices=_behavior_choices(entry, named, where),
         )
     default = entry["default"]
-    if default is None and named in core and core[named] is None:
-        raise SettingsError(
-            f"behavior entry {named!r}{where} declares 'default: null', but "
-            f"'agent.default.{named}' is already <None>. Omit 'default:' so the "
-            f"key inherits 'agent.default.{named}'; a null here would shadow a "
-            f"user's 'agent.default.{named}'."
-        )
+    if default is None:
+        refuse_shadowing_null(named, where)
     if default is not None and not isinstance(default, str):
         raise SettingsError(
             f"behavior entry {named!r}{where} declares a "

@@ -1082,7 +1082,7 @@ class TestEffectiveTransformResolution:
         from types import SimpleNamespace
         from kanibako.commands.start import _effective_transform
         proj = self._proj(tmp_path)
-        target = SimpleNamespace(setting_descriptors=lambda: [])
+        target = SimpleNamespace(name="goose", setting_descriptors=lambda: [])
         assert _effective_transform(
             proj, None, "goose", target,
             self._cfg(state={}), **_focused(),
@@ -1123,7 +1123,7 @@ class TestEffectiveTransformResolution:
         proj = self._proj(tmp_path)
         sys_file = tmp_path / "system.yaml"
         dump_doc(sys_file, {"agent": {"default": {"transform": "tweakcc"}}})
-        target = SimpleNamespace(setting_descriptors=lambda: [])
+        target = SimpleNamespace(name="goose", setting_descriptors=lambda: [])
         assert _effective_transform(
             proj, sys_file, "goose", target, self._cfg(), **_focused(),
         ) == "tweakcc"

@@ -1224,7 +1224,9 @@ def _agent_tier_floors(node: str) -> dict[str, str | None]:
     target = get_target(node)()
     rows = {
         f"agent.{node}.{leaf}": value
-        for leaf, value in descriptor_floor(target.setting_descriptors()).items()
+        for leaf, value in descriptor_floor(
+            target.setting_descriptors(), plugin=target.name,
+        ).items()
     }
     rows.update(target.default_envs())
     return rows

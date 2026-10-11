@@ -460,3 +460,42 @@ class TestOneRulePerDeclaration:
         assert "provider" in msg
         assert filename in msg
         assert "declares no 'default'" in msg
+
+    @pytest.mark.parametrize(
+        "key",
+        sorted(k for k, v in core_defaults.behavior_defaults().items() if v is None),
+    )
+    def test_a_python_null_that_repeats_agent_defaults_none_is_refused(
+        self, declfile, key: str,
+    ) -> None:
+        """Q105 from the Python side: a ``default=None`` row for a key ``agent.default``
+        already leaves ``<None>`` is REFUSED, naming the plugin and the key.
+
+        Its YAML twin (``default: null``) is refused by the loader; both carry one
+        message, differing only in the origin they name.
+
+        (Mutation: drop the ``None`` check from ``descriptor_floor`` → the floor
+        comes back ``{key: None}`` and this reddens.)
+        """
+        descriptors = [TargetSetting(key=key, description="D", default=None)]
+        with pytest.raises(SettingsError) as py_exc:
+            descriptor_floor(descriptors, plugin="myplug")
+        package, filename = declfile(
+            "behavior:\n"
+            f"  - key: {key}\n"
+            "    description: D\n"
+            "    default: null\n"
+        )
+        with pytest.raises(SettingsError) as yaml_exc:
+            agent_defaults.load_behavior(package, filename)
+        py_msg = str(py_exc.value)
+        assert "plugin 'myplug'" in py_msg
+        assert f"'agent.default.{key}' is already <None>" in py_msg
+        assert py_msg.replace("(plugin 'myplug')", "(ORIGIN)") == str(
+            yaml_exc.value,
+        ).replace(f"({filename})", "(ORIGIN)")
+
+    def test_a_python_plugin_only_null_is_kept(self) -> None:
+        """A ``None`` for a key ``agent.default`` does NOT declare is a real floor."""
+        rows = [TargetSetting(key="provider", description="P", default=None)]
+        assert descriptor_floor(rows, plugin="myplug") == {"provider": None}

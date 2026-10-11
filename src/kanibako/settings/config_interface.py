@@ -880,7 +880,9 @@ def _set_time_agent_tier(
         descriptors = None
     if not descriptors:
         return agent_path, agent_state, None, None
-    return agent_path, agent_state, behavior_defaults(), descriptor_floor(descriptors)
+    return agent_path, agent_state, behavior_defaults(), descriptor_floor(
+        descriptors, plugin=harness_of(agent_name),
+    )
 
 
 def _set_time_snapshot(

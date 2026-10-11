@@ -1262,8 +1262,12 @@ def _effective_transform(
     # tests returns a mock, and iterating it would fabricate a floor (same guard,
     # same reason, as ``_resolve_box_launch_decisions``).
     agent_floor = (
-        {k: v for k, v in descriptor_floor(descriptors).items() if k == "transform"}
-        if isinstance(descriptors, list) else {}
+        {
+            k: v
+            for k, v in descriptor_floor(descriptors, plugin=target.name).items()
+            if k == "transform"
+        }
+        if target is not None and isinstance(descriptors, list) else {}
     )
     return _effective_agent_scalar(
         proj, system_settings_path, agent_id, std=std,
@@ -6874,7 +6878,7 @@ def _effective_behavior_for_display(
     # The two floors ``build_launch_snapshot`` places apart ([Q91]): core's at
     # ``agent.default``, the plugin's at ``agent.<active>``.
     behavior_floor = core_defaults.behavior_defaults()
-    agent_behavior_floor = descriptor_floor(descriptors)
+    agent_behavior_floor = descriptor_floor(descriptors, plugin=target.name)
 
     # The behavior tables are keyed by the ACTIVE node-name (fix 4a): for a persona
     # (``navigator℘claude``) the per-node ``agents/<node>/agent.yaml`` state and
@@ -7090,8 +7094,12 @@ def _resolve_box_launch_decisions(
     # endpoint + model only, and the bare-box ``--model`` flag resolves its own
     # default via the separate main-launch snapshot.
     plugin_floor = (
-        {k: v for k, v in descriptor_floor(descriptors).items() if k != "model"}
-        if isinstance(descriptors, list)
+        {
+            k: v
+            for k, v in descriptor_floor(descriptors, plugin=target.name).items()
+            if k != "model"
+        }
+        if target is not None and isinstance(descriptors, list)
         else {}
     )
     snapshot = settings_launch.build_launch_snapshot(
@@ -7634,7 +7642,7 @@ def _resolve_launch_snapshot(
             # keep leaving ``behavior_floor`` None; downstream gates read its
             # truthiness.
             behavior_floor = core_defaults.behavior_defaults()
-            agent_behavior_floor = descriptor_floor(descriptors)
+            agent_behavior_floor = descriptor_floor(descriptors, plugin=target.name)
     # ⚑ NOT gated on ``include_base_families``: the narrow CREATE seed resolve needs the
     # file's scalars too.  Why: llm-docs, ``_resolve_launch_snapshot`` → *agent_cfg*.
     if target is not None and agent_cfg is not None:
