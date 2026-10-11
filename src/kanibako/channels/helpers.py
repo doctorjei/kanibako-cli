@@ -6,6 +6,7 @@ import importlib.resources
 from dataclasses import dataclass
 from pathlib import Path
 
+from kanibako.errors import ConfigError
 from kanibako.settings.bootstrap import SPAWN_BUDGET_DEFAULTS
 from kanibako.settings.config import SYSTEM_HELPERS_SECTION, read_system_helpers
 from kanibako.settings.config_io import dump_doc, load_doc
@@ -149,16 +150,74 @@ def write_spawn_budget(path: Path, budget: SpawnBudget) -> None:
     defaults leak that guard exists to catch.
     """
     doc = load_doc(path)
+    node = _table(doc, SYSTEM_HELPERS_SECTION)
+    node["depth"] = budget.depth
+    node["breadth"] = budget.breadth
+    dump_doc(path, doc)
+
+
+def _table(doc: dict, sections: tuple[str, ...]) -> dict:
+    """The nested table *sections* names in *doc*, created where absent."""
     node = doc
-    for section in SYSTEM_HELPERS_SECTION:
+    for section in sections:
         child = node.get(section)
         if not isinstance(child, dict):
             child = {}
             node[section] = child
         node = child
-    node["depth"] = budget.depth
-    node["breadth"] = budget.breadth
+    return node
+
+
+#: Where a helper's own number sits in its spawn document: keyspec
+#: ``meta.box.helper_num`` (``<int, set at spawn>``; UNSET for a top-level box).
+HELPER_NUM_KEY: tuple[str, ...] = ("meta", "box", "helper_num")
+
+
+def write_helper_number(path: Path, helper_num: int) -> None:
+    """Record *helper_num* at ``meta.box.helper_num`` in a helper's spawn document.
+
+    The hub calls this at every launch of the helper, spawn and respawn alike, before it
+    binds the document RO at ``~/spawn.yaml``.  The helper reads its number from that
+    file, so nothing sets a variable in its environment (system-design § Delivery at
+    launch), and a ``podman exec`` shell or a user's own init script reads the same
+    number.  The budget the parent wrote stays as written.
+    """
+    doc = load_doc(path)
+    _table(doc, HELPER_NUM_KEY[:-1])[HELPER_NUM_KEY[-1]] = helper_num
     dump_doc(path, doc)
+
+
+def read_helper_number(path: Path) -> int | None:
+    """This box's helper number, from its spawn document at *path*; ``None`` when the
+    document carries none, as in the director.
+
+    Raises :class:`ConfigError` naming the file when it cannot be read or the value is
+    not a whole number from 1.
+    """
+    # ⚑ Probe with ``stat``, not ``exists()``: from Python 3.12 ``exists()`` reads an
+    # unreadable dir as "absent", which would make a helper act as the director.
+    try:
+        path.stat()
+    except (FileNotFoundError, NotADirectoryError):
+        return None
+    except OSError as exc:
+        raise ConfigError(
+            f"the spawn document {path} could not be read ({exc.strerror})."
+        ) from exc
+    node: object = load_doc(path)
+    for section in HELPER_NUM_KEY:
+        if not isinstance(node, dict):
+            return None
+        node = node.get(section)
+    if node is None:
+        return None
+    if isinstance(node, bool) or not isinstance(node, int) or node < 1:
+        raise ConfigError(
+            f"the spawn document {path} sets meta.box.helper_num to {node!r}, which is "
+            f"not a helper number; the hub writes a whole number from 1 at the "
+            f"helper's launch."
+        )
+    return node
 
 
 # ---------------------------------------------------------------------------
@@ -329,12 +388,6 @@ def remove_helper_dirs(
 # ---------------------------------------------------------------------------
 
 INIT_SCRIPT_NAME = "helper-init.sh"
-
-#: A helper's own number, in its box's environment.  The hub stamps it on the helper's
-#: launch env (``helper_listener``), as a launch stamps its other ``KANIBAKO_*``
-#: variables; nothing in the box writes it, so a user's own init script need not.
-#: Unset in the director (keyspec ``meta.box.helper_num``: "UNSET for a top-level box").
-HELPER_NUM_ENV = "KANIBAKO_HELPER_NUM"
 
 
 def bundled_init_script() -> Path:

@@ -517,7 +517,7 @@ DECLARED_META_WORKSET_LEAVES: Final[frozenset[str]] = frozenset({
 # launch's home mount resolves through it.
 # ⚑ The last 2 have NO PRODUCER: `container` renders in
 # `utils.render_container_name`, from proj, not the store; `helper_num` travels
-# in helper messages. Declared-but-unproduced is the state the manifest already
+# in helper messages and the helper's spawn document. Declared-but-unproduced is the state the manifest already
 # describes (JC-B2-3), not an omission.
 DECLARED_META_BOX_LEAVES: Final[frozenset[str]] = frozenset({
     "path", "name", "mode", "workspace", "settings",

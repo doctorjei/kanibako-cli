@@ -4,14 +4,12 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import shutil
 import socket
 import sys
 from pathlib import Path
 
 from kanibako.channels.helpers import (
-    HELPER_NUM_ENV,
     HELPER_SCRIPTS_RELPATH,
     INIT_SCRIPT_NAME,
     PARENT_SCRIPTS_RELPATH,
@@ -24,13 +22,13 @@ from kanibako.channels.helpers import (
     create_peer_channels,
     effective_breadth,
     link_broadcast,
+    read_helper_number,
     read_spawn_budget,
     remove_helper_dirs,
     resolve_init_script,
     resolve_spawn_budget,
     write_spawn_budget,
 )
-from kanibako.errors import KanibakoError
 from kanibako.settings.config import system_settings_path
 from kanibako.settings.settings_resolve import BOX_PINNED_STATE_RELPATH
 
@@ -227,17 +225,11 @@ _RESPAWN_FAILED = (
 def _own_helper_number() -> int | None:
     """This box's own helper number, or ``None`` in the director.
 
-    Raises :class:`KanibakoError` (the CLI's ``Error:`` line, rc 1) when the variable
-    is set to anything but digits."""
-    raw = os.environ.get(HELPER_NUM_ENV, "")
-    if not raw:
-        return None
-    if not raw.isdigit():
-        raise KanibakoError(
-            f"{HELPER_NUM_ENV}={raw!r} is not a helper number; "
-            f"the hub sets it to digits at a helper's launch."
-        )
-    return int(raw)
+    Read from the box's bound spawn document (``meta.box.helper_num``, which the hub
+    writes at each helper launch), so a ``podman exec`` shell and a user's own init
+    script get the same answer.  Raises :class:`KanibakoError` (the CLI's ``Error:``
+    line, rc 1) when the document is unreadable or the value is malformed."""
+    return read_helper_number(Path.home() / SPAWN_CONFIG_FILENAME)
 
 
 def _launch(request: dict) -> tuple[str | None, str | None]:

@@ -21,10 +21,12 @@ from kanibako.channels.helpers import (
     effective_breadth,
     link_broadcast,
     parent_of,
+    read_helper_number,
     read_spawn_budget,
     remove_helper_dirs,
     resolve_init_script,
     resolve_spawn_budget,
+    write_helper_number,
     write_spawn_budget,
 )
 
@@ -255,6 +257,41 @@ class TestSpawnBudgetIO:
         path = tmp_path / "sub" / "dir" / "spawn.yaml"
         write_spawn_budget(path, SpawnBudget())
         assert path.exists()
+
+
+class TestHelperNumberIO:
+    """keyspec ``meta.box.helper_num`` in a helper's spawn document."""
+
+    def test_round_trip_keeps_the_budget(self, tmp_path):
+        path = tmp_path / "spawn.yaml"
+        write_spawn_budget(path, SpawnBudget(depth=2, breadth=3))
+        write_helper_number(path, 7)
+        assert read_helper_number(path) == 7
+        assert read_spawn_budget(path) == SpawnBudget(depth=2, breadth=3)
+
+    def test_a_rewrite_replaces_the_number(self, tmp_path):
+        path = tmp_path / "spawn.yaml"
+        write_helper_number(path, 9)
+        write_helper_number(path, 1)
+        assert read_helper_number(path) == 1
+
+    def test_the_directors_document_carries_none(self, tmp_path):
+        path = tmp_path / "spawn.yaml"
+        assert read_helper_number(path) is None
+        write_spawn_budget(path, SpawnBudget())
+        assert read_helper_number(path) is None
+
+    def test_an_unreadable_document_is_a_clean_refusal(self, tmp_path):
+        from kanibako.errors import ConfigError
+
+        locked = tmp_path / "locked"
+        write_helper_number(locked / "spawn.yaml", 1)
+        locked.chmod(0)
+        try:
+            with pytest.raises(ConfigError, match="could not be read"):
+                read_helper_number(locked / "spawn.yaml")
+        finally:
+            locked.chmod(0o700)
 
 
 # --- Directory structure ---

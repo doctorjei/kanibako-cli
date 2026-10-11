@@ -28,7 +28,7 @@ from kanibako.commands.helper_cmd import (
     run_stop,
 )
 import kanibako.commands.helper_cmd as helper_cmd
-from kanibako.channels.helpers import SpawnBudget, write_spawn_budget
+from kanibako.channels.helpers import SpawnBudget, write_helper_number, write_spawn_budget
 from tests.support.filenames import CONFIG_FILENAME
 
 
@@ -80,7 +80,6 @@ def helpers_env(tmp_path, monkeypatch):
         return {"status": "ok"}
 
     monkeypatch.setattr("kanibako.channels.helper_client.send_request", _hub)
-    monkeypatch.delenv("KANIBAKO_HELPER_NUM", raising=False)
     yield home
     listener.close()
     shutil.rmtree(real.parent, ignore_errors=True)
@@ -919,7 +918,8 @@ class TestNoHub:
 class TestTreeWideNumbering:
     """keyspec ``meta.box.helper_num``: "helper index, unique across the director's
     helper tree".  Helper *p* numbers its children ``p*B+1 .. p*B+B`` (B = breadth),
-    so no two helpers in the tree share a number, and the spawn names the requester."""
+    so no two helpers in the tree share a number, and the spawn names the requester.
+    A box learns *p* from its bound spawn document, where the hub writes it."""
 
     def test_the_director_numbers_from_one_and_names_no_requester(self, helpers_env):
         with patch("kanibako.channels.helper_client.send_request") as m:
@@ -929,11 +929,24 @@ class TestTreeWideNumbering:
         assert req["helper_num"] == 1
         assert req.get("requester") is None
 
-    def test_a_helper_numbers_its_children_in_its_own_block(
-        self, helpers_env, monkeypatch, capsys,
-    ):
+    def test_the_director_allocates_one_to_breadth(self, helpers_env, monkeypatch):
+        """No number in the director's document (its budget only): ``1..B``.  A
+        ``KANIBAKO_HELPER_NUM`` in the env is not a source and changes nothing."""
         monkeypatch.setenv("KANIBAKO_HELPER_NUM", "2")
         write_spawn_budget(helpers_env / "spawn.yaml", SpawnBudget(depth=2, breadth=3))
+        with patch("kanibako.channels.helper_client.send_request") as m:
+            m.return_value = {"status": "ok", "container_name": "c"}
+            for _ in range(3):
+                assert run_spawn(_make_args(depth=None, breadth=None, model=None)) == 0
+            assert run_spawn(_make_args(depth=None, breadth=None, model=None)) == 1
+        assert [c[0][1]["helper_num"] for c in m.call_args_list] == [1, 2, 3]
+        assert {c[0][1]["requester"] for c in m.call_args_list} == {None}
+
+    def test_a_helper_numbers_its_children_in_its_own_block(
+        self, helpers_env, capsys,
+    ):
+        write_spawn_budget(helpers_env / "spawn.yaml", SpawnBudget(depth=2, breadth=3))
+        write_helper_number(helpers_env / "spawn.yaml", 2)
         with patch("kanibako.channels.helper_client.send_request") as m:
             m.return_value = {"status": "ok", "container_name": "c"}
             assert run_spawn(_make_args(depth=None, breadth=None, model=None)) == 0
@@ -943,8 +956,8 @@ class TestTreeWideNumbering:
         assert "Spawned helper 7" in capsys.readouterr().out
         assert (helpers_env / "helpers" / "7").is_dir()
 
-    def test_respawn_names_the_requester(self, helpers_env, monkeypatch):
-        monkeypatch.setenv("KANIBAKO_HELPER_NUM", "1")
+    def test_respawn_names_the_requester(self, helpers_env):
+        write_helper_number(helpers_env / "spawn.yaml", 1)
         run_spawn(_make_args(depth=None, breadth=None, model=None))
         run_stop(_make_args(number=5))
         with patch("kanibako.channels.helper_client.send_request") as m:
@@ -954,28 +967,34 @@ class TestTreeWideNumbering:
         assert (req["helper_num"], req["requester"]) == (5, 1)
 
     def test_helper_init_exports_nothing(self):
-        """The hub stamps the number on the helper's launch env (system-design § Delivery
-        at launch: nothing writes a variable after the channel); the bundled entrypoint
-        must not write it a second time."""
+        """The number is in the spawn document, never a variable (system-design
+        § Delivery at launch: nothing writes a variable after the channel), so the
+        bundled entrypoint exports none."""
         from kanibako.channels.helpers import bundled_init_script
 
-        assert helper_cmd.HELPER_NUM_ENV not in bundled_init_script().read_text()
+        assert "KANIBAKO_HELPER_NUM" not in bundled_init_script().read_text()
 
     @pytest.mark.parametrize("verb", ["spawn", "respawn"])
-    def test_a_malformed_number_is_a_clean_refusal(self, helpers_env, monkeypatch, verb):
-        """``KANIBAKO_HELPER_NUM=x1``: a KanibakoError naming the value (the CLI's
-        ``Error:`` line, rc 1), never a traceback; nothing is written for a spawn."""
+    @pytest.mark.parametrize("value, shown", [("x1", "'x1'"), (0, "to 0,"), (True, "True")])
+    def test_a_malformed_number_is_a_clean_refusal(self, helpers_env, verb, value, shown):
+        """``meta.box.helper_num: x1`` in the spawn document: a KanibakoError naming the
+        value and the file (the CLI's ``Error:`` line, rc 1), never a traceback; nothing
+        is written for a spawn."""
+        import yaml
+
         from kanibako.errors import KanibakoError
 
         if verb == "respawn":
             run_spawn(_make_args(depth=None, breadth=None, model=None))
             run_stop(_make_args(number=1))
-        monkeypatch.setenv("KANIBAKO_HELPER_NUM", "x1")
-        with pytest.raises(KanibakoError, match="'x1'"):
+        doc = helpers_env / "spawn.yaml"
+        doc.write_text(yaml.safe_dump({"meta": {"box": {"helper_num": value}}}))
+        with pytest.raises(KanibakoError, match=shown) as exc:
             if verb == "spawn":
                 run_spawn(_make_args(depth=None, breadth=None, model=None))
             else:
                 run_respawn(_make_args(number=1))
+        assert str(doc) in str(exc.value)
         if verb == "spawn":
             assert not (helpers_env / "helpers").exists()
         else:

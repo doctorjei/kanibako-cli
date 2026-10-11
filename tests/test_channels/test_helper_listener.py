@@ -18,7 +18,16 @@ from kanibako.channels.helper_listener import (
     _send_json,
 )
 import kanibako.channels.helper_listener as helper_listener
+from kanibako.channels.helpers import (
+    SpawnBudget,
+    read_helper_number,
+    read_spawn_budget,
+    write_helper_number,
+    write_spawn_budget,
+)
+from kanibako.settings.core_defaults import helper_budget_dest
 from kanibako.settings.paths import BoxMode
+from kanibako.settings.settings_resolve import normalize_bind_dest
 from tests.support.early import early_record
 
 
@@ -640,25 +649,66 @@ def _fake_podman(tmp_path: Path) -> tuple[Path, Path]:
     return binary, rec
 
 
-class TestHubStampsTheHelperNumber:
-    """system-design § Delivery at launch: the ``KANIBAKO_*`` stamps a launch derives
-    install as entries of the launch env, and nothing in the box writes a variable after
-    that.  A helper's number is derived by the hub, so the hub stamps it onto the
-    helper's launch env, and no entrypoint script has to export it."""
+class TestHubWritesTheHelperNumber:
+    """keyspec ``meta.box.helper_num`` (``<int, set at spawn>``): the hub writes each
+    helper's number into that helper's spawn document at every launch, and binds the
+    document RO at ``~/spawn.yaml``.  Nothing goes in the env (system-design § Delivery
+    at launch: "nothing writes a variable after the channel"), so a ``podman exec``
+    shell and a user's own init script read the same number."""
 
-    def test_the_launch_env_carries_the_helpers_number(self, hub_and_sock):
+    def test_each_helper_gets_its_own_number(self, hub_and_sock):
         hub, sock_path, ctx = hub_and_sock
-        ctx.env = {"FOO": "bar", "KANIBAKO_HELPER_NUM": "9"}
-        _helper_tree(ctx.helpers_dir / "1")
+        ctx.env = {"FOO": "bar"}
+        one = ctx.helpers_dir / "1"
+        five = one / "helpers" / "5"
+        for home in (one, five):
+            _helper_tree(home)
+        write_spawn_budget(one / "spawn.yaml", SpawnBudget(depth=3, breadth=4))
         assert _connect_and_send(sock_path, {"action": "spawn", "helper_num": 1})["status"] == "ok"
-        env = ctx.runtime.run.call_args[1]["env"]
-        assert env == {"FOO": "bar", "KANIBAKO_HELPER_NUM": "1"}
-        # The director's snapshot is shared by every helper: never written through.
-        assert ctx.env == {"FOO": "bar", "KANIBAKO_HELPER_NUM": "9"}
+        assert _connect_and_send(sock_path, {
+            "action": "spawn", "helper_num": 5, "requester": 1,
+        })["status"] == "ok"
+        assert read_helper_number(one / "spawn.yaml") == 1
+        assert read_helper_number(five / "spawn.yaml") == 5
+        # The parent's budget is kept beside the number.
+        assert read_spawn_budget(one / "spawn.yaml") == SpawnBudget(depth=3, breadth=4)
+        # The document is bound RO at the spawn-budget row's dest, and the env is the
+        # director's snapshot as it stands: no per-helper variable.
+        call_kwargs = ctx.runtime.run.call_args[1]
+        dest, options = helper_budget_dest()
+        by_dest = {m.destination: m for m in call_kwargs["extra_mounts"]}
+        doc_mount = by_dest[normalize_bind_dest(dest)]
+        assert (doc_mount.source, doc_mount.options) == (five / "spawn.yaml", options)
+        assert call_kwargs["env"] == {"FOO": "bar"}
+        assert ctx.env == {"FOO": "bar"}
 
-    def test_a_custom_init_script_still_yields_the_right_number(self, tmp_path, mock_ctx):
-        """Fake podman: the stamp is on the container (``inspect_env``), and a helper whose
-        entrypoint is a user's script with no export still reads its own number."""
+    def test_a_respawn_rewrites_the_same_number(self, hub_and_sock):
+        hub, sock_path, ctx = hub_and_sock
+        one = ctx.helpers_dir / "1"
+        _helper_tree(one)
+        assert _connect_and_send(sock_path, {"action": "spawn", "helper_num": 1})["status"] == "ok"
+        write_helper_number(one / "spawn.yaml", 9)  # a stale or tampered value
+        assert _connect_and_send(sock_path, {"action": "spawn", "helper_num": 1})["status"] == "ok"
+        assert read_helper_number(one / "spawn.yaml") == 1
+
+    def test_an_unwritable_document_is_a_failed_launch(self, hub_and_sock):
+        """The number cannot be delivered: an error reply, nothing launched, the number
+        not held."""
+        hub, sock_path, ctx = hub_and_sock
+        one = ctx.helpers_dir / "1"
+        _helper_tree(one)
+        (one / "spawn.yaml").mkdir()
+        resp = _connect_and_send(sock_path, {"action": "spawn", "helper_num": 1})
+        assert resp["status"] == "error"
+        ctx.runtime.run.assert_not_called()
+        assert 1 not in hub._homes
+
+    def test_a_custom_init_script_and_an_exec_shell_read_the_right_number(
+        self, tmp_path, mock_ctx,
+    ):
+        """Fake podman.  Helper 1 launches helper 5; then helper 5's own entrypoint (a
+        user's script that exports nothing) and an exec-style call with no helper
+        variable at all each read 5 from the document the hub wrote."""
         import subprocess
         import sys
 
@@ -683,23 +733,29 @@ class TestHubStampsTheHelperNumber:
         finally:
             hub.stop()
         assert resp == {"status": "ok", "container_name": "kb-primary-testproj-helper-5"}
-        assert mock_ctx.runtime.inspect_env(resp["container_name"], "KANIBAKO_HELPER_NUM") == "5"
-
-        # Run the helper's own entrypoint as the container would: its recorded env, the
-        # number the hub passed, and the in-box CLI's read of its own number.
         argv = rec.read_text().split("\n")
         box_env = dict(argv[i + 1].split("=", 1) for i, a in enumerate(argv) if a == "-e")
+        assert box_env["FOO"] == "bar"
+        assert not [k for k in box_env if "HELPER" in k]
+
+        # In the box ``~`` is the helper root (the home bind), so ``~/spawn.yaml`` is
+        # the document the hub wrote.
         box_env.update(PATH="/usr/bin:/bin", HOME=str(child),
                        PYTHONPATH=str(Path(helper_listener.__file__).parents[2]))
         number_arg = argv[argv.index("test:latest") + 1]
         probe = ("from kanibako.commands.helper_cmd import _own_helper_number;"
                  "print(_own_helper_number())")
-        out = subprocess.run(
+        via_init = subprocess.run(
             ["bash", str(child / "scripts" / "helper-init.sh"), number_arg,
              sys.executable, "-c", probe],
             env=box_env, capture_output=True, text=True, timeout=60,
         )
-        assert (out.returncode, out.stdout.strip()) == (0, "5"), out.stderr
+        assert (via_init.returncode, via_init.stdout.strip()) == (0, "5"), via_init.stderr
+        via_exec = subprocess.run(
+            [sys.executable, "-c", probe], env=box_env,
+            capture_output=True, text=True, timeout=60,
+        )
+        assert (via_exec.returncode, via_exec.stdout.strip()) == (0, "5"), via_exec.stderr
 
 
 class TestHubStop:

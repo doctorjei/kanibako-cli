@@ -13,10 +13,10 @@ from typing import TYPE_CHECKING, Any
 
 from kanibako.channels.helpers import (
     HELPER_CORE_LEAVES,
-    HELPER_NUM_ENV,
     HELPER_SCRIPTS_RELPATH,
     INIT_SCRIPT_NAME,
     SPAWN_CONFIG_FILENAME,
+    write_helper_number,
 )
 from kanibako.errors import ContainerError
 from kanibako.runtime.container import ContainerRuntime
@@ -368,8 +368,13 @@ class HelperHub:
             materialize_canon_skeleton_if_present(helper_home)
 
         try:
-            # Inside the try: a mount that cannot be built is a failed launch with a
-            # reply, not a dropped connection.
+            # Inside the try: a document or mount that cannot be written is a failed
+            # launch with a reply, not a dropped connection.
+            # The helper's NUMBER goes in its own spawn document (keyspec
+            # ``meta.box.helper_num``, set at spawn), written here at every launch and
+            # bound RO at ``~/spawn.yaml`` below, never into its env: system-design
+            # § Delivery at launch lets nothing write a variable after the channel.
+            write_helper_number(helper_home / SPAWN_CONFIG_FILENAME, helper_num)
             mounts = _build_helper_mounts(ctx, helper_num, helpers_dir_host)
             rc = ctx.runtime.run(
                 ctx.image,
@@ -386,12 +391,7 @@ class HelperHub:
                 vault_rw_path=helper_home / HELPER_CORE_LEAVES["vault_rw_path"],
                 extra_mounts=mounts or None,
                 enable_vault=True,
-                # The director's realized env, plus this helper's own stamp: its
-                # number is derived HERE, per helper, so the hub installs it on the
-                # launch env as a launch installs its ``KANIBAKO_*`` stamps (system-design
-                # § Delivery at launch).  It beats an inherited value, and the shared
-                # snapshot is never written through.
-                env={**(ctx.env or {}), HELPER_NUM_ENV: str(helper_num)},
+                env=ctx.env,
                 name=container_name,
                 entrypoint=init_script,
                 cli_args=cli_args,
@@ -714,12 +714,12 @@ def _build_helper_mounts(ctx: HelperContext, helper_num: int,
     if all_link.exists():
         mounts.append(Mount(all_link, f"{GUEST_HOME}/all", "Z,U"))
 
-    # The handed-down SPAWN BUDGET: the copy the PARENT wrote into this helper's home
-    # (``commands.helper_cmd``), mounted at the dest and options of the director's own
+    # The SPAWN DOCUMENT: the budget the PARENT wrote into this helper's home
+    # (``commands.helper_cmd``) and the number the hub wrote beside it, mounted at the dest and options of the director's own
     # declared row, spec §2c ``box.bindings.ro[~/spawn.yaml]`` — one row for both, so
     # this mount is NOT under the exemption above.  For a helper the dest is the
     # source's own path, so the ``ro`` bind covers the only in-box path to the file: a
-    # helper must not be able to raise the budget it was handed.
+    # helper must not be able to raise the budget it was handed or change its number.
     budget_doc = helper_root / SPAWN_CONFIG_FILENAME
     if budget_doc.is_file():
         budget_dest, budget_options = helper_budget_dest()
