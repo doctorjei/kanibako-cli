@@ -19,7 +19,9 @@ from kanibako.commands.flags import add_null_flag, add_set_force_flag
 from kanibako.settings.config import user_config_file, load_config
 from kanibako.launch.box_identity import box_name_cure, validate_box_name
 from kanibako.settings.messages import ERR_WS_CONNECT_PATH_IS_PRIMARY_BOX
-from kanibako.errors import BoxNameError, ConfigError, ProjectError, WorksetError
+from kanibako.errors import (
+    BoxNameError, ConfigError, KanibakoError, ProjectError, WorksetError,
+)
 from kanibako.settings.settings_resolve import UNSET
 from kanibako.settings.paths import (
     BoxMode,
@@ -893,18 +895,36 @@ def _refuse_disconnect_while_live(std, ws, member: str, *, force: bool,
 
 
 def _print_disconnect_leftovers(ws, proj) -> None:
-    """After a plain disconnect: where the member's files stay, and the two cures."""
+    """After a plain disconnect: where the member's files stay, and the two cures.
+
+    ⚑ NEVER RAISES: the member is already released, so a failure here would report a
+    finished disconnect as failed and hide its cures.  A leaf that cannot be checked is
+    still listed (it may hold data); folders that cannot be located are said so.
+    """
     from kanibako.project.workset import _member_store_bases
 
-    kept = [base / proj.name for base in _member_store_bases(ws)
-            if (base / proj.name).exists()]
-    if is_in_tree_workspace(ws, proj.source_path) and proj.source_path.exists():
-        kept.append(proj.source_path)
-    if not kept:
+    leaves: list[Path] = []
+    unlocated: Exception | None = None
+    try:
+        leaves.extend(base / proj.name for base in _member_store_bases(ws))
+        if is_in_tree_workspace(ws, proj.source_path):
+            leaves.append(proj.source_path)
+    except (KanibakoError, OSError) as e:
+        unlocated = e
+    kept: list[str] = []
+    for leaf in leaves:
+        try:
+            if leaf.exists():
+                kept.append(str(leaf))
+        except OSError as e:
+            kept.append(f"{leaf}  (could not be checked: {e.strerror or e})")
+    if not kept and unlocated is None:
         return
     print("  Its files stay where they are:")
-    for path in kept:
-        print(f"    {path}")
+    for line in kept:
+        print(f"    {line}")
+    if unlocated is not None:
+        print(f"    (its other folders could not be located: {unlocated})")
     connect = (f"kanibako workset connect {shlex.quote(ws.name)} "
                f"{shlex.quote(str(proj.source_path))} --name {shlex.quote(proj.name)}")
     print(f"  Re-adopt them: {connect}")

@@ -14,6 +14,7 @@ production parser, so a base run fails on behavior, not on an import.
 from __future__ import annotations
 
 import fcntl
+import os
 import shlex
 
 import pytest
@@ -172,3 +173,54 @@ class TestStoppedMemberAndTheCure:
         assert "not found in workset 'nws'" in err
         assert "may be running" not in err
 
+
+
+class TestLeftoversNeverFailADisconnect:
+    """The member is released BEFORE the listing, so the listing must not raise.
+
+    Measured on 37743612: an unreadable ``vault/rw`` made ``Path.exists`` raise
+    PermissionError after the release — traceback, rc 1, no cures, member gone.
+    """
+
+    @pytest.mark.skipif(os.geteuid() == 0, reason="root reads a mode-000 dir")
+    def test_an_unreadable_store_is_listed_as_unchecked(
+            self, world, monkeypatch, capsys):
+        std, ws, _log = world
+        _answer_yes(monkeypatch)
+        ws.vault_rw_dir.chmod(0o000)
+        try:
+            rc = _door("workset", "disconnect", "nws", "bar")
+        finally:
+            ws.vault_rw_dir.chmod(0o755)
+        out = capsys.readouterr().out
+        assert rc == 0
+        assert f"{ws.vault_rw_dir / 'bar'}  (could not be checked:" in out
+        assert str(ws.projects_dir / "bar") in out
+        assert "Re-adopt them: kanibako workset connect nws " in out
+        assert "bar" not in _members(std, ws)
+        assert (ws.vault_rw_dir / "bar" / "data.txt").read_text() == "KEEP-bar\n"
+
+    def test_an_unresolvable_vault_pair_still_prints_the_cures(
+            self, world, monkeypatch, capsys):
+        from kanibako.commands import workset_cmd
+        from kanibako.errors import ConfigError
+        from kanibako.project import workset as workset_mod
+
+        std, ws, _log = world
+        _answer_yes(monkeypatch)
+        real_remove = workset_cmd.remove_project
+
+        def remove_then_break(*args, **kwargs):
+            proj = real_remove(*args, **kwargs)
+
+            def refuse(*_a, **_k):
+                raise ConfigError("workset.yaml could not be read")
+            monkeypatch.setattr(workset_mod, "resolve_workset_vault_pair", refuse)
+            return proj
+
+        monkeypatch.setattr(workset_cmd, "remove_project", remove_then_break)
+        assert _door("workset", "disconnect", "nws", "bar") == 0
+        out = capsys.readouterr().out
+        assert "could not be located: workset.yaml could not be read" in out
+        assert "Re-adopt them: kanibako workset connect nws " in out
+        assert "bar" not in _members(std, ws)
