@@ -20,10 +20,11 @@ Kanibako orchestrates the full patching lifecycle:
 in the box where patching runs).  The patching invocation is under
 active development -- see the implementation plan for current status.
 
-Enable it in the claude agent file, `agents/claude/agent.yaml` under `config.data`
-(by default `~/.local/share/kanibako/agents/claude/agent.yaml`). `transform_settings` is a
-file-only table: `kanibako agent set` and `kanibako system set` refuse it, and
-`~/.config/kanibako.cfg` holds only the `config.*` paths.
+Enable it in the claude agent file, `claude/agent.yaml` under `config.agents` (default
+`{config.data}/agents`, so by default `~/.local/share/kanibako/agents/claude/agent.yaml`).
+The file exists only after a `create`; before that, there is nowhere to enable it.
+`transform_settings` is a file-only table: `kanibako agent set` and `kanibako system set`
+refuse it, and `~/.config/kanibako.cfg` holds only the `config.*` paths.
 
 ```yaml
 self:

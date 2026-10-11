@@ -2352,9 +2352,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   to copy and nothing is lost.
 
 - **The tweakcc patched-binary cache moved into the agent store, and the box mounts it at
-  `~/.kanibako/cache/tweakcc`.** It lived at `$XDG_CACHE_HOME/kanibako/tweakcc`, and only helper
-  boxes saw it, read-only at that same host path. It is now the declared `agent.claude.caches`
-  entry (spec §2d): host source `agents/claude/caches/tweakcc`, in-box dest
+  `~/.kanibako/cache/tweakcc`.** It lived by default at `$XDG_CACHE_HOME/kanibako/tweakcc`, and
+  only helper boxes saw it, read-only at that same host path. It is now the declared
+  `agent.claude.caches` entry (spec §2d): host source `agents/claude/caches/tweakcc`, in-box dest
   `~/.kanibako/cache/tweakcc`, delivered by the category route like every other bind. The box and
   its helpers both mount it there, read-write. A persona launch shares one cache per harness
   through the persona symlink shim. Upgrade the claude plugin with core. ⚑ **Nothing is lost:**

@@ -7333,9 +7333,9 @@ shipped templates; plain `kanibako setup` is not enough (see
 want the old cache's disk space back.**
 
 **What changed.** In v1.7.2 only helper boxes saw the tweakcc cache, read-only at its host path
-(`$XDG_CACHE_HOME/kanibako/tweakcc`). The cache is now the claude plugin's `agent.claude.caches`
-entry: the box and its helpers mount it read-write at `~/.kanibako/cache/tweakcc`, and the host
-directory is `agents/claude/caches/tweakcc` under your agent store. The patched agent binary's own
+(by default `$XDG_CACHE_HOME/kanibako/tweakcc`). The cache is now the claude plugin's
+`agent.claude.caches` entry: the box and its helpers mount it read-write at
+`~/.kanibako/cache/tweakcc`, and the host directory is `agents/claude/caches/tweakcc` under your agent store. The patched agent binary's own
 mount is unchanged.
 
 **What happens on the first start.** The new host directory starts empty, so kanibako patches the
