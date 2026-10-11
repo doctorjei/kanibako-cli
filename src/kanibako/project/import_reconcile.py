@@ -165,9 +165,9 @@ def check_standalone(
     Another spelling of a registered root's identity is refused ([R188]), registered
     or not, before anything is written; a registered root then gets its stale J2 entry
     cleared.  An unregistered root that is another spelling of a PARKED standalone's
-    directory is refused too.  ⚑ Here only, not in :func:`refuse_second_link`:
-    ``box register <root>`` (:func:`import_standalone`) is the route that re-registers
-    a parked box at a new spelling, and it must stay open.
+    directory, or shares its ``workset.yaml`` file, is refused too.  ⚑ Here only, not
+    in :func:`refuse_second_link`: ``box register <root>`` (:func:`import_standalone`)
+    is the route that re-registers a parked box at a new spelling, and it must stay open.
     """
     root = Path(literal_path(root))
     refuse_second_link(registry, root)
@@ -175,6 +175,15 @@ def check_standalone(
         _clear_stale_import(journal, standalone_box_store(root, early=early))
         return
     parked = registry_store.deregistered_standalone_for_dir(registry, root)
+    if parked is None:
+        # ⚑ A SEPARATE identity pass ([R188], as :func:`refuse_second_link` keys it): a
+        # hard-linked ``workset.yaml`` is one identity in another directory.  Not folded
+        # into ``_parks_standalone_dir``, which routes purges and must stay one directory.
+        parked = next(((name, entry) for name, entry in
+                       registry_store.load_deregistered(registry).items()
+                       if entry.get("kind") == "standalone" and entry.get("metadata")
+                       and registry_store._same_identity(str(entry["metadata"]), str(root))),
+                      None)
     if parked is not None and str(parked[1]["metadata"]) != str(root):
         name, stored = parked[0], parked[1]["metadata"]
         raise ImportConflictError(

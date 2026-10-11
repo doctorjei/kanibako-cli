@@ -749,6 +749,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A deregistered standalone box is refused at a hard-linked copy of its root.** After `box rm`, a `cp -al` copy
+  of the box's tree started as a second box, because the check for a parked box compared directories only. A
+  copy that shares the box's `workset.yaml` file is now refused as another path to that box, as it is while the
+  box is registered.
 - **`box rm` refuses a box that may be running.** A plain `box rm` deregistered a running box, so its container
   ran on with no box name to reach it. It now asks the runtime first, as `box rm --purge` does; a box that runs
   or holds its lock is refused, with its `kanibako stop` command. `--force` removes it anyway.

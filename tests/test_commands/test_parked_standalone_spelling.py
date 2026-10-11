@@ -205,3 +205,54 @@ class TestTheRoutesThatStayOpen:
         std, _name, real, _lnk = parked_at_link
         registry_store.register_standalone(std.registry, "other_sa2", real)
         assert _resolve(std, real, monkeypatch).mode is BoxMode.standalone
+
+
+@pytest.fixture
+def parked_with_hard_linked_copy(config_file, tmp_home, credentials_dir, capsys):
+    """Box created and parked at ``real/sa2``; ``hl`` is a ``cp -al`` of it afterwards."""
+    import subprocess
+
+    real, hl = tmp_home / "real" / "sa2", tmp_home / "hl"
+    std, name = _park(config_file, capsys, real, real)
+    subprocess.run(["cp", "-al", str(real), str(hl)], check=True)
+    return std, name, real, hl
+
+
+class TestAHardLinkedCopyOfAParkedRoot:
+    """``cp -al`` shares the root ``workset.yaml`` file: one identity ([R188]) in another
+    directory.  Registered, [R188] refuses it; parked, the identity pass does."""
+
+    def test_start_resolution_is_refused(self, parked_with_hard_linked_copy, monkeypatch):
+        std, name, real, hl = parked_with_hard_linked_copy
+        before = (_digest(real), _digest(hl), _registry_bytes(std), _journal_state(std))
+        with pytest.raises(ImportConflictError, match=PARKED) as exc:
+            _resolve(std, hl, monkeypatch)
+        assert f"'{name}' (kept at {real})" in str(exc.value)
+        assert (_digest(real), _digest(hl), _registry_bytes(std),
+                _journal_state(std)) == before
+
+    def test_box_purge_of_the_copy_deletes_nothing(self, parked_with_hard_linked_copy):
+        std, _name, real, hl = parked_with_hard_linked_copy
+        before = (_digest(real), _digest(hl), _registry_bytes(std))
+        with pytest.raises(ImportConflictError, match=PARKED):
+            _door("box", "purge", "--force", str(hl))
+        assert (_digest(real), _digest(hl), _registry_bytes(std)) == before
+
+    def test_the_stored_root_still_resolves(self, parked_with_hard_linked_copy, monkeypatch):
+        from kanibako.settings.paths import BoxMode
+
+        std, _name, real, _hl = parked_with_hard_linked_copy
+        assert _resolve(std, real, monkeypatch).mode is BoxMode.standalone
+
+    def test_a_plain_copy_is_not_this_identity(self, config_file, tmp_home, credentials_dir,
+                                               capsys, monkeypatch):
+        """``cp -a`` writes a new ``workset.yaml`` file: the identity pass is silent."""
+        import shutil
+
+        real, cp = tmp_home / "real" / "sa2", tmp_home / "cp"
+        std, _name = _park(config_file, capsys, real, real)
+        shutil.copytree(real, cp, symlinks=True)
+        try:
+            _resolve(std, cp, monkeypatch)
+        except ImportConflictError as e:
+            assert PARKED not in str(e), e
