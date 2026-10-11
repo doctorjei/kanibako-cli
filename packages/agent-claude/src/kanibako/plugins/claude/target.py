@@ -20,6 +20,7 @@ from kanibako.settings.agent_defaults import (
 )
 from kanibako.log import get_logger
 from kanibako.targets.base import (
+    AccessReport,
     AgentInstall,
     BindArm,
     CategoryBindDefaults,
@@ -31,9 +32,9 @@ from kanibako.targets.base import (
     ProbeEvidence,
     Target,
     TargetSetting,
-    http_probe,
-    probe_outcome,
-    probe_outcome_no_model,
+    access_outcome,
+    probe_general_access,
+    probe_model_access,
 )
 
 from kanibako.plugins.claude.credentials import (
@@ -77,6 +78,11 @@ _PERSONA_TOKEN_VAR = "ANTHROPIC_AUTH_TOKEN"
 _TIER_MODEL_VAR = "ANTHROPIC_DEFAULT_{tier}_MODEL"
 
 
+def _is_tier_alias(model: str) -> bool:
+    """*model* has the shape of a tier alias: a bare ASCII word, which no provider id is."""
+    return model.isascii() and model.isalnum()
+
+
 def _wire_model(model: str | None, env: "Mapping[str, str] | None") -> tuple[str | None, str]:
     """The model id the BOX would put on the wire, and a note saying where it came from.
 
@@ -97,7 +103,7 @@ def _wire_model(model: str | None, env: "Mapping[str, str] | None") -> tuple[str
     if not model:
         return None, ""
     alias = model.strip()
-    if not (alias.isascii() and alias.isalnum()):
+    if not _is_tier_alias(alias):
         return alias, ""
     var = _TIER_MODEL_VAR.format(tier=alias.upper())
     resolved = (env or {}).get(var, "")
@@ -378,14 +384,19 @@ class ClaudeTarget(Target):
         env: Mapping[str, str] | None = None,
         timeout: float = 5.0,
     ) -> PersonaProbeOutcome:
-        """Minimal anthropic ``/v1/messages`` ack against a persona endpoint.
+        """Two-axis anthropic probe of a persona endpoint: ``GET /v1/models``, then ``/v1/messages``.
 
-        A genuine 1-token completion request (the messages wire an
-        ``ANTHROPIC_BASE_URL`` endpoint serves), bearer-authed with the token
-        at *token_path* when one is configured — the same delivery shape the
-        box uses (``ANTHROPIC_AUTH_TOKEN`` → ``Authorization: Bearer``).  Per
-        the base contract: 2xx → ``PASS``, 401/403 → ``REJECTED``,
-        unreachable/ambiguous → ``INCONCLUSIVE``.
+        The GENERAL axis (:func:`~kanibako.targets.base.probe_general_access`) asks
+        for the model list, which names no model: with the token, then — only if
+        that answered 2xx — once more WITHOUT it (the control request carries no
+        credential).  The MODEL axis is a genuine 1-token completion request (the
+        messages wire an ``ANTHROPIC_BASE_URL`` endpoint serves).  Both always run,
+        each with its own *timeout*, bearer-authed with the token at *token_path*
+        when one is configured — the same delivery shape the box uses
+        (``ANTHROPIC_AUTH_TOKEN`` → ``Authorization: Bearer``).  The verdict is
+        :func:`~kanibako.targets.base.access_outcome`'s; ``model_exact`` is False
+        for a tier alias, resolved or not, since a rung above the store can map it
+        to another id in the box.
 
         ⚑ **A PRESENT-null *token_path* (2026-08-17 ruling) is still PROBED,
         with the ``Authorization`` header OMITTED** — a persona whose
@@ -416,9 +427,12 @@ class ClaudeTarget(Target):
 
         The one ``NOT_APPLICABLE`` this decides for itself is a CONFIGURED
         (non-``None``) token file that is unreadable or empty.  The token is
-        read transiently for this request only; never logged or persisted.
+        read once, transiently, and sent on the keyed model-free request and the
+        model request only — never on the control request; never logged or
+        persisted.
         """
         headers: dict[str, str] = {"anthropic-version": "2023-06-01"}
+        credential: tuple[str, str] | None = None
         if token_path is not None:
             try:
                 token = token_path.read_text(encoding="utf-8").strip()
@@ -430,7 +444,7 @@ class ClaudeTarget(Target):
                 return PersonaProbeOutcome.not_applicable(
                     f"the token file ({token_path}) is empty"
                 )
-            headers["Authorization"] = f"Bearer {token}"
+            credential = ("Authorization", f"Bearer {token}")
         wire_model, model_origin = _wire_model(model, env)
         body: dict = {
             "max_tokens": 1,
@@ -444,15 +458,27 @@ class ClaudeTarget(Target):
             model_origin=model_origin,
             token_path=token_path,
         )
-        response = http_probe(
-            endpoint.rstrip("/") + "/v1/messages",
+        base = endpoint.rstrip("/")
+        general = probe_general_access(
+            base + "/v1/models",
             headers=headers,
-            body=body,
+            credential=credential,
+            sent=sent,
             timeout=timeout,
         )
-        if wire_model:
-            return probe_outcome(response, sent)
-        return probe_outcome_no_model(response, sent)
+        if credential is not None:
+            headers[credential[0]] = credential[1]
+        access = probe_model_access(
+            base + "/v1/messages",
+            headers=headers,
+            body=body,
+            sent=sent,
+            timeout=timeout,
+        )
+        return access_outcome(
+            AccessReport(general, access),
+            model_exact=not (model and _is_tier_alias(model.strip())),
+        )
 
     def invalidate_credentials(self, home: Path) -> None:
         """Remove credential files from a shell directory."""

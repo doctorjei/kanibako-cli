@@ -22,6 +22,7 @@ _CLAUDE_BEHAVIOR = load_behavior(_DEFAULTS_PACKAGE, _DEFAULTS_FILE)
 
 ## Functions
 ```
+def _is_tier_alias(model: str) -> bool
 def _wire_model(model: str | None, env: 'Mapping[str, str] | None') -> tuple[str | None, str]
 def _autoupdater_disabled_env() -> dict[str, str]
 ```

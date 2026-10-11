@@ -36,6 +36,7 @@ from kanibako.settings.agent_defaults import (
 )
 from kanibako.log import get_logger
 from kanibako.targets.base import (
+    AccessReport,
     AgentInstall,
     CategoryBindDefaults,
     PersonaProbeOutcome,
@@ -45,9 +46,9 @@ from kanibako.targets.base import (
     ProbeEvidence,
     Target,
     TargetSetting,
-    http_probe,
-    probe_outcome,
-    probe_outcome_no_model,
+    access_outcome,
+    probe_general_access,
+    probe_model_access,
 )
 
 if TYPE_CHECKING:
@@ -504,16 +505,20 @@ class CodexTarget(Target):
         env: Mapping[str, str] | None = None,
         timeout: float = 5.0,
     ) -> PersonaProbeOutcome:
-        """Minimal OpenAI ``/responses`` ack against a persona endpoint.
+        """Two-axis OpenAI probe of a persona endpoint: ``GET /models``, then ``/responses``.
 
-        A genuine few-token completion on the RESPONSES wire — the only wire
-        current codex speaks (``wire_api = "responses"``).  Per the base contract:
-        2xx → ``PASS``, 401/403 → ``REJECTED``, unreachable/ambiguous →
-        ``INCONCLUSIVE``.
+        The GENERAL axis (:func:`~kanibako.targets.base.probe_general_access`) asks
+        for the model list, which names no model: with the token, then — only if
+        that answered 2xx — once more WITHOUT it (the control request carries no
+        credential).  The MODEL axis is a genuine few-token completion on the
+        RESPONSES wire — the only wire current codex speaks (``wire_api =
+        "responses"``).  Both always run, each with its own *timeout*.  The verdict
+        is :func:`~kanibako.targets.base.access_outcome`'s, with ``model_exact``
+        always True: codex sends its configured id verbatim.
 
         ⚑ *endpoint* is the provider ``base_url``, which by codex's convention
-        ALREADY carries the ``/v1``-style prefix this appends ``/responses`` to —
-        NOT an origin-only host like goose's ``OPENAI_HOST``.
+        ALREADY carries the ``/v1``-style prefix this appends ``/models`` and
+        ``/responses`` to — NOT an origin-only host like goose's ``OPENAI_HOST``.
 
         ⚑ **A PRESENT-null *token_path* (2026-08-17 ruling) is still PROBED, with
         the ``Authorization`` header OMITTED** — that persona declares the
@@ -540,10 +545,12 @@ class CodexTarget(Target):
         what goes out and there is nothing here to resolve.
 
         The one ``NOT_APPLICABLE`` decided here is a CONFIGURED (non-``None``)
-        token file that is unreadable or empty.  The token is read transiently for
-        this request only; never logged or persisted.
+        token file that is unreadable or empty.  The token is read once,
+        transiently, and sent on the keyed model-free request and the model request
+        only — never on the control request; never logged or persisted.
         """
         headers: dict[str, str] = {}
+        credential: tuple[str, str] | None = None
         if token_path is not None:
             try:
                 token = token_path.read_text(encoding="utf-8").strip()
@@ -555,20 +562,29 @@ class CodexTarget(Target):
                 return PersonaProbeOutcome.not_applicable(
                     f"the token file ({token_path}) is empty"
                 )
-            headers["Authorization"] = f"Bearer {token}"
+            credential = ("Authorization", f"Bearer {token}")
         body: dict = {"input": "ping", "max_output_tokens": 16}
         if model:
             body["model"] = model
         sent = ProbeEvidence(endpoint=endpoint, model=model, token_path=token_path)
-        response = http_probe(
-            endpoint.rstrip("/") + "/responses",
+        base = endpoint.rstrip("/")
+        general = probe_general_access(
+            base + "/models",
             headers=headers,
-            body=body,
+            credential=credential,
+            sent=sent,
             timeout=timeout,
         )
-        if model:
-            return probe_outcome(response, sent)
-        return probe_outcome_no_model(response, sent)
+        if credential is not None:
+            headers[credential[0]] = credential[1]
+        access = probe_model_access(
+            base + "/responses",
+            headers=headers,
+            body=body,
+            sent=sent,
+            timeout=timeout,
+        )
+        return access_outcome(AccessReport(general, access), model_exact=True)
 
     def generate_agent_config(self) -> AgentConfig:
         """Return default Codex agent configuration.

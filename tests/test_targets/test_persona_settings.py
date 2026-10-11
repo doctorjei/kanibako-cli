@@ -26,6 +26,8 @@ from kanibako.plugins.claude.target import ClaudeTarget
 from kanibako.plugins.codex.target import CodexTarget
 from kanibako.plugins.goose.target import GooseTarget
 from kanibako.targets.base import (
+    GeneralAccess,
+    ModelAccess,
     PersonaProbeVerdict,
     PersonaReadOutcome,
     PersonaSettings,
@@ -343,6 +345,7 @@ class _ProbeServer:
         self.script = dict(script or {})
         self.hangs = dict(hangs or {})
         self.log: list[tuple[str, str, str | None, str | None, bytes]] = []
+        self.versions: list[str | None] = []  # anthropic-version, one per request
         self.last_path: str | None = None
         self.last_auth: str | None = None
         self.last_version: str | None = None
@@ -361,6 +364,7 @@ class _ProbeServer:
                 outer.last_path = self.path
                 outer.last_auth = auth
                 outer.last_version = self.headers.get("anthropic-version")
+                outer.versions.append(outer.last_version)
                 try:
                     outer.last_body = json.loads(raw)
                 except ValueError:
@@ -964,6 +968,141 @@ class TestVerifyPersonaResolvesATierAlias:
             server.close()
         assert server.last_body is not None
         assert server.last_body["model"] == "sonnet"
+
+
+
+# The measured bug: a key the endpoint accepts without a model, a model request it refuses.
+_VERIFIED_THEN_REFUSED = {("GET", True): 200, ("GET", False): 401, ("POST", True): 403}
+
+
+class TestVerifyPersonaTwoAxes:
+    """Q29 rule 3: both plugins probe a GENERAL axis (a model-free GET of the model
+    list, then a control GET without the credential) and the MODEL axis (today's
+    completion request), and decide through ``access_outcome``.
+    """
+
+    _PATHS = {ClaudeTarget: ("/v1/models", "/v1/messages"), CodexTarget: ("/models", "/responses")}
+
+    @pytest.mark.parametrize("target_cls", [ClaudeTarget, CodexTarget])
+    def test_a_verified_key_refused_for_an_alias_is_the_H1_cell(self, token_file, target_cls):
+        server = _ProbeServer(script=_VERIFIED_THEN_REFUSED)
+        try:
+            outcome = _probe(target_cls(), server, token_file, model="sonnet")
+        finally:
+            server.close()
+        assert outcome.verdict is PersonaProbeVerdict.REJECTED  # H1 pending: today's verdict
+        assert outcome.access is not None
+        assert outcome.access.general.state is GeneralAccess.VERIFIED
+        assert outcome.access.model.state is ModelAccess.DENIED
+        assert outcome.access.control_status == 401
+        lists, models = self._PATHS[target_cls]
+        assert [(m, p) for m, p, *_ in server.log] == [
+            ("GET", lists), ("GET", lists), ("POST", models),
+        ]
+
+    @pytest.mark.parametrize("target_cls", [ClaudeTarget, CodexTarget])
+    def test_the_token_rides_two_requests_and_never_the_control(self, token_file, target_cls):
+        """H3: read once, sent on at most two requests; the control request carries none."""
+        server = _ProbeServer(status=200, script={("GET", False): 401})
+        try:
+            _probe(target_cls(), server, token_file)
+        finally:
+            server.close()
+        auths = [auth for _, _, auth, *_ in server.log]
+        assert auths == ["Bearer sk-test-secret", None, "Bearer sk-test-secret"]
+
+    def test_claude_GETs_carry_anthropic_version(self, token_file):
+        server = _ProbeServer(status=200, script={("GET", False): 401})
+        try:
+            _probe(ClaudeTarget(), server, token_file)
+        finally:
+            server.close()
+        assert server.versions == ["2023-06-01"] * 3
+
+    def test_codex_GETs_carry_no_anthropic_version(self, token_file):
+        server = _ProbeServer(status=200, script={("GET", False): 401})
+        try:
+            _probe(CodexTarget(), server, token_file)
+        finally:
+            server.close()
+        assert server.versions == [None] * 3
+
+    @pytest.mark.parametrize("target_cls", [ClaudeTarget, CodexTarget])
+    def test_a_GET_never_carries_a_body_or_a_model(self, token_file, target_cls):
+        server = _ProbeServer(status=200, script={("GET", False): 401})
+        try:
+            _probe(target_cls(), server, token_file, model=None)
+        finally:
+            server.close()
+        gets = [entry for entry in server.log if entry[0] == "GET"]
+        assert len(gets) == 2
+        for _, path, _, content_type, raw in gets:
+            assert raw == b"" and content_type is None and "?" not in path
+        assert server.log[-1][0] == "POST"
+        assert "model" not in json.loads(server.log[-1][4])
+
+    @pytest.mark.parametrize("target_cls", [ClaudeTarget, CodexTarget])
+    def test_keyless_sends_one_bare_GET_then_the_POST(self, target_cls):
+        server = _ProbeServer(status=200)
+        try:
+            outcome = target_cls().verify_persona(server.endpoint, None, "gemma4", timeout=5.0)
+        finally:
+            server.close()
+        assert outcome.verdict is PersonaProbeVerdict.PASS
+        assert [(m, auth) for m, _, auth, *_ in server.log] == [("GET", None), ("POST", None)]
+        assert outcome.access.general.state is GeneralAccess.OPEN
+
+    @pytest.mark.parametrize("target_cls", [ClaudeTarget, CodexTarget])
+    def test_a_hanging_GET_does_not_shorten_the_POST(self, token_file, target_cls):
+        """Each axis has its own budget: a shared one would leave the POST ~0 s."""
+        server = _ProbeServer(status=200, hangs={"GET": 1.0, "POST": 0.2})
+        try:
+            outcome = _probe(target_cls(), server, token_file, timeout=0.5)
+        finally:
+            server.close()
+        assert outcome.access.general.state is GeneralAccess.NO_ANSWER
+        assert outcome.verdict is PersonaProbeVerdict.PASS
+
+    @pytest.mark.parametrize("target_cls", [ClaudeTarget, CodexTarget])
+    def test_a_hanging_POST_is_INCONCLUSIVE(self, token_file, target_cls):
+        server = _ProbeServer(status=200, script={("GET", False): 401}, hangs={"POST": 1.0})
+        try:
+            outcome = _probe(target_cls(), server, token_file, timeout=0.3)
+        finally:
+            server.close()
+        assert outcome.access.general.state is GeneralAccess.VERIFIED
+        assert outcome.verdict is PersonaProbeVerdict.INCONCLUSIVE
+
+    @pytest.mark.parametrize(("target_cls", "model", "exact"), [
+        (ClaudeTarget, "sonnet", False),
+        (ClaudeTarget, "claude-sonnet-4-5", True),
+        (ClaudeTarget, None, True),
+        (CodexTarget, "sonnet", True),
+        (CodexTarget, "gpt-5", True),
+        (CodexTarget, None, True),
+    ])
+    def test_model_exact(self, token_file, monkeypatch, target_cls, model, exact):
+        """``model_exact`` is False only for a claude tier alias — even a resolved one."""
+        import importlib
+
+        module = importlib.import_module(target_cls.__module__)
+        seen: list[bool] = []
+        real = module.access_outcome
+
+        def spy(report, *, model_exact):
+            seen.append(model_exact)
+            return real(report, model_exact=model_exact)
+
+        monkeypatch.setattr(module, "access_outcome", spy)
+        server = _ProbeServer(status=200)
+        try:
+            target_cls().verify_persona(
+                server.endpoint, token_file, model,
+                env={"ANTHROPIC_DEFAULT_SONNET_MODEL": "claude-sonnet-4-5"}, timeout=5.0,
+            )
+        finally:
+            server.close()
+        assert seen == [exact]
 
 
 class TestProbeEvidence:
