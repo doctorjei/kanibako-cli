@@ -816,6 +816,9 @@ def run_disconnect(args: argparse.Namespace) -> int:
             keep.add(leaf)
         if snapshot_store in keep:
             snapshot_store = None
+    if _refuse_disconnect_while_live(std, ws, member, force=args.force,
+                                     remove_files=args.remove_files):
+        return 1
     if not args.force:
         label = "and remove files " if args.remove_files else ""
         confirm_prompt(
@@ -851,7 +854,62 @@ def run_disconnect(args: argparse.Namespace) -> int:
         from kanibako.commands.clean import _remove_snapshot_store
         _remove_snapshot_store(snapshot_store)
     print(f"Removed project '{proj.name}' from working set '{ws.name}'")
+    if not args.remove_files:
+        _print_disconnect_leftovers(ws, proj)
     return 0
+
+
+def _refuse_disconnect_while_live(std, ws, member: str, *, force: bool,
+                                  remove_files: bool) -> bool:
+    """The running-box pre-flight for ``workset disconnect``; True ⇒ the caller aborts.
+
+    ⚑ ONE PROBE — :func:`abort_if_box_running`, as ``box purge`` uses.  A plain disconnect
+    orphans a live container (no ref reaches it after); ``--remove-files`` deletes its
+    vaults under it.  A name that is not a member is left to ``remove_project`` to refuse.
+    """
+    from kanibako.commands.box._lifecycle import abort_if_box_running
+    from kanibako.settings.paths import (
+        WorksetSpec, box_cure_ref, resolve_workset_project,
+    )
+    from kanibako.utils import container_name_for_box_name
+
+    if all(p.name != member for p in ws.projects):
+        return False
+    proj = None
+    container = None
+    try:
+        proj = resolve_workset_project(WorksetSpec.from_workset(ws), member, std,
+                                       load_config(user_config_file()))
+    except (WorksetError, ConfigError):
+        # ⚑ Unresolvable is never "not running": ask by the member's container name.
+        container = container_name_for_box_name(member, ws.name)
+    consequence = ("Removing its files would delete its vaults while writes are in flight."
+                   if remove_files else
+                   "Disconnecting it would leave its container running with no box to stop it by.")
+    return abort_if_box_running(
+        proj, ws.projects_dir / member / ".kanibako.lock", force, consequence,
+        container_name=container,
+        cure_ref=box_cure_ref(BoxMode.named, member, ws.name, ws.projects_dir / member))
+
+
+def _print_disconnect_leftovers(ws, proj) -> None:
+    """After a plain disconnect: where the member's files stay, and the two cures."""
+    from kanibako.project.workset import _member_store_bases
+
+    kept = [base / proj.name for base in _member_store_bases(ws)
+            if (base / proj.name).exists()]
+    if is_in_tree_workspace(ws, proj.source_path) and proj.source_path.exists():
+        kept.append(proj.source_path)
+    if not kept:
+        return
+    print("  Its files stay where they are:")
+    for path in kept:
+        print(f"    {path}")
+    connect = (f"kanibako workset connect {shlex.quote(ws.name)} "
+               f"{shlex.quote(str(proj.source_path))} --name {shlex.quote(proj.name)}")
+    print(f"  Re-adopt them: {connect}")
+    print(f"  Delete them: {connect} && kanibako workset disconnect "
+          f"{shlex.quote(ws.name)} {shlex.quote(proj.name)} --remove-files")
 
 
 def run_info(args: argparse.Namespace) -> int:

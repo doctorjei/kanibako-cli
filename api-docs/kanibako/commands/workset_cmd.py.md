@@ -31,6 +31,8 @@ def run_share_remove(args: argparse.Namespace) -> int
 def run_share_list(args: argparse.Namespace) -> int
 def _load_std()
 def _workset_config_path(ws) -> Path
+def _refuse_disconnect_while_live(std, ws, member: str, *, force: bool, remove_files: bool) -> bool
+def _print_disconnect_leftovers(ws, proj) -> None
 def _run_workset_config(args: argparse.Namespace) -> int
 def _share_source_display(value: object) -> str
 def _resolve_share_workset(name: str)
