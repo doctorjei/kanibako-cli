@@ -1625,8 +1625,8 @@ class RetiredFileNames(_ViewRegistry):
                   if any(_ends_with(live_path, path) for live_path in live_paths)]
         if clash:
             raise ValueError(f"retired-file-names lists a live name: {', '.join(clash)}")
-        return ([{"key": name} for name in names]
-                + [{"key": path, "path": True} for path in _RETIRED_PATHS])
+        rows: list[dict[str, object]] = [{"key": name} for name in names]
+        return rows + [{"key": path, "path": True} for path in _RETIRED_PATHS]
 
     def declared(self, identifier: str) -> bool:
         whole = identifier.rstrip("/")

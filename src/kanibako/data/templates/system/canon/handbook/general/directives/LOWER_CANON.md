@@ -24,7 +24,7 @@ Kanibako does not seed empty lower-canon directories; create one when you first 
 
 The notebook is agent-editable and can include Law and Lore. Directories are used for primary
 organization, with `directives` & `procedures` (and `specs` if applicable) holding Local Law
-texts. These are the standard, recognized Kanibako canon paths:
+texts. Default paths (user-editable):
 
 | Path (`~/canon/notebook/`) | Description | Loaded at start by default? |
 |------------------|---------------------------------------------------------------------|-----|
@@ -42,7 +42,7 @@ minimize context consumption.
 
 #### Workbook
 
-The project-specific `~/canon/workbook` uses these conventions:
+Default `~/canon/workbook` paths (user-editable):
 
 | Path (relative) | Description | Loaded at start by default? |
 |---------------------------|-------------|-------------------------------------|

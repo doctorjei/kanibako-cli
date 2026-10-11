@@ -314,7 +314,7 @@ sets. It exists for ONE reason: to be RECOGNIZED and refused BY NAME
 
 ⚑ **The node is NON-GREEDY so the FIRST category segment splits node from name.** A DEST tail
 may itself contain a DOT-PRECEDED category token (`caches.~/.caches.x` — measured: greedy
-parses node=`claude.caches.~/`), and a greedy node would swallow everything up to the LAST one.
+parses node="claude.caches.~/"), and a greedy node would swallow everything up to the LAST one.
 *(An earlier revision claimed node segments may contain dots — measured false 2026-08-15:
 `parse_agent_ref` refuses `.` in an agent name outright. The split rule stands on the dest side
 alone.)* An UNDISCRIMINATED `agent.<category>.<name>` therefore does NOT match: the agent tier

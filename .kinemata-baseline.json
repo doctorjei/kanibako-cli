@@ -56,13 +56,6 @@
     {
       "registry": "claims",
       "entry": "claim:path",
-      "antipattern": "claude.caches.~/",
-      "path": "llm-docs/kanibako/settings/settings_categories.py.md",
-      "text": "parses node=`claude.caches.~/`), and a greedy node would swallow everything up to the LAST one."
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
       "antipattern": "dist/",
       "path": "docs/RELEASING.md",
       "text": "`agent-codex` are accepted), builds **only** that package into `dist/`, refuses"
