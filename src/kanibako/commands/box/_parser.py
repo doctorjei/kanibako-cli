@@ -2361,8 +2361,6 @@ def _report_retained_roles(root: Path, retained: "list[tuple[str, Path, str | No
             report_retained_store(path, root)
         elif role == "canon":
             report_retained_canon(path, root, why, early=early)
-        elif role in _CHANNEL_ROLES:
-            report_kept_channel(role, path)
         elif role == "creds lock":
             print(f"Note: left the creds watcher lock at {path} in place — "
                   f"{CREDS_LOCK_KEPT_WHY}.", file=sys.stderr)
