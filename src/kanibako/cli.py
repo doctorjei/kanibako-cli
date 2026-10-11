@@ -70,8 +70,8 @@ def build_parser() -> argparse.ArgumentParser:
     )
     from kanibako.commands.code_cmd import add_code_parser
     from kanibako.commands.image import add_parser as add_rig_parser
-    from kanibako.commands.box import add_parser as add_box_parser
     from kanibako.commands.box._parser import (
+        add_parser as add_box_parser,
         precheck_create,
         run_create,
         run_list as run_list_fn,

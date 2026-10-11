@@ -21,7 +21,7 @@ from kanibako.project.workset import add_project, create_workset, load_workset
 
 class TestBoxList:
     def test_list_empty(self, config_file, tmp_home, credentials_dir, capsys):
-        from kanibako.commands.box import run_list
+        from kanibako.commands.box._parser import run_list
 
         args = argparse.Namespace(show_all=False, orphan=False, quiet=False)
         rc = run_list(args)
@@ -29,7 +29,7 @@ class TestBoxList:
         assert "No known projects" in capsys.readouterr().out
 
     def test_list_shows_projects(self, config_file, tmp_home, credentials_dir, capsys):
-        from kanibako.commands.box import run_list
+        from kanibako.commands.box._parser import run_list
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -45,7 +45,7 @@ class TestBoxList:
 
     def test_list_shows_orphans_and_flags_them(self, config_file, tmp_home, credentials_dir, capsys):
         """An orphaned (missing) project is listed, with its condition on the row."""
-        from kanibako.commands.box import run_list
+        from kanibako.commands.box._parser import run_list
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -70,7 +70,7 @@ class TestBoxList:
 
     def test_list_all_includes_orphans(self, config_file, tmp_home, credentials_dir, capsys):
         """--all flag includes orphaned projects in the listing."""
-        from kanibako.commands.box import run_list
+        from kanibako.commands.box._parser import run_list
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -88,7 +88,7 @@ class TestBoxList:
 
     def test_list_quiet_names_only(self, config_file, tmp_home, credentials_dir, capsys):
         """-q flag outputs names only, one per line."""
-        from kanibako.commands.box import run_list
+        from kanibako.commands.box._parser import run_list
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -107,7 +107,7 @@ class TestBoxList:
 
     def test_list_quiet_empty(self, config_file, tmp_home, credentials_dir, capsys):
         """Quiet mode on empty list produces no output."""
-        from kanibako.commands.box import run_list
+        from kanibako.commands.box._parser import run_list
 
         args = argparse.Namespace(show_all=False, orphan=False, quiet=True)
         rc = run_list(args)
@@ -128,7 +128,7 @@ class TestBoxList:
 
     def test_list_shows_deregistered(self, config_file, tmp_home, credentials_dir, capsys):
         """box list surfaces a deregistered box + its register/purge recovery hint."""
-        from kanibako.commands.box import run_list
+        from kanibako.commands.box._parser import run_list
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -149,7 +149,7 @@ class TestBoxList:
     ):
         """A tree with NO deregistered boxes shows no deregistered section
         (the surfacing is additive — output otherwise unchanged)."""
-        from kanibako.commands.box import run_list
+        from kanibako.commands.box._parser import run_list
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -168,7 +168,7 @@ class TestBoxList:
         self, config_file, tmp_home, credentials_dir, capsys,
     ):
         """--active (and ps) never surface deregistered boxes — they aren't active."""
-        from kanibako.commands.box import run_list
+        from kanibako.commands.box._parser import run_list
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -186,7 +186,7 @@ class TestBoxList:
         self, config_file, tmp_home, credentials_dir, capsys,
     ):
         """Quiet mode lists a deregistered box's bare name (no header)."""
-        from kanibako.commands.box import run_list
+        from kanibako.commands.box._parser import run_list
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -204,7 +204,7 @@ class TestBoxList:
         self, config_file, tmp_home, credentials_dir, capsys, quiet, orphan,
     ):
         """The retained box dir under std.boxes is not ALSO an active or orphan row."""
-        from kanibako.commands.box import run_list
+        from kanibako.commands.box._parser import run_list
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -223,7 +223,7 @@ class TestBoxList:
     ):
         """A tree whose only records are deregistered still lists them (not the
         'No known projects.' early-out)."""
-        from kanibako.commands.box import run_list
+        from kanibako.commands.box._parser import run_list
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -245,7 +245,7 @@ class TestBoxList:
         column aligns.  Mutation proof: reverting the width to the fixed ``<18``
         pads ``short`` to 18 (not the long width), reddening the assertion.
         """
-        from kanibako.commands.box import run_list
+        from kanibako.commands.box._parser import run_list
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -272,7 +272,7 @@ class TestBoxList:
         output must show the member exactly once.  Mutation proof: removing the
         ``seen_rows`` dedup prints the name twice.
         """
-        from kanibako.commands.box import run_list
+        from kanibako.commands.box._parser import run_list
         from kanibako.settings.paths import iter_workset_projects
         from kanibako.project.workset import add_project, create_workset
 
@@ -304,7 +304,7 @@ class TestBoxListOrphan:
     """Tests for box list --orphan (replaces old box orphan subcommand)."""
 
     def test_orphan_no_projects(self, config_file, tmp_home, credentials_dir, capsys):
-        from kanibako.commands.box import run_list
+        from kanibako.commands.box._parser import run_list
 
         args = argparse.Namespace(show_all=False, orphan=True, quiet=False)
         rc = run_list(args)
@@ -312,7 +312,7 @@ class TestBoxListOrphan:
         assert "No orphaned projects found" in capsys.readouterr().out
 
     def test_orphan_no_orphans(self, config_file, tmp_home, credentials_dir, capsys):
-        from kanibako.commands.box import run_list
+        from kanibako.commands.box._parser import run_list
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -325,7 +325,7 @@ class TestBoxListOrphan:
         assert "No orphaned projects found" in capsys.readouterr().out
 
     def test_orphan_detects_missing_path(self, config_file, tmp_home, credentials_dir, capsys):
-        from kanibako.commands.box import run_list
+        from kanibako.commands.box._parser import run_list
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -343,7 +343,7 @@ class TestBoxListOrphan:
         assert "1 orphaned project(s)" in out
 
     def test_orphan_skips_healthy_projects(self, config_file, tmp_home, credentials_dir, capsys):
-        from kanibako.commands.box import run_list
+        from kanibako.commands.box._parser import run_list
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -367,7 +367,7 @@ class TestBoxListOrphan:
         assert "1 orphaned project(s)" in out
 
     def test_orphan_detects_workset_missing_workspace(self, config_file, tmp_home, credentials_dir, capsys):
-        from kanibako.commands.box import run_list
+        from kanibako.commands.box._parser import run_list
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -388,7 +388,7 @@ class TestBoxListOrphan:
         assert "1 orphaned project(s)" in out
 
     def test_orphan_shows_hint(self, config_file, tmp_home, credentials_dir, capsys):
-        from kanibako.commands.box import run_list
+        from kanibako.commands.box._parser import run_list
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -406,7 +406,7 @@ class TestBoxListOrphan:
 
     def test_orphan_quiet(self, config_file, tmp_home, credentials_dir, capsys):
         """--orphan -q outputs orphan names only."""
-        from kanibako.commands.box import run_list
+        from kanibako.commands.box._parser import run_list
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -482,7 +482,7 @@ class TestBoxDuplicate:
             assert f.read_text() == "THE-DESTINATION-OWN", f"{f} was written"
 
     def test_duplicate_success(self, config_file, tmp_home, credentials_dir):
-        from kanibako.commands.box import run_duplicate
+        from kanibako.commands.box._duplicate import run_duplicate
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -512,7 +512,7 @@ class TestBoxDuplicate:
         assert proj.metadata_path.is_dir()
 
     def test_duplicate_bare(self, config_file, tmp_home, credentials_dir):
-        from kanibako.commands.box import run_duplicate
+        from kanibako.commands.box._duplicate import run_duplicate
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -534,7 +534,7 @@ class TestBoxDuplicate:
         assert (projects_base / "bare_dst").is_dir()
 
     def test_duplicate_source_not_dir_error(self, config_file, tmp_home, credentials_dir):
-        from kanibako.commands.box import run_duplicate
+        from kanibako.commands.box._duplicate import run_duplicate
 
         rc = run_duplicate(self._make_args(
             tmp_home / "nonexistent", tmp_home / "dst", force=True,
@@ -542,7 +542,7 @@ class TestBoxDuplicate:
         assert rc == 1
 
     def test_duplicate_source_no_metadata_error(self, config_file, tmp_home, credentials_dir):
-        from kanibako.commands.box import run_duplicate
+        from kanibako.commands.box._duplicate import run_duplicate
 
         src_dir = tmp_home / "no_meta"
         src_dir.mkdir()
@@ -551,7 +551,7 @@ class TestBoxDuplicate:
         assert rc == 1
 
     def test_duplicate_dst_exists_error(self, config_file, tmp_home, credentials_dir):
-        from kanibako.commands.box import run_duplicate
+        from kanibako.commands.box._duplicate import run_duplicate
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -568,7 +568,7 @@ class TestBoxDuplicate:
         assert rc == 1
 
     def test_duplicate_dst_metadata_exists_error(self, config_file, tmp_home, credentials_dir):
-        from kanibako.commands.box import run_duplicate
+        from kanibako.commands.box._duplicate import run_duplicate
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -586,7 +586,7 @@ class TestBoxDuplicate:
         assert rc == 1
 
     def test_duplicate_lock_file_aborts_without_force(self, config_file, tmp_home, credentials_dir):
-        from kanibako.commands.box import run_duplicate
+        from kanibako.commands.box._duplicate import run_duplicate
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -602,7 +602,7 @@ class TestBoxDuplicate:
         assert rc == 2
 
     def test_duplicate_lock_file_skipped_with_force(self, config_file, tmp_home, credentials_dir):
-        from kanibako.commands.box import run_duplicate
+        from kanibako.commands.box._duplicate import run_duplicate
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -618,7 +618,7 @@ class TestBoxDuplicate:
         assert rc == 0
 
     def test_duplicate_excludes_lock_file(self, config_file, tmp_home, credentials_dir):
-        from kanibako.commands.box import run_duplicate
+        from kanibako.commands.box._duplicate import run_duplicate
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -644,7 +644,7 @@ class TestBoxDuplicate:
         the sole store and cannot hold a second box name for one workspace; the
         old global store minted ``fw_dst2`` for the same dir (the duplicate-``list``-
         rows bug).  ``--force`` overwrites metadata dirs, NOT the one-box invariant."""
-        from kanibako.commands.box import run_duplicate
+        from kanibako.commands.box._duplicate import run_duplicate
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -674,7 +674,7 @@ class TestBoxDuplicate:
         register/purge guidance; the retained home is untouched; no active
         membership is stranded for the refused name."""
         from kanibako.project import registry_store
-        from kanibako.commands.box import run_duplicate
+        from kanibako.commands.box._duplicate import run_duplicate
         from kanibako.settings.paths import load_primary_boxes
 
         config = load_config(config_file)
@@ -713,7 +713,7 @@ class TestBoxDuplicate:
     ):
         """--force also refuses an ORPHANED std.boxes/<name> home (no active or
         deregistered registration) rather than clobbering it."""
-        from kanibako.commands.box import run_duplicate
+        from kanibako.commands.box._duplicate import run_duplicate
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -736,7 +736,7 @@ class TestBoxDuplicate:
     ):
         """A genuinely-fresh dup name (no deregistered/orphaned home) still
         duplicates — the guard is a no-op for it."""
-        from kanibako.commands.box import run_duplicate
+        from kanibako.commands.box._duplicate import run_duplicate
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -762,7 +762,7 @@ class TestBoxDuplicate:
         assert (std.boxes / "fresh_dst").is_dir()
 
     def test_duplicate_force_overwrites_workspace(self, config_file, tmp_home, credentials_dir):
-        from kanibako.commands.box import run_duplicate
+        from kanibako.commands.box._duplicate import run_duplicate
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -786,7 +786,7 @@ class TestBoxDuplicate:
 
     def test_duplicate_keeps_every_link_verbatim(self, config_file, tmp_home, credentials_dir):
         """Workspace, box data and home: each link lands with the text it had, none followed."""
-        from kanibako.commands.box import run_duplicate
+        from kanibako.commands.box._duplicate import run_duplicate
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -807,7 +807,7 @@ class TestBoxDuplicate:
 
     def test_force_link_replaces_a_file_or_link(self, config_file, tmp_home, credentials_dir):
         """--force: a link overwrites a same-named file or link, as the file copy always did."""
-        from kanibako.commands.box import run_duplicate
+        from kanibako.commands.box._duplicate import run_duplicate
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -828,7 +828,7 @@ class TestBoxDuplicate:
 
     def test_force_link_never_removes_a_directory(self, config_file, tmp_home, credentials_dir):
         """--force: a directory where a link goes is reported, never removed."""
-        from kanibako.commands.box import run_duplicate
+        from kanibako.commands.box._duplicate import run_duplicate
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -860,7 +860,7 @@ class TestBoxDuplicate:
         must be unregistered and no partial dest dir left behind — duplicate
         either fully succeeds or leaves no trace.
         """
-        from kanibako.commands.box import run_duplicate
+        from kanibako.commands.box._duplicate import run_duplicate
         from kanibako.settings.paths import load_primary_boxes
 
         config = load_config(config_file)
@@ -898,7 +898,7 @@ class TestBoxDuplicate:
     ):
         """A failed duplicate's rollback names the name it could not unregister and the
         dir it could not remove, each once, then one summary."""
-        from kanibako.commands.box import run_duplicate
+        from kanibako.commands.box._duplicate import run_duplicate
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -939,7 +939,7 @@ class TestBoxDuplicate:
         Pre-fix the workspace merge ran FIRST, so the destination's own files had
         already been replaced by the source's by the time Guard-1 refused.
         """
-        from kanibako.commands.box import run_duplicate
+        from kanibako.commands.box._duplicate import run_duplicate
         from kanibako.settings.paths import load_primary_boxes
 
         config = load_config(config_file)
@@ -971,7 +971,7 @@ class TestBoxDuplicate:
         """The home-free check is the SECOND refusal that used to land after the
         copy; an orphaned ``std.boxes/<minted name>`` must stop the command before
         the destination workspace is merged into, and stay untouched itself."""
-        from kanibako.commands.box import run_duplicate
+        from kanibako.commands.box._duplicate import run_duplicate
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -1003,7 +1003,7 @@ class TestBoxDuplicate:
     ):
         """Route 1: a NAMED source with no ``--to`` refuses Guard-1 without
         touching a registered destination's files."""
-        from kanibako.commands.box import run_duplicate
+        from kanibako.commands.box._duplicate import run_duplicate
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -1018,7 +1018,7 @@ class TestBoxDuplicate:
         self, config_file, tmp_home, credentials_dir,
     ):
         """Route 1's other refusal: the minted home is a retained/orphaned box."""
-        from kanibako.commands.box import run_duplicate
+        from kanibako.commands.box._duplicate import run_duplicate
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -1038,7 +1038,7 @@ class TestBoxDuplicate:
         """Route 2: ``--to primary`` onto a dst whose minted home is retained.
         The F-3 front-run covers Guard-1 only, so this route still reached the
         copy before the home-free check could stop it."""
-        from kanibako.commands.box import run_duplicate
+        from kanibako.commands.box._duplicate import run_duplicate
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -1062,7 +1062,7 @@ class TestBoxDuplicate:
         """Route 3: ``--to standalone`` onto a root whose ``workset.yaml`` holds a
         scalar ``workset:``.  ``establish_standalone`` refuses that, but only
         after the merge had already filled ``<dst>/workspace``."""
-        from kanibako.commands.box import run_duplicate
+        from kanibako.commands.box._duplicate import run_duplicate
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -1084,7 +1084,7 @@ class TestBoxDuplicate:
     ):
         """Route 3's second caller: a NAMED source ``--to standalone`` reaches the
         same ``establish_standalone`` refusal from the other direction."""
-        from kanibako.commands.box import run_duplicate
+        from kanibako.commands.box._duplicate import run_duplicate
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -1103,7 +1103,7 @@ class TestBoxDuplicate:
     ):
         """The workspace copy now sits INSIDE the unwind, so a copy failure after
         the name was minted leaves no "registered but no metadata" orphan."""
-        from kanibako.commands.box import run_duplicate
+        from kanibako.commands.box._duplicate import run_duplicate
         from kanibako.settings.paths import load_primary_boxes
 
         config = load_config(config_file)
@@ -1137,7 +1137,7 @@ class TestBoxDuplicate:
 
 class TestBoxInfo:
     def test_info_local(self, config_file, tmp_home, credentials_dir, capsys):
-        from kanibako.commands.box import run_info
+        from kanibako.commands.box._parser import run_info
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -1158,7 +1158,7 @@ class TestBoxInfo:
         assert "Container:" in out
 
     def test_info_standalone(self, config_file, tmp_home, credentials_dir, capsys):
-        from kanibako.commands.box import run_info
+        from kanibako.commands.box._parser import run_info
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -1183,7 +1183,7 @@ class TestBoxInfo:
         the path-or-name resolver, so a bare box name failed with "directory
         does not exist".
         """
-        from kanibako.commands.box import run_info
+        from kanibako.commands.box._parser import run_info
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -1206,7 +1206,7 @@ class TestBoxInfo:
         assert str(root) in out
 
     def test_info_no_data(self, config_file, tmp_home, capsys):
-        from kanibako.commands.box import run_info
+        from kanibako.commands.box._parser import run_info
 
         args = argparse.Namespace(path=str(tmp_home / "project"))
         with patch(
@@ -1231,7 +1231,7 @@ class TestBoxInfo:
         ``box info`` must say what the launch gate says (``_unbuilt_box_error``),
         not "this directory has not been used with kanibako yet".
         """
-        from kanibako.commands.box import run_info
+        from kanibako.commands.box._parser import run_info
 
         # ⚑ A BOX tree is removed through ``remove_box_tree``, never a bare
         # ``shutil.rmtree`` (the rule `cfc7257` set for the MBR-6 tests, and the
@@ -1265,7 +1265,7 @@ class TestBoxInfo:
         assert f"kanibako create {project_dir}" in captured.err
 
     def test_info_lock_status(self, config_file, tmp_home, credentials_dir, capsys):
-        from kanibako.commands.box import run_info
+        from kanibako.commands.box._parser import run_info
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -1302,7 +1302,7 @@ class TestBoxDuplicateCrossMode:
         self, config_file, tmp_home, credentials_dir, src_registered, register,
     ):
         """A standalone copy is a NEW box: unregistered unless ``--register``, whatever the source's state."""
-        from kanibako.commands.box import run_duplicate
+        from kanibako.commands.box._duplicate import run_duplicate
         from kanibako.project.registry_store import load_standalone
 
         config = load_config(config_file)
@@ -1322,7 +1322,7 @@ class TestBoxDuplicateCrossMode:
         assert before <= after
 
     def test_duplicate_local_to_standalone(self, config_file, tmp_home, credentials_dir):
-        from kanibako.commands.box import run_duplicate
+        from kanibako.commands.box._duplicate import run_duplicate
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -1361,7 +1361,7 @@ class TestBoxDuplicateCrossMode:
         source's WORKSET-tier ``workset.yaml`` -- carrying the SOURCE box's
         identity -- one level down inside it.
         """
-        from kanibako.commands.box import run_duplicate
+        from kanibako.commands.box._duplicate import run_duplicate
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -1395,7 +1395,7 @@ class TestBoxDuplicateCrossMode:
         assert dup.name != proj.name
 
     def test_duplicate_standalone_to_local(self, config_file, tmp_home, credentials_dir):
-        from kanibako.commands.box import run_duplicate
+        from kanibako.commands.box._duplicate import run_duplicate
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -1428,7 +1428,7 @@ class TestBoxDuplicateCrossMode:
     def test_duplicate_to_standalone_keeps_every_link_verbatim(
         self, config_file, tmp_home, credentials_dir,
     ):
-        from kanibako.commands.box import run_duplicate
+        from kanibako.commands.box._duplicate import run_duplicate
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -1449,7 +1449,7 @@ class TestBoxDuplicateCrossMode:
     def test_duplicate_standalone_to_local_keeps_every_link_verbatim(
         self, config_file, tmp_home, credentials_dir,
     ):
-        from kanibako.commands.box import run_duplicate
+        from kanibako.commands.box._duplicate import run_duplicate
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -1483,7 +1483,7 @@ class TestBoxDuplicateCrossMode:
         before copying metadata.  A copy failure must unwind the registration +
         any partial dest dir.
         """
-        from kanibako.commands.box import run_duplicate
+        from kanibako.commands.box._duplicate import run_duplicate
         from kanibako.settings.paths import load_primary_boxes
 
         config = load_config(config_file)
@@ -1525,7 +1525,7 @@ class TestBoxDuplicateCrossMode:
         path).  The refusal must be CLEAN (rc=1, no traceback), leave the dest
         box's registration intact, and mint no stray box dir.
         """
-        from kanibako.commands.box import run_duplicate
+        from kanibako.commands.box._duplicate import run_duplicate
         from kanibako.settings.paths import load_primary_boxes
 
         config = load_config(config_file)
@@ -1564,7 +1564,7 @@ class TestBoxDuplicateCrossMode:
         """
         import shutil
 
-        from kanibako.commands.box import run_duplicate
+        from kanibako.commands.box._duplicate import run_duplicate
         from kanibako.settings.paths import load_primary_boxes
 
         config = load_config(config_file)
@@ -1602,7 +1602,7 @@ class TestBoxDuplicateCrossMode:
         which caught ProjectError alone — so an OSError propagated UNCAUGHT and
         left the partial ``new_path`` behind.
         """
-        from kanibako.commands.box import run_duplicate
+        from kanibako.commands.box._duplicate import run_duplicate
         from kanibako.settings.paths import load_primary_boxes
 
         config = load_config(config_file)
@@ -1648,7 +1648,7 @@ class TestBoxDuplicateCrossMode:
         instead of the Guard-1 refusal.  The up-front guard now refuses before any
         copy/prompt.
         """
-        from kanibako.commands.box import run_duplicate
+        from kanibako.commands.box._duplicate import run_duplicate
         from kanibako.settings.paths import load_primary_boxes
 
         config = load_config(config_file)
@@ -1700,7 +1700,7 @@ class TestBoxDuplicateCrossMode:
         import io
         from contextlib import redirect_stderr
 
-        from kanibako.commands.box import run_duplicate
+        from kanibako.commands.box._duplicate import run_duplicate
         from kanibako.settings.paths import load_primary_boxes
 
         config = load_config(config_file)
@@ -1743,7 +1743,7 @@ class TestBoxDuplicateCrossMode:
             std.primary_workset, early=_early_scope(std, BoxMode.primary)) == names_before
 
     def test_duplicate_cross_mode_bare(self, config_file, tmp_home, credentials_dir):
-        from kanibako.commands.box import run_duplicate
+        from kanibako.commands.box._duplicate import run_duplicate
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -1764,7 +1764,7 @@ class TestBoxDuplicateCrossMode:
         assert not (dst_dir / "code.py").exists()
 
     def test_duplicate_cross_mode_preserves_source(self, config_file, tmp_home, credentials_dir):
-        from kanibako.commands.box import run_duplicate
+        from kanibako.commands.box._duplicate import run_duplicate
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -1785,7 +1785,7 @@ class TestBoxDuplicateCrossMode:
         assert (proj.metadata_path / "marker.txt").read_text() == "original"
 
     def test_duplicate_cross_mode_excludes_lock(self, config_file, tmp_home, credentials_dir):
-        from kanibako.commands.box import run_duplicate
+        from kanibako.commands.box._duplicate import run_duplicate
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -1811,7 +1811,7 @@ class TestBoxDuplicateCrossMode:
         ``registry.standalone``, ``mode=standalone``, with a FRESH
         ``<kuid>_<leaf>`` name distinct from the source (which is unregistered
         as a standalone, since primary boxes use the primary membership)."""
-        from kanibako.commands.box import run_duplicate
+        from kanibako.commands.box._duplicate import run_duplicate
         from kanibako.settings.config import WORKSET_META_FILE
         from kanibako.settings.config_io import load_doc
         from kanibako.settings.paths import BoxMode, detect_project_mode
@@ -1858,7 +1858,7 @@ class TestBoxDuplicateCrossMode:
         assert leaf == "b3_dst"
 
     def test_duplicate_cross_mode_to_workset_requires_workset_flag(self, config_file, tmp_home, credentials_dir, capsys):
-        from kanibako.commands.box import run_duplicate
+        from kanibako.commands.box._duplicate import run_duplicate
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -1950,7 +1950,7 @@ def _make_standalone_project(tmp_home, std, config, name="myproj"):
 
 class TestBoxListWorkset:
     def test_list_shows_workset_projects(self, config_file, tmp_home, credentials_dir, capsys):
-        from kanibako.commands.box import run_list
+        from kanibako.commands.box._parser import run_list
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -1968,7 +1968,7 @@ class TestBoxListWorkset:
         assert "cool-app" in out
 
     def test_list_mixed_local_and_workset(self, config_file, tmp_home, credentials_dir, capsys):
-        from kanibako.commands.box import run_list
+        from kanibako.commands.box._parser import run_list
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -1995,7 +1995,7 @@ class TestBoxListWorkset:
 
     def test_list_workset_missing_workspace(self, config_file, tmp_home, credentials_dir, capsys):
         """Workset missing workspace is hidden by default (orphan)."""
-        from kanibako.commands.box import run_list
+        from kanibako.commands.box._parser import run_list
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -2014,7 +2014,7 @@ class TestBoxListWorkset:
         assert "missing" in out
 
     def test_list_workset_no_settings(self, config_file, tmp_home, credentials_dir, capsys):
-        from kanibako.commands.box import run_list
+        from kanibako.commands.box._parser import run_list
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -2033,7 +2033,7 @@ class TestBoxListWorkset:
         assert "no-data" in out
 
     def test_list_workset_root_missing(self, config_file, tmp_home, credentials_dir, capsys):
-        from kanibako.commands.box import run_list
+        from kanibako.commands.box._parser import run_list
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -2063,7 +2063,7 @@ class TestBoxDuplicateToWorkset:
         )
 
     def test_duplicate_local_to_workset(self, config_file, tmp_home, credentials_dir):
-        from kanibako.commands.box import run_duplicate
+        from kanibako.commands.box._duplicate import run_duplicate
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -2082,7 +2082,7 @@ class TestBoxDuplicateToWorkset:
         assert (proj.metadata_path / "marker.txt").read_text() == "ac-marker"
 
     def test_duplicate_to_workset_bare(self, config_file, tmp_home, credentials_dir):
-        from kanibako.commands.box import run_duplicate
+        from kanibako.commands.box._duplicate import run_duplicate
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -2103,7 +2103,7 @@ class TestBoxDuplicateToWorkset:
         self, config_file, tmp_home, credentials_dir, bare,
     ):
         """Q96: a duplicate is always an in-tree member, so it refuses before the prompt."""
-        from kanibako.commands.box import run_duplicate
+        from kanibako.commands.box._duplicate import run_duplicate
         from kanibako.errors import WorksetError
         from kanibako.settings.config_io import dump_doc
 
@@ -2125,7 +2125,7 @@ class TestBoxDuplicateToWorkset:
         self, config_file, tmp_home, credentials_dir,
     ):
         """Q96: the copy lands in the destination's ``workset.workspaces``; a null has none."""
-        from kanibako.commands.box import run_duplicate
+        from kanibako.commands.box._duplicate import run_duplicate
         from kanibako.errors import WorksetError
         from kanibako.settings.config_io import dump_doc
 
@@ -2146,7 +2146,7 @@ class TestBoxDuplicateToWorkset:
         assert sorted(p.name for p in dest.iterdir()) == ["workset.yaml"]
 
     def test_duplicate_to_workset_requires_workset_flag(self, config_file, tmp_home, credentials_dir, capsys):
-        from kanibako.commands.box import run_duplicate
+        from kanibako.commands.box._duplicate import run_duplicate
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -2158,7 +2158,7 @@ class TestBoxDuplicateToWorkset:
         assert "--workset is required with --to named" in capsys.readouterr().err
 
     def test_duplicate_to_workset_preserves_source(self, config_file, tmp_home, credentials_dir):
-        from kanibako.commands.box import run_duplicate
+        from kanibako.commands.box._duplicate import run_duplicate
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -2179,7 +2179,7 @@ class TestBoxDuplicateToWorkset:
         self, config_file, tmp_home, credentials_dir, capsys, leaf,
     ):
         """An existing ``workspaces/<name>`` or ``boxes/<name>`` is refused without --force."""
-        from kanibako.commands.box import run_duplicate
+        from kanibako.commands.box._duplicate import run_duplicate
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -2203,7 +2203,7 @@ class TestBoxDuplicateToWorkset:
         self, config_file, tmp_home, credentials_dir, bare,
     ):
         """N2: the rollback deletes only the leaves the duplicate created."""
-        from kanibako.commands.box import run_duplicate
+        from kanibako.commands.box._duplicate import run_duplicate
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -2331,7 +2331,7 @@ class TestBoxDuplicateExternal:
         self, config_file, tmp_home, credentials_dir, capsys,
     ):
         """``--bare`` on an external-connected source is refused (1:1)."""
-        from kanibako.commands.box import run_duplicate
+        from kanibako.commands.box._duplicate import run_duplicate
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -2355,7 +2355,7 @@ class TestBoxDuplicateExternal:
         self, config_file, tmp_home, credentials_dir,
     ):
         """A bare duplicate of an ordinary (non-external) source still works."""
-        from kanibako.commands.box import run_duplicate
+        from kanibako.commands.box._duplicate import run_duplicate
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -2379,7 +2379,7 @@ class TestBoxDuplicateExternal:
         A connected external source also resolves as a workset project, but the
         1:1 refusal gives the clearer, earlier error and never touches state.
         """
-        from kanibako.commands.box import run_duplicate
+        from kanibako.commands.box._duplicate import run_duplicate
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -2409,7 +2409,7 @@ class TestBoxDuplicateExternal:
         directory (not an external symlink) for an ordinary out-of-workset
         source, with no connection written.
         """
-        from kanibako.commands.box import run_duplicate
+        from kanibako.commands.box._duplicate import run_duplicate
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -2441,7 +2441,7 @@ class TestBoxDuplicateExternal:
         The source dir and its connection are untouched.  No WorksetError
         escapes.
         """
-        from kanibako.commands.box import run_duplicate
+        from kanibako.commands.box._duplicate import run_duplicate
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -2472,7 +2472,7 @@ class TestBoxDuplicateExternal:
         self, config_file, tmp_home, credentials_dir,
     ):
         """``--to standalone`` of an external-connected source succeeds."""
-        from kanibako.commands.box import run_duplicate
+        from kanibako.commands.box._duplicate import run_duplicate
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -2507,7 +2507,7 @@ class TestBoxDuplicateExternal:
         refusal does NOT apply.  Metadata only, no crash, no
         WorksetError.
         """
-        from kanibako.commands.box import run_duplicate
+        from kanibako.commands.box._duplicate import run_duplicate
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -2536,7 +2536,7 @@ class TestBoxDuplicateExternal:
         self, config_file, tmp_home, credentials_dir, capsys,
     ):
         """The narrowed guard still refuses ``--bare --to named`` (aliasing case)."""
-        from kanibako.commands.box import run_duplicate
+        from kanibako.commands.box._duplicate import run_duplicate
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -2580,7 +2580,7 @@ class TestBoxDuplicateFromWorkset:
         )
 
     def test_duplicate_workset_to_local(self, config_file, tmp_home, credentials_dir):
-        from kanibako.commands.box import run_duplicate
+        from kanibako.commands.box._duplicate import run_duplicate
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -2602,7 +2602,7 @@ class TestBoxDuplicateFromWorkset:
     def test_duplicate_workset_keeps_every_workspace_link_verbatim(
         self, config_file, tmp_home, credentials_dir,
     ):
-        from kanibako.commands.box import run_duplicate
+        from kanibako.commands.box._duplicate import run_duplicate
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -2616,7 +2616,7 @@ class TestBoxDuplicateFromWorkset:
         _assert_links_verbatim(dest, texts)
 
     def test_duplicate_workset_to_standalone(self, config_file, tmp_home, credentials_dir):
-        from kanibako.commands.box import run_duplicate
+        from kanibako.commands.box._duplicate import run_duplicate
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -2634,7 +2634,7 @@ class TestBoxDuplicateFromWorkset:
         assert not (dest / "code.py").exists()
 
     def test_duplicate_workset_bare(self, config_file, tmp_home, credentials_dir):
-        from kanibako.commands.box import run_duplicate
+        from kanibako.commands.box._duplicate import run_duplicate
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -2652,7 +2652,7 @@ class TestBoxDuplicateFromWorkset:
         assert not (dest / "code.py").exists()
 
     def test_duplicate_workset_preserves_source(self, config_file, tmp_home, credentials_dir):
-        from kanibako.commands.box import run_duplicate
+        from kanibako.commands.box._duplicate import run_duplicate
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -2685,7 +2685,7 @@ class TestBoxDuplicateNoToMode:
     ):
         """A standalone source resolves without --to and lands a fresh standalone (``--register`` indexes it)."""
         from kanibako.project import registry_store
-        from kanibako.commands.box import run_duplicate
+        from kanibako.commands.box._duplicate import run_duplicate
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -2717,7 +2717,7 @@ class TestBoxDuplicateNoToMode:
         self, config_file, tmp_home, credentials_dir,
     ):
         """A workset (named) source resolves without --to into a primary box."""
-        from kanibako.commands.box import run_duplicate
+        from kanibako.commands.box._duplicate import run_duplicate
         from kanibako.project.workset import add_project, create_workset
 
         config = load_config(config_file)
@@ -2754,7 +2754,7 @@ class TestBoxRmStandalone:
 
     def test_rm_by_name_unregisters(self, config_file, tmp_home, credentials_dir, capsys):
         from kanibako.project import registry_store
-        from kanibako.commands.box import run_rm
+        from kanibako.commands.box._parser import run_rm
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -2768,7 +2768,7 @@ class TestBoxRmStandalone:
 
     def test_rm_by_path_unregisters(self, config_file, tmp_home, credentials_dir):
         from kanibako.project import registry_store
-        from kanibako.commands.box import run_rm
+        from kanibako.commands.box._parser import run_rm
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -2780,7 +2780,7 @@ class TestBoxRmStandalone:
 
     def test_rm_purge_removes_metadata(self, config_file, tmp_home, credentials_dir):
         from kanibako.project import registry_store
-        from kanibako.commands.box import run_rm
+        from kanibako.commands.box._parser import run_rm
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -2792,7 +2792,7 @@ class TestBoxRmStandalone:
         assert not (root / "box_data").exists()
 
     def test_rm_unknown_target_errors(self, config_file, tmp_home, credentials_dir):
-        from kanibako.commands.box import run_rm
+        from kanibako.commands.box._parser import run_rm
 
         rc = run_rm(self._rm_args("no-such-box"))
         assert rc == 1
@@ -2802,7 +2802,7 @@ class TestBoxListStandalone:
     """`box list` includes standalone boxes (BUG-E)."""
 
     def test_list_shows_standalone(self, config_file, tmp_home, credentials_dir, capsys):
-        from kanibako.commands.box import run_list
+        from kanibako.commands.box._parser import run_list
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -2821,7 +2821,7 @@ class TestBoxListStandalone:
     def test_list_quiet_includes_standalone(
         self, config_file, tmp_home, credentials_dir, capsys,
     ):
-        from kanibako.commands.box import run_list
+        from kanibako.commands.box._parser import run_list
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -2840,7 +2840,7 @@ class TestBoxListStandalone:
     ):
         import shutil
 
-        from kanibako.commands.box import run_list
+        from kanibako.commands.box._parser import run_list
 
         config = load_config(config_file)
         std = load_std_paths(config)

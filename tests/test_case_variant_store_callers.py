@@ -59,7 +59,7 @@ def test_named_create_refuses(kept, monkeypatch, capsys):
 
 
 def test_duplicate_into_the_workset_refuses(kept, tmp_home, capsys):
-    from kanibako.commands.box import run_duplicate
+    from kanibako.commands.box._duplicate import run_duplicate
 
     config, std, root = kept
     src = (tmp_home / "src1").resolve()

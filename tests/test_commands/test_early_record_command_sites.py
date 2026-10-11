@@ -75,7 +75,7 @@ class TestPurge:
 
 class TestBoxRm:
     def test_a_primary_rm(self, config_file, tmp_home, credentials_dir, request):
-        from kanibako.commands.box import run_rm
+        from kanibako.commands.box._parser import run_rm
 
         config, std = _env(config_file)
         workspace = _primary(config, std, tmp_home / "p")
@@ -84,7 +84,7 @@ class TestBoxRm:
         assert set(seen) == {WS_TOKEN_PRIMARY}
 
     def test_a_standalone_rm_purge(self, config_file, tmp_home, credentials_dir, request):
-        from kanibako.commands.box import run_rm
+        from kanibako.commands.box._parser import run_rm
 
         config, std = _env(config_file)
         _standalone(config, std, tmp_home / "lone")
@@ -97,7 +97,7 @@ class TestBoxRm:
 
 class TestDuplicate:
     def test_primary_to_primary(self, config_file, tmp_home, credentials_dir, request):
-        from kanibako.commands.box import run_duplicate
+        from kanibako.commands.box._duplicate import run_duplicate
 
         config, std = _env(config_file)
         src = _primary(config, std, tmp_home / "src")
@@ -109,7 +109,7 @@ class TestDuplicate:
         assert set(seen) == {WS_TOKEN_PRIMARY}
 
     def test_primary_to_standalone(self, config_file, tmp_home, credentials_dir, request):
-        from kanibako.commands.box import run_duplicate
+        from kanibako.commands.box._duplicate import run_duplicate
 
         config, std = _env(config_file)
         src = _primary(config, std, tmp_home / "src")

@@ -1,29 +1,9 @@
-"""kanibako box: project lifecycle management (create, list, config, remap, move, convert, duplicate, archive, extract, purge, vault)."""
+"""kanibako box: project lifecycle management (create, list, config, remap, move, convert, duplicate, archive, extract, purge, vault).
 
-from kanibako.commands.box._duplicate import run_duplicate
-from kanibako.commands.box._lifecycle import (
-    run_convert,
-    run_move,
-    run_remap,
-)
-from kanibako.commands.box._parser import (
-    _check_container_running,
-    _format_credential_age,
-    add_parser,
-    run_create,
-    run_get,
-    run_info,
-    run_list,
-    run_ps,
-    run_reset,
-    run_rm,
-    run_set,
-    run_show,
-)
+Import-free on purpose (CONVENTIONS § Import structure): import each symbol from its
+defining submodule.
 
-__all__ = [
-    "_check_container_running", "_format_credential_age",
-    "add_parser", "run_convert", "run_create", "run_duplicate",
-    "run_get", "run_info", "run_list", "run_move", "run_ps", "run_remap",
-    "run_reset", "run_rm", "run_set", "run_show",
-]
+* ``_parser``    — ``add_parser`` and the create/list/ps/rm/info/get/set/show/reset verbs.
+* ``_lifecycle`` — move, remap, and convert.
+* ``_duplicate`` — duplicate.
+"""

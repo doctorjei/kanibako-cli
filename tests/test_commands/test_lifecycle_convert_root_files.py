@@ -293,7 +293,7 @@ class TestDuplicateSharesThePreflight:
         return src
 
     def test_an_unheld_lock_of_a_stopped_box_does_not_refuse(self, env, monkeypatch):
-        from kanibako.commands.box import run_duplicate
+        from kanibako.commands.box._duplicate import run_duplicate
 
         config, std, tmp_home = env
         src = self._source(env)
@@ -302,7 +302,7 @@ class TestDuplicateSharesThePreflight:
         assert run_duplicate(self._args(src, tmp_home / "dst")) == 0
 
     def test_a_running_container_refuses(self, env, capsys, monkeypatch):
-        from kanibako.commands.box import run_duplicate
+        from kanibako.commands.box._duplicate import run_duplicate
 
         config, std, tmp_home = env
         src = self._source(env)
