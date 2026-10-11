@@ -451,6 +451,9 @@ inside boxes. In order of likely impact:
 47. **A `box purge` that cannot remove something exits 1 and parks the box; v1.7.x could exit 0** — see
     *A `box purge` that cannot remove everything exits 1 and parks the box*.
 
+47. **`box purge` and `box rm --purge` exit 1 on a running box unless `--force`** — see
+    *`box purge` and `box rm --purge` refuse a running box*.
+
 ---
 
 ## 2. Per-area detail
@@ -6187,9 +6190,22 @@ remove, a log included, is named with a warning and left; the box's metadata is 
 parked as deregistered, and the purge exits 1:
 `Purge incomplete: something was kept, so the box is parked — re-run the purge to finish.`
 
-**What to do.** Fix what the warning names, then finish with `kanibako box rm <box> --purge`, or
-`kanibako box purge <path>`. A parked box is no longer found by name, so `box purge <box>` reports
-it unknown.
+**What to do.** Fix what the warning names, then finish with `kanibako box rm <box> --purge` or
+`kanibako box purge <path>`; `box purge` does not find a parked box by its name.
+
+### `box purge` and `box rm --purge` refuse a running box
+
+**Read this if a purge now stops with `Warning: this box may be running` and `Aborted.`**
+
+**What changed.** In v1.7.x a purge went ahead on a running box. Now, when the
+container runtime reports the box's container running, or a kanibako session holds its lock file,
+both purges exit 1 and delete nothing:
+`Warning: this box may be running: its container is running (kb-primary-eps: kanibako-rig:latest).
+Purging this box would delete its vaults and canon while writes are in flight. Stop the box first:
+kanibako stop eps, or pass --force.` A lock file with no runtime to ask counts too.
+
+**What to do.** Run the printed `kanibako stop <box>` first, or add `--force`, which also skips the
+confirmation prompt.
 
 ### 2.95 The `agent` verbs refuse an agent file with an undeclared key, as the launch does
 
