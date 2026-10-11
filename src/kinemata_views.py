@@ -1531,6 +1531,7 @@ _EXAMPLE_NAMES = (
     "myagent",          # docs/writing-targets.md: a plugin's leaf package
     "nested",           # _lifecycle.py.md: a repointed workspace's interposed dir
     "ghcr.io%2fdoctorjei%2fkanibako-oci%3alatest.json",  # vscode_config.py.md: one encoding
+    "agents/navigator+claude",  # agent_ref.py.md, agent_config.py.md: `+` kept in a store dir
 )
 
 

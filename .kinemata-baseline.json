@@ -14,20 +14,6 @@
     {
       "registry": "claims",
       "entry": "claim:path",
-      "antipattern": "agents/navigator+claude/",
-      "path": "llm-docs/kanibako/agent_ref.py.md",
-      "text": "(``settings.agent_config.store_dirname``, ``agents/navigator+claude/``)."
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "agents/navigator+claude/",
-      "path": "llm-docs/kanibako/settings/agent_config.py.md",
-      "text": "directory is not a key, so it carries the `+` the user typed: `agents/navigator+claude/`. The"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
       "antipattern": "archives/",
       "path": "src/kanibako/data/templates/system/canon/handbook/general/directives/LOWER_CANON.md",
       "text": "| `archives/` | Completed plans & historical devnotes, documents, & information (i.e., \"the archive\" or \"archives\"); **a"
