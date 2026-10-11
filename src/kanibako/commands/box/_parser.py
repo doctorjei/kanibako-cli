@@ -944,15 +944,18 @@ def _plan_workset_member(std, workset: str, name: str,
     return ws, name, False
 
 
-def _new_member_undo(ws: Workset, name: str) -> Callable[[], None]:
+def _new_member_undo(ws: Workset, name: str) -> Callable[..., bool]:
     """The undo for a member this create is about to add; call it BEFORE ``add_project``.
 
     It drops the membership record and removes only what did not exist when it was
     made — the member's dirs, any parent dir and the registry file the write created.
-    A workspace, vault leaf or registry the user already had is kept.
+    A workspace, vault leaf or registry the user already had is kept.  ``member=False``
+    skips the record and the member's dirs: a failed ``add_project`` undid those and
+    named what it left.  The undo returns ``False`` while a member dir it made remains.
     """
     from kanibako.project.workset import (
-        _member_store_bases, load_workset_settings_doc, release_project,
+        _member_store_bases, _unwind_created_root, load_workset_settings_doc,
+        release_project,
     )
     from kanibako.project.workset_registry import (
         load_workset_boxes, resolve_workset_registry_path,
@@ -975,13 +978,14 @@ def _new_member_undo(ws: Workset, name: str) -> Callable[[], None]:
     new_parents = [p for p in parents if _new(p)]
     new_registry = _new(registry)
 
-    def undo() -> None:
+    def undo(*, member: bool = True) -> bool:
         # ⚑ The record only, never a directory — and ``keep_link``: a create makes no
         # discoverability link, so a link at ``workspaces/<name>`` is the user's.
-        release_project(ws, name, keep_link=True)
-        for path in new_leaves:
+        if member:
+            release_project(ws, name, keep_link=True)
+        for path in new_leaves if member else ():
             if path == box_dir and path.is_dir():
-                remove_box_tree(path)
+                _unwind_created_root(path, remove_box_tree)
             elif path.is_dir() and not path.is_symlink():
                 shutil.rmtree(path)
         for path in new_parents:
@@ -990,6 +994,7 @@ def _new_member_undo(ws: Workset, name: str) -> Callable[[], None]:
         # ⚑ Only while it holds no box: a member written meanwhile keeps its record.
         if new_registry and registry.is_file() and not load_workset_boxes(registry):
             registry.unlink()
+        return not any(p.exists() or p.is_symlink() for p in new_leaves)
 
     return undo
 
@@ -1576,8 +1581,12 @@ def run_create(args: argparse.Namespace, outcome: _CreateOutcome) -> int:
                     _named_ws, _member, _named_ws.workspaces_dir / _member, std,
                     noun="box creation",
                 )
-            except WorksetError as e:
-                _undo_member = None  # ``add_project`` unwinds its own writes
+            except BaseException as e:
+                # ⚑ ``add_project`` undid and named the member: one account of it.
+                if _undo_member is not None:
+                    _undo_member = functools.partial(_undo_member, member=False)
+                if not isinstance(e, WorksetError):
+                    raise
                 print(f"Error: {e}", file=sys.stderr)
                 return 1
             _named_spec = WorksetSpec.from_workset(_named_ws)
@@ -1699,7 +1708,8 @@ def run_create(args: argparse.Namespace, outcome: _CreateOutcome) -> int:
                     continue
                 # ⚑ A failed undo must not replace the error that brought us here.
                 try:
-                    _undo()
+                    if _undo() is False:
+                        _undone = False  # named where it failed
                 except Exception as undo_err:  # noqa: BLE001 - reported, never raised
                     _undone = False
                     print(f"Warning: could not undo {_what} this create added: "

@@ -736,6 +736,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   <root>` (`the workset connect failed …`, `the box creation failed …`, `the duplicate failed …`). A step
   that fails after a `box move`, `box convert`, or `box remap` has landed, such as linking the box into its
   workset, now prints `Note: could not finish a step of the move: <error>` instead of nothing.
+- **A failed `box create` of a workset box gives one account of its rollback.** After the rollback's own Notes,
+  it also printed `Warning: could not undo the member '<name>' this create added: Project '<name>' not found in
+  workset '<workset>'`, about a member the rollback had already removed. That Warning is gone. A box folder a
+  later failure's rollback cannot remove is now named too.
 - **A symlink loop in a vault no longer crashes `box move` or `box convert`.** A loop at the vault link or
   anywhere above it (a looped `vault` folder or a workset's shared `vault/rw`) stopped the command with a
   `RuntimeError` traceback on Python 3.11. The loop is now left in place with a Note saying so, as `box purge`

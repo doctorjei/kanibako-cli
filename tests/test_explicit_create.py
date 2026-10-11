@@ -1914,3 +1914,53 @@ def test_a_member_create_names_its_failed_rollback_as_a_create(
     assert (f"Note: the box creation failed and was not fully undone; check 'alpha' in "
             f"workset 'gamma' at {ws.root}") in err, err
     assert "workset connect" not in err
+
+
+@pytest.mark.parametrize("stuck", [True, False], ids=["leftover", "clean"])
+def test_a_member_create_gives_one_account_of_its_rollback(
+    config_file, tmp_home, credentials_dir, capsys, monkeypatch, stuck,
+):
+    """``add_project`` owns the member it rolled back: the create's own undo does not undo
+    it again, so no Warning about a member that is already gone.  A leftover keeps the
+    journal entry, so ``--recover`` can finish; a clean rollback clears it."""
+    import os
+
+    import kanibako.settings.paths as paths_mod
+    from kanibako.commands.box._parser import run_create
+    from kanibako.project.workset import create_workset
+    from kanibako.runtime.container import ContainerRuntime
+
+    _config, std = _std(config_file)
+    ws = create_workset("gamma", tmp_home / "gamma", std)
+    boxes = ws.projects_dir
+    real = paths_mod._register_workset_box_membership
+
+    def locked(*a, **k):
+        if stuck:
+            os.chmod(boxes, 0o555)
+        os.chmod(ws.root, 0o555)
+        return real(*a, **k)
+
+    monkeypatch.setattr(paths_mod, "_register_workset_box_membership", locked)
+    monkeypatch.chdir(ws.root)
+    try:
+        with monkeypatch.context() as mp:
+            if stuck:
+                # ⚑ A working ``podman unshare rm`` ignores modes and would delete through
+                # the read-only ``boxes/`` (CI has one): this run models the host where it
+                # fails too.
+                mp.setattr(ContainerRuntime, "unshare_rm", lambda self, path: False)
+            assert run_create(_create_args("alpha")) == 1
+    finally:
+        os.chmod(ws.root, 0o755)
+        os.chmod(boxes, 0o755)
+    err = capsys.readouterr().err
+    assert "Warning" not in err, err
+    assert "could not undo the member" not in err, err
+    assert err.count(f"could not remove {boxes / 'alpha'}") == int(stuck), err
+    assert err.count("was not fully undone") == int(stuck), err
+    assert (boxes / "alpha").exists() is stuck
+    import yaml
+
+    entries = (yaml.safe_load(std.journal.read_text()) or {}).get("entries") or {}
+    assert bool(entries) is stuck, entries
