@@ -51,7 +51,9 @@ def load_registry(registry: Path) -> dict[str, dict]:
     Every canonical section key is always present, so callers can index the result
     without a ``.get`` default.
     """
-    data = load_doc(registry) if registry.is_file() else {}
+    from kanibako.utils import is_file_unless_gone  # lazy, as below
+
+    data = load_doc(registry) if is_file_unless_gone(registry) else {}
     return {
         "worksets": {
             k: str(v) for k, v in dict(data.get("worksets", {})).items()

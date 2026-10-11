@@ -69,7 +69,8 @@ from kanibako.settings.workset_dirkeys import (
     EarlyScope, EarlySystem, _stored_repoint, early_repoint, refuse_inherited_per_owner,
     resolve_workset_dir_key,
 )
-from kanibako.utils import WORKSET_SEGMENT_PRIMARY, WORKSET_SEGMENT_STANDALONE, literal_path
+from kanibako.utils import (WORKSET_SEGMENT_PRIMARY, WORKSET_SEGMENT_STANDALONE, is_file_unless_gone,
+                            literal_path, refuse_unreadable_file)
 # ⚑ FORWARD edge of a documented cycle: ``settings/paths.py`` breaks it by DEFERRING
 # its ``project.workset`` imports into function bodies — do not add a module-scope
 # edge back this way.
@@ -139,10 +140,12 @@ def load_workset_settings_doc(root: Path) -> Mapping[str, Any] | None:
 
     ⚑ READ LIKE EVERY OTHER SETTINGS FILE (``load_doc``), so a malformed one is refused
     in its OWN words, naming the file.  ⚑ CARVE-OUTS CATCH ``ConfigError``:
-    the ancestor walk, and :func:`delete_workset`'s purge.
+    the ancestor walk (which still refuses an UNREADABLE file), and
+    :func:`delete_workset`'s purge.
     """
     path = root / WORKSET_META_FILE
-    if not path.is_file():
+    # ⚑ "Absent" only when it IS absent: an unreadable path or a loop refuses, naming it.
+    if not is_file_unless_gone(path):
         return None
     return load_doc(path)
 
@@ -1815,6 +1818,8 @@ def is_workset_skeleton(root: Path, *, early: EarlyScope) -> bool:
     try:
         dirs = _workset_skeleton_dirs(root, early=early)
     except ConfigError:
+        # ⚑ A malformed file is no skeleton; an unreadable one is no answer: refuse it.
+        refuse_unreadable_file(root / WORKSET_META_FILE)
         return False
     return all(subdir.is_dir() for subdir in dirs)
 

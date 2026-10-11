@@ -225,6 +225,16 @@ def is_dir_unless_gone(path: str | os.PathLike[str]) -> bool:
     return st is not None and stat.S_ISDIR(st.st_mode)
 
 
+def is_file_unless_gone(path: str | os.PathLike[str]) -> bool:
+    """Whether *path* is a regular file; refuses (:func:`stat_unless_gone`) when it cannot tell.
+
+    ⚑ NOT ``Path.is_file()``/``exists()``: they raise a bare ``PermissionError`` on an
+    unreadable parent and read a link loop as absent.
+    """
+    st = stat_unless_gone(path)
+    return st is not None and stat.S_ISREG(st.st_mode)
+
+
 def iterdir_unless_gone(path: Path) -> list[Path] | None:
     """*path*'s entries, or ``None`` when it is definitively absent or no directory.
 
@@ -245,8 +255,7 @@ def refuse_unreadable_file(path: str | os.PathLike[str]) -> None:
     A gone path or a non-file passes: this answers only "is it there but unreadable",
     which a reader that maps any failure to "absent" or "malformed" cannot tell apart.
     """
-    st = stat_unless_gone(path)
-    if st is None or not stat.S_ISREG(st.st_mode):
+    if not is_file_unless_gone(path):
         return
     try:
         with open(path, "rb"):

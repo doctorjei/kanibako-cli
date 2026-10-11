@@ -40,7 +40,7 @@ from kanibako.settings.settings_resolve import (
     delete_before_set_step,
     normalize_bind_dest,
 )
-from kanibako.utils import deep_merge
+from kanibako.utils import deep_merge, stat_unless_gone
 
 #: The per-agent file's ROOT table — the file's self-reference, spelled ONCE, HERE.
 _ROOT: Final[str] = "self"
@@ -354,7 +354,7 @@ def _spelled_sections(
     or, for a slot without a ``self_root``, ``agent: <node>:`` as *slot* spells the node.
     """
     fallback = sections if slot.self_root else (FILE_SCOPE, slot.node, *sections[1:])
-    doc = load_doc(slot.path) if slot.path.exists() else None
+    doc = load_doc(slot.path) if stat_unless_gone(slot.path) is not None else None
     scope = doc.get(FILE_SCOPE) if isinstance(doc, dict) else None
     if not isinstance(scope, dict):
         return fallback

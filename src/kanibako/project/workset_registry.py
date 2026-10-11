@@ -44,7 +44,7 @@ from kanibako.settings.messages import ERR_CONFIG_NULL_PATH
 from kanibako.settings.settings_resolve import SettingsError
 from kanibako.settings.workset_dirkeys import EarlyScope, early_repoint, resolve_workset_dir_key
 from kanibako.errors import LegacyRegistryIdentityError, ProjectError
-from kanibako.utils import literal_path
+from kanibako.utils import is_file_unless_gone, literal_path
 
 # The DEFAULT leaf ``workset.registry`` falls back to — ⚑ a fallback, never a path
 # component: the key is repointable, so nothing may join this directly.
@@ -127,7 +127,7 @@ def _load_raw(registry_path: Path) -> dict:
 
     ⚑ THE ONE READ SEAM, so the retired-section refusal fires on EVERY read.
     """
-    if not registry_path.is_file():
+    if not is_file_unless_gone(registry_path):
         return {}
     data = load_doc(registry_path)
     _refuse_retired_registry_sections(registry_path, data)
@@ -203,7 +203,7 @@ def register_workset_box(registry_path: Path, box_name: str, path: Path) -> None
 
 def unregister_workset_box(registry_path: Path, box_name: str) -> None:
     """Remove *box_name* from the ``boxes:`` section; no write at all if absent."""
-    if not registry_path.is_file():
+    if not is_file_unless_gone(registry_path):
         return
     with rmw_lock(registry_path):
         full_doc, boxes = _load_boxes_raw(registry_path)

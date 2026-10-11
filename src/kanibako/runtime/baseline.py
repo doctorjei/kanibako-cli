@@ -24,6 +24,7 @@ from kanibako.settings.bootstrap import SITE_CONFIG_DIR
 from kanibako.settings.config_io import load_doc
 from kanibako.settings.core_defaults import PACKAGED_SETTINGS_PARTS, packaged_data_dir
 from kanibako.settings.paths import resolve_data_path
+from kanibako.utils import is_file_unless_gone
 
 # Filename used both for the shipped default (under ``PACKAGED_SETTINGS_PARTS``) and the overlays.
 BASELINE_FILENAME = "image-baseline.yaml"
@@ -45,7 +46,7 @@ def _read_doc(path: Path) -> dict[str, list[str]]:
     either raise a bare ``TypeError`` or accept a table's keys as executable names.  So
     is a name carrying a control character: no shell can look one up whole.
     """
-    if not path.is_file():
+    if not is_file_unless_gone(path):
         return {}
     raw = load_doc(path)
     result: dict[str, list[str]] = {}

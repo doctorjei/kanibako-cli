@@ -106,3 +106,45 @@ def test_stat_unless_gone_absent_forms(tmp_path):
     (tmp_path / "file").write_text("")
     assert stat_unless_gone(tmp_path / "absent") is None
     assert stat_unless_gone(Path(tmp_path / "file" / "x")) is None
+
+
+def _guarded_readers():
+    """Each reader that answered "absent" from ``is_file()``/``exists()`` before ``load_doc``."""
+    from kanibako.project import registry_store, workset_registry
+    from kanibako.project.workset import load_workset_settings_doc
+    from kanibako.runtime import baseline
+    from kanibako.settings import config
+
+    return {
+        "workset.yaml": lambda f: load_workset_settings_doc(f.parent),
+        "registry.yaml": registry_store.load_registry,
+        "workset boxes": workset_registry.load_workset_boxes,
+        "unregister": lambda f: workset_registry.unregister_workset_box(f, "x"),
+        "system agent": config.read_system_agent,
+        "box vault": config.read_box_enable_vault,
+        "image baseline": baseline._read_doc,
+    }
+
+
+@pytest.mark.parametrize("reader", list(_guarded_readers()))
+def test_a_guarded_reader_refuses_a_looped_file(tmp_path, reader):
+    os.symlink("workset.yaml", tmp_path / "workset.yaml")
+    with pytest.raises(ConfigError, match="it is a symlink loop"):
+        _guarded_readers()[reader](tmp_path / "workset.yaml")
+
+
+@needs_non_root
+@pytest.mark.parametrize("reader", list(_guarded_readers()))
+def test_a_guarded_reader_refuses_a_file_under_an_unreadable_parent(locked, reader):
+    with pytest.raises(ConfigError, match=f"^{locked / 'workset.yaml'} could not be read"):
+        _guarded_readers()[reader](locked / "workset.yaml")
+
+
+def test_is_file_unless_gone_absent_forms(tmp_path):
+    from kanibako.utils import is_file_unless_gone
+
+    (tmp_path / "file").write_text("")
+    assert is_file_unless_gone(tmp_path / "file")
+    assert not is_file_unless_gone(tmp_path)
+    assert not is_file_unless_gone(tmp_path / "absent")
+    assert not is_file_unless_gone(tmp_path / "file" / "x")

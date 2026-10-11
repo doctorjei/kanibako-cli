@@ -33,7 +33,7 @@ from kanibako._atomic import rmw_lock
 from kanibako.identifiers import find_identifier
 from kanibako.project import registry_store
 from kanibako.settings.config import WORKSET_META_FILE
-from kanibako.errors import AmbiguousNameError, ProjectError
+from kanibako.errors import AmbiguousNameError, ConfigError, ProjectError
 from kanibako.log import get_logger
 from kanibako.utils import is_dir_unless_gone, literal_path
 
@@ -243,6 +243,7 @@ def resolve_name(
     *,
     early_system: EarlySystem,
     path: str | None = None,
+    unreadable_path: ConfigError | None = None,
 ) -> tuple[str, str]:
     """Look up a bare identifier and return ``(path, kind)``; the designation cascade.
 
@@ -259,7 +260,9 @@ def resolve_name(
     5. A workset name (box and workset names are per-kind namespaces).
 
     *kind* is ``"project"``, ``"path"`` (*path* won; the caller resolves it), or
-    ``"workset"``.  Raises ``ProjectError`` on no match.
+    ``"workset"``.  Raises ``ProjectError`` on no match.  *unreadable_path* is the refusal
+    for a same-named path kanibako cannot stat: raised at the path's step 2 rank, when
+    neither step 1 nor a primary box answers.
     """
     names = _load(registry)
     hit, space_boxes = _space_member(names, name, cwd, early_system=early_system)
@@ -284,6 +287,8 @@ def resolve_name(
         return _warn_standalone_shadow(registry, name, primary_hit), "project"
     if path is not None:
         return path, "path"
+    if unreadable_path is not None:
+        raise unreadable_path
 
     root = registry_store.standalone_root(registry, name)
     if root is not None:

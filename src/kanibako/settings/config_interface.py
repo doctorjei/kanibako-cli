@@ -162,7 +162,7 @@ from kanibako.settings.settings_keyspace import (
 )
 from kanibako.settings.keystore import ReservedKeyError
 from kanibako.settings.settings_prefs import PREF_ROOT
-from kanibako.utils import confirm_prompt
+from kanibako.utils import confirm_prompt, stat_unless_gone
 
 _log = get_logger(__name__)
 
@@ -2795,7 +2795,7 @@ def reset_all(
                 removed += 1
 
     # Clear the agent settings — SYSTEM keeps these in the system settings file.
-    if settings_dest is not None and settings_dest.exists():
+    if settings_dest is not None and stat_unless_gone(settings_dest) is not None:
         data = load_doc(settings_dest)
         agent_tbl = data.get("agent")
         if isinstance(agent_tbl, dict):

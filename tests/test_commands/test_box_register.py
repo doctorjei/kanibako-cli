@@ -657,6 +657,30 @@ def test_a_registered_name_still_resolves_past_a_same_named_loop(
     assert registry_store.lookup_deregistered(std.registry, "lp") is not None
 
 
+@pytest.mark.parametrize("verb", ["start", "info", "rm"])
+def test_a_same_named_loop_outranks_a_registered_standalone_name(
+    config_file, tmp_home, credentials_dir, capsys, monkeypatch, verb,
+):
+    """system-design § Box designation: standalone names rank AFTER paths, an unreadable one too."""
+    import os
+
+    _config, std = _std(config_file)
+    root = (tmp_home / "sa").resolve()
+    root.mkdir()
+    assert run_create(_create_args(root, standalone=True, register=True)) == 0
+    name = registry_store.standalone_name_for_root(std.registry, root)
+    assert name
+    here = tmp_home / "loops"
+    here.mkdir()
+    os.symlink(name, here / name)
+    monkeypatch.chdir(here)
+    capsys.readouterr()
+
+    _cli_refusal(*(("start", name) if verb == "start" else ("box", verb, name)))
+    assert capsys.readouterr().err.endswith(f"Error: {name}{_LOOP}")
+    assert registry_store.standalone_root(std.registry, name) is not None
+
+
 def test_register_of_a_markerless_parked_standalone_keeps_the_entry_and_names_the_marker(
     config_file, tmp_home, credentials_dir, capsys,
 ):
@@ -704,6 +728,50 @@ def test_box_list_with_an_unlistable_boxes_dir_is_refused_by_name(
     finally:
         std.boxes.chmod(0o755)
     assert capsys.readouterr().err.endswith(_UNREADABLE.format(std.boxes))
+
+
+@pytest.mark.parametrize("verb", [("box", "list"), ("box", "rm", "foo")], ids=["list", "rm"])
+def test_an_unreadable_primary_workset_dir_is_refused_by_name(
+    config_file, tmp_home, credentials_dir, capsys, verb,
+):
+    """Every box route reads the primary ``workset.yaml``: EACCES is never "absent"."""
+    import os
+
+    if os.geteuid() == 0:
+        pytest.skip("root reads a mode-000 directory")
+    _config, std = _std(config_file)
+    std.primary_workset.mkdir(parents=True, exist_ok=True)
+    capsys.readouterr()
+
+    std.primary_workset.chmod(0)
+    try:
+        _cli_refusal(*verb)
+    finally:
+        std.primary_workset.chmod(0o755)
+    assert capsys.readouterr().err.endswith(
+        _UNREADABLE.format(std.primary_workset / "workset.yaml"))
+
+
+def test_an_unreadable_ancestor_workset_yaml_is_refused_not_skipped(
+    config_file, tmp_home, credentials_dir, capsys,
+):
+    """The ancestor walk skips a MALFORMED marker; one it cannot read refuses, naming it."""
+    import os
+
+    if os.geteuid() == 0:
+        pytest.skip("root reads a mode-000 file")
+    _std(config_file)
+    marker = tmp_home / "outer" / "workset.yaml"
+    (tmp_home / "outer" / "inner").mkdir(parents=True)
+    marker.write_text("workset:\n  registry: null\n")
+    capsys.readouterr()
+
+    marker.chmod(0)
+    try:
+        _cli_refusal("box", "info", str(tmp_home / "outer" / "inner"))
+    finally:
+        marker.chmod(0o644)
+    assert capsys.readouterr().err.endswith(_UNREADABLE.format(marker))
 
 
 def test_a_qualified_box_under_an_unreadable_workspaces_dir_is_refused_by_name(

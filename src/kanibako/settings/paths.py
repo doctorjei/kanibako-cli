@@ -2445,8 +2445,8 @@ def resolve_designation(std: StandardPaths, value: str | None, *, unknown_name_i
     # ⚑ THE CASCADE, not ``exists()``, ranks a same-named path (spec § Box designation;
     # plan S8): ``resolve_name`` places it after the space's registry and primary boxes,
     # and before a registered standalone name.
-    # ⚑ A path kanibako cannot stat (EACCES, a loop) is never "no such path", but it ranks
-    # after the names too: it refuses, naming it, only when no name answers.
+    # ⚑ A path kanibako cannot stat (EACCES, a loop) is never "no such path": at its own
+    # rank, after the space's and primary boxes and before a standalone name, it refuses.
     unreadable: ConfigError | None = None
     try:
         on_disk = stat_unless_gone(value) is not None
@@ -2456,12 +2456,11 @@ def resolve_designation(std: StandardPaths, value: str | None, *, unknown_name_i
         resolved, kind = resolve_name(std.registry, value, cwd=Path(logical_cwd()),
                                       primary_workset=std.primary_workset,
                                       path=value if on_disk else None,
+                                      unreadable_path=unreadable,
                                       early_system=std.early_system)
     except AmbiguousNameError:
         raise
     except ProjectError:
-        if unreadable is not None:
-            raise unreadable
         if unknown_name_is_path:
             return value
         raise

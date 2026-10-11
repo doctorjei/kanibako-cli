@@ -33,6 +33,7 @@ def legacy_container_names(proj: ProjectPaths) -> tuple[str, ...]
 def project_hash(project_path: str) -> str
 def stat_unless_gone(path: str | os.PathLike[str]) -> os.stat_result | None
 def is_dir_unless_gone(path: str | os.PathLike[str]) -> bool
+def is_file_unless_gone(path: str | os.PathLike[str]) -> bool
 def iterdir_unless_gone(path: Path) -> list[Path] | None
 def refuse_unreadable_file(path: str | os.PathLike[str]) -> None
 def unreadable_path_error(path: str | os.PathLike[str], exc: OSError) -> ConfigError

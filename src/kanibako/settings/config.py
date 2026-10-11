@@ -19,6 +19,7 @@ from kanibako.settings.messages import (ERR_CONFIG_LAYER1_SETTINGS, ERR_CONFIG_L
                                         ERR_CONFIG_NULL_PATH_HEAD,
                                         ERR_CONFIG_PATH_REF_SCOPE, ERR_CONFIG_REF_ORDER,
                                         PER_OWNER_SHARERS)
+from kanibako.utils import stat_unless_gone
 
 if TYPE_CHECKING:
     from kanibako.settings.paths import BoxMode
@@ -488,7 +489,7 @@ def read_box_enable_vault(path: Path) -> bool:
     prevent.  The R2 downward default (``workset create --no-vault`` reaching contained
     boxes) is ``paths.resolve_box_enable_vault``'s, as one cascade level among four.
     """
-    if not path.exists():
+    if stat_unless_gone(path) is None:
         return True
     data = load_doc(path)
     # ⚑ THE SHAPE RULE: the same guard :func:`write_box_enable_vault` asks, so one stored value cannot have two answers.
@@ -533,7 +534,7 @@ def read_workset_kuid(path: Path) -> str:
     """
     from kanibako import kuid
 
-    if not path.exists():
+    if stat_unless_gone(path) is None:
         return kuid.SENTINEL
     data = load_doc(path)
     refuse_scalar_sections(path, ("workset",), data=data)
@@ -546,7 +547,7 @@ def read_workset_skip_kuid_check(path: Path) -> bool:
 
     A ``workset`` holding a non-table value raises :class:`ConfigError`.
     """
-    if not path.exists():
+    if stat_unless_gone(path) is None:
         return True
     data = load_doc(path)
     refuse_scalar_sections(path, ("workset",), data=data)
@@ -565,7 +566,7 @@ def _split_config_key(flat_key: str) -> tuple[str, str]:
 
 def unset_project_config_key(path: Path, flat_key: str) -> bool:
     """Remove a single key from a box.yaml; True iff it was found and removed."""
-    if not path.exists():
+    if stat_unless_gone(path) is None:
         return False
 
     section, key = _split_config_key(flat_key)
@@ -627,7 +628,7 @@ def read_agent_settings(path: Path, agent_name: str) -> dict[str, str]:
     for one stored value: ``str()`` printed ``None`` for the §2h present-``None`` OMIT idiom and
     ``True`` for a bool the routed read spells ``true``.
     """
-    if not path.exists():
+    if stat_unless_gone(path) is None:
         return {}
     return agent_settings_of(load_doc(path), agent_name)
 
@@ -687,7 +688,7 @@ def read_system_agent(system_path: Path | None) -> str | None:
     ⚑ *system_path* is the SETTINGS file (``@config.settings``), NOT
     ``kanibako.cfg``. ⚑ PRE-CASCADE reader — the LAUNCH does not use it.
     """
-    if system_path is None or not system_path.exists():
+    if system_path is None or stat_unless_gone(system_path) is None:
         return None
     data = load_doc(system_path)
     system = data.get("system")
@@ -722,7 +723,7 @@ def read_system_helpers(settings_path: Path | None) -> dict[str, int]:
     """
     from kanibako.settings.settings_keyspace import DECLARED_SYSTEM_HELPERS_LEAVES
 
-    if settings_path is None or not settings_path.exists():
+    if settings_path is None or stat_unless_gone(settings_path) is None:
         return {}
     node: object = load_doc(settings_path)
     for section in SYSTEM_HELPERS_SECTION:
@@ -771,7 +772,7 @@ def read_setup_completed(settings_path: Path | None) -> str | None:
 
     ⚑ A RAW reader is still required — the pre-cascade gate runs before any snapshot.
     """
-    if settings_path is None or not settings_path.exists():
+    if settings_path is None or stat_unless_gone(settings_path) is None:
         return None
     data = load_doc(settings_path)
     system = data.get("system")

@@ -336,7 +336,9 @@ def write_root_key(path: Path, key: str, value: object) -> None:
 
 def remove_root_key(path: Path, key: str) -> bool:
     """Remove a TOP-LEVEL scalar key.  Returns True if it was present."""
-    if not path.exists():
+    from kanibako.utils import stat_unless_gone  # lazy: config_io stays import-light
+
+    if stat_unless_gone(path) is None:
         return False
     data = load_doc(path)
     if key not in data:
@@ -356,7 +358,9 @@ def refuse_scalar_sections(
     *path* that is not a file, is a writer's to create, so neither refuses.  *data* is the
     ALREADY-READ doc, not re-read.
     """
-    if not path.is_file():
+    from kanibako.utils import is_file_unless_gone  # lazy: config_io stays import-light
+
+    if not is_file_unless_gone(path):
         return
     node = load_doc(path) if data is None else data
     for depth, sec in enumerate(sections):
@@ -418,7 +422,9 @@ def remove_nested_key(
     path: Path, sections: tuple[str, ...], key: str,
 ) -> bool:
     """Remove *key* from a nested table, pruning now-empty intermediates.  True if found."""
-    if not path.exists():
+    from kanibako.utils import stat_unless_gone  # lazy: config_io stays import-light
+
+    if stat_unless_gone(path) is None:
         return False
 
     data = load_doc(path)
@@ -507,7 +513,9 @@ def stored_leaf_object(
     from the ``None`` default.  Pass a sentinel to tell them apart; leave it ``None`` only
     where absent and present-``None`` mean the same thing to you.
     """
-    if noun_file is None or not noun_file.exists():
+    from kanibako.utils import stat_unless_gone  # lazy: config_io stays import-light
+
+    if noun_file is None or stat_unless_gone(noun_file) is None:
         return default
     node: object = load_doc(noun_file)
     for sec in sections:
