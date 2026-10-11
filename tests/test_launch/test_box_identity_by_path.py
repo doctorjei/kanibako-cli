@@ -478,3 +478,41 @@ class TestTheCwdPathSpaceIsThePathTheUserTook:
         err = capsys.readouterr().err
         assert "the current directory is in the path space of working set 'wsw'" in err
         assert not (outside / "box_data").exists()
+
+    @pytest.mark.parametrize("registered", ["lnk", "real"])
+    @pytest.mark.parametrize("via", ["physical", "lnk", "lnk2", "parent_link"])
+    @pytest.mark.parametrize("target", ["bare_name", "absolute"])
+    def test_no_spelling_of_the_target_escapes_the_space(
+        self, config_file, tmp_home, monkeypatch, capsys, registered, via, target,
+    ):
+        """S3c, the TARGET: a standalone target inside the space's tree is refused by
+        the target's own space under any spelling, literal or resolved: a bare name
+        from inside the tree, or an absolute path through a link from outside it."""
+        from kanibako.commands.box._parser import run_create
+
+        _std, real, _source = self._linked_workset(config_file, tmp_home, registered)
+        (tmp_home / "lnk2").symlink_to(real / "ws")
+        (tmp_home / "plink").symlink_to(real)
+        inside = {
+            "physical": real / "ws",
+            "lnk": tmp_home / "lnk" / "ws",
+            "lnk2": tmp_home / "lnk2",
+            "parent_link": tmp_home / "plink" / "ws",
+        }[via]
+        outside = tmp_home / "elsewhere"
+        outside.mkdir()
+        if target == "bare_name":
+            self._enter(monkeypatch, inside)
+            path, made = "foo2", real / "ws" / "foo2"
+        else:
+            self._enter(monkeypatch, outside)
+            path, made = str(inside / "foo2"), real / "ws" / "foo2"
+        args = argparse.Namespace(
+            path=path, standalone=True, no_vault=True, name=None, image=None,
+            agent=None, allow_home=False,
+        )
+
+        assert run_create(args) == 1
+        err = capsys.readouterr().err
+        assert "path space of working set 'wsw'" in err
+        assert not made.exists()

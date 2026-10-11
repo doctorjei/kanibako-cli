@@ -7,8 +7,6 @@ What is left here touches no file.
 
 from __future__ import annotations
 
-from pathlib import Path
-
 import pytest
 
 from kanibako.settings.agent_config import (
@@ -127,7 +125,13 @@ class TestUnambiguousPathValue:
 
 
 class TestAmbiguousPathValueError:
-    def test_it_names_both_readings_and_the_file(self):
+    def test_it_names_both_readings_and_the_file(self, tmp_path, monkeypatch):
+        # Run from a link, as a shell does: only ``$PWD`` names the link.
+        real, link = tmp_path / "run-real", tmp_path / "run-from"
+        real.mkdir()
+        link.symlink_to(real)
+        monkeypatch.chdir(link)
+        monkeypatch.setenv("PWD", str(link))
         message = ambiguous_path_value_error(
             "workset.channelroot", "comms",
             anchor="/ws", anchor_ref="@meta.workset.path", where="/ws/workset.yaml",
@@ -135,11 +139,19 @@ class TestAmbiguousPathValueError:
         assert "workset.channelroot" in message
         assert "'comms'" in message
         assert "/ws/comms" in message
-        assert str(Path.cwd() / "comms") in message
+        assert str(link / "comms") in message
+        assert str(real.resolve() / "comms") not in message
         assert "@meta.workset.path/comms" in message
         assert "/ws/workset.yaml" in message
 
-    def test_the_optional_halves_are_optional(self):
+    def test_the_optional_halves_are_optional(self, tmp_path, monkeypatch):
+        # Run from a link, as a shell does: only ``$PWD`` names the link.
+        real, link = tmp_path / "run-real", tmp_path / "run-from"
+        real.mkdir()
+        link.symlink_to(real)
+        monkeypatch.chdir(link)
+        monkeypatch.setenv("PWD", str(link))
         message = ambiguous_path_value_error("system.cache", "c", anchor="/data")
         assert "/data/c" in message
-        assert str(Path.cwd() / "c") in message
+        assert str(link / "c") in message
+        assert str(real.resolve() / "c") not in message

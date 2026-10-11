@@ -280,7 +280,7 @@ def test_resolve_expands_user_home_repoint(tmp_path: Path) -> None:
     assert resolved.is_absolute()
 
 
-def test_resolve_bare_relative_repoint_is_refused(tmp_path: Path) -> None:
+def test_resolve_bare_relative_repoint_is_refused(tmp_path: Path, monkeypatch) -> None:
     """A BARE relative repoint is refused, naming both readings ([R147]).
 
     ⚑ INVERTED, NOT DELETED.  It used to assert ``== workset_root / "sub" /
@@ -288,6 +288,12 @@ def test_resolve_bare_relative_repoint_is_refused(tmp_path: Path) -> None:
     determination was a guess between the workset root and the cwd, and the loser is
     a registry written where nothing will look for it.
     """
+    # Run from a link, as a shell does: only ``$PWD`` names the link.
+    real, link = tmp_path / "run-real", tmp_path / "run-from"
+    real.mkdir()
+    link.symlink_to(real)
+    monkeypatch.chdir(link)
+    monkeypatch.setenv("PWD", str(link))
     workset_root = tmp_path / "myws"
     with pytest.raises(SettingsError) as excinfo:
         workset_registry.resolve_workset_registry_path(
@@ -295,7 +301,8 @@ def test_resolve_bare_relative_repoint_is_refused(tmp_path: Path) -> None:
         )
     message = str(excinfo.value)
     assert str(workset_root / "sub" / "reg.yaml") in message
-    assert str(Path.cwd() / "sub" / "reg.yaml") in message
+    assert str(link / "sub" / "reg.yaml") in message
+    assert str(real.resolve() / "sub" / "reg.yaml") not in message
 
 
 def test_resolve_root_relative_repoint_is_spelled_with_the_ref(tmp_path: Path) -> None:

@@ -233,7 +233,13 @@ class TestBareRelativeIsRefusedNotAnchored:
         assert CONFIG_PATH_DEFAULTS and SYSTEM_PATH_DEFAULTS
 
     @pytest.mark.parametrize("key", sorted(CONFIG_PATH_DEFAULTS))
-    def test_every_config_key_refuses_a_bare_relative(self, key, tmp_path):
+    def test_every_config_key_refuses_a_bare_relative(self, key, tmp_path, monkeypatch):
+        # Run from a link, as a shell does: only ``$PWD`` names the link.
+        real, link = tmp_path / "run-real", tmp_path / "run-from"
+        real.mkdir()
+        link.symlink_to(real)
+        monkeypatch.chdir(link)
+        monkeypatch.setenv("PWD", str(link))
         with pytest.raises(SettingsError) as exc:
             resolve_config_paths(
                 {key: "somewhere"}, data_home=tmp_path, home=tmp_path,
@@ -241,18 +247,26 @@ class TestBareRelativeIsRefusedNotAnchored:
         message = str(exc.value)
         assert key in message
         # BOTH readings named — the refusal removes the guess, it does not relay it.
-        assert str(Path.cwd() / "somewhere") in message
+        assert str(link / "somewhere") in message
+        assert str(real.resolve() / "somewhere") not in message
         assert "BARE RELATIVE" in message
 
     @pytest.mark.parametrize("key", sorted(SYSTEM_PATH_DEFAULTS))
-    def test_every_system_key_refuses_a_bare_relative(self, key, tmp_path):
+    def test_every_system_key_refuses_a_bare_relative(self, key, tmp_path, monkeypatch):
+        # Run from a link, as a shell does: only ``$PWD`` names the link.
+        real, link = tmp_path / "run-real", tmp_path / "run-from"
+        real.mkdir()
+        link.symlink_to(real)
+        monkeypatch.chdir(link)
+        monkeypatch.setenv("PWD", str(link))
         with pytest.raises(SettingsError) as exc:
             resolve_system_paths(
                 {key: "somewhere"}, data_home=tmp_path, home=tmp_path,
             )
         message = str(exc.value)
         assert key in message
-        assert str(Path.cwd() / "somewhere") in message
+        assert str(link / "somewhere") in message
+        assert str(real.resolve() / "somewhere") not in message
 
     def test_the_legal_shapes_still_resolve(self, tmp_path):
         home = tmp_path / "h"

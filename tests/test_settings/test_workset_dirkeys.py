@@ -156,7 +156,13 @@ class TestNoResolverAnchorsAnAmbiguousValue:
     """
 
     @pytest.mark.parametrize("value", _AMBIGUOUS)
-    def test_bare_relative_refuses_rather_than_anchoring(self, value, tmp_path):
+    def test_bare_relative_refuses_rather_than_anchoring(self, value, tmp_path, monkeypatch):
+        # Run from a link, as a shell does: only ``$PWD`` names the link.
+        real, link = tmp_path / "run-real", tmp_path / "run-from"
+        real.mkdir()
+        link.symlink_to(real)
+        monkeypatch.chdir(link)
+        monkeypatch.setenv("PWD", str(link))
         for label, resolver in _discover_resolvers().items():
             with pytest.raises(SettingsError) as excinfo:
                 resolver(Path("/ws"), _poisoned(value), early=_scope(tmp_path, {}))
@@ -164,7 +170,8 @@ class TestNoResolverAnchorsAnAmbiguousValue:
             assert value in message, f"{label}: refusal does not quote the value"
             # BOTH readings, spelled out — the whole point of the refusal ([R147]).
             assert str(Path("/ws") / value) in message, f"{label}: no workset reading"
-            assert str(Path.cwd() / value) in message, f"{label}: no cwd reading"
+            assert str(link / value) in message, f"{label}: no cwd reading"
+            assert str(real.resolve() / value) not in message, f"{label}: the physical cwd"
 
 
 class TestEveryFaceRoutesThroughTheOneResolver:
@@ -209,19 +216,26 @@ class TestTheRouteItself:
             early=_scope(tmp_path, {}),
         ) == Path("/elsewhere/boxes")
 
-    def test_bare_relative_repoint_is_refused_naming_both_readings(self, tmp_path):
+    def test_bare_relative_repoint_is_refused_naming_both_readings(self, tmp_path, monkeypatch):
         # ⚑ INVERTED, NOT DELETED, by [R147] (2026-08-29).  It used to assert
         # ``== Path("/ws/sub/dir")``.  The reason to set one of these keys at all is
         # to move the directory OFF the workset root, so anchoring there assumes the
         # very intent the user is overriding — and a wrong guess is not a confusing
         # message, it is data written to the wrong directory.
+        # Run from a link, as a shell does: only ``$PWD`` names the link.
+        real, link = tmp_path / "run-real", tmp_path / "run-from"
+        real.mkdir()
+        link.symlink_to(real)
+        monkeypatch.chdir(link)
+        monkeypatch.setenv("PWD", str(link))
         with pytest.raises(SettingsError) as excinfo:
             resolve_workset_dir_key(
                 Path("/ws"), "sub/dir", "boxes", key="boxes", early=_scope(tmp_path, {}),
             )
         message = str(excinfo.value)
         assert "/ws/sub/dir" in message
-        assert str(Path.cwd() / "sub/dir") in message
+        assert str(link / "sub/dir") in message
+        assert str(real.resolve() / "sub/dir") not in message
         assert "workset.boxes" in message
         assert "/ws/workset.yaml" in message
 

@@ -85,14 +85,30 @@ def _set(key: str, value, files: dict, scope: ConfigLevel, *, std=None, ws=None)
     )
 
 
-def _assert_named_both_readings(message: str, key: str, value: str) -> None:
+@pytest.fixture
+def run_from(tmp_path, monkeypatch) -> tuple[Path, Path]:
+    """``(link, real)``: the cwd entered through *link*, as a shell does, so only
+    ``$PWD`` names the link."""
+    real, link = tmp_path / "run-real", tmp_path / "run-from"
+    real.mkdir()
+    link.symlink_to(real)
+    monkeypatch.chdir(link)
+    monkeypatch.setenv("PWD", str(link))
+    return link, real
+
+
+def _assert_named_both_readings(
+    message: str, key: str, value: str, run_from: tuple[Path, Path],
+) -> None:
     """The refusal is [R147]'s, not a generic complaint: both directories are named."""
     assert message.startswith("Error:"), message
     assert key in message
     assert "BARE RELATIVE" in message
     # The cwd reading, in full — the whole point is that the user is told which two
     # directories were in play, not merely that the value was rejected.
-    assert str(Path.cwd() / value) in message
+    link, real = run_from
+    assert str(link / value) in message
+    assert str(real.resolve() / value) not in message
     # ...and the OTHER root, resolved or spelled, on its own line.
     anchor_ref, _label = path_key_anchor(key)
     assert anchor_ref in message or message.count(f"/{value}") >= 2
@@ -110,11 +126,11 @@ class TestEverySetRouteRefusesABareRelative:
         }
 
     @pytest.mark.parametrize("key", _SETTABLE_PATH_KEYS)
-    def test_a_bare_relative_is_refused_and_nothing_is_written(self, key, tmp_path):
+    def test_a_bare_relative_is_refused_and_nothing_is_written(self, key, tmp_path, run_from):
         files = _files(tmp_path)
         scope = _SCOPE_OF[key.split(".", 1)[0]]
         message = _set(key, _BARE, files, scope)
-        _assert_named_both_readings(message, key, _BARE)
+        _assert_named_both_readings(message, key, _BARE, run_from)
         # ⚑ REFUSED BEFORE THE WRITE, not written and then complained about: a poisoned
         # settings file is exactly what the set-time half exists to prevent.
         target = files["system"] if scope is ConfigLevel.system else files[scope.value]
@@ -123,10 +139,10 @@ class TestEverySetRouteRefusesABareRelative:
         )
 
     @pytest.mark.parametrize("value", ["comms", "./comms", "../comms", "my/dir"])
-    def test_every_relative_SHAPE_is_refused_not_just_a_bare_leaf(self, value, tmp_path):
+    def test_every_relative_SHAPE_is_refused_not_just_a_bare_leaf(self, value, tmp_path, run_from):
         files = _files(tmp_path)
         message = _set("workset.channelroot", value, files, ConfigLevel.workset)
-        _assert_named_both_readings(message, "workset.channelroot", value)
+        _assert_named_both_readings(message, "workset.channelroot", value, run_from)
 
     def test_the_message_names_the_file_the_value_would_have_landed_in(
         self, std, tmp_home,
@@ -149,21 +165,21 @@ class TestTheAgentRoutes:
     per-node one alike."""
 
     @pytest.mark.parametrize("leaf", ["canon", "template"])
-    def test_the_bare_any_agent_spelling_is_refused(self, leaf, tmp_path):
+    def test_the_bare_any_agent_spelling_is_refused(self, leaf, tmp_path, run_from):
         files = _files(tmp_path)
         message = _set(leaf, _BARE, files, ConfigLevel.system)
-        _assert_named_both_readings(message, leaf, _BARE)
+        _assert_named_both_readings(message, leaf, _BARE, run_from)
         assert "{meta.agent.default.path}" in message
 
     @pytest.mark.parametrize("leaf", ["canon", "template"])
-    def test_the_per_node_spelling_is_refused(self, leaf, tmp_path):
+    def test_the_per_node_spelling_is_refused(self, leaf, tmp_path, run_from):
         """⚑ THIS IS WHAT THE ``agent set`` ROUTING BUYS. ``agent_cmd`` builds
         ``agent.<id>.<leaf>`` and hands it to ``set_config_value``; before that routing
         landed it wrote the node file directly and no set-time rule saw the value."""
         files = _files(tmp_path)
         key = f"agent.claude.{leaf}"
         message = _set(key, _BARE, files, ConfigLevel.system)
-        _assert_named_both_readings(message, key, _BARE)
+        _assert_named_both_readings(message, key, _BARE, run_from)
         assert not (files["agents"] / "claude" / "agent.yaml").exists()
 
     @pytest.mark.parametrize("leaf", ["canon", "template"])
@@ -181,17 +197,17 @@ class TestTheSecretPathFamily:
     grep misses it — it is swept here by name at all four spellings."""
 
     @pytest.mark.parametrize("scope", ["system", "workset", "box"])
-    def test_a_scope_secret_path_refuses_a_bare_relative(self, scope, tmp_path):
+    def test_a_scope_secret_path_refuses_a_bare_relative(self, scope, tmp_path, run_from):
         files = _files(tmp_path)
         key = f"{scope}.secret_path.TOKEN"
         message = _set(key, "tok.txt", files, _SCOPE_OF[scope])
-        _assert_named_both_readings(message, key, "tok.txt")
+        _assert_named_both_readings(message, key, "tok.txt", run_from)
 
-    def test_a_per_node_secret_path_refuses_a_bare_relative(self, tmp_path):
+    def test_a_per_node_secret_path_refuses_a_bare_relative(self, tmp_path, run_from):
         files = _files(tmp_path)
         message = _set("agent.claude.secret_path.TOKEN", "tok.txt", files,
                        ConfigLevel.system)
-        _assert_named_both_readings(message, "agent.claude.secret_path.TOKEN", "tok.txt")
+        _assert_named_both_readings(message, "agent.claude.secret_path.TOKEN", "tok.txt", run_from)
         assert not (files["agents"] / "claude" / "agent.yaml").exists()
 
     def test_the_reading_it_names_is_a_SCOPE_root_not_a_default(self, tmp_path):
@@ -218,11 +234,11 @@ class TestThePrefRequest:
     ``_pref_value_error`` and these two go green with the value stored."""
 
     @pytest.mark.parametrize("leaf", ["canon", "template"])
-    def test_a_pref_targeting_a_path_leaf_is_refused(self, leaf, tmp_path):
+    def test_a_pref_targeting_a_path_leaf_is_refused(self, leaf, tmp_path, run_from):
         files = _files(tmp_path)
         key = f"pref.agent.claude.{leaf}"
         message = _set(key, _BARE, files, ConfigLevel.box)
-        _assert_named_both_readings(message, key, _BARE)
+        _assert_named_both_readings(message, key, _BARE, run_from)
         assert load_doc(files["box"]) in ({}, None)
 
     def test_a_pref_targeting_a_NON_path_leaf_is_untouched(self, tmp_path):
@@ -426,7 +442,7 @@ class TestTheRuleDoesNotOVERREACH:
 class TestTheAnchorDegradesHONESTLY:
     """A downward write names a root the command does not hold."""
 
-    def test_a_system_scope_workset_write_still_names_the_reading(self, tmp_path):
+    def test_a_system_scope_workset_write_still_names_the_reading(self, tmp_path, run_from):
         """``system set workset.channelroot=comms`` is a legal DOWNWARD write, and the
         system command holds no workset — so the other reading cannot be resolved to a
         directory.  It is still NAMED, in a spelling the user can paste, and the
@@ -437,7 +453,9 @@ class TestTheAnchorDegradesHONESTLY:
         # ⚑ The ``, spelled '<ref>/<value>'`` CLAUSE, not the word: the closing line of
         # every one of these messages ends "spelled so it resolves on its own".
         assert ", spelled '" not in message
-        assert str(Path.cwd() / _BARE) in message
+        link, real = run_from
+        assert str(link / _BARE) in message
+        assert str(real.resolve() / _BARE) not in message
 
 
 #: The malformed ``pref:`` entry is the POINT of the three box cases, and the target-less

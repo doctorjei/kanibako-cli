@@ -8,8 +8,6 @@ the resolver faces, and the three per-mode paths that actually CREATE the direct
 
 from __future__ import annotations
 
-from pathlib import Path
-
 import pytest
 
 from kanibako.project.workset import (
@@ -68,10 +66,18 @@ class TestVaultResolverFaces:
         assert resolve_workset_vault_ro(tmp_path, doc, early=early) == elsewhere / "ro"
         assert resolve_workset_vault_rw(tmp_path, doc, early=early) == elsewhere / "rw"
 
-    def test_bare_relative_repoint_is_refused_naming_both_readings(self, tmp_path, early):
+    def test_bare_relative_repoint_is_refused_naming_both_readings(
+        self, tmp_path, early, monkeypatch,
+    ):
         # ⚑ INVERTED BY [R147]: this used to assert the value anchored under the
         # workset root.  A vault is exactly the case the ruling is about — the
         # directory gets created and then holds the user's data.
+        # Run from a link, as a shell does: only ``$PWD`` names the link.
+        real, link = tmp_path / "run-real", tmp_path / "run-from"
+        real.mkdir()
+        link.symlink_to(real)
+        monkeypatch.chdir(link)
+        monkeypatch.setenv("PWD", str(link))
         _repoint(tmp_path, "vault_ro", "store/readonly")
         doc = load_workset_settings_doc(tmp_path)
         with pytest.raises(SettingsError) as exc:
@@ -79,7 +85,8 @@ class TestVaultResolverFaces:
         message = str(exc.value)
         assert "workset.vault_ro" in message
         assert str(tmp_path / "store" / "readonly") in message
-        assert str(Path.cwd() / "store" / "readonly") in message
+        assert str(link / "store" / "readonly") in message
+        assert str(real.resolve() / "store" / "readonly") not in message
 
     def test_tilde_repoint_expands_host_side(self, tmp_path, tmp_home, early):
         _repoint(tmp_path, "vault_rw", "~/outside/rw")

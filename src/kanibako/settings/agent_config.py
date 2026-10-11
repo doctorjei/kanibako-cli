@@ -20,6 +20,7 @@ from kanibako.agent_ref import display_agent_ref
 from kanibako.settings.config import AGENT_META_FILE
 from kanibako.settings.settings_categories import ABSTRACT_CATEGORIES, DECLARATION_ROOT_REF
 from kanibako.settings.settings_resolve import SettingsError, match_braced, match_var
+from kanibako.utils import logical_cwd
 
 
 @dataclass
@@ -259,7 +260,7 @@ def ambiguous_path_value_error(
         f"kanibako will not guess what it is relative to — both of these readings "
         f"are plausible and they are DIFFERENT directories:\n"
         f"    {Path(anchor) / value}   ({anchor_label}{spelled})\n"
-        f"    {Path.cwd() / value}   (the directory kanibako was run from)\n"
+        f"    {Path(logical_cwd()) / value}   (the directory kanibako was run from)\n"
         f"Set the one you mean, spelled so it resolves on its own: an absolute "
         f"path, '~/...', '$XDG_*/...', or an '@'-ref."
     )

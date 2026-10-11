@@ -1325,8 +1325,12 @@ def run_create(args: argparse.Namespace, outcome: _CreateOutcome) -> int:
         _named_already = (_named_ws.projects_dir / _member).exists()
 
     # ⚑ ``None`` = the PRIMARY path space; the default workset is unregistered.
+    # The TARGET as given, then resolved: a link spelling of the space's tree must
+    # not escape it either (anti-theft containment, [R188]).
     _ws_name = (None if _named_spec is not None
-                else _named_workset_owning(effective_path, std))
+                else _named_workset_owning(effective_path, std)
+                or (None if _symlink_loop(effective_path)
+                    else _named_workset_owning(effective_path.resolve(), std)))
     _by_cwd = False
     # ⚑ A PATH is refused by the CWD's space, even outside its tree; a NAME is not a path.
     if (_ws_name is None and project_dir is not None

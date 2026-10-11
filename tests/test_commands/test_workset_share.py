@@ -540,19 +540,25 @@ class TestEffectiveListingsReadTimeRefusals:
     @_EFFECTIVE_LISTINGS
     @_WITH_AND_WITHOUT_A_SHARE
     def test_bare_relative_path_value_is_refused_naming_both_readings(
-        self, config_file, tmp_home, workset, capsys, run_listing, with_share
+        self, config_file, tmp_home, workset, capsys, run_listing, with_share,
+        tmp_path, monkeypatch,
     ):
         """[R147] at read time: a bare relative stored path is refused, naming the key,
         the file that carries it and BOTH directories it could mean."""
-        from pathlib import Path
-
+        # Run from a link, as a shell does: only ``$PWD`` names the link.
+        real, link = tmp_path / "run-real", tmp_path / "run-from"
+        real.mkdir()
+        link.symlink_to(real)
+        monkeypatch.chdir(link)
+        monkeypatch.setenv("PWD", str(link))
         self._hand_edit(workset, {"auth": {"path": "foo"}}, with_share=with_share)
         assert run_listing() == 1
         err = capsys.readouterr().err
         assert "workset.auth.path" in err and "'foo'" in err
         assert str(workset.root / "workset.yaml") in err
         assert str(workset.root / "foo") in err
-        assert str(Path.cwd() / "foo") in err
+        assert str(link / "foo") in err
+        assert str(real.resolve() / "foo") not in err
 
     @_EFFECTIVE_LISTINGS
     @_WITH_AND_WITHOUT_A_SHARE

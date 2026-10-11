@@ -242,7 +242,7 @@ class TestWorksetLocalLeafRepoints:
         assert "@config.registry" in str(exc.value)
 
     def test_a_bare_relative_repoint_is_REFUSED_naming_both_readings(
-        self, named_proj, std,
+        self, named_proj, std, tmp_path, monkeypatch,
     ):
         """[R147]: the six channel leaves route through the same one resolver, so the
         ambiguity refusal reaches them by the same seam the token refusal above does.
@@ -253,6 +253,12 @@ class TestWorksetLocalLeafRepoints:
         """
         from kanibako.settings.settings_resolve import SettingsError
 
+        # Run from a link, as a shell does: only ``$PWD`` names the link.
+        real, link = tmp_path / "run-real", tmp_path / "run-from"
+        real.mkdir()
+        link.symlink_to(real)
+        monkeypatch.chdir(link)
+        monkeypatch.setenv("PWD", str(link))
         ws_root = named_proj.group.root
         _repoint(ws_root, "workset.channels.chat", "talk")
         with pytest.raises(SettingsError) as exc:
@@ -260,7 +266,8 @@ class TestWorksetLocalLeafRepoints:
         message = str(exc.value)
         assert "workset.channels.chat" in message
         assert str(ws_root / "talk") in message
-        assert str(Path.cwd() / "talk") in message
+        assert str(link / "talk") in message
+        assert str(real.resolve() / "talk") not in message
 
     def test_the_root_relative_reading_stays_expressible(self, named_proj, std):
         ws_root = named_proj.group.root

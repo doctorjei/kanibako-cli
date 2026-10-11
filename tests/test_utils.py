@@ -545,20 +545,17 @@ class TestTheCwdIsReadOnlyThroughLogicalCwd:
     """AST guard: the physical cwd is read in ``src/kanibako`` only inside
     :func:`kanibako.utils.logical_cwd`, so every cwd read honors ``$PWD``."""
 
-    #: ``(file, function)`` sites the message step (1b) converts; then this empties.
-    _PENDING = {
-        ("settings/agent_config.py", "ambiguous_path_value_error"),
-        ("commands/restore.py", "_restore_all"),
-    }
     _ALLOWED = {("utils.py", "logical_cwd")}
 
     @staticmethod
     def _physical_cwd_reads(source: str):
         """Yield ``(enclosing function, line)`` for each physical cwd read in *source*.
 
-        A read is ``os.getcwd``/``os.getcwdb``, ``Path.cwd``, ``Path()``/``Path('.')``
-        then ``.resolve``/``.absolute``, or ``abspath``/``realpath`` of ``.``/``curdir``,
-        under any name an import binds them to.
+        A read is any reference, called or not, to ``os.getcwd``/``os.getcwdb`` or
+        ``Path.cwd`` (so ``default_factory=Path.cwd`` counts); ``Path()``/``Path('.')``
+        then ``.resolve``/``.absolute``; or ``abspath``/``realpath`` of ``.``/``curdir``.
+        A literal counts as ``.`` when it normalizes to it (``''``, ``'./'``).  Every
+        name an import binds them to counts.
         """
         import ast
 
@@ -586,19 +583,26 @@ class TestTheCwdIsReadOnlyThroughLogicalCwd:
             if len(args) != 1:
                 return False
             arg = args[0]
-            return (isinstance(arg, ast.Constant) and arg.value in (".", "")) or (
-                callee(arg) == "curdir")
+            if isinstance(arg, ast.Constant) and isinstance(arg.value, str):
+                return os.path.normpath(arg.value) == "."
+            return callee(arg) == "curdir"
 
-        def is_read(call: ast.Call) -> bool:
+        def is_reference(node) -> bool:
+            """A reference to a cwd function itself, called or not."""
+            if isinstance(node, ast.Name):
+                return node.id in cwd_funcs
+            if not isinstance(node, ast.Attribute):
+                return False
+            if node.attr in ("getcwd", "getcwdb"):
+                return True
+            return node.attr == "cwd" and callee(node.value) in path_names
+
+        def is_dot_call(call: ast.Call) -> bool:
             func = call.func
             if isinstance(func, ast.Name):
-                return func.id in cwd_funcs or (func.id in dot_funcs and is_dot(call.args))
+                return func.id in dot_funcs and is_dot(call.args)
             if not isinstance(func, ast.Attribute):
                 return False
-            if func.attr in ("getcwd", "getcwdb"):
-                return True
-            if func.attr == "cwd":
-                return callee(func.value) in path_names
             if func.attr in ("abspath", "realpath"):
                 return is_dot(call.args)
             if func.attr in ("resolve", "absolute"):
@@ -607,12 +611,15 @@ class TestTheCwdIsReadOnlyThroughLogicalCwd:
                         and (not inner.args or is_dot(inner.args)))
             return False
 
+        def is_read(node) -> bool:
+            return is_reference(node) or (isinstance(node, ast.Call) and is_dot_call(node))
+
         def walk(node, owner):
             for child in ast.iter_child_nodes(node):
                 if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef)):
                     yield from walk(child, child.name)
                     continue
-                if isinstance(child, ast.Call) and is_read(child):
+                if is_read(child):
                     yield owner, child.lineno
                 yield from walk(child, owner)
 
@@ -628,9 +635,9 @@ class TestTheCwdIsReadOnlyThroughLogicalCwd:
             for owner, line in self._physical_cwd_reads(path.read_text())
         }
         sites = {(f, owner) for f, owner, _line in found}
-        stray = sorted(hit for hit in found if hit[:2] not in self._ALLOWED | self._PENDING)
+        stray = sorted(hit for hit in found if hit[:2] not in self._ALLOWED)
         assert stray == [], stray
-        assert self._ALLOWED | self._PENDING <= sites, "a listed site no longer reads the cwd"
+        assert self._ALLOWED <= sites, "a listed site no longer reads the cwd"
 
     _HEADER = (
         "import os, os.path, pathlib\n"
@@ -646,6 +653,9 @@ class TestTheCwdIsReadOnlyThroughLogicalCwd:
         "Path('.').absolute()", "pathlib.Path('.').resolve()", "P('.').resolve()",
         "os.path.abspath('.')", "os.path.realpath('.')", "os.path.abspath(os.curdir)",
         "ap('.')", "realpath('.')",
+        "Path('./').resolve()", "os.path.abspath('./')", "ap('./')",
+        "os.getcwdb", "os.getcwd", "getcwd", "gcb", "Path.cwd", "P.cwd",
+        "field(default_factory=Path.cwd)", "map(str, [os.getcwd])",
     ])
     def test_the_guard_sees_every_spelling(self, expr):
         source = self._HEADER + f"def site():\n    return {expr}\n"
@@ -653,7 +663,8 @@ class TestTheCwdIsReadOnlyThroughLogicalCwd:
 
     @pytest.mark.parametrize("expr", [
         "Path('x').resolve()", "Path(p).absolute()", "os.path.abspath(p)",
-        "realpath('x')", "Path.home()", "os.getcwdb",
+        "realpath('x')", "Path.home()", "Path('./x').resolve()", "ap",
+        "os.path.abspath('..')", "realpath",
     ])
     def test_the_guard_passes_a_non_cwd_read(self, expr):
         source = self._HEADER + f"def site(p):\n    return {expr}\n"

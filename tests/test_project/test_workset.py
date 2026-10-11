@@ -955,20 +955,27 @@ class TestWorksetWorkspacesResolved:
         assert resolve_workset_channelroot(tmp_path, doc,
                 early=early_record(tmp_path, mode=BoxMode.primary)) == tmp_path / "comms"
 
-    def test_resolver_bare_relative_repoint_is_refused(self, tmp_path):
+    def test_resolver_bare_relative_repoint_is_refused(self, tmp_path, monkeypatch):
         """[R147]: the anchor is ~50/50 between the workset root and the cwd, so the
         seam refuses and NAMES BOTH readings rather than creating a data directory in
         one of them."""
         from kanibako.settings.settings_resolve import SettingsError
         from kanibako.project.workset import resolve_workset_channelroot
 
+        # Run from a link, as a shell does: only ``$PWD`` names the link.
+        real, link = tmp_path / "run-real", tmp_path / "run-from"
+        real.mkdir()
+        link.symlink_to(real)
+        monkeypatch.chdir(link)
+        monkeypatch.setenv("PWD", str(link))
         doc = {"workset": {"channelroot": "comms"}}
         with pytest.raises(SettingsError) as excinfo:
             resolve_workset_channelroot(tmp_path, doc,
                     early=early_record(tmp_path, mode=BoxMode.primary))
         message = str(excinfo.value)
         assert str(tmp_path / "comms") in message
-        assert str(Path.cwd() / "comms") in message
+        assert str(link / "comms") in message
+        assert str(real.resolve() / "comms") not in message
 
     def test_resolver_absolute_repoint_used_as_is(self, tmp_path):
         from kanibako.project.workset import resolve_workset_workspaces

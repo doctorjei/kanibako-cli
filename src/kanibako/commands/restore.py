@@ -26,7 +26,7 @@ from kanibako.settings.paths import (
     resolve_any_project,
 )
 from kanibako.tree_copy import copy_tree_keeping_links
-from kanibako.utils import confirm_prompt
+from kanibako.utils import confirm_prompt, logical_cwd
 from kanibako.channels.channels import workset_name_token, workset_root
 from kanibako.settings.workset_dirkeys import EarlyScope, refuse_inherited_per_owner
 from kanibako.settings.messages import MSG_DONE
@@ -249,7 +249,10 @@ def _restore_one(std, config, *, project_dir, archive_file, force, name=None) ->
                 name_override=name,
             )
         except DerivedBoxNameError as e:
-            cure = (f"kanibako box extract {shlex.quote(str(archive_file.absolute()))} "
+            # ⚑ Joined to ``$PWD``, NOT normalized: ``lnk/../x.txz`` is the file opened.
+            opened = (archive_file if archive_file.is_absolute()
+                      else Path(logical_cwd()) / archive_file)
+            cure = (f"kanibako box extract {shlex.quote(str(opened))} "
                     f"{shlex.quote(str(proj.project_path))}")
             print(f"Error: {e.with_cure(box_name_cure(cure, e.name))}", file=sys.stderr)
             return 1
@@ -356,9 +359,7 @@ def _peek_archive_info(archive_file: Path) -> dict[str, str] | None:
 
 def _restore_all(std, config, args) -> int:
     """Restore all kanibako-*.txz archives in the current directory."""
-    import os
-
-    scan_dir = Path(os.getcwd())
+    scan_dir = Path(logical_cwd())
     archives = sorted(scan_dir.glob("kanibako-*.txz"))
     if not archives:
         print(f"No kanibako-*.txz archives found in {scan_dir}")

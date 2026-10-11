@@ -373,6 +373,46 @@ class TestExtract:
         assert self._extract(all_archives=True, name="x") == 1
         assert "--name cannot be combined with --all" in capsys.readouterr().err
 
+    def test_the_name_cure_names_the_archive_it_opened_through_a_link(
+        self, config_file, tmp_home, credentials_dir, capsys, monkeypatch,
+    ):
+        """A relative archive joins ``$PWD`` unnormalized: ``lnk/../x.txz`` is the file
+        that was opened (``lnk``'s real parent), never a normalized sibling of ``lnk``."""
+        import shlex
+
+        from kanibako.commands.archive import run as archive_run
+        from kanibako.commands.restore import run as extract_run
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        project_dir = str(tmp_home / "project")
+        resolve_project(std, config, project_dir=project_dir, initialize=True)
+        deep = tmp_home / "r" / "deep" / "dir"
+        deep.mkdir(parents=True)
+        assert archive_run(argparse.Namespace(
+            path=project_dir, file=str(deep.parent / "x.txz"), all_projects=False,
+            allow_uncommitted=True, allow_unpushed=True, force=True,
+        )) == 0
+        link = tmp_home / "lnk"
+        link.symlink_to(deep)
+        monkeypatch.chdir(link)
+        monkeypatch.setenv("PWD", str(link))
+        bad = tmp_home / "work" / "a b'c"
+        bad.mkdir(parents=True)
+
+        rc = extract_run(argparse.Namespace(
+            file="../x.txz", path=str(bad), name=None, all_archives=False, force=True,
+        ))
+
+        assert rc == 1
+        err = capsys.readouterr().err
+        cures = [shlex.split(line.strip()) for line in err.splitlines()
+                 if "kanibako box extract " in line]
+        assert cures, err
+        named = Path(cures[0][cures[0].index("extract") + 1])
+        assert named == link / ".." / "x.txz"
+        assert named.is_file()
+
     def test_missing_archive(self, config_file, tmp_home, credentials_dir):
         from kanibako.commands.restore import run
 

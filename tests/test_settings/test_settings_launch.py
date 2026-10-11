@@ -1918,12 +1918,18 @@ def test_p6d2_workset_auth_path_settable_and_overrides_default(tmp_path):
 # path. The set-time guard never sees a hand-edit.
 
 
-def test_R147_a_hand_edited_bare_relative_workset_auth_path_is_refused(tmp_path):
+def test_R147_a_hand_edited_bare_relative_workset_auth_path_is_refused(tmp_path, monkeypatch):
     """A bare relative ``workset.auth.path`` in the workset file refuses, naming both readings."""
     # Mutation: drop ``_refuse_ambiguous_path_values`` from ``build_launch_snapshot``
     # → the snapshot builds and credsync's source root becomes ``auth/claude``.
     from kanibako.settings.settings_resolve import SettingsError
 
+    # Run from a link, as a shell does: only ``$PWD`` names the link.
+    real, link = tmp_path / "run-real", tmp_path / "run-from"
+    real.mkdir()
+    link.symlink_to(real)
+    monkeypatch.chdir(link)
+    monkeypatch.setenv("PWD", str(link))
     with pytest.raises(SettingsError) as exc:
         _auth_snapshot(
             "primary", tmp_path=tmp_path,
@@ -1936,7 +1942,8 @@ def test_R147_a_hand_edited_bare_relative_workset_auth_path_is_refused(tmp_path)
     assert f" in {tmp_path}" in msg
     # BOTH readings are named: the key's own root, and the cwd.
     assert "{meta.workset.path}" in msg
-    assert str(Path.cwd() / "auth") in msg
+    assert str(link / "auth") in msg
+    assert str(real.resolve() / "auth") not in msg
 
 
 def test_R147_the_sweep_reaches_workset_auth_path_in_a_real_snapshot(tmp_path):

@@ -2105,17 +2105,24 @@ class TestAgentSetRefusesABareRelativePath:
 
     @pytest.mark.parametrize("leaf", ("canon", "template"))
     def test_a_bare_relative_is_refused_and_the_file_is_unchanged(
-        self, leaf, agent_env, capsys,
+        self, leaf, agent_env, capsys, tmp_path, monkeypatch,
     ):
         from kanibako.commands.agent_cmd import run_set
 
+        # Run from a link, as a shell does: only ``$PWD`` names the link.
+        real, link = tmp_path / "run-real", tmp_path / "run-from"
+        real.mkdir()
+        link.symlink_to(real)
+        monkeypatch.chdir(link)
+        monkeypatch.setenv("PWD", str(link))
         before = _stored_doc(agent_env)
         rc = run_set(argparse.Namespace(agent_id="claude", key_value=f"{leaf}=mydir"))
         assert rc == 1
         err = capsys.readouterr().err
         assert "BARE RELATIVE" in err
         # Both readings named — the refusal removes the guess rather than relaying it.
-        assert str(Path.cwd() / "mydir") in err
+        assert str(link / "mydir") in err
+        assert str(real.resolve() / "mydir") not in err
         assert "@meta.agent.claude.path" in err or "/mydir" in err
         assert _stored_doc(agent_env) == before
 

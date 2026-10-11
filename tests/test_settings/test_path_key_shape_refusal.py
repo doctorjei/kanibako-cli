@@ -24,7 +24,6 @@ Mutation notes are on each test: each names the hunk it pins.
 from __future__ import annotations
 
 from itertools import count
-from pathlib import Path
 
 import pytest
 
@@ -227,17 +226,24 @@ def test_a_string_at_a_path_key_is_still_legal(tmp_path):
     assert _snapshot(tmp_path, box_file={"box": {"canon": "/srv/canon"}}) is not None
 
 
-def test_an_ambiguous_string_still_gets_the_bare_relative_answer(tmp_path):
+def test_an_ambiguous_string_still_gets_the_bare_relative_answer(tmp_path, monkeypatch):
     """The two arms cannot both answer one key: a bare relative keeps its OWN refusal.
 
     Mutation: judge every non-``None`` as a shape → this loses its two readings and the
     cwd anchor.
     """
+    # Run from a link, as a shell does: only ``$PWD`` names the link.
+    real, link = tmp_path / "run-real", tmp_path / "run-from"
+    real.mkdir()
+    link.symlink_to(real)
+    monkeypatch.chdir(link)
+    monkeypatch.setenv("PWD", str(link))
     with pytest.raises(SettingsError) as exc:
         _snapshot(tmp_path, box_file={"box": {"canon": "auth"}})
     msg = str(exc.value)
     assert "BARE RELATIVE" in msg
-    assert str(Path.cwd() / "auth") in msg
+    assert str(link / "auth") in msg
+    assert str(real.resolve() / "auth") not in msg
 
 
 def test_a_map_shaped_category_key_is_not_judged(tmp_path):
