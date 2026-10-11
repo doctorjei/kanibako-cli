@@ -58,6 +58,7 @@ def _set_word(value: object) -> str | None
 def _yaml_block(doc: dict, indent: str) -> str
 def _installed(node: str) -> bool
 def _sub_home(sub_key: str, *, node: str | None, path: Path | None) -> _SubHome
+def _state(home: _SubHome) -> str
 def _nested_agent_cure(category: str | None, sub_key: str, *, entries: list[tuple[Any, Any]], rest: list[str], placeholder: bool=False, home: _SubHome | None=None) -> str
 def _refused_category(sub_tbl: dict) -> str | None
 def _nested_table_steps(category: str | None, sub_key: str, *, entries: list[tuple[Any, Any]], rest: list[str], placeholder: bool, path: Path | None, home: _SubHome | None) -> str
@@ -101,4 +102,5 @@ class _SubHome:
     where: str | None
     settable: bool
     known: bool
+    state: str | None = None
 ```

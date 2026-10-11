@@ -244,19 +244,18 @@ def test_another_agents_sub_table_is_moved_to_that_agents_file(tmp_path) -> None
         assert msg.index("Fix: ") < msg.index(f"then delete the `self.claude` table from {stale}")
 
 
-@pytest.mark.parametrize(
-    ("root_tbl", "category"),
-    [({"foo": {"caches": {"a": "/x"}}}, "caches"),
-     ({"foo": {"bindings": {"a": "/x"}}}, "bindings")],
-)
-def test_a_non_verb_category_is_a_hand_edit_and_deletes_after(root_tbl, category,
-                                                          tmp_path) -> None:
+@pytest.mark.parametrize("category", ["caches", "bindings"])
+def test_a_non_verb_category_is_a_hand_edit_and_deletes_after(category, tmp_path) -> None:
     """No ``agent set`` verb exists for these (:data:`_VERB_WRITABLE_CATEGORIES` is
     ``env``/``secret_path`` only), so nothing reads the file mid-sequence: the edit
-    comes first, the delete after."""
-    msg = _nested_refusal(root_tbl, path=tmp_path / "agent.yaml")
-    assert msg.index("Fix: ") < msg.index("then delete the `self.foo` table")
-    assert "kanibako agent set" not in msg
+    comes first, the delete after. The target agent's file EXISTS, so only the category
+    check keeps the verb out."""
+    _agent_store(tmp_path, "goose")
+    msg = _nested_refusal(
+        {"goose": {category: {"a": "/x"}}}, path=tmp_path / "claude" / "agent.yaml",
+    )
+    assert msg.index("Fix: ") < msg.index("then delete the `self.goose` table")
+    assert "kanibako agent set" not in msg, msg
     assert category in msg
 
 
@@ -521,9 +520,11 @@ def test_the_nested_set_arm_prints_one_set_per_entry(tmp_path) -> None:
 
 
 def test_the_hand_edit_arm_lists_every_entry(tmp_path) -> None:
+    _agent_store(tmp_path, "shell")
     msg = _nested_refusal(
         {"shell": {"caches": {"a": "/x", "b": "/y"}}}, path=tmp_path / "claude" / "agent.yaml",
     )
+    assert "kanibako agent set" not in msg, msg
     assert "        a: /x\n        b: /y" in msg
 
 
@@ -701,7 +702,7 @@ def test_the_hand_cure_lands_every_entry_on_the_right_agent(tree) -> None:
 # no agent answers to, and a non-string sub key
 # --------------------------------------------------------------------------- #
 
-_NEW_HOME = re.compile(r"in the FLAT table of the \S+ agent's own file, (\S+) — a NEW file")
+_NEW_HOME = re.compile(r"in the FLAT table of the \S+ agent's own file, (\S+) \(a NEW file")
 
 
 def test_a_bool_value_takes_the_hand_edit_not_a_set_word(tmp_path) -> None:
@@ -850,3 +851,58 @@ def test_a_non_string_sub_key_refuses_through_the_cli(tree) -> None:
     assert first.returncode != 0, refusal
     assert "`self.1.env` is not a settings key" in refusal, refusal
     assert "Traceback" not in refusal and "TypeError" not in refusal, refusal
+
+
+# --------------------------------------------------------------------------- #
+# A target file that cannot be checked, and a plugin that cannot be imported
+# --------------------------------------------------------------------------- #
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root reads through chmod 000")
+def test_an_unreadable_target_store_is_a_hand_edit_not_a_traceback(tmp_path) -> None:
+    """``agents/<x>`` unreadable (EACCES): whether its file exists cannot be told, so no
+    ``set`` into it — the hand arm, saying the file could not be checked."""
+    home = _agent_store(tmp_path, "goose")
+    home.parent.chmod(0)
+    try:
+        msg = _nested_refusal(
+            {"goose": {"env": {"W": "x"}}}, path=tmp_path / "claude" / "agent.yaml",
+        )
+    finally:
+        home.parent.chmod(0o755)
+    assert "kanibako agent set" not in msg and "names no agent" not in msg, msg
+    assert f"own file, {home} (which could not be checked: Permission denied;" in msg, msg
+    assert msg.index("Fix: ") < msg.index("then delete the `self.goose` table")
+
+
+def test_a_looping_target_store_is_a_hand_edit_not_a_new_file(tmp_path) -> None:
+    """``agents/<x>`` a symlink loop (ELOOP): not "create it" — a file may stand there."""
+    (tmp_path / "goose").symlink_to(tmp_path / "goose")
+    msg = _nested_refusal(
+        {"goose": {"env": {"W": "x"}}}, path=tmp_path / "claude" / "agent.yaml",
+    )
+    assert "kanibako agent set" not in msg and "NEW file" not in msg, msg
+    assert "names no agent" not in msg, msg
+    assert f"own file, {tmp_path / 'goose' / 'agent.yaml'} (which could not be checked:" in msg
+
+
+def test_a_plugin_that_fails_to_import_still_names_an_agent(monkeypatch, tmp_path) -> None:
+    """Whether a sub key names an agent is read from the entry-point NAMES: an installed
+    plugin whose import fails is still that agent, so its content moves to its file."""
+    from importlib.metadata import EntryPoint
+
+    import kanibako.targets
+
+    ghost = EntryPoint(name="ghost", value="kani_no_such_module_xyz:Target",
+                       group="kanibako.agents")
+
+    def eps(**kw):
+        return [ghost] if kw.get("group") == "kanibako.agents" else []
+
+    # Both discovery and the message builder see the broken plugin.
+    monkeypatch.setattr(kanibako.targets, "entry_points", eps)
+    monkeypatch.setattr(agent_file, "entry_points", eps, raising=False)
+    msg = _nested_refusal(
+        {"ghost": {"env": {"W": "x"}}}, path=tmp_path / "claude" / "agent.yaml",
+    )
+    assert "names no agent" not in msg, msg
+    assert _NEW_HOME.search(msg).group(1) == str(tmp_path / "ghost" / "agent.yaml"), msg

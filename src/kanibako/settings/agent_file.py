@@ -12,14 +12,17 @@
 
 from __future__ import annotations
 
+import errno
 import shlex
+import stat
 from dataclasses import dataclass, field
 from datetime import date
 from functools import partial
+from importlib.metadata import entry_points
 from pathlib import Path
 from typing import Any, Callable, Final, Iterable, Iterator
 
-from kanibako.agent_ref import display_agent_ref
+from kanibako.agent_ref import AGENT_ENTRY_POINT_GROUP, display_agent_ref
 from kanibako.settings.agent_config import (
     AgentConfig,
     agent_settings_path,
@@ -788,28 +791,37 @@ class _SubHome:
     ``None`` when it is THIS file (the sub key is the file's own node). *settable*: that file
     exists, so a printed ``agent set <name>`` finds it. *known*: some agent answers to *name* —
     its file exists, or its harness is installed — so a cure may send content there at all.
+    *state*: what the user must know about that file before writing it — that it is NEW, or
+    that it could not be checked — ``None`` when it simply exists.
     """
 
     name: str
     where: str | None
     settable: bool
     known: bool
+    state: str | None = None
 
 
 def _installed(node: str) -> bool:
-    """Whether an installed target (built-in ``shell`` included) runs *node*."""
+    """Whether an installed target (built-in ``shell`` included) runs *node*.
+
+    ⚑ Read from the entry-point NAMES, never loaded: a plugin that fails to import is still
+    installed (discovery warns about it on its own), and an error message must not import
+    third-party code to word itself.
+    """
     from kanibako.agent_ref import parse_agent_ref
     from kanibako.errors import ConfigError
-    from kanibako.targets import discover_targets  # ⚑ Lazy: targets imports settings.
 
-    targets = discover_targets()
-    if node in targets:
+    names = {"shell"} | {  # ``shell`` is the built-in: seeded, never an entry point.
+        _node_identity(ep.name) for ep in entry_points(group=AGENT_ENTRY_POINT_GROUP)
+    }
+    if node in names:
         return True
     try:
         _, harness = parse_agent_ref(node)
     except ConfigError:
         return False
-    return harness in targets
+    return harness in names
 
 
 def _sub_home(sub_key: str, *, node: str | None, path: Path | None) -> _SubHome:
@@ -832,12 +844,32 @@ def _sub_home(sub_key: str, *, node: str | None, path: Path | None) -> _SubHome:
     home = agent_settings_path(path.parent.parent, canon)
     if node is None and home == path:
         return _SubHome(name, None, settable=True, known=True)
-    if home.is_file():
-        return _SubHome(name, f"the {name} agent's own file, {home}", settable=True, known=True)
+    where = f"the {name} agent's own file, {home}"
+    # ⚑ ``os.stat``, not ``Path.is_file``: that RAISES on EACCES (3.13) and answers "no file"
+    # on a symlink loop — so neither a traceback nor "create it" for a file that may exist.
+    try:
+        exists = stat.S_ISREG(home.stat().st_mode)
+    except OSError as exc:
+        if exc.errno not in (errno.ENOENT, errno.ENOTDIR):
+            # Cannot tell: no ``set`` into it (hand arm), and an entry stands there, so the
+            # name is an agent's.
+            reason = exc.strerror or type(exc).__name__
+            return _SubHome(
+                name, where, settable=False, known=True,
+                state=f"which could not be checked: {reason}",
+            )
+        exists = False
+    if exists:
+        return _SubHome(name, where, settable=True, known=True)
     return _SubHome(
-        name, f"the {name} agent's own file, {home} — a NEW file: create it —",
-        settable=False, known=_installed(canon),
+        name, where, settable=False, known=_installed(canon),
+        state="a NEW file: create it",
     )
+
+
+def _state(home: _SubHome) -> str:
+    """*home*'s :attr:`_SubHome.state` as the head of the parenthesis after its file."""
+    return f"{home.state}; " if home.state else ""
 
 
 def _nested_agent_cure(
@@ -872,7 +904,7 @@ def _nested_agent_cure(
         # deleting first would destroy the content being moved up.
         where = (
             "UP ONE LEVEL" if home is None or home.where is None
-            else f"into the `{_ROOT}:` table of {home.where} (there `{_ROOT}:` expands to "
+            else f"into the `{_ROOT}:` table of {home.where} ({_state(home)}there `{_ROOT}:` expands to "
             f"`agent.{home.name}`)"
         )
         return (
@@ -918,7 +950,8 @@ def _nested_agent_cure(
             f"directly under it;" if rest else ""
         )
         by_hand = (
-            f"in the FLAT table of {home.where} (there `{_ROOT}:` expands to `agent.{home.name}`, "
+            f"in the FLAT table of {home.where} ({_state(home)}there `{_ROOT}:` expands to "
+            f"`agent.{home.name}`, "
             f"so the {category} table sits DIRECTLY under it):"
         )
     by_hand += f"{block(_ROOT, indent='    ')}{moved}"
