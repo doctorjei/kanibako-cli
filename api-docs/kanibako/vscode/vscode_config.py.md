@@ -51,7 +51,6 @@ def merge_codex_config(text: str, *, box_config_path: str, codex_cwd: str, model
 def merge_codex_model_provider(text: str, *, provider_id: str, name: str, base_url: str, wire_api: str, env_key: str, model: str) -> str
 def seed_codex_config(config_path: Path, *, box_config_path: str, codex_cwd: str, model_provider: CodexModelProvider | None=None) -> bool
 def seed_codex_approval(config_path: Path, *, access: str) -> bool
-def seed_goose_mode(config_path: Path, *, access: str, descriptor: PluginDescriptor) -> bool
 def _strip_jsonc(text: str) -> str
 def _encode_image_ref(ref: str) -> str
 def _read_existing_config(path: Path) -> dict

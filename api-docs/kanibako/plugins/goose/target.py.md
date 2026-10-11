@@ -36,7 +36,6 @@ class GooseTarget(Target):
     @property
     def default_entrypoint(self) -> str | None
     def has_resumable_session(self, home: Path) -> bool
-    def deliver_panel_permissions(self, *, config_root: Path, access: str) -> bool
     def should_run_setup(self, output: str) -> bool
     @property
     def setup_entrypoint(self) -> str | None

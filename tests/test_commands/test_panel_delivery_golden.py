@@ -56,19 +56,22 @@ DELIBERATE content changes so far (each = a reviewed regeneration commit):
   ``~/canon/charter/general/scripts/util/`` prefix (and the codex ``[hooks.state]``
   hash with it); the 6 ``goose--*`` are byte-UNCHANGED.
 
-Matrix per agent (delivered file: claude ``.claude/settings.json``, goose
-``.config/goose/config.yaml``, codex ``.codex/config.toml``):
+* goose stops writing the ``access`` tier into its config.yaml (the launched goose
+  gets it as the ``GOOSE_MODE`` env var): the 6 ``goose--*`` fixtures are deleted
+  and ``test_goose_delivers_nothing`` pins the absence.
+
+Matrix per agent (delivered file: claude ``.claude/settings.json``, codex
+``.codex/config.toml``).  goose delivers NOTHING — its tier reaches the launched
+goose as the ``GOOSE_MODE`` env var only — so it has no fixtures; the module's
+last test asserts its config.yaml is left byte-identical at every tier:
 
 * pre-state ∈ {absent, user (representative user content incl. user-chosen
   values + a user hook group), relaunch (the absent-run output fed back in —
   asserts idempotence AND that the second pass reports no write)}
-* ``access`` ∈ the tiers the agent CAN render: {restricted, editing, full} for
-  claude/codex, {restricted, full} for goose (R-41: goose has no ``editing``
-  realization — its refusal is asserted separately, below, precisely because
-  there are no bytes to freeze for a tier that never writes)
+* ``access`` ∈ {restricted, editing, full}
 * codex only: ``model_provider`` ∈ {None, the navigator persona sample}
 
-→ 9 claude + 6 goose + 18 codex = 33 fixtures under
+→ 9 claude + 18 codex = 27 fixtures under
 ``tests/fixtures/panel_delivery/``, named
 ``<agent>--<pre>--access-<tier>[--prov-<none|nav>].<real suffix>``.
 
@@ -99,7 +102,6 @@ import os
 from pathlib import Path
 
 import pytest
-import yaml
 
 from kanibako.vscode.vscode_config import CodexModelProvider
 
@@ -123,11 +125,12 @@ DELIVERED_FILE = {
     "goose": Path(".config") / "goose" / "config.yaml",
     "codex": Path(".codex") / "config.toml",
 }
+#: The agents whose delivery writes bytes — the fixture axis.
+_GOLDEN_AGENTS = ("claude", "codex")
 
 # Fixture filename suffix = the real delivered filename, for at-a-glance format.
 _FIXTURE_SUFFIX = {
     "claude": ".settings.json",
-    "goose": ".config.yaml",
     "codex": ".config.toml",
 }
 
@@ -145,29 +148,21 @@ NAVIGATOR_PROVIDER = CodexModelProvider(
 _PRE_STATES = ("absent", "user", "relaunch")
 
 
-#: The tiers each agent can RENDER — the fixture axis.  goose's missing
-#: ``editing`` is the B7b ruling (no GOOSE_MODE value realizes it), and it is
-#: covered by the refusal test at the bottom of this module rather than by a
-#: fixture: a tier that refuses writes NO bytes to freeze.
-_TIERS_BY_AGENT = {
-    "claude": ("restricted", "editing", "full"),
-    "goose": ("restricted", "full"),
-    "codex": ("restricted", "editing", "full"),
-}
+_TIERS = ("restricted", "editing", "full")
 
 
 def _matrix() -> list[tuple[str, str, str, CodexModelProvider | None]]:
     """Every (agent, pre_state, access, model_provider) cell, in a fixed
-    deterministic order.  codex fans out over the provider axis; claude/goose
-    always launch with ``provider=None`` (the call site only ever resolves a
+    deterministic order.  codex fans out over the provider axis; claude
+    always launches with ``provider=None`` (the call site only ever resolves a
     provider for a codex persona)."""
     cells: list[tuple[str, str, str, CodexModelProvider | None]] = []
-    for agent in ("claude", "goose", "codex"):
+    for agent in _GOLDEN_AGENTS:
         providers: tuple[CodexModelProvider | None, ...] = (
             (None, NAVIGATOR_PROVIDER) if agent == "codex" else (None,)
         )
         for pre in _PRE_STATES:
-            for tier in _TIERS_BY_AGENT[agent]:
+            for tier in _TIERS:
                 for provider in providers:
                     cells.append((agent, pre, tier, provider))
     return cells
@@ -243,10 +238,12 @@ type = "command"
 command = "echo user-session-start"
 """
 
-# goose: existing user keys (top-level scalars + a nested block).
+# goose: existing user keys (top-level scalars + a nested block), including the
+# user's own GOOSE_MODE, which no tier may touch.
 _GOOSE_USER_CONFIG = """\
 GOOSE_PROVIDER: openai
 GOOSE_MODEL: gpt-4o
+GOOSE_MODE: smart_approve
 extensions:
   developer:
     enabled: true
@@ -330,9 +327,6 @@ def _sanity_check(
             assert mode == "acceptEdits"
         else:
             assert mode not in ("bypassPermissions", "acceptEdits")
-    elif agent == "goose":
-        doc = yaml.safe_load(text)
-        assert doc["GOOSE_MODE"] == {"full": "auto", "restricted": "approve"}[tier]
     else:  # codex
         assert "# >>> kanibako-managed (instruction-delivery hook + trust)" in text
         # approval_policy is TIER-driven and set at EVERY tier (one distinct
@@ -403,36 +397,34 @@ def test_fixture_inventory_matches_matrix():
     if _update_mode():
         pytest.skip("update mode: inventory is being (re)written by this run")
     expected = {_fixture_name(a, p, t, pr) for a, p, t, pr in _MATRIX}
-    assert len(expected) == 33  # 9 claude + 6 goose + 18 codex
+    assert len(expected) == 27  # 9 claude + 18 codex
     actual = {p.name for p in FIXTURES_DIR.iterdir() if p.is_file()}
     assert actual == expected
 
 
-@pytest.mark.parametrize("pre", _PRE_STATES)
-def test_goose_editing_refuses_and_delivers_nothing(tmp_path, pre):
-    """The un-renderable tier has NO fixture because it writes NO bytes.
+@pytest.mark.parametrize("tier", _TIERS)
+@pytest.mark.parametrize("pre", ("absent", "user"))
+def test_goose_delivers_nothing(tmp_path, pre, tier):
+    """goose's config.yaml is the user's: no tier writes to it.
 
-    ⚑ This is the golden matrix's dangerous-direction cell: if goose ``editing``
-    ever "succeeded" by writing nothing, the box would run at goose's own
-    default — ``auto``, the FULL bypass — under the name ``editing``.  So the
-    absence of a fixture is itself asserted: refuse, and leave the surface as it
-    was found.
+    The launched goose gets the tier as the ``GOOSE_MODE`` env var; the VS Code
+    panel's goose reads the file's own ``GOOSE_MODE``.  A user's value survives a
+    start byte-identical, and an absent file is not created.
     """
-    from kanibako.errors import ConfigError
-
     config_root = tmp_path / "box-home"
     config_root.mkdir()
     delivered_path = config_root / DELIVERED_FILE["goose"]
-    if pre != "absent":
+    if pre == "user":
         delivered_path.parent.mkdir(parents=True, exist_ok=True)
         delivered_path.write_text(_USER_CONTENT["goose"])
     before = delivered_path.read_bytes() if delivered_path.exists() else None
 
-    with pytest.raises(ConfigError):
-        _drive_seam_path(
-            agent="goose", config_root=config_root, access="editing",
-            provider=None,
-        )
+    wrote = _drive_seam_path(
+        agent="goose", config_root=config_root, access=tier, provider=None,
+    )
 
+    assert wrote is False
     after = delivered_path.read_bytes() if delivered_path.exists() else None
-    assert after == before, "a refused tier must leave the surface untouched"
+    assert after == before
+    if pre == "absent":
+        assert not (config_root / ".config").exists()

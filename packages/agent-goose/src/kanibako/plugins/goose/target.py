@@ -83,9 +83,9 @@ class GooseTarget(Target):
     ) -> None:
         """Filter goose ``config.yaml`` so the box-local GOOSE_MODE is not written back.
 
-        ⚑ ``GOOSE_MODE`` in the box is a PANEL-parity value, NOT user config, so a
-        writeback must never overwrite the host's own setting; every other key the user
-        changed in-box still flows to the host.  Defensive throughout: a missing source
+        ⚑ A writeback never overwrites the host's own ``GOOSE_MODE``: a box's
+        permission mode stays in that box.  Every other key the user changed in-box
+        still flows to the host.  Defensive throughout: a missing source
         or malformed YAML degrades to a no-op, never raises.  Cases: llm-doc.
         """
         import shutil
@@ -100,7 +100,7 @@ class GooseTarget(Target):
             shutil.copy2(str(src), str(dst))
             return
         if direction == "in":
-            # host->box: wholesale copy (panel-parity GOOSE_MODE re-seeded at attach).
+            # host->box: wholesale copy.
             dst.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(str(src), str(dst))
             return
@@ -175,29 +175,6 @@ class GooseTarget(Target):
                 sessions, exc,
             )
             return True
-
-    def deliver_panel_permissions(
-        self, *, config_root: Path, access: str,
-    ) -> bool:
-        """Persist the box's CASCADE-resolved ``access`` TIER as the top-level
-        ``GOOSE_MODE`` in the box's ``~/.config/goose/config.yaml`` (FF-5 parity).
-
-        ⚑ ``restricted`` writes ``approve`` EXPLICITLY — an unset ``GOOSE_MODE``
-        defaults to permissive ``auto``, so clearing would silently restore permissive.
-        ⚑ ``editing`` is REFUSED: goose has no mode that realizes it.  Merge-preserving
-        + idempotent (:func:`kanibako.vscode.vscode_config.seed_goose_mode`).  Why the
-        panel needs this at all: llm-doc.
-        """
-        from kanibako.vscode.vscode_config import seed_goose_mode
-
-        # ⚑ Pass the descriptor: the tier→GOOSE_MODE rows are the same ones the launch
-        # emits, so the panel cannot drift from the CLI, and core must not reach back
-        # into a named plugin to read them.
-        return seed_goose_mode(
-            config_root / ".config" / "goose" / GOOSE_CONFIG_FILE,
-            access=access,
-            descriptor=_GOOSE_DESCRIPTOR,
-        )
 
     def should_run_setup(self, output: str) -> bool:
         # Launch-time ground truth that goose configure did NOT produce a bootable

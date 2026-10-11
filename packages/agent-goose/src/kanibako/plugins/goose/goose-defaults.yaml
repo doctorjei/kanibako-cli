@@ -128,7 +128,7 @@ descriptor:
   # Two-way SYNC of three things so in-box `goose configure` persists to the host
   # (host check_auth then passes -> no re-prompt):
   #   secrets.yaml + custom_providers/ (unfiltered, key-by-NAME) and config.yaml
-  #   (FILTERED via transform_cred so the box-local panel-parity GOOSE_MODE is not
+  #   (FILTERED via transform_cred so the box-local GOOSE_MODE is not
   #   written back over the host's own GOOSE_MODE).
   cred_files:
     - home_rel: ".config/goose/secrets.yaml"
@@ -138,9 +138,8 @@ descriptor:
       mtime_gate: true
       filtered: false
     # config.yaml is a two-way SYNC file (in-box `goose configure` -> host), BUT it
-    # is FILTERED (transform_cred) so the box-local panel-parity GOOSE_MODE
-    # (seeded by GooseTarget.deliver_panel_permissions for the VS Code panel's yolo) is
-    # NOT written back over the host's own GOOSE_MODE.  On writeback the host's
+    # is FILTERED (transform_cred) so the box-local GOOSE_MODE is NOT written back
+    # over the host's own GOOSE_MODE.  On writeback the host's
     # GOOSE_MODE is preserved; every other key the user changed in-box still flows.
     - home_rel: ".config/goose/config.yaml"
       host_rel: ".config/goose/config.yaml"
@@ -174,9 +173,9 @@ descriptor:
   #     falls back to running `goose` in the integrated terminal (a VSIX sideload
   #     is the manual alternative).  Under an MS-Marketplace attach the id installs
   #     normally like claude/codex.
-  #   - `GOOSE_MODE` (permission parity) is seeded into the box's config.yaml from
-  #     the box's `access` tier so the panel-spawned goose reflects it (goose
-  #     renders restricted|full only — `editing` is refused, see access_realization).
+  #   - The panel-spawned goose reads `GOOSE_MODE` from the box's own config.yaml;
+  #     kanibako does not write the `access` tier there (the launched goose gets it
+  #     as the GOOSE_MODE env var, see access_realization).
   vscode_extension: block.vscode-goose
 
 # The former Route-A `category_binds:` `instructions` entry ({system.instructions} →

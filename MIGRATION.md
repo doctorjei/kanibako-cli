@@ -458,6 +458,9 @@ inside boxes. In order of likely impact:
 49. **kanibako no longer needs tmux on the host; a plain `start` is persistent without it** — see
     *`start` no longer looks for tmux on the host*.
 
+50. **goose's VS Code panel uses the box's own `GOOSE_MODE`, not the box's `access` tier.** The launched goose
+    still gets the tier — see *goose's VS Code panel uses the box's own `GOOSE_MODE`*.
+
 ---
 
 ## 2. Per-area detail
@@ -7462,6 +7465,17 @@ binary once more and caches it there.
 **What you must do.**
 - A helper script that read the old path should read `~/.kanibako/cache/tweakcc`.
 - The old `$XDG_CACHE_HOME/kanibako/tweakcc` is no longer read; delete it if you want the space back.
+
+### goose's VS Code panel uses the box's own `GOOSE_MODE`
+
+**What changed.** A start no longer writes the box's `access` tier into goose's
+`~/.config/goose/config.yaml`. A goose that kanibako launches still gets the tier, as the
+`GOOSE_MODE` environment variable, which overrides the file. The goose panel is started by VS Code
+without that variable, so it uses the file's `GOOSE_MODE`, or goose's default `auto` if there is none.
+
+**What you must do.** To set the panel's mode, set `GOOSE_MODE` in your host
+`~/.config/goose/config.yaml`; kanibako copies that file into the box. A box started under an earlier
+release keeps the value kanibako wrote there until the host file is next copied in.
 
 ---
 

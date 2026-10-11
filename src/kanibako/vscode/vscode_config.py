@@ -19,12 +19,7 @@ import urllib.parse
 from pathlib import Path
 from typing import NamedTuple
 
-import yaml
-
 from kanibako.errors import ConfigError
-from kanibako.settings.config_io import load_doc
-from kanibako.targets.assembly import access_row
-from kanibako.targets.base import PluginDescriptor
 
 
 def _strip_jsonc(text: str) -> str:
@@ -827,57 +822,4 @@ def seed_codex_approval(config_path: Path, *, access: str) -> bool:
         return False
     config_path.parent.mkdir(parents=True, exist_ok=True)
     config_path.write_text(merged)
-    return True
-
-
-# ---------------------------------------------------------------------------
-# goose panel permissions: the in-box goose config.yaml GOOSE_MODE projection.
-# ---------------------------------------------------------------------------
-
-def seed_goose_mode(
-    config_path: Path, *, access: str, descriptor: PluginDescriptor,
-) -> bool:
-    """SET the box's goose ``GOOSE_MODE`` to its ``access`` tier parity value.
-
-    The tier→value table is the goose plugin's OWN ``access_realization``, passed in
-    by the caller that already holds it (``GooseTarget.deliver_panel_permissions``).
-    It used to be copied into a private map here, which made the LAUNCH env var and
-    the PERSISTED panel value two declarations of one fact — free to drift, and drift
-    on this axis is silent: the panel would keep running at the tier the copy still
-    remembered.  ``restricted`` therefore still persists ``approve`` (goose's UNSET
-    default is the permissive ``auto``, so clearing would restore permissive) and
-    ``editing`` is still refused — but both facts now live in ``goose-defaults.yaml``,
-    which is also where the launch reads them.
-    """
-    # ⚑ This raise is the SECOND fence, not the gate: callers wrap panel delivery
-    # best-effort and would swallow it. ``targets.assembly.access_row`` refuses first
-    # — and it is what raises here too, so the un-rendered-tier message is the SAME
-    # one the launch gives (goose ``editing``: "Legal tiers … restricted | full").
-    row = access_row(descriptor, access, agent="goose")
-    desired = row.env_value if row is not None else ""
-    if not desired:
-        # No ENV realization to persist: either the descriptor declares no permission
-        # surface at all, or its rows are FLAG-channel (claude/codex), or the row is a
-        # deliberate emit-nothing. Writing "" is not a safe reading of any of those —
-        # an unset/blank GOOSE_MODE is goose's permissive ``auto``.
-        raise ConfigError(
-            f"goose has no GOOSE_MODE value for access tier {access!r}: the "
-            f"descriptor declares no ENV access realization carrying one. "
-            f"Refusing rather than persisting a BLANK GOOSE_MODE onto the box's "
-            f"config.yaml, which goose reads as the permissive 'auto'."
-        )
-    existing = load_doc(config_path)
-    if existing.get("GOOSE_MODE") == desired:
-        return False
-    merged = dict(existing)
-    merged["GOOSE_MODE"] = desired
-    # ⚑ Write via the Path object, NOT ``config_io.dump_doc``: its ``atomic_write_text``
-    # coerces through ``Path()``/mkstemp and does a REAL mkdir, so a mocked path would
-    # materialize a stray on-disk dir. A best-effort re-seed is idempotent anyway.
-    config_path.parent.mkdir(parents=True, exist_ok=True)
-    config_path.write_text(
-        yaml.safe_dump(
-            merged, sort_keys=False, default_flow_style=False, allow_unicode=True,
-        )
-    )
     return True

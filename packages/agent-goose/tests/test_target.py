@@ -527,8 +527,8 @@ class TestDescriptor:
         # things: secrets.yaml + config.yaml (files) and custom_providers/ (dir),
         # so in-box ``goose configure`` persists back to the host (host check_auth
         # then passes -> no re-prompt).  secrets.yaml + custom_providers/ are
-        # unfiltered; config.yaml is FILTERED (D Part 4) so the box-local
-        # panel-parity GOOSE_MODE is not written back over the host's own.
+        # unfiltered; config.yaml is FILTERED (D Part 4) so the
+        # box-local GOOSE_MODE is not written back over the host's own.
         d = GooseTarget().descriptor
         specs = {s.home_rel: s for s in d.cred_files}
         assert set(specs) == {
@@ -567,9 +567,8 @@ class TestTransformCred:
 
     The host config.yaml IMPORT (the extensions/instructions allowlist filter) stays
     removed, but goose now overrides transform_cred for ONE reason: config.yaml is a
-    two-way SYNC file, and the box seeds a PANEL-parity ``GOOSE_MODE`` into it (for the
-    VS Code panel's yolo).  That box-local value must NOT be written back over the
-    host's own GOOSE_MODE.  A non-config.yaml filtered spec still plain-copies.
+    two-way SYNC file, and a box's ``GOOSE_MODE`` stays in that box: it must NOT be
+    written back over the host's own GOOSE_MODE.  A non-config.yaml filtered spec still plain-copies.
     """
 
     _SECRETS_SPEC = CredFileSpec(
@@ -607,13 +606,13 @@ class TestTransformCred:
     def test_config_out_preserves_host_goose_mode(self, tmp_path):
         """direction 'out' (writeback): the HOST's GOOSE_MODE is preserved.
 
-        Mutation-proof: the box has a DIFFERENT (panel-parity) GOOSE_MODE plus a real
+        Mutation-proof: the box has a DIFFERENT GOOSE_MODE plus a real
         user change (provider); writeback must carry the provider change but keep the
         host's own GOOSE_MODE untouched.
         """
         import yaml
         box = tmp_path / "config.yaml"
-        box.write_text("GOOSE_PROVIDER: anthropic\nGOOSE_MODE: auto\n")  # box: auto (panel yolo)
+        box.write_text("GOOSE_PROVIDER: anthropic\nGOOSE_MODE: auto\n")  # box: auto
         host = tmp_path / "host" / ".config" / "goose" / "config.yaml"
         host.parent.mkdir(parents=True)
         host.write_text("GOOSE_PROVIDER: openai\nGOOSE_MODE: approve\n")  # host: approve
@@ -805,56 +804,33 @@ class TestDescriptorAssembly:
 
 
 class TestDeliverySeams:
-    """T1 seams: GooseTarget's panel-permission (GOOSE_MODE parity) delivery;
-    the directive hook stays the inherited base no-op (goose has no
-    instruction-delivery hook surface)."""
+    """T1 seams: goose inherits BOTH base no-ops — it writes neither the ``access``
+    tier (the launch carries it as the ``GOOSE_MODE`` env var) nor a directive
+    hook (goose has no instruction-delivery hook surface)."""
 
     def _config(self, config_root: Path) -> Path:
         return config_root / ".config" / "goose" / "config.yaml"
 
-    def test_panel_permissions_full_writes_auto(self, tmp_path):
-        import yaml
+    @pytest.mark.parametrize("tier", ["restricted", "editing", "full"])
+    def test_panel_permissions_leave_user_goose_mode_byte_identical(
+        self, tmp_path, tier,
+    ):
+        """A user's own ``GOOSE_MODE`` survives every tier, byte-identical."""
+        cfg = self._config(tmp_path)
+        cfg.parent.mkdir(parents=True)
+        cfg.write_text("GOOSE_PROVIDER: openai\nGOOSE_MODE: smart_approve\n")
+        before = cfg.read_bytes()
         assert GooseTarget().deliver_panel_permissions(
-            config_root=tmp_path, access="full",
-        ) is True
-        doc = yaml.safe_load(self._config(tmp_path).read_text())
-        assert doc["GOOSE_MODE"] == "auto"
+            config_root=tmp_path, access=tier,
+        ) is False
+        assert cfg.read_bytes() == before
 
-    def test_panel_permissions_restricted_writes_explicit_approve(self, tmp_path):
-        """``restricted`` persists the value EXPLICITLY (unset GOOSE_MODE defaults
-        permissive) — even onto an absent file, unlike claude's clear."""
-        import yaml
+    @pytest.mark.parametrize("tier", ["restricted", "editing", "full"])
+    def test_panel_permissions_create_no_file(self, tmp_path, tier):
         assert GooseTarget().deliver_panel_permissions(
-            config_root=tmp_path, access="restricted",
-        ) is True
-        doc = yaml.safe_load(self._config(tmp_path).read_text())
-        assert doc["GOOSE_MODE"] == "approve"
-
-    def test_panel_permissions_editing_refuses_and_writes_nothing(self, tmp_path):
-        """The un-renderable tier on the PROJECTED surface: REFUSE + no write.
-
-        ⚑ Non-vacuous in the dangerous direction — a fall-through that wrote
-        nothing would leave GOOSE_MODE unset, which goose reads as ``auto``.
-        (The launch refuses this tier BEFORE delivery; this is the second fence,
-        and it must not be the one that silently succeeds.)
-        """
-        from kanibako.errors import ConfigError
-
-        with pytest.raises(ConfigError) as exc:
-            GooseTarget().deliver_panel_permissions(
-                config_root=tmp_path, access="editing",
-            )
-        assert "restricted | full" in str(exc.value)
-        assert not self._config(tmp_path).exists()
-
-    def test_panel_permissions_unknown_tier_refuses(self, tmp_path):
-        from kanibako.errors import ConfigError
-
-        with pytest.raises(ConfigError):
-            GooseTarget().deliver_panel_permissions(
-                config_root=tmp_path, access="bogus",
-            )
-        assert not self._config(tmp_path).exists()
+            config_root=tmp_path, access=tier,
+        ) is False
+        assert not (tmp_path / ".config").exists()
 
     def test_directive_hook_is_inherited_no_op(self, tmp_path):
         assert GooseTarget().deliver_directive_hook(

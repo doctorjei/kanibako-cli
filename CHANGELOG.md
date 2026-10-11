@@ -17,6 +17,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `--ephemeral`, or set `agent.<agent>.bootstrap` to `none`, for foreground mode. See `MIGRATION.md`, "`start` no
   longer looks for tmux on the host".
 
+- **A start no longer writes the `access` tier into goose's `config.yaml`.** The launched goose still gets it
+  as `GOOSE_MODE`; the VS Code panel now uses the file's own value. See `MIGRATION.md`, "goose's VS Code
+  panel uses the box's own `GOOSE_MODE`".
+
 - **A new claude box no longer adds a `Claude-Session` trailer.** The seeded `~/.claude/settings.json` sets
   `attribution.sessionUrl` to `false`, so commits and PRs made from a Remote Control session carry no session
   link. An upgrade keeps the host's seed copy and each existing box's file; see `MIGRATION.md`, "A new claude
