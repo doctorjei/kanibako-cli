@@ -11,16 +11,22 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from kanibako.channels.helpers import HELPER_SCRIPTS_RELPATH, INIT_SCRIPT_NAME, SPAWN_CONFIG_FILENAME
+from kanibako.channels.helpers import (
+    HELPER_CORE_LEAVES,
+    HELPER_SCRIPTS_RELPATH,
+    INIT_SCRIPT_NAME,
+    SPAWN_CONFIG_FILENAME,
+)
 from kanibako.errors import ContainerError
 from kanibako.runtime.container import ContainerRuntime
 from kanibako.log import get_logger
-from kanibako.settings.core_defaults import helper_budget_dest
+from kanibako.settings.core_defaults import core_bind_slots, helper_budget_dest
 from kanibako.settings.settings_resolve import (
     BOX_PINNED_STATE_RELPATH,
     GUEST_HOME,
     normalize_bind_dest,
 )
+from kanibako.settings.store_collapse import HOME_DEST, HOME_OPTIONS
 from kanibako.targets.base import Mount
 from kanibako.utils import render_container_name
 
@@ -79,6 +85,13 @@ class HelperHub:
         # Track launched container names for cleanup
         self._containers: list[str] = []
         self._containers_lock = threading.Lock()
+
+        # THE TREE: helper_num -> the host home it was launched into.  One hub serves
+        # the director's whole helper tree, and keyspec ``meta.box.helper_num`` makes the
+        # number unique across it, so this map both places a helper's children (under
+        # their requester's home) and refuses a number already held elsewhere.
+        # Guarded by ``_containers_lock``.
+        self._homes: dict[int, Path] = {}
 
     def start(self, socket_path: Path, context: HelperContext,
               log: MessageLog | None = None) -> None:
@@ -291,12 +304,20 @@ class HelperHub:
         if helper_num < 0:
             return {"status": "error", "message": "invalid helper_num"}
 
-        helpers_dir = request.get("helpers_dir")
-        if helpers_dir:
-            # Container-side path; map to host path via ctx
+        # WHERE: under the REQUESTER's home.  The request's ``helpers_dir`` is an in-box
+        # path (every box's ``~/helpers``) and says nothing about which box sent it; the
+        # structured ``requester`` does (``None``: the director).
+        requester = request.get("requester")
+        if requester is None:
             helpers_dir_host = ctx.helpers_dir
         else:
-            helpers_dir_host = ctx.helpers_dir
+            with self._containers_lock:
+                requester_home = self._homes.get(int(requester))
+            if requester_home is None:
+                return {"status": "error",
+                        "message": f"requesting helper {requester} was not launched by this hub"}
+            helpers_dir_host = requester_home / "helpers"
+        helper_home = helpers_dir_host / str(helper_num)
 
         container_name = render_container_name(
             *ctx.container_name_segments, helper_num=helper_num,
@@ -307,7 +328,15 @@ class HelperHub:
                 f"container name; start refuses such a box."
             )
 
-        mounts = _build_helper_mounts(ctx, helper_num, helpers_dir_host)
+        # RESERVE the number for this home before launching: a number held by another
+        # home is refused, and the same home (a respawn) keeps it.
+        with self._containers_lock:
+            held = self._homes.get(helper_num)
+            if held is not None and held != helper_home:
+                return {"status": "error",
+                        "message": f"helper number {helper_num} is already taken in this "
+                                   f"tree (by {held})"}
+            self._homes[helper_num] = helper_home
 
         # Use helper-init.sh as entrypoint wrapper — it registers with the
         # hub, sources broadcast scripts, then execs the agent command.
@@ -332,27 +361,28 @@ class HelperHub:
         # IS in the bind source at every container creation, so the day a helper home
         # gains one, the seam that forgot to pass this would silently be the one
         # unprotected launch path.  Passing it now costs nothing and removes that.
-        helper_home = helpers_dir_host / str(helper_num)
-
         def _helper_reprotect() -> None:
             from kanibako.settings.core_defaults import materialize_canon_skeleton_if_present
 
             materialize_canon_skeleton_if_present(helper_home)
 
         try:
+            # Inside the try: a mount that cannot be built is a failed launch with a
+            # reply, not a dropped connection.
+            mounts = _build_helper_mounts(ctx, helper_num, helpers_dir_host)
             rc = ctx.runtime.run(
                 ctx.image,
                 post_start=_helper_reprotect,
-                shell_path=helpers_dir_host / str(helper_num),
-                project_path=helpers_dir_host / str(helper_num) / "workspace",
+                shell_path=helper_home,
+                project_path=helper_home / HELPER_CORE_LEAVES["project_path"],
                 # ⚑ NOT the workset vault, and NOT to be resolved.  ``helpers_dir`` is
                 # ``proj.shell_path/"helpers"`` (``commands/start.py``) — the DIRECTOR
                 # box's own HOME.  A helper is not a workset member and owns no
                 # ``workset.vault_*``; this private leaf is created at the same literal by
                 # ``channels/helpers.py::create_helper_dirs``, and pointing it at a
                 # repointed workset arm would give every helper the DIRECTOR's vault.
-                vault_ro_path=helpers_dir_host / str(helper_num) / "vault" / "ro",
-                vault_rw_path=helpers_dir_host / str(helper_num) / "vault" / "rw",
+                vault_ro_path=helper_home / HELPER_CORE_LEAVES["vault_ro_path"],
+                vault_rw_path=helper_home / HELPER_CORE_LEAVES["vault_rw_path"],
                 extra_mounts=mounts or None,
                 enable_vault=True,
                 env=ctx.env,
@@ -362,9 +392,11 @@ class HelperHub:
                 detach=True,
             )
         except Exception as e:
+            self._release(helper_num, held, helper_home)
             return {"status": "error", "message": str(e)}
 
         if rc != 0:
+            self._release(helper_num, held, helper_home)
             return {"status": "error", "message": f"container exited with {rc}"}
 
         with self._containers_lock:
@@ -377,6 +409,13 @@ class HelperHub:
             )
 
         return {"status": "ok", "container_name": container_name}
+
+    def _release(self, helper_num: int, held: Path | None, helper_home: Path) -> None:
+        """Undo a reservation a failed launch made (a number held before stays held)."""
+        if held is None:
+            with self._containers_lock:
+                if self._homes.get(helper_num) == helper_home:
+                    del self._homes[helper_num]
 
     def _handle_stop(self, request: dict) -> dict:
         """Stop and remove a helper container."""
@@ -593,9 +632,11 @@ def _build_helper_mounts(ctx: HelperContext, helper_num: int,
 
     DOCUMENTED BLOCKER (core-mounts-bindings Phase C — bespoke route kept by
     design, per the plan's "lower priority / possible follow-up") for the PEERS,
-    BROADCAST and SOCKET mounts.  The spawn-budget mount is not exempt: it takes its
-    dest and options from the declared ``helper_budget`` row
-    (:func:`~kanibako.settings.core_defaults.helper_budget_dest`).  A box launch
+    BROADCAST and SOCKET mounts.  The home, workspace, vault and spawn-budget mounts
+    are not exempt: home takes the director's foundation dest and options
+    (``store_collapse.HOME_DEST``/``HOME_OPTIONS``), and the others the declared
+    ``core:`` rows (:func:`~kanibako.settings.core_defaults.core_bind_slots`) and the
+    ``helper_budget`` row (:func:`~kanibako.settings.core_defaults.helper_budget_dest`).  A box launch
     routes its mounts through the category keyspace: ``commands.start``'s ONE
     resolve (``_resolve_launch_snapshot``) adapts the launch snapshot to
     ``CategoryEntry`` rows, the ASSEMBLY COLLAPSE folds them into
@@ -638,7 +679,24 @@ def _build_helper_mounts(ctx: HelperContext, helper_num: int,
     the keyed route even though it does not flow through it.
     """
     helper_root = helpers_dir / str(helper_num)
-    mounts: list[Mount] = []
+
+    # THE HOME FOUNDATION, FIRST, so every deeper bind lands on top of it.  The helper
+    # root is the helper's home: the parent copied the entrypoint wrapper into its
+    # ``scripts/`` and its budget copy beside it, and both are addressed under ``~``.
+    # Dest and options are the director's foundation's (``store_collapse``), never
+    # re-spelled here.
+    mounts: list[Mount] = [Mount(helper_root, HOME_DEST, HOME_OPTIONS)]
+
+    # Workspace and vault: the helper's own leaves at the dests and options of the
+    # director's declared ``core:`` rows — one row per slot for both, so these are NOT
+    # under the exemption above.  The ``ro`` vault is why the binds are needed at all
+    # when the leaves already sit under the home: it keeps the helper from writing it.
+    slots = core_bind_slots()
+    for source, leaf in HELPER_CORE_LEAVES.items():
+        leaf_dir = helper_root / leaf
+        if leaf_dir.is_dir():
+            dest, options = slots[source]
+            mounts.append(Mount(leaf_dir, normalize_bind_dest(dest), options))
 
     # Peers directory
     peers_dir = helper_root / "peers"

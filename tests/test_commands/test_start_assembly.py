@@ -1003,7 +1003,7 @@ class TestTheFoundationIsBuiltAtTheSeam:
         so a seam that re-derived the foundation from ``proj.shell_path`` — or from an
         inlined ``@meta.box.path/home`` — cannot produce it.
 
-        MUTATION ANCHORS, both proved: change ``_HOME_OPTIONS`` to ``"Z,U,rw"`` and the
+        MUTATION ANCHORS, both proved: change ``store_collapse.HOME_OPTIONS`` to ``"Z,U,rw"`` and the
         options assertion fails; build the bind from anything but
         ``_snapshot_home(snapshot)`` and the source assertion fails.
         """

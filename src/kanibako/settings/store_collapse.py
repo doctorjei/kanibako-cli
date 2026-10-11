@@ -107,6 +107,14 @@ CLI_PROVENANCE_SCOPE: Final[str] = "cli"
 #: Home is pid 0 - the foundation, seeded before the loop, in no scope's shape.
 HOME_DEST: Final[str] = normalize_bind_dest("~")
 
+#: The pid-0 FOUNDATION's mount options — SEAM MACHINERY, not part of any key
+#: (spec ``:1015``). Home does not route through ``bindings.rw``, so this string is
+#: never folded by ``_merge_bindings``: it reaches the box BARE, with no ``rw`` arm
+#: token appended, which is exactly what distinguishes the foundation from every bind
+#: that folds over it. ONE carrier for the director's home bind
+#: (``commands.start``) and a helper's (``channels.helper_listener``).
+HOME_OPTIONS: Final[str] = "Z,U"
+
 
 @dataclass(frozen=True)
 class CollapsedStore:

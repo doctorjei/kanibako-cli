@@ -733,6 +733,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A helper launched by the hub starts again.** It exited 127 (`helper-init.sh` not found) because the hub bound
+  no home into it. Its home, workspace, and vault are bound again, at the same places and with the same options
+  as the director's.
+- **`box helper spawn` and `respawn` refuse in a box with no helper hub.** A persistent start runs no hub, so
+  they printed `Spawned helper N` with exit 0 and launched nothing. They now refuse, say why, and write nothing.
+  A socket file with no hub listening on it (the mount stub an ephemeral start leaves, or a dead hub's socket)
+  counts as no hub.
+- **A helper launch that fails is no longer reported as a success.** `box helper spawn` and `respawn` printed
+  `Spawned helper N` (or `Respawned`) with exit 0 when the container did not start. They now print why and exit 1;
+  the helper's directory stays, marked `failed`.
+- **A helper's own helper launches as its own container.** It took the director's helper slot (the same name and
+  directories). Helper numbers are now unique across the director's whole tree, and the hub launches each helper
+  under its parent's home.
 - **`reset --all` removes a value where a table belongs.** A hand-edited `workset: null` or `workset: 3` in the
   system settings file (or `box:`/`agent:` written the same way, at any scope) survived `system`, `workset`, and
   `box reset --all` under "No overrides to reset." It is now removed and counted, as `agent reset --all` does.

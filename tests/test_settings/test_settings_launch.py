@@ -4054,7 +4054,7 @@ def test_home_bind_names_the_derived_key_and_resolves_through_it():
     MUTATION-PROOF: re-deriving the foundation from ``proj.shell_path`` or re-inlining
     ``@meta.box.path/home`` at the seam → RED on the src; producing
     ``@meta.box.path/home2`` in ``workset_anchor_floor`` → RED on the resolved value;
-    ``_HOME_OPTIONS = "Z,U,rw"`` → RED on the options.
+    ``store_collapse.HOME_OPTIONS = "Z,U,rw"`` → RED on the options.
     """
     from kanibako.commands.start import _install_assembly_collapse
     from kanibako.settings.core_defaults import _load_doc

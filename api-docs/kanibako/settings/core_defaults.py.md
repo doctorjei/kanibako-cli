@@ -77,6 +77,7 @@ def helper_bind_dests() -> frozenset[str]
 def spawn_budget_bind_dests() -> frozenset[str]
 def image_bind_dests() -> frozenset[str]
 def helper_budget_dest() -> tuple[str, str]
+def core_bind_slots() -> dict[str, tuple[str, str]]
 def helper_default_categories(*, socket_path: Path | None, log_path: Path | None, budget_path: Path | None=None) -> BindArmTable
 def image_default_categories(*, graph_root: Path | None, storage_conf_path: Path) -> dict[str, object]
 @lru_cache(maxsize=1)

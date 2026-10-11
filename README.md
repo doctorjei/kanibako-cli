@@ -1118,7 +1118,9 @@ Kanibako containers can spawn child instances for parallel workloads.
 Each child gets its own directory tree, peer communication channels,
 and spawn budget. Helpers are enabled by default -- the host runs a
 Unix socket hub alongside the director container, and helpers connect
-to it for orchestration and messaging.
+to it for orchestration and messaging. Only an ephemeral start
+(`kanibako start --ephemeral`) runs the hub; in a persistent box,
+`box helper spawn` refuses.
 
 ```bash
 # Spawning and lifecycle
@@ -1171,6 +1173,12 @@ content. View the conversation in real-time with `kanibako box helper log --foll
 how many levels deep it can spawn and how many siblings are allowed.
 Depth decrements with each level. The budget is written as a read-only
 config (`spawn.yaml`) inside each box, enforced at spawn time.
+
+**Numbering:** A helper's number is unique across the director's whole
+tree. The director's helpers are 1 to B (B is the breadth); helper N's
+own helpers are N×B+1 to N×B+B. A spawn whose container does not launch
+prints why and exits 1; its directory stays, marked `failed`, until
+`box helper cleanup N`.
 The host budget is the keys `system.helpers.depth` and `system.helpers.breadth`
 (default 4 each; `-1` is unlimited). Set them host-wide with
 `kanibako system set system.helpers.depth=2`.

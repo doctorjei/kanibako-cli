@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import shutil
+import socket
 import sys
 from pathlib import Path
 
@@ -19,6 +21,7 @@ from kanibako.channels.helpers import (
     create_broadcast_dirs,
     create_helper_dirs,
     create_peer_channels,
+    effective_breadth,
     link_broadcast,
     read_spawn_budget,
     remove_helper_dirs,
@@ -171,9 +174,76 @@ def _socket_path() -> Path:
     return Path.home() / BOX_PINNED_STATE_RELPATH / "helper.sock"
 
 
+#: How long the liveness probe waits for the hub to take a connection.
+_PROBE_TIMEOUT = 2.0
+
+
 def _check_helpers_enabled() -> bool:
-    """Check if the helper socket exists (helpers are enabled)."""
-    return _socket_path().exists()
+    """True only when a hub LISTENS on the helper socket: a connect is taken.
+
+    The path existing is not enough.  An ephemeral start pre-creates the socket's
+    mount stub (a plain file) in the persistent home, where it outlives the start,
+    and a hub that died leaves its socket file behind; with either, nothing could
+    launch a helper.
+    """
+    path = _socket_path()
+    if not path.is_socket():
+        return False
+    probe = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    try:
+        probe.settimeout(_PROBE_TIMEOUT)
+        probe.connect(str(path))
+    except OSError:
+        return False
+    finally:
+        probe.close()
+    return True
+
+
+#: Why a spawn or respawn refuses in a box with no hub: nothing could launch the helper.
+#: A hub runs only on a start that is not persistent, with helpers allowed
+#: (``commands.start``: a persistent start forces ``no_helpers``).
+_NO_HUB = (
+    "Cannot %s: this box runs no helper hub, so no helper can launch. "
+    "A hub runs only on an ephemeral start (`kanibako start --ephemeral`) with helpers allowed."
+)
+
+#: Why a spawn or respawn fails when the hub could not start the helper's container.
+_LAUNCH_FAILED = (
+    "Cannot %s: helper %d did not launch: %s. Its directory is kept, marked failed; "
+    "`kanibako box helper cleanup %d` removes it."
+)
+
+#: THIS helper's own number, exported by ``helper-init.sh`` from the number the hub
+#: launched it with.  Unset in the director (keyspec ``meta.box.helper_num``: "UNSET
+#: for a top-level box").
+HELPER_NUM_ENV = "KANIBAKO_HELPER_NUM"
+
+
+def _own_helper_number() -> int | None:
+    """This box's own helper number, or ``None`` in the director."""
+    raw = os.environ.get(HELPER_NUM_ENV, "")
+    if not raw:
+        return None
+    if not raw.isdigit():
+        raise ValueError(f"{HELPER_NUM_ENV}={raw!r} is not a helper number")
+    return int(raw)
+
+
+def _launch(request: dict) -> tuple[str | None, str | None]:
+    """Ask the hub to start a helper's container: ``(container_name, None)`` when it
+    started, ``(None, reason)`` when it did not.  The request names this box as the
+    ``requester`` (``None`` in the director), so the hub launches the helper under
+    this box's home and not the director's."""
+    from kanibako.channels.helper_client import send_request
+    request = {**request, "requester": _own_helper_number()}
+    try:
+        resp = send_request(_socket_path(), request)
+    except Exception as e:
+        return None, str(e)
+    if resp.get("status") == "ok":
+        return resp.get("container_name"), None
+    return None, str(resp.get("message", "unknown error"))
 
 
 def _ro_spawn_config_path(helpers_dir: Path, helper_num: int) -> Path:
@@ -219,15 +289,22 @@ def _get_existing_helpers(helpers_dir: Path) -> list[int]:
     return sorted(result)
 
 
-def _next_helper_number(existing: list[int], budget: SpawnBudget) -> int:
-    """Determine the next helper number (first unused slot)."""
+def _next_helper_number(existing: list[int], budget: SpawnBudget, own: int = 0) -> int:
+    """The first unused number in this box's block: ``own*B+1 .. own*B+B``.
+
+    keyspec ``meta.box.helper_num``: "unique across the director's helper tree".  Box
+    *own* (0 is the director) numbers its children in its own block of *B* (the
+    breadth, ``effective_breadth`` for unlimited), so no two boxes in the tree hand
+    out the same number.  The breadth is the tree's: each child is handed its
+    parent's (``child_budget``).
+    """
+    b = effective_breadth(budget.breadth)
     used = set(existing)
-    # Sequentially find the next unused number starting from 1
-    # (0 is reserved for the director)
-    n = 1
-    while n in used:
-        n += 1
-    return n
+    first = own * b + 1
+    for n in range(first, first + b):
+        if n not in used:
+            return n
+    raise ValueError(f"no free helper number in {first}..{first + b - 1}")
 
 
 def run_spawn(args: argparse.Namespace) -> int:
@@ -253,9 +330,14 @@ def run_spawn(args: argparse.Namespace) -> int:
     if error:
         print(f"Cannot spawn: {error}", file=sys.stderr)
         return 1
+    # ⚑ BEFORE ANY WRITE: with no hub the helper's dirs and budget copy would describe
+    # a helper that never launches, under a "Spawned" line and rc 0.
+    if not _check_helpers_enabled():
+        print(_NO_HUB % "spawn", file=sys.stderr)
+        return 1
 
-    # Determine helper number
-    helper_num = _next_helper_number(existing, budget)
+    # Determine helper number: a block of its own per box, so unique across the tree
+    helper_num = _next_helper_number(existing, budget, _own_helper_number() or 0)
 
     # Create directory structure
     create_helper_dirs(helpers_dir, helper_num)
@@ -289,35 +371,22 @@ def run_spawn(args: argparse.Namespace) -> int:
     }
     _write_state(helpers_dir, helper_num, state)
 
-    # Launch container via socket if helpers are enabled
-    container_name = None
-    if _check_helpers_enabled():
-        from kanibako.channels.helper_client import send_request
-        try:
-            resp = send_request(_socket_path(), {
-                "action": "spawn",
-                "helper_num": helper_num,
-                "model": args.model,
-                "helpers_dir": str(helpers_dir),
-            })
-            if resp.get("status") == "ok":
-                container_name = resp.get("container_name")
-                state["status"] = "running"
-                state["container_name"] = container_name
-            else:
-                state["status"] = "failed"
-                state["error"] = resp.get("message", "unknown error")
-                print(
-                    f"Warning: container launch failed: {resp.get('message')}",
-                    file=sys.stderr,
-                )
-        except Exception as e:
-            state["status"] = "failed"
-            state["error"] = str(e)
-            print(f"Warning: container launch failed: {e}", file=sys.stderr)
-    else:
-        state["status"] = "spawned"
-
+    # Launch the container through the hub (its socket was checked above).  A helper
+    # that did not launch is NOT spawned: no success line, rc 1.
+    container_name, failure = _launch({
+        "action": "spawn",
+        "helper_num": helper_num,
+        "model": args.model,
+        "helpers_dir": str(helpers_dir),
+    })
+    if failure is not None:
+        state["status"] = "failed"
+        state["error"] = failure
+        _write_state(helpers_dir, helper_num, state)
+        print(_LAUNCH_FAILED % ("spawn", helper_num, failure, helper_num), file=sys.stderr)
+        return 1
+    state["status"] = "running"
+    state["container_name"] = container_name
     _write_state(helpers_dir, helper_num, state)
 
     print(f"Spawned helper {helper_num}")
@@ -465,31 +534,26 @@ def run_respawn(args: argparse.Namespace) -> int:
         )
         return 1
 
-    # Relaunch container via socket if helpers are enabled
-    if _check_helpers_enabled():
-        from kanibako.channels.helper_client import send_request
-        try:
-            resp = send_request(_socket_path(), {
-                "action": "spawn",
-                "helper_num": helper_num,
-                "model": state.get("model"),
-                "helpers_dir": str(helpers_dir),
-            })
-            if resp.get("status") == "ok":
-                state["status"] = "running"
-                state["container_name"] = resp.get("container_name")
-            else:
-                state["status"] = "failed"
-                print(
-                    f"Warning: container relaunch failed: {resp.get('message')}",
-                    file=sys.stderr,
-                )
-        except Exception as e:
-            state["status"] = "failed"
-            print(f"Warning: container relaunch failed: {e}", file=sys.stderr)
-    else:
-        state["status"] = "respawned"
+    if not _check_helpers_enabled():
+        print(_NO_HUB % "respawn", file=sys.stderr)
+        return 1
 
+    # Relaunch the container through the hub; a relaunch that fails is not "Respawned"
+    container_name, failure = _launch({
+        "action": "spawn",
+        "helper_num": helper_num,
+        "model": state.get("model"),
+        "helpers_dir": str(helpers_dir),
+    })
+    if failure is not None:
+        state["status"] = "failed"
+        state["error"] = failure
+        _write_state(helpers_dir, helper_num, state)
+        print(_LAUNCH_FAILED % ("respawn", helper_num, failure, helper_num), file=sys.stderr)
+        return 1
+    state["status"] = "running"
+    state["container_name"] = container_name
+    state.pop("error", None)
     _write_state(helpers_dir, helper_num, state)
     print(f"Respawned helper {helper_num}.")
     return 0
