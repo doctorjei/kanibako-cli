@@ -122,3 +122,40 @@ class TestAMemberPurgeLeavesTheSameNamedPrimary:
         assert _primary_name(std, primary) is None, "a primary purge still unregisters"
         assert member.metadata_path.is_dir() and "bar" in _members(std, ws)
         assert (member.vault_rw_path / "notes.txt").is_file()
+
+
+class TestAFailedMemberPurgeIsNotParked:
+    """R6: the failure line names the member's own retry; nothing is parked."""
+
+    def test_the_failure_names_the_member_and_its_retry(
+            self, config_file, tmp_home, credentials_dir, capsys, monkeypatch):
+        std, ws, _primary, member = _world(config_file, tmp_home)
+        st = _fail_member_vault(monkeypatch, member)
+
+        assert _purge("nws/bar") == 1
+        err = capsys.readouterr().err
+        assert st["calls"], "setup: the injected step was never reached"
+        assert "parked" not in err, err
+        assert ("nws/bar stays a member of its workset" in err
+                and "kanibako box purge nws/bar" in err), err
+        assert "bar" in _members(std, ws)
+        assert dict(registry_store.load_deregistered(std.registry)) == {}
+
+        st["fail"] = False
+        assert _purge("nws/bar") == 0, "the printed retry finishes the purge"
+        capsys.readouterr()
+        assert not member.metadata_path.exists()
+        assert dict(registry_store.load_deregistered(std.registry)) == {}
+
+    def test_a_failed_primary_purge_still_parks_as_primary(
+            self, config_file, tmp_home, credentials_dir, capsys, monkeypatch):
+        std, _ws, primary, _member = _world(config_file, tmp_home)
+        from kanibako.runtime.container import remove_path as real
+        victim = str(primary.vault_ro_path)
+        monkeypatch.setattr("kanibako.commands.box._parser.remove_path",
+                            lambda p, *a, **k: False if str(p) == victim else real(p, *a, **k))
+
+        assert _purge(str(primary.project_path)) == 1
+        assert "the box is parked" in capsys.readouterr().err
+        parked = dict(registry_store.load_deregistered(std.registry))
+        assert parked.get("bar", {}).get("kind") == "primary", parked

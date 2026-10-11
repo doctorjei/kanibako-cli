@@ -17,6 +17,7 @@ from kanibako.settings.paths import (
     box_cure_ref,
     box_logs_location,
     load_std_paths,
+    project_cure_ref,
     resolve_any_project,
     standalone_box_store,
 )
@@ -307,6 +308,13 @@ def _purge_one(std, config, path: str, *, force: bool) -> int:
     if failed:
         # ⚑ CLOSE THE LINE: every later line here is stderr, so stdout ended mid-sentence.
         print(flush=True)
+        if proj.mode is BoxMode.named:
+            # ⚑ A named member is never parked: it stays a member, the retry's address.
+            ref = project_cure_ref(proj)
+            print(f"Purge incomplete: something was kept, so {ref} stays a member of "
+                  f"its workset — re-run the purge to finish: kanibako box purge {ref}",
+                  file=sys.stderr)
+            return 1
         print("Purge incomplete: something was kept, so the box is parked — re-run "
               "the purge to finish.", file=sys.stderr)
         return 1
