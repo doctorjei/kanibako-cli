@@ -38,6 +38,7 @@
 
 import os
 import re
+import shlex
 import subprocess
 import sys
 from pathlib import Path
@@ -101,7 +102,7 @@ class _Tree:
         """Run the ``Fix: kanibako …`` line THIS message printed, as printed."""
         found = _FIX_CMD.search(refusal)
         assert found, f"no runnable `Fix: kanibako …` line in:\n{refusal}"
-        return found.group(1), self.cli(*found.group(1).split()[1:])
+        return found.group(1), self.cli(*shlex.split(found.group(1))[1:])
 
 
 @pytest.fixture
@@ -208,14 +209,30 @@ def test_the_nested_set_arm_prints_the_delete_before_the_cure(tmp_path) -> None:
 
 
 def test_the_no_category_arm_moves_first_and_deletes_after(tmp_path) -> None:
-    """Category ``None`` is a MOVE (up one level). Deleting first would destroy
-    what the user was just told to move (review RETURN item 1)."""
+    """Category ``None`` is a MOVE (up one level, in the file's OWN node's sub-table).
+    Deleting first would destroy what the user was just told to move (review RETURN
+    item 1)."""
     msg = _nested_refusal(
-        {"foo": {"not_a_category": 1}}, path=tmp_path / "agent.yaml",
+        {"claude": {"not_a_category": 1}}, path=tmp_path / "claude" / "agent.yaml",
     )
-    assert msg.index("Fix: ") < msg.index("then delete the `self.foo` table")
+    assert msg.index("Fix: ") < msg.index("then delete the `self.claude` table")
     assert "UP ONE LEVEL" in msg
     assert "FIRST" not in msg, "a move cannot follow its own deletion"
+
+
+def test_another_agents_sub_table_is_moved_to_that_agents_file(tmp_path) -> None:
+    """``self.<sub>`` in ANOTHER agent's file is ``agent.<sub>``'s content: up one
+    level here would land it on THIS file's node. Every arm names the sub's own file."""
+    stale = tmp_path / "shell" / "agent.yaml"
+    home = tmp_path / "claude" / "agent.yaml"
+    for root_tbl in ({"claude": {"model": "sonnet"}},
+                     {"claude": {"env": {"A": "x"}, "model": "sonnet"}},
+                     {"claude": {"caches": {"a": "/x"}, "model": "sonnet"}}):
+        msg = _nested_refusal(root_tbl, node="shell", path=stale)
+        assert "UP ONE LEVEL" not in msg, f"the rest is sent to the wrong agent:\n{msg}"
+        assert f"the claude agent's own file, {home}" in msg
+        assert "expands to `agent.claude`" in msg
+        assert msg.index("Fix: ") < msg.index(f"then delete the `self.claude` table from {stale}")
 
 
 @pytest.mark.parametrize(
@@ -406,17 +423,17 @@ def test_the_nested_hand_edit_arm_cures_itself_end_to_end(tree) -> None:
     from kanibako.settings.config_io import dump_doc
 
     stale_file = tree.agent_file("shell")
-    stale_file.write_text("self:\n  foo:\n    model: opus\n")
+    stale_file.write_text("self:\n  shell:\n    model: opus\n")
 
     first = tree.cli("agent", "show", "shell")
     refusal = first.stdout + first.stderr
     assert first.returncode != 0, f"the nested table was not refused:\n{refusal}"
     assert "UP ONE LEVEL" in refusal
-    assert refusal.index("Fix: ") < refusal.index("then delete the `self.foo` table")
+    assert refusal.index("Fix: ") < refusal.index("then delete the `self.shell` table")
 
     # The MOVE the fix describes, then the delete it describes — in that order.
     doc = yaml.safe_load(stale_file.read_text())
-    doc["self"].update(doc["self"].pop("foo"))
+    doc["self"].update(doc["self"].pop("shell"))
     dump_doc(stale_file, doc)
     again = tree.cli("agent", "show", "shell")
     assert again.returncode == 0, f"the door still refuses:\n{again.stdout}{again.stderr}"
@@ -504,7 +521,7 @@ def test_the_default_arm_lists_every_entry(tmp_path) -> None:
     msg = _nested_refusal(
         {"default": {"env": {"X": "1", "Y": "2"}}}, path=tmp_path / "agent.yaml",
     )
-    assert "          X: 1\n          Y: 2" in msg
+    assert "          X: '1'\n          Y: '2'" in msg, "a string printed bare reads back an int"
 
 
 def test_entries_beside_the_category_are_named_and_never_deleted_first(tmp_path) -> None:
@@ -537,10 +554,131 @@ def test_a_two_entry_nested_set_arm_cures_itself_end_to_end(tree) -> None:
     printed = _ALL_FIX_CMDS.findall(refusal)
     assert len(printed) == 2, f"expected one set per entry in:\n{refusal}"
     for command in printed:
-        ran = tree.cli(*command.split()[1:])
+        ran = tree.cli(*shlex.split(command)[1:])
         assert ran.returncode == 0, f"{command!r} failed:\n{ran.stdout}{ran.stderr}"
 
     for var, value in (("FOO", "bar"), ("BAZ", "qux")):
         read = tree.cli("agent", "get", "claude", f"env.{var}")
         assert read.returncode == 0, f"env.{var} was lost:\n{read.stdout}{read.stderr}"
         assert read.stdout.strip() == value
+
+
+# --------------------------------------------------------------------------- #
+# 5 · the cure lands every entry ON THE RIGHT AGENT, with ITS value
+# --------------------------------------------------------------------------- #
+# A value printed bare is a different value once retyped: ``two words`` is two shell
+# arguments, ``a #b`` is ``a`` to YAML, an empty string is null, and the STRING
+# ``true`` is a bool. And a ``self.<sub>`` table in another agent's file belongs to
+# ``agent.<sub>``: moved "up one level" it lands on the file's own node.
+
+_HARD_VALUES = {"WORDS": "two words", "HASH": "a #b", "EMPTY": "", "WORD": "true"}
+
+_HAND_HOME = re.compile(r"in the FLAT table of the \S+ agent's own file, (\S+) \(there")
+_HAND_BLOCK = re.compile(r"sits DIRECTLY under it\):\n((?:    [^\n]*\n)+)")
+_HAND_REST = re.compile(r"move the rest of it \(([^)]*)\) into that same `self:` table")
+_HAND_DELETE = re.compile(r"then delete the `self\.(\S+)` table from (\S+)\.$", re.MULTILINE)
+
+
+def _yaml_of_block(block: str):
+    import textwrap
+
+    import yaml
+
+    return yaml.safe_load(textwrap.dedent(block))
+
+
+def test_the_printed_set_lines_quote_every_value_for_the_shell(tmp_path) -> None:
+    msg = _nested_refusal(
+        {"claude": {"env": dict(_HARD_VALUES)}}, node="shell",
+        path=tmp_path / "shell" / "agent.yaml",
+    )
+    words = {}
+    for line in _ALL_FIX_CMDS.findall(msg):
+        argv = shlex.split(line)
+        assert argv[:4] == ["kanibako", "agent", "set", "claude"] and len(argv) == 5, line
+        key, _, value = argv[4].partition("=")
+        words[key] = value
+    assert words == {f"env.{k}": v for k, v in _HARD_VALUES.items()}
+
+
+def test_the_printed_yaml_quotes_every_value(tmp_path) -> None:
+    """The by-hand table, read as YAML, IS the stored table — for every arm."""
+    for root_tbl, outer in (
+        ({"claude": {"env": dict(_HARD_VALUES), "model": "x"}}, ["self"]),
+        ({"default": {"env": dict(_HARD_VALUES)}}, ["agent", "default"]),
+    ):
+        msg = _nested_refusal(root_tbl, node="shell", path=tmp_path / "shell" / "agent.yaml")
+        block = re.search(r"\n((?:    [^\n]*\n)+)", msg + "\n").group(1)
+        doc = _yaml_of_block(block)
+        for key in outer:
+            doc = doc[key]
+        assert doc == {"env": _HARD_VALUES}, msg
+
+
+def test_the_set_cure_lands_hard_values_on_the_right_agent(tree) -> None:
+    """Every printed ``agent set``, run as printed (shell-split), stores each value."""
+    stale_file = tree.agent_file("shell")
+    from kanibako.settings.config_io import dump_doc
+
+    dump_doc(stale_file, {"self": {"claude": {"env": dict(_HARD_VALUES)}}})
+    tree.agent_file("claude").write_text("self:\n  model: opus\n")
+
+    first = tree.cli("agent", "show", "shell")
+    refusal = first.stdout + first.stderr
+    assert first.returncode != 0, f"the nested table was not refused:\n{refusal}"
+    perform_printed_delete(stale_file, refusal)
+    printed = _ALL_FIX_CMDS.findall(refusal)
+    assert len(printed) == len(_HARD_VALUES), refusal
+    for command in printed:
+        ran = tree.cli(*shlex.split(command)[1:])
+        assert ran.returncode == 0, f"{command!r} failed:\n{ran.stdout}{ran.stderr}"
+
+    import yaml
+
+    stored = yaml.safe_load(tree.agent_file("claude").read_text())["self"]
+    assert stored["env"] == _HARD_VALUES
+    assert stored["model"] == "opus"
+
+
+def test_the_hand_cure_lands_every_entry_on_the_right_agent(tree) -> None:
+    """Probe C: shell's file holds ``self: {claude: {env: …, model: sonnet}}``. Followed
+    literally — the printed table into the file it names, the rest into that same
+    table, then the delete — every entry reads back on ``claude`` and none on ``shell``."""
+    import yaml
+
+    from kanibako.settings.config_io import dump_doc
+    from kanibako.utils import deep_merge
+
+    stale_file = tree.agent_file("shell")
+    dump_doc(stale_file, {"self": {"model": "opus",
+                                   "claude": {"env": dict(_HARD_VALUES), "model": "sonnet"}}})
+    claude_file = tree.agent_file("claude")
+    claude_file.write_text("self:\n  model: opus\n")
+
+    first = tree.cli("agent", "show", "shell")
+    refusal = first.stdout + first.stderr
+    assert first.returncode != 0, f"the nested table was not refused:\n{refusal}"
+    assert "FIRST" not in refusal
+
+    home = Path(_HAND_HOME.search(refusal).group(1))
+    assert home == claude_file
+    target = yaml.safe_load(home.read_text())
+    target = deep_merge(target, _yaml_of_block(_HAND_BLOCK.search(refusal).group(1)))
+    stale = yaml.safe_load(stale_file.read_text())
+    sub, where = _HAND_DELETE.search(refusal).groups()
+    assert Path(where) == stale_file
+    for key in _HAND_REST.search(refusal).group(1).split(", "):
+        key = key.strip("`")
+        target["self"][key] = stale["self"][sub][key]
+    dump_doc(home, target)
+    del stale["self"][sub]
+    dump_doc(stale_file, stale)
+
+    again = tree.cli("agent", "show", "shell")
+    assert again.returncode == 0, f"the door still refuses:\n{again.stdout}{again.stderr}"
+    for agent, key, want in (("claude", "model", "sonnet"), ("shell", "model", "opus")):
+        read = tree.cli("agent", "get", agent, key)
+        assert read.returncode == 0, read.stderr
+        assert read.stdout.strip() == want, f"{agent}.{key}: {read.stdout!r}"
+    stored = yaml.safe_load(claude_file.read_text())["self"]["env"]
+    assert stored == _HARD_VALUES

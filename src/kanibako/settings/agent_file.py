@@ -12,6 +12,7 @@
 
 from __future__ import annotations
 
+import shlex
 from dataclasses import dataclass, field
 from functools import partial
 from pathlib import Path
@@ -22,7 +23,9 @@ from kanibako.settings.agent_config import (
     AgentConfig,
     agent_settings_path,
 )
+from kanibako.settings.config import AGENT_META_FILE
 from kanibako.settings.config_io import (
+    _dump_text,
     count_leaves,
     dump_doc,
     load_doc,
@@ -751,9 +754,48 @@ def save(path: Path, cfg: AgentConfig) -> None:
 # The CASCADE view — one file, two tiers, and the refusals that guard the shape
 # ---------------------------------------------------------------------------
 
+def _set_word(value: object) -> str | None:
+    """*value* as the word ``agent set`` stores back as the SAME value, or ``None`` if none does.
+
+    ``set`` stores the text after ``=`` verbatim as a string (measured: ``env.E=1`` stores
+    ``'1'``, ``env.B=`` stores ``''``), so a string is its own word and a bool is the lowercase
+    spelling ``set`` accepts back. A null has no ``set`` word at all — it is the ``--null`` flag.
+    """
+    if value is None:
+        return None
+    return render_stored_scalar(value) if value != "" else ""
+
+
+def _yaml_block(doc: dict, indent: str) -> str:
+    """*doc* as the YAML a user TYPES, every line under *indent*.
+
+    ⚑ RENDERED BY THE EMITTER THAT WRITES THE FILES (:func:`~kanibako.settings.config_io._dump_text`), not by an f-string: a
+    value printed bare reads back as something else — ``a #b`` as ``a``, an empty string as null,
+    the STRING ``true`` as a bool. Text only; nothing here touches a file.
+    """
+    return "".join(f"\n{indent}{line}" for line in _dump_text(doc).splitlines())
+
+
+def _sub_home(sub_key: str, *, node: str | None, path: Path | None) -> str | None:
+    """Where ``agent.<sub_key>``'s flat ``self:`` table lives, when that is NOT this file.
+
+    ``None`` when the refused sub-table names the file's OWN node, so its content belongs one
+    level up in this very file. Otherwise the content is ANOTHER agent's, and moving it up
+    here would land it on this file's node instead [spec:15-21, "self"]: the answer names that
+    agent's own file — composed, never opened.
+    """
+    if node is not None and _node_identity(sub_key) == _node_identity(node):
+        return None
+    if path is None or path.name != AGENT_META_FILE:
+        return f"the {sub_key} agent's own settings file"
+    home = agent_settings_path(path.parent.parent, sub_key)
+    return None if node is None and home == path else f"the {sub_key} agent's own file, {home}"
+
+
 def _nested_agent_cure(
-    category: str | None, sub_key: str, *, entries: list[tuple[str, str]],
-    rest: list[str],
+    category: str | None, sub_key: str, *, entries: list[tuple[Any, Any]],
+    rest: list[str], placeholder: bool = False, node: str | None = None,
+    path: Path | None = None,
 ) -> str:
     """The ARM-APPROPRIATE fix for a refused ``self.<sub>:`` sub-table [spec:15-21, "self"].
 
@@ -767,20 +809,42 @@ def _nested_agent_cure(
     (state knobs, a typo, another node's name): there is no table to point at, so the cure is the
     rule itself.
 
-    ⚑ *entries* is EVERY ``(var, value)`` of the category table, and *rest* names every other
-    entry of the sub-table: a cure that quotes one entry loses the others to its own delete.
+    ⚑ *entries* is EVERY ``(var, value)`` of the category table, as STORED (*placeholder* when
+    the table holds none and they are the shape), and *rest* names every other entry of the
+    sub-table: a cure that quotes one entry loses the others to its own delete.
+
+    ⚑ *node* and *path* say WHOSE file this is: a ``self.<sub>`` table in ANOTHER agent's file
+    is that agent's content, so every arm sends it to ``agent.<sub>``'s own file
+    (:func:`_sub_home`), never up one level here.
     """
     from kanibako.settings.config_keys import AGENT_DEFAULT_SUB
 
+    home = None if sub_key == AGENT_DEFAULT_SUB else _sub_home(sub_key, node=node, path=path)
     if category is None:
         # ⚑ A MOVE, not a set: the caller keeps this arm's delete AFTER the fix, since
         # deleting first would destroy the content being moved up.
+        where = (
+            "UP ONE LEVEL" if home is None
+            else f"into the `{_ROOT}:` table of {home} (there `{_ROOT}:` expands to "
+            f"`agent.{sub_key}`)"
+        )
         return (
-            f"move what is inside it UP ONE LEVEL. The state knobs sit DIRECTLY under "
+            f"move what is inside it {where}. The state knobs sit DIRECTLY under "
             f"`{_ROOT}:` (`model: opus`), and so does every category table;"
         )
-    def lines(indent: str) -> str:
-        return "".join(f"\n{indent}{var}: {value}" for var, value in entries)
+
+    def block(*outer: str, indent: str) -> str:
+        if placeholder:
+            depth = indent + "  " * len(outer)
+            return (
+                "".join(f"\n{indent}{'  ' * i}{k}:" for i, k in enumerate(outer))
+                + f"\n{depth}{category}:"
+                + "".join(f"\n{depth}  {var}: {value}" for var, value in entries)
+            )
+        doc: dict = {category: dict(entries)}
+        for key in reversed(outer):
+            doc = {key: doc}
+        return _yaml_block(doc, indent)
 
     others = ", ".join(f"`{k}`" for k in rest)
     if sub_key == AGENT_DEFAULT_SUB:
@@ -790,24 +854,40 @@ def _nested_agent_cure(
         )
         return (
             f"the all-agents tier is written in the SYSTEM settings file, not the "
-            f"agent file:\n"
-            f"    agent:\n      default:\n        {category}:{lines('          ')}{moved}"
+            f"agent file:{block('agent', 'default', indent='    ')}{moved}"
         )
-    moved = (
-        f"\n  and move the rest of it ({others}) UP ONE LEVEL too, directly under `{_ROOT}:`;"
-        if rest else ""
-    )
-    by_hand = (
-        f"in the FLAT table (`{_ROOT}:` expands to `agent.{sub_key}`, so the "
-        f"{category} table sits DIRECTLY under it):\n"
-        f"    {_ROOT}:\n      {category}:{lines('        ')}{moved}"
-    )
+    if home is None:
+        moved = (
+            f"\n  and move the rest of it ({others}) UP ONE LEVEL too, directly under `{_ROOT}:`;"
+            if rest else ""
+        )
+        by_hand = (
+            f"in the FLAT table (`{_ROOT}:` expands to `agent.{sub_key}`, so the "
+            f"{category} table sits DIRECTLY under it):"
+        )
+    else:
+        moved = (
+            f"\n  and move the rest of it ({others}) into that same `{_ROOT}:` table, "
+            f"directly under it;" if rest else ""
+        )
+        by_hand = (
+            f"in the FLAT table of {home} (there `{_ROOT}:` expands to `agent.{sub_key}`, "
+            f"so the {category} table sits DIRECTLY under it):"
+        )
+    by_hand += f"{block(_ROOT, indent='    ')}{moved}"
     # ⚑ The verb is named ONLY where it works — see :data:`_VERB_WRITABLE_CATEGORIES` — and
     # only when the category is ALL the sub-table holds: the ``set`` arm deletes first, which
-    # would destroy any *rest* before the user could move it.
-    if category in _VERB_WRITABLE_CATEGORIES and not rest:
+    # would destroy any *rest* before the user could move it. Each argument is SHELL-quoted,
+    # so the line runs as printed (``two words`` is one argument), and a value ``set`` cannot
+    # store back (a null) leaves the by-hand route alone.
+    words = [(var, _set_word(value)) for var, value in entries]
+    if category in _VERB_WRITABLE_CATEGORIES and not rest and not placeholder and all(
+        word is not None for _, word in words
+    ):
         sets = "\n       ".join(  # under the first, past "  Fix: "
-            f"kanibako agent set {sub_key} {category}.{var}={value}" for var, value in entries
+            f"kanibako agent set {shlex.quote(sub_key)} "
+            f"{shlex.quote(f'{category}.{var}={word}')}"
+            for var, word in words
         )
         return f"{sets}\n  — or by hand, {by_hand}"
     return f"by hand, {by_hand}"
@@ -822,8 +902,8 @@ def _refused_category(sub_tbl: dict) -> str | None:
 
 
 def _nested_table_steps(
-    category: str | None, sub_key: str, *, entries: list[tuple[str, str]], rest: list[str],
-    path: Path | None, node: str | None,
+    category: str | None, sub_key: str, *, entries: list[tuple[Any, Any]], rest: list[str],
+    placeholder: bool, path: Path | None, node: str | None,
 ) -> str:
     """The fix + delete pair, in the order THIS arm's cure actually needs.
 
@@ -832,7 +912,10 @@ def _nested_table_steps(
     The other arms MOVE the content (up one level, or into the SYSTEM file) or hand-edit
     it — deleting first would destroy what the user was just told to move.
     """
-    cure = _nested_agent_cure(category, sub_key, entries=entries, rest=rest)
+    cure = _nested_agent_cure(
+        category, sub_key, entries=entries, rest=rest, placeholder=placeholder,
+        node=node, path=path,
+    )
     where = path if path is not None else "the agent settings file"
     if cure.lstrip().startswith("kanibako "):
         # ⚑ The parent here is the file's own ``self:`` root: delete the sub-table and
@@ -883,8 +966,8 @@ def _refuse_nested_tables(
         var_ph, value_ph = _CATEGORY_PLACEHOLDER.get(
             category or "", _DEST_KEYED_PLACEHOLDER,
         )
-        entries = (
-            [(str(k), str(table[k])) for k in sorted(table, key=str)]
+        entries: list[tuple[Any, Any]] = (
+            [(k, table[k]) for k in sorted(table, key=str)]
             if table else [(var_ph, value_ph)]
         )
         rest = sorted(str(k) for k in sub_val if k != category) if category else []
@@ -917,7 +1000,7 @@ def _refuse_nested_tables(
             f"{path if path is not None else '<agent settings>'}; it holds: "
             f"{held}.\n"
             f"{history}\n"
-            f"{_nested_table_steps(category, sub_key, entries=entries, rest=rest, path=path, node=node)}"
+            f"{_nested_table_steps(category, sub_key, entries=entries, rest=rest, placeholder=not table, path=path, node=node)}"
         )
 
 

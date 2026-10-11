@@ -54,9 +54,12 @@ def _write_address(tail: str) -> tuple[tuple[str, ...], str]
 def _is_table_valued(tail: str) -> bool
 def _spelled_sections(slot: AgentFileSlot, sections: tuple[str, ...], leaf: str) -> tuple[str, ...]
 def _own_node_settings(own: dict, scope: Any, *, node: str) -> dict
-def _nested_agent_cure(category: str | None, sub_key: str, *, entries: list[tuple[str, str]], rest: list[str]) -> str
+def _set_word(value: object) -> str | None
+def _yaml_block(doc: dict, indent: str) -> str
+def _sub_home(sub_key: str, *, node: str | None, path: Path | None) -> str | None
+def _nested_agent_cure(category: str | None, sub_key: str, *, entries: list[tuple[Any, Any]], rest: list[str], placeholder: bool=False, node: str | None=None, path: Path | None=None) -> str
 def _refused_category(sub_tbl: dict) -> str | None
-def _nested_table_steps(category: str | None, sub_key: str, *, entries: list[tuple[str, str]], rest: list[str], path: Path | None, node: str | None) -> str
+def _nested_table_steps(category: str | None, sub_key: str, *, entries: list[tuple[Any, Any]], rest: list[str], placeholder: bool, path: Path | None, node: str | None) -> str
 def _refuse_nested_tables(root_tbl: dict, *, node: str | None, path: Path | None) -> None
 def _refuse_stray_roots(raw: dict, *, node: str | None, path: Path | None) -> None
 def _contribution(raw: Any, *, node: str | None, path: Path | None) -> dict

@@ -424,8 +424,15 @@ class TestNothingNestsUnderSelfButTheCategories:
         assert f"self.codex.{category}" in message
         assert var in message
         assert "/a/agent.yaml" in message
-        # The CURE every category gets: the FLAT table, spelled as the YAML to write.
-        assert f"self:\n      {category}:\n        {var}: {value}" in message
+        # The CURE every category gets: the FLAT table, spelled as the YAML to write — and
+        # that YAML, read back, IS the table (a list value is YAML, not a Python repr).
+        import textwrap
+
+        import yaml
+
+        printed = message.split("sits DIRECTLY under it):\n", 1)[1].splitlines()
+        block = "\n".join(line for line in printed if line.startswith("    "))
+        assert yaml.safe_load(textwrap.dedent(block)) == {"self": {category: {var: value}}}
         # ⚑ AND THE VERB ONLY WHERE IT WORKS. ``agent set`` writes a per-VAR scalar, which
         # is ``env`` / ``secret_path`` and nothing else: the dest-keyed families take a
         # LIST value it cannot express, and it would store a dotted literal instead. A
