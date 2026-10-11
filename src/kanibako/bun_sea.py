@@ -82,6 +82,8 @@ def _section_trailer_end(f, size: int) -> int | None:
         return name, offset, length
 
     _, strtab_off, strtab_len = section(shstrndx)
+    if strtab_off + strtab_len > size:
+        return None
     f.seek(strtab_off)
     strtab = f.read(strtab_len)
     for i in range(shnum):

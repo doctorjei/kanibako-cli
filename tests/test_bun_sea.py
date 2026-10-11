@@ -100,11 +100,14 @@ def _build_fake_elf_section_sea(
     *,
     section_name: bytes = b".bun",
     declared_len: int | None = None,
+    strtab_offset: int | None = None,
+    strtab_size: int | None = None,
 ) -> Path:
     """Build a fake ELF64 whose payload sits in a ``.bun`` section, not at EOF.
 
     Layout: [ELF header][.bun: u64 len][payload][.shstrtab][section headers].
-    *declared_len* overrides the u64 length prefix.
+    *declared_len* overrides the u64 length prefix; *strtab_offset* and
+    *strtab_size* override the ``.shstrtab`` header fields.
     """
     path = tmp_path / "fake-bun-elf"
     payload = _build_payload(modules)
@@ -120,7 +123,12 @@ def _build_fake_elf_section_sea(
     headers = (
         shdr(0, 0, 0, 0)
         + shdr(1, 1, bun_off, len(bun_section))
-        + shdr(2 + len(section_name), 3, strtab_off, len(shstrtab))
+        + shdr(
+            2 + len(section_name),
+            3,
+            strtab_off if strtab_offset is None else strtab_offset,
+            len(shstrtab) if strtab_size is None else strtab_size,
+        )
     )
     ident = b"\x7fELF" + bytes([2, 1, 1]) + b"\0" * 9
     elf_header = ident + struct.pack(
@@ -232,6 +240,21 @@ class TestElfSectionLayout:
     def test_wrong_length_misses_marker(self, tmp_path):
         payload_len = len(_build_payload(self.MODS))
         path = _build_fake_elf_section_sea(tmp_path, self.MODS, declared_len=payload_len - 1)
+        with pytest.raises(BunSEAError, match="marker not found"):
+            list_modules(path)
+
+    @pytest.mark.parametrize(
+        "field",
+        [
+            {"strtab_size": 2**40},
+            {"strtab_size": 2**63},
+            {"strtab_size": 2**64 - 1},
+            {"strtab_offset": 2**64 - 1},
+            {"strtab_offset": 10**7},
+        ],
+    )
+    def test_shstrtab_outside_file_raises(self, tmp_path, field):
+        path = _build_fake_elf_section_sea(tmp_path, self.MODS, **field)
         with pytest.raises(BunSEAError, match="marker not found"):
             list_modules(path)
 
