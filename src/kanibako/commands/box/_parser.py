@@ -2609,14 +2609,15 @@ def _refuse_purge_while_live(std, config, proj_target: str | None, metadata_dir:
             proj = None
             unresolved = proj_target
     consequence = f"{what} would delete its vaults and canon while writes are in flight."
+    stop_ref = shlex.quote(unresolved) if unresolved is not None else None
     if abort_if_box_running(proj, metadata_dir / ".kanibako.lock", force, consequence,
-                            container_name=container_name):
+                            container_name=container_name, cure_ref=stop_ref):
         return True
     # ⚑ A resolver that FAILS must never mean "not running" -- no lock is not proof.
-    if unresolved is not None and not (metadata_dir / ".kanibako.lock").exists():
+    if stop_ref is not None and not (metadata_dir / ".kanibako.lock").exists():
         print(f"Warning: this box may be running: {proj_target} does not resolve, so its "
               f"container was never asked, and it holds no lock file to check. "
-              f"{consequence} Stop the box first: kanibako stop {shlex.quote(unresolved)}, "
+              f"{consequence} Stop the box first: kanibako stop {stop_ref}, "
               f"or pass --force.",
               file=sys.stderr)
         if force:

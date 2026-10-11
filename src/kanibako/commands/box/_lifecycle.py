@@ -4098,21 +4098,22 @@ def box_running_reason(
 
 def abort_if_box_running(
     proj: ProjectPaths | None, lock_file: Path, force: bool, consequence: str,
-    *, container_name: str | None = None,
+    *, container_name: str | None = None, cure_ref: str | None = None,
 ) -> bool:
     """Warn when :func:`box_running_reason` answers; True ⇒ the caller aborts (no *force*).
 
     The stop cure names *proj* by :func:`project_cure_ref`, so it reaches that box from
-    any cwd.  With no *proj* (a parked box, or one that did not resolve) there is no ref
-    to print, and the cure stays a bare ``kanibako stop``.
+    any cwd.  With no *proj* it names *cure_ref*, an already-quoted ref the caller holds
+    for a box that did not resolve.  With neither, the cure stays a bare ``kanibako stop``.
     """
     import sys
 
     reason = box_running_reason(proj, lock_file, container_name=container_name)
     if reason is None:
         return False
-    stop = ("Stop the box first (kanibako stop)" if proj is None
-            else f"Stop the box first: kanibako stop {project_cure_ref(proj)}")
+    ref = project_cure_ref(proj) if proj is not None else cure_ref
+    stop = ("Stop the box first (kanibako stop)" if ref is None
+            else f"Stop the box first: kanibako stop {ref}")
     print(f"Warning: this box may be running: {reason}. {consequence} "
           f"{stop}, or pass --force.", file=sys.stderr)
     if force:

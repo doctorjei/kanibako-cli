@@ -1284,3 +1284,24 @@ def test_a_box_with_no_paths_keeps_the_bare_stop_cure(tmp_path, capsys):
     lock.write_text("")
     assert abort_if_box_running(None, lock, False, "It would hurt.")
     assert "Stop the box first (kanibako stop), or pass --force." in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("target", ["ghost", "{home}/my proj"])
+def test_an_unresolved_purge_target_with_a_lock_names_it_in_the_stop_cure(
+        target, std, config, tmp_home, tmp_path, monkeypatch, capsys):
+    """The lock-file answer for a target that did not resolve carries that target's ref."""
+    from kanibako.commands.box import _parser as P
+
+    target = target.format(home=tmp_home)
+    md = tmp_path / "md"
+    md.mkdir()
+    (md / ".kanibako.lock").write_text("")
+    monkeypatch.setattr(P, "_resolve_purge_probe_target",
+                        lambda *a, **k: (_ for _ in ()).throw(RuntimeError("nope")))
+    capsys.readouterr()
+    assert P._refuse_purge_while_live(std, config, target, md, False, "Purging this box")
+    err = capsys.readouterr().err
+    assert "a lock file exists" in err, err
+    found = re.search(r"Stop the box first: (kanibako stop .*?), or pass --force", err)
+    assert found, err
+    _assert_inert(found.group(1), ["stop", target], tmp_path)
