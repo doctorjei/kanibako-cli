@@ -770,6 +770,93 @@ def _resolved_unless_loop(path: Path) -> Path:
     return path.absolute() if _symlink_loop(path) else path.resolve()
 
 
+def _remap_dest_holder(
+    state: ProjectState, dest: Path, std: StandardPaths,
+) -> tuple[str, bool] | None:
+    """Why a remap of *state* onto *dest* lands on ANOTHER box's path, else ``None``.
+
+    Returns ``(why, forceable)``: *why* completes "Cannot remap … onto …: it is …".
+    One path is one box's: another box's root or workspace is refused, and so is its store,
+    whatever the flag.  A path inside another box shares that box's tree (keyspace § 0
+    "Per-owner resources"), so *forceable*: refused unless --force.
+    ⚑ [R188]: *dest* is the path as given, and a workspace's identity is its path, so a link
+    to one is a twin, not a collision.  A standalone root holds its box's metadata, so it is
+    found by content and a link to it is refused; the store test resolves (a safety test).
+    """
+    from kanibako.launch import box_resolve
+    from kanibako.project import registry_store
+
+    own_root = (_resolved_unless_loop(state.metadata_path)
+                if state.mode is BoxMode.standalone else None)
+    no_flag = "A remap is not a takeover, and no flag overrides this. "
+    takeover = (no_flag + "First delete that box (`kanibako box rm {0} --purge`, which deletes "
+                "that box's own data, its vault included, but not its workspace), then run "
+                "the remap again.")
+
+    def standalone_at(root: Path) -> str | None:
+        """The standalone box rooted at *root*: its name, ``""`` if unregistered."""
+        if (_resolved_unless_loop(root) == own_root
+                or not box_resolve.stores_standalone_registry_null(root)):
+            return None
+        return registry_store.standalone_name_for_same_dir(std.registry, root) or ""
+
+    def standalone_who(name: str) -> str:
+        return f"standalone box '{name}'" if name else "an unregistered standalone box"
+
+    other = standalone_at(dest)
+    if other is not None:
+        return (f"the root of {standalone_who(other)}. "
+                + takeover.format(shlex.quote(other or str(dest))), False)
+
+    early = _early_scope(std, BoxMode.primary)
+    primary = next(((p, name) for p in (dest, *dest.parents)
+                    if (name := primary_box_name_for_workspace(
+                        std.primary_workset, str(p), early=early)) is not None), None)
+    if primary is not None and not (state.mode is BoxMode.primary
+                                    and _same_box_name(primary[1], state.name)):
+        at, box = primary
+        if at == dest:
+            return (f"the workspace of primary box '{box}'. "
+                    + takeover.format(shlex.quote(box)), False)
+        return (f"inside the workspace of primary box '{box}' ({at}). "
+                "Both boxes would claim it: pass --force to share it, or choose another "
+                "path.", True)
+
+    owned = box_resolve.find_connected_external_box(dest, std)
+    if owned is not None and not (state.ws is not None
+                                  and owned.workset_name == state.ws.name
+                                  and _same_box_name(owned.box_name, state.name)):
+        where = "the" if Path(literal_path(owned.box_path)) == dest else "inside the"
+        return (f"{where} workspace of member '{owned.box_name}' of workset "
+                f"'{owned.workset_name}'. " + no_flag + "First disconnect it (`kanibako "
+                f"workset disconnect {shlex.quote(owned.workset_name)} "
+                f"{shlex.quote(owned.box_name)} --force`, which deletes no files), then run "
+                "the remap again.", False)
+
+    # The store test follows links: a link to another box's store is still that store.
+    landing = _resolved_unless_loop(dest)
+    for top in (landing, *landing.parents):
+        own = top == own_root
+        owner = state.name if own else standalone_at(top)
+        if owner is None:
+            continue
+        store = _resolved_unless_loop(box_metadata_dir(
+            BoxMode.standalone, top, early=_early_scope(std, BoxMode.standalone)))
+        if landing == store or store in landing.parents:
+            whose = "its own store" if own else f"the store of {standalone_who(owner)}"
+            return (f"inside {whose} ({store}). A box's store is never a workspace, and no "
+                    "flag overrides this. Choose another path.", False)
+        break
+
+    # Detection's ancestor walk, as given, stops at the first ``workset.yaml``.
+    root = next((p for p in dest.parents if (p / WORKSET_META_FILE).is_file()), None)
+    other = standalone_at(root) if root is not None else None
+    if root is None or other is None:
+        return None
+    return (f"inside the root of {standalone_who(other)} ({root}). Both boxes would claim "
+            "it: pass --force to share it, or choose another path.", True)
+
+
 def _validate(
     state: ProjectState,
     spec: TargetSpec,
@@ -813,7 +900,9 @@ def _validate(
         dest = _resolved_unless_loop(
             target_ws.require_workspaces_dir(f"a workspace for '{new_name}'") / new_name)
     elif isinstance(spec.location, Path):
-        dest = _resolved_unless_loop(spec.location)
+        # ⚑ A remap RECORDS the path as given ([R188]); its safety checks resolve it.
+        dest = (Path(literal_path(spec.location)) if spec.records_only
+                else _resolved_unless_loop(spec.location))
 
     relocating = dest is not None
 
@@ -889,23 +978,11 @@ def _validate(
         if dest.exists():
             raise ProjectError(f"Destination already exists: {dest}")
 
-    # --- remap onto ANOTHER standalone box's root; --force does not override it
-    if (spec.records_only and dest is not None
-            and not (state.mode is BoxMode.standalone
-                     and dest == _resolved_unless_loop(state.metadata_path))):
-        from kanibako.launch import box_resolve
-        from kanibako.project import registry_store
-        if box_resolve.stores_standalone_registry_null(dest):
-            other = registry_store.standalone_name_for_same_dir(std.registry, dest)
-            ref = shlex.quote(other or str(dest))
-            who = f"standalone box '{other}'" if other else "an unregistered standalone box"
-            raise ProjectError(
-                f"Cannot remap '{state.name}' onto '{dest}': it is the root of {who}. "
-                "A remap is not a takeover, and no flag overrides this. First move that box "
-                f"elsewhere (`kanibako box move {ref} <new-path>`) or delete it (`kanibako box "
-                f"rm {ref} --purge`, which deletes that box's own data, its vault included, "
-                "but not its workspace), then run the remap again."
-            )
+    # --- remap onto ANOTHER box's path, refused before any write ---
+    if spec.records_only and dest is not None:
+        holder = _remap_dest_holder(state, dest, std)
+        if holder is not None and not (holder[1] and force):
+            raise ProjectError(f"Cannot remap '{state.name}' onto '{dest}': it is {holder[0]}")
 
     # The name a printed cure lands under: the one asked for, else the box's own, else
     # none — a name the collision guard below refuses is no cure.
@@ -927,7 +1004,7 @@ def _validate(
     if target_mode == BoxMode.named and target_ws is not None and dest is not None:
         ws_dir = target_ws.workspaces_dir
         if (ws_dir is not None and is_in_tree_workspace(target_ws, dest)
-                and dest != _resolved_unless_loop(ws_dir / new_name)):
+                and _resolved_unless_loop(dest) != _resolved_unless_loop(ws_dir / new_name)):
             leaf = ws_dir / (cure_name or new_name)
             ref = _cure_ref(state)
             ws_q = shlex.quote(target_ws.name)
@@ -1168,7 +1245,7 @@ def _validate(
     # The reuse-in-place edges, whose teardown is skipped: the box keeps its own vault.
     vault_reused = (
         state.mode == BoxMode.standalone and target_mode == BoxMode.standalone
-        and (dest is None or dest == state.metadata_path.resolve())
+        and (dest is None or _resolved_unless_loop(dest) == state.metadata_path.resolve())
     )
     # --- a standalone source's canon tier must resolve before the first write ---
     # ⚑ The teardown plan reads it again after the destination is written; a repoint
@@ -4064,7 +4141,7 @@ def run_remap(args) -> int:
     from kanibako.commands.flags import resolve_subject_value
     old = resolve_subject_value(getattr(args, "old", None), getattr(args, "box", None))
     new = getattr(args, "new", None) or "./"
-    new_path = _resolved_unless_loop(Path(new))
+    new_path = Path(literal_path(new))
 
     try:
         state = resolve_lifecycle_target(old, std, config)

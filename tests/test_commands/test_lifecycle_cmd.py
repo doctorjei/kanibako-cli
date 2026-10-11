@@ -26,7 +26,7 @@ from kanibako.commands.box._lifecycle import (
 )
 from kanibako.settings.config import load_config
 from kanibako.settings.config_io import dump_doc, load_doc
-from kanibako.settings.paths import _early_scope, load_primary_boxes
+from kanibako.settings.paths import _early_scope, load_primary_boxes, primary_box_name_for_workspace
 from kanibako.settings.paths import (
     BoxMode,
     load_std_paths,
@@ -216,17 +216,15 @@ class TestRemap:
                 f"standalone box '{solo_name}'") in err
         assert "no flag overrides this" in err
         assert f"`kanibako box rm {solo_name} --purge`, which deletes that box's own data" in err
-        assert f"`kanibako box move {solo_name} <new-path>`" in err
+        assert "box move" not in err
         assert "--force" not in err
         assert self._tree_digest(tmp_home) == before
 
     @pytest.mark.parametrize("registered", [True, False])
-    @pytest.mark.parametrize("cure", ["rm", "move"])
     def test_remap_onto_another_standalone_root_printed_cure_works(
-            self, env, capsys, monkeypatch, registered, cure):
-        """Running the cure the refusal prints, as printed, lets the remap through."""
-        import shlex
-
+            self, env, capsys, monkeypatch, registered):
+        """The cure the refusal prints, run as printed, keeps the files the remap is for,
+        and the remap then records the box there, present."""
         from kanibako.project import registry_store
 
         monkeypatch.setattr(_lifecycle, "_make_confirm", lambda force, summary: lambda: True)
@@ -234,17 +232,18 @@ class TestRemap:
         std, ext, solo, solo_name = self._member_and_registered_standalone(env)
         if not registered:
             registry_store.unregister_standalone(std.registry, solo_name)
+        (solo / "notes.txt").write_text("mine")
+        (solo / "workspace" / "code.py").write_text("mine")
 
         assert run_remap(_remap_args(str(ext), str(solo), force=False)) == 1
-        err = capsys.readouterr().err
-        printed = re.search(rf"`kanibako (box {cure} [^`]*)`", err)
-        assert printed is not None, err
-        argv = shlex.split(printed.group(1).replace("<new-path>", str(env[2] / "moved")))
-        args = build_parser().parse_args(argv)
-        assert int(args.func(args) or 0) == 0, capsys.readouterr()
+        self._run_printed(env, capsys, capsys.readouterr().err, "box rm")
 
         assert run_remap(_remap_args(str(ext), str(solo), force=False)) == 0
         assert str(solo.resolve()) in _connected_index(std)
+        assert (solo / "notes.txt").read_text() == "mine"
+        assert (solo / "workspace" / "code.py").read_text() == "mine"
+        row = self._listed(capsys, "alpha")
+        assert row[-1] == str(solo.resolve()) and "missing" not in row, row
 
     @pytest.mark.parametrize("force", [False, True])
     def test_remap_standalone_onto_another_repointed_standalone_refused(
@@ -278,6 +277,370 @@ class TestRemap:
         err = capsys.readouterr().err
         assert f"it is the root of standalone box '{solo_name}'" in err
         assert self._tree_digest(tmp_home) == before
+
+    @staticmethod
+    def _confirms(monkeypatch) -> list[str]:
+        """Answer yes to every confirm prompt and record it: a refusal up front records none."""
+        asked: list[str] = []
+        monkeypatch.setattr(_lifecycle, "_make_confirm",
+                            lambda force, summary: lambda: asked.append(summary) or True)
+        return asked
+
+    @staticmethod
+    def _listed(capsys, name: str) -> list[str]:
+        """``box list``'s row for *name*, split: a box whose path is gone shows ``missing``."""
+        capsys.readouterr()
+        args = build_parser().parse_args(["box", "list"])
+        assert int(args.func(args) or 0) == 0
+        rows = [line.split() for line in capsys.readouterr().out.splitlines()]
+        return next(row for row in rows if row and row[0] == name)
+
+    @staticmethod
+    def _run_printed(env, capsys, err: str, verb: str) -> None:
+        """Run the `kanibako <verb> …` cure *err* prints, as printed; it must succeed."""
+        import shlex
+
+        printed = re.search(rf"`kanibako ({verb} [^`]*)`", err)
+        assert printed is not None, err
+        argv = shlex.split(printed.group(1))
+        args = build_parser().parse_args(argv)
+        assert int(args.func(args) or 0) == 0, capsys.readouterr()
+
+    @pytest.mark.parametrize("force", [False, True])
+    @pytest.mark.parametrize("source", ["member", "standalone", "primary"])
+    def test_remap_onto_a_primary_workspace_refused(
+            self, env, capsys, monkeypatch, source, force):
+        """A remap onto a PRIMARY box's workspace is refused before the prompt and any
+        write, from every mode, with or without --force: one path, one box."""
+        asked = self._confirms(monkeypatch)
+        _std, ext, solo, _solo_name = self._member_and_registered_standalone(env)
+        prim = _default(env, "prim")
+        src = {"member": ext, "standalone": solo, "primary": _default(env, "prim2")}[source]
+        before = self._tree_digest(env[2])
+
+        rc = run_remap(_remap_args(str(src), str(prim), force=force))
+
+        assert rc == 1
+        err = capsys.readouterr().err
+        assert f"onto '{prim.resolve()}': it is the workspace of primary box 'prim'." in err
+        assert "no flag overrides this" in err
+        assert "--force" not in err
+        assert asked == []
+        assert self._tree_digest(env[2]) == before
+
+    def test_remap_onto_a_primary_workspace_printed_cure_works(self, env, capsys, monkeypatch):
+        """The cure works as printed: `rm --purge` keeps the workspace, as it says, and the
+        remap then records the box there, present."""
+        monkeypatch.setattr(_lifecycle, "_make_confirm", lambda force, summary: lambda: True)
+        monkeypatch.setattr("builtins.input", lambda *a: "yes")
+        config, std, _tmp = env
+        _std, ext, _solo, _solo_name = self._member_and_registered_standalone(env)
+        prim = _default(env, "prim", contents="mine")
+        state = resolve_lifecycle_target(str(prim), std, config)
+        vaults = [v for v in (state.vault_ro, state.vault_rw) if v is not None]
+        assert len(vaults) == 2 and all(v.is_dir() for v in vaults)
+
+        assert run_remap(_remap_args(str(ext), str(prim), force=False)) == 1
+        err = capsys.readouterr().err
+        assert "box move" not in err
+        self._run_printed(env, capsys, err, "box rm")
+        assert not any(v.exists() for v in vaults)
+
+        assert run_remap(_remap_args(str(ext), str(prim), force=False)) == 0
+        assert str(prim.resolve()) in _connected_index(std)
+        assert primary_box_name_for_workspace(
+            std.primary_workset, str(prim), early=_early_scope(std, BoxMode.primary)) is None
+        assert (prim / "file.txt").read_text() == "mine"
+        row = self._listed(capsys, "alpha")
+        assert row[-1] == str(prim.resolve()) and "missing" not in row, row
+
+    def test_remap_primary_onto_its_own_workspace_is_not_refused(
+            self, env, capsys, monkeypatch):
+        """A primary box is no other box to itself: a remap onto its own workspace passes
+        the holder check (the self exemption)."""
+        monkeypatch.setattr(_lifecycle, "_make_confirm", lambda force, summary: lambda: True)
+        _config, std, _tmp = env
+        prim = _default(env, "prim")
+
+        assert run_remap(_remap_args(str(prim), str(prim), force=False)) == 0
+        assert "Cannot remap" not in capsys.readouterr().err
+        assert primary_box_name_for_workspace(
+            std.primary_workset, str(prim), early=_early_scope(std, BoxMode.primary)) == "prim"
+
+    @pytest.mark.parametrize("force", [False, True])
+    @pytest.mark.parametrize("inside", [False, True])
+    @pytest.mark.parametrize("other_ws", ["ws", "ws2"])
+    def test_remap_onto_another_members_external_dir_refused_up_front(
+            self, env, capsys, monkeypatch, other_ws, inside, force):
+        """Onto (or inside) another member's external dir, of its own workset or another,
+        the remap is refused before the prompt and before any release: nothing written."""
+        asked = self._confirms(monkeypatch)
+        monkeypatch.setattr(_lifecycle, "release_project",
+                            lambda *a, **k: pytest.fail("released before refusing"))
+        config, std, tmp_home = env
+        _std, ext, _solo, _solo_name = self._member_and_registered_standalone(env)
+        ws = (load_workset(tmp_home / "ws_root", "ws", early_system=std.early_system)
+              if other_ws == "ws" else create_workset("ws2", tmp_home / "ws2_root", std))
+        ext2 = tmp_home / "ext2"
+        (ext2 / "sub").mkdir(parents=True)
+        add_project(ws, "beta", ext2, std)
+        dest = ext2 / "sub" if inside else ext2
+        before = self._tree_digest(tmp_home)
+
+        rc = run_remap(_remap_args(str(ext), str(dest), force=force))
+
+        assert rc == 1
+        err = capsys.readouterr().err
+        where = "inside the" if inside else "the"
+        assert (f"onto '{dest.resolve()}': it is {where} workspace of member 'beta' of "
+                f"workset '{other_ws}'.") in err
+        assert "no flag overrides this" in err
+        assert asked == []
+        assert self._tree_digest(tmp_home) == before
+
+    def test_remap_onto_another_members_external_dir_printed_cure_works(
+            self, env, capsys, monkeypatch):
+        """The disconnect cure works as printed and deletes no files, as it says."""
+        monkeypatch.setattr(_lifecycle, "_make_confirm", lambda force, summary: lambda: True)
+        config, std, tmp_home = env
+        _std, ext, _solo, _solo_name = self._member_and_registered_standalone(env)
+        ws = load_workset(tmp_home / "ws_root", "ws", early_system=std.early_system)
+        ext2 = tmp_home / "ext2"
+        ext2.mkdir()
+        (ext2 / "file.txt").write_text("beta's")
+        add_project(ws, "beta", ext2, std)
+
+        assert run_remap(_remap_args(str(ext), str(ext2), force=False)) == 1
+        self._run_printed(env, capsys, capsys.readouterr().err, "workset disconnect")
+        assert (ext2 / "file.txt").read_text() == "beta's"
+
+        assert run_remap(_remap_args(str(ext), str(ext2), force=False)) == 0
+        assert _connected_index(std)[str(ext2.resolve())]["project"] == "alpha"
+
+    def test_remap_into_another_standalone_root_needs_force(self, env, capsys, monkeypatch):
+        """Inside another standalone's root (its `workspace/`), the remap is a share of that
+        box's tree: refused by name unless --force (keyspace § 0), which keeps both rows."""
+        from kanibako.project import registry_store
+
+        asked = self._confirms(monkeypatch)
+        _config, std, tmp_home = env
+        _std, ext, solo, solo_name = self._member_and_registered_standalone(env)
+        dest = solo / "workspace"
+        assert dest.is_dir()
+        before = self._tree_digest(tmp_home)
+
+        assert run_remap(_remap_args(str(ext), str(dest), force=False)) == 1
+        err = capsys.readouterr().err
+        assert (f"onto '{dest.resolve()}': it is inside the root of standalone box "
+                f"'{solo_name}' ({solo.resolve()}). Both boxes would claim it: pass --force "
+                "to share it") in err
+        assert asked == []
+        assert self._tree_digest(tmp_home) == before
+
+        assert run_remap(_remap_args(str(ext), str(dest), force=True)) == 0
+        assert str(dest.resolve()) in _connected_index(std)
+        assert registry_store.standalone_name_for_same_dir(std.registry, solo) == solo_name
+
+    def test_remap_inside_a_primary_workspace_needs_force(self, env, capsys, monkeypatch):
+        """A directory inside a primary box's workspace shares that box's tree: refused by
+        name unless --force (keyspace § 0), which keeps both boxes."""
+        asked = self._confirms(monkeypatch)
+        _config, std, tmp_home = env
+        _std, ext, _solo, _solo_name = self._member_and_registered_standalone(env)
+        prim = _default(env, "prim")
+        inner = prim / "inner"
+        inner.mkdir()
+        before = self._tree_digest(tmp_home)
+
+        assert run_remap(_remap_args(str(ext), str(inner), force=False)) == 1
+        err = capsys.readouterr().err
+        assert (f"onto '{inner.resolve()}': it is inside the workspace of primary box 'prim' "
+                f"({prim.resolve()}). Both boxes would claim it: pass --force to share it") in err
+        assert asked == []
+        assert self._tree_digest(tmp_home) == before
+
+        assert run_remap(_remap_args(str(ext), str(inner), force=True)) == 0
+        assert str(inner.resolve()) in _connected_index(std)
+        assert primary_box_name_for_workspace(
+            std.primary_workset, str(prim), early=_early_scope(std, BoxMode.primary)) == "prim"
+
+    @pytest.mark.parametrize("force", [False, True])
+    @pytest.mark.parametrize("leaf", ["box_data", "box_data/home"])
+    def test_remap_into_another_standalone_store_refused(
+            self, env, capsys, monkeypatch, leaf, force):
+        """Another standalone box's store is never a workspace: refused before the prompt
+        and any write, with or without --force."""
+        asked = self._confirms(monkeypatch)
+        _config, std, tmp_home = env
+        _std, ext, solo, solo_name = self._member_and_registered_standalone(env)
+        dest = solo / leaf
+        dest.mkdir(parents=True, exist_ok=True)
+        before = self._tree_digest(tmp_home)
+
+        rc = run_remap(_remap_args(str(ext), str(dest), force=force))
+
+        assert rc == 1
+        err = capsys.readouterr().err
+        assert (f"onto '{dest.resolve()}': it is inside the store of standalone box "
+                f"'{solo_name}' ({(solo / 'box_data').resolve()}).") in err
+        assert "no flag overrides this" in err
+        assert "--force" not in err
+        assert asked == []
+        assert self._tree_digest(tmp_home) == before
+
+    @staticmethod
+    def _recorded(env, name: str) -> str:
+        """The path workset ``ws`` records for member *name*, exactly as stored."""
+        _config, std, tmp_home = env
+        ws = load_workset(tmp_home / "ws_root", "ws", early_system=std.early_system)
+        return next(str(p.source_path) for p in ws.projects if p.name == name)
+
+    @pytest.mark.parametrize("force", [False, True])
+    def test_remap_onto_a_link_to_a_primary_workspace_records_a_twin(
+            self, env, capsys, monkeypatch, force):
+        """[R188]: a box is its path as given, so a link to a primary box's workspace is a
+        twin: the remap records the link, and both boxes keep their rows."""
+        monkeypatch.setattr(_lifecycle, "_make_confirm", lambda force, summary: lambda: True)
+        config, std, tmp_home = env
+        _std, ext, _solo, _solo_name = self._member_and_registered_standalone(env)
+        prim = _default(env, "prim")
+        link = tmp_home / "twin"
+        link.symlink_to(prim)
+
+        assert run_remap(_remap_args(str(ext), str(link), force=force)) == 0, capsys.readouterr()
+        assert self._recorded(env, "alpha") == str(link)
+        assert primary_box_name_for_workspace(
+            std.primary_workset, str(prim), early=_early_scope(std, BoxMode.primary)) == "prim"
+        assert resolve_lifecycle_target(str(link), std, config).name == "alpha"
+
+    def test_remap_primary_onto_a_link_to_another_primary_workspace_records_a_twin(
+            self, env, capsys, monkeypatch):
+        """A primary source is a twin too: recorded at the link, the other box untouched."""
+        monkeypatch.setattr(_lifecycle, "_make_confirm", lambda force, summary: lambda: True)
+        _config, std, tmp_home = env
+        prim = _default(env, "prim")
+        prim2 = _default(env, "prim2")
+        link = tmp_home / "twin"
+        link.symlink_to(prim)
+
+        assert run_remap(_remap_args(str(prim2), str(link), force=False)) == 0, capsys.readouterr()
+        boxes = load_primary_boxes(std.primary_workset, early=_early_scope(std, BoxMode.primary))
+        assert boxes["prim"] == str(prim)
+        assert boxes["prim2"] == str(link)
+
+    def test_remap_onto_a_link_to_another_standalone_workspace_records_a_twin(
+            self, env, capsys, monkeypatch):
+        """A link to the `workspace/` inside a standalone root is a twin of that directory,
+        not a path inside the root: recorded as given, both rows kept, no --force needed."""
+        from kanibako.project import registry_store
+
+        monkeypatch.setattr(_lifecycle, "_make_confirm", lambda force, summary: lambda: True)
+        _config, std, tmp_home = env
+        _std, ext, solo, solo_name = self._member_and_registered_standalone(env)
+        link = tmp_home / "twin"
+        link.symlink_to(solo / "workspace")
+
+        assert run_remap(_remap_args(str(ext), str(link), force=False)) == 0, capsys.readouterr()
+        assert self._recorded(env, "alpha") == str(link)
+        assert registry_store.standalone_name_for_same_dir(std.registry, solo) == solo_name
+
+    @pytest.mark.parametrize("force", [False, True])
+    def test_remap_onto_a_link_to_another_standalone_root_refused(
+            self, env, capsys, monkeypatch, force):
+        """[R188]: a standalone root holds its box's metadata, so a second link to it is
+        refused, with or without --force, before the prompt and before any release: the
+        forced absorb that would drop the standalone's row is never reached."""
+        asked = self._confirms(monkeypatch)
+        monkeypatch.setattr(_lifecycle, "release_project",
+                            lambda *a, **k: pytest.fail("released before refusing"))
+        _config, std, tmp_home = env
+        _std, ext, solo, solo_name = self._member_and_registered_standalone(env)
+        link = tmp_home / "twin"
+        link.symlink_to(solo)
+        before = self._tree_digest(tmp_home)
+
+        assert run_remap(_remap_args(str(ext), str(link), force=force)) == 1
+        err = capsys.readouterr().err
+        assert f"onto '{link}': it is the root of standalone box '{solo_name}'." in err
+        assert "no flag overrides this" in err
+        assert asked == []
+        assert self._tree_digest(tmp_home) == before
+
+    @pytest.mark.parametrize("force", [False, True])
+    @pytest.mark.parametrize("via", ["store", "root"])
+    def test_remap_onto_a_link_into_another_standalone_store_refused(
+            self, env, capsys, monkeypatch, via, force):
+        """A link straight at another standalone's store, or a path through a link to its
+        root, still lands in that store: refused with or without --force, nothing written."""
+        asked = self._confirms(monkeypatch)
+        _config, std, tmp_home = env
+        _std, ext, solo, solo_name = self._member_and_registered_standalone(env)
+        link = tmp_home / "twin"
+        link.symlink_to(solo / "box_data" if via == "store" else solo)
+        dest = link if via == "store" else link / "box_data"
+        before = self._tree_digest(tmp_home)
+
+        assert run_remap(_remap_args(str(ext), str(dest), force=force)) == 1
+        err = capsys.readouterr().err
+        assert (f"onto '{dest}': it is inside the store of standalone box '{solo_name}' "
+                f"({(solo / 'box_data').resolve()}).") in err
+        assert "no flag overrides this" in err
+        assert asked == []
+        assert self._tree_digest(tmp_home) == before
+
+    @pytest.mark.parametrize("force", [False, True])
+    def test_remap_standalone_into_its_own_store_refused(self, env, capsys, monkeypatch, force):
+        """A store is never a workspace, the box's own included: a standalone remapped into
+        its own `box_data` is refused, with or without --force, nothing written."""
+        asked = self._confirms(monkeypatch)
+        _config, std, tmp_home = env
+        _std, _ext, solo, solo_name = self._member_and_registered_standalone(env)
+        before = self._tree_digest(tmp_home)
+
+        rc = run_remap(_remap_args(str(solo), str(solo / "box_data"), force=force))
+
+        assert rc == 1
+        err = capsys.readouterr().err
+        assert (f"Cannot remap '{solo_name}' onto '{solo / 'box_data'}': it is inside its own "
+                f"store ({(solo / 'box_data').resolve()}).") in err
+        assert "no flag overrides this" in err
+        assert asked == []
+        assert self._tree_digest(tmp_home) == before
+
+    def test_remap_standalone_onto_a_link_to_its_own_root_moves_its_spelling(
+            self, env, capsys, monkeypatch):
+        """PIN: a standalone remapped onto a link to its OWN root is re-registered at the
+        link, named for it ([R188]: the name follows the path), and the old spelling is
+        then refused as another path to that box."""
+        from kanibako.project import registry_store
+
+        monkeypatch.setattr(_lifecycle, "_make_confirm", lambda force, summary: lambda: True)
+        _config, std, tmp_home = env
+        _std, _ext, solo, solo_name = self._member_and_registered_standalone(env)
+        link = tmp_home / "twin"
+        link.symlink_to(solo)
+
+        assert run_remap(_remap_args(str(solo), str(link), force=False)) == 0, capsys.readouterr()
+        rows = registry_store.load_standalone(std.registry)
+        assert solo_name not in rows
+        assert [n for n, root in rows.items() if root == str(link)] == [
+            solo_name.replace("_solo", "_twin")]
+
+        from kanibako.project.import_reconcile import ImportConflictError
+
+        args = build_parser().parse_args(["box", "info", str(solo)])
+        with pytest.raises(ImportConflictError, match="is another path to standalone box"):
+            args.func(args)
+
+    def test_remap_into_its_own_external_dir_is_not_refused(self, env, monkeypatch):
+        """A member is no other box to itself: a subdir of its own external dir remaps."""
+        monkeypatch.setattr(_lifecycle, "_make_confirm", lambda force, summary: lambda: True)
+        _config, std, _tmp = env
+        _std, ext, _solo, _solo_name = self._member_and_registered_standalone(env)
+        (ext / "sub").mkdir()
+
+        assert run_remap(_remap_args(str(ext), str(ext / "sub"), force=False)) == 0
+        assert _connected_index(std)[str((ext / "sub").resolve())]["project"] == "alpha"
 
     def test_remap_missing_project(self, env):
         config, std, tmp_home = env
