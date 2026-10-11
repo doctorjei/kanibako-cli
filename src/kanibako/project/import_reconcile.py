@@ -33,6 +33,7 @@ Reference: ``llm-docs/kanibako/project/import_reconcile.py.md``.
 
 from __future__ import annotations
 
+import shlex
 import sys
 from contextlib import contextmanager
 from pathlib import Path
@@ -163,12 +164,24 @@ def check_standalone(
 
     Another spelling of a registered root's identity is refused ([R188]), registered
     or not, before anything is written; a registered root then gets its stale J2 entry
-    cleared.
+    cleared.  An unregistered root that is another spelling of a PARKED standalone's
+    directory is refused too.  ⚑ Here only, not in :func:`refuse_second_link`:
+    ``box register <root>`` (:func:`import_standalone`) is the route that re-registers
+    a parked box at a new spelling, and it must stay open.
     """
     root = Path(literal_path(root))
     refuse_second_link(registry, root)
     if registry_store.standalone_name_for_root(registry, root) is not None:
         _clear_stale_import(journal, standalone_box_store(root, early=early))
+        return
+    parked = registry_store.deregistered_standalone_for_dir(registry, root)
+    if parked is not None and str(parked[1]["metadata"]) != str(root):
+        name, stored = parked[0], parked[1]["metadata"]
+        raise ImportConflictError(
+            f"{root} is another path to deregistered standalone box '{name}' (kept at "
+            f"{stored}); a standalone box has one path. Work from {stored}, or register "
+            f"it at this path: kanibako box register {shlex.quote(str(root))}"
+        )
 
 
 def import_standalone(
