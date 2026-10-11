@@ -2395,7 +2395,7 @@ def resolve_designation(std: StandardPaths, value: str | None, *, unknown_name_i
     on_disk = Path(value).exists()
     try:
         # A registered standalone name ranks after a same-named path (spec § Box designation).
-        resolved, kind = resolve_name(std.registry, value, cwd=Path.cwd(),
+        resolved, kind = resolve_name(std.registry, value, cwd=Path(logical_cwd()),
                                       primary_workset=std.primary_workset, standalone=not on_disk,
                                       early_system=std.early_system)
     except AmbiguousNameError:

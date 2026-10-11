@@ -9,8 +9,11 @@ ancestor rule), but only along its literal path.
 
 from __future__ import annotations
 
+import argparse
 import os
 from pathlib import Path
+
+import pytest
 
 from kanibako.launch import box_resolve, journal
 from kanibako.settings.config import load_config
@@ -407,3 +410,71 @@ class TestConnectRefusalsNameThePathAsGiven:
         err = capsys.readouterr().err
         assert (f"Cannot connect '{link}': it is already the workspace of "
                 f"primary box 'beta'") in err
+
+
+class TestTheCwdPathSpaceIsThePathTheUserTook:
+    """The cwd's path space is read from ``$PWD`` (literal), then resolved: a name
+    finds the space's member through the link (S3b), and no link spelling of the
+    space's tree escapes it (S3c, anti-theft containment)."""
+
+    def _linked_workset(self, config_file, tmp_home, registered: str = "lnk"):
+        from kanibako.project.workset import add_project, create_workset
+
+        std = load_std_paths(load_config(config_file))
+        real = tmp_home / "real"
+        real.mkdir()
+        (tmp_home / "lnk").symlink_to(real)
+        ws = create_workset("wsw", tmp_home / registered / "ws", std)
+        source = tmp_home / "api_src"
+        source.mkdir()
+        add_project(ws, "api", source, std)
+        (real / "ws" / "workspaces" / "x").mkdir(parents=True, exist_ok=True)
+        return std, real, source
+
+    def _enter(self, monkeypatch, here: Path, pwd: Path | None = None) -> None:
+        monkeypatch.chdir(here)
+        monkeypatch.setenv("PWD", str(here if pwd is None else pwd))
+
+    def test_a_name_finds_the_member_from_inside_the_link(
+        self, config_file, tmp_home, monkeypatch,
+    ):
+        """S3b: the space's registry is read before a same-named primary box."""
+        std, _real, source = self._linked_workset(config_file, tmp_home)
+        decoy = tmp_home / "decoy"
+        decoy.mkdir()
+        _primary_twin(std, decoy, "api")
+        self._enter(monkeypatch, tmp_home / "lnk" / "ws" / "workspaces" / "x")
+
+        assert resolve_designation(std, "api", unknown_name_is_path=False) == str(source)
+
+    @pytest.mark.parametrize("registered", ["lnk", "real"])
+    @pytest.mark.parametrize("via", ["physical", "lnk", "lnk2", "parent_link", "stale_pwd"])
+    def test_no_spelling_of_the_tree_escapes_the_space(
+        self, config_file, tmp_home, monkeypatch, capsys, registered, via,
+    ):
+        """S3c: ``create --standalone`` from any spelling of the space's tree is refused
+        by the CWD's space, including a second link the registry never saw."""
+        from kanibako.commands.box._parser import run_create
+
+        _std, real, _source = self._linked_workset(config_file, tmp_home, registered)
+        (tmp_home / "lnk2").symlink_to(real / "ws")
+        (tmp_home / "plink").symlink_to(real)
+        here, pwd = {
+            "physical": (real / "ws", None),
+            "lnk": (tmp_home / "lnk" / "ws", None),
+            "lnk2": (tmp_home / "lnk2", None),
+            "parent_link": (tmp_home / "plink" / "ws", None),
+            "stale_pwd": (tmp_home / "lnk2", tmp_home),
+        }[via]
+        self._enter(monkeypatch, here, pwd)
+        outside = tmp_home / "foo"
+        outside.mkdir()
+        args = argparse.Namespace(
+            path=str(outside), standalone=True, no_vault=True, name=None, image=None,
+            agent=None, allow_home=False,
+        )
+
+        assert run_create(args) == 1
+        err = capsys.readouterr().err
+        assert "the current directory is in the path space of working set 'wsw'" in err
+        assert not (outside / "box_data").exists()

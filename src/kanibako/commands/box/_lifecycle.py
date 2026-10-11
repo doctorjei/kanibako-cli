@@ -96,7 +96,7 @@ from kanibako.tree_copy import (
     plan_mounted_links, removed_root_of, repoint_mounted_links,
 )
 from kanibako.utils import (
-    gitignore_holds_only_kanibako, literal_path, project_gitignore_to_strip,
+    gitignore_holds_only_kanibako, literal_path, logical_cwd, project_gitignore_to_strip,
     strip_project_gitignore, write_project_gitignore,
 )
 from kanibako.project.workset import (
@@ -1326,13 +1326,11 @@ def execute_lifecycle(
     confirm: Callable[[], bool] | None = None,
 ) -> ProjectState:
     """Apply *spec* to *state* transactionally, in the canonical 5-step order."""
-    import os
-
     if config is None:
         from kanibako.settings.config import user_config_file, load_config
         config = load_config(user_config_file())
 
-    cwd = Path(os.getcwd())
+    cwd = Path(logical_cwd())
     plan = _validate(state, spec, std, config, force=force, cwd=cwd)
 
     if confirm is not None and not confirm():

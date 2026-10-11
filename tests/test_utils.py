@@ -539,3 +539,122 @@ class TestStripProjectGitignore:
             gitignore.chmod(0o644)
         assert "could not read" in capsys.readouterr().err
         assert gitignore.read_text() == "box_data/\n"
+
+
+class TestTheCwdIsReadOnlyThroughLogicalCwd:
+    """AST guard: the physical cwd is read in ``src/kanibako`` only inside
+    :func:`kanibako.utils.logical_cwd`, so every cwd read honors ``$PWD``."""
+
+    #: ``(file, function)`` sites the message step (1b) converts; then this empties.
+    _PENDING = {
+        ("settings/agent_config.py", "ambiguous_path_value_error"),
+        ("commands/restore.py", "_restore_all"),
+    }
+    _ALLOWED = {("utils.py", "logical_cwd")}
+
+    @staticmethod
+    def _physical_cwd_reads(source: str):
+        """Yield ``(enclosing function, line)`` for each physical cwd read in *source*.
+
+        A read is ``os.getcwd``/``os.getcwdb``, ``Path.cwd``, ``Path()``/``Path('.')``
+        then ``.resolve``/``.absolute``, or ``abspath``/``realpath`` of ``.``/``curdir``,
+        under any name an import binds them to.
+        """
+        import ast
+
+        tree = ast.parse(source)
+        cwd_funcs: set[str] = set()       # from os import getcwd[ as X]
+        dot_funcs: set[str] = set()       # from os.path import abspath[ as X]
+        path_names = {"Path"}             # from pathlib import Path[ as P]
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ImportFrom):
+                for alias in node.names:
+                    bound = alias.asname or alias.name
+                    if node.module == "os" and alias.name in ("getcwd", "getcwdb"):
+                        cwd_funcs.add(bound)
+                    elif node.module in ("os.path", "posixpath") and alias.name in (
+                            "abspath", "realpath"):
+                        dot_funcs.add(bound)
+                    elif node.module == "pathlib" and alias.name == "Path":
+                        path_names.add(bound)
+
+        def callee(func) -> str:
+            return func.id if isinstance(func, ast.Name) else (
+                func.attr if isinstance(func, ast.Attribute) else "")
+
+        def is_dot(args) -> bool:
+            if len(args) != 1:
+                return False
+            arg = args[0]
+            return (isinstance(arg, ast.Constant) and arg.value in (".", "")) or (
+                callee(arg) == "curdir")
+
+        def is_read(call: ast.Call) -> bool:
+            func = call.func
+            if isinstance(func, ast.Name):
+                return func.id in cwd_funcs or (func.id in dot_funcs and is_dot(call.args))
+            if not isinstance(func, ast.Attribute):
+                return False
+            if func.attr in ("getcwd", "getcwdb"):
+                return True
+            if func.attr == "cwd":
+                return callee(func.value) in path_names
+            if func.attr in ("abspath", "realpath"):
+                return is_dot(call.args)
+            if func.attr in ("resolve", "absolute"):
+                inner = func.value
+                return (isinstance(inner, ast.Call) and callee(inner.func) in path_names
+                        and (not inner.args or is_dot(inner.args)))
+            return False
+
+        def walk(node, owner):
+            for child in ast.iter_child_nodes(node):
+                if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                    yield from walk(child, child.name)
+                    continue
+                if isinstance(child, ast.Call) and is_read(child):
+                    yield owner, child.lineno
+                yield from walk(child, owner)
+
+        yield from walk(tree, "<module>")
+
+    def test_no_physical_cwd_read_outside_logical_cwd(self):
+        import kanibako
+
+        root = Path(kanibako.__file__).parent
+        found = {
+            (str(path.relative_to(root)), owner, line)
+            for path in sorted(root.rglob("*.py"))
+            for owner, line in self._physical_cwd_reads(path.read_text())
+        }
+        sites = {(f, owner) for f, owner, _line in found}
+        stray = sorted(hit for hit in found if hit[:2] not in self._ALLOWED | self._PENDING)
+        assert stray == [], stray
+        assert self._ALLOWED | self._PENDING <= sites, "a listed site no longer reads the cwd"
+
+    _HEADER = (
+        "import os, os.path, pathlib\n"
+        "from os import getcwd, getcwdb as gcb\n"
+        "from os.path import abspath as ap, realpath\n"
+        "from pathlib import Path, Path as P\n"
+    )
+
+    @pytest.mark.parametrize("expr", [
+        "os.getcwd()", "os.getcwdb()", "getcwd()", "gcb()",
+        "Path.cwd()", "pathlib.Path.cwd()", "P.cwd()",
+        "Path().resolve()", "Path('.').resolve()", "Path('').absolute()",
+        "Path('.').absolute()", "pathlib.Path('.').resolve()", "P('.').resolve()",
+        "os.path.abspath('.')", "os.path.realpath('.')", "os.path.abspath(os.curdir)",
+        "ap('.')", "realpath('.')",
+    ])
+    def test_the_guard_sees_every_spelling(self, expr):
+        source = self._HEADER + f"def site():\n    return {expr}\n"
+        assert [owner for owner, _line in self._physical_cwd_reads(source)] == ["site"]
+
+    @pytest.mark.parametrize("expr", [
+        "Path('x').resolve()", "Path(p).absolute()", "os.path.abspath(p)",
+        "realpath('x')", "Path.home()", "os.getcwdb",
+    ])
+    def test_the_guard_passes_a_non_cwd_read(self, expr):
+        source = self._HEADER + f"def site(p):\n    return {expr}\n"
+        assert list(self._physical_cwd_reads(source)) == []

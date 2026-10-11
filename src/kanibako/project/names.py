@@ -330,21 +330,24 @@ def _resolve_before_standalone(
             resolve_workspaces_locator,
         )
 
-        cwd_str = str(cwd.resolve())
+        # Literal cwd against the literal arms (box identity, [R188]), then resolved
+        # against resolved (containment): a link spelling of either side still lands.
+        cwd_literal = Path(literal_path(cwd))
+        cwd_resolved = cwd.resolve()
         for ws_name, ws_root in names["worksets"].items():
             ws_path = Path(ws_root)
+            if not ws_path.is_absolute():
+                continue  # a relative root names no place; joining the cwd would hold every cwd
             from kanibako.launch.box_resolve import stores_standalone_registry_null
             if stores_standalone_registry_null(ws_path):
                 continue
             settings_doc = load_workset_settings_doc(ws_path)
             ws_early = _early(early_system, ws_name)
             ws_workspaces = resolve_workspaces_locator(ws_path, settings_doc, early=ws_early)
-            ws_workspaces_str = str(ws_workspaces)
+            literal_arms = (Path(literal_path(ws_path)), Path(literal_path(ws_workspaces)))
             inside = (
-                cwd_str == ws_root
-                or cwd_str.startswith(ws_root + "/")
-                or cwd_str == ws_workspaces_str
-                or cwd_str.startswith(ws_workspaces_str + "/")
+                any(cwd_literal.is_relative_to(arm) for arm in literal_arms)
+                or any(cwd_resolved.is_relative_to(arm.resolve()) for arm in literal_arms)
             )
             if not inside:
                 continue

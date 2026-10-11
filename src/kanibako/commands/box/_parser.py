@@ -1293,8 +1293,12 @@ def run_create(args: argparse.Namespace, outcome: _CreateOutcome) -> int:
         )
 
     # ⚑ THE SPACE IS THE CWD'S, NOT THE TARGET'S: "a command's workset path space is
-    # the named workset whose root contains the current directory".
-    _space = _named_workset_owning(Path.cwd().resolve(), std)
+    # the named workset whose root contains the current directory".  The cwd as the
+    # user reached it (``$PWD``) first, then resolved: a second link to the space's
+    # tree must not escape it (anti-theft containment, [R188]).
+    _cwd = Path(logical_cwd())
+    _space = (_named_workset_owning(_cwd, std)
+              or _named_workset_owning(_cwd.resolve(), std))
     # ⚑ THE ONE BOX THE SPACE ACCEPTS: a member NAME.  ``--standalone`` is a refusal.
     _member = (
         project_dir

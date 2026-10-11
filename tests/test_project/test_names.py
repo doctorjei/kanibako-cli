@@ -266,6 +266,76 @@ class TestResolveName:
         assert path == str(other)
         assert kind == "project"
 
+    @pytest.mark.parametrize("registered", ["lnk", "real"])
+    @pytest.mark.parametrize("cwd_via", ["lnk", "real", "lnk2", "parent_link"])
+    def test_cwd_context_matches_either_spelling_of_the_workset(
+        self, registry: Path, tmp_path: Path, monkeypatch, registered: str, cwd_via: str,
+    ) -> None:
+        """S3b: the literal cwd meets the literal root, the resolved cwd the resolved
+        root, so a cwd reached through any link to the tree is in the space."""
+        real = tmp_path / "real"
+        (real / "ws" / "workspaces" / "api" / "x").mkdir(parents=True)
+        (tmp_path / "lnk").symlink_to(real)
+        (tmp_path / "lnk2").symlink_to(real / "ws")
+        (tmp_path / "plink").symlink_to(real)
+        ws_root = tmp_path / registered / "ws"
+        register_name(registry, "myws", str(ws_root), section="worksets")
+        primary = tmp_path / "primary_workset"
+        decoy = tmp_path / "decoy"
+        decoy.mkdir()
+        _register_primary_box(primary, "api", decoy)
+        here = {
+            "lnk": tmp_path / "lnk" / "ws", "real": real / "ws",
+            "lnk2": tmp_path / "lnk2", "parent_link": tmp_path / "plink" / "ws",
+        }[cwd_via] / "workspaces" / "api" / "x"
+        monkeypatch.chdir(here)
+        monkeypatch.setenv("PWD", str(here))
+
+        path, kind = resolve_name(registry, "api", cwd=here, primary_workset=primary,
+                                  early_system=early_record(tmp_path))
+        assert path == str(ws_root / "workspaces" / "api")
+        assert kind == "project"
+
+    @pytest.mark.parametrize("stored", [".", "ws"])
+    def test_a_relative_stored_workset_root_holds_no_cwd(
+        self, registry: Path, tmp_path: Path, monkeypatch, stored: str,
+    ) -> None:
+        """A non-absolute root never matches: joined to the cwd, ``.`` holds every cwd."""
+        here = tmp_path / "anywhere"
+        (here / "ws" / "workspaces" / "api").mkdir(parents=True)
+        register_name(registry, "myws", stored, section="worksets")
+        primary = tmp_path / "primary_workset"
+        decoy = tmp_path / "decoy"
+        decoy.mkdir()
+        _register_primary_box(primary, "api", decoy)
+        for cwd in (here, here / "ws", here / "ws" / "workspaces" / "api"):
+            monkeypatch.chdir(cwd)
+            monkeypatch.setenv("PWD", str(cwd))
+            path, _kind = resolve_name(registry, "api", cwd=cwd, primary_workset=primary,
+                                       early_system=early_record(tmp_path))
+            assert path == str(decoy), cwd
+
+    def test_cwd_outside_every_spelling_of_the_workset_is_not_its_space(
+        self, registry: Path, tmp_path: Path, monkeypatch,
+    ) -> None:
+        """A cwd beside the tree (a sibling sharing the root's name prefix) is not in it."""
+        real = tmp_path / "real"
+        (real / "ws" / "workspaces" / "api").mkdir(parents=True)
+        (tmp_path / "lnk").symlink_to(real)
+        register_name(registry, "myws", str(tmp_path / "lnk" / "ws"), section="worksets")
+        primary = tmp_path / "primary_workset"
+        decoy = tmp_path / "decoy"
+        decoy.mkdir()
+        _register_primary_box(primary, "api", decoy)
+        here = tmp_path / "lnk" / "ws-sibling"
+        (real / "ws-sibling").mkdir()
+        monkeypatch.chdir(here)
+        monkeypatch.setenv("PWD", str(here))
+
+        path, _kind = resolve_name(registry, "api", cwd=here, primary_workset=primary,
+                                   early_system=early_record(tmp_path))
+        assert path == str(decoy)
+
     # -- Workset-MEMBER box fallback (BUG-B) --------------------------------
 
     def _register_ws_member(
