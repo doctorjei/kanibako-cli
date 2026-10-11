@@ -15,6 +15,7 @@ HELPER_NUM_KEY: tuple[str, ...] = ('meta', 'box', 'helper_num')
 HELPER_SCRIPTS_RELPATH = 'scripts'
 PARENT_SCRIPTS_RELPATH = f'{CANON_GUEST_ROOT}/{NOTEBOOK_SCRIPTS_REL}'
 HELPER_CORE_LEAVES: dict[str, str] = {'project_path': 'workspace', 'vault_ro_path': 'vault/ro', 'vault_rw_path': 'vault/rw'}
+HELPER_STATE_FILENAME = 'state.json'
 INIT_SCRIPT_NAME = 'helper-init.sh'
 ```
 
@@ -29,6 +30,9 @@ def read_spawn_budget(path: Path) -> SpawnBudget | None
 def write_spawn_budget(path: Path, budget: SpawnBudget) -> None
 def write_helper_number(path: Path, helper_num: int) -> None
 def read_helper_number(path: Path) -> int | None
+def read_helper_state(helpers_dir: Path, helper_num: int) -> dict
+def write_helper_state(helpers_dir: Path, helper_num: int, state: dict) -> None
+def mark_helper_stopped(helpers_dir: Path, helper_num: int) -> None
 def create_helper_dirs(helpers_dir: Path, helper_num: int) -> Path
 def create_broadcast_dirs(helpers_dir: Path) -> Path
 def create_peer_channels(helpers_dir: Path, new_helper: int, existing_helpers: list[int]) -> None

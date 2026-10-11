@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib.resources
+import json
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -260,6 +261,48 @@ HELPER_CORE_LEAVES: dict[str, str] = {
     "vault_ro_path": "vault/ro",
     "vault_rw_path": "vault/rw",
 }
+
+
+# ---------------------------------------------------------------------------
+# Helper state — ``helpers/<N>/state.json``
+# ---------------------------------------------------------------------------
+#
+# ⚑ ONE CARRIER FOR BOTH SIDES: the in-box ``kanibako box helper`` verbs write it, and the
+# host hub marks it ``stopped`` when it stops the helper's container at the end of the
+# director's session, so a later ``respawn`` or ``list`` sees what the hub did.
+
+HELPER_STATE_FILENAME = "state.json"
+
+
+def read_helper_state(helpers_dir: Path, helper_num: int) -> dict:
+    """A helper's state document; an empty dict when it has none."""
+    path = helpers_dir / str(helper_num) / HELPER_STATE_FILENAME
+    if not path.is_file():
+        return {}
+    with open(path) as f:
+        return json.load(f)
+
+
+def write_helper_state(helpers_dir: Path, helper_num: int, state: dict) -> None:
+    """Write a helper's state document whole."""
+    path = helpers_dir / str(helper_num) / HELPER_STATE_FILENAME
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "w") as f:
+        json.dump(state, f, indent=2)
+        f.write("\n")
+
+
+def mark_helper_stopped(helpers_dir: Path, helper_num: int) -> None:
+    """Record that the helper's container is gone, keeping the rest of its state.
+
+    A helper with no state document is left without one: there is nothing a verb
+    could act on, and inventing a document would describe a helper no verb made.
+    """
+    state = read_helper_state(helpers_dir, helper_num)
+    if not state or state.get("status") == "stopped":
+        return
+    state["status"] = "stopped"
+    write_helper_state(helpers_dir, helper_num, state)
 
 
 def create_helper_dirs(helpers_dir: Path, helper_num: int) -> Path:

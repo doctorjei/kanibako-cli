@@ -16,6 +16,7 @@ from kanibako.channels.helpers import (
     HELPER_SCRIPTS_RELPATH,
     INIT_SCRIPT_NAME,
     SPAWN_CONFIG_FILENAME,
+    mark_helper_stopped,
     write_helper_number,
 )
 from kanibako.errors import ContainerError
@@ -120,15 +121,29 @@ class HelperHub:
         """Shut down: stop all helper containers, close socket."""
         self._shutdown.set()
 
-        # Stop all tracked helper containers
+        # Stop all tracked helper containers, and mark each one ``stopped`` in its state
+        # document: the container is gone, and ``respawn`` and ``list`` read that file.
         if self._ctx:
             with self._containers_lock:
+                launched = {
+                    render_container_name(
+                        *self._ctx.container_name_segments, helper_num=num,
+                    ): (num, home)
+                    for num, home in self._homes.items()
+                }
                 for name in self._containers:
                     try:
                         self._ctx.runtime.stop(name)
                         self._ctx.runtime.rm(name)
                     except Exception:
-                        pass
+                        continue
+                    if name not in launched:
+                        continue
+                    num, home = launched[name]
+                    try:
+                        mark_helper_stopped(home.parent, num)
+                    except (OSError, ValueError) as exc:
+                        logger.debug("helper %d state not marked stopped: %s", num, exc)
                 self._containers.clear()
 
         # Close all client connections.  ``shutdown()`` first: a bare ``close()``

@@ -976,6 +976,80 @@ class TestHubLifecycle:
         assert mock_ctx.runtime.rm.call_count == 2
 
 
+def _running_state(root: Path, container_name: str) -> None:
+    """The state document the in-box ``box helper spawn`` leaves after a launch."""
+    (root / "state.json").write_text(json.dumps({
+        "status": "running", "model": None, "depth": 0, "breadth": 4, "peers": [],
+        "container_name": container_name,
+    }))
+
+
+class TestHubStopMarksHelpersStopped:
+    """The hub removes every helper container when the director's session ends, so
+    each helper's ``state.json`` must say ``stopped``: ``respawn`` refuses a helper
+    whose document still says ``running``."""
+
+    def test_each_launched_helper_is_marked_stopped(self, hub_and_sock):
+        hub, sock_path, ctx = hub_and_sock
+        top = ctx.helpers_dir / "1"
+        child = top / "helpers" / "5"
+        for root, req in ((top, {"helper_num": 1}),
+                          (child, {"helper_num": 5, "requester": 1})):
+            _helper_tree(root)
+            resp = _connect_and_send(sock_path, {"action": "spawn", **req})
+            assert resp["status"] == "ok"
+            _running_state(root, resp["container_name"])
+
+        hub.stop()
+
+        for root in (top, child):
+            state = json.loads((root / "state.json").read_text())
+            assert state["status"] == "stopped"
+            assert state["container_name"].endswith(f"-helper-{root.name}")
+            assert state["peers"] == []
+
+    def test_a_helper_whose_container_did_not_stop_stays_running(self, hub_and_sock):
+        hub, sock_path, ctx = hub_and_sock
+        _helper_tree(ctx.helpers_dir / "1")
+        resp = _connect_and_send(sock_path, {"action": "spawn", "helper_num": 1})
+        _running_state(ctx.helpers_dir / "1", resp["container_name"])
+        ctx.runtime.stop.side_effect = RuntimeError("podman gone")
+
+        hub.stop()
+
+        state = json.loads((ctx.helpers_dir / "1" / "state.json").read_text())
+        assert state["status"] == "running"
+
+    def test_no_state_document_is_invented(self, hub_and_sock):
+        hub, sock_path, ctx = hub_and_sock
+        _helper_tree(ctx.helpers_dir / "1")
+        assert _connect_and_send(sock_path, {"action": "spawn", "helper_num": 1})["status"] == "ok"
+
+        hub.stop()
+
+        assert not (ctx.helpers_dir / "1" / "state.json").exists()
+
+    def test_list_and_respawn_agree_after_the_stop(self, hub_and_sock, monkeypatch, capsys):
+        import argparse
+
+        from kanibako.commands import helper_cmd
+
+        hub, sock_path, ctx = hub_and_sock
+        _helper_tree(ctx.helpers_dir / "1")
+        resp = _connect_and_send(sock_path, {"action": "spawn", "helper_num": 1})
+        _running_state(ctx.helpers_dir / "1", resp["container_name"])
+        hub.stop()
+        monkeypatch.setattr(Path, "home", staticmethod(lambda: ctx.shell_path))
+        capsys.readouterr()
+
+        assert helper_cmd.run_list(argparse.Namespace()) == 0
+        row = capsys.readouterr().out.splitlines()[1].split()
+        assert row[:2] == ["1", "stopped"]
+        # No hub listens any more, so respawn stops at the hub check, not at the state.
+        assert helper_cmd.run_respawn(argparse.Namespace(number=1)) == 1
+        assert "not stopped" not in capsys.readouterr().err
+
+
 class TestMessageLog:
     def test_log_message(self, tmp_path):
         log_path = tmp_path / "messages.jsonl"

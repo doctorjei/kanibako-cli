@@ -15,8 +15,6 @@ from kanibako.commands.helper_cmd import (
     _format_log_entry,
     _get_existing_helpers,
     _next_helper_number,
-    _read_state,
-    _write_state,
     run_broadcast,
     run_cleanup,
     run_list,
@@ -29,7 +27,13 @@ from kanibako.commands.helper_cmd import (
 )
 import kanibako.commands.helper_cmd as helper_cmd
 from kanibako.channels.helper_client import send_request as _REAL_SEND_REQUEST
-from kanibako.channels.helpers import SpawnBudget, write_helper_number, write_spawn_budget
+from kanibako.channels.helpers import (
+    SpawnBudget,
+    read_helper_state,
+    write_helper_number,
+    write_helper_state,
+    write_spawn_budget,
+)
 from tests.support.filenames import CONFIG_FILENAME
 
 
@@ -304,7 +308,7 @@ class TestHelperState:
     def test_spawn_writes_state(self, helpers_env):
         args = _make_args(depth=None, breadth=None, model="sonnet")
         run_spawn(args)
-        state = _read_state(helpers_env / "helpers", 1)
+        state = read_helper_state(helpers_env / "helpers", 1)
         assert state["status"] == "running"
         assert state["model"] == "sonnet"
         assert state["depth"] == 3  # default 4, decremented to 3
@@ -312,14 +316,14 @@ class TestHelperState:
     def test_spawn_no_model(self, helpers_env):
         args = _make_args(depth=None, breadth=None, model=None)
         run_spawn(args)
-        state = _read_state(helpers_env / "helpers", 1)
+        state = read_helper_state(helpers_env / "helpers", 1)
         assert state["model"] is None
 
     def test_state_records_peers(self, helpers_env):
         args = _make_args(depth=None, breadth=None, model=None)
         run_spawn(args)
         run_spawn(args)
-        state2 = _read_state(helpers_env / "helpers", 2)
+        state2 = read_helper_state(helpers_env / "helpers", 2)
         assert state2["peers"] == [1]
 
 
@@ -375,7 +379,7 @@ class TestRunStop:
         assert rc == 0
         assert "Stopped helper 1" in capsys.readouterr().out
 
-        state = _read_state(helpers_env / "helpers", 1)
+        state = read_helper_state(helpers_env / "helpers", 1)
         assert state["status"] == "stopped"
 
     def test_stop_already_stopped(self, helpers_env, capsys):
@@ -459,7 +463,7 @@ class TestRunRespawn:
         assert rc == 0
         assert "Respawned helper 1" in capsys.readouterr().out
 
-        state = _read_state(helpers_env / "helpers", 1)
+        state = read_helper_state(helpers_env / "helpers", 1)
         assert state["status"] == "running"
 
     def test_respawn_running_refused(self, helpers_env, capsys):
@@ -485,9 +489,9 @@ class TestCascadeCleanup:
         # Simulate nested children: helpers/1/helpers/1 and helpers/1/helpers/2
         child_helpers = helpers / "1" / "helpers"
         (child_helpers / "1").mkdir(parents=True)
-        _write_state(child_helpers, 1, {"status": "spawned"})
+        write_helper_state(child_helpers, 1, {"status": "spawned"})
         (child_helpers / "2").mkdir(parents=True)
-        _write_state(child_helpers, 2, {"status": "spawned"})
+        write_helper_state(child_helpers, 2, {"status": "spawned"})
 
         capsys.readouterr()
         rc = run_cleanup(_make_args(number=1, cascade=True))
@@ -766,7 +770,7 @@ class TestSocketWiring:
             rc = run_spawn(args)
 
         assert rc == 0
-        state = _read_state(helpers_env / "helpers", 1)
+        state = read_helper_state(helpers_env / "helpers", 1)
         assert state["status"] == "running"
         assert state["container_name"] == "kanibako-helper-1-abc"
 
@@ -788,7 +792,7 @@ class TestSocketWiring:
         assert "Spawned" not in out
         assert "Cannot spawn: helper 1 did not launch: image not found" in err
         assert "cleanup 1" in err
-        state = _read_state(helpers_env / "helpers", 1)
+        state = read_helper_state(helpers_env / "helpers", 1)
         assert state["status"] == "failed"
         assert state["error"] == "image not found"
 
@@ -801,7 +805,7 @@ class TestSocketWiring:
         out, err = capsys.readouterr()
         assert "Spawned" not in out
         assert "did not launch: Connection closed before response" in err
-        assert _read_state(helpers_env / "helpers", 1)["status"] == "failed"
+        assert read_helper_state(helpers_env / "helpers", 1)["status"] == "failed"
 
     def test_respawn_failure(self, helpers_env, capsys):
         run_spawn(_make_args(depth=None, breadth=None, model=None))
@@ -818,7 +822,7 @@ class TestSocketWiring:
         # message names the retry, never ``cleanup`` (which deletes the directory).
         assert "cleanup" not in err
         assert "kanibako box helper respawn 1" in err
-        state = _read_state(helpers_env / "helpers", 1)
+        state = read_helper_state(helpers_env / "helpers", 1)
         assert (state["status"], state["error"]) == ("stopped", "image not found")
 
     def test_a_failed_respawn_can_be_retried(self, helpers_env, capsys):
@@ -829,7 +833,7 @@ class TestSocketWiring:
             assert run_respawn(_make_args(number=1)) == 1
             m.return_value = {"status": "ok", "container_name": "c"}
             assert run_respawn(_make_args(number=1)) == 0
-        state = _read_state(helpers_env / "helpers", 1)
+        state = read_helper_state(helpers_env / "helpers", 1)
         assert state["status"] == "running"
         assert "error" not in state
 
@@ -842,10 +846,10 @@ class TestSocketWiring:
         # Spawn first (without socket active for dir creation)
         run_spawn(_make_args(depth=None, breadth=None, model=None))
         # Manually set container_name in state
-        state = _read_state(helpers_env / "helpers", 1)
+        state = read_helper_state(helpers_env / "helpers", 1)
         state["container_name"] = "kanibako-helper-1-abc"
         state["status"] = "running"
-        _write_state(helpers_env / "helpers", 1, state)
+        write_helper_state(helpers_env / "helpers", 1, state)
         capsys.readouterr()
 
         with patch("kanibako.channels.helper_client.send_request") as m:
@@ -874,7 +878,7 @@ class TestSocketWiring:
             rc = run_respawn(_make_args(number=1))
 
         assert rc == 0
-        state = _read_state(helpers_env / "helpers", 1)
+        state = read_helper_state(helpers_env / "helpers", 1)
         assert state["status"] == "running"
 
 
@@ -915,7 +919,7 @@ class TestNoHub:
         out, err = capsys.readouterr()
         assert "Respawned" not in out
         assert "Cannot respawn: this box runs no helper hub" in err
-        assert _read_state(helpers_env / "helpers", 1)["status"] == "stopped"
+        assert read_helper_state(helpers_env / "helpers", 1)["status"] == "stopped"
 
     def test_the_leftover_socket_stub_is_not_a_hub(self, helpers_env, capsys):
         """An ephemeral start pre-creates the socket's mount stub (a plain FILE) in the
@@ -1051,7 +1055,7 @@ class TestTreeWideNumbering:
         if verb == "spawn":
             assert not (helpers_env / "helpers").exists()
         else:
-            assert _read_state(helpers_env / "helpers", 1)["status"] == "stopped"
+            assert read_helper_state(helpers_env / "helpers", 1)["status"] == "stopped"
 
     def test_the_numbering_blocks(self):
         budget = SpawnBudget(depth=3, breadth=4)

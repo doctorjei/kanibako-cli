@@ -23,10 +23,12 @@ from kanibako.channels.helpers import (
     effective_breadth,
     link_broadcast,
     read_helper_number,
+    read_helper_state,
     read_spawn_budget,
     remove_helper_dirs,
     resolve_init_script,
     resolve_spawn_budget,
+    write_helper_state,
     write_spawn_budget,
 )
 from kanibako.settings.config import system_settings_path
@@ -258,29 +260,6 @@ def _ro_spawn_config_path(helpers_dir: Path, helper_num: int) -> Path:
     return helpers_dir / str(helper_num) / SPAWN_CONFIG_FILENAME
 
 
-def _state_path(helpers_dir: Path, helper_num: int) -> Path:
-    """Return the path to a helper's state file."""
-    return helpers_dir / str(helper_num) / "state.json"
-
-
-def _read_state(helpers_dir: Path, helper_num: int) -> dict:
-    """Read a helper's state file.  Returns empty dict if absent."""
-    path = _state_path(helpers_dir, helper_num)
-    if not path.is_file():
-        return {}
-    with open(path) as f:
-        return json.load(f)
-
-
-def _write_state(helpers_dir: Path, helper_num: int, state: dict) -> None:
-    """Write a helper's state file."""
-    path = _state_path(helpers_dir, helper_num)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with open(path, "w") as f:
-        json.dump(state, f, indent=2)
-        f.write("\n")
-
-
 def _get_existing_helpers(helpers_dir: Path) -> list[int]:
     """Scan helpers/ for existing helper directories (numeric names)."""
     if not helpers_dir.is_dir():
@@ -372,7 +351,7 @@ def run_spawn(args: argparse.Namespace) -> int:
         "breadth": child_cfg.breadth,
         "peers": existing,
     }
-    _write_state(helpers_dir, helper_num, state)
+    write_helper_state(helpers_dir, helper_num, state)
 
     # Launch the container through the hub (its socket was checked above).  A helper
     # that did not launch is NOT spawned: no success line, rc 1.
@@ -385,12 +364,12 @@ def run_spawn(args: argparse.Namespace) -> int:
     if failure is not None:
         state["status"] = "failed"
         state["error"] = failure
-        _write_state(helpers_dir, helper_num, state)
+        write_helper_state(helpers_dir, helper_num, state)
         print(_SPAWN_FAILED % (helper_num, failure, helper_num), file=sys.stderr)
         return 1
     state["status"] = "running"
     state["container_name"] = container_name
-    _write_state(helpers_dir, helper_num, state)
+    write_helper_state(helpers_dir, helper_num, state)
 
     print(f"Spawned helper {helper_num}")
     if args.model:
@@ -413,7 +392,7 @@ def run_list(args: argparse.Namespace) -> int:
 
     print(f"{'NUM':<6} {'STATUS':<10} {'MODEL':<10} {'DEPTH':<6} {'PEERS'}")
     for num in existing:
-        state = _read_state(helpers_dir, num)
+        state = read_helper_state(helpers_dir, num)
         status = state.get("status", "unknown")
         model = state.get("model") or "-"
         depth = state.get("depth", "?")
@@ -436,7 +415,7 @@ def run_stop(args: argparse.Namespace) -> int:
         print(f"Helper {helper_num} does not exist.", file=sys.stderr)
         return 1
 
-    state = _read_state(helpers_dir, helper_num)
+    state = read_helper_state(helpers_dir, helper_num)
     if state.get("status") == "stopped":
         print(f"Helper {helper_num} is already stopped.")
         return 0
@@ -455,7 +434,7 @@ def run_stop(args: argparse.Namespace) -> int:
             pass  # Best-effort stop
 
     state["status"] = "stopped"
-    _write_state(helpers_dir, helper_num, state)
+    write_helper_state(helpers_dir, helper_num, state)
     print(f"Stopped helper {helper_num}.")
     return 0
 
@@ -471,7 +450,7 @@ def run_cleanup(args: argparse.Namespace) -> int:
         return 1
 
     # Stop container if running
-    state = _read_state(helpers_dir, helper_num)
+    state = read_helper_state(helpers_dir, helper_num)
     container_name = state.get("container_name")
     if container_name and _check_helpers_enabled():
         from kanibako.channels.helper_client import send_request
@@ -527,7 +506,7 @@ def run_respawn(args: argparse.Namespace) -> int:
         print(f"Helper {helper_num} does not exist.", file=sys.stderr)
         return 1
 
-    state = _read_state(helpers_dir, helper_num)
+    state = read_helper_state(helpers_dir, helper_num)
     if state.get("status") != "stopped":
         status = state.get("status", "unknown")
         print(
@@ -552,13 +531,13 @@ def run_respawn(args: argparse.Namespace) -> int:
         # Still ``stopped``, so a retry is a respawn: a ``failed`` helper cannot be
         # respawned, which would leave only ``cleanup``.
         state["error"] = failure
-        _write_state(helpers_dir, helper_num, state)
+        write_helper_state(helpers_dir, helper_num, state)
         print(_RESPAWN_FAILED % (helper_num, failure, helper_num), file=sys.stderr)
         return 1
     state["status"] = "running"
     state["container_name"] = container_name
     state.pop("error", None)
-    _write_state(helpers_dir, helper_num, state)
+    write_helper_state(helpers_dir, helper_num, state)
     print(f"Respawned helper {helper_num}.")
     return 0
 
