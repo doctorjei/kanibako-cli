@@ -17,12 +17,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   link. An upgrade keeps the host's seed copy and each existing box's file; see `MIGRATION.md`, "A new claude
   box turns off the session-link trailer".
 
-- **The tweakcc cache mounts at `~/.kanibako/cache/tweakcc` in the box.** The claude plugin's
-  `agent.claude.caches` entry mounted at `{system.cache}/tweakcc`, a HOST path, so repointing `system.cache`
-  moved a mount point in the box. `system.cache` is now the host cache root only. The host source is unchanged;
-  a cache entry is reused or the binary re-patched, as before. Upgrade the claude plugin with core. See
-  `MIGRATION.md`, "The tweakcc cache mounts at `~/.kanibako/cache/tweakcc` in the box".
-
 - **A detached box now stops when the attached user exits the agent cleanly.** A crash, or an exit with nobody
   attached, still restarts the agent.
 
@@ -2357,21 +2351,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   re-patched at the next launch and the digest cache re-reads the registry — so there is nothing
   to copy and nothing is lost.
 
-- **The tweakcc patched-binary cache moved into the agent store.** It lived at
-  `$XDG_CACHE_HOME/kanibako/tweakcc` and reached helper boxes through a hand-built identity
-  mount; it is now the declared `agent.claude.caches` entry (spec §2d): host source
-  `agents/claude/caches/tweakcc`, guest dest `@system.cache/tweakcc`, delivered by the category
-  route like every other bind. The guest path is byte for byte where it was, so helpers find the
-  cache exactly where they always have — only the host directory moved, and the box itself now
-  mounts the cache dir too (read-write, like the agent `common` shares). A persona launch shares
-  one cache per harness through the persona symlink shim. ⚑ **Nothing to do on upgrade, and
-  nothing is lost:** the old directory is left behind and rebuilt on demand — the binary is
-  re-patched at the next launch — so there is nothing to copy; delete
+- **The tweakcc patched-binary cache moved into the agent store, and the box mounts it at
+  `~/.kanibako/cache/tweakcc`.** It lived at `$XDG_CACHE_HOME/kanibako/tweakcc`, and only helper
+  boxes saw it, read-only at that same host path. It is now the declared `agent.claude.caches`
+  entry (spec §2d): host source `agents/claude/caches/tweakcc`, in-box dest
+  `~/.kanibako/cache/tweakcc`, delivered by the category route like every other bind. The box and
+  its helpers both mount it there, read-write. A persona launch shares one cache per harness
+  through the persona symlink shim. Upgrade the claude plugin with core. ⚑ **Nothing is lost:**
+  the first start re-patches the binary into the new host directory; delete
   `$XDG_CACHE_HOME/kanibako/tweakcc` by hand if you want the space back. ⚑ This supersedes the
-  `system.cache` entry above for the tweakcc half: both caches lived under `system.cache`, and
-  the image digest cache still does — only the patched-binary cache moved out, to the store §2d
-  names. (Note for the spec side: §2g still calls `system.cache` the transform-caches root "under
-  it" — that gloss now describes the dest, not the host source, and is his to settle.)
+  `system.cache` entry above for the tweakcc half: `system.cache` is the host cache root only, it
+  holds the image digest cache, and it moves nothing in the box. See `MIGRATION.md`, "The tweakcc
+  cache mounts at `~/.kanibako/cache/tweakcc` in the box".
 
 - **A persona probe that `box create` or `box start` could not verify said so without saying where
   it had read the endpoint and model.** The message named the endpoint, the model actually sent and

@@ -15,7 +15,8 @@
 #     value), box-side destinations, the mode/operations grammar, settings flags,
 #     cred-file specs, host_prep/init_dirs, the AGENT-scope `env:` keys, the agent-share
 #     box_dests.  In-box destinations are `{$GUEST_HOME}` EXPRESSIONS expanded by the
-#     loader from the single GUEST_HOME constant (no `/home/agent` literal here).
+#     loader from the single GUEST_HOME constant, or `~/` paths, which
+#     `normalize_bind_dest` canonicalizes to the guest home (no `/home/agent` literal here).
 #   * CODE-RESOLVED — the CRITICAL host binary/launcher/install paths stay in
 #     `target.py` `detect()` (the `_LAUNCHER`/`_INSTALL_DIR` contract constants):
 #     `$PATH` must never choose a binary we exec on the host AND bind into the box.

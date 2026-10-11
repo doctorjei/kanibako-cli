@@ -441,9 +441,9 @@ inside boxes. In order of likely impact:
 44. **A box name is ASCII-only: a letter, digit, `_`, `-`, or `.`. `create --name café` is refused, and so is a
     box named after a directory named `café`** — see *A box name is ASCII-only*.
 
-45. **The tweakcc cache mounts at `~/.kanibako/cache/tweakcc` in the box, and `system.cache` no longer moves
-    anything in the box.** Nothing to do unless you masked or overrode the old dest, or something in your box
-    reads the old path — see *The tweakcc cache mounts at `~/.kanibako/cache/tweakcc` in the box*.
+45. **The tweakcc cache mounts at `~/.kanibako/cache/tweakcc` in the box and its helpers; its host directory
+    moved, so the first start re-patches the binary once.** Nothing to do unless a helper script read the old
+    path — see *The tweakcc cache mounts at `~/.kanibako/cache/tweakcc` in the box*.
 
 ---
 
@@ -7329,29 +7329,21 @@ shipped templates; plain `kanibako setup` is not enough (see
 
 ### The tweakcc cache mounts at `~/.kanibako/cache/tweakcc` in the box
 
-**Read this if you masked or overrode the tweakcc cache dest, if you repointed `system.cache`, or if
-something in your box reads the cache dir.**
+**Read this if you use tweakcc and a script in a helper box reads the patched-binary cache, or if you
+want the old cache's disk space back.**
 
-**What changed.** `system.cache` is the HOST cache root only. The claude plugin's
-`agent.claude.caches` entry used to mount at `{system.cache}/tweakcc`, a host path, so the in-box
-path depended on your host home and `$XDG_CACHE_HOME`, and `system set system.cache=…` moved a mount
-point in the box. It now mounts at `~/.kanibako/cache/tweakcc`. The host source is unchanged
-(`agents/<agent>/caches/tweakcc`), and so is the patched agent binary's own mount.
+**What changed.** In v1.7.2 only helper boxes saw the tweakcc cache, read-only at its host path
+(`$XDG_CACHE_HOME/kanibako/tweakcc`). The cache is now the claude plugin's `agent.claude.caches`
+entry: the box and its helpers mount it read-write at `~/.kanibako/cache/tweakcc`, and the host
+directory is `agents/claude/caches/tweakcc` under your agent store. The patched agent binary's own
+mount is unchanged.
 
-**What happens on the first start.** Nothing you need to act on. The cache lives on the host and is
-looked up by the binary and config hashes, not by the in-box path. An entry another running box
-still holds is reused; otherwise the binary is patched again, as on any start where no running box
-holds it. An empty directory may be left at the old mount point in the box's home.
+**What happens on the first start.** The new host directory starts empty, so kanibako patches the
+binary once more and caches it there.
 
 **What you must do.**
-- A mask, or a `caches` entry, keyed by the old dest (`{system.cache}/tweakcc` or its resolved path)
-  no longer matches. Key it by `~/.kanibako/cache/tweakcc`.
-- If you repointed `system.cache` to move the in-box cache, that no longer happens; host-side caches
-  still follow it.
-- A script in the box that read the old path should read `~/.kanibako/cache/tweakcc`.
-
-You may still write a `{system.cache}/…` dest yourself; it is an ordinary path to the host cache
-root, and it is not refused.
+- A helper script that read the old path should read `~/.kanibako/cache/tweakcc`.
+- The old `$XDG_CACHE_HOME/kanibako/tweakcc` is no longer read; delete it if you want the space back.
 
 ---
 
