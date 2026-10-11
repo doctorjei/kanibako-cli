@@ -185,8 +185,9 @@ jobs:
         # workflows start together on the tag push, so poll the Tests run for
         # this SHA until it concludes, then require each required job == success.
         # Checking per-job (not just the run conclusion) is FAIL-SAFE: a
-        # skipped/renamed/missing critical job yields a non-success (or empty) conclusion and REJECTS, rather than a run-level "success" that
-        # a skipped critical job could produce.
+        # skipped/renamed/missing critical job yields a non-success (or empty)
+        # conclusion and REJECTS, rather than a run-level "success" that a
+        # skipped critical job could produce.
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # The Tests jobs that MUST be green before a prod release, ONE NAME PER
