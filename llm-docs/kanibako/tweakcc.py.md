@@ -32,7 +32,7 @@ constant leaves core with it and the plugin's declaration is unchanged.
 |---|---|
 | `agent.<agent>.transform` | the KEY naming which transform runs |
 | `agent.<agent>.transform_settings` | that transform's CONFIG INPUT (dict; `enabled`, `config`, inline overrides) |
-| the `agent.<agent>.caches` entry at `@system.cache/tweakcc` | its OUTPUT — the patched binary. An ENTRY of a terminal dest-keyed key, never a key of its own |
+| the `agent.<agent>.caches` entry at `~/.kanibako/cache/tweakcc` | its OUTPUT — the patched binary. An ENTRY of a terminal dest-keyed key, never a key of its own |
 
 Unrelated despite the name: the claude plugin's `transform_cred` hook, a credential-file
 CONTENT filter (`packages/agent-claude/src/kanibako/plugins/claude/credentials.py`).

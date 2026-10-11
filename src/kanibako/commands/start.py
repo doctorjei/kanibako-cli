@@ -2246,7 +2246,7 @@ def _tweakcc_cache_dir(std, agent_id: str) -> Path:
     """The host dir the tweakcc patched-binary cache lives in, for this launch.
 
     The DECLARED ``caches`` source (spec §2d instantiation
-    ``agent.claude.caches[@system.cache/tweakcc]``): the agent store's
+    ``agent.claude.caches[~/.kanibako/cache/tweakcc]``): the agent store's
     ``caches/tweakcc`` leaf under the ACTIVE node — ``agents/<node>/`` for a
     persona (whose leaf the persona-share shim links at the harness's real dir
     BEFORE this runs), ``agents/claude/`` for the bare agent.  Composed from
@@ -4745,7 +4745,7 @@ def _run_container(
             m for m in category_mounts if str(m.destination) in agent_dests
         ]
         # The declared tweakcc cache (``agent.<node>.caches`` at
-        # ``@system.cache/tweakcc``, spec §2d instantiation) rides to the
+        # ``~/.kanibako/cache/tweakcc``, spec §2d instantiation) rides to the
         # helpers as the SAME emitted mount the director gets — selected by
         # SOURCE, the cache dir the patcher just wrote (``tweakcc_entry.path``
         # lives directly under it), so the helper reuses the patched binaries

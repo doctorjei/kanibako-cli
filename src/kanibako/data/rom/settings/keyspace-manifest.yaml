@@ -1012,6 +1012,7 @@ keys:
     set: cli+file
     default: "{$XDG_CACHE_HOME}/kanibako"
     spec: "§2g"
+    note: "HOST cache root only; never the in-box cache dir, which is `~/.kanibako/cache` (§2d)"
   system.state:
     scope: system
     type: path

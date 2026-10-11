@@ -17,6 +17,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   link. An upgrade keeps the host's seed copy and each existing box's file; see `MIGRATION.md`, "A new claude
   box turns off the session-link trailer".
 
+- **The tweakcc cache mounts at `~/.kanibako/cache/tweakcc` in the box.** The claude plugin's
+  `agent.claude.caches` entry mounted at `{system.cache}/tweakcc`, a HOST path, so repointing `system.cache`
+  moved a mount point in the box. `system.cache` is now the host cache root only. The host source is unchanged;
+  a cache entry is reused or the binary re-patched, as before. Upgrade the claude plugin with core. See
+  `MIGRATION.md`, "The tweakcc cache mounts at `~/.kanibako/cache/tweakcc` in the box".
+
 - **A detached box now stops when the attached user exits the agent cleanly.** A crash, or an exit with nobody
   attached, still restarts the agent.
 

@@ -886,9 +886,9 @@ class TestDeclarationRoots:
         ⚑ RE-SPELLED for dest-keying (2026-08-08c): ``caches`` is a TERMINAL key
         whose value is ``{box_dest: (host_src[, options])}``, so the retired
         ``agent.claude.caches.transform`` entry name is gone and the destination
-        is the map key.  The dest here is an ``@``-ref FORMULA, which the spec's
-        own ``caches`` row also spells that way (``agent.claude.caches
-        [@system.cache/tweakcc]``); it is resolved guest-side by the emitter.
+        is the map key.  The dest here is an ``@``-ref FORMULA — a USER-written
+        identity mount, still accepted (no refusal) though the shipped entry's dest
+        is ``~/.kanibako/cache/tweakcc``; it is resolved by the emitter.
 
         ⚑ THIS TEST IS *NOT* THE INSTRUMENT FOR AN UNCONDITIONAL-ROOTING BUG.
         It injects the entry straight into the floor, which is where a STORED value
@@ -1467,11 +1467,11 @@ class TestEffectiveBlockAgainstARealAgentPlugin:
     def test_the_declared_caches_entry_resolves_store_sourced_and_writer_agrees(self):
         """The shipped ``agent.claude.caches`` entry, end to end (spec §2d).
 
-        GUEST dest is the resolved ``@system.cache/tweakcc`` — byte-identical to
-        the retired identity mount's dest (the system.cache repair's
-        precondition), so the in-helper path does not move.  HOST source is the
-        agent store ``agents/claude/caches/tweakcc`` — the move this row makes —
-        and it is NOT the dest (the spec forbids the identity mount here).
+        GUEST dest is the standard in-box cache dir ``~/.kanibako/cache/tweakcc``,
+        never the HOST cache root ``system.cache`` (spec §2g/§2d).  The helpers get
+        the SAME emitted mount, so their path is the director's.  HOST source is the
+        agent store ``agents/claude/caches/tweakcc`` and it is NOT the dest (the spec
+        forbids the identity mount here).
 
         WRITER/MOUNT AGREEMENT, the half the declaration alone cannot close:
         :func:`commands.start._tweakcc_cache_dir` — the dir the patcher writes —
@@ -1488,16 +1488,20 @@ class TestEffectiveBlockAgainstARealAgentPlugin:
                 snap, active_agent="claude", box_ctx=ctx,
             ) if e.delivery != "ENV"
         }
-        assert by_dest["/xcache/kanibako/tweakcc"] == (
+        assert by_dest["/home/agent/.kanibako/cache/tweakcc"] == (
             "/data/agents/claude/caches/tweakcc"
         )
-        assert by_dest["/xcache/kanibako/tweakcc"] != "/xcache/kanibako/tweakcc"
+        assert by_dest["/home/agent/.kanibako/cache/tweakcc"] != (
+            "/home/agent/.kanibako/cache/tweakcc"
+        )
+        # The HOST cache root names no mount point in the box.
+        assert not any(d.startswith("/xcache/") for d in by_dest)
 
         class _Std:
             agents = "/data/agents"
 
         assert str(_tweakcc_cache_dir(_Std(), "claude")) == (
-            by_dest["/xcache/kanibako/tweakcc"]
+            by_dest["/home/agent/.kanibako/cache/tweakcc"]
         )
 
 

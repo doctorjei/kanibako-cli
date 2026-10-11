@@ -441,6 +441,10 @@ inside boxes. In order of likely impact:
 44. **A box name is ASCII-only: a letter, digit, `_`, `-`, or `.`. `create --name café` is refused, and so is a
     box named after a directory named `café`** — see *A box name is ASCII-only*.
 
+45. **The tweakcc cache mounts at `~/.kanibako/cache/tweakcc` in the box, and `system.cache` no longer moves
+    anything in the box.** Nothing to do unless you masked or overrode the old dest, or something in your box
+    reads the old path — see *The tweakcc cache mounts at `~/.kanibako/cache/tweakcc` in the box*.
+
 ---
 
 ## 2. Per-area detail
@@ -7322,6 +7326,32 @@ Or delete the host copy and run `kanibako setup --refresh-templates`, which lays
 it is then absent. That discards your edits to the file, and the refresh also replaces edits to other
 shipped templates; plain `kanibako setup` is not enough (see
 "A store set up by `1.8.0rc2` has a broken comms hook, and upgrading does not replace it").
+
+### The tweakcc cache mounts at `~/.kanibako/cache/tweakcc` in the box
+
+**Read this if you masked or overrode the tweakcc cache dest, if you repointed `system.cache`, or if
+something in your box reads the cache dir.**
+
+**What changed.** `system.cache` is the HOST cache root only. The claude plugin's
+`agent.claude.caches` entry used to mount at `{system.cache}/tweakcc`, a host path, so the in-box
+path depended on your host home and `$XDG_CACHE_HOME`, and `system set system.cache=…` moved a mount
+point in the box. It now mounts at `~/.kanibako/cache/tweakcc`. The host source is unchanged
+(`agents/<agent>/caches/tweakcc`), and so is the patched agent binary's own mount.
+
+**What happens on the first start.** Nothing you need to act on. The cache lives on the host and is
+looked up by the binary and config hashes, not by the in-box path. An entry another running box
+still holds is reused; otherwise the binary is patched again, as on any start where no running box
+holds it. An empty directory may be left at the old mount point in the box's home.
+
+**What you must do.**
+- A mask, or a `caches` entry, keyed by the old dest (`{system.cache}/tweakcc` or its resolved path)
+  no longer matches. Key it by `~/.kanibako/cache/tweakcc`.
+- If you repointed `system.cache` to move the in-box cache, that no longer happens; host-side caches
+  still follow it.
+- A script in the box that read the old path should read `~/.kanibako/cache/tweakcc`.
+
+You may still write a `{system.cache}/…` dest yourself; it is an ordinary path to the host cache
+root, and it is not refused.
 
 ---
 

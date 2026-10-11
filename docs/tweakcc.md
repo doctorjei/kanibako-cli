@@ -13,7 +13,7 @@ Kanibako orchestrates the full patching lifecycle:
    (`agents/claude/caches/tweakcc`, the declared `agent.claude.caches` source)
 4. On cache miss, copies the binary and invokes tweakcc to patch it
 5. Mounts the cached patched binary into the box (at the launcher bind) and the
-   cache dir at `@system.cache/tweakcc`
+   cache dir at `~/.kanibako/cache/tweakcc`
 6. Propagates the same declared cache mount to helper boxes
 
 **Note:** tweakcc is a Node.js package and requires Node.js on the host (or

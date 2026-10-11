@@ -881,9 +881,9 @@ _BRACES = re.compile(r"^(?P<head>[^{}]*)\{(?P<alts>[^{}]+)\}(?P<tail>[^{}]*)$")
 def expand_braces(key: str) -> list[str]:
     """The keys a spec row declares -- more than one where it uses brace notation.
 
-    ⚑ A group that PARSES AS A REFERENCE is not enumeration. §2d writes a dest as
-    `caches[{system.cache}/tweakcc]`; read as a one-alternative list it leaves the
-    dest BARE RELATIVE. No comma-enumeration is left in a 1.8.0 row key.
+    ⚑ A group that PARSES AS A REFERENCE is not enumeration. A dest may be a
+    `{key}`-ref (`caches[{system.cache}/x]`, §2a); read as a one-alternative list it
+    leaves the dest BARE RELATIVE. No comma-enumeration is left in a 1.8.0 row key.
     """
     match = _BRACES.match(key)
     if match is None:

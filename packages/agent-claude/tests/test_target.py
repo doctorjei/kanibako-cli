@@ -544,10 +544,11 @@ class TestDefaultShares:
 class TestDefaultCategoryBinds:
     """claude declares the tweakcc cache as an AGENT-scope ``caches`` entry.
 
-    The spec's ``agent.claude.caches[{system.cache}/tweakcc]`` instantiation:
+    The spec's ``agent.claude.caches[~/.kanibako/cache/tweakcc]`` instantiation:
     ONE terminal key whose value is the dest-keyed map
     ``{box_dest: (host_src,)}``.  The SOURCE is the agent DECLARATION ROOT
-    and the DEST the standard cache dir — INDEPENDENT, never an identity mount
+    and the DEST the standard IN-BOX cache dir (``~`` canonicalized to the guest
+    home; never ``{system.cache}``, the HOST cache root) — INDEPENDENT, never an identity mount
     (spec §2d).  No ``ro`` option: ``caches`` folds into the ``rw`` arm and the
     collapse refuses a mode-contradicting option.
     """
@@ -555,7 +556,7 @@ class TestDefaultCategoryBinds:
     def test_declares_the_tweakcc_cache(self):
         assert ClaudeTarget().default_category_binds() == {
             "agent.claude.caches": {
-                "{system.cache}/tweakcc": (
+                "/home/agent/.kanibako/cache/tweakcc": (
                     "{meta.agent.claude.path}/caches/tweakcc",
                 ),
             },

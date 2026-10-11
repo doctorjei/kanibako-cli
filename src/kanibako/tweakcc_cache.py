@@ -6,7 +6,7 @@ reboot) or regular disk — kanibako doesn't care.
 
 Usage::
 
-    cache = TweakccCache(Path("~/.cache/kanibako/tweakcc"))
+    cache = TweakccCache(agents / "claude" / "caches" / "tweakcc")  # agents = @config.agents
     key = cache.cache_key(binary_hash, cfg_hash)
     entry = cache.get(key)
     if entry is None:

@@ -2569,7 +2569,7 @@ class TestPersonaShareSymlinks:
         if category_binds is None:
             category_binds = {
                 "agent.claude.caches": {
-                    "{system.cache}/tweakcc": (
+                    "/home/agent/.kanibako/cache/tweakcc": (
                         "{meta.agent.claude.path}/caches/tweakcc",
                     ),
                 },
@@ -3940,7 +3940,7 @@ class TestTweakccIntegration:
 
         ⚑ THE CONSUMER HALF of the ``caches`` declaration.  The producer pins live in
         ``tests/test_settings/test_system_paths.py::TestCacheRootIsTheKey`` (for the
-        ``system.cache`` DEST half) and
+        ``system.cache`` HOST-root half) and
         ``tests/test_categories_live.py::TestEffectiveBlockAgainstARealAgentPlugin``
         (for the resolved source half); without this one the launch could hand the
         transform some other directory and all three halves would still be green.
@@ -4126,13 +4126,14 @@ class TestCacheRootReachesItsConsumers:
         """The helpers reuse the DECLARED ``caches`` mount, not an identity mount.
 
         The collapse-emitted mount for ``agent.claude.caches`` (host source = the
-        agent store dir, guest dest = resolved ``@system.cache/tweakcc``) is
+        agent store dir, guest dest = ``~/.kanibako/cache/tweakcc``) is
         SELECTED into the helper context by its source — the same Mount object
         the director gets, so one emission serves both boxes and no hand-built
         ``destination=str(source)`` mount survives.  Pinned byte-exact on BOTH
         sides: the source is the dir the patcher wrote (the entry lives directly
-        under it) and the dest is the ``std.cache``-rooted string the retired
-        mount used — the move changes the source, never the dest.
+        under it) and the dest is the standard IN-BOX cache dir, NOT rooted at
+        ``std.cache`` (the HOST cache root, spec §2g) — a host path never names a
+        mount point in the box.
 
         The collapse half of this seam is pinned on the REAL pipeline in
         ``tests/test_categories_live.py``; here the emitted mount is injected at
@@ -4179,7 +4180,7 @@ class TestCacheRootReachesItsConsumers:
 
             import kanibako.commands.start as start_mod
             real_bind_map = start_mod._launch_bind_map
-            guest_dest = str(cache_root / "tweakcc")
+            guest_dest = "/home/agent/.kanibako/cache/tweakcc"
 
             def _map_plus_caches(snapshot):
                 binds = dict(real_bind_map(snapshot))

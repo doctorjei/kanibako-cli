@@ -219,10 +219,11 @@ common:
     owner: agent
 
 # AGENT-scope reference-sourced category binds (spec §2d): the tweakcc
-# patched-binary cache (the spec's `agent.claude.caches[{system.cache}/tweakcc]`
+# patched-binary cache (the spec's `agent.claude.caches[~/.kanibako/cache/tweakcc]`
 # instantiation).  The SOURCE is the agent DECLARATION ROOT
 # (`{meta.agent.claude.path}/caches/tweakcc`, so the patched binaries live at
-# `agents/claude/caches/tweakcc`); the DEST is the standard cache dir.  Dest and
+# `agents/claude/caches/tweakcc`); the DEST is the standard IN-BOX cache dir
+# `~/.kanibako/cache/<dir>`, never `{system.cache}` (that is the HOST cache root).  Dest and
 # source are INDEPENDENT: this is NOT an identity mount.  No `ro`: `caches`
 # folds into the `rw` arm and the collapse REFUSES a mode-contradicting option
 # (`store_collapse._refuse_mode_contradiction`) — a cache is host-written and
@@ -233,7 +234,7 @@ common:
 # helper reuses this same emitted mount.
 category_binds:
   - category: caches
-    box_dest: "{system.cache}/tweakcc"
+    box_dest: "~/.kanibako/cache/tweakcc"
     owner: agent
     meta_ref: "{meta.agent.claude.path}/caches/tweakcc"
 

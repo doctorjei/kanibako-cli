@@ -581,7 +581,7 @@ class ClaudeTarget(Target):
 
         Read from ``claude-defaults.yaml`` (via the loader).  ONE member: the
         tweakcc patched-binary cache, ``agent.claude.caches`` at
-        ``@system.cache/tweakcc`` from ``@meta.agent.claude.path/caches/tweakcc``
+        ``~/.kanibako/cache/tweakcc`` from ``@meta.agent.claude.path/caches/tweakcc``
         (spec §2d instantiation — a declared entry, NOT an identity mount; the
         former ``@system.instructions`` → ``~/.claude/KANIBAKO.md`` instructions
         bind was retired — the box guide now ships INSIDE the RO ``general``
