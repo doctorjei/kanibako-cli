@@ -2257,7 +2257,8 @@ def refuse_case_variant_store(ws: Workset, name: str, std: StandardPaths) -> Non
              for entry in sorted(base.iterdir())
              if entry.name != name and find_identifier(name, (entry.name,)) is not None]
     if found:
-        live = _live_member_stores(std, {base.resolve() for base in bases})
+        live = _live_member_stores(
+            std, {base.resolve() for base in bases if not _symlink_loop(base)})
         found = [entry for entry in found
                  if (entry.parent.resolve(), entry.name) not in live]
     if found:
@@ -2282,7 +2283,7 @@ def _live_member_stores(std: StandardPaths, bases: set[Path]) -> set[tuple[Path,
         except (WorksetError, ConfigError):
             continue  # unreadable: its stores stay counted, so the check refuses
         for base in other_bases:
-            if base.resolve() in bases:
+            if not _symlink_loop(base) and base.resolve() in bases:
                 live.update((base.resolve(), p.name) for p in other.projects)
     return live
 

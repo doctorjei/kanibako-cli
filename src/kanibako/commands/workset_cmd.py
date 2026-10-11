@@ -39,6 +39,7 @@ from kanibako.project.workset import (
     DEFAULT_WORKSET_ALIAS,
     RESERVED_WORKSET_IDENTIFIERS,
     StoreRemovalError,
+    _symlink_loop,
     add_project,
     create_workset,
     delete_workset,
@@ -629,6 +630,15 @@ def run_connect(args: argparse.Namespace) -> int:
     # no pending ``connect`` entry behind (``add_project`` refuses the same null case for
     # its other callers).
     #
+    # ⚑ A loop cannot be resolved (3.11 raises): refused here, before anything resolves it.
+    for path in (source, ws.workspaces_dir):
+        if path is not None and _symlink_loop(path):
+            where = "it" if path is source else str(path)
+            print(f"Error: Cannot connect '{source}': {where} runs through a symlink loop "
+                  f"that kanibako cannot resolve.\nReplace the loop with the directory "
+                  f"you mean.", file=sys.stderr)
+            return 1
+
     # ⚑⚑ IN-TREE IS ``is_in_tree_workspace`` ON THE RESOLVED SOURCE — the call
     # ``add_project`` makes; a root-only test walks past a REPOINTED workspaces key.
     resolved = source.resolve()
