@@ -61,6 +61,7 @@ artifacts:
   api-docs/kanibako/auth_parser.py.md:
   api-docs/kanibako/box_lifecycle.py.md:
   api-docs/kanibako/box_supervisor.py.md:
+  api-docs/kanibako/boxfs.py.md:
   api-docs/kanibako/browser_sidecar.py.md:
   api-docs/kanibako/browser_state.py.md:
   api-docs/kanibako/bun_sea.py.md:
