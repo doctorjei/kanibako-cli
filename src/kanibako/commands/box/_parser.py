@@ -2199,7 +2199,8 @@ def report_kept_channel(role: str, path: Path) -> None:
 
 
 def report_primary_keeps(retained: "list[tuple[str, Path, str | None]]") -> None:
-    """After a PRIMARY purge's run: name each looped leaf and each kept channel dir."""
+    """After a PRIMARY purge's run, or a ``disconnect --remove-files``: name each looped
+    leaf and each kept channel dir."""
     for what, kept, _why in retained:
         if what in _CHANNEL_ROLES:
             report_kept_channel(what, kept)

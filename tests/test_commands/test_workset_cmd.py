@@ -1689,6 +1689,38 @@ class TestWorksetDisconnect:
         assert f"Try: replace the looping link at {looping}" in err, err
         assert looping.is_dir() and "it1" in _workset_boxes(ws)
 
+    def test_remove_files_names_a_workspace_leaf_kept_under_a_looping_workspaces(
+        self, config_file, tmp_home, capsys,
+    ):
+        """``workspaces/`` a loop: the leaf cannot be reached, so it is kept AND named —
+        not skipped under a bare "Removed project".  Nothing is deleted through the loop."""
+        from kanibako.commands.workset_cmd import run_disconnect
+
+        std = load_std_paths(load_config(config_file))
+        ws = create_workset("wsloopws", tmp_home / "ws_wsloop", std)
+        src = ws.workspaces_dir / "it1"
+        src.mkdir(parents=True)
+        (src / "ws.txt").write_text("mine")
+        add_project(ws, "it1", src)
+
+        real = tmp_home / "ws_wsloop_real"
+        ws.workspaces_dir.rename(real)
+        other = tmp_home / "ws_wsloop_other"
+        ws.workspaces_dir.symlink_to(other)
+        other.symlink_to(ws.workspaces_dir)
+        leaf = ws.workspaces_dir / "it1"
+
+        rc = run_disconnect(argparse.Namespace(
+            workset="wsloopws", project="it1", remove_files=True, force=True))
+        out, err = capsys.readouterr()
+        assert rc == 0, err
+        assert "Removed project 'it1'" in out, out
+        assert (f"Note: left the workspace at {leaf} in place — it is a symlink loop "
+                "that kanibako cannot resolve, so it is left in place for you to look "
+                "at.") in err, err
+        assert ws.workspaces_dir.is_symlink() and other.is_symlink()
+        assert (real / "it1" / "ws.txt").read_text() == "mine"
+
     def test_disconnect_unknown_error(self, config_file, tmp_home, capsys):
         from kanibako.commands.workset_cmd import run_disconnect
 

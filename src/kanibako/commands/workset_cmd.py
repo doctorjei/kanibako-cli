@@ -802,9 +802,14 @@ def run_disconnect(args: argparse.Namespace) -> int:
     # ⚑ A folder holding ANOTHER box's recorded workspace is kept and named (keyspec § 0),
     # decided before the question; the member's own workspace leaf goes on purpose.
     keep: set[Path] = set()
+    # ⚑ A workspace leaf under a LOOP cannot be reached, so it is kept: named after the
+    # run in the purge's ``loop_keeps`` shape, never skipped under "Removed project".
+    loop_keeps: list[tuple[str, Path, str | None]] = []
     if args.remove_files:
         from kanibako.commands.box._parser import kept_for_recorded_workspace
-        from kanibako.project.workset import _member_store_bases, member_workspace_leaf
+        from kanibako.project.workset import (
+            _member_store_bases, _symlink_loop, member_workspace_leaf,
+        )
         try:
             leaf = member_workspace_leaf(ws, member)
         except WorksetError as e:
@@ -818,6 +823,9 @@ def run_disconnect(args: argparse.Namespace) -> int:
             if (leaf is not None and not leaf.is_symlink()
                     and kept_for_recorded_workspace(std, leaf, own=f"{ws.name}/{member}")):
                 keep.add(leaf)
+            if leaf is not None and not leaf.is_symlink() and _symlink_loop(leaf):
+                keep.add(leaf)
+                loop_keeps.append(("workspace", leaf, None))
         except OSError as e:
             # ⚑ REFUSED BEFORE ANY DELETE: a path that cannot be checked could hold
             # another box's workspace. The ELOOP cure is a guard for an OSError the
@@ -883,11 +891,10 @@ def run_disconnect(args: argparse.Namespace) -> int:
     print(f"Removed project '{proj.name}' from working set '{ws.name}'")
     if not args.remove_files:
         _print_disconnect_leftovers(ws, proj)
-    if channels:
-        from kanibako.commands.box._parser import report_kept_channel
+    if channels or loop_keeps:
+        from kanibako.commands.box._parser import report_primary_keeps
         sys.stdout.flush()  # piped, stdout is buffered: the Notes would come out first
-        for role, path, _why in channels:
-            report_kept_channel(role, path)
+        report_primary_keeps([*channels, *loop_keeps])
     return 0
 
 
