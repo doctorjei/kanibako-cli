@@ -820,7 +820,8 @@ def run_disconnect(args: argparse.Namespace) -> int:
                 keep.add(leaf)
         except OSError as e:
             # ⚑ REFUSED BEFORE ANY DELETE: a path that cannot be checked could hold
-            # another box's workspace, so nothing is removed until it can be.
+            # another box's workspace. The ELOOP cure is a guard for an OSError the
+            # checks above could raise; pathlib swallows a looping link today.
             where = shlex.quote(str(e.filename or leaf or ws.root))
             print(f"Error: could not check {where} before removing files: "
                   f"{e.strerror or e}; nothing was removed.", file=sys.stderr)
