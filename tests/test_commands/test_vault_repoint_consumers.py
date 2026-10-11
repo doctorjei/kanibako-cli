@@ -776,7 +776,7 @@ class TestNullArmIsNoSuchDir:
         proj = resolve_standalone_project(std, config, project_dir=str(root),
                                           initialize=True)
         assert proj.vault_rw_path is None
-        assert _resolve_vault_rw(str(root)) is None
+        assert _resolve_vault_rw(str(root), "list") is None
         err = capsys.readouterr().err
         assert "workset.vault_rw" in err
 

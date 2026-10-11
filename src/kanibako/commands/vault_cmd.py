@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import argparse
+import shlex
 import sys
 
-from kanibako.errors import UserCanceled
+from kanibako.errors import ProjectError, UserCanceled
 from kanibako.settings.config import user_config_file, load_config
 from kanibako.settings.paths import (
     BoxMode,
@@ -109,11 +110,12 @@ def _add_vault_subcommands(p: argparse.ArgumentParser) -> None:
     p.set_defaults(func=run_list)
 
 
-def _resolve_vault_rw(project_dir: str | None):
+def _resolve_vault_rw(project_dir: str | None, usage: str):
     """Resolve ``(share-rw path, box name, store-exclusive, held stores, cure ref)``.
 
     The name keys the store; the cure ref (``paths.project_cure_ref``) is how a printed
-    command reaches this box from any cwd.
+    command reaches this box from any cwd.  *usage* is the verb as typed before the box
+    argument (``"restore <name>"``), for the no-box cure.
 
     ⚑ The held stores are the ones other registered standalone boxes compose
     (``box_resolve.held_standalone_stores``): a standalone never adopts one.
@@ -123,6 +125,15 @@ def _resolve_vault_rw(project_dir: str | None):
     std = load_std_paths(config)
     proj = resolve_any_project(std, config, project_dir, initialize=False)
 
+    # ⚑ The nameless primary is the ``__unregistered__`` phantom (as in
+    # ``box._parser._resolve_config_subject``): no box, so no store key to refuse.
+    if proj.mode is BoxMode.primary and not proj.name:
+        raise ProjectError(
+            f"no box at {proj.project_path} — kanibako has no box registered "
+            "for this directory, and a vault belongs to a box.\n"
+            f"  Name the box:   kanibako box vault {usage} <box>\n"
+            "  Or run it inside a box's directory."
+        )
     if not proj.vault_enabled():
         print("Vault is disabled for this project.", file=sys.stderr)
         return None
@@ -140,7 +151,7 @@ def _resolve_vault_rw(project_dir: str | None):
 
 def run_snapshot(args: argparse.Namespace) -> int:
     project_dir = getattr(args, "project", None)
-    resolved = _resolve_vault_rw(project_dir)
+    resolved = _resolve_vault_rw(project_dir, "snapshot")
     if resolved is None:
         return 1
     vault_rw, box_name, exclusive, held, _ref = resolved
@@ -156,7 +167,7 @@ def run_snapshot(args: argparse.Namespace) -> int:
 
 def run_list(args: argparse.Namespace) -> int:
     project_dir = getattr(args, "project", None)
-    resolved = _resolve_vault_rw(project_dir)
+    resolved = _resolve_vault_rw(project_dir, "list")
     if resolved is None:
         return 1
     vault_rw, box_name, exclusive, held, _ref = resolved
@@ -201,7 +212,7 @@ def _confirm_destructive(force: bool, message: str) -> bool:
 
 def run_restore(args: argparse.Namespace) -> int:
     project_dir = getattr(args, "project", None)
-    resolved = _resolve_vault_rw(project_dir)
+    resolved = _resolve_vault_rw(project_dir, f"restore {shlex.quote(args.name)}")
     if resolved is None:
         return 1
     vault_rw, box_name, exclusive, held, box_ref = resolved
@@ -241,7 +252,7 @@ def run_restore(args: argparse.Namespace) -> int:
 
 def run_prune(args: argparse.Namespace) -> int:
     project_dir = getattr(args, "project", None)
-    resolved = _resolve_vault_rw(project_dir)
+    resolved = _resolve_vault_rw(project_dir, "prune")
     if resolved is None:
         return 1
     vault_rw, box_name, exclusive, held, _ref = resolved

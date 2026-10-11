@@ -594,3 +594,38 @@ class TestUnsortedHeading:
         assert rc == 0
         assert "kept, never pruned, not restorable by name" in out
         assert "pruned by '" not in out
+
+
+# ---------------------------------------------------------------------------
+# No box at the cwd
+# ---------------------------------------------------------------------------
+
+
+class TestVaultNoBoxHere:
+    """From a directory that is no box, every verb says so and names the cure."""
+
+    @pytest.mark.parametrize(("argv", "func", "usage"), [
+        (["list"], run_list, "list"),
+        (["snapshot"], run_snapshot, "snapshot"),
+        (["prune", "--force"], run_prune, "prune"),
+        (["restore", "20260101T000000Z", "--force"], run_restore,
+         "restore 20260101T000000Z"),
+    ])
+    def test_no_box_names_the_cure(
+        self, config_file, tmp_home, credentials_dir, monkeypatch, argv, func, usage,
+    ):
+        from kanibako.errors import ProjectError
+
+        nobox = tmp_home / "nobox"
+        nobox.mkdir()
+        monkeypatch.chdir(nobox)
+
+        args = build_parser().parse_args(["box", "vault", *argv])
+        with pytest.raises(ProjectError) as exc:
+            func(args)
+
+        msg = str(exc.value)
+        assert f"no box at {nobox}" in msg
+        assert f"kanibako box vault {usage} <box>" in msg
+        assert "run it inside a box" in msg
+        assert "Refused box name" not in msg
