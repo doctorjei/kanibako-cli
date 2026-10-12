@@ -76,13 +76,24 @@ def standalone_marker_error(root: Path, name: str) -> str | None:
         load_doc(marker_file)
     except ConfigError:
         return None
+    return (
+        standalone_marker_refusal(root, f"box '{name}' is registered as a standalone box")
+        + f" Or unregister it, keeping its files:\n  kanibako box rm {shlex.quote(name)}"
+    )
+
+
+def standalone_marker_refusal(root: Path, lead: str) -> str:
+    """The refusal's head for a standalone box at *root* whose marker is gone.
+
+    *lead* names the box ("box 'x' is registered as a standalone box"); the text runs
+    through ``Restore it: <cure>.`` and the caller appends its next step.  ONE spelling
+    for the launch gate (:func:`standalone_marker_error`) and for ``box register``
+    readopting a deregistered box.  No ``Error:`` prefix.
+    """
     fault, cure = standalone_marker_repair(root)
     return (
-        f"box '{name}' is registered as a standalone box at {root}, but "
-        f"{marker_file} {fault}, so kanibako does not see a box there.\n"
-        f"  Restore it: {cure}. "
-        f"Or unregister it, keeping its files:\n"
-        f"  kanibako box rm {shlex.quote(name)}"
+        f"{lead} at {root}, but {root / WORKSET_META_FILE} {fault}, so kanibako does "
+        f"not see a box there.\n  Restore it: {cure}."
     )
 
 

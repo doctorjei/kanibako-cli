@@ -3157,7 +3157,7 @@ def _readopt_deregistered(std, name: str, entry: dict) -> int:
     """⚑ INDEX-ONLY, SEED-FREE readopt: move a box from ``deregistered`` back to active."""
     from kanibako.project import registry_store
     from kanibako.launch.box_resolve import (
-        standalone_marker_repair, stores_standalone_registry_null,
+        standalone_marker_refusal, stores_standalone_registry_null,
     )
 
     kind = entry.get("kind")
@@ -3181,13 +3181,8 @@ def _readopt_deregistered(std, name: str, entry: dict) -> int:
         # The files are there but the marker is not: KEEP the entry, its only handle, and
         # name the marker step.  A malformed file raises its own refusal (strict).
         if not stores_standalone_registry_null(root, strict=True):
-            fault, cure = standalone_marker_repair(root)
-            print(
-                f"Error: deregistered standalone box '{name}' is at {root}, but "
-                f"{root / WORKSET_META_FILE} {fault}, so kanibako does not see a box there.\n"
-                f"  Restore it: {cure}. Then retry:  {_box_register_cure(name)}",
-                file=sys.stderr,
-            )
+            head = standalone_marker_refusal(root, f"deregistered standalone box '{name}' is")
+            print(f"Error: {head} Then retry:  {_box_register_cure(name)}", file=sys.stderr)
             return 1
         # ⚑⚑ ONE CARRIER: the key IS the composed ``meta.box.name``.  A drifted box's
         # deregistered key IS the mismatch, so reusing it restored the bug.
