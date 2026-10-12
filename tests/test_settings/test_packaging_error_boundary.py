@@ -23,6 +23,7 @@ the verdict is ever revisited silently.
 
 from __future__ import annotations
 
+import sys
 import types
 from pathlib import Path
 
@@ -253,8 +254,13 @@ def test_a_plugin_defaults_defect_raises_packaging_error(monkeypatch, tmp_path, 
     (pkg / "__init__.py").write_text("")
     (pkg / "fake-defaults.yaml").write_text(text)
     monkeypatch.syspath_prepend(str(tmp_path))
-    with pytest.raises(PackagingError, match="fake-defaults.yaml is empty or is not a YAML mapping"):
-        agent_defaults._load_doc("fake_defaults_pkg", "fake-defaults.yaml")
+    # ⚑ Purged on both sides: a cached package would read an earlier case's tmp_path.
+    sys.modules.pop("fake_defaults_pkg", None)
+    try:
+        with pytest.raises(PackagingError, match="fake-defaults.yaml is empty or is not a YAML mapping"):
+            agent_defaults._load_doc("fake_defaults_pkg", "fake-defaults.yaml")
+    finally:
+        sys.modules.pop("fake_defaults_pkg", None)
 
 
 def test_a_packaging_defect_reaches_the_user_as_an_error_line_not_a_traceback(
