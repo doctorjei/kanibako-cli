@@ -3231,6 +3231,10 @@ def _note_interrupted_tail(
         else:
             unmoved.append(f"kanibako's line is still in {plan.gitignore}")
     _report_store_leftovers(plan.name, _on_disk(left), ": interrupted", unmoved=unmoved)
+    cure = _snapshot_cure(state, new_state)
+    if cure is not None:
+        import sys
+        print(cure, file=sys.stderr)
 
 
 def _holds_any(path: Path, stores: Collection[Path]) -> bool:
@@ -3265,6 +3269,44 @@ def _unmoved_snapshots(old: ProjectState, new: ProjectState) -> list[str]:
         return []
     return [f"its vault snapshots are still at {store} under the old name, and "
             "'kanibako box vault list' will not show them"]
+
+
+def _stranded_snapshot_store(old: ProjectState, new: ProjectState) -> Path | None:
+    """The store step 4c would carry, still under *old*'s name, or ``None``.
+
+    The pick is ``relocate_snapshot_store``'s: in a standalone landing the copy the
+    tree copy brought into the new base, else *old*'s own store.
+    """
+    from kanibako.snapshots import box_snapshot_store
+
+    store = _old_snapshot_store(old, new)
+    if store is None:
+        return None
+    if new.mode is BoxMode.standalone and old.name != new.name:
+        assert new.vault_rw is not None  # _old_snapshot_store returned a store
+        copied = box_snapshot_store(new.vault_rw, old.name)
+        if copied.is_dir() and not copied.is_symlink():
+            return copied
+    return store if store.is_dir() else None
+
+
+def _snapshot_cure(old: ProjectState, new: ProjectState) -> str | None:
+    """The Note naming the one command that carries a stranded store by hand.
+
+    ⚑ An existing store is never merged over: only entries it lacks move in.
+    """
+    from kanibako.snapshots import box_snapshot_store
+
+    src = _stranded_snapshot_store(old, new)
+    if src is None or new.vault_rw is None:
+        return None
+    dst = box_snapshot_store(new.vault_rw, new.name)
+    if dst.exists() or dst.is_symlink():
+        cmd = f"mv -n -- {shlex.quote(str(src))}/* {shlex.quote(str(dst))}/"
+    else:
+        cmd = (f"mkdir -p -- {shlex.quote(str(dst.parent))} && "
+               f"{shlex.join(['mv', '--', str(src), str(dst)])}")
+    return f"Note: to give '{new.name}' those snapshots back, run: {cmd}"
 
 
 def _retire_old_store(

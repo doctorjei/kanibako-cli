@@ -746,3 +746,150 @@ class TestLandedBindsResolveByIdentity:
         else:
             assert str(link) in shown
             assert (link / "f.txt").read_text() == "host"
+
+
+#: Interrupts that leave the snapshot store under the old name (before 4c ran), and the
+#: kinds whose relocation carries a store (``PM`` keeps its name and base).
+_STRANDED = [("_finish_relocation", "before"), ("_relocate_channel_partition", "before"),
+             ("_relocate_snapshot_store", "before")]
+_CARRIES = ["A", "B", "Bs", "C", "D", "E", "F", "WW", "WR"]
+
+
+def _cure(err):
+    """The one cure command the interrupted tail's Note prints."""
+    lines = [line for line in err.splitlines() if "those snapshots back, run: " in line]
+    assert len(lines) == 1, err
+    return lines[0].split("run: ", 1)[1]
+
+
+def _landed(sc):
+    (_section, _name, where), = _rows(sc.tmp_home)
+    return resolve_lifecycle_target(where, sc.std, sc.config)
+
+
+def _plant_store(monkeypatch, name):
+    """Give the destination a store of its own when lc.*name* runs (``new_state`` arg 2)."""
+    from kanibako.snapshots import box_snapshot_store
+    real = getattr(lc, name)
+
+    def wrapped(state, new_state, *a, **kw):
+        theirs = box_snapshot_store(new_state.vault_rw, new_state.name) / "theirs"
+        theirs.mkdir(parents=True, exist_ok=True)
+        (theirs / "f").write_text("theirs")
+        return real(state, new_state, *a, **kw)
+
+    monkeypatch.setattr(lc, name, wrapped)
+
+
+def _run_cure(cmd):
+    import subprocess
+    subprocess.run(["bash", "-c", cmd], check=True)
+
+
+@pytest.mark.usefixtures("stash_dir")
+class TestAnInterruptedTailNamesTheSnapshotCure:
+    """Interrupted before step 4c, the Note names the one command that carries the store,
+    with the real old and new paths; running it gives the box its snapshots back."""
+
+    @pytest.mark.parametrize("point", _STRANDED, ids=lambda p: f"{p[0]}-{p[1]}")
+    @pytest.mark.parametrize("kind", _CARRIES)
+    def test_new_store_absent(self, env, monkeypatch, capsys, kind, point):
+        import shlex
+        from pathlib import Path
+        from kanibako.snapshots import box_snapshot_store
+
+        sc = _Scenario(env, kind)
+        capsys.readouterr()
+        with monkeypatch.context() as m:
+            _interrupt_at(m, *point)
+            with pytest.raises(KeyboardInterrupt):
+                sc.run()
+        cmd = _cure(capsys.readouterr().err)
+        box = _landed(sc)
+        dst = box_snapshot_store(box.vault_rw, box.name)
+        assert not dst.exists()
+        argv = shlex.split(cmd)
+        assert argv[:3] == ["mkdir", "-p", "--"] and argv[3] == str(dst.parent)
+        assert argv[4:7] == ["&&", "mv", "--"] and argv[8] == str(dst)
+        src = Path(argv[7])
+        assert _digest(src / "XSNAP") == sc.digests["XSNAP"]
+        _run_cure(cmd)
+        assert _digest(dst / "XSNAP") == sc.digests["XSNAP"]
+        assert not src.exists()
+
+    @pytest.mark.parametrize("point", _STRANDED, ids=lambda p: f"{p[0]}-{p[1]}")
+    @pytest.mark.parametrize("kind", _CARRIES)
+    def test_new_store_present_is_kept(self, env, monkeypatch, capsys, kind, point):
+        from kanibako.snapshots import box_snapshot_store
+
+        sc = _Scenario(env, kind)
+        capsys.readouterr()
+        with monkeypatch.context() as m:
+            _interrupt_at(m, *point)
+            _plant_store(m, "_note_interrupted_tail")
+            with pytest.raises(KeyboardInterrupt):
+                sc.run()
+        cmd = _cure(capsys.readouterr().err)
+        box = _landed(sc)
+        dst = box_snapshot_store(box.vault_rw, box.name)
+        src = _stranded_from(cmd, dst)
+        assert _digest(src / "XSNAP") == sc.digests["XSNAP"]
+        _run_cure(cmd)
+        assert _digest(dst / "XSNAP") == sc.digests["XSNAP"]
+        assert (dst / "theirs" / "f").read_text() == "theirs"
+
+    @pytest.mark.parametrize("kind", _CARRIES)
+    def test_interrupted_mid_merge(self, env, monkeypatch, capsys, kind):
+        """T2: the carry merging into an existing store is interrupted after one entry."""
+        import kanibako.snapshots as snapshots
+        from kanibako.snapshots import box_snapshot_store
+
+        sc = _Scenario(env, kind)
+        extra = sc.src_homes["XSNAP"] / "XSNAP2"
+        extra.mkdir()
+        (extra / "f").write_text("two")
+        capsys.readouterr()
+        real = snapshots._unique_snapshot_dest
+        calls = []
+
+        def second_interrupts(*a, **kw):
+            calls.append(a)
+            if len(calls) == 2:
+                raise KeyboardInterrupt("mid-merge")
+            return real(*a, **kw)
+
+        with monkeypatch.context() as m:
+            _plant_store(m, "_relocate_snapshot_store")
+            m.setattr(snapshots, "_unique_snapshot_dest", second_interrupts)
+            with pytest.raises(KeyboardInterrupt):
+                sc.run()
+        assert len(calls) == 2
+        cmd = _cure(capsys.readouterr().err)
+        box = _landed(sc)
+        dst = box_snapshot_store(box.vault_rw, box.name)
+        _stranded_from(cmd, dst)
+        _run_cure(cmd)
+        assert _digest(dst / "XSNAP") == sc.digests["XSNAP"]
+        assert (dst / "XSNAP2" / "f").read_text() == "two"
+        assert (dst / "theirs" / "f").read_text() == "theirs"
+
+    @pytest.mark.parametrize("kind", _CARRIES + ["PM"])
+    def test_no_cure_once_the_store_is_carried(self, env, monkeypatch, capsys, kind):
+        """T3, and a relocation that carries no store: nothing to name."""
+        sc = _Scenario(env, kind)
+        capsys.readouterr()
+        with monkeypatch.context() as m:
+            _interrupt_at(m, "_relocate_snapshot_store", "after")
+            with pytest.raises(KeyboardInterrupt):
+                sc.run()
+        assert "those snapshots back" not in capsys.readouterr().err
+
+
+def _stranded_from(cmd, dst):
+    """The source a merge cure names: ``mv -n -- <src>/* <dst>/``, *dst* the real store."""
+    import shlex
+    from pathlib import Path
+    argv = shlex.split(cmd)
+    assert argv[:3] == ["mv", "-n", "--"] and argv[4] == f"{dst}/", cmd
+    assert argv[3].endswith("/*")
+    return Path(argv[3][:-2])

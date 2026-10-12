@@ -112,6 +112,8 @@ def _holds_any(path: Path, stores: Collection[Path]) -> bool
 def _on_disk(paths: Iterable[Path]) -> list[Path]
 def _unmoved_partitions(old: ProjectState, new: ProjectState, std: StandardPaths, plan: _SourceTeardown) -> list[str]
 def _unmoved_snapshots(old: ProjectState, new: ProjectState) -> list[str]
+def _stranded_snapshot_store(old: ProjectState, new: ProjectState) -> Path | None
+def _snapshot_cure(old: ProjectState, new: ProjectState) -> str | None
 def _retire_old_store(ws: Workset, name: str, dst_vault: tuple[Path | None, Path | None], vault_enabled: bool=True, *, reraise: bool=False) -> None
 def _report_store_leftovers(name: str, left: Collection[Path], why: str='', *, unmoved: Collection[str]=()) -> None
 def _to_default(state: ProjectState, std: StandardPaths, config: BootstrapConfig, unwind: _Unwind, *, new_name: str, new_workspace: Path, requested_name: str='') -> tuple[ProjectState, _SourceTeardown | None]
