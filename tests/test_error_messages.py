@@ -31,10 +31,8 @@ class TestRuntimeNotFoundMessages:
 
     def test_stop_runtime_missing_shows_install_hint(self, capsys):
         """Stop command also shows a helpful message when runtime is missing."""
-        with patch(
-            "kanibako.commands.stop.ContainerRuntime",
-            side_effect=ContainerError("No runtime"),
-        ):
+        with patch("shutil.which", return_value=None), \
+             patch.dict("os.environ", {}, clear=True):
             args = argparse.Namespace(
                 all_containers=False, project=None, force=False,
             )

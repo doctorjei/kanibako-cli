@@ -18,10 +18,20 @@ class TestContainerRuntime:
             with pytest.raises(ContainerError, match="No container runtime"):
                 ContainerRuntime()
 
-    def test_uses_env_override(self, monkeypatch):
-        monkeypatch.setenv("KANIBAKO_DOCKER_CMD", "/usr/bin/fake-docker")
+    def test_uses_env_override(self, monkeypatch, tmp_path):
+        stub = tmp_path / "fake-docker"
+        stub.write_text("#!/bin/sh\nexit 0\n")
+        stub.chmod(0o755)
+        monkeypatch.setenv("KANIBAKO_DOCKER_CMD", str(stub))
         rt = ContainerRuntime()
-        assert rt.cmd == "/usr/bin/fake-docker"
+        assert rt.cmd == str(stub)
+
+    def test_env_override_naming_a_missing_binary_is_refused_by_name(self, monkeypatch, tmp_path):
+        missing = str(tmp_path / "no-such-runtime")
+        monkeypatch.setenv("KANIBAKO_DOCKER_CMD", missing)
+        with pytest.raises(ContainerError, match="KANIBAKO_DOCKER_CMD names") as exc_info:
+            ContainerRuntime()
+        assert missing in str(exc_info.value)
 
     def test_explicit_command(self):
         rt = ContainerRuntime(command="/usr/bin/podman")

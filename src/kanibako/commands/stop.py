@@ -49,12 +49,8 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
 def run(args: argparse.Namespace) -> int:
     try:
         runtime = ContainerRuntime()
-    except ContainerError:
-        print(
-            "Error: No container runtime found.\n"
-            "Install podman (https://podman.io/) or Docker.",
-            file=sys.stderr,
-        )
+    except ContainerError as exc:
+        print(f"Error: {exc}", file=sys.stderr)
         return 1
 
     if args.all_containers:

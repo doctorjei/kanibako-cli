@@ -781,6 +781,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and logs a warning naming the file, and a link inside goose's `custom_providers/` is skipped. Any synced file a
   writeback changes keeps its previous content as `<file>.bak` (0600). See `MIGRATION.md`, "Credential writeback
   checks the box's file and keeps a backup".
+- **A `KANIBAKO_DOCKER_CMD` naming a missing program is an `Error:` that names it.** `kanibako stop` and every
+  other verb that needs the container runtime used to end in a traceback; a verb that runs without one carries on
+  as it does when no runtime is installed.
 - **A purge names the box's inbox and share folders it keeps.** `box rm --purge`, `box purge` (`--all` too), and
   `workset disconnect --remove-files` left the box's mailbox and share folders in place without a word. They are
   still kept, since they lie outside the box's folder; each one present is now listed as kept before the

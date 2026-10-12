@@ -176,12 +176,8 @@ def run_code(args: argparse.Namespace) -> int:
 
     try:
         runtime = ContainerRuntime()
-    except ContainerError:
-        print(
-            "Error: No container runtime found.\n"
-            "Install podman (https://podman.io/) or Docker.",
-            file=sys.stderr,
-        )
+    except ContainerError as exc:
+        print(f"Error: {exc}", file=sys.stderr)
         return 1
 
     config_file = user_config_file()

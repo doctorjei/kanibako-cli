@@ -110,6 +110,13 @@ class ContainerRuntime:
     def _detect() -> str:
         env = os.environ.get("KANIBAKO_DOCKER_CMD")
         if env:
+            # Checked here, at the one place every verb gets its runtime: an unrunnable
+            # value would otherwise surface as a FileNotFoundError traceback on first use.
+            if shutil.which(env) is None:
+                raise ContainerError(
+                    f"KANIBAKO_DOCKER_CMD names {env!r}, which is not a runnable command. "
+                    "Point it at podman or docker, or unset it."
+                )
             return env
         for name in ("podman", "docker"):
             path = shutil.which(name)

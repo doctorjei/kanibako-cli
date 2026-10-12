@@ -441,15 +441,26 @@ class TestRunDispatch:
             assert rc == 0
             m_stop_one.assert_called_once_with(rt, project_dir="myproj")
 
-    def test_runtime_not_found(self, capsys):
-        from kanibako.errors import ContainerError
-        with patch("kanibako.commands.stop.ContainerRuntime", side_effect=ContainerError("No runtime")):
+    def test_runtime_not_found(self, capsys, monkeypatch):
+        monkeypatch.delenv("KANIBAKO_DOCKER_CMD", raising=False)
+        with patch("shutil.which", return_value=None):
             import argparse
             args = argparse.Namespace(all_containers=False, project=None, force=False)
             rc = run(args)
             assert rc == 1
             err = capsys.readouterr().err
             assert "No container runtime found" in err
+
+    def test_missing_docker_cmd_is_an_error_naming_it(self, capsys, monkeypatch, tmp_path):
+        """A KANIBAKO_DOCKER_CMD naming a missing binary is an ``Error:`` line, not a traceback."""
+        import argparse
+        missing = str(tmp_path / "no-such-runtime")
+        monkeypatch.setenv("KANIBAKO_DOCKER_CMD", missing)
+        rc = run(argparse.Namespace(all_containers=False, project="myproj", box=None, force=False))
+        assert rc == 1
+        err = capsys.readouterr().err
+        assert err.startswith("Error: KANIBAKO_DOCKER_CMD names ")
+        assert missing in err
 
 
 class TestStopWriteback:
