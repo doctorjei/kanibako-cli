@@ -114,6 +114,20 @@ class TestResolveProjectNewHome:
                                   initialize=True)
 
 
+class TestDetectionWalkStop:
+    def test_walk_stops_at_a_link_to_home(self, config_file, tmp_home):
+        """A standalone marker above a link to $HOME is never adopted: the walk stops at the link."""
+        outer = tmp_home / "outer"
+        outer.mkdir()
+        (outer / "workset.yaml").write_text("workset:\n  registry: null\n")
+        (outer / "to-home").symlink_to(tmp_home / "home")
+        (tmp_home / "home" / "proj").mkdir()
+        config = load_config(config_file)
+        result = paths.detect_project_mode(outer / "to-home" / "proj", paths.load_std_paths(config),
+                                           config)
+        assert result.mode != paths.BoxMode.standalone
+
+
 class TestCreatePrecheck:
     def _args(self, path, **kw):
         return argparse.Namespace(path=path, name=None, standalone=False, allow_home=False, **kw)
