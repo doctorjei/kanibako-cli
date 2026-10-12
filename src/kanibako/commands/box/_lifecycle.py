@@ -1121,7 +1121,7 @@ def _remap_dest_holder(
 def _dest_nesting_refusal(
     std: StandardPaths, *, mode: BoxMode, name: str, ws: Workset | None, dest: Path,
     metadata_path: Path, verb: str, force: bool, vacated_root: Path | None = None,
-    subject: str = "a box",
+    subject: str = "a box", absent: bool = False,
 ) -> str | None:
     """The error line refusing a box placed at *dest* on another box's tree, else ``None``.
 
@@ -1129,7 +1129,9 @@ def _dest_nesting_refusal(
     *metadata_path*) is judged as if remapped onto *dest*, a standalone by its root.  A
     forceable refusal passes under *force*.  *vacated_root* is the standalone root a
     relocating source leaves.  *subject* names what is placed (a working set's root is
-    judged as a box with no name, so no other box's row is its own).
+    judged as a box with no name, so no other box's row is its own).  *absent* says
+    nothing exists at *dest*, so no outcome overwrites a file: every refusal is forceable
+    (his (A)), and an unforceable one keeps what it names and takes the --force cure.
     """
     # The judge reads only the mode, name, workset, and metadata path; the other
     # fields are the box's own paths, which no arm asks.
@@ -1138,9 +1140,18 @@ def _dest_nesting_refusal(
         metadata_path=metadata_path, shell_path=metadata_path, vault_ro=None,
         vault_rw=None, ws=ws)
     holder = _remap_dest_holder(state, dest, std, verb=verb, vacated_root=vacated_root)
-    if holder is None or (holder[1] and force):
+    if holder is None:
         return None
-    return f"Error: Cannot {verb} {subject} at '{dest}': it is {holder[0]}"
+    why, forceable = holder
+    if absent and not forceable:
+        # An unforceable *why* is "<what the path is>. <cure>", and a box name holds no
+        # ``.``: keep what it is, and swap the no-flag cure for --force.
+        why = (why.split(". ", 1)[0] + ". Nothing is there yet, so nothing would be "
+               "overwritten: pass --force to share it, or choose another path.")
+        forceable = True
+    if forceable and force:
+        return None
+    return f"Error: Cannot {verb} {subject} at '{dest}': it is {why}"
 
 
 def _refuse_foreign_workset_landing(

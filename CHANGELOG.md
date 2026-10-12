@@ -844,8 +844,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`workset create` and `workset connect` refuse, unless `--force`, a path inside another box's workspace,
   root, or store,** as `create` and `remap` do; `connect` also refuses one holding another box's workspace or root.
   `workset create` checked nothing, and `workset connect` checked only a member's workspace and a standalone root.
-  `workset create --force` already accepted a shared `workset.logs`; it now also accepts the shared tree. See the
-  same `MIGRATION.md` section.
+  `workset create --force` already accepted a shared `workset.logs`; it now also accepts the shared tree. A
+  `workset connect` of a standalone box's own workspace is refused even with `--force`; a `workset.yaml` planted
+  there no longer passes it as a standalone root. See the same `MIGRATION.md` section.
 - **`box move` and `box convert --move` refuse a box whose tree holds another box, even with `--force`.** The
   other box's workspace, root, or workset root was copied along and deleted from where that box records it.
 - **`box move` and `box convert --move` refuse a destination inside the box's own store when the op moves or

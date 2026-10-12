@@ -2072,6 +2072,31 @@ def _strictly_in_tree(path: Path, root: Path) -> bool:
     return root.resolve() in entry.parents
 
 
+def refuse_inside_other_workset(ws: Workset, source: Path, std: StandardPaths) -> None:
+    """Raise ``WorksetError`` when *source* lives inside a workset other than *ws* (no write).
+
+    In-tree detection would shadow it and mis-resolve it, so no flag overrides this.
+    """
+    resolved_source = source.resolve()
+    target_root = ws.root.resolve()
+    for other_name, other_root in _load_registry(std).items():
+        if _symlink_loop(Path(other_root)):
+            continue
+        other_root = Path(other_root).resolve()
+        if other_root == target_root:
+            continue
+        try:
+            resolved_source.relative_to(other_root)
+        except ValueError:
+            continue
+        raise WorksetError(
+            f"Cannot connect '{resolved_source}': it lives inside workset "
+            f"'{other_name}' ({other_root}). It would be shadowed by "
+            "in-tree detection and mis-resolve. Move it outside that "
+            "workset, or connect it to that workset instead."
+        )
+
+
 def refuse_existing_box(source: Path, std: StandardPaths, *, force: bool = False) -> None:
     """Raise ``WorksetError`` when connecting *source* would absorb a standalone box or
     re-register a box another workset already connects there (no write).
@@ -2169,24 +2194,7 @@ def add_project(
     # ⚑ Validate up front: every EXTERNAL refusal fires BEFORE any directory is created.
     # Internal sources and std-less callers (e.g. migrate) skip this block entirely.
     if std is not None and is_external:
-        target_root = ws.root.resolve()
-        for other_name, other_root in _load_registry(std).items():
-            if _symlink_loop(Path(other_root)):
-                continue
-            other_root = Path(other_root).resolve()
-            if other_root == target_root:
-                continue
-            try:
-                resolved_source.relative_to(other_root)
-            except ValueError:
-                continue
-            raise WorksetError(
-                f"Cannot connect '{resolved_source}': it lives inside workset "
-                f"'{other_name}' ({other_root}). It would be shadowed by "
-                "in-tree detection and mis-resolve. Move it outside that "
-                "workset, or connect it to that workset instead."
-            )
-
+        refuse_inside_other_workset(ws, source_path, std)
         refuse_existing_box(literal_source, std, force=force)
 
     # ⚑ A --force absorb finds the box's row by its directory, under any spelling, and

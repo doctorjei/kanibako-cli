@@ -484,3 +484,95 @@ class TestWorksetConnectInsideAnotherBox:
         err = capsys.readouterr().err
         assert "Cannot connect" in err and "Cannot connect a box at" not in err, err
         assert "m" not in _members(std, "wn")
+
+
+class TestWorksetConnectUnforceableFirst:
+    """A path --force would still refuse is refused without naming --force."""
+
+    @pytest.mark.parametrize("force", [False, True])
+    def test_a_standalones_own_workspace_is_refused(self, boxes, capsys, force):
+        std, area = boxes
+        assert _connect("wn", area / "XS" / "workspace", "m", force=force) == 1
+        err = capsys.readouterr().err
+        assert "the workspace of standalone box" in err, err
+        assert "Identical workspaces are refused, and no flag overrides this." in err, err
+        assert "m" not in _members(std, "wn")
+
+    @pytest.mark.parametrize("force", [False, True])
+    def test_a_marker_planted_in_a_standalones_workspace_is_no_absorb(
+            self, boxes, capsys, force):
+        """The workspace is box-writable: a marker there does not make it a root."""
+        std, area = boxes
+        ws_dir = area / "XS" / "workspace"
+        (ws_dir / "workset.yaml").write_text("workset:\n  registry: null\n")
+        rows = registry_store.load_standalone(std.registry)
+        assert _connect("wn", ws_dir, "m", force=force) == 1
+        err = capsys.readouterr().err
+        assert "Identical workspaces are refused, and no flag overrides this." in err, err
+        assert "Re-run with --force" not in err, err
+        assert "m" not in _members(std, "wn")
+        assert registry_store.load_standalone(std.registry) == rows
+
+    @pytest.mark.parametrize("force", [False, True])
+    def test_a_marker_inside_another_workset_names_that_workset(self, boxes, capsys, force):
+        std, area = boxes
+        marked = area / "other" / "mk"
+        marked.mkdir()
+        (marked / "workset.yaml").write_text("workset:\n  registry: null\n")
+        assert _connect("wn", marked, "m", force=force) == 1
+        err = capsys.readouterr().err
+        assert "it lives inside workset 'other'" in err, err
+        assert "--force" not in err, err
+        assert "m" not in _members(std, "wn")
+
+    def test_a_directory_holding_another_boxs_workspace_needs_force(self, boxes, capsys):
+        std, area = boxes
+        assert _cli("box", "create", "--name", "Y", str(area / "hold" / "inner")) == 0
+        capsys.readouterr()
+        assert _connect("wn", area / "hold", "m", force=False) == 1
+        err = capsys.readouterr().err
+        assert (f"Cannot connect a box at '{area / 'hold'}': it is a directory holding the "
+                f"workspace of box 'Y' ({area / 'hold' / 'inner'}). " + SHARE) in err, err
+        assert "m" not in _members(std, "wn")
+        assert _connect("wn", area / "hold", "m", force=True) == 0, capsys.readouterr().err
+        assert _members(std, "wn").get("m") == str(area / "hold")
+
+
+class TestWorksetCreateOnAMissingRecordedPath:
+    """Nothing exists there, so nothing is overwritten: refused unless --force (his (A))."""
+
+    @staticmethod
+    def _missing(area: Path, which: str) -> tuple[Path, str]:
+        import os
+        import shutil
+        path = area / which
+        for top, dirs, _files in os.walk(path):  # a vault holds read-only dirs
+            for name in dirs:
+                os.chmod(os.path.join(top, name), 0o755)
+        shutil.rmtree(path)
+        what = ("the workspace of primary box 'X'" if which == "X"
+                else "the root of standalone box")
+        return path, what
+
+    @pytest.mark.parametrize("which", ["X", "XS"])
+    def test_refused_without_force(self, boxes, capsys, which):
+        std, area = boxes
+        path, what = self._missing(area, which)
+        rc = _cli("workset", "create", "--name", "A", str(path))
+        err = capsys.readouterr().err
+        assert rc == 1, err
+        assert f"Cannot create working set 'A' at '{path}': it is {what}" in err, err
+        assert ("Nothing is there yet, so nothing would be overwritten: pass --force to share "
+                "it, or choose another path.") in err, err
+        assert "no flag overrides this" not in err, err
+        assert "A" not in list_worksets(std)
+        assert not path.exists()
+
+    @pytest.mark.parametrize("which", ["X", "XS"])
+    def test_force_creates_it(self, boxes, capsys, which):
+        std, area = boxes
+        path, _what = self._missing(area, which)
+        assert _cli("workset", "create", "--force", "--name", "A", str(path)) == 0, \
+            capsys.readouterr().err
+        assert "A" in list_worksets(std)
+        assert path.is_dir()

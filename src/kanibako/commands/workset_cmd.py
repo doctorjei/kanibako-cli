@@ -55,6 +55,7 @@ from kanibako.project.workset import (
     purge_box_logs,
     refuse_case_variant_store,
     refuse_existing_box,
+    refuse_inside_other_workset,
     refuse_null_workspaces,
     remove_project,
     resolve_workset_name,
@@ -425,7 +426,7 @@ def run_create(args: argparse.Namespace) -> int:
         nested = _dest_nesting_refusal(
             std, mode=BoxMode.named, name="", ws=None, dest=path, metadata_path=path,
             verb="create", force=getattr(args, "force", False),
-            subject=f"working set '{name}'")
+            subject=f"working set '{name}'", absent=True)
         if nested is not None:
             print(nested, file=sys.stderr)
             return 1
@@ -757,26 +758,35 @@ def run_connect(args: argparse.Namespace) -> int:
         return 1
 
     # Keyspace § 0: an external source inside another box's workspace, root, or store is
-    # refused unless --force.  ``refuse_existing_box`` runs first, so its unforceable arms
-    # and its member messages keep their place; a standalone root is its absorb, which
-    # the check below would refuse whatever the flag, so it is not asked there.
+    # refused unless --force.  Unforceable refusals run first: another workset's tree, the
+    # member's own path, then the judge's; then the forceable ones, so a no-flag run never
+    # names --force for a path that --force would still refuse.  A standalone root's
+    # absorb vacates that root, so it is not another box's tree; its workspace still is.
     if not in_tree:
+        from kanibako.commands.box._lifecycle import _dest_nesting_refusal
+        from kanibako.launch.box_resolve import stores_standalone_registry_null
         literal_source = Path(literal_path(source))
+        vacated = resolved if stores_standalone_registry_null(resolved) else None
+
+        def nesting(force: bool) -> str | None:
+            return _dest_nesting_refusal(
+                std, mode=BoxMode.named, name=project_name, ws=ws, dest=literal_source,
+                metadata_path=ws.projects_dir / project_name, verb="connect",
+                force=force, vacated_root=vacated)
+
         try:
-            refuse_existing_box(literal_source, std, force=args.force)
+            refuse_inside_other_workset(ws, source, std)
+            refuse_existing_box(literal_source, std, force=True)
+            nested = nesting(True)
+            if nested is None:
+                refuse_existing_box(literal_source, std, force=args.force)
+                nested = None if args.force else nesting(False)
         except WorksetError as e:
             print(f"Error: {e}", file=sys.stderr)
             return 1
-        from kanibako.launch.box_resolve import stores_standalone_registry_null
-        if not stores_standalone_registry_null(resolved):
-            from kanibako.commands.box._lifecycle import _dest_nesting_refusal
-            nested = _dest_nesting_refusal(
-                std, mode=BoxMode.named, name=project_name, ws=ws, dest=literal_source,
-                metadata_path=ws.projects_dir / project_name, verb="connect",
-                force=args.force)
-            if nested is not None:
-                print(nested, file=sys.stderr)
-                return 1
+        if nested is not None:
+            print(nested, file=sys.stderr)
+            return 1
 
     # ⚑ THE J2 WRITE-AHEAD BRACKET, AND IT BELONGS HERE, NOT IN ``add_project``: entry
     # BEFORE the membership write, cleared immediately after (HARD INVARIANT: registered

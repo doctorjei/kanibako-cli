@@ -472,8 +472,9 @@ inside boxes. In order of likely impact:
     reads an agent settings file's own values*.
 
 53. **`box move`, `box convert`, `box duplicate`, `workset create`, and `workset connect` into another box's
-    tree need `--force`; a move that carries another box away, and `duplicate --force` onto another box's
-    workspace or root, exit 1 even with `--force`** — see *`move`, `convert`, `duplicate`, `workset create`,
+    tree need `--force`; a move that carries another box away, `duplicate --force` onto another box's
+    workspace or root, and `workset connect` onto a standalone box's own workspace exit 1 even with
+    `--force`** — see *`move`, `convert`, `duplicate`, `workset create`,
     and `workset connect` on another box's path are refused*.
 
 ---
@@ -6275,8 +6276,10 @@ Refused unless `--force`, which shares the tree and keeps both boxes:
 - `workset create` with a root inside another box's workspace, standalone root, or store, and
   `workset connect` of a directory inside a primary or standalone box's tree or a store, or holding
   another box's workspace or root: `Cannot create working set '<ws>' at …` or `Cannot connect a box
-  at …`, ending as above. For `workset create`, the same `--force` also accepts a shared
-  `workset.logs` directory.
+  at …`, ending as above. A `workset create` root that does not exist but is still recorded as
+  another box's workspace or standalone root is refused the same way: `… Nothing is there yet, so
+  nothing would be overwritten: pass --force to share it, or choose another path.` For `workset
+  create`, the same `--force` also accepts a shared `workset.logs` directory.
 - `box move` of a primary box into its own store: `… it is inside its own store (<store>). A box's
   store is not its workspace: pass --force to use it anyway, or choose another path.`
 - an in-place `box convert --workset` whose workspace sits inside another box's workspace, root,
@@ -6296,6 +6299,9 @@ Refused even with `--force`:
 - `box duplicate --force` onto another box's workspace, a standalone root, or a link to one, which
   overwrote that box's files or took its identity; the message names the cure, as for `create`.
   A duplicate landing in a workset it does not join is refused too: add `--workset <ws>`.
+- `workset connect` of a standalone box's own workspace, a `workset.yaml` planted there included,
+  which was registered as a second box on that workspace: `… it is the workspace of standalone
+  box '<box>'. Identical workspaces are refused, and no flag overrides this. Choose another path.`
 
 Newly allowed with `--force`: `workset connect` and `box convert --workset --move` inside another
 member's workspace, which v1.7.x refused whatever the flag. The member's own path is still
