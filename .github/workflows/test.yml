@@ -176,8 +176,9 @@ jobs:
       # the test trees despite `exclude`; `retired-seams` keeps its rule on
       # shipped source with `only`. `0.6.0` makes `only` scope a `declared_in`
       # registry; below it the three unstored-path registries settle their names
-      # in every `.md` file.
-      - run: pip install "kinemata[yaml]==0.6.0"
+      # in every `.md` file. `0.7.0` adds `[[boundary]]`; below it the whole
+      # config refuses to load.
+      - run: pip install "kinemata[yaml]==0.7.0"
       # ⚑ THE PROJECT ITSELF IS INSTALLED HERE BECAUSE THE PARITY ORACLE IMPORTS
       # IT. `parity` runs a command that prints what the code produces, and an
       # oracle it cannot run is a FAILURE that no baseline can accept -- so a
@@ -217,6 +218,7 @@ jobs:
       - run: kinemata parity
       - run: kinemata shape
       - run: kinemata undeclared
+      - run: kinemata boundary
       # ⚑ `claims` resolves runtime path claims against a store kanibako builds
       # itself (`[claims] resolve_in`), so the store is built first. Without it
       # `claims` refuses at load, rc 2, rather than reading clean.

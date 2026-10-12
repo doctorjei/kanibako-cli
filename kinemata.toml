@@ -1,8 +1,9 @@
 # kinemata config for kanibako-cli -- THE config. It drives every command this
-# project runs. FIVE RUN IN CI, and they are exactly the five the gate inventory
+# project runs. SIX RUN IN CI, and they are exactly the six the gate inventory
 # at the foot of this file declares: `check` (duplication), `parity`, `shape`
 # (the manifest against itself), `undeclared` (an identifier no closed registry
-# declares) and `claims` (the DOCUMENTATION gate). Also configured but in no
+# declares), `boundary` (AST import rules) and `claims` (the DOCUMENTATION
+# gate). Also configured but in no
 # pipeline: `unused`, `ids`, `review`, `clusters`. ⚑ A command added to CI needs
 # its `[[gate]]` block here, or the inventory agrees with itself -- which is
 # exactly how `shape` ran nowhere.
@@ -12,11 +13,9 @@
 # was deleted, because kinemata fails `check` on a lapsed baseline even when it
 # is empty; a missing file reads as an empty one. Every command is run plainly --
 # `kinemata check`, `kinemata claims` -- with no `-c` and no custom baseline.
-# Two other configs run locally only; each one's header says why. CI never reads
-# them. `kinemata-spec.toml` holds the views that read the keyspace spec, which
-# lives in the canon and so is absent in CI. `kinemata-boundary.toml` holds
-# `[[boundary]]` rules, which the CI pin (0.6.0) cannot parse; it folds in here
-# once CI can install a build that carries `boundary`.
+# One other config runs locally only; its header says why, and CI never reads
+# it: `kinemata-spec.toml` holds the views that read the keyspace spec, which
+# lives in the canon and so is absent in CI.
 #
 # ---------------------------------------------------------------------------
 # THERE WERE TWO FILES UNTIL 2026-09-14, AND THE REASON THEY SPLIT WAS WRONG.
@@ -5992,6 +5991,29 @@ registry = "entry-owners"
   choices = ["box", "workset", "partition", "agent", "shared"]
 
 # ---------------------------------------------------------------------------
+# AST BOUNDARY RULES (`kinemata boundary`, new in 0.7.0).
+#
+# Each rule's accepted findings live in `.kinemata/ratchets/<rule>.json`,
+# written only by `kinemata boundary --rule <rule> --record`. A new finding
+# fails; editing a rule's declaration (`only` and `exclude` included) refuses
+# until it is re-recorded. A finding is keyed by file, enclosing scope, and
+# imported symbol, never by line, so an edit that only moves an accepted import
+# passes. A full run inventories `.kinemata/ratchets/`, so an orphaned artifact
+# fails.
+
+# Sub-project split, settings first: settings is the lower layer, so it imports
+# nothing from the layers above it. Type-only imports count (`type_checking`
+# defaults to "include").
+[[boundary]]
+name = "settings-imports-no-runtime-layers"
+kind = "imports"
+only = ["src/kanibako/settings/"]
+imports = ["kanibako.project", "kanibako.launch", "kanibako.targets", "kanibako.runtime"]
+
+[boundary.ratchet]
+until = "2027-01-12"
+
+# ---------------------------------------------------------------------------
 # THE GATE INVENTORY. `[[gate]]` is verified by the `claims` command, so a gate
 # must sit in the config `claims` is run with -- which, since the 2026-09-14
 # merge, is the only config there is.
@@ -6039,3 +6061,8 @@ note = "the manifest's shape against itself"
 command = "kinemata undeclared"
 where = [".github/workflows/test.yml"]
 note = "an identifier the tree uses that no closed registry declares"
+
+[[gate]]
+command = "kinemata boundary"
+where = [".github/workflows/test.yml"]
+note = "AST import rules, each against its own ratchet"
