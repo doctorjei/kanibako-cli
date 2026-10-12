@@ -16,6 +16,8 @@ VAULT_MASK_DEST = core_defaults.vault_mask_default()
 _BOOTSTRAP_NONE = 'none'
 _BOOTSTRAP_MISSING = object()
 _PERSONA_TOKEN_VAR = 'ANTHROPIC_AUTH_TOKEN'
+_PERSONA_KEY_CURE = 'Set the key for this persona, then retry.'
+_PERSONA_MODEL_CURE = 'Set the model for this persona, then retry.'
 _ASSEMBLY_BINDINGS: 'tuple[str, ...]' = ('meta', 'assembly', 'bindings')
 _ASSEMBLY_SEEDED: 'tuple[str, ...]' = ('meta', 'assembly', 'seeded')
 _ASSEMBLY_SYNCED: 'tuple[str, ...]' = ('meta', 'assembly', 'synced')
@@ -124,6 +126,7 @@ def _resolve_codex_persona_provider(agent_id: str, endpoint: str, env_key: str, 
 def _preflight_persona_load(agent_id: str, secret_paths, keyspace_endpoint: str | None, logger, *, target=None, keyspace_model: object=__MISSING__, bundle=None, probe: bool=False) -> 'tuple[str | None, str | None, CodexModelProvider | None]'
 def _model_tristate(keyspace_model: object) -> object
 def _preflight_env_persona(secret_paths, endpoint: str, keyspace_model: object, wiring, display: str, *, bundle=None, target=None, probe: bool=False, logger=None) -> 'tuple[str | None, str | None, CodexModelProvider | None]'
+def _persona_endpoint_refusal(display: str, endpoint: str, missing: str, detail: str, cure: str) -> str
 def _persona_no_endpoint_error(agent_id: str, wiring) -> str
 def _preflight_config_file_persona(agent_id: str, secret_paths, endpoint: str, keyspace_model: object, wiring, display: str, *, bundle=None, target=None, probe: bool=False, logger=None) -> 'tuple[str | None, str | None, CodexModelProvider | None]'
 def _codex_persona_token_error(secret_paths, wiring, endpoint: str, display: str) -> 'str | None'
