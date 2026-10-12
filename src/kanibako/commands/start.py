@@ -3293,6 +3293,11 @@ def _run_container(
         ):
             if _given:
                 print(_NOTE_NO_EFFECT_WITH_ENTRYPOINT.format(flag=_flag), file=sys.stderr)
+        # A detached launch keeps the bare-shell keep-alive (the persistent
+        # no-agent ``elif detach:`` branch below); a running box refused the pair
+        # in the gate above, so this is always a new launch.
+        if detach:
+            print(_NOTE_ENTRYPOINT_DROPPED_BY_DETACH, file=sys.stderr)
 
     # Resolve the target (agent plugin) and detect its installation.  W1 §Design 7,
     # "resolve config FIRST ... before anything else": agent resolution depends only
@@ -10347,6 +10352,11 @@ def _await_box_stop(runtime: ContainerRuntime, name: str) -> bool:
 
 #: An agent-only flag typed with ``--entrypoint``, which runs no agent.
 _NOTE_NO_EFFECT_WITH_ENTRYPOINT = "Note: {flag} has no effect with --entrypoint"
+
+#: ``--entrypoint`` typed with ``--detach``, whose keep-alive is the box shell.
+_NOTE_ENTRYPOINT_DROPPED_BY_DETACH = (
+    "Note: --entrypoint has no effect with --detach; the box runs its shell"
+)
 
 
 # M1: a persistent ``-- <command>`` that ended before the host could attach.

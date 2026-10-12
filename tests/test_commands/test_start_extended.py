@@ -2514,6 +2514,43 @@ class TestAgentOnlyFlagsWithEntrypoint:
             m.runtime.run.assert_called_once()
         assert "has no effect" not in capsys.readouterr().err
 
+    _DETACH_NOTE = "Note: --entrypoint has no effect with --detach; the box runs its shell"
+
+    def test_detach_on_a_new_launch_notes_the_dropped_entrypoint(
+        self, start_mocks, capsys,
+    ):
+        from kanibako.commands.start import run_start
+
+        with start_mocks() as m:
+            rc = run_start(self._args("--entrypoint", "/bin/bash", "--detach"))
+            assert rc == 0
+            m.runtime.run.assert_called_once()
+            # What runs is unchanged: the bare-shell keep-alive, not the entrypoint.
+            kw = m.runtime.run.call_args.kwargs
+            assert kw["entrypoint"] == "tmux"
+            assert not any("/bin/bash" in str(a) for a in kw.get("cli_args") or [])
+        assert capsys.readouterr().err.count(self._DETACH_NOTE) == 1
+
+    def test_no_detach_note_without_entrypoint(self, start_mocks, capsys):
+        from kanibako.commands.start import run_start
+
+        with start_mocks() as m:
+            run_start(self._args("--detach"))
+            m.runtime.run.assert_called_once()
+        assert "--entrypoint has no effect" not in capsys.readouterr().err
+
+    def test_a_running_box_refuses_the_pair_without_a_note(self, start_mocks, capsys):
+        from kanibako.commands.start import run_start
+
+        with start_mocks() as m:
+            m.runtime.is_running.return_value = True
+            rc = run_start(self._args("--entrypoint", "/bin/bash", "--detach"))
+            assert rc == 1
+            m.runtime.run.assert_not_called()
+        err = capsys.readouterr().err
+        assert "--entrypoint cannot be applied" in err
+        assert "Note:" not in err
+
 
 # ---------------------------------------------------------------------------
 # Characterization: vault_tmpfs is mode-specific (pins behavior for #71 B0)
