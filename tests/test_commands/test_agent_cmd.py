@@ -1048,15 +1048,17 @@ class TestSparseWrites:
         # Nothing survives, and the now-empty root table is pruned with it.
         assert load_doc(path) == {}
 
-    @pytest.mark.parametrize("doc, count, left", [
+    @pytest.mark.parametrize("doc, said, left", [
         # A stray beside ``self:`` refuses ``agent show`` and the launch; the reset clears
         # the overrides around it and leaves the stray, which is not one.
         ({"self": {"model": "opus", "env": {"A": "1", "B": "2"}}, "model": "x"},
-         3, {"model": "x"}),
-        # An undeclared leaf under ``self:`` refuses the launch; the reset clears it.
-        ({"self": {"model": "opus", "zippity": 1}}, 2, {}),
+         "Reset 3 override(s).", {"model": "x"}),
+        # An undeclared leaf under ``self:`` refuses the launch; the reset clears it and
+        # names it apart from the overrides, as every other noun's ``reset --all`` does.
+        ({"self": {"model": "opus", "zippity": 1}},
+         "Reset 1 override(s); also removed 1 undeclared entry.", {}),
     ])
-    def test_reset_all_is_the_repair_door(self, agent_env, capsys, doc, count, left):
+    def test_reset_all_is_the_repair_door(self, agent_env, capsys, doc, said, left):
         """``agent reset <node> --all --force`` refuses nothing: it is how a file the
         other readers refuse gets fixed. (Mutation: read through ``_contribution`` in
         ``clear_overrides`` → the stray case raises → RED.)"""
@@ -1068,7 +1070,7 @@ class TestSparseWrites:
             agent_id="claude", key=None, all_keys=True, force=True,
         ))
         assert rc == 0
-        assert f"Reset {count} override(s)." in capsys.readouterr().out
+        assert capsys.readouterr().out == said + "\n"
         assert load_doc(path) == left
 
     @pytest.mark.parametrize("verb", ("run_info", "run_show", "run_list"))
@@ -1186,7 +1188,10 @@ class TestSparseWrites:
             agent_id="claude", key=None, all_keys=True, force=True,
         ))
         assert rc == 0
-        assert "Reset 2 override(s)." in capsys.readouterr().out
+        # Both spellings name ONE key, so one row; the shadowed copy is an unlisted removal.
+        assert capsys.readouterr().out == (
+            "Reset 1 override(s); also removed 1 unlisted entry.\n"
+        )
         assert load_doc(path) == {}
 
     @pytest.mark.parametrize(("folder", "why"), (
@@ -1272,6 +1277,26 @@ class TestSparseWrites:
         assert rc == 0
         assert load_doc(path) == {}
 
+    def test_reset_all_counts_the_contained_tables_as_rows(self, agent_env, capsys):
+        """The agent file's ``box:`` and ``workset:`` tables are overrides at this noun, box
+        scalars included: the file is the noun's own, not a Layer-1 ``.cfg``. (Mutation:
+        drop ``ConfigLevel.agent`` from ``_keeps_settings_apart`` → ``box.shell`` is not a
+        row → "also removed 1 unlisted entry" → RED.)"""
+        from kanibako.commands.agent_cmd import run_reset
+        from kanibako.settings.config_io import load_doc
+
+        path = _write_sparse(agent_env, "claude", {
+            "self": {"model": "opus"},
+            "box": {"shell": "/bin/zsh"},
+            "workset": {"logs": "/tmp/l"},
+        })
+        rc = run_reset(argparse.Namespace(
+            agent_id="claude", key=None, all_keys=True, force=True,
+        ))
+        assert rc == 0
+        assert capsys.readouterr().out == "Reset 3 override(s).\n"
+        assert load_doc(path) == {}
+
     def test_reset_all_confirm_gates_destructive_write(self, agent_env, capsys):
         """Without --force, a declined confirm aborts and leaves the file
         untouched (the confirm prompt gates the destructive clear)."""
@@ -1283,7 +1308,8 @@ class TestSparseWrites:
         )
         before = path.read_text()
         with patch(
-            "kanibako.utils.confirm_prompt", side_effect=UserCanceled(),
+            "kanibako.settings.config_interface.confirm_prompt",
+            side_effect=UserCanceled(),
         ):
             rc = run_reset(argparse.Namespace(
                 agent_id="claude", key=None, all_keys=True, force=False,

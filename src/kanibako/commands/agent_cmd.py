@@ -488,7 +488,6 @@ def _run_agent_config(args: argparse.Namespace) -> int:
     """
     from kanibako.settings.agent_config import agent_settings_path
     from kanibako.settings.agent_file import (
-        clear_overrides,
         read_leaf,
         slot_for,
     )
@@ -519,28 +518,16 @@ def _run_agent_config(args: argparse.Namespace) -> int:
     # Handle --reset
     if args.reset is not None:
         if args.all_keys:
-            if not args.force:
-                from kanibako.utils import confirm_prompt
-                from kanibako.errors import UserCanceled
+            # ⚑ THE ONE ``reset --all``, the one every other noun takes: it confirms,
+            # clears the file through ``agent_file.clear_overrides``, and reports what
+            # went in the shared wording, undeclared and unlisted removals included.
+            from kanibako.settings.config_interface import reset_all
+            from kanibako.settings.config_keys import ConfigLevel
 
-                try:
-                    confirm_prompt(
-                        "Remove all config overrides? Type 'yes' to proceed: "
-                    )
-                except UserCanceled:
-                    print("Aborted.")
-                    return 0
-            # ⚑ THROUGH THE BOUNDARY, not by hand on the raw document. This was the
-            # sixth site that spelled the per-agent file's shape — a read-modify-write
-            # on the root table, in a command module. Nothing in the file is exempt
-            # now (MIGRATION § 2.73); it reports a COUNT of the overrides actually
-            # removed, in the SAME wording the other scopes' ``reset_all``
-            # (config_interface.py) prints. Both facts live with the shape, in
-            # :func:`agent_file.clear_overrides`.
-            count = clear_overrides(path)
-            print(
-                f"Reset {count} override(s)." if count else "No overrides to reset."
-            )
+            print(reset_all(
+                config_path=path, force=args.force,
+                command_scope=ConfigLevel.agent, agent_node=agent_id,
+            ))
             return 0
 
         # Key can come from --reset VALUE or from positional key_value.

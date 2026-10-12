@@ -21,7 +21,7 @@ def set_config_value(key: str, value: 'str | None', *, config_path: Path, env_pa
 def reset_config_value(key: str, *, config_path: Path, env_path: Path | None=None, system_settings_path: Path | None=None, command_scope: ConfigLevel | None=None, cascade_system_path: Path | None=None, cascade_agent_path: Path | None=None, cascade_workset_path: Path | None=None, cascade_box_path: Path | None=None, cascade_agent_name: str='', agents_root: Path | None=None, node_store: bool=True) -> str
 def effective_value(canonical: str, sections: tuple[str, ...], leaf: str, *, agent_name: str, system_path: Path | None, agent_path: Path | None, workset_path: Path | None, box_path: Path | None, floor: 'Mapping[str, object] | None'=None, inputs: 'LaunchInputs | None'=None) -> 'tuple[str, str] | None'
 def write_system_value(system_settings_path: Path, leaf: str, value: object) -> None
-def reset_all(*, config_path: Path, env_path: Path | None=None, force: bool=False, system_settings_path: Path | None=None, command_scope: 'ConfigLevel | None'=None) -> str
+def reset_all(*, config_path: Path, env_path: Path | None=None, force: bool=False, system_settings_path: Path | None=None, command_scope: 'ConfigLevel | None'=None, agent_node: str | None=None) -> str
 def show_config(*, global_config_path: Path, command_scope: ConfigLevel, config_path: Path | None=None, env_global: Path | None=None, env_project: Path | None=None, effective: bool=False, file: Any=None, workset_path: Path | None=None, agent_state: dict[str, str] | None=None, env_resolved: dict[str, str] | None=None, system_settings_path: Path | None=None, category_snapshot: Any=None, category_ctx: Any=None, category_error: str | None=None, category_declared_by: Any=None, category_dest_keys: Any=None, inputs: Any=None, agent_name: str=GENERAL_SLOT, agent_path: Path | None=None) -> int
 def _pref_value_error(canonical: str, value: 'str | None', *, config_path: Path, command_scope: 'ConfigLevel | None', system_settings_path: Path | None, system_path: Path | None, agent_path: Path | None, workset_path: Path | None, box_path: Path | None, agent_name: str, set_target: 'LaunchInputs | None') -> str | None
 def _yaml_skeleton(target: str) -> list[str]
@@ -63,6 +63,7 @@ def _per_owner_set_error(canonical: str, value: 'str | None', *, command_scope: 
 def _reset_dest(canonical: str, command_scope: 'ConfigLevel | None', config_path: Path, system_settings_path: 'Path | None') -> DestRoute
 def _honest_reset_message(key: str, command_scope: 'ConfigLevel | None', effective: 'tuple[str, str] | None'=None) -> str
 def _clear_writable_tables(path: Path, command_scope: 'ConfigLevel | None') -> dict[str, int]
+def _reset_agent_file(path: Path, *, node: str) -> str
 def _stored_at(stored: object, segments: 'tuple[str, ...]') -> object
 def _reset_all_message(count: int, *, undeclared: int, unlisted: int) -> str
 def _entry_phrase(count: int, adjective: str) -> str

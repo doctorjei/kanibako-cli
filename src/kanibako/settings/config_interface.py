@@ -70,9 +70,11 @@ from kanibako.settings.agent_config import (
 )
 from kanibako.settings.agent_file import (
     AgentFileSlot,
+    clear_overrides,
     read_leaf,
     remove_leaf,
     scalar_family_of,
+    scope_view,
     stored_leaf_shape,
     stored_leaf_text,
     stored_leaf_value,
@@ -2752,18 +2754,26 @@ def reset_all(
     force: bool = False,
     system_settings_path: Path | None = None,
     command_scope: "ConfigLevel | None" = None,
+    agent_node: str | None = None,
 ) -> str:
     """Remove all overrides at this config level.  Confirms unless *force*.
 
     ⚑ WHAT ELSE WENT IS SAID, IN ITS OWN WORDS: everything the sweep removed that no
     row carried is tallied here, from the passes' own removals, so a file that shrank by
     more than N says so.  The count itself is the one :func:`_shown_entries` defines.
+
+    At the AGENT noun *config_path* is agent *agent_node*'s settings file; see
+    :func:`_reset_agent_file`.
     """
     if not force:
         try:
             confirm_prompt("Remove all config overrides? Type 'yes' to proceed: ")
         except UserCanceled:
             return "Aborted."
+
+    if command_scope is ConfigLevel.agent:
+        assert agent_node is not None, "the agent noun names its node"
+        return _reset_agent_file(config_path, node=agent_node)
 
     settings_dest = noun_settings_file(config_path, system_settings_path)
     # ⚑ Taken FIRST — see :func:`_quiet_drop_announcements`.
@@ -2829,6 +2839,31 @@ def reset_all(
         and not isinstance(_stored_at(shown.stored, segs), dict)
     )
     # ⚑ CLAMPED, because a row the sweep did not reach would otherwise subtract.
+    unlisted = max(0, removed - count - undeclared)
+    return _reset_all_message(count, undeclared=undeclared, unlisted=unlisted)
+
+
+def _reset_agent_file(path: Path, *, node: str) -> str:
+    """:func:`reset_all` at the AGENT noun: clear agent *node*'s settings file.
+
+    ⚑ THE FILE'S SHAPE IS ``agent_file``'S: the removal is
+    :func:`agent_file.clear_overrides`, and the rows are read off
+    :func:`agent_file.scope_view`, which merges ``self:`` into ``agent.<node>`` so the
+    rows are spelled as keys.  Every contributed table goes, so every undeclared entry
+    in that view was removed; a leaf two spellings of the node both carried is one
+    row, and the other is an unlisted removal.
+    """
+    stored = scope_view(load_doc(path), node=node)
+    shown = _shown_entries(
+        config_path=None, settings_path=None,
+        command_scope=ConfigLevel.agent, stored=stored,
+    )
+    count = len(shown.overrides)
+    undeclared = sum(
+        1 for segs in shown.undeclared
+        if not isinstance(_stored_at(stored, segs), dict)
+    )
+    removed = clear_overrides(path)
     unlisted = max(0, removed - count - undeclared)
     return _reset_all_message(count, undeclared=undeclared, unlisted=unlisted)
 
@@ -3104,7 +3139,7 @@ class _ShownEntries(NamedTuple):
 
 def _keeps_settings_apart(command_scope: "ConfigLevel | None") -> bool:
     """Whether *command_scope*'s noun keeps its settings in a file of its own."""
-    return command_scope in (ConfigLevel.system, ConfigLevel.workset)
+    return command_scope in (ConfigLevel.system, ConfigLevel.workset, ConfigLevel.agent)
 
 
 def _shown_entries(
