@@ -1558,17 +1558,9 @@ def _insert_dotted(store: KeyStore, dotted: str, value: Any) -> None:
             f"{{box_dest: [src[, options]]}} (spec §2a — the entry name was "
             f"dropped 2026-08-08c). Emit the category, not the entry."
         )
-    node: KeyStore = store
-    for part in parts[:-1]:
-        # ⚑ UNBOUND dict.get (S3): never the bound ``node.get`` — a leaf named ``get`` would shadow
-        # the method into a crash. Uniform even though these stores are module-built.
-        existing = dict.get(node, part)
-        if not isinstance(existing, KeyStore):
-            existing = KeyStore()
-            node[part] = existing
-        node = existing
+    leaf: Any
     if at_arm and parts[-1] in _BIND_ARMS and isinstance(value, dict):
-        node[parts[-1]] = parse_bind_map(
+        leaf = parse_bind_map(
             value, category=f"{_DEST_KEYED_CATEGORY}.{parts[-1]}",
         )
     elif _at_bind_leaf(tuple(parts), in_binds=False) and isinstance(value, dict):
@@ -1576,14 +1568,15 @@ def _insert_dotted(store: KeyStore, dotted: str, value: Any) -> None:
         # its own segments, so the DECLARATION ROOT is read from them rather than left
         # unsupplied. A producer that already rooted (``agent_defaults.load_common``)
         # emits a self-resolving source, which is stored verbatim.
-        node[parts[-1]] = parse_bind_map(
+        leaf = parse_bind_map(
             value, category=parts[-1],
             root_ref=_declaration_root_ref(tuple(parts[:-1]), parts[-1]),
         )
     elif parts[-1] in _MARKER_LEAF_CATEGORIES and isinstance(value, dict):
-        node[parts[-1]] = _parse_marker_map(value, path=tuple(parts))
+        leaf = _parse_marker_map(value, path=tuple(parts))
     else:
-        node[parts[-1]] = _parse_node(value, in_binds=in_binds)
+        leaf = _parse_node(value, in_binds=in_binds)
+    store.insert_segments(parts, leaf)
 
 
 def assemble_levels(
