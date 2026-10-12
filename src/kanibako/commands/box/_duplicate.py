@@ -44,7 +44,7 @@ from kanibako.settings.paths import (
     resolve_workset_project,
     unregister_primary_box_name,
 )
-from kanibako.utils import confirm_prompt, literal_path
+from kanibako.utils import confirm_or_abort, literal_path
 from kanibako.errors import BoxNameError, DerivedBoxNameError, ProjectError
 from kanibako.launch.box_identity import (box_name_cure, refuse_nonleaf_standalone_name,
                                           sanitize_cap, validate_box_name)
@@ -261,10 +261,7 @@ def _run_duplicate_cross_mode(args: argparse.Namespace, std, config) -> int:
         print(f"  from: {source_path}")
         print(f"    to: {new_path}")
         print()
-        try:
-            confirm_prompt("Type 'yes' to confirm: ")
-        except Exception:
-            print("Aborted.")
+        if not confirm_or_abort(False, "Type 'yes' to confirm: "):
             return 2
 
     # Copy workspace (unless --bare).  The copy SOURCE is the source box's live
@@ -783,10 +780,7 @@ def _duplicate_to_workset(args, std, config) -> int:
         print(f"  from:    {source_path}")
         print(f"  workset: {ws_name}/{proj_name}")
         print()
-        try:
-            confirm_prompt("Type 'yes' to confirm: ")
-        except Exception:
-            print("Aborted.")
+        if not confirm_or_abort(False, "Type 'yes' to confirm: "):
             return 2
 
     # Re-root the project into the workset group (copy workspace unless --bare).
@@ -869,10 +863,7 @@ def _duplicate_from_workset(args, source_path, new_path, std, config) -> int:
         print(f"  from: {ws.name}/{proj_name}")
         print(f"    to: {new_path}")
         print()
-        try:
-            confirm_prompt("Type 'yes' to confirm: ")
-        except Exception:
-            print("Aborted.")
+        if not confirm_or_abort(False, "Type 'yes' to confirm: "):
             return 2
 
     # ⚑ Route 3, this route's own sighting of it.
@@ -1041,10 +1032,7 @@ def run_duplicate(args: argparse.Namespace) -> int:
         print(f"  from: {source_path}")
         print(f"    to: {new_path}")
         print()
-        try:
-            confirm_prompt("Type 'yes' to confirm: ")
-        except Exception:
-            print("Aborted.")
+        if not confirm_or_abort(False, "Type 'yes' to confirm: "):
             return 2
 
     # 8. Registration runs BEFORE anything is copied: refused after ``_merge_workspace``,

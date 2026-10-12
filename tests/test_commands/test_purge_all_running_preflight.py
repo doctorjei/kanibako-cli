@@ -43,7 +43,7 @@ def _no_question(monkeypatch):
     """Fail if the purge reaches its confirmation: a refusal comes before it."""
     def _asked(*_a, **_k):
         raise AssertionError("the purge asked its question despite a live box")
-    monkeypatch.setattr("kanibako.commands.clean.confirm_prompt", _asked)
+    monkeypatch.setattr("kanibako.utils.confirm_prompt", _asked)
 
 
 def _world(config_file, tmp_home):
@@ -163,7 +163,7 @@ class TestPurgeAllRefusesWhileABoxRuns:
         _std, boxes = _world(config_file, tmp_home)
         _runtime(monkeypatch, tmp_path, ["kb-primary-someoneelse"])
         asked = []
-        monkeypatch.setattr("kanibako.commands.clean.confirm_prompt",
+        monkeypatch.setattr("kanibako.utils.confirm_prompt",
                             lambda *a, **k: asked.append(a))
 
         assert _purge_all() == 0

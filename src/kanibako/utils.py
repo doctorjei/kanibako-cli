@@ -53,6 +53,23 @@ def confirm_prompt(message: str) -> None:
         raise UserCanceled("Aborted.")
 
 
+def confirm_or_abort(force: bool, message: str, *, announce_abort: bool = True) -> bool:
+    """Gate a destructive step on :func:`confirm_prompt`; True ⇒ go on.
+
+    *force* skips the prompt.  A decline prints ``Aborted.`` and answers False; a caller that
+    words its own abort line passes ``announce_abort=False``.
+    """
+    if force:
+        return True
+    try:
+        confirm_prompt(message)
+    except UserCanceled:
+        if announce_abort:
+            print("Aborted.")
+        return False
+    return True
+
+
 def deep_merge(base: dict, override: dict) -> dict:
     """*base* with *override*'s entries added, a table into its table; neither is mutated.
 

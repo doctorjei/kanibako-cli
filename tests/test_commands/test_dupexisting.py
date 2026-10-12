@@ -80,7 +80,7 @@ class TestAnExistingDestinationIsRefusedCleanly:
         dest = tmp_home / "dest"
         dest.mkdir()
         # Bypass the cross-mode confirmation prompt.
-        monkeypatch.setattr(_duplicate, "confirm_prompt", lambda msg: None)
+        monkeypatch.setattr("kanibako.utils.confirm_prompt", lambda msg: None)
         rc = _duplicate.run_duplicate(_dupe_args(src, dest, to_mode=BoxMode.primary))
         assert rc == 1
         err = capsys.readouterr().err
@@ -101,7 +101,7 @@ class TestAnExistingDestinationIsRefusedCleanly:
         # stage (the existing code aborts at the prompt if no input).
         dest = tmp_home / "dest"
         dest.mkdir()
-        monkeypatch.setattr(_duplicate, "confirm_prompt", lambda msg: None)
+        monkeypatch.setattr("kanibako.utils.confirm_prompt", lambda msg: None)
         rc = _duplicate.run_duplicate(
             _dupe_args(src, dest, to_mode=BoxMode.standalone))
         assert rc == 1
@@ -131,7 +131,7 @@ class TestAScalarBoxSectionRefusesBeforeAnyCopy:
                tmp_home)
         src = _primary(env, "src")
         dest = _scalar_box_dst(tmp_home)
-        monkeypatch.setattr(_duplicate, "confirm_prompt", lambda msg: None)
+        monkeypatch.setattr("kanibako.utils.confirm_prompt", lambda msg: None)
         before = _hash_tree(dest)
         with pytest.raises(ConfigError, match="box"):
             _duplicate.run_duplicate(
@@ -174,7 +174,7 @@ class TestAKanjiLeafDestinationIsRefusedBeforeAnyWrite:
         sentinel = dest_parent / "untouched.txt"
         sentinel.write_text("untouched")
         dest = dest_parent / "日本語"
-        monkeypatch.setattr(_duplicate, "confirm_prompt", lambda msg: None)
+        monkeypatch.setattr("kanibako.utils.confirm_prompt", lambda msg: None)
         before_parent = _hash_tree(dest_parent)
 
         args = _dupe_args(src, dest, to_mode=BoxMode.standalone, force=True)

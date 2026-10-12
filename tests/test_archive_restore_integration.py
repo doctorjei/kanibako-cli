@@ -288,7 +288,7 @@ class TestRestoreGitIntegration:
 
             # Mock confirm_prompt to raise UserCanceled (user says "no")
             with patch(
-                "kanibako.commands.restore.confirm_prompt",
+                "kanibako.utils.confirm_prompt",
                 side_effect=UserCanceled("Aborted."),
             ):
                 rc = _restore_one(
@@ -350,7 +350,7 @@ class TestRestoreGitIntegration:
             non_git.mkdir()
 
             with patch(
-                "kanibako.commands.restore.confirm_prompt",
+                "kanibako.utils.confirm_prompt",
                 side_effect=UserCanceled("Aborted."),
             ):
                 rc = _restore_one(

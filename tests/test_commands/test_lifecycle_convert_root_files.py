@@ -298,7 +298,7 @@ class TestDuplicateSharesThePreflight:
         config, std, tmp_home = env
         src = self._source(env)
         _runtime_says(monkeypatch, running=False)
-        monkeypatch.setattr("kanibako.commands.box._duplicate.confirm_prompt", lambda _msg: None)
+        monkeypatch.setattr("kanibako.utils.confirm_prompt", lambda _msg: None)
         assert run_duplicate(self._args(src, tmp_home / "dst")) == 0
 
     def test_a_running_container_refuses(self, env, capsys, monkeypatch):

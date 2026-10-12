@@ -1,4 +1,4 @@
-"""Tests for kanibako.utils: cp_if_newer, confirm_prompt, project_hash, short_hash, path encoding, container naming."""
+"""Tests for kanibako.utils: cp_if_newer, confirm_prompt, confirm_or_abort, project_hash, short_hash, path encoding, container naming."""
 
 from __future__ import annotations
 
@@ -15,6 +15,7 @@ from kanibako.errors import UserCanceled
 from kanibako.utils import (
     UTC_STAMP_COMPACT,
     UTC_STAMP_SECONDS,
+    confirm_or_abort,
     confirm_prompt,
     container_name_for,
     container_name_for_box_name,
@@ -109,6 +110,33 @@ class TestConfirmPrompt:
     def test_whitespace_yes_passes(self):
         with patch("builtins.input", return_value="  yes  "):
             confirm_prompt("ok? ")  # Should not raise
+
+
+class TestConfirmOrAbort:
+    def test_force_never_prompts(self):
+        with patch("builtins.input", side_effect=AssertionError("prompted")):
+            assert confirm_or_abort(True, "ok? ") is True
+
+    def test_yes_goes_on(self, capsys):
+        with patch("builtins.input", return_value="yes"):
+            assert confirm_or_abort(False, "ok? ") is True
+        assert capsys.readouterr().out == "ok? "
+
+    @pytest.mark.parametrize("answer", ["no", "", "y"])
+    def test_decline_prints_aborted(self, answer, capsys):
+        with patch("builtins.input", return_value=answer):
+            assert confirm_or_abort(False, "ok? ") is False
+        assert capsys.readouterr().out == "ok? Aborted.\n"
+
+    def test_eof_prints_aborted(self, capsys):
+        with patch("builtins.input", side_effect=EOFError):
+            assert confirm_or_abort(False, "ok? ") is False
+        assert capsys.readouterr().out == "ok? \nAborted.\n"
+
+    def test_decline_silent_when_caller_words_abort(self, capsys):
+        with patch("builtins.input", return_value="no"):
+            assert confirm_or_abort(False, "ok? ", announce_abort=False) is False
+        assert capsys.readouterr().out == "ok? "
 
 
 # ---------------------------------------------------------------------------

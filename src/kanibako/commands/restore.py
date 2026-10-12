@@ -14,7 +14,7 @@ from pathlib import Path
 from kanibako.settings.config import user_config_file, load_config
 from kanibako.runtime.container import remove_box_tree
 from kanibako.settings.core_defaults import materialize_canon_skeleton
-from kanibako.errors import DerivedBoxNameError, ProjectError, UserCanceled, WorksetError
+from kanibako.errors import DerivedBoxNameError, ProjectError, WorksetError
 from kanibako.launch.box_identity import box_name_cure, refuse_standalone_rename
 from kanibako.git import is_git_repo
 from kanibako.settings.paths import (
@@ -26,7 +26,7 @@ from kanibako.settings.paths import (
     resolve_any_project,
 )
 from kanibako.tree_copy import copy_tree_keeping_links
-from kanibako.utils import confirm_prompt, logical_cwd
+from kanibako.utils import confirm_or_abort, logical_cwd
 from kanibako.channels.channels import workset_name_token, workset_root
 from kanibako.settings.workset_dirkeys import EarlyScope, refuse_inherited_per_owner
 from kanibako.settings.messages import MSG_DONE
@@ -221,10 +221,7 @@ def _restore_one(std, config, *, project_dir, archive_file, force, name=None) ->
             print(f"Archive from: {archive_path}")
             print(f"Restoring to: {workspace or '<None>'}")
             print()
-            try:
-                confirm_prompt("Continue anyway? Type 'yes' to confirm: ")
-            except UserCanceled:
-                print("Aborted.")
+            if not confirm_or_abort(False, "Continue anyway? Type 'yes' to confirm: "):
                 return 2
 
         # Validate git state
@@ -387,15 +384,12 @@ def _restore_all(std, config, args) -> int:
         print(f"  {archive.name} → {project_path}")
     print()
 
-    if not args.force:
-        try:
-            confirm_prompt(
-                "Restore all listed archives? Existing session data will be overwritten.\n"
-                "Type 'yes' to confirm: "
-            )
-        except UserCanceled:
-            print("Aborted.")
-            return 2
+    if not confirm_or_abort(
+        args.force,
+        "Restore all listed archives? Existing session data will be overwritten.\n"
+        "Type 'yes' to confirm: ",
+    ):
+        return 2
 
     restored = 0
     failed = 0
@@ -441,10 +435,7 @@ def _validate_git_state(workspace: Path | None, info: dict[str, str], force: boo
                 if key in info:
                     print(f"  {key}: {info[key]}")
             print()
-            try:
-                confirm_prompt("Continue anyway? Type 'yes' to confirm: ")
-            except UserCanceled:
-                print("Aborted.")
+            if not confirm_or_abort(False, "Continue anyway? Type 'yes' to confirm: "):
                 return 2
         return 0
 
@@ -480,10 +471,7 @@ def _validate_git_state(workspace: Path | None, info: dict[str, str], force: boo
         print(f"  Branch: {current_branch}")
         print(f"  Commit: {current_commit}")
         print()
-        try:
-            confirm_prompt("Continue anyway? Type 'yes' to confirm: ")
-        except UserCanceled:
-            print("Aborted.")
+        if not confirm_or_abort(False, "Continue anyway? Type 'yes' to confirm: "):
             return 2
 
     return 0

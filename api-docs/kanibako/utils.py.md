@@ -19,6 +19,7 @@ _GITIGNORE_ENTRIES = ['box_data/']
 ```
 def cp_if_newer(src: str | os.PathLike, dst: str | os.PathLike) -> bool
 def confirm_prompt(message: str) -> None
+def confirm_or_abort(force: bool, message: str, *, announce_abort: bool=True) -> bool
 def deep_merge(base: dict, override: dict) -> dict
 def utc_stamp(kind: Literal['iso', 'compact', 'seconds']) -> str
 def short_hash(full_hash: str, length: int=8) -> str

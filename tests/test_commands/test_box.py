@@ -1671,7 +1671,7 @@ class TestBoxDuplicateCrossMode:
         # mock the prompt so the pre-fix path would reach the copy (post-fix the
         # guard refuses before the prompt, so this mock is simply unused).
         with patch(
-            "kanibako.commands.box._duplicate.confirm_prompt",
+            "kanibako.utils.confirm_prompt",
             return_value=None,
         ):
             rc = run_duplicate(
@@ -1723,7 +1723,7 @@ class TestBoxDuplicateCrossMode:
         # FileExistsError → friendly refusal.
         buf = io.StringIO()
         with redirect_stderr(buf), patch(
-            "kanibako.commands.box._duplicate.confirm_prompt",
+            "kanibako.utils.confirm_prompt",
             return_value=None,
         ):
             rc = run_duplicate(

@@ -468,7 +468,7 @@ class TestExtractExtended:
         other = tmp_home / "other_project"
         other.mkdir()
 
-        with patch("kanibako.commands.restore.confirm_prompt") as m_prompt:
+        with patch("kanibako.utils.confirm_prompt") as m_prompt:
             args = argparse.Namespace(
                 file=archive_path, path=str(other), name=None,
                 all_archives=False, force=False,
@@ -485,7 +485,7 @@ class TestExtractExtended:
         other = tmp_home / "other_project"
         other.mkdir()
 
-        with patch("kanibako.commands.restore.confirm_prompt", side_effect=UserCanceled("no")):
+        with patch("kanibako.utils.confirm_prompt", side_effect=UserCanceled("no")):
             args = argparse.Namespace(
                 file=archive_path, path=str(other), name=None,
                 all_archives=False, force=False,
@@ -501,7 +501,7 @@ class TestExtractExtended:
         other = tmp_home / "other_project"
         other.mkdir()
 
-        with patch("kanibako.commands.restore.confirm_prompt") as m_prompt:
+        with patch("kanibako.utils.confirm_prompt") as m_prompt:
             args = argparse.Namespace(
                 file=archive_path, path=str(other), name=None,
                 all_archives=False, force=True,
@@ -519,7 +519,7 @@ class TestExtractExtended:
 
         # The archive has git metadata. Current HEAD may differ.
         # We patch _validate_git_state to simulate a mismatch prompt
-        with patch("kanibako.commands.restore.confirm_prompt"):
+        with patch("kanibako.utils.confirm_prompt"):
             args = argparse.Namespace(
                 file=archive_path, path=project_dir, name=None,
                 all_archives=False, force=False,

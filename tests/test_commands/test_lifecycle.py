@@ -2735,7 +2735,7 @@ class TestDuplicateRefusalCreatesNothing:
         box_tier = self._scalar_box_tier(pdir)
         dst = tmp_home / "curedst"
 
-        with patch("kanibako.commands.box._duplicate.confirm_prompt",
+        with patch("kanibako.utils.confirm_prompt",
                    return_value=True) as confirm:
             with pytest.raises(ConfigError):
                 _duplicate_to_standalone(pdir, dst, force=False)
@@ -2744,7 +2744,7 @@ class TestDuplicateRefusalCreatesNothing:
 
         # The cure, exactly as the refusal prints it: hand-fix the section, retry.
         box_tier.write_text("box:\n  enable_vault: false\n")
-        with patch("kanibako.commands.box._duplicate.confirm_prompt",
+        with patch("kanibako.utils.confirm_prompt",
                    return_value=True):
             rc = _duplicate_to_standalone(pdir, dst, force=False)
 
@@ -2774,7 +2774,7 @@ class TestDuplicateRefusalCreatesNothing:
         box_tier.write_text("box: 42\n")
         dst = tmp_home / "wsdst"
 
-        with patch("kanibako.commands.box._duplicate.confirm_prompt",
+        with patch("kanibako.utils.confirm_prompt",
                    return_value=True) as confirm:
             with pytest.raises(ConfigError) as exc:
                 _duplicate_to_standalone(src, dst, force=False)

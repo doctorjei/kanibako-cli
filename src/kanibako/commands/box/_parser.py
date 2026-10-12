@@ -2451,8 +2451,7 @@ def _confirm_purge(steps: list[_PurgeStep], *, force: bool,
 
     ⚑ The KEPT list prints HERE, before the question: asking without it is a blind delete.
     """
-    from kanibako.errors import UserCanceled
-    from kanibako.utils import confirm_prompt
+    from kanibako.utils import confirm_or_abort
 
     print()
     kept: list[tuple[str, Path, str]] = []
@@ -2480,14 +2479,8 @@ def _confirm_purge(steps: list[_PurgeStep], *, force: bool,
             print(f"  {step.what}: {step.path} → {os.readlink(step.path)} (link only; target kept)")
         else:
             print(f"  {step.what}: {step.path}")
-    if force:
-        return True
-    try:
-        confirm_prompt(f"Delete these {count}? This cannot be undone.\n"
-                       "Type 'yes' to confirm: ")
-    except UserCanceled:
-        return False
-    return True
+    return confirm_or_abort(force, f"Delete these {count}? This cannot be undone.\n"
+                            "Type 'yes' to confirm: ", announce_abort=False)
 
 
 def _run_purge_plan(steps: list[_PurgeStep], std: StandardPaths) -> bool:

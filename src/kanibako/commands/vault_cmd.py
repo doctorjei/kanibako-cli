@@ -6,7 +6,7 @@ import argparse
 import shlex
 import sys
 
-from kanibako.errors import ProjectError, UserCanceled
+from kanibako.errors import ProjectError
 from kanibako.settings.config import user_config_file, load_config
 from kanibako.settings.paths import (
     BoxMode,
@@ -26,7 +26,7 @@ from kanibako.snapshots import (
     restore_snapshot,
     snapshots_to_prune,
 )
-from kanibako.utils import confirm_prompt
+from kanibako.utils import confirm_or_abort
 
 
 def add_vault_subparser(parent_sub: argparse._SubParsersAction) -> None:
@@ -195,18 +195,6 @@ def run_list(args: argparse.Namespace) -> int:
     return 0
 
 
-def _confirm_destructive(force: bool, message: str) -> bool:
-    """Gate a destructive vault command; ``force`` skips the prompt only."""
-    if force:
-        return True
-    try:
-        confirm_prompt(message)
-    except UserCanceled:
-        print("Aborted.")
-        return False
-    return True
-
-
 def run_restore(args: argparse.Namespace) -> int:
     project_dir = getattr(args, "project", None)
     resolved = _resolve_vault_rw(project_dir, f"restore {shlex.quote(args.name)}")
@@ -220,7 +208,7 @@ def run_restore(args: argparse.Namespace) -> int:
     known = {
         name for name, _ts, _size in list_snapshots(vault_rw, box_name=box_name)
     }
-    if args.name in known and not _confirm_destructive(
+    if args.name in known and not confirm_or_abort(
         getattr(args, "force", False),
         f"Replace share-rw contents with snapshot {args.name}?\n"
         "The current contents are snapshotted first, so this can be undone.\n"
@@ -257,7 +245,7 @@ def run_prune(args: argparse.Namespace) -> int:
     migrate_legacy_versions(vault_rw, box_name=box_name, store_exclusive=exclusive, held=held)
 
     doomed = snapshots_to_prune(vault_rw, args.keep, box_name=box_name)
-    if doomed and not _confirm_destructive(
+    if doomed and not confirm_or_abort(
         getattr(args, "force", False),
         f"Delete {len(doomed)} snapshot(s), keeping {args.keep} most recent?\n"
         "This cannot be undone.\n"

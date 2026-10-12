@@ -32,7 +32,7 @@ from kanibako.settings.paths import (
     refuse_derived_box_name,
     workset_settings_path,
 )
-from kanibako.utils import confirm_prompt, literal_path, logical_cwd
+from kanibako.utils import confirm_or_abort, literal_path, logical_cwd
 from kanibako.identifiers import find_identifier
 from kanibako.project.workset_registry import (
     load_workset_boxes,
@@ -578,11 +578,11 @@ def run_rm(args: argparse.Namespace) -> int:
                                          purge=args.purge):
             return 1
 
-    if not args.force:
-        label = "and remove files " if args.purge else ""
-        confirm_prompt(
-            f"Unregister {label}working set '{label_name}'? Type 'yes' to confirm: "
-        )
+    label = "and remove files " if args.purge else ""
+    if not confirm_or_abort(
+        args.force, f"Unregister {label}working set '{label_name}'? Type 'yes' to confirm: "
+    ):
+        return 2
     try:
         from kanibako.commands.box._parser import kept_for_recorded_workspace
 
@@ -869,12 +869,12 @@ def run_disconnect(args: argparse.Namespace) -> int:
     if args.remove_files:
         from kanibako.commands.box._parser import box_channel_keeps
         channels = box_channel_keeps(std, BoxMode.named, ws.root, member, workset=ws.name)
-    if not args.force:
-        label = "and remove files " if args.remove_files else ""
-        confirm_prompt(
-            f"Remove {label}project '{member}' from '{ws.name}'? "
-            "Type 'yes' to confirm: "
-        )
+    label = "and remove files " if args.remove_files else ""
+    if not confirm_or_abort(
+        args.force,
+        f"Remove {label}project '{member}' from '{ws.name}'? Type 'yes' to confirm: ",
+    ):
+        return 2
 
     try:
         proj = remove_project(

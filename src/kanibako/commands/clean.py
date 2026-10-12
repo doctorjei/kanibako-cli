@@ -9,7 +9,6 @@ from pathlib import Path
 
 from kanibako.settings.config import load_config
 from kanibako.runtime.container import remove_box_tree, remove_path
-from kanibako.errors import UserCanceled
 from kanibako.settings.paths import (
     BoxMode,
     _early_scope,
@@ -22,7 +21,7 @@ from kanibako.settings.paths import (
     standalone_box_store,
 )
 from kanibako.utils import (
-    confirm_prompt,
+    confirm_or_abort,
     container_name_for_box_name,
 )
 from kanibako.project.workset import (
@@ -535,16 +534,13 @@ def _purge_all(std, config, *, force: bool) -> int:
         print("Aborted.")
         return 1
 
-    if not force:
-        try:
-            confirm_prompt(
-                "Delete ALL session data for every project listed above? "
-                "This cannot be undone.\n"
-                "Type 'yes' to confirm: "
-            )
-        except UserCanceled:
-            print("Aborted.")
-            return 2
+    if not confirm_or_abort(
+        force,
+        "Delete ALL session data for every project listed above? "
+        "This cannot be undone.\n"
+        "Type 'yes' to confirm: ",
+    ):
+        return 2
 
     removed = 0
     failures = 0

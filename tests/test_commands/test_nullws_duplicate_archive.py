@@ -94,7 +94,7 @@ class TestDuplicateReadsTheRecordedWorkspace:
         def _prompted(*_a, **_k):
             raise AssertionError("prompted before refusing")
 
-        monkeypatch.setattr(_duplicate, "confirm_prompt", _prompted)
+        monkeypatch.setattr("kanibako.utils.confirm_prompt", _prompted)
         # Called below ``run_duplicate``, whose own source-path check fires first.
         rc = _duplicate._duplicate_from_workset(
             argparse.Namespace(to_mode="standalone", bare=False, force=False),

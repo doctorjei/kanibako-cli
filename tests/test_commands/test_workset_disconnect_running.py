@@ -409,3 +409,34 @@ class TestLeftoversNeverFailADisconnect:
         assert "could not be located: workset.yaml could not be read" in out
         assert "Re-adopt them: kanibako workset connect nws " in out
         assert "bar" not in _members(std, ws)
+
+
+class TestTheQuestionGatesTheRemoval:
+    """A declined ``workset rm``/``disconnect`` answers rc 2 with ``Aborted.``; nothing goes."""
+
+    def test_a_declined_rm_removes_nothing(self, world, tmp_home, monkeypatch, capsys):
+        from kanibako.project.workset import create_workset, list_worksets
+
+        std, _ws, _log = world
+        empty = create_workset("ews", tmp_home / "ews_root", std)
+        monkeypatch.setattr("builtins.input", lambda: "no")
+        assert _door("workset", "rm", "ews", "--purge") == 2
+        assert capsys.readouterr().out.endswith("Type 'yes' to confirm: Aborted.\n")
+        assert "ews" in list_worksets(std) and empty.root.is_dir()
+
+    def test_a_declined_disconnect_removes_nothing(self, world, monkeypatch, capsys):
+        std, ws, _log = world
+        monkeypatch.setattr("builtins.input", lambda: "no")
+        assert _door("workset", "disconnect", "nws", "bar", "--remove-files") == 2
+        assert capsys.readouterr().out.endswith("Type 'yes' to confirm: Aborted.\n")
+        assert _members(std, ws) == ["bar", "baz"]
+        assert (ws.vault_rw_dir / "bar" / "data.txt").is_file()
+
+    def test_force_never_asks(self, world, monkeypatch):
+        std, ws, _log = world
+
+        def _asked():
+            raise AssertionError("--force asked the question")
+        monkeypatch.setattr("builtins.input", _asked)
+        assert _door("workset", "disconnect", "nws", "bar", "--force") == 0
+        assert _members(std, ws) == ["baz"]
