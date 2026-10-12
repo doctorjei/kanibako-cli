@@ -1,48 +1,20 @@
-"""Helper spawning: B-ary tree numbering and spawn budget management."""
+"""Helper spawning: the helper tree on disk and spawn budget management."""
 
 from __future__ import annotations
 
 import importlib.resources
 import json
+import stat as _st
 from dataclasses import dataclass
 from pathlib import Path
 
+from kanibako import boxfs
 from kanibako.errors import ConfigError
 from kanibako.settings.bootstrap import SPAWN_BUDGET_DEFAULTS
 from kanibako.settings.config import SYSTEM_HELPERS_SECTION, read_system_helpers
 from kanibako.settings.config_io import dump_doc, load_doc
 from kanibako.settings.core_defaults import CANON_GUEST_ROOT, NOTEBOOK_SCRIPTS_REL
 from kanibako.utils import stat_unless_gone
-
-# When breadth is unlimited (-1), use 2^16 for numbering purposes.
-# Large enough to never collide; small enough for human-readable numbers.
-UNLIMITED_BREADTH = 2**16
-
-
-def effective_breadth(breadth: int) -> int:
-    """Return the breadth used for numbering.
-
-    Maps -1 (unlimited) to ``UNLIMITED_BREADTH``.  Positive values pass
-    through unchanged.
-    """
-    if breadth == -1:
-        return UNLIMITED_BREADTH
-    if breadth < 1:
-        msg = f"breadth must be positive or -1, got {breadth}"
-        raise ValueError(msg)
-    return breadth
-
-
-def parent_of(agent: int, breadth: int) -> int | None:
-    """Return the global number of *agent*'s parent.
-
-    Returns ``None`` if *agent* is the director (agent 0).
-    """
-    if agent == 0:
-        return None
-    b = effective_breadth(breadth)
-    return (agent - 1) // b
-
 
 # ---------------------------------------------------------------------------
 # Spawn budget
@@ -298,6 +270,44 @@ def mark_helper_stopped(helpers_dir: Path, helper_num: int) -> None:
         return
     state["status"] = "stopped"
     write_helper_state(helpers_dir, helper_num, state)
+
+
+def existing_helpers(helpers_dir: Path, root: Path) -> list[int]:
+    """The helper numbers under *helpers_dir*: its ``helpers/<N>/`` directories, sorted.
+
+    Read through :mod:`kanibako.boxfs` under *root*, because the hub reads a box's tree
+    with it: a link is not a helper and is skipped, never followed, at an entry or on
+    the way to *helpers_dir*.  A missing *helpers_dir* has none.
+    """
+    try:
+        names = boxfs.listdir(helpers_dir, root)
+    except (FileNotFoundError, NotADirectoryError, boxfs.SymlinkRefusedError):
+        return []
+    found = []
+    for name in names:
+        if not (name.isascii() and name.isdigit()):
+            continue
+        try:
+            st = boxfs.stat(helpers_dir / name, root)
+        except (FileNotFoundError, boxfs.SymlinkRefusedError):
+            continue
+        if _st.S_ISDIR(st.st_mode):
+            found.append(int(name))
+    return sorted(found)
+
+
+def helper_tree_numbers(helpers_dir: Path, root: Path) -> set[int]:
+    """Every helper number on disk in the tree under *helpers_dir*: its helpers, their
+    ``helpers/`` subtrees, and so on down, read as :func:`existing_helpers` reads one.
+    """
+    found: set[int] = set()
+    pending = [helpers_dir]
+    while pending:
+        level = pending.pop()
+        for num in existing_helpers(level, root):
+            found.add(num)
+            pending.append(level / str(num) / "helpers")
+    return found
 
 
 def create_helper_dirs(helpers_dir: Path, helper_num: int) -> Path:

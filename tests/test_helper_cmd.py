@@ -14,7 +14,6 @@ from kanibako.commands.helper_cmd import (
     _cascade_cleanup,
     _format_log_entry,
     _get_existing_helpers,
-    _next_helper_number,
     run_broadcast,
     run_cleanup,
     run_list,
@@ -84,10 +83,33 @@ def helpers_env(tmp_path, monkeypatch):
             return {"status": "ok", "container_name": f"kb-t-helper-{request['helper_num']}"}
         return {"status": "ok"}
 
-    monkeypatch.setattr("kanibako.channels.helper_client.send_request", _hub)
+    monkeypatch.setattr("kanibako.channels.helper_client.send_request", _numbering(_hub))
     yield home
     listener.close()
     shutil.rmtree(real.parent, ignore_errors=True)
+
+
+def _numbering(reply):
+    """A hub stub that hands out helper numbers from 1, as the hub's counter does, and
+    answers any other request with *reply*: a callable is called with the request, an
+    exception is raised, and anything else is returned."""
+    numbers = iter(range(1, 1_000_000))
+
+    def _send(path, request):
+        if request.get("action") == "number":
+            return {"status": "ok", "helper_num": next(numbers)}
+        if isinstance(reply, BaseException):
+            raise reply
+        if callable(reply):
+            return reply(path, request)
+        return reply
+
+    return _send
+
+
+def _launches(m) -> list[dict]:
+    """The launch requests a patched ``send_request`` saw (its number requests left out)."""
+    return [c[0][1] for c in m.call_args_list if c[0][1].get("action") != "number"]
 
 
 def _listening_socket() -> tuple[socket.socket, Path]:
@@ -128,18 +150,6 @@ class TestGetExistingHelpers:
 
     def test_nonexistent_dir(self, tmp_path):
         assert _get_existing_helpers(tmp_path / "nope") == []
-
-
-class TestNextHelperNumber:
-    def test_first_helper(self):
-        assert _next_helper_number([], SpawnBudget()) == 1
-
-    def test_sequential(self):
-        assert _next_helper_number([1], SpawnBudget()) == 2
-        assert _next_helper_number([1, 2], SpawnBudget()) == 3
-
-    def test_fills_gap(self):
-        assert _next_helper_number([1, 3], SpawnBudget()) == 2
 
 
 class TestRunSpawn:
@@ -411,7 +421,7 @@ def _hub_replies_to_stop(monkeypatch, reply: dict | None = None) -> list[dict]:
         stops.append(request)
         return reply
 
-    monkeypatch.setattr("kanibako.channels.helper_client.send_request", _hub)
+    monkeypatch.setattr("kanibako.channels.helper_client.send_request", _numbering(_hub))
     return stops
 
 
@@ -694,7 +704,7 @@ class TestRunRegister:
         monkeypatch.setattr(helper_client, "send_request", _REAL_SEND_REQUEST)
         real = Path(tempfile.mkdtemp(prefix="kbr-", dir="/tmp")) / "s"
         hub = HelperHub()
-        hub.start(real, MagicMock())
+        hub.start(real, MagicMock(helpers_dir=home / "helpers"))
         link = home / ".kanibako" / "state" / "helper.sock"
         link.unlink()
         link.symlink_to(real)
@@ -847,7 +857,7 @@ class TestSocketWiring:
         sock.touch()
 
         with patch("kanibako.channels.helper_client.send_request") as m:
-            m.return_value = {"status": "ok", "container_name": "kanibako-helper-1-abc"}
+            m.side_effect = _numbering({"status": "ok", "container_name": "kanibako-helper-1-abc"})
             args = _make_args(depth=None, breadth=None, model=None)
             rc = run_spawn(args)
 
@@ -863,7 +873,7 @@ class TestSocketWiring:
         sock.touch()
 
         with patch("kanibako.channels.helper_client.send_request") as m:
-            m.return_value = {"status": "error", "message": "image not found"}
+            m.side_effect = _numbering({"status": "error", "message": "image not found"})
             args = _make_args(depth=None, breadth=None, model=None)
             rc = run_spawn(args)
 
@@ -881,7 +891,7 @@ class TestSocketWiring:
     def test_spawn_connection_failure(self, helpers_env, capsys):
         """A hub that drops the connection mid-request is a failed launch, too."""
         with patch("kanibako.channels.helper_client.send_request") as m:
-            m.side_effect = ConnectionError("Connection closed before response")
+            m.side_effect = _numbering(ConnectionError("Connection closed before response"))
             rc = run_spawn(_make_args(depth=None, breadth=None, model=None))
         assert rc == 1
         out, err = capsys.readouterr()
@@ -1041,69 +1051,97 @@ class TestNoHub:
 
 class TestTreeWideNumbering:
     """keyspec ``meta.box.helper_num``: "helper index, unique across the director's
-    helper tree".  Helper *p* numbers its children ``p*B+1 .. p*B+B`` (B = breadth),
-    so no two helpers in the tree share a number, and the spawn names the requester.
-    A box learns *p* from its bound spawn document, where the hub writes it."""
+    helper tree".  His 171-HN ruling (b): the HUB numbers every helper from one counter
+    for the whole tree (no blocks, so a number no longer says where its helper sits),
+    and the spawn names the requester, which a box learns from its bound spawn
+    document."""
 
-    def test_the_director_numbers_from_one_and_names_no_requester(self, helpers_env):
+    def test_the_director_takes_the_hubs_number_and_names_no_requester(self, helpers_env):
         with patch("kanibako.channels.helper_client.send_request") as m:
-            m.return_value = {"status": "ok", "container_name": "c"}
+            m.side_effect = _numbering({"status": "ok", "container_name": "c"})
             assert run_spawn(_make_args(depth=None, breadth=None, model=None)) == 0
-        req = m.call_args[0][1]
+        assert m.call_args_list[0][0][1] == {"action": "number"}
+        req = _launches(m)[0]
         assert req["helper_num"] == 1
         assert req.get("requester") is None
 
-    def test_the_director_allocates_one_to_breadth(self, helpers_env, monkeypatch):
-        """No number in the director's document (its budget only): ``1..B``.  A
-        ``KANIBAKO_HELPER_NUM`` in the env is not a source and changes nothing."""
-        monkeypatch.setenv("KANIBAKO_HELPER_NUM", "2")
-        write_spawn_budget(helpers_env / "spawn.yaml", SpawnBudget(depth=2, breadth=3))
-        with patch("kanibako.channels.helper_client.send_request") as m:
-            m.return_value = {"status": "ok", "container_name": "c"}
-            for _ in range(3):
-                assert run_spawn(_make_args(depth=None, breadth=None, model=None)) == 0
-            assert run_spawn(_make_args(depth=None, breadth=None, model=None)) == 1
-        assert [c[0][1]["helper_num"] for c in m.call_args_list] == [1, 2, 3]
-        assert {c[0][1]["requester"] for c in m.call_args_list} == {None}
+    def test_the_number_is_the_hubs_not_the_box(self, helpers_env, capsys):
+        """A number the box would never pick itself (none of its own are on disk)."""
+        def _send(_path, request):
+            if request["action"] == "number":
+                return {"status": "ok", "helper_num": 42}
+            return {"status": "ok", "container_name": "c"}
+
+        with patch("kanibako.channels.helper_client.send_request", side_effect=_send):
+            assert run_spawn(_make_args(depth=None, breadth=None, model=None)) == 0
+        assert "Spawned helper 42" in capsys.readouterr().out
+        assert _get_existing_helpers(helpers_env / "helpers") == [42]
 
     def test_a_planted_number_does_not_survive_the_directors_start(self, helpers_env):
         """A ``meta.box.helper_num`` hand-planted in the director's document is gone
         once a start delivers the budget (``start._deliver_spawn_budget`` writes it
-        through ``write_spawn_budget``), so the director still allocates ``1..B``."""
+        through ``write_spawn_budget``), so the director names no requester."""
         doc = helpers_env / "spawn.yaml"
         write_spawn_budget(doc, SpawnBudget(depth=2, breadth=3))
         write_helper_number(doc, 5)
         write_spawn_budget(doc, SpawnBudget(depth=2, breadth=3))  # the start's delivery
         with patch("kanibako.channels.helper_client.send_request") as m:
-            m.return_value = {"status": "ok", "container_name": "c"}
-            for _ in range(3):
-                assert run_spawn(_make_args(depth=None, breadth=None, model=None)) == 0
-        assert [c[0][1]["helper_num"] for c in m.call_args_list] == [1, 2, 3]
-        assert {c[0][1]["requester"] for c in m.call_args_list} == {None}
+            m.side_effect = _numbering({"status": "ok", "container_name": "c"})
+            assert run_spawn(_make_args(depth=None, breadth=None, model=None)) == 0
+        assert [r.get("requester") for r in _launches(m)] == [None]
 
-    def test_a_helper_numbers_its_children_in_its_own_block(
-        self, helpers_env, capsys,
-    ):
+    def test_a_helpers_children_take_the_counter_not_a_block(self, helpers_env, capsys):
         write_spawn_budget(helpers_env / "spawn.yaml", SpawnBudget(depth=2, breadth=3))
         write_helper_number(helpers_env / "spawn.yaml", 2)
         with patch("kanibako.channels.helper_client.send_request") as m:
-            m.return_value = {"status": "ok", "container_name": "c"}
+            m.side_effect = _numbering({"status": "ok", "container_name": "c"})
             assert run_spawn(_make_args(depth=None, breadth=None, model=None)) == 0
             assert run_spawn(_make_args(depth=None, breadth=None, model=None)) == 0
-        assert [c[0][1]["helper_num"] for c in m.call_args_list] == [7, 8]
-        assert [c[0][1]["requester"] for c in m.call_args_list] == [2, 2]
-        assert "Spawned helper 7" in capsys.readouterr().out
-        assert (helpers_env / "helpers" / "7").is_dir()
+        assert [r["helper_num"] for r in _launches(m)] == [1, 2]
+        assert [r["requester"] for r in _launches(m)] == [2, 2]
+        assert (helpers_env / "helpers" / "2").is_dir()
+
+    @pytest.mark.parametrize("reply", [
+        {"status": "error", "message": "hub says no"},
+        {"status": "ok"},
+        {"status": "ok", "helper_num": 0},
+        {"status": "ok", "helper_num": True},
+        ConnectionError("hub went away"),
+    ])
+    def test_no_number_from_the_hub_writes_nothing(self, helpers_env, capsys, reply):
+        with patch("kanibako.channels.helper_client.send_request") as m:
+            if isinstance(reply, BaseException):
+                m.side_effect = reply
+            else:
+                m.return_value = reply
+            assert run_spawn(_make_args(depth=None, breadth=None, model=None)) == 1
+        assert "Cannot spawn: the hub gave no helper number" in capsys.readouterr().err
+        assert not (helpers_env / "helpers").exists()
+        assert _launches(m) == []
+
+    def test_the_breadth_limit_still_counts_this_boxs_helpers(self, helpers_env):
+        write_spawn_budget(helpers_env / "spawn.yaml", SpawnBudget(depth=2, breadth=2))
+        for _ in range(2):
+            assert run_spawn(_make_args(depth=None, breadth=None, model=None)) == 0
+        assert run_spawn(_make_args(depth=None, breadth=None, model=None)) == 1
 
     def test_respawn_names_the_requester(self, helpers_env):
         write_helper_number(helpers_env / "spawn.yaml", 1)
         run_spawn(_make_args(depth=None, breadth=None, model=None))
-        run_stop(_make_args(number=5))
+        run_stop(_make_args(number=1))
         with patch("kanibako.channels.helper_client.send_request") as m:
             m.return_value = {"status": "ok", "container_name": "c"}
-            assert run_respawn(_make_args(number=5)) == 0
+            assert run_respawn(_make_args(number=1)) == 0
         req = m.call_args[0][1]
-        assert (req["helper_num"], req["requester"]) == (5, 1)
+        assert (req["helper_num"], req["requester"]) == (1, 1)
+
+    def test_a_linked_helper_dir_is_not_a_helper(self, helpers_env, tmp_path):
+        helpers = helpers_env / "helpers"
+        helpers.mkdir()
+        (helpers / "1").mkdir()
+        (tmp_path / "elsewhere").mkdir()
+        (helpers / "2").symlink_to(tmp_path / "elsewhere")
+        assert _get_existing_helpers(helpers) == [1]
 
     def test_helper_init_exports_nothing(self):
         """The number is in the spawn document, never a variable (system-design
@@ -1138,13 +1176,6 @@ class TestTreeWideNumbering:
             assert not (helpers_env / "helpers").exists()
         else:
             assert read_helper_state(helpers_env / "helpers", 1)["status"] == "stopped"
-
-    def test_the_numbering_blocks(self):
-        budget = SpawnBudget(depth=3, breadth=4)
-        assert _next_helper_number([], budget, own=0) == 1
-        assert _next_helper_number([], budget, own=1) == 5
-        assert _next_helper_number([5, 6], budget, own=1) == 7
-        assert _next_helper_number([], SpawnBudget(depth=1, breadth=-1), own=1) == 2**16 + 1
 
 
 def _make_args(**kwargs):

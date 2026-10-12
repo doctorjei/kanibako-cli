@@ -14,12 +14,11 @@ from kanibako.channels.helpers import (
     INIT_SCRIPT_NAME,
     PARENT_SCRIPTS_RELPATH,
     SPAWN_CONFIG_FILENAME,
-    SpawnBudget,
     check_spawn_allowed,
     child_budget,
     create_broadcast_dirs,
     create_helper_dirs,
-    effective_breadth,
+    existing_helpers,
     read_helper_number,
     read_helper_state,
     read_spawn_budget,
@@ -259,32 +258,28 @@ def _ro_spawn_config_path(helpers_dir: Path, helper_num: int) -> Path:
 
 
 def _get_existing_helpers(helpers_dir: Path) -> list[int]:
-    """Scan helpers/ for existing helper directories (numeric names)."""
-    if not helpers_dir.is_dir():
-        return []
-    result = []
-    for child in helpers_dir.iterdir():
-        if child.is_dir() and child.name.isdigit():
-            result.append(int(child.name))
-    return sorted(result)
+    """This box's helpers: the numbered directories under *helpers_dir*."""
+    return existing_helpers(helpers_dir, helpers_dir)
 
 
-def _next_helper_number(existing: list[int], budget: SpawnBudget, own: int = 0) -> int:
-    """The first unused number in this box's block: ``own*B+1 .. own*B+B``.
+def _hub_number() -> tuple[int | None, str | None]:
+    """A new helper number from the hub: ``(number, None)``, or ``(None, reason)``.
 
-    keyspec ``meta.box.helper_num``: "unique across the director's helper tree".  Box
-    *own* (0 is the director) numbers its children in its own block of *B* (the
-    breadth, ``effective_breadth`` for unlimited), so no two boxes in the tree hand
-    out the same number.  The breadth is the tree's: each child is handed its
-    parent's (``child_budget``).
+    keyspec ``meta.box.helper_num``: "unique across the director's helper tree".  The
+    hub keeps the one counter for the whole tree, rebuilt from the tree on disk when it
+    starts, so a number is never handed out twice, across sessions included, and says
+    nothing about where in the tree its helper sits.
     """
-    b = effective_breadth(budget.breadth)
-    used = set(existing)
-    first = own * b + 1
-    for n in range(first, first + b):
-        if n not in used:
-            return n
-    raise ValueError(f"no free helper number in {first}..{first + b - 1}")
+    from kanibako.channels.helper_client import send_request
+    try:
+        resp = send_request(_socket_path(), {"action": "number"})
+    except Exception as e:
+        return None, str(e)
+    num = resp.get("helper_num")
+    if resp.get("status") == "ok" and isinstance(num, int) and not isinstance(num, bool) \
+            and num >= 1:
+        return num, None
+    return None, str(resp.get("message", f"the hub answered {resp!r}"))
 
 
 def run_spawn(args: argparse.Namespace) -> int:
@@ -316,8 +311,13 @@ def run_spawn(args: argparse.Namespace) -> int:
         print(_NO_HUB % "spawn", file=sys.stderr)
         return 1
 
-    # Determine helper number: a block of its own per box, so unique across the tree
-    helper_num = _next_helper_number(existing, budget, _own_helper_number() or 0)
+    # This box's own number is read first, so a malformed document refuses before any
+    # write (the launch request names it as the requester).
+    _own_helper_number()
+    helper_num, failure = _hub_number()
+    if helper_num is None:
+        print(f"Cannot spawn: the hub gave no helper number: {failure}", file=sys.stderr)
+        return 1
 
     # Create directory structure
     create_helper_dirs(helpers_dir, helper_num)

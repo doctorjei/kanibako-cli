@@ -10,15 +10,12 @@ import pytest
 from kanibako.channels.helpers import (
     DEFAULT_BREADTH,
     DEFAULT_DEPTH,
-    UNLIMITED_BREADTH,
     SpawnBudget,
     bundled_init_script,
     check_spawn_allowed,
     child_budget,
     create_broadcast_dirs,
     create_helper_dirs,
-    effective_breadth,
-    parent_of,
     read_helper_number,
     read_spawn_budget,
     remove_helper_dirs,
@@ -27,59 +24,6 @@ from kanibako.channels.helpers import (
     write_helper_number,
     write_spawn_budget,
 )
-
-
-# --- effective_breadth ---
-
-
-class TestEffectiveBreadth:
-    def test_positive_passthrough(self):
-        assert effective_breadth(3) == 3
-        assert effective_breadth(1) == 1
-        assert effective_breadth(100) == 100
-
-    def test_unlimited(self):
-        assert effective_breadth(-1) == UNLIMITED_BREADTH
-        assert UNLIMITED_BREADTH == 2**16
-
-    def test_zero_raises(self):
-        with pytest.raises(ValueError, match="breadth must be positive"):
-            effective_breadth(0)
-
-    def test_negative_non_minus_one_raises(self):
-        with pytest.raises(ValueError, match="breadth must be positive"):
-            effective_breadth(-2)
-
-
-# --- parent_of ---
-
-
-class TestParentOf:
-    def test_director_has_no_parent(self):
-        assert parent_of(0, 3) is None
-
-    def test_director_children_b3(self):
-        """Agents 1, 2, 3 are children of director (B=3)."""
-        assert parent_of(1, 3) == 0
-        assert parent_of(2, 3) == 0
-        assert parent_of(3, 3) == 0
-
-    def test_agent1_children_b3(self):
-        """Agents 4, 5, 6 are children of agent 1 (B=3)."""
-        assert parent_of(4, 3) == 1
-        assert parent_of(5, 3) == 1
-        assert parent_of(6, 3) == 1
-
-    def test_agent2_children_b3(self):
-        """Agents 7, 8, 9 are children of agent 2 (B=3)."""
-        assert parent_of(7, 3) == 2
-        assert parent_of(8, 3) == 2
-        assert parent_of(9, 3) == 2
-
-    def test_grandchildren_b3(self):
-        """Agent 4's parent is 1, agent 1's parent is 0."""
-        assert parent_of(4, 3) == 1
-        assert parent_of(parent_of(4, 3), 3) == 0  # type: ignore[arg-type]
 
 
 # --- SpawnBudget ---

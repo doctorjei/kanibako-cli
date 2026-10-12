@@ -731,6 +731,70 @@ class TestHubTreeSpawn:
         assert ctx.runtime.run.call_count == 2
 
 
+class TestHubNumberCounter:
+    """His 171-HN ruling (b): the hub keeps ONE counter for the tree's helper numbers.
+    No blocks, so a number says nothing about where its helper sits, and a restarted
+    hub rebuilds the counter from the tree on disk, so it never reissues a number a
+    helper still holds there (keyspec ``meta.box.helper_num``: "unique across the
+    director's helper tree")."""
+
+    @staticmethod
+    def _restart(tmp_path: Path, ctx: HelperContext) -> tuple[HelperHub, Path]:
+        sock = tmp_path / "helper2.sock"
+        hub = HelperHub()
+        hub.start(sock, ctx)
+        return hub, sock
+
+    def test_numbers_count_up_from_one_and_never_repeat(self, hub_and_sock):
+        _hub, sock_path, _ctx = hub_and_sock
+        got = [_connect_and_send(sock_path, {"action": "number"}) for _ in range(3)]
+        assert got == [{"status": "ok", "helper_num": n} for n in (1, 2, 3)]
+
+    def test_a_restarted_hub_skips_every_number_on_disk(self, tmp_path, mock_ctx):
+        """Old helpers on disk at any depth, whatever breadth numbered them."""
+        _helper_tree(mock_ctx.helpers_dir / "2")
+        _helper_tree(mock_ctx.helpers_dir / "5")
+        _helper_tree(mock_ctx.helpers_dir / "2" / "helpers" / "9")
+        (mock_ctx.helpers_dir / "all").mkdir()
+        hub, sock = self._restart(tmp_path, mock_ctx)
+        try:
+            assert _connect_and_send(sock, {"action": "number"})["helper_num"] == 10
+        finally:
+            hub.stop()
+
+    def test_a_linked_entry_is_not_followed(self, tmp_path, mock_ctx):
+        """The tree is box-writable: a link the box planted is read as a name only,
+        never followed into the host (boxfs), so what it points at is not counted."""
+        outside = tmp_path / "outside"
+        _helper_tree(outside / "helpers" / "40")
+        _helper_tree(outside / "70")
+        (mock_ctx.helpers_dir / "3").symlink_to(outside)
+        _helper_tree(mock_ctx.helpers_dir / "1")
+        (mock_ctx.helpers_dir / "1" / "helpers").symlink_to(outside)
+        hub, sock = self._restart(tmp_path, mock_ctx)
+        try:
+            assert _connect_and_send(sock, {"action": "number"})["helper_num"] == 2
+        finally:
+            hub.stop()
+
+    def test_a_linked_helpers_dir_counts_nothing(self, tmp_path, mock_ctx):
+        outside = tmp_path / "outside"
+        _helper_tree(outside / "70")
+        mock_ctx.helpers_dir.rmdir()
+        mock_ctx.helpers_dir.symlink_to(outside)
+        hub, sock = self._restart(tmp_path, mock_ctx)
+        try:
+            assert _connect_and_send(sock, {"action": "number"})["helper_num"] == 1
+        finally:
+            hub.stop()
+
+    def test_a_spawn_of_a_number_it_did_not_hand_out_moves_the_counter(self, hub_and_sock):
+        _hub, sock_path, ctx = hub_and_sock
+        _helper_tree(ctx.helpers_dir / "7")
+        assert _connect_and_send(sock_path, {"action": "spawn", "helper_num": 7})["status"] == "ok"
+        assert _connect_and_send(sock_path, {"action": "number"})["helper_num"] == 8
+
+
 #: A user's own ``~/canon/notebook/scripts/helper-init.sh`` (``resolve_init_script``):
 #: it registers nothing and exports nothing, and only execs the agent command.
 _CUSTOM_INIT = "#!/usr/bin/env bash\nshift\nexec \"$@\"\n"

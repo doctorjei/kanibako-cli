@@ -17,6 +17,7 @@ from kanibako.channels.helpers import (
     HELPER_SCRIPTS_RELPATH,
     INIT_SCRIPT_NAME,
     SPAWN_CONFIG_FILENAME,
+    helper_tree_numbers,
     mark_helper_stopped,
     write_helper_number,
 )
@@ -97,11 +98,20 @@ class HelperHub:
         # Guarded by ``_containers_lock``.
         self._homes: dict[int, Path] = {}
 
+        # THE COUNTER (his 171-HN ruling): the next helper number this hub hands out,
+        # for the whole tree.  ``start`` sets it past every number on disk, so a hub
+        # that restarts never reissues a number a helper still holds there.  Guarded
+        # by ``_containers_lock``.
+        self._next_num = 1
+
     def start(self, socket_path: Path, context: HelperContext,
               log: MessageLog | None = None) -> None:
         """Bind the Unix socket and start the accept loop."""
         self._ctx = context
         self._log = log
+        on_disk = helper_tree_numbers(context.helpers_dir, context.helpers_dir.parent)
+        with self._containers_lock:
+            self._next_num = max(on_disk, default=0) + 1
 
         # Ensure parent dir exists, remove stale socket
         socket_path.parent.mkdir(parents=True, exist_ok=True)
@@ -247,6 +257,9 @@ class HelperHub:
                 self._log.log_control("register", helper_num)
             return {"status": "ok"}, helper_num
 
+        if action == "number":
+            return self._handle_number(), current_helper
+
         if action == "spawn":
             resp = self._handle_spawn(request)
             return resp, current_helper
@@ -316,6 +329,13 @@ class HelperHub:
             except OSError:
                 logger.debug("Failed to broadcast to helper %d", num)
 
+    def _handle_number(self) -> dict:
+        """Hand out the next helper number; it is never handed out again."""
+        with self._containers_lock:
+            num = self._next_num
+            self._next_num += 1
+        return {"status": "ok", "helper_num": num}
+
     def _handle_spawn(self, request: dict) -> dict:
         """Launch a helper container."""
         ctx = self._ctx
@@ -359,6 +379,9 @@ class HelperHub:
                         "message": f"helper number {helper_num} is already taken in this "
                                    f"tree (by {held})"}
             self._homes[helper_num] = helper_home
+            # A number this hub did not hand out (a respawn of one on disk is already
+            # below the counter) still moves the counter past it.
+            self._next_num = max(self._next_num, helper_num + 1)
 
         # Use helper-init.sh as entrypoint wrapper — it registers with the
         # hub, sources broadcast scripts, then execs the agent command.

@@ -46,7 +46,7 @@ aids, not the authority.
 | `auth_browser.py` | Automated OAuth refresh via headless Playwright browser |
 | `browser_state.py` | Persistent browser context (cookies, localStorage) for OAuth session reuse |
 | `browser_sidecar.py` | On-demand headless Chrome container for agent web access |
-| `channels/helpers.py` | B-ary numbering, spawn budget, directory/channel creation |
+| `channels/helpers.py` | Helper tree on disk, spawn budget, directory/channel creation |
 | `channels/helper_listener.py` | Host-side hub: socket server, message routing, logging |
 | `channels/helper_client.py` | Container-side socket client for hub communication |
 | `commands/` | CLI subcommand implementations |
