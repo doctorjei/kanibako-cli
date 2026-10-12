@@ -803,6 +803,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **A box can no longer grow the host's helper hub without bound.** A helper-socket frame over 16 MiB (no
   newline in sight) now ends that one connection with a logged error; the hub keeps serving every other
   helper. The largest frame a real exchange makes is under 1 MiB.
+- **Template headers are read in any letter case.** A `# Kanibako-Template:` description or
+  `# KANIBAKO-TEMPLATE-CHECK:` smoke check is now shown and run. `rig add` already took such a file as a template,
+  but its description and checks were ignored.
 - **An empty or malformed packaged defaults file is refused as a broken install.** `core-defaults.yaml` or a
   plugin's defaults file that is empty or not a YAML mapping now stops with an `Error:` naming the file, as
   `keyspace-manifest.yaml` already did; before, every default it holds went missing without a word.

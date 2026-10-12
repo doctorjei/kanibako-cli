@@ -19,14 +19,10 @@ import tempfile
 import urllib.request
 from pathlib import Path
 
+from kanibako.runtime.templates_image import is_template_header
+
 # How many leading lines to scan when sniffing a text file for template signals.
 _TEMPLATE_SCAN_LINES = 20
-
-# Header conventions mirrored from templates_image.py. We only need to *detect*
-# their presence here, so a loose prefix match is enough.
-_TEMPLATE_HEADER_RE = re.compile(
-    r"^#\s*kanibako-template(?:-check)?:\s*", re.IGNORECASE
-)
 
 # A leading ``FROM <image>`` directive marks a Containerfile/Dockerfile.
 _FROM_DIRECTIVE_RE = re.compile(r"^\s*FROM\s+\S", re.IGNORECASE)
@@ -92,7 +88,7 @@ def _has_template_signal(path: Path) -> bool:
                     break
                 scanned += 1
                 line = raw.rstrip("\n")
-                if _TEMPLATE_HEADER_RE.match(line):
+                if is_template_header(line):
                     return True
                 stripped = line.strip()
                 if not stripped or stripped.startswith("#"):

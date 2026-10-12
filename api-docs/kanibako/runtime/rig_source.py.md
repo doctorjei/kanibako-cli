@@ -8,7 +8,6 @@ _Signatures only: no comments, no docstrings, no bodies._
 
 ```
 _TEMPLATE_SCAN_LINES = 20
-_TEMPLATE_HEADER_RE = re.compile('^#\\s*kanibako-template(?:-check)?:\\s*', re.IGNORECASE)
 _FROM_DIRECTIVE_RE = re.compile('^\\s*FROM\\s+\\S', re.IGNORECASE)
 _REF_RE = re.compile('^[a-z0-9]+([._-][a-z0-9]+)*(:[0-9]+)?(/[a-z0-9]+([._-][a-z0-9]+)*)*(:[\\w][\\w.-]*)?(@sha256:[a-f0-9]+)?$')
 _IMAGE_TAR_MARKERS = ('manifest.json', 'oci-layout')

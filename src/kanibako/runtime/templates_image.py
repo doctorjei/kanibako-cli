@@ -18,21 +18,34 @@ _VALID_NAME_RE = re.compile(r"^[a-z0-9][a-z0-9_-]*$")
 # pull-only.)
 _TEMPLATE_FILE_PREFIX = "Containerfile.template-"
 
-# Optional description header inside a template Containerfile, e.g.
+# The ONE template-header grammar, any letter case, e.g.
 #   # kanibako-template: Java, Kotlin, Maven (JVM toolchain)
-_DESC_HEADER_RE = re.compile(r"^#\s*kanibako-template:\s*(.+?)\s*$")
+#   # kanibako-template-check: java -version
+# The first is the optional description; the second, zero or more per file, is one
+# non-interactive smoke test that must exit 0 in the built image.  Group 1 is
+# ``-check`` or ``None``; group 2 is the text, stripped.
+_HEADER_RE = re.compile(
+    r"^#\s*kanibako-template(-check)?:\s*(.*?)\s*$", re.IGNORECASE
+)
 
 # Read at most this many lines looking for the description header.
 _DESC_HEADER_SCAN_LINES = 10
 
-# Optional smoke-check header(s) inside a template Containerfile, e.g.
-#   # kanibako-template-check: java -version
-# Zero or more per file; each captured command is one non-interactive smoke
-# test that must exit 0 in the built image.
-_CHECK_HEADER_RE = re.compile(r"^#\s*kanibako-template-check:\s*(.+?)\s*$")
-
 # Backstop: never scan past this many lines looking for check headers.
 _CHECK_HEADER_SCAN_LINES = 30
+
+
+def is_template_header(line: str) -> bool:
+    """Whether *line* is a ``# kanibako-template:`` or ``# kanibako-template-check:`` header."""
+    return _HEADER_RE.match(line) is not None
+
+
+def _header_text(line: str, *, check: bool) -> str | None:
+    """*line*'s description (or, with *check*, smoke-check) text; ``None`` when it has none."""
+    match = _HEADER_RE.match(line)
+    if match is None or (match.group(1) is not None) != check:
+        return None
+    return match.group(2) or None
 
 
 def validate_template_name(name: str) -> None:
@@ -103,9 +116,9 @@ def _read_template_description(containerfile: Path, name: str) -> str:
     try:
         with containerfile.open(encoding="utf-8") as fh:
             for _, line in zip(range(_DESC_HEADER_SCAN_LINES), fh):
-                match = _DESC_HEADER_RE.match(line)
-                if match:
-                    return match.group(1)
+                text = _header_text(line, check=False)
+                if text is not None:
+                    return text
     except OSError:
         pass
     return f"{name} template"
@@ -132,9 +145,9 @@ def read_template_checks(containerfile: Path) -> tuple[str, ...]:
                 stripped = line.strip()
                 if stripped and not stripped.startswith("#"):
                     break
-                match = _CHECK_HEADER_RE.match(line)
-                if match:
-                    checks.append(match.group(1))
+                text = _header_text(line, check=True)
+                if text is not None:
+                    checks.append(text)
     except OSError:
         return ()
     return tuple(checks)

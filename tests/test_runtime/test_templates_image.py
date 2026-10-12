@@ -7,6 +7,7 @@ import pytest
 from kanibako.runtime.templates_image import (
     BundledTemplate,
     _bundled_containers_dir,
+    is_template_header,
     list_bundled_templates,
     read_template_checks,
     rig_image_name,
@@ -292,6 +293,38 @@ class TestReadTemplateChecks:
 
     def test_missing_file_returns_empty(self, tmp_path):
         assert read_template_checks(tmp_path / "nope") == ()
+
+
+class TestOneHeaderGrammar:
+    """Detection (``rig add``) and reading share one header grammar, any letter case."""
+
+    def test_reads_a_header_in_any_case(self, tmp_path):
+        cf = tmp_path / "Containerfile.template-foo"
+        cf.write_text(
+            "# Kanibako-Template: Foo desc\n"
+            "# KANIBAKO-TEMPLATE-CHECK: java -version\n"
+            "FROM scratch\n"
+        )
+        assert [t.description for t in list_bundled_templates(tmp_path)] == ["Foo desc"]
+        assert read_template_checks(cf) == ("java -version",)
+
+    @pytest.mark.parametrize("line", [
+        "# kanibako-template: Foo",
+        "#kanibako-template-check: true",
+        "# Kanibako-Template:",
+        "# KANIBAKO-TEMPLATE-CHECK:   ",
+    ])
+    def test_detects_every_header_spelling(self, line):
+        assert is_template_header(line)
+
+    @pytest.mark.parametrize("line", [
+        "kanibako-template: Foo",
+        "# kanibako-template Foo",
+        "# kanibako-templates: Foo",
+        "FROM scratch",
+    ])
+    def test_rejects_a_non_header(self, line):
+        assert not is_template_header(line)
 
 
 class TestBundledTemplatesDeclareChecks:

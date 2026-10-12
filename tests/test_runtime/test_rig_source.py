@@ -72,6 +72,11 @@ def test_template_via_check_header(tmp_path: Path) -> None:
     assert detect_source_kind(str(cf)) == "template"
 
 
+def test_template_via_header_in_any_case(tmp_path: Path) -> None:
+    cf = _write(tmp_path / "some.txt", "# Kanibako-Template:\n")
+    assert detect_source_kind(str(cf)) == "template"
+
+
 def test_image_tar_manifest(tmp_path: Path) -> None:
     tar = _make_image_tar(tmp_path / "img.tar")
     assert detect_source_kind(str(tar)) == "image"
