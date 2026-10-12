@@ -9,7 +9,7 @@ NEVER mutates the input snapshot (S19): it builds a fresh ``KeyStore``.
 
 ⚑ A reference resolves to a DECLARED key or it does not resolve at all — this pass
 NEVER fabricates a default for a name it cannot find. An absent referent that is a
-declared key propagates ABSENCE (§6b: whole-value → the holder key is DROPPED,
+declared key propagates ABSENCE (spec §0: whole-value → the holder key is DROPPED,
 embedded → ``""``). A present-``None`` referent makes the WHOLE value ``None``,
 whole-value or embedded alike (spec §0, [R186]). Every other unresolvable case is an
 ERROR that NAMES the key: a ref that names no declared key, a cycle, a depth-cap
@@ -18,13 +18,13 @@ resolve to no path.
 
 ⚑ ABSENCE HAS A SECOND SOURCE, and it is not a failure: a PASSTHROUGH variable
 (``$COLORTERM``) whose host signal is unset answers absence too, and a whole-value
-one DROPS its key by the same §6b rule. Nothing is delivered empty on that path.
+one DROPS its key by the same whole-value rule. Nothing is delivered empty on that path.
 🛑 THE DROP IS NOT CONFINED TO ``env``, and the reach is worth stating plainly: a
 whole-value passthrough written as a BINDING's host source drops that binding, with
 no message — exactly as an absent whole-value ``@``-referent in the same position
 always has. One rule, two spellings. A passthrough is a terminal CLAIM about the
 host's display, never a path, so naming one as a source is a mis-write the expansion
-cannot tell from a deliberate §6b drop.
+cannot tell from a deliberate whole-value drop.
 
 ⚑ ``box_dest`` keeps its ``$XDG``/``~`` RAW (S17): ENVIRONMENT differs host vs box,
 so those tokens are DEFERRED to mount time. ``@``-refs (CONFIG) expand BOTH sides.
@@ -36,7 +36,7 @@ scanner) and does not modify it; it adds transitive snapshot lookup, whole-value
 3-state propagation and the CONFIG-vs-ENV deferral.
 
 The per-leaf case enumeration, LENIENT mode's contract, the ``pref`` rules, the
-resolver split, the out-of-scope boundaries, the authority (design §3/§6a/§6b/§6h,
+resolver split, the out-of-scope boundaries, the authority (design §3/§6a/§6h,
 spec §0/§1/§1A/§2a/§2c/§2h) and the seams S3/S17/S18/S19 are all in
 ``llm-docs/kanibako/settings/settings_expand.py.md``.
 """
@@ -65,7 +65,7 @@ from kanibako.settings.settings_resolve import (
 
 
 class _Absent:
-    """Sentinel: a ref resolved to a LEGITIMATELY ABSENT key (§6b propagation).
+    """Sentinel: a ref resolved to a LEGITIMATELY ABSENT key (absence propagation, spec §0).
 
     Distinct from a *cycle* (which raises) and from a stored ``None`` (present-
     None, a real terminal). Module-private, never stored, never a member of
@@ -84,7 +84,7 @@ class _Absent:
 
 
 #: A whole-value ``@``-ref whose referent (transitively) does not exist resolves
-#: to this; the holder key is then DROPPED from the expanded snapshot (§6b).
+#: to this; the holder key is then DROPPED from the expanded snapshot (spec §0).
 _ABSENT: _Absent = _Absent()
 
 
@@ -156,7 +156,7 @@ def _is_whole_value_ref(value: str) -> str | None:
 
     ⚑ THE BRACED FORM MUST LAND HERE, NOT ON THE EMBEDDED PATH. This predicate is
     the ONLY thing that decides the shape, and a braced whole-value ref misrouted
-    to the embedded path silently turns an ABSENT referent (the §6b "drop this key"
+    to the embedded path silently turns an ABSENT referent (spec §0's "drop this key"
     signal) into an empty-string terminal — a real value where the spec means
     absence. See the llm-doc.
 
@@ -350,7 +350,7 @@ class _Expander:
         """Build a fresh expanded KeyStore mirroring *node* at *path*.
 
         A child KeyStore recurses; a leaf goes to :meth:`_expand_leaf`; a
-        whole-value ``@``-ref leaf that resolves ABSENT is DROPPED (§6b). Uses the
+        whole-value ``@``-ref leaf that resolves ABSENT is DROPPED (spec §0). Uses the
         UNBOUND ``dict`` protocol (S3) so a key named ``keys`` / ``items`` / ``get``
         cannot shadow it.
         """
@@ -410,7 +410,7 @@ class _Expander:
             if isinstance(value, BindEntry):
                 self.dest_keys[child_path] = out_key
             if resolved is _ABSENT:
-                continue  # whole-value ref to an absent key → drop this key (§6b).
+                continue  # whole-value ref to an absent key → drop this key (spec §0).
             if isinstance(value, BindEntry) and dict.__contains__(out, out_key):
                 # ⚑ Two DIFFERENT stored dests expanded to ONE destination (files
                 # store UNRESOLVED — design §2b-CAVEAT). Installing the second
@@ -651,7 +651,7 @@ class _Expander:
         return None
 
     def _resolve_whole_value_var(self, name: str) -> StoreValue | _Absent:
-        """A whole-value ``$VAR`` host-side: the value, or :data:`_ABSENT` (§6b).
+        """A whole-value ``$VAR`` host-side: the value, or :data:`_ABSENT` (spec §0).
 
         ⚑ HOST SPACE ONLY, and the guard is at the call site: under ``space="defer"``
         a ``$VAR`` is emitted VERBATIM for the BOX resolver (S17), so answering it
@@ -716,7 +716,7 @@ class _Expander:
         if raw is _ABSENT:
             if self._collect_errors and not absent_ok:
                 # LENIENT (Q9): a DANGLING ref is a set-time defect to record, NOT
-                # the strict §6b silent drop. Raised so the OWNING leaf gets it.
+                # the strict silent drop. Raised so the OWNING leaf gets it.
                 reason = _absent_reason(dotted)
                 if reason is not None:
                     raise _LenientDefect(f"dangling @-reference '@{dotted}' ({reason})")
@@ -724,7 +724,7 @@ class _Expander:
                     raise _LenientDefect(
                         f"dangling @-reference '@{dotted}' ({_NOT_IN_CASCADE})", blind=True,
                     )
-            # ⚑ Absence propagates (§6b) only from a KEY; a ref that names no key is
+            # ⚑ Absence propagates only from a KEY; a ref that names no key is
             # refused by name (spec §0), never dropped.
             verdict = keyspace_verdict(dotted)
             if verdict.cls is not KeyClass.KEY:
@@ -839,7 +839,7 @@ class _Expander:
         if dotted == _PREF_ROOT or dotted.startswith(f"{_PREF_ROOT}."):
             # ⚑ A ``@pref.…`` reference is REFUSED, not resolved (spec §2h).
             # RAISED rather than answered ``_ABSENT``: absent would silently DROP
-            # the referring key (§6b), the failure class this phase exists to
+            # the referring key (spec §0), the failure class this phase exists to
             # eliminate. ``_expand_node`` catches it into the lenient error map.
             raise SettingsError(
                 f"'@{dotted}' is not resolvable: a pref is a REQUEST, not a "
@@ -873,7 +873,7 @@ class _Expander:
         chain: tuple[str, ...],
         none_refs: list[str],
     ) -> str:
-        """Substitute embedded tokens in *value* via ``expand_expr`` (§6b).
+        """Substitute embedded tokens in *value* via ``expand_expr`` (spec §0).
 
         An ``@``-ref token resolves through :meth:`_lookup_str` (absent/None →
         ``""``, a None also RECORDED in *none_refs*, and a :func:`deferred_literal_expr` under
@@ -900,7 +900,7 @@ class _Expander:
         none_refs: list[str],
     ) -> str:
         """``expand_expr`` lookup: resolve *dotted* and coerce to a SUBSTITUTION
-        string (the embedded-token rule, §6b).
+        string (the embedded-token rule, spec §0).
 
         Reuses the transitive resolver, so embedded refs are fixpoint- and
         cycle-guarded too (B7). STRICT: an absent referent → ``""``, an empty

@@ -3047,7 +3047,7 @@ def _assert_box_root_resolved(snapshot: KeyStore) -> None:
     """Fail LOUDLY when the box root, or the store it derives from, did not resolve.
 
     ⚑ NOTHING SURFACES IT. The foundation bind's src IS ``meta.box.home`` =
-    ``@meta.box.path/home``, an EMBEDDED ``@``-ref, and the embedded rule (§6b) coerces
+    ``@meta.box.path/home``, an EMBEDDED ``@``-ref, and the embedded rule (spec §0) coerces
     an absent referent to ``""``. The L7 guarantee-create ``mkdir``\\s that and mounts
     it OVER the box home: the wrong host directory, silently.
 
@@ -3152,7 +3152,7 @@ def post_expand_keys(snapshot: KeyStore, active_agent: str) -> Derive:
     A mirror key resolves as the agent key the pick would copy into it
     (:func:`_mirror_sources`); an auth key is computed from inputs read on the same pass.
     ⚑ The mirror is picked from the EXPANDED tree, where an active-tier leaf whose
-    reference resolves absent is gone (§6b), so the pick takes the fallback tier's leaf.
+    reference resolves absent is gone (spec §0), so the pick takes the fallback tier's leaf.
     The raw pick still names the active leaf; when it reads absent, the fallback tier's
     key for the same leaf is read instead (none for a pseudo-agent, :func:`_fallback_node`).
     """

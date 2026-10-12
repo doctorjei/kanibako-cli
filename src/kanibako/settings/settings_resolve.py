@@ -822,7 +822,7 @@ def resolve_var(name: str, ctx: ResolveCtx) -> str | _Unset:
 
     ⚑ THIS IS THE PRIMITIVE and :func:`_resolve_var` is derived from it, not the other
     way round. Only a caller that can EXPRESS absence may see the third state, and
-    exactly one can: a WHOLE-VALUE expression, which drops its holder key (§6b). An
+    exactly one can: a WHOLE-VALUE expression, which drops its holder key (spec §0). An
     embedded token is string substitution and has no way to say "no variable".
     """
     if name == "AGENT":

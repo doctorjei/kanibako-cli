@@ -1367,7 +1367,7 @@ keys:
            behalf: COLORTERM is unstandardized, only the host can make that claim,
            and TERM beside it was already inherited. `{$COLORTERM}` carries the
            host's own signal; when the host sets none the value resolves to
-           ABSENCE and the key is DROPPED (§6b whole-value), so the box gets NO
+           ABSENCE and the key is DROPPED (spec §0), so the box gets NO
            such variable — never an empty one, a third state readers misparse.
            An ORDINARY key of the parametric `env`
            category (§2a): write-many, so an override is the SAME key in a nearer

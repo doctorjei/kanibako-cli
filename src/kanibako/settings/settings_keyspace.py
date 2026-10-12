@@ -2190,7 +2190,7 @@ def container_notes(
     ⚑ A DECLARED ``NAMESPACE`` is rescued unconditionally, because its key-hood is
     the SPEC's and cannot depend on what a given session happened to write beneath
     it. An empty ``box: {}`` scope table in a settings file is a scope table, not a
-    fabrication; so is a ``meta.box.agent`` whose only child was dropped by §6b when
+    fabrication; so is a ``meta.box.agent`` whose only child was dropped (spec §0) when
     its @-ref referent was absent. ⚑⚑ THIS REPLACES A DEPTH TEST. The rule used to
     read ``len(segments) == 1``, which is a POSITIONAL PROXY for namespace-hood: it
     rescued ``meta`` and reported ``meta.box.agent``, though the spec calls both a
