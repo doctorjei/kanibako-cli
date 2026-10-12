@@ -604,7 +604,7 @@ def is_reserved_workset_name(name: str) -> bool
 Return True if *name* is a reserved sentinel (cannot be a NAMED workset).
 
 ```python
-def _load_workset(root: Path, name: str) -> Workset
+def _load_workset(root: Path, name: str, *, early_system: EarlySystem) -> Workset
 ```
 Build the `Workset` for the globally-registered *name* rooted at *root*.
 
@@ -686,7 +686,7 @@ BOTH name-based lookups AND workset discovery / list. See **The global registry*
 that made it one call.
 
 ```python
-def load_workset(root: Path, name: str) -> Workset
+def load_workset(root: Path, name: str, *, early_system: EarlySystem) -> Workset
 ```
 Load the workset registered as *name* at *root*.
 
