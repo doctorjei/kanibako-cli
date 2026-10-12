@@ -112,7 +112,7 @@ the cascade (setting `workset.template` / `agent.<a>.template` reroutes that lay
   ⚑ Until 2026-09-24 this table gated the layer on the DEFAULT arm's value. That dropped a user-set
   `agent.shell.template` at create, and left a user's null rendering as `/box/home`.
   ⚑ The KEY segment is the CANONICAL node (`persona℘harness`); the VALUE is a store DIRECTORY, so
-  it is the `+` spelling `settings.agent_config.store_dirname` produces. Absent for a NO-AGENT box. ⚑ NODE-ROOTED since 2026-08-27 — see "the persona's template
+  it is the `+` spelling `settings.agent_config.store_dirname` produces. Absent when *agent_id* is empty; the `shell` node declares it like any agent. ⚑ NODE-ROOTED since 2026-08-27 — see "the persona's template
   is SHARED BY LINK" below; it used to spell `harness_of(<a>)`, which for a bare agent is the same
   string and for a persona silently named the wrong store.
 * `workset.seeded` — only for a PRIMARY/NAMED box (a workset tier exists); the source key
@@ -719,7 +719,7 @@ DROP the agent's and the workset's contributions to the box chapter.
 
 The ORDERED dotted SOURCE keys whose values root the three handbook layers: `system.template` →
 `agent.<a>.template` → `workset.template`, lowest layer first, gated exactly as the box-home layers
-are gated (no agent bound → no agent layer; STANDALONE has no workset tier → no workset layer).
+are gated (no *agent_id* → no agent layer; STANDALONE has no workset tier → no workset layer).
 
 ⚑ DERIVED FROM `template_seed_defaults`, not restated beside it, and that is the whole point of the
 function: the gate that decides whether a layer exists is read from the one table rather than

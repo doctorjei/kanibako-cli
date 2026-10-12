@@ -99,16 +99,18 @@ Spec §2h's CATEGORICAL tier, which the CLI does not inherit and therefore resta
 
 `build_cli_level` returns the level for one launch, or `None` when it would be empty.
 
-**`selection`** is P7's resolved-agent level (`{"system.agent": node}` from
-`kanibako.settings.agent_select.AgentSelection.selection_level`, or `None` for a NO-AGENT box). It is
-carried through VERBATIM: it is installed on EVERY resolve, whichever of its three sources won, so
+**`selection`** is P7's resolved-agent level (`{"system.agent": node}`; a launch builds it in
+`start._launch_selection_level`, which pins `shell` when nothing was selected), or `None` when the
+caller has no selection. It is carried through VERBATIM: it is installed on EVERY resolve, whichever
+of its three sources won, so
 `@system.agent` equals the node that actually runs. See `kanibako.settings.agent_select` for why
 that is load-bearing.
 
 **`active_agent`** is the discriminator the agent-scope keys are spelled against. The agent-scope
-entries are emitted ONLY when it is truthy — a NO-AGENT / `--entrypoint` launch resolves against the
-`"general"` template slot, which is not an agent, so a flag there is simply not applicable and is
-dropped rather than fabricating `agent.general.*`.
+entries are emitted ONLY when it is truthy. A launch with no target (`kanibako shell`,
+`--entrypoint`) passes `None`: it resolves in the `shell` slot (`agent_ref.GENERAL_SLOT`), but no
+parser exposes these flags for it, and `agent.shell.model` is DECLARED, so spelling it would install
+a flag value on the shell tier.
 
 ⚑ **The agent-scope spelling is `agent.<active>.<leaf>`, never `agent.default.<leaf>`.**
 `effective_behavior` performs the §2d active-over-default pick AFTER the cascade merge, so a value at

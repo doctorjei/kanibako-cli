@@ -857,7 +857,7 @@ def check_auth(self) -> bool          # default True
 `has_binary` says whether this target requires a host-installed binary; `check_auth` returns
 whether the agent is authenticated.
 
-`descriptor` is the declarative plugin descriptor, `None` ONLY for the built-in no-agent shell.
+`descriptor` is the declarative plugin descriptor, `None` ONLY for the built-in `shell` pseudo-agent.
 Core assembles launch argv, bindings, container env and credential sync declaratively from it; the
 legacy per-method launch hooks were removed for the public release. **Every shipped agent plugin
 returns a descriptor.** The sole descriptor-less target is `shell.ShellTarget`, which launches
@@ -1131,8 +1131,7 @@ letting plugins drift.
 non-persona launches — the write must then be BYTE-IDENTICAL to a provider-less one. Today only
 codex consumes it; the type generalizes when the emitter bodies move into the plugins.
 
-The `False` default is inherited by an agent with no directive-hook surface (goose, the no-agent
-shell).
+The `False` default is inherited by an agent with no directive-hook surface (goose, `ShellTarget`).
 
 #### `reattach_config_notice`
 

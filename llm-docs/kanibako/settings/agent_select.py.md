@@ -93,7 +93,8 @@ re-read. See `settings_prefs.LOCATOR_CLOSURE`.
 ## `AgentSelection` — the two field vocabularies
 
 *node* is the canonical agent NODE-name (`persona℘harness`; a bare agent is byte-identical to its
-harness), or `""` for a **NO-AGENT plain-shell box** (spec §2b, D-M6).
+harness). `select_agent` never returns `""` (see `has_agent`); a plain-shell box is the node `shell`
+(keyspec §2b, §2d).
 
 *source* answers *"why did system.agent resolve to that?"* without reading files:
 
@@ -145,27 +146,19 @@ was dead in front of the only question being asked (P4).
 target = resolve_target(harness_of(sel.node), path) if sel.has_agent else None
 ```
 
-`None` is the shipped PLAIN-SHELL shape — exactly what `kanibako shell` produces — and every
-downstream gate already keys on `target is None` (no agent binds, no agent config, no credential
-delivery, no `KANIBAKO_AGENT` stamp, `agent_id` = `"general"`).
+`None` is the target-less shape `kanibako shell` and `--entrypoint` launches produce, and every
+downstream gate keys on `target is None` (no agent binds, no agent config, no credential delivery,
+no `KANIBAKO_AGENT` stamp, `agent_id` = `"shell"`, `agent_ref.GENERAL_SLOT`).
 
-⚑ Deliberately NOT `ShellTarget()`: that is a RESOLVED target, so it would earn a
-`KANIBAKO_AGENT` stamp — and the stamp is what drives the stop / creds-watch writeback, which would
-then run a credential lifecycle against a box that has none. `ShellTarget` stays the right answer
-for `resolve_target`'s own auto-detect-found-nothing case; it is not the right answer for "the user
-asked for NO agent".
+⚑ Deliberately NOT `ShellTarget()`: that is a RESOLVED target and earns a `KANIBAKO_AGENT` stamp.
+A box gets `ShellTarget` by selecting `shell` by name, or from `resolve_target`'s own
+auto-detect-found-nothing case — never from a selection that named nothing.
 
-The property is keyed on *source* (not on the string) so the distinction survives even if a future
-source ever produced an empty node for a different reason; the `node` test is the belt-and-braces
-half.
+## `selection_level`
 
-## `selection_level` — a NO-AGENT box installs NOTHING
-
-The §1A top-most level to install, or `None` for a no-agent box.
-
-`system.agent` must stay absent/`None` so the box skips the agent binds, credentials and the
-layer-2 template. In particular it must NOT be pinned to the `"general"` slot the launch uses as
-the agent-scope discriminator for a shell box — that is a template fallback, not an agent.
+The §1A top-most level to install (`{"system.agent": node}`), or `None` for an empty node. A launch
+with no selection at all pins `system.agent: shell` itself (`start._launch_selection_level`, keyspec
+§2b D-M6).
 
 ## `launch_resolve_ctx` — the ONE ctx builder, and the resolver split
 

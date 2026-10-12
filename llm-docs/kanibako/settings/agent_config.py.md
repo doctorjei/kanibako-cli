@@ -72,8 +72,9 @@ the four-byte string past every file-level fallback, so `agent get <node> env.<V
 where the identical `secret_path` read printed `null`. **A field's TYPE can be the thing that makes
 a reader wrong.**
 
-⚑ It is NOT needed to preserve a user's `agent set`. That verb writes through `write_nested_key` and
-never builds an `AgentConfig`, and every `agent_file.save` caller persists a FRESHLY GENERATED config
+⚑ It is NOT needed to preserve a user's `agent set`. That verb routes through
+`config_interface.set_config_value`, which writes one leaf (`agent_file.write_leaf`) and never builds
+an `AgentConfig`, and every `agent_file.save` caller persists a FRESHLY GENERATED config
 (first-use only) — so there is no read-modify-write round trip for a value to fall out of.
 
 ### `secret_path` — the SECRET category
@@ -197,8 +198,7 @@ A caller needing a real `Path` composes `agents_root / store_dirname(node) / <re
 self-resolving source is emitted VERBATIM, and a bare relative leaf becomes `<root_ref>/<src>`.
 
 ⚑ An ABSOLUTE (or `~` / `$var` / `@`-ref) source in an abstract category is LEGAL and is NOT
-root-joined. The root is a **default for relative sources, not a universal law** (spec §2a; the
-spec's own `caches.transform` worked example is an `@system.cache`-rooted identity mount).
+root-joined. The root is a **default for relative sources, not a universal law** (spec §2a).
 
 It is applied ONLY by the ABSTRACT-category declaration loaders. `bindings.{ro,rw}` take no root at
 any scope, so a relative source there is a DEFECT rather than a shorthand, and is refused where it is
