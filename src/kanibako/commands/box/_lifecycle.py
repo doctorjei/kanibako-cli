@@ -132,6 +132,7 @@ from kanibako.project.workset import (
     _symlink_loop,
     _resolved_unless_loop,
     SYMLINK_LOOP_WHY,
+    CANON_SYMLINK_LOOP_WHY,
     _Unwind,
     _note_unwind_errors,
     _note_unwind_incomplete as _note_rollback_incomplete,
@@ -500,6 +501,8 @@ def _resolve_primary_state(
         std, config, project_dir=str(root), initialize=False,
     )
     if not proj.metadata_path.is_dir():
+        if _symlink_loop(proj.metadata_path):
+            raise unreadable_path_error(proj.metadata_path, _eloop(proj.metadata_path))
         raise ProjectError(f"No project data found for {root}")
     return _state_from_paths("primary", proj, std=std, ws=None, early=_early_scope(std, BoxMode.primary))
 
@@ -1704,6 +1707,10 @@ def _validate(
             own = own | {state.workspace_path}
         taken = [p for p in sorted(_existing_member_leaves(target_ws, new_name))
                  if p not in own]
+        if taken and _symlink_loop(taken[0]):
+            raise ProjectError(
+                f"Refusing to land '{new_name}' in workset '{target_ws.name}': "
+                f"{unreadable_path_error(taken[0], _eloop(taken[0]))}")
         if taken:
             raise ProjectError(
                 f"Refusing to land '{new_name}' in workset '{target_ws.name}': "
@@ -2377,12 +2384,29 @@ def _is_per_box_leaf(leaf: Path, arm: Path) -> bool:
     return arm.resolve() in leaf.resolve().parents
 
 
+def _eloop(path: Path) -> OSError:
+    """The ``ELOOP`` error for *path*, for :func:`~kanibako.utils.unreadable_path_error`."""
+    import errno
+    import os
+    return OSError(errno.ELOOP, os.strerror(errno.ELOOP), str(path))
+
+
+def _loop_named(err: BaseException) -> BaseException:
+    """*err*, or the refusal naming its path when it is an ``ELOOP`` on a real loop.
+
+    ⚑ boxfs refusing a link is ``ELOOP`` too, so the path itself must loop.
+    """
+    import errno
+    if (isinstance(err, OSError) and err.errno == errno.ELOOP and err.filename
+            and _symlink_loop(Path(err.filename))):
+        return unreadable_path_error(err.filename, err)
+    return err
+
+
 def _refuse_looped_carry_dst(dst: Path) -> None:
     """Raise ``ELOOP`` for a destination vault leaf on a loop: nothing can be carried into it."""
     if _symlink_loop(dst):
-        import errno
-        import os
-        raise OSError(errno.ELOOP, os.strerror(errno.ELOOP), str(dst))
+        raise _eloop(dst)
 
 
 def _vault_carry_pairs(
@@ -4124,7 +4148,7 @@ def _to_workset(
                           file=sys.stderr)
                 except Exception as err:  # noqa: BLE001 - reported, and the rest still run
                     clean = False
-                    print(f"Note: could not restore {what} at {where}: {err}",
+                    print(f"Note: could not restore {what} at {where}: {_loop_named(err)}",
                           file=sys.stderr)
             if clean:
                 _dispose_stash(stash)
@@ -4665,6 +4689,9 @@ def box_running_reason(
     from kanibako.project import registry_store
 
     if session_lock_held(lock_file):
+        if _symlink_loop(lock_file):  # ⚑ fails closed, so the reason is the loop
+            return (f"kanibako cannot tell whether a session holds its lock file {lock_file}: "
+                    f"{CANON_SYMLINK_LOOP_WHY}")
         return "a kanibako session holds its lock file"
     if box_ref is not None and (proj is not None or container_name is not None):
         box_ref = None  # *proj* or *container_name* already names the container
@@ -4779,10 +4806,7 @@ def _relocation_failure(err: OSError) -> str:
         listing = failed_entries(err)
         if listing is not None:
             return f"Error: the relocation failed; {listing}"
-    import errno
-    if err.errno == errno.ELOOP and err.filename and _symlink_loop(Path(err.filename)):
-        return f"Error: the relocation failed: {unreadable_path_error(err.filename, err)}"
-    return f"Error: the relocation failed: {err}"
+    return f"Error: the relocation failed: {_loop_named(err)}"
 
 
 def run_remap(args) -> int:

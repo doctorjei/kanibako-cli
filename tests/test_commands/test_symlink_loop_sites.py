@@ -123,6 +123,20 @@ class TestALoopedStoreOnThePurgeDoors:
         assert _looped_store_note(store) in text, text
         assert store.is_symlink()
 
+    @pytest.mark.parametrize("force", [True, False])
+    def test_the_running_warning_names_the_looped_lock(self, force, config_file, tmp_home,
+                                                       credentials_dir, capsys):
+        _primary(tmp_home)
+        store = _std(config_file).boxes / "q"
+        _loop_aside(store)
+        argv = ("box", "rm", "--purge") + (("--force",) if force else ()) + ("q",)
+        rc, text = _ran(argv, capsys)
+        assert rc == (0 if force else 1), text
+        assert ("this box may be running: kanibako cannot tell whether a session holds its "
+                f"lock file {store / '.kanibako.lock'}: it is a symlink loop") in text, text
+        assert "a kanibako session holds its lock file" not in text, text
+        assert store.is_symlink()
+
     def test_register_of_a_parked_primary(self, config_file, tmp_home, credentials_dir,
                                           capsys):
         _primary(tmp_home)
@@ -133,6 +147,59 @@ class TestALoopedStoreOnThePurgeDoors:
         assert rc == 1, text
         assert f"{store}: it is a symlink loop" in text, text
         assert store.is_symlink()
+
+
+class TestTheRunningReasonForAHeldLock:
+    """Only a looped lock is called a loop; a lock a session holds keeps its words."""
+
+    def test_a_held_lock_is_a_session(self, tmp_path):
+        import fcntl
+
+        from kanibako.commands.box._lifecycle import box_running_reason
+
+        lock = tmp_path / ".kanibako.lock"
+        lock.touch()
+        with open(lock, "rb") as fd:
+            fcntl.flock(fd, fcntl.LOCK_EX)
+            assert box_running_reason(None, lock) == "a kanibako session holds its lock file"
+
+
+class TestALoopedPrimaryStoreOnMoveAndConvert:
+    """A primary whose store loops is named, not reported as having no data."""
+
+    @pytest.mark.parametrize("verb", [("move", "--force", "q", "{new}"),
+                                      ("convert", "--force", "q", "--standalone")])
+    def test_the_loop_is_named(self, verb, config_file, tmp_home, credentials_dir, capsys):
+        ws = _primary(tmp_home)
+        store = _std(config_file).boxes / "q"
+        _loop_aside(store)
+        argv = ("box",) + tuple(a.format(new=tmp_home / "new") for a in verb)
+        rc, text = _ran(argv, capsys)
+        assert rc == 1, text
+        assert (f"{store}: it is a symlink loop that kanibako cannot resolve. Remove or "
+                "repair the link, then retry.") in text, text
+        assert "No project data" not in text, text
+        assert store.is_symlink() and (ws / "f.txt").read_text() == "keep"
+
+
+class TestAWorksetLandingOnALoop:
+    """A convert into a workset whose vault leaf loops names the loop, not "already exists"."""
+
+    @pytest.mark.parametrize("where", ["leaf", "arm"])
+    def test_the_loop_is_named(self, where, config_file, tmp_home, credentials_dir, capsys):
+        root = _standalone(tmp_home)
+        name = _standalone_name(_std(config_file), root)
+        assert _cli("workset", "create", "--name", "ws2", str(tmp_home / "ws2")) == 0
+        arm = tmp_home / "ws2" / "vault" / "rw"
+        arm.mkdir(parents=True, exist_ok=True)
+        _loop(arm / name if where == "leaf" else arm)
+        rc, text = _ran(("box", "convert", "--force", str(root), "--workset", "ws2"), capsys)
+        assert rc == 1, text
+        assert (f"Refusing to land '{name}' in workset 'ws2': {arm / name}: it is a symlink "
+                "loop that kanibako cannot resolve. Remove or repair the link, then "
+                "retry.") in text, text
+        assert "already exists" not in text, text
+        assert (root / "box_data").is_dir() and (root / "workspace").is_dir()
 
 
 class TestAMemberLeafUnderANullWorkspacesKey:
@@ -172,8 +239,8 @@ class TestAMemberLeafUnderANullWorkspacesKey:
 
 class TestARollbackBesideALoopedStoreBase:
     """A ws→ws rollback that replaces a remnant compares against every store base of the
-    source workset; a looped one must not stop the box tree's restore.  (The record step
-    still fails there: it re-creates the vault leaf under the loop.)"""
+    source workset; a looped one must not stop the box tree's restore.  The record step
+    still fails there (it re-creates the vault leaf under the loop), and names the loop."""
 
     def test_the_box_tree_restores_whole(self, config_file, tmp_home, credentials_dir,
                                          monkeypatch, tmp_path, capsys):
@@ -219,6 +286,11 @@ class TestARollbackBesideALoopedStoreBase:
                               std, config, confirm=lambda: True)
         err = capsys.readouterr().err
         assert "could not restore the box tree" not in err, err
+        record = f"Note: could not restore the record of 'alpha' in workset 'ws1' at {leaf}: "
+        assert record in err, err
+        assert "Errno" not in err.split(record)[1].splitlines()[0], err
+        assert f"{state.vault_ro.parent}" in err.split(record)[1].splitlines()[0], err
+        assert "it is a symlink loop" in err.split(record)[1].splitlines()[0], err
         assert (state.shell_path / "h.txt").read_text() == "home"
 
 
