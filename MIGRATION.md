@@ -471,6 +471,11 @@ inside boxes. In order of likely impact:
     under `self:`; a value an agent launch refuses now stops `kanibako shell` and `box info`** — see *Every command
     reads an agent settings file's own values*.
 
+53. **`box move`, `box convert`, and `box duplicate` into another box's tree need `--force`; a move that
+    carries another box away, and `duplicate --force` onto another box's workspace or root, exit 1 even with
+    `--force`** — see *`move`, `convert`, `duplicate`, and `workset connect` on
+    another box's path are refused*.
+
 ---
 
 ## 2. Per-area detail
@@ -6227,9 +6232,7 @@ and both boxes keep their rows and share the files.
 
 **What to do.** Choose another path, or remove the other box first (`box rm <box> --purge`, or
 `workset disconnect` for a member). To share a directory inside another box's tree on purpose, add
-`--force`. A workset member is still refused inside another member's directory, even with
-`--force`: `Cannot connect '<path>': it is already connected as project '<box>' in workset '<ws>'.
-Disconnect it first.`
+`--force`.
 
 ### `create` on another box's path is refused
 
@@ -6251,6 +6254,47 @@ Refused even with `--force`: another box's workspace or standalone root, or a st
 not a takeover, and no flag overrides this. First delete that box (`kanibako box rm /w/S2 --purge`,
 which deletes that box's own data, its vault included, but not its workspace), then run the create
 again.`
+
+**What to do.** Choose another path, or add `--force` to share the other box's tree on purpose.
+
+### `move`, `convert`, `duplicate`, and `workset connect` on another box's path are refused
+
+**Read this if `box move`, `box convert`, `box duplicate`, or `workset connect` now stops with
+`Cannot <verb> …` and names another box.**
+
+**What changed.** These verbs now run the check `create` and `box remap` run (see *`create` on
+another box's path is refused*), and exit 1 before writing anything. In v1.7.x they passed, and
+some lost data.
+
+Refused unless `--force`, which shares the tree and keeps both boxes:
+
+- `box move`, `box convert --move`, and `box duplicate` to a path inside another box's
+  workspace, standalone root, or store (a store repointed outside its root included), or to a
+  directory holding another box's workspace or root: `… Both boxes would claim it: pass --force
+  to share it, or choose another path.`
+- `box move` of a primary box into its own store: `… it is inside its own store (<store>). A box's
+  store is not its workspace: pass --force to use it anyway, or choose another path.`
+- an in-place `box convert --workset` whose workspace sits inside another box's workspace, root,
+  or store, holds another box's workspace, or is another standalone box's root (`… Re-run with
+  --force to absorb it anyway, or choose another workspace.`).
+
+Refused even with `--force`:
+
+- `box move` or `box convert --move` of a box whose workspace, or the store it retires, holds
+  another box's workspace, root, or store, or a workset root, which v1.7.x carried away: `… The
+  move would carry it away and break that box, so no flag overrides this. Move that box out first,
+  or choose another box to relocate.`
+- a `move` or `convert --move` into the box's own store when it moves or retires that store, which
+  lost the workspace: `… The move moves or retires that store, so the workspace would be copied
+  into it or deleted with it, and no flag overrides this. Choose another path.` Likewise a
+  standalone `duplicate` into its source's store.
+- `box duplicate --force` onto another box's workspace, a standalone root, or a link to one, which
+  overwrote that box's files or took its identity; the message names the cure, as for `create`.
+  A duplicate landing in a workset it does not join is refused too: add `--workset <ws>`.
+
+Newly allowed with `--force`: `workset connect` and `box convert --workset --move` inside another
+member's workspace, which v1.7.x refused whatever the flag. The member's own path is still
+refused: `… it is already connected as project '<box>' in workset '<ws>'. Disconnect it first.`
 
 **What to do.** Choose another path, or add `--force` to share the other box's tree on purpose.
 

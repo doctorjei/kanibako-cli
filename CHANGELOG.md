@@ -839,7 +839,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`box move` and `box convert --move` refuse, unless `--force`, a destination inside another box's
   workspace, root, or store,** as `create` and `remap` do. All four now also refuse a path inside another box's
   workspace reached through a link, and one inside a standalone box's store repointed outside its root. A link
-  to the workspace itself is still a twin.
+  to the workspace itself is still a twin. See `MIGRATION.md`, "`move`, `convert`, `duplicate`, and `workset connect` on
+  another box's path are refused".
 - **`box move` and `box convert --move` refuse a box whose tree holds another box, even with `--force`.** The
   other box's workspace, root, or workset root was copied along and deleted from where that box records it.
 - **`box move` and `box convert --move` refuse a destination inside the box's own store when the op moves or
