@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import os
 import re
-import urllib.request
 from abc import ABC, abstractmethod
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field, replace
@@ -432,18 +431,6 @@ def _provider_text(raw: bytes, headers: Mapping[str, str]) -> str:
     return text
 
 
-class NoRedirects(urllib.request.HTTPRedirectHandler):
-    """Refuse every redirect: urllib would re-send the caller's headers cross-origin.
-
-    The 3xx surfaces as an ``HTTPError`` instead, ``Location`` intact — following it
-    is the caller's decision, made with the caller's own credentials.  Used by
-    :func:`http_probe` and the Anthropic proxy (``kanibako.proxy.server``).
-    """
-
-    def redirect_request(self, req, fp, code, msg, headers, newurl):  # type: ignore[override]
-        return None
-
-
 def http_probe(
     url: str,
     *,
@@ -465,6 +452,9 @@ def http_probe(
     """
     import json as _json
     import urllib.error
+    import urllib.request
+
+    from kanibako.net.redirects import NoRedirects
 
     data = None if body is None else _json.dumps(body).encode("utf-8")
     try:

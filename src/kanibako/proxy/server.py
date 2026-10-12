@@ -40,8 +40,8 @@ from typing import Any
 from urllib.parse import urlsplit
 
 from kanibako.log import get_logger
+from kanibako.net.redirects import NoRedirects
 from kanibako.proxy.sse import synthesize_stream
-from kanibako.targets.base import NoRedirects
 
 logger = get_logger("proxy.server")
 

@@ -112,6 +112,8 @@ artifacts:
   api-docs/kanibako/launch/shells.py.md:
   api-docs/kanibako/launch/templates.py.md:
   api-docs/kanibako/log.py.md:
+  api-docs/kanibako/net/__init__.py.md:
+  api-docs/kanibako/net/redirects.py.md:
   api-docs/kanibako/persona_store.py.md:
   api-docs/kanibako/plugins/__init__.py.md:
   api-docs/kanibako/project/__init__.py.md:

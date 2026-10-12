@@ -320,8 +320,8 @@ unreachable/can't-tell shape.
 
 ⚑ **Never raises, and never logs the request: *headers* carry a bearer token.**
 
-⚑ **Redirects are NOT followed** (the module-level `NoRedirects` handler, which the Anthropic proxy
-in `kanibako.proxy.server` also uses), because urllib would re-send
+⚑ **Redirects are NOT followed** (`kanibako.net.redirects.NoRedirects`, imported inside the function so
+`targets.base` never loads `urllib.request` at import; the Anthropic proxy uses the same handler), because urllib would re-send
 every header — the `Authorization` bearer included — to the redirect target, possibly cross-origin.
 A 3xx comes back as its status instead. The handler names NO header, deliberately: stripping a
 named one and following the redirect anyway would carry a third-party plugin's `x-api-key` to the

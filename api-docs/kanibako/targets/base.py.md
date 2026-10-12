@@ -143,9 +143,6 @@ class ProbeResponse(NamedTuple):
     status: int | None
     body: str = ''
 
-class NoRedirects(urllib.request.HTTPRedirectHandler):
-    def redirect_request(self, req, fp, code, msg, headers, newurl)
-
 class PersonaSettings(NamedTuple):
     endpoint: str | None
     model: str | None
