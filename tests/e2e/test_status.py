@@ -38,7 +38,7 @@ class TestPsReflectsRunningState:
         """
         env = e2e_env["env"]
         project = e2e_env["project"]
-        name = "e2e-status"
+        name = "e2e_status"
 
         result = run_kanibako(
             ["create", str(project), "--name", name],
@@ -93,7 +93,7 @@ class TestRmLifecycle:
         """
         env = e2e_env["env"]
         project = e2e_env["project"]
-        name = "e2e-rm"
+        name = "e2e_rm"
         container_name = box_container(name)
 
         result = run_kanibako(

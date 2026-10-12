@@ -404,7 +404,7 @@ def assert_flatten_resolves_every_import(
 def test_claude_kickoff_loader_delivery(e2e_env):
     """claude: kickoff-loader SEED bound ro to ~/.config/kanibako/kickoff.md
     (single directive import); mount-parent .config/kanibako auto-created by podman."""
-    env, project, box = e2e_env["env"], e2e_env["project"], "instr-claude"
+    env, project, box = e2e_env["env"], e2e_env["project"], "instr_claude"
     run_install(env)
 
     r = run_kanibako(["create", str(project), "--name", box], env=env)
@@ -444,7 +444,7 @@ def test_goose_kickoff_loader_delivery(goose_e2e_env):
     env, project, box = (
         goose_e2e_env["env"],
         goose_e2e_env["project"],
-        "instr-goose",
+        "instr_goose",
     )
     run_install(env)
 

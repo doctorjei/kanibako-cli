@@ -222,7 +222,7 @@ class TestSeedAtCreate:
         """
         env = e2e_env["env"]
         project = e2e_env["project"]
-        name = "e2e-seed-create"
+        name = "e2e_seed_create"
 
         host_seed = _make_host_seed(e2e_env["tmp_path"])
         _write_seed_config(env, host_seed)
@@ -251,7 +251,7 @@ class TestSeedAtCreate:
         """
         env = e2e_env["env"]
         project = e2e_env["project"]
-        name = "e2e-seed-clobber"
+        name = "e2e_seed_clobber"
         container = box_container(name)
 
         host_seed = _make_host_seed(e2e_env["tmp_path"])
@@ -302,7 +302,7 @@ class TestSeedAtCreate:
         """
         env = e2e_env["env"]
         project = e2e_env["project"]
-        name = "e2e-seed-delete"
+        name = "e2e_seed_delete"
         container = box_container(name)
 
         host_seed = _make_host_seed(e2e_env["tmp_path"])

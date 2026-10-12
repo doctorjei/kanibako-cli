@@ -205,7 +205,7 @@ def test_codex_delivery_real_box(e2e_env):
     directive + D2 marker SessionStart groups, both trust entries, project
     trust, the sandbox invariant — and a restart re-delivers it byte-identically
     (both seams reconverge on the real path)."""
-    env, project, box = e2e_env["env"], e2e_env["project"], "codexpanel-deliv"
+    env, project, box = e2e_env["env"], e2e_env["project"], "codexpanel_deliv"
     _seed_codex_stub(e2e_env)
     run_install(env)
 
@@ -263,7 +263,7 @@ def test_codex_box_has_charter_pid_helper(e2e_env):
     nothing, and no config-bytes check can see it.  Needs a LIVE box, hence
     ``--detach``: a foreground codex box exits with its ``/bin/true`` codex.
     """
-    env, project, box = e2e_env["env"], e2e_env["project"], "codexpanel-rom"
+    env, project, box = e2e_env["env"], e2e_env["project"], "codexpanel_rom"
     _seed_codex_stub(e2e_env)
     run_install(env)
     name = box_container(box)
@@ -285,7 +285,7 @@ def test_simulated_panel_marker_lifecycle(e2e_env):
     """warm-only box + simulated panel: ALIVE marker holds the box up; killing
     the marker PID with the panel surface attached triggers SELF_HEAL_CLI; all
     surfaces gone → TEARDOWN (container exits)."""
-    env, project, box = e2e_env["env"], e2e_env["project"], "codexpanel-watch"
+    env, project, box = e2e_env["env"], e2e_env["project"], "codexpanel_watch"
     run_install(env)
     name = box_container(box)
 
@@ -513,7 +513,7 @@ def test_codex_ppid_marker_real_cli(e2e_env):
     """CREDS-GATED: with a real codex, the SessionStart marker hook writes a
     file named for the codex process's PID (validates the $PPID assumption for
     the CLI half; the panel/app-server half stays manual M1)."""
-    env, project, box = e2e_env["env"], e2e_env["project"], "codexpanel-ppid"
+    env, project, box = e2e_env["env"], e2e_env["project"], "codexpanel_ppid"
     _forward_real_codex_creds(e2e_env)
     run_install(env)
     name = box_container(box)
