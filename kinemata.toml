@@ -1,18 +1,22 @@
 # kinemata config for kanibako-cli -- THE config. It drives every command this
-# project runs. FOUR RUN IN CI, and they are exactly the four the gate inventory
+# project runs. FIVE RUN IN CI, and they are exactly the five the gate inventory
 # at the foot of this file declares: `check` (duplication), `parity`, `shape`
-# (the manifest against itself) and `claims` (the DOCUMENTATION gate). Also
-# configured but in no pipeline: `unused`, `ids`, `undeclared`, `review`,
-# `clusters`. ⚑ A command added to CI needs its `[[gate]]` block here, or the
-# inventory agrees with itself -- which is exactly how `shape` ran nowhere.
+# (the manifest against itself), `undeclared` (an identifier no closed registry
+# declares) and `claims` (the DOCUMENTATION gate). Also configured but in no
+# pipeline: `unused`, `ids`, `review`, `clusters`. ⚑ A command added to CI needs
+# its `[[gate]]` block here, or the inventory agrees with itself -- which is
+# exactly how `shape` ran nowhere.
 #
 # ⚑ THIS IS THE ONE CONFIG CI RUNS, and there is no baseline. Its last
 # records were settled 2026-10-11 and `.kinemata-baseline.json` (the default name)
 # was deleted, because kinemata fails `check` on a lapsed baseline even when it
 # is empty; a missing file reads as an empty one. Every command is run plainly --
 # `kinemata check`, `kinemata claims` -- with no `-c` and no custom baseline.
-# The one other config, `kinemata-boundary.toml`, holds `[[boundary]]` rules the
-# CI pin cannot parse; its own header says why and when it folds in here.
+# Two other configs run locally only; each one's header says why. CI never reads
+# them. `kinemata-spec.toml` holds the views that read the keyspace spec, which
+# lives in the canon and so is absent in CI. `kinemata-boundary.toml` holds
+# `[[boundary]]` rules, which the CI pin (0.6.0) cannot parse; it folds in here
+# once CI can install a build that carries `boundary`.
 #
 # ---------------------------------------------------------------------------
 # THERE WERE TWO FILES UNTIL 2026-09-14, AND THE REASON THEY SPLIT WAS WRONG.
