@@ -172,11 +172,11 @@ def _apply_shell_copy(src: Path, dest: Path, *, label: str, name: str, host_src:
 def _host_copy_dest(box_dest: str, box_root: Path, *, label: str, name: str, logger) -> Path | None
 def _apply_init_seeds(*, std, proj, agent_name: str, target=None, global_config_path, agent_config_path, logger, deliver_creds: bool=True, selection_level: 'Mapping[str, object] | None') -> 'KeyStore'
 def _synced_cover(box_dest: str, bindings) -> 'str | None'
-def _refuse_synced_under_mask(copies: 'list[CollapsedCopy]', bindings) -> None
+def _refuse_synced_under_mask(copies: 'list[CollapsedCopy]', bindings, *, declared_by: 'Mapping[str, str]') -> None
 def _synced_host_dest(box_dest: str, bindings, *, logger) -> 'Path | None'
 def _synced_last_wins(copies: 'list[CollapsedCopy]') -> 'list[CollapsedCopy]'
 def _synced_masks_replaced(copies: 'list[CollapsedCopy]', bindings) -> 'list[str]'
-def _apply_synced_copies(*, snapshot: 'KeyStore', bindings, logger, skip_if: 'Callable[[Path, Path], bool] | None') -> None
+def _apply_synced_copies(*, snapshot: 'KeyStore', bindings, logger, skip_if: 'Callable[[Path, Path], bool] | None', declared_by: 'Mapping[str, str]') -> None
 def _core_env_default_categories(*, proj, target, agent_id) -> dict[str, str]
 def _install_realized_env(snapshot, env, *, agent_id: str, desc) -> None
 def _declared_agent_env_key(snapshot, agent_id: str, var: str) -> 'str | None'
