@@ -332,6 +332,23 @@ class TestCheckAuth:
         ):
             assert t.check_auth() is True
 
+    @pytest.mark.parametrize("exc", [
+        OSError(8, "Exec format error"),
+        PermissionError(13, "Permission denied"),
+    ])
+    def test_login_exec_error_returns_false(self, tmp_path, monkeypatch, exc):
+        """An OSError from the login exec is a failed login, not a traceback."""
+        _anchor_contract(monkeypatch, _real_launcher(tmp_path), tmp_path / "share")
+        t = ClaudeTarget()
+        status_not_logged = MagicMock(
+            returncode=0,
+            stdout=json.dumps({"loggedIn": False}),
+        )
+        with patch("kanibako.plugins.claude.target.subprocess.run",
+                   side_effect=[status_not_logged, exc]) as m_run:
+            assert t.check_auth() is False
+        assert m_run.call_args_list[1].args[0][1:] == ["auth", "login"]
+
     def test_anchors_to_contract_launcher(self, tmp_path, monkeypatch):
         """check_auth execs the contract launcher path, never shutil.which."""
         launcher = _real_launcher(tmp_path)

@@ -638,7 +638,9 @@ class ClaudeTarget(Target):
                 timeout=120,
                 env=host_env,
             )
-        except (FileNotFoundError, subprocess.TimeoutExpired):
+        except (OSError, subprocess.TimeoutExpired):
+            # Any exec failure (missing, EACCES, ENOEXEC) is a failed login,
+            # never a traceback.
             return False
 
         if login_result.returncode != 0:
