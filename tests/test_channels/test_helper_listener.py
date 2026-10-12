@@ -439,8 +439,12 @@ class TestHubFrameCap:
         try:
             with caplog.at_level(logging.WARNING):
                 bad.sendall(b"x" * 4096 + (b"\n" if terminated else b""))
-                # The hub closes the oversized client: its read sees EOF.
-                assert bad.recv(4096) == b""
+                # The hub closes the oversized client: its read sees EOF, or a reset
+                # when the close leaves bytes it never read.
+                try:
+                    assert bad.recv(4096) == b""
+                except ConnectionResetError:
+                    pass
             assert any("1024-byte limit" in r.getMessage() for r in caplog.records)
             # The other connection, opened BEFORE the drop, is still served, and so
             # is a new one.
