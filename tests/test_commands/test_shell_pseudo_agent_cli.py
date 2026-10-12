@@ -212,8 +212,19 @@ class _FakeRuntime:
     Everything else is real — the box on disk, the config, the target registry, the
     auth-source resolve and the writeback.  ``shell`` is what a launch stamps for a
     plain-shell box (``start._core_env_default_categories``: the box has a target,
-    ``ShellTarget``, so it gets ``KANIBAKO_AGENT``).
+    ``ShellTarget``, so it gets ``KANIBAKO_AGENT``).  ``labeled`` maps the live box's
+    container name to the labels a launch gave it; the fixture fills it in.
     """
+
+    labeled: dict[str, dict[str, str]] = {}
+
+    def find_labeled(self, labels, *, without=None, check=False):
+        return sorted(
+            name for name, have in self.labeled.items()
+            if labels
+            and all(k in have and (v is None or have[k] == v) for k, v in labels.items())
+            and (without is None or without not in have)
+        )
 
     def inspect_env(self, container_name, var):
         return "shell" if var == "KANIBAKO_AGENT" else None
@@ -243,10 +254,10 @@ class TestAShellBoxStampIsReadBackAsTheShellAgent:
     """
 
     @pytest.fixture
-    def shell_box(self, config_file, tmp_home, credentials_dir, capsys):
+    def shell_box(self, config_file, tmp_home, credentials_dir, capsys, monkeypatch):
         from kanibako.settings.config import load_config, user_config_file
         from kanibako.settings.paths import resolve_box_target
-        from kanibako.utils import container_name_for
+        from kanibako.utils import box_labels, container_name_for
 
         path = tmp_home / "shellbox"
         path.mkdir()
@@ -256,7 +267,9 @@ class TestAShellBoxStampIsReadBackAsTheShellAgent:
         config = load_config(user_config_file())
         std = _std()
         proj = resolve_box_target(std, config, str(path), initialize=False)
-        return std, config, proj, container_name_for(proj), path
+        cname = container_name_for(proj)
+        monkeypatch.setattr(_FakeRuntime, "labeled", {cname: box_labels(proj)})
+        return std, config, proj, cname, path
 
     def test_stop_writeback_is_a_clean_no_op(self, shell_box, tmp_home):
         """The writeback RUNS for the ``ShellTarget`` and does nothing: a shell box
