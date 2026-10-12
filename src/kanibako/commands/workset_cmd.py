@@ -533,6 +533,11 @@ def run_rm(args: argparse.Namespace) -> int:
         except WorksetError:
             members, unreadable = 0, None
         except ConfigError as exc:
+            # ⚑ A LOOPED root refuses whatever the flags: nothing behind it can be counted
+            # or kept, and resolving it raises on 3.11.
+            if _symlink_loop(registry[stored]):
+                print(f"Error: {exc}", file=sys.stderr)
+                return 1
             # ⚑⚑ A BROKEN workset.yaml KEEPS THE PROJECT GUARD, ``--purge`` included: members
             # are counted at the DEFAULT registry path, ``delete_workset``'s fallback.
             members = 0 if args.force else len(load_workset_boxes(

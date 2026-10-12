@@ -141,3 +141,33 @@ def test_box_list_names_a_member_it_cannot_see_and_counts_it_present(boxes, caps
     assert rc == 0
     assert err == f"Warning: {src / 'n'}{_EACCES}\n"
     assert "  n " in out
+
+
+@pytest.mark.parametrize("flags", [(), ("--force",), ("--purge", "--force")],
+                         ids=["rm", "force", "purge"])
+def test_workset_rm_of_a_looped_root_refuses_and_keeps_it(boxes, capsys, flags):
+    _q, root = boxes
+    held = sorted(p.name for p in root.iterdir())
+    why = _break(root, "loop")
+    rc, _out, err = _cli(capsys, "workset", "rm", "ws3", *flags)
+    assert rc == 1
+    assert err == f"Error: {why}\n"
+    assert root.is_symlink() and held and sorted(
+        p.name for p in root.with_name("ws3.real").iterdir()) == held
+    rc, out, _err = _cli(capsys, "workset", "list")
+    assert rc == 0 and f"ERROR  {root}" in out
+
+
+def test_a_looped_reserved_alias_entry_is_kept_and_named(boxes, capsys, tmp_home):
+    from kanibako.project.names import register_name
+    from kanibako.settings.paths import load_std_paths
+
+    alias = (tmp_home / "dl").resolve()
+    alias.mkdir()
+    register_name(load_std_paths().registry, "Default", str(alias))
+    alias.rmdir()
+    os.symlink("dl", alias)
+    rc, _out, err = _cli(capsys, "workset", "list")
+    assert rc == 0
+    assert f"Warning: working set 'Default' could not be read: {alias}{_LOOP}\n" in err
+    assert "Note: removed" not in err

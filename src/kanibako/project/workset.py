@@ -1515,7 +1515,7 @@ def _load_registry(std: StandardPaths) -> dict[str, Path]:
         if find_identifier(name, RESERVED_WORKSET_IDENTIFIERS) is not None:
             if registry_store._metadata_definitively_gone(root_str):
                 why = "its directory no longer exists"
-            elif root.resolve() == primary:
+            elif _resolved_unless_loop(root) == primary:  # ⚑ resolve() raises on a loop on 3.11
                 why = "it is the primary working set, which `default` already names"
             else:
                 why = None
