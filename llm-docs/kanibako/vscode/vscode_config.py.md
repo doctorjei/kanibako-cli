@@ -14,7 +14,7 @@ The box home is a bind mount, so "in-box `~/.claude/settings.json`" is a host pa
 path to the agent. Writing it from the host is how a per-box value gets in.
 
 ⚑ **These files are NOT ours.** Every one of them — the VS Code image config, the claude
-`settings.json`, the codex `config.toml`, the goose `config.yaml` — is a file a user or another
+`settings.json`, the codex `config.toml` — is a file a user or another
 program also writes. So every writer in this module is a **read-modify-write union-merge or a
 surgical line edit**, never a create-and-clobber, and every one is **idempotent**: re-running it
 over its own output changes nothing and skips the write.
@@ -82,37 +82,28 @@ degrades to `None` in `load_jsonc`, which is a visible non-answer rather than a 
 This is the shared JSONC reader for the tree: `commands/diagnose.py` and `commands/code_cmd.py`
 both import it.
 
-## Access tiers → three different panel surfaces
+## Access tiers → two panel surfaces
 
 kanibako's per-agent `access` tier (`restricted` | `editing` | `full`, ordered least → most
 permissive in `settings_keyspace.ACCESS_TIERS`) reaches each CLI agent through its argv flag row.
-None of that reaches the panel. Each agent therefore gets a projection written into a per-box file,
-and each projection is written **here**, beside its siblings, rather than in each plugin's branch
-(R-41).
+None of that reaches the panel. claude and codex therefore each get a projection written into a
+per-box file, and each projection is written **here**, beside its sibling, rather than in each
+plugin's branch (R-41). Their values live here because they are **different** vocabularies from
+those agents' argv rows — codex's `approval_policy` enum (`untrusted`/`on-request`/`never`) is a
+config-file surface with no descriptor equivalent.
 
-⚑ Where the tier→value knowledge itself lives is per-surface, and the distinction is the point.
-**goose's is not here.** Its `GOOSE_MODE` values *are* its descriptor's `access_realization` rows —
-the very rows the launch emits as an env var — so `seed_goose_mode` takes the descriptor from the
-caller that owns it (`GooseTarget.deliver_panel_permissions`) and reads the row. The private copy
-this module used to keep was a second declaration of one fact, and drift on that axis is silent:
-the panel would keep running at the tier the copy still remembered. The claude and codex tables
-below stay here because they are genuinely **different** vocabularies from those agents' argv rows
-— codex's `approval_policy` enum (`untrusted`/`on-request`/`never`) is not its flag realization,
-it is a config-file surface with no descriptor equivalent.
+⚑ goose gets no projection: kanibako writes no tier into the box's `config.yaml`. The tier reaches
+goose only as the `GOOSE_MODE` env var from its descriptor's `access_realization` rows, host→box.
 
 ⚑ The projection is driven by the box's **CASCADE-resolved** `access`, never by the ephemeral
 `-S`/`-A` launch flags. A projection outlives the launch that wrote it (spec §1A), so seeding it
 from a one-shot flag would leave the next launch running at a tier nobody asked for.
 
-| tier | claude `permissions.defaultMode` | codex `approval_policy` | goose `GOOSE_MODE` |
-|---|---|---|---|
-| `full` | `bypassPermissions` | `never` | `auto` |
-| `editing` | `acceptEdits` | `on-request` | REFUSED |
-| `restricted` | CLEARED | `untrusted` | `approve` |
-
-The goose column is **quoted, not declared** — `goose-defaults.yaml`'s `access_realization.tiers`
-declares it, and this table is a reader's convenience that can go stale. The other two columns are
-declared in this module.
+| tier | claude `permissions.defaultMode` | codex `approval_policy` |
+|---|---|---|
+| `full` | `bypassPermissions` | `never` |
+| `editing` | `acceptEdits` | `on-request` |
+| `restricted` | CLEARED | `untrusted` |
 
 An **unknown** tier raises in every arm. This surface must never fall through to the permissive
 value, and "clear it" is an equally wrong guess for a tier we do not understand.
@@ -122,9 +113,7 @@ value, and "clear it" is an equally wrong guess for a tier we do not understand.
 claude is the one agent whose unset default is safe: with no `permissions.defaultMode`, claude
 **prompts**. So `restricted` can be delivered by removing our value.
 
-Neither of the others can. goose's unset `GOOSE_MODE` default is `auto` — permissive — so a
-`restricted` goose box must persist `approve` **explicitly**; clearing would silently restore
-permissive. codex used to clear too, and that was a promise kanibako could not keep: clearing left
+codex cannot. It used to clear too, and that was a promise kanibako could not keep: clearing left
 codex at its **own** default approval policy, a value not documented anywhere in 0.141.0's local
 help and therefore unknown to us, while the same function was forcing `sandbox_mode` to
 `danger-full-access`. "Restricted" would have meant *unknown approval behavior with full disk
@@ -149,32 +138,6 @@ create and it goes, while one that still holds other keys stays.
 
 `seed_claude_permission_mode` is a no-op when the file is absent and the tier is `restricted` —
 there is nothing to clear, and it never creates a file just to clear it.
-
-### goose refuses `editing` rather than approximating it
-
-No `GOOSE_MODE` value realizes the middle tier. `smart_approve` auto-approves READ-ONLY tools and
-prompts for writes, which is the *inverse* of `acceptEdits`. Because this surface is PERSISTED, a
-silent substitution would outlive the launch that made it.
-
-⚑ The raise inside `seed_goose_mode` is the **second** fence, not the gate. Callers wrap panel
-delivery best-effort, so this raise on its own would be swallowed. The real refusal happens at
-`targets.assembly.access_row`, which stops the launch and names the tiers the agent can render
-before any delivery runs. The check here exists so the function is honest in isolation.
-
-It is now literally the *same* refusal: `seed_goose_mode` calls `access_row`, so the message a
-swallowed second fence would have printed is word-for-word the one the launch gate prints, and it
-still lists legal tiers in `ACCESS_TIERS` order (least → most permissive — a `sorted()` would print
-"full | restricted" and read as a ladder running the wrong way).
-
-A descriptor that carries no `GOOSE_MODE` value for the tier — no `access_realization` at all, or
-FLAG-channel rows, or a deliberate emit-nothing row — is refused rather than written: a blank
-`GOOSE_MODE` is goose's permissive `auto`, so "" is not a safe reading of any of those.
-
-⚑ `seed_goose_mode` writes through the `Path` object rather than `config_io.dump_doc`, matching its
-claude/codex siblings. `dump_doc`'s `atomic_write_text` coerces the path via `Path()`/`mkstemp` and
-performs a **real** `mkdir`, which under a mocked `proj.shell_path` materializes a stray on-disk
-directory. The siblings stay mock-safe by writing via the Path object. A best-effort re-seed is
-idempotent, so the non-atomic parity is fine.
 
 ## Instruction delivery: the SessionStart hook
 
@@ -607,11 +570,3 @@ Write ONLY the managed codex approval/sandbox parity keys; the SOLE writer of th
 to `False` — no write, no normalization of user bytes — when the reconciled state already matches,
 which also means an OFF pass over an absent file never creates one. An UNKNOWN tier RAISES. Callers
 wrap best-effort.
-
-```seed_goose_mode(config_path: Path, *, access: str, descriptor: PluginDescriptor) -> bool```
-SET the box's goose `GOOSE_MODE` to its `access` tier parity value — the emitter behind
-`GooseTarget.deliver_panel_permissions`, which passes its own descriptor so the value written is
-the `access_realization` row the launch emits. Merge-preserving: only the top-level `GOOSE_MODE`
-key is set, every other key survives, and an absent file is created with just `GOOSE_MODE`.
-Idempotent — no write when the key already equals the desired value. RAISES for `editing`, for any
-unknown tier, and for a descriptor carrying no ENV value for the tier.

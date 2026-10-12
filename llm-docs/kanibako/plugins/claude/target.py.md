@@ -37,9 +37,9 @@ session store derives from `system.state`, so do not thread it back into the aut
 `check_auth` runs `claude auth status --json` and reads `loggedIn`. If logged out, it runs
 `claude auth login` interactively and re-checks. A missing launcher, an exec error, a nonzero status
 exit, or unparseable output returns `True`: an unknown status never blocks the launch. A login that
-fails or times out, or a re-check that is still logged out, returns `False`. When the box shares
-host credentials, `start` then prints `Error: Authentication failed.` with the `kanibako agent
-reauth` and `kanibako shell` hints and refuses the launch.
+fails or times out, or a re-check that fails or is still logged out, returns `False`. When the box
+shares host credentials, `start` then prints `Error: Authentication failed.` with the `kanibako
+agent reauth` and `kanibako shell` hints and refuses the launch.
 
 ## Credentials
 
