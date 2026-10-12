@@ -10,6 +10,7 @@ import time
 import pytest
 import yaml
 
+from kanibako.settings.agent_config import agent_settings_path
 from kanibako.settings.agent_select import AgentSelection
 from kanibako.settings.paths import (
     WorksetSpec,
@@ -1107,8 +1108,9 @@ def _seed_snapshot(std, proj, *, agent="claude"):
         agent_name=agent,
         target=_FakeTarget() if agent else None,
         global_config_path=std.settings,
-        # The node's OWN file, as ``seed_new_box`` passes it (``agents/<node>/``).
-        agent_config_path=std.agents / (agent or "claude") / "agent.yaml",
+        # The node's OWN file via ``agent_settings_path``, as ``seed_new_box`` builds it
+        # (``+`` store dirname included); an agent-less call falls back to ``claude``.
+        agent_config_path=agent_settings_path(std.agents, agent or "claude"),
         logger=logging.getLogger("test-seed"),
         selection_level=AgentSelection(node=agent, source="settings").selection_level,
     )
@@ -1138,8 +1140,9 @@ def _seed_box(std, proj, *, agent="claude", deliver_creds=True):
         target=_FakeTarget() if agent else None,
         desc=None,
         agent_id=agent,
-        # The node's OWN file, as ``seed_new_box`` passes it (``agents/<node>/``).
-        agent_cfg_path=std.agents / (agent or "claude") / "agent.yaml",
+        # The node's OWN file via ``agent_settings_path``, as ``seed_new_box`` builds it
+        # (``+`` store dirname included); an agent-less call falls back to ``claude``.
+        agent_cfg_path=agent_settings_path(std.agents, agent or "claude"),
         system_settings_path=std.settings,
         auth_src=SimpleNamespace(creds_shared=deliver_creds),
         logger=logging.getLogger("test-seed"),
