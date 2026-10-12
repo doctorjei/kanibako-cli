@@ -754,6 +754,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The tweakcc patch container runs tweakcc** (entrypoint, keep-id user, config dir, `--yes`); `baseline verify` no
+  longer reports every executable missing on a rig. tweakcc 4.4.0 still cannot patch claude 2.1.296 (runs unpatched).
 - **`workset disconnect --remove-files` names a workspace it keeps behind a symlink loop.** When the workset's
   `workspaces/` folder is a looping link, the box's workspace cannot be reached, so it is kept; the command used to
   say only "Removed project". It now names the kept path and why.
