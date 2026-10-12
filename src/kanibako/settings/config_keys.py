@@ -1149,14 +1149,16 @@ def agent_leaf_table_error(canonical: str, *, verb: str) -> str | None:
     ⚑ It names the KEY and the SHAPE, never "unknown config key" — the key is declared, is
     read fine by ``config get``, and is hand-authored in YAML today.
     """
+    from kanibako.settings.agent_file import table_valued_refusal
+
     leaf = canonical.rsplit(".", 1)[-1]
     if leaf not in TABLE_VALUED_AGENT_LEAVES or not _names_agent_leaf(canonical, leaf):
         return None
-    return (
-        f"Error: '{shown_key(canonical)}' holds a TABLE, not a scalar, so it "
-        f"cannot be {verb} from the command line — its entries are DATA inside the "
-        f"table, not keys of their own (spec §2d). Edit the '{leaf}' table in the "
-        f"settings file directly; the launch reads it from there."
+    return table_valued_refusal(
+        shown_key(canonical), verb,
+        f"Edit the '{leaf}' table in the settings file directly; the launch reads it from "
+        f"there.",
+        spec="§2d",
     )
 
 
@@ -1165,16 +1167,17 @@ def _terminal_category_message(
 ) -> str:
     """THE refusal text for a dest-keyed TERMINAL category write — ONE wording, three arms.
 
-    ⚑ Deliberately the wording of :func:`kanibako.settings.agent_file.table_value_error`,
-    which is the AGENT noun's half of this same fact: one key, one shape, one sentence,
+    ⚑ The sentence is :func:`kanibako.settings.agent_file.table_valued_refusal`'s, which the
+    AGENT noun's half of this same fact also builds: one key, one shape, one sentence,
     whichever door a user knocks on.
     ⚑ *survives* is a REQUIRED keyword, never a default — the honest read-back differs by
     arm, and a default would let one arm inherit another's promise.
     """
-    return (
-        f"Error: '{display_key}' holds a TABLE keyed by box DESTINATION, not a scalar, so "
-        f"it cannot be {verb} from the command line — its entries are DATA inside the "
-        f"table, not keys of their own (spec §2a). {cure} {survives}"
+    from kanibako.settings.agent_file import table_valued_refusal
+
+    return table_valued_refusal(
+        display_key, verb, f"{cure} {survives}",
+        shape="a TABLE keyed by box DESTINATION", spec="§2a",
     )
 
 

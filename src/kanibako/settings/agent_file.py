@@ -304,6 +304,27 @@ def _is_table_valued(tail: str) -> bool:
     return head in _TABLE_VALUED_KEYS
 
 
+def table_valued_refusal(
+    key: str, verb: str, cure: str, *,
+    shape: str = "a TABLE", spec: str | None = None, fix_line: bool = False,
+) -> str:
+    """THE refusal for a write at a key whose VALUE is a TABLE — one sentence, every door.
+
+    The agent noun (:func:`table_value_error`), the config verbs' agent leaf
+    (``config_keys.agent_leaf_table_error``) and the dest-keyed terminal categories
+    (``config_keys._terminal_category_message``) all say this one fact; the doors differ only
+    in the *shape* named, the spec section cited and the *cure*, which follows the sentence
+    inline or, with *fix_line*, on an indented ``Fix:`` line.
+    """
+    cite = f" (spec {spec})" if spec else ""
+    sep = "\n  Fix: " if fix_line else " "
+    return (
+        f"Error: '{key}' holds {shape}, not a scalar, so it cannot be {verb} from "
+        f"the command line — its entries are DATA inside the table, not keys of "
+        f"their own{cite}.{sep}{cure}"
+    )
+
+
 def table_value_error(tail: str, *, path: Path, verb: str) -> str | None:
     """Why *tail* takes no scalar ``agent set`` / ``agent reset``, or ``None`` when it does.
 
@@ -319,12 +340,11 @@ def table_value_error(tail: str, *, path: Path, verb: str) -> str | None:
     """
     if not _is_table_valued(tail):
         return None
-    return (
-        f"Error: '{tail}' holds a TABLE, not a scalar, so it cannot be {verb} from "
-        f"the command line — its entries are DATA inside the table, not keys of "
-        f"their own.\n"
-        f"  Fix: edit the `{file_spelling(tail)}` table of {path} directly; the "
-        f"launch reads it from there."
+    return table_valued_refusal(
+        tail, verb,
+        f"edit the `{file_spelling(tail)}` table of {path} directly; the launch reads it "
+        f"from there.",
+        fix_line=True,
     )
 
 

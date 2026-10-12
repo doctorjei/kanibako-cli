@@ -628,6 +628,34 @@ class TestTableValuedKeysTakeNoScalar:
         )
         assert msg is not None and "self.bindings.ro" in msg
 
+    def test_one_builder_spells_the_refusal_for_every_door(self, tmp_path):
+        """The agent noun, the config verbs' agent leaf and the terminal categories share
+        ONE sentence; only the shape, the spec cite and the cure vary."""
+        from kanibako.settings.agent_file import table_value_error, table_valued_refusal
+        from kanibako.settings.config_keys import (
+            agent_leaf_table_error, terminal_category_write_error,
+        )
+
+        assert table_valued_refusal("k", "set", "Do X.", spec="§2a") == (
+            "Error: 'k' holds a TABLE, not a scalar, so it cannot be set from the command "
+            "line — its entries are DATA inside the table, not keys of their own "
+            "(spec §2a). Do X."
+        )
+        assert table_valued_refusal("k", "reset", "do X.", fix_line=True).endswith(
+            "not keys of their own.\n  Fix: do X."
+        )
+        path = tmp_path / "agent.yaml"
+        assert table_value_error("masks", path=path, verb="set") == table_valued_refusal(
+            "masks", "set",
+            f"edit the `self.masks` table of {path} directly; the launch reads it from there.",
+            fix_line=True,
+        )
+        leaf_msg = agent_leaf_table_error("agent.claude.transform_settings", verb="set")
+        terminal_msg = terminal_category_write_error("box.masks", verb="set")
+        for msg in (leaf_msg, terminal_msg):
+            assert msg is not None
+            assert "so it cannot be set from the command line — its entries are DATA" in msg
+
     @pytest.mark.parametrize("tail", ("model", "label", "env.FOO", "secret_path.TOK"))
     def test_the_scalar_tails_are_not_refused(self, tail, tmp_path):
         from kanibako.settings.agent_file import table_value_error
