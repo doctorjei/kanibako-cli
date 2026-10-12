@@ -2442,7 +2442,7 @@ def _assemble_image_sharing_mounts(
         )
         # The RESOLVED store (probed default OR a set tier value) gates the
         # emit — read off the snapshot, the PRIMARY SOURCE, with the UNBOUND
-        # dict.get protocol (S3; the config._resolve_box_scalars walk), spelled
+        # dict.get protocol (S3; the settings_launch.resolve_box_scalars walk), spelled
         # ONCE for the whole module in :func:`_snapshot_scalar`.
         resolved_store = _snapshot_scalar(_img_snap, "box.images_store")
         if resolved_store is not None:
@@ -4264,11 +4264,11 @@ def _run_container(
         #
         # ⚑ ``active_agent`` is the agent slot the flag values are spelled against,
         # so it is given ONLY for a real agent launch. A ``kanibako shell`` /
-        # ``--entrypoint`` box resolves under the ``"shell"`` slot: the flags are
-        # still dropped (``active_agent=None``) because neither parser exposes
-        # these flags for such a launch anyway — spelling ``agent.shell.model``
-        # would install a flag value onto the shell tier, not fabricate an
-        # undeclared key, and there is no flag to spell.
+        # ``--entrypoint`` box resolves under the ``"shell"`` slot, and the flags are
+        # dropped (``active_agent=None``): spelling ``agent.shell.model`` would install
+        # a flag value onto the shell tier. ``kanibako shell``'s parser has no such
+        # flags, but ``start --entrypoint`` does: ``-M``, ``-N``, ``-C``, and ``-R``
+        # parse there and are silently dropped here.
         _cli_level = build_cli_level(
             selection=selection_level,
             active_agent=agent_id if target is not None else None,

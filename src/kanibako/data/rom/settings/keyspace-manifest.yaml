@@ -468,7 +468,7 @@ policy:
       "--image":
         key: box.image
         status: wired               # B6 (R-11a(a)): keyspace-resolved via the
-                                    #   box-scalar resolve (config.load_merged_config)
+                                    #   box-scalar resolve (settings_launch.load_merged_config)
       "--share-images":
         key: box.share_images
         status: wired               # B6 (R-11a(a)): same resolve; store_true, so
