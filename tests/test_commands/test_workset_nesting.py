@@ -543,13 +543,11 @@ class TestWorksetCreateOnAMissingRecordedPath:
 
     @staticmethod
     def _missing(area: Path, which: str) -> tuple[Path, str]:
-        import os
-        import shutil
+        # Rename, never delete: XS holds the canon skeleton, which create leaves
+        # subuid-owned where ``podman unshare`` works (CI), so no chmod or unlink can
+        # reach it (EPERM).  A rename needs only write on ``area``.
         path = area / which
-        for top, dirs, _files in os.walk(path):  # a vault holds read-only dirs
-            for name in dirs:
-                os.chmod(os.path.join(top, name), 0o755)
-        shutil.rmtree(path)
+        path.rename(path.with_name(path.name + "-gone"))
         what = ("the workspace of primary box 'X'" if which == "X"
                 else "the root of standalone box")
         return path, what
