@@ -694,8 +694,9 @@ def restore_snapshot(
     then are the staged contents swapped into place, so a partial restore can
     never destroy pre-existing data.  ``vault_rw_path`` itself (which may be a
     mount point) is never removed -- only its contents are swapped, by copy when
-    a mount point stops the renames.  If even the roll-back fails, the backup is
-    kept and its path logged.
+    a mount point stops the renames; an entry that is itself a mount point is
+    refused.  If even the roll-back fails, :class:`RestoreUndoFailedError` names
+    the backup it kept, and a later restore is refused while that backup exists.
 
     Returns the pre-restore safety snapshot's path, or ``None`` if the vault was
     empty so there was nothing to preserve.
@@ -832,7 +833,8 @@ def restore_snapshot(
                 )
                 raise RestoreUndoFailedError(
                     f"Restore of '{snapshot_name}' failed ({exc}), and the vault could "
-                    f"not be put back ({undo}). Its contents are kept at {backup}.{held_too} "
+                    f"not be put back ({undo}). The contents not in {live} are kept at "
+                    f"{backup}.{held_too} "
                     f"Move them back into {live} and delete {backup}; a restore is "
                     f"refused while it exists."
                 ) from exc
