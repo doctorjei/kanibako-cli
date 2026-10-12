@@ -17,7 +17,7 @@ from __future__ import annotations
 import shlex
 from dataclasses import dataclass
 from pathlib import Path
-from typing import overload
+from typing import Callable, overload
 
 from kanibako.agent_ref import parse_agent_address
 from kanibako.errors import ConfigError
@@ -29,6 +29,8 @@ from kanibako.settings.config_keys import (
     _SCOPE_READ_COMMAND,
     AGENT_DEFAULT_SUB,
     _is_agent_setting,
+    _is_scope_env_key,
+    _is_scope_secret_key,
     _parse_agent_node_secret_key,
     _parse_persona_agent_key,
     parse_agent_node_bind_key,
@@ -363,6 +365,22 @@ def _category_segments(canonical: str) -> tuple[str, ...]:
     return tuple(parts)
 
 
+#: The two NON-agent ``<scope>.<family>.<VAR>`` SCALAR families (spec §2a), each with the
+#: predicate that matches its keys. The slot below and ``config_interface``'s get, set and reset
+#: each take ONE branch for both.
+_SCOPE_SCALAR_FAMILIES: "tuple[tuple[str, Callable[[str], bool]], ...]" = (
+    ("env", _is_scope_env_key),
+    ("secret_path", _is_scope_secret_key),
+)
+
+
+def _scope_scalar_family(canonical: str) -> str | None:
+    """The family of a ``<scope>.{env,secret_path}.<VAR>`` key, else ``None``."""
+    return next(
+        (family for family, matches in _SCOPE_SCALAR_FAMILIES if matches(canonical)), None,
+    )
+
+
 def _key_slot(canonical: str) -> "tuple[tuple[str, ...], str, str] | None":
     """``(sections, leaf, file_rule)`` for a FILE-scope key, or ``None``.
 
@@ -376,8 +394,6 @@ def _key_slot(canonical: str) -> "tuple[tuple[str, ...], str, str] | None":
         _is_path_category_key,
         _is_pref_key,
         _is_scope_bind_key,
-        _is_scope_env_key,
-        _is_scope_secret_key,
         _KEY_ROUTES,
         _pref_sections_leaf,
     )
@@ -390,14 +406,12 @@ def _key_slot(canonical: str) -> "tuple[tuple[str, ...], str, str] | None":
     if _is_pref_key(canonical):
         sections, leaf = _pref_sections_leaf(canonical)
         return sections, leaf, _NOUN
-    if _is_scope_secret_key(canonical):
-        parts = canonical.split(".")  # [<scope>, "secret_path", <VAR>]
-        return (parts[0], "secret_path"), parts[2], _NOUN
-    if _is_scope_env_key(canonical):
-        # The SIBLING of the scope secret pointer above, and ``_NOUN`` for the same
-        # reason: env is a SETTINGS category with no Layer-1 config-file form.
-        parts = canonical.split(".")  # [<scope>, "env", <VAR>]
-        return (parts[0], "env"), parts[2], _NOUN
+    # ``_NOUN`` for both scope scalar families: each is a SETTINGS category with no Layer-1
+    # config-file form.
+    scope_family = _scope_scalar_family(canonical)
+    if scope_family is not None:
+        parts = canonical.split(".")  # [<scope>, <family>, <VAR>]
+        return (parts[0], scope_family), parts[2], _NOUN
     if _is_agent_setting(canonical):
         return ("agent", "default"), canonical, _NOUN
     # ⚑ THE SAME SLOT, THE OTHER SPELLING — ``agent.default.<leaf>`` written out in full is

@@ -11,7 +11,6 @@ Prose for these symbols lives in `llm-docs/kanibako/settings/config_interface.py
 FLOOR_TIER = 'built-in default'
 _log = get_logger(__name__)
 _EARLY_KEY_DOORS = frozenset({ConfigLevel.workset, ConfigLevel.system})
-_SCOPE_SCALAR_FAMILIES: 'tuple[tuple[str, Callable[[str], bool]], ...]' = (('env', _is_scope_env_key), ('secret_path', _is_scope_secret_key))
 _SET_VALUE_DOORS: 'tuple[_SetValueDoor, ...]' = (_SetValueDoor(lambda key, value: value is None and refuses_null_path_key(key), ERR_CONFIG_NULL_PATH_SET_HEAD, lambda value: ERR_CONFIG_NULL_PATH_REASON, 'path'), _SetValueDoor(lambda key, value: value is None and refuses_null_box_scalar(key), ERR_BOX_SCALAR_NULL_SET_HEAD, lambda value: ERR_BOX_SCALAR_NULL_REASON, 'value'), _SetValueDoor(lambda key, value: value is not None and refuses_box_store_value(key, value), ERR_BOX_STORE_SET_HEAD, lambda value: (ERR_BOX_STORE_TRAILING_REASON if value is not None and value.endswith('/') else ERR_BOX_STORE_EMPTY_REASON) + '.', 'path'))
 ```
 
@@ -50,7 +49,6 @@ def _set_time_defects(config_path: 'Path | None', *, edit: 'tuple[str, object] |
 def _blindness_forgiven(errors: 'Mapping[str, str]', candidate: 'Any', ctx: 'Any', agent_name: str, command_scope: 'ConfigLevel | None') -> 'set[str]'
 def _argv_aware(leaf: str, fallback: 'Callable[[object], str]') -> 'Callable[[object], str]'
 def _scalar_family_render(key: str, category: str) -> 'Callable[[object], str]'
-def _scope_scalar_family(canonical: str) -> str | None
 def _read_slot(canonical: str, slot: AgentFileSlot) -> str | None
 def _node_noun_file_value(canonical: str, slot: AgentFileSlot, noun_file: 'Path | None', command_scope: 'ConfigLevel | None') -> 'str | None'
 def _noun_file_slot(slot: AgentFileSlot, noun_file: Path) -> AgentFileSlot

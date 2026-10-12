@@ -88,6 +88,7 @@ from kanibako.settings.config_dest import (
     _node_bind_target,
     _node_secret_target,
     _persona_agent_target,
+    _scope_scalar_family,
 )
 from kanibako.settings.config_keys import (
     CoercionError,
@@ -105,8 +106,6 @@ from kanibako.settings.config_keys import (
     _is_persona_agent_key,
     _is_pref_key,
     _is_scope_bind_key,
-    _is_scope_env_key,
-    _is_scope_secret_key,
     _parse_persona_agent_key,
     _config_key_refusal,
     _node_secret_display_key,
@@ -1263,21 +1262,6 @@ def _scalar_family_render(key: str, category: str) -> "Callable[[object], str]":
         refuse_non_scalar_family_value(key, category, v)
         return render_stored_scalar(v)
     return _render
-
-
-#: The two NON-agent ``<scope>.<family>.<VAR>`` SCALAR families (spec §2a), each with the
-#: predicate that matches its keys. ``get``, ``set`` and ``reset`` each take ONE branch for both.
-_SCOPE_SCALAR_FAMILIES: "tuple[tuple[str, Callable[[str], bool]], ...]" = (
-    ("env", _is_scope_env_key),
-    ("secret_path", _is_scope_secret_key),
-)
-
-
-def _scope_scalar_family(canonical: str) -> str | None:
-    """The family of a ``<scope>.{env,secret_path}.<VAR>`` key, else ``None``."""
-    return next(
-        (family for family, matches in _SCOPE_SCALAR_FAMILIES if matches(canonical)), None,
-    )
 
 
 def _read_slot(canonical: str, slot: AgentFileSlot) -> str | None:

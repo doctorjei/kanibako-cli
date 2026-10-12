@@ -11,6 +11,7 @@ Prose for these symbols lives in `llm-docs/kanibako/settings/config_dest.py.md`.
 _RESERVED_TIER_HEAD = "Error: 'default' is the reserved any-agent tier, not a persona node"
 _ERROR_PREFIX = 'Error: '
 _NOUN, _SCOPED, _CATEGORY = ('noun', 'scoped', 'category')
+_SCOPE_SCALAR_FAMILIES: 'tuple[tuple[str, Callable[[str], bool]], ...]' = (('env', _is_scope_env_key), ('secret_path', _is_scope_secret_key))
 ```
 
 ## Functions
@@ -31,6 +32,7 @@ def _persona_agent_target(canonical: str, agents_root: 'Path | None', *, verb: s
 def _node_bind_target(canonical: str, agents_root: 'Path | None') -> 'AgentFileSlot | None'
 def _node_secret_target(canonical: str, agents_root: 'Path | None') -> 'AgentFileSlot | str | None'
 def _category_segments(canonical: str) -> tuple[str, ...]
+def _scope_scalar_family(canonical: str) -> str | None
 def _key_slot(canonical: str) -> 'tuple[tuple[str, ...], str, str] | None'
 def _dest(canonical: str, *, command_scope: 'object | None', config_path: 'Path | None', settings_path: 'Path | None') -> 'DestRoute | None'
 def _write_dest(canonical: str, *, command_scope: 'object | None'=None, config_path: 'Path | None', settings_path: 'Path | None'=None) -> 'DestRoute | None'
