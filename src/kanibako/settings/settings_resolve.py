@@ -634,18 +634,7 @@ def match_var(expr: str, i: int) -> tuple[str, int]:
     ⚑ PRECONDITION: ``expr[i] == "$"`` — NOT re-verified here; the caller has already dispatched.
     ⚑ THE SINGLE parser for the ``$`` family (three callers, two modules) — do not fork it.
     """
-    n = len(expr)
-    braced = i + 1 < n and expr[i + 1] == "{"
-    name_start = i + 2 if braced else i + 1
-    m = _VAR_NAME_RE.match(expr, name_start)
-    if m is None:
-        raise SettingsError(f"Malformed variable reference at: {expr[i:]!r}")
-    end = m.end()
-    if braced:
-        if end >= n or expr[end] != "}":
-            raise SettingsError(f"Unterminated ${{...}} reference: {expr[i:]!r}")
-        end += 1
-    return m.group(0), end
+    return _match_sigil(expr, i, _VAR_NAME_RE, "variable reference")
 
 
 def match_ref(expr: str, i: int) -> tuple[str, int]:
@@ -656,16 +645,27 @@ def match_ref(expr: str, i: int) -> tuple[str, int]:
     ⚑ THE SINGLE parser for both spellings, shared across modules (seam S25).
     ⚑ NESTING IS NOT SUPPORTED and fails loudly: a substituted value is a LEAF, never re-scanned.
     """
+    return _match_sigil(expr, i, _REF_NAME_RE, "@-reference")
+
+
+def _match_sigil(
+    expr: str, i: int, name_re: re.Pattern[str], noun: str,
+) -> tuple[str, int]:
+    """The bare / braced scan :func:`match_var` and :func:`match_ref` share.
+
+    The sigil is ``expr[i]``; *name_re* matches the name after it and *noun* names the
+    family in the malformed-reference refusal.
+    """
     n = len(expr)
     braced = i + 1 < n and expr[i + 1] == "{"
     name_start = i + 2 if braced else i + 1
-    m = _REF_NAME_RE.match(expr, name_start)
+    m = name_re.match(expr, name_start)
     if m is None:
-        raise SettingsError(f"Malformed @-reference at: {expr[i:]!r}")
+        raise SettingsError(f"Malformed {noun} at: {expr[i:]!r}")
     end = m.end()
     if braced:
         if end >= n or expr[end] != "}":
-            raise SettingsError(f"Unterminated @{{...}} reference: {expr[i:]!r}")
+            raise SettingsError(f"Unterminated {expr[i]}{{...}} reference: {expr[i:]!r}")
         end += 1
     return m.group(0), end
 

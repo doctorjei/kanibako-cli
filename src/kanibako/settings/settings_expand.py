@@ -163,15 +163,7 @@ def _is_whole_value_ref(value: str) -> str | None:
     NEVER RAISES — a total predicate; a malformed reference answers ``None`` and
     ``expand_expr`` raises it downstream with unchanged provenance.
     """
-    if value[:1] == "{":
-        return _whole_braced(value, "ref")
-    if not value or value[0] != "@":
-        return None
-    try:
-        name, end = match_ref(value, 0)
-    except SettingsError:
-        return None
-    return name if end == len(value) else None
+    return _is_whole_value(value, "@", match_ref, "ref")
 
 
 def _is_whole_value_var(value: str) -> str | None:
@@ -192,12 +184,27 @@ def _is_whole_value_var(value: str) -> str | None:
     (``"$"``, ``"${X"``) answers ``None`` and falls through to ``expand_expr``, which
     raises it with the same message from the same place it always has.
     """
+    return _is_whole_value(value, "$", match_var, "var")
+
+
+def _is_whole_value(
+    value: str,
+    sigil: str,
+    matcher: Callable[[str, int], tuple[str, int]],
+    kind: str,
+) -> str | None:
+    """The NAME iff *value* is exactly one whole-value reference of one family; never raises.
+
+    The body :func:`_is_whole_value_ref` and :func:`_is_whole_value_var` share: *sigil* opens
+    the bare / ``{``-after-sigil spelling *matcher* parses, and *kind* is the family's braced
+    ``{...}`` form in :func:`~kanibako.settings.settings_resolve.match_braced`.
+    """
     if value[:1] == "{":
-        return _whole_braced(value, "var")
-    if not value or value[0] != "$":
+        return _whole_braced(value, kind)
+    if value[:1] != sigil:
         return None
     try:
-        name, end = match_var(value, 0)
+        name, end = matcher(value, 0)
     except SettingsError:
         return None
     return name if end == len(value) else None
