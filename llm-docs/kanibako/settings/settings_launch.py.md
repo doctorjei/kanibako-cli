@@ -52,7 +52,7 @@ overrides by name — precedence-equivalent to the old AGENT-level `defaults=`, 
   seed also takes `config.box_scalar_defaults_floor()` (`box.image`, `box.share_images`,
   `box.enable_vault`, and `box.shell`'s `<None>` as a present `None`, [R177]), so every declared box
   scalar resolves (spec §0) in the main launch snapshot and every other box resolve. Before, only
-  `config._resolve_box_scalars` folded it, so a user's `box.canon=@box.shell/sub` rendered `""` in
+  `resolve_box_scalars` folded it, so a user's `box.canon=@box.shell/sub` rendered `""` in
   the launch (`/sub/handbook`) and a bare `@box.shell` dropped; now the present `None` makes the
   whole value `None` (`settings_expand`, embedded or whole-value) and the entry is skipped. ONE
   carrier, shared with the set-time probe. A WORKSET or SYSTEM resolve has no box and is not floored.
@@ -1170,7 +1170,7 @@ files** (`cascade_view` of each, most-specific first) for a RETIRED behavior spe
 a launch-only seam with its own file list; it now runs in EVERY builder caller, and its cure names the
 agent (*agent_name*, unless it is the `shell` slot) and, at the box tier, the box — the
 `meta.box.name` in the caller's *meta_identity*. A resolve with no identity floor
-(`config.load_merged_config`) gets the `<box>` / `<agent>` placeholders, as (4) does. (4)'s behavior
+(`load_merged_config`) gets the `<box>` / `<agent>` placeholders, as (4) does. (4)'s behavior
 half stays for the workset preview, which does not run this builder yet.
 
 (2) and (3) raise independently, so a file carrying BOTH a bare-relative path value and an

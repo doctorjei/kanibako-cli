@@ -79,8 +79,8 @@ never the CLI level), though the flag itself is wired here for the launch argv.
 ### Why `--image` / `--share-images` ARE listed
 
 They are WIRED (B6, R-11a(a)): `box.image` / `box.share_images` resolve through the keyspace (the
-box-scalar resolve, `settings_launch.resolve_box_scalars`, behind `load_merged_config`), agent-lessly — a box-scope flag needs no active-
-agent discriminator.
+box-scalar resolve in `settings_launch.load_merged_config`), agent-lessly — a box-scope flag needs
+no active-agent discriminator.
 
 Their PERSISTENCE at box CREATION is NOT this level's doing. §1A's CREATE EXCEPTION is implemented
 as the ONE gate `kanibako.settings.config.persist_creation_flags`, called by `create` and by the
