@@ -394,6 +394,28 @@ def run_list(args: argparse.Namespace) -> int:
     return 0
 
 
+def _hub_stop(state: dict, helper_num: int) -> str | None:
+    """Ask the hub to stop the helper's container: ``None`` when it stopped (or there
+    is nothing to ask), else the hub's reason for refusing.  A refusal means the
+    container may still run, so the caller must leave the helper's state and
+    directories alone.  An unreachable hub stays best-effort, as before."""
+    container_name = state.get("container_name")
+    if not container_name or not _check_helpers_enabled():
+        return None
+    from kanibako.channels.helper_client import send_request
+    try:
+        resp = send_request(_socket_path(), {
+            "action": "stop",
+            "container_name": container_name,
+            "helper_num": helper_num,
+        })
+    except Exception:
+        return None  # Best-effort stop
+    if resp.get("status") == "ok":
+        return None
+    return str(resp.get("message", "unknown error"))
+
+
 def run_stop(args: argparse.Namespace) -> int:
     """Stop a helper instance."""
     helpers_dir = _helpers_dir()
@@ -409,18 +431,10 @@ def run_stop(args: argparse.Namespace) -> int:
         print(f"Helper {helper_num} is already stopped.")
         return 0
 
-    # Stop container via socket if running
-    container_name = state.get("container_name")
-    if container_name and _check_helpers_enabled():
-        from kanibako.channels.helper_client import send_request
-        try:
-            send_request(_socket_path(), {
-                "action": "stop",
-                "container_name": container_name,
-                "helper_num": helper_num,
-            })
-        except Exception:
-            pass  # Best-effort stop
+    refused = _hub_stop(state, helper_num)
+    if refused is not None:
+        print(f"Cannot stop helper {helper_num}: {refused}", file=sys.stderr)
+        return 1
 
     state["status"] = "stopped"
     write_helper_state(helpers_dir, helper_num, state)
@@ -438,19 +452,12 @@ def run_cleanup(args: argparse.Namespace) -> int:
         print(f"Helper {helper_num} does not exist.", file=sys.stderr)
         return 1
 
-    # Stop container if running
     state = read_helper_state(helpers_dir, helper_num)
-    container_name = state.get("container_name")
-    if container_name and _check_helpers_enabled():
-        from kanibako.channels.helper_client import send_request
-        try:
-            send_request(_socket_path(), {
-                "action": "stop",
-                "container_name": container_name,
-                "helper_num": helper_num,
-            })
-        except Exception:
-            pass
+    if state.get("status") != "stopped":
+        refused = _hub_stop(state, helper_num)
+        if refused is not None:
+            print(f"Cannot clean up helper {helper_num}: {refused}", file=sys.stderr)
+            return 1
 
     cascade = getattr(args, "cascade", False)
     if cascade:

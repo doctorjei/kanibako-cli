@@ -829,6 +829,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `keyspace-manifest.yaml` already did; before, every default it holds went missing without a word.
 - **A helper's unreadable spawn document names its cure.** A symlink loop says to remove or repair the link, and a
   permission failure says to make the path readable; before, both printed only the system error.
+- **A fork copies links as links.** A link in the workspace or the box metadata used to be followed, so a link
+  the box planted (`~/workspace/x -> /home/user/.ssh`) pulled the host directory into the fork as real files. Each
+  link now lands as written, and a dangling link no longer fails the fork.
+- **`helper stop` and `helper cleanup` stop only a helper the hub launched.** The hub used to stop and remove any
+  container a box named, including another box or the director. It now refuses a name it did not launch, and the
+  CLI reports that refusal: it prints the hub's reason, exits 1, and leaves the helper's state and directories as
+  they were.
 - **The tweakcc patch container runs tweakcc** (entrypoint, keep-id user, config dir, `--yes`); `baseline verify` no
   longer reports every executable missing on a rig. tweakcc 4.4.0 still cannot patch claude 2.1.296 (runs unpatched).
 - **`workset disconnect --remove-files` names a workspace it keeps behind a symlink loop.** When the workset's
