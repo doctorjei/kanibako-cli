@@ -388,36 +388,50 @@ def _moved_standalone_state(
 ) -> ProjectState | None:
     """Registered standalone *old* as found at *dest*, where the user moved its root, else ``None``.
 
-    After ``mv`` the box's row names a gone root, and *dest* holds a store under the row's
-    ``workset.kuid`` (keyspace ``workset.kuid``), so ``remap`` takes it as the box:
-    :func:`_to_standalone` reuses it in place and moves nothing.  *dest* must be no
-    registered root, in any spelling, and not the old root itself.
-    ⚑ Only while the registered root is GONE: a kuid is 5 characters, so with the box
-    still at its root *dest* is a copy or a stranger, and taking it is a takeover — refused.
+    After ``mv`` the box's row names a root that no longer carries it, and *dest* holds a
+    store under the row's ``workset.kuid`` (keyspace ``workset.kuid``), so ``remap`` takes
+    it as the box: :func:`_to_standalone` reuses it in place and moves nothing.  *dest*
+    must be no registered root, in any spelling, and not the old root itself.
+    ⚑ Only while the registered root no longer carries the box (:func:`_root_carries_box`):
+    a kuid is 5 characters, so with the box still at its root *dest* is a copy or a
+    stranger, and taking it is a takeover — refused.  An empty dir or a dangling link left
+    at the old root is not the box.
+    ⚑ With the box gone from its root, a *dest* that is ANOTHER box's registered root is
+    refused naming that box: the usual resolution would only say the old root is gone.
     """
     from kanibako.launch import box_resolve
     from kanibako.project import registry_store
     from kanibako.settings.config import read_workset_kuid
 
+    holder = None
     try:
         old_root = Path(literal_path(resolve_designation(
             std, old, unknown_name_is_path=True, name_first=True)))
         name = registry_store.standalone_name_for_root(std.registry, old_root)
         if (name is None or not is_canonical_standalone_name(name)
-                or _resolved_unless_loop(dest) == _resolved_unless_loop(old_root)
-                or not box_resolve.stores_standalone_registry_null(dest)
+                or _resolved_unless_loop(dest) == _resolved_unless_loop(old_root)):
+            return None
+        box_kuid = standalone_kuid(name)
+        still_there = _root_carries_box(old_root, box_kuid, std)
+        holder = registry_store.standalone_name_for_same_dir(std.registry, dest)
+        if holder is not None:
+            if still_there:
+                return None  # the usual resolution refuses it, naming the holder
+        elif (not box_resolve.stores_standalone_registry_null(dest)
                 or not standalone_box_store(
                     dest, early=_early_scope(std, BoxMode.standalone)).is_dir()
-                or registry_store.standalone_name_for_same_dir(std.registry, dest) is not None
                 or registry_store.standalone_identity_holder(std.registry, dest) is not None
-                or read_workset_kuid(dest / WORKSET_META_FILE).lower()
-                != standalone_kuid(name).lower()):
+                or find_identifier(read_workset_kuid(dest / WORKSET_META_FILE),
+                                   (box_kuid,)) is None):
             return None
-        still_there = old_root.exists() or old_root.is_symlink()
-        proj = (None if still_there
+        proj = (None if still_there or holder is not None
                 else resolve_standalone_project(std, config, str(dest), initialize=False))
     except (KanibakoError, OSError):
         return None  # not this box's moved root: the usual resolution answers
+    if holder is not None:
+        raise ProjectError(
+            f"Cannot remap '{name}' onto '{dest}': it is the root of standalone box "
+            f"'{holder}'. " + _REMAP_TAKEOVER_CURE.format(shlex.quote(str(dest))))
     if proj is None:
         raise ProjectError(
             f"Cannot remap '{name}' onto '{dest}': it is a standalone root carrying this "
@@ -430,6 +444,27 @@ def _moved_standalone_state(
     state = _state_from_paths("standalone", proj, std=std, ws=None,
                               early=_early_scope(std, BoxMode.standalone))
     return replace(state, name=name, moved_from=old_root)
+
+
+def _root_carries_box(root: Path, box_kuid: str, std: StandardPaths) -> bool:
+    """Whether standalone *root* still holds the box with *box_kuid*: its id, or its store.
+
+    Gone, a dangling link, or a dir with neither is not the box.  A ``workset.yaml``
+    naming another kuid is another box.  With no kuid stored, the box's store there is
+    still the box.  ⚑ A root that cannot be read counts as carrying it: the remap refuses.
+    """
+    from kanibako import kuid
+    from kanibako.settings.config import read_workset_kuid
+
+    try:
+        if not root.is_dir():
+            return False
+        stored = read_workset_kuid(root / WORKSET_META_FILE)
+        if stored != kuid.SENTINEL:
+            return find_identifier(stored, (box_kuid,)) is not None
+        return standalone_box_store(root, early=_early_scope(std, BoxMode.standalone)).is_dir()
+    except (KanibakoError, OSError):
+        return True
 
 
 def _workset_records_member_at(resolved: Path, std: StandardPaths) -> bool:
@@ -821,6 +856,13 @@ def _name_held_in_target_workset(
     return find_identifier(new_name, (p.name for p in target_ws.projects))
 
 
+#: The cure a remap onto another box's path prints; ``{0}`` is that box, shell-quoted.
+_REMAP_TAKEOVER_CURE = (
+    "A remap is not a takeover, and no flag overrides this. First delete that box "
+    "(`kanibako box rm {0} --purge`, which deletes that box's own data, its vault included, "
+    "but not its workspace), then run the remap again.")
+
+
 def _remap_dest_holder(
     state: ProjectState, dest: Path, std: StandardPaths,
 ) -> tuple[str, bool] | None:
@@ -847,9 +889,7 @@ def _remap_dest_holder(
     own_root = _resolved_unless_loop(state.metadata_path) if standalone else None
     no_flag = "A remap is not a takeover, and no flag overrides this. "
     share = "Both boxes would claim it: pass --force to share it, or choose another path."
-    takeover = (no_flag + "First delete that box (`kanibako box rm {0} --purge`, which deletes "
-                "that box's own data, its vault included, but not its workspace), then run "
-                "the remap again.")
+    takeover = _REMAP_TAKEOVER_CURE
     identical = ("Identical workspaces are refused, and no flag overrides this. Choose "
                  "another path.")
 
@@ -1641,7 +1681,7 @@ def _note_interrupt_undone(state: ProjectState, spec: TargetSpec) -> None:
     """Tell the user an interrupt was undone in full: the CLI's rc 130 prints nothing."""
     import sys
 
-    where = state.workspace_path
+    where = _registered_place(state)
     if spec.verb == "move":
         done = f"the move was undone; '{state.name}' is back at {where}"
     elif spec.verb == "convert":
@@ -1661,7 +1701,7 @@ def _note_unwind_incomplete(
     exits 130 on an interrupt, or prints the error.
     """
     noun = _verb_noun(spec)
-    src = state.workspace_path
+    src = _registered_place(state)
     if noun == "remap":
         where = f"'{state.name}' may still be registered at {dest or src}"
     elif dest is None or dest == src:
@@ -1669,6 +1709,19 @@ def _note_unwind_incomplete(
     else:
         where = f"check '{state.name}' at {src} and at {dest}"
     _note_rollback_incomplete(noun, where, errors, interrupted=interrupted)
+
+
+def _registered_place(state: ProjectState) -> Path:
+    """Where *state*'s box was registered before the op: the path an undo Note names.
+
+    A standalone is registered at its ROOT (``metadata_path``), and a moved one's row names
+    the root it left (``moved_from``); any other box at its workspace.
+    """
+    if state.moved_from is not None:
+        return state.moved_from
+    if state.mode is BoxMode.standalone:
+        return state.metadata_path
+    return state.workspace_path
 
 
 def _verb_noun(spec: TargetSpec) -> str:

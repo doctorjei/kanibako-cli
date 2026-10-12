@@ -1239,6 +1239,109 @@ class TestRemap:
         assert registry_store.load_standalone(std.registry) == rows
         assert self._tree_digest(tmp_home) == before
 
+    @pytest.mark.parametrize("left", ["empty dir", "dangling link", "another box's root"])
+    def test_remap_moved_standalone_past_what_was_left_at_its_old_root(
+            self, env, capsys, monkeypatch, left):
+        """After ``mv``, what is left at the old root is not the box unless it carries the
+        box's id or store: an empty dir, a dangling link, or a root naming another kuid
+        do not stop the remap, which re-points the row and leaves the old root alone."""
+        from kanibako.project import registry_store
+
+        self._confirms(monkeypatch)
+        config, std, tmp_home = env
+        solo, new, name = self._moved_standalone(env, "mv")
+        if left == "empty dir":
+            solo.mkdir()
+        elif left == "dangling link":
+            solo.symlink_to(tmp_home / "nowhere")
+        else:
+            solo.mkdir()
+            resolve_standalone_project(std, config, project_dir=str(solo), initialize=True,
+                                       register=False)
+            assert load_doc(solo / "workset.yaml")["workset"]["kuid"] != name.partition("_")[0]
+        left_before = self._tree_digest(solo) if solo.is_dir() else None
+
+        assert run_remap(_remap_args(name, str(new), force=False)) == 0, capsys.readouterr()
+        assert registry_store.load_standalone(std.registry) == {
+            name.replace("_solo", "_moved"): str(new)}
+        assert (new / "workspace" / "mine.txt").read_text() == "keep"
+        assert solo.is_symlink() or self._tree_digest(solo) == left_before
+
+    @pytest.mark.parametrize("kept", ["id", "store"])
+    def test_remap_onto_a_copy_refused_while_the_old_root_keeps_its_id_or_store(
+            self, env, capsys, monkeypatch, kept):
+        """The old root still carries the box when it keeps its ``workset.kuid``, or, with
+        no kuid stored, its store: a ``cp -a`` copy is then refused, as with the root whole."""
+        from kanibako.project import registry_store
+
+        self._confirms(monkeypatch)
+        _config, std, tmp_home = env
+        solo, new, name = self._moved_standalone(env, "cp")
+        if kept == "id":
+            for entry in solo.iterdir():
+                if entry.is_dir() and not entry.is_symlink():
+                    shutil.rmtree(entry)
+                elif entry.name != "workset.yaml":
+                    entry.unlink()
+        else:
+            (solo / "workset.yaml").unlink()
+        rows = registry_store.load_standalone(std.registry)
+        before = self._tree_digest(tmp_home)
+
+        assert run_remap(_remap_args(name, str(new), force=True)) == 1
+        assert f"and the box is still at {solo}." in capsys.readouterr().err
+        assert registry_store.load_standalone(std.registry) == rows
+        assert self._tree_digest(tmp_home) == before
+
+    @pytest.mark.parametrize("forged", [False, True])
+    def test_remap_moved_standalone_onto_a_registered_root_names_that_box(
+            self, env, capsys, monkeypatch, forged):
+        """With the source root gone, a remap onto ANOTHER registered standalone root is
+        refused naming that box, as it is with the source in place; not "does not exist"."""
+        from kanibako.project import registry_store
+
+        self._confirms(monkeypatch)
+        config, std, tmp_home = env
+        _solo, _new, name = self._moved_standalone(env, "mv")
+        held = tmp_home / "held"
+        held.mkdir()
+        proj = resolve_standalone_project(std, config, project_dir=str(held), initialize=True)
+        registry_store.register_standalone(std.registry, proj.name, held)
+        if forged:
+            doc = load_doc(held / "workset.yaml")
+            doc["workset"]["kuid"] = name.partition("_")[0]
+            dump_doc(held / "workset.yaml", doc)
+        rows = registry_store.load_standalone(std.registry)
+        before = self._tree_digest(tmp_home)
+
+        assert run_remap(_remap_args(name, str(held), force=True)) == 1
+        err = capsys.readouterr().err
+        assert (f"Cannot remap '{name}' onto '{held}': it is the root of standalone box "
+                f"'{proj.name}'. A remap is not a takeover, and no flag overrides this.") in err
+        assert f"`kanibako box rm {held} --purge`" in err
+        assert "does not exist" not in err
+        assert registry_store.load_standalone(std.registry) == rows
+        assert self._tree_digest(tmp_home) == before
+
+    def test_an_interrupted_moved_standalone_remap_names_the_root_it_left(
+            self, env, capsys, monkeypatch):
+        """The undo Note names where the row is again: the old ROOT, not a workspace."""
+        from kanibako.project import registry_store
+
+        self._confirms(monkeypatch)
+        _config, std, _tmp = env
+        solo, new, name = self._moved_standalone(env, "mv")
+
+        def interrupt(*_a, **_kw):
+            raise KeyboardInterrupt
+
+        monkeypatch.setattr(_lifecycle, "_drop_source_row", interrupt)
+        with pytest.raises(KeyboardInterrupt):
+            run_remap(_remap_args(name, str(new), force=False))
+        assert (f"Interrupted: the remap was undone; '{name}' is registered at {solo} again"
+                in capsys.readouterr().err)
+        assert registry_store.load_standalone(std.registry) == {name: str(solo)}
+
     def test_remap_confirmation_says_what_moves(self, env, capsys, monkeypatch):
         """A standalone remap says the files at the new path move into its workspace
         directory, as the help and MIGRATION do; a primary remap still moves none."""

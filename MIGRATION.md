@@ -6180,10 +6180,11 @@ Refused even with `--force`:
   --force`, which deletes no files;
 - a standalone box remapped into its own root or store;
 - a standalone box remapped onto a copy of its root (a root carrying its `workset.kuid`) while the
-  original is still in place: `… it is a standalone root carrying this box's id, and the box is
-  still at <root>.` Move the original away and run the remap again, or delete it
+  old root still holds its `workset.kuid` or store: `… it is a standalone root carrying this box's
+  id, and the box is still at <root>.` Move the original away and run the remap again, or delete it
   (`kanibako box rm <box> --purge`) and register the copy (`kanibako box register <copy>`). A root
-  you moved with `mv` is the box itself, and the remap records it there;
+  you moved with `mv` is the box itself, and the remap records it there, even with an empty folder
+  or a dangling link left at the old path;
 - a standalone box remapped onto a directory holding another box's workspace, root, or store, or a
   workset root. Its layout moves what sits at its new root into `workspace/`, which would break
   that box. A box already under that `workspace/` does not move, so it needs only `--force`, and a

@@ -764,7 +764,8 @@ class TestInterruptedMoveIsNamed:
         from kanibako.commands.box import _lifecycle
 
         dest = tmp_path / "dest"
-        state = SimpleNamespace(name="beta", workspace_path=tmp_path)
+        state = SimpleNamespace(name="beta", workspace_path=tmp_path, mode=BoxMode.primary,
+                                moved_from=None)
         _lifecycle._note_unwind_incomplete(
             state, SimpleNamespace(verb=verb), dest, [OSError("x")],  # type: ignore[arg-type]
             interrupted=True)
@@ -779,7 +780,8 @@ class TestInterruptedMoveIsNamed:
 
         from kanibako.commands.box import _lifecycle
 
-        state = SimpleNamespace(name="beta", workspace_path=tmp_path)
+        state = SimpleNamespace(name="beta", workspace_path=tmp_path, mode=BoxMode.primary,
+                                moved_from=None)
         _lifecycle._note_unwind_incomplete(
             state, SimpleNamespace(verb="convert"), None, [],  # type: ignore[arg-type]
             interrupted=True)
@@ -797,9 +799,35 @@ class TestInterruptedMoveIsNamed:
 
         from kanibako.commands.box import _lifecycle
 
-        state = SimpleNamespace(name="beta", workspace_path=tmp_path)
+        state = SimpleNamespace(name="beta", workspace_path=tmp_path, mode=BoxMode.primary,
+                                moved_from=None)
         _lifecycle._note_interrupt_undone(state, SimpleNamespace(verb=verb))  # type: ignore[arg-type]
         assert capsys.readouterr().err == said.format(p=tmp_path) + "\n"
+
+
+    @pytest.mark.parametrize("moved", [False, True])
+    @pytest.mark.parametrize("incomplete", [False, True])
+    def test_a_standalone_note_names_its_root_not_its_workspace(
+            self, tmp_path, capsys, moved, incomplete):
+        """A standalone is registered at its ROOT, and a moved one's row at the root it
+        left: an undo Note names that, never ``<root>/workspace``."""
+        from types import SimpleNamespace
+
+        from kanibako.commands.box import _lifecycle
+
+        root, left = tmp_path / "solo", tmp_path / "gone"
+        state = SimpleNamespace(name="beta", workspace_path=root / "workspace",
+                                mode=BoxMode.standalone, metadata_path=root,
+                                moved_from=left if moved else None)
+        spec = SimpleNamespace(verb=None)
+        if incomplete:
+            _lifecycle._note_unwind_incomplete(state, spec, None, [],  # type: ignore[arg-type]
+                                               interrupted=True)
+        else:
+            _lifecycle._note_interrupt_undone(state, spec)  # type: ignore[arg-type]
+        err = capsys.readouterr().err
+        assert f"registered at {left if moved else root}" in err, err
+        assert str(root / "workspace") not in err, err
 
 
 def _cli(*argv: str) -> int:

@@ -761,10 +761,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   say only "Removed project". It now names the kept path and why.
 - **`box remap` re-points a standalone box whose root you moved.** After `mv` it said "Project path … does not
   exist". A new root holding the box's own `workset.kuid` is now recorded as the box, under the name its new
-  folder composes, and nothing there moves. While the original is still in place, such a root is a copy and is
-  still refused, now with a cure that works: move the original away, or delete it and register the copy. The
-  confirmation for a standalone remap now says the files at the new path move into its workspace directory, not
-  "no files moved".
+  folder composes, and nothing there moves. An empty folder or a dangling link left at the old path does not stop
+  it. While the old root still holds the box's `workset.kuid` or store, such a root is a copy and is still
+  refused, now with a cure that works: move the original away, or delete it and register the copy. Onto another
+  registered standalone root, it names that box. The confirmation for a standalone remap now says the files at
+  the new path move into its workspace directory, not "no files moved"; an interrupted standalone remap names
+  the root it is registered at again, not its workspace.
 - **`box remap` and `box move` of a standalone box no longer drop another box's registration.** A `cp -a` copy
   under a new folder name composes the original's name, and moving or remapping the copy deregistered the
   original. Only the row at the source's own root is dropped now.

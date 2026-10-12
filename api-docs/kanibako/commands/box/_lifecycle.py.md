@@ -12,6 +12,7 @@ INPLACE = _Sentinel('INPLACE')
 BARE_INTO_WS = _Sentinel('BARE_INTO_WS')
 UNCHANGED = _Sentinel('UNCHANGED')
 STUBBORN_INPLACE_MSG = 'Stubbornly refusing to convert in-place from within a workset; add `--move` or `--move <path>` to relocate.'
+_REMAP_TAKEOVER_CURE = "A remap is not a takeover, and no flag overrides this. First delete that box (`kanibako box rm {0} --purge`, which deletes that box's own data, its vault included, but not its workspace), then run the remap again."
 _VAULT_ARM_KEYS: tuple[str, str] = ('workset.vault_ro', 'workset.vault_rw')
 _DISABLED_VAULT_WHY = 'box.enable_vault is false, so nothing received its contents.'
 _STANDALONE_FIXED_ARTIFACTS = frozenset({STANDALONE_META_DIR, WORKSET_META_FILE, BOX_META_FILE, '.kanibako.lock'})
@@ -44,6 +45,7 @@ def _relocated_own_name(state: ProjectState, std: StandardPaths, landing_ws: Pat
 def _workspace_landing(state: ProjectState, dest: Path | None, target_mode: BoxMode, *, records_only: bool) -> Path
 def _ownership_to_mode(ownership: str) -> tuple[BoxMode, str | None]
 def _moved_standalone_state(old: str | None, dest: Path, std: StandardPaths, config: BootstrapConfig) -> ProjectState | None
+def _root_carries_box(root: Path, box_kuid: str, std: StandardPaths) -> bool
 def _workset_records_member_at(resolved: Path, std: StandardPaths) -> bool
 def _resolve_primary_state(root: Path, std: StandardPaths, config: BootstrapConfig) -> ProjectState
 def _default_state_from_meta(workspace: Path, std: StandardPaths) -> ProjectState | None
@@ -61,6 +63,7 @@ def _remap_sweeps_other_box(state: ProjectState, dest: Path, std: StandardPaths,
 def _validate(state: ProjectState, spec: TargetSpec, std: StandardPaths, config: BootstrapConfig, *, force: bool, cwd: Path) -> dict
 def _note_interrupt_undone(state: ProjectState, spec: TargetSpec) -> None
 def _note_unwind_incomplete(state: ProjectState, spec: TargetSpec, dest: Path | None, errors: Sequence[Exception], *, interrupted: bool) -> None
+def _registered_place(state: ProjectState) -> Path
 def _verb_noun(spec: TargetSpec) -> str
 def _run_steps(state: ProjectState, spec: TargetSpec, std: StandardPaths, config: BootstrapConfig, plan: dict, unwind: _Unwind) -> tuple[ProjectState, _SourceTeardown | None]
 def _retire_old_workspace(old: Path, landed: Path) -> None
