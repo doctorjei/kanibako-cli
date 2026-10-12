@@ -27,7 +27,7 @@ from typing import TYPE_CHECKING, Any
 from kanibako.agent_ref import ADDRESSABLE_PSEUDO_AGENTS, ENV_VAR_NAME
 from kanibako.errors import PackagingError
 from kanibako.settings.agent_config import store_dirname
-from kanibako.settings.config_io import parse_packaged
+from kanibako.settings.config_io import load_packaged_mapping
 from kanibako.settings.settings_resolve import literal_expr, literal_map
 
 if TYPE_CHECKING:
@@ -71,10 +71,7 @@ CORE_DEFAULTS_FILENAME = "core-defaults.yaml"
 def _parse_doc() -> dict[str, Any]:
     """Parse the bundled system/core defaults file ONCE; the cached, never-handed-out original."""
     ref = packaged_data_dir(*PACKAGED_SETTINGS_PARTS, CORE_DEFAULTS_FILENAME)
-    raw = parse_packaged(Path(str(ref)).read_text()) or {}
-    if not isinstance(raw, dict):
-        return {}
-    return raw
+    return load_packaged_mapping(ref, CORE_DEFAULTS_FILENAME)
 
 
 def _load_doc() -> dict[str, Any]:

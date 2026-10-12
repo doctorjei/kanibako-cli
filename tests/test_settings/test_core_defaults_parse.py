@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 import yaml
 
-from kanibako.settings import core_defaults
+from kanibako.settings import config_io, core_defaults
 from kanibako.settings.settings_launch import load_merged_config
 from kanibako.settings.settings_resolve import GUEST_HOME
 
@@ -29,7 +29,7 @@ def test_repeated_resolves_parse_the_shipped_file_once(cold_parse, tmp_path, mon
     calls.append(text)
     return yaml.safe_load(text)
 
-  monkeypatch.setattr(core_defaults, "parse_packaged", counting_parse)
+  monkeypatch.setattr(config_io, "parse_packaged", counting_parse)
   for _ in range(3):
     load_merged_config(None)
   assert len(calls) == 1

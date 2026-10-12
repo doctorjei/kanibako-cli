@@ -803,6 +803,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **A box can no longer grow the host's helper hub without bound.** A helper-socket frame over 16 MiB (no
   newline in sight) now ends that one connection with a logged error; the hub keeps serving every other
   helper. The largest frame a real exchange makes is under 1 MiB.
+- **An empty or malformed packaged defaults file is refused as a broken install.** `core-defaults.yaml` or a
+  plugin's defaults file that is empty or not a YAML mapping now stops with an `Error:` naming the file, as
+  `keyspace-manifest.yaml` already did; before, every default it holds went missing without a word.
 - **A helper's unreadable spawn document names its cure.** A symlink loop says to remove or repair the link, and a
   permission failure says to make the path readable; before, both printed only the system error.
 - **The tweakcc patch container runs tweakcc** (entrypoint, keep-id user, config dir, `--yes`); `baseline verify` no

@@ -18,6 +18,7 @@ _ABSENT = object()
 ## Functions
 ```
 def parse_packaged(text: str) -> object
+def load_packaged_mapping(ref: Traversable, filename: str) -> dict[str, Any]
 def yaml_problem(exc: yaml.YAMLError) -> str
 def parse_doc_text(text: str) -> object
 def load_doc(path: Path | None) -> dict

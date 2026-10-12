@@ -11,13 +11,14 @@ file and which nested slot a config KEY maps to is answered by
 from __future__ import annotations
 
 import errno
+from importlib.resources.abc import Traversable
 from pathlib import Path
-from typing import Callable
+from typing import Any, Callable
 
 import yaml
 
 from kanibako._atomic import atomic_write_text
-from kanibako.errors import ConfigError
+from kanibako.errors import ConfigError, PackagingError
 
 
 #: libyaml where PyYAML has it, else pure Python; both are SafeLoaders.
@@ -34,6 +35,21 @@ MAX_DOC_DEPTH = 64
 def parse_packaged(text: str) -> object:
     """Parse a YAML file kanibako SHIPS (never a user's file) with the fastest safe loader."""
     return yaml.load(text, Loader=_PACKAGED_LOADER)
+
+
+def load_packaged_mapping(ref: Traversable, filename: str) -> dict[str, Any]:
+    """The shipped YAML mapping at *ref*; an empty file or any other shape raises.
+
+    ⚑ Spec §0, no silent accept: a packaged file that is not a mapping is a broken install,
+    never an empty document.
+    """
+    raw = parse_packaged(Path(str(ref)).read_text())
+    if not isinstance(raw, dict):
+        raise PackagingError(
+            f"{filename} is empty or is not a YAML mapping (read from {ref}) — it is "
+            f"packaged data, so this is a PACKAGING defect, not a configuration one"
+        )
+    return raw
 
 
 def yaml_problem(exc: yaml.YAMLError) -> str:

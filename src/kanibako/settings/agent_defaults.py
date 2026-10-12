@@ -44,7 +44,7 @@ from kanibako.settings.agent_config import (
     is_self_resolving,
     root_relative_source,
 )
-from kanibako.settings.config_io import parse_packaged
+from kanibako.settings.config_io import load_packaged_mapping
 from kanibako.settings.core_defaults import add_bind, behavior_defaults
 from kanibako.settings.messages import PER_OWNER_SET_WORDS
 from kanibako.settings.settings_categories import ABSTRACT_CATEGORIES
@@ -81,11 +81,7 @@ from kanibako.targets.base import (
 
 def _load_doc(package: str, filename: str) -> dict[str, Any]:
     """Read and parse a plugin's bundled defaults file."""
-    ref = importlib.resources.files(package).joinpath(filename)
-    raw = parse_packaged(Path(str(ref)).read_text()) or {}
-    if not isinstance(raw, dict):
-        return {}
-    return raw
+    return load_packaged_mapping(importlib.resources.files(package).joinpath(filename), filename)
 
 
 def _build_binding(entry: dict[str, Any], package: str) -> Binding:

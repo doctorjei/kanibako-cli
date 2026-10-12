@@ -226,6 +226,37 @@ def test_the_keyspace_manifest_defect_raises_packaging_error(monkeypatch, tmp_pa
         keyspace_manifest._parse_manifest.cache_clear()
 
 
+@pytest.mark.parametrize("text", ["", "- not\n- a mapping\n", "just a string\n"])
+def test_the_core_defaults_defect_raises_packaging_error(monkeypatch, tmp_path, text):
+    """An empty or non-mapping ``core-defaults.yaml`` is a broken install, never an empty floor.
+
+    RED before the one loader: two shapes came back ``{}`` and every default went silently missing.
+    """
+    bad = tmp_path / core_defaults.CORE_DEFAULTS_FILENAME
+    bad.write_text(text)
+    monkeypatch.setattr(core_defaults, "packaged_data_dir", lambda *p: bad)
+    core_defaults._parse_doc.cache_clear()
+    try:
+        with pytest.raises(PackagingError, match="core-defaults.yaml is empty or is not a YAML mapping"):
+            core_defaults._load_doc()
+    finally:
+        core_defaults._parse_doc.cache_clear()
+
+
+@pytest.mark.parametrize("text", ["", "- not\n- a mapping\n", "just a string\n"])
+def test_a_plugin_defaults_defect_raises_packaging_error(monkeypatch, tmp_path, text):
+    """A plugin's empty or non-mapping defaults file is a broken install, never "no defaults"."""
+    from kanibako.settings import agent_defaults
+
+    pkg = tmp_path / "fake_defaults_pkg"
+    pkg.mkdir()
+    (pkg / "__init__.py").write_text("")
+    (pkg / "fake-defaults.yaml").write_text(text)
+    monkeypatch.syspath_prepend(str(tmp_path))
+    with pytest.raises(PackagingError, match="fake-defaults.yaml is empty or is not a YAML mapping"):
+        agent_defaults._load_doc("fake_defaults_pkg", "fake-defaults.yaml")
+
+
 def test_a_packaging_defect_reaches_the_user_as_an_error_line_not_a_traceback(
     monkeypatch, capsys,
 ):
