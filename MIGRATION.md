@@ -6280,6 +6280,10 @@ Refused unless `--force`, which shares the tree and keeps both boxes:
   another box's workspace or standalone root is refused the same way: `… Nothing is there yet, so
   nothing would be overwritten: pass --force to share it, or choose another path.` For `workset
   create`, the same `--force` also accepts a shared `workset.logs` directory.
+- `create --standalone`, `box remap`, or any of these verbs placing a standalone root whose
+  `workset.workspaces` names a directory in another box's store: `… it is a standalone root whose
+  workspace (<dir>) is inside the store of …`, ending as above. Likewise `box remap` of a member into
+  its own external directory when another member's external directory holds it.
 - `box move` of a primary box into its own store: `… it is inside its own store (<store>). A box's
   store is not its workspace: pass --force to use it anyway, or choose another path.`
 - an in-place `box convert --workset` whose workspace sits inside another box's workspace, root,

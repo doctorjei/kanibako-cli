@@ -122,6 +122,27 @@ class TestCreateNested:
         _refused(capsys, ws_root / "workspaces" / "mem",
                  f"inside the workspace of primary box 'outer' ({area / 'A'}). " + SHARE)
 
+    @pytest.mark.parametrize("force", [False, True])
+    def test_standalone_whose_workspace_is_in_a_primary_store(
+            self, area, config_file, capsys, force):
+        from kanibako.settings.config_io import dump_doc
+        assert _create("--name", "X", str(area / "X")) == 0
+        capsys.readouterr()
+        boxes = _std(config_file).boxes
+        workspace = boxes / "X" / "w"
+        root = area / "SD"
+        root.mkdir()
+        dump_doc(root / "workset.yaml", {"workset": {"workspaces": str(workspace)}})
+        rc = _create(*(["--force"] if force else []), "--standalone", str(root))
+        if force:
+            assert rc == 0
+            return
+        assert rc == 1
+        _refused(capsys, root,
+                 f"a standalone root whose workspace ({workspace}) is inside the store of "
+                 f"primary box 'X' ({(boxes / 'X').resolve()}). " + SHARE)
+        assert not workspace.exists()
+
     def test_siblings_are_not_nested(self, area):
         assert _create("--name", "one", str(area / "one")) == 0
         assert _create("--name", "two", str(area / "two")) == 0

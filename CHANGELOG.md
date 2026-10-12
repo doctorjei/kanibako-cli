@@ -841,6 +841,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   workspace reached through a link, and one inside a standalone box's store repointed outside its root. A link
   to the workspace itself is still a twin. See `MIGRATION.md`, "`move`, `convert`, `duplicate`, `workset create`, and
   `workset connect` on another box's path are refused".
+- **A standalone root whose workspace lies in another box's store, and a path inside a member that holds the
+  remapped member's own directory, need `--force`.** `box create --standalone`, `box remap`, and the verbs that
+  run their check tested only the root against stores, so a root whose `workset.workspaces` named a directory in
+  a primary or standalone box's store passed. `box remap` of a member into its own external directory stopped
+  there, so another member's directory holding it went unseen. Both are now refused unless `--force`, naming
+  the other box. See `MIGRATION.md`, "`move`, `convert`, `duplicate`, `workset create`, and `workset connect` on
+  another box's path are refused".
 - **`workset create` and `workset connect` refuse, unless `--force`, a path inside another box's workspace,
   root, or store,** as `create` and `remap` do; `connect` also refuses one holding another box's workspace or root.
   `workset create` checked nothing, and `workset connect` checked only a member's workspace and a standalone root.

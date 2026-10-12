@@ -1382,6 +1382,62 @@ class TestRemap:
         assert run_remap(_remap_args(str(ext), str(ext / "sub"), force=False)) == 0
         assert _connected_index(std)[str((ext / "sub").resolve())]["project"] == "alpha"
 
+    def test_remap_inside_a_member_holding_its_own_member_needs_force(
+            self, env, capsys, monkeypatch):
+        """Keyspace § 0: a member's own external dir is no other box's, but a member
+        holding that dir is: the remap is refused by that member's name unless --force."""
+        asked = self._confirms(monkeypatch)
+        _config, std, tmp_home = env
+        self._member_and_registered_standalone(env)
+        ws = load_workset(tmp_home / "ws_root", "ws", early_system=std.early_system)
+        outer = tmp_home / "outer"
+        (outer / "a" / "new").mkdir(parents=True)
+        add_project(ws, "beta", outer, std)
+        add_project(ws, "gamma", outer / "a", std, force=True)
+        dest = outer / "a" / "new"
+        before = self._tree_digest(tmp_home)
+
+        assert run_remap(_remap_args(str(outer / "a"), str(dest), force=False)) == 1
+        err = capsys.readouterr().err
+        assert (f"onto '{dest}': it is inside the workspace of member 'beta' of workset "
+                f"'ws' ({outer}). Both boxes would claim it: pass --force to share it") in err
+        assert asked == []
+        assert self._tree_digest(tmp_home) == before
+
+        assert run_remap(_remap_args(str(outer / "a"), str(dest), force=True)) == 0, \
+            capsys.readouterr()
+        assert self._recorded(env, "gamma") == str(dest)
+        assert self._recorded(env, "beta") == str(outer)
+
+    def test_remap_standalone_onto_a_root_whose_workspace_is_in_a_store_needs_force(
+            self, env, capsys, monkeypatch):
+        """A standalone records its root's ``workset.workspaces``: a root naming a dir in a
+        primary box's store shares that store (keyspace § 0, the "surgeon"), so the remap
+        is refused unless --force, which records it and keeps the store's box."""
+        asked = self._confirms(monkeypatch)
+        _config, std, tmp_home = env
+        _std, _ext, solo, solo_name = self._member_and_registered_standalone(env)
+        _default(env, "prim")
+        store = (std.boxes / "prim").resolve()
+        workspace = std.boxes / "prim" / "w"
+        dest = tmp_home / "SD"
+        dest.mkdir()
+        dump_doc(dest / "workset.yaml", {"workset": {"workspaces": str(workspace)}})
+        before = self._tree_digest(tmp_home)
+
+        assert run_remap(_remap_args(str(solo), str(dest), force=False)) == 1
+        err = capsys.readouterr().err
+        assert (f"Cannot remap '{solo_name}' onto '{dest}': it is a standalone root whose "
+                f"workspace ({workspace}) is inside the store of primary box 'prim' "
+                f"({store}). Both boxes would claim it: pass --force to share it") in err
+        assert asked == []
+        assert self._tree_digest(tmp_home) == before
+
+        assert run_remap(_remap_args(str(solo), str(dest), force=True)) == 0, \
+            capsys.readouterr()
+        boxes = load_primary_boxes(std.primary_workset, early=_early_scope(std, BoxMode.primary))
+        assert boxes["prim"] == str(tmp_home / "prim")
+
     def test_remap_missing_project(self, env):
         config, std, tmp_home = env
         plain = tmp_home / "plain"

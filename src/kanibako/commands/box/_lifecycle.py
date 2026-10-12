@@ -1050,10 +1050,11 @@ def _remap_dest_holder(
         if primary is not None:
             return (f"inside the workspace of primary box '{primary[1]}' ({primary[0]}). "
                     + share, True)
+        # Its own member is passed over, not stopped at: another may hold that one.
         owned = next((found for probe in ((tree,) if resolved == tree
                                           else (tree, resolved.parent))
-                      if (found := box_resolve.find_connected_external_box(probe, std))
-                      is not None and not own_member(found)), None)
+                      if (found := box_resolve.find_connected_external_box(
+                          probe, std, skip=own_member)) is not None), None)
         if owned is not None:
             return (f"inside the workspace of member '{owned.box_name}' of workset "
                     f"'{owned.workset_name}' ({owned.box_path}). " + share, True)
@@ -1064,32 +1065,46 @@ def _remap_dest_holder(
                     "pass --force to use it anyway, or choose another path.", True)
         return f"inside the store of {whose} ({store}). " + share, True
 
-    for name in () if primary_refused else load_primary_boxes(std.primary_workset, early=early):
-        store = _resolved_unless_loop(std.boxes / name)
-        if landing == store or store in landing.parents:
-            return store_note(state.mode is BoxMode.primary and _same_box_name(name, state.name),
-                              f"primary box '{name}'", store)
-    for top in (landing, *landing.parents):
-        if top == own_root:
-            break
-        owner = standalone_at(top)
-        if owner is None:
-            continue
-        store = _resolved_unless_loop(box_metadata_dir(
-            BoxMode.standalone, top, early=_early_scope(std, BoxMode.standalone)))
-        if landing == store or store in landing.parents:
-            return store_note(False, standalone_who(owner), store)
-        break
-    # A registered standalone's store, found by its owner: a repointed one sits outside
-    # its root, where the walk above finds no root.
-    for name, held_root in standalones.items():
-        try:
+    def store_holder(tree: Path) -> tuple[str, bool] | None:
+        """Why *tree*, resolved, lies in a box's store, else ``None``."""
+        at = _resolved_unless_loop(tree)
+        for name in () if primary_refused else load_primary_boxes(std.primary_workset,
+                                                                  early=early):
+            store = _resolved_unless_loop(std.boxes / name)
+            if at == store or store in at.parents:
+                return store_note(state.mode is BoxMode.primary
+                                  and _same_box_name(name, state.name),
+                                  f"primary box '{name}'", store)
+        for top in (at, *at.parents):
+            if top == own_root:
+                break
+            owner = standalone_at(top)
+            if owner is None:
+                continue
             store = _resolved_unless_loop(box_metadata_dir(
-                BoxMode.standalone, held_root, early=_early_scope(std, BoxMode.standalone)))
-        except (KanibakoError, OSError):
-            continue  # an unreadable root is refused where that box is used
-        if landing == store or store in landing.parents:
-            return store_note(False, standalone_who(name), store)
+                BoxMode.standalone, top, early=_early_scope(std, BoxMode.standalone)))
+            if at == store or store in at.parents:
+                return store_note(False, standalone_who(owner), store)
+            break
+        # A registered standalone's store, found by its owner: a repointed one sits outside
+        # its root, where the walk above finds no root.
+        for name, held_root in standalones.items():
+            try:
+                store = _resolved_unless_loop(box_metadata_dir(
+                    BoxMode.standalone, held_root, early=_early_scope(std, BoxMode.standalone)))
+            except (KanibakoError, OSError):
+                continue  # an unreadable root is refused where that box is used
+            if at == store or store in at.parents:
+                return store_note(False, standalone_who(name), store)
+        return None
+
+    # A standalone's recorded workspace is held to this too; *dest* is asked first, so
+    # a root in a store is named as itself.
+    for tree in dict.fromkeys((dest, *trees)):
+        held = store_holder(tree)
+        if held is not None:
+            return (held if tree == dest
+                    else (f"a standalone root whose workspace ({tree}) is {held[0]}", True))
 
     def below(path: Path, tree: Path) -> bool:
         """*path* strictly under *tree*, literal or resolved: a twin (link) is not below."""

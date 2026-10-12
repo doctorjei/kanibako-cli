@@ -11,7 +11,7 @@ replaced, and the full case enumeration: ``llm-docs/kanibako/launch/box_resolve.
 from __future__ import annotations
 
 import shlex
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from pathlib import Path
 from typing import Any, NamedTuple
 
@@ -234,6 +234,8 @@ def recorded_workspaces_under(std: StandardPaths, tree: Path, *, standalone: boo
 def find_connected_external_box(
     project_dir: Path,
     std: StandardPaths,
+    *,
+    skip: Callable[[_OwnedBox], bool] | None = None,
 ) -> _OwnedBox | None:
     """Resolve *project_dir* (or an ancestor) to a registered box OUTSIDE the
     current composition (external connect OR a pre-repoint stranded member).
@@ -241,7 +243,7 @@ def find_connected_external_box(
     Scans every NAMED workset; DEEPEST registered ancestor wins, so a launch from
     a SUBDIR of a connected dir still resolves.  The PRIMARY workset is skipped
     (its external boxes resolve by their own name index).  ``None`` when no such
-    box owns *project_dir*.
+    box owns *project_dir*.  A box *skip* accepts is passed over, so the next one up wins.
 
     ⚑ The in-scan skip is "under the CURRENT resolved ``workset.workspaces`` dir",
     NOT "under the workset root".  Widening it strands members registered under an
@@ -280,13 +282,16 @@ def find_connected_external_box(
                 continue
             depth = len(box_path.parts)
             if depth > best_depth:
-                best = _OwnedBox(
+                found = _OwnedBox(
                     workset_name=name,
                     workset_root=root,
                     mode=BoxMode.named,
                     box_name=box_name,
                     box_path=box_path,
                 )
+                if skip is not None and skip(found):
+                    continue
+                best = found
                 best_depth = depth
     return best
 
