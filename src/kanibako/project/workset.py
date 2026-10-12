@@ -300,6 +300,25 @@ def resolve_workset_logs(
     )
 
 
+def _resolve_workset_dir(
+    workset_root: Path, workset_settings: Mapping[str, Any] | None, leaf: str, key: str,
+    *, early: EarlyScope, standalone: bool | None = None,
+) -> Path | None:
+    """Return the resolved ``workset.<key>`` dir (default ``<root>/<leaf>``).
+
+    ``None`` for a present ``<None>``.  *standalone* is passed to
+    :func:`resolve_workset_dir_key` as given.
+    """
+    repoint, where = early_repoint(workset_root, workset_settings, key, early=early)
+    if repoint is None:
+        return None
+    return resolve_workset_dir_key(
+        workset_root, repoint if isinstance(repoint, str) else None, leaf,
+        key=key, where=where, standalone=standalone,
+        workset_settings=workset_settings, early=early,
+    )
+
+
 def resolve_workset_channelroot(
     workset_root: Path, workset_settings: Mapping[str, Any] | None,
     *, early: EarlyScope,
@@ -308,16 +327,8 @@ def resolve_workset_channelroot(
 
     ``None`` for a present ``<None>``: no channel root, so no channel bind.
     """
-    repoint, where = early_repoint(workset_root, workset_settings, "channelroot", early=early)
-    if repoint is None:
-        return None
-    return resolve_workset_dir_key(
-        workset_root, repoint if isinstance(repoint, str) else None,
-        _CHANNELROOT_LEAF,
-        key="channelroot",
-        where=where, standalone=False,
-        workset_settings=workset_settings, early=early,
-    )
+    return _resolve_workset_dir(workset_root, workset_settings, _CHANNELROOT_LEAF, "channelroot",
+                                early=early, standalone=False)
 
 
 def resolve_workset_canon(
@@ -328,15 +339,8 @@ def resolve_workset_canon(
 
     ``None`` for a present ``<None>``: the canon layer is SKIPPED (spec §2a).
     """
-    repoint, where = early_repoint(workset_root, workset_settings, _CANON_LEAF, early=early)
-    if repoint is None:
-        return None
-    return resolve_workset_dir_key(
-        workset_root, repoint if isinstance(repoint, str) else None,
-        _CANON_LEAF,
-        key=_CANON_LEAF,
-        where=where, workset_settings=workset_settings, early=early,
-    )
+    return _resolve_workset_dir(workset_root, workset_settings, _CANON_LEAF, _CANON_LEAF,
+                                early=early)
 
 
 def resolve_workset_template(
@@ -347,16 +351,8 @@ def resolve_workset_template(
 
     ``None`` for a present ``<None>``, and in STANDALONE (spec §2c): no template layer.
     """
-    repoint, where = early_repoint(workset_root, workset_settings, _TEMPLATE_LEAF, early=early)
-    if repoint is None:
-        return None
-    return resolve_workset_dir_key(
-        workset_root, repoint if isinstance(repoint, str) else None,
-        _TEMPLATE_LEAF,
-        key=_TEMPLATE_LEAF,
-        where=where, standalone=False,
-        workset_settings=workset_settings, early=early,
-    )
+    return _resolve_workset_dir(workset_root, workset_settings, _TEMPLATE_LEAF, _TEMPLATE_LEAF,
+                                early=early, standalone=False)
 
 
 def resolve_workset_vault_ro(
@@ -369,15 +365,8 @@ def resolve_workset_vault_ro(
     `null` setting inside a bind's source leaves the bind out…") and
     ``StandardPaths.primary_vault_ro`` is ``None``.
     """
-    repoint, where = early_repoint(workset_root, workset_settings, _VAULT_RO_KEY, early=early)
-    if repoint is None:
-        return None
-    return resolve_workset_dir_key(
-        workset_root, repoint if isinstance(repoint, str) else None,
-        _VAULT_RO_LEAF,
-        key=_VAULT_RO_KEY,
-        where=where, workset_settings=workset_settings, early=early,
-    )
+    return _resolve_workset_dir(workset_root, workset_settings, _VAULT_RO_LEAF, _VAULT_RO_KEY,
+                                early=early)
 
 
 def resolve_workset_vault_rw(
@@ -389,15 +378,8 @@ def resolve_workset_vault_rw(
     ``None`` for a present ``<None>``, on the terms of :func:`resolve_workset_vault_ro` —
     the two arms resolve INDEPENDENTLY, so either may carry it alone.
     """
-    repoint, where = early_repoint(workset_root, workset_settings, _VAULT_RW_KEY, early=early)
-    if repoint is None:
-        return None
-    return resolve_workset_dir_key(
-        workset_root, repoint if isinstance(repoint, str) else None,
-        _VAULT_RW_LEAF,
-        key=_VAULT_RW_KEY,
-        where=where, workset_settings=workset_settings, early=early,
-    )
+    return _resolve_workset_dir(workset_root, workset_settings, _VAULT_RW_LEAF, _VAULT_RW_KEY,
+                                early=early)
 
 
 def resolve_workset_vault_pair(
