@@ -1551,6 +1551,18 @@ def _validate(
                 "box into the workset. Re-run with --force to absorb it anyway, or choose "
                 "another workspace."
             )
+        # --- keyspace § 0: the workspace it keeps inside another box's tree (a member's,
+        #     a primary's, a store) is shared: refused unless --force.  Judged as the box
+        #     stands, so its own rows are not another box's; a standalone by its root.
+        #     ⚑ ``_to_workset`` forces ``add_project`` past the marker guard (B2a), so
+        #     ``refuse_existing_box``'s member arm never sees the user's flag: this does.
+        #     An unforceable hit is left to the guards above and to ``add_project``. ---
+        stands_at = (state.metadata_path if state.mode is BoxMode.standalone
+                     else state.workspace_path)
+        holder = _remap_dest_holder(state, stands_at, std, verb="convert")
+        if holder is not None and holder[1]:
+            raise ProjectError(
+                f"Cannot convert '{state.name}' in place at '{stands_at}': it is {holder[0]}")
 
     # --- an in-tree landing needs a workspace dir: a null ``workset.workspaces`` has none
     #     (Q96).  Refused HERE, before step 2 moves a tree or a ws->ws source releases. ---

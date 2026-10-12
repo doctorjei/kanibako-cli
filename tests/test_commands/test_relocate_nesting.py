@@ -166,6 +166,62 @@ class TestInsideAMemberWithForce:
         assert (dest / "f.txt").read_text() == "data"
 
 
+class TestInPlaceConvertIntoAWorkset:
+    """An in-place `convert --workset` keeps a workspace that sits inside a member's or a
+    primary's workspace: refused unless --force (keyspace § 0).  ``_to_workset`` forces its
+    connect past the marker guard, so the flag must be judged up front."""
+
+    @pytest.mark.parametrize("force", [False, True])
+    @pytest.mark.parametrize("holder", ["member", "primary"])
+    def test_inside_another_workspace(self, env, capsys, holder, force):
+        from kanibako.project.workset import add_project, create_workset, load_workset
+        std, area = env
+        create_workset("wo", area / "wo", std)
+        if holder == "member":  # made before its holder connects, as a user might
+            inner = area / "YN" / "p"
+            inner.mkdir(parents=True)
+            assert _create("--name", "p", str(inner)) == 0
+            ws = load_workset(area / "wn", "wn", early_system=std.early_system)
+            add_project(ws, "YN", area / "YN", std)
+        else:
+            inner = area / "X" / "p"
+            assert _create("--force", "--name", "p", str(inner)) == 0
+        capsys.readouterr()
+        rc = _run("convert", "--workset", "wo", *(["--force"] if force else []), "p")
+        err = capsys.readouterr().err
+        if force:
+            assert rc == 0, err
+            return
+        what = (f"inside the workspace of member 'YN' of workset 'wn' ({area / 'YN'})"
+                if holder == "member" else f"inside the workspace of primary box 'X' ({area / 'X'})")
+        assert rc == 1
+        assert f"Cannot convert 'p' in place at '{inner}': it is {what}. {SHARE}" in err, err
+        assert not load_workset(area / "wo", "wo", early_system=std.early_system).projects
+
+
+class TestNamedSource:
+    """A workset member relocated inside another box's workspace: refused unless --force."""
+
+    @pytest.mark.parametrize("force", [False, True])
+    @pytest.mark.parametrize("row", ["in_X", "in_XN"])
+    def test_move(self, env, capsys, row, force):
+        from kanibako.project.workset import add_project, load_workset
+        std, area = env
+        ws = load_workset(area / "wn", "wn", early_system=std.early_system)
+        add_project(ws, "m", ws.require_workspaces_dir("m") / "m", std)
+        capsys.readouterr()
+        dest, what = _forceable_dests(std, area)[row]
+        rc = _run("move", *(["--force"] if force else []), "wn/m", str(dest))
+        err = capsys.readouterr().err
+        if force:
+            assert rc == 0, err
+            return
+        assert rc == 1
+        assert f"Cannot move a box at '{dest}': it is {what}" in err, err
+        assert SHARE in err
+        assert not dest.exists()
+
+
 class TestRepointedStandaloneStore:
     """§ 1 row 9 (³): a standalone's store repointed outside its root, reached through a link."""
 
