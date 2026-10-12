@@ -55,6 +55,7 @@ def _add_target_group(parser: argparse.ArgumentParser, *, required: bool=False) 
 def _assert_primary_home_free_for_create(std, name: str) -> None
 def _check_persona_store_for_create(agent_ref: str) -> str | None
 def _create_recovery_refusal(args, std, probe, *, already: bool, pending: dict | None) -> 'str | None'
+def _drop_gone_parked_primary(std, name: str) -> None
 def _orphaned_primary_box_dir(args, std, probe) -> 'Path | None'
 def _named_workset_owning(path: Path, std) -> str | None
 def _create_in_workset_space(workset: str, path: Path, *, standalone: bool, by_cwd: bool) -> str

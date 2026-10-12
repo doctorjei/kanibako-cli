@@ -165,13 +165,69 @@ class TestBoxList:
         assert cli("box", "list") == 0
         out = capsys.readouterr().out
         assert "gonebox" in out and "missing" in out
+        assert "Deregistered boxes (metadata retained unless missing):" in out
         assert "box register" not in out
         assert cli("box", "rm", "gonebox") == 0
         out = capsys.readouterr().out
+        assert "'gonebox' is already deregistered.\n" in out
+        assert "metadata retained" not in out
         assert f"It cannot be restored: {std.boxes / 'gonebox'} is gone. Delete its entry:" in out
         assert "kanibako box rm gonebox --purge" in out and "box register" not in out
         assert cli("box", "rm", "gonebox", "--purge", "--force") == 0, capsys.readouterr().err
         assert registry_store.lookup_deregistered(std.registry, "gonebox") is None
+
+    @staticmethod
+    def _cli(*argv: str) -> int:
+        from kanibako.cli import main
+
+        with pytest.raises(SystemExit) as info:
+            main(list(argv))
+        return int(info.value.code or 0)
+
+    def test_recreate_over_a_gone_parked_box_drops_its_entry(
+        self, config_file, tmp_home, credentials_dir, capsys,
+    ):
+        """``create`` at the path of a parked box whose directory is gone makes a live box
+        under that name and drops the parked entry, which would otherwise shadow it."""
+        from kanibako.project import registry_store
+
+        std = load_std_paths(load_config(config_file))
+        ws = (tmp_home / "p" / "px").resolve()
+        ws.mkdir(parents=True)
+        assert self._cli("create", str(ws)) == 0
+        assert self._cli("box", "rm", "px") == 0
+        (std.boxes / "px").rename(tmp_home / "px-away")  # a seeded home is not rmtree-able
+        assert self._cli("box", "list") == 0
+        capsys.readouterr()
+        assert self._cli("create", str(ws)) == 0, capsys.readouterr().err
+        assert registry_store.lookup_deregistered(std.registry, "px") is None
+        capsys.readouterr()
+        assert self._cli("box", "list") == 0
+        out = capsys.readouterr().out
+        assert f"px                 stopped    {ws}" in out
+        assert "Deregistered" not in out
+        assert self._cli("box", "register", "px") == 0
+        assert f"'px' is already registered (primary box at {ws})." in capsys.readouterr().out
+
+    def test_list_never_hides_an_active_box_behind_a_parked_entry(
+        self, config_file, tmp_home, credentials_dir, capsys,
+    ):
+        """A stale parked entry naming a live box's home is not listed; the live box is."""
+        from kanibako.project import registry_store
+
+        std = load_std_paths(load_config(config_file))
+        ws = (tmp_home / "p" / "py").resolve()
+        ws.mkdir(parents=True)
+        assert self._cli("create", str(ws)) == 0
+        registry_store.register_deregistered(
+            std.registry, "py", kind="primary", workspace=str(ws),
+            metadata=str(std.boxes / "py"),
+        )
+        capsys.readouterr()
+        assert self._cli("box", "list") == 0
+        out = capsys.readouterr().out
+        assert f"py                 stopped    {ws}" in out
+        assert "Deregistered" not in out
 
     def test_list_without_deregistered_omits_section(
         self, config_file, tmp_home, credentials_dir, capsys,

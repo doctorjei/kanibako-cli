@@ -914,6 +914,24 @@ def _create_recovery_refusal(
     return "\n".join(lines)
 
 
+def _drop_gone_parked_primary(std, name: str) -> None:
+    """Drop the parked entry a PRIMARY create of *name* lands on, when its directory is gone.
+
+    It retains nothing, and left in place it shadows the new box: ``register`` and
+    ``rm --purge`` reach it by name, and its metadata path is the new box's home.  A
+    parked box whose directory is there is refused earlier, never dropped.
+    """
+    from kanibako.project import registry_store
+
+    home = std.boxes / name
+    for parked, entry in registry_store.load_deregistered(std.registry).items():
+        metadata = str(entry.get("metadata") or "")
+        if (metadata and (find_identifier(name, {parked: entry}) is not None
+                          or Path(metadata) == home)
+                and registry_store._metadata_definitively_gone(metadata)):
+            registry_store.unregister_deregistered(std.registry, parked)
+
+
 def _orphaned_primary_box_dir(args, std, probe) -> "Path | None":
     """The ``std.boxes/<basename>`` a bare PRIMARY ``create`` just stepped over, else None."""
     from kanibako.launch import journal
@@ -1674,6 +1692,9 @@ def run_create(args: argparse.Namespace, outcome: _CreateOutcome) -> int:
             _name_new_box_probe(std, _probe)
             _entry_probe = _primary_probe_named(std, _probe, _probe.name)
 
+    if _named_spec is None and not args.standalone:
+        _drop_gone_parked_primary(std, _entry_probe.name)
+
     # ⚑ THE MEMBERSHIP WRITE comes after every refusal and after the entry.
     _undo_member = None
     _undo_box = None
@@ -1899,8 +1920,14 @@ def run_list(args: argparse.Namespace) -> int:
     from kanibako.project import registry_store
     standalone = registry_store.load_standalone(std.registry)
     deregistered = registry_store.list_deregistered(std.registry)
+    # ⚑ The ACTIVE registration wins: a parked entry naming a live box's home is stale
+    # (the purge drops it, I4) and is not listed; only an UNREGISTERED box dir is hidden.
+    live_dirs = {m.resolve() for m, p in projects if p is not None}
+    deregistered = {n: e for n, e in deregistered.items()
+                    if Path(e["metadata"]).resolve() not in live_dirs}
     deregistered_dirs = {Path(e["metadata"]).resolve() for e in deregistered.values()}
-    projects = [(m, p) for m, p in projects if m.resolve() not in deregistered_dirs]
+    projects = [(m, p) for m, p in projects
+                if p is not None or m.resolve() not in deregistered_dirs]
     # DEREGISTERED boxes are never active, so they are skipped under an active-only filter.
     if active_only:
         deregistered = {}
@@ -2092,14 +2119,16 @@ def run_list(args: argparse.Namespace) -> int:
                 print(box_name)
         else:
             dr_width = min(40, max(26, name_width, *(len(n) for n in deregistered)))
+            gone = {n for n, e in deregistered.items()
+                    if registry_store._metadata_definitively_gone(str(e["metadata"]))}
             print()
-            print("Deregistered boxes (metadata retained):")
+            print("Deregistered boxes (metadata retained"
+                  + (" unless missing):" if gone else "):"))
             print(f"  {'NAME':<{dr_width}} {'STATUS':<14} {'PATH'}")
             for box_name in sorted(deregistered):
                 entry = deregistered[box_name]
                 path = str(entry.get("workspace") or entry.get("metadata") or "")
-                gone = registry_store._metadata_definitively_gone(str(entry["metadata"]))
-                status = "missing" if gone else "deregistered"
+                status = "missing" if box_name in gone else "deregistered"
                 print(f"  {box_name:<{dr_width}} {status:<14} {path}")
             if _pair_works_for_all(std, deregistered.items()):
                 print(
@@ -2635,7 +2664,10 @@ def _purge_deregistered(std, name: str, entry: dict, args: argparse.Namespace, *
     metadata = entry.get("metadata")
 
     if not args.purge:
-        print(f"'{name}' is already deregistered (metadata retained at {metadata}).")
+        # ⚑ A gone directory retains nothing; the advice below says it is gone.
+        kept = metadata and not registry_store._metadata_definitively_gone(str(metadata))
+        print(f"'{name}' is already deregistered"
+              + (f" (metadata retained at {metadata})." if kept else "."))
         print(_retained_box_cure_lines(std, name, entry))
         return 0
 
