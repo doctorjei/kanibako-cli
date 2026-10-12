@@ -12,8 +12,8 @@
 # Each rule's accepted findings live in `.kinemata/ratchets/<rule>.json`,
 # written only by `kinemata boundary -c kinemata-boundary.toml --rule <rule>
 # --record`. A new finding fails; editing a rule's declaration refuses until it
-# is re-recorded. A finding's fingerprint includes its line, so an edit that
-# moves an accepted import also fails until the rule is re-recorded.
+# is re-recorded. A finding is keyed by file, enclosing scope, and imported
+# symbol, never by line, so an edit that only moves an accepted import passes.
 
 [project]
 root = "."
