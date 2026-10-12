@@ -26,6 +26,8 @@ class BoxNameError(ProjectError):
 
 class DerivedBoxNameError(BoxNameError):
 
+class LegacyBoxNameError(ProjectError):
+
 class UnmarkedStandaloneError(ProjectError):
 
 class AmbiguousNameError(ProjectError):

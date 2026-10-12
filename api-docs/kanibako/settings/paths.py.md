@@ -71,7 +71,9 @@ def box_logs_location(std: StandardPaths, proj: ProjectPaths) -> tuple[Path | No
 def write_vault_gitignore(vault_root: Path, vault_rw_path: Path) -> None
 def detect_project_mode(project_dir: Path, std: StandardPaths, config: BootstrapConfig) -> DetectionResult
 def load_primary_boxes(primary_workset: Path, *, early: EarlyScope) -> dict[str, str]
-def stored_legacy_box(std: StandardPaths, typed: str) -> LegacyBox | None
+def box_name_taken(std: StandardPaths, proj: ProjectPaths) -> Callable[[str], bool] | None
+def stored_legacy_box(std: StandardPaths, typed: str, *, path_reaches: bool=False) -> LegacyBox | None
+def refuse_legacy_box(std: StandardPaths, typed: str, *, path_reaches: bool=False) -> None
 def primary_box_name_for_workspace(primary_workset: Path, workspace: str, *, early: EarlyScope) -> str | None
 def check_primary_box_name_free(primary_workset: Path, name: str, workspace: str, *, early: EarlyScope) -> None
 def check_workspace_not_named_box(std: StandardPaths, workspace: str) -> None
@@ -123,6 +125,8 @@ def _workset_box_workspace_for_name(ws_root: Path, box_name: str, *, early: Earl
 def _register_workset_box_membership(ws_root: Path, box_name: str, workspace: Path, *, early: EarlyScope) -> None
 def _unregister_workset_box_membership(ws_root: Path, box_name: str, *, early: EarlyScope) -> None
 def _workset_box_membership_undo(ws_root: Path, box_name: str, workspace: Path, *, early: EarlyScope) -> Callable[[], None]
+def _workset_name_taken(ws_root: Path, early: EarlyScope) -> Callable[[str], bool]
+def _stored_legacy_member(std: StandardPaths, typed: str, own_path: str | None) -> LegacyBox | None
 def _init_workset_project(std: StandardPaths, metadata_path: Path, shell_path: Path) -> None
 def _find_workset_for_path(project_dir: Path, std: StandardPaths) -> tuple[_WorksetLike, str | None]
 def _resolve_workset_or_connected(project_dir: Path, std: StandardPaths) -> tuple[_WorksetLike, str | None]
@@ -228,8 +232,10 @@ class LegacyBox(NamedTuple):
     name: str
     path: str
     reason: str
+    workset: str | None = None
+    taken: Callable[[str], bool] | None = None
 
-    def refusal(self, action: str, verb: str) -> str
+    def refusal(self) -> str
 
 class DesignationRoute(Enum):
     CWD = 'cwd'

@@ -20,6 +20,7 @@ _DERIVED_SEPARATORS = '-.'
 def name_flaw(name: str) -> str | None
 def is_name(name: str) -> bool
 def derived_name(text: str) -> str
+def first_free_name(base: str, taken: Callable[[str], bool]) -> str
 def underscore_spelling(name: str) -> str | None
 def agent_node_case(name: str) -> str
 def find_identifier(name: str, candidates: Iterable[str]) -> str | None
