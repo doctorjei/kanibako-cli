@@ -89,6 +89,7 @@ def _refuse_undeclared_snapshot(store: KeyStore, *, files: Sequence[SettingsFile
 def _finding_name(segments: tuple[str, ...], findings: Sequence[tuple[tuple[str, ...], Judgment]]) -> str
 def _carrying_files(findings: Sequence[tuple[tuple[str, ...], Judgment]], written: Sequence[_WrittenLevel], files: Sequence[SettingsFile]) -> dict[str, list[tuple[str, ...]]]
 def _path_key_leaves(store: KeyStore) -> list[tuple[str, object]]
+def _terminal_lookup(store: KeyStore) -> Callable[[str, tuple[str, ...]], str]
 def _refuse_ambiguous_path_values(written: Sequence[_WrittenLevel], expanded: KeyStore, *, ctx: ResolveCtx) -> None
 def _refuse_internal_bind_entries(written: Sequence[_WrittenLevel]) -> None
 def _refuse_inherited_per_owner(written: Sequence[_WrittenLevel], tiers: Sequence[str], expanded: KeyStore, *, active_agent: str, plugin_owners: Mapping[str, str]) -> None

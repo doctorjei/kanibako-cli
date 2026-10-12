@@ -1321,6 +1321,22 @@ def _path_key_leaves(store: KeyStore) -> list[tuple[str, object]]:
     return leaves
 
 
+def _terminal_lookup(store: KeyStore) -> Callable[[str, tuple[str, ...]], str]:
+    """An ``expand_expr`` *lookup* reading refs from *store*, an expanded snapshot.
+
+    The snapshot holds terminals, so nothing is resolved transitively; a ref with no
+    non-empty string value raises :class:`SettingsError` naming it.
+    """
+    def lookup(ref: str, chain: tuple[str, ...]) -> str:
+        del chain
+        value = snapshot_leaf(store, ref)
+        if isinstance(value, str) and value:
+            return value
+        raise SettingsError(f"'@{ref}' has no resolved value in this snapshot")
+
+    return lookup
+
+
 #: One settings level a USER wrote, the file it was read from (``None`` when the caller
 #: supplied none), and the FLOOR folded into it as a store (the ``base`` level only;
 #: ``None`` everywhere else). See :func:`_refuse_ambiguous_path_values`.
@@ -1390,13 +1406,7 @@ def _refuse_ambiguous_path_values(
     if not offenders:
         return
 
-    def lookup(ref: str, chain: tuple[str, ...]) -> str:
-        del chain  # *expanded* holds terminals: nothing is resolved transitively.
-        value = snapshot_leaf(expanded, ref)
-        if isinstance(value, str) and value:
-            return value
-        raise SettingsError(f"'@{ref}' has no resolved value in this snapshot")
-
+    lookup = _terminal_lookup(expanded)
     refusals = []
     for key, value, path in offenders:
         anchor_ref, anchor_label = path_key_anchor(key)
@@ -2641,13 +2651,7 @@ def convenience_bind_sources(
     """
     dests = core_defaults.convenience_bind_dests()
 
-    def lookup(ref: str, chain: tuple[str, ...]) -> str:
-        del chain  # the snapshot holds terminals: nothing is resolved transitively.
-        value = snapshot_leaf(snapshot, ref)
-        if isinstance(value, str) and value:
-            return value
-        raise SettingsError(f"'@{ref}' has no resolved value in this snapshot")
-
+    lookup = _terminal_lookup(snapshot)
     out: dict[str, str] = {}
     for arm, entries in floor.items():
         if not (_is_bind_floor_key(arm) and isinstance(entries, dict)):
