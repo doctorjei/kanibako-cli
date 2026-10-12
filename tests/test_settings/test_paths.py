@@ -921,6 +921,16 @@ class TestDetectBoxMode:
         # The intrinsic on-disk marker was never removed.
         assert (external / "box_data").is_dir()
 
+        # One box, one answer: the D3-mode carrier agrees, and the identity is the
+        # workset member, not the marker's standalone.
+        from kanibako.launch import box_resolve
+        detected = box_resolve.detect_box_mode(external, std, config)
+        assert detected == DetectionResult(BoxMode.named, external)
+        identity = box_resolve.resolve_box_identity(external, std, config)
+        assert identity is not None
+        assert (identity["mode"], identity["name"], identity["registered"]) == (
+            BoxMode.named, "sb", True)
+
 
 class TestFindLocalAncestor:
     """Tests for _find_local_ancestor() one-pass name scan."""

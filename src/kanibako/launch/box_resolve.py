@@ -330,9 +330,12 @@ def detect_box_mode(
 
     literal = Path(literal_path(project_dir))
 
-    # 1. The path space's registry has a box AT this path.
-    owned = _find_owning_box(literal, std, config, workset=_path_space_workset(literal, std))
-    if owned is not None:
+    # 1. The path space's registry has a box AT this path.  A box CONNECTED into a named
+    # workset from outside its tree is recorded in that workset's registry, so it is that
+    # workset's box: it beats an in-place standalone marker, as in ``detect_project_mode``.
+    owned = (_find_owning_box(literal, std, config, workset=_path_space_workset(literal, std))
+             or find_connected_external_box(literal, std))
+    if owned is not None and Path(literal_path(owned.box_path)) == literal:
         return DetectionResult(owned.mode, owned.box_path)
 
     # 2. The standalone registry has a box AT this path, marker or not: a root that lost

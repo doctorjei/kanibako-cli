@@ -3550,6 +3550,14 @@ def run_register(args: argparse.Namespace) -> int:
     if is_dir_unless_gone(candidate):  # ⚑ EACCES refuses, naming the path
         root = Path(literal_path(target))
         refuse_unreadable_file(root / WORKSET_META_FILE)
+        # A marked root CONNECTED into a named workset is that workset's box, not a
+        # standalone to import: one box lives in one registry.
+        from kanibako.launch.box_resolve import find_connected_external_box
+        connected = find_connected_external_box(root, std)
+        if connected is not None and Path(literal_path(connected.box_path)) == root:
+            print(f"'{connected.workset_name}/{connected.box_name}' is already registered "
+                  f"(named box at {root}).")
+            return 0
         if stores_standalone_registry_null(root):
             already = registry_store.standalone_name_for_root(std.registry, root)
             if already is not None:

@@ -256,6 +256,26 @@ class TestStandaloneRegisterLater:
         assert run_register(_register_args(root)) == 0
         assert registry_store.load_standalone(std.registry) == before
 
+    def test_marked_root_connected_into_a_named_workset_is_not_imported(
+        self, config_file, tmp_home, credentials_dir, capsys
+    ):
+        """A force-connected standalone keeps its marker but is the workset's named box:
+        registering its path is a no-op, never a second (standalone) registration."""
+        from kanibako.project.workset import add_project, create_workset
+        from kanibako.settings.config import WORKSET_META_FILE
+
+        config, std = _std(config_file)
+        ws = create_workset("my_set", tmp_home / "worksets" / "my_set", std)
+        root = (tmp_home / "standalone_box").resolve()
+        (root / "box_data").mkdir(parents=True)
+        (root / WORKSET_META_FILE).write_text("workset:\n  registry: null\n")
+        add_project(ws, "sb", root, std, force=True)
+        capsys.readouterr()
+
+        assert run_register(_register_args(root)) == 0
+        assert registry_store.load_standalone(std.registry) == {}
+        assert f"'my_set/sb' is already registered (named box at {root})" in capsys.readouterr().out
+
     def test_readopt_standalone_deregistered_by_name(
         self, config_file, tmp_home, credentials_dir
     ):
