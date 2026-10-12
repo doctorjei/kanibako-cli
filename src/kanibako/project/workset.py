@@ -2074,10 +2074,27 @@ def _strictly_in_tree(path: Path, root: Path) -> bool:
 
 def refuse_existing_box(source: Path, std: StandardPaths, *, force: bool = False) -> None:
     """Raise ``WorksetError`` when connecting *source* would absorb a standalone box or
-    re-register a box another workset already connects there (no write)."""
+    re-register a box another workset already connects there (no write).
+
+    Keyspace § 0: a link to a standalone root is refused whatever the flag.  A forced
+    absorb drops the root's registry row while the member records the link, so the box
+    would be left registered nowhere.
+    """
     from kanibako.launch import box_resolve
+    from kanibako.project import registry_store
 
     resolved_source = source.resolve()
+    # ⚑ The LEAF only, as ``standalone_identity_holder`` reads it: a linked ancestor
+    # spells the root and the source alike.
+    if (registry_store._leaf_is_link(str(source))
+            and box_resolve.stores_standalone_registry_null(resolved_source)):
+        held = registry_store.standalone_name_for_same_dir(std.registry, resolved_source)
+        who = f"standalone box '{held}'" if held else "an unregistered standalone box"
+        raise WorksetError(
+            f"Cannot connect '{source}': it is a link to the root of {who} "
+            f"({resolved_source}). A connect is not a takeover, and no flag overrides "
+            f"this. Connect the root itself with --force to absorb that box."
+        )
     # ⚑ An in-place standalone MARKER is the box's self-declaration; connecting it would
     # be a silent "steal" + dual registration.  Refused, nothing is written, so the box
     # stays standalone.
@@ -2091,6 +2108,13 @@ def refuse_existing_box(source: Path, std: StandardPaths, *, force: bool = False
         )
 
     existing = box_resolve.find_connected_external_box(source, std)
+    if existing is not None and (Path(literal_path(existing.box_path))
+                                 != Path(literal_path(source))):
+        raise WorksetError(
+            f"Cannot connect '{resolved_source}': it is inside the workspace of member "
+            f"'{existing.box_name}' of workset '{existing.workset_name}' "
+            f"({existing.box_path}). Choose another path."
+        )
     if existing is not None:
         raise WorksetError(
             f"Cannot connect '{resolved_source}': it is already connected "

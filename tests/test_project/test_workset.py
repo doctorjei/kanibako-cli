@@ -535,7 +535,8 @@ class TestAddProjectConnectGuard:
         nested = external / "sub"
         nested.mkdir()
 
-        with pytest.raises(WorksetError, match="already connected"):
+        with pytest.raises(WorksetError,
+                           match="it is inside the workspace of member 'proj' of workset 'set_a'"):
             add_project(ws_b, "proj2", nested, std)
 
     def test_internal_source_unaffected(self, std, tmp_home):
