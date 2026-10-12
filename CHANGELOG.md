@@ -761,6 +761,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`system info`'s `Data:` line and `system diagnose`'s Storage check read `config.data` from
+  `/etc/kanibako/base.cfg` too.** They read only your own config file, so a site-wide `config.data` showed the
+  default path there while every command used the site one.
 - **The top-level `create`, `list`, `ps`, `rm`, and `register` take the same arguments and help as their `box`
   verbs.** `list` now accepts `--orphan`, and `list --all` no longer claims to add orphaned boxes. `rm --force`'s help
   now says it also lets a `--purge` remove a box that may be running, as `box rm`'s description does too. `box ps -q`

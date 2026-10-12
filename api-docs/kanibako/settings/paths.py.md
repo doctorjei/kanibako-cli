@@ -42,6 +42,7 @@ def resolve_box_enable_vault(global_path: Path, *, box_path: Path, workset_path:
 def resolve_xdg(var_name: str, spec_default_suffix: str | None) -> Path
 def xdg(env_var: str, default_suffix: str) -> Path
 def user_config_home() -> Path
+def default_data_home() -> Path
 def spec_default_xdg_map(data_home: Path | None) -> dict[str, str]
 def host_xdg_map(data_home: Path | None=None) -> dict[str, str]
 def resolve_config_paths(set_values: Mapping[str, str | None], *, data_home: Path, home: Path, xdg_vars: Mapping[str, str] | None=None) -> dict[str, str]
@@ -49,6 +50,7 @@ def resolve_system_paths(set_values: Mapping[str, str | None], *, data_home: Pat
 def host_config_map(std: StandardPaths) -> dict[str, str]
 def system_path_floor(std: StandardPaths) -> dict[str, str | None]
 def layer1_set_values(user_config_path: Path) -> dict[str, str]
+def layer1_foundation(user_config_path: Path, *, data_home: Path | None=None, runtime_dir: bool=False) -> dict[str, str]
 def load_system_tier(user_config_path: Path, *, data_home: Path, home: Path, tolerate_bad_settings: bool=False) -> tuple[dict[str, Path], EarlySystem]
 def load_system_config(user_config_path: Path, *, data_home: Path, home: Path, tolerate_bad_settings: bool=False) -> dict[str, Path]
 def resolve_data_path(*, config_home: Path | None=None, data_home: Path | None=None) -> Path

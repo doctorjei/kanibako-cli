@@ -274,7 +274,8 @@ class TestSystemInfoOutput:
             patch("kanibako.commands.system_cmd.user_config_file") as m_cf,
             patch("kanibako.settings.config.bootstrap_config_paths"),
             patch("kanibako.settings.paths.resolve_system_paths"),
-            patch("kanibako.commands.system_cmd.xdg", return_value=MagicMock()),
+            patch("kanibako.settings.paths.layer1_foundation",
+                  return_value={"config.data": "/data"}),
             patch("kanibako.runtime.container.ContainerRuntime") as m_rt,
             patch("subprocess.run") as m_run,
             patch("kanibako.targets.discover_targets", return_value={}),
@@ -295,7 +296,8 @@ class TestSystemInfoOutput:
 
         with (
             patch("kanibako.commands.system_cmd.user_config_file") as m_cf,
-            patch("kanibako.commands.system_cmd.xdg", return_value=MagicMock()),
+            patch("kanibako.settings.paths.layer1_foundation",
+                  return_value={"config.data": "/data"}),
             patch(
                 "kanibako.runtime.container.ContainerRuntime",
                 side_effect=ContainerError("KANIBAKO_DOCKER_CMD names 'x' (test)"),
@@ -318,7 +320,8 @@ class TestSystemInfoOutput:
             patch("kanibako.commands.system_cmd.user_config_file") as m_cf,
             patch("kanibako.settings.config.bootstrap_config_paths"),
             patch("kanibako.settings.paths.resolve_system_paths"),
-            patch("kanibako.commands.system_cmd.xdg", return_value=MagicMock()),
+            patch("kanibako.settings.paths.layer1_foundation",
+                  return_value={"config.data": "/data"}),
             patch("kanibako.runtime.container.ContainerRuntime") as m_rt,
             patch("subprocess.run") as m_run,
             patch(
@@ -343,7 +346,8 @@ class TestSystemInfoOutput:
             patch("kanibako.commands.system_cmd.user_config_file") as m_cf,
             patch("kanibako.settings.config.bootstrap_config_paths"),
             patch("kanibako.settings.paths.resolve_system_paths"),
-            patch("kanibako.commands.system_cmd.xdg", return_value=MagicMock()),
+            patch("kanibako.settings.paths.layer1_foundation",
+                  return_value={"config.data": "/data"}),
             patch("kanibako.runtime.container.ContainerRuntime") as m_rt,
             patch("subprocess.run") as m_run,
             patch("kanibako.targets.discover_targets", return_value={}),
@@ -363,7 +367,8 @@ class TestSystemInfoOutput:
 
         with (
             patch("kanibako.commands.system_cmd.user_config_file") as m_cf,
-            patch("kanibako.commands.system_cmd.xdg", return_value=MagicMock()),
+            patch("kanibako.settings.paths.layer1_foundation",
+                  return_value={"config.data": "/data"}),
             patch("kanibako.runtime.container.ContainerRuntime") as m_rt,
             patch("subprocess.run") as m_run,
             patch("kanibako.targets.discover_targets", return_value={}),
@@ -383,7 +388,8 @@ class TestSystemInfoOutput:
 
         with (
             patch("kanibako.commands.system_cmd.user_config_file") as m_cf,
-            patch("kanibako.commands.system_cmd.xdg", return_value=MagicMock()),
+            patch("kanibako.settings.paths.layer1_foundation",
+                  return_value={"config.data": "/data"}),
             patch(
                 "kanibako.runtime.container.ContainerRuntime",
                 side_effect=Exception("no runtime"),
@@ -405,7 +411,8 @@ class TestSystemInfoOutput:
             patch("kanibako.commands.system_cmd.user_config_file") as m_cf,
             patch("kanibako.settings.config.bootstrap_config_paths"),
             patch("kanibako.settings.paths.resolve_system_paths"),
-            patch("kanibako.commands.system_cmd.xdg", return_value=MagicMock()),
+            patch("kanibako.settings.paths.layer1_foundation",
+                  return_value={"config.data": "/data"}),
             patch("kanibako.runtime.container.ContainerRuntime") as m_rt,
             patch("subprocess.run") as m_run,
             patch("kanibako.targets.discover_targets", return_value={}),

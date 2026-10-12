@@ -392,12 +392,10 @@ def _typed_box_scalar(defaults: KanibakoConfig, field_name: str, value: object) 
 
 def _system_settings_path(global_path: Path) -> Path | None:
     """``@config.settings`` off the Layer-1 file — the SYSTEM tier, or ``None`` if absent."""
-    from kanibako.settings.bootstrap import XDG_DATA_HOME, XDG_SPEC_DEFAULTS
-    from kanibako.settings.paths import load_system_config, xdg
+    from kanibako.settings.paths import default_data_home, load_system_config
 
     path = load_system_config(
-        global_path, data_home=xdg(XDG_DATA_HOME, XDG_SPEC_DEFAULTS[XDG_DATA_HOME]),
-        home=Path.home(),
+        global_path, data_home=default_data_home(), home=Path.home(),
     )["config.settings"]
     return path if path.exists() else None
 
@@ -672,16 +670,9 @@ def system_settings_path() -> Path:
     ⚑ The returned path need not exist — every reader here treats an absent file as
     "unset", which is exactly what a fresh install is.
     """
-    from kanibako.settings.bootstrap import (XDG_DATA_HOME, XDG_SPEC_DEFAULTS)
-    from kanibako.settings.paths import (layer1_set_values, resolve_config_paths,
-                                         spec_default_xdg_map, xdg)
+    from kanibako.settings.paths import layer1_foundation
 
-    data_home = xdg(XDG_DATA_HOME, XDG_SPEC_DEFAULTS[XDG_DATA_HOME])
-    config = resolve_config_paths(
-        layer1_set_values(user_config_file()), data_home=data_home, home=Path.home(),
-        xdg_vars=spec_default_xdg_map(data_home),
-    )
-    return Path(config["config.settings"])
+    return Path(layer1_foundation(user_config_file())["config.settings"])
 
 
 def read_system_agent(system_path: Path | None) -> str | None:

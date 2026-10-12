@@ -566,6 +566,11 @@ def user_config_home() -> Path:
     return xdg(XDG_CONFIG_HOME, XDG_SPEC_DEFAULTS[XDG_CONFIG_HOME])
 
 
+def default_data_home() -> Path:
+    """The XDG data base dir: ``$XDG_DATA_HOME``, or its spec default under ``$HOME``."""
+    return xdg(XDG_DATA_HOME, XDG_SPEC_DEFAULTS[XDG_DATA_HOME])
+
+
 def spec_default_xdg_map(data_home: Path | None) -> dict[str, str]:
     """The XDG vars that HAVE a spec default (data/config/state/cache) — no ``XDG_RUNTIME_DIR``.
 
@@ -999,6 +1004,22 @@ def layer1_set_values(user_config_path: Path) -> dict[str, str]:
     return raw
 
 
+def layer1_foundation(user_config_path: Path, *, data_home: Path | None = None,
+                      runtime_dir: bool = False) -> dict[str, str]:
+    """The Layer-1 ``config.*`` foundation, resolved: the ``/etc`` config base < *user_config_path*.
+
+    Reads Layer 1 alone, so a bad SYSTEM settings file cannot stop it.  It creates nothing
+    unless *runtime_dir*: the default ``$XDG_*`` map leaves ``XDG_RUNTIME_DIR`` out (its
+    fallback can mkdir), so an expression over it does not resolve; *runtime_dir* resolves it
+    as :func:`load_system_tier` does.  Raises what :func:`resolve_config_paths` raises.
+    """
+    dh = data_home if data_home is not None else default_data_home()
+    return resolve_config_paths(
+        layer1_set_values(user_config_path), data_home=dh, home=Path.home(),
+        xdg_vars=host_xdg_map(dh) if runtime_dir else spec_default_xdg_map(dh),
+    )
+
+
 def _path_tier_set_values(user_config_path: Path, *, data_home: Path, home: Path,
                           xdg_vars: Mapping[str, str],
                           tolerate_bad_settings: bool = False,
@@ -1145,20 +1166,9 @@ def resolve_data_path(*, config_home: Path | None = None,
     resolving it — an acceptable trade for staying total and side-effect-free.
     """
     ch = config_home if config_home is not None else user_config_home()
-    dh = data_home if data_home is not None else xdg(XDG_DATA_HOME,
-                                                      XDG_SPEC_DEFAULTS[XDG_DATA_HOME])
+    dh = data_home if data_home is not None else default_data_home()
     try:
-        # ⚑ Lazy import to avoid a config <-> paths import cycle at module load — do not hoist
-        # (mirrors load_system_config's own deferral).
-        from kanibako.settings.config import bootstrap_config_paths, config_base_path
-
-        raw: dict[str, str] = {}
-        # ⚑ ``bootstrap_config_paths`` is the one filter, shared with ``load_system_config``.
-        raw.update(bootstrap_config_paths(config_base_path()))
-        raw.update(bootstrap_config_paths(config_file_path(ch)))
-        resolved = resolve_config_paths(raw, data_home=dh, home=Path.home(),
-                                        xdg_vars=spec_default_xdg_map(dh))
-        return Path(resolved["config.data"])
+        return Path(layer1_foundation(config_file_path(ch), data_home=dh)["config.data"])
     except Exception:
         return dh / KANIBAKO_PATH
 
@@ -1174,7 +1184,7 @@ def total_standalone_early() -> "EarlyScope":
     from kanibako.channels.channels import WS_TOKEN_STANDALONE
     from kanibako.settings.workset_dirkeys import EarlyScope, EarlySystem
 
-    dh = xdg(XDG_DATA_HOME, XDG_SPEC_DEFAULTS[XDG_DATA_HOME])
+    dh = default_data_home()
     layer1 = config_file_path(user_config_home())
     try:
         _, record = load_system_tier(layer1, data_home=dh, home=Path.home())
@@ -1211,8 +1221,7 @@ def resolve_state_path(*, config_home: Path | None = None,
     the default instead of resolving — the same trade, made the same way.
     """
     ch = config_home if config_home is not None else user_config_home()
-    dh = data_home if data_home is not None else xdg(XDG_DATA_HOME,
-                                                      XDG_SPEC_DEFAULTS[XDG_DATA_HOME])
+    dh = data_home if data_home is not None else default_data_home()
     xdg_vars = spec_default_xdg_map(dh)
     try:
         raw, _system_refusal = _path_tier_set_values(config_file_path(ch), data_home=dh,
@@ -1247,8 +1256,7 @@ def resolve_cache_path(*, config_home: Path | None = None,
     ``XDG_RUNTIME_DIR``).
     """
     ch = config_home if config_home is not None else user_config_home()
-    dh = data_home if data_home is not None else xdg(XDG_DATA_HOME,
-                                                      XDG_SPEC_DEFAULTS[XDG_DATA_HOME])
+    dh = data_home if data_home is not None else default_data_home()
     xdg_vars = spec_default_xdg_map(dh)
     try:
         raw, _system_refusal = _path_tier_set_values(config_file_path(ch), data_home=dh,
@@ -1275,7 +1283,7 @@ def load_std_paths(config: BootstrapConfig | None = None, *,
     nothing and the recovery cost everything.
     """
     config_home = user_config_home()
-    data_home = xdg(XDG_DATA_HOME, XDG_SPEC_DEFAULTS[XDG_DATA_HOME])
+    data_home = default_data_home()
     state_home = xdg(XDG_STATE_HOME, XDG_SPEC_DEFAULTS[XDG_STATE_HOME])
     cache_home = xdg(XDG_CACHE_HOME, XDG_SPEC_DEFAULTS[XDG_CACHE_HOME])
 

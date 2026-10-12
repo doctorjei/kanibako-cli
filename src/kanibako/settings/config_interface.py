@@ -366,14 +366,13 @@ def _path_tier_split() -> "tuple[dict[str, str], dict[str, str]]":
     """
     # ⚑ THE FAILURE ARM IS THE CALLER'S, DELIBERATELY — do not add a ``try`` here: the two
     # callers disagree about what a failure means and both are right.
-    from kanibako.settings.bootstrap import XDG_DATA_HOME, XDG_SPEC_DEFAULTS
     from kanibako.settings.config import user_config_file
-    from kanibako.settings.paths import load_system_config, xdg
+    from kanibako.settings.paths import default_data_home, load_system_config
 
     floor: dict[str, str] = {}
     config_foundation: dict[str, str] = {}
     user_config = user_config_file()
-    data_home = xdg(XDG_DATA_HOME, XDG_SPEC_DEFAULTS[XDG_DATA_HOME])
+    data_home = default_data_home()
     for dotted, path in load_system_config(
         user_config, data_home=data_home, home=Path.home(),
     ).items():

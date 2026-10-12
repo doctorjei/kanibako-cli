@@ -8,7 +8,6 @@ import sys
 from kanibako import __version__
 from kanibako.commands.flags import add_null_flag, add_set_force_flag
 from kanibako.settings.config import user_config_file
-from kanibako.settings.paths import xdg
 
 
 def add_parser(subparsers: argparse._SubParsersAction) -> None:
@@ -145,19 +144,10 @@ def run_info(args: argparse.Namespace) -> int:
         print(f"Config:    {cf}")
         from pathlib import Path
 
-        from kanibako.settings.bootstrap import XDG_DATA_HOME, XDG_SPEC_DEFAULTS
-        from kanibako.settings.config import bootstrap_config_paths
-        from kanibako.settings.paths import resolve_config_paths
-        data_home = xdg(XDG_DATA_HOME, XDG_SPEC_DEFAULTS[XDG_DATA_HOME])
-        # ⚑ ``bootstrap_config_paths``, not ``load_config(cf).config_paths``: the raw
-        # capture also carries whatever ``system:`` table the file happens to hold, and
-        # the Layer-1 file may not supply settings (Jei, 2026-08-26).
-        # ⚑ ``resolve_config_paths`` — LAYER 1 ALONE.  This prints ``config.data`` and
-        # nothing else, and it is the Layer-2 read that fails on a bad SYSTEM settings file;
-        # the Data line should not go dark because of a file it is not reporting.
-        data_path = Path(resolve_config_paths(
-            bootstrap_config_paths(cf), data_home=data_home, home=Path.home(),
-        )["config.data"])
+        from kanibako.settings.paths import layer1_foundation
+        # ⚑ LAYER 1 ALONE: the Data line should not go dark because of a bad SYSTEM settings
+        # file it is not reporting.
+        data_path = Path(layer1_foundation(cf, runtime_dir=True)["config.data"])
         print(f"Data:      {data_path}")
     else:
         print(
@@ -329,19 +319,8 @@ def _run_system_config(args: argparse.Namespace) -> int:
     """
     from pathlib import Path
 
-    from kanibako.settings.bootstrap import XDG_DATA_HOME, XDG_SPEC_DEFAULTS
-    from kanibako.settings.config import (
-        bootstrap_config_paths,
-        config_base_path,
-        config_file_path,
-        user_config_file,
-    )
-    from kanibako.settings.paths import (
-        resolve_config_paths,
-        spec_default_xdg_map,
-        user_config_home,
-        xdg,
-    )
+    from kanibako.settings.config import user_config_file
+    from kanibako.settings.paths import layer1_foundation
 
     cf = user_config_file()
     # ⚑ The Layer-1 foundation resolve, deliberately NOT ``load_std_paths``: a
@@ -352,19 +331,11 @@ def _run_system_config(args: argparse.Namespace) -> int:
     # would have un-stored it.)  These verbs need only ``std.settings`` and ``std.agents``,
     # both Layer-1 ``config.*``, so the foundation answers them exactly (``cli.py`` and
     # ``settings/config.py`` already make this substitution for the same reason).
-    # ⚑ ``spec_default_xdg_map``, NOT ``host_xdg_map``: resolving ``XDG_RUNTIME_DIR``
-    # can mkdir a fallback dir when unset, and this resolve creates nothing.  No
-    # shipped ``config.*`` default references it, so nothing is lost by the choice.
+    # ⚑ It creates nothing (no ``XDG_RUNTIME_DIR``); no shipped ``config.*`` default
+    # references that variable, so nothing is lost by the choice.
     # ⚑ An absent file yields {}: a fresh install resolves defaults, and every reader
     # below treats an absent file as "unset" — which is exactly what it is.
-    ch = user_config_home()
-    dh = xdg(XDG_DATA_HOME, XDG_SPEC_DEFAULTS[XDG_DATA_HOME])
-    _raw: dict[str, str] = {}
-    _raw.update(bootstrap_config_paths(config_base_path()))
-    _raw.update(bootstrap_config_paths(config_file_path(ch)))
-    _foundation = resolve_config_paths(
-        _raw, data_home=dh, home=Path.home(), xdg_vars=spec_default_xdg_map(dh),
-    )
+    _foundation = layer1_foundation(cf)
     # The system SETTINGS file (separate from the kanibako.cfg CONFIG file).
     ssp = Path(_foundation["config.settings"])
     agents_root = Path(_foundation["config.agents"])
