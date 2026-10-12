@@ -142,6 +142,44 @@ def _source_is_external(args: argparse.Namespace, std) -> bool:
     return box_resolve.find_connected_external_box(source_path, std) is not None
 
 
+def _validate_dup_source(source_path: Path, new_path: Path | None) -> int | None:
+    """Print the refusal and return ``1`` when *source_path* cannot be duplicated to *new_path*.
+
+    *new_path* is None on the workset route, whose destination is a member, not a path.
+    """
+    if new_path is not None and (
+            new_path == source_path or new_path.resolve() == source_path.resolve()):
+        print("Error: source and destination paths are the same.", file=sys.stderr)
+        return 1
+    if not source_path.is_dir():
+        print(f"Error: source path does not exist as a directory: {source_path}", file=sys.stderr)
+        return 1
+    return None
+
+
+def _refuse_no_source_data(metadata_dir: Path, source_path: Path) -> int | None:
+    """Print the refusal and return ``1`` when the source box holds no metadata dir."""
+    if metadata_dir.is_dir():
+        return None
+    print(f"Error: no project data found for source path: {source_path}", file=sys.stderr)
+    return 1
+
+
+def _confirm_dup(args: argparse.Namespace, subject: str, target: str, *rows: str) -> bool:
+    """Print the duplicate plan and ask; True ⇒ go on (``--force`` asks nothing).
+
+    The title reads ``Duplicate <subject> (<what is copied>)<target>:``, then *rows*.
+    """
+    if args.force:
+        return True
+    mode = "metadata only (bare)" if args.bare else "workspace + metadata"
+    print(f"Duplicate {subject} ({mode}){target}:")
+    for row in rows:
+        print(row)
+    print()
+    return confirm_or_abort(False, "Type 'yes' to confirm: ")
+
+
 # -- Cross-mode duplicate helpers --
 
 def _refuse_unmarked_source(source: DetectionResult, std) -> int | None:
@@ -166,13 +204,8 @@ def _run_duplicate_cross_mode(args: argparse.Namespace, std, config) -> int:
     source_path = Path(literal_path(args.source_path))
     new_path = Path(literal_path(args.new_path))
 
-    if new_path == source_path or new_path.resolve() == source_path.resolve():
-        print("Error: source and destination paths are the same.", file=sys.stderr)
-        return 1
-
-    if not source_path.is_dir():
-        print(f"Error: source path does not exist as a directory: {source_path}", file=sys.stderr)
-        return 1
+    if (rc := _validate_dup_source(source_path, new_path)) is not None:
+        return rc
 
     if not args.bare and new_path.exists() and not args.force:
         return _refuse_existing_destination(new_path)
@@ -211,9 +244,8 @@ def _run_duplicate_cross_mode(args: argparse.Namespace, std, config) -> int:
     else:
         src_proj = resolve_standalone_project(std, config, project_dir=str(source_path), initialize=False)
 
-    if not src_proj.metadata_path.is_dir():
-        print(f"Error: no project data found for source path: {source_path}", file=sys.stderr)
-        return 1
+    if (rc := _refuse_no_source_data(src_proj.metadata_path, source_path)) is not None:
+        return rc
 
     if _refuse_live_source(src_proj, src_proj.metadata_path, args.force):
         return 2
@@ -255,14 +287,9 @@ def _run_duplicate_cross_mode(args: argparse.Namespace, std, config) -> int:
     )
     carried = carried_box_settings(box_workset_settings_paths(src_proj)[0])
 
-    if not args.force:
-        mode = "metadata only (bare)" if args.bare else "workspace + metadata"
-        print(f"Duplicate project ({mode}) to {target_mode.value} mode:")
-        print(f"  from: {source_path}")
-        print(f"    to: {new_path}")
-        print()
-        if not confirm_or_abort(False, "Type 'yes' to confirm: "):
-            return 2
+    if not _confirm_dup(args, "project", f" to {target_mode.value} mode",
+                        f"  from: {source_path}", f"    to: {new_path}"):
+        return 2
 
     # Copy workspace (unless --bare).  The copy SOURCE is the source box's live
     # workspace (``src_proj.project_path``) — for a standalone source that is the
@@ -704,9 +731,8 @@ def _duplicate_to_workset(args, std, config) -> int:
         ws.root, f"a workspace for '{getattr(args, 'project_name', None) or source_path.name}'",
         early=ws.early_scope,
     )
-    if not source_path.is_dir():
-        print(f"Error: source path does not exist as a directory: {source_path}", file=sys.stderr)
-        return 1
+    if (rc := _validate_dup_source(source_path, None)) is not None:
+        return rc
 
     source = detect_box_or_default(source_path, std, config)
     if (rc := _refuse_unmarked_source(source, std)) is not None:
@@ -765,23 +791,17 @@ def _duplicate_to_workset(args, std, config) -> int:
     else:
         src_proj = resolve_standalone_project(std, config, project_dir=str(source_path), initialize=False)
 
-    if not src_proj.metadata_path.is_dir():
-        print(f"Error: no project data found for source path: {source_path}", file=sys.stderr)
-        return 1
+    if (rc := _refuse_no_source_data(src_proj.metadata_path, source_path)) is not None:
+        return rc
     if args.force:
         _refuse_inherited(std, src_proj, (ws.root, ws.early_scope))
 
     if _refuse_live_source(src_proj, src_proj.metadata_path, args.force):
         return 2
 
-    if not args.force:
-        mode = "metadata only (bare)" if args.bare else "workspace + metadata"
-        print(f"Duplicate project ({mode}) to workset:")
-        print(f"  from:    {source_path}")
-        print(f"  workset: {ws_name}/{proj_name}")
-        print()
-        if not confirm_or_abort(False, "Type 'yes' to confirm: "):
-            return 2
+    if not _confirm_dup(args, "project", " to workset",
+                        f"  from:    {source_path}", f"  workset: {ws_name}/{proj_name}"):
+        return 2
 
     # Re-root the project into the workset group (copy workspace unless --bare).
     # std-aware: the duplicate always lands a fresh INTERNAL workspace (a copy,
@@ -814,9 +834,8 @@ def _duplicate_from_workset(args, source_path, new_path, std, config) -> int:
         WorksetSpec.from_workset(ws), proj_name, std, config, initialize=False,
     )
 
-    if not src_proj.metadata_path.is_dir():
-        print(f"Error: no project data found for source path: {source_path}", file=sys.stderr)
-        return 1
+    if (rc := _refuse_no_source_data(src_proj.metadata_path, source_path)) is not None:
+        return rc
 
     target_mode = BoxMode(args.to_mode)
     if target_mode == BoxMode.primary and (
@@ -857,14 +876,9 @@ def _duplicate_from_workset(args, source_path, new_path, std, config) -> int:
             )
             return 1
 
-    if not args.force:
-        mode = "metadata only (bare)" if args.bare else "workspace + metadata"
-        print(f"Duplicate workset project ({mode}) to {target_mode.value} mode:")
-        print(f"  from: {ws.name}/{proj_name}")
-        print(f"    to: {new_path}")
-        print()
-        if not confirm_or_abort(False, "Type 'yes' to confirm: "):
-            return 2
+    if not _confirm_dup(args, "workset project", f" to {target_mode.value} mode",
+                        f"  from: {ws.name}/{proj_name}", f"    to: {new_path}"):
+        return 2
 
     # ⚑ Route 3, this route's own sighting of it.
     if target_mode == BoxMode.standalone:
@@ -973,25 +987,15 @@ def run_duplicate(args: argparse.Namespace) -> int:
     source_path = Path(literal_path(args.source_path))
     new_path = Path(literal_path(args.new_path))
 
-    # 1. Paths must differ.
-    if new_path == source_path or new_path.resolve() == source_path.resolve():
-        print("Error: source and destination paths are the same.", file=sys.stderr)
-        return 1
-
-    # 2. Source must be an existing directory.
-    if not source_path.is_dir():
-        print(f"Error: source path does not exist as a directory: {source_path}", file=sys.stderr)
-        return 1
+    # 1–2. Paths must differ; the source must be an existing directory.
+    if (rc := _validate_dup_source(source_path, new_path)) is not None:
+        return rc
 
     # 3. Source must have kanibako metadata.
     source_name, source_project_dir = _resolve_local_dir(std, str(source_path))
 
-    if not source_project_dir.is_dir():
-        print(
-            f"Error: no project data found for source path: {source_path}",
-            file=sys.stderr,
-        )
-        return 1
+    if (rc := _refuse_no_source_data(source_project_dir, source_path)) is not None:
+        return rc
 
     # verbatim copy: refuse a non-table `box` before anything is written
     refuse_scalar_sections(source_project_dir / BOX_META_FILE, ("box",))
@@ -1026,14 +1030,8 @@ def run_duplicate(args: argparse.Namespace) -> int:
         return 2
 
     # 7. User confirmation.
-    if not args.force:
-        mode = "metadata only (bare)" if args.bare else "workspace + metadata"
-        print(f"Duplicate project ({mode}):")
-        print(f"  from: {source_path}")
-        print(f"    to: {new_path}")
-        print()
-        if not confirm_or_abort(False, "Type 'yes' to confirm: "):
-            return 2
+    if not _confirm_dup(args, "project", "", f"  from: {source_path}", f"    to: {new_path}"):
+        return 2
 
     # 8. Registration runs BEFORE anything is copied: refused after ``_merge_workspace``,
     # `--force` would already have replaced the destination's files (task-dupforce).  The

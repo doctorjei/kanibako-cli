@@ -15,6 +15,9 @@ def _claim_primary_dup_name(std, new_path: Path, name: str | None) -> str
 def _refuse_existing_destination(path: Path) -> int
 def _local_target(std, mode: BoxMode, new_path: Path) -> tuple[Path, EarlyScope]
 def _source_is_external(args: argparse.Namespace, std) -> bool
+def _validate_dup_source(source_path: Path, new_path: Path | None) -> int | None
+def _refuse_no_source_data(metadata_dir: Path, source_path: Path) -> int | None
+def _confirm_dup(args: argparse.Namespace, subject: str, target: str, *rows: str) -> bool
 def _refuse_unmarked_source(source: DetectionResult, std) -> int | None
 def _run_duplicate_cross_mode(args: argparse.Namespace, std, config) -> int
 def _merge_workspace(src: Path, dst: Path, force: bool, *, share_root_link: bool=False) -> None
