@@ -398,7 +398,7 @@ class TestTheEnvVarIsJUDGED_NotJustCounted:
     ``env.<VAR>``, so this is a §0 breach on a first-class write path.
 
     🔑 THE CAUSE WAS AN ASYMMETRY, NOT A MISSING RULE.  Three of the four doors already
-    judged the VAR — the scope route (``_SCOPE_ENV_RE``), the secret twin
+    judged the VAR — the scope route (``_is_scope_env_key``), the secret twin
     (``_AGENT_NODE_SECRET_RE``) and :func:`key_validity` — while
     ``_parse_persona_agent_key``'s ``env.`` arm tested only that the section segment
     said ``env``, so ``config_interface``'s ``set`` dispatch took the WRITE branch.

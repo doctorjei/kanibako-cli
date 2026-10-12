@@ -32,7 +32,7 @@ from kanibako.settings.agent_config import (
 from kanibako.settings.config import coerce_bool
 from kanibako.settings.kb_store import SCOPE_CONTAINMENT
 from kanibako.settings.settings_categories import (
-    DECLARATION_ROOT_REF, ENV_VAR_NAME, SECRET_VAR_RE,
+    DECLARATION_ROOT_REF, ENV_KEY_RE, ENV_VAR_NAME, FILE_SCOPES, SECRET_KEY_RE, SECRET_VAR_RE,
 )
 from kanibako.settings.settings_drops import writable_scopes
 from kanibako.settings.settings_keyspace import (
@@ -983,27 +983,30 @@ def _is_bare_env_key(key: str) -> bool:
     return key.startswith("env.")
 
 
-# ``<scope>.env.<VAR>`` for the non-agent scopes (system/workset/box) — the LIVE env
-# family (spec §2a); the agent form is DISCRIMINATED and routed elsewhere.
-# ⚑ The SIBLING-EXACT twin of ``_SCOPE_SECRET_RE``; VAR matching is CASE-SENSITIVE.
-_SCOPE_ENV_RE = re.compile(
-    rf"^(?P<scope>system|workset|box)\.env\.(?P<var>{ENV_VAR_NAME})$"
-)
+def _file_scope_match(family: "re.Pattern[str]", key: str) -> "re.Match[str] | None":
+    """*family*'s match for *key* when its scope is a FILE scope (system/workset/box), else ``None``.
+
+    ⚑ The family recognizers are ``settings_categories``' (one per family, with a ``scope``
+    group); the agent form is DISCRIMINATED and routed elsewhere, so it is filtered out here
+    rather than compiled as a narrower twin.  VAR matching is CASE-SENSITIVE.
+    """
+    m = family.match(key)
+    return m if m is not None and m["scope"] in FILE_SCOPES else None
 
 
 def _is_scope_env_key(key: str) -> bool:
     """True iff *key* is a NON-agent ``<scope>.env.<VAR>`` key (system/workset/box)."""
     # ⚑ SHAPE only — the §0 RESERVED-NAME floor is enforced by :func:`scope_env_var_error`.
-    return _SCOPE_ENV_RE.match(key) is not None
+    return _file_scope_match(ENV_KEY_RE, key) is not None
 
 
 def scope_env_var_error(canonical: str) -> str | None:
     """Refuse a ``<scope>.env.<VAR>`` WRITE whose VAR is a RESERVED name (spec §0)."""
     # ⚑ Gates itself — ``None`` for every non-scope-env key, so verbs apply it always.
-    m = _SCOPE_ENV_RE.match(canonical)
+    m = _file_scope_match(ENV_KEY_RE, canonical)
     if m is None:
         return None
-    reason = leaf_name_reason(m.group("var"))
+    reason = leaf_name_reason(m.group("name"))
     return None if reason is None else f"Error: {reason}."
 
 
@@ -1440,16 +1443,10 @@ def _config_key_refusal(canonical: str, *, action: str) -> str:
         f"file ({config_file})."
     )
 
-# ``<scope>.secret_path.<VAR>`` for the NON-agent scopes (system/workset/box); the
-# agent form is DISCRIMINATED and routed to the node file elsewhere.
-_SCOPE_SECRET_RE = re.compile(
-    rf"^(?P<scope>system|workset|box)\.secret_path\.(?P<var>{ENV_VAR_NAME})$"
-)
-
-
 def _is_scope_secret_key(key: str) -> bool:
     """True iff *key* is a NON-agent ``<scope>.secret_path.<VAR>`` SECRET-category key."""
-    return _SCOPE_SECRET_RE.match(key) is not None
+    # ⚑ The agent form is DISCRIMINATED and routed to the node file elsewhere.
+    return _file_scope_match(SECRET_KEY_RE, key) is not None
 
 def _is_pref_key(key: str) -> bool:
     """True iff *key* is a ``pref.<target-key>`` REQUEST key (spec §2h)."""

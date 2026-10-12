@@ -159,7 +159,10 @@ ENV_VAR_NAME: Final = r"[A-Za-z_][A-Za-z0-9_]*"
 # KEY — the keyspace is CLOSED (spec §0), so these patterns must REFUSE it rather than
 # quietly accept it. Do not "helpfully" widen this back.
 _AGENT_SCOPE = r"agent\.[^.]+"
-_FILE_SCOPE_ALT = "system|workset|box"
+#: The scopes whose keys live in their OWN settings file — every scope but the
+#: discriminated agent tier.  ⚑ The one list; the regex alternation below derives from it.
+FILE_SCOPES: Final[tuple[str, ...]] = ("system", "workset", "box")
+_FILE_SCOPE_ALT = "|".join(FILE_SCOPES)
 _NON_TERMINAL_CATEGORY_ALT = "|".join(
     c.replace(".", r"\.") for c in _NON_TERMINAL_BIND_CATEGORIES
 )
@@ -209,16 +212,16 @@ BIND_KEY_RE = re.compile(
 )
 # ``{scope}.masks`` — value-less category (a list of box_dest paths). The KEY has
 # no per-entry name; entries are expanded per list element (name = the index).
-MASK_KEY_RE = re.compile(rf"^(?P<scope>system|workset|box|{_AGENT_SCOPE})\.masks$")
+MASK_KEY_RE = re.compile(rf"^(?P<scope>{_FILE_SCOPE_ALT}|{_AGENT_SCOPE})\.masks$")
 # ``{scope}.env.{VAR}`` — scalar env var; VAR may NOT contain dots (env names).
 ENV_KEY_RE = re.compile(
-    rf"^(?P<scope>system|workset|box|{_AGENT_SCOPE})"
+    rf"^(?P<scope>{_FILE_SCOPE_ALT}|{_AGENT_SCOPE})"
     rf"\.env\.(?P<name>{ENV_VAR_NAME})$"
 )
 # ``{scope}.secret_path.{VAR}`` — the SECRET category (spec §2a): a scalar host PATH
 # keyed by the env VAR it delivers.  VAR is the env-name shape, never dotted.
 SECRET_KEY_RE = re.compile(
-    r"^(?P<scope>system|agent|workset|box)\.secret_path\."
+    rf"^(?P<scope>{_FILE_SCOPE_ALT}|agent)\.secret_path\."
     rf"(?P<name>{ENV_VAR_NAME})$"
 )
 #: The bare-VAR shape above, enforced AGAIN at launch emit — ⚑ the VAR is
