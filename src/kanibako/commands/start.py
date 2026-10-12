@@ -3181,25 +3181,13 @@ def _run_container(
     stored_agent: str | None = None
     if persistent and box_running:
         reattach_running = True
-        stored_agent = runtime.inspect_env(
-            container_name, "KANIBAKO_AGENT"
-        )
+        from kanibako.launch.creds_watcher import running_box_agent
+        # 🛑 CANONICALIZED ON READ, ONCE, AND USED ONWARDS: the node feeds both the
+        # comparison and ``resolve_agent`` below.  An explicit ``--agent`` may arrive
+        # in either spelling and is folded the same way, so ``--agent Claude`` or
+        # ``--agent shell`` compares equal to the box that stamped ``claude``/``shell``.
+        stored_agent = running_box_agent(runtime, container_name)
         if stored_agent:
-            # 🛑 CANONICALIZE ON READ, ONCE, AND USE THAT VALUE ONWARDS.
-            # ``KANIBAKO_AGENT`` stamps the OUTSIDE spelling (``+``); an explicit
-            # ``--agent`` may arrive in either. Both become node-form here, so the
-            # comparison is idempotent for a re-pasted ref AND the value that
-            # feeds ``resolve_agent`` below is a node — this used to canonicalize
-            # for the COMPARISON only and then propagate the raw stamp.
-            # ⚑ Both separators are accepted, so a box stamped ``℘`` by an older
-            # version reattaches unchanged.
-            # ⚑ THE ADDRESS GRAMMAR, on both sides: a plain-shell box is stamped
-            # ``shell`` (keyspec §2b — its agent IS the shell pseudo-agent), and
-            # ``--agent shell`` selects it; the claimant grammar refused both.
-            # ⚑ AND BOTH FOLD TO THE NODE ([R173]): ``--agent Claude`` names the
-            # agent the box stamped ``claude``, so the comparison is between NODES
-            # — an exact compare of the typed spelling refused the same agent.
-            stored_agent = agent_address_node(stored_agent)
             # ⚑ ``is not None`` is the GIVEN predicate here as well, and the
             # canonicalize inside it is what refuses a given-but-BLANK ref at a
             # LIVE box — the very ``ConfigError`` a stopped box gets from

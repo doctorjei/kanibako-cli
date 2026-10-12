@@ -9,6 +9,7 @@ _Signatures only: no comments, no docstrings, no bodies._
 ```
 log = get_logger('creds_watcher')
 CREDS_DIRTY_RELPATH = '.kanibako/creds-dirty'
+AGENT_STAMP_ENV = 'KANIBAKO_AGENT'
 ```
 
 ## Types
@@ -28,6 +29,8 @@ def clear_creds_dirty(project_home: Path) -> None
 @contextlib.contextmanager
 def creds_store_lock(*store_dirs: Path) -> 'Iterator[None]'
 def decide_watch(box_running: bool, dirty: bool) -> WatchAction
+def running_box_agent(runtime, container_name: str) -> str | None
+def box_writeback_context(std, proj, agent: str)
 def main(argv: list[str] | None=None) -> int
 def _build_parser() -> argparse.ArgumentParser
 def _single_instance_lock(lock_path: Path) -> 'object | None'

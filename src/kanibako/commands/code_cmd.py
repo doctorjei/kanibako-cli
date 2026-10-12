@@ -314,20 +314,14 @@ def _resolve_box_agent_node(runtime, std, proj, container_name: str) -> str | No
     extension seed (:func:`_resolve_box_vscode_extension`) so the box is inspected
     a single time.
     """
-    from kanibako.agent_ref import agent_address_node
+    from kanibako.launch.creds_watcher import running_box_agent
 
     try:
-        stamp = runtime.inspect_env(container_name, "KANIBAKO_AGENT")
-        if stamp:
-            # 🛑 CANONICALIZE ON READ. The stamp is the OUTSIDE spelling (``+``);
-            # this function's contract is a NODE-name, which is what the
-            # ``select_agent`` fallback below already returns — so both branches
-            # answer in ONE spelling. ⚑ Both separators are accepted, so an
-            # older box stamped ``℘`` still resolves. ⚑ The ADDRESS grammar: a
-            # plain-shell box is stamped ``shell`` (keyspec §2b), and its node is
-            # the answer, not a swallowed reservation error. ⚑ And FOLDED to the
-            # node ([R173]) — the answer is a NODE-name, so it is lowercase.
-            return agent_address_node(stamp)
+        # A NODE-name, which is what the ``select_agent`` fallback below returns
+        # too — so both branches answer in ONE spelling.
+        node = running_box_agent(runtime, container_name)
+        if node is not None:
+            return node
 
         # Pre-stamp (older) box: fall back to the create-time selection cascade
         # (agent_select reads the SAME box-tier file ``box set
@@ -651,7 +645,7 @@ def _seed_remote_attached_config(engine, container_name: str) -> None:
     user can act on, so both stay at debug — and the catch stays blanket so a
     seed bug can never cost the user their editor.
     """
-    from kanibako.agent_ref import agent_address_node
+    from kanibako.launch.creds_watcher import running_box_agent
 
     try:
         image_ref = engine.container_image(container_name)
@@ -659,13 +653,9 @@ def _seed_remote_attached_config(engine, container_name: str) -> None:
             return
         extension = None
         try:
-            stamp = engine.inspect_env(container_name, "KANIBAKO_AGENT")
-            if stamp:
-                # 🛑 CANONICALIZE ON READ, as the local leg does: the stamp is the
-                # OUTSIDE spelling and ``_extension_for_agent`` takes a NODE-name
-                # (it derives the harness with ``harness_of``, which splits on ``℘``
-                # alone).  Folded to the node, as the local leg does.
-                extension = _extension_for_agent(agent_address_node(stamp))
+            node = running_box_agent(engine, container_name)
+            if node is not None:
+                extension = _extension_for_agent(node)
         except Exception:
             extension = None
         path = attached_container_config_path(

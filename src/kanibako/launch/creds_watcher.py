@@ -316,6 +316,74 @@ def _single_instance_lock(lock_path: Path) -> "object | None":
     return fd
 
 
+# --------------------------------------------------------------------------- #
+# The running box's agent stamp + its writeback context — shared by this watcher, #
+# ``kanibako stop``, ``kanibako code`` (both legs), and ``start``'s reattach.     #
+# --------------------------------------------------------------------------- #
+
+#: The container env var a launch stamps with the box's agent ref, in the OUTSIDE
+#: (``+``) spelling.  A running box's authoritative agent is this stamp, not the
+#: create-time cascade.
+AGENT_STAMP_ENV = "KANIBAKO_AGENT"
+
+
+def running_box_agent(runtime, container_name: str) -> str | None:
+    """The agent NODE a running box was launched with, or ``None`` when it has no stamp.
+
+    *runtime* is anything with ``inspect_env(name, key)`` — the local
+    ``ContainerRuntime`` or ``code --remote``'s ``RemoteEngine``.  An absent or empty
+    stamp (a box launched before stamping, or a container that is gone) is ``None``.
+
+    🛑 CANONICALIZE AND FOLD ON READ, through :func:`~kanibako.agent_ref.agent_address_node`:
+    every caller uses the value as a key or a key-derived lookup, and ``harness_of``
+    splits on ``℘`` alone, so the raw ``+`` stamp would name a plugin that does not
+    exist.  Both separators are accepted, so a box stamped ``℘`` by an older version
+    still resolves.  The ADDRESS grammar, because a plain-shell box is stamped
+    ``shell`` (keyspec §2b).  Folded to the node ([R173]), so the answer names the
+    store directory the launch wrote.  Raises ``ConfigError`` for a malformed stamp;
+    each caller decides whether that is said.
+    """
+    from kanibako.agent_ref import agent_address_node
+
+    stamp = runtime.inspect_env(container_name, AGENT_STAMP_ENV)
+    if not stamp:
+        return None
+    return agent_address_node(stamp)
+
+
+def box_writeback_context(std, proj, agent: str):
+    """The ``(target, auth_src)`` a credential writeback for *proj* runs with.
+
+    *agent* is the node from :func:`running_box_agent`.  The target is keyed by its
+    HARNESS; the auth source resolves through the auth chain (the same launch-snapshot
+    pipeline ``start`` uses), so a PRIVATE box gets a box-tier source and the writeback
+    is a no-op.  ⚑ The §1A SELECTION LEVEL is REQUIRED (P7): ``meta.box.auth.workset_path``
+    resolves ``@workset.auth.path/@system.agent``, so without it the credential dir
+    would name the agent the STORED settings select rather than the ``<auth>/<agent>``
+    the launch delivered from.  The stamp IS the resolved selection for a running box.
+
+    Raises ``SettingsError``/``ConfigError`` when the auth resolve refuses the box's
+    settings (a file that turned invalid after the box started); the refusal's text
+    names the file, and each caller says it in its own channel.  Target resolution
+    raises ``KeyError``/``ValueError`` only (:func:`~kanibako.targets.resolve_target`).
+    """
+    from kanibako.agent_ref import harness_of
+    from kanibako.commands.start import _resolve_box_auth_source
+    from kanibako.settings.agent_config import agent_settings_path
+    from kanibako.targets import resolve_target
+
+    target = resolve_target(harness_of(agent))
+    auth_src = _resolve_box_auth_source(
+        std=std,
+        proj=proj,
+        agent_name=agent,
+        system_settings_path=std.settings,
+        agent_cfg_path=agent_settings_path(std.agents, agent),
+        selection_level={"system.agent": agent},
+    )
+    return target, auth_src
+
+
 def _resolve_watch_context(box: str | None):
     """Re-resolve the host launch context for *box* (mirrors ``kanibako stop``).
 
@@ -323,15 +391,11 @@ def _resolve_watch_context(box: str | None):
     box cannot be resolved / has no shared-credential agent (nothing to watch), or when
     the auth resolve REFUSES the box's settings (logged at WARNING).
     """
-    from kanibako.settings.agent_config import agent_settings_path
-    from kanibako.agent_ref import agent_address_node, harness_of
-    from kanibako.commands.start import _resolve_box_auth_source
     from kanibako.errors import ConfigError
     from kanibako.settings.config import user_config_file, load_config
     from kanibako.runtime.container import ContainerRuntime
     from kanibako.settings.paths import load_std_paths, resolve_box_target
     from kanibako.settings.settings_resolve import SettingsError
-    from kanibako.targets import resolve_target
     from kanibako.utils import container_name_for
 
     runtime = ContainerRuntime()
@@ -345,46 +409,18 @@ def _resolve_watch_context(box: str | None):
         log.info("box %s has no container name; nothing to write back", proj.name)
         return None
 
-    # The box's agent comes from its KANIBAKO_AGENT launch stamp (same as stop.py) —
-    # it names which plugin's cred lifecycle to run + drives the auth-tier resolution.
-    agent = runtime.inspect_env(container_name, "KANIBAKO_AGENT")
-    if not agent:
+    # The box's agent comes from its launch stamp (same as stop.py) — it names which
+    # plugin's cred lifecycle to run + drives the auth-tier resolution.
+    agent = running_box_agent(runtime, container_name)
+    if agent is None:
         log.info("box %s has no agent stamp; nothing to write back", container_name)
         return None
-    # 🛑 CANONICALIZE, THEN DERIVE — the stamp is the OUTSIDE spelling (``+``) and
-    # every use below is a key or a key-derived lookup. ``harness_of`` splits on
-    # ``℘`` ALONE, so the raw ``+`` form would send ``resolve_target`` after a
-    # plugin that does not exist. ⚑ Both separators are accepted, so a box stamped
-    # by an older version keeps working. ⚑ The ADDRESS grammar, because a plain-shell
-    # box is stamped ``shell`` (keyspec §2b): it resolves to a box-tier auth source,
-    # so ``main`` exits at its private-box arm instead of logging a reservation error.
-    # 🛑 AND FOLD, through the one carrier — the stamp is a VALUE-supplied spelling, so
-    # it folds at the hop reaching for a node ([R173]); unfolded, this watcher syncs to a
-    # store directory the launch never wrote.  Harness only; why: ``agent_address_node``.
-    agent = agent_address_node(agent)
-    target = resolve_target(harness_of(agent))
-    # ⚑ The §1A SELECTION LEVEL is REQUIRED (P7): ``meta.box.auth.workset_path``
-    # resolves ``@workset.auth.path/@system.agent``, so without it the per-agent
-    # credential SOURCE names the agent the STORED settings select (the workset auth
-    # ROOT when none is stored) — the watcher would sync
-    # a different directory than the launch delivered from, and in a multi-agent
-    # workset two agents would share one dir. The ``KANIBAKO_AGENT`` stamp IS the
-    # resolved selection for a running box.
-    agent_cfg_path = agent_settings_path(std.agents, agent)
-    # 🛑 A settings REFUSAL (a file that turned invalid after the box started — an
-    # undeclared key, a stray in ``agent.yaml``, a YAML syntax error) is the user's to
-    # fix, not a crash: a WARNING carrying the refusal's own text, which names the file —
-    # never a stack trace. ⚑ SCOPED TO THIS CALL: ``agent_address_node`` above raises
-    # ``ConfigError`` too, for a malformed STAMP, which is not a settings refusal.
+    # 🛑 A settings REFUSAL is the user's to fix, not a crash: a WARNING carrying the
+    # refusal's own text, which names the file — never a stack trace. ⚑ SCOPED TO THIS
+    # CALL: ``running_box_agent`` raises ``ConfigError`` too, for a malformed STAMP,
+    # which is not a settings refusal.
     try:
-        auth_src = _resolve_box_auth_source(
-            std=std,
-            proj=proj,
-            agent_name=agent,
-            system_settings_path=std.settings,
-            agent_cfg_path=agent_cfg_path,
-            selection_level={"system.agent": agent},
-        )
+        target, auth_src = box_writeback_context(std, proj, agent)
     except (SettingsError, ConfigError) as exc:
         log.warning(
             "creds watcher for box %s: credential writeback skipped, its settings did "

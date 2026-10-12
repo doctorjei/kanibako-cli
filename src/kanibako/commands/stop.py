@@ -98,63 +98,19 @@ def _writeback_on_stop(
     """
     if not box_is_live:
         return
-    agent = runtime.inspect_env(container_name, "KANIBAKO_AGENT")
-    if not agent:
-        return
     try:
-        from kanibako.commands.start import (
-            _resolve_box_auth_source,
-            writeback_session_credentials,
-        )
-        from kanibako.settings.agent_config import agent_settings_path
-        from kanibako.agent_ref import agent_address_node, harness_of
-        from kanibako.targets import resolve_target
-        # 🛑 CANONICALIZE, THEN DERIVE. The stamp is the OUTSIDE spelling (``+``) —
-        # an env var is a place a human looks — but every use below is a KEY or a
-        # key-derived lookup, so the value re-enters code as a node. ``harness_of``
-        # splits on ``℘`` ALONE: given the raw ``navigator+claude`` it returns the
-        # WHOLE string and ``resolve_target`` raises KeyError, which the blanket
-        # catch below would swallow — writeback SILENTLY stopping for every persona
-        # box. ⚑ Also the BACK-COMPAT seam: a box stamped ``℘`` by an older version
-        # still works, because the ref grammar accepts both separators.
-        # ⚑ THE ADDRESS GRAMMAR: a plain-shell box is stamped ``shell`` (its agent IS
-        # the shell pseudo-agent, keyspec §2b). It resolves to ``ShellTarget``, whose
-        # box-tier auth source makes the writeback below a clean no-op — where the
-        # claimant grammar raised into the blanket catch.
-        # 🛑 AND FOLD, through the one carrier: the stamp is a VALUE-supplied spelling,
-        # so it folds at the hop that reaches for a node ([R173]) — otherwise a box whose
-        # plugin declares a capital reads ``agents/Kirobo/agent.yaml``, a file the launch
-        # never wrote, and the blanket catch below turns that into credential writeback
-        # silently not happening.  Harness only; why: ``agent_address_node``.
-        agent = agent_address_node(agent)
-        # The target/plugin is keyed by the HARNESS; ``agent_name=agent`` below
-        # keeps the node (keyspace slot).
-        target = resolve_target(harness_of(agent))
-        # The cascade box/workset tier files are single-sourced mode-aware inside
-        # the resolver (P6c) — standalone reads its file as the WORKSET tier.
-        # ⚑ The §1A SELECTION LEVEL is REQUIRED (P7): ``meta.box.auth.workset_path``
-        # resolves ``@workset.auth.path/@system.agent``, so without it the per-agent
-        # credential dir names the agent the STORED settings select (the workset auth
-        # ROOT when none is stored) and this writeback would land in that directory
-        # while the LAUNCH delivered from ``<auth>/<agent>``.
-        # The ``KANIBAKO_AGENT`` stamp IS the resolved selection for a running box.
-        agent_cfg_path = agent_settings_path(std.agents, agent)
-        # 🛑 NOT SILENT: a settings file that turned invalid after the box started (a
-        # §0 undeclared key, a stray beside ``self:`` in ``agent.yaml``, a YAML syntax
-        # error) refuses the auth resolve, and swallowing that left the user's
-        # credentials un-written-back with no word said. The refusal's own text names
-        # the file, so it is printed whole. ⚑ SCOPED TO THIS CALL: ``agent_address_node``
-        # above raises ``ConfigError`` too, for a malformed STAMP, and "its settings did
-        # not resolve" would be false for that. The stop still goes ahead either way.
+        from kanibako.commands.start import writeback_session_credentials
+        from kanibako.launch.creds_watcher import box_writeback_context, running_box_agent
+        agent = running_box_agent(runtime, container_name)
+        if agent is None:
+            return
+        # 🛑 NOT SILENT: a settings refusal leaves the user's credentials
+        # un-written-back, so it is printed whole (its text names the file).
+        # ⚑ SCOPED TO THIS CALL: ``running_box_agent`` raises ``ConfigError`` too, for a
+        # malformed STAMP, and "its settings did not resolve" would be false for that.
+        # The stop still goes ahead either way.
         try:
-            auth_src = _resolve_box_auth_source(
-                std=std,
-                proj=proj,
-                agent_name=agent,
-                system_settings_path=std.settings,
-                agent_cfg_path=agent_cfg_path,
-                selection_level={"system.agent": agent},
-            )
+            target, auth_src = box_writeback_context(std, proj, agent)
         except (SettingsError, ConfigError) as exc:
             detail = "" if any(str(prior) == str(exc) for prior in already_said) \
                 else f"\n{exc}"

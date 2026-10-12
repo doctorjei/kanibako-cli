@@ -562,3 +562,99 @@ def test_watch_context_canonicalizes_the_stamp_before_deriving(stamp):
         kwargs = m_auth.call_args.kwargs
         assert kwargs["agent_name"] == "navigator℘claude"
         assert kwargs["selection_level"] == {"system.agent": "navigator℘claude"}
+
+
+# ---------------------------------------------------------------------------
+# The ONE carrier of the running box's agent stamp and its writeback context
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("stamp, node", [
+    (None, None),
+    ("", None),
+    ("Navigator+Claude", "Navigator℘claude"),
+    ("navigator℘claude", "navigator℘claude"),
+    ("shell", "shell"),
+])
+def test_running_box_agent_reads_the_stamp_as_a_node(stamp, node):
+    """Absent/empty ⇒ ``None``; otherwise the folded node, from either separator."""
+    from unittest.mock import MagicMock
+
+    from kanibako.launch.creds_watcher import AGENT_STAMP_ENV, running_box_agent
+
+    runtime = MagicMock()
+    runtime.inspect_env.return_value = stamp
+    assert running_box_agent(runtime, "box-c") == node
+    # The read side of the contract the launch writes as ``system.env.KANIBAKO_AGENT``.
+    assert AGENT_STAMP_ENV == "KANIBAKO_AGENT"
+    runtime.inspect_env.assert_called_once_with("box-c", AGENT_STAMP_ENV)
+
+
+def test_running_box_agent_refuses_a_malformed_stamp():
+    """A malformed stamp raises ``ConfigError``; each caller decides whether it is said."""
+    from unittest.mock import MagicMock
+
+    from kanibako.errors import ConfigError
+    from kanibako.launch.creds_watcher import running_box_agent
+
+    runtime = MagicMock()
+    runtime.inspect_env.return_value = "a+b+c"
+    with pytest.raises(ConfigError):
+        running_box_agent(runtime, "box-c")
+
+
+def test_box_writeback_context_keys_the_target_by_harness_and_auth_by_node():
+    from unittest.mock import MagicMock, patch
+
+    from kanibako.launch.creds_watcher import box_writeback_context
+
+    std, proj = MagicMock(), MagicMock()
+    with (
+        patch("kanibako.commands.start._resolve_box_auth_source") as m_auth,
+        patch("kanibako.targets.resolve_target") as m_target,
+    ):
+        target, auth_src = box_writeback_context(std, proj, "navigator℘claude")
+    assert (target, auth_src) == (m_target.return_value, m_auth.return_value)
+    m_target.assert_called_once_with("claude")
+    kwargs = m_auth.call_args.kwargs
+    assert kwargs["std"] is std and kwargs["proj"] is proj
+    assert kwargs["agent_name"] == "navigator℘claude"
+    assert kwargs["system_settings_path"] is std.settings
+    assert kwargs["selection_level"] == {"system.agent": "navigator℘claude"}
+
+
+def test_every_stamp_reader_goes_through_running_box_agent():
+    """stop and both ``code`` legs read the stamp through ONE function, not their own."""
+    from unittest.mock import MagicMock, patch
+
+    from kanibako.commands import code_cmd, stop
+    from kanibako.launch import creds_watcher
+
+    runtime = MagicMock()
+    runtime.inspect_env.side_effect = AssertionError("read the stamp directly")
+    with patch.object(
+        creds_watcher, "running_box_agent", return_value="navigator℘claude",
+    ) as m_read:
+        assert code_cmd._resolve_box_agent_node(
+            runtime, MagicMock(), MagicMock(), "box-c",
+        ) == "navigator℘claude"
+        with (
+            patch.object(creds_watcher, "box_writeback_context",
+                         return_value=("T", "A")) as m_ctx,
+            patch("kanibako.commands.start.writeback_session_credentials") as m_wb,
+        ):
+            stop._writeback_on_stop(
+                runtime, "P", "box-c", std="S", config=None, box_is_live=True,
+            )
+        m_ctx.assert_called_once_with("S", "P", "navigator℘claude")
+        m_wb.assert_called_once_with("T", "P", auth_src="A")
+        engine = MagicMock()
+        engine.container_image.return_value = "img"
+        with (
+            patch.object(code_cmd, "_extension_for_agent", return_value=None) as m_ext,
+            patch.object(code_cmd, "_write_attached_config"),
+            patch.object(code_cmd, "attached_container_config_path"),
+        ):
+            code_cmd._seed_remote_attached_config(engine, "box-c")
+        m_ext.assert_called_once_with("navigator℘claude")
+    assert [c.args[1] for c in m_read.call_args_list] == ["box-c", "box-c", "box-c"]
