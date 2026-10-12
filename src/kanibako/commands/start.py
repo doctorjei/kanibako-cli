@@ -65,6 +65,7 @@ from kanibako.log import get_logger
 from kanibako.runtime.rig_registry import load_registry, registry_path
 from kanibako.runtime.rig_resolve import resolve_rig
 from kanibako.settings.settings_categories import (
+    ENV_VAR_NAME,
     SECRET_MOUNT_DIR,
     SECRET_VAR_RE,
     is_read_only,
@@ -5904,7 +5905,7 @@ def _emit_secret_mounts(secrets, logger) -> "tuple[list, list[str]]":
         if not SECRET_VAR_RE.match(var):
             logger.warning(
                 "secret_path: ignoring invalid VAR name %r (must be a plain env "
-                "identifier [A-Za-z_][A-Za-z0-9_]*); not delivered", var,
+                "identifier %s); not delivered", var, ENV_VAR_NAME,
             )
             continue
         # host_src is the cascade-resolved path; re-expand $VAR then ~ defensively.

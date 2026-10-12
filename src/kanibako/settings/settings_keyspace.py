@@ -130,7 +130,7 @@ from kanibako.settings.kb_store import BINDING_DERIVATIONS_NODE, SCOPE_CONTAINME
 from kanibako.settings.keystore import KeyStore
 # ⚑ MODULE SCOPE, and it closes no cycle: ``settings_categories`` is pure — it
 # imports stdlib only, with ``kb_store`` and ``keystore`` behind ``TYPE_CHECKING``.
-from kanibako.settings.settings_categories import CATEGORY_FAMILY_ROOTS
+from kanibako.settings.settings_categories import CATEGORY_FAMILY_ROOTS, ENV_VAR_NAME
 
 # ---------------------------------------------------------------------------
 # The keyspace version stamp
@@ -627,11 +627,9 @@ RESERVED_LEAF_NAMES: Final[frozenset[str]] = KeyStore.RESERVED_KEY_NAMES
 
 _DUNDER_RE: Final = re.compile(r"^__.*__$")
 
-#: ``env.<VAR>`` / ``secret_path.<VAR>`` variable-name shape (spec §2a; mirrors
-#: ``settings_categories.SECRET_VAR_RE`` — kept as its own compiled copy so this
-#: module's only settings-stack imports stay ``keystore`` / ``kb_store``, the
-#: leaves at the bottom of the stack).
-_VAR_RE: Final = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+#: ``env.<VAR>`` / ``secret_path.<VAR>`` variable-name shape (spec §2a), composed from
+#: the one spelling, ``settings_categories.ENV_VAR_NAME``.
+_VAR_RE: Final = re.compile(rf"^{ENV_VAR_NAME}$")
 
 # ---------------------------------------------------------------------------
 # Keys the ARC is mid-retiring (the conformance-test exemptions)

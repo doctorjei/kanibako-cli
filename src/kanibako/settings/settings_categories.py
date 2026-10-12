@@ -145,6 +145,12 @@ CATEGORY_FAMILY_ROOTS: Final[frozenset[str]] = frozenset(
     name.split(".", 1)[0] for name in _DELIVERY
 )
 
+#: The env-variable NAME shape (spec §2a ``env.<VAR>`` / ``secret_path.<VAR>``): a letter
+#: or underscore, then letters, digits or underscores.  ⚑ THE ONE SPELLING — every env-name
+#: regex is COMPOSED from it and every message naming the shape interpolates it.  Unanchored
+#: on purpose: callers anchor or embed it.
+ENV_VAR_NAME: Final = r"[A-Za-z_][A-Za-z0-9_]*"
+
 # One regex for the bind-shaped categories: scope . <category> . name (name greedily
 # captures the remainder, which may contain dots).
 #
@@ -207,18 +213,18 @@ MASK_KEY_RE = re.compile(rf"^(?P<scope>system|workset|box|{_AGENT_SCOPE})\.masks
 # ``{scope}.env.{VAR}`` — scalar env var; VAR may NOT contain dots (env names).
 ENV_KEY_RE = re.compile(
     rf"^(?P<scope>system|workset|box|{_AGENT_SCOPE})"
-    r"\.env\.(?P<name>[A-Za-z_][A-Za-z0-9_]*)$"
+    rf"\.env\.(?P<name>{ENV_VAR_NAME})$"
 )
 # ``{scope}.secret_path.{VAR}`` — the SECRET category (spec §2a): a scalar host PATH
 # keyed by the env VAR it delivers.  VAR is the env-name shape, never dotted.
 SECRET_KEY_RE = re.compile(
     r"^(?P<scope>system|agent|workset|box)\.secret_path\."
-    r"(?P<name>[A-Za-z_][A-Za-z0-9_]*)$"
+    rf"(?P<name>{ENV_VAR_NAME})$"
 )
 #: The bare-VAR shape above, enforced AGAIN at launch emit — ⚑ the VAR is
 #: interpolated into a generated ``sh -c`` export shim, so one that slipped past
-#: validation must be re-checked before it reaches the shell.  Keep the two in sync.
-SECRET_VAR_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+#: validation must be re-checked before it reaches the shell.  Both compose ENV_VAR_NAME.
+SECRET_VAR_RE = re.compile(rf"^{ENV_VAR_NAME}$")
 
 # Apply order: REVERSE of precedence (most-specific scope lands LAST) — containment order, derived.
 _SCOPE_APPLY_ORDER = {scope: rank for rank, scope in enumerate(SCOPE_CONTAINMENT)}

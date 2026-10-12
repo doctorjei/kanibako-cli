@@ -232,13 +232,13 @@ def _check_env_key(scope: str, var: str) -> None:
     ``settings_categories`` imports nothing from ``kanibako`` at module scope, so
     there is no cycle either way.
     """
-    from kanibako.settings.settings_categories import ENV_KEY_RE
+    from kanibako.settings.settings_categories import ENV_KEY_RE, ENV_VAR_NAME
 
     if ENV_KEY_RE.match(f"{scope}.env.{var}") is not None:
         return
     head_ok = ENV_KEY_RE.match(f"{scope}.env.PROBE") is not None
     detail = (
-        f"'{var}' is not an env-var name ([A-Za-z_][A-Za-z0-9_]*)" if head_ok
+        f"'{var}' is not an env-var name ({ENV_VAR_NAME})" if head_ok
         else f"'{scope}' is not a scope the env family is declared at — spec §2a "
              f"allows system, workset, box and agent.<node> (bare 'agent' is not a key)"
     )

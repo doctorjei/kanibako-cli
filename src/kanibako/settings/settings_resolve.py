@@ -35,6 +35,7 @@ from typing import Any, Literal
 # about two modules' relative import order, which only the imported module can honor.
 from kanibako.agent_ref import CANONICAL_SEP, SEGMENT_CHAR_CLASS
 from kanibako.errors import KanibakoError
+from kanibako.settings.settings_categories import ENV_VAR_NAME
 
 # Single source of truth for the box-side home; ``~`` in box-side destinations expands to it.
 # ⚑ The transitive in-tree closure is ``agent_ref`` + ``errors`` and NOTHING else, which is what
@@ -91,7 +92,7 @@ BOX_PINNED_STATE_RELPATH = f"{BOX_PINNED_ROOT_RELPATH}/state"
 
 MAX_REF_DEPTH = 64
 
-_VAR_NAME_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
+_VAR_NAME_RE = re.compile(ENV_VAR_NAME)
 # ⚑ COMPOSED FROM the agent-side charset, never restating it, so the subset relation holds BY
 # CONSTRUCTION — a node-name is a key segment, and these two literals drifted TWICE when separate.
 _REF_SEG = f"[{SEGMENT_CHAR_CLASS}{CANONICAL_SEP}]+"

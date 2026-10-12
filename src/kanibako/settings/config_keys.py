@@ -31,7 +31,9 @@ from kanibako.settings.agent_config import (
 )
 from kanibako.settings.config import coerce_bool
 from kanibako.settings.kb_store import SCOPE_CONTAINMENT
-from kanibako.settings.settings_categories import DECLARATION_ROOT_REF, SECRET_VAR_RE
+from kanibako.settings.settings_categories import (
+    DECLARATION_ROOT_REF, ENV_VAR_NAME, SECRET_VAR_RE,
+)
 from kanibako.settings.settings_drops import writable_scopes
 from kanibako.settings.settings_keyspace import (
     ACCESS_TIERS,
@@ -938,7 +940,7 @@ def _is_agent_node_bind_key(key: str) -> bool:
 # DISCRIMINATED, stored in the node's OWN settings file, value a SCALAR host PATH.
 # ``<node>`` is NON-greedy so the FIRST ``.secret_path.`` splits node from VAR.
 _AGENT_NODE_SECRET_RE = re.compile(
-    r"^agent\.(?P<node>.+?)\.secret_path\.(?P<var>[A-Za-z_][A-Za-z0-9_]*)$"
+    rf"^agent\.(?P<node>.+?)\.secret_path\.(?P<var>{ENV_VAR_NAME})$"
 )
 
 
@@ -985,7 +987,7 @@ def _is_bare_env_key(key: str) -> bool:
 # family (spec §2a); the agent form is DISCRIMINATED and routed elsewhere.
 # ⚑ The SIBLING-EXACT twin of ``_SCOPE_SECRET_RE``; VAR matching is CASE-SENSITIVE.
 _SCOPE_ENV_RE = re.compile(
-    r"^(?P<scope>system|workset|box)\.env\.(?P<var>[A-Za-z_][A-Za-z0-9_]*)$"
+    rf"^(?P<scope>system|workset|box)\.env\.(?P<var>{ENV_VAR_NAME})$"
 )
 
 
@@ -1441,7 +1443,7 @@ def _config_key_refusal(canonical: str, *, action: str) -> str:
 # ``<scope>.secret_path.<VAR>`` for the NON-agent scopes (system/workset/box); the
 # agent form is DISCRIMINATED and routed to the node file elsewhere.
 _SCOPE_SECRET_RE = re.compile(
-    r"^(?P<scope>system|workset|box)\.secret_path\.(?P<var>[A-Za-z_][A-Za-z0-9_]*)$"
+    rf"^(?P<scope>system|workset|box)\.secret_path\.(?P<var>{ENV_VAR_NAME})$"
 )
 
 
