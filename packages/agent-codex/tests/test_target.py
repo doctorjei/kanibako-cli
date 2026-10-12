@@ -35,6 +35,10 @@ class TestProperties:
     def test_default_entrypoint(self):
         assert CodexTarget().default_entrypoint == "codex"
 
+    def test_credential_check_path_is_the_declared_cred_file(self, tmp_path: Path):
+        """The agent report checks the file codex declares in ``cred_files``."""
+        assert CodexTarget().credential_check_path(tmp_path) == tmp_path / ".codex" / "auth.json"
+
     def test_reattach_config_notice_warns_restart(self):
         """codex's config.toml is a reconciled projection re-materialized only on
         start, so a reattach-to-running notice tells the user to restart for

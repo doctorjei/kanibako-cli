@@ -305,33 +305,3 @@ class TestWritebackExtra:
         host = host_home / ".claude.json"
         assert host.exists()
         assert json.loads(host.read_text())["oauthAccount"]["emailAddress"] == "z@z.z"
-
-
-class TestInvalidateCredentials:
-    def test_removes_credential_files(self, tmp_path):
-        shell = tmp_path / "shell"
-        claude_dir = shell / ".claude"
-        claude_dir.mkdir(parents=True)
-        creds = claude_dir / ".credentials.json"
-        creds.write_text('{"claudeAiOauth": {"token": "t"}}')
-        settings = shell / ".claude.json"
-        settings.write_text('{"oauthAccount": "a"}')
-
-        ClaudeTarget().invalidate_credentials(shell)
-        assert not creds.exists()
-        assert not settings.exists()
-
-    def test_noop_when_no_files(self, tmp_path):
-        shell = tmp_path / "shell"
-        shell.mkdir()
-        # Should not raise
-        ClaudeTarget().invalidate_credentials(shell)
-
-    def test_partial_files(self, tmp_path):
-        shell = tmp_path / "shell"
-        shell.mkdir()
-        settings = shell / ".claude.json"
-        settings.write_text('{"oauthAccount": "a"}')
-
-        ClaudeTarget().invalidate_credentials(shell)
-        assert not settings.exists()

@@ -287,9 +287,6 @@ class ClaudeTarget(Target):
             config_root / ".claude" / "settings.json",
         )
 
-    def credential_check_path(self, home: Path) -> Path | None:
-        return home / ".claude" / ".credentials.json"
-
     def read_persona_settings(self, config_dir: Path) -> PersonaReadOutcome:
         """Extract persona values from a rendered claude ``settings.json``.
 
@@ -469,14 +466,6 @@ class ClaudeTarget(Target):
             AccessReport(general, access),
             model_exact=bool(wire_model) and not _is_tier_alias((model or "").strip()),
         )
-
-    def invalidate_credentials(self, home: Path) -> None:
-        """Remove credential files from a shell directory."""
-        creds = home / ".claude" / ".credentials.json"
-        settings = home / ".claude.json"
-        for f in (creds, settings):
-            if f.is_file():
-                f.unlink()
 
     def detect(self) -> AgentInstall | None:
         """Detect Claude Code installation on the host.

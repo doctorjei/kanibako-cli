@@ -1206,7 +1206,19 @@ class Target(ABC):
         return f".{self.name}"
 
     def credential_check_path(self, home: Path) -> Path | None:
-        """Path to check for credential existence, or None."""
+        """The credential file under *home* whose presence means "logged in", or ``None``.
+
+        ⚑ DERIVED, NOT DECLARED A SECOND TIME: it is the FIRST file entry of the
+        descriptor's ``cred_files`` (a directory entry is skipped), so a plugin that
+        declares its credential for syncing is reported on too.  ``None`` with no
+        descriptor (``ShellTarget``) or no credential file.
+        """
+        desc = self.descriptor
+        if desc is None:
+            return None
+        for spec in desc.cred_files:
+            if not spec.is_dir:
+                return home / spec.home_rel
         return None
 
     def deliver_panel_permissions(
@@ -1283,9 +1295,6 @@ class Target(ABC):
         return PersonaProbeOutcome.not_applicable(
             f"the {self.name} harness implements no persona verify probe"
         )
-
-    def invalidate_credentials(self, home: Path) -> None:
-        """Remove credential files when switching to distinct auth. Default: no-op."""
 
     def cred_writeback_error(self, spec: CredFileSpec, data: bytes) -> str | None:
         """Why the box's *data* for *spec* must not replace the store copy, or `None`.

@@ -46,10 +46,8 @@ class ClaudeTarget(Target):
     @property
     def config_dir_name(self) -> str
     def deliver_directive_hook(self, *, config_root: Path, access: str, model_provider: 'CodexModelProvider | None'=None) -> bool
-    def credential_check_path(self, home: Path) -> Path | None
     def read_persona_settings(self, config_dir: Path) -> PersonaReadOutcome
     def verify_persona(self, endpoint: str, token_path: Path | None, model: str | None, *, env: Mapping[str, str] | None=None, timeout: float=5.0) -> PersonaProbeOutcome
-    def invalidate_credentials(self, home: Path) -> None
     def detect(self) -> AgentInstall | None
     def generate_agent_config(self) -> AgentConfig
     def default_common(self) -> dict[str, BindArm]

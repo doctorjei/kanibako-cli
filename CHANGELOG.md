@@ -773,6 +773,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   verbs.** `list` now accepts `--orphan`, and `list --all` no longer claims to add orphaned boxes. `rm --force`'s help
   now says it also lets a `--purge` remove a box that may be running, as `box rm`'s description does too. `box ps -q`
   and `box list -q` now say they print box names.
+- **`agent reauth` and `box info` check codex credentials.** For a box with its own credentials, `agent reauth` said
+  "no credentials found" for codex even when `~/.codex/auth.json` was there, and `box info` showed no credential
+  age. Every agent now checks the first credential file its plugin declares for syncing.
 - **The tweakcc patch container runs tweakcc** (entrypoint, keep-id user, config dir, `--yes`); `baseline verify` no
   longer reports every executable missing on a rig. tweakcc 4.4.0 still cannot patch claude 2.1.296 (runs unpatched).
 - **`workset disconnect --remove-files` names a workspace it keeps behind a symlink loop.** When the workset's

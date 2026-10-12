@@ -42,8 +42,6 @@ class GooseTarget(Target):
     @property
     def setup_args(self) -> list[str]
     def detect(self) -> AgentInstall | None
-    def credential_check_path(self, home: Path) -> Path | None
-    def invalidate_credentials(self, home: Path) -> None
     def check_auth(self) -> bool
     def generate_agent_config(self) -> AgentConfig
     def setting_descriptors(self) -> list[TargetSetting]

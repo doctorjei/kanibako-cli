@@ -219,16 +219,6 @@ class GooseTarget(Target):
             install_dir=resolved.parent,
         )
 
-    def credential_check_path(self, home: Path) -> Path | None:
-        """Path to check for credential existence."""
-        return home / ".config" / "goose" / "secrets.yaml"
-
-    def invalidate_credentials(self, home: Path) -> None:
-        """Remove secrets.yaml if it exists."""
-        secrets = home / ".config" / "goose" / "secrets.yaml"
-        if secrets.is_file():
-            secrets.unlink()
-
     # NOTE: no ``refresh_credentials`` / ``writeback_credentials`` overrides — goose is
     # descriptor-bearing, so its cred SYNC is the ``CredFileSpec`` set in
     # ``goose-defaults.yaml``, realized by the credsync engine.  ⚑ The base no-op hooks

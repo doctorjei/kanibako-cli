@@ -215,21 +215,6 @@ class TestCredentialCheckPath:
         assert result == tmp_path / ".config" / "goose" / "secrets.yaml"
 
 
-class TestInvalidateCredentials:
-    def test_deletes_secrets(self, tmp_path: Path):
-        secrets = tmp_path / ".config" / "goose" / "secrets.yaml"
-        secrets.parent.mkdir(parents=True)
-        secrets.write_text("data\n")
-
-        GooseTarget().invalidate_credentials(tmp_path)
-
-        assert not secrets.exists()
-
-    def test_noop_when_missing(self, tmp_path: Path):
-        # Should not raise
-        GooseTarget().invalidate_credentials(tmp_path)
-
-
 class TestCredsyncFold:
     """secrets.yaml host<->box sync is the descriptor CredFileSpec, NOT a bespoke
     per-plugin refresh/writeback override.

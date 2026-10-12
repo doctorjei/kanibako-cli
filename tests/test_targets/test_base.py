@@ -673,3 +673,36 @@ class TestHasPlugin:
         # ... and what the override does NOT supply is the other half of the
         # plugin shape, which is exactly the half _register refuses on.
         assert LyingShell().default_entrypoint is None
+
+
+class TestCredentialCheckPath:
+    """The credential the agent report checks is DERIVED from ``cred_files``."""
+
+    @staticmethod
+    def _shell_with(cred_files):
+        from kanibako.targets.shell import ShellTarget
+
+        class CredShell(ShellTarget):
+            @property
+            def descriptor(self):
+                return PluginDescriptor(
+                    command=("ls",), bindings=(), mode={}, cred_files=cred_files,
+                )
+
+        return CredShell()
+
+    def test_no_descriptor_checks_nothing(self, tmp_path):
+        from kanibako.targets.shell import ShellTarget
+
+        assert ShellTarget().credential_check_path(tmp_path) is None
+
+    def test_no_cred_files_checks_nothing(self, tmp_path):
+        assert self._shell_with(()).credential_check_path(tmp_path) is None
+
+    def test_the_first_declared_file_is_checked(self, tmp_path):
+        target = self._shell_with((
+            CredFileSpec(home_rel=".x/dir", host_rel=".x/dir", is_dir=True),
+            CredFileSpec(home_rel=".x/auth.json", host_rel=".x/auth.json"),
+            CredFileSpec(home_rel=".x/other.json", host_rel=".x/other.json"),
+        ))
+        assert target.credential_check_path(tmp_path) == tmp_path / ".x" / "auth.json"
