@@ -761,6 +761,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Every `$HOME` guard knows `$HOME` by its spelling and by its target.** Starting in a new directory that is a
+  link to `$HOME`, or at `$HOME` when `$HOME` is itself a link, no longer creates a project there. On Python 3.11,
+  registering a workset or box name at a symlink loop, and `box rm --purge` of a deregistered box whose recorded
+  folder is a loop, no longer crash on the loop. The search for a workset above a project now stops at a link to
+  `$HOME`, as it does at `$HOME`.
 - **`system info`'s `Data:` line and `system diagnose`'s Storage check read `config.data` from
   `/etc/kanibako/base.cfg` too.** They read only your own config file, so a site-wide `config.data` showed the
   default path there while every command used the site one.

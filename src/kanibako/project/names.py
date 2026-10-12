@@ -35,7 +35,7 @@ from kanibako.project import registry_store
 from kanibako.settings.config import WORKSET_META_FILE
 from kanibako.errors import AmbiguousNameError, ConfigError, ProjectError
 from kanibako.log import get_logger
-from kanibako.utils import is_dir_unless_gone, literal_path
+from kanibako.utils import is_dir_unless_gone, is_home_dir, literal_path
 
 if TYPE_CHECKING:
     from kanibako.settings.workset_dirkeys import EarlyScope, EarlySystem
@@ -96,7 +96,7 @@ def register_name(
     registration live in :mod:`kanibako.settings.paths`.)
     """
     # Guard: never register $HOME as a project path.
-    if Path(path).resolve() == Path.home().resolve():
+    if is_home_dir(path):
         raise ProjectError(
             "Refusing to register $HOME as a project path — this would "
             "mount your entire home directory as the workspace."
@@ -132,7 +132,7 @@ def register_name_if_absent(
     name under a DIFFERENT path — is a genuine collision and re-raises via
     :func:`register_name`.
     """
-    if Path(path).resolve() == Path.home().resolve():
+    if is_home_dir(path):
         # Surface the $HOME guard with the same message as register_name.
         register_name(registry, name, path, section=section)
         return

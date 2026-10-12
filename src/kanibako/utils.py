@@ -291,6 +291,16 @@ def literal_path(value: str | os.PathLike[str]) -> str:
     return os.path.normpath(text)
 
 
+def is_home_dir(path: str | os.PathLike[str]) -> bool:
+    """True when *path* is ``$HOME``, as spelled (:func:`literal_path`) or with every link resolved.
+
+    ⚑ Never raises: ``os.path.realpath`` stops at a symlink loop where ``Path.resolve`` raises
+    on 3.11, and a looped link is never ``$HOME``.
+    """
+    literal, home = literal_path(path), literal_path(Path.home())
+    return literal == home or os.path.realpath(literal) == os.path.realpath(home)
+
+
 def logical_cwd() -> str:
     """``$PWD`` when it names the current directory, else :func:`os.getcwd`."""
     pwd = os.environ.get("PWD", "")

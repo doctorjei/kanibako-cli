@@ -53,7 +53,7 @@ from kanibako.settings.settings_resolve import (LevelView, ResolveCtx, SettingsE
 from kanibako.project.names import (resolve_name, resolve_qualified_name)
 from kanibako.launch.box_identity import Designation, box_name_reason, classify_designation
 from kanibako.utils import (
-    is_dir_unless_gone, iterdir_unless_gone, literal_path, logical_cwd, project_hash,
+    is_dir_unless_gone, is_home_dir, iterdir_unless_gone, literal_path, logical_cwd, project_hash,
     short_hash, stat_unless_gone,
 )
 from kanibako.settings.bootstrap import (BASHRC_FILE, CONFIG_PATH_DEFAULTS,
@@ -1384,7 +1384,7 @@ def resolve_project(std: StandardPaths, config: BootstrapConfig, project_dir: st
     is_new = False
     if initialize and not project_dir_path.is_dir():
         # Guard: refuse to implicitly create a project rooted at $HOME.
-        if project_path == Path.home().resolve():
+        if is_home_dir(project_path):
             raise ProjectError(ERR_PROJECT_NEW_HOME)
 
         # New project: SELECT a name here only (no store write); the membership write happens
@@ -1813,7 +1813,6 @@ def detect_project_mode(project_dir: Path, std: StandardPaths,
                         config: BootstrapConfig) -> DetectionResult:
     """Infer which project mode applies to *project_dir*, walking ancestors for markers."""
     resolved = Path(literal_path(project_dir))
-    homes = {Path.home().resolve(), Path(literal_path(Path.home()))}
 
     # 1. Connected-external check.  ⚑ MUST run BEFORE the step-2 marker check: otherwise
     # the box resolves standalone, the very dual identity that --force removed.
@@ -1883,7 +1882,7 @@ def detect_project_mode(project_dir: Path, std: StandardPaths,
                 return ws_after
 
         # Stop conditions: reached $HOME or filesystem root.
-        if current in homes:
+        if is_home_dir(current):
             break
         parent = current.parent
         if parent == current:
@@ -2079,7 +2078,7 @@ def primary_box_name_for_workspace(primary_workset: Path, workspace: str,
 def check_primary_box_name_free(primary_workset: Path, name: str, workspace: str,
                                 *, early: EarlyScope) -> None:
     """Raise ``ProjectError`` if *name* is already a PRIMARY box's; worksets are not consulted."""
-    if Path(workspace).resolve() == Path.home().resolve():
+    if is_home_dir(workspace):
         from kanibako.errors import ProjectError
         raise ProjectError(ERR_PROJECT_REG_HOME)
 

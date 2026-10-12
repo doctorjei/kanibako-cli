@@ -43,7 +43,7 @@ from kanibako.project import registry_store
 from kanibako.project.names import lookup_by_path, register_name
 from kanibako.errors import KanibakoError
 from kanibako.settings.paths import standalone_box_store
-from kanibako.utils import literal_path
+from kanibako.utils import is_home_dir, literal_path
 
 if TYPE_CHECKING:
     from kanibako.settings.workset_dirkeys import EarlyScope
@@ -296,7 +296,7 @@ def import_named_workset(
     # EVERY command's mode detection.  Declining leaves it what it already was: a
     # plain primary-mode dir.  Tested directly, never caught: an ``except
     # ProjectError`` here would swallow the SAME-KIND collision refusal below.
-    if root.resolve() == Path.home().resolve():
+    if is_home_dir(root):
         return None
 
     # Already registered to this DIRECTORY, under any name → no-op; clear a stale entry.

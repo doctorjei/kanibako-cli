@@ -38,6 +38,7 @@ def iterdir_unless_gone(path: Path) -> list[Path] | None
 def refuse_unreadable_file(path: str | os.PathLike[str]) -> None
 def unreadable_path_error(path: str | os.PathLike[str], exc: OSError) -> ConfigError
 def literal_path(value: str | os.PathLike[str]) -> str
+def is_home_dir(path: str | os.PathLike[str]) -> bool
 def logical_cwd() -> str
 def write_project_gitignore(project_path: Path) -> None
 def project_gitignore_to_strip(project_path: Path) -> Path | None

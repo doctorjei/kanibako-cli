@@ -39,7 +39,7 @@ from kanibako.errors import (BoxNameError, ContainerError, DerivedBoxNameError, 
 from kanibako.project.names import read_names
 from kanibako.project.workset import (
     Workset, add_project, box_logs_to_purge, list_worksets, load_workset,
-    refuse_case_variant_store, report_retained_loop, _symlink_loop,
+    refuse_case_variant_store, report_retained_loop, _resolved_unless_loop, _symlink_loop,
 )
 from kanibako.snapshots import box_snapshot_store
 from kanibako.settings.messages import (
@@ -87,7 +87,7 @@ from kanibako.targets import resolve_target
 from kanibako.utils import (
     WORKSET_SEGMENT_PRIMARY, WORKSET_SEGMENT_STANDALONE,
     container_name_for, container_name_for_box_name, gitignore_holds_only_kanibako, literal_path,
-    is_dir_unless_gone, logical_cwd, project_gitignore_to_strip, refuse_unreadable_file,
+    is_dir_unless_gone, is_home_dir, logical_cwd, project_gitignore_to_strip, refuse_unreadable_file,
     short_hash, stat_unless_gone, strip_project_gitignore, write_project_gitignore,
 )
 
@@ -1210,7 +1210,7 @@ def precheck_create(args: argparse.Namespace) -> int | None:
     # ``resolve()`` below raises on it (3.11: ``RuntimeError`` on a loop).
     stat_unless_gone(_create_target(args))
     # $HOME guard: a home project must be BOTH standalone and an explicit --allow-home.
-    if _create_target(args).resolve() == Path.home().resolve():
+    if is_home_dir(_create_target(args)):
         if not args.standalone:
             print(
                 "Error: Refusing to create a project at $HOME.\n"
@@ -2142,9 +2142,8 @@ def _assert_deletable(path, *, must_be_under: Path | None = None) -> Path:
     raw = str(path).strip()
     if not raw:
         raise ProjectError("refusing to delete: empty metadata path")
-    resolved = Path(raw).resolve()
-    forbidden = {Path("/").resolve(), Path.home().resolve()}
-    if resolved in forbidden:
+    resolved = _resolved_unless_loop(Path(raw))
+    if resolved == Path("/").resolve() or is_home_dir(resolved):
         raise ProjectError(f"refusing to delete a protected path: {resolved}")
     if must_be_under is not None:
         root = must_be_under.resolve()
