@@ -1,0 +1,31 @@
+# kinemata AST boundary rules for kanibako-cli.
+# Run: `kinemata boundary -c kinemata-boundary.toml`.
+#
+# A SEPARATE FILE ON PURPOSE: `[[boundary]]` exists only in kinemata
+# 0.6.1.dev0, an unreleased build, and kinemata 0.6.0 (the CI pin) refuses the
+# whole document when its root declares `boundary`. Held here, the rule runs
+# locally under the dev build while every CI command keeps reading
+# `kinemata.toml`. Fold this file into `kinemata.toml`, and add its `[[gate]]`
+# there, once CI can install a build that carries `boundary` (a release, or a
+# pushed ref).
+#
+# Each rule's accepted findings live in `.kinemata/ratchets/<rule>.json`,
+# written only by `kinemata boundary -c kinemata-boundary.toml --rule <rule>
+# --record`. A new finding fails; editing a rule's declaration refuses until it
+# is re-recorded. A finding's fingerprint includes its line, so an edit that
+# moves an accepted import also fails until the rule is re-recorded.
+
+[project]
+root = "."
+
+# Sub-project split, settings first: settings is the lower layer, so it imports
+# nothing from the layers above it. Type-only imports count (`type_checking`
+# defaults to "include").
+[[boundary]]
+name = "settings-imports-no-runtime-layers"
+kind = "imports"
+only = ["src/kanibako/settings/"]
+imports = ["kanibako.project", "kanibako.launch", "kanibako.targets", "kanibako.runtime"]
+
+[boundary.ratchet]
+until = "2027-01-12"
