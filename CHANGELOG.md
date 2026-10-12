@@ -12,6 +12,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **The persona probe tests the credential without a model before it tests the model.** The claude and codex
+  probes ask for the endpoint's model list with the token and, if accepted, without it, then send the model request.
+  A launch is refused on the model request as before, except that a credential verified without a model now warns
+  instead when the probe could not send the box's own model id (a claude tier alias, or no model). A refusal says
+  what each request showed and never blames the token. `box create` now probes a persona with no token too, and
+  still only warns. For plugin authors, `http_probe` can GET, and `probe_general_access`, `probe_model_access`,
+  `access_outcome`, and `PersonaProbeOutcome.access` are new. See `MIGRATION.md`, "Personas: the store is read
+  live, and stray values in the agent file now win" and "For plugin authors".
 - **A plugin's `category_binds:` refusal of a bare-relative source now uses the settings-file wording.** It names the
   hazard and ends "Spell the source out." For `bindings.ro`, `bindings.rw`, and `synced` it says the category takes
   no root at any scope. For `caches`, `common`, and `seeded` it no longer says that, which was false: those categories

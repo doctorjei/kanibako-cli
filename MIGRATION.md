@@ -1260,6 +1260,13 @@ value that DIFFERS is now, by definition, a deliberate user override: keep it if
   reaches the container.** Review those blocks before upgrading. (Claude personas only — the codex
   reader carries no `env`.)
 - Deleting a value from the store now simply stops it resolving on the next launch.
+- **The probe asks for the model list first, without naming a model.** It sends that request with
+  the token and, if it is accepted, again without one (once, without, when there is no token), then
+  sends the model request as before. A refusal now says what each request showed, for example
+  `The endpoint refused this credential with and without a model.`, and never says the token is
+  bad. One new warning: when the endpoint refuses the model-free request and requires a model the
+  persona does not name, `start` warns and launches (it was silent). `kanibako create` now probes a
+  persona with no token too, and warns only.
 - **A refused model can warn instead of block.** When the endpoint accepts the token on a request
   that names no model but refuses the model request, `start` warns and launches if the probe could
   not send the box's own model id: the persona names no model (the box sends its default), or a
@@ -7638,8 +7645,19 @@ updating, and one of them fails at IMPORT time:**
   `kanibako agent set <agent> env.<VAR>=…`, or at the workset or box scope, or on a persona
   configured entirely through the keyspace with no store entry, does **not** appear in `env`: your
   probe sends the unrewritten id, and a `REJECTED` on it hard-errors a launch that would have
-  worked. Until that is closed, a tier-alias mapping has to live in the persona store entry for the
-  probe to see it.
+  worked unless the model-free request verified the credential (below). Until that is closed, a
+  tier-alias mapping has to live in the persona store entry for the probe to see it.
+- **The probe can test the credential without a model.** `http_probe` sends a GET when `body` is
+  `None` (no body, no `Content-Type`; redirect refusal, read cap, and scrub unchanged).
+  `probe_general_access` GETs the model list with the credential you pass separately, then without
+  it; `probe_model_access` sends the model request. Each returns an `AxisResult`, and
+  `access_outcome(AccessReport(general, model), model_exact=…)` turns the pair into a
+  `PersonaProbeOutcome`: the one place the verdict table lives. Pass `model_exact=False` when the
+  model you sent may not be the id the box uses (an alias, or none); a credential verified without
+  a model then warns on a model refusal instead of refusing the launch. `PersonaProbeOutcome` gains
+  a last field, `access` (default `None`); `evidence` stays the deciding request's, so
+  `refusal_phrase` keeps working, and `probe_outcome` / `probe_outcome_no_model` remain. A probe
+  that keeps one request still works and renders as before.
 
 - **The probe helpers now take a response, not a bare status.** `kanibako.targets.base.http_probe`
   replaces `http_probe_status` and returns a `ProbeResponse(status, body)`, where `body` is the

@@ -1354,9 +1354,12 @@ class Target(ABC):
         or on a keyspace-only persona, is ABSENT here.  A harness whose runtime resolves
         *model* through one of these (claude reads a tier alias through
         `ANTHROPIC_DEFAULT_<TIER>_MODEL`) MUST resolve it here too.
-        ⚑ Where the mapping lives OUTSIDE this block the alias goes out raw and a false
-        `REJECTED` survives: a KNOWN UNCLOSED HOLE, not a contract this argument keeps
-        (llm-doc).  Resolving a mapping the USER wrote is not the substitution the rule
+        ⚑ Where the mapping lives OUTSIDE this block the alias goes out raw.  A plugin that
+        reports it with `model_exact=False` to :func:`access_outcome` turns a refusal into a
+        warning when the model-free request VERIFIED the credential; a false `REJECTED`
+        survives only when that request could not verify it (a public model list, no answer,
+        a refusal, or a keyless persona): a KNOWN UNCLOSED HOLE, not a contract this argument
+        keeps (llm-doc).  Resolving a mapping the USER wrote is not the substitution the rule
         above forbids; inventing one is.
         ⚑ Contract: NEVER raises; SHORT *timeout*; the token is read TRANSIENTLY for the
         request only — never logged, never persisted, never returned.

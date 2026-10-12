@@ -6280,7 +6280,9 @@ def _persona_probe_error(
     (:func:`_install_assembly_collapse`, below its ``whole_box`` gate) — and on this path
     that resolve runs AFTER this pre-flight, which must precede box materialization.  So
     a mapping at the agent-file / workset / box rung, or a keyspace-only persona with no
-    store block, still probes with the RAW alias and can still be refused on the 403.
+    store block, still probes with the RAW alias.  When the model-free request verified
+    the credential that refusal only warns (the Q29 H1 cell); when it could not (a public
+    model list, no answer, a refusal, or no credential) the 403 still refuses the launch.
     Closing it means collapsing before materialization: a design change, not a wiring.
 
     🛑 THE REJECTED MESSAGE NAMES WHAT WAS REFUSED, NEVER WHAT TO FIX.  It used to
