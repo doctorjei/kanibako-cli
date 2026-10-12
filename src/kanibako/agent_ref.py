@@ -7,9 +7,8 @@
 """
 
 from __future__ import annotations
-import re
 from kanibako.errors import ConfigError
-from kanibako.identifiers import agent_node_case, find_identifier
+from kanibako.identifiers import NAME_CHAR_CLASS, agent_node_case, find_identifier, name_flaw
 
 # Persona/harness separators.  ``+`` is the spelling wherever a human looks, the on-disk store
 # dirname included (:func:`kanibako.settings.agent_config.store_dirname`).  ``℘`` exists for ONE
@@ -18,9 +17,9 @@ from kanibako.identifiers import agent_node_case, find_identifier
 # different key.  A node wears ``℘`` INSIDE a key and nowhere else.
 SEPARATORS = (PLUS_SEP := "+", CANONICAL_SEP := "℘")
 
-# "Safe" characters in agent names
-_SAFE_EXTRA = frozenset("-_")
-SEGMENT_CHAR_CLASS = r"\w" + "".join(re.escape(ch) for ch in sorted(_SAFE_EXTRA))
+# A persona or harness segment follows the NAME RULE (spec §0, §2d): the charset is the one
+# :data:`kanibako.identifiers.NAME_CHAR_CLASS`, named here for the key-path grammar that reads it.
+SEGMENT_CHAR_CLASS = NAME_CHAR_CLASS
 
 # The env-variable NAME shape (keyspec §2a ``env.<VAR>`` / ``secret_path.<VAR>``): a letter or
 # underscore, then letters, digits or underscores.  ⚑ THE ONE SPELLING — every env-name regex is
@@ -28,10 +27,6 @@ SEGMENT_CHAR_CLASS = r"\w" + "".join(re.escape(ch) for ch in sorted(_SAFE_EXTRA)
 # SEGMENT_CHAR_CLASS because ``settings_resolve`` composes both and its in-tree closure must stay
 # ``agent_ref`` + ``errors``.  Unanchored on purpose: callers anchor or embed it.
 ENV_VAR_NAME = r"[A-Za-z_][A-Za-z0-9_]*"
-
-# Appended to rejection message when offending segment contains ``.`` - a mistake users actually
-# make (``kimi.k3+claude``), & "only letters and digits" does not explain why dot is not one.
-_DOT_HINT = "; '.' is reserved as settings key-path separator and cannot appear in an agent name"
 
 # The PSEUDO-AGENT names (keyspec §2d, "Pseudo-agent(s)").  A pseudo-agent is not a true
 # agent but serves the AGENT ROLE, so its name is reserved: it already owns an
@@ -99,8 +94,18 @@ ADDRESSABLE_PSEUDO_AGENTS = frozenset({GENERAL_SLOT})
 
 
 def _is_segment_safe(segment: str) -> bool:
-  """A non-empty segment of only letters/digits (any language) plus ``-``/``_``."""
-  return all(ch.isalnum() or ch in _SAFE_EXTRA for ch in segment) if segment else False
+  """A persona or harness *segment* that follows the name rule (spec §0)."""
+  return name_flaw(segment) is None
+
+
+def _segment_refusal(what: str, segment: str) -> str:
+  """Why *segment* is refused, and its cure: the ``_`` (or ASCII) spelling when one exists."""
+  from kanibako.launch.box_identity import name_spelling
+  from kanibako.settings.messages import NAME_CHARSET
+
+  offer = name_spelling(segment)
+  cure = f"; try '{offer[0]}'" if offer is not None else ""
+  return f"{what} '{segment}' {name_flaw(segment)}: {NAME_CHARSET}{cure}"
 
 
 def reserved_pseudo_agent_reason(name: str) -> str | None:
@@ -158,24 +163,19 @@ def parse_agent_ref(raw: str) -> tuple[str, str]:
     # Bare: node == harness == the whole (validated) name.  A bare ref names the persona
     # AND the harness, so ONE reservation check covers both roles here.
     if not _is_segment_safe(ref):
-      raise ConfigError(f"invalid agent name '{ref}': names may contain only letters and "
-                        f"digits (any language), '-', & '_'{_DOT_HINT if '.' in ref else ''}")
+      raise ConfigError(f"invalid agent name '{ref}': {_segment_refusal('agent name', ref)}")
     if (why := reserved_pseudo_agent_reason(ref)) is not None:
       raise ConfigError(why)
     return ref, ref
 
   if not _is_segment_safe(persona := ref[:idx]):
-    raise ConfigError(f"invalid agent ref '{raw}': persona segment '{persona}' must be non-empty "
-                      f"& contain only letters & digits (any language), '-', & '_' (no separator)"
-                      f"{_DOT_HINT if '.' in persona else ''}")
+    raise ConfigError(f"invalid agent ref '{raw}': {_segment_refusal('persona', persona)}")
 
   if (why := reserved_pseudo_agent_reason(persona)) is not None:
     raise ConfigError(f"invalid agent ref '{raw}': persona segment {why}")
 
   if not _is_segment_safe(harness := ref[idx+1:]):
-    raise ConfigError(f"invalid agent ref '{raw}': harness segment '{harness}' must be non-empty "
-                      f"& contain only letters & digits (any language), '-', & '_' (no separator)"
-                      f"{_DOT_HINT if '.' in harness else ''}")
+    raise ConfigError(f"invalid agent ref '{raw}': {_segment_refusal('harness', harness)}")
 
   if (why := reserved_pseudo_agent_reason(harness)) is not None:
     raise ConfigError(f"invalid agent ref '{raw}': harness segment {why}")

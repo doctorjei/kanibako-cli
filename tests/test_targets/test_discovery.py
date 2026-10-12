@@ -252,6 +252,44 @@ class TestBrokenEntryPointIsSkipped:
         assert "exploding" not in targets
 
 
+class TestAHarnessNameFollowsTheNameRule:
+    """A plugin's harness name follows the name rule (spec §0, §2d): skipped, never fatal."""
+
+    @pytest.fixture(autouse=True)
+    def _clear_warn_dedupe(self):
+        from kanibako.targets import _BAD_NAME_WARNED
+        _BAD_NAME_WARNED.clear()
+        yield
+        _BAD_NAME_WARNED.clear()
+
+    @pytest.mark.parametrize("name, spelled", [
+        ("my-agent", "my_agent"), ("my.agent", "my_agent"), ("2agent", "_2agent"),
+        ("agént", "agent")])
+    def test_a_rule_breaking_name_is_skipped_and_its_spelling_named(self, name, spelled, capsys):
+        bad = _mock_entry_point(name, _FakeTarget)
+        good = _mock_entry_point("fake", _FakeTarget)
+        with patch("kanibako.targets.entry_points", return_value=[bad, good]):
+            targets = discover_targets()
+        assert targets["fake"] is _FakeTarget
+        assert name not in targets and name.lower() not in targets
+        err = capsys.readouterr().err
+        assert f"'{name}'" in err and "SKIPPED" in err
+        assert f"('{spelled}' would do)" in err
+
+    def test_a_name_with_no_spelling_names_none(self, capsys):
+        bad = _mock_entry_point("漢字", _FakeTarget)
+        with patch("kanibako.targets.entry_points", return_value=[bad]):
+            targets = discover_targets()
+        assert "漢字" not in targets
+        assert "would do" not in capsys.readouterr().err
+
+    def test_an_underscored_name_registers(self):
+        ep = _mock_entry_point("my_agent", _FakeTarget)
+        with patch("kanibako.targets.entry_points", return_value=[ep]):
+            targets = discover_targets()
+        assert targets["my_agent"] is _FakeTarget
+
+
 class TestReservedPseudoAgentNameIsRefused:
     """A plugin may not register a PSEUDO-AGENT name (keyspec §2d).
 

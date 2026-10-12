@@ -9,7 +9,7 @@ import sys
 from importlib.metadata import entry_points
 
 from kanibako.agent_ref import AGENT_ENTRY_POINT_GROUP, reserved_pseudo_agent_reason
-from kanibako.identifiers import agent_node_case, find_identifier
+from kanibako.identifiers import agent_node_case, find_identifier, name_flaw
 from kanibako.targets.base import AgentInstall, Mount, Target, TargetSetting
 from kanibako.targets.shell import ShellTarget
 
@@ -33,6 +33,7 @@ _EP_LOAD_FAILED: set[str] = set()
 _RESERVED_NAME_WARNED: set[str] = set()
 _COLLIDING_NAME_WARNED: set[str] = set()
 _NO_PLUGIN_SHAPE_WARNED: set[str] = set()
+_BAD_NAME_WARNED: set[str] = set()
 
 
 def _register(
@@ -90,6 +91,23 @@ def _register(
                 f"Warning: {why}.{spelling} The agent plugin registering it ({source}) "
                 f"is being SKIPPED; every other agent, and 'kanibako setup', still "
                 f"work. The plugin's author must give it a name of its own.",
+                file=sys.stderr,
+            )
+        return
+    # ⚑ A harness name follows the name rule (spec §0, §2d), refused like a reserved one.
+    flaw = name_flaw(name)
+    if flaw is not None:
+        if name not in _BAD_NAME_WARNED:
+            _BAD_NAME_WARNED.add(name)
+            from kanibako.launch.box_identity import name_spelling
+            from kanibako.settings.messages import NAME_CHARSET
+            offer = name_spelling(name)
+            cure = f" ('{offer[0]}' would do)" if offer is not None else ""
+            print(
+                f"Warning: the agent plugin '{name}' ({source}) has a harness name that "
+                f"{flaw}: {NAME_CHARSET}. '{name}' is being SKIPPED; every other agent, "
+                f"and 'kanibako setup', still work. The plugin's author must rename "
+                f"it{cure}.",
                 file=sys.stderr,
             )
         return

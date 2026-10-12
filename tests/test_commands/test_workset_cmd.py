@@ -66,18 +66,56 @@ class TestWorksetCreate:
         assert "Created working set" in out
         assert ws_root.resolve().is_dir()
 
+    @pytest.mark.parametrize("folder, name", [
+        ("my-set", "my_set"), ("team.v2", "team_v2"), ("kanibako-cli", "kanibako_cli")])
+    def test_create_derives_underscore_for_dash_and_dot(
+            self, config_file, tmp_home, capsys, folder, name):
+        """Spec §0: a workset named from its folder writes ``_`` for ``-`` and ``.``."""
+        from kanibako.commands.workset_cmd import run_create
+
+        ws_root = tmp_home / folder
+        args = argparse.Namespace(
+            path=str(ws_root), name=None,
+            standalone=False, image=None, no_vault=False,
+        )
+        assert run_create(args) == 0
+        assert f"Created working set '{name}'" in capsys.readouterr().out
+        assert ws_root.resolve().is_dir()
+
+    @pytest.mark.parametrize("typed, flaw, spelled", [
+        ("my-set", "must not contain '-'", "my_set"),
+        ("my.set", "must not contain '.'", "my_set"),
+        ("2set", "must not start with a digit", "_2set"),
+        ("café", "must not contain U+00E9", "cafe"),
+        ("漢字", "must not contain U+6F22", "<new-name>"),
+    ])
+    def test_create_refuses_a_typed_name_and_names_its_spelling(
+            self, config_file, tmp_home, capsys, typed, flaw, spelled):
+        from kanibako.commands.workset_cmd import run_create
+
+        ws_root = tmp_home / "wsroot"
+        args = argparse.Namespace(
+            path=str(ws_root), name=typed,
+            standalone=False, image=None, no_vault=False,
+        )
+        assert run_create(args) == 1
+        err = capsys.readouterr().err
+        assert f"Invalid workset name '{typed}': workset name {flaw}" in err, err
+        assert f"kanibako workset create {ws_root} --name {spelled}" in err, err
+        assert not ws_root.exists()
+
     def test_create_with_name_override(self, config_file, tmp_home, capsys):
         from kanibako.commands.workset_cmd import run_create
 
         ws_root = tmp_home / "myworkset2"
         args = argparse.Namespace(
-            path=str(ws_root), name="custom-name",
+            path=str(ws_root), name="custom_name",
             standalone=False, image=None, no_vault=False,
         )
         rc = run_create(args)
         assert rc == 0
         out = capsys.readouterr().out
-        assert "custom-name" in out
+        assert "custom_name" in out
 
     def test_create_defaults_to_cwd(self, config_file, tmp_home, capsys, monkeypatch):
         from kanibako.commands.workset_cmd import run_create

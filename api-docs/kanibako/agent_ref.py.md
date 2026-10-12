@@ -11,12 +11,11 @@ Prose for these symbols lives in `llm-docs/kanibako/agent_ref.py.md`.
 SEPARATORS = ((PLUS_SEP := '+'), (CANONICAL_SEP := '℘'))
 SEGMENT_CHAR_CLASS = '\\w' + ''.join((re.escape(ch) for ch in sorted(_SAFE_EXTRA)))
 ENV_VAR_NAME = '[A-Za-z_][A-Za-z0-9_]*'
+SEGMENT_CHAR_CLASS = NAME_CHAR_CLASS
 PSEUDO_AGENT_NAMES = frozenset({'default', 'shell'})
 AGENT_ENTRY_POINT_GROUP = 'kanibako.agents'
 GENERAL_SLOT = 'shell'
 ADDRESSABLE_PSEUDO_AGENTS = frozenset({GENERAL_SLOT})
-_SAFE_EXTRA = frozenset('-_')
-_DOT_HINT = "; '.' is reserved as settings key-path separator and cannot appear in an agent name"
 ```
 
 ## Functions
@@ -32,5 +31,6 @@ def harness_of(node: str) -> str
 def persona_of(node: str) -> str
 def with_harness(node: str, harness: str) -> str
 def _is_segment_safe(segment: str) -> bool
+def _segment_refusal(what: str, segment: str) -> str
 def _first_sep_index(raw: str) -> int
 ```

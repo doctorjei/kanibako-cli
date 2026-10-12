@@ -44,12 +44,10 @@ def test_parse_bare_strips_whitespace():
     assert parse_agent_ref("  claude  ") == ("claude", "claude")
 
 
-def test_parse_bare_allows_safe_punctuation():
-    # Alnum + '-' '_' are fs/key-safe in a bare name.  ⚑ '.' was legal here
-    # until 2026-08-04 (this line read "agent-1.2"); see _SAFE_EXTRA for why it
-    # is not — it is the settings key-path separator.
+def test_parse_bare_allows_underscore():
+    # A bare name follows the name rule (spec §0): ASCII letters, digits, '_'.
     assert parse_agent_ref("my_agent") == ("my_agent", "my_agent")
-    assert parse_agent_ref("agent-1_2") == ("agent-1_2", "agent-1_2")
+    assert parse_agent_ref("agent_1_2") == ("agent_1_2", "agent_1_2")
 
 
 # ---------------------------------------------------------------------------
@@ -76,11 +74,9 @@ def test_parse_plus_and_canonical_yield_same_node():
     )[0]
 
 
-def test_parse_persona_with_safe_punctuation():
-    # ⚑ Was "gemma-4.test+claude" until 2026-08-04; '.' is no longer a legal
-    # segment character (it is the key-path separator — see _SAFE_EXTRA).
-    node, harness = parse_agent_ref("gemma-4_test+claude")
-    assert node == "gemma-4_test℘claude"
+def test_parse_persona_with_underscores():
+    node, harness = parse_agent_ref("gemma_4_test+claude")
+    assert node == "gemma_4_test℘claude"
     assert harness == "claude"
 
 
@@ -160,29 +156,33 @@ def test_segment_charset_is_subset_of_ref_seg():
     )
 
 
-def test_segment_charset_admits_word_chars_in_any_language():
-    # ⚑ Unicode letters and digits are DELIBERATELY legal (Jei, 2026-08-04:
-    # "we dont want to disallow unicode any other languages").  When a name
-    # character truncated an ``@``-ref, the remedy was to WIDEN the ref grammar
-    # to match — never to narrow this one to ASCII.
+def test_segment_charset_is_the_ascii_name_rule():
+    # Spec §0: persona and harness names are ASCII letters, digits, and '_' — and a
+    # one-character segment cannot be a digit, since a name does not start with one.
     admitted = _admitted_chars()
-    for ch in "漢字éßяعกひらがな½②":
-        assert ch in admitted
+    assert admitted == set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ_")
+    for ch in "漢字éßяعกひらがな½②-.":
+        assert ch not in admitted
 
 
-def test_word_char_class_equals_isalnum_plus_underscore():
-    # The load-bearing PROPERTY OF PYTHON that makes the two charsets compose:
-    # ``\w`` (what ``_REF_SEG`` is built from) matches exactly ``str.isalnum()``
-    # (what ``_is_segment_safe`` tests) plus ``_``.  Swept exhaustively — if a
-    # future Python ever diverges, this fails here instead of silently
-    # re-opening the truncation bug.
-    word = re.compile(r"\w")
-    mismatched = [
-        cp
-        for cp in range(0x110000)
-        if (chr(cp).isalnum() or chr(cp) == "_") != bool(word.fullmatch(chr(cp)))
-    ]
-    assert mismatched == []
+@pytest.mark.parametrize("bad, cure", [
+    ("kimi-k3+claude", "try 'kimi_k3'"),
+    ("gemma-4+claude", "try 'gemma_4'"),
+    ("2x+claude", "try '_2x'"),
+    ("café+claude", "try 'cafe'"),
+    ("claude+my-harness", "try 'my_harness'"),
+    ("kimi.k3", "try 'kimi_k3'"),
+])
+def test_a_refused_segment_names_its_spelling(bad, cure):
+    with pytest.raises(ConfigError, match=re.escape(cure)):
+        parse_agent_ref(bad)
+
+
+@pytest.mark.parametrize("bad", ["漢字+claude", "яндекс+claude", "x" * 65 + "+claude"])
+def test_a_segment_with_no_spelling_offers_none(bad):
+    with pytest.raises(ConfigError) as exc:
+        parse_agent_ref(bad)
+    assert "try '" not in str(exc.value)
 
 
 def test_segment_charset_excludes_the_separator():
@@ -224,17 +224,12 @@ def test_parse_rejects_dot_in_a_segment(bad):
     "good,expected",
     [
         ("navigator+claude", ("navigator℘claude", "claude")),
-        ("kimi-k3+claude", ("kimi-k3℘claude", "claude")),  # the dash stays legal
         ("kimi_k3+claude", ("kimi_k3℘claude", "claude")),
         ("claude", ("claude", "claude")),  # bare: LOAD-BEARING back-compat
         ("my_agent", ("my_agent", "my_agent")),
-        ("gemma-4+claude", ("gemma-4℘claude", "claude")),
-        # Non-ASCII word characters are a MUST-WORK case, not a rejection.
-        ("漢字+claude", ("漢字℘claude", "claude")),
-        ("café+claude", ("café℘claude", "claude")),
-        ("яндекс+claude", ("яндекс℘claude", "claude")),
-        ("über_k3+claude", ("über_k3℘claude", "claude")),
-        ("café", ("café", "café")),  # bare, non-ASCII
+        ("gemma_4+claude", ("gemma_4℘claude", "claude")),
+        ("_2x+claude", ("_2x℘claude", "claude")),
+        ("x" * 64 + "+claude", ("x" * 64 + "℘claude", "claude")),
     ],
 )
 def test_parse_still_accepts_safe_refs(good, expected):

@@ -56,13 +56,13 @@ from kanibako.errors import (
     ConfigError, LegacyWorksetIdentityError, ProjectError, ReservedWorksetNameError,
     WorksetError,
 )
-from kanibako.identifiers import find_identifier
+from kanibako.identifiers import find_identifier, name_flaw
 from kanibako.project.names import read_names, register_name, unregister_name
 from kanibako.settings.config import WORKSET_META_FILE
 from kanibako.settings.messages import (
     ERR_CONFIG_NULL_PATH, ERR_LOOP_WORKSPACE_BIND, ERR_NULL_WORKSPACE_BIND,
     ERR_STANDALONE_NULL_WORKSPACES,
-    ERR_WORKSET_NULL_WORKSPACES,
+    ERR_WORKSET_NULL_WORKSPACES, ERR_WORKSET_NAME, NAME_CHARSET,
 )
 from kanibako.settings.settings_resolve import UNSET, SettingsError
 from kanibako.settings.workset_dirkeys import (
@@ -1821,6 +1821,16 @@ def create_workset(
     """
     if not name:
         raise WorksetError("Workset name must not be empty.")
+
+    # ⚑ The name rule (spec §0) — the ONE gate, typed (``--name``) or derived alike.
+    flaw = name_flaw(name)
+    if flaw is not None:
+        from kanibako.launch.box_identity import name_spelling
+        offer = name_spelling(name)
+        spelled = offer[0] if offer is not None else "<new-name>"
+        raise WorksetError(ERR_WORKSET_NAME % (
+            name, flaw, NAME_CHARSET,
+            f"kanibako workset create {shlex.quote(str(root))} --name {spelled}"))
 
     if is_reserved_workset_name(name):
         raise WorksetError(
