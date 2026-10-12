@@ -12,6 +12,11 @@ from pathlib import Path
 
 _REPO = Path(__file__).resolve().parents[2]
 _CARRIER = _REPO / "src" / "kanibako" / "settings" / "settings_categories.py"
+#: Files allowed to spell the shape themselves.
+_INDEPENDENT = {
+    # [F1] kinemata_keyspace: the oracle re-implements membership ON PURPOSE.
+    _REPO / "src" / "kanibako" / "settings" / "kinemata_keyspace.py",
+}
 _SHAPE = "[A-Za-z_][A-Za-z0-9_]*"
 
 
@@ -32,7 +37,7 @@ def test_the_constant_is_the_shape() -> None:
 def test_no_string_literal_respells_the_shape() -> None:
     offenders = []
     for path in _shipped_sources():
-        if path == _CARRIER:
+        if path == _CARRIER or path in _INDEPENDENT:
             continue
         tree = ast.parse(path.read_text(encoding="utf-8"))
         for node in ast.walk(tree):

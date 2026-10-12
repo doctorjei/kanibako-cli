@@ -7,7 +7,7 @@ _Signatures only: no comments, no docstrings, no bodies._
 ## Variables
 
 ```
-_SEG = ENV_VAR_NAME
+_SEG = '[A-Za-z_][A-Za-z0-9_]*'
 _IDENTIFIER_EDGE = '[A-Za-z0-9_.\\-]'
 _RECOGNIZED_NOT_KEYS = ('renamed',)
 _SPEC_FIELD = 'spec'

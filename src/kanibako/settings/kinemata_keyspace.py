@@ -29,15 +29,13 @@ from typing import TYPE_CHECKING, Any, Iterator
 
 from kanibako.agent_ref import AGENT_ENTRY_POINT_GROUP
 from kanibako.settings.keyspace_manifest import manifest_doc
-from kanibako.settings.settings_categories import ENV_VAR_NAME
 from kanibako.settings.settings_resolve import SettingsError, match_ref
 
 if TYPE_CHECKING:
   from kinemata.contract import Entry  # type: ignore[import-not-found, import-untyped]
 
-#: One identifier segment, shared by the candidate syntax and the VAR matchers —
-#: the product's env-name shape, never re-spelled here.
-_SEG = ENV_VAR_NAME
+#: One identifier segment, shared by the candidate syntax and the VAR matchers.
+_SEG = r"[A-Za-z_][A-Za-z0-9_]*"
 
 #: What may not abut a ``detect()`` match. Upstream's contract names this rule
 #: ``identifier`` (dotted keys own their dots); inlined so ``detect()`` works
@@ -312,7 +310,7 @@ class KeyspaceRegistry:
     node_alt = self._true_node_alt if tier or true_agents else self._node_alt
     out: list[str] = []
     pos = 0
-    for part in re.finditer(rf"<{_SEG}>|\*\*?", template):
+    for part in re.finditer(r"<[A-Za-z_][A-Za-z0-9_]*>|\*\*?", template):
       out.append(re.escape(template[pos : part.start()]))
       token = part.group(0)
       if token == "<scope>":
