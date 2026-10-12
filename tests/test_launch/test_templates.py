@@ -577,7 +577,7 @@ class TestLayeredHomeSeed:
         snapshot, _deliveries = _resolve_launch_snapshot(
             std=std, proj=standalone_proj, agent_name="claude",
             system_settings_path=None, agent_cfg_path=None,
-            desc=None, install=None, target=None, agent_cfg=None,
+            desc=None, install=None, target=None,
             deliver_creds=True,
             cli_level=None,
         )
@@ -601,7 +601,7 @@ class TestLayeredHomeSeed:
         snapshot, _deliveries = _resolve_launch_snapshot(
             std=std, proj=primary_proj, agent_name="claude",
             system_settings_path=None, agent_cfg_path=None,
-            desc=None, install=None, target=None, agent_cfg=None,
+            desc=None, install=None, target=None,
             deliver_creds=True,
             cli_level=None,
         )
@@ -621,7 +621,7 @@ class TestLayeredHomeSeed:
         snapshot, _deliveries = _resolve_launch_snapshot(
             std=std, proj=primary_proj, agent_name="claude",
             system_settings_path=None, agent_cfg_path=None,
-            desc=None, install=None, target=None, agent_cfg=None,
+            desc=None, install=None, target=None,
             deliver_creds=True,
             cli_level=None,
         )
@@ -724,7 +724,7 @@ class TestLayeredHomeSeed:
         snapshot, _deliveries = _resolve_launch_snapshot(
             std=std, proj=primary_proj, agent_name="shell",
             system_settings_path=None, agent_cfg_path=None,
-            desc=None, install=None, target=ShellTarget(), agent_cfg=None,
+            desc=None, install=None, target=ShellTarget(),
             deliver_creds=True,
             cli_level=None,
         )

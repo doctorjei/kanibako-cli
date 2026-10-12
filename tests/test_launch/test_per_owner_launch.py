@@ -33,7 +33,7 @@ def _launch(std, proj):
     snapshot, _ = _resolve_launch_snapshot(
         std=std, proj=proj, agent_name="claude", system_settings_path=std.settings,
         agent_cfg_path=None, desc=None, install=None, target=ShellTarget(),
-        agent_cfg=None, deliver_creds=True, cli_level=None,
+        deliver_creds=True, cli_level=None,
     )
     return snapshot
 
@@ -255,7 +255,7 @@ def _launch_with(std, proj, desc):
     snapshot, _ = _resolve_launch_snapshot(
         std=std, proj=proj, agent_name="claude", system_settings_path=std.settings,
         agent_cfg_path=None, desc=desc, install=None, target=ShellTarget(),
-        agent_cfg=None, deliver_creds=True, cli_level=None,
+        deliver_creds=True, cli_level=None,
     )
     return snapshot
 

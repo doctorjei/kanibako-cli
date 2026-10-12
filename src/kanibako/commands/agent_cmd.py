@@ -1107,22 +1107,16 @@ def run_reauth(args: argparse.Namespace) -> int:
     # custom-endpoint box never syncs the Anthropic token into a box pointed at a
     # third-party endpoint.
     from kanibako.settings.agent_config import agent_settings_path
-    from kanibako.settings.settings_assemble import ReadPurpose, agent_record
     from kanibako.commands.start import (
         _persona_values_for,
         _resolve_box_launch_decisions,
     )
     agent_cfg_path = agent_settings_path(std.agents, agent_name)
-    reauth_agent_cfg = (
-        agent_record(agent_cfg_path, node=agent_name, purpose=ReadPurpose.RESOLVE)
-        if agent_cfg_path.exists() else None
-    )
     auth_src, active_endpoint, _active_model, _secret_paths = _resolve_box_launch_decisions(
         std=std,
         proj=proj,
         target=target,
         agent_name=agent_name,
-        agent_cfg=reauth_agent_cfg,
         system_settings_path=std.settings,
         agent_cfg_path=agent_cfg_path,
         # The persona store's LIVE tier — the SAME one a launch resolves against.

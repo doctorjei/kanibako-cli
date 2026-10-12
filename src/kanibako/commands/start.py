@@ -1013,14 +1013,13 @@ def _effective_agent_scalar(
     key: str,
     floor: str | None,
     agent_floor: "Mapping[str, str | None] | None" = None,
-    agent_state: "agent_file.AgentFileLevel | None" = None,
     agent_path: "Path | None" = None,
 ) -> "str | None":
     """The value half of :func:`_agent_scalar_pick` (see there)."""
     return _agent_scalar_pick(
         proj, system_settings_path, agent_id, std=std,
         selection_level=selection_level, key=key, floor=floor,
-        agent_floor=agent_floor, agent_state=agent_state, agent_path=agent_path,
+        agent_floor=agent_floor, agent_path=agent_path,
     )[0]
 
 
@@ -1034,7 +1033,6 @@ def _agent_scalar_pick(
     key: str,
     floor: str | None,
     agent_floor: "Mapping[str, str | None] | None" = None,
-    agent_state: "agent_file.AgentFileLevel | None" = None,
     agent_path: "Path | None" = None,
 ) -> "tuple[str | None, str | None]":
     """Resolve ONE agent-scope behavior scalar off a focused launch snapshot.
@@ -1049,7 +1047,7 @@ def _agent_scalar_pick(
     exists (``bootstrap`` runs ahead of the baseline probe; ``transform`` must
     settle before the patched install feeds the 7b snapshot's delivery binds).
     A focused ``build_launch_snapshot`` over the scope settings FILES (system /
-    workset / box) plus the per-agent file's flat state, then
+    workset / box) plus the per-agent file, then
     :func:`~kanibako.settings.settings_launch.effective_behavior`'s §2d
     active-over-default pick.  There is NO derived-on-disk value — the keystore is
     the sole intermediary ([[settings-must-map-to-keystore-key]]).
@@ -1060,11 +1058,9 @@ def _agent_scalar_pick(
     :func:`~kanibako.settings.settings_launch._fallback_node`).
     *floor* is core's ``agent.default.<key>`` value; *agent_floor* the active
     plugin's declared row for *key*, if any (``agent.<active>.<key>``, [Q91]).
-    *agent_state* is the per-agent file's flat behavior state as an
-    ``AgentFileLevel`` — the table WITH the node it merges under, attached at the
-    boundary (C-2) — when the caller already holds it; *agent_path* is the file, read
-    as the main snapshot reads it (:func:`_focused_agent_snapshot`).  Both ``None`` = no per-agent tier (the
-    scope-file cascade still resolves).  Returns ``None`` when no scope and no floor
+    *agent_path* is the per-agent file, read as the main snapshot reads it
+    (:func:`_focused_agent_snapshot`); ``None`` = no per-agent tier (the scope-file
+    cascade still resolves).  Returns ``None`` when no scope and no floor
     sets *key*, and when the §2d pick lands on a present ``None`` (a supplied
     ``<None>`` such as the shell fence's ``run_args``/``transform``, or a user
     ``null``) or on a terminal ``""`` — ``effective_behavior`` omits the first, and
@@ -1081,7 +1077,7 @@ def _agent_scalar_pick(
     snapshot = _focused_agent_snapshot(
         proj, system_settings_path, agent_id, std=std,
         selection_level=selection_level, key=key, floor=floor,
-        agent_floor=agent_floor, agent_state=agent_state, agent_path=agent_path,
+        agent_floor=agent_floor, agent_path=agent_path,
     )
     value = settings_launch.effective_behavior(
         snapshot, active_agent=agent_id, keys=[key],
@@ -1101,14 +1097,12 @@ def _focused_agent_snapshot(
     key: str,
     floor: str | None,
     agent_floor: "Mapping[str, str | None] | None" = None,
-    agent_state: "agent_file.AgentFileLevel | None" = None,
     agent_path: "Path | None" = None,
 ) -> "KeyStore":
     """The focused launch snapshot :func:`_agent_scalar_pick` reads *key* off (see there).
 
-    *agent_path* is read as the main snapshot reads it: its categories and its ``agent:``
-    table (``agent: default:`` included) reach this snapshot, and its record's state too
-    when *agent_state* is not given.
+    *agent_path* is read as the main snapshot reads it: its root values, its categories, and
+    its ``agent:`` table (``agent: default:`` included) all reach this snapshot.
     """
     from kanibako.settings import settings_launch
 
@@ -1116,15 +1110,6 @@ def _focused_agent_snapshot(
         subject=settings_launch.ResolveSubject.BOX, std=std, proj=proj,
         agent_name=agent_id, system_path=system_settings_path,
     )
-    # The per-agent file's behavior (agent.<active>.* slot) — the shape
-    # ``effective_behavior`` reads for a per-agent override.  Absent file → empty.
-    if agent_state is None and agent_path is not None and Path(agent_path).exists():
-        agent_state = agent_file.state_level(
-            settings_assemble.agent_record(
-                agent_path, node=agent_id, purpose=settings_assemble.ReadPurpose.RESOLVE,
-            ),
-            node=agent_id, path=agent_path,
-        )
     return settings_launch.build_launch_snapshot(
         **inputs.as_kwargs(),
         agent_name=agent_id,
@@ -1151,7 +1136,6 @@ def _focused_agent_snapshot(
         default_categories={
             **core_defaults.pseudo_tier_defaults(), **inputs.system_floor,
         },
-        agent_state=agent_state,
         # ⚑ NO PERSONA TIER, deliberately (the six-call-site audit). Not an
         # oversight and not an ordering accident: this resolve extracts EXACTLY
         # ONE key (``keys=[key]`` below), and a persona bundle can only ever carry
@@ -1173,7 +1157,6 @@ def _effective_transform(
     system_settings_path: "Path | None",
     agent_id: str,
     target,
-    agent_cfg,
     *,
     std,
     selection_level: "Mapping[str, object] | None",
@@ -1191,8 +1174,7 @@ def _effective_transform(
 
     Resolved HERE rather than off the 7b launch snapshot because the patched install
     feeds that snapshot's delivery binds, so the decision must precede it.
-    *agent_cfg_path* is the file *agent_cfg* was read from, so a read-time refusal of
-    one of its values can name it.
+    *agent_cfg_path* is the per-agent file, read whole as the main snapshot reads it.
     """
     descriptors = target.setting_descriptors() if target is not None else []
     # A real target returns a list of TargetSetting; a MagicMock target in unit
@@ -1211,10 +1193,6 @@ def _effective_transform(
         selection_level=selection_level,
         key="transform", floor=core_defaults.behavior_defaults()["transform"],
         agent_floor=agent_floor,
-        agent_state=(
-            agent_file.state_level(agent_cfg, node=agent_id, path=agent_cfg_path)
-            if agent_cfg is not None else None
-        ),
         agent_path=agent_cfg_path,
     )
 
@@ -1223,7 +1201,6 @@ def _effective_transform_settings(
     proj,
     system_settings_path: "Path | None",
     agent_id: str,
-    agent_cfg,
     *,
     std,
     selection_level: "Mapping[str, object] | None",
@@ -1240,10 +1217,6 @@ def _effective_transform_settings(
     snapshot = _focused_agent_snapshot(
         proj, system_settings_path, agent_id, std=std,
         selection_level=selection_level, key="transform_settings", floor=None,
-        agent_state=(
-            agent_file.state_level(agent_cfg, node=agent_id, path=agent_cfg_path)
-            if agent_cfg is not None else None
-        ),
         agent_path=agent_cfg_path,
     )
     _slot, value = settings_launch.behavior_pick(
@@ -3633,7 +3606,6 @@ def _run_container(
         proj=proj,
         target=target,
         agent_name=agent_id,
-        agent_cfg=agent_cfg,
         system_settings_path=system_settings_path,
         agent_cfg_path=agent_cfg_path,
         persona_values=persona_values,
@@ -4126,7 +4098,7 @@ def _run_container(
             # are not guaranteed identical.
             _sync_box_at_create(
                 std=std, proj=proj, agent_name=agent_id, target=target, desc=desc,
-                install=install, agent_cfg=agent_cfg,
+                install=install,
                 global_config_path=system_settings_path,
                 agent_config_path=agent_cfg_path,
                 persona_values=persona_values,
@@ -4238,7 +4210,7 @@ def _run_container(
         tweakcc_cache_obj = None
         active_transform = (
             _effective_transform(
-                proj, system_settings_path, agent_id, target, agent_cfg,
+                proj, system_settings_path, agent_id, target,
                 std=std,
                 selection_level=selection_level,
                 agent_cfg_path=agent_cfg_path,
@@ -4248,7 +4220,7 @@ def _run_container(
         )
         transform_settings = (
             _effective_transform_settings(
-                proj, system_settings_path, agent_id, agent_cfg,
+                proj, system_settings_path, agent_id,
                 std=std,
                 selection_level=selection_level,
                 agent_cfg_path=agent_cfg_path,
@@ -4346,7 +4318,6 @@ def _run_container(
             desc=desc,
             install=install,
             target=target,
-            agent_cfg=agent_cfg,
             persona_values=persona_values,
             deliver_creds=auth_src.creds_shared,
             cli_level=_cli_level,
@@ -4412,9 +4383,8 @@ def _run_container(
             effective_state = _realized.effective_state
             # ``run_args`` OFF THE CASCADE, not off the agent FILE (`[R169]`, spec §2d
             # ``agent.<agent>.run_args | <None>   (← agent.default.run_args)``). The
-            # file is one LEVEL of that cascade and reaches this read through
-            # ``agent_file.state_level`` like every other agent-scope behavior value,
-            # so an ``agent.default.run_args`` in a system / workset / box settings
+            # file is one LEVEL of that cascade (``agent.<active>``, read from
+            # *agent_cfg_path*) like every other agent-scope behavior value, so an ``agent.default.run_args`` in a system / workset / box settings
             # file is what a box without a per-agent value now starts with. A
             # per-agent value REPLACES it — the §2d active-over-default pick
             # ``effective_behavior`` already does, no concatenation.
@@ -6868,10 +6838,8 @@ def _effective_behavior_for_display(
     Single-route + launch-FIDELITY: this builds the behavior snapshot exactly as
     :func:`_resolve_launch_snapshot` does for a launch — core's floor folds in at
     ``agent.default.*`` and the target's declared defaults at ``agent.<active>.*``
-    (OS1, [Q91]); the per-agent FILE's
-    behavior (``agent_cfg``, the flat ``[agent]`` state plus the modeled
-    ``run_args``) is injected as ``agent_state``
-    (the active slot ``agent.<active>.*``); the box / workset / system settings
+    (OS1, [Q91]); the per-agent FILE (*agent_cfg_path*) is the active slot
+    ``agent.<active>.*``, root values and tables alike; the box / workset / system settings
     files merge as their discriminated ``agent.default.*`` / ``agent.<name>.*``
     tables through ``assemble_levels`` — then :func:`~kanibako.settings.settings_launch.
     effective_behavior` does the §2d active-over-default value-pick. So the
@@ -6887,7 +6855,7 @@ def _effective_behavior_for_display(
     state is just the per-agent file's raw state (preserved from the old
     early-return). Values are scalars, used verbatim (behavior has no @-ref tier).
     *agent_cfg_path* is the file *agent_cfg* was read from (``None`` when it was
-    generated), so a read-time refusal of one of its values can name it.
+    generated); the snapshot reads the file there.
     The box's files, context and floors come off
     :func:`~kanibako.settings.settings_launch.resolve_inputs` for *proj*, the same
     inputs the launch resolves with; *selection_level* is the §1A selection the
@@ -6915,11 +6883,6 @@ def _effective_behavior_for_display(
     # this value keys ``agents/<node>/agent.yaml`` and ``agent.<node>.*`` — deriving
     # it unfolded here would spell one agent's slot two ways.
     active = node_name if node_name is not None else agent_node_case(target.name)
-    # ⚑ BUILT HERE, NOT ABOVE: the level's node is the ACTIVE node resolved on the
-    # line above — the same node the ``agent.<node>.*`` cascade slot keys on, and
-    # the reason this read exists (fix 4a).  Building it beside ``behavior_floor``
-    # would pin a node that has not been decided yet.
-    agent_state = agent_file.state_level(agent_cfg, node=active, path=agent_cfg_path)
 
     # DISPLAY == LAUNCH: the same persona-store tier the launch resolves against
     # (:func:`_persona_values_for`), read here for the same node. Without it this
@@ -6937,8 +6900,8 @@ def _effective_behavior_for_display(
     # DISPLAY == LAUNCH: the box's files, ctx and floors from the ONE input builder
     # (so a behavior value spelled ``@meta.workset.path/…`` or ``@workset.auth.path/…``
     # answers here as it does at launch); the floors fold in as ``agent.default.*``
-    # and ``agent.<active>.*``, the per-agent file state into the ``agent.<active>``
-    # slot, and the file itself as the launch reads it (its ``agent: default:`` too).
+    # and ``agent.<active>.*``, and the per-agent file as the launch reads it: its
+    # values into the ``agent.<active>`` slot, its ``agent: default:`` table too.
     inputs = settings_launch.resolve_inputs(
         subject=settings_launch.ResolveSubject.BOX, std=std, proj=proj,
         agent_name=active, system_path=system_settings_path,
@@ -6950,7 +6913,6 @@ def _effective_behavior_for_display(
         behavior_floor=behavior_floor,
         agent_behavior_floor=agent_behavior_floor,
         default_categories=dict(inputs.system_floor),
-        agent_state=agent_state,
         persona_values=persona_values,
         cli_level=selection_level,
     )
@@ -7074,7 +7036,6 @@ def _resolve_box_launch_decisions(
     proj,
     target,
     agent_name: str,
-    agent_cfg,
     system_settings_path,
     agent_cfg_path,
     selection_level: "Mapping[str, object] | None",
@@ -7135,14 +7096,6 @@ def _resolve_box_launch_decisions(
         # nothing to the endpoint read (its ``endpoint`` is ``<None>``, which the pick
         # omits exactly as it omits an absent key).
         agent_behavior_floor=plugin_floor or None,
-        # agent_state (the active-node slot) is only needed when we actually read
-        # behavior; gated on plugin_floor so a no-descriptor / mock target never
-        # dereferences agent_cfg.
-        agent_state=(
-            agent_file.state_level(agent_cfg, node=agent_name)
-            if plugin_floor and agent_cfg is not None
-            else None
-        ),
         persona_values=persona_values,
         default_categories=dict(inputs.system_floor),
         # ⚑ REQUIRED here (P7): ``meta.box.auth.workset_path`` is now spelled
@@ -7339,7 +7292,6 @@ def _resolve_launch_snapshot(
     desc,
     install,
     target=None,
-    agent_cfg=None,
     persona_values: "Mapping[str, str] | None" = None,
     socket_path=None,
     log_path=None,
@@ -7653,14 +7605,12 @@ def _resolve_launch_snapshot(
     # Block 7b (ruling A — the FULL read-path swap): the BEHAVIOR cascade now flows
     # through THIS one snapshot too. The core floor folds in as
     # ``agent.default.<key>`` and the target's declared-default floor as
-    # ``agent.<active>.<key>`` (OS1); the per-agent FILE's behavior
-    # (``agent_cfg``) is wrapped under ``agent.<active>`` (it is NOT the
-    # discriminated tables ``assemble_levels`` reads from ``agent_path``, so it is
-    # injected as ``agent_state`` — see ``build_launch_snapshot``). Only the MAIN
-    # launch carries the behavior FLOOR (the conditional image/helper resolves do not).
+    # ``agent.<active>.<key>`` (OS1); the per-agent FILE (*agent_cfg_path*) is the
+    # ``agent.<active>`` level, its values and tables alike, for every resolve, with a
+    # target or without. Only the MAIN launch carries the behavior FLOOR (the
+    # conditional image/helper resolves do not).
     behavior_floor = None
     agent_behavior_floor = None
-    agent_state = None
     if include_base_families and target is not None:
         descriptors = target.setting_descriptors()
         if descriptors:
@@ -7671,10 +7621,6 @@ def _resolve_launch_snapshot(
             # truthiness.
             behavior_floor = core_defaults.behavior_defaults()
             agent_behavior_floor = descriptor_floor(descriptors, plugin=target.name)
-    # ⚑ NOT gated on ``include_base_families``: the narrow CREATE seed resolve needs the
-    # file's scalars too.  Why: llm-docs, ``_resolve_launch_snapshot`` → *agent_cfg*.
-    if target is not None and agent_cfg is not None:
-        agent_state = agent_file.state_level(agent_cfg, node=agent_name)
 
     # ``pref.*`` REQUESTS (spec §2h) — collected ONCE, with the inputs, so the
     # enrichment below names the same list the build applied.
@@ -7689,7 +7635,6 @@ def _resolve_launch_snapshot(
         agent_behavior_floor=agent_behavior_floor,
         default_categories=default_categories,
         agent_partial=agent_partial,
-        agent_state=agent_state,
         persona_values=persona_values,
         # ⚑ EVERY RESOLVE folds the auth chain (it rides *inputs*), so every caller
         # carries the §1A selection it has: the chain's ``meta.box.auth.workset_path``
@@ -7862,7 +7807,7 @@ def resolve_stored_box_snapshot(
         system_settings_path=std.settings,
         agent_cfg_path=agent.agent_cfg_path,
         desc=None, install=None,
-        target=agent.target, agent_cfg=agent.agent_cfg,
+        target=agent.target,
         # The SAME persona-store tier the launch resolves against.
         persona_values=_persona_values_for(agent.node, agent.target),
         guarantee_create=False,
@@ -8482,7 +8427,6 @@ def _sync_box_at_create(
     target=None,
     desc=None,
     install=None,
-    agent_cfg=None,
     global_config_path,
     agent_config_path,
     persona_values: "Mapping[str, str] | None" = None,
@@ -8533,7 +8477,6 @@ def _sync_box_at_create(
         desc=desc,
         install=install,
         target=target,
-        agent_cfg=agent_cfg,
         persona_values=persona_values,
         deliver_creds=deliver_creds,
         cli_level=selection_level,
@@ -8806,13 +8749,6 @@ def persona_create_verdict(
     if harness_of(agent_id) == agent_id:
         return None  # bare — no persona gate.
     agent_cfg_path = agent_settings_path(std.agents, agent_id)
-    probe_cfg = (
-        settings_assemble.agent_record(
-            agent_cfg_path, node=agent_id, purpose=settings_assemble.ReadPurpose.RESOLVE,
-        )
-        if agent_cfg_path.exists()
-        else target.generate_agent_config()
-    )
     # The persona store, read ONCE for this verdict exactly as the launch reads
     # it. ⚑ NOT optional: the create path used to see a persona's endpoint and
     # token because the create-side store IMPORT had just persisted them into
@@ -8827,7 +8763,7 @@ def persona_create_verdict(
     )
     _auth, endpoint, model, secret_paths = _resolve_box_launch_decisions(
         std=std, proj=proj, target=target, agent_name=agent_id,
-        agent_cfg=probe_cfg, system_settings_path=system_settings_path,
+        system_settings_path=system_settings_path,
         agent_cfg_path=agent_cfg_path,
         persona_values=persona_values,
         selection_level=selection.selection_level if selection else None,
@@ -8919,7 +8855,7 @@ def seed_new_box(std, config, proj, *, explicit_agent: str | None = None) -> Non
     # <None>/no-target = bare, byte-identical to today).
     auth_src, active_endpoint, active_model, secret_paths = _resolve_box_launch_decisions(
         std=std, proj=proj, target=target, agent_name=agent_id,
-        agent_cfg=seed_agent_cfg, system_settings_path=system_settings_path,
+        system_settings_path=system_settings_path,
         agent_cfg_path=agent_cfg_path,
         # The store tier, same reason as in :func:`persona_create_verdict`: the
         # seed runs the SAME load-or-error gate the launch does, and nothing
@@ -8974,7 +8910,6 @@ def seed_new_box(std, config, proj, *, explicit_agent: str | None = None) -> Non
     _sync_box_at_create(
         std=std, proj=proj, agent_name=agent_id, target=target, desc=desc,
         install=target.detect() if target is not None else None,
-        agent_cfg=seed_agent_cfg,
         global_config_path=system_settings_path,
         agent_config_path=agent_cfg_path,
         persona_values=persona_values,
@@ -9349,14 +9284,8 @@ def _apply_init_seeds(
     # ``agent.<agent>.bindings.*`` MOUNTs, never the seeded COPY winners.
     # ⚑ The DELIVERIES carrier is DISCARDED: since cutover 2c the seed pass reads
     # the collapsed leaf alone, and this narrow resolve exists only to produce it.
-    # ⚑ The agent file's scalars feed the seed sources (``agent.<a>.template``), read off
-    # the same path as its tables.  Why: llm-docs, ``_resolve_launch_snapshot`` → *agent_cfg*.
-    agent_cfg = (
-        settings_assemble.agent_record(
-            agent_config_path, node=agent_name, purpose=settings_assemble.ReadPurpose.RESOLVE,
-        )
-        if agent_config_path is not None else None
-    )
+    # ⚑ The agent file's scalars feed the seed sources (``agent.<a>.template``); they ride
+    # its ``agent.<active>`` level, read from *agent_config_path* with its tables.
     snapshot, _ = _resolve_launch_snapshot(
         std=std,
         proj=proj,
@@ -9366,7 +9295,6 @@ def _apply_init_seeds(
         desc=None,
         install=None,
         target=target,
-        agent_cfg=agent_cfg,
         include_base_families=False,
         extra_default_categories=seed_categories,
         deliver_creds=deliver_creds,

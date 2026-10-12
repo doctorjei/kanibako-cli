@@ -1715,7 +1715,7 @@ class TestThePrefOriginReachesTheLIVEPATH:
       _resolve_launch_snapshot(
         std=std, proj=proj, agent_name="claude",
         system_settings_path=None, agent_cfg_path=None,
-        desc=None, install=None, target=ShellTarget(), agent_cfg=None,
+        desc=None, install=None, target=ShellTarget(),
         deliver_creds=True,
         # The OCCUPANT, at the same tier: an explicit agent-scope binding the
         # pref-installed ``common`` then extends onto.

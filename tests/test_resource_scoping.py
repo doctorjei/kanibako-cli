@@ -203,6 +203,14 @@ class TestBuildEffectiveState:
         target.name = name
         return target
 
+    def _make_agent_file(self, tmp_path, state):
+        """Write the per-agent file holding *state* at its root; the display reads it there."""
+        from kanibako.settings.config_io import dump_doc
+
+        path = tmp_path / "agent-file" / "agent.yaml"
+        dump_doc(path, {"self": dict(state)})
+        return path
+
     def _make_system_settings(self, tmp_path, settings=None):
         """Create a minimal system SETTINGS file, optionally with ``agent.claude.*`` rows.
 
@@ -313,7 +321,8 @@ class TestBuildEffectiveState:
         box_file = self._make_box_file(tmp_path)
 
         result = _build_effective_state(
-            target, agent_cfg, **box_file, system_settings_path=None
+            target, agent_cfg, **box_file, system_settings_path=None,
+            agent_cfg_path=self._make_agent_file(tmp_path, agent_cfg.state),
         )
         assert result["model"] == "sonnet"
 
@@ -329,7 +338,8 @@ class TestBuildEffectiveState:
         box_file = self._make_box_file(tmp_path, settings={"model": "haiku"})
 
         result = _build_effective_state(
-            target, agent_cfg, **box_file, system_settings_path=None
+            target, agent_cfg, **box_file, system_settings_path=None,
+            agent_cfg_path=self._make_agent_file(tmp_path, agent_cfg.state),
         )
         assert result["model"] == "haiku"
 
@@ -364,7 +374,7 @@ class TestBuildEffectiveState:
         dump_doc(path, {"self": {"model": "sonnet"}})
         agent_cfg = agent_record(path, node="claude", purpose=ReadPurpose.RESOLVE)
         assert _build_effective_state(
-            target, agent_cfg, **box_file, system_settings_path=None
+            target, agent_cfg, **box_file, system_settings_path=None, agent_cfg_path=path,
         )["model"] == "sonnet"
 
     def test_no_descriptors_returns_agent_state(self, tmp_path):
@@ -423,6 +433,7 @@ class TestBuildEffectiveState:
         # agent state also sets model — but workset is more specific, so workset
         # wins.  access is left for the system level only.
         agent_cfg = AgentConfig(state={"model": "agent-model"})
+        agent_path = self._make_agent_file(tmp_path, agent_cfg.state)
         box_file = self._make_box_file(tmp_path / "proj")
         # The box's workset tier (both boxes below share the primary workset's).
         self._make_workset_config(box_file, settings={"model": "ws-model"})
@@ -432,6 +443,7 @@ class TestBuildEffectiveState:
             agent_cfg,
             **box_file,
             system_settings_path=ssp,
+            agent_cfg_path=agent_path,
         )
         # model: box unset → workset (more specific than agent/system) wins.
         assert result["model"] == "ws-model"
@@ -448,6 +460,7 @@ class TestBuildEffectiveState:
             agent_cfg,
             **box2_file,
             system_settings_path=ssp,
+            agent_cfg_path=agent_path,
         )
         assert result2["model"] == "box-model"
 
@@ -464,7 +477,8 @@ class TestBuildEffectiveState:
         box_file = self._make_box_file(tmp_path)
 
         result = _build_effective_state(
-            target, agent_cfg, **box_file, system_settings_path=None
+            target, agent_cfg, **box_file, system_settings_path=None,
+            agent_cfg_path=self._make_agent_file(tmp_path, agent_cfg.state),
         )
         # Terminal "" — does not fall back to the "opus" floor.
         assert result["model"] == ""
@@ -615,7 +629,7 @@ class TestDisplayAnswersLikeTheLaunch:
         launch, _deliveries = _resolve_launch_snapshot(
             std=std, proj=proj, agent_name="claude",
             system_settings_path=system_file, agent_cfg_path=None,
-            desc=None, install=None, target=None, agent_cfg=None,
+            desc=None, install=None, target=None,
             cli_level=selection,
         )
         expected = snapshot_leaf(launch, "agent.claude.template")

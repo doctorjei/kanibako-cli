@@ -1598,7 +1598,7 @@ class TestRunReauth:
         mock_resolve.assert_called_once()
         passed = set(mock_resolve.call_args.kwargs)
         assert passed == {
-            "std", "proj", "target", "agent_name", "agent_cfg",
+            "std", "proj", "target", "agent_name",
             "system_settings_path", "agent_cfg_path",
             # ⚑ P7: REQUIRED, not optional. reauth resolves the SAME per-agent
             # credential dir the launch delivers from

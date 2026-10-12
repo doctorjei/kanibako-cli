@@ -61,11 +61,11 @@ def _declared_behavior(key: str) -> str
 def _declared_behavior_bool(key: str, agent_id: str) -> bool
 def _bootstrap_default() -> str
 def _is_no_bootstrap(program: str | None) -> bool
-def _effective_agent_scalar(proj, system_settings_path: 'Path | None', agent_id: str, *, std, selection_level: 'Mapping[str, object] | None', key: str, floor: str | None, agent_floor: 'Mapping[str, str | None] | None'=None, agent_state: 'agent_file.AgentFileLevel | None'=None, agent_path: 'Path | None'=None) -> 'str | None'
-def _agent_scalar_pick(proj, system_settings_path: 'Path | None', agent_id: str, *, std, selection_level: 'Mapping[str, object] | None', key: str, floor: str | None, agent_floor: 'Mapping[str, str | None] | None'=None, agent_state: 'agent_file.AgentFileLevel | None'=None, agent_path: 'Path | None'=None) -> 'tuple[str | None, str | None]'
-def _focused_agent_snapshot(proj, system_settings_path: 'Path | None', agent_id: str, *, std, selection_level: 'Mapping[str, object] | None', key: str, floor: str | None, agent_floor: 'Mapping[str, str | None] | None'=None, agent_state: 'agent_file.AgentFileLevel | None'=None, agent_path: 'Path | None'=None) -> 'KeyStore'
-def _effective_transform(proj, system_settings_path: 'Path | None', agent_id: str, target, agent_cfg, *, std, selection_level: 'Mapping[str, object] | None', agent_cfg_path: 'Path | None'=None) -> 'str | None'
-def _effective_transform_settings(proj, system_settings_path: 'Path | None', agent_id: str, agent_cfg, *, std, selection_level: 'Mapping[str, object] | None', agent_cfg_path: 'Path | None'=None) -> dict
+def _effective_agent_scalar(proj, system_settings_path: 'Path | None', agent_id: str, *, std, selection_level: 'Mapping[str, object] | None', key: str, floor: str | None, agent_floor: 'Mapping[str, str | None] | None'=None, agent_path: 'Path | None'=None) -> 'str | None'
+def _agent_scalar_pick(proj, system_settings_path: 'Path | None', agent_id: str, *, std, selection_level: 'Mapping[str, object] | None', key: str, floor: str | None, agent_floor: 'Mapping[str, str | None] | None'=None, agent_path: 'Path | None'=None) -> 'tuple[str | None, str | None]'
+def _focused_agent_snapshot(proj, system_settings_path: 'Path | None', agent_id: str, *, std, selection_level: 'Mapping[str, object] | None', key: str, floor: str | None, agent_floor: 'Mapping[str, str | None] | None'=None, agent_path: 'Path | None'=None) -> 'KeyStore'
+def _effective_transform(proj, system_settings_path: 'Path | None', agent_id: str, target, *, std, selection_level: 'Mapping[str, object] | None', agent_cfg_path: 'Path | None'=None) -> 'str | None'
+def _effective_transform_settings(proj, system_settings_path: 'Path | None', agent_id: str, *, std, selection_level: 'Mapping[str, object] | None', agent_cfg_path: 'Path | None'=None) -> dict
 def _plain_table(table: dict) -> dict
 def _resolve_bootstrap_program(project_dir: str | None=None, explicit_agent: str | None=None) -> BootstrapChoice
 def _check_box_components(proj) -> str | None
@@ -131,12 +131,12 @@ def _preflight_config_file_persona(agent_id: str, secret_paths, endpoint: str, k
 def _codex_persona_token_error(secret_paths, wiring, endpoint: str, display: str) -> 'str | None'
 def _effective_behavior_for_display(target, agent_cfg, *, std, proj, system_settings_path, selection_level: 'Mapping[str, object] | None', node_name=None, agent_cfg_path=None) -> dict[str, str]
 def _resolve_box_auth_source(*, std, proj, agent_name: str, system_settings_path, agent_cfg_path, selection_level: 'Mapping[str, object] | None')
-def _resolve_box_launch_decisions(*, std, proj, target, agent_name: str, agent_cfg, system_settings_path, agent_cfg_path, selection_level: 'Mapping[str, object] | None', persona_values: 'Mapping[str, str] | None'=None) -> 'tuple[AuthSource, str | None, object, dict[str, object]]'
+def _resolve_box_launch_decisions(*, std, proj, target, agent_name: str, system_settings_path, agent_cfg_path, selection_level: 'Mapping[str, object] | None', persona_values: 'Mapping[str, str] | None'=None) -> 'tuple[AuthSource, str | None, object, dict[str, object]]'
 def _persona_secret_table(snapshot, active_agent: str, box_ctx) -> PersonaSecretTable
 def _persona_model_state(snapshot: 'KeyStore', active_agent: str) -> object
 def _merge_default_categories(table: dict[str, object], incoming: 'Mapping[str, object]', *, family: str, origins: dict[tuple[str, str], str]) -> None
 def _box_scalars(std, proj, agent_id: str, system_path, cli_overrides) -> KanibakoConfig
-def _resolve_launch_snapshot(*, std, proj, agent_name: str, system_settings_path, agent_cfg_path, desc, install, target=None, agent_cfg=None, persona_values: 'Mapping[str, str] | None'=None, socket_path=None, log_path=None, budget_path=None, graph_root=None, storage_conf_path=None, deliver_creds: bool=True, include_base_families: bool=True, extra_default_categories: 'Mapping[str, object] | None'=None, guarantee_create: bool=True, cli_level: 'Mapping[str, object] | None', cli_env: 'Mapping[str, str] | None'=None, realize: 'Callable[[KeyStore], LaunchRealization] | None'=None, narrow_bind_dests: 'frozenset[str] | None'=None)
+def _resolve_launch_snapshot(*, std, proj, agent_name: str, system_settings_path, agent_cfg_path, desc, install, target=None, persona_values: 'Mapping[str, str] | None'=None, socket_path=None, log_path=None, budget_path=None, graph_root=None, storage_conf_path=None, deliver_creds: bool=True, include_base_families: bool=True, extra_default_categories: 'Mapping[str, object] | None'=None, guarantee_create: bool=True, cli_level: 'Mapping[str, object] | None', cli_env: 'Mapping[str, str] | None'=None, realize: 'Callable[[KeyStore], LaunchRealization] | None'=None, narrow_bind_dests: 'frozenset[str] | None'=None)
 def _annotate_pref_origin(exc, prefs)
 def _install_derived_bindings(snapshot, derived: 'Mapping[tuple[str, ...], object]') -> None
 def _install_assembly_collapse(snapshot, entries, *, whole_box: bool, cli_env: 'Mapping[str, str] | None'=None) -> 'dict[str, str]'
@@ -149,7 +149,7 @@ def _agent_delivered_dests(entries: list) -> 'frozenset[str]'
 def _narrow_bind_map(entries: list, dests: 'frozenset[str]') -> 'dict[str, object]'
 def _emit_category_mounts(bindings, *, label: str, must_exist: frozenset[str]=frozenset(), skip_if_absent: frozenset[str]=frozenset()) -> list
 def _seed_box_home(*, std, proj, target, desc, agent_id: str, agent_cfg_path, system_settings_path, auth_src, logger, suppress_oauth: bool=False, selection_level: 'Mapping[str, object] | None') -> None
-def _sync_box_at_create(*, std, proj, agent_name: str, target=None, desc=None, install=None, agent_cfg=None, global_config_path, agent_config_path, persona_values: 'Mapping[str, str] | None'=None, logger, deliver_creds: bool=True, selection_level: 'Mapping[str, object] | None') -> None
+def _sync_box_at_create(*, std, proj, agent_name: str, target=None, desc=None, install=None, global_config_path, agent_config_path, persona_values: 'Mapping[str, str] | None'=None, logger, deliver_creds: bool=True, selection_level: 'Mapping[str, object] | None') -> None
 def _snapshot_scalar(snapshot: 'KeyStore', dotted: str) -> str | None
 def _snapshot_assembly_bindings(snapshot: 'KeyStore') -> 'dict[str, object] | None'
 def _snapshot_assembly_seeded(snapshot: 'KeyStore') -> 'list[CollapsedCopy] | None'

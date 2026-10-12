@@ -836,7 +836,6 @@ class TestLaunchWiring:
             desc=None,
             install=None,
             target=target,
-            agent_cfg=None,
             deliver_creds=True,
             cli_level=None,
         )

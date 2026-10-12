@@ -458,7 +458,6 @@ class TestKickoffLaunchWiring:
             desc=desc,
             install=install,
             target=target,
-            agent_cfg=None,
             deliver_creds=True,
             cli_level=None,
         )

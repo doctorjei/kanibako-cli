@@ -68,7 +68,7 @@ def _main_snapshot(std, proj):
   snapshot, _deliveries = start_cmd._resolve_launch_snapshot(
     std=std, proj=proj, agent_name=NODE,
     system_settings_path=None, agent_cfg_path=None,
-    desc=None, install=None, target=None, agent_cfg=None,
+    desc=None, install=None, target=None,
     cli_level=_selection(),
   )
   return snapshot
@@ -162,7 +162,7 @@ class TestTheSelectionCannotBeOmitted:
       start_cmd._resolve_launch_snapshot(
         std=std, proj=primary_proj, agent_name=NODE,
         system_settings_path=None, agent_cfg_path=None,
-        desc=None, install=None, target=None, agent_cfg=None,
+        desc=None, install=None, target=None,
       )
 
 
@@ -203,7 +203,7 @@ class TestANoAgentLaunchRunsTheShell:
     snapshot, _deliveries = start_cmd._resolve_launch_snapshot(
       std=std, proj=primary_proj, agent_name=GENERAL_SLOT,
       system_settings_path=std.settings, agent_cfg_path=None,
-      desc=None, install=None, target=None, agent_cfg=None,
+      desc=None, install=None, target=None,
       cli_level=start_cmd._launch_selection_level(None),
     )
     ws_auth = snapshot_leaf(snapshot, WS_AUTH_PATH)

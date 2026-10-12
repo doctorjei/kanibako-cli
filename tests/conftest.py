@@ -466,9 +466,9 @@ def start_mocks():
                 # cascade behavior is covered by TestEffectiveTransformResolution
                 # with a REAL proj.
                 _effective_transform=DEFAULT,
-                # Its CONFIG INPUT, ``transform_settings``: stubbed to the record the
-                # launch read (the 4th argument), so a test sets it on the agent config
-                # as before; the REAL cascade read is TestEffectiveTransformSettings.
+                # Its CONFIG INPUT, ``transform_settings``: stubbed to the mocked agent
+                # record's, so a test sets it on the agent config as before; the REAL
+                # cascade read is TestEffectiveTransformSettings.
                 _effective_transform_settings=DEFAULT,
                 # run_start's EARLY persistence-mode heuristic resolves the box +
                 # agent to read the agent-scope bootstrap; stub it to the ``tmux``
@@ -569,7 +569,7 @@ def start_mocks():
             # declares (spec §2d ``agent.claude.transform | tweakcc``).
             m_launch_mount_stubs["_effective_transform"].return_value = "tweakcc"
             m_launch_mount_stubs["_effective_transform_settings"].side_effect = (
-                lambda *args, **_kw: dict(args[3].transform_settings)
+                lambda *_a, **_kw: dict(m_load_agent_cfg.return_value.transform_settings)
             )
 
             proj = MagicMock()
@@ -799,10 +799,9 @@ def start_mocks():
                     _install_assembly_collapse,
                     _install_realized_env,
                 )
-                from kanibako.settings.agent_file import (
-                    state_level as agent_file_state_level,
-                )
+                from kanibako.settings.agent_config import agent_settings_path
                 from kanibako.settings.agent_representation import agent_default_partial
+                from kanibako.settings.config_io import dump_doc
                 from kanibako.settings.settings_categories import (
                     gate_credential_delivery,
                     launch_deliveries,
@@ -831,24 +830,32 @@ def start_mocks():
                 )
                 # Block 7b (ruling A): flow the BEHAVIOR cascade into the stub's
                 # snapshot too — the target's declared-default floor (→ agent.
-                # default.*) + the per-agent FILE's behavior (agent_cfg, its flat
-                # state AND its run_args, wrapped under agent.<active>; the file's
-                # argv reaches a launch through THIS level) — so the LIVE behavior read
-                # (effective_behavior) returns the real model/access/etc. The
-                # category sources stay None (MagicMock-path mounts are covered by
+                # default.*) + the per-agent FILE (the mocked record's ``state``,
+                # ``run_args`` and ``transform_settings``, written to a REAL
+                # ``self:`` file and read as ``agent_path``, so they reach the
+                # ``agent.<active>`` level the way a launch reads them) — so the LIVE
+                # behavior read (effective_behavior) returns the real model/access/etc.
+                # The category sources stay None (MagicMock-path mounts are covered by
                 # the dedicated suites with a REAL std).
                 _target = kw.get("target")
-                _agent_cfg = kw.get("agent_cfg")
+                _agent_cfg = m_load_agent_cfg.return_value
                 _agent_floor = None
-                _state = None
                 if _target is not None:
                     _descriptors = _target.setting_descriptors()
                     if _descriptors:
                         _agent_floor = descriptor_floor(_descriptors)
-                if _agent_cfg is not None:
-                    # The DISCRIMINATED level the real producers build (C-2): the
-                    # node is the ACTIVE one, exactly as ``start.py`` folds it.
-                    _state = agent_file_state_level(_agent_cfg, node=_node)
+                _self: dict[str, object] = dict(_agent_cfg.state or {})
+                if _agent_cfg.run_args is not None:
+                    _self["run_args"] = list(_agent_cfg.run_args)
+                if _agent_cfg.transform_settings:
+                    _self["transform_settings"] = dict(_agent_cfg.transform_settings)
+                _agent_path = None
+                if _self:
+                    _agent_path = agent_settings_path(
+                        Path(_store_tmp.name) / "agents", _node,
+                    )
+                    _agent_path.parent.mkdir(parents=True, exist_ok=True)
+                    dump_doc(_agent_path, {"self": _self})
                 # ⚑⚑ THE ONE CORE FACT THIS STUB CARRIES — the box HOME SOURCE, and
                 # it is a PRECONDITION of the collapse, not a convenience.  Home is
                 # pid 0 and does NOT route through ``bindings.rw`` (spec ``:1015``):
@@ -882,7 +889,7 @@ def start_mocks():
                 # defaults (already discriminated agent.<node>.secret_path.<VAR>), so
                 # the reconcile emits the secret_path winners the delivery seam +
                 # export shim consume — exactly as the real cascade would.
-                if _agent_cfg is not None and getattr(_agent_cfg, "secret_path", None):
+                if getattr(_agent_cfg, "secret_path", None):
                     _default_cats.update({
                         f"agent.{_node}.secret_path.{var}": path
                         for var, path in _agent_cfg.secret_path.items()
@@ -891,7 +898,7 @@ def start_mocks():
                 # the same reason (MBR-1 P3): the per-agent file's ``self.env`` is an
                 # ``agent.<node>.env.<VAR>`` key now, re-rooted into the cascade by
                 # ``_agent_partial``, and it reaches the box ONLY through the collapse.
-                # This stub passes ``agent_path=None``, so without the fold a mocked
+                # The stub's agent file carries no ``env``, so without the fold a mocked
                 # launch would deliver none of a user's agent-scope variables.
                 # ⚑ THE APPROXIMATION is the same one the secret takes: the value
                 # enters at the FLOOR rather than the agent-FILE rung.  Against the
@@ -905,7 +912,7 @@ def start_mocks():
                 # MBR-1 P3 fixed).  So NO TEST DRIVEN THROUGH THIS STUB MAY ASSERT
                 # THAT CONTEST — file-beats-plugin is pinned on the real chain, in
                 # ``tests/test_targets/test_agent_envs.py``.
-                if _agent_cfg is not None and getattr(_agent_cfg, "env", None):
+                if getattr(_agent_cfg, "env", None):
                     _default_cats.update({
                         f"agent.{_node}.env.{var}": value
                         for var, value in _agent_cfg.env.items()
@@ -941,13 +948,12 @@ def start_mocks():
                     _default_cats[f"agent.{_node}.allow_helpers"] = "false"
                 snap = build_launch_snapshot(
                     agent_name=_node, ctx=ctx,
-                    system_path=None, agent_path=None,
+                    system_path=None, agent_path=_agent_path,
                     workset_path=None, box_path=None,
                     behavior_floor={"allow_helpers": "false"},
                     agent_behavior_floor=_agent_floor,
                     default_categories=_default_cats,
                     agent_partial=partial,
-                    agent_state=_state,
                     # B5: the launch grammar (meta.agent.<a>.{mode,exec}) — the
                     # argv composition now READS THE SNAPSHOT, so the stub must
                     # materialize it exactly as the real orchestrator does, via

@@ -358,14 +358,14 @@ def test_the_inherited_endpoint_keeps_suppress_and_delivery_in_step(
     target = _TARGETS[agent]()
     selection = AgentSelection(node=agent, source="settings").selection_level
     _auth, suppressing, _model, _secrets = start_cmd._resolve_box_launch_decisions(
-        std=std, proj=proj, target=target, agent_name=agent, agent_cfg=None,
+        std=std, proj=proj, target=target, agent_name=agent,
         system_settings_path=system_file, agent_cfg_path=None,
         selection_level=selection,
     )
     snapshot, _deliveries = start_cmd._resolve_launch_snapshot(
         std=std, proj=proj, agent_name=agent, system_settings_path=system_file,
         agent_cfg_path=None, desc=None, install=None, target=target,
-        agent_cfg=None, cli_level=selection,
+        cli_level=selection,
     )
     delivered = effective_behavior(snapshot, active_agent=agent).get("endpoint")
     assert suppressing == "https://elsewhere.example"

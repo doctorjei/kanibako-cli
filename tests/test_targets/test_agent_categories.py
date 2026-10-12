@@ -220,7 +220,7 @@ class TestTheLaunchSeamCarriesTheDeclarations:
             std=std, proj=proj, agent_name=node,
             system_settings_path=None, agent_cfg_path=None,
             desc=None, install=None, target=DeclaringTarget(),
-            agent_cfg=None, deliver_creds=True,
+            deliver_creds=True,
             cli_level=None,
         )
         return _launch_bind_map(snapshot), _launch_seed_list(snapshot)

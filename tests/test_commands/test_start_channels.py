@@ -99,7 +99,6 @@ def _build(std, proj):
         desc=None,
         install=None,
         target=None,
-        agent_cfg=None,
         include_base_families=False,
         extra_default_categories=_table,
         deliver_creds=True,

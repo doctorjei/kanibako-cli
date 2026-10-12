@@ -40,7 +40,6 @@ from kanibako.commands.start import (
     _snapshot_assembly_bindings,
     _snapshot_assembly_synced,
 )
-from kanibako.settings.agent_config import AgentConfig
 from kanibako.settings.paths import resolve_project
 from kanibako.settings.settings_launch import effective_behavior
 from kanibako.settings.settings_resolve import SettingsError, normalize_bind_dest
@@ -80,7 +79,6 @@ def _resolve(std, proj, **kw):
         desc=None,
         install=None,
         target=_WiringTarget(),
-        agent_cfg=None,
         **kw,
     )
 
@@ -221,7 +219,7 @@ class TestTheCollapseIsProduced:
         snapshot, _deliveries = _resolve_launch_snapshot(
             std=std, proj=proj, agent_name="claude",
             system_settings_path=None, agent_cfg_path=None,
-            desc=None, install=None, target=_WiringTarget(), agent_cfg=None,
+            desc=None, install=None, target=_WiringTarget(),
             include_base_families=False,
             extra_default_categories={"box.seeded": {"~/seedme": (str(src),)}},
             cli_level=None,
@@ -243,7 +241,7 @@ class TestTheCollapseIsProduced:
         snapshot, _deliveries = _resolve_launch_snapshot(
             std=std, proj=proj, agent_name="claude",
             system_settings_path=None, agent_cfg_path=None,
-            desc=None, install=None, target=_WiringTarget(), agent_cfg=None,
+            desc=None, install=None, target=_WiringTarget(),
             include_base_families=False,
             cli_level=None,
         )
@@ -905,33 +903,30 @@ class TestTheAgentFileEnvRidesTheOneChannel:
 
 
 class TestTheLaunchAgentFileStateMergesUnderTheLaunchNode:
-    """S1b — the LAUNCH producer's node argument, pinned on the real chain.
+    """S1b — the LAUNCH resolve files the agent file's values under the launch node.
 
-    ``_resolve_launch_snapshot`` is the fifth and last of the ``agent_file.state_level``
-    producers, and the only one that feeds the WHOLE-BOX launch: it wraps the per-agent
-    file's flat behavior table (``agent_cfg.state``) into a discriminated level under
-    the node the launch is running as, and ``_agent_state_partial`` files it by
-    ``level.node``. A wrong node here files a user's ``model`` under a slot the reader
-    never looks in, and the box launches on the target's declared default instead.
+    ``_resolve_launch_snapshot`` reads the per-agent file (*agent_cfg_path*) as the
+    ``agent.<active>`` level, root values included, keyed by the node the launch is
+    running as. A wrong node files a user's ``model`` under a slot the reader never
+    looks in, and the box launches on the target's declared default instead.
 
-    🛑 THIS CLASS EXISTS BECAUSE THAT ARGUMENT WAS UNCOVERED, MEASURED — the whole suite
-    stayed green with the node mutated at this one site. ``conftest``'s ``start_mocks``
-    stubs ``_resolve_launch_snapshot`` outright, so no test that fixture touches ever
-    enters the function, and the real-chain callers elsewhere all pass ``agent_cfg=None``,
-    which skips the produce entirely. So the call is made HERE with a real
-    :class:`AgentConfig` and the base families ON — the two conditions the site is gated
-    on — and the value is read at the CONSUMER, ``effective_behavior``, which is what the
-    launch actually asks for the answer.
+    ⚑ ``conftest``'s ``start_mocks`` stubs ``_resolve_launch_snapshot`` outright, so the
+    call is made HERE with a real file and the base families ON, and the value is read
+    at the CONSUMER, ``effective_behavior``, which is what the launch asks for the answer.
     """
 
     def _snapshot(self, std, config, project_dir, *, value="from-the-file"):
-        """A whole-box resolve carrying a real per-agent behavior state."""
+        """A whole-box resolve carrying a real per-agent file with a ``model``."""
+        from kanibako.settings.agent_file import slot_for, write_leaf
+
         proj = resolve_project(std, config, str(project_dir), initialize=True)
+        slot = slot_for(std.agents, "claude", "model")
+        slot.path.parent.mkdir(parents=True, exist_ok=True)
+        write_leaf(slot, value)
         snapshot, _deliveries = _resolve_launch_snapshot(
             std=std, proj=proj, agent_name="claude",
-            system_settings_path=None, agent_cfg_path=None,
+            system_settings_path=None, agent_cfg_path=slot.path,
             desc=None, install=None, target=_WiringTarget(),
-            agent_cfg=AgentConfig(state={"model": value}),
             include_base_families=True,
             cli_level=None,
         )
@@ -1154,7 +1149,7 @@ class TestTheEmitterConsumesTheShape:
         narrow, _deliveries = _resolve_launch_snapshot(
             std=std, proj=proj, agent_name="claude",
             system_settings_path=None, agent_cfg_path=None,
-            desc=None, install=None, target=_WiringTarget(), agent_cfg=None,
+            desc=None, install=None, target=_WiringTarget(),
             include_base_families=False,
             cli_level=None,
         )
@@ -1199,7 +1194,7 @@ class TestTheEmitterConsumesTheShape:
         narrow, _deliveries = _resolve_launch_snapshot(
             std=std, proj=proj, agent_name="claude",
             system_settings_path=None, agent_cfg_path=None,
-            desc=None, install=None, target=_WiringTarget(), agent_cfg=None,
+            desc=None, install=None, target=_WiringTarget(),
             include_base_families=False,
             cli_level=None,
         )
@@ -2040,7 +2035,7 @@ class TestTheSeedApplierConsumesTheLeaf:
         narrow, _deliveries = _resolve_launch_snapshot(
             std=std, proj=proj, agent_name="claude",
             system_settings_path=None, agent_cfg_path=None,
-            desc=None, install=None, target=_WiringTarget(), agent_cfg=None,
+            desc=None, install=None, target=_WiringTarget(),
             include_base_families=False,
             cli_level=None,
         )

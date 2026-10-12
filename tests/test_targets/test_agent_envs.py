@@ -445,7 +445,7 @@ class TestTheLaunchWireCarriesTheDeclaration:
             std=std, proj=proj, agent_name=node,
             system_settings_path=None, agent_cfg_path=None,
             desc=None, install=None, target=self._DeclaringTarget(),
-            agent_cfg=None, deliver_creds=True,
+            deliver_creds=True,
             cli_level=None,
         )
         return _launch_env_map(snapshot)
@@ -492,7 +492,7 @@ class TestTheLaunchWireCarriesTheDeclaration:
         snapshot, _deliveries = _resolve_launch_snapshot(
             std=std, proj=proj, agent_name=harness,
             system_settings_path=None, agent_cfg_path=None,
-            desc=None, install=None, target=target, agent_cfg=None,
+            desc=None, install=None, target=target,
             deliver_creds=True,
             cli_level=None,
         )
@@ -554,7 +554,7 @@ class TestTheCoreStampsRideTheSameWire:
             std=std, proj=proj, agent_name=node,
             system_settings_path=None, agent_cfg_path=None,
             desc=None, install=None, target=target,
-            agent_cfg=None, deliver_creds=True,
+            deliver_creds=True,
             cli_level=None,
         )
         return _launch_env_map(snapshot)
@@ -617,7 +617,7 @@ class TestTheCoreStampsRideTheSameWire:
             std=std, proj=proj, agent_name="claude",
             system_settings_path=system_file, agent_cfg_path=None,
             desc=None, install=None, target=self._CoreTarget(),
-            agent_cfg=None, deliver_creds=True,
+            deliver_creds=True,
             cli_level=None,
         )
         slots = _launch_env_map(snapshot)
@@ -643,7 +643,7 @@ class TestTheCoreStampsRideTheSameWire:
                 std=std, proj=proj, agent_name="claude",
                 system_settings_path=None, agent_cfg_path=None,
                 desc=None, install=None, target=self._CoreTarget(),
-                agent_cfg=None, deliver_creds=True,
+                deliver_creds=True,
                 extra_default_categories={"box.env.KANIBAKO_NAME": "mine"},
                 cli_level=None,
             )

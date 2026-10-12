@@ -575,11 +575,11 @@ def existing_box_termini(
             proj, None, node, std=std, selection_level=selection, agent_path=None,
         ))
         drive("effective_transform", lambda: start_cmd._effective_transform(
-            proj, None, node, target, None, std=std, selection_level=selection,
+            proj, None, node, target, std=std, selection_level=selection,
         ))
         # _run_container's _resolve_box_launch_decisions — the auth/decisions resolve.
         drive("box_launch_decisions", lambda: start_cmd._resolve_box_launch_decisions(
-            std=std, proj=proj, target=target, agent_name=node, agent_cfg=None,
+            std=std, proj=proj, target=target, agent_name=node,
             system_settings_path=None, agent_cfg_path=None, selection_level=selection,
         ))
         # stop.py's and launch/creds_watcher.py's calls to start._resolve_box_auth_source — the
@@ -594,7 +594,7 @@ def existing_box_termini(
         drive("launch_snapshot", lambda: start_cmd._resolve_launch_snapshot(
             std=std, proj=proj, agent_name=node,
             system_settings_path=None, agent_cfg_path=None,
-            desc=None, install=None, target=target, agent_cfg=None,
+            desc=None, install=None, target=target,
             cli_level=selection,
         ))
     return collected

@@ -402,7 +402,6 @@ class TestBoxScalarsResolveAfterSelection:
         from kanibako.settings.config import load_config
         from kanibako.settings.config_io import dump_doc, load_doc
         from kanibako.settings.paths import load_std_paths, resolve_box_target
-        from kanibako.settings.settings_assemble import ReadPurpose, agent_record
         from kanibako.settings.settings_launch import snapshot_leaf
         from kanibako.targets import resolve_target
 
@@ -429,7 +428,6 @@ class TestBoxScalarsResolveAfterSelection:
             std=std, proj=proj, agent_name="claude", system_settings_path=std.settings,
             agent_cfg_path=agent_file, desc=None, install=None,
             target=resolve_target("claude"),
-            agent_cfg=agent_record(agent_file, node="claude", purpose=ReadPurpose.RESOLVE),
             guarantee_create=False, cli_level=None,
         )
         assert launch_image == snapshot_leaf(snapshot, "box.image") == expected
@@ -1042,9 +1040,13 @@ class TestEffectiveTransformResolution:
     def _proj(self, tmp_path):
         return _focused_box(tmp_path)
 
-    def _cfg(self, **kw):
-        from kanibako.settings.agent_config import AgentConfig
-        return AgentConfig(**kw)
+    def _agent_file(self, tmp_path, node, own):
+        """The per-agent file holding *own* at its root, as the launch reads it."""
+        from kanibako.settings.agent_config import agent_settings_path
+        from kanibako.settings.config_io import dump_doc
+        path = agent_settings_path(tmp_path / "agents", node)
+        dump_doc(path, {"self": own})
+        return path
 
     def test_claude_declaration_is_the_floor(self, tmp_path):
         """⚑ THE BEHAVIOR-PRESERVATION TEST: a claude box with today's config —
@@ -1060,7 +1062,7 @@ class TestEffectiveTransformResolution:
         from kanibako.tweakcc import TRANSFORM_NAME
         proj = self._proj(tmp_path)
         assert _effective_transform(
-            proj, None, "claude", ClaudeTarget(), self._cfg(), **_focused(),
+            proj, None, "claude", ClaudeTarget(), **_focused(),
         ) == TRANSFORM_NAME
 
     def test_missing_plugin_declaration_yields_no_transform(self, tmp_path, monkeypatch):
@@ -1080,7 +1082,7 @@ class TestEffectiveTransformResolution:
             lambda self: [d for d in real(self) if d.key != "transform"],
         )
         assert _effective_transform(
-            proj, None, "claude", ClaudeTarget(), self._cfg(), **_focused(),
+            proj, None, "claude", ClaudeTarget(), **_focused(),
         ) is None
 
     def test_no_target_names_no_transform(self, tmp_path):
@@ -1088,7 +1090,7 @@ class TestEffectiveTransformResolution:
         from kanibako.commands.start import _effective_transform
         proj = self._proj(tmp_path)
         assert _effective_transform(
-            proj, None, "general", None, self._cfg(), **_focused(),
+            proj, None, "general", None, **_focused(),
         ) is None
 
     def test_target_declaring_no_transform(self, tmp_path):
@@ -1100,8 +1102,7 @@ class TestEffectiveTransformResolution:
         proj = self._proj(tmp_path)
         target = SimpleNamespace(name="goose", setting_descriptors=lambda: [])
         assert _effective_transform(
-            proj, None, "goose", target,
-            self._cfg(state={}), **_focused(),
+            proj, None, "goose", target, **_focused(),
         ) is None
 
     def test_agent_file_state_overrides_the_floor(self, tmp_path):
@@ -1112,8 +1113,8 @@ class TestEffectiveTransformResolution:
         from kanibako.plugins.claude.target import ClaudeTarget
         proj = self._proj(tmp_path)
         assert _effective_transform(
-            proj, None, "claude", ClaudeTarget(), self._cfg(state={"transform": ""}),
-            **_focused(),
+            proj, None, "claude", ClaudeTarget(), **_focused(),
+            agent_cfg_path=self._agent_file(tmp_path, "claude", {"transform": ""}),
         ) is None
 
     def test_box_pref_override(self, tmp_path):
@@ -1127,7 +1128,7 @@ class TestEffectiveTransformResolution:
             {"pref": {"agent": {"claude": {"transform": ""}}}},
         )
         assert _effective_transform(
-            proj, None, "claude", ClaudeTarget(), self._cfg(), **_focused(),
+            proj, None, "claude", ClaudeTarget(), **_focused(),
         ) is None
 
     def test_system_agent_default_tier(self, tmp_path):
@@ -1141,7 +1142,7 @@ class TestEffectiveTransformResolution:
         dump_doc(sys_file, {"agent": {"default": {"transform": "tweakcc"}}})
         target = SimpleNamespace(name="goose", setting_descriptors=lambda: [])
         assert _effective_transform(
-            proj, sys_file, "goose", target, self._cfg(), **_focused(),
+            proj, sys_file, "goose", target, **_focused(),
         ) == "tweakcc"
 
     def test_the_plugin_row_beats_a_users_agent_default_transform(self, tmp_path):
@@ -1157,11 +1158,11 @@ class TestEffectiveTransformResolution:
         sys_file = tmp_path / "system.yaml"
         dump_doc(sys_file, {"agent": {"default": {"transform": ""}}})
         assert _effective_transform(
-            proj, sys_file, "claude", ClaudeTarget(), self._cfg(), **_focused(),
+            proj, sys_file, "claude", ClaudeTarget(), **_focused(),
         ) == TRANSFORM_NAME
         dump_doc(sys_file, {"agent": {"claude": {"transform": ""}}})
         assert _effective_transform(
-            proj, sys_file, "claude", ClaudeTarget(), self._cfg(), **_focused(),
+            proj, sys_file, "claude", ClaudeTarget(), **_focused(),
         ) is None
 
 
@@ -1173,20 +1174,17 @@ class TestEffectiveTransformSettings:
     def _resolve(self, tmp_path, *, system=None, agent=None):
         from kanibako.commands.start import _effective_transform_settings
         from kanibako.settings.config_io import dump_doc
-        from kanibako.settings.settings_assemble import ReadPurpose, agent_record
 
         system_path = agent_path = None
         if system is not None:
             system_path = tmp_path / "system.yaml"
             dump_doc(system_path, system)
-        cfg = None
         if agent is not None:
             agent_path = tmp_path / "agents" / "claude" / "agent.yaml"
             agent_path.parent.mkdir(parents=True)
             dump_doc(agent_path, agent)
-            cfg = agent_record(agent_path, node="claude", purpose=ReadPurpose.RESOLVE)
         return _effective_transform_settings(
-            _focused_box(tmp_path), system_path, "claude", cfg, **_focused(),
+            _focused_box(tmp_path), system_path, "claude", **_focused(),
             agent_cfg_path=agent_path,
         )
 
@@ -1197,9 +1195,9 @@ class TestEffectiveTransformSettings:
         assert self._resolve(tmp_path, system=system) == {"enabled": True}
 
     def test_the_agent_file_outranks_the_system_file(self, tmp_path):
-        # ``self.transform_settings`` now reaches the cascade (``state_level``), where the
-        # agent file's tier is the more specific. (Mutation: drop it from ``state_level``
-        # → the system value wins → RED.)
+        # ``self.transform_settings`` reaches the cascade on the agent file's own level, the
+        # more specific tier. (Mutation: drop ``level.state`` from ``_agent_partial`` → the
+        # system value wins → RED.)
         system = {"agent": {"claude": {"transform_settings": {"enabled": True}}}}
         agent = {"self": {"transform_settings": {"enabled": False}}}
         assert self._resolve(tmp_path, system=system, agent=agent) == {"enabled": False}
@@ -1212,6 +1210,80 @@ class TestEffectiveTransformSettings:
 
     def test_nothing_set_is_empty(self, tmp_path):
         assert self._resolve(tmp_path) == {}
+
+
+@pytest.mark.usefixtures("config_file")
+class TestAgentFileReachesTheShellResolves:
+    """K4 Lane A: a plain-shell resolve reads the shell agent file's root values.
+
+    The resolves pass the file as *agent_cfg_path* and nothing else; its root
+    values ride its ``agent.shell`` level whether or not a target is set.
+    """
+
+    def _shell_file(self, std, own):
+        from kanibako.settings.agent_config import agent_settings_path
+        from kanibako.settings.config_io import dump_doc
+
+        path = agent_settings_path(std.agents, "shell")
+        dump_doc(path, {"self": own})
+        return path
+
+    def _helpers_allowed(self, tmp_path, agent_cfg_path):
+        """The launch's own ``allow_helpers`` read, off a no-target main resolve."""
+        from kanibako.commands.start import _resolve_launch_snapshot
+        from kanibako.settings.settings_launch import effective_behavior
+        from kanibako.settings.config import coerce_bool
+
+        snapshot, _deliveries = _resolve_launch_snapshot(
+            std=_focused_std(), proj=_focused_box(tmp_path), agent_name="shell",
+            system_settings_path=None, agent_cfg_path=agent_cfg_path,
+            desc=None, install=None, target=None,
+            guarantee_create=False, cli_level=None,
+        )
+        return coerce_bool(
+            effective_behavior(snapshot, active_agent="shell").get("allow_helpers"),
+        )
+
+    def test_a_no_target_launch_honors_the_shell_files_allow_helpers(self, tmp_path):
+        """A-1: ``kanibako shell`` / ``--entrypoint`` (no target) leaves helpers off
+        when ``agents/shell/agent.yaml`` says ``allow_helpers: false``.  The control,
+        with no file, is the shell tier's own ``true``."""
+        std = _focused_std()
+        assert self._helpers_allowed(tmp_path, None) is True
+        path = self._shell_file(std, {"allow_helpers": False})
+        assert self._helpers_allowed(tmp_path, path) is False
+
+    def test_a_plain_shell_boxs_decisions_snapshot_reads_the_shell_files_endpoint(
+        self, tmp_path, monkeypatch,
+    ):
+        """A-2 (B4): the decisions snapshot of a plain-shell box (``ShellTarget``, no
+        descriptors) sees the shell file's ``endpoint``, as the main snapshot does.
+
+        Read off the snapshot the function builds: its ``endpoint`` RETURN is read only
+        for a target with declared rows, which ``ShellTarget`` has none of."""
+        from kanibako.commands.start import _resolve_box_launch_decisions
+        from kanibako.settings import settings_launch
+        from kanibako.targets.shell import ShellTarget
+
+        built = []
+        real_build = settings_launch.build_launch_snapshot
+
+        def _build(*args, **kwargs):
+            built.append(real_build(*args, **kwargs))
+            return built[-1]
+
+        monkeypatch.setattr(settings_launch, "build_launch_snapshot", _build)
+        std = _focused_std()
+        path = self._shell_file(std, {"endpoint": "https://shell.example/v1"})
+        _resolve_box_launch_decisions(
+            std=std, proj=_focused_box(tmp_path), target=ShellTarget(),
+            agent_name="shell", system_settings_path=None, agent_cfg_path=path,
+            selection_level=None,
+        )
+        (snapshot,) = built
+        assert settings_launch.effective_behavior(
+            snapshot, active_agent="shell",
+        )["endpoint"] == "https://shell.example/v1"
 
 
 class TestImageReferenceResolution:
@@ -2497,7 +2569,6 @@ class TestPluginsAndCacheShares:
             desc=None,
             install=None,
             target=target,
-            agent_cfg=None,
             include_base_families=False,
             extra_default_categories=_table,
             deliver_creds=True,
@@ -7260,21 +7331,6 @@ class TestANullSecretPathOmitsTheMountTheGateCallsKeyless:
         assert mounts == {"GH_TOKEN": "/h/gh"}
 
 
-def _agent_record(agent_path, target, node):
-    """The agent tier the create path hands the resolve — a real file when there is one.
-
-    ``target.generate_agent_config()`` is the FIRST-USE shape; an existing agent
-    file is read through ``agent_record``, which is what
-    ``_persona_create_verdict`` passes, so a persona configured in its agent file
-    is really in the cascade here.
-    """
-    from kanibako.settings import settings_assemble
-
-    if not agent_path.exists():
-        return target.generate_agent_config()
-    return settings_assemble.agent_record(
-        agent_path, node=node, purpose=settings_assemble.ReadPurpose.RESOLVE,
-    )
 
 
 class TestPersonaSecretTableNamesAndDeliveries:
@@ -7448,7 +7504,6 @@ class TestCodexEnvKeyComesFromThePersonasOwnNames:
             dump_doc(system_path, system_file)
         _auth, endpoint, model, secret_paths = _resolve_box_launch_decisions(
             std=std, proj=self._proj(std), target=target, agent_name=self._NODE,
-            agent_cfg=_agent_record(agent_path, target, self._NODE),
             system_settings_path=system_path, agent_cfg_path=agent_path,
             selection_level=None, persona_values=None,
         )
@@ -7567,7 +7622,6 @@ class TestPersonaKeylessNullAtANonNodeTier:
         dump_doc(system_path, system_file)
         _auth, endpoint, model, secret_paths = _resolve_box_launch_decisions(
             std=std, proj=proj, target=target, agent_name=node,
-            agent_cfg=_agent_record(agent_path, target, node),
             system_settings_path=system_path, agent_cfg_path=agent_path,
             selection_level=None, persona_values=None,
         )
@@ -10065,7 +10119,6 @@ class TestPersonaLiveTierWiring:
             desc=None,
             install=None,
             target=target,
-            agent_cfg=None,
             persona_values=persona_values,
             include_base_families=False,
             cli_level=None,
@@ -10100,7 +10153,6 @@ class TestPersonaLiveTierWiring:
             desc=target.descriptor,
             install=None,
             target=target,
-            agent_cfg=None,
             persona_values=persona_values,
             include_base_families=False,
             realize=_LaunchRealizer(
@@ -10389,7 +10441,6 @@ class TestPersonaLiveTierWiring:
             proj=self._proj(std),
             target=target,
             agent_name=self._NODE,
-            agent_cfg=agent_cfg,
             system_settings_path=None,
             agent_cfg_path=None,
             selection_level=None,
@@ -10457,15 +10508,12 @@ class TestPersonaLiveTierWiring:
         path = agent_settings_path(std.agents, self._NODE)
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text('self:\n  model: null\n')
-        from kanibako.settings.settings_assemble import ReadPurpose, agent_record as load_agent_config
-        agent_cfg = load_agent_config(path, node=self._NODE, purpose=ReadPurpose.RESOLVE)
 
         _auth, endpoint, model, _secrets = _resolve_box_launch_decisions(
             std=std,
             proj=self._proj(std),
             target=target,
             agent_name=self._NODE,
-            agent_cfg=agent_cfg,
             system_settings_path=None,
             agent_cfg_path=path,
             selection_level=None,
@@ -10490,14 +10538,12 @@ class TestPersonaLiveTierWiring:
 
         self._store(tmp_home, model=None)  # store names no model either.
         target = self._target()
-        agent_cfg = target.generate_agent_config()
 
         _auth, endpoint, model, _secrets = _resolve_box_launch_decisions(
             std=std,
             proj=self._proj(std),
             target=target,
             agent_name=self._NODE,
-            agent_cfg=agent_cfg,
             system_settings_path=None,
             agent_cfg_path=None,
             selection_level=None,
@@ -10519,14 +10565,12 @@ class TestPersonaLiveTierWiring:
 
         self._store(tmp_home)  # default model="gemma4"
         target = self._target()
-        agent_cfg = target.generate_agent_config()
 
         _auth, endpoint, model, _secrets = _resolve_box_launch_decisions(
             std=std,
             proj=self._proj(std),
             target=target,
             agent_name=self._NODE,
-            agent_cfg=agent_cfg,
             system_settings_path=None,
             agent_cfg_path=None,
             selection_level=None,
@@ -10708,7 +10752,7 @@ class TestPersonaLiveTierWiring:
 
     def _leaf_outcome(self, std, tmp_home, *, target, category, var,
                       persona_values=None, system_doc=None,
-                      agent_cfg=None, agent_cfg_path=None):
+                      agent_cfg_path=None):
         """The resolved leaf, or the EXCEPTION — an expansion defect is an outcome.
 
         Several hazard values legitimately RAISE out of ``expand`` (``$HOME`` is
@@ -10729,7 +10773,7 @@ class TestPersonaLiveTierWiring:
                 std=std, proj=self._proj(std), agent_name=self._NODE,
                 system_settings_path=system_file, agent_cfg_path=agent_cfg_path,
                 desc=None, install=None, target=target,
-                agent_cfg=agent_cfg, persona_values=persona_values,
+                persona_values=persona_values,
                 include_base_families=False,
                 cli_level=None,
             )
@@ -10766,7 +10810,6 @@ class TestPersonaLiveTierWiring:
         from kanibako.settings.agent_file import (
             save as write_agent_config,
         )
-        from kanibako.settings.settings_assemble import ReadPurpose, agent_record as load_agent_config
 
         # The store's resolved token pointer is an ABSOLUTE path, so feed *raw*
         # through both routes as the SAME literal: the store's ``.secret_path``
@@ -10792,7 +10835,7 @@ class TestPersonaLiveTierWiring:
         via_file = self._leaf_outcome(
             std, tmp_home, target=target,
             category="secret_path", var="ANTHROPIC_AUTH_TOKEN",
-            agent_cfg=load_agent_config(path, node=self._NODE, purpose=ReadPurpose.RESOLVE), agent_cfg_path=path,
+            agent_cfg_path=path,
         )
         assert via_store == ("ok", literal)
         # CONTROL: the agent file still expands — ``@b.example`` is a dangling
@@ -10832,7 +10875,6 @@ class TestPersonaLiveTierWiring:
         from kanibako.settings.agent_file import (
             save as write_agent_config,
         )
-        from kanibako.settings.settings_assemble import ReadPurpose, agent_record as load_agent_config
 
         monkeypatch.setenv("NAV_TOKEN_DIR", "/from/the/process/env")
         self._store(tmp_home)
@@ -10855,7 +10897,7 @@ class TestPersonaLiveTierWiring:
         via_file = self._leaf_outcome(
             std, tmp_home, target=target,
             category="secret_path", var="ANTHROPIC_AUTH_TOKEN",
-            agent_cfg=load_agent_config(path, node=self._NODE, purpose=ReadPurpose.RESOLVE), agent_cfg_path=path,
+            agent_cfg_path=path,
         )
         # kanibako's namespace does not carry it: REFUSED, not silently wrong.
         assert via_file[0] == "raised"
@@ -10911,14 +10953,13 @@ class TestPersonaLiveTierWiring:
         from kanibako.settings.agent_file import (
             save as write_agent_config,
         )
-        from kanibako.settings.settings_assemble import ReadPurpose, agent_record as load_agent_config
 
         target = self._target()
         path = agent_settings_path(std.agents, self._NODE)
         write_agent_config(path, AgentConfig(env={"NAV_X": raw}))
         via_file = self._leaf_outcome(
             std, tmp_home, target=target, category="env", var="NAV_X",
-            agent_cfg=load_agent_config(path, node=self._NODE, purpose=ReadPurpose.RESOLVE), agent_cfg_path=path,
+            agent_cfg_path=path,
         )
         via_keyspace = self._leaf_outcome(
             std, tmp_home, target=target, category="env", var="NAV_X",
@@ -10962,7 +11003,7 @@ class TestPersonaLiveTierWiring:
             dump_doc(system_path, system_file)
         _auth, endpoint, model, secret_paths = _resolve_box_launch_decisions(
             std=std, proj=self._proj(std), target=target, agent_name=self._NODE,
-            agent_cfg=target.generate_agent_config(), system_settings_path=system_path,
+            system_settings_path=system_path,
             agent_cfg_path=agent_path, selection_level=None,
             persona_values=_persona_values_for(self._NODE, target),
         )
