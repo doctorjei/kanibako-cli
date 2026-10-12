@@ -17,6 +17,7 @@ from kanibako.settings.config import load_config
 from kanibako.settings.paths import BoxMode, WorksetSpec, load_std_paths, resolve_standalone_project, resolve_project, resolve_workset_project
 from kanibako.settings.paths import _early_scope
 from kanibako.project.workset import add_project, create_workset, load_workset
+from tests.test_commands.test_start import _BLAME, _REFUSED_ROWS, _two_axis_outcome
 
 
 class TestBoxList:
@@ -3195,6 +3196,47 @@ class TestCheckPersonaStoreForCreate:
         # EXACT — no cascade is built before create, so the store dir is the source.
         assert f"came from the persona store at {tmp_home}" in out
         assert "config/personas/navigator/codex" in out.replace("\\", "/")
+
+    @pytest.mark.parametrize(
+        "row, token, model_id, general, sentence", _REFUSED_ROWS,
+        ids=[f"row{r[0]}" for r in _REFUSED_ROWS],
+    )
+    def test_every_refused_two_axis_row_warns_with_its_own_sentence(
+        self, tmp_home, monkeypatch, capsys, row, token, model_id, general, sentence,
+    ):
+        """S2 of the Q29 rule-3 plan: the create door stays WARN-ONLY on every
+        REJECTED row and prints the same sentence as the launch door.
+        """
+        self._store(tmp_home)
+        err = self._call(
+            tmp_home, "navigator+codex", monkeypatch,
+            outcome=_two_axis_outcome(general, "denied", token=token, model_id=model_id),
+        )
+        assert err is None  # warn-only: create still proceeds
+        out = capsys.readouterr().err
+        assert "creating anyway" in out
+        assert sentence in out
+        assert "request   GET /v1/models — HTTP " in out
+        lowered = out.lower()
+        assert not [w for w in _BLAME if w in lowered]
+
+    def test_a_two_axis_PASS_with_the_model_free_request_refused_only_logs(
+        self, tmp_home, monkeypatch, capsys, caplog,
+    ):
+        import logging
+
+        self._store(tmp_home)
+        with caplog.at_level(logging.DEBUG):
+            err = self._call(
+                tmp_home, "navigator+codex", monkeypatch,
+                outcome=_two_axis_outcome("denied", "ok"),
+            )
+        assert err is None
+        assert "Warning" not in capsys.readouterr().err
+        assert any(
+            "model-free request was refused (HTTP 403)" in r.getMessage()
+            for r in caplog.records
+        )
 
     def test_a_status_less_REJECTED_still_names_the_endpoint_here(
         self, tmp_home, monkeypatch, capsys,

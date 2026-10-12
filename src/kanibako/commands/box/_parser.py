@@ -691,7 +691,9 @@ def _check_persona_store_for_create(agent_ref: str) -> str | None:
     from kanibako.errors import ConfigError
     from kanibako.log import get_logger
     from kanibako.persona_store import locate_entry, read_persona_bundle
-    from kanibako.targets.base import PersonaProbeOutcome, PersonaProbeVerdict
+    from kanibako.targets.base import (
+        GeneralAccess, PersonaProbeOutcome, PersonaProbeVerdict,
+    )
 
     try:
         entry = locate_entry(agent_ref)
@@ -770,6 +772,16 @@ def _check_persona_store_for_create(agent_ref: str) -> str | None:
             get_logger(__name__).debug(
                 "persona '%s': no verify probe was possible (%s); "
                 "creating unprobed", display, outcome.reason,
+            )
+        elif (
+            outcome.verdict is PersonaProbeVerdict.PASS and outcome.access is not None
+            and outcome.access.general.state is GeneralAccess.DENIED
+        ):
+            # A PASS whose model-free request was refused: logged, as at launch.
+            get_logger(__name__).debug(
+                "persona '%s': the model-free request was refused (HTTP %s) and the "
+                "model request accepted; creating", display,
+                outcome.access.general.evidence.status,
             )
     print(
         f"Recognized persona '{display}' in the persona store; its values are "

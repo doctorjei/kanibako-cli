@@ -597,6 +597,9 @@ class ProbeEvidence:
         * NO *model* — the line reads `(omitted)`, and an OMISSION does not come from
           a source, so the sentence speaks for the endpoint alone.
         ⚑ Three is the whole set: the model line has exactly these three states.
+
+        ⚑ A *request* prints its own line with the answer it got — a two-request probe
+        must say which request each status belongs to.
         """
         model = "(omitted)" if not self.model else self.model
         if self.model and self.model_origin:
@@ -610,6 +613,9 @@ class ProbeEvidence:
             f"{indent}{'model':<10}{model}",
             f"{indent}{'token':<10}{token}",
         ]
+        if self.request:
+            answer = "no answer" if self.status is None else f"HTTP {self.status}"
+            out.append(f"{indent}{'request':<10}{self.request} — {answer}")
         if resolved_from:
             # ⚑ THREE arms, each guarded on exactly what the model line above says —
             # the sentence may never speak for something that line does not show.
@@ -727,10 +733,77 @@ class PersonaProbeOutcome(NamedTuple):
         the launch error and the create warning (llm-doc).  *resolved_from* is the
         caller's own answer to "where did these inputs come from"; see
         `ProbeEvidence.lines`.
+
+        ⚑ With *access* set (a two-axis probe) it renders BOTH requests: first, on a
+        REJECTED, the one sentence saying what each request showed (the Q29 table's
+        wording), then the model request's block, then the model-free request's own line.
+        🛑 The sentence says what the endpoint REFUSED, never that the token is bad.
         """
-        if self.evidence is None or self.evidence.status is None:
+        access = self.access
+        if access is None:
+            if self.evidence is None or self.evidence.status is None:
+                return ""
+            return "\n" + self.evidence.block(indent, resolved_from=resolved_from)
+        model = access.model.evidence
+        general = access.general.evidence
+        if model.status is None and general.status is None:
             return ""
-        return "\n" + self.evidence.block(indent, resolved_from=resolved_from)
+        out: list[str] = []
+        if self.verdict is PersonaProbeVerdict.REJECTED:
+            keyed = model.token_path is not None
+            asked = (
+                f"the request for model '{model.model}'" if model.model
+                else "the request that named no model"
+            )
+            state = access.general.state
+            if state is GeneralAccess.VERIFIED:
+                summary = (
+                    f"The endpoint accepted this credential without a model and refused "
+                    f"the request for model '{model.model}'." if model.model else
+                    "The endpoint accepted this credential and refused a request that "
+                    "named no model."
+                )
+            elif state is GeneralAccess.DENIED:
+                summary = (
+                    "The endpoint refused this credential with and without a model."
+                    if keyed else
+                    "The endpoint refused every request made without a credential; "
+                    "this persona declares the endpoint keyless."
+                )
+            elif state is GeneralAccess.NO_ANSWER:
+                summary = ""
+            elif not keyed:
+                summary = (
+                    f"The endpoint refused an uncredentialed request for model "
+                    f"'{model.model}'." if model.model else
+                    "The endpoint refused an uncredentialed request that named no model."
+                )
+            else:
+                why = (
+                    "the model list is public" if state is GeneralAccess.OPEN
+                    else "the request without it did not decide"
+                )
+                summary = (
+                    f"The endpoint refused {asked}; the model-free check could not test "
+                    f"the credential ({why})."
+                )
+            if summary:
+                out.append(f"{indent}{summary}")
+        out.extend(model.lines(indent, resolved_from=resolved_from))
+        answer = "no answer" if general.status is None else f"HTTP {general.status}"
+        line = f"{indent}{'request':<10}{general.request} — {answer}"
+        if access.control_status is not None:
+            line += f"; without the credential, HTTP {access.control_status}"
+        out.append(line)
+        general_answered = general.status is not None and 200 <= general.status < 300
+        if general.provider_text and not general_answered:
+            out.append(f"{indent}{'provider:':<10}{general.provider_text}")
+        if general.status in _REFUSAL_STATUSES and model.status not in _REFUSAL_STATUSES:
+            out.append(
+                f"{indent}An HTTP {general.status} means the endpoint refused this request "
+                f"— it does not say which input was at fault."
+            )
+        return "\n" + "\n".join(out)
 
     def refusal_phrase(self, endpoint: str) -> str:
         """How the endpoint refused, for the SENTENCE that introduces `evidence_block`.

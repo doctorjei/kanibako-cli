@@ -11619,6 +11619,122 @@ class TestPersonaPreflightBundle:
         assert target.calls == []
 
 
+# The Q29 rule-3 table's REJECTED rows: (row, token, model id, GENERAL, the sentence).
+# Shared with the create door's tests (test_box.py), which render through the same block.
+_REFUSED_ROWS = [
+    (4, True, "m", "verified",
+     "The endpoint accepted this credential without a model and refused the request "
+     "for model 'm'."),
+    (5, True, "m", "open",
+     "The endpoint refused the request for model 'm'; the model-free check could not "
+     "test the credential (the model list is public)."),
+    (6, True, "m", "denied",
+     "The endpoint refused this credential with and without a model."),
+    (10, True, None, "verified",
+     "The endpoint accepted this credential and refused a request that named no model."),
+    (11, True, None, "open",
+     "The endpoint refused the request that named no model; the model-free check could "
+     "not test the credential (the model list is public)."),
+    (15, False, "m", "open",
+     "The endpoint refused an uncredentialed request for model 'm'."),
+    (16, False, "m", "denied",
+     "The endpoint refused every request made without a credential; this persona "
+     "declares the endpoint keyless."),
+    (19, False, None, "open",
+     "The endpoint refused an uncredentialed request that named no model."),
+]
+
+# Words that would blame the token, which neither door may print (the procedure's
+# "it does not blame the token").
+_BLAME = ("invalid", "bad token", "expired", "revoked", "replace", "fix the token",
+          "rejected the token", "token is")
+
+
+def _two_axis_outcome(general: str, model: str, *, token=True, model_id="m",
+                      model_exact=True):
+    """A real `access_outcome` over a scripted two-axis report (test_persona_access)."""
+    from kanibako.targets.base import GeneralAccess, ModelAccess, access_outcome
+    from tests.test_targets.test_persona_access import _report
+
+    report = _report(GeneralAccess(general), ModelAccess(model), token=token,
+                     model_id=model_id)
+    return access_outcome(report, model_exact=model_exact)
+
+
+class TestTwoAxisProbeWording:
+    """S2 of the Q29 rule-3 plan: the launch door's wording from ``outcome.access``.
+
+    Every outcome here comes from the real ``access_outcome``; only the wire is stubbed.
+    """
+
+    _ENDPOINT = "https://api.navigator.example/v1"
+
+    def _probe(self, outcome, logger=None):
+        from kanibako.commands.start import _persona_probe_error
+
+        class _T:
+            def verify_persona(self, *a, **k):
+                return outcome
+
+        return _persona_probe_error(
+            _T(), self._ENDPOINT, "/t/token", "m", "navigator+claude", logger,
+        )
+
+    @pytest.mark.parametrize(
+        "row, token, model_id, general, sentence", _REFUSED_ROWS,
+        ids=[f"row{r[0]}" for r in _REFUSED_ROWS],
+    )
+    def test_each_refused_row_says_what_each_request_showed(
+        self, row, token, model_id, general, sentence,
+    ):
+        outcome = _two_axis_outcome(general, "denied", token=token, model_id=model_id)
+        err = self._probe(outcome)
+        assert err is not None and err.startswith("Error: persona 'navigator+claude'")
+        assert sentence in err
+        # Both requests, each with its own answer.
+        assert "request   POST /v1/messages — HTTP 403" in err
+        assert "request   GET /v1/models — HTTP " in err
+        if general == "verified":
+            assert "; without the credential, HTTP 401" in err
+        # 🛑 It never blames the token.
+        lowered = err.lower()
+        assert not [w for w in _BLAME if w in lowered]
+
+    def test_the_refused_rows_are_each_distinct(self):
+        sentences = [r[4] for r in _REFUSED_ROWS]
+        assert len(set(sentences)) == len(sentences)
+
+    @pytest.mark.parametrize("token", [True, False])
+    def test_a_PASS_with_the_model_free_request_refused_logs_and_prints_nothing(
+        self, token, capsys,
+    ):
+        """Rows 3/9/14/18: a refusal of the model-free request alone never refuses."""
+        logger = MagicMock()
+        err = self._probe(_two_axis_outcome("denied", "ok", token=token), logger)
+        assert err is None
+        assert capsys.readouterr().err == ""
+        (msg, *args), _kw = logger.debug.call_args
+        assert "model-free request was refused" in msg % tuple(args)
+        assert "HTTP 403" in msg % tuple(args)
+
+    def test_a_plain_PASS_logs_nothing(self, capsys):
+        logger = MagicMock()
+        assert self._probe(_two_axis_outcome("verified", "ok"), logger) is None
+        assert capsys.readouterr().err == ""
+        logger.debug.assert_not_called()
+
+    def test_DENIED_and_MODEL_REQUIRED_warns_and_launches(self, capsys):
+        """The table's Δ arm: the model-free request refused, the model check undecided."""
+        outcome = _two_axis_outcome("denied", "model_required", model_id=None)
+        assert self._probe(outcome) is None
+        out = capsys.readouterr().err
+        assert out.startswith("Warning: persona 'navigator+claude': could not verify")
+        assert "launching unverified" in out
+        assert "request   GET /v1/models — HTTP 403" in out
+        assert "request   POST /v1/messages — HTTP 400" in out
+        assert "An HTTP 403 means the endpoint refused this request" in out
+
+
 class TestCodexDynamicTokenVarWithStore:
     """The DYNAMIC (codex) token var is the SINGLE key of the resolved table.
 

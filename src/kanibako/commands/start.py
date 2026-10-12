@@ -6262,7 +6262,13 @@ def _persona_probe_error(
       could do about it.  ⚑ It is NOT reached merely because the persona names
       no model: such a persona IS probed (model field omitted), so a dead token
       still hard-errors here.
-    * ``PASS`` ⇒ proceed silently.
+    * ``PASS`` ⇒ proceed silently.  A PASS whose model-free request was refused (a
+      proxy that guards its model list and serves completions) goes to the log.
+
+    ⚑ A two-axis probe (``outcome.access``) states what EACH request showed, in the
+    lines :meth:`PersonaProbeOutcome.evidence_block` renders for both doors: the
+    REJECTED sentence there is the Q29 table's own wording, and the H1 cell that
+    could not send the box's model id arrives here as ``INCONCLUSIVE`` and warns.
 
     ⚑ *env* is the PERSONA STORE's passthrough env block (``PersonaBundle.env``),
     handed to the probe so the harness can rewrite a tier alias the way its runtime
@@ -6288,7 +6294,9 @@ def _persona_probe_error(
     worth surfacing) — no launch may die on a probe bug.  Returns the error
     message, or ``None`` to proceed.
     """
-    from kanibako.targets.base import PersonaProbeOutcome, PersonaProbeVerdict
+    from kanibako.targets.base import (
+        GeneralAccess, PersonaProbeOutcome, PersonaProbeVerdict,
+    )
 
     if target is None:
         return None
@@ -6334,6 +6342,14 @@ def _persona_probe_error(
         logger.debug(
             "persona '%s': no verify probe was possible (%s); launching unprobed",
             display, outcome.reason,
+        )
+    elif (
+        outcome.verdict is PersonaProbeVerdict.PASS and outcome.access is not None
+        and outcome.access.general.state is GeneralAccess.DENIED and logger is not None
+    ):
+        logger.debug(
+            "persona '%s': the model-free request was refused (HTTP %s) and the model "
+            "request accepted; launching", display, outcome.access.general.evidence.status,
         )
     return None
 
