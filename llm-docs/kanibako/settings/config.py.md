@@ -162,8 +162,7 @@ type error rather than a value that silently carries the wrong layer.
 The flat merged SETTINGS object.
 
 `settings_launch.load_merged_config` builds it: the CLI overrides that name a field, then each
-`box.*` scalar from the keyspace resolve (see "B6" above), which beats them. The other fields keep
-their defaults.
+`box.*` scalar from the keyspace resolve (see "B6" above), which beats them.
 
 ⚑ `box_enable_vault` JOINED 2026-08-29 as the fourth. Its field default is now THE carrier of
 `box.enable_vault`'s declared default — that is what `box_scalar_defaults_floor` publishes, and

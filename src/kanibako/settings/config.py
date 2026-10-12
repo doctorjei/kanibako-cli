@@ -70,7 +70,7 @@ _DEFAULTS: _BoxScalarDefaults = {
 
 @dataclass
 class KanibakoConfig:
-    """The flat merged SETTINGS object (defaults < workset < box < CLI).
+    """The flat merged SETTINGS object (base < system < agent.default < agent.<active> < workset < box < CLI).
 
     ⚑ NO ``config_paths`` FIELD, AND NO ``paths_project_toml`` (R153, 2026-08-31).  The
     first was Layer 1 living inside a Layer-2 object, which is what let one read answer both
