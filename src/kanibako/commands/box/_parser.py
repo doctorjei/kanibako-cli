@@ -2852,8 +2852,6 @@ def _rm_standalone(std, box_name: str, root, args: argparse.Namespace, *,
     ⚑ *config* is REQUIRED — without it the probe cannot see a live box, and the lock
     alone would not stop the purge.
     """
-    from datetime import datetime, timezone
-
     from kanibako.project import registry_store
     from kanibako.settings.paths import standalone_box_store
 
@@ -2940,7 +2938,6 @@ def _rm_standalone(std, box_name: str, root, args: argparse.Namespace, *,
             workspace=str(root_path),
             metadata=str(root_path),
             image=image,
-            deregistered_at=datetime.now(tz=timezone.utc).isoformat(),
         )
         print(f"Deregistered '{box_name}' (metadata retained).")
         print(_retained_box_cure_lines(
@@ -2995,8 +2992,6 @@ def _named_member_refusal(std, config, target: str, *, purge: bool) -> str | Non
 
 def run_rm(args: argparse.Namespace) -> int:
     """Unregister a box (primary or standalone), optionally purging metadata."""
-    from datetime import datetime, timezone
-
     from kanibako.project import registry_store
 
     config_file = user_config_file()
@@ -3140,7 +3135,6 @@ def run_rm(args: argparse.Namespace) -> int:
             workspace=path,
             metadata=str(metadata_dir),
             image=image,
-            deregistered_at=datetime.now(tz=timezone.utc).isoformat(),
         )
         print(f"Deregistered '{name}' (metadata retained).")
         print(_retained_box_cure_lines(std, name, {"kind": "primary"}))

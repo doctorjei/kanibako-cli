@@ -30,7 +30,7 @@ from kanibako.settings.settings_resolve import (
 )
 from kanibako.settings.store_collapse import HOME_DEST, HOME_OPTIONS
 from kanibako.targets.base import Mount
-from kanibako.utils import render_container_name
+from kanibako.utils import render_container_name, utc_stamp
 
 if TYPE_CHECKING:
     from kanibako.settings.workset_dirkeys import EarlyScope
@@ -627,8 +627,7 @@ class MessageLog:
         self._write(entry)
 
     def _write(self, entry: dict) -> None:
-        from datetime import datetime, timezone
-        entry["ts"] = datetime.now(timezone.utc).isoformat()
+        entry["ts"] = utc_stamp("iso")
         with self._lock:
             self._file.write(json.dumps(entry) + "\n")
             self._file.flush()

@@ -7,6 +7,7 @@ These tests build that file path explicitly from ``tmp_path``.
 
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -316,16 +317,17 @@ class TestDeregistered:
             workspace="/home/user/tempwow",
             metadata=str(meta),
             image="ghcr.io/x:1",
-            deregistered_at="2026-07-12T00:00:00+00:00",
         )
         entry = registry_store.lookup_deregistered(reg, "tempwow")
+        assert entry is not None
+        stamp = entry.pop("deregistered_at")
         assert entry == {
             "kind": "primary",
             "workspace": "/home/user/tempwow",
             "metadata": str(meta),
             "image": "ghcr.io/x:1",
-            "deregistered_at": "2026-07-12T00:00:00+00:00",
         }
+        entry["deregistered_at"] = stamp
         # Round-trips through the on-disk file (not just in-memory).
         assert registry_store.load_deregistered(reg)["tempwow"] == entry
 
@@ -356,13 +358,25 @@ class TestDeregistered:
             reg, "bare", kind="standalone", workspace=None, metadata=str(tmp_path),
         )
         entry = registry_store.lookup_deregistered(reg, "bare")
+        assert entry is not None
+        del entry["deregistered_at"]
         assert entry == {
             "kind": "standalone",
             "workspace": None,
             "metadata": str(tmp_path),
         }
-        assert "image" not in entry
-        assert "deregistered_at" not in entry
+
+    def test_park_stamps_the_time_itself(self, reg: Path, tmp_path: Path) -> None:
+        """Every parked blob carries a UTC ``deregistered_at`` no caller has to supply."""
+        before = datetime.now(timezone.utc)
+        registry_store.register_deregistered(
+            reg, "stamped", kind="primary", workspace="/w", metadata=str(tmp_path),
+        )
+        entry = registry_store.lookup_deregistered(reg, "stamped")
+        assert entry is not None
+        stamp = datetime.fromisoformat(entry["deregistered_at"])
+        assert stamp.utcoffset() == timedelta(0)
+        assert before <= stamp <= datetime.now(timezone.utc)
 
     def test_list_self_heals_stale_entries(self, reg: Path, tmp_path: Path) -> None:
         live_dir = tmp_path / "live"

@@ -30,7 +30,7 @@ import shutil
 import stat
 import subprocess
 from collections.abc import Mapping
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path
 
 from kanibako import kuid
@@ -38,6 +38,7 @@ from kanibako.errors import KanibakoError
 from kanibako.identifiers import find_identifier
 from kanibako.log import get_logger
 from kanibako.tree_copy import copy_tree_keeping_links
+from kanibako.utils import utc_stamp
 
 logger = get_logger("snapshots")
 
@@ -410,9 +411,7 @@ def create_snapshot(
     store = _box_store(vault_rw_path, box_name)
     store.mkdir(parents=True, exist_ok=True)
 
-    ts = _unique_snapshot_name(
-        store, datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    )
+    ts = _unique_snapshot_name(store, utc_stamp("compact"))
 
     if strategy == "reflink":
         return _snapshot_reflink(vault_rw_path, store, ts)

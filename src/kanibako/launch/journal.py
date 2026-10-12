@@ -26,12 +26,11 @@ authority: ``llm-docs/kanibako/launch/journal.py.md``.
 from __future__ import annotations
 
 import socket
-from datetime import datetime, timezone
 from pathlib import Path
 
 from kanibako._atomic import rmw_lock
 from kanibako.settings.config_io import dump_doc, load_doc
-from kanibako.utils import literal_path
+from kanibako.utils import literal_path, utc_stamp
 
 # The single top-level mapping in the journal document.
 _ENTRIES = "entries"
@@ -107,7 +106,7 @@ def _entry(op: str, name: str, mode: str, workset: str | None,
     # Stamped AFTER the optional fields on purpose: ``dump_doc`` pins
     # ``sort_keys=False``, so insertion order is the on-disk order.  ``host`` has no
     # reader yet — it is reserved for liveness detection.
-    entry["started_at"] = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    entry["started_at"] = utc_stamp("seconds")
     entry["host"] = socket.gethostname()
     return entry
 

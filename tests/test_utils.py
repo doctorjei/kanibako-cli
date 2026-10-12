@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+from datetime import datetime, timezone
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -25,6 +26,7 @@ from kanibako.utils import (
     renders_no_name,
     short_hash,
     unrenderable_box_name_refusal,
+    utc_stamp,
     workset_segment,
 )
 
@@ -126,6 +128,37 @@ class TestProjectHash:
         path = "/my/project"
         expected = hashlib.sha256(path.encode()).hexdigest()
         assert project_hash(path) == expected
+
+
+# ---------------------------------------------------------------------------
+# utc_stamp
+# ---------------------------------------------------------------------------
+
+class TestUtcStamp:
+    """Each kind is byte-identical to the inline expression its writer used before."""
+
+    _AT = datetime(2026, 10, 12, 4, 5, 6, 123456, tzinfo=timezone.utc)
+
+    @pytest.fixture(autouse=True)
+    def _frozen(self, monkeypatch):
+        at = self._AT
+
+        class _Frozen(datetime):
+            @classmethod
+            def now(cls, tz=None):
+                assert tz is timezone.utc
+                return at
+
+        monkeypatch.setattr("kanibako.utils.datetime", _Frozen)
+
+    def test_iso_is_isoformat(self):
+        assert utc_stamp("iso") == "2026-10-12T04:05:06.123456+00:00"
+
+    def test_compact_is_the_snapshot_name_shape(self):
+        assert utc_stamp("compact") == "20261012T040506Z"
+
+    def test_seconds_is_the_journal_shape(self):
+        assert utc_stamp("seconds") == "2026-10-12T04:05:06Z"
 
 
 # ---------------------------------------------------------------------------

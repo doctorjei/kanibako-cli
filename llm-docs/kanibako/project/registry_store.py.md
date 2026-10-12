@@ -124,7 +124,7 @@ against the live registry would miss it entirely; this section is the only remai
 Each entry carries `kind` (`primary` | `standalone`), `workspace` (the project/workspace path, used
 for readopt and create-conflict detection in later increments), `metadata` (the box dir a later
 `--purge` deletes — for a primary box `std.boxes/<name>`, for a standalone box its in-tree root),
-and optionally `image` and `deregistered_at`, the latter stamped at the CLI seam.
+optionally `image`, and `deregistered_at`, which `register_deregistered` stamps itself.
 `register_deregistered` overwrites any existing entry for the name, so a re-`rm` refreshes the
 retained blob. `unregister_deregistered` returns whether anything was removed, which is what makes
 purge idempotent.

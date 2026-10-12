@@ -5,7 +5,6 @@ from __future__ import annotations
 import argparse
 import sys
 import tarfile
-from datetime import datetime, timezone
 from pathlib import Path
 
 from kanibako.settings.config import user_config_file, load_config
@@ -13,6 +12,7 @@ from kanibako.errors import GitError
 from kanibako.git import check_uncommitted, check_unpushed, get_metadata, is_git_repo
 from kanibako.settings.messages import MSG_DONE, STATUS_NO_DATA
 from kanibako.settings.paths import load_std_paths, resolve_any_project
+from kanibako.utils import utc_stamp
 
 
 def add_parser(subparsers: argparse._SubParsersAction) -> None:
@@ -78,7 +78,7 @@ def _archive_one(std, config, proj, *, output_file, args) -> int:
     archive_file = output_file
     if not archive_file:
         label = proj.name or (proj.project_path or proj.metadata_path).name
-        timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+        timestamp = utc_stamp("compact")
         archive_file = f"kanibako-{label}-{timestamp}.txz"
 
     # Prepare metadata
@@ -88,7 +88,7 @@ def _archive_one(std, config, proj, *, output_file, args) -> int:
     lines = [
         f"Project path: {workspace or '<None>'}",
         f"Project hash: {proj.project_hash}",
-        f"Archive date: {datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')}",
+        f"Archive date: {utc_stamp('seconds')}",
         "",
     ]
 

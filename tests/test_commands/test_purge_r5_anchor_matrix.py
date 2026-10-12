@@ -34,8 +34,6 @@ from kanibako.settings.paths import (
 from kanibako.snapshots import box_snapshot_store
 from kanibako.utils import project_gitignore_to_strip, write_project_gitignore
 
-_TS = "2026-10-10T00:00:00+00:00"
-
 
 # --------------------------------------------------------------------------- #
 # Failure injectors.  Each returns a dict: {"fail": bool, "calls": int}.  Flip
@@ -520,7 +518,7 @@ class TestAParkedPrimaryIsProbedByPathNotByName:
         ws.mkdir()
         registry_store.register_deregistered(
             std.registry, name, kind="primary",
-            workspace=str(ws), metadata=str(md), deregistered_at=_TS,
+            workspace=str(ws), metadata=str(md),
         )
         return md, ws
 
@@ -545,7 +543,6 @@ class TestAParkedPrimaryIsProbedByPathNotByName:
         registry_store.register_deregistered(
             std.registry, proj.name, kind="standalone",
             workspace=str(proj.metadata_path), metadata=str(proj.metadata_path),
-            deregistered_at=_TS,
         )
         return proj, root, store
 

@@ -21,6 +21,7 @@ from pathlib import Path
 from kanibako._atomic import rmw_lock
 from kanibako.identifiers import find_identifier
 from kanibako.settings.config_io import dump_doc, load_doc
+from kanibako.utils import utc_stamp
 
 # Top-level sections of registry.yaml, in canonical order.
 # ⚑ This tuple is the RETIREMENT mechanism: a section absent from it is neither
@@ -268,8 +269,8 @@ def standalone_name_for_same_dir(registry: Path, root: Path) -> str | None:
 # ``rm`` without ``--purge`` parks a recovery blob here so a later ``--purge``
 # (or an I2 ``register`` readopt) can still find the box BY NAME once its active
 # membership is gone.  Entry: ``kind`` (primary|standalone), ``workspace``,
-# ``metadata`` (the box dir ``--purge`` deletes), optional ``image`` and
-# ``deregistered_at``.
+# ``metadata`` (the box dir ``--purge`` deletes), optional ``image``, and the
+# ``deregistered_at`` stamp this module sets.
 #
 # ⚑ FLAT map keyed by the BARE name, with ``kind`` inside the entry — do not
 # promote ``kind`` into the key.  The recovery verbs are keyed by the bare name,
@@ -291,7 +292,6 @@ def register_deregistered(
     workspace: str | None,
     metadata: str,
     image: str | None = None,
-    deregistered_at: str | None = None,
 ) -> None:
     """Park a deregistered box's recovery blob under *box_name*, overwriting any prior.
 
@@ -309,8 +309,7 @@ def register_deregistered(
         }
         if image is not None:
             entry["image"] = str(image)
-        if deregistered_at is not None:
-            entry["deregistered_at"] = str(deregistered_at)
+        entry["deregistered_at"] = utc_stamp("iso")
         entries[box_name] = entry
         save_section(registry, "deregistered", entries)
 

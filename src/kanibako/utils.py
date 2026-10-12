@@ -1,4 +1,4 @@
-"""Utility functions: cp_if_newer, confirm_prompt, deep_merge, short_hash, container
+"""Utility functions: cp_if_newer, confirm_prompt, deep_merge, utc_stamp, short_hash, container
 naming, the unless-gone filesystem probes, refuse_unreadable_file."""
 
 from __future__ import annotations
@@ -10,8 +10,9 @@ import shlex
 import shutil
 import stat
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
 from kanibako.errors import ConfigError, UserCanceled
 from kanibako.settings.bootstrap import IGNORE_FILE
@@ -67,6 +68,19 @@ def deep_merge(base: dict, override: dict) -> dict:
         else:
             result[key] = val
     return result
+
+
+#: ``compact`` and ``seconds`` stamps are read back by format (snapshot names, the journal's
+#: ``started_at``); ``iso`` is ``datetime.isoformat()``, with microseconds and ``+00:00``.
+_UTC_STAMP_FORMATS = {"compact": "%Y%m%dT%H%M%SZ", "seconds": "%Y-%m-%dT%H:%M:%SZ"}
+
+
+def utc_stamp(kind: Literal["iso", "compact", "seconds"]) -> str:
+    """The current UTC time as a *kind* stamp; each writer keeps the kind its reader parses."""
+    now = datetime.now(timezone.utc)
+    if kind == "iso":
+        return now.isoformat()
+    return now.strftime(_UTC_STAMP_FORMATS[kind])
 
 
 def short_hash(full_hash: str, length: int = 8) -> str:

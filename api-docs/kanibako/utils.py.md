@@ -10,6 +10,7 @@ _Signatures only: no comments, no docstrings, no bodies._
 WORKSET_SEGMENT_PRIMARY = 'primary'
 WORKSET_SEGMENT_STANDALONE = 'standalone'
 CONTAINER_NAME_PREFIX = 'kb-'
+_UTC_STAMP_FORMATS = {'compact': '%Y%m%dT%H%M%SZ', 'seconds': '%Y-%m-%dT%H:%M:%SZ'}
 _GITIGNORE_ENTRIES = ['box_data/']
 ```
 
@@ -18,6 +19,7 @@ _GITIGNORE_ENTRIES = ['box_data/']
 def cp_if_newer(src: str | os.PathLike, dst: str | os.PathLike) -> bool
 def confirm_prompt(message: str) -> None
 def deep_merge(base: dict, override: dict) -> dict
+def utc_stamp(kind: Literal['iso', 'compact', 'seconds']) -> str
 def short_hash(full_hash: str, length: int=8) -> str
 def renders_no_name(box: str) -> bool
 def rename_box_cure(mode: str, path: Path) -> str

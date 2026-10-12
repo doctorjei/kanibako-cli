@@ -12,8 +12,6 @@ import pytest
 from kanibako.settings.config import load_config
 from kanibako.settings.paths import load_std_paths, resolve_standalone_project
 
-_TS = "2026-10-10T00:00:00+00:00"
-
 
 def _reload(config_file):
     config = load_config(config_file)
@@ -44,7 +42,7 @@ class TestRunningBoxGuardOnEveryRoute:
         (store / "keep.txt").write_text("must survive")
         registry_store.register_deregistered(
             std.registry, "d1live", kind="standalone",
-            workspace=str(root), metadata=str(root), deregistered_at=_TS,
+            workspace=str(root), metadata=str(root),
         )
         (store / ".kanibako.lock").write_text("")
         asked = []
@@ -72,7 +70,7 @@ class TestRunningBoxGuardOnEveryRoute:
         store.mkdir(parents=True)
         registry_store.register_deregistered(
             std.registry, "d1force", kind="standalone",
-            workspace=str(root), metadata=str(root), deregistered_at=_TS,
+            workspace=str(root), metadata=str(root),
         )
         (store / ".kanibako.lock").write_text("")
         capsys.readouterr()
@@ -114,7 +112,7 @@ class TestAmbiguousPathRefusal:
             (home / "data.txt").write_text(nm)
             registry_store.register_deregistered(
                 std.registry, nm, kind="primary",
-                workspace=str(target), metadata=str(home), deregistered_at=_TS,
+                workspace=str(target), metadata=str(home),
             )
         capsys.readouterr()
 
@@ -149,7 +147,7 @@ class TestAmbiguousPathRefusalAtThePurgeDoor:
             (home / "keep.txt").write_text(nm)
             registry_store.register_deregistered(
                 std.registry, nm, kind=kind, workspace=str(target),
-                metadata=str(home), deregistered_at=_TS,
+                metadata=str(home),
             )
 
     def test_box_purge_refuses_a_path_two_parked_entries_name_and_deletes_nothing(
@@ -213,7 +211,7 @@ class TestLiveBoxOwnsThePath:
         (parked_home / "data.txt").write_text("parked-primary")
         registry_store.register_deregistered(
             std.registry, "parkedprim", kind="primary",
-            workspace=str(root), metadata=str(parked_home), deregistered_at=_TS,
+            workspace=str(root), metadata=str(parked_home),
         )
         capsys.readouterr()
 

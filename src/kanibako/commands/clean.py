@@ -85,8 +85,6 @@ def _unregister_purged(std, proj, *, park: bool = False) -> None:
     stays registered, so its path is the retry's address.  Running the primary branch
     for it unregistered a same-named PRIMARY box and parked the member as a primary.
     """
-    from datetime import datetime, timezone
-
     from kanibako.project import registry_store
     from kanibako.settings.paths import (
         primary_box_name_for_workspace,
@@ -96,7 +94,6 @@ def _unregister_purged(std, proj, *, park: bool = False) -> None:
     def _park(name: str, kind: str, workspace: str, metadata: str) -> None:
         registry_store.register_deregistered(
             std.registry, name, kind=kind, workspace=workspace, metadata=metadata,
-            deregistered_at=datetime.now(tz=timezone.utc).isoformat(),
         )
 
     def _drop_parked(name: str) -> None:
