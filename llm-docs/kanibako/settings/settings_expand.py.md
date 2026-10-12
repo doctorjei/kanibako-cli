@@ -213,7 +213,7 @@ Two halves enforce it:
   key, resolved), which is what makes *"why did `system.agent` resolve to zippity"* answerable from
   the snapshot. Expanding it would also resolve every pref value TWICE, once here and once at its
   target. The carry-through is guarded on the ROOT path (`not path`) so a category legitimately NAMED
-  `pref` deeper in the tree is unaffected. The copy goes through `settings_merge._deep_copy_store`.
+  `pref` deeper in the tree is unaffected. The copy goes through `keystore.clone_store`.
 * **`_lookup_raw` REFUSES a `@pref.…` reference** rather than resolving it. It is RAISED rather than
   answered `_ABSENT` because absent would silently DROP the referring key (the whole-value
   propagation, spec §0), which is exactly the class of failure this phase exists to eliminate. The message

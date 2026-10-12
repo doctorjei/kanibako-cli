@@ -90,8 +90,8 @@ SYSTEM_PATH_DEFAULTS: dict[str, str]      # Layer 2 — spec §1/§2g
 The system-scope SETTINGS keys that are PATHS, and their defaults.
 
 These are SETTINGS keys (system tier), **not** bootstrap config. They resolve the normal way at
-launch, and `paths.resolve_system_paths` ALSO materializes them into `StandardPaths`, the host-side
-path surface.
+launch, and `paths.load_std_paths` ALSO materializes them into `StandardPaths`, the host-side path
+surface (see `paths.py.md`).
 
 ⚑ **A default here refs a Layer-1 config key, an XDG base, OR ANOTHER KEY IN THIS SAME TABLE.** The
 third case is the channels block: four channel type-roots ref `{system.channelroot}`, and

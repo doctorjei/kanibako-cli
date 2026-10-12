@@ -159,14 +159,17 @@ The two default tables and the XDG table live in `settings/bootstrap.py`, and
 
 `resolve_config_paths` resolves the bootstrap CONFIG keys FLAT, over one `LevelView` whose defaults
 are the table — **NOT** through the keyspace pipeline. Chicken-and-egg: the pipeline needs these
-resolved to find its own input files. A `config.*` ref resolves against this set; `$XDG_*` against
-`host_xdg_map`.
+resolved to find its own input files. A `config.*` ref resolves against this set; `$XDG_*`
+against `host_xdg_map(data_home)` unless the caller passes *xdg_vars*. `layer1_foundation` (behind
+`resolve_data_path`) passes `spec_default_xdg_map` instead, so it creates nothing and an expression
+over `$XDG_RUNTIME_DIR` does not resolve there.
 
 ### Layer 2 — system-scope SETTINGS keys that are PATHS (`SYSTEM_PATH_DEFAULTS`, spec §1/§2g)
 
 SETTINGS keys (system tier), not bootstrap config. They resolve the normal way at launch
-(assemble→merge→expand), and `resolve_system_paths` ALSO materializes them into `StandardPaths`, the
-host-side path surface, resolving their refs against the Layer-1 foundation. There is no
+(assemble→merge→expand), and `load_std_paths` ALSO materializes them into `StandardPaths`, the
+host-side path surface: `load_system_tier` reads their set values and `_resolve_system_tier` (also
+behind `resolve_system_paths`) resolves their refs against the Layer-1 foundation. There is no
 `system.boxes` key: `_resolve_system_tier` resolves `std.boxes`, the primary logs dir, and the
 primary vault dirs from the PRIMARY workset's `workset.*` keys.
 

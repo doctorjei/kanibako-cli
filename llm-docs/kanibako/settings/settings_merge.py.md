@@ -117,8 +117,8 @@ also a subtree. Three reasons, and each one alone is sufficient:
 1. Recursing a LONE subtree winner is what carries the §3 present-`None` type-split into its leaves.
    A present-`None` category or `masks` leaf under a subtree that ONLY ONE level sets must still be
    OMITted.
-2. The recursion yields a fresh, non-aliasing node (S15), so it subsumes the old single-subtree
-   deep-copy branch.
+2. The recursion yields a fresh, non-aliasing node (S15), so the module needs no separate deep
+   copy.
 3. A lower non-subtree setter at this name is shadowed by the higher subtree — it is filtered out of
    the `subtrees` list — which leaves that behavior unchanged.
 
@@ -132,13 +132,6 @@ partial (S15).
 MOST-SPECIFIC order. It is deterministic, which is part of purity: a name SET at several levels
 appears once, at its most-specific occurrence, and iteration order within a level follows insertion
 (`dict` order), so the same input always yields the same snapshot key order.
-
-## `_deep_copy_store`
-
-Deep-copies a `KeyStore` subtree into a fresh, non-aliasing tree (S15). It recurses into nested
-KeyStores and copies `list` leaves; immutable leaves (`Bind` tuples, scalars, `None`) are shared
-safely. Unbound `dict` iteration throughout (S3) so a key named `keys` / `items` cannot shadow the
-protocol.
 
 ## `_Omit` / `_OMIT`
 
