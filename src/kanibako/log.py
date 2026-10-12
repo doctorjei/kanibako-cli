@@ -47,12 +47,25 @@ def get_logger(name: str) -> logging.Logger:
     return logging.getLogger(f"kanibako.{name}")
 
 
-def rotate_if_over(path: Path, max_bytes: int) -> bool:
+def rotate_if_over(path: Path, max_bytes: int, *, root: Path | None = None) -> bool:
     """Move *path* to ``<path>.1`` and leave an empty *path* if it holds *max_bytes* or more.
 
     Returns whether it rotated.  A missing *path* is not rotated.  A writer holding *path*
     open must reopen it after a rotation: its descriptor follows the file to ``.1``.
+    *root* marks *path* as box-writable, under the box tree *root*: every step then goes
+    through :mod:`kanibako.boxfs`, so a symlink at *path* or a parent is not rotated.
     """
+    if root is not None:
+        from kanibako import boxfs
+
+        try:
+            if boxfs.stat(path, root).st_size < max_bytes:
+                return False
+        except OSError:
+            return False
+        boxfs.rename(path, path.with_suffix(path.suffix + ".1"), root)
+        boxfs.touch(path, root)
+        return True
     try:
         if path.stat().st_size < max_bytes:
             return False

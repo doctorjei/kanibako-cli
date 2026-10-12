@@ -328,11 +328,11 @@ def test_seed_session_start_writes_and_is_idempotent(tmp_path):
     """First seed writes the FULL managed set (directive + pidfile write/remove);
     a re-run is a no-op (claude settings.json)."""
     path = tmp_path / "settings.json"
-    assert seed_session_start_hook(path) is True
+    assert seed_session_start_hook(path, root=tmp_path) is True
     data = json.loads(path.read_text())
     assert data == {"hooks": _full_managed_hooks()}
     # Idempotent: second call writes nothing.
-    assert seed_session_start_hook(path) is False
+    assert seed_session_start_hook(path, root=tmp_path) is False
 
 
 def test_seed_session_start_merges_into_existing_user_hooks(tmp_path):
@@ -341,7 +341,7 @@ def test_seed_session_start_merges_into_existing_user_hooks(tmp_path):
     path.write_text(json.dumps({
         "hooks": {"PreToolUse": [{"matcher": "*", "hooks": []}]},
     }))
-    assert seed_session_start_hook(path) is True
+    assert seed_session_start_hook(path, root=tmp_path) is True
     data = json.loads(path.read_text())
     assert data["hooks"]["PreToolUse"] == [{"matcher": "*", "hooks": []}]
     assert data["hooks"]["SessionStart"] == [
@@ -354,7 +354,7 @@ def test_seed_session_start_tolerates_corrupt(tmp_path):
     """A corrupt file degrades to {} then merges (never raises)."""
     path = tmp_path / "settings.json"
     path.write_text("{not json")
-    assert seed_session_start_hook(path) is True
+    assert seed_session_start_hook(path, root=tmp_path) is True
     data = json.loads(path.read_text())
     assert data == {"hooks": _full_managed_hooks()}
 
@@ -600,13 +600,13 @@ def test_seed_session_start_preserves_user_sessionend_and_is_idempotent(tmp_path
     path = tmp_path / "settings.json"
     user_se = {"matcher": "logout", "hooks": [{"type": "command", "command": "bye"}]}
     path.write_text(json.dumps({"hooks": {"SessionEnd": [user_se]}}))
-    assert seed_session_start_hook(path) is True
+    assert seed_session_start_hook(path, root=tmp_path) is True
     data = json.loads(path.read_text())
     assert data["hooks"]["SessionStart"] == [
         _managed_group(), _marker_write_group(),
     ]
     assert data["hooks"]["SessionEnd"] == [user_se, _marker_remove_group()]
-    assert seed_session_start_hook(path) is False
+    assert seed_session_start_hook(path, root=tmp_path) is False
 
 
 # --- retired predecessors: a re-seed REPLACES a job's own earlier command -----
@@ -744,13 +744,13 @@ def test_reseed_replaces_stale_predecessors_and_then_writes_nothing(tmp_path):
              "hooks": [{"type": "command", "command": stale_remove}]},
         ],
     }}))
-    assert seed_session_start_hook(path) is True
+    assert seed_session_start_hook(path, root=tmp_path) is True
     data = json.loads(path.read_text())
     ss, se = data["hooks"]["SessionStart"], data["hooks"]["SessionEnd"]
     assert ss == [user, edited, _managed_group(), _marker_write_group()]
     assert se == [_marker_remove_group()]
     first = path.read_bytes()
-    assert seed_session_start_hook(path) is False
+    assert seed_session_start_hook(path, root=tmp_path) is False
     assert path.read_bytes() == first, "a re-seed rewrote a byte"
 
 
@@ -927,18 +927,18 @@ def test_codex_merge_counts_preceding_user_sessionstart_group():
 def test_seed_codex_config_writes_and_is_idempotent(tmp_path):
     path = tmp_path / "config.toml"
     assert seed_codex_config(
-        path, box_config_path=_BOX_CFG, codex_cwd=_CODEX_CWD,
+        path, root=tmp_path, box_config_path=_BOX_CFG, codex_cwd=_CODEX_CWD,
     ) is True
     tomllib.loads(path.read_text())  # valid
     assert seed_codex_config(
-        path, box_config_path=_BOX_CFG, codex_cwd=_CODEX_CWD,
+        path, root=tmp_path, box_config_path=_BOX_CFG, codex_cwd=_CODEX_CWD,
     ) is False
 
 
 def test_seed_codex_config_absent_file_is_created(tmp_path):
     path = tmp_path / "nested" / "config.toml"
     assert seed_codex_config(
-        path, box_config_path=_BOX_CFG, codex_cwd=_CODEX_CWD,
+        path, root=tmp_path, box_config_path=_BOX_CFG, codex_cwd=_CODEX_CWD,
     ) is True
     assert path.exists()
 
@@ -1297,11 +1297,11 @@ def test_seed_codex_config_bare_wipes_prior_provider(tmp_path):
     path = tmp_path / "config.toml"
     mp = CodexModelProvider(**_NAVIGATOR)
     assert seed_codex_config(
-        path, box_config_path=_BOX_CFG, codex_cwd=_CODEX_CWD, model_provider=mp,
+        path, root=tmp_path, box_config_path=_BOX_CFG, codex_cwd=_CODEX_CWD, model_provider=mp,
     ) is True
     # bare re-seed reconciles the file back to stock
     assert seed_codex_config(
-        path, box_config_path=_BOX_CFG, codex_cwd=_CODEX_CWD, model_provider=None,
+        path, root=tmp_path, box_config_path=_BOX_CFG, codex_cwd=_CODEX_CWD, model_provider=None,
     ) is True
     text = path.read_text()
     assert "# >>> kanibako-managed (model provider)" not in text
@@ -1310,7 +1310,7 @@ def test_seed_codex_config_bare_wipes_prior_provider(tmp_path):
     assert "model_provider" not in data
     # already reconciled → second bare seed writes nothing
     assert seed_codex_config(
-        path, box_config_path=_BOX_CFG, codex_cwd=_CODEX_CWD, model_provider=None,
+        path, root=tmp_path, box_config_path=_BOX_CFG, codex_cwd=_CODEX_CWD, model_provider=None,
     ) is False
 
 
@@ -1320,10 +1320,10 @@ def test_seed_codex_config_no_provider_byte_identical(tmp_path):
     p1 = tmp_path / "a.toml"
     p2 = tmp_path / "b.toml"
     seed_codex_config(
-        p1, box_config_path=_BOX_CFG, codex_cwd=_CODEX_CWD,
+        p1, root=tmp_path, box_config_path=_BOX_CFG, codex_cwd=_CODEX_CWD,
     )
     seed_codex_config(
-        p2, box_config_path=_BOX_CFG, codex_cwd=_CODEX_CWD,
+        p2, root=tmp_path, box_config_path=_BOX_CFG, codex_cwd=_CODEX_CWD,
         model_provider=None,
     )
     assert p1.read_text() == p2.read_text()
@@ -1334,7 +1334,7 @@ def test_seed_codex_config_with_provider_writes_region(tmp_path):
     path = tmp_path / "config.toml"
     mp = CodexModelProvider(**_NAVIGATOR)
     assert seed_codex_config(
-        path, box_config_path=_BOX_CFG, codex_cwd=_CODEX_CWD,
+        path, root=tmp_path, box_config_path=_BOX_CFG, codex_cwd=_CODEX_CWD,
         model_provider=mp,
     ) is True
     data = tomllib.loads(path.read_text())
@@ -1405,7 +1405,7 @@ def test_seed_codex_sandbox_mode_key_lands_outside_managed_region(tmp_path):
     and be swallowed by the next regeneration.  The seeder extracts the region,
     edits the clean body, and carries the region through VERBATIM."""
     path = tmp_path / "config.toml"
-    seed_codex_config(path, box_config_path=_BOX_CFG, codex_cwd=_CODEX_CWD)
+    seed_codex_config(path, root=tmp_path, box_config_path=_BOX_CFG, codex_cwd=_CODEX_CWD)
     region_only = path.read_text()
     assert region_only.lstrip().startswith("# >>> kanibako-managed")
     assert seed_codex_sandbox_mode(path, root=tmp_path) is True
@@ -1413,7 +1413,7 @@ def test_seed_codex_sandbox_mode_key_lands_outside_managed_region(tmp_path):
     assert out.index("sandbox_mode") < out.index("# >>> kanibako-managed")
     begin = out.index("# >>> kanibako-managed")
     assert out[begin:] == region_only.lstrip("\n").rstrip("\n") + "\n"
-    seed_codex_config(path, box_config_path=_BOX_CFG, codex_cwd=_CODEX_CWD)
+    seed_codex_config(path, root=tmp_path, box_config_path=_BOX_CFG, codex_cwd=_CODEX_CWD)
     assert tomllib.loads(path.read_text())["sandbox_mode"] == "danger-full-access"
 
 
@@ -1424,7 +1424,7 @@ def test_seed_codex_sandbox_mode_key_never_lands_inside_provider_region(tmp_path
     relaunch, D1) does not take it along."""
     path = tmp_path / "config.toml"
     seed_codex_config(
-        path, box_config_path=_BOX_CFG, codex_cwd=_CODEX_CWD,
+        path, root=tmp_path, box_config_path=_BOX_CFG, codex_cwd=_CODEX_CWD,
         model_provider=CodexModelProvider(**_NAVIGATOR),
     )
     assert seed_codex_sandbox_mode(path, root=tmp_path) is True
@@ -1433,11 +1433,11 @@ def test_seed_codex_sandbox_mode_key_never_lands_inside_provider_region(tmp_path
         "# >>> kanibako-managed (model provider)"
     )
     seed_codex_config(
-        path, box_config_path=_BOX_CFG, codex_cwd=_CODEX_CWD,
+        path, root=tmp_path, box_config_path=_BOX_CFG, codex_cwd=_CODEX_CWD,
         model_provider=CodexModelProvider(**_NAVIGATOR),
     )
     assert tomllib.loads(path.read_text())["sandbox_mode"] == "danger-full-access"
-    seed_codex_config(path, box_config_path=_BOX_CFG, codex_cwd=_CODEX_CWD)
+    seed_codex_config(path, root=tmp_path, box_config_path=_BOX_CFG, codex_cwd=_CODEX_CWD)
     wiped = tomllib.loads(path.read_text())
     assert "model_providers" not in wiped
     assert wiped["sandbox_mode"] == "danger-full-access"
@@ -1448,7 +1448,7 @@ def test_seed_codex_sandbox_mode_carries_provider_region_and_root_keys(tmp_path)
     verbatim, provider root keys included."""
     path = tmp_path / "config.toml"
     seed_codex_config(
-        path, box_config_path=_BOX_CFG, codex_cwd=_CODEX_CWD,
+        path, root=tmp_path, box_config_path=_BOX_CFG, codex_cwd=_CODEX_CWD,
         model_provider=CodexModelProvider(**_NAVIGATOR),
     )
     assert seed_codex_sandbox_mode(path, root=tmp_path) is True
@@ -1474,11 +1474,11 @@ def test_codex_seam_composition_relaunch_is_no_op(tmp_path):
     """Second seam pass over its own output: neither call writes."""
     path = tmp_path / "config.toml"
     seed_codex_sandbox_mode(path, root=tmp_path)
-    seed_codex_config(path, box_config_path=_BOX_CFG, codex_cwd=_CODEX_CWD)
+    seed_codex_config(path, root=tmp_path, box_config_path=_BOX_CFG, codex_cwd=_CODEX_CWD)
     before = path.read_bytes()
     assert seed_codex_sandbox_mode(path, root=tmp_path) is False
     assert seed_codex_config(
-        path, box_config_path=_BOX_CFG, codex_cwd=_CODEX_CWD,
+        path, root=tmp_path, box_config_path=_BOX_CFG, codex_cwd=_CODEX_CWD,
     ) is False
     assert path.read_bytes() == before
 
@@ -1537,7 +1537,7 @@ def test_codex_marker_group_composes_with_sandbox_and_provider(tmp_path):
     path = tmp_path / "config.toml"
     seed_codex_sandbox_mode(path, root=tmp_path)
     seed_codex_config(
-        path, box_config_path=_BOX_CFG, codex_cwd=_CODEX_CWD,
+        path, root=tmp_path, box_config_path=_BOX_CFG, codex_cwd=_CODEX_CWD,
         model_provider=CodexModelProvider(**_NAVIGATOR),
     )
     data = tomllib.loads(path.read_text())

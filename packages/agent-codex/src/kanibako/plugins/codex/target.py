@@ -306,6 +306,7 @@ class CodexTarget(Target):
             box_config_path=f"{GUEST_HOME}/.codex/{CODEX_CONFIG_FILE}",
             codex_cwd=f"{GUEST_HOME}/workspace",
             model_provider=model_provider,
+            root=config_root,
         )
 
     def reattach_config_notice(self) -> str | None:

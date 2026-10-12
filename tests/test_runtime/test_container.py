@@ -325,7 +325,7 @@ class TestUnshareChownChmod:
             m.return_value = MagicMock(returncode=0)
             assert rt.unshare_chown(self._PATHS, 1, 1) is True
         assert m.call_args[0][0] == [
-            "/usr/bin/podman", "unshare", "chown", "1:1",
+            "/usr/bin/podman", "unshare", "chown", "-h", "1:1",
             "/boxes/p/home/canon", "/boxes/p/home/canon/charter",
         ]
 

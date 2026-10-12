@@ -287,7 +287,7 @@ class ClaudeTarget(Target):
         from kanibako.vscode.vscode_config import seed_session_start_hook
 
         return seed_session_start_hook(
-            config_root / ".claude" / "settings.json",
+            config_root / ".claude" / "settings.json", root=config_root,
         )
 
     def read_persona_settings(self, config_dir: Path) -> PersonaReadOutcome:

@@ -14,5 +14,5 @@ ROTATE_MAX_BYTES = 1048576
 ```
 def setup_logging(verbose: bool=False, *, timestamps: bool=False) -> None
 def get_logger(name: str) -> logging.Logger
-def rotate_if_over(path: Path, max_bytes: int) -> bool
+def rotate_if_over(path: Path, max_bytes: int, *, root: Path | None=None) -> bool
 ```

@@ -337,7 +337,7 @@ class TestNullSystemChannelSeedsNothing:
         rotated = []
         monkeypatch.setattr(
             "kanibako.commands.start.rotate_if_over",
-            lambda path, max_bytes: rotated.append(path),
+            lambda path, max_bytes, **_: rotated.append(path),
         )
         _seed_channel_files(nulled, named_proj)
         wch = _ch.workset_channel_paths(named_proj, nulled)
@@ -352,7 +352,7 @@ class TestNullSystemChannelSeedsNothing:
         rotated = []
         monkeypatch.setattr(
             "kanibako.commands.start.rotate_if_over",
-            lambda path, max_bytes: rotated.append(path),
+            lambda path, max_bytes, **_: rotated.append(path),
         )
         _seed_channel_files(std, named_proj)
         assert std.channels_broadcast in rotated

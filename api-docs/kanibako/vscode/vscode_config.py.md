@@ -37,16 +37,16 @@ def seed_attached_container_config(path: Path, *, workspace_folder: str, extensi
 def merge_session_start_hook(settings: dict) -> dict
 def merge_marker_write_hook(settings: dict) -> dict
 def merge_marker_remove_hook(settings: dict) -> dict
-def seed_session_start_hook(settings_path: Path) -> bool
+def seed_session_start_hook(settings_path: Path, *, root: Path) -> bool
 def codex_trusted_hash(event_key: str, matcher: str | None, command: str, timeout_sec: int=600) -> str
 def merge_codex_config(text: str, *, box_config_path: str, codex_cwd: str, model_provider: CodexModelProvider | None=None) -> str
 def merge_codex_model_provider(text: str, *, provider_id: str, name: str, base_url: str, wire_api: str, env_key: str, model: str) -> str
-def seed_codex_config(config_path: Path, *, box_config_path: str, codex_cwd: str, model_provider: CodexModelProvider | None=None) -> bool
+def seed_codex_config(config_path: Path, *, box_config_path: str, codex_cwd: str, model_provider: CodexModelProvider | None=None, root: Path) -> bool
 def seed_codex_sandbox_mode(config_path: Path, *, root: Path) -> bool
 def _strip_jsonc(text: str) -> str
 def _encode_image_ref(ref: str) -> str
-def _read_existing_config(path: Path) -> dict
-def _write_if_changed(path: Path, existing: dict, merged: dict) -> bool
+def _read_existing_config(path: Path, root: Path | None=None) -> dict
+def _write_if_changed(path: Path, existing: dict, merged: dict, *, root: Path) -> bool
 def _is_retired_command(entry: object, retired: 'frozenset[str]') -> bool
 def _drop_retired_hooks(groups: list, retired: 'frozenset[str]') -> list
 def _merge_managed_command_hook(settings: dict, *, event: str, matcher: str | None, command: str, retired: 'frozenset[str]') -> dict

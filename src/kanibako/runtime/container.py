@@ -221,11 +221,14 @@ class ContainerRuntime:
         """``chown uid:gid`` *paths* from within the rootless user namespace."""
         # ⚑ NO ``-R``: callers pass an EXPLICIT list — a recursive sweep of ``~/canon``
         # would take the seeded, agent-owned ``notebook/``/``workbook/`` books with it.
-        return self._unshare_apply(["chown", f"{uid}:{gid}"], paths)
+        # ⚑ ``-h``: a symlink among *paths* is chowned itself, never its target.
+        return self._unshare_apply(["chown", "-h", f"{uid}:{gid}"], paths)
 
     def unshare_chmod(self, paths: list[Path], mode: str) -> bool:
         """``chmod mode`` *paths* from within the rootless user namespace."""
         # ⚑ Same no-``-R`` rule as :meth:`unshare_chown`.
+        # ⚑ NO ``-h``: GNU chmod has it only from coreutils 9.5, so on an older host it
+        # would fail every call.  Callers on a box path refuse links first (boxfs).
         return self._unshare_apply(["chmod", mode], paths)
 
     def unshare_rename(self, src: Path, dst: Path) -> bool:

@@ -964,19 +964,32 @@ def materialize_canon_skeleton(
     ``canon/{notebook,workbook}`` copies with EACCES.
     ⚑ IDEMPOTENT, BUT NOT EXTENSIBLE ONCE PROTECTED ⇒ growing the skeleton is a MIGRATION.
     ⚑ Ownership, not mode alone: a 555 dir the agent OWNS is no protection.
+    ⚑ The box home is box-writable and this runs with the box LIVE, so every entry goes
+    through :mod:`kanibako.boxfs`: a symlink at an entry or a parent is skipped with a
+    warning and never reaches the chown/chmod (which run ``-h`` where they can).
     """
+    from kanibako import boxfs
+
     log = logger or _skeleton_logger()
     dirs: list[Path] = []
     files: list[Path] = []
+    # Parents come first, so a refused link is met before the entries under it, which
+    # are then skipped without a second warning.
+    refused: list[Path] = []
     for rel, is_dir in canon_skeleton_rels():
         p = shell_path / rel
+        if any(p.is_relative_to(link) for link in refused):
+            continue
+        if not boxfs.no_symlink_or_warn(p, shell_path):
+            refused.append(p)
+            continue
         try:
             if is_dir:
-                p.mkdir(parents=True, exist_ok=True)
+                boxfs.mkdir(p, shell_path, parents=True, exist_ok=True)
             else:
-                p.parent.mkdir(parents=True, exist_ok=True)
+                boxfs.mkdir(p.parent, shell_path, parents=True, exist_ok=True)
                 if not p.exists():
-                    p.touch()
+                    boxfs.touch(p, shell_path)
         except OSError as exc:
             log.debug("canon skeleton: could not create %s (%s)", p, exc)
             continue
@@ -995,7 +1008,10 @@ def materialize_canon_skeleton_if_present(
     ⚑ NOT :func:`materialize_canon_skeleton`: a helper home is not a box, and gaining canon
     mountpoints from a launch would be a silent layout change made by the wrong seam.
     """
-    if not (shell_path / CANON_GUEST_ROOT).is_dir():
+    from kanibako import boxfs
+
+    canon = shell_path / CANON_GUEST_ROOT
+    if not boxfs.no_symlink_or_warn(canon, shell_path) or not canon.is_dir():
         return
     materialize_canon_skeleton(shell_path, logger=logger, quiet=True)
 

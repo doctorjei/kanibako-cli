@@ -1649,30 +1649,42 @@ def box_logs_location(std: StandardPaths, proj: ProjectPaths) -> tuple[Path | No
 
 
 def _bootstrap_shell(shell_path: Path) -> None:
-    """Write minimal shell skeleton files into a new shell directory."""
-    bashrc = shell_path / BASHRC_FILE
-    if not bashrc.exists():
-        bashrc.write_text(BASHRC_CONTENTS)
-    profile = shell_path / PROFILE_FILE
-    if not profile.exists():
-        profile.write_text(PROFILE_CONTENTS)
+    """Write minimal shell skeleton files into a new shell directory.
+
+    The shell dir is the box home, so every write goes through :mod:`kanibako.boxfs`
+    with it as the root: a symlink there is skipped with a warning, never followed.
+    """
+    from kanibako import boxfs
+
+    for name, contents in ((BASHRC_FILE, BASHRC_CONTENTS), (PROFILE_FILE, PROFILE_CONTENTS)):
+        path = shell_path / name
+        if boxfs.no_symlink_or_warn(path, shell_path) and not path.exists():
+            boxfs.write_text(path, shell_path, contents, mode=0o644)
 
     # Create shell.d drop-in directory.
     shell_d = shell_path / SHELL_D_FILE
-    shell_d.mkdir(exist_ok=True)
+    if boxfs.no_symlink_or_warn(shell_d, shell_path):
+        boxfs.mkdir(shell_d, shell_path, exist_ok=True)
 
 
 def _upgrade_shell(shell_path: Path) -> None:
-    """Keep the ``.shell.d`` sourcing seam current on an existing shell dir (idempotent)."""
+    """Keep the ``.shell.d`` sourcing seam current on an existing shell dir (idempotent).
+
+    Runs at every start on the box home, so it goes through :mod:`kanibako.boxfs` as
+    :func:`_bootstrap_shell` does.
+    """
+    from kanibako import boxfs
+
     if not shell_path.is_dir():
         return
     shell_d = shell_path / SHELL_D_FILE
-    shell_d.mkdir(exist_ok=True)
+    if boxfs.no_symlink_or_warn(shell_d, shell_path):
+        boxfs.mkdir(shell_d, shell_path, exist_ok=True)
 
     bashrc = shell_path / BASHRC_FILE
-    if not bashrc.is_file():
+    if not boxfs.no_symlink_or_warn(bashrc, shell_path) or not bashrc.is_file():
         return
-    content = bashrc.read_text()
+    content = boxfs.read_text(bashrc, shell_path)
     # ⚑ The trailing slash is load-bearing: the seam is detected by the SOURCE LINE
     # (``~/.shell.d/*.sh``), not by a bare mention of the directory name.
     if SHELL_D_FILE + "/" in content:
@@ -1681,7 +1693,7 @@ def _upgrade_shell(shell_path: Path) -> None:
     if content and not content.endswith("\n"):
         content += "\n"
     content += SHELL_D_CONTENTS
-    bashrc.write_text(content)
+    boxfs.write_text(bashrc, shell_path, content)
 
 
 def _init_common(std: StandardPaths, metadata_path: Path, shell_path: Path,

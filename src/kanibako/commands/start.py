@@ -9105,6 +9105,7 @@ def _apply_shell_copy(
     logger,
     if_absent: bool,
     skip_if: "Callable[[Path, Path], bool] | None" = None,
+    dest_root: Path | None = None,
 ) -> None:
     """Copy one seed/synced entry's *src* into the box shell-dir *dest*.
 
@@ -9121,6 +9122,11 @@ def _apply_shell_copy(
       (create-if-absent) when *if_absent* else ``copytree(dirs_exist_ok=True)``
       (overwrite).
     * File source -> ``copy2`` (skipped for an existing dest when *if_absent*).
+
+    *dest_root* marks *dest* as box-writable, under the box tree *dest_root* (the
+    launch-time sync into a box that has run): the overwrite then goes through
+    :func:`_copy_into_box`, which never follows a symlink in the box.  ``None`` keeps
+    the plain copy, for the create-time seed into a home no box has run in.
     """
     from kanibako.launch.templates import copy_resource_tree_if_absent
 
@@ -9129,6 +9135,18 @@ def _apply_shell_copy(
             "%s %s: host_src %r does not exist; skipping",
             label, name, host_src,
         )
+        return
+    if dest_root is not None and not if_absent:
+        from kanibako import boxfs
+
+        # The root is the covering bind's host-side source, which a launch may not
+        # have created yet; nothing below it is made outside the seam.
+        dest_root.mkdir(parents=True, exist_ok=True)
+        if not boxfs.no_symlink_or_warn(dest, dest_root):
+            return
+        if skip_if is not None and skip_if(src, dest):
+            return
+        _copy_into_box(src, dest, dest_root)
         return
     if skip_if is not None and skip_if(src, dest):
         return
@@ -9141,6 +9159,33 @@ def _apply_shell_copy(
     elif not if_absent or not dest.exists():
         dest.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(str(src), str(dest))
+
+
+def _copy_into_box(src: Path, dest: Path, root: Path) -> None:
+    """Overwrite-copy the host *src* (file or directory) to *dest* under the box tree *root*.
+
+    ``copytree(dirs_exist_ok=True)`` / ``copy2`` with every box-side step through
+    :mod:`kanibako.boxfs`: a symlink at a destination entry or a parent is skipped
+    with a warning naming it, never followed.  The HOST side is read as ``copytree``
+    reads it, following its links (a stow-managed source stays content, not links).
+    """
+    from kanibako import boxfs
+
+    if not src.is_dir():
+        boxfs.copy_file(src, dest, src_root=None, dst_root=root)
+        return
+    for dirpath, dirnames, filenames in os.walk(src, followlinks=True):
+        here = dest / Path(dirpath).relative_to(src)
+        if here != root:
+            if not boxfs.no_symlink_or_warn(here, root):
+                dirnames.clear()
+                continue
+            boxfs.mkdir(here, root, parents=True, exist_ok=True)
+        for fname in filenames:
+            if boxfs.no_symlink_or_warn(here / fname, root):
+                boxfs.copy_file(
+                    Path(dirpath) / fname, here / fname, src_root=None, dst_root=root,
+                )
 
 
 def _host_copy_dest(
@@ -9644,13 +9689,18 @@ def _apply_synced_copies(
         dest = _synced_host_dest(sync.dest, bindings, logger=logger)
         if dest is None:
             continue
+        # The covering bind's SOURCE is the box-writable root the copy lands under.  A
+        # dest AT the cover's own point is that source, which the box cannot replace,
+        # so its host-side parent is the root.
+        cover_src = Path(bindings[_synced_cover(sync.dest, bindings)].src)
+        dest_root = dest.parent if dest == cover_src else cover_src
         # if_absent=False -> overwrite, ALWAYS: a sync owns its destination by
         # writing it, and *skip_if* is the caller's gate, not this loop's.
         # ⚑ The dest IS the row's identity (R-10) — a ``CollapsedCopy`` has no name.
         _apply_shell_copy(
             Path(sync.src), dest,
             label="synced", name=sync.dest, host_src=sync.src,
-            logger=logger, if_absent=False, skip_if=skip_if,
+            logger=logger, if_absent=False, skip_if=skip_if, dest_root=dest_root,
         )
 
 
@@ -10011,7 +10061,12 @@ def _seed_channel_files(std, proj) -> None:
     ⚑ A NULL ``workset.channels.chat`` SEEDS NOTHING: a null arm is a declared value
     (spec §2a), so the bind that would carry this log is omitted and creating the file
     would write into a directory no mount points at.
+
+    ⚑ EACH LOG'S DIRECTORY IS BOX-WRITABLE (other boxes sharing it are live), so the
+    log is created and rotated through :mod:`kanibako.boxfs` with that directory as
+    the root: a symlink at the log is skipped with a warning, never followed.
     """
+    from kanibako import boxfs
     from kanibako.channels import channels as _ch
 
     # (general log, broadcast log) per scope.  ⚑ A NULL KEY SEEDS NOTHING: its log's
@@ -10038,10 +10093,12 @@ def _seed_channel_files(std, proj) -> None:
                 if log is None:
                     continue
                 log.parent.mkdir(parents=True, exist_ok=True)
+                if not boxfs.no_symlink_or_warn(log, log.parent):
+                    continue
                 if not log.exists():
-                    log.touch()
+                    boxfs.touch(log, log.parent)
             if broadcast is not None:
-                rotate_if_over(broadcast, ROTATE_MAX_BYTES)
+                rotate_if_over(broadcast, ROTATE_MAX_BYTES, root=broadcast.parent)
         except OSError:
             # Best-effort: a genuinely unwritable source surfaces at launch.
             pass
@@ -10199,8 +10256,13 @@ def _print_supervisor_fallback(box_home: Path) -> None:
     :data:`SUPERVISOR_FALLBACK_WARNING`, written when both probes failed, means the
     agent did not start; without it the log is not printed.
     """
+    from kanibako import boxfs
+
+    log = box_home / SUPERVISOR_FALLBACK_RELPATH
+    if not boxfs.no_symlink_or_warn(log, box_home):
+        return
     try:
-        text = (box_home / SUPERVISOR_FALLBACK_RELPATH).read_text(errors="replace")
+        text = boxfs.read_bytes(log, box_home).decode(errors="replace")
     except OSError:
         return
     if SUPERVISOR_FALLBACK_WARNING not in text:

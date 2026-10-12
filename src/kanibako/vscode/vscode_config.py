@@ -87,10 +87,14 @@ def merge_attached_container_config(
     return merged
 
 
-def _read_existing_config(path: Path) -> dict:
-    """Read *path* as a JSON object → ``{}`` on absence/corruption; NEVER raises."""
+def _read_existing_config(path: Path, root: Path | None = None) -> dict:
+    """Read *path* as a JSON object → ``{}`` on absence/corruption; NEVER raises.
+
+    *root* marks *path* as box-writable, under the box tree *root*: the read then goes
+    through :mod:`kanibako.boxfs`, and a symlink reads as absent.
+    """
     try:
-        raw = path.read_text()
+        raw = path.read_text() if root is None else boxfs.read_text(path, root)
     except OSError:
         return {}
     try:
@@ -119,12 +123,14 @@ def seed_attached_container_config(
     return True
 
 
-def _write_if_changed(path: Path, existing: dict, merged: dict) -> bool:
-    """Write *merged* to *path* as pretty JSON iff it differs from disk (idempotent)."""
+def _write_if_changed(path: Path, existing: dict, merged: dict, *, root: Path) -> bool:
+    """Write *merged* to the box file *path* as pretty JSON iff it differs from disk.
+
+    Idempotent; atomic through :mod:`kanibako.boxfs` under the box tree *root*.
+    """
     if path.exists() and merged == existing:
         return False
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(merged, indent=2) + "\n")
+    boxfs.write_text(path, root, json.dumps(merged, indent=2) + "\n")
     return True
 
 
@@ -309,13 +315,19 @@ def merge_marker_remove_hook(settings: dict) -> dict:
     )
 
 
-def seed_session_start_hook(settings_path: Path) -> bool:
-    """Seed all THREE managed claude hooks into ``settings.json`` in one read-modify-write."""
-    existing = _read_existing_config(settings_path)
+def seed_session_start_hook(settings_path: Path, *, root: Path) -> bool:
+    """Seed all THREE managed claude hooks into ``settings.json`` in one read-modify-write.
+
+    *root* is the box home *settings_path* lives under; a symlink at the file or a
+    parent skips the seed with a warning (:func:`kanibako.boxfs.no_symlink_or_warn`).
+    """
+    if not boxfs.no_symlink_or_warn(settings_path, root):
+        return False
+    existing = _read_existing_config(settings_path, root)
     merged = merge_session_start_hook(existing)
     merged = merge_marker_write_hook(merged)
     merged = merge_marker_remove_hook(merged)
-    return _write_if_changed(settings_path, existing, merged)
+    return _write_if_changed(settings_path, existing, merged, root=root)
 
 
 # ---------------------------------------------------------------------------
@@ -673,10 +685,17 @@ def seed_codex_config(
     box_config_path: str,
     codex_cwd: str,
     model_provider: CodexModelProvider | None = None,
+    root: Path,
 ) -> bool:
-    """Write the box's ``~/.codex/config.toml`` managed hook, trust and provider regions."""
+    """Write the box's ``~/.codex/config.toml`` managed hook, trust and provider regions.
+
+    *root* is the box home *config_path* lives under; a symlink at the file or a
+    parent skips the seed with a warning, and the write goes through :mod:`kanibako.boxfs`.
+    """
+    if not boxfs.no_symlink_or_warn(config_path, root):
+        return False
     try:
-        existing = config_path.read_text()
+        existing = boxfs.read_text(config_path, root)
     except OSError:
         existing = ""
     merged = merge_codex_config(
@@ -687,8 +706,7 @@ def seed_codex_config(
     )
     if config_path.exists() and merged == existing:
         return False
-    config_path.parent.mkdir(parents=True, exist_ok=True)
-    config_path.write_text(merged)
+    boxfs.write_text(config_path, root, merged)
     return True
 
 
