@@ -553,9 +553,38 @@ class ContainerRuntime:
         running", never "it was running".  A caller that needs to know whether
         the box was live must take that reading from :meth:`is_running` BEFORE
         calling this.
+
+        ⚑ A PAUSED container refuses a stop (podman exits 125) while it still
+        holds the name, so a failed stop of one is answered by unpausing it and
+        asking again.  Only that retry's status is returned.
         """
+        if self._ask_stop(name):
+            return True
+        if not self.is_paused(name) or not self.unpause(name):
+            return False
+        return self._ask_stop(name)
+
+    def _ask_stop(self, name: str) -> bool:
+        """One ``stop`` request for *name*; True on exit status 0."""
         result = subprocess.run(
             [self.cmd, "stop", name],
+            capture_output=True,
+        )
+        return result.returncode == 0
+
+    def is_paused(self, name: str) -> bool:
+        """Whether container *name* is paused; a failed ``inspect`` reads as not paused."""
+        result = subprocess.run(
+            [self.cmd, "inspect", "--format", "{{.State.Paused}}", name],
+            capture_output=True,
+            text=True,
+        )
+        return result.returncode == 0 and result.stdout.strip() == "true"
+
+    def unpause(self, name: str) -> bool:
+        """Unpause container *name*; True on exit status 0."""
+        result = subprocess.run(
+            [self.cmd, "unpause", name],
             capture_output=True,
         )
         return result.returncode == 0

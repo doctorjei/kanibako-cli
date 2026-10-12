@@ -195,6 +195,57 @@ class TestStopOne:
             out = capsys.readouterr().out
             assert out == "Stopped kb-primary-droste\n"
 
+    @staticmethod
+    def _droste(m_resolve):
+        proj = MagicMock()
+        proj.name = "droste"
+        proj.mode.value = "primary"
+        proj.group = None
+        proj.project_hash = "abcdef1234567890" * 4
+        m_resolve.return_value = proj
+
+    @pytest.mark.parametrize("stopped", [True, False], ids=["stop-ok", "stop-failed"])
+    def test_a_failed_removal_is_reported_and_fails_the_run(
+        self, mock_runtime, capsys, stopped,
+    ):
+        """A container ``rm`` refuses still holds the name: never "Removed", rc 1."""
+        mock_runtime.is_running.return_value = False
+        mock_runtime.stop.return_value = stopped
+        mock_runtime.container_exists.return_value = True
+        mock_runtime.rm.return_value = False
+        with (
+            patch("kanibako.commands.stop.load_config"),
+            patch("kanibako.commands.stop.load_std_paths"),
+            patch("kanibako.commands.stop.resolve_box_target") as m_resolve,
+        ):
+            self._droste(m_resolve)
+            assert _stop_one(mock_runtime, project_dir=None) == 1
+
+        mock_runtime.rm.assert_called_once_with("kb-primary-droste")
+        captured = capsys.readouterr()
+        assert "Removed" not in captured.out
+        assert captured.err == (
+            "Error: could not remove kb-primary-droste; it still holds the box's name.\n"
+        )
+
+    def test_a_live_box_stopped_but_not_removed_fails_the_run(self, mock_runtime, capsys):
+        """The stop is true and said; the failed removal is said too, and fails the run."""
+        mock_runtime.is_running.return_value = True
+        mock_runtime.inspect_env.return_value = None
+        mock_runtime.container_exists.return_value = True
+        mock_runtime.rm.return_value = False
+        with (
+            patch("kanibako.commands.stop.load_config"),
+            patch("kanibako.commands.stop.load_std_paths"),
+            patch("kanibako.commands.stop.resolve_box_target") as m_resolve,
+        ):
+            self._droste(m_resolve)
+            assert _stop_one(mock_runtime, project_dir=None) == 1
+
+        captured = capsys.readouterr()
+        assert captured.out == "Stopped kb-primary-droste\n"
+        assert "could not remove kb-primary-droste" in captured.err
+
     def test_liveness_is_read_exactly_once(self, mock_runtime):
         """ONE ``is_running`` reading serves the writeback AND the sentence.
 

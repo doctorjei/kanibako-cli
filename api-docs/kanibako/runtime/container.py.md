@@ -61,6 +61,8 @@ class ContainerRuntime:
     def exec_succeeds(self, name: str, command: list[str]) -> bool
     def container_exists(self, name: str) -> bool
     def stop(self, name: str) -> bool
+    def is_paused(self, name: str) -> bool
+    def unpause(self, name: str) -> bool
     def rm(self, name: str) -> bool
     def is_running(self, name: str) -> bool
     def inspect_env(self, name: str, key: str) -> str | None
@@ -79,4 +81,5 @@ class ContainerRuntime:
     def _detect() -> tuple[str, bool]
     def _unshare_apply(self, argv: list[str], paths: list[Path]) -> bool
     def _watch_for_start(self, name: str, post_start: 'Callable[[], None]') -> 'threading.Event'
+    def _ask_stop(self, name: str) -> bool
 ```

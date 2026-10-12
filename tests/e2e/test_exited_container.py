@@ -101,12 +101,7 @@ class TestExitedContainer:
 class TestUnstoppableContainer:
     """``podman stop`` fails while the container still exists: a ``Paused`` container (rc 125)."""
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason="bug: stop ignores the failed rm and prints 'Removed stopped container' for a paused "
-               "container that is still there (stop.py _stop_one); box info and shell call it exited/stopped",
-    )
-    def test_stop_on_paused_container_does_not_claim_removal(self, e2e_env):
+    def test_stop_on_paused_container_unpauses_stops_and_removes_it(self, e2e_env):
         env = e2e_env["env"]
         name = _start_detached(env, str(e2e_env["project"]), "e2e_paused")
         try:
@@ -116,14 +111,10 @@ class TestUnstoppableContainer:
             assert _podman("stop", "-t", "3", name).returncode != 0, "podman stop must fail on a paused container"
             assert _status(name) == "paused"
 
+            # stop unpauses the container, stops it, and removes it.
             r = run_kanibako(["stop", "e2e_paused"], env=env)
-            # Either the box is really cleared, or the report says it was not: never a removal
-            # claimed for a container that is still there, nor rc 0 on one.
-            if _status(name) is not None:
-                assert "Removed stopped container" not in r.stdout, r.stdout
-                assert r.returncode != 0, r.stdout
-            else:
-                assert r.returncode == 0, r.stdout + r.stderr
+            assert r.returncode == 0, r.stdout + r.stderr
+            assert _status(name) is None, r.stdout + r.stderr
         finally:
             _podman("unpause", name)
             _podman("rm", "-f", name)

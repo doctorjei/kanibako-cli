@@ -836,6 +836,42 @@ class TestStop:
             m.return_value = MagicMock(returncode=125)
             assert rt.stop("nonexistent") is False
 
+    @staticmethod
+    def _runs(*results):
+        """A ``subprocess.run`` stub answering each call in turn; its argvs are recorded."""
+        from unittest.mock import MagicMock
+        return MagicMock(side_effect=[
+            MagicMock(returncode=rc, stdout=out) for rc, out in results
+        ])
+
+    def test_a_paused_container_is_unpaused_then_stopped(self):
+        """podman refuses to stop a PAUSED container (rc 125); unpause, then stop again."""
+        rt = ContainerRuntime(command="/usr/bin/podman")
+        m = self._runs((125, ""), (0, "true\n"), (0, ""), (0, ""))
+        with patch("kanibako.runtime.container.subprocess.run", m):
+            assert rt.stop("kb-paused") is True
+        assert [c.args[0] for c in m.call_args_list] == [
+            ["/usr/bin/podman", "stop", "kb-paused"],
+            ["/usr/bin/podman", "inspect", "--format", "{{.State.Paused}}", "kb-paused"],
+            ["/usr/bin/podman", "unpause", "kb-paused"],
+            ["/usr/bin/podman", "stop", "kb-paused"],
+        ]
+
+    def test_a_failed_unpause_is_a_failed_stop(self):
+        """No second stop is asked of a container that is still paused."""
+        rt = ContainerRuntime(command="/usr/bin/podman")
+        m = self._runs((125, ""), (0, "true\n"), (125, ""))
+        with patch("kanibako.runtime.container.subprocess.run", m):
+            assert rt.stop("kb-paused") is False
+        assert [c.args[0][1] for c in m.call_args_list] == ["stop", "inspect", "unpause"]
+
+    def test_a_failed_stop_of_an_unpaused_container_is_not_retried(self):
+        rt = ContainerRuntime(command="/usr/bin/podman")
+        m = self._runs((125, ""), (0, "false\n"))
+        with patch("kanibako.runtime.container.subprocess.run", m):
+            assert rt.stop("kb-stuck") is False
+        assert [c.args[0][1] for c in m.call_args_list] == ["stop", "inspect"]
+
 
 class TestRmAndIsRunning:
     """Test rm() and is_running() methods."""

@@ -212,10 +212,11 @@ def _stop_one(runtime: ContainerRuntime, *, project_dir: str | None) -> int:
         already_said=tuple(said),
     )
 
+    # ⚑ A PAUSED box is unpaused and stopped inside ``runtime.stop``.
     if runtime.stop(container_name):
         # Clean up stopped container (persistent containers lack --rm)
-        if runtime.container_exists(container_name):
-            runtime.rm(container_name)
+        cleared = (not runtime.container_exists(container_name)
+                   or runtime.rm(container_name))
         # 🛑 RC 0 IS NOT LIVENESS.  ``runtime.stop`` returns the runtime's exit
         # status, and ``podman stop`` exits 0 on a container that is ALREADY
         # EXITED — so this arm is reached both when a live box was really
@@ -225,22 +226,27 @@ def _stop_one(runtime: ContainerRuntime, *, project_dir: str | None) -> int:
         # right either way — both arms reach ``container_exists`` -> ``rm``,
         # which is what clears the orphan and unblocks the next launch — so
         # only the SENTENCE branches, on the reading hoisted above.
-        # ⚑ The removal sentence is safe to print unconditionally in this arm:
-        # rc 0 means the runtime FOUND the container (podman and docker both
-        # fail a stop on a name that is not there), so the ``rm`` above ran.
         if box_is_live:
             print(f"Stopped {container_name}")
-        else:
+        elif cleared:
             print(f"Removed stopped container: {container_name}")
     else:
         print(f"No running container found for this project ({container_name})")
         # Clean up stopped persistent container if it exists
         if runtime.container_exists(container_name):
-            runtime.rm(container_name)
-            print(f"Removed stopped container: {container_name}")
+            cleared = runtime.rm(container_name)
+            if cleared:
+                print(f"Removed stopped container: {container_name}")
         else:
+            cleared = True
             print(f"\n{stale_lock_cure(lock_file)}")
 
+    # 🛑 A FAILED REMOVAL IS SAID AND FAILS THE RUN: the container still holds the name.
+    if not cleared:
+        sys.stdout.flush()
+        print(f"Error: could not remove {container_name}; it still holds the box's name.",
+              file=sys.stderr)
+        return 1
     return 0
 
 
