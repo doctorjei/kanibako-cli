@@ -98,8 +98,8 @@ from kanibako.tree_copy import (
     plan_mounted_links, removed_root_of, repoint_mounted_links,
 )
 from kanibako.utils import (
-    gitignore_holds_only_kanibako, literal_path, logical_cwd, project_gitignore_to_strip,
-    strip_project_gitignore, write_project_gitignore,
+    gitignore_holds_only_kanibako, is_dir_unless_gone, literal_path, logical_cwd,
+    project_gitignore_to_strip, strip_project_gitignore, write_project_gitignore,
 )
 from kanibako.project.workset import (
     Workset,
@@ -452,17 +452,20 @@ def _root_carries_box(root: Path, box_kuid: str, std: StandardPaths) -> bool:
     Gone, a dangling link, or a dir with neither is not the box.  A ``workset.yaml``
     naming another kuid is another box.  With no kuid stored, the box's store there is
     still the box.  ⚑ A root that cannot be read counts as carrying it: the remap refuses.
+    ``Path.is_dir()`` would read a link loop (or a chain past the hop limit to the intact
+    box) as gone, so both tests are :func:`is_dir_unless_gone`, which raises then.
     """
     from kanibako import kuid
     from kanibako.settings.config import read_workset_kuid
 
     try:
-        if not root.is_dir():
+        if not is_dir_unless_gone(root):
             return False
         stored = read_workset_kuid(root / WORKSET_META_FILE)
         if stored != kuid.SENTINEL:
             return find_identifier(stored, (box_kuid,)) is not None
-        return standalone_box_store(root, early=_early_scope(std, BoxMode.standalone)).is_dir()
+        return is_dir_unless_gone(
+            standalone_box_store(root, early=_early_scope(std, BoxMode.standalone)))
     except (KanibakoError, OSError):
         return True
 

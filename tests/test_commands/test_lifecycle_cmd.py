@@ -1267,11 +1267,13 @@ class TestRemap:
         assert (new / "workspace" / "mine.txt").read_text() == "keep"
         assert solo.is_symlink() or self._tree_digest(solo) == left_before
 
-    @pytest.mark.parametrize("kept", ["id", "store"])
+    @pytest.mark.parametrize("kept", ["id", "store", "self-loop", "long chain"])
     def test_remap_onto_a_copy_refused_while_the_old_root_keeps_its_id_or_store(
             self, env, capsys, monkeypatch, kept):
         """The old root still carries the box when it keeps its ``workset.kuid``, or, with
-        no kuid stored, its store: a ``cp -a`` copy is then refused, as with the root whole."""
+        no kuid stored, its store: a ``cp -a`` copy is then refused, as with the root whole.
+        ⚑ A link loop at the old root, or a chain past the kernel's hop limit to the intact
+        box, cannot be read, so it counts as the box: ``Path.is_dir()`` reads both as gone."""
         from kanibako.project import registry_store
 
         self._confirms(monkeypatch)
@@ -1283,8 +1285,17 @@ class TestRemap:
                     shutil.rmtree(entry)
                 elif entry.name != "workset.yaml":
                     entry.unlink()
-        else:
+        elif kept == "store":
             (solo / "workset.yaml").unlink()
+        elif kept == "self-loop":
+            shutil.rmtree(solo)
+            solo.symlink_to(solo)
+        else:
+            real = solo.rename(tmp_home / "solo-real")
+            hops = [tmp_home / f"hop{i}" for i in range(41)]
+            for link, target in zip(hops, hops[1:] + [real]):
+                link.symlink_to(target)
+            solo.symlink_to(hops[0])
         rows = registry_store.load_standalone(std.registry)
         before = self._tree_digest(tmp_home)
 
