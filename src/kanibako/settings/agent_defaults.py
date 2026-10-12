@@ -469,8 +469,8 @@ def _behavior_choices(entry: dict[str, Any], named: str, where: str) -> tuple[st
 def _build_persona(raw: dict[str, Any] | None) -> PersonaSpec | None:
     """Build the harness-specific :class:`PersonaSpec` from its block (or None).
 
-    Absent ``persona:`` → ``None`` → the preflight falls back to claude-style ENV
-    endpoint delivery + the ``ANTHROPIC_AUTH_TOKEN`` token var (byte-identical).
+    Absent ``persona:`` → ``None`` → the preflight runs no bearer-token check
+    (``start._persona_wiring``).
 
     Every field falls back to the :class:`PersonaSpec` field default when the block
     omits it — ``model_required`` included, whose default is ``False``: a harness

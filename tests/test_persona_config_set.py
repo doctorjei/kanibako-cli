@@ -508,8 +508,11 @@ class TestPersonaLoadableEndToEnd:
             command_scope=ConfigLevel.system, agents_root=agents_root,
         )
         agent_cfg = load_agent_config(_node_file(agents_root), node="navigator℘claude", purpose=ReadPurpose.RESOLVE)
+        from kanibako.plugins.claude.target import ClaudeTarget
+
         _ep, error, _provider = _preflight_persona_load(
             "navigator℘claude", agent_cfg.secret_path, _URL, logging.getLogger("test"),
+            target=ClaudeTarget(),
         )
         assert error is not None
         assert "no usable auth token" in error

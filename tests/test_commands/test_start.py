@@ -7992,6 +7992,7 @@ class TestPreflightPersonaLoad:
         cfg = self._cfg()  # empty secret_path — nothing may supply it now.
         endpoint, err, provider = _preflight_persona_load(
             "navigator℘claude", cfg.secret_path, "https://key.example", self._logger(),
+            target=_claude_target(),
         )
         assert endpoint is None and provider is None
         assert err is not None and "no usable auth token" in err
@@ -8004,6 +8005,7 @@ class TestPreflightPersonaLoad:
         cfg = self._cfg()
         endpoint, err, provider = _preflight_persona_load(
             "navigator℘claude", cfg.secret_path, None, self._logger(),
+            target=_claude_target(),
         )
         assert endpoint is None
         assert err is not None and "cannot be loaded" in err
@@ -8022,6 +8024,7 @@ class TestPreflightPersonaLoad:
         cfg = self._cfg()
         endpoint, err, provider = _preflight_persona_load(
             "navigator℘claude", cfg.secret_path, "https://key.example", self._logger(),
+            target=_claude_target(),
         )
         assert endpoint is None
         assert err is not None and "no usable auth token" in err
@@ -8040,6 +8043,7 @@ class TestPreflightPersonaLoad:
         cfg.secret_path = {"SOME_OTHER_VAR": str(other)}
         endpoint, err, provider = _preflight_persona_load(
             "navigator℘claude", cfg.secret_path, "https://key.example", self._logger(),
+            target=_claude_target(),
         )
         assert endpoint is None
         assert err is not None and "no usable auth token" in err
@@ -8048,43 +8052,54 @@ class TestPreflightPersonaLoad:
 class TestPersonaWiring:
     """``_persona_wiring`` — the harness-declared persona endpoint/token delivery."""
 
-    def test_no_target_is_claude_default(self):
-        # No target (pre-seam / legacy caller) → ENV delivery + ANTHROPIC_AUTH_TOKEN:
-        # the LEGACY fallback shape, spelled out explicitly rather than inherited
-        # from the field defaults (an ENV harness with an empty token_var would read
-        # as the config-file DYNAMIC shape).
-        from kanibako.commands.start import _PERSONA_TOKEN_VAR, _persona_wiring
-        w = _persona_wiring(None)
+    @pytest.mark.parametrize("make", ["none", "shell", "no_persona_plugin"])
+    def test_a_harness_that_declares_no_persona_gets_no_token_var(self, make):
+        """No target, the built-in shell, or a plugin with no ``persona:`` block: the
+        bare field defaults, ENV delivery and NO token var, so no token check (his
+        176th ruling, "just run it with no checks").  Core names no harness's var.
+        (Mutation: restore the claude fallback → RED.)"""
+        from kanibako.commands.start import _persona_wiring
+        from kanibako.targets.base import PersonaSpec, PluginDescriptor
+        from kanibako.targets.shell import ShellTarget
+
+        class NoPersona(ShellTarget):
+            @property
+            def descriptor(self):
+                return PluginDescriptor(command=("x",), bindings=(), mode={})
+
+        target = {"none": None, "shell": ShellTarget(), "no_persona_plugin": NoPersona()}[make]
+        w = _persona_wiring(target)
+        assert w == PersonaSpec()
+        assert w.token_var == ""
         assert w.endpoint_delivery == "env"
-        assert w.token_var == _PERSONA_TOKEN_VAR == "ANTHROPIC_AUTH_TOKEN"
-        # No model veto: a claude persona that names no model needs none.
-        assert w.model_required is False
+
+    @pytest.mark.parametrize("make", ["none", "shell"])
+    def test_a_persona_with_no_declared_token_var_launches_unchecked(self, make):
+        """The preflight runs no bearer-token gate for such a harness: an endpoint and
+        nothing else loads.  (Mutation: restore the claude fallback → the claude
+        token refusal → RED.)"""
+        from kanibako.commands.start import _preflight_persona_load
+        from kanibako.targets.shell import ShellTarget
+
+        target = None if make == "none" else ShellTarget()
+        assert _preflight_persona_load(
+            "myshell℘p", {}, "https://h.example", MagicMock(), target=target,
+        ) == ("https://h.example", None, None)
 
     def test_claude_target_declares_its_persona_shape(self):
-        # The real claude descriptor DECLARES its persona shape (T3.2): ENV delivery
-        # + the FIXED ANTHROPIC_AUTH_TOKEN token var, so the resolved wiring does not
-        # depend on the ENV-delivery per-field fallback (which now covers only
-        # out-of-tree / version-skew plugins).
-        from kanibako.commands.start import _PERSONA_TOKEN_VAR, _persona_wiring
+        # The real claude descriptor DECLARES its persona shape: ENV delivery + the
+        # FIXED ANTHROPIC_AUTH_TOKEN token var, and the plugin reads that one
+        # declaration rather than spelling the var itself.
+        from kanibako.commands.start import _persona_wiring
+        from kanibako.plugins.claude import target as claude_target
         from kanibako.plugins.claude.target import ClaudeTarget
         spec = ClaudeTarget().descriptor.persona
         assert spec is not None
         assert spec.endpoint_delivery == "env"
-        assert spec.token_var == _PERSONA_TOKEN_VAR == "ANTHROPIC_AUTH_TOKEN"
+        assert spec.token_var == "ANTHROPIC_AUTH_TOKEN"
+        assert claude_target._PERSONA_TOKEN_VAR == spec.token_var
         w = _persona_wiring(ClaudeTarget())
-        assert w.endpoint_delivery == "env"
-        assert w.token_var == _PERSONA_TOKEN_VAR
-
-    def test_claude_wiring_matches_the_legacy_fallback(self):
-        """Claude's DECLARED wiring == the no-target fallback, field for field.
-
-        The declaration is the whole point of the flip (declare-your-own-shape), so
-        it must not change what claude resolves to.  (Mutation: drop the claude
-        `persona:` block's token_var → RED.)
-        """
-        from kanibako.commands.start import _persona_wiring
-        from kanibako.plugins.claude.target import ClaudeTarget
-        assert _persona_wiring(ClaudeTarget()) == _persona_wiring(None)
+        assert w == spec
 
     def test_codex_target_declares_config_file_dynamic_var(self):
         from kanibako.commands.start import _persona_wiring
@@ -8164,10 +8179,17 @@ class TestPersonaModelState:
         assert _persona_model_state(snap, "navigator℘claude") is None
 
 
+def _claude_target():
+    """The real claude Target: a claude persona's token gate reads its declaration."""
+    from kanibako.plugins.claude.target import ClaudeTarget
+
+    return ClaudeTarget()
+
+
 class TestPreflightClaudeByteIdentical:
-    """CHARACTERIZATION: a claude persona resolves IDENTICALLY with the new
-    harness-aware seam — passing the real claude Target must not change the
-    resolved endpoint, token var, secret_path, or (absent) provider vs target=None.
+    """CHARACTERIZATION: a LOADABLE claude persona resolves the same with the real
+    claude Target as with none.  The refusals differ: only claude's declaration names
+    a token var (his 176th ruling: no persona block, no token check).
     """
 
     def _cfg(self, tok_path):
@@ -8194,13 +8216,10 @@ class TestPreflightClaudeByteIdentical:
         assert res_none == res_claude
         assert res_claude == ("https://key.example", None, None)
 
-    def test_claude_target_matches_no_target_when_UNLOADABLE(self, tmp_path,
+    def test_only_claude_names_its_token_key_when_UNLOADABLE(self, tmp_path,
                                                              monkeypatch):
-        """The same characterization on the REFUSAL, which B3 used to split.
-
-        With no endpoint anywhere, target=None and the real ClaudeTarget must now
-        produce the SAME error — the legacy fallback shape and claude's declared
-        shape no longer differ in anything the pre-flight branches on.
+        """With no endpoint anywhere both refuse; only the claude refusal names an
+        API-key route, because only claude declares a token var.
         """
         from kanibako.commands.start import _preflight_persona_load
         from kanibako.plugins.claude.target import ClaudeTarget
@@ -8213,9 +8232,11 @@ class TestPreflightClaudeByteIdentical:
             "navigator℘claude", {}, None, MagicMock(),
             target=ClaudeTarget(),
         )
-        assert res_none == res_claude
-        assert res_claude[0] is None and res_claude[2] is None
-        assert res_claude[1] is not None and "cannot be loaded" in res_claude[1]
+        for res in (res_none, res_claude):
+            assert res[0] is None and res[2] is None
+            assert res[1] is not None and "cannot be loaded" in res[1]
+        assert "secret_path.ANTHROPIC_AUTH_TOKEN" in res_claude[1]
+        assert "secret_path" not in res_none[1]
 
 
 class TestPreflightCodexPersona:
@@ -11076,10 +11097,12 @@ class TestPersonaPreflightBundle:
         """
 
         name = "claude"
-        descriptor = None
 
         def __init__(self, outcome=None):
             from kanibako.targets.base import PersonaProbeOutcome
+
+            # Claude's REAL declaration: the token gate reads its token var.
+            self.descriptor = _claude_target().descriptor
 
             self.outcome = (
                 PersonaProbeOutcome.passed() if outcome is None else outcome

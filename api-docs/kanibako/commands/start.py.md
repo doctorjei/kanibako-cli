@@ -15,7 +15,6 @@ DIRECTIVE_MANIFEST_RELPATH = '.kanibako/directive-manifest.json'
 VAULT_MASK_DEST = core_defaults.vault_mask_default()
 _BOOTSTRAP_NONE = 'none'
 _BOOTSTRAP_MISSING = object()
-_PERSONA_TOKEN_VAR = 'ANTHROPIC_AUTH_TOKEN'
 _PERSONA_KEY_CURE = 'Set the key for this persona, then retry.'
 _PERSONA_MODEL_CURE = 'Set the model for this persona, then retry.'
 _ASSEMBLY_BINDINGS: 'tuple[str, ...]' = ('meta', 'assembly', 'bindings')

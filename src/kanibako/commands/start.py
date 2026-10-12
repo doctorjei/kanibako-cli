@@ -6016,12 +6016,8 @@ def _directive_flatten_shim(
 # ordinary ``agent.<node>.env.<VAR>`` key, arbitrated into the collapse's env
 # slots like every other scope's.  BASE_URL and the token are
 # carried by their dedicated channels and excluded from the env overlay so each
-# var has exactly ONE source.
-
-#: The persona's bearer token env var (harness-agnostic here: the persona MVP
-#: bearer channel).  Excluded from the model-map env overlay (delivered via the
-#: ``secret_path`` category so the secret lives only in the host file).
-_PERSONA_TOKEN_VAR = "ANTHROPIC_AUTH_TOKEN"
+# var has exactly ONE source.  The bearer token var is the HARNESS's declaration
+# (``persona.token_var``); core names none.
 
 
 def _secret_pointer_usable(raw_path: str) -> bool:
@@ -6190,38 +6186,18 @@ def _warn_persona_store_diagnostics(agent_id: str, bundle) -> None:
 def _persona_wiring(target) -> "PersonaSpec":
     """The HARNESS-specific persona endpoint/token delivery for *target* (INC 2).
 
-    Consults the resolved :class:`~kanibako.targets.base.Target`'s descriptor for a
-    declared :class:`~kanibako.targets.base.PersonaSpec`; a target with no descriptor
-    or no ``persona:`` block falls back to the claude-style shape (ENV endpoint
-    delivery + the fixed ``ANTHROPIC_AUTH_TOKEN`` token var) so any pre-seam /
-    no-target caller resolves BYTE-IDENTICALLY to before this seam existed.
-
-    ⚑ NEUTRALIZING this fallback (the planned T3.1 "a plugin that declares no
-    ``persona:`` block gets NO persona wiring") NEEDS A VERSION FLOOR on the agent
-    plugins: the plugin packages are unpinned deps, so a base upgraded WITHOUT its
-    agent-claude package would fall through to a neutral spec and a claude persona
-    that resolves through it today would lose its declared token var.
+    The resolved :class:`~kanibako.targets.base.Target`'s descriptor declares it as a
+    :class:`~kanibako.targets.base.PersonaSpec`.  A target that declares none
+    (``ShellTarget``, no target, a plugin with no ``persona:`` block) gets the bare
+    field defaults: ENV delivery and NO token var, so the preflight runs no
+    bearer-token check (his 176th ruling: such a harness "just run[s] with no
+    checks").  Core names no harness's token var.
     """
     from kanibako.targets.base import PersonaSpec
 
     desc = getattr(target, "descriptor", None) if target is not None else None
     spec = getattr(desc, "persona", None) if desc is not None else None
-    if isinstance(spec, PersonaSpec):
-        # An empty token_var means DYNAMIC (config-file harness): the configured
-        # secret_path key is the token var.  An empty ENV-delivery token_var still
-        # means the claude default — every SHIPPED env harness declares its own
-        # (claude ANTHROPIC_AUTH_TOKEN, goose OPENAI_API_KEY), so this per-field
-        # fallback now covers only OUT-OF-TREE plugins and VERSION SKEW (a plugin
-        # built against an older base that declared nothing).
-        if spec.endpoint_delivery == "env" and not spec.token_var:
-            from dataclasses import replace
-            return replace(spec, token_var=_PERSONA_TOKEN_VAR)
-        return spec
-    # LEGACY fallback shape (no descriptor / no ``persona:`` block): claude as it
-    # resolved before this seam.  Spelled out EXPLICITLY rather than left to the
-    # field defaults — this site keeps the pre-seam behavior byte-identical and is
-    # what a later neutralization of the fallback would remove.
-    return PersonaSpec(token_var=_PERSONA_TOKEN_VAR, endpoint_delivery="env")
+    return spec if isinstance(spec, PersonaSpec) else PersonaSpec()
 
 
 def _persona_token_pointer(secret_paths: "Mapping[str, object]", var: str) -> object:
@@ -6527,8 +6503,8 @@ def _preflight_env_persona(
 
     Gates (each an ACTIONABLE, harness-appropriate error):
 
-    1. the bearer token STATE under the FIXED ``wiring.token_var`` (claude
-       ``ANTHROPIC_AUTH_TOKEN``, goose ``OPENAI_API_KEY``), as resolved
+    1. the bearer token STATE under the FIXED ``wiring.token_var`` the harness
+       declares, as resolved
        (:func:`_persona_token_pointer`) — THREE states (2026-08-17
        ruling): ABSENT (``__MISSING__``, never configured) ⇒ error pointing at
        ``agent.<node>.secret_path.<token_var>``, unchanged from before this key
@@ -6539,7 +6515,8 @@ def _preflight_env_persona(
        var is checked SPECIFICALLY (N1): a usable pointer under some OTHER
        ``secret_path`` key does not mean a bearer token is present. A usable
        pointer is STAT'd arm's length — never read; the value flows only
-       through the launch mount.
+       through the launch mount.  A harness that declares NO token var gets no
+       token check (:func:`_persona_wiring`).
     2. when ``wiring.model_required`` (goose): a real cascade-resolved ``model``
        id (``keyspace_model``, :func:`_model_tristate`) — ABSENT ⇒ error (a
        third-party OpenAI-compatible endpoint has no meaningful default model —
@@ -6559,7 +6536,10 @@ def _preflight_env_persona(
     there is no config-file provider to carry (``provider`` None).
     """
 
-    token_state = _persona_token_pointer(secret_paths, wiring.token_var)
+    token_state = (
+        _persona_token_pointer(secret_paths, wiring.token_var)
+        if wiring.token_var else None
+    )
     if token_state is __MISSING__ or (
         isinstance(token_state, str) and not _secret_pointer_usable(token_state)
     ):

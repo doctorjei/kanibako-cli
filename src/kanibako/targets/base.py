@@ -996,7 +996,7 @@ class PluginDescriptor:
     access_realization: AccessRealization | None = None
     settings: tuple[SettingArg, ...] = ()
     persona: "PersonaSpec | None" = None   # harness-specific persona endpoint/token delivery
-                                           # (None = claude-style env + ANTHROPIC_AUTH_TOKEN)
+                                           # (None = env, no token var: no token check)
     # ⚑ NO `container_env` FIELD — plugin env is `agent.<agent>.env.<VAR>`, and
     # `agent_defaults.load_descriptor` refuses `container_env:` BY NAME.
     cred_files: tuple[CredFileSpec, ...] = ()

@@ -33,6 +33,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   that already has a `-` or `.` in its name is a legacy name: it is found by its path, and `start`
   refuses it, naming the `box move ... --name` cure. A plugin whose harness name breaks the rule is
   skipped with a warning. See `MIGRATION.md`, "Names are ASCII letters, digits, and `_`".
+- **A persona on an agent whose plugin declares no `persona:` block launches without a token check.** This covers the
+  built-in shell and any plugin that names no token variable. Such a persona used to be refused unless it had
+  `agent.<persona>.secret_path.ANTHROPIC_AUTH_TOKEN`, claude's variable, whatever the agent was. Claude, goose, and
+  codex personas are checked as before.
 
 - **kanibako no longer needs tmux on the host.** The bootstrap program runs inside the box, so a plain `start` is
   persistent whenever one is set, and `start --persistent` no longer exits 1 on a host without tmux. Pass

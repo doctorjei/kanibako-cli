@@ -62,13 +62,11 @@ _UPDATE_TIMEOUT = 300
 _LAUNCHER = Path.home() / ".local" / "bin" / "claude"
 _INSTALL_DIR = Path.home() / ".local" / "share" / "claude"
 
-# Persona wiring constants (claude's FIXED env vars).  The token var mirrors the
-# launch-side ``_PERSONA_TOKEN_VAR`` in core start.py — claude's settings.json does
-# not self-name its token var the way codex ``env_key`` does.  The base-URL var has
-# no launch-side twin: the endpoint is a keyspace value by the time the launch sees
-# it, and this is the only place that reads it out of a rendered settings.json.
+# Persona wiring constant (claude's FIXED base-URL env var).  It has no launch-side
+# twin: the endpoint is a keyspace value by the time the launch sees it, and this is
+# the only place that reads it out of a rendered settings.json.  The token var is the
+# descriptor's ``persona.token_var`` (``_PERSONA_TOKEN_VAR`` below).
 _PERSONA_BASE_URL_VAR = "ANTHROPIC_BASE_URL"
-_PERSONA_TOKEN_VAR = "ANTHROPIC_AUTH_TOKEN"
 
 # Claude Code reads a bare TIER ALIAS (``sonnet``, ``opus``, ``haiku``, ``fable``)
 # through this env var, so the id that reaches the wire IN THE BOX is the var's value
@@ -128,6 +126,11 @@ _DEFAULTS_PACKAGE = "kanibako.plugins.claude"
 _DEFAULTS_FILE = "claude-defaults.yaml"
 
 _CLAUDE_DESCRIPTOR = load_descriptor(_DEFAULTS_PACKAGE, _DEFAULTS_FILE)
+# The persona bearer token var, as the descriptor's ``persona:`` block declares it:
+# claude's settings.json does not self-name its token var the way codex's ``env_key``
+# does, so the launch and this plugin both read the one declaration.
+assert _CLAUDE_DESCRIPTOR.persona is not None, "claude-defaults.yaml declares persona:"
+_PERSONA_TOKEN_VAR = _CLAUDE_DESCRIPTOR.persona.token_var
 # The declared BEHAVIOR floor (the file's `behavior:` section) — no default value
 # is written in this module.
 _CLAUDE_BEHAVIOR = load_behavior(_DEFAULTS_PACKAGE, _DEFAULTS_FILE)
@@ -291,7 +294,7 @@ class ClaudeTarget(Target):
         The persona-grata store renders a claude persona as a harness-native
         ``settings.json`` whose ``env.ANTHROPIC_BASE_URL`` carries the alternate
         endpoint and whose top-level ``model`` (when present) names the model.
-        The bearer token var is claude's FIXED ``ANTHROPIC_AUTH_TOKEN`` (the harness does
+        The bearer token var is claude's FIXED declared ``persona.token_var`` (the harness does
         not self-name it, unlike codex's ``env_key``).  The REST of the ``env``
         block is carried through verbatim as
         :attr:`~kanibako.targets.base.PersonaSettings.env` — the two
@@ -374,7 +377,7 @@ class ClaudeTarget(Target):
         messages wire an ``ANTHROPIC_BASE_URL`` endpoint serves).  Both always run,
         each with its own *timeout*, bearer-authed with the token at *token_path*
         when one is configured — the same delivery shape the box uses
-        (``ANTHROPIC_AUTH_TOKEN`` → ``Authorization: Bearer``).  The verdict is
+        (the declared token var → ``Authorization: Bearer``).  The verdict is
         :func:`~kanibako.targets.base.access_outcome`'s; ``model_exact`` is True only
         for a full model id.  It is False for a tier alias, resolved or not, since a
         rung above the store can map it to another id in the box, and False with no

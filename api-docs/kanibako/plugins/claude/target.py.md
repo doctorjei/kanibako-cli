@@ -12,11 +12,11 @@ _UPDATE_TIMEOUT = 300
 _LAUNCHER = Path.home() / '.local' / 'bin' / 'claude'
 _INSTALL_DIR = Path.home() / '.local' / 'share' / 'claude'
 _PERSONA_BASE_URL_VAR = 'ANTHROPIC_BASE_URL'
-_PERSONA_TOKEN_VAR = 'ANTHROPIC_AUTH_TOKEN'
 _TIER_MODEL_VAR = 'ANTHROPIC_DEFAULT_{tier}_MODEL'
 _DEFAULTS_PACKAGE = 'kanibako.plugins.claude'
 _DEFAULTS_FILE = 'claude-defaults.yaml'
 _CLAUDE_DESCRIPTOR = load_descriptor(_DEFAULTS_PACKAGE, _DEFAULTS_FILE)
+_PERSONA_TOKEN_VAR = _CLAUDE_DESCRIPTOR.persona.token_var
 _CLAUDE_BEHAVIOR = load_behavior(_DEFAULTS_PACKAGE, _DEFAULTS_FILE)
 ```
 
