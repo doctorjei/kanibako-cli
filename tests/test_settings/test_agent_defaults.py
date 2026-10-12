@@ -242,13 +242,14 @@ class TestCategoryBindsTakeNoRoot:
             agent_defaults.load_category_binds(package, filename, "claude")
         msg = str(e.value)
         assert ("takes NO root at any scope" in msg) is not abstract, msg
-        if abstract:
-            assert f"{category} is rooted only where its declaration supplies" in msg, msg
-        else:
-            entry = f"category_bind 'agent.claude.{category}' entry at '/home/agent/.guide'"
-            assert msg == f"{filename}: " + unrooted_source_message(
-                entry, "rel/src", category,
-            )
+        entry = f"category_bind 'agent.claude.{category}' entry at '/home/agent/.guide'"
+        because = (
+            f"{category} is rooted only where its declaration supplies the root "
+            f"(spec §2a), and a category_binds entry is stored as written"
+        ) if abstract else None
+        assert msg == f"{filename}: " + unrooted_source_message(
+            entry, "rel/src", category, unrooted_because=because,
+        )
 
     @pytest.mark.parametrize(
         "src", ["/abs", "~/x", "$XDG_DATA_HOME/x", "@system.channelroot/x"],

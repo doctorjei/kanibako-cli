@@ -1205,8 +1205,9 @@ class TestSparseWrites:
         """A folder under ``agents/`` whose name is not a legal agent name stops the listing,
         naming the folder's PATH and the cure — not the bare ref-grammar refusal, which names
         neither. (Mutation: drop ``_store_node``'s re-raise → the path is missing → RED.) The
-        alias folder is refused by ``settings_assemble.agent_record``, which every reader shares, so its error is
-        a ``SettingsError``; both are ``KanibakoError``s, which the CLI prints the same way."""
+        alias folder is refused by ``settings_assemble.agent_record``, which every reader shares.
+        Both refusals are built by ``settings_assemble.agent_store_refusal``, so both are a
+        ``SettingsError``."""
         from kanibako.commands import agent_cmd
         from kanibako.errors import KanibakoError
 
