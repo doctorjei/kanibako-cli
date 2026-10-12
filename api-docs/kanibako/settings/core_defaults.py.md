@@ -36,6 +36,7 @@ CANON_SKELETON_FILE_MODE = '444'
 BIND_TABLES = ('channels', 'core', 'kani', 'kickoff', 'canon', 'helpers', 'images')
 _INTERNAL_BIND_TABLES = ('kani', 'kickoff')
 _INTERNAL_BIND_ROWS = (('images', 'images_conf'),)
+_CONVENIENCE_BIND_ROWS = (('kani', 'secret_export'), ('kickoff', 'kickoff'), ('helpers', 'helper_sock'), ('helpers', 'helper_budget'), ('images', 'images_conf'))
 ```
 
 ## Types
@@ -74,6 +75,7 @@ def materialize_canon_skeleton_if_present(shell_path: Path, *, logger: 'logging.
 def bind_dest_families() -> dict[str, str]
 def bind_dest_owners() -> dict[str, str]
 def internal_bind_keys() -> frozenset[tuple[str, str]]
+def convenience_bind_dests() -> frozenset[str]
 def helper_bind_dests() -> frozenset[str]
 def spawn_budget_bind_dests() -> frozenset[str]
 def image_bind_dests() -> frozenset[str]

@@ -1171,6 +1171,44 @@ def internal_bind_keys() -> frozenset[tuple[str, str]]:
     return frozenset(keys)
 
 
+#: The BINDS OF CONVENIENCE (``[R149]``), as ``(table, row key)``: machinery that bridges
+#: another mechanism into the box, not a place the user put something.  The secrets
+#: snippet bridges ``secret_path``; the kickoff slot bridges the directive seed; the
+#: socket and ``spawn.yaml`` bridge the helper hub and its budget; storage.conf makes the
+#: image store usable.  The kanibako CLI and the packaged canon are INTERNAL but are
+#: delivered content, so they are not here.
+_CONVENIENCE_BIND_ROWS = (
+    ("kani", "secret_export"),
+    ("kickoff", "kickoff"),
+    ("helpers", "helper_sock"),
+    ("helpers", "helper_budget"),
+    ("images", "images_conf"),
+)
+
+
+def convenience_bind_dests() -> frozenset[str]:
+    """The normalized dests of every bind of convenience — ``box show --effective`` omits them.
+
+    ``[R149]``: a bind whose only purpose is to implement another mechanism is not shown.
+    The rule is by DESTINATION, because the purpose belongs to the slot: whatever is
+    bound at ``~/spawn.yaml`` is the spawn budget.  Read from the SAME rows that declare
+    the binds, so a moved dest moves here too; a lost row RAISES.
+    """
+    from kanibako.settings.settings_resolve import normalize_bind_dest
+
+    doc = _load_doc()
+    dests: set[str] = set()
+    for table, key in _CONVENIENCE_BIND_ROWS:
+        found = [e for e in doc.get(table) or [] if e.get("key") == key]
+        if not found:
+            raise PackagingError(
+                f"{CORE_DEFAULTS_FILENAME} has no {table!r} row keyed {key!r} — a "
+                "bind of convenience box show --effective omits ([R149])"
+            )
+        dests |= {normalize_bind_dest(str(e["box_dest"])) for e in found}
+    return frozenset(dests)
+
+
 def helper_bind_dests() -> frozenset[str]:
     """The HELPER table's HUB dests — the helper-hub resolve's EMISSION filter.
 

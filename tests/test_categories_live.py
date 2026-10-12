@@ -2666,3 +2666,107 @@ class TestNulledVaultArmOmitsItsBindAndWarns:
             tmp_path, caplog, "workset:\n  logs: /l\n", self._core(tmp_path),
         )
         assert warnings == [], warnings
+
+
+class TestTheEffectiveBlockOmitsBindsOfConvenience:
+    """``[R149]``: a bind whose only purpose is to bridge another mechanism is not shown.
+
+    The floor is the REAL kani, kickoff, helper, and image tables, so every bind of
+    convenience is present the way a launch carries it.  The omission is one explicit
+    rule (``core_defaults.convenience_bind_dests``); before it, the secrets snippet and
+    the kickoff slot printed on every box, and the other three were absent only because
+    the display's resolve never injects their tables.
+    """
+
+    @staticmethod
+    def _render(tmp_path) -> str:
+        import io
+
+        from kanibako.commands.start import _install_assembly_collapse
+        from kanibako.settings import core_defaults
+        from kanibako.settings.config_display import _print_category_block
+        from kanibako.settings.settings_launch import (
+            build_launch_snapshot,
+            meta_identity_floor,
+            meta_runtime_floor,
+            snapshot_category_entries,
+            workset_anchor_floor,
+        )
+
+        floor: dict = {
+            "box.bindings.rw": {"/home/agent/workspace": ("/code/x", "Z,U")},
+            "box.bindings.ro": {"/home/agent/mine": ("/code/mine", "ro")},
+        }
+        # The helper table binds only sources that exist, as a start writes them first.
+        for name in ("hub.sock", "helpers.jsonl", "spawn.yaml"):
+            (tmp_path / name).touch()
+        for table in (
+            core_defaults.kani_default_categories(),
+            core_defaults.kickoff_default_categories(),
+            core_defaults.helper_default_categories(
+                socket_path=tmp_path / "hub.sock",
+                log_path=tmp_path / "helpers.jsonl",
+                budget_path=tmp_path / "spawn.yaml",
+            ),
+            core_defaults.image_default_categories(
+                graph_root=tmp_path / "graph",
+                storage_conf_path=tmp_path / "storage.conf",
+            ),
+        ):
+            _merge_floor(floor, table)
+        floor.update(meta_runtime_floor(mode="primary", ws_name="__PRIMARY__"))
+        floor.update(workset_anchor_floor(mode="primary"))
+        floor.update(meta_identity_floor(
+            box_name="mybox", project_path="/code/x", inbox="/i",
+            share_global="/sg", share_workset="/sw",
+        ))
+        ctx = make_ctx(
+            workset_name=None, config={"config.primary_workset": "/data/pw"},
+        )
+        snap = build_launch_snapshot(
+            agent_name="claude", ctx=ctx, system_path=None, agent_path=None,
+            workset_path=None, box_path=None, default_categories=floor,
+        )
+        entries = snapshot_category_entries(snap, active_agent="claude", box_ctx=ctx)
+        _install_assembly_collapse(snap, entries, whole_box=True)
+        buf = io.StringIO()
+        _print_category_block(snap, None, buf, ctx)
+        return buf.getvalue()
+
+    @pytest.mark.parametrize("dest", [
+        "/etc/profile.d/kanibako-secrets.sh",
+        "/home/agent/.config/kanibako/kickoff.md",
+        "/home/agent/.kanibako/state/helper.sock",
+        "/home/agent/spawn.yaml",
+        "/home/agent/.config/containers/storage.conf",
+    ])
+    def test_a_bind_of_convenience_is_not_shown(self, tmp_path, dest):
+        """MUTATION ANCHOR: drop the skip and every case fails."""
+        text = self._render(tmp_path)
+        assert dest not in text, text
+
+    def test_user_binds_and_delivered_content_stay_shown(self, tmp_path):
+        """``[R149]`` is not a license to hide: a user bind, the kanibako CLI, the image
+        store, and the helper log are not bridges, and still print."""
+        text = self._render(tmp_path)
+        for dest in (
+            "/home/agent/mine",
+            "/home/agent/workspace",
+            "/opt/kanibako/kanibako",
+            "/home/agent/.local/bin/kanibako",
+            "/var/lib/shared-images",
+            "/home/agent/.kanibako/state/helpers.jsonl",
+        ):
+            assert f"-> {dest}" in text, (dest, text)
+
+    def test_the_rule_is_the_five_declared_rows(self):
+        """The ONE list, read from the rows that declare the binds."""
+        from kanibako.settings import core_defaults
+
+        assert core_defaults.convenience_bind_dests() == {
+            "/etc/profile.d/kanibako-secrets.sh",
+            "/home/agent/.config/kanibako/kickoff.md",
+            "/home/agent/.kanibako/state/helper.sock",
+            "/home/agent/spawn.yaml",
+            "/home/agent/.config/containers/storage.conf",
+        }

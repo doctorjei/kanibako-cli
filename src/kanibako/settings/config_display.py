@@ -332,7 +332,8 @@ def _print_category_block(
     """Render the ``--effective`` PATH-DELIVERY block (spec §0; box scope, D6).
 
     The pid-0 FOUNDATION comes first, then every CONCRETE binding with the
-    destination it occupies — all read off the SAME snapshot the launch resolved.
+    destination it occupies, except a bind of convenience (``[R149]``) — all read
+    off the SAME snapshot the launch resolved.
     Nothing is re-derived here.
 
     *box_ctx* is the launch's own :class:`~kanibako.settings.settings_resolve.ResolveCtx`
@@ -355,6 +356,7 @@ def _print_category_block(
     :func:`kanibako.settings.settings_categories.effective_bindings_and_template_sources`,
     the single source; nothing is re-derived here either.
     """
+    from kanibako.settings.core_defaults import convenience_bind_dests
     from kanibako.settings.kb_store import BINDING_DERIVATIONS_NODE, BindEntry
     from kanibako.settings.keystore import KeyStore
     from kanibako.settings.settings_categories import (
@@ -481,7 +483,13 @@ def _print_category_block(
         pair_declarations(declarations, collapsed),
         strict=True,
     ))
+    # ⚑ A BIND OF CONVENIENCE IS NOT SHOWN (``[R149]``): machinery bridging another
+    # mechanism, by the ONE list :func:`core_defaults.convenience_bind_dests`. It is
+    # skipped here, after the pairing, so the other rows pair exactly as before.
+    convenience = convenience_bind_dests()
     for (key, _, entry), declaration in zip(rows, declarations, strict=True):
+        if declaration.dest in convenience:
+            continue
         shown = display_agent_ref(key)
         dest = declaration.dest
         opts = f"  [{entry.opts}]" if entry.opts else ""
