@@ -17,6 +17,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   no root at any scope. For `caches`, `common`, and `seeded` it no longer says that, which was false: those categories
   are rooted where their declaration supplies the root, and a `category_binds:` entry is stored as written. The
   refusal itself is unchanged.
+- **`start --help` lists the flags `start` shares with `shell` last, in `shell`'s order:** `-e`, `--image`,
+  `--rig`, `--entrypoint`, `--persistent`, `--ephemeral`, `--no-helpers`, and `--share-images`. The flags
+  themselves are unchanged.
 
 - **kanibako no longer needs tmux on the host.** The bootstrap program runs inside the box, so a plain `start` is
   persistent whenever one is set, and `start --persistent` no longer exits 1 on a host without tmux. Pass

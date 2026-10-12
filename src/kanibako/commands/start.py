@@ -451,38 +451,6 @@ def add_start_parser(subparsers: argparse._SubParsersAction) -> None:
         "-M", "--model", default=None,
         help="Override the agent model for this run",
     )
-    p.add_argument(
-        "-e", "--env", action="append", default=None, metavar="VAR=VALUE",
-        # ⚑ VAR, not KEY (P4c-1). The flag names an environment VARIABLE and
-        # overrides whichever settings key owns it; a dotted key spelling is
-        # refused, so the metavar must not invite one.
-        help="Set per-run environment variable, overriding the key that owns it "
-             "(repeatable)",
-    )
-    p.add_argument(
-        "--image", default=None,
-        help="Use IMAGE as the container image for this run (--rig is the preferred spelling)",
-    )
-    p.add_argument(
-        "--rig", dest="image", default=None,
-        help="Rig (image) to use; synonym for --image",
-    )
-    p.add_argument(
-        "--entrypoint", default=None,
-        help="Use CMD as the container entrypoint",
-    )
-
-    # Session persistence mode
-    persist_group = p.add_mutually_exclusive_group()
-    persist_group.add_argument(
-        "--persistent", action="store_true",
-        help="Run in a persistent tmux session (reattach on subsequent start)",
-    )
-    persist_group.add_argument(
-        "--ephemeral", action="store_true",
-        help="Run in foreground without tmux (single-use session)",
-    )
-
     # The CURE named by the already-running override gate (_run_container): stop
     # the box, then start it fresh with this invocation's flags in force.  It is
     # NOT a separate verb — "this only really applies to start" (Jei,
@@ -527,10 +495,6 @@ def add_start_parser(subparsers: argparse._SubParsersAction) -> None:
              "stdout line (machine-readable; use with --detach)",
     )
     p.add_argument(
-        "--no-helpers", action="store_true",
-        help="Disable helper spawning (no hub socket mounted)",
-    )
-    p.add_argument(
         "--no-auto-auth", action="store_true",
         help="Disable automated browser-based OAuth refresh",
     )
@@ -538,14 +502,7 @@ def add_start_parser(subparsers: argparse._SubParsersAction) -> None:
         "--browser", action="store_true",
         help="Launch a headless browser sidecar (BROWSER_WS_ENDPOINT injected)",
     )
-    p.add_argument(
-        "--share-images", action="store_true",
-        help="Share host container image storage with child (read-only, experimental)",
-    )
-    p.add_argument(
-        "project", nargs="?", default=None,
-        help="Project directory or registered name (omit for current dir)",
-    )
+    _add_launch_args(p)
     p.set_defaults(func=run_start)
 
 
@@ -555,6 +512,17 @@ def add_shell_parser(subparsers: argparse._SubParsersAction) -> None:
         help="Open a bash shell in the container",
         description="Open a bash shell in the container (no agent).",
     )
+    _add_launch_args(p)
+    p.set_defaults(func=run_shell)
+
+
+def _add_launch_args(p: argparse.ArgumentParser) -> None:
+    """The launch flags ``start`` and ``shell`` share, spelled ONCE for both verbs.
+
+    Everything a launch takes whether or not an agent runs in it: the per-run
+    environment, the rig, the entrypoint, the session persistence mode, helpers,
+    image sharing, and the project operand.
+    """
     p.add_argument(
         "-e", "--env", action="append", default=None, metavar="VAR=VALUE",
         # ⚑ VAR, not KEY (P4c-1). The flag names an environment VARIABLE and
@@ -599,7 +567,6 @@ def add_shell_parser(subparsers: argparse._SubParsersAction) -> None:
         "project", nargs="?", default=None,
         help="Project directory or registered name (omit for current dir)",
     )
-    p.set_defaults(func=run_shell)
 
 
 def run_start(args: argparse.Namespace) -> int:
