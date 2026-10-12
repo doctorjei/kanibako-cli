@@ -35,7 +35,6 @@ def _get_existing_helpers(helpers_dir: Path) -> list[int]
 def _hub_number() -> tuple[int | None, str | None]
 def _hub_stop(state: dict, helper_num: int) -> dict | None
 def _subtree(helpers_dir: Path, helper_num: int) -> list[tuple[Path, int]]
-def _cascade_cleanup(helpers_dir: Path, helper_num: int) -> list[int]
 def _log_path() -> Path
 def _read_log_entries(log_file: Path) -> list[dict]
 def _format_log_entry(entry: dict) -> str

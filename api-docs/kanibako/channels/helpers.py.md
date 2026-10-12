@@ -31,7 +31,7 @@ def read_helper_state(helpers_dir: Path, helper_num: int) -> dict
 def write_helper_state(helpers_dir: Path, helper_num: int, state: dict) -> None
 def mark_helper_stopped(helpers_dir: Path, helper_num: int) -> None
 def existing_helpers(helpers_dir: Path, root: Path) -> list[int]
-def helper_tree_numbers(helpers_dir: Path, root: Path) -> set[int]
+def helper_tree(helpers_dir: Path, root: Path) -> list[tuple[Path, int]]
 def create_helper_dirs(helpers_dir: Path, helper_num: int) -> Path
 def create_broadcast_dirs(helpers_dir: Path) -> Path
 def remove_helper_dirs(helpers_dir: Path, helper_num: int) -> None

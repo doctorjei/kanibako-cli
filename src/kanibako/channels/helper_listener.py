@@ -17,7 +17,7 @@ from kanibako.channels.helpers import (
     HELPER_SCRIPTS_RELPATH,
     INIT_SCRIPT_NAME,
     SPAWN_CONFIG_FILENAME,
-    helper_tree_numbers,
+    helper_tree,
     mark_helper_stopped,
     write_helper_number,
 )
@@ -112,7 +112,8 @@ class HelperHub:
         """Bind the Unix socket and start the accept loop."""
         self._ctx = context
         self._log = log
-        on_disk = helper_tree_numbers(context.helpers_dir, context.helpers_dir.parent)
+        on_disk = [num for _, num in
+                   helper_tree(context.helpers_dir, context.helpers_dir.parent)]
         with self._containers_lock:
             self._next_num = max(on_disk, default=0) + 1
 

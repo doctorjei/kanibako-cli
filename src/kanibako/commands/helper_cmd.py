@@ -19,6 +19,7 @@ from kanibako.channels.helpers import (
     create_broadcast_dirs,
     create_helper_dirs,
     existing_helpers,
+    helper_tree,
     read_helper_number,
     read_helper_state,
     read_spawn_budget,
@@ -90,7 +91,7 @@ def add_helper_subparsers(p: argparse.ArgumentParser) -> None:
     cleanup_p.add_argument("number", type=int, help="Helper number to clean up")
     cleanup_p.add_argument(
         "--cascade", action="store_true",
-        help="Also remove all descendant helpers recursively",
+        help="Also stop and remove all descendant helpers, deepest first",
     )
     cleanup_p.set_defaults(func=run_cleanup)
 
@@ -452,7 +453,9 @@ def run_stop(args: argparse.Namespace) -> int:
 
 
 def run_cleanup(args: argparse.Namespace) -> int:
-    """Stop and remove a helper."""
+    """Stop and remove a helper; with ``--cascade``, its whole subtree, every helper
+    stopped through the hub, deepest first, before any directory goes.  One the hub
+    refuses keeps its state, is reported, and keeps every directory (exit 1)."""
     helpers_dir = _helpers_dir()
     helper_num = args.number
     helper_root = helpers_dir / str(helper_num)
@@ -461,24 +464,33 @@ def run_cleanup(args: argparse.Namespace) -> int:
         print(f"Helper {helper_num} does not exist.", file=sys.stderr)
         return 1
 
-    state = read_helper_state(helpers_dir, helper_num)
-    # Always ask: a helper marked ``stopped`` after an unreachable hub may still run.
-    # A refusal stops the cleanup unless the helper is ``stopped`` and the runtime
-    # reported its container not running.
-    refused = _hub_stop(state, helper_num)
-    if refused is not None and (state.get("status") != "stopped"
-                                or refused.get("running")
-                                or refused.get("unverified")):
-        print(f"Cannot clean up helper {helper_num}: "
-              f"{refused.get('message', 'unknown error')}", file=sys.stderr)
-        return 1
-
     cascade = getattr(args, "cascade", False)
+    targets = (_subtree(helpers_dir, helper_num) if cascade
+               else [(helpers_dir, helper_num)])
+    rc = 0
+    for level, num in targets:
+        state = read_helper_state(level, num)
+        # Always ask: a helper marked ``stopped`` after an unreachable hub may still
+        # run.  A refusal stops the cleanup unless the helper is ``stopped`` and the
+        # runtime reported its container not running.
+        refused = _hub_stop(state, num)
+        if refused is not None and (state.get("status") != "stopped"
+                                    or refused.get("running")
+                                    or refused.get("unverified")):
+            print(f"Cannot clean up helper {num}: "
+                  f"{refused.get('message', 'unknown error')}", file=sys.stderr)
+            rc = 1
+        elif state.get("status") != "stopped":
+            state["status"] = "stopped"
+            write_helper_state(level, num, state)
+    if rc:
+        return rc
+
+    for level, num in targets:
+        remove_helper_dirs(level, num)
     if cascade:
-        removed = _cascade_cleanup(helpers_dir, helper_num)
-        print(f"Cleaned up helper {helper_num} and {len(removed) - 1} descendant(s).")
+        print(f"Cleaned up helper {helper_num} and {len(targets) - 1} descendant(s).")
     else:
-        remove_helper_dirs(helpers_dir, helper_num)
         print(f"Cleaned up helper {helper_num}.")
     return 0
 
@@ -486,25 +498,8 @@ def run_cleanup(args: argparse.Namespace) -> int:
 def _subtree(helpers_dir: Path, helper_num: int) -> list[tuple[Path, int]]:
     """A helper and all its descendants as ``(helpers dir, number)`` pairs, deepest
     first: each helper's ``helpers/`` subtree comes before the helper itself."""
-    found = []
-    child_helpers_dir = helpers_dir / str(helper_num) / "helpers"
-    if child_helpers_dir.is_dir():
-        for child in _get_existing_helpers(child_helpers_dir):
-            found.extend(_subtree(child_helpers_dir, child))
-    found.append((helpers_dir, helper_num))
-    return found
-
-
-def _cascade_cleanup(helpers_dir: Path, helper_num: int) -> list[int]:
-    """Clean up a helper and all its descendants, deepest first.
-
-    Returns the list of all helper numbers that were removed.
-    """
-    removed = []
-    for level, num in _subtree(helpers_dir, helper_num):
-        remove_helper_dirs(level, num)
-        removed.append(num)
-    return removed
+    return [*helper_tree(helpers_dir / str(helper_num) / "helpers", helpers_dir.parent),
+            (helpers_dir, helper_num)]
 
 
 def run_respawn(args: argparse.Namespace) -> int:

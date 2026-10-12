@@ -334,17 +334,15 @@ def _unreadable(path: Path, exc: OSError) -> KanibakoError:
     )
 
 
-def helper_tree_numbers(helpers_dir: Path, root: Path) -> set[int]:
-    """Every helper number on disk in the tree under *helpers_dir*: its helpers, their
-    ``helpers/`` subtrees, and so on down, read as :func:`existing_helpers` reads one.
+def helper_tree(helpers_dir: Path, root: Path) -> list[tuple[Path, int]]:
+    """Every helper on disk in the tree under *helpers_dir* as ``(helpers dir, number)``
+    pairs, deepest first: each helper's ``helpers/`` subtree comes before the helper.
+    Each level is read as :func:`existing_helpers` reads one.
     """
-    found: set[int] = set()
-    pending = [helpers_dir]
-    while pending:
-        level = pending.pop()
-        for num in existing_helpers(level, root):
-            found.add(num)
-            pending.append(level / str(num) / "helpers")
+    found: list[tuple[Path, int]] = []
+    for num in existing_helpers(helpers_dir, root):
+        found.extend(helper_tree(helpers_dir / str(num) / "helpers", root))
+        found.append((helpers_dir, num))
     return found
 
 

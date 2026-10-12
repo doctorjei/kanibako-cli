@@ -11,7 +11,6 @@ from unittest.mock import patch
 import pytest
 
 from kanibako.commands.helper_cmd import (
-    _cascade_cleanup,
     _format_log_entry,
     _get_existing_helpers,
     run_broadcast,
@@ -557,6 +556,52 @@ class TestStopCascades:
         assert read_helper_state(level3, 3)["status"] == "stopped"
 
 
+class TestCascadeCleanupStopsTheSubtree:
+    """``cleanup --cascade`` stops every descendant through the hub, deepest first,
+    before it deletes any directory: a descendant's container never outlives its dirs."""
+
+    def test_every_descendant_is_stopped_before_its_dirs_go(
+            self, helpers_env, capsys, monkeypatch):
+        run_spawn(_make_args(depth=None, breadth=None, model=None))
+        stops = _hub_replies_to_stop(monkeypatch, {"status": "ok"})
+        _subtree(helpers_env / "helpers")
+        capsys.readouterr()
+
+        assert run_cleanup(_make_args(number=1, cascade=True)) == 0
+        assert [s["helper_num"] for s in stops] == [3, 2, 1]
+        assert [s["container_name"] for s in stops] == [
+            "kb-t-helper-3", "kb-t-helper-2", "kb-t-helper-1"]
+        assert "Cleaned up helper 1 and 2 descendant(s)." in capsys.readouterr().out
+        assert not (helpers_env / "helpers" / "1").exists()
+
+    def test_a_refused_descendant_keeps_every_dir(self, helpers_env, capsys, monkeypatch):
+        run_spawn(_make_args(depth=None, breadth=None, model=None))
+        stops: list[dict] = []
+
+        def _hub(_path, request):
+            if request.get("action") == "spawn":
+                return {"status": "ok", "container_name": "kb-t-helper-1"}
+            stops.append(request)
+            if request["helper_num"] == 3:
+                return {"status": "error", "running": True,
+                        "message": "refusing to stop 'kb-t-helper-3'"}
+            return {"status": "ok"}
+
+        monkeypatch.setattr("kanibako.channels.helper_client.send_request", _numbering(_hub))
+        level2, level3 = _subtree(helpers_env / "helpers")
+        capsys.readouterr()
+
+        assert run_cleanup(_make_args(number=1, cascade=True)) == 1
+        assert [s["helper_num"] for s in stops] == [3, 2, 1]
+        out, err = capsys.readouterr()
+        assert "Cannot clean up helper 3: refusing to stop 'kb-t-helper-3'" in err
+        assert "Cleaned up" not in out
+        assert (level3 / "3").is_dir()
+        assert read_helper_state(level3, 3)["status"] == "running"
+        assert read_helper_state(level2, 2)["status"] == "stopped"
+        assert read_helper_state(helpers_env / "helpers", 1)["status"] == "stopped"
+
+
 class TestCleanupOfAStoppedHelper:
     """``stopped`` can follow an unreachable hub, so cleanup still asks; a refusal
     stops it only when the runtime reports the container running."""
@@ -666,7 +711,7 @@ class TestCascadeCleanup:
         assert "descendant" in capsys.readouterr().out
         assert not (helpers / "1").exists()
 
-    def test_cascade_multi_level(self, helpers_env):
+    def test_cascade_multi_level(self, helpers_env, capsys):
         """Cascade handles multiple nesting levels."""
         run_spawn(_make_args(depth=None, breadth=None, model=None))
 
@@ -677,8 +722,9 @@ class TestCascadeCleanup:
         level3 = level2 / "1" / "helpers"
         (level3 / "1").mkdir(parents=True)
 
-        removed = _cascade_cleanup(helpers, 1)
-        assert len(removed) == 3  # deepest first, then parent, then top
+        capsys.readouterr()
+        assert run_cleanup(_make_args(number=1, cascade=True)) == 0
+        assert "Cleaned up helper 1 and 2 descendant(s)." in capsys.readouterr().out
         assert not (helpers / "1").exists()
 
     def test_no_cascade_leaves_children(self, helpers_env, capsys):
