@@ -267,8 +267,12 @@ class TestNamePrecedence:
     ):
         """Standalone ``foo`` + workset ``foo`` + folder ``./foo``: at ``--box`` the
         folder wins and the shadowed standalone is named exactly once."""
+        from kanibako import kuid
         from kanibako.project.workset import create_workset
 
+        # ⚑ A letter-leading kuid: a workset name may not start with a digit (spec §0),
+        # and a generated kuid may, which made this test a coin toss.
+        monkeypatch.setattr(kuid, "generate", lambda: "abcde")
         box_name, sa_root = _make_standalone(std, tmp_home, leaf="elsewhere")
         create_workset(box_name, tmp_home / "worksets" / box_name, std)
         cwd = tmp_home / "cwd"
