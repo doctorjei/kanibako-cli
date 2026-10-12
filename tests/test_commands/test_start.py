@@ -7967,6 +7967,7 @@ class TestPreflightPersonaLoad:
         cfg = self._cfg()
         endpoint, err, provider = _preflight_persona_load(
             "navigator℘claude", cfg.secret_path, None, self._logger(),
+            target=_claude_target(),
         )
         assert endpoint is None and provider is None
         assert err is not None and "cannot be loaded" in err
@@ -8052,14 +8053,11 @@ class TestPreflightPersonaLoad:
 class TestPersonaWiring:
     """``_persona_wiring`` — the harness-declared persona endpoint/token delivery."""
 
-    @pytest.mark.parametrize("make", ["none", "shell", "no_persona_plugin"])
-    def test_a_harness_that_declares_no_persona_gets_no_token_var(self, make):
-        """No target, the built-in shell, or a plugin with no ``persona:`` block: the
-        bare field defaults, ENV delivery and NO token var, so no token check (his
-        176th ruling, "just run it with no checks").  Core names no harness's var.
-        (Mutation: restore the claude fallback → RED.)"""
-        from kanibako.commands.start import _persona_wiring
-        from kanibako.targets.base import PersonaSpec, PluginDescriptor
+    @staticmethod
+    def _no_block_target(make):
+        """No target, the built-in shell (no descriptor), or a plugin whose descriptor
+        has no ``persona:`` block."""
+        from kanibako.targets.base import PluginDescriptor
         from kanibako.targets.shell import ShellTarget
 
         class NoPersona(ShellTarget):
@@ -8067,24 +8065,68 @@ class TestPersonaWiring:
             def descriptor(self):
                 return PluginDescriptor(command=("x",), bindings=(), mode={})
 
-        target = {"none": None, "shell": ShellTarget(), "no_persona_plugin": NoPersona()}[make]
-        w = _persona_wiring(target)
-        assert w == PersonaSpec()
-        assert w.token_var == ""
-        assert w.endpoint_delivery == "env"
+        return {"none": None, "shell": ShellTarget(), "no_persona_plugin": NoPersona()}[make]
 
-    @pytest.mark.parametrize("make", ["none", "shell"])
-    def test_a_persona_with_no_declared_token_var_launches_unchecked(self, make):
-        """The preflight runs no bearer-token gate for such a harness: an endpoint and
-        nothing else loads.  (Mutation: restore the claude fallback → the claude
-        token refusal → RED.)"""
+    @pytest.mark.parametrize("make", ["none", "shell", "no_persona_plugin"])
+    def test_a_harness_that_declares_no_persona_gets_no_spec(self, make):
+        """No persona block is ``None``, not the bare field defaults: it stays
+        distinguishable from a declared block with an empty token var.  Core names no
+        harness's var.  (Mutation: return ``PersonaSpec()`` → RED.)"""
+        from kanibako.commands.start import _persona_wiring
+
+        assert _persona_wiring(self._no_block_target(make)) is None
+
+    @pytest.mark.parametrize("make", ["none", "shell", "no_persona_plugin"])
+    @pytest.mark.parametrize("endpoint", ["https://h.example", None])
+    def test_a_persona_with_no_persona_block_runs_unchecked(
+        self, make, endpoint, monkeypatch,
+    ):
+        """His 176th ruling, "just run it with no checks": with or without an
+        endpoint, the preflight refuses nothing and never probes.  (Mutation: drop
+        the no-block early return → the "no endpoint is configured" refusal, or the
+        probe → RED.)"""
+        from kanibako.commands import start as start_mod
         from kanibako.commands.start import _preflight_persona_load
+
+        def _no_probe(*a, **k):
+            raise AssertionError("a harness with no persona block was probed")
+
+        monkeypatch.setattr(start_mod, "_persona_probe_error", _no_probe)
+        assert _preflight_persona_load(
+            "myshell℘p", {}, endpoint, MagicMock(),
+            target=self._no_block_target(make), probe=True,
+        ) == (endpoint, None, None)
+
+    def test_a_declared_block_with_no_token_var_keeps_its_gates(self, monkeypatch):
+        """A plugin that DECLARES a ``persona:`` block with an empty token var is not
+        the no-block case: no endpoint is still refused, and the launch still probes.
+        """
+        from kanibako.commands import start as start_mod
+        from kanibako.commands.start import _preflight_persona_load
+        from kanibako.targets.base import PersonaSpec, PluginDescriptor
         from kanibako.targets.shell import ShellTarget
 
-        target = None if make == "none" else ShellTarget()
+        class EmptyBlock(ShellTarget):
+            @property
+            def descriptor(self):
+                return PluginDescriptor(
+                    command=("x",), bindings=(), mode={}, persona=PersonaSpec(),
+                )
+
+        _ep, err, _pv = _preflight_persona_load(
+            "myshell℘p", {}, None, MagicMock(), target=EmptyBlock(),
+        )
+        assert err is not None and "no endpoint is configured" in err
+        assert "secret_path" not in err
+        probed = []
+        monkeypatch.setattr(
+            start_mod, "_persona_probe_error", lambda *a, **k: probed.append(a),
+        )
         assert _preflight_persona_load(
-            "myshell℘p", {}, "https://h.example", MagicMock(), target=target,
+            "myshell℘p", {}, "https://h.example", MagicMock(),
+            target=EmptyBlock(), probe=True,
         ) == ("https://h.example", None, None)
+        assert len(probed) == 1
 
     def test_claude_target_declares_its_persona_shape(self):
         # The real claude descriptor DECLARES its persona shape: ENV delivery + the
@@ -8188,8 +8230,8 @@ def _claude_target():
 
 class TestPreflightClaudeByteIdentical:
     """CHARACTERIZATION: a LOADABLE claude persona resolves the same with the real
-    claude Target as with none.  The refusals differ: only claude's declaration names
-    a token var (his 176th ruling: no persona block, no token check).
+    claude Target as with none.  The refusals differ: with no target there is no
+    persona block, so nothing is checked (his 176th ruling).
     """
 
     def _cfg(self, tok_path):
@@ -8218,8 +8260,9 @@ class TestPreflightClaudeByteIdentical:
 
     def test_only_claude_names_its_token_key_when_UNLOADABLE(self, tmp_path,
                                                              monkeypatch):
-        """With no endpoint anywhere both refuse; only the claude refusal names an
-        API-key route, because only claude declares a token var.
+        """With no endpoint anywhere the claude persona is refused, naming its
+        API-key route; with no target (no persona block) nothing is checked, so
+        nothing is refused (his 176th ruling).
         """
         from kanibako.commands.start import _preflight_persona_load
         from kanibako.plugins.claude.target import ClaudeTarget
@@ -8232,11 +8275,10 @@ class TestPreflightClaudeByteIdentical:
             "navigator℘claude", {}, None, MagicMock(),
             target=ClaudeTarget(),
         )
-        for res in (res_none, res_claude):
-            assert res[0] is None and res[2] is None
-            assert res[1] is not None and "cannot be loaded" in res[1]
+        assert res_none == (None, None, None)
+        assert res_claude[0] is None and res_claude[2] is None
+        assert res_claude[1] is not None and "cannot be loaded" in res_claude[1]
         assert "secret_path.ANTHROPIC_AUTH_TOKEN" in res_claude[1]
-        assert "secret_path" not in res_none[1]
 
 
 class TestPreflightCodexPersona:
@@ -8783,12 +8825,15 @@ class TestPersonaCreateVerdict:
 
         monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))  # no host dir
         std, config, proj = self._ctx(tmp_path, "navigator+claude")
+        target = self._target()
+        # claude's real persona block: a target with none is not checked at all.
+        target.descriptor = _claude_target().descriptor
         with (
             patch("kanibako.commands.start.load_merged_config"),
             patch("kanibako.settings.config.resolve_agent", return_value="navigator℘claude"),
             patch(
                 "kanibako.commands.start.resolve_target",
-                return_value=self._target(),
+                return_value=target,
             ),
             patch(
                 "kanibako.commands.start.agent_settings_path",

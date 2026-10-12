@@ -116,7 +116,7 @@ def _name_new_box_probe(std, proj) -> None
 def _persona_bundle_for(agent_id: str, target) -> 'PersonaBundle | None'
 def _persona_values_for(agent_id: str, target) -> 'dict[str, str] | None'
 def _warn_persona_store_diagnostics(agent_id: str, bundle) -> None
-def _persona_wiring(target) -> 'PersonaSpec'
+def _persona_wiring(target) -> 'PersonaSpec | None'
 def _persona_token_pointer(secret_paths: 'Mapping[str, object]', var: str) -> object
 def _persona_secret_path_keys(secret_paths: 'Mapping[str, object]') -> 'list[str]'
 def _persona_probe_error(target, endpoint: str, token_ptr: 'str | None', model: 'str | None', display: str, logger, env: 'Mapping[str, str] | None'=None) -> 'str | None'

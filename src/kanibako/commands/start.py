@@ -4315,8 +4315,8 @@ def _run_container(
             # given only when this launch has an active persona endpoint, empty
             # otherwise — a BARE box is never touched.
             provider_pin=(
-                _persona_wiring(target).provider_pin
-                if target is not None and active_endpoint is not None else ()
+                getattr(_persona_wiring(target), "provider_pin", ())
+                if active_endpoint is not None else ()
             ),
         )
         _snapshot, deliveries = _resolve_launch_snapshot(
@@ -6183,21 +6183,21 @@ def _warn_persona_store_diagnostics(agent_id: str, bundle) -> None:
         )
 
 
-def _persona_wiring(target) -> "PersonaSpec":
+def _persona_wiring(target) -> "PersonaSpec | None":
     """The HARNESS-specific persona endpoint/token delivery for *target* (INC 2).
 
     The resolved :class:`~kanibako.targets.base.Target`'s descriptor declares it as a
-    :class:`~kanibako.targets.base.PersonaSpec`.  A target that declares none
-    (``ShellTarget``, no target, a plugin with no ``persona:`` block) gets the bare
-    field defaults: ENV delivery and NO token var, so the preflight runs no
-    bearer-token check (his 176th ruling: such a harness "just run[s] with no
-    checks").  Core names no harness's token var.
+    :class:`~kanibako.targets.base.PersonaSpec`.  ``None`` means the target declares
+    NONE (``ShellTarget``, no target, a plugin with no ``persona:`` block): the
+    preflight then runs no persona check at all (his 176th ruling: such a harness
+    "just run[s] with no checks").  A declared block with an empty token var is a
+    different case and keeps its gates.  Core names no harness's token var.
     """
     from kanibako.targets.base import PersonaSpec
 
     desc = getattr(target, "descriptor", None) if target is not None else None
     spec = getattr(desc, "persona", None) if desc is not None else None
-    return spec if isinstance(spec, PersonaSpec) else PersonaSpec()
+    return spec if isinstance(spec, PersonaSpec) else None
 
 
 def _persona_token_pointer(secret_paths: "Mapping[str, object]", var: str) -> object:
@@ -6445,6 +6445,11 @@ def _preflight_persona_load(
             f"  Fix the store config named above, then retry."
         ), None
 
+    # A harness that declares no persona block gets no persona check: no endpoint
+    # refusal, no token or model gate, no verify probe (his 176th ruling).
+    if wiring is None:
+        return keyspace_endpoint, None, None
+
     if keyspace_endpoint is None:
         return None, _persona_no_endpoint_error(agent_id, wiring), None
 
@@ -6515,8 +6520,8 @@ def _preflight_env_persona(
        var is checked SPECIFICALLY (N1): a usable pointer under some OTHER
        ``secret_path`` key does not mean a bearer token is present. A usable
        pointer is STAT'd arm's length — never read; the value flows only
-       through the launch mount.  A harness that declares NO token var gets no
-       token check (:func:`_persona_wiring`).
+       through the launch mount.  A declared block with NO token var gets no
+       token check.
     2. when ``wiring.model_required`` (goose): a real cascade-resolved ``model``
        id (``keyspace_model``, :func:`_model_tristate`) — ABSENT ⇒ error (a
        third-party OpenAI-compatible endpoint has no meaningful default model —

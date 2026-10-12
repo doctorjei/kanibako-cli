@@ -996,7 +996,7 @@ class PluginDescriptor:
     access_realization: AccessRealization | None = None
     settings: tuple[SettingArg, ...] = ()
     persona: "PersonaSpec | None" = None   # harness-specific persona endpoint/token delivery
-                                           # (None = env, no token var: no token check)
+                                           # (None = no persona block: no persona checks)
     # ⚑ NO `container_env` FIELD — plugin env is `agent.<agent>.env.<VAR>`, and
     # `agent_defaults.load_descriptor` refuses `container_env:` BY NAME.
     cred_files: tuple[CredFileSpec, ...] = ()

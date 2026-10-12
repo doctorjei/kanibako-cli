@@ -656,8 +656,8 @@ class TestPersonaBlockLoading:
         assert not hasattr(p, "host_dir_adopt")
 
     def test_no_persona_block_is_none(self, declfile):
-        """No block at all → no spec (the legacy claude-shaped fallback territory,
-        spelled out explicitly by ``start.py``'s ``_persona_wiring``)."""
+        """No block at all → no spec, so ``start.py``'s ``_persona_wiring`` returns
+        ``None`` and the persona runs with no persona checks."""
         package, filename = declfile("descriptor:\n  command: [\"probe\"]\n")
         assert agent_defaults.load_descriptor(package, filename).persona is None
 

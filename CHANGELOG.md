@@ -33,8 +33,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   that already has a `-` or `.` in its name is a legacy name: it is found by its path, and `start`
   refuses it, naming the `box move ... --name` cure. A plugin whose harness name breaks the rule is
   skipped with a warning. See `MIGRATION.md`, "Names are ASCII letters, digits, and `_`".
-- **A persona on an agent whose plugin declares no `persona:` block launches without a token check.** This covers the
-  built-in shell and any plugin that names no token variable. Such a persona used to be refused unless it had
+- **A persona on an agent whose plugin declares no `persona:` block launches with no persona checks.** This covers the
+  built-in shell and any plugin without the block: no endpoint is required, no token is checked, and no verify probe
+  runs. Such a persona used to be refused without an endpoint and
   `agent.<persona>.secret_path.ANTHROPIC_AUTH_TOKEN`, claude's variable, whatever the agent was. Claude, goose, and
   codex personas are checked as before.
 
