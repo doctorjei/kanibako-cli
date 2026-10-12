@@ -997,6 +997,81 @@ class TestPersistentMode:
         assert kwargs["name"] == f"kb-{labels['kanibako.workset']}-{labels['kanibako.box']}"
         assert kwargs["name"] != "kb-primary-renamed"
 
+    def test_a_stopped_labeled_container_under_another_name_is_removed(self, start_mocks):
+        """A persistent start removes the box's stopped labeled container even under a
+        name it no longer renders, so the new one does not sit beside it."""
+        with start_mocks() as m:
+            m.runtime.find_labeled.return_value = ["kb-primary-renamed"]
+            m.runtime.is_running.return_value = False
+            m.runtime.container_exists.side_effect = lambda name: name == "kb-primary-renamed"
+            rc = _run_container(
+                project_dir=None, entrypoint=None, image_override=None,
+                new_session=False, safe_mode=False, resume_mode=False,
+                extra_args=[], persistent=True, detach=True,
+            )
+            assert rc == 0
+            m.runtime.rm.assert_any_call("kb-primary-renamed")
+            assert m.runtime.run.call_args.kwargs["name"] != "kb-primary-renamed"
+
+    def test_a_running_labeled_container_under_another_name_is_never_removed(
+        self, start_mocks,
+    ):
+        """The stale-container sweep re-reads liveness: a labeled container that came
+        up between the reattach read and the sweep is left alone."""
+        reads: list[str] = []
+
+        def is_running(name):
+            reads.append(name)
+            # Down at the reattach read, up from the sweep's own read onward.
+            return name == "kb-primary-renamed" and reads.count(name) > 1
+
+        with start_mocks() as m:
+            m.runtime.find_labeled.return_value = ["kb-primary-renamed"]
+            m.runtime.is_running.side_effect = is_running
+            m.runtime.container_exists.side_effect = lambda name: name == "kb-primary-renamed"
+            _run_container(
+                project_dir=None, entrypoint=None, image_override=None,
+                new_session=False, safe_mode=False, resume_mode=False,
+                extra_args=[], persistent=True, detach=True,
+            )
+            assert reads.count("kb-primary-renamed") >= 2
+            assert ("kb-primary-renamed",) not in [c.args for c in m.runtime.rm.call_args_list]
+
+    def test_shell_exec_goes_to_a_live_labeled_container_under_another_name(
+        self, start_mocks,
+    ):
+        """``shell -- cmd`` execs into the box's live container, found by its labels;
+        it never launches a second one under the rendered name."""
+        with start_mocks() as m:
+            m.runtime.find_labeled.return_value = ["kb-primary-renamed"]
+            m.runtime.is_running.side_effect = lambda name: name == "kb-primary-renamed"
+            m.runtime.container_exists.side_effect = lambda name: name == "kb-primary-renamed"
+            _run_container(
+                project_dir=None, entrypoint="/bin/sh", image_override=None,
+                new_session=False, safe_mode=False, resume_mode=False,
+                extra_args=["-c", "true"],
+            )
+            m.runtime.run.assert_not_called()
+            assert m.runtime.exec.call_args[0][0] == "kb-primary-renamed"
+
+    def test_an_ephemeral_launch_refuses_a_box_live_under_another_name(
+        self, start_mocks, capsys,
+    ):
+        """No exec door (no entrypoint): a box live under a labeled other name refuses
+        the launch instead of gaining a second container."""
+        with start_mocks() as m:
+            m.runtime.find_labeled.return_value = ["kb-primary-renamed"]
+            m.runtime.is_running.side_effect = lambda name: name == "kb-primary-renamed"
+            m.runtime.container_exists.side_effect = lambda name: name == "kb-primary-renamed"
+            rc = _run_container(
+                project_dir=None, entrypoint=None, image_override=None,
+                new_session=False, safe_mode=False, resume_mode=False,
+                extra_args=[],
+            )
+            assert rc == 1
+            m.runtime.run.assert_not_called()
+        assert "already running" in capsys.readouterr().err
+
     def test_detach_without_print_container_no_stdout_cname(
         self, start_mocks, capsys,
     ):

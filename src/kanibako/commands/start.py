@@ -3924,9 +3924,15 @@ def _run_container(
     # was stopped by ``--restart`` before ``reattach_running`` was computed), so
     # the only container that can exist at this point is a stopped one.
     if persistent:
-        # Stale stopped container: remove before recreating
+        # Stale stopped container: remove before recreating.  A labeled one under a
+        # name the box no longer renders (``live_name``) goes too, or the new container
+        # would sit beside it carrying the same labels.  Only a STOPPED one: a running
+        # box never reaches here, and liveness is read again rather than assumed.
         if runtime.container_exists(container_name):
             runtime.rm(container_name)
+        if (live_name != container_name and runtime.container_exists(live_name)
+                and not runtime.is_running(live_name)):
+            runtime.rm(live_name)
         # Persistent mode forces no helpers
         no_helpers = True
     else:
@@ -3939,7 +3945,9 @@ def _run_container(
         # — ONE READING EACH.  ``is_running`` is taken ONCE here and reused by
         # the refusal below, so the exec door and the refusal can never be
         # decided from two readings that disagree across the gap.
-        box_is_live = runtime.is_running(container_name)
+        # ``live_name``, not the rendered name: the box may be live under a labeled
+        # other name, and reading the rendered one would launch a second container.
+        box_is_live = runtime.is_running(live_name)
         if box_is_live and entrypoint is not None:
             exec_cmd = [entrypoint] + (extra_args or [])
             # Apply per-run -e/--env vars to the exec'd process. The container's
@@ -3949,9 +3957,12 @@ def _run_container(
             # this, per-run -e vars would be silently dropped when the box is
             # already running.
             return runtime.exec(
-                container_name, exec_cmd, env=cli_env_values
+                live_name, exec_cmd, env=cli_env_values
             )
-        if runtime.container_exists(container_name):
+        # ``runtime.run`` claims the RENDERED name, so its existence blocks; a box live
+        # under another name blocks too, since a launch would make it a second container.
+        if runtime.container_exists(container_name) or (
+                box_is_live and live_name != container_name):
             # EXISTENCE is what blocks the launch, and it is deliberately the
             # condition above: ``runtime.run`` creates the container BY NAME, so
             # any container already holding the name — running or exited — makes
