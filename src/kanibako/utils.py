@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 
 from kanibako.errors import ConfigError, UserCanceled
-from kanibako.settings.bootstrap import IGNORE_FILE
+from kanibako.settings.bootstrap import IGNORE_FILE, STANDALONE_META_DIR
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -453,7 +453,7 @@ def logical_cwd() -> str:
 # Project .gitignore helper
 # ---------------------------------------------------------------------------
 
-_GITIGNORE_ENTRIES = ["box_data/"]
+_GITIGNORE_ENTRIES = [f"{STANDALONE_META_DIR}/"]
 
 
 def write_project_gitignore(project_path: Path) -> None:

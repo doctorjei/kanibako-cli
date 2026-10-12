@@ -16,7 +16,7 @@ LABEL_WORKSET = 'kanibako.workset'
 LABEL_BOX = 'kanibako.box'
 LABEL_WORKSET_KUID = 'kanibako.workset_kuid'
 LABEL_HELPER = 'kanibako.helper'
-_GITIGNORE_ENTRIES = ['box_data/']
+_GITIGNORE_ENTRIES = [f'{STANDALONE_META_DIR}/']
 ```
 
 ## Functions
