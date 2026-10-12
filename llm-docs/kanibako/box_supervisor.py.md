@@ -819,8 +819,9 @@ self-heal that exhausts its bounded retries (principle B: then PID-1 returns so 
 ```_run_tmux(self, args: list[str]) -> int | None```
 Run `tmux <args>` via the injected runner; return its rc, or `None`.
 
-Centralizes tolerance: a missing tmux binary (`FileNotFoundError`) or any other `OSError` resolves to
-`None` (logged at debug), never an exception, so a tmux hiccup can never crash the loop.
+Both helpers wrap `_tmux(args)`, which runs the command and holds the tolerance: a missing tmux
+binary (`FileNotFoundError`) or any other `OSError` resolves to `None` (logged at debug), never an
+exception, so a tmux hiccup can never crash the loop.
 
 ```_tmux_output(self, args: list[str]) -> str | None```
 Run `tmux <args>` via the injected runner; return its STDOUT, or `None`.

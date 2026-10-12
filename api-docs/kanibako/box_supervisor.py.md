@@ -144,6 +144,7 @@ class BoxSupervisor:
     def run_forever(self) -> int
     def teardown(self) -> None
 
+    def _tmux(self, args: list[str]) -> subprocess.CompletedProcess[str] | None
     def _run_tmux(self, args: list[str]) -> int | None
     def _tmux_output(self, args: list[str]) -> str | None
     def _exit_record_path(self) -> str

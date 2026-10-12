@@ -821,10 +821,10 @@ class BoxSupervisor:
 
     # -- tmux action helpers (impure; tolerant; injectable ``run``) ----------
 
-    def _run_tmux(self, args: list[str]) -> int | None:
-        """Run ``tmux <args>`` via the injected runner; return its rc, or ``None``."""
+    def _tmux(self, args: list[str]) -> subprocess.CompletedProcess[str] | None:
+        """Run ``tmux <args>`` via the injected runner; ``None`` if tmux could not run."""
         try:
-            proc = self._run(
+            return self._run(
                 ["tmux", *args],
                 capture_output=True,
                 text=True,
@@ -833,21 +833,16 @@ class BoxSupervisor:
         except (FileNotFoundError, OSError) as exc:
             log.debug("tmux %s failed to run: %s", args[0] if args else "", exc)
             return None
-        return proc.returncode
+
+    def _run_tmux(self, args: list[str]) -> int | None:
+        """Run ``tmux <args>``; return its rc, or ``None``."""
+        proc = self._tmux(args)
+        return None if proc is None else proc.returncode
 
     def _tmux_output(self, args: list[str]) -> str | None:
-        """Run ``tmux <args>`` via the injected runner; return its STDOUT, or ``None``."""
-        try:
-            proc = self._run(
-                ["tmux", *args],
-                capture_output=True,
-                text=True,
-                check=False,
-            )
-        except (FileNotFoundError, OSError) as exc:
-            log.debug("tmux %s failed to run: %s", args[0] if args else "", exc)
-            return None
-        if proc.returncode != 0:
+        """Run ``tmux <args>``; return its STDOUT, or ``None`` on failure or a nonzero rc."""
+        proc = self._tmux(args)
+        if proc is None or proc.returncode != 0:
             return None
         return proc.stdout
 
