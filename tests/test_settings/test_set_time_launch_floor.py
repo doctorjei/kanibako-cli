@@ -62,7 +62,7 @@ def _target(std, ws):
 def _set_time_value(target, value: str):
   snapshot, ctx = ci._set_time_snapshot(target=target, agent_name=_AGENT, agent_path=None)
   candidate = ci._clone_keystore(snapshot)
-  ci._set_leaf(candidate, _KEY.split("."), value)
+  candidate.insert_segments(_KEY.split("."), value)
   expanded, errors = expand(candidate, ctx, collect_errors=True)
   assert _KEY not in errors, errors[_KEY]
   return _leaf(expanded, _KEY)

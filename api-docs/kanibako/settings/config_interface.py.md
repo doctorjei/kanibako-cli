@@ -47,7 +47,6 @@ def _lenient_expand(snapshot: 'Any', ctx: 'Any', agent_name: str) -> 'tuple[Any,
 def _set_time_defects(config_path: 'Path | None', *, edit: 'tuple[str, object] | None', command_scope: 'ConfigLevel | None', system_settings_path: 'Path | None', system_path: 'Path | None', workset_path: 'Path | None', box_path: 'Path | None', agent_name: str, agent_path: 'Path | None'=None, target: 'LaunchInputs | None'=None) -> 'dict[str, str]'
 def _blindness_forgiven(errors: 'Mapping[str, str]', candidate: 'Any', ctx: 'Any', agent_name: str, command_scope: 'ConfigLevel | None') -> 'set[str]'
 def _clone_keystore(store: 'Any') -> 'Any'
-def _set_leaf(store: 'Any', parts: list, value: object) -> None
 def _argv_aware(leaf: str, fallback: 'Callable[[object], str]') -> 'Callable[[object], str]'
 def _scalar_family_render(key: str, category: str) -> 'Callable[[object], str]'
 def _read_slot(canonical: str, slot: AgentFileSlot) -> str | None

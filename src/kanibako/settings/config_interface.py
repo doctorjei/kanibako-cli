@@ -1113,7 +1113,7 @@ def _category_set_lookups(
         # Apply the candidate into a FRESH copy (S19), lenient-expand, read the key's defect.
         candidate = _clone_keystore(base_snapshot)
         try:
-            _set_leaf(candidate, key.split("."), value)
+            candidate.insert_segments(key.split("."), value)
         except ReservedKeyError as exc:
             # ⚑ A RESERVED leaf name is a set-time DEFECT, not a crash (the H1 never-raises rule).
             return str(exc)
@@ -1175,7 +1175,7 @@ def _set_time_defects(
         system_path=system_path, workset_path=workset_path, box_path=box_path,
     )
     if edit is not None:
-        _set_leaf(snapshot, edit[0].split("."), edit[1])
+        snapshot.insert_segments(edit[0].split("."), edit[1])
     errors = _lenient_expand(_clone_keystore(snapshot), ctx, agent_name)[1]
     forgiven = _blindness_forgiven(errors, snapshot, ctx, agent_name, command_scope)
     return {k: r for k, r in errors.items() if k not in forgiven}
@@ -1201,7 +1201,7 @@ def _blindness_forgiven(
     supplied = _clone_keystore(candidate)
     try:
         for name in {name for names in unseen.values() for name in names}:
-            _set_leaf(supplied, name.split("."), "/")
+            supplied.insert_segments(name.split("."), "/")
     except ReservedKeyError:
         return set()
     return set(unseen) - set(_lenient_expand(supplied, ctx, agent_name)[1])
@@ -1216,20 +1216,6 @@ def _clone_keystore(store: "Any") -> "Any":
         v = dict.__getitem__(store, k)
         out[k] = _clone_keystore(v) if isinstance(v, KeyStore) else v
     return out
-
-
-def _set_leaf(store: "Any", parts: list, value: object) -> None:
-    """Set *value* at the *parts* path in *store*, creating nested KeyStore nodes as needed."""
-    from kanibako.settings.keystore import KeyStore
-
-    node = store
-    for seg in parts[:-1]:
-        existing = dict.get(node, seg, None)
-        if not isinstance(existing, KeyStore):
-            existing = KeyStore()
-            node[seg] = existing
-        node = existing
-    node[parts[-1]] = value
 
 
 # ⚑ ``_set_category_value`` and its callee ``settings_configset.repoint_host_src`` are GONE
