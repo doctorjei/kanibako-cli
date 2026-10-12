@@ -1785,6 +1785,10 @@ class TestDescriptorLaunchPath:
             assert "acceptEdits" not in cli_args
             i = cli_args.index("--permission-mode")
             assert cli_args[i + 1] == "default"
+            # ...while the panel seam still got the STORED tier, not the -S one.
+            m.target.deliver_panel_permissions.assert_called_once_with(
+                config_root=m.proj.shell_path, access="editing",
+            )
 
     def test_unknown_stored_tier_refuses_the_launch(self, start_mocks):
         """R-41's inversion: a junk stored value used to coerce to the PERMISSIVE

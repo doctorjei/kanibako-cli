@@ -7477,11 +7477,12 @@ binary once more and caches it there.
 | codex | `~/.codex/config.toml` | `approval_policy` | flags: `--dangerously-bypass-approvals-and-sandbox`, `-c approval_policy="on-request" -s workspace-write`, or `-c approval_policy="on-request" -s read-only` |
 
 The variable and the flags override the file. A panel is started by VS Code without them, so it uses the file's
-value, or the agent's default if there is none. A new claude box's file comes from the seed template, which sets
-`bypassPermissions`, so its panel runs without prompts at every tier. codex's `restricted` was
-`approval_policy = "untrusted"`, which codex 0.158 no longer accepts; it is now `on-request` with a read-only
-sandbox. kanibako still forces codex's `sandbox_mode = "danger-full-access"` in the file, because a nested sandbox
-hangs the panel.
+value, or the agent's default if there is none. goose's default is `auto`, which runs tools without asking, so the
+panel of a `restricted` goose box whose file has no `GOOSE_MODE` runs at `auto`. A new claude box's file comes
+from the seed template, which sets `bypassPermissions`, so its panel runs without prompts at every tier. codex's
+`restricted` was `approval_policy = "untrusted"`, which codex 0.158 no longer accepts; it is now `on-request` with
+a read-only sandbox. kanibako still forces codex's `sandbox_mode = "danger-full-access"` in the file, because a
+nested sandbox hangs the panel.
 
 **What you must do.** To set a panel's mode, set the key in the file. For goose, set `GOOSE_MODE` in your host
 `~/.config/goose/config.yaml`; kanibako copies that file into the box. For claude, edit the box's
