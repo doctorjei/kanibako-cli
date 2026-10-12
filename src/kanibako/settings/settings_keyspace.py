@@ -119,6 +119,7 @@ from typing import (
 # needs it because NORMALIZING a node to its harness is the KEYSPACE's rule, not a
 # supplier's: see :func:`agent_declared_leaves`.
 from kanibako.agent_ref import (
+    ENV_VAR_NAME,
     PSEUDO_AGENT_NAMES,
     agent_segment_case,
     canonicalize_agent_ref,
@@ -130,7 +131,7 @@ from kanibako.settings.kb_store import BINDING_DERIVATIONS_NODE, SCOPE_CONTAINME
 from kanibako.settings.keystore import KeyStore
 # ⚑ MODULE SCOPE, and it closes no cycle: ``settings_categories`` is pure — it
 # imports stdlib only, with ``kb_store`` and ``keystore`` behind ``TYPE_CHECKING``.
-from kanibako.settings.settings_categories import CATEGORY_FAMILY_ROOTS, ENV_VAR_NAME
+from kanibako.settings.settings_categories import CATEGORY_FAMILY_ROOTS
 
 # ---------------------------------------------------------------------------
 # The keyspace version stamp
@@ -628,7 +629,7 @@ RESERVED_LEAF_NAMES: Final[frozenset[str]] = KeyStore.RESERVED_KEY_NAMES
 _DUNDER_RE: Final = re.compile(r"^__.*__$")
 
 #: ``env.<VAR>`` / ``secret_path.<VAR>`` variable-name shape (spec §2a), composed from
-#: the one spelling, ``settings_categories.ENV_VAR_NAME``.
+#: the one spelling, ``agent_ref.ENV_VAR_NAME``.
 _VAR_RE: Final = re.compile(rf"^{ENV_VAR_NAME}$")
 
 # ---------------------------------------------------------------------------

@@ -33,9 +33,8 @@ from typing import Any, Literal
 # ``agent_config`` imports ``SettingsError`` from here at ITS module level. The other two modules
 # measure clean at import time and stay call-time anyway: a module-level edge is a standing claim
 # about two modules' relative import order, which only the imported module can honor.
-from kanibako.agent_ref import CANONICAL_SEP, SEGMENT_CHAR_CLASS
+from kanibako.agent_ref import CANONICAL_SEP, ENV_VAR_NAME, SEGMENT_CHAR_CLASS
 from kanibako.errors import KanibakoError
-from kanibako.settings.settings_categories import ENV_VAR_NAME
 
 # Single source of truth for the box-side home; ``~`` in box-side destinations expands to it.
 # ⚑ The transitive in-tree closure is ``agent_ref`` + ``errors`` and NOTHING else, which is what

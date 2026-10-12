@@ -41,6 +41,7 @@ import textwrap
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Final, Literal, Mapping, NoReturn, Sequence
 
+from kanibako.agent_ref import ENV_VAR_NAME
 from kanibako.settings.kb_store import SCOPE_CONTAINMENT
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
@@ -144,12 +145,6 @@ _DELIVERY: dict[str, Delivery] = {
 CATEGORY_FAMILY_ROOTS: Final[frozenset[str]] = frozenset(
     name.split(".", 1)[0] for name in _DELIVERY
 )
-
-#: The env-variable NAME shape (spec §2a ``env.<VAR>`` / ``secret_path.<VAR>``): a letter
-#: or underscore, then letters, digits or underscores.  ⚑ THE ONE SPELLING — every env-name
-#: regex is COMPOSED from it and every message naming the shape interpolates it.  Unanchored
-#: on purpose: callers anchor or embed it.
-ENV_VAR_NAME: Final = r"[A-Za-z_][A-Za-z0-9_]*"
 
 # One regex for the bind-shaped categories: scope . <category> . name (name greedily
 # captures the remainder, which may contain dots).

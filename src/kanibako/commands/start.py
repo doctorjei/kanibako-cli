@@ -65,7 +65,6 @@ from kanibako.log import get_logger
 from kanibako.runtime.rig_registry import load_registry, registry_path
 from kanibako.runtime.rig_resolve import resolve_rig
 from kanibako.settings.settings_categories import (
-    ENV_VAR_NAME,
     SECRET_MOUNT_DIR,
     SECRET_VAR_RE,
     is_read_only,
@@ -93,6 +92,7 @@ from kanibako.settings.paths import (
     stored_legacy_box,
 )
 from kanibako.agent_ref import (
+    ENV_VAR_NAME,
     GENERAL_SLOT,
     agent_address_node,
     display_agent_ref,

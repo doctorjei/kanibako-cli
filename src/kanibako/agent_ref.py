@@ -22,6 +22,13 @@ SEPARATORS = (PLUS_SEP := "+", CANONICAL_SEP := "℘")
 _SAFE_EXTRA = frozenset("-_")
 SEGMENT_CHAR_CLASS = r"\w" + "".join(re.escape(ch) for ch in sorted(_SAFE_EXTRA))
 
+# The env-variable NAME shape (keyspec §2a ``env.<VAR>`` / ``secret_path.<VAR>``): a letter or
+# underscore, then letters, digits or underscores.  ⚑ THE ONE SPELLING — every env-name regex is
+# COMPOSED from it and every message naming the shape interpolates it.  It lives beside
+# SEGMENT_CHAR_CLASS because ``settings_resolve`` composes both and its in-tree closure must stay
+# ``agent_ref`` + ``errors``.  Unanchored on purpose: callers anchor or embed it.
+ENV_VAR_NAME = r"[A-Za-z_][A-Za-z0-9_]*"
+
 # Appended to rejection message when offending segment contains ``.`` - a mistake users actually
 # make (``kimi.k3+claude``), & "only letters and digits" does not explain why dot is not one.
 _DOT_HINT = "; '.' is reserved as settings key-path separator and cannot appear in an agent name"

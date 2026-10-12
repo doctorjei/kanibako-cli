@@ -22,7 +22,9 @@ from enum import Enum
 from pathlib import Path  # noqa: F401  (annotations)
 from typing import Collection, Final, Iterator, Mapping
 
-from kanibako.agent_ref import agent_address_node, agent_segment_case, display_agent_ref
+from kanibako.agent_ref import (
+    ENV_VAR_NAME, agent_address_node, agent_segment_case, display_agent_ref,
+)
 from kanibako.errors import ConfigError
 from kanibako.identifiers import find_identifier
 from kanibako.settings.agent_config import (
@@ -32,7 +34,7 @@ from kanibako.settings.agent_config import (
 from kanibako.settings.config import coerce_bool
 from kanibako.settings.kb_store import SCOPE_CONTAINMENT
 from kanibako.settings.settings_categories import (
-    DECLARATION_ROOT_REF, ENV_KEY_RE, ENV_VAR_NAME, FILE_SCOPES, SECRET_KEY_RE, SECRET_VAR_RE,
+    DECLARATION_ROOT_REF, ENV_KEY_RE, FILE_SCOPES, SECRET_KEY_RE, SECRET_VAR_RE,
 )
 from kanibako.settings.settings_drops import writable_scopes
 from kanibako.settings.settings_keyspace import (

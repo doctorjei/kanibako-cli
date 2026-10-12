@@ -24,7 +24,7 @@ from importlib.resources.abc import Traversable
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from kanibako.agent_ref import ADDRESSABLE_PSEUDO_AGENTS
+from kanibako.agent_ref import ADDRESSABLE_PSEUDO_AGENTS, ENV_VAR_NAME
 from kanibako.errors import PackagingError
 from kanibako.settings.agent_config import store_dirname
 from kanibako.settings.config_io import parse_packaged
@@ -232,7 +232,7 @@ def _check_env_key(scope: str, var: str) -> None:
     ``settings_categories`` imports nothing from ``kanibako`` at module scope, so
     there is no cycle either way.
     """
-    from kanibako.settings.settings_categories import ENV_KEY_RE, ENV_VAR_NAME
+    from kanibako.settings.settings_categories import ENV_KEY_RE
 
     if ENV_KEY_RE.match(f"{scope}.env.{var}") is not None:
         return
