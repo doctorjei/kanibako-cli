@@ -2560,12 +2560,18 @@ def member_workspace_leaf(ws: Workset, name: str) -> Path | None:
     """The workspace leaf :func:`remove_project` deletes for *name*; ``None`` if none.
 
     ⚑ Under a null ``workset.workspaces`` there is no ``workspaces/<name>``: an in-tree
-    member's leaf is the path its record holds; an external one has no leaf here.
+    member's leaf is the path its record holds; an external one has no leaf here.  A
+    looped record is judged by where it sits, since it cannot resolve.
     """
     target = _find_member(ws, name)
     workspaces = ws.workspaces_dir
     if workspaces is not None:
         return workspaces / name
-    in_tree = (source_in_tree(ws, target.source_path)
-               and target.source_path.resolve() != ws.root.resolve())
-    return target.source_path if in_tree else None
+    source = target.source_path
+    if _symlink_loop(source):
+        parents = _unfollowed(source.absolute()).parents
+        in_tree = not _symlink_loop(ws.root) and (
+            ws.root.resolve() in parents or ws.root.absolute() in parents)
+    else:
+        in_tree = source_in_tree(ws, source) and source.resolve() != ws.root.resolve()
+    return source if in_tree else None

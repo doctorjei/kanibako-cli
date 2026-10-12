@@ -323,9 +323,9 @@ ERR_LOOP_LANDING = ("Refusing to land '%s' at %s: that path runs through a symli
                                                     # the box name, the landing path
 ERR_LOOP_SOURCE = ("Cannot carry box '%s': %s is a symlink loop that kanibako cannot " +
                    "resolve, so there is nothing to copy.\nReplace the loop with the " +
-                   "directory you mean, or record where the files are with " +
-                   "`kanibako box remap`.")
+                   "directory you mean.")
                                                     # the box name, its workspace or store
+CURE_LOOP_SOURCE_REMAP = "\nOr record where the workspace is with `kanibako box remap`."
 
 # The `~/.shell.d/*.sh` user/template extension point for a box's INTERACTIVE shell.
 # ⚑ INTERACTIVE ONLY — it never reaches the agent; use `env.<VAR>` / `secret_path` for that.

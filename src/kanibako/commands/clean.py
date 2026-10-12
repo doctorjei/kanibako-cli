@@ -250,9 +250,13 @@ def _purge_one(std, config, path: str, *, force: bool) -> int:
     # For standalone, metadata_path IS the project root (drift I); the actual
     # box metadata lives in box_data/ + the root workset.yaml + vault/.  "No
     # session data" means no box_data/ dir (the root always exists).
+    store = (standalone_box_store(proj.metadata_path, early=_early_scope(std, BoxMode.standalone))
+             if proj.mode is BoxMode.standalone else proj.metadata_path)
+    if _symlink_loop(store):
+        report_retained_loop(store, "box metadata")
+        return 0
     if proj.mode is BoxMode.standalone:
-        if not standalone_box_store(proj.metadata_path,
-                                 early=_early_scope(std, BoxMode.standalone)).is_dir():
+        if not store.is_dir():
             print(f"No session data found for project {proj.project_path or '<None>'}")
             return 0
     elif not proj.metadata_path.is_dir():

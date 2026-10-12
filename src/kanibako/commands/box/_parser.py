@@ -2390,6 +2390,15 @@ def report_primary_keeps(retained: "list[tuple[str, Path, str | None]]") -> None
             report_retained_loop(kept, what)
 
 
+def _report_no_metadata(metadata_dir: Path | None) -> None:
+    """Say why a purge found no metadata to delete: a loop is kept and named, not absent."""
+    if metadata_dir is not None and _symlink_loop(metadata_dir):
+        sys.stdout.flush()
+        report_retained_loop(metadata_dir, "box metadata")
+    else:
+        print(f"No metadata directory found at {metadata_dir}")
+
+
 def _primary_purge_plan(std, name: str, metadata_dir: Path,
                        loop_keeps: "list[tuple[str, Path, str | None]] | None" = None,
                        ) -> list[_PurgeStep]:
@@ -3024,7 +3033,7 @@ def _rm_standalone(std, box_name: str, root, args: argparse.Namespace, *,
 
     if args.purge:
         if plan is None:
-            print(f"No metadata directory found at {metadata_dir}")
+            _report_no_metadata(metadata_dir)
             return 0
         purge_ok = _run_purge_plan(plan, std)
         if root_path is not None:
@@ -3234,7 +3243,7 @@ def run_rm(args: argparse.Namespace) -> int:
 
     if args.purge:
         if plan is None:
-            print(f"No metadata directory found at {metadata_dir}")
+            _report_no_metadata(metadata_dir)
             return 0
         ran = _run_purge_plan(plan, std)
         report_primary_keeps(loop_keeps)
@@ -3336,7 +3345,7 @@ def _readopt_deregistered(std, name: str, entry: dict) -> int:
     # PRIMARY (default) box.
     from kanibako.settings.paths import register_primary_box_name
 
-    metadata_dir = Path(str(metadata)).resolve() if metadata else None
+    metadata_dir = _resolved_unless_loop(Path(str(metadata))) if metadata else None
     # Self-heal: the box dir is gone → nothing to restore, drop the entry.  ⚑ EACCES refuses.
     if metadata_dir is None or not is_dir_unless_gone(metadata_dir):
         registry_store.unregister_deregistered(std.registry, name)

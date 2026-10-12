@@ -52,7 +52,7 @@ from kanibako.errors import (
     UnmarkedStandaloneError, WorksetError,
 )
 from kanibako.settings.messages import (
-    CURE_MOVED_LEAF_NOT_ASCII, ERR_LOOP_LANDING, ERR_LOOP_SOURCE,
+    CURE_MOVED_LEAF_NOT_ASCII, ERR_LOOP_LANDING, ERR_LOOP_SOURCE, CURE_LOOP_SOURCE_REMAP,
 )
 from kanibako.settings.paths import (
     STANDALONE_META_DIR,
@@ -100,7 +100,8 @@ from kanibako.tree_copy import (
 from kanibako.utils import (
     container_name_for_box_name, gitignore_holds_only_kanibako, is_dir_unless_gone,
     literal_path, logical_cwd,
-    project_gitignore_to_strip, strip_project_gitignore, write_project_gitignore,
+    project_gitignore_to_strip, strip_project_gitignore, unreadable_path_error,
+    write_project_gitignore,
 )
 from kanibako.project.workset import (
     Workset,
@@ -1402,7 +1403,8 @@ def _validate(
         carried += [state.workspace_path] if relocating else []
         looped = next((p for p in carried if _symlink_loop(p)), None)
         if looped is not None:
-            raise ProjectError(ERR_LOOP_SOURCE % (state.name, looped))
+            raise ProjectError(ERR_LOOP_SOURCE % (state.name, looped) + (
+                CURE_LOOP_SOURCE_REMAP if looped == state.workspace_path else ""))
 
     if not spec.records_only:
         refuse_inherited_per_owner(
@@ -2375,6 +2377,14 @@ def _is_per_box_leaf(leaf: Path, arm: Path) -> bool:
     return arm.resolve() in leaf.resolve().parents
 
 
+def _refuse_looped_carry_dst(dst: Path) -> None:
+    """Raise ``ELOOP`` for a destination vault leaf on a loop: nothing can be carried into it."""
+    if _symlink_loop(dst):
+        import errno
+        import os
+        raise OSError(errno.ELOOP, os.strerror(errno.ELOOP), str(dst))
+
+
 def _vault_carry_pairs(
     state: ProjectState,
     std: StandardPaths,
@@ -2429,6 +2439,7 @@ def _vault_carry_pairs(
             # carry, and ``resolve`` raises on it under Python 3.11.
             if _symlink_loop(src):
                 continue
+            _refuse_looped_carry_dst(dst)
             if src.resolve() == dst.resolve():
                 continue
             if src.resolve() not in removable_roots:
@@ -2458,6 +2469,7 @@ def _vault_carry_pairs(
         src, dst = side
         if _symlink_loop(src):
             continue
+        _refuse_looped_carry_dst(dst)
         if src.resolve() == dst.resolve():
             continue
         if not _is_per_box_leaf(src, arm):
@@ -4071,8 +4083,9 @@ def _to_workset(
                 except (OSError, ProjectError):
                     if dst is None or dst.is_symlink() or not dst.is_dir():
                         raise
-                    own = {base.resolve() / src_name for base in _member_store_bases(src_ws)}
-                    if dst.parent.resolve() / dst.name not in own:
+                    own = {_resolved_unless_loop(base) / src_name
+                           for base in _member_store_bases(src_ws)}
+                    if _resolved_unless_loop(dst.parent) / dst.name not in own:
                         raise
                     remove_path(dst)
                     copy()
@@ -4766,6 +4779,9 @@ def _relocation_failure(err: OSError) -> str:
         listing = failed_entries(err)
         if listing is not None:
             return f"Error: the relocation failed; {listing}"
+    import errno
+    if err.errno == errno.ELOOP and err.filename and _symlink_loop(Path(err.filename)):
+        return f"Error: the relocation failed: {unreadable_path_error(err.filename, err)}"
     return f"Error: the relocation failed: {err}"
 
 
