@@ -366,9 +366,9 @@ class _Expander:
                 # would destroy the RAW REQUEST ``--effective`` displays. Guarded
                 # on the ROOT path (``not path``) so a category legitimately NAMED
                 # ``pref`` deeper in the tree is unaffected.
-                from kanibako.settings.settings_merge import _deep_copy_store
+                from kanibako.settings.keystore import clone_store
 
-                out[key] = _deep_copy_store(value)
+                out[key] = clone_store(value)
                 continue
             if isinstance(value, KeyStore):
                 out[key] = self._expand_node(value, path=child_path)

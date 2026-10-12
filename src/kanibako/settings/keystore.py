@@ -189,3 +189,22 @@ class KeyStore(dict[str, "V | KeyStore[V]"], Generic[V]):
         return f"{type(self).__name__}({{{inner}}})"
 
     # Remaining `dict` methods (accessors, equality, operators, etc.) are inherited from `dict`.
+
+
+### Copying ###
+
+# ⚑ A MODULE FUNCTION, NOT A METHOD: a public method would have to join RESERVED_KEY_NAMES and so
+# refuse a stored key of the same name that is accepted today.
+def clone_store(store: KeyStore[V]) -> KeyStore[V]:
+    """A deep copy of *store* that aliases no mutable part: every node is rebuilt and every
+    list copied; other leaves are shared. Iterates storage unbound, so no key can shadow it."""
+    out: KeyStore[V] = KeyStore()
+    for key in dict.keys(store):
+        value = dict.__getitem__(store, key)
+        if isinstance(value, KeyStore):
+            out[key] = clone_store(value)
+        elif isinstance(value, list):
+            out[key] = list(value)
+        else:
+            out[key] = value
+    return out

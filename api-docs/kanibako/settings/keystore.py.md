@@ -11,6 +11,11 @@ V = TypeVar('V')
 
 ```
 
+## Functions
+```
+def clone_store(store: KeyStore[V]) -> KeyStore[V]
+```
+
 ## Classes
 
 ```

@@ -7,6 +7,7 @@ import pytest
 from kanibako.project.workset import create_workset
 from kanibako.settings import config_interface as ci
 from kanibako.settings.config_io import dump_doc, load_doc
+from kanibako.settings.keystore import clone_store
 from kanibako.settings.settings_expand import expand
 from kanibako.settings.settings_launch import (
   SYSTEM_SCALAR_FLOOR,
@@ -61,7 +62,7 @@ def _target(std, ws):
 
 def _set_time_value(target, value: str):
   snapshot, ctx = ci._set_time_snapshot(target=target, agent_name=_AGENT, agent_path=None)
-  candidate = ci._clone_keystore(snapshot)
+  candidate = clone_store(snapshot)
   candidate.insert_segments(_KEY.split("."), value)
   expanded, errors = expand(candidate, ctx, collect_errors=True)
   assert _KEY not in errors, errors[_KEY]

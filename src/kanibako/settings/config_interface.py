@@ -162,7 +162,7 @@ from kanibako.settings.settings_categories import (
 from kanibako.settings.settings_keyspace import (
     display_segments, display_store_path, entry_label, is_var_table, key_validity, shown_key,
 )
-from kanibako.settings.keystore import ReservedKeyError
+from kanibako.settings.keystore import ReservedKeyError, clone_store
 from kanibako.settings.settings_prefs import PREF_ROOT
 from kanibako.utils import confirm_prompt, stat_unless_gone
 
@@ -456,7 +456,7 @@ def _target_scope_anchors(
         )
     except Exception:
         return {}
-    expanded, errors = _lenient_expand(_clone_keystore(snapshot), ctx, agent_name)
+    expanded, errors = _lenient_expand(clone_store(snapshot), ctx, agent_name)
     anchors: dict[str, object] = {}
     for ref in ("meta.workset.path", "meta.box.path"):
         if ref in errors:
@@ -1111,7 +1111,7 @@ def _category_set_lookups(
 
     def resolves(key: str, value: str) -> "str | None":
         # Apply the candidate into a FRESH copy (S19), lenient-expand, read the key's defect.
-        candidate = _clone_keystore(base_snapshot)
+        candidate = clone_store(base_snapshot)
         try:
             candidate.insert_segments(key.split("."), value)
         except ReservedKeyError as exc:
@@ -1176,7 +1176,7 @@ def _set_time_defects(
     )
     if edit is not None:
         snapshot.insert_segments(edit[0].split("."), edit[1])
-    errors = _lenient_expand(_clone_keystore(snapshot), ctx, agent_name)[1]
+    errors = _lenient_expand(clone_store(snapshot), ctx, agent_name)[1]
     forgiven = _blindness_forgiven(errors, snapshot, ctx, agent_name, command_scope)
     return {k: r for k, r in errors.items() if k not in forgiven}
 
@@ -1198,24 +1198,13 @@ def _blindness_forgiven(
     }
     if not unseen:
         return set()
-    supplied = _clone_keystore(candidate)
+    supplied = clone_store(candidate)
     try:
         for name in {name for names in unseen.values() for name in names}:
             supplied.insert_segments(name.split("."), "/")
     except ReservedKeyError:
         return set()
     return set(unseen) - set(_lenient_expand(supplied, ctx, agent_name)[1])
-
-
-def _clone_keystore(store: "Any") -> "Any":
-    """Deep-clone a :class:`KeyStore` — nested nodes rebuilt, immutable leaves shared (S19)."""
-    from kanibako.settings.keystore import KeyStore
-
-    out = KeyStore()
-    for k in dict.keys(store):
-        v = dict.__getitem__(store, k)
-        out[k] = _clone_keystore(v) if isinstance(v, KeyStore) else v
-    return out
 
 
 # ⚑ ``_set_category_value`` and its callee ``settings_configset.repoint_host_src`` are GONE

@@ -3238,14 +3238,14 @@ def _mirror_fill(box_node: KeyStore, agent_node: KeyStore) -> None:
     ⚑ A name absent from *box_node* is set to a FRESH deep COPY of the agent value, so
     no box edit aliases the shared ``agent.*`` subtree. Unbound ``dict`` protocol (S3).
     """
-    from kanibako.settings.settings_merge import _deep_copy_store
+    from kanibako.settings.keystore import clone_store
 
     for name in dict.keys(agent_node):
         agent_val = dict.__getitem__(agent_node, name)
         box_val = dict.get(box_node, name, __MISSING__)
         if box_val is __MISSING__:
             if isinstance(agent_val, KeyStore):
-                box_node[name] = _deep_copy_store(agent_val)
+                box_node[name] = clone_store(agent_val)
             elif isinstance(agent_val, list):
                 box_node[name] = list(agent_val)
             else:

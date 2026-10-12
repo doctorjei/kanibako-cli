@@ -107,24 +107,6 @@ def _merge_nodes(
     return out
 
 
-def _deep_copy_store(store: KeyStore) -> KeyStore:
-    """Deep-copy a :class:`KeyStore` subtree into a fresh, non-aliasing tree (S15).
-
-    Unbound ``dict`` iteration (S3) so a key named ``keys`` / ``items`` cannot
-    shadow the protocol.
-    """
-    out = KeyStore()
-    for key in dict.keys(store):
-        val = dict.__getitem__(store, key)
-        if isinstance(val, KeyStore):
-            out[key] = _deep_copy_store(val)
-        elif isinstance(val, list):
-            out[key] = list(val)
-        else:
-            out[key] = val
-    return out
-
-
 class _Omit:
     """Sentinel: a present-``None`` leaf that must be OMITTED from the snapshot (§3).
 

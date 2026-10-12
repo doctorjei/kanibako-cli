@@ -36,6 +36,7 @@ from kanibako.settings.kb_store import __MISSING__, Bind, BindEntry
 from kanibako.settings.keystore import (
     KeyStore,
     ReservedKeyError,
+    clone_store,
 )
 
 #: Stands in for the container's own value parameter when a test needs a class with
@@ -679,3 +680,30 @@ def test_insert_segments_keeps_two_dests_that_would_nest_once_split() -> None:
 def test_insert_segments_refuses_an_empty_path() -> None:
     with pytest.raises(ValueError):
         KeyStore().insert_segments((), "x")
+
+
+# --------------------------------------------------------------------------- #
+# clone_store — the ONE deep copy                                             #
+# --------------------------------------------------------------------------- #
+
+
+def test_clone_store_aliases_no_node_and_no_list() -> None:
+    bind = BindEntry("/h/a")
+    store = KeyStore({"a": {"b": {"c": 1}, "l": ["x"], "bind": bind}, "n": None})
+    copy = clone_store(store)
+    assert copy == store
+    assert copy["a"] is not store["a"]
+    assert copy["a"]["b"] is not store["a"]["b"]
+    assert isinstance(copy["a"]["b"], KeyStore)
+    assert copy["a"]["l"] is not store["a"]["l"]
+    assert copy["a"]["bind"] is bind  # an immutable leaf is shared
+    copy["a"]["l"].append("y")
+    copy["a"]["b"]["c"] = 2
+    assert store["a"]["l"] == ["x"]
+    assert store["a"]["b"]["c"] == 1
+
+
+def test_clone_store_is_not_a_member_so_its_name_stays_a_legal_key() -> None:
+    # ⚑ A public METHOD would have to join RESERVED_KEY_NAMES and refuse this key.
+    assert "clone_store" not in KeyStore.RESERVED_KEY_NAMES
+    assert clone_store(KeyStore({"clone_store": 1})) == {"clone_store": 1}

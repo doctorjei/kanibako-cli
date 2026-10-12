@@ -18,7 +18,6 @@ def merge(levels: list[KeyStore]) -> KeyStore
 def _is_set(level: KeyStore, name: str) -> bool
 def _names_in_order(levels: list[KeyStore]) -> list[str]
 def _merge_nodes(levels: list[KeyStore], *, path: tuple[str, ...]) -> KeyStore
-def _deep_copy_store(store: KeyStore) -> KeyStore
 def _resolve_present_none(*, path: tuple[str, ...]) -> StoreValue | _Omit
 def _is_category_root(path: tuple[str, ...]) -> bool
 def _is_category_entry(path: tuple[str, ...]) -> bool
