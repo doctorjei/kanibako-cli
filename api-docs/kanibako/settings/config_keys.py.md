@@ -26,10 +26,8 @@ _PERSONA_ENV_SECTIONS: frozenset[str] = frozenset({'env'})
 _AGENT_DEFAULT_TIER_TABLE: Final = "'agent: default:' table of the system settings file"
 _AGENT_DEFAULT_TIER_CURE: Final = f'Author it in the {_AGENT_DEFAULT_TIER_TABLE}; the launch reads it from there.'
 _AGENT_NODE_BIND_RE = re.compile('^agent\\.(?P<node>.+?)\\.(?P<cat>bindings\\.(?:ro|rw))\\.(?P<name>.+)$')
-_AGENT_NODE_SECRET_RE = re.compile('^agent\\.(?P<node>.+?)\\.secret_path\\.(?P<var>[A-Za-z_][A-Za-z0-9_]*)$')
-_SCOPE_ENV_RE = re.compile('^(?P<scope>system|workset|box)\\.env\\.(?P<var>[A-Za-z_][A-Za-z0-9_]*)$')
+_AGENT_NODE_SECRET_RE = re.compile(f'^agent\\.(?P<node>.+?)\\.secret_path\\.(?P<var>{ENV_VAR_NAME})$')
 _NO_BARE_AGENT_KEY_SCOPES: 'frozenset[ConfigLevel]' = frozenset({ConfigLevel.box, ConfigLevel.workset})
-_SCOPE_SECRET_RE = re.compile('^(?P<scope>system|workset|box)\\.secret_path\\.(?P<var>[A-Za-z_][A-Za-z0-9_]*)$')
 _SCOPE_READ_COMMAND = {'system': 'kanibako system get', 'workset': 'kanibako workset get <workset>', 'box': 'kanibako box get <box>'}
 _SCOPE_SHOW_COMMAND = {'system': 'kanibako system show', 'workset': 'kanibako workset show <workset>', 'box': 'kanibako box show <box>'}
 ```
@@ -81,6 +79,7 @@ def _is_agent_node_secret_key(key: str) -> bool
 def _persona_display_key(canonical: str) -> str
 def _node_secret_display_key(canonical: str) -> str
 def _is_bare_env_key(key: str) -> bool
+def _file_scope_match(family: 're.Pattern[str]', key: str) -> 're.Match[str] | None'
 def _is_scope_env_key(key: str) -> bool
 def _is_agent_setting(key: str) -> bool
 def _terminal_category_message(display_key: str, *, verb: str, cure: str, survives: str) -> str

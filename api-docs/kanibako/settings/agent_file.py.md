@@ -29,6 +29,7 @@ _UNSET: Final[object] = object()
 ## Functions
 ```
 def scalar_family_of(tail: str) -> str | None
+def table_valued_refusal(key: str, verb: str, cure: str, *, shape: str='a TABLE', spec: str | None=None, fix_line: bool=False) -> str
 def table_value_error(tail: str, *, path: Path, verb: str) -> str | None
 def file_spelling(*segments: str) -> str
 def slot_for(agents_root: Path, node: str, tail: str) -> AgentFileSlot
