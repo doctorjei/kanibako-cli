@@ -1327,6 +1327,18 @@ class TestBootstrapShell:
         _bootstrap_shell(shell)
         assert (shell / ".profile").is_file()
 
+    def test_profile_keeps_local_bin_on_path(self, tmp_path):
+        # A login shell's /etc/profile resets PATH, dropping the image's ~/.local/bin
+        # (where the agent binary is bound); the box .profile must put it back, once.
+        import subprocess
+        shell = tmp_path / "shell"
+        shell.mkdir()
+        _bootstrap_shell(shell)
+        script = '. "$HOME/.profile"; . "$HOME/.profile"; printf %s "$PATH"'
+        out = subprocess.run(["sh", "-c", script], env={"HOME": str(shell), "PATH": "/usr/bin:/bin"},
+                             capture_output=True, text=True, check=True).stdout
+        assert out.split(":") == [f"{shell}/.local/bin", "/usr/bin", "/bin"]
+
     def test_idempotent(self, tmp_path):
         shell = tmp_path / "shell"
         shell.mkdir()

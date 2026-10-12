@@ -95,6 +95,6 @@ ERR_LOOP_LANDING = "Refusing to land '%s' at %s: that path runs through a symlin
 ERR_LOOP_SOURCE = "Cannot carry box '%s': %s is a symlink loop that kanibako cannot " + 'resolve, so there is nothing to copy.\nReplace the loop with the ' + 'directory you mean, or record where the files are with ' + '`kanibako box remap`.'
 BASHRC_CONTENTS = '# kanibako shell environment\n' + '[ -f /etc/bashrc ] && . /etc/bashrc\n' + 'export PS1="${KANIBAKO_PS1:-(kanibako) \\u@\\h:\\w\\$ }"\n' + '# Source user init scripts\n%s\n' % _SHELL_D_SOURCE_LINE
 SHELL_D_CONTENTS = '# Source user init scripts\n%s\n' % _SHELL_D_SOURCE_LINE
-PROFILE_CONTENTS = '# kanibako login profile\n' + '[ -f ~/.bashrc ] && . ~/.bashrc\n'
+PROFILE_CONTENTS = '# kanibako login profile\n' + 'case ":$PATH:" in *":$HOME/.local/bin:"*) ;; ' + '*) PATH="$HOME/.local/bin:$PATH"; export PATH ;; esac\n' + '[ -f ~/.bashrc ] && . ~/.bashrc\n'
 _SHELL_D_SOURCE_LINE = 'for _f in ~/.shell.d/*.sh; do [ -r "$_f" ] && . "$_f"; done\nunset _f'
 ```

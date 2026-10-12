@@ -339,6 +339,10 @@ BASHRC_CONTENTS =        ("# kanibako shell environment\n" +
 
 SHELL_D_CONTENTS =        "# Source user init scripts\n%s\n" % _SHELL_D_SOURCE_LINE
 
+# ⚑ A login shell's /etc/profile resets PATH, dropping the image's ~/.local/bin, where
+# the agent binary is bound; this home's .profile replaces the image's, so it restores it.
 PROFILE_CONTENTS =       ("# kanibako login profile\n" +
+                          'case ":$PATH:" in *":$HOME/.local/bin:"*) ;; ' +
+                          '*) PATH="$HOME/.local/bin:$PATH"; export PATH ;; esac\n' +
                           "[ -f ~/.bashrc ] && . ~/.bashrc\n")
 
