@@ -1206,8 +1206,7 @@ def precheck_create(args: argparse.Namespace) -> int | None:
             print(f"Error: {e.with_cure(cure)}", file=sys.stderr)
             return 1
 
-    # ⚑ A target kanibako cannot reach (EACCES, a loop) refuses, naming it, before the
-    # ``resolve()`` below raises on it (3.11: ``RuntimeError`` on a loop).
+    # ⚑ A target kanibako cannot reach (EACCES, a symlink loop) is refused here, by name.
     stat_unless_gone(_create_target(args))
     # $HOME guard: a home project must be BOTH standalone and an explicit --allow-home.
     if is_home_dir(_create_target(args)):
