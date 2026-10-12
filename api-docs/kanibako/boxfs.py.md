@@ -18,8 +18,9 @@ def no_symlink_or_warn(path: Path, root: Path) -> bool
 def read_bytes_with_stat(path: Path, root: Path) -> tuple[bytes, os.stat_result]
 def read_bytes(path: Path, root: Path) -> bytes
 def read_text(path: Path, root: Path, encoding: str='utf-8') -> str
-def write_bytes(path: Path, root: Path, data: bytes, mode: int | None=None) -> None
-def write_text(path: Path, root: Path, data: str, mode: int | None=None) -> None
+def write_bytes(path: Path, root: Path, data: bytes, mode: int | None=None, times: tuple[int, int] | None=None) -> None
+def write_text(path: Path, root: Path, data: str, mode: int | None=None, times: tuple[int, int] | None=None) -> None
+def listdir(path: Path, root: Path) -> list[str]
 def stat(path: Path, root: Path) -> os.stat_result
 def mkdir(path: Path, root: Path, *, parents: bool=False, exist_ok: bool=False, mode: int=493) -> None
 def copy_file(src: Path, dst: Path, *, src_root: Path | None, dst_root: Path | None) -> None

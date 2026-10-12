@@ -310,21 +310,38 @@ def _kept_mode(dir_fd: int, leaf: str) -> int:
     return _st.S_IMODE(st.st_mode) if _st.S_ISREG(st.st_mode) else 0o600
 
 
-def write_bytes(path: Path, root: Path, data: bytes, mode: int | None = None) -> None:
+def write_bytes(
+    path: Path, root: Path, data: bytes, mode: int | None = None,
+    times: tuple[int, int] | None = None,
+) -> None:
     """Atomically replace *path* with *data*; missing parents are created.
 
-    *mode* None keeps an existing file's mode; a new file gets 0o600.
+    *mode* None keeps an existing file's mode; a new file gets 0o600.  *times* is
+    ``(atime_ns, mtime_ns)`` set on the new file before it is renamed into place;
+    None leaves them at now.
     """
     with _write_parent(path, root) as (fd, leaf):
         _replace_at(
             fd, leaf, lambda fh: fh.write(data),
-            _kept_mode(fd, leaf) if mode is None else mode,
+            _kept_mode(fd, leaf) if mode is None else mode, times,
         )
 
 
-def write_text(path: Path, root: Path, data: str, mode: int | None = None) -> None:
+def write_text(
+    path: Path, root: Path, data: str, mode: int | None = None,
+    times: tuple[int, int] | None = None,
+) -> None:
     """:func:`write_bytes` for text, encoded as UTF-8."""
-    write_bytes(path, root, data.encode("utf-8"), mode)
+    write_bytes(path, root, data.encode("utf-8"), mode, times)
+
+
+def listdir(path: Path, root: Path) -> list[str]:
+    """The entry names of the directory *path* (which may be *root*), read through
+    its verified descriptor.  Entries are not classified; a link among them is
+    just a name, and acting on it goes through this module again.
+    """
+    with _dir(path, root) as fd:
+        return os.listdir(fd)
 
 
 def stat(path: Path, root: Path) -> os.stat_result:

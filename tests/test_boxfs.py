@@ -535,3 +535,38 @@ def test_write_keeps_an_existing_files_mode(tree):
     assert _st_mode(f) == 0o600
     boxfs.write_bytes(root / "a" / "g", root, b"x")
     assert _st_mode(root / "a" / "g") == 0o600
+
+
+# --- round 3 -------------------------------------------------------------------
+
+
+def test_listdir_reads_through_the_verified_dir_and_refuses_links(tree):
+    root, outside, _ = tree
+    (root / "a" / "b" / "f").write_text("x")
+    (root / "a" / "b" / "l").symlink_to(outside)
+    assert sorted(boxfs.listdir(root / "a" / "b", root)) == ["f", "l"]
+    assert sorted(boxfs.listdir(root, root)) == ["a"]
+    (root / "a" / "par").symlink_to(outside)
+    (root / "a" / "leafdir").symlink_to(outside)
+    with pytest.raises(SymlinkRefusedError):
+        boxfs.listdir(root / "a" / "par" / "sub", root)  # parent link
+    with pytest.raises(SymlinkRefusedError):
+        boxfs.listdir(root / "a" / "leafdir", root)  # the dir itself is a link
+    with pytest.raises(FileNotFoundError):
+        boxfs.listdir(root / "a" / "missing", root)
+
+
+def test_write_sets_times_when_given(tree):
+    root, outside, sentinel = tree
+    f = root / "a" / "f"
+    boxfs.write_bytes(f, root, b"gz", times=(3_000_000_000, 4_000_000_000))
+    assert f.stat().st_mtime_ns == 4_000_000_000
+    assert f.stat().st_atime_ns == 3_000_000_000
+    boxfs.write_text(f, root, "t", times=(1_000_000_000, 2_000_000_000))
+    assert f.stat().st_mtime_ns == 2_000_000_000
+    leaf, under = _links(root, outside)
+    before = sentinel.stat().st_mtime_ns
+    for p in (leaf, under):
+        with pytest.raises(SymlinkRefusedError):
+            boxfs.write_bytes(p, root, b"x", times=(1, 1))
+    assert sentinel.stat().st_mtime_ns == before
