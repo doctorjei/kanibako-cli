@@ -153,6 +153,24 @@ def rename_box_cure(mode: str, path: Path, name: str | None = None) -> str:
     return f"kanibako box move {shlex.quote(str(path))} <new-path> --name {new_name}"
 
 
+def legacy_workset_reason(workset: str) -> str:
+    """Why legacy *workset* renders no name: its flaw and the name rule."""
+    from kanibako.identifiers import name_flaw
+    from kanibako.settings.messages import NAME_CHARSET
+
+    return f"its workset name '{workset}' {name_flaw(workset)}; {NAME_CHARSET}"
+
+
+def legacy_workset_cure(workset: str, where: Path) -> str:
+    """The two commands that move the box at *where* out of legacy *workset*, indented."""
+    from kanibako.launch.box_identity import name_spelling
+
+    offer = name_spelling(workset)
+    spelled = offer[0] if offer is not None else "<new-name>"
+    return (f"  kanibako workset create <new-root> --name {spelled}\n"
+            f"  kanibako box convert {shlex.quote(str(where))} --workset {spelled}")
+
+
 def unrenderable_box_name_refusal(
     box: str, mode: str, path: Path | None, designation: str | None,
     *, workset: str | None = None,
@@ -162,20 +180,14 @@ def unrenderable_box_name_refusal(
     The cure names the box by PATH, never by *box* (a leading ``-`` reads as a flag):
     its project *path*, else the *designation* that reached it.  A box whose own name
     renders but whose *workset* segment is a legacy name is refused for the workset."""
-    from kanibako.identifiers import name_flaw
-    from kanibako.launch.box_identity import box_name_reason, name_spelling
-    from kanibako.settings.messages import NAME_CHARSET
+    from kanibako.launch.box_identity import box_name_reason
 
     where = path if path is not None else Path(literal_path(designation or "."))
     if not renders_no_name(box) and workset is not None and workset_renders_no_name(workset):
-        offer = name_spelling(workset)
-        spelled = offer[0] if offer is not None else "<new-name>"
         return (
-            f"Error: box '{box}' has no container name: its workset name '{workset}' "
-            f"{name_flaw(workset)}; {NAME_CHARSET}. Move the box to a workset with a "
-            f"valid name, then try again:\n"
-            f"  kanibako workset create <new-root> --name {spelled}\n"
-            f"  kanibako box convert {shlex.quote(str(where))} --workset {spelled}"
+            f"Error: box '{box}' has no container name: {legacy_workset_reason(workset)}. "
+            f"Move the box to a workset with a valid name, then try again:\n"
+            f"{legacy_workset_cure(workset, where)}"
         )
     reason = box_name_reason(box) or "box name must not be empty"
     return (

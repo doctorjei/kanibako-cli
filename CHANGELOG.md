@@ -1191,20 +1191,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`workset rm --purge` no longer deletes the boxes behind a symlinked box store.** When the folder `workset.boxes`
   names is a symlink, only the link goes; what it points at is kept.
 
-- **`box rm` names the path of a registered box whose name the box-name rule no longer allows.** Such a name, like
-  `my project`, reads as a path, so `box rm 'my project'` said the box was not registered. It now says the name
-  breaks the rule and prints two commands that reach the box by its path: one removes it, one gives it a valid name.
+- **Every command that looks a box up by name names the path of a registered box whose name the box-name rule no
+  longer allows.** Such a name, like `my project`, `my-box`, or `ws.1/mem-1`, reads as a path, so `box rm 'my
+  project'` said the box was not registered and `box info my-box` said the path did not exist. Each such command
+  (`start`, `shell`, `code`, `stop`, `box info`, `box move`, `box rm`, and the rest) now says the name breaks the rule,
+  names the box's path to give in its place, and prints the command that gives it a valid name. A registered
+  standalone box's cure registers it again (`box rm <path>`, then `box register <path>`), which re-derives its name
+  from its directory. An existing directory at the typed path wins.
 
 - **`start`, `shell`, `code`, `box config`, and `box diagnose` no longer suggest a `create` that would be refused.**
   When no box is found and the directory's name breaks the box-name rule, the suggested `create` now carries
   `--name <new-name>`, or the name's ASCII spelling when it has one, and names the directory when one was given.
-  When a registered box holds that name and the typed path is not an existing directory, the error prints the two
-  commands that reach the box by its path, as `box rm` does: one starts it, one gives it a valid name. An existing
-  directory there wins, for `box rm` too.
 
 - **The rename command printed for a standalone box with an invalid name now works.** `start` and `stop` printed
   `box convert <path> --standalone --name <new-name>`, which is always refused because a standalone box is named after
-  its directory. They and `box rm` now print `box move <path> <new-path>`.
+  its directory. They now print `box move <path> <new-path>`.
 
 - **A foreground box stops when its agent exits.** An agent that exited while attached sometimes left its box behind
   as an `Exited` container, because `start` returned before the box had stopped and took it for a detach. `start` now

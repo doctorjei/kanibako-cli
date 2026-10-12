@@ -424,9 +424,8 @@ class TestPathDesignationIsNeverAName:
         path = tmp_home / ".hidden"
         assert err == (
             f"Error: box name '.hidden' does not meet the naming rules "
-            f"({box_name_reason('.hidden')}), so the box is reached by its path only. "
-            f"Remove it, or give it a valid name:\n"
-            f"  kanibako box rm {path}\n"
+            f"({box_name_reason('.hidden')}), so the box is reached by its path only: "
+            f"give {path} in place of the name, or give it a valid name:\n"
             f"  kanibako box move {path} <new-path> --name _hidden\n"
         )
         assert ".hidden" in load_primary_boxes(
@@ -453,7 +452,7 @@ class TestPathDesignationIsNeverAName:
         assert run_rm(_rm_args("my sa")) == 1
         assert capsys.readouterr().err.endswith(
             f"  kanibako box rm '{root}'\n"
-            f"  kanibako box move '{root}' <new-path>\n")
+            f"  kanibako box register '{root}'\n")
         assert "my sa" in registry_store.load_standalone(std.registry)
 
     @pytest.mark.parametrize("stored, typed", [("strasse", "straße"), ("kit", "\u212ait")])

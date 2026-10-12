@@ -940,45 +940,9 @@ class TestBrokenStandaloneNoBoxError:
         assert (root / "workspace" / "mine.txt").read_text() == "user data"
         assert "your workspace/ and vault/ are not touched" in msg
 
-    @pytest.mark.parametrize("verb", ["start", "shell", "code"])
-    def test_a_legacy_name_is_reached_by_the_verb_that_was_typed(
-        self, config_file, tmp_home, credentials_dir, monkeypatch, verb,
-    ):
-        from kanibako.project import registry_store
-
-        _config, std = _std(config_file)
-        root = (tmp_home / "legacy").resolve()
-        root.mkdir()
-        registry_store.register_standalone(std.registry, "bad name", root)
-        monkeypatch.chdir(tmp_home)
-        msg = _no_box_error("bad name", std, verb)
-        assert f"\n  kanibako {verb} {root}\n" in msg
-
-    @pytest.mark.parametrize("verb", ["start", "shell"])
-    def test_each_launch_verb_names_itself_at_a_legacy_name(
-        self, config_file, tmp_home, credentials_dir, monkeypatch, capsys, verb,
-    ):
-        """The verb reaches the refusal from the CLI, not only from the helper."""
-        from kanibako.cli import main
-        from kanibako.project import registry_store
-
-        _config, std = _std(config_file)
-        root = (tmp_home / "legacy").resolve()
-        root.mkdir()
-        registry_store.register_standalone(std.registry, "bad name", root)
-        monkeypatch.chdir(tmp_home)
-        with pytest.raises(SystemExit) as exc:
-            main([verb, "bad name"])
-        assert exc.value.code == 1
-        assert f"\n  kanibako {verb} {root}\n" in capsys.readouterr().err
-
-    @pytest.mark.parametrize("mode", ["standalone", "primary"])
-    def test_rule_breaking_stored_name_points_at_its_path(
-        self, config_file, tmp_home, credentials_dir, monkeypatch, mode,
-    ):
-        """A designation that breaks the box-name rule is a PATH, so a box REGISTERED
-        under such a name is not launched by it: the miss names its path, never
-        ``create`` under the refused name."""
+    @staticmethod
+    def _legacy(config_file, tmp_home, monkeypatch, mode, name="my-box"):
+        """A box REGISTERED under *name*, which the box-name rule refuses; cwd is ``tmp_home``."""
         from kanibako.project import registry_store
         from kanibako.settings.paths import register_primary_box_name
 
@@ -986,15 +950,100 @@ class TestBrokenStandaloneNoBoxError:
         root = (tmp_home / "legacy").resolve()
         root.mkdir()
         if mode == "standalone":
-            registry_store.register_standalone(std.registry, "bad name", root)
+            registry_store.register_standalone(std.registry, name, root)
         else:
-            register_primary_box_name(std.primary_workset, "bad name", str(root),
+            register_primary_box_name(std.primary_workset, name, str(root),
                                       early=_early_scope(std, BoxMode.primary))
         monkeypatch.chdir(tmp_home)
-        msg = _no_box_error("BAD NAME", std)
-        assert msg.startswith("Error: box name 'bad name' does not meet the naming rules")
-        assert f"\n  kanibako start {root}\n  kanibako box move {root} <new-path>" in msg
-        assert "kanibako create" not in msg
+        return std, root
+
+    @pytest.mark.parametrize("argv", [
+        ["start"], ["shell"], ["stop"], ["box", "info"], ["box", "show"], ["box", "diagnose"],
+        ["box", "archive"], ["box", "convert", "--default"], ["box", "rm"],
+        ["box", "move", "{name}", "/nowhere/new"], ["box", "remap", "{name}", "/nowhere/new"],
+    ])
+    def test_every_verb_that_looks_a_box_up_names_the_path_of_a_legacy_name(
+        self, config_file, tmp_home, credentials_dir, monkeypatch, capsys, argv,
+    ):
+        """One refusal for every verb: the typed name is a path that does not exist, and
+        the miss names the registered box's path instead of "no such path"."""
+        from kanibako.cli import main
+
+        _std_paths, root = self._legacy(config_file, tmp_home, monkeypatch, "primary")
+        argv = [a.replace("{name}", "MY-BOX") for a in argv]
+        if "MY-BOX" not in argv:
+            argv.append("MY-BOX")
+        with pytest.raises(SystemExit) as exc:
+            main(argv)
+        assert exc.value.code == 1
+        captured = capsys.readouterr()
+        err = captured.out + captured.err  # ``box diagnose`` reports on stdout
+        assert "Error: box name 'my-box' does not meet the naming rules" in err
+        assert (f"reached by its path only: give {root} in place of the name, or give it a "
+                f"valid name:\n  kanibako box move {root} <new-path> --name my_box\n") in err
+        assert "does not exist" not in err and "kanibako create" not in err
+
+    @pytest.mark.parametrize("mode", ["standalone", "primary"])
+    def test_rule_breaking_stored_name_points_at_its_path(
+        self, config_file, tmp_home, credentials_dir, monkeypatch, mode,
+    ):
+        """A designation that breaks the box-name rule is a PATH, so a box REGISTERED
+        under such a name is not reached by it: the refusal names its path, and a
+        standalone box's cure registers it again, re-deriving its name from its directory."""
+        from kanibako.errors import LegacyBoxNameError
+        from kanibako.settings.paths import refuse_legacy_box
+
+        std, root = self._legacy(config_file, tmp_home, monkeypatch, mode, "bad name")
+        with pytest.raises(LegacyBoxNameError) as exc:
+            refuse_legacy_box(std, "BAD NAME")
+        msg = str(exc.value)
+        assert msg.startswith("box name 'bad name' does not meet the naming rules")
+        assert f"reached by its path only: give {root} in place of the name, " in msg
+        if mode == "standalone":
+            assert msg.endswith(f"\n  kanibako box rm {root}\n  kanibako box register {root}")
+        else:
+            assert msg.endswith(f"\n  kanibako box move {root} <new-path> --name bad_name")
+
+    def test_the_box_own_path_after_a_mv_is_no_name_lookup(
+        self, config_file, tmp_home, credentials_dir, monkeypatch,
+    ):
+        """``box remap my-box <new>`` beside the folder the user moved: *my-box* is the
+        box's own registered path, which reaches it by path, so it is not refused."""
+        from kanibako.errors import LegacyBoxNameError
+        from kanibako.settings.paths import (refuse_legacy_box, register_primary_box_name,
+                                             resolve_designation)
+
+        _config, std = _std(config_file)
+        gone = (tmp_home / "my-box").resolve()
+        register_primary_box_name(std.primary_workset, "my-box", str(gone),
+                                  early=_early_scope(std, BoxMode.primary))
+        monkeypatch.chdir(tmp_home)
+        assert resolve_designation(std, "my-box", unknown_name_is_path=True,
+                                   name_first=True) == "my-box"
+        # ``box rm`` asks after its own lookups found nothing, so there it still refuses.
+        with pytest.raises(LegacyBoxNameError):
+            refuse_legacy_box(std, "my-box")
+
+    def test_a_named_member_typed_by_its_legacy_qualified_name_names_its_path(
+        self, config_file, tmp_home, credentials_dir, monkeypatch,
+    ):
+        from kanibako.errors import LegacyBoxNameError
+        from kanibako.project.workset import create_workset
+        from kanibako.settings.paths import refuse_legacy_box, _register_workset_box_membership
+
+        _config, std = _std(config_file)
+        ws = create_workset("ws_1", tmp_home / "wsroot", std)
+        member = (tmp_home / "m1").resolve()
+        member.mkdir()
+        _register_workset_box_membership(ws.root, "mem-1", member,
+                                         early=_early_scope(std, BoxMode.named, "ws_1"))
+        monkeypatch.chdir(tmp_home)
+        with pytest.raises(LegacyBoxNameError) as exc:
+            refuse_legacy_box(std, "WS_1/mem-1")
+        msg = str(exc.value)
+        assert msg.startswith("box name 'mem-1' does not meet the naming rules")
+        assert msg.endswith(f"give {member} in place of the name, or give it a valid name:\n"
+                            f"  kanibako box move {member} <new-path> --name mem_1")
 
     def test_an_existing_dir_at_the_typed_path_wins_over_a_legacy_box(
         self, config_file, tmp_home, credentials_dir, monkeypatch,

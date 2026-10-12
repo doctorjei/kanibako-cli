@@ -7308,8 +7308,9 @@ rule at all, and a persona or harness name could hold `-` and any Unicode letter
   plugin with a reserved name.
 
 **What a v1.7.x name does now.** A box or workset whose stored name holds `-` or `.` is a legacy name. A command
-that resolves the box warns that the name does not meet the naming rules and finds it by its path only. `start`
-and `stop` refuse it, because it renders no container name, for example:
+that resolves the box warns that the name does not meet the naming rules and finds it by its path only. Typed as a
+name (`my-box`, `ws.1/mem-1`), it reaches no box: each command that looks a box up names the box's path and the
+command that gives it a valid name. `start` and `stop` refuse it, because it renders no container name, for example:
 
 ```
 Error: box 'my-box' has no container name: box name must not contain '-'; names are 1 to 64 ASCII letters,
@@ -7318,8 +7319,18 @@ digits, or '_', and do not start with a digit. Give the box a valid name, then t
 ```
 
 A box in a legacy workset is refused the same way, naming the workset and the commands that move the box into a
-workset with a valid name. A standalone box in a directory named `my-proj` re-derives its name as `<kuid>_my_proj`. A
-persona whose name holds `-` must be created again under its `_` spelling.
+workset with a valid name. A standalone box in a directory named `my-proj` re-derives its name as `<kuid>_my_proj`.
+If it is registered, its registry entry keeps the old name `<kuid>_my-proj`, which no longer reaches it: `box list`
+shows the old name, and `box info <kuid>_my-proj` names the box's path. Stop such boxes before upgrading, then
+register each one again and move its channel folders as *A standalone box's name keeps its project directory's case*
+shows:
+
+```
+kanibako box rm <path>
+kanibako box register <path>
+```
+
+A persona whose name holds `-` must be created again under its `_` spelling.
 
 **What to do.** Rename each such box with the command its refusal prints, and recreate a workset whose name holds
 `-` or `.` under its `_` spelling, then move its boxes into it with `kanibako box convert <path> --workset

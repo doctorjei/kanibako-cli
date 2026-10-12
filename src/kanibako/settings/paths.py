@@ -42,8 +42,9 @@ from kanibako.settings.config import (WORKSET_META_FILE, BOX_META_FILE, Bootstra
                                       config_file_path, load_config, read_box_enable_vault, read_workset_kuid,
                                       read_workset_skip_kuid_check, write_box_enable_vault)
 
-from kanibako.errors import (AmbiguousNameError, ConfigError, DerivedBoxNameError, ProjectError,
-                             ReservedWorksetNameError, WorksetError)
+from kanibako.errors import (AmbiguousNameError, ConfigError, DerivedBoxNameError, KanibakoError,
+                             LegacyBoxNameError, ProjectError, ReservedWorksetNameError,
+                             WorksetError)
 from kanibako.settings.agent_config import (ambiguous_path_value_error,
                                             is_unambiguous_path_value)
 from kanibako.settings.settings_resolve import (LevelView, ResolveCtx, SettingsError,
@@ -2038,35 +2039,90 @@ class LegacyBox(NamedTuple):
     name: str
     path: str
     reason: str
+    #: The legacy workset a NAMED member sits in, when that is what fails the rule.
+    workset: str | None = None
 
-    def refusal(self, action: str, verb: str) -> str:
-        """The error naming this box's path: *action* leads the ``<verb> <path>`` line."""
-        from kanibako.utils import rename_box_cure
+    def refusal(self) -> str:
+        """The error naming this box's path, and the cure that gives it a valid name."""
+        from kanibako.utils import legacy_workset_cure, rename_box_cure
 
-        return (f"Error: box name '{self.name}' does not meet the naming rules ({self.reason}), "
-                f"so the box is reached by its path only. {action}, or give it a valid name:\n"
-                f"  {verb} {shlex.quote(self.path)}\n"
+        where = shlex.quote(self.path)
+        head = (f"box name '{self.name}' does not meet the naming rules ({self.reason}), "
+                f"so the box is reached by its path only: give {where} in place of the name")
+        if self.mode == "standalone":
+            # ⚑ Its name follows its directory, which the rule now spells validly: the
+            # registry entry is what is stale, and registering again re-derives it.
+            return (f"{head}, or register it again under the name its directory gives it:\n"
+                    f"  kanibako box rm {where}\n  kanibako box register {where}")
+        if self.workset is not None:
+            return (f"{head}, or move it to a workset with a valid name:\n"
+                    f"{legacy_workset_cure(self.workset, Path(self.path))}")
+        return (f"{head}, or give it a valid name:\n"
                 f"  {rename_box_cure(self.mode, Path(self.path), self.name)}")
 
 
-def stored_legacy_box(std: StandardPaths, typed: str) -> LegacyBox | None:
+def _stored_legacy_member(std: StandardPaths, typed: str,
+                          own_path: str | None) -> LegacyBox | None:
+    """The NAMED member *typed* as ``<workset>/<box>`` when either name fails the rule,
+    unless it is registered at *own_path*."""
+    from kanibako.project.names import resolve_qualified_name
+    from kanibako.utils import legacy_workset_reason, workset_renders_no_name
+
+    ws_typed, sep, box = typed.partition("/")
+    if not sep or not box or "/" in box:
+        return None
+    try:
+        path, workset = resolve_qualified_name(std.registry, typed,
+                                               early_system=std.early_system)
+    except (KanibakoError, OSError):
+        return None
+    if literal_path(path) == own_path:
+        return None
+    reason = box_name_reason(box)
+    if reason is not None:
+        return LegacyBox("named", box, path, reason)
+    if workset_renders_no_name(workset):
+        return LegacyBox("named", f"{workset}/{box}", path, legacy_workset_reason(workset),
+                         workset=workset)
+    return None
+
+
+def stored_legacy_box(std: StandardPaths, typed: str, *,
+                      path_reaches: bool = False) -> LegacyBox | None:
     """The box registered case-blind under *typed* when its stored name fails the rule.
 
     Such a name is a PATH designation, so no name lookup reaches it; the caller names its
-    path instead, unless *typed* is an existing directory: that path wins.  Primary first.
+    path instead, unless *typed* is an existing directory: that path wins.  Primary, then
+    standalone, then a ``<workset>/<box>`` NAMED member.  With *path_reaches* (the
+    cascade's path route), a box registered at the path *typed* names is no legacy hit:
+    that path reaches it (``box remap`` after a ``mv``).
     """
     from kanibako.project import registry_store
 
     if Path(typed).is_dir():
         return None
+    own_path = literal_path(typed) if path_reaches else None
     primary = load_primary_boxes(std.primary_workset, early=_early_scope(std, BoxMode.primary))
     for mode, held in (("primary", primary),
                        ("standalone", registry_store.load_standalone(std.registry))):
         stored = find_identifier(typed, held)
         reason = None if stored is None else box_name_reason(stored)
-        if stored is not None and reason is not None:
+        if (stored is not None and reason is not None
+                and literal_path(str(held[stored])) != own_path):
             return LegacyBox(mode, stored, str(held[stored]), reason)
-    return None
+    return _stored_legacy_member(std, typed, own_path)
+
+
+def refuse_legacy_box(std: StandardPaths, typed: str, *, path_reaches: bool = False) -> None:
+    """Raise :class:`LegacyBoxNameError` when *typed* names a box only its path reaches.
+
+    THE ONE CARRIER of that refusal: the designation cascade raises it for every verb
+    that looks a box up by name (:func:`resolve_designation`), and ``box rm``, which
+    keeps its own lookups, asks here last.  *path_reaches*: see :func:`stored_legacy_box`.
+    """
+    legacy = stored_legacy_box(std, typed, path_reaches=path_reaches)
+    if legacy is not None:
+        raise LegacyBoxNameError(legacy.refusal())
 
 
 def primary_box_name_for_workspace(primary_workset: Path, workspace: str,
@@ -2469,6 +2525,16 @@ def resolve_designation(std: StandardPaths, value: str | None, *, unknown_name_i
     if route is DesignationRoute.PATH:
         if classify_designation(value) is Designation.IDENTIFIER:
             _warn_standalone_shadowed(std, value)
+        elif name_first:
+            # ⚑ A LOOKUP that would only fail "no such path": a box whose stored name the
+            # rule refuses is named by its path instead (keyspec ``meta.box.container``).
+            # A path kanibako cannot stat is no such miss; its own refusal follows.
+            try:
+                gone = stat_unless_gone(value) is None
+            except ConfigError:
+                gone = False
+            if gone:
+                refuse_legacy_box(std, value, path_reaches=True)
         return value
     if route is DesignationRoute.QUALIFIED:
         try:

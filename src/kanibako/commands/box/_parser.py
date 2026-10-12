@@ -34,8 +34,8 @@ from kanibako.settings.config import (
 )
 from kanibako.runtime.container import ContainerRuntime, remove_path
 from kanibako.identifiers import agent_node_case, find_identifier
-from kanibako.errors import (BoxNameError, ContainerError, DerivedBoxNameError, ProjectError,
-                             WorksetError)
+from kanibako.errors import (BoxNameError, ContainerError, DerivedBoxNameError,
+                             LegacyBoxNameError, ProjectError, WorksetError)
 from kanibako.project.names import read_names
 from kanibako.project.workset import (
     Workset, add_project, box_logs_to_purge, list_worksets, load_workset,
@@ -74,12 +74,12 @@ from kanibako.settings.paths import (
     load_std_paths,
     primary_box_name_for_workspace,
     refuse_derived_box_name,
+    refuse_legacy_box,
     resolve_any_project,
     resolve_box_target,
     resolve_project,
     resolve_standalone_project,
     resolve_workset_project,
-    stored_legacy_box,
     unregister_primary_box_name,
 )
 from kanibako.agent_ref import GENERAL_SLOT, harness_of, parse_agent_address, with_harness
@@ -3073,10 +3073,12 @@ def run_rm(args: argparse.Namespace) -> int:
                                      config=config)
 
     if name is None or section is None:
-        legacy = None if by_name else stored_legacy_box(std, target)
-        if legacy is not None:
-            print(legacy.refusal("Remove it", "kanibako box rm"), file=sys.stderr)
-            return 1
+        if not by_name:
+            try:
+                refuse_legacy_box(std, target)
+            except LegacyBoxNameError as e:
+                print(f"Error: {e}", file=sys.stderr)
+                return 1
         print(f"Error: '{target}' is not a registered box.", file=sys.stderr)
         return 1
 

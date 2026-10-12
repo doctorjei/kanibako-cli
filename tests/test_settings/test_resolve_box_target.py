@@ -7,12 +7,14 @@ path, with box-NAME precedence in ambiguous cases (§Design 8).
 from __future__ import annotations
 
 import logging
+import re
 from pathlib import Path
 
 import pytest
 
 from kanibako.project import registry_store
-from kanibako.errors import AmbiguousNameError, DerivedBoxNameError, ProjectError
+from kanibako.errors import (AmbiguousNameError, DerivedBoxNameError, LegacyBoxNameError,
+                             ProjectError)
 from kanibako.settings.paths import (
     BoxMode,
     _early_scope,
@@ -423,8 +425,10 @@ class TestNonConformingNameFlagged:
         assert any(
             "does not meet the naming rules" in r.message for r in caplog.records
         )
-        # Its name is not looked up: it is a relative path, and none exists.
-        with pytest.raises(ProjectError, match="does not exist"):
+        # Its name is not looked up: it is a relative path, and none exists, so the
+        # refusal names the box's path instead.
+        with pytest.raises(LegacyBoxNameError,
+                           match=re.escape(f"reached by its path only: give {root} in place")):
             resolve_box_target(std, config, bad_name)
 
     def test_conforming_name_emits_no_warning(

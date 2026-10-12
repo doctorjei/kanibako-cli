@@ -59,7 +59,8 @@ from kanibako.runtime.container import (
 )
 from kanibako.identifiers import agent_node_case, find_identifier
 from kanibako.errors import (AmbiguousNameError, ConfigError, ContainerError,
-                             DerivedBoxNameError, KanibakoError, ProjectError)
+                             DerivedBoxNameError, KanibakoError, LegacyBoxNameError,
+                             ProjectError)
 from kanibako.launch.box_identity import box_name_cure
 from kanibako.launch.creds_watcher import AGENT_STAMP_ENV
 from kanibako.log import ROTATE_MAX_BYTES, get_logger, rotate_if_over
@@ -90,7 +91,6 @@ from kanibako.settings.paths import (
     project_cure_ref,
     refuse_derived_box_name,
     resolve_box_target,
-    stored_legacy_box,
 )
 from kanibako.agent_ref import (
     ENV_VAR_NAME,
@@ -1414,7 +1414,7 @@ def _probe_box(
             std, config, project_dir,
             initialize=False, register=True, warn=False,
         )
-    except (AmbiguousNameError, DerivedBoxNameError):
+    except (AmbiguousNameError, DerivedBoxNameError, LegacyBoxNameError):
         # A box that exists but cannot be named is not "no box": its refusal surfaces.
         raise
     except ProjectError:
@@ -1645,8 +1645,8 @@ def _no_box_error(project_dir: str | None, std: StandardPaths | None = None,
     from inside the project dir (no spec).  A PATH spec is ``shlex.quote``d and
     the line carries no wrapping quotes, so the printed command pastes as typed.
 
-    ⚑ OTHER SHAPES.  A leaf ``create`` refuses gets the ``--name`` cure; a missing path
-    naming a legacy box (:func:`stored_legacy_box`) gets that box's path after *verb*.  A
+    ⚑ OTHER SHAPES.  A leaf ``create`` refuses gets the ``--name`` cure (a missing path
+    naming a legacy box never lands here: the probe raises :func:`refuse_legacy_box`).  A
     designation on the name route (:func:`designation_route`) gets its own message: since
     I3/§D4a a standalone box created without ``--register`` is real and running
     but carries no registry entry, and the registry is the only thing a bare name
@@ -1730,9 +1730,6 @@ def _no_box_error(project_dir: str | None, std: StandardPaths | None = None,
                 "first:  kanibako box register <path-to-its-box-root>\n"
                 f"  Otherwise create a new box:  kanibako create {shlex.quote(project_dir)}"
             )
-        legacy = None if std is None else stored_legacy_box(std, project_dir)
-        if legacy is not None:
-            return legacy.refusal("Reach it by its path", f"kanibako {verb}")
         # [R188]: the path as given, never its resolved spelling.
         target = literal_path(project_dir)
         suggest = f"kanibako create {shlex.quote(project_dir)}"
