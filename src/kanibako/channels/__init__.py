@@ -5,7 +5,7 @@ that rides it:
 
 * ``channels``        — channel path resolution + per-instance partition
   addressing (pure helpers; the workset-name token, the box address set).
-* ``helpers``         — helper spawning: B-ary tree numbering and spawn budgets.
+* ``helpers``         — helper spawning: the helper tree on disk and spawn budgets.
 * ``helper_listener`` — the HOST-side hub: a Unix socket server for spawn/stop
   and message routing, with JSONL logging.
 * ``helper_client``   — the CONTAINER-side client for that socket.

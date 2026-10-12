@@ -3087,9 +3087,11 @@ def _run_container(
     except ContainerError as exc:
         print(f"Error: {exc}", file=sys.stderr)
         return 1
-    # The box's container is the one its labels find; the rendered name when none
-    # carries them (system-design § Box and helper identity).
-    container_name = box_container(runtime, proj) or rendered
+    # ``live_name`` is the box's EXISTING container, the one its labels find (the rendered
+    # name when none carries them; system-design § Box and helper identity).  It serves
+    # the restart, liveness, and reattach reads only: a new container is always CREATED
+    # under ``container_name``, the rendered ``meta.box.container``.
+    live_name = box_container(runtime, proj) or rendered
 
     # ``--restart``: STOP FIRST, then launch normally.  This is the CURE named by
     # the already-running override gate below, and it runs BEFORE
@@ -3115,10 +3117,10 @@ def _run_container(
     # either way.  No container at all is NOT an error — there is nothing to
     # clear, and erroring would make a ``--restart`` alias/script fail purely
     # because it won the race.
-    if restart and runtime.container_exists(container_name):
+    if restart and runtime.container_exists(live_name):
         from kanibako.commands.stop import _stop_one
         _stop_one(runtime, project_dir=project_dir)
-        if runtime.is_running(container_name):
+        if runtime.is_running(live_name):
             print(
                 f"Error: --restart could not stop box '{proj.name}' — it is "
                 f"still running. Stop it manually (`kanibako stop "
@@ -3150,7 +3152,7 @@ def _run_container(
     # two values: the override gate below must refuse an explicit ``--ephemeral``
     # at a live box, and that invocation is precisely one where the box IS
     # running but a reattach is NOT what would happen.
-    box_running = runtime.is_running(container_name)
+    box_running = runtime.is_running(live_name)
     reattach_running = False
     stored_agent: str | None = None
     if persistent and box_running:
@@ -3160,7 +3162,7 @@ def _run_container(
         # comparison and ``resolve_agent`` below.  An explicit ``--agent`` may arrive
         # in either spelling and is folded the same way, so ``--agent Claude`` or
         # ``--agent shell`` compares equal to the box that stamped ``claude``/``shell``.
-        stored_agent = running_box_agent(runtime, container_name)
+        stored_agent = running_box_agent(runtime, live_name)
         if stored_agent:
             # ⚑ ``is not None`` is the GIVEN predicate here as well, and the
             # canonicalize inside it is what refuses a given-but-BLANK ref at a
@@ -3687,7 +3689,7 @@ def _run_container(
             # --print-container: emit the cname as the final stdout line so
             # the remote-code leg parses it even when the box is already up.
             if print_container:
-                print(container_name)
+                print(live_name)
             return 0
         # ``exec_program``: the SECOND PROCESS this launch puts into the live
         # box.  It is its OWN name rather than a rebinding of ``entrypoint`` —
@@ -3727,7 +3729,7 @@ def _run_container(
             # a tier we cannot read is honest; reading one off the wrong image is
             # not.
             from kanibako.launch.shells import resolve_box_shell
-            live_image = runtime.container_image(container_name)
+            live_image = runtime.container_image(live_name)
             exec_program, _live_shell_src = resolve_box_shell(
                 merged, std,
                 runtime=runtime if live_image else None,
@@ -3755,7 +3757,7 @@ def _run_container(
             # ``running_door`` — the gate and this arm read the SAME answer, so
             # neither can accept what the other would drop.
             return runtime.exec(
-                container_name, [exec_program] + (extra_args or []),
+                live_name, [exec_program] + (extra_args or []),
                 env=cli_env_values,
             )
         # Heads-up to STDERR (never stdout — must not pollute the tmux/agent
@@ -3793,13 +3795,13 @@ def _run_container(
                 suppress_oauth=active_endpoint is not None,
             )
         session_seen = bootstrap_program == "tmux" and _bootstrap_session_exists(
-            runtime, container_name,
+            runtime, live_name,
         )
         reattach_rc = runtime.exec(
-            container_name, _bootstrap_attach(bootstrap_program), attach=True
+            live_name, _bootstrap_attach(bootstrap_program), attach=True
         )
         ended_rc = _agent_exit_rc(
-            runtime, container_name, reattach_rc, bootstrap_program,
+            runtime, live_name, reattach_rc, bootstrap_program,
             session_seen=session_seen,
             supervised=bool(stored_agent) and is_agent_mode and has_plugin(target),
         )
@@ -3811,7 +3813,7 @@ def _run_container(
         # post-session cred lifecycle entirely.
         writeback_session_credentials(target, proj, auth_src=auth_src)
         # Two-state lifecycle ("d"): tear down on exit, keep on detach.
-        _teardown_persistent_box(runtime, container_name)
+        _teardown_persistent_box(runtime, live_name)
         return reattach_rc
 
     # PERSONA LOAD-OR-ERROR: a persona (node != harness) that cannot resolve a

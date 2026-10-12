@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import logging
 import shutil
 import socket
@@ -787,6 +788,25 @@ class TestHubNumberCounter:
             assert _connect_and_send(sock, {"action": "number"})["helper_num"] == 1
         finally:
             hub.stop()
+
+    @pytest.mark.skipif(os.geteuid() == 0, reason="root reads a mode-0 dir")
+    def test_an_unreadable_helpers_dir_is_a_refusal_not_a_skip(self, tmp_path, mock_ctx):
+        """A number under a dir the hub cannot read is unknown, so skipping the dir could
+        reissue it: the hub refuses to start, naming the dir and a cure."""
+        from kanibako.errors import KanibakoError
+
+        nested = mock_ctx.helpers_dir / "2" / "helpers"
+        _helper_tree(nested / "9")
+        nested.chmod(0)
+        hub = HelperHub()
+        try:
+            with pytest.raises(KanibakoError, match="cannot read the helper directory") as exc:
+                hub.start(tmp_path / "helper2.sock", mock_ctx)
+        finally:
+            nested.chmod(0o755)
+        assert str(nested) in str(exc.value)
+        assert "chmod u+rwx" in str(exc.value)
+        assert not (tmp_path / "helper2.sock").exists()
 
     def test_a_spawn_of_a_number_it_did_not_hand_out_moves_the_counter(self, hub_and_sock):
         _hub, sock_path, ctx = hub_and_sock

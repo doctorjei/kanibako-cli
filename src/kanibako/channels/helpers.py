@@ -4,12 +4,13 @@ from __future__ import annotations
 
 import importlib.resources
 import json
+import shlex
 import stat as _st
 from dataclasses import dataclass
 from pathlib import Path
 
 from kanibako import boxfs
-from kanibako.errors import ConfigError
+from kanibako.errors import ConfigError, KanibakoError
 from kanibako.settings.bootstrap import SPAWN_BUDGET_DEFAULTS
 from kanibako.settings.config import SYSTEM_HELPERS_SECTION, read_system_helpers
 from kanibako.settings.config_io import dump_doc, load_doc
@@ -277,12 +278,15 @@ def existing_helpers(helpers_dir: Path, root: Path) -> list[int]:
 
     Read through :mod:`kanibako.boxfs` under *root*, because the hub reads a box's tree
     with it: a link is not a helper and is skipped, never followed, at an entry or on
-    the way to *helpers_dir*.  A missing *helpers_dir* has none.
+    the way to *helpers_dir*.  A missing *helpers_dir* has none; one that cannot be
+    read raises :class:`KanibakoError` naming it.
     """
     try:
         names = boxfs.listdir(helpers_dir, root)
     except (FileNotFoundError, NotADirectoryError, boxfs.SymlinkRefusedError):
         return []
+    except OSError as exc:
+        raise _unreadable(helpers_dir, exc) from exc
     found = []
     for name in names:
         if not (name.isascii() and name.isdigit()):
@@ -291,9 +295,21 @@ def existing_helpers(helpers_dir: Path, root: Path) -> list[int]:
             st = boxfs.stat(helpers_dir / name, root)
         except (FileNotFoundError, boxfs.SymlinkRefusedError):
             continue
+        except OSError as exc:
+            raise _unreadable(helpers_dir / name, exc) from exc
         if _st.S_ISDIR(st.st_mode):
             found.append(int(name))
     return sorted(found)
+
+
+def _unreadable(path: Path, exc: OSError) -> KanibakoError:
+    """The refusal for a helpers dir that cannot be read.  ⚑ Never a skip: a helper
+    number under it would go uncounted, and the hub's counter could hand it out again."""
+    return KanibakoError(
+        f"cannot read the helper directory {path} ({exc.strerror or exc}), so the "
+        f"helper numbers under it are unknown. Make it readable "
+        f"(chmod u+rwx {shlex.quote(str(path))}) or remove it, then try again."
+    )
 
 
 def helper_tree_numbers(helpers_dir: Path, root: Path) -> set[int]:

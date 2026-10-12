@@ -965,6 +965,38 @@ class TestPersistentMode:
         assert set(labels) == {"kanibako.workset", "kanibako.box", "kanibako.workset_kuid"}
         assert kwargs["name"] == f"kb-{labels['kanibako.workset']}-{labels['kanibako.box']}"
 
+    def test_a_live_labeled_container_is_reattached_by_its_own_name(self, start_mocks):
+        """The labels find the box's container even under a name it no longer renders;
+        the reattach goes to THAT container (``utils.box_container``)."""
+        with start_mocks() as m:
+            m.runtime.find_labeled.return_value = ["kb-primary-renamed"]
+            m.runtime.is_running.side_effect = lambda name: name == "kb-primary-renamed"
+            rc = _run_container(
+                project_dir=None, entrypoint=None, image_override=None,
+                new_session=False, safe_mode=False, resume_mode=False,
+                extra_args=[], persistent=True,
+            )
+            assert rc == 0
+            m.runtime.run.assert_not_called()
+            assert m.runtime.exec.call_args[0][0] == "kb-primary-renamed"
+
+    def test_a_new_container_is_created_under_the_rendered_name(self, start_mocks):
+        """A labeled container found under another name never names a NEW one: start
+        creates under ``meta.box.container``, the rendered name."""
+        with start_mocks() as m:
+            m.runtime.find_labeled.return_value = ["kb-primary-renamed"]
+            m.runtime.is_running.return_value = False
+            rc = _run_container(
+                project_dir=None, entrypoint=None, image_override=None,
+                new_session=False, safe_mode=False, resume_mode=False,
+                extra_args=[], persistent=True, detach=True,
+            )
+            assert rc == 0
+            kwargs = m.runtime.run.call_args.kwargs
+        labels = kwargs["labels"]
+        assert kwargs["name"] == f"kb-{labels['kanibako.workset']}-{labels['kanibako.box']}"
+        assert kwargs["name"] != "kb-primary-renamed"
+
     def test_detach_without_print_container_no_stdout_cname(
         self, start_mocks, capsys,
     ):
