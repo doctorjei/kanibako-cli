@@ -112,7 +112,9 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
     )
     create_p.add_argument(
         "--force", action="store_true",
-        help="Accept a workset.logs directory shared with another working set",
+        help="Accept a workset.logs directory shared with another working set, or a "
+             "root inside another box's workspace, root, or store (one flag: both "
+             "share another's tree)",
     )
     create_p.set_defaults(func=run_create)
 
@@ -164,7 +166,8 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
     connect_p.add_argument(
         "--force", action="store_true",
         help="Connect even if the source is a standalone box (absorb it as a "
-             "workset box)",
+             "workset box), or sits inside another box's workspace, root, or store "
+             "(share that tree)",
     )
     connect_p.set_defaults(func=run_connect)
 
@@ -411,6 +414,21 @@ def run_create(args: argparse.Namespace) -> int:
     path = Path(literal_path(args.path if args.path is not None else logical_cwd()))
     # ⚑ A derived name writes ``_`` for each ``-`` and ``.`` (spec §0); a typed one is as typed.
     name = args.name or derived_name(path.name)
+
+    # Keyspace § 0: a root inside another box's workspace, root, or store (its in-tree
+    # workspaces would sit there) is refused unless --force, before anything is created.
+    # An existing path is ``create_workset``'s "already exists" refusal, as before.
+    # The root is judged as a nameless box (``name=""``), so no box's row counts as its own.
+    import os
+    if not os.path.lexists(path):
+        from kanibako.commands.box._lifecycle import _dest_nesting_refusal
+        nested = _dest_nesting_refusal(
+            std, mode=BoxMode.named, name="", ws=None, dest=path, metadata_path=path,
+            verb="create", force=getattr(args, "force", False),
+            subject=f"working set '{name}'")
+        if nested is not None:
+            print(nested, file=sys.stderr)
+            return 1
 
     # ⚑ PRE-FLIGHT the workset mold BEFORE anything is registered or created — a
     # mid-stamp whitelist refusal would be loud but NOT atomic. Do not reorder.
@@ -737,6 +755,28 @@ def run_connect(args: argparse.Namespace) -> int:
     except WorksetError as e:
         print(f"Error: {e}", file=sys.stderr)
         return 1
+
+    # Keyspace § 0: an external source inside another box's workspace, root, or store is
+    # refused unless --force.  ``refuse_existing_box`` runs first, so its unforceable arms
+    # and its member messages keep their place; a standalone root is its absorb, which
+    # the check below would refuse whatever the flag, so it is not asked there.
+    if not in_tree:
+        literal_source = Path(literal_path(source))
+        try:
+            refuse_existing_box(literal_source, std, force=args.force)
+        except WorksetError as e:
+            print(f"Error: {e}", file=sys.stderr)
+            return 1
+        from kanibako.launch.box_resolve import stores_standalone_registry_null
+        if not stores_standalone_registry_null(resolved):
+            from kanibako.commands.box._lifecycle import _dest_nesting_refusal
+            nested = _dest_nesting_refusal(
+                std, mode=BoxMode.named, name=project_name, ws=ws, dest=literal_source,
+                metadata_path=ws.projects_dir / project_name, verb="connect",
+                force=args.force)
+            if nested is not None:
+                print(nested, file=sys.stderr)
+                return 1
 
     # ⚑ THE J2 WRITE-AHEAD BRACKET, AND IT BELONGS HERE, NOT IN ``add_project``: entry
     # BEFORE the membership write, cleared immediately after (HARD INVARIANT: registered

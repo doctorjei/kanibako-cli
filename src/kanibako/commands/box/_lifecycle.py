@@ -1121,13 +1121,15 @@ def _remap_dest_holder(
 def _dest_nesting_refusal(
     std: StandardPaths, *, mode: BoxMode, name: str, ws: Workset | None, dest: Path,
     metadata_path: Path, verb: str, force: bool, vacated_root: Path | None = None,
+    subject: str = "a box",
 ) -> str | None:
     """The error line refusing a box placed at *dest* on another box's tree, else ``None``.
 
     The verb-neutral door to :func:`_remap_dest_holder`: the box (*mode*, *name*, *ws*,
     *metadata_path*) is judged as if remapped onto *dest*, a standalone by its root.  A
     forceable refusal passes under *force*.  *vacated_root* is the standalone root a
-    relocating source leaves.
+    relocating source leaves.  *subject* names what is placed (a working set's root is
+    judged as a box with no name, so no other box's row is its own).
     """
     # The judge reads only the mode, name, workset, and metadata path; the other
     # fields are the box's own paths, which no arm asks.
@@ -1138,7 +1140,7 @@ def _dest_nesting_refusal(
     holder = _remap_dest_holder(state, dest, std, verb=verb, vacated_root=vacated_root)
     if holder is None or (holder[1] and force):
         return None
-    return f"Error: Cannot {verb} a box at '{dest}': it is {holder[0]}"
+    return f"Error: Cannot {verb} {subject} at '{dest}': it is {holder[0]}"
 
 
 def _refuse_foreign_workset_landing(

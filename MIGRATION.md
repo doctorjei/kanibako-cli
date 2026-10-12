@@ -471,10 +471,10 @@ inside boxes. In order of likely impact:
     under `self:`; a value an agent launch refuses now stops `kanibako shell` and `box info`** — see *Every command
     reads an agent settings file's own values*.
 
-53. **`box move`, `box convert`, and `box duplicate` into another box's tree need `--force`; a move that
-    carries another box away, and `duplicate --force` onto another box's workspace or root, exit 1 even with
-    `--force`** — see *`move`, `convert`, `duplicate`, and `workset connect` on
-    another box's path are refused*.
+53. **`box move`, `box convert`, `box duplicate`, `workset create`, and `workset connect` into another box's
+    tree need `--force`; a move that carries another box away, and `duplicate --force` onto another box's
+    workspace or root, exit 1 even with `--force`** — see *`move`, `convert`, `duplicate`, `workset create`,
+    and `workset connect` on another box's path are refused*.
 
 ---
 
@@ -6257,10 +6257,10 @@ again.`
 
 **What to do.** Choose another path, or add `--force` to share the other box's tree on purpose.
 
-### `move`, `convert`, `duplicate`, and `workset connect` on another box's path are refused
+### `move`, `convert`, `duplicate`, `workset create`, and `workset connect` on another box's path are refused
 
-**Read this if `box move`, `box convert`, `box duplicate`, or `workset connect` now stops with
-`Cannot <verb> …` and names another box.**
+**Read this if `box move`, `box convert`, `box duplicate`, `workset create`, or `workset connect` now
+stops with `Cannot <verb> …` and names another box.**
 
 **What changed.** These verbs now run the check `create` and `box remap` run (see *`create` on
 another box's path is refused*), and exit 1 before writing anything. In v1.7.x they passed, and
@@ -6272,6 +6272,11 @@ Refused unless `--force`, which shares the tree and keeps both boxes:
   workspace, standalone root, or store (a store repointed outside its root included), or to a
   directory holding another box's workspace or root: `… Both boxes would claim it: pass --force
   to share it, or choose another path.`
+- `workset create` with a root inside another box's workspace, standalone root, or store, and
+  `workset connect` of a directory inside a primary or standalone box's tree or a store, or holding
+  another box's workspace or root: `Cannot create working set '<ws>' at …` or `Cannot connect a box
+  at …`, ending as above. For `workset create`, the same `--force` also accepts a shared
+  `workset.logs` directory.
 - `box move` of a primary box into its own store: `… it is inside its own store (<store>). A box's
   store is not its workspace: pass --force to use it anyway, or choose another path.`
 - an in-place `box convert --workset` whose workspace sits inside another box's workspace, root,

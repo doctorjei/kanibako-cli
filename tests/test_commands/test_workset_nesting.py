@@ -351,3 +351,136 @@ class TestAbsorbAcrossSpellings:
 
         assert _connect("wn", linked / "lnk", "m", force=True) == 0, capsys.readouterr().err
         _assert_absorbed(std, None, other)
+
+
+# --- ``workset create`` and ``workset connect`` inside another box's tree ---------------
+#
+# Keyspace § 0: a path inside another box's workspace ([N]), or inside a standalone root
+# outside its workspace or inside a store (the reading Step 4a landed), is refused unless
+# --force.  Measured before the fix: every such ``workset create`` passed without --force,
+# and ``workset connect`` passed inside a primary's or a standalone's tree.
+
+SHARE = "Both boxes would claim it: pass --force to share it, or choose another path."
+
+
+def _cli(*argv: str) -> int:
+    args = build_parser().parse_args(list(argv))
+    return args.func(args)
+
+
+@pytest.fixture
+def boxes(env, capsys):
+    """``X`` (primary), ``XS`` (registered standalone), workset ``other`` with external
+    member ``XN``, and the links ``xlnk``/``rlnk``/``slnk``."""
+    std, area = env
+    assert _cli("box", "create", "--name", "X", str(area / "X")) == 0
+    _standalone(std, area, capsys)
+    other = create_workset("other", area / "other", std)
+    (area / "XN").mkdir()
+    add_project(other, "XN", area / "XN", std)
+    (area / "xlnk").symlink_to(area / "X")
+    (area / "rlnk").symlink_to(area / "XS")
+    (area / "slnk").symlink_to(area / "XS" / "box_data")
+    capsys.readouterr()
+    return std, area
+
+
+def _nested_dests(std, area: Path) -> dict[str, tuple[Path, str]]:
+    """A new leaf inside another box's tree, and what the refusal says it is."""
+    return {
+        "in_X": (area / "X" / "sub", f"inside the workspace of primary box 'X' ({area / 'X'})"),
+        "via_xlnk": (area / "xlnk" / "sub",
+                     f"inside the workspace of primary box 'X' ({area / 'X'})"),
+        "in_XS_workspace": (area / "XS" / "workspace" / "sub",
+                            "inside the root of standalone box"),
+        "in_XS_root": (area / "XS" / "sub", "inside the root of standalone box"),
+        "via_rlnk": (area / "rlnk" / "sub", "inside the root of standalone box"),
+        "in_XN": (area / "XN" / "sub",
+                  f"inside the workspace of member 'XN' of workset 'other' ({area / 'XN'})"),
+        "in_X_store": (std.boxes / "X" / "sub",
+                       f"inside the store of primary box 'X' ({(std.boxes / 'X').resolve()})"),
+        "in_XS_store": (area / "XS" / "box_data" / "sub", "inside the store of standalone box"),
+        "via_slnk": (area / "slnk" / "sub", "inside the store of standalone box"),
+    }
+
+
+NESTED = ["in_X", "via_xlnk", "in_XS_workspace", "in_XS_root", "via_rlnk", "in_XN",
+          "in_X_store", "in_XS_store", "via_slnk"]
+
+
+class TestWorksetCreateInsideAnotherBox:
+    @pytest.mark.parametrize("row", NESTED)
+    def test_refused_without_force(self, boxes, capsys, row):
+        std, area = boxes
+        dest, why = _nested_dests(std, area)[row]
+        assert _cli("workset", "create", "--name", "A", str(dest)) == 1
+        err = capsys.readouterr().err
+        assert f"Cannot create working set 'A' at '{dest}': it is {why}" in err, err
+        assert SHARE in err, err
+        assert "A" not in list_worksets(std)
+        assert not dest.exists()
+
+    @pytest.mark.parametrize("row", NESTED)
+    def test_force_creates_it(self, boxes, capsys, row):
+        std, area = boxes
+        dest, _why = _nested_dests(std, area)[row]
+        assert _cli("workset", "create", "--force", "--name", "A", str(dest)) == 0, \
+            capsys.readouterr().err
+        assert "A" in list_worksets(std)
+        assert dest.is_dir()
+
+    def test_a_free_path_is_allowed(self, boxes, capsys):
+        std, area = boxes
+        assert _cli("workset", "create", "--name", "A", str(area / "free")) == 0, \
+            capsys.readouterr().err
+        assert "A" in list_worksets(std)
+
+    @pytest.mark.parametrize("exact", ["X", "XS", "XS/workspace", "XN", "rlnk"])
+    @pytest.mark.parametrize("force", [False, True])
+    def test_an_existing_root_keeps_its_refusal(self, boxes, capsys, exact, force):
+        std, area = boxes
+        flags = ["--force"] if force else []
+        assert _cli("workset", "create", *flags, "--name", "A", str(area / exact)) == 1
+        err = capsys.readouterr().err
+        assert "Workset root already exists" in err, err
+        assert "A" not in list_worksets(std)
+
+
+class TestWorksetConnectInsideAnotherBox:
+    """A primary's or a standalone's tree; inside a member is ``TestConnectInsideAMember``."""
+
+    ROWS = [row for row in NESTED if row != "in_XN"]
+
+    @pytest.mark.parametrize("row", ROWS)
+    def test_refused_without_force(self, boxes, capsys, row):
+        std, area = boxes
+        dest, why = _nested_dests(std, area)[row]
+        dest.mkdir()
+        assert _connect("wn", dest, "m", force=False) == 1
+        err = capsys.readouterr().err
+        assert f"Cannot connect a box at '{dest}': it is {why}" in err, err
+        assert SHARE in err, err
+        assert "m" not in _members(std, "wn")
+
+    @pytest.mark.parametrize("row", ROWS)
+    def test_force_connects_it(self, boxes, capsys, row):
+        std, area = boxes
+        dest, _why = _nested_dests(std, area)[row]
+        dest.mkdir()
+        (dest / "f.txt").write_text("theirs")
+        assert _connect("wn", dest, "m", force=True) == 0, capsys.readouterr().err
+        assert _members(std, "wn").get("m") == str(dest)
+        assert (dest / "f.txt").read_text() == "theirs"
+
+    def test_a_free_path_is_allowed(self, boxes, capsys):
+        std, area = boxes
+        (area / "free").mkdir()
+        assert _connect("wn", area / "free", "m", force=False) == 0, capsys.readouterr().err
+        assert _members(std, "wn").get("m") == str(area / "free")
+
+    def test_a_primarys_own_workspace_keeps_its_refusal(self, boxes, capsys):
+        std, area = boxes
+        assert _connect("wn", area / "X", "m", force=True) == 1
+        err = capsys.readouterr().err
+        assert "Cannot connect" in err and "Cannot connect a box at" not in err, err
+        assert "m" not in _members(std, "wn")
