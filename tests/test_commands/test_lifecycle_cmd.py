@@ -1333,6 +1333,37 @@ class TestRemap:
         assert registry_store.load_standalone(std.registry) == rows
         assert self._tree_digest(tmp_home) == before
 
+    @pytest.mark.parametrize("force", [False, True])
+    def test_remap_standalone_whose_workspace_would_be_a_registered_root(
+            self, env, capsys, monkeypatch, force):
+        """A standalone remapped onto *dest* records ``dest/workspace``; when that is ANOTHER
+        standalone's root, the remap is refused whatever the flag, as a primary onto that
+        root is (his 179-SR (a)): the target, not the box's mode."""
+        from kanibako.project import registry_store
+
+        self._confirms(monkeypatch)
+        config, std, tmp_home = env
+        solo = tmp_home / "solo"
+        solo.mkdir()
+        mine = resolve_standalone_project(std, config, project_dir=str(solo), initialize=True)
+        registry_store.register_standalone(std.registry, mine.name, solo)
+        dest = tmp_home / "dest"
+        held = dest / "workspace"
+        held.mkdir(parents=True)
+        other = resolve_standalone_project(std, config, project_dir=str(held), initialize=True)
+        registry_store.register_standalone(std.registry, other.name, held)
+        rows = registry_store.load_standalone(std.registry)
+        before = self._tree_digest(tmp_home)
+
+        assert run_remap(_remap_args(mine.name, str(dest), force=force)) == 1
+        err = capsys.readouterr().err
+        assert (f"Cannot remap '{mine.name}' onto '{dest}': it is a standalone root whose "
+                f"workspace ({held}) is the root of standalone box '{other.name}'. A remap is "
+                "not a takeover, and no flag overrides this.") in err
+        assert f"`kanibako box rm {other.name} --purge`" in err
+        assert registry_store.load_standalone(std.registry) == rows
+        assert self._tree_digest(tmp_home) == before
+
     def test_an_interrupted_moved_standalone_remap_names_the_root_it_left(
             self, env, capsys, monkeypatch):
         """The undo Note names where the row is again: the old ROOT, not a workspace."""

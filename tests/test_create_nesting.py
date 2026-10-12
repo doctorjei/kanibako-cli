@@ -178,6 +178,21 @@ class TestCreateUnforceable:
         assert not (area / "F" / "box_data").exists()
 
     @pytest.mark.parametrize("force", [False, True])
+    def test_standalone_whose_workspace_is_a_standalone_root(self, area, capsys, force):
+        """His 179-SR (a): another standalone's root is refused whatever the flag, also as
+        the workspace a new standalone would record."""
+        held = area / "G" / "workspace"
+        assert _create("--standalone", str(held)) == 0
+        capsys.readouterr()
+        rc = _create(*(["--force"] if force else []), "--standalone", str(area / "G"))
+        assert rc == 1
+        err = capsys.readouterr().err
+        assert (f"Cannot create a box at '{area / 'G'}': it is a standalone root whose "
+                f"workspace ({held}) is the root of an unregistered standalone box. A create "
+                "is not a takeover, and no flag overrides this.") in err
+        assert not (area / "G" / "box_data").exists()
+
+    @pytest.mark.parametrize("force", [False, True])
     def test_primary_at_a_standalones_workspace(self, area, capsys, force):
         root = area / "S"
         assert _create("--standalone", "--register", str(root)) == 0

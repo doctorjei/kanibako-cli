@@ -878,7 +878,8 @@ def _remap_dest_holder(
 
     Returns ``(why, forceable)``: *why* completes "Cannot remap … onto …: it is …".
     Keyspace § 0 "Per-owner resources": another box's workspace (identical workspaces) and a
-    standalone root (or a link to one) are refused whatever the flag.  A workspace inside
+    standalone root (or a link to one), as *dest* or as the workspace a standalone records
+    there, are refused whatever the flag.  A workspace inside
     another box's workspace, root, or store, or holding another box's workspace or root,
     shares that tree, so *forceable*: refused unless --force.  The box's own primary store
     is forceable too.  A standalone's own root and store are not: they move with the root,
@@ -970,16 +971,25 @@ def _remap_dest_holder(
                 and _same_box_name(owned.box_name, state.name))
 
     # --- Refused whatever the flag. ---
-    other = standalone_at(dest)
-    if other is not None:
-        return (f"the root of {standalone_who(other)}. "
-                + takeover(other or str(dest)), False)
+    def root_of(tree: Path) -> str | None:
+        """Why *tree* is another standalone's root, else ``None``."""
+        other = standalone_at(tree)
+        if other is not None:
+            return f"the root of {standalone_who(other)}. " + takeover(other or str(tree))
+        at = _resolved_unless_loop(tree)
+        for name, held_root in standalones.items():
+            if _resolved_unless_loop(held_root) == at:  # a root whose marker is gone
+                # The cure names the path: a primary box may share the standalone's name.
+                return f"the root of {standalone_who(name)}. " + takeover(str(held_root))
+        return None
+
+    # A standalone's recorded workspace is held to this too, whatever the box's mode.
+    for tree in trees:
+        why = root_of(tree)
+        if why is not None:
+            return (why if tree == dest
+                    else f"a standalone root whose workspace ({tree}) is {why}"), False
     landing = _resolved_unless_loop(dest)
-    for name, held_root in standalones.items():
-        if _resolved_unless_loop(held_root) == landing:  # a root whose marker is gone
-            # The cure names the path: a primary box may share the standalone's name.
-            return (f"the root of {standalone_who(name)}. "
-                    + takeover(str(held_root)), False)
 
     def workspace_of(path: Path) -> str | None:
         """Why *path* is another box's recorded workspace, as given, else ``None``."""
