@@ -18,6 +18,17 @@ _CLOSED = object()
 #: It is a daemon thread, so an expired wait costs tidiness, never a hang.
 _READER_JOIN = 5.0
 
+#: The largest frame either end of the helper socket accepts, in bytes.  The hub
+#: reads a socket a BOX writes, so an unterminated frame may not grow its buffer
+#: without bound.  Generous on purpose: the largest frame a real exchange makes is
+#: a ``helper send``/``broadcast`` carrying one command-line argument (at most
+#: 128 KiB on Linux, under 1 MiB once JSON-escaped), so no working exchange meets it.
+MAX_FRAME_BYTES = 16 * 1024 * 1024
+
+
+class FrameTooLarge(ConnectionError):
+    """A peer sent a frame over :data:`MAX_FRAME_BYTES`; the connection is unusable."""
+
 
 def send_frame(sock: socket.socket, data: dict) -> None:
     """Write *data* as ONE wire frame: its JSON, then a newline.
@@ -42,8 +53,13 @@ def iter_frames(sock: socket.socket, stop: threading.Event | None = None, *,
     the READ is guarded: an error the caller raises while handling a frame is its
     own.  Decoding is the caller's, because each end answers a bad frame
     differently.
+
+    A frame over :data:`MAX_FRAME_BYTES`, terminated or not, raises
+    :class:`FrameTooLarge` whatever *raise_errors* says: the stream cannot be
+    resynchronized, so the caller ends the connection.  Each read scans only the new
+    bytes for a newline, so a long frame costs linear time, not quadratic.
     """
-    buf = b""
+    buf = bytearray()
     while stop is None or not stop.is_set():
         try:
             data = sock.recv(4096)
@@ -53,11 +69,23 @@ def iter_frames(sock: socket.socket, stop: threading.Event | None = None, *,
             return
         if not data:
             return
+        scan = len(buf)
         buf += data
-        while b"\n" in buf:
-            line, buf = buf.split(b"\n", 1)
+        while (end := buf.find(b"\n", scan)) != -1:
+            line = bytes(buf[:end])
+            del buf[:end + 1]
+            scan = 0
+            if len(line) > MAX_FRAME_BYTES:
+                raise FrameTooLarge(_too_large(len(line)))
             if line.strip():
                 yield line
+        if len(buf) > MAX_FRAME_BYTES:
+            raise FrameTooLarge(_too_large(len(buf)))
+
+
+def _too_large(size: int) -> str:
+    return (f"peer sent a frame over the {MAX_FRAME_BYTES}-byte limit "
+            f"({size} bytes read); closing the connection")
 
 
 def _route_frame(line: bytes, responses: queue.Queue[Any],
@@ -239,6 +267,8 @@ class HelperConnection:
                     # risk handing a caller a frame that is not theirs.
                     reason = problem
                     return
+        except FrameTooLarge as exc:
+            reason = str(exc)
         finally:
             self._closed_reason = reason
             responses.put(_CLOSED)

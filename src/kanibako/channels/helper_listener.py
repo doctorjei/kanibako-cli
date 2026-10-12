@@ -11,7 +11,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from kanibako.channels.helper_client import iter_frames, send_frame
+from kanibako.channels.helper_client import FrameTooLarge, iter_frames, send_frame
 from kanibako.channels.helpers import (
     HELPER_CORE_LEAVES,
     HELPER_SCRIPTS_RELPATH,
@@ -214,6 +214,9 @@ class HelperHub:
                 )
                 if response is not None:
                     send_frame(conn, response)
+        except FrameTooLarge as exc:
+            # Only THIS client is dropped; the hub keeps serving every other one.
+            logger.warning("Dropping helper client (helper %s): %s", helper_num, exc)
         finally:
             if helper_num is not None:
                 self._unregister(helper_num, conn)

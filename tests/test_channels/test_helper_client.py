@@ -11,7 +11,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from kanibako.channels.helper_client import (
-    HelperConnection, iter_frames, send_frame, send_request,
+    FrameTooLarge, HelperConnection, iter_frames, send_frame, send_request,
 )
 
 
@@ -402,6 +402,56 @@ class TestFrames:
             stop.set()
         assert frames == [b'{"a": 1}']
         assert mock_sock.recv.call_count == 1
+
+
+class TestFrameCap:
+    """``MAX_FRAME_BYTES`` bounds the reader's buffer, terminated frame or not."""
+
+    def _sock(self, *chunks):
+        mock_sock = MagicMock()
+        mock_sock.recv.side_effect = [*chunks, b""]
+        return mock_sock
+
+    def test_a_frame_AT_the_cap_is_read(self, monkeypatch):
+        import kanibako.channels.helper_client as helper_client
+        monkeypatch.setattr(helper_client, "MAX_FRAME_BYTES", 8)
+        assert list(iter_frames(self._sock(b"12345678\n"))) == [b"12345678"]
+
+    @pytest.mark.parametrize("raise_errors", [False, True])
+    def test_an_UNTERMINATED_frame_over_the_cap_raises(self, monkeypatch, raise_errors):
+        import kanibako.channels.helper_client as helper_client
+        monkeypatch.setattr(helper_client, "MAX_FRAME_BYTES", 8)
+        frames = iter_frames(self._sock(b"12345", b"6789"), raise_errors=raise_errors)
+        with pytest.raises(FrameTooLarge, match="8-byte limit"):
+            list(frames)
+
+    def test_a_TERMINATED_frame_over_the_cap_raises(self, monkeypatch):
+        import kanibako.channels.helper_client as helper_client
+        monkeypatch.setattr(helper_client, "MAX_FRAME_BYTES", 8)
+        with pytest.raises(FrameTooLarge):
+            list(iter_frames(self._sock(b"ok\n123456789\n")))
+
+    def test_the_client_reader_retires_with_the_cap_as_its_reason(self, tmp_path, monkeypatch):
+        import kanibako.channels.helper_client as helper_client
+        monkeypatch.setattr(helper_client, "MAX_FRAME_BYTES", 64)
+        sock_path = tmp_path / "cap.sock"
+
+        def handler(conn):
+            conn.recv(4096)
+            conn.sendall(b"y" * 4096)
+            time.sleep(1.0)
+
+        shutdown, server, thread = _serve_one(sock_path, handler)
+        conn = HelperConnection()
+        conn.connect(sock_path)
+        try:
+            with pytest.raises(ConnectionError, match="64-byte limit"):
+                conn.broadcast({"text": "hi"})
+        finally:
+            conn.close()
+            shutdown.set()
+            server.close()
+            thread.join(timeout=5.0)
 
 
 # ---------------------------------------------------------------------------

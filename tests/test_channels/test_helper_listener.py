@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import shutil
 import socket
 import time
@@ -416,6 +417,39 @@ class TestHubSocketProtocol:
         resp = json.loads(buf.split(b"\n")[0])
         assert resp["status"] == "error"
         assert "invalid JSON" in resp["message"]
+
+
+class TestHubFrameCap:
+    """A frame over the cap drops ONLY its client; the hub keeps serving the rest."""
+
+    @pytest.mark.parametrize("terminated", [False, True])
+    def test_an_oversized_frame_drops_only_that_client(
+        self, hub_and_sock, monkeypatch, caplog, terminated,
+    ):
+        import kanibako.channels.helper_client as helper_client
+
+        hub, sock_path, ctx = hub_and_sock
+        monkeypatch.setattr(helper_client, "MAX_FRAME_BYTES", 1024)
+        other = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        other.connect(str(sock_path))
+        other.settimeout(5.0)
+        bad = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        bad.connect(str(sock_path))
+        bad.settimeout(5.0)
+        try:
+            with caplog.at_level(logging.WARNING):
+                bad.sendall(b"x" * 4096 + (b"\n" if terminated else b""))
+                # The hub closes the oversized client: its read sees EOF.
+                assert bad.recv(4096) == b""
+            assert any("1024-byte limit" in r.getMessage() for r in caplog.records)
+            # The other connection, opened BEFORE the drop, is still served, and so
+            # is a new one.
+            other.sendall(b'{"action": "register", "helper_num": 1}\n')
+            assert json.loads(other.recv(4096).split(b"\n")[0])["status"] == "ok"
+            assert _connect_and_send(sock_path, {"action": "bogus"})["status"] == "error"
+        finally:
+            bad.close()
+            other.close()
 
 
 class TestHubSpawn:

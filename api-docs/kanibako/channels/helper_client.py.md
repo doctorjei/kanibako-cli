@@ -7,6 +7,7 @@ _Signatures only: no comments, no docstrings, no bodies._
 ## Variables
 
 ```
+MAX_FRAME_BYTES = 16 * 1024 * 1024
 _CLOSED = object()
 _READER_JOIN = 5.0
 ```
@@ -16,12 +17,15 @@ _READER_JOIN = 5.0
 def send_frame(sock: socket.socket, data: dict) -> None
 def iter_frames(sock: socket.socket, stop: threading.Event | None=None, *, raise_errors: bool=False) -> Iterator[bytes]
 def send_request(socket_path: Path, request: dict) -> dict
+def _too_large(size: int) -> str
 def _route_frame(line: bytes, responses: queue.Queue[Any], inbox: queue.Queue[Any]) -> str | None
 ```
 
 ## Classes
 
 ```
+class FrameTooLarge(ConnectionError):
+
 class HelperConnection:
     def __init__(self) -> None
 
