@@ -224,6 +224,31 @@ class TestInPlaceConvertIntoAWorkset:
         assert not load_workset(area / "wo", "wo", early_system=std.early_system).projects
 
 
+class TestStandaloneRootWhoseWorkspaceIsARoot:
+    """His 179-SR (a), the relocation door: `convert --standalone --move D` records
+    ``D/workspace``; when that is another standalone's registered root (its marker and
+    directory gone, its row kept), the move is refused whatever the flag, as remap and create
+    are."""
+
+    @pytest.mark.parametrize("force", [False, True])
+    def test_convert_standalone_move(self, env, capsys, force):
+        std, area = env
+        dest = area / "D"
+        held = dest / "workspace"
+        registry_store.register_standalone(std.registry, "T", held)  # T's row, D absent
+        rows = registry_store.load_standalone(std.registry)
+        rc = _relocate("cvS", area / "s", dest, force=force)
+        err = capsys.readouterr().err
+        assert rc == 1, err
+        assert (f"Cannot convert a box at '{dest}': it is a standalone root whose workspace "
+                f"({held}) is the root of standalone box 'T'. A convert is not a takeover, and "
+                "no flag overrides this. First delete that box (`kanibako box rm "
+                f"{held} --purge`") in err, err
+        assert registry_store.load_standalone(std.registry) == rows
+        assert not dest.exists()
+        assert (area / "s" / "f.txt").read_text() == "data"
+
+
 class TestNamedSource:
     """A workset member relocated inside another box's workspace: refused unless --force."""
 

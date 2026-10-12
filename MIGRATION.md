@@ -6306,9 +6306,10 @@ Refused even with `--force`:
 - `workset connect` of a standalone box's own workspace, a `workset.yaml` planted there included,
   which was registered as a second box on that workspace: `… it is the workspace of standalone
   box '<box>'. Identical workspaces are refused, and no flag overrides this. Choose another path.`
-- `box remap` of a standalone box, or `create --standalone`, onto a root whose `workspace/` is another
-  standalone box's root: `… it is a standalone root whose workspace (<dir>) is the root of standalone
-  box '<box>'. A remap is not a takeover, and no flag overrides this.`, with the cure `create` names.
+- `box remap` of a standalone box, `create --standalone`, or `box convert --standalone --move`, onto a
+  root whose `workspace/` is another standalone box's root: `… it is a standalone root whose workspace
+  (<dir>) is the root of standalone box '<box>'. A remap is not a takeover, and no flag overrides
+  this.` (`A create …`, `A convert …` for those verbs), with the cure `create` names.
 
 Newly allowed with `--force`: `workset connect` and `box convert --workset --move` inside another
 member's workspace, which v1.7.x refused whatever the flag. The member's own path is still

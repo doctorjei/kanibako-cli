@@ -856,8 +856,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the other box. See `MIGRATION.md`, "`move`, `convert`, `duplicate`, `workset create`, and `workset connect` on
   another box's path are refused".
 - **A standalone root whose workspace is another standalone box's root is refused even with `--force`.**
-  `box remap` of a standalone box, and `create --standalone`, onto such a root passed with `--force`, while a primary
-  box onto that root was refused whatever the flag. See the same `MIGRATION.md` section.
+  `box remap` of a standalone box, `create --standalone`, and `box convert --standalone --move` onto such a root
+  passed with `--force`, while a primary box onto that root was refused whatever the flag. See the same `MIGRATION.md`
+  section.
 - **`workset create` and `workset connect` refuse, unless `--force`, a path inside another box's workspace,
   root, or store,** as `create` and `remap` do; `connect` also refuses one holding another box's workspace or root.
   `workset create` checked nothing, and `workset connect` checked only a member's workspace and a standalone root.
