@@ -1046,7 +1046,7 @@ def _warn_unprotected(
     emit = log.debug if quiet else log.warning
     if agent_owned:
         emit(
-            "canon books at %s are left writable from inside the box (%s). The box "
+            "canon books at %s are left writable from inside the box: %s. The box "
             "works normally — every canon bind still lands on its mountpoint — but "
             "the agent can create stray files under ~/canon instead of only under "
             "~/canon/{notebook,workbook}.",
@@ -1054,7 +1054,7 @@ def _warn_unprotected(
         )
     else:
         emit(
-            "canon books at %s are root-owned but keep their default modes (%s). The "
+            "canon books at %s are root-owned but keep their default modes: %s. The "
             "agent still cannot write them, and the box works normally; only the "
             "declared 555/444 modes were not applied.",
             root, reason,

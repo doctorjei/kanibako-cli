@@ -604,6 +604,22 @@ class TestBootstrapNoneInRunContainer:
         assert rc == 0
         assert m.launch_check.call_args.kwargs["setting"] == "agent.shell.bootstrap"
 
+    @pytest.mark.parametrize("detach", [False, True])
+    def test_the_baseline_probe_offers_ephemeral_only_to_an_attached_start(
+        self, start_mocks, detach,
+    ):
+        """``--detach`` and ``kanibako code`` refuse ``--ephemeral``, so the tier-1
+        refusal is told ``attached=False`` there and names no ``--ephemeral`` cure."""
+        with start_mocks() as m:
+            with patch(
+                "kanibako.launch.shells.resolve_box_shell",
+                return_value=("/bin/bash", "image"),
+            ):
+                rc = _run_container(**self._kwargs(persistent=True, detach=detach))
+        assert rc == 0
+        m.launch_check.assert_called_once()
+        assert m.launch_check.call_args.kwargs["attached"] is (not detach)
+
     def test_a_plain_shell_ephemeral_launch_resolves_no_bootstrap(self, start_mocks):
         """Plain ``kanibako shell`` (ephemeral) resolves no bootstrap — neither the box
         agent's (``resolve_bootstrap_program``) nor the launch's own (``bootstrap_program``)."""

@@ -1671,7 +1671,8 @@ class TestCanonSkeleton:
             core_defaults.materialize_canon_skeleton(home)
 
         assert (home / "canon" / "charter" / "general").is_dir(), "skeleton still built"
-        assert any("left writable" in r.message and "(no podman)" in r.message
+        # One sentence: the error's own text follows a colon, its full stop not doubled.
+        assert any("left writable from inside the box: no podman. The box works" in r.message
                    for r in caplog.records), caplog.text
 
     @pytest.mark.parametrize("failing", ("unshare_chown", "unshare_chmod"))
