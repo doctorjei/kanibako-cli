@@ -52,8 +52,9 @@ SELECTION_KEY = "system.agent"
 class AgentSelection:
     """The resolved agent node, plus the *source* that chose it.
 
-    *node* is the canonical agent NODE-name, or ``""`` for a NO-AGENT plain-shell
-    box (spec §2b, D-M6); *source* is ``"cli"`` or ``"settings"``. Both
+    *node* is the canonical agent NODE-name; :func:`select_agent` never returns ``""``,
+    and a plain-shell box is the node ``shell`` (spec §2b, §2d); *source* is ``"cli"``
+    or ``"settings"``. Both
     vocabularies are spelled out in the llm-doc.
 
     🛑 **TWO SOURCES ARE RETIRED AND NEITHER IS PRODUCED ANY MORE.** ``"autopick"``

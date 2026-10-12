@@ -43,7 +43,7 @@ Two DIFFERENT file families are read here and confusing them is the standing haz
   its own reader, `system_path_set_values`.
 * **The SETTINGS (behavior) set** — `/etc/kanibako/settings_base.yaml` < `global/settings.yaml` <
   the agent file < the workset tier < the box tier. This is the real 6-level cascade; nothing in
-  this module resolves it except `_resolve_box_scalars`, which delegates.
+  this module resolves it; the box scalars resolve in `settings_launch.resolve_box_scalars`.
 
 `config_base_path` and `settings_base_path` are the two `/etc` floors, one per family. A missing
 file is treated as an empty level in both cases, so absence preserves current behavior.
@@ -59,27 +59,16 @@ a key nobody wrote.
 
 ## B6 — the box scalars are KEYSPACE-resolved
 
-`box.image` / `box.share_images` / `box.shell` / `box.enable_vault` (`_BOX_SCALAR_FIELDS`) are no
-longer the flat
-overlay's product. `load_merged_config` runs `_resolve_box_scalars`, which builds a real cascade
-snapshot and overwrites the flat fields with the resolved values. Every caller — the launch,
-`kanibako shell` (agent-less), and the box-less sites (`rig` / `diagnose` / `setup` / `baseline`,
-which pass no project) — reads the SAME resolve through the SAME fields, so there is ONE live
-source.
+`box.image` / `box.share_images` / `box.shell` / `box.enable_vault` (`_BOX_SCALAR_FIELDS`) resolve
+through the keyspace in `settings_launch`: `load_merged_config` runs `resolve_box_scalars` and lands
+each resolved value on its `KanibakoConfig` field. Path resolution reads `box.enable_vault` through
+`paths.resolve_box_enable_vault`. This module keeps what they share: the field map, the
+declared-default floor, the field typing (`_typed_box_scalar`), and the null rule
+(`refuses_null_box_scalar`).
 
-The flat overlay walk still runs underneath it. It owns the corner semantics the resolve falls
-back to (present-`None` reset; `""`). ⚑ It no longer owns `paths_project_toml`: `paths.project_toml`
-is not a declared key (spec §0), no caller ever read it, and the declared-key walk described under
-`_present_scalar_fields` cannot reach it — so the field went with the read that produced it.
-
-⚑⚑ **`load_merged_config` NO LONGER READS SETTINGS OUT OF THE LAYER-1 FILE.** *"kanibako_config.yaml
-<-- cannot have settings. Period."* — that file was the least-specific FILE source of the scalar
-overlay, and its `[box]` table overrode the declared defaults; the scalars now START at those
-defaults and the first thing that can move them is the WORKSET tier. Stopping the WRITE alone would
-not have been enough: a hand-written table, or one left by an older build, would have gone on
-silently overriding the defaults. ⚑ *global_path* is still a parameter and is not dead — it is what
-`_resolve_box_scalars` locates the SYSTEM tier from — but the `config_paths` field this function
-used to fill from it is gone: a settings object never carried Layer 1 legitimately.
+⚑ The Layer-1 file carries no settings (Jei, 2026-08-26: *"kanibako_config.yaml <-- cannot have
+settings. Period."*), so the scalars START at the declared defaults and no Layer-1 value reaches
+them.
 
 ### The floor, and why it is captured before the overlays
 
@@ -94,19 +83,16 @@ nothing left to strand, and `config.box_scalar_defaults_floor()` builds the floo
 (`getattr(load_config(cf), field)`) fused two things: the file's value when the file spoke, the
 declared default when it did not. Only the first is the violation; deleting both would make
 `@box.image` dangle at launch AND at set time. `box_scalar_defaults_floor` is the ONE recipe, folded
-by `settings_launch.build_launch_snapshot` into every BOX resolve (the main launch snapshot and
-`_resolve_box_scalars` alike), by `_narrow_box_scalar_cascade`, and by
+by `settings_launch.fold_floor` into every resolve, by `paths._narrow_box_scalar_cascade`, and by
 `config_interface._category_set_lookups`, so the launch floor and the set-time floor cannot drift. A `""` field default (`box.shell`) is the flat object's spelling of the declared `<None>`
 (spec §2b `box.shell | <None>`), and the floor SUPPLIES it as a present `None` ([R177]). It is not
 `""`: a `default_categories` fold drops a `""` as a suppression (`if val == "": continue`), which left
 `@box.shell` dangling, so `set box.env.SH=@box.shell` refused by name until 2026-09-27. A whole-value
-ref to it now resolves to `None` (§0). `_resolve_box_scalars` skips a resolved `None`, so the flat
-`box_shell` field keeps its `""` and `launch.shells.resolve_box_shell` still auto-detects.
+ref to it now resolves to `None` (§0). A winning `None` lands on the flat `box_shell` field as
+`None`, and `launch.shells.resolve_box_shell` auto-detects.
 
 ⚑ The floor is the DECLARED DEFAULTS and is built before any overlay, so a workset or box value
 cannot masquerade as the system-stored default — it enters the resolve at its OWN tier instead.
-`""` entries drop out of the fold (absent ≡ no default) and the flat fallback then applies the
-built-in default, preserving the `""` corner byte-identically.
 
 A `box:` table in `global/settings.yaml` — where `kanibako system set box.image=…` has always
 written — now resolves too. It was silently stranded before B6.
@@ -175,8 +161,8 @@ The flat merged SETTINGS object.
 
 Precedence over the FILE layers, least → most authoritative: hardcoded defaults < the workset
 tier < the box tier < CLI overrides. ⚑ The
-four `box.*` scalars do NOT resolve this way any more — see "B6" above; `load_merged_config`
-overwrites them from the keyspace after the overlay walk.
+four `box.*` scalars do NOT resolve this way any more — see "B6" above; `settings_launch.load_merged_config`
+fills them from the keyspace.
 
 ⚑ `box_enable_vault` JOINED 2026-08-29 as the fourth. Its field default is now THE carrier of
 `box.enable_vault`'s declared default — that is what `box_scalar_defaults_floor` publishes, and
@@ -327,84 +313,28 @@ Read the LAYER-1 bootstrap file — the one reader of `kanibako.cfg`.
 ⚑⚑ **IT RETURNS A `BootstrapConfig`, AND THAT IS THE WHOLE OF THE 2026-08-31 RULING:** a Layer-1
 read has no settings field to return. It was a GENERAL document reader — the same call read the
 settings file — which is how the Layer-1 file came to hand back a `box.image` it may not carry. The
-box scalars are read from SETTINGS files by `load_merged_config`; a settings file's `system.*` path
-set-values by `system_path_set_values`.
+box scalars are read from SETTINGS files by `settings_launch.load_merged_config`; a settings
+file's `system.*` path set-values by `system_path_set_values`.
 
 
-```_resolve_box_scalars(global_path, *, workset_path, box_path, cli_overrides) -> dict[str, object]```
-Resolve the box scalars (:data:`_BOX_SCALAR_FIELDS`) through the KEYSPACE.
+### Moved to `settings_launch`: `resolve_box_scalars`, `load_merged_config`
 
-The ONE resolve behind `load_merged_config` (B6, option (b)). A focused, AGENT-LESS
-`build_launch_snapshot` — the `shell` slot (`agent_ref.GENERAL_SLOT`), the proven
-focused-bootstrap shape (`start._agent_scalar_pick`), so `kanibako shell` and every box-less caller resolve without an
-agent — over the real cascade files:
+The box-scalar resolve and the loader that runs it live in `settings_launch`. The resolve runs under
+an `agent_name` (default `agent_ref.GENERAL_SLOT`, the `shell` slot) and keeps a winning present
+`None` (spec §2h), refusing it where `refuses_null_box_scalar` gives a null no meaning.
 
-```
-floor(declared box-scalar defaults) < /etc settings_base.yaml < system
-(global/settings.yaml) < workset < box < CLI level
-```
+⚑ `_BOX_SCALAR_FIELDS` maps the box-scope SCALAR keys that resolve through the KEYSPACE (B6,
+R-11a(a)): dotted key → the flat `KanibakoConfig` field it lands on. `box.shell` rides the same
+resolve — it lives on the same object and the same `box:` tables (consumer-map risk 4).
+`box.enable_vault` joined 2026-08-29; see "The pre-cascade readers" above for why it was not there
+from the start and what that cost.
 
-⚑ **THE FLOOR WAS `kanibako.cfg`'s `[box]` TABLE UNTIL 2026-08-26**, when Jei ruled that
-file cannot carry settings at all. It is `config.box_scalar_defaults_floor()` now — the DECLARED
-defaults, shared with `config_interface._category_set_lookups` so the launch floor and the set-time
-floor cannot drift. `build_launch_snapshot` folds it for every BOX resolve, so this function passes
-no `default_categories` of its own. Nothing else about the chain moved.
-
-The floor really does sit UNDER the `/etc` base file: `assemble_levels` folds *floor* beneath the
-base file's content within the single `base` level, so a base-FILE set-value beats the floor at the
-same key and the floor is the ultimate fallback.
-
-The CLI flags ride the §1A LEVEL: *cli_overrides* (flat field names, the historical transport) are
-translated through the ONE builder
-:func:`~kanibako.settings.settings_cli_level.build_cli_level` and guarded inside
-`build_launch_snapshot` — not overlaid ad hoc.
-
-Returns `{dotted key: resolved leaf}` with ABSENT keys omitted; the caller falls back to the flat
-value, which owns the `None`-reset / built-in default corner semantics.
-
-⚑ **The system settings path is resolved with `load_system_config`, deliberately NOT
-`load_std_paths`** (which materializes the store). Not literally mkdir-free, though: with
-`XDG_RUNTIME_DIR` unset, `resolve_system_paths`' fallback CREATES its replacement runtime dir
-(`paths._fallback_runtime_dir`, once per process, cached) — the single directory this call can
-make.
-
-⚑ **NO PERSONA TIER, deliberately** (the six-call-site audit). This resolve is AGENT-LESS by
-construction — it runs in the `shell` slot, for box-less callers with no agent selected — and
-it reads back exactly the three `box.*` scalars in `_BOX_SCALAR_FIELDS`. A persona bundle spells
-only `agent.<node>.*` leaves (`endpoint` / `model` / `secret_path.<VAR>` / `env.<VAR>`), so it
-could not touch a `box.*` scalar even if an agent were known here. Nothing to thread, and no seam
-to thread it from.
-
-⚑ **The imports are lazy throughout, and must stay that way.** `paths` imports this module at
-module load, and `settings_assemble` does too — which is how `settings_launch` reaches it
-transitively. Hoisting any of these to module scope closes the cycle.
-
-⚑ `_BOX_SCALAR_FIELDS` maps the box-scope SCALAR keys the merged loader resolves through the
-KEYSPACE (B6, R-11a(a)): dotted key → the flat `KanibakoConfig` field it lands on. `box.shell`
-rides the same resolve — it lives on the same object and the same `box:` tables (consumer-map
-risk 4). `box.enable_vault` joined 2026-08-29; see "The pre-cascade readers" above for why it was
-not there from the start and what that cost.
-
-
-```load_merged_config(global_path, project_path=None, *, workset_path=None, cli_overrides=None) -> KanibakoConfig```
-Load global config, overlay workset, then project, then CLI overrides — then run the B6 resolve.
-
-Start from the user global config (the least-specific FILE source now that the machine third file
-is deleted), then overlay the workset and project layers so the most-specific PRESENT value wins.
-Finally the keyspace resolve for the box scalars: a resolved value wins; an ABSENT resolve
-keeps the flat value. See "B6" above for the whole shape, and "The old machine-wide third file"
-for what was removed.
-
-The nested `_overlay_scalars` applies one file layer's PRESENT scalar/bool fields. Presence-based,
-per "The `None` sentinel" above. Layer 1 cannot appear there at all: `_present_scalar_fields` walks
-in through the declared `box.*` spellings and never enters a `config:` table.
-
-⚑ Each resolved value lands on its field's own type via `_typed_box_scalar`: a field whose
-DATACLASS DEFAULT is a bool goes through :func:`coerce_bool` (falling back to `bool(value)` for an
-unrecognized literal), everything else is stringified. ⚑ The bool arm is selected off the default's
-TYPE rather than a hand-kept name list, because `box.enable_vault` joining as the second bool
-(2026-08-29) is exactly the edit that would otherwise ship a stringified `"False"` — which is
-truthy, i.e. a stored `enable_vault: false` silently reading as ON.
+⚑ `_typed_box_scalar` lands each resolved value on its field's own type: a field whose DATACLASS
+DEFAULT is a bool goes through :func:`coerce_bool` (falling back to `bool(value)` for an
+unrecognized literal), a `None` default keeps a `None`, and everything else is stringified. The arm
+is selected off the default rather than a hand-kept name list, because `box.enable_vault` joining as
+the second bool (2026-08-29) is exactly the edit that would otherwise ship a stringified `"False"` —
+which is truthy, i.e. a stored `enable_vault: false` silently reading as ON.
 
 
 ```write_global_config(path: Path) -> None```
@@ -451,10 +381,6 @@ to, so the create is atomic either way.
 ⚑ **NO `agent_name` row** (P7): `box.agent_name` is RETIRED (§2b), and writing a BOX key into the
 CONFIG file was wrong even while it existed — nothing ever read it back from here. Stale copies in
 existing `kanibako.cfg` files are documentation-only (migration M-4).
-
-
-```write_project_config(path: Path, image: str) -> None```
-Write or update a `box.yaml` with the given image.
 
 
 ```persist_creation_flags(box_settings_path, *, materializing, image=None, share_images=None) -> None```
@@ -508,55 +434,15 @@ STANDALONE passes the resolved one on purpose — that write IS the M-8 migratio
 Paired reader: :func:`read_box_enable_vault`.
 
 
-```resolve_box_enable_vault(global_path: Path, *, box_path: Path, workset_path: Path | None) -> bool```
-`box.enable_vault` through the FULL cascade — base < system < workset < box.
+### Moved to `paths`: `resolve_box_enable_vault`, `_narrow_box_scalar_cascade`
 
-**THE RESOLVED VALUE, and the only thing that should ever fill `ProjectPaths.enable_vault`.** It
-runs the same narrow, agent-less `_resolve_box_scalars` that backs `load_merged_config`, so the
-BASE floor and the SYSTEM tier are cascade LEVELS rather than files nobody thought to open.
-
-⚑ WHY THE LAUNCH DOES NOT JUST READ `load_merged_config`. It could — on the live path
-`load_merged_config` (`commands/start.py`) runs before `_core_default_categories`, so the answer
-would be available in time. But the three `paths.py` resolvers run BEFORE it and are what fill
-`ProjectPaths.enable_vault`, which `settings/core_defaults.py` reads to decide whether the vault
-bind rows are emitted at all. Reading the finished launch snapshot to decide what goes INTO it is
-circular; this function answers from FILE PATHS, which is all a narrow resolve needs, at the point
-those paths first exist (two lines below `_box_settings_files`).
-
-⚑ COST: one extra narrow resolve, measured at 2.70 ms/call against 223-619 ms commands.
-
-🛑 NOT the authored value. See `read_box_enable_vault`.
-
-
-```_narrow_box_scalar_cascade(global_path, *, workset_path, box_path) -> KeyStore```
-The box scalars' cascade WITHOUT the launch snapshot's whole-tree §0 audit.
-
-⚑⚑ **THE ONE THING THAT DISTINGUISHES IT FROM `_resolve_box_scalars`, WHICH RESOLVES THE SAME
-KEYS OFF THE SAME FILES.** That function ends in `build_launch_snapshot`, whose last step is
-`_refuse_undeclared_snapshot` — a whole-tree audit that RAISES when any settings file in the
-cascade carries an entry the keyspace does not declare. That refusal is correct for a launch and
-for `box show --effective` (the refusal's own message names that command). It is **wrong for path
-resolution**: this resolve runs inside `paths.resolve_project`, which every verb goes through —
-including plain `kanibako box show`, the ONE surface designed to still answer for a box whose file
-carries an undeclared entry, so that it can print the offending line. Routing path resolution
-through the launch audit turned that diagnostic into a refusal (measured: it red
-`test_box_show_marks_a_hand_written_undeclared_entry`).
-
-⚑ THE SHAPE IS `settings_launch.resolve_selected_agent`'s — that module's own named *"narrow
-resolve that precedes the launch snapshot"* — with `box_scalar_defaults_floor()` under the base
-file. Nothing here is a second opinion about the cascade: `assemble_levels`, `merge` and the floor
-builder are the same single carriers `_resolve_box_scalars` uses.
-
-⚑ **THE TWO ROUTES ARE PINNED EQUAL** by `test_config.py::TestTheTwoBoxScalarResolvesAgree`, over
-six tier combinations, so the split cannot quietly become two answers.
-
-⚑ NO PREF RUNGS, and that is measured: `settings_keyspace.PREF_ALLOWLIST` is `("system.agent",
-"agent.*.**")`, so no §2h request can name a `box.*` key. Splicing the overlays in would move no
-answer and would import `apply_prefs`' raise into path resolution.
-
-⚑ NO `expand`: `box.enable_vault` is `type: bool` in the manifest and cannot carry an `@`-ref, and
-a whole-tree expansion here would import the failure `resolve_selected_agent` had to go LENIENT to
-avoid — an unrelated defective leaf aborting a resolve that never needed it.
+`paths.resolve_box_enable_vault` resolves `box.enable_vault` (base < system < workset < box) to fill
+`ProjectPaths.enable_vault`, over `paths._narrow_box_scalar_cascade`. That cascade skips the launch
+snapshot's whole-tree audit (`settings_launch._refuse_undeclared_snapshot`): path resolution runs
+under every verb, including `kanibako box show`, which must still answer for a box whose file
+carries an undeclared entry (`test_box_show_marks_a_hand_written_undeclared_entry`).
+`test_config.py::TestTheTwoBoxScalarResolvesAgree` pins it equal to
+`settings_launch.load_merged_config`.
 
 ⚑ A CONSEQUENCE WORTH STATING: `resolve_project` does NOT enforce the closed keyspace. That is the
 status quo — it never did — and the enforcement still fires at every seam that had it before.
@@ -682,12 +568,6 @@ A flat key with no recognized section prefix is a TOP-LEVEL scalar field; it ret
 section rather than raising. The typed writer in `config_interface` is the routed set/get/reset
 path — this helper only serves the few remaining flat-key callers and must never crash on an
 advertised key.
-
-
-```write_project_config_key(path: Path, flat_key: str, value: str) -> None```
-Write or update a single key in a `box.yaml`.
-
-*flat_key* is the underscore-joined config name (e.g. `"box_image"`).
 
 
 ```unset_project_config_key(path: Path, flat_key: str) -> bool```
@@ -952,13 +832,6 @@ slot is `shell` (`GENERAL_SLOT`), which is what those paths pass as `agent_name`
 ⚑ The imports inside the function are lazy on purpose: `kanibako.targets` imports `paths` / this
 module indirectly, so importing it at module scope risks a cycle. This mirrors `discover_targets`'
 use elsewhere.
-
-
-```write_agent_setting(path: Path, key: str, value: str, agent_name: str) -> None```
-Write a single agent-state override under `agent.<agent_name>`.
-
-Preserves all other sections and other agents' agent subsections. Pass the reserved `"default"`
-agent name to target the any-agent default tier.
 
 
 ```_flatten_leaves(data: dict, prefix: str = "") -> dict[str, object]```
