@@ -403,7 +403,7 @@ def _cli_set_agent_key(std, verb, node, key, value):
 
     # ``agent set`` refuses an agent with no file, so that verb gets one first, as
     # ``setup`` leaves it (empty).  ``system set`` must work without one: fresh install.
-    agent_file = std.agents / node / "agent.yaml"
+    agent_file = agent_settings_path(std.agents, node)
     if verb == "agent set" and not agent_file.exists():
         agent_file.parent.mkdir(parents=True, exist_ok=True)
         save(agent_file, AgentConfig())
@@ -438,7 +438,7 @@ def _seed(std, proj, *, agent="claude", deliver_creds=True, agent_cfg_path=None)
         global_config_path=std.settings,
         agent_config_path=(
             agent_cfg_path if agent_cfg_path is not None
-            else std.agents / "claude" / "agent.yaml"
+            else agent_settings_path(std.agents, "claude")
         ),
         logger=logging.getLogger("test-seed"),
         deliver_creds=deliver_creds,
@@ -692,7 +692,7 @@ class TestLayeredHomeSeed:
         snapshot = _apply_init_seeds(
             std=std, proj=primary_proj, agent_name="shell", target=ShellTarget(),
             global_config_path=std.settings,
-            agent_config_path=std.agents / "shell" / "agent.yaml",
+            agent_config_path=agent_settings_path(std.agents, "shell"),
             logger=logging.getLogger("test-seed"),
             selection_level=AgentSelection(node="shell", source="settings").selection_level,
         )
@@ -765,7 +765,7 @@ class TestLayeredHomeSeed:
         (root / "box" / "home").mkdir(parents=True, exist_ok=True)
         (root / "box" / "home" / "CUSTOM.txt").write_text("custom")
         _write_system_settings(std, {"agent": {"shell": {"template": value}}})
-        agent_file = std.agents / "shell" / "agent.yaml"
+        agent_file = agent_settings_path(std.agents, "shell")
 
         _apply_init_seeds(
             std=std, proj=primary_proj, agent_name="shell", target=ShellTarget(),
@@ -812,7 +812,7 @@ class TestLayeredHomeSeed:
         (root / "box" / "home" / "CUSTOM.txt").write_text("custom")
 
         _cli_set_agent_key(std, verb, node, "template", str(root))
-        agent_file = std.agents / node / "agent.yaml"
+        agent_file = agent_settings_path(std.agents, node)
         node_doc = load_doc(agent_file) if agent_file.exists() else {}
         if verb == "agent set":
             assert node_doc["self"]["template"] == str(root)
@@ -980,7 +980,7 @@ class TestLayeredHomeSeed:
         snapshot = _apply_init_seeds(
             std=std, proj=primary_proj, agent_name="shell", target=ShellTarget(),
             global_config_path=std.settings,
-            agent_config_path=std.agents / "shell" / "agent.yaml",
+            agent_config_path=agent_settings_path(std.agents, "shell"),
             logger=logging.getLogger("test-seed"),
             selection_level=AgentSelection(node="shell", source="settings").selection_level,
         )
@@ -1011,7 +1011,7 @@ class TestLayeredHomeSeed:
         snapshot = _apply_init_seeds(
             std=std, proj=primary_proj, agent_name="shell", target=ShellTarget(),
             global_config_path=std.settings,
-            agent_config_path=std.agents / "shell" / "agent.yaml",
+            agent_config_path=agent_settings_path(std.agents, "shell"),
             logger=logging.getLogger("test-seed"),
             selection_level=AgentSelection(node="shell", source="settings").selection_level,
         )
@@ -1205,7 +1205,7 @@ class TestPersonaTemplateLayerThroughTheLink:
     def _seed_node(self, std, proj):
         _seed(
             std, proj, agent=self._NODE,
-            agent_cfg_path=self._node_store(std) / "agent.yaml",
+            agent_cfg_path=agent_settings_path(std.agents, self._NODE),
         )
 
     def test_persona_seeds_the_harness_template_through_the_link(
