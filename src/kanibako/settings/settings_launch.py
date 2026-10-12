@@ -1049,29 +1049,9 @@ def _materialize_auth_active(snapshot: KeyStore) -> None:
     workset_global_active, box_global_active, box_workset_active = (
         _auth_active_values(_read_auth_inputs(snapshot))
     )
-    meta_node = dict.get(snapshot, "meta", __MISSING__)
-    if not isinstance(meta_node, KeyStore):
-        meta_node = KeyStore()
-        snapshot["meta"] = meta_node
-    meta_workset = dict.get(meta_node, "workset", __MISSING__)
-    if not isinstance(meta_workset, KeyStore):
-        meta_workset = KeyStore()
-        meta_node["workset"] = meta_workset
-    workset_auth = dict.get(meta_workset, "auth", __MISSING__)
-    if not isinstance(workset_auth, KeyStore):
-        workset_auth = KeyStore()
-        meta_workset["auth"] = workset_auth
-    workset_auth["global_active"] = workset_global_active
-    meta_box = dict.get(meta_node, "box", __MISSING__)
-    if not isinstance(meta_box, KeyStore):
-        meta_box = KeyStore()
-        meta_node["box"] = meta_box
-    box_auth = dict.get(meta_box, "auth", __MISSING__)
-    if not isinstance(box_auth, KeyStore):
-        box_auth = KeyStore()
-        meta_box["auth"] = box_auth
-    box_auth["global_active"] = box_global_active
-    box_auth["workset_active"] = box_workset_active
+    snapshot.insert_segments(("meta", "workset", "auth", "global_active"), workset_global_active)
+    snapshot.insert_segments(("meta", "box", "auth", "global_active"), box_global_active)
+    snapshot.insert_segments(("meta", "box", "auth", "workset_active"), box_workset_active)
 
 
 def resolve_auth_source(
@@ -3325,13 +3305,7 @@ def _persona_partial(
         if not sep:
             active_node[key] = val
             continue
-        # UNBOUND dict.get (S3): never the bound ``node.get`` — a category named
-        # ``get`` would shadow the method into a crash.
-        node = dict.get(active_node, category)
-        if not isinstance(node, KeyStore):
-            node = KeyStore()
-            active_node[category] = node
-        node[var] = val
+        active_node.insert_segments((category, var), val)  # *var* stays ONE leaf.
     agent_node = KeyStore()
     agent_node[agent_name] = active_node
     partial = KeyStore()
