@@ -352,7 +352,7 @@ def _copy_delivery(
         refuse_uncovered_synced(bindings, copies)
         for replaced in _synced_masks_replaced(copies, bindings):
             del bindings[replaced]
-        _refuse_synced_under_mask(copies, bindings)
+        _refuse_synced_under_mask(copies, bindings, declared_by={})
     except SettingsError:
         return True, None, bindings
 

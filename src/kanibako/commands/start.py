@@ -4717,6 +4717,7 @@ def _run_container(
         _apply_synced_copies(
             snapshot=_snapshot, bindings=launch_binds,
             logger=logger, skip_if=_synced_uptodate,
+            declared_by=deliveries.declared_by,
         )
 
         # Masks: the tmpfs mask dests, taken from the SAME map the mounts above came
@@ -8503,9 +8504,9 @@ def _sync_box_at_create(
     See ``llm-docs/kanibako/commands/start.py.md``, "``_sync_box_at_create``", for the
     ruling in full, the *install* probe and the launch-time re-detect.
     """
-    # ⚑ The DELIVERIES carrier is DISCARDED: since cutover 2c the sync pass reads
-    # the collapse alone, and this resolve exists only to produce it.
-    snapshot, _ = _resolve_launch_snapshot(
+    # The sync pass reads the collapse; of the DELIVERIES carrier it takes only the
+    # fold's ``declared_by``, so a mask refusal can name the mask's key.
+    snapshot, deliveries = _resolve_launch_snapshot(
         std=std,
         proj=proj,
         agent_name=agent_name,
@@ -8524,6 +8525,7 @@ def _sync_box_at_create(
         bindings=_launch_bind_map(snapshot),
         logger=logger,
         skip_if=None,
+        declared_by=deliveries.declared_by,
     )
 
 
@@ -9432,7 +9434,9 @@ def _synced_cover(box_dest: str, bindings) -> "str | None":
     return covering_bind(bindings, box_dest)
 
 
-def _refuse_synced_under_mask(copies: "list[CollapsedCopy]", bindings) -> None:
+def _refuse_synced_under_mask(
+    copies: "list[CollapsedCopy]", bindings, *, declared_by: "Mapping[str, str]",
+) -> None:
     """Spec §0's two ``synced`` refusals — a mask as PARENT, a DIRECTORY at its point.
 
     The containment table's copy rows, stated once in §0 and stated EXHAUSTIVELY:
@@ -9463,33 +9467,43 @@ def _refuse_synced_under_mask(copies: "list[CollapsedCopy]", bindings) -> None:
     module's ordinary missing-source warning, reached through
     :func:`_synced_host_dest`'s mask arm.
 
+    ⚑ BOTH CURES END ON :data:`~kanibako.settings.settings_categories
+    .SUPPRESS_THEN_ADD` and name the mask's key from *declared_by* (the fold's own
+    record, ``LaunchDeliveries.declared_by``), as the bind refusal does: the mask may
+    sit in a scope the reader does not own, so "do not declare the mask" is not a
+    route they have, and system-design §0 says the text MUST point at suppress-then-add.
+
     ⚑ A dest is DATA: it is compared and sliced as a PATH, never split on ``.``.
     """
+    from kanibako.settings.settings_categories import SUPPRESS_THEN_ADD
     from kanibako.settings.settings_resolve import SettingsError
     from kanibako.settings.store_collapse import (
-        is_mask, parent_mask, under_mask_refusal,
+        _declared_clause, is_mask, parent_mask, under_mask_refusal,
     )
 
     for sync in copies:
         mask = parent_mask(bindings, sync.dest)
         if mask is not None:
             raise SettingsError(under_mask_refusal(
-                f"the synced copy of {sync.src!r}", sync.dest, mask, None,
+                f"the synced copy of {sync.src!r}", sync.dest, mask,
+                declared_by.get(mask),
                 "A mask is a void with no host source, so the copy has nowhere to "
                 "land and the box would see nothing at that path - sync to a "
-                "destination outside the mask, or do not declare the mask.",
+                f"destination outside the mask, or SUPPRESS the mask. "
+                f"{SUPPRESS_THEN_ADD}.",
             ))
         cover = _synced_cover(sync.dest, bindings)
         if cover != sync.dest or not is_mask(bindings[cover]):
             continue
         if Path(sync.src).is_dir():
             raise SettingsError(
-                f"the synced copy of the DIRECTORY {sync.src!r} lands on the mask at "
+                f"the synced copy of the DIRECTORY {sync.src!r} lands on the "
+                f"mask{_declared_clause(declared_by.get(cover))} at "
                 f"{sync.dest!r}, which it would leave partially populated - there is "
                 f"no such thing as a partial mask. A copy of a FILE at a mask's own "
                 f"point IS accepted and replaces the mask; a directory is not. Sync "
                 f"the files one by one, sync to a destination outside the mask, or "
-                f"do not declare the mask."
+                f"SUPPRESS the mask. {SUPPRESS_THEN_ADD}."
             )
 
 
@@ -9636,6 +9650,7 @@ def _apply_synced_copies(
     bindings,
     logger,
     skip_if: "Callable[[Path, Path], bool] | None",
+    declared_by: "Mapping[str, str]",
 ) -> None:
     """Apply the terminal ``<scope>.synced`` category copies into the box.
 
@@ -9644,7 +9659,7 @@ def _apply_synced_copies(
     refresh passes :func:`_synced_uptodate`, the CREATE-time write
     (:func:`_sync_box_at_create`) passes ``None``.
 
-    ⚑⚑ ALL FOUR PARAMETERS ARE KEYWORD-ONLY AND REQUIRED, AND THAT IS THE DESIGN
+    ⚑⚑ ALL FIVE PARAMETERS ARE KEYWORD-ONLY AND REQUIRED, AND THAT IS THE DESIGN
     (P3 — make the violation unavailable, not forbidden): this pass cannot run until
     the bind map is FINAL, so a caller at the old site fails LOUDLY instead of quietly
     delivering nothing.
@@ -9678,7 +9693,7 @@ def _apply_synced_copies(
         del bindings[replaced]
     # ⚑ REFUSE BEFORE THE FIRST COPY, so a refused row costs no half-delivered sync —
     # and AFTER the deletion above, so the cell the table ACCEPTS is decided first.
-    _refuse_synced_under_mask(rows, bindings)
+    _refuse_synced_under_mask(rows, bindings, declared_by=declared_by)
     for sync in rows:
         dest = _synced_host_dest(sync.dest, bindings, logger=logger)
         if dest is None:

@@ -112,6 +112,7 @@ def _sync(std, proj, *, logger, bindings=None, gated=True, **kw):
         else bindings,
         logger=logger,
         skip_if=_synced_uptodate if gated else None,
+        declared_by=_deliveries.declared_by,
     )
     return snapshot
 
@@ -2302,6 +2303,43 @@ class TestTheSyncApplierConsumesTheLeaf:
         assert normalize_bind_dest("~/private") in str(caught.value)
         assert not (proj.shell_path / "private" / "hidden.txt").exists()
 
+    @pytest.mark.parametrize("cell", ["parent", "directory_at_point"])
+    def test_both_synced_mask_refusals_name_the_mask_key_and_SUPPRESS_THEN_ADD(
+        self, std, config, project_dir, tmp_path, cell,
+    ):
+        """Both synced cells cure by SUPPRESS-THEN-ADD and name the mask's key.
+
+        The mask may sit in a scope the reader does not own, so "do not declare the
+        mask" is no route; system-design §0 says the text MUST point at
+        suppress-then-add, the one carrier the bind refusal also ends on.
+        """
+        from kanibako.settings.settings_categories import SUPPRESS_THEN_ADD
+
+        if cell == "parent":
+            src = tmp_path / "hidden.txt"
+            src.write_text("x")
+            dest = "~/private/hidden.txt"
+        else:
+            src = tmp_path / "tree"
+            src.mkdir()
+            (src / "f").write_text("x")
+            dest = "~/private"
+        proj = resolve_project(std, config, str(project_dir), initialize=True)
+
+        with pytest.raises(SettingsError) as caught:
+            _sync(
+                std, proj, logger=logging.getLogger("sync-consumer"),
+                extra_default_categories={
+                    "box.masks": ["~/private"],
+                    "box.synced": {dest: (str(src),)},
+                },
+            )
+
+        text = str(caught.value)
+        assert SUPPRESS_THEN_ADD in text
+        assert "do not declare the mask" not in text
+        assert "mask declared by 'box.masks" in text
+
     def test_a_MISSING_source_at_a_masks_own_point_still_only_WARNS(
         self, caplog, std, config, project_dir, tmp_path,
     ):
@@ -2550,6 +2588,7 @@ def _sync_over_the_launch_map(std, proj, *, logger, gated=False, **kw):
     _apply_synced_copies(
         snapshot=snapshot, bindings=bindings, logger=logger,
         skip_if=_synced_uptodate if gated else None,
+        declared_by=_deliveries.declared_by,
     )
     return bindings
 
@@ -2875,6 +2914,7 @@ class TestEverySpecNamedSyncedRefusalRAISES:
             try:
                 _apply_synced_copies(
                     snapshot=None, bindings=bindings, logger=logger, skip_if=None,
+                    declared_by={},
                 )
             except SettingsError:
                 return True
