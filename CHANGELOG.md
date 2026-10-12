@@ -833,6 +833,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   The convert absorbed that box and dropped its registry row, without asking.
 - **A `workset connect` inside another workset's member names that member and its path,** not "already
   connected".
+- **`box move` and `box convert --move` refuse, unless `--force`, a destination inside another box's
+  workspace, root, or store,** as `create` and `remap` do. A link to one counts, and so does a standalone box's
+  store repointed outside its root, which `remap` and `create` now find too.
+- **`box move` and `box convert --move` refuse a box whose tree holds another box, even with `--force`.** The
+  other box's workspace, root, or workset root was copied along and deleted from where that box records it.
+- **`box move` and `box convert --move` refuse a destination inside the box's own store when the op moves or
+  retires that store, even with `--force`.** `convert --default` and `--workset` lost the workspace, and
+  `convert --standalone` recursed. A move that keeps the store (same mode, workset, and name) needs `--force`.
 - **Every `$HOME` guard knows `$HOME` by its spelling and by its target.** Starting in a new directory that is a
   link to `$HOME`, or at `$HOME` when `$HOME` is itself a link, no longer creates a project there. On Python 3.11,
   registering a workset or box name at a symlink loop, and `box rm --purge` of a deregistered box whose recorded

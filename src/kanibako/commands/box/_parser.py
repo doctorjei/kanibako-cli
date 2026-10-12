@@ -372,8 +372,10 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
     )
     move_p.add_argument(
         "--force", action="store_true",
-        help="Skip confirmation; also override the cwd-inside-project guard and "
-             "leave a disabled vault's data in place",
+        help="Skip confirmation; also override the cwd-inside-project guard, leave a "
+             "disabled vault's data in place, and share a path inside another box's "
+             "workspace, root, or store (never move a tree holding another box, or into "
+             "a store the move retires)",
     )
     move_p.set_defaults(func=run_move)
 
@@ -411,7 +413,9 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
     )
     convert_p.add_argument(
         "--force", action="store_true",
-        help="Skip confirmation; also leave a disabled vault's data in place",
+        help="Skip confirmation; also leave a disabled vault's data in place, and with "
+             "--move share a path inside another box's workspace, root, or store (never "
+             "move a tree holding another box, or into a store the convert retires)",
     )
     convert_p.set_defaults(func=run_convert)
 

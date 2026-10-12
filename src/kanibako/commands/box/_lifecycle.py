@@ -872,6 +872,7 @@ _REMAP_TAKEOVER_CURE = _NO_FLAG_TAKEOVER + (
 
 def _remap_dest_holder(
     state: ProjectState, dest: Path, std: StandardPaths, *, verb: str = "remap",
+    vacated_root: Path | None = None,
 ) -> tuple[str, bool] | None:
     """Why a remap of *state* onto *dest* lands on ANOTHER box's path, else ``None``.
 
@@ -888,12 +889,15 @@ def _remap_dest_holder(
     ⚑ [R188]: *dest* is the path as given, and a workspace's identity is its path, so a link
     to one is a twin, not a collision.  A standalone root holds its box's metadata, so it is
     found by content and a link to it is refused; the store test resolves (a safety test).
+    *vacated_root* is the standalone root a relocating source leaves: after the op it is
+    no box's, so it is not another box's tree.
     """
     from kanibako.launch import box_resolve
     from kanibako.project import registry_store
 
     standalone = state.mode is BoxMode.standalone
     own_root = _resolved_unless_loop(state.metadata_path) if standalone else None
+    vacated = None if vacated_root is None else _resolved_unless_loop(vacated_root)
     no_flag = _NO_FLAG_TAKEOVER.format(verb=verb)
     share = "Both boxes would claim it: pass --force to share it, or choose another path."
 
@@ -905,7 +909,7 @@ def _remap_dest_holder(
 
     def standalone_at(root: Path) -> str | None:
         """The standalone box rooted at *root*: its name, ``""`` if unregistered."""
-        if (_resolved_unless_loop(root) == own_root
+        if (_resolved_unless_loop(root) in (own_root, vacated)
                 or not box_resolve.stores_standalone_registry_null(root)):
             return None
         return registry_store.standalone_name_for_same_dir(std.registry, root) or ""
@@ -934,7 +938,8 @@ def _remap_dest_holder(
         name: Path(literal_path(root_str))
         for name, root_str in registry_store.load_standalone(std.registry).items()
         if not (standalone and _same_box_name(name, state.name)
-                and _resolved_unless_loop(Path(literal_path(root_str))) == own_root)}
+                and _resolved_unless_loop(Path(literal_path(root_str))) == own_root)
+        and (vacated is None or _resolved_unless_loop(Path(literal_path(root_str))) != vacated)}
     early = _early_scope(std, BoxMode.primary)
 
     # A standalone records no primary row: when the primary registry is refused (an
@@ -1067,6 +1072,16 @@ def _remap_dest_holder(
         if landing == store or store in landing.parents:
             return store_note(False, standalone_who(owner), store)
         break
+    # A registered standalone's store, found by its owner: a repointed one sits outside
+    # its root, where the walk above finds no root.
+    for name, held_root in standalones.items():
+        try:
+            store = _resolved_unless_loop(box_metadata_dir(
+                BoxMode.standalone, held_root, early=_early_scope(std, BoxMode.standalone)))
+        except (KanibakoError, OSError):
+            continue  # an unreadable root is refused where that box is used
+        if landing == store or store in landing.parents:
+            return store_note(False, standalone_who(name), store)
 
     def below(path: Path, tree: Path) -> bool:
         """*path* strictly under *tree*, literal or resolved: a twin (link) is not below."""
@@ -1097,13 +1112,14 @@ def _remap_dest_holder(
 
 def _dest_nesting_refusal(
     std: StandardPaths, *, mode: BoxMode, name: str, ws: Workset | None, dest: Path,
-    metadata_path: Path, verb: str, force: bool,
+    metadata_path: Path, verb: str, force: bool, vacated_root: Path | None = None,
 ) -> str | None:
     """The error line refusing a box placed at *dest* on another box's tree, else ``None``.
 
     The verb-neutral door to :func:`_remap_dest_holder`: the box (*mode*, *name*, *ws*,
     *metadata_path*) is judged as if remapped onto *dest*, a standalone by its root.  A
-    forceable refusal passes under *force*.
+    forceable refusal passes under *force*.  *vacated_root* is the standalone root a
+    relocating source leaves.
     """
     # The judge reads only the mode, name, workset, and metadata path; the other
     # fields are the box's own paths, which no arm asks.
@@ -1111,7 +1127,7 @@ def _dest_nesting_refusal(
         owner=mode.value, mode=mode, name=name, workspace_path=dest,
         metadata_path=metadata_path, shell_path=metadata_path, vault_ro=None,
         vault_rw=None, ws=ws)
-    holder = _remap_dest_holder(state, dest, std, verb=verb)
+    holder = _remap_dest_holder(state, dest, std, verb=verb, vacated_root=vacated_root)
     if holder is None or (holder[1] and force):
         return None
     return f"Error: Cannot {verb} a box at '{dest}': it is {holder[0]}"
@@ -1140,34 +1156,26 @@ def _refuse_foreign_workset_landing(
         )
 
 
-def _sweep_moves_other_box(
-    root: Path, std: StandardPaths, standalones: Mapping[str, Path], *,
+def _other_box_within(
+    entries: Collection[Path], std: StandardPaths, standalones: Mapping[str, Path], *,
     own_ref: str | None = None,
 ) -> tuple[str, Path, Path] | None:
-    """What of ANOTHER box laying the standalone layout at *root* would move, else ``None``.
+    """ANOTHER box's workspace, root, store, or workset root at or under one of *entries*.
 
-    Returns ``(what, path, workspace)``.  ``_to_standalone`` moves every entry at a root
-    that is not its own store into *workspace*.  Another box's workspace, root, store, or
-    workset root among them would move and break that box: that is not a share (keyspace
-    § 0, "each instance's destructive verb removes only its own part"), so --force does not
-    pass it.  *standalones* and *own_ref* (a registry owner) exclude the source's own rows.
-    ⚑ A swept symlink moves as a link (``_move_entry``), so it is compared by where it sits,
-    never by its target (§ 0); a box recorded THROUGH the link still moves.
+    Returns ``(what, path, entry)``, else ``None``.  *entries* are what an op moves away or
+    removes; a box among them would break (keyspace § 0, "each instance's destructive verb
+    removes only its own part").  *standalones* and *own_ref* (a registry owner) exclude the
+    source's own rows.
+    ⚑ An entry that is a symlink moves as a link (``_move_entry``) or is unlinked, so it is
+    compared by where it sits, never by its target (§ 0); a box recorded THROUGH the link
+    still counts.
     """
     from kanibako.launch import box_resolve
 
-    early = _early_scope(std, BoxMode.standalone)
-    try:
-        workspace = _resolve_standalone_workspaces(
-            root, load_workset_settings_doc(root), early=early)
-        swept, _kept = _consolidation_sweep(root, workspace, early=early)
-    except (KanibakoError, OSError):
-        return None  # ``_to_standalone`` refuses that root before it moves anything
-    if not swept:
-        return None
+    # Every recorded box (all sit under ``/``), read once; ``within`` picks those at risk.
     others = [(f"the workspace of box '{owner}'", Path(literal_path(str(path))))
               for owner, path in box_resolve.recorded_workspaces_under(
-                  std, root, standalone=False)
+                  std, Path("/"), standalone=False)
               if own_ref is None or not _same_box_name(owner, own_ref)]
     others += [(f"the root of standalone box '{name}'", root_at)
                for name, root_at in standalones.items()]
@@ -1182,9 +1190,83 @@ def _sweep_moves_other_box(
         sits = _resolved_unless_loop(entry.parent) / entry.name
         return path.is_relative_to(entry) or _resolved_unless_loop(path).is_relative_to(sits)
 
-    hit = next(((what, path) for what, path in others
-                if any(within(path, entry) for entry in swept)), None)
+    return next(((what, path, entry) for what, path in others
+                 for entry in entries if within(path, entry)), None)
+
+
+def _sweep_moves_other_box(
+    root: Path, std: StandardPaths, standalones: Mapping[str, Path], *,
+    own_ref: str | None = None,
+) -> tuple[str, Path, Path] | None:
+    """What of ANOTHER box laying the standalone layout at *root* would move, else ``None``.
+
+    Returns ``(what, path, workspace)``.  ``_to_standalone`` moves every entry at a root
+    that is not its own store into *workspace*; :func:`_other_box_within` judges those
+    entries, so --force does not pass a hit.
+    """
+    early = _early_scope(std, BoxMode.standalone)
+    try:
+        workspace = _resolve_standalone_workspaces(
+            root, load_workset_settings_doc(root), early=early)
+        swept, _kept = _consolidation_sweep(root, workspace, early=early)
+    except (KanibakoError, OSError):
+        return None  # ``_to_standalone`` refuses that root before it moves anything
+    if not swept:
+        return None
+    hit = _other_box_within(swept, std, standalones, own_ref=own_ref)
     return None if hit is None else (hit[0], hit[1], workspace)
+
+
+def _refuse_relocation_nesting(
+    state: ProjectState, spec: TargetSpec, std: StandardPaths, *, dest: Path,
+    target_mode: BoxMode, target_ws: Workset | None, new_name: str, store_kept: bool,
+    force: bool,
+) -> None:
+    """Raise ``ProjectError`` when relocating *state* to *dest* crosses another box's tree.
+
+    Keyspace § 0 "Per-owner resources".  Whatever the flag, so first: *dest* inside the
+    source's own store while the op moves or retires it (*store_kept* false), where the
+    workspace would be copied into the store or deleted with it; and another box's tree
+    inside what the op removes (the workspace, and the store it retires), which the op
+    would carry away.  Then *dest* is judged as the box it becomes (the TARGET mode, name,
+    and workset) by :func:`_dest_nesting_refusal`: inside another box's tree is refused
+    unless --force.
+    """
+    from kanibako.project import registry_store
+
+    verb = spec.verb or "move"
+    store = _resolved_unless_loop(box_metadata_dir(
+        state.mode, state.metadata_path,
+        early=EarlyScope(std.early_system, _state_ws_token(state))))
+    landing = _resolved_unless_loop(dest)
+    if not store_kept and (landing == store or store in landing.parents):
+        raise ProjectError(
+            f"Cannot {verb} '{state.name}' to '{dest}': it is inside its own store ({store}). "
+            f"The {verb} moves or retires that store, so the workspace would be copied into "
+            "it or deleted with it, and no flag overrides this. Choose another path.")
+    own_root = (_resolved_unless_loop(state.metadata_path)
+                if state.mode is BoxMode.standalone else None)
+    standalones = {
+        name: Path(literal_path(root_str))
+        for name, root_str in registry_store.load_standalone(std.registry).items()
+        if _resolved_unless_loop(Path(literal_path(root_str))) != own_root}
+    own_ref = (None if own_root is not None
+               else f"{state.ws.name}/{state.name}" if state.mode is BoxMode.named and state.ws
+               else state.name)
+    carried = [state.workspace_path] + ([] if store_kept else [store])
+    hit = _other_box_within(carried, std, standalones, own_ref=own_ref)
+    if hit is not None:
+        what, path, entry = hit
+        raise ProjectError(
+            f"Cannot {verb} '{state.name}' to '{dest}': {entry} holds {what} ({path}). The "
+            f"{verb} would carry it away and break that box, so no flag overrides this. Move "
+            "that box out first, or choose another box to relocate.")
+    refusal = _dest_nesting_refusal(
+        std, mode=target_mode, name=new_name, ws=target_ws, dest=dest,
+        metadata_path=dest if target_mode is BoxMode.standalone else state.metadata_path,
+        verb=verb, force=force, vacated_root=own_root)
+    if refusal is not None:
+        raise ProjectError(refusal.removeprefix("Error: "))
 
 
 def _remap_sweeps_other_box(
@@ -1663,6 +1745,14 @@ def _validate(
         if mint is None and _relocated_own_name(state, std, landing_ws, mint) is None:
             refuse_derived_box_name(_workspace_landing(
                 state, dest, target_mode, records_only=spec.records_only).name or "project")
+
+    # --- keyspace § 0 on a relocation: its own store and a carried box whatever the flag,
+    #     then a destination inside another box's tree unless --force. ---
+    if relocating and dest is not None and not spec.records_only:
+        _refuse_relocation_nesting(
+            state, spec, std, dest=dest, target_mode=target_mode, target_ws=target_ws,
+            new_name=new_name, force=force,
+            store_kept=(no_owner_change and no_rename and state.mode is not BoxMode.standalone))
 
     # --- a user entry under a name the standalone root reserves, either direction ---
     if not relocating and not spec.records_only:
