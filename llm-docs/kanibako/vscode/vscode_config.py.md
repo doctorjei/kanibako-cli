@@ -5,8 +5,8 @@ gets its behavior from argv flags and env; and the **panel** — the agent's own
 extension, which spawns a *second* agent process inside the box and sees **none** of kanibako's
 launch FLAGS. The launch ENV does reach it — a panel-spawned process descends from PID 1 or from a
 `podman exec`, and every one of those inherits the container's `Config.Env` (measured on real
-podman, 2026-08-14). So anything the box was configured with that rides an argv flag rather than
-the env has to be **written to disk, in-box**, before the panel starts. That is what this module
+podman, 2026-08-14). So anything the panel must honor that rides an argv flag rather than the env
+has to be **written to disk, in-box**, before the panel starts. That is what this module
 is: the host-side writers for those on-disk surfaces, one per agent, plus the VS Code attach config
 that gets the panel installed in the first place.
 
@@ -82,62 +82,15 @@ degrades to `None` in `load_jsonc`, which is a visible non-answer rather than a 
 This is the shared JSONC reader for the tree: `commands/diagnose.py` and `commands/code_cmd.py`
 both import it.
 
-## Access tiers → two panel surfaces
+## Access tiers reach no panel file
 
-kanibako's per-agent `access` tier (`restricted` | `editing` | `full`, ordered least → most
-permissive in `settings_keyspace.ACCESS_TIERS`) reaches each CLI agent through its argv flag row.
-None of that reaches the panel. claude and codex therefore each get a projection written into a
-per-box file, and each projection is written **here**, beside its sibling, rather than in each
-plugin's branch (R-41). Their values live here because they are **different** vocabularies from
-those agents' argv rows — codex's `approval_policy` enum (`untrusted`/`on-request`/`never`) is a
-config-file surface with no descriptor equivalent.
-
-⚑ goose gets no projection: kanibako writes no tier into the box's `config.yaml`. The tier reaches
-goose only as the `GOOSE_MODE` env var from its descriptor's `access_realization` rows, host→box.
-
-⚑ The projection is driven by the box's **CASCADE-resolved** `access`, never by the ephemeral
-`-S`/`-A` launch flags. A projection outlives the launch that wrote it (spec §1A), so seeding it
-from a one-shot flag would leave the next launch running at a tier nobody asked for.
-
-| tier | claude `permissions.defaultMode` | codex `approval_policy` |
-|---|---|---|
-| `full` | `bypassPermissions` | `never` |
-| `editing` | `acceptEdits` | `on-request` |
-| `restricted` | CLEARED | `untrusted` |
-
-An **unknown** tier raises in every arm. This surface must never fall through to the permissive
-value, and "clear it" is an equally wrong guess for a tier we do not understand.
-
-### Why only claude clears
-
-claude is the one agent whose unset default is safe: with no `permissions.defaultMode`, claude
-**prompts**. So `restricted` can be delivered by removing our value.
-
-codex cannot. It used to clear too, and that was a promise kanibako could not keep: clearing left
-codex at its **own** default approval policy, a value not documented anywhere in 0.141.0's local
-help and therefore unknown to us, while the same function was forcing `sandbox_mode` to
-`danger-full-access`. "Restricted" would have meant *unknown approval behavior with full disk
-access* — and on a file already carrying `on-request` it may well have been byte-identical to what
-`editing` delivers. Writing `untrusted`, the most guarded member of the verified enum, makes the
-tier mean something kanibako controls.
-
-The consequence is deliberate: kanibako **owns** `approval_policy` and `sandbox_mode` outright. A
-user-chosen value in either is overwritten at every tier, not preserved. The tier the box was
-configured with is the tier the panel gets.
-
-### The claude clear is narrow
-
-`clear_permission_mode` removes `permissions.defaultMode` **only** when its current value is one
-kanibako manages (`_MANAGED_MODES` — every value in the tier table). A user-chosen mode we never
-write (`plan`, `default`, `dontAsk`, `auto`) survives untouched, and an absent key is a no-op.
-Because the guard is the SET of managed values rather than one value, switching a box from
-`editing` to `restricted` removes the `acceptEdits` **we** wrote instead of leaving a stale middle
-tier behind. Sibling `permissions.allow`/`deny` and every other top-level key are preserved; if
-removing `defaultMode` empties the `permissions` object entirely then that object was ours to
-create and it goes, while one that still holds other keys stays.
-
-`seed_claude_permission_mode` is a no-op when the file is absent and the tier is `restricted` —
-there is nothing to clear, and it never creates a file just to clear it.
+kanibako projects no agent's `access` tier (`restricted` | `editing` | `full`) into a panel file.
+Each agent gets its tier only at launch, from its descriptor's `access_realization` rows in
+`<agent>-defaults.yaml`: claude by argv flag (`--permission-mode …` or
+`--dangerously-skip-permissions`), codex by argv flag (`-c approval_policy=… -s …` or
+`--dangerously-bypass-approvals-and-sandbox`), and goose by the `GOOSE_MODE` env var. The claude
+and codex panels see none of those flags, so they run at the user's own settings. The one panel
+write on this seam is codex's `sandbox_mode`, a box invariant rather than a tier value (below).
 
 ## Instruction delivery: the SessionStart hook
 
@@ -261,8 +214,8 @@ No managed key is ever written by both:
 
 * `seed_codex_config` (`CodexTarget.deliver_directive_hook`) — hook group, trust hash, directory
   trust, and the persona model-provider region. Everything region-shaped.
-* `seed_codex_approval` (`CodexTarget.deliver_panel_permissions`) — ONLY the top-level
-  `approval_policy`/`sandbox_mode` parity keys.
+* `seed_codex_sandbox_mode` (`CodexTarget.deliver_panel_permissions`) — ONLY the top-level
+  `sandbox_mode` key.
 
 Both share the same primitives — regions, root-key surgery, and `_assemble_codex_managed` — so
 their composed output is byte-stable. ⚑ `_assemble_codex_managed` is the single source of truth for
@@ -271,7 +224,7 @@ writers can never drift on assembly bytes. It expects a body already rstripped o
 newlines.
 
 ⚑ `_extract_delimited_region` exists in an EXTRACT form, rather than only a strip form, for
-`seed_codex_approval`: that writer must edit the root-section keys while carrying the managed
+`seed_codex_sandbox_mode`: that writer must edit a root-section key while carrying the managed
 regions through VERBATIM. Root-key surgery inserts before the first `[table]` line, and in a
 region-bearing file with no user tables **that first table is the managed region's own** — a naive
 in-place insert would land INSIDE the region and be swallowed by the next regeneration. A malformed
@@ -280,67 +233,29 @@ region missing its END marker extends to end-of-file.
 ### `sandbox_mode` is a box invariant, not a tier value
 
 A kanibako box is a hardened rootless podman container: the container **is** the security boundary.
-The codex `openai.chatgpt` panel's own in-box `codex app-server` reads this key and, unlike the
-kanibako-launched CLI codex, gets no `--dangerously-bypass-approvals-and-sandbox` flag, so it must
-run with sandboxing OFF.
+The codex `openai.chatgpt` panel's own in-box `codex app-server` reads this key and gets none of the
+CLI's launch flags, so it must run with sandboxing OFF.
 
 ⚑ `workspace-write` makes the app-server attempt a **nested bubblewrap sandbox**, which needs
 nested user namespaces podman blocks; it stalls on sandbox setup with "could not find bubblewrap".
-kanibako therefore owns the key and forces `"danger-full-access"` — always present, independent of
-`access`, never removed by the restricted path, and any prior value (the old managed
-`"workspace-write"`, or a user-chosen one that would re-break the panel) is MIGRATED to it. This is
-parity with the CLI's unconditional bypass.
-
-⚑ This is also **why the panel's middle tier rides the APPROVAL axis and not `sandbox_mode`**: the
-CLI's `editing` row uses `-s workspace-write`, but writing that same value *here* is the exact
-configuration that hangs the panel's app-server. Two surfaces, one tier, different realizations —
-each verified against the surface it is written to.
-
-### The approval enum
-
-`_CODEX_APPROVAL_BY_TIER` values are exact members of the codex approval enum, verified verbatim
-from `codex --help` (codex-cli 0.141.0):
-
-* `untrusted` — "Only run \"trusted\" commands (e.g. ls, cat, sed) without asking for user
-  approval. Will escalate to the user if the model proposes a command that is not in the
-  \"trusted\" set" → the `restricted` tier
-* `on-request` — "The model decides when to ask the user for approval" → the `editing` tier
-* `never` — "Never ask for user approval Execution failures are immediately returned to the model"
-  → the `full` tier
-
-Every tier has an entry — the table is TOTAL over `ACCESS_TIERS`, which is what makes "kanibako owns
-this key" true rather than aspirational. `on-failure` is the enum's fourth member and is
-deliberately unused: its own help text marks it DEPRECATED.
-
-⚑ FLAG FOR THE LIVE MATRIX. `never`↔`full` is the pre-existing, shipped pairing.
-`on-request`↔`editing` and `untrusted`↔`restricted` are judgments read off the verified enum text.
-The **vocabulary** is verified; the tiers' *semantics on the panel* are not separately verified and
-must be confirmed by the bifrost matrix.
-
-### Ordering is load-bearing
-
-`_reconcile_codex_approval` emits `sandbox_mode` FIRST, before the tier-gated `approval_policy`.
-Emitting the always-present invariant first makes the freshly-inserted order canonical: because
-`_apply_root_key` inserts at the first-table index, the second insert lands *after* the first, so a
-fresh file always gets `sandbox_mode` above `approval_policy`.
+kanibako therefore owns the key and forces `"danger-full-access"` at every start, independent of
+`access`; any prior value (the old managed `"workspace-write"`, or a user-chosen one that would
+re-break the panel) is overwritten.
 
 ### `_apply_root_key`'s three modes
 
 *desired* is the value this launch wants — SET it, in place if a root-section line exists, else
 inserted before the first table header — or `None` to CLEAR the line.
 
-* **SET** — used by both approval keys and by the provider keys.
+* **SET** — used by `sandbox_mode` and by the provider keys.
 * **CLEAR, guarded** — removes the line only when the current value is one of *managed*, the values
-  kanibako itself may have written, so a user-chosen value survives (symmetric with
-  `clear_permission_mode`) while a stale value from a DIFFERENT tier of ours is correctly removed.
+  kanibako itself may have written, so a user-chosen value survives.
 * **CLEAR, `unconditional`** — removes the line regardless of value. That is for keys kanibako owns
   OUTRIGHT as a derived projection rather than a hand-edit surface: the codex
   `model`/`model_provider` wipe when a box goes bare. *managed* is irrelevant and unused there.
 
-⚑ The guarded CLEAR branch is currently **unreachable in production**: both managed approval keys
-are SET at every tier, and the only CLEAR caller passes `unconditional=True`.
-`_CODEX_MANAGED_APPROVALS` is passed for symmetry and stands as the single record of the values
-kanibako owns; nothing consults it today.
+⚑ The guarded CLEAR branch is currently **unreachable in production**: the only CLEAR caller passes
+`unconditional=True`.
 
 ### The trust hash
 
@@ -449,7 +364,7 @@ config home (`xdg("XDG_CONFIG_HOME", ".config")`); *image_ref* is the box's imag
 UNION-MERGE the box's config into *existing*, returning a NEW dict. Pure and deterministic;
 *existing* is deep-copied and never mutated.
 
-```_read_existing_config(path: Path) -> dict```
+```_read_existing_config(path: Path, root: Path | None = None) -> dict```
 Read *path* as a JSON object → `{}` on absence/corruption; NEVER raises.
 
 ```seed_attached_container_config(path: Path, *, workspace_folder: str, extension: str | None) -> bool```
@@ -457,23 +372,8 @@ Read-modify-write UNION-MERGE into *path*; `True` iff it wrote. Writes pretty JS
 creating parent dirs. The non-atomic write is acceptable: VS Code re-reads the file on each attach
 and the seed is idempotent, so a torn write self-heals on the next run.
 
-```_claude_managed_mode(access: str) -> str | None```
-The managed `defaultMode` for *access*, or `None` to CLEAR; RAISES on unknown.
-
-```merge_permission_mode(settings: dict, mode: str) -> dict```
-UNION-MERGE `permissions.defaultMode = <mode>`, returning a NEW dict. `permissions` is created if
-absent; its other sub-keys and every other top-level key (`$schema`, `includeCoAuthoredBy`, …)
-survive.
-
-```clear_permission_mode(settings: dict) -> dict```
-Return a NEW dict with kanibako's MANAGED `permissions.defaultMode` removed.
-
-```_write_if_changed(path: Path, existing: dict, merged: dict) -> bool```
+```_write_if_changed(path: Path, existing: dict, merged: dict, *, root: Path) -> bool```
 Write *merged* to *path* as pretty JSON iff it differs from disk (idempotent).
-
-```seed_claude_permission_mode(settings_path: Path, *, access: str) -> bool```
-Project the box's `access` tier into the box's claude `settings.json`. The WHOLE of
-`ClaudeTarget.deliver_panel_permissions`. Idempotent; `True` iff it wrote.
 
 ```_merge_managed_command_hook(settings: dict, *, event: str, matcher: str | None, command: str) -> dict```
 UNION-MERGE ONE kanibako-managed `type:command` hook into `hooks.<event>`.
@@ -487,7 +387,7 @@ UNION-MERGE the per-PID marker-WRITE `SessionStart` hook (its own managed group)
 ```merge_marker_remove_hook(settings: dict) -> dict```
 UNION-MERGE the per-PID marker-REMOVE `SessionEnd` hook; returns a NEW dict.
 
-```seed_session_start_hook(settings_path: Path) -> bool```
+```seed_session_start_hook(settings_path: Path, *, root: Path) -> bool```
 Seed all THREE managed claude hooks into `settings.json` in one read-modify-write. The CLAUDE
 surface only — codex's hook lives in config.toml. Callers wrap this best-effort so a failure never
 blocks the launch.
@@ -518,11 +418,8 @@ Assemble a managed config.toml: clean user *body* + managed *regions*, in order.
 ```_strip_codex_region(text: str) -> str```
 Remove the kanibako-managed instruction-delivery region (inclusive).
 
-```_codex_managed_approval(access: str) -> str```
-The managed `approval_policy` for *access* — one per tier; RAISES on unknown.
-
-```_reconcile_codex_approval(text: str, access: str) -> str```
-Reconcile the managed `sandbox_mode` (invariant) and `approval_policy` (tier) keys.
+```_reconcile_codex_sandbox_mode(text: str) -> str```
+Force the managed `sandbox_mode` root key to the box invariant.
 
 ```_apply_root_key(lines: list[str], key: str, *, desired: str | None, managed: tuple[str, ...], unconditional: bool = False) -> list[str]```
 Apply the SET-or-CLEAR discipline for one managed root key. Returns a NEW list.
@@ -535,7 +432,7 @@ Build the regenerated managed TOML region (hook groups + trust hashes + dir trus
 
 ```merge_codex_config(text: str, *, box_config_path: str, codex_cwd: str, model_provider: CodexModelProvider | None = None) -> str```
 Return *text* with kanibako's managed codex config MERGED in (pure, idempotent). Hook, trust and
-provider ONLY — the `approval_policy`/`sandbox_mode` parity keys are never touched here.
+provider ONLY — `sandbox_mode` is never touched here.
 
 ```class CodexModelProvider(NamedTuple)```
 The six resolved values selecting a codex external model provider.
@@ -558,15 +455,14 @@ generator: strips any prior provider region, SETs the root keys, regenerates the
 file's end. Updating a single field changes ONLY that emitted value, never a user key. Top-level
 keys are emitted before the table, so the result is valid TOML.
 
-```seed_codex_config(config_path: Path, *, box_config_path: str, codex_cwd: str, model_provider: CodexModelProvider | None = None) -> bool```
+```seed_codex_config(config_path: Path, *, box_config_path: str, codex_cwd: str, model_provider: CodexModelProvider | None = None, root: Path) -> bool```
 Write the box's `~/.codex/config.toml` managed hook, trust and provider regions — the codex
 DIRECTIVE-HOOK write (`CodexTarget.deliver_directive_hook`). Reads tolerantly (absent → empty; the
 file is TEXT, so a "corrupt" TOML file is handled at the text level and never crashes) and writes
 iff it changed. *codex_cwd* is the in-box directory codex runs in (the trusted project). Callers
 wrap best-effort.
 
-```seed_codex_approval(config_path: Path, *, access: str) -> bool```
-Write ONLY the managed codex approval/sandbox parity keys; the SOLE writer of them. Short-circuits
-to `False` — no write, no normalization of user bytes — when the reconciled state already matches,
-which also means an OFF pass over an absent file never creates one. An UNKNOWN tier RAISES. Callers
-wrap best-effort.
+```seed_codex_sandbox_mode(config_path: Path, *, root: Path) -> bool```
+Write ONLY the managed codex `sandbox_mode` invariant; the SOLE writer of it. Short-circuits to
+`False` — no write, no normalization of user bytes — when the reconciled state already matches.
+Callers wrap best-effort.
