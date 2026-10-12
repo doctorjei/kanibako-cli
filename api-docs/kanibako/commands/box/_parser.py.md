@@ -66,6 +66,8 @@ def _claim_create_entry(std, probe, state: dict, *, primary: bool) -> 'dict | No
 def _recovered_standalone_name(std, proj, supplied: str) -> str
 def _create_nesting_refusal(std, probe, root: Path, *, ws: Workset | None, force: bool) -> str | None
 def _create_target(args: argparse.Namespace) -> Path
+def _root_entry_names(root: Path) -> frozenset[str]
+def _warn_root_files_outside_workspace(std: StandardPaths, proj: ProjectPaths, before: frozenset[str]) -> None
 def _mkdir_recording(target: Path, made: list[Path]) -> None
 def _unmakes_its_dirs_on_failure(create: Callable[[argparse.Namespace, _CreateOutcome], int]) -> Callable[[argparse.Namespace], int]
 def _list_orphans(projects: list, ws_data: list, std, quiet: bool) -> int

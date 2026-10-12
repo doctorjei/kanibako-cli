@@ -1305,6 +1305,40 @@ def _create_target(args: argparse.Namespace) -> Path:
     return Path(literal_path(args.path)) if args.path else Path(logical_cwd())
 
 
+def _root_entry_names(root: Path) -> frozenset[str]:
+    """The entry names at *root*, empty when it is absent or cannot be listed."""
+    try:
+        return frozenset(os.listdir(root))
+    except OSError:
+        return frozenset()
+
+
+def _warn_root_files_outside_workspace(
+    std: StandardPaths, proj: ProjectPaths, before: frozenset[str],
+) -> None:
+    """Warn, naming them, about the entries in *before* a standalone box does not see.
+
+    Create leaves the user's files at the root and moves nothing.  The standalone sweep
+    tells the layout's own entries from the user's; the root ``.gitignore`` is the
+    layout's too, since create appends ``box_data/`` to it.
+    """
+    from kanibako.commands.box._lifecycle import _consolidation_sweep
+    from kanibako.errors import KanibakoError
+
+    if not proj.project_path:
+        return
+    root, workspace = Path(proj.metadata_path), Path(proj.project_path)
+    try:
+        outside, _kept = _consolidation_sweep(
+            root, workspace, early=_early_scope(std, BoxMode.standalone))
+    except (KanibakoError, OSError):
+        return
+    names = sorted(c.name for c in outside if c.name in before and c.name != IGNORE_FILE)
+    if names:
+        print(f"Warning: the box does not see these entries in {root}, outside its "
+              f"workspace {workspace}: {', '.join(names)}", file=sys.stderr)
+
+
 @dataclasses.dataclass
 class _CreateOutcome:
     """What :func:`run_create` made for ``<path>``, root first, and while its entry stays, its cure."""
@@ -1372,6 +1406,9 @@ def run_create(args: argparse.Namespace, outcome: _CreateOutcome) -> int:
     standalone_register = bool(getattr(args, "register", False))
     standalone_name = (getattr(args, "name", None) or "") if standalone_register else ""
     effective_path = _create_target(args)
+    # ⚑ Listed BEFORE this create writes at the root: only what the user put there is named.
+    _root_before = (_root_entry_names(effective_path) if args.standalone
+                    else frozenset())
 
     # ⚑ BEFORE ANY WRITE
     if args.standalone:
@@ -1882,6 +1919,8 @@ def run_create(args: argparse.Namespace, outcome: _CreateOutcome) -> int:
     else:
         print(f"Created {mode} project in {proj.project_path or '<None>'}")
     print(start_hint)
+    if args.standalone:
+        _warn_root_files_outside_workspace(std, proj, _root_before)
     # ⚑ The behavior signal for the §D4a flip: v1.7.2 registered here and said nothing,
     # so silence would report the OLD outcome.  ⚑ Gated on the registry STATE, not on
     # the flag: a journal-recovery re-run of a box that registered before the interrupt
