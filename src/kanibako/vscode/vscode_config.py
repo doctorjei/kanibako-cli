@@ -14,6 +14,7 @@ from __future__ import annotations
 import copy
 import hashlib
 import json
+import os
 import re
 import urllib.parse
 from pathlib import Path
@@ -123,13 +124,30 @@ def seed_attached_container_config(
     return True
 
 
+def _make_box_home(root: Path) -> None:
+    """Create the box home *root*, and missing parents, as the seeds always have.
+
+    Through :func:`kanibako.boxfs.mkdir` under the nearest existing ancestor, so a
+    link standing at *root* is refused, never followed; an existing *root* is used
+    as given.
+    """
+    if root.is_dir():
+        return
+    base = root.parent
+    while not os.path.lexists(base) and base != base.parent:
+        base = base.parent
+    boxfs.mkdir(root, base, parents=True, exist_ok=True)
+
+
 def _write_if_changed(path: Path, existing: dict, merged: dict, *, root: Path) -> bool:
     """Write *merged* to the box file *path* as pretty JSON iff it differs from disk.
 
-    Idempotent; atomic through :mod:`kanibako.boxfs` under the box tree *root*.
+    Idempotent; atomic through :mod:`kanibako.boxfs` under the box tree *root*,
+    which is created when missing.
     """
     if path.exists() and merged == existing:
         return False
+    _make_box_home(root)
     boxfs.write_text(path, root, json.dumps(merged, indent=2) + "\n")
     return True
 
@@ -706,6 +724,7 @@ def seed_codex_config(
     )
     if config_path.exists() and merged == existing:
         return False
+    _make_box_home(root)
     boxfs.write_text(config_path, root, merged)
     return True
 

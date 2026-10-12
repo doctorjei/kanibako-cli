@@ -759,3 +759,29 @@ def test_rmtree_refuses_a_leaf_swapped_for_a_link_after_its_lstat(tree, monkeypa
     assert info.value.filename == str(victim) and info.value.link == victim
     assert (outside / "keep").read_text() == "host data"
     assert sentinel.read_text() == "host data"
+
+
+def test_copy_tree_follow_src_links_is_for_a_host_source_only(tree):
+    """Following links on a BOX-side source would read through a link the box planted."""
+    root, outside, sentinel = tree
+    (root / "a" / "b" / "out").symlink_to(sentinel)
+    with pytest.raises(ValueError):
+        boxfs.copy_tree(
+            root / "a", outside / "copy", src_root=root, dst_root=None, follow_src_links=True,
+        )
+    assert not (outside / "copy").exists()
+
+
+def test_copy_tree_follow_src_links_skips_a_dangling_link(tree, caplog):
+    root, outside, _ = tree
+    src = outside / "src"
+    src.mkdir()
+    (src / "f").write_text("x")
+    (src / "gone").symlink_to(outside / "missing")
+    with caplog.at_level(logging.WARNING, logger="kanibako"):
+        skipped = boxfs.copy_tree(
+            src, root / "a" / "dst", src_root=None, dst_root=root, follow_src_links=True,
+        )
+    assert skipped == [src / "gone"]
+    assert (root / "a" / "dst" / "f").read_text() == "x"
+    assert not os.path.lexists(root / "a" / "dst" / "gone")

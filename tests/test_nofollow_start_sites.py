@@ -11,11 +11,13 @@ from __future__ import annotations
 import hashlib
 import logging
 import os
+import shutil
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 
+from kanibako.boxfs import SymlinkRefusedError
 from kanibako.commands import start
 from kanibako.log import rotate_if_over
 from kanibako.settings import core_defaults
@@ -212,6 +214,98 @@ class TestSyncedCopy:
         out = home / ".cfg" / "tok"
         assert not out.is_symlink()
         assert out.read_text() == "from stow\n"
+
+
+    @staticmethod
+    def _dir_meta(top: Path) -> dict[str, tuple[int, int]]:
+        """(mode bits, mtime_ns) of every directory under *top*, *top* included."""
+        out = {}
+        for d in [top, *sorted(p for p in top.rglob("*") if p.is_dir())]:
+            st = d.stat()
+            out[str(d.relative_to(top))] = (st.st_mode & 0o7777, st.st_mtime_ns)
+        return out
+
+    @pytest.fixture
+    def gnupg(self, tmp_path):
+        """A host ~/.gnupg-like tree: private dir modes and old dir times."""
+        d = tmp_path / "hostsrc-gnupg"
+        (d / "private-keys-v1.d" / "deep").mkdir(parents=True)
+        (d / "pubring.kbx").write_text("ring\n")
+        (d / "private-keys-v1.d" / "deep" / "k").write_text("key\n")
+        for sub, mode, t in (
+            ("private-keys-v1.d/deep", 0o750, 1_000_000_000),
+            ("private-keys-v1.d", 0o700, 1_100_000_000),
+            (".", 0o700, 1_200_000_000),
+        ):
+            os.chmod(d / sub, mode)
+            os.utime(d / sub, ns=(t * 10**9, t * 10**9))
+        return d
+
+    @pytest.mark.parametrize("dest_exists", [False, True], ids=["new-dest", "existing-dest"])
+    def test_dir_modes_and_times_match_copytree(self, home, tmp_path, gnupg, dest_exists):
+        """A synced directory keeps its directories' modes and times, as the
+        ``copytree(dirs_exist_ok=True)`` it replaces did, into a new or existing dest."""
+        dest = home / ".gnupg"
+        ref = tmp_path / "ref" / ".gnupg"
+        if dest_exists:
+            for top in (dest, ref):
+                (top / "private-keys-v1.d" / "deep").mkdir(parents=True, mode=0o755)
+                os.chmod(top, 0o755)
+        shutil.copytree(gnupg, ref, dirs_exist_ok=True)
+        self._copy(gnupg, dest, home)
+        assert self._dir_meta(dest) == self._dir_meta(ref)
+        assert self._dir_meta(dest)["."][0] == 0o700
+        assert (dest / "private-keys-v1.d" / "deep" / "k").read_text() == "key\n"
+
+    def test_host_side_dir_links_and_a_linked_root_are_followed(self, home, tmp_path):
+        """A stow-managed source: the synced root itself and a directory inside it are
+        links on the HOST; their content lands as real directories in the box."""
+        real = tmp_path / "dotfiles" / "gnupg"
+        (real / "sub").mkdir(parents=True)
+        (real / "sub" / "f").write_text("deep\n")
+        os.chmod(real / "sub", 0o700)
+        linked_root = tmp_path / "stow-gnupg"
+        linked_root.symlink_to(real)
+        (real / "alias").symlink_to(real / "sub")
+        dest = home / ".gnupg"
+        self._copy(linked_root, dest, home)
+        for name in ("sub", "alias"):
+            assert (dest / name).is_dir() and not (dest / name).is_symlink()
+            assert (dest / name / "f").read_text() == "deep\n"
+            assert (dest / name).stat().st_mode & 0o777 == 0o700
+        assert not dest.is_symlink()
+
+    def test_host_side_link_loop_is_not_entered(self, home, tmp_path, caplog):
+        src = tmp_path / "hostsrc-loop"
+        (src / "d").mkdir(parents=True)
+        (src / "d" / "f").write_text("x\n")
+        (src / "d" / "up").symlink_to(src)
+        with caplog.at_level(logging.WARNING, logger=_BOXFS):
+            self._copy(src, home / ".loop", home)
+        assert (home / ".loop" / "d" / "f").read_text() == "x\n"
+        assert not (home / ".loop" / "d" / "up").exists()
+        assert _warned(caplog, src / "d" / "up")
+
+    def test_host_link_meeting_a_box_dest_link_is_not_followed(
+        self, home, tmp_path, outside, caplog,
+    ):
+        """A followed host-source directory link never makes the BOX side follow:
+        a link the box planted at the same name stays, and its target is untouched."""
+        real = tmp_path / "dotfiles" / "sub"
+        real.mkdir(parents=True)
+        (real / "sentinel").write_text("from host\n")
+        src = tmp_path / "hostsrc-meet"
+        src.mkdir()
+        (src / "sub").symlink_to(real)
+        dest = home / ".meet"
+        dest.mkdir()
+        (dest / "sub").symlink_to(outside)
+        before = _snapshot(outside)
+        with caplog.at_level(logging.WARNING, logger=_BOXFS):
+            self._copy(src, dest, home)
+        _sentinel_untouched(outside, before)
+        assert (dest / "sub").is_symlink()
+        assert _warned(caplog, dest / "sub")
 
 
 # --- H7: the chat logs -------------------------------------------------------------
@@ -445,6 +539,28 @@ class TestAgentConfigSeeds:
         with caplog.at_level(logging.WARNING, logger=_BOXFS):
             assert seed_session_start_hook(home / ".claude" / "settings.json", root=home) is False
         assert real.read_text() == "{}\n"
+
+    def test_a_missing_box_home_is_created(self, tmp_path):
+        """The seeds have always created a missing config dir, box home included."""
+        claude_home = tmp_path / "box" / "claude-home"
+        codex_home = tmp_path / "box" / "codex-home"
+        assert seed_session_start_hook(
+            claude_home / ".claude" / "settings.json", root=claude_home,
+        ) is True
+        assert self._codex(codex_home / ".codex" / "config.toml", codex_home) is True
+        assert "SessionStart" in (claude_home / ".claude" / "settings.json").read_text()
+        assert (codex_home / ".codex" / "config.toml").is_file()
+
+    def test_a_dangling_link_at_the_box_home_is_not_followed(self, tmp_path, outside):
+        """Creating a missing home never makes the directory a link points at."""
+        home = tmp_path / "box" / "home"
+        home.parent.mkdir()
+        home.symlink_to(outside / "made")
+        with pytest.raises(SymlinkRefusedError):
+            seed_session_start_hook(home / ".claude" / "settings.json", root=home)
+        with pytest.raises(SymlinkRefusedError):
+            self._codex(home / ".codex" / "config.toml", home)
+        assert not (outside / "made").exists()
 
     def test_no_link_control(self, home, caplog):
         with caplog.at_level(logging.WARNING, logger=_BOXFS):

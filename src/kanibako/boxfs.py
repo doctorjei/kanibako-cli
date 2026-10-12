@@ -409,15 +409,19 @@ def _not_copied(skipped: list[Path], path: Path, why: str) -> None:
 
 def _copy_entries(
     sfd: int, dfd: int, src: Path, dst: Path, skip_links: bool, avoid: tuple[int, int],
+    follow_src: bool = False,
 ) -> list[Path]:
     """Copy the entries of *sfd* into *dfd*; return the source paths not copied.
 
     An explicit stack, not recursion: depth is bounded by open descriptors, and
     running out raises ``OSError`` (EMFILE).  A directory whose (dev, ino) is
     *avoid* -- the destination itself, when it lies under the source -- is not
-    entered.
+    entered.  *follow_src* reads a source link as what it points at; a directory
+    link back to one being copied is not entered, with a warning.
     """
     skipped: list[Path] = []
+    src_st = os.fstat(sfd)
+    open_dirs = {(src_st.st_dev, src_st.st_ino)}
     # Frame: (src fd, dst fd, names left, src path, dst path, src dir stat or None).
     stack: list[tuple[int, int, Iterator[str], Path, Path, os.stat_result | None]] = [
         (sfd, dfd, iter(os.listdir(sfd)), src, dst, None),
@@ -429,6 +433,7 @@ def _copy_entries(
             if name is None:
                 stack.pop()
                 if dir_st is not None:
+                    open_dirs.discard((dir_st.st_dev, dir_st.st_ino))
                     try:
                         os.fchmod(cd, _st.S_IMODE(dir_st.st_mode))
                         os.utime(cd, ns=(dir_st.st_atime_ns, dir_st.st_mtime_ns))
@@ -437,6 +442,13 @@ def _copy_entries(
                         os.close(cd)
                 continue
             st = os.stat(name, dir_fd=cs, follow_symlinks=False)
+            linked = follow_src and _st.S_ISLNK(st.st_mode)
+            if linked:
+                try:
+                    st = os.stat(name, dir_fd=cs)
+                except OSError as exc:
+                    _not_copied(skipped, s / name, f"its link cannot be followed ({exc.strerror})")
+                    continue
             try:
                 there: os.stat_result | None = os.stat(name, dir_fd=cd, follow_symlinks=False)
             except FileNotFoundError:
@@ -457,7 +469,13 @@ def _copy_entries(
                 if there is not None and not _st.S_ISDIR(there.st_mode):
                     _not_copied(skipped, s / name, f"{d / name} is not a directory")
                     continue
-                child_s = _open_dir_at(name, cs, s / name, s / name, create=False)
+                if (st.st_dev, st.st_ino) in open_dirs:
+                    _not_copied(skipped, s / name, "it links back to a directory being copied")
+                    continue
+                if linked:
+                    child_s = os.open(name, os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC, dir_fd=cs)
+                else:
+                    child_s = _open_dir_at(name, cs, s / name, s / name, create=False)
                 try:
                     if there is None:
                         os.mkdir(name, 0o700, dir_fd=cd)
@@ -465,12 +483,16 @@ def _copy_entries(
                 except BaseException:
                     os.close(child_s)
                     raise
+                open_dirs.add((st.st_dev, st.st_ino))
                 stack.append((child_s, child_d, iter(os.listdir(child_s)), s / name, d / name, st))
             elif _st.S_ISREG(st.st_mode):
                 if there is not None and not _st.S_ISREG(there.st_mode):
                     _not_copied(skipped, s / name, f"{d / name} is not a regular file")
                     continue
-                fs = _open_leaf(name, cs, s / name, os.O_RDONLY | os.O_NONBLOCK)
+                if linked:
+                    fs = os.open(name, os.O_RDONLY | os.O_NONBLOCK | os.O_CLOEXEC, dir_fd=cs)
+                else:
+                    fs = _open_leaf(name, cs, s / name, os.O_RDONLY | os.O_NONBLOCK)
                 _regular(fs, s / name)
                 with os.fdopen(fs, "rb") as fin:
                     _replace_at(
@@ -489,7 +511,7 @@ def _copy_entries(
 
 def copy_tree(
     src: Path, dst: Path, *, src_root: Path | None, dst_root: Path | None,
-    merge: bool = False, skip_links: bool = False,
+    merge: bool = False, skip_links: bool = False, follow_src_links: bool = False,
 ) -> list[Path]:
     """Copy the directory *src* to *dst*; return the source paths not copied.
 
@@ -506,17 +528,28 @@ def copy_tree(
     Every entry not copied is in the returned list.  Files and directories keep
     their mode bits and times.  ``None`` roots as for :func:`copy_file`.
 
+    *follow_src_links* reads a HOST source (*src_root* ``None``; else ValueError) as
+    ``shutil.copytree`` does: *src* and every link inside it are followed, and what
+    they point at is copied.  A dangling link, or a directory link back to a
+    directory being copied, is not copied, with a warning.  The *dst* side is
+    unchanged: a link there is never followed.
+
     A *dst* inside *src* is not copied into itself (skipped by dev/ino); *dst* equal
     to *src* raises ``OSError(EINVAL)``.
 
-    No link is ever followed: every entry is listed, opened, and created through
-    descriptors with ``O_NOFOLLOW``.  The residual race: an entry the box swaps
+    Without *follow_src_links*, no link is ever followed: every entry is listed,
+    opened, and created through descriptors with ``O_NOFOLLOW``.  The residual race: an entry the box swaps
     between its ``lstat`` and its open makes the copy raise part-way, leaving a
     partial *dst*.
     """
     src, dst = Path(src), Path(dst)
+    if follow_src_links and src_root is not None:
+        raise ValueError(f"follow_src_links reads a host source; {src} is under a box tree")
     with contextlib.ExitStack() as stack:
-        if src_root is None:
+        if follow_src_links:
+            sfd = os.open(src, os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC)
+            stack.callback(os.close, sfd)
+        elif src_root is None:
             sfd = os.open(src, _DIR)
             stack.callback(os.close, sfd)
         else:
@@ -534,7 +567,7 @@ def copy_tree(
         if (dst_st.st_dev, dst_st.st_ino) == (st.st_dev, st.st_ino):
             raise OSError(errno.EINVAL, "cannot copy a directory onto itself", str(dst))
         skipped = _copy_entries(
-            sfd, dfd, src, dst, skip_links, (dst_st.st_dev, dst_st.st_ino),
+            sfd, dfd, src, dst, skip_links, (dst_st.st_dev, dst_st.st_ino), follow_src_links,
         )
         os.fchmod(dfd, _st.S_IMODE(st.st_mode))
         os.utime(dfd, ns=(st.st_atime_ns, st.st_mtime_ns))

@@ -46,6 +46,7 @@ def seed_codex_sandbox_mode(config_path: Path, *, root: Path) -> bool
 def _strip_jsonc(text: str) -> str
 def _encode_image_ref(ref: str) -> str
 def _read_existing_config(path: Path, root: Path | None=None) -> dict
+def _make_box_home(root: Path) -> None
 def _write_if_changed(path: Path, existing: dict, merged: dict, *, root: Path) -> bool
 def _is_retired_command(entry: object, retired: 'frozenset[str]') -> bool
 def _drop_retired_hooks(groups: list, retired: 'frozenset[str]') -> list

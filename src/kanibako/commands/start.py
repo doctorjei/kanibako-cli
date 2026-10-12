@@ -9164,28 +9164,20 @@ def _apply_shell_copy(
 def _copy_into_box(src: Path, dest: Path, root: Path) -> None:
     """Overwrite-copy the host *src* (file or directory) to *dest* under the box tree *root*.
 
-    ``copytree(dirs_exist_ok=True)`` / ``copy2`` with every box-side step through
-    :mod:`kanibako.boxfs`: a symlink at a destination entry or a parent is skipped
-    with a warning naming it, never followed.  The HOST side is read as ``copytree``
-    reads it, following its links (a stow-managed source stays content, not links).
+    ``copytree(dirs_exist_ok=True)`` / ``copy2`` through :mod:`kanibako.boxfs`: a
+    symlink at a destination entry or a parent is skipped with a warning naming it,
+    never followed.  The HOST side is read as ``copytree`` reads it, following its
+    links (a stow-managed source stays content, not links).  Files and directories
+    keep their modes and times.
     """
     from kanibako import boxfs
 
     if not src.is_dir():
         boxfs.copy_file(src, dest, src_root=None, dst_root=root)
         return
-    for dirpath, dirnames, filenames in os.walk(src, followlinks=True):
-        here = dest / Path(dirpath).relative_to(src)
-        if here != root:
-            if not boxfs.no_symlink_or_warn(here, root):
-                dirnames.clear()
-                continue
-            boxfs.mkdir(here, root, parents=True, exist_ok=True)
-        for fname in filenames:
-            if boxfs.no_symlink_or_warn(here / fname, root):
-                boxfs.copy_file(
-                    Path(dirpath) / fname, here / fname, src_root=None, dst_root=root,
-                )
+    boxfs.copy_tree(
+        src, dest, src_root=None, dst_root=root, merge=True, follow_src_links=True,
+    )
 
 
 def _host_copy_dest(
