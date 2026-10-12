@@ -663,6 +663,18 @@ def rmtree(path: Path, root: Path, *, missing_ok: bool = False) -> None:
         _remove_at(leaf, pfd, path, st)
 
 
+def rmdir(path: Path, root: Path) -> None:
+    """Remove the EMPTY directory *path* through its verified parent.
+
+    ``rmdir`` is the emptiness test, so an entry made after the caller's check is
+    never removed with it (OSError, ENOTEMPTY).  A link at *path* is not removed or
+    followed (``NotADirectoryError``); a link in a parent raises SymlinkRefusedError.
+    """
+    path = Path(path)
+    with _parent(path, root) as (pfd, leaf):
+        os.rmdir(leaf, dir_fd=pfd)
+
+
 def _chmod_fd(fd: int, mode: int, path: Path) -> None:
     """chmod through an ``O_PATH | O_NOFOLLOW`` descriptor (Linux has no ``lchmod``)."""
     if _st.S_ISLNK(os.fstat(fd).st_mode):

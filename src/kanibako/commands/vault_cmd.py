@@ -230,6 +230,10 @@ def run_restore(args: argparse.Namespace) -> int:
     except FileNotFoundError as e:
         print(f"Error: {e}", file=sys.stderr)
         return 1
+    except OSError as e:
+        # The swap failed and was rolled back (restore_snapshot logs it if not).
+        print(f"Error: could not restore {args.name}: {e}", file=sys.stderr)
+        return 1
 
     print(f"Restored vault share-rw from {args.name}")
     return 0

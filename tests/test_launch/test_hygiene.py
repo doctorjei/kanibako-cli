@@ -905,3 +905,60 @@ class TestNoFollow:
         assert gzip.decompress(gz.read_bytes()) == b"line\n" * 100
         assert abs(gz.stat().st_mtime - old) < 2
         assert gz.stat().st_mode & 0o777 == 0o640
+
+
+class TestReapNoFollow:
+    """The stale-stub reaper never follows a link, at the stub or at a parent."""
+
+    @pytest.mark.parametrize("where", ["outside", "inside"])
+    @pytest.mark.parametrize("how", ["leaf", "parent"])
+    @pytest.mark.parametrize("rel,kind", _CLAUDE_DESTS)
+    def test_a_linked_stub_is_never_reaped(self, tmp_path, caplog, rel, kind, how, where):
+        shell_dir = tmp_path / "home"
+        shell_dir.mkdir()
+        base = tmp_path / "outside" if where == "outside" else shell_dir / "elsewhere"
+        parts = rel.split("/")
+        link_at = shell_dir / rel if how == "leaf" else shell_dir / parts[0]
+        dest = base / ("leafdest" if how == "leaf" else "parentdest")
+        stub = dest if how == "leaf" else dest.joinpath(*parts[1:])
+        # What the link leads to is itself a perfect decoy: empty, of the right kind.
+        if kind == "file":
+            _make_file(stub, size=0)
+        else:
+            stub.mkdir(parents=True)
+        link_at.parent.mkdir(parents=True, exist_ok=True)
+        link_at.symlink_to(dest)
+        before = tree_digest(dest)
+
+        with caplog.at_level(logging.WARNING, logger="kanibako"):
+            actions = _reap_stale_agent_mountpoints(shell_dir, [(rel, kind)], False, object())
+
+        assert actions == []
+        assert tree_digest(dest) == before
+        assert link_at.is_symlink()
+        warned = [r.getMessage() for r in caplog.records if r.levelno == logging.WARNING]
+        if how == "parent":  # a linked parent is named; a link AT the stub is quiet
+            assert any(str(link_at) in m for m in warned)
+        else:
+            assert warned == []
+
+    def test_an_entry_made_after_the_check_stays(self, tmp_path, monkeypatch):
+        """``rmdir`` is the emptiness test: the box racing the reaper keeps its file."""
+        from kanibako.launch import hygiene
+
+        stub = tmp_path / ".local" / "share" / "claude"
+        stub.mkdir(parents=True)
+        real_listdir = hygiene.boxfs.listdir
+
+        def racing_listdir(path, root):
+            names = real_listdir(path, root)
+            if path == stub:
+                (stub / "session.json").write_text("{}")
+            return names
+
+        monkeypatch.setattr(hygiene.boxfs, "listdir", racing_listdir)
+        actions = _reap_stale_agent_mountpoints(
+            tmp_path, [(".local/share/claude", "dir")], False, object(),
+        )
+        assert actions == []
+        assert (stub / "session.json").read_text() == "{}"

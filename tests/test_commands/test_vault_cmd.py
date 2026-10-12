@@ -636,3 +636,34 @@ class TestVaultNoBoxHere:
             f"  Name the box:   kanibako box vault {usage} <box>\n"
             "  Or run it inside a box's directory."
         )
+
+
+class TestVaultRestoreFailure:
+    def test_a_failed_swap_is_an_error_line_not_a_traceback(
+        self, config_file, tmp_home, credentials_dir, capsys,
+    ):
+        import errno
+        from unittest.mock import patch
+
+        from kanibako import snapshots
+        from kanibako.snapshots import create_snapshot
+
+        proj = _init_project_with_vault(config_file, tmp_home, credentials_dir)
+        snap = create_snapshot(proj.vault_rw_path, box_name=proj.name)
+        (proj.vault_rw_path / "data.txt").write_text("modified")
+        real_rename = snapshots.boxfs.rename
+
+        def full_disk(src, dst, root):
+            if ".restore.tmp" in str(src):
+                raise OSError(errno.ENOSPC, "No space left on device")
+            real_rename(src, dst, root)
+
+        args = build_parser().parse_args([
+            "box", "vault", "restore", snap.name, str(proj.project_path), "--force",
+        ])
+        with patch("kanibako.snapshots.boxfs.rename", side_effect=full_disk):
+            rc = run_restore(args)
+
+        assert rc == 1
+        assert "No space left on device" in capsys.readouterr().err
+        assert (proj.vault_rw_path / "data.txt").read_text() == "modified"

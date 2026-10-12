@@ -25,13 +25,14 @@ restore puts back every link with exactly the text it had.
 from __future__ import annotations
 
 import contextlib
+import errno
 import os
 import re
 import shutil
 import stat
 import subprocess
 import tempfile
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from datetime import datetime
 from pathlib import Path
 
@@ -314,6 +315,52 @@ def _remove_in_vault(path: Path, root: Path) -> None:
     except PermissionError:
         boxfs.chmod_tree(path, root, add=stat.S_IRWXU)
         boxfs.rmtree(path, root, missing_ok=True)
+
+
+# A rename that cannot cross a mount: the vault, or an entry in it, is a mount point.
+_NO_RENAME = (errno.EXDEV, errno.EBUSY)
+
+
+def _move_entries(
+    src_dir: Path, dst_dir: Path, names: list[str], root: Path, done: list[str],
+    check: Callable[[str], None] | None = None,
+) -> list[Path]:
+    """Move each of *names* from *src_dir* to *dst_dir* (both under *root*) through
+    :mod:`kanibako.boxfs`; return the source paths that could not be moved.
+
+    A name goes on *done* once it is whole in *dst_dir*.  *check* runs on a name
+    before it lands.  A rename refused with EXDEV or EBUSY (a mount point) moves the
+    rest the way ``shutil.move`` did, without following a link: a no-follow copy of
+    *src_dir* merged into *dst_dir* (:func:`boxfs.copy_tree`), then the removal of
+    the rest from *src_dir*.  If the copy leaves anything out, nothing is removed or
+    put on *done*, and the paths left out are returned.
+    """
+    for i, name in enumerate(names):
+        if check is not None:
+            check(name)
+        try:
+            boxfs.rename(src_dir / name, dst_dir / name, root)
+        except OSError as exc:
+            if exc.errno not in _NO_RENAME:
+                raise
+            rest = names[i:]
+            break
+        done.append(name)
+    else:
+        return []
+    for name in rest[1:]:
+        if check is not None:
+            check(name)
+    # copy_tree gives *dst_dir* the source's mode; the vault keeps its own.
+    mode = stat.S_IMODE(boxfs.stat(dst_dir, root).st_mode)
+    skipped = boxfs.copy_tree(src_dir, dst_dir, src_root=root, dst_root=root, merge=True)
+    boxfs.chmod(dst_dir, root, mode)
+    if skipped:
+        return skipped
+    done.extend(rest)
+    for name in rest:
+        _remove_in_vault(src_dir / name, root)
+    return []
 
 
 def _test_reflink(path: Path) -> bool:
@@ -629,7 +676,9 @@ def restore_snapshot(
     staging directory, the live contents are moved aside to a backup, and only
     then are the staged contents swapped into place, so a partial restore can
     never destroy pre-existing data.  ``vault_rw_path`` itself (which may be a
-    mount point) is never removed -- only its contents are swapped.
+    mount point) is never removed -- only its contents are swapped, by copy when
+    a mount point stops the renames.  If even the roll-back fails, the backup is
+    kept and its path logged.
 
     Returns the pre-restore safety snapshot's path, or ``None`` if the vault was
     empty so there was nothing to preserve.
@@ -683,13 +732,33 @@ def restore_snapshot(
     root = live.parent
 
     # Stage the new contents in a temp sibling of the vault so the final swap is a
-    # same-filesystem rename.
+    # same-filesystem rename -- unless the vault is a mount point, when every move
+    # falls back to a no-follow copy (:func:`_move_entries`).
     staging = root / f".{live.name}.restore.tmp"
     backup = root / f".{live.name}.restore.bak"
     _remove_in_vault(staging, root)
     _remove_in_vault(backup, root)
     staging.mkdir(parents=True)
 
+    def not_moved(paths: list[Path]) -> RestoreLinkRefusedError:
+        return RestoreLinkRefusedError(
+            f"Refused to restore '{snapshot_name}': {', '.join(map(str, paths))} could "
+            f"not be moved without following a symlink (or is not a file, directory, "
+            f"or symlink). The vault was put back as it was."
+        )
+
+    def no_link(name: str) -> None:
+        link = boxfs.first_symlink(live / name, root)
+        if link is not None:
+            raise RestoreLinkRefusedError(
+                f"Refused to restore '{snapshot_name}': {link} is a symlink, "
+                f"and kanibako does not follow symlinks in a box. The vault was "
+                f"put back as it was; remove the link and restore again."
+            )
+
+    moved: list[str] = []
+    swapping = False
+    kept_backup = False
     try:
         # Build the new contents in the staging directory.
         copy_tree_keeping_links(snapshot, staging, dirs_exist_ok=True)
@@ -697,37 +766,47 @@ def restore_snapshot(
         # entries OUT of it, which needs write on staging whatever that mode was.
         staging.chmod(0o700)
 
-        # Move the live contents aside (preserves the mount point itself).
-        backup.mkdir(parents=True)
-        moved: list[str] = []
-        for name in boxfs.listdir(live, root):
-            boxfs.rename(live / name, backup / name, root)
-            moved.append(name)
-
-        # Swap the staged contents into place.
         try:
-            for name in sorted(os.listdir(staging)):
-                link = boxfs.first_symlink(live / name, root)
-                if link is not None:
-                    raise RestoreLinkRefusedError(
-                        f"Refused to restore '{snapshot_name}': {link} is a symlink, "
-                        f"and kanibako does not follow symlinks in a box. The vault was "
-                        f"put back as it was; remove the link and restore again."
-                    )
-                boxfs.rename(staging / name, live / name, root)
+            # Move the live contents aside (preserves the mount point itself).
+            backup.mkdir(parents=True)
+            left = _move_entries(live, backup, boxfs.listdir(live, root), root, moved)
+            if left:
+                raise not_moved(left)
+
+            # Swap the staged contents into place.
+            swapping = True
+            placed: list[str] = []
+            left = _move_entries(
+                staging, live, sorted(os.listdir(staging)), root, placed, check=no_link,
+            )
+            if left:
+                raise not_moved(left)
         except Exception:
             # Roll back: clear whatever made it in, restore the backup.
             # ⚑ The DATA-PRESERVING arm: a read-only directory among the staged
             # contents must not be what stops the live vault from being put back, and
             # a link (restored, or planted) is removed as a link, never followed.
-            for name in boxfs.listdir(live, root):
-                _remove_in_vault(live / name, root)
-            for name in moved:
-                boxfs.rename(backup / name, live / name, root)
+            # Before the swap, only what reached the backup is cleared: the rest is
+            # still in place.  The backup keeps only what is whole in it.
+            try:
+                for name in boxfs.listdir(live, root):
+                    if swapping or name in moved:
+                        _remove_in_vault(live / name, root)
+                for name in boxfs.listdir(backup, root):
+                    if name not in moved:
+                        _remove_in_vault(backup / name, root)
+                if _move_entries(backup, live, list(moved), root, []):
+                    raise OSError(errno.EIO, "the backup could not be put back whole")
+            except Exception as undo:
+                kept_backup = True
+                logger.error(
+                    "restore of '%s' failed and the vault could not be put back (%s); "
+                    "its contents are kept at %s", snapshot_name, undo, backup,
+                )
             raise
     finally:
         # Disposable: the pre-restore snapshot already holds these in the store.
-        for leftover in (staging, backup):
+        for leftover in (staging,) if kept_backup else (staging, backup):
             with contextlib.suppress(OSError):
                 _remove_in_vault(leftover, root)
 

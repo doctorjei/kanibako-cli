@@ -29,6 +29,7 @@ def touch(path: Path, root: Path, mode: int=438) -> None
 def unlink(path: Path, root: Path, *, missing_ok: bool=False) -> None
 def rmtree_contents(path: Path, root: Path) -> None
 def rmtree(path: Path, root: Path, *, missing_ok: bool=False) -> None
+def rmdir(path: Path, root: Path) -> None
 def chmod(path: Path, root: Path, mode: int) -> None
 def chmod_tree(path: Path, root: Path, *, add: int=0, remove: int=0) -> None
 def rename(src: Path, dst: Path, root: Path) -> None

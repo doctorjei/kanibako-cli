@@ -14,6 +14,7 @@ LAYOUT_MARKER_VALUE = 'per-box-v1\n'
 RESERVED_STORE_KEYS = (UNSORTED_DIRNAME, LAYOUT_MARKER_NAME)
 _DEFAULT_MAX_SNAPSHOTS = 5
 _LEGACY_TS_RE = re.compile('^\\d{8}T\\d{6}Z$')
+_NO_RENAME = (errno.EXDEV, errno.EBUSY)
 ```
 
 ## Functions
@@ -40,6 +41,7 @@ def _snapshot_child(versions: Path, name: str) -> Path
 def _force_writable_dirs(root: Path) -> None
 def _rmtree_force(path: Path) -> None
 def _remove_in_vault(path: Path, root: Path) -> None
+def _move_entries(src_dir: Path, dst_dir: Path, names: list[str], root: Path, done: list[str], check: Callable[[str], None] | None=None) -> list[Path]
 def _test_reflink(path: Path) -> bool
 def _snapshot_reflink(vault_rw_path: Path, versions: Path, ts: str) -> Path
 def _snapshot_hardlink(vault_rw_path: Path, versions: Path, ts: str) -> Path

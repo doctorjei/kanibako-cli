@@ -258,42 +258,36 @@ def _reap_stale_agent_mountpoints(
     if not agent_critical_dests:
         return actions
 
-    # Containment root for the defense-in-depth guard below (this step deletes).
-    try:
-        shell_root = shell_dir.resolve()
-    except OSError:
-        return actions
-
     for rel, kind in agent_critical_dests:
         target = shell_dir / rel
 
-        # Defense-in-depth (destructive op): never act on a path that resolves
-        # OUTSIDE shell_dir — a ``..`` in a descriptor's box_dest or a symlinked
-        # ANCESTOR (the final-component symlink is skipped just below; resolve()
-        # also catches an escaping parent).  box_dests come from trusted
-        # installed plugins, so this is belt-and-suspenders.
+        # Destructive op, so nothing is followed: every check and the removal go
+        # through boxfs rooted at shell_dir.  A ``..`` in a descriptor's box_dest is
+        # never acted on (box_dests come from trusted installed plugins, so this is
+        # belt-and-suspenders); a link AT the stub is not one we made, and is skipped
+        # quietly; a linked parent is skipped with a warning.
         try:
-            target.resolve().relative_to(shell_root)
-        except (OSError, ValueError):
+            link = boxfs.first_symlink(target, shell_dir)
+        except ValueError:
             continue
-
-        # Never follow or remove a symlink — not a stub we own.
-        if target.is_symlink():
+        if link == target:
+            continue
+        if link is not None:
+            boxfs.no_symlink_or_warn(target, shell_dir)
+            continue
+        try:
+            st = boxfs.stat(target, shell_dir)
+        except OSError:
             continue
 
         if kind == "file":
-            if not target.is_file():
-                continue
-            try:
-                if target.stat().st_size != 0:
-                    continue
-            except OSError:
+            if not _st.S_ISREG(st.st_mode) or st.st_size != 0:
                 continue
         elif kind == "dir":
-            if not target.is_dir():
+            if not _st.S_ISDIR(st.st_mode):
                 continue
             try:
-                if any(target.iterdir()):
+                if boxfs.listdir(target, shell_dir):
                     continue
             except OSError:
                 continue
@@ -308,9 +302,11 @@ def _reap_stale_agent_mountpoints(
         if not dry_run:
             try:
                 if kind == "file":
-                    target.unlink()
+                    boxfs.unlink(target, shell_dir)
                 else:
-                    target.rmdir()
+                    # ``rmdir`` is the emptiness test: an entry the box made since
+                    # the check stays.
+                    boxfs.rmdir(target, shell_dir)
             except OSError:
                 continue
         actions.append(desc)

@@ -1436,3 +1436,196 @@ class TestRestoreRefusesAPlantedLink:
 
         assert vault_rw.is_symlink()
         assert (real / "file1.txt").read_text() == "hello"
+
+
+def _crossing_rename(vault_rw: Path, err: int):  # type: ignore[no-untyped-def]
+    """``boxfs.rename`` as it behaves when the live vault is a MOUNT POINT: a rename into
+    or out of it raises *err* (EXDEV, or EBUSY); one beside it still works."""
+    import errno as _errno
+
+    live = vault_rw.resolve()
+    real_rename = snapshots_mod.boxfs.rename
+    calls = {"refused": 0}
+
+    def rename(src: Path, dst: Path, root: Path) -> None:
+        if (Path(src).parent == live) != (Path(dst).parent == live):
+            calls["refused"] += 1
+            raise OSError(err, os.strerror(err), str(src))
+        real_rename(src, dst, root)
+
+    assert err in (_errno.EXDEV, _errno.EBUSY)
+    return rename, calls
+
+
+class TestRestoreAcrossAMount:
+    """The vault leaf may be a mount point: ``shutil.move`` copied across, so the boxfs
+    renames fall back to a no-follow copy, both into and out of the vault."""
+
+    @pytest.mark.parametrize("err", ["EXDEV", "EBUSY"])
+    def test_restore_copies_when_the_vault_is_a_mount_point(
+        self, tmp_path: Path, err: str,
+    ) -> None:
+        import errno as _errno
+        import stat as _stat
+
+        vault_rw, outside, texts = _populate_links(tmp_path)
+        (vault_rw / "ro").mkdir()
+        (vault_rw / "ro" / "kept.txt").write_text("read-only dir")
+        (vault_rw / "ro").chmod(0o555)
+        vault_rw.chmod(0o750)
+        snap = create_snapshot(vault_rw, box_name="testbox", strategy="hardlink")
+        assert snap is not None
+        before = tree_digest(outside)
+        # Change the live vault in every way the restore must undo.
+        (vault_rw / "file1.txt").write_text("changed")
+        (vault_rw / "live_only.txt").write_text("goes")
+        (vault_rw / "in").unlink()
+        (vault_rw / "ro").chmod(0o755)
+        (vault_rw / "ro" / "new.txt").write_text("goes")
+        (vault_rw / "ro").chmod(0o555)
+
+        rename, calls = _crossing_rename(vault_rw, getattr(_errno, err))
+        with patch("kanibako.snapshots.boxfs.rename", side_effect=rename):
+            restore_snapshot(vault_rw, snap.name, box_name="testbox")
+
+        assert calls["refused"] >= 2  # the move-aside and the swap both crossed
+        assert (vault_rw / "file1.txt").read_text() == "hello"
+        assert (vault_rw / "subdir" / "file2.txt").read_text() == "world"
+        assert not (vault_rw / "live_only.txt").exists()
+        assert sorted(os.listdir(vault_rw / "ro")) == ["kept.txt"]
+        assert _stat.S_IMODE((vault_rw / "ro").stat().st_mode) == 0o555
+        assert _stat.S_IMODE(vault_rw.stat().st_mode) == 0o750
+        for rel, text in texts.items():
+            assert os.readlink(vault_rw / rel) == text
+        assert tree_digest(outside) == before
+        assert not [p for p in vault_rw.parent.iterdir() if ".restore." in p.name]
+        (vault_rw / "ro").chmod(0o755)
+
+    def test_a_failed_copy_into_the_vault_puts_it_back_by_copy(self, tmp_path: Path) -> None:
+        import errno as _errno
+
+        vault_rw = tmp_path / "vault" / "share-rw"
+        _populate_rw(vault_rw)
+        snap = create_snapshot(vault_rw, box_name="testbox", strategy="hardlink")
+        assert snap is not None
+        (vault_rw / "file1.txt").write_text("live-precious")
+        (vault_rw / "live_only.txt").write_text("must-survive")
+        rename, _ = _crossing_rename(vault_rw, _errno.EXDEV)
+        real_copy = snapshots_mod.boxfs.copy_tree
+        seen: list[str] = []
+
+        def copy_tree(src: Path, dst: Path, **kw):  # type: ignore[no-untyped-def]
+            seen.append(Path(src).name)
+            if ".restore.tmp" in str(src):
+                (Path(dst) / "half-copied.txt").write_text("partial")
+                raise OSError(_errno.ENOSPC, "No space left on device")
+            return real_copy(src, dst, **kw)
+
+        with patch("kanibako.snapshots.boxfs.rename", side_effect=rename), \
+                patch("kanibako.snapshots.boxfs.copy_tree", side_effect=copy_tree):
+            with pytest.raises(OSError, match="No space"):
+                restore_snapshot(vault_rw, snap.name, box_name="testbox")
+
+        # Out (live → backup), in (staging → live, failed), back (backup → live).
+        assert seen == ["share-rw", ".share-rw.restore.tmp", ".share-rw.restore.bak"]
+        assert sorted(os.listdir(vault_rw)) == ["file1.txt", "live_only.txt", "subdir"]
+        assert (vault_rw / "file1.txt").read_text() == "live-precious"
+        assert (vault_rw / "live_only.txt").read_text() == "must-survive"
+        assert (vault_rw / "subdir" / "file2.txt").read_text() == "world"
+        assert not [p for p in vault_rw.parent.iterdir() if ".restore." in p.name]
+
+    def test_a_failed_copy_out_of_the_vault_leaves_it_in_place(self, tmp_path: Path) -> None:
+        import errno as _errno
+
+        vault_rw = tmp_path / "vault" / "share-rw"
+        _populate_rw(vault_rw)
+        snap = create_snapshot(vault_rw, box_name="testbox", strategy="hardlink")
+        assert snap is not None
+        (vault_rw / "file1.txt").write_text("live-precious")
+        rename, _ = _crossing_rename(vault_rw, _errno.EXDEV)
+
+        def copy_tree(src: Path, dst: Path, **kw):  # type: ignore[no-untyped-def]
+            (Path(dst) / "file1.txt").write_text("partial")
+            raise OSError(_errno.ENOSPC, "No space left on device")
+
+        with patch("kanibako.snapshots.boxfs.rename", side_effect=rename), \
+                patch("kanibako.snapshots.boxfs.copy_tree", side_effect=copy_tree):
+            with pytest.raises(OSError, match="No space"):
+                restore_snapshot(vault_rw, snap.name, box_name="testbox")
+
+        assert sorted(os.listdir(vault_rw)) == ["file1.txt", "subdir"]
+        assert (vault_rw / "file1.txt").read_text() == "live-precious"
+        assert (vault_rw / "subdir" / "file2.txt").read_text() == "world"
+        assert not [p for p in vault_rw.parent.iterdir() if ".restore." in p.name]
+
+    @pytest.mark.parametrize("when", ["before-the-check", "during-the-copy"])
+    @pytest.mark.parametrize("where", ["outside", "inside"])
+    def test_a_link_planted_in_a_copied_swap_is_refused_and_rolled_back(
+        self, tmp_path: Path, when: str, where: str,
+    ) -> None:
+        import errno as _errno
+
+        vault_rw = tmp_path / "vault" / "share-rw"
+        _populate_rw(vault_rw)
+        snap = create_snapshot(vault_rw, box_name="testbox", strategy="hardlink")
+        assert snap is not None
+        (vault_rw / "file1.txt").write_text("live-precious")
+        target = sentinel_tree(tmp_path) if where == "outside" else vault_rw / "planted"
+        before = tree_digest(target)
+        crossing, _ = _crossing_rename(vault_rw, _errno.EXDEV)
+        real_copy = snapshots_mod.boxfs.copy_tree
+
+        def plant() -> None:
+            target.mkdir(exist_ok=True)
+            (vault_rw / "subdir").symlink_to(target)
+
+        def rename(src: Path, dst: Path, root: Path) -> None:
+            if when == "before-the-check" and ".restore.tmp" in str(src):
+                plant()
+            crossing(src, dst, root)
+
+        def copy_tree(src: Path, dst: Path, **kw):  # type: ignore[no-untyped-def]
+            if when == "during-the-copy" and ".restore.tmp" in str(src):
+                plant()
+            return real_copy(src, dst, **kw)
+
+        with patch("kanibako.snapshots.boxfs.rename", side_effect=rename), \
+                patch("kanibako.snapshots.boxfs.copy_tree", side_effect=copy_tree):
+            with pytest.raises(snapshots_mod.RestoreLinkRefusedError, match="symlink"):
+                restore_snapshot(vault_rw, snap.name, box_name="testbox")
+
+        if where == "outside":
+            assert tree_digest(target) == before
+        assert sorted(os.listdir(vault_rw)) == ["file1.txt", "subdir"]
+        assert (vault_rw / "file1.txt").read_text() == "live-precious"
+        assert not (vault_rw / "subdir").is_symlink()
+        assert (vault_rw / "subdir" / "file2.txt").read_text() == "world"
+        assert not [p for p in vault_rw.parent.iterdir() if ".restore." in p.name]
+
+    def test_an_undo_that_fails_keeps_the_backup(
+        self, tmp_path: Path, caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        import errno as _errno
+
+        vault_rw = tmp_path / "vault" / "share-rw"
+        _populate_rw(vault_rw)
+        snap = create_snapshot(vault_rw, box_name="testbox", strategy="hardlink")
+        assert snap is not None
+        (vault_rw / "file1.txt").write_text("live-precious")
+        rename, _ = _crossing_rename(vault_rw, _errno.EXDEV)
+        real_copy = snapshots_mod.boxfs.copy_tree
+
+        def copy_tree(src: Path, dst: Path, **kw):  # type: ignore[no-untyped-def]
+            if ".restore." in Path(src).name:  # the swap in, and the undo
+                raise OSError(_errno.ENOSPC, "No space left on device")
+            return real_copy(src, dst, **kw)
+
+        with patch("kanibako.snapshots.boxfs.rename", side_effect=rename), \
+                patch("kanibako.snapshots.boxfs.copy_tree", side_effect=copy_tree):
+            with pytest.raises(OSError, match="No space"):
+                restore_snapshot(vault_rw, snap.name, box_name="testbox")
+
+        backup = vault_rw.parent / ".share-rw.restore.bak"
+        assert (backup / "file1.txt").read_text() == "live-precious"
+        assert str(backup) in caplog.text
+        assert not (vault_rw.parent / ".share-rw.restore.tmp").exists()

@@ -644,6 +644,35 @@ def _swap_after_open(monkeypatch, parent, outside):
     monkeypatch.setattr(boxfs.os, "open", open_then_swap)
 
 
+def test_rmdir_removes_only_an_empty_directory(tree):
+    root, _, _ = tree
+    d = root / "a" / "b"
+    (d / "full").mkdir()
+    (d / "full" / "f").write_text("x")
+    (d / "empty").mkdir()
+    boxfs.rmdir(d / "empty", root)
+    assert not (d / "empty").exists()
+    with pytest.raises(OSError) as exc:
+        boxfs.rmdir(d / "full", root)
+    assert exc.value.errno == errno.ENOTEMPTY
+    assert (d / "full" / "f").read_text() == "x"
+
+
+@pytest.mark.parametrize("where", ["outside", "inside"])
+def test_rmdir_never_follows_a_link(tree, where):
+    root, outside, sentinel = tree
+    target = outside / "empty" if where == "outside" else root / "a" / "empty"
+    target.mkdir()
+    (root / "a" / "b" / "leaf").symlink_to(target)
+    (root / "a" / "par").symlink_to(target.parent)
+    with pytest.raises(NotADirectoryError):
+        boxfs.rmdir(root / "a" / "b" / "leaf", root)
+    with pytest.raises(SymlinkRefusedError):
+        boxfs.rmdir(root / "a" / "par" / "empty", root)
+    assert (root / "a" / "b" / "leaf").is_symlink()
+    assert target.is_dir() and sentinel.read_text() == "host data"
+
+
 def test_rmtree_acts_in_the_verified_parent_when_it_is_swapped_for_a_link(tree, monkeypatch):
     root, outside, sentinel = tree
     parent = root / "a" / "b"
