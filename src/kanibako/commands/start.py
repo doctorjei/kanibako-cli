@@ -6612,32 +6612,28 @@ def _preflight_env_persona(
     if token_state is __MISSING__ or (
         isinstance(token_state, str) and not _secret_pointer_usable(token_state)
     ):
-        return None, (
-            f"Error: persona '{display}' has an endpoint "
-            f"({_scrub_endpoint_userinfo(endpoint)}) but no "
-            f"usable auth token.\n"
-            f"  A custom-endpoint persona needs an API key delivered via a "
+        return None, _persona_endpoint_refusal(
+            display, endpoint, "usable auth token",
+            f"A custom-endpoint persona needs an API key delivered via a "
             f"`kanibako system set agent.{display}.secret_path.{wiring.token_var}="
             f"<path>` entry (or an explicit "
             f"`agent.{display}.secret_path.{wiring.token_var}: null` if this "
             f"endpoint is keyless); none was found (or it points at an unusable "
-            f"file).\n"
-            f"  Set the key for this persona, then retry."
+            f"file).",
+            _PERSONA_KEY_CURE,
         ), None
     # PRESENT-null (deliberately keyless) or a usable path — proceed either way.
     token_ptr = token_state if isinstance(token_state, str) else None
     model_state = _model_tristate(keyspace_model)
     if wiring.model_required and model_state is __MISSING__:
-        return None, (
-            f"Error: persona '{display}' has an endpoint "
-            f"({_scrub_endpoint_userinfo(endpoint)}) but no "
-            f"model configured.\n"
-            f"  A custom-endpoint persona must name the provider's model id "
+        return None, _persona_endpoint_refusal(
+            display, endpoint, "model configured",
+            f"A custom-endpoint persona must name the provider's model id "
             f"(e.g. `kanibako system set agent.{display}.model=<model-id>`); the "
             f"harness default is not used for a third-party provider. If this "
             f"endpoint genuinely needs no model, declare it explicitly with "
-            f"`kanibako system set --null agent.{display}.model`.\n"
-            f"  Set the model for this persona, then retry."
+            f"`kanibako system set --null agent.{display}.model`.",
+            _PERSONA_MODEL_CURE,
         ), None
     model = model_state if isinstance(model_state, str) else None
     if probe:
@@ -6648,6 +6644,26 @@ def _preflight_env_persona(
         if probe_err is not None:
             return None, probe_err, None
     return endpoint, None, None
+
+
+_PERSONA_KEY_CURE = "Set the key for this persona, then retry."
+_PERSONA_MODEL_CURE = "Set the model for this persona, then retry."
+
+
+def _persona_endpoint_refusal(
+    display: str, endpoint: str, missing: str, detail: str, cure: str,
+) -> str:
+    """THE one "persona has an endpoint but no <missing>" refusal, for every harness.
+
+    *detail* says what the persona needs and how to set it; *cure* is the last line.
+    The endpoint is printed scrubbed of userinfo.
+    """
+    return (
+        f"Error: persona '{display}' has an endpoint "
+        f"({_scrub_endpoint_userinfo(endpoint)}) but no {missing}.\n"
+        f"  {detail}\n"
+        f"  {cure}"
+    )
 
 
 def _persona_no_endpoint_error(agent_id: str, wiring) -> str:
@@ -6772,14 +6788,15 @@ def _preflight_config_file_persona(
         # which made one of the two sibling gates ignore the descriptor it was
         # supposed to read.
         if wiring.model_required:
-            return None, (
-                f"Error: persona '{display}' has an endpoint "
-                f"({_scrub_endpoint_userinfo(endpoint)}) but no "
-                f"model configured.\n"
-                f"  A custom-endpoint codex persona must name the provider's model id "
+            # ⚑ NO ``--null`` CURE HERE, unlike the ENV path: a PRESENT-null model is the
+            # declared CONFLICT refused just above, so naming it would send the user
+            # from this refusal straight into that one.
+            return None, _persona_endpoint_refusal(
+                display, endpoint, "model configured",
+                f"A custom-endpoint codex persona must name the provider's model id "
                 f"(e.g. `kanibako system set agent.{display}.model=<model-id>`); the "
-                f"harness default is not used for a third-party provider.\n"
-                f"  Set the model for this persona, then retry."
+                f"harness default is not used for a third-party provider.",
+                _PERSONA_MODEL_CURE,
             ), None
         # No model AND no veto: a CONFIG-FILE harness cannot deliver "no model".
         # The provider projection types ``model`` as a non-optional ``str``
@@ -6826,22 +6843,18 @@ def _codex_persona_token_error(
     when a single, usable token resolves.
     """
 
-    intro = (
-        f"Error: persona '{display}' has an endpoint "
-        f"({_scrub_endpoint_userinfo(endpoint)}) but no "
-        f"usable auth token.\n"
-    )
-    tail = "  Set the key for this persona, then retry."
+    def refusal(detail: str, cure: str = _PERSONA_KEY_CURE) -> str:
+        return _persona_endpoint_refusal(display, endpoint, "usable auth token", detail, cure)
+
     keys = _persona_secret_path_keys(secret_paths)
     # DYNAMIC (empty token_var): the env_key IS the single configured secret_path key.
     if not wiring.token_var and len(keys) > 1:
-        return (
-            f"{intro}"
-            f"  A custom-endpoint codex persona needs a SINGLE "
+        return refusal(
+            f"A custom-endpoint codex persona needs a SINGLE "
             f"`agent.{display}.secret_path.<ENV_KEY>=<path>` entry (that <ENV_KEY> "
             f"becomes the model-provider env_key), but {len(keys)} are configured "
-            f"({', '.join(keys)}) — ambiguous.\n"
-            f"  Leave exactly one, then retry."
+            f"({', '.join(keys)}) — ambiguous.",
+            "Leave exactly one, then retry.",
         )
     env_key = _resolve_codex_persona_env_key(secret_paths, wiring)
     token_state = (
@@ -6849,21 +6862,17 @@ def _codex_persona_token_error(
         if env_key else __MISSING__
     )
     if not env_key or token_state is __MISSING__:
-        return (
-            f"{intro}"
-            f"  A custom-endpoint codex persona needs an API key delivered via a "
+        return refusal(
+            f"A custom-endpoint codex persona needs an API key delivered via a "
             f"single `agent.{display}.secret_path.<ENV_KEY>=<path>` entry (that "
             f"<ENV_KEY> becomes the model-provider env_key) — or an explicit "
             f"`agent.{display}.secret_path.<ENV_KEY>: null` if this endpoint is "
-            f"keyless; none was found.\n"
-            f"{tail}"
+            f"keyless; none was found."
         )
     if isinstance(token_state, str) and not _secret_pointer_usable(token_state):
-        return (
-            f"{intro}"
-            f"  The configured key `{env_key}` points at an unusable file "
-            f"({token_state}) — it must be a readable, non-empty file.\n"
-            f"{tail}"
+        return refusal(
+            f"The configured key `{env_key}` points at an unusable file "
+            f"({token_state}) — it must be a readable, non-empty file."
         )
     # PRESENT-null (deliberately keyless) or a usable path — proceed either way.
     return None
