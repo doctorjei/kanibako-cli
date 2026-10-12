@@ -52,6 +52,7 @@ def match_ref(expr: str, i: int) -> tuple[str, int]
 def match_braced(expr: str, i: int) -> tuple[Literal['ref', 'var'], str, int] | None
 def expand_expr(expr: str, *, space: Literal['host', 'guest'], ctx: ResolveCtx, lookup: Callable[[str, tuple[str, ...]], str], chain: tuple[str, ...]=(), defer_env: bool=False) -> str
 def resolve_var(name: str, ctx: ResolveCtx) -> str | _Unset
+def guard_ref(ref_name: str, trail: tuple[str, ...], depth: int) -> None
 def resolve_value(key: str, *, levels: list[LevelView], ctx: ResolveCtx, lookup: Callable[[str, tuple[str, ...]], str]) -> ResolvedValue | _Unset
 def delete_before_set_step(entry: str, *, where: Any, parents: 'Sequence[str]'=(), collides_with: str | None=None, removal_first: bool=False) -> str
 def _host_term() -> str
@@ -61,6 +62,7 @@ def _brace_literal(c: str) -> str
 def _check_node_binds(table: Mapping[str, Any], *, where: str | None) -> None
 def _check_dest_map(raw: Mapping[str, Any], *, category: str, where: str | None) -> None
 def _in_file(where: str | None) -> str
+def _match_sigil(expr: str, i: int, name_re: re.Pattern[str], noun: str) -> tuple[str, int]
 def _scan_var_span(expr: str, i: int) -> tuple[str, int]
 def _expand_var(expr: str, i: int, ctx: ResolveCtx) -> tuple[str, int]
 def _resolve_var(name: str, ctx: ResolveCtx) -> str

@@ -50,6 +50,7 @@ def parse_bind_map(raw: Any, *, category: str='bindings', root_ref: str | None=N
 def dotted_partial(floor: dict[str, object] | None) -> KeyStore
 def assemble_levels(*, agent_name: str, files: Iterable[SettingsFile], floor: dict[str, object] | None=None) -> list[KeyStore]
 def agent_record(path: Path, *, node: str, purpose: ReadPurpose) -> AgentConfig
+def agent_store_refusal(store: Path, why: str, *, fix: str | None=None) -> SettingsError
 def cascade_files(*, purpose: ReadPurpose, system_path: Path | None, agent_path: Path | None, workset_path: Path | None, box_path: Path | None, base_path: Path | None=None, subject: str | None=None, box_ref: str | None=None) -> tuple[SettingsFile, ...]
 def _declaration_root_ref(path: tuple[str, ...], category: str) -> str | None
 def _stored_spelling(raw: Any) -> str
