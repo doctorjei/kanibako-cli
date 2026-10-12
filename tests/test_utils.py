@@ -107,6 +107,13 @@ class TestConfirmPrompt:
             with pytest.raises(UserCanceled):
                 confirm_prompt("ok? ")
 
+    @pytest.mark.parametrize("error", [RuntimeError("lost sys.stdin"), OSError(9, "bad fd"),
+                                       ValueError("I/O operation on closed file")])
+    def test_unanswerable_question_is_a_no(self, error):
+        with patch("builtins.input", side_effect=error):
+            with pytest.raises(UserCanceled):
+                confirm_prompt("ok? ")
+
     def test_whitespace_yes_passes(self):
         with patch("builtins.input", return_value="  yes  "):
             confirm_prompt("ok? ")  # Should not raise
@@ -130,6 +137,11 @@ class TestConfirmOrAbort:
 
     def test_eof_prints_aborted(self, capsys):
         with patch("builtins.input", side_effect=EOFError):
+            assert confirm_or_abort(False, "ok? ") is False
+        assert capsys.readouterr().out == "ok? \nAborted.\n"
+
+    def test_lost_stdin_prints_aborted(self, capsys):
+        with patch("builtins.input", side_effect=RuntimeError("lost sys.stdin")):
             assert confirm_or_abort(False, "ok? ") is False
         assert capsys.readouterr().out == "ok? \nAborted.\n"
 

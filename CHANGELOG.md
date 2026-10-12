@@ -785,6 +785,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`agent reauth` and `box info` check codex credentials.** For a box with its own credentials, `agent reauth` said
   "no credentials found" for codex even when `~/.codex/auth.json` was there, and `box info` showed no credential
   age. Every agent now checks the first credential file its plugin declares for syncing.
+- **A confirmation that cannot be answered now aborts instead of crashing.** With stdin closed or unreadable,
+  a "Type 'yes'" question (`box rm --purge`, `workset rm`, `restore`, `box vault prune`, and the rest) printed a
+  traceback; it now aborts with rc 2 and changes nothing.
 - **The tweakcc patch container runs tweakcc** (entrypoint, keep-id user, config dir, `--yes`); `baseline verify` no
   longer reports every executable missing on a rig. tweakcc 4.4.0 still cannot patch claude 2.1.296 (runs unpatched).
 - **`workset disconnect --remove-files` names a workspace it keeps behind a symlink loop.** When the workset's

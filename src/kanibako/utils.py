@@ -1,5 +1,5 @@
-"""Utility functions: cp_if_newer, confirm_prompt, deep_merge, utc_stamp, short_hash, container
-naming, the unless-gone filesystem probes, refuse_unreadable_file."""
+"""Utility functions: cp_if_newer, confirm_prompt, confirm_or_abort, deep_merge, utc_stamp, short_hash,
+container naming, the unless-gone filesystem probes, refuse_unreadable_file."""
 
 from __future__ import annotations
 
@@ -42,11 +42,14 @@ def cp_if_newer(src: str | os.PathLike, dst: str | os.PathLike) -> bool:
 
 
 def confirm_prompt(message: str) -> None:
-    """Print *message*, read a line, raise UserCanceled unless it is 'yes'."""
+    """Print *message*, read a line, raise UserCanceled unless it is 'yes'.
+
+    A question that cannot be answered (no stdin, a closed or unreadable one) is a "no".
+    """
     print(message, end="", flush=True)
     try:
         response = input()
-    except (EOFError, KeyboardInterrupt):
+    except (EOFError, KeyboardInterrupt, RuntimeError, OSError, ValueError):
         print()
         raise UserCanceled("Aborted.")
     if response.strip() != "yes":

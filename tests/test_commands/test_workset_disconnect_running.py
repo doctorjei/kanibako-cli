@@ -432,6 +432,17 @@ class TestTheQuestionGatesTheRemoval:
         assert _members(std, ws) == ["bar", "baz"]
         assert (ws.vault_rw_dir / "bar" / "data.txt").is_file()
 
+    def test_an_unanswerable_question_removes_nothing(self, world, monkeypatch, capsys):
+        std, ws, _log = world
+
+        def _lost():
+            raise RuntimeError("lost sys.stdin")
+        monkeypatch.setattr("builtins.input", _lost)
+        assert _door("workset", "disconnect", "nws", "bar", "--remove-files") == 2
+        assert capsys.readouterr().out.endswith("Type 'yes' to confirm: \nAborted.\n")
+        assert _members(std, ws) == ["bar", "baz"]
+        assert (ws.vault_rw_dir / "bar" / "data.txt").is_file()
+
     def test_force_never_asks(self, world, monkeypatch):
         std, ws, _log = world
 
