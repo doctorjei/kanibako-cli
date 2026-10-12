@@ -7330,7 +7330,12 @@ kanibako box rm <path>
 kanibako box register <path>
 ```
 
-A persona whose name holds `-` must be created again under its `_` spelling.
+A persona whose name holds `-` makes `kanibako agent list` fail as a whole, with a refusal that names it, until you
+rename its folder to the `_` spelling; its settings stay:
+
+```
+mv <data>/agents/my-p+claude <data>/agents/my_p+claude
+```
 
 **What to do.** Rename each such box with the command its refusal prints, and recreate a workset whose name holds
 `-` or `.` under its `_` spelling, then move its boxes into it with `kanibako box convert <path> --workset
