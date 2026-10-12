@@ -38,7 +38,7 @@ from kanibako.errors import KanibakoError
 from kanibako.identifiers import find_identifier
 from kanibako.log import get_logger
 from kanibako.tree_copy import copy_tree_keeping_links
-from kanibako.utils import utc_stamp
+from kanibako.utils import UTC_STAMP_COMPACT, utc_stamp
 
 logger = get_logger("snapshots")
 
@@ -428,7 +428,7 @@ def _snapshot_entries(store: Path) -> list[tuple[str, str, int]]:
         if entry.is_dir() and not entry.is_symlink():
             # Directory snapshot (reflink or hardlink).
             try:
-                dt = datetime.strptime(name, "%Y%m%dT%H%M%SZ")
+                dt = datetime.strptime(name, UTC_STAMP_COMPACT)
                 ts_iso = dt.strftime("%Y-%m-%d %H:%M:%S UTC")
             except ValueError:
                 ts_iso = name

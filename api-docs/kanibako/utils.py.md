@@ -7,10 +7,11 @@ _Signatures only: no comments, no docstrings, no bodies._
 ## Variables
 
 ```
+UTC_STAMP_COMPACT = '%Y%m%dT%H%M%SZ'
+UTC_STAMP_SECONDS = '%Y-%m-%dT%H:%M:%SZ'
 WORKSET_SEGMENT_PRIMARY = 'primary'
 WORKSET_SEGMENT_STANDALONE = 'standalone'
 CONTAINER_NAME_PREFIX = 'kb-'
-_UTC_STAMP_FORMATS = {'compact': '%Y%m%dT%H%M%SZ', 'seconds': '%Y-%m-%dT%H:%M:%SZ'}
 _GITIGNORE_ENTRIES = ['box_data/']
 ```
 

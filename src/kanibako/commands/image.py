@@ -9,7 +9,6 @@ import shutil
 import sys
 import tarfile
 import tempfile
-from datetime import datetime, timezone
 from pathlib import Path
 
 from kanibako.settings.config import user_config_file, load_config
@@ -36,6 +35,7 @@ from kanibako.runtime.rig_registry import (
 from kanibako.runtime.rig_resolve import RigResolution, resolve_rig
 from kanibako.runtime.rig_source import derive_name, detect_source_kind, fetch_to_temp
 from kanibako.launch.shells import capture_image_shell
+from kanibako.utils import utc_stamp
 from kanibako.runtime.templates_image import (
     list_bundled_templates,
     read_template_checks,
@@ -292,7 +292,7 @@ def run_extend(args: argparse.Namespace) -> int:
         return 1
 
     # Write in-image metadata, then commit. Always clean up the container.
-    created = datetime.now(timezone.utc).isoformat()
+    created = utc_stamp("iso")
     foundation_source = res.source_ref or args.from_
     try:
         meta = RigMeta(

@@ -14,6 +14,7 @@ pytest_plugins = [
 import json
 import subprocess
 from contextlib import contextmanager
+from datetime import datetime, timezone
 from types import SimpleNamespace
 from unittest.mock import DEFAULT, MagicMock, patch
 
@@ -1278,3 +1279,21 @@ def _isolate_user_dirs(request, tmp_path_factory, monkeypatch):
         base.mkdir()
         monkeypatch.setenv(var, str(base))
     yield
+
+
+#: The instant ``frozen_utc`` pins ``kanibako.utils.utc_stamp`` to.
+FROZEN_UTC = datetime(2026, 10, 12, 4, 5, 6, 123456, tzinfo=timezone.utc)
+
+
+@pytest.fixture
+def frozen_utc(monkeypatch):
+    """Pin every ``utc_stamp`` to :data:`FROZEN_UTC`, so a test can compare exact stamps."""
+
+    class _Frozen(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            assert tz is timezone.utc
+            return FROZEN_UTC
+
+    monkeypatch.setattr("kanibako.utils.datetime", _Frozen)
+    return FROZEN_UTC

@@ -1266,6 +1266,23 @@ class TestRigExtend:
         assert reg["mydev"].image == "kanibako-rig-mydev"
         assert reg["mydev"].parent
 
+    def test_extend_stamps_created_as_isoformat(
+        self, tmp_home, config_file, credentials_dir, frozen_utc,
+    ):
+        """The in-image rig.yaml's ``created`` is ``isoformat()`` of the UTC instant."""
+        from kanibako.commands.image import run_extend
+
+        written = []
+        with patch("kanibako.commands.image.ContainerRuntime") as MockRT, patch(
+            "kanibako.commands.image.write_rig_meta",
+            side_effect=lambda meta, path: written.append(meta),
+        ):
+            MockRT.return_value = self._runtime()
+            assert run_extend(self._args(name="mydev", from_="jvm")) == 0
+
+        assert [meta.created for meta in written] == [frozen_utc.isoformat()]
+        assert written[0].created == "2026-10-12T04:05:06.123456+00:00"
+
     def test_extend_from_prepped_foundation_no_autoprep(
         self, tmp_home, config_file, credentials_dir, capsys,
     ):

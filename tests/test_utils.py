@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import os
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -13,6 +13,8 @@ import pytest
 
 from kanibako.errors import UserCanceled
 from kanibako.utils import (
+    UTC_STAMP_COMPACT,
+    UTC_STAMP_SECONDS,
     confirm_prompt,
     container_name_for,
     container_name_for_box_name,
@@ -137,28 +139,20 @@ class TestProjectHash:
 class TestUtcStamp:
     """Each kind is byte-identical to the inline expression its writer used before."""
 
-    _AT = datetime(2026, 10, 12, 4, 5, 6, 123456, tzinfo=timezone.utc)
-
-    @pytest.fixture(autouse=True)
-    def _frozen(self, monkeypatch):
-        at = self._AT
-
-        class _Frozen(datetime):
-            @classmethod
-            def now(cls, tz=None):
-                assert tz is timezone.utc
-                return at
-
-        monkeypatch.setattr("kanibako.utils.datetime", _Frozen)
-
-    def test_iso_is_isoformat(self):
+    def test_iso_is_isoformat(self, frozen_utc):
         assert utc_stamp("iso") == "2026-10-12T04:05:06.123456+00:00"
 
-    def test_compact_is_the_snapshot_name_shape(self):
+    def test_compact_is_the_snapshot_name_shape(self, frozen_utc):
         assert utc_stamp("compact") == "20261012T040506Z"
+        assert datetime.strptime(utc_stamp("compact"), UTC_STAMP_COMPACT) == (
+            frozen_utc.replace(microsecond=0, tzinfo=None)
+        )
 
-    def test_seconds_is_the_journal_shape(self):
+    def test_seconds_is_the_journal_shape(self, frozen_utc):
         assert utc_stamp("seconds") == "2026-10-12T04:05:06Z"
+        assert datetime.strptime(utc_stamp("seconds"), UTC_STAMP_SECONDS) == (
+            frozen_utc.replace(microsecond=0, tzinfo=None)
+        )
 
 
 # ---------------------------------------------------------------------------

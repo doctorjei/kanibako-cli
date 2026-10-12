@@ -70,9 +70,10 @@ def deep_merge(base: dict, override: dict) -> dict:
     return result
 
 
-#: ``compact`` and ``seconds`` stamps are read back by format (snapshot names, the journal's
-#: ``started_at``); ``iso`` is ``datetime.isoformat()``, with microseconds and ``+00:00``.
-_UTC_STAMP_FORMATS = {"compact": "%Y%m%dT%H%M%SZ", "seconds": "%Y-%m-%dT%H:%M:%SZ"}
+#: The ``compact`` and ``seconds`` stamp formats; a reader parses a stamp with the same name.
+#: ``iso`` is ``datetime.isoformat()``, with microseconds and ``+00:00``.
+UTC_STAMP_COMPACT = "%Y%m%dT%H%M%SZ"
+UTC_STAMP_SECONDS = "%Y-%m-%dT%H:%M:%SZ"
 
 
 def utc_stamp(kind: Literal["iso", "compact", "seconds"]) -> str:
@@ -80,7 +81,7 @@ def utc_stamp(kind: Literal["iso", "compact", "seconds"]) -> str:
     now = datetime.now(timezone.utc)
     if kind == "iso":
         return now.isoformat()
-    return now.strftime(_UTC_STAMP_FORMATS[kind])
+    return now.strftime(UTC_STAMP_COMPACT if kind == "compact" else UTC_STAMP_SECONDS)
 
 
 def short_hash(full_hash: str, length: int = 8) -> str:

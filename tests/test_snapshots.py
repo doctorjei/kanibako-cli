@@ -272,6 +272,17 @@ class TestDetectSnapshotStrategy:
 
 
 class TestListSnapshots:
+    def test_reader_parses_the_name_the_writer_stamps(self, tmp_path: Path, frozen_utc) -> None:
+        """A snapshot named at a frozen instant lists with that instant, to the second."""
+        vault_rw = tmp_path / "vault" / "share-rw"
+        _populate_rw(vault_rw)
+
+        create_snapshot(vault_rw, box_name="testbox")
+
+        (name, ts, _size), = list_snapshots(vault_rw, box_name="testbox")
+        assert name == "20261012T040506Z"
+        assert ts == "2026-10-12 04:05:06 UTC"
+
     def test_lists_snapshots(self, tmp_path: Path) -> None:
         vault_rw = tmp_path / "vault" / "share-rw"
         _populate_rw(vault_rw)
