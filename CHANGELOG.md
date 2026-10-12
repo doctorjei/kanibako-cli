@@ -827,6 +827,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **A `box move` or `box convert` of a default-workset box names why it could not free the box's name.** It
   said `Name '<name>' is already registered`; it now prints the error that stopped the name's release, such as
   `Permission denied`.
+- **`box helper stop` stops the helper's whole subtree.** A stopped helper's own helpers kept running, and the
+  director's `box helper list` did not show them. Each one now stops through the hub, deepest first, and is marked
+  stopped; one the hub refuses is reported, keeps its state, and makes the command exit non-zero.
 - **Boxes and their helpers read the in-box kanibako binds from one table.** A helper kept its own copy of the
   package and `kanibako` command binds; it now gets the box's set, which adds the secrets profile snippet
   `/etc/profile.d/kanibako-secrets.sh`, a no-op in a helper with no secret mounted.

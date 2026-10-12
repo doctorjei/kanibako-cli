@@ -76,7 +76,7 @@ def add_helper_subparsers(p: argparse.ArgumentParser) -> None:
     stop_p = ss.add_parser(
         "stop",
         help="Stop a helper instance",
-        description="Stop a running helper container.",
+        description="Stop a running helper container and every helper under it.",
     )
     stop_p.add_argument("number", type=int, help="Helper number to stop")
     stop_p.set_defaults(func=run_stop)
@@ -419,7 +419,9 @@ def _hub_stop(state: dict, helper_num: int) -> dict | None:
 
 
 def run_stop(args: argparse.Namespace) -> int:
-    """Stop a helper instance."""
+    """Stop a helper instance and its whole subtree (his 171-HC ruling): each
+    descendant stops through the hub, deepest first, and is marked stopped.  One the
+    hub refuses keeps its state, is reported, and makes the exit non-zero."""
     helpers_dir = _helpers_dir()
     helper_num = args.number
     helper_root = helpers_dir / str(helper_num)
@@ -428,21 +430,25 @@ def run_stop(args: argparse.Namespace) -> int:
         print(f"Helper {helper_num} does not exist.", file=sys.stderr)
         return 1
 
-    state = read_helper_state(helpers_dir, helper_num)
-    if state.get("status") == "stopped":
-        print(f"Helper {helper_num} is already stopped.")
-        return 0
+    rc = 0
+    for level, num in _subtree(helpers_dir, helper_num):
+        state = read_helper_state(level, num)
+        if state.get("status") == "stopped":
+            if num == helper_num and level == helpers_dir:
+                print(f"Helper {num} is already stopped.")
+            continue
 
-    refused = _hub_stop(state, helper_num)
-    if refused is not None:
-        print(f"Cannot stop helper {helper_num}: "
-              f"{refused.get('message', 'unknown error')}", file=sys.stderr)
-        return 1
+        refused = _hub_stop(state, num)
+        if refused is not None:
+            print(f"Cannot stop helper {num}: "
+                  f"{refused.get('message', 'unknown error')}", file=sys.stderr)
+            rc = 1
+            continue
 
-    state["status"] = "stopped"
-    write_helper_state(helpers_dir, helper_num, state)
-    print(f"Stopped helper {helper_num}.")
-    return 0
+        state["status"] = "stopped"
+        write_helper_state(level, num, state)
+        print(f"Stopped helper {num}.")
+    return rc
 
 
 def run_cleanup(args: argparse.Namespace) -> int:
@@ -477,22 +483,27 @@ def run_cleanup(args: argparse.Namespace) -> int:
     return 0
 
 
+def _subtree(helpers_dir: Path, helper_num: int) -> list[tuple[Path, int]]:
+    """A helper and all its descendants as ``(helpers dir, number)`` pairs, deepest
+    first: each helper's ``helpers/`` subtree comes before the helper itself."""
+    found = []
+    child_helpers_dir = helpers_dir / str(helper_num) / "helpers"
+    if child_helpers_dir.is_dir():
+        for child in _get_existing_helpers(child_helpers_dir):
+            found.extend(_subtree(child_helpers_dir, child))
+    found.append((helpers_dir, helper_num))
+    return found
+
+
 def _cascade_cleanup(helpers_dir: Path, helper_num: int) -> list[int]:
-    """Recursively clean up a helper and all its descendants.
+    """Clean up a helper and all its descendants, deepest first.
 
     Returns the list of all helper numbers that were removed.
     """
     removed = []
-    # Check if this helper has its own helpers/ subtree (children)
-    child_helpers_dir = helpers_dir / str(helper_num) / "helpers"
-    if child_helpers_dir.is_dir():
-        children = _get_existing_helpers(child_helpers_dir)
-        for child in children:
-            removed.extend(_cascade_cleanup(child_helpers_dir, child))
-
-    # Now clean up this helper itself
-    remove_helper_dirs(helpers_dir, helper_num)
-    removed.append(helper_num)
+    for level, num in _subtree(helpers_dir, helper_num):
+        remove_helper_dirs(level, num)
+        removed.append(num)
     return removed
 
 

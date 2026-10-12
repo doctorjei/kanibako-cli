@@ -482,6 +482,81 @@ class TestNotRunningStop:
         assert not (helpers_env / "helpers" / "1").exists()
 
 
+def _subtree(helpers: Path) -> tuple[Path, Path]:
+    """Helper 1 (spawned) with child 2 under it and grandchild 3 under that, both
+    running.  Returns the child's and the grandchild's helpers dirs."""
+    level2 = helpers / "1" / "helpers"
+    level3 = level2 / "2" / "helpers"
+    (level3 / "3").mkdir(parents=True)
+    write_helper_state(level2, 2, {"status": "running", "container_name": "kb-t-helper-2"})
+    write_helper_state(level3, 3, {"status": "running", "container_name": "kb-t-helper-3"})
+    return level2, level3
+
+
+class TestStopCascades:
+    """His 171-HC ruling (a): stopping a helper stops its whole subtree, deepest first,
+    each through the hub and each marked stopped."""
+
+    def test_stop_stops_every_descendant(self, helpers_env, capsys, monkeypatch):
+        run_spawn(_make_args(depth=None, breadth=None, model=None))
+        stops = _hub_replies_to_stop(monkeypatch, {"status": "ok"})
+        level2, level3 = _subtree(helpers_env / "helpers")
+        capsys.readouterr()
+
+        assert run_stop(_make_args(number=1)) == 0
+        assert [s["helper_num"] for s in stops] == [3, 2, 1]
+        assert [s["container_name"] for s in stops] == [
+            "kb-t-helper-3", "kb-t-helper-2", "kb-t-helper-1"]
+        assert read_helper_state(helpers_env / "helpers", 1)["status"] == "stopped"
+        assert read_helper_state(level2, 2)["status"] == "stopped"
+        assert read_helper_state(level3, 3)["status"] == "stopped"
+        out = capsys.readouterr().out
+        assert "Stopped helper 3." in out
+        assert "Stopped helper 2." in out
+        assert "Stopped helper 1." in out
+
+    def test_a_refused_descendant_keeps_its_state(self, helpers_env, capsys, monkeypatch):
+        run_spawn(_make_args(depth=None, breadth=None, model=None))
+        stops: list[dict] = []
+
+        def _hub(_path, request):
+            if request.get("action") == "spawn":
+                return {"status": "ok", "container_name": "kb-t-helper-1"}
+            stops.append(request)
+            if request["helper_num"] == 3:
+                return {"status": "error", "running": True,
+                        "message": "refusing to stop 'kb-t-helper-3'"}
+            return {"status": "ok"}
+
+        monkeypatch.setattr("kanibako.channels.helper_client.send_request", _numbering(_hub))
+        level2, level3 = _subtree(helpers_env / "helpers")
+        capsys.readouterr()
+
+        assert run_stop(_make_args(number=1)) == 1
+        assert [s["helper_num"] for s in stops] == [3, 2, 1]
+        out, err = capsys.readouterr()
+        assert "Cannot stop helper 3: refusing to stop 'kb-t-helper-3'" in err
+        assert read_helper_state(level3, 3)["status"] == "running"
+        assert read_helper_state(level2, 2)["status"] == "stopped"
+        assert read_helper_state(helpers_env / "helpers", 1)["status"] == "stopped"
+
+    def test_an_already_stopped_helper_still_stops_its_subtree(
+            self, helpers_env, capsys, monkeypatch):
+        run_spawn(_make_args(depth=None, breadth=None, model=None))
+        state = read_helper_state(helpers_env / "helpers", 1)
+        state["status"] = "stopped"
+        write_helper_state(helpers_env / "helpers", 1, state)
+        stops = _hub_replies_to_stop(monkeypatch, {"status": "ok"})
+        level2, level3 = _subtree(helpers_env / "helpers")
+        capsys.readouterr()
+
+        assert run_stop(_make_args(number=1)) == 0
+        assert [s["helper_num"] for s in stops] == [3, 2]
+        assert "Helper 1 is already stopped." in capsys.readouterr().out
+        assert read_helper_state(level2, 2)["status"] == "stopped"
+        assert read_helper_state(level3, 3)["status"] == "stopped"
+
+
 class TestCleanupOfAStoppedHelper:
     """``stopped`` can follow an unreachable hub, so cleanup still asks; a refusal
     stops it only when the runtime reports the container running."""
