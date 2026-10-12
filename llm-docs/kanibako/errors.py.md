@@ -1,9 +1,9 @@
 # The Error Hierarchy — one base, one clean exit
 
-Fifteen exception classes, almost all of them bare subclasses. The file is small and the code in it
-is trivial, which is exactly why it is worth reading carefully: **its fan-in is 289 non-test call
-sites, the second-highest in the tree**, so whatever these one-line descriptors say is what several
-hundred `raise` sites believe they are raising.
+Twenty-five exception classes, almost all of them bare subclasses. The file is small and the code in
+it is trivial, which is exactly why it is worth reading carefully: **199 `raise` statements in `src/`
+and `packages/` name one of these classes directly**, so whatever these one-line descriptors say is
+what those sites believe they are raising.
 
 The one thing the hierarchy actually *does* is decide how a failure LEAVES the program.
 `cli.main`'s top-level dispatch has exactly three arms:
@@ -66,7 +66,7 @@ contract and nothing in the file's shape objects.
 Configuration missing, malformed, or refused.
 
 ⚑ **This is broader than "a config file is bad", and the older descriptor said only that.** Of the
-20 `raise ConfigError` sites in `src/`, five are in `agent_ref.py` and refuse a malformed `--agent`
+39 `raise ConfigError` sites in `src/`, eight are in `agent_ref.py` and refuse a malformed `--agent`
 REF STRING — a value typed on the command line, with no file anywhere in the story. Its two
 subclasses below are likewise not file faults: one is a *declaration* collision, the other a *scope*
 violation. What the family really means is "the configuration the user expressed is not usable" —
@@ -202,8 +202,8 @@ it is a code decision for someone else.
 ```class GitError(KanibakoError):```
 Git check failed (uncommitted changes, unpushed commits, etc.).
 
-Exactly two raise sites, both in `git.py` (`:34`, `:74`), and they are exactly the two the descriptor
-names. Caught in `commands/archive.py` (`:80`, `:87`).
+Exactly two raise sites, `git.check_uncommitted` and `git.check_unpushed`, and they are exactly the
+two the descriptor names. Caught twice in `commands/archive._archive_one`.
 
 ```class WorksetError(KanibakoError):```
 Workset creation, loading, or manipulation failed.
@@ -238,8 +238,8 @@ than crashes.
 ```class SubjectConflictError(KanibakoError):```
 A positional box subject and `--box` named DIFFERENT targets (§Design 8).
 
-Raised in one place, `commands/flags.py:472`, under the general rule stated at `flags.py:452`:
-wherever a positional and `--box` coexist, both supplied with DIFFERENT strings is this error.
+Raised in one place, `commands/flags.resolve_subject_value`, under the general rule its docstring
+states: wherever a positional and `--box` coexist, both supplied with DIFFERENT strings is this error.
 
 ## The agent-resolution family
 

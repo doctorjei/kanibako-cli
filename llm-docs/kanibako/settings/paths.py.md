@@ -1007,9 +1007,8 @@ Detection order:
 4. **Default (name-based)** — one-pass scan of the PRIMARY per-workset `boxes:` membership
    (`_find_local_ancestor` → `load_primary_boxes`); deepest registered path that is an ancestor of
    *project_dir* wins. Requires `boxes/{name}/` to exist on disk.
-5. **Walk ancestors for on-disk markers** — a `box_data/` standalone marker, or an unregistered
-   NAMED workset root (a `registry.yaml` carrying a `workset:` identity table). Both are drop-in
-   *imported* on discovery (registered + an alert to stderr; a name collision REFUSES — see
+5. **Walk ancestors for on-disk markers** — at each level, a standalone marker (vetted, never
+   registered), then a workset skeleton (an unregistered one is IMPORTED — see
    `kanibako.project.import_reconcile`).
 6. **Default** — `primary` mode at the original *project_dir*.
 
@@ -1041,15 +1040,17 @@ dir.
 
 ### Step 5 — the ancestor walk
 
-On-disk metadata is authoritative; a discovered-but-unregistered entity is IMPORTED there (alert +
-register; collision → refuse) so a dropped-in tree is re-discovered. The NAMED check runs first at
-each level: a workset root may itself contain a `box_data/` dir, but its `registry.yaml`
-`workset:` identity is the more specific one. The NAMED arm imports the unregistered workset
-root (a `registry.yaml` carrying a `workset:` identity whose name is not in the registry) and
-then re-runs the standard workset check, which is what actually resolves it. The STANDALONE arm is
-presence-only since D4
-(the former `box.mode == "standalone"` field read is DROPPED); a bare `box_data/` directory is not
-enough — the root `workset.yaml` must be present too.
+At each level, first `project.workset.refuse_retired_workset_identity` refuses a v1.6/v1.7 root,
+which would otherwise import under its leaf name with its retired identity unread. Then:
+
+* **STANDALONE first** — the root `workset.yaml`'s own stored `registry: null`
+  (`_is_standalone_meta_dir`; a bare `box_data/` is not the marker). `import_reconcile.check_standalone`
+  vets it; a standalone box is never imported here.
+* **NAMED** — the whole workset skeleton (`project.workset.is_workset_skeleton`). An unregistered root
+  is imported (`import_reconcile.import_named_workset`, named for its leaf), then the standard
+  workset check resolves it.
+
+The walk stops at `$HOME` or the filesystem root.
 
 ```python
 def _check_workset(resolved_dir: Path, std: StandardPaths) -> DetectionResult | None
