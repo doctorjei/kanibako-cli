@@ -13928,3 +13928,35 @@ def test_print_supervisor_fallback_tail_and_silence(tmp_path, capsys):
     err = capsys.readouterr().err.splitlines()
     assert err[0] == f"kanibako: supervisor fallback log (~/{SUPERVISOR_FALLBACK_RELPATH}):"
     assert err[1:] == [f"line {i}" for i in range(10, 29)] + [SUPERVISOR_FALLBACK_WARNING]
+
+
+class TestStartAConnectedMemberThatRendersNoName:
+    """``start`` on a legacy-named member connected from outside its workset."""
+
+    def test_the_refusal_offers_box_convert(self, start_mocks, std, config, tmp_home, capsys):
+        """``box move`` refuses to relocate a connected member, so the cure renames it in
+        place."""
+        from kanibako.project.workset import add_project, create_workset
+        from kanibako.settings.paths import resolve_box_target
+
+        ws = create_workset("team", tmp_home / "worksets" / "team", std)
+        member = (tmp_home / "-member").resolve()
+        member.mkdir()
+        add_project(ws, "-member", member, std)
+        proj = resolve_box_target(std, config, str(member))
+        assert proj.mode is BoxMode.named and proj.name == "-member"
+        capsys.readouterr()
+
+        with start_mocks() as m:
+            m.load_std_paths.return_value = std
+            m.resolve_any_project.return_value = proj
+            assert _run_container(
+                project_dir=str(member), entrypoint=None, image_override=None,
+                new_session=False, safe_mode=False, resume_mode=False, extra_args=[],
+            ) == 1
+
+        err = capsys.readouterr().err
+        assert "has no container name" in err
+        assert err.rstrip().endswith(
+            f"kanibako box convert {member} --workset team --name _member"), err
+        m.runtime.run.assert_not_called()

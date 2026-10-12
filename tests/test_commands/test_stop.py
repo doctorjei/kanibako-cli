@@ -1266,6 +1266,26 @@ class TestStopABoxThatRendersNoName:
 
         assert live_runtime.method_calls == [], live_runtime.method_calls
 
+    def test_a_connected_member_is_offered_box_convert(
+        self, std, tmp_home, live_runtime, capsys,
+    ):
+        """A member connected from outside its workset is renamed in place: ``box move``
+        refuses to relocate it."""
+        from kanibako.project.workset import add_project, create_workset
+
+        ws = create_workset("team", tmp_home / "worksets" / "team", std)
+        member = (tmp_home / "-member").resolve()
+        member.mkdir()
+        add_project(ws, "-member", member, std)
+        capsys.readouterr()
+
+        assert TestStopABoxThatRendersNoName._drive(live_runtime, member) == 1
+
+        err = capsys.readouterr().err
+        assert "has no container name" in err
+        assert err.rstrip().endswith(
+            f"kanibako box convert {member} --workset team --name _member"), err
+
 
 class TestStopAllSkipsABoxThatRendersNoName:
     """``stop --all`` sweeps container NAMES, so the offender is named once and skipped."""
