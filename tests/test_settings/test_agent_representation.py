@@ -4,11 +4,11 @@ Covers the brief's §4 checklist: each origin selector (LAUNCHER/INSTALL_DIR/
 BINARY/LITERAL) resolves the RIGHT host_src from a fixture ``AgentInstall``;
 ro vs rw placement by ``binding.ro``; ``box_dest`` carried VERBATIM (with the
 descriptor-loader's ``$GUEST_HOME`` handling — already expanded at load); a
-LITERAL-origin raw expr stays raw (§6a); the ``agent.<name>`` key path under the
-descriptor's OWN agent name (the §2d ``agent.<agent>.*`` form — NOT a bare
-``agent`` token, §0; S27); the None-origin OMIT rule (S27); descriptor order
-preserved; PURITY (a fixture install whose paths do NOT exist still represents
-them — no ``Path.exists()`` / no I/O).
+LITERAL-origin raw expr stays raw (spec §0 "Files store entries UNRESOLVED"); the
+``agent.<name>`` key path under the descriptor's OWN agent name (the §2d
+``agent.<agent>.*`` form — NOT a bare ``agent`` token, §0; S27); the None-origin OMIT
+rule (S27); descriptor order preserved; PURITY (a fixture install whose paths do NOT
+exist still represents them — no ``Path.exists()`` / no I/O).
 
 All KeyStore access uses the UNBOUND ``dict.<method>(store, …)`` form (S3) so a
 binding key named ``get``/``items`` could never shadow a method.
@@ -240,7 +240,8 @@ def test_box_dest_carried_verbatim() -> None:
 
 
 def test_literal_origin_raw_box_dest_stays_raw() -> None:
-    # A raw @/$XDG/~ box_dest (a LITERAL-origin expr) is NOT expanded here (§6a).
+    # A raw @/$XDG/~ box_dest (a LITERAL-origin expr) is NOT expanded here (spec §0 "Files
+    # store entries UNRESOLVED").
     d = _descriptor(
         _binding(
             key="lit",

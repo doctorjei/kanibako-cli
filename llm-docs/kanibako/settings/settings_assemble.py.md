@@ -37,7 +37,7 @@ Provenance: block 2a of the KeyStore implementation.
   *(The source used to phrase this as "reads NO `machine_config_path()`"; that function no longer
   exists anywhere in the tree, so the symbol name was dropped and the substance kept.)*
 * **`~/canon/notebook/archives/resources/keystore-2026-06/keystore-design.md`** (archived at `~/canon/notebook/archives/resources/keystore-2026-06/`) §2 (storage —
-  partials are `KeyStore`s, binds are `Bind`); §6a (files store UNRESOLVED — refs stay raw); §3
+  partials are `KeyStore`s, binds are `Bind`); §3
   (`None` semantics — the per-entry reset the merge classifies as an OMIT).
   ⚑ Cite spec §2, not design §4, for the bracket: design §4 still writes it with a 7th `required`
   tier, which S14 and spec §2 cut.

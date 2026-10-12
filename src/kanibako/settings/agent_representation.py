@@ -7,8 +7,9 @@ parallel descriptor mount route.
 
 ⚑ PURE, and each half is load-bearing: no filesystem access (no existence check —
 the ``AGENT_CRITICAL`` must-exist safe-fail is a CONSUMER concern, S26), no override
-application (``override=""``, S26), no ``@``/``$XDG``/``~`` expansion (§6a), and no
-canonicalization of a host source (R-11). Only ``box_dest`` is normalized.
+application (``override=""``, S26), no ``@``/``$XDG``/``~`` expansion (spec §0 "Files store
+entries UNRESOLVED"), and no canonicalization of a host source (R-11). Only ``box_dest`` is
+normalized.
 
 Authority: spec ``settings-keyspace-1.8.0.md`` §2d (the ONLY agent key form; §0 forbids a
 bare ``agent.<key>``) / §2a. Representation rules, the None-origin OMIT contract (S27) and

@@ -33,11 +33,12 @@ below for why the active NODE name superseded it.
   the `AGENT_CRITICAL` must-exist safe-fail is a CONSUMER concern (the block-7b mount/reconcile
   step), not representation. Feed it a fixture install whose paths do not exist and it still
   represents them.
-* **No expansion (§6a / spec §0).** `@`-refs / `$XDG` / `~` are left RAW — expansion is block 3.
+* **No expansion (spec §0 "Files store entries UNRESOLVED").** `@`-refs / `$XDG` / `~` are
+  left RAW — expansion is block 3.
   `box_dest` is carried VERBATIM: the descriptor loader
   (`kanibako.settings.agent_defaults._build_binding`) has ALREADY expanded the `$GUEST_HOME` box
   constant at load, so the `Binding` this module receives is post-expansion; re-expanding would be
-  wrong. A LITERAL-origin raw `@`/`$XDG`/`~` `box_dest` therefore stays raw for free (§6a).
+  wrong. A LITERAL-origin raw `@`/`$XDG`/`~` `box_dest` therefore stays raw for free.
 * **Build ALONGSIDE.** Nothing here was wired into the launch path when it was written; block 7b
   swaps `descriptor_mounts` onto this representation. `targets/assembly.py` /
   `settings/agent_defaults.py` / `commands/start.py` were UNTOUCHED by 7a.
@@ -92,7 +93,8 @@ no `literal_src`, or a detection field the install left unset — the entry is *
 
 This mirrors the AGENT best-effort skip in `~kanibako.targets.assembly.descriptor_mounts` and keeps
 the tier-2 typed accessor honest: `bindings` exposes `Mapping[str, BindEntry]` (NOT
-`BindEntry | None`) ONLY because build omits absent/None binds (design §5/§6e). Emitting a
+`BindEntry | None`) ONLY because build omits absent/None binds (design §5; spec §2a
+"PER-ENTRY CASCADE MERGE"). Emitting a
 `None`-host bind would be a lie a consumer crashes on.
 
 ## Rooting: the ACTIVE node, never the harness (Block E fix 2a)
@@ -229,6 +231,7 @@ re-root / nothing to shim", never as a parse failure.
 ## Authority
 
 Spec `~/canon/workbook/specs/settings-keyspace-1.8.0.md` §2d (`agent.<agent>.bindings.{ro,rw}.<key>` — the ONLY agent key
-form; §0 forbids a bare `agent.<key>`) and §2a (binding REPRESENTATION);
-`~/vault/rw/keystore-design.md` §2 (binds are structured) and §6a (raw refs). SEAMS
-S1/S2/S3/S7/S8/S9 + S26/S27.
+form; §0 forbids a bare `agent.<key>`) and §2a (binding REPRESENTATION), §0 "Files store
+entries UNRESOLVED" (raw refs). Historical (NOT AUTHORITY):
+`~/canon/notebook/archives/resources/keystore-2026-06/keystore-design.md` §2 (binds are
+structured). SEAMS S1/S2/S3/S7/S8/S9 + S26/S27.

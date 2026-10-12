@@ -15,15 +15,16 @@ The FILE still stores the RAW, unresolved form. Resolution happens for the CHECK
 
 ## Authority
 
-* `~/vault/rw/keystore-design.md` §6d (`config set` + B4 + B5 — PRIMARY), §2 / §6a (files store
-  UNRESOLVED).
+* Spec §2a "VALIDATION at set-time" (B5 — PRIMARY). Historical (NOT AUTHORITY):
+  `~/canon/notebook/archives/resources/keystore-2026-06/keystore-design.md` §6d (B4, the
+  no-repoint-warning ruling, which no live clause restates).
 * Spec `~/canon/workbook/specs/settings-keyspace-1.8.0.md` §2a (the config-set block: source-only, key-must-exist, value
   types), §0 (files store UNRESOLVED).
 * Seams: `~/canon/workbook/plans/keystore-blocks/SEAMS.md`.
 
 ## The B5 severity split
 
-Design §6d, ratified by Jei 2026-06-27, as it stands with the category arm gone:
+Spec §2a "VALIDATION at set-time" (B5, ratified by Jei 2026-06-27), plus B4 (see Authority):
 
 * **Hard ERROR, refuse to write** — do not poison the file. Three cases: malformed `$` / `@` token
   syntax; a type mismatch for a typed scalar key; a dangling reference (an `@`-ref to a
@@ -114,8 +115,9 @@ single `message` field, the human-readable reason, and means `config set` must R
 ## `scan_tokens` — the shared parse grammar
 
 Scans a value for `@`-ref and `$VAR` token NAMES and returns `(ref_names, var_names)`, WITHOUT
-resolving anything (design §6d: validate references for well-formedness, never expand to a
-literal). A malformed `$` / `@` token raises `ValueError`, which the caller maps to an `Error`.
+resolving anything (spec §2a "VALIDATION at set-time": resolution is for the check only and the
+file keeps the RAW form; resolving is the E3 probe's job, not this scanner's). A malformed `$` /
+`@` token raises `ValueError`, which the caller maps to an `Error`.
 
 It mirrors `settings_resolve.expand_expr`'s scanner EXACTLY — the same escape rule, and BOTH token
 families through the scanner's own parsers, called rather than re-derived:
@@ -173,7 +175,7 @@ What was cut as duplication rather than relocated, with its surviving carrier:
   `validate_config_set` docstring bullet, and the step-2 inline comment. One carrier, here.
 * "files store UNRESOLVED" (§0) appeared five times in the source. It survives here, plus once in
   the module docstring.
-* The `~/vault/rw/keystore-design.md` §6d citation and the `SEAMS.md` S24/S25 notes were in both
+* The archived keystore design's §6d citation and the `SEAMS.md` S24/S25 notes were in both
   the docstring body and the two trailing `Authority` / `Seams realized here` sections.
 
 Kept in source under the keep test, because deleting each lets a future edit break something at
