@@ -1438,6 +1438,23 @@ def _validate(
         owning_ws_root = target_ws.root.resolve()
     _refuse_foreign_workset_landing(std, landing, owning_ws_root)
 
+    # --- keyspace § 0: an in-place convert into a workset whose workspace is ANOTHER
+    #     standalone box's root (or a link to one) absorbs that box, as `workset connect
+    #     --force` does; refused unless --force. ---
+    if (target_mode == BoxMode.named and not relocating and not spec.records_only
+            and not force):
+        from kanibako.launch import box_resolve
+        marked = _resolved_unless_loop(landing)
+        own_root = (_resolved_unless_loop(state.metadata_path)
+                    if state.mode is BoxMode.standalone else None)
+        if marked != own_root and box_resolve.stores_standalone_registry_null(marked):
+            raise ProjectError(
+                f"Refusing to convert '{state.name}': its workspace {landing} is the root "
+                f"of another standalone box ({marked}), and the convert would absorb that "
+                "box into the workset. Re-run with --force to absorb it anyway, or choose "
+                "another workspace."
+            )
+
     # --- an in-tree landing needs a workspace dir: a null ``workset.workspaces`` has none
     #     (Q96).  Refused HERE, before step 2 moves a tree or a ws->ws source releases. ---
     if target_mode == BoxMode.named and target_ws is not None:

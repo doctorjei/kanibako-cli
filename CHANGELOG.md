@@ -819,10 +819,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Boxes and their helpers read the in-box kanibako binds from one table.** A helper kept its own copy of the
   package and `kanibako` command binds; it now gets the box's set, which adds the secrets profile snippet
   `/etc/profile.d/kanibako-secrets.sh`, a no-op in a helper with no secret mounted.
-- **`workset connect` refuses a link to a standalone box's root, even with `--force`.** A forced connect there
-  dropped the standalone's registry row while the member recorded the link, so the box was registered nowhere.
-  Connecting the root itself with `--force` still absorbs the box. A connect inside another workset's member now
-  names that member and its path, not "already connected".
+- **`workset connect --force` absorbs a standalone box reached through a link or a linked directory.** The
+  box's registry row moves to the workset, and the member records the root that row names, so the root still
+  resolves to the box. Before, through a link, the row was dropped and the member recorded at the link, so the
+  root resolved to no box; and a box registered through a linked directory kept its row beside the new member.
+  Without `--force`, the connect is refused and the message names `--force`, as at the root's own path.
+- **`box convert --workset` refuses, unless `--force`, a box whose workspace is another standalone box's root.**
+  The convert absorbed that box and dropped its registry row, without asking.
+- **A `workset connect` inside another workset's member names that member and its path,** not "already
+  connected".
 - **Every `$HOME` guard knows `$HOME` by its spelling and by its target.** Starting in a new directory that is a
   link to `$HOME`, or at `$HOME` when `$HOME` is itself a link, no longer creates a project there. On Python 3.11,
   registering a workset or box name at a symlink loop, and `box rm --purge` of a deregistered box whose recorded

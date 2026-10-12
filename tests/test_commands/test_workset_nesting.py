@@ -1,9 +1,10 @@
 """``workset connect`` onto another box's tree (keyspace § 0 "Per-owner resources").
 
-"Except for identical workspaces and a standalone root link, refusal may be overridden via
---force": a link to a standalone root is refused whatever the flag.  Measured before the
-fix: ``connect --force`` onto the link returned 0 and dropped the standalone's registry row.
-The absorb at the root's own path stays allowed under --force.
+A standalone root, by its path, a link, or a linked parent, is another box's: connecting
+it is refused unless --force, and --force absorbs that box.  An absorb moves the box's
+registry row (one registration) and records the member at the root the row names, so the
+root still resolves to the box.  Measured before the fix: through a link, the row was
+dropped and the member recorded at the link, so the real root resolved to no box.
 """
 
 from __future__ import annotations
@@ -50,8 +51,8 @@ def env(config_file, credentials_dir, tmp_home, monkeypatch):
     return std, area
 
 
-def _standalone(std, area: Path, capsys) -> tuple[Path, str]:
-    root = area / "XS"
+def _standalone(std, area: Path, capsys, root: Path | None = None) -> tuple[Path, str]:
+    root = root or area / "XS"
     assert run_create(build_parser().parse_args(
         ["box", "create", "--standalone", "--register", str(root)])) == 0
     capsys.readouterr()
@@ -60,31 +61,54 @@ def _standalone(std, area: Path, capsys) -> tuple[Path, str]:
     return root, name
 
 
-class TestConnectStandaloneRootLink:
-    @pytest.mark.parametrize("force", [False, True])
-    def test_link_to_a_standalone_root_is_refused_whatever_the_flag(
-            self, env, capsys, force):
+def _owner(std, path: Path) -> str | None:
+    from kanibako.launch import box_resolve
+    owned = box_resolve.find_connected_external_box(path, std)
+    return None if owned is None else f"{owned.workset_name}/{owned.box_name}"
+
+
+def _assert_absorbed(std, name: str, root: Path) -> None:
+    """One registration: the row moved, the member records *root*, and *root* resolves."""
+    assert name not in registry_store.load_standalone(std.registry)
+    assert _members(std, "wn").get("m") == str(root)
+    assert _owner(std, root) == "wn/m"
+
+
+class TestConnectAStandaloneRoot:
+    """Its own path, a link to it, or a path through a linked parent: one rule."""
+
+    @staticmethod
+    def _reach(area: Path, root: Path, how: str) -> Path:
+        if how == "path":
+            return root
+        if how == "link":
+            (area / "rlnk").symlink_to(root)
+            return area / "rlnk"
+        (area / "lnk").symlink_to(root.parent)
+        return area / "lnk" / root.name
+
+    @pytest.mark.parametrize("how", ["path", "link", "parent"])
+    def test_refused_without_force_naming_it(self, env, capsys, how):
         std, area = env
         root, name = _standalone(std, area, capsys)
         rows = registry_store.load_standalone(std.registry)
-        assert rows.get(name) == str(root)
-        link = area / "rlnk"
-        link.symlink_to(root)
+        source = self._reach(area, root, how)
 
-        assert _connect("wn", link, "m", force=force) == 1
+        assert _connect("wn", source, "m", force=False) == 1
         err = capsys.readouterr().err
-        assert (f"Cannot connect '{link}': it is a link to the root of standalone box "
-                f"'{name}' ({root}).") in err, err
-        assert "no flag overrides this" in err
-        assert registry_store.load_standalone(std.registry) == rows  # the row survives
+        assert f"Cannot connect '{source}'" in err, err
+        assert "it is a standalone box" in err and "Re-run with --force" in err, err
+        assert registry_store.load_standalone(std.registry) == rows
         assert "m" not in _members(std, "wn")
 
-    def test_absorb_at_the_roots_own_path_still_works(self, env, capsys):
+    @pytest.mark.parametrize("how", ["path", "link", "parent"])
+    def test_force_absorbs_it_once(self, env, capsys, how):
         std, area = env
         root, name = _standalone(std, area, capsys)
-        assert _connect("wn", root, "m", force=True) == 0, capsys.readouterr().err
-        assert _members(std, "wn").get("m") == str(root)
-        assert name not in registry_store.load_standalone(std.registry)
+        source = self._reach(area, root, how)
+
+        assert _connect("wn", source, "m", force=True) == 0, capsys.readouterr().err
+        _assert_absorbed(std, name, root)
 
 
 class TestConnectInsideAMember:
@@ -112,3 +136,76 @@ class TestConnectInsideAMember:
         assert _connect("wn", ext, "m", force=True) == 1
         assert ("already connected as project 'XN' in workset 'other'"
                 in capsys.readouterr().err)
+
+
+class TestConnectRootRegisteredThroughALink:
+    """[R188]: a root is its path as given.  A root registered through a link is that box:
+    a forced connect at that spelling absorbs it once, its row moved, never kept beside."""
+
+    def test_root_registered_at_a_link_absorbs_once(self, env, capsys):
+        std, area = env
+        (area / "real").mkdir()
+        link = area / "rlnk"
+        link.symlink_to(area / "real")
+        _root, name = _standalone(std, area, capsys, root=link)
+
+        assert _connect("wn", link, "m", force=True) == 0, capsys.readouterr().err
+        _assert_absorbed(std, name, link)
+
+    def test_root_registered_under_a_linked_parent_absorbs_once(self, env, capsys):
+        std, area = env
+        (area / "real_parent").mkdir()
+        (area / "r").symlink_to(area / "real_parent")
+        _root, name = _standalone(std, area, capsys, root=area / "r" / "XS")
+
+        assert _connect("wn", area / "r" / "XS", "m", force=True) == 0, capsys.readouterr().err
+        _assert_absorbed(std, name, area / "r" / "XS")
+
+
+class TestConvertOntoAStandaloneRootLink:
+    """``convert --workset`` reaches the same absorb (``_to_workset`` → ``add_project``,
+    ``force=True``): a standalone whose workspace is a link to ANOTHER standalone's root
+    absorbs that box, so it is refused unless --force."""
+
+    @staticmethod
+    def _source_on_link(std, area: Path, capsys) -> tuple[Path, Path, str]:
+        from kanibako.settings.config_io import dump_doc, load_doc
+        xs_root, xs_name = _standalone(std, area, capsys)
+        wlnk = area / "wlnk"
+        wlnk.symlink_to(xs_root)
+        src = area / "S"
+        assert run_create(build_parser().parse_args(
+            ["box", "create", "--standalone", "--register", str(src)])) == 0
+        capsys.readouterr()
+        meta = src / "workset.yaml"
+        doc = load_doc(meta) or {}
+        doc.setdefault("workset", {})["workspaces"] = str(wlnk)
+        dump_doc(meta, doc)
+        return src, xs_root, xs_name
+
+    @staticmethod
+    def _convert(src: Path, *, force: bool) -> int:
+        from kanibako.commands.box._lifecycle import run_convert
+        return run_convert(argparse.Namespace(
+            old=str(src), force=force, to_default=False, to_standalone=False,
+            to_workset="wn", move=None, name="m"))
+
+    def test_refused_without_force(self, env, capsys):
+        std, area = env
+        src, xs_root, _xs_name = self._source_on_link(std, area, capsys)
+        rows = registry_store.load_standalone(std.registry)
+
+        assert self._convert(src, force=False) == 1
+        err = capsys.readouterr().err
+        assert (f"its workspace {area / 'wlnk'} is the root of another standalone box "
+                f"({xs_root})") in err, err
+        assert "Re-run with --force" in err
+        assert registry_store.load_standalone(std.registry) == rows
+        assert "m" not in _members(std, "wn")
+
+    def test_force_absorbs_once(self, env, capsys):
+        std, area = env
+        src, xs_root, xs_name = self._source_on_link(std, area, capsys)
+
+        assert self._convert(src, force=True) == 0, capsys.readouterr().err
+        _assert_absorbed(std, xs_name, xs_root)

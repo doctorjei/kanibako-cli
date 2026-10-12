@@ -2076,31 +2076,21 @@ def refuse_existing_box(source: Path, std: StandardPaths, *, force: bool = False
     """Raise ``WorksetError`` when connecting *source* would absorb a standalone box or
     re-register a box another workset already connects there (no write).
 
-    Keyspace § 0: a link to a standalone root is refused whatever the flag.  A forced
-    absorb drops the root's registry row while the member records the link, so the box
-    would be left registered nowhere.
+    Keyspace § 0: a standalone root, by its path, a link, or a linked parent, is another
+    box's.  Connecting it overwrites no file, so it is refused unless --force, and with
+    --force ``add_project`` absorbs the box.
     """
     from kanibako.launch import box_resolve
-    from kanibako.project import registry_store
 
     resolved_source = source.resolve()
-    # ⚑ The LEAF only, as ``standalone_identity_holder`` reads it: a linked ancestor
-    # spells the root and the source alike.
-    if (registry_store._leaf_is_link(str(source))
-            and box_resolve.stores_standalone_registry_null(resolved_source)):
-        held = registry_store.standalone_name_for_same_dir(std.registry, resolved_source)
-        who = f"standalone box '{held}'" if held else "an unregistered standalone box"
-        raise WorksetError(
-            f"Cannot connect '{source}': it is a link to the root of {who} "
-            f"({resolved_source}). A connect is not a takeover, and no flag overrides "
-            f"this. Connect the root itself with --force to absorb that box."
-        )
     # ⚑ An in-place standalone MARKER is the box's self-declaration; connecting it would
     # be a silent "steal" + dual registration.  Refused, nothing is written, so the box
     # stays standalone.
     if not force and box_resolve.stores_standalone_registry_null(resolved_source):
+        via = (f" (a link to {resolved_source})"
+               if Path(literal_path(source)) != resolved_source else "")
         raise WorksetError(
-            f"Cannot connect '{resolved_source}': it is a standalone box "
+            f"Cannot connect '{literal_path(source)}'{via}: it is a standalone box "
             "(in-place marker present). Connecting it would absorb a box "
             "that declares itself standalone. Re-run with --force to connect "
             "it anyway (it becomes a workset box), or convert it explicitly "
@@ -2193,6 +2183,24 @@ def add_project(
 
         refuse_existing_box(literal_source, std, force=force)
 
+    # ⚑ A --force absorb records the box where it is registered ([R188]: the row as given
+    # first), so its root still resolves to it; a link or a linked parent reaching it
+    # names the same box.  An unregistered box is recorded as given.
+    absorbed: tuple[str, str] | None = None
+    from kanibako.launch import box_resolve as _box_resolve
+
+    if (std is not None and is_external and force
+            and _box_resolve.stores_standalone_registry_null(resolved_source)):
+        from kanibako.project import registry_store
+
+        absorbed_name = (registry_store.standalone_name_for_root(std.registry, literal_source)
+                         or registry_store.standalone_name_for_root(std.registry,
+                                                                    resolved_source))
+        if absorbed_name is not None:
+            absorbed = (absorbed_name,
+                        registry_store.load_standalone(std.registry)[absorbed_name])
+            literal_source = Path(literal_path(absorbed[1]))
+
     # ⚑⚑ THE ONE RECORDED PATH: an EXTERNAL connect records the source dir itself; an
     # in-tree member records ``workspaces/<name>``, which is the dir created below and
     # the only one it ever mounts.  Recording the caller's *source_path* for an in-tree
@@ -2248,34 +2256,21 @@ def add_project(
             # ⚑ --force absorb: MOVE the registration — a box lives in EXACTLY ONE
             # registry.  The in-place marker STAYS (intrinsic identity), so after a
             # disconnect the box is standalone again, but unregistered.
-            from kanibako.launch import box_resolve as _box_resolve
-
-            if force and _box_resolve.stores_standalone_registry_null(
-                resolved_source
-            ):
+            if absorbed is not None:
                 from kanibako.project import registry_store
 
-                std_name = registry_store.standalone_name_for_root(
-                    std.registry, resolved_source
-                )
-                if std_name is not None:
-                    dropped_name: str = std_name
-                    dropped_root = registry_store.load_standalone(std.registry)[
-                        dropped_name
-                    ]
-                    registry_store.unregister_standalone(
-                        std.registry, dropped_name
+                dropped_name, dropped_root = absorbed
+                registry_store.unregister_standalone(std.registry, dropped_name)
+
+                def _restore_standalone() -> None:
+                    registry_store.register_standalone(
+                        std.registry, dropped_name, Path(dropped_root)
                     )
 
-                    def _restore_standalone() -> None:
-                        registry_store.register_standalone(
-                            std.registry, dropped_name, Path(dropped_root)
-                        )
-
-                    if outer_row is None or not (
-                            find_identifier(dropped_name, (outer_row[0],)) is not None
-                            and dropped_root == outer_row[1]):
-                        unwind.push(_restore_standalone)
+                if outer_row is None or not (
+                        find_identifier(dropped_name, (outer_row[0],)) is not None
+                        and dropped_root == outer_row[1]):
+                    unwind.push(_restore_standalone)
         else:
             # Internal (or no std): a real workspace directory.
             ws_dir = recorded_workspace
