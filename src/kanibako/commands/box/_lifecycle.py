@@ -1038,15 +1038,23 @@ def _remap_dest_holder(
 
     # --- Refused unless --force: one tree inside or holding another. ---
     for tree in trees:
-        primary = next(((p, holder) for p in (tree, *tree.parents)
+        # As given, and resolved for what holds it: a tree reached through a link sits in
+        # the box its target is inside.  The resolved tree itself is not asked: a link to a
+        # workspace is a twin ([R188]).
+        resolved = _resolved_unless_loop(tree)
+        held_by = [tree, *tree.parents, *(() if resolved == tree else resolved.parents)]
+        primary = next(((p, holder) for p in dict.fromkeys(held_by)
                         if (holder := primary_at(p)) is not None
                         and not (state.mode is BoxMode.primary
                                  and _same_box_name(holder, state.name))), None)
         if primary is not None:
             return (f"inside the workspace of primary box '{primary[1]}' ({primary[0]}). "
                     + share, True)
-        owned = box_resolve.find_connected_external_box(tree, std)
-        if owned is not None and not own_member(owned):
+        owned = next((found for probe in ((tree,) if resolved == tree
+                                          else (tree, resolved.parent))
+                      if (found := box_resolve.find_connected_external_box(probe, std))
+                      is not None and not own_member(found)), None)
+        if owned is not None:
             return (f"inside the workspace of member '{owned.box_name}' of workset "
                     f"'{owned.workset_name}' ({owned.box_path}). " + share, True)
 

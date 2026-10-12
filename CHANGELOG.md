@@ -834,8 +834,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **A `workset connect` inside another workset's member names that member and its path,** not "already
   connected".
 - **`box move` and `box convert --move` refuse, unless `--force`, a destination inside another box's
-  workspace, root, or store,** as `create` and `remap` do. A link to one counts, and so does a standalone box's
-  store repointed outside its root, which `remap` and `create` now find too.
+  workspace, root, or store,** as `create` and `remap` do. All four now also refuse a path inside another box's
+  workspace reached through a link, and one inside a standalone box's store repointed outside its root. A link
+  to the workspace itself is still a twin.
 - **`box move` and `box convert --move` refuse a box whose tree holds another box, even with `--force`.** The
   other box's workspace, root, or workset root was copied along and deleted from where that box records it.
 - **`box move` and `box convert --move` refuse a destination inside the box's own store when the op moves or

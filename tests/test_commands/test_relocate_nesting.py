@@ -289,3 +289,45 @@ class TestVacatedRoot:
         rc = _relocate(verb, root, dest, force=False)
         assert rc == 0, capsys.readouterr().err
         assert (dest / ("workspace" if verb == "mv" else "") / "f.txt").read_text() == "data"
+
+
+class TestThroughALink:
+    """Footnote ¹: a destination reached through a link to another box's workspace is inside
+    it.  ``create`` and ``remap`` record the path as given ([R188]); the check resolves it."""
+
+    @staticmethod
+    def _held(area: Path, via: str) -> tuple[Path, str]:
+        if via == "xlnk":
+            return area / "xlnk", f"inside the workspace of primary box 'X' ({area / 'X'})"
+        (area / "nlnk").symlink_to(area / "XN")
+        return (area / "nlnk",
+                f"inside the workspace of member 'XN' of workset 'wn' ({area / 'XN'})")
+
+    @pytest.mark.parametrize("force", [False, True])
+    @pytest.mark.parametrize("via", ["xlnk", "nlnk"])
+    def test_create(self, env, capsys, via, force):
+        _std_paths, area = env
+        link, what = self._held(area, via)
+        dest = link / "sub"
+        rc = _create(*(["--force"] if force else []), "--name", "c", str(dest))
+        if force:
+            assert rc == 0, capsys.readouterr().err
+            return
+        assert rc == 1
+        err = capsys.readouterr().err
+        assert f"Cannot create a box at '{dest}': it is {what}. " + SHARE in err, err
+
+    @pytest.mark.parametrize("force", [False, True])
+    @pytest.mark.parametrize("via", ["xlnk", "nlnk"])
+    def test_remap(self, env, capsys, via, force):
+        _std_paths, area = env
+        link, what = self._held(area, via)
+        dest = link / "sub"
+        dest.mkdir()
+        rc = _run("remap", *(["--force"] if force else []), str(area / "s"), str(dest))
+        if force:
+            assert rc == 0, capsys.readouterr().err
+            return
+        assert rc == 1
+        err = capsys.readouterr().err
+        assert f"Cannot remap 's' onto '{dest}': it is {what}. " + SHARE in err, err
