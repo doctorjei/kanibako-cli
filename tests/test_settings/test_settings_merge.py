@@ -17,8 +17,10 @@ Covers the brief §4 checklist for the pure ``merge(levels) -> snapshot``:
   ``agent.*``);
 * purity — same input twice → equal output, inputs unmutated; refs stay RAW.
 
-The merge keys by NAME only (NO ``box_dest`` reconcile, §6g) and never expands a
-ref (block 3). Authority: design §6e / §3 / §6f / §4; spec §2 / §2a / §2c.
+The merge keys by NAME only (NO ``box_dest`` arbitration — system-design §
+"Collision arbitration") and never expands a ref (block 3). Authority: spec §2 /
+§2a ("PER-ENTRY CASCADE MERGE", "masks is a KEYED category") / §2c; archived
+design §3 / §4.
 """
 
 from __future__ import annotations
@@ -144,7 +146,7 @@ def test_falsy_empty_list_sets_and_wins() -> None:
 
 
 # --------------------------------------------------------------------------- #
-# Deep per-name union of bind categories (§6e — the headline behavior)         #
+# Deep per-name union of bind categories (spec §2a PER-ENTRY CASCADE MERGE)   #
 # --------------------------------------------------------------------------- #
 
 
@@ -332,7 +334,7 @@ def test_present_none_lone_subtree_category_omitted_scalar_kept() -> None:
 
 def test_present_none_masks_unmasked() -> None:
     # workset masks a path; box sets it to None → UNMASK (omitted). A sibling
-    # mask survives. masks rides the generic merge (§6f).
+    # mask survives. masks rides the generic merge (spec §2a, masks).
     box = KeyStore({"box": {"masks": {"/secret": None}}})
     ws = KeyStore({"box": {"masks": {"/secret": True, "/other": True}}})
     snap = merge([box, ws])

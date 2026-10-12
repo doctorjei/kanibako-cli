@@ -831,8 +831,9 @@ def pref_entry_keys(req: PrefRequest) -> tuple[str, ...]:
     answers both.
 
     ⚑ A DECLARED-``None`` destination is EXCLUDED. Present-``None`` is the
-    per-entry suppression spelling (§2h / §6e): it removes the entry rather than
-    installing one, so a surviving entry at that dest is somebody else's.
+    per-entry suppression spelling (spec §2h; spec §2a "PER-ENTRY CASCADE
+    MERGE"): it removes the entry rather than installing one, so a surviving
+    entry at that dest is somebody else's.
 
     ⚑ The terminal-category test gates on the KEYSPACE
     (:func:`is_terminal_category_key`), not on "the value happens to be a dict",

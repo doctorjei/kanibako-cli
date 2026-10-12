@@ -323,9 +323,9 @@ answers both: a request that does not declare the destination cannot be its orig
 that both declare it are separated by the same last-wins rule the overlays use.
 
 ⚑ A DECLARED-`None` destination is EXCLUDED. Present-`None` is the per-entry suppression spelling
-(§2h / §6e): it removes the entry rather than installing one, so a surviving entry at that dest is
-somebody else's. Erring this way costs at most a missing annotation; the other way prints a wrong
-file path.
+(spec §2h; spec §2a "PER-ENTRY CASCADE MERGE"): it removes the entry rather than installing one, so
+a surviving entry at that dest is somebody else's. Erring this way costs at most a missing
+annotation; the other way prints a wrong file path.
 
 ⚑ The terminal-category test gates on the KEYSPACE (`is_terminal_category_key`), not on "the value
 happens to be a dict" — only a terminal category's value is a dest-keyed map, and deriving the set

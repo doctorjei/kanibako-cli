@@ -9,9 +9,10 @@ OUT of scope (hard boundaries): ``@``-ref / ``$var`` / ``~`` expansion and cycle
 detection (refs stay RAW), cross-scope ``box_dest`` collision, typed views,
 ``config set``.
 
-Authority (design §6e / §3 / §6f / §4 / §6g; spec §2 / §2a / §2c), the seams
-S3 / S15 / S16, the cascade order and the full per-name case table:
-``llm-docs/kanibako/settings/settings_merge.py.md``.
+Authority (spec §2 / §2a "PER-ENTRY CASCADE MERGE" and "masks is a KEYED
+category" / §2c; system-design § "Collision arbitration"; archived design §3 /
+§4), the seams S3 / S15 / S16, the cascade order and the full per-name case
+table: ``llm-docs/kanibako/settings/settings_merge.py.md``.
 """
 
 from __future__ import annotations
@@ -82,9 +83,9 @@ def _merge_nodes(
         winning_val = setters[0][1]
 
         # ⚑ RECURSE on ANY subtree winner — not only when a LOWER setter is also a
-        # subtree (§6e). A lone subtree winner must recurse too, or the §3
-        # present-None type-split never reaches its leaves; the recursion is also
-        # what makes the node fresh (S15).
+        # subtree (spec §2a "PER-ENTRY CASCADE MERGE"). A lone subtree winner must
+        # recurse too, or the §3 present-None type-split never reaches its leaves;
+        # the recursion is also what makes the node fresh (S15).
         subtrees = [v for _lv, v in setters if isinstance(v, KeyStore)]
         if isinstance(winning_val, KeyStore):
             out[name] = _merge_nodes(

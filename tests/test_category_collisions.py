@@ -1508,8 +1508,9 @@ class TestPrefOriginEnrichment:
         assert _annotate_pref_origin(excinfo.value, prefs) is excinfo.value
 
     def test_a_SUPPRESSING_null_entry_is_never_an_origin(self, tmp_path):
-        """Present-``None`` at a dest REMOVES the entry (§2h / §6e); it installs
-        nothing. A surviving entry at that dest is somebody else's, so blaming
+        """Present-``None`` at a dest REMOVES the entry (spec §2h; spec §2a
+        "PER-ENTRY CASCADE MERGE"); it installs nothing. A surviving entry at
+        that dest is somebody else's, so blaming
         the suppression would point at the one line that was trying to get rid
         of it."""
         from pathlib import Path
@@ -1592,7 +1593,7 @@ class TestPrefOriginOnTheAdapterRaise:
         exc = SettingsError(
             "category agent.claude.common[~/plugins] is str, expected a "
             "BindEntry (common is dest-keyed: the map key is the destination; "
-            "present-None binds are omitted at build, §3/§6e)"
+            "present-None binds are omitted at build, spec §2a PER-ENTRY CASCADE MERGE)"
         )
         prefs = [PrefRequest(
             target="agent.claude.common",

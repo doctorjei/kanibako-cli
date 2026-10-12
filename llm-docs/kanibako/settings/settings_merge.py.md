@@ -21,22 +21,23 @@ path tier (`settings/paths.py`); it is the launch/settings cascade that no longe
 
 * NO `@`-ref / `$var` / `~` expansion and no cycle detection — that is
   `kanibako.settings.settings_expand`, and refs stay RAW through the merge.
-* NO cross-scope `box_dest` collision logic. That is the SEPARATE downstream pass (design §6g); the
-  merge keys by NAME only.
+* NO cross-scope `box_dest` collision logic. That is the SEPARATE downstream pass
+  (system-design § "Collision arbitration"); the merge keys by NAME only.
 * NO typed views (`kanibako.settings.settings_views`).
 * NO `config set` (`kanibako.settings.config_interface`).
 
 ## Authority
 
-* **`~/vault/rw/keystore-design.md` §6e (depth-sensitive merge — PRIMARY):** a per-NAME recursive
+* **Spec §2a "PER-ENTRY CASCADE MERGE" (PRIMARY):** a per-NAME recursive
   union of subtrees; a LEAF (scalar / `list` / `Bind`) is replaced WHOLE by the highest-precedence
   scope that SETS it. "Sets" is tested with the `__MISSING__` sentinel — NOT truthiness — at EVERY
   named leaf.
 * **Design §3** — the 3-state `None` model plus the present-`None` TERMINAL type-split.
-* **Design §6f** — `masks` rides the SAME generic dict-merge.
+* **Spec §2a "masks is a KEYED category"** — `masks` rides the SAME generic per-entry merge.
 * **Design §4** — cascade order. The cascade ends at `box`; the former `required` cap is CUT
   (2026-06-29f).
-* **Design §6g** — the merge keys by NAME, distinct from reconcile, which keys by `box_dest`.
+* **Spec §0 "Category collisions"** — the merge keys by NAME; collision arbitration keys on the
+  resolved `box_dest` (system-design § "Collision arbitration").
 * **Spec `~/canon/workbook/specs/settings-keyspace-1.8.0.md` §2** (cascade — ends at `box`) / **§2a** (the category list and
   per-name coexistence) / **§2c**.
 
@@ -105,13 +106,13 @@ empty snapshot.
 |---|---|
 | scalar leaf | KEEP `None` — the consumer applies its default |
 | bind / category leaf | OMIT — no mount (build-4 tier-2 honesty, design §5) |
-| `masks` leaf | OMIT — unmask that path (design §6f) |
+| `masks` leaf | OMIT — unmask that path (spec §2a "masks is a KEYED category") |
 | anything under the top-level `pref` table | KEEP verbatim, with NO classification at all |
 
 ### Why the recursion fires on ANY subtree winner
 
 `_merge_nodes` recurses whenever the winner is a subtree — ALWAYS, not only when a LOWER setter is
-also a subtree (design §6e). Three reasons, and each one alone is sufficient:
+also a subtree. Three reasons, and each one alone is sufficient:
 
 1. Recursing a LONE subtree winner is what carries the §3 present-`None` type-split into its leaves.
    A present-`None` category or `masks` leaf under a subtree that ONLY ONE level sets must still be
