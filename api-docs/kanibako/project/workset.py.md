@@ -96,8 +96,8 @@ def release_project(ws: Workset, name: str, *, keep_link: bool=False) -> Workset
 def remove_member_store(ws: Workset, name: str, *, bases: tuple[Path, ...] | None=None, keep: Collection[Path]=()) -> None
 def remove_project(ws: Workset, name: str, *, remove_files: bool=False, std: StandardPaths | None=None, keep: Collection[Path]=()) -> WorksetProject
 def member_workspace_leaf(ws: Workset, name: str) -> Path | None
-def _workspaces_null_file(workset_root: Path, *, early: EarlyScope) -> Path | None
 def _resolve_workset_dir(workset_root: Path, workset_settings: Mapping[str, Any] | None, leaf: str, key: str, *, early: EarlyScope, standalone: bool | None=None) -> Path | None
+def _workspaces_null_file(workset_root: Path, *, early: EarlyScope) -> Path | None
 def _is_role_folder(entry: Path, root: Path, leaf: str) -> bool
 def _users_own_repoint(root: Path, resolved: Path, doc: 'Mapping[str, Any] | None', key: str, leaf: str, *, early: EarlyScope) -> bool
 def _sha256_file(path: Path) -> str

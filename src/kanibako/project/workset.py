@@ -150,6 +150,25 @@ def load_workset_settings_doc(root: Path) -> Mapping[str, Any] | None:
     return load_doc(path)
 
 
+def _resolve_workset_dir(
+    workset_root: Path, workset_settings: Mapping[str, Any] | None, leaf: str, key: str,
+    *, early: EarlyScope, standalone: bool | None = None,
+) -> Path | None:
+    """Return the resolved ``workset.<key>`` dir (default ``<root>/<leaf>``).
+
+    ``None`` for a present ``<None>``.  *standalone* is passed to
+    :func:`resolve_workset_dir_key` as given.
+    """
+    repoint, where = early_repoint(workset_root, workset_settings, key, early=early)
+    if repoint is None:
+        return None
+    return resolve_workset_dir_key(
+        workset_root, repoint if isinstance(repoint, str) else None, leaf,
+        key=key, where=where, standalone=standalone,
+        workset_settings=workset_settings, early=early,
+    )
+
+
 def resolve_workset_workspaces(
     workset_root: Path, workset_settings: Mapping[str, Any] | None,
     *, standalone: bool = False, early: EarlyScope,
@@ -159,16 +178,9 @@ def resolve_workset_workspaces(
     ``None`` when ``workset.workspaces`` is a present ``<None>`` ([R177]): there is no
     workspaces dir, and the default leaf would be a path the user said does not exist.
     """
-    repoint, where = early_repoint(workset_root, workset_settings, _WORKSPACES_LEAF, early=early)
-    if repoint is None:
-        return None
-    return resolve_workset_dir_key(
-        workset_root, repoint if isinstance(repoint, str) else None,
-        _STANDALONE_WORKSPACE_LEAF if standalone else _WORKSPACES_LEAF,
-        key=_WORKSPACES_LEAF,
-        where=where, standalone=standalone,
-        workset_settings=workset_settings, early=early,
-    )
+    leaf = _STANDALONE_WORKSPACE_LEAF if standalone else _WORKSPACES_LEAF
+    return _resolve_workset_dir(workset_root, workset_settings, leaf, _WORKSPACES_LEAF,
+                                early=early, standalone=standalone)
 
 
 def resolve_workspaces_locator(
@@ -296,25 +308,6 @@ def resolve_workset_logs(
         repoint = f"@{_BOXES_REF}" if standalone else None
     return resolve_workset_dir_key(
         workset_root, repoint, _LOGS_LEAF, key=_LOGS_LEAF, where=where, standalone=standalone,
-        workset_settings=workset_settings, early=early,
-    )
-
-
-def _resolve_workset_dir(
-    workset_root: Path, workset_settings: Mapping[str, Any] | None, leaf: str, key: str,
-    *, early: EarlyScope, standalone: bool | None = None,
-) -> Path | None:
-    """Return the resolved ``workset.<key>`` dir (default ``<root>/<leaf>``).
-
-    ``None`` for a present ``<None>``.  *standalone* is passed to
-    :func:`resolve_workset_dir_key` as given.
-    """
-    repoint, where = early_repoint(workset_root, workset_settings, key, early=early)
-    if repoint is None:
-        return None
-    return resolve_workset_dir_key(
-        workset_root, repoint if isinstance(repoint, str) else None, leaf,
-        key=key, where=where, standalone=standalone,
         workset_settings=workset_settings, early=early,
     )
 
