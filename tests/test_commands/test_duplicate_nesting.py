@@ -93,10 +93,7 @@ PATH_SPACE = {
 VERBS = {"dp": ["--name", "n"], "dpS": ["--to", "standalone"]}
 
 
-# ``= hold`` with ``--to standalone`` is left out: the cross-mode route runs only the
-# unforceable arms before "already exists", which already refused it without --force.
-@pytest.mark.parametrize(("cell", "verb"), [
-    (cell, verb) for cell in FORCEABLE for verb in VERBS if (cell, verb) != ("= hold", "dpS")])
+@pytest.mark.parametrize(("cell", "verb"), [(cell, verb) for cell in FORCEABLE for verb in VERBS])
 def test_forceable_cell_needs_force(world, capsys, verb, cell):
     area, std, ws = world
     dest = FORCEABLE[cell](area, std, ws)
@@ -183,6 +180,24 @@ class TestOwnStore:
         err = capsys.readouterr().err
         assert "it is inside the source box's own store" in err, err
         assert not dest.exists()
+
+    @pytest.mark.parametrize("source", ["primary", "standalone"])
+    def test_existing_dir_in_own_store_never_offers_force(self, world, capsys, source):
+        """An existing landing in the store gets the ⁵ refusal, not E's "Use --force"."""
+        area, std, _ws = world
+        if source == "primary":
+            src, dest = area / "dupsrc", std.boxes / "dupsrc" / "x"
+        else:
+            src = area / "SS"
+            assert _create("--standalone", "--register", str(src)) == 0
+            capsys.readouterr()
+            dest = src / "box_data" / "x"
+        dest.mkdir(parents=True)
+        assert _dup("--to", "standalone", str(src), str(dest)) == 1
+        err = capsys.readouterr().err
+        assert "it is inside the source box's own store" in err, err
+        assert "Use --force" not in err, err
+        assert list(dest.iterdir()) == []
 
     def test_dp_into_its_sources_store_is_another_boxs_store(self, world, capsys):
         """To the copy, ``boxes/dupsrc`` is another box's store: R/f."""

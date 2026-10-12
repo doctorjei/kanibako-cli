@@ -290,9 +290,6 @@ def _run_duplicate_cross_mode(args: argparse.Namespace, std, config) -> int:
     if (rc := _refuse_nesting(std, new_path, to=to_mode, force=True)) is not None:
         return rc
 
-    if not args.bare and new_path.exists() and not args.force:
-        return _refuse_existing_destination(new_path)
-
     # A standalone leaf with no ASCII spelling is refused before --name and any write.
     if to_mode is BoxMode.standalone and (
             rc := _refuse_derived_destination(new_path)) is not None:
@@ -331,6 +328,9 @@ def _run_duplicate_cross_mode(args: argparse.Namespace, std, config) -> int:
         return rc
     if (rc := _refuse_source_tree(std, args, src_proj, new_path, to_mode)) is not None:
         return rc
+    # After the source's own store (unforceable), so --force is never offered as its cure.
+    if not args.bare and new_path.exists() and not args.force:
+        return _refuse_existing_destination(new_path)
 
     if _refuse_live_source(src_proj, src_proj.metadata_path, args.force):
         return 2
@@ -931,6 +931,8 @@ def _duplicate_from_workset(args, source_path, new_path, std, config) -> int:
     target_mode = BoxMode(args.to_mode)
     if (rc := _refuse_source_tree(std, args, src_proj, new_path, target_mode)) is not None:
         return rc
+    if not args.bare and new_path.exists() and not args.force:
+        return _refuse_existing_destination(new_path)
     if target_mode == BoxMode.primary and (
             refused := _refuse_primary_dup_name(args, std, new_path)) is not None:
         return refused
