@@ -1055,7 +1055,7 @@ kind = "code-patterns"
   # rename" and that "a finding here is correct behavior and must NOT be
   # exempted". The rename LANDED in `75f7da94`: the 5-member frozenset of path
   # segments in `settings_assemble.py` became `BIND_CATEGORY_TOKENS` (and lost
-  # its underscore, because `settings_merge.py` imports it across a module
+  # its underscore, because `settings_merge.py` then imported it across a module
   # boundary). The 6-member tuple of category key tails here kept the name.
   #
   # ⚑ SO THERE IS NO SPELLING TO UPDATE, and that is the measurement rather than
@@ -1065,10 +1065,10 @@ kind = "code-patterns"
   # defect being fixed rather than by the check being weakened.
   #
   # 🛑 `BIND_CATEGORY_TOKENS` is deliberately NOT added as an antipattern. It is
-  # now a distinct name for a distinct fact with its own home, and
-  # `settings_merge.py` names it four times as an IMPORT and its uses -- which
-  # is the correct behavior. Adding it would report four correct lines to make
-  # this entry fire, which is inventing a pattern rather than repairing one.
+  # now a distinct name for a distinct fact with its own home, and no `src`
+  # file outside `settings_assemble.py` names it. Adding it would report
+  # correct uses to make this entry fire, which is inventing a pattern rather
+  # than repairing one.
   #
   # ⚑ SILENCE CONFIRMED BY MEASUREMENT, not by reading. 2026-09-14 at
   # `75f7da94`: `kinemata -r canonical check` reports 6 bypasses across
@@ -1347,6 +1347,35 @@ kind = "code-patterns"
   home = ["src/kanibako/agent_ref.py"]
   note = "a ref that ADDRESSES the shell pseudo-agent parses through agent_ref.parse_agent_address"
 
+  # An unreadable path (EACCES, ELOOP, ...) is refused through one sentence
+  # builder, so every refusal carries the same cure. A hand-built
+  # `could not be read ({exc.strerror})` elsewhere is a second sentence.
+  [[registry.entry]]
+  id = "unreadable_path_error"
+  antipatterns = ['could not be read \(\{exc\.strerror\}\)']
+  home = ["src/kanibako/utils.py", "src/kanibako/settings/config_io.py"]
+  note = "an unreachable path is refused through utils.unreadable_path_error"
+
+  # ⚑ A PROXY, WIDER THAN THE DEFECT. The defect was a packaged-YAML loader
+  # that returned {} for a non-mapping document; matching is per line, so that
+  # two-line shape cannot be expressed. What can be is that YAML is parsed in
+  # these three files only, and `config_io` refuses a non-mapping.
+  [[registry.entry]]
+  id = "load_packaged_mapping"
+  antipatterns = ['\byaml\.(safe_)?load\(']
+  home = [
+    "src/kanibako/settings/config_io.py",
+    "packages/agent-goose/src/kanibako/plugins/goose/credentials.py",
+    "src/kinemata_views.py",
+  ]
+  note = "YAML is parsed in config_io (load_doc, load_packaged_mapping), which refuses a non-mapping"
+
+  [[registry.entry]]
+  id = "is_template_header"
+  antipatterns = ['kanibako-template\(-check\)', 'kanibako-template\[']
+  home = ["src/kanibako/runtime/templates_image.py"]
+  note = "one template-header regex: templates_image.is_template_header"
+
 # ---------------------------------------------------------------------------
 # FACT: the retired implicit-root-prepend mechanism exists nowhere in shipped
 # `.py`. AUTHORITY: spec §2a removed it; `scope_roots` and `_root_join` are the
@@ -1389,6 +1418,42 @@ only = [
   antipatterns = ['_root_join']
   home = []
   note = "the other half of the same retired mechanism"
+
+# ---------------------------------------------------------------------------
+# FACT: retired tokens and dead citations appear nowhere in code, its tests, or
+# the doc twins (`llm-docs/`, `api-docs/`).
+# AUTHORITY: MIGRATION.md and CHANGELOG.md are cited by heading, never by line
+# (PROJECT.md § Version); a migration cut removes its token from every carrier.
+# ⚑ `raw` because a citation or a retired token in a docstring or a doc twin is
+# the finding; the `code` mode would skip both. Root-level `.md` files are
+# outside `only`, so the ledgers themselves are not read. Both entries were
+# measured at ZERO sites when declared: inert by design until one comes back.
+[[registry]]
+name = "retired-text"
+kind = "code-patterns"
+match_mode = "raw"
+suffixes = [".py", ".md"]
+only = [
+  "/src/",
+  "/packages/agent-claude/src/",
+  "/packages/agent-codex/src/",
+  "/packages/agent-goose/src/",
+  "/llm-docs/",
+  "/api-docs/",
+  "/tests/",
+]
+
+  [[registry.entry]]
+  id = "ledger-line-cite"
+  antipatterns = ['(MIGRATION|CHANGELOG)\.md:[0-9]+']
+  home = []
+  note = "MIGRATION.md and CHANGELOG.md are cited by heading, never by line"
+
+  [[registry.entry]]
+  id = "PLUGIN_LEGACY_PAYLOAD"
+  antipatterns = ['\bPLUGIN_LEGACY_PAYLOAD\b']
+  home = []
+  note = "the legacy-payload transition arm is cut, from code and from its doc carriers"
 
 # ---------------------------------------------------------------------------
 # FACT: `self` is a FILE-SURFACE alias and nothing else. The per-agent file's
@@ -1527,6 +1592,33 @@ name = "core-requirement"
 kind = "toml-value"
 source = "packages/meta/pyproject.toml"
 path = ["project", "dependencies"]
+
+# ---------------------------------------------------------------------------
+# FACT: every agent plugin meta installs has a row in the behavior-floor test's
+# `_TARGETS` (`tests/test_targets/test_agent_behavior_defaults.py`).
+# AUTHORITY: meta's `dependencies` is the shipped plugin set (`Q14`).
+# CATCHES: a fourth plugin shipped with no floor row, which the test cannot see
+# because it iterates its own table.
+# ⚑ A SECOND VIEW of the `core-requirement` data: that registry's one parity is
+# spent on the `kanibako-cli` pin. `where` keeps the plugin strings only.
+[[registry]]
+name = "meta-agent-plugins"
+kind = "toml-value"
+source = "packages/meta/pyproject.toml"
+path = ["project", "dependencies"]
+where = { id_matches = '^kanibako-agent-' }
+
+# ---------------------------------------------------------------------------
+# FACT: the release gate's `REQUIRED_JOBS` (`release.yml`) names exactly the
+# jobs `test.yml` defines.
+# AUTHORITY: `test.yml` is what CI runs; a release waits only on the jobs it
+# lists. CATCHES: a job added to CI that the release does not wait for, or a
+# required job that no longer exists. The matrix versions are not compared.
+[[registry]]
+name = "tests-workflow-jobs"
+kind = "yaml-mapping"
+source = ".github/workflows/test.yml"
+section = "jobs"
 
 # ---------------------------------------------------------------------------
 # FACT: no agent name this repository ships spells a RESERVED PSEUDO-AGENT name.
@@ -5600,6 +5692,59 @@ for key in sorted(produced):
     print(f"kanibako-fresh-path: {key}")
 """]
 extract = '(?m)^kanibako-fresh-path: (.+)$'
+
+# ---------------------------------------------------------------------------
+# The release gate's `REQUIRED_JOBS` list: one job per line, an optional
+# matrix version in parentheses (stripped), read from every `release.yml` step
+# that sets it.
+[[parity]]
+registry = "tests-workflow-jobs"
+command = ["{python}", "-c", """
+import re, yaml
+doc = yaml.safe_load(open('.github/workflows/release.yml'))
+for job in doc['jobs'].values():
+    for step in job.get('steps', []):
+        listed = (step.get('env') or {}).get('REQUIRED_JOBS')
+        for line in (listed or '').splitlines():
+            if line.strip():
+                print('kanibako-required-job: ' + re.sub(r'\\s*\\(.*\\)$', '', line.strip()))
+"""]
+extract = '(?m)^kanibako-required-job: (\S+)$'
+
+# The behavior-floor test's `_TARGETS` keys, read from its AST so the test
+# module is not imported. `translate` maps `kanibako-agent-<name>>=...` to
+# `<name>`.
+[[parity]]
+registry = "meta-agent-plugins"
+translate = { pattern = '^kanibako-agent-([a-z0-9-]+).*$', replacement = '\1' }
+command = ["{python}", "-c", """
+import ast
+tree = ast.parse(open('tests/test_targets/test_agent_behavior_defaults.py').read())
+for node in tree.body:
+    if isinstance(node, ast.Assign) and any(getattr(t, 'id', '') == '_TARGETS' for t in node.targets):
+        for key in node.value.keys:
+            print('kanibako-floor-target: ' + key.value)
+"""]
+extract = '(?m)^kanibako-floor-target: (\S+)$'
+
+# ---------------------------------------------------------------------------
+# THE COUNT CLAIMS. A `[[count]]` resolves a number-word in prose against the
+# number its command derives; `kinemata claims` reports a mismatch.
+# FACT: "<N> distributions are built from this repo" (`docs/RELEASING.md`)
+# matches the non-comment entries of `scripts/build-all.sh`'s `PACKAGES`.
+# ⚑ If the sentence is reworded the pattern stops matching and the claim drops
+# without an error; the claim count is the signal.
+[[count]]
+label = "distributions built from this repo"
+pattern = '\b([A-Z][a-z]+) distributions are built from this repo\b'
+command = ["{python}", "-c", """
+import re
+body = re.search(r'^PACKAGES=\\((.*?)^\\)', open('scripts/build-all.sh').read(), re.M | re.S).group(1)
+n = sum(1 for line in body.splitlines() if line.split('#')[0].strip())
+words = 'zero one two three four five six seven eight nine ten'.split()
+print('kanibako-distributions: ' + words[n].capitalize())
+"""]
+extract = '(?m)^kanibako-distributions: (\S+)$'
 
 # ---------------------------------------------------------------------------
 # THE SHAPE RULES. `[[shape]]` reads only the declaration and asks whether it is
