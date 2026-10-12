@@ -18,78 +18,59 @@ from kanibako.targets.base import TargetSetting
 
 
 class TestKanibakoMounts:
-    """Tests for _kanibako_mounts() in start.py."""
+    """Tests for _kanibako_mounts() in start.py: the helper's copy of the kani binds."""
 
-    def test_returns_two_mounts(self):
+    _PKG_DEST = "/opt/kanibako/kanibako"
+    _BIN_DEST = "/home/agent/.local/bin/kanibako"
+
+    def _by_dest(self):
         from kanibako.commands.start import _kanibako_mounts
 
-        mounts = _kanibako_mounts()
-        assert len(mounts) == 2
+        return {m.destination: m for m in _kanibako_mounts()}
 
-    def test_package_mount_destination(self):
+    def test_helper_mounts_are_the_kani_table(self):
+        """The helper gets EXACTLY the declared kani rows — one carrier (Single Route)."""
+        from kanibako.settings import core_defaults
+
+        declared = {
+            (dest, src, options)
+            for arm in core_defaults.kani_default_categories().values()
+            for dest, (src, options) in arm.items()
+        }
+        got = {(m.destination, str(m.source), m.options) for m in self._by_dest().values()}
+        assert got == declared
+        assert "/etc/profile.d/kanibako-secrets.sh" in self._by_dest()
+
+    def test_reads_the_table_not_a_private_list(self, monkeypatch):
+        """A row added to the table reaches the helper with no second edit."""
         from kanibako.commands.start import _kanibako_mounts
+        from kanibako.settings import core_defaults
 
-        mounts = _kanibako_mounts()
-        pkg_mount = mounts[0]
-        assert pkg_mount.destination == "/opt/kanibako/kanibako"
-        assert pkg_mount.options == "ro"
+        monkeypatch.setattr(
+            core_defaults, "kani_default_categories",
+            lambda: {"box.bindings.ro": {"/opt/x": ("/host/x", "ro")}},
+        )
+        assert [m.to_volume_arg() for m in _kanibako_mounts()] == ["/host/x:/opt/x:ro"]
+
+    def test_package_dest_is_the_supervisor_root(self):
+        """The table's literal must match the PYTHONPATH root PID-1 imports from."""
+        from kanibako.box_supervisor import KANIBAKO_PKG_MOUNT_ROOT
+
+        assert f"{KANIBAKO_PKG_MOUNT_ROOT}/kanibako" == self._PKG_DEST
+        assert self._by_dest()[self._PKG_DEST].options == "ro"
 
     def test_entry_script_mount_destination(self):
-        from kanibako.commands.start import _kanibako_mounts
-
-        mounts = _kanibako_mounts()
-        entry_mount = mounts[1]
-        assert entry_mount.destination == "/home/agent/.local/bin/kanibako"
-        assert entry_mount.options == "ro"
+        assert self._by_dest()[self._BIN_DEST].options == "ro"
 
     def test_package_source_is_kanibako_dir(self):
-        from kanibako.commands.start import _kanibako_mounts
-
-        mounts = _kanibako_mounts()
-        pkg_mount = mounts[0]
-        # Source should be the kanibako package directory
+        pkg_mount = self._by_dest()[self._PKG_DEST]
         assert pkg_mount.source.is_dir()
         assert (pkg_mount.source / "__init__.py").is_file()
 
     def test_entry_script_source_exists(self):
-        from kanibako.commands.start import _kanibako_mounts
-
-        mounts = _kanibako_mounts()
-        entry_mount = mounts[1]
+        entry_mount = self._by_dest()[self._BIN_DEST]
         assert entry_mount.source.is_file()
-        content = entry_mount.source.read_text()
-        assert "kanibako.cli" in content
-
-    def test_routed_kani_categories_match_hardwired(self):
-        """Phase B: the routed kani binds carry the SAME sources/dests/options.
-
-        The box launch now routes the kanibako CLI binds through
-        ``core_defaults.kani_default_categories`` (the category resolver) instead
-        of the hardwired ``_kanibako_mounts`` ``-v`` list (which survives only as
-        the in-helper-container source resolver).  Lock that the two agree
-        byte-for-byte so the routing is a pure refactor.
-        """
-        from kanibako.settings import core_defaults
-        from kanibako.commands.start import _kanibako_mounts
-
-        hardwired = _kanibako_mounts()
-        cats = core_defaults.kani_default_categories()
-
-        # ⚑ Re-derived for dest-keying (R-3/R-5/R-11, P6): the two binds are
-        # ENTRIES of the ONE terminal ``box.bindings.ro`` arm keyed by their
-        # destinations, and R-11 absolutizes the declarative file's ``~`` at the
-        # producer rather than leaving it for the resolver. The byte-for-byte
-        # source/dest/options agreement this test exists to lock is unchanged —
-        # only where the destination is written down moved.
-        arm = cats["box.bindings.ro"]
-        assert arm["/opt/kanibako/kanibako"] == (str(hardwired[0].source), "ro")
-        assert arm["/home/agent/.local/bin/kanibako"] == (
-            str(hardwired[1].source), "ro",
-        )
-        # The destinations agree as LITERAL equals now — the hardwired list has
-        # always spelled them absolute, and R-11 brings the routed side to match.
-        for mount in hardwired:
-            assert arm[mount.destination] == (str(mount.source), mount.options)
+        assert "kanibako.cli" in entry_mount.source.read_text()
 
 
 class TestSecretExportBind:

@@ -10164,29 +10164,19 @@ def _canon_reprotect_hook(proj, logger):
 
 
 def _kanibako_mounts():
-    """Build bind mounts for the kanibako CLI inside containers.
+    """The ``kani:`` table's binds as helper-container mounts.
 
-    Returns two mounts:
-      1. Package dir → ``{KANIBAKO_PKG_MOUNT_ROOT}/kanibako`` (ro)
-      2. Entry script → /home/agent/.local/bin/kanibako (ro)
-
-    The package-dir dest is derived from :data:`KANIBAKO_PKG_MOUNT_ROOT` — the SAME
-    constant the supervisor PID-1 injects as PYTHONPATH and scrubs back out — so the
-    mount location and the import path can never drift.
+    The helper launch has no category resolve of its own, so it reads the table the
+    box launch routes (:func:`core_defaults.kani_default_categories`) and translates
+    each dest-keyed entry; the table stays the one carrier of these binds (Single
+    Route).  Sorted by dest so the ``-v`` order is stable.
     """
-    import importlib.resources
-
-    import kanibako
     from kanibako.targets.base import Mount
 
-    pkg_dir = Path(kanibako.__file__).parent
-
-    entry_ref = importlib.resources.files("kanibako.scripts").joinpath("kanibako-entry")
-    entry_path = Path(str(entry_ref))
-
     return [
-        Mount(pkg_dir, f"{KANIBAKO_PKG_MOUNT_ROOT}/kanibako", "ro"),
-        Mount(entry_path, "/home/agent/.local/bin/kanibako", "ro"),
+        Mount(Path(src), dest, options)
+        for arm in core_defaults.kani_default_categories().values()
+        for dest, (src, options) in sorted(arm.items())
     ]
 
 
