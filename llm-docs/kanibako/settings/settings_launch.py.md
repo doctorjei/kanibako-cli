@@ -242,11 +242,11 @@ future grammar phase adds node selection.)
 ⚑ **A BLANK agent is pinned to the LITERAL `False`, not spelled as a ref.**
 `f"@meta.agent.{''}.auth.share_support"` is `@meta.agent..auth.share_support` — a MALFORMED ref with
 an empty segment, which resolves to a leftover string and then crashes `resolve_auth_source`'s
-strict `as_bool` ("expected bool, got str"). No caller passes blank today (the launch uses the
-`"general"` slot for a shell box; stop / creds-watch return early on an absent `KANIBAKO_AGENT`
-stamp), but P7 made `""` a MEANINGFUL value — the D-M6 suppression — so the trap is one careless
-caller away. `False` is also the semantically right answer: no agent ⇒ no sharing capability, which
-is exactly the hard RO floor §2c describes.
+strict `as_bool` ("expected bool, got str"). No caller passes blank today (a launch with no target
+uses the `shell` slot, `agent_ref.GENERAL_SLOT`; stop / creds-watch return early on an absent
+`KANIBAKO_AGENT` stamp), but P7 made `""` a MEANINGFUL value — the D-M6 suppression — so the trap is
+one careless caller away. `False` is also the semantically right answer: no agent ⇒ no sharing
+capability, which is exactly the hard RO floor §2c describes.
 
 ### `meta.box.auth.workset_path` — spelled exactly as the spec
 
@@ -1396,8 +1396,8 @@ resolved effective-agent node into `snapshot["meta"]["box"]["agent"]`:
   effective node IS `agent.default` overlaid by `agent.<active>`, §2d pick) — including any
   `pref.agent.<agent>.<key>` the box requested, since a pref is an INPUT to that resolution rather
   than a patch on top of it;
-* NO LEAK — the materialized subtree is a FRESH deep COPY (`_deep_copy_store` leaves immutable
-  Bind/scalar/None leaves shared but never aliases a nested KeyStore), written ONLY under
+* NO LEAK — the materialized subtree is a FRESH deep COPY (`keystore.clone_store` rebuilds every
+  nested KeyStore and copies every list; Bind/scalar/None leaves stay shared), written ONLY under
   `meta.box.agent.*`. `snapshot["agent"]` is never mutated, so a later in-place edit of the read-back
   cannot escape into the shared agent subtree;
 * KEYS ONLY — `_drop_non_mirror_keys` first removes from that fresh pick every entry the §0 oracle
@@ -1717,6 +1717,51 @@ routes differ by that arm token ALONE — podman's own rw default — pinned by
 🛑 **DO NOT read `fold_opt` as taking the STORED opts.** It takes the resolved value; the stored
 `None` never reaches it. Reading the call in isolation manufactures a phantom regression in which an
 options-less rw bind collapses to a bare `rw` and silently loses its relabel and chown.
+
+## The box scalars — `resolve_box_scalars` and `load_merged_config`
+
+```python
+def resolve_box_scalars(
+    *, workset_path: Path | None, box_path: Path | None,
+    cli_overrides: dict[str, object] | None, inputs: LaunchInputs | None = None,
+    agent_name: str = GENERAL_SLOT, agent_path: Path | None = None,
+    refuse_null_scalars: bool = True,
+) -> dict[str, object]
+```
+The box scalars (`config._BOX_SCALAR_FIELDS`: `box.image`, `box.share_images`, `box.shell`,
+`box.enable_vault`) resolved through the keyspace, as `{dotted key: value}`. It builds a launch
+snapshot and reads each key with `snapshot_leaf`; a key the snapshot lacks is left out.
+
+* With *inputs*, the snapshot is theirs (subject, files, anchors), under *agent_name* and its
+  settings file *agent_path*.
+* Without, a *box_path* or *workset_path* makes it a BOX resolve over those files and the system
+  settings file; neither makes it a SYSTEM resolve.
+
+*cli_overrides*' `box_image` and `box_share_images` become the §1A CLI level (`build_cli_level`).
+
+⚑ A present `None` that WINS is KEPT (spec §2h). Where `config.refuses_null_box_scalar` says the
+key's default is a value (every box scalar but `box.shell`), `_refuse_null_box_scalars` raises
+`SettingsError` naming the winning tier's file. The judgment runs on the resolved value, so a `null`
+that a more authoritative tier or the CLI overrides is never refused. *refuse_null_scalars* off is
+the display's read (`config_interface`'s effective table prints the `null`); a caller that acts on
+the values must leave it on.
+
+```python
+def load_merged_config(
+    project_path: Path | None = None, *, workset_path: Path | None = None,
+    cli_overrides: dict[str, object] | None = None, inputs: LaunchInputs | None = None,
+    agent_name: str = GENERAL_SLOT, agent_path: Path | None = None,
+    refuse_null_scalars: bool = True,
+) -> KanibakoConfig
+```
+The same resolve, landed on a `KanibakoConfig`. *project_path* is the box-tier file; with *inputs*,
+both tier paths come from `inputs.cascade_workset_path` / `inputs.cascade_box_path` instead. A
+*cli_overrides* entry that names a field is set first; each resolved key then lands on its field
+through `config._typed_box_scalar`, and a `None` stays `None`.
+
+⚑ `paths.resolve_box_enable_vault` resolves `box.enable_vault` a second way, over a cascade that
+skips the whole-tree audit. `tests/test_settings/test_config.py::TestTheTwoBoxScalarResolvesAgree`
+pins the two equal at every tier.
 
 ## The small shared declarations
 

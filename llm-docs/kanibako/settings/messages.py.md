@@ -1,6 +1,6 @@
-# Path Defaults — the declared tables, leaf names and message text behind `paths.py`
+# Messages — the user-visible text, status tokens and box shell-file contents
 
-_no logic, no I/O: only the values `settings/paths.py` resolves and the words it prints_
+_no logic, no I/O: the words kanibako prints and the shell files it writes_
 
 ⚠️ **RELOCATION PASS, 2026-08-18.** Every explanatory comment that used to live in
 `src/kanibako/settings/messages.py` is here; the source keeps one-line descriptors and `⚑`
@@ -8,200 +8,23 @@ markers only. Absence of a symbol below means "nothing was displaced from it", n
 exist". **Claims found FALSE against the code and the spec were DROPPED rather than moved** — each is
 recorded under [Dropped as false](#dropped-as-false) so nobody re-derives them from git history.
 
-**Authority:** `~/canon/workbook/specs/settings-keyspace-1.8.0.md` — §1 (the two-layer path
-foundation and its XDG resolution rule) and §2g (the `system.*` path tier); the standalone
-detection marker is `~/canon/workbook/specs/system-design-1.8.0.md` § "Detection & import". ⚑ **The specs are the LIVE
-authority; read them first.**
-
 ## What the module is
 
-A declaration file. It holds the XDG variable names and their spec defaults, the two path-key
-default tables (Layer-1 `config.*`, Layer-2 `system.*`), the directory- and file-name leaves the
-layout tier composes, the status tokens the workset listing emits, the whole user-visible MESSAGE
-catalog, and the box shell-file contents.
+A declaration file: the status tokens the workset listing emits, the user-visible MESSAGE catalog,
+and the box shell-file contents. Its only import is `RUN_USER_UID_PATH`, from
+`settings/bootstrap.py`, which `WARN_RUNDIR_UNUSABLE` splices in; that is safe because `bootstrap`
+imports nothing.
 
-It has **no functions, no classes and no docstrings** — the entire file is module-level assignment.
-That is the point: `paths.py` is the resolver and this is the table it resolves, so a value can be
-read, diffed and changed without opening 1,400 lines of resolution logic. It imports nothing at all,
-which is what lets it sit under `paths.py` with no cycle risk.
+⚑ **PATH LITERALS DO NOT LIVE HERE.** The XDG table, the two path-key default tables, the file- and
+directory-name leaves, `STANDALONE_META_DIR` and the registry tokens are in `settings/bootstrap.py`;
+`llm-docs/kanibako/settings/bootstrap.py.md` explains them.
 
-⚑ **`paths.py` is very nearly the only consumer.** Every `MSG_*` / `WARN_*` / `ERR_*` constant, and
-every name leaf except `STANDALONE_META_DIR`, is used in `settings/paths.py` and nowhere else; most
-reach the rest of the tree only because `paths.py` re-exports them. `STANDALONE_META_DIR` is the
-exception, imported directly by `commands/box/{_lifecycle,_parser,_duplicate}.py`,
-`commands/clean.py` and `launch/box_resolve.py`. Treat "used once" here as normal, not as dead
-weight: these exist to be a single spelling, not to have many callers.
+Many modules import from this one directly, `settings/paths.py` most of all. Treat "used once" here
+as normal, not as dead weight: these constants exist to be a single spelling, not to have many
+callers.
 
 ⚑ **The message strings are USER-VISIBLE OUTPUT.** Every `MSG_*` / `WARN_*` / `ERR_*` literal is
 printed or logged verbatim. Editing one is a user-facing change, not a comment change.
-
-### ⚑ Where this overlaps `paths.py.md` — read that one for the RESOLVER, this one for the TABLE
-
-`llm-docs/kanibako/settings/paths.py.md` carries "Layer 1 — the CONFIG-key FOUNDATION", "Layer 2 —
-system-scope SETTINGS keys that are PATHS" and "`XDG_SPEC_DEFAULTS` (imported from
-`settings/bootstrap`)". Those three tables live in `settings/bootstrap.py`, not `paths.py`, and this
-file explains them; `paths.py.md`'s sections describe how `resolve_config_paths` /
-`resolve_system_paths` / `host_xdg_map` CONSUME them. Two of the three descriptions there have
-drifted (see the note at the end of [Dropped as false](#dropped-as-false)) — boarded, not fixed
-here, because that file belongs to another pass.
-
-## The XDG base directories
-
-```python
-XDG_DATA_HOME · XDG_CONFIG_HOME · XDG_RUNTIME_DIR · XDG_STATE_HOME · XDG_CACHE_HOME
-```
-The five freedesktop Base Directory variable NAMES, as constants rather than literals.
-
-They are names, not values: each is used both as an `os.environ` lookup key and as a dict key into
-the table below, so a typo in either role becomes a lookup that silently misses rather than a
-`NameError`.
-
-```python
-XDG_SPEC_DEFAULTS: dict[str, str]     # {var name -> home-relative default suffix}
-```
-Spec defaults for the XDG base dirs that HAVE one.
-
-Spec §1: *"use the env var iff set and absolute (a relative value is invalid → ignored → use
-default), else the spec default: `XDG_DATA_HOME`→`~/.local/share` · `XDG_CONFIG_HOME`→`~/.config` ·
-`XDG_STATE_HOME`→`~/.local/state` · `XDG_CACHE_HOME`→`~/.cache`."* The suffixes are stored
-HOME-RELATIVE, with no leading `~` or `/`, because `resolve_xdg` joins them onto `Path.home()`.
-
-⚑⚑ **`XDG_RUNTIME_DIR` is deliberately ABSENT, and adding it would break spec conformance
-SILENTLY.** The freedesktop spec defines no default for it, so `paths.resolve_xdg` takes
-`spec_default_suffix=None` for that one variable and routes to `_fallback_runtime_dir` — which picks
-`/run/user/<uid>/kanibako` when that base is usable, else a 0700 `mkdtemp`, and **warns either way**
-(never silent, by design: the fallback is not the user's real runtime dir, and helper sockets land
-there). A row added here would be picked up by `host_xdg_map`'s loop over `XDG_SPEC_DEFAULTS.items()`,
-resolve against an invented default, and then be overwritten by the explicit
-`xdg_map[XDG_RUNTIME_DIR] = resolve_xdg(XDG_RUNTIME_DIR, None)` line that follows — so the warning
-path would still run and nothing would look broken, while the invented default stayed live for every
-other reader of the table. That is why the absence carries a marker at the line.
-
-## The two-layer path foundation
-
-The two tables below are spec §1's two layers: Layer-1 config keys (`config.*`, in the `.cfg` files,
-resolved by the flat foundation) and Layer-2 settings keys (resolved by `assemble→merge→expand`).
-§1's **TERMINOLOGY** block: *"The prefix names both the file and the resolution source: `{config.*}` →
-foundation; `{system.*}`/`{workset.*}`/`{box.*}`/`{agent.*}` → snapshot."*
-
-```python
-CONFIG_PATH_DEFAULTS: dict[str, str]      # Layer 1 — spec §1
-```
-The bootstrap CONFIG keys and their defaults.
-
-Bootstrap keys read from `kanibako.cfg`, resolved FLAT — **not** by the keyspace pipeline.
-Chicken-and-egg: the pipeline needs these resolved to find its own input files, so
-`paths.resolve_config_paths` runs them through a SINGLE-level `LevelView` with no cascade. `@config.*`
-refs resolve against THIS set; `$XDG_*` against the environment.
-
-⚑ **The set may GROW, and the spec refuses to fix its size**: *"The Layer-1 set is exactly the config
-keys in the table below — no fixed count is stated; the set may grow."* `config.journal` was added
-2026-06-30b, after the set was otherwise "finalized" on 2026-06-29f — the finalization is a DATE, not
-a count. **Do not write a count into prose about this table.** One was written here and had been
-false for the entire life of `config.journal`.
-
-⚑ **The SIZE IS PINNED BY A TEST, and that test is the live count**:
-`tests/test_settings/test_manifest_conformance.py` asserts `len(CONFIG_PATH_DEFAULTS) == 6` and
-`len(SYSTEM_PATH_DEFAULTS) == 11` against the manifest. Adding or removing a key here fails it by
-design — the gate that makes a new key a deliberate act. Read the count from that assertion, never
-from a comment.
-
-⚑ There is no `config.global` key. Its children inline `@config.data/global/...`, and the `global/`
-dir is created on demand by the atomic writer when those files are first written.
-
-`config.journal` is the LIFECYCLE JOURNAL — a write-ahead log of in-flight box-lifecycle ops
-(create/import) for crash recovery, normally EMPTY. It sits beside `config.registry` and is the
-TRANSIENT truth next to the registry's steady-state truth. It is config-LOCATED rather than a
-resolution-pipeline prerequisite: lifecycle recovery runs before and around registration, so the
-journal must be locatable before the keyspace is up. See `kanibako.launch.journal`.
-
-```python
-SYSTEM_PATH_DEFAULTS: dict[str, str]      # Layer 2 — spec §1/§2g
-```
-The system-scope SETTINGS keys that are PATHS, and their defaults.
-
-These are SETTINGS keys (system tier), **not** bootstrap config. They resolve the normal way at
-launch (`assemble→merge→expand`) — but the flat resolver ALSO materializes them into `StandardPaths`,
-the host-side path surface, by resolving their `@config.*` refs against the Layer-1 foundation
-(`paths.resolve_system_paths`, whose `lookup` branches on the `config.` prefix: spec §1A / JC-2).
-
-⚑ **A default here `@`-refs a Layer-1 config key, an XDG base, OR ANOTHER KEY IN THIS SAME TABLE.**
-The third case is not an exception, it is the channels block: the four channel type-roots ref
-`@system.channelroot`, and `system.channels.broadcast` refs `@system.channels.chat`. Spec §1 declares
-exactly that shape — the type-roots *"default under `@system.channelroot`; broadcast under
-`@system.channels.chat`"*. **Declaration order is therefore load-bearing inside the channels block**:
-`chat` is declared before `broadcast` because `broadcast` resolves against it.
-
-⚑ **`system.channelroot` is Layer 2, not Layer 1.** It moved out of the bootstrap set (2026-06-29f)
-because it is not a load-the-keyspace prerequisite: its on-disk skeleton is created on the LAUNCH
-path (the category guarantee-create for the type-root dirs, plus the chat-log seeding), never at
-setup. That move is what unified the whole channel subtree — `channelroot` plus `system.channels.*` —
-into one layer.
-
-⚑ **THIS TABLE IS THE FLOOR, NOT THE STORE (corrected 2026-08-23).** Every key here is CLI-settable
-at the system scope: `config set` / `reset` / `get` route it through `config_keys._KEY_ROUTES` to
-the `system:` table of the SYSTEM SETTINGS file, which the cascade layers OVER these defaults. It
-used to refuse the whole family as "structural layout config" and send the user to the
-`kanibako.cfg` `[system]` table — a spec violation (§2g declares them Layer-2 settings keys;
-§2a names `system.template` among the CLI-settable). Adding a row here therefore also needs a
-`_KEY_ROUTES` entry and a `KNOWN_CONFIG_KEYS` spelling, or the new key sets nowhere.
-
-⚑ **STILL OPEN:** `load_system_config` resolves this table from the CONFIG file set alone, so every
-`StandardPaths` field keeps the floor value while the cascade sees the repoint. Closing that means
-moving where the `[system]` table lives, not another routing change.
-
-⚑ `system.template` and `system.canon` are deliberately ROOTS rather than leaves — the box-home seed
-is `@system.template/box/home` and the box-bound handbook is `@system.canon/handbook`, so each root
-leaves room for further subtrees without minting a new key (spec §2g).
-
-### ⚑⚑ Both tables have a SECOND spelling elsewhere, and it is a known duplication
-
-`settings/config.py` carries its own literals for these keys and says so at the site: *"⚑ These
-literals DUPLICATE paths.CONFIG_PATH_DEFAULTS / SYSTEM_PATH_DEFAULTS — every edit here needs the
-matching edit there."* The pointer exists only on that side; there is nothing at this end saying an
-edit here obliges an edit there. `settings/defaults_inventory.py` registers both tables by name
-(`"bootstrap.py (config tier)"` / `"(system tier)"`), so the inventory is a third reader.
-**Before adding, renaming or removing a key in either table, grep `config.py` too.**
-
-## File and directory name leaves
-
-```python
-SETTINGS_FILE · PROFILE_FILE · BASHRC_FILE · SHELL_D_FILE · IGNORE_FILE
-BOXES_PATH · HOME_PATH · KANIBAKO_PATH · LOGS_PATH · RO_PATH · RW_PATH · VAULT_PATH
-```
-The single-segment names the layout tier composes paths from.
-
-Named rather than inlined so the same leaf, spelled at a dozen sites, cannot drift into two
-spellings. `KANIBAKO_PATH` carries a second obligation: it is also the leaf in
-`CONFIG_PATH_DEFAULTS["config.data"]`'s own default (`$XDG_DATA_HOME/kanibako`), so the two agree by
-construction rather than by coincidence.
-
-```python
-RUN_USER_UID_PATH = "/run/user/%d"
-```
-The per-uid runtime base, as a `%d` FORMAT string.
-
-⚑⚑ **It is CONCATENATED INTO `WARN_RUNDIR_UNUSABLE`**, which puts a `%d` in the middle of that
-message's `%s` run. Changing this literal's conversion — or dropping the `%d` — silently changes that
-warning's argument contract; see [the message catalog](#the-message-catalog).
-
-```python
-STANDALONE_META_DIR = 'box_data'
-```
-The STANDALONE box-store dir name — `@meta.box.path`, and half the detection marker.
-
-Standalone detection (`~/canon/workbook/specs/system-design-1.8.0.md` § "Detection & import") is an ANCESTOR WALK looking
-for two things together: *"an ancestor with a `box_data/` marker DIR (the LOCATOR) +
-`workset.yaml` declaring standalone."* This constant is the first half. Renaming it breaks detection
-for every already-created standalone box on disk — a data-layout change, not a code change.
-
-⚑ It is **not a bare marker dir** (spec §4): it is the real box store, holding `home/`, the
-by-default-ABSENT `box.yaml`, and the helper-log JSONL. `@workset.boxes` resolves to it too, as
-the empty leaf.
-
-⚑ **This constant is the ONLY carrier of the literal**, and `project/import_reconcile.py` imports it
-at module scope. That is what makes the rename above a single-site edit: the ancestor walk's marker
-and the J2 journal key are the same string by construction, not by two edits landing together.
 
 ## Status tokens
 
@@ -214,27 +37,6 @@ They report the two-way presence check in `paths.iter_workset_projects`: the box
 its WORKSPACE dir, resolved separately. `ok` = both present · `missing` = the project dir exists but
 its workspace does not · `no-data` = no project dir at all. ⚑ The pair is asymmetric on purpose —
 there is no token for "workspace without project dir", which falls into `no-data`.
-
-## Registry tokens
-
-```python
-KIND_PROJECT = "project" · KIND_WORKSET = "workset"
-```
-The two entity kinds `paths.resolve_name` returns beside a resolved path.
-
-A bare name can name either, and the two are separate namespaces, so the caller must branch on the
-kind rather than assume — this token is what it branches on. (The consequence of the shared bare-name
-surface is `ERR_PROJECT_DIR_IS_WS`, below.)
-
-```python
-UNREGISTERED_MARKER = "__unregistered__"
-```
-The stand-in boxes-dir segment for a default-mode project that is not registered.
-
-`paths` returns `("", std.boxes / UNREGISTERED_MARKER)` for an unregistered workspace: the EMPTY
-STRING is the real signal that there is no box name, and the marker only keeps the accompanying path
-well-formed instead of pointing a caller at the boxes ROOT — which is a live directory full of other
-boxes. ⚑ Callers must test the NAME, not the path. Nothing on disk is expected at the marker path.
 
 ## The message catalog
 
@@ -266,8 +68,8 @@ The first-run progress line and its terminator.
 
 ⚑ `MSG_OTS_KB_INIT` ends in a TRAILING SPACE and no newline; it is printed with `end=""` and
 `MSG_DONE` completes the line. Stripping that trailing space — or adding a newline — breaks the
-pairing visually, and nothing tests the join. ⚑ Both go to **stderr**, not stdout, so a progress
-notice never contaminates parseable output.
+pairing visually, and nothing tests the join. ⚑ In one-time setup both go to **stderr**, not
+stdout, so a progress notice never contaminates parseable output.
 
 ### XDG resolution warnings
 
@@ -367,7 +169,6 @@ ERR_PROJECT_NO_PATH     # (the path that does not exist)
 ERR_PROJECT_NEW_HOME    # (no arguments)
 ERR_PROJECT_REG_HOME    # (no arguments)
 ERR_PROJECT_NAME_USED   # (name)
-ERR_PROJECT_DIR_IS_WS   # (name)
 ERR_WORKSET_NO_PROJECT  # (project name, workset name)
 ERR_WORKSET_NO_WORKSET  # (project dir)
 ERR_WORKSET_WS_NOT_BOX  # (name, name — the SAME value twice)
@@ -395,11 +196,6 @@ two call sites that pass nothing.
 ⚑ `ERR_WORKSET_WS_NOT_BOX` interpolates the SAME name at BOTH positions — once to say what was named,
 once inside the suggested `'%s/<project>'` spelling. Two arguments, one value; a reader counting
 distinct values supplies one argument and gets a `TypeError` at format time.
-
-⚑ `ERR_PROJECT_DIR_IS_WS` is the **shadowing** refusal, and it is not a namespace collision: box and
-workset names are separate namespaces (see `KIND_PROJECT` / `KIND_WORKSET`), so the name is legal.
-What it refuses is that the resulting BARE name would resolve to the box and hide the workset in
-bare-name lookups. `--force` proceeds anyway, which is why the message names the flag.
 
 ⚑ `ERR_PROJECT_NO_PATH` is raised from TWO sites with different values — a project path and a
 standalone ROOT. Its note says "the path that does not exist" rather than naming one of them.
@@ -431,13 +227,13 @@ DEFAULT, not an assignment, so a `KANIBAKO_PS1` supplied through `env.KANIBAKO_P
 box-marker prompt is only the fallback. The backslashes are doubled in the Python source because it
 is a regular string, not a raw one.
 
-⚑ **`SHELL_D_FILE`'s value is an UPGRADE trigger, not just a name.** `paths._upgrade_shell` decides
-whether an existing box's `.bashrc` already has the seam by testing for the substring
-`SHELL_D_FILE + "/"` — i.e. `.shell.d/` — and its own comment at that line explains why the trailing
-slash is load-bearing. So renaming the DIRECTORY makes the test miss on every box already on disk and
-appends a second sourcing block to each of their `.bashrc` files; rewording the rest of
-`_SHELL_D_SOURCE_LINE`, or the `"# Source user init scripts"` header the two contents constants
-share, changes nothing about detection.
+⚑ **`bootstrap.SHELL_D_FILE`'s value is an UPGRADE trigger, not just a name.**
+`paths._upgrade_shell` decides whether an existing box's `.bashrc` already has the seam by testing
+for the substring `SHELL_D_FILE + "/"` — i.e. `.shell.d/` — and its own comment at that line
+explains why the trailing slash is load-bearing. So renaming the DIRECTORY makes the test miss on
+every box already on disk and appends a second sourcing block to each of their `.bashrc` files;
+rewording the rest of `_SHELL_D_SOURCE_LINE`, or the `"# Source user init scripts"` header the two
+contents constants share, changes nothing about detection.
 
 ---
 
@@ -449,15 +245,10 @@ Recorded here so nobody restores them from git history.
 
 | # | site | the claim | what the code / spec says |
 |---|---|---|---|
-| 1 | `CONFIG_PATH_DEFAULTS` banner | *"config keys finalized at 5"* | The table it introduces has **SIX** entries — `tests/test_settings/test_manifest_conformance.py` asserts `len(CONFIG_PATH_DEFAULTS) == 6` — and the spec explicitly declines to state a count: *"no fixed count is stated; the set may grow"* (annotations §1: *"`journal` was added 2026-06-30b"*). The "finalized" stamp is a DATE (2026-06-29f), not a size. False on both halves, and self-contradicted by the dict two lines below it, which even carries its own comment for the sixth key. |
-| 2 | `SYSTEM_PATH_DEFAULTS` banner | *"each `@`-refs a Layer-1 config key or an XDG base"* | **Five of the eleven entries ref neither** — `system.channels.{common,chat,mailboxes,share}` ref `@system.channelroot` and `system.channels.broadcast` refs `@system.channels.chat`, all Layer-2 keys in this same table. Spec §1 declares that third shape directly. Replaced with a statement that includes it, plus the declaration-order consequence the old wording hid. |
-| 3 | the channels sub-comment | *"the type-roots derive from `system.channelroot`"* | True of four of the five; `system.channels.broadcast` derives from `@system.channels.chat`, which is what makes the block order-dependent. Spec §1: *"default under `@system.channelroot`; **broadcast under `@system.channels.chat`**"*. Corrected in place rather than dropped. |
-| 4 | line 1 (the module header) | *"Variables instead of hardcoded values."* | Not false, but vacuous — it states the reason ANY constant exists and says nothing about this module. Replaced with a one-line descriptor naming what the file holds. Recorded here because it is the file's oldest and least re-read line, and a reader looking for a scope claim will find its replacement, not this. |
+| 1 | line 1 (the module header) | *"Variables instead of hardcoded values."* | Not false, but vacuous — it states the reason ANY constant exists and says nothing about this module. Replaced with a one-line descriptor naming what the file holds. Recorded here because it is the file's oldest and least re-read line, and a reader looking for a scope claim will find its replacement, not this. |
 
-⚑ **The same two stale claims as #1 and #2 also live in `llm-docs/kanibako/settings/paths.py.md`** (a
-different file, and another pass's): its "Layer 1" section says *"The **5** bootstrap CONFIG keys"*
-while naming `config.journal` in the very next paragraph, and its "Layer 2" section repeats *"each
-`@`-refs a Layer-1 config key (or an XDG base)"*.
+The table-related rows moved to `bootstrap.py.md` with the tables. This file's
+`ERR_PROJECT_DIR_IS_WS` entry was dropped too: no source file defines that constant.
 
 ## Kept in the source, reworded — the per-message argument notes
 

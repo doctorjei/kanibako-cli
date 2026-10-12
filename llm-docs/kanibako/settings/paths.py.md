@@ -152,37 +152,23 @@ module (which depends on `paths.py`). Callers holding a full `Workset` build one
 
 ## The two-layer path foundation
 
+The two default tables and the XDG table live in `settings/bootstrap.py`, and
+`llm-docs/kanibako/settings/bootstrap.py.md` explains them. This module RESOLVES them.
+
 ### Layer 1 — the CONFIG-key FOUNDATION (`CONFIG_PATH_DEFAULTS`, spec §1)
 
-The 5 bootstrap CONFIG keys live in `kanibako.cfg` (`.config` / `/etc`) and resolve via a
-flat foundation resolver, **NOT** the keyspace pipeline — chicken-and-egg: the pipeline needs these
-resolved to find its own input files. `config.global` is ELIMINATED; its children inline
-`@config.data/global/...` (the `global/` dir is created on demand by the atomic writer when those
-files are first written). `@config.*` refs resolve against THIS set; `$XDG_*` against the
-environment.
-
-`config.journal` is the LIFECYCLE JOURNAL (write-ahead log of in-flight box-lifecycle ops), beside
-the registry. The registry is the steady-state truth; the journal is the transient truth (normally
-empty). See `kanibako.launch.journal`.
+`resolve_config_paths` resolves the bootstrap CONFIG keys FLAT, over one `LevelView` whose defaults
+are the table — **NOT** through the keyspace pipeline. Chicken-and-egg: the pipeline needs these
+resolved to find its own input files. A `config.*` ref resolves against this set; `$XDG_*` against
+`host_xdg_map`.
 
 ### Layer 2 — system-scope SETTINGS keys that are PATHS (`SYSTEM_PATH_DEFAULTS`, spec §1/§2g)
 
-These are SETTINGS keys (system tier), NOT bootstrap config: each `@`-refs a Layer-1 config key (or
-an XDG base). They resolve the normal way at launch (assemble→merge→expand) — but the flat resolver
-ALSO materializes them into `StandardPaths` (the legacy host-side path surface) by resolving
-`@config.*` against the Layer-1 foundation. `channelroot` moved to Layer 2 (its skeleton is created
-on the launch path, not at setup). The OLD per-leaf `boxes` location is resolved separately (see
-`resolve_system_paths`) and is NOT a key here.
-
-`system.template` — M-11 (2026-07-30): `system.base_template` → `system.template`, and the default
-moved `global/base_template` → `global/template` at the same time. ⚑ The on-disk dir MOVES with it:
-an existing install's populated (possibly user-edited) `global/base_template/` is ORPHANED by the
-rename — setup re-installs packaged content at the new root and the old dir is left behind.
-Documentation-only, deliberately: no code auto-migrates a user's store.
-
-`system.canon` — the SYSTEM canon CONTRIBUTION root (spec §2g). Same indirection as
-`system.template`: holding the ROOT leaves room for further canon subtrees without new keys, and its
-`handbook/` is what binds into a box.
+SETTINGS keys (system tier), not bootstrap config. They resolve the normal way at launch
+(assemble→merge→expand), and `resolve_system_paths` ALSO materializes them into `StandardPaths`, the
+host-side path surface, resolving their refs against the Layer-1 foundation. There is no
+`system.boxes` key: `_resolve_system_tier` resolves `std.boxes`, the primary logs dir, and the
+primary vault dirs from the PRIMARY workset's `workset.*` keys.
 
 ### Module-level singletons
 
@@ -191,9 +177,8 @@ advisories go through it (the advisories use `get_logger(__name__)`).
 
 ### `XDG_SPEC_DEFAULTS` (imported from `settings/bootstrap`)
 
-Spec defaults for the XDG base directories that HAVE one (freedesktop Base Directory spec).
-⚑ `XDG_RUNTIME_DIR` is deliberately ABSENT — it has no spec default and is handled specially by
-`resolve_xdg` (fallback + warn).
+`spec_default_xdg_map` loops over it; `host_xdg_map` adds `XDG_RUNTIME_DIR`, which has no spec
+default, through `resolve_xdg(XDG_RUNTIME_DIR, None)`. The table itself is in `bootstrap.py.md`.
 
 ## Functions
 
@@ -312,6 +297,33 @@ The `ProjectPaths` ADAPTER over `_box_settings_files`.
 
 The name every caller uses. Carries no logic of its own — the derivation lives in one place so the
 pair cannot be spelled twice.
+
+```python
+def resolve_box_enable_vault(global_path: Path, *, box_path: Path,
+                             workset_path: Path | None) -> bool
+```
+Resolve `box.enable_vault` through its cascade, `base < system < workset < box`.
+
+An absent key, or a winning `None`, gives the declared default (`True`); any other value is typed by
+`config._typed_box_scalar`, so a stored `false` reads `False`. Callers:
+`ProjectPaths.vault_enabled()`, the PRIMARY and STANDALONE resolvers on create, and
+`commands/box/_lifecycle.py`.
+
+```python
+def _narrow_box_scalar_cascade(
+    global_path: Path, *, workset_path: Path | None, box_path: Path | None,
+) -> KeyStore
+```
+The cascade `resolve_box_enable_vault` reads: `assemble_levels` over a `ReadPurpose.NARROW` file
+read, floored with `config.box_scalar_defaults_floor()`, then merged without the two agent levels.
+
+⚑ It stops at the merge, so it skips the launch snapshot's whole-tree audit
+(`settings_launch._refuse_undeclared_snapshot`). Path resolution runs under every verb, including
+`kanibako box show`, which must still answer for a box whose file carries an undeclared entry
+(`test_box_show_marks_a_hand_written_undeclared_entry`, `tests/test_commands/test_config_cmd.py`).
+So `resolve_project` does not enforce the closed keyspace; the launch does.
+`tests/test_settings/test_config.py::TestTheTwoBoxScalarResolvesAgree` pins its value equal to
+`settings_launch.load_merged_config`'s at every tier.
 
 ```python
 def resolve_xdg(var_name: str, spec_default_suffix: str | None) -> Path
@@ -973,9 +985,10 @@ that `std.boxes/{name}/` actually exists on disk. Among all valid matches, the d
 components) wins. Returns the matched path or `None`.
 
 ```python
-def _is_standalone_meta_dir(root: Path) -> bool
+def _is_standalone_meta_dir(root: Path, *, strict: bool = False) -> bool
 ```
-True only if *root* carries the standalone box MARKER (presence-based).
+True only if *root* carries the standalone box MARKER (presence-based). *strict* refuses a malformed
+`workset.yaml` instead of reading it as no marker; `detect_project_mode`'s step 2 passes it.
 
 P5a: the marker is a STORED `workset.registry: null` in the root `workset.yaml` AT *root*
 (`<root>/workset.yaml`, NOT inside `box_data/`), PRESENT. The FILE (carrying that null)
@@ -990,6 +1003,9 @@ def detect_project_mode(
 ) -> DetectionResult
 ```
 Infer which project mode applies to *project_dir*.
+
+⚑ `box_resolve.detect_box_mode` is the one carrier of the mode order (D3-mode); this treewalk is its
+step 4, after the two registry checks and the in-place marker. Callers detect through it, not here.
 
 Walks ancestor directories (up to `$HOME` or filesystem root) looking for project markers. Returns a
 `DetectionResult` with the detected mode and the ancestor directory where the marker was found.
@@ -1396,8 +1412,9 @@ def resolve_any_project(
 ```
 Auto-detect project mode and resolve paths accordingly.
 
-Uses `detect_project_mode` to walk ancestor directories and find the project root. The resolved
-*project_root* (not the raw CWD) is passed to the appropriate resolver.
+Detects the mode with `box_resolve.detect_box_or_default` — `detect_box_mode`'s D3-mode order, with
+"not a box" read as `primary` AT the dir — and hands the detected *project_root* (not the raw CWD)
+to that mode's resolver (`_resolve_designated_path`).
 
 *register* (B3) is forwarded to the PRIMARY/STANDALONE resolvers so the `start` auto-create path can
 defer registration until after the home seed (the NAMED branch never writes the name registry on
@@ -1411,7 +1428,7 @@ is the caller that needs it (re-materializing an archived box under a chosen nam
 ### The CLI front door
 
 The designation goes through `resolve_designation` before `Path(raw).resolve()` path-ifies it, so
-`detect_project_mode` sees a registered name's workspace. *initialize* is its `unknown_name_is_path`.
+detection sees a registered name's workspace. *initialize* is its `unknown_name_is_path`.
 
 **On an unknown name with no such path:** on the READ path (`initialize` False) refuse rather than
 path-ify — a nonexistent cwd-relative path resolves to an UNREGISTERED box with an empty name,
@@ -1461,8 +1478,8 @@ relative directory in cwd resolves to the NAME. Resolution order:
    * else the registry projects/worksets names + qualified `ws/project` names, which
      `resolve_any_project` already resolves.
 2. **PATH otherwise.** A PATH designation, or an identifier no name matched, is resolved as a
-   filesystem path — reusing the existing path-resolution + ancestor-walk discovery
-   (`detect_project_mode`). No detection is reimplemented here.
+   filesystem path, through the same `_resolve_designated_path` as `resolve_any_project`
+   (`box_resolve.detect_box_or_default`). No detection is reimplemented here.
 
 A pre-existing box whose name does not satisfy the §Design 8 blocklist is not addressable by that
 name — the name is a PATH designation — but resolves by its path and is FLAGGED

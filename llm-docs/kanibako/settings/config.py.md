@@ -317,11 +317,10 @@ box scalars are read from SETTINGS files by `settings_launch.load_merged_config`
 file's `system.*` path set-values by `system_path_set_values`.
 
 
-### Moved to `settings_launch`: `resolve_box_scalars`, `load_merged_config`
+### `_BOX_SCALAR_FIELDS` and `_typed_box_scalar`
 
-The box-scalar resolve and the loader that runs it live in `settings_launch`. The resolve runs under
-an `agent_name` (default `agent_ref.GENERAL_SLOT`, the `shell` slot) and keeps a winning present
-`None` (spec §2h), refusing it where `refuses_null_box_scalar` gives a null no meaning.
+`settings_launch.resolve_box_scalars` and `settings_launch.load_merged_config` resolve the box
+scalars; this module keeps the field map and the typing they use.
 
 ⚑ `_BOX_SCALAR_FIELDS` maps the box-scope SCALAR keys that resolve through the KEYSPACE (B6,
 R-11a(a)): dotted key → the flat `KanibakoConfig` field it lands on. `box.shell` rides the same
@@ -331,7 +330,8 @@ from the start and what that cost.
 
 ⚑ `_typed_box_scalar` lands each resolved value on its field's own type: a field whose DATACLASS
 DEFAULT is a bool goes through :func:`coerce_bool` (falling back to `bool(value)` for an
-unrecognized literal), a `None` default keeps a `None`, and everything else is stringified. The arm
+unrecognized literal), a `None` on a field whose default is `None` stays `None`, and everything
+else is stringified. The arm
 is selected off the default rather than a hand-kept name list, because `box.enable_vault` joining as
 the second bool (2026-08-29) is exactly the edit that would otherwise ship a stringified `"False"` —
 which is truthy, i.e. a stored `enable_vault: false` silently reading as ON.
@@ -432,20 +432,6 @@ pass the BOX-AUTHORED read, never the workset-resolved one (spec `:868` keeps th
 STANDALONE passes the resolved one on purpose — that write IS the M-8 migration.
 
 Paired reader: :func:`read_box_enable_vault`.
-
-
-### Moved to `paths`: `resolve_box_enable_vault`, `_narrow_box_scalar_cascade`
-
-`paths.resolve_box_enable_vault` resolves `box.enable_vault` (base < system < workset < box) to fill
-`ProjectPaths.enable_vault`, over `paths._narrow_box_scalar_cascade`. That cascade skips the launch
-snapshot's whole-tree audit (`settings_launch._refuse_undeclared_snapshot`): path resolution runs
-under every verb, including `kanibako box show`, which must still answer for a box whose file
-carries an undeclared entry (`test_box_show_marks_a_hand_written_undeclared_entry`).
-`test_config.py::TestTheTwoBoxScalarResolvesAgree` pins it equal to
-`settings_launch.load_merged_config`.
-
-⚑ A CONSEQUENCE WORTH STATING: `resolve_project` does NOT enforce the closed keyspace. That is the
-status quo — it never did — and the enforcement still fires at every seam that had it before.
 
 
 ```read_box_enable_vault(path: Path) -> bool```
