@@ -2448,6 +2448,73 @@ class TestSecureAutonomousFlags:
             assert any("--dangerously-skip-permissions" in str(a) for a in cli_args)
 
 
+class TestAgentOnlyFlagsWithEntrypoint:
+    """``start --entrypoint X`` runs no agent: each agent-only flag gets a Note."""
+
+    @staticmethod
+    def _args(*argv: str):
+        import argparse
+
+        from kanibako.commands.start import add_start_parser
+
+        parser = argparse.ArgumentParser()
+        add_start_parser(parser.add_subparsers())
+        args = parser.parse_args(["start", *argv])
+        args.agent_args = []
+        return args
+
+    @pytest.mark.parametrize("argv, flag", [
+        (["-N"], "-N"),
+        (["-C"], "-C"),
+        (["-R"], "-R"),
+        (["-M", "opus"], "-M"),
+        (["-A"], "-A"),
+        (["-S"], "-S"),
+        (["--no-auto-auth"], "--no-auto-auth"),
+    ])
+    def test_each_flag_is_noted_and_the_launch_proceeds(
+        self, start_mocks, capsys, argv, flag,
+    ):
+        from kanibako.commands.start import run_start
+
+        with start_mocks() as m:
+            run_start(self._args("--entrypoint", "/bin/bash", "--ephemeral", *argv))
+            m.runtime.run.assert_called_once()
+        err = capsys.readouterr().err
+        assert f"Note: {flag} has no effect with --entrypoint" in err
+        assert err.count("has no effect with --entrypoint") == 1
+
+    def test_every_flag_at_once_is_named_once_each(self, start_mocks, capsys):
+        from kanibako.commands.start import run_start
+
+        with start_mocks() as m:
+            run_start(self._args(
+                "--entrypoint", "/bin/bash", "--ephemeral",
+                "-N", "-M", "opus", "-A", "--no-auto-auth",
+            ))
+            m.runtime.run.assert_called_once()
+        err = capsys.readouterr().err
+        for flag in ("-N", "-M", "-A", "--no-auto-auth"):
+            assert f"Note: {flag} has no effect with --entrypoint" in err
+        assert err.count("has no effect with --entrypoint") == 4
+
+    def test_no_note_without_entrypoint(self, start_mocks, capsys):
+        from kanibako.commands.start import run_start
+
+        with start_mocks() as m:
+            run_start(self._args("--ephemeral", "-N", "-M", "opus", "-S", "--no-auto-auth"))
+            m.runtime.run.assert_called_once()
+        assert "has no effect" not in capsys.readouterr().err
+
+    def test_no_note_for_a_bare_entrypoint(self, start_mocks, capsys):
+        from kanibako.commands.start import run_start
+
+        with start_mocks() as m:
+            run_start(self._args("--entrypoint", "/bin/bash", "--ephemeral"))
+            m.runtime.run.assert_called_once()
+        assert "has no effect" not in capsys.readouterr().err
+
+
 # ---------------------------------------------------------------------------
 # Characterization: vault_tmpfs is mode-specific (pins behavior for #71 B0)
 # ---------------------------------------------------------------------------

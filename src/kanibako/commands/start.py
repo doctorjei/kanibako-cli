@@ -3279,6 +3279,21 @@ def _run_container(
             )
             return 1
 
+    # An ``--entrypoint`` launch resolves no target, so the agent-only flags it
+    # still parses have nothing to act on.  The launch proceeds; each one is named.
+    if typed_entrypoint is not None:
+        for _flag, _given in (
+            ("-N", new_session),
+            ("-C", continue_override),
+            ("-R", resume_mode),
+            ("-M", model_override is not None),
+            ("-A", autonomous),
+            ("-S", safe_mode),
+            ("--no-auto-auth", no_auto_auth),
+        ):
+            if _given:
+                print(_NOTE_NO_EFFECT_WITH_ENTRYPOINT.format(flag=_flag), file=sys.stderr)
+
     # Resolve the target (agent plugin) and detect its installation.  W1 §Design 7,
     # "resolve config FIRST ... before anything else": agent resolution depends only
     # on config/settings (merged config + system default), NOT on the image being
@@ -4272,11 +4287,10 @@ def _run_container(
         #
         # ⚑ ``active_agent`` is the agent slot the flag values are spelled against,
         # so it is given ONLY for a real agent launch. A ``kanibako shell`` /
-        # ``--entrypoint`` box resolves under the ``"shell"`` slot, and the flags are
-        # dropped (``active_agent=None``): spelling ``agent.shell.model`` would install
-        # a flag value onto the shell tier. ``kanibako shell``'s parser has no such
-        # flags, but ``start --entrypoint`` does: ``-M``, ``-N``, ``-C``, and ``-R``
-        # parse there and are silently dropped here.
+        # ``--entrypoint`` box resolves under the ``"shell"`` slot and drops the
+        # flags (``active_agent=None``): spelling ``agent.shell.model`` would
+        # install a flag value onto the shell tier.  ``shell`` does not parse
+        # them; ``start --entrypoint`` names each one in a Note above.
         _cli_level = build_cli_level(
             selection=selection_level,
             active_agent=agent_id if target is not None else None,
@@ -10329,6 +10343,10 @@ def _await_box_stop(runtime: ContainerRuntime, name: str) -> bool:
             return True
         time.sleep(_AGENT_EXIT_STOP_STEP)
     return not runtime.is_running(name)
+
+
+#: An agent-only flag typed with ``--entrypoint``, which runs no agent.
+_NOTE_NO_EFFECT_WITH_ENTRYPOINT = "Note: {flag} has no effect with --entrypoint"
 
 
 # M1: a persistent ``-- <command>`` that ended before the host could attach.
