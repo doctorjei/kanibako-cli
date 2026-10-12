@@ -176,11 +176,11 @@ def probe_missing_executables(
 
 def _check_runtime() -> tuple[str, str]:
     """Check container runtime availability. Returns (status, detail)."""
+    import subprocess
+
+    from kanibako.runtime.container import ContainerError, ContainerRuntime
+
     try:
-        import subprocess
-
-        from kanibako.runtime.container import ContainerRuntime
-
         runtime = ContainerRuntime()
         result = subprocess.run(
             [runtime.cmd, "--version"],
@@ -191,6 +191,9 @@ def _check_runtime() -> tuple[str, str]:
             result.stdout.strip() if result.returncode == 0 else "unknown version"
         )
         return "ok", f"{runtime.cmd} ({version})"
+    except ContainerError as exc:
+        # Its message names the cause: a bad KANIBAKO_DOCKER_CMD, or no runtime + the install hint.
+        return "!!", str(exc)
     except Exception:
         return "!!", "not found -- install podman (https://podman.io/) or Docker"
 

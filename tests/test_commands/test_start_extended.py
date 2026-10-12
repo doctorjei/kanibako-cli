@@ -2560,7 +2560,7 @@ class TestCheckLaunchBaselineUnit:
         ):
             result = start_mod._check_launch_baseline(
                 runtime, "img:latest", "tmux", "box1", self._std(tmp_path),
-                setting=None,
+                setting=None, cure_ref="'my box'", attached=True,
             )
         assert result is start_mod._BOOTSTRAP_MISSING
         err = capsys.readouterr().err
@@ -2571,8 +2571,36 @@ class TestCheckLaunchBaselineUnit:
         # No known setting: the install cure alone, and no key the user never wrote.
         assert "Install it in the image, or start without it:" in err
         assert "agent.default.bootstrap" not in err
-        # An ephemeral start skips the bootstrap program, so the refusal names it as a cure.
-        assert "kanibako start --ephemeral" in err
+        # An ephemeral start skips the bootstrap program, so the refusal names it as a
+        # cure; both cures name the box.
+        assert "kanibako start 'my box' --ephemeral" in err
+        assert "kanibako shell 'my box'" in err
+
+    def test_tier1_on_a_detached_start_offers_no_ephemeral_cure(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        """``--detach`` and ``kanibako code`` refuse ``--ephemeral``, so it is no cure there."""
+        from kanibako.commands import start as start_mod
+
+        monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
+        runtime = MagicMock()
+        runtime.cmd = "podman"
+        with patch.object(
+            start_mod, "probe_missing_executables", return_value=["tmux"]
+        ):
+            result = start_mod._check_launch_baseline(
+                runtime, "img:latest", "tmux", "box1", self._std(tmp_path),
+                setting="agent.shell.bootstrap", cure_ref="'my box'", attached=False,
+            )
+        assert result is start_mod._BOOTSTRAP_MISSING
+        err = capsys.readouterr().err
+        assert "--ephemeral" not in err
+        assert "start without it" not in err
+        assert (
+            "Install it in the image, or set agent.shell.bootstrap to an installed program."
+            in err
+        )
+        assert "kanibako shell 'my box'" in err
 
     def test_tier1_on_a_shell_box_names_the_shell_tier_key(
         self, tmp_path, monkeypatch, capsys
@@ -2592,12 +2620,12 @@ class TestCheckLaunchBaselineUnit:
         ):
             result = start_mod._check_launch_baseline(
                 runtime, "img:latest", "tmux", "box1", self._std(tmp_path),
-                setting=setting,
+                setting=setting, cure_ref="'my box'", attached=True,
             )
         assert result is start_mod._BOOTSTRAP_MISSING
         err = capsys.readouterr().err
         assert "or set agent.shell.bootstrap to an installed program, or start without it:" in err
-        assert "kanibako start --ephemeral" in err
+        assert "kanibako start 'my box' --ephemeral" in err
         assert "agent.default.bootstrap" not in err
 
     def test_tier2_missing_warns_and_persists(
@@ -2621,7 +2649,7 @@ class TestCheckLaunchBaselineUnit:
         ):
             result = start_mod._check_launch_baseline(
                 runtime, "img:latest", "tmux", "box1", self._std(tmp_path),
-                setting=None,
+                setting=None, cure_ref="'my box'", attached=True,
             )
         assert result == [("ripgrep", "rg")]
         # Persisted to the state file.
@@ -2655,7 +2683,7 @@ class TestCheckLaunchBaselineUnit:
         ):
             result = start_mod._check_launch_baseline(
                 runtime, "img:latest", "tmux", "box1", self._std(tmp_path),
-                setting=None,
+                setting=None, cure_ref="'my box'", attached=True,
             )
         assert result == []
         assert not issues.exists()
@@ -2738,7 +2766,7 @@ class TestCheckLaunchBaselineUnit:
         ) as mock_probe:
             start_mod._check_launch_baseline(
                 runtime, "img:latest", "tmux", "box1", self._std(tmp_path),
-                setting=None,
+                setting=None, cure_ref="'my box'", attached=True,
             )
         assert mock_probe.call_count == 1
         probed = mock_probe.call_args[0][2]
@@ -2768,7 +2796,7 @@ class TestCheckLaunchBaselineUnit:
         ) as mock_probe:
             result = start_mod._check_launch_baseline(
                 runtime, "img:latest", "none", "box1", self._std(tmp_path),
-                setting=None,
+                setting=None, cure_ref="'my box'", attached=True,
             )
         # Not a tier-1 hard stop; tier-2 still surfaces the missing baseline exe.
         assert result == [("ripgrep", "rg")]
@@ -2794,7 +2822,7 @@ class TestCheckLaunchBaselineUnit:
         ):
             result = start_mod._check_launch_baseline(
                 runtime, "img:latest", "none", "box1", self._std(tmp_path),
-                setting=None,
+                setting=None, cure_ref="'my box'", attached=True,
             )
         assert result is not start_mod._BOOTSTRAP_MISSING
         assert result == []  # tier-2 clean

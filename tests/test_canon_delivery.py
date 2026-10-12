@@ -1671,7 +1671,8 @@ class TestCanonSkeleton:
             core_defaults.materialize_canon_skeleton(home)
 
         assert (home / "canon" / "charter" / "general").is_dir(), "skeleton still built"
-        assert any("left writable" in r.message for r in caplog.records), caplog.text
+        assert any("left writable" in r.message and "(no podman)" in r.message
+                   for r in caplog.records), caplog.text
 
     @pytest.mark.parametrize("failing", ("unshare_chown", "unshare_chmod"))
     def test_falls_back_with_a_warning_when_unshare_fails(

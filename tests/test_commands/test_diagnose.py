@@ -54,11 +54,12 @@ class TestCheckRuntime:
 
         with patch(
             "kanibako.runtime.container.ContainerRuntime",
-            side_effect=ContainerError("no runtime"),
+            side_effect=ContainerError("KANIBAKO_DOCKER_CMD names 'x' (test)"),
         ):
             status, detail = _check_runtime()
         assert status == "!!"
-        assert "not found" in detail
+        # The error's own message, so the cause it names reaches the report.
+        assert detail == "KANIBAKO_DOCKER_CMD names 'x' (test)"
 
     def test_check_runtime_found(self) -> None:
         """When ContainerRuntime succeeds, returns ok status."""

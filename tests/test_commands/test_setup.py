@@ -62,13 +62,15 @@ class TestSetupRuntime:
         """When no runtime is found, setup returns 1."""
         with patch(
             "kanibako.commands.diagnose._check_runtime",
-            return_value=("!!", "not found"),
+            return_value=("!!", "KANIBAKO_DOCKER_CMD names 'x' (test)"),
         ):
             rc = run_setup(setup_args)
 
         assert rc == 1
         captured = capsys.readouterr()
-        assert "No container runtime found" in captured.out
+        # The check's own detail, not a fixed no-runtime text that hides the cause.
+        assert "[!!] KANIBAKO_DOCKER_CMD names 'x' (test)" in captured.out
+        assert "No container runtime found" not in captured.out
 
 
 class TestSetupAgents:

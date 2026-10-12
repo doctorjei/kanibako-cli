@@ -1234,7 +1234,8 @@ def _assert_launch_passes_the_gate(target, monkeypatch, capsys):
     monkeypatch.setattr(start, "ContainerRuntime", _no_runtime)
     capsys.readouterr()
     assert _launch(target) == 1
-    assert "No container runtime found" in capsys.readouterr().err
+    # The caught error is printed as-is, so a bad KANIBAKO_DOCKER_CMD names itself.
+    assert "Error: no runtime (test)" in capsys.readouterr().err
 
 
 class TestLaunchRefusesNullWorkspaceBind:

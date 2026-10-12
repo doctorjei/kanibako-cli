@@ -165,17 +165,19 @@ def run_info(args: argparse.Namespace) -> int:
         )
 
     # Container runtime
+    import subprocess
+
+    from kanibako.runtime.container import ContainerError, ContainerRuntime
+
     try:
-        import subprocess
-
-        from kanibako.runtime.container import ContainerRuntime
-
         runtime = ContainerRuntime()
         result = subprocess.run(
             [runtime.cmd, "--version"], capture_output=True, text=True,
         )
         version = result.stdout.strip() if result.returncode == 0 else "unknown"
         print(f"Runtime:   {runtime.cmd} ({version})")
+    except ContainerError as exc:
+        print(f"Runtime:   {exc}")
     except Exception:
         print(
             "Runtime:   not found — install podman (https://podman.io/) or Docker"

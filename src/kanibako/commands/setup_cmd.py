@@ -409,8 +409,7 @@ def run_setup(args: argparse.Namespace) -> int:
     if status == "ok":
         print(f"  [ok] {detail}")
     else:
-        print("  [!!] No container runtime found.")
-        print("       Install podman (https://podman.io/) or Docker.")
+        print(f"  [!!] {detail}")
         print()
         return 1
     print()

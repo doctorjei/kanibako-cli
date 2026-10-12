@@ -902,12 +902,42 @@ class TestTheOtherPrintedCommandsAreQuoted:
             assert start._check_launch_baseline(
                 MagicMock(cmd="podman"), name, "tmux", "box1",
                 SimpleNamespace(state=tmp_path / "state"), setting=None,
+                cure_ref="box1", attached=True,
             ) is start._BOOTSTRAP_MISSING
         hint = _line(err.getvalue(), " run --rm -it ")
 
         argv, paste_cwd, _, _ = _paste(hint, tmp_path / "paste", stub="podman")
         assert not (paste_cwd / _MARKER).exists(), hint
         assert argv == ["run", "--rm", "-it", name, "bash"], argv
+
+    def test_the_baseline_box_cures_paste_to_one_argv_each(self, name, tmp_path, monkeypatch):
+        """``start._check_launch_baseline``'s ``kanibako shell`` + ``start --ephemeral`` cures,
+        fed the box's :func:`project_cure_ref` as ``_run_container`` feeds it."""
+        from types import SimpleNamespace
+        from unittest.mock import MagicMock
+
+        from kanibako.commands import start
+        from kanibako.runtime import baseline
+        from kanibako.settings.paths import BoxMode, box_cure_ref
+
+        monkeypatch.setattr(start, "probe_missing_executables", lambda *a: ["tmux"])
+        monkeypatch.setattr(baseline, "executables", lambda: [])
+        err = io.StringIO()
+        with contextlib.redirect_stderr(err):
+            assert start._check_launch_baseline(
+                MagicMock(cmd="podman"), "img", "tmux", "box1",
+                SimpleNamespace(state=tmp_path / "state"), setting=None,
+                cure_ref=box_cure_ref(BoxMode.primary, name, None, tmp_path),
+                attached=True,
+            ) is start._BOOTSTRAP_MISSING
+        shell = _pasteable(_line(err.getvalue(), "kanibako shell "), "exists:")
+        ephemeral = _line(err.getvalue(), " --ephemeral")
+
+        for cure, want, sub in ((shell, ["shell", name], "s"),
+                                (ephemeral, ["start", name, "--ephemeral"], "e")):
+            argv, paste_cwd, _, _ = _paste(cure, tmp_path / sub)
+            assert not (paste_cwd / _MARKER).exists(), cure
+            assert argv == want, argv
 
     def test_the_retired_share_cure_pastes_to_one_argv_each(self, name, tmp_path):
         """``workset_cmd._workset_raw_shares`` on a RETIRED name-keyed entry."""

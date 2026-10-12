@@ -1007,10 +1007,8 @@ def _protect_canon_skeleton(
     everything = dirs + files
     try:
         runtime = ContainerRuntime()
-    except ContainerError:
-        _warn_unprotected(
-            everything[0], log, "no container runtime is available", True, quiet,
-        )
+    except ContainerError as exc:
+        _warn_unprotected(everything[0], log, str(exc).rstrip("."), True, quiet)
         return
 
     if not runtime.unshare_chown(

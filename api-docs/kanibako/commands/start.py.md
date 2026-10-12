@@ -79,7 +79,7 @@ def _no_box_error(project_dir: str | None, std: StandardPaths | None=None, verb:
 def _unbuilt_box_error(proj: ProjectPaths, std: StandardPaths) -> str | None
 def _refuse_null_workspace_bind(std, proj: ProjectPaths) -> None
 def _launch_issues_path(std, container_name: str) -> Path
-def _check_launch_baseline(runtime, image, bootstrap_program, container_name, std, *, setting: str | None)
+def _check_launch_baseline(runtime, image, bootstrap_program, container_name, std, *, setting: str | None, cure_ref: str, attached: bool)
 def _print_launch_issues(std, container_name: str) -> None
 def _shadow_issues_path(std, container_name: str) -> Path
 def _persist_shadow_issues(std, container_name: str, shadowed: list[str]) -> None

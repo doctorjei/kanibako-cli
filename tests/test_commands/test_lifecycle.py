@@ -1985,7 +1985,11 @@ class TestMoveEntryEscalation:
             calls["copy"].append(a)
             raise AssertionError("copied")
 
-        monkeypatch.setenv("KANIBAKO_DOCKER_CMD", "podman")
+        # An executable stub: the runtime seam refuses a value that is not on PATH.
+        stub = tmp_path / "fake-podman"
+        stub.write_text("#!/bin/sh\nexit 0\n")
+        stub.chmod(0o755)
+        monkeypatch.setenv("KANIBAKO_DOCKER_CMD", str(stub))
         monkeypatch.setattr(os, "rename", rename)
         monkeypatch.setattr(ContainerRuntime, "unshare_rename", unshare_rename, raising=False)
         monkeypatch.setattr(shutil, "copytree", no_copy)

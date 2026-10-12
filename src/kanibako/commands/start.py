@@ -1885,7 +1885,7 @@ def _launch_issues_path(std, container_name: str) -> Path:
 
 def _check_launch_baseline(
     runtime, image, bootstrap_program, container_name, std, *,
-    setting: str | None,
+    setting: str | None, cure_ref: str, attached: bool,
 ):
     """Run the two-tier baseline probe against *image* before launch.
 
@@ -1906,6 +1906,10 @@ def _check_launch_baseline(
     (:func:`_bootstrap_setting`), named as the tier-1 cure; ``None`` (not known)
     leaves the install cure alone.  ⚑ Never a fixed ``agent.default.bootstrap``:
     that is a no-op wherever a node's own tier, key or pref supplies the value.
+
+    *cure_ref* is the box's :func:`project_cure_ref`, named by every printed cure.
+    *attached* offers the ``--ephemeral`` cure; a detached start (``--detach``, or
+    ``kanibako code``) refuses ``--ephemeral``, so it is not offered there.
     """
     from kanibako.runtime import baseline as baseline_mod
 
@@ -1931,6 +1935,10 @@ def _check_launch_baseline(
             f", or set {setting} to an installed program" if setting is not None
             else ""
         )
+        without = (
+            f", or start without it:\n      kanibako start {cure_ref} --ephemeral"
+            if attached else "."
+        )
         print(
             f"Error: the bootstrap program '{bootstrap_program}' is not "
             f"installed in image '{image}'.\n"
@@ -1938,9 +1946,8 @@ def _check_launch_baseline(
             f"  A shell IS still available to investigate, e.g.:\n"
             f"      {shlex.quote(runtime.cmd)} run --rm -it "
             f"{shlex.quote(image)} bash\n"
-            f"  or, once a box exists:  kanibako shell\n"
-            f"  Install it in the image{or_set}, or start without it:\n"
-            f"      kanibako start --ephemeral",
+            f"  or, once a box exists:  kanibako shell {cure_ref}\n"
+            f"  Install it in the image{or_set}{without}",
             file=sys.stderr,
         )
         return _BOOTSTRAP_MISSING
@@ -3105,12 +3112,8 @@ def _run_container(
     # too.  Detection is cheap and side-effect-free.
     try:
         runtime = ContainerRuntime()
-    except ContainerError:
-        print(
-            "Error: No container runtime found.\n"
-            "Install podman (https://podman.io/) or Docker, then try again.",
-            file=sys.stderr,
-        )
+    except ContainerError as exc:
+        print(f"Error: {exc}", file=sys.stderr)
         return 1
 
     # ``--restart``: STOP FIRST, then launch normally.  This is the CURE named by
@@ -3605,6 +3608,7 @@ def _run_container(
             if _check_launch_baseline(
                 runtime, image, bootstrap_program, container_name, std,
                 setting=_bootstrap_setting(bootstrap),
+                cure_ref=project_cure_ref(proj), attached=not detach,
             ) is _BOOTSTRAP_MISSING:
                 return 1
 

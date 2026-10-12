@@ -15,19 +15,39 @@ from kanibako.errors import ContainerError
 class TestRuntimeNotFoundMessages:
     """Verify helpful message when no container runtime is installed."""
 
-    def test_start_runtime_missing_shows_install_hint(self, start_mocks, capsys):
-        """Missing runtime suggests installing podman with URL."""
+    @staticmethod
+    def _real_detect(docker_cmd: str):
+        """The REAL runtime detection, on a host with no podman or docker on PATH."""
+        from kanibako.runtime.container import ContainerRuntime
+
+        def _detect(*a, **kw):
+            with patch("shutil.which", return_value=None), \
+                 patch.dict("os.environ", {"KANIBAKO_DOCKER_CMD": docker_cmd}):
+                return ContainerRuntime()
+        return _detect
+
+    def _start_err(self, start_mocks, capsys, docker_cmd: str) -> str:
         with start_mocks() as m:
-            m.runtime_cls.side_effect = ContainerError("No runtime")
+            m.runtime_cls.side_effect = self._real_detect(docker_cmd)
             rc = _run_container(
                 project_dir=None, entrypoint=None, image_override=None,
                 new_session=False, safe_mode=False, resume_mode=False,
                 extra_args=[],
             )
         assert rc == 1
-        err = capsys.readouterr().err
+        return capsys.readouterr().err
+
+    def test_start_runtime_missing_shows_install_hint(self, start_mocks, capsys):
+        """Missing runtime suggests installing podman with URL."""
+        err = self._start_err(start_mocks, capsys, "")
         assert "podman" in err
         assert "https://podman.io/" in err or "Docker" in err
+
+    def test_start_names_a_bad_docker_cmd(self, start_mocks, capsys):
+        """A KANIBAKO_DOCKER_CMD naming a missing program is named, not called no runtime."""
+        err = self._start_err(start_mocks, capsys, "/nonexistent/podman")
+        assert "KANIBAKO_DOCKER_CMD names '/nonexistent/podman'" in err
+        assert "No container runtime found" not in err
 
     def test_stop_runtime_missing_shows_install_hint(self, capsys):
         """Stop command also shows a helpful message when runtime is missing."""
@@ -267,6 +287,27 @@ class TestSystemInfoOutput:
         assert rc == 0
         out = capsys.readouterr().out
         assert out.startswith("Kanibako v")
+
+    def test_info_runtime_line_names_the_runtime_error(self, capsys):
+        """A ContainerError's own message is the Runtime line, so a bad KANIBAKO_DOCKER_CMD
+        is named rather than reported as no runtime installed."""
+        from kanibako.commands.system_cmd import run_info
+
+        with (
+            patch("kanibako.commands.system_cmd.user_config_file") as m_cf,
+            patch("kanibako.commands.system_cmd.xdg", return_value=MagicMock()),
+            patch(
+                "kanibako.runtime.container.ContainerRuntime",
+                side_effect=ContainerError("KANIBAKO_DOCKER_CMD names 'x' (test)"),
+            ),
+            patch("kanibako.targets.discover_targets", return_value={}),
+        ):
+            m_cf.return_value = MagicMock(exists=MagicMock(return_value=False))
+            run_info(argparse.Namespace())
+
+        out = capsys.readouterr().out
+        assert "Runtime:   KANIBAKO_DOCKER_CMD names 'x' (test)" in out
+        assert "not found" not in out
 
     def test_info_shows_agent_count(self, capsys):
         """System info shows number of detected agents."""
