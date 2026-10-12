@@ -3081,9 +3081,10 @@ def _run_container(
     # implementation.  ``runtime.stop`` shells out to ``podman stop``, which
     # BLOCKS until the container is down, and ``_stop_one`` then removes it, so
     # there is no asynchrony to paper over.  The one real failure mode is a stop
-    # that did not take (``podman stop`` non-zero → ``_stop_one`` still returns
-    # 0), which is CHECKED rather than assumed: relaunching into a live container
-    # name would otherwise fail much deeper, in ``runtime.run``, as a name clash.
+    # that did not take (``podman stop`` non-zero → the removal fails and
+    # ``_stop_one`` returns 1).  Its return code is not what decides here: liveness
+    # is CHECKED after it, because relaunching into a live container name would
+    # otherwise fail much deeper, in ``runtime.run``, as a name clash.
     #
     # The condition is EXISTENCE, not liveness: an exited container still holds
     # the name and blocks an ephemeral/shell launch, and ``_stop_one`` removes it

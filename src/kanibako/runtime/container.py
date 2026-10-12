@@ -551,8 +551,9 @@ class ContainerRuntime:
         EXITED — there was nothing to stop and it says so by succeeding — so
         True means "the runtime found this container and it is now not
         running", never "it was running".  A caller that needs to know whether
-        the box was live must take that reading from :meth:`is_running` BEFORE
-        calling this.
+        the box was live must take that reading BEFORE calling this, from
+        ``kanibako.commands.stop._is_live`` (a PAUSED box is live, and
+        :meth:`is_running` alone reads it as not running).
 
         ⚑ A PAUSED container refuses a stop (podman exits 125) while it still
         holds the name, so a failed stop of one is answered by unpausing it and
