@@ -89,23 +89,20 @@ These are the PLUGIN-REQUIRED variables that §2d keeps plugin-declared. The use
 `GOOSE_PROVIDER` and `GOOSE_MODEL` — are deliberately NOT declared, because goose owns those in its
 own persistent config.
 
-## `config.yaml` is GOOSE's own file — kanibako only projects into it
+## `config.yaml` is GOOSE's own file
 
-Two hooks touch it, from opposite directions, and the rule joining them is that the box-local
-`GOOSE_MODE` is kanibako's projection while everything else in the file is the user's.
+The rule: a box's `GOOSE_MODE` stays in that box; every other key syncs both ways.
 
 `transform_cred` is the credsync engine's per-spec filter hook. Only `config.yaml` is FILTERED —
 `secrets.yaml` and `custom_providers/` stay unfiltered wholesale copies — and the engine calls this
 hook for that spec alone:
 
 * **`"in"` (host → box seed/refresh)** — wholesale copy. The box gets the host's `config.yaml`
-  verbatim; its box-local panel-parity `GOOSE_MODE` is (re)seeded separately by
-  `deliver_panel_permissions` at launch.
+  verbatim.
 * **`"out"` (box → host writeback)** — merge the box's `config.yaml` back to the host BUT preserve
-  the host's OWN `GOOSE_MODE`. The in-box value is a box-local PANEL-parity value (the panel's
-  yolo), NOT user config, so it must never overwrite the host's setting. Every OTHER key the user
-  changed in-box — provider, model, extensions, … — still flows to the host. If the host had no
-  `GOOSE_MODE` at all, the box-local one is dropped rather than introduced.
+  the host's OWN `GOOSE_MODE`: a box's permission mode never overwrites the host's. Every OTHER key
+  the user changed in-box — provider, model, extensions, … — still flows to the host. If the host
+  had no `GOOSE_MODE` at all, the box-local one is dropped rather than introduced.
 
 It is defensive throughout, matching the warn-and-skip credential helpers: a missing source or a
 malformed YAML degrades to a safe no-op or an empty dict, never raises. Two of those degradations
@@ -115,30 +112,13 @@ writeback whose only difference was the box-local `GOOSE_MODE` leaves the host f
 untouched. Any other filtered spec that ever reaches the hook falls back to a plain wholesale copy,
 the base-class default.
 
-## The panel parity seam
+## Panel and directive seams
 
-`deliver_panel_permissions` persists the box's CASCADE-resolved `access` TIER as the top-level
-`GOOSE_MODE` in the box's in-box `~/.config/goose/config.yaml` (FF-5 permission parity).
-
-It exists because the `block.vscode-goose` panel spawns its own in-box goose WITHOUT kanibako's
-launch env, so it never sees the `GOOSE_MODE` env var the CLI entrypoint sets. Without this write,
-the panel would run at goose's own default while the CLI ran at the resolved tier.
-
-⚑ **ASYMMETRIC vs claude.** `restricted` writes `approve` EXPLICITLY: an unset `GOOSE_MODE` defaults
-to the permissive `auto`, so *clearing* the key would silently restore permissive — the opposite of
-what a restricted tier asks for.
-
-⚑ **`editing` is REFUSED.** goose has no mode that realizes it — `smart_approve` prompts for writes,
-which is the inverse of claude's acceptEdits — and the launch has already refused that tier before
-delivery ever runs.
-
-The write is merge-preserving and idempotent; the mechanics live in
-`kanibako.vscode.vscode_config.seed_goose_mode`. The descriptor is passed in from here because the
-tier→`GOOSE_MODE` values are THIS descriptor's `access_realization` rows — the same ones the launch
-emits, so the panel cannot drift from the CLI — and because core must not reach back into a named
-plugin to read them.
-
-goose declares NO directive-hook surface, so `deliver_directive_hook` stays the inherited no-op.
+goose overrides neither `deliver_panel_permissions` nor `deliver_directive_hook`; both stay the
+inherited no-op. The `block.vscode-goose` panel spawns its own in-box goose, which reads
+`GOOSE_MODE` from the box's `config.yaml`; kanibako does not write the `access` tier there. The
+launched goose gets the tier only as the `GOOSE_MODE` env var (`access_realization`), and the
+launch refuses `editing`, which no goose mode realizes.
 
 ## Setup — detecting an unconfigured goose
 
@@ -236,10 +216,6 @@ Kept in the `.py` under the keep test, because each one guards a specific line a
 * the `_BINARY` `⚑` — `shutil.which` looks like the obvious idiom and is the vulnerability;
 * `transform_cred`'s two in-body `⚑`s — the empty-box-config guard and the no-diff early return
   both read as redundancy and are data-protection;
-* `deliver_panel_permissions`' two `⚑`s — clearing `GOOSE_MODE` restores permissive, and `editing`
-  has no goose realization;
-* the descriptor-passing `⚑` at `seed_goose_mode` — a reader would otherwise import the descriptor
-  in core;
 * the `NOTE:` on the absent credential overrides — it reads as a missing implementation;
 * `generate_agent_config` / `setting_descriptors` — the empty state and empty floors read as
   oversights and are the whole provider/model rule.
