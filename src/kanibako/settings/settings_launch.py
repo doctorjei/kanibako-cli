@@ -60,7 +60,7 @@ from kanibako.settings.agent_config import (
     is_unambiguous_path_value,
     store_dirname,
 )
-from kanibako.settings.bootstrap import SPAWN_BUDGET_DEFAULTS
+from kanibako.settings.bootstrap import BOXES_PATH, SPAWN_BUDGET_DEFAULTS, STANDALONE_META_DIR
 from kanibako.settings.agent_file import stored_leaf_text
 from kanibako.settings import core_defaults
 from kanibako.settings.config import (
@@ -788,7 +788,7 @@ def workset_anchor_floor(
         # boxes/logs are PER-MODE; the vault roots are UNIFORM (§2c ALL PROJECTS) —
         # only the box BIND differs per mode.
         "workset.boxes": (
-            "{meta.workset.path}/box_data" if standalone else "{meta.workset.path}/boxes"
+            "{meta.workset.path}/" + (STANDALONE_META_DIR if standalone else BOXES_PATH)
         ),
         "workset.vault_ro": "{meta.workset.path}/vault/ro",
         "workset.vault_rw": "{meta.workset.path}/vault/rw",

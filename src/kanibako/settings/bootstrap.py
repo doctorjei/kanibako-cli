@@ -131,8 +131,9 @@ CREDS_LOCK_KEPT_WHY = "a live creds watcher holds it, so kanibako does not remov
 
 # The STANDALONE box-store dir name — ``@meta.box.path`` and half the detection
 # marker (``system-design-1.8.0.md`` § "Detection & import").
-# ⚑ THE only live carrier: import it, here or through ``paths``' re-export; never
-# re-spell the string.  (``kinemata_views``' retired-file list names a retired path under it.)
+# ⚑ THE only carrier in path code: import it, here or through ``paths``' re-export;
+# never re-spell the string.  Prose and help text name the dir; ``kinemata_views``'
+# retired-file list names a retired path under it.
 STANDALONE_META_DIR = 'box_data'
 
 
