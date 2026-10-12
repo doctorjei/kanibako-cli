@@ -565,6 +565,22 @@ def unlink(path: Path, root: Path, *, missing_ok: bool = False) -> None:
             raise
 
 
+def _remove_at(name: str, dir_fd: int, shown: Path) -> None:
+    """Remove the entry *name* under *dir_fd*: a directory with everything in it, else
+    the entry itself (a link is removed as a link, never followed).
+
+    Directories go through ``shutil.rmtree`` with ``dir_fd``; its recursion depth
+    limit (Python < 3.12) becomes ``OSError(EOVERFLOW)`` naming *shown*.
+    """
+    if _st.S_ISDIR(os.stat(name, dir_fd=dir_fd, follow_symlinks=False).st_mode):
+        try:
+            shutil.rmtree(name, dir_fd=dir_fd)
+        except RecursionError as exc:  # the recursive rmtree of Python < 3.12
+            raise OSError(errno.EOVERFLOW, "directory tree too deep", str(shown)) from exc
+    else:
+        os.unlink(name, dir_fd=dir_fd)
+
+
 def rmtree_contents(path: Path, root: Path) -> None:
     """Remove everything inside the directory *path* (which may be *root*), keeping it.
 
@@ -573,15 +589,24 @@ def rmtree_contents(path: Path, root: Path) -> None:
     """
     with _dir(path, root) as dfd:
         for name in os.listdir(dfd):
-            if _st.S_ISDIR(os.stat(name, dir_fd=dfd, follow_symlinks=False).st_mode):
-                try:
-                    shutil.rmtree(name, dir_fd=dfd)
-                except RecursionError as exc:  # the recursive rmtree of Python < 3.12
-                    raise OSError(
-                        errno.EOVERFLOW, "directory tree too deep", str(Path(path) / name),
-                    ) from exc
-            else:
-                os.unlink(name, dir_fd=dfd)
+            _remove_at(name, dfd, Path(path) / name)
+
+
+def rmtree(path: Path, root: Path, *, missing_ok: bool = False) -> None:
+    """Remove the directory *path* and everything in it, through its verified parent.
+
+    A link at *path* is removed as a link (as :func:`unlink` does), never descended;
+    a file at *path* is removed too.  Inside, removal is :func:`rmtree_contents`'s.
+    *path* equal to *root* raises ``ValueError``: the root is the caller's, so use
+    :func:`rmtree_contents` to empty it.
+    """
+    path = Path(path)
+    try:
+        with _parent(path, root) as (pfd, leaf):
+            _remove_at(leaf, pfd, path)
+    except FileNotFoundError:
+        if not missing_ok:
+            raise
 
 
 def _chmod_fd(fd: int, mode: int, path: Path) -> None:

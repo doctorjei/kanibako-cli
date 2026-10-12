@@ -28,6 +28,7 @@ def copy_tree(src: Path, dst: Path, *, src_root: Path | None, dst_root: Path | N
 def touch(path: Path, root: Path, mode: int=438) -> None
 def unlink(path: Path, root: Path, *, missing_ok: bool=False) -> None
 def rmtree_contents(path: Path, root: Path) -> None
+def rmtree(path: Path, root: Path, *, missing_ok: bool=False) -> None
 def chmod(path: Path, root: Path, mode: int) -> None
 def chmod_tree(path: Path, root: Path, *, add: int=0, remove: int=0) -> None
 def rename(src: Path, dst: Path, root: Path) -> None
@@ -49,6 +50,7 @@ def _write_parent(path: Path, root: Path | None) -> Iterator[tuple[int, str]]
 def _kept_mode(dir_fd: int, leaf: str) -> int
 def _not_copied(skipped: list[Path], path: Path, why: str) -> None
 def _copy_entries(sfd: int, dfd: int, src: Path, dst: Path, skip_links: bool, avoid: tuple[int, int]) -> list[Path]
+def _remove_at(name: str, dir_fd: int, shown: Path) -> None
 def _chmod_fd(fd: int, mode: int, path: Path) -> None
 ```
 

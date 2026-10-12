@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import contextlib
+import errno
 import logging
 import os
 import stat
@@ -570,3 +571,125 @@ def test_write_sets_times_when_given(tree):
         with pytest.raises(SymlinkRefusedError):
             boxfs.write_bytes(p, root, b"x", times=(1, 1))
     assert sentinel.stat().st_mtime_ns == before
+
+
+# --- round 4: rmtree -----------------------------------------------------------
+
+
+def test_rmtree_removes_a_normal_tree(tree):
+    root, _, _ = tree
+    d = root / "a" / "b"
+    (d / "sub" / "deeper").mkdir(parents=True)
+    (d / "sub" / "deeper" / "f").write_text("x")
+    (d / "g").write_text("x")
+    boxfs.rmtree(d, root)
+    assert not d.exists() and (root / "a").is_dir()
+    boxfs.rmtree(d, root, missing_ok=True)
+    with pytest.raises(FileNotFoundError):
+        boxfs.rmtree(d, root)
+
+
+def test_rmtree_removes_a_leaf_link_as_a_link(tree):
+    root, outside, sentinel = tree
+    (outside / "dir").mkdir()
+    (outside / "dir" / "keep").write_text("host data")
+    (root / "a" / "to_dir").symlink_to(outside / "dir")
+    (root / "a" / "to_file").symlink_to(sentinel)
+    boxfs.rmtree(root / "a" / "to_dir", root)
+    boxfs.rmtree(root / "a" / "to_file", root)
+    assert not os.path.lexists(root / "a" / "to_dir")
+    assert not os.path.lexists(root / "a" / "to_file")
+    assert (outside / "dir" / "keep").read_text() == "host data"
+    assert sentinel.read_text() == "host data"
+
+
+def test_rmtree_removes_inner_links_without_following(tree):
+    root, outside, sentinel = tree
+    d = root / "a" / "b"
+    (d / "to_host_dir").symlink_to(outside)
+    (d / "to_host_file").symlink_to(sentinel)
+    boxfs.rmtree(d, root)
+    assert not d.exists()
+    assert sentinel.read_text() == "host data"
+
+
+def test_rmtree_refuses_a_parent_link(tree):
+    root, outside, sentinel = tree
+    (outside / "victim").mkdir()
+    (root / "a" / "par").symlink_to(outside)
+    for p in (root / "a" / "par" / "victim", root / "a" / "par" / "secret"):
+        with pytest.raises(SymlinkRefusedError):
+            boxfs.rmtree(p, root)
+    assert (outside / "victim").is_dir() and sentinel.read_text() == "host data"
+
+
+def test_rmtree_refuses_the_root(tree):
+    root, _, _ = tree
+    with pytest.raises(ValueError):
+        boxfs.rmtree(root, root)
+    assert (root / "a" / "b").is_dir()
+
+
+def _swap_after_open(monkeypatch, parent, outside):
+    """Patch ``os.open``: once the walk opens *parent*, swap it for a link to *outside*."""
+    real_open = os.open
+
+    def open_then_swap(name, *args, **kwargs):
+        fd = real_open(name, *args, **kwargs)
+        if name == parent.name and not parent.is_symlink():
+            parent.rename(parent.with_name("moved"))
+            parent.symlink_to(outside)
+        return fd
+
+    monkeypatch.setattr(boxfs.os, "open", open_then_swap)
+
+
+def test_rmtree_acts_in_the_verified_parent_when_it_is_swapped_for_a_link(tree, monkeypatch):
+    root, outside, sentinel = tree
+    parent = root / "a" / "b"
+    (parent / "victim" / "sub").mkdir(parents=True)
+    (outside / "victim").mkdir()
+    (outside / "victim" / "keep").write_text("host data")
+    _swap_after_open(monkeypatch, parent, outside)
+    boxfs.rmtree(parent / "victim", root)
+    monkeypatch.undo()
+    assert parent.is_symlink()
+    assert not (root / "a" / "moved" / "victim").exists()
+    assert (outside / "victim" / "keep").read_text() == "host data"
+    assert sentinel.read_text() == "host data"
+
+
+def test_rmtree_refuses_a_parent_swapped_for_a_link_before_its_open(tree, monkeypatch):
+    root, outside, _ = tree
+    parent = root / "a" / "b"
+    (parent / "victim").mkdir()
+    (outside / "victim").mkdir()
+    real_open = os.open
+
+    def swap_then_open(name, *args, **kwargs):
+        if name == parent.name and not parent.is_symlink():
+            parent.rename(root / "a" / "moved")
+            parent.symlink_to(outside)
+        return real_open(name, *args, **kwargs)
+
+    monkeypatch.setattr(boxfs.os, "open", swap_then_open)
+    with pytest.raises(SymlinkRefusedError):
+        boxfs.rmtree(parent / "victim", root)
+    monkeypatch.undo()
+    assert (outside / "victim").is_dir()
+    assert (root / "a" / "moved" / "victim").is_dir()
+
+
+def test_rmtree_deep_tree_never_raises_recursion_error(tree):
+    root, _, _ = tree
+    deep = root / "a" / "deep"
+    deep.mkdir()
+    os.close(_deep(deep, sys.getrecursionlimit() + 100, leaf="f"))
+    try:
+        boxfs.rmtree(deep, root)
+    except RecursionError:  # pragma: no cover - the failure this test pins
+        pytest.fail("rmtree raised RecursionError")
+    except OSError as exc:  # Python < 3.12: shutil.rmtree is recursive
+        assert exc.errno == errno.EOVERFLOW
+    else:
+        assert not deep.exists()
