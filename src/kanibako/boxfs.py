@@ -23,10 +23,11 @@ from __future__ import annotations
 
 import contextlib
 import errno
+import functools
 import os
 import secrets
 import shutil
-import stat
+import stat as _st
 from collections.abc import Callable, Iterator
 from pathlib import Path
 from typing import BinaryIO
@@ -64,7 +65,7 @@ def _parts(path: Path, root: Path) -> tuple[str, ...]:
 
 def _is_link_at(name: str, dir_fd: int) -> bool:
     try:
-        return stat.S_ISLNK(os.stat(name, dir_fd=dir_fd, follow_symlinks=False).st_mode)
+        return _st.S_ISLNK(os.stat(name, dir_fd=dir_fd, follow_symlinks=False).st_mode)
     except OSError:
         return False
 
@@ -155,6 +156,8 @@ def first_symlink(path: Path, root: Path) -> Path | None:
       a directory should): None -- nothing there is a link.
     - EACCES (a directory that cannot be opened or searched): that directory, or
       *path* when only the leaf cannot be probed -- fail closed, as if a link.
+      That directory may be *root* itself: a root that cannot be opened is
+      returned, the one case where *root* comes back.
 
     ``path == root`` returns None.  A *path* not under *root* raises ValueError:
     that is a caller bug, not a box state.  This is a CHECK; it can go stale before
@@ -171,7 +174,7 @@ def first_symlink(path: Path, root: Path) -> Path | None:
                 return None
             except OSError:
                 return path
-            return path if stat.S_ISLNK(mode) else None
+            return path if _st.S_ISLNK(mode) else None
     except SymlinkRefusedError as exc:
         return exc.link
     except (FileNotFoundError, NotADirectoryError):
@@ -208,7 +211,7 @@ def no_symlink_or_warn(path: Path, root: Path) -> bool:
 def _regular(fd: int, path: Path) -> os.stat_result:
     """fstat *fd*; close it and raise ``OSError(EINVAL)`` unless a regular file."""
     st = os.fstat(fd)
-    if not stat.S_ISREG(st.st_mode):
+    if not _st.S_ISREG(st.st_mode):
         os.close(fd)
         raise OSError(errno.EINVAL, "not a regular file", str(path))
     return st
@@ -277,11 +280,20 @@ def _write_parent(path: Path, root: Path | None) -> Iterator[tuple[int, str]]:
         yield fd, leaf
 
 
-def read_bytes(path: Path, root: Path) -> bytes:
-    """The bytes of the regular file *path*; anything else raises ``OSError``."""
+def read_bytes_with_stat(path: Path, root: Path) -> tuple[bytes, os.stat_result]:
+    """The bytes of the regular file *path* and its stat, both from the same descriptor.
+
+    Anything but a regular file raises ``OSError``.
+    """
     path = Path(path)
     with os.fdopen(_open_read(path, root), "rb") as fh:
-        return fh.read()
+        st = os.fstat(fh.fileno())
+        return fh.read(), st
+
+
+def read_bytes(path: Path, root: Path) -> bytes:
+    """The bytes of the regular file *path*; anything else raises ``OSError``."""
+    return read_bytes_with_stat(path, root)[0]
 
 
 def read_text(path: Path, root: Path, encoding: str = "utf-8") -> str:
@@ -289,15 +301,69 @@ def read_text(path: Path, root: Path, encoding: str = "utf-8") -> str:
     return read_bytes(path, root).decode(encoding)
 
 
-def write_bytes(path: Path, root: Path, data: bytes, mode: int = 0o600) -> None:
-    """Atomically replace *path* with *data* at *mode*; missing parents are created."""
+def _kept_mode(dir_fd: int, leaf: str) -> int:
+    """The mode of the regular file *leaf* already there, else 0o600."""
+    try:
+        st = os.stat(leaf, dir_fd=dir_fd, follow_symlinks=False)
+    except FileNotFoundError:
+        return 0o600
+    return _st.S_IMODE(st.st_mode) if _st.S_ISREG(st.st_mode) else 0o600
+
+
+def write_bytes(path: Path, root: Path, data: bytes, mode: int | None = None) -> None:
+    """Atomically replace *path* with *data*; missing parents are created.
+
+    *mode* None keeps an existing file's mode; a new file gets 0o600.
+    """
     with _write_parent(path, root) as (fd, leaf):
-        _replace_at(fd, leaf, lambda fh: fh.write(data), mode)
+        _replace_at(
+            fd, leaf, lambda fh: fh.write(data),
+            _kept_mode(fd, leaf) if mode is None else mode,
+        )
 
 
-def write_text(path: Path, root: Path, data: str, mode: int = 0o600) -> None:
+def write_text(path: Path, root: Path, data: str, mode: int | None = None) -> None:
     """:func:`write_bytes` for text, encoded as UTF-8."""
     write_bytes(path, root, data.encode("utf-8"), mode)
+
+
+def stat(path: Path, root: Path) -> os.stat_result:
+    """The stat of *path* itself; a link at it or a parent raises SymlinkRefusedError.
+
+    ``fstat`` on an ``O_PATH | O_NOFOLLOW`` descriptor.  A missing *path* raises
+    ``FileNotFoundError``.
+    """
+    path = Path(path)
+    with _parent(path, root) as (pfd, leaf):
+        fd = _open_leaf(leaf, pfd, path, os.O_PATH)
+    try:
+        st = os.fstat(fd)
+    finally:
+        os.close(fd)
+    if _st.S_ISLNK(st.st_mode):
+        raise SymlinkRefusedError(path, path)
+    return st
+
+
+def mkdir(
+    path: Path, root: Path, *, parents: bool = False, exist_ok: bool = False,
+    mode: int = 0o755,
+) -> None:
+    """Make the directory *path* at *mode* (less the umask).
+
+    *parents* makes missing parents (default mode); *exist_ok* accepts an existing
+    directory, but never a link or a file at *path*.
+    """
+    path = Path(path)
+    with _parent(path, root, create=parents) as (pfd, leaf):
+        try:
+            os.mkdir(leaf, mode, dir_fd=pfd)
+        except FileExistsError:
+            st = os.stat(leaf, dir_fd=pfd, follow_symlinks=False)
+            if _st.S_ISLNK(st.st_mode):
+                raise SymlinkRefusedError(path, path) from None
+            if not (exist_ok and _st.S_ISDIR(st.st_mode)):
+                raise
 
 
 def copy_file(
@@ -314,55 +380,116 @@ def copy_file(
         with _write_parent(dst, dst_root) as (fd, leaf):
             _replace_at(
                 fd, leaf, lambda out: shutil.copyfileobj(fh, out),
-                stat.S_IMODE(st.st_mode), (st.st_atime_ns, st.st_mtime_ns),
+                _st.S_IMODE(st.st_mode), (st.st_atime_ns, st.st_mtime_ns),
             )
 
 
-def _copy_dir(sfd: int, dfd: int, shown: Path) -> None:
-    for name in os.listdir(sfd):
-        st = os.stat(name, dir_fd=sfd, follow_symlinks=False)
-        times = (st.st_atime_ns, st.st_mtime_ns)
-        if stat.S_ISLNK(st.st_mode):
-            os.symlink(os.readlink(name, dir_fd=sfd), name, dir_fd=dfd)
-        elif stat.S_ISDIR(st.st_mode):
-            cs = _open_dir_at(name, sfd, shown / name, shown / name, create=False)
+def _not_copied(skipped: list[Path], path: Path, why: str) -> None:
+    logger.warning("not copied %s: %s", path, why)
+    skipped.append(path)
+
+
+def _copy_entries(
+    sfd: int, dfd: int, src: Path, dst: Path, skip_links: bool, avoid: tuple[int, int],
+) -> list[Path]:
+    """Copy the entries of *sfd* into *dfd*; return the source paths not copied.
+
+    An explicit stack, not recursion: depth is bounded by open descriptors, and
+    running out raises ``OSError`` (EMFILE).  A directory whose (dev, ino) is
+    *avoid* -- the destination itself, when it lies under the source -- is not
+    entered.
+    """
+    skipped: list[Path] = []
+    # Frame: (src fd, dst fd, names left, src path, dst path, src dir stat or None).
+    stack: list[tuple[int, int, Iterator[str], Path, Path, os.stat_result | None]] = [
+        (sfd, dfd, iter(os.listdir(sfd)), src, dst, None),
+    ]
+    try:
+        while stack:
+            cs, cd, names, s, d, dir_st = stack[-1]
+            name = next(names, None)
+            if name is None:
+                stack.pop()
+                if dir_st is not None:
+                    try:
+                        os.fchmod(cd, _st.S_IMODE(dir_st.st_mode))
+                        os.utime(cd, ns=(dir_st.st_atime_ns, dir_st.st_mtime_ns))
+                    finally:
+                        os.close(cs)
+                        os.close(cd)
+                continue
+            st = os.stat(name, dir_fd=cs, follow_symlinks=False)
             try:
-                os.mkdir(name, 0o700, dir_fd=dfd)
-                cd = os.open(name, _DIR, dir_fd=dfd)
+                there: os.stat_result | None = os.stat(name, dir_fd=cd, follow_symlinks=False)
+            except FileNotFoundError:
+                there = None
+            if there is not None and _st.S_ISLNK(there.st_mode):
+                _not_copied(skipped, s / name, f"{d / name} is a symlink, left untouched")
+            elif _st.S_ISLNK(st.st_mode):
+                if skip_links:
+                    _not_copied(skipped, s / name, "it is a symlink")
+                elif there is not None:
+                    _not_copied(skipped, s / name, f"{d / name} already exists")
+                else:
+                    os.symlink(os.readlink(name, dir_fd=cs), name, dir_fd=cd)
+            elif _st.S_ISDIR(st.st_mode):
+                if (st.st_dev, st.st_ino) == avoid:
+                    logger.debug("not copied %s: it is the destination", s / name)
+                    continue
+                if there is not None and not _st.S_ISDIR(there.st_mode):
+                    _not_copied(skipped, s / name, f"{d / name} is not a directory")
+                    continue
+                child_s = _open_dir_at(name, cs, s / name, s / name, create=False)
                 try:
-                    _copy_dir(cs, cd, shown / name)
-                    os.fchmod(cd, stat.S_IMODE(st.st_mode))
-                    os.utime(cd, ns=times)
-                finally:
-                    os.close(cd)
-            finally:
+                    if there is None:
+                        os.mkdir(name, 0o700, dir_fd=cd)
+                    child_d = _open_dir_at(name, cd, d / name, d / name, create=False)
+                except BaseException:
+                    os.close(child_s)
+                    raise
+                stack.append((child_s, child_d, iter(os.listdir(child_s)), s / name, d / name, st))
+            elif _st.S_ISREG(st.st_mode):
+                if there is not None and not _st.S_ISREG(there.st_mode):
+                    _not_copied(skipped, s / name, f"{d / name} is not a regular file")
+                    continue
+                fs = _open_leaf(name, cs, s / name, os.O_RDONLY | os.O_NONBLOCK)
+                _regular(fs, s / name)
+                with os.fdopen(fs, "rb") as fin:
+                    _replace_at(
+                        cd, name, functools.partial(shutil.copyfileobj, fin),
+                        _st.S_IMODE(st.st_mode), (st.st_atime_ns, st.st_mtime_ns),
+                    )
+            else:
+                _not_copied(skipped, s / name, "not a file, directory, or symlink")
+    finally:
+        for cs, cd, _, _, _, dir_st in stack:
+            if dir_st is not None:
                 os.close(cs)
-        elif stat.S_ISREG(st.st_mode):
-            fs = _open_leaf(name, sfd, shown / name, os.O_RDONLY | os.O_NONBLOCK)
-            _regular(fs, shown / name)
-            with os.fdopen(fs, "rb") as fin:
-                fd = os.open(
-                    name, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_CLOEXEC,
-                    0o600, dir_fd=dfd,
-                )
-                with os.fdopen(fd, "wb") as fout:
-                    shutil.copyfileobj(fin, fout)
-                    fout.flush()
-                    os.fchmod(fd, stat.S_IMODE(st.st_mode))
-                    os.utime(fd, ns=times)
-        else:
-            logger.warning("not copied %s: not a file, directory, or symlink", shown / name)
+                os.close(cd)
+    return skipped
 
 
 def copy_tree(
     src: Path, dst: Path, *, src_root: Path | None, dst_root: Path | None,
-) -> None:
-    """Copy the directory *src* to the new directory *dst* (``FileExistsError`` if it exists).
+    merge: bool = False, skip_links: bool = False,
+) -> list[Path]:
+    """Copy the directory *src* to *dst*; return the source paths not copied.
 
-    Links INSIDE the tree are neither refused nor skipped: each is copied as a link,
-    its text verbatim, never followed (the ``tree_copy`` rule).  FIFOs, sockets, and
-    devices are skipped with a warning.  Files and directories keep their mode bits
-    and times.  ``None`` roots as for :func:`copy_file`.
+    Without *merge*, *dst* must not exist (``FileExistsError``).  With it, *src* is
+    merged into an existing *dst*: a file replaces the one there atomically, through
+    the destination's verified descriptors.
+
+    Links: a link INSIDE *src* is copied as a link, its text verbatim, never
+    followed (the ``tree_copy`` rule) -- or, with *skip_links*, not copied, with one
+    warning each.  A link already in *dst* is REFUSED: left untouched, never
+    followed or replaced, with a warning.  A name whose kind differs between the two
+    sides (file vs. directory), or a link meeting an existing entry, is likewise
+    left with a warning.  FIFOs, sockets, and devices are not copied, with a warning.
+    Every entry not copied is in the returned list.  Files and directories keep
+    their mode bits and times.  ``None`` roots as for :func:`copy_file`.
+
+    A *dst* inside *src* is not copied into itself (skipped by dev/ino); *dst* equal
+    to *src* raises ``OSError(EINVAL)``.
 
     No link is ever followed: every entry is listed, opened, and created through
     descriptors with ``O_NOFOLLOW``.  The residual race: an entry the box swaps
@@ -378,12 +505,22 @@ def copy_tree(
             sfd = stack.enter_context(_dir(src, src_root))
         pfd, leaf = stack.enter_context(_write_parent(dst, dst_root))
         st = os.fstat(sfd)
-        os.mkdir(leaf, 0o700, dir_fd=pfd)
-        dfd = os.open(leaf, _DIR, dir_fd=pfd)
+        try:
+            os.mkdir(leaf, 0o700, dir_fd=pfd)
+        except FileExistsError:
+            if not merge:
+                raise
+        dfd = _open_dir_at(leaf, pfd, dst, dst, create=False)
         stack.callback(os.close, dfd)
-        _copy_dir(sfd, dfd, src)
-        os.fchmod(dfd, stat.S_IMODE(st.st_mode))
+        dst_st = os.fstat(dfd)
+        if (dst_st.st_dev, dst_st.st_ino) == (st.st_dev, st.st_ino):
+            raise OSError(errno.EINVAL, "cannot copy a directory onto itself", str(dst))
+        skipped = _copy_entries(
+            sfd, dfd, src, dst, skip_links, (dst_st.st_dev, dst_st.st_ino),
+        )
+        os.fchmod(dfd, _st.S_IMODE(st.st_mode))
         os.utime(dfd, ns=(st.st_atime_ns, st.st_mtime_ns))
+        return skipped
 
 
 # --- metadata and removal ----------------------------------------------------------
@@ -401,11 +538,10 @@ def touch(path: Path, root: Path, mode: int = 0o666) -> None:
 
 
 def unlink(path: Path, root: Path, *, missing_ok: bool = False) -> None:
-    """Remove the file *path*.  A link at *path* is refused too, not removed."""
+    """Remove the file *path*; a link at *path* is removed itself (never followed)."""
     path = Path(path)
     try:
         with _parent(path, root) as (pfd, leaf):
-            _refuse_leaf_link(leaf, pfd, path)
             os.unlink(leaf, dir_fd=pfd)
     except FileNotFoundError:
         if not missing_ok:
@@ -420,15 +556,20 @@ def rmtree_contents(path: Path, root: Path) -> None:
     """
     with _dir(path, root) as dfd:
         for name in os.listdir(dfd):
-            if stat.S_ISDIR(os.stat(name, dir_fd=dfd, follow_symlinks=False).st_mode):
-                shutil.rmtree(name, dir_fd=dfd)
+            if _st.S_ISDIR(os.stat(name, dir_fd=dfd, follow_symlinks=False).st_mode):
+                try:
+                    shutil.rmtree(name, dir_fd=dfd)
+                except RecursionError as exc:  # the recursive rmtree of Python < 3.12
+                    raise OSError(
+                        errno.EOVERFLOW, "directory tree too deep", str(Path(path) / name),
+                    ) from exc
             else:
                 os.unlink(name, dir_fd=dfd)
 
 
 def _chmod_fd(fd: int, mode: int, path: Path) -> None:
     """chmod through an ``O_PATH | O_NOFOLLOW`` descriptor (Linux has no ``lchmod``)."""
-    if stat.S_ISLNK(os.fstat(fd).st_mode):
+    if _st.S_ISLNK(os.fstat(fd).st_mode):
         raise SymlinkRefusedError(path, path)
     os.chmod(f"/proc/self/fd/{fd}", mode)
 
@@ -451,33 +592,53 @@ def chmod_tree(path: Path, root: Path, *, add: int = 0, remove: int = 0) -> None
     entries are walked and *remove* after, so ``remove`` may drop its own search
     bit.  The residual race is :func:`copy_tree`'s: a swap raises part-way.
     """
-    def walk(dfd: int, shown: Path) -> None:
-        mode = stat.S_IMODE(os.fstat(dfd).st_mode)
-        os.fchmod(dfd, mode | add)
-        for name in os.listdir(dfd):
-            st = os.stat(name, dir_fd=dfd, follow_symlinks=False)
-            if stat.S_ISDIR(st.st_mode):
-                cd = _open_dir_at(name, dfd, shown / name, shown / name, create=False)
-                try:
-                    walk(cd, shown / name)
-                finally:
-                    os.close(cd)
-            elif not stat.S_ISLNK(st.st_mode):
-                fd = _open_leaf(name, dfd, shown / name, os.O_PATH)
-                try:
-                    _chmod_fd(fd, (stat.S_IMODE(st.st_mode) | add) & ~remove, shown / name)
-                finally:
-                    os.close(fd)
-        os.fchmod(dfd, (mode | add) & ~remove)
-
     with _dir(path, root) as top:
-        walk(top, Path(path))
+        # Frame: (dir fd, names left, dir path, original mode); an explicit stack.
+        top_mode = _st.S_IMODE(os.fstat(top).st_mode)
+        os.fchmod(top, top_mode | add)
+        stack: list[tuple[int, Iterator[str], Path, int]] = [
+            (top, iter(os.listdir(top)), Path(path), top_mode),
+        ]
+        try:
+            while stack:
+                dfd, names, shown, mode = stack[-1]
+                name = next(names, None)
+                if name is None:
+                    stack.pop()
+                    try:
+                        os.fchmod(dfd, (mode | add) & ~remove)
+                    finally:
+                        if dfd != top:
+                            os.close(dfd)
+                    continue
+                st = os.stat(name, dir_fd=dfd, follow_symlinks=False)
+                if _st.S_ISDIR(st.st_mode):
+                    cd = _open_dir_at(name, dfd, shown / name, shown / name, create=False)
+                    try:
+                        os.fchmod(cd, _st.S_IMODE(st.st_mode) | add)
+                        names_in = iter(os.listdir(cd))
+                    except BaseException:
+                        os.close(cd)
+                        raise
+                    stack.append((cd, names_in, shown / name, _st.S_IMODE(st.st_mode)))
+                elif not _st.S_ISLNK(st.st_mode):
+                    fd = _open_leaf(name, dfd, shown / name, os.O_PATH)
+                    try:
+                        _chmod_fd(fd, (_st.S_IMODE(st.st_mode) | add) & ~remove, shown / name)
+                    finally:
+                        os.close(fd)
+        finally:
+            for dfd, *_ in stack:
+                if dfd != top:
+                    os.close(dfd)
 
 
 def rename(src: Path, dst: Path, root: Path) -> None:
-    """Rename *src* to *dst*, both under *root*; a link at either end is refused."""
+    """Rename *src* to *dst*, both under *root*; a link in a parent is refused.
+
+    ``renameat`` never follows a leaf: a link at *src* is moved itself, and a link
+    at *dst* is replaced itself.
+    """
     src, dst = Path(src), Path(dst)
     with _parent(src, root) as (sfd, sleaf), _parent(dst, root) as (dfd, dleaf):
-        _refuse_leaf_link(sleaf, sfd, src)
-        _refuse_leaf_link(dleaf, dfd, dst)
         os.rename(sleaf, dleaf, src_dir_fd=sfd, dst_dir_fd=dfd)

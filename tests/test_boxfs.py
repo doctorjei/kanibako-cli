@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import os
 import stat
+import sys
 
 import pytest
 
@@ -243,13 +245,13 @@ def test_touch_refuses_links_and_creates_files(tree):
     assert (root / "a" / "t").is_file()
 
 
-def test_unlink_refuses_links_and_removes_files(tree):
+def test_unlink_removes_a_leaf_link_itself_and_refuses_a_parent_link(tree):
     root, outside, sentinel = tree
     leaf, under = _links(root, outside)
-    for p in (leaf, under):
-        with pytest.raises(SymlinkRefusedError):
-            boxfs.unlink(p, root)
-    assert sentinel.exists() and leaf.is_symlink()
+    with pytest.raises(SymlinkRefusedError):
+        boxfs.unlink(under, root)
+    boxfs.unlink(leaf, root)
+    assert not leaf.is_symlink() and sentinel.read_text() == "host data"
     (root / "a" / "f").write_text("x")
     boxfs.unlink(root / "a" / "f", root)
     assert not (root / "a" / "f").exists()
@@ -290,18 +292,21 @@ def test_chmod_refuses_links_and_sets_modes(tree):
     assert stat.S_IMODE(f.stat().st_mode) == 0o600
 
 
-def test_rename_refuses_links_at_either_end(tree):
+def test_rename_moves_leaf_links_and_refuses_parent_links(tree):
     root, outside, sentinel = tree
     leaf, under = _links(root, outside)
     f = root / "a" / "f"
     f.write_text("x")
-    for p in (leaf, under):
-        with pytest.raises(SymlinkRefusedError):
-            boxfs.rename(f, p, root)
-        with pytest.raises(SymlinkRefusedError):
-            boxfs.rename(p, root / "a" / "g", root)
+    with pytest.raises(SymlinkRefusedError):
+        boxfs.rename(f, under, root)
+    with pytest.raises(SymlinkRefusedError):
+        boxfs.rename(under, root / "a" / "g", root)
+    boxfs.rename(leaf, root / "a" / "moved_link", root)
+    assert (root / "a" / "moved_link").is_symlink() and not leaf.is_symlink()
+    boxfs.rename(f, root / "a" / "moved_link", root)  # replaces the link itself
+    assert not (root / "a" / "moved_link").is_symlink()
     assert sentinel.read_text() == "host data"
-    boxfs.rename(f, root / "a" / "b" / "g", root)
+    boxfs.rename(root / "a" / "moved_link", root / "a" / "b" / "g", root)
     assert (root / "a" / "b" / "g").read_text() == "x"
 
 
@@ -353,3 +358,180 @@ def test_read_follows_no_link_swapped_in_after_the_walk(tree, monkeypatch):
 
     monkeypatch.setattr(boxfs, "_open_leaf", swap_then_open)
     assert boxfs.read_text(parent / "secret", root) == "box copy"
+
+
+# --- round 2 -------------------------------------------------------------------
+
+
+def test_root_that_cannot_be_opened_comes_back(tree):
+    root, _, _ = tree
+    if os.geteuid() == 0:
+        pytest.skip("root ignores directory permissions")
+    root.chmod(0)
+    try:
+        assert first_symlink(root / "a" / "f", root) == root
+    finally:
+        root.chmod(0o755)
+
+
+def test_copy_tree_merge_replaces_files_and_refuses_dst_links(tree, caplog):
+    root, outside, sentinel = tree
+    src = outside / "src"
+    (src / "d").mkdir(parents=True)
+    (src / "d" / "f").write_text("new")
+    (src / "secret").write_text("new")
+    (src / "plain").write_text("new")
+    (src / "d" / "f").chmod(0o640)
+    dst = root / "a" / "dst"
+    (dst / "d").mkdir(parents=True)
+    (dst / "d" / "f").write_text("old")
+    (dst / "keep").write_text("mine")
+    (dst / "secret").symlink_to(sentinel)  # a box link in dst: never followed
+    with caplog.at_level(logging.WARNING, logger="kanibako"):
+        skipped = boxfs.copy_tree(src, dst, src_root=None, dst_root=root, merge=True)
+    assert (dst / "d" / "f").read_text() == "new"
+    assert _st_mode(dst / "d" / "f") == 0o640
+    assert (dst / "plain").read_text() == "new"
+    assert (dst / "keep").read_text() == "mine"
+    assert (dst / "secret").is_symlink() and sentinel.read_text() == "host data"
+    assert skipped == [src / "secret"]
+    assert sum(r.levelno == logging.WARNING for r in caplog.records) == 1
+    with pytest.raises(FileExistsError):
+        boxfs.copy_tree(src, dst, src_root=None, dst_root=root)
+
+
+def _st_mode(p):
+    return stat.S_IMODE(p.stat().st_mode)
+
+
+def test_copy_tree_skip_links_warns_once_per_link(tree, caplog):
+    root, outside, sentinel = tree
+    src = root / "a" / "b"
+    (src / "f").write_text("x")
+    (src / "l1").symlink_to(sentinel)
+    (src / "l2").symlink_to(outside)
+    with caplog.at_level(logging.WARNING, logger="kanibako"):
+        skipped = boxfs.copy_tree(src, outside / "c", src_root=root, dst_root=None, skip_links=True)
+    assert sorted(skipped) == [src / "l1", src / "l2"]
+    warnings = [r.getMessage() for r in caplog.records if r.levelno == logging.WARNING]
+    assert len(warnings) == 2
+    assert sorted(os.listdir(outside / "c")) == ["f"]
+
+
+def test_copy_tree_into_itself_does_not_recurse(tree):
+    root, _, _ = tree
+    src = root / "a"
+    (src / "b" / "f").write_text("x")
+    boxfs.copy_tree(src, src / "b" / "copy", src_root=root, dst_root=root)
+    assert (src / "b" / "copy" / "b" / "f").read_text() == "x"
+    assert not (src / "b" / "copy" / "b" / "copy").exists()
+    with pytest.raises(OSError):
+        boxfs.copy_tree(src, src, src_root=root, dst_root=root, merge=True)
+
+
+def _deep(top, depth, leaf=None):
+    """Make or walk *depth* nested ``d`` dirs under *top* via fds; return the bottom fd."""
+    fd = os.open(top, os.O_RDONLY | os.O_DIRECTORY)
+    for _ in range(depth):
+        if leaf is not None:
+            with contextlib.suppress(FileExistsError):
+                os.mkdir("d", dir_fd=fd)
+        nxt = os.open("d", os.O_RDONLY | os.O_DIRECTORY, dir_fd=fd)
+        os.close(fd)
+        fd = nxt
+    if leaf is not None:
+        wfd = os.open(leaf, os.O_WRONLY | os.O_CREAT, 0o600, dir_fd=fd)
+        os.write(wfd, b"bottom")
+        os.close(wfd)
+    return fd
+
+
+def test_deep_trees_never_raise_recursion_error(tree):
+    root, outside, _ = tree
+    depth = sys.getrecursionlimit() + 100
+    deep = root / "a" / "deep"
+    deep.mkdir()
+    os.close(_deep(deep, depth, leaf="f"))
+    boxfs.copy_tree(deep, outside / "deep", src_root=root, dst_root=None)
+    fd = _deep(outside / "deep", depth)
+    try:
+        rfd = os.open("f", os.O_RDONLY, dir_fd=fd)
+        assert os.read(rfd, 100) == b"bottom"
+        os.close(rfd)
+    finally:
+        os.close(fd)
+    boxfs.chmod_tree(deep, root, add=0o040)
+    fd = _deep(deep, depth)
+    try:
+        assert os.stat("f", dir_fd=fd).st_mode & 0o040
+    finally:
+        os.close(fd)
+    try:
+        boxfs.rmtree_contents(root / "a", root)
+    except RecursionError:  # pragma: no cover - the failure this test pins
+        pytest.fail("rmtree_contents raised RecursionError")
+    except OSError:
+        pass  # Python < 3.12: shutil.rmtree is recursive; refused as OSError
+    else:
+        assert list((root / "a").iterdir()) == []
+
+
+def test_mkdir(tree):
+    root, outside, _ = tree
+    boxfs.mkdir(root / "a" / "n", root, mode=0o700)
+    assert _st_mode(root / "a" / "n") == 0o700
+    with pytest.raises(FileExistsError):
+        boxfs.mkdir(root / "a" / "n", root)
+    boxfs.mkdir(root / "a" / "n", root, exist_ok=True)
+    with pytest.raises(FileNotFoundError):
+        boxfs.mkdir(root / "x" / "y", root)
+    boxfs.mkdir(root / "x" / "y", root, parents=True)
+    assert (root / "x" / "y").is_dir()
+    leaf, under = _links(root, outside)
+    for p in (leaf, under):
+        with pytest.raises(SymlinkRefusedError):
+            boxfs.mkdir(p, root, exist_ok=True)
+    with pytest.raises(SymlinkRefusedError):
+        boxfs.mkdir(root / "a" / "par" / "new", root, parents=True)
+    assert not (outside / "new").exists()
+    (root / "a" / "file").write_text("x")
+    with pytest.raises(FileExistsError):
+        boxfs.mkdir(root / "a" / "file", root, exist_ok=True)
+
+
+def test_stat_refuses_links(tree):
+    root, outside, _ = tree
+    (root / "a" / "f").write_text("12345")
+    assert boxfs.stat(root / "a" / "f", root).st_size == 5
+    assert stat.S_ISDIR(boxfs.stat(root / "a" / "b", root).st_mode)
+    leaf, under = _links(root, outside)
+    for p in (leaf, under):
+        with pytest.raises(SymlinkRefusedError):
+            boxfs.stat(p, root)
+    with pytest.raises(FileNotFoundError):
+        boxfs.stat(root / "a" / "missing", root)
+
+
+def test_read_bytes_with_stat_reads_both_from_one_file(tree):
+    root, outside, _ = tree
+    f = root / "a" / "f"
+    f.write_bytes(b"abc")
+    os.utime(f, ns=(5_000_000_000, 7_000_000_000))
+    data, st = boxfs.read_bytes_with_stat(f, root)
+    assert data == b"abc" and st.st_size == 3 and st.st_mtime_ns == 7_000_000_000
+    for p in _links(root, outside):
+        with pytest.raises(SymlinkRefusedError):
+            boxfs.read_bytes_with_stat(p, root)
+
+
+def test_write_keeps_an_existing_files_mode(tree):
+    root, _, _ = tree
+    f = root / "a" / "f"
+    f.write_text("old")
+    f.chmod(0o644)
+    boxfs.write_text(f, root, "new")
+    assert _st_mode(f) == 0o644 and f.read_text() == "new"
+    boxfs.write_text(f, root, "newer", mode=0o600)
+    assert _st_mode(f) == 0o600
+    boxfs.write_bytes(root / "a" / "g", root, b"x")
+    assert _st_mode(root / "a" / "g") == 0o600
