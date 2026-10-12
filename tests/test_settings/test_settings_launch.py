@@ -2179,19 +2179,18 @@ def test_R147_a_pref_request_is_judged_and_names_its_file(tmp_path):
 
 
 def test_R147_an_agent_file_level_names_the_file_it_carries(tmp_path):
-    """An agent-file level loaded without ``agent_path`` still names its file."""
-    # Mutation: drop the ``agent_state.path`` fallback in ``build_launch_snapshot``
-    # → the refusal names no file.
-    from kanibako.settings.agent_file import AgentFileLevel
+    """An agent-file root scalar rides the file's own level and names that file."""
+    # Mutation: label the agent level with no path → the refusal names no file.
     from kanibako.settings.settings_resolve import SettingsError
 
-    agent_yaml = tmp_path / "agents" / "claude" / "agent.yaml"
+    agent_yaml = _write_yaml(
+        tmp_path / "agents" / "claude" / "agent.yaml", {"self": {"canon": "rel"}},
+    )
     with pytest.raises(SettingsError) as exc:
         build_launch_snapshot(
             agent_name="claude", ctx=_ctx(),
-            system_path=None, agent_path=None, workset_path=None, box_path=None,
+            system_path=None, agent_path=agent_yaml, workset_path=None, box_path=None,
             behavior_floor={"bootstrap": "tmux"},
-            agent_state=AgentFileLevel("claude", {"canon": "rel"}, agent_yaml),
         )
     assert f"agent.claude.canon is set to 'rel' in {agent_yaml}" in str(exc.value)
 
@@ -4936,13 +4935,10 @@ class TestCliLevelPrecedence:
         ``agent.<active>.model`` legitimately lives — and a box that wants one
         writes ``pref.agent.<agent>.model``, covered separately below.
 
-        ⚑⚑ THE PAIR IS THE POINT: a behavior scalar lives FLAT in the file (``self:``
-        IS ``agent.claude``, and a ``self: claude:`` sub-table is REFUSED —
-        [spec:15-21, "self"]), and it reaches the cascade on its OWN rung, the one every production
-        producer builds through ``agent_file.state_level``. Writing the file and NOT
-        passing the state level would leave the contender out of the snapshot entirely,
-        which is exactly the shape that used to make this test pass for the wrong
-        reason.
+        ⚑⚑ A behavior scalar lives FLAT in the file (``self:`` IS ``agent.claude``, and a
+        ``self: claude:`` sub-table is REFUSED — [spec:15-21, "self"]), and it rides the
+        file's own ``agent.claude`` level beside the categories, so ``agent_path`` alone
+        carries the contender.
         """
         agent_file = _yaml(tmp_path / "agent.yaml", {"self": {"model": stored}})
         return build_launch_snapshot(
@@ -4950,9 +4946,6 @@ class TestCliLevelPrecedence:
             ctx=_ctx(),
             system_path=None, agent_path=agent_file,
             workset_path=None, box_path=None,
-            agent_state=agent_file_state_level(
-                agent_file_load(agent_file, node="claude", purpose=ReadPurpose.RESOLVE), node="claude",
-            ),
             cli_level=cli_level,
         )
 
@@ -5173,31 +5166,23 @@ def _nested(key, value):
 
 
 def _agent_file_contender(key, value):
-    """The ``_persona_snap`` kwargs that put *key* in the AGENT FILE, by its real ROUTE.
+    """The ``_persona_snap`` kwargs that put *key* in the AGENT FILE.
 
-    ⚑⚑ THE SHAPE COLLAPSED, BUT THE TWO ROUTES DID NOT, and conflating them is the trap this
-    helper exists to close. Since the flatten there is ONE file shape — everything sits
-    DIRECTLY under ``self:``, which IS ``agent.<node>``; a second ``<node>`` level REFUSES
-    ([spec:15-21, "self"]). But a CATEGORY table and a BEHAVIOR scalar still reach
-    the cascade by different rungs: the category rides ``_agent_partial``'s ``agent.<active>`` level, while a
-    scalar goes to ``cfg.state`` and rides ``state_level``'s own rung. So the file bytes are
-    written the same way and the kwarg differs — which is exactly the production pair
-    (``agent_path=`` + ``agent_state=``) every launch producer builds.
+    There is ONE file shape: everything sits DIRECTLY under ``self:``, which IS
+    ``agent.<node>``; a second ``<node>`` level REFUSES ([spec:15-21, "self"]). A CATEGORY
+    table and a BEHAVIOR scalar both ride ``_agent_partial``'s ``agent.<active>`` level; only
+    the spelling differs, as a category is nested by its dotted name.
 
     Keyed off the PRODUCTION tuple, so a category joining or leaving it cannot leave a stale
     spelling behind.
     """
     if key.partition(".")[0] in _FLAT_AGENT_CATEGORIES:
         return {"agent_file": {"self": _nested(key, value)}}
-    return {"agent_file": {"self": {key: value}}, "agent_state": {key: value}}
+    return {"agent_file": {"self": {key: value}}}
 
 
 # ⚑ Imported as a FUNCTION, not as the module: ``_persona_snap`` below has a
 # parameter literally named ``agent_file`` (the agent settings FILE it writes).
-from kanibako.settings.agent_config import AgentConfig  # noqa: E402
-from kanibako.settings.agent_file import (  # noqa: E402
-    state_level as agent_file_state_level,
-)
 from kanibako.settings.settings_assemble import ReadPurpose, agent_record as agent_file_load  # noqa: E402
 
 
@@ -5206,7 +5191,6 @@ def _persona_snap(
     *,
     persona_values,
     agent_file=None,
-    agent_state=None,
     system=None,
     workset=None,
     box=None,
@@ -5225,12 +5209,6 @@ def _persona_snap(
             _write_yaml(tmp_path / "ws.yaml", workset) if workset else None
         ),
         box_path=_write_yaml(tmp_path / "box.yaml", box) if box else None,
-        # The helper takes a plain dict and wraps it the way the production
-        # producers do (C-2): the level is built from the FILE RECORD and carries
-        # the node it merges under.
-        agent_state=agent_file_state_level(
-            AgentConfig(state=dict(agent_state or {})), node="claude",
-        ),
         persona_values=persona_values,
         valid_agents=_PREF_AGENTS,
     )
@@ -5362,18 +5340,17 @@ class TestPersonaRungOrdering:
 
 @pytest.mark.parametrize("key,path", _PERSONA_CLASSES[:2], ids=lambda v: str(v))
 def test_persona_loses_to_the_agent_file_flat_state(tmp_path, key, path):
-    """The agent file's FLAT ``[agent]`` state rung also beats the persona.
+    """The agent file's FLAT root scalar also beats the persona.
 
     ⚑ Only the two BARE classes are exercised, and that is structural, not an
-    omission: ``agent_file.record`` builds ``cfg.state`` from the file's SCALAR
-    entries only — a dict-valued ``env:`` / ``secret_path:`` table is explicitly
-    excluded there and rides ``_agent_partial`` (the ``agent.<active>`` table,
-    covered above) instead. So the flat channel cannot carry a dotted class at all.
+    omission: a root scalar is a bare name, while a dict-valued ``env:`` /
+    ``secret_path:`` table is a category (covered above). So a flat scalar cannot
+    carry a dotted class at all.
     """
     snap = _persona_snap(
         tmp_path / "contended",
         persona_values={key: "from-persona"},
-        agent_state={key: "from-flat-state"},
+        agent_file={"self": {key: "from-flat-state"}},
     )
     assert _leaf(snap, path) == "from-flat-state"
     # CONTROL (see TestPersonaRungOrdering._contended): without the flat state the
@@ -5421,7 +5398,8 @@ class TestPersonaTierIsInertWhenEmpty:
             ctx=_ctx(),
             system_path=None,
             agent_path=_write_yaml(
-                tmp_path / "agent.yaml", {"self": {"env": {"STORED": "x"}}},
+                tmp_path / "agent.yaml",
+                {"self": {"env": {"STORED": "x"}, "endpoint": "stored-endpoint"}},
             ),
             workset_path=_write_yaml(
                 tmp_path / "ws.yaml", {"workset": {"boxes": "/ws/boxes"}},
@@ -5432,9 +5410,6 @@ class TestPersonaTierIsInertWhenEmpty:
             ),
             behavior_floor={"model": "opus", "allow_helpers": "true"},
             default_categories={"box.bindings.rw": {"~/": ("/h/home", "Z,U")}},
-            agent_state=agent_file_state_level(
-                AgentConfig(state={"endpoint": "stored-endpoint"}), node="claude",
-            ),
             valid_agents=_PREF_AGENTS,
             **persona_kw,
         )
@@ -6733,7 +6708,7 @@ def test_an_absolute_secret_path_still_emits_its_mount():
 # --------------------------------------------------------------------------- #
 
 
-def _run_args_launch(tmp_path, *, system_doc, file_cfg):
+def _run_args_launch(tmp_path, *, system_doc, agent_doc):
     """The launch's `run_args`, read the way ``start.py``'s ``all_extra`` seam reads it.
 
     ⚑ THROUGH A REAL SETTINGS FILE, not a hand-built floor: the rung is the same
@@ -6746,9 +6721,9 @@ def _run_args_launch(tmp_path, *, system_doc, file_cfg):
         agent_name="claude",
         ctx=_ctx(),
         system_path=_write_yaml(tmp_path / "system.yaml", system_doc),
-        agent_path=None, workset_path=None, box_path=None,
+        agent_path=_write_yaml(tmp_path / "agent.yaml", agent_doc),
+        workset_path=None, box_path=None,
         behavior_floor={"model": "haiku"},
-        agent_state=agent_file_state_level(file_cfg, node="claude"),
     )
     state = effective_behavior(snap, active_agent="claude")
     return argv_words(state.get("run_args", ""))
@@ -6757,14 +6732,13 @@ def _run_args_launch(tmp_path, *, system_doc, file_cfg):
 def test_an_any_agent_run_args_in_a_settings_file_reaches_the_launch(tmp_path):
     """`[R169]`: ``agent.default.run_args`` is a real default, read at launch.
 
-    (Mutation: drop the ``run_args`` fold from ``agent_file.state_level`` and read the
-    agent FILE record at the seam again → this stays green and the next two red, which
-    is why all three are here.)
+    (Mutation: read the agent FILE at the seam instead of the snapshot → this stays
+    green and the next two red, which is why all three are here.)
     """
     assert _run_args_launch(
         tmp_path,
         system_doc={"agent": {"default": {"run_args": ["--a", "--b"]}}},
-        file_cfg=AgentConfig(),
+        agent_doc={"self": {}},
     ) == ["--a", "--b"]
 
 
@@ -6778,23 +6752,23 @@ def test_a_per_agent_run_args_REPLACES_the_any_agent_default(tmp_path):
         tmp_path,
         system_doc={"agent": {"default": {"run_args": ["--a", "--b"]},
                               "claude": {"run_args": ["--only-mine"]}}},
-        file_cfg=AgentConfig(),
+        agent_doc={"self": {}},
     ) == ["--only-mine"]
 
 
 def test_an_agent_files_EMPTY_run_args_opts_that_agent_out_of_the_default(tmp_path):
-    """THE OPT-OUT, and it is a capability the record's three states exist to carry.
+    """THE OPT-OUT: the file's ``run_args: []`` rides its level verbatim.
 
     ``run_args: []`` in ``agents/<agent>/agent.yaml`` is the user's "no arguments" and
     must beat a populated ``agent.default.run_args``; a file that never mentions the key
     must let that default through (the case above).
-    (Mutation: give ``AgentConfig.run_args`` back its ``list[str] = []`` default, or fold
-    it into the level on truthiness → this agent silently gets ``--dangerous`` → RED.)
+    (Mutation: set the file's root scalars on its level only when truthy → this agent
+    silently gets ``--dangerous`` → RED.)
     """
     assert _run_args_launch(
         tmp_path,
         system_doc={"agent": {"default": {"run_args": ["--dangerous"]}}},
-        file_cfg=AgentConfig(run_args=[]),
+        agent_doc={"self": {"run_args": []}},
     ) == []
 
 
@@ -6807,7 +6781,7 @@ def test_a_hand_written_run_args_STRING_in_a_settings_file_is_split_not_rewritte
     owner joined, so a stored list and a hand-written string arrive identically.
     """
     doc = {"agent": {"default": {"run_args": "--a --b"}}}
-    assert _run_args_launch(tmp_path, system_doc=doc, file_cfg=AgentConfig()) == [
+    assert _run_args_launch(tmp_path, system_doc=doc, agent_doc={"self": {}}) == [
         "--a", "--b",
     ]
     assert (tmp_path / "system.yaml").read_text().count("--a --b") == 1
@@ -7178,13 +7152,13 @@ class TestAgentFileAgentTable:
     def _snap(tmp_path, doc, *, system=None):
         agent_file = _yaml(tmp_path / "agent.yaml", doc)
         system_file = _yaml(tmp_path / "system.yaml", system) if system else None
+        # The production pair: the launch's record read judges the file by name
+        # (``start.py``'s ``agent_record``), then the snapshot reads it by path.
+        agent_file_load(agent_file, node="claude", purpose=ReadPurpose.RESOLVE)
         return build_launch_snapshot(
             agent_name="claude", ctx=_ctx(),
             system_path=system_file, agent_path=agent_file,
             workset_path=None, box_path=None,
-            agent_state=agent_file_state_level(
-                agent_file_load(agent_file, node="claude", purpose=ReadPurpose.RESOLVE), node="claude",
-            ),
         )
 
     def test_a_box_table_applies_above_the_system_file(self, tmp_path):
@@ -7302,8 +7276,8 @@ class TestTheAgentFileGetsOneVerdict:
         assert "agent.self: 'self' is not an agent" in str(exc.value)
 
     def test_the_own_node_value_reaches_the_launch_once(self, tmp_path):
-        # The record now holds ``agent: <own>:`` too, so it rides the state level beside the
-        # ``agent:`` table: one value, one node, one answer.
+        # ``agent: <own>:`` rides the file's level once, through its ``agent:`` table:
+        # one value, one node, one answer.
         snap = self._launch(tmp_path, {"agent": {"claude": {"model": "b"}}})
         assert effective_behavior(snap, active_agent="claude")["model"] == "b"
 
@@ -7365,8 +7339,8 @@ _TEXT_ENDPOINT = "https://SEKRITU:SEKRITP@host.invalid/v1/$NOPE/~x/@{a.b}/a\\b"
 
 def _file_endpoint(tier: str, node: str) -> dict:
     """``_persona_snap`` kwargs carrying :data:`_TEXT_ENDPOINT` at *node* in *tier*'s file."""
-    if tier == "agent_state":
-        return {"agent_state": {"endpoint": _TEXT_ENDPOINT}}
+    if tier == "agent_file":
+        return {"agent_file": {"self": {"endpoint": _TEXT_ENDPOINT}}}
     return {tier: {"agent": {node: {"endpoint": _TEXT_ENDPOINT}}}}
 
 
@@ -7378,7 +7352,7 @@ class TestASettingsFileEndpointIsText:
     """
 
     @pytest.mark.parametrize("tier,node", [
-        ("system", "default"), ("system", "claude"), ("agent_state", "claude"),
+        ("system", "default"), ("system", "claude"), ("agent_file", "claude"),
     ])
     def test_the_endpoint_resolves_as_written(self, tmp_path, tier, node):
         snap = _persona_snap(tmp_path, persona_values={}, **_file_endpoint(tier, node))

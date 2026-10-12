@@ -419,14 +419,14 @@ def test_install_command_externally_managed(monkeypatch):
 # ---------------------------------------------------------------------------
 
 
-def _two_pass_behavior(*, agent_state, box_path=None):
+def _two_pass_behavior(tmp_path, *, agent_self, box_path=None):
     """PASS 1: resolve the agent name. PASS 2: read behavior off the snapshot.
 
-    Mirrors the launch flow: the per-agent FILE state rides ``agent_state`` (→
-    ``agent.<active>`` slot) and a box settings file rides ``box_path`` (its
-    discriminated ``agent.<name>.*`` table, MORE specific than the agent state)."""
-    from kanibako.settings.agent_config import AgentConfig
-    from kanibako.settings.agent_file import state_level
+    Mirrors the launch flow: the per-agent FILE's root scalars ride its own
+    ``agent.<active>`` level (written under ``self:`` and passed as ``agent_path``) and
+    a box settings file rides ``box_path`` (its discriminated ``agent.<name>.*``
+    table, MORE specific than the agent file)."""
+    from kanibako.settings.config_io import dump_doc
     from kanibako.settings.settings_launch import (
         build_launch_snapshot,
         effective_behavior,
@@ -437,14 +437,12 @@ def _two_pass_behavior(*, agent_state, box_path=None):
     ctx = ResolveCtx(
         agent_name=name, workset_name=None, host_home="/home/agent", xdg={},
     )
+    agent_path = tmp_path / "agent.yaml"
+    dump_doc(agent_path, {"self": dict(agent_self or {})})
     snap = build_launch_snapshot(
         agent_name=name, ctx=ctx,
-        system_path=None, agent_path=None, workset_path=None, box_path=box_path,
-        # Wrapped as the production producers do (C-2): the level carries the
-        # node it merges under, which is the name PASS 1 just resolved.
-        agent_state=state_level(
-            AgentConfig(state=dict(agent_state or {})), node=name,
-        ),
+        system_path=None, agent_path=agent_path, workset_path=None,
+        box_path=box_path,
     )
     return name, effective_behavior(snap, active_agent=name)
 
@@ -464,18 +462,19 @@ def test_two_pass_box_pref_beats_agent(tmp_home, config_file, monkeypatch):
     dump_doc(box_path, {"pref": {"agent": {"claude": {"model": "box-wins"}}}})
 
     name, eff = _two_pass_behavior(
-        agent_state={"model": "agent-default"},  # the agent tier
+        tmp_home,
+        agent_self={"model": "agent-default"},  # the agent tier
         box_path=box_path,
     )
     assert name == "claude"
-    # The box's request (more specific) wins over the agent-state default.
+    # The box's request (more specific) wins over the agent file's value.
     assert eff["model"] == "box-wins"
 
 
 def test_two_pass_agent_default_when_no_box(tmp_home, config_file, monkeypatch):
     _patch_targets(monkeypatch, ["claude"])
     _no_default(monkeypatch)
-    name, eff = _two_pass_behavior(agent_state={"model": "agent-default"})
+    name, eff = _two_pass_behavior(tmp_home, agent_self={"model": "agent-default"})
     assert name == "claude"
-    # With no box override the agent-state value is the effective one.
+    # With no box override the agent file's value is the effective one.
     assert eff["model"] == "agent-default"

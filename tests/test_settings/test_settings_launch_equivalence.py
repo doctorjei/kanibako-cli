@@ -318,26 +318,22 @@ def test_depth_order_preserved_across_families(tmp_path):
 
 
 from kanibako.settings.agent_config import AgentConfig  # noqa: E402
-from kanibako.settings.agent_file import (  # noqa: E402
-    state_level as agent_file_state_level,
-)
 from kanibako.settings.settings_launch import effective_behavior  # noqa: E402
 
 
-def _behavior_snapshot(agent, *, floor, agent_state, box_path, system_path):
+def _behavior_snapshot(agent, *, floor, agent_self, agent_path, box_path, system_path):
     """Build the launch snapshot the LIVE behavior read consumes: the core
-    floor (→ agent.default.*), the per-agent FILE state (→ agent.<active>), and any
-    box/system settings files (discriminated agent tables, read via assemble)."""
+    floor (→ agent.default.*), the per-agent FILE (→ agent.<active>), and any
+    box/system settings files (discriminated agent tables, read via assemble).
+
+    *agent_self* is written under ``self:`` at *agent_path*, the file's root scalars,
+    which ride the file's own ``agent.<active>`` level."""
+    _write_yaml(agent_path, {"self": dict(agent_self or {})})
     snap = build_launch_snapshot(
         agent_name=agent, ctx=_ctx(agent, None),
-        system_path=system_path, agent_path=None,
+        system_path=system_path, agent_path=agent_path,
         workset_path=None, box_path=box_path,
         behavior_floor=floor,
-        # Wrapped here, as the production producers do (C-2): the level carries
-        # the node it merges under, which for this read is the active agent.
-        agent_state=agent_file_state_level(
-            AgentConfig(state=dict(agent_state or {})), node=agent,
-        ),
     )
     return snap
 
@@ -364,7 +360,8 @@ def test_behavior_floor_and_per_agent_state(agent, tmp_path):
     state = {"model": "opus", "access": "editing"}  # the per-agent file (flat)
 
     snap = _behavior_snapshot(
-        agent, floor=floor, agent_state=state, box_path=None, system_path=None,
+        agent, floor=floor, agent_self=state, agent_path=tmp_path / "agent.yaml",
+        box_path=None, system_path=None,
     )
     eff = effective_behavior(snap, active_agent=agent)
 
@@ -391,7 +388,8 @@ def test_behavior_box_override_beats_agent_file(tmp_path):
     )
 
     snap = _behavior_snapshot(
-        agent, floor=floor, agent_state=state, box_path=box, system_path=None,
+        agent, floor=floor, agent_self=state, agent_path=tmp_path / "agent.yaml",
+        box_path=box, system_path=None,
     )
     eff = effective_behavior(snap, active_agent=agent)
     assert eff.get("model") == "haiku"  # the box's §2h request wins.
@@ -412,7 +410,8 @@ def test_behavior_resolution_order_edge_is_spec_correction(tmp_path):
     state = {"model": "opus"}  # the per-agent file = agent.<active>.model = opus
 
     snap = _behavior_snapshot(
-        agent, floor=floor, agent_state=state, box_path=None, system_path=None,
+        agent, floor=floor, agent_self=state, agent_path=tmp_path / "agent.yaml",
+        box_path=None, system_path=None,
     )
     eff = effective_behavior(snap, active_agent=agent)
     # agent.<active>.model (opus) wins the §2d active-over-default pick over
@@ -435,7 +434,8 @@ def test_higher_scope_present_none_suppresses_floor(tmp_path):
     snap = _behavior_snapshot(
         "claude",
         floor={"allow_helpers": "true", "model": "sonnet"},
-        agent_state={"allow_helpers": None},  # present-None resets the floor key
+        agent_self={"allow_helpers": None},  # present-None resets the floor key
+        agent_path=tmp_path / "agent.yaml",
         box_path=None,
         system_path=None,
     )
@@ -488,10 +488,12 @@ def test_box_config_effective_display_matches_launch_behavior_read(
     )
 
     # LAUNCH behavior read: the snapshot + effective_behavior, as start.py does —
-    # including start.py's own core-under-descriptor floor merge.
+    # including start.py's own core-under-descriptor floor merge. Both sides read
+    # the ONE agent file written here.
+    agent_yaml = tmp_path / "agent.yaml"
     launch_snap = _behavior_snapshot(
         agent, floor={**core_defaults.behavior_defaults(), **floor},
-        agent_state=state, box_path=box, system_path=None,
+        agent_self=state, agent_path=agent_yaml, box_path=box, system_path=None,
     )
     launch_read = effective_behavior(launch_snap, active_agent=agent)
 
@@ -504,11 +506,13 @@ def test_box_config_effective_display_matches_launch_behavior_read(
     target = SimpleNamespace(name=agent, setting_descriptors=lambda: descriptors)
     # ⚑ THE RECORD, not a namespace shaped like one: the display's level producer
     # reads the file's argv field too (``agent_file.state_level``), so a stand-in
-    # missing it describes an agent file that cannot exist.
+    # missing it describes an agent file that cannot exist. The display also gets
+    # the file's PATH, the route the launch side above reads the file by.
     agent_cfg = AgentConfig(state=dict(state))
     display = _effective_behavior_for_display(
         target, agent_cfg, std=std, proj=proj,
         system_settings_path=None, selection_level=None,
+        agent_cfg_path=agent_yaml,
     )
 
     # The display equals an INDEPENDENT spec-correct expected dict (NOT merely
