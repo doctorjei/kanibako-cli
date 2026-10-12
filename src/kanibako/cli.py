@@ -71,13 +71,12 @@ def build_parser() -> argparse.ArgumentParser:
     from kanibako.commands.code_cmd import add_code_parser
     from kanibako.commands.image import add_parser as add_rig_parser
     from kanibako.commands.box._parser import (
+        add_create_arguments,
+        add_list_arguments,
         add_parser as add_box_parser,
-        precheck_create,
-        run_create,
-        run_list as run_list_fn,
-        run_ps,
-        run_register,
-        run_rm,
+        add_ps_arguments,
+        add_register_arguments,
+        add_rm_arguments,
     )
     from kanibako.commands.stop import add_parser as add_stop_parser
     from kanibako.commands.workset_cmd import add_parser as add_workset_parser
@@ -98,115 +97,21 @@ def build_parser() -> argparse.ArgumentParser:
     add_stop_parser(subparsers)
     add_code_parser(subparsers)
 
-    # list — top-level shortcut for box list
+    # Top-level shortcuts for their ``box`` verbs: the same declaration, so the same
+    # arguments, help, and handler.
     list_p = subparsers.add_parser("list", help="List active and/or inactive boxes")
-    list_p.add_argument(
-        "--active", action="store_true",
-        help="Show only active (running) boxes",
-    )
-    list_p.add_argument(
-        "--all", "-a", action="store_true", dest="show_all",
-        help="Include orphaned boxes",
-    )
-    list_p.add_argument(
-        "-q", "--quiet", action="store_true",
-        help="Output box names only, one per line",
-    )
-    list_p.set_defaults(func=run_list_fn)
-
-    # ps — top-level shortcut for box list --active
+    add_list_arguments(list_p)
     ps_p = subparsers.add_parser("ps", help="List active (running) boxes")
-    ps_p.add_argument(
-        "--all", "-a", action="store_true", dest="show_all",
-        help="Show all boxes (active and inactive)",
-    )
-    ps_p.add_argument(
-        "-q", "--quiet", action="store_true",
-        help="Output box names only, one per line",
-    )
-    ps_p.set_defaults(func=run_ps)
-
-    # create — top-level alias for box create
+    add_ps_arguments(ps_p)
     create_p = subparsers.add_parser("create", help="Create a new project")
-    create_p.add_argument(
-        "path", nargs="?", default=None,
-        help="Project directory (default: cwd). Created if it doesn't exist.",
-    )
-    create_p.add_argument(
-        "--standalone", action="store_true",
-        help="Use standalone mode (all state inside the project directory)",
-    )
-    create_p.add_argument(
-        "--name", default=None,
-        help="Project name override (default: auto-assigned from directory name). "
-             "REFUSED on a standalone box: its name is composed from its own "
-             "directory, so rename the directory to rename the box.",
-    )
-    create_p.add_argument(
-        "--register", action="store_true",
-        help="Index a new STANDALONE box in the registry so it resolves by name "
-             "from other directories (default: unregistered and independent). "
-             "The entry is keyed by the box's own <kuid>_<directory> name, never "
-             "by --name. Default-mode boxes always register.",
-    )
-    create_p.add_argument(
-        "-i", "--image", default=None,
-        help="Container image to use for this project (--rig is the preferred spelling)",
-    )
-    create_p.add_argument(
-        "--rig", dest="image", default=None,
-        help="Rig (image) to use; synonym for --image",
-    )
-    create_p.add_argument(
-        "--no-vault", action="store_true",
-        help="Disable vault directories",
-    )
-    create_p.add_argument(
-        "--allow-home", action="store_true",
-        help="Permit a standalone project rooted at $HOME (mounts your entire "
-             "home directory; required to create one there)",
-    )
-    create_p.add_argument(
-        "--private", action="store_true",
-        help="Create a PRIVATE box: disable global and workset credential "
-             "sharing so the host's OAuth token is never seeded into it.",
-    )
-    create_p.add_argument(
-        "--force", action="store_true",
-        help="Create the box even though its workspace lies inside another box's "
-             "workspace, root, or store, or holds another box's workspace or root; "
-             "both boxes then share that tree",
-    )
-    create_p.add_argument(
-        "--recover", action="store_true",
-        help="Finish an interrupted 'create' on this path instead of starting a "
-             "new box; it keeps the name and settings the first attempt chose",
-    )
-    create_p.set_defaults(func=run_create, precheck=precheck_create)
-
-    # rm — top-level alias for box rm
+    add_create_arguments(create_p)
     rm_p = subparsers.add_parser("rm", help="Remove a project")
-    rm_p.add_argument("target", help="Project name or workspace path to remove")
-    rm_p.add_argument(
-        "--purge", action="store_true",
-        help="Also delete kanibako metadata for this project",
-    )
-    rm_p.add_argument(
-        "--force", action="store_true",
-        help="Skip confirmation prompt (only relevant with --purge)",
-    )
-    rm_p.set_defaults(func=run_rm)
-
-    # register — top-level alias for box register
+    add_rm_arguments(rm_p)
     register_p = subparsers.add_parser(
         "register",
         help="Re-register a deregistered box, or register a standalone box on disk",
     )
-    register_p.add_argument(
-        "target",
-        help="Deregistered box name, or path to a standalone box on disk",
-    )
-    register_p.set_defaults(func=run_register)
+    add_register_arguments(register_p)
 
     # Management commands.
     add_rig_parser(subparsers)

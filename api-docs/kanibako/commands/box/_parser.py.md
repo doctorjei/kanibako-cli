@@ -28,6 +28,11 @@ _PARKED_CURE_POINTER = 'For the commands that restore or delete one: kanibako bo
 
 ## Functions
 ```
+def add_create_arguments(parser: argparse.ArgumentParser) -> None
+def add_list_arguments(parser: argparse.ArgumentParser) -> None
+def add_ps_arguments(parser: argparse.ArgumentParser) -> None
+def add_rm_arguments(parser: argparse.ArgumentParser) -> None
+def add_register_arguments(parser: argparse.ArgumentParser) -> None
 def add_parser(subparsers: argparse._SubParsersAction) -> None
 def precheck_create(args: argparse.Namespace) -> int | None
 @_unmakes_its_dirs_on_failure

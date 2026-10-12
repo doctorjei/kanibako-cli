@@ -836,6 +836,31 @@ class TestParser:
 
     # -- Top-level alias tests --
 
+    @pytest.mark.parametrize("verb", ["create", "list", "ps", "rm", "register"])
+    def test_top_level_alias_matches_its_box_verb(self, verb):
+        """An alias's --help (past its usage line), arguments, and handler are its box verb's."""
+        def leaf(parser, *path):
+            for name in path:
+                sub = next(a for a in parser._actions if isinstance(a, argparse._SubParsersAction))
+                parser = sub.choices[name]
+            return parser
+
+        def body(parser):
+            # The usage paragraph names the prog and wraps by its length; the rest must match.
+            return parser.format_help().split("\n\n", 1)[1]
+
+        parser = build_parser()
+        alias, verb_p = leaf(parser, verb), leaf(parser, "box", verb)
+        assert body(alias) == body(verb_p)
+        assert ([(a.option_strings, a.dest) for a in alias._actions]
+                == [(a.option_strings, a.dest) for a in verb_p._actions])
+        assert alias.get_default("func") is verb_p.get_default("func")
+        assert alias.get_default("precheck") is verb_p.get_default("precheck")
+
+    def test_list_top_level_orphan(self):
+        args = build_parser().parse_args(["list", "--orphan"])
+        assert args.orphan is True
+
     def test_list_top_level(self):
         parser = build_parser()
         args = parser.parse_args(["list"])

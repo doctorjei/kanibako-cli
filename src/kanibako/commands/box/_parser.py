@@ -130,6 +130,159 @@ def _add_target_group(
     )
 
 
+# ⚑ ONE declaration per verb: the ``box`` verb and its top-level alias both call these, so
+# their arguments, help, and handler cannot drift apart.
+
+def add_create_arguments(parser: argparse.ArgumentParser) -> None:
+    """Declare ``create``'s arguments and handler on *parser*."""
+    parser.description = "Create a new kanibako project in the current or given directory."
+    parser.add_argument(
+        "path", nargs="?", default=None,
+        help="Project directory (default: cwd). Created if it doesn't exist.",
+    )
+    parser.add_argument(
+        "--name", default=None,
+        help="Project name override (default: auto-assigned from directory name). "
+             "REFUSED on a standalone box: its name is composed from its own "
+             "directory, so rename the directory to rename the box.",
+    )
+    parser.add_argument(
+        "--standalone", action="store_true",
+        help="Use standalone mode (all state inside the project directory)",
+    )
+    parser.add_argument(
+        "--register", action="store_true",
+        help="Index a new STANDALONE box in the registry so it resolves by name "
+             "from other directories (default: unregistered and independent). "
+             "The entry is keyed by the box's own <kuid>_<directory> name, never "
+             "by --name. Default-mode boxes always register.",
+    )
+    parser.add_argument(
+        "-i", "--image", default=None,
+        help="Container image to use for this project (--rig is the preferred spelling)",
+    )
+    parser.add_argument(
+        "--rig", dest="image", default=None,
+        help="Rig (image) to use; synonym for --image",
+    )
+    parser.add_argument(
+        "--no-vault", action="store_true",
+        help="Disable vault directories (shared read-only and read-write mounts)",
+    )
+    parser.add_argument(
+        "--allow-home", action="store_true",
+        help="Permit a standalone project rooted at $HOME (mounts your entire "
+             "home directory; required to create one there)",
+    )
+    parser.add_argument(
+        "--private", action="store_true",
+        help="Create a PRIVATE box: disable global and workset credential "
+             "sharing so the host's OAuth token is never seeded into it.",
+    )
+    parser.add_argument(
+        "--force", action="store_true",
+        help="Create the box even though its workspace lies inside another box's "
+             "workspace, root, or store, or holds another box's workspace or root; "
+             "both boxes then share that tree",
+    )
+    parser.add_argument(
+        "--recover", action="store_true",
+        help="Finish an interrupted 'create' on this path instead of starting a "
+             "new box; it keeps the name and settings the first attempt chose",
+    )
+    parser.set_defaults(func=run_create, precheck=precheck_create)
+
+
+def add_list_arguments(parser: argparse.ArgumentParser) -> None:
+    """Declare ``list``'s arguments and handler on *parser*."""
+    parser.description = "List all known kanibako projects with their hash, status, and path."
+    parser.add_argument(
+        "--all", "-a", action="store_true", dest="show_all",
+        help=_SHOW_ALL_HELP,
+    )
+    parser.add_argument(
+        "--active", action="store_true",
+        help="Show only active (running) boxes",
+    )
+    parser.add_argument(
+        "--orphan", action="store_true",
+        help="Show only orphaned projects (missing workspace)",
+    )
+    parser.add_argument(
+        "-q", "--quiet", action="store_true",
+        help="Output box names only, one per line",
+    )
+    parser.set_defaults(func=run_list)
+
+
+def add_ps_arguments(parser: argparse.ArgumentParser) -> None:
+    """Declare ``ps``'s arguments and handler on *parser*."""
+    parser.description = "List running kanibako containers with their project name, image, and status."
+    parser.add_argument(
+        "--all", "-a", action="store_true", dest="show_all",
+        help=_SHOW_ALL_HELP,
+    )
+    parser.add_argument(
+        "-q", "--quiet", action="store_true",
+        help="Output box names only, one per line",
+    )
+    parser.set_defaults(func=run_ps)
+
+
+def add_rm_arguments(parser: argparse.ArgumentParser) -> None:
+    """Declare ``rm``'s arguments and handler on *parser*."""
+    parser.description = (
+        "Unregister a project from the default workset or a standalone box\n"
+        "from the global registry.  A box that belongs to a named workset\n"
+        "is refused, naming 'kanibako workset disconnect'.  ⚑ A WORKSET is not a box:\n"
+        "remove one with 'kanibako workset rm <name>'.  The project's own\n"
+        "workspace is never deleted; without --purge, kanibako metadata\n"
+        "is kept so the box can be restored with 'kanibako box register\n"
+        "<name>'.  With --purge, also delete the box's metadata folder\n"
+        "(home, shell config, box.yaml), its vault folders (ro and rw,\n"
+        "with every file in them; a vault that is a symlink loses only\n"
+        "the link, never its target), and its logs.  For a standalone\n"
+        "box that is the box_data/ folder, the workset.yaml and canon/\n"
+        "folder at its root, and any vault folder inside the project.\n"
+        "Every path is listed before the confirmation.  A box that may be\n"
+        "running is refused, with or without --purge: stop it first, or\n"
+        "add --force to a --purge.\n"
+    )
+    parser.add_argument(
+        "target",
+        help="Project name or workspace path to remove",
+    )
+    parser.add_argument(
+        "--purge", action="store_true",
+        help="Also delete the box's metadata, vault folders, and logs (listed first)",
+    )
+    parser.add_argument(
+        "--force", action="store_true",
+        help="Skip the --purge confirmation question (the list still prints); with "
+             "--purge, also remove a box that may be running",
+    )
+    parser.set_defaults(func=run_rm)
+
+
+def add_register_arguments(parser: argparse.ArgumentParser) -> None:
+    """Declare ``register``'s arguments and handler on *parser*."""
+    parser.description = (
+        "Bring a box back into the registry — an INDEX-ONLY operation that\n"
+        "never re-seeds or touches the box's home content. Two uses:\n"
+        "  register <name>   readopt a box deregistered by 'rm' (restore\n"
+        "                    its active membership)\n"
+        "  register <path>   register a standalone box that exists on disk\n"
+        "                    (box_data/ + box.yaml) but has no index entry\n"
+        "Refuses if an active box already occupies the name or workspace."
+    )
+    parser.formatter_class = argparse.RawDescriptionHelpFormatter
+    parser.add_argument(
+        "target",
+        help="Deregistered box name, or path to a standalone box on disk",
+    )
+    parser.set_defaults(func=run_register)
+
+
 def add_parser(subparsers: argparse._SubParsersAction) -> None:
     from kanibako.commands.box._duplicate import run_duplicate
     from kanibako.commands.box._lifecycle import (
@@ -151,88 +304,16 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
     create_p = box_sub.add_parser(
         "create",
         help="Create a new kanibako project",
-        description="Create a new kanibako project in the current or given directory.",
     )
-    create_p.add_argument(
-        "path", nargs="?", default=None,
-        help="Project directory (default: cwd). Created if it doesn't exist.",
-    )
-    create_p.add_argument(
-        "--name", default=None,
-        help="Project name override (default: auto-assigned from directory name). "
-             "REFUSED on a standalone box: its name is composed from its own "
-             "directory, so rename the directory to rename the box.",
-    )
-    create_p.add_argument(
-        "--standalone", action="store_true",
-        help="Use standalone mode (all state inside the project directory)",
-    )
-    create_p.add_argument(
-        "--register", action="store_true",
-        help="Index a new STANDALONE box in the registry so it resolves by name "
-             "from other directories (default: unregistered and independent). "
-             "The entry is keyed by the box's own <kuid>_<directory> name, never "
-             "by --name. Default-mode boxes always register.",
-    )
-    create_p.add_argument(
-        "-i", "--image", default=None,
-        help="Container image to use for this project (--rig is the preferred spelling)",
-    )
-    create_p.add_argument(
-        "--rig", dest="image", default=None,
-        help="Rig (image) to use; synonym for --image",
-    )
-    create_p.add_argument(
-        "--no-vault", action="store_true",
-        help="Disable vault directories (shared read-only and read-write mounts)",
-    )
-    create_p.add_argument(
-        "--allow-home", action="store_true",
-        help="Permit a standalone project rooted at $HOME (mounts your entire "
-             "home directory; required to create one there)",
-    )
-    create_p.add_argument(
-        "--private", action="store_true",
-        help="Create a PRIVATE box: disable global and workset credential "
-             "sharing so the host's OAuth token is never seeded into it.",
-    )
-    create_p.add_argument(
-        "--force", action="store_true",
-        help="Create the box even though its workspace lies inside another box's "
-             "workspace, root, or store, or holds another box's workspace or root; "
-             "both boxes then share that tree",
-    )
-    create_p.add_argument(
-        "--recover", action="store_true",
-        help="Finish an interrupted 'create' on this path instead of starting a "
-             "new box; it keeps the name and settings the first attempt chose",
-    )
-    create_p.set_defaults(func=run_create, precheck=precheck_create)
+    add_create_arguments(create_p)
 
     # kanibako box list (default behavior)
     list_p = box_sub.add_parser(
         "list",
         aliases=["ls"],
         help="List known projects and their status (default)",
-        description="List all known kanibako projects with their hash, status, and path.",
     )
-    list_p.add_argument(
-        "--all", "-a", action="store_true", dest="show_all",
-        help=_SHOW_ALL_HELP,
-    )
-    list_p.add_argument(
-        "--active", action="store_true",
-        help="Show only active (running) boxes",
-    )
-    list_p.add_argument(
-        "--orphan", action="store_true",
-        help="Show only orphaned projects (missing workspace)",
-    )
-    list_p.add_argument(
-        "-q", "--quiet", action="store_true",
-        help="Output project names only, one per line",
-    )
-    list_p.set_defaults(func=run_list)
+    add_list_arguments(list_p)
 
     # kanibako box remap <old> [<new>]   (records-only)
     remap_p = box_sub.add_parser(
@@ -384,58 +465,15 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
         "rm",
         aliases=["delete"],
         help="Unregister a project (--purge also deletes its metadata, vaults, and logs)",
-        description=(
-            "Unregister a project from the default workset or a standalone box\n"
-            "from the global registry.  A box that belongs to a named workset\n"
-            "is refused, naming 'kanibako workset disconnect'.  ⚑ A WORKSET is not a box:\n"
-            "remove one with 'kanibako workset rm <name>'.  The project's own\n"
-            "workspace is never deleted; without --purge, kanibako metadata\n"
-            "is kept so the box can be restored with 'kanibako box register\n"
-            "<name>'.  With --purge, also delete the box's metadata folder\n"
-            "(home, shell config, box.yaml), its vault folders (ro and rw,\n"
-            "with every file in them; a vault that is a symlink loses only\n"
-            "the link, never its target), and its logs.  For a standalone\n"
-            "box that is the box_data/ folder, the workset.yaml and canon/\n"
-            "folder at its root, and any vault folder inside the project.\n"
-            "Every path is listed before the confirmation.  A box that may be\n"
-            "running is refused, with or without --purge: stop it first.\n"
-        ),
     )
-    rm_p.add_argument(
-        "target",
-        help="Project name or workspace path to remove",
-    )
-    rm_p.add_argument(
-        "--purge", action="store_true",
-        help="Also delete the box's metadata, vault folders, and logs (listed first)",
-    )
-    rm_p.add_argument(
-        "--force", action="store_true",
-        help="Skip the --purge confirmation question (the list still prints); with "
-             "--purge, also remove a box that may be running",
-    )
-    rm_p.set_defaults(func=run_rm)
+    add_rm_arguments(rm_p)
 
     # kanibako box register <name|path>   (readopt / late standalone register)
     register_p = box_sub.add_parser(
         "register",
         help="Re-register a deregistered box, or register a standalone box on disk",
-        description=(
-            "Bring a box back into the registry — an INDEX-ONLY operation that\n"
-            "never re-seeds or touches the box's home content. Two uses:\n"
-            "  register <name>   readopt a box deregistered by 'rm' (restore\n"
-            "                    its active membership)\n"
-            "  register <path>   register a standalone box that exists on disk\n"
-            "                    (box_data/ + box.yaml) but has no index entry\n"
-            "Refuses if an active box already occupies the name or workspace."
-        ),
-        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    register_p.add_argument(
-        "target",
-        help="Deregistered box name, or path to a standalone box on disk",
-    )
-    register_p.set_defaults(func=run_register)
+    add_register_arguments(register_p)
 
     # kanibako box info / inspect
     info_p = box_sub.add_parser(
@@ -531,17 +569,8 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
     ps_p = box_sub.add_parser(
         "ps",
         help="List running kanibako containers",
-        description="List running kanibako containers with their project name, image, and status.",
     )
-    ps_p.add_argument(
-        "--all", "-a", action="store_true", dest="show_all",
-        help=_SHOW_ALL_HELP,
-    )
-    ps_p.add_argument(
-        "-q", "--quiet", action="store_true",
-        help="Output container names only, one per line",
-    )
-    ps_p.set_defaults(func=run_ps)
+    add_ps_arguments(ps_p)
 
     # Reuse existing subcommand modules under box.
     from kanibako.commands.archive import add_parser as add_archive_parser
