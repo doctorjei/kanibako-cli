@@ -1488,12 +1488,11 @@ class TestRunReauth:
             with pytest.raises(AgentUnsetError):
                 run_reauth(args)
 
-    def test_reauth_refreshes_credentials_legacy(self, config_file, tmp_home, capsys):
-        """Legacy target (descriptor is None): refresh via the per-plugin hook.
+    def test_reauth_descriptorless_skips_refresh(self, config_file, tmp_home, capsys):
+        """A descriptor-less target (only the built-in shell) syncs no credentials.
 
-        The gate mirrors start.py exactly — only a ``desc is None`` target uses
-        ``target.refresh_credentials``; descriptor-bearing targets route through
-        credsync (covered separately below)."""
+        The gate mirrors start.py: only a descriptor-bearing target refreshes,
+        through credsync (covered separately below)."""
         from kanibako.commands.agent_cmd import run_reauth
 
         args = argparse.Namespace(project=None)
@@ -1504,6 +1503,9 @@ class TestRunReauth:
                 return_value=AgentSelection(node="claude", source="settings"),
             ),
             patch("kanibako.targets.resolve_target") as mock_target,
+            patch(
+                "kanibako.targets.credsync.refresh_box_credentials"
+            ) as mock_refresh,
             # The box's SHARING decision is resolved through the launch capability
             # chain (auth 3-tier redesign), which needs a real ``proj.mode``; stub
             # it to a SHARING AuthSource so the ``auth_src.creds_shared`` branch under
@@ -1528,7 +1530,8 @@ class TestRunReauth:
                 rc = run_reauth(args)
 
         assert rc == 0
-        target.refresh_credentials.assert_called_once_with(proj.shell_path)
+        mock_refresh.assert_not_called()
+        assert not [c for c in target.method_calls if c[0].endswith("_credentials")]
 
     def test_reauth_calls_resolver_with_conformant_kwargs(
         self, config_file, tmp_home, capsys
@@ -1607,9 +1610,7 @@ class TestRunReauth:
     def test_reauth_refreshes_credentials_descriptor(self, config_file, tmp_home, capsys):
         """Descriptor-bearing target: refresh routes through the credsync engine.
 
-        B2 fix: ``run_reauth`` previously called ``target.refresh_credentials``
-        UNGATED, sending a descriptor agent (e.g. goose) down its bypassed legacy
-        path.  It now mirrors the start.py site: descriptor present ->
+        It mirrors the start.py site: descriptor present ->
         ``credsync.refresh_box_credentials`` (the 3-tier orchestrator) with the
         resolved ``AuthSource``."""
         from kanibako.commands.agent_cmd import run_reauth
@@ -1648,7 +1649,6 @@ class TestRunReauth:
                 rc = run_reauth(args)
 
         assert rc == 0
-        target.refresh_credentials.assert_not_called()
         mock_refresh.assert_called_once_with(
             desc, target, auth=_SHARED_AUTH, host_home=Path.home(),
             project_home=proj.shell_path,
@@ -1743,7 +1743,8 @@ class TestRunReauth:
                 rc = run_reauth(args)
 
         assert rc == 0
-        target.refresh_credentials.assert_not_called()
+        # The distinct-auth branch returns before the auth check that gates refresh.
+        target.check_auth.assert_not_called()
 
     def test_reauth_runs_inbox_setup_when_auth_fails_and_setup_declared(
         self, config_file, tmp_home, capsys,

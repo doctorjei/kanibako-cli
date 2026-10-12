@@ -537,7 +537,7 @@ class TestStandaloneLaunch:
         assert call_kwargs["vault_rw_path"] == project / "vault" / "rw"
 
     def test_start_standalone_credential_flow(self, start_mocks, tmp_path):
-        """A standalone box shares at the GLOBAL tier → cred hooks DO run.
+        """A standalone box shares at the GLOBAL tier → credential sync DOES run.
 
         Under the auth 3-tier SHARING model (2026-07-01 redesign) a standalone
         box has no WORKSET group, so the workset tier degenerates false — but the
@@ -555,9 +555,6 @@ class TestStandaloneLaunch:
         (project / ".kanibako").mkdir()
 
         with start_mocks() as m:
-            # Pin the legacy credential-hook path: a descriptor-bearing target
-            # routes refresh/writeback through the credsync engine instead.
-            m.target.descriptor = None
             proj = self._make_standalone_proj(project)
             m.resolve_any_project.return_value = proj
 
@@ -567,9 +564,9 @@ class TestStandaloneLaunch:
                 extra_args=[],
             )
 
-        # Standalone shares at the global tier → both cred hooks run.
-        m.target.refresh_credentials.assert_called()
-        m.target.writeback_credentials.assert_called()
+        # Standalone shares at the global tier → both credsync phases run.
+        m.credsync.refresh_box_credentials.assert_called()
+        m.credsync.writeback_box_credentials.assert_called()
 
     def test_shell_works_with_standalone(self, start_mocks, tmp_path):
         """shell auto-detects standalone mode via resolve_any_project."""
@@ -734,9 +731,6 @@ class TestWorksetLaunch:
         workspace.mkdir(parents=True)
 
         with start_mocks() as m:
-            # Pin the legacy credential-hook path: a descriptor-bearing target
-            # routes refresh/writeback through the credsync engine instead.
-            m.target.descriptor = None
             proj = self._make_workset_proj(ws_root, "myproj")
             m.resolve_any_project.return_value = proj
 
@@ -746,15 +740,11 @@ class TestWorksetLaunch:
                 extra_args=[],
             )
 
-        # target.refresh_credentials called with shell_path
-        m.target.refresh_credentials.assert_called_once_with(
-            ws_root / "kanibako" / "myproj" / "shell"
-        )
-
-        # target.writeback_credentials called with shell_path
-        m.target.writeback_credentials.assert_called_once_with(
-            ws_root / "kanibako" / "myproj" / "shell"
-        )
+        shell = ws_root / "kanibako" / "myproj" / "shell"
+        m.credsync.refresh_box_credentials.assert_called_once()
+        assert m.credsync.refresh_box_credentials.call_args.kwargs["project_home"] == shell
+        m.credsync.writeback_box_credentials.assert_called_once()
+        assert m.credsync.writeback_box_credentials.call_args.kwargs["project_home"] == shell
 
     def test_shell_works_with_workset(self, start_mocks, tmp_path):
         """shell auto-detects workset mode via resolve_any_project."""

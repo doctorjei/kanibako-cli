@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 
 import pytest
 
@@ -231,36 +230,6 @@ class TestStandaloneCredentialFlow:
         )
         creds_file = proj.shell_path / ".claude" / ".credentials.json"
         assert not creds_file.exists()
-
-    def test_refresh_host_to_project_works(
-        self, std, config, project_dir, credentials_dir, tmp_home,
-    ):
-        proj = resolve_standalone_project(
-            std, config, str(project_dir), initialize=True,
-        )
-        from kanibako.plugins.claude.credentials import refresh_host_to_project
-
-        home = tmp_home / "home"
-        host_creds = home / ".claude" / ".credentials.json"
-
-        # Create the .claude dir and seed a creds file so refresh can write to it
-        claude_dir = proj.shell_path / ".claude"
-        claude_dir.mkdir(parents=True, exist_ok=True)
-        project_creds = claude_dir / ".credentials.json"
-        project_creds.write_text(json.dumps({"claudeAiOauth": {"token": "old"}}))
-
-        # Touch host to ensure it's newer.
-        import time
-        time.sleep(0.05)
-        host_creds.write_text(json.dumps(
-            {"claudeAiOauth": {"token": "refreshed-token"}}
-        ))
-
-        result = refresh_host_to_project(host_creds, project_creds)
-        assert result is True
-
-        updated = json.loads(project_creds.read_text())
-        assert updated["claudeAiOauth"]["token"] == "refreshed-token"
 
 
 # ---------------------------------------------------------------------------

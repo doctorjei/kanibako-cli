@@ -41,8 +41,6 @@ from kanibako.plugins.claude.credentials import (
     credentials_error,
     merge_oauth_account_out,
     merge_oauth_in,
-    refresh_host_to_project,
-    writeback_project_to_host,
 )
 
 if TYPE_CHECKING:
@@ -755,19 +753,3 @@ class ClaudeTarget(Target):
         """
         return list(_CLAUDE_BEHAVIOR)
 
-    def refresh_credentials(self, home: Path) -> None:
-        """Refresh Claude credentials from host into project home.
-
-        Syncs host ``~/.claude/.credentials.json`` into ``home/.claude/.credentials.json``
-        using mtime-based freshness.
-        """
-        host_creds = Path.home() / ".claude" / ".credentials.json"
-        project_creds = home / ".claude" / ".credentials.json"
-
-        refresh_host_to_project(host_creds, project_creds)
-
-    def writeback_credentials(self, home: Path) -> None:
-        """Write back refreshed credentials from project home to host."""
-        project_creds = home / ".claude" / ".credentials.json"
-
-        writeback_project_to_host(project_creds)

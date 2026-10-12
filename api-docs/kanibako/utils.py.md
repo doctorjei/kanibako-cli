@@ -17,7 +17,6 @@ _GITIGNORE_ENTRIES = ['box_data/']
 
 ## Functions
 ```
-def cp_if_newer(src: str | os.PathLike, dst: str | os.PathLike) -> bool
 def confirm_prompt(message: str) -> None
 def confirm_or_abort(force: bool, message: str, *, announce_abort: bool=True) -> bool
 def deep_merge(base: dict, override: dict) -> dict

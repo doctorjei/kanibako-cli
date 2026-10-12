@@ -25,12 +25,6 @@ class TestShellTarget:
     def test_detect_returns_none(self):
         assert self.target.detect() is None
 
-    def test_refresh_credentials_is_noop(self, tmp_path):
-        self.target.refresh_credentials(tmp_path)
-
-    def test_writeback_credentials_is_noop(self, tmp_path):
-        self.target.writeback_credentials(tmp_path)
-
     def test_check_auth_returns_true(self):
         assert self.target.check_auth() is True
 

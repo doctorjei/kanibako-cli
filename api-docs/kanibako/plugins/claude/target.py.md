@@ -56,6 +56,4 @@ class ClaudeTarget(Target):
     def check_auth(self) -> bool
     def prepare_host(self, install: AgentInstall, *, auto_auth: bool, data_path: Path) -> None
     def setting_descriptors(self) -> list[TargetSetting]
-    def refresh_credentials(self, home: Path) -> None
-    def writeback_credentials(self, home: Path) -> None
 ```

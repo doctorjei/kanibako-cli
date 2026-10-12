@@ -3633,12 +3633,12 @@ def _run_container(
         selection_level=selection_level,
     )
 
-    # Plugin descriptor (None for legacy/shell targets).  Hoisted here so
+    # Plugin descriptor (None only for the built-in shell).  Hoisted here so
     # EVERY credential lifecycle site — the reattach refresh immediately below,
     # and the init / refresh / writeback sites on the launch path — branches off a
     # single value: descriptor-bearing targets route their cred lifecycle through
-    # the credsync engine, legacy targets keep the per-plugin refresh/writeback
-    # hooks.  It depends only on ``target``, which nothing below rebinds.
+    # the credsync engine; the shell has no credentials.  It depends only on
+    # ``target``, which nothing below rebinds.
     desc = target.descriptor if target else None
 
     # ══ REATTACH FAST PATH ═══════════════════════════════════════════════════
@@ -3781,15 +3781,12 @@ def _run_container(
         # value is the last word — a persona endpoint (from the keyspace or the
         # store tier below it) drops the host OAuth cred sync so an Anthropic
         # token never reaches a box pointed at a third-party endpoint.
-        if target and auth_src.creds_shared:
-            if desc is not None:
-                credsync.refresh_box_credentials(
-                    desc, target, auth=auth_src, host_home=Path.home(),
-                    project_home=proj.shell_path,
-                    suppress_oauth=active_endpoint is not None,
-                )
-            else:
-                target.refresh_credentials(proj.shell_path)
+        if target and auth_src.creds_shared and desc is not None:
+            credsync.refresh_box_credentials(
+                desc, target, auth=auth_src, host_home=Path.home(),
+                project_home=proj.shell_path,
+                suppress_oauth=active_endpoint is not None,
+            )
         session_seen = bootstrap_program == "tmux" and _bootstrap_session_exists(
             runtime, container_name,
         )
@@ -4203,16 +4200,14 @@ def _run_container(
                     )
                     return 1
 
-        # Credential refresh via target (skip for a private/distinct box)
-        if target and auth_src.creds_shared:
-            if desc is not None:
-                credsync.refresh_box_credentials(
-                    desc, target, auth=auth_src, host_home=Path.home(),
-                    project_home=proj.shell_path,
-                    suppress_oauth=suppress_oauth,
-                )
-            else:
-                target.refresh_credentials(proj.shell_path)
+        # Credential refresh via the descriptor (skip for a private/distinct box,
+        # and for the descriptor-less built-in shell, which has no credentials)
+        if target and auth_src.creds_shared and desc is not None:
+            credsync.refresh_box_credentials(
+                desc, target, auth=auth_src, host_home=Path.home(),
+                project_home=proj.shell_path,
+                suppress_oauth=suppress_oauth,
+            )
 
         # Binary transform: run the one this agent's ``transform`` key NAMES (spec
         # §2d).  ``transform_settings`` is that transform's CONFIG INPUT and was
@@ -5692,10 +5687,9 @@ def writeback_session_credentials(
     # each other.
     dest_root = credsync.selected_source_root(auth_src, host_home=host_home)
     dests = {dest_root} if dest_root is not None else set()
-    if desc is None or (auth_src.tier == "workset" and auth_src.global_sync):
-        # Two ways host home is written even when it is not the selected source: the
-        # global_sync mirror below, and the legacy no-descriptor hook, which picks its
-        # own host-side destination and cannot be inspected from here.
+    if auth_src.tier == "workset" and auth_src.global_sync:
+        # Host home is written even though it is not the selected source: the
+        # global_sync mirror below.
         dests.add(host_home)
     from kanibako.launch.creds_watcher import clear_creds_dirty, creds_store_lock
     try:
@@ -5706,8 +5700,6 @@ def writeback_session_credentials(
                     desc, target, auth=auth_src, host_home=host_home,
                     project_home=proj.shell_path,
                 )
-            else:
-                target.writeback_credentials(proj.shell_path)
             # Plugin-specific writeback beyond the cred_files specs (e.g. claude's
             # .claude.json oauthAccount merge-back, not modeled as a cred_file
             # because its host->project IMPORT was removed in 1.6.0). Route it to the

@@ -24,8 +24,7 @@ What this plugin implements:
   `reattach_config_notice`.
 * the persona seams: `read_persona_settings`, `verify_persona`.
 
-Everything else — `build_cli_args`, `binary_mounts`, `refresh_credentials`,
-`writeback_credentials`, `transform_cred` — is inherited from the step-3a concrete `Target`
+Everything else — `build_cli_args`, `binary_mounts`, `transform_cred` — is inherited from the step-3a concrete `Target`
 defaults. Codex needs no override there: both its cred files are wholesale copies, and the
 descriptor's `init_dirs` create `.codex`.
 

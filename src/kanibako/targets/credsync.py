@@ -1,8 +1,6 @@
 """Agent-agnostic credential-sync engine (LIVE — wired into start.py).
 
-This module centralizes the per-plugin credential lifecycle that previously lived
-in each plugin's ``init_home`` / ``refresh_credentials`` / ``writeback_credentials``
-hooks.  It is driven entirely by a :class:`~kanibako.targets.base.PluginDescriptor`
+This module owns the credential lifecycle of every plugin.  It is driven entirely by a :class:`~kanibako.targets.base.PluginDescriptor`
 (its ``init_dirs`` and ``cred_files``) plus the plugin's
 :meth:`~kanibako.targets.base.Target.transform_cred` hook for the divergent
 filter/merge payload of ``filtered`` specs.
@@ -10,8 +8,8 @@ filter/merge payload of ``filtered`` specs.
 Three primitives map onto the three lifecycle phases:
 
 * :func:`seed_cred_files`      — project init (replaces the credential part of ``init_home``)
-* :func:`refresh_cred_files`   — pre-launch host->project sync (replaces ``refresh_credentials``)
-* :func:`writeback_cred_files` — post-session project->host sync (replaces ``writeback_credentials``)
+* :func:`refresh_cred_files`   — pre-launch host->project sync
+* :func:`writeback_cred_files` — post-session project->host sync
 
 The engine owns the data-driven mtime gating / directory creation / chmod; the
 per-file transform (claude ``claudeAiOauth`` merge + ``.claude.json`` allowlist,
@@ -20,8 +18,7 @@ goose ``config.yaml`` allowlist) stays a plugin hook reached via ``transform_cre
 NOTE: This engine is LIVE.  ``commands/start.py`` calls :func:`seed_cred_files`
 (new boxes), :func:`refresh_cred_files` (reattach + pre-launch), and
 :func:`writeback_cred_files` (post-session) for every descriptor-bearing target;
-the per-plugin ``init_home`` / ``refresh_credentials`` / ``writeback_credentials``
-primitives are bypassed on the descriptor path.
+the credential part of ``init_home`` is bypassed on the descriptor path.
 """
 
 from __future__ import annotations
@@ -149,7 +146,7 @@ def refresh_cred_files(
 ) -> None:
     """Pre-launch source->project sync of SYNC-cadence credential files.
 
-    Replaces ``refresh_credentials``.  No-op when *source_root* is ``None`` (the
+    No-op when *source_root* is ``None`` (the
     private/BOX tier — today's distinct auth).  ``SEED_ONCE`` specs are never
     refreshed.  For ``SYNC`` specs the source file (under *source_root* — the host
     home for GLOBAL, the workset source dir for WORKSET) must exist and (when
@@ -199,7 +196,7 @@ def writeback_cred_files(
 ) -> bool:
     """Post-session project->source sync of SYNC-cadence credential files.
 
-    Replaces ``writeback_credentials``.  No-op when *source_root* is ``None`` (the
+    No-op when *source_root* is ``None`` (the
     private/BOX tier).  ``SEED_ONCE`` specs are never written back.  Direction is
     REVERSED: the project file is the source and the file under *source_root* (the
     host home for GLOBAL, the workset source dir for WORKSET) the destination.  The

@@ -1318,14 +1318,6 @@ class Target(ABC):
             dst.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(str(src), str(dst))
 
-    def refresh_credentials(self, home: Path) -> None:
-        """Refresh agent credentials from host into the project home. Default: no-op."""
-        return None
-
-    def writeback_credentials(self, home: Path) -> None:
-        """Write back credentials from project home to host. Default: no-op."""
-        return None
-
     def writeback_extra(self, *, project_home: Path, host_home: Path) -> None:
         """Plugin-specific post-session writeback BEYOND `cred_files` specs. Default: no-op.
 

@@ -290,7 +290,5 @@ class Target(ABC):
     def verify_persona(self, endpoint: str, token_path: Path | None, model: str | None, *, env: Mapping[str, str] | None=None, timeout: float=5.0) -> PersonaProbeOutcome
     def cred_writeback_error(self, spec: CredFileSpec, data: bytes) -> str | None
     def transform_cred(self, spec: CredFileSpec, src: Path | None, dst: Path, direction: str) -> None
-    def refresh_credentials(self, home: Path) -> None
-    def writeback_credentials(self, home: Path) -> None
     def writeback_extra(self, *, project_home: Path, host_home: Path) -> None
 ```

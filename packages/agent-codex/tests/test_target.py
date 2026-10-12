@@ -635,21 +635,6 @@ class TestDescriptor:
         assert d.init_dirs == (".codex",)
 
 
-class TestInheritedDefaults:
-    """codex is descriptor-only -> launch is fully assembly-driven.
-
-    The legacy ``binary_mounts`` / ``build_cli_args`` hooks were removed for the
-    descriptor-only public release; codex's argv/env/binds all come from its
-    descriptor (covered by ``TestDescriptorAssembly`` below).  Only the
-    credential-lifecycle hooks remain (codex syncs via the credsync engine, so
-    these stay no-ops).
-    """
-
-    def test_refresh_writeback_noop(self, project_home: Path):
-        assert CodexTarget().refresh_credentials(project_home) is None
-        assert CodexTarget().writeback_credentials(project_home) is None
-
-
 class TestDescriptorAssembly:
     """Integration: codex's argv/env assembled from the descriptor via assembly.*."""
 

@@ -1239,8 +1239,6 @@ def invalidate_credentials(self, home: Path) -> None
 
 def transform_cred(self, spec: CredFileSpec, src: Path | None, dst: Path, direction: str) -> None
 
-def refresh_credentials(self, home: Path) -> None
-def writeback_credentials(self, home: Path) -> None
 def writeback_extra(self, *, project_home: Path, host_home: Path) -> None
 ```
 
@@ -1258,12 +1256,6 @@ whether to write a default *dst* or do nothing.
 The default is a plain copy when *src* exists, so a plugin that flags a file `filtered` but does
 not override still gets a sensible wholesale copy. Plugins override to filter/merge (claude
 `claudeAiOauth` merge + `.claude.json` allowlist; goose `config.yaml` allowlist).
-
-#### `refresh_credentials` / `writeback_credentials`
-
-Refresh agent credentials from host into the project home, and write them back. Both default to
-no-op: descriptor-native plugins sync creds via `descriptor.cred_files` (core's credsync engine);
-legacy plugins override.
 
 #### `writeback_extra`
 

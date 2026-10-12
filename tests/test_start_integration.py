@@ -9,11 +9,8 @@ files, mtime checks).  Run with::
 from __future__ import annotations
 
 import fcntl
-import json
-import os
 import subprocess
 import threading
-import time
 
 import pytest
 
@@ -118,73 +115,6 @@ class TestRealFcntlLocking:
         fcntl.flock(fd2, fcntl.LOCK_EX | fcntl.LOCK_NB)
         fcntl.flock(fd2, fcntl.LOCK_UN)
         fd2.close()
-
-
-@pytest.mark.integration
-class TestCredentialFlow:
-    """End-to-end credential refresh pipeline with real files."""
-
-    def test_host_to_project_flow(
-        self, integration_home, integration_config, integration_credentials
-    ):
-        """Full credential pipeline: host → project, real files."""
-        from kanibako.settings.config import load_config
-        from kanibako.plugins.claude.credentials import refresh_host_to_project
-        from kanibako.settings.paths import load_std_paths, resolve_project
-
-        config = load_config(integration_config)
-        std = load_std_paths(config)
-        proj = resolve_project(std, config, initialize=True)
-
-        # Create fake host credentials
-        host_claude = integration_home / "int_home" / ".claude"
-        host_claude.mkdir(parents=True, exist_ok=True)
-        host_creds = host_claude / ".credentials.json"
-        host_token = {"claudeAiOauth": {"token": "host-fresh-token"}, "extra": True}
-        host_creds.write_text(json.dumps(host_token))
-
-        project_creds = proj.shell_path / ".claude" / ".credentials.json"
-
-        # Refresh host → project
-        refresh_host_to_project(host_creds, project_creds)
-        assert project_creds.is_file()
-        project_data = json.loads(project_creds.read_text())
-        assert project_data["claudeAiOauth"]["token"] == "host-fresh-token"
-
-    def test_mtime_based_freshness(
-        self, integration_home, integration_config, integration_credentials
-    ):
-        """A newer project credential is not overwritten by an older host one."""
-        from kanibako.settings.config import load_config
-        from kanibako.plugins.claude.credentials import refresh_host_to_project
-        from kanibako.settings.paths import load_std_paths, resolve_project
-
-        config = load_config(integration_config)
-        std = load_std_paths(config)
-        proj = resolve_project(std, config, initialize=True)
-
-        # Create host credentials
-        host_claude = integration_home / "int_home" / ".claude"
-        host_claude.mkdir(parents=True, exist_ok=True)
-        host_creds = host_claude / ".credentials.json"
-        host_creds.write_text(json.dumps({"claudeAiOauth": {"token": "host-old"}}))
-
-        # Write project credentials with fresh token
-        project_creds = proj.shell_path / ".claude" / ".credentials.json"
-        project_creds.parent.mkdir(parents=True, exist_ok=True)
-        project_creds.write_text(json.dumps({"claudeAiOauth": {"token": "project-fresh"}}))
-
-        # Set project mtime ahead of host
-        now = time.time()
-        os.utime(host_creds, (now - 10, now - 10))
-        os.utime(project_creds, (now, now))
-
-        result = refresh_host_to_project(host_creds, project_creds)
-        assert result is False
-
-        # Verify project token unchanged
-        project_data = json.loads(project_creds.read_text())
-        assert project_data["claudeAiOauth"]["token"] == "project-fresh"
 
 
 @pytest.mark.integration

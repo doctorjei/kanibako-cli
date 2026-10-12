@@ -3,18 +3,15 @@
 from __future__ import annotations
 
 import json
-import os
-import time
 
 from kanibako.plugins.claude import ClaudeTarget
 from kanibako.plugins.claude.credentials import (
     merge_oauth_account_out,
-    refresh_host_to_project,
-    writeback_project_to_host,
+    merge_oauth_in,
 )
 
 
-class TestRefreshHostToProject:
+class TestMergeOauthIn:
     def test_creates_project_from_host(self, tmp_path):
         host = tmp_path / "host" / ".credentials.json"
         host.parent.mkdir()
@@ -23,7 +20,7 @@ class TestRefreshHostToProject:
         project = tmp_path / "project" / ".credentials.json"
         project.parent.mkdir()
 
-        assert refresh_host_to_project(host, project)
+        assert merge_oauth_in(host, project)
         data = json.loads(project.read_text())
         assert data["claudeAiOauth"]["token"] == "abc"
 
@@ -36,46 +33,10 @@ class TestRefreshHostToProject:
         project.parent.mkdir()
         project.write_text(json.dumps({"claudeAiOauth": {"token": "old"}, "otherKey": True}))
 
-        # Make host newer
-        old_time = time.time() - 100
-        os.utime(project, (old_time, old_time))
-
-        assert refresh_host_to_project(host, project)
+        assert merge_oauth_in(host, project)
         data = json.loads(project.read_text())
         assert data["claudeAiOauth"]["token"] == "new"
         assert data["otherKey"] is True
-
-    def test_skips_when_project_newer(self, tmp_path):
-        host = tmp_path / "host" / ".credentials.json"
-        host.parent.mkdir()
-        host.write_text(json.dumps({"claudeAiOauth": {"token": "host"}}))
-
-        project = tmp_path / "project" / ".credentials.json"
-        project.parent.mkdir()
-        project.write_text(json.dumps({"claudeAiOauth": {"token": "project"}}))
-
-        # Make host older
-        old_time = time.time() - 100
-        os.utime(host, (old_time, old_time))
-
-        assert not refresh_host_to_project(host, project)
-        data = json.loads(project.read_text())
-        assert data["claudeAiOauth"]["token"] == "project"
-
-    def test_missing_oauth_key_skips(self, tmp_path):
-        host = tmp_path / "host" / ".credentials.json"
-        host.parent.mkdir()
-        host.write_text(json.dumps({"otherKey": True}))
-
-        project = tmp_path / "project" / ".credentials.json"
-        project.parent.mkdir()
-        project.write_text(json.dumps({"claudeAiOauth": {"token": "old"}}))
-
-        # Make host newer
-        old_time = time.time() - 100
-        os.utime(project, (old_time, old_time))
-
-        assert not refresh_host_to_project(host, project)
 
 
 # NOTE: the host .claude.json allowlist filter (filter_settings) was removed in
@@ -83,10 +44,10 @@ class TestRefreshHostToProject:
 
 
 # ---------------------------------------------------------------------------
-# refresh_host_to_project — error paths
+# merge_oauth_in — error paths
 # ---------------------------------------------------------------------------
 
-class TestRefreshHostToProjectErrors:
+class TestMergeOauthInErrors:
     def test_malformed_host_json(self, tmp_path):
         host = tmp_path / "host" / ".credentials.json"
         host.parent.mkdir(parents=True)
@@ -95,10 +56,8 @@ class TestRefreshHostToProjectErrors:
         project = tmp_path / "project" / ".credentials.json"
         project.parent.mkdir(parents=True)
         project.write_text(json.dumps({"claudeAiOauth": {"token": "old"}}))
-        # Ensure host is newer
-        os.utime(project, (0, 0))
 
-        result = refresh_host_to_project(host, project)
+        result = merge_oauth_in(host, project)
         assert result is False
         # Project file unchanged
         data = json.loads(project.read_text())
@@ -112,9 +71,8 @@ class TestRefreshHostToProjectErrors:
         project = tmp_path / "project" / ".credentials.json"
         project.parent.mkdir(parents=True)
         project.write_text(json.dumps({"claudeAiOauth": {"token": "old"}}))
-        os.utime(project, (0, 0))
 
-        result = refresh_host_to_project(host, project)
+        result = merge_oauth_in(host, project)
         assert result is False
 
     def test_missing_oauth_key(self, tmp_path):
@@ -125,9 +83,8 @@ class TestRefreshHostToProjectErrors:
         project = tmp_path / "project" / ".credentials.json"
         project.parent.mkdir(parents=True)
         project.write_text(json.dumps({"claudeAiOauth": {"token": "old"}}))
-        os.utime(project, (0, 0))
 
-        result = refresh_host_to_project(host, project)
+        result = merge_oauth_in(host, project)
         assert result is False
 
     def test_malformed_project_json(self, tmp_path):
@@ -139,9 +96,8 @@ class TestRefreshHostToProjectErrors:
         project = tmp_path / "project" / ".credentials.json"
         project.parent.mkdir(parents=True)
         project.write_text("{bad json")
-        os.utime(project, (0, 0))
 
-        result = refresh_host_to_project(host, project)
+        result = merge_oauth_in(host, project)
         assert result is True
         data = json.loads(project.read_text())
         assert data["claudeAiOauth"]["token"] == "new"
@@ -154,9 +110,8 @@ class TestRefreshHostToProjectErrors:
         project = tmp_path / "project" / ".credentials.json"
         project.parent.mkdir(parents=True)
         project.write_text("")
-        os.utime(project, (0, 0))
 
-        result = refresh_host_to_project(host, project)
+        result = merge_oauth_in(host, project)
         assert result is True
         data = json.loads(project.read_text())
         assert data["claudeAiOauth"]["token"] == "new"
@@ -169,46 +124,12 @@ class TestRefreshHostToProjectErrors:
 
         project = tmp_path / "project" / ".credentials.json"
         # project doesn't exist
-        result = refresh_host_to_project(host, project)
+        result = merge_oauth_in(host, project)
         assert result is True
         assert project.exists()
         data = json.loads(project.read_text())
         assert data["claudeAiOauth"]["token"] == "x"
         assert data["extra"] is True
-
-
-# ---------------------------------------------------------------------------
-# writeback_project_to_host
-# ---------------------------------------------------------------------------
-
-class TestWriteback:
-    def test_writeback_to_host(self, tmp_path, monkeypatch):
-        home = tmp_path / "home"
-        home.mkdir()
-        monkeypatch.setenv("HOME", str(home))
-
-        project = tmp_path / "project" / ".credentials.json"
-        project.parent.mkdir(parents=True)
-        project.write_text(json.dumps({"claudeAiOauth": {"token": "fresh"}}))
-
-        writeback_project_to_host(project)
-
-        host_creds = home / ".claude" / ".credentials.json"
-        assert host_creds.exists()
-        host_data = json.loads(host_creds.read_text())
-        assert host_data["claudeAiOauth"]["token"] == "fresh"
-
-    def test_writeback_noop_when_no_project_creds(self, tmp_path, monkeypatch):
-        home = tmp_path / "home"
-        home.mkdir()
-        monkeypatch.setenv("HOME", str(home))
-
-        project = tmp_path / "project" / ".credentials.json"
-
-        writeback_project_to_host(project)
-        # No host creds created
-        host_creds = home / ".claude" / ".credentials.json"
-        assert not host_creds.exists()
 
 
 class TestMergeOauthAccountOut:

@@ -215,36 +215,6 @@ class TestCredentialCheckPath:
         assert result == tmp_path / ".config" / "goose" / "secrets.yaml"
 
 
-class TestCredsyncFold:
-    """secrets.yaml host<->box sync is the descriptor CredFileSpec, NOT a bespoke
-    per-plugin refresh/writeback override.
-
-    The former ``refresh_secrets`` / ``writeback_secrets`` copies were folded into
-    the goose descriptor's ``secrets.yaml`` ``CredFileSpec`` (realized by the
-    credsync engine — covered by ``TestCredFiles`` / the engine-level tests).
-    goose must therefore NOT override the legacy ``refresh_credentials`` /
-    ``writeback_credentials`` hooks: those are reached only on the ``desc is None``
-    legacy path, which never holds for descriptor-bearing goose, so an override
-    would be an unsanctioned second route.
-    """
-
-    def test_does_not_override_legacy_refresh(self):
-        from kanibako.targets.base import Target
-
-        assert (
-            GooseTarget().refresh_credentials.__func__
-            is Target.refresh_credentials
-        )
-
-    def test_does_not_override_legacy_writeback(self):
-        from kanibako.targets.base import Target
-
-        assert (
-            GooseTarget().writeback_credentials.__func__
-            is Target.writeback_credentials
-        )
-
-
 def _real_binary(tmp_path):
     """Create a real (existing) contract binary file under tmp_path."""
     binary = tmp_path / "goose"

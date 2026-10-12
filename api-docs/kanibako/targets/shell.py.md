@@ -15,7 +15,5 @@ class ShellTarget(Target):
     @property
     def has_binary(self) -> bool
     def detect(self) -> AgentInstall | None
-    def refresh_credentials(self, home: Path) -> None
-    def writeback_credentials(self, home: Path) -> None
     def generate_agent_config(self) -> AgentConfig
 ```

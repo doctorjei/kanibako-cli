@@ -466,27 +466,6 @@ class TestPrepareHost:
         m_auth.assert_not_called()
 
 
-class TestRefreshCredentials:
-    def test_calls_credential_function(self, tmp_path, monkeypatch):
-        """refresh_credentials delegates to refresh_host_to_project."""
-        home = tmp_path / "home"
-        (home / ".claude").mkdir(parents=True)
-
-        fake_home = tmp_path / "fake_user_home"
-        (fake_home / ".claude").mkdir(parents=True)
-        monkeypatch.setattr(Path, "home", staticmethod(lambda: fake_home))
-
-        t = ClaudeTarget()
-        with patch("kanibako.plugins.claude.target.refresh_host_to_project") as m_h2p:
-            t.refresh_credentials(home)
-
-        m_h2p.assert_called_once()
-        host_creds = m_h2p.call_args[0][0]
-        project_creds = m_h2p.call_args[0][1]
-        assert host_creds == fake_home / ".claude" / ".credentials.json"
-        assert project_creds == home / ".claude" / ".credentials.json"
-
-
 class TestDefaultShares:
     """Part 3a: claude declares plugins + cache as AGENT-scope ``common`` entries.
 
@@ -685,21 +664,6 @@ class TestGenerateAgentConfig:
 # ``flag: ["--model"]``), pinned by ``test_start_descriptor_assembly.py``.  The hook
 # returned no env at all, and that is unchanged: claude's variables are DECLARED KEYS
 # (``agent.claude.env.*``, see ``TestDefaultEnvs``), the only route a user can override.
-
-
-class TestWritebackCredentials:
-    def test_calls_writeback(self, tmp_path):
-        """writeback_credentials delegates to writeback_project_to_host."""
-        home = tmp_path / "home"
-        (home / ".claude").mkdir(parents=True)
-
-        t = ClaudeTarget()
-        with patch("kanibako.plugins.claude.target.writeback_project_to_host") as m_wb:
-            t.writeback_credentials(home)
-
-        m_wb.assert_called_once()
-        project_creds = m_wb.call_args[0][0]
-        assert project_creds == home / ".claude" / ".credentials.json"
 
 
 class TestDescriptor:

@@ -1,4 +1,4 @@
-"""Tests for kanibako.utils: cp_if_newer, confirm_prompt, confirm_or_abort, project_hash, short_hash, path encoding, container naming."""
+"""Tests for kanibako.utils: confirm_prompt, confirm_or_abort, project_hash, short_hash, path encoding, container naming."""
 
 from __future__ import annotations
 
@@ -20,7 +20,6 @@ from kanibako.utils import (
     container_name_for,
     container_name_for_box_name,
     container_name_segments,
-    cp_if_newer,
     legacy_container_names,
     project_hash,
     render_container_name,
@@ -31,50 +30,6 @@ from kanibako.utils import (
     utc_stamp,
     workset_segment,
 )
-
-
-# ---------------------------------------------------------------------------
-# cp_if_newer
-# ---------------------------------------------------------------------------
-
-class TestCpIfNewer:
-    def test_copies_when_dst_missing(self, tmp_path):
-        src = tmp_path / "src.txt"
-        dst = tmp_path / "dst.txt"
-        src.write_text("hello")
-        assert cp_if_newer(src, dst) is True
-        assert dst.read_text() == "hello"
-
-    def test_copies_when_src_newer(self, tmp_path):
-        src = tmp_path / "src.txt"
-        dst = tmp_path / "dst.txt"
-        dst.write_text("old")
-        # Ensure distinct mtime
-        src.write_text("new")
-        os.utime(dst, (0, 0))
-        assert cp_if_newer(src, dst) is True
-        assert dst.read_text() == "new"
-
-    def test_skips_when_dst_newer(self, tmp_path):
-        src = tmp_path / "src.txt"
-        dst = tmp_path / "dst.txt"
-        src.write_text("old")
-        os.utime(src, (0, 0))
-        dst.write_text("new")
-        assert cp_if_newer(src, dst) is False
-        assert dst.read_text() == "new"
-
-    def test_skips_when_src_missing(self, tmp_path):
-        dst = tmp_path / "dst.txt"
-        assert cp_if_newer(tmp_path / "nope.txt", dst) is False
-        assert not dst.exists()
-
-    def test_creates_parent_dirs(self, tmp_path):
-        src = tmp_path / "src.txt"
-        src.write_text("data")
-        dst = tmp_path / "a" / "b" / "dst.txt"
-        assert cp_if_newer(src, dst) is True
-        assert dst.read_text() == "data"
 
 
 # ---------------------------------------------------------------------------

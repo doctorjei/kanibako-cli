@@ -4,8 +4,7 @@ The first target written after the plugin interface was generalized, so it
 implements ONLY the irreducible surface — identity, ``detect``, the declarative
 ``descriptor``, ``check_auth``, the config.toml + persona seams and the two
 declarative helpers.  Everything else (``build_cli_args`` / ``binary_mounts`` /
-``refresh_credentials`` / ``writeback_credentials`` / ``transform_cred``) is
-inherited from the concrete :class:`Target` defaults.
+``transform_cred``) is inherited from the concrete :class:`Target` defaults.
 
 ⚑ codex is the one CONFIG-FILE harness: endpoint and model reach the box through
 ``~/.codex/config.toml``, not env vars.  Most of what is unusual here follows

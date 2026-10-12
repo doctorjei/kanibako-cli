@@ -128,12 +128,6 @@ class TestTargetABC:
             def detect(self):
                 return None
 
-            def refresh_credentials(self, home):
-                pass
-
-            def writeback_credentials(self, home):
-                pass
-
         t = DummyTarget()
         assert t.name == "dummy"
         assert t.display_name == "Dummy Agent"
@@ -155,12 +149,6 @@ class TestTargetABC:
 
             def detect(self):
                 return None
-
-            def refresh_credentials(self, home):
-                pass
-
-            def writeback_credentials(self, home):
-                pass
 
         t = MinimalTarget()
         assert t.default_seeds() == {}
@@ -324,12 +312,6 @@ class TestGenerateAgentConfig:
 
             def detect(self):
                 return None
-
-            def refresh_credentials(self, home):
-                pass
-
-            def writeback_credentials(self, home):
-                pass
 
         # ⚑ EMPTY (D8b): the base used to return ``AgentConfig(name=self.display_name)``,
         # and ``name`` was not a settings key.  A plugin declares its description as a
@@ -578,12 +560,6 @@ class TestPluginDescriptorDataclasses:
 
             def detect(self):
                 return None
-
-            def refresh_credentials(self, home):
-                pass
-
-            def writeback_credentials(self, home):
-                pass
 
         assert NoDescTarget().descriptor is None
 

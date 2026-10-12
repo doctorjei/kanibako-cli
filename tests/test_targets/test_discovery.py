@@ -99,12 +99,6 @@ class _FakeTarget(Target):
     def binary_mounts(self, install):
         return []
 
-    def refresh_credentials(self, home):
-        pass
-
-    def writeback_credentials(self, home):
-        pass
-
     def build_cli_args(self, **kwargs):
         return []
 
@@ -768,12 +762,6 @@ class MyFilePlugin(Target):
 
     def binary_mounts(self, install):
         return []
-
-    def refresh_credentials(self, home):
-        pass
-
-    def writeback_credentials(self, home):
-        pass
 
     def build_cli_args(self, **kwargs):
         return []

@@ -297,34 +297,30 @@ class TestFlagCombinations:
             assert rc == 42
 
     def test_target_refresh_called(self, start_mocks):
-        """Legacy (descriptor-less) target: refresh_credentials runs pre-launch.
-
-        A descriptor-bearing target routes refresh through the credsync engine
-        (TestCredsyncRouting), so this pins the legacy hook path explicitly.
-        """
+        """The credsync refresh runs pre-launch against the box's shell path."""
         with start_mocks() as m:
-            m.target.descriptor = None
             _run_container(
                 project_dir=None, entrypoint=None, image_override=None,
                 new_session=False, safe_mode=False, resume_mode=False,
                 extra_args=[],
             )
-            m.target.refresh_credentials.assert_called_once_with(m.proj.shell_path)
+            m.credsync.refresh_box_credentials.assert_called_once()
+            assert (
+                m.credsync.refresh_box_credentials.call_args.kwargs["project_home"]
+                is m.proj.shell_path
+            )
 
     def test_target_writeback_after_run(self, start_mocks):
-        """Legacy (descriptor-less) target: writeback_credentials runs post-run.
-
-        A descriptor-bearing target routes writeback through the credsync engine
-        (TestCredsyncRouting), so this pins the legacy hook path explicitly.
-        """
+        """The credsync writeback runs after the container run."""
         call_order = []
         with start_mocks() as m:
-            m.target.descriptor = None
             def track_run(*a, **kw):
                 call_order.append("run")
                 return 0
             m.runtime.run.side_effect = track_run
-            m.target.writeback_credentials.side_effect = lambda *a: call_order.append("writeback")
+            m.credsync.writeback_box_credentials.side_effect = (
+                lambda *a, **kw: call_order.append("writeback")
+            )
             _run_container(
                 project_dir=None, entrypoint=None, image_override=None,
                 new_session=False, safe_mode=False, resume_mode=False,
@@ -853,21 +849,19 @@ class TestPersistentMode:
             m.runtime.exec.assert_called_once()
 
     def test_persistent_reattach_refreshes_credentials(self, start_mocks):
-        """Reattach refreshes credentials before exec (legacy hook path).
-
-        A descriptor-bearing target routes the reattach refresh through the
-        credsync engine's tier orchestrator (refresh_box_credentials); this pins
-        the legacy hook explicitly.
-        """
+        """Reattach refreshes credentials (credsync's refresh_box_credentials)."""
         with start_mocks() as m:
-            m.target.descriptor = None
             m.runtime.is_running.return_value = True
             _run_container(
                 project_dir=None, entrypoint=None, image_override=None,
                 new_session=False, safe_mode=False, resume_mode=False,
                 extra_args=[], persistent=True,
             )
-            m.target.refresh_credentials.assert_called_once_with(m.proj.shell_path)
+            m.credsync.refresh_box_credentials.assert_called_once()
+            assert (
+                m.credsync.refresh_box_credentials.call_args.kwargs["project_home"]
+                is m.proj.shell_path
+            )
 
     def test_persistent_removes_stale_container(self, start_mocks):
         """Stopped container is removed before recreating."""
@@ -891,16 +885,6 @@ class TestPersistentMode:
                 extra_args=[], persistent=True,
             )
             m.fcntl.flock.assert_not_called()
-
-    def test_persistent_skips_writeback(self, start_mocks):
-        """Persistent mode does not write back credentials (session still running)."""
-        with start_mocks() as m:
-            _run_container(
-                project_dir=None, entrypoint=None, image_override=None,
-                new_session=False, safe_mode=False, resume_mode=False,
-                extra_args=[], persistent=True,
-            )
-            m.target.writeback_credentials.assert_not_called()
 
     @pytest.mark.skip(
         reason="BROKEN — vacuous; see the S2 backlog item in tasks.md (Jei, "
@@ -1290,16 +1274,19 @@ class TestCredsWatcherSpawnAndFlagHygiene:
         )
         assert dests == {workset_root, Path.home()}
 
-    def test_writeback_locks_host_home_for_a_descriptorless_target(self, tmp_path):
-        """The legacy no-descriptor hook picks its own host-side destination.
+    @pytest.mark.parametrize("has_descriptor", [True, False])
+    def test_writeback_locks_only_the_selected_source_without_global_sync(
+        self, tmp_path, has_descriptor,
+    ):
+        """Without global_sync nothing writes host home, so only the source is locked.
 
-        That destination cannot be inspected from the writeback, so host home joins
-        the lock set even without global_sync.
+        A descriptor-less target (the built-in shell) writes nothing at all.
         """
         workset_root, dests = self._record_store_lock(
-            tmp_path, descriptor=None, global_sync=False,
+            tmp_path, descriptor=MagicMock() if has_descriptor else None,
+            global_sync=False,
         )
-        assert dests == {workset_root, Path.home()}
+        assert dests == {workset_root}
 
     def test_spawn_creds_watcher_builds_a_detached_popen(self, tmp_path):
         """D Part 2: the watcher is spawned DETACHED with the box subject argv."""

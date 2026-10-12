@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from pathlib import Path
 from typing import TYPE_CHECKING
 
 from kanibako.targets.base import AgentInstall, Target
@@ -34,12 +33,6 @@ class ShellTarget(Target):
 
     def detect(self) -> AgentInstall | None:
         return None
-
-    def refresh_credentials(self, home: Path) -> None:
-        pass
-
-    def writeback_credentials(self, home: Path) -> None:
-        pass
 
     def generate_agent_config(self) -> AgentConfig:
         # ⚑ EMPTY — the file holds user intent only; the description is

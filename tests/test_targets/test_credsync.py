@@ -61,12 +61,6 @@ class _StubTarget(Target):
     def binary_mounts(self, install: AgentInstall) -> list[Mount]:
         return []
 
-    def refresh_credentials(self, home: Path) -> None:
-        return None
-
-    def writeback_credentials(self, home: Path) -> None:
-        return None
-
     def build_cli_args(
         self,
         *,

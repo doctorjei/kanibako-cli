@@ -1581,7 +1581,7 @@ class TestDistinctAuth:
     """Verify distinct auth skips host credential sync."""
 
     def test_distinct_auth_skips_refresh(self, start_mocks):
-        """A PRIVATE box (auth_src.creds_shared False) -> refresh_credentials skipped."""
+        """A PRIVATE box (auth_src.creds_shared False) -> credential refresh and writeback skipped."""
         with start_mocks() as m, patch(
             "kanibako.commands.start._resolve_box_launch_decisions",
             return_value=(_PRIVATE_AUTH, None, None, {}),
@@ -1596,8 +1596,8 @@ class TestDistinctAuth:
                 extra_args=[],
             )
             assert rc == 0
-            m.target.refresh_credentials.assert_not_called()
-            m.target.writeback_credentials.assert_not_called()
+            m.credsync.refresh_box_credentials.assert_not_called()
+            m.credsync.writeback_box_credentials.assert_not_called()
 
     def test_distinct_auth_skips_check_auth(self, start_mocks):
         """A PRIVATE box (auth_src.creds_shared False) -> check_auth skipped."""
@@ -1618,16 +1618,12 @@ class TestDistinctAuth:
             m.target.check_auth.assert_not_called()
 
     def test_shared_auth_calls_refresh(self, start_mocks):
-        """A SHARING box (auth_src.creds_shared True) -> refresh_credentials is called.
+        """A SHARING box (auth_src.creds_shared True) -> the credsync refresh runs.
 
-        Pins the legacy (descriptor-less) credential hook: a descriptor-bearing
-        target routes refresh through the credsync engine instead, covered by
-        TestCredsyncRouting.test_descriptor_refresh_uses_refresh_cred_files.
         The real ``_resolve_box_auth_source`` (unpatched here) resolves the
         MagicMock proj to the GLOBAL tier, so ``.creds_shared`` is True.
         """
         with start_mocks() as m:
-            m.target.descriptor = None
             rc = _run_container(
                 project_dir=None,
                 entrypoint=None,
@@ -1638,7 +1634,7 @@ class TestDistinctAuth:
                 extra_args=[],
             )
             assert rc == 0
-            m.target.refresh_credentials.assert_called_once()
+            m.credsync.refresh_box_credentials.assert_called_once()
 
 
 class TestStartArgs:
@@ -3200,8 +3196,7 @@ class TestPersonaShareSymlinks:
 class TestCredsyncRouting:
     """Step 1f: descriptor-bearing targets route their credential lifecycle
     (init / pre-launch refresh / post-session writeback) through the credsync
-    engine; non-descriptor (legacy) targets keep the per-plugin
-    init_home / refresh_credentials / writeback_credentials hooks.
+    engine; a descriptor-less target (only the built-in shell) syncs nothing.
     """
 
     def _drive_descriptor(self, m):
@@ -3240,8 +3235,7 @@ class TestCredsyncRouting:
             assert call.kwargs["host_home"] == Path.home()
 
     def test_descriptor_refresh_uses_refresh_cred_files(self, start_mocks):
-        """Pre-launch (shared auth): refresh_box_credentials invoked, legacy
-        refresh_credentials NOT called."""
+        """Pre-launch (shared auth): refresh_box_credentials invoked."""
         with start_mocks() as m:
             self._drive_descriptor(m)
             with patch("kanibako.commands.start.credsync") as m_credsync:
@@ -3256,11 +3250,10 @@ class TestCredsyncRouting:
             assert call.args[0] is m.target.descriptor
             assert call.kwargs["project_home"] is m.proj.shell_path
             assert call.kwargs["auth"].creds_shared is True
-            m.target.refresh_credentials.assert_not_called()
 
     def test_descriptor_writeback_uses_writeback_cred_files(self, start_mocks):
         """Post-session (non-persistent, shared auth): writeback_box_credentials
-        invoked, legacy writeback_credentials NOT called."""
+        invoked."""
         with start_mocks() as m:
             self._drive_descriptor(m)
             with patch("kanibako.commands.start.credsync") as m_credsync:
@@ -3275,11 +3268,10 @@ class TestCredsyncRouting:
             assert call.args[0] is m.target.descriptor
             assert call.kwargs["project_home"] is m.proj.shell_path
             assert call.kwargs["auth"].creds_shared is True
-            m.target.writeback_credentials.assert_not_called()
 
     def test_descriptor_reattach_refresh_uses_refresh_cred_files(self, start_mocks):
         """Persistent reattach (container already running): the short-circuit
-        refresh routes through refresh_box_credentials, not refresh_credentials."""
+        refresh routes through refresh_box_credentials."""
         with start_mocks() as m:
             self._drive_descriptor(m)
             m.runtime.is_running.return_value = True
@@ -3291,7 +3283,6 @@ class TestCredsyncRouting:
                 )
             assert rc == 0
             m_credsync.refresh_box_credentials.assert_called_once()
-            m.target.refresh_credentials.assert_not_called()
 
     def test_descriptor_distinct_auth_still_seeds_but_skips_sync(self, start_mocks):
         """PRIVATE box (auth_src.creds_shared False): init still seeds (the orchestrator
@@ -3320,7 +3311,7 @@ class TestCredsyncRouting:
             m_credsync.refresh_box_credentials.assert_not_called()
             m_credsync.writeback_box_credentials.assert_not_called()
 
-    # ---- legacy path: per-plugin hooks still used, credsync untouched -------
+    # ---- descriptor-less path (the built-in shell): nothing synced ----------
 
     def test_legacy_init_seeds_nothing(self, start_mocks):
         """Non-descriptor target (descriptor=None, the conftest default): init
@@ -3339,9 +3330,9 @@ class TestCredsyncRouting:
             assert rc == 0
             m_credsync.seed_box_credentials.assert_not_called()
 
-    def test_legacy_refresh_uses_refresh_credentials(self, start_mocks):
-        """Non-descriptor target: pre-launch refresh calls the legacy
-        refresh_credentials hook, credsync.refresh_box_credentials NOT called."""
+    def test_descriptorless_skips_refresh(self, start_mocks):
+        """Non-descriptor target: no pre-launch refresh, through credsync or the
+        target."""
         with start_mocks() as m:
             m.target.descriptor = None
             with patch("kanibako.commands.start.credsync") as m_credsync:
@@ -3351,12 +3342,12 @@ class TestCredsyncRouting:
                     extra_args=[],
                 )
             assert rc == 0
-            m.target.refresh_credentials.assert_called_once()
             m_credsync.refresh_box_credentials.assert_not_called()
+            assert not [c for c in m.target.method_calls if c[0].endswith("_credentials")]
 
-    def test_legacy_writeback_uses_writeback_credentials(self, start_mocks):
-        """Non-descriptor target: post-session writeback calls the legacy
-        writeback_credentials hook, credsync.writeback_box_credentials NOT called."""
+    def test_descriptorless_skips_writeback(self, start_mocks):
+        """Non-descriptor target: no post-session writeback, through credsync or
+        the target."""
         with start_mocks() as m:
             m.target.descriptor = None
             with patch("kanibako.commands.start.credsync") as m_credsync:
@@ -3366,8 +3357,8 @@ class TestCredsyncRouting:
                     extra_args=[], persistent=False,
                 )
             assert rc == 0
-            m.target.writeback_credentials.assert_called_once()
             m_credsync.writeback_box_credentials.assert_not_called()
+            assert not [c for c in m.target.method_calls if c[0].endswith("_credentials")]
 
 
 class TestAgentConfigIntegration:

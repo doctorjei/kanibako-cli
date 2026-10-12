@@ -179,14 +179,11 @@ goose's store; this hook's fixed signature (*home* only) cannot see that, so it 
 store location the descriptor lays down. Kanibako itself never sets `GOOSE_PATH_ROOT` — it is not
 among this plugin's declared `agent.goose.env.*` keys.
 
-## Credentials — no legacy overrides here
+## Credentials
 
-There are deliberately no `refresh_credentials` / `writeback_credentials` overrides. goose is
-descriptor-bearing, so its `secrets.yaml` host↔box SYNC is the `CredFileSpec` set in
-`goose-defaults.yaml`, realized by the credsync engine (`seed_cred_files` / `refresh_cred_files` /
-`writeback_cred_files`) — the §2d `synced` category view. The base no-op hooks are correct: the
-legacy per-plugin refresh/writeback path is reached only when `desc is None`, which never holds for
-goose.
+goose's `secrets.yaml` host↔box SYNC is the `CredFileSpec` set in `goose-defaults.yaml`, realized
+by the credsync engine (`seed_cred_files` / `refresh_cred_files` / `writeback_cred_files`) — the
+§2d `synced` category view.
 
 `credential_check_path` and `invalidate_credentials` both name `~/.config/goose/secrets.yaml`, the
 file whose presence stands for "goose has credentials".

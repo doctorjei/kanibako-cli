@@ -545,7 +545,7 @@ def e2e_env(tmp_path, stub_script, host_storage_conf) -> dict:
     shutil.copy2(stub_script, claude_binary)
     claude_binary.chmod(0o755)
 
-    # Seed fake credentials so refresh_credentials() has something to copy
+    # Seed fake credentials so the credential refresh has something to copy
     claude_config_dir = home / ".claude"
     claude_config_dir.mkdir()
     creds = {"claudeAiOauth": {"accessToken": "e2e-test-token"}}

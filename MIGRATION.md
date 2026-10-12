@@ -8206,6 +8206,23 @@ installed packages, so the argument was already ignored. Passing it now raises `
 **What you must do.** Drop the argument: `resolve_target(name, project_path)` becomes
 `resolve_target(name)`, and `discover_targets(project_path)` becomes `discover_targets()`.
 
+### 3.5 `refresh_credentials`, `writeback_credentials`, and `cp_if_newer` are removed
+
+**Read this if your plugin overrides `Target.refresh_credentials` or `Target.writeback_credentials`,
+or imports `kanibako.utils.cp_if_newer`.** The published `kanibako-agent-claude` 1.7.2 does both:
+its `credentials.py` imports `cp_if_newer` at module scope, so that wheel fails to load on this
+core and is skipped with a named warning. Upgrade it with the core.
+
+**What changed.** kanibako ran the two hooks only for a target with no `descriptor`, and discovery
+skips every plugin without one, so no installed plugin's hooks ever ran. Both are gone from
+`Target`, along with `cp_if_newer`. An override left in your plugin is never called.
+
+**What you must do.** Declare your credential files as `cred_files` in your descriptor; the
+credential-sync engine refreshes them before a launch and writes them back after the session. Put
+a content transform in `transform_cred`, and a write-back beyond `cred_files` in
+`writeback_extra`. Delete the overrides and any import of `cp_if_newer`; a plugin that still
+needs it copies its few lines.
+
 ---
 
 # Migrating to kanibako 1.6.0

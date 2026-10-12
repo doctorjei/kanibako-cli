@@ -1,4 +1,4 @@
-"""Utility functions: cp_if_newer, confirm_prompt, confirm_or_abort, deep_merge, utc_stamp, short_hash,
+"""Utility functions: confirm_prompt, confirm_or_abort, deep_merge, utc_stamp, short_hash,
 container naming, the unless-gone filesystem probes, refuse_unreadable_file."""
 
 from __future__ import annotations
@@ -7,7 +7,6 @@ import errno
 import hashlib
 import os
 import shlex
-import shutil
 import stat
 import sys
 from datetime import datetime, timezone
@@ -21,26 +20,6 @@ if TYPE_CHECKING:
     from collections.abc import Callable
 
     from kanibako.settings.paths import ProjectPaths
-
-
-def cp_if_newer(src: str | os.PathLike, dst: str | os.PathLike) -> bool:
-    """Copy *src* to *dst* only if *src* is strictly newer (by mtime).
-
-    Creates parent directories for *dst* if needed.
-    Returns True if the copy was performed.
-    """
-    src_s = str(src)
-    dst_s = str(dst)
-    if not os.path.isfile(src_s):
-        return False
-    do_copy = (
-        not os.path.isfile(dst_s)
-        or os.stat(src_s).st_mtime > os.stat(dst_s).st_mtime
-    )
-    if do_copy:
-        os.makedirs(os.path.dirname(dst_s) or ".", exist_ok=True)
-        shutil.copy2(src_s, dst_s)
-    return do_copy
 
 
 def confirm_prompt(message: str) -> None:

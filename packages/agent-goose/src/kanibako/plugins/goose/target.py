@@ -219,11 +219,8 @@ class GooseTarget(Target):
             install_dir=resolved.parent,
         )
 
-    # NOTE: no ``refresh_credentials`` / ``writeback_credentials`` overrides — goose is
-    # descriptor-bearing, so its cred SYNC is the ``CredFileSpec`` set in
-    # ``goose-defaults.yaml``, realized by the credsync engine.  ⚑ The base no-op hooks
-    # are correct: the legacy per-plugin path is reached only when ``desc is None``,
-    # which never holds for goose.
+    # NOTE: goose's cred SYNC is the ``CredFileSpec`` set in ``goose-defaults.yaml``,
+    # realized by the credsync engine.
 
     def check_auth(self) -> bool:
         """Check if Goose is configured with API keys — binary, config.yaml, secrets.yaml.

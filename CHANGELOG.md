@@ -779,6 +779,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
+- **`Target.refresh_credentials`, `Target.writeback_credentials`, and `kanibako.utils.cp_if_newer`.** The hooks
+  ran only for a target with no descriptor, and discovery skips every such plugin, so they never ran; credential
+  sync is the descriptor's `cred_files`. The claude plugin's overrides and its `refresh_host_to_project` and
+  `writeback_project_to_host` go with them. See `MIGRATION.md`, "`refresh_credentials`,
+  `writeback_credentials`, and `cp_if_newer` are removed".
+
 - **Helper peer links.** A helper no longer gets a `~/peers/` directory of links to its siblings, and the parent no
   longer creates `helpers/channels/`. The links never worked: their targets were not mounted into the helper.
   Helpers talk to each other through the hub, `kanibako box helper send N "..."`. `box helper list` drops its
