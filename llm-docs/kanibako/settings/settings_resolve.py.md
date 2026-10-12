@@ -620,7 +620,7 @@ the only member today. ⚑ `UNSET` is NEVER a way of saying "I could not work th
 other unresolvable name still raises and names itself.
 
 Only a caller that can EXPRESS absence may see the third state, and exactly one can: a WHOLE-VALUE
-expression, which drops its holder key (§6b). `settings_expand._resolve_whole_value_var` is that
+expression, which drops its holder key (spec §0). `settings_expand._resolve_whole_value_var` is that
 caller. An embedded token is string substitution and has no way to say "no variable", so it takes
 the derived function instead.
 

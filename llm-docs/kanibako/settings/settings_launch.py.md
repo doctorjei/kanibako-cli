@@ -261,7 +261,7 @@ a CONSTANT now: the per-box variation arrives through `pref.system.agent` (§2h)
 selection level, both applied BEFORE this level resolves. NO braces are needed — the first ref is
 terminated by `/` (not segment-legal) and the second ends the value, so `_REF_NAME_RE`'s greed
 cannot swallow anything (PHASE R's `@{name}` exists for a LITERAL SUFFIX after a ref; there is none
-here). Both refs are EMBEDDED, so an absent `system.agent` coerces to `""` (§6b) rather than
+here). Both refs are EMBEDDED, so an absent `system.agent` coerces to `""` (spec §0) rather than
 dropping the key: a NO-AGENT box resolves this to `<auth.path>/`. That is INERT —
 `resolve_auth_source` scrubs `workset_source` for every non-workset tier, and the workset tier needs
 `share_support`, which no-agent cannot have.
@@ -717,9 +717,9 @@ for one of them.
 *channelroot* is the resolved `workset.channelroot` — PRIMARY/NAMED only. For STANDALONE the builder
 supplies the `None` §2c declares and REFUSES a caller value. ⚑ A LITERAL, not the spec's `@meta.workset.path/channels` formula, and deliberately: the
 key is read on the DETECTION side before any snapshot exists, so the floor must carry the answer
-that pass already reached or one key would resolve two ways. It was emitted by no floor at all
-until 2026-08-25 — a manifest row with a declared default that the keyspace could not answer, so
-`@workset.channelroot` dangled in every launch snapshot.
+that pass already reached or one key would resolve two ways. Without this floor emission the
+manifest row's declared default has no answer, and `@workset.channelroot` dangles in every launch
+snapshot.
 
 *workspaces* is the resolved `workset.workspaces` — the member-workspace root. NAMED and STANDALONE
 only; at PRIMARY, whose manifest arm is `null`, the floor supplies the present `None` itself. Same defect as `channelroot` and the same fix
@@ -844,7 +844,7 @@ derived from `paths.BoxMode`, the one carrier of the set, and is never spelled a
 
 The consumer is the ASSEMBLY SEAM, which builds the pid-0 foundation bind straight off
 `meta.box.home`, and that key is itself the EMBEDDED ref `@meta.box.path/home` — the embedded rule
-(§6b) coerces an absent referent to `""` (a present-`None` one makes the key `None`, spec §0), so a
+coerces an absent referent to `""` (a present-`None` one makes the key `None`; spec §0), so a
 box root that fails to resolve yields the `host_src` `/home`, which the L7 guarantee-create then
 `mkdir`s and mounts OVER the box home, silently. Naming the key moved the embedded dereference one
 level up; it did not remove it. The derived key is a NAME for that formula, not a guard on it.
@@ -1381,9 +1381,10 @@ is re-materialized whenever the effective agent changes.
 devices §2h replaced (*"Every solution is a hack/exception, so I'm biting the bullet"*): it made a
 BOX-scope key the input to the agent tier, and it made the L4.1 anchors derive from a settable key at
 their own level. A box now tweaks its agent with `pref.agent.<agent>.<key>` (§2h), which targets the
-AGENT tier properly and needs no mirror. TWO consequences, both deliberate: there is no gap-FILL any
-more — nothing can pre-set a name under `meta.box.agent` — so the materialization is a straight COPY;
-and the `box.agent.<category>` → `agent.<active>` pre-merge FOLD is gone with it.
+AGENT tier properly and needs no mirror. TWO consequences, both deliberate: no settings file can
+pre-set a name under `meta.box.agent`, so the only name the copy must step around is the auth
+floor's own (the gap-fill below); and the `box.agent.<category>` → `agent.<active>` pre-merge FOLD
+is gone with it.
 
 **MECHANISM (JC-B5-1 — COPY, materialized on the current engine, no resolver inversion).** The
 resolved active-agent subtree only EXISTS post-merge/expand: the cascade keeps `agent.default` and

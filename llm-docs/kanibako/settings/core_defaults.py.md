@@ -687,7 +687,7 @@ implemented against a resolver that has NO agent-tier fallback:
 A literal reading of option (a) — flooring ONLY `agent.default.canon` — is not implementable here:
 `settings_expand._lookup_raw` walks the merged snapshot with no per-tier fallback, and
 `@agent.<node>.canon/handbook` is an EMBEDDED ref, so an undeclared node key coerces to `""`
-(spec §6b) and yields the degenerate host path `/handbook` rather than falling back to the default
+(spec §0) and yields the degenerate host path `/handbook` rather than falling back to the default
 tier.
 
 A NO-AGENT box (*agent_name* None) emits NEITHER the agent scalar NOR the `canon_hb_agent` entry —

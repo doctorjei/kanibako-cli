@@ -10,7 +10,7 @@ snapshot (S19). It builds and returns a FRESH `KeyStore`.
 
 ⚑ **A reference resolves to a DECLARED key or it does not resolve at all.** The keyspace is closed:
 this pass never fabricates a default for a name it cannot find. An absent referent propagates
-ABSENCE — the holder key is DROPPED (whole-value, §6b) or substitutes the empty string (embedded).
+ABSENCE — the holder key is DROPPED (whole-value, spec §0) or substitutes the empty string (embedded).
 A PRESENT-`None` referent makes the WHOLE value `None`, whole-value or embedded alike (spec §0:
 *"An embedded reference to a present `<None>` makes the whole value `<None>`."*, [R186]) — and every
 other unresolvable case is an ERROR that NAMES the key: a cycle, a depth-cap breach, an
@@ -18,7 +18,7 @@ unknown `$VAR`, a `@pref.*` reference, or a binding destination that would resol
 
 ⚑ **ABSENCE HAS A SECOND SOURCE, and it is not a failure.** A PASSTHROUGH variable — `$COLORTERM`,
 the only one — answers absence when the host sets none, and a whole-value one drops its key by the
-same §6b rule. Nothing is ever delivered empty on that path; see *Whole-value `$VAR`* below.
+same whole-value rule. Nothing is ever delivered empty on that path; see *Whole-value `$VAR`* below.
 
 ## It REUSES the single-expression engine; it does not fork it
 
@@ -34,7 +34,7 @@ What this module adds are the three things the single-expression engine lacks (b
    to terminals regardless of dict order — `A=@B`, `B=@C`, `C=term` collapses to `term`. It reuses
    `_expand_ref`'s `chain`-based cycle guard. Results are MEMOIZED, so the pass is a fixpoint, not
    re-resolution per reference.
-2. **Whole-value `@`-ref 3-state propagation (§6b / §6h).** A value that IS exactly one `@x`
+2. **Whole-value `@`-ref 3-state propagation (design §6h; spec §0).** A value that IS exactly one `@x`
    (decided by PARSE — S18, never guessed) inherits the referent's 3-state through every link:
    referent absent → this key ABSENT (dropped from the snapshot); referent present-`None` → `None`
    (kept, the §3 terminal a bind/category consumer then OMITs); else the terminal value. An EMBEDDED
@@ -70,11 +70,12 @@ What this module adds are the three things the single-expression engine lacks (b
 
 ## `_ABSENT` — the absence sentinel
 
-`_Absent` is a module-private singleton meaning *a ref resolved to a LEGITIMATELY ABSENT key* (§6b
-propagation). It is distinct from a *cycle* (which raises) and from a stored `None` (present-None, a
-real terminal). A whole-value `@`-ref to an absent key propagates THIS sentinel up the chain; at the
-top, `_expand_node` drops the host key from the snapshot. An EMBEDDED token coerces it to `""`. It is
-never stored and is never a member of `kanibako.settings.kb_store.StoreValue`.
+`_Absent` is a module-private singleton meaning *a ref resolved to a LEGITIMATELY ABSENT key*
+(absence propagation, spec §0). It is distinct from a *cycle* (which raises) and from a stored
+`None` (present-None, a real terminal). A whole-value `@`-ref to an absent key propagates THIS
+sentinel up the chain; at the top, `_expand_node` drops the host key from the snapshot. An EMBEDDED
+token coerces it to `""`. It is never stored and is never a member of
+`kanibako.settings.kb_store.StoreValue`.
 
 ## Whole-value vs embedded — decided by PARSE (S18)
 
@@ -92,7 +93,7 @@ that decides the shape, and the two paths differ in a way that is invisible unti
 whole-value ref inherits the referent's full 3-state VERBATIM (absent → the key is dropped;
 present-`None` → `None`), while an embedded token is string substitution and `_lookup_str`
 coerces an absent referent to `""`. So a braced whole-value ref misrouted to the embedded path
-would silently turn an ABSENT referent (the §6b "drop this key" signal) into an empty-string
+would silently turn an ABSENT referent (spec §0's "drop this key" signal) into an empty-string
 terminal — a real value where the spec means absence. `@{a.b}` and `@a.b` therefore resolve through
 the SAME call.
 
@@ -134,16 +135,16 @@ a dest position RAISES (`_expand_dest_key`), it does not delete a binding.
 binding's HOST SOURCE (`box.bindings.ro: {/x: "$COLORTERM"}`) makes `_expand_bind` /
 `_expand_bind_entry` propagate `_ABSENT`, and `_expand_node` drops the entry with no message — the
 capability simply is not there. That is ONE rule, not a new silence: an absent whole-value
-`@`-referent in the same position has always dropped the same way (§6b), and confining the `$` half
+`@`-referent in the same position has always dropped the same way (spec §0), and confining the `$` half
 to the categories that can express absence would give one spelling a cure and the other silence for
 one shape. ⚑ A passthrough is a terminal CLAIM, never a path; naming one as a source is a
-mis-write the expansion cannot tell from a deliberate §6b drop.
+mis-write the expansion cannot tell from a deliberate whole-value drop.
 
 ## Cycles, the depth cap, and the memo
 
 A cycle is a hard build ERROR (`SettingsError`), covering whole-value AND embedded tokens (B7), with
 the chain in the message. It is KEPT DISTINCT from a legitimately absent or present-`None` referent —
-that is §6b propagation, NOT an error.
+that is absence propagation (spec §0), NOT an error.
 
 The guard lives in `_resolve_ref`. The `chain` argument is the in-progress ref trail, ending in the
 path being resolved: the caller (`expand_expr`'s `_expand_ref`, or `_expand_str`) has already checked
@@ -214,8 +215,8 @@ Two halves enforce it:
   target. The carry-through is guarded on the ROOT path (`not path`) so a category legitimately NAMED
   `pref` deeper in the tree is unaffected. The copy goes through `settings_merge._deep_copy_store`.
 * **`_lookup_raw` REFUSES a `@pref.…` reference** rather than resolving it. It is RAISED rather than
-  answered `_ABSENT` because absent would silently DROP the referring key (the §6b whole-value
-  propagation), which is exactly the class of failure this phase exists to eliminate. The message
+  answered `_ABSENT` because absent would silently DROP the referring key (the whole-value
+  propagation, spec §0), which is exactly the class of failure this phase exists to eliminate. The message
   says a pref is a REQUEST, not a value, and tells the reader to reference the TARGET key instead.
   The raise lands in the lenient error map too.
 
@@ -250,7 +251,7 @@ RAISES, in `_expand_dest_key` and, for the name-keyed shape, in `_expand_bind`. 
 resolve to no path, and an empty or root-relative dest is a mount foot-gun rather than a legitimate
 omission. A `box_dest` is a path EXPRESSION, not a key whose absence deletes the bind, so it is a
 raise and not a propagation; the message names the destination expression. An embedded ref to an
-ABSENT key still substitutes `""` (§6b) — that case is unchanged.
+ABSENT key still substitutes `""` (spec §0) — that case is unchanged.
 
 ⚑ **THE ONE EXCEPTION IS A `seeded` LAYER (spec §2a: "any layer whose source/dest is `<None>` is
 SKIPPED").** `_expand_node` flags every entry of a `<scope>.seeded` map (the `_SEEDED` token at the
@@ -303,7 +304,7 @@ raises — except in a `seeded` map, where it skips the layer (Refusal 1).
 `workset.vault_ro: null` mounted host `/<box>` (both measured on the launch path, shipped in
 v1.8.0-rc2). This was once a `seeded`-only rule (the shipped layers embed their root,
 `@agent.<a>.template/box/home`); it is now the one rule for every leaf, so no category carries a
-second copy of it. An ABSENT referent keeps the §6b embedded `""`.
+second copy of it. An ABSENT referent keeps the embedded `""` (spec §0).
 
 ## The host-source refusal — POST-expansion, and deliberately not [R147]'s test
 
@@ -342,7 +343,7 @@ the engine's additive `defer_env` flag, proposed in chat and held pending the di
 
 `_lookup_str` is the callback `expand_expr` calls. It resolves the dotted path through the transitive
 resolver — so embedded refs are also fixpoint- and cycle-guarded (B7) — and coerces the result to a
-SUBSTITUTION string per the embedded-token rule (§6b). STRICT: an absent referent → `""`, an empty
+SUBSTITUTION string per the embedded-token rule (spec §0). STRICT: an absent referent → `""`, an empty
 substitution that never deletes the host key; a resolved scalar → its string form. The `chain` it
 receives is `expand_expr`'s already-extended trail. A present-`None` referent is appended to
 `none_refs` before its placeholder `""` (see *Embedded `None`* above).
@@ -373,8 +374,7 @@ chains.
 ## Authority
 
 * `~/vault/rw/keystore-design.md` §6h (transitive expansion + cycle — PRIMARY), §6a (CONFIG-vs-ENV
-  split; box-side `$XDG` / `~` deferred), §6b (whole-value vs embedded `@`-ref shapes), §3 (the
-  3-state).
+  split; box-side `$XDG` / `~` deferred), §3 (the 3-state).
 * Spec `~/canon/workbook/specs/settings-keyspace-1.8.0.md` §0, §1 (the box-side XDG line, ~line 94), §2c, §2h, §2a, §1A.
 * The merged snapshot this pass consumes is `settings_merge`'s raw output (`d33db5c`).
 

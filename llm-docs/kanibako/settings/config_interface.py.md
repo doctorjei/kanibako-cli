@@ -663,8 +663,8 @@ SET-TIME RESOLUTION PROBE for a value the EXPANDER will see (E3, spec §2a / Q9)
 
 The probe was wired ONLY at the category path, so a set accepted a value whose `@`-ref or `$VAR`
 does not resolve — e.g. `config set workset.boxes "@meta.nope.key/boxes"`. For an expanded value
-that is not inert: an embedded dangling ref is substituted with the EMPTY STRING at launch (§6b)
-and the key silently resolves to something else.
+that is not inert: an embedded dangling ref is substituted with the EMPTY STRING at launch
+(spec §2a "VALIDATION at set-time") and the key silently resolves to something else.
 
 The probe blocks ONLY on the edited value's own transitive upstream chain, so an UNRELATED
 pre-existing defect still allows the set and `config set` stays usable to REPAIR a broken config.
@@ -910,40 +910,40 @@ does not resolve cleanly post-reset — the cleared-only form is kept (evidence 
 rather than guess a wrong value, the exact lie being fixed).
 
 
-```effective_value(canonical, sections, leaf, *, agent_name, system_path, agent_path, workset_path, box_path, floor=None) -> tuple[str, str] | None```
+```effective_value(canonical, sections, leaf, *, agent_name, system_path, agent_path, workset_path, box_path, floor=None, inputs=None) -> tuple[str, str] | None```
 The cascade-effective `(value, source_tier)` for *canonical*, else `None`.
 
-⚑ **IT WAS `_effective_after_reset` AND THE NAME HERE OUTLIVED IT.** It has TWO callers now and the
-`floor` keyword is why: `reset_config_value` passes nothing (a cleared key must name no built-in
-default), while `agent info`'s label resolution passes the §2d declared floor precisely because it
-wants one. Everything below was written about the reset caller — read it as that caller's view.
+It runs the launch's first two phases, `fold_floor` and then `assemble_cascade` over the four
+settings files (`ReadPurpose.NARROW`), then a lenient expand, and reads `(*sections, leaf)`. There
+is no second resolver, so the tier is the one the cascade actually resolves.
 
-Reuses the SAME committed pipeline the launch + set-time probe use (`assemble_levels` → `merge` →
-lenient `expand`, single-source — NOT a re-implementation), so the tier is the one the cascade
-ACTUALLY resolves. The reset already wrote the file, so the assembled snapshot is the POST-RESET
-state (the Editor's condition: build AFTER removal, not stale).
+**Two callers, wanting opposite things from the floor:**
+- `reset_config_value` passes neither *floor* nor *inputs*, and calls after the file is written, so
+  the snapshot is the post-reset state. It catches `SettingsError` and discards a `FLOOR_TIER`
+  answer: a cleared key with no lower-tier setter names no built-in default (F7).
+- `agent_cmd._agent_label` wants the floor's answer. It passes the declared label floor as *floor*
+  (dotted keys folded over the declared floor, so its entries win) and `resolve_inputs(...)` as
+  *inputs*, which folds that subject's anchors, prefs, and context too.
 
-Returns `None` — so the caller keeps the cleared-only form — when: no cascade files are supplied
-(a caller that does not thread them), the key is absent from the post-reset snapshot, it is not a
-plain scalar (a `Bind`/`KeyStore`/list has no single "effective value" to print here), or it does
-not expand cleanly (an unresolved `@`-ref / cycle — no built-in guess). A resolved EMPTY string is
-also `None` (Editor NIT-a), so the message is never "effective is now `<blank>`".
+Without *inputs*, the path tier comes from `_path_tier_split()`, the set-time probe's input, but
+the failure arm differs: if it raises, this returns `None` where the probe falls back to an empty
+floor. An "effective" computed without the path tier would name a value the cascade never resolves.
 
-⚑ **THAT EMPTY ARM IS THIS FUNCTION'S OWN, NOT THE RENDERER'S**, and it stopped being the
-renderer's on 2026-09-20: `render_stored_scalar` is now TOTAL and spells a stored `""` as `""`
-(spec §2h — `""` is a terminal value, not unset), so nothing upstream declines a blank any more.
-`effective_value` tests the resolved VALUE (`if eff == ""`) instead, which is also why a door that
-must decline an empty stored value tests the value and never the rendering.
+**Source tier:** the first `cascade.written` level that holds the key, named from `cascade.tiers`,
+most specific first: `box`, `workset`, `agent`, `agent.default`, `system`, `base` (prefs carry
+their scope's name). A `base` leaf equal to the folded floor's is `FLOOR_TIER` (`"built-in
+default"`), unless the key is a path-tier value, which keeps `base`. Levels are read with the
+UNBOUND `dict` ops (S3), never the bound `.get`.
 
-⚑ The path-tier inputs are identical to the set-time probe's, but the FAILURE ARM DIFFERS: a
-failure must not break a reset, and an "effective" computed without the floor would name a value
-the cascade does not resolve — so this one returns `None` where the probe falls back to an empty
-floor. See `_path_tier_split`.
+**Returns `None` when** all four paths are `None`; no level holds the key; the merged value is a
+`Bind`, `KeyStore`, list, or present `None`; the lenient expand records an error for *canonical*
+(a dangling ref or a cycle); the expanded value is one of those shapes; or it expands to `""`.
+**Raises** `SettingsError` when the files do not read.
 
-⚑ **The tier NAMES parallel `assemble_levels`' order (MOST-SPECIFIC-FIRST):** `[box, workset,
-agent.<active>, agent.default, system, base]`. The SOURCE tier is the first level that SETS the
-key (the merge's precedence winner), read with the UNBOUND `dict` ops (S3, collision-safe), NEVER
-the bound `.get`.
+⚑ **The empty arm is this function's own, not the renderer's.** `render_stored_scalar` is total and
+spells a stored `""` as `""` (spec §2h: `""` is a terminal value, not unset), so this tests the
+value (`eff == ""`). A door that must decline an empty stored value tests the value too, never the
+rendering.
 
 
 ```write_system_value(system_settings_path: Path, leaf: str, value: object) -> None```
