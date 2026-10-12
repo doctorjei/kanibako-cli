@@ -8777,11 +8777,13 @@ does not resolve — see "3.1 Key renames / new / deleted" in this guide, the `s
 ⚑ **Superseded in v1.8.0.** The table below reflects the 1.6.0-era merge; the
 sections have moved again since. The canonical, current section list is
 `("worksets", "standalone", "deregistered", "rigs", "image_shells")`
-(`project/registry_store.py:85-91`):
+(`_SECTIONS` in `project/registry_store.py`):
 
 - **`projects:` is RETIRED** — it is dropped from the file on the next save, not
   carried forward; that save prints its text with a warning naming the file. The
   same holds for `connected:` and any other section kanibako does not read.
+  A workset's `registry.yaml` now does the same: a write keeps only `boxes:`
+  and prints each dropped section with a warning.
   Default-mode ("primary") box identity now lives in the PRIMARY workset's own
   per-workset `boxes:` membership, not in a top-level registry section.
 - **`connected:` is GONE.** What it tracked is now the same per-workset `boxes:`
