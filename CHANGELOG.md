@@ -803,6 +803,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **A box can no longer grow the host's helper hub without bound.** A helper-socket frame over 16 MiB (no
   newline in sight) now ends that one connection with a logged error; the hub keeps serving every other
   helper. The largest frame a real exchange makes is under 1 MiB.
+- **A helper's unreadable spawn document names its cure.** A symlink loop says to remove or repair the link, and a
+  permission failure says to make the path readable; before, both printed only the system error.
 - **The tweakcc patch container runs tweakcc** (entrypoint, keep-id user, config dir, `--yes`); `baseline verify` no
   longer reports every executable missing on a rig. tweakcc 4.4.0 still cannot patch claude 2.1.296 (runs unpatched).
 - **`workset disconnect --remove-files` names a workspace it keeps behind a symlink loop.** When the workset's

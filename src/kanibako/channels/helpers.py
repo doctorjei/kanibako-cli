@@ -12,6 +12,7 @@ from kanibako.settings.bootstrap import SPAWN_BUDGET_DEFAULTS
 from kanibako.settings.config import SYSTEM_HELPERS_SECTION, read_system_helpers
 from kanibako.settings.config_io import dump_doc, load_doc
 from kanibako.settings.core_defaults import CANON_GUEST_ROOT, NOTEBOOK_SCRIPTS_REL
+from kanibako.utils import stat_unless_gone
 
 # When breadth is unlimited (-1), use 2^16 for numbering purposes.
 # Large enough to never collide; small enough for human-readable numbers.
@@ -205,14 +206,8 @@ def read_helper_number(path: Path) -> int | None:
     """
     # ⚑ Probe with ``stat``, not ``exists()``: from Python 3.12 ``exists()`` reads an
     # unreadable dir as "absent", which would make a helper act as the director.
-    try:
-        path.stat()
-    except (FileNotFoundError, NotADirectoryError):
+    if stat_unless_gone(path) is None:
         return None
-    except OSError as exc:
-        raise ConfigError(
-            f"the spawn document {path} could not be read ({exc.strerror})."
-        ) from exc
     node: object = load_doc(path)
     for section in HELPER_NUM_KEY:
         if not isinstance(node, dict):

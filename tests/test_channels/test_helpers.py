@@ -286,10 +286,24 @@ class TestHelperNumberIO:
         write_helper_number(locked / "spawn.yaml", 1)
         locked.chmod(0)
         try:
-            with pytest.raises(ConfigError, match="could not be read"):
+            with pytest.raises(ConfigError) as info:
                 read_helper_number(locked / "spawn.yaml")
         finally:
             locked.chmod(0o700)
+        assert str(info.value) == (
+            f"{locked / 'spawn.yaml'} could not be read (Permission denied). Make it and "
+            "its parent directories readable, then retry.")
+
+    def test_a_looped_document_gets_the_loop_cure_not_the_permission_one(self, tmp_path):
+        from kanibako.errors import ConfigError
+        from kanibako.project.workset import CANON_SYMLINK_LOOP_WHY
+
+        path = tmp_path / "spawn.yaml"
+        path.symlink_to(path)
+        with pytest.raises(ConfigError) as info:
+            read_helper_number(path)
+        assert str(info.value) == (
+            f"{path}: {CANON_SYMLINK_LOOP_WHY}. Remove or repair the link, then retry.")
 
 
 # --- Directory structure ---
