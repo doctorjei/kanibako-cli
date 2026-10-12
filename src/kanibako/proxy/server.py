@@ -41,6 +41,7 @@ from urllib.parse import urlsplit
 
 from kanibako.log import get_logger
 from kanibako.proxy.sse import synthesize_stream
+from kanibako.targets.base import NoRedirects
 
 logger = get_logger("proxy.server")
 
@@ -120,18 +121,6 @@ def fixup_request_body(
   rewritten = dict(parsed)
   rewritten["stream"] = False
   return rewritten
-
-
-class _NoRedirects(urllib.request.HTTPRedirectHandler):
-  """Refuse every redirect: urllib would re-send the `Authorization` bearer cross-origin.
-
-  The 3xx is raised as an ``HTTPError`` instead, which this module relays to the
-  client with its ``Location`` intact — following it is the CLIENT's decision to
-  make, with the client's own credentials.
-  """
-
-  def redirect_request(self, req, fp, code, msg, headers, newurl):  # type: ignore[override]
-    return None
 
 
 class _AnthropicProxyHandler(BaseHTTPRequestHandler):
@@ -262,7 +251,9 @@ class _AnthropicProxyHandler(BaseHTTPRequestHandler):
     if body:
       request.add_header("Content-Length", str(len(body)))
 
-    opener = urllib.request.build_opener(_NoRedirects)
+    # ``NoRedirects``: a 3xx comes back as an ``HTTPError`` and is relayed with its
+    # ``Location`` intact — following it is the CLIENT's decision.
+    opener = urllib.request.build_opener(NoRedirects)
     try:
       return opener.open(request, timeout=self._config.timeout)  # noqa: S310
     except urllib.error.HTTPError as exc:

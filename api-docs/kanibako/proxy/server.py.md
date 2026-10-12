@@ -44,9 +44,6 @@ class ProxyServer:
     def __enter__(self) -> ProxyServer
     def __exit__(self, *_exc: object) -> None
 
-class _NoRedirects(urllib.request.HTTPRedirectHandler):
-    def redirect_request(self, req, fp, code, msg, headers, newurl)
-
 class _AnthropicProxyHandler(BaseHTTPRequestHandler):
     protocol_version = 'HTTP/1.1'
     server_version = 'kanibako-proxy'

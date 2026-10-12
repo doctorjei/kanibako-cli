@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import os
 import re
+import urllib.request
 from abc import ABC, abstractmethod
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field, replace
@@ -431,6 +432,18 @@ def _provider_text(raw: bytes, headers: Mapping[str, str]) -> str:
     return text
 
 
+class NoRedirects(urllib.request.HTTPRedirectHandler):
+    """Refuse every redirect: urllib would re-send the caller's headers cross-origin.
+
+    The 3xx surfaces as an ``HTTPError`` instead, ``Location`` intact — following it
+    is the caller's decision, made with the caller's own credentials.  Used by
+    :func:`http_probe` and the Anthropic proxy (``kanibako.proxy.server``).
+    """
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):  # type: ignore[override]
+        return None
+
+
 def http_probe(
     url: str,
     *,
@@ -452,13 +465,6 @@ def http_probe(
     """
     import json as _json
     import urllib.error
-    import urllib.request
-
-    class _NoRedirects(urllib.request.HTTPRedirectHandler):
-        """Refuse every redirect: urllib would re-send the caller's headers cross-origin."""
-
-        def redirect_request(self, req, fp, code, msg, headers, newurl):  # type: ignore[override]
-            return None
 
     data = None if body is None else _json.dumps(body).encode("utf-8")
     try:
@@ -467,7 +473,7 @@ def http_probe(
             req.add_header(key, value)
         if data is not None:
             req.add_header("Content-Type", "application/json")
-        opener = urllib.request.build_opener(_NoRedirects)
+        opener = urllib.request.build_opener(NoRedirects)
         with opener.open(req, timeout=timeout) as resp:  # noqa: S310
             return ProbeResponse(int(resp.status))
     except urllib.error.HTTPError as exc:
