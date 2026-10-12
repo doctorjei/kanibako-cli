@@ -28,6 +28,7 @@ import os
 import secrets
 import shutil
 import stat as _st
+import sys
 from collections.abc import Callable, Iterator
 from pathlib import Path
 from typing import BinaryIO
@@ -565,20 +566,36 @@ def unlink(path: Path, root: Path, *, missing_ok: bool = False) -> None:
             raise
 
 
-def _remove_at(name: str, dir_fd: int, shown: Path) -> None:
+def _remove_at(name: str, dir_fd: int, shown: Path, st: os.stat_result | None = None) -> None:
     """Remove the entry *name* under *dir_fd*: a directory with everything in it, else
     the entry itself (a link is removed as a link, never followed).
 
-    Directories go through ``shutil.rmtree`` with ``dir_fd``; its recursion depth
-    limit (Python < 3.12) becomes ``OSError(EOVERFLOW)`` naming *shown*.
+    *st* is the entry's lstat when the caller already has it.  Directories go
+    through ``shutil.rmtree`` with ``dir_fd``; its errors re-raise naming the full
+    path under *shown* (a link swapped in at *name* raises SymlinkRefusedError), and
+    its recursion depth limit (Python < 3.12) becomes ``OSError(EOVERFLOW)``.
     """
-    if _st.S_ISDIR(os.stat(name, dir_fd=dir_fd, follow_symlinks=False).st_mode):
-        try:
-            shutil.rmtree(name, dir_fd=dir_fd)
-        except RecursionError as exc:  # the recursive rmtree of Python < 3.12
-            raise OSError(errno.EOVERFLOW, "directory tree too deep", str(shown)) from exc
-    else:
+    if st is None:
+        st = os.stat(name, dir_fd=dir_fd, follow_symlinks=False)
+    if not _st.S_ISDIR(st.st_mode):
         os.unlink(name, dir_fd=dir_fd)
+        return
+
+    def failed(_func: object, where: str, exc: BaseException) -> None:
+        # shutil names *where* relative to *dir_fd*, starting with *name*.
+        if where == name and _is_link_at(name, dir_fd):
+            raise SymlinkRefusedError(shown, shown) from exc
+        err = exc if isinstance(exc, OSError) else OSError(str(exc))
+        why = err.strerror or next((a for a in err.args if isinstance(a, str)), "rmtree failed")
+        raise OSError(err.errno, why, str(shown.parent / where)) from exc
+
+    try:
+        if sys.version_info >= (3, 12):
+            shutil.rmtree(name, dir_fd=dir_fd, onexc=failed)
+        else:  # ``onerror`` hands over sys.exc_info()
+            shutil.rmtree(name, dir_fd=dir_fd, onerror=lambda f, w, i: failed(f, w, i[1]))
+    except RecursionError as exc:  # the recursive rmtree of Python < 3.12
+        raise OSError(errno.EOVERFLOW, "directory tree too deep", str(shown)) from exc
 
 
 def rmtree_contents(path: Path, root: Path) -> None:
@@ -598,15 +615,19 @@ def rmtree(path: Path, root: Path, *, missing_ok: bool = False) -> None:
     A link at *path* is removed as a link (as :func:`unlink` does), never descended;
     a file at *path* is removed too.  Inside, removal is :func:`rmtree_contents`'s.
     *path* equal to *root* raises ``ValueError``: the root is the caller's, so use
-    :func:`rmtree_contents` to empty it.
+    :func:`rmtree_contents` to empty it.  *missing_ok* accepts only a missing
+    *path* or parent; an entry that vanishes inside the tree mid-walk still raises.
     """
     path = Path(path)
-    try:
-        with _parent(path, root) as (pfd, leaf):
-            _remove_at(leaf, pfd, path)
-    except FileNotFoundError:
-        if not missing_ok:
+    with contextlib.ExitStack() as stack:
+        try:
+            pfd, leaf = stack.enter_context(_parent(path, root))
+            st = os.stat(leaf, dir_fd=pfd, follow_symlinks=False)
+        except FileNotFoundError:
+            if missing_ok:
+                return
             raise
+        _remove_at(leaf, pfd, path, st)
 
 
 def _chmod_fd(fd: int, mode: int, path: Path) -> None:

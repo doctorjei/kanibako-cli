@@ -693,3 +693,69 @@ def test_rmtree_deep_tree_never_raises_recursion_error(tree):
         assert exc.errno == errno.EOVERFLOW
     else:
         assert not deep.exists()
+
+
+def test_rmtree_missing_ok_never_hides_an_entry_vanishing_mid_walk(tree, monkeypatch):
+    """*missing_ok* covers a missing path; a box racing the walk raises or loses nothing."""
+    root, _, _ = tree
+    t = root / "a" / "t"
+    (t / "s").mkdir(parents=True)
+    for n in ("f1", "f2"):
+        (t / n).write_text("x")
+    real_unlink = os.unlink
+    fired = []
+
+    def box_removes_it_first(name, *args, **kwargs):
+        if name == "f1" and not fired:
+            fired.append(1)
+            real_unlink(t / "f1")
+        return real_unlink(name, *args, **kwargs)
+
+    monkeypatch.setattr(boxfs.os, "unlink", box_removes_it_first)
+    try:
+        boxfs.rmtree(t, root, missing_ok=True)
+    except FileNotFoundError as exc:  # Python < 3.13: shutil raises it
+        assert exc.filename == str(t / "f1")
+    else:
+        assert not t.exists()
+    assert fired
+
+
+def test_rmtree_names_the_full_path_of_an_entry_it_cannot_remove(tree, monkeypatch):
+    root, _, _ = tree
+    d = root / "a" / "b"
+    (d / "sub" / "deeper").mkdir(parents=True)
+    real_rmdir = os.rmdir
+
+    def refuse_deeper(name, *args, **kwargs):
+        if name == "deeper":
+            raise PermissionError(errno.EACCES, "Permission denied", name)
+        return real_rmdir(name, *args, **kwargs)
+
+    monkeypatch.setattr(boxfs.os, "rmdir", refuse_deeper)
+    with pytest.raises(PermissionError) as info:
+        boxfs.rmtree(d, root)
+    assert info.value.filename == str(d / "sub" / "deeper")
+    with pytest.raises(PermissionError) as info:
+        boxfs.rmtree_contents(d, root)
+    assert info.value.filename == str(d / "sub" / "deeper")
+
+
+def test_rmtree_refuses_a_leaf_swapped_for_a_link_after_its_lstat(tree, monkeypatch):
+    root, outside, sentinel = tree
+    victim = root / "a" / "victim"
+    victim.mkdir()
+    (outside / "keep").write_text("host data")
+    real_rmtree = boxfs.shutil.rmtree
+
+    def swap_then_rmtree(*args, **kwargs):
+        victim.rename(root / "a" / "moved")
+        victim.symlink_to(outside)
+        return real_rmtree(*args, **kwargs)
+
+    monkeypatch.setattr(boxfs.shutil, "rmtree", swap_then_rmtree)
+    with pytest.raises(SymlinkRefusedError) as info:
+        boxfs.rmtree(victim, root)
+    assert info.value.filename == str(victim) and info.value.link == victim
+    assert (outside / "keep").read_text() == "host data"
+    assert sentinel.read_text() == "host data"
