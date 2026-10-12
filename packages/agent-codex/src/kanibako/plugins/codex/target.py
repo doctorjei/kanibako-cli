@@ -275,7 +275,9 @@ class CodexTarget(Target):
         """
         from kanibako.vscode.vscode_config import seed_codex_sandbox_mode
 
-        return seed_codex_sandbox_mode(config_root / ".codex" / CODEX_CONFIG_FILE)
+        return seed_codex_sandbox_mode(
+            config_root / ".codex" / CODEX_CONFIG_FILE, root=config_root,
+        )
 
     def deliver_directive_hook(
         self,

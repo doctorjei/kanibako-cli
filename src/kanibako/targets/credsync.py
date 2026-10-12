@@ -31,6 +31,7 @@ import tempfile
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from kanibako import boxfs
 from kanibako.launch.creds_watcher import creds_store_lock
 from kanibako.log import get_logger
 from kanibako.targets.base import Cadence
@@ -59,29 +60,106 @@ def _chmod_600(path: Path) -> None:
         logger.debug("credsync: chmod 0600 failed for %s: %s", path, exc)
 
 
-def _copy_dir(src: Path, dst: Path, *, skip_links: bool = False) -> None:
-    """Recursively copy directory *src* into *dst*, merging into an existing dst.
+def _copy_dir(src: Path, dst: Path) -> None:
+    """Recursively copy the host directory *src* into the host directory *dst*.
 
-    Used for ``is_dir`` cred specs (e.g. goose ``custom_providers/``).  A
-    directory has no single mtime to gate on, so dir specs are NOT mtime-gated:
-    the source tree is the authority and is mirrored wholesale on every sync.
-    Each copied file is chmod 0600 (these dirs hold config that may reference
-    secrets, so we keep the same conservative perms as the file path).
-    *skip_links* leaves out every symlink in the tree, with a warning: a writeback
-    reads a box tree, and a link a box planted would copy the host file it names.
+    Merges into an existing *dst*.  Used for ``is_dir`` cred specs (e.g. goose
+    ``custom_providers/``).  A directory has no single mtime to gate on, so dir
+    specs are NOT mtime-gated: the source tree is the authority and is mirrored
+    wholesale on every sync.  Each copied file is chmod 0600 (these dirs hold
+    config that may reference secrets).  Both sides are host trees, so links are
+    followed as ``copytree`` follows them; a box tree is reached only through
+    :func:`_dir_into_box` and :func:`_dir_from_box`.
     """
-    def _links(d: str, names: list[str]) -> list[str]:
-        links = [n for n in names if os.path.islink(os.path.join(d, n))]
-        for n in links:
-            logger.warning("credential writeback skipped %s: it is a symlink",
-                           os.path.join(d, n))
-        return links
-
-    shutil.copytree(str(src), str(dst), dirs_exist_ok=True,
-                    ignore=_links if skip_links else None)
+    shutil.copytree(str(src), str(dst), dirs_exist_ok=True)
     for child in dst.rglob("*"):
         if child.is_file():
             _chmod_600(child)
+
+
+def _warn_link_race(exc: boxfs.SymlinkRefusedError) -> None:
+    """Warn of a link the box put in place after ``boxfs.no_symlink_or_warn`` passed."""
+    logger.warning("skipped %s: %s is a symlink, and kanibako does not follow "
+                   "symlinks in a box", exc.path, exc.link)
+
+
+def _box_file_stat(path: Path, root: Path) -> os.stat_result | None:
+    """The stat of the regular box file *path*, or None when it is missing or not one."""
+    try:
+        st = boxfs.stat(path, root)
+    except (FileNotFoundError, NotADirectoryError):
+        return None
+    return st if stat.S_ISREG(st.st_mode) else None
+
+
+def _file_into_box(src: Path, dst: Path, project_home: Path) -> None:
+    """Copy the host file *src* to the box file *dst* as ``copy2`` would, then 0600."""
+    boxfs.copy_file(src, dst, src_root=None, dst_root=project_home)
+    boxfs.chmod(dst, project_home, stat.S_IRUSR | stat.S_IWUSR)
+
+
+def _transform_into_box(
+    spec: CredFileSpec, target: Target, src: Path | None, dst: Path,
+    project_home: Path,
+) -> None:
+    """Run the plugin's ``transform_cred(..., "in")`` and put its result in the box.
+
+    The plugin never sees a box path: it works on a host-side copy of the box file
+    in a private temp dir (a missing box file is missing there too), and its result
+    goes into the box through ``boxfs`` at 0600.  A box file that
+    :func:`_read_box_file` refuses (not a regular file, too large) is skipped with
+    its warning.  Unchanged content is not rewritten.
+    """
+    exists = True
+    try:
+        boxfs.stat(dst, project_home)
+    except (FileNotFoundError, NotADirectoryError):
+        exists = False
+    box = _read_box_file(project_home, spec.home_rel, "credential refresh") if exists else None
+    if exists and box is None:
+        return
+    with tempfile.TemporaryDirectory(prefix=".kanibako-cred-in.") as work:
+        out = Path(work) / dst.name
+        if box is not None:
+            out.write_bytes(box[0])
+            os.utime(out, ns=(box[1].st_atime_ns, box[1].st_mtime_ns))
+        target.transform_cred(spec, src, out, "in")
+        if not out.is_file():
+            return
+        if box is not None and out.read_bytes() == box[0]:
+            boxfs.chmod(dst, project_home, stat.S_IRUSR | stat.S_IWUSR)
+            return
+        _chmod_600(out)
+        boxfs.copy_file(out, dst, src_root=None, dst_root=project_home)
+
+
+def _dir_into_box(src: Path, dst: Path, project_home: Path) -> None:
+    """Mirror the host directory *src* into the box directory *dst*.
+
+    The host side is copied as :func:`_copy_dir` copies it (links followed, files
+    0600) into a private temp dir, and that copy goes into the box through
+    ``boxfs.copy_tree``, which leaves a link already in the box tree untouched,
+    with a warning.
+    """
+    with tempfile.TemporaryDirectory(prefix=".kanibako-cred-in.") as work:
+        staged = Path(work) / dst.name
+        _copy_dir(src, staged)
+        boxfs.copy_tree(staged, dst, src_root=None, dst_root=project_home, merge=True)
+
+
+def _dir_from_box(src: Path, dst: Path, project_home: Path) -> None:
+    """Mirror the box directory *src* into the host directory *dst*.
+
+    ``boxfs.copy_tree`` copies the box side into a private temp dir, leaving out
+    every link in it with a warning; :func:`_copy_dir` mirrors that copy into the
+    store.
+    """
+    with tempfile.TemporaryDirectory(prefix=".kanibako-cred-out.") as work:
+        staged = Path(work) / dst.name
+        boxfs.copy_tree(src, staged, src_root=project_home, dst_root=None,
+                        skip_links=True)
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        _copy_dir(staged, dst)
 
 
 def seed_cred_files(
@@ -108,33 +186,51 @@ def seed_cred_files(
     Filtered specs are routed through ``target.transform_cred(..., "in")`` so the
     plugin can filter/merge or write a default when no source is available.
     Unfiltered specs are a wholesale copy + 0600 when a source file exists.
+
+    Every write under *project_home* goes through :mod:`kanibako.boxfs`: a path
+    with a symlink at it or a parent below *project_home* is skipped with a
+    warning naming it, and the other paths still run.
     """
+    project_home.mkdir(parents=True, exist_ok=True)
     for d in descriptor.init_dirs:
-        (project_home / d).mkdir(parents=True, exist_ok=True)
+        path = project_home / d
+        if boxfs.no_symlink_or_warn(path, project_home):
+            try:
+                boxfs.mkdir(path, project_home, parents=True, exist_ok=True)
+            except boxfs.SymlinkRefusedError as exc:
+                _warn_link_race(exc)
 
     for spec in descriptor.cred_files:
         dst = project_home / spec.home_rel
         src = source_root / spec.host_rel if source_root is not None else None
-        dst.parent.mkdir(parents=True, exist_ok=True)
-
-        if spec.is_dir:
-            # Directory spec (e.g. goose custom_providers/): recursive copy when
-            # a source dir exists (a private box has no source).  Never filtered.
-            if src is not None and src.is_dir():
-                _copy_dir(src, dst)
+        if not boxfs.no_symlink_or_warn(dst, project_home):
             continue
+        try:
+            _seed_one(spec, target, src, dst, project_home)
+        except boxfs.SymlinkRefusedError as exc:
+            _warn_link_race(exc)
 
-        src_ok = src is not None and src.is_file()
 
-        if spec.filtered:
-            target.transform_cred(spec, src if src_ok else None, dst, "in")
-            if dst.is_file():
-                _chmod_600(dst)
-        elif src_ok:
-            assert src is not None  # src_ok implies src present.
-            shutil.copy2(str(src), str(dst))
-            _chmod_600(dst)
-        # else: unfiltered + no source -> nothing to seed.
+def _seed_one(
+    spec: CredFileSpec, target: Target, src: Path | None, dst: Path,
+    project_home: Path,
+) -> None:
+    """Seed the box file or dir *dst* of one *spec* from *src* (None: no source)."""
+    if dst.parent != project_home:
+        boxfs.mkdir(dst.parent, project_home, parents=True, exist_ok=True)
+    if spec.is_dir:
+        # Directory spec (e.g. goose custom_providers/): recursive copy when
+        # a source dir exists (a private box has no source).  Never filtered.
+        if src is not None and src.is_dir():
+            _dir_into_box(src, dst, project_home)
+        return
+    src_ok = src is not None and src.is_file()
+    if spec.filtered:
+        _transform_into_box(spec, target, src if src_ok else None, dst, project_home)
+    elif src_ok:
+        assert src is not None  # src_ok implies src present.
+        _file_into_box(src, dst, project_home)
+    # else: unfiltered + no source -> nothing to seed.
 
 
 def refresh_cred_files(
@@ -152,7 +248,8 @@ def refresh_cred_files(
     home for GLOBAL, the workset source dir for WORKSET) must exist and (when
     ``mtime_gate``) be strictly newer than the project file; filtered specs route
     through ``transform_cred(..., "in")``, unfiltered specs are a wholesale copy +
-    0600.
+    0600.  Box paths are written as :func:`seed_cred_files` writes them, so a
+    symlinked one is skipped with a warning.
     """
     if source_root is None:
         return
@@ -162,29 +259,35 @@ def refresh_cred_files(
             continue
         src = source_root / spec.host_rel
         dst = project_home / spec.home_rel
-        if spec.is_dir:
-            # Directory spec: mirror the source dir into the box (no mtime gate;
-            # see _copy_dir).  Skip silently when the source dir is absent.
-            if src.is_dir():
-                dst.parent.mkdir(parents=True, exist_ok=True)
-                _copy_dir(src, dst)
+        # A missing source (file or dir) is skipped silently.
+        if not (src.is_dir() if spec.is_dir else src.is_file()):
             continue
-        if not src.is_file():
+        project_home.mkdir(parents=True, exist_ok=True)  # the root; boxfs opens it as given
+        if not boxfs.no_symlink_or_warn(dst, project_home):
             continue
-        if (
-            spec.mtime_gate
-            and dst.is_file()
-            and src.stat().st_mtime <= dst.stat().st_mtime
-        ):
-            continue
-        dst.parent.mkdir(parents=True, exist_ok=True)
-        if spec.filtered:
-            target.transform_cred(spec, src, dst, "in")
-            if dst.is_file():
-                _chmod_600(dst)
-        else:
-            shutil.copy2(str(src), str(dst))
-            _chmod_600(dst)
+        try:
+            _refresh_one(spec, target, src, dst, project_home)
+        except boxfs.SymlinkRefusedError as exc:
+            _warn_link_race(exc)
+
+
+def _refresh_one(
+    spec: CredFileSpec, target: Target, src: Path, dst: Path, project_home: Path,
+) -> None:
+    """Refresh the box file or dir *dst* of one SYNC *spec* from the store's *src*."""
+    if spec.is_dir:
+        # Directory spec: mirror the source dir into the box (no mtime gate;
+        # see _copy_dir).
+        _dir_into_box(src, dst, project_home)
+        return
+    if spec.mtime_gate:
+        box = _box_file_stat(dst, project_home)
+        if box is not None and src.stat().st_mtime <= box.st_mtime:
+            return
+    if spec.filtered:
+        _transform_into_box(spec, target, src, dst, project_home)
+    else:
+        _file_into_box(src, dst, project_home)
 
 
 def writeback_cred_files(
@@ -239,13 +342,14 @@ def _writeback_one(
     if spec.is_dir:
         # Directory spec: mirror the box dir back to the source (no mtime
         # gate; see _copy_dir).  Skip silently when the box dir is absent.
-        link = _linked_part(project_home, spec.home_rel)
-        if link is not None:
-            logger.warning("credential writeback skipped %s: %s is a symlink",
-                           src, link)
-        elif src.is_dir() and not _box_dir_too_big(src):
-            dst.parent.mkdir(parents=True, exist_ok=True)
-            _copy_dir(src, dst, skip_links=True)
+        if not boxfs.no_symlink_or_warn(src, project_home):
+            return
+        try:
+            is_dir = stat.S_ISDIR(boxfs.stat(src, project_home).st_mode)
+        except (FileNotFoundError, NotADirectoryError):
+            return
+        if is_dir and not _box_dir_too_big(src):
+            _dir_from_box(src, dst, project_home)
         return
     box = _read_box_file(project_home, spec.home_rel)
     if box is None:
@@ -266,22 +370,6 @@ def _writeback_one(
         return
     dst.parent.mkdir(parents=True, exist_ok=True)
     _replace_store_file(spec, target, data, box_stat, dst)
-
-
-def _linked_part(root: Path, rel: str) -> Path | None:
-    """The first symlink on the path from *root* down to *root*/*rel*, or ``None``.
-
-    *root* itself is trusted; a missing component ends the walk with ``None``.
-    """
-    path = root
-    for part in Path(rel).parts:
-        path = path / part
-        try:
-            if stat.S_ISLNK(os.lstat(path).st_mode):
-                return path
-        except FileNotFoundError:
-            return None
-    return None
 
 
 def _box_dir_too_big(src: Path) -> bool:
@@ -308,7 +396,7 @@ def _box_dir_too_big(src: Path) -> bool:
 
 
 def _read_box_file(
-    root: Path, rel: str,
+    root: Path, rel: str, action: str = "credential writeback",
 ) -> tuple[bytes, os.stat_result] | None:
     """Read the box file *root*/*rel* without following a link, or ``None``.
 
@@ -317,8 +405,8 @@ def _read_box_file(
     refused, as is anything but a regular file (``O_NONBLOCK`` keeps a FIFO from
     hanging the open), and so is a file over ``_BOX_FILE_MAX_BYTES``, by its size
     and by what a read returns, since the file can grow after the check.  A missing
-    file is ``None`` with no warning; a refusal warns, naming the file.  The bytes
-    returned are the bytes checked and written.
+    file is ``None`` with no warning; a refusal warns, naming the file and *action*.
+    The bytes returned are the bytes checked and written.
     """
     parts = Path(rel).parts
     path = root / rel
@@ -337,25 +425,25 @@ def _read_box_file(
             return None
         why = "it or a directory above it is a symlink" if exc.errno in (
             errno.ELOOP, errno.ENOTDIR) else exc.strerror
-        logger.warning("credential writeback skipped %s: %s", path, why)
+        logger.warning("%s skipped %s: %s", action, path, why)
         return None
     finally:
         os.close(fd)
     try:
         st = os.fstat(leaf)
         if not stat.S_ISREG(st.st_mode):
-            logger.warning("credential writeback skipped %s: not a regular file", path)
+            logger.warning("%s skipped %s: not a regular file", action, path)
             return None
         if st.st_size <= _BOX_FILE_MAX_BYTES:
             with os.fdopen(leaf, "rb", closefd=False) as fh:
                 data = fh.read(_BOX_FILE_MAX_BYTES + 1)
             if len(data) <= _BOX_FILE_MAX_BYTES:
                 return data, st
-        logger.warning("credential writeback skipped %s: larger than %d bytes",
-                       path, _BOX_FILE_MAX_BYTES)
+        logger.warning("%s skipped %s: larger than %d bytes",
+                       action, path, _BOX_FILE_MAX_BYTES)
         return None
     except OSError as exc:
-        logger.warning("credential writeback skipped %s: %s", path, exc)
+        logger.warning("%s skipped %s: %s", action, path, exc)
         return None
     finally:
         os.close(leaf)

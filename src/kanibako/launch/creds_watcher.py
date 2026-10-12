@@ -37,6 +37,7 @@ from collections.abc import Callable, Iterator
 from enum import Enum
 from pathlib import Path
 
+from kanibako import boxfs
 from kanibako.log import get_logger, setup_logging
 from kanibako.settings.bootstrap import CREDS_WATCHER_LOCK_FILE
 
@@ -70,9 +71,16 @@ def creds_dirty_flag_path(project_home: Path) -> Path:
 
 
 def read_creds_dirty(project_home: Path) -> bool:
-    """True iff the box's creds-dirty flag is present.  Tolerant — any error ⇒ False."""
+    """True iff the box's creds-dirty flag is present.  Tolerant — any error ⇒ False.
+
+    Probed through :mod:`kanibako.boxfs`, so a symlink at the flag or at
+    ``.kanibako`` is never followed; it reads as an error, so False.
+    """
     try:
-        return creds_dirty_flag_path(project_home).exists()
+        boxfs.stat(creds_dirty_flag_path(project_home), Path(project_home))
+        return True
+    except FileNotFoundError:
+        return False
     except OSError as exc:
         log.debug("read_creds_dirty: probe failed for %s: %s", project_home, exc)
         return False
@@ -83,10 +91,16 @@ def clear_creds_dirty(project_home: Path) -> None:
 
     Idempotent: an already-absent flag (``missing_ok``) is fine, and any other
     ``OSError`` is swallowed (a stale flag merely gets re-processed next time — a
-    harmless duplicate writeback, never a crash).
+    harmless duplicate writeback, never a crash).  Removed through
+    :mod:`kanibako.boxfs`: a symlinked ``.kanibako`` is not followed, and the flag
+    is left with a warning naming it.
     """
     try:
-        creds_dirty_flag_path(project_home).unlink(missing_ok=True)
+        boxfs.unlink(creds_dirty_flag_path(project_home), Path(project_home),
+                     missing_ok=True)
+    except boxfs.SymlinkRefusedError as exc:
+        log.warning("left %s: %s is a symlink, and kanibako does not follow "
+                    "symlinks in a box", exc.path, exc.link)
     except OSError as exc:
         log.debug("clear_creds_dirty: unlink failed for %s: %s", project_home, exc)
 

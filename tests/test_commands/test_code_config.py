@@ -1351,15 +1351,15 @@ def test_seed_codex_config_with_provider_writes_region(tmp_path):
 
 def test_seed_codex_sandbox_mode_on_absent_creates_the_invariant_only(tmp_path):
     path = tmp_path / ".codex" / "config.toml"
-    assert seed_codex_sandbox_mode(path) is True
+    assert seed_codex_sandbox_mode(path, root=tmp_path) is True
     assert tomllib.loads(path.read_text()) == {"sandbox_mode": "danger-full-access"}
 
 
 def test_seed_codex_sandbox_mode_idempotent(tmp_path):
     path = tmp_path / "config.toml"
-    assert seed_codex_sandbox_mode(path) is True
+    assert seed_codex_sandbox_mode(path, root=tmp_path) is True
     before = path.read_bytes()
-    assert seed_codex_sandbox_mode(path) is False
+    assert seed_codex_sandbox_mode(path, root=tmp_path) is False
     assert path.read_bytes() == before
 
 
@@ -1371,7 +1371,7 @@ def test_seed_codex_sandbox_mode_keeps_any_approval_policy(tmp_path, policy):
     values kanibako used to write.  Only ``sandbox_mode`` is forced."""
     path = tmp_path / "config.toml"
     path.write_text(f'approval_policy = "{policy}"\nsandbox_mode = "read-only"\n')
-    assert seed_codex_sandbox_mode(path) is True
+    assert seed_codex_sandbox_mode(path, root=tmp_path) is True
     assert path.read_text() == (
         f'approval_policy = "{policy}"\nsandbox_mode = "danger-full-access"\n'
     )
@@ -1382,7 +1382,7 @@ def test_seed_codex_sandbox_mode_migrates_old_workspace_write(tmp_path):
     reconciles to ``danger-full-access``."""
     path = tmp_path / "config.toml"
     path.write_text('sandbox_mode = "workspace-write"\n')
-    assert seed_codex_sandbox_mode(path) is True
+    assert seed_codex_sandbox_mode(path, root=tmp_path) is True
     assert tomllib.loads(path.read_text())["sandbox_mode"] == "danger-full-access"
 
 
@@ -1395,7 +1395,7 @@ def test_seed_codex_sandbox_mode_no_op_never_normalizes_user_bytes(tmp_path):
         'approval_policy = "untrusted"\nfoo = "bar"\n\n\n'
     )
     path.write_text(odd)
-    assert seed_codex_sandbox_mode(path) is False
+    assert seed_codex_sandbox_mode(path, root=tmp_path) is False
     assert path.read_text() == odd
 
 
@@ -1408,7 +1408,7 @@ def test_seed_codex_sandbox_mode_key_lands_outside_managed_region(tmp_path):
     seed_codex_config(path, box_config_path=_BOX_CFG, codex_cwd=_CODEX_CWD)
     region_only = path.read_text()
     assert region_only.lstrip().startswith("# >>> kanibako-managed")
-    assert seed_codex_sandbox_mode(path) is True
+    assert seed_codex_sandbox_mode(path, root=tmp_path) is True
     out = path.read_text()
     assert out.index("sandbox_mode") < out.index("# >>> kanibako-managed")
     begin = out.index("# >>> kanibako-managed")
@@ -1427,7 +1427,7 @@ def test_seed_codex_sandbox_mode_key_never_lands_inside_provider_region(tmp_path
         path, box_config_path=_BOX_CFG, codex_cwd=_CODEX_CWD,
         model_provider=CodexModelProvider(**_NAVIGATOR),
     )
-    assert seed_codex_sandbox_mode(path) is True
+    assert seed_codex_sandbox_mode(path, root=tmp_path) is True
     out = path.read_text()
     assert out.index("sandbox_mode") < out.index(
         "# >>> kanibako-managed (model provider)"
@@ -1451,7 +1451,7 @@ def test_seed_codex_sandbox_mode_carries_provider_region_and_root_keys(tmp_path)
         path, box_config_path=_BOX_CFG, codex_cwd=_CODEX_CWD,
         model_provider=CodexModelProvider(**_NAVIGATOR),
     )
-    assert seed_codex_sandbox_mode(path) is True
+    assert seed_codex_sandbox_mode(path, root=tmp_path) is True
     data = tomllib.loads(path.read_text())
     assert data["sandbox_mode"] == "danger-full-access"
     assert "approval_policy" not in data
@@ -1473,10 +1473,10 @@ def test_seed_codex_sandbox_mode_carries_provider_region_and_root_keys(tmp_path)
 def test_codex_seam_composition_relaunch_is_no_op(tmp_path):
     """Second seam pass over its own output: neither call writes."""
     path = tmp_path / "config.toml"
-    seed_codex_sandbox_mode(path)
+    seed_codex_sandbox_mode(path, root=tmp_path)
     seed_codex_config(path, box_config_path=_BOX_CFG, codex_cwd=_CODEX_CWD)
     before = path.read_bytes()
-    assert seed_codex_sandbox_mode(path) is False
+    assert seed_codex_sandbox_mode(path, root=tmp_path) is False
     assert seed_codex_config(
         path, box_config_path=_BOX_CFG, codex_cwd=_CODEX_CWD,
     ) is False
@@ -1535,7 +1535,7 @@ def test_codex_marker_group_composes_with_sandbox_and_provider(tmp_path):
     """Full composed file (panel sandbox invariant + directive region with
     marker + provider) parses and carries everything — the super-set cell."""
     path = tmp_path / "config.toml"
-    seed_codex_sandbox_mode(path)
+    seed_codex_sandbox_mode(path, root=tmp_path)
     seed_codex_config(
         path, box_config_path=_BOX_CFG, codex_cwd=_CODEX_CWD,
         model_provider=CodexModelProvider(**_NAVIGATOR),

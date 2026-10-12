@@ -8,5 +8,5 @@ _Signatures only: no comments, no docstrings, no bodies._
 ```
 def merge_oauth_in(src: Path, dst: Path) -> bool
 def credentials_error(data: bytes) -> str | None
-def merge_oauth_account_out(project_json: Path, host_json: Path) -> bool
+def merge_oauth_account_out(project_json: Path, host_json: Path, *, box_root: Path) -> bool
 ```

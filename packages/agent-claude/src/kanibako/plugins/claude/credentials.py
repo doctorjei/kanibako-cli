@@ -7,6 +7,8 @@ import shutil
 import sys
 from pathlib import Path
 
+from kanibako import boxfs
+
 
 def merge_oauth_in(src: Path, dst: Path) -> bool:
     """Merge ``claudeAiOauth`` from host creds *src* into project creds *dst*.
@@ -74,7 +76,7 @@ def credentials_error(data: bytes) -> str | None:
     return None
 
 
-def merge_oauth_account_out(project_json: Path, host_json: Path) -> bool:
+def merge_oauth_account_out(project_json: Path, host_json: Path, *, box_root: Path) -> bool:
     """Merge ``oauthAccount`` from the box's ``.claude.json`` into the host's.
 
     The REVERSE of the (removed) host->project oauthAccount import: after an
@@ -84,6 +86,10 @@ def merge_oauth_account_out(project_json: Path, host_json: Path) -> bool:
     ``machineID`` / ``userID`` / ``projects`` (and much else) that must NOT
     clobber the host's.  So this splices ONLY ``oauthAccount`` (the gate-free
     content op; the caller owns any gating).
+
+    The box file is read through :mod:`kanibako.boxfs` under *box_root* (the box
+    home): a symlink at it or a parent below *box_root* is not followed, and the
+    merge is skipped with a warning naming it.
 
     Behavior:
 
@@ -96,11 +102,11 @@ def merge_oauth_account_out(project_json: Path, host_json: Path) -> bool:
 
     Returns ``True`` when the host file was written, ``False`` otherwise.
     """
-    if not project_json.is_file():
+    if not boxfs.no_symlink_or_warn(project_json, box_root):
         return False
     try:
-        box_data = json.loads(project_json.read_text())
-    except (json.JSONDecodeError, OSError):
+        box_data = json.loads(boxfs.read_text(project_json, box_root))
+    except (ValueError, OSError):
         return False
     if not isinstance(box_data, dict):
         return False

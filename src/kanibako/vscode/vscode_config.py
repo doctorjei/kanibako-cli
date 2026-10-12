@@ -19,6 +19,8 @@ import urllib.parse
 from pathlib import Path
 from typing import NamedTuple
 
+from kanibako import boxfs
+
 
 
 def _strip_jsonc(text: str) -> str:
@@ -690,12 +692,19 @@ def seed_codex_config(
     return True
 
 
-def seed_codex_sandbox_mode(config_path: Path) -> bool:
-    """Write ONLY the managed codex ``sandbox_mode`` invariant; the SOLE writer of it."""
+def seed_codex_sandbox_mode(config_path: Path, *, root: Path) -> bool:
+    """Write ONLY the managed codex ``sandbox_mode`` invariant; the SOLE writer of it.
+
+    *root* is the box home *config_path* lives under; a symlink at the file or a
+    parent skips the write with a warning, and the write goes through :mod:`kanibako.boxfs`.
+    """
+    if not boxfs.no_symlink_or_warn(config_path, root):
+        return False
+    found = True
     try:
-        existing = config_path.read_text()
+        existing = boxfs.read_text(config_path, root)
     except OSError:
-        existing = ""
+        existing, found = "", False
     # ⚑ EXTRACT the managed regions before root-key surgery: an insert goes before the
     # first table, which in a region-bearing file would otherwise be OUR OWN region.
     body, hook_region = _extract_delimited_region(
@@ -711,8 +720,7 @@ def seed_codex_sandbox_mode(config_path: Path) -> bool:
         return False
     regions = [r for r in (hook_region, provider_region) if r is not None]
     merged = _assemble_codex_managed(reconciled, regions)
-    if config_path.exists() and merged == existing:
+    if found and merged == existing:
         return False
-    config_path.parent.mkdir(parents=True, exist_ok=True)
-    config_path.write_text(merged)
+    boxfs.write_text(config_path, root, merged)
     return True

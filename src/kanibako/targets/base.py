@@ -1387,7 +1387,9 @@ class Target(ABC):
         """Transform a FILTERED credential/config file between host and project.
 
         ⚑ Called ONLY for specs with `filtered=True`; *direction* is `"in"` (host->project)
-        or `"out"`, and *src* is `None` when no source file is available.
+        or `"out"`, and *src* is `None` when no source file is available.  Neither path
+        is ever in a box: the engine hands over host-side copies (for `"in"`, *dst* holds
+        the box file's content, absent when the box has none) and moves the result itself.
         """
         import shutil
         if src is not None and Path(src).is_file():

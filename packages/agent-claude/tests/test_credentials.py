@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 import json
+import logging
+
+import pytest
 
 from kanibako.plugins.claude import ClaudeTarget
 from kanibako.plugins.claude.credentials import (
@@ -141,7 +144,7 @@ class TestMergeOauthAccountOut:
         box.write_text(json.dumps({"oauthAccount": {"emailAddress": "a@b.c"}}))
         host = tmp_path / "home" / ".claude.json"  # absent
 
-        assert merge_oauth_account_out(box, host) is True
+        assert merge_oauth_account_out(box, host, box_root=box.parent) is True
         assert host.exists()
         data = json.loads(host.read_text())
         assert data["oauthAccount"]["emailAddress"] == "a@b.c"
@@ -166,7 +169,7 @@ class TestMergeOauthAccountOut:
             "otherHostKey": 123,
         }))
 
-        assert merge_oauth_account_out(box, host) is True
+        assert merge_oauth_account_out(box, host, box_root=box.parent) is True
         data = json.loads(host.read_text())
         # oauthAccount updated...
         assert data["oauthAccount"]["emailAddress"] == "new@b.c"
@@ -179,7 +182,7 @@ class TestMergeOauthAccountOut:
     def test_noop_when_box_file_absent(self, tmp_path):
         box = tmp_path / "box" / ".claude.json"  # absent
         host = tmp_path / "home" / ".claude.json"
-        assert merge_oauth_account_out(box, host) is False
+        assert merge_oauth_account_out(box, host, box_root=box.parent) is False
         assert not host.exists()
 
     def test_noop_when_no_oauth_account_key(self, tmp_path):
@@ -187,7 +190,7 @@ class TestMergeOauthAccountOut:
         box.parent.mkdir(parents=True)
         box.write_text(json.dumps({"machineID": "x"}))
         host = tmp_path / "home" / ".claude.json"
-        assert merge_oauth_account_out(box, host) is False
+        assert merge_oauth_account_out(box, host, box_root=box.parent) is False
         assert not host.exists()
 
     def test_malformed_box_json_is_safe(self, tmp_path):
@@ -195,7 +198,7 @@ class TestMergeOauthAccountOut:
         box.parent.mkdir(parents=True)
         box.write_text("{not json")
         host = tmp_path / "home" / ".claude.json"
-        assert merge_oauth_account_out(box, host) is False
+        assert merge_oauth_account_out(box, host, box_root=box.parent) is False
 
     def test_unreadable_host_not_clobbered(self, tmp_path):
         box = tmp_path / "box" / ".claude.json"
@@ -205,8 +208,27 @@ class TestMergeOauthAccountOut:
         host.parent.mkdir(parents=True)
         host.write_text("{corrupt")
         # Bails rather than overwrite an unreadable host file.
-        assert merge_oauth_account_out(box, host) is False
+        assert merge_oauth_account_out(box, host, box_root=box.parent) is False
         assert host.read_text() == "{corrupt"
+
+    @pytest.mark.parametrize("to", ["outside", "inside"])
+    def test_box_file_link_is_never_followed(self, tmp_path, to, caplog):
+        """No-follow patch (B2): a box ``.claude.json`` that is a symlink -- to a host
+        file outside the box or a file inside it -- is not read; the host file is
+        untouched, the linked file too, and the warning names the box path."""
+        root = tmp_path / "box"
+        root.mkdir()
+        held = tmp_path / "outside.json" if to == "outside" else root / "elsewhere.json"
+        held.write_text(json.dumps({"oauthAccount": {"emailAddress": "leak@x"}}))
+        before = held.read_bytes()
+        box = root / ".claude.json"
+        box.symlink_to(held)
+        host = tmp_path / "home" / ".claude.json"
+        with caplog.at_level(logging.WARNING):
+            assert merge_oauth_account_out(box, host, box_root=root) is False
+        assert not host.exists()
+        assert held.read_bytes() == before
+        assert str(box) in caplog.text and "symlink" in caplog.text
 
 
 class TestWritebackExtra:
@@ -226,3 +248,14 @@ class TestWritebackExtra:
         host = host_home / ".claude.json"
         assert host.exists()
         assert json.loads(host.read_text())["oauthAccount"]["emailAddress"] == "z@z.z"
+
+    def test_writeback_extra_skips_a_linked_box_file(self, tmp_path):
+        project_home = tmp_path / "project"
+        host_home = tmp_path / "host"
+        project_home.mkdir()
+        host_home.mkdir()
+        secret = tmp_path / "secret.json"
+        secret.write_text(json.dumps({"oauthAccount": {"emailAddress": "leak@x"}}))
+        (project_home / ".claude.json").symlink_to(secret)
+        ClaudeTarget().writeback_extra(project_home=project_home, host_home=host_home)
+        assert not (host_home / ".claude.json").exists()

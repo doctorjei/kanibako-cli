@@ -852,6 +852,33 @@ class TestDeliverySeams:
             'sandbox_mode = "danger-full-access"\napproval_policy = "never"\n'
         )
 
+    @pytest.mark.parametrize("where", ["leaf", "parent"])
+    @pytest.mark.parametrize("to", ["outside", "inside"])
+    def test_panel_permissions_never_follows_a_symlink(self, tmp_path, where, to, caplog):
+        """No-follow patch: a box ``config.toml`` (leaf) or ``.codex`` (parent) that is
+        a symlink -- out of the box or inside it -- is skipped with a warning naming
+        the path; the file it names is unchanged."""
+        import logging
+        root = tmp_path / "home"
+        root.mkdir()
+        held = tmp_path / "outside" if to == "outside" else root / "elsewhere"
+        held.mkdir()
+        sentinel = held / "config.toml"
+        sentinel.write_text('sandbox_mode = "read-only"\n')
+        before = sentinel.read_bytes()
+        cfg = self._config(root)
+        if where == "leaf":
+            cfg.parent.mkdir()
+            cfg.symlink_to(sentinel)
+        else:
+            cfg.parent.symlink_to(held)
+        with caplog.at_level(logging.WARNING):
+            assert CodexTarget().deliver_panel_permissions(
+                config_root=root, access="full",
+            ) is False
+        assert sentinel.read_bytes() == before
+        assert str(cfg) in caplog.text and "symlink" in caplog.text
+
     def test_directive_hook_writes_hook_trust_never_approval(self, tmp_path):
         import tomllib
         from kanibako.settings.settings_resolve import GUEST_HOME

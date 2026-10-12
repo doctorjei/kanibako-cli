@@ -42,7 +42,7 @@ def codex_trusted_hash(event_key: str, matcher: str | None, command: str, timeou
 def merge_codex_config(text: str, *, box_config_path: str, codex_cwd: str, model_provider: CodexModelProvider | None=None) -> str
 def merge_codex_model_provider(text: str, *, provider_id: str, name: str, base_url: str, wire_api: str, env_key: str, model: str) -> str
 def seed_codex_config(config_path: Path, *, box_config_path: str, codex_cwd: str, model_provider: CodexModelProvider | None=None) -> bool
-def seed_codex_sandbox_mode(config_path: Path) -> bool
+def seed_codex_sandbox_mode(config_path: Path, *, root: Path) -> bool
 def _strip_jsonc(text: str) -> str
 def _encode_image_ref(ref: str) -> str
 def _read_existing_config(path: Path) -> dict

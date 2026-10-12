@@ -179,7 +179,8 @@ class ClaudeTarget(Target):
         checks.  It mirrors the legacy refresh / writeback content ops exactly:
 
         * ``.credentials.json`` "in": claudeAiOauth merge host->project via
-          :func:`merge_oauth_in` (the gate-free refresh content op).
+          :func:`merge_oauth_in` (the gate-free refresh content op).  *dst* is the
+          engine's host-side copy of the box file, never the box file itself.
         * ``.credentials.json`` "out": wholesale project->host copy (the gate-
           free writeback content op).  *src* is the engine's host-side copy of the
           box file, already checked by :meth:`cred_writeback_error`.
@@ -222,6 +223,7 @@ class ClaudeTarget(Target):
         """
         merge_oauth_account_out(
             project_home / ".claude.json", host_home / ".claude.json",
+            box_root=project_home,
         )
 
     @property

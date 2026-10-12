@@ -896,6 +896,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and logs a warning naming the file, and a link inside goose's `custom_providers/` is skipped. Any synced file a
   writeback changes keeps its previous content as `<file>.bak` (0600). See `MIGRATION.md`, "Credential writeback
   checks the box's file and keeps a backup".
+- **The credential sync never follows a symlink in a box.** The credential files and directories synced into a box,
+  the box's `~/.claude.json` read for the account merge, codex's `~/.codex/config.toml` (the panel's
+  `sandbox_mode`), and the `.kanibako/creds-dirty` flag are reached without following a link at the path or at any
+  directory above it in the box home. A link skips that path with a warning naming it, and the start goes on. A
+  link in the host's credential store is still followed.
 - **A `KANIBAKO_DOCKER_CMD` naming a missing program is an `Error:` that names it.** `kanibako stop` and every
   other verb that needs the container runtime used to end in a traceback, and `setup`, `system diagnose`, and
   `system info` reported no runtime installed. Each now names the bad value, and `box create` names it as the
