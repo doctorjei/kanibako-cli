@@ -468,8 +468,8 @@ inside boxes. In order of likely impact:
     workset you named `my-box` before is refused at `start` until you rename it; a box kanibako names after
     a directory writes `_` for each `-` and `.`** — see *Names are ASCII letters, digits, and `_`*.
 53. **`kanibako shell`, `box info`, `config reset`, and `agent info` read the values an agent settings file sets
-    under `self:`, so a value an agent launch refuses now stops them too** — see *Every command reads an agent
-    settings file's own values*.
+    under `self:`; a value an agent launch refuses now stops `kanibako shell` and `box info`** — see *Every command
+    reads an agent settings file's own values*.
 
 ---
 
@@ -7618,12 +7618,11 @@ set under `self:`. They now read the whole file, as an agent launch does:
 - On a plain-shell box, the launch's early decisions read the shell file's `endpoint` and `model`.
 
 A value an agent launch already refuses (an undeclared key, a bare relative `canon` or `template`, a reference
-that does not resolve) now stops these commands too, naming the key and the file: `kanibako shell`, `box info`,
-`config reset` (which then reports only that the value was cleared), and `agent info` (whose label falls back,
-with a warning). `stop` still stops the box, but warns and skips the credential writeback; creds-watch exits
-with that warning. An agent launch with an undeclared key reports it in the settings engine's wording, which
-also names the key and the file. A reserved name inside `transform_settings` (`items`, `get`, `update`, …) is
-still refused, now naming the file.
+that does not resolve) now stops `kanibako shell` and `box info`, naming the key and the file. `config reset`
+still resets, then reports only the clear; `agent info` warns and shows the built-in label; `stop` warns and skips
+the credential writeback, and creds-watch exits with that warning. An agent launch with an undeclared key reports
+it in the settings engine's wording, which also names the key and the file. A reserved name inside
+`transform_settings` (`items`, `get`, `update`, …) is still refused, now naming the file.
 
 **What you must do.** Fix or remove the value the error names, in the file it names.
 

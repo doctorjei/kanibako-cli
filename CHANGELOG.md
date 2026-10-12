@@ -27,9 +27,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `kanibako shell` and `start --entrypoint` honor `agents/shell/agent.yaml` (`allow_helpers: false` turns helpers
   off); image sharing, the helper hub, and the spawn budget agree with the launch on a `{agent.<agent>.<key>}`
   reference; and `config reset` names an agent-file value as the one now in effect. A value an agent launch refuses
-  now also stops `kanibako shell`, `box info`, `config reset`, and `agent info`; `stop` still stops, but skips the
-  credential writeback with a warning. See `MIGRATION.md`, "Every command reads an agent settings file's own
-  values".
+  now stops `kanibako shell` and `box info`, naming the key and the file; `config reset` reports only the clear,
+  `agent info` warns and shows the built-in label, and `stop` warns and skips the credential writeback. See
+  `MIGRATION.md`, "Every command reads an agent settings file's own values".
 - **A plugin's `category_binds:` refusal of a bare-relative source now uses the settings-file wording.** It names the
   hazard and ends "Spell the source out." For `bindings.ro`, `bindings.rw`, and `synced` it says the category takes
   no root at any scope. For `caches`, `common`, and `seeded` it no longer says that, which was false: those categories
