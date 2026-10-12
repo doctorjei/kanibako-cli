@@ -872,7 +872,7 @@ _REMAP_TAKEOVER_CURE = _NO_FLAG_TAKEOVER + (
 
 def _remap_dest_holder(
     state: ProjectState, dest: Path, std: StandardPaths, *, verb: str = "remap",
-    vacated_root: Path | None = None,
+    vacated_root: Path | None = None, in_place: bool = False,
 ) -> tuple[str, bool] | None:
     """Why a remap of *state* onto *dest* lands on ANOTHER box's path, else ``None``.
 
@@ -892,6 +892,8 @@ def _remap_dest_holder(
     found by content and a link to it is refused; the store test resolves (a safety test).
     *vacated_root* is the standalone root a relocating source leaves: after the op it is
     no box's, so it is not another box's tree.
+    *in_place* judges the box where it stands (an in-place convert): it places nothing, so
+    the workspace it already records is held only to the forceable arms.
     """
     from kanibako.launch import box_resolve
     from kanibako.project import registry_store
@@ -984,7 +986,7 @@ def _remap_dest_holder(
         return None
 
     # A standalone's recorded workspace is held to this too, whatever the box's mode.
-    for tree in trees:
+    for tree in [dest] if in_place else trees:
         why = root_of(tree)
         if why is not None:
             return (why if tree == dest
@@ -1597,7 +1599,7 @@ def _validate(
         #     An unforceable hit is left to the guards above and to ``add_project``. ---
         stands_at = (state.metadata_path if state.mode is BoxMode.standalone
                      else state.workspace_path)
-        holder = _remap_dest_holder(state, stands_at, std, verb="convert")
+        holder = _remap_dest_holder(state, stands_at, std, verb="convert", in_place=True)
         if holder is not None and holder[1]:
             raise ProjectError(
                 f"Cannot convert '{state.name}' in place at '{stands_at}': it is {holder[0]}")

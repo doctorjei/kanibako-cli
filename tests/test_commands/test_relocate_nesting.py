@@ -198,6 +198,31 @@ class TestInPlaceConvertIntoAWorkset:
         assert f"Cannot convert 'p' in place at '{inner}': it is {what}. {SHARE}" in err, err
         assert not load_workset(area / "wo", "wo", early_system=std.early_system).projects
 
+    @pytest.mark.parametrize("force", [False, True])
+    def test_workspace_is_a_markerless_standalone_root(self, env, capsys, force):
+        """A standalone whose workspace is the registered root of another standalone whose
+        marker is gone (its registry row kept) holds that root: refused unless --force.  An
+        in-place convert places nothing, so the remap arm refused whatever the flag does not
+        apply."""
+        from kanibako.project.workset import create_workset, load_workset
+        std, area = env
+        create_workset("wo", area / "wo", std)
+        assert _create("--standalone", "--register", str(area / "C")) == 0
+        held = area / "C" / "workspace"
+        registry_store.register_standalone(std.registry, "T", held)  # T's row, no marker
+        c_name = next(n for n, r in registry_store.load_standalone(std.registry).items()
+                      if Path(r) == area / "C")
+        capsys.readouterr()
+        rc = _run("convert", "--workset", "wo", *(["--force"] if force else []), str(area / "C"))
+        err = capsys.readouterr().err
+        if force:
+            assert rc == 0, err
+            return
+        assert rc == 1
+        assert (f"Cannot convert '{c_name}' in place at '{area / 'C'}': it is a directory "
+                f"holding the root of standalone box 'T' ({held}). {SHARE}") in err, err
+        assert not load_workset(area / "wo", "wo", early_system=std.early_system).projects
+
 
 class TestNamedSource:
     """A workset member relocated inside another box's workspace: refused unless --force."""

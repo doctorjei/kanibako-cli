@@ -59,7 +59,7 @@ def _workspace_copy_ignore(metadata_root: Path, copied_root: Path, *, mode: BoxM
 def _resolve_target_workset(name: str, std: StandardPaths) -> Workset
 def _cure_ref(state: ProjectState) -> str
 def _name_held_in_target_workset(target_mode: BoxMode | None, target_ws: Workset | None, state: ProjectState, new_name: str) -> str | None
-def _remap_dest_holder(state: ProjectState, dest: Path, std: StandardPaths, *, verb: str='remap', vacated_root: Path | None=None) -> tuple[str, bool] | None
+def _remap_dest_holder(state: ProjectState, dest: Path, std: StandardPaths, *, verb: str='remap', vacated_root: Path | None=None, in_place: bool=False) -> tuple[str, bool] | None
 def _dest_nesting_refusal(std: StandardPaths, *, mode: BoxMode, name: str, ws: Workset | None, dest: Path, metadata_path: Path, verb: str, force: bool, vacated_root: Path | None=None, subject: str='a box', absent: bool=False) -> str | None
 def _refuse_foreign_workset_landing(std: StandardPaths, landing: Path, owning_ws_root: Path | None) -> None
 def _other_box_within(entries: Collection[Path], std: StandardPaths, standalones: Mapping[str, Path], *, own_ref: str | None=None) -> tuple[str, Path, Path] | None
