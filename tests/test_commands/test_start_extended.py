@@ -950,6 +950,21 @@ class TestPersistentMode:
             stdout_lines = [ln for ln in out.splitlines() if ln.strip()]
             assert stdout_lines[-1] == cname
 
+    def test_the_container_carries_the_box_labels(self, start_mocks):
+        """system-design § Box and helper identity: set at creation, and naming the
+        same ``(<W>, <B>)`` pair the container name renders from."""
+        with start_mocks() as m:
+            rc = _run_container(
+                project_dir=None, entrypoint=None, image_override=None,
+                new_session=False, safe_mode=False, resume_mode=False,
+                extra_args=[], persistent=True, detach=True,
+            )
+            assert rc == 0
+            kwargs = m.runtime.run.call_args.kwargs
+        labels = kwargs["labels"]
+        assert set(labels) == {"kanibako.workset", "kanibako.box", "kanibako.workset_kuid"}
+        assert kwargs["name"] == f"kb-{labels['kanibako.workset']}-{labels['kanibako.box']}"
+
     def test_detach_without_print_container_no_stdout_cname(
         self, start_mocks, capsys,
     ):

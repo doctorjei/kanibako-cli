@@ -55,7 +55,7 @@ class ContainerRuntime:
     def load(self, archive: Path) -> str | None
     def diff(self, image: str) -> list[str]
     def ensure_image(self, image: str, containers_dir: Path | None=None) -> None
-    def run(self, image: str, *, shell_path: Path, project_path: Path, vault_ro_path: Path | None, vault_rw_path: Path | None, extra_mounts: list | None=None, tmpfs_masks: list[str] | None=None, enable_vault: bool=True, env: dict[str, str] | None=None, name: str | None=None, entrypoint: str | None=None, cli_args: list[str] | None=None, detach: bool=False, post_start: 'Callable[[], None] | None'=None) -> int
+    def run(self, image: str, *, shell_path: Path, project_path: Path, vault_ro_path: Path | None, vault_rw_path: Path | None, extra_mounts: list | None=None, tmpfs_masks: list[str] | None=None, enable_vault: bool=True, env: dict[str, str] | None=None, name: str | None=None, labels: dict[str, str] | None=None, entrypoint: str | None=None, cli_args: list[str] | None=None, detach: bool=False, post_start: 'Callable[[], None] | None'=None) -> int
     def exec(self, name: str, command: list[str], *, env: dict[str, str] | None=None, attach: bool=False) -> int
     def exec_ready(self, name: str) -> bool
     def exec_succeeds(self, name: str, command: list[str]) -> bool
@@ -65,6 +65,7 @@ class ContainerRuntime:
     def is_running(self, name: str) -> bool
     def inspect_env(self, name: str, key: str) -> str | None
     def container_image(self, name: str) -> str | None
+    def find_labeled(self, labels: dict[str, str], *, without: str | None=None) -> list[str]
     def list_running(self, prefix: str=CONTAINER_NAME_PREFIX, *, include_stopped: bool=False, check: bool=False) -> list[tuple[str, str, str]]
     def get_local_digests(self, image: str) -> list[str]
     def get_local_digest(self, image: str) -> str | None

@@ -29,7 +29,7 @@ from kanibako.settings.paths import (
     resolve_box_target,
 )
 from kanibako.settings.settings_resolve import GUEST_WORKSPACE
-from kanibako.utils import container_name_for
+from kanibako.utils import box_container
 from kanibako.vscode.vscode_config import (
     attached_container_config_path,
     load_jsonc,
@@ -208,7 +208,7 @@ def run_code(args: argparse.Namespace) -> int:
     if proj is None or not proj.name:
         print(_no_box_error(project_dir, std, "code", probe=proj), file=sys.stderr)
         return 1
-    cname = container_name_for(proj)
+    cname = box_container(runtime, proj)
     # ⚑ NOT the start refusal: the row puts that at ``start``.  This door only REPORTS
     # that there is no container to attach to.  (Auto-start below refuses with the cure.)
     if cname is None:
@@ -258,7 +258,7 @@ def run_code(args: argparse.Namespace) -> int:
         # existed — the explicit-create gate above guaranteed it — so this is a
         # refresh, not a materialization.)
         proj = resolve_box_target(std, config, project_dir, initialize=False)
-        cname = container_name_for(proj)
+        cname = box_container(runtime, proj)
         if cname is None:
             print(_no_container_name(name), file=sys.stderr)
             return 1

@@ -86,7 +86,8 @@ from kanibako.agent_ref import GENERAL_SLOT, harness_of, parse_agent_address, wi
 from kanibako.targets import resolve_target
 from kanibako.utils import (
     WORKSET_SEGMENT_PRIMARY, WORKSET_SEGMENT_STANDALONE,
-    container_name_for, container_name_for_box_name, gitignore_holds_only_kanibako, literal_path,
+    box_container, container_name_for, container_name_for_box_name, gitignore_holds_only_kanibako,
+    literal_path,
     is_dir_unless_gone, is_home_dir, logical_cwd, project_gitignore_to_strip, refuse_unreadable_file,
     short_hash, stat_unless_gone, strip_project_gitignore, write_project_gitignore,
 )
@@ -3490,14 +3491,17 @@ def _check_container_running(proj, *, fail_closed: bool = False,
 
     *container_name* overrides *proj*'s rendered name.
     """
-    if container_name is None:
-        container_name = container_name_for(proj)
-    if container_name is None:
+    if container_name is None and container_name_for(proj) is None:
         return False, "no container name (the box-name rule renders none)"
     try:
         runtime = ContainerRuntime()
     except ContainerError:
         return False, NO_RUNTIME
+    if container_name is None:
+        # Found by its labels (system-design § Box and helper identity), else its name.
+        container_name = box_container(runtime, proj)
+        if container_name is None:
+            return False, "no container name (the box-name rule renders none)"
     containers = runtime.list_running(check=fail_closed)
     for name, image, status in containers:
         if name == container_name:

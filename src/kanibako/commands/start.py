@@ -108,7 +108,8 @@ from kanibako.targets import assembly, credsync, resolve_target
 from kanibako.targets.assembly import BindingSourceError
 from kanibako.targets.base import _scrub_endpoint_userinfo, descriptor_floor, has_plugin
 from kanibako.utils import (
-    container_name_for, container_name_segments, legacy_container_names, literal_path, logical_cwd,
+    box_container, box_labels, container_name_for, container_name_segments, legacy_container_names,
+    literal_path, logical_cwd,
     render_socket_identity, short_hash, stat_unless_gone, unrenderable_box_name_refusal,
 )
 # The box-local AGENT LIVENESS MARKERS directory (per-PID).  Canonically owned by
@@ -2624,6 +2625,7 @@ def _start_helper_hub(
         runtime=runtime,
         image=image,
         container_name_segments=container_name_segments(proj),
+        labels=box_labels(proj),
         shell_path=proj.shell_path,
         helpers_dir=helpers_dir,
         socket_path=socket_path,
@@ -3085,6 +3087,9 @@ def _run_container(
     except ContainerError as exc:
         print(f"Error: {exc}", file=sys.stderr)
         return 1
+    # The box's container is the one its labels find; the rendered name when none
+    # carries them (system-design § Box and helper identity).
+    container_name = box_container(runtime, proj) or rendered
 
     # ``--restart``: STOP FIRST, then launch normally.  This is the CURE named by
     # the already-running override gate below, and it runs BEFORE
@@ -5239,6 +5244,7 @@ def _run_container(
                 enable_vault=proj.vault_enabled(),
                 env=container_env,
                 name=container_name,
+                labels=box_labels(proj),
                 entrypoint=entrypoint,
                 cli_args=cli_args or None,
                 detach=persistent,
@@ -10228,6 +10234,7 @@ def _run_setup_command(
         enable_vault=proj.vault_enabled(),
         env=container_env,
         name=container_name,
+        labels=box_labels(proj),
         entrypoint=setup_entrypoint,
         cli_args=setup_args or None,
         detach=False,

@@ -19,6 +19,7 @@ from kanibako.settings.bootstrap import IGNORE_FILE
 if TYPE_CHECKING:
     from collections.abc import Callable
 
+    from kanibako.runtime.container import ContainerRuntime
     from kanibako.settings.paths import ProjectPaths
 
 
@@ -245,6 +246,58 @@ def container_name_segments(proj: ProjectPaths) -> tuple[str, str]:
 def container_name_for(proj: ProjectPaths) -> str | None:
     """Container name for *proj*, or ``None`` (:func:`render_container_name`)."""
     return render_container_name(*container_name_segments(proj))
+
+
+#: The container labels that name a box (system-design § Box and helper identity).  A
+#: box's container carries the first three, set at creation; a helper's also carries
+#: :data:`LABEL_HELPER`.
+LABEL_WORKSET = "kanibako.workset"
+LABEL_BOX = "kanibako.box"
+LABEL_WORKSET_KUID = "kanibako.workset_kuid"
+LABEL_HELPER = "kanibako.helper"
+
+
+def box_labels(proj: ProjectPaths, helper_num: int | None = None) -> dict[str, str]:
+    """The labels *proj*'s container carries (a helper's: *helper_num*'s).
+
+    ``kanibako.workset`` and ``kanibako.box`` are the ``(<W>, <B>)`` pair the container
+    name renders from; ``kanibako.workset_kuid`` is the box's stored ``workset.kuid``.
+    """
+    from kanibako import kuid
+    from kanibako.settings.config import read_workset_kuid
+    from kanibako.settings.paths import box_workset_settings_paths
+
+    workset, box = container_name_segments(proj)
+    _, settings_file = box_workset_settings_paths(proj)
+
+    labels = {
+        LABEL_WORKSET: workset,
+        LABEL_BOX: box,
+        LABEL_WORKSET_KUID: (kuid.SENTINEL if settings_file is None
+                             else read_workset_kuid(settings_file)),
+    }
+    if helper_num is not None:
+        labels[LABEL_HELPER] = str(helper_num)
+    return labels
+
+
+def box_container(runtime: ContainerRuntime, proj: ProjectPaths) -> str | None:
+    """The name of *proj*'s container, found by its labels; ``None`` when the box
+    renders no name (:func:`container_name_for`).
+
+    system-design § Box and helper identity: a box-reaching verb finds the container
+    by its labels, not by its name.  A helper of the box carries the same labels plus
+    ``kanibako.helper`` and is never the box's.  When no container carries the labels
+    -- one created before containers were labeled, or none yet -- the answer is the
+    rendered name, which addresses the old container and names a new one.
+    """
+    rendered = container_name_for(proj)
+    if rendered is None:
+        return None
+    found = sorted(runtime.find_labeled(box_labels(proj), without=LABEL_HELPER))
+    if not found or rendered in found:
+        return rendered
+    return found[0]
 
 
 def legacy_container_names(proj: ProjectPaths) -> tuple[str, ...]:

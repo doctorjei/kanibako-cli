@@ -69,7 +69,7 @@ def _patched(runtime, cname="kanibako-foo", name="foo"):
         patch("kanibako.commands.code_cmd.load_config"),
         patch("kanibako.commands.code_cmd.load_std_paths"),
         patch("kanibako.commands.code_cmd.resolve_box_target", return_value=proj),
-        patch("kanibako.commands.code_cmd.container_name_for", return_value=cname),
+        patch("kanibako.commands.code_cmd.box_container", return_value=cname),
     ]
     return stack, proj
 

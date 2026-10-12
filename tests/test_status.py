@@ -134,6 +134,8 @@ def _mock_proj(*, name="", project_hash="a" * 64, mode="primary",
         mode=SimpleNamespace(value=mode),
         group=None,
         project_path=Path(project_path),
+        # Read for its ``workset.kuid`` label (``utils.box_labels``).
+        metadata_path=Path(project_path),
     )
 
 

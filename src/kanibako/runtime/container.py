@@ -375,6 +375,7 @@ class ContainerRuntime:
         enable_vault: bool = True,
         env: dict[str, str] | None = None,
         name: str | None = None,
+        labels: dict[str, str] | None = None,
         entrypoint: str | None = None,
         cli_args: list[str] | None = None,
         detach: bool = False,
@@ -415,6 +416,8 @@ class ContainerRuntime:
                 cmd += ["-e", f"{k}={v}"]
         if name:
             cmd += ["--name", name]
+        for key, value in sorted((labels or {}).items()):
+            cmd += ["--label", f"{key}={value}"]
         if entrypoint:
             cmd += ["--entrypoint", entrypoint]
         cmd.append(image)
@@ -599,6 +602,41 @@ class ContainerRuntime:
         if result.returncode != 0:
             return None
         return image_ref_or_none(result.stdout)
+
+    def find_labeled(self, labels: dict[str, str], *, without: str | None = None) -> list[str]:
+        """The names of the containers, running or not, that carry every one of *labels*
+        and, when *without* is given, no label of that key.  A runtime that fails or
+        cannot run answers none (the caller falls back to a container's name).
+
+        ⚑ Repeated ``label=`` filters are ANDed by podman and docker alike (the one key
+        whose filters are exclusive, not inclusive), and a bare key matches any value.
+        """
+        def _names(filters: list[str]) -> set[str] | None:
+            cmd = [self.cmd, "ps", "-a", "--format", "{{.Names}}"]
+            for f in filters:
+                cmd += ["--filter", f"label={f}"]
+            try:
+                result = subprocess.run(cmd, capture_output=True, text=True)
+            except OSError:
+                return None
+            if result.returncode != 0:
+                return None
+            # A name holds no whitespace: a line that does is not a name, and is skipped.
+            return {line.strip() for line in result.stdout.splitlines()
+                    if line.strip() and len(line.split()) == 1}
+
+        wanted = [f"{k}={v}" for k, v in sorted(labels.items())]
+        found = _names(wanted)
+        if not found:
+            return []
+        if without is not None:
+            # Fail closed: when the runtime cannot say which carry *without*, none is
+            # known not to, so none is answered.
+            excluded = _names([*wanted, without])
+            if excluded is None:
+                return []
+            found -= excluded
+        return sorted(found)
 
     def list_running(
         self, prefix: str = CONTAINER_NAME_PREFIX,

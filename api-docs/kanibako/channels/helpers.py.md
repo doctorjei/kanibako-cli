@@ -7,7 +7,6 @@ _Signatures only: no comments, no docstrings, no bodies._
 ## Variables
 
 ```
-UNLIMITED_BREADTH = 2 ** 16
 DEFAULT_DEPTH = SPAWN_BUDGET_DEFAULTS['depth']
 DEFAULT_BREADTH = SPAWN_BUDGET_DEFAULTS['breadth']
 SPAWN_CONFIG_FILENAME = 'spawn.yaml'
@@ -21,8 +20,6 @@ INIT_SCRIPT_NAME = 'helper-init.sh'
 
 ## Functions
 ```
-def effective_breadth(breadth: int) -> int
-def parent_of(agent: int, breadth: int) -> int | None
 def check_spawn_allowed(budget: SpawnBudget, current_children: int) -> str | None
 def child_budget(parent: SpawnBudget) -> SpawnBudget
 def resolve_spawn_budget(handed_down: SpawnBudget | None, own_settings: SpawnBudget | None, cli_depth: int | None, cli_breadth: int | None) -> SpawnBudget
@@ -33,6 +30,8 @@ def read_helper_number(path: Path) -> int | None
 def read_helper_state(helpers_dir: Path, helper_num: int) -> dict
 def write_helper_state(helpers_dir: Path, helper_num: int, state: dict) -> None
 def mark_helper_stopped(helpers_dir: Path, helper_num: int) -> None
+def existing_helpers(helpers_dir: Path, root: Path) -> list[int]
+def helper_tree_numbers(helpers_dir: Path, root: Path) -> set[int]
 def create_helper_dirs(helpers_dir: Path, helper_num: int) -> Path
 def create_broadcast_dirs(helpers_dir: Path) -> Path
 def remove_helper_dirs(helpers_dir: Path, helper_num: int) -> None

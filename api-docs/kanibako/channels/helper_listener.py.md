@@ -36,6 +36,7 @@ class HelperContext:
     boxes: Path | None = None
     primary_workset: Path | None = None
     early: EarlyScope = field(kw_only=True)
+    labels: dict[str, str] = field(default_factory=dict, kw_only=True)
 
 class HelperHub:
     def __init__(self) -> None
@@ -50,6 +51,7 @@ class HelperHub:
     def _unregister(self, helper_num: int, conn: socket.socket) -> None
     def _route_message(self, sender: int, recipient: int, payload: dict) -> None
     def _broadcast_message(self, sender: int, payload: dict) -> None
+    def _handle_number(self) -> dict
     def _handle_spawn(self, request: dict) -> dict
     def _release(self, helper_num: int, held: Path | None, helper_home: Path) -> None
     def _handle_stop(self, request: dict) -> dict

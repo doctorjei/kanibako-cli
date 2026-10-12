@@ -55,6 +55,23 @@ class TestStopOne:
             out = capsys.readouterr().out
             assert "Stopped" in out
 
+    def test_the_box_is_found_by_its_labels(self, mock_runtime, capsys):
+        """system-design § Box and helper identity: stop reaches the container its
+        labels find (``utils.box_container``), not one it renders a name for."""
+        mock_runtime.is_running.return_value = True
+        mock_runtime.inspect_env.return_value = None
+        with (
+            patch("kanibako.commands.stop.load_config"),
+            patch("kanibako.commands.stop.load_std_paths"),
+            patch("kanibako.commands.stop.resolve_box_target") as m_resolve,
+            patch("kanibako.commands.stop.box_container", return_value="kb-labeled") as m_find,
+        ):
+            m_resolve.return_value = MagicMock()
+            assert _stop_one(mock_runtime, project_dir=None) == 0
+        assert m_find.call_args.args == (mock_runtime, m_resolve.return_value)
+        mock_runtime.stop.assert_called_once_with("kb-labeled")
+        assert "Stopped kb-labeled" in capsys.readouterr().out
+
     def test_no_running_container(self, mock_runtime, capsys):
         mock_runtime.stop.return_value = False
         mock_runtime.container_exists.return_value = False

@@ -33,7 +33,7 @@ from kanibako.settings.settings_resolve import (
 from kanibako.settings.store_collapse import HOME_DEST, HOME_OPTIONS
 from kanibako.targets.base import Mount
 from kanibako.tree_copy import copy_tree_keeping_links
-from kanibako.utils import render_container_name, utc_stamp
+from kanibako.utils import LABEL_HELPER, render_container_name, utc_stamp
 
 if TYPE_CHECKING:
     from kanibako.settings.workset_dirkeys import EarlyScope
@@ -66,6 +66,9 @@ class HelperContext:
     boxes: Path | None = None          # resolved PRIMARY workset.boxes (std.boxes)
     primary_workset: Path | None = None  # resolved config.primary_workset (std.primary_workset)
     early: EarlyScope = field(kw_only=True)  # the PRIMARY early scope (paths._early_scope)
+    #: The DIRECTOR box's container labels (``utils.box_labels``); a helper's container
+    #: carries them and its own ``kanibako.helper``.
+    labels: dict[str, str] = field(default_factory=dict, kw_only=True)
 
 
 class HelperHub:
@@ -445,6 +448,7 @@ class HelperHub:
                 enable_vault=True,
                 env=ctx.env,
                 name=container_name,
+                labels={**ctx.labels, LABEL_HELPER: str(helper_num)},
                 entrypoint=init_script,
                 cli_args=cli_args,
                 detach=True,
