@@ -17,15 +17,14 @@ SETTABLE_BIND_CATEGORIES: Final[tuple[str, ...]] = ()
 ABSTRACT_CATEGORIES: Final[tuple[str, ...]] = ('common', 'caches', 'seeded')
 DECLARATION_ROOT_REF: Final[Mapping[str, str]] = {'system': '{config.data}', 'agent': '{{meta.agent.{agent}.path}}', 'workset': '{meta.workset.path}', 'box': '{meta.box.path}'}
 CATEGORY_FAMILY_ROOTS: Final[frozenset[str]] = frozenset((name.split('.', 1)[0] for name in _DELIVERY))
-ENV_VAR_NAME: Final = '[A-Za-z_][A-Za-z0-9_]*'
-FILE_SCOPES: Final[tuple[str, ...]] = ('system', 'workset', 'box')
+FILE_SCOPES: Final[tuple[str, ...]] = tuple((s for s in SCOPE_CONTAINMENT if s != 'agent'))
 RETIRED_BIND_CATEGORIES: Final[tuple[str, ...]] = tuple((c for c in _BIND_CATEGORIES if c not in SETTABLE_BIND_CATEGORIES))
 SCOPE_BIND_KEY_RE = re.compile(f'^(?P<scope>{_FILE_SCOPE_ALT})\\.(?P<category>{_RETIRED_CATEGORY_ALT})\\.(?P<name>.+)$')
 AGENT_BIND_KEY_RE = re.compile(f'^agent\\.(?P<node>.+?)\\.(?P<category>{_RETIRED_CATEGORY_ALT})\\.(?P<name>.+)$')
 BIND_KEY_RE = re.compile(f'^(?P<scope>{_FILE_SCOPE_ALT}|{_AGENT_SCOPE})\\.(?P<category>{_NON_TERMINAL_CATEGORY_ALT})\\.(?P<name>.+)$' if _NON_TERMINAL_CATEGORY_ALT else '(?!)')
 MASK_KEY_RE = re.compile(f'^(?P<scope>{_FILE_SCOPE_ALT}|{_AGENT_SCOPE})\\.masks$')
 ENV_KEY_RE = re.compile(f'^(?P<scope>{_FILE_SCOPE_ALT}|{_AGENT_SCOPE})\\.env\\.(?P<name>{ENV_VAR_NAME})$')
-SECRET_KEY_RE = re.compile(f'^(?P<scope>{_FILE_SCOPE_ALT}|agent)\\.secret_path\\.(?P<name>{ENV_VAR_NAME})$')
+SECRET_KEY_RE = re.compile(f"^(?P<scope>{'|'.join(SCOPE_CONTAINMENT)})\\.secret_path\\.(?P<name>{ENV_VAR_NAME})$")
 SECRET_VAR_RE = re.compile(f'^{ENV_VAR_NAME}$')
 CONCRETE_CATEGORIES: Final[tuple[str, ...]] = ('bindings.ro', 'bindings.rw', 'secret_path')
 SUPPRESS_THEN_ADD: Final[str] = 'To change what occupies a destination you must SUPPRESS the entry you do not want and then declare the one you do. An override is not enough: these are two different KEYS, so both survive the cascade. Set the unwanted key to null in the settings file for its scope (a file may write its own scope and the scopes it contains)'

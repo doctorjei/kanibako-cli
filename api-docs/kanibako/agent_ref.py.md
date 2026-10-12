@@ -10,6 +10,7 @@ Prose for these symbols lives in `llm-docs/kanibako/agent_ref.py.md`.
 ```
 SEPARATORS = ((PLUS_SEP := '+'), (CANONICAL_SEP := '℘'))
 SEGMENT_CHAR_CLASS = '\\w' + ''.join((re.escape(ch) for ch in sorted(_SAFE_EXTRA)))
+ENV_VAR_NAME = '[A-Za-z_][A-Za-z0-9_]*'
 PSEUDO_AGENT_NAMES = frozenset({'default', 'shell'})
 AGENT_ENTRY_POINT_GROUP = 'kanibako.agents'
 GENERAL_SLOT = 'shell'
