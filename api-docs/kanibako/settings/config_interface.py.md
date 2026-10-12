@@ -12,6 +12,7 @@ FLOOR_TIER = 'built-in default'
 _log = get_logger(__name__)
 _EARLY_KEY_DOORS = frozenset({ConfigLevel.workset, ConfigLevel.system})
 _SCOPE_SCALAR_FAMILIES: 'tuple[tuple[str, Callable[[str], bool]], ...]' = (('env', _is_scope_env_key), ('secret_path', _is_scope_secret_key))
+_SET_VALUE_DOORS: 'tuple[_SetValueDoor, ...]' = (_SetValueDoor(lambda key, value: value is None and refuses_null_path_key(key), ERR_CONFIG_NULL_PATH_SET_HEAD, lambda value: ERR_CONFIG_NULL_PATH_REASON, 'path'), _SetValueDoor(lambda key, value: value is None and refuses_null_box_scalar(key), ERR_BOX_SCALAR_NULL_SET_HEAD, lambda value: ERR_BOX_SCALAR_NULL_REASON, 'value'), _SetValueDoor(lambda key, value: value is not None and refuses_box_store_value(key, value), ERR_BOX_STORE_SET_HEAD, lambda value: (ERR_BOX_STORE_TRAILING_REASON if value is not None and value.endswith('/') else ERR_BOX_STORE_EMPTY_REASON) + '.', 'path'))
 ```
 
 ## Functions
@@ -56,9 +57,7 @@ def _noun_file_slot(slot: AgentFileSlot, noun_file: Path) -> AgentFileSlot
 def _system_verb_slot(slot: 'AgentFileSlot | str | None', noun_file: 'Path | None', node_store: bool) -> 'AgentFileSlot | str | None'
 def _stored_shape_for(canonical: str, value: object) -> object
 def _set_confirmation(display_key: str, value: object) -> str
-def _null_path_key_error(canonical: str, value: 'str | None', *, command_scope: 'ConfigLevel | None', config_path: Path, system_settings_path: 'Path | None') -> 'str | None'
-def _box_store_value_error(canonical: str, value: 'str | None', *, command_scope: 'ConfigLevel | None', config_path: Path, system_settings_path: 'Path | None') -> 'str | None'
-def _null_box_scalar_error(canonical: str, value: 'str | None', *, command_scope: 'ConfigLevel | None', config_path: Path, system_settings_path: 'Path | None') -> 'str | None'
+def _set_value_error(canonical: str, value: 'str | None', *, command_scope: 'ConfigLevel | None', config_path: Path, system_settings_path: 'Path | None') -> 'str | None'
 def _per_owner_set_error(canonical: str, value: 'str | None', *, command_scope: 'ConfigLevel | None', ws: Any, written: Path, stored: 'Callable[[str], object]') -> 'str | None'
 def _reset_dest(canonical: str, command_scope: 'ConfigLevel | None', config_path: Path, system_settings_path: 'Path | None') -> DestRoute
 def _honest_reset_message(key: str, command_scope: 'ConfigLevel | None', effective: 'tuple[str, str] | None'=None) -> str
@@ -97,6 +96,12 @@ class _BadEntries(NamedTuple):
 
     def warn_reports(self) -> 'list[str]'
     def chain_block(self) -> str
+
+class _SetValueDoor(NamedTuple):
+    refuses: 'Callable[[str, str | None], bool]'
+    head: str
+    reason: 'Callable[[str | None], str]'
+    noun: str
 
 class _ShownEntries(NamedTuple):
     overrides: 'list[tuple[str, object]]'

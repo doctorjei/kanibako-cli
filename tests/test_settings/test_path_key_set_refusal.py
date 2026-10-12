@@ -717,7 +717,7 @@ class TestASystemPathValueMayNotPointOutOfItsTier:
             assert not message.startswith("Error:"), f"{value!r}: {message}"
 
     def test_a_null_is_not_this_doors_business(self, config_file, tmp_path):
-        """⚑ A ``null`` at ``system.template`` IS refused — by ``_null_path_key_error``,
+        """⚑ A ``null`` at ``system.template`` IS refused — by ``_set_value_error``,
         which runs earlier and is the ``--null`` precedent's own rule (spec §2a).  What
         is pinned here is that THIS door adds nothing to that: the predicate passes a
         null straight through, so the null door's own message and rc are the whole

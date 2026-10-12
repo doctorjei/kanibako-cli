@@ -1625,7 +1625,50 @@ def _set_confirmation(display_key: str, value: object) -> str:
     return f"Set {key}={'null' if value is None else value}"
 
 
-def _null_path_key_error(
+class _SetValueDoor(NamedTuple):
+    """One value the LAUNCH refuses, refused at the set door in that door's words.
+
+    ⚑ ONE CARRIER, CALLED — NOT A SECOND PREDICATE (P10).  Each *refuses* is the membership in
+    :mod:`config` derived from the very reader that refuses, and every door's text is built by
+    :func:`config.null_path_keys_error`.  The LEAD and the CUE are the set door's, and
+    :mod:`messages` says why they differ from the read-time ones.
+    """
+
+    refuses: "Callable[[str, str | None], bool]"
+    head: str
+    reason: "Callable[[str | None], str]"  # one sentence, with its own full stop
+    noun: str  # what the cure asks the user to set instead
+
+
+#: In precedence order; the first door that refuses answers.  ``box.shell`` is in the box
+#: scalar overlay and NOT in its membership — its declared default IS ``<None>`` (spec §2b),
+#: so a null there means auto-detect.
+_SET_VALUE_DOORS: "tuple[_SetValueDoor, ...]" = (
+    # §2a — a ``--null`` at a path key.
+    _SetValueDoor(
+        lambda key, value: value is None and refuses_null_path_key(key),
+        ERR_CONFIG_NULL_PATH_SET_HEAD, lambda value: ERR_CONFIG_NULL_PATH_REASON, "path",
+    ),
+    # §2b — a ``--null`` at a box scalar whose default is a value.
+    _SetValueDoor(
+        lambda key, value: value is None and refuses_null_box_scalar(key),
+        ERR_BOX_SCALAR_NULL_SET_HEAD, lambda value: ERR_BOX_SCALAR_NULL_REASON, "value",
+    ),
+    # §0 — a string at the box store key the launch cannot root boxes at.
+    _SetValueDoor(
+        lambda key, value: value is not None and refuses_box_store_value(key, value),
+        ERR_BOX_STORE_SET_HEAD,
+        lambda value: (
+            ERR_BOX_STORE_TRAILING_REASON
+            if value is not None and value.endswith("/")
+            else ERR_BOX_STORE_EMPTY_REASON
+        ) + ".",
+        "path",
+    ),
+)
+
+
+def _set_value_error(
     canonical: str,
     value: "str | None",
     *,
@@ -1633,100 +1676,21 @@ def _null_path_key_error(
     config_path: Path,
     system_settings_path: "Path | None",
 ) -> "str | None":
-    """§2a — refuse a ``--null`` at a path key the LAUNCH refuses a null at, or ``None``.
-
-    ⚑ ONE CARRIER, CALLED — NOT A SECOND PREDICATE (P10).  The membership is
-    :func:`config.refuses_null_path_key` and the wording is
-    :func:`config.null_path_keys_error`, both derived from the very readers that refuse; a
-    copied check here is the duplicate-renderer defect one layer down.
-
-    ⚑ THE LEAD AND THE CUE ARE THIS DOOR'S, and :mod:`messages` says why they differ.
-    ``reset <key>`` reaches the same place the read-time cue reaches by hand.
-    """
-    if value is not None or not refuses_null_path_key(canonical):
+    """Refuse *value* at *canonical* where the LAUNCH refuses it (:data:`_SET_VALUE_DOORS`),
+    or ``None``.  ``reset <key>`` reaches what the read-time cue reaches by hand."""
+    door = next((d for d in _SET_VALUE_DOORS if d.refuses(canonical, value)), None)
+    if door is None:
         return None
     dest = _write_dest(
         canonical, command_scope=command_scope,
         config_path=config_path, settings_path=system_settings_path,
     )
-    assert dest is not None  # every member of the membership has a routing-table slot
+    assert dest is not None  # every key a door refuses has a routing-table slot
     error = null_path_keys_error(
-        dest.file, (canonical,), head=ERR_CONFIG_NULL_PATH_SET_HEAD,
+        dest.file, (canonical,), head=door.head,
         cure=(
-            f"{ERR_CONFIG_NULL_PATH_REASON} Nothing was written: to use {canonical}'s "
-            f"default, run 'reset {canonical}', or set the path you mean."
-        ),
-    )
-    assert error is not None  # one key is never an empty list
-    return "Error: " + error
-
-
-def _box_store_value_error(
-    canonical: str,
-    value: "str | None",
-    *,
-    command_scope: "ConfigLevel | None",
-    config_path: Path,
-    system_settings_path: "Path | None",
-) -> "str | None":
-    """§0 — refuse a value at the BOX STORE key the LAUNCH refuses, or ``None``.
-
-    ⚑ THE SAME CARRIER AND MEMBERSHIP SHAPE AS :func:`_null_path_key_error`, one value
-    class apart: a present ``None`` is that function's, a string this one. The
-    membership is :func:`config.refuses_box_store_value` and the wording is
-    :func:`config.null_path_keys_error`, so the two doors build their text in one place.
-    """
-    if value is None or not refuses_box_store_value(canonical, value):
-        return None
-    dest = _write_dest(
-        canonical, command_scope=command_scope,
-        config_path=config_path, settings_path=system_settings_path,
-    )
-    assert dest is not None  # the box store key has a routing-table slot at every scope
-    reason = (
-        ERR_BOX_STORE_TRAILING_REASON
-        if value.endswith("/")
-        else ERR_BOX_STORE_EMPTY_REASON
-    )
-    error = null_path_keys_error(
-        dest.file, (canonical,), head=ERR_BOX_STORE_SET_HEAD,
-        cure=(
-            f"{reason}. Nothing was written: to use {canonical}'s default, run "
-            f"'reset {canonical}', or set the path you mean."
-        ),
-    )
-    assert error is not None  # one key is never an empty list
-    return "Error: " + error
-
-
-def _null_box_scalar_error(
-    canonical: str,
-    value: "str | None",
-    *,
-    command_scope: "ConfigLevel | None",
-    config_path: Path,
-    system_settings_path: "Path | None",
-) -> "str | None":
-    """§2b — refuse a ``--null`` at a BOX SCALAR the launch refuses a null at, or ``None``.
-
-    ⚑ THE SAME TWO CALLS AS THE PATH DOOR, one value class apart: the membership is
-    :func:`config.refuses_null_box_scalar` and the builder is
-    :func:`config.null_path_keys_error`.  ``box.shell`` is in the overlay and is NOT in the
-    membership — its declared default IS ``<None>`` (spec §2b), so a null there means
-    auto-detect and this door stays silent.
-    """
-    if value is not None or not refuses_null_box_scalar(canonical):
-        return None
-    dest = _write_dest(
-        canonical, command_scope=command_scope,
-        config_path=config_path, settings_path=system_settings_path,
-    )
-    assert dest is not None  # every member of the membership has a routing-table slot
-    error = null_path_keys_error(
-        dest.file, (canonical,), head=ERR_BOX_SCALAR_NULL_SET_HEAD,
-        cure=(
-            f"{ERR_BOX_SCALAR_NULL_REASON} Nothing was written: to use {canonical}'s "
-            f"default, run 'reset {canonical}', or set the value you mean."
+            f"{door.reason(value)} Nothing was written: to use {canonical}'s default, run "
+            f"'reset {canonical}', or set the {door.noun} you mean."
         ),
     )
     assert error is not None  # one key is never an empty list
@@ -1966,39 +1930,17 @@ def set_config_value(
         return "Error: " + ERR_WORKSET_SET_MAKES_STANDALONE % ws.name
     if makes_standalone:
         _log.warning(WARN_WORKSET_SET_MAKES_STANDALONE, ws.name)
-    # ⚑ A ``--null`` at a PATH KEY THE LAUNCH REFUSES A NULL AT (spec §2a); see
-    # :func:`_null_path_key_error`.  This call sits AFTER every NAME-level refusal above,
-    # so a retired or wrong-scope spelling still gets its own.
-    null_err = None if makes_standalone else _null_path_key_error(
+    # ⚑ A value the LAUNCH refuses (spec §0, §2a, §2b); see :func:`_set_value_error`.  AFTER
+    # every NAME-level refusal above, so a retired or wrong-scope spelling still gets its own,
+    # and BEFORE the E3 probe, which would splice an unusable value into a candidate store.
+    # A standalone-making null ``workset.registry`` is a path key no door may refuse.
+    value_err = None if makes_standalone else _set_value_error(
         canonical, value,
         command_scope=command_scope, config_path=config_path,
         system_settings_path=system_settings_path,
     )
-    if null_err is not None:
-        return null_err
-
-    # ⚑ A ``--null`` at a BOX SCALAR THE LAUNCH REFUSES A NULL AT (spec §2b); see
-    # :func:`_null_box_scalar_error`.  It sits beside the path door above and shares its
-    # two calls, so a key refused at the launch is refused here in the set door's words.
-    scalar_err = _null_box_scalar_error(
-        canonical, value,
-        command_scope=command_scope, config_path=config_path,
-        system_settings_path=system_settings_path,
-    )
-    if scalar_err is not None:
-        return scalar_err
-
-    # ⚑ A value at the BOX STORE the LAUNCH refuses (spec §0, §2c); see
-    # :func:`_box_store_value_error`. AFTER the ``--null`` guard above, so a present
-    # ``None`` keeps that door's message, and BEFORE the E3 probe, which would splice an
-    # unusable value into a candidate store.
-    box_store_err = _box_store_value_error(
-        canonical, value,
-        command_scope=command_scope, config_path=config_path,
-        system_settings_path=system_settings_path,
-    )
-    if box_store_err is not None:
-        return box_store_err
+    if value_err is not None:
+        return value_err
 
     # The ORDERING RULE, read off the spelling: see :func:`config.ref_order_error`. ⚑ BEFORE
     # the E3 probe, which would call a forward ref this cascade cannot see "dangling".
