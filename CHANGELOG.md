@@ -830,9 +830,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`box helper stop` stops the helper's whole subtree.** A stopped helper's own helpers kept running, and the
   director's `box helper list` did not show them. Each one now stops through the hub, deepest first, and is marked
   stopped; one the hub refuses is reported, keeps its state, and makes the command exit non-zero.
-- **`box helper cleanup --cascade` stops every descendant before removing it.** It stopped only the helper
-  named, so a descendant's container could keep running with its directories gone. Each one now stops through
-  the hub, deepest first; if the hub refuses any, no directory is removed and the command exits non-zero.
+- **`box helper cleanup` stops every descendant before removing it.** It stopped only the helper named, so a
+  descendant's container could keep running with its directories gone, with or without `--cascade`. Each one
+  now stops through the hub, deepest first; if the hub refuses any, no directory is removed and the command
+  exits non-zero. `--cascade` is now the default behavior; the flag is still accepted.
 - **Boxes and their helpers read the in-box kanibako binds from one table.** A helper kept its own copy of the
   package and `kanibako` command binds; it now gets the box's set, which adds the secrets profile snippet
   `/etc/profile.d/kanibako-secrets.sh`, a no-op in a helper with no secret mounted.

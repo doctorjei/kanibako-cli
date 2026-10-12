@@ -557,24 +557,28 @@ class TestStopCascades:
 
 
 class TestCascadeCleanupStopsTheSubtree:
-    """``cleanup --cascade`` stops every descendant through the hub, deepest first,
-    before it deletes any directory: a descendant's container never outlives its dirs."""
+    """``cleanup``, with or without ``--cascade``, stops every descendant through the
+    hub, deepest first, before it deletes any directory: a descendant's container never
+    outlives its dirs."""
 
+    @pytest.mark.parametrize("cascade", [False, True])
     def test_every_descendant_is_stopped_before_its_dirs_go(
-            self, helpers_env, capsys, monkeypatch):
+            self, helpers_env, capsys, monkeypatch, cascade):
         run_spawn(_make_args(depth=None, breadth=None, model=None))
         stops = _hub_replies_to_stop(monkeypatch, {"status": "ok"})
         _subtree(helpers_env / "helpers")
         capsys.readouterr()
 
-        assert run_cleanup(_make_args(number=1, cascade=True)) == 0
+        assert run_cleanup(_make_args(number=1, cascade=cascade)) == 0
         assert [s["helper_num"] for s in stops] == [3, 2, 1]
         assert [s["container_name"] for s in stops] == [
             "kb-t-helper-3", "kb-t-helper-2", "kb-t-helper-1"]
         assert "Cleaned up helper 1 and 2 descendant(s)." in capsys.readouterr().out
         assert not (helpers_env / "helpers" / "1").exists()
 
-    def test_a_refused_descendant_keeps_every_dir(self, helpers_env, capsys, monkeypatch):
+    @pytest.mark.parametrize("cascade", [False, True])
+    def test_a_refused_descendant_keeps_every_dir(
+            self, helpers_env, capsys, monkeypatch, cascade):
         run_spawn(_make_args(depth=None, breadth=None, model=None))
         stops: list[dict] = []
 
@@ -591,7 +595,7 @@ class TestCascadeCleanupStopsTheSubtree:
         level2, level3 = _subtree(helpers_env / "helpers")
         capsys.readouterr()
 
-        assert run_cleanup(_make_args(number=1, cascade=True)) == 1
+        assert run_cleanup(_make_args(number=1, cascade=cascade)) == 1
         assert [s["helper_num"] for s in stops] == [3, 2, 1]
         out, err = capsys.readouterr()
         assert "Cannot clean up helper 3: refusing to stop 'kb-t-helper-3'" in err
@@ -727,18 +731,22 @@ class TestCascadeCleanup:
         assert "Cleaned up helper 1 and 2 descendant(s)." in capsys.readouterr().out
         assert not (helpers / "1").exists()
 
-    def test_no_cascade_leaves_children(self, helpers_env, capsys):
-        """Without --cascade, children are left behind (orphaned)."""
+    def test_no_cascade_stops_and_removes_children(self, helpers_env, capsys, monkeypatch):
+        """Without --cascade the child's dir goes with its parent's, so the child is
+        stopped through the hub first, exactly as with --cascade."""
         run_spawn(_make_args(depth=None, breadth=None, model=None))
+        stops = _hub_replies_to_stop(monkeypatch, {"status": "ok"})
 
         helpers = helpers_env / "helpers"
         child_helpers = helpers / "1" / "helpers"
-        (child_helpers / "1").mkdir(parents=True)
+        (child_helpers / "2").mkdir(parents=True)
+        write_helper_state(child_helpers, 2, {"status": "running",
+                                              "container_name": "kb-t-helper-2"})
 
         capsys.readouterr()
-        # Cleanup without cascade — the child dir is inside the helper root,
-        # so it gets removed by shutil.rmtree anyway (part of the dir tree)
-        run_cleanup(_make_args(number=1, cascade=False))
+        assert run_cleanup(_make_args(number=1, cascade=False)) == 0
+        assert [s["helper_num"] for s in stops] == [2, 1]
+        assert "Cleaned up helper 1 and 1 descendant(s)." in capsys.readouterr().out
         assert not (helpers / "1").exists()
 
 

@@ -91,7 +91,8 @@ def add_helper_subparsers(p: argparse.ArgumentParser) -> None:
     cleanup_p.add_argument("number", type=int, help="Helper number to clean up")
     cleanup_p.add_argument(
         "--cascade", action="store_true",
-        help="Also stop and remove all descendant helpers, deepest first",
+        help="Stop and remove all descendant helpers too; this is now the default "
+             "behavior",
     )
     cleanup_p.set_defaults(func=run_cleanup)
 
@@ -453,9 +454,11 @@ def run_stop(args: argparse.Namespace) -> int:
 
 
 def run_cleanup(args: argparse.Namespace) -> int:
-    """Stop and remove a helper; with ``--cascade``, its whole subtree, every helper
-    stopped through the hub, deepest first, before any directory goes.  One the hub
-    refuses keeps its state, is reported, and keeps every directory (exit 1)."""
+    """Stop and remove a helper and its whole subtree (his 171-HC ruling): every
+    helper stops through the hub, deepest first, before any directory goes.  One the
+    hub refuses keeps its state, is reported, and keeps every directory (exit 1).
+    ``--cascade`` is accepted and changes nothing: removing a helper's directory
+    removes its descendants' too, so they are always stopped first."""
     helpers_dir = _helpers_dir()
     helper_num = args.number
     helper_root = helpers_dir / str(helper_num)
@@ -464,9 +467,7 @@ def run_cleanup(args: argparse.Namespace) -> int:
         print(f"Helper {helper_num} does not exist.", file=sys.stderr)
         return 1
 
-    cascade = getattr(args, "cascade", False)
-    targets = (_subtree(helpers_dir, helper_num) if cascade
-               else [(helpers_dir, helper_num)])
+    targets = _subtree(helpers_dir, helper_num)
     rc = 0
     for level, num in targets:
         state = read_helper_state(level, num)
@@ -488,7 +489,7 @@ def run_cleanup(args: argparse.Namespace) -> int:
 
     for level, num in targets:
         remove_helper_dirs(level, num)
-    if cascade:
+    if len(targets) > 1:
         print(f"Cleaned up helper {helper_num} and {len(targets) - 1} descendant(s).")
     else:
         print(f"Cleaned up helper {helper_num}.")

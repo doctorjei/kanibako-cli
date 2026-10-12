@@ -252,7 +252,7 @@ The runtime helper and fork verbs (formerly under `crab`) now live under `box`:
 | `box helper list` / `helper ls` | List helpers (`-q`) |
 | `box helper stop <n>` | Stop a helper and every helper under it |
 | `box helper respawn <n>` | Respawn a stopped helper |
-| `box helper cleanup <n>` | Clean up helper (`--cascade`) |
+| `box helper cleanup <n>` | Stop and remove a helper and every helper under it |
 | `box helper send <n> <msg>` | Message a helper |
 | `box helper broadcast <msg>` | Message all helpers |
 | `box helper log` | View message log (`-f`, `--from`, `--tail`) |
@@ -1132,8 +1132,7 @@ kanibako box helper spawn --depth 2 --breadth 3  # custom spawn limits
 kanibako box helper list                  # show all helpers with status
 kanibako box helper stop 1                # stop helper 1 and its helpers
 kanibako box helper respawn 1             # relaunch a stopped helper
-kanibako box helper cleanup 1             # stop and remove helper 1
-kanibako box helper cleanup 1 --cascade   # also remove all descendants
+kanibako box helper cleanup 1             # stop and remove helper 1 and its helpers
 
 # Messaging
 kanibako box helper send 1 "Analyze the auth module"
