@@ -67,11 +67,9 @@ The spec's enumeration also names `-S`/`-A` (`access` — `-S` selects the `rest
 `full` one). Listing an unwired entry would read as a contract this module honors — the same reason
 `settings_keyspace` deleted its unused `CATEGORY_SCOPES` rather than keeping it.
 
-The `access` key is read TWICE, deliberately. The CASCADE tier feeds `deliver_panel_permissions` /
-`deliver_directive_hook`, which WRITE it onto the box's own persisted agent config surface (§1A's
-PROJECTED-SURFACE EXCEPTION, a structural class rule), while the FLAG-folded tier feeds the
-ephemeral launch argv/env. Installing the flag at this level would make an ephemeral flag mutate a
-stored value — exactly what §1A forbids.
+The `access` key is read TWICE. The FLAG-folded tier feeds the launch argv/env; the CASCADE tier
+is passed to `deliver_panel_permissions` / `deliver_directive_hook`, which write no tier (`access`
+is not projected).
 
 `-M` is likewise barred from the codex config-projection RESOLVE (that consumer reads the cascade,
 never the CLI level), though the flag itself is wired here for the launch argv.

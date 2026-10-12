@@ -1096,25 +1096,16 @@ return whether a write occurred.
 
 #### `deliver_panel_permissions`
 
-Persists the box's resolved `access` TIER onto this agent's panel-visible config.
+Writes this agent's BOX-INVARIANT panel config; codex's `sandbox_mode` is the only one. ⚑ No tier
+is written: the `access` key is not projected, and the tier reaches the launched agent only as
+launch flags or env (the descriptor's `access_realization`).
 
 *config_root* is the box home as seen from the HOST (`proj.shell_path`); the launch call site
-passes it UNCONDITIONALLY for EVERY agent, and each implementation appends its own config surface
-beneath it (claude `.claude/settings.json`, goose `.config/goose/config.yaml`, codex
-`.codex/config.toml`).
+passes it for EVERY agent, and an implementation appends its own config surface beneath it (codex
+`.codex/config.toml`). *access* is the CASCADE-resolved tier, passed for an implementation that
+must refuse one it cannot render. Best-effort: the caller wraps the call.
 
-The VS Code panel spawns its OWN in-box agent WITHOUT kanibako's launch env, so the box's
-configured permission tier must be PERSISTED onto the agent's native config surface to reach it.
-⚑ This hook is that delivery, keyed on the CASCADE-resolved `access` and **never** on the
-per-launch `-S`/`-A` flags — spec §1A's projected-surface exception, because the projection
-OUTLIVES the launch.
-
-*access* is one of `restricted` / `editing` / `full`. ⚑ **An implementation MUST render every tier
-explicitly and MUST NOT fall through to the permissive arm for a tier it does not recognize;** the
-launch has already refused a tier this agent's descriptor cannot render, so an unexpected value
-here is a BUG and should raise.
-
-The `False` default is inherited by an agent with no panel-permission surface.
+The `False` default is inherited by an agent with no box invariant (claude, goose).
 
 #### `deliver_directive_hook`
 

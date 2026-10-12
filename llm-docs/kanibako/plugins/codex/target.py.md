@@ -152,29 +152,24 @@ stat/glob error ⇒ `False`, because a fresh start is always safe.
 ## The managed `~/.codex/config.toml` — two seams, one key set each
 
 The box's `config.toml` is a RECONCILED PROJECTION (D1): the launch seams re-materialize its
-model/provider/approval elements only on the start of a STOPPED box.
+model/provider/sandbox elements only on the start of a STOPPED box.
 
-### `deliver_panel_permissions` — and only it — owns approval and sandbox
+### `deliver_panel_permissions` — `sandbox_mode` only
 
-Codex approval/sandbox has NO VS Code settings key, and the `openai.chatgpt` panel spawns its own
-in-box codex without kanibako's launch flags, so this config.toml parity is the ONLY way the panel
-sees the box's tier. This method is the SOLE writer of the two managed root keys:
+The `openai.chatgpt` panel spawns its own in-box codex without kanibako's launch flags. This method
+is the SOLE writer of `sandbox_mode`, a BOX INVARIANT forced to `"danger-full-access"` whatever the
+*access* tier: the container is the sandbox, and a `workspace-write` sandbox there hangs the panel's
+app-server (no nested bubblewrap under podman). *access* is unused.
 
-* `approval_policy` is TIER-gated: `full` → `"never"`, `editing` → `"on-request"`, `restricted` →
-  removed while it still equals a value WE manage, which preserves a user-chosen one.
-* `sandbox_mode` is a BOX INVARIANT forced to `"danger-full-access"` ALWAYS, independent of the
-  resolved *access* tier — the container is the sandbox, so the panel's app-server must not attempt
-  a nested one.
-
-⚑ That invariant is why the panel's middle tier rides the APPROVAL axis while the CLI's rides
-`-s workspace-write`: writing `workspace-write` here is the configuration that hangs the app-server.
-Implementation: `kanibako.vscode.vscode_config.seed_codex_approval`.
+`approval_policy` is NOT written. The tier reaches codex only at launch, as argv flags from the
+`access_realization` rows in `codex-defaults.yaml`; the panel reads the user's own value.
+Implementation: `kanibako.vscode.vscode_config.seed_codex_sandbox_mode`.
 
 ### `deliver_directive_hook` — everything else in the file
 
 It seeds the instruction-delivery `[[hooks.SessionStart]]` group, its pre-computed trust hash, the
-directory trust, and — for a codex persona — the `model_provider` region. It writes the
-approval/sandbox keys NEVER, so no managed key has two writers; it accepts *access* per the seam
+directory trust, and — for a codex persona — the `model_provider` region. It NEVER writes
+`sandbox_mode`, so no managed key has two writers; it accepts *access* per the seam
 contract and does not use it.
 
 The box-side literals codex keys its trust entries on (the in-box config path and the workdir) are
@@ -326,8 +321,8 @@ guess must be overridden with `--doc llm-docs/kanibako/plugins/codex/target.py.m
 something silently at that exact line:
 
 * `deliver_panel_permissions` — the `sandbox_mode` invariant; writing `workspace-write` there hangs
-  the panel's app-server, and the line looks like an ordinary tier mapping.
-* `deliver_directive_hook` — "NEVER the approval/sandbox keys"; the file is right there and adding
+  the panel's app-server.
+* `deliver_directive_hook` — "NEVER the `sandbox_mode` key"; the file is right there and adding
   a second writer to a managed key is a one-line temptation.
 * `verify_persona` — both probe rules and the `/v1` `base_url` note. All three are stated backwards
   easily, and each wrong version refuses a box that works.
