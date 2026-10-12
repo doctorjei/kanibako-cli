@@ -12,6 +12,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **A plugin's `category_binds:` refusal of a bare-relative source now uses the settings-file wording.** It names the
+  hazard and ends "Spell the source out." For `bindings.ro`, `bindings.rw`, and `synced` it says the category takes
+  no root at any scope. For `caches`, `common`, and `seeded` it no longer says that, which was false: those categories
+  are rooted where their declaration supplies the root, and a `category_binds:` entry is stored as written. The
+  refusal itself is unchanged.
+
 - **kanibako no longer needs tmux on the host.** The bootstrap program runs inside the box, so a plain `start` is
   persistent whenever one is set, and `start --persistent` no longer exits 1 on a host without tmux. Pass
   `--ephemeral`, or set `agent.<agent>.bootstrap` to `none`, for foreground mode. See `MIGRATION.md`, "`start` no

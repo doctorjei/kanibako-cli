@@ -177,8 +177,9 @@ class TestLoadCommonRooting:
 
 
 class TestCategoryBindsTakeNoRoot:
-    """A ``category_binds:`` entry takes NO root at any scope (spec §2a), so a
-    bare relative source there is a plugin DEFECT — refused, not silently rooted.
+    """A ``category_binds:`` entry is stored as written — the loader supplies no root
+    (spec §2a), so a bare relative source there is a plugin DEFECT — refused, not
+    silently rooted.
 
     ⚑ The refusal is a property of the SOURCE, not of the category, so it is
     exercised on BOTH an ARMED category (``bindings.ro``) and a bare one
@@ -219,6 +220,35 @@ class TestCategoryBindsTakeNoRoot:
         assert "/home/agent/.guide" in msg
         assert "some/relative/path" in msg
         assert filename in msg
+
+    @pytest.mark.parametrize("category, abstract", [
+        ("bindings.ro", False), ("synced", False),
+        ("caches", True), ("common", True), ("seeded", True),
+    ])
+    def test_the_refusal_states_a_true_reason(self, declfile, category, abstract):
+        """The refusal is the shared ``settings_resolve.unrooted_source_message`` text,
+        and its reason is true of the category: an ABSTRACT category IS rooted where its
+        declaration supplies the root, so "takes NO root at any scope" would be false.
+        (Mutation: drop the abstract reason → the false sentence appears → RED.)"""
+        from kanibako.settings.settings_resolve import unrooted_source_message
+
+        package, filename = declfile(
+            "category_binds:\n"
+            f"  - category: {category}\n"
+            "    meta_ref: rel/src\n"
+            "    box_dest: \"$GUEST_HOME/.guide\"\n"
+        )
+        with pytest.raises(SettingsError) as e:
+            agent_defaults.load_category_binds(package, filename, "claude")
+        msg = str(e.value)
+        assert ("takes NO root at any scope" in msg) is not abstract, msg
+        if abstract:
+            assert f"{category} is rooted only where its declaration supplies" in msg, msg
+        else:
+            entry = f"category_bind 'agent.claude.{category}' entry at '/home/agent/.guide'"
+            assert msg == f"{filename}: " + unrooted_source_message(
+                entry, "rel/src", category,
+            )
 
     @pytest.mark.parametrize(
         "src", ["/abs", "~/x", "$XDG_DATA_HOME/x", "@system.channelroot/x"],

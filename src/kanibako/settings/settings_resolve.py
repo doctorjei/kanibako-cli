@@ -427,19 +427,36 @@ def refuse_unrooted_source(
     a declaration root is an ABSTRACT one by definition of the root table.
     """
     from kanibako.settings.agent_config import is_self_resolving
-    from kanibako.settings.settings_categories import (
-        ABSTRACT_CATEGORIES,
-        BARE_RELATIVE_SOURCE_HAZARD,
-    )
+    from kanibako.settings.settings_categories import ABSTRACT_CATEGORIES
 
     if is_self_resolving(src) or category in ABSTRACT_CATEGORIES:
         return
     raise SettingsError(
-        f"{category} entry at {dest!r} declares a bare-relative host source "
-        f"{src!r}; a source must fully resolve on its own — absolute, ~, $var or "
-        f"an @-ref. {category} takes NO root at any scope (spec §2a), so no later "
-        f"layer may supply the missing one: {BARE_RELATIVE_SOURCE_HAZARD}. "
-        f"Spell the source out.{_in_file(where)}"
+        unrooted_source_message(f"{category} entry at {dest!r}", src, category)
+        + _in_file(where)
+    )
+
+
+def unrooted_source_message(
+    entry: str, src: str, category: str, *, unrooted_because: str | None = None,
+) -> str:
+    """THE text of the bare-relative host-source refusal (spec §2a), for *entry* in *category*.
+
+    *unrooted_because* says why nothing will root *src*; it defaults to the reason that is
+    true of a CONCRETE category everywhere. A caller refusing an ABSTRACT category's leaf
+    must pass the reason true of its own path, because that category does take a root
+    where it is declared.
+    """
+    from kanibako.settings.settings_categories import BARE_RELATIVE_SOURCE_HAZARD
+
+    because = unrooted_because or (
+        f"{category} takes NO root at any scope (spec §2a), so no later layer may "
+        f"supply the missing one"
+    )
+    return (
+        f"{entry} declares a bare-relative host source {src!r}; a source must fully "
+        f"resolve on its own — absolute, ~, $var or an @-ref. {because}: "
+        f"{BARE_RELATIVE_SOURCE_HAZARD}. Spell the source out."
     )
 
 

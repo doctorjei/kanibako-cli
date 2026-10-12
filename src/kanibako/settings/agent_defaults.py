@@ -47,12 +47,18 @@ from kanibako.settings.agent_config import (
 from kanibako.settings.config_io import parse_packaged
 from kanibako.settings.core_defaults import add_bind, behavior_defaults
 from kanibako.settings.messages import PER_OWNER_SET_WORDS
+from kanibako.settings.settings_categories import ABSTRACT_CATEGORIES
 from kanibako.settings.settings_keyspace import (
     ACCESS_TIERS,
     is_terminal_category_tail,
     key_validity,
 )
-from kanibako.settings.settings_resolve import UNSET, SettingsError, expand_guest_home
+from kanibako.settings.settings_resolve import (
+    UNSET,
+    SettingsError,
+    expand_guest_home,
+    unrooted_source_message,
+)
 from kanibako.targets.base import (
     AccessRealization,
     AccessTierRow,
@@ -727,12 +733,15 @@ def load_category_binds(
         ident = f"{category_key!r} entry at {box_dest!r}"
 
         if not is_self_resolving(host_src):
-            raise SettingsError(
-                f"{filename}: category_bind {ident} declares a bare-relative "
-                f"host source {host_src!r}; a source must fully resolve on its "
-                "own (absolute, ~, $var or an @-ref) — bindings take no root at "
-                "any scope (spec §2a L474-486)"
-            )
+            because = None
+            if category in ABSTRACT_CATEGORIES:
+                because = (
+                    f"{category} is rooted only where its declaration supplies the root "
+                    f"(spec §2a), and a category_binds entry is stored as written"
+                )
+            raise SettingsError(f"{filename}: " + unrooted_source_message(
+                f"category_bind {ident}", host_src, category, unrooted_because=because,
+            ))
 
         try:
             add_bind(
