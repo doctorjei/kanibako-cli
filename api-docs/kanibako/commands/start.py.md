@@ -29,7 +29,6 @@ _BOOTSTRAP_SESSION = 'kanibako'
 _AGENT_EXIT_STOP_BOUND = 3 * SupervisorConfig.poll_interval + 4.0
 _AGENT_EXIT_STOP_STEP = 0.1
 _COMMAND_ENDED_BEFORE_ATTACH = "Note: the session ended before it could attach (the command after '--' exited). A persistent box does not report the command's exit status; for a one-off, use 'kanibako shell -- <command>'."
-_ROTATE_MAX_BYTES = 1048576
 _SOCKET_HASH_LEN = 16
 ```
 
@@ -201,7 +200,6 @@ def _container_exit_code(runtime: ContainerRuntime, name: str, *, undeterminable
 def _interactive_host() -> bool
 def _restore_host_terminal() -> None
 def _validate_mounts(mounts: list, logger) -> None
-def _rotate_file(path: Path) -> None
 def _refuse_legacy_container(runtime, proj: ProjectPaths) -> str | None
 ```
 

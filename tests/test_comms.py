@@ -93,12 +93,12 @@ class TestLogRotation:
 
     def test_broadcast_rotation(self, tmp_path):
         """broadcast.log is rotated when it exceeds 1 MiB."""
-        from kanibako.commands.start import _rotate_file
+        from kanibako.log import ROTATE_MAX_BYTES, rotate_if_over
 
         log = tmp_path / "broadcast.log"
         log.write_text("x" * (1_048_576 + 1))
 
-        _rotate_file(log)
+        assert rotate_if_over(log, ROTATE_MAX_BYTES) is True
 
         assert log.exists()
         assert log.stat().st_size == 0
@@ -108,38 +108,56 @@ class TestLogRotation:
 
     def test_no_rotation_under_threshold(self, tmp_path):
         """Files under 1 MiB are not rotated."""
-        from kanibako.commands.start import _rotate_file
+        from kanibako.log import ROTATE_MAX_BYTES, rotate_if_over
 
         log = tmp_path / "broadcast.log"
         log.write_text("small content")
 
-        _rotate_file(log)
+        assert rotate_if_over(log, ROTATE_MAX_BYTES) is False
 
         assert log.read_text() == "small content"
         assert not (tmp_path / "broadcast.log.1").exists()
 
     def test_rotation_missing_file(self, tmp_path):
         """Rotation handles missing files gracefully."""
-        from kanibako.commands.start import _rotate_file
+        from kanibako.log import ROTATE_MAX_BYTES, rotate_if_over
 
-        _rotate_file(tmp_path / "nonexistent.log")  # should not raise
+        missing = tmp_path / "nonexistent.log"
+        assert rotate_if_over(missing, ROTATE_MAX_BYTES) is False
+        assert not missing.exists()
+
+    def test_rotation_at_exactly_the_threshold(self, tmp_path):
+        """A file holding exactly max_bytes rotates; one byte less does not."""
+        from kanibako.log import rotate_if_over
+
+        log = tmp_path / "chat.md"
+        log.write_text("x" * 99)
+        assert rotate_if_over(log, 100) is False
+        log.write_text("x" * 100)
+        assert rotate_if_over(log, 100) is True
+        assert (tmp_path / "chat.md.1").read_text() == "x" * 100
+        assert log.read_text() == ""
 
     def test_message_log_rotation(self, tmp_path):
         """MessageLog rotates when file exceeds threshold."""
-        from kanibako.channels.helper_listener import MessageLog, _LOG_MAX_BYTES
+        from kanibako.channels.helper_listener import MessageLog
+        from kanibako.log import ROTATE_MAX_BYTES
 
         log_path = tmp_path / "messages.jsonl"
         # Pre-fill with data just under the threshold.
-        log_path.write_text("x" * (_LOG_MAX_BYTES - 10))
+        log_path.write_text("x" * (ROTATE_MAX_BYTES - 10))
 
         log = MessageLog(log_path)
         # Write enough to push over the threshold.
         log.log_control("test-event")
+        backup = tmp_path / "messages.jsonl.1"
+        backup_size = backup.stat().st_size
+        # The next entry lands in the fresh file, not the backup.
+        log.log_control("after-rotation")
         log.close()
 
-        backup = tmp_path / "messages.jsonl.1"
-        assert backup.exists()
-        # New file should be small (just the last entry).
+        assert backup.stat().st_size == backup_size
+        assert "after-rotation" in log_path.read_text()
         assert log_path.stat().st_size < 1000
 
     def test_message_log_no_rotation_under_threshold(self, tmp_path):

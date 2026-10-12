@@ -1,9 +1,13 @@
-"""Logging setup for kanibako."""
+"""Logging setup for kanibako, and the size rotation of the files it appends to."""
 
 from __future__ import annotations
 
 import logging
 import sys
+from pathlib import Path
+
+#: The size at which an append-only log rotates.
+ROTATE_MAX_BYTES = 1_048_576  # 1 MiB
 
 
 def setup_logging(verbose: bool = False, *, timestamps: bool = False) -> None:
@@ -41,3 +45,19 @@ def get_logger(name: str) -> logging.Logger:
     if name == "kanibako" or name.startswith("kanibako."):
         return logging.getLogger(name)
     return logging.getLogger(f"kanibako.{name}")
+
+
+def rotate_if_over(path: Path, max_bytes: int) -> bool:
+    """Move *path* to ``<path>.1`` and leave an empty *path* if it holds *max_bytes* or more.
+
+    Returns whether it rotated.  A missing *path* is not rotated.  A writer holding *path*
+    open must reopen it after a rotation: its descriptor follows the file to ``.1``.
+    """
+    try:
+        if path.stat().st_size < max_bytes:
+            return False
+    except OSError:
+        return False
+    path.rename(path.with_suffix(path.suffix + ".1"))
+    path.touch()
+    return True

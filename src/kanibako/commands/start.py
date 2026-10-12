@@ -61,7 +61,7 @@ from kanibako.identifiers import agent_node_case, find_identifier
 from kanibako.errors import (AmbiguousNameError, ConfigError, ContainerError,
                              DerivedBoxNameError, KanibakoError, ProjectError)
 from kanibako.launch.box_identity import box_name_cure
-from kanibako.log import get_logger
+from kanibako.log import ROTATE_MAX_BYTES, get_logger, rotate_if_over
 from kanibako.runtime.rig_registry import load_registry, registry_path
 from kanibako.runtime.rig_resolve import resolve_rig
 from kanibako.settings.settings_categories import (
@@ -10074,7 +10074,7 @@ def _seed_channel_files(std, proj) -> None:
     The default log (``general.md``) + the reserved BROADCAST log, at the SYSTEM chat
     dir (every mode) and at the WORKSET chat dir for primary/named.  Create-if-absent
     (idempotent — never overwrites a user-edited log); the partition source DIRS
-    themselves are mkdir'd by the L7 rw-branch.  Keeps ``_rotate_file`` on each
+    themselves are mkdir'd by the L7 rw-branch.  Keeps ``rotate_if_over`` on each
     broadcast log (A5 — parity with the legacy ``broadcast.log`` rotation).
 
     ⚑⚑ EVERY PATH HERE IS READ OFF A RESOLVED KEY, never joined onto a channel root.
@@ -10119,7 +10119,7 @@ def _seed_channel_files(std, proj) -> None:
                 if not log.exists():
                     log.touch()
             if broadcast is not None:
-                _rotate_file(broadcast)
+                rotate_if_over(broadcast, ROTATE_MAX_BYTES)
         except OSError:
             # Best-effort: a genuinely unwritable source surfaces at launch.
             pass
@@ -10474,22 +10474,6 @@ def _validate_mounts(mounts: list, logger) -> None:
                 f"Warning: mount source does not exist: {src}",
                 file=sys.stderr,
             )
-
-
-_ROTATE_MAX_BYTES = 1_048_576  # 1 MiB
-
-
-def _rotate_file(path: Path) -> None:
-    """Rotate *path* if it exceeds the size threshold."""
-    try:
-        size = path.stat().st_size
-        if not isinstance(size, int) or size < _ROTATE_MAX_BYTES:
-            return
-    except (OSError, TypeError):
-        return
-    backup = path.with_suffix(path.suffix + ".1")
-    path.rename(backup)
-    path.touch()
 
 
 # Length (hex chars) of the hashed socket name (companion § "Box and helper

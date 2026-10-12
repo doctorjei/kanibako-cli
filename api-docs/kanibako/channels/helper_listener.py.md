@@ -8,7 +8,6 @@ _Signatures only: no comments, no docstrings, no bodies._
 
 ```
 logger = get_logger('helper_listener')
-_LOG_MAX_BYTES = 1048576
 ```
 
 ## Functions

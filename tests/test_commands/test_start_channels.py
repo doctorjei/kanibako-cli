@@ -337,7 +337,8 @@ class TestNullSystemChannelSeedsNothing:
         assert nulled.channels_broadcast is None
         rotated = []
         monkeypatch.setattr(
-            "kanibako.commands.start._rotate_file", lambda path: rotated.append(path),
+            "kanibako.commands.start.rotate_if_over",
+            lambda path, max_bytes: rotated.append(path),
         )
         _seed_channel_files(nulled, named_proj)
         wch = _ch.workset_channel_paths(named_proj, nulled)
@@ -351,7 +352,8 @@ class TestNullSystemChannelSeedsNothing:
         """The other half: a key that is merely unset is not a null, so the rotate runs."""
         rotated = []
         monkeypatch.setattr(
-            "kanibako.commands.start._rotate_file", lambda path: rotated.append(path),
+            "kanibako.commands.start.rotate_if_over",
+            lambda path, max_bytes: rotated.append(path),
         )
         _seed_channel_files(std, named_proj)
         assert std.channels_broadcast in rotated

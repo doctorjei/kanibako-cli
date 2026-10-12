@@ -21,7 +21,7 @@ from kanibako.channels.helpers import (
 )
 from kanibako.errors import ContainerError
 from kanibako.runtime.container import ContainerRuntime
-from kanibako.log import get_logger
+from kanibako.log import ROTATE_MAX_BYTES, get_logger, rotate_if_over
 from kanibako.settings.core_defaults import core_bind_slots, helper_budget_dest
 from kanibako.settings.settings_resolve import (
     BOX_PINNED_STATE_RELPATH,
@@ -595,9 +595,6 @@ class HelperHub:
         return {"status": "ok", "path": str(new_path), "name": new_name}
 
 
-_LOG_MAX_BYTES = 1_048_576  # 1 MiB
-
-
 class MessageLog:
     """Append-only JSONL log with size-based rotation."""
 
@@ -638,16 +635,9 @@ class MessageLog:
 
         Caller must hold ``self._lock``.
         """
-        try:
-            pos = self._file.tell()
-        except OSError:
-            return
-        if pos < _LOG_MAX_BYTES:
-            return
-        self._file.close()
-        backup = self._path.with_suffix(self._path.suffix + ".1")
-        self._path.rename(backup)
-        self._file = open(self._path, "a")
+        if rotate_if_over(self._path, ROTATE_MAX_BYTES):
+            self._file.close()
+            self._file = open(self._path, "a")
 
     def close(self) -> None:
         with self._lock:
