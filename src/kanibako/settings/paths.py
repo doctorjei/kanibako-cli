@@ -2309,7 +2309,12 @@ def iter_workset_projects(std: StandardPaths, config: BootstrapConfig) -> _Works
 
     for ws_name in sorted(registry):
         root = registry[ws_name]
-        if not root.is_dir():
+        try:
+            present = is_dir_unless_gone(root)
+        except ConfigError as exc:  # unreadable or looped: named, and the sweep goes on
+            print(WARN_WS_BAD_LOAD % (ws_name, exc), file=sys.stderr)
+            continue
+        if not present:
             print(WARN_WS_NO_ROOT % (ws_name, root), file=sys.stderr)
             continue
         try:
@@ -2324,10 +2329,17 @@ def iter_workset_projects(std: StandardPaths, config: BootstrapConfig) -> _Works
         # open a window for two members to disagree about the same document.
         boxes_dir = ws.projects_dir
         for proj in ws.projects:
-            has_project_dir = (boxes_dir / proj.name).is_dir()
             # ⚑ Presence is checked at the REGISTERED path — ``source_path`` IS the
             # ``boxes:`` value, so there is no second read and nothing to re-derive.
-            has_workspace = proj.source_path.is_dir()
+            # ⚑ A path kanibako cannot see is named and counted PRESENT, never "missing".
+            present_dirs = []
+            for path in (boxes_dir / proj.name, proj.source_path):
+                try:
+                    present_dirs.append(is_dir_unless_gone(path))
+                except ConfigError as exc:
+                    print(f"Warning: {exc}", file=sys.stderr)
+                    present_dirs.append(True)
+            has_project_dir, has_workspace = present_dirs
             if has_project_dir and has_workspace:
                 status = STATUS_OK
             elif has_project_dir and not has_workspace:

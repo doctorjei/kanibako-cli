@@ -69,8 +69,8 @@ from kanibako.settings.workset_dirkeys import (
     EarlyScope, EarlySystem, _stored_repoint, early_repoint, refuse_inherited_per_owner,
     resolve_workset_dir_key,
 )
-from kanibako.utils import (WORKSET_SEGMENT_PRIMARY, WORKSET_SEGMENT_STANDALONE, is_file_unless_gone,
-                            literal_path, refuse_unreadable_file)
+from kanibako.utils import (WORKSET_SEGMENT_PRIMARY, WORKSET_SEGMENT_STANDALONE, is_dir_unless_gone,
+                            is_file_unless_gone, literal_path, refuse_unreadable_file)
 # ⚑ FORWARD edge of a documented cycle: ``settings/paths.py`` breaks it by DEFERRING
 # its ``project.workset`` imports into function bodies — do not add a module-scope
 # edge back this way.
@@ -1914,10 +1914,11 @@ def load_workset(root: Path, name: str, *, early_system: EarlySystem) -> Workset
 
     ⚑ *name* is REQUIRED and comes from the global registry's ``worksets:`` section —
     the caller reached *root* through that mapping, and it is the only record of the
-    name there is.
+    name there is.  ⚑ An unreadable or looped *root* refuses, naming it (``ConfigError``);
+    only a definitively absent one is ``WorksetError``.
     """
     root = Path(literal_path(root))
-    if not root.is_dir():
+    if not is_dir_unless_gone(root):
         raise WorksetError(f"Workset root does not exist: {root}")
     return _load_workset(root, name, early_system=early_system)
 

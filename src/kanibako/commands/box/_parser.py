@@ -2882,7 +2882,7 @@ def _named_member_refusal(std, config, target: str, *, purge: bool) -> str | Non
     from the cascade, whose message names ``<workset>/<box>``; that is the refusal.
     Any other miss is ``None``, left to ``run_rm``'s own lookups.
     """
-    from kanibako.errors import AmbiguousNameError
+    from kanibako.errors import AmbiguousNameError, ConfigError
     from kanibako.launch.box_resolve import detect_box_or_default
     from kanibako.settings.paths import (
         _resolve_workset_or_connected,
@@ -2893,6 +2893,13 @@ def _named_member_refusal(std, config, target: str, *, purge: bool) -> str | Non
         raw = resolve_designation(std, target, unknown_name_is_path=False, name_first=True)
     except AmbiguousNameError as e:
         return f"Error: {e}"
+    except ConfigError as e:
+        # ⚑ ``<workset>/<box>`` names its workset, so that workset's refusal (unreadable,
+        # looped) is the answer, as ``box info`` gives it.  A bare name's scan of OTHER
+        # worksets is no answer about this box: run_rm's own lookups decide.
+        if designation_route(target, name_first=True) is DesignationRoute.QUALIFIED:
+            return f"Error: {e}"
+        return None
     except Exception:  # noqa: BLE001 - any other miss is left to run_rm's own lookups
         return None
     raw_dir = Path(literal_path(raw))
@@ -3023,7 +3030,6 @@ def run_rm(args: argparse.Namespace) -> int:
             cure_ref=box_cure_ref(BoxMode.primary, name, None, metadata_dir),
             consequence=None if args.purge else _DEREGISTER_LIVE):
         return 1
-    print(f"Removing project: {name} ({path})")
 
     image = (_read_box_image(_box_settings_files(BoxMode.primary, metadata_dir, None)[0])
              if not args.purge and metadata_dir.is_dir() else None)
@@ -3035,6 +3041,8 @@ def run_rm(args: argparse.Namespace) -> int:
         if not _confirm_purge(plan, force=args.force, retained=loop_keeps):
             print("Aborted (nothing changed).")
             return 2
+    # ⚑ After every refusal and the confirmation, so no refusal follows the progress line.
+    print(f"Removing project: {name} ({path})")
     unregister_primary_box_name(std.primary_workset, name, early=_early_scope(std, BoxMode.primary))
     print(f"Removed '{name}' from the registry")
 

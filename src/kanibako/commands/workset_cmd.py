@@ -496,7 +496,7 @@ def run_list(args: argparse.Namespace) -> int:
         try:
             ws = load_workset(root, name, early_system=std.early_system)
             count: int | None = len(ws.projects)
-        except WorksetError as e:
+        except (WorksetError, ConfigError) as e:
             print(f"Warning: working set '{name}' could not be read: {e}", file=sys.stderr)
             count = None
         rows.append((name, count, str(root)))
