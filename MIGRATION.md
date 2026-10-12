@@ -7588,6 +7588,20 @@ it is then absent. That discards your edits to the file, and the refresh also re
 shipped templates; plain `kanibako setup` is not enough (see
 "A store set up by `1.8.0rc2` has a broken comms hook, and upgrading does not replace it").
 
+### A login shell in an older box cannot find `claude`
+
+**Read this if `bash -lc claude` or `sh -lc claude` in a box says `claude: not found`.**
+
+**What changed.** A login shell's `/etc/profile` resets `PATH`, dropping `~/.local/bin`, where the agent
+binary is bound. A new box's `~/.profile` now puts it back. That file is seeded once, at create, so a box
+created by v1.7.2 or an earlier 1.8.0 build keeps its old `~/.profile`, and upgrading does not change it.
+
+**What you must do.** In each such box, run once:
+
+```sh
+echo 'case ":$PATH:" in *":$HOME/.local/bin:"*) ;; *) PATH="$HOME/.local/bin:$PATH"; export PATH ;; esac' >> ~/.profile
+```
+
 ### Credential writeback checks the box's file and keeps a backup
 
 **Read this if a box's credential file is a symlink, or if you keep files named `*.bak` beside your
