@@ -136,18 +136,34 @@ class TestDestinationForceable:
 
     @pytest.mark.parametrize("row", ROWS)
     @pytest.mark.parametrize("verb", VERBS)
-    def test_force_passes(self, env, capsys, request, verb, row):
-        if (verb, row) == ("cvW", "in_XN"):
-            # Plan § 4 lists this cell as newly allowed with --force, but the member arm
-            # of ``refuse_existing_box`` (``add_project``) refuses it whatever the flag,
-            # and ``test_workset_nesting.py`` pins that for ``workset connect``.
-            request.applymarker(pytest.mark.xfail(
-                strict=True, reason="refuse_existing_box's member arm is unforceable"))
+    def test_force_passes(self, env, capsys, verb, row):
         std, area = env
         src = _source(verb, area, capsys)
         dest, _what = _forceable_dests(std, area)[row]
         rc = _relocate(verb, src, dest, force=True)
         assert rc == 0, capsys.readouterr().err
+
+
+def _tree_digest(tree: Path) -> dict[str, str]:
+    """Every file under *tree* (relative path → sha256)."""
+    import hashlib
+    return {str(p.relative_to(tree)): hashlib.sha256(p.read_bytes()).hexdigest()
+            for p in sorted(tree.rglob("*")) if p.is_file() and not p.is_symlink()}
+
+
+class TestInsideAMemberWithForce:
+    """His Q4Jei 176-4B (C) answer, "yes": `convert --workset --move` inside a member is
+    newly allowed with --force.  No file of the member is overwritten."""
+
+    def test_convert_workset_move_inside_a_member(self, env, capsys):
+        std, area = env
+        (area / "XN" / "f.txt").write_text("theirs")
+        before = _tree_digest(area / "XN")
+        dest = area / "XN" / "sub"
+        assert _relocate("cvW", area / "s", dest, force=True) == 0, capsys.readouterr().err
+        after = _tree_digest(area / "XN")
+        assert before and all(after.get(path) == digest for path, digest in before.items())
+        assert (dest / "f.txt").read_text() == "data"
 
 
 class TestRepointedStandaloneStore:
@@ -331,3 +347,25 @@ class TestThroughALink:
         assert rc == 1
         err = capsys.readouterr().err
         assert f"Cannot remap 's' onto '{dest}': it is {what}. " + SHARE in err, err
+
+
+class TestKeptStoreIsNotCarried:
+    """A standalone's store its own ``workset.yaml`` repoints outside the root is the user's
+    directory: the relocation keeps it, so a box inside it is not carried away."""
+
+    def test_box_in_a_kept_store(self, env, capsys):
+        import shutil
+
+        from kanibako.settings.config_io import write_nested_key
+        std, area = env
+        root = _standalone_source(area, capsys)
+        store = area / "ustore"
+        write_nested_key(root / "workset.yaml", ("workset",), "boxes", str(store))
+        shutil.move(str(root / "box_data"), str(store))
+        assert _create("--force", "--name", "i", str(store / "inner")) == 0
+        (store / "inner" / "keep.txt").write_text("theirs")
+        capsys.readouterr()
+        dest = area / "d"
+        assert _relocate("cvD", root, dest, force=False) == 0, capsys.readouterr().err
+        assert (store / "inner" / "keep.txt").read_text() == "theirs"
+        assert (dest / "f.txt").read_text() == "data"

@@ -402,8 +402,7 @@ class TestRemap:
             self, env, capsys, monkeypatch, other_ws):
         """Inside another member's external dir, the remap shares that box's tree: refused
         by name unless --force (keyspace § 0), which records it and keeps both rows.
-        The forced source is a primary box: a member source is still refused at connect
-        (``refuse_existing_box`` refuses a dir under a connected one, whatever the flag)."""
+        The forced source is a primary box."""
         asked = self._confirms(monkeypatch)
         release = _lifecycle.release_project
         monkeypatch.setattr(_lifecycle, "release_project",

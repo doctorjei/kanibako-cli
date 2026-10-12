@@ -832,7 +832,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`box convert --workset` refuses, unless `--force`, a box whose workspace is another standalone box's root.**
   The convert absorbed that box and dropped its registry row, without asking.
 - **A `workset connect` inside another workset's member names that member and its path,** not "already
-  connected".
+  connected", and the refusal names `--force`. With `--force`, the connect, and `box convert --workset --move`
+  into such a path, share the member's tree; before, both were refused whatever the flag.
 - **`box move` and `box convert --move` refuse, unless `--force`, a destination inside another box's
   workspace, root, or store,** as `create` and `remap` do. All four now also refuse a path inside another box's
   workspace reached through a link, and one inside a standalone box's store repointed outside its root. A link

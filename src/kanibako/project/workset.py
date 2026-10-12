@@ -2078,7 +2078,9 @@ def refuse_existing_box(source: Path, std: StandardPaths, *, force: bool = False
 
     Keyspace § 0: a standalone root, by its path, a link, or a linked parent, is another
     box's.  Connecting it overwrites no file, so it is refused unless --force, and with
-    --force ``add_project`` absorbs the box.
+    --force ``add_project`` absorbs the box.  A path inside another member's workspace
+    shares that tree: refused unless --force too.  The member's own path is refused
+    whatever the flag.
     """
     from kanibako.launch import box_resolve
 
@@ -2100,12 +2102,16 @@ def refuse_existing_box(source: Path, std: StandardPaths, *, force: bool = False
     existing = box_resolve.find_connected_external_box(source, std)
     if existing is not None and (Path(literal_path(existing.box_path))
                                  != Path(literal_path(source))):
-        raise WorksetError(
-            f"Cannot connect '{resolved_source}': it is inside the workspace of member "
-            f"'{existing.box_name}' of workset '{existing.workset_name}' "
-            f"({existing.box_path}). Choose another path."
-        )
-    if existing is not None:
+        # Inside a member, the two boxes share its tree and no file is overwritten, so
+        # --force passes it (keyspace § 0).
+        if not force:
+            raise WorksetError(
+                f"Cannot connect '{resolved_source}': it is inside the workspace of member "
+                f"'{existing.box_name}' of workset '{existing.workset_name}' "
+                f"({existing.box_path}). Both boxes would claim it: re-run with --force to "
+                "share it, or choose another path."
+            )
+    elif existing is not None:
         raise WorksetError(
             f"Cannot connect '{resolved_source}': it is already connected "
             f"as project '{existing.box_name}' in workset "

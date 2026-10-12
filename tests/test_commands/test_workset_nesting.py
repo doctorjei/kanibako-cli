@@ -62,6 +62,13 @@ def _standalone(std, area: Path, capsys, root: Path | None = None) -> tuple[Path
     return root, name
 
 
+def _tree_digest(tree: Path) -> dict[str, str]:
+    """Every file under *tree* (relative path → sha256): proof no file was overwritten."""
+    import hashlib
+    return {str(p.relative_to(tree)): hashlib.sha256(p.read_bytes()).hexdigest()
+            for p in sorted(tree.rglob("*")) if p.is_file() and not p.is_symlink()}
+
+
 def _owner(std, path: Path) -> str | None:
     from kanibako.launch import box_resolve
     owned = box_resolve.find_connected_external_box(path, std)
@@ -123,16 +130,30 @@ class TestConnectInsideAMember:
         add_project(other, "XN", ext, std)
         return ext
 
-    @pytest.mark.parametrize("force", [False, True])
-    def test_inside_a_member_names_the_members_path(self, env, capsys, force):
+    def test_inside_a_member_names_the_members_path(self, env, capsys):
         std, area = env
         ext = self._member(std, area)
-        assert _connect("wn", ext / "sub", "m", force=force) == 1
+        assert _connect("wn", ext / "sub", "m", force=False) == 1
         err = capsys.readouterr().err
         assert (f"Cannot connect '{ext / 'sub'}': it is inside the workspace of member "
                 f"'XN' of workset 'other' ({ext}).") in err, err
+        assert "re-run with --force" in err, err
         assert "already connected as project" not in err
         assert "m" not in _members(std, "wn")
+
+    def test_force_connects_inside_a_member(self, env, capsys):
+        """His Q4Jei 176-4B (C) answer, "yes", to "Newly allowed with --force: `workset
+        connect` / `convert --workset --move` inside a member": no file is overwritten,
+        so --force shares the member's tree."""
+        std, area = env
+        ext = self._member(std, area)
+        (ext / "sub" / "f.txt").write_text("theirs")
+        before = _tree_digest(ext)
+        assert _connect("wn", ext / "sub", "m", force=True) == 0, capsys.readouterr().err
+        assert _members(std, "wn").get("m") == str(ext / "sub")
+        after = _tree_digest(ext)
+        assert before and all(after.get(path) == digest for path, digest in before.items())
+        assert _members(std, "other").get("XN") == str(ext)
 
     def test_the_members_own_path_keeps_its_message(self, env, capsys):
         std, area = env

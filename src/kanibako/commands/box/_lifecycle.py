@@ -1235,7 +1235,7 @@ def _refuse_relocation_nesting(
     Keyspace § 0 "Per-owner resources".  Whatever the flag, so first: *dest* inside the
     source's own store while the op moves or retires it (*store_kept* false), where the
     workspace would be copied into the store or deleted with it; and another box's tree
-    inside what the op removes (the workspace, and the store it retires), which the op
+    inside what the op removes (the workspace, and the store if it is deleted), which the op
     would carry away.  Then *dest* is judged as the box it becomes (the TARGET mode, name,
     and workset) by :func:`_dest_nesting_refusal`: inside another box's tree is refused
     unless --force.
@@ -1261,7 +1261,13 @@ def _refuse_relocation_nesting(
     own_ref = (None if own_root is not None
                else f"{state.ws.name}/{state.name}" if state.mode is BoxMode.named and state.ws
                else state.name)
-    carried = [state.workspace_path] + ([] if store_kept else [store])
+    # The store is carried only when the op removes it: a standalone's store its own
+    # ``workset.yaml`` repoints is the user's directory, which the teardown keeps.
+    retired = not store_kept and (
+        state.mode is not BoxMode.standalone
+        or standalone_store_teardown_plan(
+            state.metadata_path, early=_early_scope(std, BoxMode.standalone))[0] is not None)
+    carried = [state.workspace_path] + ([store] if retired else [])
     hit = _other_box_within(carried, std, standalones, own_ref=own_ref)
     if hit is not None:
         what, path, entry = hit
