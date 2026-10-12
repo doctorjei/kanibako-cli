@@ -980,7 +980,7 @@ True only if *root* carries the standalone box MARKER (presence-based).
 P5a: the marker is a STORED `workset.registry: null` in the root `workset.yaml` AT *root*
 (`<root>/workset.yaml`, NOT inside `box_data/`), PRESENT. The FILE (carrying that null)
 is the standalone self-declaration (design D4; the former `box.mode == "standalone"` read was
-DROPPED). The settings file OVERRIDES any workset determination (D3-mode #1); reading the
+DROPPED). The settings file OVERRIDES any workset tree determination (D3-mode 3); reading the
 stored null keeps an unrelated `box_data/` from being mistaken for a marker. Delegates to
 `box_resolve.stores_standalone_registry_null` (the single definition of the presence check).
 
@@ -1000,8 +1000,8 @@ Detection order:
    workset by a live `boxes:` connection record. Runs FIRST so a force-connected box (which keeps
    its on-disk marker) resolves as its workset box, never re-imported as standalone.
 2. **In-place standalone marker** — a root `workset.yaml` storing `registry: null` AT *project_dir*
-   declares it standalone (D3-mode #1); OVERRIDES workset tree membership. Imported (registered) on
-   discovery.
+   declares it standalone (D3-mode 3); OVERRIDES workset tree membership. Vetted, never
+   registered (`import_reconcile.check_standalone`).
 3. **Workset** — *project_dir* lives inside a registered workset root (`workspaces/` subdirectory
    first, then the root itself).
 4. **Default (name-based)** — one-pass scan of the PRIMARY per-workset `boxes:` membership
@@ -1028,18 +1028,16 @@ reverse index, scanned by `box_resolve` (replaces the deleted global `connected:
 
 ### Step 2 — marker-first precedence
 
-A box's own in-place settings file is the highest-precedence, authoritative standalone
-self-declaration and OVERRIDES any workset TREE determination — a workset (even one whose tree
-physically CONTAINS this box) must NOT be able to "steal" a box that declares itself standalone. (A
-LIVE connection is the one exception, resolved by step 1.) This mirrors the marker-first precedence
-of `box_resolve.detect_box_mode` (its step 1) and keys on the SAME standalone-marker signal
-(`workset.yaml` storing `registry: null`, via `_is_standalone_meta_dir` →
-`box_resolve.stores_standalone_registry_null`) — workset/primary boxes don't store null.
-Only the resolved dir itself is inspected there (an ancestor marker is
-still handled by the step-5 walk); this matches `detect_box_mode`, which likewise honors the
-in-place marker only at `project_dir` before the workset scan. A GENUINE nested standalone (with NO
-connection record) is authoritative on disk → import (register) on discovery, exactly as the step-5
-walk does.
+A box's own in-place settings file is its standalone self-declaration and OVERRIDES any workset
+TREE determination — a workset (even one whose tree physically CONTAINS this box) must NOT be able to
+"steal" a box that declares itself standalone. (A LIVE connection is the one exception, resolved by
+step 1.) `box_resolve.detect_box_mode` checks the same marker as its D3-mode 3, after its two
+registry checks and before it calls this treewalk. Both key on one signal (`workset.yaml` storing
+`registry: null`, via `_is_standalone_meta_dir` → `box_resolve.stores_standalone_registry_null`);
+workset/primary boxes don't store null. Only the resolved dir itself is inspected here; an ancestor
+marker is the step-5 walk's. `import_reconcile.check_standalone` then vets the root but never
+registers it. A malformed marker file is refused only after steps 3-4 find no registry claim on the
+dir.
 
 ### Step 5 — the ancestor walk
 
@@ -1329,7 +1327,7 @@ P8a: box → workspace comes SOLELY from the PRIMARY per-workset registry, the n
 at create (`_register_new_box`) — the SAME source `box_resolve` reads. A box cannot be resolved from
 its box DIR via `box_resolve.resolve_box_identity` (the registry is keyed by workspace PATH, not the
 box dir), so the PRIMARY registry is read here directly (identical data). The transitional
-`read_project_meta` (`settings.yaml` `resolved.workspace`) + legacy `project-path.txt` breadcrumb
+`read_project_meta` (the box's `box.yaml` `resolved.workspace`) + legacy `project-path.txt` breadcrumb
 fallbacks are DROPPED (P8a): a box absent from the registry has no workspace → `None`. (These are
 PRIMARY boxes: `std.boxes` == `@config.primary_workset/boxes`, so the PRIMARY registry is the home.)
 

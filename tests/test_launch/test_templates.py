@@ -1138,7 +1138,8 @@ def _seed_box(std, proj, *, agent="claude", deliver_creds=True):
         target=_FakeTarget() if agent else None,
         desc=None,
         agent_id=agent,
-        agent_cfg_path=std.agents / "claude" / "agent.yaml",
+        # The node's OWN file, as ``seed_new_box`` passes it (``agents/<node>/``).
+        agent_cfg_path=std.agents / (agent or "claude") / "agent.yaml",
         system_settings_path=std.settings,
         auth_src=SimpleNamespace(creds_shared=deliver_creds),
         logger=logging.getLogger("test-seed"),

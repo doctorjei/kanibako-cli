@@ -79,10 +79,10 @@ other reader of the table. That is why the absence carries a marker at the line.
 
 ## The two-layer path foundation
 
-Spec §1's **TERMINOLOGY**, which is exactly what the two tables below are: *"Config keys = the
-Layer-1 bootstrap paths, prefix `config.*`, living in `kanibako_config.yaml`, resolved by the flat
-foundation. Settings keys = the Layer-2 keyspace (`system.*` / `workset.*` / `box.*` / `agent.*`),
-resolved by `assemble→merge→expand`."* (on what is now `kanibako.cfg`)
+The two tables below are spec §1's two layers: Layer-1 config keys (`config.*`, in the `.cfg` files,
+resolved by the flat foundation) and Layer-2 settings keys (resolved by `assemble→merge→expand`).
+§1's **TERMINOLOGY** block: *"The prefix names both the file and the resolution source: `{config.*}` →
+foundation; `{system.*}`/`{workset.*}`/`{box.*}`/`{agent.*}` → snapshot."*
 
 ```python
 CONFIG_PATH_DEFAULTS: dict[str, str]      # Layer 1 — spec §1

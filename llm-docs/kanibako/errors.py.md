@@ -6,7 +6,7 @@ sites, the second-highest in the tree**, so whatever these one-line descriptors 
 hundred `raise` sites believe they are raising.
 
 The one thing the hierarchy actually *does* is decide how a failure LEAVES the program.
-`cli.py`'s top-level dispatch (`cli.py:523-534`) has exactly three arms:
+`cli.main`'s top-level dispatch has exactly three arms:
 
 ```python
 except UserCanceled:      print("Aborted.");            rc = 2
@@ -23,26 +23,28 @@ whole contract, and it is why the base class carries the only `⚑` marker left 
 `KanibakoError` is the base of the hierarchy, not the base of every exception in the tree, and this
 file is not the whole hierarchy either. Both facts matter to the `cli.py` contract above.
 
-**Two `KanibakoError` subclasses live next to their subsystem instead of here** — deliberately, and
+**Eight `KanibakoError` subclasses live next to their subsystem instead of here** — deliberately, and
 they exit cleanly like the rest:
 
-* `SettingsError` — `settings/settings_resolve.py:117`
-* `ImportConflictError` — `project/import_reconcile.py:58`
+* `settings.settings_resolve.SettingsError`
+* `project.import_reconcile.ImportConflictError`
+* `settings.keystore.ReservedKeyError` — also a `KeyError`, for callers that catch one; it prints a
+  clean `Error:` line too
+* `snapshots`: `UnsafeSnapshotNameError`, `ForeignSnapshotError`, `RestoreRefusedError`,
+  `RestoreUndoFailedError`, `SnapshotSafetyError`
 
-**Nine exception classes are OUTSIDE the hierarchy** and derive straight from `Exception` (or
-`KeyError`). An instance of one of these escaping to `cli.py` is a traceback, not an `Error:` line:
+**Eight exception classes are OUTSIDE the hierarchy** and derive straight from `Exception` (the
+standalone `scripts/import-directives.py` has two more). An instance of one of these escaping to
+`cli.py` is a traceback, not an `Error:` line:
 
-| Class | Where |
-|---|---|
-| `TweakccCacheError` | `tweakcc_cache.py:36` |
-| `_LenientDefect` | `settings/settings_expand.py:131` |
-| `ReservedKeyError` (a `KeyError`) | `settings/keystore.py:33` |
-| `ViewError` | `settings/settings_views.py:107` |
-| `BindingSourceError` | `targets/assembly.py:51` |
-| `FlagRelevanceError` | `commands/flags.py:479` |
-| `_CodeShimError` | `commands/code_cmd.py:90` |
-| `BrowserSidecarError` | `browser_sidecar.py:182` |
-| `BunSEAError` | `bun_sea.py:40` |
+* `tweakcc_cache.TweakccCacheError`
+* `settings.settings_expand._LenientDefect`
+* `settings.settings_views.ViewError`
+* `targets.assembly.BindingSourceError`
+* `commands.flags.FlagRelevanceError`
+* `commands.code_cmd._CodeShimError`
+* `browser_sidecar.BrowserSidecarError`
+* `bun_sea.BunSEAError`
 
 Several of those are internal sentinels caught close to where they are raised, which is a fine reason
 to sit outside the hierarchy. The point is not that they are wrong — it is that **"is it a

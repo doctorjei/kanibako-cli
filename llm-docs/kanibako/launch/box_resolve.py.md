@@ -58,37 +58,33 @@ and then iterates the section for every NAMED workset.
 It mirrors `kanibako.settings.paths._is_standalone_meta_dir`, but deliberately does NOT read
 `project.mode`; re-introducing that read here would re-couple the module to a retired field.
 
-This is the highest-precedence detection signal. A box's own in-place settings file is its
-authoritative self-declaration of standalone identity, and it OVERRIDES any workset determination —
-a workset must not be able to "steal" a box that has declared itself standalone (Jei).
+A box's own in-place settings file is its self-declaration of standalone identity. It OVERRIDES any
+workset TREE determination — a workset must not be able to "steal" a box that has declared itself
+standalone (Jei) — but a registry entry AT the path outranks it (D3-mode, below).
 
 ## The mode precedence — D3-mode, first match wins
 
-`detect_box_mode` tries four cases in order:
+`detect_box_mode` is the one carrier of this order (system-design § Detection & import). Every path
+compares literally (links unfollowed).
 
-1. **In-place settings file present → `standalone`.** The self-declaration described above.
-2. **Enumerate the worksets and scan** their per-workset registries for a `boxes:` entry whose PATH
-   equals *project_dir* → that workset's mode, `primary` or `named` (D10).
-3. **Otherwise the existing `kanibako.settings.paths.detect_project_mode` treewalk** — composed, not
-   duplicated. A `named` or `standalone` result passes straight through. A `primary` result does
-   NOT: it is `detect_project_mode`'s NO-MARKER default (its case 4), and in the new model primary
-   membership is authoritative via the registry scan in case 2. So an unregistered directory is not
-   an existing box and the function returns `None`, which is what sends the caller down its create
-   path.
-
-   That same `primary → None` collapse also swallows `detect_project_mode`'s case-2
-   genuine-primary result. It is safe because new-model primary membership now lives SOLELY in the
-   per-workset registry — the global `projects:` section was RETIRED in the clean split of
-   2026-07-08.
-4. **Otherwise `None`** — not a box.
+1. **The path space's registry has a box AT *project_dir*** → that box's mode, `primary` or
+   `named`. The path space is the named workset whose tree holds the dir, else primary
+   (`_path_space_workset`, the lookup `create` uses).
+2. **The standalone registry has a box AT *project_dir*** → `standalone`, marker or not. A root that
+   lost its marker is that box, broken (D4 state 3), never "not a box".
+3. **An in-place settings file** (the marker above) → `standalone`.
+4. **The `kanibako.settings.paths.detect_project_mode` treewalk** — composed, not duplicated. A
+   `primary` result AT *project_dir* is its no-marker default, so not a box: `None`, which sends
+   the caller down its create path. Any other result passes through, including a `primary` at an
+   ANCESTOR (a subdirectory launch).
 
 ## Scanning for an owner
 
-`_find_owning_box` walks every workset from `_enumerate_worksets`, resolves that workset's
-per-workset registry path (honoring a `workset.registry` repoint via the workset's own settings),
-loads its `boxes:` membership, and returns the entry whose PATH equals *project_dir*. BOTH sides are
-`resolve()`d so that symlinked, relative and trailing-slash spellings of the same directory compare
-equal. `None` when no workset owns the directory.
+`_find_owning_box` walks every workset from `_enumerate_worksets` (only the one
+`workset=` names, which case 1 passes), resolves that workset's per-workset registry path
+(honoring a `workset.registry` repoint via the workset's own settings), loads its `boxes:`
+membership, and returns the entry whose PATH equals *project_dir*. Paths compare literally (links
+unfollowed), so twins sharing a target stay two boxes. `None` when no workset owns the directory.
 
 Its `config` parameter is unused — it is there for signature parity with the other entry points;
 the enumeration is sourced entirely from `StandardPaths`.
