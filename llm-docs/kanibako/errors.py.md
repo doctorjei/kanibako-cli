@@ -47,9 +47,11 @@ standalone `scripts/import-directives.py` has two more). An instance of one of t
 * `browser_sidecar.BrowserSidecarError`
 * `bun_sea.BunSEAError`
 
-Three more derive from `OSError` or `ConnectionError` and are outside it too:
+Six more are outside it too. Three derive from `OSError` or `ConnectionError`:
 `boxfs.SymlinkRefusedError`, `project.workset.StoreRemovalError`, and
-`channels.helper_client.FrameTooLarge`.
+`channels.helper_client.FrameTooLarge`. Three derive from `yaml.YAMLError`:
+`settings.config_io`'s `DuplicateKeyError`, `CyclicAnchorError`, and `DocumentTooDeepError`, which
+`config_io.load_doc` re-raises as `ConfigError`.
 
 Several of those are internal sentinels caught close to where they are raised, which is a fine reason
 to sit outside the hierarchy. The point is not that they are wrong — it is that **"is it a

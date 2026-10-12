@@ -38,12 +38,12 @@ printed or logged verbatim. Editing one is a user-facing change, not a comment c
 ### ⚑ Where this overlaps `paths.py.md` — read that one for the RESOLVER, this one for the TABLE
 
 `llm-docs/kanibako/settings/paths.py.md` carries "Layer 1 — the CONFIG-key FOUNDATION", "Layer 2 —
-system-scope SETTINGS keys that are PATHS" and an `_XDG_SPEC_DEFAULTS` section. Those three tables
-live HERE, not in `paths.py`, and this file is their home; `paths.py.md`'s sections describe how
-`resolve_config_paths` / `resolve_system_paths` / `host_xdg_map` CONSUME them. Two of the three
-descriptions there have drifted (see the note at the end of
-[Dropped as false](#dropped-as-false)) — boarded, not fixed here, because that file belongs to
-another pass.
+system-scope SETTINGS keys that are PATHS" and "`XDG_SPEC_DEFAULTS` (imported from
+`settings/bootstrap`)". Those three tables live in `settings/bootstrap.py`, not `paths.py`, and this
+file explains them; `paths.py.md`'s sections describe how `resolve_config_paths` /
+`resolve_system_paths` / `host_xdg_map` CONSUME them. Two of the three descriptions there have
+drifted (see the note at the end of [Dropped as false](#dropped-as-false)) — boarded, not fixed
+here, because that file belongs to another pass.
 
 ## The XDG base directories
 
@@ -457,9 +457,7 @@ Recorded here so nobody restores them from git history.
 ⚑ **The same two stale claims as #1 and #2 also live in `llm-docs/kanibako/settings/paths.py.md`** (a
 different file, and another pass's): its "Layer 1" section says *"The **5** bootstrap CONFIG keys"*
 while naming `config.journal` in the very next paragraph, and its "Layer 2" section repeats *"each
-`@`-refs a Layer-1 config key (or an XDG base)"*. That file also heads its section
-`### _XDG_SPEC_DEFAULTS` — leading underscore — for a constant that is PUBLIC and no longer lives in
-`paths.py` at all. **Boarded, not fixed here.**
+`@`-refs a Layer-1 config key (or an XDG base)"*.
 
 ## Kept in the source, reworded — the per-message argument notes
 
