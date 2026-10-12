@@ -729,7 +729,15 @@ def _check_persona_store_for_create(agent_ref: str) -> str | None:
         )
     # ⚑ WARN-ONLY probe, and it warns for the two ANSWERED non-PASS verdicts only —
     # ``NOT_APPLICABLE`` learned nothing and goes to the log, as on the launch path.
-    if checked and bundle.endpoint and bundle.token_path is not None:
+    # 🛑 Only with a resolved store token.  The store cannot declare a persona keyless
+    # (only the keyspace can, ``secret_path.<VAR>: null``), so a store with no token is
+    # an UNRESOLVED pointer: probing it uncredentialed would send requests the box never
+    # sends and warn falsely.  A keyless persona is probed at launch only; this door
+    # resolves no cascade to read that declaration from.
+    if (
+        checked and bundle.endpoint
+        and bundle.token_error is None and bundle.token_path is not None
+    ):
         try:
             outcome = target.verify_persona(
                 bundle.endpoint, bundle.token_path, bundle.model,

@@ -3236,39 +3236,55 @@ class TestCheckPersonaStoreForCreate:
             (persona_dir / ".secret_path").write_text("./token\n")
             (persona_dir / "token").write_text("sk-test-secret\n")
 
-    @pytest.mark.parametrize("row, model, get, post, sentence", [
-        (15, "gemma4", 200, 403,
-         "The endpoint refused an uncredentialed request for model 'gemma4'."),
-        (16, "gemma4", 401, 401,
-         "The endpoint refused every request made without a credential; this persona "
-         "declares the endpoint keyless."),
-        (19, None, 200, 403,
-         "The endpoint refused an uncredentialed request that named no model."),
+    @pytest.mark.parametrize("pointer, keyspace", [
+        (None, "key-path"),            # keyspace key path, no store pointer
+        (None, "keyless"),             # rows 15/16/19: a REAL keyless declaration
+        ("./a\n./b\n", None),          # malformed store pointer
+        ("./a\n./b\n", "keyless"),
+    ], ids=["no-pointer+key-path", "no-pointer+keyless", "malformed", "malformed+keyless"])
+    @pytest.mark.parametrize("model, get, post", [
+        ("gemma4", 200, 403),   # row 15
+        ("gemma4", 401, 401),   # row 16
+        (None, 200, 403),       # row 19
     ], ids=["row15", "row16", "row19"])
-    def test_a_keyless_persona_is_probed_at_create_as_at_launch(
-        self, tmp_home, monkeypatch, capsys, row, model, get, post, sentence,
+    def test_a_store_without_a_resolved_token_is_never_probed_uncredentialed(
+        self, tmp_home, monkeypatch, capsys, pointer, keyspace, model, get, post,
     ):
-        """Second look 1 on S2: the create door probed only when the store yielded a
-        token path, so a keyless persona refused by its endpoint created silently
-        while the launch door refused it.  The REAL codex probe runs here.
+        """Round 2 of 177-q29s4: the store cannot declare a persona keyless, so a
+        store with no resolved token is an UNRESOLVED pointer.  Probing it without a
+        credential sent requests the box never sends and printed a false "declares
+        the endpoint keyless" refusal.  This door resolves no cascade, so even a
+        keyspace ``secret_path.<VAR>: null`` is not probed here (it is at launch).
+        The REAL codex probe would run if the door called it.
         """
         from kanibako.plugins.codex.target import CodexTarget
         from tests.test_targets.test_persona_settings import _ProbeServer
 
-        server = _ProbeServer(script={("GET", False): get, ("POST", False): post})
+        server = _ProbeServer(script={("GET", False): get, ("POST", False): post,
+                                      ("GET", True): 200, ("POST", True): 200})
         try:
             self._live_store(tmp_home, server, model=model, token=False)
+            persona_dir = tmp_home / "config" / "personas" / "navigator"
+            if pointer is not None:
+                (persona_dir / ".secret_path").write_text(pointer)
+            if keyspace is not None:
+                value = "null" if keyspace == "keyless" else str(tmp_home / "tok")
+                (tmp_home / "tok").write_text("sk-keyspace\n")
+                self._settings_path().parent.mkdir(parents=True, exist_ok=True)
+                self._settings_path().write_text(
+                    f"self:\n  secret_path:\n    NAVIGATOR_API_KEY: {value}\n",
+                )
             err = self._call(tmp_home, "navigator+codex", monkeypatch,
                              target=CodexTarget())
         finally:
             server.close()
-        assert err is None  # still warn-only: create proceeds
+        assert err is None
         out = capsys.readouterr().err
-        assert "creating anyway" in out
-        assert sentence in out
-        assert [(m, p, a) for m, p, a, _, _ in server.log] == [
-            ("GET", "/v1/models", None), ("POST", "/v1/responses", None),
-        ]
+        assert "token pointer did not resolve" in out  # base behavior, unchanged
+        assert server.log == []
+        assert "keyless" not in out
+        assert "Warning: the persona endpoint" not in out
+        assert "could not verify" not in out
 
     def test_a_keyed_persona_is_probed_with_its_credential_unchanged(
         self, tmp_home, monkeypatch, capsys,

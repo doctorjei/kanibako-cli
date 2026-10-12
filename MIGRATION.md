@@ -1265,8 +1265,7 @@ value that DIFFERS is now, by definition, a deliberate user override: keep it if
   sends the model request as before. A refusal now says what each request showed, for example
   `The endpoint refused this credential with and without a model.`, and never says the token is
   bad. One new warning: when the endpoint refuses the model-free request and requires a model the
-  persona does not name, `start` warns and launches (it was silent). `kanibako create` now probes a
-  persona with no token too, and warns only.
+  persona does not name, `start` warns and launches (it was silent).
 - **A refused model can warn instead of block.** When the endpoint accepts the token on a request
   that names no model but refuses the model request, `start` warns and launches if the probe could
   not send the box's own model id: the persona names no model (the box sends its default), or a
