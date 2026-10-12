@@ -20,10 +20,9 @@ Every host exec (`claude update`, `claude auth status`) and every bind anchors t
 never `shutil.which("claude")`. ⚑ **A security choice:** an earlier-`$PATH` planted `claude` would
 mean host code execution plus a malicious agent in the box.
 
-`detect` treats claude as installed when the launcher exists or is a symlink, dangling or not.
-`binary` is the resolved path, so nested-container mount sources are real files; `launcher` is
-recorded as-is for its bind. A dangling launcher still counts; the update gate and binary
-validation surface the problem downstream.
+`detect` treats claude as installed when the launcher exists or is a symlink, even a dangling one;
+the update gate and binary validation catch a broken install downstream. `binary` is the resolved
+path, so nested-container mount sources are real files; `launcher` is recorded as-is for its bind.
 
 ## Host preparation
 
@@ -36,8 +35,11 @@ Both steps are best-effort; failures are logged, never raised. It ignores *data_
 session store derives from `system.state`, so do not thread it back into the auth call.
 
 `check_auth` runs `claude auth status --json` and reads `loggedIn`. If logged out, it runs
-`claude auth login` interactively and re-checks. A missing binary, an exec error, a nonzero status
-exit, or unparseable output all return `True`: an unknown status never blocks the launch.
+`claude auth login` interactively and re-checks. A missing launcher, an exec error, a nonzero status
+exit, or unparseable output returns `True`: an unknown status never blocks the launch. A login that
+fails or times out, or a re-check that is still logged out, returns `False`. When the box shares
+host credentials, `start` then prints `Error: Authentication failed.` with the `kanibako agent
+reauth` and `kanibako shell` hints and refuses the launch.
 
 ## Credentials
 
@@ -101,5 +103,16 @@ hook and the liveness-marker hooks) into the box's `~/.claude/settings.json` via
 claude carries its persona by env, not config.
 
 `has_resumable_session` checks for any `*.jsonl` or `*.jsonl.gz` under
-`<home>/.claude/projects/-home-agent-workspace/` (the encoded fixed workdir). Any error or an empty
-or missing dir returns `False`: a fresh start is always safe.
+`<home>/.claude/projects/-home-agent-workspace/` (the encoded fixed workdir). An `OSError`, or an
+empty or missing dir, returns `False`: a fresh start is always safe.
+
+## Seams left at the base default
+
+* `deliver_panel_permissions` writes nothing. The seam writes box invariants only, never a tier;
+  codex has one (`sandbox_mode`, because a nested sandbox hangs its panel's app-server) and claude
+  has none.
+* `reattach_config_notice` returns `None`. The notice warns that a reattach does not rewrite a
+  projected config file (codex's `config.toml`); claude's only start-time write is its fixed hook
+  set, so nothing goes stale.
+* The setup trio (`setup_entrypoint`, `setup_args`, `should_run_setup`) declares no in-box setup.
+  claude logs in on the host, inside `check_auth`, so a failed check has already tried the login.
