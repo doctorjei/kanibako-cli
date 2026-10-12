@@ -1158,9 +1158,9 @@ which**; only the first is a stale key that can stop the resolve, and only in so
 - **`@meta.runtime.ws_settings`** in any settings file: replace with `@meta.workset.settings`
   (identical resolved value). **This one is a reference INSIDE a value, not a key path**, so the
   closed keyspace never judges it and nothing refuses. It is the quietest of the four: an
-  absent referent propagates absence (§6b), so a whole-value `@meta.runtime.ws_settings` makes
-  the key holding it disappear from the snapshot, and one embedded in a longer string expands
-  to nothing. Grep for it — you will not be told.
+  absent referent propagates absence (the keyspace spec's **Principles**), so a whole-value
+  `@meta.runtime.ws_settings` makes the key holding it disappear from the snapshot, and one
+  embedded in a longer string expands to nothing. Grep for it — you will not be told.
 
 ### 2.12 The upgrade gate: nothing new appears until `kanibako setup` runs
 
