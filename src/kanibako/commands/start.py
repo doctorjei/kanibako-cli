@@ -9987,6 +9987,7 @@ def _refuse_realized_twin(
     while this one has no key to move to — the variable's owner is the key that
     DRIVES it, and that is what the message has to hand back.
     """
+    from kanibako.settings.settings_categories import env_twin_refusal
     from kanibako.settings.settings_resolve import SettingsError
 
     # ⚑ REMOVAL LEADS, AND THE REST ARE WHAT COMES AFTER IT — never a menu of
@@ -10001,16 +10002,18 @@ def _refuse_realized_twin(
     if is_access:
         routes.append("use the per-launch -S / -A flags")
     routes.append(f"or pass -e {var}=<value> for ONE launch")
-    raise SettingsError(
-        f"the environment variable {var!r} is REALIZED by this launch — kanibako "
+    raise SettingsError(env_twin_refusal(
+        var,
+        f"is REALIZED by this launch — kanibako "
         f"derives it from the agent's resolved settings — and {declared_key!r} names "
-        f"it as well. A variable is written ONCE, so the key could never take "
+        f"it as well",
+        f"A variable is written ONCE, so the key could never take "
         f"effect: it would be overwritten by the realization on every launch, "
         f"silently. Remove {declared_key!r}: that is the only thing that clears "
         f"this refusal — no flag does, because the launch stops here, before any of "
         f"them is applied. Once the key is gone, choose the value with: "
-        f"{'; '.join(routes)}."
-    )
+        f"{'; '.join(routes)}.",
+    ))
 
 
 def _channel_default_categories(std, proj) -> "core_defaults.BindArmTable":

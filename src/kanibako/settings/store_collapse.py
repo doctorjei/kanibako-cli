@@ -31,6 +31,7 @@ from kanibako.settings.settings_categories import (
   MOUNT,
   SUPPRESS_THEN_ADD,
   CategoryEntry,
+  env_twin_refusal,
   internal_bind_cure,
 )
 from kanibako.settings.settings_keyspace import shown_key
@@ -794,18 +795,20 @@ def _refuse_env_twin(arriving: CategoryEntry, held: CollapsedEnv) -> None:
   ``env`` half of that slot.
   """
   held_key, arriving_key = shown_key(held.key), shown_key(arriving.key)
-  raise SettingsError(
-    f"the environment variable {arriving.box_dest!r} is claimed by two keys: "
+  raise SettingsError(env_twin_refusal(
+    arriving.box_dest,
+    f"is claimed by two keys: "
     f"{held_key!r} at the {held.scope!r} scope already holds it, and "
-    f"{arriving_key!r} at the {arriving.scope!r} scope names it again. A variable "
+    f"{arriving_key!r} at the {arriving.scope!r} scope names it again",
+    f"A variable "
     f"is written ONCE and the containing scope writes it first, so the second "
     f"declaration could never take effect. Give the variable ONE owner: keep the "
     f"key at the scope the value belongs to and remove the other one. An override "
     f"is not enough - these are two different KEYS, so both survive the cascade. To "
     f"change the value WITHOUT moving its owner, write the SAME key "
     f"({held_key!r}) in a nearer settings file: keys cascade, and the nearest "
-    f"file wins."
-  )
+    f"file wins.",
+  ))
 
 
 def _refuse_mode_contradiction(dest: str, entry: BindEntry, mode: str) -> None:

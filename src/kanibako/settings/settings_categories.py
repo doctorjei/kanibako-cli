@@ -601,6 +601,21 @@ def refuse_non_scalar_family_value(
     )
 
 
+def env_twin_refusal(var: str, claim: str, cure: str) -> str:
+    """The ONE frame of every refusal of a contested environment-variable slot.
+
+    ``the environment variable '<VAR>' <claim>. <cure>`` — the subject spelled once
+    for the three raisers, which stay SPLIT BY INPUT because each sees a contest
+    the others cannot: two scopes' ``env`` keys (``store_collapse._refuse_env_twin``,
+    off the collapse's slots), the ``env`` and ``secret_path`` families
+    (:func:`refuse_env_secret_twins`, off the entry list), and a key naming a
+    variable the launch realizes (``commands.start._refuse_realized_twin``, off the
+    snapshot).  *claim* says who claims the slot; *cure* is the raiser's own,
+    because each contest is cleared a different way.
+    """
+    return f"the environment variable {var!r} {claim}. {cure}"
+
+
 def refuse_env_secret_twins(entries: list[CategoryEntry]) -> None:
     """Refuse a VAR named by BOTH scalar families, naming both keys (spec §2a).
 
@@ -647,18 +662,20 @@ def refuse_env_secret_twins(entries: list[CategoryEntry]) -> None:
         # guess which pair is the mistake.  (A second ``env`` key normally meets
         # ``store_collapse._refuse_env_twin`` first; on a NARROW resolve, which folds
         # no env slots, it reaches here instead.)
-        raise SettingsError(
-            f"the environment variable {var!r} is named by BOTH scalar families: "
+        raise SettingsError(env_twin_refusal(
+            var,
+            f"is named by BOTH scalar families: "
             f"{_and_list(env_group)} {_agrees('hold', env_group)} a VALUE for it, "
             f"and {_and_list(secret_group)} {_agrees('point', secret_group)} at a "
-            f"host file the box exports it from. The two families share ONE "
-            f"delivery target, so naming a variable with both is a mistake "
-            f"rather than a preference: NO "
-            f"precedence between them is defined, and none may be inferred from the "
-            f"order a box happens to receive them. Keep exactly ONE and remove the "
-            f"other - 'secret_path' when the value is secret material kanibako must "
-            f"never read, 'env' otherwise."
-        )
+            f"host file the box exports it from",
+            "The two families share ONE "
+            "delivery target, so naming a variable with both is a mistake "
+            "rather than a preference: NO "
+            "precedence between them is defined, and none may be inferred from the "
+            "order a box happens to receive them. Keep exactly ONE and remove the "
+            "other - 'secret_path' when the value is secret material kanibako must "
+            "never read, 'env' otherwise.",
+        ))
 
 
 def launch_deliveries(
