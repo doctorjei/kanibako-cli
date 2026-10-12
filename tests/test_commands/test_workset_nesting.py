@@ -287,3 +287,46 @@ class TestAbsorbAcrossSpellings:
         assert _connect("wn", area / "rlnk", "m", force=True) == 0, capsys.readouterr().err
         _assert_absorbed(std, None, root)
 
+
+    @staticmethod
+    def _linked_area(area: Path) -> tuple[Path, Path]:
+        """``L -> realarea``: a linked ancestor; returns ``(L, realarea/XS)``."""
+        (area / "realarea" / "XS").mkdir(parents=True)
+        (area / "L").symlink_to(area / "realarea")
+        return area / "L", area / "realarea" / "XS"
+
+    def test_leaf_link_under_a_linked_ancestor_keeps_the_ancestor(self, env, capsys):
+        """Unregistered XS reached as ``L/lnk``: only the leaf resolves, so ``L/XS``."""
+        std, area = env
+        linked, real = self._linked_area(area)
+        assert run_create(build_parser().parse_args(
+            ["box", "create", "--standalone", str(real)])) == 0
+        capsys.readouterr()
+        (real.parent / "lnk").symlink_to(real)
+
+        assert _connect("wn", linked / "lnk", "m", force=True) == 0, capsys.readouterr().err
+        _assert_absorbed(std, None, linked / "XS")
+
+    def test_row_at_a_leaf_link_under_a_linked_ancestor_keeps_the_ancestor(self, env,
+                                                                         capsys):
+        """The row names ``L/rlnk1 -> XS``; a connect at ``L/XS`` records ``L/XS``."""
+        std, area = env
+        linked, real = self._linked_area(area)
+        (real.parent / "rlnk1").symlink_to(real)
+        _root, name = _standalone(std, area, capsys, root=linked / "rlnk1")
+
+        assert _connect("wn", linked / "XS", "m", force=True) == 0, capsys.readouterr().err
+        _assert_absorbed(std, name, linked / "XS")
+
+    def test_leaf_link_into_another_directory_records_the_full_resolve(self, env, capsys):
+        """``L/lnk -> elsewhere/XS`` leaves ``L``'s directory: the real root is recorded."""
+        std, area = env
+        linked, _real = self._linked_area(area)
+        other = area / "elsewhere" / "XS"
+        assert run_create(build_parser().parse_args(
+            ["box", "create", "--standalone", str(other)])) == 0
+        capsys.readouterr()
+        (linked / "lnk").symlink_to(other)
+
+        assert _connect("wn", linked / "lnk", "m", force=True) == 0, capsys.readouterr().err
+        _assert_absorbed(std, None, other)
