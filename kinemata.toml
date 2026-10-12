@@ -1370,9 +1370,16 @@ kind = "code-patterns"
   ]
   note = "YAML is parsed in config_io (load_doc, load_packaged_mapping), which refuses a non-mapping"
 
+  # A regex that spells the header: the `#\s*` prefix, or the token followed by
+  # a group, a class, or `:\s`. All three regexes the one grammar replaced
+  # match. Prose (`# kanibako-template[-check]:` in a docstring) is stripped
+  # before matching.
   [[registry.entry]]
   id = "is_template_header"
-  antipatterns = ['kanibako-template\(-check\)', 'kanibako-template\[']
+  antipatterns = [
+    '#\\s[*+?]?(?i:kanibako-template)',
+    '(?i:kanibako-template)(?:-check)?(?:\(|\[|:\\s)',
+  ]
   home = ["src/kanibako/runtime/templates_image.py"]
   note = "one template-header regex: templates_image.is_template_header"
 
