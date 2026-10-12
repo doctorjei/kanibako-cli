@@ -372,10 +372,19 @@ Read-modify-write UNION-MERGE into *path*; `True` iff it wrote. Writes pretty JS
 creating parent dirs. The non-atomic write is acceptable: VS Code re-reads the file on each attach
 and the seed is idempotent, so a torn write self-heals on the next run.
 
+```_make_box_home(root: Path) -> None```
+Create the box home *root*, and missing parents, as the seeds always have.
+
 ```_write_if_changed(path: Path, existing: dict, merged: dict, *, root: Path) -> bool```
 Write *merged* to *path* as pretty JSON iff it differs from disk (idempotent).
 
-```_merge_managed_command_hook(settings: dict, *, event: str, matcher: str | None, command: str) -> dict```
+```_is_retired_command(entry: object, retired: frozenset[str]) -> bool```
+`True` iff *entry* is a `type:command` hook running one of *retired*.
+
+```_drop_retired_hooks(groups: list, retired: frozenset[str]) -> list```
+Return *groups* minus the *retired* hook entries; a group they emptied goes too.
+
+```_merge_managed_command_hook(settings: dict, *, event: str, matcher: str | None, command: str, retired: frozenset[str]) -> dict```
 UNION-MERGE ONE kanibako-managed `type:command` hook into `hooks.<event>`.
 
 ```merge_session_start_hook(settings: dict) -> dict```

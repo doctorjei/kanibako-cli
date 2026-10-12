@@ -3,8 +3,8 @@
 Terminology.  *Attached container configuration* — the devcontainer.json subset VS Code's
 Dev Containers extension reads when attaching to a running container; it is keyed by IMAGE,
 not by box, and VS Code OWNS the file.  *Panel* — the in-box agent EXTENSION VS Code runs;
-it spawns its own agent process without kanibako's launch flags, so a permission tier
-reaches it only through the box's on-disk agent config.  *Managed region* — a
+it spawns its own agent process without kanibako's launch flags, so no access tier reaches
+it; it runs at the user's own agent settings.  *Managed region* — a
 comment-delimited block of a user's codex ``config.toml`` that kanibako regenerates whole;
 every byte outside a managed region (comment or data) is preserved.
 """
