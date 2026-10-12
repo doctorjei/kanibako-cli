@@ -2464,8 +2464,6 @@ def _assemble_image_sharing_mounts(
 
 def _assemble_launch_env(
     *,
-    std,
-    proj,
     deliveries,
     env_slots,
     extra_mounts,
@@ -4594,7 +4592,7 @@ def _run_container(
         # emitted ONCE — from the COLLAPSE (cutover step 2a-2), which folds the four
         # scopes over the home foundation into one dest-keyed bind map.
         # ⚑ ONE VALUE, BOTH ARMS (2a-4): the bind mounts and the tmpfs ``masks``
-        # are the two halves of ONE map, read ONCE here (llm-docs).
+        # are the two halves of ONE map, read ONCE here (llm-doc).
         # The channel side-effect (seeding the chat general/broadcast logs, §3c) is
         # run explicitly — it was a side-effect of the retired
         # ``_build_channel_mounts``.
@@ -4742,8 +4740,6 @@ def _run_container(
         )
 
         container_env, secret_export_vars = _assemble_launch_env(
-            std=std,
-            proj=proj,
             deliveries=deliveries,
             # The COLLAPSE's env slots, read at the seam and passed as a VALUE —
             # the same shape ``launch_binds`` above takes, and for the same reason:

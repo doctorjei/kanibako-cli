@@ -10,7 +10,7 @@ Eight declared BIND families, one producer each, plus three NON-BIND scalar sect
 (``agent_default:`` behavior, ``agent_shell:`` shell-tier behavior, ``env:`` static
 variables); every table lands in the BASE-level
 floor. The box-create canon SKELETON also lives here — mirror image of the canon binds
-(llm-docs).
+(llm-doc).
 """
 
 from __future__ import annotations

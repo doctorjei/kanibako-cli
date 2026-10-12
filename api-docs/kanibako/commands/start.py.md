@@ -96,7 +96,7 @@ def _apply_tweakcc(install, transform_settings, cache_dir, image, runtime_cmd, l
 def _parse_cli_env(cli_env: list[str] | None) -> dict[str, str]
 def _deliver_panel_permissions(*, target, proj, access, provider, logger)
 def _assemble_image_sharing_mounts(*, merged, proj, runtime, std, agent_id, system_settings_path, agent_cfg_path, auth_src, extra_mounts, logger, selection_level)
-def _assemble_launch_env(*, std, proj, deliveries, env_slots, extra_mounts, logger)
+def _assemble_launch_env(*, deliveries, env_slots, extra_mounts, logger)
 def _start_helper_hub(*, runtime, image, container_name, proj, target, install, binary_mnts, std, container_env, entrypoint, box_shell, agent_id, system_settings_path, agent_cfg_path, auth_src, extra_mounts, selection_level)
 def _deliver_spawn_budget(*, std, proj, snapshot: 'KeyStore', agent_id, system_settings_path, agent_cfg_path, auth_src, extra_mounts, selection_level) -> None
 def _spawn_budget_of(snapshot: 'KeyStore', system_settings_path: Path | None) -> 'SpawnBudget'

@@ -1343,7 +1343,7 @@ def bare_agent_key_scope_error(
     )
 
 #: ⚑ ``_agent_scope_node`` IS GONE (DS-BL1 = (a)) — no bind-shaped category reaches a
-#: set any more, so it answered a question nobody asks. Do not restore it (llm-docs).
+#: set any more, so it answered a question nobody asks. Do not restore it (llm-doc).
 
 
 def is_known_key(arg: str) -> bool:
@@ -2120,7 +2120,7 @@ def _is_path_category_key(key: str) -> bool:
     # ⚑⚑ IT IS NOW FALSE FOR EVERY KEY, AND THAT IS THE CORRECT ANSWER (2026-08-08c).
     # ⚑ KEPT, not inlined to ``False``: it must keep asking the REGEX, so re-admitting a
     # per-name category stays a one-line edit to ``_NON_TERMINAL_BIND_CATEGORIES``.
-    # ⚑⚑ It is NO LONGER A RECOGNIZER — do not wire it back into one (llm-docs).
+    # ⚑⚑ It is NO LONGER A RECOGNIZER — do not wire it back into one (llm-doc).
     from kanibako.settings.settings_categories import BIND_KEY_RE
 
     return BIND_KEY_RE.match(key) is not None

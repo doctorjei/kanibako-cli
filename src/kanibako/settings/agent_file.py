@@ -644,7 +644,7 @@ def record(level: AgentFileLevel, *, node: str) -> AgentConfig:
     # the file's root through ``level_table``'s *state* instead (``_agent_partial``).
     # ⚑ EVERY modeled key, not just the ones with a scalar slot (S3/D-7): the
     # narrower test differs only for a MALFORMED file, where it swept a modeled
-    # field's garbage — ``env: oops`` — into state as an agent-state knob (llm-docs).
+    # field's garbage — ``env: oops`` — into state as an agent-state knob (llm-doc).
     # ⚑ A ``None`` value is KEPT as ``None`` (2026-08-17 ruling), never coerced
     # through ``str()``: that turned a ``model: null`` into the four-byte string
     # ``"None"``, a bogus model id the launch cascade took as real.

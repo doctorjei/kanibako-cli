@@ -695,7 +695,7 @@ class TestNothingRestampsThemAboveTheChannel:
             for var in DECLARED[harness]:
                 assert var not in realized, f"{var} would re-stamp the user's value"
 
-    def test_nothing_above_the_channel_writes_the_core_stamps(self, tmp_path):
+    def test_nothing_above_the_channel_writes_the_core_stamps(self):
         """MBR-1 P4b: ``_assemble_launch_env`` is a PROJECTION of the leaf now.
 
         Handed an EMPTY slot map it must return an EMPTY env — the four
@@ -721,13 +721,6 @@ class TestNothingRestampsThemAboveTheChannel:
 
         extra_mounts: list = []
         env, secret_vars = _assemble_launch_env(
-            # ⚑ ``std``/``proj`` contribute NOTHING to the returned env — they are
-            # passed only to satisfy the signature.
-            std=SimpleNamespace(data_path=tmp_path),
-            proj=SimpleNamespace(
-                name="b", group=None,
-                metadata_path=tmp_path, project_path=tmp_path,
-            ),
             deliveries=SimpleNamespace(secrets=[]),
             env_slots={},
             extra_mounts=extra_mounts,

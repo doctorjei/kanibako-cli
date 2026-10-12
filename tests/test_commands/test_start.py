@@ -3814,21 +3814,15 @@ class TestContainerEnvPrecedence:
         return slots
 
     @staticmethod
-    def _assemble(tmp_path, *, env_slots):
+    def _assemble(*, env_slots):
         """Run the REAL launch assembler over *env_slots* — its ONLY environment input."""
         import logging
         from types import SimpleNamespace
 
         from kanibako.commands.start import _assemble_launch_env
 
-        # ⚑ Only ``env_slots`` reaches the returned env; ``std``/``proj`` are passed
-        # to satisfy the signature and an empty secret list adds no mounts.
+        # An empty secret list adds no mounts.
         env, _secret_vars = _assemble_launch_env(
-            std=SimpleNamespace(data_path=tmp_path),
-            proj=SimpleNamespace(
-                name="b", group=None,
-                metadata_path=tmp_path, project_path=tmp_path,
-            ),
             deliveries=SimpleNamespace(secrets=[]),
             env_slots=env_slots,
             extra_mounts=[],
@@ -3836,24 +3830,24 @@ class TestContainerEnvPrecedence:
         )
         return env
 
-    def test_every_collapsed_slot_reaches_the_container_env(self, tmp_path):
+    def test_every_collapsed_slot_reaches_the_container_env(self):
         env = self._assemble(
-            tmp_path, env_slots=self._slots(("K", "box"), ("ONLY_BOX", "b")),
+            env_slots=self._slots(("K", "box"), ("ONLY_BOX", "b")),
         )
         assert env == {"K": "box", "ONLY_BOX": "b"}
 
-    def test_the_slot_value_arrives_whatever_scope_won_it(self, tmp_path):
+    def test_the_slot_value_arrives_whatever_scope_won_it(self):
         """The layer applies the winner the COLLAPSE picked; it re-picks nothing.
 
         A workset-owned slot lands exactly as a box-owned one does — the scope
         rides the leaf as PROVENANCE, and this layer never consults it.
         """
         env = self._assemble(
-            tmp_path, env_slots=self._slots(("K", "workset", "workset")),
+            env_slots=self._slots(("K", "workset", "workset")),
         )
         assert env["K"] == "workset"
 
-    def test_the_map_is_the_whole_environment_and_nothing_is_added(self, tmp_path):
+    def test_the_map_is_the_whole_environment_and_nothing_is_added(self):
         """MBR-1 P4c-2: the projection is TOTAL, and the EMPTY map is what proves it.
 
         🛑 A presence check cannot see a layer that was restored — only an assertion
@@ -3862,11 +3856,9 @@ class TestContainerEnvPrecedence:
         future edit adds here would sit above every settings file, above ``-e`` and
         outside every refusal, which is the arrangement four folds removed.
         """
-        assert self._assemble(tmp_path, env_slots={}) == {}
+        assert self._assemble(env_slots={}) == {}
 
-    def test_a_cli_provenance_slot_reaches_the_container_env_like_any_other(
-        self, tmp_path,
-    ):
+    def test_a_cli_provenance_slot_reaches_the_container_env_like_any_other(self):
         """A vacancy ``-e`` filled is a slot, and the assembler treats it as one.
 
         ⚑⚑ COMPOSED, NOT REPLICATED: ``collapse_env`` is what production calls to
@@ -3884,7 +3876,7 @@ class TestContainerEnvPrecedence:
         from kanibako.settings.store_collapse import collapse_env
 
         slots = collapse_env([], {"GOOSE_MODE": "chat"})
-        assert self._assemble(tmp_path, env_slots=slots)["GOOSE_MODE"] == "chat"
+        assert self._assemble(env_slots=slots)["GOOSE_MODE"] == "chat"
 
 
 class TestRetiredEnvFilesAreNotRead:

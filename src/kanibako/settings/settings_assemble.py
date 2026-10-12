@@ -313,7 +313,7 @@ def _retired_key_cure(
 
 #: The "no such leaf" sentinel for :func:`_nested_present`. ⚑ NOT ``None``: a
 #: ``box: {agent_name:}`` leaf is PRESENT with the value ``None`` and is still the retired key —
-#: conflating present-null with absent would let the exact config this catches slip by (llm-docs).
+#: conflating present-null with absent would let the exact config this catches slip by (llm-doc).
 _NO_LEAF: Any = object()
 
 
@@ -702,7 +702,7 @@ def _warn_upward_drops(raw: Any, *, file_scope: str, path: Path | None) -> None:
     ⚑ THE ONE GUARD for every §0 drop announcement: every read of a file
     (:func:`read_settings_files`) warns through here, so a file read several times in one
     command still names each dropped key once.  THREE dropped tokens, THREE distinct
-    rationales, one warning each (llm-docs).
+    rationales, one warning each (llm-doc).
     """
     if not isinstance(raw, dict):
         return
@@ -1533,7 +1533,7 @@ def dotted_partial(floor: dict[str, object] | None) -> KeyStore:
 
     ⚑⚑ DO NOT PUT A CATEGORY-ENTRY SPELLING IN THIS DOCSTRING AS AN EXAMPLE — :func:`_insert_dotted`
     REFUSES BY NAME every floor key deeper than the terminal category key, and two examples have
-    already been burned here (llm-docs). A behavior key such as ``"agent.access"`` is safe.
+    already been burned here (llm-doc). A behavior key such as ``"agent.access"`` is safe.
     """
     store = KeyStore()
     if not floor:
