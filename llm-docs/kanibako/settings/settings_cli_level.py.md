@@ -61,17 +61,15 @@ spelling so the level and the selection cannot drift apart.
 the active discriminator), used by tests and by humans; the builder is the executable form. The
 table lists only entries this module actually wires.
 
-### Why `-S` / `-A` are NOT listed
+### `-S` / `-A` → `access`
 
-The spec's enumeration also names `-S`/`-A` (`access` — `-S` selects the `restricted` tier, `-A` the
-`full` one). Listing an unwired entry would read as a contract this module honors — the same reason
-`settings_keyspace` deleted its unused `CATEGORY_SCOPES` rather than keeping it.
+`-S` installs `agent.<active>.access: restricted`, `-A` installs `full`; given both, `-S` wins.
+§1A's PROJECTED-SURFACE EXCEPTION does not reach them: the `access` key is not projected (the panel
+seams write box invariants only), so the tier reaches the harness only as launch flags or env and
+the flag stays ephemeral. The realizer also reads this entry directly, for a descriptor whose
+`access_realization.setting_key` is empty and so redeems no stored key.
 
-The `access` key is read TWICE. The FLAG-folded tier feeds the launch argv/env; the CASCADE tier
-is passed to `deliver_panel_permissions` / `deliver_directive_hook`, which write no tier (`access`
-is not projected).
-
-`-M` is likewise barred from the codex config-projection RESOLVE (that consumer reads the cascade,
+`-M` is barred from the codex config-projection RESOLVE (that consumer reads the cascade,
 never the CLI level), though the flag itself is wired here for the launch argv.
 
 ### Why `--image` / `--share-images` ARE listed

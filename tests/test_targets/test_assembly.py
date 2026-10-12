@@ -20,7 +20,6 @@ from kanibako.targets.assembly import (
     assemble_argv,
     assemble_env,
     descriptor_mounts,
-    effective_access,
     entrypoint,
     resolve_access_tier,
     resolve_binding_source,
@@ -239,7 +238,7 @@ def test_resolve_mode_bare_descriptor_always_start() -> None:
 
 
 # --------------------------------------------------------------------------- #
-# resolve_access_tier / effective_access  (R-41 — the permission TIER)        #
+# resolve_access_tier  (R-41 — the permission TIER)                          #
 # --------------------------------------------------------------------------- #
 
 
@@ -292,33 +291,6 @@ def test_access_unknown_value_is_refused_never_permissive(bogus: str) -> None:
     assert "access" in msg
     assert "restricted | editing | full" in msg
     assert repr(bogus) in msg
-
-
-def test_effective_access_secure_flag_is_restricted() -> None:
-    assert effective_access(secure=True, autonomous=False) == "restricted"
-
-
-def test_effective_access_autonomous_flag_is_full() -> None:
-    assert effective_access(secure=False, autonomous=True) == "full"
-
-
-def test_effective_access_no_flag_no_key_is_full() -> None:
-    assert effective_access(secure=False, autonomous=False) == "full"
-
-
-@pytest.mark.parametrize("tier", ["restricted", "editing", "full"])
-def test_effective_access_no_flag_uses_the_resolved_key(tier: str) -> None:
-    assert effective_access(secure=False, autonomous=False, access=tier) == tier
-
-
-@pytest.mark.parametrize("stored", ["restricted", "editing", "full"])
-def test_effective_access_secure_beats_every_stored_tier(stored: str) -> None:
-    assert effective_access(secure=True, autonomous=False, access=stored) == "restricted"
-
-
-@pytest.mark.parametrize("stored", ["restricted", "editing", "full"])
-def test_effective_access_autonomous_beats_every_stored_tier(stored: str) -> None:
-    assert effective_access(secure=False, autonomous=True, access=stored) == "full"
 
 
 # --------------------------------------------------------------------------- #

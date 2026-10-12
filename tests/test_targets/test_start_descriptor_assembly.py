@@ -46,22 +46,16 @@ def _start_argv(
 ) -> list[str]:
     """Reproduce start.py's descriptor argv assembly exactly.
 
-    Mirrors start.py: the launch TIER is resolved by ``effective_access`` from
-    the per-launch -S (safe_mode) / -A (autonomous) flags plus the persisted
-    ``access`` enum key redeemed via ``access_realization.setting_key`` (validated
-    against the enum, DEFAULT ``full`` when unset).
+    Mirrors start.py: the launch TIER is the ``access`` key redeemed via
+    ``access_realization.setting_key`` (validated against the enum, DEFAULT
+    ``full`` when unset), with the per-launch -S (safe_mode) / -A (autonomous)
+    flags riding the §1A CLI level above the persisted value.
     """
     from kanibako.settings.settings_launch import meta_agent_grammar_floor
 
-    ar = desc.access_realization
-    launch_access = assembly.effective_access(
-        secure=safe_mode,
-        autonomous=autonomous,
-        access=(
-            state.get(ar.setting_key)
-            if ar is not None and ar.setting_key
-            else None
-        ),
+    launch_access = _launch_tier(
+        desc, secure=safe_mode, autonomous=autonomous,
+        persisted=state.get("access"),
     )
     # B5: mirror start.py — the launch grammar is MATERIALIZED into the keyspace
     # (the same single descriptor→keyspace builder the launch uses) and the
@@ -268,8 +262,8 @@ class TestDescriptorArgv:
 class TestPersistedAccessTierClaude:
     """The persisted ``access`` TIER key (spec §2d, R-41) is LIVE for claude.
 
-    The launch tier is resolved by ``effective_access`` from the per-launch
-    -S/-A flags plus the redeemed ``access`` key (validated against the enum,
+    The launch tier is the redeemed ``access`` key with the per-launch
+    -S/-A flags riding the §1A CLI level above it (validated against the enum,
     DEFAULT ``full`` when unset); the rows below are the documented behavior
     contract.  ``--dangerously-skip-permissions`` is claude's ``full`` row and
     ``--permission-mode acceptEdits`` its ``editing`` row (FLAG-channel
@@ -348,14 +342,18 @@ class TestPersistedAccessTierClaude:
 
 
 def _launch_tier(desc, *, secure, autonomous, persisted):
-    """Mirror start.py's launch read: validate the persisted ``access``
-    (DEFAULT ``full`` when unset) then fold in the per-launch flags."""
+    """Mirror start.py's launch read: the per-launch flags ride the §1A CLI
+    level, which outranks the persisted ``access``; the winner is validated
+    (DEFAULT ``full`` when unset)."""
+    from kanibako.settings.settings_cli_level import build_cli_level
+
     ar = desc.access_realization
-    return assembly.effective_access(
-        secure=secure,
-        autonomous=autonomous,
-        access=persisted if ar is not None and ar.setting_key else None,
-    )
+    if ar is None or not ar.setting_key:
+        return assembly.resolve_access_tier(None)
+    level = build_cli_level(
+        active_agent="a", secure=secure, autonomous=autonomous,
+    ) or {}
+    return assembly.resolve_access_tier(level.get("agent.a.access", persisted))
 
 
 class TestUniformAccessAcrossAgents:

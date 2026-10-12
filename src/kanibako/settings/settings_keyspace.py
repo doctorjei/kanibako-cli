@@ -307,7 +307,7 @@ SCALAR_AGENT_LEAVES: Final[frozenset[str]] = (
 #:
 #: ⚑ The value set is CLOSED (spec §0): an unknown value is REJECTED LOUDLY at
 #: BOTH ends — ``config set`` time (``config_keys.access_value_error``) and
-#: launch (``targets.assembly.effective_access``). It is NEVER treated as
+#: launch (``targets.assembly.resolve_access_tier``). It is NEVER treated as
 #: permissive: a typo must not be the difference between prompting and not.
 #: Declared HERE, beside the leaf itself, so the settable surface, the launch
 #: resolver and the plugin descriptors all read ONE list.

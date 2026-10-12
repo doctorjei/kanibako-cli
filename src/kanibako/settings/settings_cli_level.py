@@ -31,9 +31,7 @@ from kanibako.settings.settings_resolve import SettingsError
 #: selection seam's spelling so the level and the selection cannot drift.
 SELECTION_KEY: Final[str] = "system.agent"
 
-#: The DECLARED flag→key table (spec §1A). **WIRED ENTRIES ONLY** — the spec also names
-#: ``-S``/``-A`` (``access``), which are deliberately absent because installing them here
-#: would let an ephemeral flag mutate a stored value; see the llm-doc.
+#: The DECLARED flag→key table (spec §1A). **WIRED ENTRIES ONLY**; see the llm-doc.
 #:
 #: The value is a display TEMPLATE (``<agent>`` = the active discriminator), used by tests
 #: and by humans; the builder below is the executable form.
@@ -41,6 +39,7 @@ CLI_SHADOWED_KEYS: Final[Mapping[str, str]] = {
     "--agent": SELECTION_KEY,
     "-M/--model": "agent.<agent>.model",
     "-N/-C/-R": "agent.<agent>.continue_mode",
+    "-S/-A": "agent.<agent>.access",
     "--image": "box.image",
     "--share-images": "box.share_images",
 }
@@ -60,6 +59,8 @@ def build_cli_level(
     new_session: bool = False,
     continue_session: bool = False,
     resume: bool = False,
+    secure: bool = False,
+    autonomous: bool = False,
     image: "str | None" = None,
     share_images: bool = False,
 ) -> "dict[str, object] | None":
@@ -74,8 +75,12 @@ def build_cli_level(
     one even from level index 0 — contradicting "the highest, above everything".
 
     ⚑ An un-given flag installs NOTHING: ``None``/``""`` for *model* and *image*, ``False``
-    for *share_images* (an argparse ``store_true``, so there is no negative spelling). Absent
-    ≠ an explicit override, and ``""`` is a terminal value the resolver treats as meaningful.
+    for *share_images*, *secure* and *autonomous* (argparse ``store_true``s, so there is no
+    negative spelling). Absent ≠ an explicit override, and ``""`` is a terminal value the
+    resolver treats as meaningful.
+
+    ⚑ *secure* (``-S``) WINS over *autonomous* (``-A``) when both are given: on a
+    permission axis the stricter request is the one that cannot surprise the user.
 
     ⚑ ``-R`` installing ``True`` is LOAD-BEARING, not cosmetic. ``assembly.resolve_mode``
     falls through its picker arm for a descriptor with no ``resume`` mode (goose/codex) and
@@ -92,6 +97,10 @@ def build_cli_level(
             level[f"agent.{active_agent}.continue_mode"] = False
         elif continue_session or resume:
             level[f"agent.{active_agent}.continue_mode"] = True
+        if secure:
+            level[f"agent.{active_agent}.access"] = "restricted"
+        elif autonomous:
+            level[f"agent.{active_agent}.access"] = "full"
     if image:
         level["box.image"] = image
     if share_images:

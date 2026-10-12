@@ -487,15 +487,15 @@ def _claude_argv(
     *, safe_mode, resume_mode, new_session, is_new_project, extra_args,
     access=None,
 ):
+    from kanibako.settings.settings_cli_level import build_cli_level
     from kanibako.settings.settings_launch import meta_agent_grammar_floor
     from kanibako.targets import assembly
 
     desc = ClaudeTarget().descriptor
     # The persisted ``access`` tier defaults to ``full`` when unset (R-41);
-    # mirror the launch reader's resolve + the -S/-A fold.
-    launch_access = assembly.effective_access(
-        secure=safe_mode, autonomous=False, access=access,
-    )
+    # mirror the launch: ``-S`` rides the §1A CLI level, which outranks the stored key.
+    level = build_cli_level(active_agent="claude", secure=safe_mode) or {}
+    launch_access = assembly.resolve_access_tier(level.get("agent.claude.access", access))
     # B5: mirror start.py — the launch grammar is materialized into the keyspace
     # (same single builder) and the composition reads the table, not the
     # descriptor.

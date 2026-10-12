@@ -752,7 +752,7 @@ class ClaudeTarget(Target):
         restricted|editing|full) redeemed by ``access_realization.setting_key`` and
         resolved at launch (validated against the enum, defaulting to ``full``
         when unset) — routed verbatim like ``allow_helpers``, with the per-launch
-        ``-S``/``-A`` flags overriding it for the ARGV only.
+        ``-S``/``-A`` flags overriding it through the §1A CLI level.
 
         The keys and their FLOOR values are declared in ``claude-defaults.yaml``'s
         ``behavior:`` section, not here: a default written in plugin code is a

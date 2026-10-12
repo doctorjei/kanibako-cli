@@ -237,9 +237,9 @@ per-agent override is the persona key `agent.<agent>.<key>` (spec §2d).
   break — no back-compat for the old bare-config-field form).
 * `access` — the agent-scope PERMISSION TIER, spec §2d ``agent.default.access | full``, enum
   ``restricted|editing|full``. Redeemed by each descriptor's `access_realization.setting_key` at
-  launch (claude/codex FLAG rows, goose GOOSE_MODE ENV rows) and by the PROJECTED surfaces; the
-  per-launch ``-S``/``-A`` flags override it for the ARGV only (``-S`` ⇒ restricted, ``-A`` ⇒ full),
-  never for the projection (spec §1A projected-surface exception). SUPERSEDES the boolean
+  launch (claude/codex FLAG rows, goose GOOSE_MODE ENV rows); the key is not projected. The
+  per-launch ``-S``/``-A`` flags override it through the §1A CLI level (``-S`` ⇒ restricted,
+  ``-A`` ⇒ full). SUPERSEDES the boolean
   `auto_approve` (R-41, 1.8.0: mapping true→full / false→restricted; a stored `auto_approve` is
   REFUSED at launch by `settings_assemble.refuse_retired_behavior_keys`, never mapped silently). An
   UNKNOWN value is rejected at SET time (:func:`access_value_error`) and at launch — never treated

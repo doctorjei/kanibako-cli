@@ -288,7 +288,7 @@ def test_a_users_agent_default_model_is_delivered(agent: str, tmp_path: Path) ->
     system_file.write_text("agent:\n  default:\n    model: m-default\n")
     target = _TARGETS[agent]()
     realized = _LaunchRealizer(
-        desc=target.descriptor, agent_id=agent, safe_mode=False, autonomous=False,
+        desc=target.descriptor, agent_id=agent,
     )(_snapshot(agent, system_file))
     if agent == "goose":
         assert realized.env.get("GOOSE_MODEL") == "m-default", realized.env
@@ -308,7 +308,7 @@ def test_nothing_set_delivers_no_model(agent: str, tmp_path: Path) -> None:
     system_file.write_text("{}\n")
     target = _TARGETS[agent]()
     realized = _LaunchRealizer(
-        desc=target.descriptor, agent_id=agent, safe_mode=False, autonomous=False,
+        desc=target.descriptor, agent_id=agent,
     )(_snapshot(agent, system_file))
     assert "model" not in realized.effective_state
     assert "GOOSE_MODEL" not in realized.env

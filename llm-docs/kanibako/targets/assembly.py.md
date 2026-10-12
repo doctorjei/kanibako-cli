@@ -63,9 +63,9 @@ through past step 1. With no new-session or `--resume`-in-extra forcing, step 3 
 `"continue"` (continue-last) — the sane mapping for an agent that has no dedicated resume picker,
 such as goose or codex.
 
-## The access tiers — `resolve_access_tier` and `effective_access`
+## The access tier — `resolve_access_tier`
 
-`resolve_access_tier` validates a CASCADE-resolved `access` value into a permission TIER. `None`
+`resolve_access_tier` validates a resolved `access` value into a permission TIER. `None`
 (unset) yields `access_default()` — `full`, R-41's ruled default: today's behavior preserved,
 because the box is the containment boundary. That default is DECLARED in `core-defaults.yaml` and
 is not spelled in this module. Anything else must be a member of `ACCESS_TIERS` EXACTLY.
@@ -83,18 +83,10 @@ second fence exists for. Treating it as unset would make the ONE reachable route
 function's permissive arm a route the validators never approved (R-41: an unknown stored value is
 rejected, never treated as permissive).
 
-`effective_access` returns the tier this launch's ARGV/ENV should run at, folding the per-launch
-flags over the cascade (spec §2d + §1A; R-41 replaced the old boolean `effective_safe_mode_off`):
-
-* *secure* (`-S`) -> `"restricted"` — wins over everything.
-* *autonomous* (`-A`) -> `"full"` — the per-launch override.
-* else the cascade-resolved *access* key, defaulting to `full` when unset, via
-  `resolve_access_tier`, which REFUSES an unknown value.
-
-⚑ Those flags are EPHEMERAL and apply to the launch argv/env ONLY. The PROJECTED surfaces — claude
-`settings.json`, codex `config.toml`, goose `config.yaml` — resolve the tier from the CASCADE
-alone. That is spec §1A's projected-surface exception, because a projection outlives the launch.
-Both values therefore exist at a launch and they are deliberately NOT the same read.
+The per-launch flags are not folded here: `-S` (`restricted`) and `-A` (`full`) ride the §1A CLI
+level (`settings_cli_level.build_cli_level`), so the value this function receives already carries
+them. `effective_access`, the old post-resolve fold, was deleted for the same reason as
+`resolve_new_session`.
 
 ## `access_row` — the un-rendered-tier rule and version skew
 
@@ -174,7 +166,7 @@ descriptor load (`settings/agent_defaults._build_setting_arg`), which is where a
 gets told the file and the field; the guard in this module is the containment for a
 `PluginDescriptor` hand-built in code, which never passes through that loader.
 
-*access* is the tier this LAUNCH runs at, `-S` / `-A`-folded — see `effective_access`. *agent*
+*access* is the tier this LAUNCH runs at, `-S` / `-A` included. *agent*
 names the agent in the refusal message. ENV-channel access rows and settings are NOT argv and are
 emitted by `assemble_env` instead.
 

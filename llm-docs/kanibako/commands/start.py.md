@@ -608,7 +608,7 @@ applied to the finished `container_env` by the caller. They are **launch-derived
 `agent.<node>.env.<VAR>` keys** now, and `_assemble_launch_env` is a TOTAL projection of the leaf.
 
 **The seam is a POSITION, and that is the design.** A realization cannot be a floor default: its
-inputs (`effective_behavior`, the `-S`/`-A`-folded access tier, the persona provider pin) are
+inputs (`effective_behavior`, the access tier `-S`/`-A` reach through the CLI level, the persona provider pin) are
 OUTPUTS of the resolve, so nothing that feeds the resolve can carry them. So `_run_container` builds
 a `_LaunchRealizer` and hands it to `_resolve_launch_snapshot(realize=)`, which calls it **between
 `build_launch_snapshot` and `snapshot_category_entries`** — the only point where its input exists
@@ -623,11 +623,11 @@ floor a stored `agent.<node>.env.GOOSE_MODEL` sits above, so a flag that outrank
 file would lose to a key.
 
 ⚑ **The derived trio comes BACK to the caller** (`_LaunchRealizer.result` →
-`LaunchRealization(effective_state, cascade_access, launch_access, env)`) so each keeps exactly ONE
+`LaunchRealization(effective_state, access, env)`) so each keeps exactly ONE
 derivation site. `_run_container` used to derive all of them itself, after the resolve — which is
 precisely why the variables could not be keys. The **un-rendered tier gate moved with them**, into
-the realizer ahead of `assemble_env`, because `assemble_env` raises on the LAUNCH tier alone while
-the gate must name the CASCADE tier first. 🛑 `result` RAISES rather than defaulting when the
+the realizer ahead of `assemble_env`, so the refusal lands before any best-effort delivery can
+swallow it. 🛑 `result` RAISES rather than defaulting when the
 callback never ran: an empty default would turn a resolve that dropped the kwarg into a box launched
 at `full` with no realized variables and nothing said about it.
 
@@ -1172,8 +1172,7 @@ either one grows.
 detached-launch box shell), as are `no_helpers` and `explicit_agent`. The block sits ABOVE every one
 of those, so the question it answers is the question the USER asked. Same shape as `is_agent_mode`
 just above it: freeze the typed question once, read it many times. `typed_entrypoint` keeps that
-frozen answer under its own name (the `cascade_access` / `launch_access` shape used further down) so
-the regime never has to trust that no rebinding slipped in between.
+frozen answer under its own name so the regime never has to trust that no rebinding slipped in between.
 
 ### What the override gate refuses, and why each class
 

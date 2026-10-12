@@ -965,7 +965,7 @@ def start_mocks():
                     # the SAME single builder (no second seam to drift).
                     meta_identity=meta_agent_grammar_floor(_node, _desc),
                     # P8: the §1A CLI LEVEL must be FORWARDED, not dropped. The
-                    # per-launch flags (-M / -N/-C/-R) now reach the launch ONLY
+                    # per-launch flags (-M / -N/-C/-R / -S/-A) now reach the launch ONLY
                     # through this level, so a stub that swallows it would make
                     # every flag silently inert — and the flag tests in
                     # test_start.py would be asserting the harness, not the code.

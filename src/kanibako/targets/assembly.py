@@ -111,29 +111,6 @@ def resolve_access_tier(access: "str | None") -> str:
     return access
 
 
-def effective_access(
-    *,
-    secure: bool,
-    autonomous: bool,
-    access: "str | None" = None,
-) -> str:
-    """Return the permission TIER this launch's ARGV/ENV should run at.
-
-    *secure* (``-S``) ⇒ ``restricted``, winning over everything; *autonomous*
-    (``-A``) ⇒ ``full``; else the cascade-resolved *access* key via
-    :func:`resolve_access_tier` (spec §2d + §1A).
-
-    ⚑ The flags are EPHEMERAL and apply to the launch argv/env ONLY.  The PROJECTED
-    surfaces resolve the tier from the CASCADE alone (spec §1A's projected-surface
-    exception), so both values exist at a launch and are NOT the same read.
-    """
-    if secure:
-        return "restricted"
-    if autonomous:
-        return "full"
-    return resolve_access_tier(access)
-
-
 def access_row(
     descriptor: PluginDescriptor, tier: str, *, agent: str = "",
 ) -> "AccessTierRow | None":
@@ -192,9 +169,10 @@ def access_row(
 # ⚑ ``resolve_new_session`` was DELETED in P8 (v1.8.0): spec §1A makes the COMMAND LINE
 # its own LEVEL, so the ``-N``/``-C``/``-R`` fold over ``continue_mode`` now happens ONCE,
 # declaratively, in :func:`kanibako.settings.settings_cli_level.build_cli_level`, and the
-# launch reads ``effective_new_session = not continue_default``.
+# launch reads ``effective_new_session = not continue_default``. ``effective_access``
+# went the same way for ``-S``/``-A`` over ``access``.
 #
-# Do NOT reintroduce it. Two places folding the same flags from two different inputs is
+# Do NOT reintroduce either. Two places folding the same flags from two different inputs is
 # the "two forms that mean the same thing" failure, and the second one would be the one
 # nobody tested. ``resolve_mode`` still takes the raw ``resume_mode``, because ``-R``
 # selects a launch GRAMMAR, not a key.
@@ -234,7 +212,8 @@ def assemble_argv(
     level up at descriptor load; this is containment for a :class:`PluginDescriptor`
     hand-built in code, which never passes through that loader.
 
-    *access* is the tier this LAUNCH runs at (see :func:`effective_access`); *agent*
+    *access* is the tier this LAUNCH runs at (``-S``/``-A`` included — they ride the §1A
+    CLI level into the resolved key); *agent*
     names the agent in the refusal message.  ENV-channel access rows / settings are
     NOT argv and are emitted by :func:`assemble_env` instead.
     """

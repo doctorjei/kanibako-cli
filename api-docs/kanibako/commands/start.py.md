@@ -228,12 +228,11 @@ class StoredBoxAgent(NamedTuple):
 
 class LaunchRealization(NamedTuple):
     effective_state: dict[str, str]
-    cascade_access: str
-    launch_access: str
+    access: str
     env: dict[str, str]
 
 class _LaunchRealizer:
-    def __init__(self, *, desc, agent_id: str, safe_mode: bool, autonomous: bool, provider_pin=())
+    def __init__(self, *, desc, agent_id: str, cli_level=None, provider_pin=())
 
     @property
     def result(self) -> LaunchRealization

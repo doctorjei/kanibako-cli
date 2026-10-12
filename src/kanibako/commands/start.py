@@ -686,7 +686,7 @@ def run_start(args: argparse.Namespace) -> int:
     # The two ephemeral permission flags, carried RAW to the launch: ``-S``
     # (secure) selects the ``restricted`` access tier, ``-A`` (autonomous)
     # selects ``full``, and NEITHER means "use the box's resolved ``access``
-    # key" (R-41; the fold lives in ``assembly.effective_access``, one place).
+    # key" (R-41). They ride the §1A CLI level (``build_cli_level``), one place.
     safe_mode = secure
     autonomous = getattr(args, "autonomous", False)
 
@@ -3665,10 +3665,10 @@ def _run_container(
                 print(live_name)
             return 0
         # ``exec_program``: the SECOND PROCESS this launch puts into the live
-        # box.  It is its OWN name rather than a rebinding of ``entrypoint`` —
-        # the ``cascade_access``/``launch_access`` shape — so the typed value the
-        # gate above keyed on stays readable to the end of this regime, and the
-        # two exec doors below converge without either overwriting an input.
+        # box.  It is its OWN name rather than a rebinding of ``entrypoint``,
+        # so the typed value the gate above keyed on stays readable to the end
+        # of this regime, and the two exec doors below converge without either
+        # overwriting an input.
         exec_program: str | None = None
         if running_door == "box-shell":
             # ``kanibako shell`` (interactive, no agent) at a live box that is
@@ -4284,6 +4284,8 @@ def _run_container(
             new_session=new_session,
             continue_session=continue_override,
             resume=resume_mode,
+            secure=safe_mode,
+            autonomous=autonomous,
             # B6: the box-scope flags ride EVERY runtime resolve uniformly (§1A —
             # box.image / box.share_images are agent-independent, so they install
             # for shell/no-agent launches too; the image itself was settled off
@@ -4292,7 +4294,7 @@ def _run_container(
             share_images=share_images,
         )
         # THE REALIZATION (MBR-1 P4c-2): everything this launch DERIVES from its
-        # resolved settings — the behavior read, the two access tiers, and the
+        # resolved settings — the behavior read, the access tier, and the
         # variables the descriptor realizes — computed ONCE, INSIDE the resolve
         # below, and read back off ``.result`` further down.  It has to run in
         # there: it reads the built snapshot, and the variables it derives must be
@@ -4305,8 +4307,7 @@ def _run_container(
         _realizer = _LaunchRealizer(
             desc=desc,
             agent_id=agent_id,
-            safe_mode=safe_mode,
-            autonomous=autonomous,
+            cli_level=_cli_level,
             # The persona provider pin, resolved from the TARGET (never hardwired):
             # given only when this launch has an active persona endpoint, empty
             # otherwise — a BARE box is never touched.
@@ -4376,7 +4377,7 @@ def _run_container(
             # THE LAUNCH'S DERIVED STATE, READ BACK (MBR-1 P4c-2). It was computed
             # inside the resolve above, off the ONE snapshot, by the ONE realizer —
             # the §2d active-over-default behavior pick with the persona provider pin
-            # applied, plus the two access tiers. ⚑ Every one of these used to be
+            # applied, plus the access tier. ⚑ Every one of these used to be
             # derived HERE, after the resolve, which is exactly why the realized
             # variables could not be keys: they were computed downstream of the pass
             # that arbitrates them. Re-deriving any of them here would restore that
@@ -4409,20 +4410,16 @@ def _run_container(
                 # apply_state / build_cli_args hooks for descriptor-bearing
                 # targets).
                 #
-                # THE PERMISSION AXIS (R-41, spec §2d). TWO tiers, deliberately, and
-                # they are NOT the same read — see :class:`LaunchRealization`, which
-                # is where both are derived and which spells the difference. ⚑ THEY
-                # ARE READ HERE, NOT RESOLVED HERE (P4c-2): the un-rendered TIER GATE
-                # moved with them, into the realizer, because ``assemble_env`` raises
-                # on the launch tier alone and the gate has to name the CASCADE tier
-                # first. Re-resolving either tier here would be a second derivation
-                # that could disagree with the environment the box was given.
-                cascade_access = _realized.cascade_access
-                launch_access = _realized.launch_access
+                # THE PERMISSION AXIS (R-41, spec §2d) — see :class:`LaunchRealization`.
+                # ⚑ IT IS READ HERE, NOT RESOLVED HERE (P4c-2): the un-rendered TIER
+                # GATE lives in the realizer, ahead of ``assemble_env``. Re-resolving
+                # the tier here would be a second derivation that could disagree with
+                # the environment the box was given.
+                launch_access = _realized.access
                 _deliver_panel_permissions(
                     target=target,
                     proj=proj,
-                    access=cascade_access,
+                    access=launch_access,
                     provider=provider,
                     logger=logger,
                 )
@@ -9787,7 +9784,7 @@ def _core_env_default_categories(*, proj, target, agent_id) -> dict[str, str]:
 
 
 class LaunchRealization(NamedTuple):
-    """What ONE launch DERIVES from its resolved settings: behavior, tiers, variables.
+    """What ONE launch DERIVES from its resolved settings: behavior, tier, variables.
 
     Every field is an OUTPUT of the launch snapshot, which is why none of them can be
     a floor default: they are computed FROM the resolved cascade (``-M``/``-S``/``-A``
@@ -9795,22 +9792,20 @@ class LaunchRealization(NamedTuple):
 
     * *effective_state* — the §2d active-over-default behavior read, with the persona
       provider pin applied.  It is the dict the descriptor assemblers consume.
-    * *cascade_access* — the box's STORED permission tier.  What the panel seam gets
-      (it writes box invariants only; no tier reaches a file).
-    * *launch_access* — the same tier with this launch's ``-S``/``-A`` folded in.
-      What the ARGV and the ENV get, and only they.
+    * *access* — this launch's permission tier: the resolved ``access`` key, which
+      ``-S``/``-A`` reach through the §1A CLI level.  The argv, the env and the panel
+      seam all get it; no tier reaches a file (the key is not projected).
     * *env* — the REALIZED variables (``targets.assembly.assemble_env``): the
       per-launch translation of resolved values onto the ENV channel.
     """
 
     effective_state: dict[str, str]
-    cascade_access: str
-    launch_access: str
+    access: str
     env: dict[str, str]
 
 
 class _LaunchRealizer:
-    """The ONE derivation of a launch's behavior state, access tiers and realized variables.
+    """The ONE derivation of a launch's behavior state, access tier and realized variables.
 
     ⚑⚑ IT IS A CALLBACK BECAUSE OF WHERE ITS INPUT AND OUTPUT LIVE, not for taste
     (MBR-1 P4c-2).  The derivation READS the built launch snapshot, and its realized
@@ -9823,7 +9818,7 @@ class _LaunchRealizer:
     exactly the refusal below reversed.
 
     ⚑ THE RESULT IS KEPT so the caller reads the SAME derivation the snapshot was
-    written from.  ``_run_container`` needs all four fields; re-deriving any of them
+    written from.  ``_run_container`` needs all three fields; re-deriving any of them
     at the call site would be a second site that can disagree with the box's actual
     environment, which is the shape this fold exists to remove.
 
@@ -9834,12 +9829,10 @@ class _LaunchRealizer:
     write no realized variable.
     """
 
-    def __init__(self, *, desc, agent_id: str, safe_mode: bool, autonomous: bool,
-                 provider_pin=()):
+    def __init__(self, *, desc, agent_id: str, cli_level=None, provider_pin=()):
         self._desc = desc
         self._agent_id = agent_id
-        self._safe_mode = safe_mode
-        self._autonomous = autonomous
+        self._cli_level = cli_level or {}
         self._provider_pin = tuple(provider_pin)
         self._result: "LaunchRealization | None" = None
 
@@ -9879,47 +9872,38 @@ class _LaunchRealizer:
         for pin_key, pin_val in self._provider_pin:
             state[pin_key] = pin_val
 
-        cascade_access = ""
-        launch_access = ""
+        access = ""
         env: dict[str, str] = {}
         if self._desc is not None:
-            # THE PERMISSION AXIS (R-41, spec §2d). TWO tiers, deliberately, and
-            # they are NOT the same read — see :class:`LaunchRealization`.  An agent
-            # whose descriptor declares no ``access_realization.setting_key`` falls
-            # back to the ``full`` default, as before.
+            # THE PERMISSION AXIS (R-41, spec §2d). ONE tier: ``-S``/``-A`` ride the
+            # §1A CLI level, the only place they become a tier.  For the shipped
+            # ``setting_key: access`` the resolved key already carries them; the level
+            # entry is read directly too, because a descriptor whose ``setting_key``
+            # is EMPTY redeems no stored key (``-S``/``-A`` only) and one naming
+            # another key would never see ``agent.<node>.access``.  No flag and no
+            # ``setting_key`` falls back to the ``full`` default.
             ar = self._desc.access_realization
-            cascade_access = assembly.resolve_access_tier(
-                state.get(ar.setting_key)
-                if ar is not None and ar.setting_key
-                else None
+            stored = (
+                state.get(ar.setting_key) if ar is not None and ar.setting_key else None
             )
-            launch_access = assembly.effective_access(
-                secure=self._safe_mode,
-                autonomous=self._autonomous,
-                access=cascade_access,
+            flag_tier = self._cli_level.get(f"agent.{self._agent_id}.access")
+            access = assembly.resolve_access_tier(
+                stored if flag_tier is None else flag_tier
             )
-            # ⚑ UN-RENDERED TIER GATE, before ANY delivery — and now before the
+            # ⚑ UN-RENDERED TIER GATE, before ANY delivery — and before the
             # realization below, which is the earliest the launch can still stop.
-            # Both tiers are checked here because the panel deliveries
-            # further down are wrapped best-effort and would SWALLOW the refusal,
-            # leaving the box running at a tier the user did not ask for (goose has
-            # no ``editing`` realization — the case this exists for).
-            # dict.fromkeys, not a set: dedupe while keeping a DETERMINISTIC order
-            # (cascade first), so when both tiers are unrenderable the error names
-            # the same one every run.  🛑 That order is why the gate stays AHEAD of
-            # ``assemble_env``, which raises on the LAUNCH tier alone.
-            for tier in dict.fromkeys((cascade_access, launch_access)):
-                assembly.access_row(self._desc, tier, agent=self._agent_id)
+            # The panel deliveries further down are wrapped best-effort and would
+            # SWALLOW the refusal, leaving the box running at a tier the user did not
+            # ask for (goose has no ``editing`` realization — the case this exists for).
+            assembly.access_row(self._desc, access, agent=self._agent_id)
             env = assembly.assemble_env(
                 self._desc,
-                access=launch_access,
+                access=access,
                 setting_values=state,
                 agent=self._agent_id,
             )
 
-        self._result = LaunchRealization(
-            state, cascade_access, launch_access, env,
-        )
+        self._result = LaunchRealization(state, access, env)
         return self._result
 
 

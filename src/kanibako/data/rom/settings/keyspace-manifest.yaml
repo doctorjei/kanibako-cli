@@ -434,7 +434,7 @@ policy:
     create_exception_spec: "§1A (CREATE EXCEPTION)"
     # PROJECTED-SURFACE EXCEPTION stands as a STRUCTURAL CLASS RULE (R-11a
     # collision RULED (i)) — not counted as a flag exception; where it applies it
-    # WINS over the CLI level (-S/-A; -M barred from the codex projection resolve).
+    # WINS over the CLI level (-M barred from the codex projection resolve).
     # Backlogged fix: per-launch idempotent projections would dissolve it.
     projected_surface_exception: structural_class_rule
     projected_surface_exception_spec: "§1A (PROJECTED-SURFACE EXCEPTION)"
@@ -451,7 +451,8 @@ policy:
     #   projected_surface_excluded — folded at its EPHEMERAL consumer (the launch
     #                                argv); never enters the CLI level, because the
     #                                projection outlives the launch (the structural
-    #                                class rule above).
+    #                                class rule above). No entry carries it now;
+    #                                the marker is kept for a future projection.
     shadowed_flags:
       "--agent":
         key: system.agent
@@ -475,11 +476,9 @@ policy:
                                     #   only a GIVEN flag installs (True)
       "-S/-A":
         key: "agent.<agent>.access"
-        status: projected_surface_excluded
-        note: "R-41 successor spelling (supersedes auto_approve). The access
-               projection is written onto the box's persisted agent-config
-               surfaces; a level entry would make an ephemeral flag mutate
-               persisted state."
+        status: wired
+        note: "R-41 successor spelling (supersedes auto_approve). Spelled against
+               the ACTIVE agent; -S wins over -A. The key is not projected."
     shadowed_flags_spec: "§1A (flag enumeration; R-11 + R-11a)"
 
   # DECLARATION ROOTS (R-21) — the ABSTRACT categories (common/caches/seeded)
@@ -1453,7 +1452,7 @@ keys:
     note: "permission TIER (R-41). Default full preserves today's behavior — the
            box is the containment boundary. Per-agent realization is DESCRIPTOR-
            declared (R-37 pattern). Flags -S→restricted / -A→full, ephemeral
-           (projected-surface class, §1A). An UNKNOWN stored value is REJECTED
+           (the §1A CLI level). An UNKNOWN stored value is REJECTED
            LOUDLY, naming the key and the legal values — never treated as
            permissive."
     spec: "§2d (access subsection, R-41)"

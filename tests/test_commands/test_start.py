@@ -10149,7 +10149,6 @@ class TestPersonaLiveTierWiring:
             include_base_families=False,
             realize=_LaunchRealizer(
                 desc=target.descriptor, agent_id=self._NODE,
-                safe_mode=False, autonomous=False,
             ),
             cli_level=None,
         )

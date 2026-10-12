@@ -132,8 +132,8 @@ def resolve_realized(
     derived, THEN adapt to entries and collapse. Every step is a CALL to the one
     production implementation — a hand-made realized map here would pin the harness.
 
-    *model* rides the §1A CLI LEVEL (``-M``), because that is how a flag reaches the
-    behavior read; *safe_mode* / *autonomous* are ``-S`` / ``-A``. *agent_behavior_floor*
+    *model*, *safe_mode* and *autonomous* (``-M``, ``-S``, ``-A``) ride the §1A CLI
+    LEVEL, because that is how a flag reaches the behavior read. *agent_behavior_floor*
     stands in for the plugin's descriptor floor, at ``agent.<node>.<key>`` as the
     launch places it.
     """
@@ -148,16 +148,17 @@ def resolve_realized(
     }
     paths.update(files)
     desc = target.descriptor
+    cli_level = build_cli_level(
+        active_agent=node, model=model, secure=safe_mode, autonomous=autonomous,
+    )
     snapshot = build_launch_snapshot(
         agent_name=node, ctx=ctx,
         default_categories=env_floor(target, node=node),
         agent_behavior_floor=agent_behavior_floor,
-        cli_level=build_cli_level(active_agent=node, model=model),
+        cli_level=cli_level,
         **paths,
     )
-    realizer = _LaunchRealizer(
-        desc=desc, agent_id=node, safe_mode=safe_mode, autonomous=autonomous,
-    )
+    realizer = _LaunchRealizer(desc=desc, agent_id=node, cli_level=cli_level)
     _install_realized_env(
         snapshot, realizer(snapshot).env, agent_id=node, desc=desc,
     )
@@ -759,17 +760,46 @@ class TestTheRealizedVariablesArriveAsKeys:
         assert slots["GOOSE_MODE"].key == "agent.goose.env.GOOSE_MODE"
 
     def test_the_launch_flags_reach_the_realized_value(self):
-        """``-S`` / ``-A`` are the tier's per-launch fold, and the SLOT shows it.
+        """``-S`` / ``-A`` ride the §1A CLI level, and the SLOT shows it.
 
-        ⚑ This is the half a stored-key test cannot see. The tier the ENV gets is
-        ``launch_access`` — the stored key WITH the flags folded in — so a fold that
-        realized the cascade tier instead would deliver the box's stored permission
-        under a ``-S`` and still pass every arrival assertion.
+        ⚑ This is the half a stored-key test cannot see: a level that dropped the
+        flags would deliver the box's stored permission under a ``-S`` and still
+        pass every arrival assertion.
         """
         secure = resolve_realized(target_for("goose"), safe_mode=True)
         assert secure["GOOSE_MODE"].value == "approve"
         loose = resolve_realized(target_for("goose"), autonomous=True)
         assert loose["GOOSE_MODE"].value == "auto"
+
+    @pytest.mark.parametrize("scope", ["system_default", "system_agent", "agent_file"])
+    @pytest.mark.parametrize(
+        "stored,flag,expected",
+        [("full", "safe_mode", "approve"), ("restricted", "autonomous", "auto")],
+    )
+    def test_an_access_flag_outranks_every_scope_and_writes_nothing(
+        self, tmp_path, scope, stored, flag, expected,
+    ):
+        """``-S``/``-A`` sit on the §1A CLI level, above EVERY file that can store
+        ``access`` (agent scope only: the system file's ``agent.default`` and
+        ``agent.<node>``, and the agent's own file), and the stored file is
+        byte-identical afterwards — the level is ephemeral.
+
+        ⚑ The no-flag run is the control: it proves the stored value is read at
+        all, so the flag's win is not a default showing through.
+        """
+        doc, kwarg = {
+            "system_default": ({"agent": {"default": {"access": stored}}}, "system_path"),
+            "system_agent": ({"agent": {"goose": {"access": stored}}}, "system_path"),
+            "agent_file": ({"self": {"access": stored}}, "agent_path"),
+        }[scope]
+        path = write_yaml(tmp_path / f"{scope}.yaml", doc)
+        before = path.read_bytes()
+        target = target_for("goose")
+        control = resolve_realized(target, **{kwarg: path})
+        assert control["GOOSE_MODE"].value != expected
+        slots = resolve_realized(target, **{flag: True, kwarg: path})
+        assert slots["GOOSE_MODE"].value == expected
+        assert path.read_bytes() == before
 
     def test_a_driving_key_that_resolves_truthy_realizes_its_variable(self):
         """``agent.<node>.model`` → ``GOOSE_MODEL``, provenance on the agent scope."""
@@ -859,13 +889,49 @@ class TestTheRealizedVariablesArriveAsKeys:
         )
         assert set(slots) == set(DECLARED["codex"])
 
+    @pytest.mark.parametrize(
+        "flags,expected", [({}, "full"), ({"secure": True}, "restricted")],
+    )
+    def test_an_EMPTY_access_setting_key_still_honors_the_flags(
+        self, tmp_path, flags, expected,
+    ):
+        """``setting_key: ""`` redeems NO stored key — ``-S``/``-A`` only
+        (``docs/writing-targets.md``) — so the realizer reads the level entry itself.
+
+        The stored ``restricted`` is the control: ignored without a flag (``full``),
+        and ``-S`` still reaches the tier although no ``access`` key is redeemed.
+        """
+        import dataclasses
+
+        from kanibako.commands.start import _LaunchRealizer
+        from kanibako.settings.settings_cli_level import build_cli_level
+
+        desc = target_for("goose").descriptor
+        desc = dataclasses.replace(
+            desc,
+            access_realization=dataclasses.replace(
+                desc.access_realization, setting_key="",
+            ),
+        )
+        agent_file = write_yaml(
+            tmp_path / "agent.yaml", {"self": {"access": "restricted"}},
+        )
+        cli_level = build_cli_level(active_agent="goose", **flags)
+        snapshot = build_launch_snapshot(
+            agent_name="goose", ctx=make_ctx("goose"),
+            system_path=None, agent_path=agent_file, workset_path=None,
+            box_path=None, cli_level=cli_level,
+        )
+        realized = _LaunchRealizer(
+            desc=desc, agent_id="goose", cli_level=cli_level,
+        )(snapshot)
+        assert realized.access == expected
+
     def test_a_target_with_no_descriptor_realizes_nothing(self):
         """The no-agent box: nothing to realize from, and no attempt to."""
         from kanibako.commands.start import _LaunchRealizer
 
-        realizer = _LaunchRealizer(
-            desc=None, agent_id="shell", safe_mode=True, autonomous=False,
-        )
+        realizer = _LaunchRealizer(desc=None, agent_id="shell")
         ctx = make_ctx("shell")
         snapshot = build_launch_snapshot(
             agent_name="shell", ctx=ctx,
@@ -873,8 +939,7 @@ class TestTheRealizedVariablesArriveAsKeys:
         )
         realized = realizer(snapshot)
         assert realized.env == {}
-        assert realized.cascade_access == ""
-        assert realized.launch_access == ""
+        assert realized.access == ""
 
 
 class TestARealizedVariableADeclaredKeyAlsoNamesRefuses:

@@ -101,6 +101,26 @@ def test_resume_installs_true_not_absent() -> None:
     }
 
 
+@pytest.mark.parametrize(
+    "flags,expected",
+    [
+        ({"secure": True}, "restricted"),
+        ({"autonomous": True}, "full"),
+        ({"secure": True, "autonomous": True}, "restricted"),
+    ],
+)
+def test_access_flags_fold_into_access(flags, expected) -> None:
+    """``-S`` ⇒ ``restricted``, ``-A`` ⇒ ``full``; both given, the stricter wins."""
+    assert build_cli_level(active_agent=ACTIVE, **flags) == {
+        f"agent.{ACTIVE}.access": expected
+    }
+
+
+def test_no_access_flag_leaves_access_absent() -> None:
+    """No ``-S``/``-A`` ⇒ the stored/default tier stands; the level must not pin it."""
+    assert build_cli_level(active_agent=ACTIVE, secure=False, autonomous=False) is None
+
+
 def test_no_active_agent_drops_the_agent_scope_flags() -> None:
     """A shell / ``--entrypoint`` box has no agent slot to spell against.
 
@@ -115,6 +135,8 @@ def test_no_active_agent_drops_the_agent_scope_flags() -> None:
         active_agent=None,
         model="opus",
         new_session=True,
+        secure=True,
+        autonomous=True,
     )
     assert level == {SELECTION_KEY: "claude"}
 
@@ -137,17 +159,18 @@ def test_declared_table_lists_only_wired_flags() -> None:
 
     An unwired entry would read as a promise (the reason ``settings_keyspace``
     deleted its unused ``CATEGORY_SCOPES``). ``--image`` / ``--share-images``
-    are WIRED (B6, R-11a(a)); ``-S``/``-A`` stay deliberately ABSENT
-    (projected-surface exception) — see the module docstring.
+    are WIRED (B6, R-11a(a)); ``-S``/``-A`` are wired too — ``access`` is not
+    projected, so §1A's projected-surface exception does not reach it.
     """
     assert set(CLI_SHADOWED_KEYS) == {
-        "--agent", "-M/--model", "-N/-C/-R", "--image", "--share-images",
+        "--agent", "-M/--model", "-N/-C/-R", "-S/-A", "--image", "--share-images",
     }
     built = build_cli_level(
         selection={SELECTION_KEY: ACTIVE},
         active_agent=ACTIVE,
         model="opus",
         new_session=True,
+        secure=True,
         image="ghcr.io/x:y",
         share_images=True,
     )
@@ -594,3 +617,33 @@ def test_model_fold_equivalence(flag_model, stored_model) -> None:
         old_way = flag_model
 
     assert new_way == old_way
+
+
+def _old_effective_access(*, secure: bool, autonomous: bool, access) -> str:
+    """The DELETED ``assembly.effective_access`` fold, verbatim, as the oracle."""
+    from kanibako.targets.assembly import resolve_access_tier
+
+    if secure:
+        return "restricted"
+    if autonomous:
+        return "full"
+    return resolve_access_tier(access)
+
+
+@pytest.mark.parametrize(
+    "flags",
+    [{}, {"secure": True}, {"autonomous": True}, {"secure": True, "autonomous": True}],
+)
+@pytest.mark.parametrize("stored", [None, "restricted", "editing", "full"])
+def test_access_fold_equivalence(flags, stored) -> None:
+    """16 cases: the CLI level over the stored ``access`` == the old post-resolve fold."""
+    from kanibako.targets.assembly import resolve_access_tier
+
+    level = build_cli_level(active_agent=ACTIVE, **flags) or {}
+    new_way = resolve_access_tier(level.get(f"agent.{ACTIVE}.access", stored))
+    old_way = _old_effective_access(
+        secure=flags.get("secure", False),
+        autonomous=flags.get("autonomous", False),
+        access=stored,
+    )
+    assert new_way == old_way, f"{flags} over stored={stored}"
