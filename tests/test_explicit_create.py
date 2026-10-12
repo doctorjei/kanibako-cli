@@ -959,7 +959,7 @@ class TestBrokenStandaloneNoBoxError:
 
     @pytest.mark.parametrize("argv", [
         ["start"], ["shell"], ["stop"], ["box", "info"], ["box", "show"], ["box", "diagnose"],
-        ["box", "archive"], ["box", "convert", "--default"], ["box", "rm"],
+        ["box", "archive"], ["box", "convert", "--default"], ["box", "rm"], ["code"],
         ["box", "move", "{name}", "/nowhere/new"], ["box", "remap", "{name}", "/nowhere/new"],
     ])
     def test_every_verb_that_looks_a_box_up_names_the_path_of_a_legacy_name(

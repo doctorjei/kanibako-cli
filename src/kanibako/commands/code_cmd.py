@@ -195,13 +195,13 @@ def run_code(args: argparse.Namespace) -> int:
     # start_detached leg below re-gates identically at ``_run_container`` for
     # defense in depth.)
     from kanibako.commands.start import _no_box_error
-    from kanibako.errors import AmbiguousNameError, ProjectError
+    from kanibako.errors import AmbiguousNameError, LegacyBoxNameError, ProjectError
     try:
         proj = resolve_box_target(
             std, config, project_dir,
             initialize=False, register=True, warn=False,
         )
-    except AmbiguousNameError:
+    except (AmbiguousNameError, LegacyBoxNameError):
         raise
     except ProjectError:
         proj = None
