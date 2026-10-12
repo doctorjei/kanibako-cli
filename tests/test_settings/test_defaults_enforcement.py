@@ -91,8 +91,7 @@ _QUARANTINED: dict[tuple[str, str], int] = {}
 #: Files whose writer calls write NO settings file, path → reason.  Per file, any writer.
 _NON_SETTINGS: dict[str, str] = {
     "src/kanibako/launch/journal.py": "the lifecycle journal (config.journal)",
-    "src/kanibako/project/registry_store.py": "the name registry (config.registry)",
-    "src/kanibako/project/workset_registry.py": "a workset's registry.yaml",
+    "src/kanibako/project/registry_store.py": "the name registry and each workset's registry.yaml",
     "src/kanibako/channels/helpers.py": "a helper's spawn.yaml delivery doc, no cascade tier",
 }
 
