@@ -368,7 +368,9 @@ def _space_member(
         literal_arms = (Path(literal_path(ws_path)), Path(literal_path(ws_workspaces)))
         inside = (
             any(cwd_literal.is_relative_to(arm) for arm in literal_arms)
-            or any(cwd_resolved.is_relative_to(arm.resolve()) for arm in literal_arms)
+            # ⚑ A looped arm (a repointed ``workset.workspaces``) holds no cwd; 3.11 raises on it.
+            or any(cwd_resolved.is_relative_to(arm.resolve()) for arm in literal_arms
+                   if not _symlink_loop(arm))
         )
         if not inside:
             continue

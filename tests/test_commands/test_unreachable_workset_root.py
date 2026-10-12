@@ -171,3 +171,38 @@ def test_a_looped_reserved_alias_entry_is_kept_and_named(boxes, capsys, tmp_home
     assert rc == 0
     assert f"Warning: working set 'Default' could not be read: {alias}{_LOOP}\n" in err
     assert "Note: removed" not in err
+
+
+def test_connect_walks_past_another_looped_root(boxes, capsys, tmp_home):
+    _q, root = boxes
+    other = (tmp_home / "ws4").resolve()
+    assert _cli(capsys, "workset", "create", "--name", "ws4", str(other))[0] == 0
+    _break(other, "loop")
+    n2 = (tmp_home / "src" / "n2").resolve()
+    n2.mkdir()
+    rc, _out, err = _cli(capsys, "workset", "connect", "--name", "n2", "ws3", str(n2))
+    assert rc == 0, err
+
+
+@pytest.mark.parametrize("leaf", ["", "ws5"], ids=["target", "below"])
+def test_create_at_a_looped_target_refuses_by_name(boxes, capsys, tmp_home, leaf):
+    link = (tmp_home / "lp").resolve()
+    os.symlink("lp", link)
+    target = link / leaf if leaf else link
+    rc, _out, err = _cli(capsys, "workset", "create", "--name", "ws5", str(target))
+    assert rc == 1
+    # ⚑ Refused at the first read under it, the target's workset.yaml, naming that path.
+    assert err == f"Error: {target / 'workset.yaml'}{_LOOP}\n"
+    rc, out, _err = _cli(capsys, "workset", "list")
+    assert rc == 0 and "ws5" not in out
+
+
+def test_a_looped_repointed_workspaces_dir_holds_no_cwd(boxes, capsys, tmp_home, monkeypatch):
+    q, root = boxes
+    wl = (tmp_home / "wl").resolve()
+    os.symlink("wl", wl)
+    (root / "workset.yaml").write_text(f"workset:\n  workspaces: {wl}\n")
+    monkeypatch.chdir(q)
+    rc, out, err = _cli(capsys, "box", "info", "q")
+    assert rc == 0, err
+    assert str(q) in out
