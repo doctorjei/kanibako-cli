@@ -344,9 +344,16 @@ def _compress_old_logs(
         rel_path = log_file.relative_to(shell_dir)
         gz_path = log_file.with_suffix(log_file.suffix + ".gz")
 
+        # A link the box planted at the ``.gz`` is never written through: warned, skipped.
+        if not boxfs.no_symlink_or_warn(gz_path, shell_dir):
+            continue
+
         if not dry_run:
             try:
                 compressed_size = _gzip_file(log_file, gz_path, shell_dir)
+            except boxfs.SymlinkRefusedError as exc:  # planted after the check
+                get_logger("hygiene").warning("skipped %s: %s", gz_path, exc)
+                continue
             except OSError:
                 continue
         else:
@@ -417,28 +424,23 @@ def _box_listdir(path: Path, root: Path) -> list[str]:
         return []
 
 
-def _forcing(remove: Callable[[], None], path: Path, root: Path) -> None:
-    """Run *remove*; on a ``PermissionError`` (a read-only directory in the tree),
-    give the owner rwx on the tree and run it once more.  Other errors are logged."""
-    logger = get_logger("hygiene")
+def _no_raise(remove: Callable[[], None], path: Path) -> None:
+    """Run *remove*; an error is logged, never raised (hygiene never stops a start)."""
     try:
-        try:
-            remove()
-        except PermissionError:
-            boxfs.chmod_tree(path, root, add=_st.S_IRWXU)
-            remove()
+        remove()
     except OSError as exc:
-        logger.warning("hygiene could not remove %s: %s", path, exc)
+        get_logger("hygiene").warning("hygiene could not remove %s: %s", path, exc)
 
 
 def _remove_dir_contents(d: Path, root: Path) -> None:
-    """Remove all entries inside *d* without removing *d* itself."""
-    _forcing(lambda: boxfs.rmtree_contents(d, root), d, root)
+    """Remove all entries inside *d* without removing *d* itself; a read-only
+    directory in the tree is widened first (``force``)."""
+    _no_raise(lambda: boxfs.rmtree_contents(d, root, force=True), d)
 
 
 def _remove_tree(d: Path, root: Path) -> None:
-    """Remove the directory *d* and everything in it."""
-    _forcing(lambda: boxfs.rmtree(d, root, missing_ok=True), d, root)
+    """Remove the directory *d* and everything in it (``force``, as above)."""
+    _no_raise(lambda: boxfs.rmtree(d, root, missing_ok=True, force=True), d)
 
 
 def _dir_size(d: Path, root: Path) -> int:

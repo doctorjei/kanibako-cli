@@ -644,6 +644,31 @@ def _swap_after_open(monkeypatch, parent, outside):
     monkeypatch.setattr(boxfs.os, "open", open_then_swap)
 
 
+@pytest.mark.parametrize("op", ["rmtree", "rmtree_contents"])
+def test_force_widens_a_read_only_tree_and_removes_it(tree, op):
+    root, outside, sentinel = tree
+    d = root / "a" / "b"
+    (d / "ro" / "deep").mkdir(parents=True)
+    (d / "ro" / "deep" / "f").write_text("x")
+    (d / "ro" / "to_host").symlink_to(outside)
+    (d / "ro" / "deep").chmod(0o555)
+    (d / "ro").chmod(0o555)
+    sentinel.chmod(0o400)
+    remove = getattr(boxfs, op)
+    try:
+        with pytest.raises(PermissionError):
+            remove(d, root)
+        remove(d, root, force=True)
+    finally:
+        for p in (d / "ro" / "deep", d / "ro"):
+            if p.is_dir():
+                p.chmod(0o755)
+    assert not (d / "ro").exists()
+    assert d.exists() == (op == "rmtree_contents")
+    assert stat.S_IMODE(sentinel.stat().st_mode) == 0o400  # the link was never followed
+    assert sentinel.read_text() == "host data"
+
+
 def test_rmdir_removes_only_an_empty_directory(tree):
     root, _, _ = tree
     d = root / "a" / "b"

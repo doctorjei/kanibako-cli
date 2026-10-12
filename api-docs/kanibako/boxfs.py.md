@@ -27,8 +27,8 @@ def copy_file(src: Path, dst: Path, *, src_root: Path | None, dst_root: Path | N
 def copy_tree(src: Path, dst: Path, *, src_root: Path | None, dst_root: Path | None, merge: bool=False, skip_links: bool=False, follow_src_links: bool=False) -> list[Path]
 def touch(path: Path, root: Path, mode: int=438) -> None
 def unlink(path: Path, root: Path, *, missing_ok: bool=False) -> None
-def rmtree_contents(path: Path, root: Path) -> None
-def rmtree(path: Path, root: Path, *, missing_ok: bool=False) -> None
+def rmtree_contents(path: Path, root: Path, *, force: bool=False) -> None
+def rmtree(path: Path, root: Path, *, missing_ok: bool=False, force: bool=False) -> None
 def rmdir(path: Path, root: Path) -> None
 def chmod(path: Path, root: Path, mode: int) -> None
 def chmod_tree(path: Path, root: Path, *, add: int=0, remove: int=0) -> None
@@ -52,6 +52,7 @@ def _kept_mode(dir_fd: int, leaf: str) -> int
 def _not_copied(skipped: list[Path], path: Path, why: str) -> None
 def _copy_entries(sfd: int, dfd: int, src: Path, dst: Path, skip_links: bool, avoid: tuple[int, int], follow_src: bool=False) -> list[Path]
 def _remove_at(name: str, dir_fd: int, shown: Path, st: os.stat_result | None=None) -> None
+def _forced(remove: Callable[[], None], path: Path, root: Path, force: bool) -> None
 def _chmod_fd(fd: int, mode: int, path: Path) -> None
 ```
 

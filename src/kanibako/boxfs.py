@@ -631,36 +631,63 @@ def _remove_at(name: str, dir_fd: int, shown: Path, st: os.stat_result | None = 
         raise OSError(errno.EOVERFLOW, "directory tree too deep", str(shown)) from exc
 
 
-def rmtree_contents(path: Path, root: Path) -> None:
+def _forced(remove: Callable[[], None], path: Path, root: Path, force: bool) -> None:
+    """Run *remove*; with *force*, a ``PermissionError`` gives the owner rwx on the
+    tree at *path* (:func:`chmod_tree`) and runs it once more."""
+    try:
+        remove()
+    except PermissionError:
+        if not force:
+            raise
+        chmod_tree(path, root, add=_st.S_IRWXU)
+        remove()
+
+
+def rmtree_contents(path: Path, root: Path, *, force: bool = False) -> None:
     """Remove everything inside the directory *path* (which may be *root*), keeping it.
 
     Removal goes through descriptors (``shutil.rmtree`` with ``dir_fd``): a link
-    inside is removed as a link, never followed.
+    inside is removed as a link, never followed.  *force*: a ``PermissionError`` (a
+    read-only directory in the tree) gives the owner rwx on the whole tree, files
+    included, and removes once more.  ⚑ Not for a tree whose files share inodes with
+    a tree that is kept (a hardlink snapshot): their modes would change too.
     """
-    with _dir(path, root) as dfd:
-        for name in os.listdir(dfd):
-            _remove_at(name, dfd, Path(path) / name)
+    path = Path(path)
+
+    def remove() -> None:
+        with _dir(path, root) as dfd:
+            for name in os.listdir(dfd):
+                _remove_at(name, dfd, path / name)
+
+    _forced(remove, path, root, force)
 
 
-def rmtree(path: Path, root: Path, *, missing_ok: bool = False) -> None:
+def rmtree(
+    path: Path, root: Path, *, missing_ok: bool = False, force: bool = False,
+) -> None:
     """Remove the directory *path* and everything in it, through its verified parent.
 
     A link at *path* is removed as a link (as :func:`unlink` does), never descended;
-    a file at *path* is removed too.  Inside, removal is :func:`rmtree_contents`'s.
-    *path* equal to *root* raises ``ValueError``: the root is the caller's, so use
-    :func:`rmtree_contents` to empty it.  *missing_ok* accepts only a missing
-    *path* or parent; an entry that vanishes inside the tree mid-walk still raises.
+    a file at *path* is removed too.  Inside, removal is :func:`rmtree_contents`'s,
+    *force* included.  *path* equal to *root* raises ``ValueError``: the root is the
+    caller's, so use :func:`rmtree_contents` to empty it.  *missing_ok* accepts only
+    a missing *path* or parent; an entry that vanishes inside the tree mid-walk still
+    raises.
     """
     path = Path(path)
-    with contextlib.ExitStack() as stack:
-        try:
-            pfd, leaf = stack.enter_context(_parent(path, root))
-            st = os.stat(leaf, dir_fd=pfd, follow_symlinks=False)
-        except FileNotFoundError:
-            if missing_ok:
-                return
-            raise
-        _remove_at(leaf, pfd, path, st)
+
+    def remove() -> None:
+        with contextlib.ExitStack() as stack:
+            try:
+                pfd, leaf = stack.enter_context(_parent(path, root))
+                st = os.stat(leaf, dir_fd=pfd, follow_symlinks=False)
+            except FileNotFoundError:
+                if missing_ok:
+                    return
+                raise
+            _remove_at(leaf, pfd, path, st)
+
+    _forced(remove, path, root, force)
 
 
 def rmdir(path: Path, root: Path) -> None:

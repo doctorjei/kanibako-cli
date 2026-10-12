@@ -1461,7 +1461,7 @@ class TestRestoreAcrossAMount:
     """The vault leaf may be a mount point: ``shutil.move`` copied across, so the boxfs
     renames fall back to a no-follow copy, both into and out of the vault."""
 
-    @pytest.mark.parametrize("err", ["EXDEV", "EBUSY"])
+    @pytest.mark.parametrize("err", ["EXDEV"])
     def test_restore_copies_when_the_vault_is_a_mount_point(
         self, tmp_path: Path, err: str,
     ) -> None:
@@ -1602,9 +1602,7 @@ class TestRestoreAcrossAMount:
         assert (vault_rw / "subdir" / "file2.txt").read_text() == "world"
         assert not [p for p in vault_rw.parent.iterdir() if ".restore." in p.name]
 
-    def test_an_undo_that_fails_keeps_the_backup(
-        self, tmp_path: Path, caplog: pytest.LogCaptureFixture,
-    ) -> None:
+    def test_an_undo_that_fails_keeps_the_backup_and_says_so(self, tmp_path: Path) -> None:
         import errno as _errno
 
         vault_rw = tmp_path / "vault" / "share-rw"
@@ -1622,10 +1620,88 @@ class TestRestoreAcrossAMount:
 
         with patch("kanibako.snapshots.boxfs.rename", side_effect=rename), \
                 patch("kanibako.snapshots.boxfs.copy_tree", side_effect=copy_tree):
-            with pytest.raises(OSError, match="No space"):
+            with pytest.raises(snapshots_mod.RestoreUndoFailedError) as caught:
                 restore_snapshot(vault_rw, snap.name, box_name="testbox")
 
         backup = vault_rw.parent / ".share-rw.restore.bak"
+        text = str(caught.value)
+        assert str(backup) in text and "No space" in text
+        assert "put back as it was" not in text
         assert (backup / "file1.txt").read_text() == "live-precious"
-        assert str(backup) in caplog.text
         assert not (vault_rw.parent / ".share-rw.restore.tmp").exists()
+
+        # A later restore never deletes the kept backup: refused, naming it.
+        names_before = {n for n, _ts, _size in list_snapshots(vault_rw, box_name="testbox")}
+        with pytest.raises(snapshots_mod.RestoreRefusedError, match="restore.bak"):
+            restore_snapshot(vault_rw, snap.name, box_name="testbox")
+        assert (backup / "file1.txt").read_text() == "live-precious"
+        names_after = {n for n, _ts, _size in list_snapshots(vault_rw, box_name="testbox")}
+        assert names_after == names_before  # refused before the safety snapshot
+
+    def test_an_entry_that_is_a_mount_point_is_refused_before_any_copy(
+        self, tmp_path: Path,
+    ) -> None:
+        """EBUSY: the entry is a mount point, which can never be removed."""
+        import errno as _errno
+
+        vault_rw = tmp_path / "vault" / "share-rw"
+        _populate_rw(vault_rw)
+        snap = create_snapshot(vault_rw, box_name="testbox", strategy="hardlink")
+        assert snap is not None
+        (vault_rw / "file1.txt").write_text("live-precious")
+        real_rename = snapshots_mod.boxfs.rename
+
+        def rename(src: Path, dst: Path, root: Path) -> None:
+            if Path(src).name == "subdir":
+                raise OSError(_errno.EBUSY, os.strerror(_errno.EBUSY), str(src))
+            real_rename(src, dst, root)
+
+        copies: list[Path] = []
+        with patch("kanibako.snapshots.boxfs.rename", side_effect=rename), \
+                patch("kanibako.snapshots.boxfs.copy_tree",
+                      side_effect=lambda src, dst, **kw: copies.append(src)):
+            with pytest.raises(snapshots_mod.RestoreRefusedError, match="mount point") as caught:
+                restore_snapshot(vault_rw, snap.name, box_name="testbox")
+
+        assert str(vault_rw.resolve() / "subdir") in str(caught.value)
+        assert copies == []
+        assert sorted(os.listdir(vault_rw)) == ["file1.txt", "subdir"]
+        assert (vault_rw / "file1.txt").read_text() == "live-precious"
+        assert (vault_rw / "subdir" / "file2.txt").read_text() == "world"
+        assert not [p for p in vault_rw.parent.iterdir() if ".restore." in p.name]
+
+    def test_a_mount_point_entry_in_a_mounted_vault_is_refused_before_any_copy(
+        self, tmp_path: Path,
+    ) -> None:
+        """EXDEV on the vault, and an entry on a device of its own: refused, not copied."""
+        import errno as _errno
+
+        vault_rw = tmp_path / "vault" / "share-rw"
+        _populate_rw(vault_rw)
+        snap = create_snapshot(vault_rw, box_name="testbox", strategy="hardlink")
+        assert snap is not None
+        (vault_rw / "file1.txt").write_text("live-precious")
+        rename, _ = _crossing_rename(vault_rw, _errno.EXDEV)
+        real_stat = snapshots_mod.boxfs.stat
+        mounted = vault_rw.resolve() / "subdir"
+
+        def stat(path: Path, root: Path) -> os.stat_result:
+            st = real_stat(path, root)
+            if Path(path) == mounted:
+                fields = list(st)
+                fields[2] += 1  # st_dev
+                return os.stat_result(fields)
+            return st
+
+        copies: list[Path] = []
+        with patch("kanibako.snapshots.boxfs.rename", side_effect=rename), \
+                patch("kanibako.snapshots.boxfs.stat", side_effect=stat), \
+                patch("kanibako.snapshots.boxfs.copy_tree",
+                      side_effect=lambda src, dst, **kw: copies.append(src)):
+            with pytest.raises(snapshots_mod.RestoreRefusedError, match="mount point"):
+                restore_snapshot(vault_rw, snap.name, box_name="testbox")
+
+        assert copies == []
+        assert (vault_rw / "file1.txt").read_text() == "live-precious"
+        assert (vault_rw / "subdir" / "file2.txt").read_text() == "world"
+        assert not [p for p in vault_rw.parent.iterdir() if ".restore." in p.name]

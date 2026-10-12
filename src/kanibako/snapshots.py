@@ -62,7 +62,19 @@ class ForeignSnapshotError(KanibakoError):
     """
 
 
-class RestoreLinkRefusedError(KanibakoError):
+class RestoreRefusedError(KanibakoError):
+    """``restore`` refused before changing anything, or after rolling back to it.
+
+    The message names what stopped it and the cure.
+    """
+
+
+class RestoreUndoFailedError(KanibakoError):
+    """A failed ``restore`` could not put the vault back; the message names the kept
+    backup that holds the live contents (the pre-restore snapshot holds them too)."""
+
+
+class RestoreLinkRefusedError(RestoreRefusedError):
     """The box planted a symlink where ``restore`` was putting an entry back.
 
     The live vault is box-writable and the box may be running, so a link there could
@@ -302,23 +314,16 @@ def _rmtree_force(path: Path) -> None:
 
 
 def _remove_in_vault(path: Path, root: Path) -> None:
-    """Remove *path* (a tree, a file, or a link, never followed) under *root*, through
-    :mod:`kanibako.boxfs`; a missing *path* is fine.
-
-    A ``PermissionError`` (a read-only directory in the tree) gives the owner rwx on
-    the whole tree, files included, then removes it again.  ⚑ Only for trees that are
-    not snapshots: a hardlink snapshot shares its file inodes with the snapshots kept
-    beside it, so prune widens directories only (:func:`_rmtree_force`).
-    """
-    try:
-        boxfs.rmtree(path, root, missing_ok=True)
-    except PermissionError:
-        boxfs.chmod_tree(path, root, add=stat.S_IRWXU)
-        boxfs.rmtree(path, root, missing_ok=True)
+    """Remove *path* (a tree, a file, or a link, never followed) under *root*; a
+    missing *path* is fine.  ``force``: never for a snapshot (see :func:`_rmtree_force`)."""
+    boxfs.rmtree(path, root, missing_ok=True, force=True)
 
 
-# A rename that cannot cross a mount: the vault, or an entry in it, is a mount point.
-_NO_RENAME = (errno.EXDEV, errno.EBUSY)
+def _mount_point_refused(path: Path) -> RestoreRefusedError:
+    return RestoreRefusedError(
+        f"Refused to restore: {path} is a mount point, which a restore can neither "
+        f"move nor remove. Nothing was changed; unmount it and restore again."
+    )
 
 
 def _move_entries(
@@ -329,11 +334,14 @@ def _move_entries(
     :mod:`kanibako.boxfs`; return the source paths that could not be moved.
 
     A name goes on *done* once it is whole in *dst_dir*.  *check* runs on a name
-    before it lands.  A rename refused with EXDEV or EBUSY (a mount point) moves the
-    rest the way ``shutil.move`` did, without following a link: a no-follow copy of
-    *src_dir* merged into *dst_dir* (:func:`boxfs.copy_tree`), then the removal of
-    the rest from *src_dir*.  If the copy leaves anything out, nothing is removed or
-    put on *done*, and the paths left out are returned.
+    before it lands.  A rename refused with EXDEV (*src_dir* or *dst_dir* is a mount
+    point) moves the rest the way ``shutil.move`` did, without following a link: a
+    no-follow copy of *src_dir* merged into *dst_dir* (:func:`boxfs.copy_tree`), then
+    the removal of the rest from *src_dir*.  If the copy leaves anything out, nothing
+    is removed or put on *done*, and the paths left out are returned.
+
+    An entry that is itself a mount point (EBUSY, or a device of its own) can never
+    be removed, so it raises :class:`RestoreRefusedError` before anything is copied.
     """
     for i, name in enumerate(names):
         if check is not None:
@@ -341,16 +349,25 @@ def _move_entries(
         try:
             boxfs.rename(src_dir / name, dst_dir / name, root)
         except OSError as exc:
-            if exc.errno not in _NO_RENAME:
+            if exc.errno == errno.EBUSY:
+                raise _mount_point_refused(src_dir / name) from exc
+            if exc.errno != errno.EXDEV:
                 raise
             rest = names[i:]
             break
         done.append(name)
     else:
         return []
-    for name in rest[1:]:
+    dev = boxfs.stat(src_dir, root).st_dev
+    for name in rest:
         if check is not None:
             check(name)
+        try:
+            entry_dev = boxfs.stat(src_dir / name, root).st_dev
+        except boxfs.SymlinkRefusedError:
+            continue  # a link is copied as a link, never a mount point
+        if entry_dev != dev:
+            raise _mount_point_refused(src_dir / name)
     # copy_tree gives *dst_dir* the source's mode; the vault keeps its own.
     mode = stat.S_IMODE(boxfs.stat(dst_dir, root).st_mode)
     skipped = boxfs.copy_tree(src_dir, dst_dir, src_root=root, dst_root=root, merge=True)
@@ -707,6 +724,24 @@ def restore_snapshot(
 
     vault_rw_path.mkdir(parents=True, exist_ok=True)
 
+    # ⚑ The live vault is box-writable, and the box may be running (``vault restore``
+    # has no running-box guard), so every move into or out of it, and every removal in
+    # it, goes through boxfs rooted at the vault's parent: a link the box plants in it
+    # is never followed.  The path is resolved first, because a link AT the vault is the
+    # host's own repoint, which a box cannot plant.
+    live = vault_rw_path.resolve()
+    root = live.parent
+
+    # A backup a failed restore kept holds the only live copy outside the store: never
+    # removed by another restore.
+    backup = root / f".{live.name}.restore.bak"
+    if os.path.lexists(backup):
+        raise RestoreRefusedError(
+            f"Refused to restore '{snapshot_name}': {backup} holds the vault contents "
+            f"an earlier restore could not put back. Move what you need from it into "
+            f"{live}, delete it, and restore again."
+        )
+
     # No safety copy, no restore.
     try:
         safety = create_snapshot(
@@ -723,21 +758,11 @@ def restore_snapshot(
             f"snapshot store is writable and has room."
         ) from exc
 
-    # ⚑ The live vault is box-writable, and the box may be running (``vault restore``
-    # has no running-box guard), so every move into or out of it, and every removal in
-    # it, goes through boxfs rooted at the vault's parent: a link the box plants in it
-    # is never followed.  The path is resolved first, because a link AT the vault is the
-    # host's own repoint, which a box cannot plant.
-    live = vault_rw_path.resolve()
-    root = live.parent
-
     # Stage the new contents in a temp sibling of the vault so the final swap is a
     # same-filesystem rename -- unless the vault is a mount point, when every move
     # falls back to a no-follow copy (:func:`_move_entries`).
     staging = root / f".{live.name}.restore.tmp"
-    backup = root / f".{live.name}.restore.bak"
     _remove_in_vault(staging, root)
-    _remove_in_vault(backup, root)
     staging.mkdir(parents=True)
 
     def not_moved(paths: list[Path]) -> RestoreLinkRefusedError:
@@ -781,7 +806,7 @@ def restore_snapshot(
             )
             if left:
                 raise not_moved(left)
-        except Exception:
+        except Exception as exc:
             # Roll back: clear whatever made it in, restore the backup.
             # ⚑ The DATA-PRESERVING arm: a read-only directory among the staged
             # contents must not be what stops the live vault from being put back, and
@@ -798,11 +823,19 @@ def restore_snapshot(
                 if _move_entries(backup, live, list(moved), root, []):
                     raise OSError(errno.EIO, "the backup could not be put back whole")
             except Exception as undo:
+                # ⚑ Every refusal above says the vault was put back: not true now, so
+                # the error the user sees is this one, naming where the contents are.
                 kept_backup = True
-                logger.error(
-                    "restore of '%s' failed and the vault could not be put back (%s); "
-                    "its contents are kept at %s", snapshot_name, undo, backup,
+                held_too = (
+                    f" The pre-restore snapshot {safety.name} holds them too."
+                    if safety is not None else ""
                 )
+                raise RestoreUndoFailedError(
+                    f"Restore of '{snapshot_name}' failed ({exc}), and the vault could "
+                    f"not be put back ({undo}). Its contents are kept at {backup}.{held_too} "
+                    f"Move them back into {live} and delete {backup}; a restore is "
+                    f"refused while it exists."
+                ) from exc
             raise
     finally:
         # Disposable: the pre-restore snapshot already holds these in the store.

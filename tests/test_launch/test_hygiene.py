@@ -962,3 +962,54 @@ class TestReapNoFollow:
         )
         assert actions == []
         assert (stub / "session.json").read_text() == "{}"
+
+
+class TestGzDestinationLink:
+    """A link the box planted at ``<log>.jsonl.gz`` is never written through: warned."""
+
+    @pytest.mark.parametrize("dry_run", [False, True])
+    @pytest.mark.parametrize("where", ["outside", "inside"])
+    def test_a_linked_gz_is_warned_and_skipped(self, tmp_path, caplog, where, dry_run):
+        shell_dir = tmp_path / "home"
+        log_file = shell_dir / ".claude" / "projects" / "p" / "conversation_logs" / "c.jsonl"
+        _make_file(log_file, content=b'{"m":1}\n' * 50, mtime=_old_mtime())
+        target = (sentinel_tree(tmp_path) if where == "outside"
+                  else shell_dir / "elsewhere") / "victim"
+        _make_file(target, content=b"host data")
+        gz = log_file.with_name("c.jsonl.gz")
+        gz.symlink_to(target)
+        before = tree_digest(target)
+
+        with caplog.at_level(logging.WARNING, logger="kanibako"):
+            actions = _compress_old_logs(shell_dir, dry_run=dry_run, logger=object())
+
+        assert actions == []
+        assert tree_digest(target) == before
+        assert gz.is_symlink() and log_file.read_bytes() == b'{"m":1}\n' * 50
+        assert any(str(gz) in r.getMessage() for r in caplog.records
+                   if r.levelno == logging.WARNING)
+
+    def test_a_link_planted_after_the_check_is_warned(self, tmp_path, caplog, monkeypatch):
+        from kanibako.launch import hygiene
+
+        shell_dir = tmp_path / "home"
+        log_file = shell_dir / ".claude" / "projects" / "p" / "conversation_logs" / "c.jsonl"
+        _make_file(log_file, content=b"x" * 100, mtime=_old_mtime())
+        outside = sentinel_tree(tmp_path)
+        before = tree_digest(outside)
+        gz = log_file.with_name("c.jsonl.gz")
+        real_read = hygiene.boxfs.read_bytes_with_stat
+
+        def racing_read(path, root):
+            gz.symlink_to(outside / "sentinel.txt")
+            return real_read(path, root)
+
+        monkeypatch.setattr(hygiene.boxfs, "read_bytes_with_stat", racing_read)
+        with caplog.at_level(logging.WARNING, logger="kanibako"):
+            actions = _compress_old_logs(shell_dir, dry_run=False, logger=object())
+
+        assert actions == []
+        assert tree_digest(outside) == before
+        assert log_file.exists()
+        assert any(str(gz) in r.getMessage() for r in caplog.records
+                   if r.levelno == logging.WARNING)
