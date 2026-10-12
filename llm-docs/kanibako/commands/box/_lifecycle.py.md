@@ -71,7 +71,7 @@ RECORDING its `dest` as the box's workspace, so the in-tree-landing refusal belo
   project, the user's own directory. **Every destructive branch keys on this flag.**
 * ⚑ **Two vault fields, and they are not interchangeable.** `enable_vault` is the RESOLVED
   `box.enable_vault` — the whole cascade, `base < system < workset < box`, via
-  `config.resolve_box_enable_vault` (it was a two-file read until 2026-08-29, which is why a
+  `paths.resolve_box_enable_vault` (it was a two-file read until 2026-08-29, which is why a
   system-scope value used to be ignored).
   `box_authored_vault` is what the BOX ITSELF authored: one file, `config.read_box_enable_vault`,
   which since the same date takes no fallback parameter at all. **Only the authored
@@ -529,7 +529,7 @@ See **Sparse identity** for why the membership hit is the existence signal, and 
 home/vault are the default location only.
 
 ⚑ It derives its settings pair from `_default_project_group(std)` — the PRIMARY workset, the same
-group `resolve_project` builds — and hands both to the same `config.resolve_box_enable_vault`, so
+group `resolve_project` builds — and hands both to the same `paths.resolve_box_enable_vault`, so
 `box.enable_vault` resolves here exactly as it does on the live path. Passing `None` as the group
 made `remap` answer differently depending only on whether the workspace directory still existed:
 present ⇒ the workset's `false` applied, gone ⇒ it did not and the vault was created. ⚑ Calling the

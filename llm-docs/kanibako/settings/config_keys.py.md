@@ -545,8 +545,7 @@ spelling, `is_known_key` refuses it, and `get` refused it — while `set` took i
 back in the confirmation, teaching the form no other verb served. It also chose the DESTINATION
 FILE. `config_dest._dest` reads the scope token off the key as typed, and the flat form's first
 dotted token is the whole string, so it missed `_SETTINGS_SCOPE_TOKENS` and fell to the Layer-1
-`kanibako.cfg` — the bootstrap floor `config.load_merged_config` puts UNDER every tier —
-while `box.image` went to the settings tier ABOVE it. A spelling silently selected precedence.
+`kanibako.cfg`, then the bootstrap floor UNDER every tier — while `box.image` went to the settings tier ABOVE it. A spelling silently selected precedence.
 
 ⚑ **Do not reintroduce a spelling normalizer here.** Spec §0: the keyspace is CLOSED and a key has
 one spelling; a second one is not an alias, it is a second keyspace. The class guard is

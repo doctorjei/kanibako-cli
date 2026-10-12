@@ -3,7 +3,8 @@
 This module owns `kanibako.cfg` and the two flat dataclasses either side of it —
 `BootstrapConfig` (Layer 1, what that file holds) and `KanibakoConfig` (Layer 2, the merged box
 scalars) — plus the
-YAML read/write primitives, the built-in defaults, the layer-overlay merge, and a handful of
+YAML read/write primitives, the built-in defaults, the box-scalar floor and field typing that
+`settings_launch`'s keyspace resolve uses, and a handful of
 DIRECT readers (`workset.kuid`, `workset.skip_kuid_check`, `system.agent`,
 `system.setup_completed`, `system.helpers.*`, and — for the AUTHORING TIER only —
 `box.enable_vault`) that must answer BEFORE a cascade snapshot exists. It also carries two
@@ -70,7 +71,7 @@ declared-default floor, the field typing (`_typed_box_scalar`), and the null rul
 settings. Period."*), so the scalars START at the declared defaults and no Layer-1 value reaches
 them.
 
-### The floor, and why it is captured before the overlays
+### The floor
 
 ⚑⚑ **THE FLOOR IS THE DECLARED DEFAULTS, AND IT USED TO BE THE LAYER-1 FILE'S `[box]` TABLE.**
 That table was written at init on every install, the settings cascade did not read it, and its
@@ -92,7 +93,7 @@ the declared `<None>` (spec §2b `box.shell | <None>`), and the floor SUPPLIES i
 ref to it now resolves to `None` (§0). A winning `None` lands on the flat `box_shell` field as
 `None`, and `launch.shells.resolve_box_shell` auto-detects.
 
-⚑ The floor is the DECLARED DEFAULTS and is built before any overlay, so a workset or box value
+⚑ The floor is the DECLARED DEFAULTS, folded into the base level, so a workset or box value
 cannot masquerade as the system-stored default — it enters the resolve at its OWN tier instead.
 
 A `box:` table in `global/settings.yaml` — where `kanibako system set box.image=…` has always
@@ -160,10 +161,9 @@ type error rather than a value that silently carries the wrong layer.
 ```class KanibakoConfig```
 The flat merged SETTINGS object.
 
-Precedence over the FILE layers, least → most authoritative: hardcoded defaults < the workset
-tier < the box tier < CLI overrides. ⚑ The
-four `box.*` scalars do NOT resolve this way any more — see "B6" above; `settings_launch.load_merged_config`
-fills them from the keyspace.
+`settings_launch.load_merged_config` builds it: the CLI overrides that name a field, then each
+`box.*` scalar from the keyspace resolve (see "B6" above), which beats them. The other fields keep
+their defaults.
 
 ⚑ `box_enable_vault` JOINED 2026-08-29 as the fourth. Its field default is now THE carrier of
 `box.enable_vault`'s declared default — that is what `box_scalar_defaults_floor` publishes, and

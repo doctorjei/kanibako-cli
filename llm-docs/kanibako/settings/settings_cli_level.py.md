@@ -79,7 +79,7 @@ never the CLI level), though the flag itself is wired here for the launch argv.
 ### Why `--image` / `--share-images` ARE listed
 
 They are WIRED (B6, R-11a(a)): `box.image` / `box.share_images` resolve through the keyspace (the
-box-scalar resolve in `config.load_merged_config`), agent-lessly — a box-scope flag needs no active-
+box-scalar resolve, `settings_launch.resolve_box_scalars`, behind `load_merged_config`), agent-lessly — a box-scope flag needs no active-
 agent discriminator.
 
 Their PERSISTENCE at box CREATION is NOT this level's doing. §1A's CREATE EXCEPTION is implemented
@@ -107,10 +107,11 @@ of its three sources won, so
 that is load-bearing.
 
 **`active_agent`** is the discriminator the agent-scope keys are spelled against. The agent-scope
-entries are emitted ONLY when it is truthy. A launch with no target (`kanibako shell`,
-`--entrypoint`) passes `None`: it resolves in the `shell` slot (`agent_ref.GENERAL_SLOT`), but no
-parser exposes these flags for it, and `agent.shell.model` is DECLARED, so spelling it would install
-a flag value on the shell tier.
+entries are emitted ONLY when it is truthy. A launch with no target (`kanibako shell`, or `start
+--entrypoint`) passes `None` and resolves in the `shell` slot (`agent_ref.GENERAL_SLOT`). Spelling
+`agent.shell.model` would install the flag on the shell tier, which is DECLARED. ⚑ The `shell`
+parser has no `-M`, but `start` does and `--entrypoint` is shared, so `start --entrypoint X -M foo`
+parses and the `-M` value is DROPPED, with nothing printed.
 
 ⚑ **The agent-scope spelling is `agent.<active>.<leaf>`, never `agent.default.<leaf>`.**
 `effective_behavior` performs the §2d active-over-default pick AFTER the cascade merge, so a value at

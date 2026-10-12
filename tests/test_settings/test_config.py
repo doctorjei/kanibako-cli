@@ -1365,10 +1365,10 @@ class TestTheTwoBoxScalarResolvesAgree:
     """⚑⚑ TWO ROUTES OVER ONE CASCADE, PINNED EQUAL — the anti-drift guard.
 
     ``box.enable_vault`` is resolved two ways on purpose (2026-08-29).
-    ``load_merged_config`` goes through ``_resolve_box_scalars`` →
+    ``settings_launch.load_merged_config`` goes through ``resolve_box_scalars`` →
     ``build_launch_snapshot``, whose LAST step is the whole-tree §0 audit that RAISES on
     an undeclared entry anywhere in the cascade.  ``resolve_box_enable_vault`` goes
-    through ``_narrow_box_scalar_cascade``, which stops at the merge — because its caller
+    through ``paths._narrow_box_scalar_cascade``, which stops at the merge — because its caller
     is ``paths.resolve_project``, the PATH resolver every verb runs, including the plain
     ``kanibako box show`` that exists to PRINT an undeclared line rather than refuse it.
 
