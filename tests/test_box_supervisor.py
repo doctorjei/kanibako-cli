@@ -2675,6 +2675,13 @@ PID1_ALLOWED_KANIBAKO = frozenset({
     "kanibako.settings.bootstrap",
 })
 
+# Reached only through a function-level import, so the static walk follows it but a
+# bare ``import kanibako.box_supervisor`` does not load it.  ``kanibako.boxfs``: the
+# box-tree branch of ``log.rotate_if_over``; stdlib plus ``kanibako.log``.
+PID1_LAZY_KANIBAKO = frozenset({
+    "kanibako.boxfs",
+})
+
 
 def test_box_supervisor_import_chain_is_stdlib_only():
     """box_supervisor + its kanibako.* import chain must import ONLY stdlib.
@@ -2706,7 +2713,7 @@ def test_box_supervisor_import_chain_is_stdlib_only():
     # verified stdlib-only by the recursion below — this set only bounds WHICH kanibako
     # modules may participate, so an accidental new intra-kanibako dependency (which
     # might drag in third-party code) trips the guard.
-    allowed_kanibako = PID1_ALLOWED_KANIBAKO
+    allowed_kanibako = PID1_ALLOWED_KANIBAKO | PID1_LAZY_KANIBAKO
 
     def source_of(mod_name: str) -> "str | None":
         spec = importlib.util.find_spec(mod_name)
