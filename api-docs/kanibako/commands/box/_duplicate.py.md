@@ -16,6 +16,9 @@ def _refuse_existing_destination(path: Path) -> int
 def _local_target(std, mode: BoxMode, new_path: Path) -> tuple[Path, EarlyScope]
 def _source_is_external(args: argparse.Namespace, std) -> bool
 def _validate_dup_source(source_path: Path, new_path: Path | None) -> int | None
+def _refuse_nesting(std, dest: Path, *, to: BoxMode, force: bool, ws=None, name: str='') -> int | None
+def _refuse_into_source_store(src_proj, dest: Path) -> int | None
+def _refuse_source_tree(std, args: argparse.Namespace, src_proj, dest: Path, to: BoxMode) -> int | None
 def _refuse_no_source_data(metadata_dir: Path, source_path: Path) -> int | None
 def _confirm_dup(args: argparse.Namespace, subject: str, target: str, *rows: str) -> bool
 def _refuse_unmarked_source(source: DetectionResult, std) -> int | None

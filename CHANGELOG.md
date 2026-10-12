@@ -1010,6 +1010,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   sharing the tree. Another box's workspace or standalone root, or a standalone root whose `workspace/` is
   another box's workspace (which made two boxes on one workspace), is refused even with `--force`. See
   `MIGRATION.md`, "`create` on another box's path is refused".
+- **`box duplicate` onto another box's tree is refused before anything is written.** A copy inside, or
+  holding, another box's workspace, standalone root, or store now exits 1 naming the other box, and `--force`
+  makes it with both boxes sharing the tree. `duplicate --force` onto another box's workspace, a standalone
+  root, or a link to one overwrote that box's files or rewrote the standalone's identity; it is now refused
+  whatever the flag, as is a copy landing in a workset it is not a member of, and a standalone copy rooted
+  in its source's own store, which copied that store into itself. `--to named` checks the member's
+  `workspaces/<name>`.
 - **`box remap` onto another box's workspace or standalone root is refused before anything is written.**
   Onto a primary box's workspace, a workset member's, or a standalone box's `workspace/`, it recorded two
   boxes at one path; onto another standalone box's root it dropped that box's registry row, or, for a

@@ -157,6 +157,85 @@ def _validate_dup_source(source_path: Path, new_path: Path | None) -> int | None
     return None
 
 
+def _refuse_nesting(std, dest: Path, *, to: BoxMode, force: bool, ws=None,
+                    name: str = "") -> int | None:
+    """Print the refusal and return ``1`` when a copy placed at *dest* lands on another box's tree.
+
+    The box-ID path-space rule, then keyspace § 0 "Per-owner resources" through the judge
+    create and remap share (:func:`~kanibako.commands.box._lifecycle._dest_nesting_refusal`).
+    Every unforceable arm runs first, so *force* never passes one; a caller passes
+    ``force=True`` to run only those.
+    A duplicate is a NEW box, so no registry row is its own: *name* is ``""``, or a named
+    member's name, already checked free in *ws*.  A standalone copy is judged as a workspace
+    at its root and at the workspace that root records: a duplicate moves no entry at the
+    root, so the standalone sweep arm does not apply.  Each tree is judged as given and
+    resolved: the copy writes through a link into the tree it names.
+    """
+    from kanibako.commands.box import _lifecycle
+    from kanibako.errors import KanibakoError
+    from kanibako.project.workset import load_workset_settings_doc, resolve_workset_workspaces
+
+    trees = [dest]
+    if to is BoxMode.standalone:
+        try:
+            workspace = resolve_workset_workspaces(
+                dest, load_workset_settings_doc(dest), standalone=True,
+                early=_early_scope(std, BoxMode.standalone))
+        except (KanibakoError, OSError):
+            workspace = None  # an unreadable root is refused before the copy
+        if workspace is not None:
+            trees.append(Path(literal_path(workspace)))
+    # The copy writes through a link, so a tree is also judged where it resolves.
+    trees = list(dict.fromkeys(
+        t for tree in trees for t in (tree, _lifecycle._resolved_unless_loop(tree))))
+    judged = BoxMode.named if to is BoxMode.named else BoxMode.primary
+    metadata_path = (ws.projects_dir / name if ws is not None
+                     else std.boxes / (name or dest.name))
+    try:
+        _lifecycle._refuse_foreign_workset_landing(
+            std, dest, ws.root.resolve() if ws is not None else None)
+    except ProjectError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return 1
+    for forced in dict.fromkeys((True, force)):
+        for tree in trees:
+            line = _lifecycle._dest_nesting_refusal(
+                std, mode=judged, name=name, ws=ws, dest=tree,
+                metadata_path=metadata_path, verb="duplicate", force=forced)
+            if line is not None:
+                print(line, file=sys.stderr)
+                return 1
+    return None
+
+
+def _refuse_into_source_store(src_proj, dest: Path) -> int | None:
+    """Print the refusal and return ``1`` for a standalone copy rooted in its source's store.
+
+    The copy lays the source's store into ``<dest>/box_data``, so it would be copied into
+    itself; no flag passes it.
+    """
+    from kanibako.commands.box._lifecycle import _resolved_unless_loop
+
+    store = _resolved_unless_loop(box_metadata_dir(
+        src_proj.mode, src_proj.metadata_path, early=src_proj._require_early()))
+    landing = _resolved_unless_loop(dest)
+    if landing != store and store not in landing.parents:
+        return None
+    print(f"Error: Cannot duplicate a box at '{dest}': it is inside the source box's own "
+          f"store ({store}). A standalone copy takes that store into its new root, so it "
+          "would be copied into itself, and no flag overrides this. Choose another path.",
+          file=sys.stderr)
+    return 1
+
+
+def _refuse_source_tree(std, args: argparse.Namespace, src_proj, dest: Path,
+                        to: BoxMode) -> int | None:
+    """Once the source resolves: its own store (a standalone copy), then the forceable § 0 arms."""
+    if to is BoxMode.standalone and (rc := _refuse_into_source_store(src_proj, dest)) is not None:
+        return rc
+    return _refuse_nesting(std, dest, to=to, force=args.force)
+
+
 def _refuse_no_source_data(metadata_dir: Path, source_path: Path) -> int | None:
     """Print the refusal and return ``1`` when the source box holds no metadata dir."""
     if metadata_dir.is_dir():
@@ -207,6 +286,10 @@ def _run_duplicate_cross_mode(args: argparse.Namespace, std, config) -> int:
     if (rc := _validate_dup_source(source_path, new_path)) is not None:
         return rc
 
+    # Keyspace § 0: the unforceable arms before "already exists" offers --force.
+    if (rc := _refuse_nesting(std, new_path, to=to_mode, force=True)) is not None:
+        return rc
+
     if not args.bare and new_path.exists() and not args.force:
         return _refuse_existing_destination(new_path)
 
@@ -245,6 +328,8 @@ def _run_duplicate_cross_mode(args: argparse.Namespace, std, config) -> int:
         src_proj = resolve_standalone_project(std, config, project_dir=str(source_path), initialize=False)
 
     if (rc := _refuse_no_source_data(src_proj.metadata_path, source_path)) is not None:
+        return rc
+    if (rc := _refuse_source_tree(std, args, src_proj, new_path, to_mode)) is not None:
         return rc
 
     if _refuse_live_source(src_proj, src_proj.metadata_path, args.force):
@@ -775,6 +860,12 @@ def _duplicate_to_workset(args, std, config) -> int:
         print(f"Error: {e}", file=sys.stderr)
         return 1
 
+    # Keyspace § 0 on the member's leaf, before --force merges into an occupied one.
+    if (rc := _refuse_nesting(
+            std, ws.require_workspaces_dir(f"a workspace for '{proj_name}'") / proj_name,
+            to=BoxMode.named, force=args.force, ws=ws, name=proj_name)) is not None:
+        return rc
+
     # An occupied landing needs --force, as on the primary path (``run_duplicate``).
     # ⚑ ``--bare`` adopts an existing workspace leaf on purpose; either way, a failed
     # duplicate never deletes a leaf that was there before it (``copy_into_workset``).
@@ -838,6 +929,8 @@ def _duplicate_from_workset(args, source_path, new_path, std, config) -> int:
         return rc
 
     target_mode = BoxMode(args.to_mode)
+    if (rc := _refuse_source_tree(std, args, src_proj, new_path, target_mode)) is not None:
+        return rc
     if target_mode == BoxMode.primary and (
             refused := _refuse_primary_dup_name(args, std, new_path)) is not None:
         return refused
@@ -989,6 +1082,9 @@ def run_duplicate(args: argparse.Namespace) -> int:
 
     # 1–2. Paths must differ; the source must be an existing directory.
     if (rc := _validate_dup_source(source_path, new_path)) is not None:
+        return rc
+    # Keyspace § 0, before "already exists" offers --force and before it overwrites.
+    if (rc := _refuse_nesting(std, new_path, to=BoxMode.primary, force=args.force)) is not None:
         return rc
 
     # 3. Source must have kanibako metadata.

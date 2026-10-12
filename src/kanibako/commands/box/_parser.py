@@ -445,7 +445,10 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
     )
     duplicate_p.add_argument(
         "--force", action="store_true",
-        help="Skip confirmation, overwrite existing data/metadata at destination",
+        help="Skip confirmation, overwrite existing data/metadata at destination, and "
+             "accept a destination inside or holding another box's workspace, root, or "
+             "store (both boxes share it). Another box's workspace or standalone root "
+             "(or a link to one) is refused even so.",
     )
     duplicate_p.add_argument(
         "--workset", default=None,
