@@ -438,7 +438,7 @@ inside boxes. In order of likely impact:
     project`, `-x`): `create`, `workset connect`, `box duplicate`, `box extract`, `box move`, `box convert`, and
     `fork`** — see *A box named after its directory must have a valid box name*.
 
-44. **A box name is ASCII-only: a letter, digit, `_`, `-`, or `.`. `create --name café` is refused, and so is a
+44. **A box name is ASCII-only: a letter, digit, or `_`. `create --name café` is refused, and so is a
     box named after a directory named `café`** — see *A box name is ASCII-only*.
 
 45. **The tweakcc cache mounts at `~/.kanibako/cache/tweakcc` in the box and its helpers; its host directory
@@ -464,6 +464,9 @@ inside boxes. In order of likely impact:
 51. **`create` inside, or holding, another box's workspace, standalone root, or store needs `--force`; on another
     box's workspace or standalone root it exits 1 even with `--force`** — see *`create` on another box's path is
     refused*.
+51. **A box, workset, agent, persona, or harness name may not hold `-` or `.`, or start with a digit. A box or
+    workset you named `my-box` before is refused at `start` until you rename it; a box kanibako names after
+    a directory writes `_` for each `-` and `.`** — see *Names are ASCII letters, digits, and `_`*.
 
 ---
 
@@ -6836,14 +6839,14 @@ answers `(not set)` for it. To keep a value at the system scope instead, `system
 **Read this if any box is running when you upgrade, or if you address a box's container by name.**
 
 **What changed.** A box's container name is rendered from its workset and its box name as
-`kb-<workset>-<box>`, and every `-` inside either part is written `--`. A primary box's workset part
+`kb-<workset>-<box>`. A primary box's workset part
 is `primary` and a standalone box's is `standalone`, so `primary` and `standalone` are now reserved
 workset names. Helper containers and the helper socket are named from the same two parts.
 
 | Box | v1.7.x | v1.8.0 |
 |---|---|---|
 | primary box `demo` | `kanibako-demo` | `kb-primary-demo` |
-| primary box `a-b` | `kanibako-a-b` | `kb-primary-a--b` |
+| primary box `a_b` | `kanibako-a_b` | `kb-primary-a_b` |
 | box `api` in workset `team` | `kanibako-api` | `kb-team-api` |
 | standalone box `mybox` | `kanibako-ronin-<escaped root>` | `kb-standalone-mybox` |
 
@@ -6870,8 +6873,8 @@ Error: box 'demo' is still running as 'kanibako-demo', the name it had before th
 A box with no recorded name had a container named `kanibako-<first 8 characters of its project
 hash>`; `start` refuses such a box before this check, so stop that container by hand with the command above.
 
-A box name that is empty or starts with `-`, which the box-name rule no longer allows, renders no
-container name at all. `start` and `stop` refuse such a box and print the command that gives it a
+A box or workset name that is empty or that the name rule no longer allows (see *Names are ASCII
+letters, digits, and `_`*) renders no container name at all. `start` and `stop` refuse such a box and print the command that gives it a
 valid name; `box list` lists it as not running; `stop --all` names it once as skipped and continues.
 
 **What to do.** Before or right after upgrading, list the containers that still carry an old name and
@@ -7243,17 +7246,19 @@ still copied, with a warning.
 
 ### A box named after its directory must have a valid box name
 
-Through v1.7.x a box named after its directory took the directory name as it was, so `my project`, `-x`, or
-`q$(touch x)` made a box whose name breaks the box-name rule. Now such a name is refused with the rule it breaks,
-before anything is written, by:
+Through v1.7.x a box named after its directory took the directory name as it was, so `my project`, `2048`, or
+`q$(touch x)` made a box whose name breaks the box-name rule. Now kanibako writes `_` for each `-` and `.` in the
+directory name (a directory named `kanibako-cli` gives the box `kanibako_cli`), and a name that still breaks the rule is refused
+with the rule it breaks, before anything is written, by:
 
 - `create`, `workset connect`, `box duplicate --to named`, `box extract`, `box move`, and `box convert --default`
-  with no `--name`. Each prints its own command ending in `--name <new-name>`, for example
-  `kanibako create ~/my\ project --name <new-name>`.
+  with no `--name`. Each prints its own command ending in `--name` and the name's `_` spelling, or
+  `--name <new-name>` when it has none, for example `kanibako create ~/my\ project --name my_project`.
 - `box duplicate` to a primary box (the default, or `--to primary`), which asks for a destination directory whose
   name is a valid box name. `--name` does not name a primary duplicate.
-- `fork` inside a box, which names the fork `<directory>.<fork name>`. A bad fork name asks for another; a box
-  whose directory name breaks the rule prints the `box move` command that moves it to a new directory.
+- `fork` inside a box, which puts the fork in the directory `<directory>.<fork name>` and names its box
+  `<directory>_<fork name>`. A bad fork name asks for another; a box whose directory name breaks the rule prints
+  the `box move` command that moves it to a new directory.
 
 `create --name` takes the same rule as before; `workset connect --name` and `box duplicate --to named --name` now
 take it too. A box created under such a name before this release keeps its name until you rename it:
@@ -7264,9 +7269,10 @@ kanibako box move <path> <new-path> --name <new-name>
 
 ### A box name is ASCII-only
 
-A box name is 1–64 characters, each an ASCII letter, digit, `_`, `-`, or `.`. Through v1.7.x any Unicode letter
-or digit passed (`café`, `日本語`), and the box then failed at `start`: its container name `kb-<workset>-<box>` must
-match podman's `[a-zA-Z0-9][a-zA-Z0-9_.-]*`. Now `create --name café` is refused with the character it breaks on,
+A box name is 1–64 characters, each an ASCII letter, digit, or `_`, and does not start with a digit (see *Names
+are ASCII letters, digits, and `_`*). Through v1.7.x any Unicode letter or digit passed (`café`, `日本語`), and the
+box then failed at `start`: its container name `kb-<workset>-<box>` must match podman's
+`[a-zA-Z0-9][a-zA-Z0-9_.-]*`. Now `create --name café` is refused with the character it breaks on,
 and a box named after a directory named `café` is refused like any other directory name that breaks the rule
 (see *A box named after its directory must have a valid box name*). The refusal offers the ASCII spelling as a
 command to run: Latin letters lose their accents and kana are written in Hepburn, so `café` gives `--name cafe`
@@ -7283,6 +7289,41 @@ A standalone box's name follows its directory, so one in a non-ASCII directory c
 directory were renamed: `café` goes from `<kuid>_caf_` to `<kuid>_cafe`, `かに` gives `<kuid>_kani`, and `東京` is
 refused until the directory gets an ASCII name; stop such boxes before upgrading,
 and move their channel folders as *A standalone box's name keeps its project directory's case* shows.
+
+### Names are ASCII letters, digits, and `_`
+
+**Read this if a box, workset, agent, persona, or harness name holds `-` or `.`, or starts with a digit.**
+
+**What changed.** A box, workset, agent, persona, or harness name is 1–64 characters, each an ASCII letter, digit,
+or `_`, and does not start with a digit. Through v1.7.x a box name could hold `-` and `.`, a workset name had no
+rule at all, and a persona or harness name could hold `-` and any Unicode letter.
+
+- **A name you type** with any other character is refused, and the refusal offers its `_` spelling:
+  `create --name my-box` offers `--name my_box`, `workset create --name my.set` offers `--name my_set`, and
+  `--agent kimi-k3+claude` offers `kimi_k3`. A non-ASCII name is offered its ASCII spelling, as before.
+- **A name kanibako derives** writes `_` for each `-` and `.`: a box or workset named after its directory
+  (a directory named `kanibako-cli` gives `kanibako_cli`), a fork box (`<dir>_<name>`), and a standalone box's directory part. The
+  directory keeps its own spelling.
+- **A plugin** whose harness name breaks the rule is skipped with a warning naming its `_` spelling, like a
+  plugin with a reserved name.
+
+**What a v1.7.x name does now.** A box or workset whose stored name holds `-` or `.` is a legacy name. A command
+that resolves the box warns that the name does not meet the naming rules and finds it by its path only. `start`
+and `stop` refuse it, because it renders no container name, for example:
+
+```
+Error: box 'my-box' has no container name: box name must not contain '-'; names are 1 to 64 ASCII letters,
+digits, or '_', and do not start with a digit. Give the box a valid name, then try again:
+  kanibako box move /home/you/my-box <new-path> --name my_box
+```
+
+A box in a legacy workset is refused the same way, naming the workset and the commands that move the box into a
+workset with a valid name. A standalone box in a directory named `my-proj` re-derives its name as `<kuid>_my_proj`. A
+persona whose name holds `-` must be created again under its `_` spelling.
+
+**What to do.** Rename each such box with the command its refusal prints, and recreate a workset whose name holds
+`-` or `.` under its `_` spelling, then move its boxes into it with `kanibako box convert <path> --workset
+<new name>`.
 
 ### 2.112 A standalone box is named by its directory; `--name` is refused
 

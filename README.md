@@ -556,11 +556,13 @@ related projects under one human-readable root, with a single `<root>/workset.ya
 (identity + member list + a group-level settings/auth tier that member boxes
 inherit; see [Configuration](#configuration)).  A workset name is a shared
 address and must be unique -- a collision at create/import time is refused.
+Box and workset names are ASCII letters, digits, and `_`, and do not start with
+a digit; a name taken from a directory writes `_` for each `-` and `.`.
 
 ```bash
-kanibako workset create ~/worksets/research --name my-research
-kanibako workset connect my-research ~/repos/paper-a --name paper-a
-cd ~/worksets/research/workspaces/paper-a
+kanibako workset create ~/worksets/research --name my_research
+kanibako workset connect my_research ~/repos/paper-a --name paper_a
+cd ~/worksets/research/workspaces/paper_a
 kanibako
 ```
 
