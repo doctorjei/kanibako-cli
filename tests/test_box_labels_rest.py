@@ -273,6 +273,23 @@ class TestBoxList:
         assert "pk " in out and "bar " in out, out
         assert "pq " not in out, out
 
+    @pytest.mark.parametrize("label_fail", [False, True])
+    def test_idle_asks_once_not_per_box(self, world, monkeypatch, tmp_path, capsys,
+                                        label_fail):
+        """Nothing runs: the ``kb-`` listing plus ONE any-box label query, however many
+        boxes; a failed query reads every box stopped, as the per-box query would."""
+        from kanibako.commands.box._parser import run_list
+
+        log = _runtime(monkeypatch, tmp_path, label_fail=label_fail)
+        assert run_list(argparse.Namespace()) == 0
+        out = capsys.readouterr().out
+        for name in ("pk", "pq", "bar"):
+            assert name in out, out
+        assert "active" not in out, out
+        calls = log.read_text().splitlines()
+        assert len(calls) == 2, calls
+        assert "label=kanibako.box" in calls[1].split(), calls
+
 
 class TestStopAll:
     @pytest.fixture(autouse=True)
@@ -446,8 +463,10 @@ class TestRunningUnderANonKbName:
     def test_box_list_shows_it_active(self, world, monkeypatch, tmp_path, capsys):
         from kanibako.commands.box._parser import run_list
 
+        # Nothing ``kb-`` runs, so the one any-box label query must name it.
         _runtime(monkeypatch, tmp_path, running=["zz-moved"],
-                 labeled={_key("pk", "primary"): ["zz-moved"]})
+                 labeled={"kanibako.box": ["zz-moved"],
+                          _key("pk", "primary"): ["zz-moved"]})
         assert run_list(argparse.Namespace(active=True)) == 0
         out = capsys.readouterr().out
         assert "pk " in out, out

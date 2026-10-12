@@ -85,7 +85,7 @@ from kanibako.settings.paths import (
 from kanibako.agent_ref import GENERAL_SLOT, harness_of, parse_agent_address, with_harness
 from kanibako.targets import resolve_target
 from kanibako.utils import (
-    CONTAINER_NAME_PREFIX, WORKSET_SEGMENT_PRIMARY, WORKSET_SEGMENT_STANDALONE,
+    CONTAINER_NAME_PREFIX, LABEL_BOX, WORKSET_SEGMENT_PRIMARY, WORKSET_SEGMENT_STANDALONE,
     box_container, box_container_named, container_name_for, gitignore_holds_only_kanibako,
     literal_path,
     is_dir_unless_gone, is_home_dir, logical_cwd, project_gitignore_to_strip, refuse_unreadable_file,
@@ -1909,11 +1909,15 @@ def run_list(args: argparse.Namespace) -> int:
         listed = runtime.list_running()
     except ContainerError:
         pass  # No runtime available — every project shows as stopped.
+    # ⚑ IDLE SHORT-CUT: nothing ``kb-`` runs and no container carries a box's labels ⇒
+    # no box runs, with no query per box.  A failed query answers none, as the per-box
+    # query (``check=False``) does.
+    labeled_any = True
 
     def _box_running(box: str, workset: str) -> bool:
         """Is box *box* of ``<W>`` *workset* running?  Its container is found by its
         labels, else its name (system-design § Box and helper identity)."""
-        if runtime is None:
+        if runtime is None or not labeled_any:
             return False
         name = box_container_named(runtime, box, workset)
         return name is not None and _running_image(runtime, name, listed, check=False) is not None
@@ -1922,6 +1926,9 @@ def run_list(args: argparse.Namespace) -> int:
         if not quiet:
             print("No known projects.")
         return 0
+
+    if runtime is not None and not listed:
+        labeled_any = bool(runtime.find_labeled({LABEL_BOX: None}))
 
     # Build reverse lookup from path → name using the PRIMARY membership.
     path_to_name: dict[str, str] = {
