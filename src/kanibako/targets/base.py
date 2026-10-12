@@ -1212,12 +1212,11 @@ class Target(ABC):
     def deliver_panel_permissions(
         self, *, config_root: Path, access: str,
     ) -> bool:
-        """Persist the box's resolved `access` TIER onto this agent's panel-visible config.
+        """Write this agent's BOX-INVARIANT panel config (e.g. codex's ``sandbox_mode``).
 
-        ⚑ Keyed on the CASCADE-resolved `access`, NEVER the per-launch `-S`/`-A` flags
-        (spec §1A's projected-surface exception).
-        ⚑ An implementation MUST render every tier explicitly and MUST NOT fall through to
-        the permissive arm; an unrecognized value here is a BUG and should raise.
+        ⚑ No tier is written: the `access` key is not projected, and the tier reaches the
+        launched agent only as launch flags or env. *access* is the box's CASCADE-resolved
+        tier, passed for an implementation that must refuse one it cannot render.
         Best-effort: the caller wraps the call. Returns whether a write occurred.
         """
         return False

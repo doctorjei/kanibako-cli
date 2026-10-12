@@ -2363,12 +2363,12 @@ def _deliver_panel_permissions(
     an agent without a behavior inherits the base no-op.  Each seam call is
     independently best-effort and never blocks the launch.
 
-    Both deliveries key on the box's CASCADE-resolved ``access`` TIER (resolved
-    just above at the call site), NOT the per-launch ``-S``/``-A`` flags: the VS
-    Code panels spawn their OWN in-box agents without kanibako's launch
-    env/flags, so they see only what is persisted onto each agent's native
-    config surface — the panel reflects the box's configured tier, not a
-    transient launch flag (spec §1A's projected-surface exception).
+    No tier reaches any file: the ``access`` key is not projected, and the
+    launched agent gets its tier only as launch flags or env. The panel seam
+    writes box invariants only (codex: ``sandbox_mode = "danger-full-access"``,
+    because a nested sandbox hangs the panel's app-server); a VS Code panel
+    otherwise uses the agent's own config file. *access* is still passed so a
+    plugin can refuse a tier it cannot render.
 
     ⚑ *access* is one of ``restricted`` / ``editing`` / ``full`` and has ALREADY
     been checked against this agent's descriptor rows by the caller: the
@@ -2400,16 +2400,13 @@ def _deliver_panel_permissions(
             access=access,
         )
     except Exception:
-        # ⚑ WARNING, not debug (R-41): this delivery is the PERMISSION axis. A
-        # failure means the panel keeps whatever was persisted before — which for
-        # an agent whose own default is permissive (goose's unset GOOSE_MODE is
-        # ``auto``) is MORE permissive than the box asked for. Still best-effort
-        # (the launch is never blocked, per the seam contract), but never silent.
+        # ⚑ WARNING, not debug: a failure leaves a box invariant unwritten (for
+        # codex, a panel whose sandbox_mode is not danger-full-access hangs).
+        # Still best-effort (the launch is never blocked), but never silent.
         logger.warning(
-            "could not deliver the '%s' permission tier to %s's panel config "
-            "surface; the panel keeps its previous permissions (run with -v for "
-            "the traceback)",
-            access, target.name,
+            "could not write %s's panel config invariants; the panel keeps its "
+            "previous config (run with -v for the traceback)",
+            target.name,
         )
         logger.debug(
             "failed to deliver %s panel permissions",
@@ -9801,8 +9798,8 @@ class LaunchRealization(NamedTuple):
 
     * *effective_state* — the §2d active-over-default behavior read, with the persona
       provider pin applied.  It is the dict the descriptor assemblers consume.
-    * *cascade_access* — the box's STORED permission tier.  What the PROJECTED
-      surfaces get: they outlive the launch, so an ephemeral flag must not reach them.
+    * *cascade_access* — the box's STORED permission tier.  What the panel seam gets
+      (it writes box invariants only; no tier reaches a file).
     * *launch_access* — the same tier with this launch's ``-S``/``-A`` folded in.
       What the ARGV and the ENV get, and only they.
     * *env* — the REALIZED variables (``targets.assembly.assemble_env``): the
@@ -9906,7 +9903,7 @@ class _LaunchRealizer:
             )
             # ⚑ UN-RENDERED TIER GATE, before ANY delivery — and now before the
             # realization below, which is the earliest the launch can still stop.
-            # Both tiers are checked here because the projected-surface deliveries
+            # Both tiers are checked here because the panel deliveries
             # further down are wrapped best-effort and would SWALLOW the refusal,
             # leaving the box running at a tier the user did not ask for (goose has
             # no ``editing`` realization — the case this exists for).

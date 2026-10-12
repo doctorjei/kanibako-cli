@@ -565,15 +565,18 @@ class TestCLIArgsContract:
         assert "--permission-mode" in args
         assert args[args.index("--permission-mode") + 1] == "acceptEdits"
 
-    def test_restricted_tier_excludes_every_permission_flag(self):
-        """SAFETY INVARIANT: the stored ``restricted`` tier emits NOTHING —
-        neither the bypass nor the edit-mode flag."""
+    def test_restricted_tier_is_the_prompting_mode(self):
+        """SAFETY INVARIANT: the stored ``restricted`` tier emits
+        ``--permission-mode default`` (everything prompts) — never the bypass
+        nor the edit mode.  The flag overrides a settings file's defaultMode."""
         args = _claude_argv(
             safe_mode=False, resume_mode=False, new_session=False,
             is_new_project=False, extra_args=[], access="restricted",
         )
         assert "--dangerously-skip-permissions" not in args
-        assert "--permission-mode" not in args
+        assert "acceptEdits" not in args
+        assert args.count("--permission-mode") == 1
+        assert args[args.index("--permission-mode") + 1] == "default"
 
     def test_unknown_stored_tier_refuses_rather_than_running_permissive(self):
         """SAFETY INVARIANT (R-41's inversion): an unrecognized stored value

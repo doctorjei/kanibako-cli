@@ -638,8 +638,9 @@ def test_argv_claude_editing_emits_accept_edits_not_the_bypass() -> None:
 
 
 def test_argv_claude_restricted_emits_nothing_from_an_empty_row() -> None:
-    # claude's `restricted` row is EMPTY -> emit nothing (its own default already
-    # prompts).  An empty row is a DECLARED realization, unlike a MISSING one.
+    # This hand-built descriptor's `restricted` row is EMPTY -> emit nothing.  An
+    # empty row is a DECLARED realization, unlike a MISSING one.  (claude's real
+    # row is `--permission-mode default`.)
     d = _claude_descriptor()
     on = assemble_argv(
         d, mode_fragment=d.mode["continue"], access="restricted",

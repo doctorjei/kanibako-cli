@@ -1768,12 +1768,9 @@ class TestDescriptorLaunchPath:
             cli_args = m.runtime.run.call_args.kwargs.get("cli_args") or []
             assert "--dangerously-skip-permissions" not in cli_args
 
-    def test_flags_do_NOT_reach_the_projected_surface(self, start_mocks):
-        """⚑ Spec §1A's PROJECTED-SURFACE exception, on the real launch path:
-        ``-S``/``-A`` fold into the ARGV only.  The panel delivery — which writes
-        a file that OUTLIVES this launch — gets the CASCADE tier, so a transient
-        flag can never mutate persisted permission state.
-        """
+    def test_secure_flag_reaches_the_argv_as_the_restricted_row(self, start_mocks):
+        """``-S`` over a stored ``editing`` launches at ``restricted``: the tier
+        reaches the agent only as launch flags (the key is not projected)."""
         with start_mocks() as m:
             self._drive(m)
             m.agent_cfg.state = {"model": "opus", "access": "editing"}
@@ -1783,13 +1780,11 @@ class TestDescriptorLaunchPath:
                 extra_args=[],
             )
             cli_args = m.runtime.run.call_args.kwargs.get("cli_args") or []
-            # -S folded into the ARGV: restricted (nothing emitted).
+            # -S folded into the ARGV: claude's restricted row.
             assert "--dangerously-skip-permissions" not in cli_args
-            assert "--permission-mode" not in cli_args
-            # ...while the PROJECTION still got the stored tier.
-            m.target.deliver_panel_permissions.assert_called_once_with(
-                config_root=m.proj.shell_path, access="editing",
-            )
+            assert "acceptEdits" not in cli_args
+            i = cli_args.index("--permission-mode")
+            assert cli_args[i + 1] == "default"
 
     def test_unknown_stored_tier_refuses_the_launch(self, start_mocks):
         """R-41's inversion: a junk stored value used to coerce to the PERMISSIVE

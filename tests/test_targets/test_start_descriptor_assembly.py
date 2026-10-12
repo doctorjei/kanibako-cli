@@ -389,12 +389,13 @@ class TestUniformAccessAcrossAgents:
         assert self._argv_at(desc, persisted="editing") == [
             "--permission-mode", "acceptEdits",
         ]
-        assert self._argv_at(desc, persisted="restricted") == []
+        restricted = ["--permission-mode", "default"]
+        assert self._argv_at(desc, persisted="restricted") == restricted
         # unset -> the ``full`` default
         assert self._argv_at(desc, persisted=None) == [bypass]
         # -A overrides a stored restricted -> full; -S overrides a stored full.
         assert self._argv_at(desc, autonomous=True, persisted="restricted") == [bypass]
-        assert self._argv_at(desc, secure=True, persisted="full") == []
+        assert self._argv_at(desc, secure=True, persisted="full") == restricted
 
     def test_codex_rows_per_tier(self):
         from kanibako.plugins.codex.target import CodexTarget
@@ -402,16 +403,17 @@ class TestUniformAccessAcrossAgents:
         desc = CodexTarget().descriptor
         bypass = "--dangerously-bypass-approvals-and-sandbox"
         assert self._argv_at(desc, persisted="full") == [bypass]
-        # ⚑ The editing row is the VERIFIED sandbox enum's middle step. The
-        # approval flag is deliberately NOT emitted: `-a` does not exist on
-        # `codex exec`, which shares this argv tail.
-        assert self._argv_at(desc, persisted="editing") == ["-s", "workspace-write"]
-        assert "-a" not in self._argv_at(desc, persisted="editing")
-        assert "--ask-for-approval" not in self._argv_at(desc, persisted="editing")
-        assert self._argv_at(desc, persisted="restricted") == []
+        # ⚑ The approval half rides ``-c``, never ``-a``: ``codex exec`` rejects
+        # ``-a`` and shares this argv tail.
+        approval = ["-c", 'approval_policy="on-request"']
+        restricted = [*approval, "-s", "read-only"]
+        editing = self._argv_at(desc, persisted="editing")
+        assert editing == [*approval, "-s", "workspace-write"]
+        assert "-a" not in editing and "--ask-for-approval" not in editing
+        assert self._argv_at(desc, persisted="restricted") == restricted
         assert self._argv_at(desc, persisted=None) == [bypass]
         assert self._argv_at(desc, autonomous=True, persisted="restricted") == [bypass]
-        assert self._argv_at(desc, secure=True, persisted="full") == []
+        assert self._argv_at(desc, secure=True, persisted="full") == restricted
 
     def test_codex_never_emits_the_alias_bypass_flags(self):
         """``--yolo`` / ``--full-auto`` are never emitted (D-7).
