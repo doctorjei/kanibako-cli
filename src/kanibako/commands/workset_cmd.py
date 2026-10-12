@@ -49,7 +49,9 @@ from kanibako.project.workset import (
     is_in_tree_workspace,
     list_worksets,
     load_workset,
+    load_workset_settings_doc,
     logs_share_refusal,
+    members_registry_path,
     purge_box_logs,
     refuse_case_variant_store,
     refuse_existing_box,
@@ -526,12 +528,15 @@ def run_rm(args: argparse.Namespace) -> int:
     # one on disk.  Falls back to what they typed when there is no match to name.
     label_name = args.name if stored is None else stored
     if stored is not None:
+        ws = None
         try:
-            members = len(load_workset(
-                registry[stored], stored, early_system=std.early_system).projects)
+            ws = load_workset(registry[stored], stored, early_system=std.early_system)
+            names = [p.name for p in ws.projects]
             unreadable: ConfigError | None = None
+            members_from: Path | None = members_registry_path(
+                ws.root, load_workset_settings_doc(ws.root), early=ws.early_scope)
         except WorksetError:
-            members, unreadable = 0, None
+            names, unreadable, members_from = [], None, None
         except ConfigError as exc:
             # ⚑ A LOOPED root refuses whatever the flags: nothing behind it can be counted
             # or kept, and resolving it raises on 3.11.
@@ -539,13 +544,21 @@ def run_rm(args: argparse.Namespace) -> int:
                 print(f"Error: {exc}", file=sys.stderr)
                 return 1
             # ⚑⚑ A BROKEN workset.yaml KEEPS THE PROJECT GUARD, ``--purge`` included: members
-            # are counted at the DEFAULT registry path, ``delete_workset``'s fallback.
-            members = 0 if args.force else len(load_workset_boxes(
-                resolve_workset_registry_path(
-                    registry[stored].resolve(), None,
-                    early=_early_scope(std, BoxMode.named, stored)),
-            ))
+            # are read at the DEFAULT registry path, ``delete_workset``'s fallback.
+            members_from = resolve_workset_registry_path(
+                registry[stored].resolve(), None,
+                early=_early_scope(std, BoxMode.named, stored))
+            names = list(load_workset_boxes(members_from))
             unreadable = exc
+        # ⚑ Members are read from the registry; one that is present but cannot be seen
+        # through (a dangling link, here or at a parent) reads as NO members, so it refuses
+        # whatever the flags: --force would deregister a running box unasked (172-RF).  A
+        # looping one never gets here: the member loader refuses it.
+        unseen = None if members_from is None else _registry_unseen(members_from)
+        if unseen is not None:
+            print(f"Error: workset '{label_name}': {unseen}", file=sys.stderr)
+            return 1
+        members = len(names)
         if members and not args.force:
             print(
                 f"Error: workset '{label_name}' has {members} project(s). "
@@ -560,6 +573,9 @@ def run_rm(args: argparse.Namespace) -> int:
                 f"its files, or --force to unregister it only.",
                 file=sys.stderr,
             )
+            return 1
+        if _refuse_rm_while_members_live(std, stored, registry[stored], ws, names,
+                                         purge=args.purge):
             return 1
 
     if not args.force:
@@ -908,8 +924,26 @@ def _refuse_disconnect_while_live(std, ws, member: str, *, force: bool,
     """The running-box pre-flight for ``workset disconnect``; True ⇒ the caller aborts.
 
     ⚑ ONE PROBE — :func:`abort_if_box_running`, as ``box purge`` uses.  A plain disconnect
-    orphans a live container (no ref reaches it after); ``--remove-files`` deletes its
-    vaults under it.  A name that is not a member is left to ``remove_project`` to refuse.
+    orphans a live container (no ref reaches it after), so --force never overrides it
+    (HIS 171-RM Q1, 172-RF); ``--remove-files`` deletes its vaults under it, a purge
+    --force may override.  A name that is not a member is left to ``remove_project``.
+    """
+    if all(p.name != member for p in ws.projects):
+        return False
+    consequence = ("Removing its files would delete its vaults while writes are in flight."
+                   if remove_files else
+                   "Disconnecting it would leave its container running with no box to stop it by.")
+    return _member_running(std, ws.name, ws.projects_dir, member, consequence, ws=ws,
+                           force=force, forceable=remove_files)
+
+
+def _member_running(std, ws_name: str, boxes_dir: Path, member: str, consequence: str,
+                    *, ws=None, force: bool = False, forceable: bool = False,
+                    announce_abort: bool = True) -> bool:
+    """:func:`abort_if_box_running` for the member *member* of workset *ws_name*.
+
+    *ws* is the loaded workset, or ``None`` when its file cannot be read; then, as when
+    the member does not resolve, the runtime is asked by the member's container name.
     """
     from kanibako.commands.box._lifecycle import abort_if_box_running
     from kanibako.settings.paths import (
@@ -917,23 +951,80 @@ def _refuse_disconnect_while_live(std, ws, member: str, *, force: bool,
     )
     from kanibako.utils import container_name_for_box_name
 
-    if all(p.name != member for p in ws.projects):
-        return False
     proj = None
-    container = None
-    try:
-        proj = resolve_workset_project(WorksetSpec.from_workset(ws), member, std,
-                                       load_config(user_config_file()))
-    except (WorksetError, ConfigError):
-        # ⚑ Unresolvable is never "not running": ask by the member's container name.
-        container = container_name_for_box_name(member, ws.name)
-    consequence = ("Removing its files would delete its vaults while writes are in flight."
-                   if remove_files else
-                   "Disconnecting it would leave its container running with no box to stop it by.")
+    if ws is not None:
+        try:
+            proj = resolve_workset_project(WorksetSpec.from_workset(ws), member, std,
+                                           load_config(user_config_file()))
+        except (WorksetError, ConfigError):
+            proj = None
+    # ⚑ Unresolvable is never "not running": ask by the member's container name.
+    container = None if proj is not None else container_name_for_box_name(member, ws_name)
     return abort_if_box_running(
-        proj, ws.projects_dir / member / ".kanibako.lock", force, consequence,
+        proj, boxes_dir / member / ".kanibako.lock", force, consequence,
         container_name=container,
-        cure_ref=box_cure_ref(BoxMode.named, member, ws.name, ws.projects_dir / member))
+        cure_ref=box_cure_ref(BoxMode.named, member, ws_name, boxes_dir / member),
+        announce_abort=announce_abort, forceable=forceable)
+
+
+def _registry_unseen(path: Path) -> str | None:
+    """Why the membership file at *path* cannot be read, or ``None`` when it can or is absent.
+
+    ⚑ ABSENT IS ONLY "NOTHING THERE, NO LINK ON THE WAY": a dangling link at the leaf or at
+    a parent directory, or a non-file at the leaf, is present, and the reader would answer
+    "no members" for it.  A loop or an unreadable path is the member loader's refusal
+    (:func:`~kanibako.utils.stat_unless_gone`), raised before this runs.
+    """
+    import stat as stat_mod
+
+    from kanibako.utils import stat_unless_gone
+
+    st = stat_unless_gone(path)
+    if st is None:
+        dangling = next((p for p in (path, *path.parents)
+                         if p.is_symlink() and stat_unless_gone(p) is None), None)
+        if dangling is None:
+            return None
+        why = ("it is a link to nothing" if dangling == path
+               else f"{dangling} is a link to nothing")
+    elif stat_mod.S_ISREG(st.st_mode):
+        return None
+    else:
+        why = "it is not a file"
+    return (f"its membership file {path} cannot be read ({why}), so its members cannot be "
+            f"checked for running containers. Repair it or point it at the real file, "
+            f"then re-run.")
+
+
+def _refuse_rm_while_members_live(std, stored: str, root: Path, ws, names: list[str],
+                                  *, purge: bool) -> bool:
+    """``workset rm``'s running-member pre-flight; True ⇒ the caller aborts.
+
+    Every member is asked, and --force never overrides a running one: removing the
+    workset deregisters its members (HIS 171-RM Q1, 172-RF).  *ws* is ``None`` when its
+    file cannot be read; its members' trees are then in the DEFAULT store, as
+    ``delete_workset`` finds them.
+    """
+    from kanibako.project.workset import resolve_workset_boxes
+
+    if not names:
+        return False
+    boxes_dir = (ws.projects_dir if ws is not None else
+                 resolve_workset_boxes(root, None,
+                                       early=_early_scope(std, BoxMode.named, stored)))
+    consequence = ("Purging the workset would delete its files while writes are in flight."
+                   if purge else
+                   "Removing the workset would leave its container running with no box to "
+                   "stop it by.")
+    running = [m for m in names
+               if _member_running(std, stored, boxes_dir, m, consequence, ws=ws,
+                                  announce_abort=False)]
+    if not running:
+        return False
+    print(f"Error: workset '{stored}' has {len(running)} running member(s): "
+          f"{', '.join(running)}. Stop each one, then re-run.", file=sys.stderr)
+    print("Aborted.")
+    return True
 
 
 def _print_disconnect_leftovers(ws, proj) -> None:

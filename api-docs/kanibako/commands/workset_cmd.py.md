@@ -32,6 +32,9 @@ def run_share_list(args: argparse.Namespace) -> int
 def _load_std()
 def _workset_config_path(ws) -> Path
 def _refuse_disconnect_while_live(std, ws, member: str, *, force: bool, remove_files: bool) -> bool
+def _member_running(std, ws_name: str, boxes_dir: Path, member: str, consequence: str, *, ws=None, force: bool=False, forceable: bool=False, announce_abort: bool=True) -> bool
+def _registry_unseen(path: Path) -> str | None
+def _refuse_rm_while_members_live(std, stored: str, root: Path, ws, names: list[str], *, purge: bool) -> bool
 def _print_disconnect_leftovers(ws, proj) -> None
 def _run_workset_config(args: argparse.Namespace) -> int
 def _share_source_display(value: object) -> str

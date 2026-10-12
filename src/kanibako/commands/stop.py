@@ -19,6 +19,12 @@ from kanibako.settings.settings_resolve import SettingsError
 from kanibako.utils import container_name_for, unrenderable_box_name_refusal
 
 
+def stale_lock_cure(lock_file) -> str:
+    """The cure for a lock file no live box holds; the running-box refusal names it too."""
+    return ("If a stale lock file is blocking a new session, remove it manually:\n"
+            f"  rm {shlex.quote(str(lock_file))}")
+
+
 def add_parser(subparsers: argparse._SubParsersAction) -> None:
     p = subparsers.add_parser(
         "stop",
@@ -274,8 +280,7 @@ def _stop_one(runtime: ContainerRuntime, *, project_dir: str | None) -> int:
             runtime.rm(container_name)
             print(f"Removed stopped container: {container_name}")
         else:
-            print("\nIf a stale lock file is blocking a new session, remove it manually:")
-            print(f"  rm {shlex.quote(str(lock_file))}")
+            print(f"\n{stale_lock_cure(lock_file)}")
 
     return 0
 

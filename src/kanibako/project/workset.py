@@ -1331,6 +1331,18 @@ class Workset:
 # identity — there is none there to read.
 # ---------------------------------------------------------------------------
 
+def members_registry_path(root: Path, settings_doc: Any, *, early: EarlyScope) -> Path:
+    """The ``registry.yaml`` a workset's members are read from.
+
+    A root storing the standalone ``workset.registry`` null reads the DEFAULT path, where
+    :attr:`Workset.registry_path` would refuse the null.
+    """
+    from kanibako.launch.box_resolve import stores_standalone_registry_null
+    return workset_registry.resolve_workset_registry_path(
+        root, None if stores_standalone_registry_null(root) else settings_doc, early=early,
+    )
+
+
 def _load_workset(root: Path, name: str, *, early_system: EarlySystem) -> Workset:
     """Build the :class:`Workset` for the globally-registered *name* rooted at *root*.
 
@@ -1344,10 +1356,7 @@ def _load_workset(root: Path, name: str, *, early_system: EarlySystem) -> Workse
     refuse_retired_workset_identity(root)
     settings_doc = load_workset_settings_doc(root)
     ws = Workset(name=name, root=root, early_system=early_system)
-    from kanibako.launch.box_resolve import stores_standalone_registry_null
-    registry_path = workset_registry.resolve_workset_registry_path(
-        root, None if stores_standalone_registry_null(root) else settings_doc, early=ws.early_scope,
-    )
+    registry_path = members_registry_path(root, settings_doc, early=ws.early_scope)
     # ⚑ Members come from ``boxes:``, which is the WHOLE of what that file holds, and
     # the path is recorded there exactly once.
     ws.projects = [

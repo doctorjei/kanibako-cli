@@ -4435,16 +4435,24 @@ def box_running_reason(
         if detail != NO_RUNTIME:
             return None
     if not registry_store._metadata_definitively_gone(str(lock_file)):  # ⚑ EACCES: present
-        return f"a lock file exists and {unanswered}"
+        return f"{_LOCK_UNANSWERED}{unanswered}"
     return None
+
+
+# ⚑ The one reason ``kanibako stop`` cannot cure: no runtime answered, so stop finds no
+# container, and only removing the lock file clears it.
+_LOCK_UNANSWERED = "a lock file exists and "
 
 
 def abort_if_box_running(
     proj: ProjectPaths | None, lock_file: Path, force: bool, consequence: str,
     *, container_name: str | None = None, cure_ref: str | None = None,
-    announce_abort: bool = True,
+    announce_abort: bool = True, forceable: bool = True,
 ) -> bool:
     """Warn when :func:`box_running_reason` answers; True ⇒ the caller aborts (no *force*).
+
+    A door that would DEREGISTER a running box passes ``forceable=False``: *force* is
+    ignored and the refusal does not offer it (HIS 172-RF: forcing breaks things).
 
     The stop cure names *proj* by :func:`project_cure_ref`, so it reaches that box from
     any cwd.  With no *proj* it names *cure_ref*, an already-quoted ref the caller holds
@@ -4460,10 +4468,17 @@ def abort_if_box_running(
     ref = project_cure_ref(proj) if proj is not None else cure_ref
     stop = ("Stop the box first (kanibako stop)" if ref is None
             else f"Stop the box first: kanibako stop {ref}")
-    print(f"Warning: this box may be running: {reason}. {consequence} "
-          f"{stop}, or pass --force.", file=sys.stderr)
-    if force:
-        return False
+    if not forceable:
+        print(f"Error: this box may be running: {reason}. {consequence} {stop}.",
+              file=sys.stderr)
+    else:
+        print(f"Warning: this box may be running: {reason}. {consequence} "
+              f"{stop}, or pass --force.", file=sys.stderr)
+        if force:
+            return False
+    if reason.startswith(_LOCK_UNANSWERED):
+        from kanibako.commands.stop import stale_lock_cure
+        print(stale_lock_cure(lock_file), file=sys.stderr)
     if announce_abort:
         print("Aborted.")
     return True

@@ -6,6 +6,7 @@ _Signatures only: no comments, no docstrings, no bodies._
 
 ## Functions
 ```
+def stale_lock_cure(lock_file) -> str
 def add_parser(subparsers: argparse._SubParsersAction) -> None
 def run(args: argparse.Namespace) -> int
 def _writeback_on_stop(runtime, proj, container_name: str, *, std, config, box_is_live: bool, already_said: tuple[ConfigError | SettingsError, ...]=()) -> None

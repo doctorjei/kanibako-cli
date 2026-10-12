@@ -7491,6 +7491,20 @@ under an earlier release keeps the value kanibako last wrote there. For a codex 
 value is `approval_policy = "untrusted"`, and codex 0.158 refuses it in the panel ("no longer supported"). Change
 the line to `on-request` or delete it. The CLI is unaffected, because its flag overrides the file.
 
+### Removing a running box is refused, and `--force` does not override it
+
+**Read this if a script removes boxes or working sets with `--force`.**
+
+**What changed.** `box rm <box>`, `workset disconnect <workset> <box>`, and `workset rm <workset>` used to
+deregister a running box, whose container then ran on with no box name to stop it by. They now ask the
+runtime first and refuse a box that runs or holds its lock, naming its `kanibako stop` command; `workset rm`
+names every running member. `--force` skips only the question; it no longer removes a running box. The
+per-box purges keep their override: `box rm --purge --force`, `box purge --force`, and
+`workset disconnect --remove-files --force` still go ahead with a warning. `workset rm --purge --force`
+refuses a running member.
+
+**What you must do.** Stop the box first (`kanibako stop <box>`, or `kanibako stop --all`), then remove it.
+
 ---
 
 ## 3. For plugin authors

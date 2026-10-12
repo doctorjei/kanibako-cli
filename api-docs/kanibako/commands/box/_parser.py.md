@@ -74,7 +74,7 @@ def _read_box_image(settings_file: Path) -> str | None
 def _read_box_image_tiered(box_tier: Path, workset_tier: Path) -> str | None
 def _purge_deregistered(std, name: str, entry: dict, args: argparse.Namespace, *, config) -> int
 def _resolve_standalone_target(std, config, target: str, *, purge: bool=True) -> tuple[str | None, Path | None, bool]
-def _refuse_purge_while_live(std, config, standalone_root: str | None, metadata_dir: Path, force: bool, what: str, *, container_name: str | None=None, cure_ref: str | None=None, consequence: str | None=None) -> bool
+def _refuse_purge_while_live(std, config, standalone_root: str | None, metadata_dir: Path, force: bool, what: str, *, container_name: str | None=None, cure_ref: str | None=None, consequence: str | None=None, forceable: bool=True) -> bool
 def _resolve_purge_probe_target(std, config, standalone_root: str)
 def _primary_probe_container(name: str) -> str | None
 def _rm_standalone(std, box_name: str, root, args: argparse.Namespace, *, registered: bool, config) -> int

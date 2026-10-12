@@ -405,8 +405,8 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
     )
     rm_p.add_argument(
         "--force", action="store_true",
-        help="Skip the --purge confirmation question (the list still prints), and remove "
-             "a box that may be running",
+        help="Skip the --purge confirmation question (the list still prints); with "
+             "--purge, also remove a box that may be running",
     )
     rm_p.set_defaults(func=run_rm)
 
@@ -2694,11 +2694,13 @@ def _refuse_purge_while_live(std, config, standalone_root: str | None, metadata_
                             force: bool, what: str,
                             *, container_name: str | None = None,
                             cure_ref: str | None = None,
-                            consequence: str | None = None) -> bool:
+                            consequence: str | None = None,
+                            forceable: bool = True) -> bool:
     """The move/convert/duplicate running-box pre-flight, reused for a PURGE.
 
-    A plain ``box rm`` asks it too, passing *consequence* (it deletes nothing): a running
-    box is never deregistered (HIS 171-RM Q1).
+    A plain ``box rm`` asks it too, passing *consequence* (it deletes nothing) and
+    ``forceable=False``: a running box is never deregistered, --force or not (HIS
+    171-RM Q1, 172-RF).
 
     ⚑ ONE PROBE — the same :func:`abort_if_box_running` every destructive verb uses, so
     one question never gets two answers; a purge under a live container takes its vaults
@@ -2722,15 +2724,19 @@ def _refuse_purge_while_live(std, config, standalone_root: str | None, metadata_
         consequence = f"{what} would delete its vaults and canon while writes are in flight."
     stop_ref = shlex.quote(unresolved) if unresolved is not None else cure_ref
     if abort_if_box_running(proj, metadata_dir / ".kanibako.lock", force, consequence,
-                            container_name=container_name, cure_ref=stop_ref):
+                            container_name=container_name, cure_ref=stop_ref,
+                            forceable=forceable):
         return True
     # ⚑ A resolver that FAILS must never mean "not running" -- no lock is not proof.
     if unresolved is not None and not (metadata_dir / ".kanibako.lock").exists():
-        print(f"Warning: this box may be running: {standalone_root} does not resolve, so its "
-              f"container was never asked, and it holds no lock file to check. "
-              f"{consequence} Stop the box first: kanibako stop {stop_ref}, "
-              f"or pass --force.",
-              file=sys.stderr)
+        why = (f"this box may be running: {standalone_root} does not resolve, so its "
+               f"container was never asked, and it holds no lock file to check. "
+               f"{consequence} Stop the box first: kanibako stop {stop_ref}")
+        if not forceable:
+            print(f"Error: {why}.", file=sys.stderr)
+            print("Aborted.")
+            return True
+        print(f"Warning: {why}, or pass --force.", file=sys.stderr)
         if force:
             return False
         print("Aborted.")
@@ -2807,7 +2813,8 @@ def _rm_standalone(std, box_name: str, root, args: argparse.Namespace, *,
         refuse_inherited_per_owner(root_path, _early_scope(std, BoxMode.standalone))
     # ⚑ S6r: a purge under a live container takes its vaults and canon mid-write, and a
     # plain rm never deregisters a running box (HIS 171-RM Q1).  Same pre-flight
-    # move/convert/duplicate use, before any question; --force overrides.  A plain rm of
+    # move/convert/duplicate use, before any question; --force overrides it for a purge
+    # only (HIS 172-RF: forcing a plain rm breaks things).  A plain rm of
     # another spelling's row leaves the box registered under its holder: nothing to ask.
     if (root_path is not None and metadata_dir is not None
             and (args.purge or registry_store.standalone_identity_holder(
@@ -2815,7 +2822,8 @@ def _rm_standalone(std, box_name: str, root, args: argparse.Namespace, *,
             and _refuse_purge_while_live(
                 std, config, str(root_path), metadata_dir, args.force,
                 "Purging this box",
-                consequence=None if args.purge else _DEREGISTER_LIVE)):
+                consequence=None if args.purge else _DEREGISTER_LIVE,
+                forceable=bool(args.purge))):
         return 1
     # ⚑ Planned and confirmed BEFORE the unregister: a refusal or a declined question
     # leaves the box registered.
@@ -3022,13 +3030,15 @@ def run_rm(args: argparse.Namespace) -> int:
     if args.purge:
         refuse_inherited_per_owner(std.primary_workset, _early_scope(std, BoxMode.primary))
     # ⚑ S6r: the same running-box pre-flight move/convert/duplicate use, for a purge and
-    # a plain rm alike (HIS 171-RM Q1: a running box is never deregistered).  Probed by
+    # a plain rm alike (HIS 171-RM Q1: a running box is never deregistered; --force
+    # overrides it for a purge only, HIS 172-RF).  Probed by
     # the NAME resolved above, never re-resolved: a cwd ``name/`` is another box.
     if _refuse_purge_while_live(
             std, config, None, metadata_dir, args.force, "Purging this box",
             container_name=_primary_probe_container(name),
             cure_ref=box_cure_ref(BoxMode.primary, name, None, metadata_dir),
-            consequence=None if args.purge else _DEREGISTER_LIVE):
+            consequence=None if args.purge else _DEREGISTER_LIVE,
+            forceable=bool(args.purge)):
         return 1
 
     image = (_read_box_image(_box_settings_files(BoxMode.primary, metadata_dir, None)[0])

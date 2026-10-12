@@ -17,6 +17,7 @@ _VAULT_ARM_KEYS: tuple[str, str] = ('workset.vault_ro', 'workset.vault_rw')
 _DISABLED_VAULT_WHY = 'box.enable_vault is false, so nothing received its contents.'
 _STANDALONE_FIXED_ARTIFACTS = frozenset({STANDALONE_META_DIR, WORKSET_META_FILE, BOX_META_FILE, '.kanibako.lock'})
 _STANDALONE_ROOT_DIR_KEYS = (('workset.workspaces', _resolve_standalone_workspaces), ('workset.boxes', _resolve_standalone_boxes), ('workset.vault_ro', resolve_workset_vault_ro), ('workset.vault_rw', resolve_workset_vault_rw), ('workset.canon', resolve_workset_canon))
+_LOCK_UNANSWERED = 'a lock file exists and '
 _BARE_MOVE = _Sentinel('BARE_MOVE')
 ```
 
@@ -33,7 +34,7 @@ def execute_lifecycle(state: ProjectState, spec: TargetSpec, std: StandardPaths,
 def note_added_leftovers(path: Path, before: frozenset[str] | None) -> None
 def session_lock_held(lock_file: Path) -> bool
 def box_running_reason(proj: ProjectPaths | None, lock_file: Path, *, container_name: str | None=None) -> str | None
-def abort_if_box_running(proj: ProjectPaths | None, lock_file: Path, force: bool, consequence: str, *, container_name: str | None=None, cure_ref: str | None=None, announce_abort: bool=True) -> bool
+def abort_if_box_running(proj: ProjectPaths | None, lock_file: Path, force: bool, consequence: str, *, container_name: str | None=None, cure_ref: str | None=None, announce_abort: bool=True, forceable: bool=True) -> bool
 def run_remap(args) -> int
 def run_move(args) -> int
 def run_convert(args) -> int

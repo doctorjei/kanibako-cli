@@ -791,7 +791,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   box is registered.
 - **`box rm` refuses a box that may be running.** A plain `box rm` deregistered a running box, so its container
   ran on with no box name to reach it. It now asks the runtime first, as `box rm --purge` does; a box that runs
-  or holds its lock is refused, with its `kanibako stop` command. `--force` removes it anyway.
+  or holds its lock is refused, with its `kanibako stop` command. `--force` does not override it; see
+  `MIGRATION.md`, "Removing a running box is refused, and `--force` does not override it".
+- **`workset rm --force` and `workset disconnect --force` refuse a running box.** `workset rm --force`
+  deregistered every member without asking the runtime, and `workset disconnect --force` deregistered a running
+  member, so their containers ran on with no box name to reach them. Each running member is now named with its
+  `kanibako stop` command, and nothing is removed. `workset disconnect --remove-files --force` still goes ahead.
+  A `registry.yaml` that is a looping or dangling link, or sits under a dangling one, no longer reads as "no
+  members": `workset rm` refuses and names the file, whatever its flags.
+  When a lock file is on disk and the runtime cannot answer, every running-box refusal also names the `rm` of
+  the lock that `kanibako stop` prints, since `stop` finds no container then.
 - **tweakcc patching works again with current claude binaries.** Current Linux builds keep their bundle in an ELF
   `.bun` section and split it into chunks, so every start failed with "Bun SEA marker not found" and ran unpatched.
   Kanibako now reads both layouts, and the image pins tweakcc 4.4.0, the first release that patches such builds.

@@ -4,7 +4,9 @@ R7, measured on the base: with ``kb-<ws>-<box>`` running, ``disconnect <ws> <box
 ``disconnect <ws> <box> --remove-files`` both succeeded with ZERO runtime calls; the second
 deleted the vaults and box dir under a live container, and the first orphaned the container
 (no ref reaches it after).  The fix is the ONE running-box pre-flight every destructive verb
-uses (``abort_if_box_running``), before the confirmation; ``--force`` overrides it.
+uses (``abort_if_box_running``), before the confirmation.  ``--force`` never overrides
+it for a plain disconnect or a ``workset rm`` — both deregister a running box (his 171-RM Q1,
+172-RF) — and still overrides it for ``--remove-files``, the purge.
 
 The runtime is a real stub binary through ``KANIBAKO_DOCKER_CMD``, so the production
 ``_check_container_running`` asks it, as it would ask podman.  Every case goes through the
@@ -67,6 +69,15 @@ def world(tmp_home, config_file, tmp_path, monkeypatch):
     return std, ws, log
 
 
+def _main(*argv: str) -> int:
+    """A real verb through ``cli.main``: an escaping ``KanibakoError`` exits 1, named."""
+    from kanibako import cli
+
+    with pytest.raises(SystemExit) as done:
+        cli.main(list(argv))
+    return int(done.value.code or 0)
+
+
 def _members(std, ws) -> list[str]:
     from kanibako.project.workset import load_workset
 
@@ -112,10 +123,21 @@ class TestRunningMemberIsRefused:
         assert (ws.vault_rw_dir / "baz" / "data.txt").is_file()
         assert "baz" in _members(std, ws)
 
-    def test_force_overrides_the_guard_and_warns(self, world, monkeypatch, capsys):
+    def test_force_does_not_disconnect_a_running_member(self, world, monkeypatch, capsys):
         std, ws, _log = world
         monkeypatch.setenv("FAKE_RUNNING", "kb-nws-bar")
-        assert _door("workset", "disconnect", "nws", "bar", "--force") == 0
+        assert _door("workset", "disconnect", "nws", "bar", "--force") == 1
+        err = capsys.readouterr().err
+        assert "Error: this box may be running" in err, err
+        assert "kanibako stop nws/bar" in err and "--force" not in err, err
+        assert "bar" in _members(std, ws)
+
+    def test_force_still_overrides_the_guard_for_remove_files(
+            self, world, monkeypatch, capsys):
+        std, ws, _log = world
+        monkeypatch.setenv("FAKE_RUNNING", "kb-nws-bar")
+        assert _door("workset", "disconnect", "nws", "bar", "--remove-files",
+                     "--force") == 0
         assert "Warning: this box may be running" in capsys.readouterr().err
         assert "bar" not in _members(std, ws)
 
@@ -127,6 +149,169 @@ class TestRunningMemberIsRefused:
         assert _door("workset", "disconnect", "nws", "baz", "--remove-files") == 0
         assert not (ws.vault_rw_dir / "baz").exists()
         assert (ws.vault_rw_dir / "bar" / "data.txt").is_file()
+
+
+def _registered(std) -> bool:
+    from kanibako.project.workset import list_worksets
+
+    return "nws" in list_worksets(std)
+
+
+class TestWorksetRmWithRunningMembers:
+    """``workset rm --force`` deregisters every member, so a running one refuses it."""
+
+    @pytest.mark.parametrize("purge", [False, True])
+    def test_force_does_not_remove_a_workset_with_a_running_member(
+            self, world, monkeypatch, capsys, purge):
+        std, ws, log = world
+        monkeypatch.setenv("FAKE_RUNNING", "kb-nws-bar kb-nws-baz")
+        argv = ["workset", "rm", "nws", "--force"] + (["--purge"] if purge else [])
+        assert _door(*argv) == 1
+        err = capsys.readouterr().err
+        assert "kanibako stop nws/bar" in err and "kanibako stop nws/baz" in err, err
+        assert "has 2 running member(s): bar, baz" in err, err
+        assert "--force" not in err, err
+        assert _registered(std) and _members(std, ws) == ["bar", "baz"]
+        assert (ws.vault_rw_dir / "bar" / "data.txt").is_file()
+        assert "ps" in log.read_text(), "the runtime was never asked"
+
+    def test_one_running_member_is_enough_and_is_named(self, world, monkeypatch, capsys):
+        std, _ws, _log = world
+        monkeypatch.setenv("FAKE_RUNNING", "kb-nws-baz")
+        assert _door("workset", "rm", "nws", "--force") == 1
+        err = capsys.readouterr().err
+        assert "has 1 running member(s): baz." in err, err
+        assert "kanibako stop nws/bar" not in err, err
+        assert _registered(std)
+
+    def test_a_held_session_lock_refuses_it(self, world, capsys):
+        std, ws, _log = world
+        lock = ws.projects_dir / "bar" / ".kanibako.lock"
+        lock.parent.mkdir(parents=True, exist_ok=True)
+        with open(lock, "a") as held:
+            fcntl.flock(held, fcntl.LOCK_EX)
+            assert _door("workset", "rm", "nws", "--force") == 1
+        assert "a kanibako session holds its lock file" in capsys.readouterr().err
+        assert _registered(std)
+
+    def test_an_unreadable_workset_file_still_asks_each_member(
+            self, world, monkeypatch, capsys):
+        std, ws, _log = world
+        monkeypatch.setenv("FAKE_RUNNING", "kb-nws-bar")
+        (ws.root / "workset.yaml").write_text("{ not: [valid\n")
+        assert _door("workset", "rm", "nws", "--force") == 1
+        err = capsys.readouterr().err
+        assert "running member(s): bar" in err, err
+        assert _registered(std)
+
+    def test_unreadable_membership_is_never_not_running(self, world, capsys):
+        """Both files broken: no member can be asked, so --force is refused, with the cure."""
+        from kanibako.errors import ConfigError
+
+        std, ws, _log = world
+        (ws.root / "workset.yaml").write_text("{ not: [valid\n")
+        (ws.root / "registry.yaml").write_text("{ not: [valid\n")
+        with pytest.raises(ConfigError) as refused:
+            _door("workset", "rm", "nws", "--force")
+        assert "registry.yaml" in str(refused.value)
+        assert _registered(std)
+
+    def test_stopped_members_are_removed_with_force(self, world, capsys):
+        std, _ws, _log = world
+        assert _door("workset", "rm", "nws", "--force") == 0
+        assert not _registered(std)
+
+
+def _hide_registry(ws, how: str) -> None:
+    """Make the root registry.yaml a link no read can see through; keep the members."""
+    reg = ws.root / "registry.yaml"
+    reg.rename(ws.root / "registry.real")
+    reg.symlink_to(reg if how == "loop" else ws.root / "gone.yaml")
+
+
+class TestWorksetRmWithAnUnseenRegistry:
+    """A registry.yaml link that resolves to nothing is unreadable, never "no members"."""
+
+    @pytest.mark.parametrize("broken_settings", [False, True])
+    @pytest.mark.parametrize("flags", [(), ("--force",), ("--purge",),
+                                       ("--purge", "--force")])
+    def test_rm_refuses_a_dangling_link_and_names_the_file(
+            self, world, monkeypatch, capsys, broken_settings, flags):
+        std, ws, _log = world
+        monkeypatch.setenv("FAKE_RUNNING", "kb-nws-bar")
+        kept = ws.vault_rw_dir / "bar" / "data.txt"
+        if broken_settings:
+            (ws.root / "workset.yaml").write_text("{ not: [valid\n")
+        _hide_registry(ws, "dangling")
+        assert _door("workset", "rm", "nws", *flags) == 1
+        err = capsys.readouterr().err
+        assert f"{ws.root / 'registry.yaml'} cannot be read" in err, err
+        assert "--force" not in err, err
+        assert _registered(std) and kept.is_file()
+        assert (ws.root / "registry.yaml").is_symlink()
+
+    @pytest.mark.parametrize("broken_settings", [False, True])
+    @pytest.mark.parametrize("flags", [(), ("--force",), ("--purge",),
+                                       ("--purge", "--force")])
+    def test_the_member_loader_refuses_a_looping_link(
+            self, world, monkeypatch, capsys, broken_settings, flags):
+        """The loader's own ELOOP refusal answers first: rc 1, the file named, no --force."""
+        std, ws, _log = world
+        monkeypatch.setenv("FAKE_RUNNING", "kb-nws-bar")
+        kept = ws.vault_rw_dir / "bar" / "data.txt"
+        if broken_settings:
+            (ws.root / "workset.yaml").write_text("{ not: [valid\n")
+        _hide_registry(ws, "loop")
+        assert _main("workset", "rm", "nws", *flags) == 1
+        err = capsys.readouterr().err
+        assert f"Error: {ws.root / 'registry.yaml'}: " in err, err
+        assert "--force" not in err, err
+        assert _registered(std) and kept.is_file()
+        assert (ws.root / "registry.yaml").is_symlink()
+
+    def test_a_stored_registry_null_checks_the_default_file(self, world, monkeypatch, capsys):
+        """The standalone null reads members from the default path; that file is checked."""
+        std, ws, _log = world
+        monkeypatch.setenv("FAKE_RUNNING", "kb-nws-bar")
+        (ws.root / "workset.yaml").write_text("workset:\n  registry: null\n")
+        _hide_registry(ws, "loop")
+        assert _main("workset", "rm", "nws", "--force") == 1
+        err = capsys.readouterr().err
+        assert f"Error: {ws.root / 'registry.yaml'}: " in err, err
+        assert "--force" not in err, err
+        assert _registered(std)
+
+    def test_a_custom_registry_under_a_dangling_parent_is_refused(
+            self, world, monkeypatch, capsys):
+        """A ``workset.registry`` whose parent directory is a link to nothing: no members
+        can be read there, so it refuses rather than reading "no members"."""
+        std, ws, _log = world
+        monkeypatch.setenv("FAKE_RUNNING", "kb-nws-bar")
+        kept = ws.vault_rw_dir / "bar" / "data.txt"
+        (ws.root / "regdir").symlink_to(ws.root / "gone-dir")
+        (ws.root / "workset.yaml").write_text(
+            f"workset:\n  registry: {ws.root / 'regdir' / 'registry.yaml'}\n")
+        assert _door("workset", "rm", "nws", "--force") == 1
+        err = capsys.readouterr().err
+        assert f"{ws.root / 'regdir' / 'registry.yaml'} cannot be read" in err, err
+        assert f"{ws.root / 'regdir'} is a link to nothing" in err, err
+        assert "--force" not in err, err
+        assert _registered(std) and kept.is_file()
+
+    def test_an_unreadable_registry_file_still_fails_closed(self, world, monkeypatch):
+        """EACCES on the file itself: the read raises, nothing is deregistered."""
+        from kanibako.errors import ConfigError
+
+        std, ws, _log = world
+        monkeypatch.setenv("FAKE_RUNNING", "kb-nws-bar")
+        reg = ws.root / "registry.yaml"
+        reg.chmod(0)
+        try:
+            with pytest.raises(ConfigError):
+                _door("workset", "rm", "nws", "--force")
+        finally:
+            reg.chmod(0o644)
+        assert _registered(std) and _members(std, ws) == ["bar", "baz"]
 
 
 class TestStoppedMemberAndTheCure:
