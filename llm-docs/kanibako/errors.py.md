@@ -23,15 +23,16 @@ whole contract, and it is why the base class carries the only `⚑` marker left 
 `KanibakoError` is the base of the hierarchy, not the base of every exception in the tree, and this
 file is not the whole hierarchy either. Both facts matter to the `cli.py` contract above.
 
-**Eight `KanibakoError` subclasses live next to their subsystem instead of here** — deliberately, and
+**Ten `KanibakoError` subclasses live next to their subsystem instead of here** — deliberately, and
 they exit cleanly like the rest:
 
-* `settings.settings_resolve.SettingsError`
+* `settings.settings_resolve.SettingsError`, and its child
+  `settings.settings_expand._ExpandedShapeError`
 * `project.import_reconcile.ImportConflictError`
 * `settings.keystore.ReservedKeyError` — also a `KeyError`, for callers that catch one; it prints a
   clean `Error:` line too
-* `snapshots`: `UnsafeSnapshotNameError`, `ForeignSnapshotError`, `RestoreRefusedError`,
-  `RestoreUndoFailedError`, `SnapshotSafetyError`
+* `snapshots`: `UnsafeSnapshotNameError`, `ForeignSnapshotError`, `RestoreRefusedError` (and its child
+  `RestoreLinkRefusedError`), `RestoreUndoFailedError`, `SnapshotSafetyError`
 
 **Eight exception classes are OUTSIDE the hierarchy** and derive straight from `Exception` (the
 standalone `scripts/import-directives.py` has two more). An instance of one of these escaping to
@@ -45,6 +46,10 @@ standalone `scripts/import-directives.py` has two more). An instance of one of t
 * `commands.code_cmd._CodeShimError`
 * `browser_sidecar.BrowserSidecarError`
 * `bun_sea.BunSEAError`
+
+Three more derive from `OSError` or `ConnectionError` and are outside it too:
+`boxfs.SymlinkRefusedError`, `project.workset.StoreRemovalError`, and
+`channels.helper_client.FrameTooLarge`.
 
 Several of those are internal sentinels caught close to where they are raised, which is a fine reason
 to sit outside the hierarchy. The point is not that they are wrong — it is that **"is it a

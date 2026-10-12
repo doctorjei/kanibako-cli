@@ -998,7 +998,8 @@ Detection order:
 
 1. **Connected-external** — *project_dir* (or an ancestor) is an external directory bound to a
    workset by a live `boxes:` connection record. Runs FIRST so a force-connected box (which keeps
-   its on-disk marker) resolves as its workset box, never re-imported as standalone.
+   its on-disk marker) resolves as its workset's `named` box; were step 2 first, it would resolve
+   standalone.
 2. **In-place standalone marker** — a root `workset.yaml` storing `registry: null` AT *project_dir*
    declares it standalone (D3-mode 3); OVERRIDES workset tree membership. Vetted, never
    registered (`import_reconcile.check_standalone`).
@@ -1021,8 +1022,7 @@ marker while its global `standalone:` registry entry is DROPPED and a per-workse
 connection entry is written — the box lives in EXACTLY ONE registry (no dual registration). Such a
 box is EXTERNAL (outside the workset tree), so the workset-tree check (step 3) does NOT match it;
 the live connection is what claims it as its named workset box. Were the marker check to run first,
-its `import_standalone` side-effect would re-register the box in `standalone:`, re-creating the very
-dual registration that `--force` removed. D10: the per-workset registries collectively form the
+the box would resolve standalone — the very dual identity that `--force` removed. D10: the per-workset registries collectively form the
 reverse index, scanned by `box_resolve` (replaces the deleted global `connected:` index).
 
 ### Step 2 — marker-first precedence

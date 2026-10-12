@@ -801,7 +801,7 @@ half-connected box:
   location detection and mis-resolve. Refused with both workset names in the message.
 * **⚑ Already connected** (or nested under something that is) — the connection record is 1:1, so
   this is a mapping conflict. Refused, naming the box and workset that hold it.
-* **⚑ In-place standalone MARKER present (D3-mode #1)** — `box_data/` + `workset.yaml` is the box's
+* **⚑ In-place standalone MARKER present (D3-mode 3)** — `box_data/` + `workset.yaml` is the box's
   AUTHORITATIVE self-declaration of standalone identity. Connecting it would write a per-workset
   `boxes:` entry and let resolution report it as a `named` workset box: a silent **steal**, leaving
   the box dual-registered (global `standalone:` AND the workset `boxes:`). Refused unless *force*.
