@@ -614,6 +614,11 @@ def start_mocks():
 
             runtime = MagicMock()
             runtime.run.return_value = 0
+            # ⚑ False = NO CONTAINER YET: every fresh-launch test relies on it, and
+            # ``run()`` below flips it True, so "running after launch" is modeled.
+            # A test about a box that is ALREADY running must set True itself
+            # (``_RunningBoxDriver._running`` in test_start.py) — left at the
+            # default, it silently tests a fresh launch instead of a reattach.
             runtime.is_running.return_value = False
             runtime.container_exists.return_value = False
             runtime.exec.return_value = 0
