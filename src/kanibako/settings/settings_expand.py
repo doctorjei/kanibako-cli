@@ -51,11 +51,11 @@ from kanibako.settings.settings_categories import BARE_RELATIVE_SOURCE_HAZARD, _
 from kanibako.settings.settings_keyspace import KeyClass, entry_label
 from kanibako.settings.settings_keyspace_probe import keyspace_verdict
 from kanibako.settings.settings_resolve import (
-    MAX_REF_DEPTH,
     ResolveCtx,
     SettingsError,
     deferred_literal_expr,
     expand_expr,
+    guard_ref,
     is_verbatim_text,
     match_braced,
     match_ref,
@@ -686,32 +686,26 @@ class _Expander:
         and appended by the caller, mirroring ``expand_expr``'s contract.
         *absent_ok* returns :data:`_ABSENT` for an absent *dotted* in LENIENT mode too.
         """
-        # CYCLE GUARD (B7 — whole-value AND embedded paths): a PRIOR occurrence of
-        # *dotted* means we re-entered a ref still in progress. ⚑ Checked BEFORE
-        # the memo so a cycle can never be masked by a half-built memo entry.
-        if dotted in chain[:-1] or dotted in self._table_chain:
-            cycle = " -> ".join((*self._table_chain, *chain))
+        # CYCLE GUARD + DEPTH CAP (B7 — whole-value AND embedded paths): a PRIOR
+        # occurrence of *dotted* means we re-entered a ref still in progress.
+        # ⚑ Checked BEFORE the memo so a cycle can never be masked by a half-built
+        # memo entry. *reach* counts *dotted* itself, so the refs above it are one fewer.
+        reach = len(chain) + (self._height.get(dotted, 0) if dotted in self._memo else 0)
+        try:
+            guard_ref(dotted, (*self._table_chain, *chain[:-1]), reach - 1)
+        except SettingsError as exc:
             if self._collect_errors:
                 # LENIENT (Q9): RECORD, do not raise. The guard still fires here,
-                # so the pass TERMINATES rather than re-entering the ref.
-                raise _LenientDefect(f"cyclic @-reference: {cycle}")
-            raise SettingsError(f"Cyclic @-reference: {cycle}")
+                # so the pass TERMINATES rather than re-entering the ref. The record
+                # is a clause in its leaf's line: no capital, no closing period.
+                refusal = str(exc)
+                raise _LenientDefect(refusal[:1].lower() + refusal[1:].rstrip(".")) from None
+            raise
         for reading in self._reading:
             reading.add(dotted)
             reading.update(self._deps.get(dotted, ()))
-        reach = len(chain) + (self._height.get(dotted, 0) if dotted in self._memo else 0)
         if self._reach:
             self._reach[-1] = max(self._reach[-1], reach)
-        if reach > MAX_REF_DEPTH:
-            if self._collect_errors:
-                raise _LenientDefect(
-                    f"@-reference depth cap ({MAX_REF_DEPTH}) exceeded resolving "
-                    f"'{dotted}'"
-                )
-            raise SettingsError(
-                f"@-reference depth cap ({MAX_REF_DEPTH}) exceeded resolving "
-                f"'{dotted}'."
-            )
         if dotted in self._memo:
             return self._memo[dotted]
         raw = self._lookup_raw(dotted)

@@ -860,15 +860,26 @@ def _lookup_ref(
     chain: tuple[str, ...],
 ) -> str:
     """One key reference: cycle guard, depth cap, ``lookup`` — spelling-agnostic."""
-    if ref_name in chain:
-        cycle = " -> ".join((*chain, ref_name))
+    guard_ref(ref_name, chain, len(chain))
+    return lookup(ref_name, (*chain, ref_name))
+
+
+def guard_ref(ref_name: str, trail: tuple[str, ...], depth: int) -> None:
+    """RAISE when key reference *ref_name* closes a cycle or passes the depth cap.
+
+    *trail* holds the references in progress, outermost first; *ref_name* in it is a cycle,
+    named as the trail plus *ref_name*. *depth* counts the references above this one, and
+    from :data:`MAX_REF_DEPTH` on the reference is refused.
+    ⚑ THE ONE guard for both resolvers: :func:`_lookup_ref` and ``settings_expand._Expander``.
+    """
+    if ref_name in trail:
+        cycle = " -> ".join((*trail, ref_name))
         raise SettingsError(f"Cyclic @-reference: {cycle}")
-    if len(chain) >= MAX_REF_DEPTH:
+    if depth >= MAX_REF_DEPTH:
         raise SettingsError(
             f"@-reference depth cap ({MAX_REF_DEPTH}) exceeded resolving "
             f"'{ref_name}'."
         )
-    return lookup(ref_name, (*chain, ref_name))
 
 
 def resolve_value(
