@@ -50,12 +50,12 @@ file is treated as an empty level in both cases, so absence preserves current be
 
 ## The `None` sentinel — absent is not the same as present-`None`
 
-Throughout the scalar-overlay path a value of `None` (YAML `null` / `~` / a bare `foo:`) is
-PRESERVED as the "reset to built-in default" sentinel; an ABSENT key simply does not appear in the
-returned mapping. Every overlay step distinguishes the two: present-`None` resets the field to its
-built-in default, absent leaves the underlying value untouched, and any other present value
-(INCLUDING `""`) sets it. Collapsing the two would make a deliberate reset indistinguishable from
-a key nobody wrote.
+A present `None` (YAML `null` / `~` / a bare `foo:`) is a VALUE, never a request for the default
+(spec §2h). `_present_scalar_fields` keeps it and omits an absent key. In the resolve
+(`settings_launch.resolve_box_scalars`) a winning `None` reaches the field as `None`, or is refused
+where `refuses_null_box_scalar` says the key's default is a value (every box scalar but
+`box.shell`). `load_project_overrides` counts neither an absent key nor a present `None` as an
+override.
 
 ## B6 — the box scalars are KEYSPACE-resolved
 
@@ -84,8 +84,9 @@ nothing left to strand, and `config.box_scalar_defaults_floor()` builds the floo
 declared default when it did not. Only the first is the violation; deleting both would make
 `@box.image` dangle at launch AND at set time. `box_scalar_defaults_floor` is the ONE recipe, folded
 by `settings_launch.fold_floor` into every resolve, by `paths._narrow_box_scalar_cascade`, and by
-`config_interface._category_set_lookups`, so the launch floor and the set-time floor cannot drift. A `""` field default (`box.shell`) is the flat object's spelling of the declared `<None>`
-(spec §2b `box.shell | <None>`), and the floor SUPPLIES it as a present `None` ([R177]). It is not
+`config_interface._category_set_lookups`, so the launch floor and the set-time floor cannot drift. `box.shell`'s field default is `None`,
+the declared `<None>` (spec §2b `box.shell | <None>`), and the floor SUPPLIES it as a present
+`None` ([R177]). It is not
 `""`: a `default_categories` fold drops a `""` as a suppression (`if val == "": continue`), which left
 `@box.shell` dangling, so `set box.env.SH=@box.shell` refused by name until 2026-09-27. A whole-value
 ref to it now resolves to `None` (§0). A winning `None` lands on the flat `box_shell` field as
@@ -186,8 +187,8 @@ cascade file (spec §2c, `meta.box.*`).
 ```_scalar_value(value: object) -> object```
 A settings-file scalar as the flat object carries it.
 
-Booleans are preserved (`str(False)` is the truthy `"False"`); `None` is preserved as the reset
-sentinel (see "The `None` sentinel" above); other scalars are stringified.
+Booleans are preserved (`str(False)` is the truthy `"False"`); `None` is preserved as a value (see
+"The `None` sentinel" above); other scalars are stringified.
 
 ⚑ It replaced `_flatten_toml`, which flattened a whole document into underscore-joined names
 (`{"paths": {"boxes": "x"}}` → `{"paths_boxes": "x"}`) — the namespace that collided with the
