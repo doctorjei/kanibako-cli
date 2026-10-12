@@ -3621,13 +3621,14 @@ def _check_container_running(proj, *, fail_closed: bool = False,
     image = _running_image(runtime, container_name, containers, check=fail_closed)
     if image is not None:
         return True, f"running ({container_name}: {image})"
-    # An exited container still holds the name.
+    # An exited or PAUSED container still holds the name; ``kanibako stop`` clears both.
     if runtime.container_exists(container_name):
         named = (getattr(proj, "name", "") or "").strip()
         stop_handle = (project_cure_ref(proj) if named and isinstance(proj, ProjectPaths)
                        else shlex.quote(named or container_name))
+        state = "paused" if runtime.container_state(container_name) == "paused" else "exited"
         return False, (
-            f"exited, still holding the name ({container_name}); "
+            f"{state}, still holding the name ({container_name}); "
             f"clear it: kanibako stop {stop_handle}"
         )
     return False, f"not running ({container_name})"

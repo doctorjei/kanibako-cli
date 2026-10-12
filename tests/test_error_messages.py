@@ -184,6 +184,23 @@ class TestContainerExistsMessage:
         assert "kanibako start" in err
         assert "kanibako stop" in err
 
+    def test_paused_container_is_named_paused_and_suggests_stop(self, start_mocks, capsys):
+        """A PAUSED container (podman: not running) is named paused; ``kanibako stop`` clears it."""
+        with start_mocks() as m:
+            m.runtime.container_exists.return_value = True
+            m.runtime.is_running.return_value = False
+            m.runtime.container_state.return_value = "paused"
+            rc = _run_container(
+                project_dir=None, entrypoint=None, image_override=None,
+                new_session=False, safe_mode=False, resume_mode=False,
+                extra_args=[],
+            )
+        assert rc == 1
+        err = capsys.readouterr().err
+        assert "This project's box is paused" in err
+        assert "stopped container" not in err
+        assert "kanibako stop testproject" in err
+
     def test_exited_container_suggests_only_stop(self, start_mocks, capsys):
         """An EXITED container: reattach and --restart are both no-ops there, so
         neither is offered.  ``kanibako stop`` is, because it is the cure that

@@ -82,7 +82,7 @@ def _writeback_on_stop(
     file that is not valid YAML) — on stderr, with the refusal's text, because it is
     the user's to fix; every other failure stays silent.
 
-    ⚑ ``box_is_live`` is the caller's SINGLE ``is_running`` reading (P10), not a
+    ⚑ ``box_is_live`` is the caller's SINGLE liveness reading (``_is_live``) (P10), not a
     convenience: :func:`_stop_one` needs the same fact to pick its sentence, and
     two readings taken across the gap could disagree — writing back from a box
     the message then calls stopped, or the reverse.  Only a LIVE box is written
@@ -163,6 +163,11 @@ def _resolve_target(
         ), exc
 
 
+def _is_live(runtime: ContainerRuntime, name: str) -> bool:
+    """Running, or PAUSED: podman reads a paused container as not running, yet it is live."""
+    return runtime.is_running(name) or runtime.container_state(name) == "paused"
+
+
 def _stop_one(runtime: ContainerRuntime, *, project_dir: str | None) -> int:
     """Stop the container for a single project."""
     config_file = user_config_file()
@@ -199,8 +204,8 @@ def _stop_one(runtime: ContainerRuntime, *, project_dir: str | None) -> int:
 
     # ⚑⚑ ONE LIVENESS READING, TAKEN BEFORE ANYTHING CHANGES IT, SERVING BOTH
     # DECISIONS — the writeback below and the sentence printed further down.
-    # Same shape and same call count as the launch guard in ``start.py``.
-    box_is_live = runtime.is_running(container_name)
+    # A PAUSED box counts as live (``_is_live``): it is stopped and written back from.
+    box_is_live = _is_live(runtime, container_name)
 
     # FIX 1: writeback BEFORE stopping — an in-box login must reach the host on
     # `kanibako stop` too.  Source the box's agent from its launch stamp
@@ -212,7 +217,7 @@ def _stop_one(runtime: ContainerRuntime, *, project_dir: str | None) -> int:
         already_said=tuple(said),
     )
 
-    # ⚑ A PAUSED box is unpaused and stopped inside ``runtime.stop``.
+    # ⚑ A PAUSED box is live: ``runtime.stop`` unpauses it, then stops it.
     if runtime.stop(container_name):
         # Clean up stopped container (persistent containers lack --rm)
         cleared = (not runtime.container_exists(container_name)
@@ -332,7 +337,7 @@ def _stop_all(runtime: ContainerRuntime, *, force: bool = False) -> int:
         return 0
 
     # ⚑ LIVENESS ONCE, BEFORE ANYTHING CHANGES IT — the prompt and the action read it.
-    liveliness = {name: runtime.is_running(name) for name in names}
+    liveliness = {name: _is_live(runtime, name) for name in names}
     running_names = [n for n, live in liveliness.items() if live]
     stopped_names = [n for n, live in liveliness.items() if not live]
 

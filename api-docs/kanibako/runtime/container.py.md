@@ -61,7 +61,7 @@ class ContainerRuntime:
     def exec_succeeds(self, name: str, command: list[str]) -> bool
     def container_exists(self, name: str) -> bool
     def stop(self, name: str) -> bool
-    def is_paused(self, name: str) -> bool
+    def container_state(self, name: str) -> str | None
     def unpause(self, name: str) -> bool
     def rm(self, name: str) -> bool
     def is_running(self, name: str) -> bool

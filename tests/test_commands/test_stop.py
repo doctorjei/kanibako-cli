@@ -246,6 +246,25 @@ class TestStopOne:
         assert captured.out == "Stopped kb-primary-droste\n"
         assert "could not remove kb-primary-droste" in captured.err
 
+    def test_a_paused_box_is_live_stopped_and_written_back_from(self, mock_runtime, capsys):
+        """podman reads a PAUSED box as not running; it is live: stopped, written back, removed."""
+        mock_runtime.is_running.return_value = False
+        mock_runtime.container_state.return_value = "paused"
+        mock_runtime.container_exists.return_value = True
+        with (
+            patch("kanibako.commands.stop.load_config"),
+            patch("kanibako.commands.stop.load_std_paths"),
+            patch("kanibako.commands.stop.resolve_box_target") as m_resolve,
+            patch("kanibako.commands.stop._writeback_on_stop") as m_wb,
+        ):
+            self._droste(m_resolve)
+            assert _stop_one(mock_runtime, project_dir=None) == 0
+
+        assert m_wb.call_args.kwargs["box_is_live"] is True
+        mock_runtime.stop.assert_called_once_with("kb-primary-droste")
+        mock_runtime.rm.assert_called_once_with("kb-primary-droste")
+        assert capsys.readouterr().out == "Stopped kb-primary-droste\n"
+
     def test_liveness_is_read_exactly_once(self, mock_runtime):
         """ONE ``is_running`` reading serves the writeback AND the sentence.
 
@@ -389,6 +408,23 @@ class TestStopAll:
         assert captured.err == "Failed to remove kb-running\n"
         assert captured.out.endswith(
             "Stopped kb-running\n"
+            "\nStopped 1 container(s); removed 0 stopped container(s).\n"
+        )
+
+    def test_a_paused_container_is_stopped_not_only_removed(self, mock_runtime, capsys):
+        """A PAUSED container is live: it takes the stop arm (``runtime.stop`` unpauses)."""
+        mock_runtime.list_running.return_value = [
+            ("kb-paused", "img:latest", "Paused"),
+        ]
+        mock_runtime.is_running.return_value = False
+        mock_runtime.container_state.return_value = "paused"
+        mock_runtime.container_exists.return_value = True
+        rc = _stop_all(mock_runtime, force=True)
+        assert rc == 0
+        mock_runtime.stop.assert_called_once_with("kb-paused")
+        mock_runtime.rm.assert_called_once_with("kb-paused")
+        assert capsys.readouterr().out.endswith(
+            "Stopped kb-paused\n"
             "\nStopped 1 container(s); removed 0 stopped container(s).\n"
         )
 

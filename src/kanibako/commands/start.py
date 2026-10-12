@@ -3982,10 +3982,15 @@ def _run_container(
                 # WORKS: it removes an exited container (``stop._stop_one``
                 # falls through to ``rm``) even though there was nothing to
                 # stop.  A container left behind by a box whose PID 1 died —
-                # crash, killed terminal, reboot — lands exactly here.
+                # crash, killed terminal, reboot — lands exactly here.  A PAUSED
+                # container lands here too (podman reads it as not running), and
+                # ``kanibako stop`` unpauses, stops, and removes it.
+                blocker = ("This project's box is paused, and its container is "
+                           if runtime.container_state(container_name) == "paused"
+                           else "This project's box is not running, but a stopped "
+                           "container is ")
                 print(
-                    "Error: This project's box is not running, but a stopped "
-                    f"container is still holding its name ({container_name}), "
+                    f"Error: {blocker}still holding its name ({container_name}), "
                     "which blocks a new launch.\n"
                     f"  Clear it:  kanibako stop {project_cure_ref(proj)}\n"
                     "  Then run your command again.",

@@ -560,7 +560,7 @@ class ContainerRuntime:
         """
         if self._ask_stop(name):
             return True
-        if not self.is_paused(name) or not self.unpause(name):
+        if self.container_state(name) != "paused" or not self.unpause(name):
             return False
         return self._ask_stop(name)
 
@@ -572,14 +572,19 @@ class ContainerRuntime:
         )
         return result.returncode == 0
 
-    def is_paused(self, name: str) -> bool:
-        """Whether container *name* is paused; a failed ``inspect`` reads as not paused."""
+    def container_state(self, name: str) -> str | None:
+        """Container *name*'s ``.State.Status`` (``running``, ``paused``, ``exited``, ...).
+
+        None when the ``inspect`` fails.  ⚑ podman reads a PAUSED container as not
+        running (``.State.Running`` false), so a caller asking "is the box live" asks
+        this too.
+        """
         result = subprocess.run(
-            [self.cmd, "inspect", "--format", "{{.State.Paused}}", name],
+            [self.cmd, "inspect", "--format", "{{.State.Status}}", name],
             capture_output=True,
             text=True,
         )
-        return result.returncode == 0 and result.stdout.strip() == "true"
+        return result.stdout.strip() if result.returncode == 0 else None
 
     def unpause(self, name: str) -> bool:
         """Unpause container *name*; True on exit status 0."""

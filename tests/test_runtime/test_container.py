@@ -847,12 +847,12 @@ class TestStop:
     def test_a_paused_container_is_unpaused_then_stopped(self):
         """podman refuses to stop a PAUSED container (rc 125); unpause, then stop again."""
         rt = ContainerRuntime(command="/usr/bin/podman")
-        m = self._runs((125, ""), (0, "true\n"), (0, ""), (0, ""))
+        m = self._runs((125, ""), (0, "paused\n"), (0, ""), (0, ""))
         with patch("kanibako.runtime.container.subprocess.run", m):
             assert rt.stop("kb-paused") is True
         assert [c.args[0] for c in m.call_args_list] == [
             ["/usr/bin/podman", "stop", "kb-paused"],
-            ["/usr/bin/podman", "inspect", "--format", "{{.State.Paused}}", "kb-paused"],
+            ["/usr/bin/podman", "inspect", "--format", "{{.State.Status}}", "kb-paused"],
             ["/usr/bin/podman", "unpause", "kb-paused"],
             ["/usr/bin/podman", "stop", "kb-paused"],
         ]
@@ -860,17 +860,30 @@ class TestStop:
     def test_a_failed_unpause_is_a_failed_stop(self):
         """No second stop is asked of a container that is still paused."""
         rt = ContainerRuntime(command="/usr/bin/podman")
-        m = self._runs((125, ""), (0, "true\n"), (125, ""))
+        m = self._runs((125, ""), (0, "paused\n"), (125, ""))
         with patch("kanibako.runtime.container.subprocess.run", m):
             assert rt.stop("kb-paused") is False
         assert [c.args[0][1] for c in m.call_args_list] == ["stop", "inspect", "unpause"]
 
     def test_a_failed_stop_of_an_unpaused_container_is_not_retried(self):
         rt = ContainerRuntime(command="/usr/bin/podman")
-        m = self._runs((125, ""), (0, "false\n"))
+        m = self._runs((125, ""), (0, "exited\n"))
         with patch("kanibako.runtime.container.subprocess.run", m):
             assert rt.stop("kb-stuck") is False
         assert [c.args[0][1] for c in m.call_args_list] == ["stop", "inspect"]
+
+
+    @pytest.mark.parametrize("rc, out, state", [
+        (0, "paused\n", "paused"), (0, "running\n", "running"), (125, "", None),
+    ])
+    def test_container_state_reads_state_status(self, rc, out, state):
+        rt = ContainerRuntime(command="/usr/bin/podman")
+        m = self._runs((rc, out))
+        with patch("kanibako.runtime.container.subprocess.run", m):
+            assert rt.container_state("kb-x") == state
+        assert m.call_args.args[0] == [
+            "/usr/bin/podman", "inspect", "--format", "{{.State.Status}}", "kb-x",
+        ]
 
 
 class TestRmAndIsRunning:

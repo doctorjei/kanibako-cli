@@ -99,7 +99,7 @@ class TestExitedContainer:
 
 
 class TestUnstoppableContainer:
-    """``podman stop`` fails while the container still exists: a ``Paused`` container (rc 125)."""
+    """``podman stop`` fails on a ``Paused`` container (rc 125); the box is live, not exited."""
 
     def test_stop_on_paused_container_unpauses_stops_and_removes_it(self, e2e_env):
         env = e2e_env["env"]
@@ -111,9 +111,19 @@ class TestUnstoppableContainer:
             assert _podman("stop", "-t", "3", name).returncode != 0, "podman stop must fail on a paused container"
             assert _status(name) == "paused"
 
-            # stop unpauses the container, stops it, and removes it.
+            # box info and shell name the paused state and the cure.
+            r = run_kanibako(["box", "info", "e2e_paused"], env=env)
+            assert r.returncode == 0, r.stderr
+            assert f"paused, still holding the name ({name})" in r.stdout
+            r = run_kanibako(["shell", "e2e_paused", "--", "true"], env=env, timeout=SUBPROCESS_TIMEOUT)
+            assert r.returncode == 1, f"rc={r.returncode}: {r.stdout}{r.stderr}"
+            assert "box is paused" in r.stderr and "kanibako stop e2e_paused" in r.stderr
+            assert _status(name) == "paused"
+
+            # stop: a paused box is live, so it is unpaused, stopped, and removed.
             r = run_kanibako(["stop", "e2e_paused"], env=env)
             assert r.returncode == 0, r.stdout + r.stderr
+            assert f"Stopped {name}" in r.stdout
             assert _status(name) is None, r.stdout + r.stderr
         finally:
             _podman("unpause", name)

@@ -224,6 +224,22 @@ class TestCheckContainerRunning:
             assert "exited, still holding the name" in detail
             assert "kanibako stop myapp" in detail
 
+    def test_paused_container_is_named_paused(self):
+        """A PAUSED container is named as such, with the same cure."""
+        mock_rt = MagicMock()
+        mock_rt.list_running.return_value = []
+        mock_rt.container_exists.return_value = True
+        mock_rt.container_state.return_value = "paused"
+        with patch(
+            "kanibako.commands.box._parser.ContainerRuntime",
+            return_value=mock_rt,
+        ):
+            proj = _mock_proj(name="myapp")
+            running, detail = _check_container_running(proj)
+            assert running is False
+            assert detail.startswith("paused, still holding the name")
+            assert "kanibako stop myapp" in detail
+
 
 # ---------------------------------------------------------------------------
 # run_info integration tests (with real filesystem, mocked container)
