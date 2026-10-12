@@ -241,23 +241,41 @@ HELPER_CORE_LEAVES: dict[str, str] = {
 
 HELPER_STATE_FILENAME = "state.json"
 
+# ⚑ THE ``helpers/`` TREE IS IN THE DIRECTOR'S HOME, so it is box-writable, and the host
+# hub writes in it (:func:`mark_helper_stopped`).  Every file operation below goes
+# through :mod:`kanibako.boxfs`, rooted at the home that holds *helpers_dir*
+# (``helpers_dir.parent``), so a link planted at ``helpers``, a helper's dir, or a leaf
+# is never followed.
+
+
+def _home(helpers_dir: Path) -> Path:
+    """The boxfs root for *helpers_dir*: the home holding it, made if missing (the root
+    is the caller's, never itself checked)."""
+    home = helpers_dir.parent
+    home.mkdir(parents=True, exist_ok=True)
+    return home
+
 
 def read_helper_state(helpers_dir: Path, helper_num: int) -> dict:
-    """A helper's state document; an empty dict when it has none."""
+    """A helper's state document; an empty dict when it has none.
+
+    A link at the document or a parent raises ``boxfs.SymlinkRefusedError``.
+    """
     path = helpers_dir / str(helper_num) / HELPER_STATE_FILENAME
-    if not path.is_file():
+    try:
+        text = boxfs.read_text(path, helpers_dir.parent)
+    except (FileNotFoundError, NotADirectoryError):
         return {}
-    with open(path) as f:
-        return json.load(f)
+    return json.loads(text)
 
 
 def write_helper_state(helpers_dir: Path, helper_num: int, state: dict) -> None:
-    """Write a helper's state document whole."""
+    """Write a helper's state document whole (atomically; missing parents made).
+
+    Mode 0644, as ``open`` made it: the in-box verbs and the host hub both read it.
+    """
     path = helpers_dir / str(helper_num) / HELPER_STATE_FILENAME
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with open(path, "w") as f:
-        json.dump(state, f, indent=2)
-        f.write("\n")
+    boxfs.write_text(path, _home(helpers_dir), json.dumps(state, indent=2) + "\n", mode=0o644)
 
 
 def mark_helper_stopped(helpers_dir: Path, helper_num: int) -> None:
@@ -265,7 +283,11 @@ def mark_helper_stopped(helpers_dir: Path, helper_num: int) -> None:
 
     A helper with no state document is left without one: there is nothing a verb
     could act on, and inventing a document would describe a helper no verb made.
+    A linked document (or parent) is left alone, with a warning.
     """
+    path = helpers_dir / str(helper_num) / HELPER_STATE_FILENAME
+    if not boxfs.no_symlink_or_warn(path, helpers_dir.parent):
+        return
     state = read_helper_state(helpers_dir, helper_num)
     if not state or state.get("status") == "stopped":
         return
@@ -333,12 +355,13 @@ def create_helper_dirs(helpers_dir: Path, helper_num: int) -> Path:
     directories.  Returns the helper's root directory.
     """
     root = helpers_dir / str(helper_num)
-    root.mkdir(parents=True, exist_ok=True)
+    home = _home(helpers_dir)
+    boxfs.mkdir(root, home, parents=True, exist_ok=True)
 
     # Workspace and vault (with communication channels)
     for leaf in HELPER_CORE_LEAVES.values():
-        (root / leaf).mkdir(parents=True, exist_ok=True)
-    (root / HELPER_SCRIPTS_RELPATH).mkdir(exist_ok=True)
+        boxfs.mkdir(root / leaf, home, parents=True, exist_ok=True)
+    boxfs.mkdir(root / HELPER_SCRIPTS_RELPATH, home, exist_ok=True)
 
     return root
 
@@ -350,18 +373,17 @@ def create_broadcast_dirs(helpers_dir: Path) -> Path:
     Returns the ``all/`` directory.
     """
     all_dir = helpers_dir / "all"
-    (all_dir / "rw").mkdir(parents=True, exist_ok=True)
-    (all_dir / "ro").mkdir(parents=True, exist_ok=True)
+    for leaf in ("rw", "ro"):
+        boxfs.mkdir(all_dir / leaf, _home(helpers_dir), parents=True, exist_ok=True)
     return all_dir
 
 
 def remove_helper_dirs(helpers_dir: Path, helper_num: int) -> None:
-    """Remove a helper's directory tree (``helpers/{N}/``), if it exists."""
-    import shutil
+    """Remove a helper's directory tree (``helpers/{N}/``), if it exists.
 
-    helper_root = helpers_dir / str(helper_num)
-    if helper_root.exists():
-        shutil.rmtree(helper_root)
+    A link at it is removed as a link; nothing is followed.
+    """
+    boxfs.rmtree(helpers_dir / str(helper_num), helpers_dir.parent, missing_ok=True)
 
 
 # ---------------------------------------------------------------------------

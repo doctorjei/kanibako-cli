@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 import gzip
+import logging
 import os
 import time
+
+import pytest
 
 from kanibako.launch.hygiene import (
     _CACHE_WASTE_DIRS,
@@ -20,6 +23,7 @@ from kanibako.launch.hygiene import (
     _reap_stale_agent_mountpoints,
     cleanup_shell_dir,
 )
+from tests.support.link_proof import sentinel_tree, tree_digest
 
 
 # ---------------------------------------------------------------------------
@@ -480,7 +484,7 @@ class TestGzipFile:
         src = _make_file(tmp_path / "data.jsonl", content=b"line1\nline2\n")
         dst = tmp_path / "data.jsonl.gz"
 
-        _gzip_file(src, dst)
+        _gzip_file(src, dst, tmp_path)
 
         assert not src.exists()
         assert dst.exists()
@@ -492,7 +496,7 @@ class TestGzipFile:
         src = _make_file(tmp_path / "data.jsonl", content=b"test", mtime=old_time)
         dst = tmp_path / "data.jsonl.gz"
 
-        _gzip_file(src, dst)
+        _gzip_file(src, dst, tmp_path)
 
         gz_mtime = dst.stat().st_mtime
         assert abs(gz_mtime - old_time) < 2  # Within 2 seconds
@@ -755,3 +759,149 @@ class TestCleanupReapsStaleStubOnly:
         stub = _make_file(tmp_path / ".local" / "bin" / "claude", size=0)
         cleanup_shell_dir(tmp_path)
         assert stub.exists()
+
+
+# ---------------------------------------------------------------------------
+# No-follow: a link the box planted is never followed (174 lane 3, X1 + B3)
+# ---------------------------------------------------------------------------
+
+def _plant(shell_dir, rel, how, where, tmp_path, files):
+    """Plant a link for *rel* (``a/b/c``) and return the tree it leads to.
+
+    *how* ``leaf`` links *rel* itself; ``parent`` links its first component.  *where*
+    ``outside`` points the link at a host tree beside the box; ``inside`` at a tree
+    inside the box home.  *files* maps a path under *rel* to its bytes.
+    """
+    parts = rel.split("/")
+    base = tmp_path / "outside" if where == "outside" else shell_dir / "elsewhere"
+    link_at = shell_dir / rel if how == "leaf" else shell_dir / parts[0]
+    dest = base / ("leafdest" if how == "leaf" else "parentdest")
+    under = dest if how == "leaf" else dest.joinpath(*parts[1:])
+    for name, data in files.items():
+        _make_file(under / name, content=data, mtime=_old_mtime())
+    link_at.parent.mkdir(parents=True, exist_ok=True)
+    link_at.symlink_to(dest)
+    return link_at, dest
+
+
+_LINK_CASES = [(h, w) for h in ("leaf", "parent") for w in ("outside", "inside")]
+
+
+class TestNoFollow:
+    @pytest.mark.parametrize("how,where", _LINK_CASES)
+    @pytest.mark.parametrize("rel", [_WASTE_DIRS[0], _CACHE_WASTE_DIRS[0]])
+    def test_waste_dir_link_is_skipped(self, tmp_path, caplog, rel, how, where):
+        shell_dir = tmp_path / "home"
+        shell_dir.mkdir()
+        link_at, dest = _plant(shell_dir, rel, how, where, tmp_path,
+                               {"waste.bin": b"x" * 4096, "sub/more.bin": b"y" * 10})
+        before = tree_digest(dest)
+
+        with caplog.at_level(logging.WARNING, logger="kanibako"):
+            actions = cleanup_shell_dir(shell_dir)
+
+        assert tree_digest(dest) == before
+        assert link_at.is_symlink()
+        assert actions == []
+        assert any(str(link_at) in r.getMessage() for r in caplog.records
+                   if r.levelno == logging.WARNING)
+
+    @pytest.mark.parametrize("rel", [_WASTE_DIRS[0], _CACHE_WASTE_DIRS[0]])
+    def test_link_inside_a_waste_dir_is_removed_never_followed(self, tmp_path, rel):
+        """A file link and a dir link INSIDE a waste dir: removed as links, never
+        counted, the host tree they point at untouched (control: real files go)."""
+        shell_dir = tmp_path / "home"
+        target = shell_dir / rel
+        _make_file(target / "real.bin", size=2048)
+        outside = sentinel_tree(tmp_path)
+        (target / "filelink").symlink_to(outside / "sentinel.txt")
+        (target / "dirlink").symlink_to(outside)
+        before = tree_digest(outside)
+
+        actions = cleanup_shell_dir(shell_dir)
+
+        assert len(actions) == 1 and "2.0 KB" in actions[0]  # only real.bin counted
+        assert tree_digest(outside) == before
+        assert not (target / "filelink").is_symlink()
+        assert not (target / "dirlink").is_symlink()
+        assert not (target / "real.bin").exists()
+
+    def test_read_only_tree_in_a_waste_dir_is_removed(self, tmp_path):
+        shell_dir = tmp_path / "home"
+        locked = shell_dir / _CACHE_WASTE_DIRS[0] / "locked"
+        _make_file(locked / "f.bin", size=100)
+        locked.chmod(0o555)
+        try:
+            cleanup_shell_dir(shell_dir)
+            assert not (shell_dir / _CACHE_WASTE_DIRS[0]).exists()
+        finally:
+            if locked.exists():
+                locked.chmod(0o755)
+
+    @pytest.mark.parametrize("where", ["outside", "inside"])
+    def test_linked_bin_dir_keeps_the_binary_it_points_at(self, tmp_path, where):
+        shell_dir = tmp_path / "home"
+        shell_dir.mkdir()
+        dest = (tmp_path / "outside" if where == "outside" else shell_dir / "elsewhere")
+        dest.mkdir(parents=True)
+        with open(dest / "claude", "wb") as f:
+            f.truncate(200 * 1024 * 1024)  # sparse: the size test, not the disk
+        (shell_dir / "bin").symlink_to(dest)
+        before = tree_digest(dest)
+
+        actions = cleanup_shell_dir(shell_dir)
+
+        assert actions == []
+        assert tree_digest(dest) == before
+
+    @pytest.mark.parametrize("how,where", _LINK_CASES)
+    @pytest.mark.parametrize("rel", [
+        ".claude/projects", ".claude/projects/p/conversation_logs",
+    ])
+    def test_linked_log_dir_is_not_compressed(self, tmp_path, caplog, rel, how, where):
+        shell_dir = tmp_path / "home"
+        shell_dir.mkdir()
+        tail = "p/conversation_logs/" if rel.endswith("projects") else ""
+        link_at, dest = _plant(shell_dir, rel, how, where, tmp_path,
+                               {f"{tail}old.jsonl": b'{"a": 1}\n' * 50})
+        before = tree_digest(dest)
+
+        with caplog.at_level(logging.WARNING, logger="kanibako"):
+            actions = cleanup_shell_dir(shell_dir)
+
+        assert actions == []
+        assert tree_digest(dest) == before
+        assert any(r.levelno == logging.WARNING for r in caplog.records)
+
+    @pytest.mark.parametrize("where", ["outside", "inside"])
+    @pytest.mark.parametrize("leaf", ["old.jsonl", "old.jsonl.gz"])
+    def test_linked_log_or_gz_leaf_is_never_followed(self, tmp_path, where, leaf):
+        """A ``.jsonl`` link is not read; a ``.gz`` link is not written through."""
+        shell_dir = tmp_path / "home"
+        logs = shell_dir / ".claude" / "projects" / "p" / "conversation_logs"
+        _make_file(logs / "old.jsonl", content=b"real log\n", mtime=_old_mtime())
+        dest_dir = tmp_path / "outside" if where == "outside" else shell_dir / "elsewhere"
+        dest = _make_file(dest_dir / "sentinel", content=b"host bytes", mtime=_old_mtime())
+        (logs / leaf).unlink(missing_ok=True)
+        (logs / leaf).symlink_to(dest)
+        before = tree_digest(dest_dir)
+
+        cleanup_shell_dir(shell_dir)
+
+        assert tree_digest(dest_dir) == before
+        assert (logs / leaf).is_symlink()
+
+    def test_control_old_log_is_compressed_with_mode_and_mtime(self, tmp_path):
+        shell_dir = tmp_path / "home"
+        logs = shell_dir / ".claude" / "projects" / "p" / "conversation_logs"
+        old = _old_mtime()
+        src = _make_file(logs / "old.jsonl", content=b"line\n" * 100, mtime=old)
+        src.chmod(0o640)
+
+        actions = cleanup_shell_dir(shell_dir)
+
+        gz = logs / "old.jsonl.gz"
+        assert len(actions) == 1 and not src.exists()
+        assert gzip.decompress(gz.read_bytes()) == b"line\n" * 100
+        assert abs(gz.stat().st_mtime - old) < 2
+        assert gz.stat().st_mode & 0o777 == 0o640

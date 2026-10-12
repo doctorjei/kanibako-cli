@@ -21,8 +21,13 @@ def _clean_duplicate_binaries(shell_dir: Path, dry_run: bool, logger: object) ->
 def _find_claude_binaries(shell_dir: Path) -> list[Path]
 def _reap_stale_agent_mountpoints(shell_dir: Path, agent_critical_dests: list[tuple[str, str]] | None, dry_run: bool, logger: object) -> list[str]
 def _compress_old_logs(shell_dir: Path, dry_run: bool, logger: object) -> list[str]
-def _gzip_file(src: Path, dst: Path) -> None
-def _remove_dir_contents(d: Path) -> None
-def _dir_size(d: Path) -> int
+def _conversation_logs(projects_dir: Path, root: Path) -> list[Path]
+def _gzip_file(src: Path, dst: Path, root: Path) -> int
+def _is_box_dir(path: Path, root: Path) -> bool
+def _box_listdir(path: Path, root: Path) -> list[str]
+def _forcing(remove: Callable[[], None], path: Path, root: Path) -> None
+def _remove_dir_contents(d: Path, root: Path) -> None
+def _remove_tree(d: Path, root: Path) -> None
+def _dir_size(d: Path, root: Path) -> int
 def _fmt_size(nbytes: int) -> str
 ```

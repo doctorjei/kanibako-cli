@@ -38,6 +38,7 @@ def remove_helper_dirs(helpers_dir: Path, helper_num: int) -> None
 def bundled_init_script() -> Path
 def resolve_init_script(parent_scripts_dir: Path | None) -> Path
 def _table(doc: dict, sections: tuple[str, ...]) -> dict
+def _home(helpers_dir: Path) -> Path
 def _unreadable(path: Path, exc: OSError) -> KanibakoError
 ```
 

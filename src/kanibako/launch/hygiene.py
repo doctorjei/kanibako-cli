@@ -1,13 +1,20 @@
-"""Shell directory cleanup: remove waste files, compress old conversation logs."""
+"""Shell directory cleanup: remove waste files, compress old conversation logs.
+
+⚑ The shell dir is the box HOME, so it is box-writable: every read, write, and removal
+below it goes through :mod:`kanibako.boxfs` with the shell dir as the root, and a link
+the box planted, at a leaf or a parent, is never followed.  A linked path is skipped
+with a warning naming it; hygiene never stops a start.
+"""
 
 from __future__ import annotations
 
 import gzip
-import os
-import shutil
+import stat as _st
 import time
+from collections.abc import Callable
 from pathlib import Path
 
+from kanibako import boxfs
 from kanibako.log import get_logger
 
 # Directories whose *contents* are always safe to delete.
@@ -88,9 +95,9 @@ def _clean_waste_dirs(
     actions: list[str] = []
     for rel in _WASTE_DIRS:
         target = shell_dir / rel
-        if not target.is_dir():
+        if not _is_box_dir(target, shell_dir):
             continue
-        freed = _dir_size(target)
+        freed = _dir_size(target, shell_dir)
         if freed == 0:
             continue
         desc = (
@@ -98,7 +105,7 @@ def _clean_waste_dirs(
             f"Removed {rel}/ contents ({_fmt_size(freed)})"
         )
         if not dry_run:
-            _remove_dir_contents(target)
+            _remove_dir_contents(target, shell_dir)
         actions.append(desc)
     return actions
 
@@ -112,9 +119,9 @@ def _clean_cache_waste(
     actions: list[str] = []
     for rel in _CACHE_WASTE_DIRS:
         target = shell_dir / rel
-        if not target.is_dir():
+        if not _is_box_dir(target, shell_dir):
             continue
-        freed = _dir_size(target)
+        freed = _dir_size(target, shell_dir)
         if freed == 0:
             continue
         desc = (
@@ -122,7 +129,7 @@ def _clean_cache_waste(
             f"Removed {rel}/ ({_fmt_size(freed)})"
         )
         if not dry_run:
-            shutil.rmtree(target, ignore_errors=True)
+            _remove_tree(target, shell_dir)
         actions.append(desc)
     return actions
 
@@ -153,7 +160,7 @@ def _clean_duplicate_binaries(
             pass
 
         try:
-            size = candidate.stat().st_size
+            size = boxfs.stat(candidate, shell_dir).st_size
         except OSError:
             continue
 
@@ -167,7 +174,7 @@ def _clean_duplicate_binaries(
         )
         if not dry_run:
             try:
-                candidate.unlink()
+                boxfs.unlink(candidate, shell_dir)
             except OSError:
                 continue
         actions.append(desc)
@@ -193,10 +200,18 @@ def _find_claude_binaries(shell_dir: Path) -> list[Path]:
         shell_dir / ".npm" / "_npx",
     ]
     for d in search_dirs:
-        if not d.is_dir():
-            continue
         claude_file = d / "claude"
-        if claude_file.is_file() and not claude_file.is_symlink():
+        link = boxfs.first_symlink(claude_file, shell_dir)
+        if link == claude_file:
+            continue  # a link named ``claude`` is not a stray copy: skipped quietly
+        if link is not None:
+            boxfs.no_symlink_or_warn(claude_file, shell_dir)
+            continue
+        try:
+            mode = boxfs.stat(claude_file, shell_dir).st_mode
+        except OSError:
+            continue
+        if _st.S_ISREG(mode):
             candidates.append(claude_file)
 
     return candidates
@@ -316,26 +331,17 @@ def _compress_old_logs(
     cutoff = time.time() - (_COMPRESS_AGE_DAYS * 86400)
 
     projects_dir = shell_dir / ".claude" / "projects"
-    if not projects_dir.is_dir():
-        return actions
 
-    # Glob for conversation log files.
-    for log_file in projects_dir.glob("*/conversation_logs/*.jsonl"):
-        if not log_file.is_file():
-            continue
-        # Already compressed?
-        if log_file.suffix == ".gz":
-            continue
-
+    # ``projects/*/conversation_logs/*.jsonl``, listed and opened through boxfs.
+    for log_file in _conversation_logs(projects_dir, shell_dir):
         try:
-            mtime = log_file.stat().st_mtime
+            st = boxfs.stat(log_file, shell_dir)
         except OSError:
             continue
-
-        if mtime >= cutoff:
+        if not _st.S_ISREG(st.st_mode) or st.st_mtime >= cutoff:
             continue
 
-        original_size = log_file.stat().st_size
+        original_size = st.st_size
         if original_size == 0:
             continue
 
@@ -344,8 +350,7 @@ def _compress_old_logs(
 
         if not dry_run:
             try:
-                _gzip_file(log_file, gz_path)
-                compressed_size = gz_path.stat().st_size
+                compressed_size = _gzip_file(log_file, gz_path, shell_dir)
             except OSError:
                 continue
         else:
@@ -363,40 +368,107 @@ def _compress_old_logs(
     return actions
 
 
-def _gzip_file(src: Path, dst: Path) -> None:
-    """Compress *src* to *dst* with gzip and remove the original."""
-    with open(src, "rb") as f_in, gzip.open(dst, "wb") as f_out:
-        shutil.copyfileobj(f_in, f_out)
-    # Preserve modification time on the compressed file.
-    stat = src.stat()
-    os.utime(dst, (stat.st_atime, stat.st_mtime))
-    src.unlink()
+def _conversation_logs(projects_dir: Path, root: Path) -> list[Path]:
+    """The ``*/conversation_logs/*.jsonl`` entries under *projects_dir*, sorted.
+
+    A linked ``projects``, project, or ``conversation_logs`` dir, or a linked log, is
+    skipped with a warning.
+    """
+    logs: list[Path] = []
+    for project in _box_listdir(projects_dir, root):
+        logs_dir = projects_dir / project / "conversation_logs"
+        for name in _box_listdir(logs_dir, root):
+            log_file = logs_dir / name
+            if name.endswith(".jsonl") and boxfs.no_symlink_or_warn(log_file, root):
+                logs.append(log_file)
+    return logs
 
 
-def _remove_dir_contents(d: Path) -> None:
-    """Remove all entries inside *d* without removing *d* itself."""
-    for entry in d.iterdir():
-        if entry.is_dir() and not entry.is_symlink():
-            shutil.rmtree(entry, ignore_errors=True)
-        else:
-            try:
-                entry.unlink()
-            except OSError:
-                pass
+def _gzip_file(src: Path, dst: Path, root: Path) -> int:
+    """Compress *src* to *dst* with gzip, remove *src*, and return *dst*'s size.
+
+    Both are under the box tree *root*, read and written through boxfs: *dst* is
+    replaced atomically, keeping *src*'s mode and times.  *src* is read whole.
+    """
+    data, st = boxfs.read_bytes_with_stat(src, root)
+    packed = gzip.compress(data, mtime=int(st.st_mtime))
+    boxfs.write_bytes(
+        dst, root, packed, mode=_st.S_IMODE(st.st_mode),
+        times=(st.st_atime_ns, st.st_mtime_ns),
+    )
+    boxfs.unlink(src, root)
+    return len(packed)
 
 
-def _dir_size(d: Path) -> int:
-    """Return total size of all files under *d* (non-recursive symlink-safe)."""
-    total = 0
+def _is_box_dir(path: Path, root: Path) -> bool:
+    """True when *path* is a directory reached with no link; a link is warned."""
+    if not boxfs.no_symlink_or_warn(path, root):
+        return False
     try:
-        for entry in d.rglob("*"):
-            if entry.is_file() and not entry.is_symlink():
-                try:
-                    total += entry.stat().st_size
-                except OSError:
-                    pass
+        return _st.S_ISDIR(boxfs.stat(path, root).st_mode)
     except OSError:
-        pass
+        return False
+
+
+def _box_listdir(path: Path, root: Path) -> list[str]:
+    """:func:`boxfs.listdir`, sorted; ``[]`` when *path* is missing or not a
+    directory, and a warning too when it is linked."""
+    if not boxfs.no_symlink_or_warn(path, root):
+        return []
+    try:
+        return sorted(boxfs.listdir(path, root))
+    except OSError:
+        return []
+
+
+def _forcing(remove: Callable[[], None], path: Path, root: Path) -> None:
+    """Run *remove*; on a ``PermissionError`` (a read-only directory in the tree),
+    give the owner rwx on the tree and run it once more.  Other errors are logged."""
+    logger = get_logger("hygiene")
+    try:
+        try:
+            remove()
+        except PermissionError:
+            boxfs.chmod_tree(path, root, add=_st.S_IRWXU)
+            remove()
+    except OSError as exc:
+        logger.warning("hygiene could not remove %s: %s", path, exc)
+
+
+def _remove_dir_contents(d: Path, root: Path) -> None:
+    """Remove all entries inside *d* without removing *d* itself."""
+    _forcing(lambda: boxfs.rmtree_contents(d, root), d, root)
+
+
+def _remove_tree(d: Path, root: Path) -> None:
+    """Remove the directory *d* and everything in it."""
+    _forcing(lambda: boxfs.rmtree(d, root, missing_ok=True), d, root)
+
+
+def _dir_size(d: Path, root: Path) -> int:
+    """Total size of the regular files under *d*; links are not followed or counted.
+
+    Every entry is listed and stat'ed through boxfs; an entry that cannot be read is
+    left out of the total.
+    """
+    total = 0
+    pending = [d]
+    while pending:
+        current = pending.pop()
+        try:
+            names = boxfs.listdir(current, root)
+        except OSError:
+            continue
+        for name in names:
+            entry = current / name
+            try:
+                st = boxfs.stat(entry, root)
+            except OSError:  # a link (SymlinkRefusedError) included
+                continue
+            if _st.S_ISDIR(st.st_mode):
+                pending.append(entry)
+            elif _st.S_ISREG(st.st_mode):
+                total += st.st_size
     return total
 
 

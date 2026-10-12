@@ -24,16 +24,18 @@ restore puts back every link with exactly the text it had.
 
 from __future__ import annotations
 
+import contextlib
 import os
 import re
 import shutil
 import stat
 import subprocess
+import tempfile
 from collections.abc import Mapping
 from datetime import datetime
 from pathlib import Path
 
-from kanibako import kuid
+from kanibako import boxfs, kuid
 from kanibako.errors import KanibakoError
 from kanibako.identifiers import find_identifier
 from kanibako.log import get_logger
@@ -56,6 +58,14 @@ class ForeignSnapshotError(KanibakoError):
     """A snapshot that exists, but belongs to a DIFFERENT box's store.
 
     The message names the owner, which is the one thing the name does not show.
+    """
+
+
+class RestoreLinkRefusedError(KanibakoError):
+    """The box planted a symlink where ``restore`` was putting an entry back.
+
+    The live vault is box-writable and the box may be running, so a link there could
+    send the restored entry outside the vault.  The restore is rolled back and refused.
     """
 
 
@@ -290,32 +300,57 @@ def _rmtree_force(path: Path) -> None:
         shutil.rmtree(path)
 
 
+def _remove_in_vault(path: Path, root: Path) -> None:
+    """Remove *path* (a tree, a file, or a link, never followed) under *root*, through
+    :mod:`kanibako.boxfs`; a missing *path* is fine.
+
+    A ``PermissionError`` (a read-only directory in the tree) gives the owner rwx on
+    the whole tree, files included, then removes it again.  ⚑ Only for trees that are
+    not snapshots: a hardlink snapshot shares its file inodes with the snapshots kept
+    beside it, so prune widens directories only (:func:`_rmtree_force`).
+    """
+    try:
+        boxfs.rmtree(path, root, missing_ok=True)
+    except PermissionError:
+        boxfs.chmod_tree(path, root, add=stat.S_IRWXU)
+        boxfs.rmtree(path, root, missing_ok=True)
+
+
 def _test_reflink(path: Path) -> bool:
-    """Test if *path*'s filesystem supports reflinks."""
+    """Test if *path*'s filesystem supports reflinks.
+
+    The probe runs in a fresh private directory made under *path* (``mkdtemp``: a
+    random name, mode 0700), never at a fixed name a box could have planted a link at.
+    """
     if not path.is_dir():
         return False
-    test_src = path / ".reflink-test-src"
-    test_dst = path / ".reflink-test-dst"
     try:
-        test_src.write_bytes(b"test")
+        probe = Path(tempfile.mkdtemp(prefix=".reflink-test-", dir=path))
+    except OSError:
+        return False
+    try:
+        (probe / "src").write_bytes(b"test")
         result = subprocess.run(
-            ["cp", "--reflink=always", str(test_src), str(test_dst)],
+            ["cp", "--reflink=always", str(probe / "src"), str(probe / "dst")],
             capture_output=True,
         )
         return result.returncode == 0
     except Exception:
         return False
     finally:
-        test_src.unlink(missing_ok=True)
-        test_dst.unlink(missing_ok=True)
+        shutil.rmtree(probe, ignore_errors=True)
 
 
 def detect_snapshot_strategy(vault_path: Path) -> str:
-    """Detect the best snapshot strategy for the given path.
+    """Detect the best snapshot strategy for the vault share-rw *vault_path*.
+
+    The probe runs where the snapshots land -- the ``.versions`` base, or the vault's
+    parent before the base exists -- and never in the box-writable vault itself.
 
     Returns ``"reflink"`` or ``"hardlink"``.
     """
-    if _test_reflink(vault_path):
+    versions = _versions_dir(vault_path)
+    if _test_reflink(versions if versions.is_dir() else vault_path.parent):
         return "reflink"
     # hardlink is always available on POSIX
     return "hardlink"
@@ -639,14 +674,20 @@ def restore_snapshot(
             f"snapshot store is writable and has room."
         ) from exc
 
-    # Stage the new contents in a temp sibling of vault_rw_path so the final
-    # swap is a same-filesystem rename.
-    staging = vault_rw_path.parent / f".{vault_rw_path.name}.restore.tmp"
-    backup = vault_rw_path.parent / f".{vault_rw_path.name}.restore.bak"
-    if staging.exists():
-        _rmtree_force(staging)
-    if backup.exists():
-        _rmtree_force(backup)
+    # ⚑ The live vault is box-writable, and the box may be running (``vault restore``
+    # has no running-box guard), so every move into or out of it, and every removal in
+    # it, goes through boxfs rooted at the vault's parent: a link the box plants in it
+    # is never followed.  The path is resolved first, because a link AT the vault is the
+    # host's own repoint, which a box cannot plant.
+    live = vault_rw_path.resolve()
+    root = live.parent
+
+    # Stage the new contents in a temp sibling of the vault so the final swap is a
+    # same-filesystem rename.
+    staging = root / f".{live.name}.restore.tmp"
+    backup = root / f".{live.name}.restore.bak"
+    _remove_in_vault(staging, root)
+    _remove_in_vault(backup, root)
     staging.mkdir(parents=True)
 
     try:
@@ -659,33 +700,36 @@ def restore_snapshot(
         # Move the live contents aside (preserves the mount point itself).
         backup.mkdir(parents=True)
         moved: list[str] = []
-        for item in list(vault_rw_path.iterdir()):
-            shutil.move(str(item), str(backup / item.name))
-            moved.append(item.name)
+        for name in boxfs.listdir(live, root):
+            boxfs.rename(live / name, backup / name, root)
+            moved.append(name)
 
         # Swap the staged contents into place.
         try:
-            for item in list(staging.iterdir()):
-                shutil.move(str(item), str(vault_rw_path / item.name))
+            for name in sorted(os.listdir(staging)):
+                link = boxfs.first_symlink(live / name, root)
+                if link is not None:
+                    raise RestoreLinkRefusedError(
+                        f"Refused to restore '{snapshot_name}': {link} is a symlink, "
+                        f"and kanibako does not follow symlinks in a box. The vault was "
+                        f"put back as it was; remove the link and restore again."
+                    )
+                boxfs.rename(staging / name, live / name, root)
         except Exception:
             # Roll back: clear whatever made it in, restore the backup.
-            # ⚑ _rmtree_force, not rmtree: this is the DATA-PRESERVING arm, and a
-            # read-only directory among the staged contents must not be what
-            # stops the live vault from being put back.
-            # ⚑ A restored symlink to a directory is unlinked, never rmtree'd:
-            # ``rmtree`` refuses a symlink, which would stop this rollback.
-            for item in list(vault_rw_path.iterdir()):
-                if item.is_dir() and not item.is_symlink():
-                    _rmtree_force(item)
-                else:
-                    item.unlink()
+            # ⚑ The DATA-PRESERVING arm: a read-only directory among the staged
+            # contents must not be what stops the live vault from being put back, and
+            # a link (restored, or planted) is removed as a link, never followed.
+            for name in boxfs.listdir(live, root):
+                _remove_in_vault(live / name, root)
             for name in moved:
-                shutil.move(str(backup / name), str(vault_rw_path / name))
+                boxfs.rename(backup / name, live / name, root)
             raise
     finally:
         # Disposable: the pre-restore snapshot already holds these in the store.
-        shutil.rmtree(staging, ignore_errors=True)
-        shutil.rmtree(backup, ignore_errors=True)
+        for leftover in (staging, backup):
+            with contextlib.suppress(OSError):
+                _remove_in_vault(leftover, root)
 
     return safety
 

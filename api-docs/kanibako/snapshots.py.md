@@ -39,6 +39,7 @@ def _migrate_flat_and_mark(vault_rw_path: Path, *, box_name: str, store_exclusiv
 def _snapshot_child(versions: Path, name: str) -> Path
 def _force_writable_dirs(root: Path) -> None
 def _rmtree_force(path: Path) -> None
+def _remove_in_vault(path: Path, root: Path) -> None
 def _test_reflink(path: Path) -> bool
 def _snapshot_reflink(vault_rw_path: Path, versions: Path, ts: str) -> Path
 def _snapshot_hardlink(vault_rw_path: Path, versions: Path, ts: str) -> Path
@@ -53,6 +54,8 @@ def _find_snapshot_owner(vault_rw_path: Path, snapshot_name: str) -> str | None
 class UnsafeSnapshotNameError(KanibakoError):
 
 class ForeignSnapshotError(KanibakoError):
+
+class RestoreLinkRefusedError(KanibakoError):
 
 class SnapshotSafetyError(KanibakoError):
 ```

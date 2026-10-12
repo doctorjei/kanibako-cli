@@ -25,6 +25,7 @@ from kanibako.snapshots import (
     restore_snapshot,
     snapshots_to_prune,
 )
+from tests.support.link_proof import sentinel_tree, tree_digest
 
 
 # ---------------------------------------------------------------------------
@@ -418,10 +419,14 @@ class TestRestoreSnapshot:
         (vault_rw / "live_only.txt").write_text("must-survive")
 
         # Make the swap-in fail after the wipe point.
-        with patch(
-            "kanibako.snapshots.shutil.move",
-            side_effect=OSError("disk full"),
-        ):
+        real_rename = snapshots_mod.boxfs.rename
+
+        def failing_swap(src: Path, dst: Path, root: Path) -> None:
+            if ".restore.tmp" in str(src):
+                raise OSError("disk full")
+            real_rename(src, dst, root)
+
+        with patch("kanibako.snapshots.boxfs.rename", side_effect=failing_swap):
             with pytest.raises(OSError, match="disk full"):
                 restore_snapshot(vault_rw, snap.name, box_name="testbox")
 
@@ -445,19 +450,19 @@ class TestRestoreSnapshot:
         (vault_rw / "file1.txt").write_text("live-precious")
         (vault_rw / "live_only.txt").write_text("must-survive")
 
-        real_move = __import__("shutil").move
+        real_rename = snapshots_mod.boxfs.rename
         calls = {"n": 0}
 
-        def flaky_move(src: str, dst: str):
+        def flaky_rename(src: Path, dst: Path, root: Path) -> None:
             # Fail only when swapping STAGED contents in (src under staging);
             # let the move-aside and the rollback moves succeed.
             if ".restore.tmp" in str(src):
                 calls["n"] += 1
                 if calls["n"] >= 2:
                     raise OSError("write error mid-swap")
-            return real_move(src, dst)
+            real_rename(src, dst, root)
 
-        with patch("kanibako.snapshots.shutil.move", side_effect=flaky_move):
+        with patch("kanibako.snapshots.boxfs.rename", side_effect=flaky_rename):
             with pytest.raises(OSError, match="write error mid-swap"):
                 restore_snapshot(vault_rw, snap.name, box_name="testbox")
 
@@ -750,17 +755,16 @@ class TestSnapshotSymlinks:
         (vault_rw / "dirlink").unlink()
         (vault_rw / "live_only.txt").write_text("must-survive")
 
-        real_move = shutil.move
+        real_rename = snapshots_mod.boxfs.rename
 
-        def flaky_move(src: str, dst: str):  # type: ignore[no-untyped-def]
+        def flaky_rename(src: Path, dst: Path, root: Path) -> None:
             # Fail the swap the moment dirlink has landed as a link — whatever the directory
             # order — so the rollback always meets it and the pin can never pass vacuously.
-            moved = real_move(src, dst)
+            real_rename(src, dst, root)
             if ".restore.tmp" in str(src) and (vault_rw / "dirlink").is_symlink():
                 raise OSError("write error mid-swap")
-            return moved
 
-        with patch("kanibako.snapshots.shutil.move", side_effect=flaky_move):
+        with patch("kanibako.snapshots.boxfs.rename", side_effect=flaky_rename):
             with pytest.raises(OSError, match="write error mid-swap"):
                 restore_snapshot(vault_rw, snap.name, box_name="testbox")
 
@@ -1279,3 +1283,156 @@ class TestSafetyCopyFailure:
                 restore_snapshot(alpha, snap.name, box_name="alpha")
 
         assert (alpha / "keep.txt").read_text() == "changed"
+
+
+# ---------------------------------------------------------------------------
+# No-follow (174 lane 3): H4 the reflink probe, H5 the restore swap
+# ---------------------------------------------------------------------------
+
+
+class TestReflinkProbeNeverWritesInTheVault:
+    @pytest.mark.parametrize("where", ["outside", "inside"])
+    @pytest.mark.parametrize("leaf", [".reflink-test-src", ".reflink-test-dst"])
+    def test_planted_probe_name_is_never_written_through(
+        self, tmp_path: Path, where: str, leaf: str,
+    ) -> None:
+        """The box can plant the old fixed probe names; nothing it plants is touched."""
+        vault_rw = tmp_path / "vault" / "share-rw"
+        _populate_rw(vault_rw)
+        if where == "outside":
+            dest_tree = sentinel_tree(tmp_path)
+            dest = dest_tree / "sentinel.txt"
+        else:
+            dest_tree = vault_rw
+            dest = vault_rw / "file1.txt"
+        (vault_rw / leaf).symlink_to(dest)
+        before = tree_digest(dest_tree)
+        listing = sorted(p.name for p in vault_rw.iterdir())
+
+        assert detect_snapshot_strategy(vault_rw) in ("reflink", "hardlink")
+
+        assert tree_digest(dest_tree) == before
+        assert sorted(p.name for p in vault_rw.iterdir()) == listing
+        assert not [p for p in vault_rw.parent.iterdir() if "reflink" in p.name]
+
+    def test_probe_runs_in_the_versions_base_when_present(self, tmp_path: Path) -> None:
+        vault_rw = tmp_path / "vault" / "share-rw"
+        _populate_rw(vault_rw)
+        versions = tmp_path / "vault" / ".versions"
+        versions.mkdir()
+        seen: list[Path] = []
+
+        def spy(path: Path) -> bool:
+            seen.append(path)
+            return False
+
+        with patch("kanibako.snapshots._test_reflink", side_effect=spy):
+            assert detect_snapshot_strategy(vault_rw) == "hardlink"
+        assert seen == [versions]
+        versions.rmdir()
+        with patch("kanibako.snapshots._test_reflink", side_effect=spy):
+            detect_snapshot_strategy(vault_rw)
+        assert seen[-1] == vault_rw.parent
+
+
+def _plant_during_swap(
+    vault_rw: Path, after: str, plant: str, target: Path,
+):  # type: ignore[no-untyped-def]
+    """A wrapper for the swap's mover that plants ``vault_rw/<plant> -> target`` right
+    after the staged *after* lands -- the box racing a live restore.  It wraps
+    ``boxfs.rename`` and ``shutil.move`` alike, whichever the code under test uses.
+    """
+    real_rename = snapshots_mod.boxfs.rename if hasattr(snapshots_mod, "boxfs") else None
+    real_move = shutil.move
+    state = {"planted": False}
+
+    def after_hook(src: object) -> None:
+        if (not state["planted"] and ".restore.tmp" in str(src)
+                and Path(str(src)).name == after):
+            target.mkdir(exist_ok=True)
+            (vault_rw / plant).symlink_to(target)
+            state["planted"] = True
+
+    def rename(src: Path, dst: Path, root: Path) -> None:
+        assert real_rename is not None
+        real_rename(src, dst, root)
+        after_hook(src)
+
+    def move(src: str, dst: str):  # type: ignore[no-untyped-def]
+        out = real_move(src, dst)
+        after_hook(src)
+        return out
+
+    return rename, move, state
+
+
+class TestRestoreRefusesAPlantedLink:
+    @pytest.mark.parametrize("where", ["outside", "inside"])
+    def test_link_planted_mid_swap_is_refused_and_rolled_back(
+        self, tmp_path: Path, where: str,
+    ) -> None:
+        vault_rw = tmp_path / "vault" / "share-rw"
+        _populate_rw(vault_rw)
+        snap = create_snapshot(vault_rw, box_name="testbox", strategy="hardlink")
+        assert snap is not None
+        (vault_rw / "file1.txt").write_text("live-precious")
+        # Inside: the box makes a dir in the live vault mid-swap and links to it.
+        target = sentinel_tree(tmp_path) if where == "outside" else vault_rw / "planted"
+        before = tree_digest(target)
+        rename, move, state = _plant_during_swap(vault_rw, "file1.txt", "subdir", target)
+
+        with patch("kanibako.snapshots.boxfs.rename", side_effect=rename, create=True), \
+                patch("kanibako.snapshots.shutil.move", side_effect=move):
+            with pytest.raises(snapshots_mod.KanibakoError, match="symlink"):
+                restore_snapshot(vault_rw, snap.name, box_name="testbox")
+
+        assert state["planted"]
+        if where == "outside":
+            assert tree_digest(target) == before
+        # Rolled back: the live vault is what it was; what the box planted is gone.
+        assert sorted(p.name for p in vault_rw.iterdir()) == ["file1.txt", "subdir"]
+        assert (vault_rw / "file1.txt").read_text() == "live-precious"
+        assert (vault_rw / "subdir" / "file2.txt").read_text() == "world"
+        assert not (vault_rw / "subdir").is_symlink()
+        assert not [p for p in vault_rw.parent.iterdir() if ".restore." in p.name]
+
+    def test_link_planted_after_the_check_is_never_followed(self, tmp_path: Path) -> None:
+        """The race past the check: a link already at the destination when the rename
+        runs.  ``renameat`` replaces or refuses it; nothing lands in its target."""
+        vault_rw = tmp_path / "vault" / "share-rw"
+        _populate_rw(vault_rw)
+        snap = create_snapshot(vault_rw, box_name="testbox", strategy="hardlink")
+        assert snap is not None
+        outside = sentinel_tree(tmp_path)
+        before = tree_digest(outside)
+        real_rename = snapshots_mod.boxfs.rename
+
+        def racing_rename(src: Path, dst: Path, root: Path) -> None:
+            if ".restore.tmp" in str(src) and Path(src).name == "subdir":
+                Path(dst).symlink_to(outside)
+            real_rename(src, dst, root)
+
+        with patch("kanibako.snapshots.boxfs.rename", side_effect=racing_rename):
+            with pytest.raises(OSError):
+                restore_snapshot(vault_rw, snap.name, box_name="testbox")
+
+        assert tree_digest(outside) == before
+        assert (vault_rw / "subdir" / "file2.txt").read_text() == "world"
+
+    def test_control_a_vault_reached_through_the_hosts_own_link_restores(
+        self, tmp_path: Path,
+    ) -> None:
+        """A link AT the vault is the host's repoint, not the box's: still restored."""
+        real = tmp_path / "disk" / "share-rw"
+        _populate_rw(real)
+        vault_rw = tmp_path / "vault" / "share-rw"
+        vault_rw.parent.mkdir(parents=True)
+        vault_rw.symlink_to(real)
+        snap = create_snapshot(vault_rw, box_name="testbox", strategy="hardlink")
+        assert snap is not None
+        (real / "file1.txt").write_text("changed")
+
+        restore_snapshot(vault_rw, snap.name, box_name="testbox")
+
+        assert vault_rw.is_symlink()
+        assert (real / "file1.txt").read_text() == "hello"

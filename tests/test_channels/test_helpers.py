@@ -24,6 +24,7 @@ from kanibako.channels.helpers import (
     write_helper_number,
     write_spawn_budget,
 )
+from tests.support.link_proof import tree_digest
 
 
 # --- SpawnBudget ---
@@ -501,3 +502,118 @@ class TestResolveInitScript:
     def test_none_scripts_dir(self):
         result = resolve_init_script(None)
         assert result == bundled_init_script()
+
+
+# ---------------------------------------------------------------------------
+# No-follow (174 lane 3): the box-home ``helpers/`` tree
+# ---------------------------------------------------------------------------
+
+
+def _helpers_with_link(tmp_path: Path, how: str, where: str) -> tuple[Path, Path, Path]:
+    """``home/helpers`` whose helper 1 is reached through a planted link.
+
+    *how* ``leaf`` links ``helpers/1/state.json``; ``parent`` links ``helpers/1``.
+    Returns (helpers_dir, the tree the link leads to, the link).
+    """
+    home = tmp_path / "home"
+    helpers = home / "helpers"
+    helpers.mkdir(parents=True)
+    base = tmp_path / "outside" if where == "outside" else home / "elsewhere"
+    base.mkdir(parents=True)
+    (base / "state.json").write_text('{"status": "running", "owner": "host"}\n')
+    if how == "leaf":
+        (helpers / "1").mkdir()
+        link = helpers / "1" / "state.json"
+        link.symlink_to(base / "state.json")
+    else:
+        link = helpers / "1"
+        link.symlink_to(base)
+    return helpers, base, link
+
+
+_HELPER_LINKS = [(h, w) for h in ("leaf", "parent") for w in ("outside", "inside")]
+
+
+class TestHelpersTreeNoFollow:
+    @pytest.mark.parametrize("how,where", _HELPER_LINKS)
+    def test_state_read_and_write_refuse_a_link(
+        self, tmp_path: Path, how: str, where: str,
+    ) -> None:
+        from kanibako.boxfs import SymlinkRefusedError
+        from kanibako.channels.helpers import read_helper_state, write_helper_state
+
+        helpers, dest, link = _helpers_with_link(tmp_path, how, where)
+        before = tree_digest(dest)
+
+        with pytest.raises(SymlinkRefusedError):
+            read_helper_state(helpers, 1)
+        with pytest.raises(SymlinkRefusedError):
+            write_helper_state(helpers, 1, {"status": "stopped"})
+
+        assert tree_digest(dest) == before
+        assert link.is_symlink()
+
+    @pytest.mark.parametrize("how,where", _HELPER_LINKS)
+    def test_hub_mark_stopped_skips_a_link_with_a_warning(
+        self, tmp_path: Path, caplog: pytest.LogCaptureFixture, how: str, where: str,
+    ) -> None:
+        import logging
+
+        from kanibako.channels.helpers import mark_helper_stopped
+
+        helpers, dest, link = _helpers_with_link(tmp_path, how, where)
+        before = tree_digest(dest)
+
+        with caplog.at_level(logging.WARNING, logger="kanibako"):
+            mark_helper_stopped(helpers, 1)
+
+        assert tree_digest(dest) == before
+        assert any(str(link) in r.getMessage() for r in caplog.records)
+
+    @pytest.mark.parametrize("where", ["outside", "inside"])
+    def test_remove_removes_a_linked_helper_dir_as_a_link(
+        self, tmp_path: Path, where: str,
+    ) -> None:
+        helpers, dest, link = _helpers_with_link(tmp_path, "parent", where)
+        before = tree_digest(dest)
+
+        remove_helper_dirs(helpers, 1)
+
+        assert not link.is_symlink() and not link.exists()
+        assert tree_digest(dest) == before
+
+    @pytest.mark.parametrize("where", ["outside", "inside"])
+    def test_remove_refuses_a_linked_helpers_dir(self, tmp_path: Path, where: str) -> None:
+        """``helpers`` itself linked: the home is the root, so the link is refused."""
+        from kanibako.boxfs import SymlinkRefusedError
+
+        home = tmp_path / "home"
+        home.mkdir()
+        dest = tmp_path / "outside" if where == "outside" else home / "elsewhere"
+        create_helper_dirs(dest, 1)
+        (dest / "1" / "workspace" / "data.txt").write_text("keep")
+        (home / "helpers").symlink_to(dest)
+        before = tree_digest(dest)
+
+        with pytest.raises(SymlinkRefusedError):
+            remove_helper_dirs(home / "helpers", 1)
+        with pytest.raises(SymlinkRefusedError):
+            create_helper_dirs(home / "helpers", 2)
+
+        assert tree_digest(dest) == before
+
+    def test_control_state_round_trip_and_mark(self, tmp_path: Path) -> None:
+        from kanibako.channels.helpers import (
+            mark_helper_stopped,
+            read_helper_state,
+            write_helper_state,
+        )
+
+        helpers = tmp_path / "home" / "helpers"
+        assert read_helper_state(helpers, 1) == {}
+        write_helper_state(helpers, 1, {"status": "running", "n": 1})
+        path = helpers / "1" / "state.json"
+        assert path.read_text() == '{\n  "status": "running",\n  "n": 1\n}\n'
+        assert path.stat().st_mode & 0o777 == 0o644
+        mark_helper_stopped(helpers, 1)
+        assert read_helper_state(helpers, 1) == {"status": "stopped", "n": 1}
