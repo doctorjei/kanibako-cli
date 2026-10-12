@@ -79,6 +79,16 @@ class TestStageLayers:
         # agent overlays base where workset is silent.
         assert (home / "two.txt").read_text() == "agent two"
 
+    def test_upper_bytes_win_over_an_equivalent_lower_file(self, tmp_path):
+        """Last-wins is BYTES: an upper YAML that parses equal to the lower one still
+        replaces it (``copy_tree``'s overwrite arm would keep the lower bytes)."""
+        lower = self._layer(tmp_path, "lower", {"cfg.yaml": "a: 1  # lower\n"})
+        upper = self._layer(tmp_path, "upper", {"cfg.yaml": "a: 1  # upper\n"})
+        home = tmp_path / "home"
+        home.mkdir()
+        stage_layers(home, [lower, upper])
+        assert (home / "cfg.yaml").read_text() == "a: 1  # upper\n"
+
     def test_existing_home_file_survives_reseed(self, tmp_path):
         """THE CLOBBER REGRESSION: a pre-existing home file survives a re-seed.
 
@@ -2604,9 +2614,8 @@ class TestCopierEnforcement:
         assert not (dest / "innocent.txt").exists()
 
     def test_stage_layers_refuses_a_source_symlink(self, tmp_path):
-        """The staging pass reads layer content FIRST, so it needs its own check —
-        by the time the shared copier saw it, the exfiltrated bytes would already be
-        staged as a plain file."""
+        """The staging pass reads layer content through ``copy_tree``, so the copier's
+        own source-symlink refusal fires BEFORE any byte is staged."""
         from kanibako.errors import TemplateScopeError
 
         secret = tmp_path / "secret.txt"
@@ -2616,9 +2625,44 @@ class TestCopierEnforcement:
         (layer / "innocent.txt").symlink_to(secret)
         home = tmp_path / "home"
         home.mkdir()
-        with pytest.raises(TemplateScopeError):
+        with pytest.raises(TemplateScopeError, match="is a SYMLINK"):
             stage_layers(home, [layer])
         assert not (home / "innocent.txt").exists()
+
+    @pytest.mark.parametrize("kind", ["file", "dir", "nested", "dangling"])
+    def test_stage_layers_refuses_every_symlink_shape_in_any_layer(self, tmp_path, kind):
+        """Each shape the deleted staging check refused — a link to a file, to a
+        directory, one level down, or dangling — in a LOWER layer under a clean upper one.
+        Nothing reaches the home."""
+        from kanibako.errors import TemplateScopeError
+
+        outside = tmp_path / "outside"
+        outside.mkdir()
+        (outside / "secret.txt").write_text("PRIVATE KEY")
+        lower = tmp_path / "lower"
+        (lower / "sub").mkdir(parents=True)
+        (lower / "plain.txt").write_text("plain")
+        link = {
+            "file": lower / "innocent.txt",
+            "dir": lower / "innocent",
+            "nested": lower / "sub" / "innocent.txt",
+            "dangling": lower / "innocent.txt",
+        }[kind]
+        target = {
+            "file": outside / "secret.txt",
+            "dir": outside,
+            "nested": outside / "secret.txt",
+            "dangling": outside / "gone.txt",
+        }[kind]
+        link.symlink_to(target, target_is_directory=kind == "dir")
+        upper = tmp_path / "upper"
+        upper.mkdir()
+        (upper / "up.txt").write_text("up")
+        home = tmp_path / "home"
+        home.mkdir()
+        with pytest.raises(TemplateScopeError, match="is a SYMLINK"):
+            stage_layers(home, [lower, upper])
+        assert list(home.iterdir()) == []
 
     def test_dest_symlink_cannot_escape_the_subtree(self, tmp_path):
         from kanibako.errors import TemplateScopeError

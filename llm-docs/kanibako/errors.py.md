@@ -167,12 +167,8 @@ copier MUST reject `..` components and MUST NOT follow symlinks out of the desti
    a symlinked intermediate directory, where the escape is the leaf itself and the parent check above
    therefore cannot see it.
 
-⚑ **`launch/templates.stage_layers` (`templates.py:187`) raises it too, at `:229`** — the older
-docstring said the error came from "the one shared copier" and that was FALSE. The second raise is
-deliberate and the staging code says why: a symlink in a staged layer would already have been
-resolved into the staging dir as a PLAIN FILE by the time the shared copier looked at it, so the
-copier's own symlink defense could never fire. Staging has to refuse it where the link is still a
-link.
+⚑ **`launch/templates.stage_layers` reaches it through the copier too**: it stages each layer
+with `copy_tree`, so a symlink in a layer is refused by the copier while it is still a link.
 
 `commands/workset_cmd.py:359` is the only in-tree catcher.
 

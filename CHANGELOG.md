@@ -765,6 +765,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `project_path` argument. Discovery reads only installed packages, so the argument was ignored;
   a caller that passes it now gets a `TypeError`. Drop the argument.
 
+- A seed layer that holds a symlink is refused by the copier every template fill uses, so the refusal now
+  reads "template source … is a SYMLINK" and names its cure: replace the symlink with a real file or remove
+  it. The same symlinks are refused as before.
+
 ### Removed
 
 - **Helper peer links.** A helper no longer gets a `~/peers/` directory of links to its siblings, and the parent no

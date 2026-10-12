@@ -247,9 +247,10 @@ across the ordered layer dirs is resolved in a temporary staging dir (where over
 and the merged tree is then copied into *dest* with CREATE-IF-ABSENT (an existing *dest* file is
 NEVER overwritten). Two phases:
 
-1. **Stage.** Copy each layer's files into a temporary dir in order (LOWEST → HIGHEST). Overwrite
-   WITHIN staging is intended, so a later layer's file at the same relative path wins (per-file
-   last-wins).
+1. **Stage.** Copy each layer into a temporary dir with `copy_tree`, HIGHEST layer FIRST and
+   create-if-absent, so a later layer's file at the same relative path wins (per-file last-wins).
+   Not `overwrite=True` in layer order: that arm skips a file `_equivalent` to the staged one, so
+   an upper YAML or Markdown file that parses equal to the lower one would keep the LOWER bytes.
 2. **Seed.** Copy the merged staged tree into *dest* with `copy_resource_tree_if_absent` — a
    pre-existing *dest* file survives untouched. This is the load-bearing failsafe against re-seed
    DATA LOSS.
@@ -265,10 +266,9 @@ This is the layered-copy MECHANISM only; the layer dirs are resolved through the
 caller (`commands.start._apply_init_seeds`), NOT derived on disk here — the "sole intermediary is
 the keystore" invariant (Q1/Q3/Q4).
 
-The SOURCE SYMLINK refusal (spec §2a enforcement point 3) is checked in the staging loop as well as
-in `copy_tree`: staging is where layer content is first read, and the `is_file()` test would FOLLOW
-a symlink-to-file, so the exfiltrated bytes would already be in the staging dir by the time the
-shared copier saw them (as a plain file).
+The SOURCE SYMLINK refusal (spec §2a enforcement point 3) is `copy_tree`'s own: staging reads
+layer content through it, so a symlink in any layer is refused while it is still a link, before
+any byte is staged.
 
 ## THE ONE COPIER — `copy_tree` (P-S4)
 

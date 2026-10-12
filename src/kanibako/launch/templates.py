@@ -194,35 +194,19 @@ def stage_layers(dest: Path, layers: list[Path]) -> None:
     overwritten.  That failsafe is the load-bearing guard against re-seed DATA
     LOSS; the caller invokes this only at box CREATE, never on a relaunch.
     SKIP-IF-ABSENT: a *layers* entry that is not an existing directory is skipped.
-    """
-    from kanibako.errors import TemplateScopeError
 
+    ⚑ Last-wins is built as HIGHEST LAYER FIRST into create-if-absent staging, not
+    ``overwrite=True``: the overwrite arm skips an EQUIVALENT file
+    (:func:`_equivalent`), which would keep a lower layer's bytes.  Both passes are
+    :func:`copy_tree`, so its source-symlink refusal covers every layer entry.
+    """
     present = [layer for layer in layers if layer.is_dir()]
     if not present:
         return
     with tempfile.TemporaryDirectory(prefix="kanibako-seed-") as staging:
         staged = Path(staging)
-        for layer in present:
-            for entry in sorted(layer.rglob("*")):
-                # SOURCE SYMLINK refusal (spec §2a point 3), checked HERE as well as
-                # in ``copy_tree``: ``is_file()`` below FOLLOWS a symlink-to-file, so
-                # the exfiltrated bytes would already be staged by the time the shared
-                # copier saw them (as a plain file).
-                if entry.is_symlink():
-                    raise TemplateScopeError(
-                        f"template layer {str(layer)!r} contains the SYMLINK "
-                        f"{str(entry)!r}. Layer content is copied by VALUE, so "
-                        f"following it would stage the bytes of "
-                        f"{str(entry.resolve())!r} into the box — the secret-"
-                        f"exfiltration escape spec §2a closes. Seed refused."
-                    )
-                if not entry.is_file():
-                    continue
-                rel = entry.relative_to(layer)
-                dest_file = staged / rel
-                dest_file.parent.mkdir(parents=True, exist_ok=True)
-                # Overwrite within staging is intended (per-file last-wins).
-                shutil.copy2(str(entry), str(dest_file))
+        for layer in reversed(present):
+            copy_tree(layer, staged)
         copy_tree(staged, dest)
 
 
