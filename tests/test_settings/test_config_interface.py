@@ -7789,3 +7789,46 @@ def test_effective_value_reads_an_agent_file_root_scalar(tmp_path):
         "agent.claude.model", ("agent", "claude"), "model", agent_name="claude",
         system_path=None, agent_path=agent, workset_path=None, box_path=None,
     ) == ("opus", "agent")
+
+
+class TestSetTimeAgentFileRootScalar:
+    """K4 Lane B (plan 177-K4 § 6): ``_set_time_agent_tier`` no longer hands the file's root
+    scalars to the cascade as an ``agent_state`` rung; the ``agent.<active>`` level carries
+    them. A set-time ref to the file's own ``model`` resolves as it did on the rung, and a file
+    that does not read is still left out, so the ref dangles rather than the set raising."""
+
+    _KEY = "workset.env.KANI_PROBE"
+
+    def _expand_probe(self, std, agent_file, value):
+        from kanibako.settings import config_interface as ci
+        from kanibako.settings.keystore import clone_store
+        from kanibako.settings.settings_expand import expand
+
+        target = ci._set_time_target(
+            std=std, proj=None, ws=None, agent_name="claude", system_path=std.settings,
+        )
+        snapshot, ctx = ci._set_time_snapshot(
+            target=target, agent_name="claude", agent_path=agent_file,
+        )
+        candidate = clone_store(snapshot)
+        candidate.insert_segments(self._KEY.split("."), value)
+        expanded, errors = expand(candidate, ctx, collect_errors=True)
+        node = expanded
+        for seg in self._KEY.split("."):
+            node = dict.get(node, seg) if isinstance(node, dict) else None
+        return node, errors
+
+    def test_a_ref_to_the_files_own_model_resolves(self, std, tmp_path):
+        agent_file = tmp_path / "agents" / "claude" / "agent.yaml"
+        agent_file.parent.mkdir(parents=True)
+        dump_doc(agent_file, {"self": {"model": "opus"}})
+        value, errors = self._expand_probe(std, agent_file, "@agent.claude.model/x")
+        assert self._KEY not in errors, errors
+        assert value == "opus/x", value
+
+    def test_a_file_that_does_not_read_is_left_out(self, std, tmp_path):
+        agent_file = tmp_path / "agents" / "claude" / "agent.yaml"
+        agent_file.parent.mkdir(parents=True)
+        dump_doc(agent_file, {"self": {"model": "opus", "zz_undeclared": "x"}})
+        value, errors = self._expand_probe(std, agent_file, "@agent.claude.model/x")
+        assert self._KEY in errors, (value, errors)

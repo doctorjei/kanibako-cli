@@ -168,7 +168,6 @@ from kanibako.utils import confirm_prompt, stat_unless_gone
 _log = get_logger(__name__)
 
 if TYPE_CHECKING:
-    from kanibako.settings.agent_file import AgentFileLevel
     from kanibako.settings.settings_launch import LaunchInputs
 
 #: The SET doors whose files ``workset_dirkeys.early_repoint`` reads, so the doors that run
@@ -848,30 +847,26 @@ def _overwritten_by(edited: "str | None", entry: "tuple[str, ...]") -> bool:
 
 def _set_time_agent_tier(
     agent_name: str, agent_path: "Path | None",
-) -> "tuple[Path | None, AgentFileLevel | None, dict[str, str | None] | None, dict[str, str | None] | None]":
+) -> "tuple[Path | None, dict[str, str | None] | None, dict[str, str | None] | None]":
     """The launch's agent tier for *agent_name* whose file is *agent_path*:
-    ``(agent_path, agent_state, behavior_floor, agent_behavior_floor)``, all ``None`` without a file.
+    ``(agent_path, behavior_floor, agent_behavior_floor)``, all ``None`` without a file.
 
-    An agent file that does not read is left out, so a ref into it dangles rather than the set
-    raising. The two behavior floors come as the launch's do, only from a plugin that resolves
-    and declares settings.
+    The file's own values ride its ``agent.<active>`` level, which the cascade reads from
+    *agent_path*. An agent file that does not read is left out, so a ref into it dangles rather
+    than the set raising. The two behavior floors come as the launch's do, only from a plugin
+    that resolves and declares settings.
     """
     if agent_path is None:
-        return None, None, None, None
+        return None, None, None
     from kanibako.agent_ref import harness_of
-    from kanibako.settings.agent_file import state_level
     from kanibako.settings.core_defaults import behavior_defaults
     from kanibako.settings.settings_assemble import ReadPurpose, agent_record
     from kanibako.targets import resolve_target
     from kanibako.targets.base import descriptor_floor
 
-    agent_state = None
     if agent_path.exists():
         try:
-            agent_state = state_level(
-                agent_record(agent_path, node=agent_name, purpose=ReadPurpose.RESOLVE),
-                node=agent_name, path=agent_path,
-            )
+            agent_record(agent_path, node=agent_name, purpose=ReadPurpose.RESOLVE)
         except KanibakoError:
             agent_path = None
     try:
@@ -879,8 +874,8 @@ def _set_time_agent_tier(
     except (KeyError, ValueError, KanibakoError):
         descriptors = None
     if not descriptors:
-        return agent_path, agent_state, None, None
-    return agent_path, agent_state, behavior_defaults(), descriptor_floor(
+        return agent_path, None, None
+    return agent_path, behavior_defaults(), descriptor_floor(
         descriptors, plugin=harness_of(agent_name),
     )
 
@@ -907,7 +902,7 @@ def _set_time_snapshot(
         from kanibako.settings.settings_assemble import ReadPurpose, cascade_files
         from kanibako.settings.settings_launch import assemble_cascade, fold_floor
 
-        agent_path, agent_state, behavior_floor, agent_behavior_floor = _set_time_agent_tier(
+        agent_path, behavior_floor, agent_behavior_floor = _set_time_agent_tier(
             agent_name, agent_path,
         )
         cascade = assemble_cascade(
@@ -932,7 +927,6 @@ def _set_time_snapshot(
             ),
             prefs=target.prefs,
             agent_partial=None,
-            agent_state=agent_state,
             persona_values=None,
             cli_level=None,
         )
