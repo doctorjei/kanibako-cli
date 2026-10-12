@@ -886,13 +886,13 @@ class TestHubStop:
         hub._ctx = mock_ctx
         hub._log = MagicMock()
         hub._containers.append("kb-primary-testproj-helper-1")
-        mock_ctx.runtime.is_running.return_value = True
         for name in ("kb-primary-otherbox", "kb-primary-otherbox-helper-1"):
+            mock_ctx.runtime.list_running.return_value = [(name, "img", "Up")]
             resp = hub._handle_stop({"action": "stop", "container_name": name, "helper_num": 1})
             assert resp["status"] == "error"
             assert resp["running"] is True
             assert name in resp["message"]
-            mock_ctx.runtime.is_running.assert_called_with(name)
+            mock_ctx.runtime.list_running.assert_called_with(prefix=name, check=True)
         mock_ctx.runtime.stop.assert_not_called()
         mock_ctx.runtime.rm.assert_not_called()
         hub._log.log_control.assert_not_called()
@@ -905,7 +905,7 @@ class TestHubStop:
         request = {"action": "stop", "container_name": "kb-primary-testproj-helper-1",
                    "helper_num": 1}
         assert hub._handle_stop(request)["status"] == "ok"
-        mock_ctx.runtime.is_running.return_value = False
+        mock_ctx.runtime.list_running.return_value = []
         assert hub._handle_stop(request) == {"status": "not_running"}
         assert mock_ctx.runtime.stop.call_count == 1
         assert mock_ctx.runtime.rm.call_count == 1
@@ -917,13 +917,14 @@ class TestHubStop:
         the distinct ``not_running`` reply, and the runtime is never told to stop or
         remove a name this hub did not launch."""
         hub, sock_path, ctx = hub_and_sock
-        ctx.runtime.is_running.return_value = False
         name = "kb-primary-testproj-helper-1"
+        # The filter is a prefix match: a longer name that runs is not this one.
+        ctx.runtime.list_running.return_value = [(name + "0", "img", "Up")]
         resp = _connect_and_send(sock_path, {
             "action": "stop", "container_name": name, "helper_num": 1,
         })
         assert resp == {"status": "not_running"}
-        ctx.runtime.is_running.assert_called_once_with(name)
+        ctx.runtime.list_running.assert_called_once_with(prefix=name, check=True)
         ctx.runtime.stop.assert_not_called()
         ctx.runtime.rm.assert_not_called()
 
@@ -1137,6 +1138,7 @@ class TestRespawnAfterAHubRestart:
         from kanibako.commands import helper_cmd
 
         ctx, name = self._restarted(hub_and_sock, monkeypatch)
+        ctx.runtime.list_running.return_value = []
         ctx.runtime.is_running.return_value = False
         ctx.runtime.container_exists.return_value = True
 
@@ -1158,6 +1160,7 @@ class TestRespawnAfterAHubRestart:
         from kanibako.commands import helper_cmd
 
         ctx, name = self._restarted(hub_and_sock, monkeypatch)
+        ctx.runtime.list_running.return_value = [(name, "img", "Up")]
         ctx.runtime.is_running.return_value = True
         ctx.runtime.container_exists.return_value = True
 
@@ -1168,6 +1171,50 @@ class TestRespawnAfterAHubRestart:
         _connect_and_send(hub_and_sock[1], {"action": "spawn", "helper_num": 1})
         ctx.runtime.stop.assert_not_called()
         ctx.runtime.rm.assert_not_called()
+
+
+class TestStopWhenTheRuntimeCannotAnswer:
+    """A runtime that fails to answer is not a "not running": stop and cleanup both
+    refuse, the helper's dirs stay, and the runtime is never told to stop or rm."""
+
+    _FAKE_PODMAN = "#!/bin/sh\necho \"$*\" >> \"$0.log\"\necho 'runtime unavailable' >&2\nexit 125\n"
+
+    @pytest.mark.parametrize("status", ["running", "stopped"])
+    def test_stop_and_cleanup_refuse(self, hub_and_sock, monkeypatch, capsys, tmp_path, status):
+        import argparse
+
+        from kanibako.commands import helper_cmd
+        from kanibako.runtime.container import ContainerRuntime
+
+        hub, sock_path, ctx = hub_and_sock
+        name = "kb-primary-testproj-helper-1"
+        _helper_tree(ctx.helpers_dir / "1")
+        _running_state(ctx.helpers_dir / "1", name)
+        state_file = ctx.helpers_dir / "1" / "state.json"
+        state_file.write_text(state_file.read_text().replace('"running"', f'"{status}"', 1))
+        podman = tmp_path / "podman"
+        podman.write_text(self._FAKE_PODMAN)
+        podman.chmod(0o755)
+        ctx.runtime = ContainerRuntime(str(podman))
+        monkeypatch.setattr(Path, "home", staticmethod(lambda: ctx.shell_path))
+        monkeypatch.setattr(helper_cmd, "_socket_path", lambda: sock_path)
+
+        resp = _connect_and_send(sock_path, {
+            "action": "stop", "container_name": name, "helper_num": 1,
+        })
+        assert resp["status"] == "error"
+        assert resp["unverified"] is True
+        capsys.readouterr()
+
+        if status == "running":
+            assert helper_cmd.run_stop(argparse.Namespace(number=1)) == 1
+            assert "cannot tell whether it is running" in capsys.readouterr().err
+        assert helper_cmd.run_cleanup(argparse.Namespace(number=1, cascade=False)) == 1
+        assert "cannot tell whether it is running" in capsys.readouterr().err
+        assert (ctx.helpers_dir / "1" / "workspace").is_dir()
+        assert json.loads(state_file.read_text())["status"] == status
+        calls = (tmp_path / "podman.log").read_text().splitlines()
+        assert calls and all(c.startswith(f"ps --filter name={name} ") for c in calls), calls
 
 
 class TestHubStopMarksHelpersStopped:

@@ -834,8 +834,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   link now lands as written, and a dangling link no longer fails the fork.
 - **`helper stop` and `helper cleanup` stop only a helper the hub launched.** The hub used to stop and remove any
   container a box named, including another box or the director. For a name it did not launch it now only asks
-  the runtime: a running one is refused, and one not running is reported as nothing to stop. The CLI reports a
-  refusal: it prints the hub's reason, exits 1, and leaves the helper's state and directories as they were.
+  the runtime: a running one is refused, as is one the runtime cannot answer for, and one not running is reported
+  as nothing to stop. The CLI reports a refusal: it prints the hub's reason, exits 1, and leaves the helper's state
+  and directories as they were.
 - **`helper respawn` works after the hub was killed.** The dead helper's exited container kept its name, so the
   relaunch failed on the name; the hub now removes an exited container of that helper's own name first.
 - **The tweakcc patch container runs tweakcc** (entrypoint, keep-id user, config dir, `--yes`); `baseline verify` no

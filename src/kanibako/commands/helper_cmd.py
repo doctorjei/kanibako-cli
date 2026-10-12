@@ -397,7 +397,8 @@ def run_list(args: argparse.Namespace) -> int:
 def _hub_stop(state: dict, helper_num: int) -> dict | None:
     """Ask the hub to stop the helper's container: ``None`` when it stopped, was not
     running, or there is nothing to ask; else the hub's refusal (``message``, and
-    ``running`` when the runtime reports the container running).  A refusal means the
+    ``running`` when the runtime reports the container running, ``unverified`` when it
+    could not tell).  A refusal means the
     container may still run, so the caller leaves the helper's state alone.  An
     unreachable hub stays best-effort, as before."""
     container_name = state.get("container_name")
@@ -457,10 +458,11 @@ def run_cleanup(args: argparse.Namespace) -> int:
     state = read_helper_state(helpers_dir, helper_num)
     # Always ask: a helper marked ``stopped`` after an unreachable hub may still run.
     # A refusal stops the cleanup unless the helper is ``stopped`` and the runtime
-    # does not report its container running.
+    # reported its container not running.
     refused = _hub_stop(state, helper_num)
     if refused is not None and (state.get("status") != "stopped"
-                                or refused.get("running")):
+                                or refused.get("running")
+                                or refused.get("unverified")):
         print(f"Cannot clean up helper {helper_num}: "
               f"{refused.get('message', 'unknown error')}", file=sys.stderr)
         return 1

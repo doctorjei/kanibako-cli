@@ -467,11 +467,25 @@ class HelperHub:
         # launched itself and still holds.  For any other name (another box, the
         # director's own container, a helper this hub lost on a restart) it only asks
         # the runtime whether that name runs: not running is a distinct reply the CLI
-        # takes as "nothing to stop"; running is refused.  Neither calls stop or rm.
+        # takes as "nothing to stop"; running is refused, and so is a runtime that
+        # cannot answer (``unverified``).  None of them calls stop or rm.
         with self._containers_lock:
             held = container_name in self._containers
         if not held:
-            if not ctx.runtime.is_running(container_name):
+            try:
+                # ``is_running`` reads a failed inspect as "not running"; this raises.
+                # The filter is a prefix match, so the name is compared exactly.
+                running = any(
+                    found == container_name for found, _image, _status
+                    in ctx.runtime.list_running(prefix=container_name, check=True)
+                )
+            except Exception as exc:
+                logger.warning("refused helper stop of %r: the runtime could not say "
+                               "whether it runs: %s", container_name, exc)
+                return {"status": "error", "unverified": True,
+                        "message": f"refusing to stop {container_name!r}: cannot tell "
+                                   f"whether it is running ({exc})"}
+            if not running:
                 return {"status": "not_running"}
             logger.warning("refused helper stop of %r: this hub did not launch it",
                            container_name)
