@@ -282,6 +282,25 @@ class TestCreateHelperDirs:
         create_helper_dirs(helpers, 1)
         assert (helpers / "1" / "workspace" / "test.txt").read_text() == "hello"
 
+    def test_seeds_the_shell_files(self, tmp_path):
+        """A new helper home gets kanibako's ``.profile`` and ``.bashrc`` (its login
+        PATH otherwise runs the image's baked ``kanibako``)."""
+        from kanibako.settings.bootstrap import BASHRC_FILE, PROFILE_FILE
+        from kanibako.settings.messages import BASHRC_CONTENTS, PROFILE_CONTENTS
+
+        root = create_helper_dirs(tmp_path / "helpers", 1)
+        assert (root / PROFILE_FILE).read_text() == PROFILE_CONTENTS
+        assert (root / BASHRC_FILE).read_text() == BASHRC_CONTENTS
+
+    def test_never_reseeds_an_existing_shell_file(self, tmp_path):
+        from kanibako.settings.bootstrap import PROFILE_FILE
+
+        root = tmp_path / "helpers" / "1"
+        root.mkdir(parents=True)
+        (root / PROFILE_FILE).write_text("mine\n")
+        create_helper_dirs(tmp_path / "helpers", 1)
+        assert (root / PROFILE_FILE).read_text() == "mine\n"
+
     def test_creates_helpers_dir_parents(self, tmp_path):
         helpers = tmp_path / "deep" / "helpers"
         root = create_helper_dirs(helpers, 0)

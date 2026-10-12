@@ -1084,6 +1084,20 @@ class TestSocketWiring:
         assert call_req["container_name"] == "kanibako-helper-1-abc"
         assert call_req["helper_num"] == 1
 
+    def test_respawn_never_reaches_the_create_point(self, helpers_env, capsys):
+        """``create_helper_dirs`` seeds the home; a respawn must not reach it, or a
+        deleted ``.profile`` would come back (seed once, never re-seed)."""
+        from kanibako.settings.bootstrap import PROFILE_FILE
+
+        run_spawn(_make_args(depth=None, breadth=None, model=None))
+        run_stop(_make_args(number=1))
+        profile = helpers_env / "helpers" / "1" / PROFILE_FILE
+        profile.unlink(missing_ok=True)
+        with patch("kanibako.commands.helper_cmd.create_helper_dirs") as create:
+            assert run_respawn(_make_args(number=1)) == 0
+        create.assert_not_called()
+        assert not profile.exists()
+
     def test_respawn_with_socket(self, helpers_env, capsys):
         """Respawn calls socket client for container relaunch."""
         sock = helpers_env / ".kanibako" / "state" / "helper.sock"

@@ -362,8 +362,17 @@ def create_helper_dirs(helpers_dir: Path, helper_num: int) -> Path:
     """Create the directory layout for a single helper.
 
     Creates vault (with ro, rw), workspace, and ``scripts``
-    directories.  Returns the helper's root directory.
+    directories, and seeds the helper home's shell files.  Returns the helper's root
+    directory.
+
+    ⚑ This is the helper home's CREATE point, so it is where the home is seeded (once,
+    create-if-absent): without a ``.profile`` a login shell's PATH starts at
+    ``/usr/local/bin`` and runs the image's baked ``kanibako``.  ``run_respawn`` never
+    calls this, and the hub's spawn handler (which also serves respawns) must not seed.
     """
+    # ⚑ Lazy: ``settings/paths.py`` reaches this module from function bodies.
+    from kanibako.settings.paths import _bootstrap_shell
+
     root = helpers_dir / str(helper_num)
     home = _home(helpers_dir)
     boxfs.mkdir(root, home, parents=True, exist_ok=True)
@@ -372,6 +381,7 @@ def create_helper_dirs(helpers_dir: Path, helper_num: int) -> Path:
     for leaf in HELPER_CORE_LEAVES.values():
         boxfs.mkdir(root / leaf, home, parents=True, exist_ok=True)
     boxfs.mkdir(root / HELPER_SCRIPTS_RELPATH, home, exist_ok=True)
+    _bootstrap_shell(root)
 
     return root
 
