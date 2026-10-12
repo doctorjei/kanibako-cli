@@ -464,7 +464,7 @@ inside boxes. In order of likely impact:
 51. **`create` inside, or holding, another box's workspace, standalone root, or store needs `--force`; on another
     box's workspace or standalone root it exits 1 even with `--force`** — see *`create` on another box's path is
     refused*.
-51. **A box, workset, agent, persona, or harness name may not hold `-` or `.`, or start with a digit. A box or
+52. **A box, workset, agent, persona, or harness name may not hold `-` or `.`, or start with a digit. A box or
     workset you named `my-box` before is refused at `start` until you rename it; a box kanibako names after
     a directory writes `_` for each `-` and `.`** — see *Names are ASCII letters, digits, and `_`*.
 
