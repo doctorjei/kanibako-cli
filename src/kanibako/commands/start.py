@@ -5196,7 +5196,7 @@ def _run_container(
         # virtiofs; it stays silent (and never blocks a normal launch) under a
         # rootful shim, on docker, or whenever the state can't be determined.
         from kanibako.runtime.image_sharing import virtiofs_graphroot_message
-        virtiofs_msg = virtiofs_graphroot_message(runtime.cmd)
+        virtiofs_msg = virtiofs_graphroot_message(runtime)
         if virtiofs_msg is not None:
             print(virtiofs_msg, file=sys.stderr)
             return 1

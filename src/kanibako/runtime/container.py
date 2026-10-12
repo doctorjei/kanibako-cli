@@ -133,13 +133,17 @@ class ContainerRuntime:
     """Wrapper around podman/docker CLI."""
 
     def __init__(self, command: str | None = None) -> None:
+        # True only when ``KANIBAKO_DOCKER_CMD`` chose ``cmd``; an explicit *command*
+        # skips detection, so it never reads the variable.
+        self.cmd_overridden = False
         if command:
             self.cmd = command
         else:
-            self.cmd = self._detect()
+            self.cmd, self.cmd_overridden = self._detect()
 
     @staticmethod
-    def _detect() -> str:
+    def _detect() -> tuple[str, bool]:
+        """Return the runtime command and whether ``KANIBAKO_DOCKER_CMD`` supplied it."""
         env = os.environ.get("KANIBAKO_DOCKER_CMD")
         if env:
             # Checked here, at the one place every verb gets its runtime: an unrunnable
@@ -149,11 +153,11 @@ class ContainerRuntime:
                     f"KANIBAKO_DOCKER_CMD names {env!r}, which is not a runnable command. "
                     "Point it at podman or docker, or unset it."
                 )
-            return env
+            return env, True
         for name in ("podman", "docker"):
             path = shutil.which(name)
             if path:
-                return path
+                return path, False
         raise ContainerError(
             "No container runtime found. "
             "Install podman (https://podman.io/) or Docker."

@@ -75,7 +75,7 @@ class ContainerRuntime:
     def list_local_images(self) -> list[tuple[str, str]]
 
     @staticmethod
-    def _detect() -> str
+    def _detect() -> tuple[str, bool]
     def _unshare_apply(self, argv: list[str], paths: list[Path]) -> bool
     def _watch_for_start(self, name: str, post_start: 'Callable[[], None]') -> 'threading.Event'
 ```

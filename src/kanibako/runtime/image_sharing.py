@@ -24,8 +24,12 @@ from __future__ import annotations
 import os
 import subprocess
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from kanibako.log import get_logger
+
+if TYPE_CHECKING:
+    from kanibako.runtime.container import ContainerRuntime
 
 logger = get_logger("image_sharing")
 
@@ -167,12 +171,13 @@ VIRTIOFS_GRAPHROOT_MESSAGE = (
 )
 
 
-def virtiofs_graphroot_message(runtime_cmd: str) -> str | None:
+def virtiofs_graphroot_message(runtime: ContainerRuntime) -> str | None:
     """Return the friendly virtiofs diagnostic, or *None* if it doesn't apply.
 
     The message is returned ONLY when ALL of these hold:
 
-    * ``KANIBAKO_DOCKER_CMD`` is NOT set (a rootful shim handles virtiofs), and
+    * ``KANIBAKO_DOCKER_CMD`` did NOT choose the runtime
+      (:attr:`ContainerRuntime.cmd_overridden`; a rootful shim handles virtiofs), and
     * the runtime is **rootless podman** (``is_rootless_podman`` is ``True``), and
     * the host graph root's filesystem is **virtiofs**.
 
@@ -182,11 +187,11 @@ def virtiofs_graphroot_message(runtime_cmd: str) -> str | None:
     side-effect-free.
     """
     # A rootful shim handles virtiofs fine; never fire when one is configured.
-    if os.environ.get("KANIBAKO_DOCKER_CMD"):
+    if runtime.cmd_overridden:
         return None
-    if is_rootless_podman(runtime_cmd) is not True:
+    if is_rootless_podman(runtime.cmd) is not True:
         return None
-    graph_root = detect_graph_root(runtime_cmd)
+    graph_root = detect_graph_root(runtime.cmd)
     if graph_root is None:
         return None
     if path_fstype(graph_root) != "virtiofs":

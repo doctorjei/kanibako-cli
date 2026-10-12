@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+from kanibako.runtime.container import ContainerRuntime
 from kanibako.runtime.image_sharing import (
     SHARED_STORE_CONTAINER_PATH,
     VIRTIOFS_GRAPHROOT_MESSAGE,
@@ -542,7 +543,7 @@ class TestVirtiofsGraphrootMessage:
             rootless=True, graph_root=gr, fstype="virtiofs",
         )
         with p_env, p_root, p_gr, p_fs:
-            msg = virtiofs_graphroot_message("podman")
+            msg = virtiofs_graphroot_message(ContainerRuntime("podman"))
         assert msg is not None
         assert "virtiofs" in msg
         assert "kento" in msg
@@ -557,7 +558,7 @@ class TestVirtiofsGraphrootMessage:
             rootless=True, graph_root=tmp_path, fstype="ext4",
         )
         with p_env, p_root, p_gr, p_fs:
-            assert virtiofs_graphroot_message("podman") is None
+            assert virtiofs_graphroot_message(ContainerRuntime("podman")) is None
 
     def test_silent_for_rootful(self, tmp_path):
         """Rootful podman handles virtiofs fine -> no message."""
@@ -565,7 +566,7 @@ class TestVirtiofsGraphrootMessage:
             rootless=False, graph_root=tmp_path, fstype="virtiofs",
         )
         with p_env, p_root, p_gr, p_fs:
-            assert virtiofs_graphroot_message("podman") is None
+            assert virtiofs_graphroot_message(ContainerRuntime("podman")) is None
 
     def test_silent_when_rootless_unknown(self, tmp_path):
         """Rootless state undeterminable -> no message (no false positive)."""
@@ -573,16 +574,35 @@ class TestVirtiofsGraphrootMessage:
             rootless=None, graph_root=tmp_path, fstype="virtiofs",
         )
         with p_env, p_root, p_gr, p_fs:
-            assert virtiofs_graphroot_message("podman") is None
+            assert virtiofs_graphroot_message(ContainerRuntime("podman")) is None
 
     def test_silent_when_shim_active(self, tmp_path):
-        """A KANIBAKO_DOCKER_CMD rootful shim suppresses the check entirely."""
+        """A runtime KANIBAKO_DOCKER_CMD chose (a rootful shim) suppresses the check entirely."""
+        shim = tmp_path / "sudo-podman"
+        shim.write_text("#!/bin/sh\n")
+        shim.chmod(0o755)
         p_env, p_root, p_gr, p_fs = self._patches(
             rootless=True, graph_root=tmp_path, fstype="virtiofs",
-            docker_cmd="/usr/bin/sudo-podman",
+            docker_cmd=str(shim),
         )
         with p_env, p_root, p_gr, p_fs:
-            assert virtiofs_graphroot_message("podman") is None
+            runtime = ContainerRuntime()
+            assert runtime.cmd_overridden is True
+            assert virtiofs_graphroot_message(runtime) is None
+
+    def test_reads_the_runtime_not_the_environment(self, tmp_path):
+        """The runtime's own record decides: a runtime NOT chosen by the variable still checks."""
+        shim = tmp_path / "sudo-podman"
+        shim.write_text("#!/bin/sh\n")
+        shim.chmod(0o755)
+        p_env, p_root, p_gr, p_fs = self._patches(
+            rootless=True, graph_root=tmp_path, fstype="virtiofs",
+            docker_cmd=str(shim),
+        )
+        with p_env, p_root, p_gr, p_fs:
+            runtime = ContainerRuntime("podman")
+            assert runtime.cmd_overridden is False
+            assert virtiofs_graphroot_message(runtime) is not None
 
     def test_silent_when_graph_root_undetectable(self):
         """No detectable graph root -> no message."""
@@ -590,7 +610,7 @@ class TestVirtiofsGraphrootMessage:
             rootless=True, graph_root=None, fstype="virtiofs",
         )
         with p_env, p_root, p_gr, p_fs:
-            assert virtiofs_graphroot_message("podman") is None
+            assert virtiofs_graphroot_message(ContainerRuntime("podman")) is None
 
     def test_silent_when_fstype_undeterminable(self, tmp_path):
         """fstype undeterminable -> no message, no crash."""
@@ -598,7 +618,7 @@ class TestVirtiofsGraphrootMessage:
             rootless=True, graph_root=tmp_path, fstype=None,
         )
         with p_env, p_root, p_gr, p_fs:
-            assert virtiofs_graphroot_message("podman") is None
+            assert virtiofs_graphroot_message(ContainerRuntime("podman")) is None
 
     def test_message_constant_mentions_kento_and_virtiofs(self):
         """The message template names the load-bearing concepts."""
@@ -656,6 +676,7 @@ class TestVirtiofsPreflightInRunContainer:
             )
             assert rc == 0
             m.runtime.run.assert_called_once()
+            m.virtiofs_check.assert_called_once_with(m.runtime)
 
 
 # ---------------------------------------------------------------------------

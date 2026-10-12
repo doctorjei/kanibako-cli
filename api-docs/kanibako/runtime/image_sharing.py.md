@@ -17,7 +17,7 @@ VIRTIOFS_GRAPHROOT_MESSAGE = "Error: podman's image storage is on a virtiofs fil
 def detect_graph_root(runtime_cmd: str) -> Path | None
 def is_rootless_podman(runtime_cmd: str) -> bool | None
 def path_fstype(path: Path) -> str | None
-def virtiofs_graphroot_message(runtime_cmd: str) -> str | None
+def virtiofs_graphroot_message(runtime: ContainerRuntime) -> str | None
 def generate_storage_conf(shared_store_path: str) -> str
 def write_storage_conf(staging_dir: Path) -> Path
 ```
