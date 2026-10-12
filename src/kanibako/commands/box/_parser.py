@@ -919,7 +919,7 @@ def _drop_gone_parked_primary(std, name: str) -> None:
 
     It retains nothing, and left in place it shadows the new box: ``register`` and
     ``rm --purge`` reach it by name, and its metadata path is the new box's home.  A
-    parked box whose directory is there is refused earlier, never dropped.
+    parked box whose directory is there is never dropped: ``--name`` refuses it, and a bare create steps aside to a new name.
     """
     from kanibako.project import registry_store
 
