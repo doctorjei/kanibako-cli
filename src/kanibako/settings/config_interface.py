@@ -1265,6 +1265,21 @@ def _scalar_family_render(key: str, category: str) -> "Callable[[object], str]":
     return _render
 
 
+#: The two NON-agent ``<scope>.<family>.<VAR>`` SCALAR families (spec §2a), each with the
+#: predicate that matches its keys. ``get``, ``set`` and ``reset`` each take ONE branch for both.
+_SCOPE_SCALAR_FAMILIES: "tuple[tuple[str, Callable[[str], bool]], ...]" = (
+    ("env", _is_scope_env_key),
+    ("secret_path", _is_scope_secret_key),
+)
+
+
+def _scope_scalar_family(canonical: str) -> str | None:
+    """The family of a ``<scope>.{env,secret_path}.<VAR>`` key, else ``None``."""
+    return next(
+        (family for family, matches in _SCOPE_SCALAR_FAMILIES if matches(canonical)), None,
+    )
+
+
 def _read_slot(canonical: str, slot: AgentFileSlot) -> str | None:
     """``agent_file.read_leaf`` with §2a's non-scalar refusal in front of it.
 
@@ -1455,13 +1470,16 @@ def get_config_value(
     if _is_bare_env_key(canonical):
         return None
 
-    # ``<scope>.env.<VAR>`` — the LIVE env family, read from the NOUN's settings file.
-    if _is_scope_env_key(canonical):
+    # ``<scope>.{env,secret_path}.<VAR>`` — the stored scalar from the NOUN's settings file; for
+    # ``secret_path`` that is the PATH, never the secret VALUE (spec §2a).
+    # ⚑ ``noun_file``, NOT ``project_toml``: the SYSTEM handler never threads the latter.
+    scope_family = _scope_scalar_family(canonical)
+    if scope_family is not None:
         if noun_file and noun_file.exists():
             parts = canonical.split(".")
             return read_stored_leaf(
-                noun_file, (parts[0], "env"), parts[2],
-                render=_scalar_family_render(canonical, "env"),
+                noun_file, (parts[0], scope_family), parts[2],
+                render=_scalar_family_render(canonical, scope_family),
             )
         return None
 
@@ -1496,17 +1514,6 @@ def get_config_value(
         return _node_noun_file_value(
             canonical, secret_target, noun_file, command_scope,
         )
-
-    # ``<scope>.secret_path.<VAR>`` — the stored PATH from the NOUN's settings file.
-    # ⚑ ``noun_file``, NOT ``project_toml``: the SYSTEM handler never threads the latter.
-    if _is_scope_secret_key(canonical):
-        if noun_file and noun_file.exists():
-            parts = canonical.split(".")
-            return read_stored_leaf(
-                noun_file, (parts[0], "secret_path"), parts[2],
-                render=_scalar_family_render(canonical, "secret_path"),
-            )
-        return None
 
     # ``agent.<node>.<key>`` — the PER-PERSONA agent key (B1), read from the node's own file
     # (the noun file alone without *node_store*).
@@ -2162,24 +2169,15 @@ def set_config_value(
         write_leaf(secret_target, value)
         return _set_confirmation(_node_secret_display_key(canonical), value)
 
-    # ``<scope>.secret_path.<VAR>`` — a SCALAR path write to the command scope's SETTINGS file.
-    if _is_scope_secret_key(canonical):
+    # ``<scope>.{env,secret_path}.<VAR>`` — a SCALAR write to the command scope's SETTINGS file,
+    # VERBATIM (the set-time E3 probe already ran on it). The AGENT forms are routed above
+    # (``secret_path``) and by the persona branch (``env``).
+    if _scope_scalar_family(canonical) is not None:
         dest = _write_dest(
             canonical, command_scope=command_scope,
             config_path=config_path, settings_path=system_settings_path,
         )
-        assert dest is not None  # the scope-secret family always has a slot
-        write_nested_key(dest.file, dest.sections, dest.leaf, value)
-        return _set_confirmation(canonical, value)
-
-    # ``<scope>.env.<VAR>`` — a SCALAR write to the command scope's SETTINGS file, VERBATIM
-    # (the set-time E3 probe already ran on it). The AGENT form is routed by the persona branch.
-    if _is_scope_env_key(canonical):
-        dest = _write_dest(
-            canonical, command_scope=command_scope,
-            config_path=config_path, settings_path=system_settings_path,
-        )
-        assert dest is not None  # the scope-env family always has a slot
+        assert dest is not None  # both scope scalar families always have a slot
         write_nested_key(dest.file, dest.sections, dest.leaf, value)
         return _set_confirmation(canonical, value)
 
@@ -2387,15 +2385,8 @@ def reset_config_value(
             return _honest_reset_message(display, command_scope)
         return f"No override for {display}"
 
-    # ``<scope>.secret_path.<VAR>`` — remove the stored pointer from the command scope's file.
-    if _is_scope_secret_key(canonical):
-        dest = _reset_dest(canonical, command_scope, config_path, system_settings_path)
-        if remove_nested_key(dest.file, dest.sections, dest.leaf):
-            return _honest_reset_message(canonical, command_scope)
-        return f"No override for {shown_key(canonical)}"
-
-    # ``<scope>.env.<VAR>`` — remove the stored value from the command scope's settings file.
-    if _is_scope_env_key(canonical):
+    # ``<scope>.{env,secret_path}.<VAR>`` — remove the stored value from the command scope's file.
+    if _scope_scalar_family(canonical) is not None:
         dest = _reset_dest(canonical, command_scope, config_path, system_settings_path)
         if remove_nested_key(dest.file, dest.sections, dest.leaf):
             return _honest_reset_message(canonical, command_scope)
