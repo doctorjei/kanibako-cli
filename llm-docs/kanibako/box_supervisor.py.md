@@ -819,7 +819,8 @@ self-heal that exhausts its bounded retries (principle B: then PID-1 returns so 
 ```_run_tmux(self, args: list[str]) -> int | None```
 Run `tmux <args>` via the injected runner; return its rc, or `None`.
 
-Both helpers wrap `_tmux(args)`, which runs the command and holds the tolerance: a missing tmux
+Both helpers wrap `_tmux(args)`, which calls `box_lifecycle.tmux_run` with the injected runner
+and a debug-logging *on_error*. The tolerance lives there: a missing tmux
 binary (`FileNotFoundError`) or any other `OSError` resolves to `None` (logged at debug), never an
 exception, so a tmux hiccup can never crash the loop.
 

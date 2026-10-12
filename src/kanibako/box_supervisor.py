@@ -51,6 +51,7 @@ from kanibako.box_lifecycle import (
     LifecycleEvent,
     classify_transition,
     snapshot_attach_state,
+    tmux_run,
 )
 from kanibako.log import get_logger, setup_logging
 from kanibako.settings.bootstrap import XDG_SPEC_DEFAULTS, XDG_STATE_HOME
@@ -823,16 +824,11 @@ class BoxSupervisor:
 
     def _tmux(self, args: list[str]) -> subprocess.CompletedProcess[str] | None:
         """Run ``tmux <args>`` via the injected runner; ``None`` if tmux could not run."""
-        try:
-            return self._run(
-                ["tmux", *args],
-                capture_output=True,
-                text=True,
-                check=False,
-            )
-        except (FileNotFoundError, OSError) as exc:
+
+        def _log(exc: OSError) -> None:
             log.debug("tmux %s failed to run: %s", args[0] if args else "", exc)
-            return None
+
+        return tmux_run(self._run, args, on_error=_log)
 
     def _run_tmux(self, args: list[str]) -> int | None:
         """Run ``tmux <args>``; return its rc, or ``None``."""

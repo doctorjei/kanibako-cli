@@ -47,6 +47,9 @@ Concretely:
   → `""`; any other `OSError` → `""`.
 * `canonical_tmux_session_pid` returns `None` when the session or server is absent, tmux is not
   installed, the command fails, or the output is unparseable.
+* Both run tmux through `tmux_run(run, args, on_error=None)`, the ONE tolerant tmux call for the
+  PID-1 pair: an `OSError` (a missing binary included) goes to *on_error* and becomes `None`. This
+  module does not log; `box_supervisor._tmux` passes its debug logger as *on_error*.
 
 ## The VS Code remote-server markers
 

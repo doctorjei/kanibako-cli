@@ -23,6 +23,7 @@ def is_vscode_server_path_part(part: str) -> bool
 def vscode_server_present(proc_cmdlines: Iterable[str]) -> bool
 def tmux_terminal_attached(list_clients_output: str) -> bool
 def classify_transition(prev: AttachState, cur: AttachState) -> LifecycleEvent
+def tmux_run(run: _Runner, args: list[str], *, on_error: Callable[[OSError], None] | None=None) -> subprocess.CompletedProcess[str] | None
 def snapshot_attach_state(session: str, *, run: _Runner=subprocess.run, proc_cmdlines: Iterable[str] | None=None) -> AttachState
 def canonical_tmux_session_pid(session: str, *, run: _Runner=subprocess.run) -> int | None
 def _collect_proc_cmdlines() -> list[str]

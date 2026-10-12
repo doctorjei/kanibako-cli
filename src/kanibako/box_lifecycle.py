@@ -159,6 +159,26 @@ def _collect_proc_cmdlines() -> list[str]:
     return cmdlines
 
 
+def tmux_run(
+    run: _Runner,
+    args: list[str],
+    *,
+    on_error: Callable[[OSError], None] | None = None,
+) -> subprocess.CompletedProcess[str] | None:
+    """Run ``tmux <args>`` through *run*; ``None`` when tmux could not run at all.
+
+    THE tolerant tmux call for the PID-1 pair: a missing binary or any other
+    ``OSError`` is handed to *on_error* (this module does not log) and becomes
+    ``None``, never a raise.  A nonzero rc is the caller's to read.
+    """
+    try:
+        return run(["tmux", *args], capture_output=True, text=True, check=False)
+    except OSError as exc:
+        if on_error is not None:
+            on_error(exc)
+        return None
+
+
 def _tmux_clients_output(session: str, run: _Runner) -> str:
     """Return ``tmux list-clients -t <session>`` stdout, or ``""`` on any failure.
 
@@ -167,16 +187,8 @@ def _tmux_clients_output(session: str, run: _Runner) -> str:
     ⚑ ``-F ""`` is NOT used: the default one-line-per-client output IS the
     presence signal being tested.
     """
-    try:
-        proc = run(
-            ["tmux", "list-clients", "-t", session],
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-    except (FileNotFoundError, OSError):
-        return ""
-    if proc.returncode != 0:
+    proc = tmux_run(run, ["list-clients", "-t", session])
+    if proc is None or proc.returncode != 0:
         return ""
     return proc.stdout or ""
 
@@ -214,16 +226,8 @@ def canonical_tmux_session_pid(
     when the session is absent, tmux is missing, or the output is unparseable.
     E2 uses this to identify the canonical always-on instance.
     """
-    try:
-        proc = run(
-            ["tmux", "display-message", "-p", "-t", session, "#{pid}"],
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-    except (FileNotFoundError, OSError):
-        return None
-    if proc.returncode != 0:
+    proc = tmux_run(run, ["display-message", "-p", "-t", session, "#{pid}"])
+    if proc is None or proc.returncode != 0:
         return None
     text = (proc.stdout or "").strip()
     try:
