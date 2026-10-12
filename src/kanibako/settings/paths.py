@@ -2043,6 +2043,8 @@ class LegacyBox(NamedTuple):
     workset: str | None = None
     #: Whether a name is held in the box's workset (the rename cure's suffix rule).
     taken: Callable[[str], bool] | None = None
+    #: The workset a NAMED member is connected to from outside it (its cure converts).
+    connected: str | None = None
 
     def refusal(self) -> str:
         """The error naming this box's path, and the cure that gives it a valid name."""
@@ -2059,13 +2061,33 @@ class LegacyBox(NamedTuple):
         if self.workset is not None:
             return (f"{head}, or move it to a workset with a valid name:\n"
                     f"{legacy_workset_cure(self.workset, Path(self.path))}")
-        return (f"{head}, or give it a valid name:\n"
-                f"  {rename_box_cure(self.mode, Path(self.path), self.name, self.taken)}")
+        cure = rename_box_cure(self.mode, Path(self.path), self.name, self.taken,
+                               self.connected)
+        return f"{head}, or give it a valid name:\n  {cure}"
 
 
 def _workset_name_taken(ws_root: Path, early: EarlyScope) -> Callable[[str], bool]:
     """Whether a box name is a member of the workset at *ws_root* (case-blind, spec §0)."""
     return lambda cand: _workset_box_workspace_for_name(ws_root, cand, early=early) is not None
+
+
+def _connected_workset(std: StandardPaths, workset: str, ws_root: Path,
+                       path: Path) -> str | None:
+    """*workset* when its member at *path* is connected from outside its tree, else ``None``."""
+    from kanibako.project.workset import is_in_tree_workspace, load_workset
+
+    try:
+        ws = load_workset(ws_root, workset, early_system=std.early_system)
+        return None if is_in_tree_workspace(ws, path) else workset
+    except (KanibakoError, OSError):
+        return None
+
+
+def box_connected_workset(std: StandardPaths, proj: ProjectPaths) -> str | None:
+    """The workset a NAMED *proj* is connected to from outside its tree, else ``None``."""
+    if proj.mode is not BoxMode.named or proj.group is None or proj.project_path is None:
+        return None
+    return _connected_workset(std, proj.group.name, proj.group.root, proj.project_path)
 
 
 def box_name_taken(std: StandardPaths, proj: ProjectPaths) -> Callable[[str], bool] | None:
@@ -2096,8 +2118,10 @@ def _stored_legacy_member(std: StandardPaths, typed: str,
         return None
     reason = box_name_reason(box)
     if reason is not None:
+        ws_root = list_worksets(std)[workset]
         return LegacyBox("named", box, path, reason, taken=_workset_name_taken(
-            list_worksets(std)[workset], _early_scope(std, BoxMode.named, workset)))
+            ws_root, _early_scope(std, BoxMode.named, workset)),
+            connected=_connected_workset(std, workset, ws_root, Path(path)))
     if workset_renders_no_name(workset):
         return LegacyBox("named", f"{workset}/{box}", path, legacy_workset_reason(workset),
                          workset=workset)

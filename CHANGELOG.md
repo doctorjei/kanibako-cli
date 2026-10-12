@@ -1197,7 +1197,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (`start`, `shell`, `code`, `stop`, `box info`, `box move`, `box rm`, and the rest) now says the name breaks the rule,
   names the box's path to give in its place, and prints the command that gives it a valid name. A registered
   standalone box's cure registers it again (`box rm <path>`, then `box register <path>`), which re-derives its name
-  from its directory. An existing directory at the typed path wins.
+  from its directory. A workset member connected from outside its workset is renamed in place (`box convert <path>
+  --workset <workset> --name <new-name>`), since `box move` does not relocate it; `start` and `stop` print that cure
+  too. An existing directory at the typed path wins.
 
 - **The rename command printed for a box with a legacy name offers a free name.** `box move ... --name a_b` was
   offered for a box `a-b` even when a box `a_b` existed, and that command was refused. The offer now takes the next

@@ -142,10 +142,13 @@ def workset_renders_no_name(workset: str) -> bool:
 
 
 def rename_box_cure(mode: str, path: Path, name: str | None = None,
-                    taken: Callable[[str], bool] | None = None) -> str:
+                    taken: Callable[[str], bool] | None = None,
+                    connected: str | None = None) -> str:
     """The command that gives a *mode* box at *path* a new name, by path.
 
     A standalone box is named after its directory, so its cure moves the directory.
+    A member *connected* to that workset from outside it is renamed in place by
+    ``box convert``, since ``box move`` refuses to relocate its workspace.
     With the refused *name*, the cure offers its spelling (spec §0) when one exists,
     suffixed as a derived name is when *taken* (its workset's membership) holds it."""
     if mode == "standalone":
@@ -156,6 +159,9 @@ def rename_box_cure(mode: str, path: Path, name: str | None = None,
     offer = name_spelling(name) if name else None
     new_name = "<new-name>" if offer is None else (
         offer[0] if taken is None else first_free_name(offer[0], taken))
+    if connected is not None:
+        return (f"kanibako box convert {shlex.quote(str(path))} "
+                f"--workset {shlex.quote(connected)} --name {new_name}")
     return f"kanibako box move {shlex.quote(str(path))} <new-path> --name {new_name}"
 
 
@@ -180,6 +186,7 @@ def legacy_workset_cure(workset: str, where: Path) -> str:
 def unrenderable_box_name_refusal(
     box: str, mode: str, path: Path | None, designation: str | None,
     *, workset: str | None = None, taken: Callable[[str], bool] | None = None,
+    connected: str | None = None,
 ) -> str:
     """The refusal ``start`` and ``stop`` print for a box that renders no name.
 
@@ -199,7 +206,7 @@ def unrenderable_box_name_refusal(
     return (
         f"Error: box '{box}' has no container name: {reason}. Give the box a valid "
         f"name, then try again:\n"
-        f"  {rename_box_cure(mode, where, box, taken)}"
+        f"  {rename_box_cure(mode, where, box, taken, connected)}"
     )
 
 

@@ -440,6 +440,13 @@ class TestStartUnrenderableBoxNameRefusal:
             self._text("named")
         )
 
+    def test_a_connected_named_box_is_renamed_in_place_by_convert(self):
+        """``box move`` refuses to relocate a member connected from outside its workset."""
+        text = unrenderable_box_name_refusal("my-box", "named", self.PATH, None,
+                                             connected="ws.1")
+        assert text.endswith(
+            f"kanibako box convert {self.PATH} --workset ws.1 --name my_box")
+
     def test_a_legacy_my_box_is_offered_my_underscore_box(self):
         text = unrenderable_box_name_refusal("my-box", "primary", self.PATH, None)
         assert "box name must not contain '-'" in text

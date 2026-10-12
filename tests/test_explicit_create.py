@@ -1040,16 +1040,19 @@ class TestBrokenStandaloneNoBoxError:
         with pytest.raises(LegacyBoxNameError):
             refuse_legacy_box(std, "my-box")
 
+    @pytest.mark.parametrize("connected", [True, False], ids=["connected", "in-tree"])
     def test_a_named_member_typed_by_its_legacy_qualified_name_names_its_path(
-        self, config_file, tmp_home, credentials_dir, monkeypatch,
+        self, config_file, tmp_home, credentials_dir, monkeypatch, connected,
     ):
+        """A member connected from outside its workset is renamed in place by ``box
+        convert``, since ``box move`` refuses to relocate it; an in-tree member moves."""
         from kanibako.errors import LegacyBoxNameError
         from kanibako.project.workset import create_workset
         from kanibako.settings.paths import refuse_legacy_box, _register_workset_box_membership
 
         _config, std = _std(config_file)
         ws = create_workset("ws_1", tmp_home / "wsroot", std)
-        member = (tmp_home / "m1").resolve()
+        member = (tmp_home / "m1" if connected else ws.root / "workspaces" / "mem-1").resolve()
         member.mkdir()
         _register_workset_box_membership(ws.root, "mem-1", member,
                                          early=_early_scope(std, BoxMode.named, "ws_1"))
@@ -1058,8 +1061,10 @@ class TestBrokenStandaloneNoBoxError:
             refuse_legacy_box(std, "WS_1/mem-1")
         msg = str(exc.value)
         assert msg.startswith("box name 'mem-1' does not meet the naming rules")
+        cure = (f"kanibako box convert {member} --workset ws_1 --name mem_1" if connected
+                else f"kanibako box move {member} <new-path> --name mem_1")
         assert msg.endswith(f"give {member} in place of the name, or give it a valid name:\n"
-                            f"  kanibako box move {member} <new-path> --name mem_1")
+                            f"  {cure}")
 
     def test_an_existing_dir_at_the_typed_path_wins_over_a_legacy_box(
         self, config_file, tmp_home, credentials_dir, monkeypatch,
