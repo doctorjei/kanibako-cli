@@ -6,10 +6,13 @@ import json
 import socket
 import threading
 import time
+from unittest.mock import MagicMock
 
 import pytest
 
-from kanibako.channels.helper_client import HelperConnection, send_request
+from kanibako.channels.helper_client import (
+    HelperConnection, iter_frames, send_frame, send_request,
+)
 
 
 @pytest.fixture
@@ -362,6 +365,43 @@ class TestFullDuplexSafety:
             assert result["recv"] is None
         finally:
             conn.close()
+
+
+# ---------------------------------------------------------------------------
+# The wire format both ends of the helper socket share (send_frame/iter_frames).
+# ---------------------------------------------------------------------------
+
+class TestFrames:
+    def test_send_frame_writes_newline_terminated_json(self):
+        mock_sock = MagicMock()
+        send_frame(mock_sock, {"status": "ok"})
+        call_data = mock_sock.sendall.call_args[0][0]
+        assert call_data.endswith(b"\n")
+        assert json.loads(call_data.decode().strip()) == {"status": "ok"}
+
+    def test_iter_frames_splits_on_newlines_across_reads_and_skips_blanks(self):
+        mock_sock = MagicMock()
+        mock_sock.recv.side_effect = [b'{"a": 1}\n{"b"', b': 2}\n\n  \n{"c": 3}\n', b""]
+        assert list(iter_frames(mock_sock)) == [b'{"a": 1}', b'{"b": 2}', b'{"c": 3}']
+
+    def test_iter_frames_ends_on_a_read_error_unless_asked_to_raise(self):
+        mock_sock = MagicMock()
+        mock_sock.recv.side_effect = [b'{"a": 1}\n', OSError("reset")]
+        assert list(iter_frames(mock_sock)) == [b'{"a": 1}']
+        mock_sock.recv.side_effect = [b'{"a": 1}\n', socket.timeout("timed out")]
+        with pytest.raises(socket.timeout):
+            list(iter_frames(mock_sock, raise_errors=True))
+
+    def test_iter_frames_stops_before_the_next_read_once_stop_is_set(self):
+        stop = threading.Event()
+        mock_sock = MagicMock()
+        mock_sock.recv.side_effect = [b'{"a": 1}\n', b'{"b": 2}\n']
+        frames = []
+        for line in iter_frames(mock_sock, stop):
+            frames.append(line)
+            stop.set()
+        assert frames == [b'{"a": 1}']
+        assert mock_sock.recv.call_count == 1
 
 
 # ---------------------------------------------------------------------------

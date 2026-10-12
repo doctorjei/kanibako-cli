@@ -7,7 +7,7 @@ import queue
 import socket
 import threading
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterator
 
 #: Posted to BOTH queues when the reader thread retires, so a caller blocked on
 #: either wakes instead of waiting for a frame that can no longer arrive.  ⚑ A
@@ -17,6 +17,47 @@ _CLOSED = object()
 #: Bound on ``close()``: how long to wait for the reader to notice the shutdown.
 #: It is a daemon thread, so an expired wait costs tidiness, never a hang.
 _READER_JOIN = 5.0
+
+
+def send_frame(sock: socket.socket, data: dict) -> None:
+    """Write *data* as ONE wire frame: its JSON, then a newline.
+
+    ⚑ THE ONE SPELLING OF THE WIRE FORMAT for both ends of the helper socket —
+    this client and ``helper_listener.HelperHub`` — so the two cannot drift.  It
+    lives HERE, not in a shared module, because this module may import nothing
+    from kanibako (see the import guard in ``tests/test_channels``); the host-side
+    hub imports it from here.
+    """
+    sock.sendall(json.dumps(data).encode() + b"\n")
+
+
+def iter_frames(sock: socket.socket, stop: threading.Event | None = None, *,
+                raise_errors: bool = False) -> Iterator[bytes]:
+    """Yield each non-blank newline-terminated frame read off *sock*, undecoded.
+
+    Ends at EOF, before the next read once *stop* is set, or when the read raises
+    ``OSError`` — for a long-lived reader that is the connection's end.  With
+    *raise_errors* the ``OSError`` propagates instead, which the one-shot
+    ``send_request`` needs so its timeout reaches its caller as a timeout.  Only
+    the READ is guarded: an error the caller raises while handling a frame is its
+    own.  Decoding is the caller's, because each end answers a bad frame
+    differently.
+    """
+    buf = b""
+    while stop is None or not stop.is_set():
+        try:
+            data = sock.recv(4096)
+        except OSError:
+            if raise_errors:
+                raise
+            return
+        if not data:
+            return
+        buf += data
+        while b"\n" in buf:
+            line, buf = buf.split(b"\n", 1)
+            if line.strip():
+                yield line
 
 
 def _route_frame(line: bytes, responses: queue.Queue[Any],
@@ -189,27 +230,15 @@ class HelperConnection:
         The socket carries no timeout, so an ``OSError`` here is a real failure
         or the shutdown from ``close()`` — either way the connection is over.
         """
-        buf = b""
         reason = "Connection closed"
         try:
-            while not self._closing.is_set():
-                try:
-                    data = sock.recv(4096)
-                except OSError:
-                    break
-                if not data:
-                    break
-                buf += data
-                while b"\n" in buf:
-                    line, buf = buf.split(b"\n", 1)
-                    if not line.strip():
-                        continue
-                    problem = _route_frame(line, responses, inbox)
-                    if problem is not None:
-                        # The stream is no longer understood; reading on would
-                        # risk handing a caller a frame that is not theirs.
-                        reason = problem
-                        return
+            for line in iter_frames(sock, self._closing):
+                problem = _route_frame(line, responses, inbox)
+                if problem is not None:
+                    # The stream is no longer understood; reading on would
+                    # risk handing a caller a frame that is not theirs.
+                    reason = problem
+                    return
         finally:
             self._closed_reason = reason
             responses.put(_CLOSED)
@@ -229,7 +258,7 @@ class HelperConnection:
             raise ConnectionError("Not connected")
         responses = self._responses
         with self._lock:
-            sock.sendall(json.dumps(data).encode() + b"\n")
+            send_frame(sock, data)
             frame = responses.get()
         if frame is _CLOSED:
             responses.put(_CLOSED)
@@ -248,14 +277,9 @@ def send_request(socket_path: Path, request: dict) -> dict:
     try:
         s.connect(str(socket_path))
         s.settimeout(30.0)
-        s.sendall(json.dumps(request).encode() + b"\n")
-        buf = b""
-        while b"\n" not in buf:
-            data = s.recv(4096)
-            if not data:
-                raise ConnectionError("Connection closed before response")
-            buf += data
-        line = buf.split(b"\n")[0]
-        return json.loads(line)
+        send_frame(s, request)
+        for line in iter_frames(s, raise_errors=True):
+            return json.loads(line)
+        raise ConnectionError("Connection closed before response")
     finally:
         s.close()

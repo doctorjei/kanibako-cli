@@ -16,7 +16,6 @@ from kanibako.channels.helper_listener import (
     HelperHub,
     MessageLog,
     _build_helper_mounts,
-    _send_json,
 )
 import kanibako.channels.helper_listener as helper_listener
 from kanibako.channels.helpers import (
@@ -83,16 +82,6 @@ def _connect_and_send(sock_path: Path, request: dict) -> dict:
         buf += data
     s.close()
     return json.loads(buf.split(b"\n")[0])
-
-
-class TestSendJson:
-    def test_sends_newline_terminated_json(self):
-        mock_sock = MagicMock()
-        _send_json(mock_sock, {"status": "ok"})
-        call_data = mock_sock.sendall.call_args[0][0]
-        assert call_data.endswith(b"\n")
-        parsed = json.loads(call_data.decode().strip())
-        assert parsed == {"status": "ok"}
 
 
 class TestBuildHelperMounts:

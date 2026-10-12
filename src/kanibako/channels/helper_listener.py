@@ -11,6 +11,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from kanibako.channels.helper_client import iter_frames, send_frame
 from kanibako.channels.helpers import (
     HELPER_CORE_LEAVES,
     HELPER_SCRIPTS_RELPATH,
@@ -201,30 +202,18 @@ class HelperHub:
     def _client_reader(self, conn: socket.socket) -> None:
         """Read newline-delimited JSON from a client connection."""
         helper_num: int | None = None
-        buf = b""
         try:
-            while not self._shutdown.is_set():
+            for line in iter_frames(conn, self._shutdown):
                 try:
-                    data = conn.recv(4096)
-                except OSError:
-                    break
-                if not data:
-                    break
-                buf += data
-                while b"\n" in buf:
-                    line, buf = buf.split(b"\n", 1)
-                    if not line.strip():
-                        continue
-                    try:
-                        request = json.loads(line)
-                    except json.JSONDecodeError:
-                        _send_json(conn, {"status": "error", "message": "invalid JSON"})
-                        continue
-                    response, helper_num = self._dispatch(
-                        conn, request, helper_num,
-                    )
-                    if response is not None:
-                        _send_json(conn, response)
+                    request = json.loads(line)
+                except json.JSONDecodeError:
+                    send_frame(conn, {"status": "error", "message": "invalid JSON"})
+                    continue
+                response, helper_num = self._dispatch(
+                    conn, request, helper_num,
+                )
+                if response is not None:
+                    send_frame(conn, response)
         finally:
             if helper_num is not None:
                 self._unregister(helper_num, conn)
@@ -304,7 +293,7 @@ class HelperHub:
         if conn:
             msg = {"event": "message", "from": sender, "payload": payload}
             try:
-                _send_json(conn, msg)
+                send_frame(conn, msg)
             except OSError:
                 logger.debug("Failed to deliver to helper %d", recipient)
 
@@ -319,7 +308,7 @@ class HelperHub:
             if num == sender:
                 continue
             try:
-                _send_json(conn, msg)
+                send_frame(conn, msg)
             except OSError:
                 logger.debug("Failed to broadcast to helper %d", num)
 
@@ -642,11 +631,6 @@ class MessageLog:
     def close(self) -> None:
         with self._lock:
             self._file.close()
-
-
-def _send_json(conn: socket.socket, data: dict) -> None:
-    """Send a JSON object followed by newline."""
-    conn.sendall(json.dumps(data).encode() + b"\n")
 
 
 def _build_helper_mounts(ctx: HelperContext, helper_num: int,
