@@ -7779,6 +7779,9 @@ def _resolve_launch_snapshot(
             ),
             declared_by=declared_by,
             dest_keys=dest_keys,
+            convenience_sources=settings_launch.convenience_bind_sources(
+                default_categories, snapshot, ctx,
+            ),
         )
     except (CategoryCollisionError, SettingsError) as exc:
         raise _annotate_pref_origin(exc, prefs) from None

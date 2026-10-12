@@ -1127,6 +1127,27 @@ def bind_dest_owners() -> dict[str, str]:
     }
 
 
+def _keyed_rows(
+    table: str, key: str, role: str, *, exactly_one: bool = False,
+) -> list[dict[str, Any]]:
+    """The rows of *table* keyed *key*, or RAISE :class:`PackagingError` naming *role*.
+
+    The ONE lookup for a code path that needs a named row: a shipped file that lost the
+    row (or, with *exactly_one*, carries it twice) is a packaging defect, not a default.
+    """
+    found = [e for e in _load_doc().get(table) or [] if e.get("key") == key]
+    if not found:
+        raise PackagingError(
+            f"{CORE_DEFAULTS_FILENAME} has no {table!r} row keyed {key!r} — {role}"
+        )
+    if exactly_one and len(found) != 1:
+        raise PackagingError(
+            f"{CORE_DEFAULTS_FILENAME} has {len(found)} {table!r} rows keyed {key!r}; "
+            f"exactly one is allowed — {role}"
+        )
+    return found
+
+
 #: The declarative tables whose EVERY row is an INTERNAL bind (spec §2c: not a user key,
 #: not repointable) — the kanibako CLI trio and the kickoff slot.
 _INTERNAL_BIND_TABLES = ("kani", "kickoff")
@@ -1154,13 +1175,9 @@ def internal_bind_keys() -> frozenset[tuple[str, str]]:
         entry for table in _INTERNAL_BIND_TABLES for entry in doc.get(table) or []
     ]
     for table, key in _INTERNAL_BIND_ROWS:
-        found = [e for e in doc.get(table) or [] if e.get("key") == key]
-        if not found:
-            raise PackagingError(
-                f"{CORE_DEFAULTS_FILENAME} has no {table!r} row keyed {key!r} — an "
-                "INTERNAL bind (spec §2c) this module re-imposes after every merge"
-            )
-        rows += found
+        rows += _keyed_rows(
+            table, key, "an INTERNAL bind (spec §2c) this module re-imposes after every merge",
+        )
     keys = {
         (f"box.{entry['category']}", normalize_bind_dest(str(entry["box_dest"])))
         for entry in rows
@@ -1187,26 +1204,22 @@ _CONVENIENCE_BIND_ROWS = (
 
 
 def convenience_bind_dests() -> frozenset[str]:
-    """The normalized dests of every bind of convenience — ``box show --effective`` omits them.
+    """The normalized dests of every bind of convenience (``[R149]``).
 
-    ``[R149]``: a bind whose only purpose is to implement another mechanism is not shown.
-    The rule is by DESTINATION, because the purpose belongs to the slot: whatever is
-    bound at ``~/spawn.yaml`` is the spawn budget.  Read from the SAME rows that declare
-    the binds, so a moved dest moves here too; a lost row RAISES.
+    ``box show --effective`` omits a row at one of these dests only while its source is
+    still the floor's own (``settings_launch.convenience_bind_sources``); a user's bind
+    there is the user's, and is shown.  Read from the SAME rows that declare the binds,
+    so a moved dest moves here too; a lost row RAISES.
     """
     from kanibako.settings.settings_resolve import normalize_bind_dest
 
-    doc = _load_doc()
-    dests: set[str] = set()
-    for table, key in _CONVENIENCE_BIND_ROWS:
-        found = [e for e in doc.get(table) or [] if e.get("key") == key]
-        if not found:
-            raise PackagingError(
-                f"{CORE_DEFAULTS_FILENAME} has no {table!r} row keyed {key!r} — a "
-                "bind of convenience box show --effective omits ([R149])"
-            )
-        dests |= {normalize_bind_dest(str(e["box_dest"])) for e in found}
-    return frozenset(dests)
+    return frozenset(
+        normalize_bind_dest(str(e["box_dest"]))
+        for table, key in _CONVENIENCE_BIND_ROWS
+        for e in _keyed_rows(
+            table, key, "a bind of convenience box show --effective omits ([R149])",
+        )
+    )
 
 
 def helper_bind_dests() -> frozenset[str]:
@@ -1240,15 +1253,10 @@ def helper_budget_dest() -> tuple[str, str]:
     on every start (``commands.start._deliver_spawn_budget``); the helper hub mounts each helper's parent-written copy at the same dest and options
     (``channels.helper_listener._build_helper_mounts``), so a moved dest moves both.
     """
-    found = [
-        e for e in _load_doc().get("helpers") or [] if e.get("key") == "helper_budget"
-    ]
-    if len(found) != 1:
-        raise PackagingError(
-            f"{CORE_DEFAULTS_FILENAME} must have exactly one 'helpers' row keyed "
-            f"'helper_budget' (the spawn-budget bind, spec §2c); found {len(found)}"
-        )
-    return str(found[0]["box_dest"]), str(found[0]["options"])
+    (row,) = _keyed_rows(
+        "helpers", "helper_budget", "the spawn-budget bind (spec §2c)", exactly_one=True,
+    )
+    return str(row["box_dest"]), str(row["options"])
 
 
 def core_bind_slots() -> dict[str, tuple[str, str]]:

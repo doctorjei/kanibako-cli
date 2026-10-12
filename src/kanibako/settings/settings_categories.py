@@ -388,6 +388,10 @@ class LaunchDeliveries:
     (``settings_expand.DestKeys``), carried here for the same reason: a display that
     holds a stored destination finds its entry through it instead of re-expanding.
 
+    *convenience_sources* is the floor's own resolved source at each bind of
+    convenience (``settings_launch.convenience_bind_sources``): the display omits a row
+    there only while its source is still this one (``[R149]``).
+
     🛑 THE ENVIRONMENT IS NOT HERE ANY MORE — the variables are arbitrated by
     ``store_collapse.collapse_env`` and read off ``meta.assembly.env``.  A second,
     un-arbitrated view of the same declarations is what let a per-VAR contest be
@@ -401,6 +405,7 @@ class LaunchDeliveries:
     narrow_bindings: "dict[str, object] | None" = None
     declared_by: "dict[str, str]" = field(default_factory=dict)
     dest_keys: "dict[tuple[str, ...], str]" = field(default_factory=dict)
+    convenience_sources: "dict[str, str]" = field(default_factory=dict)
 
 
 def secret_path_winners(entries: list[CategoryEntry]) -> list[CategoryEntry]:
@@ -683,6 +688,7 @@ def launch_deliveries(
     narrow_bindings: "dict[str, object] | None" = None,
     declared_by: "dict[str, str] | None" = None,
     dest_keys: "dict[tuple[str, ...], str] | None" = None,
+    convenience_sources: "dict[str, str] | None" = None,
 ) -> LaunchDeliveries:
     """Build the :class:`LaunchDeliveries` carrier from a CREDENTIAL-GATED list.
 
@@ -707,6 +713,7 @@ def launch_deliveries(
         narrow_bindings=narrow_bindings,
         declared_by=dict(declared_by or {}),
         dest_keys=dict(dest_keys or {}),
+        convenience_sources=dict(convenience_sources or {}),
     )
 
 

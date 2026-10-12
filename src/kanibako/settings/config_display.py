@@ -328,12 +328,12 @@ def _print_pref_block(
 def _print_category_block(
     snapshot: Any, error: str | None, out: Any, box_ctx: Any,
     declared_by: "Mapping[str, str] | None" = None,
+    convenience_sources: "Mapping[str, str] | None" = None,
 ) -> None:
     """Render the ``--effective`` PATH-DELIVERY block (spec §0; box scope, D6).
 
     The pid-0 FOUNDATION comes first, then every CONCRETE binding with the
-    destination it occupies, except a bind of convenience (``[R149]``) — all read
-    off the SAME snapshot the launch resolved.
+    destination it occupies — all read off the SAME snapshot the launch resolved.
     Nothing is re-derived here.
 
     *box_ctx* is the launch's own :class:`~kanibako.settings.settings_resolve.ResolveCtx`
@@ -349,6 +349,11 @@ def _print_category_block(
     collapsed leaf it is paired against carries no key and may not be taught to
     (``store_collapse.CollapsedStore``).  Omitted, every phrase is exactly what it was.
 
+    *convenience_sources* is the same launch's ``LaunchDeliveries.convenience_sources``:
+    a row at a bind of convenience whose source is still the floor's own is omitted
+    (``[R149]``); a user's bind there differs in source and is shown.  Omitted, every
+    row is shown.
+
     The ABSTRACT half then lists every ``common`` / ``caches`` / ``seeded``
     declaration with what the box RECEIVES for it indented beneath — keyspec
     ``:88``, *"``--effective`` shows BOTH the declaration and the derived binding
@@ -356,7 +361,6 @@ def _print_category_block(
     :func:`kanibako.settings.settings_categories.effective_bindings_and_template_sources`,
     the single source; nothing is re-derived here either.
     """
-    from kanibako.settings.core_defaults import convenience_bind_dests
     from kanibako.settings.kb_store import BINDING_DERIVATIONS_NODE, BindEntry
     from kanibako.settings.keystore import KeyStore
     from kanibako.settings.settings_categories import (
@@ -483,12 +487,12 @@ def _print_category_block(
         pair_declarations(declarations, collapsed),
         strict=True,
     ))
-    # ⚑ A BIND OF CONVENIENCE IS NOT SHOWN (``[R149]``): machinery bridging another
-    # mechanism, by the ONE list :func:`core_defaults.convenience_bind_dests`. It is
-    # skipped here, after the pairing, so the other rows pair exactly as before.
-    convenience = convenience_bind_dests()
+    # ⚑ A BIND OF CONVENIENCE IS NOT SHOWN (``[R149]``): a row whose source is still
+    # the floor's own at one of those dests. A user's bind there has its own source and
+    # is shown. Skipped after the pairing, so the other rows pair exactly as before.
+    convenience = dict(convenience_sources or {})
     for (key, _, entry), declaration in zip(rows, declarations, strict=True):
-        if declaration.dest in convenience:
+        if declaration.dest in convenience and convenience[declaration.dest] == entry.src:
             continue
         shown = display_agent_ref(key)
         dest = declaration.dest

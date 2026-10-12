@@ -170,6 +170,29 @@ _MOVED_RAISES = [
         lambda: core_defaults.internal_bind_keys(),
         "has no 'images' row keyed 'images_conf'",
     ),
+    (
+        "convenience_bind_row_is_missing",
+        {"kani": []},
+        None,
+        lambda: core_defaults.convenience_bind_dests(),
+        "has no 'kani' row keyed 'secret_export'",
+    ),
+    (
+        "spawn_budget_row_is_missing",
+        {"helpers": []},
+        None,
+        lambda: core_defaults.helper_budget_dest(),
+        "has no 'helpers' row keyed 'helper_budget'",
+    ),
+    (
+        "spawn_budget_row_is_declared_twice",
+        {"helpers": [
+            {"key": "helper_budget", "box_dest": "~/spawn.yaml", "options": "ro"},
+        ] * 2},
+        None,
+        lambda: core_defaults.helper_budget_dest(),
+        "has 2 'helpers' rows keyed 'helper_budget'; exactly one is allowed",
+    ),
 ]
 
 

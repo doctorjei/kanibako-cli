@@ -95,4 +95,5 @@ def _skeleton_logger() -> 'logging.Logger'
 def _protect_canon_skeleton(dirs: list[Path], files: list[Path], log: 'logging.Logger', *, quiet: bool=False) -> None
 def _warn_unprotected(root: Path, log: 'logging.Logger', reason: str, agent_owned: bool, quiet: bool=False) -> None
 def _table_bind_dests(table: str) -> frozenset[str]
+def _keyed_rows(table: str, key: str, role: str, *, exactly_one: bool=False) -> list[dict[str, Any]]
 ```

@@ -2627,6 +2627,43 @@ def _internal_floor_binds(floor: Mapping[str, object]) -> dict[str, object]:
     return out
 
 
+def convenience_bind_sources(
+    floor: Mapping[str, object], snapshot: KeyStore, ctx: ResolveCtx,
+) -> dict[str, str]:
+    """``{dest: resolved source}`` of each bind of convenience the *floor* carries.
+
+    The floor is what the emitters (``core_defaults.kani_default_categories`` and the
+    kickoff, helper and image tables) produced for this launch, so these are the
+    packaged default sources.  ``box show --effective`` omits a row at one of
+    :func:`core_defaults.convenience_bind_dests` only when its source is this one: a
+    user's own bind there is shown (``[R149]``).  A source that does not resolve is left
+    out, so its row is shown rather than guessed at.
+    """
+    dests = core_defaults.convenience_bind_dests()
+
+    def lookup(ref: str, chain: tuple[str, ...]) -> str:
+        del chain  # the snapshot holds terminals: nothing is resolved transitively.
+        value = snapshot_leaf(snapshot, ref)
+        if isinstance(value, str) and value:
+            return value
+        raise SettingsError(f"'@{ref}' has no resolved value in this snapshot")
+
+    out: dict[str, str] = {}
+    for arm, entries in floor.items():
+        if not (_is_bind_floor_key(arm) and isinstance(entries, dict)):
+            continue
+        for dest, value in entries.items():
+            norm = normalize_bind_dest(str(dest))
+            if norm not in dests or value is None:
+                continue
+            src, _opts = unpack_bind_entry(value)
+            try:
+                out[norm] = expand_expr(src, space="host", ctx=ctx, lookup=lookup)
+            except SettingsError:
+                continue
+    return out
+
+
 #: The ``<None>`` warnings already given in this process ([R185] and the secret one), by
 #: their text: one command runs several resolves over the same files, and one ``<None>``
 #: is ONE fact. Module-level on the footing of ``settings_assemble._DROP_WARNED``: it

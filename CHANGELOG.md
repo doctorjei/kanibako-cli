@@ -20,11 +20,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `probe_general_access`, `probe_model_access`, `access_outcome`, and `PersonaProbeOutcome.access` are new. See
   `MIGRATION.md`, "Personas: the store is read live, and stray values in the agent file now win" and "For plugin
   authors".
-- **`box show --effective` no longer lists kanibako's bridge binds.** The secrets profile snippet
-  (`/etc/profile.d/kanibako-secrets.sh`) and the kickoff slot (`~/.config/kanibako/kickoff.md`) printed on
-  every box, even one with no secrets. They, the helper socket, `~/spawn.yaml`, and the generated
-  `storage.conf` are omitted by one rule: each only carries another mechanism into the box. Your own
-  bindings, the in-box kanibako CLI, and the image store are still listed.
+- **`box show --effective` no longer lists the secrets profile snippet or the kickoff slot.**
+  `/etc/profile.d/kanibako-secrets.sh` and `~/.config/kanibako/kickoff.md` printed on every box, even one with no
+  secrets; each only carries another mechanism into the box. Your own bindings are still listed.
 - **A plugin's `category_binds:` refusal of a bare-relative source now uses the settings-file wording.** It names the
   hazard and ends "Spell the source out." For `bindings.ro`, `bindings.rw`, and `synced` it says the category takes
   no root at any scope. For `caches`, `common`, and `seeded` it no longer says that, which was false: those categories

@@ -2672,21 +2672,25 @@ class TestTheEffectiveBlockOmitsBindsOfConvenience:
     """``[R149]``: a bind whose only purpose is to bridge another mechanism is not shown.
 
     The floor is the REAL kani, kickoff, helper, and image tables, so every bind of
-    convenience is present the way a launch carries it.  The omission is one explicit
-    rule (``core_defaults.convenience_bind_dests``); before it, the secrets snippet and
-    the kickoff slot printed on every box, and the other three were absent only because
-    the display's resolve never injects their tables.
+    convenience carries the packaged default source a launch gives it.  A row is
+    omitted only while its source is that default
+    (``settings_launch.convenience_bind_sources``, the map the resolve hands the
+    display); a user's own bind at one of those dests is shown.
     """
 
     @staticmethod
-    def _render(tmp_path) -> str:
+    def _render(tmp_path, box_binds=None) -> str:
+        """Render the block; *box_binds* is the user's ``box.bindings`` table, if any."""
         import io
+
+        import yaml
 
         from kanibako.commands.start import _install_assembly_collapse
         from kanibako.settings import core_defaults
         from kanibako.settings.config_display import _print_category_block
         from kanibako.settings.settings_launch import (
             build_launch_snapshot,
+            convenience_bind_sources,
             meta_identity_floor,
             meta_runtime_floor,
             snapshot_category_entries,
@@ -2720,17 +2724,24 @@ class TestTheEffectiveBlockOmitsBindsOfConvenience:
             box_name="mybox", project_path="/code/x", inbox="/i",
             share_global="/sg", share_workset="/sw",
         ))
+        box_path = None
+        if box_binds:
+            box_path = tmp_path / "box.yaml"
+            box_path.write_text(yaml.safe_dump({"box": {"bindings": box_binds}}))
         ctx = make_ctx(
             workset_name=None, config={"config.primary_workset": "/data/pw"},
         )
         snap = build_launch_snapshot(
             agent_name="claude", ctx=ctx, system_path=None, agent_path=None,
-            workset_path=None, box_path=None, default_categories=floor,
+            workset_path=None, box_path=box_path, default_categories=floor,
         )
         entries = snapshot_category_entries(snap, active_agent="claude", box_ctx=ctx)
         _install_assembly_collapse(snap, entries, whole_box=True)
         buf = io.StringIO()
-        _print_category_block(snap, None, buf, ctx)
+        _print_category_block(
+            snap, None, buf, ctx,
+            convenience_sources=convenience_bind_sources(floor, snap, ctx),
+        )
         return buf.getvalue()
 
     @pytest.mark.parametrize("dest", [
@@ -2758,6 +2769,21 @@ class TestTheEffectiveBlockOmitsBindsOfConvenience:
             "/home/agent/.kanibako/state/helpers.jsonl",
         ):
             assert f"-> {dest}" in text, (dest, text)
+
+    def test_a_users_own_spawn_yaml_bind_is_shown(self, tmp_path):
+        """``~/spawn.yaml`` is a user key: the user's bind replaces the default there."""
+        text = self._render(
+            tmp_path, box_binds={"ro": {"~/spawn.yaml": ["/mine/spawn.yaml", "ro"]}},
+        )
+        assert "= /mine/spawn.yaml -> /home/agent/spawn.yaml" in text, text
+
+    def test_a_users_own_helper_sock_bind_is_shown(self, tmp_path):
+        """``helper.sock`` is a user key (owner ``box``): the user's bind is shown."""
+        text = self._render(
+            tmp_path,
+            box_binds={"rw": {"~/.kanibako/state/helper.sock": ["/mine/hub.sock", ""]}},
+        )
+        assert "= /mine/hub.sock -> /home/agent/.kanibako/state/helper.sock" in text, text
 
     def test_the_rule_is_the_five_declared_rows(self):
         """The ONE list, read from the rows that declare the binds."""

@@ -3137,6 +3137,7 @@ def show_config(
     category_error: str | None = None,
     category_declared_by: Any = None,
     category_dest_keys: Any = None,
+    category_convenience_sources: Any = None,
     inputs: Any = None,
     agent_name: str = GENERAL_SLOT,
     agent_path: Path | None = None,
@@ -3217,7 +3218,7 @@ def show_config(
         if category_error is not None or category_snapshot is not None:
             _print_category_block(
                 category_snapshot, category_error, out, category_ctx,
-                category_declared_by,
+                category_declared_by, category_convenience_sources,
             )
 
         # ⚑ Env vars come from the resolved BOX VIEW and ONLY that — never from the retired
