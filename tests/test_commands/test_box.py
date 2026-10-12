@@ -3220,6 +3220,78 @@ class TestCheckPersonaStoreForCreate:
         lowered = out.lower()
         assert not [w for w in _BLAME if w in lowered]
 
+    def _live_store(self, tmp_home, server, *, model, token):
+        """A codex store entry whose endpoint is *server* — the REAL probe runs."""
+        persona_dir = tmp_home / "config" / "personas" / "navigator"
+        (persona_dir / "codex").mkdir(parents=True)
+        (persona_dir / "codex" / "config.toml").write_text(
+            (f'model = "{model}"\n' if model else "")
+            + "[model_providers.navigator]\n"
+            + 'name = "navigator"\n'
+            + f'base_url = "{server.endpoint}/v1"\n'
+            + 'wire_api = "responses"\n'
+            + 'env_key = "NAVIGATOR_API_KEY"\n'
+        )
+        if token:
+            (persona_dir / ".secret_path").write_text("./token\n")
+            (persona_dir / "token").write_text("sk-test-secret\n")
+
+    @pytest.mark.parametrize("row, model, get, post, sentence", [
+        (15, "gemma4", 200, 403,
+         "The endpoint refused an uncredentialed request for model 'gemma4'."),
+        (16, "gemma4", 401, 401,
+         "The endpoint refused every request made without a credential; this persona "
+         "declares the endpoint keyless."),
+        (19, None, 200, 403,
+         "The endpoint refused an uncredentialed request that named no model."),
+    ], ids=["row15", "row16", "row19"])
+    def test_a_keyless_persona_is_probed_at_create_as_at_launch(
+        self, tmp_home, monkeypatch, capsys, row, model, get, post, sentence,
+    ):
+        """Second look 1 on S2: the create door probed only when the store yielded a
+        token path, so a keyless persona refused by its endpoint created silently
+        while the launch door refused it.  The REAL codex probe runs here.
+        """
+        from kanibako.plugins.codex.target import CodexTarget
+        from tests.test_targets.test_persona_settings import _ProbeServer
+
+        server = _ProbeServer(script={("GET", False): get, ("POST", False): post})
+        try:
+            self._live_store(tmp_home, server, model=model, token=False)
+            err = self._call(tmp_home, "navigator+codex", monkeypatch,
+                             target=CodexTarget())
+        finally:
+            server.close()
+        assert err is None  # still warn-only: create proceeds
+        out = capsys.readouterr().err
+        assert "creating anyway" in out
+        assert sentence in out
+        assert [(m, p, a) for m, p, a, _, _ in server.log] == [
+            ("GET", "/v1/models", None), ("POST", "/v1/responses", None),
+        ]
+
+    def test_a_keyed_persona_is_probed_with_its_credential_unchanged(
+        self, tmp_home, monkeypatch, capsys,
+    ):
+        from kanibako.plugins.codex.target import CodexTarget
+        from tests.test_targets.test_persona_settings import _ProbeServer
+
+        server = _ProbeServer(script={("GET", True): 200, ("GET", False): 401,
+                                      ("POST", True): 200})
+        try:
+            self._live_store(tmp_home, server, model="gemma4", token=True)
+            err = self._call(tmp_home, "navigator+codex", monkeypatch,
+                             target=CodexTarget())
+        finally:
+            server.close()
+        assert err is None
+        assert "Warning" not in capsys.readouterr().err
+        bearer = "Bearer sk-test-secret"
+        assert [(m, p, a) for m, p, a, _, _ in server.log] == [
+            ("GET", "/v1/models", bearer), ("GET", "/v1/models", None),
+            ("POST", "/v1/responses", bearer),
+        ]
+
     def test_a_two_axis_PASS_with_the_model_free_request_refused_only_logs(
         self, tmp_home, monkeypatch, capsys, caplog,
     ):
