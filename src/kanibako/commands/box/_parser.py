@@ -108,7 +108,7 @@ _CREATE_SHAPING_FLAGS = ("name", "image", "agent", "private", "no_vault")
 # SUBJECT — writes no stored box state.  Each one selects WHICH box, bypasses a
 # refusal, or performs the deferred registration (``--register``) that is itself
 # part of what a recovery completes.
-_CREATE_SUBJECT_FLAGS = ("path", "standalone", "allow_home", "register")
+_CREATE_SUBJECT_FLAGS = ("path", "standalone", "allow_home", "register", "force")
 
 
 def _add_target_group(
@@ -195,6 +195,12 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
         "--private", action="store_true",
         help="Create a PRIVATE box: disable global and workset credential "
              "sharing so the host's OAuth token is never seeded into it.",
+    )
+    create_p.add_argument(
+        "--force", action="store_true",
+        help="Create the box even though its workspace lies inside another box's "
+             "workspace, root, or store, or holds another box's workspace or root; "
+             "both boxes then share that tree",
     )
     create_p.add_argument(
         "--recover", action="store_true",
@@ -1197,6 +1203,30 @@ def precheck_create(args: argparse.Namespace) -> int | None:
     return None
 
 
+def _create_nesting_refusal(std, probe, root: Path, *, ws: Workset | None,
+                            force: bool) -> str | None:
+    """The error line refusing a new box's workspace placed on another box's tree, else ``None``.
+
+    Reuses the remap check (:func:`~kanibako.commands.box._lifecycle._remap_dest_holder`):
+    the new box is checked as if remapped onto its own workspace.  A standalone is checked
+    by its *root*, which the check reads the workspace from.
+    """
+    from kanibako.commands.box._lifecycle import ProjectState, _remap_dest_holder
+
+    dest = root if probe.mode is BoxMode.standalone else probe.project_path
+    if dest is None:  # a standalone root that nulls its workspace is refused elsewhere
+        return None
+    state = ProjectState(
+        owner=probe.mode.value, mode=probe.mode, name=probe.name or dest.name,
+        workspace_path=dest, metadata_path=probe.metadata_path,
+        shell_path=probe.shell_path, vault_ro=probe.vault_ro_path,
+        vault_rw=probe.vault_rw_path, ws=ws, paths=probe)
+    holder = _remap_dest_holder(state, dest, std, verb="create")
+    if holder is None or (holder[1] and force):
+        return None
+    return f"Error: Cannot create a box at '{dest}': it is {holder[0]}"
+
+
 def _create_target(args: argparse.Namespace) -> Path:
     return Path(literal_path(args.path)) if args.path else Path(logical_cwd())
 
@@ -1480,6 +1510,15 @@ def run_create(args: argparse.Namespace, outcome: _CreateOutcome) -> int:
             _assert_primary_home_free_for_create(std, _orphan.name)
         except ProjectError as e:
             print(f"Error: {e}", file=sys.stderr)
+            return 1
+    # ⚑ Keyspace § 0 "Per-owner resources": a workspace inside another box's, or holding
+    # one, is refused unless --force — the check a remap runs (one check, not two).  A
+    # recovery replays what attempt one already passed.
+    if _pending is None:
+        _nested = _create_nesting_refusal(
+            std, _probe, effective_path, ws=_named_ws, force=getattr(args, "force", False))
+        if _nested is not None:
+            print(_nested, file=sys.stderr)
             return 1
     # ⚑ Past the refusal, a pending entry means ``--recover``.
     is_recovery = _pending is not None

@@ -172,6 +172,12 @@ def build_parser() -> argparse.ArgumentParser:
              "sharing so the host's OAuth token is never seeded into it.",
     )
     create_p.add_argument(
+        "--force", action="store_true",
+        help="Create the box even though its workspace lies inside another box's "
+             "workspace, root, or store, or holds another box's workspace or root; "
+             "both boxes then share that tree",
+    )
+    create_p.add_argument(
         "--recover", action="store_true",
         help="Finish an interrupted 'create' on this path instead of starting a "
              "new box; it keeps the name and settings the first attempt chose",

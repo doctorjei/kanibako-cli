@@ -461,6 +461,10 @@ inside boxes. In order of likely impact:
 50. **The goose, claude, and codex VS Code panels use the box's own permission setting, not the box's `access` tier.**
     The launched agent still gets the tier — see *The VS Code panel uses the box's own permission setting*.
 
+51. **`create` inside, or holding, another box's workspace, standalone root, or store needs `--force`; on another
+    box's workspace or standalone root it exits 1 even with `--force`** — see *`create` on another box's path is
+    refused*.
+
 ---
 
 ## 2. Per-area detail
@@ -6081,15 +6085,18 @@ duplicate into a primary or named box. With `--force` the copy merges into `<dst
 
 **What to do.** Give a path that does not exist yet, or check what is in `<dst>` and pass `--force`.
 
-### A box and a workset may share a name; `--force` is gone from create and register
+### A box and a workset may share a name; `--force` is gone from register
 
-**Read this if `box create`, `kanibako create`, `box register`, or `kanibako register` now
-fails with `unrecognized arguments: --force`, or if you pass `--force` to `workset create`.**
+**Read this if `box register` or `kanibako register` now fails with `unrecognized arguments:
+--force`, if you passed `--force` to `create` to reuse a workset's name, or if you pass `--force`
+to `workset create`.**
 
 **What changed.** Box and workset names are separate namespaces, and only a name the same kind
 already holds is refused. Creating, registering, or renaming a box with a workset's name, or
 creating a workset with a primary box's name, now succeeds without `--force`, and that `--force`
-was removed from the four box commands because bypassing this refusal was its only job.
+was removed from `box register` and `kanibako register` because bypassing this refusal was its
+only job. On `box create` and `kanibako create`, `--force` now has one meaning: accept a workspace
+nested in another box's tree (see *`create` on another box's path is refused*).
 `workset create --force` no longer bypasses it either: its single meaning is now to accept a
 `workset.logs` directory shared with another working set (see *Two working sets on one
 `workset.logs` directory are refused without `--force`*). A bare name held by both still
@@ -6097,8 +6104,9 @@ resolves to the box, with no warning; `kanibako workset <cmd> <name>` reaches th
 auto-named box no longer skips a workset's name: a new box beside a workset `solo` is named `solo`,
 where it used to be `solo2`.
 
-**What to do.** Drop `--force` from the four box commands, and from `workset create` unless you
-mean to accept a shared `workset.logs` directory.
+**What to do.** Drop `--force` from the two register commands, from `create` unless you mean to
+nest a workspace in another box's tree, and from `workset create` unless you mean to accept a
+shared `workset.logs` directory.
 
 ### A `null` workset vault, canon, template, or channel root means no directory
 
@@ -6210,6 +6218,29 @@ and both boxes keep their rows and share the files.
 `--force`. A workset member is still refused inside another member's directory, even with
 `--force`: `Cannot connect '<path>': it is already connected as project '<box>' in workset '<ws>'.
 Disconnect it first.`
+
+### `create` on another box's path is refused
+
+**Read this if `box create` or `kanibako create` now stops with `Cannot create a box at '<path>':
+it is …`.**
+
+**What changed.** In v1.7.x `create` made a box whose workspace sat inside another box's
+workspace, or held one, and said nothing; a standalone root whose `workspace/` was another box's
+workspace became a second box on that workspace. `create` now runs the check `box remap` runs and
+exits 1 before writing anything, naming the other box.
+
+Refused unless `--force`, which creates the box and keeps both: a workspace (a standalone box's
+root) inside another box's workspace, standalone root, or store, or a directory holding another
+box's workspace or standalone root. A named member is checked by its `workspaces/<name>`.
+
+Refused even with `--force`: another box's workspace or standalone root, or a standalone root whose
+`workspace/` is another box's workspace:
+`Error: Cannot create a box at '/w/S2': it is the root of an unregistered standalone box. A create is
+not a takeover, and no flag overrides this. First delete that box (`kanibako box rm /w/S2 --purge`,
+which deletes that box's own data, its vault included, but not its workspace), then run the create
+again.`
+
+**What to do.** Choose another path, or add `--force` to share the other box's tree on purpose.
 
 ### A `box purge` that cannot remove everything exits 1 and parks the box
 

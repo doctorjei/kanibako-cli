@@ -13,7 +13,7 @@ _MODE_CHOICES = [m.value for m in BoxMode]
 _SHOW_ALL_HELP = 'Include every box, not just the running ones'
 _MISSING_WORKSPACE = 'missing workspace'
 _CREATE_SHAPING_FLAGS = ('name', 'image', 'agent', 'private', 'no_vault')
-_CREATE_SUBJECT_FLAGS = ('path', 'standalone', 'allow_home', 'register')
+_CREATE_SUBJECT_FLAGS = ('path', 'standalone', 'allow_home', 'register', 'force')
 _SHAPING_SET_CURE = {'image': ('box.image=<value>',), 'agent': ('pref.system.agent=<value>',), 'private': ('box.auth.global_enabled=false', 'box.auth.workset_enabled=false'), 'no_vault': ('box.enable_vault=false',)}
 _STANDALONE_CREATE_EXEMPT_KEYS: frozenset[str] = frozenset({'registry', 'template'})
 _GITIGNORE = 'gitignore line'
@@ -58,6 +58,7 @@ def _new_member_undo(ws: Workset, name: str) -> Callable[..., bool]
 def _new_box_undo(std, probe, *, standalone: bool) -> tuple[Callable[[], None], Callable[[str], None]]
 def _claim_create_entry(std, probe, state: dict, *, primary: bool) -> 'dict | None'
 def _recovered_standalone_name(std, proj, supplied: str) -> str
+def _create_nesting_refusal(std, probe, root: Path, *, ws: Workset | None, force: bool) -> str | None
 def _create_target(args: argparse.Namespace) -> Path
 def _mkdir_recording(target: Path, made: list[Path]) -> None
 def _unmakes_its_dirs_on_failure(create: Callable[[argparse.Namespace, _CreateOutcome], int]) -> Callable[[argparse.Namespace], int]

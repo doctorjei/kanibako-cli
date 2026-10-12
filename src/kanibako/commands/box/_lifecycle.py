@@ -48,7 +48,7 @@ from kanibako.settings.config import (
 )
 from kanibako.identifiers import find_identifier
 from kanibako.errors import (
-    BoxNameError, ContainerError, DerivedBoxNameError, KanibakoError, ProjectError,
+    BoxNameError, ConfigError, ContainerError, DerivedBoxNameError, KanibakoError, ProjectError,
     UnmarkedStandaloneError, WorksetError,
 )
 from kanibako.settings.messages import (
@@ -431,7 +431,7 @@ def _moved_standalone_state(
     if holder is not None:
         raise ProjectError(
             f"Cannot remap '{name}' onto '{dest}': it is the root of standalone box "
-            f"'{holder}'. " + _REMAP_TAKEOVER_CURE.format(shlex.quote(str(dest))))
+            f"'{holder}'. " + _REMAP_TAKEOVER_CURE.format(shlex.quote(str(dest)), verb="remap"))
     if proj is None:
         raise ProjectError(
             f"Cannot remap '{name}' onto '{dest}': it is a standalone root carrying this "
@@ -859,15 +859,18 @@ def _name_held_in_target_workset(
     return find_identifier(new_name, (p.name for p in target_ws.projects))
 
 
-#: The cure a remap onto another box's path prints; ``{0}`` is that box, shell-quoted.
-_REMAP_TAKEOVER_CURE = (
-    "A remap is not a takeover, and no flag overrides this. First delete that box "
+#: The refusal a remap (or create) onto another box's path prints, before its cure;
+#: ``{verb}`` is the command.
+_NO_FLAG_TAKEOVER = "A {verb} is not a takeover, and no flag overrides this. "
+#: The cure for that refusal; ``{0}`` is that box, shell-quoted.
+_REMAP_TAKEOVER_CURE = _NO_FLAG_TAKEOVER + (
+    "First delete that box "
     "(`kanibako box rm {0} --purge`, which deletes that box's own data, its vault included, "
-    "but not its workspace), then run the remap again.")
+    "but not its workspace), then run the {verb} again.")
 
 
 def _remap_dest_holder(
-    state: ProjectState, dest: Path, std: StandardPaths,
+    state: ProjectState, dest: Path, std: StandardPaths, *, verb: str = "remap",
 ) -> tuple[str, bool] | None:
     """Why a remap of *state* onto *dest* lands on ANOTHER box's path, else ``None``.
 
@@ -890,9 +893,12 @@ def _remap_dest_holder(
 
     standalone = state.mode is BoxMode.standalone
     own_root = _resolved_unless_loop(state.metadata_path) if standalone else None
-    no_flag = "A remap is not a takeover, and no flag overrides this. "
+    no_flag = _NO_FLAG_TAKEOVER.format(verb=verb)
     share = "Both boxes would claim it: pass --force to share it, or choose another path."
-    takeover = _REMAP_TAKEOVER_CURE
+
+    def takeover(box: str) -> str:
+        return _REMAP_TAKEOVER_CURE.format(shlex.quote(box), verb=verb)
+
     identical = ("Identical workspaces are refused, and no flag overrides this. Choose "
                  "another path.")
 
@@ -930,6 +936,29 @@ def _remap_dest_holder(
                 and _resolved_unless_loop(Path(literal_path(root_str))) == own_root)}
     early = _early_scope(std, BoxMode.primary)
 
+    # A standalone records no primary row: when the primary registry is refused (an
+    # inherited ``workset.registry`` reaching no owner), there is no primary box to find.
+    # ``early_repoint``'s one ConfigError is that refusal.  A primary or named state still
+    # refuses.
+    primary_refused = False
+    if standalone:
+        from kanibako.settings.config_io import load_doc
+        from kanibako.settings.workset_dirkeys import early_repoint
+        primary_doc = load_doc(std.primary_workset / WORKSET_META_FILE)
+        try:
+            early_repoint(std.primary_workset, primary_doc, "registry", early=early)
+        except ConfigError:
+            primary_refused = True
+
+    def primary_at(path: Path) -> str | None:
+        if primary_refused:
+            return None
+        return primary_box_name_for_workspace(std.primary_workset, str(path), early=early)
+
+    def recorded_under(tree: Path) -> list[tuple[str, Path]]:
+        return box_resolve.recorded_workspaces_under(
+            std, tree, standalone=False, primary=not primary_refused)
+
     def own_member(owned: Any) -> bool:
         return (state.ws is not None and owned.workset_name == state.ws.name
                 and _same_box_name(owned.box_name, state.name))
@@ -938,20 +967,20 @@ def _remap_dest_holder(
     other = standalone_at(dest)
     if other is not None:
         return (f"the root of {standalone_who(other)}. "
-                + takeover.format(shlex.quote(other or str(dest))), False)
+                + takeover(other or str(dest)), False)
     landing = _resolved_unless_loop(dest)
     for name, held_root in standalones.items():
         if _resolved_unless_loop(held_root) == landing:  # a root whose marker is gone
             # The cure names the path: a primary box may share the standalone's name.
             return (f"the root of {standalone_who(name)}. "
-                    + takeover.format(shlex.quote(str(held_root))), False)
+                    + takeover(str(held_root)), False)
 
     def workspace_of(path: Path) -> str | None:
         """Why *path* is another box's recorded workspace, as given, else ``None``."""
-        box = primary_box_name_for_workspace(std.primary_workset, str(path), early=early)
+        box = primary_at(path)
         if box is not None and not (state.mode is BoxMode.primary
                                     and _same_box_name(box, state.name)):
-            return f"the workspace of primary box '{box}'. " + takeover.format(shlex.quote(box))
+            return f"the workspace of primary box '{box}'. " + takeover(box)
         owned = box_resolve.find_connected_external_box(path, std)
         if (owned is not None and not own_member(owned)
                 and Path(literal_path(owned.box_path)) == path):
@@ -959,9 +988,9 @@ def _remap_dest_holder(
                     f"'{owned.workset_name}'. " + no_flag + "First disconnect it (`kanibako "
                     f"workset disconnect {shlex.quote(owned.workset_name)} "
                     f"{shlex.quote(owned.box_name)} --force`, which deletes no files), then "
-                    "run the remap again.")
+                    f"run the {verb} again.")
         held = next((owner for owner, recorded_at
-                     in box_resolve.recorded_workspaces_under(std, path, standalone=False)
+                     in recorded_under(path)
                      if Path(literal_path(recorded_at)) == path
                      and not _same_box_name(owner, own_ref)), None)
         if held is not None:
@@ -1004,8 +1033,7 @@ def _remap_dest_holder(
     # --- Refused unless --force: one tree inside or holding another. ---
     for tree in trees:
         primary = next(((p, holder) for p in (tree, *tree.parents)
-                        if (holder := primary_box_name_for_workspace(
-                            std.primary_workset, str(p), early=early)) is not None
+                        if (holder := primary_at(p)) is not None
                         and not (state.mode is BoxMode.primary
                                  and _same_box_name(holder, state.name))), None)
         if primary is not None:
@@ -1022,7 +1050,7 @@ def _remap_dest_holder(
                     "pass --force to use it anyway, or choose another path.", True)
         return f"inside the store of {whose} ({store}). " + share, True
 
-    for name in load_primary_boxes(std.primary_workset, early=early):
+    for name in () if primary_refused else load_primary_boxes(std.primary_workset, early=early):
         store = _resolved_unless_loop(std.boxes / name)
         if landing == store or store in landing.parents:
             return store_note(state.mode is BoxMode.primary and _same_box_name(name, state.name),
@@ -1048,7 +1076,7 @@ def _remap_dest_holder(
 
     for tree in trees:
         nested = next(((owner, path) for owner, path
-                       in box_resolve.recorded_workspaces_under(std, tree, standalone=False)
+                       in recorded_under(tree)
                        if not _same_box_name(owner, own_ref)
                        and below(Path(literal_path(path)), tree)), None)
         if nested is not None:

@@ -44,7 +44,8 @@ def _surgeon(holder: Path, ws=None) -> Path:
     """
     workspace = holder / "x"
     if ws is None:
-        assert _door("create", "--name", "alpha", str(workspace)) == 0
+        # A workspace inside another box's tree is a forced share (keyspec § 0).
+        assert _door("create", "--force", "--name", "alpha", str(workspace)) == 0
     else:
         # Neither create nor connect reaches a named store yet (S4c/Step 4), so the
         # forced share is staged in the registry by hand, as Step 4's --force will.

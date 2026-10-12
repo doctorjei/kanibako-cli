@@ -173,11 +173,11 @@ def _find_owning_box(
 
 
 def recorded_workspaces_under(std: StandardPaths, tree: Path, *, standalone: bool = True,
-                              ) -> list[tuple[str, Path]]:
+                              primary: bool = True) -> list[tuple[str, Path]]:
     """Every box whose RECORDED workspace is *tree* or lies under it, as ``(owner, path)``.
 
-    Covers the primary registry, every named workset's, and, unless *standalone* is false,
-    the standalone section, whose rows record a root.  *owner* is the box name,
+    Covers the primary registry unless *primary* is false, every named workset's, and,
+    unless *standalone* is false, the standalone section, whose rows record a root.  *owner* is the box name,
     ``<workset>/<name>`` for a named member.  Paths compare both literal and resolved: a
     safety test, so a workspace reached through a link still counts.
     """
@@ -203,6 +203,8 @@ def recorded_workspaces_under(std: StandardPaths, tree: Path, *, standalone: boo
             # ⚑ An unreadable file still has members: read the DEFAULT registry path,
             # as ``delete_workset`` does, rather than refusing a purge elsewhere.
             settings = None
+        if mode is BoxMode.primary and not primary:
+            continue
         registry_path = workset_registry.resolve_workset_registry_path(
             root, settings,
             early=EarlyScope(std.early_system, workset_token(mode, workset_name)),

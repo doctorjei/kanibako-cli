@@ -199,8 +199,6 @@ class TestParser:
         assert args.path is None
 
     @pytest.mark.parametrize("argv", [
-        ["box", "create", "/tmp/project", "--force"],
-        ["create", "/tmp/project", "--force"],
         ["box", "register", "name", "--force"],
         ["register", "name", "--force"],
     ])
@@ -208,6 +206,14 @@ class TestParser:
         """`--force` on these existed only to bypass the cross-kind name refusal."""
         with pytest.raises(SystemExit):
             build_parser().parse_args(argv)
+
+    @pytest.mark.parametrize("argv", [
+        ["box", "create", "/tmp/project", "--force"],
+        ["create", "/tmp/project", "--force"],
+    ])
+    def test_create_force_shares_a_nested_workspace(self, argv):
+        """`create --force` has one meaning: accept a nested workspace (keyspace § 0)."""
+        assert build_parser().parse_args(argv).force is True
 
     def test_box_purge_command(self):
         parser = build_parser()

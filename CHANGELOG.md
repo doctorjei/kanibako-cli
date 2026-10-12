@@ -318,8 +318,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   only a name already held by the same kind is refused. `box create --name`, `box register`,
   `kanibako register`, `box move`/`convert --name`, and `workset create` no longer refuse a name a
   workset (or, for `workset create`, a primary box) already uses, and the `--force` that bypassed
-  that refusal is gone from `box create`, `kanibako create`, `box register`, `kanibako register`,
-  and `workset create`, where it had no other job. An auto-named box no longer skips a workset's
+  that refusal is gone from `box register`, `kanibako register`, and `workset create`, where it had
+  no other job. On `box create` and `kanibako create`, `--force` now only accepts a workspace nested
+  in another box's tree. An auto-named box no longer skips a workset's
   name, so a box created in `~/solo` beside a workset `solo` is named `solo`, not `solo2`. A bare
   name held by both a primary box and a workset still resolves to the box, with no warning;
   noun-scoped `workset` commands reach the workset. Importing a workset whose name a primary box
@@ -861,6 +862,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `workset disconnect --remove-files` stopped with a traceback when a box's log file could not be deleted.
   They now print `Warning: could not remove the log <path>: <reason> — left in place.` and go on. `box purge`
   then keeps the box's metadata, parks the box, and exits 1.
+- **`create` inside, or holding, another box's tree needs `--force`.** A workspace (a standalone box's root)
+  inside another box's workspace, standalone root, or store, or a directory holding another box's workspace or
+  root, was created silently; it now exits 1 naming the other box, and `--force` creates it with both boxes
+  sharing the tree. Another box's workspace or standalone root, or a standalone root whose `workspace/` is
+  another box's workspace (which made two boxes on one workspace), is refused even with `--force`. See
+  `MIGRATION.md`, "`create` on another box's path is refused".
 - **`box remap` onto another box's workspace or standalone root is refused before anything is written.**
   Onto a primary box's workspace, a workset member's, or a standalone box's `workspace/`, it recorded two
   boxes at one path; onto another standalone box's root it dropped that box's registry row, or, for a

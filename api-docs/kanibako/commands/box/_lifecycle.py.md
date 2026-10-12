@@ -12,7 +12,8 @@ INPLACE = _Sentinel('INPLACE')
 BARE_INTO_WS = _Sentinel('BARE_INTO_WS')
 UNCHANGED = _Sentinel('UNCHANGED')
 STUBBORN_INPLACE_MSG = 'Stubbornly refusing to convert in-place from within a workset; add `--move` or `--move <path>` to relocate.'
-_REMAP_TAKEOVER_CURE = "A remap is not a takeover, and no flag overrides this. First delete that box (`kanibako box rm {0} --purge`, which deletes that box's own data, its vault included, but not its workspace), then run the remap again."
+_NO_FLAG_TAKEOVER = 'A {verb} is not a takeover, and no flag overrides this. '
+_REMAP_TAKEOVER_CURE = _NO_FLAG_TAKEOVER + "First delete that box (`kanibako box rm {0} --purge`, which deletes that box's own data, its vault included, but not its workspace), then run the {verb} again."
 _VAULT_ARM_KEYS: tuple[str, str] = ('workset.vault_ro', 'workset.vault_rw')
 _DISABLED_VAULT_WHY = 'box.enable_vault is false, so nothing received its contents.'
 _STANDALONE_FIXED_ARTIFACTS = frozenset({STANDALONE_META_DIR, WORKSET_META_FILE, BOX_META_FILE, '.kanibako.lock'})
@@ -58,7 +59,7 @@ def _workspace_copy_ignore(metadata_root: Path, copied_root: Path, *, mode: BoxM
 def _resolve_target_workset(name: str, std: StandardPaths) -> Workset
 def _cure_ref(state: ProjectState) -> str
 def _name_held_in_target_workset(target_mode: BoxMode | None, target_ws: Workset | None, state: ProjectState, new_name: str) -> str | None
-def _remap_dest_holder(state: ProjectState, dest: Path, std: StandardPaths) -> tuple[str, bool] | None
+def _remap_dest_holder(state: ProjectState, dest: Path, std: StandardPaths, *, verb: str='remap') -> tuple[str, bool] | None
 def _sweep_moves_other_box(root: Path, std: StandardPaths, standalones: Mapping[str, Path], *, own_ref: str | None=None) -> tuple[str, Path, Path] | None
 def _remap_sweeps_other_box(state: ProjectState, dest: Path, std: StandardPaths, own_store: Path, standalones: Mapping[str, Path]) -> str | None
 def _validate(state: ProjectState, spec: TargetSpec, std: StandardPaths, config: BootstrapConfig, *, force: bool, cwd: Path) -> dict
