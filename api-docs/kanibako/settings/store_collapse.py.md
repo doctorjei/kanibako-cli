@@ -42,6 +42,8 @@ def collapse_seeded(store_shape_set: StoreShapeSet) -> CollapsedCopies
 def collapse_env(entries: list[CategoryEntry], cli_env: Mapping[str, str] | None=None) -> CollapsedEnvs
 def is_within(dest: str, root: str) -> bool
 def covering_bind(bindings: Mapping[str, CollapsedBind], dest: str) -> str | None
+def parent_mask(bindings: CollapsedBindings, dest: str) -> str | None
+def under_mask_refusal(subject: str, dest: str, mask: str, mask_key: str | None, cure: str) -> str
 def refuse_uncovered_synced(bindings: CollapsedBindings, copies: CollapsedCopies) -> None
 def pair_declarations(declarations: Sequence[Declaration], bindings: Mapping[str, CollapsedBind], copies: Sequence[CollapsedCopy]=()) -> tuple[Derivation, ...]
 def derivation_result(row: Any, declared_by: Mapping[str, str] | None=None) -> str

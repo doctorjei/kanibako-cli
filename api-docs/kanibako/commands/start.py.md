@@ -54,6 +54,7 @@ def helper_socket_path(proj: ProjectPaths, run_dir: Path) -> Path
 def validate_socket_path(socket_path: Path) -> None
 def _agent_critical_dests() -> list[tuple[str, str]]
 def _link_persona_share(node_link: Path, harness_dir: Path, *, what: str, logger) -> None
+def _add_launch_args(p: argparse.ArgumentParser) -> None
 def _bootstrap_choice(proj, system_settings_path: 'Path | None', agent_id: str, *, std, selection_level: 'Mapping[str, object] | None', agent_path: 'Path | None'=None) -> BootstrapChoice
 def _bootstrap_setting(choice: BootstrapChoice) -> str | None
 def _no_bootstrap_reason(choice: BootstrapChoice) -> str

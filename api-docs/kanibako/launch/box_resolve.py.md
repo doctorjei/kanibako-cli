@@ -15,6 +15,7 @@ _PRIMARY_WORKSET_NAME = 'default'
 ```
 def stores_standalone_registry_null(project_dir: Path, *, strict: bool=False) -> bool
 def standalone_marker_error(root: Path, name: str) -> str | None
+def standalone_marker_refusal(root: Path, lead: str) -> str
 def standalone_marker_repair(root: Path) -> tuple[str, str]
 def registered_standalone_marker_error(root: Path, std: StandardPaths) -> str | None
 def recorded_workspaces_under(std: StandardPaths, tree: Path, *, standalone: bool=True, primary: bool=True) -> list[tuple[str, Path]]

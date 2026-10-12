@@ -12,7 +12,6 @@ logger = get_logger('helper_listener')
 
 ## Functions
 ```
-def _send_json(conn: socket.socket, data: dict) -> None
 def _build_helper_mounts(ctx: HelperContext, helper_num: int, helpers_dir: Path) -> list[Mount]
 ```
 

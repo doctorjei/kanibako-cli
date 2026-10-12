@@ -13,6 +13,8 @@ _READER_JOIN = 5.0
 
 ## Functions
 ```
+def send_frame(sock: socket.socket, data: dict) -> None
+def iter_frames(sock: socket.socket, stop: threading.Event | None=None, *, raise_errors: bool=False) -> Iterator[bytes]
 def send_request(socket_path: Path, request: dict) -> dict
 def _route_frame(line: bytes, responses: queue.Queue[Any], inbox: queue.Queue[Any]) -> str | None
 ```

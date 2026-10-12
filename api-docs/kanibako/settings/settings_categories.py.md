@@ -58,6 +58,7 @@ def secret_path_deliveries(entries: list[CategoryEntry]) -> list[CategoryEntry]
 def is_scalar_family_value(value: object) -> bool
 def is_path_key_value(value: object) -> bool
 def refuse_non_scalar_family_value(key: str, category: str, value: object) -> None
+def env_twin_refusal(var: str, claim: str, cure: str) -> str
 def refuse_env_secret_twins(entries: list[CategoryEntry]) -> None
 def launch_deliveries(entries: list[CategoryEntry], *, agent_dests: frozenset[str], narrow_bindings: 'dict[str, object] | None'=None, declared_by: 'dict[str, str] | None'=None, dest_keys: 'dict[tuple[str, ...], str] | None'=None) -> LaunchDeliveries
 def narrow_table_winners(entries: list[CategoryEntry], dests: frozenset[str]) -> list[CategoryEntry]
