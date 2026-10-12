@@ -9466,20 +9466,22 @@ def _refuse_synced_under_mask(copies: "list[CollapsedCopy]", bindings) -> None:
     ⚑ A dest is DATA: it is compared and sliced as a PATH, never split on ``.``.
     """
     from kanibako.settings.settings_resolve import SettingsError
-    from kanibako.settings.store_collapse import is_mask
+    from kanibako.settings.store_collapse import (
+        is_mask, parent_mask, under_mask_refusal,
+    )
 
     for sync in copies:
+        mask = parent_mask(bindings, sync.dest)
+        if mask is not None:
+            raise SettingsError(under_mask_refusal(
+                f"the synced copy of {sync.src!r}", sync.dest, mask, None,
+                "A mask is a void with no host source, so the copy has nowhere to "
+                "land and the box would see nothing at that path - sync to a "
+                "destination outside the mask, or do not declare the mask.",
+            ))
         cover = _synced_cover(sync.dest, bindings)
-        if cover is None or not is_mask(bindings[cover]):
+        if cover != sync.dest or not is_mask(bindings[cover]):
             continue
-        if cover != sync.dest:
-            raise SettingsError(
-                f"the synced copy of {sync.src!r} at {sync.dest!r} sits inside the "
-                f"mask at {cover!r}, which would swallow it. A mask is a void with "
-                f"no host source, so the copy has nowhere to land and the box would "
-                f"see nothing at that path - sync to a destination outside the mask, "
-                f"or do not declare the mask."
-            )
         if Path(sync.src).is_dir():
             raise SettingsError(
                 f"the synced copy of the DIRECTORY {sync.src!r} lands on the mask at "

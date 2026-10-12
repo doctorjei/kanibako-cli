@@ -594,17 +594,44 @@ def _refuse_bind_under_mask(
   second spelling. 🛑 No "either one may be the one you keep" hedge: the occupant is
   DETERMINED here, and the reader is told which two keys are in play.
   """
-  # ⚑ The lone equality guard in the module, and it states the RULE rather than
-  # patching a predicate: a bind may take a mask's own point (the sweep then
-  # removes the mask), and may only never sit INSIDE one.
-  masks = [d for d in _masks_over(combined, dest) if d != dest]
-  if not masks:
+  mask = parent_mask(combined, dest)
+  if mask is None:
     return
-  raise SettingsError(
-    f"the binding{_declared_clause(key)} of {entry.src!r} at {dest!r} sits inside the "
-    f"mask{_declared_clause(declared_by.get(masks[0]))} at {masks[0]!r}, which would "
-    f"swallow it. A mask may be a child of a binding, never its parent - bind "
-    f"outside the mask, or SUPPRESS the mask. {SUPPRESS_THEN_ADD}."
+  raise SettingsError(under_mask_refusal(
+    f"the binding{_declared_clause(key)} of {entry.src!r}", dest, mask,
+    declared_by.get(mask),
+    f"A mask may be a child of a binding, never its parent - bind outside the mask, "
+    f"or SUPPRESS the mask. {SUPPRESS_THEN_ADD}.",
+  ))
+
+
+def parent_mask(bindings: CollapsedBindings, dest: str) -> str | None:
+  """The MASK dest strictly CONTAINING *dest* - the one that would swallow it - or ``None``.
+
+  ⚑ ONE LOOKUP for both refusals of the class: a bind under a mask, here, and a
+  ``synced`` copy under one (``commands.start._refuse_synced_under_mask``).
+  ⚑ The lone equality guard in the module, and it states the RULE rather than
+  patching a predicate: a bind may take a mask's own point (the sweep then removes
+  the mask), and only never sit INSIDE one; a copy at a mask's own point is the
+  caller's other cell. In a map the mask-on-mask refusal has checked there is at
+  most one such mask; the first is named.
+  """
+  return next((d for d in _masks_over(bindings, dest) if d != dest), None)
+
+
+def under_mask_refusal(
+  subject: str, dest: str, mask: str, mask_key: str | None, cure: str,
+) -> str:
+  """The ONE message for a delivery that sits inside a mask: subject, dest, mask, cure.
+
+  *subject* names the swallowed delivery ("the binding ... of '<src>'"); *mask_key*
+  is the mask's declaring key, or ``None`` where the caller holds no fold record
+  (the clause is then EMPTY, as :func:`_declared_clause` says). The cure is the
+  caller's: a bind and a copy are moved in different ways.
+  """
+  return (
+    f"{subject} at {dest!r} sits inside the mask{_declared_clause(mask_key)} at "
+    f"{mask!r}, which would swallow it. {cure}"
   )
 
 
