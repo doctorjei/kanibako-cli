@@ -1,10 +1,11 @@
 """``workset connect`` onto another box's tree (keyspace § 0 "Per-owner resources").
 
 A standalone root, by its path, a link, or a linked parent, is another box's: connecting
-it is refused unless --force, and --force absorbs that box.  An absorb moves the box's
-registry row (one registration) and records the member at the root the row names, so the
-root still resolves to the box.  Measured before the fix: through a link, the row was
-dropped and the member recorded at the link, so the real root resolved to no box.
+it is refused unless --force, and --force absorbs that box.  An absorb finds the box's
+registry row under any spelling and moves it (one registration), and records the member at
+the box's root: the row's path, else the path given, with a link leaf resolved.  Measured
+before the fix: through a link, the member was recorded at the link, and a row spelled
+another way was kept beside the member.
 """
 
 from __future__ import annotations
@@ -67,9 +68,12 @@ def _owner(std, path: Path) -> str | None:
     return None if owned is None else f"{owned.workset_name}/{owned.box_name}"
 
 
-def _assert_absorbed(std, name: str, root: Path) -> None:
-    """One registration: the row moved, the member records *root*, and *root* resolves."""
-    assert name not in registry_store.load_standalone(std.registry)
+def _assert_absorbed(std, name: str | None, root: Path) -> None:
+    """One registration: the row moved (no row at any spelling of *root*), and the member
+    records *root*, which its connected-box lookup finds."""
+    if name is not None:
+        assert name not in registry_store.load_standalone(std.registry)
+    assert registry_store.standalone_name_for_same_dir(std.registry, root) is None
     assert _members(std, "wn").get("m") == str(root)
     assert _owner(std, root) == "wn/m"
 
@@ -150,7 +154,7 @@ class TestConnectRootRegisteredThroughALink:
         _root, name = _standalone(std, area, capsys, root=link)
 
         assert _connect("wn", link, "m", force=True) == 0, capsys.readouterr().err
-        _assert_absorbed(std, name, link)
+        _assert_absorbed(std, name, area / "real")
 
     def test_root_registered_under_a_linked_parent_absorbs_once(self, env, capsys):
         std, area = env
@@ -209,3 +213,77 @@ class TestConvertOntoAStandaloneRootLink:
 
         assert self._convert(src, force=True) == 0, capsys.readouterr().err
         _assert_absorbed(std, xs_name, xs_root)
+
+    def test_force_absorbs_a_root_registered_at_another_link(self, env, capsys):
+        """The row names a link to XS; the workspace is a second link: one box, absorbed once."""
+        from kanibako.settings.config_io import dump_doc, load_doc
+        std, area = env
+        (area / "real").mkdir()
+        (area / "rlnk1").symlink_to(area / "real")
+        (area / "rlnk2").symlink_to(area / "real")
+        _root, xs_name = _standalone(std, area, capsys, root=area / "rlnk1")
+        src = area / "S"
+        assert run_create(build_parser().parse_args(
+            ["box", "create", "--standalone", "--register", str(src)])) == 0
+        capsys.readouterr()
+        meta = src / "workset.yaml"
+        doc = load_doc(meta) or {}
+        doc.setdefault("workset", {})["workspaces"] = str(area / "rlnk2")
+        dump_doc(meta, doc)
+
+        assert self._convert(src, force=True) == 0, capsys.readouterr().err
+        _assert_absorbed(std, xs_name, area / "real")
+
+
+class TestAbsorbAcrossSpellings:
+    """A forced connect finds the box's row under any spelling of its directory (the
+    registry's ``standalone_name_for_same_dir``), so the row moves and is never kept
+    beside the member, and a link leaf is resolved, so the member records the real root."""
+
+    @staticmethod
+    def _linked_real(area: Path, *links: str) -> Path:
+        (area / "real").mkdir()
+        for link in links:
+            (area / link).symlink_to(area / "real")
+        return area / "real"
+
+    def test_row_at_one_link_connected_through_another(self, env, capsys):
+        std, area = env
+        real = self._linked_real(area, "rlnk1", "rlnk2")
+        _root, name = _standalone(std, area, capsys, root=area / "rlnk1")
+
+        assert _connect("wn", area / "rlnk2", "m", force=True) == 0, capsys.readouterr().err
+        _assert_absorbed(std, name, real)
+
+    def test_row_at_a_link_connected_at_the_real_path(self, env, capsys):
+        std, area = env
+        real = self._linked_real(area, "rlnk1")
+        _root, name = _standalone(std, area, capsys, root=area / "rlnk1")
+
+        assert _connect("wn", real, "m", force=True) == 0, capsys.readouterr().err
+        _assert_absorbed(std, name, real)
+
+    def test_row_under_one_linked_parent_connected_under_another(self, env, capsys):
+        """A linked ancestor spells both alike ([R188]): the member records the row's path."""
+        std, area = env
+        (area / "real_parent").mkdir()
+        (area / "r").symlink_to(area / "real_parent")
+        (area / "r2").symlink_to(area / "real_parent")
+        _root, name = _standalone(std, area, capsys, root=area / "r" / "XS")
+
+        assert _connect("wn", area / "r2" / "XS", "m", force=True) == 0, \
+            capsys.readouterr().err
+        _assert_absorbed(std, name, area / "r" / "XS")
+
+    def test_unregistered_box_through_a_link_is_recorded_at_its_root(self, env, capsys):
+        std, area = env
+        root = area / "XS"
+        assert run_create(build_parser().parse_args(
+            ["box", "create", "--standalone", str(root)])) == 0
+        capsys.readouterr()
+        assert registry_store.standalone_name_for_same_dir(std.registry, root) is None
+        (area / "rlnk").symlink_to(root)
+
+        assert _connect("wn", area / "rlnk", "m", force=True) == 0, capsys.readouterr().err
+        _assert_absorbed(std, None, root)
+

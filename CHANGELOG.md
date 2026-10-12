@@ -820,10 +820,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   package and `kanibako` command binds; it now gets the box's set, which adds the secrets profile snippet
   `/etc/profile.d/kanibako-secrets.sh`, a no-op in a helper with no secret mounted.
 - **`workset connect --force` absorbs a standalone box reached through a link or a linked directory.** The
-  box's registry row moves to the workset, and the member records the root that row names, so the root still
-  resolves to the box. Before, through a link, the row was dropped and the member recorded at the link, so the
-  root resolved to no box; and a box registered through a linked directory kept its row beside the new member.
-  Without `--force`, the connect is refused and the message names `--force`, as at the root's own path.
+  box's registry row is found under any spelling of its root and moves to the workset, so the box is registered
+  once. The member records the row's path, or the path given; a link at the last component is resolved, so the
+  real root is recorded. Before, through a link, the member recorded the link, and a row spelled another way
+  was kept beside the new member. Without `--force`, the connect is refused and the message names `--force`, as
+  at the root's own path.
 - **`box convert --workset` refuses, unless `--force`, a box whose workspace is another standalone box's root.**
   The convert absorbed that box and dropped its registry row, without asking.
 - **A `workset connect` inside another workset's member names that member and its path,** not "already

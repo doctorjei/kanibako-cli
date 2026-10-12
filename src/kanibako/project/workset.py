@@ -2183,9 +2183,10 @@ def add_project(
 
         refuse_existing_box(literal_source, std, force=force)
 
-    # ⚑ A --force absorb records the box where it is registered ([R188]: the row as given
-    # first), so its root still resolves to it; a link or a linked parent reaching it
-    # names the same box.  An unregistered box is recorded as given.
+    # ⚑ A --force absorb finds the box's row by its directory, under any spelling, and
+    # records the member at that box's root: the row's path, else the path as given, with
+    # a link LEAF resolved, so the member records the real root.  A linked ancestor
+    # spells both alike and stays as given ([R188], ``registry_store._leaf_is_link``).
     absorbed: tuple[str, str] | None = None
     from kanibako.launch import box_resolve as _box_resolve
 
@@ -2193,13 +2194,14 @@ def add_project(
             and _box_resolve.stores_standalone_registry_null(resolved_source)):
         from kanibako.project import registry_store
 
-        absorbed_name = (registry_store.standalone_name_for_root(std.registry, literal_source)
-                         or registry_store.standalone_name_for_root(std.registry,
-                                                                    resolved_source))
+        absorbed_name = registry_store.standalone_name_for_same_dir(std.registry,
+                                                                    literal_source)
         if absorbed_name is not None:
             absorbed = (absorbed_name,
                         registry_store.load_standalone(std.registry)[absorbed_name])
             literal_source = Path(literal_path(absorbed[1]))
+        if registry_store._leaf_is_link(str(literal_source)):
+            literal_source = resolved_source
 
     # ⚑⚑ THE ONE RECORDED PATH: an EXTERNAL connect records the source dir itself; an
     # in-tree member records ``workspaces/<name>``, which is the dir created below and
