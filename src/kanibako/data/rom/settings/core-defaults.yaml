@@ -206,12 +206,13 @@ core:
     options: "Z,U"
     scope: vault
 
-# kanibako CLI binds (Phase B).  The in-box kanibako package + entry script,
-# routed through the category resolver; a helper container reads this same table
-# (`commands.start._kanibako_mounts`).  Both are UNCONDITIONAL ro binds in every box mode; their host
-# SOURCES are import-resolved at the seam (`kanibako.__file__` parent +
-# `importlib.resources` `kanibako-entry`) and injected into each keyed entry (the
-# file names them SYMBOLICALLY).  box-side destinations + options are STATIC here.
+# kanibako CLI binds (Phase B).  The in-box kanibako package, entry script, and
+# secrets profile snippet, routed through the category resolver; a helper container
+# reads this same table (`commands.start._kanibako_mounts`).  All three are
+# UNCONDITIONAL ro binds in every box mode; their host SOURCES are import-resolved at
+# the seam (`kanibako.__file__` parent + `importlib.resources` `kanibako-entry` /
+# `kanibako-secrets.sh`) and injected into each keyed entry (the file names them
+# SYMBOLICALLY).  box-side destinations + options are STATIC here.
 kani:
   # Package dir → /opt/kanibako/kanibako (ro).  Must equal
   # KANIBAKO_PKG_MOUNT_ROOT + "/kanibako" (kanibako.box_supervisor): the launcher

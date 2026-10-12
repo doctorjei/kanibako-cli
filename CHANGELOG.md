@@ -806,9 +806,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- **Helper boxes get the secrets profile snippet, `/etc/profile.d/kanibako-secrets.sh`.** A helper now receives
-  the same kanibako CLI binds as its parent box, read from one table; before, it got only the package and the
-  `kanibako` command.
+- **Boxes and their helpers read the in-box kanibako binds from one table.** A helper kept its own copy of the
+  package and `kanibako` command binds; it now gets the box's set, which adds the secrets profile snippet
+  `/etc/profile.d/kanibako-secrets.sh`, a no-op in a helper with no secret mounted.
 - **Every `$HOME` guard knows `$HOME` by its spelling and by its target.** Starting in a new directory that is a
   link to `$HOME`, or at `$HOME` when `$HOME` is itself a link, no longer creates a project there. On Python 3.11,
   registering a workset or box name at a symlink loop, and `box rm --purge` of a deregistered box whose recorded
