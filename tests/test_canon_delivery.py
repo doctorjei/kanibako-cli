@@ -183,7 +183,7 @@ def fake_rom(tmp_path, monkeypatch):
     """A complete fake packaged canon, substituted for the real rom root.
 
     Only the ROM ROOT lookup is redirected — ``templates.packaged_box_home_template``
-    holds its OWN reference to ``packaged_data_dir``, so the template tree stays
+    asks for the TEMPLATES parts, which pass through, so the template tree stays
     real (which is what keeps the disjointness check meaningful here).
     """
     rom = _make_fake_rom(tmp_path)

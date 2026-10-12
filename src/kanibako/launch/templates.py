@@ -15,7 +15,7 @@ from pathlib import Path
 from kanibako.agent_ref import ADDRESSABLE_PSEUDO_AGENTS
 from kanibako.settings.agent_config import store_dirname
 from kanibako.settings.core_defaults import (CANON_GUEST_ROOT, HANDBOOK_REL, ROM_ROOT_PARTS,
-                                              packaged_data_dir)
+                                              packaged_dir_or_none)
 
 if TYPE_CHECKING:
     from kanibako.settings.paths import ProjectPaths, StandardPaths
@@ -524,12 +524,7 @@ def _packaged_base_template() -> Path | None:
     down.  Code treating the two as the same is silently wrong (see
     :func:`kanibako.settings.core_defaults.assert_canon_bind_seed_disjoint`).
     """
-    try:
-        ref = packaged_data_dir(*PACKAGED_TEMPLATES_PARTS)
-    except (ModuleNotFoundError, FileNotFoundError):
-        return None
-    path = Path(str(ref))
-    return path if path.is_dir() else None
+    return packaged_dir_or_none(*PACKAGED_TEMPLATES_PARTS)
 
 
 def packaged_box_home_template() -> Path | None:
@@ -567,12 +562,7 @@ def _packaged_shared_bundle() -> Path | None:
     target and is enumerated only for the content DIGEST.  The rom ROOT is the digest
     root, so a file added anywhere under ``rom/canon/`` is watched.
     """
-    try:
-        ref = packaged_data_dir(*ROM_ROOT_PARTS)
-    except (ModuleNotFoundError, FileNotFoundError):
-        return None
-    path = Path(str(ref))
-    return path if path.is_dir() else None
+    return packaged_dir_or_none(*ROM_ROOT_PARTS)
 
 
 #: A plugin's packaged AGENT-STORE PAYLOAD dir — the ONE spelling (D4).

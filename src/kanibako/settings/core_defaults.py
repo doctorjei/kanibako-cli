@@ -40,6 +40,19 @@ def packaged_data_dir(*parts: str) -> Traversable:
     return importlib.resources.files("kanibako.data").joinpath(*parts)
 
 
+def packaged_dir_or_none(*parts: str) -> Path | None:
+    """The packaged ``kanibako.data`` DIRECTORY at *parts* as a :class:`Path`, or ``None``.
+
+    ``None`` when the package cannot be located or *parts* is not a directory; a caller
+    for which absence is a packaging defect raises on ``None`` itself.
+    """
+    try:
+        path = Path(str(packaged_data_dir(*parts)))
+    except (ModuleNotFoundError, FileNotFoundError):
+        return None
+    return path if path.is_dir() else None
+
+
 # The packaged READ-ONLY tree, relative to the ``kanibako.data`` root: the shipped
 # settings files, the kickoff loader, and the rom canon.  ⚑ Packaged SOURCE layout only;
 # nothing here names where a file lands in a store or a box.
@@ -665,10 +678,11 @@ def rom_default_categories() -> BindArmTable:
     """
     from kanibako.launch import templates
 
-    rom_root = Path(str(packaged_data_dir(*ROM_ROOT_PARTS)))
-    if not rom_root.is_dir():
+    rom_root = packaged_dir_or_none(*ROM_ROOT_PARTS)
+    if rom_root is None:
         raise PackagingError(
-            f"kanibako's packaged canon root is missing: {rom_root}"
+            "kanibako's packaged canon root is missing: "
+            f"{packaged_data_dir(*ROM_ROOT_PARTS)}"
         )
 
     rom_files = templates.walk_shipped_files(rom_root)

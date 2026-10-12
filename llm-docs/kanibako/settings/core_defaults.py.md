@@ -79,8 +79,8 @@ the users who had already stored their own. Three entries, each at its scope for
 
 Two things in the module are NOT table producers and should not be read as such:
 
-* `packaged_data_dir` — the packaging primitive, also imported by
-  :mod:`kanibako.launch.templates`.
+* `packaged_data_dir` — the packaging primitive — and `packaged_dir_or_none`, the
+  directory finder built on it that :mod:`kanibako.launch.templates` imports.
 * the **canon SKELETON** (`canon_skeleton_rels` → `materialize_canon_skeleton` →
   `_protect_canon_skeleton` → `_warn_unprotected`) — a filesystem MUTATOR that runs at box create,
   after a box-home copy, and as a per-launch re-assert. It shells out to `podman unshare` and
