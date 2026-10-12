@@ -523,7 +523,7 @@ class TestCanonDefaultCategories:
 
     def test_a_shell_box_omits_the_agent_chapter_and_key(self, tmp_path):
         """A dangling embedded ref would coerce to ``""`` and yield the degenerate
-        host path ``/handbook`` (§6b) — so the entry is OMITTED, not emptied."""
+        host path ``/handbook`` (spec §0) — so the entry is OMITTED, not emptied."""
         cats = core_defaults.canon_default_categories(_Std(tmp_path), None)
         # ⚑⚑ Re-derived because the old form went VACUOUS, not merely stale: with
         # the ``canon_hb_agent`` NAME retired (R-10) there is no

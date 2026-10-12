@@ -954,7 +954,7 @@ class TestSuppressedAuthPathIsUnreachable:
         snap, auth = self._auth(
             agent_name=agent_name, selection_level=None, support=False,
         )
-        # The RAW key does collapse — that is the §6b embedded-empty rule…
+        # The RAW key does collapse — that is the embedded-empty rule (spec §0)…
         assert snap.meta.box.auth.workset_path == "/ws/auth/"
         # …but no agent ⇒ no capability ⇒ workset tier OFF ⇒ source scrubbed.
         assert auth.workset_enabled is False

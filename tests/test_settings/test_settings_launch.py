@@ -1784,7 +1784,7 @@ def test_a_value_reads_the_mirror_and_the_computed_auth_keys(tmp_path):
 
 def test_a_mirror_reference_falls_back_as_the_mirror_does(tmp_path, monkeypatch):
     """An active-agent key whose reference resolves absent is gone from the expanded tree
-    (§6b), so the mirror reads ``agent.default``'s value; a reference to it does too."""
+    (spec §0), so the mirror reads ``agent.default``'s value; a reference to it does too."""
     monkeypatch.delenv("NOPE_UNSET", raising=False)
     snap = _auth_snapshot(
         "primary", tmp_path=tmp_path,

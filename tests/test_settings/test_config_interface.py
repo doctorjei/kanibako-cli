@@ -5542,7 +5542,7 @@ class TestSetTimeResolutionProbe:
     Before this, the E3 probe was wired only at the CATEGORY set path, so a set
     accepted a value whose ref does not resolve. For an expanded value that is
     not inert: an embedded dangling ref is substituted with the EMPTY STRING
-    (§6b) and the key silently resolves to something else entirely.
+    (spec §2a "VALIDATION at set-time") and the key silently resolves to something else entirely.
     """
 
     def test_dangling_embedded_ref_is_refused_and_names_the_referent(self, tmp_path):

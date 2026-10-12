@@ -14,7 +14,7 @@ Covers the brief §5 checklist for the pure ``expand(snapshot, ctx) -> KeyStore`
   RAW (deferred — asserted PRESENT) while a ``box_dest`` ``@``-ref IS expanded;
 * escapes preserved; purity — input snapshot unmutated, idempotent on a terminal.
 
-Authority: design §6h / §6a / §6b / §3; spec §0 / §1 / §2c. The pass keys nothing
+Authority: design §6h / §6a / §3; spec §0 / §1 / §2c. The pass keys nothing
 by ``box_dest`` (reconcile is §6g) and never merges (block 2b).
 """
 
@@ -182,7 +182,7 @@ def test_multi_hop_whole_value_chain() -> None:
 
 
 # --------------------------------------------------------------------------- #
-# Whole-value 3-state propagation (§6b/§6h)                                   #
+# Whole-value 3-state propagation (design §6h; spec §0)                       #
 # --------------------------------------------------------------------------- #
 
 
@@ -341,7 +341,7 @@ def test_whole_value_ref_to_subtree_fresh_and_expanded() -> None:
 
 
 # --------------------------------------------------------------------------- #
-# Embedded token substitution (§6b) — never deletes the key                   #
+# Embedded token substitution (spec §0) — never deletes the key               #
 # --------------------------------------------------------------------------- #
 
 
@@ -578,7 +578,7 @@ def test_mixed_whole_then_embedded_cycle_raises() -> None:
 
 
 def test_absent_ref_is_NOT_a_cycle_error() -> None:
-    # A legit-absent referent is §6b propagation, NOT a cycle — must not raise.
+    # A legit-absent referent is absence propagation (spec §0), NOT a cycle — must not raise.
     snap = KeyStore({"a": "@box.env.NOPE"})
     out = expand(snap, _ctx())  # no exception.
     assert _probe(out, "a") is __MISSING__
@@ -872,7 +872,7 @@ def test_lenient_unrelated_defect_does_not_block_clean_leaves() -> None:
 
 
 def test_lenient_present_none_ref_is_not_a_defect() -> None:
-    # A whole-value ref to a present-None key is legitimate (§6b), NOT a dangling
+    # A whole-value ref to a present-None key is legitimate (spec §0), NOT a dangling
     # defect: it propagates None (kept), and is NOT recorded as an error.
     snap = KeyStore({"a": "@b", "b": None})
     expanded, errors = expand(snap, _ctx(), collect_errors=True)
@@ -1004,7 +1004,7 @@ class TestPrefSubtreeIsNotExpanded:
         assert dict.__getitem__(out["pref"]["agent"]["claude"], "model") is None
 
     def test_a_dangling_ref_in_a_request_does_not_drop_the_request(self):
-        """A whole-value dangling ref would normally DROP its key (§6b). The
+        """A whole-value dangling ref would normally DROP its key (spec §0). The
         request record is not resolved, so it cannot be dropped by resolution —
         the user can still SEE what they asked for while the target reports the
         failure."""
@@ -1152,7 +1152,7 @@ def test_env_value_colorterm_treats_an_empty_host_value_as_absence(
 def test_embedded_colorterm_substitutes_empty_and_keeps_its_key(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """EMBEDDED, the §6b twin: the token empties, the holder key SURVIVES.
+    """EMBEDDED, the whole-value drop's twin: the token empties, the holder key SURVIVES.
 
     Absence deletes the key only where the whole value IS the token. Here the key's
     value is a sentence the user wrote, and it still exists — exactly as an embedded
@@ -1261,7 +1261,7 @@ def test_bind_entry_opts_carried_verbatim() -> None:
 
 def test_bind_entry_whole_value_src_absent_drops_the_entry() -> None:
     # Same 3-state rule as the name-keyed Bind: an absent whole-value src means the
-    # binding cannot point anywhere, so the entry is DROPPED (§6b/§3).
+    # binding cannot point anywhere, so the entry is DROPPED (design §3; spec §0).
     snap = _arm({"~/a": BindEntry("@box.env.NOPE"), "~/b": BindEntry("/h/b")})
     out = expand(snap, _ctx())
     assert _probe(out, "box", "bindings", "rw", "~/a") is __MISSING__

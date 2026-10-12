@@ -643,7 +643,7 @@ class TestTheEnvConsumerReadsTheLeaf:
         ⚑ THE CLAIM IS THE SAME ONE — no channel BESIDE the leaf — and it is worth
         keeping in BOTH states rather than planting a host value to make one state
         go away. What changes is only the expected set: a passthrough that answers
-        absent DROPS its key (§6b), so the difference is both core sources MINUS
+        absent DROPS its key (spec §0), so the difference is both core sources MINUS
         exactly what the host withheld.
 
         ⚑ The subtraction is DERIVED from the declaration and the host, so a row

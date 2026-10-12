@@ -1046,7 +1046,7 @@ class TestResolverSplitRouting:
         from kanibako.settings.settings_expand import expand
 
         # A whole-value @config.* ref to a declared key absent from the foundation
-        # → the holder key is DROPPED (§6b propagation).
+        # → the holder key is DROPPED (absence propagation, spec §0).
         snap = KeyStore()
         snap["x"] = "@config.journal"
         ctx = self._ctx({"config.data": "/foundation/data"})

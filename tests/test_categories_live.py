@@ -808,7 +808,7 @@ class TestB3ImagesStoreKey:
     def test_probe_fail_without_a_set_key_drops_the_store_mount(self, tmp_path):
         """Probe fail + no set key: ``@box.images_store`` propagates ABSENT.
 
-        The whole-value @-ref to an unset key drops the bind (§6b), so the store
+        The whole-value @-ref to an unset key drops the bind (spec §0), so the store
         mount simply is not there — the launch seam reads the same resolved key
         and warns rather than mounting half of the pair.
         """

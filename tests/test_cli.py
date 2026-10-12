@@ -1949,7 +1949,7 @@ class TestTemplateStalenessRetired:
         run outside a box on such a terminal gets no ``COLORTERM`` either.
 
         ⚑ AT THE DELIVERED ENV, not at the snapshot. The drop happens in
-        ``settings_expand`` (§6b whole-value absence), and the claim a user can
+        ``settings_expand`` (whole-value absence, spec §0), and the claim a user can
         check is that nothing reaches the container — so it is measured where the
         container env is built.
         """
