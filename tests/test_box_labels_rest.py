@@ -400,3 +400,55 @@ def test_creds_watcher_finds_the_box_by_its_labels(monkeypatch):
         assert cw._resolve_watch_context("x") is None
     assert seen == [runtime, "kb-primary-moved"]
 
+
+
+class TestRunningUnderANonKbName:
+    """A labeled container need not carry the ``kb-`` prefix: once found, its liveness is
+    asked by THAT exact name, never read off a ``kb-``-filtered listing."""
+
+    def test_box_rm_refuses(self, world, monkeypatch, tmp_path, capsys):
+        from kanibako.commands.box._parser import run_rm
+
+        _std, boxes = world
+        _runtime(monkeypatch, tmp_path, running=["zz-moved"],
+                 labeled={_key("pk", "primary"): ["zz-moved"]})
+        rc = run_rm(argparse.Namespace(target="pk", box=None, purge=False, force=False))
+        assert rc == 1
+        assert "zz-moved" in capsys.readouterr().err
+        _intact(boxes)
+
+    def test_purge_all_refuses(self, world, monkeypatch, tmp_path, capsys):
+        _std, boxes = world
+        _runtime(monkeypatch, tmp_path, running=["zz-moved"],
+                 labeled={_key("pk", "primary"): ["zz-moved"]})
+        _no_question(monkeypatch)
+        assert _purge_all() == 1
+        assert "zz-moved" in capsys.readouterr().err
+        _intact(boxes)
+
+    def test_a_box_ref_member_refuses(self, tmp_path, monkeypatch):
+        from kanibako.commands.box._lifecycle import box_running_reason
+
+        _runtime(monkeypatch, tmp_path, running=["zz-paws-moved"],
+                 labeled={_key("bar", "paws"): ["zz-paws-moved"]})
+        reason = box_running_reason(None, tmp_path / "absent.lock", box_ref=("bar", "paws"))
+        assert reason is not None and "zz-paws-moved" in reason, reason
+
+    def test_an_exact_name_only(self, tmp_path, monkeypatch):
+        from kanibako.commands.box._lifecycle import box_running_reason
+
+        # The name filter is a prefix match: a longer running name is not the box's.
+        _runtime(monkeypatch, tmp_path, running=["zz-paws-moved-2"],
+                 labeled={_key("bar", "paws"): ["zz-paws-moved"]})
+        assert box_running_reason(None, tmp_path / "absent.lock",
+                                  box_ref=("bar", "paws")) is None
+
+    def test_box_list_shows_it_active(self, world, monkeypatch, tmp_path, capsys):
+        from kanibako.commands.box._parser import run_list
+
+        _runtime(monkeypatch, tmp_path, running=["zz-moved"],
+                 labeled={_key("pk", "primary"): ["zz-moved"]})
+        assert run_list(argparse.Namespace(active=True)) == 0
+        out = capsys.readouterr().out
+        assert "pk " in out, out
+        assert "pq " not in out and "bar " not in out, out

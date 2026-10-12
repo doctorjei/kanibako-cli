@@ -85,7 +85,7 @@ from kanibako.settings.paths import (
 from kanibako.agent_ref import GENERAL_SLOT, harness_of, parse_agent_address, with_harness
 from kanibako.targets import resolve_target
 from kanibako.utils import (
-    WORKSET_SEGMENT_PRIMARY, WORKSET_SEGMENT_STANDALONE,
+    CONTAINER_NAME_PREFIX, WORKSET_SEGMENT_PRIMARY, WORKSET_SEGMENT_STANDALONE,
     box_container, box_container_named, container_name_for, gitignore_holds_only_kanibako,
     literal_path,
     is_dir_unless_gone, is_home_dir, logical_cwd, project_gitignore_to_strip, refuse_unreadable_file,
@@ -1902,21 +1902,21 @@ def run_list(args: argparse.Namespace) -> int:
         return _list_orphans(projects, ws_data, std, quiet)
 
     # Gather running container names for activity cross-reference.
-    running_containers: set[str] = set()
+    listed: list[tuple[str, str, str]] = []
     runtime: ContainerRuntime | None = None
     try:
         runtime = ContainerRuntime()
-        for cname, _image, _status in runtime.list_running():
-            running_containers.add(cname)
+        listed = runtime.list_running()
     except ContainerError:
         pass  # No runtime available — every project shows as stopped.
 
     def _box_running(box: str, workset: str) -> bool:
         """Is box *box* of ``<W>`` *workset* running?  Its container is found by its
         labels, else its name (system-design § Box and helper identity)."""
-        if runtime is None or not running_containers:
+        if runtime is None:
             return False
-        return box_container_named(runtime, box, workset) in running_containers
+        name = box_container_named(runtime, box, workset)
+        return name is not None and _running_image(runtime, name, listed, check=False) is not None
 
     if not projects and not ws_data and not standalone and not deregistered:
         if not quiet:
@@ -3484,6 +3484,18 @@ def _format_credential_age(creds_path: Path) -> str:
     return f"{age} ({dt.strftime('%Y-%m-%d %H:%M:%S UTC')})"
 
 
+def _running_image(runtime: ContainerRuntime, name: str,
+                   listed: Iterable[tuple[str, str, str]], *, check: bool) -> str | None:
+    """The image of the running container *name*, else ``None``.
+
+    *listed* is a ``kb-``-filtered listing; a label-found container under another name
+    is asked by that name (the filter is a prefix match, so it is compared exactly).
+    """
+    if not name.startswith(CONTAINER_NAME_PREFIX):
+        listed = runtime.list_running(prefix=name, check=check)
+    return next((image for found, image, _status in listed if found == name), None)
+
+
 #: :func:`_check_container_running`'s detail when no runtime could be asked.
 NO_RUNTIME = "unknown (no container runtime)"
 
@@ -3509,9 +3521,9 @@ def _check_container_running(proj, *, fail_closed: bool = False,
         container_name = box_container(runtime, proj, check=fail_closed)
         if container_name is None:
             return False, "no container name (the box-name rule renders none)"
-    for name, image, status in containers:
-        if name == container_name:
-            return True, f"running ({container_name}: {image})"
+    image = _running_image(runtime, container_name, containers, check=fail_closed)
+    if image is not None:
+        return True, f"running ({container_name}: {image})"
     # An exited container still holds the name.
     if runtime.container_exists(container_name):
         named = (getattr(proj, "name", "") or "").strip()

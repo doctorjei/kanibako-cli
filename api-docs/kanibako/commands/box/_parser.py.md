@@ -94,6 +94,7 @@ def _retained_box_advice(std, target: str, entry: dict) -> 'tuple[str, tuple[str
 def _pair_works_for_all(std, entries: Iterable[tuple[str, dict]]) -> bool
 def _retained_box_cure_lines(std, target: str, entry: dict, *, then: str='') -> str
 def _format_credential_age(creds_path: Path) -> str
+def _running_image(runtime: ContainerRuntime, name: str, listed: Iterable[tuple[str, str, str]], *, check: bool) -> str | None
 def _check_container_running(proj, *, fail_closed: bool=False, container_name: str | None=None) -> tuple[bool, str]
 def _resolve_config_subject(std, config, project_dir: str | None)
 def _run_box_config(args: argparse.Namespace) -> int
