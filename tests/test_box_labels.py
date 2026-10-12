@@ -135,7 +135,7 @@ class TestBoxContainer:
         assert box_container(rt, proj) == "kb-parked-old"
         labels = rt.find_labeled.call_args.args[0]
         assert labels["kanibako.box"] == "myapp"
-        assert rt.find_labeled.call_args.kwargs == {"without": "kanibako.helper"}
+        assert rt.find_labeled.call_args.kwargs == {"without": "kanibako.helper", "check": False}
 
     def test_the_rendered_name_wins_a_tie(self, tmp_path, settings_pair):
         proj, settings = _proj(tmp_path)

@@ -288,7 +288,7 @@ def _main_with_failing_auth_resolve(exc, *, stamp="claude"):
         patch("kanibako.settings.paths.resolve_box_target", return_value=MagicMock()),
         patch("kanibako.commands.start._resolve_box_auth_source", side_effect=exc),
         patch("kanibako.targets.resolve_target"),
-        patch("kanibako.utils.container_name_for", return_value="kanibako-x"),
+        patch("kanibako.utils.box_container", return_value="kanibako-x"),
     ):
         return cw.main(["--box", "x"])
 

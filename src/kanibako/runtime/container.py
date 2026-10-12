@@ -24,10 +24,10 @@ import subprocess
 import sys
 import threading
 import time
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterator, Mapping
 from pathlib import Path
 
-from kanibako.errors import ContainerError
+from kanibako.errors import ContainerError, LabelQueryError
 from kanibako.log import get_logger
 from kanibako.utils import CONTAINER_NAME_PREFIX
 from kanibako.settings.core_defaults import CANON_SEED_DENY_PREFIXES
@@ -606,13 +606,18 @@ class ContainerRuntime:
             return None
         return image_ref_or_none(result.stdout)
 
-    def find_labeled(self, labels: dict[str, str], *, without: str | None = None) -> list[str]:
+    def find_labeled(self, labels: Mapping[str, str | None], *, without: str | None = None,
+                     check: bool = False) -> list[str]:
         """The names of the containers, running or not, that carry every one of *labels*
-        and, when *without* is given, no label of that key.  A runtime that fails or
-        cannot run answers none (the caller falls back to a container's name).
+        (a ``None`` value: the key, with any value) and, when *without* is given, no label
+        of that key.  A runtime that fails or cannot run answers none (the caller falls
+        back to a container's name); with *check* it raises ``LabelQueryError`` instead,
+        so a destructive caller never reads a failed query as "no container".
 
         ⚑ Repeated ``label=`` filters are ANDed by podman and docker alike (the one key
         whose filters are exclusive, not inclusive), and a bare key matches any value.
+        ⚑ With no *labels* nothing is filtered, so none is answered rather than every
+        container.
         """
         def _names(filters: list[str]) -> set[str] | None:
             cmd = [self.cmd, "ps", "-a", "--format", "{{.Names}}"]
@@ -620,15 +625,23 @@ class ContainerRuntime:
                 cmd += ["--filter", f"label={f}"]
             try:
                 result = subprocess.run(cmd, capture_output=True, text=True)
-            except OSError:
+            except OSError as exc:
+                if check:
+                    raise LabelQueryError(f"{self.cmd} ps did not run: {exc}") from exc
                 return None
             if result.returncode != 0:
+                if check:
+                    raise LabelQueryError(
+                        f"{self.cmd} ps failed (exit {result.returncode}): "
+                        f"{result.stderr.strip()}")
                 return None
             # A name holds no whitespace: a line that does is not a name, and is skipped.
             return {line.strip() for line in result.stdout.splitlines()
                     if line.strip() and len(line.split()) == 1}
 
-        wanted = [f"{k}={v}" for k, v in sorted(labels.items())]
+        if not labels:
+            return []
+        wanted = [k if v is None else f"{k}={v}" for k, v in sorted(labels.items())]
         found = _names(wanted)
         if not found:
             return []

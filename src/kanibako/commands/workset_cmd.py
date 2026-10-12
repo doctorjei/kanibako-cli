@@ -944,14 +944,12 @@ def _member_running(std, ws_name: str, boxes_dir: Path, member: str, consequence
     """:func:`abort_if_box_running` for the member *member* of workset *ws_name*.
 
     *ws* is the loaded workset, or ``None`` when its file cannot be read; then, as when
-    the member does not resolve, the runtime is asked by the member's container name.
+    the member does not resolve, the runtime is asked by the member's labels.
     """
     from kanibako.commands.box._lifecycle import abort_if_box_running
     from kanibako.settings.paths import (
         WorksetSpec, box_cure_ref, resolve_workset_project,
     )
-    from kanibako.utils import container_name_for_box_name
-
     proj = None
     if ws is not None:
         try:
@@ -959,11 +957,10 @@ def _member_running(std, ws_name: str, boxes_dir: Path, member: str, consequence
                                            load_config(user_config_file()))
         except (WorksetError, ConfigError):
             proj = None
-    # ⚑ Unresolvable is never "not running": ask by the member's container name.
-    container = None if proj is not None else container_name_for_box_name(member, ws_name)
+    # ⚑ Unresolvable is never "not running": ask by the member's labels, else its name.
     return abort_if_box_running(
         proj, boxes_dir / member / ".kanibako.lock", force, consequence,
-        container_name=container,
+        box_ref=None if proj is not None else (member, ws_name),
         cure_ref=box_cure_ref(BoxMode.named, member, ws_name, boxes_dir / member),
         announce_abort=announce_abort, forceable=forceable)
 

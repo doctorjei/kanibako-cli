@@ -34,8 +34,8 @@ def copy_into_workset(ws: Workset, proj_name: str, metadata_path: Path, shell_pa
 def execute_lifecycle(state: ProjectState, spec: TargetSpec, std: StandardPaths, config: BootstrapConfig | None=None, *, force: bool=False, confirm: Callable[[], bool] | None=None) -> ProjectState
 def note_added_leftovers(path: Path, before: frozenset[str] | None) -> None
 def session_lock_held(lock_file: Path) -> bool
-def box_running_reason(proj: ProjectPaths | None, lock_file: Path, *, container_name: str | None=None) -> str | None
-def abort_if_box_running(proj: ProjectPaths | None, lock_file: Path, force: bool, consequence: str, *, container_name: str | None=None, cure_ref: str | None=None, announce_abort: bool=True, forceable: bool=True) -> bool
+def box_running_reason(proj: ProjectPaths | None, lock_file: Path, *, container_name: str | None=None, box_ref: tuple[str, str] | None=None) -> str | None
+def abort_if_box_running(proj: ProjectPaths | None, lock_file: Path, force: bool, consequence: str, *, container_name: str | None=None, box_ref: tuple[str, str] | None=None, cure_ref: str | None=None, announce_abort: bool=True, forceable: bool=True) -> bool
 def run_remap(args) -> int
 def run_move(args) -> int
 def run_convert(args) -> int
@@ -144,6 +144,7 @@ def _ownership_from_args(args) -> str | _Sentinel
 def _validated_name(args) -> str | None
 def _make_confirm(force: bool, summary: str)
 def _load_env()
+def _box_ref_container(box: str, workset: str) -> str | None
 def _abort_if_locked(state: ProjectState, force: bool) -> bool
 def _relocation_failure(err: OSError) -> str
 def _completed_move(old: str, new_path: Path, std: StandardPaths, config: BootstrapConfig, args) -> str | None

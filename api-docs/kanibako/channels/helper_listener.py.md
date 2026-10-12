@@ -54,6 +54,7 @@ class HelperHub:
     def _handle_number(self) -> dict
     def _handle_spawn(self, request: dict) -> dict
     def _release(self, helper_num: int, held: Path | None, helper_home: Path) -> None
+    def _own_helpers(self, helper_num: int | None=None, *, check: bool=False) -> list[str]
     def _handle_stop(self, request: dict) -> dict
     def _handle_fork(self, request: dict) -> dict
 

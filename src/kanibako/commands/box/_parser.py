@@ -86,7 +86,7 @@ from kanibako.agent_ref import GENERAL_SLOT, harness_of, parse_agent_address, wi
 from kanibako.targets import resolve_target
 from kanibako.utils import (
     WORKSET_SEGMENT_PRIMARY, WORKSET_SEGMENT_STANDALONE,
-    box_container, container_name_for, container_name_for_box_name, gitignore_holds_only_kanibako,
+    box_container, box_container_named, container_name_for, gitignore_holds_only_kanibako,
     literal_path,
     is_dir_unless_gone, is_home_dir, logical_cwd, project_gitignore_to_strip, refuse_unreadable_file,
     short_hash, stat_unless_gone, strip_project_gitignore, write_project_gitignore,
@@ -1903,12 +1903,20 @@ def run_list(args: argparse.Namespace) -> int:
 
     # Gather running container names for activity cross-reference.
     running_containers: set[str] = set()
+    runtime: ContainerRuntime | None = None
     try:
         runtime = ContainerRuntime()
         for cname, _image, _status in runtime.list_running():
             running_containers.add(cname)
     except ContainerError:
         pass  # No runtime available — every project shows as stopped.
+
+    def _box_running(box: str, workset: str) -> bool:
+        """Is box *box* of ``<W>`` *workset* running?  Its container is found by its
+        labels, else its name (system-design § Box and helper identity)."""
+        if runtime is None or not running_containers:
+            return False
+        return box_container_named(runtime, box, workset) in running_containers
 
     if not projects and not ws_data and not standalone and not deregistered:
         if not quiet:
@@ -1953,9 +1961,7 @@ def run_list(args: argparse.Namespace) -> int:
             proj_name = path_to_name.get(str(project_path), dir_name) if project_path else dir_name
             # ⚑ A running container is ``active`` even with no workspace folder.
             # ⚑ REPORT, never a refusal: one legacy box must never blank the listing.
-            running = container_name_for_box_name(
-                proj_name, WORKSET_SEGMENT_PRIMARY,
-            ) in running_containers
+            running = _box_running(proj_name, WORKSET_SEGMENT_PRIMARY)
             if project_path is None:
                 status = "active" if running else "unknown"
                 label = "(no breadcrumb)"
@@ -1988,7 +1994,7 @@ def run_list(args: argparse.Namespace) -> int:
     for ws_name, ws, project_list in ws_data:
         ws_items: list[tuple[str, str, str]] = []
         for proj_name, proj_status in project_list:
-            running = container_name_for_box_name(proj_name, ws_name) in running_containers
+            running = _box_running(proj_name, ws_name)
             if proj_status == "missing":
                 display_status = "active" if running else proj_status
             elif running:
@@ -2036,8 +2042,7 @@ def run_list(args: argparse.Namespace) -> int:
     sa_items: list[tuple[str, str, str]] = []
     for box_name, root_str in sorted(standalone.items()):
         root = Path(root_str)
-        sa_cname = container_name_for_box_name(box_name, WORKSET_SEGMENT_STANDALONE)
-        running = sa_cname is not None and sa_cname in running_containers
+        running = _box_running(box_name, WORKSET_SEGMENT_STANDALONE)
         status = "active" if running else ("stopped" if root.is_dir() else "missing")
         if active_only and status != "active":
             continue
@@ -2675,12 +2680,12 @@ def _purge_deregistered(std, name: str, entry: dict, args: argparse.Namespace, *
     # registered at, and ``root`` is the link's target.
     if kind == "standalone":
         probe_target: "str | None" = literal_path(str(metadata))
-        probe_container: "str | None" = None
+        probe_ref: "tuple[str, str] | None" = None
     else:
         probe_target = None
-        probe_container = _primary_probe_container(name)
+        probe_ref = _primary_probe_ref(name)
     if _refuse_purge_while_live(std, config, probe_target, lock_home, args.force,
-                               "Purging this box", container_name=probe_container):
+                               "Purging this box", box_ref=probe_ref):
         return 1
 
     print(f"Removing deregistered box: {name}")
@@ -2772,6 +2777,7 @@ def _resolve_standalone_target(
 def _refuse_purge_while_live(std, config, standalone_root: str | None, metadata_dir: Path,
                             force: bool, what: str,
                             *, container_name: str | None = None,
+                            box_ref: tuple[str, str] | None = None,
                             cure_ref: str | None = None,
                             consequence: str | None = None,
                             forceable: bool = True) -> bool:
@@ -2786,14 +2792,15 @@ def _refuse_purge_while_live(std, config, standalone_root: str | None, metadata_
     and canon mid-write.  With no ``proj`` the guard still reads the lock file.
     *standalone_root* is a standalone root in its stored (literal) spelling, the only
     target this helper resolves.  *container_name* replaces the path probe with a name
-    probe, and *cure_ref* (already quoted) names that box in the stop cure.
+    probe, *box_ref* with a label probe (:func:`abort_if_box_running`), and *cure_ref*
+    (already quoted) names that box in the stop cure.
     ⚑⚑ Never hand it a NAME: a name resolved as a path reads the cwd's same-named directory.
     """
     from kanibako.commands.box._lifecycle import abort_if_box_running
 
     proj = None
     unresolved: str | None = None  # the target that failed to resolve
-    if container_name is None and standalone_root is not None:
+    if container_name is None and box_ref is None and standalone_root is not None:
         try:
             proj = _resolve_purge_probe_target(std, config, standalone_root)
         except Exception:  # noqa: BLE001 - see below
@@ -2803,8 +2810,8 @@ def _refuse_purge_while_live(std, config, standalone_root: str | None, metadata_
         consequence = f"{what} would delete its vaults and canon while writes are in flight."
     stop_ref = shlex.quote(unresolved) if unresolved is not None else cure_ref
     if abort_if_box_running(proj, metadata_dir / ".kanibako.lock", force, consequence,
-                            container_name=container_name, cure_ref=stop_ref,
-                            forceable=forceable):
+                            container_name=container_name, box_ref=box_ref,
+                            cure_ref=stop_ref, forceable=forceable):
         return True
     # ⚑ A resolver that FAILS must never mean "not running" -- no lock is not proof.
     if unresolved is not None and not (metadata_dir / ".kanibako.lock").exists():
@@ -2835,12 +2842,13 @@ def _resolve_purge_probe_target(std, config, standalone_root: str):
     return resolve_standalone_project(std, config, standalone_root)
 
 
-def _primary_probe_container(name: str) -> str | None:
-    """The container a primary named *name* runs as, registered or parked: ``kb-primary-<name>``.
+def _primary_probe_ref(name: str) -> tuple[str, str]:
+    """The ``box_ref`` (:func:`~kanibako.commands.box._lifecycle.box_running_reason`) of a
+    primary named *name*, registered or parked: its container is found by its labels.
 
     ⚑ A function of the NAME alone, so it answers when the workspace is gone.
     """
-    return container_name_for_box_name(name, WORKSET_SEGMENT_PRIMARY)
+    return name, WORKSET_SEGMENT_PRIMARY
 
 
 def refuse_ambiguous_parked_purge(matches, target: str) -> int:
@@ -3111,7 +3119,7 @@ def run_rm(args: argparse.Namespace) -> int:
     # the NAME resolved above, never re-resolved: a cwd ``name/`` is another box.
     if _refuse_purge_while_live(
             std, config, None, metadata_dir, args.force, "Purging this box",
-            container_name=_primary_probe_container(name),
+            box_ref=_primary_probe_ref(name),
             cure_ref=box_cure_ref(BoxMode.primary, name, None, metadata_dir),
             consequence=None if args.purge else _DEREGISTER_LIVE,
             forceable=bool(args.purge)):
@@ -3492,12 +3500,15 @@ def _check_container_running(proj, *, fail_closed: bool = False,
         runtime = ContainerRuntime()
     except ContainerError:
         return False, NO_RUNTIME
+    # ⚑ Listed FIRST: a runtime that cannot list at all is "cannot answer" (the lock
+    # decides), not a failed label query.
+    containers = runtime.list_running(check=fail_closed)
     if container_name is None:
         # Found by its labels (system-design § Box and helper identity), else its name.
-        container_name = box_container(runtime, proj)
+        # ⚑ *fail_closed*: a label query the runtime fails raises, never "not running".
+        container_name = box_container(runtime, proj, check=fail_closed)
         if container_name is None:
             return False, "no container name (the box-name rule renders none)"
-    containers = runtime.list_running(check=fail_closed)
     for name, image, status in containers:
         if name == container_name:
             return True, f"running ({container_name}: {image})"

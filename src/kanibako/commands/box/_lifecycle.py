@@ -98,7 +98,8 @@ from kanibako.tree_copy import (
     plan_mounted_links, removed_root_of, repoint_mounted_links,
 )
 from kanibako.utils import (
-    gitignore_holds_only_kanibako, is_dir_unless_gone, literal_path, logical_cwd,
+    container_name_for_box_name, gitignore_holds_only_kanibako, is_dir_unless_gone,
+    literal_path, logical_cwd,
     project_gitignore_to_strip, strip_project_gitignore, write_project_gitignore,
 )
 from kanibako.project.workset import (
@@ -4475,7 +4476,7 @@ def session_lock_held(lock_file: Path) -> bool:
 
 def box_running_reason(
     proj: ProjectPaths | None, lock_file: Path,
-    *, container_name: str | None = None,
+    *, container_name: str | None = None, box_ref: tuple[str, str] | None = None,
 ) -> str | None:
     """Why the box behind *lock_file* may be running, else ``None`` — the ONE pre-flight.
 
@@ -4483,11 +4484,21 @@ def box_running_reason(
     (``_parser._check_container_running``), says it runs.  When the runtime is absent or
     cannot answer, or no *proj* names the container, a lock file on disk still counts.
     *container_name* asks about that container instead of the one *proj* renders.
+    *box_ref*, ``(<box name>, <W> segment)``, names a box with no *proj*: its rendered
+    name is asked, then the container its labels find (system-design § Box and helper
+    identity).  ⚑ A runtime that answers for the name but fails the label query
+    refuses, lock or not: the box may run under another name, so it is never read as
+    "not running".  One that cannot answer at all leaves it to the lock, as before.
     """
+    from kanibako.errors import LabelQueryError
     from kanibako.project import registry_store
 
     if session_lock_held(lock_file):
         return "a kanibako session holds its lock file"
+    if box_ref is not None and (proj is not None or container_name is not None):
+        box_ref = None  # *proj* or *container_name* already names the container
+    if box_ref is not None:
+        container_name = container_name_for_box_name(*box_ref)
     unanswered = "no container runtime is available to tell whether its container runs"
     if proj is not None or container_name is not None:
         from kanibako.commands.box._parser import NO_RUNTIME, _check_container_running
@@ -4499,6 +4510,15 @@ def box_running_reason(
             else:
                 running, detail = _check_container_running(
                     proj, fail_closed=True, container_name=container_name)
+            if not running and detail != NO_RUNTIME and box_ref is not None:
+                # The runtime answered for the rendered name; ask by the labels too.
+                labeled = _box_ref_container(*box_ref)
+                if labeled is not None and labeled != container_name:
+                    running, detail = _check_container_running(
+                        proj, fail_closed=True, container_name=labeled)
+        except LabelQueryError as exc:
+            return (f"the container runtime could not tell which container is the box's "
+                    f"({exc})")
         except ContainerError as exc:
             running, detail = False, NO_RUNTIME
             unanswered = f"the container runtime could not tell whether its container runs ({exc})"
@@ -4511,6 +4531,21 @@ def box_running_reason(
     return None
 
 
+def _box_ref_container(box: str, workset: str) -> str | None:
+    """The container of box *box* in the ``<W>`` segment *workset*, found by its labels.
+
+    Raises ``LabelQueryError`` when a present runtime fails the query.  With no runtime
+    at all it answers the rendered name, and the probe it is handed to says so.
+    """
+    from kanibako.utils import box_container_named
+
+    try:
+        runtime = ContainerRuntime()
+    except ContainerError:
+        return container_name_for_box_name(box, workset)
+    return box_container_named(runtime, box, workset, check=True)
+
+
 # ⚑ The one reason ``kanibako stop`` cannot cure: no runtime answered, so stop finds no
 # container, and only removing the lock file clears it.
 _LOCK_UNANSWERED = "a lock file exists and "
@@ -4518,8 +4553,8 @@ _LOCK_UNANSWERED = "a lock file exists and "
 
 def abort_if_box_running(
     proj: ProjectPaths | None, lock_file: Path, force: bool, consequence: str,
-    *, container_name: str | None = None, cure_ref: str | None = None,
-    announce_abort: bool = True, forceable: bool = True,
+    *, container_name: str | None = None, box_ref: tuple[str, str] | None = None,
+    cure_ref: str | None = None, announce_abort: bool = True, forceable: bool = True,
 ) -> bool:
     """Warn when :func:`box_running_reason` answers; True ⇒ the caller aborts (no *force*).
 
@@ -4529,12 +4564,13 @@ def abort_if_box_running(
     The stop cure names *proj* by :func:`project_cure_ref`, so it reaches that box from
     any cwd.  With no *proj* it names *cure_ref*, an already-quoted ref the caller holds
     for a box that did not resolve.  With neither, the cure stays a bare ``kanibako stop``.
-    A caller that probes many boxes passes ``announce_abort=False`` and prints
+    *box_ref* is :func:`box_running_reason`'s.  A caller that probes many boxes passes ``announce_abort=False`` and prints
     ``Aborted.`` once itself.
     """
     import sys
 
-    reason = box_running_reason(proj, lock_file, container_name=container_name)
+    reason = box_running_reason(proj, lock_file, container_name=container_name,
+                                box_ref=box_ref)
     if reason is None:
         return False
     ref = project_cure_ref(proj) if proj is not None else cure_ref

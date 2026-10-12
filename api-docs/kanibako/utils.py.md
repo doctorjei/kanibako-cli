@@ -39,7 +39,8 @@ def container_name_for_box_name(name: str, workset: str) -> str | None
 def container_name_segments(proj: ProjectPaths) -> tuple[str, str]
 def container_name_for(proj: ProjectPaths) -> str | None
 def box_labels(proj: ProjectPaths, helper_num: int | None=None) -> dict[str, str]
-def box_container(runtime: ContainerRuntime, proj: ProjectPaths) -> str | None
+def box_container(runtime: ContainerRuntime, proj: ProjectPaths, *, check: bool=False) -> str | None
+def box_container_named(runtime: ContainerRuntime, box: str, workset: str, *, check: bool=False) -> str | None
 def legacy_container_names(proj: ProjectPaths) -> tuple[str, ...]
 def project_hash(project_path: str) -> str
 def stat_unless_gone(path: str | os.PathLike[str]) -> os.stat_result | None
@@ -55,5 +56,6 @@ def write_project_gitignore(project_path: Path) -> None
 def project_gitignore_to_strip(project_path: Path) -> Path | None
 def gitignore_holds_only_kanibako(gitignore: Path) -> bool
 def strip_project_gitignore(gitignore: Path) -> bool
+def _labeled_or_rendered(runtime: ContainerRuntime, labels: dict[str, str], rendered: str, *, check: bool) -> str
 def _gitignore_kept_text(gitignore: Path) -> str
 ```

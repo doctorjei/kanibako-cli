@@ -150,7 +150,15 @@ class HelperHub:
                     ): (num, home)
                     for num, home in self._homes.items()
                 }
-                for name in self._containers:
+                # ⚑ AND every helper of this director found by its labels, whatever its
+                # name (system-design § Box and helper identity): one an earlier hub
+                # launched and lost is swept too.  A failed query sweeps the held ones.
+                swept = list(self._containers)
+                try:
+                    swept += [n for n in self._own_helpers() if n not in swept]
+                except Exception as exc:  # noqa: BLE001 - shutdown always finishes
+                    logger.debug("helper label sweep skipped: %s", exc)
+                for name in swept:
                     try:
                         stopped = self._ctx.runtime.stop(name)
                         removed = self._ctx.runtime.rm(name)
@@ -431,6 +439,10 @@ class HelperHub:
             if (ctx.runtime.container_exists(container_name)
                     and not ctx.runtime.is_running(container_name)):
                 ctx.runtime.rm(container_name)
+            # The same for one carrying this number's labels under another name.
+            for stale in self._own_helpers(helper_num):
+                if stale != container_name and not ctx.runtime.is_running(stale):
+                    ctx.runtime.rm(stale)
             rc = ctx.runtime.run(
                 ctx.image,
                 post_start=_helper_reprotect,
@@ -480,6 +492,20 @@ class HelperHub:
                 if self._homes.get(helper_num) == helper_home:
                     del self._homes[helper_num]
 
+    def _own_helpers(self, helper_num: int | None = None, *, check: bool = False) -> list[str]:
+        """The containers carrying this director's labels and ``kanibako.helper`` (=
+        *helper_num*, when given), whatever their names.  None when the hub has no
+        context or no labels: a helper label alone would match every box's helpers.
+        A failed query answers none; with *check* it raises ``LabelQueryError``.
+        """
+        ctx = self._ctx
+        if ctx is None or not ctx.labels:
+            return []
+        wanted: dict[str, str | None] = {
+            **ctx.labels, LABEL_HELPER: None if helper_num is None else str(helper_num),
+        }
+        return list(ctx.runtime.find_labeled(wanted, check=check))
+
     def _handle_stop(self, request: dict) -> dict:
         """Stop and remove a helper container."""
         ctx = self._ctx
@@ -499,12 +525,19 @@ class HelperHub:
         with self._containers_lock:
             held = container_name in self._containers
         if not held:
+            # ⚑ The helper is asked by its labels too (system-design § Box and helper
+            # identity): one running under another name is not "not running".
+            num = request.get("helper_num")
+            asked = [container_name]
             try:
+                if isinstance(num, int) and not isinstance(num, bool):
+                    asked += [n for n in self._own_helpers(num, check=True)
+                              if n != container_name]
                 # ``is_running`` reads a failed inspect as "not running"; this raises.
                 # The filter is a prefix match, so the name is compared exactly.
                 running = any(
-                    found == container_name for found, _image, _status
-                    in ctx.runtime.list_running(prefix=container_name, check=True)
+                    found == name for name in asked for found, _image, _status
+                    in ctx.runtime.list_running(prefix=name, check=True)
                 )
             except Exception as exc:
                 logger.warning("refused helper stop of %r: the runtime could not say "

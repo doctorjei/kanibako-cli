@@ -65,7 +65,7 @@ class ContainerRuntime:
     def is_running(self, name: str) -> bool
     def inspect_env(self, name: str, key: str) -> str | None
     def container_image(self, name: str) -> str | None
-    def find_labeled(self, labels: dict[str, str], *, without: str | None=None) -> list[str]
+    def find_labeled(self, labels: Mapping[str, str | None], *, without: str | None=None, check: bool=False) -> list[str]
     def list_running(self, prefix: str=CONTAINER_NAME_PREFIX, *, include_stopped: bool=False, check: bool=False) -> list[tuple[str, str, str]]
     def get_local_digests(self, image: str) -> list[str]
     def get_local_digest(self, image: str) -> str | None

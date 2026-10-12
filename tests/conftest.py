@@ -1239,7 +1239,8 @@ def _scrub_delivered_host_signals(monkeypatch):
 
 @pytest.fixture(autouse=True)
 def _no_host_container_runtime(monkeypatch):
-    """Answer ``_parser._check_container_running`` as "no runtime" unless the test names one.
+    """Answer ``_parser._check_container_running`` as "no runtime" (and
+    ``_lifecycle._box_ref_container`` as "no labeled container") unless the test names one.
 
     Otherwise move/convert/duplicate/info ask whatever ``podman`` the host has.  A test that
     sets ``KANIBAKO_DOCKER_CMD`` to a stub gets the real check against it; one needing a
@@ -1247,7 +1248,8 @@ def _no_host_container_runtime(monkeypatch):
     """
     import os
 
-    from kanibako.commands.box import _parser
+    from kanibako.commands.box import _lifecycle, _parser
+    from kanibako.utils import container_name_for_box_name
 
     real = _parser._check_container_running
 
@@ -1257,6 +1259,17 @@ def _no_host_container_runtime(monkeypatch):
         return False, _parser.NO_RUNTIME
 
     monkeypatch.setattr(_parser, "_check_container_running", _answer)
+
+    # The label lookup of a box known only by name (``box_running_reason``'s *box_ref*)
+    # asks the runtime too: with none named, no container carries labels.
+    real_ref = _lifecycle._box_ref_container
+
+    def _ref(box, workset):
+        if os.environ.get("KANIBAKO_DOCKER_CMD"):
+            return real_ref(box, workset)
+        return container_name_for_box_name(box, workset)
+
+    monkeypatch.setattr(_lifecycle, "_box_ref_container", _ref)
 
 
 @pytest.fixture(autouse=True)

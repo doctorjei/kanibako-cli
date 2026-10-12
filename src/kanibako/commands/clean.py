@@ -20,10 +20,7 @@ from kanibako.settings.paths import (
     resolve_any_project,
     standalone_box_store,
 )
-from kanibako.utils import (
-    confirm_or_abort,
-    container_name_for_box_name,
-)
+from kanibako.utils import confirm_or_abort
 from kanibako.project.workset import (
     _symlink_loop,
     purge_box_logs,
@@ -463,15 +460,16 @@ def _purge_all(std, config, *, force: bool) -> int:
     print()
 
     from kanibako.commands.box._parser import (
-        _primary_probe_container, box_channel_keeps, kept_for_recorded_workspace)
+        _primary_probe_ref, box_channel_keeps, kept_for_recorded_workspace)
 
     # ⚑ EVERY BOX IS PLANNED BEFORE THE QUESTION AND BEFORE ANY DELETE: a box purged
     # first is unregistered, and its workspace inside a later box must still be kept.
     # (label, logs dir, box, workset root, metadata, vault leaves, store, primary entry)
     jobs: list[tuple[str, Path | None, str, Path, Path, tuple[Path | None, Path | None],
                      Path | None, tuple[Path, Path | None] | None]] = []
-    # (label, lock file, container, quoted stop ref): what the running-box probe asks.
-    probes: list[tuple[str, Path, str | None, str]] = []
+    # (label, lock file, (box, <W>), quoted stop ref): what the running-box probe asks;
+    # the container is found by its labels.
+    probes: list[tuple[str, Path, tuple[str, str], str]] = []
     # Every box's channel dirs: never deleted, named after the run.
     channels: "list[tuple[str, Path, str | None]]" = []
     for metadata_path, project_path in projects:
@@ -486,7 +484,7 @@ def _purge_all(std, config, *, force: bool) -> int:
                      _resolve_snapshot_store(vault_rw, metadata_path.name),
                      (metadata_path, project_path)))
         probes.append((jobs[-1][0], metadata_path / ".kanibako.lock",
-                       _primary_probe_container(metadata_path.name),
+                       _primary_probe_ref(metadata_path.name),
                        box_cure_ref(BoxMode.primary, metadata_path.name, None, metadata_path)))
         channels += box_channel_keeps(std, BoxMode.primary, std.primary_workset,
                                       metadata_path.name)
@@ -509,7 +507,7 @@ def _purge_all(std, config, *, force: bool) -> int:
                          boxes_dir / proj_name, (vault_ro_leaf, vault_rw_leaf),
                          _resolve_snapshot_store(vault_rw_leaf, proj_name), None))
             probes.append((jobs[-1][0], boxes_dir / proj_name / ".kanibako.lock",
-                           container_name_for_box_name(proj_name, ws_name),
+                           (proj_name, ws_name),
                            box_cure_ref(BoxMode.named, proj_name, ws_name, ws.root)))
             channels += box_channel_keeps(std, BoxMode.named, ws.root, proj_name,
                                           workset=ws_name)
@@ -522,11 +520,11 @@ def _purge_all(std, config, *, force: bool) -> int:
     # with its stop cure, and --force overrides (each warning still prints).
     from kanibako.commands.box._lifecycle import abort_if_box_running
 
-    live = [label for label, lock, container, ref in probes
+    live = [label for label, lock, box_ref, ref in probes
             if abort_if_box_running(None, lock, force,
                                     "Purging it would delete its vaults and canon while "
                                     "writes are in flight.",
-                                    container_name=container, cure_ref=ref,
+                                    box_ref=box_ref, cure_ref=ref,
                                     announce_abort=False)]
     if live:
         print(f"Error: {len(live)} box(es) may be running: {', '.join(live)}. Nothing was "

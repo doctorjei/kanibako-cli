@@ -34,6 +34,8 @@ class AmbiguousNameError(ProjectError):
 
 class ContainerError(KanibakoError):
 
+class LabelQueryError(ContainerError):
+
 class PackagingError(KanibakoError):
 
 class ArchiveError(KanibakoError):

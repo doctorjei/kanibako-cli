@@ -8,7 +8,8 @@ import sys
 
 from kanibako.settings.config import user_config_file, load_config, BootstrapConfig
 from kanibako.runtime.container import ContainerRuntime
-from kanibako.errors import ConfigError, ContainerError, KanibakoError, ProjectError, WorksetError
+from kanibako.errors import (ConfigError, ContainerError, KanibakoError, LabelQueryError,
+                             ProjectError, WorksetError)
 from kanibako.settings.paths import (
     ProjectPaths,
     StandardPaths,
@@ -18,7 +19,7 @@ from kanibako.settings.paths import (
     resolve_box_target,
 )
 from kanibako.settings.settings_resolve import SettingsError
-from kanibako.utils import (box_container, container_name_segments,
+from kanibako.utils import (LABEL_BOX, box_container, container_name_segments,
                             unrenderable_box_name_refusal)
 
 
@@ -299,21 +300,33 @@ def _stop_all(runtime: ContainerRuntime, *, force: bool = False) -> int:
 
     Containers are handled in listing order.  A stopped container still holds
     the box's name and blocks the next launch, so it is removed too.  Returns 1
-    if any stop or removal failed, after handling every container.
+    if any stop or removal, or the label query, failed, after handling every container.
     """
     # ⚑ SKIP AND CONTINUE: the sweep carries on with every container that has a name.
     for name in _boxes_rendering_no_name():
         print(f"Skipped box '{name}': it has no container name under the box-name rule.")
 
-    containers = runtime.list_running(include_stopped=True)
-    if not containers:
+    names = [name for name, _image, _status in runtime.list_running(include_stopped=True)]
+    # ⚑ AND every container carrying a box's labels, whatever its name (system-design
+    # § Box and helper identity).  A query the runtime fails is said, and fails the run;
+    # the containers found by name are still handled.
+    unlabeled: LabelQueryError | None = None
+    try:
+        names += [n for n in runtime.find_labeled({LABEL_BOX: None}, check=True)
+                  if n not in names]
+    except LabelQueryError as exc:
+        unlabeled = exc
+        sys.stdout.flush()
+        print(f"Error: could not list the containers that carry a box's labels: {exc}",
+              file=sys.stderr)
+    if not names:
+        if unlabeled is not None:
+            return 1
         print("No kanibako containers found.")
         return 0
 
     # ⚑ LIVENESS ONCE, BEFORE ANYTHING CHANGES IT — the prompt and the action read it.
-    liveliness = {
-        name: runtime.is_running(name) for name, _image, _status in containers
-    }
+    liveliness = {name: runtime.is_running(name) for name in names}
     running_names = [n for n, live in liveliness.items() if live]
     stopped_names = [n for n, live in liveliness.items() if not live]
 
@@ -333,7 +346,7 @@ def _stop_all(runtime: ContainerRuntime, *, force: bool = False) -> int:
             print("Aborted.")
             return 2
 
-    failed = False
+    failed = unlabeled is not None
 
     def fail(line: str) -> None:
         nonlocal failed
@@ -343,7 +356,7 @@ def _stop_all(runtime: ContainerRuntime, *, force: bool = False) -> int:
 
     stopped_count = 0
     removed_count = 0
-    for name, _image, _status in containers:
+    for name in names:
         if liveliness[name]:
             if runtime.stop(name):
                 print(f"Stopped {name}")

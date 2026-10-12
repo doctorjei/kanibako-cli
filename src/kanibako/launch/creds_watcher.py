@@ -410,13 +410,14 @@ def _resolve_watch_context(box: str | None):
     from kanibako.runtime.container import ContainerRuntime
     from kanibako.settings.paths import load_std_paths, resolve_box_target
     from kanibako.settings.settings_resolve import SettingsError
-    from kanibako.utils import container_name_for
+    from kanibako.utils import box_container
 
     runtime = ContainerRuntime()
     config = load_config(user_config_file())
     std = load_std_paths(config)
     proj = resolve_box_target(std, config, box, initialize=False)
-    container_name = container_name_for(proj)
+    # Found by its labels (system-design § Box and helper identity), else its name.
+    container_name = box_container(runtime, proj)
     # ⚑ No user to address, so this does what it already does with no agent stamp:
     # nothing.  A loud refusal here would only spam the log.
     if container_name is None:

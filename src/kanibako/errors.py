@@ -68,6 +68,13 @@ class ContainerError(KanibakoError):
     """Container runtime or image operation failed."""
 
 
+class LabelQueryError(ContainerError):
+    """A runtime that is present failed to say which containers carry a box's labels.
+
+    A destructive verb refuses on it: the box may be running under another name.
+    """
+
+
 class PackagingError(KanibakoError):
     """kanibako's packaged data is missing or incomplete; the install is broken."""
 

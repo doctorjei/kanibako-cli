@@ -281,7 +281,8 @@ def box_labels(proj: ProjectPaths, helper_num: int | None = None) -> dict[str, s
     return labels
 
 
-def box_container(runtime: ContainerRuntime, proj: ProjectPaths) -> str | None:
+def box_container(runtime: ContainerRuntime, proj: ProjectPaths, *,
+                  check: bool = False) -> str | None:
     """The name of *proj*'s container, found by its labels; ``None`` when the box
     renders no name (:func:`container_name_for`).
 
@@ -289,12 +290,35 @@ def box_container(runtime: ContainerRuntime, proj: ProjectPaths) -> str | None:
     by its labels, not by its name.  A helper of the box carries the same labels plus
     ``kanibako.helper`` and is never the box's.  When no container carries the labels
     -- one created before containers were labeled, or none yet -- the answer is the
-    rendered name, which addresses the old container and names a new one.
+    rendered name, which addresses the old container and names a new one.  With
+    *check*, a label query the runtime fails raises ``LabelQueryError`` (a destructive
+    caller must not read it as "no container"); without, it answers the rendered name.
     """
     rendered = container_name_for(proj)
     if rendered is None:
         return None
-    found = sorted(runtime.find_labeled(box_labels(proj), without=LABEL_HELPER))
+    return _labeled_or_rendered(runtime, box_labels(proj), rendered, check=check)
+
+
+def box_container_named(runtime: ContainerRuntime, box: str, workset: str, *,
+                        check: bool = False) -> str | None:
+    """:func:`box_container` for a box known only by its name *box* and ``<W>`` segment
+    *workset* (a parked entry, an unresolvable member, a listing row).
+
+    ⚑ Without the box's settings it matches ``kanibako.workset`` and ``kanibako.box``
+    only, at any ``kanibako.workset_kuid``.
+    """
+    rendered = container_name_for_box_name(box, workset)
+    if rendered is None:
+        return None
+    return _labeled_or_rendered(
+        runtime, {LABEL_WORKSET: workset, LABEL_BOX: box}, rendered, check=check)
+
+
+def _labeled_or_rendered(runtime: ContainerRuntime, labels: dict[str, str], rendered: str,
+                         *, check: bool) -> str:
+    """The box container carrying *labels* (the *rendered* one on a tie), else *rendered*."""
+    found = sorted(runtime.find_labeled(labels, without=LABEL_HELPER, check=check))
     if not found or rendered in found:
         return rendered
     return found[0]
