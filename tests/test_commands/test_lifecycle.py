@@ -2284,6 +2284,13 @@ class TestRollbacksDeleteOnlyWhatTheOpCreated:
         )
 
         config, std, tmp_home = env
+        # ``protected_canon`` fakes the unshare calls, but the skeleton is protected only
+        # once a runtime is DETECTED: an executable stub, so this passes without podman.
+        # It fails every call, as a broken ``newuidmap`` makes podman unshare do.
+        stub = tmp_path / "fake-podman"
+        stub.write_text("#!/bin/sh\nexit 1\n")
+        stub.chmod(0o755)
+        monkeypatch.setenv("KANIBAKO_DOCKER_CMD", str(stub))
         ws1 = _make_workset(env, "ws1", "ws1_root")
         create_workset("ws2", tmp_home / "ws2_root", std)
         leaf, state = self._member(env, ws1)

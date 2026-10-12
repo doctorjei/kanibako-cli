@@ -194,7 +194,15 @@ class TestTheRigPrepCureIsQuoted:
     ``--name`` was handed — so this operand is reachable with any metacharacter.
     """
 
-    def test_the_printed_rig_cure_pastes_to_one_argv(self, name, tmp_home, config_file, tmp_path):
+    def test_the_printed_rig_cure_pastes_to_one_argv(
+        self, name, tmp_home, config_file, tmp_path, monkeypatch,
+    ):
+        # ``rig add`` refuses without a runtime but never calls it for a ref: an
+        # executable stub, so this passes without podman.
+        stub = tmp_path / "fake-podman"
+        stub.write_text("#!/bin/sh\nexit 1\n")
+        stub.chmod(0o755)
+        monkeypatch.setenv("KANIBAKO_DOCKER_CMD", str(stub))
         printed = _printed(["rig", "add", "--name", name, "docker.io/library/alpine:3.19"])
 
         assert f"kanibako rig prep {shlex.quote(name)}" in printed
