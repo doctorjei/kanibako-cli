@@ -86,18 +86,24 @@ def test_clear_creds_dirty_removes_and_is_idempotent(tmp_path):
     assert not flag.exists()
 
 
-def test_flag_helpers_tolerate_errors(monkeypatch):
-    # A path whose probe raises must degrade to False / silent, never crash.
-    boom = Path("/definitely/not/writable/creds")
+def test_flag_helpers_tolerate_errors(monkeypatch, tmp_path):
+    # A boxfs probe that raises an OSError other than FileNotFoundError must
+    # degrade to False / silent, never crash.
+    from kanibako import boxfs
 
-    def raiser(*_a, **_k):
-        raise OSError("nope")
+    calls = []
 
-    monkeypatch.setattr(Path, "exists", raiser)
-    assert read_creds_dirty(boom) is False  # swallowed
-    monkeypatch.undo()
-    monkeypatch.setattr(Path, "unlink", raiser)
-    clear_creds_dirty(boom)  # swallowed, no raise
+    def raiser(name):
+        def _raise(*_a, **_k):
+            calls.append(name)
+            raise PermissionError("nope")
+        return _raise
+
+    monkeypatch.setattr(boxfs, "stat", raiser("stat"))
+    monkeypatch.setattr(boxfs, "unlink", raiser("unlink"))
+    assert read_creds_dirty(tmp_path) is False  # swallowed
+    assert clear_creds_dirty(tmp_path) is None  # swallowed, no raise
+    assert calls == ["stat", "unlink"]
 
 
 # --------------------------------------------------------------------------- #
