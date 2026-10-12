@@ -565,8 +565,10 @@ class TestStandaloneLaunch:
             )
 
         # Standalone shares at the global tier → both credsync phases run.
-        m.credsync.refresh_box_credentials.assert_called()
-        m.credsync.writeback_box_credentials.assert_called()
+        m.credsync.refresh_box_credentials.assert_called_once()
+        assert m.credsync.refresh_box_credentials.call_args.kwargs["project_home"] is proj.shell_path
+        m.credsync.writeback_box_credentials.assert_called_once()
+        assert m.credsync.writeback_box_credentials.call_args.kwargs["project_home"] is proj.shell_path
 
     def test_shell_works_with_standalone(self, start_mocks, tmp_path):
         """shell auto-detects standalone mode via resolve_any_project."""

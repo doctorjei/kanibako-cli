@@ -1635,6 +1635,10 @@ class TestDistinctAuth:
             )
             assert rc == 0
             m.credsync.refresh_box_credentials.assert_called_once()
+            assert (
+                m.credsync.refresh_box_credentials.call_args.kwargs["project_home"]
+                is m.proj.shell_path
+            )
 
 
 class TestStartArgs:

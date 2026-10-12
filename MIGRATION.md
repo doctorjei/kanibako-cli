@@ -8209,9 +8209,8 @@ installed packages, so the argument was already ignored. Passing it now raises `
 ### 3.5 `refresh_credentials`, `writeback_credentials`, and `cp_if_newer` are removed
 
 **Read this if your plugin overrides `Target.refresh_credentials` or `Target.writeback_credentials`,
-or imports `kanibako.utils.cp_if_newer`.** The published `kanibako-agent-claude` 1.7.2 does both:
-its `credentials.py` imports `cp_if_newer` at module scope, so that wheel fails to load on this
-core and is skipped with a named warning. Upgrade it with the core.
+or imports `kanibako.utils.cp_if_newer`.** The published plugins already do not load on 1.8.0
+(see "Core module paths moved (package-ification)"); upgrade them with the core.
 
 **What changed.** kanibako ran the two hooks only for a target with no `descriptor`, and discovery
 skips every plugin without one, so no installed plugin's hooks ever ran. Both are gone from
