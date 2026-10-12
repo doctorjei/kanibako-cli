@@ -7947,6 +7947,7 @@ class TestPreflightPersonaLoad:
         cfg.secret_path = {"ANTHROPIC_AUTH_TOKEN": str(tok)}
         endpoint, err, provider = _preflight_persona_load(
             "navigator℘claude", cfg.secret_path, "https://key.example", self._logger(),
+            target=_claude_target(),
         )
         assert (endpoint, err) == ("https://key.example", None)
         # A claude (ENV-delivery) persona carries NO config-file provider.

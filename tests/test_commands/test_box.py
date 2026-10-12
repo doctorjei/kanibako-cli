@@ -2986,6 +2986,67 @@ class TestCheckPersonaStoreForCreate:
         assert "navigator+codex" in out
         assert "persona store" in out
 
+    @staticmethod
+    def _no_block_target(*, endpoint: bool):
+        """A plugin with a working store reader and NO ``persona:`` block; its probe
+        records every call."""
+        import dataclasses
+
+        from kanibako.plugins.codex.target import CodexTarget
+        from kanibako.targets.base import PersonaReadOutcome, PersonaSettings
+
+        class NoBlock(CodexTarget):
+            probed: list = []
+
+            @property
+            def descriptor(self):
+                return dataclasses.replace(super().descriptor, persona=None)
+
+            def read_persona_settings(self, config_dir):
+                if endpoint:
+                    return super().read_persona_settings(config_dir)
+                return PersonaReadOutcome(PersonaSettings(
+                    endpoint=None, model=None, auth_env="NAVIGATOR_API_KEY",
+                ), None)
+
+            def verify_persona(self, *a, **k):
+                self.probed.append(a)
+                raise AssertionError("a harness with no persona block was probed")
+
+        return NoBlock()
+
+    @pytest.mark.parametrize("endpoint", [False, True], ids=["no-endpoint", "endpoint"])
+    def test_a_harness_with_no_persona_block_is_not_checked_at_create(
+        self, tmp_home, monkeypatch, capsys, endpoint,
+    ):
+        """His 176th ruling, as at launch: no endpoint refusal and no probe for a
+        harness that declares no persona block.  (Mutation: drop the
+        ``_persona_wiring`` test → "names no endpoint" refusal, or a probe → RED.)"""
+        self._store(tmp_home)
+        target = self._no_block_target(endpoint=endpoint)
+        err = self._call(tmp_home, "navigator+codex", monkeypatch, target=target)
+        assert err is None
+        assert target.probed == []
+        assert "creating" not in capsys.readouterr().err
+        assert not self._agents_root().exists()
+
+    def test_a_declared_block_with_no_endpoint_is_still_refused_at_create(
+        self, tmp_home, monkeypatch,
+    ):
+        """The control: the same store with codex's real ``persona:`` block refuses."""
+        from kanibako.plugins.codex.target import CodexTarget
+        from kanibako.targets.base import PersonaReadOutcome, PersonaSettings
+
+        class Endpointless(CodexTarget):
+            def read_persona_settings(self, config_dir):
+                return PersonaReadOutcome(PersonaSettings(
+                    endpoint=None, model=None, auth_env="NAVIGATOR_API_KEY",
+                ), None)
+
+        self._store(tmp_home)
+        err = self._call(tmp_home, "navigator+codex", monkeypatch, target=Endpointless())
+        assert err is not None and "names no endpoint" in err
+
     def test_readerless_harness_falls_through(self, tmp_home, monkeypatch):
         """⚑ ``no_reader`` is a FALL-THROUGH, never a refusal.
 

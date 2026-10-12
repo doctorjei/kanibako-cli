@@ -710,7 +710,11 @@ def _check_persona_store_for_create(agent_ref: str) -> str | None:
         return None
     if bundle.reject_reason is not None:
         return f"Error: {bundle.reject_reason}"
-    if not bundle.endpoint:
+    from kanibako.commands.start import _persona_wiring
+    # No persona block: no endpoint refusal and no probe, as at launch (his 176th
+    # ruling, "just run it with no checks").
+    checked = _persona_wiring(target) is not None
+    if checked and not bundle.endpoint:
         return (
             f"Error: persona store config at {entry.config_dir} names no "
             f"endpoint; a persona needs one"
@@ -723,7 +727,7 @@ def _check_persona_store_for_create(agent_ref: str) -> str | None:
         )
     # ⚑ WARN-ONLY probe, and it warns for the two ANSWERED non-PASS verdicts only —
     # ``NOT_APPLICABLE`` learned nothing and goes to the log, as on the launch path.
-    if bundle.token_path is not None:
+    if checked and bundle.endpoint and bundle.token_path is not None:
         try:
             outcome = target.verify_persona(
                 bundle.endpoint, bundle.token_path, bundle.model,
