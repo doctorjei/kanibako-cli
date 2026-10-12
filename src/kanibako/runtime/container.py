@@ -97,6 +97,38 @@ def image_ref_or_none(raw: str) -> str | None:
     return None
 
 
+def running_from_inspect(result: subprocess.CompletedProcess[str]) -> bool:
+    """Whether an ``inspect --format {{.State.Running}}`` *result* says the container runs.
+
+    Shared by the local leg (:meth:`ContainerRuntime.is_running`) and the remote one
+    (``vscode.vscode_remote.RemoteEngine.running_with_stderr``).  A failed ``inspect``
+    (no such container, engine unreachable) reads as not running.
+    """
+    return result.returncode == 0 and result.stdout.strip() == "true"
+
+
+def env_from_inspect(result: subprocess.CompletedProcess[str], key: str) -> str | None:
+    """The value of env var *key* in an ``inspect --format {{json .Config.Env}}`` *result*.
+
+    Shared by the local leg (:meth:`ContainerRuntime.inspect_env`) and the remote one
+    (``vscode.vscode_remote.RemoteEngine.inspect_env``).  ``None`` when the ``inspect``
+    failed, its output is not a JSON list, or *key* is not set.
+    """
+    if result.returncode != 0:
+        return None
+    try:
+        env_list = json.loads(result.stdout.strip() or "null")
+    except (ValueError, TypeError):
+        return None
+    if not isinstance(env_list, list):
+        return None
+    prefix = f"{key}="
+    for item in env_list:
+        if isinstance(item, str) and item.startswith(prefix):
+            return item[len(prefix):]
+    return None
+
+
 class ContainerRuntime:
     """Wrapper around podman/docker CLI."""
 
@@ -533,7 +565,7 @@ class ContainerRuntime:
             capture_output=True,
             text=True,
         )
-        return result.returncode == 0 and result.stdout.strip() == "true"
+        return running_from_inspect(result)
 
     def inspect_env(self, name: str, key: str) -> str | None:
         """Return the value of env var *key* recorded on container *name*, or None."""
@@ -542,19 +574,7 @@ class ContainerRuntime:
             capture_output=True,
             text=True,
         )
-        if result.returncode != 0:
-            return None
-        try:
-            env_list = json.loads(result.stdout.strip() or "null")
-        except (ValueError, TypeError):
-            return None
-        if not isinstance(env_list, list):
-            return None
-        prefix = f"{key}="
-        for item in env_list:
-            if isinstance(item, str) and item.startswith(prefix):
-                return item[len(prefix):]
-        return None
+        return env_from_inspect(result, key)
 
     def container_image(self, name: str) -> str | None:
         """Return the image reference container *name* was created from, or None."""

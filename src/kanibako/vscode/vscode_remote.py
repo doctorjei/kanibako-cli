@@ -52,7 +52,11 @@ from pathlib import Path
 
 from kanibako.errors import KanibakoError
 from kanibako.log import get_logger
-from kanibako.runtime.container import image_ref_or_none
+from kanibako.runtime.container import (
+    env_from_inspect,
+    image_ref_or_none,
+    running_from_inspect,
+)
 from kanibako.settings.bootstrap import XDG_RUNTIME_DIR
 from kanibako.settings.paths import resolve_cache_path, resolve_state_path
 
@@ -414,9 +418,11 @@ class RemoteEngine:
     Built on the podman remote argv prefix dialing the LOCAL end of the ssh
     tunnel (:func:`ensure_tunnel`) — podman never execs ssh here (the golang
     ``ssh:`` client is bypassed entirely).  Does NOT touch
-    :class:`ContainerRuntime` — it does share that module's
-    :func:`~kanibako.runtime.container.image_ref_or_none`, so both legs answer
-    "is this an image reference?" from one rule.
+    :class:`ContainerRuntime` — it does share that module's ``inspect`` parsers
+    (:func:`~kanibako.runtime.container.image_ref_or_none`,
+    :func:`~kanibako.runtime.container.running_from_inspect`,
+    :func:`~kanibako.runtime.container.env_from_inspect`), so both legs read the
+    engine's answers by one rule.
     """
 
     def __init__(self, url: str, *, podman: str | None = None) -> None:
@@ -450,8 +456,7 @@ class RemoteEngine:
         result = self._run(
             ["inspect", "--format", "{{.State.Running}}", name],
         )
-        running = result.returncode == 0 and result.stdout.strip() == "true"
-        return running, (result.stderr or "").strip()
+        return running_from_inspect(result), (result.stderr or "").strip()
 
     def is_running(self, name: str) -> bool:
         """Whether the remote container *name* is currently running."""
@@ -463,19 +468,7 @@ class RemoteEngine:
         result = self._run(
             ["inspect", "--format", "{{json .Config.Env}}", name],
         )
-        if result.returncode != 0:
-            return None
-        try:
-            env_list = json.loads(result.stdout.strip() or "null")
-        except (ValueError, TypeError):
-            return None
-        if not isinstance(env_list, list):
-            return None
-        prefix = f"{key}="
-        for item in env_list:
-            if isinstance(item, str) and item.startswith(prefix):
-                return item[len(prefix):]
-        return None
+        return env_from_inspect(result, key)
 
     def container_image(self, name: str) -> str | None:
         """The image reference remote container *name* was created from, or None."""

@@ -20,6 +20,8 @@ _CANON_SEED_DENY_GUEST_PREFIXES = tuple((f'{GUEST_HOME}/{rel}' for rel in CANON_
 ## Functions
 ```
 def image_ref_or_none(raw: str) -> str | None
+def running_from_inspect(result: subprocess.CompletedProcess[str]) -> bool
+def env_from_inspect(result: subprocess.CompletedProcess[str], key: str) -> str | None
 def remove_path(path: Path) -> bool
 def remove_box_tree(target: Path) -> bool
 def detect_shadowed_mounts(shell_path: Path, project_path: Path, extra_mounts: list | None, enable_vault: bool) -> list[str]
