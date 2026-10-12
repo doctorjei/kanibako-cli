@@ -1094,6 +1094,51 @@ def _remap_dest_holder(
     return None
 
 
+def _dest_nesting_refusal(
+    std: StandardPaths, *, mode: BoxMode, name: str, ws: Workset | None, dest: Path,
+    metadata_path: Path, verb: str, force: bool,
+) -> str | None:
+    """The error line refusing a box placed at *dest* on another box's tree, else ``None``.
+
+    The verb-neutral door to :func:`_remap_dest_holder`: the box (*mode*, *name*, *ws*,
+    *metadata_path*) is judged as if remapped onto *dest*, a standalone by its root.  A
+    forceable refusal passes under *force*.
+    """
+    # The judge reads only the mode, name, workset, and metadata path; the other
+    # fields are the box's own paths, which no arm asks.
+    state = ProjectState(
+        owner=mode.value, mode=mode, name=name, workspace_path=dest,
+        metadata_path=metadata_path, shell_path=metadata_path, vault_ro=None,
+        vault_rw=None, ws=ws)
+    holder = _remap_dest_holder(state, dest, std, verb=verb)
+    if holder is None or (holder[1] and force):
+        return None
+    return f"Error: Cannot {verb} a box at '{dest}': it is {holder[0]}"
+
+
+def _refuse_foreign_workset_landing(
+    std: StandardPaths, landing: Path, owning_ws_root: Path | None,
+) -> None:
+    """Raise ``ProjectError`` when *landing* sits in a workset other than *owning_ws_root*.
+
+    The box-ID path-space rule: a box lands in a workset's tree only as its member.
+    """
+    for ws_name, ws_root in list_worksets(std).items():
+        ws_root = _resolved_unless_loop(Path(ws_root))
+        if owning_ws_root is not None and ws_root == owning_ws_root:
+            continue
+        # ⚑ In-tree: a repointed ``workset.workspaces`` dir, or a link.
+        if not is_in_tree_workspace(
+                Workset(name=ws_name, root=ws_root, early_system=std.early_system), landing):
+            continue
+        raise ProjectError(
+            f"Refusing to land the project inside workset '{ws_name}' "
+            f"({ws_root}) — it is not (being made) a member of that workset. "
+            f"Use `--workset {shlex.quote(ws_name)}` to make it a member, or choose a "
+            "destination outside that workset."
+        )
+
+
 def _sweep_moves_other_box(
     root: Path, std: StandardPaths, standalones: Mapping[str, Path], *,
     own_ref: str | None = None,
@@ -1391,20 +1436,7 @@ def _validate(
     owning_ws_root: Path | None = None
     if target_mode == BoxMode.named and target_ws is not None:
         owning_ws_root = target_ws.root.resolve()
-    for ws_name, ws_root in list_worksets(std).items():
-        ws_root = _resolved_unless_loop(Path(ws_root))
-        if owning_ws_root is not None and ws_root == owning_ws_root:
-            continue
-        # ⚑ In-tree: a repointed ``workset.workspaces`` dir, or a link.
-        if not is_in_tree_workspace(
-                Workset(name=ws_name, root=ws_root, early_system=std.early_system), landing):
-            continue
-        raise ProjectError(
-            f"Refusing to land the project inside workset '{ws_name}' "
-            f"({ws_root}) — it is not (being made) a member of that workset. "
-            f"Use `--workset {shlex.quote(ws_name)}` to make it a member, or choose a "
-            "destination outside that workset."
-        )
+    _refuse_foreign_workset_landing(std, landing, owning_ws_root)
 
     # --- an in-tree landing needs a workspace dir: a null ``workset.workspaces`` has none
     #     (Q96).  Refused HERE, before step 2 moves a tree or a ws->ws source releases. ---

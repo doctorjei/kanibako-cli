@@ -1260,24 +1260,19 @@ def _create_nesting_refusal(std, probe, root: Path, *, ws: Workset | None,
                             force: bool) -> str | None:
     """The error line refusing a new box's workspace placed on another box's tree, else ``None``.
 
-    Reuses the remap check (:func:`~kanibako.commands.box._lifecycle._remap_dest_holder`):
-    the new box is checked as if remapped onto its own workspace.  A standalone is checked
-    by its *root*, which the check reads the workspace from.
+    The check every placing verb shares
+    (:func:`~kanibako.commands.box._lifecycle._dest_nesting_refusal`): the new box is
+    checked as if remapped onto its own workspace.  A standalone is checked by its *root*,
+    which the check reads the workspace from.
     """
-    from kanibako.commands.box._lifecycle import ProjectState, _remap_dest_holder
+    from kanibako.commands.box import _lifecycle
 
     dest = root if probe.mode is BoxMode.standalone else probe.project_path
     if dest is None:  # a standalone root that nulls its workspace is refused elsewhere
         return None
-    state = ProjectState(
-        owner=probe.mode.value, mode=probe.mode, name=probe.name or dest.name,
-        workspace_path=dest, metadata_path=probe.metadata_path,
-        shell_path=probe.shell_path, vault_ro=probe.vault_ro_path,
-        vault_rw=probe.vault_rw_path, ws=ws, paths=probe)
-    holder = _remap_dest_holder(state, dest, std, verb="create")
-    if holder is None or (holder[1] and force):
-        return None
-    return f"Error: Cannot create a box at '{dest}': it is {holder[0]}"
+    return _lifecycle._dest_nesting_refusal(
+        std, mode=probe.mode, name=probe.name or dest.name, ws=ws, dest=dest,
+        metadata_path=probe.metadata_path, verb="create", force=force)
 
 
 def _create_target(args: argparse.Namespace) -> Path:

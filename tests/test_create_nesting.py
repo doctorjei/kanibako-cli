@@ -217,3 +217,28 @@ class TestStandaloneWithARefusedPrimaryRegistry:
         err = capsys.readouterr().err
         assert f"a directory holding the workspace of box 'W/m' ({member})" in err, err
         assert _create("--standalone", "--force", str(area / "H")) == 0
+
+
+class TestCreateRunsTheOneJudge:
+    """Create asks ``_dest_nesting_refusal``, the verb-neutral check other verbs share."""
+
+    def test_create_routes_through_dest_nesting_refusal(
+            self, area, capsys, monkeypatch, tmp_home):
+        from kanibako.commands.box import _lifecycle
+        monkeypatch.chdir(tmp_home)
+        monkeypatch.setenv("PWD", str(tmp_home))
+        seen: list[dict] = []
+        real = _lifecycle._dest_nesting_refusal
+
+        def spy(std, **kw):
+            seen.append(kw)
+            return real(std, **kw)
+
+        monkeypatch.setattr(_lifecycle, "_dest_nesting_refusal", spy)
+        assert _create("--name", "outer", str(area / "A")) == 0
+        dest = area / "A" / "inner"
+        assert _create("--name", "inner", str(dest)) == 1
+        assert [(k["verb"], k["dest"], k["force"]) for k in seen] == [
+            ("create", area / "A", False), ("create", dest, False)]
+        _refused(capsys, dest, f"inside the workspace of primary box 'outer' ({area / 'A'}). "
+                 + SHARE)
