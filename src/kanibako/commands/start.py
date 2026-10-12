@@ -1939,7 +1939,8 @@ def _check_launch_baseline(
             f"      {shlex.quote(runtime.cmd)} run --rm -it "
             f"{shlex.quote(image)} bash\n"
             f"  or, once a box exists:  kanibako shell\n"
-            f"  Install it in the image{or_set}.",
+            f"  Install it in the image{or_set}, or start without it:\n"
+            f"      kanibako start --ephemeral",
             file=sys.stderr,
         )
         return _BOOTSTRAP_MISSING

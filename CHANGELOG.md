@@ -784,6 +784,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **A `KANIBAKO_DOCKER_CMD` naming a missing program is an `Error:` that names it.** `kanibako stop` and every
   other verb that needs the container runtime used to end in a traceback; a verb that runs without one carries on
   as it does when no runtime is installed.
+- **The refusal for an image without the bootstrap program names `kanibako start --ephemeral`.** An ephemeral
+  start does not run the bootstrap program, so the refusal offers it alongside installing the program.
 - **A purge names the box's inbox and share folders it keeps.** `box rm --purge`, `box purge` (`--all` too), and
   `workset disconnect --remove-files` left the box's mailbox and share folders in place without a word. They are
   still kept, since they lie outside the box's folder; each one present is now listed as kept before the

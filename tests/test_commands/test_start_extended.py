@@ -2569,8 +2569,10 @@ class TestCheckLaunchBaselineUnit:
         assert "shell IS still available" in err
         assert "bash" in err
         # No known setting: the install cure alone, and no key the user never wrote.
-        assert "Install it in the image." in err
+        assert "Install it in the image, or start without it:" in err
         assert "agent.default.bootstrap" not in err
+        # An ephemeral start skips the bootstrap program, so the refusal names it as a cure.
+        assert "kanibako start --ephemeral" in err
 
     def test_tier1_on_a_shell_box_names_the_shell_tier_key(
         self, tmp_path, monkeypatch, capsys
@@ -2594,7 +2596,8 @@ class TestCheckLaunchBaselineUnit:
             )
         assert result is start_mod._BOOTSTRAP_MISSING
         err = capsys.readouterr().err
-        assert "or set agent.shell.bootstrap to an installed program." in err
+        assert "or set agent.shell.bootstrap to an installed program, or start without it:" in err
+        assert "kanibako start --ephemeral" in err
         assert "agent.default.bootstrap" not in err
 
     def test_tier2_missing_warns_and_persists(
