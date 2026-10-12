@@ -225,7 +225,7 @@ def _migrate_flat_and_mark(
             dest = _unique_snapshot_dest(
                 target, entry.name, box_name if store_exclusive else None
             )
-            shutil.move(str(entry), str(dest))
+            _move_tree(entry, dest, vault_rw_path.parent)
             moved[bucket].append(entry.name)
             logger.info(
                 "Migrated legacy vault snapshot %s to %s.", entry.name,
@@ -317,6 +317,25 @@ def _remove_in_vault(path: Path, root: Path) -> None:
     """Remove *path* (a tree, a file, or a link, never followed) under *root*; a
     missing *path* is fine.  ``force``: never for a snapshot (see :func:`_rmtree_force`)."""
     boxfs.rmtree(path, root, missing_ok=True, force=True)
+
+
+def _move_tree(src: Path, dst: Path, root: Path, *, dst_root: Path | None = None) -> None:
+    """Move *src* (under *root*) to the absent *dst* (under *dst_root*, else *root*)
+    through :mod:`kanibako.boxfs`, so no symlink is followed: a rename, or on EXDEV
+    a no-follow copy and then the removal of *src*.  A copy that leaves anything out
+    removes nothing and raises."""
+    dst_root = root if dst_root is None else dst_root
+    try:
+        boxfs.rename(src, dst, root, dst_root=dst_root)
+        return
+    except OSError as exc:
+        if exc.errno != errno.EXDEV:
+            raise
+    skipped = boxfs.copy_tree(src, dst, src_root=root, dst_root=dst_root)
+    if skipped:
+        raise OSError(errno.EIO, "could not move without following a symlink: "
+                      + ", ".join(map(str, skipped)), str(src))
+    boxfs.rmtree(src, root)
 
 
 def _mount_point_refused(path: Path) -> RestoreRefusedError:
@@ -615,7 +634,7 @@ def adopt_standalone_store(
                        "it is not adopted as %s.", candidates[0], (held or {})[holder], box_name)
         return None
     store.parent.mkdir(parents=True, exist_ok=True)
-    shutil.move(str(candidates[0]), str(store))
+    _move_tree(candidates[0], store, vault_rw_path.parent)
     # AFTER the move: run first, the helper would create this store and the
     # adopted one would land inside it.
     _migrate_flat_and_mark(
@@ -643,8 +662,9 @@ def relocate_snapshot_store(
     old_base = _versions_dir(old_vault_rw)
     new_base = _versions_dir(new_vault_rw)
     new_store = _box_store(new_vault_rw, new_box)
+    new_root = new_vault_rw.parent
 
-    carried = None
+    carried, carried_root = None, new_root
     if new_base_exclusive and new_box != old_box:
         in_new_base = new_base / old_box
         if in_new_base.is_dir() and not in_new_base.is_symlink():
@@ -653,7 +673,7 @@ def relocate_snapshot_store(
         old_store = old_base / old_box
         if (old_store != new_store and old_store.is_dir()
                 and not old_store.is_symlink()):
-            carried = old_store
+            carried, carried_root = old_store, old_vault_rw.parent
     if carried is None:
         return None
 
@@ -662,15 +682,16 @@ def relocate_snapshot_store(
         create_base=True,
     )
     if not new_store.exists():
-        shutil.move(str(carried), str(new_store))
+        _move_tree(carried, new_store, carried_root, dst_root=new_root)
         return new_store
 
     # Destination store already exists: merge, never clobber.
     new_store.mkdir(parents=True, exist_ok=True)
-    for entry in sorted(carried.iterdir()):
-        dest = _unique_snapshot_dest(new_store, entry.name, old_box)
-        shutil.move(str(entry), str(dest))
-    shutil.rmtree(carried, ignore_errors=True)
+    for name in sorted(boxfs.listdir(carried, carried_root)):
+        dest = _unique_snapshot_dest(new_store, name, old_box)
+        _move_tree(carried / name, dest, carried_root, dst_root=new_root)
+    with contextlib.suppress(OSError):
+        boxfs.rmtree(carried, carried_root)
     return new_store
 
 

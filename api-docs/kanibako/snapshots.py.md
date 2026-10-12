@@ -40,6 +40,7 @@ def _snapshot_child(versions: Path, name: str) -> Path
 def _force_writable_dirs(root: Path) -> None
 def _rmtree_force(path: Path) -> None
 def _remove_in_vault(path: Path, root: Path) -> None
+def _move_tree(src: Path, dst: Path, root: Path, *, dst_root: Path | None=None) -> None
 def _mount_point_refused(path: Path) -> RestoreRefusedError
 def _move_entries(src_dir: Path, dst_dir: Path, names: list[str], root: Path, done: list[str], check: Callable[[str], None] | None=None) -> list[Path]
 def _test_reflink(path: Path) -> bool

@@ -32,7 +32,7 @@ def rmtree(path: Path, root: Path, *, missing_ok: bool=False, force: bool=False)
 def rmdir(path: Path, root: Path) -> None
 def chmod(path: Path, root: Path, mode: int) -> None
 def chmod_tree(path: Path, root: Path, *, add: int=0, remove: int=0) -> None
-def rename(src: Path, dst: Path, root: Path) -> None
+def rename(src: Path, dst: Path, root: Path, *, dst_root: Path | None=None) -> None
 def _parts(path: Path, root: Path) -> tuple[str, ...]
 def _is_link_at(name: str, dir_fd: int) -> bool
 def _open_dir_at(name: str, dir_fd: int, path: Path, shown: Path, create: bool) -> int

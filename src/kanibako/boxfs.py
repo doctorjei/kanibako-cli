@@ -768,12 +768,14 @@ def chmod_tree(path: Path, root: Path, *, add: int = 0, remove: int = 0) -> None
                     os.close(dfd)
 
 
-def rename(src: Path, dst: Path, root: Path) -> None:
-    """Rename *src* to *dst*, both under *root*; a link in a parent is refused.
+def rename(src: Path, dst: Path, root: Path, *, dst_root: Path | None = None) -> None:
+    """Rename *src* to *dst*, both under *root* (*dst* under *dst_root* when given); a
+    link in a parent is refused.
 
     ``renameat`` never follows a leaf: a link at *src* is moved itself, and a link
     at *dst* is replaced itself.
     """
     src, dst = Path(src), Path(dst)
-    with _parent(src, root) as (sfd, sleaf), _parent(dst, root) as (dfd, dleaf):
+    with _parent(src, root) as (sfd, sleaf), \
+            _parent(dst, root if dst_root is None else dst_root) as (dfd, dleaf):
         os.rename(sleaf, dleaf, src_dir_fd=sfd, dst_dir_fd=dfd)
