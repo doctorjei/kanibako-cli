@@ -128,8 +128,8 @@ def _make_box_home(root: Path) -> None:
     """Create the box home *root*, and missing parents, as the seeds always have.
 
     Through :func:`kanibako.boxfs.mkdir` under the nearest existing ancestor, so a
-    link standing at *root* is refused, never followed; an existing *root* is used
-    as given.
+    dangling link at *root* is refused and nothing is created at its target; an
+    existing *root*, linked or not, is used as given.
     """
     if root.is_dir():
         return
