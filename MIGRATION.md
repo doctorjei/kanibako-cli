@@ -7624,6 +7624,11 @@ the credential writeback, and creds-watch exits with that warning. An agent laun
 it in the settings engine's wording, which also names the key and the file. A reserved name inside
 `transform_settings` (`items`, `get`, `update`, …) is still refused, now naming the file.
 
+The file's values are read as written. A `run_args` written as a string, such as `run_args: --a --b`, shows as
+written in `box show --effective`, and an `@agent.<agent>.run_args` reference in a value you set (for example with
+`kanibako system set`) yields that string, not a list of words. A bare `run_args:` is no longer shown as an empty
+value. The agent's command line is unchanged in every case.
+
 **What you must do.** Fix or remove the value the error names, in the file it names.
 
 ---

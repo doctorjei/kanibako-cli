@@ -208,7 +208,8 @@ class AgentFileLevel:
     *contained* is the file's ``workset:`` / ``box:`` tables, RAW, likewise (Q85).
 
     The file's ROOT is split by KEY (:func:`level_table`): *table* holds every category key,
-    whatever it holds, and *state* every other key.
+    whatever it holds, and *state* every other key.  ``settings_assemble._agent_partial`` sets
+    both on the active tier's node, so the file reaches the cascade as one level.
     """
 
     node: str
@@ -639,8 +640,8 @@ def record(level: AgentFileLevel, *, node: str) -> AgentConfig:
 
     # Flat state = the SCALAR agent-state knobs. Exclude every key the record MODELS
     # as a field of its own, and any dict-valued entry: a CATEGORY table is a dict
-    # and is NOT flat state — those ride ``_agent_partial``, not the
-    # ``_agent_state_partial`` state channel.
+    # and is NOT flat state.  This field serves the agent verbs' reads; the launch reads
+    # the file's root through ``level_table``'s *state* instead (``_agent_partial``).
     # ⚑ EVERY modeled key, not just the ones with a scalar slot (S3/D-7): the
     # narrower test differs only for a MALFORMED file, where it swept a modeled
     # field's garbage — ``env: oops`` — into state as an agent-state knob (llm-docs).
@@ -1428,56 +1429,6 @@ def level_table(
     table = {k: v for k, v in agent.items() if str(k) in _FLAT_AGENT_CATEGORIES}
     state = {k: v for k, v in agent.items() if str(k) not in _FLAT_AGENT_CATEGORIES}
     return AgentFileLevel(sub_key, table, path, scope, state, contained)
-
-
-def state_level(
-    cfg: "AgentConfig | None", *, node: str, path: Path | None = None,
-) -> AgentFileLevel | None:
-    """The agent file's BEHAVIOR as a DISCRIMINATED level, or ``None`` if it sets none.
-
-    The per-agent file stores behavior FLAT (``model`` — already per-agent), not under the
-    sub-tables the cascade merges by.  The discriminator is the file's OWN node and is attached
-    HERE, at the boundary, not carried undiscriminated through the launch and attached at
-    snapshot build.  *path* is the file *cfg* was read from, attached here for the same
-    reason: the launch's read-time path check names it (:class:`AgentFileLevel`).
-
-    ⚑ EVERY producer of a behavior level goes through here (S1b), and
-    ``settings_launch._agent_state_partial`` reads the level's node — so the node a table merges
-    under is no longer a second, uncross-checked argument.
-
-    ⚑⚑ IT TAKES THE RECORD, NOT :attr:`AgentConfig.state`, AND THAT IS THE ``run_args`` CASCADE
-    (`[R169]`).  ``run_args`` is a behavior leaf the RECORD models as a field of its own
-    (:data:`_MODELED_KEYS`), so a level built from ``state`` alone dropped it and the file's argv
-    reached a launch by a SECOND route — read straight off ``AgentConfig.run_args`` at the seam
-    that builds the command line, where no ``agent.default.run_args`` could ever reach it.  Folded
-    in here, the §2d pick does the override: a per-agent value REPLACES the any-agent default, the
-    way every other ``agent.<agent>.<key> | agent.default.<key>`` row does.
-    ⚑ It rides as the stored LIST, which ``effective_behavior`` renders through
-    :func:`stored_leaf_text`; the consumer splits that string back with :func:`argv_words`.
-    ⚑⚑ THE FOLD IS ``is not None``, NEVER A TRUTHY TEST, and that is the whole reason
-    :attr:`AgentConfig.run_args` is three-state.  A present ``run_args: []`` is the user's
-    explicit "no arguments" (:func:`stored_leaf_display` says the same of the display), so it must
-    reach the cascade and SET the key — that is how an agent OPTS OUT of
-    ``agent.default.run_args``.  A truthy test folds it in with the absent key and silently
-    hands that agent the default it wrote the empty list to refuse.
-
-    ⚑ ``transform_settings`` (a TABLE-valued agent key, §2d) rides here too, so its consumers
-    read the cascade's answer, not the record's.
-
-    ⚑ IT JUDGES NOTHING: an undeclared scalar in the file is refused when the file is READ
-    (:func:`record`), so every reader — not the launch alone — refuses it by name.  The record
-    arriving here from anywhere else is a plugin's generated one, whose state is empty.
-    """
-    if cfg is None:
-        return None
-    table: dict[str, object] = dict(cfg.state or {})
-    if cfg.run_args is not None:
-        table["run_args"] = list(cfg.run_args)
-    if cfg.transform_settings:
-        table["transform_settings"] = dict(cfg.transform_settings)
-    if not table:
-        return None
-    return AgentFileLevel(node, table, path)
 
 
 def _refuse_undeclared_state(

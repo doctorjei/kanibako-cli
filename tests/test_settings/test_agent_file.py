@@ -21,7 +21,6 @@ from kanibako.settings.agent_file import (
     remove_leaf,
     save,
     slot_for,
-    state_level,
     stored_leaf_text,
     write_leaf,
 )
@@ -1505,65 +1504,10 @@ class TestTheAgentTable:
         assert load_doc(path) == {}
 
 
-class TestStateLevel:
-    def test_empty_state_is_no_level(self):
-        assert state_level(None, node="claude") is None
-        assert state_level(AgentConfig(), node="claude") is None
-
-    def test_discriminator_attaches_at_the_boundary(self):
-        assert state_level(
-            AgentConfig(state={"model": "opus"}), node="claude",
-        ) == AgentFileLevel(
-            "claude", {"model": "opus"}
-        )
-
-    def test_the_files_run_args_rides_this_level_too(self):
-        """`[R169]`: the file's argv is a CASCADE LEVEL, not a second read.
-
-        ``run_args`` is a behavior leaf the RECORD models as a field of its own, so a
-        level built from ``cfg.state`` alone dropped it — and the launch read it
-        straight off :attr:`AgentConfig.run_args`, where no ``agent.default.run_args``
-        could ever reach it.  ⚑ The stored LIST rides; the display join happens at
-        ``effective_behavior``, not here.
-
-        (Mutation: build the table from ``cfg.state`` alone again → the key is absent
-        from the level → RED.)
-        """
-        level = state_level(
-            AgentConfig(state={"model": "opus"}, run_args=["--a", "--b"]),
-            node="claude",
-        )
-        assert level == AgentFileLevel(
-            "claude", {"model": "opus", "run_args": ["--a", "--b"]},
-        )
-        # A file whose ONLY override is the argv is still a level — the empty-state
-        # early return must not swallow it.
-        assert state_level(
-            AgentConfig(run_args=["--a"]), node="claude",
-        ) == AgentFileLevel("claude", {"run_args": ["--a"]})
-
-    def test_an_ABSENT_run_args_sets_nothing_and_an_EXPLICIT_EMPTY_ONE_OPTS_OUT(self):
-        """The two halves of the three-state record, and the difference is a capability.
-
-        A file that never mentions ``run_args`` must leave ``agent.default.run_args``
-        alone; a file that says ``run_args: []`` must SET the key, which is how an agent
-        opts OUT of that default.  The fold is ``is not None`` for exactly this pair.
-
-        (Mutation: fold on truthiness instead → the explicit empty stops setting the key,
-        the agent silently receives the default it wrote the empty list to refuse → RED.)
-        """
-        absent = state_level(AgentConfig(state={"model": "opus"}), node="claude")
-        assert absent is not None and "run_args" not in absent.table
-        assert state_level(AgentConfig(), node="claude") is None
-
-        opted_out = state_level(AgentConfig(run_args=[]), node="claude")
-        assert opted_out == AgentFileLevel("claude", {"run_args": []})
-
-
 class TestTheForwardCompatPassthroughIsClosed:
     """S3b / D-5's other end: an undeclared scalar no longer rides into the launch.
 
-    ``_agent_state_partial`` documented that "undeclared agent-scope scalar keys ride through
+    The retired agent-state rung documented that "undeclared agent-scope scalar keys ride through
     verbatim (forward-compat)" — which is the *"old ``agent.<name>.<anyleaf>`` behavior"* spec §0
     SPECIFICALLY EXCLUDES. Together with the ungated ``agent set`` (D-5) it meant stored garbage
     was not merely dead: it reached the box.
@@ -1599,12 +1543,6 @@ class TestTheForwardCompatPassthroughIsClosed:
         with pytest.raises(SettingsError, match=r"self\.model"):
             agent_record(path, node="claude", purpose=ReadPurpose.RESOLVE)
 
-    def test_state_level_judges_nothing(self):
-        # A SECOND CARRIER RETIRED: the refusal lives in ``load`` alone, so building a level
-        # from a record is not a second verdict on the same file.
-        level = state_level(AgentConfig(state={"junk": "x"}), node="claude")
-        assert level is not None and level.table == {"junk": "x"}
-
     def test_every_core_declared_leaf_still_loads(self, tmp_path):
         # The CONTROL. A refusal that also refused the real keys would be caught by the
         # rest of the suite, but not by anything that says WHY this list is the list.
@@ -1614,7 +1552,7 @@ class TestTheForwardCompatPassthroughIsClosed:
             "template": "t", "canon": "c", "transform": "tweakcc",
         }
         cfg = agent_record(self._file(tmp_path, state), node="claude", purpose=ReadPurpose.RESOLVE)
-        assert state_level(cfg, node="claude").table == state
+        assert cfg.state == state
 
     def test_a_plugin_declared_leaf_still_loads(self, tmp_path):
         """THE POSITIVE CONTROL, and the mutation proof for the per-agent vocabulary.
@@ -1867,29 +1805,3 @@ class TestEveryNeighborOfABoolIsUntouched:
         # the renderer's own `null` spelling must not be reachable by accident.
         assert cfg.env.get("ABSENT") is None
         assert stored_leaf_display("env.ABSENT", None) == "null"
-
-
-class TestTheLaunchStillReceivesAString:
-    """What a stored bool is WHEN HANDED TO THE LAUNCH does not change.
-
-    The record carrying a bool is a READ-side fix; the env family the launch exports is
-    built from the raw tiers in ``settings_launch`` and stringified there. So a stored
-    ``true`` still reaches a harness as the string ``True`` — the spelling it has always
-    had — while ``get`` prints ``true``. (Mutation: make ``state_level`` carry the record's
-    ``env`` table, or lowercase at the delivery site, and this reds.)
-    """
-
-    def test_a_stored_bool_is_not_in_the_records_state(self, tmp_path):
-        p = tmp_path / "claude" / "agent.yaml"
-        p.parent.mkdir(parents=True, exist_ok=True)
-        p.write_text("self:\n  model: true\n  env:\n    FLAG_ON: true\n")
-        level = state_level(
-            agent_record(p, node="claude", purpose=ReadPurpose.RESOLVE),
-            node="claude", path=p,
-        )
-        # `env` is a root TABLE, so it is not flat state and cannot ride the
-        # behavior snapshot as an env variable — a bool in `state` is a BEHAVIOR
-        # value, never an exported one.
-        assert level.table == {"model": True}
-        assert "FLAG_ON" not in level.table
-        assert "env" not in level.table

@@ -7587,10 +7587,11 @@ def test_a_behavior_bool_is_stringified_by_the_reader_that_declares_the_dict():
     """``effective_behavior`` is typed ``dict[str, str]``, so a bool in the snapshot and
     the same text as a string reach every consumer identically.
 
-    ⚑ THIS IS WHY WIDENING THE RECORD IS SAFE FOR THE LAUNCH. ``state_level`` hands a real
-    bool into the snapshot where it used to hand ``"True"``; the reader that turns the
-    snapshot into the assembler input stringifies, so the assembler cannot tell them apart
-    and no consumer is reached by the change.
+    ⚑ THIS IS WHY READING THE FILE'S VALUES VERBATIM IS SAFE FOR THE LAUNCH. The
+    ``agent.<active>`` level carries the file's real bool into the snapshot where the old
+    record rung handed ``"True"``; the reader that turns the snapshot into the assembler
+    input stringifies, so the assembler cannot tell them apart and no consumer is reached
+    by the change.
     """
     def _snap(model):
         return KeyStore({"agent": {"claude": {"model": model}}})

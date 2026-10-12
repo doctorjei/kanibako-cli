@@ -1062,12 +1062,9 @@ The FINAL ordered level list splices the optional extra partials at their PRECIS
 computed from these FIXED base indices. Doing all splices in one pass keeps the math robust — no
 chained index drift.
 
-* **agent_state** — the per-agent FILE's behavior as an `AgentFileLevel`, wrapped under the node the
-  BOUNDARY attached (C-2), at the AGENT-FILE rung: above the empty assemble `agent.<active>` level,
-  below workset. That is the OLD `LevelView("agent", agent_cfg.state)` precedence.
 * **persona_values** — the persona STORE's live values, wrapped under the active slot, BELOW the
-  per-agent FILE (both its flat state rung and its `agent.<active>` tables) and ABOVE
-  `agent.default`.
+  per-agent FILE (its `agent.<active>` level, which carries the file's root scalars and its
+  categories alike) and ABOVE `agent.default`.
 * **agent_partial** — 7a descriptor DEFAULT delivery, the LEAST-specific agent rung (just below
   `agent.default`), so any `agent.<active>` / workset / box repoint wins.
 * **pref overlays** — the `pref.*` REQUESTS of the workset and box files (spec §2h), each installed
@@ -1305,13 +1302,11 @@ cannot reopen the gap.
   also carries values kanibako supplies itself: the floor, the plugin descriptor defaults, the live
   persona values and the CLI level. A refusal telling a user to fix a value no file of theirs holds
   would be a false message. The judged levels are the box file and its prefs, the workset file and
-  its prefs, the agent file (its flat state and both agent slots), the system file, and the site
+  its prefs, the agent file (both agent slots), the system file, and the site
   `base` file.
-* **Each level names its FILE.** The agent file's flat state arrives as an `AgentFileLevel`, which
-  carries the path it was read from (`agent_file.state_level(..., path=)`). That path wins;
-  `agent_path` answers only when the level carries none, so the level is named even when the caller
-  passes no `agent_path`. The focused behavior reads in `commands/start.py`
-  (`_effective_agent_scalar`, `_effective_transform`, `_effective_behavior_for_display`) pass none.
+* **Each level names its FILE.** Both agent levels are labeled with `agent_path`, the file they are
+  read from, so a refusal about the file's root scalars names it as it names its categories. The
+  file is ONE written level, so a value in it is judged once and refused once.
 * ⚑ **The `base` level is the site file overlaid on the floor in ONE partial**, so it is passed with
   the floor, built into a store by `dotted_partial` so a leaf inside a dict-valued floor entry
   compares too. A leaf still holding the floor's own value is the floor's and is not judged; a value
@@ -1442,29 +1437,12 @@ Both shapes are PINNED (`tests/test_settings/test_settings_launch.py`). If the s
 wanted at the launch too, the change belongs at the `agent_id` seam in `start.py`, not here — this
 function mirrors whatever active agent it is given.
 
-## The two level-wrapping partials
+## The level-wrapping partial
 
-`_agent_state_partial` wraps one agent-file behavior LEVEL under its own slot —
-`{agent: {<level.node>: {<key>: <val>}}}`. The per-agent file (`agents/<active>/agent.yaml`,
-loaded as `agent_cfg.state`) stores behavior FLAT (`agent.model` — already per-agent), NOT the
-discriminated `agent.<active>.*` / `agent.default.*` sub-tables that `assemble_levels`'
-`_agent_partial` reads, which treats a flat `[agent]` table as UNSET. So passing the file raw as
-`agent_path` DROPS its behavior; this wraps it into the DISCRIMINATED slot (the §2d / §0 form) so it
-merges by name.
-
-⚑ **IT NEEDS NO GATE OF ITS OWN, AND THAT IS DELIBERATE (P4).** The undeclared keys it used to ride
-through verbatim — the "forward-compat" passthrough spec §0 SPECIFICALLY EXCLUDES — are refused as
-the file is read (`agent_file.load`), and every record reaching this function comes from `load` or
-from a plugin's generated config, whose state is empty — so nothing undeclared can reach it to be
-gated. A second check here would be a rule spelled twice, and the one downstream
-would be the one that rots.
-
-⚑⚑ **THE DISCRIMINATOR ARRIVES WITH THE DATA (C-2; [spec:15-21, "self"]).** It used to be a SECOND
-parameter taken from the caller's `agent_name` while the state dict traveled undiscriminated all the
-way from `agent_file.load`, so the node the table came FROM and the node it merged UNDER were two
-independent facts that nothing cross-checked. `agent_file.state_level` now attaches the file's own
-node at the boundary and the pair travels as one `AgentFileLevel`; there is no longer a parameter to
-pass the wrong node in.
+`_persona_partial` is the one partial here that wraps a live input under a slot. The agent file's
+root scalars need none: `settings_assemble._agent_partial` sets them on the `agent.<active>` level
+beside the file's categories (K4); a separate agent-state rung for them was a second route and is
+deleted.
 
 `_persona_partial` wraps the PERSONA STORE's live values under the active slot —
 `{agent: {<agent_name>: {...}}}`. The store hands over UN-DISCRIMINATED keys (it knows a persona, not

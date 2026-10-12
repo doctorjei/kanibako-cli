@@ -504,10 +504,9 @@ def test_box_config_effective_display_matches_launch_behavior_read(
         SimpleNamespace(key=k, default=v) for k, v in floor.items()
     ]
     target = SimpleNamespace(name=agent, setting_descriptors=lambda: descriptors)
-    # ⚑ THE RECORD, not a namespace shaped like one: the display's level producer
-    # reads the file's argv field too (``agent_file.state_level``), so a stand-in
-    # missing it describes an agent file that cannot exist. The display also gets
-    # the file's PATH, the route the launch side above reads the file by.
+    # ⚑ THE RECORD, not a namespace shaped like one, so the stand-in describes an
+    # agent file that can exist. The display reads the file's values from its PATH,
+    # the route the launch side above reads the file by.
     agent_cfg = AgentConfig(state=dict(state))
     display = _effective_behavior_for_display(
         target, agent_cfg, std=std, proj=proj,

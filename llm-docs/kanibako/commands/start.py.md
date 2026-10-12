@@ -1629,14 +1629,13 @@ no meaning. `None` is byte-identical to a pre-persona build. ⚑ The CREATE-time
 product is the bind map, and a persona's `secret_path.<VAR>` is a MOUNT — a map built without it
 would resolve a sync dest against a mount set the launch does not have.
 
-**`agent_cfg`** is the agent settings file's RECORD, and its scalars become the file's half of the
-`agent.<active>` cascade level (`agent_file.state_level`); the file's category tables arrive
-separately, through `agent_cfg_path`. ⚑ **It is NOT gated on `include_base_families`**, only on a
-target: the file is a cascade level, not a launch family. The CREATE seed resolve is narrow and
+**`agent_cfg_path`** is the agent settings file, read WHOLE as the `agent.<active>` cascade level:
+its scalars and its category tables ride one level, from one path. ⚑ **It is NOT gated on
+`include_base_families` or on a target**: the file is a cascade level, not a launch family, so a
+no-target `kanibako shell` reads `agents/shell/agent.yaml` too. The CREATE seed resolve is narrow and
 still needs it, because `agent.<a>.template` is the layer-2 seed SOURCE (spec §2a) and
-`system set` / `agent set` write it to this file. `_apply_init_seeds` loads the record from
-`agent_config_path`, the path this resolve reads the file's tables from, so the scalars and the
-tables cannot come from two different files. The image and helper resolves pass none.
+`system set` / `agent set` write it to this file; `_apply_init_seeds` passes its
+`agent_config_path`.
 
 **`cli_level`** is the §1A CLI LEVEL (P8), built by `settings.settings_cli_level.build_cli_level` and
 validated inside `build_launch_snapshot`. This is the ONE resolve that may carry the EPHEMERAL flag
@@ -1728,7 +1727,7 @@ template layers beside it are already NODE-keyed by `template_seed_defaults`, so
 two tables is adapted.
 
 ⚑ **IT READS THE AGENT FILE'S SCALARS** as well as its tables: the layer-2 source
-`agent.<a>.template` is one. See *`agent_cfg`* under `_resolve_launch_snapshot`.
+`agent.<a>.template` is one. See *`agent_cfg_path`* under `_resolve_launch_snapshot`.
 
 It is ADDITIVE: with no seed config and no target default seeds, it copies nothing. It routes the
 category config through the ONE launch resolve and applies the COLLAPSED SEED LIST it stored at

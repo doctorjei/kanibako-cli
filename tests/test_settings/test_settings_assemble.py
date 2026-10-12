@@ -85,10 +85,9 @@ def test_order_is_most_specific_first(tmp_path: Path) -> None:
          "agent": {"default": {"env": {"MARKER": "adef"}}}},
     )
     base = _write(tmp_path / "base.yaml", {"system": {"template": "base"}})
-    # ⚑ A CATEGORY, not a bare scalar: since the flatten the agent FILE contributes its
-    # category tables to this cascade, while its flat STATE rides its own rung at the
-    # launch seam (``agent_file.state_level`` → ``settings_launch._agent_state_partial``)
-    # and never appears here. One value, one route — that is defect D-3 closed.
+    # ⚑ A CATEGORY, so the pin is on the tables the agent FILE contributes to this cascade;
+    # its root scalars ride the same level (K4, pinned below). One value, one route — that
+    # is defect D-3 closed.
     agent = _write(tmp_path / "agent.yaml", {"self": {"env": {"MARKER": "aact"}}})
     levels = assemble_levels_at(
         agent_name="claude",
@@ -730,8 +729,9 @@ def test_agent_categories_under_true_discriminated_name(tmp_path: Path) -> None:
 def test_agent_file_state_rides_the_agent_level_beside_its_categories(tmp_path: Path) -> None:
     # K4 Step 1 (plan 177-K4 T1): the file's ROOT SCALARS are ``agent.<node>``'s leaves, so
     # they ride the ``agent.<active>`` level with its categories — one file, one level
-    # (keyspec §2). Before, this level carried categories only and the scalars needed the
-    # producers' separate ``agent_state`` rung, so a resolve without one read half the file.
+    # (keyspec §2). Before, this level carried categories only and the scalars needed a
+    # second rung the producers built from the record (deleted in Step 5), so a resolve
+    # without it read half the file.
     agent = _write(
         tmp_path / "agent.yaml",
         {"self": {"model": "opus", "env": {"M": "v"}}},
@@ -2360,8 +2360,8 @@ def test_a_scalar_entry_under_an_unrequestable_pref_gets_the_allowlist_refusal(
 # --------------------------------------------------------------------------- #
 # K4 Step 1 — the agent file's root scalars ride the ``agent.<active>`` level  #
 # --------------------------------------------------------------------------- #
-# Plan 177-K4 § 6 Step 1. T2 is RED before the step; the P-pins are GREEN before and after,
-# with and without the producers' ``agent_state`` rung, which stays until the route is deleted.
+# Plan 177-K4 § 6 Step 1. T2 is RED before the step; the P-pins are GREEN before and after.
+# Step 5 deleted the producers' second rung, so the level is the file's only route.
 
 
 def _k4_snapshot(
@@ -2370,21 +2370,14 @@ def _k4_snapshot(
     *,
     agent: str = "claude",
     system: dict | None = None,
-    with_state: bool = False,
     persona_values: dict | None = None,
 ) -> KeyStore:
-    """A launch snapshot over a written agent file, with or without the record rung."""
-    from kanibako.settings.agent_file import state_level
-    from kanibako.settings.settings_assemble import ReadPurpose, agent_record
+    """A launch snapshot over a written agent file."""
     from kanibako.settings.settings_launch import build_launch_snapshot
     from kanibako.settings.settings_resolve import ResolveCtx
 
     agent_path = _write(tmp_path / "agent.yaml", agent_doc)
     system_path = _write(tmp_path / "system.yaml", system) if system is not None else None
-    state = None
-    if with_state:
-        record = agent_record(agent_path, node=agent, purpose=ReadPurpose.RESOLVE)
-        state = state_level(record, node=agent, path=agent_path)
     return build_launch_snapshot(
         agent_name=agent,
         ctx=ResolveCtx(
@@ -2392,7 +2385,7 @@ def _k4_snapshot(
             xdg={"XDG_DATA_HOME": "/data"},
         ),
         system_path=system_path, agent_path=agent_path, workset_path=None, box_path=None,
-        agent_state=state, persona_values=persona_values,
+        persona_values=persona_values,
     )
 
 
@@ -2409,10 +2402,7 @@ def test_a_shell_file_scalar_reaches_a_snapshot_built_without_agent_state(
 
 @pytest.mark.parametrize("run_args", ["--a --b", ["--a", "--b"], None, []],
                          ids=["string", "list", "bare", "empty-list"])
-@pytest.mark.parametrize("with_state", [False, True], ids=["level", "level+record"])
-def test_the_launch_argv_is_the_records_argv(
-    tmp_path: Path, run_args: object, with_state: bool,
-) -> None:
+def test_the_launch_argv_is_the_records_argv(tmp_path: Path, run_args: object) -> None:
     # P-a: the argv as ``start.py`` reads it. The display text may change (plan § 4 B5/B6);
     # the argv may not. A bare ``run_args:`` and ``[]`` still shadow ``agent.default``.
     from kanibako.settings.agent_file import argv_words
@@ -2420,14 +2410,13 @@ def test_the_launch_argv_is_the_records_argv(
 
     snap = _k4_snapshot(
         tmp_path, {"self": {"run_args": run_args}},
-        system={"agent": {"default": {"run_args": "--default"}}}, with_state=with_state,
+        system={"agent": {"default": {"run_args": "--default"}}},
     )
     argv = argv_words(effective_behavior(snap, active_agent="claude").get("run_args", ""))
     assert argv == (["--a", "--b"] if run_args else [])
 
 
-@pytest.mark.parametrize("with_state", [False, True], ids=["level", "level+record"])
-def test_a_self_transform_settings_keeps_its_merge(tmp_path: Path, with_state: bool) -> None:
+def test_a_self_transform_settings_keeps_its_merge(tmp_path: Path) -> None:
     # P-b, as measured on the base: a self-spelled ``transform_settings`` merges per entry with
     # a system-file ``agent.claude`` table (same slot), and shadows ``agent.default``'s whole
     # (the §2d pick). The plan's "replaces whole, ``items`` stays legal" did not hold on base.
@@ -2436,14 +2425,12 @@ def test_a_self_transform_settings_keeps_its_merge(tmp_path: Path, with_state: b
     own = {"self": {"transform_settings": {"x": 1}}}
     same_slot = _k4_snapshot(
         tmp_path, own, system={"agent": {"claude": {"transform_settings": {"a": 1}}}},
-        with_state=with_state,
     )
     assert behavior_pick(same_slot, active_agent="claude", key="transform_settings") == (
         "active", {"x": 1, "a": 1},
     )
     over_default = _k4_snapshot(
         tmp_path, own, system={"agent": {"default": {"transform_settings": {"a": 1}}}},
-        with_state=with_state,
     )
     assert behavior_pick(over_default, active_agent="claude", key="transform_settings") == (
         "active", {"x": 1},
@@ -2462,13 +2449,12 @@ def test_a_reserved_transform_settings_payload_key_refuses_naming_the_file(
     assert str(tmp_path / "agent.yaml") in str(exc.value)
 
 
-@pytest.mark.parametrize("with_state", [False, True], ids=["level", "level+record"])
-def test_a_file_model_beats_the_persona_model(tmp_path: Path, with_state: bool) -> None:
+def test_a_file_model_beats_the_persona_model(tmp_path: Path) -> None:
     # P-c: the persona rung sits BELOW the agent file (keyspec §2).
     from kanibako.settings.settings_launch import effective_behavior
 
     snap = _k4_snapshot(
-        tmp_path, {"self": {"model": "from-file"}}, with_state=with_state,
+        tmp_path, {"self": {"model": "from-file"}},
         persona_values={"model": "from-persona"},
     )
     assert effective_behavior(snap, active_agent="claude")["model"] == "from-file"
@@ -2489,3 +2475,12 @@ def test_the_two_spellings_refusal_text_is_unchanged(tmp_path: Path) -> None:
         f"  `self.model` and `agent.claude.model`\n"
         f"  Fix: keep one spelling of each and remove the other from {path}."
     )
+
+
+def test_a_bare_relative_agent_file_canon_is_refused_once(tmp_path: Path) -> None:
+    # Step 5: the file reaches the cascade as one level, so the [R147] read-time sweep sees its
+    # ``canon`` once. The deleted record rung was a second written level holding the same
+    # value, and the launch printed the refusal twice.
+    with pytest.raises(SettingsError) as exc:
+        _k4_snapshot(tmp_path, {"self": {"canon": "relcanon"}})
+    assert str(exc.value).count("agent.claude.canon is set to 'relcanon'") == 1

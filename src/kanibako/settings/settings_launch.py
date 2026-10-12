@@ -61,7 +61,7 @@ from kanibako.settings.agent_config import (
     store_dirname,
 )
 from kanibako.settings.bootstrap import SPAWN_BUDGET_DEFAULTS
-from kanibako.settings.agent_file import AgentFileLevel, stored_leaf_text
+from kanibako.settings.agent_file import stored_leaf_text
 from kanibako.settings import core_defaults
 from kanibako.settings.config import (
     _BOX_SCALAR_FIELDS,
@@ -2330,7 +2330,6 @@ def assemble_cascade(
     floor: dict[str, object],
     files: Sequence[SettingsFile],
     agent_partial: KeyStore | None = None,
-    agent_state: AgentFileLevel | None = None,
     persona_values: Mapping[str, str] | None = None,
     prefs: "Sequence[PrefRequest] | None" = None,
     valid_agents: "Collection[str] | None" = None,
@@ -2352,7 +2351,6 @@ def assemble_cascade(
     # their PRECISE precedence rungs, computed from these FIXED base indices. Doing
     # all splices in one pass keeps the math robust — no chained index drift. Each
     # rung and the reason it sits where it does: the llm-doc.
-    state_partial = _agent_state_partial(agent_state)
     persona_partial = _persona_partial(agent_name, persona_values)
     # ⚑ THE ``box.agent.*`` CATEGORY FOLD IS GONE (P7) — §2b retired the settable
     # mirror, so the fold has no settable input left. Removing it FLIPS the
@@ -2391,9 +2389,7 @@ def assemble_cascade(
     levels.append(base_levels[1])                       # workset
     if ws_prefs:
         levels.append(ws_prefs)                         # workset pref REQUESTS
-    if state_partial is not None:
-        levels.append(state_partial)                    # per-agent FILE behavior
-    levels.append(base_levels[2])                       # agent.<active> (file tables)
+    levels.append(base_levels[2])                       # agent.<active> (the agent file)
     if persona_partial is not None:
         # persona store — LIVE, never persisted. BELOW the per-agent FILE and ABOVE
         # ``agent.default``. ⚑ The ordering is semantically FORCED: the agent file
@@ -2414,9 +2410,6 @@ def assemble_cascade(
     internal = _internal_floor_binds(floor)
     if internal:
         snapshot = merge([dotted_partial(internal), snapshot])
-    # The agent file's flat state names the file it was read from — the path travels
-    # WITH the level — and ``agent_path`` answers only when the level carries none.
-    state_path = (agent_state.path if agent_state is not None else None) or agent_path
     labeled = [
         (level, path, tier)
         for level, path, tier in (
@@ -2424,7 +2417,6 @@ def assemble_cascade(
             (box_prefs, box_path, "box"),
             (base_levels[1], workset_path, "workset"),
             (ws_prefs, workset_path, "workset"),
-            (state_partial, state_path, "agent"),
             (base_levels[2], agent_path, "agent"),
             (base_levels[3], agent_path, "agent.default"),
             (base_levels[4], system_path, "system"),
@@ -2449,7 +2441,6 @@ def build_launch_snapshot(
     agent_behavior_floor: Mapping[str, object] | None = None,
     default_categories: Mapping[str, object] | None = None,
     agent_partial: KeyStore | None = None,
-    agent_state: AgentFileLevel | None = None,
     persona_values: Mapping[str, str] | None = None,
     auth_chain: Mapping[str, object] | None = None,
     meta_runtime: Mapping[str, object] | None = None,
@@ -2569,7 +2560,6 @@ def build_launch_snapshot(
         floor=floor,
         files=files,
         agent_partial=agent_partial,
-        agent_state=agent_state,
         persona_values=persona_values,
         prefs=prefs,
         valid_agents=valid_agents,
@@ -3277,38 +3267,6 @@ def _mirror_fill(box_node: KeyStore, agent_node: KeyStore) -> None:
         # value, do NOT merge across the type boundary.
         if isinstance(box_val, KeyStore) and isinstance(agent_val, KeyStore):
             _mirror_fill(box_val, agent_val)
-
-
-def _agent_state_partial(level: AgentFileLevel | None) -> KeyStore | None:
-    """Wrap one agent-file behavior LEVEL under its own slot —
-    ``{agent: {<level.node>: {<key>: <val>}}}`` — or ``None`` if there is nothing.
-
-    The per-agent file stores behavior FLAT (``agent.model`` — already per-agent), NOT
-    the discriminated sub-tables ``assemble_levels``' ``_agent_partial`` reads, which
-    treats a flat ``[agent]`` table as UNSET. So passing the file raw as ``agent_path``
-    DROPS its behavior; this wraps it into the DISCRIMINATED slot (§2d / §0).
-
-    ⚑ IT NEEDS NO GATE OF ITS OWN, AND THAT IS DELIBERATE (P4).  The undeclared keys it
-    used to ride through verbatim are refused as the file is read (``agent_record``),
-    and every record reaching this function comes from there or from a plugin's
-    generated config, whose state is empty — so nothing undeclared can reach it to be
-    gated.  A second check here would be a rule spelled twice, and the one downstream
-    would be the one that rots.
-
-    ⚑⚑ THE DISCRIMINATOR ARRIVES WITH THE DATA (C-2; [spec:15-21, "self"]).  The node
-    the table came FROM and the node it merged UNDER travel as one
-    :class:`AgentFileLevel`, so the pair cannot be crossed.
-    """
-    if level is None or not level.table:
-        return None
-    active_node = KeyStore()
-    for key, val in level.table.items():
-        active_node[key] = val
-    agent_node = KeyStore()
-    agent_node[level.node] = active_node
-    partial = KeyStore()
-    partial["agent"] = agent_node
-    return partial
 
 
 def _persona_partial(

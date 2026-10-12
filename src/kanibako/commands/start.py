@@ -4384,7 +4384,8 @@ def _run_container(
             # ``run_args`` OFF THE CASCADE, not off the agent FILE (`[R169]`, spec §2d
             # ``agent.<agent>.run_args | <None>   (← agent.default.run_args)``). The
             # file is one LEVEL of that cascade (``agent.<active>``, read from
-            # *agent_cfg_path*) like every other agent-scope behavior value, so an ``agent.default.run_args`` in a system / workset / box settings
+            # *agent_cfg_path*) like every other agent-scope behavior value, so an
+            # ``agent.default.run_args`` in a system / workset / box settings
             # file is what a box without a per-agent value now starts with. A
             # per-agent value REPLACES it — the §2d active-over-default pick
             # ``effective_behavior`` already does, no concatenation.

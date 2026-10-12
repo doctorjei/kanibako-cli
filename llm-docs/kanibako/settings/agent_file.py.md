@@ -140,9 +140,8 @@ the opaque carrier, and `save`, having no field to emit it from, would never put
 ⚑ **`run_args` sits here with the other three, not behind a set borrowed from elsewhere.** It is a
 modeled field exactly like them; the only thing odd about it is that its VALUE is not a table
 (`_SCALAR_WRITABLE_KEYS`, below). *(Measured by removing it: `cfg.state` gains `run_args: "['--a',
-'--b']"` — the `str()` of the list — beside the correctly typed field, and `state_level` then carries
-that string into the launch cascade as `agent.<agent>.run_args`. Two carriers of one key,
-disagreeing in TYPE, with nothing refusing either. It is NOT that the undeclared-state refusal never
+'--b']"` — the `str()` of the list — beside the correctly typed field: two carriers of one key in
+the record, disagreeing in TYPE, with nothing refusing either. It is NOT that the undeclared-state refusal never
 sees it: `run_args` is declared, so that refusal would see it and ACCEPT it.)*
 
 ```_FLAT_AGENT_CATEGORIES: tuple[str, ...] = tuple(sorted(CATEGORY_FAMILY_ROOTS))```
@@ -514,15 +513,16 @@ calls `agent_file.load` / `agent_file.save`, and `tests/conftest.py` patches `lo
 
 **Flat state is the SCALAR knobs only.** `cfg.state` takes every root entry that is neither a
 MODELED key nor dict-valued. A category table (`env`, `secret_path`, `bindings`, …) is a dict, so
-it is never flat state — those ride `_agent_partial`, not the `_agent_state_partial` state channel.
+it is never flat state. `cfg.state` serves the agent verbs' reads; the launch reads the file's root
+through `level_table`'s *state*, set beside the categories by `settings_assemble._agent_partial`.
 
 ⚑ **The test is EVERY modeled key, not just the one with a scalar slot (S3/D-7).** A narrower test
 differs only for a MALFORMED file: a scalar written where a table belongs (`env: oops`) is not
 dict-valued, so it swept into state and the launch then carried a modeled field's garbage as an
 agent-state knob. ⚑ Dropping `run_args` from the set is the same defect from the other side —
 **measured 2026-09-18**: `run_args: ["--a", "--b"]` then lands in `cfg.state` as the string
-`"['--a', '--b']"` beside the properly typed field, and `state_level` carries it into the launch
-cascade. `_refuse_undeclared_state` does NOT catch that — `run_args` is a declared §2d leaf, so the
+`"['--a', '--b']"` beside the properly typed field, where every reader of the record sees it.
+`_refuse_undeclared_state` does NOT catch that — `run_args` is a declared §2d leaf, so the
 §0 gate accepts it.
 
 ⚑ **A `None` value is KEPT as `None`, never coerced through `str()`** — the 2026-08-17 ruling, and
@@ -535,9 +535,9 @@ secret_path.<VAR>` printed `null` while `agent get <node> env.<VAR>` printed `No
 YAML. The field is `dict[str, str | None]` now. The coercion used to turn a hand-edited or
 `--null`-written `model: null` into the four-byte string `"None"`: a BOGUS model id that reached the
 launch cascade as a real value, silently defeating the exact "this persona needs no model"
-declaration the persona-model gate now depends on. `state_level` passes every value through
-unchanged, so a present-`None` survives all the way to the cascade's per-key active-over-default
-pick — exactly where it needs to keep meaning "explicitly reset/keyless" rather than a string. For
+declaration the persona-model gate now depends on. The cascade reads the file's values verbatim
+(`settings_assemble._agent_partial`), so a present-`None` survives all the way to its per-key
+active-over-default pick — exactly where it needs to keep meaning "explicitly reset/keyless" rather than a string. For
 `secret_path` the same `None` means "this VAR is deliberately keyless": a DECLARED third state, not
 a malformed second one, where the old coercion produced a garbage path indistinguishable from a
 typo'd one. A `secret_path` value is a POINTER — the file's CONTENTS are never persisted here nor
@@ -596,15 +596,15 @@ close by construction here: an `agent.<node>.env.<VAR>` is now an ordinary key t
 true rung and realizes through the collapse's env slots like every other scope's. The under-layer is
 GONE; do not reintroduce a second env channel.
 
-⚑⚑ **AGENT-FILE *STATE* DOES NOT COME THROUGH HERE, AND THAT IS DEFECT D-3 CLOSED.** `model` /
-`access` / `endpoint` / … had TWO live routes: the flat one (`cfg.state` → `state_level` →
-`_agent_state_partial`'s OWN rung, spliced just above this level at the launch seam) and a nested
-`self: <node>: model:` that rode THIS level and lost to the flat one **silently**. The nested
-spelling refuses now and this level carries CATEGORIES ONLY — one value, one route. A state key
-reappearing in this table is a second rung.
-*(Pinned by `test_settings_assemble.test_agent_file_state_does_not_ride_the_file_cascade_level`,
-and it is why the launch tests that contend a behavior scalar build the PRODUCTION PAIR —
-`agent_path=` **plus** `agent_state=` — rather than writing the file alone.)*
+⚑⚑ **AGENT-FILE *STATE* RIDES THIS LEVEL, BESIDE THE CATEGORIES, AND NOWHERE ELSE (D-3, K4).**
+`model` / `access` / `endpoint` / … once had TWO live routes: a flat one (a separate rung the
+producers built from the record and spliced above this level) and a nested `self: <node>: model:`
+that rode THIS level and lost to the flat one **silently**. The nested spelling refuses, and the
+separate rung is deleted: *state* (every non-category root key) is set on this level's node beside
+*table*, so every resolve that reads the file reads all of it — one value, one route. A second rung
+for the same keys is the defect returning.
+*(Pinned by `test_settings_assemble.test_agent_file_state_rides_the_agent_level_beside_its_categories`
+and `test_a_bare_relative_agent_file_canon_is_refused_once`.)*
 
 ⚑ **`base_levels[3]` — the `agent.default` level built from this file — holds ONLY the file's
 `agent: default:` table** (Q92): `self:` has no spelling for that tier, the `agent:` table does.
@@ -743,54 +743,6 @@ would refuse a table the spec reads. Pinned in
 and builds).
 
 ⚑ It runs in `level_table` AND `load`, through `_contribution`; never in `clear_overrides`.
-
-```state_level(cfg, *, node, path=None) -> AgentFileLevel | None```
-The file's BEHAVIOR as a DISCRIMINATED level, or `None` if it sets none. *path*, the file *cfg* was
-read from, rides on the level (see `AgentFileLevel`).
-
-⚑⚑ **IT TAKES THE RECORD, NOT `cfg.state`, AND THAT IS THE `run_args` CASCADE (`[R169]`).**
-`run_args` is a behavior leaf the record models as a FIELD of its own (`_MODELED_KEYS`), so a level
-built from `cfg.state` alone dropped it — and the file's argv reached the launch by a SECOND route,
-read straight off `AgentConfig.run_args` at `start.py`'s `all_extra` seam, where no
-`agent.default.run_args` could ever contest it. Folded in here, the §2d active-over-default pick does
-the override with nothing added for it. The fold is **`is not None`, never truthy**: a present
-`run_args: []` must SET the key, because that is how an agent opts OUT of the any-agent default;
-folding on truthiness hands that agent the very default its empty list refuses.
-⚑ It rides as the stored LIST — `effective_behavior` renders it through `stored_leaf_text`, and the
-consumer splits that string back with `argv_words`.
-
-The per-agent file stores behavior FLAT (`model` — already per-agent), not under the sub-tables
-the cascade merges by, so the discriminator has to be attached somewhere. It is attached HERE, at
-the boundary — defect **C-2, CLOSED in S1b**. It used to be attached LATE, at snapshot build
-(`settings_launch._agent_state_partial`, from that caller's own `agent_name`), after the state
-dict had traveled undiscriminated through `start.py`: the node a table came FROM and the node it
-merged UNDER were two independent facts and nothing cross-checked them.
-
-⚑⚑ **IT JUDGES NOTHING.** The forward-compat passthrough (S3, D-5's other end) — an undeclared
-scalar in the file riding into the launch snapshot VERBATIM, the "old `agent.<name>.<anyleaf>`
-behavior" spec §0 SPECIFICALLY EXCLUDES — closed here at S3, launch-only. S4 C2 MOVED the refusal
-into `load` (Q101 option 1), so every reader refuses the file by name, not the launch alone, and
-this boundary kept no second copy of it. The only record reaching here from elsewhere is a plugin's
-`generate_agent_config()`, whose `state` is empty by the file-purity invariant. The repair door is
-`clear_overrides`, which never calls `load`.
-
-⚑ **The five `start.py` producers all route through here** — `_agent_scalar_pick` (its own
-`agent_path` load, which RAISES on a file it cannot read), `_effective_transform`,
-`_effective_behavior_for_display`, `_resolve_box_launch_decisions`, `_resolve_launch_snapshot` —
-each folding the call INSIDE its existing gate. `_agent_state_partial` now takes the
-`AgentFileLevel` alone and reads `level.node`; there is no parameter left to pass a wrong node in.
-⚑ `_effective_behavior_for_display` builds its level AFTER the `active` node is resolved, not
-beside `behavior_floor`: the node is the point.
-Pinned in three places that do NOT substitute for one another: `TestStateLevel` on the boundary
-itself; `test_persona_loses_to_the_agent_file_flat_state` and
-`test_behavior_floor_and_per_agent_state`, which go red on a wrong node at the CONSUMER SEAM
-(`_agent_state_partial`, which files the table by `level.node`) and at no producer; and the
-producers' own node arguments, by `TestTheLaunchAgentFileStateMergesUnderTheLaunchNode`
-(`tests/test_commands/test_start_assembly.py`) for the launch path (`_resolve_launch_snapshot`) and
-`test_box_config_effective_display_matches_launch_behavior_read`
-(`tests/test_settings/test_settings_launch_equivalence.py`) for the display path. ⚑ Both producer
-pins are mutation-measured; the launch one was UNCOVERED until the S1b fix round wrote it —
-`start_mocks` stubs `_resolve_launch_snapshot` out, and the real-chain callers pass `agent_cfg=None`.
 
 ```_refuse_undeclared_state(entries, *, node, path) -> None``` · ```_undeclared_entries(own, scope, *, node)``` · ```_node_tables(own, scope, *, node)```
 RAISE naming EVERY agent-file entry that is not a declared key (spec §0), once each, in one

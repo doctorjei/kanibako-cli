@@ -788,8 +788,8 @@ class TestEffectiveBootstrapResolution:
 
     def test_a_bare_relative_in_the_agent_file_names_that_file(self, tmp_path):
         """[R147]'s read-time refusal names the agent file this focused read loaded."""
-        # Mutation: drop ``path=agent_path`` from ``_agent_scalar_pick``'s
-        # ``state_level`` call → the refusal names no file.
+        # Mutation: label the ``agent.<active>`` level with no path in
+        # ``assemble_cascade``'s written list → the refusal names no file.
         from kanibako.commands.start import _bootstrap_choice
         from kanibako.settings.config_io import dump_doc
         from kanibako.settings.settings_resolve import SettingsError
