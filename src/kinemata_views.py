@@ -428,7 +428,7 @@ def sentinel_helper_binds() -> Any:
     dir spelled `{system.runtime}`.
 
     The box and workset names are the braced refs the socket cell embeds
-    (`{meta.box.name}`, `{meta.workset.name}`). All three sources are created, because
+    (`{meta.box.name}`, `{meta.workset.name}`), written back over two sentinel names. All three sources are created, because
     the emitter binds only a source that exists, and they are created RELATIVE to
     the working directory -- so the caller runs this in a scratch cwd.
     """
@@ -440,12 +440,20 @@ def sentinel_helper_binds() -> Any:
 
     run_dir = Path("{system.runtime}")
     run_dir.mkdir()
-    socket = helper_socket_path(
+    # ⚑ A braced ref is not a NAME (spec §0), and a name the rule refuses renders no
+    # socket, so the code is fed two sentinel names and the refs are written back
+    # into the path it composed.
+    stand_ins = {"KbSentinelBoxName": "{meta.box.name}",
+                 "KbSentinelWorksetName": "{meta.workset.name}"}
+    composed = str(helper_socket_path(
         ref_token_project(
-            "named", workset_name="{meta.workset.name}", box_name="{meta.box.name}",
+            "named", workset_name="KbSentinelWorksetName", box_name="KbSentinelBoxName",
         ),
         run_dir,
-    )
+    ))
+    for stand_in, ref in stand_ins.items():
+        composed = composed.replace(stand_in, ref)
+    socket = Path(composed)
     socket.touch()
     log = Path("helpers.jsonl")
     log.touch()
@@ -642,20 +650,20 @@ def fresh_launch_snapshots() -> Any:
         write_global_config(user_config_file())
         config = load_config(user_config_file())
         std = load_std_paths(config)
-        for sub in ("primary-project", "named-source", "standalone-project"):
+        for sub in ("primary_project", "named_source", "standalone_project"):
             (root / sub).mkdir()
-        workset = create_workset("floor-probe", root / "worksets" / "floor-probe", std)
-        add_project(workset, "named-project", root / "named-source")
+        workset = create_workset("floor_probe", root / "worksets" / "floor_probe", std)
+        add_project(workset, "named_project", root / "named_source")
         projects = {
             "primary": resolve_project(
-                std, config, str(root / "primary-project"), initialize=True,
+                std, config, str(root / "primary_project"), initialize=True,
             ),
             "named": resolve_workset_project(
-                WorksetSpec.from_workset(workset), "named-project", std, config,
+                WorksetSpec.from_workset(workset), "named_project", std, config,
                 initialize=True,
             ),
             "standalone": resolve_standalone_project(
-                std, config, str(root / "standalone-project"), initialize=True,
+                std, config, str(root / "standalone_project"), initialize=True,
             ),
         }
         for node in sorted(discover_targets()):

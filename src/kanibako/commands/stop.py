@@ -252,7 +252,7 @@ def _boxes_rendering_no_name() -> list[str]:
     from kanibako.project.registry_store import load_standalone
     from kanibako.settings.paths import (BoxMode, _early_scope, iter_workset_projects,
                                          load_primary_boxes)
-    from kanibako.utils import renders_no_name
+    from kanibako.utils import renders_no_name, workset_renders_no_name
 
     try:
         config = load_config(user_config_file())
@@ -262,6 +262,8 @@ def _boxes_rendering_no_name() -> list[str]:
         return []
 
     names: list[str] = []
+    # A member of a LEGACY workset renders no name either, whatever its own name.
+    unrendered: list[str] = []
     try:
         names.extend(load_primary_boxes(
             std.primary_workset, early=_early_scope(std, BoxMode.primary),
@@ -275,14 +277,17 @@ def _boxes_rendering_no_name() -> list[str]:
         _warn_settings(exc)
 
     try:
-        for _ws_name, _ws, members in iter_workset_projects(std, config):
-            names.extend(name for name, _status in members)
+        for ws_name, _ws, members in iter_workset_projects(std, config):
+            if workset_renders_no_name(ws_name):
+                unrendered.extend(name for name, _status in members)
+            else:
+                names.extend(name for name, _status in members)
     except (ConfigError, SettingsError, WorksetError, ProjectError) as exc:
         _warn_settings(exc)
 
     if refusal is not None:
         _warn_settings(refusal)
-    return [name for name in names if renders_no_name(name)]
+    return [name for name in names if renders_no_name(name)] + unrendered
 
 
 def _stop_all(runtime: ContainerRuntime, *, force: bool = False) -> int:

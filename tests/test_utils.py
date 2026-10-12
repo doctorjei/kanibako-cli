@@ -454,7 +454,7 @@ class TestStartUnrenderableBoxNameRefusal:
             "droste", "named", self.PATH, None, workset="my-set")
         assert "its workset name 'my-set' must not contain '-'" in text
         assert "kanibako workset create <new-root> --name my_set" in text
-        assert f"kanibako box move {self.PATH} <new-path> --workset my_set" in text
+        assert f"kanibako box convert {self.PATH} --workset my_set" in text
 
     def test_a_standalone_box_is_cured_by_moving_its_directory(self):
         text = self._text("standalone")

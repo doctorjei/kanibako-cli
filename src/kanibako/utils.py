@@ -175,7 +175,7 @@ def unrenderable_box_name_refusal(
             f"{name_flaw(workset)}; {NAME_CHARSET}. Move the box to a workset with a "
             f"valid name, then try again:\n"
             f"  kanibako workset create <new-root> --name {spelled}\n"
-            f"  kanibako box move {shlex.quote(str(where))} <new-path> --workset {spelled}"
+            f"  kanibako box convert {shlex.quote(str(where))} --workset {spelled}"
         )
     reason = box_name_reason(box) or "box name must not be empty"
     return (

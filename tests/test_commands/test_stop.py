@@ -1316,6 +1316,23 @@ class TestStopAllSkipsABoxThatRendersNoName:
         assert "Skipped box '-member'" in out
         live_runtime.stop.assert_called_once_with("kb-team-api")
 
+    def test_all_names_a_member_of_a_legacy_workset(
+        self, std, tmp_home, live_runtime, capsys,
+    ):
+        """A workset name the rule no longer allows renders no name for its members (§0)."""
+        from kanibako.project.workset import add_project, create_workset
+
+        ws = create_workset("team", tmp_home / "worksets" / "team", std)
+        (tmp_home / "fine").mkdir()
+        add_project(ws, "fine", tmp_home / "fine")
+        with patch("kanibako.settings.paths.iter_workset_projects",
+                   return_value=[("my-set", ws, [("fine", "ok")])]):
+            live_runtime.list_running.return_value = []
+            capsys.readouterr()
+            assert TestStopABoxThatRendersNoName._drive_stop_all(live_runtime) == 0
+
+        assert "Skipped box 'fine'" in capsys.readouterr().out
+
     def test_all_names_a_standalone_box_that_renders_no_name(
         self, std, tmp_home, live_runtime, capsys,
     ):

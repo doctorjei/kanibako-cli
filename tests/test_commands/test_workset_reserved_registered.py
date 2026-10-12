@@ -195,17 +195,19 @@ def test_reserved_registered_workset_is_refused_then_cured(
 
     _run_cure(env, refused.stderr)
 
-    expected = NEW_NAME if moved else leaf
+    # The re-import names the workset for its directory, `_` for its `-` (spec §0).
+    expected = NEW_NAME if moved else leaf.replace("-", "_")
     # ⚑ An ALIAS VARIANT's key outlives `workset rm`, which reads it as PRIMARY; the
     # first load after the `mv` drops it, its root being gone.
     assert sorted(_worksets()) == [expected]
     resolved: list[tuple[Path, str]] = [(external, "ext")]
     if with_in_tree:
-        resolved.append((home / "ws" / expected / "workspaces" / "intree", "intree"))
+        resolved.append((root.parent / (NEW_NAME if moved else leaf) / "workspaces" / "intree",
+                         "intree"))
     for source, box in resolved:
         info = _cli(env, "box", "info", cwd=source)
         assert info.returncode == 0, info.stderr
-        assert f"kb-{expected.replace('-', '--')}-{box}" in info.stdout
+        assert f"kb-{expected}-{box}" in info.stdout
 
 
 def _tree(root: Path) -> dict[str, bytes]:

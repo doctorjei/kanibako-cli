@@ -260,7 +260,8 @@ def import_named_workset(
 ) -> str | None:
     """Reconcile an on-disk workset at *root* against ``registry.worksets``.
 
-    Names it after *root*'s LEAF DIRECTORY basename ([R139]) — a workset records no
+    Names it after *root*'s LEAF DIRECTORY basename ([R139]), `_` for each `-` and `.`
+    (spec §0) — a workset records no
     name on disk, and the basename is the answer in the absence of another one.
     Returns that name (or the directory's registered one), or ``None`` when *root*
     cannot be imported as a workset — an empty or reserved basename, or ``$HOME``
@@ -278,8 +279,18 @@ def import_named_workset(
     # create answers a user who can retype, this answers a treewalk stepping past an
     # ordinary directory, and a dir named ``default`` must not fail every command.
     # Declining to import leaves it what it already was: a plain primary-mode dir.
-    name = root.name
+    # ⚑ Derived (spec §0): ``_`` for each ``-`` and ``.``; the directory keeps its spelling.
+    from kanibako.identifiers import derived_name, name_flaw
+
+    name = derived_name(root.name)
     if not name:
+        return None
+    if (flaw := name_flaw(name)) is not None:
+        print(
+            f"Warning: not importing the workset at {root}: the workset name '{name}' "
+            f"taken from its directory {flaw}. Rename the directory to import it.",
+            file=sys.stderr,
+        )
         return None
     if is_reserved_workset_name(name):
         print(
