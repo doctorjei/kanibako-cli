@@ -33,7 +33,7 @@ def _launch(request: dict) -> tuple[str | None, str | None]
 def _ro_spawn_config_path(helpers_dir: Path, helper_num: int) -> Path
 def _get_existing_helpers(helpers_dir: Path) -> list[int]
 def _next_helper_number(existing: list[int], budget: SpawnBudget, own: int=0) -> int
-def _hub_stop(state: dict, helper_num: int) -> str | None
+def _hub_stop(state: dict, helper_num: int) -> dict | None
 def _cascade_cleanup(helpers_dir: Path, helper_num: int) -> list[int]
 def _log_path() -> Path
 def _read_log_entries(log_file: Path) -> list[dict]

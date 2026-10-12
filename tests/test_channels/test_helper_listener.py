@@ -886,10 +886,13 @@ class TestHubStop:
         hub._ctx = mock_ctx
         hub._log = MagicMock()
         hub._containers.append("kb-primary-testproj-helper-1")
+        mock_ctx.runtime.is_running.return_value = True
         for name in ("kb-primary-otherbox", "kb-primary-otherbox-helper-1"):
             resp = hub._handle_stop({"action": "stop", "container_name": name, "helper_num": 1})
             assert resp["status"] == "error"
+            assert resp["running"] is True
             assert name in resp["message"]
+            mock_ctx.runtime.is_running.assert_called_with(name)
         mock_ctx.runtime.stop.assert_not_called()
         mock_ctx.runtime.rm.assert_not_called()
         hub._log.log_control.assert_not_called()
@@ -902,8 +905,27 @@ class TestHubStop:
         request = {"action": "stop", "container_name": "kb-primary-testproj-helper-1",
                    "helper_num": 1}
         assert hub._handle_stop(request)["status"] == "ok"
-        assert hub._handle_stop(request)["status"] == "error"
+        mock_ctx.runtime.is_running.return_value = False
+        assert hub._handle_stop(request) == {"status": "not_running"}
         assert mock_ctx.runtime.stop.call_count == 1
+        assert mock_ctx.runtime.rm.call_count == 1
+
+    def test_an_unheld_name_that_is_not_running_is_reported_and_left_alone(
+        self, hub_and_sock,
+    ):
+        """A hub restarted after a SIGKILL holds no helpers: a stop of a dead one gets
+        the distinct ``not_running`` reply, and the runtime is never told to stop or
+        remove a name this hub did not launch."""
+        hub, sock_path, ctx = hub_and_sock
+        ctx.runtime.is_running.return_value = False
+        name = "kb-primary-testproj-helper-1"
+        resp = _connect_and_send(sock_path, {
+            "action": "stop", "container_name": name, "helper_num": 1,
+        })
+        assert resp == {"status": "not_running"}
+        ctx.runtime.is_running.assert_called_once_with(name)
+        ctx.runtime.stop.assert_not_called()
+        ctx.runtime.rm.assert_not_called()
 
     def test_stop_missing_name(self, hub_and_sock):
         hub, sock_path, ctx = hub_and_sock
@@ -1087,6 +1109,65 @@ def _running_state(root: Path, container_name: str) -> None:
         "status": "running", "model": None, "depth": 0, "breadth": 4,
         "container_name": container_name,
     }))
+
+
+class TestRespawnAfterAHubRestart:
+    """The hub that launched a helper was killed (no shutdown sweep): the new hub holds
+    nothing, and the dead helper's EXITED container still holds its name."""
+
+    def _restarted(self, hub_and_sock, monkeypatch):
+        from kanibako.commands import helper_cmd
+
+        hub, sock_path, ctx = hub_and_sock
+        _helper_tree(ctx.helpers_dir / "1")
+        name = _connect_and_send(sock_path, {"action": "spawn", "helper_num": 1})["container_name"]
+        _running_state(ctx.helpers_dir / "1", name)
+        with hub._containers_lock:
+            hub._containers.clear()
+            hub._homes.clear()
+        ctx.runtime.reset_mock()
+        ctx.runtime.run.return_value = 0
+        monkeypatch.setattr(Path, "home", staticmethod(lambda: ctx.shell_path))
+        monkeypatch.setattr(helper_cmd, "_socket_path", lambda: sock_path)
+        return ctx, name
+
+    def test_stop_then_respawn(self, hub_and_sock, monkeypatch, capsys):
+        import argparse
+
+        from kanibako.commands import helper_cmd
+
+        ctx, name = self._restarted(hub_and_sock, monkeypatch)
+        ctx.runtime.is_running.return_value = False
+        ctx.runtime.container_exists.return_value = True
+
+        assert helper_cmd.run_stop(argparse.Namespace(number=1)) == 0
+        state = json.loads((ctx.helpers_dir / "1" / "state.json").read_text())
+        assert state["status"] == "stopped"
+        ctx.runtime.stop.assert_not_called()
+        ctx.runtime.rm.assert_not_called()
+
+        # The respawn removes the exited container of exactly its own name, then runs.
+        assert helper_cmd.run_respawn(argparse.Namespace(number=1)) == 0, capsys.readouterr()
+        ctx.runtime.rm.assert_called_once_with(name)
+        assert ctx.runtime.run.call_args.kwargs["name"] == name
+        ctx.runtime.stop.assert_not_called()
+
+    def test_a_running_leftover_is_never_removed(self, hub_and_sock, monkeypatch, capsys):
+        import argparse
+
+        from kanibako.commands import helper_cmd
+
+        ctx, name = self._restarted(hub_and_sock, monkeypatch)
+        ctx.runtime.is_running.return_value = True
+        ctx.runtime.container_exists.return_value = True
+
+        assert helper_cmd.run_stop(argparse.Namespace(number=1)) == 1
+        assert "it is running" in capsys.readouterr().err
+        state = json.loads((ctx.helpers_dir / "1" / "state.json").read_text())
+        assert state["status"] == "running"
+        _connect_and_send(hub_and_sock[1], {"action": "spawn", "helper_num": 1})
+        ctx.runtime.stop.assert_not_called()
+        ctx.runtime.rm.assert_not_called()
 
 
 class TestHubStopMarksHelpersStopped:

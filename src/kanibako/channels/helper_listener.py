@@ -397,6 +397,14 @@ class HelperHub:
             # § Delivery at launch lets nothing write a variable after the channel.
             write_helper_number(helper_home / SPAWN_CONFIG_FILENAME, helper_num)
             mounts = _build_helper_mounts(ctx, helper_num, helpers_dir_host)
+            # A detached helper runs without ``--rm``, so an earlier launch of this same
+            # number (a hub killed before its shutdown sweep, or a helper that exited on
+            # its own) can leave an EXITED container holding the name, and ``run
+            # --name`` refuses a name in use.  Only that name, and only when it is not
+            # running: a running one is left for ``run`` to refuse.
+            if (ctx.runtime.container_exists(container_name)
+                    and not ctx.runtime.is_running(container_name)):
+                ctx.runtime.rm(container_name)
             rc = ctx.runtime.run(
                 ctx.image,
                 post_start=_helper_reprotect,
@@ -427,7 +435,8 @@ class HelperHub:
             return {"status": "error", "message": f"container exited with {rc}"}
 
         with self._containers_lock:
-            self._containers.append(container_name)
+            if container_name not in self._containers:
+                self._containers.append(container_name)
 
         if self._log:
             self._log.log_control(
@@ -454,16 +463,21 @@ class HelperHub:
         if not container_name:
             return {"status": "error", "message": "missing container_name"}
 
-        # ⚑ The name comes from the box, so the hub acts only on a container it launched
-        # itself and still holds: anything else (another box, the director's own
-        # container, a helper already stopped) is refused before the runtime sees it.
+        # ⚑ The name comes from the box, so the hub stops and removes only a container it
+        # launched itself and still holds.  For any other name (another box, the
+        # director's own container, a helper this hub lost on a restart) it only asks
+        # the runtime whether that name runs: not running is a distinct reply the CLI
+        # takes as "nothing to stop"; running is refused.  Neither calls stop or rm.
         with self._containers_lock:
-            if container_name not in self._containers:
-                logger.warning("refused helper stop of %r: this hub did not launch it, "
-                               "or it is already stopped", container_name)
-                return {"status": "error",
-                        "message": f"refusing to stop {container_name!r}: it is not a "
-                                   f"running helper of this box"}
+            held = container_name in self._containers
+        if not held:
+            if not ctx.runtime.is_running(container_name):
+                return {"status": "not_running"}
+            logger.warning("refused helper stop of %r: this hub did not launch it",
+                           container_name)
+            return {"status": "error", "running": True,
+                    "message": f"refusing to stop {container_name!r}: it is running, "
+                               f"and this hub did not launch it"}
 
         ctx.runtime.stop(container_name)
         ctx.runtime.rm(container_name)

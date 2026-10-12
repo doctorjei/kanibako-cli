@@ -396,16 +396,20 @@ class TestRunStop:
         assert "does not exist" in capsys.readouterr().err
 
 
-def _hub_refuses_stop(monkeypatch) -> list[dict]:
-    """A hub that launches but refuses every stop, as one restarted after a SIGKILL
-    does (its list of launched helpers is empty); returns the stop requests seen."""
+def _hub_replies_to_stop(monkeypatch, reply: dict | None = None) -> list[dict]:
+    """A hub that launches, and answers every stop with *reply*: by default the refusal
+    of one restarted after a SIGKILL (it holds no helpers) whose runtime reports the
+    container running.  Returns the stop requests seen."""
+    if reply is None:
+        reply = {"status": "error", "running": True,
+                 "message": "refusing to stop 'kb-t-helper-1'"}
     stops: list[dict] = []
 
     def _hub(_path, request):
         if request.get("action") == "spawn":
             return {"status": "ok", "container_name": f"kb-t-helper-{request['helper_num']}"}
         stops.append(request)
-        return {"status": "error", "message": "refusing to stop 'kb-t-helper-1'"}
+        return reply
 
     monkeypatch.setattr("kanibako.channels.helper_client.send_request", _hub)
     return stops
@@ -417,7 +421,7 @@ class TestRefusedStop:
 
     def test_stop_reports_the_refusal_and_keeps_state(self, helpers_env, capsys, monkeypatch):
         run_spawn(_make_args(depth=None, breadth=None, model=None))
-        stops = _hub_refuses_stop(monkeypatch)
+        stops = _hub_replies_to_stop(monkeypatch)
         capsys.readouterr()
 
         rc = run_stop(_make_args(number=1))
@@ -431,7 +435,7 @@ class TestRefusedStop:
     @pytest.mark.parametrize("cascade", [False, True])
     def test_cleanup_keeps_the_dirs(self, helpers_env, capsys, monkeypatch, cascade):
         run_spawn(_make_args(depth=None, breadth=None, model=None))
-        stops = _hub_refuses_stop(monkeypatch)
+        stops = _hub_replies_to_stop(monkeypatch)
         capsys.readouterr()
 
         rc = run_cleanup(_make_args(number=1, cascade=cascade))
@@ -443,16 +447,59 @@ class TestRefusedStop:
         assert (helpers_env / "helpers" / "1" / "workspace").is_dir()
         assert read_helper_state(helpers_env / "helpers", 1)["status"] == "running"
 
-    def test_cleanup_of_a_stopped_helper_asks_no_stop(self, helpers_env, capsys, monkeypatch):
-        """A stopped helper is no longer the hub's, so cleanup does not ask again
-        (the hub would refuse it) and removes the dirs."""
+
+class TestNotRunningStop:
+    """The hub lost the helper (a restart) and its runtime reports the container not
+    running: nothing to stop, so stop and cleanup proceed."""
+
+    def test_stop_marks_the_helper_stopped(self, helpers_env, capsys, monkeypatch):
         run_spawn(_make_args(depth=None, breadth=None, model=None))
-        run_stop(_make_args(number=1))
-        stops = _hub_refuses_stop(monkeypatch)
+        stops = _hub_replies_to_stop(monkeypatch, {"status": "not_running"})
         capsys.readouterr()
 
+        assert run_stop(_make_args(number=1)) == 0
+        assert len(stops) == 1
+        assert "Stopped helper 1." in capsys.readouterr().out
+        assert read_helper_state(helpers_env / "helpers", 1)["status"] == "stopped"
+
+    @pytest.mark.parametrize("cascade", [False, True])
+    def test_cleanup_removes_the_dirs(self, helpers_env, capsys, monkeypatch, cascade):
+        run_spawn(_make_args(depth=None, breadth=None, model=None))
+        stops = _hub_replies_to_stop(monkeypatch, {"status": "not_running"})
+
+        assert run_cleanup(_make_args(number=1, cascade=cascade)) == 0
+        assert len(stops) == 1
+        assert not (helpers_env / "helpers" / "1").exists()
+
+
+class TestCleanupOfAStoppedHelper:
+    """``stopped`` can follow an unreachable hub, so cleanup still asks; a refusal
+    stops it only when the runtime reports the container running."""
+
+    def _stopped(self, helpers_env):
+        run_spawn(_make_args(depth=None, breadth=None, model=None))
+        state = read_helper_state(helpers_env / "helpers", 1)
+        state["status"] = "stopped"
+        state["container_name"] = "kb-t-helper-1"
+        write_helper_state(helpers_env / "helpers", 1, state)
+
+    def test_a_running_container_keeps_the_dirs(self, helpers_env, capsys, monkeypatch):
+        self._stopped(helpers_env)
+        stops = _hub_replies_to_stop(monkeypatch)
+
+        assert run_cleanup(_make_args(number=1)) == 1
+        assert [r["container_name"] for r in stops] == ["kb-t-helper-1"]
+        assert "Cannot clean up helper 1" in capsys.readouterr().err
+        assert (helpers_env / "helpers" / "1" / "workspace").is_dir()
+
+    def test_a_refusal_without_a_running_container_removes_the_dirs(
+        self, helpers_env, capsys, monkeypatch,
+    ):
+        self._stopped(helpers_env)
+        stops = _hub_replies_to_stop(monkeypatch, {"status": "error", "message": "no context"})
+
         assert run_cleanup(_make_args(number=1)) == 0
-        assert stops == []
+        assert len(stops) == 1
         assert not (helpers_env / "helpers" / "1").exists()
 
 
