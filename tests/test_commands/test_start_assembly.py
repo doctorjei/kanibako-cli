@@ -2556,6 +2556,10 @@ class TestTheSyncApplierConsumesTheLeaf:
         ⚑ A ``reconciled`` PARAMETER LEFT THEM at cutover 2c: it was read only by the
         sync list\'s fallback arm, and an input nothing reads cannot make a mis-placed
         call fail.
+
+        ⚑ ``declared_by`` JOINED THEM in the 176th dup pass: the fold's record, so a
+        mask refusal names the mask's key. Required for the same reason - a default
+        of ``{}`` would silently drop the key from the message.
         """
         import inspect
 
@@ -2563,7 +2567,9 @@ class TestTheSyncApplierConsumesTheLeaf:
 
         params = inspect.signature(_apply_synced_copies).parameters
 
-        assert list(params) == ["snapshot", "bindings", "logger", "skip_if"]
+        assert list(params) == [
+            "snapshot", "bindings", "logger", "skip_if", "declared_by",
+        ]
         assert all(
             p.kind is inspect.Parameter.KEYWORD_ONLY for p in params.values()
         ), {n: str(p.kind) for n, p in params.items()}
