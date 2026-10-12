@@ -1038,14 +1038,15 @@ def _plan_workset_member(std, workset: str, name: str,
     return ws, name, False
 
 
-def _new_member_undo(ws: Workset, name: str) -> Callable[..., bool]:
+def _new_member_undo(ws: Workset, name: str, leftover_cure: str) -> Callable[..., bool]:
     """The undo for a member this create is about to add; call it BEFORE ``add_project``.
 
     It drops the membership record and removes only what did not exist when it was
     made — the member's dirs, any parent dir and the registry file the write created.
     A workspace, vault leaf or registry the user already had is kept.  ``member=False``
     skips the record and the member's dirs: a failed ``add_project`` undid those and
-    named what it left.  The undo returns ``False`` while a member dir it made remains.
+    named what it left.  The undo returns ``False`` while a member dir it made remains;
+    *leftover_cure* ends the Note naming its box dir.
     """
     from kanibako.project.workset import (
         _member_store_bases, _unwind_created_root, load_workset_settings_doc,
@@ -1079,7 +1080,7 @@ def _new_member_undo(ws: Workset, name: str) -> Callable[..., bool]:
             release_project(ws, name, keep_link=True)
         for path in new_leaves if member else ():
             if path == box_dir and path.is_dir():
-                _unwind_created_root(path, remove_box_tree)
+                _unwind_created_root(path, remove_box_tree, cure=leftover_cure)
             elif path.is_dir() and not path.is_symlink():
                 shutil.rmtree(path)
         for path in new_parents:
@@ -1306,7 +1307,7 @@ def _create_target(args: argparse.Namespace) -> Path:
 
 @dataclasses.dataclass
 class _CreateOutcome:
-    """What :func:`run_create` made for ``<path>``, root first, and once committed, its cure."""
+    """What :func:`run_create` made for ``<path>``, root first, and while its entry stays, its cure."""
     made: list[Path] = dataclasses.field(default_factory=list)
     committed: bool = False
     recover: str = ""
@@ -1328,7 +1329,7 @@ def _unmakes_its_dirs_on_failure(
     """A *create* that never committed removes the dirs it made, while they are empty.
 
     An ``OSError`` from *create* exits 1 with an error line naming its cure: a re-run, or
-    once committed, the ``--recover`` line a re-run would be refused with.
+    while its journal entry stays, the ``--recover`` line a re-run would be refused with.
     """
     @functools.wraps(create)
     def run(args: argparse.Namespace) -> int:
@@ -1336,7 +1337,7 @@ def _unmakes_its_dirs_on_failure(
         try:
             return create(args, outcome)
         except OSError as e:
-            cure = (f"run: {outcome.recover}" if outcome.committed
+            cure = (f"run: {outcome.recover}" if outcome.recover
                     else "run the same 'kanibako create' again.")
             print(f"Error: {e}\n  Fix that, then {cure}", file=sys.stderr)
             return 1
@@ -1695,14 +1696,16 @@ def run_create(args: argparse.Namespace, outcome: _CreateOutcome) -> int:
     if _named_spec is None and not args.standalone:
         _drop_gone_parked_primary(std, _entry_probe.name)
 
-    # ⚑ THE MEMBERSHIP WRITE comes after every refusal and after the entry.
+    # ⚑ THE MEMBERSHIP WRITE comes after every refusal and after the entry, which a
+    # leftover keeps pending: the re-run is refused, and ``--recover`` takes it over.
+    _leftover_cure = f"the create stays pending; {recover_cure(_entry_probe)} finishes it"
     _undo_member = None
     _undo_box = None
     _box_wrote: Callable[[str], None] | None = None
     # ⚑ THE UNDO IS A FRESH CREATE'S ONLY: a recovery adopts attempt one's tree.
     if not is_recovery and _named_spec is not None and not _named_existing:
         assert _member is not None and _named_ws is not None
-        _undo_member = _new_member_undo(_named_ws, _member)
+        _undo_member = _new_member_undo(_named_ws, _member, _leftover_cure)
     elif not is_recovery and _named_spec is None:
         _undo_box, _box_wrote = _new_box_undo(
             std, _entry_probe, standalone=bool(args.standalone))
@@ -1714,7 +1717,7 @@ def run_create(args: argparse.Namespace, outcome: _CreateOutcome) -> int:
             try:
                 add_project(
                     _named_ws, _member, _named_ws.workspaces_dir / _member, std,
-                    noun="box creation",
+                    noun="box creation", leftover_cure=_leftover_cure,
                 )
             except BaseException as e:
                 # ⚑ ``add_project`` undid and named the member: one account of it.
@@ -1852,6 +1855,8 @@ def run_create(args: argparse.Namespace, outcome: _CreateOutcome) -> int:
             # ⚑ What the undo could not remove stays recoverable.
             if _undone:
                 _clear_create_entry(std, _entry_probe)
+            else:
+                outcome.recover = recover_cure(_entry_probe)
     seed_new_box(std, config, proj, explicit_agent=_agent_arg)
     # ⚑ THE CANON SKELETON (J-7) — AFTER the seed (it makes the root 555; protect first
     # and the seed's copies die EACCES) and INSIDE the journal window (it must replay).

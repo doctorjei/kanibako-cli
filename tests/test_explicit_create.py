@@ -2044,3 +2044,17 @@ def test_a_member_create_gives_one_account_of_its_rollback(
 
     entries = (yaml.safe_load(std.journal.read_text()) or {}).get("entries") or {}
     assert bool(entries) is stuck, entries
+    cure = f"cd {shlex.quote(str(ws.root))} && kanibako create --recover alpha"
+    rerun = f"run: {cure}" if stuck else "run the same 'kanibako create' again."
+    assert f"\n  Fix that, then {rerun}\n" in err, err
+    if not stuck:
+        return
+    # ⚑ The kept entry refuses a plain re-run; the Note names the --recover that finishes
+    # it, never a removal the next run does not need.
+    assert (f"Note: could not remove {boxes / 'alpha'}, which this operation created; "
+            f"the create stays pending; {cure} finishes it\n") in err, err
+    monkeypatch.setattr(paths_mod, "_register_workset_box_membership", real)
+    assert run_create(_create_args("alpha", recover=True, no_vault=False)) == 0
+    assert (boxes / "alpha").is_dir()
+    entries = (yaml.safe_load(std.journal.read_text()) or {}).get("entries") or {}
+    assert not entries, entries

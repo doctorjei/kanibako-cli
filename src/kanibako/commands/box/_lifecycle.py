@@ -3279,11 +3279,13 @@ def _to_default(
         if existing is not None:
             # SAME-PATH in-place convert: free the name so assign reuses it verbatim.
             preserved_name = existing
-            _safe_unregister(std, existing)
         elif kept is not None:
             # RELOCATING own-name move.
             preserved_name = kept
-            _safe_unregister(std, kept)
+        # ⚑ A free that fails raises its own cause, not the register's "already registered".
+        if preserved_name is not None:
+            unregister_primary_box_name(std.primary_workset, preserved_name,
+                                        early=_early_scope(std, BoxMode.primary))
     # The minted or kept name goes through the per-kind guard; else the auto-suffix path.
     claimed = mint if mint is not None else kept
     if claimed is not None:

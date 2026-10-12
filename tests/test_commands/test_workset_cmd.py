@@ -3541,3 +3541,47 @@ class TestWorksetCreateConnectReadOnlyRegistry:
         assert "Error:" in captured.err, captured.err
         assert ("  Fix that, then run the same 'kanibako workset connect' again."
                 in captured.err.splitlines()), captured.err
+
+    def test_a_connect_box_dir_left_behind_is_adopted_by_the_same_connect(
+        self, config_file, tmp_home, capsys, monkeypatch,
+    ):
+        """A box dir the rollback cannot remove keeps the journal entry; its Note says the
+        same connect adopts it, never "remove it", and that re-run lands."""
+        import kanibako.settings.paths as paths_mod
+        from kanibako.commands.workset_cmd import run_connect
+        from kanibako.launch import journal as journal_mod
+        from kanibako.runtime.container import ContainerRuntime
+
+        std = load_std_paths(load_config(config_file))
+        ws = create_workset("lockws", tmp_home / "lockws", std)
+        external = tmp_home / "lockws-src"
+        external.mkdir()
+        boxes = ws.projects_dir
+        real = paths_mod._register_workset_box_membership
+
+        def locked(*a, **k):
+            os.chmod(boxes, 0o555)
+            self._lock(ws.root / "registry.yaml")
+            return real(*a, **k)
+
+        args = argparse.Namespace(workset="lockws", source=str(external),
+                                  project_name="lockproj", force=True)
+        try:
+            with monkeypatch.context() as mp:
+                mp.setattr(paths_mod, "_register_workset_box_membership", locked)
+                # ⚑ A working ``podman unshare rm`` ignores modes (CI has one).
+                mp.setattr(ContainerRuntime, "unshare_rm", lambda self, path: False)
+                assert run_connect(args) == 1
+        finally:
+            self._unlock(ws.root / "registry.yaml")
+            os.chmod(boxes, 0o755)
+
+        err = capsys.readouterr().err
+        assert (f"Note: could not remove {boxes / 'lockproj'}, which this operation "
+                "created; running the same 'kanibako workset connect' again adopts it\n"
+                ) in err, err
+        assert "remove it before" not in err, err
+        assert journal_mod.pending_import(std.journal, boxes / "lockproj") is not None
+        assert run_connect(args) == 0
+        assert journal_mod.pending_import(std.journal, boxes / "lockproj") is None
+        assert "lockproj" in _workset_boxes(ws)

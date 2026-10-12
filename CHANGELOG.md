@@ -820,6 +820,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A failed rollback names the cure that works.** When a `box create` of a workset box or a `workset connect`
+  fails and leaves a box folder behind, its Note no longer says to remove the folder: the create's says
+  `kanibako create --recover` finishes it, and the connect's says the same connect adopts it. The create's
+  `Error:` line names that `--recover` line too, not a re-run that is refused.
+- **A `box move` or `box convert` of a default-workset box names why it could not free the box's name.** It
+  said `Name '<name>' is already registered`; it now prints the error that stopped the name's release, such as
+  `Permission denied`.
 - **Boxes and their helpers read the in-box kanibako binds from one table.** A helper kept its own copy of the
   package and `kanibako` command binds; it now gets the box's set, which adds the secrets profile snippet
   `/etc/profile.d/kanibako-secrets.sh`, a no-op in a helper with no secret mounted.

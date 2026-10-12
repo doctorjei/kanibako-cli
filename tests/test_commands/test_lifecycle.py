@@ -3645,3 +3645,26 @@ class TestAnUndroppedSourceRowIsNamed:
         note = (f"Note: could not drop the old registry row '{state.name}': registry "
                 f"locked; remove it with `kanibako box rm {shlex.quote(state.name)}`\n")
         assert err.count(note) == 1, err
+
+
+def test_a_name_free_that_fails_names_its_cause(env, capsys):
+    """A relocating primary move frees its own name before it re-registers it.  A free that
+    fails raises its own cause, not the "already registered" of the register after it."""
+    config, std, tmp_home = env
+    pdir = _make_default(env)
+    state = resolve_lifecycle_target(str(pdir), std, config)
+
+    registry = std.primary_workset / "registry.yaml"
+    assert registry.is_file()
+    os.chmod(registry.parent, 0o555)  # the registry rewrite cannot land
+    try:
+        with pytest.raises(PermissionError, match="Permission denied"):
+            execute_lifecycle(state, TargetSpec(location=tmp_home / "moved",
+                                                ownership=UNCHANGED),
+                              std, config, confirm=_conf_yes())
+    finally:
+        os.chmod(registry.parent, 0o755)
+    assert state.name in load_primary_boxes(
+        std.primary_workset, early=_early_scope(std, BoxMode.primary))
+    assert (pdir / "file.txt").is_file()
+    assert "already registered" not in capsys.readouterr().err

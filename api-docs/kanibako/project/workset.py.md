@@ -17,6 +17,7 @@ DEFAULT_CANON_REMOVED_LINE = 'Removed the default canon folder `create` made'
 SYMLINK_LOOP_WHY = 'it is a symlink loop that kanibako cannot resolve, so it is left in place for you to look at.'
 CANON_SYMLINK_LOOP_WHY = 'it is a symlink loop that kanibako cannot resolve'
 CANON_HOLDS_LOOP_WHY = 'it holds a symlink loop at %s that kanibako cannot resolve'
+REMOVE_LEFTOVER = 'remove it before you run it again'
 DEFAULT_WORKSET_ID = '__default__'
 DEFAULT_WORKSET_ALIAS = 'default'
 RESERVED_WORKSET_IDENTIFIERS = frozenset({DEFAULT_WORKSET_ID, DEFAULT_WORKSET_ALIAS})
@@ -90,7 +91,7 @@ def source_in_tree(ws: Workset, source_path: Path) -> bool
 def is_in_tree_workspace(ws: Workset, path: Path) -> bool
 def refuse_inside_other_workset(ws: Workset, source: Path, std: StandardPaths) -> None
 def refuse_existing_box(source: Path, std: StandardPaths, *, force: bool=False) -> None
-def add_project(ws: Workset, name: str, source_path: Path, std: StandardPaths | None=None, force: bool=False, *, restoring: bool=False, noun: str | None=None, outer: _Unwind | None=None, outer_row: tuple[str, str] | None=None, rollback: _Unwind | None=None) -> WorksetProject
+def add_project(ws: Workset, name: str, source_path: Path, std: StandardPaths | None=None, force: bool=False, *, restoring: bool=False, noun: str | None=None, outer: _Unwind | None=None, outer_row: tuple[str, str] | None=None, rollback: _Unwind | None=None, leftover_cure: str=REMOVE_LEFTOVER) -> WorksetProject
 def refuse_case_variant_store(ws: Workset, name: str, std: StandardPaths) -> None
 def ensure_discoverability_link(ws: Workset, name: str, target: Path) -> Path | None
 def release_project(ws: Workset, name: str, *, keep_link: bool=False) -> WorksetProject
@@ -109,7 +110,7 @@ def _resolved_unless_loop(path: Path) -> Path
 def _holds_only_arms(path: Path, arms: set[Path]) -> bool
 def _note_unwind_errors(what: str, errors: Iterable[Exception]) -> None
 def _note_unwind_incomplete(noun: str, where: str, errors: Iterable[Exception], *, interrupted: bool) -> None
-def _unwind_created_root(path: Path, remove: Callable[[Path], bool] | None=None) -> bool
+def _unwind_created_root(path: Path, remove: Callable[[Path], bool] | None=None, *, cure: str=REMOVE_LEFTOVER) -> bool
 @contextmanager
 def _journal_connect(journal: Path | None, box_path: Path, *, name: str, workset: str | None=None, workspace: str | None=None)
 def _load_workset(root: Path, name: str, *, early_system: EarlySystem) -> Workset

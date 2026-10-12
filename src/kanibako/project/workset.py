@@ -1062,15 +1062,20 @@ def _note_unwind_incomplete(
           "back)", file=sys.stderr)
 
 
+#: The leftover Note's default cure; an op whose re-run takes the leftover over has its own.
+REMOVE_LEFTOVER = "remove it before you run it again"
+
+
 def _unwind_created_root(
     path: Path, remove: Callable[[Path], bool] | None = None,
+    *, cure: str = REMOVE_LEFTOVER,
 ) -> bool:
     """Undo a root this op created, which may be a LINK or a partial copy.
 
     A link is UNLINKED, never removed through; a tree goes through the escalating
-    *remove* (``remove_path`` by default).  Whatever remains is named in a Note, because
-    a leftover makes every retry fail with "Destination already exists".  Returns
-    ``False`` then.
+    *remove* (``remove_path`` by default).  Whatever remains is named in a Note with
+    *cure*, by default removing it: a leftover makes a retry fail with "Destination
+    already exists".  Returns ``False`` then.
     """
     from kanibako.runtime.container import remove_path
 
@@ -1080,8 +1085,8 @@ def _unwind_created_root(
     except OSError:
         pass
     if path.exists() or path.is_symlink():
-        print(f"Note: could not remove {path}, which this operation created; "
-              f"remove it before you run it again", file=sys.stderr)
+        print(f"Note: could not remove {path}, which this operation created; {cure}",
+              file=sys.stderr)
         return False
     return True
 
@@ -2156,6 +2161,7 @@ def add_project(
     outer: _Unwind | None = None,
     outer_row: tuple[str, str] | None = None,
     rollback: _Unwind | None = None,
+    leftover_cure: str = REMOVE_LEFTOVER,
 ) -> WorksetProject:
     """Add a project to a workset; an EXTERNAL *source_path* (with *std*) is CONNECTED instead.
 
@@ -2171,7 +2177,7 @@ def add_project(
     the standalone ``(name, root)`` row *outer* re-registers; a forced absorb of that row
     leaves its restore to *outer*, so a failed re-register is named once.  *rollback*
     only counts this call's failed undo steps, so a caller can tell a clean failure from a
-    partial one.
+    partial one.  *leftover_cure* ends the Note naming a dir this call could not remove.
     """
     # ⚑ Case-blind (§0): the registry write treats ``Proj`` as member ``proj`` and
     # replaces its row, orphaning ``proj``'s store.
@@ -2242,7 +2248,7 @@ def add_project(
         existed_box = proj_box.exists()
         proj_box.mkdir(parents=True, exist_ok=True)
         if not existed_box and own_leaves:
-            unwind.push(partial(_unwind_created_root, proj_box))
+            unwind.push(partial(_unwind_created_root, proj_box, cure=leftover_cure))
 
         # Vault nests ro/rw ABOVE the box name, matching PRIMARY and STANDALONE.
         # ⚑ Unwind removes the per-box LEAVES only — never the shared ro/rw parents.
@@ -2257,12 +2263,12 @@ def add_project(
             existed_vault_ro = vault_ro_proj.exists()
             vault_ro_proj.mkdir(parents=True, exist_ok=True)
             if not existed_vault_ro and own_leaves:
-                unwind.push(partial(_unwind_created_root, vault_ro_proj))
+                unwind.push(partial(_unwind_created_root, vault_ro_proj, cure=leftover_cure))
         if vault_rw_proj is not None and not vault_rw_proj.is_symlink():
             existed_vault_rw = vault_rw_proj.exists()
             vault_rw_proj.mkdir(parents=True, exist_ok=True)
             if not existed_vault_rw and own_leaves:
-                unwind.push(partial(_unwind_created_root, vault_rw_proj))
+                unwind.push(partial(_unwind_created_root, vault_rw_proj, cure=leftover_cure))
 
         if is_external:
             # ⚑ workspaces/{name} is a discoverability SYMLINK — never mounted.
@@ -2298,7 +2304,7 @@ def add_project(
             existed_ws = ws_dir.exists()
             ws_dir.mkdir(parents=True, exist_ok=True)
             if not existed_ws and own_leaves:
-                unwind.push(partial(_unwind_created_root, ws_dir))
+                unwind.push(partial(_unwind_created_root, ws_dir, cure=leftover_cure))
 
         # ⚑ Durable registry write LAST, so a failure leaves no orphaned record.
         # ⚑⚑ ONE WRITE FOR EVERY MEMBER, in-tree and external alike: the P7/D10
