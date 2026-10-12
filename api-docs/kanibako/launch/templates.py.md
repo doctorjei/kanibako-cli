@@ -46,6 +46,7 @@ def install_packaged_templates(std: StandardPaths, agent_names: list[str], refre
 def walk_shipped_files(root: Path) -> list[tuple[str, Path]]
 def packaged_templates_digest(agent_names: list[str]) -> str
 def plan_template_refresh(std: StandardPaths, agent_names: list[str]) -> tuple[list[Path], list[Path], list[Path]]
+def _prune_dirs_shadowed_by_files(lower: Path, upper: Path) -> None
 def _scope_rules(scope: str | WorksetStampScope) -> tuple[str, tuple[str, ...]]
 def _check_whitelist(store_rel: Path, scope: str | WorksetStampScope) -> None
 def _is_contained(target: Path, root: Path) -> bool

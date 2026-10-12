@@ -251,6 +251,10 @@ NEVER overwritten). Two phases:
    create-if-absent, so a later layer's file at the same relative path wins (per-file last-wins).
    Not `overwrite=True` in layer order: that arm skips a file `_equivalent` to the staged one, so
    an upper YAML or Markdown file that parses equal to the lower one would keep the LOWER bytes.
+   Each layer is first copied (by `copy_tree`) into a private staging copy; a FILE/DIRECTORY
+   clash then resolves to the upper layer as well — a lower directory where an upper layer has a
+   file is pruned from that copy (`_prune_dirs_shadowed_by_files`), and a lower file where an
+   upper layer has a directory is skipped by create-if-absent.
 2. **Seed.** Copy the merged staged tree into *dest* with `copy_resource_tree_if_absent` — a
    pre-existing *dest* file survives untouched. This is the load-bearing failsafe against re-seed
    DATA LOSS.

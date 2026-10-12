@@ -89,6 +89,34 @@ class TestStageLayers:
         stage_layers(home, [lower, upper])
         assert (home / "cfg.yaml").read_text() == "a: 1  # upper\n"
 
+    @pytest.mark.parametrize(
+        ("lower_files", "upper_files", "expected"),
+        [
+            # lower DIRECTORY, upper FILE at the same path
+            ({"x/a": "lo"}, {"x": "hi"}, {"x": "hi"}),
+            ({"x/y/z": "lo", "k": "keep"}, {"x/y": "hi"}, {"x/y": "hi", "k": "keep"}),
+            # lower FILE, upper DIRECTORY at the same path
+            ({"x": "lo"}, {"x/a": "hi"}, {"x/a": "hi"}),
+            ({"x/y": "lo", "k": "keep"}, {"x/y/z": "hi"}, {"x/y/z": "hi", "k": "keep"}),
+        ],
+        ids=["dir-under-file", "nested-dir-under-file", "file-under-dir", "nested-file-under-dir"],
+    )
+    def test_a_file_dir_clash_resolves_to_the_upper_layer(
+        self, tmp_path, lower_files, upper_files, expected,
+    ):
+        """Last-wins holds when one layer has a FILE where another has a DIRECTORY:
+        the upper layer's shape and bytes land, and nothing raises."""
+        lower = self._layer(tmp_path, "lower", lower_files)
+        upper = self._layer(tmp_path, "upper", upper_files)
+        home = tmp_path / "home"
+        home.mkdir()
+        stage_layers(home, [lower, upper])
+        landed = {
+            str(p.relative_to(home)): p.read_text()
+            for p in home.rglob("*") if p.is_file()
+        }
+        assert landed == expected
+
     def test_existing_home_file_survives_reseed(self, tmp_path):
         """THE CLOBBER REGRESSION: a pre-existing home file survives a re-seed.
 

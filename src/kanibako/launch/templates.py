@@ -197,17 +197,41 @@ def stage_layers(dest: Path, layers: list[Path]) -> None:
 
     ⚑ Last-wins is built as HIGHEST LAYER FIRST into create-if-absent staging, not
     ``overwrite=True``: the overwrite arm skips an EQUIVALENT file
-    (:func:`_equivalent`), which would keep a lower layer's bytes.  Both passes are
+    (:func:`_equivalent`), which would keep a lower layer's bytes.  Every pass is
     :func:`copy_tree`, so its source-symlink refusal covers every layer entry.
+    ⚑ A FILE/DIRECTORY CLASH resolves to the upper layer too.  A lower FILE under an
+    upper directory is skipped by create-if-absent; a lower DIRECTORY under an upper
+    file is pruned from the lower layer's private copy before it merges.
     """
     present = [layer for layer in layers if layer.is_dir()]
     if not present:
         return
     with tempfile.TemporaryDirectory(prefix="kanibako-seed-") as staging:
-        staged = Path(staging)
-        for layer in reversed(present):
-            copy_tree(layer, staged)
-        copy_tree(staged, dest)
+        merged = Path(staging) / "merged"
+        merged.mkdir()
+        for index, layer in enumerate(reversed(present)):
+            copy = Path(staging) / f"layer-{index}"
+            copy_tree(layer, copy)
+            _prune_dirs_shadowed_by_files(copy, merged)
+            copy_tree(copy, merged)
+        copy_tree(merged, dest)
+
+
+def _prune_dirs_shadowed_by_files(lower: Path, upper: Path) -> None:
+    """Delete each directory in *lower* that *upper* already holds as a FILE.
+
+    Both trees are :func:`stage_layers`' own staging copies — plain files and
+    directories written by :func:`copy_tree`, no symlinks — so the delete never
+    reaches outside the staging dir.
+    """
+    if not lower.is_dir():
+        return
+    for entry in sorted(upper.rglob("*")):
+        if not entry.is_file():
+            continue
+        shadowed = lower / entry.relative_to(upper)
+        if shadowed.is_dir() and not shadowed.is_symlink():
+            shutil.rmtree(shadowed)
 
 
 # ---------------------------------------------------------------------------
