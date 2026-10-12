@@ -1675,19 +1675,17 @@ def agent_record(path: Path, *, node: str, purpose: ReadPurpose) -> AgentConfig:
 
     alias = file_alias_reason(node)
     if alias is not None:
-        raise SettingsError(
-            f"{path.parent} is not an agent store: {alias}.\n"
-            f"  Fix: rename the folder to the agent's name, or move it out of "
-            f"{path.parent.parent}."
-        )
+        raise agent_store_refusal(path.parent, alias)
     if not path.exists():
         return AgentConfig()
     if node == AGENT_DEFAULT_SUB:
-        raise SettingsError(
-            f"{path.parent} is not an agent store: {_reserved_tier_store_sentence()}.\n"
-            f"  Fix: move {path.parent} out of {path.parent.parent}, or delete it -- the "
-            f"tier's settings live in the system file's 'agent: {AGENT_DEFAULT_SUB}:' "
-            f"table, never in a folder."
+        raise agent_store_refusal(
+            path.parent, _reserved_tier_store_sentence(),
+            fix=(
+                f"move {path.parent} out of {path.parent.parent}, or delete it -- the "
+                f"tier's settings live in the system file's 'agent: {AGENT_DEFAULT_SUB}:' "
+                f"table, never in a folder"
+            ),
         )
     (read,) = read_settings_files(
         ((_AGENT_FILE_LEVEL, path),), purpose=purpose, subject=node,
@@ -1696,6 +1694,18 @@ def agent_record(path: Path, *, node: str, purpose: ReadPurpose) -> AgentConfig:
     cfg = record(level, node=node)
     refuse_undeclared_entries(level.contained, level=_AGENT_FILE_LEVEL, path=path)
     return cfg
+
+
+def agent_store_refusal(store: Path, why: str, *, fix: str | None = None) -> SettingsError:
+    """THE refusal of folder *store* as an agent store, because of *why* (a clause).
+
+    The default cure renames or moves the folder; *fix* replaces it when the folder can
+    hold no agent's settings at all.
+    """
+    cure = fix or (
+        f"rename the folder to the agent's name, or move it out of {store.parent}"
+    )
+    return SettingsError(f"{store} is not an agent store: {why}.\n  Fix: {cure}.")
 
 
 def cascade_files(

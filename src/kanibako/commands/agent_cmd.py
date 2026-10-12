@@ -289,15 +289,12 @@ def _store_node(store: Path) -> str:
     """
     from kanibako.errors import ConfigError
     from kanibako.settings.config_keys import agent_key_node
+    from kanibako.settings.settings_assemble import agent_store_refusal
 
     try:
         return agent_key_node(store.name)
     except ConfigError as e:
-        raise ConfigError(
-            f"{store} is not an agent store: {e}.\n"
-            f"  Fix: rename the folder to the agent's name, or move it out of "
-            f"{store.parent}."
-        ) from None
+        raise agent_store_refusal(store, str(e)) from None
 
 
 def run_info(args: argparse.Namespace) -> int:
