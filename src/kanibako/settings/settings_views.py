@@ -11,14 +11,16 @@ bound ``node.get(...)`` — a category key may legitimately be named ``get`` /
 
 ⚑ A category accessor exposes ``Bind``, NOT ``Bind | None``, only because the
 cascade merge omits every present-``None`` leaf before any consumer sees the
-snapshot (design §3/§6e). A ``None`` or ill-typed leaf here is a BUILD-INVARIANT
-BREACH and RAISES :class:`ViewError` — never type-launder it (S22).
+snapshot (spec §2a "PER-ENTRY CASCADE MERGE"). A ``None`` or ill-typed leaf here
+is a BUILD-INVARIANT BREACH and RAISES :class:`ViewError` — never type-launder it
+(S22).
 
 The tiers, the per-scope boundary (S21) and what is deliberately OUT of scope
 are in ``llm-docs/kanibako/settings/settings_views.py.md``.
 
-Authority: ``~/vault/rw/keystore-design.md`` §5, §6f; spec
-``settings-keyspace-1.8.0.md`` §2a.
+Authority: spec ``settings-keyspace-1.8.0.md`` §2a ("masks is a KEYED category":
+resolved = ``set``). The typed tiers come from the archived keystore design §5
+(history; see the llm-doc).
 """
 
 from __future__ import annotations
@@ -104,8 +106,8 @@ class _BindMapView(Mapping[str, BindEntry]):
         if not isinstance(value, BindEntry):
             raise ViewError(
                 f"{self._label}[{key!r}] is {type(value).__name__}, expected "
-                f"BindEntry (present-None entries are omitted at build, design "
-                f"§3/§6e/S22; a legacy 3-tuple Bind is NOT a BindEntry)"
+                f"BindEntry (present-None entries are omitted at build, spec "
+                f"§2a PER-ENTRY CASCADE MERGE/S22; a legacy 3-tuple Bind is NOT a BindEntry)"
             )
         return value
 
@@ -177,7 +179,8 @@ def bind_maps(node: KeyStore, *, label: str = "bindings") -> tuple[
 ]:
     """Split a whole DEST-KEYED ``bindings`` NODE into its ``(ro, rw)`` lenses.
 
-    A mode ABSENT from the node yields an EMPTY mapping (§3/§6e), never an error.
+    A mode ABSENT from the node yields an EMPTY mapping (spec §2a
+    "PER-ENTRY CASCADE MERGE"), never an error.
     """
     _require_node(node, label)
     return (
@@ -252,11 +255,12 @@ def env_view(node: KeyStore, *, label: str = "env") -> Mapping[str, "str | int |
 
 
 def masks_set(node: KeyStore, *, label: str = "masks") -> set[str]:
-    """The RESOLVED ``masks`` as ``set[box_dest]`` — the masked dests (tier-2, §6f).
+    """The RESOLVED ``masks`` as ``set[box_dest]`` — the masked dests (tier-2; spec §2a
+    "masks is a KEYED category").
 
     *node* is a ``masks`` subtree, a keyed ``dict[box_dest → bool|None]`` (S5).
-    Build DROPS every present-``None`` unmask (design §6f), so every surviving
-    key is a mask marker and the honest shape is a ``set``, not a mapping.
+    Build DROPS every present-``None`` unmask, so every surviving key is a
+    mask marker and the honest shape is a ``set``, not a mapping.
 
     Returns exactly the set of KEYS present. As an S22-style invariant check it
     asserts no surviving value is ``None`` and RAISES if one is found.
@@ -268,7 +272,7 @@ def masks_set(node: KeyStore, *, label: str = "masks") -> set[str]:
         if value is None:
             raise ViewError(
                 f"{label}[{key!r}] is None — a present-None unmask should have "
-                f"been dropped at build (design §6f/S22); not a mask marker"
+                f"been dropped at build (spec §2a masks/S22); not a mask marker"
             )
         masked.add(key)
     return masked
@@ -545,8 +549,8 @@ def _sub_or_empty(node: KeyStore, key: str) -> KeyStore:
     """The *key* sub-node of *node* as a :class:`KeyStore`, or an EMPTY one.
 
     Splits ``bindings`` into ``ro`` / ``rw``: a mode the build omitted is simply
-    absent → an empty lens (§3/§6e), not an error. A present-but-non-KeyStore
-    sub-value is a build breach → :class:`ViewError`.
+    absent → an empty lens (spec §2a "PER-ENTRY CASCADE MERGE"), not an error. A
+    present-but-non-KeyStore sub-value is a build breach → :class:`ViewError`.
     """
     if not dict.__contains__(node, key):
         return KeyStore()

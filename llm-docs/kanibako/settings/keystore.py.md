@@ -8,12 +8,12 @@ cascade, `@`-ref / `$VAR` / `~` expansion, typed views, or any consumer of them,
 `__MISSING__` sentinel, which is value-space and lives in `kb_store`.
 
 **Authority:** `~/canon/workbook/specs/settings-keyspace-1.8.0.md` — §0 (files store UNRESOLVED; the reserved-name
-floor), §2 (the cascade), §2a (category list + value types). ⚑ **The spec is the LIVE authority;
+floor), §2 (the cascade), §2a (category list + value types; `masks` is a KEYED
+`dict[box_dest -> bool|None]`, NOT a list). ⚑ **The spec is the LIVE authority;
 read it first.**
 
 Historical: `~/canon/notebook/archives/resources/keystore-2026-06/keystore-design.md` §2 (storage model), §3 (`None` semantics — type-space consequence
-only), §6f (`masks` is a keyed `dict[box_dest -> bool|None]`, NOT a list). ⚑ **It is ARCHIVED, at
-`~/canon/notebook/archives/keystore-2026-06/keystore-design.md`.** 🛑 **Its §4 writes the cascade
+only). ⚑ **It is ARCHIVED (NOT AUTHORITY).** 🛑 **Its §4 writes the cascade
 bracket with a 7th `required` tier that S14 and spec §2 CUT** — so on the cascade the archive is
 WRONG and the spec wins. Cite it for the storage model only, never for tier structure.
 

@@ -9,9 +9,10 @@ It is READ-ONLY in the strongest sense: every accessor wraps an EXISTING snapsho
 typed lens over it. It never merges, expands, reconciles, writes, or mutates, and it does not copy
 the node — the snapshot stays the single source of truth.
 
-Authority: `~/vault/rw/keystore-design.md` §5 (typed access — PRIMARY, including the load-bearing
-`Bind`-not-`Bind|None` coupling) and §6f (resolved `masks` = `set`); spec
-`~/canon/workbook/specs/settings-keyspace-1.8.0.md` §2a (categories and their value types).
+Authority: spec `~/canon/workbook/specs/settings-keyspace-1.8.0.md` §2a (categories and their value
+types; "masks is a KEYED category" — the resolved `masks` is a `set`). Historical (NOT AUTHORITY):
+`~/canon/notebook/archives/resources/keystore-2026-06/keystore-design.md` §5 (typed access tiers,
+including the load-bearing `Bind`-not-`Bind|None` coupling); no live clause states the tiers.
 
 ## The three tiers (design §5)
 
@@ -24,7 +25,7 @@ Authority: `~/vault/rw/keystore-design.md` §5 (typed access — PRIMARY, includ
    bind-shaped category: the `bindings.{ro,rw}` arms and `caches` / `seeded` / `common` / `synced`,
    all of them dest-keyed terminal keys (R-5/R-6; the four followed on 2026-08-08c). `env_view`
    gives `Mapping[str, scalar]` for `env`. `masks_set` gives `set[box_dest]` for the resolved
-   `masks` (design §6f).
+   `masks` (spec §2a "masks is a KEYED category").
 3. **Raw attribute / `[]` access** returning the full union — already provided by `KeyStore` itself
    (block 1), for genuinely mixed nodes only.
 
@@ -38,18 +39,19 @@ Every accessor is a typed LENS over a category NODE WHEREVER it appears in the s
 snapshot — `store.box.bindings.rw` → `Mapping[str, BindEntry]`. It is NOT a cross-scope aggregator,
 and it does NOT aggregate one dest across scopes — that is reconcile. Resolving the SAME `box_dest`
 declared at different scopes is the job of the `store_shape` producer plus the assembly collapse
-(design §6g), a SEPARATE downstream pass that is out of scope here.
+(system-design § "The collapse"), a SEPARATE downstream pass that is out of scope here.
 
 ## The load-bearing `Bind`-not-`Bind | None` coupling (S22)
 
 A category accessor exposes `Bind` (NOT `Bind | None`) ONLY because the cascade merge OMITS every
-present-`None` bind, category and masks leaf before any consumer sees the snapshot (design §3/§6e).
+present-`None` bind, category and masks leaf before any consumer sees the snapshot (spec §2a
+"PER-ENTRY CASCADE MERGE").
 This module RELIES on that and does NOT re-admit `None`. If it ever encounters a `None` — or an
 otherwise ill-typed — leaf under a category node, that is a BUILD-INVARIANT BREACH, so it raises
 `ViewError` rather than silently type-laundering it.
 
 The same reasoning makes `masks_set` honestly a `set`: a resolved `masks` value is the mask marker,
-because present-`None` unmasks were dropped at build (§6f).
+because present-`None` unmasks were dropped at build (spec §2a "masks is a KEYED category").
 
 `ViewError` is therefore a signal about a BUILD bug upstream (block 2b/3), NOT about bad user input.
 It is raised when an accessor sees a leaf its tier's contract says cannot exist — a `None` or
@@ -83,7 +85,8 @@ names the node in error messages and has no behavioral effect.
 `bind_maps(node, label=...)` splits a whole dest-keyed `bindings` NODE into its `(ro, rw)` lenses.
 It is the dest-keyed counterpart of the retired `bindings` accessor: the arm is still its own key
 segment (R-5), and only the entries below it are dest-keyed. A mode ABSENT from the node yields an
-EMPTY mapping (§3/§6e), never an error — which is what `_sub_or_empty` is for.
+EMPTY mapping (spec §2a "PER-ENTRY CASCADE MERGE": a present-`None` arm omits the whole
+category), never an error — which is what `_sub_or_empty` is for.
 
 ## `env` and `masks`
 
@@ -95,13 +98,13 @@ legitimate value. A `None` is rejected: `env.<VAR>` is a scalar value and an env
 "consumer default" to fall back to, so a `None` leaf means there is nothing to export, which is a
 build breach rather than a legitimate value.
 
-`masks_set` takes a `masks` subtree (`store.box.masks`), which is a keyed `dict[box_dest → bool|None]`
-(S5). AFTER build, every present-`None` unmask has been DROPPED (design §6f), so every SURVIVING key
-is a mask marker and the honest resolved shape is a `set` of masked dests, NOT a mapping. The
-function returns exactly the set of KEYS present in the node. As an S22-style invariant check it
-asserts that no surviving value is `None` — a `None` here would mean the unmask should have been
-dropped and was not — and raises `ViewError` if one is found. It reads via unbound `dict` ops and
-neither copies nor mutates the node.
+`masks_set` takes a `masks` subtree (`store.box.masks`), which is a keyed `dict[box_dest →
+bool|None]` (S5). AFTER build, every present-`None` unmask has been DROPPED (spec §2a "masks is a
+KEYED category"), so every SURVIVING key is a mask marker and the honest resolved shape is a `set`
+of masked dests, NOT a mapping. The function returns exactly the set of KEYS present in the node. As
+an S22-style invariant check it asserts that no surviving value is `None` — a `None` here would mean
+the unmask should have been dropped and was not — and raises `ViewError` if one is found. It reads
+via unbound `dict` ops and neither copies nor mutates the node.
 
 ## `derived_bindings` — the read half of `binding_derivations`
 
@@ -243,14 +246,14 @@ or finite-view accessor is meaningless over a scalar, `Bind` or `None` leaf; pas
 bug (a wrong path into the snapshot), so it raises `ViewError` rather than producing an empty or
 wrong lens.
 
-`_sub_or_empty` returns a named sub-node as a `KeyStore`, or an EMPTY one. It is what lets `bindings`
-split into `ro` / `rw` where a mode the build omitted is simply absent → an empty lens (§3/§6e), not
-an error. It reads through the unbound `dict` ops (S3). A present-but-non-`KeyStore` sub-value is a
-build breach → `ViewError`.
+`_sub_or_empty` returns a named sub-node as a `KeyStore`, or an EMPTY one. It is what lets
+`bindings` split into `ro` / `rw` where a mode the build omitted is simply absent → an empty lens
+(spec §2a "PER-ENTRY CASCADE MERGE"), not an error. It reads through the unbound `dict` ops (S3). A
+present-but-non-`KeyStore` sub-value is a build breach → `ViewError`.
 
 ## OUT of scope — hard boundaries
 
-* NO cross-scope `box_dest` collision resolution (design §6g).
+* NO cross-scope `box_dest` collision resolution (system-design § "Collision arbitration").
 * NO merge, expansion or cycle detection — `kanibako.settings.settings_merge` and
   `kanibako.settings.settings_expand` own those.
 * NO `config set` — `kanibako.settings.config_interface` owns that.

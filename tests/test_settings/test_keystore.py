@@ -575,7 +575,7 @@ def test_nested_present_none_leaf() -> None:
 
 
 # --------------------------------------------------------------------------- #
-# masks — keyed dict[box_dest -> bool|None], NOT a list (design §6f)          #
+# masks — keyed dict[box_dest -> bool|None], NOT a list (spec §2a)            #
 # --------------------------------------------------------------------------- #
 
 

@@ -73,7 +73,7 @@ def _env_node() -> KeyStore:
 
 
 def _masks_node() -> KeyStore:
-    """A POST-BUILD masks node — present-None unmasks already dropped (§6f).
+    """A POST-BUILD masks node — present-None unmasks already dropped (spec §2a, masks).
 
     Every surviving value is a mask marker (bare/true). The build never leaves a
     None here, so this models exactly what a consumer sees.
@@ -140,7 +140,7 @@ def test_masks_set_empty_node() -> None:
 
 
 def test_masks_set_surviving_none_raises() -> None:
-    # A present-None unmask must have been DROPPED at build (§6f). A surviving
+    # A present-None unmask must have been DROPPED at build (spec §2a, masks). A surviving
     # None is a build breach, not a mask marker → ViewError (the masks S22 check).
     node = KeyStore()
     node["/secrets"] = True
