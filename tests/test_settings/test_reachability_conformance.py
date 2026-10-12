@@ -150,13 +150,13 @@ def primary_proj(std, config, project_dir):
 
 @pytest.fixture
 def named_proj(std, config, tmp_home):
-  ws_root = tmp_home / "worksets" / "my-set"
-  workset = create_workset("my-set", ws_root, std)
+  ws_root = tmp_home / "worksets" / "my_set"
+  workset = create_workset("my_set", ws_root, std)
   source = tmp_home / "original-project"
   source.mkdir()
-  add_project(workset, "cool-app", source)
+  add_project(workset, "cool_app", source)
   return resolve_workset_project(
-    WorksetSpec.from_workset(workset), "cool-app", std, config, initialize=True,
+    WorksetSpec.from_workset(workset), "cool_app", std, config, initialize=True,
   )
 
 

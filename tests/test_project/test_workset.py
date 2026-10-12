@@ -29,10 +29,10 @@ from tests.support.early import early_record
 
 class TestCreateWorkset:
     def test_creates_directory_structure(self, std, tmp_home):
-        root = tmp_home / "worksets" / "my-set"
-        ws = create_workset("my-set", root, std)
+        root = tmp_home / "worksets" / "my_set"
+        ws = create_workset("my_set", root, std)
 
-        assert ws.name == "my-set"
+        assert ws.name == "my_set"
         assert ws.root == root.resolve()
         assert ws.root.is_dir()
         assert (ws.root / "boxes").is_dir()
@@ -46,25 +46,25 @@ class TestCreateWorkset:
 
     def test_the_global_registration_is_the_only_record_of_the_name(self, std, tmp_home):
         """⚑⚑ THE IDENTITY: name → root in the global registry, and nowhere else."""
-        root = tmp_home / "worksets" / "my-set"
-        create_workset("my-set", root, std)
+        root = tmp_home / "worksets" / "my_set"
+        create_workset("my_set", root, std)
 
-        assert list_worksets(std)["my-set"] == root.resolve()
+        assert list_worksets(std)["my_set"] == root.resolve()
         on_disk = [p for p in root.resolve().rglob("*") if p.is_file()]
         assert on_disk == [], on_disk
 
     def test_registers_globally(self, std, tmp_home):
-        root = tmp_home / "worksets" / "my-set"
-        create_workset("my-set", root, std)
+        root = tmp_home / "worksets" / "my_set"
+        create_workset("my_set", root, std)
 
         registry = list_worksets(std)
-        assert "my-set" in registry
-        assert registry["my-set"] == root.resolve()
+        assert "my_set" in registry
+        assert registry["my_set"] == root.resolve()
 
     def test_there_is_no_created_stamp(self, std, tmp_home):
         """⚑ ``created`` is GONE — not moved to the global registry, dropped."""
-        root = tmp_home / "worksets" / "my-set"
-        ws = create_workset("my-set", root, std)
+        root = tmp_home / "worksets" / "my_set"
+        ws = create_workset("my_set", root, std)
         add_project(ws, "proj", tmp_home / "project")
 
         from kanibako.project import registry_store
@@ -77,15 +77,15 @@ class TestCreateWorkset:
             "boxes": {"proj": str(ws.workspaces_dir / "proj")}
         }
         section = registry_store.load_section(std.registry, "worksets")
-        assert section["my-set"] == str(root.resolve())
+        assert section["my_set"] == str(root.resolve())
 
     def test_duplicate_name_raises(self, std, tmp_home):
         root1 = tmp_home / "worksets" / "set1"
-        create_workset("same-name", root1, std)
+        create_workset("same_name", root1, std)
 
         root2 = tmp_home / "worksets" / "set2"
         with pytest.raises(WorksetError, match="already in use"):
-            create_workset("same-name", root2, std)
+            create_workset("same_name", root2, std)
 
     def test_duplicate_name_message_explains_uniqueness(self, std, tmp_home):
         # The collision refusal must be explicit about the clash + uniqueness.
@@ -116,10 +116,10 @@ class TestCreateWorkset:
 
     def test_same_kind_duplicate_is_case_blind(self, std, tmp_home):
         """§0: workset names collide without regard to case, and the refusal says which."""
-        create_workset("same-name", tmp_home / "worksets" / "set1", std)
+        create_workset("same_name", tmp_home / "worksets" / "set1", std)
 
-        with pytest.raises(WorksetError, match="already in use as 'same-name'"):
-            create_workset("SAME-NAME", tmp_home / "worksets" / "set2", std)
+        with pytest.raises(WorksetError, match="already in use as 'same_name'"):
+            create_workset("SAME_NAME", tmp_home / "worksets" / "set2", std)
 
     def test_a_partition_token_is_refused_in_any_case(self, std, tmp_home):
         """🛑 ``__primary__`` is REFUSED, and the filesystem is why.
@@ -273,22 +273,22 @@ class TestListWorksetsExcludesDefault:
 
 class TestLoadWorkset:
     def test_roundtrip(self, std, tmp_home):
-        root = tmp_home / "worksets" / "my-set"
-        ws = create_workset("my-set", root, std)
+        root = tmp_home / "worksets" / "my_set"
+        ws = create_workset("my_set", root, std)
 
-        loaded = load_workset(root, "my-set", early_system=std.early_system)
+        loaded = load_workset(root, "my_set", early_system=std.early_system)
         assert loaded.name == ws.name
         assert loaded.root == ws.root
         assert loaded.projects == []
 
     def test_roundtrip_with_projects(self, std, tmp_home):
-        root = tmp_home / "worksets" / "my-set"
-        ws = create_workset("my-set", root, std)
-        add_project(ws, "proj-a", tmp_home / "project")
+        root = tmp_home / "worksets" / "my_set"
+        ws = create_workset("my_set", root, std)
+        add_project(ws, "proj_a", tmp_home / "project")
 
-        loaded = load_workset(root, "my-set", early_system=std.early_system)
+        loaded = load_workset(root, "my_set", early_system=std.early_system)
         assert len(loaded.projects) == 1
-        assert loaded.projects[0].name == "proj-a"
+        assert loaded.projects[0].name == "proj_a"
 
     def test_missing_root_raises(self, std, tmp_home):
         with pytest.raises(WorksetError, match="does not exist"):
@@ -296,21 +296,21 @@ class TestLoadWorkset:
 
     def test_the_name_comes_from_the_caller_not_from_disk(self, std, tmp_home):
         """⚑⚑ Nothing under the root records a name, so the caller's is the only one."""
-        root = tmp_home / "worksets" / "my-set"
-        create_workset("my-set", root, std)
+        root = tmp_home / "worksets" / "my_set"
+        create_workset("my_set", root, std)
 
-        assert load_workset(root, "whatever-the-registry-said",
+        assert load_workset(root, "whatever_the_registry_said",
                 early_system=std.early_system).name == (
-            "whatever-the-registry-said"
+            "whatever_the_registry_said"
         )
 
     def test_a_bare_directory_loads_as_an_empty_workset(self, std, tmp_home):
         """There is no marker to be missing: membership is absent, not the workset."""
-        root = tmp_home / "worksets" / "no-registry"
+        root = tmp_home / "worksets" / "no_registry"
         root.mkdir(parents=True)
 
-        loaded = load_workset(root, "no-registry", early_system=std.early_system)
-        assert loaded.name == "no-registry"
+        loaded = load_workset(root, "no_registry", early_system=std.early_system)
+        assert loaded.name == "no_registry"
         assert loaded.projects == []
 
 
@@ -340,26 +340,26 @@ class TestListWorksets:
 
 class TestDeleteWorkset:
     def test_unregisters(self, std, tmp_home):
-        root = tmp_home / "worksets" / "my-set"
-        create_workset("my-set", root, std)
-        assert "my-set" in list_worksets(std)
+        root = tmp_home / "worksets" / "my_set"
+        create_workset("my_set", root, std)
+        assert "my_set" in list_worksets(std)
 
-        ret = delete_workset("my-set", std)
+        ret = delete_workset("my_set", std)
         assert ret == root.resolve()
-        assert "my-set" not in list_worksets(std)
+        assert "my_set" not in list_worksets(std)
 
     def test_keeps_files_by_default(self, std, tmp_home):
-        root = tmp_home / "worksets" / "my-set"
-        create_workset("my-set", root, std)
+        root = tmp_home / "worksets" / "my_set"
+        create_workset("my_set", root, std)
 
-        delete_workset("my-set", std)
+        delete_workset("my_set", std)
         assert root.resolve().is_dir()
 
     def test_removes_files_when_requested(self, std, tmp_home):
-        root = tmp_home / "worksets" / "my-set"
-        create_workset("my-set", root, std)
+        root = tmp_home / "worksets" / "my_set"
+        create_workset("my_set", root, std)
 
-        delete_workset("my-set", std, remove_files=True)
+        delete_workset("my_set", std, remove_files=True)
         assert not root.resolve().exists()
 
     def test_unknown_name_raises(self, std):
@@ -396,39 +396,39 @@ class TestDeleteWorkset:
 
 class TestAddProject:
     def test_creates_subdirectories(self, std, tmp_home):
-        root = tmp_home / "worksets" / "my-set"
-        ws = create_workset("my-set", root, std)
-        add_project(ws, "cool-app", tmp_home / "project")
+        root = tmp_home / "worksets" / "my_set"
+        ws = create_workset("my_set", root, std)
+        add_project(ws, "cool_app", tmp_home / "project")
 
         resolved = root.resolve()
-        assert (resolved / "boxes" / "cool-app").is_dir()
-        assert (resolved / "workspaces" / "cool-app").is_dir()
-        assert (resolved / "vault" / "ro" / "cool-app").is_dir()
-        assert (resolved / "vault" / "rw" / "cool-app").is_dir()
+        assert (resolved / "boxes" / "cool_app").is_dir()
+        assert (resolved / "workspaces" / "cool_app").is_dir()
+        assert (resolved / "vault" / "ro" / "cool_app").is_dir()
+        assert (resolved / "vault" / "rw" / "cool_app").is_dir()
 
     def test_persists_to_the_membership(self, std, tmp_home):
-        root = tmp_home / "worksets" / "my-set"
-        ws = create_workset("my-set", root, std)
-        add_project(ws, "cool-app", tmp_home / "project")
+        root = tmp_home / "worksets" / "my_set"
+        ws = create_workset("my_set", root, std)
+        add_project(ws, "cool_app", tmp_home / "project")
 
-        loaded = load_workset(root, "my-set", early_system=std.early_system)
+        loaded = load_workset(root, "my_set", early_system=std.early_system)
         assert len(loaded.projects) == 1
-        assert loaded.projects[0].name == "cool-app"
-        # ⚑ The REAL workspace, not the caller's source: an in-tree member runs on
+        assert loaded.projects[0].name == "cool_app"
+        # ⚑ The REAL workspace, not the caller's source: an in_tree member runs on
         # ``workspaces/<name>`` and that is the one path recorded.
-        assert loaded.projects[0].source_path == ws.workspaces_dir / "cool-app"
+        assert loaded.projects[0].source_path == ws.workspaces_dir / "cool_app"
 
     def test_duplicate_name_raises(self, std, tmp_home):
-        root = tmp_home / "worksets" / "my-set"
-        ws = create_workset("my-set", root, std)
+        root = tmp_home / "worksets" / "my_set"
+        ws = create_workset("my_set", root, std)
         add_project(ws, "dup", tmp_home / "project")
 
         with pytest.raises(WorksetError, match="already exists"):
             add_project(ws, "dup", tmp_home / "project")
 
     def test_multiple_projects(self, std, tmp_home):
-        root = tmp_home / "worksets" / "my-set"
-        ws = create_workset("my-set", root, std)
+        root = tmp_home / "worksets" / "my_set"
+        ws = create_workset("my_set", root, std)
         proj_a = tmp_home / "proj_a"
         proj_b = tmp_home / "proj_b"
         proj_a.mkdir()
@@ -436,14 +436,14 @@ class TestAddProject:
         add_project(ws, "alpha", proj_a)
         add_project(ws, "beta", proj_b)
 
-        loaded = load_workset(root, "my-set", early_system=std.early_system)
+        loaded = load_workset(root, "my_set", early_system=std.early_system)
         assert len(loaded.projects) == 2
         names = {p.name for p in loaded.projects}
         assert names == {"alpha", "beta"}
 
     def test_case_variant_name_raises_naming_the_stored_member(self, std, tmp_home):
-        root = tmp_home / "worksets" / "my-set"
-        ws = create_workset("my-set", root, std)
+        root = tmp_home / "worksets" / "my_set"
+        ws = create_workset("my_set", root, std)
         add_project(ws, "proj", tmp_home / "project")
 
         with pytest.raises(WorksetError, match="Project 'proj' already exists"):
@@ -455,14 +455,14 @@ class TestAddProject:
         """A lone kept vault leaf ``proj`` (no box dir) still refuses ``Proj``."""
         from kanibako.project.workset import refuse_case_variant_store
 
-        root = tmp_home / "worksets" / "my-set"
-        ws = create_workset("my-set", root, std)
+        root = tmp_home / "worksets" / "my_set"
+        ws = create_workset("my_set", root, std)
         leaf = root.resolve() / "vault" / "rw" / "proj"
         leaf.mkdir(parents=True)
 
         with pytest.raises(WorksetError, match=(
                 r"Project 'Proj' would build a second store beside the kept store of "
-                r"'proj' in workset 'my-set' \(names compare case-blind\): "
+                r"'proj' in workset 'my_set' \(names compare case-blind\): "
                 + str(leaf))):
             refuse_case_variant_store(ws, "Proj", std)
         refuse_case_variant_store(ws, "proj", std)  # the exact spelling re-adopts
@@ -471,8 +471,8 @@ class TestAddProject:
         self, std, tmp_home, capsys,
     ):
         """A vault leaf with no box dir was left by another box: adopted, with a Warning."""
-        root = tmp_home / "worksets" / "my-set"
-        ws = create_workset("my-set", root, std)
+        root = tmp_home / "worksets" / "my_set"
+        ws = create_workset("my_set", root, std)
         outside = tmp_home / "outside"
         outside.mkdir()
         leaf = root.resolve() / "vault" / "rw" / "b1"
@@ -491,8 +491,8 @@ class TestAddProject:
         assert leaf.is_symlink() and leaf.readlink() == outside
 
     def test_new_member_with_fresh_vault_leaves_does_not_warn(self, std, tmp_home, capsys):
-        root = tmp_home / "worksets" / "my-set"
-        ws = create_workset("my-set", root, std)
+        root = tmp_home / "worksets" / "my_set"
+        ws = create_workset("my_set", root, std)
         add_project(ws, "fresh", tmp_home / "project")
         assert "Warning" not in capsys.readouterr().err
 
@@ -501,14 +501,14 @@ class TestAddProjectConnectGuard:
     """add_project refuses external sources that would mis-resolve."""
 
     def test_refuses_source_inside_another_workset(self, std, tmp_home):
-        # other-set lives at tmp_home/worksets/other-set; a dir inside it must
+        # other_set lives at tmp_home/worksets/other_set; a dir inside it must
         # not be connectable to a different workset (would be shadowed).
-        other = create_workset("other-set", tmp_home / "worksets" / "other-set", std)
-        ws = create_workset("my-set", tmp_home / "worksets" / "my-set", std)
+        other = create_workset("other_set", tmp_home / "worksets" / "other_set", std)
+        ws = create_workset("my_set", tmp_home / "worksets" / "my_set", std)
         inside_other = other.root.resolve() / "some" / "repo"
         inside_other.mkdir(parents=True)
 
-        with pytest.raises(WorksetError, match="inside workset 'other-set'"):
+        with pytest.raises(WorksetError, match="inside workset 'other_set'"):
             add_project(ws, "x", inside_other, std)
 
         # No partial state: nothing created for the project.
@@ -517,8 +517,8 @@ class TestAddProjectConnectGuard:
         assert len(ws.projects) == 0
 
     def test_refuses_already_connected_source(self, std, tmp_home):
-        ws_a = create_workset("set-a", tmp_home / "worksets" / "set-a", std)
-        ws_b = create_workset("set-b", tmp_home / "worksets" / "set-b", std)
+        ws_a = create_workset("set_a", tmp_home / "worksets" / "set_a", std)
+        ws_b = create_workset("set_b", tmp_home / "worksets" / "set_b", std)
         external = (tmp_home / "ext_repo").resolve()
         external.mkdir()
         add_project(ws_a, "proj", external, std)
@@ -527,8 +527,8 @@ class TestAddProjectConnectGuard:
             add_project(ws_b, "proj2", external, std)
 
     def test_refuses_source_nested_under_connected(self, std, tmp_home):
-        ws_a = create_workset("set-a", tmp_home / "worksets" / "set-a", std)
-        ws_b = create_workset("set-b", tmp_home / "worksets" / "set-b", std)
+        ws_a = create_workset("set_a", tmp_home / "worksets" / "set_a", std)
+        ws_b = create_workset("set_b", tmp_home / "worksets" / "set_b", std)
         external = (tmp_home / "ext_repo").resolve()
         external.mkdir()
         add_project(ws_a, "proj", external, std)
@@ -539,17 +539,17 @@ class TestAddProjectConnectGuard:
             add_project(ws_b, "proj2", nested, std)
 
     def test_internal_source_unaffected(self, std, tmp_home):
-        ws = create_workset("my-set", tmp_home / "worksets" / "my-set", std)
-        internal = ws.root.resolve() / "workspaces" / "in-tree"
+        ws = create_workset("my_set", tmp_home / "worksets" / "my_set", std)
+        internal = ws.root.resolve() / "workspaces" / "in_tree"
         # A source inside the target workset is fine even though it is "inside a
         # workset" — it is the target's own tree.
-        add_project(ws, "in-tree", internal, std)
+        add_project(ws, "in_tree", internal, std)
         assert len(ws.projects) == 1
 
     def test_no_std_caller_unaffected(self, std, tmp_home):
         # std=None callers (e.g. migrate) bypass the guard entirely.
-        other = create_workset("other-set", tmp_home / "worksets" / "other-set", std)
-        ws = create_workset("my-set", tmp_home / "worksets" / "my-set", std)
+        other = create_workset("other_set", tmp_home / "worksets" / "other_set", std)
+        ws = create_workset("my_set", tmp_home / "worksets" / "my_set", std)
         inside_other = other.root.resolve() / "repo"
         inside_other.mkdir(parents=True)
         add_project(ws, "x", inside_other)  # no std → no guard
@@ -573,7 +573,7 @@ class TestAddProjectConnectGuard:
     def test_refuses_standalone_marked_external_source(self, std, tmp_home):
         # Connecting a dir that declares itself standalone (in-place marker) must
         # be REFUSED by default — a silent absorb/"steal" (D3-mode #1).
-        ws = create_workset("my-set", tmp_home / "worksets" / "my-set", std)
+        ws = create_workset("my_set", tmp_home / "worksets" / "my_set", std)
         external = (tmp_home / "standalone_box").resolve()
         self._make_standalone(external)
 
@@ -591,7 +591,7 @@ class TestAddProjectConnectGuard:
         from kanibako.project import registry_store
         from kanibako.launch import box_resolve
 
-        ws = create_workset("my-set", tmp_home / "worksets" / "my-set", std)
+        ws = create_workset("my_set", tmp_home / "worksets" / "my_set", std)
         external = (tmp_home / "standalone_box").resolve()
         self._make_standalone(external)
         # Pre-register it in the global standalone: index (the pre-connect state
@@ -619,7 +619,7 @@ class TestAddProjectConnectGuard:
         from kanibako.project import registry_store
         from kanibako.project.workset import _Unwind
 
-        ws = create_workset("my-set", tmp_home / "worksets" / "my-set", std)
+        ws = create_workset("my_set", tmp_home / "worksets" / "my_set", std)
         external = (tmp_home / "standalone_box").resolve()
         self._make_standalone(external)
         registry_store.register_standalone(std.registry, "kx_standalone_box", external)
@@ -643,7 +643,7 @@ class TestAddProjectConnectGuard:
         from kanibako.project import registry_store
         from kanibako.settings.paths import BoxMode, detect_project_mode
 
-        ws = create_workset("my-set", tmp_home / "worksets" / "my-set", std)
+        ws = create_workset("my_set", tmp_home / "worksets" / "my_set", std)
         external = (tmp_home / "standalone_box").resolve()
         self._make_standalone(external)
         registry_store.register_standalone(std.registry, "kx_standalone_box", external)
@@ -671,7 +671,7 @@ class TestAddProjectConnectGuard:
 
     def test_non_standalone_external_source_unaffected(self, std, tmp_home):
         # A plain external dir (no marker) still connects without --force.
-        ws = create_workset("my-set", tmp_home / "worksets" / "my-set", std)
+        ws = create_workset("my_set", tmp_home / "worksets" / "my_set", std)
         external = (tmp_home / "plain_repo").resolve()
         external.mkdir()
 
@@ -699,11 +699,11 @@ class TestUnifiedProjectRecord:
 
     def test_record_round_trips_name_and_path(self, std, tmp_home):
         """A project record persists name + workspace path with no extra state."""
-        root = tmp_home / "worksets" / "my-set"
-        ws = create_workset("my-set", root, std)
+        root = tmp_home / "worksets" / "my_set"
+        ws = create_workset("my_set", root, std)
         add_project(ws, "proj", tmp_home / "project")
 
-        loaded = load_workset(root, "my-set", early_system=std.early_system)
+        loaded = load_workset(root, "my_set", early_system=std.early_system)
         assert len(loaded.projects) == 1
         rec = loaded.projects[0]
         assert rec.name == "proj"
@@ -713,8 +713,8 @@ class TestUnifiedProjectRecord:
         """⚑⚑ ONE SECTION, FLAT ``name: path`` — no identity table, no ``projects:`` map."""
         from kanibako.settings.config_io import load_doc
 
-        root = tmp_home / "worksets" / "my-set"
-        ws = create_workset("my-set", root, std)
+        root = tmp_home / "worksets" / "my_set"
+        ws = create_workset("my_set", root, std)
         add_project(ws, "proj", tmp_home / "project")
 
         assert load_doc(ws.registry_path) == {
@@ -723,8 +723,8 @@ class TestUnifiedProjectRecord:
 
     def test_the_path_is_recorded_exactly_once(self, std, tmp_home):
         """The member's path appears ONCE in the whole file — no second copy to drift."""
-        root = tmp_home / "worksets" / "my-set"
-        ws = create_workset("my-set", root, std)
+        root = tmp_home / "worksets" / "my_set"
+        ws = create_workset("my_set", root, std)
         external = (tmp_home / "ext").resolve()
         external.mkdir()
         add_project(ws, "proj", external, std)
@@ -734,8 +734,8 @@ class TestUnifiedProjectRecord:
 
 class TestRemoveProject:
     def test_removes_from_toml(self, std, tmp_home):
-        root = tmp_home / "worksets" / "my-set"
-        ws = create_workset("my-set", root, std)
+        root = tmp_home / "worksets" / "my_set"
+        ws = create_workset("my_set", root, std)
         add_project(ws, "proj", tmp_home / "project")
         assert len(ws.projects) == 1
 
@@ -743,19 +743,19 @@ class TestRemoveProject:
         assert removed.name == "proj"
         assert len(ws.projects) == 0
 
-        loaded = load_workset(root, "my-set", early_system=std.early_system)
+        loaded = load_workset(root, "my_set", early_system=std.early_system)
         assert len(loaded.projects) == 0
 
     def test_drops_the_membership_row_for_an_in_tree_member(self, std, tmp_home):
-        """⚑⚑ THE DEFECT FIX: the drop is UNCONDITIONAL, in-tree as well as external.
+        """⚑⚑ THE DEFECT FIX: the drop is UNCONDITIONAL, in_tree as well as external.
 
-        The drop used to fire only when the RECORDED path was external, so an in-tree
+        The drop used to fire only when the RECORDED path was external, so an in_tree
         disconnect orphaned its ``boxes:`` row.
         """
         from kanibako.project import workset_registry
 
-        root = tmp_home / "worksets" / "my-set"
-        ws = create_workset("my-set", root, std)
+        root = tmp_home / "worksets" / "my_set"
+        ws = create_workset("my_set", root, std)
         add_project(ws, "proj", ws.workspaces_dir / "proj", std)
         assert workset_registry.load_workset_boxes(ws.registry_path) == {
             "proj": str(ws.workspaces_dir / "proj")
@@ -775,8 +775,8 @@ class TestRemoveProject:
         """
         from kanibako.project import workset_registry
 
-        root = tmp_home / "worksets" / "my-set"
-        ws = create_workset("my-set", root, std)
+        root = tmp_home / "worksets" / "my_set"
+        ws = create_workset("my_set", root, std)
         workspace = ws.workspaces_dir / "proj"
         add_project(ws, "proj", workspace, std)
 
@@ -788,8 +788,8 @@ class TestRemoveProject:
         }
 
     def test_keeps_files_by_default(self, std, tmp_home):
-        root = tmp_home / "worksets" / "my-set"
-        ws = create_workset("my-set", root, std)
+        root = tmp_home / "worksets" / "my_set"
+        ws = create_workset("my_set", root, std)
         add_project(ws, "proj", tmp_home / "project")
 
         remove_project(ws, "proj")
@@ -797,8 +797,8 @@ class TestRemoveProject:
         assert (resolved / "boxes" / "proj").is_dir()
 
     def test_removes_files_when_requested(self, std, tmp_home):
-        root = tmp_home / "worksets" / "my-set"
-        ws = create_workset("my-set", root, std)
+        root = tmp_home / "worksets" / "my_set"
+        ws = create_workset("my_set", root, std)
         add_project(ws, "proj", tmp_home / "project")
 
         remove_project(ws, "proj", remove_files=True)
@@ -809,8 +809,8 @@ class TestRemoveProject:
         assert not (resolved / "vault" / "rw" / "proj").exists()
 
     def test_unknown_project_raises(self, std, tmp_home):
-        root = tmp_home / "worksets" / "my-set"
-        ws = create_workset("my-set", root, std)
+        root = tmp_home / "worksets" / "my_set"
+        ws = create_workset("my_set", root, std)
 
         with pytest.raises(WorksetError, match="not found"):
             remove_project(ws, "nonexistent")
@@ -824,7 +824,7 @@ class TestReleaseKeepsTheWorkspaceLeaf:
     def test_leaf_survives_release_and_store_removal(self, std, tmp_home, linked):
         from kanibako.project.workset import release_project, remove_member_store
 
-        ws = create_workset("my-set", tmp_home / "worksets" / "my-set", std)
+        ws = create_workset("my_set", tmp_home / "worksets" / "my_set", std)
         leaf = ws.workspaces_dir / "proj"
         add_project(ws, "proj", leaf)
         content = leaf
@@ -862,7 +862,7 @@ class TestRemoveExternalProject:
     """
 
     def _connect_external(self, std, tmp_home):
-        ws = create_workset("ext-set", tmp_home / "worksets" / "ext-set", std)
+        ws = create_workset("ext_set", tmp_home / "worksets" / "ext_set", std)
         external = (tmp_home / "external_repo").resolve()
         external.mkdir()
         (external / "file.txt").write_text("keep me")
@@ -908,8 +908,8 @@ class TestRemoveExternalProject:
 
 class TestWorksetProperties:
     def test_convenience_paths(self, std, tmp_home):
-        root = tmp_home / "worksets" / "my-set"
-        ws = create_workset("my-set", root, std)
+        root = tmp_home / "worksets" / "my_set"
+        ws = create_workset("my_set", root, std)
 
         resolved = root.resolve()
         assert ws.projects_dir == resolved / "boxes"
@@ -1005,7 +1005,7 @@ class TestWorksetWorkspacesResolved:
                 early=early_record(tmp_path, mode=BoxMode.standalone)) is None
 
     def test_the_locator_finds_members_at_the_default_under_a_null(self, tmp_path):
-        """Detection still looks where pre-null in-tree members sit; nothing else reads it."""
+        """Detection still looks where pre-null in_tree members sit; nothing else reads it."""
         from kanibako.project.workset import resolve_workspaces_locator
 
         assert (resolve_workspaces_locator(tmp_path, {"workset": {"workspaces": None}},
@@ -1277,10 +1277,10 @@ class TestWorksetBoxesAndLogsResolved:
         store.mkdir()
         dump_doc(root / "workset.yaml", {"workset": {"boxes": str(store)}})
 
-        add_project(ws, "cool-app", tmp_home / "project")
+        add_project(ws, "cool_app", tmp_home / "project")
 
-        assert (store / "cool-app").is_dir()
-        assert not (root / "boxes" / "cool-app").exists()
+        assert (store / "cool_app").is_dir()
+        assert not (root / "boxes" / "cool_app").exists()
 
     def test_remove_project_removes_the_box_tree_at_the_repoint(self, std, tmp_home):
         """⚑ The remover must match the creator: deleting the composed default while
@@ -1629,7 +1629,7 @@ class TestWorksetFiveDirKeysCarryNull:
 class TestWorksetWorkspacesPresentNone:
     """A present ``<None>`` ``workset.workspaces`` = no workspace dir (Q96, [R177]).
 
-    An in-tree member IS a workspace there, so creating one refuses by name; an external
+    An in_tree member IS a workspace there, so creating one refuses by name; an external
     member keeps its own dir and still connects, without a discoverability link.
     """
 
@@ -1865,8 +1865,8 @@ class TestWorksetSkeletonMarker:
         empty.mkdir()
         assert not is_workset_skeleton(empty,
                 early=early_record(tmp_home, mode=BoxMode.named, name=empty.name))
-        assert not is_workset_skeleton(tmp_home / "does-not-exist",
-                early=early_record(tmp_home, mode=BoxMode.named, name="does-not-exist"))
+        assert not is_workset_skeleton(tmp_home / "does_not_exist",
+                early=early_record(tmp_home, mode=BoxMode.named, name="does_not_exist"))
 
     def test_a_file_named_like_a_skeleton_dir_does_not_count(self, tmp_home):
         """⚑ The test is ``is_dir``: a FILE called ``logs`` is not the logs dir."""
@@ -2317,7 +2317,7 @@ class TestRetiredRegistrySections:
         from kanibako.errors import LegacyRegistryIdentityError
         from kanibako.project import workset_registry
 
-        root = tmp_home / "reg-legacy"
+        root = tmp_home / "reg_legacy"
         registry = _write_legacy_registry(root)
         with pytest.raises(LegacyRegistryIdentityError) as excinfo:
             workset_registry.load_workset_boxes(registry)
@@ -2347,10 +2347,10 @@ class TestRetiredRegistrySections:
     def test_refusal_reaches_the_load_path(self, std, tmp_home):
         from kanibako.errors import LegacyRegistryIdentityError
 
-        root = tmp_home / "worksets" / "reg-legacy"
+        root = tmp_home / "worksets" / "reg_legacy"
         _write_legacy_registry(root)
         with pytest.raises(LegacyRegistryIdentityError):
-            load_workset(root, "reg-legacy", early_system=std.early_system)
+            load_workset(root, "reg_legacy", early_system=std.early_system)
 
     def test_a_live_registry_does_not_refuse(self, std, tmp_home):
         from kanibako.project import workset_registry
@@ -2390,7 +2390,7 @@ class TestCreateWorksetFailConsistent:
     def test_name_index_write_failure_unwinds(self, std, tmp_home, monkeypatch):
         import kanibako.project.workset as ws_mod
 
-        root = tmp_home / "worksets" / "my-set"
+        root = tmp_home / "worksets" / "my_set"
 
         # register_name is the LAST step (after the dirs).  It is the SOLE writer
         # of the single ``worksets`` registry section.  If it blows up, the whole
@@ -2401,12 +2401,12 @@ class TestCreateWorksetFailConsistent:
         monkeypatch.setattr(ws_mod, "register_name", boom)
 
         with pytest.raises(_Boom):
-            create_workset("my-set", root, std)
+            create_workset("my_set", root, std)
 
         assert not root.exists(), "orphan dirs left behind"
-        assert "my-set" not in list_worksets(std), "stale worksets entry"
+        assert "my_set" not in list_worksets(std), "stale worksets entry"
         from kanibako.project.names import read_names
-        assert "my-set" not in read_names(std.registry).get("worksets", {})
+        assert "my_set" not in read_names(std.registry).get("worksets", {})
 
     def test_a_root_the_unwind_cannot_remove_is_named(self, std, tmp_home, monkeypatch,
                                                        capsys):
@@ -2416,7 +2416,7 @@ class TestCreateWorksetFailConsistent:
         from kanibako.runtime.container import ContainerRuntime
 
         parent = tmp_home / "worksets"
-        root = parent / "my-set"
+        root = parent / "my_set"
 
         def boom(*a, **k):
             os.chmod(parent, 0o555)  # the unwind's rmtree cannot unlink *root* now
@@ -2428,7 +2428,7 @@ class TestCreateWorksetFailConsistent:
             # read-only parent (CI has one): this run models the host where it fails too.
             with monkeypatch.context() as mp, pytest.raises(_Boom):
                 mp.setattr(ContainerRuntime, "unshare_rm", lambda self, path: False)
-                create_workset("my-set", root, std)
+                create_workset("my_set", root, std)
         finally:
             os.chmod(parent, 0o755)
 
@@ -2436,7 +2436,7 @@ class TestCreateWorksetFailConsistent:
         assert capsys.readouterr().err == (
             f"Note: could not remove {root}, which this operation created; remove it "
             "before you run it again\n"
-            f"Note: the workset creation failed and was not fully undone; check 'my-set' "
+            f"Note: the workset creation failed and was not fully undone; check 'my_set' "
             f"at {root} (the notes above name what the rollback could not put back)\n")
 
 
@@ -2444,8 +2444,8 @@ class TestDeleteWorksetSelfHealing:
     def test_irreversible_rmtree_after_registries_clean(self, std, tmp_home, monkeypatch):
         import kanibako.project.workset as ws_mod
 
-        root = tmp_home / "worksets" / "my-set"
-        create_workset("my-set", root, std)
+        root = tmp_home / "worksets" / "my_set"
+        create_workset("my_set", root, std)
 
         # If unregister_name (a registry step) fails, rmtree (irreversible) must
         # NOT have run — the dir survives, so nothing is lost.
@@ -2454,7 +2454,7 @@ class TestDeleteWorksetSelfHealing:
 
         monkeypatch.setattr(ws_mod, "unregister_name", boom)
         with pytest.raises(_Boom):
-            delete_workset("my-set", std, remove_files=True)
+            delete_workset("my_set", std, remove_files=True)
 
         assert root.resolve().is_dir(), "rmtree ran before registries were clean"
 
@@ -2463,8 +2463,8 @@ class TestAddProjectFailConsistent:
     def test_internal_membership_write_failure_unwinds(self, std, tmp_home, monkeypatch):
         import kanibako.settings.paths as paths_mod
 
-        root = tmp_home / "worksets" / "my-set"
-        ws = create_workset("my-set", root, std)
+        root = tmp_home / "worksets" / "my_set"
+        ws = create_workset("my_set", root, std)
 
         # The ``boxes:`` membership write is the LAST step; failing it must roll back
         # the per-project dirs and leave no project in memory or on disk.
@@ -2481,7 +2481,7 @@ class TestAddProjectFailConsistent:
         assert not (resolved / "vault" / "ro" / "proj").exists()
         assert not (resolved / "vault" / "rw" / "proj").exists()
         assert all(p.name != "proj" for p in ws.projects)
-        assert all(p.name != "proj" for p in load_workset(root, "my-set",
+        assert all(p.name != "proj" for p in load_workset(root, "my_set",
                 early_system=std.early_system).projects)
 
     def test_external_membership_write_failure_unwinds_symlink(
@@ -2489,7 +2489,7 @@ class TestAddProjectFailConsistent:
     ):
         import kanibako.settings.paths as paths_mod
 
-        ws = create_workset("ext-set", tmp_home / "worksets" / "ext-set", std)
+        ws = create_workset("ext_set", tmp_home / "worksets" / "ext_set", std)
         external = (tmp_home / "external_repo").resolve()
         external.mkdir()
         (external / "keep.txt").write_text("keep me")
@@ -2532,7 +2532,7 @@ class TestAddProjectFailConsistent:
                                                          capsys):
         import os
 
-        ws = create_workset("my-set", tmp_home / "worksets" / "my-set", std)
+        ws = create_workset("my_set", tmp_home / "worksets" / "my_set", std)
         boxes = ws.projects_dir
         self._fail_locked(monkeypatch, boxes)
         try:
@@ -2547,7 +2547,7 @@ class TestAddProjectFailConsistent:
             f"Note: could not remove {boxes / 'proj'}, which this operation created; "
             "remove it before you run it again\n"
             f"Note: the workset connect failed and was not fully undone; check 'proj' in "
-            f"workset 'my-set' at {ws.root} (the notes above name what the rollback could "
+            f"workset 'my_set' at {ws.root} (the notes above name what the rollback could "
             "not put back)\n")
 
     def test_a_restore_names_its_leftover_and_hands_errors_to_the_outer_unwind(
@@ -2559,7 +2559,7 @@ class TestAddProjectFailConsistent:
         import kanibako.settings.paths as paths_mod
         from kanibako.project.workset import _Unwind
 
-        ws = create_workset("my-set", tmp_home / "worksets" / "my-set", std)
+        ws = create_workset("my_set", tmp_home / "worksets" / "my_set", std)
         boxes = ws.projects_dir
         undo_err = OSError("membership undo failed")
 
@@ -2590,7 +2590,7 @@ class TestAddProjectFailConsistent:
 
         from kanibako.project.workset import _Unwind
 
-        ws = create_workset("my-set", tmp_home / "worksets" / "my-set", std)
+        ws = create_workset("my_set", tmp_home / "worksets" / "my_set", std)
         boxes = ws.projects_dir
         outer = _Unwind()
         self._fail_locked(monkeypatch, boxes)
@@ -2612,7 +2612,7 @@ class TestRemoveProjectFailConsistent:
         import kanibako.settings.paths as paths_mod
         from kanibako.project.workset import remove_project
 
-        ws = create_workset("ext-set", tmp_home / "worksets" / "ext-set", std)
+        ws = create_workset("ext_set", tmp_home / "worksets" / "ext_set", std)
         external = (tmp_home / "external_repo").resolve()
         external.mkdir()
         add_project(ws, "extproj", external, std)

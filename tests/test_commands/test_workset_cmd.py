@@ -766,12 +766,12 @@ class TestWorksetConnect:
         src.mkdir()
 
         args = argparse.Namespace(
-            workset="namews", source=str(src), project_name="custom-name", force=False,
+            workset="namews", source=str(src), project_name="custom_name", force=False,
         )
         rc = run_connect(args)
         assert rc == 0
         out = capsys.readouterr().out
-        assert "custom-name" in out
+        assert "custom_name" in out
 
     def test_connect_in_tree_under_null_workspaces_refuses_before_the_journal(
         self, config_file, tmp_home, capsys,
@@ -2470,9 +2470,9 @@ class TestWorksetCmdSystemFloor:
 
     def _workset(self, std, tmp_home):
         """One real workset; the caller re-points its single binding per case."""
-        ws_root = tmp_home / "worksets" / "floor-set"
-        create_workset("floor-set", ws_root, std)
-        return "floor-set", ws_root
+        ws_root = tmp_home / "worksets" / "floor_set"
+        create_workset("floor_set", ws_root, std)
+        return "floor_set", ws_root
 
     def _bind_at(self, ws_root, source):
         """Re-point the workset's one RO binding at *source*."""
@@ -3128,10 +3128,10 @@ class TestWorksetShareListArbitrates:
         self, std, config, tmp_home, capsys,
     ):
         """The unchanged case: an arrow line, and NO result phrase under it."""
-        self._ws(std, tmp_home, "arb-plain", {
+        self._ws(std, tmp_home, "arb_plain", {
             "bindings": {"ro": {"/opt/arb": [self._SRC]}},
         })
-        rc, out, _err = self._effective("arb-plain", capsys)
+        rc, out, _err = self._effective("arb_plain", capsys)
         assert rc == 0
         assert f"  {self._SRC} -> /opt/arb  [ro]" in out
         assert "no mount" not in out
@@ -3140,11 +3140,11 @@ class TestWorksetShareListArbitrates:
         self, std, config, tmp_home, capsys,
     ):
         """A mask takes the share's own point: the box sees nothing, and the row says so."""
-        self._ws(std, tmp_home, "arb-at", {
+        self._ws(std, tmp_home, "arb_at", {
             "bindings": {"ro": {"/opt/arb": [self._SRC]}},
             "masks": {"/opt/arb": True},
         })
-        rc, out, _err = self._effective("arb-at", capsys)
+        rc, out, _err = self._effective("arb_at", capsys)
         assert rc == 0
         assert f"{self._SRC} -> /opt/arb" not in out, (
             "a share a mask swallowed is printed with the delivery arrow, so the "
@@ -3174,11 +3174,11 @@ class TestWorksetShareListArbitrates:
         binding key names — so the KEY that declared it is what makes the row
         actionable: it is the thing the reader has to go and edit.
         """
-        self._ws(std, tmp_home, "arb-above", {
+        self._ws(std, tmp_home, "arb_above", {
             "bindings": {"ro": {"/opt/arb/inner": [self._SRC]}},
             "masks": {"/opt/arb": True},
         })
-        rc, out, _err = self._effective("arb-above", capsys)
+        rc, out, _err = self._effective("arb_above", capsys)
         assert rc == 0
         assert f"{self._SRC} -> /opt/arb/inner" not in out
         assert (
@@ -3198,11 +3198,11 @@ class TestWorksetShareListArbitrates:
         """
         from kanibako.settings.settings_resolve import GUEST_HOME
 
-        self._ws(std, tmp_home, "arb-tilde", {
+        self._ws(std, tmp_home, "arb_tilde", {
             "bindings": {"ro": {"~/masked/inner": [self._SRC]}},
             "masks": {"~/masked": True},
         })
-        rc, out, _err = self._effective("arb-tilde", capsys)
+        rc, out, _err = self._effective("arb_tilde", capsys)
         assert rc == 0
         assert f"workset.masks[{GUEST_HOME}/masked]" in out
         assert f"at {GUEST_HOME}/masked " in out
@@ -3215,10 +3215,10 @@ class TestWorksetShareListArbitrates:
 
         The guard against a fix that reports every containment as a loss.
         """
-        self._ws(std, tmp_home, "arb-nest", {
+        self._ws(std, tmp_home, "arb_nest", {
             "bindings": {"ro": {"/opt/n": [self._SRC], "/opt/n/in": ["/etc/hosts"]}},
         })
-        rc, out, _err = self._effective("arb-nest", capsys)
+        rc, out, _err = self._effective("arb_nest", capsys)
         assert rc == 0
         assert f"  {self._SRC} -> /opt/n  [ro]" in out
         assert "  /etc/hosts -> /opt/n/in  [ro]" in out
@@ -3239,14 +3239,14 @@ class TestWorksetShareListArbitrates:
         regression — a bare collision answers a question the user did not ask, and a
         frame with no detail names no key and no cure.
         """
-        self._ws(std, tmp_home, "arb-refuse", {
+        self._ws(std, tmp_home, "arb_refuse", {
             "bindings": {"ro": {"/opt/arb": [self._SRC]}},
             "common": {"/opt/arb": ["shared"]},
         })
-        rc, out, err = self._effective("arb-refuse", capsys)
+        rc, out, err = self._effective("arb_refuse", capsys)
         assert rc == 1
         # THE FRAMING — context, and it names the dest off the exception.
-        assert "Cannot say what working set 'arb-refuse' would mount" in err
+        assert "Cannot say what working set 'arb_refuse' would mount" in err
         assert "no box in it can launch" in err
         assert "'/opt/arb'" in err
         # THE DETAIL — the launch's own words, including the remedy block.
@@ -3288,11 +3288,11 @@ class TestWorksetShareListArbitrates:
         monkeypatch.setattr(
             store_collapse, "collapse_store_shapes", _no_arbitration,
         )
-        self._ws(std, tmp_home, "arb-mutant", {
+        self._ws(std, tmp_home, "arb_mutant", {
             "bindings": {"ro": {"/opt/arb": [self._SRC]}},
             "masks": {"/opt/arb": True},
         })
-        rc, out, _err = self._effective("arb-mutant", capsys)
+        rc, out, _err = self._effective("arb_mutant", capsys)
         assert rc == 0
         assert f"{self._SRC} -> /opt/arb" in out, (
             "the mutant did not restore the defect, so the cases above are not "
@@ -3326,10 +3326,10 @@ class TestWorksetShareListArbitrates:
             )
 
         monkeypatch.setattr(store_shape, "build_store_shape_set", _always_collides)
-        self._ws(std, tmp_home, "arb-sentinel", {
+        self._ws(std, tmp_home, "arb_sentinel", {
             "bindings": {"ro": {"/opt/arb": [self._SRC]}},
         })
-        rc, _out, err = self._effective("arb-sentinel", capsys)
+        rc, _out, err = self._effective("arb_sentinel", capsys)
         assert rc == 1
         assert f"Error: {sentinel}" in err, (
             "the collision detail did not come from the caught exception, so this "

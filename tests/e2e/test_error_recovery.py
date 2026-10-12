@@ -39,14 +39,14 @@ class TestContainerDeath:
         project = e2e_env["project"]
 
         result = run_kanibako(
-            ["create", str(project), "--name", "e2e-death"],
+            ["create", str(project), "--name", "e2e_death"],
             env=env,
         )
         assert result.returncode == 0
 
         # Start with error stub — agent dies immediately
         result = run_kanibako(
-            ["start", "e2e-death",
+            ["start", "e2e_death",
              "-e", "CLAUDE_STUB_MODE=error",
              "-e", "CLAUDE_STUB_STDERR=agent-crashed-with-error-42"],
             env=env,
@@ -70,9 +70,9 @@ class TestContainerDeath:
 
         # Prompt teardown: the crashed box's container is GONE afterwards (the
         # two-state lifecycle tears an exited box down; nothing lingers).
-        assert not _container_exists(box_container("e2e-death")), (
+        assert not _container_exists(box_container("e2e_death")), (
             "Expected the crashed box's container to be torn down after the "
-            f"failed start, but '{box_container('e2e-death')}' still exists."
+            f"failed start, but '{box_container('e2e_death')}' still exists."
         )
 
 # NOTE: the former ``TestNoConversationRetry`` (Test 10) was REMOVED with the

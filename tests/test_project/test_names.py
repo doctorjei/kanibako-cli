@@ -535,17 +535,17 @@ class TestResolveName:
         worksets store ``Foo`` and ``foo``; the user types ``FOO``.
 
         Mutation proof: printing the typed *name* in the candidate makes the
-        message read ``Cluster-A/FOO, cluster-b/FOO``.
+        message read ``Cluster-A/FOO, cluster_b/FOO``.
         """
         self._register_ws_member(registry, tmp_path, "Cluster-A", "Foo")
-        self._register_ws_member(registry, tmp_path, "cluster-b", "foo")
+        self._register_ws_member(registry, tmp_path, "cluster_b", "foo")
 
         with pytest.raises(ProjectError) as excinfo:
             resolve_name(registry, "FOO", cwd=tmp_path, early_system=early_record(tmp_path))
         message = str(excinfo.value)
-        assert "(Cluster-A/Foo, cluster-b/foo)" in message
+        assert "(Cluster-A/Foo, cluster_b/foo)" in message
         assert "Cluster-A/FOO" not in message
-        assert "cluster-b/FOO" not in message
+        assert "cluster_b/FOO" not in message
 
     # -- Registered path is authoritative (bifrost A0 / S-2) ----------------
 
@@ -560,10 +560,10 @@ class TestResolveName:
         raise Ambiguous — the mutation proof."""
         from kanibako.settings.config_io import dump_doc, load_doc
 
-        box_ws = self._register_ws_member(registry, tmp_path, "ws-a", "dup")
+        box_ws = self._register_ws_member(registry, tmp_path, "ws_a", "dup")
         self._register_ws_member(registry, tmp_path, "ws-b", "dup")
-        # Absolute repoint of ws-a AFTER the member was registered in-root.
-        ws_root = tmp_path / "ws-a"
+        # Absolute repoint of ws_a AFTER the member was registered in-root.
+        ws_root = tmp_path / "ws_a"
         doc = load_doc(ws_root / "workset.yaml") if (
             ws_root / "workset.yaml"
         ).is_file() else {}
@@ -589,15 +589,15 @@ class TestResolveName:
         external_pods = tmp_path / "external-pods"
         member = external_pods / "dup"
         member.mkdir(parents=True)
-        ws_root = tmp_path / "ws-a"
+        ws_root = tmp_path / "ws_a"
         ws_root.mkdir()
         dump_doc(
             ws_root / "workset.yaml",
             {"workset": {"workspaces": str(external_pods)}},
         )
-        register_name(registry, "ws-a", str(ws_root), section="worksets")
+        register_name(registry, "ws_a", str(ws_root), section="worksets")
         reg_path = workset_registry.resolve_workset_registry_path(ws_root, None,
-                early=early_record(tmp_path, mode=BoxMode.named, name="ws-a"))
+                early=early_record(tmp_path, mode=BoxMode.named, name="ws_a"))
         workset_registry.register_workset_box(reg_path, "dup", member)
         self._register_ws_member(registry, tmp_path, "ws-b", "dup")
 

@@ -403,6 +403,7 @@ class TestPathDesignationIsNeverAName:
         (tmp_home / ".hidden").mkdir()
         with monkeypatch.context() as patch:  # the older create; the rule holds again after
             patch.setattr("kanibako.settings.paths.box_name_reason", lambda name: None)
+            patch.setattr("kanibako.settings.paths.derived_name", lambda name: name)
             assert run_create(_create_args(".hidden")) == 0
         assert ".hidden" in load_primary_boxes(
             std.primary_workset, early=_early_scope(std, BoxMode.primary),
@@ -426,7 +427,7 @@ class TestPathDesignationIsNeverAName:
             f"({box_name_reason('.hidden')}), so the box is reached by its path only. "
             f"Remove it, or give it a valid name:\n"
             f"  kanibako box rm {path}\n"
-            f"  kanibako box move {path} <new-path> --name <new-name>\n"
+            f"  kanibako box move {path} <new-path> --name _hidden\n"
         )
         assert ".hidden" in load_primary_boxes(
             std.primary_workset, early=_early_scope(std, BoxMode.primary),

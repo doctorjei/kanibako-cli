@@ -366,12 +366,12 @@ class TestCleanWorkset:
         ac_proj = resolve_project(std, config, project_dir=str(ac_dir), initialize=True)
 
         # Create a workset with an initialized project
-        ws_root = tmp_home / "worksets" / "purge-ws"
-        ws = create_workset("purge-ws", ws_root, std)
+        ws_root = tmp_home / "worksets" / "purge_ws"
+        ws = create_workset("purge_ws", ws_root, std)
         source = tmp_home / "purge_src"
         source.mkdir()
-        add_project(ws, "purge-proj", source)
-        ws_proj = resolve_workset_project(WorksetSpec.from_workset(ws), "purge-proj", std, config, initialize=True)
+        add_project(ws, "purge_proj", source)
+        ws_proj = resolve_workset_project(WorksetSpec.from_workset(ws), "purge_proj", std, config, initialize=True)
         (ws_proj.metadata_path / "data.txt").write_text("ws-data")
 
         args = argparse.Namespace(all_projects=True, force=True)
@@ -381,7 +381,7 @@ class TestCleanWorkset:
         # Local settings should be gone
         assert not ac_proj.metadata_path.exists()
         # Workset settings should be gone
-        assert not (ws.projects_dir / "purge-proj" / "data.txt").exists()
+        assert not (ws.projects_dir / "purge_proj" / "data.txt").exists()
 
     def test_purge_all_removes_every_box_log(self, config_file, tmp_home, credentials_dir):
         """``--all`` deletes each box's log files — helper log and creds watcher log —
@@ -394,16 +394,16 @@ class TestCleanWorkset:
         primary_dir = tmp_home / "all_logs"
         primary_dir.mkdir()
         primary = resolve_project(std, config, project_dir=str(primary_dir), initialize=True)
-        ws = create_workset("logs-ws", tmp_home / "worksets" / "logs-ws", std)
+        ws = create_workset("logs_ws", tmp_home / "worksets" / "logs_ws", std)
         source = tmp_home / "logs_src"
         source.mkdir()
-        add_project(ws, "logs-proj", source)
+        add_project(ws, "logs_proj", source)
         resolve_workset_project(
-            WorksetSpec.from_workset(ws), "logs-proj", std, config, initialize=True,
+            WorksetSpec.from_workset(ws), "logs_proj", std, config, initialize=True,
         )
         logs = [
             *box_log_files(std.primary_logs, primary.metadata_path.name),
-            *box_log_files(ws.logs_dir, "logs-proj"),
+            *box_log_files(ws.logs_dir, "logs_proj"),
         ]
         for log in logs:
             log.parent.mkdir(parents=True, exist_ok=True)
@@ -418,17 +418,17 @@ class TestCleanWorkset:
         config = load_config(config_file)
         std = load_std_paths(config)
 
-        ws_root = tmp_home / "worksets" / "single-purge-ws"
-        ws = create_workset("single-purge-ws", ws_root, std)
+        ws_root = tmp_home / "worksets" / "single_purge_ws"
+        ws = create_workset("single_purge_ws", ws_root, std)
         source = tmp_home / "single_purge_src"
         source.mkdir()
-        add_project(ws, "single-purge-proj", source)
-        ws_proj = resolve_workset_project(WorksetSpec.from_workset(ws), "single-purge-proj", std, config, initialize=True)
+        add_project(ws, "single_purge_proj", source)
+        ws_proj = resolve_workset_project(WorksetSpec.from_workset(ws), "single_purge_proj", std, config, initialize=True)
         (ws_proj.metadata_path / "data.txt").write_text("purge-data")
 
         # Use workspace path as path arg
         args = argparse.Namespace(
-            path=str(ws.workspaces_dir / "single-purge-proj"),
+            path=str(ws.workspaces_dir / "single_purge_proj"),
             all_projects=False, force=True,
         )
         rc = run(args)

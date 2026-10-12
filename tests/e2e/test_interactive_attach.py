@@ -60,10 +60,10 @@ _LIVE_FIXTURE_DIR = Path(__file__).parent / "fixtures" / "live-agent"
 _LIVE_PLUGIN_SRC = _LIVE_FIXTURE_DIR / "live.py"
 _LIVE_EXE_SRC = _LIVE_FIXTURE_DIR / "live-agent"
 
-# The live box's container name.  A `kanibako create --name live-box` box does
+# The live box's container name.  A `kanibako create --name live_box` box does
 # NOT carry the CONTAINER_PREFIX the suite-wide e2e teardown matches, so the
 # live_env teardown removes this name explicitly.
-_LIVE_BOX_NAME = box_container("live-box")
+_LIVE_BOX_NAME = box_container("live_box")
 
 # Budget for the interactive `kanibako start` under a PTY.  Modeled on the
 # prototype probe (90s): covers a cold first container start (fuse-overlayfs
@@ -190,7 +190,7 @@ class TestInteractiveAttachOnDeath:
 
         # Create the box (plain subprocess; no PTY needed).
         result = run_kanibako(
-            ["create", str(project), "--name", "dead-box"],
+            ["create", str(project), "--name", "dead_box"],
             env=env,
         )
         assert result.returncode == 0, (
@@ -202,7 +202,7 @@ class TestInteractiveAttachOnDeath:
         # the real tmux-attach passthrough.
         child = pexpect.spawn(
             "kanibako",
-            ["start", "dead-box"],
+            ["start", "dead_box"],
             env=env,
             encoding="utf-8",
             dimensions=(40, 120),
@@ -234,9 +234,9 @@ class TestInteractiveAttachOnDeath:
         # Prompt teardown: the crashed box's container is GONE afterwards (the
         # two-state lifecycle tears an exited box down; the user lands back in
         # the shell with no dead pane and no lingering container).
-        assert box_container("dead-box") not in _all_containers(), (
+        assert box_container("dead_box") not in _all_containers(), (
             "Expected the crashed box's container to be torn down after the "
-            f"failed PTY launch, but '{box_container('dead-box')}' still exists."
+            f"failed PTY launch, but '{box_container('dead_box')}' still exists."
         )
 
 
@@ -382,7 +382,7 @@ def _running_containers() -> dict[str, str]:
 
 
 def _attach_then_detach(env: dict) -> tuple[int | None, str]:
-    """Launch ``kanibako start live-box`` under a PTY, detach, return (exit, out).
+    """Launch ``kanibako start live_box`` under a PTY, detach, return (exit, out).
 
     Waits for the tmux session to be up (the live-agent marker on first attach,
     or the tmux ``[kanibako]`` status line on a reattach where the marker has
@@ -391,7 +391,7 @@ def _attach_then_detach(env: dict) -> tuple[int | None, str]:
     """
     child = pexpect.spawn(
         "kanibako",
-        ["start", "live-box"],
+        ["start", "live_box"],
         env=env,
         encoding="utf-8",
         dimensions=(40, 120),
@@ -437,7 +437,7 @@ class TestInteractiveDetach:
 
         # Create the box (plain subprocess; no PTY needed).
         result = run_kanibako(
-            ["create", str(project), "--name", "live-box"],
+            ["create", str(project), "--name", "live_box"],
             env=env,
         )
         assert result.returncode == 0, (

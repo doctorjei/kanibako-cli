@@ -199,7 +199,7 @@ def _stamp_skeleton_onto(target: Path, tmp_home: Path, std) -> Path:
     from kanibako.settings.workset_dirkeys import EarlyScope
 
     seed = tmp_home / "skeleton_seed"
-    create_workset("skeleton-seed", seed, std)
+    create_workset("skeleton_seed", seed, std)
     for subdir in seed.resolve().iterdir():
         shutil.move(str(subdir), str(target / subdir.name))
     seed.resolve().rmdir()
@@ -350,7 +350,7 @@ class TestNamedWorksetImport:
         named for a reserved sentinel is left alone, not registered under it —
         and the skip is SAID once, naming the directory and why."""
         root = tmp_home / "holder" / leaf
-        create_workset("holder-ws", root, std)
+        create_workset("holder_ws", root, std)
         registry_store.save_section(std.registry, "worksets", {})
         capsys.readouterr()
 

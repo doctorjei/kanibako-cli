@@ -372,19 +372,19 @@ class TestBoxListOrphan:
         config = load_config(config_file)
         std = load_std_paths(config)
 
-        ws, _ = _make_workset(tmp_home, std, "orphan-ws")
+        ws, _ = _make_workset(tmp_home, std, "orphan_ws")
         source = tmp_home / "orphan_src"
         source.mkdir()
-        add_project(ws, "orphan-proj", source)
+        add_project(ws, "orphan_proj", source)
         # Remove the workspace dir.
-        shutil.rmtree(ws.workspaces_dir / "orphan-proj")
+        shutil.rmtree(ws.workspaces_dir / "orphan_proj")
 
         args = argparse.Namespace(show_all=False, orphan=True, quiet=False)
         rc = run_list(args)
         assert rc == 0
         out = capsys.readouterr().out
-        assert "orphan-ws" in out
-        assert "orphan-proj" in out
+        assert "orphan_ws" in out
+        assert "orphan_proj" in out
         assert "1 orphaned project(s)" in out
 
     def test_orphan_shows_hint(self, config_file, tmp_home, credentials_dir, capsys):
@@ -1958,14 +1958,14 @@ class TestBoxListWorkset:
         ws, _ = _make_workset(tmp_home, std, "myws")
         source = tmp_home / "src_proj"
         source.mkdir()
-        add_project(ws, "cool-app", source)
+        add_project(ws, "cool_app", source)
 
         args = argparse.Namespace(show_all=False, orphan=False, quiet=False)
         rc = run_list(args)
         assert rc == 0
         out = capsys.readouterr().out
         assert "myws" in out
-        assert "cool-app" in out
+        assert "cool_app" in out
 
     def test_list_mixed_local_and_workset(self, config_file, tmp_home, credentials_dir, capsys):
         from kanibako.commands.box._parser import run_list
@@ -1979,10 +1979,10 @@ class TestBoxListWorkset:
         resolve_project(std, config, project_dir=str(ac_dir), initialize=True)
 
         # Workset project
-        ws, _ = _make_workset(tmp_home, std, "mixed-ws")
+        ws, _ = _make_workset(tmp_home, std, "mixed_ws")
         source = tmp_home / "ws_src"
         source.mkdir()
-        add_project(ws, "ws-proj", source)
+        add_project(ws, "ws_proj", source)
 
         args = argparse.Namespace(show_all=False, orphan=False, quiet=False)
         rc = run_list(args)
@@ -1990,8 +1990,8 @@ class TestBoxListWorkset:
         out = capsys.readouterr().out
         assert "NAME" in out  # local table header
         assert str(ac_dir) in out
-        assert "mixed-ws" in out
-        assert "ws-proj" in out
+        assert "mixed_ws" in out
+        assert "ws_proj" in out
 
     def test_list_workset_missing_workspace(self, config_file, tmp_home, credentials_dir, capsys):
         """Workset missing workspace is hidden by default (orphan)."""
@@ -2000,12 +2000,12 @@ class TestBoxListWorkset:
         config = load_config(config_file)
         std = load_std_paths(config)
 
-        ws, _ = _make_workset(tmp_home, std, "miss-ws")
+        ws, _ = _make_workset(tmp_home, std, "miss_ws")
         source = tmp_home / "miss_src"
         source.mkdir()
-        add_project(ws, "miss-proj", source)
+        add_project(ws, "miss_proj", source)
         # Remove the workspace dir
-        shutil.rmtree(ws.workspaces_dir / "miss-proj")
+        shutil.rmtree(ws.workspaces_dir / "miss_proj")
 
         args = argparse.Namespace(show_all=True, orphan=False, quiet=False)
         rc = run_list(args)
@@ -2019,12 +2019,12 @@ class TestBoxListWorkset:
         config = load_config(config_file)
         std = load_std_paths(config)
 
-        ws, _ = _make_workset(tmp_home, std, "nodata-ws")
+        ws, _ = _make_workset(tmp_home, std, "nodata_ws")
         source = tmp_home / "nodata_src"
         source.mkdir()
-        add_project(ws, "nodata-proj", source)
+        add_project(ws, "nodata_proj", source)
         # Remove the projects dir
-        shutil.rmtree(ws.projects_dir / "nodata-proj")
+        shutil.rmtree(ws.projects_dir / "nodata_proj")
 
         args = argparse.Namespace(show_all=False, orphan=False, quiet=False)
         rc = run_list(args)
@@ -2038,7 +2038,7 @@ class TestBoxListWorkset:
         config = load_config(config_file)
         std = load_std_paths(config)
 
-        ws, ws_root = _make_workset(tmp_home, std, "gone-ws")
+        ws, ws_root = _make_workset(tmp_home, std, "gone_ws")
         # Remove the workset root entirely
         shutil.rmtree(ws_root)
 
@@ -2068,9 +2068,9 @@ class TestBoxDuplicateToWorkset:
         config = load_config(config_file)
         std = load_std_paths(config)
         proj, project_dir = _make_local_project(tmp_home, std, config, "dup_ac_src")
-        ws, _ = _make_workset(tmp_home, std, "dup-ws")
+        ws, _ = _make_workset(tmp_home, std, "dup_ws")
 
-        args = self._make_args(project_dir, tmp_home / "unused", workset="dup-ws")
+        args = self._make_args(project_dir, tmp_home / "unused", workset="dup_ws")
         rc = run_duplicate(args)
         assert rc == 0
 
@@ -2087,9 +2087,9 @@ class TestBoxDuplicateToWorkset:
         config = load_config(config_file)
         std = load_std_paths(config)
         proj, project_dir = _make_local_project(tmp_home, std, config, "dup_bare_src")
-        ws, _ = _make_workset(tmp_home, std, "bare-ws")
+        ws, _ = _make_workset(tmp_home, std, "bare_ws")
 
-        args = self._make_args(project_dir, tmp_home / "unused", workset="bare-ws", bare=True)
+        args = self._make_args(project_dir, tmp_home / "unused", workset="bare_ws", bare=True)
         rc = run_duplicate(args)
         assert rc == 0
 
@@ -2110,11 +2110,11 @@ class TestBoxDuplicateToWorkset:
         config = load_config(config_file)
         std = load_std_paths(config)
         _proj, project_dir = _make_local_project(tmp_home, std, config, "dup_null_src")
-        ws, _ = _make_workset(tmp_home, std, "null-ws")
+        ws, _ = _make_workset(tmp_home, std, "null_ws")
         dump_doc(ws.root / "workset.yaml", {"workset": {"workspaces": None}})
 
         # ⚑ force=False: a refusal that fired after the prompt would read stdin instead.
-        args = self._make_args(project_dir, tmp_home / "unused", workset="null-ws",
+        args = self._make_args(project_dir, tmp_home / "unused", workset="null_ws",
                                bare=bare, force=False)
         with pytest.raises(WorksetError, match="workset.workspaces"):
             run_duplicate(args)
@@ -2163,9 +2163,9 @@ class TestBoxDuplicateToWorkset:
         config = load_config(config_file)
         std = load_std_paths(config)
         proj, project_dir = _make_local_project(tmp_home, std, config, "dup_pres_src")
-        ws, _ = _make_workset(tmp_home, std, "pres-dup-ws")
+        ws, _ = _make_workset(tmp_home, std, "pres_dup_ws")
 
-        args = self._make_args(project_dir, tmp_home / "unused", workset="pres-dup-ws")
+        args = self._make_args(project_dir, tmp_home / "unused", workset="pres_dup_ws")
         rc = run_duplicate(args)
         assert rc == 0
 
@@ -2184,13 +2184,13 @@ class TestBoxDuplicateToWorkset:
         config = load_config(config_file)
         std = load_std_paths(config)
         _proj, project_dir = _make_local_project(tmp_home, std, config, "occ_src")
-        ws, _ = _make_workset(tmp_home, std, "occ-ws")
+        ws, _ = _make_workset(tmp_home, std, "occ_ws")
         occupied = {"workspace": ws.workspaces_dir, "box_tree": ws.projects_dir}[leaf]
         occupied = occupied / "occ_src"
         occupied.mkdir(parents=True)
         (occupied / "keep.txt").write_text("mine")
 
-        args = self._make_args(project_dir, tmp_home / "unused", workset="occ-ws",
+        args = self._make_args(project_dir, tmp_home / "unused", workset="occ_ws",
                                force=False)
         assert run_duplicate(args) == 1
         err = capsys.readouterr().err
@@ -2208,12 +2208,12 @@ class TestBoxDuplicateToWorkset:
         config = load_config(config_file)
         std = load_std_paths(config)
         _proj, project_dir = _make_local_project(tmp_home, std, config, "n2_src")
-        ws, _ = _make_workset(tmp_home, std, "n2-ws")
+        ws, _ = _make_workset(tmp_home, std, "n2_ws")
         leaf = ws.workspaces_dir / "n2_src"
         leaf.mkdir(parents=True)
         (leaf / "keep.txt").write_text("mine")
 
-        args = self._make_args(project_dir, tmp_home / "unused", workset="n2-ws",
+        args = self._make_args(project_dir, tmp_home / "unused", workset="n2_ws",
                                bare=bare)
         with patch(
             "kanibako.commands.box._lifecycle.materialize_canon_skeleton",
@@ -2238,7 +2238,7 @@ class TestBoxDuplicateExternal:
     """
 
     def _make_external_connected(self, tmp_home, std, config,
-                                  ws_name="ext-ws", proj_name="ext-proj"):
+                                  ws_name="ext_ws", proj_name="ext-proj"):
         """Create a workset with an EXTERNAL-connected project, return paths.
 
         Returns ``(ws, ext_dir, proj_name)`` where *ext_dir* lives outside the
@@ -2268,7 +2268,7 @@ class TestBoxDuplicateExternal:
         std = load_std_paths(config)
 
         proj, project_dir = _make_local_project(tmp_home, std, config, "int_src")
-        ws, _ = _make_workset(tmp_home, std, "marker-ws")
+        ws, _ = _make_workset(tmp_home, std, "marker_ws")
 
         copy_into_workset(
             ws, "int_src", proj.metadata_path, proj.shell_path,
@@ -2305,7 +2305,7 @@ class TestBoxDuplicateExternal:
         std = load_std_paths(config)
 
         proj, project_dir = _make_local_project(tmp_home, std, config, "cf_src")
-        ws, ws_root = _make_workset(tmp_home, std, "cf-ws")
+        ws, ws_root = _make_workset(tmp_home, std, "cf_ws")
 
         with patch(
             "kanibako.commands.box._lifecycle.shutil.copytree",
@@ -2321,7 +2321,7 @@ class TestBoxDuplicateExternal:
 
         # Project NOT left registered in the workset (reload from disk).
         registry = list_worksets(std)
-        reloaded = load_workset(registry["cf-ws"], "cf-ws", early_system=std.early_system)
+        reloaded = load_workset(registry["cf_ws"], "cf_ws", early_system=std.early_system)
         assert all(p.name != "cf_proj" for p in reloaded.projects)
         # No partial per-project dirs left behind.
         assert not (ws.projects_dir / "cf_proj").exists()
@@ -2342,14 +2342,14 @@ class TestBoxDuplicateExternal:
         args = argparse.Namespace(
             source_path=str(ext_dir), new_path=str(tmp_home / "unused"),
             to_mode="named", bare=True, force=True,
-            workset="ext-ws", project_name="dup-proj",
+            workset="ext_ws", project_name="dup_proj",
         )
         rc = run_duplicate(args)
         assert rc == 1
         err = capsys.readouterr().err
         assert "external-connected" in err
         # The duplicate was NOT registered.
-        assert not (ws.projects_dir / "dup-proj").exists()
+        assert not (ws.projects_dir / "dup_proj").exists()
 
     def test_bare_duplicate_non_external_still_allowed(
         self, config_file, tmp_home, credentials_dir,
@@ -2384,14 +2384,14 @@ class TestBoxDuplicateExternal:
         config = load_config(config_file)
         std = load_std_paths(config)
         ws, ext_dir, proj_name = self._make_external_connected(
-            tmp_home, std, config, ws_name="ext-ws2", proj_name="ext-proj2",
+            tmp_home, std, config, ws_name="ext_ws2", proj_name="ext-proj2",
         )
         before = _connected_index(std)
 
         args = argparse.Namespace(
             source_path=str(ext_dir), new_path=str(tmp_home / "unused"),
             to_mode="named", bare=True, force=True,
-            workset="ext-ws2", project_name="dup-proj",
+            workset="ext_ws2", project_name="dup_proj",
         )
         rc = run_duplicate(args)
         assert rc == 1
@@ -2414,12 +2414,12 @@ class TestBoxDuplicateExternal:
         config = load_config(config_file)
         std = load_std_paths(config)
         proj, project_dir = _make_local_project(tmp_home, std, config, "plain_ws_src")
-        ws, _ = _make_workset(tmp_home, std, "plain-ws")
+        ws, _ = _make_workset(tmp_home, std, "plain_ws")
 
         args = argparse.Namespace(
             source_path=str(project_dir), new_path=str(tmp_home / "unused"),
             to_mode="named", bare=False, force=True,
-            workset="plain-ws", project_name=None,
+            workset="plain_ws", project_name=None,
         )
         rc = run_duplicate(args)
         assert rc == 0
@@ -2446,7 +2446,7 @@ class TestBoxDuplicateExternal:
         config = load_config(config_file)
         std = load_std_paths(config)
         ws, ext_dir, proj_name = self._make_external_connected(
-            tmp_home, std, config, ws_name="ext2def-ws", proj_name="e2d",
+            tmp_home, std, config, ws_name="ext2def_ws", proj_name="e2d",
         )
         before = _connected_index(std)
         dest = tmp_home / "e2d_dst"
@@ -2477,7 +2477,7 @@ class TestBoxDuplicateExternal:
         config = load_config(config_file)
         std = load_std_paths(config)
         ws, ext_dir, proj_name = self._make_external_connected(
-            tmp_home, std, config, ws_name="ext2sa-ws", proj_name="e2s",
+            tmp_home, std, config, ws_name="ext2sa_ws", proj_name="e2s",
         )
         before = _connected_index(std)
         dest = tmp_home / "e2s_dst"
@@ -2512,7 +2512,7 @@ class TestBoxDuplicateExternal:
         config = load_config(config_file)
         std = load_std_paths(config)
         ws, ext_dir, proj_name = self._make_external_connected(
-            tmp_home, std, config, ws_name="extbare-ws", proj_name="eb",
+            tmp_home, std, config, ws_name="extbare_ws", proj_name="eb",
         )
         before = _connected_index(std)
         dest = tmp_home / "eb_dst"
@@ -2541,14 +2541,14 @@ class TestBoxDuplicateExternal:
         config = load_config(config_file)
         std = load_std_paths(config)
         ws, ext_dir, proj_name = self._make_external_connected(
-            tmp_home, std, config, ws_name="extbarews-ws", proj_name="ebw",
+            tmp_home, std, config, ws_name="extbarews_ws", proj_name="ebw",
         )
         before = _connected_index(std)
 
         args = argparse.Namespace(
             source_path=str(ext_dir), new_path=str(tmp_home / "unused"),
             to_mode="named", bare=True, force=True,
-            workset="extbarews-ws", project_name="dup-proj",
+            workset="extbarews_ws", project_name="dup_proj",
         )
         rc = run_duplicate(args)
         assert rc == 1
@@ -2561,7 +2561,7 @@ class TestBoxDuplicateExternal:
 # ---------------------------------------------------------------------------
 
 class TestBoxDuplicateFromWorkset:
-    def _make_workset_proj(self, tmp_home, std, config, ws_name="dfrom-ws", proj_name="ws-proj"):
+    def _make_workset_proj(self, tmp_home, std, config, ws_name="dfrom_ws", proj_name="ws_proj"):
         ws, _ = _make_workset(tmp_home, std, ws_name)
         source = tmp_home / f"{proj_name}_src"
         source.mkdir()
@@ -2585,7 +2585,7 @@ class TestBoxDuplicateFromWorkset:
         config = load_config(config_file)
         std = load_std_paths(config)
         ws, proj = self._make_workset_proj(tmp_home, std, config)
-        workspace_path = ws.workspaces_dir / "ws-proj"
+        workspace_path = ws.workspaces_dir / "ws_proj"
         dest = tmp_home / "dup_ws_ac_dst"
 
         args = self._make_args(workspace_path, dest, "primary")
@@ -2607,7 +2607,7 @@ class TestBoxDuplicateFromWorkset:
         config = load_config(config_file)
         std = load_std_paths(config)
         ws, _proj = self._make_workset_proj(tmp_home, std, config)
-        workspace_path = ws.workspaces_dir / "ws-proj"
+        workspace_path = ws.workspaces_dir / "ws_proj"
         texts = _plant_links(workspace_path, tmp_home / "q70_outside")
         dest = tmp_home / "dup_ws_links_dst"
 
@@ -2620,7 +2620,7 @@ class TestBoxDuplicateFromWorkset:
 
         config = load_config(config_file)
         std = load_std_paths(config)
-        ws, proj = self._make_workset_proj(tmp_home, std, config, "dfrom-dec", "dec-proj")
+        ws, proj = self._make_workset_proj(tmp_home, std, config, "dfrom_dec", "dec-proj")
         workspace_path = ws.workspaces_dir / "dec-proj"
         dest = tmp_home / "dup_ws_dec_dst"
 
@@ -2638,7 +2638,7 @@ class TestBoxDuplicateFromWorkset:
 
         config = load_config(config_file)
         std = load_std_paths(config)
-        ws, proj = self._make_workset_proj(tmp_home, std, config, "dfrom-bare", "bare-proj")
+        ws, proj = self._make_workset_proj(tmp_home, std, config, "dfrom_bare", "bare-proj")
         workspace_path = ws.workspaces_dir / "bare-proj"
         dest = tmp_home / "dup_ws_bare_dst"
 
@@ -2656,7 +2656,7 @@ class TestBoxDuplicateFromWorkset:
 
         config = load_config(config_file)
         std = load_std_paths(config)
-        ws, proj = self._make_workset_proj(tmp_home, std, config, "dfrom-pres", "pres-proj")
+        ws, proj = self._make_workset_proj(tmp_home, std, config, "dfrom_pres", "pres-proj")
         workspace_path = ws.workspaces_dir / "pres-proj"
         dest = tmp_home / "dup_ws_pres_dst"
 

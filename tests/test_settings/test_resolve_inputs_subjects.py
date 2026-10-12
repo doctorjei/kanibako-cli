@@ -36,17 +36,17 @@ _FLOORS = ("meta_runtime", "meta_identity", "workset_anchor", "auth_chain")
 
 @pytest.fixture
 def named_ws(std, tmp_home):
-    ws = create_workset("my-set", tmp_home / "worksets" / "my-set", std)
+    ws = create_workset("my_set", tmp_home / "worksets" / "my_set", std)
     source = tmp_home / "original-project"
     source.mkdir()
-    add_project(ws, "cool-app", source)
+    add_project(ws, "cool_app", source)
     return ws
 
 
 @pytest.fixture
 def named_box(named_ws, std, config):
     return resolve_workset_project(
-        WorksetSpec.from_workset(named_ws), "cool-app", std, config, initialize=True,
+        WorksetSpec.from_workset(named_ws), "cool_app", std, config, initialize=True,
     )
 
 
@@ -135,7 +135,7 @@ class TestAWorkingSetResolvesAsItsBoxesDoMinusTheBox:
         root = str(named_ws.root)
         assert _leaf(snap, "meta.workset.path") == root
         assert _leaf(snap, "meta.runtime.ws_root") == root
-        assert _leaf(snap, "meta.workset.name") == "my-set"
+        assert _leaf(snap, "meta.workset.name") == "my_set"
         assert _leaf(snap, "meta.workset.settings") == f"{root}/{WORKSET_META_FILE}"
         assert _leaf(snap, "workset.auth.path") == f"{root}/auth"
         assert _leaf(snap, "workset.channelroot") == str(

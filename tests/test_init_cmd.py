@@ -415,15 +415,15 @@ class TestRunCreate:
 
         parser = build_parser()
         args = parser.parse_args(
-            ["box", "create", str(project_dir), "--name", "custom-name"]
+            ["box", "create", str(project_dir), "--name", "custom_name"]
         )
         rc = run_create(args)
 
         assert rc == 0
         std = load_std_paths(load_config(config_file_path(xdg("XDG_CONFIG_HOME", ".config"))))
         boxes = load_primary_boxes(std.primary_workset, early=_early_scope(std, BoxMode.primary))
-        assert "custom-name" in boxes, (
-            f"Expected 'custom-name' in the PRIMARY membership, got: {boxes}"
+        assert "custom_name" in boxes, (
+            f"Expected 'custom_name' in the PRIMARY membership, got: {boxes}"
         )
         assert project_dir.name not in boxes, (
             f"Directory basename should NOT be registered when --name given, "
@@ -440,14 +440,14 @@ class TestRunCreate:
 
         parser = build_parser()
         args = parser.parse_args(
-            ["box", "create", str(project_dir), "--name", "named-proj"]
+            ["box", "create", str(project_dir), "--name", "named_proj"]
         )
         assert run_create(args) == 0
 
         # Now look up by bare name — must NOT raise.
         config = load_config(config_file)
         std = load_std_paths(config)
-        proj = resolve_project(std, config, project_dir="named-proj")
+        proj = resolve_project(std, config, project_dir="named_proj")
         assert proj.project_path == project_dir.resolve(), (
             f"Expected {project_dir.resolve()}, got {proj.project_path}"
         )
@@ -463,13 +463,13 @@ class TestRunCreate:
 
         parser = build_parser()
         args = parser.parse_args(
-            ["box", "create", str(project_dir), "--name", "frontdoor-proj"]
+            ["box", "create", str(project_dir), "--name", "frontdoor_proj"]
         )
         assert run_create(args) == 0
 
         config = load_config(config_file)
         std = load_std_paths(config)
-        proj = resolve_any_project(std, config, project_dir="frontdoor-proj")
+        proj = resolve_any_project(std, config, project_dir="frontdoor_proj")
         assert proj.project_path == project_dir.resolve(), (
             f"Expected {project_dir.resolve()}, got {proj.project_path}"
         )

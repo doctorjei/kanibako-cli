@@ -178,9 +178,9 @@ class TestAPrimaryTargetSharesTheLinkAndKeepsItsOwnIdentity:
         assert sorted(p.name for p in target.iterdir()) == ["keepme.txt"]
         dst_id = resolve_box_identity(dest, std, config)
         src_id = resolve_box_identity(leaf, std, config)
-        assert (dst_id["name"], dst_id["mode"].value) == ("dup-primary", "primary")
+        assert (dst_id["name"], dst_id["mode"].value) == ("dup_primary", "primary")
         assert (src_id["name"], src_id["mode"].value) == ("app", "named")
-        store = std.boxes / "dup-primary"
+        store = std.boxes / "dup_primary"
         assert store.is_dir() and not store.is_symlink()
         assert not store.resolve().is_relative_to(target.resolve())
 

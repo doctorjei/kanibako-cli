@@ -36,8 +36,8 @@ def _make_member(std, config, tmp_home, workset: str, member: str) -> Path:
 
 def _two_worksets_holding(std, config, tmp_home, member: str) -> tuple[Path, Path]:
     """Register *member* in two worksets -- the ambiguous-name setup."""
-    first = _make_member(std, config, tmp_home, "cluster-a", member)
-    second = _make_member(std, config, tmp_home, "cluster-b", member)
+    first = _make_member(std, config, tmp_home, "cluster_a", member)
+    second = _make_member(std, config, tmp_home, "cluster_b", member)
     return first, second
 
 
@@ -50,8 +50,8 @@ def _assert_actionable(message: str, name: str) -> None:
     derivable from one.
     """
     assert "Ambiguous box name" in message
-    assert f"cluster-a/{name}" in message
-    assert f"cluster-b/{name}" in message
+    assert f"cluster_a/{name}" in message
+    assert f"cluster_b/{name}" in message
     assert f"<workset>/{name}" in message
 
 
@@ -125,7 +125,7 @@ class TestStartDoorAmbiguity:
         """
         from kanibako.commands.start import _resolve_existing_box
 
-        _make_member(std, config, tmp_home, "cluster-a", "foo")
+        _make_member(std, config, tmp_home, "cluster_a", "foo")
         monkeypatch.chdir(tmp_home)
 
         assert _resolve_existing_box(std, config, "nonesuch") is None
@@ -181,7 +181,7 @@ class TestCodeDoorAmbiguity:
         """An UNKNOWN name keeps the no-box message, as before."""
         from kanibako.commands.code_cmd import run_code
 
-        _make_member(std, config, tmp_home, "cluster-a", "foo")
+        _make_member(std, config, tmp_home, "cluster_a", "foo")
         monkeypatch.chdir(tmp_home)
         capsys.readouterr()
 

@@ -1934,7 +1934,7 @@ class TestRunBoxDiagnoseRefusedCure:
     def test_a_refused_leaf_cwd_prints_a_create_cure_with_name(
         self, config_file, tmp_home, credentials_dir, capsys, monkeypatch
     ) -> None:
-        """The cure line tokenizes to ``kanibako create --name <new-name>`` (i.e. it runs)."""
+        """The cure line tokenizes to ``kanibako create --name a_b`` (i.e. it runs)."""
         from kanibako.errors import ContainerError
 
         bad = (tmp_home / "a b").resolve()
@@ -1957,7 +1957,7 @@ class TestRunBoxDiagnoseRefusedCure:
             and "--name" in ln
         ]
         assert cure_lines, f"no cure line in:\n{out}"
-        assert shlex.split(cure_lines[0]) == ["kanibako", "create", "--name", "<new-name>"]
+        assert shlex.split(cure_lines[0]) == ["kanibako", "create", "--name", "a_b"]
 
     def test_a_valid_leaf_cwd_keeps_todays_plain_create_hint(
         self, config_file, tmp_home, credentials_dir, capsys, monkeypatch
@@ -2014,7 +2014,7 @@ class TestRunBoxDiagnoseNamedTargetCure:
         ]
         assert cure_lines, f"no cure line in:\n{out}"
         assert shlex.split(cure_lines[0]) == [
-            "kanibako", "create", str(bad), "--name", "<new-name>",
+            "kanibako", "create", str(bad), "--name", "a_b",
         ], out
 
         assert "Or pass a project name/path" in out, out

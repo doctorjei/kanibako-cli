@@ -39,21 +39,21 @@ class TestEntrypoint:
         project = e2e_env["project"]
 
         result = run_kanibako(
-            ["create", str(project), "--name", "e2e-entrypoint"],
+            ["create", str(project), "--name", "e2e_entrypoint"],
             env=env,
         )
         assert result.returncode == 0
 
         run_kanibako(
-            ["start", "e2e-entrypoint",
+            ["start", "e2e_entrypoint",
              "-e", "CLAUDE_STUB_MODE=long-running"],
             env=env,
         )
-        wait_for_container(box_container("e2e-entrypoint"), timeout=15)
+        wait_for_container(box_container("e2e_entrypoint"), timeout=15)
 
         # Check process tree inside container
         ps_result = podman_exec(
-            box_container("e2e-entrypoint"), ["ps", "aux"]
+            box_container("e2e_entrypoint"), ["ps", "aux"]
         )
         assert ps_result.returncode == 0
 
@@ -81,21 +81,21 @@ class TestCredentials:
         project = e2e_env["project"]
 
         result = run_kanibako(
-            ["create", str(project), "--name", "e2e-creds"],
+            ["create", str(project), "--name", "e2e_creds"],
             env=env,
         )
         assert result.returncode == 0
 
         run_kanibako(
-            ["start", "e2e-creds",
+            ["start", "e2e_creds",
              "-e", "CLAUDE_STUB_MODE=long-running"],
             env=env,
         )
-        wait_for_container(box_container("e2e-creds"), timeout=15)
+        wait_for_container(box_container("e2e_creds"), timeout=15)
 
         # Check that credential file exists inside the container
         result = podman_exec(
-            box_container("e2e-creds"),
+            box_container("e2e_creds"),
             ["test", "-f", "/home/agent/.claude/.credentials.json"],
         )
         assert result.returncode == 0, (
@@ -104,7 +104,7 @@ class TestCredentials:
 
         # Verify it contains our test token
         cat_result = podman_exec(
-            box_container("e2e-creds"),
+            box_container("e2e_creds"),
             ["cat", "/home/agent/.claude/.credentials.json"],
         )
         assert "e2e-test-token" in cat_result.stdout

@@ -1909,7 +1909,7 @@ class TestResolveConfigSubjectNamedTargetCure:
         msg = str(exc_info.value)
         cure = msg.rsplit("\n  ", 1)[1]
         assert shlex.split(cure) == [
-            "kanibako", "create", str(bad), "--name", "<new-name>",
+            "kanibako", "create", str(bad), "--name", "a_b",
         ]
 
     def test_a_valid_leaf_carries_the_named_path_into_the_plain_create_hint(

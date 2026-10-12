@@ -54,13 +54,13 @@ from kanibako.settings.settings_keyspace import DECLARED_WORKSET_CHANNEL_LEAVES
 
 @pytest.fixture
 def named_proj(std, config, tmp_home):
-    ws_root = tmp_home / "worksets" / "my-set"
-    ws = create_workset("my-set", ws_root, std)
+    ws_root = tmp_home / "worksets" / "my_set"
+    ws = create_workset("my_set", ws_root, std)
     source = tmp_home / "original-project"
     source.mkdir()
-    add_project(ws, "cool-app", source)
+    add_project(ws, "cool_app", source)
     return resolve_workset_project(
-        WorksetSpec.from_workset(ws), "cool-app", std, config, initialize=True,
+        WorksetSpec.from_workset(ws), "cool_app", std, config, initialize=True,
     )
 
 
@@ -307,8 +307,8 @@ class TestAllProjectsPartitionRepoints:
 
     def test_mailboxes_default_is_the_system_partition(self, named_proj, std):
         part = channels.workset_partition_paths(named_proj, std)
-        assert part.mailboxes == std.channels_mailboxes / "my-set"
-        assert part.share_global == std.channels_share / "my-set"
+        assert part.mailboxes == std.channels_mailboxes / "my_set"
+        assert part.share_global == std.channels_share / "my_set"
 
     def test_mailboxes_repoint_moves_the_boxs_own_inbox(self, named_proj, std, tmp_home):
         """⚑ THE SHARPEST OF THE THREE: a user could believe this worked, and it did not."""

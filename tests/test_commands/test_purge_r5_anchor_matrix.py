@@ -340,7 +340,7 @@ class TestNamedLaterStepFailure:
 
         config = load_config(config_file)
         std = load_std_paths(config)
-        ws = create_workset("r5-named-ws", tmp_home / "worksets" / "r5-named-ws", std)
+        ws = create_workset("r5_named_ws", tmp_home / "worksets" / "r5_named_ws", std)
         source = tmp_home / "r5_named_src"
         source.mkdir()
         add_project(ws, "namedone", source)

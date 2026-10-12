@@ -87,7 +87,7 @@ class TestLazyPrep:
             # Register the project (no template here -- the rig is chosen at
             # start time via --rig, which is the lazy-prep path under test).
             result = run_kanibako(
-                ["create", str(project), "--name", "e2e-lazyprep"],
+                ["create", str(project), "--name", "e2e_lazyprep"],
                 env=env,
             )
             assert result.returncode == 0, (
@@ -100,7 +100,7 @@ class TestLazyPrep:
             # --ephemeral keeps the stub run non-interactive (runs once, exits).
             # Long timeout for the on-the-fly toolchain build.
             result = run_kanibako(
-                ["start", "e2e-lazyprep", "--rig", "jvm", "--ephemeral",
+                ["start", "e2e_lazyprep", "--rig", "jvm", "--ephemeral",
                  "-e", "CLAUDE_STUB_MODE=session",
                  "-e", "CLAUDE_STUB_SLEEP=1"],
                 env=env,

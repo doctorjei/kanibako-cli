@@ -40,13 +40,13 @@ def primary_proj(std, config, project_dir):
 
 @pytest.fixture
 def named_proj(std, config, tmp_home):
-    ws_root = tmp_home / "worksets" / "my-set"
-    ws = create_workset("my-set", ws_root, std)
+    ws_root = tmp_home / "worksets" / "my_set"
+    ws = create_workset("my_set", ws_root, std)
     source = tmp_home / "original-project"
     source.mkdir()
-    add_project(ws, "cool-app", source)
+    add_project(ws, "cool_app", source)
     proj = resolve_workset_project(
-        WorksetSpec.from_workset(ws), "cool-app", std, config, initialize=True,
+        WorksetSpec.from_workset(ws), "cool_app", std, config, initialize=True,
     )
     return proj
 
@@ -67,7 +67,7 @@ class TestWorksetNameToken:
         assert channels.workset_name_token(primary_proj) == WS_TOKEN_PRIMARY
 
     def test_named_uses_workset_name(self, named_proj):
-        assert channels.workset_name_token(named_proj) == "my-set"
+        assert channels.workset_name_token(named_proj) == "my_set"
 
     def test_standalone(self, standalone_proj):
         assert channels.workset_name_token(standalone_proj) == WS_TOKEN_STANDALONE
@@ -109,7 +109,7 @@ class TestWsNameSingleSourceDriftGuard:
         assert self._guard(primary_proj, std) == WS_TOKEN_PRIMARY
 
     def test_named(self, named_proj, std):
-        assert self._guard(named_proj, std) == "my-set"
+        assert self._guard(named_proj, std) == "my_set"
 
     def test_standalone(self, standalone_proj, std):
         assert self._guard(standalone_proj, std) == WS_TOKEN_STANDALONE
@@ -151,9 +151,9 @@ class TestSystemPartition:
         assert part.share == std.channels_share / WS_TOKEN_PRIMARY
 
     def test_named_token(self, std):
-        part = channels.system_partition(std, "my-set")
-        assert part.mailboxes == std.channels_mailboxes / "my-set"
-        assert part.share == std.channels_share / "my-set"
+        part = channels.system_partition(std, "my_set")
+        assert part.mailboxes == std.channels_mailboxes / "my_set"
+        assert part.share == std.channels_share / "my_set"
 
     def test_standalone_token(self, std):
         part = channels.system_partition(std, WS_TOKEN_STANDALONE)
@@ -398,9 +398,9 @@ class TestBoxChannelAddresses:
         name = named_proj.name
         assert named_proj.group is not None
         ws_root = named_proj.group.root
-        assert addr.ws_token == "my-set"
-        assert addr.inbox == std.channels_mailboxes / "my-set" / name
-        assert addr.share_global == std.channels_share / "my-set" / name
+        assert addr.ws_token == "my_set"
+        assert addr.inbox == std.channels_mailboxes / "my_set" / name
+        assert addr.share_global == std.channels_share / "my_set" / name
         assert addr.share_workset == ws_root / "channels" / "share" / name
 
     def test_standalone_addresses_share_workset_none(self, standalone_proj, std):

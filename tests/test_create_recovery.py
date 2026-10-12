@@ -488,7 +488,7 @@ class TestRunCreateJournalLifecycle:
             "kanibako.commands.start.seed_new_box",
             lambda std, config, proj, **kw: None,
         )
-        root = tmp_home / "sa-proj"
+        root = tmp_home / "sa_proj"
         root.mkdir()
         assert run_create(_create_args(root, standalone=True)) == 0
 
@@ -591,7 +591,7 @@ class TestRunCreatePreWriteRootShape:
             "kanibako.commands.start.seed_new_box",
             lambda std, config, proj, **kw: None,
         )
-        root = tmp_home / "sa-proj"
+        root = tmp_home / "sa_proj"
         settings = self._malformed_root(root)
         before = sorted(str(p.relative_to(root)) for p in root.rglob("*"))
 
@@ -613,10 +613,10 @@ class TestRunCreatePreWriteRootShape:
             "kanibako.commands.start.seed_new_box",
             lambda std, config, proj, **kw: None,
         )
-        settings = self._malformed_root(tmp_home / "sa-proj")
+        settings = self._malformed_root(tmp_home / "sa_proj")
 
         with pytest.raises(ConfigError) as exc:
-            run_create(_create_args(tmp_home / "sa-proj", standalone=True))
+            run_create(_create_args(tmp_home / "sa_proj", standalone=True))
 
         assert str(exc.value) == (
             f"the config file {settings.resolve()} holds /x at 'workset', where a "
@@ -636,7 +636,7 @@ class TestRunCreatePreWriteRootShape:
             "kanibako.commands.start.seed_new_box",
             lambda std, config, proj, **kw: None,
         )
-        root = tmp_home / "sa-proj"
+        root = tmp_home / "sa_proj"
         settings = self._malformed_root(root)
 
         with pytest.raises(ConfigError):
@@ -667,7 +667,7 @@ class TestRunCreatePreWriteRootShape:
             "kanibako.commands.start.seed_new_box",
             lambda std, config, proj, **kw: None,
         )
-        root = tmp_home / "sa-proj"
+        root = tmp_home / "sa_proj"
         settings = self._malformed_root(root, text)
         before = sorted(str(p.relative_to(root)) for p in root.rglob("*"))
 
@@ -693,7 +693,7 @@ class TestRunCreatePreWriteRootShape:
             "kanibako.commands.start.seed_new_box",
             lambda std, config, proj, **kw: None,
         )
-        root = tmp_home / "sa-proj"
+        root = tmp_home / "sa_proj"
         root.mkdir(parents=True)
         (root / "workset.yaml").write_text(text)
 
@@ -733,7 +733,7 @@ class TestRunCreatePreWriteRootShape:
             "kanibako.commands.start.seed_new_box",
             lambda std, config, proj, **kw: None,
         )
-        root = tmp_home / "sa-proj"
+        root = tmp_home / "sa_proj"
         assert run_create(_create_args(root, standalone=True)) == 0
 
         # A well-formed root file, and a pending entry for a box that never finished.
@@ -741,7 +741,7 @@ class TestRunCreatePreWriteRootShape:
         std = load_std_paths(load_config(config_file))
         proj = SimpleNamespace(
             shell_path=root / "box_data" / "home", mode=BoxMode.standalone,
-            name="sa-proj", project_path=root / "workspace", group=None,
+            name="sa_proj", project_path=root / "workspace", group=None,
         )
         assert journal.pending_create(std.journal, _box_journal_key(proj)) is None
         _write_create_entry(std, proj)

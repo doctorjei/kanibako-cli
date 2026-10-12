@@ -28,12 +28,12 @@ from kanibako.settings.paths import (
 
 
 def _connected(config_file, tmp_home):
-    """A named workset ``ext-set`` connected to an external dir ``extproj``."""
+    """A named workset ``ext_set`` connected to an external dir ``extproj``."""
     from kanibako.project.workset import add_project, create_workset
 
     config = load_config(config_file)
     std = load_std_paths(config)
-    ws = create_workset("ext-set", tmp_home / "worksets" / "ext-set", std)
+    ws = create_workset("ext_set", tmp_home / "worksets" / "ext_set", std)
     external = (tmp_home / "external_repo").resolve()
     external.mkdir()
     add_project(ws, "extproj", external, std)

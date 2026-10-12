@@ -125,19 +125,19 @@ class TestWorksetFirstInterruptRollsBack:
         import kanibako.project.workset as ws_mod
         from kanibako.project.names import read_names
 
-        root = tmp_home / "worksets" / "my-set"
+        root = tmp_home / "worksets" / "my_set"
         monkeypatch.setattr(ws_mod, "register_name", _interrupt)
         with pytest.raises(KeyboardInterrupt):
-            ws_mod.create_workset("my-set", root, std)
+            ws_mod.create_workset("my_set", root, std)
         assert not root.exists()
-        assert "my-set" not in read_names(std.registry).get("worksets", {})
+        assert "my_set" not in read_names(std.registry).get("worksets", {})
 
     def test_add_project_rolls_back(self, std, tmp_home, monkeypatch):
         import kanibako.project.workset as ws_mod
         import kanibako.settings.paths as paths_mod
 
-        root = tmp_home / "worksets" / "my-set"
-        ws = ws_mod.create_workset("my-set", root, std)
+        root = tmp_home / "worksets" / "my_set"
+        ws = ws_mod.create_workset("my_set", root, std)
         monkeypatch.setattr(paths_mod, "_register_workset_box_membership", _interrupt)
         with pytest.raises(KeyboardInterrupt):
             ws_mod.add_project(ws, "proj", ws.workspaces_dir / "proj")
@@ -150,7 +150,7 @@ class TestWorksetFirstInterruptRollsBack:
         import kanibako.project.workset as ws_mod
         import kanibako.settings.paths as paths_mod
 
-        ws = ws_mod.create_workset("ext-set", tmp_home / "worksets" / "ext-set", std)
+        ws = ws_mod.create_workset("ext_set", tmp_home / "worksets" / "ext_set", std)
         external = (tmp_home / "external_repo").resolve()
         external.mkdir()
         (external / "keep.txt").write_text("keep me")
@@ -171,12 +171,12 @@ class TestWorksetFirstInterruptRollsBack:
             real(*a, **k)
             raise KeyboardInterrupt
 
-        root = tmp_home / "worksets" / "my-set"
+        root = tmp_home / "worksets" / "my_set"
         monkeypatch.setattr(ws_mod, "register_name", write_then_interrupt)
         with pytest.raises(KeyboardInterrupt):
-            ws_mod.create_workset("my-set", root, std)
+            ws_mod.create_workset("my_set", root, std)
         assert not root.exists()
-        assert "my-set" not in read_names(std.registry).get("worksets", {})
+        assert "my_set" not in read_names(std.registry).get("worksets", {})
 
     def test_failed_name_write_keeps_another_roots_entry(self, std, tmp_home, monkeypatch):
         import kanibako.project.workset as ws_mod
@@ -191,8 +191,8 @@ class TestWorksetFirstInterruptRollsBack:
 
         monkeypatch.setattr(ws_mod, "register_name", lose_the_race)
         with pytest.raises(Exception, match="already registered"):
-            ws_mod.create_workset("my-set", tmp_home / "worksets" / "my-set", std)
-        assert read_names(std.registry)["worksets"].get("my-set") == other
+            ws_mod.create_workset("my_set", tmp_home / "worksets" / "my_set", std)
+        assert read_names(std.registry)["worksets"].get("my_set") == other
 
 
 class _Boom(Exception):
@@ -205,7 +205,7 @@ class TestAddProjectRowUndo:
         import kanibako.settings.paths as paths_mod
         from kanibako.project import workset_registry
 
-        ws = ws_mod.create_workset("my-set", tmp_home / "worksets" / "my-set", std)
+        ws = ws_mod.create_workset("my_set", tmp_home / "worksets" / "my_set", std)
         real = paths_mod._register_workset_box_membership
 
         def write_then_interrupt(*a, **k):
@@ -221,7 +221,7 @@ class TestAddProjectRowUndo:
         import kanibako.project.workset as ws_mod
         from kanibako.project import workset_registry
 
-        ws = ws_mod.create_workset("my-set", tmp_home / "worksets" / "my-set", std)
+        ws = ws_mod.create_workset("my_set", tmp_home / "worksets" / "my_set", std)
         workset_registry.register_workset_box(
             ws.registry_path, "proj", tmp_home / "prior-workspace")
         before = ws.registry_path.read_bytes()

@@ -1488,17 +1488,16 @@ def test_auth_named_default_workset_tier(tmp_path):
     assert a.tier == "workset"
 
 
-@pytest.mark.parametrize("agent_name", ["navigator℘claude", "kimi-k3℘claude"])
-def test_auth_persona_node_name_with_hyphen_resolves(tmp_path, agent_name):
-    """A persona node-name containing ``-`` must resolve the capability MIRROR.
+@pytest.mark.parametrize("agent_name", ["navigator℘claude", "kimi_k3℘claude"])
+def test_auth_persona_node_name_with_punctuation_resolves(tmp_path, agent_name):
+    """A persona node-name containing ``_`` must resolve the capability MIRROR.
 
     ``meta.box.agent.auth.share_support`` is the interpolated @-ref
-    ``@meta.agent.<node>.auth.share_support``.  When the ref grammar omitted
-    ``-`` the name truncated to ``meta.agent.kimi``, the leftover ``-k3℘claude.
-    auth.share_support`` survived as a literal, and ``as_bool`` raised
-    "expected bool, got str" — i.e. every ``--agent kimi-k3+claude`` launch
-    crashed.  ``agent_ref._SAFE_EXTRA`` allows ``-`` in a persona segment, so
-    the grammar must too.
+    ``@meta.agent.<node>.auth.share_support``.  When the ref grammar omitted a
+    character a persona segment allowed, the name truncated mid-node, the
+    leftover survived as a literal, and ``as_bool`` raised "expected bool, got
+    str".  The ref grammar is composed from the name rule's charset (spec §0),
+    so a segment the rule admits is matched whole.
     """
     a = resolve_auth_source(
         _auth_snapshot("primary", tmp_path=tmp_path, agent_name=agent_name),

@@ -499,7 +499,8 @@ class TestInterruptedCreateBoundary:
             printed_path, recover=True, no_vault=False,
         )) == 0
         assert _pending_create_entry(std, proj) is None
-        assert _primary_boxes(std) == {"by-path": printed_path}
+        # The box is named for the directory, `_` for its `-` (spec §0).
+        assert _primary_boxes(std) == {"by_path": printed_path}
         # THE GATE NOW PASSES — the box resolves for the next launch.
         config, _ = _std(config_file)
         assert _resolve_existing_box(std, config, str(path)) is not None
@@ -782,15 +783,23 @@ class TestNoBoxErrorMessage:
             f"run:  kanibako create {shlex.quote(spec)}"
         )
 
-    @pytest.mark.parametrize("spec", [".gone", "gone.", "a b", "o'brien"])
-    def test_a_leaf_create_would_refuse_gets_the_name_cure(self, tmp_path, monkeypatch, spec):
+    @pytest.mark.parametrize("spec, spelled", [
+        ("a b", "a_b"), ("o'brien", "o_brien"), ("2gone", "_2gone")])
+    def test_a_leaf_create_would_refuse_gets_the_name_cure(
+            self, tmp_path, monkeypatch, spec, spelled):
         """``create <spec>`` names the box after the leaf, and refuses this one."""
         monkeypatch.chdir(tmp_path)
         msg = _no_box_error(spec)
         assert msg.startswith(f"Error: no box at {(tmp_path / spec).resolve()}. "
                               f"The directory name '{spec}' is not a valid box name: ")
         cure = msg.rsplit("\n  ", 1)[1]
-        assert shlex.split(cure) == ["kanibako", "create", spec, "--name", "<new-name>"]
+        assert shlex.split(cure) == ["kanibako", "create", spec, "--name", spelled]
+
+    @pytest.mark.parametrize("spec", [".gone", "gone.", "my-dir"])
+    def test_a_leaf_create_derives_gets_the_plain_cure(self, tmp_path, monkeypatch, spec):
+        """A ``-`` or ``.`` in the leaf is written ``_`` (spec §0), so create would not refuse."""
+        monkeypatch.chdir(tmp_path)
+        assert _no_box_error(spec).endswith(f"run:  kanibako create {shlex.quote(spec)}")
 
     def test_a_leaf_with_an_ascii_spelling_gets_that_spelling(self, tmp_path, monkeypatch):
         monkeypatch.chdir(tmp_path)
@@ -802,7 +811,7 @@ class TestNoBoxErrorMessage:
         cwd.mkdir()
         monkeypatch.chdir(cwd)
         assert _no_box_error(None).endswith(
-            "Give the box a valid name:\n  kanibako create --name <new-name>")
+            "Its '_' spelling works:\n  kanibako create --name my_dir")
 
     def test_missing_qualified_designation_gets_the_name_message(
         self, tmp_path, monkeypatch,
@@ -827,7 +836,7 @@ class TestNoBoxErrorMessage:
         monkeypatch.chdir(tmp_path)
         spec = "a b"
         printed = _no_box_error(spec).rsplit("\n  ", 1)[1]
-        assert printed == f"kanibako create {shlex.quote(spec)} --name <new-name>"
+        assert printed == f"kanibako create {shlex.quote(spec)} --name a_b"
         assert shlex.split(printed)[:3] == ["kanibako", "create", spec]
 
     def test_spec_with_a_quote_is_one_argument_when_pasted(self, tmp_path, monkeypatch):
@@ -843,7 +852,7 @@ class TestNoBoxErrorMessage:
         monkeypatch.chdir(tmp_path)
         spec = "o'brien"
         printed = _no_box_error(spec).rsplit("\n  ", 1)[1]
-        assert printed == f"kanibako create {shlex.quote(spec)} --name <new-name>"
+        assert printed == f"kanibako create {shlex.quote(spec)} --name o_brien"
         assert shlex.split(printed)[:3] == ["kanibako", "create", spec]
 
 
@@ -1001,7 +1010,7 @@ class TestBrokenStandaloneNoBoxError:
         monkeypatch.chdir(tmp_home)
         msg = _no_box_error("bad name", std)
         assert msg.startswith(f"Error: no box at {tmp_home.resolve() / 'bad name'}. ")
-        assert msg.endswith("\n  kanibako create 'bad name' --name <new-name>")
+        assert msg.endswith("\n  kanibako create 'bad name' --name bad_name")
         assert str(root) not in msg
 
     def test_by_path_names_the_ruled_cure(

@@ -152,13 +152,12 @@ def test_an_agent_install_under_the_home_is_delivered_verbatim(odd_root) -> None
 
 
 @pytest.mark.parametrize("name", ["w$x", "v@x", "b\\x"])
-def test_a_workset_name_is_kept_in_its_channel_addresses(
-    tmp_path, monkeypatch, name,
+def test_a_workset_name_outside_the_name_rule_is_refused(
+    tmp_path, monkeypatch, capsys, name,
 ) -> None:
-    """A workset NAME (``meta.runtime.ws_name``) takes any character; ``meta.workset.name``
-    and the box's partitioned inbox ``<mailboxes>/<name>/<box>`` keep it as typed."""
+    """A workset NAME follows the name rule (spec §0): ``$``, ``@``, and ``\\`` are refused
+    at create, before any channel address could carry them."""
     from kanibako import cli
-    from kanibako.settings.settings_launch import snapshot_leaf
 
     root = tmp_path / "plain"
     for var, sub in (
@@ -175,12 +174,9 @@ def test_a_workset_name_is_kept_in_its_channel_addresses(
     ws_root = tmp_path / "ws"
     with pytest.raises(SystemExit) as made:
         cli.main(["workset", "create", str(ws_root), "--name", name])
-    assert made.value.code == 0
-    monkeypatch.chdir(ws_root)
-    _, mounts, snapshot = _create_and_launch(root, box_dir=ws_root / "workspaces" / "proj")
-    assert snapshot_leaf(snapshot, "meta.workset.name") == name
-    inbox = mounts["/home/agent/channels/inbox"].source
-    assert inbox.parent.name == name and inbox.name == "proj", inbox
+    assert made.value.code == 1
+    assert f"Invalid workset name '{name}'" in capsys.readouterr().err
+    assert not ws_root.exists()
 
 
 @pytest.mark.parametrize("leaf", ["n$m", "n@m", "n\\m"])

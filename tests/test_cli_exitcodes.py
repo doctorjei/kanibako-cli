@@ -640,7 +640,7 @@ class TestWorksetLaunch:
         proj.mode = BoxMode.named
         proj.name = project_name
         proj.group = ProjectGroup(
-            name="my-workset", root=ws_root,
+            name="my_workset", root=ws_root,
             is_default=False, local_shared_base=ws_root,
         )
         proj.project_path = ws_root / "workspaces" / project_name
@@ -659,7 +659,7 @@ class TestWorksetLaunch:
         """start from inside a workset workspace returns rc=0."""
         from kanibako.commands.start import _run_container
 
-        ws_root = tmp_path / "my-workset"
+        ws_root = tmp_path / "my_workset"
         ws_root.mkdir()
         workspace = ws_root / "workspaces" / "myproj"
         workspace.mkdir(parents=True)
@@ -681,7 +681,7 @@ class TestWorksetLaunch:
         """projects/{name}/.kanibako.lock is used during run."""
         from kanibako.commands.start import _run_container
 
-        ws_root = tmp_path / "my-workset"
+        ws_root = tmp_path / "my_workset"
         ws_root.mkdir()
         workspace = ws_root / "workspaces" / "myproj"
         workspace.mkdir(parents=True)
@@ -703,7 +703,7 @@ class TestWorksetLaunch:
         """runtime.run() receives name-based workset paths (not hash-based)."""
         from kanibako.commands.start import _run_container
 
-        ws_root = tmp_path / "my-workset"
+        ws_root = tmp_path / "my_workset"
         ws_root.mkdir()
         workspace = ws_root / "workspaces" / "myproj"
         workspace.mkdir(parents=True)
@@ -728,7 +728,7 @@ class TestWorksetLaunch:
         """Credential refresh uses target with workset shell_path."""
         from kanibako.commands.start import _run_container
 
-        ws_root = tmp_path / "my-workset"
+        ws_root = tmp_path / "my_workset"
         ws_root.mkdir()
         workspace = ws_root / "workspaces" / "myproj"
         workspace.mkdir(parents=True)
@@ -761,7 +761,7 @@ class TestWorksetLaunch:
         from kanibako.commands.start import run_shell
 
         import argparse
-        ws_root = tmp_path / "my-workset"
+        ws_root = tmp_path / "my_workset"
         ws_root.mkdir()
         workspace = ws_root / "workspaces" / "myproj"
         workspace.mkdir(parents=True)
@@ -781,7 +781,7 @@ class TestWorksetLaunch:
         """start -R auto-detects workset mode via resolve_any_project."""
         from kanibako.commands.start import _run_container
 
-        ws_root = tmp_path / "my-workset"
+        ws_root = tmp_path / "my_workset"
         ws_root.mkdir()
         workspace = ws_root / "workspaces" / "myproj"
         workspace.mkdir(parents=True)

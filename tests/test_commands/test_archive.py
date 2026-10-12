@@ -294,12 +294,12 @@ class TestArchiveWorkset:
         resolve_project(std, config, project_dir=str(ac_dir), initialize=True)
 
         # Create a workset with an initialized project
-        ws_root = tmp_home / "worksets" / "arch-ws"
-        ws = create_workset("arch-ws", ws_root, std)
+        ws_root = tmp_home / "worksets" / "arch_ws"
+        ws = create_workset("arch_ws", ws_root, std)
         source = tmp_home / "arch_src"
         source.mkdir()
-        add_project(ws, "arch-proj", source)
-        proj = resolve_workset_project(WorksetSpec.from_workset(ws), "arch-proj", std, config, initialize=True)
+        add_project(ws, "arch_proj", source)
+        proj = resolve_workset_project(WorksetSpec.from_workset(ws), "arch_proj", std, config, initialize=True)
         (proj.metadata_path / "data.txt").write_text("ws-archive-data")
 
         import os
@@ -322,18 +322,18 @@ class TestArchiveWorkset:
         config = load_config(config_file)
         std = load_std_paths(config)
 
-        ws_root = tmp_home / "worksets" / "single-ws"
-        ws = create_workset("single-ws", ws_root, std)
+        ws_root = tmp_home / "worksets" / "single_ws"
+        ws = create_workset("single_ws", ws_root, std)
         source = tmp_home / "single_src"
         source.mkdir()
-        add_project(ws, "single-proj", source)
-        proj = resolve_workset_project(WorksetSpec.from_workset(ws), "single-proj", std, config, initialize=True)
+        add_project(ws, "single_proj", source)
+        proj = resolve_workset_project(WorksetSpec.from_workset(ws), "single_proj", std, config, initialize=True)
         (proj.metadata_path / "data.txt").write_text("single-data")
 
         archive_path = str(tmp_home / "single.txz")
         # Use workspace path as path arg
         args = argparse.Namespace(
-            path=str(ws.workspaces_dir / "single-proj"), file=archive_path,
+            path=str(ws.workspaces_dir / "single_proj"), file=archive_path,
             all_projects=False, allow_uncommitted=True, allow_unpushed=True, force=True,
         )
         rc = run(args)

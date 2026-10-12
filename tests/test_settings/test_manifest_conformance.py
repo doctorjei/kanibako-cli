@@ -437,8 +437,8 @@ class _StubChannelPaths:
 class _StubGroup:
     """The two ``ProjectGroup`` attributes ``workset_root`` / ``workset_name_token`` read."""
 
-    name = "conformance-set"
-    root = _PROBE_ROOT / "worksets" / "conformance-set"
+    name = "conformance_set"
+    root = _PROBE_ROOT / "worksets" / "conformance_set"
 
 
 class _StubChannelProject:
@@ -587,15 +587,6 @@ def _spec_socket_name(identity: str, run_dir: Path) -> str:
     return hashlib.sha256(identity.encode("utf-8")).hexdigest()[:16] + ".sock"
 
 
-def _spec_segment(value: str) -> str:
-    """The companion's own SEGMENT rule: every ``-`` written ``--``.
-
-    Written out here rather than imported, because :func:`_spec_socket_name` exists to
-    be an oracle instead of a second resolver; the template's own separator stays single.
-    """
-    return value.replace("-", "--")
-
-
 def _check_helper_socket_row(raw: object) -> None:
     """The manifest spells the bounded name, and the code computes that name."""
     from kanibako.commands.start import helper_socket_path
@@ -607,11 +598,13 @@ def _check_helper_socket_row(raw: object) -> None:
     # (``channels.channels.WS_TOKEN_*``), which address a path and never a name.
     ws_names = {"primary": "primary", "named": _StubGroup.name, "standalone": "standalone"}
     for mode, ws_name in ws_names.items():
-        for box_name in ("app", "x" * 120, "箱" * 30):
+        # A name holds no ``-`` (spec §0), so a segment is written as it is; the
+        # 64-character name puts the path past the bound, so the hash arm is reached.
+        for box_name in ("app", "x" * 64):
             proj = _StubChannelProject(BoxMode(mode))
             proj.name = box_name
-            identity = (cell["t"].replace("{meta.box.name}", _spec_segment(box_name))
-                        .replace("{meta.workset.name}", _spec_segment(ws_name)))
+            identity = (cell["t"].replace("{meta.box.name}", box_name)
+                        .replace("{meta.workset.name}", ws_name))
             assert "@" not in identity, f"unrendered ref in {cell['t']!r}"
             want = run_dir / _spec_socket_name(identity, run_dir)
             assert helper_socket_path(proj, run_dir) == want, (mode, box_name)
@@ -1112,7 +1105,7 @@ class TestValueAgentIdentity:
     @staticmethod
     def _identity(agent: str) -> dict[str, object]:
         return meta_identity_floor(
-            box_name="conformance-box", project_path="/p", inbox="/i",
+            box_name="conformance_box", project_path="/p", inbox="/i",
             share_global="/g", share_workset="/s", agent_name=agent,
         )
 
@@ -1151,7 +1144,7 @@ class TestValueAgentIdentity:
         """Anti-vacuity: the literals above fire for the shell NODE, not for a box with
         no agent at all — ``agent_name=None`` must carry no ``meta.agent.*`` key."""
         floor = meta_identity_floor(
-            box_name="conformance-box", project_path="/p", inbox="/i",
+            box_name="conformance_box", project_path="/p", inbox="/i",
             share_global="/g", share_workset="/s", agent_name=None,
         )
         assert [k for k in floor if k.startswith("meta.agent.")] == []
@@ -1170,7 +1163,7 @@ class TestValueAgentIdentity:
 class _ProbeNamedBox(_StubChannelProject):
     """A channel stub WITH a name — ``box_channel_addresses`` raises on a nameless box."""
 
-    name = "conformance-box"
+    name = "conformance_box"
 
 
 class TestValueBoxAddresses:
@@ -1267,11 +1260,11 @@ class TestValueBoxAddresses:
         ``<the user's real project dir>`` and the per-mode ``<construct-time>`` arms are
         PROSE about values composed outside any floor, asserted verbatim above."""
         floor = meta_identity_floor(
-            box_name="conformance-box", project_path="/p", inbox="/i",
+            box_name="conformance_box", project_path="/p", inbox="/i",
             share_global="/g", share_workset=None, agent_name=None,
         )
         assert floor["meta.box.workspace"] == "/p"
-        assert floor["meta.box.name"] == "conformance-box"
+        assert floor["meta.box.name"] == "conformance_box"
 
     def test_the_standalone_name_is_the_composed_kuid_leaf(self):
         """The standalone arm's formula ``{workset.kuid}_%leaf({meta.workset.path})%``
@@ -1386,12 +1379,12 @@ class TestNoValueExemptions:
         from kanibako.utils import container_name_for
 
         named = SimpleNamespace(
-            mode=SimpleNamespace(value="named"), name="conformance-box",
-            project_hash="ab" * 32, metadata_path=Path("/ws/conformance-box"),
+            mode=SimpleNamespace(value="named"), name="conformance_box",
+            project_hash="ab" * 32, metadata_path=Path("/ws/conformance_box"),
             group=SimpleNamespace(name="demo"),
         )
-        # the ``-`` inside the box name is the escaped ``--`` the render writes
-        assert container_name_for(named) == "kb-demo-conformance--box"
+        # no escape: a name holds no ``-`` (spec §0)
+        assert container_name_for(named) == "kb-demo-conformance_box"
         standalone = SimpleNamespace(
             mode=SimpleNamespace(value="standalone"), name="7xk9q_ws",
             project_hash="ab" * 32, metadata_path=Path("/x/y"), group=None,

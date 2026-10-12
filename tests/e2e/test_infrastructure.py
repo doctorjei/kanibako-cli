@@ -24,18 +24,18 @@ class TestMountStubs:
         project = e2e_env["project"]
 
         result = run_kanibako(
-            ["create", str(project), "--name", "e2e-stubs"],
+            ["create", str(project), "--name", "e2e_stubs"],
             env=env,
         )
         assert result.returncode == 0
 
         # Start a container so mount stubs get created
         run_kanibako(
-            ["start", "e2e-stubs",
+            ["start", "e2e_stubs",
              "-e", "CLAUDE_STUB_MODE=long-running"],
             env=env,
         )
-        wait_for_container(box_container("e2e-stubs"), timeout=15)
+        wait_for_container(box_container("e2e_stubs"), timeout=15)
 
         # Resolve the box metadata dir THROUGH the real path resolver (boxes are
         # workset-scoped: .../kanibako/<workset>/boxes/<name>, not the legacy

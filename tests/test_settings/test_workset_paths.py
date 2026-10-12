@@ -38,12 +38,12 @@ class TestWorksetSpecFromWorkset:
 @pytest.fixture
 def workset_env(std, config, tmp_home):
     """Create a workset with one project and return (ws, project_name)."""
-    ws_root = tmp_home / "worksets" / "my-set"
-    ws = create_workset("my-set", ws_root, std)
+    ws_root = tmp_home / "worksets" / "my_set"
+    ws = create_workset("my_set", ws_root, std)
     source = tmp_home / "original-project"
     source.mkdir()
-    add_project(ws, "cool-app", source)
-    return ws, "cool-app"
+    add_project(ws, "cool_app", source)
+    return ws, "cool_app"
 
 
 # ---------------------------------------------------------------------------
@@ -219,42 +219,42 @@ class TestIterWorksetProjects:
     def test_iter_workset_projects_normal(self, std, config, tmp_home):
         from kanibako.settings.paths import iter_workset_projects
 
-        ws_root = tmp_home / "worksets" / "iter-set"
-        ws = create_workset("iter-set", ws_root, std)
+        ws_root = tmp_home / "worksets" / "iter_set"
+        ws = create_workset("iter_set", ws_root, std)
         source = tmp_home / "iter-src"
         source.mkdir()
-        add_project(ws, "proj-a", source)
+        add_project(ws, "proj_a", source)
 
         results = iter_workset_projects(std, config)
         assert len(results) == 1
         ws_name, ws_obj, project_list = results[0]
-        assert ws_name == "iter-set"
+        assert ws_name == "iter_set"
         assert len(project_list) == 1
-        assert project_list[0] == ("proj-a", "ok")
+        assert project_list[0] == ("proj_a", "ok")
 
     def test_iter_workset_projects_missing_workspace(self, std, config, tmp_home):
         import shutil
         from kanibako.settings.paths import iter_workset_projects
 
-        ws_root = tmp_home / "worksets" / "miss-set"
-        ws = create_workset("miss-set", ws_root, std)
+        ws_root = tmp_home / "worksets" / "miss_set"
+        ws = create_workset("miss_set", ws_root, std)
         source = tmp_home / "miss-src"
         source.mkdir()
-        add_project(ws, "miss-proj", source)
+        add_project(ws, "miss_proj", source)
         # Remove workspace dir
-        shutil.rmtree(ws.workspaces_dir / "miss-proj")
+        shutil.rmtree(ws.workspaces_dir / "miss_proj")
 
         results = iter_workset_projects(std, config)
         assert len(results) == 1
         _, _, project_list = results[0]
-        assert project_list[0] == ("miss-proj", "missing")
+        assert project_list[0] == ("miss_proj", "missing")
 
     def test_iter_workset_projects_missing_root(self, std, config, tmp_home, capsys):
         import shutil
         from kanibako.settings.paths import iter_workset_projects
 
-        ws_root = tmp_home / "worksets" / "gone-set"
-        create_workset("gone-set", ws_root, std)
+        ws_root = tmp_home / "worksets" / "gone_set"
+        create_workset("gone_set", ws_root, std)
         shutil.rmtree(ws_root)
 
         results = iter_workset_projects(std, config)

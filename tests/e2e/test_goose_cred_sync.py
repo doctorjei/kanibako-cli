@@ -72,7 +72,7 @@ class TestGooseCredSync:
         project = goose_e2e_env["project"]
 
         result = run_kanibako(
-            ["create", str(project), "--name", "e2e-goose-seed"],
+            ["create", str(project), "--name", "e2e_goose_seed"],
             env=env,
         )
         assert result.returncode == 0, (
@@ -82,15 +82,15 @@ class TestGooseCredSync:
         # --agent goose forces GooseTarget selection; long-running keeps the box
         # up so we can exec into it.
         run_kanibako(
-            ["start", "e2e-goose-seed", "--agent", "goose",
+            ["start", "e2e_goose_seed", "--agent", "goose",
              "-e", "GOOSE_STUB_MODE=long-running"],
             env=env,
         )
-        wait_for_container(box_container("e2e-goose-seed"), timeout=15)
+        wait_for_container(box_container("e2e_goose_seed"), timeout=15)
 
         # The secrets file must exist in the box...
         exists = podman_exec(
-            box_container("e2e-goose-seed"),
+            box_container("e2e_goose_seed"),
             ["test", "-f", BOX_SECRETS],
         )
         assert exists.returncode == 0, (
@@ -99,7 +99,7 @@ class TestGooseCredSync:
 
         # ...and carry the KNOWN host token (the seed/refresh sync sentinel).
         cat_result = podman_exec(
-            box_container("e2e-goose-seed"),
+            box_container("e2e_goose_seed"),
             ["cat", BOX_SECRETS],
         )
         assert GOOSE_SECRETS_TOKEN in cat_result.stdout, (
@@ -124,7 +124,7 @@ class TestGooseCredSync:
         host_secrets = goose_e2e_env["secrets_path"]
 
         result = run_kanibako(
-            ["create", str(project), "--name", "e2e-goose-writeback"],
+            ["create", str(project), "--name", "e2e_goose_writeback"],
             env=env,
         )
         assert result.returncode == 0, (
@@ -132,17 +132,17 @@ class TestGooseCredSync:
         )
 
         run_kanibako(
-            ["start", "e2e-goose-writeback", "--agent", "goose",
+            ["start", "e2e_goose_writeback", "--agent", "goose",
              "-e", "GOOSE_STUB_MODE=long-running"],
             env=env,
         )
-        wait_for_container(box_container("e2e-goose-writeback"), timeout=15)
+        wait_for_container(box_container("e2e_goose_writeback"), timeout=15)
 
         # Modify the in-box secrets file with a NEW recognizable token, then bump
         # its mtime well past the host file so the mtime_gate lets writeback copy.
         new_token = "e2e-goose-writeback-bobcat-5678"
         write = podman_exec(
-            box_container("e2e-goose-writeback"),
+            box_container("e2e_goose_writeback"),
             ["sh", "-c",
              f"printf 'ANTHROPIC_API_KEY: {new_token}\\n' > {BOX_SECRETS} && "
              f"touch -d '2099-01-01' {BOX_SECRETS}"],
@@ -154,7 +154,7 @@ class TestGooseCredSync:
         # Stop the box: stop.py sources KANIBAKO_AGENT=goose from the container
         # and funnels through writeback_session_credentials ->
         # writeback_cred_files (project -> host).
-        stop = run_kanibako(["stop", "e2e-goose-writeback"], env=env)
+        stop = run_kanibako(["stop", "e2e_goose_writeback"], env=env)
         assert stop.returncode == 0, (
             f"stop failed: {stop.stdout}\n{stop.stderr}"
         )

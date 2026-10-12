@@ -306,19 +306,18 @@ def test_expand_ref_ends_at_nonname_char() -> None:
     assert seen == ["a.b.c"]
 
 
-def test_expand_bare_ref_swallows_hyphen_braces_are_the_escape() -> None:
-    # ⚑ ``-`` is a NAME character (a node-name may contain one — see
-    # ``_REF_SEG``), so it does NOT terminate a bare ref: ``@a.b.c-y`` is the
-    # single name ``a.b.c-y``.  A LITERAL ``-`` suffix after a ref is spelled
-    # with the braced form, which is exactly what PHASE R's ``@{...}`` exists for.
+def test_expand_bare_ref_ends_at_a_hyphen_braces_agree() -> None:
+    # ⚑ ``-`` is not a NAME character (spec §0), so it ends a bare ref:
+    # ``@a.b.c-y`` is the name ``a.b.c`` and the literal ``-y``, as the braced
+    # form spells it too.
     seen: list[str] = []
 
     def lookup(ref: str, chain: tuple[str, ...]) -> str:
         seen.append(ref)
         return "/x"
 
-    assert expand_expr("@a.b.c-y", space="host", ctx=make_ctx(), lookup=lookup) == "/x"
-    assert seen == ["a.b.c-y"]
+    assert expand_expr("@a.b.c-y", space="host", ctx=make_ctx(), lookup=lookup) == "/x-y"
+    assert seen == ["a.b.c"]
 
     seen.clear()
     assert (
@@ -413,13 +412,13 @@ def test_expand_braced_ref_admits_persona_separator() -> None:
 
 
 @pytest.mark.parametrize("node", [f"navigator{CANONICAL_SEP}claude",
-                                  f"kimi-k3{CANONICAL_SEP}claude"])
-def test_ref_name_admits_hyphenated_node_name(node: str) -> None:
-    # ``agent_ref._SAFE_EXTRA`` admits ``-`` inside a persona/harness segment, so
-    # a node-name that is a KEY SEGMENT may contain one.  The ref grammar must
-    # admit it too, or ``@meta.agent.kimi-k3℘claude.auth.share_support`` truncates
-    # to the (absent) name ``meta.agent.kimi`` and leaves the rest as a literal
-    # suffix — silent garbage in a path key, a crash in a bool key.
+                                  f"kimi_k3{CANONICAL_SEP}claude"])
+def test_ref_name_admits_an_underscored_node_name(node: str) -> None:
+    # A node-name is a KEY SEGMENT, and the ref grammar is composed from the name
+    # rule's charset (spec §0), so every node a persona/harness may spell is matched
+    # whole — or ``@meta.agent.<node>.auth.share_support`` would truncate mid-node
+    # and leave the rest as a literal suffix: silent garbage in a path key, a crash
+    # in a bool key.
     ref_name = f"meta.agent.{node}.auth.share_support"
     assert match_ref("@" + ref_name, 0) == (ref_name, len(ref_name) + 1)
     # The braced spelling shares ``_REF_SEG``, so it must agree (before the fix
@@ -428,8 +427,8 @@ def test_ref_name_admits_hyphenated_node_name(node: str) -> None:
 
 
 @pytest.mark.parametrize("node", [f"navigator{CANONICAL_SEP}claude",
-                                  f"kimi-k3{CANONICAL_SEP}claude"])
-def test_expand_ref_admits_hyphenated_node_name(node: str) -> None:
+                                  f"kimi_k3{CANONICAL_SEP}claude"])
+def test_expand_ref_admits_an_underscored_node_name(node: str) -> None:
     # The whole-expression route agrees with the raw grammar, bare and braced.
     ref_name = f"meta.agent.{node}.auth.share_support"
     seen: list[str] = []
@@ -446,52 +445,14 @@ def test_expand_ref_admits_hyphenated_node_name(node: str) -> None:
     assert seen == [ref_name, ref_name]
 
 
-@pytest.mark.parametrize(
-    "node",
-    [
-        f"漢字{CANONICAL_SEP}claude",
-        f"café{CANONICAL_SEP}claude",
-        f"яндекс{CANONICAL_SEP}claude",
-        f"über_k3{CANONICAL_SEP}claude",
-    ],
-)
-def test_ref_name_admits_non_ascii_node_name(node: str) -> None:
-    # A persona may be named in ANY language (Jei, 2026-08-04), so a node-name —
-    # which is a KEY SEGMENT — may hold non-ASCII word characters.  ``_REF_SEG``
-    # is built from ``\w`` for exactly this reason: an ASCII-only class truncated
-    # ``@meta.agent.漢字℘claude.auth.share_support`` to the absent name
-    # ``meta.agent.`` and left the rest as a literal suffix — the SAME failure as
-    # the hyphen bug (silent ``""`` in a path key, ``expected bool, got str`` in
-    # a bool key).  Leftover MUST be empty.
-    ref_name = f"meta.agent.{node}.auth.share_support"
-    assert match_ref("@" + ref_name, 0) == (ref_name, len(ref_name) + 1)
-    assert match_ref("@{" + ref_name + "}", 0) == (ref_name, len(ref_name) + 3)
-
-
-@pytest.mark.parametrize(
-    "node",
-    [
-        f"漢字{CANONICAL_SEP}claude",
-        f"café{CANONICAL_SEP}claude",
-        f"яндекс{CANONICAL_SEP}claude",
-    ],
-)
-def test_expand_ref_admits_non_ascii_node_name(node: str) -> None:
-    # End-to-end through the expression route: the ref resolves WHOLE, with no
-    # literal remainder glued onto the resolved value.
-    ref_name = f"meta.agent.{node}.auth.share_support"
-    seen: list[str] = []
-
-    def lookup(ref: str, chain: tuple[str, ...]) -> str:
-        seen.append(ref)
-        return "true"
-
-    bare = expand_expr("@" + ref_name, space="host", ctx=make_ctx(), lookup=lookup)
-    braced = expand_expr(
-        "@{" + ref_name + "}", space="host", ctx=make_ctx(), lookup=lookup
-    )
-    assert bare == braced == "true"
-    assert seen == [ref_name, ref_name]
+@pytest.mark.parametrize("node", ["漢字", "café", "яндекс"])
+def test_a_non_ascii_character_ends_a_bare_ref(node: str) -> None:
+    # A persona or harness name is ASCII (spec §0), and the ref grammar is composed
+    # from the same charset, so a non-ASCII character is not part of a ref name.
+    ref = f"@meta.agent.{node}{CANONICAL_SEP}claude.auth"
+    name, end = match_ref(ref, 0)
+    assert node not in name and name.startswith("meta.agent")
+    assert end < len(ref)
 
 
 def test_expand_brace_not_after_at_opens_a_braced_ref() -> None:

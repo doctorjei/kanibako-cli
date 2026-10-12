@@ -355,9 +355,8 @@ def test_embedded_absent_token_to_empty_keeps_key() -> None:
 def test_embedded_present_none_makes_the_whole_value_none() -> None:
     # Spec §0 ([R186]): "An embedded reference to a present <None> makes the whole
     # value <None>." — the key SURVIVES as a present None, never as "x--z".
-    # ⚑ The ref is BRACED because ``-`` is a ref-name character (a persona
-    # node-name may contain one — ``settings_resolve._REF_SEG``); bare ``@y-z``
-    # would be the single name ``y-z``.
+    # ⚑ The ref is BRACED for clarity; ``-`` is not a ref-name character (spec §0),
+    # so bare ``@y-z`` would read the same.
     snap = KeyStore({"name": "x-@{y}-z", "y": None})
     out = expand(snap, _ctx())
     assert _probe(out, "name") is None

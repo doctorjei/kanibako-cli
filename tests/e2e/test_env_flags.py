@@ -35,14 +35,14 @@ class TestEnvForwarding:
         project = e2e_env["project"]
 
         result = run_kanibako(
-            ["create", str(project), "--name", "e2e-env-fwd"],
+            ["create", str(project), "--name", "e2e_env_fwd"],
             env=env,
         )
         assert result.returncode == 0, f"create failed: {result.stderr}"
 
         # -e and --ephemeral both placed AFTER the project positional.
         result = run_kanibako(
-            ["shell", "e2e-env-fwd", "--ephemeral",
+            ["shell", "e2e_env_fwd", "--ephemeral",
              "-e", "KANIBAKO_E2E_MARKER=marker-xyz-123",
              "--", "printenv", "KANIBAKO_E2E_MARKER"],
             env=env,
@@ -73,13 +73,13 @@ class TestFlagAfterPositional:
         project = e2e_env["project"]
 
         result = run_kanibako(
-            ["create", str(project), "--name", "e2e-flag-order"],
+            ["create", str(project), "--name", "e2e_flag_order"],
             env=env,
         )
         assert result.returncode == 0, f"create failed: {result.stderr}"
 
         result = run_kanibako(
-            ["start", "e2e-flag-order",
+            ["start", "e2e_flag_order",
              "-e", "CLAUDE_STUB_MODE=session",
              "-e", "CLAUDE_STUB_SLEEP=1",
              "--ephemeral"],

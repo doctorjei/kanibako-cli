@@ -243,8 +243,8 @@ class TestResolveTarget:
         settings/paths.py, fixed by excluding the type rather than the message.
         """
         config, std, tmp_home = env
-        _make_materialized_member(env, "cluster-a", "dup")
-        _make_materialized_member(env, "cluster-b", "dup")
+        _make_materialized_member(env, "cluster_a", "dup")
+        _make_materialized_member(env, "cluster_b", "dup")
 
         # cwd OUTSIDE both worksets: that is the only context where the name is
         # ambiguous at all (inside one, step 1 resolves it).
@@ -258,8 +258,8 @@ class TestResolveTarget:
         assert "Ambiguous box name" in message
         # Candidates by QUALIFIED name, not workspace path: workset.workspaces is
         # settable, so a registered path need not name the workset it belongs to.
-        assert "cluster-a/dup" in message
-        assert "cluster-b/dup" in message
+        assert "cluster_a/dup" in message
+        assert "cluster_b/dup" in message
         assert "<workset>/dup" in message
 
     def test_unambiguous_member_name_still_resolves(self, env, monkeypatch):
@@ -272,15 +272,15 @@ class TestResolveTarget:
         from kanibako.errors import AmbiguousNameError
 
         config, std, tmp_home = env
-        workspace = _make_materialized_member(env, "solo", "solo-box")
+        workspace = _make_materialized_member(env, "solo", "solo_box")
 
         cwd = tmp_home / "cwd"
         cwd.mkdir()
         monkeypatch.chdir(cwd)
 
-        with pytest.raises(AmbiguousNameError, match="'solo/solo-box'"):
-            resolve_lifecycle_target("solo-box", std, config)
-        state = resolve_lifecycle_target("solo/solo-box", std, config)
+        with pytest.raises(AmbiguousNameError, match="'solo/solo_box'"):
+            resolve_lifecycle_target("solo_box", std, config)
+        state = resolve_lifecycle_target("solo/solo_box", std, config)
         assert state.owner == "workset:solo"
         assert state.workspace_path == workspace.resolve()
 

@@ -150,7 +150,7 @@ class TestResolveByPath:
         # refuse-invent raises an honest error rather than path-ifying to a
         # nonexistent cwd-relative dir + minting a phantom kanibako-<hash>.
         with pytest.raises(ProjectError):
-            resolve_box_target(std, config, "no-such-box")
+            resolve_box_target(std, config, "no_such_box")
 
     def test_unknown_bare_name_does_not_mint_phantom_box(
         self, std, config, tmp_home, monkeypatch,
@@ -160,16 +160,16 @@ class TestResolveByPath:
 
         Mutation proof: dropping the ``if not initialize: raise`` guard in
         ``resolve_any_project`` makes this NOT raise (it path-ifies to
-        ``cwd/no-such-box`` and, since that dir is absent, surfaces a different
+        ``cwd/no_such_box`` and, since that dir is absent, surfaces a different
         error or a hash box), reddening the assertion on the message.
         """
         cwd = tmp_home / "somewhere"
         cwd.mkdir()
         monkeypatch.chdir(cwd)
         # The honest name-based error, NOT the path-ified "Project path
-        # '<cwd>/no-such-box' does not exist" that the fall-through produced.
+        # '<cwd>/no_such_box' does not exist" that the fall-through produced.
         with pytest.raises(ProjectError, match="Unknown project or workset"):
-            resolve_box_target(std, config, "no-such-box", initialize=False)
+            resolve_box_target(std, config, "no_such_box", initialize=False)
 
 
 # ---------------------------------------------------------------------------
@@ -444,8 +444,8 @@ class TestAmbiguousNameNotShadowedByFolder:
     ):
         """A name that is a member of TWO worksets errors, even beside a folder.
 
-        The defect this pins: ``alpha`` is registered in ``cluster-a`` AND
-        ``cluster-b``, and cwd also holds a plain ``./alpha`` directory.
+        The defect this pins: ``alpha`` is registered in ``cluster_a`` AND
+        ``cluster_b``, and cwd also holds a plain ``./alpha`` directory.
         ``resolve_box_target`` consults the NAME route for any real name token
         (that is what makes a name beat a same-named folder), so the ambiguity
         error is raised -- and then ``except ProjectError: pass`` discarded it,
@@ -456,8 +456,8 @@ class TestAmbiguousNameNotShadowedByFolder:
         test_unregistered_bare_folder_name_still_resolves_as_a_path).  It is
         "did the NAME route raise AMBIGUITY specifically".
         """
-        _make_member(std, config, tmp_home, "cluster-a", "alpha")
-        _make_member(std, config, tmp_home, "cluster-b", "alpha")
+        _make_member(std, config, tmp_home, "cluster_a", "alpha")
+        _make_member(std, config, tmp_home, "cluster_b", "alpha")
 
         cwd = tmp_home / "cwd"
         cwd.mkdir()
@@ -470,8 +470,8 @@ class TestAmbiguousNameNotShadowedByFolder:
         # settable, so a registered path need not contain its workset name.
         message = str(excinfo.value)
         assert "Ambiguous box name" in message
-        assert "cluster-a/alpha" in message
-        assert "cluster-b/alpha" in message
+        assert "cluster_a/alpha" in message
+        assert "cluster_b/alpha" in message
         assert "<workset>/alpha" in message
 
     def test_a_same_named_folder_outranks_members_outside_the_space(
@@ -479,8 +479,8 @@ class TestAmbiguousNameNotShadowedByFolder:
     ):
         """S8: the path (it exists, a valid path in the spec's terms) ranks before
         the out-of-space member error, so ``./alpha`` is the designation."""
-        _make_member(std, config, tmp_home, "cluster-a", "alpha")
-        _make_member(std, config, tmp_home, "cluster-b", "alpha")
+        _make_member(std, config, tmp_home, "cluster_a", "alpha")
+        _make_member(std, config, tmp_home, "cluster_b", "alpha")
 
         cwd = tmp_home / "cwd"
         folder = cwd / "alpha"
@@ -502,8 +502,8 @@ class TestAmbiguousNameNotShadowedByFolder:
         name HERE -- the reachable form of this bug is the token with no folder
         at all, which must still be refused rather than path-ified.
         """
-        _make_member(std, config, tmp_home, "cluster-a", "beta")
-        _make_member(std, config, tmp_home, "cluster-b", "beta")
+        _make_member(std, config, tmp_home, "cluster_a", "beta")
+        _make_member(std, config, tmp_home, "cluster_b", "beta")
 
         cwd = tmp_home / "cwd"
         cwd.mkdir()
@@ -525,8 +525,8 @@ class TestAmbiguousNameNotShadowedByFolder:
         the user never asked for and hides the two boxes they must choose
         between.  Same handler narrowing as the read path, so it is pinned here.
         """
-        _make_member(std, config, tmp_home, "cluster-a", "beta")
-        _make_member(std, config, tmp_home, "cluster-b", "beta")
+        _make_member(std, config, tmp_home, "cluster_a", "beta")
+        _make_member(std, config, tmp_home, "cluster_b", "beta")
 
         cwd = tmp_home / "cwd"
         cwd.mkdir()
@@ -553,8 +553,8 @@ class TestAmbiguousNameNotShadowedByFolder:
         folder -- which must surface the actionable error rather than the strictly
         worse ``Project path '<cwd>/delta' does not exist``.
         """
-        _make_member(std, config, tmp_home, "cluster-a", "delta")
-        _make_member(std, config, tmp_home, "cluster-b", "delta")
+        _make_member(std, config, tmp_home, "cluster_a", "delta")
+        _make_member(std, config, tmp_home, "cluster_b", "delta")
 
         cwd = tmp_home / "cwd"
         cwd.mkdir()
@@ -565,8 +565,8 @@ class TestAmbiguousNameNotShadowedByFolder:
         # Actionable, exactly like the other two front doors: qualified names.
         message = str(excinfo.value)
         assert "Ambiguous box name" in message
-        assert "cluster-a/delta" in message
-        assert "cluster-b/delta" in message
+        assert "cluster_a/delta" in message
+        assert "cluster_b/delta" in message
         assert "<workset>/delta" in message
 
     def test_unknown_name_through_resolve_project_still_pathifies(
@@ -616,7 +616,8 @@ class TestDesignationRoute:
         [
             (None, False, DesignationRoute.CWD),
             ("", True, DesignationRoute.CWD),
-            ("absent-name", False, DesignationRoute.NAME),
+            ("absent_name", False, DesignationRoute.NAME),
+            ("absent-name", False, DesignationRoute.PATH),  # `-` breaks the name rule (spec §0)
             ("present", False, DesignationRoute.PATH),
             ("present", True, DesignationRoute.NAME),
             (".hidden", False, DesignationRoute.PATH),

@@ -497,8 +497,8 @@ class TestProjectMeta:
         from kanibako.project.workset import add_project, create_workset
         config = load_config(config_file)
         std = load_std_paths(config)
-        ws_root = tmp_home / "worksets" / "meta-ws"
-        ws = create_workset("meta-ws", ws_root, std)
+        ws_root = tmp_home / "worksets" / "meta_ws"
+        ws = create_workset("meta_ws", ws_root, std)
         add_project(ws, "metaproj", tmp_home / "project")
 
         proj = resolve_workset_project(WorksetSpec.from_workset(ws), "metaproj", std, config, initialize=True)
@@ -620,8 +620,8 @@ class TestDetectBoxMode:
         std = load_std_paths(config)
 
         from kanibako.project.workset import create_workset
-        ws_root = tmp_home / "worksets" / "my-set"
-        create_workset("my-set", ws_root, std)
+        ws_root = tmp_home / "worksets" / "my_set"
+        create_workset("my_set", ws_root, std)
 
         # Create a project dir inside the workset's workspaces/
         proj_dir = ws_root.resolve() / "workspaces" / "my-proj"
@@ -636,8 +636,8 @@ class TestDetectBoxMode:
         std = load_std_paths(config)
 
         from kanibako.project.workset import create_workset
-        ws_root = tmp_home / "worksets" / "my-set"
-        create_workset("my-set", ws_root, std)
+        ws_root = tmp_home / "worksets" / "my_set"
+        create_workset("my_set", ws_root, std)
 
         proj_dir = ws_root.resolve() / "workspaces" / "my-proj"
         proj_dir.mkdir(parents=True)
@@ -793,8 +793,8 @@ class TestDetectBoxMode:
         std = load_std_paths(config)
 
         from kanibako.project.workset import create_workset
-        ws_root = tmp_home / "worksets" / "my-set"
-        create_workset("my-set", ws_root, std)
+        ws_root = tmp_home / "worksets" / "my_set"
+        create_workset("my_set", ws_root, std)
 
         result = detect_project_mode(ws_root.resolve(), std, config)
         assert result.mode is BoxMode.named
@@ -805,8 +805,8 @@ class TestDetectBoxMode:
         std = load_std_paths(config)
 
         from kanibako.project.workset import create_workset
-        ws_root = tmp_home / "worksets" / "my-set"
-        create_workset("my-set", ws_root, std)
+        ws_root = tmp_home / "worksets" / "my_set"
+        create_workset("my_set", ws_root, std)
 
         subdir = ws_root / "some" / "subdir"
         subdir.mkdir(parents=True)
@@ -890,7 +890,7 @@ class TestDetectBoxMode:
         config = load_config(config_file)
         std = load_std_paths(config)
 
-        ws = create_workset("my-set", tmp_home / "worksets" / "my-set", std)
+        ws = create_workset("my_set", tmp_home / "worksets" / "my_set", std)
 
         # A standalone box at an EXTERNAL dir (outside the workset tree): the
         # in-place marker (the root workset.yaml registry null) plus a global
@@ -1072,8 +1072,8 @@ class TestResolveAnyProject:
         std = load_std_paths(config)
 
         from kanibako.project.workset import add_project, create_workset
-        ws_root = tmp_home / "worksets" / "my-set"
-        ws = create_workset("my-set", ws_root, std)
+        ws_root = tmp_home / "worksets" / "my_set"
+        ws = create_workset("my_set", ws_root, std)
         add_project(ws, "myproj", tmp_home / "project")
 
         proj_dir = ws.workspaces_dir / "myproj"
@@ -1089,8 +1089,8 @@ class TestResolveAnyProject:
         std = load_std_paths(config)
 
         from kanibako.project.workset import add_project, create_workset
-        ws_root = tmp_home / "worksets" / "my-set"
-        ws = create_workset("my-set", ws_root, std)
+        ws_root = tmp_home / "worksets" / "my_set"
+        ws = create_workset("my_set", ws_root, std)
         add_project(ws, "myproj", tmp_home / "project")
 
         subdir = ws.workspaces_dir / "myproj" / "src"
@@ -1106,8 +1106,8 @@ class TestResolveAnyProject:
         std = load_std_paths(config)
 
         from kanibako.project.workset import add_project, create_workset
-        ws_root = tmp_home / "worksets" / "my-set"
-        ws = create_workset("my-set", ws_root, std)
+        ws_root = tmp_home / "worksets" / "my_set"
+        ws = create_workset("my_set", ws_root, std)
         add_project(ws, "myproj", tmp_home / "project")
 
         proj_dir = ws.workspaces_dir / "myproj"
@@ -1122,8 +1122,8 @@ class TestResolveAnyProject:
         std = load_std_paths(config)
 
         from kanibako.project.workset import create_workset
-        ws_root = tmp_home / "worksets" / "my-set"
-        create_workset("my-set", ws_root, std)
+        ws_root = tmp_home / "worksets" / "my_set"
+        create_workset("my_set", ws_root, std)
 
         with pytest.raises(WorksetError, match="not in a specific project"):
             resolve_any_project(std, config, project_dir=str(ws_root), initialize=False)
@@ -1169,14 +1169,14 @@ class TestFindWorksetForPath:
         std = load_std_paths(config)
 
         from kanibako.project.workset import add_project, create_workset
-        ws_root = tmp_home / "worksets" / "my-set"
-        ws = create_workset("my-set", ws_root, std)
+        ws_root = tmp_home / "worksets" / "my_set"
+        ws = create_workset("my_set", ws_root, std)
         add_project(ws, "myproj", tmp_home / "project")
 
         proj_dir = (ws.workspaces_dir / "myproj").resolve()
         found_ws, found_name = _find_workset_for_path(proj_dir, std)
 
-        assert found_ws.name == "my-set"
+        assert found_ws.name == "my_set"
         assert found_name == "myproj"
 
     def test_find_workset_for_path_no_match_raises(self, config_file, tmp_home):
@@ -1193,11 +1193,11 @@ class TestFindWorksetForPath:
         std = load_std_paths(config)
 
         from kanibako.project.workset import create_workset
-        ws_root = tmp_home / "worksets" / "my-set"
-        create_workset("my-set", ws_root, std)
+        ws_root = tmp_home / "worksets" / "my_set"
+        create_workset("my_set", ws_root, std)
 
         found_ws, found_name = _find_workset_for_path(ws_root.resolve(), std)
-        assert found_ws.name == "my-set"
+        assert found_ws.name == "my_set"
         assert found_name is None
 
     def test_find_workset_for_path_subdir_of_root_returns_none_project(self, config_file, tmp_home):
@@ -1206,14 +1206,14 @@ class TestFindWorksetForPath:
         std = load_std_paths(config)
 
         from kanibako.project.workset import create_workset
-        ws_root = tmp_home / "worksets" / "my-set"
-        create_workset("my-set", ws_root, std)
+        ws_root = tmp_home / "worksets" / "my_set"
+        create_workset("my_set", ws_root, std)
 
         subdir = ws_root / "vault" / "stuff"
         subdir.mkdir(parents=True)
 
         found_ws, found_name = _find_workset_for_path(subdir.resolve(), std)
-        assert found_ws.name == "my-set"
+        assert found_ws.name == "my_set"
         assert found_name is None
 
 
@@ -1226,13 +1226,13 @@ class TestResolveWorksetOrConnected:
         std = load_std_paths(config)
 
         from kanibako.project.workset import add_project, create_workset
-        ws_root = tmp_home / "worksets" / "in-set"
-        ws = create_workset("in-set", ws_root, std)
+        ws_root = tmp_home / "worksets" / "in_set"
+        ws = create_workset("in_set", ws_root, std)
         add_project(ws, "myproj", tmp_home / "project")
 
         proj_dir = (ws.workspaces_dir / "myproj").resolve()
         found_ws, found_name = _resolve_workset_or_connected(proj_dir, std)
-        assert found_ws.name == "in-set"
+        assert found_ws.name == "in_set"
         assert found_name == "myproj"
 
     def test_external_connected_path_resolves_via_fallback(self, config_file, tmp_home):
@@ -1241,14 +1241,14 @@ class TestResolveWorksetOrConnected:
         std = load_std_paths(config)
 
         from kanibako.project.workset import add_project, create_workset
-        ws_root = tmp_home / "worksets" / "ext-set"
-        ws = create_workset("ext-set", ws_root, std)
+        ws_root = tmp_home / "worksets" / "ext_set"
+        ws = create_workset("ext_set", ws_root, std)
         external = tmp_home / "external_repo"
         external.mkdir()
         add_project(ws, "extproj", external, std)
 
         found_ws, found_name = _resolve_workset_or_connected(external.resolve(), std)
-        assert found_ws.name == "ext-set"
+        assert found_ws.name == "ext_set"
         assert found_name == "extproj"
 
     def test_unknown_path_raises(self, config_file, tmp_home):
@@ -1408,8 +1408,8 @@ class TestConnectedExternal:
         config = load_config(config_file)
         std = load_std_paths(config)
         from kanibako.project.workset import add_project, create_workset
-        ws_root = tmp_home / "worksets" / "ext-set"
-        ws = create_workset("ext-set", ws_root, std)
+        ws_root = tmp_home / "worksets" / "ext_set"
+        ws = create_workset("ext_set", ws_root, std)
         external = (tmp_home / "external_repo").resolve()
         external.mkdir()
         add_project(ws, "extproj", external, std)
@@ -1425,7 +1425,7 @@ class TestConnectedExternal:
         proj = resolve_any_project(std, config, project_dir=str(external))
         assert proj.group is not None
         assert proj.group.is_default is False
-        assert proj.group.name == "ext-set"
+        assert proj.group.name == "ext_set"
         assert proj.project_path == external
 
     def test_resolve_from_external_subdir(self, config_file, tmp_home):
@@ -1440,7 +1440,7 @@ class TestConnectedExternal:
         proj = resolve_any_project(std, config, project_dir=str(subdir))
         assert proj.group is not None
         assert proj.group.is_default is False
-        assert proj.group.name == "ext-set"
+        assert proj.group.name == "ext_set"
         assert proj.project_path == external
 
     def test_resolve_from_symlink_matches_external(self, config_file, tmp_home):
@@ -1452,7 +1452,7 @@ class TestConnectedExternal:
         proj = resolve_any_project(std, config, project_dir=str(link))
         assert proj.group is not None
         assert proj.group.is_default is False
-        assert proj.group.name == "ext-set"
+        assert proj.group.name == "ext_set"
         assert proj.project_path == external
 
 
@@ -1466,7 +1466,7 @@ class TestP7ConnectRegistry:
         config = load_config(config_file)
         std = load_std_paths(config)
         from kanibako.project.workset import add_project, create_workset
-        ws = create_workset("ext-set", tmp_home / "worksets" / "ext-set", std)
+        ws = create_workset("ext_set", tmp_home / "worksets" / "ext_set", std)
         external = (tmp_home / "external_repo").resolve()
         external.mkdir()
         add_project(ws, "extproj", external, std)
@@ -1500,7 +1500,7 @@ class TestP7ConnectRegistry:
         result = detect_project_mode(external, std, config)
         assert result.mode is BoxMode.named
         proj = resolve_any_project(std, config, project_dir=str(external))
-        assert proj.group is not None and proj.group.name == "ext-set"
+        assert proj.group is not None and proj.group.name == "ext_set"
         assert proj.project_path == external
 
     def test_no_global_connected_section_after_connect(
@@ -1539,7 +1539,7 @@ class TestP7ConnectRegistry:
         the per-workset scan."""
         _config, std, _ws, external = self._setup(config_file, tmp_home)
         from kanibako.project.workset import add_project, create_workset
-        ws_b = create_workset("set-b", tmp_home / "worksets" / "set-b", std)
+        ws_b = create_workset("set_b", tmp_home / "worksets" / "set_b", std)
         with pytest.raises(WorksetError, match="already connected"):
             add_project(ws_b, "dup", external, std)
 
@@ -1573,7 +1573,7 @@ class TestP7ConnectRegistry:
         config = load_config(config_file)
         std = load_std_paths(config)
         from kanibako.project.workset import add_project, create_workset
-        ws = create_workset("in-set", tmp_home / "worksets" / "in-set", std)
+        ws = create_workset("in_set", tmp_home / "worksets" / "in_set", std)
         # Internal source (inside the workset root) → a real workspace dir, never
         # an external connection.
         internal = ws.root.resolve() / "workspaces" / "inproj"
@@ -3020,7 +3020,7 @@ def _named_member_with_scalar_box(config_file, tmp_home):
 
     config = load_config(config_file)
     std = load_std_paths(config)
-    ws = create_workset("door-ws", tmp_home / "worksets" / "door-ws", std)
+    ws = create_workset("door_ws", tmp_home / "worksets" / "door_ws", std)
     add_project(ws, "doormem", tmp_home / "doormem-ws")
     toml = _scalar_box_tier(ws.projects_dir / "doormem")
     return config, std, ws, toml
@@ -3127,7 +3127,7 @@ class TestBoxShapeRefusalPrecedesSetup:
         std = load_std_paths(config)
         from kanibako.project.workset import add_project, create_workset
 
-        ws = create_workset("table-ws", tmp_home / "worksets" / "table-ws", std)
+        ws = create_workset("table_ws", tmp_home / "worksets" / "table_ws", std)
         add_project(ws, "tablemem", tmp_home / "tablemem-ws")
         metadata_path = ws.projects_dir / "tablemem"
         metadata_path.mkdir(parents=True, exist_ok=True)

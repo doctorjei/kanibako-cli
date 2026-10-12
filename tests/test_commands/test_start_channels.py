@@ -56,13 +56,13 @@ def primary_proj(std, config, project_dir):
 
 @pytest.fixture
 def named_proj(std, config, tmp_home):
-    ws_root = tmp_home / "worksets" / "my-set"
-    ws = create_workset("my-set", ws_root, std)
+    ws_root = tmp_home / "worksets" / "my_set"
+    ws = create_workset("my_set", ws_root, std)
     source = tmp_home / "original-project"
     source.mkdir()
-    add_project(ws, "cool-app", source)
+    add_project(ws, "cool_app", source)
     return resolve_workset_project(
-        WorksetSpec.from_workset(ws), "cool-app", std, config, initialize=True,
+        WorksetSpec.from_workset(ws), "cool_app", std, config, initialize=True,
     )
 
 
@@ -196,7 +196,7 @@ class TestNamedChannelMounts:
 
     def test_inbox_partitioned_by_named_ws(self, named_proj, std):
         by_dest, _ = _build(std, named_proj)
-        expected = std.channels_mailboxes / "my-set" / named_proj.name
+        expected = std.channels_mailboxes / "my_set" / named_proj.name
         assert by_dest["/home/agent/channels/inbox"][0] == str(expected)
 
 

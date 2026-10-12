@@ -62,12 +62,12 @@ def box(std, config, project_dir):
 
 @pytest.fixture
 def named_box(std, config, tmp_home):
-    ws = create_workset("my-set", tmp_home / "worksets" / "my-set", std)
+    ws = create_workset("my_set", tmp_home / "worksets" / "my_set", std)
     source = tmp_home / "original-project"
     source.mkdir()
-    add_project(ws, "cool-app", source)
+    add_project(ws, "cool_app", source)
     return resolve_workset_project(
-        WorksetSpec.from_workset(ws), "cool-app", std, config, initialize=True,
+        WorksetSpec.from_workset(ws), "cool_app", std, config, initialize=True,
     )
 
 

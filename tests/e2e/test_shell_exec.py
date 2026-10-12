@@ -33,18 +33,18 @@ class TestShellExecIntoRunning:
         project = e2e_env["project"]
 
         result = run_kanibako(
-            ["create", str(project), "--name", "e2e-exec"],
+            ["create", str(project), "--name", "e2e_exec"],
             env=env,
         )
         assert result.returncode == 0, f"create failed: {result.stderr}"
 
         # Start a persistent, long-running container to exec into.
         run_kanibako(
-            ["start", "e2e-exec",
+            ["start", "e2e_exec",
              "-e", "CLAUDE_STUB_MODE=long-running"],
             env=env,
         )
-        container_name = box_container("e2e-exec")
+        container_name = box_container("e2e_exec")
         wait_for_container(container_name, timeout=15)
 
         # Capture the container Id before exec.
@@ -61,7 +61,7 @@ class TestShellExecIntoRunning:
         # previously dropped because the early exec branch never built the
         # container env). printenv must echo the value we passed.
         result = run_kanibako(
-            ["shell", "e2e-exec",
+            ["shell", "e2e_exec",
              "-e", "KANIBAKO_E2E_EXEC_MARKER=exec-marker-77",
              "--", "printenv", "KANIBAKO_E2E_EXEC_MARKER"],
             env=env,

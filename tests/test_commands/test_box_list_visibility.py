@@ -97,7 +97,8 @@ def sandbox(config_file, tmp_home, credentials_dir, capsys):
         workspace = tmp_home / name
         workspace.mkdir()
         # _LEGACY is a name an older ``create`` took from its directory, unchecked.
-        with patch("kanibako.settings.paths.box_name_reason", return_value=None):
+        with patch("kanibako.settings.paths.box_name_reason", return_value=None), \
+                patch("kanibako.settings.paths.derived_name", side_effect=lambda s: s):
             resolve_project(std, config, project_dir=str(workspace), initialize=True)
     # The membership stays; only the workspace folder goes.
     shutil.rmtree(tmp_home / _GONE)

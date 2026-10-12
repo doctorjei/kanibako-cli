@@ -240,8 +240,8 @@ class TestTheEffectiveDisplayIsTheLaunchTier:
     def _ws_with_bindings(self, std, tmp_home, bindings):
         from kanibako.project.workset import create_workset
 
-        ws_root = tmp_home / "worksets" / "my-set"
-        create_workset("my-set", ws_root, std)
+        ws_root = tmp_home / "worksets" / "my_set"
+        create_workset("my_set", ws_root, std)
         doc_path = ws_root / WORKSET_META_FILE
         doc = load_doc(doc_path) or {}
         doc.setdefault("workset", {}).setdefault("bindings", {})["ro"] = bindings
@@ -268,7 +268,7 @@ class TestTheEffectiveDisplayIsTheLaunchTier:
             "/home/agent/root-ro": ["@system.channelroot"],
         })
         rc = workset_cmd.run_share_list(
-            argparse.Namespace(workset="my-set", effective=True)
+            argparse.Namespace(workset="my_set", effective=True)
         )
         out = capsys.readouterr().out
         assert rc == 0
