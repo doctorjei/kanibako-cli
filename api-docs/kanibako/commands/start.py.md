@@ -147,6 +147,7 @@ def _bind_map_masks(bindings) -> 'list[str]'
 def _is_agent_delivery(entry) -> bool
 def _agent_delivered_dests(entries: list) -> 'frozenset[str]'
 def _narrow_bind_map(entries: list, dests: 'frozenset[str]') -> 'dict[str, object]'
+def _add_narrow_mounts(extra_mounts: list, narrow_mounts: list) -> None
 def _emit_category_mounts(bindings, *, label: str, must_exist: frozenset[str]=frozenset(), skip_if_absent: frozenset[str]=frozenset()) -> list
 def _seed_box_home(*, std, proj, target, desc, agent_id: str, agent_cfg_path, system_settings_path, auth_src, logger, suppress_oauth: bool=False, selection_level: 'Mapping[str, object] | None') -> None
 def _sync_box_at_create(*, std, proj, agent_name: str, target=None, desc=None, install=None, global_config_path, agent_config_path, persona_values: 'Mapping[str, str] | None'=None, logger, deliver_creds: bool=True, selection_level: 'Mapping[str, object] | None') -> None

@@ -2976,3 +2976,217 @@ class TestEverySpecNamedSyncedRefusalRAISES:
                 )
 
         assert not mismatches, "\n".join(mismatches)
+
+
+class TestANarrowTableDestIsMountedOnce:
+    """A user row at a NARROW table's dest reaches the box as ONE mount.
+
+    The whole-box collapse and the narrow resolve both carry the user's row, so both
+    emitted it. A second ``-v`` at one dest with a different spelling (the socket's
+    ``""`` options against the collapse's folded ``rw``) failed the start with
+    "duplicate mount destination". The narrow resolve owns its table's dests, so its
+    mount replaces the main emit's (``_add_narrow_mounts``).
+
+    Each case drives the REAL main resolve and emit, then the REAL narrow delivery,
+    and counts the mounts at the dest.
+    """
+
+    _BUDGET = "/home/agent/spawn.yaml"
+    _SOCK = "/home/agent/.kanibako/state/helper.sock"
+    _LOG = "/home/agent/.kanibako/state/helpers.jsonl"
+    _IMAGES = "/var/lib/shared-images"
+
+    def _box(self, std, config, project_dir, rows=()):
+        """A box whose OWN file declares *rows* (``(arm, dest, value)``)."""
+        from kanibako.settings.config_io import write_nested_key
+        from kanibako.settings.paths import box_workset_settings_paths
+
+        proj = resolve_project(std, config, str(project_dir), initialize=True)
+        box_path, _workset_path = box_workset_settings_paths(proj)
+        box_path.parent.mkdir(parents=True, exist_ok=True)
+        for arm, dest, value in rows:
+            write_nested_key(box_path, ("box", "bindings", arm), dest, value)
+        return proj
+
+    def _main(self, std, proj):
+        """The main launch's emit: the collapse, as the launch reads and emits it."""
+        snapshot, _deliveries = _resolve(std, proj)
+        return snapshot, _emit_category_mounts(
+            _launch_bind_map(snapshot), label="category",
+        )
+
+    def _budget(self, std, proj, snapshot, mounts):
+        """The REAL every-start spawn-budget delivery."""
+        from types import SimpleNamespace
+
+        from kanibako.commands.start import _deliver_spawn_budget
+
+        _deliver_spawn_budget(
+            std=std, proj=proj, snapshot=snapshot, agent_id="claude",
+            system_settings_path=None, agent_cfg_path=None,
+            auth_src=SimpleNamespace(creds_shared=True),
+            extra_mounts=mounts, selection_level=None,
+        )
+
+    def _hub(self, std, proj, mounts):
+        """The REAL hub start, with the listener itself stubbed out."""
+        from types import SimpleNamespace
+        from unittest.mock import MagicMock
+
+        from kanibako.channels import helper_listener
+        from kanibako.commands.start import _start_helper_hub
+
+        with patch.object(helper_listener, "HelperHub"):
+            _start_helper_hub(
+                runtime=MagicMock(), image="img", container_name="box",
+                proj=proj, target=None, install=None, binary_mnts=[], std=std,
+                container_env={}, entrypoint=None, box_shell=None,
+                agent_id="claude", system_settings_path=None, agent_cfg_path=None,
+                auth_src=SimpleNamespace(creds_shared=True),
+                extra_mounts=mounts, selection_level=None,
+            )
+
+    @staticmethod
+    def _at(mounts, dest):
+        return [m for m in mounts if str(m.destination) == dest]
+
+    def test_a_user_spawn_budget_bind_is_mounted_once_from_its_source(
+        self, std, config, project_dir, tmp_path,
+    ):
+        """Every start mode: the budget resolve runs on every start, hub or not."""
+        src = tmp_path / "my-spawn.yaml"
+        src.write_text("depth: 1\n")
+        proj = self._box(
+            std, config, project_dir, [("ro", "~/spawn.yaml", [str(src)])],
+        )
+        snapshot, mounts = self._main(std, proj)
+        self._budget(std, proj, snapshot, mounts)
+
+        (mount,) = self._at(mounts, self._BUDGET)
+        assert (Path(mount.source), mount.options) == (src, "ro")
+
+    def test_with_no_user_row_the_budget_document_is_mounted_once(
+        self, std, config, project_dir,
+    ):
+        proj = self._box(std, config, project_dir)
+        snapshot, mounts = self._main(std, proj)
+        self._budget(std, proj, snapshot, mounts)
+
+        (mount,) = self._at(mounts, self._BUDGET)
+        assert mount.source.name == "spawn.yaml"
+        assert mount.options == "ro"
+
+    def test_a_user_socket_bind_with_empty_options_is_mounted_once(
+        self, std, config, project_dir, tmp_path,
+    ):
+        """The bifrost failure: ``[src, ""]`` at the socket, on a start that runs the hub.
+
+        The narrow mount wins, so the user's ``""`` reaches podman as written.
+        """
+        src = tmp_path / "my.sock"
+        src.write_text("")
+        proj = self._box(
+            std, config, project_dir,
+            [("rw", "~/.kanibako/state/helper.sock", [str(src), ""])],
+        )
+        snapshot, mounts = self._main(std, proj)
+        self._budget(std, proj, snapshot, mounts)
+        self._hub(std, proj, mounts)
+
+        (mount,) = self._at(mounts, self._SOCK)
+        assert (Path(mount.source), mount.options) == (src, "")
+
+    def test_a_user_helper_log_bind_is_mounted_once(
+        self, std, config, project_dir, tmp_path,
+    ):
+        src = tmp_path / "my.jsonl"
+        src.write_text("")
+        proj = self._box(
+            std, config, project_dir,
+            [("ro", "~/.kanibako/state/helpers.jsonl", [str(src)])],
+        )
+        snapshot, mounts = self._main(std, proj)
+        self._budget(std, proj, snapshot, mounts)
+        self._hub(std, proj, mounts)
+
+        (mount,) = self._at(mounts, self._LOG)
+        assert (Path(mount.source), mount.options) == (src, "ro")
+
+    def test_without_the_hub_the_main_emit_still_delivers_a_user_socket_bind(
+        self, std, config, project_dir, tmp_path,
+    ):
+        """Persistent, ``--detach`` and ``--no-helpers`` starts run no hub.
+
+        The main emit is then the only route the user's row has, and it stays.
+        """
+        src = tmp_path / "my.sock"
+        src.write_text("")
+        proj = self._box(
+            std, config, project_dir,
+            [("rw", "~/.kanibako/state/helper.sock", [str(src), ""])],
+        )
+        snapshot, mounts = self._main(std, proj)
+        self._budget(std, proj, snapshot, mounts)
+
+        (mount,) = self._at(mounts, self._SOCK)
+        assert (Path(mount.source), mount.options) == (src, "rw")
+
+    def test_a_user_image_store_bind_is_mounted_once_when_images_are_shared(
+        self, std, config, project_dir, tmp_path,
+    ):
+        from types import SimpleNamespace
+        from unittest.mock import MagicMock
+
+        from kanibako.commands.start import _assemble_image_sharing_mounts
+        from kanibako.runtime import image_sharing
+
+        store = tmp_path / "my-store"
+        store.mkdir()
+        probed = tmp_path / "probed-store"
+        probed.mkdir()
+        proj = self._box(
+            std, config, project_dir, [("ro", self._IMAGES, [str(store)])],
+        )
+        snapshot, mounts = self._main(std, proj)
+        with patch.object(image_sharing, "detect_graph_root", return_value=probed):
+            _assemble_image_sharing_mounts(
+                merged=SimpleNamespace(box_share_images=True), proj=proj,
+                runtime=MagicMock(), std=std, agent_id="claude",
+                system_settings_path=None, agent_cfg_path=None,
+                auth_src=SimpleNamespace(creds_shared=True),
+                extra_mounts=mounts, logger=get_logger("test"),
+                selection_level=None,
+            )
+
+        (mount,) = self._at(mounts, self._IMAGES)
+        assert (Path(mount.source), mount.options) == (store, "ro")
+
+    def test_a_user_mask_at_a_narrow_dest_still_wins(
+        self, std, config, project_dir,
+    ):
+        """The narrow resolve emits nothing at a masked dest, so nothing is replaced."""
+        from kanibako.settings.config_io import write_nested_key
+        from kanibako.settings.paths import box_workset_settings_paths
+
+        proj = self._box(std, config, project_dir)
+        box_path, _workset_path = box_workset_settings_paths(proj)
+        write_nested_key(box_path, ("box", "masks"), "~/spawn.yaml", True)
+        snapshot, mounts = self._main(std, proj)
+        self._budget(std, proj, snapshot, mounts)
+
+        assert self._at(mounts, self._BUDGET) == []
+        assert self._BUDGET in _bind_map_masks(_launch_bind_map(snapshot))
+
+
+def test_a_narrow_mount_replaces_only_the_mount_at_its_own_dest():
+    from kanibako.commands.start import _add_narrow_mounts
+    from kanibako.targets.base import Mount
+
+    kept = Mount(Path("/h/a"), "/home/agent/a", "ro")
+    main = Mount(Path("/h/s"), "/home/agent/s", "rw")
+    narrow = Mount(Path("/h/s"), "/home/agent/s", "")
+    mounts = [kept, main]
+
+    _add_narrow_mounts(mounts, [narrow])
+
+    assert mounts == [kept, narrow]

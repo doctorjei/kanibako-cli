@@ -2449,7 +2449,7 @@ def _assemble_image_sharing_mounts(
             img_mounts = _emit_category_mounts(
                 _img_deliveries.narrow_bindings, label="images",
             )
-            extra_mounts.extend(img_mounts)
+            _add_narrow_mounts(extra_mounts, img_mounts)
             logger.info("Image sharing enabled: %d mounts added", len(img_mounts))
         else:
             print(
@@ -2666,7 +2666,7 @@ def _start_helper_hub(
     helper_hub_mounts = _emit_category_mounts(
         _hub_deliveries.narrow_bindings, label="helper",
     )
-    extra_mounts.extend(helper_hub_mounts)
+    _add_narrow_mounts(extra_mounts, helper_hub_mounts)
     return hub
 
 
@@ -2719,7 +2719,7 @@ def _deliver_spawn_budget(
         narrow_bind_dests=core_defaults.spawn_budget_bind_dests(),
         # No persona tier (audit): one pinned dest no persona bundle can name.
     )
-    extra_mounts.extend(_emit_category_mounts(
+    _add_narrow_mounts(extra_mounts, _emit_category_mounts(
         _budget_deliveries.narrow_bindings, label="spawn budget",
     ))
 
@@ -8266,6 +8266,22 @@ def _narrow_bind_map(entries: list, dests: "frozenset[str]") -> "dict[str, objec
     from kanibako.settings.settings_categories import narrow_table_winners
 
     return _bind_map_from_mounts(narrow_table_winners(entries, dests))
+
+
+def _add_narrow_mounts(extra_mounts: list, narrow_mounts: list) -> None:
+    """Add a NARROW resolve's mounts to *extra_mounts*; each REPLACES an earlier one at its dest.
+
+    A user row at a narrow table's dest (``box.bindings.ro[~/spawn.yaml]``, the hub's
+    socket or log) is in the whole-box collapse too, so the main emit has already
+    mounted it. A second ``-v`` at one dest fails the start ("duplicate mount
+    destination") when the two spellings differ. The narrow resolve owns its table's
+    dests, so its mount wins. A dest it does not emit (the resolve did not run, its
+    source is missing, or a mask won) keeps the main emit's outcome.
+    SIDE EFFECT: mutates *extra_mounts* in place.
+    """
+    dests = {str(m.destination) for m in narrow_mounts}
+    extra_mounts[:] = [m for m in extra_mounts if str(m.destination) not in dests]
+    extra_mounts.extend(narrow_mounts)
 
 
 def _emit_category_mounts(
