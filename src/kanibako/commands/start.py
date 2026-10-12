@@ -61,6 +61,7 @@ from kanibako.identifiers import agent_node_case, find_identifier
 from kanibako.errors import (AmbiguousNameError, ConfigError, ContainerError,
                              DerivedBoxNameError, KanibakoError, ProjectError)
 from kanibako.launch.box_identity import box_name_cure
+from kanibako.launch.creds_watcher import AGENT_STAMP_ENV
 from kanibako.log import ROTATE_MAX_BYTES, get_logger, rotate_if_over
 from kanibako.runtime.rig_registry import load_registry, registry_path
 from kanibako.runtime.rig_resolve import resolve_rig
@@ -9788,7 +9789,7 @@ def _core_env_default_categories(*, proj, target, agent_id) -> dict[str, str]:
     table["system.env.KANIBAKO_DIRECTIVE_SEED"] = core_defaults.kickoff_guest_dest()
     table["system.env.KANIBAKO_AGENT_MARKERS_DIR"] = AGENT_MARKERS_DIR
     if target is not None:
-        table["system.env.KANIBAKO_AGENT"] = display_agent_ref(agent_id)
+        table[f"system.env.{AGENT_STAMP_ENV}"] = display_agent_ref(agent_id)
     return table
 
 
