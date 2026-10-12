@@ -272,14 +272,11 @@ class TestTheUnrenderableRefusalCuresAreQuoted:
         path = Path("/w") / name
         text = unrenderable_box_name_refusal("-droste", "primary", path, None)
 
-        cure = (
-            _line(text, "kanibako box move")
-            .replace("<new-path>", "/w/moved")
-            .replace("<new-name>", "mynew")
-        )
+        # The offered name is ``-droste``'s '_' spelling (spec §0).
+        cure = _line(text, "kanibako box move").replace("<new-path>", "/w/moved")
         _assert_inert(
             cure,
-            ["box", "move", str(path), "/w/moved", "--name", "mynew"],
+            ["box", "move", str(path), "/w/moved", "--name", "_droste"],
             tmp_path / "paste",
         )
 
@@ -344,7 +341,7 @@ def test_a_plain_operand_prints_the_same_bytes_it_did():
     from kanibako.utils import unrenderable_box_name_refusal
 
     text = unrenderable_box_name_refusal("-droste", "primary", Path("/home/u/plainbox"), None)
-    assert "kanibako box move /home/u/plainbox <new-path> --name <new-name>" in text
+    assert "kanibako box move /home/u/plainbox <new-path> --name _droste" in text
 
 
 # ---------------------------------------------------------------------------
@@ -620,11 +617,10 @@ class TestTheBoxInfoClearItCureIsQuoted:
         with contextlib.redirect_stdout(out), contextlib.redirect_stderr(out):
             run_info(argparse.Namespace(path=str(leaf), box=None))
         printed = out.getvalue()
-        assert "clear it: kanibako stop" in printed, printed
-        # ⚑ A named member's cure is ``<workset>/<box>``: its bare name is S8b's error
-        # outside the workset's path space.
-        _assert_inert(_pasteable(_line(printed, "clear it:"), "clear it:"),
-                      ["stop", f"ws/{name}"], tmp_path / "paste")
+        # ⚑ The name rule (spec §0) makes a hostile name a LEGACY one, which renders
+        # no container name — so there is no container to clear, and no cure to paste.
+        assert "clear it: kanibako stop" not in printed, printed
+        assert "kanibako stop" not in printed, printed
 
 
 #: A name holding a SPACE.  The cleanup cures' claim is the stronger one: an
@@ -989,9 +985,10 @@ class TestTheOtherPrintedCommandsAreQuoted:
                     new_session=False, safe_mode=False, resume_mode=False,
                     extra_args=[], persistent=True, restart=True,
                 ) == 1
-        line = _line(err.getvalue(), "could not stop")
-
-        _assert_inert(_backticked(line, "kanibako stop"), ["stop", name], tmp_path / "paste")
+        # ⚑ Every name here is a LEGACY one under the name rule (spec §0): start refuses
+        # it before any stop, so no stop cure prints at all.
+        assert "has no container name" in err.getvalue(), err.getvalue()
+        assert "could not stop" not in err.getvalue()
 
     def test_the_named_box_path_cures_paste_to_one_argv_each(self, name, tmp_path, monkeypatch):
         """``paths.check_workspace_not_named_box`` — ``box show`` and ``workset disconnect``."""

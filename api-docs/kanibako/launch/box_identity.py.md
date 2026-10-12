@@ -10,15 +10,13 @@ Prose for these symbols lives in `llm-docs/kanibako/launch/box_identity.py.md`.
 ```
 _LEAF_CAP = 32
 _EMPTY_LEAF_FALLBACK = 'box'
-_LEAF_CHARS = 'A-Za-z0-9._-'
+_LEAF_CHARS = NAME_CHAR_CLASS
 _SEP = '\x00'
 _SEPARATOR_RUN_RE = re.compile(f'[_{_SEP}]*{_SEP}[_{_SEP}]*')
-_LEAF_END_CHARS = '_-.'
+_LEAF_END_CHARS = '_'
 _MAX_REGEN_ATTEMPTS = 1000
 _LEAF_RE = re.compile(f'^[{_LEAF_CHARS}]{{1,{_LEAF_CAP}}}$')
 _NAME_CHAR_RE = re.compile(f'[{_LEAF_CHARS}]')
-_NAME_MIN_LEN = 1
-_NAME_MAX_LEN = 64
 ```
 
 ## Functions
@@ -27,6 +25,7 @@ def is_valid_box_name(name: str) -> bool
 def classify_designation(value: str | None) -> Designation
 def box_name_reason(name: str) -> str | None
 def validate_box_name(name: str) -> None
+def name_spelling(name: str) -> tuple[str, bool] | None
 def box_name_cure(command: str, name: str) -> str
 def sanitize_cap(leaf: str) -> str
 def is_canonical_standalone_name(name: str) -> bool

@@ -743,14 +743,14 @@ def _duplicate_to_workset(args, std, config) -> int:
         return 1
 
     # ⚑ Stored as typed (spec §0): the user's ``--name``, else the source directory's
-    # own basename — whose case is the user's too, and is never folded on its way here.
+    # derived name (spec §0: `_` for `-` and `.`), whose case is never folded on its way here.
     proj_name = getattr(args, "project_name", None) or source_path.name
     # ⚑ The box-name rule (spec §0), typed or derived, before any write.
     try:
         if getattr(args, "project_name", None):
             validate_box_name(proj_name)
         else:
-            refuse_derived_box_name(proj_name)
+            proj_name = refuse_derived_box_name(proj_name)
     except BoxNameError as e:
         cure = (f"kanibako box duplicate {shlex.quote(str(source_path))} "
                 f"{shlex.quote(literal_path(args.new_path))} --to named "

@@ -75,7 +75,7 @@ def stored_legacy_box(std: StandardPaths, typed: str) -> LegacyBox | None
 def primary_box_name_for_workspace(primary_workset: Path, workspace: str, *, early: EarlyScope) -> str | None
 def check_primary_box_name_free(primary_workset: Path, name: str, workspace: str, *, early: EarlyScope) -> None
 def check_workspace_not_named_box(std: StandardPaths, workspace: str) -> None
-def refuse_derived_box_name(base: str) -> None
+def refuse_derived_box_name(base: str) -> str
 def pick_primary_box_name(primary_workset: Path, workspace: str, boxes_dir: Path | None=None, *, early: EarlyScope, journal: Path | None=None) -> str
 def register_primary_box_name(primary_workset: Path, name: str, workspace: Path | str, *, early: EarlyScope) -> None
 def register_primary_box_name_if_absent(primary_workset: Path, name: str, workspace: Path | str, *, early: EarlyScope) -> None

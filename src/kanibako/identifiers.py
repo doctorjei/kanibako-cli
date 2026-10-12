@@ -15,6 +15,9 @@ Agents are the one kind with a second spelling: :func:`agent_node_case` derives
 the lowercase NODE from a declared NAME (``[R173]``).  That is a derivation, not
 an entry fold, and its docstring draws the line.
 
+It is also the ONE carrier of the NAME RULE's charset (§0): every kind of name
+is checked against :func:`name_flaw`, and a derived name is :func:`derived_name`.
+
 This module is the ONE carrier of the comparison.  It imports nothing from the
 tree on purpose: ``settings/`` reaches it, and ``settings/paths.py`` →
 ``settings/agent_config.py`` → ``agent_ref`` is a live chain that an owner
@@ -24,16 +27,84 @@ pins the leaf.
 
 from __future__ import annotations
 
+import re
 from collections.abc import Iterable
+
+# ---------------------------------------------------------------------------
+# THE NAME RULE (keyspec §0, ⚑ NAMING RULES) — the ONE charset definition for all
+# five kinds: box, workset, agent, persona, and harness.  A name is 1–64 characters,
+# each an ASCII letter, digit, or ``_``, and does not start with a digit.  The rule
+# is data here; each kind words its own refusal around :func:`name_flaw`.
+# ---------------------------------------------------------------------------
+
+#: The characters a name may hold, as a regex class body.
+NAME_CHAR_CLASS = "A-Za-z0-9_"
+NAME_MAX_LEN = 64
+_NAME_CHAR_RE = re.compile(f"[{NAME_CHAR_CLASS}]")
+_NOT_NAME_CHAR_RE = re.compile(f"[^{NAME_CHAR_CLASS}]")
+#: The flaw :func:`name_flaw` reports for a leading digit — the one clause a GENERATED name
+#: (a standalone box's kuid prefix, a nameless box's hash) may break.
+LEADING_DIGIT_FLAW = "must not start with a digit"
+#: What a DERIVED name writes ``_`` for (keyspec §0): nothing else is rewritten.
+_DERIVED_SEPARATORS = "-."
+
+
+def name_flaw(name: str) -> str | None:
+    """Why *name* breaks the name rule, as a clause (``"must not contain '-'"``), or ``None``.
+
+    The first offending character is quoted only when it is printable ASCII; anything
+    else is shown as ``U+XXXX``, so a lookalike or a combining mark cannot hide.
+    """
+    if not name:
+        return "must not be empty"
+    if len(name) > NAME_MAX_LEN:
+        return f"must be at most {NAME_MAX_LEN} characters"
+    for ch in name:
+        if not _NAME_CHAR_RE.fullmatch(ch):
+            shown = f"'{ch}'" if " " < ch < "\x7f" else f"U+{ord(ch):04X}"
+            return f"must not contain {shown}"
+    if name[0].isdigit():
+        return LEADING_DIGIT_FLAW
+    return None
+
+
+def is_name(name: str) -> bool:
+    """True when *name* follows the name rule."""
+    return name_flaw(name) is None
+
+
+def derived_name(text: str) -> str:
+    """The name kanibako DERIVES from *text* (a folder name): ``_`` for each ``-`` and ``.``.
+
+    Nothing else is rewritten, so a derived name can still break the rule (a space, a
+    leading digit, non-ASCII); the caller refuses it with :func:`underscore_spelling`.
+    """
+    for sep in _DERIVED_SEPARATORS:
+        text = text.replace(sep, "_")
+    return text
+
+
+def underscore_spelling(name: str) -> str | None:
+    """The ``_`` spelling a refusal of ASCII *name* offers as its cure, or ``None``.
+
+    Each character outside the rule becomes ``_``, and a leading digit gains a
+    leading ``_``.  ``None`` when *name* is not ASCII (its cure is the ASCII spelling,
+    ``launch.romanize.to_ascii``) or when no such spelling follows the rule.
+    """
+    if not name or not name.isascii():
+        return None
+    spelled = _NOT_NAME_CHAR_RE.sub("_", name)
+    if spelled[0].isdigit():
+        spelled = "_" + spelled
+    return spelled if is_name(spelled) else None
 
 
 def _fold(name: str) -> str:
     """The comparison form of an identifier.
 
-    ``casefold()`` rather than ``lower()``: identifier segments admit ``\\w`` in
-    any language (``agent_ref.SEGMENT_CHAR_CLASS``), and a COMPARISON wants the
-    widest equivalence there is — ``STRASSE`` and ``straße`` are one name to a
-    user.  ⚑ That argument is about comparing, and it does NOT carry over to
+    ``casefold()`` rather than ``lower()``: a COMPARISON wants the widest
+    equivalence there is, and names stored before the name rule went ASCII may
+    still hold any letter — ``STRASSE`` and ``straße`` are one name to a user.  ⚑ That argument is about comparing, and it does NOT carry over to
     :func:`agent_node_case`, which writes a directory; its docstring says why.
 
     ⚑ PRIVATE, and that is the design: with no exported way to fold a single

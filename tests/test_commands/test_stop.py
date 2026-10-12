@@ -1228,13 +1228,14 @@ class TestStopABoxThatRendersNoName:
     def _legacy_box(std, config, tmp_home):
         """A real PRIMARY box whose NAME the box-name rule no longer allows.
 
-        An older ``create`` named it for its workspace directory, unchecked.
+        An older ``create`` named it for its workspace directory verbatim, unchecked.
         """
         from kanibako.settings.paths import resolve_project
 
         workspace = tmp_home / "work" / "-legacy"
         workspace.mkdir(parents=True)
-        with patch("kanibako.settings.paths.box_name_reason", return_value=None):
+        with patch("kanibako.settings.paths.box_name_reason", return_value=None), \
+                patch("kanibako.settings.paths.derived_name", side_effect=lambda s: s):
             proj = resolve_project(std, config, project_dir=str(workspace), initialize=True)
         return workspace, proj.name
 
@@ -1249,7 +1250,7 @@ class TestStopABoxThatRendersNoName:
 
         err = capsys.readouterr().err
         assert "has no container name" in err
-        assert "must not start with '-'" in err
+        assert "must not contain '-'" in err
         assert "box move" in err and "--name" in err
         assert name == "-legacy"
 
@@ -1279,7 +1280,8 @@ class TestStopAllSkipsABoxThatRendersNoName:
 
         workspace = tmp_home / "work" / "-legacy"
         workspace.mkdir(parents=True)
-        with patch("kanibako.settings.paths.box_name_reason", return_value=None):
+        with patch("kanibako.settings.paths.box_name_reason", return_value=None), \
+                patch("kanibako.settings.paths.derived_name", side_effect=lambda s: s):
             resolve_project(std, config, project_dir=str(workspace), initialize=True)
 
         live_runtime.list_running.return_value = [
@@ -1380,7 +1382,8 @@ class TestStopAllIsolatesARegistryRefusal:
 
         workspace = tmp_home / "work" / "-legacy"
         workspace.mkdir(parents=True)
-        with patch("kanibako.settings.paths.box_name_reason", return_value=None):
+        with patch("kanibako.settings.paths.box_name_reason", return_value=None), \
+                patch("kanibako.settings.paths.derived_name", side_effect=lambda s: s):
             resolve_project(std, config, project_dir=str(workspace), initialize=True)
 
         (tmp_home / "solo").mkdir()

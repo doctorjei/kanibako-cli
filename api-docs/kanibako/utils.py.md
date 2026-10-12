@@ -24,9 +24,9 @@ def deep_merge(base: dict, override: dict) -> dict
 def utc_stamp(kind: Literal['iso', 'compact', 'seconds']) -> str
 def short_hash(full_hash: str, length: int=8) -> str
 def renders_no_name(box: str) -> bool
-def rename_box_cure(mode: str, path: Path) -> str
-def unrenderable_box_name_refusal(box: str, mode: str, path: Path | None, designation: str | None) -> str
-def name_segment(segment: str) -> str
+def workset_renders_no_name(workset: str) -> bool
+def rename_box_cure(mode: str, path: Path, name: str | None=None) -> str
+def unrenderable_box_name_refusal(box: str, mode: str, path: Path | None, designation: str | None, *, workset: str | None=None) -> str
 def workset_segment(mode: str, group_name: str | None) -> str
 def render_container_name(workset: str, box: str, helper_num: int | None=None) -> str | None
 def render_socket_identity(box: str, workset: str) -> str | None

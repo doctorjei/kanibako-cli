@@ -367,14 +367,18 @@ class TestTheOtherTwoCuresAreQuoted:
         cure carries ``--name``; the operand stays quoted."""
         from kanibako.commands.start import _no_box_error
 
-        message = _no_box_error(name)
-        cure = message.rsplit("\n  ", 1)[1].replace("<new-name>", _SAFE)
+        from kanibako.identifiers import underscore_spelling
 
-        assert shlex.split(cure) == ["kanibako", "create", name, "--name", _SAFE]
+        message = _no_box_error(name)
+        cure = message.rsplit("\n  ", 1)[1]
+        # The offered ``--name`` is the operand's '_' spelling (spec §0), itself inert.
+        spelled = underscore_spelling(name)
+
+        assert shlex.split(cure) == ["kanibako", "create", name, "--name", spelled]
 
         argv, paste_cwd, _home = _paste(cure, tmp_path / "paste")
         assert not (paste_cwd / _MARKER).exists(), "the pasted cure ran injected text"
-        assert argv == ["create", name, "--name", _SAFE]
+        assert argv == ["create", name, "--name", spelled]
 
     @pytest.mark.parametrize("box", [f"web$(touch {_MARKER})", "a b'c"])
     def test_the_remote_create_cure_survives_both_shells(self, box, tmp_home, capsys, tmp_path):

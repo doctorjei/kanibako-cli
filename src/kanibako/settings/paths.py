@@ -34,7 +34,7 @@ from pathlib import Path
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from typing import TYPE_CHECKING, Any, NamedTuple, Protocol, overload
 
-from kanibako.identifiers import find_identifier
+from kanibako.identifiers import derived_name, find_identifier
 from kanibako.log import get_logger
 
 from kanibako.settings.config import (WORKSET_META_FILE, BOX_META_FILE, BootstrapConfig, KanibakoConfig,
@@ -2046,7 +2046,7 @@ class LegacyBox(NamedTuple):
         return (f"Error: box name '{self.name}' does not meet the naming rules ({self.reason}), "
                 f"so the box is reached by its path only. {action}, or give it a valid name:\n"
                 f"  {verb} {shlex.quote(self.path)}\n"
-                f"  {rename_box_cure(self.mode, Path(self.path))}")
+                f"  {rename_box_cure(self.mode, Path(self.path), self.name)}")
 
 
 def stored_legacy_box(std: StandardPaths, typed: str) -> LegacyBox | None:
@@ -2107,11 +2107,17 @@ def check_workspace_not_named_box(std: StandardPaths, workspace: str) -> None:
         ))
 
 
-def refuse_derived_box_name(base: str) -> None:
-    """Refuse *base*, a box name taken from a directory, when it fails the box-name rule."""
-    reason = box_name_reason(base)
+def refuse_derived_box_name(base: str) -> str:
+    """The box name derived from directory name *base* (spec §0), refused when it fails the rule.
+
+    Derivation writes ``_`` for each ``-`` and ``.`` (:func:`~kanibako.identifiers.derived_name`);
+    the directory keeps its spelling.  The refusal names *base*, the directory.
+    """
+    name = derived_name(base)
+    reason = box_name_reason(name)
     if reason is not None:
         raise DerivedBoxNameError(ERR_DERIVED_BOX_NAME % (base, reason), base)
+    return name
 
 
 def pick_primary_box_name(primary_workset: Path, workspace: str,
@@ -2122,8 +2128,7 @@ def pick_primary_box_name(primary_workset: Path, workspace: str,
     With *journal*, a name whose ``boxes_dir`` key holds a pending entry is taken too:
     an interrupted create may have claimed it before making its dir.
     """
-    base = Path(workspace).name or "project"
-    refuse_derived_box_name(base)
+    base = refuse_derived_box_name(Path(workspace).name or "project")
     taken_names = load_primary_boxes(primary_workset, early=early)
     pending = set()
     if journal is not None and boxes_dir is not None:

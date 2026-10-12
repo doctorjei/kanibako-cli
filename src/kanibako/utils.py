@@ -118,50 +118,71 @@ CONTAINER_NAME_PREFIX = "kb-"
 
 
 def renders_no_name(box: str) -> bool:
-    """True when *box* renders NO name.
+    """True when *box* renders NO name: it is empty, or the name rule no longer allows it.
 
-    A ``<W>`` ending in ``-`` and a ``<B>`` beginning with ``-`` put the segment boundary
-    inside a run of three dashes, which the opposite reading spells identically; an empty
-    ``<B>`` leaves the same run at the end.  The box-name rule no longer allows either,
-    so both render nothing rather than a name another box could also carry.
+    A name the rule no longer allows is a LEGACY name (keyspec ``meta.box.container``);
+    with no ``-`` in any name, ``kb-<W>-<B>`` reads back without an escape.
+    ⚑ A leading digit is NOT judged here: it leaves the name readable, and the names
+    kanibako generates itself — a standalone box's kuid prefix, a nameless box's hash —
+    may start with one.  The doors that take a typed or derived name refuse it.
     """
-    return isinstance(box, str) and (not box or box.startswith("-"))
+    from kanibako.identifiers import LEADING_DIGIT_FLAW, name_flaw
+
+    if not isinstance(box, str):
+        return False
+    flaw = name_flaw(box)
+    return flaw is not None and flaw != LEADING_DIGIT_FLAW
 
 
-def rename_box_cure(mode: str, path: Path) -> str:
+def workset_renders_no_name(workset: str) -> bool:
+    """:func:`renders_no_name` for the ``<W>`` segment: a LEGACY workset name renders none."""
+    return renders_no_name(workset)
+
+
+def rename_box_cure(mode: str, path: Path, name: str | None = None) -> str:
     """The command that gives a *mode* box at *path* a new name, by path.
 
-    A standalone box is named after its directory, so its cure moves the directory."""
+    A standalone box is named after its directory, so its cure moves the directory.
+    With the refused *name*, the cure offers its spelling (spec §0) when one exists."""
     if mode == "standalone":
         return f"kanibako box move {shlex.quote(str(path))} <new-path>"
-    return f"kanibako box move {shlex.quote(str(path))} <new-path> --name <new-name>"
+    from kanibako.launch.box_identity import name_spelling
+
+    offer = name_spelling(name) if name else None
+    new_name = offer[0] if offer is not None else "<new-name>"
+    return f"kanibako box move {shlex.quote(str(path))} <new-path> --name {new_name}"
 
 
 def unrenderable_box_name_refusal(
     box: str, mode: str, path: Path | None, designation: str | None,
+    *, workset: str | None = None,
 ) -> str:
     """The refusal ``start`` and ``stop`` print for a box that renders no name.
 
     The cure names the box by PATH, never by *box* (a leading ``-`` reads as a flag):
-    its project *path*, else the *designation* that reached it."""
-    from kanibako.launch.box_identity import box_name_reason
+    its project *path*, else the *designation* that reached it.  A box whose own name
+    renders but whose *workset* segment is a legacy name is refused for the workset."""
+    from kanibako.identifiers import name_flaw
+    from kanibako.launch.box_identity import box_name_reason, name_spelling
+    from kanibako.settings.messages import NAME_CHARSET
 
-    reason = box_name_reason(box) or "box name must not be empty"
     where = path if path is not None else Path(literal_path(designation or "."))
+    if not renders_no_name(box) and workset is not None and workset_renders_no_name(workset):
+        offer = name_spelling(workset)
+        spelled = offer[0] if offer is not None else "<new-name>"
+        return (
+            f"Error: box '{box}' has no container name: its workset name '{workset}' "
+            f"{name_flaw(workset)}; {NAME_CHARSET}. Move the box to a workset with a "
+            f"valid name, then try again:\n"
+            f"  kanibako workset create <new-root> --name {spelled}\n"
+            f"  kanibako box move {shlex.quote(str(where))} <new-path> --workset {spelled}"
+        )
+    reason = box_name_reason(box) or "box name must not be empty"
     return (
         f"Error: box '{box}' has no container name: {reason}. Give the box a valid "
         f"name, then try again:\n"
-        f"  {rename_box_cure(mode, where)}"
+        f"  {rename_box_cure(mode, where, box)}"
     )
-
-
-def name_segment(segment: str) -> str:
-    """Render one SEGMENT of a container or socket name: every ``-`` written ``--``.
-
-    The escape alone does NOT make a two-segment name decodable; :func:`renders_no_name`
-    is what keeps two boxes apart.  An empty segment renders empty.
-    """
-    return segment.replace("-", "--")
 
 
 def workset_segment(mode: str, group_name: str | None) -> str:
@@ -190,9 +211,9 @@ def render_container_name(
     REPORTS prints that there is none; a door that ADDRESSES a container must handle
     ``None`` before it reaches the runtime or a path.
     """
-    if renders_no_name(box):
+    if renders_no_name(box) or workset_renders_no_name(workset):
         return None
-    name = f"{CONTAINER_NAME_PREFIX}{name_segment(workset)}-{name_segment(box)}"
+    name = f"{CONTAINER_NAME_PREFIX}{workset}-{box}"
     if helper_num is not None:
         name += f"-helper-{helper_num}"
     return name
@@ -200,9 +221,9 @@ def render_container_name(
 
 def render_socket_identity(box: str, workset: str) -> str | None:
     """The helper-socket stem ``<B>-<W>`` (the container's order, reversed), or ``None``."""
-    if renders_no_name(box):
+    if renders_no_name(box) or workset_renders_no_name(workset):
         return None
-    return f"{name_segment(box)}-{name_segment(workset)}"
+    return f"{box}-{workset}"
 
 
 def container_name_for_box_name(name: str, workset: str) -> str | None:

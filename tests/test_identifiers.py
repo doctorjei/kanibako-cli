@@ -14,7 +14,66 @@ import re
 
 from tests.support.repo import REPO_ROOT
 
-from kanibako.identifiers import agent_node_case, find_identifier
+import pytest
+
+from kanibako.identifiers import (LEADING_DIGIT_FLAW, NAME_CHAR_CLASS, NAME_MAX_LEN,
+                                  agent_node_case, derived_name, find_identifier, is_name,
+                                  name_flaw, underscore_spelling)
+
+
+class TestNameRule:
+    """Spec §0: 1–64 ASCII letters, digits, or ``_``, not starting with a digit."""
+
+    @pytest.mark.parametrize("name", ["a", "_", "_2fa", "my_box", "MyBox", "x" * 64, "k3_9"])
+    def test_accepted(self, name):
+        assert name_flaw(name) is None and is_name(name)
+
+    @pytest.mark.parametrize("name, flaw", [
+        ("", "must not be empty"),
+        ("x" * 65, f"must be at most {NAME_MAX_LEN} characters"),
+        ("my-box", "must not contain '-'"),
+        ("my.box", "must not contain '.'"),
+        ("a b", "must not contain U+0020"),
+        ("café", "must not contain U+00E9"),
+        ("a\tb", "must not contain U+0009"),
+        ("2fa", LEADING_DIGIT_FLAW),
+    ])
+    def test_refused(self, name, flaw):
+        assert name_flaw(name) == flaw and not is_name(name)
+
+    def test_every_ascii_character_is_judged_by_the_one_class(self):
+        allowed = {chr(c) for c in range(128) if re.fullmatch(f"[{NAME_CHAR_CLASS}]", chr(c))}
+        assert allowed == set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_")
+
+    def test_unicode_letters_and_digits_are_refused(self):
+        """``str.isalnum`` and ``\\w`` admit these; the rule does not."""
+        for ch in ("é", "ß", "漢", "я", "٣", "ａ"):
+            assert name_flaw(f"a{ch}") is not None, ch
+
+
+class TestDerivedName:
+    @pytest.mark.parametrize("folder, name", [
+        ("kanibako-cli", "kanibako_cli"), ("proj.fork", "proj_fork"), ("a-b.c", "a_b_c"),
+        (".hidden", "_hidden"), ("plain", "plain"),
+        # Nothing else is rewritten: the caller refuses what is left.
+        ("a b", "a b"), ("2048", "2048"), ("café", "café"),
+    ])
+    def test_writes_underscore_for_dash_and_dot_only(self, folder, name):
+        assert derived_name(folder) == name
+
+
+class TestUnderscoreSpelling:
+    @pytest.mark.parametrize("name, spelled", [
+        ("my-box", "my_box"), ("my.box", "my_box"), ("a b", "a_b"), ("2fa", "_2fa"),
+        ("-x", "_x"), ("q$(x)", "q__x_"),
+    ])
+    def test_spells(self, name, spelled):
+        assert underscore_spelling(name) == spelled
+
+    @pytest.mark.parametrize("name", ["café", "", "x" * 65])
+    def test_no_spelling(self, name):
+        assert underscore_spelling(name) is None
+
 
 
 class TestFindIdentifier:

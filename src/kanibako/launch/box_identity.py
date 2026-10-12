@@ -24,23 +24,24 @@ from pathlib import Path
 
 from kanibako import kuid
 from kanibako.errors import BoxNameError, DerivedBoxNameError, ProjectError
-from kanibako.identifiers import find_identifier
+from kanibako.identifiers import (LEADING_DIGIT_FLAW, NAME_CHAR_CLASS, find_identifier,
+                                  name_flaw, underscore_spelling)
 from kanibako.launch.romanize import to_ascii
-from kanibako.settings.messages import (BOX_NAME_CHARSET, CURE_BOX_NAME_ASCII,
+from kanibako.settings.messages import (CURE_BOX_NAME_ASCII, CURE_BOX_NAME_UNDERSCORE,
                                         CURE_DERIVED_BOX_NAME, ERR_DERIVED_BOX_NAME,
-                                        ERR_LEAF_NOT_ASCII)
+                                        ERR_LEAF_NOT_ASCII, NAME_CHARSET)
 
 # Maximum length of the sanitized leaf component.
 _LEAF_CAP = 32
 # Fallback leaf when the project basename sanitizes to empty.
 _EMPTY_LEAF_FALLBACK = "box"
-# Characters kept as they are during sanitization; the trailing '-' is literal.
-_LEAF_CHARS = r"A-Za-z0-9._-"
+# Characters kept as they are during sanitization: the name rule's (spec §0).
+_LEAF_CHARS = NAME_CHAR_CLASS
 # A separator's placeholder; a run holding one, with any ``_`` beside it, becomes one ``_``.
 _SEP = "\0"
 _SEPARATOR_RUN_RE = re.compile(rf"[_{_SEP}]*{_SEP}[_{_SEP}]*")
-# What the leaf loses at either end: a box name may not start with '-' or '.'.
-_LEAF_END_CHARS = "_-."
+# What the leaf loses at either end.
+_LEAF_END_CHARS = "_"
 # Bound on collision-regeneration attempts before giving up.
 _MAX_REGEN_ATTEMPTS = 1000
 
@@ -56,48 +57,32 @@ _MAX_REGEN_ATTEMPTS = 1000
 _LEAF_RE = re.compile(rf"^[{_LEAF_CHARS}]{{1,{_LEAF_CAP}}}$")
 
 # ---------------------------------------------------------------------------
-# Box-name ALLOWLIST (spec §0, ⚑ NAMING RULES): 1–64 characters, each an ASCII
-# letter, digit, ``_``, ``-``, or ``.``; not starting with ``-`` or ``.``, not
-# ending with ``.``.  ASCII-only because the container name ``kb-<W>-<B>`` must
-# match podman's ``[a-zA-Z0-9][a-zA-Z0-9_.-]*``.
+# Box-name ALLOWLIST: the NAME RULE (spec §0, ⚑ NAMING RULES), whose one charset
+# is :func:`kanibako.identifiers.name_flaw`'s.  With no ``-`` in a name, the
+# container name ``kb-<W>-<B>`` needs no escape to be read back.
 #
 # ⚑ A name is validated AS THE USER TYPED IT (spec §0, ⚑ NAMING RULES).  Uppercase
 # ASCII is not a violation and is no longer folded upstream; collision is what
 # compares case-blind, and that happens elsewhere.
 # ---------------------------------------------------------------------------
 
-# The permitted characters: the leaf alphabet, which is exactly the spec's set.
+# A character the leaf keeps as it is.
 _NAME_CHAR_RE = re.compile(rf"[{_LEAF_CHARS}]")
-
-# Suggested length bound.
-_NAME_MIN_LEN = 1
-_NAME_MAX_LEN = 64
 
 
 def _box_name_violation(name: str) -> str | None:
-    """Return a human-readable reason *name* is an invalid box name, else ``None``."""
-    if len(name) < _NAME_MIN_LEN:
-        return "box name must not be empty"
-    if len(name) > _NAME_MAX_LEN:
-        return f"box name must be at most {_NAME_MAX_LEN} characters"
+    """Return a human-readable reason *name* is an invalid box name, else ``None``.
 
-    if name in (".", ".."):
-        return f"box name must not be '{name}'"
-
-    for ch in name:
-        if not _NAME_CHAR_RE.fullmatch(ch):
-            # Only printable ASCII is quoted: a lookalike or a combining mark would hide.
-            shown = f"'{ch}'" if " " < ch < "\x7f" else f"U+{ord(ch):04X}"
-            return f"box name must not contain {shown}; {BOX_NAME_CHARSET}"
-
-    if name.startswith("-"):
-        return "box name must not start with '-' (collides with CLI flags)"
-    if name.startswith("."):
-        return "box name must not start with '.' (hidden/relative)"
-    if name.endswith("."):
-        return "box name must not end with '.'"
-
-    return None
+    ⚑ A STANDALONE box's ``<kuid>_<leaf>`` is GENERATED (keyspec §2c ``meta.box.name``),
+    and a kuid may begin with a digit; such a name is held to the rule's charset and
+    length but not to its first character, which kanibako chose, not the user.
+    """
+    flaw = name_flaw(name)
+    if flaw == LEADING_DIGIT_FLAW and is_canonical_standalone_name(name):
+        return None
+    if flaw is None:
+        return None
+    return f"box name {flaw}; {NAME_CHARSET}"
 
 
 def is_valid_box_name(name: str) -> bool:
@@ -153,14 +138,33 @@ def validate_box_name(name: str) -> None:
         raise BoxNameError(f"Invalid box name '{name}': {reason}.", name)
 
 
-def box_name_cure(command: str, name: str) -> str:
-    """The cure for refused *name*: *command* ``--name`` its ASCII spelling, else ``<new-name>``.
+def name_spelling(name: str) -> tuple[str, bool] | None:
+    """The spelling a refusal of *name* offers, and whether it is the ASCII one — or ``None``.
 
-    The spelling is offered, never applied: a typed or derived name is the user's.
+    ONE answer for every kind of name (spec §0): an ASCII name is offered its ``_``
+    spelling; a non-ASCII name its ASCII spelling (:func:`to_ascii`), written in
+    ``_`` too, when one exists.
     """
-    spelled = to_ascii(name)
-    if spelled is not None and spelled != name and is_valid_box_name(spelled):
-        return CURE_BOX_NAME_ASCII % f"{command} --name {shlex.quote(spelled)}"
+    if name.isascii():
+        spelled = underscore_spelling(name)
+        return None if spelled is None or spelled == name else (spelled, False)
+    ascii_name = to_ascii(name)
+    if ascii_name is None:
+        return None
+    spelled = underscore_spelling(ascii_name)
+    return None if spelled is None else (spelled, True)
+
+
+def box_name_cure(command: str, name: str) -> str:
+    """The cure for refused *name*: *command* ``--name`` its spelling, else ``<new-name>``.
+
+    The spelling is offered, never applied: a typed name is the user's.
+    """
+    offer = name_spelling(name)
+    if offer is not None:
+        spelled, is_ascii = offer
+        cure = CURE_BOX_NAME_ASCII if is_ascii else CURE_BOX_NAME_UNDERSCORE
+        return cure % f"{command} --name {shlex.quote(spelled)}"
     return CURE_DERIVED_BOX_NAME % f"{command} --name <new-name>"
 
 
@@ -169,8 +173,8 @@ def sanitize_cap(leaf: str) -> str:
 
     The leaf is written in its ASCII spelling (:func:`~kanibako.launch.romanize.to_ascii`);
     whitespace, ASCII punctuation, and Unicode punctuation and separators are
-    separators, and each run of them becomes one ``_``.  The ends lose ``_``,
-    ``-`` and ``.``, and an empty result falls back to ``"box"``.  Raises
+    separators (``-`` and ``.`` among them), and each run becomes one ``_``.  The ends lose ``_``,
+    and an empty result falls back to ``"box"``.  Raises
     :class:`~kanibako.errors.DerivedBoxNameError` when *leaf* holds a character
     with no ASCII spelling, such as kanji; each caller adds its cure.
 

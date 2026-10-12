@@ -51,13 +51,15 @@ class TestStandaloneKuidHelpers:
 
 class TestSanitizeCap:
     @pytest.mark.parametrize(("leaf", "expected"), [
-        ("my-app_1.0", "my-app_1.0"),
-        ("my-app", "my-app"),
-        ("a.b", "a.b"),
+        # Spec §0: a derived name writes '_' for each '-' and '.'.
+        ("my-app_1.0", "my_app_1_0"),
+        ("my-app", "my_app"),
+        ("a.b", "a_b"),
+        ("kanibako-cli", "kanibako_cli"),
         ("my__app", "my__app"),  # the user's own underscores are not separators
         # Spec §0, ⚑ NAMING RULES: the leaf carries the SOURCE DIRECTORY's case.
         ("MyProj", "MyProj"),
-        ("ALL-CAPS_1.0", "ALL-CAPS_1.0"),
+        ("ALL-CAPS_1.0", "ALL_CAPS_1_0"),
         # Latin letters drop their diacritics.
         ("café", "cafe"),
         ("Zürich Notes", "Zurich_Notes"),
@@ -68,12 +70,12 @@ class TestSanitizeCap:
         # ...and so do the table letters and kana (romanize.to_ascii, the one spelling).
         ("Straße", "Strasse"), ("ø", "o"), ("æ", "ae"), ("ı", "i"),
         ("かにばこ", "kanibako"), ("カニ Notes", "kani_Notes"), ("が", "ga"), ("か\u3099", "ga"),
-        ("ジョン・スミス", "jon-sumisu"), ("きんや", "kin_ya"), ("ほんや ノート", "hon_ya_nooto"),
+        ("ジョン・スミス", "jon_sumisu"), ("きんや", "kin_ya"), ("ほんや ノート", "hon_ya_nooto"),
         # Unicode punctuation and separators are separators.
         ("Bob\u2019s Notes", "Bob_s_Notes"),
         ("a\u2014b\u2026c\uff01d", "a_b_c_d"),
         ("a\u3000b", "a_b"),
-        # A run of separators is one '_'; the ends lose '_', '-' and '.'.
+        # A run of separators is one '_'; the ends lose '_'.
         ("a  b!!c", "a_b_c"),
         ("my app!@#", "my_app"),
         ("a/b c", "a_b_c"),
@@ -164,7 +166,9 @@ class TestIsCanonicalStandaloneName:
     def test_accepts_well_formed(self) -> None:
         # Prefix must be a VALID kuid (odd parity), leaf a sanitized token.
         assert box_identity.is_canonical_standalone_name(f"{_VALID_KUID}_proj")
-        assert box_identity.is_canonical_standalone_name("abcd1_my-app_1.0")
+        assert box_identity.is_canonical_standalone_name("abcd1_my_app_1_0")
+        # A leaf the name rule no longer allows is not the generator's shape.
+        assert not box_identity.is_canonical_standalone_name("abcd1_my-app_1.0")
         # Generated names round-trip through the matcher.
         for _ in range(20):
             name = box_identity.make_standalone_box_name(Path("/x/proj"), set())
@@ -479,15 +483,12 @@ class TestValidateBoxName:
         "name",
         [
             "myapp",
-            "my-app",
             "my_app",
-            "my.app",          # interior dot allowed
+            "_my_app",         # a leading '_' is a letter of the rule
             "app1",
             "a",               # min length 1
             "x" * 64,          # max length 64
-            "1.2.3",
-            "a.b-c_d",
-            "ok_name-1.x",
+            "a_b_c_d",
             "MyApp",
             "abcde_proj",      # a canonical standalone id is a valid name
         ],
@@ -507,8 +508,28 @@ class TestValidateBoxName:
 
     def test_non_ascii_reason_names_the_character_and_the_allowed_set(self) -> None:
         assert box_identity.box_name_reason("café") == (
-            "box name must not contain U+00E9; box names must be ASCII letters, digits,"
-            " '_', '-', or '.': container names allow nothing else")
+            "box name must not contain U+00E9; names are 1 to 64 ASCII letters, digits,"
+            " or '_', and do not start with a digit")
+
+    # --- the name rule (spec §0): no '-', no '.', no leading digit ---------
+
+    @pytest.mark.parametrize("name, shown", [
+        ("my-app", "'-'"), ("my.app", "'.'"), ("1.2.3", "'.'"), ("a.b-c_d", "'.'"),
+    ])
+    def test_rejects_dash_and_dot(self, name: str, shown: str) -> None:
+        assert box_identity.box_name_reason(name).startswith(f"box name must not contain {shown};")
+
+    @pytest.mark.parametrize("name", ["1app", "2fa", "0"])
+    def test_rejects_a_leading_digit(self, name: str) -> None:
+        assert box_identity.box_name_reason(name).startswith(
+            "box name must not start with a digit;")
+
+    def test_a_generated_standalone_name_may_start_with_a_digit(self) -> None:
+        """The kuid prefix is kanibako's choice (keyspec §2c), and a kuid may start with one."""
+        prefix = next(k for k in (kuid.encode(v) for v in range(1, 1 << 25, 4099))
+                      if k[0].isdigit() and kuid.is_valid(k))
+        assert box_identity.is_valid_box_name(f"{prefix}_proj") is True
+        assert box_identity.is_valid_box_name(f"{prefix}_my-proj") is False
 
     def test_unprintable_character_is_named_by_codepoint(self) -> None:
         reason = box_identity.box_name_reason("a\u00a0b")
@@ -552,15 +573,14 @@ class TestValidateBoxName:
     # --- ASCII punctuation: every blocked char rejected -------------------
 
     @pytest.mark.parametrize(
-        "ch", sorted(set(string.punctuation) - set("_-."))
+        "ch", sorted(set(string.punctuation) - set("_"))
     )
     def test_rejects_each_blocked_punct(self, ch: str) -> None:
         name = f"a{ch}b"
         assert box_identity.is_valid_box_name(name) is False, ch
 
-    @pytest.mark.parametrize("ch", ["_", "-", "."])
-    def test_allows_surviving_punct_interior(self, ch: str) -> None:
-        assert box_identity.is_valid_box_name(f"a{ch}b") is True
+    def test_allows_underscore_interior(self) -> None:
+        assert box_identity.is_valid_box_name("a_b") is True
 
     # --- structural rules -------------------------------------------------
 
@@ -606,9 +626,14 @@ class TestBoxNameCure:
         ("café", "Its ASCII spelling works:\n  kanibako create /h/p --name cafe"),
         ("かに", "Its ASCII spelling works:\n  kanibako create /h/p --name kani"),
         ("東京", "Give the box a valid name:\n  kanibako create /h/p --name <new-name>"),
-        # A spelling the rule still refuses is no offer.
-        ("my café", "Give the box a valid name:\n  kanibako create /h/p --name <new-name>"),
-        ("-x", "Give the box a valid name:\n  kanibako create /h/p --name <new-name>"),
+        # The ASCII spelling is written in '_' too (spec §0).
+        ("my café", "Its ASCII spelling works:\n  kanibako create /h/p --name my_cafe"),
+        # An ASCII name is offered its '_' spelling.
+        ("-x", "Its '_' spelling works:\n  kanibako create /h/p --name _x"),
+        ("my-box", "Its '_' spelling works:\n  kanibako create /h/p --name my_box"),
+        ("my.box", "Its '_' spelling works:\n  kanibako create /h/p --name my_box"),
+        ("2fa", "Its '_' spelling works:\n  kanibako create /h/p --name _2fa"),
+        ("x" * 65, "Give the box a valid name:\n  kanibako create /h/p --name <new-name>"),
     ])
     def test_cure(self, name: str, cure: str) -> None:
         assert box_identity.box_name_cure("kanibako create /h/p", name) == cure
@@ -626,7 +651,7 @@ class TestClassifyDesignation:
     def test_absent(self, value: str | None) -> None:
         assert box_identity.classify_designation(value) is box_identity.Designation.ABSENT
 
-    @pytest.mark.parametrize("value", ["foo", "my.app", "MyApp", "a-b_c"])
+    @pytest.mark.parametrize("value", ["foo", "my_app", "MyApp", "a_b_c"])
     def test_valid_box_name_is_an_ambiguous_identifier(self, value: str) -> None:
         assert (box_identity.classify_designation(value)
                 is box_identity.Designation.IDENTIFIER)
@@ -634,7 +659,7 @@ class TestClassifyDesignation:
     @pytest.mark.parametrize(
         "value",
         [".hidden", "foo.", "..x", "a b", "café", "ws/proj", "./foo", ".", "..", "/abs/dir",
-         "x" * 65],
+         "x" * 65, "my.app", "a-b_c"],
     )
     def test_non_name_that_can_be_a_path_is_a_path(self, value: str) -> None:
         assert box_identity.classify_designation(value) is box_identity.Designation.PATH

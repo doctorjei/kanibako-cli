@@ -252,14 +252,15 @@ ERR_PROJECT_REG_HOME = ("Refusing to register $HOME as a project path: this woul
                         "entire home directory as the workspace.")
 ERR_PROJECT_NAME_USED = "Name '%s' is already registered"
 ERR_DERIVED_BOX_NAME = "The directory name '%s' is not a valid box name: %s."  # name, reason
-# The ONE statement of the box-name character set; both refusals below end with it.
-BOX_NAME_CHARSET = ("box names must be ASCII letters, digits, '_', '-', or '.': container names " +
-                    "allow nothing else")
-ERR_LEAF_NOT_ASCII = "it holds %s, which kanibako cannot spell in ASCII; " + BOX_NAME_CHARSET  # U+XXXX
+# The ONE statement of the name rule (spec §0) for box, workset, agent, persona, and harness
+# names; the charset itself is ``kanibako.identifiers.NAME_CHAR_CLASS``.
+NAME_CHARSET = ("names are 1 to 64 ASCII letters, digits, or '_', and do not start with a digit")
+ERR_LEAF_NOT_ASCII = "it holds %s, which kanibako cannot spell in ASCII; " + NAME_CHARSET  # U+XXXX
 CURE_LEAF_NOT_ASCII = "Rename or move the directory to an ASCII name."
 CURE_MOVED_LEAF_NOT_ASCII = "Rename the directory to an ASCII name (or move it back)."
 CURE_DERIVED_BOX_NAME = "Give the box a valid name:\n  %s"  # the command, `--name <new-name>` LAST
 CURE_BOX_NAME_ASCII = "Its ASCII spelling works:\n  %s"  # the command, `--name <spelling>` LAST
+CURE_BOX_NAME_UNDERSCORE = "Its '_' spelling works:\n  %s"  # the command, `--name <spelling>` LAST
 CURE_DERIVED_DUP_DEST = "Pick a destination directory whose name is a valid box name."
 CURE_DERIVED_FORK_NAME = "Pick a fork name that is a valid box name."
 CURE_DERIVED_FORK_NAME_ASCII = "Pick a fork name that is a valid box name; '%s' works."  # spelling
@@ -271,6 +272,8 @@ ERR_PROJECT_PATH_IS_NAMED_BOX = ("Refusing to create a box at %s: it is already 
                          "  kanibako box show %s/%s\n"
                          "  kanibako workset disconnect %s %s --force") # path, box, workset (ws, box, ws, box)
 
+ERR_WORKSET_NAME = ("Invalid workset name '%s': workset name %s; %s. Give the workset a "
+                    "valid name:\n  %s")  # name, flaw, NAME_CHARSET, the create command
 ERR_WORKSET_NO_PROJECT = "Project '%s' not found in workset '%s'" # project name, workset name
 ERR_WS_CONNECT_PATH_IS_PRIMARY_BOX = (
     "it is already the workspace of primary box '%s'; to make it a member of '%s' "

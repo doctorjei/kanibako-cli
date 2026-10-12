@@ -503,6 +503,7 @@ class HelperHub:
             return {"status": "error", "message": f"destination already exists: {new_path}"}
         # ⚑ The fork is named for its directory: the box-name rule, before the copy.
         from kanibako.errors import DerivedBoxNameError
+        from kanibako.identifiers import derived_name
         from kanibako.launch.box_identity import is_valid_box_name
         from kanibako.launch.romanize import to_ascii
         from kanibako.settings.messages import (CURE_DERIVED_FORK_BOX, CURE_DERIVED_FORK_NAME,
@@ -512,13 +513,14 @@ class HelperHub:
         try:
             refuse_derived_box_name(new_path.name)
         except DerivedBoxNameError as e:
-            if is_valid_box_name(f"x.{name}"):
+            # The box is ``<dir>_<name>`` (spec §0): test the fork half on a stand-in dir.
+            if is_valid_box_name(derived_name(f"x.{name}")):
                 cure = CURE_DERIVED_FORK_BOX % (f"kanibako box move {shlex.quote(str(ctx.project_path))} "
                                                 "<new-path> --name <new-name>")
             else:
                 spelled = to_ascii(name)
                 cure = (CURE_DERIVED_FORK_NAME_ASCII % spelled
-                        if spelled is not None and is_valid_box_name(f"x.{spelled}")
+                        if spelled is not None and is_valid_box_name(derived_name(f"x.{spelled}"))
                         else CURE_DERIVED_FORK_NAME)
             return {"status": "error", "message": e.with_cure(cure)}
 

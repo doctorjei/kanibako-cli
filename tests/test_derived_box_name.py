@@ -2,9 +2,10 @@
 
 ``create``, ``workset connect``, ``box duplicate``, ``box extract``, ``box move``,
 ``box convert``, and the helper fork name a box after a directory when no ``--name``
-is given.  A basename the rule refuses is refused before anything is written, and
-each command prints its OWN cure, with ``--name`` last: the name's ASCII spelling
-when it has one, else ``<new-name>``.
+is given.  The derived name writes ``_`` for each ``-`` and ``.``, and the directory
+keeps its spelling.  A name the rule still refuses is refused before anything is
+written, and each command prints its OWN cure, with ``--name`` last: the name's ``_``
+(or ASCII) spelling when it has one, else ``<new-name>``.
 """
 
 from __future__ import annotations
@@ -15,7 +16,8 @@ import shlex
 
 import pytest
 
-_BAD = ["q$(touch PWNED)", "a b'c", "--purge", "-x", "東京"]
+# Each refused directory name, and the '_' spelling its cure offers (``None``: no spelling).
+_BAD = {"q$(touch PWNED)": "q__touch_PWNED_", "a b'c": "a_b_c", "1x": "_1x", "東京": None}
 
 
 def _cli(*argv: str) -> "tuple[int, str]":
@@ -46,6 +48,14 @@ def _cure(text: str, prose: str = "Give the box a valid name:") -> "list[str]":
 
 
 _SPELLED = "Its ASCII spelling works:"
+_UNDERSCORED = "Its '_' spelling works:"
+
+
+def _offered(text: str, *command: str, spelled: "str | None") -> bool:
+    """True when *text*'s cure is *command* ``--name`` *spelled*, else ``<new-name>``."""
+    if spelled is None:
+        return _cure(text) == [*command, "--name", "<new-name>"]
+    return _cure(text, _UNDERSCORED) == [*command, "--name", spelled]
 
 
 @pytest.mark.parametrize("name", _BAD)
@@ -56,7 +66,7 @@ def test_create_refuses_a_new_directory_and_writes_nothing(
 
     assert rc == 1, text
     assert f"The directory name '{name}' is not a valid box name" in text
-    assert _cure(text) == ["kanibako", "create", str(path), "--name", "<new-name>"]
+    assert _offered(text, "kanibako", "create", str(path), spelled=_BAD[name]), text
     assert not path.exists()
     assert _primary_boxes() == {}
 
@@ -71,7 +81,7 @@ def test_create_in_an_existing_directory_refuses_and_registers_nothing(
     rc, text = _cli("create", "--no-vault")
 
     assert rc == 1, text
-    assert _cure(text) == ["kanibako", "create", str(path), "--name", "<new-name>"]
+    assert _offered(text, "kanibako", "create", str(path), spelled=_BAD[name]), text
     assert _primary_boxes() == {}
     assert not (tmp_home / "work" / "PWNED").exists()
 
@@ -126,8 +136,33 @@ def test_standalone_create_writes_the_leaf_in_its_ascii_spelling(
     assert standalone_box_name(path, None).endswith(f"_{spelled}")
 
 
+@pytest.mark.parametrize("folder, name", [
+    ("kanibako-cli", "kanibako_cli"), ("my.app", "my_app"), ("-x", "_x"),
+    ("--purge", "__purge"), (".hidden", "_hidden")])
+def test_create_derives_underscore_for_dash_and_dot(
+        folder, name, tmp_home, config_file, credentials_dir):
+    """Spec §0: the box is named ``_`` for each ``-`` and ``.``; the folder keeps its name."""
+    path = tmp_home / "work" / folder
+    rc, text = _cli("create", "--no-vault", "--", str(path))
+
+    assert rc == 0, text
+    assert _primary_boxes() == {name: str(path)}
+    assert path.is_dir()
+
+
+def test_the_offered_spelling_creates_the_box(tmp_home, config_file, credentials_dir):
+    path = tmp_home / "work" / "1x"
+    rc, text = _cli("create", "--no-vault", "--", str(path))
+    assert rc == 1, text
+
+    rc, text = _cli(*_cure(text, _UNDERSCORED)[1:], "--no-vault")
+
+    assert rc == 0, text
+    assert _primary_boxes() == {"_1x": str(path)}
+
+
 def test_the_named_cure_creates_the_box(tmp_home, config_file, credentials_dir):
-    path = tmp_home / "work" / "-x"
+    path = tmp_home / "work" / "東京"
     rc, text = _cli("create", "--no-vault", "--", str(path))
     assert rc == 1, text
 
@@ -192,14 +227,24 @@ def _members(ws, std) -> "list[str]":
 
 def test_connect_refuses_a_derived_name(tmp_home, config_file, credentials_dir):
     ws, std = _workset(tmp_home)
-    source = tmp_home / "work" / "-x"
+    source = tmp_home / "work" / "1x"
     source.mkdir(parents=True)
     rc, text = _cli("workset", "connect", "wsx", str(source))
 
     assert rc == 1, text
-    assert _cure(text) == ["kanibako", "workset", "connect", "wsx", str(source),
-                           "--name", "<new-name>"]
+    assert _offered(text, "kanibako", "workset", "connect", "wsx", str(source),
+                    spelled="_1x"), text
     assert _members(ws, std) == []
+
+
+def test_connect_derives_underscore_for_dash_and_dot(tmp_home, config_file, credentials_dir):
+    ws, std = _workset(tmp_home)
+    source = tmp_home / "work" / "my-app.v2"
+    source.mkdir(parents=True)
+    rc, text = _cli("workset", "connect", "wsx", str(source))
+
+    assert rc == 0, text
+    assert _members(ws, std) == ["my_app_v2"]
 
 
 def test_connect_offers_the_spelling_of_a_typed_name(tmp_home, config_file, credentials_dir):
@@ -227,15 +272,15 @@ def test_connect_refuses_a_typed_name(tmp_home, config_file, credentials_dir):
 
 def test_duplicate_to_named_refuses_a_derived_name(tmp_home, config_file, credentials_dir):
     ws, std = _workset(tmp_home)
-    source = tmp_home / "work" / "-x"
+    source = tmp_home / "work" / "1x"
     source.mkdir(parents=True)
     rc, text = _cli("box", "duplicate", str(source), str(tmp_home / "unused"),
                     "--to", "named", "--workset", "wsx")
 
     assert rc == 1, text
-    assert _cure(text) == ["kanibako", "box", "duplicate", str(source),
-                           str(tmp_home / "unused"), "--to", "named", "--workset", "wsx",
-                           "--name", "<new-name>"]
+    assert _offered(text, "kanibako", "box", "duplicate", str(source),
+                    str(tmp_home / "unused"), "--to", "named", "--workset", "wsx",
+                    spelled="_1x"), text
     assert _members(ws, std) == []
 
 
@@ -254,7 +299,7 @@ def _standalone_box(tmp_home, leaf: str):
     return path
 
 
-_DEST = "The directory name '-dup' is not a valid box name"
+_DEST = "The directory name '1dup' is not a valid box name"
 
 
 @pytest.mark.parametrize("to", [(), ("--to", "primary")])
@@ -262,19 +307,19 @@ def test_duplicate_to_primary_names_its_own_cure_and_the_cure_works(
         to, tmp_home, config_file, credentials_dir):
     source = _primary_box(tmp_home) if not to else _standalone_box(tmp_home, "sa")
     before = dict(_primary_boxes())
-    dest = tmp_home / "work" / "-dup"
+    dest = tmp_home / "work" / "1dup"
     rc, text = _cli("box", "duplicate", str(source), str(dest), *to, "--force")
 
     assert rc == 1, text
     assert _DEST in text
-    assert _cure(text) == ["kanibako", "box", "duplicate", str(source), str(dest), *to,
-                           "--name", "<new-name>"]
+    assert _offered(text, "kanibako", "box", "duplicate", str(source), str(dest), *to,
+                    spelled="_1dup"), text
     assert not dest.exists()
     assert _primary_boxes() == before
 
-    rc, text = _cli(*[w if w != "<new-name>" else "dupok" for w in _cure(text)[1:]], "--force")
+    rc, text = _cli(*_cure(text, _UNDERSCORED)[1:], "--force")
     assert rc == 0, text
-    assert _primary_boxes()["dupok"] == str(dest)
+    assert _primary_boxes()["_1dup"] == str(dest)
 
 
 @pytest.mark.parametrize("to", [(), ("--to", "primary")])
@@ -324,19 +369,19 @@ def test_extract_names_its_own_cure_and_the_cure_works(tmp_home, config_file, cr
     archive = tmp_home / "a.txz"
     rc, text = _cli("box", "archive", str(source), str(archive), "--force")
     assert rc == 0, text
-    dest = tmp_home / "work" / "-e1"
+    dest = tmp_home / "work" / "1e"
     dest.mkdir()
     rc, text = _cli("box", "extract", str(archive), str(dest), "--force")
 
     assert rc == 1, text
-    assert _cure(text) == ["kanibako", "box", "extract", str(archive), str(dest),
-                           "--name", "<new-name>"]
+    assert _offered(text, "kanibako", "box", "extract", str(archive), str(dest),
+                    spelled="_1e"), text
     assert "pick another --name" not in text
     assert list(_primary_boxes()) == ["src"]
 
-    rc, text = _cli(*[w if w != "<new-name>" else "exok" for w in _cure(text)[1:]], "--force")
+    rc, text = _cli(*_cure(text, _UNDERSCORED)[1:], "--force")
     assert rc == 0, text
-    assert sorted(_primary_boxes()) == ["exok", "src"]
+    assert sorted(_primary_boxes()) == ["_1e", "src"]
 
 
 def _tree(root) -> str:
@@ -355,19 +400,19 @@ def _tree(root) -> str:
 def test_move_names_its_own_cure_and_the_cure_works(tmp_home, config_file, credentials_dir):
     source = _standalone_box(tmp_home, "sa")
     before = _tree(source)
-    dest = tmp_home / "work" / "-m1"
+    dest = tmp_home / "work" / "1m"
     rc, text = _cli("box", "move", str(source), str(dest), "--default", "--force")
 
     assert rc == 1, text
     assert _tree(source) == before
-    assert _cure(text) == ["kanibako", "box", "move", str(source), str(dest), "--default",
-                           "--name", "<new-name>"]
+    assert _offered(text, "kanibako", "box", "move", str(source), str(dest), "--default",
+                    spelled="_1m"), text
     assert not dest.exists()
     assert _primary_boxes() == {}
 
-    rc, text = _cli(*[w if w != "<new-name>" else "mvok" for w in _cure(text)[1:]], "--force")
+    rc, text = _cli(*_cure(text, _UNDERSCORED)[1:], "--force")
     assert rc == 0, text
-    assert list(_primary_boxes()) == ["mvok"]
+    assert list(_primary_boxes()) == ["_1m"]
 
 
 def test_move_offers_the_spelling_of_a_typed_name(tmp_home, config_file, credentials_dir):
@@ -383,14 +428,14 @@ def test_move_offers_the_spelling_of_a_typed_name(tmp_home, config_file, credent
 
 def test_convert_names_its_own_cure_and_leaves_the_box_as_it_was(
         tmp_home, config_file, credentials_dir):
-    source = _standalone_box(tmp_home, "-c1")
+    source = _standalone_box(tmp_home, "1c")
     assert (source / "workspace").is_dir()
     before = _tree(source)
     rc, text = _cli("box", "convert", str(source), "--default", "--force")
 
     assert rc == 1, text
-    assert _cure(text) == ["kanibako", "box", "convert", str(source), "--default",
-                           "--name", "<new-name>"]
+    assert _offered(text, "kanibako", "box", "convert", str(source), "--default",
+                    spelled="_1c"), text
     assert _tree(source) == before
     assert _primary_boxes() == {}
 
@@ -399,12 +444,12 @@ def test_convert_with_a_move_into_a_rule_breaking_directory_moves_nothing(
         tmp_home, config_file, credentials_dir):
     source = _standalone_box(tmp_home, "sa")
     before = _tree(source)
-    dest = tmp_home / "work" / "-c2"
+    dest = tmp_home / "work" / "1c2"
     rc, text = _cli("box", "convert", str(source), "--default", "--move", str(dest), "--force")
 
     assert rc == 1, text
-    assert _cure(text) == ["kanibako", "box", "convert", str(source), "--default",
-                           "--move", str(dest), "--name", "<new-name>"]
+    assert _offered(text, "kanibako", "box", "convert", str(source), "--default",
+                    "--move", str(dest), spelled="_1c2"), text
     assert _tree(source) == before
     assert not dest.exists()
     assert _primary_boxes() == {}
@@ -431,15 +476,27 @@ def _fork_hub(tmp_home, workspace):
 
 
 def test_fork_of_a_rule_breaking_box_names_the_move_cure(tmp_home, config_file, credentials_dir):
-    workspace = tmp_home / "work" / "-legacy"
+    workspace = tmp_home / "work" / "1legacy"
     workspace.mkdir(parents=True)
     reply = _fork_hub(tmp_home, workspace)._handle_fork({"name": "two"})
 
     assert reply["status"] == "error"
     assert shlex.split(reply["message"].splitlines()[-1]) == [
         "kanibako", "box", "move", str(workspace), "<new-path>", "--name", "<new-name>"]
-    assert not (tmp_home / "work" / "-legacy.two").exists()
+    assert not (tmp_home / "work" / "1legacy.two").exists()
     assert _primary_boxes() == {}
+
+
+def test_a_fork_box_is_named_dir_underscore_name(tmp_home, config_file, credentials_dir):
+    """Spec §0: the fork's DIRECTORY is ``<dir>.<name>``; its box is ``<dir>_<name>``."""
+    workspace = tmp_home / "work" / "app"
+    workspace.mkdir(parents=True)
+    reply = _fork_hub(tmp_home, workspace)._handle_fork({"name": "my-fork"})
+
+    assert reply["status"] == "ok", reply
+    assert reply["path"] == str(tmp_home / "work" / "app.my-fork")
+    assert reply["name"] == "app_my_fork"
+    assert _primary_boxes()["app_my_fork"] == str(tmp_home / "work" / "app.my-fork")
 
 
 def test_fork_with_a_rule_breaking_name_asks_for_another(tmp_home, config_file, credentials_dir):

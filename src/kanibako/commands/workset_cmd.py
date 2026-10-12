@@ -33,7 +33,7 @@ from kanibako.settings.paths import (
     workset_settings_path,
 )
 from kanibako.utils import confirm_or_abort, literal_path, logical_cwd
-from kanibako.identifiers import find_identifier
+from kanibako.identifiers import derived_name, find_identifier
 from kanibako.project.workset_registry import (
     load_workset_boxes,
     resolve_workset_registry_path,
@@ -409,7 +409,8 @@ def run_create(args: argparse.Namespace) -> int:
 
     std = _load_std()
     path = Path(literal_path(args.path if args.path is not None else logical_cwd()))
-    name = args.name or path.name
+    # ⚑ A derived name writes ``_`` for each ``-`` and ``.`` (spec §0); a typed one is as typed.
+    name = args.name or derived_name(path.name)
 
     # ⚑ PRE-FLIGHT the workset mold BEFORE anything is registered or created — a
     # mid-stamp whitelist refusal would be loud but NOT atomic. Do not reorder.
@@ -634,7 +635,7 @@ def run_connect(args: argparse.Namespace) -> int:
         if args.project_name:
             validate_box_name(project_name)
         else:
-            refuse_derived_box_name(project_name)
+            project_name = refuse_derived_box_name(project_name)
     except BoxNameError as e:
         cure = f"kanibako workset connect {shlex.quote(stored)} {shlex.quote(str(source))}"
         print(f"Error: {e.with_cure(box_name_cure(cure, e.name))}", file=sys.stderr)

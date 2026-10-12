@@ -3066,6 +3066,7 @@ def _run_container(
         print(
             unrenderable_box_name_refusal(
                 proj.name or "", proj.mode.value, proj.project_path, project_dir,
+                workset=container_name_segments(proj)[0],
             ),
             file=sys.stderr,
         )

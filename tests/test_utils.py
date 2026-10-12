@@ -22,7 +22,6 @@ from kanibako.utils import (
     container_name_segments,
     cp_if_newer,
     legacy_container_names,
-    name_segment,
     project_hash,
     render_container_name,
     render_socket_identity,
@@ -265,23 +264,6 @@ class TestContainerNameFor:
         assert container_name_for(proj) == "kb-primary-myapp2"
 
 
-class TestNameSegment:
-    def test_a_dash_is_written_double(self):
-        assert name_segment("a-b") == "a--b"
-
-    def test_no_dash_is_unchanged(self):
-        assert name_segment("droste") == "droste"
-
-    def test_empty_segment_renders_empty(self):
-        assert name_segment("") == ""
-
-    def test_a_name_of_only_dashes(self):
-        assert name_segment("---") == "------"
-
-    def test_non_ascii_is_untouched(self):
-        assert name_segment("\u30c9\u30ed") == "\u30c9\u30ed"
-
-
 class TestWorksetSegment:
     def test_primary(self):
         assert workset_segment("primary", None) == "primary"
@@ -307,16 +289,18 @@ class TestRenderContainerName:
     def test_helper_zero_is_not_the_absent_helper(self):
         assert render_container_name("kento", "droste", 0) == "kb-kento-droste-helper-0"
 
-    def test_escaping_happens_per_segment(self):
-        assert render_container_name("a-b", "c") == "kb-a--b-c"
-        assert render_container_name("a", "b-c") == "kb-a-b--c"
+    def test_a_legacy_segment_renders_no_name(self):
+        """No ``--`` escape (spec §0): a ``-`` in either segment is a legacy name."""
+        assert render_container_name("a-b", "c") is None
+        assert render_container_name("a", "b-c") is None
+        assert render_container_name("a.b", "c") is None
 
 
 class TestCollisions:
     """Each pair is two DISTINCT boxes the render must not spell alike."""
 
-    def test_the_dash_boundary_is_not_a_segment_boundary(self):
-        assert render_container_name("a-b", "c") != render_container_name("a", "b-c")
+    def test_the_underscore_is_not_a_segment_boundary(self):
+        assert render_container_name("a_b", "c") != render_container_name("a", "b_c")
 
     def test_primary_and_named_boxes_of_one_name(self):
         assert render_container_name("primary", "droste") != (
@@ -324,18 +308,19 @@ class TestCollisions:
         )
 
     def test_a_box_named_like_a_helper_suffix(self):
-        assert render_container_name("primary", "x-helper-1") != (
+        assert render_container_name("primary", "x_helper_1") != (
             render_container_name("primary", "x", 1)
         )
+        assert render_container_name("primary", "x-helper-1") is None
 
     def test_a_helper_of_a_box_named_like_a_helper_suffix(self):
-        assert render_container_name("primary", "x-helper-1", 1) != (
-            render_container_name("primary", "x-helper-1")
+        assert render_container_name("primary", "x_helper_1", 1) != (
+            render_container_name("primary", "x_helper_1")
         )
 
-    def test_two_worksets_whose_escapes_overlap(self):
+    def test_an_empty_box_renders_nothing_in_any_workset(self):
         assert render_container_name("a", "b") == "kb-a-b"
-        assert render_container_name("a-b", "") is None
+        assert render_container_name("a_b", "") is None
 
 
 class TestInjectivity:
@@ -350,12 +335,15 @@ class TestInjectivity:
         "a--b--c", "\u30c9\u30ed", "\u0440\u043e", "x-helper-1", "helper-1",
         "1", "0", "0-helper-0", "primary", "standalone", "kento", " " * 3,
         "a b", "A", "aA", "\u00e9", "\u00e9-", "-e\u0301", "tab\tsep",
+        "a_b", "b_c", "a_b_c", "x_helper_1", "_", "__", "_a", "a_",
     )
 
     def test_no_two_renderable_triples_collide(self):
-        boxes = [s for s in self._ADVERSARIAL if s and not s.startswith("-")]
+        boxes = [s for s in self._ADVERSARIAL if not renders_no_name(s)]
+        worksets = [s for s in self._ADVERSARIAL if not renders_no_name(s)]
+        assert boxes and worksets
         seen: dict[str, tuple[str, str, object]] = {}
-        for workset in self._ADVERSARIAL:
+        for workset in worksets:
             for box in boxes:
                 for helper in (None, 0, 1, 7):
                     name = render_container_name(workset, box, helper)
@@ -366,12 +354,13 @@ class TestInjectivity:
                     seen[name] = key
 
     def test_the_same_triple_is_stable(self):
-        assert render_container_name("a-b", "c", 2) == render_container_name("a-b", "c", 2)
+        assert render_container_name("a_b", "c", 2) == render_container_name("a_b", "c", 2)
 
-    def test_a_200_byte_name_still_renders_uniquely(self):
-        long_a = "a" * 100 + "-" + "b" * 99
-        long_b = "a" * 100 + "--" + "b" * 98
+    def test_a_64_character_name_still_renders_uniquely(self):
+        long_a = "a" * 32 + "_" + "b" * 31
+        long_b = "a" * 32 + "__" + "b" * 30
         assert render_container_name(long_a, "x") != render_container_name(long_b, "x")
+        assert render_container_name("a" * 65, "x") is None
 
 
 class TestRendersNoName:
@@ -383,33 +372,39 @@ class TestRendersNoName:
     def test_a_dash_leading_box_name_renders_no_name(self):
         assert render_container_name("primary", "-droste") is None
 
-    def test_the_predicate_names_the_two_shapes(self):
+    def test_the_predicate_names_the_legacy_shapes(self):
         assert renders_no_name("") is True
         assert renders_no_name("-droste") is True
+        assert renders_no_name("my-box") is True
+        assert renders_no_name("my.box") is True
         assert renders_no_name("droste") is False
+
+    def test_a_leading_digit_still_renders(self):
+        """A generated name (a kuid prefix, a hash) may start with a digit."""
+        assert renders_no_name("0abcd_proj") is False
+        assert render_container_name("standalone", "0abcd_proj") == "kb-standalone-0abcd_proj"
 
     def test_a_helper_number_does_not_rescue_the_box_name(self):
         assert render_container_name("primary", "-droste", 3) is None
 
-    def test_only_one_side_of_the_colliding_pair_renders(self):
-        """``kb-primary---b`` has two readings; the one needing a leading ``-`` is absent."""
-        assert render_container_name("primary-", "b") == "kb-primary---b"
+    def test_neither_side_of_the_old_colliding_pair_renders(self):
+        assert render_container_name("primary-", "b") is None
         assert render_container_name("primary", "-b") is None
 
-    def test_the_workset_segment_is_not_the_judged_one(self):
-        assert render_container_name("-", "b") == "kb----b"
+    def test_the_workset_segment_is_judged_too(self):
+        """A legacy WORKSET name renders no name (spec §0)."""
+        assert render_container_name("-", "b") is None
+        assert render_container_name("my-set", "b") is None
 
     def test_only_a_name_is_judged(self):
-        """A non-``str`` is not a name, so the render proceeds and fails in its own way."""
-        with pytest.raises(AttributeError):
-            render_container_name("primary", object())
+        """A non-``str`` is not a name, so it is not called a legacy one."""
+        assert renders_no_name(object()) is False
 
     def test_a_conforming_name_renders_exactly_the_same_string(self):
         assert render_container_name("primary", "droste") == "kb-primary-droste"
         assert render_container_name("kento", "droste", 3) == "kb-kento-droste-helper-3"
         assert render_container_name("kento", "droste", 0) == "kb-kento-droste-helper-0"
-        assert render_container_name("a-b", "c") == "kb-a--b-c"
-        assert render_container_name("a", "b-c") == "kb-a-b--c"
+        assert render_container_name("a_b", "c") == "kb-a_b-c"
         assert container_name_for_box_name("droste", "kento") == "kb-kento-droste"
 
     def test_a_nameless_primary_box_falls_back_to_its_hash(self):
@@ -423,7 +418,7 @@ class TestStartUnrenderableBoxNameRefusal:
     ⚑ ONE carrier in ``utils`` for every door that reports it — ``start`` and ``stop``.
     """
 
-    RULE = "box name must not start with '-' (collides with CLI flags)"
+    RULE = "box name must not contain '-'; names are 1 to 64 ASCII letters"
     PATH = "/home/user/myproj"
 
     @staticmethod
@@ -435,15 +430,31 @@ class TestStartUnrenderableBoxNameRefusal:
     def test_it_names_the_box_name_rule(self):
         assert self.RULE in self._text()
 
-    def test_a_primary_box_is_cured_by_moving_it(self):
-        assert f"kanibako box move {self.PATH} <new-path> --name <new-name>" in (
+    def test_a_primary_box_is_cured_by_moving_it_to_its_spelling(self):
+        assert f"kanibako box move {self.PATH} <new-path> --name _droste" in (
             self._text("primary")
         )
 
-    def test_a_named_box_is_cured_by_moving_it(self):
-        assert f"kanibako box move {self.PATH} <new-path> --name <new-name>" in (
+    def test_a_named_box_is_cured_by_moving_it_to_its_spelling(self):
+        assert f"kanibako box move {self.PATH} <new-path> --name _droste" in (
             self._text("named")
         )
+
+    def test_a_legacy_my_box_is_offered_my_underscore_box(self):
+        text = unrenderable_box_name_refusal("my-box", "primary", self.PATH, None)
+        assert "box name must not contain '-'" in text
+        assert f"kanibako box move {self.PATH} <new-path> --name my_box" in text
+
+    def test_a_box_with_no_spelling_keeps_the_placeholder(self):
+        text = unrenderable_box_name_refusal("\u6f22\u5b57", "primary", self.PATH, None)
+        assert "--name <new-name>" in text
+
+    def test_a_legacy_workset_is_refused_for_the_workset(self):
+        text = unrenderable_box_name_refusal(
+            "droste", "named", self.PATH, None, workset="my-set")
+        assert "its workset name 'my-set' must not contain '-'" in text
+        assert "kanibako workset create <new-root> --name my_set" in text
+        assert f"kanibako box move {self.PATH} <new-path> --workset my_set" in text
 
     def test_a_standalone_box_is_cured_by_moving_its_directory(self):
         text = self._text("standalone")
@@ -479,14 +490,18 @@ class TestRenderSocketIdentity:
     def test_the_two_segments_lead_with_the_box(self):
         assert render_socket_identity("droste", "primary") == "droste-primary"
 
-    def test_the_dash_boundary_is_not_a_segment_boundary(self):
-        assert render_socket_identity("a-b", "c") != render_socket_identity("a", "b-c")
+    def test_the_underscore_is_not_a_segment_boundary(self):
+        assert render_socket_identity("a_b", "c") != render_socket_identity("a", "b_c")
+
+    def test_a_legacy_segment_renders_no_identity(self):
+        assert render_socket_identity("a-b", "c") is None
+        assert render_socket_identity("a", "b-c") is None
 
     def test_a_dash_leading_box_renders_no_identity(self):
         assert render_socket_identity("-", "primary") is None
 
     def test_a_conforming_pair_renders_exactly_the_same_string(self):
-        assert render_socket_identity("a-b", "c") == "a--b-c"
+        assert render_socket_identity("a_b", "c") == "a_b-c"
         assert render_socket_identity("droste", "kento") == "droste-kento"
 
 

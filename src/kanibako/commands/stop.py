@@ -16,7 +16,8 @@ from kanibako.settings.paths import (
     resolve_box_target,
 )
 from kanibako.settings.settings_resolve import SettingsError
-from kanibako.utils import container_name_for, unrenderable_box_name_refusal
+from kanibako.utils import (container_name_for, container_name_segments,
+                            unrenderable_box_name_refusal)
 
 
 def stale_lock_cure(lock_file) -> str:
@@ -183,6 +184,7 @@ def _stop_one(runtime: ContainerRuntime, *, project_dir: str | None) -> int:
         print(
             unrenderable_box_name_refusal(
                 proj.name or "", proj.mode.value, proj.project_path, project_dir,
+                workset=container_name_segments(proj)[0],
             ),
             file=sys.stderr,
         )
