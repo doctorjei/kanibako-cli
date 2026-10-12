@@ -6,6 +6,7 @@ import importlib.resources
 import json
 import shlex
 import stat as _st
+from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -337,12 +338,23 @@ def _unreadable(path: Path, exc: OSError) -> KanibakoError:
 def helper_tree(helpers_dir: Path, root: Path) -> list[tuple[Path, int]]:
     """Every helper on disk in the tree under *helpers_dir* as ``(helpers dir, number)``
     pairs, deepest first: each helper's ``helpers/`` subtree comes before the helper.
-    Each level is read as :func:`existing_helpers` reads one.
+    Each level is read as :func:`existing_helpers` reads one.  The walk keeps its own
+    stack, so a tree of any depth is walked without hitting the recursion limit.
     """
     found: list[tuple[Path, int]] = []
-    for num in existing_helpers(helpers_dir, root):
-        found.extend(helper_tree(helpers_dir / str(num) / "helpers", root))
-        found.append((helpers_dir, num))
+    # Each open level: its dir, its unvisited numbers, and the helper that owns it.
+    stack: list[tuple[Path, Iterator[int], tuple[Path, int] | None]] = [
+        (helpers_dir, iter(existing_helpers(helpers_dir, root)), None)]
+    while stack:
+        level, nums, owner = stack[-1]
+        num = next(nums, None)
+        if num is None:
+            stack.pop()
+            if owner is not None:
+                found.append(owner)
+            continue
+        child = level / str(num) / "helpers"
+        stack.append((child, iter(existing_helpers(child, root)), (level, num)))
     return found
 
 

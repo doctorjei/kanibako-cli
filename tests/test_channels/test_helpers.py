@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 from unittest.mock import patch
 
@@ -16,6 +17,8 @@ from kanibako.channels.helpers import (
     child_budget,
     create_broadcast_dirs,
     create_helper_dirs,
+    existing_helpers,
+    helper_tree,
     read_helper_number,
     read_spawn_budget,
     remove_helper_dirs,
@@ -329,6 +332,53 @@ class TestRemoveHelperDirs:
         helpers = tmp_path / "helpers"
         helpers.mkdir()
         remove_helper_dirs(helpers, 99)
+
+
+
+class TestHelperTree:
+    @staticmethod
+    def _recursive(helpers_dir: Path, root: Path) -> list[tuple[Path, int]]:
+        """The recursive walk ``helper_tree`` replaced: its order is the contract."""
+        found: list[tuple[Path, int]] = []
+        for num in existing_helpers(helpers_dir, root):
+            found.extend(TestHelperTree._recursive(helpers_dir / str(num) / "helpers", root))
+            found.append((helpers_dir, num))
+        return found
+
+    def test_deepest_first_in_numeric_order(self, tmp_path: Path) -> None:
+        h = tmp_path / "helpers"
+        for rel in ("1/helpers/3/helpers/2", "1/helpers/4", "2", "10/helpers/7", "all/rw"):
+            (h / rel).mkdir(parents=True)
+        (h / "1" / "helpers" / "notes").touch()
+        one = h / "1" / "helpers"
+        expected = [
+            (one / "3" / "helpers", 2), (one, 3), (one, 4), (h, 1),
+            (h, 2),
+            (h / "10" / "helpers", 7), (h, 10),
+        ]
+        assert helper_tree(h, tmp_path) == expected
+        assert helper_tree(h, tmp_path) == self._recursive(h, tmp_path)
+
+    def test_empty_and_missing(self, tmp_path: Path) -> None:
+        assert helper_tree(tmp_path / "helpers", tmp_path) == []
+        (tmp_path / "helpers").mkdir()
+        assert helper_tree(tmp_path / "helpers", tmp_path) == []
+
+    def test_a_tree_deeper_than_the_recursion_limit(self, tmp_path: Path) -> None:
+        """A chain of nested helpers deeper than the interpreter's recursion limit is
+        walked whole.  The levels are faked, because a real tree that deep is slow to
+        read and to clean up."""
+        depth = sys.getrecursionlimit() + 100
+        h = tmp_path / "helpers"
+
+        def one_helper_per_level(helpers_dir: Path, root: Path) -> list[int]:
+            return [1] if len(helpers_dir.relative_to(h).parts) < 2 * depth else []
+
+        with patch("kanibako.channels.helpers.existing_helpers", one_helper_per_level):
+            found = helper_tree(h, tmp_path)
+        assert len(found) == depth
+        assert found[-1] == (h, 1)
+        assert len(found[0][0].relative_to(h).parts) == 2 * (depth - 1)
 
 
 # --- helper-init.sh template ---
