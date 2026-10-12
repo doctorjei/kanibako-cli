@@ -215,6 +215,19 @@ def test_a_gone_directory_offers_only_the_purge_and_it_works(unmarked, capsys):
     assert registry_store.lookup_deregistered(std.registry, name) is None
 
 
+def test_a_gone_directory_survives_box_list_so_the_purge_cure_still_works(unmarked, capsys):
+    """``box list`` keeps the gone entry (marked missing): the purge it printed still runs."""
+    root, name, std = unmarked
+    assert _cli("box", "rm", name) == 0
+    root.rename(root.with_name("moved-away"))
+    capsys.readouterr()
+    assert _cli("box", "list") == 0
+    out = capsys.readouterr().out
+    assert name in out and "missing" in out
+    assert _cli("box", "rm", name, "--purge", "--force") == 0, capsys.readouterr().err
+    assert registry_store.lookup_deregistered(std.registry, name) is None
+
+
 @pytest.fixture
 def unreadable_parent(unmarked, capsys):
     """*unmarked*, parked by a plain rm, with its parent directory made unreadable (EACCES)."""

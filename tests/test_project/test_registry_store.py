@@ -383,30 +383,35 @@ class TestDeregistered:
         assert stamp.utcoffset() == timedelta(0)
         assert before <= stamp <= datetime.now(timezone.utc)
 
-    def test_list_self_heals_stale_entries(self, reg: Path, tmp_path: Path) -> None:
+    def test_list_keeps_a_gone_entry_and_drops_an_empty_one(
+        self, reg: Path, tmp_path: Path,
+    ) -> None:
+        """A gone directory stays listed: ``box list`` prints its ``rm --purge`` cure, and
+        that purge needs the entry.  Only an entry with no metadata path is dropped."""
         live_dir = tmp_path / "live"
         live_dir.mkdir()
         registry_store.register_deregistered(
             reg, "live", kind="primary", workspace="/w", metadata=str(live_dir),
         )
         registry_store.register_deregistered(
-            reg, "stale", kind="primary", workspace="/w",
+            reg, "gone", kind="primary", workspace="/w",
             metadata=str(tmp_path / "gone"),
         )
+        registry_store.register_deregistered(
+            reg, "empty", kind="primary", workspace="/w", metadata="",
+        )
         listed = registry_store.list_deregistered(reg)
-        assert set(listed) == {"live"}
-        # The self-heal is PERSISTED, not just filtered in memory.
-        assert set(registry_store.load_deregistered(reg)) == {"live"}
+        assert set(listed) == {"live", "gone"}
+        # The drop is PERSISTED, not just filtered in memory.
+        assert set(registry_store.load_deregistered(reg)) == {"live", "gone"}
 
     def test_list_keeps_entry_on_transient_stat_error(
         self, reg: Path, tmp_path: Path,
     ) -> None:
-        """A transient stat error (EACCES/EIO) must NOT false-drop a recovery
-        pointer — only a DEFINITIVE ENOENT/ENOTDIR is drop-safe.
+        """A stat error (EACCES/EIO) must NOT drop a recovery pointer.
 
-        Mutation proof: the previous ``Path.exists()`` self-heal collapses the
-        permission error into ``False`` and drops ``blocked``, reddening the
-        ``{"blocked"}`` assertions.
+        Mutation proof: a ``Path.exists()`` filter collapses the permission error
+        into ``False`` and drops ``blocked``, reddening the assertions.
         """
         import errno
         import os
@@ -432,9 +437,9 @@ class TestDeregistered:
         with patch("os.stat", fake_stat):
             listed = registry_store.list_deregistered(reg)
 
-        # 'blocked' KEPT despite the ambiguous error; 'gone' dropped (ENOENT).
-        assert set(listed) == {"blocked"}
-        assert set(registry_store.load_deregistered(reg)) == {"blocked"}
+        # 'blocked' KEPT despite the ambiguous error, as is 'gone' (its purge needs it).
+        assert set(listed) == {"blocked", "gone"}
+        assert set(registry_store.load_deregistered(reg)) == {"blocked", "gone"}
 
     def test_section_survives_other_section_writes(self, reg: Path, tmp_path: Path) -> None:
         registry_store.register_deregistered(

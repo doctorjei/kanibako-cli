@@ -439,15 +439,14 @@ def _metadata_definitively_gone(path: str) -> bool:
 
 
 def list_deregistered(registry: Path) -> dict[str, dict]:
-    """Return the deregistered entries, self-healing genuinely-stale ones.
+    """Return the deregistered entries, dropping (and persisting the drop of) any
+    with an empty ``metadata``: it has no recovery target.
 
-    Dropped only when ``metadata`` is empty (no recovery target) or definitively
-    gone; the pruned section is persisted when anything is removed.
+    ⚑ An entry whose directory is gone STAYS: ``box list`` prints its ``rm --purge``
+    cure, and that purge needs the entry to drop it.
     """
     def _live(entries: dict[str, dict]) -> dict[str, dict]:
-        return {name: entry for name, entry in entries.items()
-                if entry.get("metadata")
-                and not _metadata_definitively_gone(str(entry["metadata"]))}
+        return {name: entry for name, entry in entries.items() if entry.get("metadata")}
 
     entries = load_deregistered(registry)
     live = _live(entries)

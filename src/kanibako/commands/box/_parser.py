@@ -2098,7 +2098,9 @@ def run_list(args: argparse.Namespace) -> int:
             for box_name in sorted(deregistered):
                 entry = deregistered[box_name]
                 path = str(entry.get("workspace") or entry.get("metadata") or "")
-                print(f"  {box_name:<{dr_width}} {'deregistered':<14} {path}")
+                gone = registry_store._metadata_definitively_gone(str(entry["metadata"]))
+                status = "missing" if gone else "deregistered"
+                print(f"  {box_name:<{dr_width}} {status:<14} {path}")
             if _pair_works_for_all(std, deregistered.items()):
                 print(
                     "  Recover with 'kanibako box register <name>', or delete with "
@@ -3305,7 +3307,8 @@ def _retained_box_cures(target: str) -> "tuple[str, str]":
 def _retained_box_advice(std, target: str, entry: dict) -> "tuple[str, tuple[str, ...]]":
     """The sentence and commands for parked *entry*: only the routes that work for IT.
 
-    A standalone whose ``workset.yaml`` lacks the marker is restored once the marker
+    A box (either kind) whose directory is gone offers only the purge.  A standalone
+    whose ``workset.yaml`` lacks the marker is restored once the marker
     is back (``register`` before that drops the entry); one that will not parse is fixed
     first, since ``register`` drops the entry and the purge refuses the file.  Its purge
     is refused (I4) while an active box holds its directory, and ``register`` then only
@@ -3322,15 +3325,19 @@ def _retained_box_advice(std, target: str, entry: dict) -> "tuple[str, tuple[str
 
     register_cure, purge_cure = _retained_box_cures(target)
     metadata = entry.get("metadata")
-    if entry.get("kind") != "standalone" or not metadata:
+    if not metadata:
         return _GENERIC_PARKED_SENTENCE, (register_cure, purge_cure)
     root = Path(str(metadata))
+    gone = f"It cannot be restored: {root} is gone. Delete its entry", (purge_cure,)
     # ⚑ Only ENOENT/ENOTDIR prove "gone"; a stat or read that fails otherwise is unverified.
+    # ``register`` of a gone box drops its entry and restores nothing, either kind.
     if registry_store._metadata_definitively_gone(str(root)):
-        return f"It cannot be restored: {root} is gone. Delete its entry", (purge_cure,)
+        return gone
+    if entry.get("kind") != "standalone":
+        return _GENERIC_PARKED_SENTENCE, (register_cure, purge_cure)
     try:
         if not root.is_dir():
-            return f"It cannot be restored: {root} is gone. Delete its entry", (purge_cure,)
+            return gone
         owner = registry_store.standalone_name_for_same_dir(std.registry, root)
         try:
             marked = stores_standalone_registry_null(root)

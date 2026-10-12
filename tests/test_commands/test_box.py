@@ -145,6 +145,34 @@ class TestBoxList:
         # Recovery is discoverable from the listing itself.
         assert "register" in out and "--purge" in out
 
+    def test_list_keeps_a_gone_parked_box_so_its_purge_cure_works(
+        self, config_file, tmp_home, credentials_dir, capsys,
+    ):
+        """A parked box whose directory is gone stays listed, marked ``missing``, with only
+        the purge offered; that purge then drops it, rather than "not a registered box"."""
+        from kanibako.cli import main
+        from kanibako.project import registry_store
+
+        std = load_std_paths(load_config(config_file))
+        shutil.rmtree(self._park_deregistered(std, tmp_home))
+
+        def cli(*argv: str) -> int:
+            with pytest.raises(SystemExit) as info:
+                main(list(argv))
+            return int(info.value.code or 0)
+
+        capsys.readouterr()
+        assert cli("box", "list") == 0
+        out = capsys.readouterr().out
+        assert "gonebox" in out and "missing" in out
+        assert "box register" not in out
+        assert cli("box", "rm", "gonebox") == 0
+        out = capsys.readouterr().out
+        assert f"It cannot be restored: {std.boxes / 'gonebox'} is gone. Delete its entry:" in out
+        assert "kanibako box rm gonebox --purge" in out and "box register" not in out
+        assert cli("box", "rm", "gonebox", "--purge", "--force") == 0, capsys.readouterr().err
+        assert registry_store.lookup_deregistered(std.registry, "gonebox") is None
+
     def test_list_without_deregistered_omits_section(
         self, config_file, tmp_home, credentials_dir, capsys,
     ):
