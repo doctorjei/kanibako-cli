@@ -22,7 +22,7 @@ def load_packaged_mapping(ref: Traversable, filename: str) -> dict[str, Any]
 def yaml_problem(exc: yaml.YAMLError) -> str
 def parse_doc_text(text: str) -> object
 def load_doc(path: Path | None) -> dict
-def dump_doc(path: Path, data: dict) -> None
+def dump_doc(path: Path, data: dict, *, header: str='') -> None
 def dump_doc_commented(path: Path, data: dict, sections: tuple[str, ...], key: str, comment: str) -> None
 def write_root_key(path: Path, key: str, value: object) -> None
 def remove_root_key(path: Path, key: str) -> bool

@@ -803,6 +803,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **A box can no longer grow the host's helper hub without bound.** A helper-socket frame over 16 MiB (no
   newline in sight) now ends that one connection with a logged error; the hub keeps serving every other
   helper. The largest frame a real exchange makes is under 1 MiB.
+- **A registry write prints any section it drops.** The global `registry.yaml` already dropped every top-level
+  section kanibako does not read, without a word; it now prints each one's text with a warning naming the file. A
+  workset's `registry.yaml` used to keep such sections; it now drops and prints them the same way. Both files are
+  written under a header that says so, and a comment in either file does not survive a write.
 - **Template headers are read in any letter case.** A `# Kanibako-Template:` description or
   `# KANIBAKO-TEMPLATE-CHECK:` smoke check is now shown and run. `rig add` already took such a file as a template,
   but its description and checks were ignored.

@@ -39,7 +39,8 @@ from typing import Any
 
 from kanibako._atomic import rmw_lock
 from kanibako.identifiers import find_identifier
-from kanibako.settings.config_io import dump_doc, load_doc
+from kanibako.project.registry_store import write_registry_doc
+from kanibako.settings.config_io import load_doc
 from kanibako.settings.messages import ERR_CONFIG_NULL_PATH
 from kanibako.settings.settings_resolve import SettingsError
 from kanibako.settings.workset_dirkeys import EarlyScope, early_repoint, resolve_workset_dir_key
@@ -145,14 +146,9 @@ def _section(full_doc: Mapping[str, Any], section: str) -> dict:
 
 
 def _write_doc(registry_path: Path, full_doc: dict) -> None:
-    """Atomically write *full_doc* in canonical section order, name sections sorted."""
-    for section in _SORTED_SECTIONS:
-        table = full_doc.get(section)
-        if isinstance(table, dict):
-            full_doc[section] = {name: table[name] for name in sorted(table)}
-    ordered = {name: full_doc[name] for name in _SECTIONS if name in full_doc}
-    ordered.update({k: v for k, v in full_doc.items() if k not in _SECTIONS})
-    dump_doc(registry_path, ordered)
+    """Atomically write *full_doc*'s ``boxes:``, sorted; any other section is dropped with a
+    warning (:func:`~kanibako.project.registry_store.write_registry_doc`)."""
+    write_registry_doc(registry_path, full_doc, _SECTIONS, _SORTED_SECTIONS)
 
 
 def _load_boxes_raw(registry_path: Path) -> tuple[dict, dict[str, str]]:

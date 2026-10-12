@@ -305,9 +305,9 @@ def _dump_text(data: dict) -> str:
     )
 
 
-def dump_doc(path: Path, data: dict) -> None:
-    """Serialize *data* to *path* as YAML, atomically (creates parent dirs)."""
-    atomic_write_text(path, _dump_text(data))
+def dump_doc(path: Path, data: dict, *, header: str = "") -> None:
+    """Serialize *data* to *path* as YAML, atomically (creates parent dirs), after *header*."""
+    atomic_write_text(path, header + _dump_text(data))
 
 
 def dump_doc_commented(

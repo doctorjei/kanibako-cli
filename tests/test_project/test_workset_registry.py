@@ -185,27 +185,39 @@ def test_box_names_sorted_on_write(reg: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Atomicity / sparsity — sibling sections preserved, no stray scaffolding
+# Atomicity / sparsity — unknown sections dropped out loud, no stray scaffolding
 # ---------------------------------------------------------------------------
 
 
-def test_register_preserves_sibling_sections(reg: Path) -> None:
-    """Writing ``boxes:`` leaves an unrelated sibling section untouched."""
+def test_register_drops_an_unknown_section_and_prints_it(reg: Path, caplog) -> None:
+    """Writing ``boxes:`` drops a section the module does not read, printing its text."""
     dump_doc(reg, {"connected": {"/ext": {"workset": "w", "box": "b"}}})
     workset_registry.register_workset_box(reg, "alpha", Path("/abs/alpha"))
-    raw = load_doc(reg)
-    assert raw["connected"] == {"/ext": {"workset": "w", "box": "b"}}
-    assert raw["boxes"] == {"alpha": "/abs/alpha"}
+    assert load_doc(reg) == {"boxes": {"alpha": "/abs/alpha"}}
+    assert caplog.messages == [
+        f"{reg}: dropped the section 'connected', which kanibako does not read. It held:\n"
+        "connected:\n  /ext:\n    workset: w\n    box: b"
+    ]
 
 
-def test_unregister_preserves_sibling_sections(reg: Path) -> None:
-    """Unregister rewrites only ``boxes:``; a sibling section survives."""
-    dump_doc(reg, {"connected": {"/ext": {"workset": "w"}}})
-    workset_registry.register_workset_box(reg, "alpha", Path("/abs/alpha"))
+def test_unregister_drops_an_unknown_section_and_prints_it(reg: Path, caplog) -> None:
+    """Unregister rewrites the file too; the unknown section goes with one warning."""
+    dump_doc(reg, {"boxes": {"alpha": "/abs/alpha"}, "connected": {"/ext": {"workset": "w"}}})
     workset_registry.unregister_workset_box(reg, "alpha")
-    raw = load_doc(reg)
-    assert raw["connected"] == {"/ext": {"workset": "w"}}
-    assert raw["boxes"] == {}
+    assert load_doc(reg) == {"boxes": {}}
+    assert len(caplog.messages) == 1 and "'connected'" in caplog.messages[0]
+
+
+def test_the_registry_is_written_under_the_generated_header(reg: Path) -> None:
+    """The file opens with the CAPITALS header, and a comment in it does not survive a write."""
+    from kanibako.project.registry_store import REGISTRY_HEADER
+
+    reg.parent.mkdir(parents=True)
+    reg.write_text("# keep me?\nboxes:\n  beta: /abs/beta  # and me?\n")
+    workset_registry.register_workset_box(reg, "alpha", Path("/abs/alpha"))
+    assert reg.read_text() == (
+        REGISTRY_HEADER + "boxes:\n  alpha: /abs/alpha\n  beta: /abs/beta\n"
+    )
 
 
 def test_register_writes_only_boxes_section(reg: Path) -> None:

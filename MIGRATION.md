@@ -8780,9 +8780,10 @@ sections have moved again since. The canonical, current section list is
 (`project/registry_store.py:85-91`):
 
 - **`projects:` is RETIRED** — it is dropped from the file on the next save, not
-  carried forward. Default-mode ("primary") box identity now lives in the
-  PRIMARY workset's own per-workset `boxes:` membership, not in a top-level
-  registry section.
+  carried forward; that save prints its text with a warning naming the file. The
+  same holds for `connected:` and any other section kanibako does not read.
+  Default-mode ("primary") box identity now lives in the PRIMARY workset's own
+  per-workset `boxes:` membership, not in a top-level registry section.
 - **`connected:` is GONE.** What it tracked is now the same per-workset `boxes:`
   entry mentioned above — there is no separate top-level section for it.
 - **`workset_roots` is not a separate section.** Name→root resolution folds into

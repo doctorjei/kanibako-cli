@@ -98,7 +98,7 @@ def test_load_section_returns_single_section(reg: Path) -> None:
     assert registry_store.load_section(reg, "standalone") == {}
 
 
-def test_projects_section_retired(reg: Path) -> None:
+def test_projects_section_retired(reg: Path, caplog) -> None:
     """The ``projects`` section is retired: never surfaced, dropped on write.
 
     A legacy registry.yaml carrying a ``projects`` block (an older install that
@@ -121,6 +121,11 @@ def test_projects_section_retired(reg: Path) -> None:
     registry_store.save_registry(reg, loaded)
     raw = load_doc(reg)
     assert "projects" not in raw
+    # ... and the save says so, printing what it dropped.
+    assert caplog.messages == [
+        f"{reg}: dropped the section 'projects', which kanibako does not read. It held:\n"
+        "projects:\n  myapp: /home/user/myapp"
+    ]
 
 
 def test_register_standalone_adds_entry(reg: Path) -> None:
