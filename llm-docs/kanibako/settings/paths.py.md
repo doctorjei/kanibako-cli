@@ -23,15 +23,17 @@ exist for the same reason: they let this module speak about a workset without im
 * **`named`** — a named workset. Box state lives under the workset's own `projects/<name>/`.
 * **`standalone`** — all state lives inside the project directory itself.
 
-### The standalone marker (`_STANDALONE_META_DIR`)
+### The standalone marker (`STANDALONE_META_DIR`)
 
 `box_data` is the STANDALONE box-store dir name. It is `@meta.box.path` for a standalone box (the
 empty leaf of `@workset.boxes`, keyspec §2c) and HALF of the detection marker
 (`~/canon/workbook/specs/system-design-1.8.0.md` § "Detection & import") — the other half is the ROOT `workset.yaml`.
 Both must be present; a bare `box_data/` directory is not a marker.
 
-It is defined at the TOP of the module, not inside the detection helper that used to own it, because
-`_box_settings_files` needs it and it is a LAYOUT constant rather than a detail of detection.
+It is a LAYOUT constant rather than a detail of detection, so it is defined in `settings/bootstrap`
+and re-bound at the TOP of this module, not inside the detection helper that used to own it.
+`standalone_store_teardown_plan` reads it here; `commands/start` and `commands/box/_lifecycle`
+import it from here.
 
 ### `DetectionResult`
 
@@ -187,7 +189,7 @@ Documentation-only, deliberately: no code auto-migrates a user's store.
 `logger` is the module logger (`get_logger("paths")`); the XDG fallback warnings and the `_flag_*`
 advisories go through it (the advisories use `get_logger(__name__)`).
 
-### `_XDG_SPEC_DEFAULTS`
+### `XDG_SPEC_DEFAULTS` (imported from `settings/bootstrap`)
 
 Spec defaults for the XDG base directories that HAVE one (freedesktop Base Directory spec).
 ⚑ `XDG_RUNTIME_DIR` is deliberately ABSENT — it has no spec default and is handled specially by
@@ -373,7 +375,7 @@ setup-materialized `system.cache`) to raise `Variable $XDG_CACHE_HOME is not set
 expand time — the resolver reads ONLY this map, never the environment, so a missing key is
 unrecoverable at the call site.
 
-Every var in `_XDG_SPEC_DEFAULTS` resolves via the hardened `resolve_xdg` (env honored iff set AND
+Every var in `XDG_SPEC_DEFAULTS` resolves via the hardened `resolve_xdg` (env honored iff set AND
 absolute; unset/empty/relative → the XDG-spec default under `$HOME`), plus `XDG_RUNTIME_DIR` (no
 spec default: fallback + warn). *data_home* is an optional already-resolved `$XDG_DATA_HOME`
 anchoring the default tree (the flat foundation/system resolver passes it); when None it resolves
@@ -505,7 +507,7 @@ SHORT** — the `system_path_floor` story below, one layer down, found 2026-08-2
 wrote five string literals; `CONFIG_PATH_DEFAULTS` has declared six since `config.journal` was added
 on 2026-06-30, the day after the original map was written on 2026-06-29. `config.journal` is
 declared `layer: 1` with a real default in the keyspace manifest, is `set: file`, and is in
-`config_keys.KNOWN_KEYS` — so `config set config.journal=…` was accepted and a binding sourced at
+`config_keys.KNOWN_CONFIG_KEYS` — so `config set config.journal=…` was accepted and a binding sourced at
 `@config.journal` resolved at SET time (`config_interface._path_tier_split()[0]` iterates the whole
 resolve, so it always carried six) and hit `_ABSENT` at launch. The referring key was dropped with no
 message and rc 0: accepted-then-silently-discarded, which is strictly worse than either side being
@@ -676,7 +678,7 @@ OVERRIDABLE downward default for every box it contains — the box tier still wi
 box`). What the create branch PERSISTS is the BOX-AUTHORED value, never the resolved one: see the
 NAMED resolver for the full reasoning.
 
-⚑⚑ **IT IS `config.resolve_box_enable_vault` SINCE 2026-08-29, NOT `read_box_enable_vault`.** The
+⚑⚑ **IT IS `resolve_box_enable_vault` SINCE 2026-08-29, NOT `read_box_enable_vault`.** The
 resolved value now comes from the real cascade — `base < system < workset < box` — instead of two
 hand-opened files, so a `kanibako system set box.enable_vault=false` reaches the box. It did not
 before: the write was accepted, persisted and echoed back by `system get`, and every box still came
@@ -805,7 +807,7 @@ box's own workset/box tree (never the old shared `@config.data/logs/<id>/` locat
 
 * PRIMARY → the RESOLVED `workset.logs` of the primary root (`std.primary_logs`)
 * NAMED → the RESOLVED `workset.logs` of `proj.group.root`
-* STANDALONE → the RESOLVED `workset.logs` of the project root (default `@meta.box.path`, i.e.
+* STANDALONE → the RESOLVED `workset.logs` of the project root (default `@workset.boxes`, i.e.
   `box_data/`), read from the root `workset.yaml`
 
 ⚑⚑ **This function is the hub's WRITER, and the MOUNT it must agree with is the spec's own
@@ -814,12 +816,10 @@ While an arm COMPOSED its directory the two disagreed the instant a user repoint
 the mount moved and the writer did not, so the box read an empty file forever. That is the split
 **migration M-14** records, and it is CLOSED in ALL THREE modes — PRIMARY and NAMED as of
 2026-08-29, STANDALONE as of 2026-08-30. The standalone arm was the hard one: its declared default
-`@meta.box.path` is itself a ref to `@workset.boxes`, which `settings/workset_dirkeys` refuses
-because it runs before the launch snapshot exists. The fix is NOT chaining in the pre-snapshot
-resolver — it is that in standalone, and only there, the caller already HOLDS the answer
-(`meta.box.path | @workset.boxes`, no name leaf), so `resolve_workset_logs(..., standalone=True)`
-resolves `workset.boxes` once and passes it as `extra_refs`. In primary/named the same ref would
-need the construct-time `@meta.box.name` and keeps refusing.
+is `@workset.boxes` (no name leaf), a ref the pre-snapshot resolver must answer before the launch
+snapshot exists. `resolve_workset_logs(..., standalone=True)` takes that default, and
+`settings/workset_dirkeys.resolve_workset_dir_key` resolves a ref to another workset early key
+itself, with cycle protection. A ref needing the construct-time `@meta.box.name` is still refused.
 
 🛑 A repointed standalone `workset.logs` puts the log OUTSIDE the `box_data` directory, which
 `box rm --purge` removes wholesale. So that teardown
@@ -1263,7 +1263,7 @@ customized via the `box.bindings` cascade. The workspace override above (an EXTE
 dir) is a SEPARATE concern and STAYS.
 
 `enable_vault` (P5a): explicit param wins; else `box.enable_vault` (absent everywhere ⇒ True)
-resolved through the CASCADE by `config.resolve_box_enable_vault` — `base < system < workset < box`.
+resolved through the CASCADE by `resolve_box_enable_vault` — `base < system < workset < box`.
 ⚑ The WORKSET tier is REQUIRED: `workset create --no-vault` writes the key there, where spec §0's
 containment rule makes it an OVERRIDABLE default for the workset's boxes (the contained scope still
 wins). Without it the flag is a silent no-op for every named box.
@@ -1273,8 +1273,8 @@ files, so `base` and `system` were dropped silently. A `kanibako system set box.
 returned 0, persisted to `global/settings.yaml`, was echoed back by `system get`, and every box
 still came up with the vault created and mounted.
 
-⚑ **The resolved value is not the written one.** `actual_vault_enabled` resolves through the
-cascade and drives the mounts; `box_authored_vault` reads the box tier ALONE (via
+⚑ **The resolved value is not the written one.** `ProjectPaths.vault_enabled()` resolves through the
+cascade and drives the mounts; `authored_vault` reads the box tier ALONE (via
 `read_box_enable_vault`, which no longer takes a fallback at all) and is the only one persisted,
 since spec `:868` keeps the key sparse — persisting an inherited default would PIN it, turning an
 overridable workset default into a box override later workset edits cannot reach.
@@ -1615,7 +1615,7 @@ drop-in portable BY CONSTRUCTION — a moved/imported tree resolves against its 
 ABSOLUTE repoint (e.g. `workset.workspaces`) is the user's own choice and travels as written.
 
 `enable_vault` (P5a): explicit param wins; else the box-scope `box.enable_vault` resolved through
-the CASCADE by `config.resolve_box_enable_vault` — `base < system < workset < box`, the BOX tier
+the CASCADE by `resolve_box_enable_vault` — `base < system < workset < box`, the BOX tier
 being `box_data/box.yaml` and the WORKSET tier the ROOT `workset.yaml`. ⚑ The workset level is LIVE
 DESIGN, not a compat path — keyspec §2c's STANDALONE block declares it ("Box values … still resolve
 from the workset tier … as downward defaults when no box file exists"). It is ALSO why a pre-P2
