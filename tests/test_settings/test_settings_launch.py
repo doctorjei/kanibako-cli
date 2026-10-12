@@ -331,7 +331,6 @@ def test_agent_partial_surfaces_flat_secret_path():
     from kanibako.settings.settings_assemble import _agent_partial
 
     raw = {"self": {
-        "name": "OpenAI Codex CLI",
         "secret_path": {"API_KEY": "/home/agent/.config/personas/navigator/token"},
     }}
     active = _agent_partial(raw, sub_key="navigator℘codex")
@@ -351,7 +350,6 @@ def test_agent_partial_surfaces_flat_env():
     from kanibako.settings.settings_assemble import _agent_partial
 
     raw = {"self": {
-        "name": "OpenAI Codex CLI",
         "env": {"CODEX_HOME": "~/.codex"},
     }}
     active = _agent_partial(raw, sub_key="navigator℘codex")

@@ -81,6 +81,7 @@ def _parse_node(value: Any, *, in_binds: bool, dest_keyed: bool=False, at_bindin
 def _parse_marker_map(raw: dict, *, path: tuple[str, ...]) -> KeyStore
 def _declared_source(src: str, category: str, dest: str, root_ref: str | None) -> str
 def _parse_naming_file(raw: dict, *, file_path: Path | None, key_path: tuple[str, ...]=(), for_pref_requests: bool=False) -> KeyStore
+def _naming_file(exc: Exception, file_path: Path | None) -> SettingsError
 def _file_partial(raw: dict, *, path: Path | None=None, for_pref_requests: bool=False) -> KeyStore
 def _agent_partial(raw: dict, *, sub_key: str, path: Path | None=None, node: str | None=None) -> KeyStore
 def _scope_nodes(scope: dict, *, sub_key: str, path: Path | None) -> KeyStore

@@ -816,11 +816,11 @@ def _agent_label(std: "StandardPaths", agent_id: str) -> str:
 
     ⚑⚑ THREE DOORS, IN CASCADE ORDER, AND THEY ARE NOT INTERCHANGEABLE:
 
-    1. the agent FILE's own flat ``label`` — read through the file boundary's slot, because
-       ``assemble_levels`` carries only this file's CATEGORY tables into the agent rung; its
-       flat behavior scalars reach the launch through ``agent_file.state_level`` instead.
-       This is the same SLOT ``agent get <node> label`` reads, but NOT the same read: that
-       verb renders and this one must not (below).
+    1. the agent FILE's own flat ``label`` — read through the file boundary's slot. This is
+       the same SLOT ``agent get <node> label`` reads, but NOT the same read: that verb
+       renders and this one must not (below). An empty or null label there is declined
+       here, and doors 2 and 3 then resolve WITHOUT the agent file, whose level would
+       otherwise carry that empty value over them.
     2. ``agent.<node>.label`` through the cascade — a per-agent value in the SYSTEM file.
     3. ``agent.default.label`` through the cascade — the all-agents tier.
 
@@ -844,6 +844,7 @@ def _agent_label(std: "StandardPaths", agent_id: str) -> str:
     """
     from kanibako.settings.agent_config import agent_settings_path
     from kanibako.settings.agent_file import (
+        read_leaf,
         slot_for,
         stored_leaf_display,
         stored_leaf_value,
@@ -864,9 +865,17 @@ def _agent_label(std: "StandardPaths", agent_id: str) -> str:
     # is the same test ``effective_value`` makes for the same reason, on the same key.
     # ⚑ A present-``None`` answers ``None`` here too, together with absent, and both mean
     # the file names no label — which is exactly the fall-through this door wants.
-    stored = stored_leaf_value(slot_for(std.agents, agent_id, "label"))
+    slot = slot_for(std.agents, agent_id, "label")
+    stored = stored_leaf_value(slot)
     if stored is not None and stored != "":
         return stored_leaf_display("label", stored)
+    # ⚑ A label the file HOLDS but this door declined (``""`` or ``null``) sits on the
+    # ``agent.<node>`` level too, where it would shadow the system file and the plugin's
+    # declaration and send doors 2 and 3 to ``agent.default.label``. So those doors resolve
+    # without the file then; a file that names no label is still read whole.
+    agent_path = (
+        None if read_leaf(slot) is not None else agent_settings_path(std.agents, agent_id)
+    )
 
     floor = _label_floor(agent_id)
     doors: tuple[tuple[str, str], ...] = (("agent", agent_id),)
@@ -884,7 +893,7 @@ def _agent_label(std: "StandardPaths", agent_id: str) -> str:
                 ".".join((*sections, "label")), sections, "label",
                 agent_name=agent_id,
                 system_path=std.settings,
-                agent_path=agent_settings_path(std.agents, agent_id),
+                agent_path=agent_path,
                 workset_path=None,
                 box_path=None,
                 floor=floor,

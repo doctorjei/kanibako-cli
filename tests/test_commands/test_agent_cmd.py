@@ -248,6 +248,24 @@ class TestRunInfo:
         assert "Claude Code" in out, out
         assert 'Label: ""' not in out, out
 
+    @pytest.mark.parametrize("stored", ("", None), ids=("empty", "null"))
+    def test_a_label_the_file_declines_does_not_shadow_the_declaration(
+        self, agent_env, capsys, stored,
+    ):
+        """K4 Step 1: the file's root scalars ride the ``agent.claude`` level, so a stored
+        ``""`` or ``null`` label would shadow the plugin's declaration there and send the label
+        to ``agent.default.label``. Door 1 declines it and the later doors resolve without
+        the file (his Q3 answer: keep today's label)."""
+        from kanibako.commands.agent_cmd import run_info
+        from kanibako.settings.agent_file import slot_for, write_leaf
+
+        write_leaf(slot_for(agents_dir(agent_env), "claude", "label"), stored)
+        capsys.readouterr()
+        assert run_info(argparse.Namespace(agent_id="claude")) == 0
+        out = capsys.readouterr().out
+        assert "Claude Code" in out, out
+        assert "Agent Description (None)" not in out, out
+
     @pytest.mark.parametrize("verb", ("run_info", "run_show"))
     def test_unreadable_settings_fall_back_to_the_floor_label_with_one_warning(
         self, agent_env, capsys, monkeypatch, verb,

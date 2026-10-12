@@ -1384,10 +1384,15 @@ def _parse_naming_file(
             raw, in_binds=False, path=key_path, for_pref_requests=for_pref_requests,
         )
     except (ReservedKeyError, SettingsError) as exc:
-        where = str(file_path) if file_path is not None else "<settings>"
-        raise SettingsError(f"{exc} (in settings file {where})") from exc
+        raise _naming_file(exc, file_path) from exc
     assert isinstance(parsed, KeyStore)
     return parsed
+
+
+def _naming_file(exc: Exception, file_path: Path | None) -> SettingsError:
+    """*exc*'s message VERBATIM with the file appended — the key stays first (above)."""
+    where = str(file_path) if file_path is not None else "<settings>"
+    return SettingsError(f"{exc} (in settings file {where})")
 
 
 def _file_partial(
@@ -1455,9 +1460,9 @@ def _agent_partial(
     for leaf, leaf_value in level.state.items():
         # ⚑ THE ONE TABLE-VALUED LEAF THE SPLIT HIDES: ``transform_settings`` is a §2d leaf,
         # not a category root, so :func:`~kanibako.settings.agent_file.level_table` splits it into
-        # *state* and no parse below ever sees it. Without this the launch dropped it in silence.
-        # The all-agents tier's *state* is empty (``self:`` is ``agent.<node>``), so this is the
-        # active level's own leaves and only the launch reaches it — ``agent_record`` coerces.
+        # *state*, which skips the category parse. A scalar there is refused here, before the
+        # leaf is set below. The all-agents tier's *state* is empty (``self:`` is
+        # ``agent.<node>``), so these are the active level's own leaves.
         if leaf in TABLE_VALUED_AGENT_LEAVES and leaf_value is not None \
                 and not isinstance(leaf_value, dict):
             refuse_scalar_at_table_key(
@@ -1466,11 +1471,11 @@ def _agent_partial(
             )
     scope = _scope_nodes(level.scope, sub_key=sub_key, path=path)
     store = _file_partial(level.contained, path=path)
-    if not level.table and not scope:
+    if not level.table and not level.state and not scope:
         return store
     agent_node = KeyStore()
     store["agent"] = agent_node
-    if level.table:
+    if level.table or level.state:
         # The discriminator (``default`` / the active agent's name) is the §2d key form and is
         # load-bearing: it keeps the fallback layer and any per-agent override distinct under the
         # merge.
@@ -1478,9 +1483,21 @@ def _agent_partial(
         # ``agent.<node>`` ([spec:15-21, "self"]), so the walk starts one scope in and the §2a
         # DECLARATION ROOT would otherwise have no scope to read. It is the ONLY thing this call
         # does differently from a file tier's — the file naming is the shared wrap's.
-        agent_node[level.node] = _parse_naming_file(
+        own = _parse_naming_file(
             level.table, file_path=path, key_path=("agent", level.node),
         )
+        # ⚑ THE FILE'S ROOT SCALARS RIDE THIS LEVEL TOO (K4): ``state`` is ``agent.<node>``'s
+        # non-category leaves, so they sit beside its categories and every resolve that reads
+        # the file reads all of it. They are set VERBATIM, with no ``_parse_node``: the record's
+        # coercions (``str()``, the ``run_args`` split, a bare ``run_args:`` as ``[]``) do not
+        # apply, and the key split keeps them disjoint from the parsed categories. A reserved
+        # name the store refuses is named with its file, as the categories' parse names it.
+        for leaf, leaf_value in level.state.items():
+            try:
+                own[leaf] = leaf_value
+            except ReservedKeyError as exc:
+                raise _naming_file(exc, path) from exc
+        agent_node[level.node] = own
     if scope:
         # ⚑ WHAT THE BOUNDARY GUARANTEES, AND ALL IT GUARANTEES: before this overlay
         # ``agent_node`` holds at most the own node's ``self:`` categories, and

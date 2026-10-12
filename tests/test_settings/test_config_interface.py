@@ -7775,3 +7775,17 @@ def test_the_config_block_renders_a_stored_leaf_as_the_undeclared_block_does(
     dump_doc(f, {"config": {"data": raw}, "box": {"zzz": raw}})
     _shown, undeclared_value = _undeclared_stored_entries(load_doc(f))[("box", "zzz")]
     assert _misplaced_config_entries(load_doc(f)) == {"config.data": undeclared_value}
+
+
+def test_effective_value_reads_an_agent_file_root_scalar(tmp_path):
+    """K4 Step 1 (plan 177-K4 T3): ``effective_value`` passes the agent file as ``agent_path``
+    and no ``agent_state``, so the ``config reset`` message never saw a root scalar. The
+    ``agent.<active>`` level now carries it (plan § 4 B3)."""
+    from kanibako.settings.config_interface import effective_value
+
+    agent = tmp_path / "agent.yaml"
+    agent.write_text("self:\n  model: opus\n")
+    assert effective_value(
+        "agent.claude.model", ("agent", "claude"), "model", agent_name="claude",
+        system_path=None, agent_path=agent, workset_path=None, box_path=None,
+    ) == ("opus", "agent")

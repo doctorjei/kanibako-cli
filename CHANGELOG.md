@@ -23,6 +23,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`box show --effective` no longer lists the secrets profile snippet or the kickoff slot.**
   `/etc/profile.d/kanibako-secrets.sh` and `~/.config/kanibako/kickoff.md` printed on every box, even one with no
   secrets; each only carries another mechanism into the box. Your own bindings are still listed.
+- **Every command reads the values an agent settings file sets under `self:`, not only its categories.**
+  `kanibako shell` and `start --entrypoint` honor `agents/shell/agent.yaml` (`allow_helpers: false` turns helpers
+  off); image sharing, the helper hub, and the spawn budget agree with the launch on a `{agent.<agent>.<key>}`
+  reference; and `config reset` names an agent-file value as the one now in effect. A value an agent launch refuses
+  now also stops `kanibako shell`, `box info`, `config reset`, and `agent info`; `stop` still stops, but skips the
+  credential writeback with a warning. See `MIGRATION.md`, "Every command reads an agent settings file's own
+  values".
 - **A plugin's `category_binds:` refusal of a bare-relative source now uses the settings-file wording.** It names the
   hazard and ends "Spell the source out." For `bindings.ro`, `bindings.rw`, and `synced` it says the category takes
   no root at any scope. For `caches`, `common`, and `seeded` it no longer says that, which was false: those categories

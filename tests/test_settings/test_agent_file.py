@@ -1450,7 +1450,8 @@ class TestTheAgentTable:
             "self": {"model": "a"},
             "agent": {"bar": {"model": "b"}, "default": {"model": "d"}},
         })
-        assert levels[2] == {"agent": {"bar": {"model": "b"}}}
+        # ``self.model`` rides the active level too (K4 Step 1), beside ``agent.bar``.
+        assert levels[2] == {"agent": {"claude": {"model": "a"}, "bar": {"model": "b"}}}
         assert levels[3] == {"agent": {"default": {"model": "d"}}}
 
     def test_a_value_where_the_node_tables_go_refuses(self, tmp_path):
