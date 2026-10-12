@@ -7627,7 +7627,8 @@ it in the settings engine's wording, which also names the key and the file. A re
 The file's values are read as written. A `run_args` written as a string, such as `run_args: --a --b`, shows as
 written in `box show --effective`, and an `@agent.<agent>.run_args` reference in a value you set (for example with
 `kanibako system set`) yields that string, not a list of words. A bare `run_args:` is no longer shown as an empty
-value. The agent's command line is unchanged in every case.
+value. The read-back `meta.box.agent.run_args` follows the same rule: the string as written, and `null` for a bare
+`run_args:`, where it read `[]`. The agent's command line is unchanged in every case.
 
 **What you must do.** Fix or remove the value the error names, in the file it names.
 

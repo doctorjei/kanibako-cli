@@ -31,7 +31,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `agent info` warns and shows the built-in label, and `stop` warns and skips the credential writeback. A
   `run_args` written as a string shows as written in `box show --effective`, and an `@agent.<agent>.run_args`
   reference in a value you set yields that string, not a list of words; a bare `run_args:` is no longer shown as an
-  empty value. The agent's command line is unchanged. See `MIGRATION.md`, "Every command reads an agent settings
+  empty value. `meta.box.agent.run_args` reads back the same way: the string as written, and `null` for a bare
+  `run_args:` (it read `[]`). The agent's command line is unchanged. See `MIGRATION.md`, "Every command reads an agent settings
   file's own values".
 - **A plugin's `category_binds:` refusal of a bare-relative source now uses the settings-file wording.** It names the
   hazard and ends "Spell the source out." For `bindings.ro`, `bindings.rw`, and `synced` it says the category takes
