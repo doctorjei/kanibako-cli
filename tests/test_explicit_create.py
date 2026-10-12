@@ -1004,6 +1004,22 @@ class TestBrokenStandaloneNoBoxError:
         else:
             assert msg.endswith(f"\n  kanibako box move {root} <new-path> --name bad_name")
 
+    def test_the_rename_cure_offers_the_name_the_deriver_would_pick(
+        self, config_file, tmp_home, credentials_dir, monkeypatch,
+    ):
+        """``a-b`` beside a registered ``a_b`` (and ``a_b2``) is offered ``a_b3``, never a taken name."""
+        from kanibako.errors import LegacyBoxNameError
+        from kanibako.settings.paths import refuse_legacy_box, register_primary_box_name
+
+        std, root = self._legacy(config_file, tmp_home, monkeypatch, "primary", "a-b")
+        for taken in ("A_B", "a_b2"):
+            (tmp_home / taken).mkdir()
+            register_primary_box_name(std.primary_workset, taken, str(tmp_home / taken),
+                                      early=_early_scope(std, BoxMode.primary))
+        with pytest.raises(LegacyBoxNameError) as exc:
+            refuse_legacy_box(std, "a-b")
+        assert str(exc.value).endswith(f"kanibako box move {root} <new-path> --name a_b3")
+
     def test_the_box_own_path_after_a_mv_is_no_name_lookup(
         self, config_file, tmp_home, credentials_dir, monkeypatch,
     ):

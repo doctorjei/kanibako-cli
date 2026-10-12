@@ -34,7 +34,7 @@ from pathlib import Path
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from typing import TYPE_CHECKING, Any, NamedTuple, Protocol, overload
 
-from kanibako.identifiers import derived_name, find_identifier
+from kanibako.identifiers import derived_name, find_identifier, first_free_name
 from kanibako.log import get_logger
 
 from kanibako.settings.config import (WORKSET_META_FILE, BOX_META_FILE, BootstrapConfig, KanibakoConfig,
@@ -2041,6 +2041,8 @@ class LegacyBox(NamedTuple):
     reason: str
     #: The legacy workset a NAMED member sits in, when that is what fails the rule.
     workset: str | None = None
+    #: Whether a name is held in the box's workset (the rename cure's suffix rule).
+    taken: Callable[[str], bool] | None = None
 
     def refusal(self) -> str:
         """The error naming this box's path, and the cure that gives it a valid name."""
@@ -2058,7 +2060,20 @@ class LegacyBox(NamedTuple):
             return (f"{head}, or move it to a workset with a valid name:\n"
                     f"{legacy_workset_cure(self.workset, Path(self.path))}")
         return (f"{head}, or give it a valid name:\n"
-                f"  {rename_box_cure(self.mode, Path(self.path), self.name)}")
+                f"  {rename_box_cure(self.mode, Path(self.path), self.name, self.taken)}")
+
+
+def _workset_name_taken(ws_root: Path, early: EarlyScope) -> Callable[[str], bool]:
+    """Whether a box name is a member of the workset at *ws_root* (case-blind, spec §0)."""
+    return lambda cand: _workset_box_workspace_for_name(ws_root, cand, early=early) is not None
+
+
+def box_name_taken(std: StandardPaths, proj: ProjectPaths) -> Callable[[str], bool] | None:
+    """Whether a box name is held in *proj*'s workset; ``None`` for a standalone box."""
+    if proj.mode is BoxMode.standalone or proj.group is None:
+        return None
+    workset = None if proj.mode is BoxMode.primary else proj.group.name
+    return _workset_name_taken(proj.group.root, _early_scope(std, proj.mode, workset))
 
 
 def _stored_legacy_member(std: StandardPaths, typed: str,
@@ -2066,6 +2081,7 @@ def _stored_legacy_member(std: StandardPaths, typed: str,
     """The NAMED member *typed* as ``<workset>/<box>`` when either name fails the rule,
     unless it is registered at *own_path*."""
     from kanibako.project.names import resolve_qualified_name
+    from kanibako.project.workset import list_worksets
     from kanibako.utils import legacy_workset_reason, workset_renders_no_name
 
     ws_typed, sep, box = typed.partition("/")
@@ -2080,7 +2096,8 @@ def _stored_legacy_member(std: StandardPaths, typed: str,
         return None
     reason = box_name_reason(box)
     if reason is not None:
-        return LegacyBox("named", box, path, reason)
+        return LegacyBox("named", box, path, reason, taken=_workset_name_taken(
+            list_worksets(std)[workset], _early_scope(std, BoxMode.named, workset)))
     if workset_renders_no_name(workset):
         return LegacyBox("named", f"{workset}/{box}", path, legacy_workset_reason(workset),
                          workset=workset)
@@ -2102,14 +2119,17 @@ def stored_legacy_box(std: StandardPaths, typed: str, *,
     if Path(typed).is_dir():
         return None
     own_path = literal_path(typed) if path_reaches else None
-    primary = load_primary_boxes(std.primary_workset, early=_early_scope(std, BoxMode.primary))
+    primary_early = _early_scope(std, BoxMode.primary)
+    primary = load_primary_boxes(std.primary_workset, early=primary_early)
     for mode, held in (("primary", primary),
                        ("standalone", registry_store.load_standalone(std.registry))):
         stored = find_identifier(typed, held)
         reason = None if stored is None else box_name_reason(stored)
         if (stored is not None and reason is not None
                 and literal_path(str(held[stored])) != own_path):
-            return LegacyBox(mode, stored, str(held[stored]), reason)
+            taken = (_workset_name_taken(std.primary_workset, primary_early)
+                     if mode == "primary" else None)
+            return LegacyBox(mode, stored, str(held[stored]), reason, taken=taken)
     return _stored_legacy_member(std, typed, own_path)
 
 
@@ -2200,12 +2220,7 @@ def pick_primary_box_name(primary_workset: Path, workspace: str,
             or (boxes_dir is not None and str(boxes_dir / cand) in pending)
         )
 
-    candidate = base
-    n = 2
-    while taken(candidate):
-        candidate = f"{base}{n}"
-        n += 1
-    return candidate
+    return first_free_name(base, taken)
 
 
 def register_primary_box_name(primary_workset: Path, name: str,

@@ -1199,6 +1199,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   standalone box's cure registers it again (`box rm <path>`, then `box register <path>`), which re-derives its name
   from its directory. An existing directory at the typed path wins.
 
+- **The rename command printed for a box with a legacy name offers a free name.** `box move ... --name a_b` was
+  offered for a box `a-b` even when a box `a_b` existed, and that command was refused. The offer now takes the next
+  free name the way a box named after its directory does: `a_b2`, then `a_b3`.
+
 - **`start`, `shell`, `code`, `box config`, and `box diagnose` no longer suggest a `create` that would be refused.**
   When no box is found and the directory's name breaks the box-name rule, the suggested `create` now carries
   `--name <new-name>`, or the name's ASCII spelling when it has one, and names the directory when one was given.

@@ -28,7 +28,7 @@ pins the leaf.
 from __future__ import annotations
 
 import re
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 
 # ---------------------------------------------------------------------------
 # THE NAME RULE (keyspec §0, ⚑ NAMING RULES) — the ONE charset definition for all
@@ -82,6 +82,19 @@ def derived_name(text: str) -> str:
     for sep in _DERIVED_SEPARATORS:
         text = text.replace(sep, "_")
     return text
+
+
+def first_free_name(base: str, taken: Callable[[str], bool]) -> str:
+    """*base*, else the first of ``<base>2``, ``<base>3``, ... that *taken* does not hold.
+
+    The ONE suffix rule: the name a box derives, and the ``--name`` a rename cure offers.
+    """
+    candidate = base
+    n = 2
+    while taken(candidate):
+        candidate = f"{base}{n}"
+        n += 1
+    return candidate
 
 
 def underscore_spelling(name: str) -> str | None:

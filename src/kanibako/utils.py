@@ -18,6 +18,8 @@ from kanibako.errors import ConfigError, UserCanceled
 from kanibako.settings.bootstrap import IGNORE_FILE
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from kanibako.settings.paths import ProjectPaths
 
 
@@ -139,17 +141,21 @@ def workset_renders_no_name(workset: str) -> bool:
     return renders_no_name(workset)
 
 
-def rename_box_cure(mode: str, path: Path, name: str | None = None) -> str:
+def rename_box_cure(mode: str, path: Path, name: str | None = None,
+                    taken: Callable[[str], bool] | None = None) -> str:
     """The command that gives a *mode* box at *path* a new name, by path.
 
     A standalone box is named after its directory, so its cure moves the directory.
-    With the refused *name*, the cure offers its spelling (spec §0) when one exists."""
+    With the refused *name*, the cure offers its spelling (spec §0) when one exists,
+    suffixed as a derived name is when *taken* (its workset's membership) holds it."""
     if mode == "standalone":
         return f"kanibako box move {shlex.quote(str(path))} <new-path>"
+    from kanibako.identifiers import first_free_name
     from kanibako.launch.box_identity import name_spelling
 
     offer = name_spelling(name) if name else None
-    new_name = offer[0] if offer is not None else "<new-name>"
+    new_name = "<new-name>" if offer is None else (
+        offer[0] if taken is None else first_free_name(offer[0], taken))
     return f"kanibako box move {shlex.quote(str(path))} <new-path> --name {new_name}"
 
 
@@ -173,7 +179,7 @@ def legacy_workset_cure(workset: str, where: Path) -> str:
 
 def unrenderable_box_name_refusal(
     box: str, mode: str, path: Path | None, designation: str | None,
-    *, workset: str | None = None,
+    *, workset: str | None = None, taken: Callable[[str], bool] | None = None,
 ) -> str:
     """The refusal ``start`` and ``stop`` print for a box that renders no name.
 
@@ -193,7 +199,7 @@ def unrenderable_box_name_refusal(
     return (
         f"Error: box '{box}' has no container name: {reason}. Give the box a valid "
         f"name, then try again:\n"
-        f"  {rename_box_cure(mode, where, box)}"
+        f"  {rename_box_cure(mode, where, box, taken)}"
     )
 
 

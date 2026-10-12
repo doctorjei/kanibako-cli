@@ -445,6 +445,12 @@ class TestStartUnrenderableBoxNameRefusal:
         assert "box name must not contain '-'" in text
         assert f"kanibako box move {self.PATH} <new-path> --name my_box" in text
 
+    def test_a_taken_spelling_is_suffixed_as_a_derived_name_is(self):
+        """``a_b`` and ``a_b2`` are held in the box's workset, so the cure offers ``a_b3``."""
+        text = unrenderable_box_name_refusal("a-b", "primary", self.PATH, None,
+                                             taken=lambda name: name in {"a_b", "a_b2"})
+        assert text.endswith(f"kanibako box move {self.PATH} <new-path> --name a_b3")
+
     def test_a_box_with_no_spelling_keeps_the_placeholder(self):
         text = unrenderable_box_name_refusal("\u6f22\u5b57", "primary", self.PATH, None)
         assert "--name <new-name>" in text

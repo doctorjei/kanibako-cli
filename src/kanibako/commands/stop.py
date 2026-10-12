@@ -12,6 +12,7 @@ from kanibako.errors import ConfigError, ContainerError, KanibakoError, ProjectE
 from kanibako.settings.paths import (
     ProjectPaths,
     StandardPaths,
+    box_name_taken,
     load_std_paths,
     resolve_box_target,
 )
@@ -184,7 +185,7 @@ def _stop_one(runtime: ContainerRuntime, *, project_dir: str | None) -> int:
         print(
             unrenderable_box_name_refusal(
                 proj.name or "", proj.mode.value, proj.project_path, project_dir,
-                workset=container_name_segments(proj)[0],
+                workset=container_name_segments(proj)[0], taken=box_name_taken(std, proj),
             ),
             file=sys.stderr,
         )

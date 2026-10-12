@@ -84,6 +84,7 @@ from kanibako.settings.paths import (
     DesignationRoute,
     _early_scope,
     _upgrade_shell,
+    box_name_taken,
     box_workset_settings_paths,
     creds_watcher_log_path,
     designation_route,
@@ -3063,7 +3064,7 @@ def _run_container(
         print(
             unrenderable_box_name_refusal(
                 proj.name or "", proj.mode.value, proj.project_path, project_dir,
-                workset=container_name_segments(proj)[0],
+                workset=container_name_segments(proj)[0], taken=box_name_taken(std, proj),
             ),
             file=sys.stderr,
         )
