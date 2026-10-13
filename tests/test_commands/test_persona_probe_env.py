@@ -15,6 +15,8 @@ import pytest
 from kanibako.plugins.claude import ClaudeTarget
 
 NODE = "navigator+claude"
+#: The INTERNAL node id a launch resolves under; files spell it ``NODE``.
+NODE_ID = "navigator\u2118claude"
 VAR = "ANTHROPIC_DEFAULT_SONNET_MODEL"
 MAPPED = "claude-sonnet-4-5-20990101"
 
@@ -33,7 +35,9 @@ def _table(floor, *, cli_env=None):
         agent_name=NODE, ctx=ctx, system_path=None, agent_path=None,
         workset_path=None, box_path=None, default_categories=floor,
     )
-    return _persona_secret_table(snap, NODE, ctx, cli_env=cli_env)
+    return _persona_secret_table(
+        snap, NODE, ctx, **({"cli_env": cli_env} if cli_env is not None else {}),
+    )
 
 
 @pytest.mark.parametrize("key", [
@@ -70,11 +74,13 @@ def _probe_wire_model(std, proj, system_file, agent_file, *, cli_env=None):
     from kanibako.settings.agent_select import AgentSelection
 
     target = ClaudeTarget()
-    selection = AgentSelection(node=NODE, source="settings").selection_level
+    selection = AgentSelection(node=NODE_ID, source="settings").selection_level
     _auth, endpoint, model, secrets = start_cmd._resolve_box_launch_decisions(
-        std=std, proj=proj, target=target, agent_name=NODE,
+        std=std, proj=proj, target=target, agent_name=NODE_ID,
         system_settings_path=system_file, agent_cfg_path=agent_file,
-        selection_level=selection, cli_env=cli_env,
+        selection_level=selection,
+        # Only when given, so the base tree's RED is the WIRE model, not a TypeError.
+        **({"cli_env": cli_env} if cli_env is not None else {}),
     )
     sent: dict = {}
 
@@ -90,7 +96,7 @@ def _probe_wire_model(std, proj, system_file, agent_file, *, cli_env=None):
         side_effect=_model_access,
     ):
         _ep, err, _prov = start_cmd._preflight_persona_load(
-            NODE, secrets, endpoint, None,
+            NODE_ID, secrets, endpoint, None,
             target=target, keyspace_model=model, bundle=None, probe=True,
         )
     assert err is None
@@ -112,7 +118,7 @@ def _persona_files(tmp_path: Path) -> tuple[Path, Path]:
         f"    secret_path:\n      ANTHROPIC_AUTH_TOKEN: {token}\n"
     )
     agent_file = tmp_path / "agent.yaml"
-    agent_file.write_text(f"env:\n  {VAR}: {MAPPED}\n")
+    agent_file.write_text(f"agent:\n  {NODE}:\n    env:\n      {VAR}: {MAPPED}\n")
     return system_file, agent_file
 
 
@@ -142,9 +148,9 @@ def test_the_probe_env_equals_the_boxs_collapsed_env(
     _wire, secrets = _probe_wire_model(
         std, proj, system_file, agent_file, cli_env=cli_env,
     )
-    selection = AgentSelection(node=NODE, source="settings").selection_level
+    selection = AgentSelection(node=NODE_ID, source="settings").selection_level
     snapshot, _deliveries = start_cmd._resolve_launch_snapshot(
-        std=std, proj=proj, agent_name=NODE, system_settings_path=system_file,
+        std=std, proj=proj, agent_name=NODE_ID, system_settings_path=system_file,
         agent_cfg_path=agent_file, desc=None, install=None, target=ClaudeTarget(),
         cli_level=selection, cli_env=cli_env,
     )
