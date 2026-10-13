@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import argparse
+import os
 import shlex
 import sys
 
 from kanibako.settings.config import user_config_file, load_config, BootstrapConfig
-from kanibako.runtime.container import ContainerRuntime
+from kanibako.runtime.container import STUCK_STATES, ContainerRuntime
 from kanibako.errors import (ConfigError, ContainerError, KanibakoError, LabelQueryError,
                              ProjectError, WorksetError)
 from kanibako.settings.paths import (
@@ -27,6 +28,37 @@ def stale_lock_cure(lock_file) -> str:
     """The cure for a lock file no live box holds; the running-box refusal names it too."""
     return ("If a stale lock file is blocking a new session, remove it manually:\n"
             f"  rm {shlex.quote(str(lock_file))}")
+
+
+def stuck_container_cure(runtime: ContainerRuntime, name: str, state: str) -> str:
+    """What a container stuck part-way out (``STUCK_STATES``) is, and its cure.
+
+    ⚑ Only the runtime clears it, and a launch cannot reuse its name.  kanibako does not
+    remove it for the user.
+    """
+    return (f"its container is stuck in the runtime's {state!r} state ({name}): it still "
+            f"holds the name, which blocks a new launch.\n{rm_cure(runtime, name)}")
+
+
+def rm_command(runtime: ContainerRuntime, name: str) -> str:
+    """The runtime's own ``rm -f`` for container *name*: what clears one kanibako cannot."""
+    return f"{os.path.basename(runtime.cmd)} rm -f {shlex.quote(name)}"
+
+
+def rm_cure(runtime: ContainerRuntime, name: str) -> str:
+    """The cure line for a container kanibako could not remove (:func:`rm_command`)."""
+    return f"  Clear it:  {rm_command(runtime, name)}"
+
+
+def rm_left_it(runtime: ContainerRuntime, name: str) -> bool:
+    """Remove container *name*; True when that failed and the container is still there.
+
+    ⚑ A failed ``rm`` alone is not the verdict: a ``--rm`` container's own removal can
+    win the race after ``stop``, and then nothing is left to clear.
+    """
+    if runtime.rm(name):
+        return False
+    return runtime.container_exists(name) or runtime.container_state(name) is not None
 
 
 def add_parser(subparsers: argparse._SubParsersAction) -> None:
@@ -220,8 +252,8 @@ def _stop_one(runtime: ContainerRuntime, *, project_dir: str | None) -> int:
     # ⚑ A PAUSED box is live: ``runtime.stop`` unpauses it, then stops it.
     if runtime.stop(container_name):
         # Clean up stopped container (persistent containers lack --rm)
-        cleared = (not runtime.container_exists(container_name)
-                   or runtime.rm(container_name))
+        cleared = not (runtime.container_exists(container_name)
+                       and rm_left_it(runtime, container_name))
         # 🛑 RC 0 IS NOT LIVENESS.  ``runtime.stop`` returns the runtime's exit
         # status, and ``podman stop`` exits 0 on a container that is ALREADY
         # EXITED — so this arm is reached both when a live box was really
@@ -236,10 +268,18 @@ def _stop_one(runtime: ContainerRuntime, *, project_dir: str | None) -> int:
         elif cleared:
             print(f"Removed stopped container: {container_name}")
     else:
+        # ⚑ A container stuck part-way out fails ``stop`` and ``inspect`` alike, so it
+        # reads as absent below; ``ps -a`` still sees it, and the lock is not the cure.
+        state = runtime.container_state(container_name)
+        if state in STUCK_STATES:
+            print("Error: This project's box cannot be stopped: "
+                  f"{stuck_container_cure(runtime, container_name, state)}",
+                  file=sys.stderr)
+            return 1
         print(f"No running container found for this project ({container_name})")
         # Clean up stopped persistent container if it exists
         if runtime.container_exists(container_name):
-            cleared = runtime.rm(container_name)
+            cleared = not rm_left_it(runtime, container_name)
             if cleared:
                 print(f"Removed stopped container: {container_name}")
         else:
@@ -249,8 +289,8 @@ def _stop_one(runtime: ContainerRuntime, *, project_dir: str | None) -> int:
     # 🛑 A FAILED REMOVAL IS SAID AND FAILS THE RUN: the container still holds the name.
     if not cleared:
         sys.stdout.flush()
-        print(f"Error: could not remove {container_name}; it still holds the box's name.",
-              file=sys.stderr)
+        print(f"Error: could not remove {container_name}; it still holds the box's name.\n"
+              f"{rm_cure(runtime, container_name)}", file=sys.stderr)
         return 1
     return 0
 
@@ -365,14 +405,20 @@ def _stop_all(runtime: ContainerRuntime, *, force: bool = False) -> int:
         sys.stdout.flush()
         print(line, file=sys.stderr)
 
+    def rm_failed(name: str) -> None:
+        """Say *name* was not removed, with the cure ``_stop_one`` names for it."""
+        state = runtime.container_state(name)
+        fail(f"Failed to remove {name}: {stuck_container_cure(runtime, name, state)}"
+             if state in STUCK_STATES else f"Failed to remove {name}\n{rm_cure(runtime, name)}")
+
     stopped_count = 0
     removed_count = 0
     for name in names:
         if liveliness[name]:
             if runtime.stop(name):
                 print(f"Stopped {name}")
-                if runtime.container_exists(name) and not runtime.rm(name):
-                    fail(f"Failed to remove {name}")
+                if runtime.container_exists(name) and rm_left_it(runtime, name):
+                    rm_failed(name)
                 stopped_count += 1
             else:
                 fail(f"Failed to stop {name}")
@@ -382,7 +428,7 @@ def _stop_all(runtime: ContainerRuntime, *, force: bool = False) -> int:
                 print(f"Removed stopped container: {name}")
                 removed_count += 1
             else:
-                fail(f"Failed to remove {name}")
+                rm_failed(name)
 
     print(f"\nStopped {stopped_count} container(s); removed {removed_count} stopped container(s).")
     return 1 if failed else 0

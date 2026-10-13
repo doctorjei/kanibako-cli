@@ -97,6 +97,12 @@ def image_ref_or_none(raw: str) -> str | None:
     return None
 
 
+#: The ``ps -a`` states of a container caught part-way out — its removal or stop began
+#: and did not finish.  It still holds its name, so a launch under that name fails, and
+#: only the runtime clears it (``<runtime> rm -f <name>``).
+STUCK_STATES = frozenset({"removing", "stopping"})
+
+
 def running_from_inspect(result: subprocess.CompletedProcess[str]) -> bool:
     """Whether an ``inspect --format {{.State.Running}}`` *result* says the container runs.
 
@@ -573,20 +579,6 @@ class ContainerRuntime:
         )
         return result.returncode == 0
 
-    def container_state(self, name: str) -> str | None:
-        """Container *name*'s ``.State.Status`` (``running``, ``paused``, ``exited``, ...).
-
-        None when the ``inspect`` fails.  ⚑ podman reads a PAUSED container as not
-        running (``.State.Running`` false), so a caller asking "is the box live" asks
-        this too.
-        """
-        result = subprocess.run(
-            [self.cmd, "inspect", "--format", "{{.State.Status}}", name],
-            capture_output=True,
-            text=True,
-        )
-        return result.stdout.strip() if result.returncode == 0 else None
-
     def unpause(self, name: str) -> bool:
         """Unpause container *name*; True on exit status 0."""
         result = subprocess.run(
@@ -602,6 +594,40 @@ class ContainerRuntime:
             capture_output=True,
         )
         return result.returncode == 0
+
+    def container_states(self, prefix: str = CONTAINER_NAME_PREFIX) -> dict[str, str]:
+        """``{name: state}`` (``{{.State}}``: ``running``, ``exited``, ``removing``, …) for
+        every container, running or not, whose name starts with *prefix*.
+
+        ⚑ Read from ``ps -a``, never ``inspect``: a container stuck in ``removing`` has a
+        half-deleted layer, so ``inspect`` fails on it, yet it still holds its name and
+        ``ps -a`` still lists it.  A runtime that fails or cannot run answers none.
+        """
+        try:
+            result = subprocess.run(
+                [self.cmd, "ps", "-a", "--filter", f"name={prefix}",
+                 "--format", "{{.Names}}\t{{.State}}"],
+                capture_output=True, text=True,
+            )
+        except OSError:
+            return {}
+        if result.returncode != 0:
+            return {}
+        states: dict[str, str] = {}
+        for line in result.stdout.splitlines():
+            found, sep, state = line.partition("\t")
+            if sep and found.startswith(prefix):
+                states[found] = state.strip().lower()
+        return states
+
+    def container_state(self, name: str) -> str | None:
+        """Container *name*'s state (``running``, ``paused``, ``exited``, ``removing``, ...),
+        else None: the ONE state reader, from ``ps -a`` (see :meth:`container_states`).
+
+        ⚑ podman reads a PAUSED container as not running (``.State.Running`` false), so a
+        caller asking "is the box live" asks this too.
+        """
+        return self.container_states(prefix=name).get(name)
 
     def is_running(self, name: str) -> bool:
         """Check if a named container is currently running."""

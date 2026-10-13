@@ -213,6 +213,7 @@ class TestStopOne:
         mock_runtime.stop.return_value = stopped
         mock_runtime.container_exists.return_value = True
         mock_runtime.rm.return_value = False
+        mock_runtime.cmd = "/usr/bin/podman"
         with (
             patch("kanibako.commands.stop.load_config"),
             patch("kanibako.commands.stop.load_std_paths"),
@@ -226,6 +227,7 @@ class TestStopOne:
         assert "Removed" not in captured.out
         assert captured.err == (
             "Error: could not remove kb-primary-droste; it still holds the box's name.\n"
+            "  Clear it:  podman rm -f kb-primary-droste\n"
         )
 
     def test_a_live_box_stopped_but_not_removed_fails_the_run(self, mock_runtime, capsys):
@@ -402,10 +404,13 @@ class TestStopAll:
         mock_runtime.stop.return_value = True
         mock_runtime.container_exists.return_value = True
         mock_runtime.rm.return_value = False
+        mock_runtime.cmd = "/usr/bin/podman"
+        mock_runtime.container_state.return_value = "paused"
         rc = _stop_all(mock_runtime, force=True)
         assert rc == 1
         captured = capsys.readouterr()
-        assert captured.err == "Failed to remove kb-running\n"
+        assert captured.err == ("Failed to remove kb-running\n"
+                                "  Clear it:  podman rm -f kb-running\n")
         assert captured.out.endswith(
             "Stopped kb-running\n"
             "\nStopped 1 container(s); removed 0 stopped container(s).\n"
@@ -434,11 +439,14 @@ class TestStopAll:
         ]
         mock_runtime.is_running.return_value = False
         mock_runtime.rm.return_value = False
+        mock_runtime.cmd = "/usr/bin/podman"
+        mock_runtime.container_state.return_value = "exited"
         rc = _stop_all(mock_runtime, force=True)
         assert rc == 1
         captured = capsys.readouterr()
         assert "Removed stopped container" not in captured.out
-        assert captured.err == "Failed to remove kanibako-aabbccdd\n"
+        assert captured.err == ("Failed to remove kanibako-aabbccdd\n"
+                                "  Clear it:  podman rm -f kanibako-aabbccdd\n")
         assert captured.out.endswith(
             "\nStopped 0 container(s); removed 0 stopped container(s).\n"
         )

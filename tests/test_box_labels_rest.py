@@ -276,8 +276,9 @@ class TestBoxList:
     @pytest.mark.parametrize("label_fail", [False, True])
     def test_idle_asks_once_not_per_box(self, world, monkeypatch, tmp_path, capsys,
                                         label_fail):
-        """Nothing runs: the ``kb-`` listing plus ONE any-box label query, however many
-        boxes; a failed query reads every box stopped, as the per-box query would."""
+        """Nothing runs: the ``kb-`` listing, ONE any-box label query, and ONE ``ps -a``
+        stuck-state read, however many boxes; a failed query reads every box stopped, as
+        the per-box query would."""
         from kanibako.commands.box._parser import run_list
 
         log = _runtime(monkeypatch, tmp_path, label_fail=label_fail)
@@ -287,8 +288,9 @@ class TestBoxList:
             assert name in out, out
         assert "active" not in out, out
         calls = log.read_text().splitlines()
-        assert len(calls) == 2, calls
+        assert len(calls) == 3, calls
         assert "label=kanibako.box" in calls[1].split(), calls
+        assert calls[2].split()[:2] == ["ps", "-a"] and "{{.State}}" in calls[2], calls
 
 
 class TestStopAll:

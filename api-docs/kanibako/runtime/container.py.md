@@ -10,6 +10,7 @@ Prose for these symbols lives in `llm-docs/kanibako/runtime/container.py.md`.
 ```
 logger = get_logger('container')
 KEEP_ID_USERNS = f'--userns=keep-id:uid={GUEST_UID},gid={GUEST_GID}'
+STUCK_STATES = frozenset({'removing', 'stopping'})
 _POST_START_TIMEOUT_S = 30.0
 _POST_START_POLL_S = 0.25
 _IMAGE_REF_RE = re.compile('[A-Za-z0-9][A-Za-z0-9._:/@-]*\\Z')
@@ -61,9 +62,10 @@ class ContainerRuntime:
     def exec_succeeds(self, name: str, command: list[str]) -> bool
     def container_exists(self, name: str) -> bool
     def stop(self, name: str) -> bool
-    def container_state(self, name: str) -> str | None
     def unpause(self, name: str) -> bool
     def rm(self, name: str) -> bool
+    def container_states(self, prefix: str=CONTAINER_NAME_PREFIX) -> dict[str, str]
+    def container_state(self, name: str) -> str | None
     def is_running(self, name: str) -> bool
     def inspect_env(self, name: str, key: str) -> str | None
     def container_image(self, name: str) -> str | None

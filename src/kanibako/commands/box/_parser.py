@@ -32,7 +32,7 @@ from kanibako.settings.config import (
     load_config,
     persist_creation_flags,
 )
-from kanibako.runtime.container import ContainerRuntime, remove_path
+from kanibako.runtime.container import STUCK_STATES, ContainerRuntime, remove_path
 from kanibako.identifiers import agent_node_case, find_identifier
 from kanibako.errors import (BoxNameError, ContainerError, DerivedBoxNameError,
                              LegacyBoxNameError, ProjectError, WorksetError)
@@ -2010,6 +2010,24 @@ def run_list(args: argparse.Namespace) -> int:
         name = box_container_named(runtime, box, workset)
         return name is not None and _running_image(runtime, name, listed, check=False) is not None
 
+    # ⚑ ``ps -a``, once: a container stuck part-way out (``removing``) fails ``inspect``
+    # and is not running, yet it holds the name a launch needs — show its state, never
+    # ``stopped``, or ``list`` and the launch refusal disagree.
+    stuck: dict[str, str] | None = None
+
+    def _idle_status(box: str, workset: str, idle: str) -> str:
+        """*idle*, unless box *box*'s container is stuck part-way out: then its state."""
+        nonlocal stuck
+        if runtime is None:
+            return idle
+        if stuck is None:
+            stuck = {n: st for n, st in runtime.container_states().items()
+                     if st in STUCK_STATES}
+        if not stuck:
+            return idle
+        name = box_container_named(runtime, box, workset)
+        return stuck.get(name, idle) if name is not None else idle
+
     if not projects and not ws_data and not standalone and not deregistered:
         if not quiet:
             print("No known projects.")
@@ -2071,6 +2089,8 @@ def run_list(args: argparse.Namespace) -> int:
                 label = (
                     f"{project_path} ({_MISSING_WORKSPACE})" if running else str(project_path)
                 )
+            if not running:
+                status = _idle_status(proj_name, WORKSET_SEGMENT_PRIMARY, status)
 
             if active_only and status != "active":
                 continue
@@ -2094,11 +2114,13 @@ def run_list(args: argparse.Namespace) -> int:
         for proj_name, proj_status in project_list:
             running = _box_running(proj_name, ws_name)
             if proj_status == "missing":
-                display_status = "active" if running else proj_status
+                display_status = "active" if running else _idle_status(
+                    proj_name, ws_name, proj_status)
             elif running:
                 display_status = "active"
             else:
-                display_status = "stopped" if proj_status == "ok" else proj_status
+                display_status = _idle_status(
+                    proj_name, ws_name, "stopped" if proj_status == "ok" else proj_status)
             if active_only and display_status != "active":
                 continue
             source = ""
@@ -2141,7 +2163,8 @@ def run_list(args: argparse.Namespace) -> int:
     for box_name, root_str in sorted(standalone.items()):
         root = Path(root_str)
         running = _box_running(box_name, WORKSET_SEGMENT_STANDALONE)
-        status = "active" if running else ("stopped" if root.is_dir() else "missing")
+        status = "active" if running else _idle_status(
+            box_name, WORKSET_SEGMENT_STANDALONE, "stopped" if root.is_dir() else "missing")
         if active_only and status != "active":
             continue
         row_key = (box_name, _norm(root_str))
@@ -3643,14 +3666,21 @@ def _check_container_running(proj, *, fail_closed: bool = False,
     image = _running_image(runtime, container_name, containers, check=fail_closed)
     if image is not None:
         return True, f"running ({container_name}: {image})"
+    # ⚑ ONE state reading, taken FIRST: a container stuck part-way out reads as absent
+    # to ``inspect`` (``removing``: it fails) or as exited (``stopping``: it succeeds).
+    state = runtime.container_state(container_name)
+    if state in STUCK_STATES:
+        from kanibako.commands.stop import rm_command
+        return False, (f"{state}, stuck holding the name ({container_name}); "
+                       f"clear it: {rm_command(runtime, container_name)}")
     # An exited or PAUSED container still holds the name; ``kanibako stop`` clears both.
     if runtime.container_exists(container_name):
         named = (getattr(proj, "name", "") or "").strip()
         stop_handle = (project_cure_ref(proj) if named and isinstance(proj, ProjectPaths)
                        else shlex.quote(named or container_name))
-        state = "paused" if runtime.container_state(container_name) == "paused" else "exited"
         return False, (
-            f"{state}, still holding the name ({container_name}); "
+            f"{'paused' if state == 'paused' else 'exited'}, still holding the name "
+            f"({container_name}); "
             f"clear it: kanibako stop {stop_handle}"
         )
     return False, f"not running ({container_name})"

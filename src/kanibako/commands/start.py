@@ -53,6 +53,7 @@ from kanibako.settings.settings_launch import load_merged_config
 from kanibako.settings import core_defaults
 from kanibako.runtime.container import (
     KEEP_ID_USERNS,
+    STUCK_STATES,
     ContainerRuntime,
     _guest_dest_to_host,
     detect_shadowed_mounts,
@@ -3910,13 +3911,28 @@ def _run_container(
     # box never reaches here — it returned from the reattach fast path above (or
     # was stopped by ``--restart`` before ``reattach_running`` was computed), so
     # the only container that can exist at this point is a stopped one.
+    # ⚑ A container stuck part-way out (``removing``) holds the name ``runtime.run``
+    # claims, yet ``inspect`` fails on it, so every check below reads it as absent and
+    # the launch would die in ``podman run`` as "name already in use".  Say so first.
+    from kanibako.commands.stop import rm_cure, rm_left_it, stuck_container_cure
+    stuck = runtime.container_state(container_name)
+    if stuck in STUCK_STATES:
+        print("Error: This project's box cannot launch: "
+              f"{stuck_container_cure(runtime, container_name, stuck)}", file=sys.stderr)
+        return 1
     if persistent:
         # Stale stopped container: remove before recreating.  A labeled one under a
         # name the box no longer renders (``live_name``) goes too, or the new container
         # would sit beside it carrying the same labels.  Only a STOPPED one: a running
         # box never reaches here, and liveness is read again rather than assumed.
-        if runtime.container_exists(container_name):
-            runtime.rm(container_name)
+        # ⚑ ``rm`` is read: one that fails (a ``paused`` container, say) leaves the name
+        # taken, and the launch would die in ``podman run`` as "name already in use".
+        if runtime.container_exists(container_name) and rm_left_it(runtime, container_name):
+            left = runtime.container_state(container_name)
+            print(f"Error: could not remove this project's old container ({container_name}"
+                  f"{f', state {left!r}' if isinstance(left, str) else ''}), which blocks "
+                  f"a new launch.\n{rm_cure(runtime, container_name)}", file=sys.stderr)
+            return 1
         if (live_name != container_name and runtime.container_exists(live_name)
                 and not runtime.is_running(live_name)):
             runtime.rm(live_name)
