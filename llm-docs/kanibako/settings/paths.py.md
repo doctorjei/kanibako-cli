@@ -956,23 +956,20 @@ PRIMARY, the standalone ROOT for STANDALONE — and the skeleton is `<vault_root
 non-key leaf a workset root carries (`project/workset.py::_VAULT_LEAF`), the same file
 `standalone_vault_teardown` clears.
 
-⚑ It USED to be `vault_ro_path.parent`, and `workset.vault_ro` is repointable, so that parent
-stopped being the skeleton the moment the key moved. Three shapes, and the containment guard against
-*vault_root* caught only the last:
+⚑ It is NOT `vault_ro_path.parent`: `workset.vault_ro` is repointable, so that parent is the
+skeleton only until the key moves. Three shapes show why:
 
-* `vault_ro: @meta.workset.path/store/ro` named `<root>/store` — a directory no key gave us, INSIDE
-  the root, so the guard admitted it and a stray `rw/`-ignoring `.gitignore` landed there while the
-  real skeleton got none.
-* In PRIMARY the arm carries a `/@meta.box.name` leaf, so the parent was the `ro` ARM ITSELF: the
-  file landed at `<primary_workset>/vault/ro/.gitignore`, where an `rw/` pattern matches nothing.
-* `vault_ro: ~/store` made it `$HOME` — the escape the guard stopped, and that the composition now
-  makes unreachable.
+* `vault_ro: @meta.workset.path/store/ro` would name `<root>/store` — a directory no key gave us,
+  INSIDE the root, so a containment guard would admit it and the `.gitignore` would land there
+  while the real skeleton got none.
+* In PRIMARY the arm carries a `/@meta.box.name` leaf, so the parent would be the `ro` ARM ITSELF,
+  where an `rw/` pattern matches nothing.
+* `vault_ro: ~/store` would make it `$HOME`, which the composition makes unreachable.
 
 ⚑ The guard compares the RESOLVED `workset.vault_rw` against the composed skeleton, because the
 file's whole content is a CLAIM that `rw/` is a child of it: a repoint out of the skeleton makes the
 claim false, so nothing is written. STRICT — an arm pointed AT the skeleton is the user's rw store,
-not its parent. ⚑ With NO repoint STANDALONE is byte-identical to before; PRIMARY's file moves from
-inside the `ro` arm up to the skeleton, which is the fix.
+not its parent.
 
 ### ⚑⚑ ONE CARRIER FOR THREE WRITE SITES
 

@@ -7,8 +7,7 @@ not exist". Migration happens as files are touched, not in a big-bang pass.
 
 ## What this module IS — a vocabulary, not a resolver
 
-Unified scope-category resolution, pure and additive. It GENERALIZES the (now-folded)
-`settings_shares` + `settings_seeds` resolvers into one *category* primitive: every
+Unified scope-category resolution, pure and additive. It is one *category* primitive: every
 path-delivery mechanism the settings framework exposes at a scope is a CATEGORY, and what
 lives here is that VOCABULARY — which category names exist and what key SHAPE each one takes,
 the `CategoryEntry` record an emitted entry is, what its *delivery* (COPY vs MOUNT) means, and
@@ -470,12 +469,10 @@ with its keys. The collapse cannot see those owners, and a creating launch's `-e
   `store_collapse` forbids by name. Its reader is `settings.config_display`, so that
   `box show --effective` can print the KEY that swallowed a declaration and not just the path.
 
-🛑 **THE ENVIRONMENT IS NOT ON THIS CARRIER ANY MORE.** An `envs` list rode it until the env
-slots became a collapse output: the variables are arbitrated by `store_collapse.collapse_env`
-and read off `meta.assembly.env`, which carries the winner's value AND its provenance. A
-second, un-arbitrated view of the same declarations is exactly the shape that let a per-VAR
-contest be settled silently by a consumer's `dict.update`, so it is gone rather than kept
-beside the leaf. `launch_deliveries` likewise applies NO `env` filter, and adding one back
+🛑 **THE ENVIRONMENT IS NOT ON THIS CARRIER.** The variables are a collapse output, arbitrated by
+`store_collapse.collapse_env` and read off `meta.assembly.env`, which carries the winner's value AND
+its provenance. A second, un-arbitrated view of the same declarations would let a per-VAR contest
+be settled silently by a consumer's `dict.update`. `launch_deliveries` likewise applies NO `env` filter, and adding one back
 would be a second route: the `env` rows leave through the collapse, off this same list, so the
 variables a box receives and the mounts it receives are folded from one input.
 

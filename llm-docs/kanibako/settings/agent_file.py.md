@@ -632,8 +632,8 @@ its leaves, except that a TABLE-VALUED agent key (`settings_keyspace.TABLE_VALUE
 `settings_resolve.normalize_bind_dest` (`/a/` is `/a`). `env.A` beside `env.B` merges; so do two
 dests of one arm. Every pair is named AS WRITTEN. It needs *node*, so a caller that passes none
 skips it. Pinned in `test_agent_file.py` (`TestTheAgentTable`) and `test_agent_cmd.py` (the verbs). ⚑
-`_CONTRIBUTED` is the ONE constant every reader takes: `agent:` (Q92), `workset:` and `box:` (Q85).
-The reader's view (`settings_assemble.read_settings_files`, and so
+`_CONTRIBUTED` is the ONE constant the cascade's read is built from: the root, `agent:` (Q92), and
+`workset:` / `box:` (Q85). The reader's view (`settings_assemble.read_settings_files`, and so
 `config_interface._noun_stored_view`) takes the agent file through `contributed_tables` too, so the
 verbs judge what the merge reads.
 

@@ -639,24 +639,10 @@ its separate `defaults` pass (assembly folds the floor INTO the `base` level, so
 there is no separate defaults dict downstream).
 
 `resolve_value` serves the `config.*` / `system.*` FOUNDATION path tier, and `paths.py` is its only
-production caller. Note what
-those calls look like: each passes a **single-element** `levels` list
+production caller. Note what those calls look like: each passes a **single-element** `levels` list
 (`[LevelView("config", …)]`, `[LevelView("system", …)]`), so in production the most-specific-first
 walk has one level to walk and the `defaults=` mapping is doing the real work. **The multi-level
 `[box, workset, agent, system]` shape appears only in the test suite.**
 
-```python
-_no_lookup(ref: str, chain: tuple[str, ...]) -> str
-```
-`@`-ref lookup that refuses: behavior settings carry no cross-refs.
-
-Behavior settings are plain scalars (model, bootstrap, autonomy, …) used verbatim — there is no
-`@`-ref expansion in that tier, so any `@`-ref is a configuration error and this raises naming it.
-
-⚑ **KNOWN DELTA, NOT FIXED IN THIS PASS.** This function has **no callers** — not in `src/`, not
-in `packages/`, not in the tests. `settings_launch` defines its own `_no_lookup` with the same
-name and job at module scope and passes THAT one to `expand_expr`. Two live definitions of one
-idea is the P10 duplication rule's exact shape, and the older docstring calling this the
-"**Default** `@`-ref lookup" made it worse: `expand_expr`'s `lookup` parameter is a required
-keyword with no default, so this is not installed as the default of anything. Deciding which copy
-survives is a code change and belongs in its own commit.
+This module defines no refusing `@`-ref lookup: the one `expand_expr` lookup that refuses is
+`settings_launch._no_lookup`, for the box-side `box_dest` pass.

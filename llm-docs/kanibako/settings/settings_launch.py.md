@@ -1,17 +1,14 @@
-# Launch-time settings snapshot — the ONE resolve per launch (block 7b)
+# Launch-time settings snapshot — the ONE resolve per launch
 
 `settings_launch` is the LIVE read-path of the settings keyspace. `commands/start.py` builds ONE
 resolved `KeyStore` snapshot per launch here, through the committed KeyStore pipeline
 (`assemble_levels` → `merge` → `expand`), and BOTH the behavior reads AND the CATEGORY delivery read
 from that SINGLE snapshot (S12 WRITE-ONCE — resolve ONCE, read many).
 
-It replaced the two inline `LevelView` cascades `start.py` used to hand-build per launch (the
-behavior cascade and the per-mount-family category cascade) and the `machine`
-(`/etc/kanibako.yaml`) reads (S14). It is the block-7b consumer SWAP: it IMPORTS the pipeline —
-single-source, it never re-implements assemble/merge/expand — and ADAPTS the snapshot's category
-subtrees into the one `list[CategoryEntry]` the delivery seams consume (system-design § "The
-collapse"). ⚑ The single by-dest `reconcile` pass those seams replaced was retired at cutover
-6-R3; this module never held it and does not need editing when its successors move.
+It is the launch's one cascade for behavior and categories alike, and reads no `machine` file
+(S14). It IMPORTS the pipeline — single-source, it never re-implements assemble/merge/expand — and
+ADAPTS the snapshot's category subtrees into the one `list[CategoryEntry]` the delivery seams consume
+(system-design § "The collapse").
 
 The module has two halves. The FIRST half builds FLOORS — `{dotted_key: value}` fragments the caller
 folds into `build_launch_snapshot`'s one floor, so `expand` resolves every `@`-ref chain ONCE
@@ -31,8 +28,7 @@ for the resolution mechanics only, never for tier structure.
 ## What lands in the one snapshot
 
 The launch has SEVERAL runtime-computed `default_categories` tables (channel / core / kani / helper /
-image binds, agent common/seeded, masks) and a behavior floor — each of which used to ride a
-per-family `LevelView`'s `defaults=` (the cascade FLOOR). They ALL fold into ONE `floor` dict passed
+image binds, agent common/seeded, masks) and a behavior floor. They ALL fold into ONE `floor` dict passed
 to `assemble_levels(floor=…)`. Step 2a folds it UNDER the base file, so a file at any scope still
 overrides by name — precedence-equivalent to the old AGENT-level `defaults=`, verified against
 `resolve_value`'s two-pass order. Plus:
@@ -76,8 +72,7 @@ overrides by name — precedence-equivalent to the old AGENT-level `defaults=`, 
   through the normal cascade; there is no parallel override route.
 
 Category default tables are already scope-qualified dotted keys. A live `""`-suppression of a
-DEFAULT means "this default is disabled" → the fold just DROPS it (absent ≡ no default), matching
-the retired by-name resolver's terminal skip. A box/workset FILE `""`-suppression of an inherited
+DEFAULT means "this default is disabled" → the fold just DROPS it (absent ≡ no default). A box/workset FILE `""`-suppression of an inherited
 default is a SEPARATE path, not this one; no shipped default table uses `""`.
 
 The agent-scope default tables arrive ALREADY DISCRIMINATED (`default_common()` →
@@ -169,13 +164,13 @@ key, which is not a key.
 
 The snapshot keeps box-side `$XDG` / `~` in a `Bind.box` RAW (deferred — host ≠ box). The category
 ADAPTER (`snapshot_category_entries`) is a `box_dest` consumer: it resolves box-side `~` →
-`GUEST_HOME` and `$XDG` against the BOX ctx (matching the retired by-name resolver's
-`space="guest"`) BEFORE building each `CategoryEntry`, so every downstream seam keys on the SAME
-absolute `box_dest` it did pre-swap (depth-sort + dest-collision unchanged). The S20 escape contract
+`GUEST_HOME` and `$XDG` against the BOX ctx (`space="guest"`) BEFORE building each
+`CategoryEntry`, so every downstream seam keys on one absolute `box_dest` (depth-sort and
+dest-collision). The S20 escape contract
 — a backslash-escaped `$` / `~` / `\` carried literal — is honored by the shared `expand_expr`
 scanner.
 
-## The auth 3-tier SHARING chain (spec §2a/§2b/§2c/§2d — 2026-07-01 redesign)
+## The auth 3-tier SHARING chain (spec §2a/§2b/§2c/§2d)
 
 `auth_chain_floor` REPLACES the boolean `group_auth` chain with a global/workset/box SHARING model
 that COMPOSES: a box can be global-shared AND/OR workset-shared. The keys are injected into the
@@ -240,7 +235,7 @@ the same string the spelled anchor would resolve.
 an empty segment, which resolves to a leftover string and then crashes `resolve_auth_source`'s
 strict `as_bool` ("expected bool, got str"). No caller passes blank today (a launch with no target
 uses the `shell` slot, `agent_ref.GENERAL_SLOT`; stop / creds-watch return early on an absent
-`KANIBAKO_AGENT` stamp), but P7 made `""` a MEANINGFUL value — the D-M6 suppression — so the trap is
+`KANIBAKO_AGENT` stamp), but `""` is a MEANINGFUL value — the D-M6 suppression — so the trap is
 one careless caller away. `False` is also the semantically right answer: no agent ⇒ no sharing
 capability, which is exactly the hard RO floor §2c describes.
 
@@ -252,8 +247,8 @@ MIRROR whose every key `@`-refs a `meta.agent.<agent>.*` source, while this is a
 not an agent capability. Being `meta.*` it is dropped from every settings FILE in assembly, so a
 user CANNOT repoint it to a dangling `@`-ref or garbage.
 
-⚑ P7 spelled it EXACTLY AS THE SPEC (§2c) instead of interpolating the active agent in Python. It is
-a CONSTANT now: the per-box variation arrives through `pref.system.agent` (§2h) and the §1A
+⚑ It is spelled EXACTLY AS THE SPEC (§2c), not interpolated with the active agent in Python. It is
+a CONSTANT: the per-box variation arrives through `pref.system.agent` (§2h) and the §1A
 selection level, both applied BEFORE this level resolves. NO braces are needed — the first ref is
 terminated by `/` (not segment-legal) and the second ends the value, so `_REF_NAME_RE`'s greed
 cannot swallow anything (PHASE R's `@{name}` exists for a LITERAL SUFFIX after a ref; there is none
@@ -321,7 +316,7 @@ a standalone / global / private box would carry the resolved `meta.box.auth.work
 standalone is the GARBAGE `/<agent>` described above, and leaving it live makes the credsync
 dir-creation `mkdir` against the host ROOT. Only the workset tier ever consults `workset_source`.
 
-## `meta.runtime.*` materialization (block B1 — spec §1A, 2026-06-29h)
+## `meta.runtime.*` materialization (spec §1A)
 
 The spec's RUNTIME-RESOLVED identity anchors (§1A; §0 `meta.*` is a TOP-LEVEL protected RO group).
 The per-mode treewalk values are ALREADY computed at launch (`proj.mode` / `proj.group.root` / the
@@ -356,9 +351,8 @@ loses the escape: the reference is expanded host-side (escapes consumed) and the
 the raw text, which the box-side resolver re-reads as syntax. That, and the other host paths the
 floors carry raw, are one class tracked on the board.
 
-There is NO `meta.runtime.ws_settings`: spec §1A CUT it — *"no longer needed (unified path)"*. It
-was a one-consumer alias for the value string below, holding exactly that value with exactly ONE
-consumer, so substituting its definition removes a hop without changing a single resolved value.
+There is NO `meta.runtime.ws_settings` (spec §1A, *"unified path"*): `meta.workset.settings` spells
+the value directly, below, with no alias hop.
 Under §0's CLOSED KEYSPACE an undeclared key is not a key, so it does not linger as an alias;
 `@meta.workset.settings` is the only spelling.
 
@@ -368,7 +362,7 @@ into `meta.runtime.*`:
 ```
 meta.workset.path     = "@meta.runtime.ws_root"
 meta.workset.settings = "@meta.workset.path/workset.yaml"     (spec §2c)
-meta.workset.name     = "@meta.runtime.ws_name"                (spec §2c, 2026-07-04)
+meta.workset.name     = "@meta.runtime.ws_name"                (spec §2c)
 meta.box.mode         = "@meta.runtime.project_type"           (RO identity anchor; spec §2b)
 ```
 
@@ -383,12 +377,11 @@ use. Spelling it off `@meta.runtime.ws_root` instead would resolve to the byte-i
 DIVERGE from the spec, and the spec is authority.
 
 `meta.workset.name` anchors into `meta.runtime.ws_name` — the SINGLE SOURCE for the partition token.
-Block B2 no longer sets it directly. The token is itself SINGLE-SOURCED on
+The token is itself SINGLE-SOURCED on
 `channels.channels.workset_name_token` and threaded in by the caller, so the keyspace anchor and the
 channel partition cannot drift.
 
-`meta.box.mode` is an RO identity anchor: it replaced the formerly settable `box.mode` config-set
-key, which `config_interface` no longer offers.
+`meta.box.mode` is an RO identity anchor; there is no settable `box.mode` key.
 
 *ws_root_literal* is the resolved workset-root path STRING for the NAMED and STANDALONE modes
 (`str(proj.group.root)` / `str(project dir)` — a runtime treewalk result, no key form; JC-B1-2: an
@@ -399,7 +392,7 @@ given for `named` / `standalone` and is IGNORED for `primary`, which uses the
 A scope FILE cannot set any of the re-rooted keys: they are construct-set RO per §0, and `meta.*` is
 not in the config-set settable known-key list, so the floor is their sole source.
 
-## `meta.*` IDENTITY-ANCHOR materialization (block B2 — spec §2c/§2d, §0)
+## `meta.*` IDENTITY-ANCHOR materialization (spec §2c/§2d, §0)
 
 B1 materialized `meta.runtime.*` plus the single-source re-root. B2 (`meta_identity_floor`)
 materializes the REMAINING construct-time IDENTITY anchors as RO floor keys and ROUTES the eligible
@@ -495,7 +488,7 @@ the store, while `meta.agent.<a>.name` reported the plugin's value.
 `meta.agent.<a>.settings` is the agent-tier SETTINGS cascade FILE anchor (spec §2d; B5 — the §3.3
 "keep and use" ruling): the spec's own formula `@meta.agent.<a>.path/agent.yaml`, resolved
 transitively through the sibling `path` anchor by `expand` — the SAME file `agent_settings_path`
-composes (`agents/<a>/agent.yaml`, D-2026-06-22). Keyed on the DISCRIMINATOR like `name`: the
+composes (`agents/<a>/agent.yaml`). Keyed on the DISCRIMINATOR like `name`: the
 store, and so the settings file, follows the active node.
 
 `meta.agent.<a>.auth.share_support` is the agent's credential-SHARING CAPABILITY (spec §2d; design
@@ -549,7 +542,7 @@ a dangling `@`-ref in the edited value is a hard error refusing the write (spec 
 set-time*), but at LAUNCH the embedded-ref rule renders it `""` and the same bind silently becomes
 `src=/common/plugins` (measured) — a garbage host source, no error anywhere.
 
-🛑 **The commons no longer needing this entry is not license to delete it.** The two consumers above
+🛑 **That the commons do not need this entry is not license to delete it.** The two consumers above
 are its whole justification, and dropping it fails SILENTLY at launch — a bind with a garbage source
 and no error.
 
@@ -722,7 +715,7 @@ its dependent `meta.box.workspace` referencing a key that answers at no terminus
 
 A named or standalone root that NULLS the key hands the floor nothing (`_workset_workspaces_floor_value`
 returns `None`, as at primary): the root's own workset tier carries that `<None>` into the
-snapshot, and the default leaf the resolver used to collapse to would be a path the user said does
+snapshot, and falling back to the default leaf would give a path the user said does
 not exist (Q106 review). The detection readers keep finding pre-null members at the default through
 `project.workset.resolve_workspaces_locator`, which nothing binds.
 
@@ -791,16 +784,16 @@ fires only on a PRESENT `None` — so while these were omitted, a user seed entr
 A floor literal there would shadow nothing on a finished box and FABRICATE an identity on a
 half-created one, so it stays NOT EMITTED.
 
-⚑ **`workset.channels.common` needed the MERGE fixed too.** It ends in the `common` category token,
-and `settings_merge` used to classify a present `None` by its last segment, so it OMITTED this one as
-a `common` category-root reset. It now asks `settings_keyspace.is_terminal_category_key`, which
-places a category where the scope ends.
+⚑ **`workset.channels.common` depends on the MERGE's position rule.** It ends in the `common`
+category token; `settings_merge` asks `settings_keyspace.is_terminal_category_key`, which places a
+category where the scope ends, so a present `None` here is KEPT, not omitted as a category reset.
 
-⚑ **`workset.template` was reachable ONLY AT CREATE, which is not reachable.** Its value used to be
-spelled by `launch.templates.template_seed_defaults`, whose one consumer is the create-time seed
+⚑ **`workset.template` must not be reachable ONLY AT CREATE.** Spelled only by
+`launch.templates.template_seed_defaults`, whose one consumer is the create-time seed
 resolve (`commands.start._apply_init_seeds`, reached only from `_seed_box_home`, whose only two call
 sites are `run_create` and `_run_container`'s `if proj.is_new:` block). A box that already exists
-never runs that resolve again, so `@workset.template` was `__MISSING__` on every ordinary launch.
+never runs that resolve again, so `@workset.template` would be `__MISSING__` on every ordinary launch;
+the floor emits it instead.
 The seed table now only `@`-REFERENCES the key; this floor is the one spelling. ⚑ The GATE stays in
 `launch.templates` and is the SAME condition: `channels.has_workset_channels(proj)` IS
 `proj.mode is not standalone`, which is this builder's `standalone` arm. ⚑ The `template` LEAF is
@@ -1119,7 +1112,7 @@ omitted the whole arm, kanibako's own `/opt/kanibako/kanibako` included. So the 
 null at an internal dest, and a user entry repointing one all leave the internal bind as the floor
 spelled it, while the arm's STANDARD entries still follow the user (a null arm still omits them, with
 the [R185] warning). A narrow resolve re-imposes only what its own floor carries (the image resolve:
-`storage.conf`). ⚑ A user ENTRY at an internal dest no longer reaches this silently:
+`storage.conf`). ⚑ A user ENTRY at an internal dest does not reach this silently:
 `refuse_read_time_faults` refuses it (below). The re-impose stays for the NULL/empty arm, which
 names no internal dest and so is not refused.
 
@@ -1141,15 +1134,16 @@ goes FIRST, and that position is load-bearing.
    the instrument to precisely the resolves that matter, so any later re-measurement would see only
    the snapshots that already conform.
 2. `refuse_read_time_faults(written, expanded, *, ctx, files, subject, tiers, active_agent="",
-   plugin_owners=None)` — the READ-TIME refusals, IN ORDER (below). The workset preview
-   (`commands/workset_cmd._workset_preview_entries`) calls it too, so the order has one carrier and a
-   resolve route cannot run one refusal and skip the other.
+   plugin_owners=None)` — the READ-TIME refusals, IN ORDER (below). `build_launch_snapshot` is its
+   only call site, and every resolve — the workset preview
+   (`commands/workset_cmd._workset_preview_entries`) included — goes through it, so the order has one
+   carrier and a resolve route cannot run one refusal and skip the other.
 3. `settings_assemble.refuse_undeclared_per_file(files)` — stage (h), the per-file §0 audit, AFTER
    the snapshot refusals so a tailored cure is the one a user reads.
 4. `_warn_lone_none_standard_binds`, then `_warn_null_ref_secrets` (below).
 
-*files* are the tiers the caller ACTUALLY read, most-specific first (`read_settings_files`; the
-launch's include `base`, the preview reads no base file). *subject* is a `ResolveSubject` — `BOX` for
+*files* are the tiers the resolve read, most-specific first (`cascade_files`, base included on
+every route). *subject* is a `ResolveSubject` — `BOX` for
 the launch, `SYSTEM` for a resolve with no box and no working set, and `WORKSET` for the preview,
 whose first line says "this working set" and whose cure line cites `workset reset <workset> <key>`,
 `workset show --effective` and `workset share list --effective`. It is an enum carrying the whole
@@ -1254,10 +1248,10 @@ subject is the resolve's agent, except under `GENERAL_SLOT`: that name is also t
 workset, and box-scalar resolves, so it cannot tell a selected `shell` from no agent, and the cure
 prints `<agent>` for both. `retired_cure` passes neither, so its cures carry the placeholders.
 
-⚑ **THE `base` TIER IS SCANNED** when the resolve read it: `cascade_files` reads
-`settings_base_path()` itself, and `_loaded_tiers` passes on only the files actually read, so the
-workset preview, which reads no base file, never names one. A stale key in the site base file
-defaults DOWN into every box on the machine.
+⚑ **THE `base` TIER IS SCANNED**: `build_launch_snapshot` passes `settings_base_path()` to
+`cascade_files` on every route, the workset preview included, and `_loaded_tiers` passes on the
+files actually on disk. A stale key in the site base file defaults DOWN into every box on the
+machine.
 
 ⚑ **ONE FILE, ONE MESSAGE.** The scan looks at the whole file, not at the offending path, so a file
 carrying BOTH a retired spelling and an ordinary undeclared key reports the retirement and reveals
@@ -1292,9 +1286,8 @@ cannot reopen the gap.
   the sweep and §0 cannot disagree about what a key is. The dot rule above still binds: the oracle
   cannot catch a forged key, since `("box", "secret_path.X")` joins to a declared one.
 * **`secret_path.<VAR>` is one of those families**, at every scope and under `agent.<node>`. At read
-  time, a bare relative one in a file used to meet only the category adapter's own `secret_path`
-  refusal, when the mounts were built, and only if it won the merge. The sweep now stops it first,
-  with the two-readings message. The adapter's refusal stays, for values the sweep does not judge.
+  time the sweep stops a bare relative one in a file first, with the two-readings message, whether
+  or not it wins the merge. The adapter's refusal stays, for values the sweep does not judge.
 * **SAME PREDICATE, ANCHOR AND WORDING as the set-time guard and the other two read-time seams:**
   `agent_config.is_unambiguous_path_value` decides, `config_keys.path_key_anchor` names the other
   reading, and `agent_config.ambiguous_path_value_error` writes the message. The anchor resolves
@@ -1328,7 +1321,7 @@ Pinned by the `test_R147_*` tests in `tests/test_settings/test_settings_launch.p
 anti-vacuity test that proves the swept set holds `workset.auth.path` and every registry
 `type: path` key the snapshot carries.
 
-## Agent SELECTION — the narrow resolve that precedes the launch snapshot (P7)
+## Agent SELECTION — the narrow resolve that precedes the launch snapshot
 
 `resolve_selected_agent` resolves `system.agent` (`SELECTION_KEY`, spec §2g — the key that names the
 agent a box runs) as the settings files plus their prefs give it. It returns the resolved value in
@@ -1370,22 +1363,21 @@ plain `bool`, so the pair has to be narrowed at the call site — the same two-l
 complaint (it IS a `dict[str, …]`), which is exactly what the `assert isinstance(result, tuple)`
 stops.
 
-## `meta.box.agent.*` RO mirror materialization (block B5 — spec §2b)
+## `meta.box.agent.*` RO mirror materialization (spec §2b)
 
 Spec §2b: `meta.box.agent.<key>` is the box-scoped READ-BACK of its active agent's WHOLE resolved
 settings subtree — `agent.<@system.agent>.<key>` with the `agent.default` fallback. Values are still
-READABLE here; they are no longer SETTABLE. Being `meta.*` it is RO BY CONTRACT (§0: meta ⟺ not
+READABLE here, never SETTABLE. Being `meta.*` it is RO BY CONTRACT (§0: meta ⟺ not
 settable), so it cannot be set to a dangling `@`-ref and no settings file can contribute to it. It
 is re-materialized whenever the effective agent changes.
 
-⮕ **P7 RETIRED THE SETTABLE `box.agent.*` MIRROR that used to live here.** It was one of the three
-devices §2h replaced (*"Every solution is a hack/exception, so I'm biting the bullet"*): it made a
-BOX-scope key the input to the agent tier, and it made the L4.1 anchors derive from a settable key at
-their own level. A box now tweaks its agent with `pref.agent.<agent>.<key>` (§2h), which targets the
+⮕ **There is no SETTABLE `box.agent.*` mirror.** A settable mirror would make a BOX-scope key the
+input to the agent tier, and the L4.1 anchors derive from a settable key at their own level (§2h:
+*"Every solution is a hack/exception, so I'm biting the bullet"*). A box tweaks its agent with `pref.agent.<agent>.<key>` (§2h), which targets the
 AGENT tier properly and needs no mirror. TWO consequences, both deliberate: no settings file can
 pre-set a name under `meta.box.agent`, so the only name the copy must step around is the auth
-floor's own (the gap-fill below); and the `box.agent.<category>` → `agent.<active>` pre-merge FOLD
-is gone with it.
+floor's own (the gap-fill below); and there is no `box.agent.<category>` → `agent.<active>`
+pre-merge FOLD.
 
 **MECHANISM (JC-B5-1 — COPY, materialized on the current engine, no resolver inversion).** The
 resolved active-agent subtree only EXISTS post-merge/expand: the cascade keeps `agent.default` and
@@ -1462,10 +1454,9 @@ spelled.
 
 ## The behavior read — `effective_behavior`
 
-This is the LIVE launch behavior reader (block 7b — ruling A, the FULL swap): it replaces
-`start.py`'s retired `_build_effective_state` LAUNCH read. The behavior cascade now flows through the
-ONE snapshot — each scope file's `agent.default.*` / `agent.<active>.*` tables merge by NAME (block
-2b / `assemble_levels` S8), the two declared-default floors fold in under `base` as `agent.default.*`
+This is the LIVE launch behavior reader. The behavior cascade flows through the
+ONE snapshot — each scope file's `agent.default.*` / `agent.<active>.*` tables merge by NAME (`assemble_levels`
+S8), the two declared-default floors fold in under `base` as `agent.default.*`
 and `agent.<active>.*` (OS1) — and THIS function does the §2d active-over-default value-pick over that merged result. It
 returns the `{key: str}` dict the descriptor assembler consumes.
 
@@ -1487,8 +1478,8 @@ slot is omitted — the consumer applies its own default (§3) — and, since pr
 name, it shadows the `agent.default` value below it (the active slot reset it). Values are
 stringified, since behavior settings are scalars. Reads go via the UNBOUND `dict` probe (S3).
 
-⚑ **NO `box.agent.*` OVERLAY (P7).** The settable box-scoped agent mirror is RETIRED (spec §2b — it
-is now the RO read-back `meta.box.agent.*`), so there is no box-scope behavior source to overlay
+⚑ **NO `box.agent.*` OVERLAY.** There is no settable box-scoped agent mirror (spec §2b — `box.agent.*`
+is the RO read-back `meta.box.agent.*`), so there is no box-scope behavior source to overlay
 here: a box tweaks its agent's behavior with `pref.agent.<agent>.<key>` (§2h), an ordinary cascade
 level, therefore ALREADY resolved into the active slot. Reading `meta.box.agent` here instead would
 be a cycle — that node is MATERIALIZED FROM `_agent_pick_node`.
@@ -1511,8 +1502,7 @@ apart — the distinction `effective_behavior`'s collapse erases. The subtree co
 
 `snapshot_category_entries` walks the snapshot's category subtrees into the ONE
 `list[CategoryEntry]`. Every delivery seam downstream reads THIS list and no other: the per-scope
-`store_shape` producer, the assembly collapse, and the launch seam's `LaunchDeliveries`. The shape is
-the one the retired by-name resolver produced, unchanged (system-design § "The collapse").
+`store_shape` producer, the assembly collapse, and the launch seam's `LaunchDeliveries`. (system-design § "The collapse").
 
 For every `<scope>.<category>` subtree present it emits one entry per leaf. The four scopes are the
 SAME `system, agent, workset, box` apply order the old by-name resolver used, so a same-scope tie
@@ -1576,9 +1566,9 @@ omission to fix in passing. Tracked for the undeclared-shape sweep.
 🛑 **That is the ROOT case alone.** A non-scalar at a LEAF of either family (`box.env.FOO: ['--x',
 '--w']`) is REFUSED by name at the emit — `settings_categories.refuse_non_scalar_family_value`, spec
 §2a's *"BOTH FAMILIES ARE SCALAR … a non-scalar (list, map, etc) is REFUSED at resolve and the key is
-named"*. The refusal is not a display rule: both branches used to coerce with `str(value)`, so a list
-at `box.env.FOO` was EXPORTED INTO THE GUEST as the literal text `['--x', '--w']` and a list at
-`secret_path.<VAR>` became a MOUNT SOURCE spelled as a Python repr.
+named"*. The refusal is not a display rule: coercing with `str(value)` would EXPORT a list at `box.env.FOO`
+INTO THE GUEST as the literal text `['--x', '--w']` and make a list at `secret_path.<VAR>` a MOUNT
+SOURCE spelled as a Python repr.
 
 What the arm check asserts is UNCHANGED by the dest-keyed reshape: a bindings arm's value must be a
 MAP node. Before, a map of names; now, a map of destinations. A scalar / `Bind` / list sitting at
@@ -1608,7 +1598,7 @@ byte-indistinguishable from an absent one after `assemble`, so erroring would tr
 itself calls the `agent.default.bindings | {}` row "documentation of intent, not a required default".
 
 The refusal message names what a user must declare: the MAP, keyed by destination — never a `.<name>`
-entry, which is no longer a key at any scope. `masks` is dest-keyed like the rest, but its VALUE is
+entry, which is not a key at any scope. `masks` is dest-keyed like the rest, but its VALUE is
 the 3-state marker (present = mask · null = unmask · absent = inherit, spec §2a) and not a source, so
 only the example spelling differs (`{box_dest: true}` vs `{box_dest: [src[, options]]}`).
 
@@ -1655,7 +1645,7 @@ segment and stays whole: it is data, and a dest such as `~/.cache/uv` carries do
 `CategoryEntry`).
 
 `_emit_bind` appends one bind-shaped `CategoryEntry` (MOUNT or COPY). ⚑ It takes PRIMITIVES, not a
-bind object, and that is the point (P7 ruling). Its one caller has already ruled in the leaf TYPE at
+bind object, and that is the point (a ruling). Its one caller has already ruled in the leaf TYPE at
 the seam that knows the shape, so by the time anything gets here there is only ONE unpacked triple
 and no second place a destination could come from. A leaf type check inside here would put two shapes
 in one function (CONVENTIONS §0) and would leave "take the dest from the value" expressible.
@@ -1670,9 +1660,7 @@ materialization.
 so there is ONE resolution here and no space discriminator. A COPY's guest dest is
 resolved to a host path later, when the copy runs: a `seeded` dest by
 `container._guest_dest_to_host`, a `synced` dest by `commands.start._synced_host_dest` (through the
-bind that covers it — cutover 2b-3). Neither resolution happens here. The retired `host_dest_keys`
-parameter and `CategoryEntry.dest_space` field existed only because the seed layers used to spell
-their dest as an absolute HOST path.
+bind that covers it). Neither resolution happens here, and no entry carries a dest space.
 
 `_no_lookup` is the `expand_expr` lookup for the box-side `box_dest` pass: the snapshot's `@`-refs
 are ALREADY resolved at build (host-side), so a surviving `@`-ref in a `box_dest` is a build/config

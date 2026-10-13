@@ -69,7 +69,6 @@ def _expand_var(expr: str, i: int, ctx: ResolveCtx) -> tuple[str, int]
 def _resolve_var(name: str, ctx: ResolveCtx) -> str
 def _expand_ref(expr: str, i: int, lookup: Callable[[str, tuple[str, ...]], str], chain: tuple[str, ...]) -> tuple[str, int]
 def _lookup_ref(ref_name: str, lookup: Callable[[str, tuple[str, ...]], str], chain: tuple[str, ...]) -> str
-def _no_lookup(ref: str, chain: tuple[str, ...]) -> str
 ```
 
 ## Classes

@@ -935,14 +935,6 @@ def resolve_value(
     return UNSET
 
 
-def _no_lookup(ref: str, chain: tuple[str, ...]) -> str:
-    """Refusing ``@``-ref lookup: behavior settings are plain scalars and carry no cross-refs.
-
-    ⚑ NO CALLERS — ``settings_launch`` defines and uses its own same-named twin (see the doc).
-    """
-    raise SettingsError(f"@-refs are not supported in behavior settings: {ref}")
-
-
 #: The levels whose retired-entry cure is ALWAYS a ``set`` that reads that same level's own file,
 #: so it refuses the write while the entry is there. Measured end to end through the real CLI
 #: with the entry present: these three rc 1. ``base`` is not among them. The ``agent`` tier is

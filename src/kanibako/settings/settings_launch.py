@@ -1445,11 +1445,10 @@ def refuse_read_time_faults(
     an internal bind's dest (:func:`_refuse_internal_bind_entries`, over *written*), then
     §0's per-owner values (:func:`_refuse_inherited_per_owner`, over *written*, each level's
     scope in *tiers*, and *plugin_owners* the active descriptor's declared bind rows).
-    ⚑ ONE CARRIER OF THE ORDER: the launch (:func:`build_launch_snapshot`) and the workset preview
-    (``commands/workset_cmd._workset_preview_entries``) both call this, so a resolve
-    route cannot run one refusal and skip the other.
-    *files* are the tiers the caller READ, most-specific first
-    (``settings_assemble.read_settings_files``); *subject* is who the
+    ⚑ ONE CARRIER OF THE ORDER: called only by :func:`build_launch_snapshot`, which every
+    resolve (the workset preview too) goes through, so no route can skip one refusal.
+    *files* are the tiers the resolve READ, most-specific first
+    (``settings_assemble.cascade_files``); *subject* is who the
     resolve is for (:class:`ResolveSubject`).
     ⚑ Each raises on its own, so a file with both faults reports the path value first
     and the undeclared entry on the next run.

@@ -12,8 +12,9 @@ through `cascade_files`), for a `ReadPurpose` that fixes which refusals run; `as
 builds the partials from those already-read files. The launch path is
 `settings_launch.build_launch_snapshot` → `cascade_files(ReadPurpose.RESOLVE)` →
 `settings_launch.assemble_cascade` → `assemble_levels`; `commands/start.py` calls it on the launch
-path and for `config show --effective`. `config_interface`, `paths`, and `commands/workset_cmd`
-read through `cascade_files` too.
+path and for `config show --effective`. `config_interface` and `paths` call `cascade_files`
+directly; `commands/workset_cmd` reads its workset file through `read_settings_files`
+(`ReadPurpose.NARROW`) and reaches `cascade_files` only through `build_launch_snapshot`.
 
 ## Authority
 
@@ -754,10 +755,9 @@ nested keyspace (S7) so the floor merges uniformly with the other partials. A na
 parsed to `Bind` (reachable only for a malformed node — see `_parse_node`).
 
 ⚑⚑ **DO NOT PUT A CATEGORY-ENTRY SPELLING IN THIS DOCSTRING AS AN EXAMPLE.** `_insert_dotted` REFUSES
-BY NAME every floor key that goes DEEPER than the terminal category key. Two examples have now been
-burned here: `"box.bindings.rw.home"` (caught when the `bindings` arms went terminal) and its
-replacement `"box.caches.pip"` (caught by this pass — verified refused with `SettingsError:
-Default-category key 'box.caches.pip' names a 'caches' entry by ENTRY NAME`). A safe example is a
+BY NAME every floor key that goes DEEPER than the terminal category key: `"box.bindings.rw.home"`
+and `"box.caches.pip"` are both refused (`SettingsError: Default-category key 'box.caches.pip'
+names a 'caches' entry by ENTRY NAME`). A safe example is a
 BEHAVIOR key such as `"agent.access"`, or a terminal category key such as `"box.caches"`.
 
 ```_insert_dotted(store: KeyStore, dotted: str, value: Any) -> None```
