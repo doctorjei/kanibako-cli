@@ -864,6 +864,74 @@ class TestALinkToTheNewStoreSaysNothing:
                        f"snapshots stay at {x}.\n")
 
 
+class TestAnUnsearchableNewBaseRaisesNothing:
+    """A new snapshot base that cannot be searched (EACCES) is not the old store: the
+    move prints what it printed before and still keeps the old store, never raises."""
+
+    def _move(self, tmp_path, capsys, *, old, b):
+        from kanibako.commands.box._lifecycle import _relocate_snapshot_store
+
+        if os.geteuid() == 0:
+            pytest.skip("root opens any directory")
+        rw, new_rw = _rw(tmp_path / "old"), _rw(tmp_path / "new")
+        x = tmp_path / "x"
+        _snap(x)
+        store = _versions_dir(rw) / "a"
+        if old == "link":
+            _versions_dir(rw).mkdir()
+            store.symlink_to(x)
+        else:
+            _snap(store)
+        nv = _versions_dir(new_rw)
+        nv.mkdir()
+        if b == "x":
+            (nv / "b").symlink_to(x)
+        elif b == "dir":
+            _snap(nv / "b", TS, "b")
+        o = SimpleNamespace(vault_rw=rw, name="a", mode=BoxMode.named)
+        n = SimpleNamespace(vault_rw=new_rw, name="b", mode=BoxMode.named)
+        nv.chmod(0)
+        try:
+            kept = _relocate_snapshot_store(o, n)
+        finally:
+            nv.chmod(0o755)
+        assert kept == store
+        return store, x, capsys.readouterr().err
+
+    @pytest.mark.parametrize("b", ["x", "dir", "absent"])
+    def test_a_linked_old_store_still_gets_the_note(self, tmp_path, capsys, b):
+        store, x, err = self._move(tmp_path, capsys, old="link", b=b)
+        assert err.startswith(f"Note: 'b' lists none of its old vault snapshots: {store} "
+                              f"is a link to {x}, and a linked snapshot store is never "
+                              f"moved. The snapshots stay at {x}.")
+
+    @pytest.mark.parametrize("b", ["dir", "absent"])
+    def test_a_real_old_store_raises_nothing(self, tmp_path, capsys, b):
+        store, _x, err = self._move(tmp_path, capsys, old="dir", b=b)
+        assert "Note:" not in err and (store / TS / "f").read_text() == "mine"
+
+    def test_the_real_store_note_raises_nothing(self, tmp_path):
+        """Relocate's own warning comes first on a move; the Note's real-directory check
+        is guarded too, for a store relocate left in place."""
+        from kanibako.commands.box._lifecycle import _linked_store_note
+
+        if os.geteuid() == 0:
+            pytest.skip("root opens any directory")
+        rw, new_rw = _rw(tmp_path / "old"), _rw(tmp_path / "new")
+        store = _versions_dir(rw) / "a"
+        _snap(store)
+        nv = _versions_dir(new_rw)
+        nv.mkdir()
+        o = SimpleNamespace(vault_rw=rw, name="a", mode=BoxMode.named)
+        n = SimpleNamespace(vault_rw=new_rw, name="b", mode=BoxMode.named)
+        nv.chmod(0)
+        try:
+            note = _linked_store_note(o, n, store)
+        finally:
+            nv.chmod(0o755)
+        assert note is None
+
+
 class TestANestedRepointIsNamed:
     """A new store repointed onto the old one's base, an ancestor, or inside it: nothing
     is moved (``stores_overlap``), and a Note says where the snapshots stay."""

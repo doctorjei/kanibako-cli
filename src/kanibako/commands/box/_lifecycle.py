@@ -4600,7 +4600,10 @@ def _linked_store_note(old: ProjectState, new: ProjectState, store: Path) -> str
             return None  # relocate's own warning named it
 
     def same_store(real_new: Path) -> bool:
-        return real_new.exists() and os.path.samefile(real_new, store)
+        try:  # an unsearchable base is not the same store (as ``stores_overlap``)
+            return real_new.exists() and os.path.samefile(real_new, store)
+        except OSError:
+            return False
 
     if not store.is_symlink():
         if not store.is_dir():
