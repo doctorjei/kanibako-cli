@@ -1422,8 +1422,10 @@ class TestCredsWatcherSpawnAndFlagHygiene:
 
         popen.assert_called_once()
         argv = popen.call_args.args[0]
-        assert argv[1:4] == ["-m", "kanibako.launch.creds_watcher", "--box"]
-        assert argv[4] == str(proj.project_path)
+        assert argv[1:5] == ["-P", "-m", "kanibako.launch.creds_watcher", "--box"]
+        assert argv[5] == str(proj.project_path)
+        # 🛑 Never from the launcher's (box-writable) cwd: see the planted-module test.
+        assert popen.call_args.kwargs["cwd"] == "/"
         # Detached: own session + no inherited std streams.
         assert popen.call_args.kwargs["start_new_session"] is True
         assert popen.call_args.kwargs["stdout"] == start_mod.subprocess.DEVNULL
@@ -1486,6 +1488,52 @@ class TestCredsWatcherSpawnAndFlagHygiene:
         [record] = [r for r in caplog.records if r.name == "kanibako.start"]
         assert record.levelno == logging.WARNING
         assert "its warnings will be discarded" in record.getMessage()
+
+    def test_spawn_creds_watcher_ignores_modules_planted_in_the_launch_dir(
+        self, tmp_home, monkeypatch,
+    ):
+        """🛑 SECURITY: the launcher's cwd is usually the box's rw workspace, and
+        ``python -m`` puts cwd first on ``sys.path``.  A box-planted ``argparse.py``
+        (the watcher imports argparse) must NOT run on the host; the watcher still starts.
+        A REAL spawn — the child runs the real module from the planted directory."""
+        import subprocess
+
+        import kanibako
+        import kanibako.commands.start as start_mod
+
+        launch_dir = Path.cwd()  # tmp_home's project dir, the box workspace stand-in
+        marker = tmp_home / "PLANTED-MODULE-RAN"
+        (launch_dir / "argparse.py").write_text(
+            f"open({str(marker)!r}, 'w').close()\nraise SystemExit(7)\n"
+        )
+        # The child imports the SAME kanibako as this test (-P keeps PYTHONPATH).
+        src = str(Path(kanibako.__file__).resolve().parents[1])
+        monkeypatch.setenv(
+            "PYTHONPATH", os.pathsep.join(filter(None, [src, os.environ.get("PYTHONPATH")])),
+        )
+        log_path = tmp_home / "logs" / "b.creds-watcher.log"
+        proj = MagicMock()
+        proj.project_path = tmp_home / "no-such-box"  # resolution fails; the watcher exits 0
+
+        real_popen, children = subprocess.Popen, []
+
+        def _spy(*args, **kwargs):
+            child = real_popen(*args, **kwargs)
+            children.append(child)
+            return child
+
+        with (
+            patch.object(start_mod.subprocess, "Popen", _spy),
+            patch.object(start_mod, "creds_watcher_log_path", return_value=log_path),
+        ):
+            start_mod._spawn_creds_watcher(MagicMock(), proj)
+
+        [child] = children
+        rc = child.wait(timeout=60)
+        assert not marker.exists(), "a module planted in the launch dir ran on the host"
+        assert rc == 0, log_path.read_text()
+        # It started and ran the real watcher: its resolution failure is in its log.
+        assert "could not resolve its box" in log_path.read_text()
 
     def test_detached_shared_box_spawns_the_watcher(self, start_mocks):
         """A DETACHED shared-tier launch spawns the creds watcher."""

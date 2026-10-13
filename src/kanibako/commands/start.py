@@ -5902,12 +5902,18 @@ def _spawn_creds_watcher(std, proj) -> None:
 
     DETACHED via ``start_new_session=True`` (its own session / no controlling tty), with
     no terminal on any std stream, so it survives this command returning — like the box itself.
-    It re-resolves the host config from the box SUBJECT (``proj.project_path``), the
-    same way ``kanibako stop`` does, so cwd is irrelevant.  The watcher itself skips a
+    It re-resolves the host config from the box SUBJECT (``proj.project_path``, absolute),
+    the same way ``kanibako stop`` does, so it needs no cwd.  The watcher itself skips a
     private box + holds a single-instance lock, but the caller ALSO gates on
     ``auth_src.creds_shared`` (don't even spawn for a private box — cheaper).  Best-effort:
     a spawn failure is logged, never crashes the launch (the flag's lazy fallback on
     the next host op still covers the writeback).
+
+    🛑 HOST CODE, BOX-WRITABLE CWD: the launcher's cwd is usually the project dir, which
+    the box writes, and ``python -m`` puts cwd FIRST on ``sys.path`` — a box-planted
+    ``argparse.py`` would run on the host.  So the child runs with ``-P`` (no unsafe
+    ``sys.path`` entry) from ``cwd="/"``; it still finds kanibako wherever the launcher's
+    interpreter does (site-packages, ``PYTHONPATH``).
 
     Its stderr is APPENDED to :func:`~kanibako.settings.paths.creds_watcher_log_path` —
     the one place a detached process's WARNING (a settings refusal) or ERROR can reach
@@ -5926,8 +5932,9 @@ def _spawn_creds_watcher(std, proj) -> None:
         )
     try:
         subprocess.Popen(
-            [sys.executable, "-m", "kanibako.launch.creds_watcher",
+            [sys.executable, "-P", "-m", "kanibako.launch.creds_watcher",
              "--box", str(proj.project_path)],
+            cwd="/",
             stdin=subprocess.DEVNULL,
             stdout=subprocess.DEVNULL,
             stderr=sink if sink is not None else subprocess.DEVNULL,
