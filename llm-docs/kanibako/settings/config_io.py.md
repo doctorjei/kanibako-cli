@@ -48,8 +48,8 @@ One-line rendering of a YAML parse failure (the problem + where).
 `yaml`'s own `str()` is multi-line and cites `"<unicode string>"` as the source (we hand the loader
 TEXT, not the file), so it names everything except the file. The caller supplies the file; this
 supplies the problem and its line/column. ⚑ **THE ONE RENDERER, AND IT IS PUBLIC BECAUSE IT HAS A
-SECOND READER:** a file's own loader (`rig.yaml`'s, an overlay's) wraps the failure in its own error
-type and renders it here, so one failure reads in one set of words.
+SECOND READER:** a file's own loader (the rig metadata's, an overlay's) wraps the failure in its
+own error type and renders it here, so one failure reads in one set of words.
 
 A `yaml.MarkedYAMLError` (a `ScannerError`, a `ParserError`) carries a populated `.problem` and
 `.problem_mark`, which is what the `isinstance` arm keys on. The `" ".join(str(exc).split())`
