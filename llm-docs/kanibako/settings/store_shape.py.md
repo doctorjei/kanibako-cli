@@ -184,10 +184,10 @@ loudly rather than dropping its entries.
 4. **Not sort by path depth.** Depth ordering is EMISSION order, not precedence. Arms preserve input
    order; the collapse sorts each scope's binds shallowest-first before processing, which is its own
    ruling and its own intra-scope mechanism. ⚑ For the COPY arms "preserve input order" is now
-   load-bearing rather than incidental, which is why the fold walks `_scope_survivors` — the §0 rows
-   are decided per DEST, but the survivors come back in DECLARATION order. Grouping the emission by
-   dest would pull two copies at one dest together and land a copy at a NESTING dest after both,
-   inverting which one overwrites which at apply time.
+   load-bearing rather than incidental, which is why the fold walks `_scope_survivors` — the
+   collision rules are decided per DEST, but the survivors come back in DECLARATION order. Grouping
+   the emission by dest would pull two copies at one dest together and land a copy at a NESTING
+   dest after both, inverting which one overwrites which at apply time.
 5. **Not widen past five keys.** `StoreShape` is a frozen five-field structure so "exactly five" is
    true BY CONSTRUCTION rather than by convention. The collapse reads `shape.ro` / `shape.seed` /
    `shape.mask` — attribute access — so the structure satisfies both readings of "a dict with

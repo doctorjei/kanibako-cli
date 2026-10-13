@@ -134,11 +134,11 @@ Both refusals are raised by named helpers rather than inline, so the spec-mandat
 exists exactly once each: `settings_categories.raise_binding_vs_binding` and
 `raise_extension_onto_occupied`, three callers apiece.
 
-⚑⚑ **A `§0 row-1` / `§0 row-3` label does not resolve.** The collision table in the
+⚑⚑ **Cite these refusals by name, never as `§0 row-1` / `§0 row-3`.** The collision table in the
 system design's § *Collision arbitration* is keyed by the ARRIVING entry (bind / mask /
 copy-file / copy-dir), and its numbered refusal list puts bind-vs-bind at **2**;
-`extension_onto_occupied` has no number — it is the section's base-vs-extension prose. The one
-surviving `§0 row-1` label, in `settings/agent_defaults.py`, is not a resolvable citation.
+`extension_onto_occupied` has no number — it is the section's base-vs-extension prose. No row label
+remains in `src/` or `packages/`.
 
 ### `TemplateScopeError`
 
@@ -157,10 +157,10 @@ denies them by name.
 
 `launch/templates.copy_tree` is "the ONE copier" by its own docstring: every
 template stage, box seed and host-store fill routes through it, so the defenses cannot be present on
-one path and missing on another. It enforces four points, and they are exactly what spec §2a demands
-of the copier in § *The seed whitelists* — *"WHITELISTS, per scope. Anything not listed is DENIED by
-default"* and *"The copier MUST reject `..` components and MUST NOT follow symlinks out of the
-destination subtree"*:
+one path and missing on another. It enforces four points, and they are exactly what the system
+design's § *The seed whitelists — what the copier may write* demands of the copier — *"WHITELISTS,
+per scope. Anything not listed is DENIED by default"* and *"The copier MUST reject `..` components
+and MUST NOT follow symlinks out of the destination subtree"*:
 
 1. **Whitelist** — an entry whose first STORE-RELATIVE path component is not in the scope's
    whitelist. Deny-by-default: an unlisted entry is an ERROR, never a silent skip.

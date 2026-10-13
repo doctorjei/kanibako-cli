@@ -144,8 +144,8 @@ def build_store_shape(
 def _scope_survivors(
   entries: list[CategoryEntry],
 ) -> tuple[list[CategoryEntry], list[CategoryCollision]]:
-  """Every entry the within-scope §0 rows keep, IN DECLARATION ORDER, + their warnings."""
-  # ⚑ The rows are decided per DEST, but the survivors come back in the order the
+  """Every entry the within-scope collision rules keep, IN DECLARATION ORDER, + warnings."""
+  # ⚑ The rules are decided per DEST, but the survivors come back in the order the
   # user WROTE them: a copy arm is an ordered overlay, so grouping by dest would
   # reorder two copies whose dests nest and silently change which one lands last.
   by_dest: dict[str, list[CategoryEntry]] = {}

@@ -466,10 +466,10 @@ The DEST column is the share's IDENTITY (R-10) and is exactly the argument `shar
 ⚑⚑ **AND IT ARBITRATES — the launch's own collapse, not a second walk (2026-08-26).** Resolving is
 only half of what a launch does. Until this date the display printed the ENTRY LIST that came out of
 `snapshot_category_entries`: every stored binding, pre-collapse, with no mask arm, no containment and
-no §0 row applied. So a workset that ALSO declared `workset.masks` over a share's destination listed
-that share as a live mount while the box received **nothing** at that path — rc 0, no message — and a
-workset whose declarations a launch REFUSES outright (a `common` extending onto a bound dest, which
-§0 refuses) listed cleanly at rc 0.
+no collision rule applied. So a workset that ALSO declared `workset.masks` over a share's
+destination listed that share as a live mount while the box received **nothing** at that path — rc
+0, no message — and a workset whose declarations a launch REFUSES outright (a `common` extending
+onto a bound dest, which §0 refuses) listed cleanly at rc 0.
 
 The two calls are `store_shape.build_store_shape_set` then `store_collapse.collapse_store_shapes` —
 the same pair `commands/start._install_assembly_collapse` makes — and the per-share outcome is read

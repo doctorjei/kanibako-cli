@@ -28,7 +28,7 @@ The resolver chain, in build order:
   also holds the two §0 refusal texts and the launch seam's ``LaunchDeliveries``
   (env, ``secret_path`` mounts, a narrow resolve's own table).
 * ``store_shape``         — the per-scope PRODUCER: entries → one scope's five-arm
-  store shape, raising §0 rows 1/3 inside a scope.
+  store shape, raising the two collision refusals inside a scope.
 * ``store_collapse``      — the ASSEMBLY COLLAPSE: the scopes folded, over pid 0
   (home), into the one mount set a box is built from.
 * ``settings_launch``     — the ONE resolve per launch.
