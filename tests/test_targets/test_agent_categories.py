@@ -19,7 +19,7 @@ row's own persona adaptation is pinned separately below, against the REAL
 
 ⚑ RE-KEY IS ONLY HALF. The source is re-rooted onto ``{meta.agent.<node>.path}`` too,
 which is a SYMLINK ``commands.start.ensure_persona_share_symlinks`` lays at the
-harness's real store (ruled 2026-08-27: *"the persona doesn't resolve to the claude
+harness's real store ([Jei:2026-08-27]: *"the persona doesn't resolve to the claude
 dir. It resolves to its own symlink… the user can change the symlink to a directory or
 real target"*). Pointing the source straight at the harness store would look identical
 in every arrival assertion and silently destroy that escape hatch — so the escape hatch

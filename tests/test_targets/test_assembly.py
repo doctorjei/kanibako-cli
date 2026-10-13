@@ -74,7 +74,7 @@ def _goose_descriptor() -> PluginDescriptor:
 
     Mirrors the SHIPPED goose rows, ``editing`` INCLUDED-BY-ABSENCE: goose has no
     realization for the middle tier, so the row is missing and the launch refuses
-    it (R-41 / the B7b goose ruling).
+    it (R-41 / [Jei:2026-08-02]).
     """
     return PluginDescriptor(
         command=("goose",),
@@ -310,7 +310,7 @@ def test_access_row_none_for_descriptor_without_access_realization() -> None:
 
 
 def test_access_row_refuses_a_tier_the_harness_cannot_render() -> None:
-    """goose + ``editing``: REFUSE, never substitute (R-41 / B7b ruling).
+    """goose + ``editing``: REFUSE, never substitute (R-41 / [Jei:2026-08-02]).
 
     Substituting ``auto`` would over-permit; substituting ``approve`` would
     deliver prompt-on-every-edit while reporting success.  Both lie about what

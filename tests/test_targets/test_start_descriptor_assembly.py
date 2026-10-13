@@ -459,7 +459,7 @@ class TestUniformAccessAcrossAgents:
         assert _mode(secure=True, persisted="full") == "approve"
 
     def test_goose_editing_is_REFUSED_never_substituted(self):
-        """The B7b goose ruling, on the ENV consumer.
+        """The goose-editing ruling [Jei:2026-08-02], on the ENV consumer.
 
         ⚑ Non-vacuous in the dangerous direction: goose's UNSET GOOSE_MODE is
         ``auto``, so a fall-through (emitting nothing) would deliver the FULL

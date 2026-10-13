@@ -609,7 +609,7 @@ def test_wrapper_rewritten_when_content_changes():
 def test_format_remote_failure_attributes_and_indents_remote_output():
     """A relayed remote error is wrapped under a "Response from remote host:"
     header, each remote line indented — so a remote message that itself begins
-    with "Error:" cannot read as a second, unexplained LOCAL error (Jei rc10)."""
+    with "Error:" cannot read as a second, unexplained LOCAL error (rc10)."""
     msg = vr.format_remote_failure(
         "kanibako start --detach --warm-only",
         "kanibako",

@@ -618,7 +618,7 @@ class TestVerifyPersonaWire:
 class TestVerifyPersonaWithoutAModel:
     """⚑ A persona that names NO model is PROBED — with the key OMITTED.
 
-    Jei's ruling: a persona endpoint is a third-party anthropic-/OpenAI-compatible
+    [Jei:2026-09-24]: a persona endpoint is a third-party anthropic-/OpenAI-compatible
     provider, not the reference API, and such a server may serve exactly one model
     or apply its own default.  So "no model" is not a permanent can't-probe — it is
     UNKNOWN UNTIL WE ASK.  Declining to ask would let a DEAD token sail past the
@@ -732,7 +732,7 @@ class TestVerifyPersonaWithoutAModel:
 
 class TestVerifyPersonaWithoutAToken:
     """⚑ A persona whose ``secret_path`` key is PRESENT-null is PROBED —
-    with the ``Authorization`` header OMITTED (2026-08-17 ruling).
+    with the ``Authorization`` header OMITTED (keyspec §2a secret_path.<VAR>).
 
     A self-hosted endpoint may genuinely require no bearer credential; sending
     the request bare and letting the SERVER decide is the same "unknown until

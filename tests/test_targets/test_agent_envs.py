@@ -1,9 +1,9 @@
 """Plugin-declared AGENT-scope env defaults reach the box through the settings channel.
 
-MBR-1 P4 (ruling 2026-08-14, *"we need those variables to use the env system"*): every
-env literal a plugin used to hand core through ``descriptor.container_env`` is now a
-DECLARED key, ``agent.<agent>.env.<VAR>`` (``Target.default_envs``), and rides the ONE
-channel every other setting rides.
+MBR-1 P4 (keyspec §2a env.<VAR>; [Jei:2026-08-14]: *"we need those variables to use the
+env system"*): every env literal a plugin used to hand core through
+``descriptor.container_env`` is now a DECLARED key, ``agent.<agent>.env.<VAR>``
+(``Target.default_envs``), and rides the ONE channel every other setting rides.
 
 ⚑ These are ARRIVAL tests, not route tests. What each case pins is that the plugin's
 declared VALUE comes out of the resolve under its VARIABLE NAME — through the real
@@ -204,7 +204,7 @@ class TestTheDeclaredValuesArrive:
 
 
 class TestTheOverrideStory:
-    """Ruling 41's ordering-1: a user overrides a declared default BY THE SAME KEY.
+    """keyspec §2a env.<VAR>, ordering 1: a user overrides a declared default BY THE SAME KEY.
 
     The declared table is a FLOOR default, so any settings file that may write
     ``agent.<node>.env.<VAR>`` beats it — the keys are ordinary write-many settings keys
@@ -508,13 +508,14 @@ class TestTheLaunchWireCarriesTheDeclaration:
 class TestTheCoreStampsRideTheSameWire:
     """MBR-1 P4b: the four core ``KANIBAKO_*`` stamps as ``system.env.<VAR>`` keys.
 
-    The class above pins the PLUGIN half of ruling 2026-08-14 (*"the 'KANIBAKO_'
-    stuff should be in system.env, agent stuff should be in agent.env"*); this one
-    pins the CORE half, in the same shape and through the same seam. Each case reads
-    the ``meta.assembly.env`` leaf the launch consumes, so what it asserts is what a
-    box gets — and the KEY it asserts beside the value is the whole point: a stamp
-    written onto the container after the resolve has no key, no scope and no way for
-    a user to override or contest it, which is the arrangement this replaces.
+    The class above pins the PLUGIN half of keyspec §2a env.<VAR> ([Jei:2026-08-14]:
+    *"the 'KANIBAKO_' stuff should be in system.env, agent stuff should be in
+    agent.env"*); this one pins the CORE half, in the same shape and through the same
+    seam. Each case reads the ``meta.assembly.env`` leaf the launch consumes, so what
+    it asserts is what a box gets — and the KEY it asserts beside the value is the
+    whole point: a stamp written onto the container after the resolve has no key, no
+    scope and no way for a user to override or contest it, which is the arrangement
+    this replaces.
 
     ⚑ VALUES ARE INDEPENDENT LITERALS, not a second call to the code under test.
     They are GUEST-side and fixed by construction (``GUEST_HOME`` is a constant), so
@@ -590,7 +591,7 @@ class TestTheCoreStampsRideTheSameWire:
     def test_a_system_file_entry_overrides_a_stamp_by_the_same_key(
         self, std, config, project_dir, tmp_path,
     ):
-        """The override story ruling 41 states: same key, nearer file, no refusal.
+        """The override story keyspec §2a env.<VAR> states: same key, nearer file, no refusal.
 
         The derived stamps are the BASE FLOOR, below every settings file — which is
         what makes this the ordinary cascade rather than a special case. A twin at
@@ -943,7 +944,7 @@ class TestTheRealizedVariablesArriveAsKeys:
 
 
 class TestARealizedVariableADeclaredKeyAlsoNamesRefuses:
-    """Ruling 59 (*"as ruled"*): the refusals SHIP — no carve-out, no skip.
+    """system-design § "Delivery at launch": the refusals SHIP — no carve-out, no skip.
 
     Once a variable is realized there is no env-key spelling for it at any scope: the
     agent scope is the same-scope refusal below, every other scope is the ordinary
@@ -1004,8 +1005,8 @@ class TestARealizedVariableADeclaredKeyAlsoNamesRefuses:
         ⚑⚑ THAT IS THE ASSERTION, not merely that it raises: the message is
         ``store_collapse._refuse_env_twin``'s, word for word on the sentence that
         only it produces. A realization-shaped refusal invented for this case would
-        pass a "raises SettingsError" check and would be the second mechanism ruling
-        59 forbids.
+        pass a "raises SettingsError" check and would be the second mechanism
+        system-design § "Delivery at launch" forbids.
         """
         target = target_for("goose")
         box_file = write_yaml(

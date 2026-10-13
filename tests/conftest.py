@@ -839,7 +839,7 @@ def start_mocks():
                     if _desc is not None and _install is not None
                     else None
                 )
-                # Block 7b (ruling A): flow the BEHAVIOR cascade into the stub's
+                # Block 7b ([Jei:2026-06-28f]): flow the BEHAVIOR cascade into the stub's
                 # snapshot too — the target's declared-default floor (→ agent.
                 # default.*) + the per-agent FILE (the mocked record's ``state``,
                 # ``run_args`` and ``transform_settings``, written to a REAL

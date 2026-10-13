@@ -344,7 +344,7 @@ class TestADerivedNullIsRefusedWhereAStoredOneIs:
 
 
 class TestBothRoadsIntoANullPathKeySayTheOneReason:
-    """⚑ THE ANTI-FORK PIN (NP, ruled A).  The two roads into a null path key — a
+    """⚑ THE ANTI-FORK PIN.  The two roads into a null path key — a
     STORED ``null`` and a DERIVED one — used to spell their own reason
     ("A ``<None>`` is a value: it does not fall back to the default") while every
     other null-path door said it through :data:`ERR_CONFIG_NULL_PATH_REASON`.  Two

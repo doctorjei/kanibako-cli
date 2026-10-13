@@ -1,6 +1,6 @@
 """Plugin-declared BEHAVIOR defaults live in the shipped YAML, not in plugin code.
 
-DEFAULTS-1 D1-7 (the owner's ruling, *"nothing declared in plugin CODE"*): the floor
+DEFAULTS-1 D1-7 ([Jei:2026-08-05g], *"nothing declared in plugin CODE"*): the floor
 value of every ``agent.<agent>.<key>`` behavior key — the models, goose's provider, the
 endpoints, claude's transform — used to be a ``default=`` literal inside each plugin's
 ``setting_descriptors()``.  It is a
