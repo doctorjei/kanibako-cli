@@ -1,11 +1,7 @@
 # Config Keys — the CLI-settable surface & its refusals
 
-⚠️ **THE MIRROR IS NOW COMPLETE FOR DISPLACED PROSE** (relocation pass, 2026-08-11). It began as a
-PARTIAL mirror of a large module (the closed keyspace's settable-surface tables plus every CLI
-refusal); the pass migrated the rest, so every symbol that CARRIED explanatory prose now has an entry
-below. Absence of a symbol still means "nothing was displaced from it", never "does not exist" — the
-one such symbol today is `ConfigLevel`, whose one-line docstring says all there is. Source keeps
-one-line descriptors and `⚑` markers only; the reasons live here.
+This page carries the reasons for the closed keyspace's settable-surface tables and every CLI
+refusal. A symbol with no entry here (`ConfigLevel`) has a docstring that says all there is.
 
 ## The refusal family
 
@@ -26,16 +22,11 @@ operation they did not run and mis-describes what failed.
 ```SETUP_MARKER_KEY = "system.setup_completed"```
 The setup VERSION MARKER's key, spelled once.
 
-⚑ **`system_key_refusal` STOOD HERE AND IS DELETED (2026-08-23).** It refused a CLI verb on a
-FILE-ONLY `system.*` key — *"'<key>' is a structural config key and cannot be {set,reset,read} from
-the CLI"* — and by the end it named an EMPTY SET. The `SYSTEM_PATH_DEFAULTS` family left the
-category first (spec §2g declares all eleven ordinary Layer-2 settings keys; §2a names
-`system.template` in the CLI-settable list beside `workset.vault_{ro,rw}`), and the setup marker
-left it the same day. Its last reachable caller was `system_cmd`'s `get` arm, where the only
-spellings still falling into it were UNDECLARED `config.*` ones — for which *"is a structural config
-key … its value lives in the config file"* asserts that a key which does not exist DOES. Those
-answer `unknown config key` now, which is what spec §0 requires of an undeclared name. 🛑 Do not
-reintroduce it for `config.*`: those have `_config_key_refusal`, which spec §2a requires NOT to
+⚑ **There is no "structural config key" refusal for `system.*`.** No `system.*` key is file-only:
+spec §2g declares every `SYSTEM_PATH_DEFAULTS` key an ordinary Layer-2 settings key, and §2a names
+`system.template` in the CLI-settable list beside `workset.vault_{ro,rw}`. An UNDECLARED `config.*`
+spelling answers `unknown config key`, as spec §0 requires of an undeclared name. 🛑 Do not
+introduce one for `config.*`: those have `_config_key_refusal`, which spec §2a requires NOT to
 mention `setup` — *"`setup` … is NOT how a value is set"*.
 
 **Why the marker's verbs route to the SYSTEM SETTINGS file.** Spec §2g declares
@@ -44,28 +35,14 @@ the registry marks it `set: cli+file`. It is stored, written and read as one: `s
 `@config.settings` (`setup_cmd._write_setup_marker`) and the 5-band staleness gate reads it from
 there (`config.read_setup_completed`), so it routes through `_KEY_ROUTES` beside `system.agent`.
 
-⚑⚑ **THE STORAGE DELTA IS CLOSED (2026-08-26), AND IT IS WHY THE BOOTSTRAP FILE RULE IS GONE.**
-Until then the code kept the marker in the `system:` table of `kanibako.cfg`, and the verbs
-followed that STORAGE through a bespoke destination rule (`config_dest._BOOTSTRAP`, whose only
-member it was) — a settings-file route would have been INERT, accepted and invisible to every
-consumer. Jei closed it from the other side by moving the storage: *"there is no reason whatsoever
-that `system.setup_completed` should go in the config. It should not. It should go in the global
-settings file."* The invariant never moved — set, get, reset and the shipped reader name ONE file;
-which file changed.
+⚑⚑ **ONE FILE.** Set, get, reset and the shipped reader name the system settings file (*"there is
+no reason whatsoever that `system.setup_completed` should go in the config. It should not. It should
+go in the global settings file."*), so there is no bespoke bootstrap-file destination rule. Refusing
+the CLI verbs would buy no safety — a hand edit of the same table has the same absence of
+validation — and would withhold `reset`, the half spec §2g explicitly promises.
 
-⚑ **THE MOVE COST NOTHING TO MIGRATE.** A marker in the old location simply reads absent, which is
-the gate's NON-BLOCKING nudge band: the advisory goes to stderr and the command proceeds unchanged
-(measured). There was no deployed installed base to carry — a documentation-only migration, in
-keeping with 1.8.0's clean break.
-
-⚑ **THE REFUSAL'S OWN CURE WAS THE ARGUMENT AGAINST IT.** It told the user to hand-edit the config
-file's `system:` table — the same table, with the same absence of validation, that the CLI now
-writes. Refusing bought no safety; it only withheld `reset`, which is the half spec §2g explicitly
-promises.
-
-⚑ **THE `system.channels.*` DELTA (opened 2026-08-09) IS CLOSED (2026-08-23).** The manifest
-declared every one of them `set: cli+file` while the old refusal shut all three verbs; all five
-leaves are routed and known now, exactly like the `workset.channels.*` six.
+⚑ **The `system.channels.*` leaves** are declared `set: cli+file`; all five are routed and known,
+exactly like the `workset.channels.*` six.
 
 ## The `workset.channels.*` family
 
@@ -74,11 +51,10 @@ All six declared leaves (`common`, `chat`, `share`, `broadcast`, `mailboxes`, `s
 (`KEY_TYPES` type `path` — stored raw, never coerced), routed to the SAME `workset: channels:` nested slot, which is where
 `settings_assemble._file_partial` reads the whole table into the cascade.
 
-⚑ Three of them — `broadcast`, `mailboxes`, `share_global` — were absent from `KNOWN_CONFIG_KEYS`
-and `_KEY_ROUTES` until 2026-08-09, so a CLI `set` answered "unknown config key" while a
-hand-authored value read back "(not set)": both halves of a declared key broken, in opposite
-directions, which spec §0 forbids. Stating the family as a whole (rather than patching the three)
-is what stops a seventh leaf arriving unrouted;
+⚑ A leaf missing from `KNOWN_CONFIG_KEYS` and `_KEY_ROUTES` would break both halves of a declared
+key in opposite directions — a CLI `set` answering "unknown config key" while a hand-authored value
+reads back "(not set)" — which spec §0 forbids. Stating the family as a whole is what stops a
+seventh leaf arriving unrouted;
 `tests/test_settings/test_config_dest_parity.py::TestChannelTypeRootsRouteUNIFORMLY` pins it.
 
 ## What the module owns
@@ -130,11 +106,11 @@ in step with the declarations.
 ⚑ SO IT IS INCOMPLETE, AND THE INCOMPLETENESS IS DELIBERATE. Every bind-shaped category —
 ``<scope>.bindings.ro`` / ``bindings.rw`` / ``caches`` / ``common`` / ``seeded`` / ``synced`` — is a
 DECLARED TERMINAL key whose value is a dest-keyed map, and none of the six is listed in the set, so
-`is_known_key` answers `False` for all of them at every scope. ``<scope>.masks`` answers `False` too
-(it is a LIST, not a map — a different shape, the same status). All seven are MULTI-FACETED: one
-key, many facets inside one value.
+`is_known_key` answers `False` for all of them at every scope. ``<scope>.masks`` answers `False` too:
+it is a keyed map (`dict[box_dest → bool|None]`, spec §2a), the same status. All seven are
+MULTI-FACETED: one key, many facets inside one value.
 
-⚑ JEI'S RULING (2026-08-08) — the reason nothing in the set changes:
+⚑ THE RULING — the reason nothing in the set changes:
 
 > "I don't think it makes sense to be able to read out or write to an individual key that is
 > multi-faceted.  So, don't kill the code, but quarantine it.  We will make a way for it to be
@@ -161,7 +137,7 @@ UNGATED — :func:`scope_read_key_error` closes §0's read there — but they st
 because it asks ``key_validity``, which DECLARES it. Declining to invent a refusal for a declared
 key is not a decision about the promised map surface, and this paragraph still governs that.)
 
-⚑⚑ **``system get`` JOINED THOSE DOORS ON 2026-08-28, AND THE ASYMMETRY IT LEAVES IS THE ONE TO
+⚑⚑ **``system get`` IS ONE OF THOSE DOORS, AND THE ASYMMETRY IT LEAVES IS THE ONE TO
 KNOW.** It carried an ``is_known_key`` PRE-GATE ahead of :func:`scope_read_key_error`, so it alone
 answered "unknown config key" for all seven — a SECOND vocabulary, telling a user that a declared key
 does not exist, which §0 forbids as squarely as it forbids fabricating a value. The pre-gate is gone
@@ -173,11 +149,11 @@ returns the map. **Read what that did and did not decide:**
   🛑 **THE PROMISED SURFACE IS STILL UNCHOSEN AND STILL JEI'S** — this paragraph governs it.
 * 🛑🛑 **CROSS-SCOPE IS OUT, AND THE FIRST CUT OF THIS CHANGE GOT IT WRONG.** Removing the pre-gate
   ALSO made ``system get box.caches`` answer — the exact outcome the DECLINED derivation would have
-  produced. **Jei, 2026-08-28: *"i dont see any justification for crosscope 'get'. it makes no sense
+  produced. **His ruling: *"i dont see any justification for crosscope 'get'. it makes no sense
   at the cli."*** It is refused again, by :func:`foreign_scope_read_error`. ⚑ THE LESSON FOR THE
   NEXT READER: the evidence offered for the first cut — *"the sibling nouns already print the
   map"* — was a SAME-SCOPE measurement (``workset get <ws> workset.masks``) used to argue a
-  CROSS-SCOPE case. **Two different surfaces; the 2026-08-08 decline names the cross-scope one.**
+  CROSS-SCOPE case. **Two different surfaces; the declined one is the cross-scope one.**
   Weigh the OUTCOME as well as the mechanism, and check which surface a measurement is actually of.
 
 **THE CROSS-SCOPE GATE'S BASIS — THREE WERE TRIED, TWO ARE DEAD.** The full statement lives in
@@ -305,7 +281,7 @@ per-agent override is the persona key `agent.<agent>.<key>` (spec §2d).
   route writes), but absent from the set — so ``workset set workset.workspaces=…`` refused with
   "unknown config key" and a repoint required a settings-file edit (bifrost A1). Same shape as the
   sibling anchors: STRING paths (`KEY_TYPES` type `path`), routed to the ``workset:`` nested slot.
-* `workset.template` — per-workset template SOURCE (template-trio, spec §2c; Q3 2026-07-09). A NORMAL
+* `workset.template` — per-workset template SOURCE (template-trio, spec §2c; Q3). A NORMAL
   settable STRING-path key (default ``@meta.workset.path/template``); the layer-3 seed
   ``workset.seeded = {~/: (@workset.template/box/home,)}`` reads it, so repointing this key reroutes
   the workset template seed. Routed to the ``workset:`` nested slot (same pattern as
@@ -315,8 +291,7 @@ per-agent override is the persona key `agent.<agent>.<key>` (spec §2d).
   reason as `workset.template`: a NORMAL settable STRING-path key (default
   ``@meta.workset.path/canon``) read by the ro ``canon_hb_workset`` bind as its SOURCE, so repointing
   it moves the workset's handbook chapter. ⚑ It is NOT a seed dest — no seed layer ever targeted it
-  (the retired handbook layers targeted ``@box.canon/handbook``, and they are gone as of
-  2026-08-07g). Routed to the ``workset:`` nested slot.
+  (no handbook seed layer exists). Routed to the ``workset:`` nested slot.
 * `workset.kuid` / `workset.skip_kuid_check` — workset kuid + advisory-check toggle
   (settings-conformance P6d). `workset.kuid` is the workset's stable id (Crockford-base32; sentinel
   ``"00000"`` for primary/named unless set — a STANDALONE box GENERATES a real one at creation,
@@ -333,19 +308,15 @@ per-agent override is the persona key `agent.<agent>.<key>` (spec §2d).
   with the ruled bootstrap-file message like the other five.
 
 **Layer-2 `system.*` path SETTINGS** (the ``system:`` table of the system SETTINGS file, spec §2g).
-``global`` is ELIMINATED (children inline ``@config.data/global/...``). ⚑ All eleven — the six
-top-level roots plus the five ``system.channels.*`` leaves — are here and in `_KEY_ROUTES` since
-2026-08-23; before that the whole family was refused as structural and the five channel leaves were
-not even recognized, so `get` answered *"unknown config key"* for a declared key.
+``global`` is ELIMINATED (children inline ``@config.data/global/...``). ⚑ Every
+`SYSTEM_PATH_DEFAULTS` key — the top-level roots plus the ``system.channels.*`` leaves — is here and
+in `_KEY_ROUTES`.
 
-* `system.template` — M-11: ``system.base_template`` → ``system.template``. The old spelling is
-  RETIRED, not aliased — it is not a declared key any more (spec §0's closed keyspace), so ``config
-  set system.base_template`` correctly refuses.
+* `system.template` — the retired ``system.base_template`` spelling is not a declared key (spec
+  §0's closed keyspace), so ``config set system.base_template`` refuses (MIGRATION.md).
 * `system.agent` (spec §2g) — the CURRENT agent's name: a system-scope SETTING (behavior, not a
-  config path), so it routes to the ``system:`` table of the SYSTEM SETTINGS file, NOT the
-  ``[system]`` config table. ⮕ P7 RENAMED it from ``system.default_agent`` AND relocated it out of
-  the reserved ``agent.default`` table, where it had been an undeclared key riding the AGENT tier of
-  the real cascade; it is now an ordinary `_KEY_ROUTES` entry and the four-site special case is gone.
+  config path), so it routes to the ``system:`` table of the SYSTEM SETTINGS file, through an
+  ordinary `_KEY_ROUTES` entry.
 
 ## `DYNAMIC_PREFIXES`
 
@@ -412,7 +383,7 @@ Per-entry notes displaced from the table:
   sentinel/true.
 * ⚑ `allow_helpers` is NO LONGER a routed top-level scalar: it moved to the agent keyspace (spec §2d)
   — the bare key routes through `_is_agent_setting` to the `agent.default` tier, per-agent via the
-  `_PERSONA_STATE_LEAVES` form ``agent.<agent>.allow_helpers``, exactly like `model`.
+  persona form ``agent.<agent>.allow_helpers`` (`_parse_persona_agent_key`), exactly like `model`.
 
 ## `KEY_TYPES` — the DECLARED TYPE of every key the CLI acts on the type of
 
@@ -423,7 +394,7 @@ column that states it is ONE column, and two code tables would be two answers to
 back a real bool (``set box.share_images false`` actually disables it). The truth table itself lives
 in `config` (shared with the box.meta writer); see `config.coerce_bool`.
 
-**`path`** — a host PATH, added 2026-08-29 with [R147]'s set-time half. It is **not** coerced: the
+**`path`** — a host PATH, [R147]'s set-time half. It is **not** coerced: the
 file keeps the raw spelling, tokens and all (spec §0). What the type governs is the BARE-RELATIVE
 REFUSAL — `is_path_valued_key` reads this table, and `set_config_value`'s preamble refuses a value
 that does not say on its own where it points. The `system.*` and `config.*` rows are DERIVED from
@@ -512,7 +483,7 @@ namespace (`config.*` keys exist) but no `config.*` key actually REACHES this gu
 short-circuit `config.*` earlier with the file-only refusal (B2).
 
 `_SCOPE_CONTAINMENT` is the CONTAINMENT order (spec §0 "Directional view/set across CONTAINMENT
-levels", repaired 2026-07-02): ``system ⊃ agent ⊃ workset ⊃ box``, OUTERMOST first. The single source
+levels"): ``system ⊃ agent ⊃ workset ⊃ box``, OUTERMOST first. The single source
 the write-allow sets derive from — it lives in `kb_store` (the stack leaf) so the RESOLVE-time
 drop (`settings_assemble`) shares the SAME tuple without an import cycle; the module-level name here
 is the module-local alias.
@@ -534,8 +505,8 @@ SETTINGS file (a downward write keeps the key's scope token, nested in the COMMA
 file — spec §0; the form `assemble_levels` mirrors). ``system`` is INCLUDED (F2 fix): a routed
 ``system.*`` SETTINGS key (the auth chain `system.auth.share_allowed`) lands in the system SETTINGS
 file (``@config.settings``) — the file the launch cascade's system tier reads — NOT the Layer-1
-`kanibako.cfg`. ⚑ Since 2026-08-23 the ``system.*`` PATH tier reaches this routing too, and
-lands in the same file. ⚑ Since 2026-08-26 ``system.setup_completed`` does too — it was the one key
+`kanibako.cfg`. ⚑ the ``system.*`` PATH tier reaches this routing too, and
+lands in the same file. ⚑ ``system.setup_completed`` does too — it was the one key
 routed elsewhere (to the Layer-1 config file, where its shipped reader used to look), and its
 storage moved to `@config.settings` with the rest. **No key routes to `kanibako.cfg`.**
 
@@ -558,42 +529,35 @@ mutation itself so it cannot go green by the production flattener disappearing.
 
 ``agent.<node>.<key>``, set on the agent's OWN settings file ``agents/<node>/agent.yaml``.
 
-`_PERSONA_STATE_LEAVES` is the per-persona agent leaves this module RECOGNIZES: the FLAT
-agent-state knobs plus the ``env.`` section — the EXACT shape `agent_file.load`
-reads back (`AgentConfig.state` / `.env`), so a value `set` here is what the launch snapshot resolves
-for the persona (endpoint via `effective_behavior`). The former ``env_file.`` section is RENAMED to
-the DISCRIMINATED ``agent.<node>.secret_path.<VAR>`` SECRET category (routed by
-`_is_agent_node_secret_key` → `_node_secret_target`, NOT here — a clean break; ``env_file`` only
-shipped rc0-rc2, no alias).
+`_parse_persona_agent_key` RECOGNIZES the per-persona agent keys: a FLAT agent-state leaf, judged
+against THAT NODE's vocabulary (`settings_keyspace.agent_leaf_is_declared` over `AGENT_LEAF_MAP`),
+or an ``env.<VAR>`` whose VAR matches `settings_categories.SECRET_VAR_RE` — the EXACT shape
+`agent_file.record` reads back (`AgentConfig.state` / `.env`), so a value `set` here is what the
+launch snapshot resolves for the persona (endpoint via `effective_behavior`). 🛑 It is NOT purely
+structural: `None` for an undeclared tail is the closed keyspace's answer, and a structural match
+would turn `config set`'s §0 refusal into a write. The SECRET category
+``agent.<node>.secret_path.<VAR>`` is routed by `_is_agent_node_secret_key` → `_node_secret_target`,
+not here.
 
-⚑⚑ **IT IS THE EFFECTIVE SET, NOT THE CORE ONE (2026-08-29).** §0 puts the agent specifics in the
-PLUGINS, so the vocabulary is core §2d UNIONED with `setting_descriptors()`, through the SAME lazy
-union `key_class` judges with (`settings_keyspace.effective_agent_leaves`). Core-only, it was a
-SECOND vocabulary disagreeing with the judge, and both §0 breaches were **measured on a store built
-through the product path**: `kanibako system set agent.goose.provider=x` answered *"Error: unknown
-config key: agent.goose.provider"* at rc 1 for a leaf the goose target declares, and `kanibako
-system get agent.goose.provider` answered *"(not set)"* at **rc 0 over the value stored in that
-node's own file** — a fabricated default masking real data. The `agent` noun read the same key back
-fine the whole time, which is what "two carriers of one vocabulary" looks like from the outside.
+⚑⚑ **THE VOCABULARY IS PER AGENT (`[R150]`).** §0 puts the agent specifics in the PLUGINS: a leaf
+established at `agent.default` is universal, and every other leaf is legal only on the agent whose
+plugin declared it. The supplier is `plugin_declared_leaf_map()` — harness → declared leaves, over
+`settings_prefs.default_valid_agents().leaf_map` — and a FLAT union would make
+`agent.claude.provider` a key on the strength of goose's declaration. There is no flat cross-agent
+union in this module.
 
-⚑ **THE LAZINESS IS THE CONTRACT, NOT AN OPTIMIZATION.** The plugin half arrives as
-`PLUGIN_DECLARED_LEAVES` — a `Collection` that DISCOVERS ON THE FIRST QUESTION ASKED — so the core
-set is consulted first and a plain `agent.claude.model` never imports a plugin. Materializing it
-(`frozenset(...)`, or calling `plugin_declared_leaves()` at a call site) re-arms the cost measured
-2026-08-25 at **+67 ms on every settings-resolving command**, 73% of the whole resolve. Counted
-`discover_targets()` calls before and after this change: identical on every arm, and **0** on a cold
-`load_merged_config` (n=20).
-
-⚑ **ONE SUPPLIER FOR THE MODULE — `plugin_declared_leaves()`, over `settings_prefs.
-default_valid_agents().leaves`.** `agent_key_reason` reached that value a second way and
-`_PERSONA_STATE_LEAVES` did not reach it at all; both go through the one function now. **Not the
-`settings_keyspace_probe` memo**, deliberately: that one is primed at `pytest_configure` and has no
-reset seam, so production behavior would become unpatchable from a test. `reset_discovery_cache`
-is the seam this side keeps.
+⚑ **`AGENT_LEAF_MAP = ConcedingLeafMap(_PluginDeclaredLeafMap(), unread_harnesses(...))` is what
+every surface here judges through.** The view DISCOVERS ON THE FIRST QUESTION ASKED, and that
+laziness is the contract: the CORE §2d table is asked first, so a plain `agent.claude.model` never
+imports a plugin, while materializing the map at import or at a call site puts plugin discovery
+(and its YAML parsing) on every settings-resolving command. The concession wrap makes an
+uninstalled agent's leaf CONCEDED, never refused (*"an uninstalled agent's leaf is CONCEDED, never
+refused"*). **Not the `settings_keyspace_probe` memo**, deliberately: that one is primed at
+`pytest_configure` and has no reset seam; `reset_discovery_cache` is the seam this side keeps.
 
 Two of its leaves carry their own reason:
 
-* `template` — per-agent template SOURCE (template-trio, spec §2a/§2d; Q2 2026-07-09 "agent = persona
+* `template` — per-agent template SOURCE (template-trio, spec §2a/§2d; Q2 "agent = persona
   + harness"). A settable STRING-path leaf on the agent (persona+harness) node — default
   ``@config.agents/<harness>/template`` — read by the layer-2 seed ``agent.<a>.seeded = {~/:
   (@agent.<a>.template/box/home,)}``, so repointing it reroutes the agent template seed.
@@ -635,7 +599,7 @@ the two cannot drift.
 
 ⚑⚑ IT IS DELIBERATELY NARROWER THAN THAT SET, AND THE SHAPE CUTOVER DID NOT CHANGE THAT — it
 CONFIRMED it. The older note said widening this parser "belongs with the shape cutover"; the cutover
-(2026-08-08c) landed and the answer turned out to be that there is nothing to widen it TO. This parser
+landed and the answer turned out to be that there is nothing to widen it TO. This parser
 picks a READ route (:func:`config_dest._node_bind_target` -> the agent file's address rule), and — decisively —
 a per-entry key under those four is not a key at ALL now, so a widened parser would invent a read for
 a spelling the keyspace refuses. ⚑ **THE REASON MOVED AT S3, THE ANSWER DID NOT.** It used to be a
@@ -651,7 +615,7 @@ The regex does not match the ``box.agent.bindings.*`` box-mirror form (a ``box``
 
 ## Per-node SECRET keys — `_AGENT_NODE_SECRET_RE`
 
-``agent.<node>.secret_path.<VAR>`` — the per-node SECRET category (spec §2a, 2026-07-06). Like the
+``agent.<node>.secret_path.<VAR>`` — the per-node SECRET category (spec §2a). Like the
 descriptor bind key it is DISCRIMINATED (node in the key) and stored UNDER the
 ``agent.<node>.secret_path`` sub-table in the node's OWN settings file — the shape `_agent_partial`
 reads into the launch cascade — but the value is a SCALAR host PATH, not a `Bind` tuple (so it routes
@@ -659,21 +623,22 @@ via a plain scalar write — never the category write route, which no longer exi
 (a)). ``<node>`` is NON-greedy so the FIRST ``.secret_path.`` splits node from VAR; VAR is the
 env-name shape (no dots).
 
-## The LIVE scoped env family — `_SCOPE_ENV_RE`
+## The LIVE scoped env family — `settings_categories.ENV_KEY_RE`
 
 ``<scope>.env.<VAR>`` for the non-agent scopes (system/workset/box) — spec §2a
 ``<scope>.env.<VAR> | value | scoped env var``, and §2a's "What remains CLI-settable: scalars,
 including ``env.<VAR>``". The AGENT scope form ``agent.<node>.env.<VAR>`` is DISCRIMINATED and routed
 by `_is_persona_agent_key` (the node file); this covers the other three, which write a scalar to the
 COMMAND scope's OWN settings file at ``<scope>.env.<VAR>`` — the shape `_file_partial` reads into the
-cascade and `settings_launch._emit_scope_node` delivers as a ``category="env"`` entry. Deliberately
-the SIBLING-EXACT twin of `_SCOPE_SECRET_RE`: same three scopes, same VAR shape (no dots), same
-NOUN-file destination. VAR matching is CASE-SENSITIVE (spec §0 "Reserved key names") —
+cascade and `settings_launch._emit_scope_node` delivers as a ``category="env"`` entry. The match is
+`settings_categories.ENV_KEY_RE` through `_file_scope_match`, deliberately the SIBLING-EXACT twin
+of the secret family below: same three scopes, same VAR shape (no dots), same NOUN-file destination. VAR matching is CASE-SENSITIVE (spec §0 "Reserved key names") —
 there is no case-folding anywhere on this path.
 
-## The scoped SECRET family — `_SCOPE_SECRET_RE`
+## The scoped SECRET family — `settings_categories.SECRET_KEY_RE`
 
-``<scope>.secret_path.<VAR>`` for the NON-agent scopes (system/workset/box). The AGENT scope form
+``<scope>.secret_path.<VAR>`` for the NON-agent scopes (system/workset/box), matched by
+`settings_categories.SECRET_KEY_RE` through `_file_scope_match`. The AGENT scope form
 ``agent.<node>.secret_path.<VAR>`` is DISCRIMINATED and routed by `_is_agent_node_secret_key` (the
 node file); this covers the other three, which write a scalar to the COMMAND scope's OWN settings
 file at ``<scope>.secret_path.<VAR>`` (the shape `_file_partial` reads into the cascade).
@@ -689,27 +654,16 @@ the CURE: a BOX has a single active agent, so it is redirected to the spec §2h 
 is no single agent to redirect TO — it simply refuses (configure at system scope for all agents, or
 per-box via the §2h request).
 
-## Two deleted helpers, and why they must not come back
+## No floor display, no agent-scope node lookup
 
-**`_floor_bind_display` USED TO LIVE HERE.** It rendered the reverted-to descriptor FLOOR `(value,
-tier)` for a reset of a launch-only bind, reading the `default_categories` registry the set path
-folded. R-9 retired both bind CLI write routes, so no key that reaches a reset branch could have a
-floor entry, and the whole set-time floor thread — this function, the parameter on five
-`config_interface` entry points, `core_defaults.core_default_bind_keys` and its placeholder sentinel,
-and the three handler call sites — was deleted together. Resets now always take the cleared-only
-honest form on the category branch.
-
-**`_agent_scope_node` IS GONE (DS-BL1 = (a)).** It answered "which agent NODE does this discriminated
-agent-scope CATEGORY key name?", and its sole caller (`config_interface._category_set_lookups`) used
-the answer to anchor the ``meta.agent.<a>.path`` store root so a category SET's rooted-source hint
-would itself resolve. No bind-shaped category reaches a set any more — the write verbs refuse all six
-by name — and every key that still reaches that function is a SCALAR, for which the predicate answered
-``""`` by construction. Deleted rather than left to answer a question nobody asks.
+No key that reaches a reset branch has a set-time descriptor FLOOR (R-9 retired both bind CLI write
+routes), so a reset on the category branch always takes the cleared-only honest form. And no
+bind-shaped category reaches a set — the write verbs refuse all six by name — so nothing needs the
+agent NODE read out of an agent-scope category key.
 
 ## Functions (continued)
 
-In source order. :data:`SETUP_MARKER_KEY` and the deleted `system_key_refusal` are documented
-under **Functions**, above.
+In source order. :data:`SETUP_MARKER_KEY` is documented under **Functions**, above.
 
 ```_coerce_value(canonical: str, value: "str | None") -> object | None```
 Coerce *value* to the typed form declared for *canonical* in `KEY_TYPES`.
@@ -725,7 +679,7 @@ Enforce the §0 directional-WRITE rule for `config set` (block B4).
 A `config set` writes keys of the command scope's OWN namespace AND of any scope it CONTAINS
 (command-scope ≥ key-scope over ``system ⊃ agent ⊃ workset ⊃ box`` — a downward write is an
 overridable DEFAULT stored in the command scope's file); writing UPWARD (a CONTAINING scope's key) is
-REFUSED (spec §0 "Directional view/set" + §2a "Scope-direction guard", repaired 2026-07-02).
+REFUSED (spec §0 "Directional view/set" + §2a "Scope-direction guard").
 ``meta.*`` is a TOP-LEVEL read-only namespace — refused from EVERY scope.
 
 Returns an ``Error: …`` string when the write is REFUSED, or `None` when it is permitted (so the
@@ -798,7 +752,7 @@ Parsed from the RIGHT: the closed set of settable tails is unambiguous, so every
 recognized tail is the node. ``env`` is matched BEFORE the flat leaves so ``agent.<node>.env.MODEL``
 is an env var named ``MODEL``, never mis-split as the state leaf ``model``.
 
-⚑⚑ **BOTH ARMS JUDGE THEIR TAIL, and the ``env.`` arm only since 2026-09-09.** The flat arm has
+⚑⚑ **BOTH ARMS JUDGE THEIR TAIL, and the ``env.`` arm only.** The flat arm has
 always asked :func:`agent_leaf_is_declared`; the ``env.`` arm tested ONLY that the second-from-last
 segment said ``env``, which made it purely structural — the one thing this function's docstring
 forbids, and for exactly the reason it gives. MEASURED through the real CLI: ``kanibako system set
@@ -810,8 +764,8 @@ declared key under §2a's ``env.<VAR>``, so this was a §0 breach on a first-cla
 the VAR shape. That name says SECRET but the rule is not secret-only — the launch emit reads it as the
 bare env-var shape, and ``settings_keyspace._VAR_RE``, which already refused these at
 :func:`key_validity`, is a compiled MIRROR of it. The asymmetry was the whole defect: the scope route
-(`_SCOPE_ENV_RE`), the secret twin (`_AGENT_NODE_SECRET_RE`) and `key_validity` all judged the VAR;
-this door alone did not, so `config_interface`'s ``set`` dispatch took the WRITE branch.
+(`ENV_KEY_RE`), the secret twin (`_AGENT_NODE_SECRET_RE`) and `key_validity` all judge the VAR, and
+so does this door; without it `config_interface`'s ``set`` dispatch would take the WRITE branch.
 
 ⚑ **The RESERVED-NAME floor is a different guard and does not cover this.** ``leaf_name_reason``
 catches ``__x__`` and ``keys`` — those remain SHAPE-legal and are still refused by the floor, with the
@@ -839,13 +793,11 @@ unrecognized value must be REJECTED at the write, never stored to be re-read at 
 ⚑ It answers False for the §2h REQUEST spelling ``pref.agent.<node>.access``, and that is correct
 rather than a gap: this predicate names TARGET keys, and a pref is not its target. The request form is
 guarded at its TARGET, by `config_interface._pref_value_error` — which calls THIS function on the
-target it extracts, so both spellings redeem the one truth table. (That call is what closes the hole;
-before it, ``box set pref.agent.claude.access=fll`` — the very command the RQ-2 refusal prescribes —
-was accepted and stored.)
+target it extracts, so both spellings redeem the one truth table, and ``box set
+pref.agent.claude.access=fll`` — the very command the RQ-2 refusal prescribes — is refused.
 
-⚑ R-41 (1.8.0): this is the RENAMED `is_auto_approve_key`. The rename follows the KEY, not the name —
-the guard exists because this key is the permission axis, so it must travel with the axis when the
-axis is respelled.
+⚑ R-41: the guard follows the KEY, not the name — it exists because this key is the permission axis,
+so it must travel with the axis whenever the axis is respelled.
 
 ```access_value_error(canonical: str, value: str) -> str | None```
 The LOUD refusal for an illegal ``access`` value, or `None` when legal.
@@ -953,9 +905,8 @@ never reach here: ``agent set <node> env.FOO=bar`` passes a key TAIL under an al
 which the agent file's write address rule puts at the DECLARED ``agent.<node>.env.FOO``. That arm exists so the
 GENERIC engine cannot emit the illegal spelling if an agent-scope caller is ever wired into it.)
 
-⚑ The docker ``.env`` FILES the bare spelling used to write are RETIRED OUTRIGHT (Jei's 2026-08-02
-RQ-1 re-ruling; the ratified manifest records the files as DROPPED): the launch-side three-tier read
-is gone, so a hand edit no longer reaches the box either. The message says so — a cure that implied
+⚑ The docker ``.env`` FILES are RETIRED OUTRIGHT (the RQ-1 re-ruling; the ratified manifest
+records the files as DROPPED): the launch reads none, so a hand edit does not reach the box either. The message says so — a cure that implied
 "edit the file instead" would send the user to a surface nothing reads.
 
 *verb* is the op word for the message (``"set"`` / ``"reset"`` / ``"read"``). Like
@@ -965,30 +916,19 @@ applies it uniformly and unconditionally.
 ```_is_agent_setting(key: str) -> bool```
 True iff *key* is the BARE CLI spelling of an ``agent.default.<leaf>`` key (spec §2d).
 
-⚑⚑ **BOTH THIS AND `_PERSONA_STATE_LEAVES` ARE DERIVED FROM `DECLARED_AGENT_LEAVES` (2026-08-23),
-and the hand-kept copies they replace are the exact defect P13 warns about.** Each carried its own
-list of leaves, and BOTH had fallen behind the declaration: `agent.default.{run_args,transform,
-transform_settings}` answered *"unknown config key"* at every spelling, and
-`agent.default.{template,canon}` answered a refusal whose cure — *"set the any-agent default with
-the bare key"* — itself answered *"unknown config key"*. A refusal that prescribes a failing
-command is worse than no cure. Deriving them makes the bare spelling the one the CLI serves for the
+⚑⚑ **THIS IS DERIVED FROM `DECLARED_AGENT_LEAVES`, never a hand-kept list** (P13): a copy falls
+behind the declaration, and then the reserved-tier refusal's cure — *"set the any-agent default
+with the bare key"* — itself answers *"unknown config key"*. A refusal that prescribes a failing
+command is worse than no cure. Deriving it makes the bare spelling the one the CLI serves for the
 whole declared set, which is what makes that cure TRUE.
 
-⚑ **RECOGNITION AND SETTABILITY ARE NOW SEPARATE.** `_PERSONA_STATE_LEAVES` is the WHOLE declared
-set, so a declared key is refused BY NAME rather than degraded to "unknown" (spec §0); this
-predicate is `SCALAR_AGENT_LEAVES` — the declared set MINUS `TABLE_VALUED_AGENT_LEAVES`. The one
-table-valued member, `transform_settings`, is refused by :func:`agent_leaf_table_error` at both
-spellings.
-
-⚑⚑ **AND THEY NOW DIFFER IN A SECOND WAY — AN OPEN ASYMMETRY, NOT A DESIGN.** Since 2026-08-29
-`_PERSONA_STATE_LEAVES` is the EFFECTIVE (plugin-aware) set while this predicate is still core
-`SCALAR_AGENT_LEAVES`, so the BARE spelling of a PLUGIN-declared leaf is not settable. `key_class`
-declares `agent.default.provider` a key, `agent_default_tier_leaf` claims its slot and the READ is
-honest — but `set agent.default.provider=x` meets the reserved-any-agent-tier refusal, whose cure
-names the bare `provider`, and that bare spelling answers *"unknown config key"*. **It is the
-broken-cure shape this section already documents, one layer out.** Widening it is NOT a matter of
-deriving one more set: `KNOWN_CONFIG_KEYS` (the quarantine) would have to widen with it and
-deriving THAT was proposed and DECLINED, so the fix is a ruled decision, not a refactor.
+⚑ **RECOGNITION AND SETTABILITY ARE SEPARATE.** The per-node recognizer judges against the whole
+declared vocabulary, so a declared key is refused BY NAME rather than degraded to "unknown" (spec
+§0); this predicate is `SCALAR_AGENT_LEAVES` — the core declared set MINUS
+`TABLE_VALUED_AGENT_LEAVES`. The one table-valued member, `transform_settings`, is refused by
+:func:`agent_leaf_table_error` at both spellings. A PLUGIN-declared leaf is no key of
+`agent.default` (`[R150]`: only a leaf established at `agent.default` is universal), so there is no
+bare spelling to serve for one.
 
 ```agent_leaf_table_error(canonical: str, *, verb: str) -> str | None```
 Refuse a WRITE at a declared agent leaf whose value is a TABLE (spec §2d).
@@ -1121,10 +1061,10 @@ Return True if *arg* looks like a config key (not a project name).
 ⚑ IT ANSWERS `False` FOR SEVEN DECLARED KEYS AT EVERY SCOPE, ON PURPOSE — the six bind-shaped category
 terminals and ``<scope>.masks``. Read **The QUARANTINE** above before treating that as a bug: an
 individual read/write of a multi-faceted key is NOT SUPPORTED, the readable form is a promise whose
-shape is undecided (Jei, 2026-08-08), and DERIVING this predicate from the declaration SoT — the
+shape is undecided, and DERIVING this predicate from the declaration SoT — the
 obvious fix — was proposed and DECLINED because it would build that undecided surface.
 
-⚑⚑ **NO VERB'S VOCABULARY IS ON IT SINCE 2026-08-28.** ``system get`` was the last read gate that
+⚑⚑ **NO VERB'S VOCABULARY IS ON IT.** ``system get`` was the last read gate that
 consulted it, and those seven `False` answers reached the user as "unknown config key" — a refusal
 of a DECLARED key, which is the §0 fault, not the quarantine's intent. What is left are the
 DISAMBIGUATION callers in ``commands/box/_parser.py``, whose question genuinely is "key or project
@@ -1170,9 +1110,8 @@ The branch-by-branch reasons, in dispatch order:
   ONE reason that survives the shape flip: the disambiguator must read it as a KEY so the verbs can
   refuse it by name. ⚑ It does NOT mean the key is readable — a per-entry spelling is not a key at any
   scope now (see :func:`_is_path_category_key`); recognition here is what keeps the refusal from
-  degrading into "unknown config key", or worse into a PROJECT NAME. ⚑ This branch read
-  `_is_path_category_key` until 2026-08-08c, when that predicate's regex began failing closed and took
-  the whole agent-scope arm down with it silently. The recognizer is now derived from the same
+  degrading into "unknown config key", or worse into a PROJECT NAME. ⚑ It must not read
+  `_is_path_category_key`, whose regex fails closed for every key. The recognizer is derived from the same
   ``RETIRED_BIND_CATEGORIES`` the file-scope branch uses.
 
 ```is_config_file_only_key(key: str) -> bool```
@@ -1180,48 +1119,36 @@ Keys whose value is READ from the bootstrap config file rather than a settings f
 
 ONE family and no more: the Layer-1 ``[config]`` foundation keys (``config.*``, spec §1).
 
-⚑⚑ **THAT IS THE DEFINITION, NOT A COINCIDENCE (2026-08-26).** ``system.setup_completed`` was the
+⚑⚑ **THAT IS THE DEFINITION, NOT A COINCIDENCE.** ``system.setup_completed`` was the
 last non-``config.*`` member; its STORAGE moved to ``@config.settings`` (spec §2g), so what is left
 is exactly the set of keys whose job is to LOCATE the files everything else lives in.
 *"kanibako_config.yaml <-- cannot have settings. Period."* (Jei, on what is now `kanibako.cfg`)
 
-⚑⚑ **IT IS A READ ROUTE NOW, NOT ALSO A REFUSAL (2026-08-23).** It used to double as *"and
+⚑⚑ **IT IS A READ ROUTE NOW, NOT ALSO A REFUSAL.** It used to double as *"and
 therefore the write verbs refuse it"*, which is how `system.setup_completed` — declared
 `set: cli+file`, *"PERSISTS, user-resettable"* (spec §2g) — ended up unsettable AND unresettable.
 `config.*` is refused earlier by `_config_key_refusal`, its own ruled message. What is left here is
 one question: does a READ come from the config file.
 
-⚑⚑ **THE ``SYSTEM_PATH_DEFAULTS`` FAMILY LEFT THIS PREDICATE ON 2026-08-23, AND THE NAME CHANGED
-WITH IT** (it was `is_system_path_key`, which after the narrowing would have answered False for
-every system path key — a name that lies). All eleven are ordinary Layer-2 settings keys (spec
-§2g), the manifest marks each ``set: cli+file``, and §2a names ``system.template`` in the
-CLI-settable list; they route through `_KEY_ROUTES` to the system SETTINGS file now, like their
-``workset.*`` twins. ⚑⚑ **AND SINCE 2026-08-26 `kanibako.cfg`'s ``[system]`` table IS NOT A
-LAYER AT ALL**: `load_system_config` filters its config-file reads to ``config.*``, so the FLOOR is
-`bootstrap.SYSTEM_PATH_DEFAULTS` alone and a ``system:`` table hand-written into the bootstrap
-file moves no path. ⚑⚑ **THE STORAGE HALF IS CLOSED (2026-08-23).**
+⚑⚑ **THE ``SYSTEM_PATH_DEFAULTS`` FAMILY IS NOT IN THIS PREDICATE.** Every one of those keys is an
+ordinary Layer-2 settings key (spec §2g), the manifest marks each ``set: cli+file``, and §2a names
+``system.template`` in the CLI-settable list; they route through `_KEY_ROUTES` to the system
+SETTINGS file, like their ``workset.*`` twins. ⚑⚑ **`kanibako.cfg` carries no ``system:`` table
+at all**: a ``system:`` table hand-written into the bootstrap file REFUSES
+(`messages.ERR_CONFIG_LAYER1_SETTINGS`), and the path FLOOR is `bootstrap.SYSTEM_PATH_DEFAULTS`.
 `load_system_config` layers the SYSTEM SETTINGS file's ``system:`` table over that floor, filtered to
-`SYSTEM_PATH_DEFAULTS`, so a repoint now reaches every `StandardPaths` field as well as the cascade.
-It did not before: `config set system.canon=/tmp/mycanon` moved the cascade value and left
-`std.canon` on the default — accepted, persisted, half-effective. The guard is
-`tests/test_settings/test_repoint_reaches_std_paths.py`, which asserts the EFFECT (does the
-repointed path come back out of `load_std_paths`), because every destination pin was green
-throughout.
+`SYSTEM_PATH_DEFAULTS`, so a repoint reaches every `StandardPaths` field as well as the cascade.
+The guard is `tests/test_settings/test_repoint_reaches_std_paths.py`, which asserts the EFFECT (does
+the repointed path come back out of `load_std_paths`).
 
-The F2/F3 fix: this is a PRECISE family membership check, NOT a ``system.*``-wide catch-all. A
-``system.*`` SETTINGS key (the auth chain `system.auth.share_allowed`, `system.agent`, categories,
-env) is NOT this family — `resolve_system_paths` drops unknown ``[system]`` entries, so routing such a
-key to the config file was a write-only no-op; the launch reads them from the system SETTINGS file
-(``@config.settings``). Those keys now fall through to their settings-tier routing.
+This is a PRECISE family membership check, NOT a ``system.*``-wide catch-all (F2/F3). A ``system.*``
+SETTINGS key (the auth chain `system.auth.share_allowed`, `system.agent`, categories, env) is NOT
+this family: the launch reads it from the system SETTINGS file (``@config.settings``), so it falls
+through to its settings-tier routing. ``system.setup_completed`` is not in it either — its reader
+reads ``@config.settings``, as spec §2g declares.
 
-``system.setup_completed`` IS NOT in this family any more (2026-08-26). It was, for exactly as long
-as its shipped reader read the ``[system]`` table of ``kanibako.cfg``; that reader now reads
-``@config.settings``, which is what spec §2g always declared it to be, so the divergence flagged
-here is closed rather than carried.
-
-The ``config.`` branch is still consulted on the READ/show path. The set/reset paths now short-circuit
-``config.*`` earlier with the ruled refusal (block B2), so that branch no longer reaches
-`system_key_refusal` for a ``config.*`` set/reset. The `SYSTEM_PATH_DEFAULTS` import is LAZY:
+The ``config.`` branch is consulted on the READ/show path; the set/reset paths short-circuit
+``config.*`` earlier with the ruled refusal (block B2). The `SYSTEM_PATH_DEFAULTS` import is LAZY:
 `config_interface` ↔ `paths` would cycle at module load.
 
 ```_user_config_file_str() -> "Path | str"```
@@ -1343,11 +1270,11 @@ than by scope, so neither door invents its own story.
 
 Two clauses, and what differs between them is now the PROVENANCE, not the outcome:
 
-* ``bindings.{ro,rw}`` — the SHAPE removed the key first (R-5/R-6/R-9, 2026-08-06c). The arm is a
+* ``bindings.{ro,rw}`` — the SHAPE removed the key first (R-5/R-6/R-9). The arm is a
   single TERMINAL key holding a dest-keyed map, so a per-name dotted key does not exist to name.
 * ``caches`` / ``seeded`` / ``common`` / ``synced`` — the RULING removed the route first: DS-BL1 = (a)
-  (Jei, 2026-08-07g) made every bind-shaped category YAML-only *"uniformly"*, an accepted user-surface
-  loss, while their per-name key was still real. The SHAPE caught up on 2026-08-08c — they are
+  made every bind-shaped category YAML-only *"uniformly"*, an accepted user-surface
+  loss, while their per-name key was still real. The SHAPE caught up — they are
   dest-keyed TERMINAL keys too now, so a per-name key does not exist for them either.
 
 ⚑⚑ THIS DOCSTRING USED TO SAY THE OPPOSITE, and the correction is the point: it claimed the four
@@ -1376,7 +1303,7 @@ per-entry key, and a bare TERMINAL key (``<scope>.{caches,seeded,common,synced}`
 ``<scope>.bindings.<arm>`` / ``<scope>.masks``).
 
 ⚑ The agent-scope term is :func:`_is_agent_scope_bind_key`, not :func:`_is_path_category_key`: the
-latter fails closed for every key since 2026-08-08c, so this predicate had silently stopped covering
+latter fails closed for every key, so this predicate had silently stopped covering
 ``agent.<node>.{caches,seeded,common,synced}.<name>`` — and the pref refusal was appending "Set it
 directly at the agent scope instead", prescribing a command that refuses. That is exactly the failure
 this function exists to prevent.
@@ -1384,7 +1311,7 @@ this function exists to prevent.
 ⚑ The terminal term is the WHOLE-KEY predicate (QC): *target* is a canonical scope-rooted key, so the
 category must sit where the SCOPE ends. ⚑ THE ``system.channels.*`` PATHS ARE NOT COVERED BY THIS
 FUNCTION AND NEVER WERE — the suffix test claimed ``system.channels.common`` alone, by coincidence
-of spelling, while its five siblings fell through. They are ordinary routed scalars (2026-08-23),
+of spelling, while its five siblings fell through. They are ordinary routed scalars,
 not a category, and no pref can name one: §2h admits only ``system.agent`` and ``agent.<agent>.**``
 as targets. Adding that family here is a separate call, not a silent widening of this one.
 
@@ -1406,7 +1333,7 @@ command that does not exist would be worse than naming the loss.
 
 *survives* is the closing sentence: WHAT the user still has. ⚑ IT IS A REQUIRED PARAMETER, not a
 default, because the honest answer genuinely differs by door and a default would let a door inherit
-the wrong one silently. It used to be a hardcoded "reading it back still works", which the 2026-08-08c
+the wrong one silently. It used to be a hardcoded "reading it back still works", which the
 shape flip made false at the agent scope: the per-entry AGENT spelling has no read route at all now
 (`_is_path_category_key` answers False for every key), so a message promising one would prescribe a
 cure the user cannot verify — the F6 lie in a new place.
@@ -1448,9 +1375,9 @@ message also prints, which is what tells the user which file to open. ⚑ The sp
 :data:`~kanibako.settings.settings_categories.AGENT_BIND_KEY_RE`, the derived agent-scope twin of
 ``SCOPE_BIND_KEY_RE``, so the agent door covers exactly the categories the file door does and neither
 can quietly stop covering its share. ⚑⚑ IT USED TO BE TWO — `parse_agent_node_bind_key` for the
-``bindings`` arms and ``BIND_KEY_RE`` for the other four — and the second half went silently DEAD on
-2026-08-08c when the shape flip emptied ``BIND_KEY_RE``'s non-terminal complement and it began
-compiling ``(?!)``. The four then had NO agent-scope recognizer at all: ``config set
+``bindings`` arms and ``BIND_KEY_RE`` for the other four — and the second half went silently DEAD
+when the shape flip emptied ``BIND_KEY_RE``'s non-terminal complement and it began compiling
+``(?!)``. The four then had NO agent-scope recognizer at all: ``config set
 agent.claude.caches.pip`` answered "unknown config key", and ``box reset agent.claude.caches.pip``
 re-read the key as a PROJECT NAME. Recognition is derived from ONE source now precisely so a
 membership change cannot silently unhook a door again.
@@ -1464,7 +1391,7 @@ exist.
 The node is rendered in its USER-FACING ``+`` spelling (:func:`display_agent_ref`) — ``℘`` is a
 keyspace-internal separator and must never reach a message.
 
-⚑⚑ **THREE ARMS, AND THE TIER IS THE FIRST CUT — since 2026-09-09.** Everything above describes a
+⚑⚑ **THREE ARMS, AND THE TIER IS THE FIRST CUT.** Everything above describes a
 REAL node. ``agent.default`` is the reserved ANY-AGENT TIER, not a persona, and the per-node cure was
 false at it in **both** halves: it named ``agents/default/agent.yaml`` — a file that **does not exist
 and must not** (:func:`agent_default_tier_leaf` says so, and a test asserts the directory is never
@@ -1481,10 +1408,10 @@ system noun (``kanibako system get agent.default.<category>``) and deliberately 
 per-entry read would rebuild the same broken cure one level down.
 
 ⚑ **THE SIBLING ALREADY KNEW, WHICH IS WHY THIS IS ONE SOURCE NOW.**
-:func:`terminal_category_write_error` has carried a ``default`` arm since 2026-08-28, recording the
+:func:`terminal_category_write_error` has carried a ``default`` arm, recording the
 very measurement this door lacked; one of two sibling messages had learned the lesson. Both now take
 the sentence from `_AGENT_DEFAULT_TIER_CURE` instead of spelling it. ⚑ The THIRD carrier,
-``config_dest._reserved_tier_refusal``, was folded in on 2026-09-19 and now interpolates this
+``config_dest._reserved_tier_refusal``, was folded in and now interpolates this
 constant too — three consumers, one source. Add a consumer, never a fourth spelling.
 
 ```agent_key_reason(node: str, tail: str) -> str | None```
@@ -1510,17 +1437,15 @@ is demonstrably running. The PLUGIN-declared leaves are unioned in the OTHER dir
 a legitimate ``agent.goose.provider`` would be refused, at the verb AND at the launch. Both
 directions are pinned, with the union's own mutation proof.
 
-⚑ **THE UNION ARRIVES AS `PLUGIN_DECLARED_LEAVES`, NOT AS `default_valid_agents().leaves` READ
-HERE** (2026-08-29). Same value, but reached through the module's ONE supplier, which is what stops
-this gate and `_PERSONA_STATE_LEAVES` from drifting into two vocabularies again — and passing it
-rather than materializing it means a core §2d leaf is answered without importing a single plugin.
+⚑ **THE VOCABULARY ARRIVES AS `AGENT_LEAF_MAP`, NOT AS `default_valid_agents().leaf_map` READ
+HERE** (`agent_leaf_map=AGENT_LEAF_MAP`). Same value, but reached through the module's ONE supplier,
+which is what stops this gate and the per-node recognizer from drifting into two vocabularies — and
+passing it rather than materializing it means a core §2d leaf is answered without importing a single
+plugin.
 
-🛑 **THERE IS NO IDENTITY ALLOWLIST ANY MORE, AND IT DOES NOT GO BACK.** An `if tail in {"name",
-"run_args"}: return None` short-circuit stood above this gate; the ONE tail it rescued was `name`,
-the agent file's non-key identity field, which D8b retired (2026-09-15). `run_args` is a declared §2d
-leaf, so the gate admits it on its own. The set that spelled the pair (`agent_config.IDENTITY_KEYS`)
-dissolved 2026-09-18 — what the FILE models is `agent_file._MODELED_KEYS`, and that is not a keyspace
-question.
+🛑 **THERE IS NO IDENTITY ALLOWLIST, AND IT DOES NOT COME BACK.** `run_args` is a declared §2d leaf,
+so the gate admits it on its own; `name` is no key. What the FILE models is
+`agent_file._MODELED_KEYS`, and that is not a keyspace question.
 
 ```agent_write_key_error(node, tail, *, verb) -> str | None``` ·
 ```agent_read_key_error(node, tail) -> str | None```
@@ -1537,35 +1462,16 @@ gate exists at all: ``agent get claude self.model`` REFUSES instead of answering
 *verb* is the op word (``"set"`` / ``"reset"``). Gates itself — `None` for every other key — so every
 verb door applies it uniformly.
 
-### `agent_file_identity_only` — DELETED (D8b, 2026-09-15)
-
-True iff *tail* was a per-agent FILE-identity field and NOT a declared key — the predicate that
-decided whether `agent set` / `reset` wrote the per-agent FILE itself or routed to the shared setter.
-`name` was the whole of its answer, so retiring the field left a guard that could never return True
-again and it went (P4). **Why it existed is still worth reading**, because the defect it closed is
-the one every `agent` verb now depends on staying closed:
-
-⚑ **IT EXISTED BECAUSE THE `agent` NOUN NOW HAS ONE WRITER** (2026-08-29). `agent set` wrote through
-`agent_file.write_leaf` directly, so nothing in `config_interface.set_config_value` ran for it: no E3
-resolution probe, no typed-scalar check. MEASURED on an isolated store — `kanibako agent set claude
-canon=@bogus.ref` printed `Set canon=@bogus.ref` at rc 0 and stored the dangling reference, while the
-same value through `kanibako system set` was refused by name. The verb routes its writes to the shared
-setter now, and this predicate answered the one question that routing needed: *does the setter have a
-key here at all?* With `name` gone the answer is YES for every tail the verb accepts, so the question
-stopped being worth asking.
-
-⚑ **What went with it**: the argument that `name` on the file boundary was not a carve-out (it was an
-`AgentConfig` field, not a key, so the shared setter had nothing to route it to), and the P13
-derivation that kept the residue in step with `run_args` being a declared §2d leaf. Both were about a
-field that no longer exists; `agent_key_reason` above carries the standing prohibition they leave
-behind.
+⚑ **The `agent` NOUN has ONE writer.** `agent set` routes its writes to the shared setter
+(`config_interface.set_config_value`), so the E3 resolution probe and the typed-scalar check run
+for it exactly as for `system set`: `kanibako agent set claude canon=@bogus.ref` is refused by name.
 
 ```_is_path_category_key(key: str) -> bool```
 True iff *key* is a PER-NAME PATH-TUPLE category key.
 
-⚑⚑ **IT IS NOW FALSE FOR EVERY KEY, AND THAT IS THE CORRECT ANSWER** (2026-08-08c). It is
+⚑⚑ **IT IS FALSE FOR EVERY KEY, AND THAT IS THE CORRECT ANSWER.** It is
 :data:`~kanibako.settings.settings_categories.BIND_KEY_RE`, which is built from the NON-TERMINAL bind
-categories — and that complement EMPTIED when ``caches`` / ``seeded`` / ``common`` / ``synced`` went
+categories — and that complement is EMPTY, since ``caches`` / ``seeded`` / ``common`` / ``synced`` are
 dest-keyed, so the regex compiles its fail-closed never-matching form. There is no per-name dotted key
 under ANY bind-shaped category left to match, at any scope.
 
@@ -1582,7 +1488,7 @@ by name, and a key re-read as a project name. Both now ask :func:`_is_agent_scop
 answers RECOGNITION from ``RETIRED_BIND_CATEGORIES``. This predicate answers only EXISTENCE, and the
 honest answer is False.
 
-⮕ **READ-ONLY SINCE DS-BL1 = (a)** (Jei, 2026-08-07g — *"accept the loss uniformly"*). This USED to
+⮕ **READ-ONLY SINCE DS-BL1 = (a)** (*"accept the loss uniformly"*). This USED to
 mean "settable via `config set`" (the source-only RAW repoint, S24); every bind-shaped category is
 YAML-only, so the repoint route is gone and the write verbs refuse these keys BY NAME in their
 preamble (:func:`scope_bind_retired_error` at the file scopes, :func:`agent_node_bind_retired_error` at
@@ -1637,7 +1543,7 @@ Excluded, and why:
 Every RETIRED bind-shaped route is in the SAME position as the bare env spelling: refused in the verb
 preamble (:func:`scope_bind_retired_error` / :func:`agent_node_bind_retired_error`), so none reaches
 this predicate and none needs an exclusion term of its own. ⚑ That now includes ``caches`` / ``seeded``
-/ ``common`` / ``synced`` (DS-BL1 = (a); name-keyed at the time, terminal since 2026-08-08c), whose
+/ ``common`` / ``synced`` (DS-BL1 = (a); name-keyed at the time, terminal), whose
 `_is_path_category_key` exclusion used to be the first term here: it existed because the category path
 ran its OWN probe through `validate_config_set`'s category arm, and probing twice would duplicate the
 diagnosis. There is no category path any more (and QA′ deleted that arm), so the exclusion went with it

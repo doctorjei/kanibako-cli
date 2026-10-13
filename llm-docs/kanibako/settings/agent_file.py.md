@@ -340,7 +340,7 @@ whichever command wrote it.
 
 🛑 **THE ARGUMENT IS THE FILE TAIL, NEVER THE WRITTEN LEAF'S NAME**, and a caller that confuses the
 two breaks a user's data. A user may name an environment variable `run_args`; its tail is the
-DOTTED `env.run_args` (`_address`), which is in no leaf set, so the scalar they typed stays a
+DOTTED `env.run_args` (`_read_address`), which is in no leaf set, so the scalar they typed stays a
 scalar. That dotted tail is the WHOLE of the protection — there is no second check behind it, and a
 caller keying on the last segment of a key would shell-split every `env.<VAR>` so named.
 

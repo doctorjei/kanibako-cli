@@ -535,9 +535,8 @@ The order is deliberate at every step.
 1. **`config.*` foundation keys are NEVER CLI-settable (block B2).** They locate the files
    everything else lands in, so they cannot live in those files — they live in the bootstrap
    config file, hand-edited by a human/admin. Refused EXPLICITLY here, BEFORE the scope guard, so
-   every command scope gets the same ruled message (not the cross-scope guard message, and not
-   the DELETED generic `system_key_refusal`, which mentioned `setup` — spec §2a forbids naming it
-   in THIS message). The READ/show path still consults `is_config_file_only_key`'s `config.`
+   every command scope gets the same ruled message (not the cross-scope guard message, and not a
+   generic refusal that mentions `setup` — spec §2a forbids naming it in THIS message). The READ/show path still consults `is_config_file_only_key`'s `config.`
    branch — only set/reset short-circuit here.
 2. **The `pref.*` WRITE-SITE guard (spec §2h)** — BEFORE the three TARGET filters and before the
    scope guard. A pref is legal only in a workset or box settings file, and that restriction is
@@ -797,10 +796,8 @@ append the now-effective value + its source tier AFTER the removal (residuals it
 cheap"). They are additive and consulted ONLY for that message; a caller that omits them still
 gets the correct cleared-only form.
 
-⚑ There is NO `default_categories` FLOOR registry parameter any more. It was consulted so the
-honest cleared-message could name a reverted-to FLOOR bind value; R-9 retired both bind reset
-routes, so no reachable branch could find an entry in it, and the whole thread — including
-`config_keys._floor_bind_display` — was removed.
+⚑ There is NO `default_categories` FLOOR registry parameter: with both bind reset routes retired
+(R-9), no reachable branch has a reverted-to FLOOR bind value to name.
 
 ### The reset preamble mirrors the set preamble, refusal for refusal
 
