@@ -768,7 +768,7 @@ them. The literal `vault/` skeleton parent is appended when it is
 on disk — exactly the tail `standalone_vault_teardown` appends, and for its reason: no key names it.
 
 ⚑ A frozenset of LEAF NAMES cannot express a repoint. A root carrying `workset.vault_ro: store/ro`
-would have its `store/` swept into the workspace dir, because the root child is `store`, and the
+would have its root child `store` swept into the workspace dir — a name no list holds — and the
 box would then resolve its vault to an empty directory. An ABSOLUTE repoint is not representable in
 a name set at all: with `workset.workspaces` pointed outside the root, a literal
 `root / "workspace"` destination fills a directory the box never opens.
