@@ -127,9 +127,9 @@ def test_a_bare_leaf_is_rooted_at_every_declaring_scope(
 #: RELATIVE SOURCES, not a universal law (§2a), so each must pass through UNTOUCHED.
 _VERBATIM = (
   ("system", 'system:\n  seeded: {"~/s": ["/abs/dir"]}\n', "/home/agent/s", "/abs/dir"),
-  ("agent", 'self:\n  caches: {"~/a": ["$XDG_DATA_HOME/x"]}\n',
+  ("agent", 'self:\n  caches: {"~/a": ["{$XDG_DATA_HOME}/x"]}\n',
    "/home/agent/a", f"{DATA}/x"),
-  ("workset", 'workset:\n  common: {"~/w": ["@meta.workset.path/own"]}\n',
+  ("workset", 'workset:\n  common: {"~/w": ["{meta.workset.path}/own"]}\n',
    "/home/agent/w", f"{WS}/own"),
   ("box", 'box:\n  caches: {"~/x": ["~/tdir"]}\n', "/home/agent/x", "/home/u/tdir"),
 )
@@ -222,7 +222,7 @@ def test_a_dot_relative_concrete_source_is_refused_too(tmp_path: Path) -> None:
     _sources(tmp_path, box='box:\n  synced: {"~/z": ["./x"]}\n')
 
 
-@pytest.mark.parametrize("src", ["/abs/dir", "~/tdir", "$XDG_DATA_HOME/x", "@config.data/x"])
+@pytest.mark.parametrize("src", ["/abs/dir", "~/tdir", "{$XDG_DATA_HOME}/x", "{config.data}/x"])
 def test_a_self_resolving_concrete_source_is_accepted(tmp_path: Path, src: str) -> None:
   """The refusal bites the RELATIVE source only — every self-resolving spelling still loads."""
   sources = _sources(tmp_path, box=f'box:\n  synced: {{"~/z": ["{src}"]}}\n')

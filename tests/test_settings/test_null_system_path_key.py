@@ -259,7 +259,7 @@ class TestADerivedNullIsRefusedWhereAStoredOneIs:
         from kanibako.errors import KanibakoError
 
         _load, resolve, values = self._resolve(
-            tmp_path, 'system:\n  canon: null\n  cache: "@system.canon/cache"\n',
+            tmp_path, 'system:\n  canon: null\n  cache: "{system.canon}/cache"\n',
         )
         with pytest.raises(KanibakoError) as caught:
             resolve(values, data_home=tmp_path / "data", home=tmp_path / "home")
@@ -274,7 +274,7 @@ class TestADerivedNullIsRefusedWhereAStoredOneIs:
         from kanibako.settings.config_io import dump_doc
 
         dump_doc(std.settings, {"system": {
-            "canon": None, "cache": "@system.canon/cache",
+            "canon": None, "cache": "{system.canon}/cache",
         }})
         with pytest.raises(KanibakoError) as caught:
             load_std_paths()
@@ -383,7 +383,7 @@ class TestBothRoadsIntoANullPathKeySayTheOneReason:
         from kanibako.errors import KanibakoError
 
         values = system_path_set_values(_settings(
-            tmp_path, 'system:\n  canon: null\n  cache: "@system.canon/cache"\n',
+            tmp_path, 'system:\n  canon: null\n  cache: "{system.canon}/cache"\n',
         ))
         with pytest.raises(KanibakoError) as caught:
             resolve_system_paths(
@@ -403,7 +403,7 @@ class TestBothRoadsIntoANullPathKeySayTheOneReason:
         roads = [
             {"system.channelroot": None},
             system_path_set_values(_settings(
-                tmp_path, 'system:\n  canon: null\n  cache: "@system.canon/cache"\n',
+                tmp_path, 'system:\n  canon: null\n  cache: "{system.canon}/cache"\n',
             )),
         ]
         for values in roads:

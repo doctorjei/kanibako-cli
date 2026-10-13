@@ -151,7 +151,7 @@ class TestSelectionFailures:
         with pytest.raises(SettingsError) as ei:
             _select(
                 tmp_path,
-                box={"pref": {"system": {"agent": "@meta.nope.dangling"}}},
+                box={"pref": {"system": {"agent": "{meta.nope.dangling}"}}},
             )
         assert SELECTION_KEY in str(ei.value)
 
@@ -168,7 +168,7 @@ class TestSelectionFailures:
         assert _select(
             tmp_path,
             system={
-                "system": {"agent": "claude", "cache": "/c/$AGENT"},
+                "system": {"agent": "claude", "cache": "/c/{$AGENT}"},
             },
         ) == "claude"
 

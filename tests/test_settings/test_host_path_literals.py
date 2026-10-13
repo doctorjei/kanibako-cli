@@ -79,8 +79,8 @@ def _create_and_launch(
     box_file, _ = box_workset_settings_paths(proj)
     doc = load_doc(box_file)
     doc.setdefault("box", {})["bindings"] = {"ro": {
-        "@meta.box.workspace": ["@meta.box.workspace"],
-        "@meta.box.workspace/sub": ["@meta.box.workspace"],
+        "{meta.box.workspace}": ["{meta.box.workspace}"],
+        "{meta.box.workspace}/sub": ["{meta.box.workspace}"],
     }}
     dump_doc(box_file, doc)
     target = resolve_target(agent)
