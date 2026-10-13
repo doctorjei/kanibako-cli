@@ -27,12 +27,12 @@ Four things:
   keys, and they live here precisely because this is the module everything can import.
 
 It is format-agnostic and operates only on already-parsed data: the caller parses YAML into the
-simple mappings and lists this module consumes (kanibako's config files are all YAML). It performs no file I/O, no mounting, and holds no global mutable
-state — the module-level names are strings, three ints, two compiled regexes, and the `UNSET`
-sentinel, which is `__slots__`-empty and therefore immutable. Its reads of the process environment
-are `_host_term` and `_host_colorterm`, which supply the `$TERM` and `$COLORTERM` defaults of a
-`ResolveCtx` at construction — VALUES captured into the context, never an environment lookup
-during expansion.
+simple mappings and lists this module consumes (kanibako's config files are all YAML). It performs
+no file I/O, no mounting, and holds no global mutable state — the module-level names are strings,
+three ints, two compiled regexes, and the `UNSET` sentinel, which is `__slots__`-empty and therefore
+immutable. Its reads of the process environment are `_host_term` and `_host_colorterm`, which supply
+the `$TERM` and `$COLORTERM` defaults of a `ResolveCtx` at construction — VALUES captured into the
+context, never an environment lookup during expansion.
 
 ## The import-direction invariant — what keeps this module extractable
 
@@ -133,40 +133,35 @@ pre-creation in `runtime/container.py` joins the leaf onto a HOST `Path` (`shell
 cannot use an absolute one. Seven names, not three, and that is the price of the pair.
 
 ⚑ **These are GUEST constants and they are INDEPENDENT of the host leaves.**
-`settings/bootstrap.WORKSPACE_PATH` is a HOST leaf spelled `"workspace"` too, and nothing but
-convention ever kept the two apart. This module may import NOTHING from `settings/` (see the top of
-the file), so a guest constant *cannot* be expressed in terms of a host one — the independence is
-now structural rather than accidental.
-
-⚑ **What this step does NOT buy, despite the obvious guess:** a host-leaf rename could not already
-move a guest mount dest. Neither `runtime/container.py` nor `commands/code_cmd.py` imports anything
-from `bootstrap`, so the two namespaces were already disjoint in fact. What changes is that
-they are now disjoint by CONSTRUCTION, and that three of the five residual false positives fall out
-of the future path tripwire.
+`settings/bootstrap.WORKSPACE_PATH` is a HOST leaf spelled `"workspace"` too. This module may import
+NOTHING from `settings/` (see the top of the file), so a guest constant *cannot* be expressed in
+terms of a host one — the independence is structural. Neither `runtime/container.py` nor
+`commands/code_cmd.py` imports anything from `bootstrap`, so a host-leaf rename cannot move a guest
+mount dest.
 
 🛑 **The VALUES are declared key names in the closed keyspace** — `box.bindings.rw[~/workspace]`,
 `box.bindings.ro[~/vault/ro]` and `box.bindings.rw[~/vault/rw]`, whose `~` `canonicalize_dest`
 expands to `GUEST_HOME`. Respelling one redeclares three keys and hard-errors every existing user
-`box.yaml` that carries `~/vault/rw:`. Naming them changed nothing; changing them is a migration.
+`box.yaml` that carries `~/vault/rw:`. Changing them is a migration.
 
 ⚑ **ONE PYTHON CARRIER IS NOT ONE CARRIER.** The five bundled
 `containers/Containerfile.template-{jvm,dotnet,systems,js,android}` files each hardwire
 `WORKDIR /home/agent/workspace` and cannot be collapsed into these constants at all. A reader who
 takes "single source of truth" literally here will be wrong about the images.
 
-⚑ **The two agent-plugin sites are deliberately NOT converted.**
+⚑ **The two agent-plugin sites deliberately do NOT import `GUEST_WORKSPACE`.**
 `packages/agent-claude/src/kanibako/plugins/claude/target.py` and
-`packages/agent-codex/src/kanibako/plugins/codex/target.py` still compose
-`f"{GUEST_HOME}/workspace"` through a function-local import. Plugins pin `kanibako-cli` with no
-upper bound, so a new plugin on an old core would raise `ImportError` mid-launch — a late failure
+`packages/agent-codex/src/kanibako/plugins/codex/target.py` compose `f"{GUEST_HOME}/workspace"`
+through a function-local import. Plugins pin `kanibako-cli` with no upper bound, so a plugin
+importing a newer constant on an older core would raise `ImportError` mid-launch — a late failure
 bought for no additional guarantee, since `GUEST_HOME` is already the shared carrier there.
 
 ⚑ **The workspace PREFIX comparisons keep a trailing slash** (`GUEST_WORKSPACE + "/"`, twice in
 `runtime/container.py`). That slash is the separator guard the keyspec requires — `~/foobar` is not
-inside `~/foo` — and dropping it also strands the bare workspace dest on the workspace branch as
-`project_path / ""`. Both sites are covered by named regression tests in
-`tests/test_runtime/test_container.py`; a substitution that only checks the constant's NAME will
-not notice.
+inside `~/foo` — and dropping it would also strand the bare workspace dest on the workspace branch
+as `project_path / ""`. Both sites are covered by named regression tests in
+`tests/test_runtime/test_container.py`; a substitution that only checks the constant's NAME will not
+notice.
 
 ### `BOX_PINNED_ROOT_RELPATH` — the resolve-before-liveness compromise
 
@@ -208,8 +203,8 @@ truncates the name mid-segment and leaves the rest as a literal suffix, so
 crashes the launch — and at the `@meta.agent.<a>.path` sites silently produces a garbage path.
 
 `\w`, inside `SEGMENT_CHAR_CLASS`, is what admits letters and digits in any language (`漢字℘claude`).
-It is still a NARROW class, not a catch-all: a broad `[^\s@]+` is **REJECTED** because it would swallow `/`
-and break embedded `@config.data/...` path refs. `.` is absent from BOTH sides — it is this
+It is a NARROW class, not a catch-all: a broad `[^\s@]+` is **REJECTED** because it would swallow
+`/` and break embedded `@config.data/...` path refs. `.` is absent from BOTH sides — it is this
 grammar's own segment separator, which is why an agent name may not contain one (`agent_ref`
 rejects it at parse time).
 
@@ -361,9 +356,11 @@ unpack_bind(value: object) -> tuple[str, str, str | None]
 ```
 Unpack a STRUCTURED **name-keyed** category binding leaf into `(host_src, box_dest, options)`.
 
-The structural successor to `split_bind` on the CATEGORY path (spec §2a "REPRESENTATION"): a
-`bindings.*` / `caches` / `seeded` / `common` / `synced` value is a STRUCTURED PAIR — a YAML list
-or Python `tuple` — not a colon-joined `"host:box"` string.
+A structured leaf is a YAML list or Python `tuple`, never a colon-joined `"host:box"` string (spec
+§2a "REPRESENTATION"). ⚑ No bind-shaped category is name-keyed: every `bindings.*` / `caches` /
+`seeded` / `common` / `synced` value is a DEST-KEYED map read by `unpack_bind_entry`. The one
+caller, `settings_assemble._parse_node`, reaches this function only for a MALFORMED node that
+`parse_bind_map` hands back.
 
 * **2 elements** `[host_src, box_dest]` → `(host_src, box_dest, None)`; the caller falls back to
   the category-default mount options.
@@ -375,7 +372,7 @@ Each element is narrowed to `str` (a YAML scalar may parse as `int`). A non-list
 a list/tuple of the wrong arity, raises `SettingsError` — **the structured shape is load-bearing
 and a malformed leaf is a configuration error, not something to silently re-derive.**
 
-⚑ The category list above is the spec's (§0, the category enumeration:
+⚑ The category names are the spec's (§0, the category enumeration:
 `masks · bindings.ro · bindings.rw · caches · seeded · common · synced · env · secret_path`).
 **The name is `common`; `shared` is not a key** — under the closed-keyspace rule a stored
 `<scope>.shared.<name>` is an ERROR, not a silent accept.
@@ -423,13 +420,12 @@ Two normalizations, both identity-preserving for an already-canonical dest. The 
 * a LEADING `~` expands to `GUEST_HOME` (`~` → `/home/agent`, `~/x` → `/home/agent/x`). A `~`
   anywhere else is literal, exactly as `expand_expr` treats it;
 * a TRAILING `/` is dropped (never from a bare `/`). **This half is not cosmetic:** `~` and `~/`
-  were the two spellings that, under dest-keying, became two dict entries at ONE destination —
-  the collision that triggered R-11 in the first place.
+  are two spellings that, under dest-keying, would become two dict entries at ONE destination.
 
 ⚑ Everything else is carried VERBATIM, including an `@`-ref or `$var` destination. Those cannot
 be absolutized here — they resolve later, in `settings_expand` — so a dest-keyed arm is unique in
 the UNRESOLVED namespace only, and the RESOLVED-`box_dest` collision check in
-`settings_categories` stays (disk-store-rework design §2b-CAVEAT). Nothing is REFUSED here either:
+`settings_categories` is still required. Nothing is REFUSED here either:
 a non-absolute literal dest is a spec violation, but refusing it is not R-11's job and a refusal
 keyed on "does not start with `/`" would fire on every legitimate `@`-ref dest.
 
@@ -448,8 +444,8 @@ what `expr[i]` actually is.
 **The SINGLE parser for the `$` token family**, exactly as `match_ref` is for `@`: shared by
 `_expand_var` (which resolves the name), `_scan_var_span` (which re-emits the source span for
 `defer_env`) and `settings_configset.scan_tokens` (which collects names for set-time
-validation). Those three carried THREE copies of this ten-line parse before; one grammar, one
-copy, so a change to the token shape cannot land in some of them and not others.
+validation). One grammar, one copy, so a change to the token shape cannot land in some of them and
+not others.
 
 ```python
 match_ref(expr: str, i: int) -> tuple[str, int]
@@ -467,7 +463,7 @@ caller that scans for `@` differently must still hand over the index OF the `@`.
 TWO SPELLINGS, one meaning:
 
 * **BARE** `@a.b.c` — the dotted name runs greedily and ends at the first character outside the
-  name set (`@a.b/x` refs `a.b`). This is the NORMAL spelling and is unchanged.
+  name set (`@a.b/x` refs `a.b`). This is the NORMAL spelling.
 * **BRACED** `@{a.b.c}` — the same name, delimited explicitly, so a LITERAL SUFFIX may follow it:
   `@{a.b.c}x` resolves `a.b.c` then appends `x`. Braces are needed ONLY where the next character
   would otherwise be eaten by the greedy name match — the spec's
@@ -547,8 +543,7 @@ The `defer_env` twin of `_expand_var`. It recognizes the SAME token shape `_expa
 so deferral and expansion agree on token boundaries — but emits the source text unchanged
 (`$XDG_STATE_HOME` / `${XDG_STATE_HOME}`) rather than a resolved value. A malformed reference
 raises identically, because **both delegate the parse to `match_var`**: a deferred token must
-still be well-formed at build time, just not resolved here, and "identically" is now structural
-rather than two copies that happen to agree.
+still be well-formed at build time, just not resolved here, and "identically" is structural.
 
 ```python
 _expand_var(expr: str, i: int, ctx: ResolveCtx) -> tuple[str, int]
@@ -565,7 +560,7 @@ string-valued `_resolve_var` below is derived from.
 
 It answers the value, or `UNSET` for the one class of variable whose declared answer can be
 LEGITIMATE ABSENCE: a PASSTHROUGH of a host signal that has no substitute value. `$COLORTERM` is
-the only member today. ⚑ `UNSET` is NEVER a way of saying "I could not work this out" — every
+the only member. ⚑ `UNSET` is NEVER a way of saying "I could not work this out" — every
 other unresolvable name still raises and names itself.
 
 Only a caller that can EXPRESS absence may see the third state, and exactly one can: a WHOLE-VALUE
@@ -592,8 +587,8 @@ add validation here as a missing-symmetry fix.
 `UNSET` when that is `None`. **There is no `DEFAULT_COLORTERM`, and one must not be added.** `TERM`
 can fall back because every terminal has a type; `COLORTERM` is an unstandardized convention whose
 modern meaning is a CAPABILITY CLAIM — *this display does 24-bit color* — which is the HOST's to
-make. A literal here (such as `truecolor`) would assert it on the host's behalf. An EMPTY host value is
-treated as absence for the same reason: `COLORTERM=""` is a third state readers misparse, some
+make. A literal here (such as `truecolor`) would assert it on the host's behalf. An EMPTY host value
+is treated as absence for the same reason: `COLORTERM=""` is a third state readers misparse, some
 testing only for the variable's presence.
 
 ```python
@@ -630,7 +625,7 @@ model" above; that section, not this entry, is the thing to read before editing 
 precedence logic does not use them. They are in the signature so that a caller composing
 `resolve_value` with `expand_expr` passes one context object to both.
 
-### What `resolve_value` is still for
+### What `resolve_value` is for
 
 ⚑ **It is not the settings cascade.** `settings_merge.merge` is: it walks
 `settings_assemble`'s ordered `KeyStore` partials with a depth-sensitive 3-state

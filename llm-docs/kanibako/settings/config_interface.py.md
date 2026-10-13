@@ -279,7 +279,7 @@ snapshot the E3 probe judges, so a scope file that moves a root (`workset.boxes`
 the [R147] refusal names. A root the target lacks, or that does not resolve, is absent; a cascade
 that cannot be assembled yields `{}` (the refusal is issued either way, naming the ref spelling).
 
-```_category_set_lookups(config_path, *, canonical, command_scope=None, system_settings_path=None, system_path=None, agent_path=None, workset_path=None, box_path=None, agent_name="", target=None) -> tuple[Callable, Callable]```
+```_category_set_lookups(config_path, *, canonical, command_scope=None, system_settings_path=None, system_path=None, agent_path=None, workset_path=None, box_path=None, agent_name="", target=None)```
 The set-time lookups over ONE merged cascade snapshot (`_set_time_snapshot`): `(resolves, raw_bind)`.
 
 Built for a `config set` at *config_path* (the COMMAND-scope file): the E3 RESOLUTION probe (Q9,

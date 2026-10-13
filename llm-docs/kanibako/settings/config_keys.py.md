@@ -1489,7 +1489,8 @@ DECLARED terminal keys by :func:`~kanibako.settings.settings_keyspace.is_termina
 
 ``env`` (scalar) is NOT matched here — the live ``<scope>.env.<VAR>`` arm is routed by the earlier
 :func:`_is_scope_env_key` branch as a plain scalar write, and the bare spelling is refused before
-dispatch (R-39); ``masks`` (a keyed list) is YAML-only (spec §2a) and is NOT matched here.
+dispatch (R-39); ``masks`` (a dest-keyed map, ``dict[box_dest → bool|None]``) is YAML-only (spec
+§2a) and is NOT matched here.
 
 ```_has_dedicated_route(canonical: str) -> bool```
 Does SOME `set_config_value` branch claim *canonical*?

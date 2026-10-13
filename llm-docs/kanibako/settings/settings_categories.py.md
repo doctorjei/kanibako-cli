@@ -3,7 +3,7 @@
 ⚠️ **PARTIAL MIRROR.** `settings_categories.py` is a large module (the category dataclasses, the
 two §0 refusal texts, the launch seam's delivery carrier). Only the parts whose prose has been
 migrated out of source appear here; absence of a symbol below means "not migrated yet", never "does
-not exist". Migration happens as files are touched, not in a big-bang pass.
+not exist".
 
 ## What this module IS — a vocabulary, not a resolver
 
@@ -78,8 +78,6 @@ here into `{VAR}` at agent start; kanibako only ever writes the mount PATH.
 
 ### Two orthogonal axes
 
-Unchanged from `common` / `seeded`:
-
 * **The KEY's scope** selects — for `bindings` — the mount mode, and names the DECLARATION
   ROOT an abstract-category source is spelled against when it is declared (spec §2a; the
   rooting happens at the declaration site, never in this module).
@@ -96,12 +94,12 @@ name the root of the scope the user actually typed.
 ### Accumulate / apply order
 
 Distinct `(category, scope, name)` entries accumulate. For a single key, the most-specific
-level that set it wins (`settings_merge.merge`). Entries are returned in scope *apply* order `system,
-agent, workset, box` — the REVERSE of precedence — so the most-specific scope lands LAST,
+level that set it wins (`settings_merge.merge`). Entries are returned in scope *apply* order
+`system, agent, workset, box` — the REVERSE of precedence — so the most-specific scope lands LAST,
 letting a later copy overlay an earlier one and podman's "last `-v` wins" dedup honor box over
 system. Within a scope they are ordered `(category, name)` ascending for determinism. The §0
-collision table is imposed on top of this order by the three seams, each over the same list in
-the same order. `_SCOPE_APPLY_ORDER` is that order as data, read by `_most_specific`.
+collision table is imposed on top of this order by the three seams, each over the same list in the
+same order. `_SCOPE_APPLY_ORDER` is that order as data, read by `_most_specific`.
 
 ### No root-join
 
@@ -142,9 +140,9 @@ fold sees only half of a contested VAR slot), `secret_path_deliveries` (a `secre
 no arm in the store shape) and `narrow_table_winners` (a narrow resolve, where the collapse
 returns early).
 
-⚑ **The per-scope producer is the sole builder of §0's same-scope ambiguities.** Making a second
-implementation UNAVAILABLE rather than unused (P3) is what stops it drifting back; adding one
-means adding a function and a type, which is a visible design act. Full reasoning and the mutation proof:
+⚑ **The per-scope producer is the sole builder of §0's same-scope ambiguities.** A second
+implementation is UNAVAILABLE rather than unused (P3); adding one means adding a function and a
+type, which is a visible design act. Full reasoning and the mutation proof:
 `llm-docs/kanibako/commands/start.py.md`, "The same-scope warning lives HERE, and ONLY here".
 
 ⚑ **`CategoryCollision` itself lives in this module**: its message
@@ -180,14 +178,14 @@ True when *options* carries `ro` as a comma-separated TOKEN. `None` and `""` are
   `tests/test_settings/test_mount_options.py` pins the predicate itself.
 
 ⚑ **Ask this question through the predicate, not by hand.** A new `== "ro"` anywhere is the same
-defect re-introduced under a different name.
+defect under a different name.
 
 ## Four tuples, and each answers a different question
 
-The bind-shaped categories are the six whose value is a 2-/3-element
-`[host_src, box_dest[, options]]` tuple. `masks` (a keyed list) and `env` (a scalar) have
-bespoke key shapes handled separately. Conflating any two of the four tuples below is what
-this split exists to prevent:
+The bind-shaped categories are the six whose value is a DEST-KEYED map of `[src[, options]]`
+entries. `masks` (a dest-keyed map, `dict[box_dest → bool|None]`; a LIST in a settings file is
+refused by name) and `env` (a scalar) have bespoke key shapes handled separately. Conflating any two
+of the four tuples below is what this split exists to prevent:
 
 * **`_BIND_CATEGORIES`** — every bind-shaped category, i.e. which keys carry the tuple VALUE
   SHAPE. All six are declared keys, authored in YAML, delivered at launch. The other three
@@ -211,8 +209,8 @@ this split exists to prevent:
   a refusal. It is EMPTY: the per-entry dotted key exists for no bind-shaped category. Being
   DERIVED, it needs no edit if that ever changes.
 * **`SETTABLE_BIND_CATEGORIES`** — which bind-shaped categories may be named in a `config set`
-  / `config reset` key. **EMPTY. All six are YAML-only.** It is kept as an EMPTY TUPLE rather
-  than deleted because it is the ONE definition of "settable" that `RETIRED_BIND_CATEGORIES`
+  / `config reset` key. **EMPTY. All six are YAML-only.** It is an EMPTY TUPLE rather than absent
+  because it is the ONE definition of "settable" that `RETIRED_BIND_CATEGORIES`
   is derived from, so the two can never drift and re-admitting a category would be a one-line
   edit here — plus a visible spec edit, because the keyspace is CLOSED.
 
@@ -223,9 +221,9 @@ the empty string, which yields a group that matches the EMPTY string and would a
 ### No CLI write route for any of the six
 
 A ruling: *"accept the loss uniformly"*. It is a KNOWN, ACCEPTED user-surface loss — a
-bind-shaped entry is authored in YAML, full stop. Every retired spelling stays
+bind-shaped entry is authored in YAML, full stop. Every retired spelling is
 RECOGNIZED so the verbs refuse it BY NAME instead of degrading to "unknown config key"; the
-closed keyspace (spec §0) refuses, never accepts quietly. All six stay READABLE via
+closed keyspace (spec §0) refuses, never accepts quietly. All six are READABLE via
 `config get`:
 
 * `{system,workset,box}.<any-of-the-six>.<name>` — recognized by `SCOPE_BIND_KEY_RE`, refused
@@ -244,29 +242,27 @@ WITHOUT a read to offer: the refusal names the terminal key and says the entry l
 value, rather than promising a `config get` of the entry.
 
 ⚑ **The one exception is the AGENT-SCOPE TERMINAL READ.** `config get agent.<node>.<category>`
-still resolves through `config_dest`'s known-broken `_CATEGORY` arm to the NOUN's settings file
-rather than to `agents/<node>/agent.yaml`, so the value it returns is the wrong file's. That
-arm's repointing is an OWED, separately-ruled pass — it moves `agent_file`'s address rule, the
-per-agent file-shape SoT — and it is named here so nothing writes a message promising that
-read works.
+resolves through `config_dest`'s known-broken `_CATEGORY` arm to the NOUN's settings file
+rather than to `agents/<node>/agent.yaml`, so the value it returns is the wrong file's. No message
+may promise that read works.
 
 ## The key-shape regexes: recognition is not resolution
 
 ⚠ **The AGENT scope is DISCRIMINATED and there is NO exception.** It is written
 `agent.<agent>` (an explicit agent name) or `agent.default` (the agent tier's FALLBACK). A BARE
 `agent.<category>.<name>` is NOT A KEY — the keyspace is CLOSED (spec §0), an undeclared key is
-not a key, so these patterns must REFUSE it rather than quietly accept it. Do not "helpfully"
-widen this back.
+not a key, so these patterns must REFUSE it rather than quietly accept it. Do not widen them.
 
 **`RETIRED_BIND_CATEGORIES`** is the categories NO scope may name in a set/reset key,
 derived as the DIFFERENCE from `_BIND_CATEGORIES`, so "settable" has exactly one definition
-(`SETTABLE_BIND_CATEGORIES`) and the regexes cannot drift apart. That difference is ALL SIX. It feeds BOTH scope regexes, so the file and agent doors cover the same
-categories by DERIVATION rather than by two hand lists. ⚑ `config_keys._AGENT_NODE_BIND_RE`
-also pins itself against this tuple, as a SUBSET rather than an equality, and that is a
-MEASUREMENT: it is the agent-scope READ parser, and the agent file's address rule reads EVERY
-category flat with the destination whole — so widening that parser would ADMIT the other four. `config_keys.agent_read_key_error` carves the
-`bindings` arms out of the closed-keyspace read gate, and the other four have no such carve-out (spec §0 — a per-entry spelling is not
-a key at any scope). Recognition is derived here; resolution is not.
+(`SETTABLE_BIND_CATEGORIES`) and the regexes cannot drift apart. That difference is ALL SIX. It
+feeds BOTH scope regexes, so the file and agent doors cover the same categories by DERIVATION rather
+than by two hand lists. ⚑ `config_keys._AGENT_NODE_BIND_RE` also pins itself against this tuple, as
+a SUBSET rather than an equality, and that is a MEASUREMENT: it is the agent-scope READ parser, and
+the agent file's address rule reads EVERY category flat with the destination whole — so widening
+that parser would ADMIT the other four. `config_keys.agent_read_key_error` carves the `bindings`
+arms out of the closed-keyspace read gate, and the other four have no such carve-out (spec §0 — a
+per-entry spelling is not a key at any scope). Recognition is derived here; resolution is not.
 
 **`SCOPE_BIND_KEY_RE`** — `{system,workset,box}.<bind-shaped category>.<name>`, the refused
 FILE-scope per-entry spelling. It covers all six, by DERIVATION from `RETIRED_BIND_CATEGORIES`.
@@ -293,18 +289,18 @@ quietly admitted.
 
 ⚑⚑ **Recognition only — it picks NO read route, and that separation is load-bearing.**
 `config_keys._AGENT_NODE_BIND_RE` is the narrower parser that DOES pick one (the agent file's
-address rule), and it covers the `bindings` arms alone. Recognizing a spelling in order to REFUSE it is a different
-job from resolving one, so it gets a different parser.
+address rule), and it covers the `bindings` arms alone. Recognizing a spelling in order to REFUSE it
+is a different job from resolving one, so it gets a different parser.
 
 **`BIND_KEY_RE`** — the PER-ENTRY bind-shaped key shape, a NON-TERMINAL bind category's
 `<scope>.<category>.<name>` at any scope (the file scopes AND the discriminated
 `agent.<node>`).
 
-⚑⚑ **It is NOT a "settable" shape.** Nothing bind-shaped is CLI-settable, so an alternation over `SETTABLE_BIND_CATEGORIES` would be EMPTY — a
-`(?P<category>)` group that matches the empty string and accepts `system..foo`. What its
-consumers needed was the per-ENTRY shape, for a question that is not settability: does a
-per-entry dotted key EXIST here? So it is built from the NON-TERMINAL complement; a terminal
-arm has no per-entry spelling at all.
+⚑⚑ **It is NOT a "settable" shape.** Nothing bind-shaped is CLI-settable, so an alternation over
+`SETTABLE_BIND_CATEGORIES` would be EMPTY — a `(?P<category>)` group that matches the empty string
+and accepts `system..foo`. What its consumers need is the per-ENTRY shape, for a question that is
+not settability: does a per-entry dotted key EXIST here? So it is built from the NON-TERMINAL
+complement; a terminal arm has no per-entry spelling at all.
 
 ⚑⚑⚑ **It FAILS CLOSED:** `_NON_TERMINAL_BIND_CATEGORIES` is `()`, and this compiles `(?!)` —
 no per-entry key exists under any bind-shaped category, therefore nothing matches. An empty
@@ -315,7 +311,7 @@ is why the empty case is spelled explicitly rather than left to `"|".join`.
 the consumers need is RECOGNITION — so
 the verbs refuse a retired spelling BY NAME (spec §0 refuses loudly, never quietly) and
 `is_known_key` does not mistake it for a project name. That is `SCOPE_BIND_KEY_RE` at the file
-scopes and `AGENT_BIND_KEY_RE` at the agent scope. ⚑ **Do not re-open this regex to restore a
+scopes and `AGENT_BIND_KEY_RE` at the agent scope. ⚑ **Do not widen this regex to add a
 refusal:** a match here would mean "this per-entry key exists", which is the one thing that is
 not true.
 
@@ -331,7 +327,7 @@ must be re-checked before it reaches the shell. Keep the two in sync.
 
 `_RULE_CHANGE_RELEASE` is `1.8.0`, the release in which the §0 collision table replaced the
 flat authority ladder. It is named ONCE: it appears in the migration-grade paragraph of every
-error message whose OUTCOME changed (M-7), and nowhere else.
+error message whose OUTCOME changed, and nowhere else.
 
 ## `CategoryEntry` — what each field carries
 
@@ -351,10 +347,11 @@ for diagnostics.
 *key_segments* is the DECLARATION KEY plus the ENTRY'S DESTINATION, ONE SEGMENT PER NODE —
 `("agent", "claude", "common", "~/.claude/plugins")`, `("box", "bindings", "rw", "~/w")`.
 ⚑ It is not a keyspace key: every bind-shaped category is TERMINAL, so the part that IS a key
-ends at the category and the LAST segment is the map's DEST, which is data. It carries the DISCRIMINATED spelling, so its agent segment names a real agent tier
-(`agent.<agent>` / `agent.default`) and never the bare `agent.` form §0 forbids. It is DISTINCT
-from *scope*, which is the BARE precedence token, and it replaces nothing: three consumers need
-it and none can be served by *scope* + *category* + *name* —
+ends at the category and the LAST segment is the map's DEST, which is data. It carries the
+DISCRIMINATED spelling, so its agent segment names a real agent tier (`agent.<agent>` /
+`agent.default`) and never the bare `agent.` form §0 forbids. It is DISTINCT from *scope*, which is
+the BARE precedence token: three consumers need it and none can be served by *scope* + *category* +
+*name* —
 
 * the derived-binding materialization entry (`binding_derivations.<declaration-key>.<dest>`,
   the reserved internal snapshot node);
@@ -394,8 +391,8 @@ False.
 spec §0 *"ONE DEST SPACE, TWO DELIVERIES"*. A COPY's guest dest is the SPELLING; the copy is
 RESOLVED to a host path when it runs — a `seeded` dest by `container._guest_dest_to_host`, a
 `synced` dest by `commands.start._synced_host_dest`, which resolves it through the bind that
-covers it rather than under the box home. Either way there are not two namespaces to tell apart, nothing for an entry to carry, and every seam that groups entries
-groups on the bare `box_dest`.
+covers it rather than under the box home. Either way there are not two namespaces to tell apart,
+nothing for an entry to carry, and every seam that groups entries groups on the bare `box_dest`.
 
 ⚑ **Do not introduce a host-spelled dest.** A seed dest spelled as an ABSOLUTE HOST path (such
 as `@meta.box.path/home`) on a host whose user home IS `/home/agent` STARTS WITH the guest home
@@ -472,9 +469,10 @@ with its keys. The collapse cannot see those owners, and a creating launch's `-e
 🛑 **THE ENVIRONMENT IS NOT ON THIS CARRIER.** The variables are a collapse output, arbitrated by
 `store_collapse.collapse_env` and read off `meta.assembly.env`, which carries the winner's value AND
 its provenance. A second, un-arbitrated view of the same declarations would let a per-VAR contest
-be settled silently by a consumer's `dict.update`. `launch_deliveries` likewise applies NO `env` filter, and adding one back
-would be a second route: the `env` rows leave through the collapse, off this same list, so the
-variables a box receives and the mounts it receives are folded from one input.
+be settled silently by a consumer's `dict.update`. `launch_deliveries` likewise applies NO `env`
+filter, and adding one back would be a second route: the `env` rows leave through the collapse, off
+this same list, so the variables a box receives and the mounts it receives are folded from one
+input.
 
 🛑 **It is a RETURN VALUE, NEVER A SNAPSHOT KEY.** `meta.assembly.*` is a CLOSED set of
 DECLARED leaves (spec §0 · the keyspace manifest ·
@@ -482,8 +480,7 @@ DECLARED leaves (spec §0 · the keyspace manifest ·
 SILENTLY — `insert_segments` writes what it is handed, and only the config-verb path refuses an
 undeclared key. Producer DESIGN §9.1's precedent governs: what is not a settings key is PASSED
 function-to-function. Adding a field to the carrier is therefore cheap, and adding a leaf is a
-keyspace change — which is what `meta.assembly.env` went through before the collapse could
-write it.
+keyspace change.
 
 ### `refuse_non_scalar_family_value` (+ `is_scalar_family_value`)
 
@@ -492,11 +489,11 @@ the key is named, irrespective of origin (settings file, plugin, CLI, etc). Its 
 coerced into a string or shell-split."*
 
 🛑 **IT IS NOT A DISPLAY RULE, and that is the whole reason it is a refusal rather than a
-renderer.** Both emit branches coerced with `str(value)`: a list at `box.env.FOO` was EXPORTED
+renderer.** Coercing with `str(value)` in either emit branch would EXPORT a list at `box.env.FOO`
 INTO THE GUEST as the literal text `['--x', '--w']` (the coercion becomes `CategoryEntry.options`,
-which `store_collapse.collapse_env` hands on as the variable's value), and a list at
-`secret_path.<VAR>` became a MOUNT SOURCE spelled as a Python repr. Curing the rendering alone
-would have cured the screen and left the box wrong.
+which `store_collapse.collapse_env` hands on as the variable's value), and would make a list at
+`secret_path.<VAR>` a MOUNT SOURCE spelled as a Python repr. Curing the rendering alone would cure
+the screen and leave the box wrong.
 
 ⚑ **IRRESPECTIVE OF ORIGIN IS THE RULE'S REACH, NOT A SECOND THING TO PRINT.** The message names
 the KEY and stops there: the key already tells a reader which file to open (`box.env.FOO` is the
@@ -541,11 +538,10 @@ read into kanibako at all (arm's-length delivery), so no `CollapsedEnv` can ever
 `secret_path` half and the fold sees only one side of the contest. The whole ENTRY LIST holds
 both, which is why this function reads that and not a product of either half.
 
-🛑 **WHAT IT REPLACED.** Nothing refused this before, and nothing arbitrated it either: podman
-received the `env` value through `-e`, and then the box-side export shim
-(`commands.start._secret_export_shim`) ran `export <VAR>="$(cat …)"` at agent start and
-overwrote it. The secret won every launch, by an ORDERING ACCIDENT, with neither key named. That
-is the precedence the spec says may not be inferred.
+🛑 **WITHOUT IT, DELIVERY ORDER WOULD DECIDE.** podman receives the `env` value through `-e`, and
+the box-side export shim (`commands.start._secret_export_shim`) runs `export <VAR>="$(cat …)"` at
+agent start, overwriting it. The secret would win every launch by an ORDERING ACCIDENT, with
+neither key named — the precedence the spec says may not be inferred.
 
 ⚑ **Every scope pairing, and that is not a widening.** The two are different KEYS, so no cascade
 level and no containment walk can reduce the pair to one; refusing only the arrangements where
@@ -605,10 +601,10 @@ collision would be worse than none.
 A NARROW resolve's mount winners: its OWN table's dests, one row each. A narrow resolve carries
 only one injected table (`include_base_families=False`) but still resolves the user's whole
 CASCADE, so a user's `bindings.*` / `caches` / `common` / `masks` declaration reaches it.
-Emitting those is the D1 defect: the MAIN path already emits every one of them from the
-collapse, so the narrow path mounted each a SECOND time and did it from RAW rows, defeating a
-later-scope `masks` sweep the collapse had applied. Filtering to the table's own dests, read
-from the rows that declare the binds, deletes the exposure rather than arbitrating it (P4): a
+Emitting those would mount each a SECOND time: the MAIN path already emits every one of them
+from the collapse, and a narrow emit from RAW rows would defeat a later-scope `masks` sweep the
+collapse applies. Filtering to the table's own dests, read from the rows that declare the binds,
+removes the exposure rather than arbitrating it (P4): a
 user declaration cannot collide inside a narrow resolve unless it names an internal dest
 outright.
 
@@ -619,7 +615,7 @@ resolve has nobody else to get:
   whole job). It is the COLLAPSE's rule, and the collapse returns early on a narrow resolve, so
   it is applied here.
 * **anything else** contending for a table dest is REFUSED by name. The
-  per-scope producer (`settings.store_shape`) already raised both refusals for a SAME-scope pair — it
+  per-scope producer (`settings.store_shape`) raises both refusals for a SAME-scope pair — it
   runs above the collapse's `whole_box` gate, so it runs on narrow resolves too — and what is
   left for this function is the CROSS-scope pair, which the collapse would have refused on a
   whole-box resolve and which nothing else sees here. A bare dest-filter would let both rows
@@ -646,7 +642,7 @@ Both are PUBLIC because they are decidable inside ONE scope as well as across tw
 each has THREE callers: the per-scope `store_shape` producer, and the two launch-seam functions
 above that hold inputs the collapse never sees — `secret_path_deliveries` and
 `narrow_table_winners`. The messages are spec-mandated, so each is written ONCE, here; a second
-remedy text is the drift this extraction exists to prevent.
+remedy text would drift.
 
 * **`raise_binding_vs_binding`** — §0's refusal of two CONCRETE declarations at one `box_dest`. The
   D2 `secret_path` carve-out is the CALLER's test, not this function's: it decides whether the
@@ -660,7 +656,7 @@ remedy text is the drift this extraction exists to prevent.
   and ONE sentence for every collision remedy. It judges the RESOLVED dest because an `@`-ref dest
   passes `settings_launch`'s written-dest refusal and still lands here.
 
-**`_rule_changed`** renders the migration-grade paragraph (M-7), and ONLY on a rule whose
+**`_rule_changed`** renders the migration-grade paragraph, and ONLY on a rule whose
 outcome changed. Putting it on a rule that did NOT change trains a reader to skip it, so a rule
 the table left alone deliberately does not carry it.
 
@@ -669,12 +665,11 @@ the table left alone deliberately does not carry it.
 ### `_suppress_then_add` — the §0 remedy, spelled as the YAML edit it really is
 
 ⚑⚑ **THE PROSE IS `SUPPRESS_THEN_ADD`, ONE MODULE-LEVEL CONSTANT, AND THIS FUNCTION ONLY WRAPS
-IT** (`textwrap.fill` at `_REMEDY_WRAP`, which reproduces the previous hard-wrapped literal
-byte for byte). `store_collapse`'s three refusals that offer the cure take the SAME object
-unwrapped. **Do not re-inline the sentence here or there:** a user who meets one refusal in
-this family has met the others, and two spellings of one cure send them to two mechanisms.
-⚑ The constant carries no terminal punctuation, so each caller supplies the `.` or `:` its own
-sentence needs. ⚑ Only the BLOCK stays this module's alone — it needs `key_segments`, and
+IT** (`textwrap.fill` at `_REMEDY_WRAP`). `store_collapse`'s three refusals that offer the cure take
+the SAME object unwrapped. **Do not re-inline the sentence here or there:** a user who meets one
+refusal in this family has met the others, and two spellings of one cure send them to two
+mechanisms. ⚑ The constant carries no terminal punctuation, so each caller supplies the `.` or `:`
+its own sentence needs. ⚑ Only the BLOCK stays this module's alone — it needs `key_segments`, and
 `store_collapse` holds dotted keys.
 
 ⚑ **There is no CLI verb that can express THIS suppression.** `config set` writes a string
@@ -695,18 +690,18 @@ than a prescription. The extension refusal passes False — there the occupant i
 always survives.
 
 ⚑ **Segments, never a dotted split.** The LAST segment is the entry's DESTINATION, which is
-data and routinely carries dots of its own (`~/.cache/uv`); splitting shattered it across YAML
-levels and printed a block that is not a declaration at all.
+data and routinely carries dots of its own (`~/.cache/uv`); splitting would shatter it across YAML
+levels and print a block that is not a declaration at all.
 
 ⚑ **The AGENT-scope caveat.** An agent's own file has NO node level at all: it is that node's
 file, so its root `self:` IS `agent.<node>` and the category table sits DIRECTLY under it — the
-shape `_agent_partial` reads back since the S2 flatten. The canonical `agent.<node>` spelling
+shape `_agent_partial` reads back. The canonical `agent.<node>` spelling
 is what a CONTAINING scope's file writes as a defaults-down override. Printing one shape
 without saying so would hand the reader an edit that silently does nothing in the other file.
 ⚑ The file's own spelling comes from the BOUNDARY (`agent_file.file_spelling`), never a literal
 — same reason as the bind cure in `config_keys`: the caveat QUOTES the agent file at the user,
-so the flatten changed it in ONE place. ⚑ And it quotes the TABLE, never the entry: the last
-segment is the DEST, so a spelling that swallowed it would print something unreadable back.
+so a change to the file's shape lands in ONE place. ⚑ And it quotes the TABLE, never the entry: the
+last segment is the DEST, so a spelling that swallowed it would print something unreadable back.
 
 ## `derive_binding_keys` — the materialized derived bindings
 
@@ -791,7 +786,7 @@ raise and surface as `category_error`; **the mask path is silent, which is the d
 `tests/test_categories_live.py::TestTheNaiveReadIsWrong` states the disagreement between the two
 leaves as a FACT, so a future rewrite cannot re-derive the display from the node and pass.
 
-### Why nothing was added to `CollapsedBind` / `CollapsedCopy`
+### Why `CollapsedBind` / `CollapsedCopy` carry no declaration
 
 The obligation is DECLARATION → DELIVERY, and that is answered by CONTAINMENT against the
 finished map (`store_collapse.covering_bind`): which dest covers this declaration's dest, and what
@@ -834,5 +829,5 @@ mount came from. Saying so beats picking.
 
 ⚑ `DERIVED_UNCOVERED` is not "no mount" — it is "no map". A NARROW resolve writes no bindings
 leaf (`commands/start._install_assembly_collapse`'s whole-box gate), and reporting every
-declaration as unmounted there would be the same class of confident wrongness this function was
-written to remove.
+declaration as unmounted there would be the same class of confident wrongness this function
+exists to prevent.
