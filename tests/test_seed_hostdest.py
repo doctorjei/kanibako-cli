@@ -97,7 +97,7 @@ class TestHostCopyDest:
         box_root = Path(GUEST_HOME) / ".local/share/kanibako/boxes/demo"
         dest = _host_copy_dest(
             str(box_root / "canon" / "handbook"), box_root,
-            label="handbook template", name="@box.canon/handbook",
+            label="handbook template", name="{box.canon}/handbook",
             logger=logging.getLogger("t"),
         )
         assert dest == box_root / "canon" / "handbook"

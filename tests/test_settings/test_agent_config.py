@@ -134,14 +134,14 @@ class TestAmbiguousPathValueError:
         monkeypatch.setenv("PWD", str(link))
         message = ambiguous_path_value_error(
             "workset.channelroot", "comms",
-            anchor="/ws", anchor_ref="@meta.workset.path", where="/ws/workset.yaml",
+            anchor="/ws", anchor_ref="{meta.workset.path}", where="/ws/workset.yaml",
         )
         assert "workset.channelroot" in message
         assert "'comms'" in message
         assert "/ws/comms" in message
         assert str(link / "comms") in message
         assert str(real.resolve() / "comms") not in message
-        assert "@meta.workset.path/comms" in message
+        assert "{meta.workset.path}/comms" in message
         assert "/ws/workset.yaml" in message
 
     def test_the_optional_halves_are_optional(self, tmp_path, monkeypatch):
