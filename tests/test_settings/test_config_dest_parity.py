@@ -44,6 +44,7 @@ from pathlib import Path
 
 import pytest
 
+from kanibako.settings.agent_config import agent_settings_path
 from kanibako.settings.config_keys import ConfigLevel
 from kanibako.settings.config_interface import (
     get_config_value,
@@ -165,7 +166,7 @@ class Bench:
         if m is None:
             return None
         node = m.group("node")
-        f = self.agents / node / "agent.yaml"
+        f = agent_settings_path(self.agents, node)
         f.parent.mkdir(parents=True, exist_ok=True)
         return f, node
 
@@ -915,7 +916,7 @@ class TestAgentScopeCategoryDestination:
         assert reset_msg.startswith("Error:") and "RETIRED" in reset_msg, reset_msg
         # The wrong file is not written, and neither is the node's own file.
         assert bench.changed(before) == {}, bench.changed(before)
-        assert not (bench.agents / "claude" / "agent.yaml").exists()
+        assert not agent_settings_path(bench.agents, "claude").exists()
 
     def test_the_per_entry_spelling_reaches_no_slot(self, bench):
         """⚑ THE NEW FACT, PINNED IN ITS OWN CASE (2026-08-08c). The two cases below
@@ -1207,7 +1208,7 @@ class TestPerNodeAgentDest:
         node's own file and loses its WRITE route. The asymmetry is deliberate and
         is what the parity bench exists to make visible rather than accidental.
         (This test asserted the repoint WROTE, until the route was retired.)"""
-        node_file = bench.agents / "claude" / "agent.yaml"
+        node_file = agent_settings_path(bench.agents, "claude")
         node_file.parent.mkdir(parents=True, exist_ok=True)
         # ⚑ FLAT since S2/S3 — ``self`` IS ``agent.claude``, so the bindings table sits
         # DIRECTLY under the root and the nested ``self: claude:`` shape this used to
@@ -1247,7 +1248,7 @@ class TestPerNodeAgentDest:
         tail.split(".")``) and this dies — the read lands on a section ``~/`` and a leaf
         ``cache/uv``, a slot no file has.
         """
-        node_file = bench.agents / "claude" / "agent.yaml"
+        node_file = agent_settings_path(bench.agents, "claude")
         node_file.parent.mkdir(parents=True, exist_ok=True)
         bench.seed(
             node_file, ("self", "bindings", "ro"), _DOTTED_DEST, list(_TUPLE),
@@ -1494,7 +1495,7 @@ class TestSystemGetCommandScopeIsInert:
          (lambda b: b.seed(b.ssp, ("system",), "setup_completed", "v"))),
         ("agent.claude.model",
          (lambda b: b.seed(
-             b.agents / "claude" / "agent.yaml",
+             agent_settings_path(b.agents, "claude"),
              ("self",), "model", "v"))),
     ])
     def test_threading_the_scope_changes_no_read(self, bench, key, seed):

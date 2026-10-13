@@ -7,6 +7,7 @@ import shlex
 
 import pytest
 
+from kanibako.settings.agent_config import agent_settings_path
 from kanibako.settings.config import (
     KanibakoConfig,
     load_config,
@@ -551,7 +552,7 @@ class TestBoxGetAnswersOnlyTheBoxFile:
             agents_root=agents_root,
         )
         assert not msg.startswith("Error:"), msg
-        assert (agents_root / "claude" / "agent.yaml").is_file()
+        assert agent_settings_path(agents_root, "claude").is_file()
 
     def _get(self, project_dir, key):
         from kanibako import cli
@@ -1628,7 +1629,7 @@ class TestEffectiveRendersANodeTheWayAUserWritesIt:
         project_dir = str(tmp_home / "project")
         proj = resolve_project(std, config, project_dir=project_dir, initialize=True)
 
-        store = std.agents / "nav+claude" / "agent.yaml"
+        store = agent_settings_path(std.agents, "nav+claude")
         store.parent.mkdir(parents=True, exist_ok=True)
         dump_doc(store, {
             "self": {

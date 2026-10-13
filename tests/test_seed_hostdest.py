@@ -56,6 +56,7 @@ from pathlib import Path
 
 import pytest
 
+from kanibako.settings.agent_config import agent_settings_path
 from kanibako.settings.agent_select import AgentSelection
 from kanibako.settings import core_defaults
 from kanibako.settings.settings_categories import CategoryEntry
@@ -194,7 +195,7 @@ class TestSeedRoutesThroughTheOneGuestTranslator:
         start_mod._apply_init_seeds(
             std=std, proj=proj, agent_name="claude", target=_T(),
             global_config_path=std.settings,
-            agent_config_path=std.agents / "claude" / "agent.yaml",
+            agent_config_path=agent_settings_path(std.agents, "claude"),
             logger=logging.getLogger("t"), deliver_creds=True,
             selection_level=AgentSelection(node="claude", source="settings").selection_level,
         )

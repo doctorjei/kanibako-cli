@@ -19,6 +19,7 @@ import pytest
 
 from kanibako.commands.start import _bind_map_from_mounts, _emit_category_mounts
 from kanibako.errors import PackagingError
+from kanibako.settings.agent_config import agent_settings_path
 from kanibako.settings.agent_file import _FLAT_AGENT_CATEGORIES
 from kanibako.settings.kb_store import SCOPE_CONTAINMENT, Bind, BindEntry
 from kanibako.settings.keystore import KeyStore
@@ -2184,7 +2185,7 @@ def test_R147_an_agent_file_level_names_the_file_it_carries(tmp_path):
     from kanibako.settings.settings_resolve import SettingsError
 
     agent_yaml = _write_yaml(
-        tmp_path / "agents" / "claude" / "agent.yaml", {"self": {"canon": "rel"}},
+        agent_settings_path(tmp_path / "agents", "claude"), {"self": {"canon": "rel"}},
     )
     with pytest.raises(SettingsError) as exc:
         build_launch_snapshot(

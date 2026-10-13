@@ -35,6 +35,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from kanibako.errors import PackagingError
+from kanibako.settings.agent_config import agent_settings_path
 from kanibako.settings.agent_select import AgentSelection
 from kanibako.settings import core_defaults
 from kanibako.launch import templates
@@ -1764,7 +1765,7 @@ class TestBaseTemplateSeedsTheNotebook:
             agent_name="claude",
             target=_FakeTarget(),
             global_config_path=std.settings,
-            agent_config_path=std.agents / "claude" / "agent.yaml",
+            agent_config_path=agent_settings_path(std.agents, "claude"),
             logger=logging.getLogger("test-canon-seed"),
             deliver_creds=True,
             selection_level=AgentSelection(node="claude", source="settings").selection_level,

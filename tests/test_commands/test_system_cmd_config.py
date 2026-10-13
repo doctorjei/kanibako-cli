@@ -32,7 +32,7 @@ import argparse
 from pathlib import Path
 
 from kanibako.commands.system_cmd import run_get, run_reset, run_set, run_show
-from kanibako.settings.agent_config import store_dirname
+from kanibako.settings.agent_config import agent_settings_path
 from kanibako.settings.config import load_config, read_system_agent
 from kanibako.settings.config_io import dump_doc, load_doc
 from kanibako.settings.config_io import write_nested_key
@@ -567,7 +567,7 @@ class TestSystemVerbsTouchOnlyTheSystemFile:
     KEY = "agent.claude.env.Y"
 
     def _node_file(self, std):
-        path = std.agents / store_dirname("claude") / "agent.yaml"
+        path = agent_settings_path(std.agents, "claude")
         path.parent.mkdir(parents=True, exist_ok=True)
         dump_doc(path, {"self": {"env": {"A": "agent-file-value"}}})
         return path
@@ -658,7 +658,7 @@ class TestSystemSetJudgesTheNodeAsGetDoes:
     def test_reset_at_an_unknown_node_leaves_an_existing_store_untouched(
         self, config_file, tmp_home, capsys,
     ):
-        node_file = _std(config_file).agents / "nav+zzz" / "agent.yaml"
+        node_file = agent_settings_path(_std(config_file).agents, "nav+zzz")
         node_file.parent.mkdir(parents=True, exist_ok=True)
         dump_doc(node_file, {"self": {"model": "x"}})
         assert _reset("agent.nav+zzz.model") == 1
@@ -714,7 +714,7 @@ class TestSystemGetReadsTheNodeKeysTheNounFileHolds:
 
     def _seed_node_file(self, std, node, sections, leaf, value):
         """The node's OWN store, at the address ``agent_file._read_address`` produces."""
-        path = std.agents / store_dirname(node) / "agent.yaml"
+        path = agent_settings_path(std.agents, node)
         path.parent.mkdir(parents=True, exist_ok=True)
         write_nested_key(path, ("self", *sections), leaf, value)
 
@@ -879,7 +879,7 @@ class TestSystemAgentNodeBindWriteRouteRetired:
     KEY = "agent.claude.bindings.ro.launcher"
 
     def _file(self, std, node="claude"):
-        return std.agents / node / "agent.yaml"
+        return agent_settings_path(std.agents, node)
 
     def test_set_exits_nonzero_and_names_the_key_on_stderr(
         self, config_file, tmp_home, capsys,
@@ -1309,7 +1309,7 @@ class TestSystemGetClosedKeyspaceReadGate:
         case above uses; the two differ only in scope, which is the real distinction.
         """
         std = _std(config_file)
-        node_file = std.agents / store_dirname("claude") / "agent.yaml"
+        node_file = agent_settings_path(std.agents, "claude")
         node_file.parent.mkdir(parents=True, exist_ok=True)
         dump_doc(node_file, {"self": {
             "masks": ["~/.m"],

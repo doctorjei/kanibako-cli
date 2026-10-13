@@ -74,6 +74,7 @@ from pathlib import Path
 
 import pytest
 
+from kanibako.settings.agent_config import agent_settings_path
 from kanibako.settings.agent_select import AgentSelection
 from kanibako.settings import core_defaults
 from kanibako.settings.core_defaults import (
@@ -393,7 +394,7 @@ class TestSeededManifest:
             target=_FakeTarget(),
             desc=None,
             agent_id="claude",
-            agent_cfg_path=std.agents / "claude" / "agent.yaml",
+            agent_cfg_path=agent_settings_path(std.agents, "claude"),
             system_settings_path=std.settings,
             auth_src=SimpleNamespace(creds_shared=True),
             logger=logging.getLogger("test-delivery-manifest"),

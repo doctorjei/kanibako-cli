@@ -20,6 +20,7 @@ from pathlib import Path
 import pytest
 
 from kanibako.project.workset import create_workset
+from kanibako.settings.agent_config import agent_settings_path
 from kanibako.settings.config import BOX_META_FILE, WORKSET_META_FILE
 from kanibako.settings.config_interface import set_config_value
 from kanibako.settings.config_io import load_doc
@@ -180,14 +181,14 @@ class TestTheAgentRoutes:
         key = f"agent.claude.{leaf}"
         message = _set(key, _BARE, files, ConfigLevel.system)
         _assert_named_both_readings(message, key, _BARE, run_from)
-        assert not (files["agents"] / "claude" / "agent.yaml").exists()
+        assert not agent_settings_path(files["agents"], "claude").exists()
 
     @pytest.mark.parametrize("leaf", ["canon", "template"])
     def test_a_legal_per_node_value_still_writes(self, leaf, tmp_path):
         files = _files(tmp_path)
         message = _set(f"agent.claude.{leaf}", "/srv/x", files, ConfigLevel.system)
         assert not message.startswith("Error:"), message
-        assert load_doc(files["agents"] / "claude" / "agent.yaml") == {
+        assert load_doc(agent_settings_path(files["agents"], "claude")) == {
             "self": {leaf: "/srv/x"},
         }
 
@@ -208,7 +209,7 @@ class TestTheSecretPathFamily:
         message = _set("agent.claude.secret_path.TOKEN", "tok.txt", files,
                        ConfigLevel.system)
         _assert_named_both_readings(message, "agent.claude.secret_path.TOKEN", "tok.txt", run_from)
-        assert not (files["agents"] / "claude" / "agent.yaml").exists()
+        assert not agent_settings_path(files["agents"], "claude").exists()
 
     def test_the_reading_it_names_is_a_SCOPE_root_not_a_default(self, tmp_path):
         """⚑ ``secret_path`` declares NO default, so the message must not claim one.

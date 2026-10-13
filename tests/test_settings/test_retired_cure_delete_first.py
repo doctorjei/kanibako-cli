@@ -46,6 +46,7 @@ from pathlib import Path
 import pytest
 
 from kanibako.settings import agent_file
+from kanibako.settings.agent_config import agent_settings_path
 from kanibako.settings.settings_assemble import (
     _retired_behavior_cure,
     refuse_retired_keys,
@@ -192,7 +193,7 @@ def test_the_file_key_cure_names_the_file_when_the_path_is_unknown() -> None:
 def _agent_store(root: Path, node: str) -> Path:
     """A real ``<root>/<node>/agent.yaml``: a printed ``agent set`` is offered only into a
     file that exists (``set`` refuses an agent with none)."""
-    path = root / node / "agent.yaml"
+    path = agent_settings_path(root, node)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text("self:\n  model: opus\n")
     return path
@@ -795,7 +796,7 @@ def test_a_target_with_no_file_cures_itself_end_to_end(tree) -> None:
 
     claude_file = tree.agent_file("claude")
     claude_file.write_text("self:\n  model: opus\n  shell:\n    env:\n      W: x\n")
-    shell_file = tree.agents_root / "shell" / "agent.yaml"
+    shell_file = agent_settings_path(tree.agents_root, "shell")
     assert not shell_file.exists()
 
     first = tree.cli("agent", "show", "claude")

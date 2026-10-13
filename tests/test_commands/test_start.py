@@ -9,6 +9,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from kanibako.settings.agent_config import agent_settings_path
 from kanibako.settings.agent_select import AgentSelection
 from kanibako.commands.start import (
     _agent_exit_rc,
@@ -777,7 +778,7 @@ class TestEffectiveBootstrapResolution:
         proj = self._proj(tmp_path)
         sys_file = tmp_path / "system.yaml"
         dump_doc(sys_file, {"agent": {"default": {"bootstrap": "zellij"}}})
-        agent_file = tmp_path / "agents" / "claude" / "agent.yaml"
+        agent_file = agent_settings_path(tmp_path / "agents", "claude")
         agent_file.parent.mkdir(parents=True)
         dump_doc(agent_file, {"self": {"bootstrap": "none"}})
         # The active agent (claude) picks its own-file override over the default.
@@ -795,7 +796,7 @@ class TestEffectiveBootstrapResolution:
         from kanibako.settings.config_io import dump_doc
         from kanibako.settings.settings_resolve import SettingsError
         proj = self._proj(tmp_path)
-        agent_file = tmp_path / "agents" / "claude" / "agent.yaml"
+        agent_file = agent_settings_path(tmp_path / "agents", "claude")
         agent_file.parent.mkdir(parents=True)
         dump_doc(agent_file, {"self": {"canon": "rel"}})
         with pytest.raises(SettingsError) as exc:
@@ -839,7 +840,7 @@ class TestShellBootstrapIsTheTiersOwn:
         """The shell node's OWN agent file (where ``system set`` writes it) wins too."""
         from kanibako.settings.config_io import dump_doc
         proj = self._proj(tmp_path)
-        agent_file = tmp_path / "agents" / "shell" / "agent.yaml"
+        agent_file = agent_settings_path(tmp_path / "agents", "shell")
         agent_file.parent.mkdir(parents=True)
         dump_doc(agent_file, {"self": {"bootstrap": "zellij"}})
         assert _resolved_program(
@@ -872,7 +873,7 @@ class TestBootstrapOrigin:
         proj = self._proj(tmp_path)
         box_file = proj.metadata_path / "box.yaml"
         dump_doc(box_file, {"pref": {"agent": {"claude": {"bootstrap": "none"}}}})
-        agent_file = tmp_path / "agents" / "claude" / "agent.yaml"
+        agent_file = agent_settings_path(tmp_path / "agents", "claude")
         agent_file.parent.mkdir(parents=True)
         dump_doc(agent_file, {"self": {"bootstrap": "tmux"}})
         choice = _bootstrap_choice(proj, None, "claude", **_focused(), agent_path=agent_file)
@@ -951,7 +952,7 @@ class TestBootstrapOrigin:
         assert "(or change that pref, for every agent)" in reason
         # The cure: ``system set`` writes the agent's own file, whose node slot
         # outranks the box's ``agent.default`` pref.
-        agent_file = tmp_path / "agents" / "claude" / "agent.yaml"
+        agent_file = agent_settings_path(tmp_path / "agents", "claude")
         agent_file.parent.mkdir(parents=True)
         dump_doc(agent_file, {"self": {"bootstrap": "tmux"}})
         cured = _bootstrap_choice(proj, None, "claude", **_focused(), agent_path=agent_file)
@@ -1181,7 +1182,7 @@ class TestEffectiveTransformSettings:
             system_path = tmp_path / "system.yaml"
             dump_doc(system_path, system)
         if agent is not None:
-            agent_path = tmp_path / "agents" / "claude" / "agent.yaml"
+            agent_path = agent_settings_path(tmp_path / "agents", "claude")
             agent_path.parent.mkdir(parents=True)
             dump_doc(agent_path, agent)
         return _effective_transform_settings(
@@ -10083,7 +10084,7 @@ class TestRetiredBehaviorRefusalWiring:
         box_file.parent.mkdir(parents=True, exist_ok=True)
         if box_doc is not None:
             dump_doc(box_file, box_doc)
-        agent_file = tmp_path / "agents" / "claude" / "agent.yaml"
+        agent_file = agent_settings_path(tmp_path / "agents", "claude")
         agent_file.parent.mkdir(parents=True, exist_ok=True)
         if agent_doc is not None:
             dump_doc(agent_file, agent_doc)

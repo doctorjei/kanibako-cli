@@ -20,7 +20,7 @@ import logging
 
 import pytest
 
-from kanibako.settings.agent_config import store_dirname
+from kanibako.settings.agent_config import agent_settings_path, store_dirname
 from kanibako.settings.settings_assemble import ReadPurpose, agent_record as load_agent_config
 from kanibako.settings.config_keys import (
     ConfigLevel,
@@ -55,7 +55,7 @@ def _node_file(agents_root, node="navigator℘claude"):
     # ⚑ The DIRNAME comes from the production helper, so tests whose subject is the
     # LEAF follow a spelling change instead of pinning one.  The spelling itself is
     # asserted with literals in ``TestCanonicalizationSameStore``.
-    return agents_root / store_dirname(node) / "agent.yaml"
+    return agent_settings_path(agents_root, node)
 
 
 # ---------------------------------------------------------------------------

@@ -8,6 +8,7 @@ from pathlib import Path
 
 import pytest
 
+from kanibako.settings.agent_config import agent_settings_path
 from kanibako.settings.config import load_config
 from kanibako.settings.paths import BoxMode, _early_scope, load_std_paths
 from kanibako.settings.settings_resolve import normalize_bind_dest
@@ -3054,7 +3055,7 @@ class TestWorksetGetAnswersOnlyTheWorksetFile:
             agents_root=agents_root,
         )
         assert not msg.startswith("Error:"), msg
-        assert (agents_root / "claude" / "agent.yaml").is_file()
+        assert agent_settings_path(agents_root, "claude").is_file()
 
     def _get(self, ws, key):
         from kanibako.cli import build_parser

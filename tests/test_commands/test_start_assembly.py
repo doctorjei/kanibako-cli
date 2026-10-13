@@ -30,6 +30,7 @@ from unittest.mock import patch
 import pytest
 
 from kanibako.log import get_logger
+from kanibako.settings.agent_config import agent_settings_path
 from kanibako.settings.agent_select import AgentSelection
 from kanibako.commands.start import (
     _bind_map_from_mounts,
@@ -1740,7 +1741,7 @@ class TestTheSeedApplierConsumesTheLeaf:
         return _apply_init_seeds(
             std=std, proj=proj, agent_name="claude", target=_T(),
             global_config_path=std.settings,
-            agent_config_path=std.agents / "claude" / "agent.yaml",
+            agent_config_path=agent_settings_path(std.agents, "claude"),
             logger=logging.getLogger("seed-consumer"), deliver_creds=True,
             selection_level=AgentSelection(node="claude", source="settings").selection_level,
         )
@@ -1908,7 +1909,7 @@ class TestTheSeedApplierConsumesTheLeaf:
         return _sync_box_at_create(
             std=std, proj=proj, agent_name="claude", target=_WiringTarget(),
             global_config_path=std.settings,
-            agent_config_path=std.agents / "claude" / "agent.yaml",
+            agent_config_path=agent_settings_path(std.agents, "claude"),
             logger=logger, deliver_creds=True,
             selection_level=AgentSelection(
                 node="claude", source="settings",

@@ -9,6 +9,7 @@ import pytest
 import yaml
 
 from kanibako.project.workset import Workset
+from kanibako.settings.agent_config import agent_settings_path
 from kanibako.settings.config import BOX_META_FILE, WORKSET_META_FILE
 from kanibako.settings.config_io import dump_doc, load_doc
 from kanibako.settings.config_keys import ConfigLevel, is_known_key
@@ -328,7 +329,7 @@ class TestRegularConfigKeys:
             agents_root=agents_root,
         )
         assert not msg.startswith("Error:"), msg
-        assert load_doc(agents_root / "claude" / "agent.yaml") == {
+        assert load_doc(agent_settings_path(agents_root, "claude")) == {
             "self": {"bootstrap": "none"},
         }
 
@@ -399,7 +400,7 @@ class TestContinueMode:
             agents_root=agents_root,
         )
         assert not msg.startswith("Error:"), msg
-        assert load_doc(agents_root / "claude" / "agent.yaml") == {
+        assert load_doc(agent_settings_path(agents_root, "claude")) == {
             "self": {"continue_mode": "false"},
         }
 
@@ -2133,7 +2134,7 @@ class TestH2BoolCoercion:
             agents_root=agents_root,
         )
         assert not msg.startswith("Error:"), msg
-        assert load_doc(agents_root / "claude" / "agent.yaml") == {
+        assert load_doc(agent_settings_path(agents_root, "claude")) == {
             "self": {"allow_helpers": "false"},
         }
 
@@ -2161,7 +2162,7 @@ class TestH2BoolCoercion:
             agents_root=agents_root,
         )
         assert not msg.startswith("Error:"), msg
-        assert load_doc(agents_root / "claude" / "agent.yaml") == {
+        assert load_doc(agent_settings_path(agents_root, "claude")) == {
             "self": {"access": "restricted"},
         }
 
@@ -2915,7 +2916,7 @@ class TestTerminalCategoryWriteRefusal:
             msg = bench.set(ConfigLevel.system, key, "/tmp/probe")
             assert f"still works:\n  kanibako agent get claude {cat}" in msg, msg
             assert "agents/claude/agent.yaml" in msg, msg
-            node_file = bench.agents / "claude" / "agent.yaml"
+            node_file = agent_settings_path(bench.agents, "claude")
             node_file.parent.mkdir(parents=True, exist_ok=True)
             bench.seed(node_file, ("self", *tail[:-1]), tail[-1], dict(stored))
             assert read_leaf(slot_for(bench.agents, "claude", cat)) == str(stored), key
@@ -3621,7 +3622,7 @@ class TestScopeDirectionGuard:
         )
         assert "cannot be set from the system scope" not in msg
         assert not msg.startswith("Error:"), msg
-        assert load_doc(agents_root / "claude" / "agent.yaml") == {
+        assert load_doc(agent_settings_path(agents_root, "claude")) == {
             "self": {"model": "opus"},
         }
 
@@ -5114,7 +5115,7 @@ class TestAgentNodeBindWriteRouteRetired:
         right there in the node file."""
         agents = tmp_path / "agents"
         (agents / "claude").mkdir(parents=True)
-        node_file = agents / "claude" / "agent.yaml"
+        node_file = agent_settings_path(agents, "claude")
         seeded = {"self": {"bindings": {"ro": {
             "launcher": ["/old", "/box/launcher", "ro"]}}}}
         dump_doc(node_file, seeded)
@@ -5284,7 +5285,7 @@ class TestAgentNodeBindGetSurvives:
 
     def test_get_reads_a_hand_authored_bind_after_the_route_retired(self, tmp_path):
         agents = self._agents_root(tmp_path)
-        node_file = agents / "claude" / "agent.yaml"
+        node_file = agent_settings_path(agents, "claude")
         # Authored the ONLY way left: directly in the node's settings file.
         dump_doc(node_file, {"self": {"bindings": {"ro": {
             "launcher": ["/newsrc", "/box/launcher", "ro"]}}}})
@@ -5298,7 +5299,7 @@ class TestAgentNodeBindGetSurvives:
         """The other half of the same round-trip: set and reset both refuse, and the
         hand-authored tuple the get above reads is still there afterwards."""
         agents = self._agents_root(tmp_path)
-        node_file = agents / "claude" / "agent.yaml"
+        node_file = agent_settings_path(agents, "claude")
         seeded = {"self": {"bindings": {"ro": {
             "launcher": ["/old", "/box/launcher", "ro"]}}}}
         dump_doc(node_file, seeded)
@@ -5344,7 +5345,7 @@ class TestAgentNodeBindGetSurvives:
         # Collision: a bind literally NAMED ``model`` must route to the node-bind
         # get path (the bindings.ro segment), NOT the persona ``model`` scalar.
         agents = self._agents_root(tmp_path)
-        node_file = agents / "claude" / "agent.yaml"
+        node_file = agent_settings_path(agents, "claude")
         dump_doc(node_file, {"self": {"bindings": {"ro": {
             "model": ["/hostmodel", "/box/model", "ro"]}}}})
         val = get_config_value(
@@ -5407,7 +5408,7 @@ class TestPerNodeGetReadsTheNounFileOnlyWhereTheCascadeKeepsIt:
         agents = self._agents_root(tmp_path)
         settings = tmp_path / "settings.yaml"
         dump_doc(settings, {"agent": {"claude": {"env": {"X": "from-noun-file"}}}})
-        node_file = agents / "claude" / "agent.yaml"
+        node_file = agent_settings_path(agents, "claude")
         dump_doc(node_file, {"self": {"env": {"X": "from-node-file"}}})
         assert get_config_value(
             "agent.claude.env.X",
@@ -5428,7 +5429,7 @@ class TestPersonaScalarGetResetUnchanged:
     def test_persona_model_get_reset_unchanged(self, tmp_path):
         agents = tmp_path / "agents"
         (agents / "claude").mkdir(parents=True)
-        node_file = agents / "claude" / "agent.yaml"
+        node_file = agent_settings_path(agents, "claude")
         set_config_value(
             "agent.claude.model", "opus",
             config_path=tmp_path / "x", command_scope=ConfigLevel.system,
@@ -7705,7 +7706,7 @@ class TestScalarFamilyReadRefusal:
         cf, ssp, agents = self._files(tmp_path)
         section, _, var = tail.partition(".")
         self._author(
-            agents / "claude" / "agent.yaml", ("self", section), var, ["/a", "/b"],
+            agent_settings_path(agents, "claude"), ("self", section), var, ["/a", "/b"],
         )
         with pytest.raises(SettingsError) as e:
             self._get(key, cf, ssp, agents)
@@ -7819,7 +7820,7 @@ class TestSetTimeAgentFileRootScalar:
         return node, errors
 
     def test_a_ref_to_the_files_own_model_resolves(self, std, tmp_path):
-        agent_file = tmp_path / "agents" / "claude" / "agent.yaml"
+        agent_file = agent_settings_path(tmp_path / "agents", "claude")
         agent_file.parent.mkdir(parents=True)
         dump_doc(agent_file, {"self": {"model": "opus"}})
         value, errors = self._expand_probe(std, agent_file, "@agent.claude.model/x")
@@ -7827,7 +7828,7 @@ class TestSetTimeAgentFileRootScalar:
         assert value == "opus/x", value
 
     def test_a_file_that_does_not_read_is_left_out(self, std, tmp_path):
-        agent_file = tmp_path / "agents" / "claude" / "agent.yaml"
+        agent_file = agent_settings_path(tmp_path / "agents", "claude")
         agent_file.parent.mkdir(parents=True)
         dump_doc(agent_file, {"self": {"model": "opus", "zz_undeclared": "x"}})
         value, errors = self._expand_probe(std, agent_file, "@agent.claude.model/x")

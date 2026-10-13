@@ -17,6 +17,7 @@ from typing import Any
 import pytest
 import yaml
 
+from kanibako.settings.agent_config import agent_settings_path
 from kanibako.settings.agent_file import _CONTRIBUTED, _contribution, level_table
 from kanibako.settings.config_io import load_doc
 from kanibako.settings.settings_assemble import (
@@ -38,7 +39,7 @@ _SCOPE_TABLES: tuple[str, ...] = tuple(sorted(_CONTRIBUTED))
 
 
 def _agent_file(tmp_path: Path, body: str) -> Path:
-    path = tmp_path / "agents" / "claude" / "agent.yaml"
+    path = agent_settings_path(tmp_path / "agents", "claude")
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(body)
     return path
