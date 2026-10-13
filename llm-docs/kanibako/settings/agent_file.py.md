@@ -8,12 +8,6 @@ reference. This module exists so that is true BY CONSTRUCTION rather than by dis
 only place a `self` string appears in shipped source, and `test_agent_file_boundary.py`'s AST census
 pins that.
 
-Provenance: S1 of the `self` rectification (`~/canon/notebook/archives/plans/2026-08-14-self-rectification-PLAN.md` §3).
-Six independent sites used to spell the file's shape — and `agent_file_route`'s own docstring
-claimed to be the only one (defect D-1). The six are `agent_file_route` (now the `_read_address` / `_write_address` pair),
-`load_agent_config` (`load`), `write_agent_config` (`save`), `settings_assemble._BEHAVIOR_TABLE_SHAPES`' row (now `ROOT_SECTIONS`), `settings_assemble._agent_partial` (its shape
-half is now `level_table`), and `agent reset --all`'s raw surgery (now `clear_overrides`).
-
 ## Authority
 
 * **Spec `~/canon/workbook/specs/settings-keyspace-1.8.0.md` §0** — closed keyspace: an undeclared key is an ERROR that
@@ -42,28 +36,21 @@ whether a NODE is routable (`config_dest.check_agent_node` — key classificatio
 ```AgentFileSlot(path: Path, tail: str, node: str)```  — frozen dataclass
 WHERE one per-node value lives.
 
-⚑ **It carries the `node` again (S4, after Q92).** S3 dropped it: once the flatten put every category
-at the file's top level, no address depended on whose file it was. Q92 made the file's `agent:` table
-READ, so `agent: <node>:` is a second spelling of the node's own settings, and which spelling holds a
-value depends on the node. `_spelled_sections` asks the file: the own-node spelling when it HOLDS the
-leaf, else `self:`, for every read, write and remove. Written under `self:` beside a value already
-under `agent: <node>:`, a `set` produced a file every reader then refused (the Q103 two-spelling
-refusal; measured before this: `agent set claude model=c` rc 0, then every read of the file refused).
+⚑ **It carries the `node`.** The file's `agent:` table is READ (Q92), so `agent: <node>:` is a
+second spelling of the node's own settings, and which spelling holds a value depends on the node.
+`_spelled_sections` asks the file: the own-node spelling when it HOLDS the leaf, else `self:`, for
+every read, write and remove. Written under `self:` beside a value already under `agent: <node>:`,
+a `set` would produce a file every reader then refuses (the Q103 two-spelling refusal).
 
-⚑⚑ **It carries NO `sections`/`leaf`, and that is the whole point (P3/P4).** The per-node resolvers
-in `config_dest` used to hand callers a `(path, sections, leaf)` triple, so SEVEN `config_interface`
-sites held a `("self", …)` address — internal traffic in the file-surface alias (defect C-1). The
-address is produced inside `read_leaf` / `write_leaf` / `remove_leaf` and is unavailable to a caller:
+⚑⚑ **It carries NO `sections`/`leaf`, and that is the whole point (P3/P4).** A caller holding a
+`("self", …)` address would be internal traffic in the file-surface alias. The address is produced
+inside `read_leaf` / `write_leaf` / `remove_leaf` and is unavailable to a caller:
 the violation is not forbidden, it is unrepresentable.
 
 🛑 **A FROZEN DATACLASS, NEVER A `NamedTuple`.** A NamedTuple keeps `isinstance(x, tuple)` True and
 every `path, sections, leaf = route` unpacking silently working at the WRONG arity — the same-arity
-shape flip that passes green while the meaning changes. The dataclass makes both go loudly false.
-*(Measured 2026-08-14: making it a
-NamedTuple turns TWO tests red, both in `TestRouteCarriesNoAddress` — `test_returns_a_slot_not_a_tuple`
-(all 3 parametrized targets) on `assert not isinstance(route, tuple)`, and `test_slot_is_frozen`,
-whose `is_dataclass(slot)` goes False and whose write then raises `AttributeError` rather than
-`FrozenInstanceError`. Nothing else in `test_agent_file_boundary.py` or `test_agent_file.py`.)*
+shape flip that passes green while the meaning changes. The dataclass makes both go loudly false;
+`TestRouteCarriesNoAddress` pins it.
 
 ```AgentFileLevel(node: str, table: dict, path: Path | None = None, scope: dict = {})```  — frozen dataclass
 ONE cascade tier read out of the file: its §2d discriminator and its RAW table.
@@ -88,10 +75,8 @@ a bare-relative value sits in, and the focused behavior reads in `commands/start
 `settings_assemble._BEHAVIOR_TABLE_SHAPES`, whose rows are uniform `(prefix, depth-of-<sub>)`
 pairs. It is **not an invitation** — every OTHER consumer takes an `AgentFileSlot`, an
 `AgentFileLevel` or `file_spelling` and never sees the spelling at all, so a second raw-walk
-consumer means the walk itself belongs in here.
-*(Measured: flipping `_ROOT` to `"selfx"` leaves `TestRootViaConstant` GREEN — it asserts THROUGH the
-constant — and turns 22 agent-file fixture cases red. That asymmetry is the design: the pin proves
-the root is reached via the constant, the fixtures prove which root ships.)*
+consumer means the walk itself belongs in here. `TestRootViaConstant` asserts THROUGH the constant,
+and the agent-file fixtures pin which root ships.
 
 ## The file's shape
 
@@ -110,19 +95,16 @@ shape, over a different file. Dropped, not relocated.)* Inside `self:`:
   tier at all**, which is
   written in the SYSTEM file as `agent: default: <category>:`.
 
-**Beside `self:`, only the `agent:` table is read (Q92)** — the contributed set is ONE constant,
-`_CONTRIBUTED`, holding `self` and `agent` — and a key there that the cascade neither reads nor
-drops REFUSES BY NAME (`_refuse_stray_roots`, below), because no other audit can see it. The
+**Beside `self:`, the file's `agent:`, `workset:` and `box:` tables are read (Q92, Q85)** — the
+contributed set is ONE constant, `_CONTRIBUTED` (`self`, `FILE_SCOPE` and the contained scopes
+`contained_scopes("agent")`) — and a key there that the cascade neither reads nor drops REFUSES BY
+NAME (`_refuse_stray_roots`, below), because no other audit can see it. The
 `agent:` table is read like that table in any settings file: `agent: {<node>: {…}}`, the
 all-agents `default` node included; a VALUE there (`agent: 5`) refuses (`_refuse_scope_value`),
 and a bare `agent:` is no table.
 
-⚑ **THE FLATTEN (S2) IS WHY THIS IS ONE LIST AND NOT THREE.** `secret_path` flattened at
-2026-07-14b, `env` at MBR-1 P3, and `bindings` was the last occupant of the nested shape — kept
-there ONLY because nested was its live spelling and refusing before a flat route existed would have
-deleted a delivery path. S2 landed the flat route for all six remaining categories at once
-(*"self: claude: bindings should never have existed. None of them should"*), so the exception
-closed and the refusal became universal.
+⚑ **EVERY category is flat, so the refusal is universal** (*"self: claude: bindings should never
+have existed. None of them should"*).
 
 
 ## Constants
@@ -130,23 +112,22 @@ closed and the refusal became universal.
 ```_MODELED_KEYS: Final[frozenset[str]] = frozenset({"run_args", "env", "secret_path", "transform_settings"})```
 The SCHEMA-OWNED root keys — the ones `AgentConfig` holds as FIELDS of its own, as against the flat
 categories `category_tables` carries opaquely. Three separate questions read it and none of them
-keeps a list beside it: what `load` must NOT sweep into `cfg.state`, what `_CARRIED_CATEGORIES`
+keeps a list beside it: what `record` must NOT sweep into `cfg.state`, what `_CARRIED_CATEGORIES`
 subtracts, and what `_ROOT_TABLES` unions with the flat categories to admit at the root.
 
 🛑 **A CATEGORY MUST NEVER JOIN IT WITHOUT BOTH AN `AgentConfig` FIELD AND A `save` EMISSION.** The
-failure is silent DATA LOSS, not a read that comes back empty: `load` would capture the table out of
+failure is silent DATA LOSS, not a read that comes back empty: `record` would capture the table out of
 the opaque carrier, and `save`, having no field to emit it from, would never put it back.
 
 ⚑ **`run_args` sits here with the other three, not behind a set borrowed from elsewhere.** It is a
 modeled field exactly like them; the only thing odd about it is that its VALUE is not a table
-(`_SCALAR_WRITABLE_KEYS`, below). *(Measured by removing it: `cfg.state` gains `run_args: "['--a',
-'--b']"` — the `str()` of the list — beside the correctly typed field: two carriers of one key in
-the record, disagreeing in TYPE, with nothing refusing either. It is NOT that the undeclared-state refusal never
-sees it: `run_args` is declared, so that refusal would see it and ACCEPT it.)*
+(`_SCALAR_WRITABLE_KEYS`, below). Without it, `cfg.state` would gain the `str()` of the list beside
+the correctly typed field — two carriers of one key in the record, disagreeing in TYPE — and the
+undeclared-state refusal would accept it, since `run_args` is declared.
 
 ```_FLAT_AGENT_CATEGORIES: tuple[str, ...] = tuple(sorted(CATEGORY_FAMILY_ROOTS))```
-EVERY category the file stores FLAT under `self` — DERIVED from `settings_categories.CATEGORY_FAMILY_ROOTS`
-(it was a literal copy of that set). It is NOT the dest-keyed set (`settings_keyspace.TERMINAL_CATEGORY_TAILS`):
+EVERY category the file stores FLAT under `self` — DERIVED from `settings_categories.CATEGORY_FAMILY_ROOTS`.
+It is NOT the dest-keyed set (`settings_keyspace.TERMINAL_CATEGORY_TAILS`):
 `env` and `secret_path` are VAR-keyed families stored flat as well. **EIGHT TOKENS, NINE CATEGORIES** — `bindings` is
 one token whose `{ro, rw}` table rides WHOLE, exactly as the canonical `agent.<node>.bindings` key
 holds both arms. ORDER IS NOT SIGNIFICANT. It is ALSO `_read_address`'s category set, so the shape a
@@ -155,8 +136,7 @@ value is STORED in and the shape the cascade READS are one fact rather than two 
 ```_ROOT_TABLES: Final[frozenset[str]] = _MODELED_KEYS | frozenset(_FLAT_AGENT_CATEGORIES)```
 ⚑⚑ **THIS SET *IS* THE REFUSAL RULE.** There is no second, enumerated list of refused names,
 because there is nothing to enumerate: what is not in here is refused. That is P4 — the
-representation deletes the code that would otherwise enforce the rule — and it is what replaced the
-`_REFUSED_NESTED_AGENT_CATEGORIES` tuple plus its per-category loop.
+representation deletes the code that would otherwise enforce the rule.
 
 The argument the rule rests on: a dict-valued root key outside this set is a nested `self.<sub>:`
 sub-table, and `self` is NOT A KEY — it SUBSTITUTES to `agent.<agent>`, so `self.<sub>.<x>` READS
@@ -165,44 +145,35 @@ sub-table, and `self` is NOT A KEY — it SUBSTITUTES to `agent.<agent>`, so `se
 UNIFORM over any `<sub>`, which is why the literal `default` refuses on the same line.
 
 ⚑ **So the set holds one key whose value is not a table, deliberately** (`_SCALAR_WRITABLE_KEYS`). A
-malformed dict-valued `run_args:` is a mistyped scalar, not a nested sub-table; it keeps its old
-handling — `load` coerces it and the carrier never captures it — rather than becoming a refusal about
-nesting (pinned by `test_schema_owned_dict_keys_never_captured`). `name` was the other such key until
-D8b retired it, so a dict-valued `name:` refuses as a nesting now.
+malformed dict-valued `run_args:` is a mistyped scalar, not a nested sub-table: `record` coerces it
+and the carrier never captures it, rather than refusing it as nesting (pinned by
+`test_schema_owned_dict_keys_never_captured`). A dict-valued `name:` refuses as a nesting.
 
 ```_CARRIED_CATEGORIES: Final[frozenset[str]] = frozenset(_FLAT_AGENT_CATEGORIES) - _MODELED_KEYS```
 The categories that ride `AgentConfig.category_tables` OPAQUELY — every flat category the record
-does not model as a field. **ONE set for BOTH ends of the round trip**, which is what makes the
-old two-condition write guard unnecessary: a modeled table cannot be captured into the carrier
-(load) nor clobbered from it (write), and nothing the carrier can emit is a shape `load` refuses.
+does not model as a field. **ONE set for BOTH ends of the round trip**: a modeled table cannot be
+captured into the carrier (read) nor clobbered from it (write), and nothing the carrier can emit is
+a shape `record` refuses.
 
 ```_VERB_WRITABLE_CATEGORIES: Final[frozenset[str]] = frozenset({"env", "secret_path"})```
 The categories `agent set` can actually WRITE, and so the only ones a cure may name that verb for.
 ⚑ The dest-keyed families take a LIST value the verb cannot express — `agent set claude
 caches.X=…` would store a dotted literal — and **a message must never prescribe a verb that does
 not work** (the same rule `config_keys`' retired-bind cure follows). Their cure is the hand edit
-alone. *(Pinned per category, both directions, by
-`TestNothingNestsUnderSelfButTheCategories::test_the_nested_spelling_refuses_when_no_flat_table_exists`:
-the flat-table YAML is asserted for all nine, the verb line only where it is TRUE — `assert (verb in
-message) is (category in ("env", "secret_path"))`.)*
-⚑ **It is ALSO `_write_address`'s routing set, and that is one fact, not two** (S3): these are the only
+alone. Pinned per category, both directions, by
+`TestNothingNestsUnderSelfButTheCategories::test_the_nested_spelling_refuses_when_no_flat_table_exists`.
+⚑ **It is ALSO `_write_address`'s routing set, and that is one fact, not two**: these are the only
 categories holding a SCALAR per name, which is exactly why they are the only ones a scalar write can
 address AND the only ones a cure may name the verb for.
 
 ```_SCALAR_WRITABLE_KEYS: Final[frozenset[str]] = frozenset({"run_args"})```
 Every ROOT key that TAKES a scalar from the command line — the question *can a SCALAR be written AT
-this key?*, asked in its own words rather than borrowed. It used to be `IDENTITY_KEYS`
-(`kanibako.settings.agent_config`), subtracted below; that set meant *"the root keys that are NOT
-tables"* at this site, *"keep this out of `cfg.state`"* at `_MODELED_KEYS`, and *"admit this at the
-write door"* in `config_keys` — three unrelated jobs under one false name, dissolved 2026-09-18.
-Only the first two have successors: D8b DELETED the write-door allowlist rather than rehoming it —
-the §2d gate it short-circuited admits `run_args` unaided (`config_keys.py.md`, the agent-key gate).
-⚑ **This is the ONE enumeration of the three**; `agent_config.py.md` points here rather than telling
-it a second way.
+this key?*, asked in its own words rather than borrowed. "Keep this out of `cfg.state`" is
+`_MODELED_KEYS`' question, and the write door is the §2d agent-key gate, which admits `run_args`
+unaided (`config_keys.py.md`).
 ⚑ It is NOT a claim about the STORED shape: `run_args` takes the scalar and stores it as argv WORDS,
 so `_LIST_VALUED_KEYS` is a SUBSET of this set. A plain-scalar modeled key would belong here and not
-there. **That subset is ASSERTED at import beside `_LIST_VALUED_KEYS`, not left to prose** (P15): a
-member added there and not here fails loudly the moment the module loads.
+there. That subset is pinned by `test_agent_leaf_shape.py` (P15).
 
 ```_TABLE_VALUED_KEYS: Final[frozenset[str]] = _ROOT_TABLES - _SCALAR_WRITABLE_KEYS```
 Every ROOT key whose VALUE IS A TABLE — the complement, so it cannot drift from the shape the file
@@ -218,15 +189,9 @@ it as words. So a translation exists, and both ends of it live here — `stored_
 in, `stored_leaf_text` joins back out. ⚑ **BOTH ENDS ARE PUBLIC SINCE `[R169]`, AND THE REASON IS
 THAT THE SCOPE SETTINGS FILES HOLD THESE LEAVES TOO.** `write_leaf` / `read_leaf` are this file's
 callers of them; `config_interface`'s scope-file doors are the system / workset / box files'. The
-membership question is answered HERE either way, so no caller learns which leaves are lists.
-
-⚑ **THE DEFECT THAT PUT IT HERE (2026-08-29, measured on a real store).** The split lived in
-`agent_cmd`'s own writer and nowhere else, so the file had two write routes with two shapes:
-`agent set claude run_args="--e --f"` stored a list, `config set agent.claude.run_args="--c --d"`
-stored the string. `load` read a list or nothing, so the second route's value was accepted, echoed
-at rc 0 and DISCARDED — `agent show` printed no `run_args` line and the launch got no arguments,
-while `agent get` (which falls back to the raw file) echoed it back. Two carriers of one shape, the
-defect class this tree keeps closing.
+membership question is answered HERE either way, so no caller learns which leaves are lists. A
+split living in one writer alone gives the file two write routes with two shapes, and a value
+stored by the other route is reported set and delivered to no launch.
 
 ⚑ **THE PIN IS DERIVED FROM `AgentConfig`, NOT TYPED TWICE** (P13):
 `test_agent_file.py::TestTheArgvSHAPEIsTheFileS::test_the_list_valued_set_is_exactly_AgentConfig_s_
@@ -287,7 +252,7 @@ the key itself (`agent_cmd._agent_key_gate`, `config_interface`'s retired-route 
 refusal owes the user a cure this function cannot phrase. Reaching it means a caller skipped one of
 two gates: the VALUE-SHAPE one (`table_value_error` — the tail names a whole table) or the
 CLOSED-KEYSPACE one (`config_keys.agent_write_key_error` — a dotted tail under anything but the two
-var-keyed categories is not a key at all, and writing it would lay down a nested sub-table `load`
+var-keyed categories is not a key at all, and writing it would lay down a nested sub-table `record`
 then REFUSES).
 
 ```_is_table_valued(tail: str) -> bool```
@@ -299,8 +264,8 @@ Does *tail* name a whole TABLE of the file, so that no scalar can live AT it? `e
 ```table_value_error(tail, *, path, verb) -> str | None```
 Why *tail* takes no scalar `agent set` / `agent reset` — **the D-7 cure.** `transform_settings`,
 `masks` and the dest-keyed tables all hold a MAP, so a scalar written at one is a wrong SHAPE, not a
-wrong value; until this refused, a scalar `transform_settings` crashed every subsequent `load` — i.e.
-every launch, list, info and show.
+wrong value; unrefused, a scalar `transform_settings` would break every later read — every launch,
+list, info and show.
 
 ⚑ **SET AND RESET TAKE IT ALIKE.** A CLI reset would remove the WHOLE table, a different operation
 from the per-entry removal the spelling suggests, and "set cannot reach what reset can" is the
@@ -355,10 +320,9 @@ shape).
 The two halves of the argv translation. `argv_words` is deliberately `str.split`, NOT
 `shlex.split` — adding quote handling would change the MEANING of values already on disk rather
 than fix one; a word that must contain a space is hand-edited into the list. `argv_text` is public
-because two display surfaces need it: `agent_cmd._show_agent_config` (which printed the Python repr
-`run_args = ['--a', '--b']` at the user) and `_get_agent_key`.
+because two display surfaces need it: `agent_cmd._show_agent_config` and `_get_agent_key`.
 
-⚑ **`argv_words` is public since `[R169]` (it was `_argv_words`), and the reason is the LAUNCH.**
+⚑ **`argv_words` is public because of the LAUNCH (`[R169]`).**
 The behavior table hands `run_args` over as the command-line string `argv_text` joined — so a
 stored list and a string hand-written into a YAML arrive at `start.py`'s `all_extra` seam
 identically — and that seam splits it back with THIS function. One parser, both directions, no
@@ -370,11 +334,9 @@ the value in the shape a FILE holds it in, or the value unchanged where this mod
 for the pair. `None` PASSES THROUGH, because it is the `--null` suppression idiom (spec §2h) and
 splitting it would forge an empty argv line.
 
-⚑ **IT WAS PRIVATE (`_stored_shape`) UNTIL `[R169]`, AND WHAT CHANGED IS NOT THE NAME.** It is now
-a SEAM: `config_interface` calls it to normalize before a value lands in a system, workset or box
-settings file, so that a `run_args` typed at the CLI is one shape on disk whichever command wrote
-it. Before that, `config set run_args="--z --y"` stored the string while `agent set` stored the
-list — the same two-carrier defect described above, one tier up.
+⚑ **IT IS A SEAM (`[R169]`):** `config_interface` calls it to normalize before a value lands in a
+system, workset or box settings file, so that a `run_args` typed at the CLI is one shape on disk
+whichever command wrote it.
 
 🛑 **THE ARGUMENT IS THE FILE TAIL, NEVER THE WRITTEN LEAF'S NAME**, and a caller that confuses the
 two breaks a user's data. A user may name an environment variable `run_args`; its tail is the
@@ -386,9 +348,8 @@ caller keying on the last segment of a key would shell-split every `env.<VAR>` s
 def stored_leaf_display(tail: str, value: object) -> str
 ```
 `stored_leaf_text`, falling back to `config_io.render_stored_scalar` for anything this module owns
-no rule for — **the composed pair, PUBLIC so no surface has to compose it again** (P10). It was
-private (`_render_argv`) and framed as `read_leaf`'s argv renderer until 2026-09-20; the body never
-was argv-specific, and every verb that shows a stored leaf owes BOTH halves. A surface taking only
+no rule for — **the composed pair, PUBLIC so no surface has to compose it again** (P10). Every verb
+that shows a stored leaf owes BOTH halves. A surface taking only
 the scalar half printed the Python repr `['--a', '--b']` at a user; one taking only the shape half
 printed `None` for a stored null. TOTAL, like the convention it falls back to.
 
@@ -400,9 +361,7 @@ The RAW value the file holds at *slot*, UNRENDERED, or `None` when it holds none
 
 🛑 **FOR A DOOR THAT JUDGES THE VALUE, WHICH `read_leaf` CANNOT SERVE.** The `get` renderings are
 deliberately not injective: a stored `""` and a stored `'""'` both read back `""` (spec §2h). So a
-door asking "did the user leave this empty?" must ask the OBJECT. `agent_cmd._agent_label` asked
-the text for one commit and discarded a user's two-character label, falling through to the
-plugin-declared one with no message.
+door asking "did the user leave this empty?" must ask the OBJECT (`agent_cmd._agent_label` does).
 
 🛑 **ABSENT AND A PRESENT-`None` BOTH ANSWER `None` HERE**, which is why this is not a `get` route:
 both mean "this file names no value at *slot*", exactly what a FALLING-THROUGH door wants and
@@ -413,67 +372,59 @@ present `run_args: []` is the user's explicit "no arguments", so it is a VALUE a
 the empty command line it is; the two-character `""` spelling is the empty STRING's, a different
 idiom (spec §2h) that must not be handed to a shape which is not it. The three states stay apart:
 absent → `None` (`(not set)`), present-empty-list → a blank line, present-with-words → the words.
-⚑⚑ **AND SINCE `[R169]` THE RECORD KEEPS THEM APART TOO** (`AgentConfig.run_args: list[str] | None`).
-It used to collapse absent and present-empty into one `[]`, which was harmless only while this file
-was the argv's sole source: now `agent.default.run_args` reaches a launch, so the difference is
-whether this agent OPTS OUT of that default or lets it through. The display convention here and the
-record's three states are the same fact, and they were briefly out of step — the file surface kept
-the pair apart while the record did not, so `agent get` reported an opt-out that no launch honored.
-⚑ A STRING here renders through the scalar convention unchanged — that is what the other write
-route stored before the routes agreed, and `load` reads it the same way.
+⚑⚑ **THE RECORD KEEPS THEM APART TOO** (`AgentConfig.run_args: list[str] | None`, `[R169]`):
+`agent.default.run_args` reaches a launch, so the difference is whether this agent OPTS OUT of that
+default or lets it through. The display convention here and the record's three states are the
+same fact.
+⚑ A STRING here renders through the scalar convention unchanged, and `record` splits it the same way.
 
 ```clear_overrides(path: Path) -> int```
 Drop every user override from the file at *path*; return the count.
 
-This was `agent reset --all`'s hand-rolled read-modify-write on the raw document, in a command
-module — the sixth shape site. "Remove all user overrides" is the `self:` root table deleted
+It is `agent reset --all`. "Remove all user overrides" deletes every table the file contributes
 outright — `run_args`, all state keys and every category table go with it — and the file is left
 SPARSE, no default key re-materialized in their place. WHICH tables go is `contributed_tables`
-(the root and, since Q92, the `agent:` table), so the reset clears exactly what the cascade reads.
-A `workset:` / `box:` table (unread until Q85) stays, uncounted. The COUNT is part of the
+(`self:`, `agent:`, `workset:` and `box:`), so the reset clears and counts exactly what the cascade
+reads. The COUNT is part of the
 contract, not a detail: **each removed LEAF counts once** (`config_io.count_leaves`) — a category
 table counts its entries, a list counts once — the unit every scope's `reset --all` prints.
 
 ⚑⚑ **IT IS THE REPAIR DOOR, SO IT REFUSES NOTHING.** It reads `contributed_tables`, never
 `_contribution`: a file carrying a stray top-level key, or an undeclared leaf under `self:`, stops
-`load` and the launch, and `agent reset <node> --all` must still clear it. A stray is not an
+`agent_record` and the launch, and `agent reset <node> --all` must still clear it. A stray is not an
 override, so it survives the reset and the next start still names it; the reset's job is the
 overrides. Pinned in `test_agent_cmd.py`.
 
-⚑ **NOTHING IS EXEMPT, AND THAT IS D8b (2026-09-15).** The one key it used to hold back — `name`,
-the file's non-key identity field, spared from the deletion and left out of the count — is retired,
-and a verb whose whole promise is that it clears the user's settings may not keep one of them. A
-file still carrying a `name:` line loses it here, and the printed number counts it: the count is
-every leaf of the root table. The widening is user-visible and recorded in `MIGRATION.md`.
+⚑ **NOTHING IS EXEMPT.** A verb whose whole promise is that it clears the user's settings may not
+keep one of them: a file still carrying a `name:` line loses it here, and the printed number
+counts it.
 
-⚑ **THE COUNT UNIT MOVED TWICE.** S2's flatten left it counting each ROOT key once (a category
-table was one override), while `config_interface.reset_all` counted a scope table's leaves — one
-`env:` table of two variables was 1 here and 2 under a workset file's `box:`. It counts leaves now,
-and the helper moved to `config_io` so both import one counter.
+The count is the unit `config_interface.reset_all` uses for a scope table: one `env:` table of two
+variables counts 2 here and under a workset file's `box:`, through one counter in `config_io`.
 
-```load(path: Path, *, node: str) -> AgentConfig``` · ```save(path: Path, cfg: AgentConfig) -> None```
-The WHOLE-FILE round trip — the `agent` verbs' own reads (`list` / `info` / `show` / `get`), every
-`start.py` read, `box show --effective`'s display, and the first-use generate.
+```record(level: AgentFileLevel, *, node: str) -> AgentConfig``` · ```save(path: Path, cfg: AgentConfig) -> None```
+The WHOLE-FILE round trip. `record` builds the record from `level_table`'s ACTIVE level for the
+file's own node; it is reached through `settings_assemble.agent_record(path, *, node, purpose)`,
+THE ONE READER of the agent file — the `agent` verbs' own reads (`list` / `info` / `show` / `get`),
+every `start.py` read and `config_interface`'s display. `save` is the first-use generate.
 
-⚑ **`load` RUNS EVERY REFUSAL THE FILE OWES, AS IT IS READ** (Q101 option 1: every settings file
-is checked for unknown keys as it is read) — the top-level stray check and the nested one, through
-`_contribution`, the one verdict `level_table` also takes, and the undeclared-leaf check
-(`_refuse_undeclared_state`). Two readers of ONE file must not disagree about what the file means.
-Before the first two moved here, `load` accepted shapes the launch refused, so `agent show`
-described a file that could not start a box; before the third moved here (S4 C2), `agent show` on
-`self: {model: opus, zippity: 1}` listed `zippity = 1` at rc 0 while the launch refused it. The
-escape hatch is intact: `agent reset --all` reaches `clear_overrides` only, never `load`.
-`load` also refuses the file's alias as its *node* (`settings_keyspace.file_alias_reason`): a
-leftover agent store folder named `self`, which 1.8.0-rc2's `system set agent.self.<key>` created,
-stops every reader by path, while `agent reset self --all` still clears it.
+⚑ **EVERY REFUSAL THE FILE OWES RUNS AS IT IS READ** (Q101 option 1: every settings file is
+checked for unknown keys as it is read). `agent_record` reads the file once through
+`read_settings_files`; `level_table` runs the top-level stray check and the nested one through
+`_contribution`, the one verdict the launch also takes; `record` runs the undeclared-leaf check
+(`_refuse_undeclared_state`). Two readers of ONE file must not disagree about what the file means,
+so `agent show` never describes a file that cannot start a box. The escape hatch is intact:
+`agent reset --all` reaches `clear_overrides` only, never `agent_record`.
+`agent_record` also refuses the file's alias as its *node* (`settings_keyspace.file_alias_reason`):
+a leftover agent store folder named `self` stops every reader by path, while
+`agent reset self --all` still clears it.
 
 ⚑ **THE RECORD HOLDS BOTH SPELLINGS OF THE FILE'S OWN NODE** (`_own_node_settings`, S4): `self:`
 and the `agent:` table's entry for *node* (folded, Q87) are united before the record is built, so
-`agent list` / `get` / `show` / `info` display what the launch uses. Before, `agent: {claude: {model:
-b}}` in claude's file launched with `b` while `agent list` printed `-` and `agent get claude model`
-`(not set)`. The union (`utils.deep_merge`) loses nothing: `_refuse_two_spellings` has refused one setting
+`agent list` / `get` / `show` / `info` display what the launch uses. The union (`utils.deep_merge`)
+loses nothing: `_refuse_two_spellings` has refused one setting
 written under both. The verbs show a setting once, with no mark of which spelling holds it — they are ONE key.
-The record now feeds the launch's state level with those values too, beside the `agent:` table
+The record feeds the launch's state level with those values too, beside the `agent:` table
 riding the level as *scope*: one value at one node, merged twice, one answer.
 ⚑ **`node` IS REQUIRED**, keyword-only. The undeclared-leaf check judges a leaf against ONE agent's
 declared keys, so a read that could not name its agent could not be checked at all; and every
@@ -483,89 +434,67 @@ the same route `agent info`'s positional takes).
 ⚑ **`agent list` stops at the first refused file**, by name. No list verb in the tree reports an
 error per row (the two that catch per row, `workset list` and `image list`, substitute a fallback
 value silently), and printing the row anyway would be the silent accept §0 bars. The loudest surface is `start.py`'s
-per-launch load, which is why the message quality matters more here than anywhere.
-⚑ The stray check used to be CASCADE-ONLY because its drop-set lived in `settings_assemble`
-(importing it here closes a cycle); `settings_drops` now sits below both, so `load` passes the
-tables the cascade drops (`pref:`, `meta:` …) instead of refusing them.
+per-launch read, which is why the message quality matters more here than anywhere.
+⚑ The stray check reads its drop-set from `settings_drops`, which sits below both this module and
+`settings_assemble`, so it passes the tables the cascade drops (`pref:`, `meta:` …) instead of
+refusing them.
 
 ⚑ **Sparse on the way out**: an EMPTY category is not materialized, or `agent reset --all` would
-count a phantom `{}` as an override. ⚑ **`category_tables` is an OPAQUE carry** — RENAMED from
-`node_tables` at S2, and the name is the fact: there is no per-node sub-table any more, so what the
-carrier holds is exactly the flat categories the record has no field for. Guarded at BOTH ends by
-ONE set (`_CARRIED_CATEGORIES`), which is also why nothing it emits is a shape `load` would refuse.
-**Measured: no live caller makes the load→write round trip it protects** — all four `save` callers
-persist a freshly generated config (both `start.py` sites gate on `agent_cfg_dirty`,
-first-use-only; both `cli.py` sites build inline). A guard, not a live guarantee. 🛑 The rule for
+count a phantom `{}` as an override. ⚑ **`category_tables` is an OPAQUE carry**: there is no
+per-node sub-table, so what the carrier holds is exactly the flat categories the record has no
+field for. Guarded at BOTH ends by ONE set (`_CARRIED_CATEGORIES`), which is also why nothing it
+emits is a shape `record` would refuse. **No live caller makes the read→write round trip it
+protects** — all three `save` callers persist a freshly generated config (both `start.py` sites
+gate on `agent_cfg_dirty`, first-use-only; the one `cli.py` site builds inline). A guard, not a
+live guarantee. 🛑 The rule for
 moving a category INTO `_MODELED_KEYS`, and the data-loss shape that breaks if it is ignored, is at
 that constant's own block above.
 
-⚑ **`load` and `save` are the ONLY names for this round trip** (S1b). The transitional
-`agent_config.load_agent_config` / `write_agent_config` forwards — the S1b BRIDGE, which existed
-only because `start.py` was held by the P4b lane — are DELETED, together with the flat
-`kanibako.agent_config` shim that re-exported them. ⚑ **That whole shim is GONE in v1.8.0** —
-the four flat re-export modules were deleted outright (clean break, no deprecation window), so
-`import kanibako.agent_config` now raises `ModuleNotFoundError`; the module is
-`kanibako.settings.agent_config`. `commands/start.py` imports this module and
-calls `agent_file.load` / `agent_file.save`, and `tests/conftest.py` patches `load` HERE.
-`agent_file_route` needed no bridge and is likewise GONE (its body SPLIT at S3 into `_read_address` and `_write_address`).
+⚑ **`agent_record` / `record` and `save` are the ONLY names for this round trip.** The record type
+lives in `kanibako.settings.agent_config`; there is no flat `kanibako.agent_config` module.
 
-### What `load` coerces, and the three places it deliberately does NOT
+### What `record` coerces, and the three places it deliberately does NOT
 
 **Flat state is the SCALAR knobs only.** `cfg.state` takes every root entry that is neither a
 MODELED key nor dict-valued. A category table (`env`, `secret_path`, `bindings`, …) is a dict, so
 it is never flat state. `cfg.state` serves the agent verbs' reads; the launch reads the file's root
 through `level_table`'s *state*, set beside the categories by `settings_assemble._agent_partial`.
 
-⚑ **The test is EVERY modeled key, not just the one with a scalar slot (S3/D-7).** A narrower test
-differs only for a MALFORMED file: a scalar written where a table belongs (`env: oops`) is not
-dict-valued, so it swept into state and the launch then carried a modeled field's garbage as an
-agent-state knob. ⚑ Dropping `run_args` from the set is the same defect from the other side —
-**measured 2026-09-18**: `run_args: ["--a", "--b"]` then lands in `cfg.state` as the string
-`"['--a', '--b']"` beside the properly typed field, where every reader of the record sees it.
-`_refuse_undeclared_state` does NOT catch that — `run_args` is a declared §2d leaf, so the
-§0 gate accepts it.
+⚑ **The test is EVERY modeled key, not just the one with a scalar slot.** A narrower test differs
+only for a MALFORMED file: a scalar written where a table belongs (`env: oops`) is not dict-valued,
+so it would sweep into state and the launch would carry a modeled field's garbage as an
+agent-state knob. Dropping `run_args` from the set is the same defect from the other side: the
+list's `str()` would land in `cfg.state` beside the properly typed field, and
+`_refuse_undeclared_state` would not catch it — `run_args` is a declared §2d leaf.
 
-⚑ **A `None` value is KEPT as `None`, never coerced through `str()`** — the 2026-08-17 ruling, and
-it applies to `state`, to `secret_path` **and, since 2026-09-20, to `env`**. 🛑 `env` was the one
-table left out, two lines from `secret_path` in the source and disagreeing with it about one
-idiom, and the miss is instructive: `AgentConfig.env` was typed `dict[str, str]`, so the coercion
-was not a choice the reader made but one the RECORD forced. The four-byte `"None"` then sat INSIDE
-the record, past every file-level fallback — which is exactly why `agent get <node>
-secret_path.<VAR>` printed `null` while `agent get <node> env.<VAR>` printed `None` over the same
-YAML. The field is `dict[str, str | None]` now. The coercion used to turn a hand-edited or
-`--null`-written `model: null` into the four-byte string `"None"`: a BOGUS model id that reached the
-launch cascade as a real value, silently defeating the exact "this persona needs no model"
-declaration the persona-model gate now depends on. The cascade reads the file's values verbatim
+⚑ **A `None` value is KEPT as `None`, never coerced through `str()`** — in `state`, in
+`secret_path` and in `env`, which is why `AgentConfig.env` and `.secret_path` are typed
+`dict[str, str | bool | None]`: a record typed `dict[str, str]` would FORCE the coercion. Coerced,
+a hand-edited or `--null`-written `model: null` would become the four-byte string `"None"`: a BOGUS
+model id reaching the launch cascade as a real value, silently defeating the "this persona needs no
+model" declaration the persona-model gate depends on. The cascade reads the file's values verbatim
 (`settings_assemble._agent_partial`), so a present-`None` survives all the way to its per-key
 active-over-default pick — exactly where it needs to keep meaning "explicitly reset/keyless" rather than a string. For
 `secret_path` the same `None` means "this VAR is deliberately keyless": a DECLARED third state, not
-a malformed second one, where the old coercion produced a garbage path indistinguishable from a
+a malformed second one, where coercion would produce a garbage path indistinguishable from a
 typo'd one. A `secret_path` value is a POINTER — the file's CONTENTS are never persisted here nor
 read, only ro-mounted and exported IN-BOX at launch.
 
-⚑ **A stored `run_args` STRING is SPLIT, not discarded**, and that is what made the write routes'
-old disagreement recoverable without touching anyone's data. This reader took a list or NOTHING, so
-every value the `config set agent.<node>.run_args=…` route wrote — verbatim, as a string — came
-back empty. It is a READ rule, not a shim: nothing writes a string here any more, the files that
-route already wrote work from the next command on, and the next `save` normalizes them. A bare
+⚑ **A stored `run_args` STRING is SPLIT, not discarded** — a READ rule, so a string hand-written
+into the file works, and the next `save` normalizes it. A bare
 `run_args:` parses to `None` and means "no arguments", never the word `"None"` — the same trap the
 `model: null` paragraph above records; anything else scalar is one word's worth of text and splits
 like one. ⚑ **The KEY'S ABSENCE is read by MEMBERSHIP (`"run_args" not in agent_sec`), not by the
 value being `None`, and the record then holds `None` rather than `[]`** — the three-state read
 (`[R169]`). A bare `run_args:` is a PRESENT "no arguments" and still loads as `[]`, so the two
 `None`-looking YAML shapes part company here: one says nothing, the other refuses the any-agent
-default. *(The old pin `test_run_args_must_be_list` asserted the empty list and was true of the
-code while wrong about the product; it is replaced by
-`test_a_stored_run_args_STRING_is_split_not_discarded`.)*
+default. Pinned by `test_a_stored_run_args_STRING_is_split_not_discarded`.
 
-⚑ **Every modeled table is ISINSTANCE-GUARDED, so the record builds** (S3/D-7). The guard used to
-be the whole answer — the READ side stayed permissive so `agent info` / `list` / `show` could show
-a broken file — and for `env` / `secret_path` that made `self: {env: 5}` vanish from BOTH readers
-while `agent: {claude: {env: 5}}` refused. Since S4 a VALUE where either category's table goes is
-refused by name at the end of `load` (`agent.<node>.env` is a namespace), under both spellings;
-`agent reset --all` is still the door that opens the file. Only `transform_settings` — a declared key,
-whatever its shape — is still coerced to `{}` here. The WRITE side refuses a wrong shape
-(`table_value_error`).
+⚑ **Every modeled table is ISINSTANCE-GUARDED, so the record builds.** A VALUE where `env`'s or
+`secret_path`'s table goes is refused by name at the end of `record` (`agent.<node>.env` is a
+namespace), under both spellings; `agent reset --all` is the door that opens the file. Only
+`transform_settings` — a declared key, whatever its shape — is coerced to `{}` here. The WRITE side
+refuses a wrong shape (`table_value_error`).
 
 **`save` is sparse for the same reason at both ends.** An EMPTY `transform_settings: {}` or `env: {}`
 would be counted as an override by `agent reset --all`, so nothing empty is materialized.
@@ -613,7 +542,7 @@ Which nodes of *scope* each tier takes is `settings_assemble._scope_nodes`' call
 The top-level refusals run first, then the nested one. A missing `self` table, or a non-dict
 root, yields an empty *table*; the level still carries the file's `agent:` table as *scope*.
 
-```_nested_agent_cure(category: str | None, sub_key: str, *, var: str, value: str) -> str```
+```_nested_agent_cure(category: str | None, sub_key: str, *, entries: list[tuple[Any, Any]], rest: list[str], placeholder: bool = False, home: _SubHome | None = None) -> str```
 The ARM-APPROPRIATE fix for a refused `self.<sub>:` sub-table.
 
 ⚑ **The EXPLANATION is uniform (alias expansion); the CURES are not** — which is why this is a
@@ -635,14 +564,10 @@ function and not one message. THREE arms:
 `_refused_category` picks the first category the refused sub-table holds, in FILE order rather than
 sorted: it names the table the user wrote first, which is the one they are most likely looking at.
 
-⚑ **BOTH ROUTES MEASURED LIVE (2026-08-14), FOR EVERY CATEGORY** — a cure naming a dead route is
-worse than no cure. The agent-file `self: default: <cat>:` and the system-file `agent: default:
-<cat>:` emitted byte-identical `CategoryEntry` lists, non-empty, for all six; the `agent set <node>
-secret_path.<VAR>=<path>` verb is live (`test_agent_cmd.py::test_config_set_secret_path_key`). The
-all-agents seed route is exercised end to end on the production path by
-`test_start.py::TestApplyInitSeeds::test_all_agents_seed_tier_is_the_system_file`, which exists
-precisely so the flatten cannot prove "the tier stopped working here" without also proving "it
-still works there".
+⚑ **Every route a cure names is live** — a cure naming a dead route is worse than no cure. The
+`agent set <node> secret_path.<VAR>=<path>` verb is pinned by
+`test_agent_cmd.py::test_config_set_secret_path_key`, and the all-agents seed route end to end on
+the production path by `test_start.py::TestApplyInitSeeds::test_all_agents_seed_tier_is_the_system_file`.
 
 ```_refuse_nested_tables(root_tbl: dict, *, node: str | None, path: Path | None) -> None```
 RAISE when the file's ROOT holds a table that is not one of its own.
@@ -651,26 +576,12 @@ RAISE when the file's ROOT holds a table that is not one of its own.
 in `_ROOT_TABLES` is a nested sub-table and refuses by name.* One rule closes FOUR cases a
 per-category loop needed separate handling for, or could not express at all: the CATEGORY case, the
 STATE case (a scalar carrier, D-3), the all-agents `default` arm, and every spelling nobody has
-thought of yet. It replaced `_REFUSED_NESTED_AGENT_CATEGORIES` plus its loop, and with them the
-standing hazard that the refused list and the flat list would drift.
-
-*(MUTATION-MEASURED, 2026-08-14: neutering the predicate — `if True: continue` — turns **64 named
-refusal cases red across four files** and NOTHING else: every case of
-`TestNothingNestsUnderSelfButTheCategories` (all 9 categories × 5 tests),
-`TestLevelTable::test_nested_category_refuses_by_name` (9 × 2 tiers),
-`test_nested_state_refuses_too`, `test_an_unknown_root_table_refuses_even_with_no_category_in_it`,
-`TestLoadSharesTheRefusal::test_load_refuses_what_the_cascade_refuses`,
-`test_settings_assemble::test_another_agents_sub_table_in_the_agent_file_refuses` and
-`test_agent_envs::test_a_second_node_level_under_self_refuses_naming_the_spelling`. The 200+ other
-launch tests, 80 assemble tests and 54 agent-file tests stay green — the predicate is the sole
-enforcement, and the pins are on it rather than beside it.)*
-
-*(AND THE WIDENING IS LOAD-BEARING PER CATEGORY: dropping `bindings` from `_FLAT_AGENT_CATEGORIES`
-reds exactly 13 bindings-specific tests across four files while `test_agent_envs.py` stays fully
-green — the categories are not riding one another's coverage.)*
+thought of yet. There is no refused list to drift from the flat list. The predicate is the sole
+enforcement, and the pins (`TestNothingNestsUnderSelfButTheCategories`, `TestLevelTable`) are on it
+rather than beside it.
 
 ⚑ **PRESENCE, not truthiness.** An empty `claude: {}` is still the refused spelling. ⚑ But a BARE
-`claude:` leaf parses to `None` and is NOT refused HERE: it is not a table, so `load` sweeps it
+`claude:` leaf parses to `None` and is NOT refused HERE: it is not a table, so `record` sweeps it
 into state as the scalar it parsed to, like any other root leaf, and the undeclared-leaf check
 (`_refuse_undeclared_state`) refuses it there by name.
 
@@ -681,11 +592,10 @@ that only asserts "not a key" is authority; one that says *your spelling reads
 know. The `node` parameter exists for exactly that sentence.
 
 ⚑ **WHY REFUSE A SPELLING THAT RESOLVED.** Not a rename and not migration machinery — §0 applied to
-a spelling that never named a key. Before the refusal the nested table resolved to the very SAME
-`agent.<node>.<category>.*` keys as the flat one, so two spellings meant one thing (code
-conventions rule 0), and a file carrying both lost the nested table WHOLESALE — every entry spelled
-only there vanished with no message. The refusal makes that loss unreachable rather than merely
-documented.
+a spelling that never named a key. Unrefused, the nested table would resolve to the very SAME
+`agent.<node>.<category>.*` keys as the flat one, so two spellings would mean one thing (code
+conventions rule 0), and a file carrying both would lose the nested table WHOLESALE — every entry
+spelled only there would vanish with no message. The refusal makes that loss unreachable.
 
 🛑 **DIFFERENT LAYER, DIFFERENT RAISE from the cross-scope twin refusal** (`store_collapse.
 _refuse_env_twin`, the sole twin raise site). That one arbitrates two DECLARED keys contesting one
@@ -695,8 +605,9 @@ Neither weakens the other and neither test may stand in for the other's.
 ```contributed_tables(raw: Any) -> dict``` · ```_contribution(raw, *, node, path) -> dict```
 `contributed_tables` answers WHICH top-level tables the cascade reads (`_CONTRIBUTED`) and judges
 nothing; `_contribution` is the same answer after the file's TOP-LEVEL refusals. Every reader
-that JUDGES the file (`level_table`, `load` — so `agent show` / `info` / `list` / `get` as well as
-the launch) takes `_contribution`; the reset takes `contributed_tables`, and stays the repair door.
+that JUDGES the file (`level_table`, so `agent_record` — `agent show` / `info` / `list` / `get` —
+as well as the launch) takes `_contribution`; the reset takes `contributed_tables`, and stays the
+repair door.
 
 ⚑ **THE FIVE TOP-LEVEL REFUSALS `_contribution` RUNS**, in order: `_refuse_stray_roots` (below);
 `_refuse_scope_value` — a VALUE where the `agent:` table's node tables go (`agent: 5`), which merged
@@ -717,37 +628,36 @@ its leaves, except that a TABLE-VALUED agent key (`settings_keyspace.TABLE_VALUE
 `settings_resolve.normalize_bind_dest` (`/a/` is `/a`). `env.A` beside `env.B` merges; so do two
 dests of one arm. Every pair is named AS WRITTEN. It needs *node*, so a caller that passes none
 skips it. Pinned in `test_agent_file.py` (`TestTheAgentTable`) and `test_agent_cmd.py` (the verbs). ⚑
-`_CONTRIBUTED` is the ONE constant the later passes grow: `agent:` joined it with Q92's read;
-`workset:` / `box:` join when Q85's defaults-down merge does. `settings_assemble.cascade_view` reads
-the agent file through `contributed_tables` too, so the verbs judge what the merge reads.
+`_CONTRIBUTED` is the ONE constant every reader takes: `agent:` (Q92), `workset:` and `box:` (Q85).
+The reader's view (`settings_assemble.read_settings_files`, and so
+`config_interface._noun_stored_view`) takes the agent file through `contributed_tables` too, so the
+verbs judge what the merge reads.
 
 ```_refuse_stray_roots(raw: dict, *, node: str | None, path: Path | None) -> None```
 RAISE on a key at the FILE's top level that the file neither contributes nor drops (spec §0).
 
 ⚑ **WHY IT HAS TO BE HERE.** In the other settings files an unknown top-level entry rides into the
 launch snapshot, where `settings_launch._refuse_undeclared_snapshot` can refuse it by name. This file
-contributes only its root table, so a stray beside `self:` never reached that audit: a `model:`
-written one level too high set nothing and said nothing (a `v1.7.2` behavior too — its reader also
-took `self` alone).
+contributes only its own tables, so a stray beside `self:` would never reach that audit: a `model:`
+written one level too high would set nothing and say nothing.
 
 ⚑⚑ **THE TABLES THE CASCADE DROPS ARE NOT STRAYS.** `system:`, `meta:`, `binding_derivations:`
 and `pref:` (`settings_drops.cascade_drop_set("agent")`) are dropped WITH A WARNING by
-`assemble_levels` before `level_table` runs; `load` sees them undropped, so the rule passes them by
-the same derivation. `agent:` is not a stray: it is READ (`Q92`, `_CONTRIBUTED`). 🛑 `workset:` /
-`box:` are passed over UNREAD, and that is a GAP, not a rule: spec §0 (*"a settings file
-contributes keys of its OWN scope and of scopes it CONTAINS"*) and `Q85` make them inputs, merged
-defaults-down. Each stops being passed over when it joins `_CONTRIBUTED`; refusing them meanwhile
-would refuse a table the spec reads. Pinned in
+`assemble_levels` before `level_table` runs; a non-launch reader sees them undropped, so the rule
+passes them by the same derivation. `agent:`, `workset:` and `box:` are not strays: they are READ
+(Q92, Q85, `_CONTRIBUTED`; spec §0, *"a settings file contributes keys of its OWN scope and of
+scopes it CONTAINS"*). Pinned in
 `test_agent_file.py`: `TestLevelTable` (the refusal, and the scope-token control) and
 `TestTheStrayRuleOnTheProductionPath` (every upstream drop, DERIVED from the drop rules, still warns
 and builds).
 
-⚑ It runs in `level_table` AND `load`, through `_contribution`; never in `clear_overrides`.
+⚑ It runs in `level_table`, through `_contribution`, so in every `agent_record` read and the
+launch; never in `clear_overrides`.
 
 ```_refuse_undeclared_state(entries, *, node, path) -> None``` · ```_undeclared_entries(own, scope, *, node)``` · ```_node_tables(own, scope, *, node)```
 RAISE naming EVERY agent-file entry that is not a declared key (spec §0), once each, in one
 refusal, as the launch's `settings_launch._refuse_undeclared_snapshot` does — the last refusal
-`load` runs. Each entry is `(shown, spelled, reason)`, produced by `_undeclared_entries` over the
+`record` runs. Each entry is `(shown, spelled, reason)`, produced by `_undeclared_entries` over the
 file's node tables (`_node_tables`: `self:` judged as the file's own *node*, then each `agent:` node
 as the cascade folds it, Q87) in TWO passes, each the launch's own verdict:
 
@@ -757,22 +667,20 @@ as the cascade folds it, Q87) in TWO passes, each the launch's own verdict:
    `agent.default.bogus`, `agent.Claude.bogus` and `agent.claude.self` (refused) and on
    `agent.nosuchharness.x`, `agent.goose.provider` and `agent.claude+nav.bogus` (conceded). A
    category key holding a value is judged like any key, so `env: 5` refuses and `caches: 'x'` is
-   conceded, as the launch does. ⚑ **`self:` takes the SAME partition since S4**; it used to judge
-   only its flat state (no modeled key, no dict), so `self: {env: 5}` was never judged at all;
+   conceded, as the launch does. ⚑ **`self:` takes the SAME partition**, so `self: {env: 5}` is
+   judged too;
 2. every PATH, category contents included, through the launch's whole-snapshot audit
    (`settings_keyspace.undeclared_store_paths` over `settings_keyspace_probe.keyspace_verdict`, the
    node table placed at `agent.<node>`): an undeclared bind arm (`bindings: {zz: …}`), a malformed
-   `env` VAR, and an `agent: {self: {}}` node. Before S4 these loaded clean while the launch refused.
+   `env` VAR, and an `agent: {self: {}}` node.
 
-⚑ **What pass 2 does NOT cover, measured:** three malformed bind entries — a retired name-keyed
-entry (`bindings.ro: {/x: {q: 1}}`), an entry of three elements, and a bare relative source — are
-refused by the launch in `settings_assemble`'s bind parse and still load clean (boarded, conformance
-S4). Two spellings of ONE node in the `agent:` table (`claude:` beside `Claude:`) are NOT in that
+⚑ **What pass 2 does NOT cover:** three malformed bind entries — a retired name-keyed entry
+(`bindings.ro: {/x: {q: 1}}`), an entry of three elements, and a bare relative source. They are
+refused by `settings_assemble`'s bind parse, which `agent_record`'s read runs as the launch does. Two spellings of ONE node in the `agent:` table (`claude:` beside `Claude:`) are NOT in that
 set: `_contribution` refuses them through `refuse_node_spelled_twice`, before either pass runs.
 
 ⚑ **THE PLUGIN UNION IS LOAD-BEARING, not a nicety.** `config_keys.agent_key_reason` unions the
 leaves the INSTALLED targets declare, and without it a legitimate `agent.goose.provider` would
 refuse a working box. The message names the key, says kanibako will not start a box on the file or display it, and
 points the cure at the file's own *path* — or at `kanibako agent reset <node> --all`, the one verb
-that still opens a refused file. (It used to say `kanibako agent info <node>` still listed what
-the file held; that became false when the refusal moved into `load`.)
+that still opens a refused file.
