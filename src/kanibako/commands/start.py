@@ -2558,9 +2558,11 @@ def _start_helper_hub(
     # ``sun_path`` limit.  ``std.runtime`` is ``$XDG_RUNTIME_DIR/kanibako``
     # resolved through the hardened XDG resolver (honor-iff-absolute,
     # with a warn-on-fallback to /run/user/$UID or a 0700 temp dir) —
-    # the single source of truth for the runtime base.
+    # the single source of truth for the runtime base.  It holds the helper
+    # socket, so a dir this creates is 0700, like the fallback base; an existing
+    # one keeps its mode.
     _run_dir = std.runtime
-    _run_dir.mkdir(parents=True, exist_ok=True)
+    _run_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
     # Socket name = ``<box>-<ws>``, hashed only when the path would overflow
     # ``sun_path``; reattach recomputes the same deterministic name.
     socket_path = helper_socket_path(proj, _run_dir)
