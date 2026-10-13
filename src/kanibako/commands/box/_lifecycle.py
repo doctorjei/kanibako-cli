@@ -4561,32 +4561,58 @@ def _relocate_snapshot_store(state: ProjectState, new_state: ProjectState) -> Pa
             file=sys.stderr,
         )
     else:
-        if carried is None and old_store.is_symlink():
-            print(_linked_store_note(state, new_state, old_store), file=sys.stderr)
+        note = _linked_store_note(state, new_state, old_store) if carried is None else None
+        if note is not None:
+            print(note, file=sys.stderr)
     return old_store if old_store.is_dir() else None
 
 
-def _linked_store_note(old: ProjectState, new: ProjectState, link: Path) -> str:
-    """The Note for an old store that is a link, which relocate never carries.
+def _linked_store_note(old: ProjectState, new: ProjectState, store: Path) -> str | None:
+    """The Note for an old *store* relocate left uncarried, or ``None``.
 
-    Not a refusal: the snapshots stay where the link points.  The relink cure is given
-    only when it is unambiguous: a shared new base, no store under the new name yet,
-    and a link that leads to a directory.
+    Not a refusal; the snapshots stay where they are.  Two cases:
+
+    * *store* is a link, which relocate never carries.  The relink cure is given only
+      when it is unambiguous: a SHARED old base (in an exclusive one a box could have
+      planted the link, and adopting it would let every auto-prune delete in a
+      box-chosen target), a shared new base, no store under the new name, and a link
+      that leads to a directory.  The command guards the destination at run time, so
+      it fails, leaving the old link, if a store appeared there since.
+    * *store* is a real directory, and the new store is repointed into it or onto one
+      of its parents (``stores_overlap``): nothing could be moved.  No command.
     """
     import os
 
-    from kanibako.snapshots import box_snapshot_store
+    from kanibako import boxfs
+    from kanibako.snapshots import box_snapshot_store, store_path, stores_overlap
 
     assert new.vault_rw is not None  # a store came back
-    target = os.path.realpath(link) if link.is_dir() else os.readlink(link)
-    note = (f"Note: '{new.name}' lists none of its old vault snapshots: {link} is a link "
+    new_store = box_snapshot_store(new.vault_rw, new.name)
+    if not store.is_symlink():
+        if not store.is_dir():
+            return None
+        try:
+            real_new, _root = store_path(new.vault_rw, box_name=new.name,
+                                         exclusive=new.mode is BoxMode.standalone)
+        except boxfs.SymlinkRefusedError:
+            return None  # relocate's own warning named it
+        same = real_new.exists() and os.path.samefile(real_new, store)
+        if same or not stores_overlap(store, real_new):
+            return None
+        return (f"Note: '{new.name}' was not given its old vault snapshots: its store "
+                f"{new_store} leads to {real_new}, which overlaps the old store {store}, "
+                f"so nothing was moved. The snapshots stay at {store}.")
+    target = os.path.realpath(store) if store.is_dir() else os.readlink(store)
+    note = (f"Note: '{new.name}' lists none of its old vault snapshots: {store} is a link "
             f"to {target}, and a linked snapshot store is never moved. The snapshots stay "
             f"at {target}.")
-    new_store = box_snapshot_store(new.vault_rw, new.name)
-    if (new.mode is not BoxMode.standalone and link.is_dir()
-            and not os.path.lexists(new_store) and new_store.parent.is_dir()):
-        cmd = (f"{shlex.join(['ln', '-s', '--', target, str(new_store)])} && "
-               f"{shlex.join(['rm', '--', str(link)])}")
+    if (old.mode is not BoxMode.standalone and new.mode is not BoxMode.standalone
+            and store.is_dir() and not os.path.lexists(new_store)
+            and new_store.parent.is_dir()):
+        dst = shlex.quote(str(new_store))
+        cmd = (f"[ ! -e {dst} ] && [ ! -L {dst} ] && "
+               f"{shlex.join(['ln', '-s', '--', target, str(new_store)])} && "
+               f"{shlex.join(['rm', '--', str(store)])}")
         note += f" To give them to '{new.name}', run: {cmd}"
     return note
 

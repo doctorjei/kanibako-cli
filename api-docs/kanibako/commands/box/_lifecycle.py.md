@@ -142,7 +142,7 @@ def _own_partition(state: ProjectState, std: StandardPaths) -> OwnPartition
 def _old_partition(old: ProjectState, std: StandardPaths, plan: _SourceTeardown) -> OwnPartition
 def _relocate_channel_partition(old: ProjectState, new: ProjectState, std: StandardPaths, plan: _SourceTeardown) -> None
 def _relocate_snapshot_store(state: ProjectState, new_state: ProjectState) -> Path | None
-def _linked_store_note(old: ProjectState, new: ProjectState, link: Path) -> str
+def _linked_store_note(old: ProjectState, new: ProjectState, store: Path) -> str | None
 def _old_snapshot_store(old: ProjectState, new: ProjectState) -> Path | None
 def _safe_unregister(std: StandardPaths, name: str) -> bool
 def _safe_register_membership(std: StandardPaths, name: str, workspace: Path) -> bool

@@ -747,7 +747,8 @@ class TestALinkedOldStoreIsNamed:
     """Relocate never carries an old store that is itself a link (as before); the move
     now says so, naming the link and its target, instead of listing none silently."""
 
-    def _move(self, tmp_path, capsys, *, target, new_mode=BoxMode.named):
+    def _move(self, tmp_path, capsys, *, target, new_mode=BoxMode.named,
+              old_mode=BoxMode.named):
         from kanibako.commands.box._lifecycle import _relocate_snapshot_store
 
         old, new = _rw(tmp_path / "old"), _rw(tmp_path / "new")
@@ -755,7 +756,7 @@ class TestALinkedOldStoreIsNamed:
         _versions_dir(new).mkdir()
         link = _versions_dir(old) / "a"
         link.symlink_to(target)
-        o = SimpleNamespace(vault_rw=old, name="a", mode=BoxMode.named)
+        o = SimpleNamespace(vault_rw=old, name="a", mode=old_mode)
         n = SimpleNamespace(vault_rw=new, name="b", mode=new_mode)
         _relocate_snapshot_store(o, n)
         return link, _versions_dir(new) / "b", capsys.readouterr().err
@@ -771,7 +772,8 @@ class TestALinkedOldStoreIsNamed:
         assert err.startswith(
             f"Note: 'b' lists none of its old vault snapshots: {link} is a link to {big}, "
             f"and a linked snapshot store is never moved. The snapshots stay at {big}. "
-            f"To give them to 'b', run: ln -s -- {big} {new_store} && rm -- {link}\n")
+            f"To give them to 'b', run: [ ! -e {new_store} ] && [ ! -L {new_store} ] && "
+            f"ln -s -- {big} {new_store} && rm -- {link}\n")
         assert not os.path.lexists(new_store) and _tree(big) == {TS: ("dir", None),
                                                                  f"{TS}/f": ("file", b"mine")}
         cmd = err.split("run: ", 1)[1].strip()
@@ -793,3 +795,75 @@ class TestALinkedOldStoreIsNamed:
                                             new_mode=BoxMode.standalone)
         assert err.startswith("Note: 'b' lists none of its old vault snapshots:")
         assert "run:" not in err
+
+    @pytest.mark.parametrize("appeared", ["dir", "link"])
+    def test_the_cure_fails_if_the_new_store_appeared(self, tmp_path, capsys, appeared):
+        """A store made under the new name since (e.g. a start's auto-snapshot): the
+        command fails and changes nothing -- no link filed inside it, the old one kept."""
+        import subprocess
+
+        big = tmp_path / "bigdisk"
+        _snap(big)
+        link, new_store, err = self._move(tmp_path, capsys, target=big)
+        cmd = err.split("run: ", 1)[1].strip()
+        if appeared == "dir":
+            _snap(new_store, "20250101T000000Z", "since")
+        else:
+            new_store.symlink_to(tmp_path / "nowhere")
+        before = _tree(tmp_path)
+        assert subprocess.run(cmd, shell=True).returncode != 0
+        assert _tree(tmp_path) == before
+        assert link.is_symlink()
+
+    def test_a_link_in_an_exclusive_old_base_gets_no_cure(self, tmp_path, capsys):
+        """A box could have planted it: the Note names it, no command adopts it."""
+        big = tmp_path / "bigdisk"
+        _snap(big)
+        link, _new_store, err = self._move(tmp_path, capsys, target=big,
+                                           old_mode=BoxMode.standalone)
+        assert err.startswith(f"Note: 'b' lists none of its old vault snapshots: {link} is "
+                              f"a link to {big},")
+        assert "run:" not in err
+
+
+class TestANestedRepointIsNamed:
+    """A new store repointed onto the old one's base, an ancestor, or inside it: nothing
+    is moved (``stores_overlap``), and a Note says where the snapshots stay."""
+
+    @pytest.mark.parametrize("into", ["inside-old-store", "old-base", "ancestor"])
+    def test_the_note(self, tmp_path, capsys, into):
+        from kanibako.commands.box._lifecycle import _relocate_snapshot_store
+
+        rw = _rw(tmp_path / "w")
+        store = _versions_dir(rw) / "a"
+        _snap(store)
+        target = {"inside-old-store": Path("a") / TS, "old-base": Path("."),
+                  "ancestor": Path("..")}[into]
+        (_versions_dir(rw) / "b").symlink_to(target)
+        new_rw = rw.parent / "b"
+        new_rw.mkdir()
+        before = _tree(tmp_path)
+        o = SimpleNamespace(vault_rw=rw, name="a", mode=BoxMode.named)
+        n = SimpleNamespace(vault_rw=new_rw, name="b", mode=BoxMode.named)
+        assert _relocate_snapshot_store(o, n) == store
+        err = capsys.readouterr().err
+        real = (_versions_dir(rw) / "b").resolve()
+        assert err == (f"Note: 'b' was not given its old vault snapshots: its store "
+                       f"{_versions_dir(rw) / 'b'} leads to {real}, which overlaps the old "
+                       f"store {store}, so nothing was moved. The snapshots stay at "
+                       f"{store}.\n")
+        assert _tree(tmp_path) == before
+
+    def test_an_alias_of_the_old_store_says_nothing(self, tmp_path, capsys):
+        """``.versions/b -> a``: the new name lists the same snapshots; nothing to say."""
+        from kanibako.commands.box._lifecycle import _relocate_snapshot_store
+
+        rw = _rw(tmp_path / "w")
+        _snap(_versions_dir(rw) / "a")
+        (_versions_dir(rw) / "b").symlink_to("a")
+        new_rw = rw.parent / "b"
+        new_rw.mkdir()
+        o = SimpleNamespace(vault_rw=rw, name="a", mode=BoxMode.named)
+        n = SimpleNamespace(vault_rw=new_rw, name="b", mode=BoxMode.named)
+        _relocate_snapshot_store(o, n)
+        assert capsys.readouterr().err == ""
