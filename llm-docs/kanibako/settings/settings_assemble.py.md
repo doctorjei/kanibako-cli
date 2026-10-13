@@ -7,16 +7,13 @@ walks. It performs READS and structural parsing ONLY: no merge / precedence, no 
 `~` expansion or cycle detection, no typed views, no `config set`. Tokens are left RAW inside binds
 (spec §0 "Files store entries UNRESOLVED").
 
-⚑ **This is the LIVE launch cascade, not a parallel build.** `assemble_levels` is called from
-`settings_launch.build_launch_snapshot`, which `commands/start.py` calls on the launch path (and
-again for `config show --effective`); `config_interface` and `commands/workset_cmd` call it
-directly. *(The module docstring used to say it "builds ALONGSIDE the live launch cascades
-(`commands/start.py`, `config.py:load_settings`) — it modifies none of them; the swap is block 7."
-All three parts of that were false at the time of this pass: the swap happened, `start.py`'s
-snapshot routes through here, and `config.py:load_settings` does not exist anywhere in the tree.
-Dropped rather than relocated.)*
-
-Provenance: block 2a of the KeyStore implementation.
+⚑ **This is the LIVE launch cascade.** Files are READ once, by `read_settings_files` (usually
+through `cascade_files`), for a `ReadPurpose` that fixes which refusals run; `assemble_levels` then
+builds the partials from those already-read files. The launch path is
+`settings_launch.build_launch_snapshot` → `cascade_files(ReadPurpose.RESOLVE)` →
+`settings_launch.assemble_cascade` → `assemble_levels`; `commands/start.py` calls it on the launch
+path and for `config show --effective`. `config_interface`, `paths`, and `commands/workset_cmd`
+read through `cascade_files` too.
 
 ## Authority
 
@@ -31,11 +28,8 @@ Provenance: block 2a of the KeyStore implementation.
   (a concrete agent name); §0 forbids a bare `agent.<key>`.
 * **Spec §2** (cascade + scopes) / **§2a** (categories + value types) / **§0** (namespace ORTHOGONAL
   to cascade; closed keyspace; files store UNRESOLVED).
-* **Keyspace audit 2026-06-27c #2** — the `machine` (`/etc/kanibako.yaml`) tier is CUT: the cascade
-  FLOOR is `base` (overridable) and the cascade ENDS at `box` (the former `required` non-overridable
-  cap was cut 2026-06-29f). Spec §2 states both directly. This module consults no machine path.
-  *(The source used to phrase this as "reads NO `machine_config_path()`"; that function no longer
-  exists anywhere in the tree, so the symbol name was dropped and the substance kept.)*
+* **Spec §2** — there is no `machine` tier: the cascade FLOOR is `base` (overridable) and the
+  cascade ENDS at `box` (no non-overridable cap). This module consults no machine path.
 * Historical (NOT AUTHORITY): `~/canon/notebook/archives/resources/keystore-2026-06/keystore-design.md`
   §2 (storage — partials are `KeyStore`s, binds are `Bind`). The per-entry reset the merge
   classifies as an OMIT: spec §2a "PER-ENTRY CASCADE MERGE".
@@ -51,7 +45,7 @@ Provenance: block 2a of the KeyStore implementation.
   TRUE discriminated keys (`agent.<active-name>.*` / `agent.default.*`, §2d) — NO bare-`agent`
   collapse; level order is the cascade precedence.
 * **S9** — binds parsed at ASSEMBLY with `@`-refs / `$vars` / `~` left RAW inside the entry
-  (expansion is block 3).
+  (expansion is `settings_expand`'s).
 * **S13** — ONE unified `KeyStore` partial per level holding BOTH behavior leaves AND category
   subtrees together (single source).
 * **S14** — no `machine` tier; floor → `base`; cascade ends at `box` (no `required` cap).
@@ -68,7 +62,7 @@ no such symbol exists in the tree. The fact is kept, the dead attribution droppe
 
 A file may hold keys of its OWN scope AND of scopes it CONTAINS (`system ⊃ agent ⊃ workset ⊃ box`)
 as OVERRIDABLE defaults-down — e.g. a workset file may set `box.*` and it flows. But **directional
-enforcement at RESOLVE** (spec §0, Jei-blessed 2026-07-02) DROPS a top-level table of a CONTAINING
+enforcement at RESOLVE** (spec §0) DROPS a top-level table of a CONTAINING
 scope found in a lower file (`system:` / `workset:` / `agent:` in a box file) at assembly, with a
 warning naming the file + token; it never enters the merge (`_drop_upward_scopes`).
 
@@ -99,15 +93,6 @@ Keeping the discriminator preserves §0 per-agent independence: `agent.<other>.*
 AGENT scope (or higher) survives the merge by its own name — but a box file may NOT set
 `agent.<other>.*` (that is an upward write, dropped above; a box tweaks its agent through the §2h
 `pref.agent.<agent>.<key>` request).
-
-⚑ *(The source said a box tweaks its agent "via the `box.agent.*` mirror, §2b". FALSE: a settable
-`box.agent.<key>` is RETIRED under P7 — `config_interface` refuses it by name at the get, set and
-reset sites via `config_keys.box_agent_retired_error`, and `bare_agent_key_scope_error`'s box arm
-redirects to `pref.agent.<agent>.<key>`. Spec §2b says it in as many words: "A box tweaks its agent
-with `pref.agent.<agent>.<key>` (§2h) instead." The only surviving `box.agent` spelling is the RO
-READ-BACK mirror `meta.box.agent.<key>` — a DIFFERENT key, and not a tweak channel. Corrected, not
-relocated. The same false claim was dropped from `commands/workset_cmd.py` by its own prose pass in
-`2c6b117`; this was the second carrier.)*
 
 ⚑⚑ **The agent file's SHAPE is not this module's** — `settings/agent_file.py` owns it (the root
 table, the flat-category splice, the nested refusal, the address a leaf writes to). What is left
@@ -143,23 +128,6 @@ The bind-shaped categories are `bindings.ro`, `bindings.rw`, `caches`, `seeded`,
 ⚑ **EVERY bind-shaped category is DEST-KEYED.** Each is a TERMINAL key whose value is a `BindMap` =
 `dict[box_dest → [src[, opts]]]` parsed to `BindEntry` leaves; the destination is the dict key and
 the entry's identity, and there is NO entry name (spec §2a REPRESENTATION).
-*(The `BIND_CATEGORY_TOKENS` comment described the leaf as the retired
-`[host_src, box_dest[, options]]` name-keyed pair and said "each is parsed to a `Bind` at assembly";
-both were false — `_parse_node`'s own note says no bind-shaped category reaches the `Bind` branch any
-more. Dropped, not relocated.)*
-
-⚑ **A DATE DISCREPANCY, DELIBERATELY NOT CARRIED HERE — and NOT fixed in the source either.** The
-source dated the four categories' move to dest-keying **2026-08-08c** in four prose sites and two
-raise messages. The **spec dates it 2026-08-07f** and says so in eleven places
-(§0 "it became true of `bindings` on 2026-08-06c and of the other four on 2026-08-07f"; §2a
-"`bindings` was ruled dest-keyed 2026-08-06c a& other four followed 2026-08-07f"; annotations §
-"Post-ratification amendment 2026-08-07f"). The `bindings` date, **2026-08-06c**, agrees everywhere.
-This is a REPO-WIDE discrepancy, not a local one — `2026-08-08c` appears 59 times across 17 source
-files — and two of this module's six sites are inside raise messages, which a prose pass cannot
-touch. Fixing four of six here would leave the file internally inconsistent, which is worse than the
-drift. **So the four prose dates were DROPPED rather than relocated, the two message dates were left
-alone, and the discrepancy is boarded for the director.** Do not re-add a date here from memory.
-
 ⚑⚑ **The category set that survives is about WHERE the map sits, not WHETHER there is one.**
 `bindings` is the one category whose token is not the whole key: it is followed by an ARM (`ro` /
 `rw`) and the map is one level DOWN. The other four ARE the map, terminal one level SHALLOWER.
@@ -178,70 +146,59 @@ flag of its own and there is no flag for a caller to get wrong (P6, P3).
 
 Two independent refusals live here. Both share a shape and a reason; they differ only in seam.
 
-⚑ **WHY THEY EXIST AT ALL, given that migration is DOCUMENTATION-ONLY for this arc** (IMPL-PLAN
-standing ruling 1). Neither is migration machinery: they read nothing, relocate nothing and write
-nothing. They are §0's CLOSED-KEYSPACE rule — *an undeclared key is an ERROR that NAMES it* — applied
-to spellings that were retired. The documentation-only ruling was made against failure modes of the
-"empty dir beside a populated one" shape; the failures here are categorically worse, and Jei's own
-M-7 ruling (hard error with a migration-grade message) is the precedent for loud in exactly this arc.
-Scope is deliberately TIGHT in both cases: these keys, nothing else. Neither IS general resolve
-enforcement — that landed separately in `settings_launch._refuse_undeclared_snapshot` — but both are
-now CALLED BY it (`_refuse_retired_spelling`), because the general refusal reaches a retired spelling
-first and would otherwise replace the message written for it with the generic one. Each remains the
-ONE carrier of its own text; the resolve seam calls, never copies.
+⚑ **WHY THEY EXIST AT ALL, given that migration is DOCUMENTATION-ONLY.** Neither is migration
+machinery: they read nothing, relocate nothing, and write nothing. They are §0's CLOSED-KEYSPACE
+rule — *an undeclared key is an ERROR that NAMES it* — applied to retired spellings, with a
+migration-grade message (the M-7 ruling). Scope is deliberately TIGHT: these keys, nothing else.
+
+**Seams.** Both run inside `read_settings_files`, over each file's VIEW (`_file_view`): the
+selection and mirror keys under `ReadPurpose.SELECT` (`settings.agent_select`), the behavior key
+under `ReadPurpose.RESOLVE` (the launch's `cascade_files` read and `agent_record`). Both also run
+through `retired_cure`, which picks the TAILORED message once §0 has decided to refuse: the launch's
+`settings_launch._refuse_undeclared_snapshot` and stage (h)'s `refuse_undeclared_entries` call it
+before the generic text, because the general refusal would otherwise replace the message written for
+a retired spelling. Neither runs inside `assemble_levels`: a raise there would break `config set`,
+the very command the message prescribes as the cure. Each remains the ONE carrier of its own text.
 
 **Selection and mirror keys (P7, spec §0 / §2b / §2g; migration M-4).** THREE retired spellings:
 `box.agent`, `box.agent_name` and `system.default_agent`. A box that SILENTLY RUNS A DIFFERENT AGENT
 — and seeds that agent's CREDENTIALS into itself — is the failure being prevented, so a silent drop
 is not an option. The CURE is LEVEL-DEPENDENT: a pref is legal only in a workset or box file (spec
 §2h), so telling a SYSTEM-file reader to `box set pref…` would prescribe a write that cannot fix
-their file. Called at the SELECTION seam (`settings.agent_select`) and, since the §0 resolve refusal
-was armed, from `settings_launch._refuse_retired_spelling` — which in practice reaches it first,
-because `load_merged_config` resolves before selection runs. NOT inside `assemble_levels`: a raise
-there would break `config set`, i.e. the very command the message prescribes as the cure.
-⚑ Both seams thread *box_ref* = `paths.project_cure_ref(proj)` (already shell-quoted; a member is
-`<workset>/<box>`, a standalone its root), and the resolve seam passes none for a box-less resolve,
-whose cure carries the `<box>` placeholder.
+their file. ⚑ The selection seam threads *box_ref* = `paths.project_cure_ref(proj)` (already
+shell-quoted; a member is `<workset>/<box>`, a standalone its root); `retired_cure` passes none, so
+its cure carries the `<box>` placeholder.
 
 ⚑⚑ **`box.agent` is TWO retirements sharing ONE file path, and the VALUE'S SHAPE is the
 discriminator.** Both are manifest `renamed` rows:
 
 * a **SCALAR** is the old agent-SELECTION key (`box.crab` → `box.agent` → `box.agent_name`, all of
   them cured toward `pref.system.agent`, §2h);
-* a **TABLE** is the retired SETTABLE MIRROR of the agent's settings, `box.agent.<key>` (R-4), cured
+* a **TABLE** is the retired SETTABLE MIRROR of the agent's settings, `box.agent.<key>`, cured
   toward the per-agent request `pref.agent.<agent>.<key>` (§2h). The `box.agent` spelling that
   SURVIVES is the RO read-back `meta.box.agent.<key>` (§2b) — a different key, not a tweak channel.
 
 One cure for both would send half of these users at the wrong key, so `refuse_retired_keys` reads
 the shape and hands `_retired_key_cure` a *mirror* argument that selects between the two. The
 FRAMING SENTENCE forks with it, which is why there are TWO story constants: *"a box no longer names
-its agent with a key of its own"* is false for someone who was tweaking an agent rather than naming
+its agent with a key of its own"* is wrong for someone who was tweaking an agent rather than naming
 one.
 
-**Behavior key (R-41, spec §2d; migration M-22).** R-41 replaced the boolean `auto_approve` with the
+**Behavior key (spec §2d; migration M-22).** The boolean `auto_approve` is retired in favor of the
 enum `access` (`restricted|editing|full`, default `full`). Under the closed keyspace the old spelling
-is UNDECLARED, and before the resolve refusal was armed an undeclared stored key was SILENT at launch
-— which on a PERMISSION axis meant a box deliberately configured `auto_approve: false` came up at the
-new `full` default with nothing printed. That is a safety-class silent regression in the UNSAFE
-direction, so the stale key is REFUSED (RQ-2, ruled by Jei 2026-08-02) with a level-appropriate cure
-that NAMES `access` and QUOTES the user's own value through the ruled mapping (`true` → `full`,
-`false` → `restricted`). ⚑ The generic refusal says none of that, which is why the resolve seam calls
-this one first. Two seams now: the LAUNCH's BEHAVIOR tier (`commands/start.py`) and
-`settings_launch._refuse_retired_spelling`; NOT `assemble_levels` — same reason as above.
-⚑ NOT EVERY SITE ARRIVES HERE, and none of the others is a silence. MEASURED: a
-`pref.agent.<node>.auto_approve` request is refused by `apply_prefs` — inside the assemble, so ahead
-of both seams — naming the key, the level and the file, but WITHOUT the tier translation. A
-`workset`/`box` file's `agent.<sub>.auto_approve` is dropped as an upward scope with a warning and
-never becomes a key at all — and since `cascade_view` the resolve seam agrees, so that table can no
-longer HIJACK another key's refusal to prescribe a cure for itself. The same now holds for a `pref:`
-table in a base / system / agent file, which §2h drops before the merge. The `system` file's
-`agent.<sub>.auto_approve` is the site MEASURED at
-the resolve seam. The agent file's own `self.auto_approve` gets this same message from whichever of
-the two seams a launch reaches first — `start.py`'s tier names the real agent, the resolve seam the
-`<agent>` placeholder — and which that is was NOT measured, only the message. ⚑ `base` IS scanned
-at the resolve seam, which appends `settings_base_path()` itself: a stale key in
-`/etc/kanibako/settings_base.yaml` defaults DOWN into every box on the machine, and that seam now
-runs ahead of `agent_select`'s own base scan.
+is UNDECLARED; on a PERMISSION axis a silently ignored `auto_approve: false` would bring a box up at
+the `full` default with nothing printed — a safety-class silent regression in the UNSAFE direction.
+So the stale key is REFUSED (a ruling) with a level-appropriate cure that NAMES `access` and QUOTES
+the user's own value through the ruled mapping (`true` → `full`, `false` → `restricted`). ⚑ The
+generic refusal says none of that, which is why `retired_cure` runs first.
+⚑ NOT EVERY SITE ARRIVES HERE, and none of the others is a silence. A
+`pref.agent.<node>.auto_approve` request is refused by `apply_prefs` naming the key, the level, and
+the file, but WITHOUT the tier translation. A `workset`/`box` file's `agent.<sub>.auto_approve` is
+dropped as an upward scope with a warning and never becomes a key at all; the scans read the VIEW,
+so that table cannot HIJACK another key's refusal to prescribe a cure for itself. The same holds
+for a `pref:` table in a base / system / agent file, which §2h drops before the merge. ⚑ `base` IS
+scanned: `cascade_files` reads `settings_base_path()` itself, and a stale key in
+`/etc/kanibako/settings_base.yaml` defaults DOWN into every box on the machine.
 
 ## Values
 
@@ -295,9 +252,8 @@ REFUSES; the file's top-level `agent:` table has the spelling, as every settings
 SYSTEM file's `agent: default:` table arrives on the system level below it.
 
 ⚑ `_FLAT_AGENT_CATEGORIES` · the nested REFUSAL · its cure placeholders MOVED to
-`settings/agent_file.py` with the machinery that reads them — see `agent_file.py.md`. *(The refusal
-is one PREDICATE over the root table there now, not the enumerated
-`_REFUSED_NESTED_AGENT_CATEGORIES` tuple this line used to name.)*
+`settings/agent_file.py` with the machinery that reads them — see `agent_file.py.md`. The refusal
+is one PREDICATE over the root table there.
 
 ```RETIRED_FILE_KEYS: dict[tuple[str, ...], str]```
 Retired agent-SELECTION and agent-MIRROR spellings: nested FILE path of the retired leaf → the
@@ -426,8 +382,8 @@ The three keys are `RETIRED_FILE_KEYS`. The message names the KEY, the FILE, the
 CHANGED, and the one-line cure — it must never read as "your config is wrong" (the M-7 precedent).
 Never a warning and never a silent drop: a dropped `box.agent_name` would leave the box launching the
 system default with that agent's credentials, which is the exact failure this refusal exists to
-prevent. Called at the SELECTION seam (`settings.agent_select`) and from the §0 resolve refusal
-(`settings_launch._refuse_retired_spelling`), not inside `assemble_levels`.
+prevent. Run by `read_settings_files` under `ReadPurpose.SELECT` (`settings.agent_select`) and by
+`retired_cure`, not inside `assemble_levels`.
 
 ⚑ **This is where the SHAPE discriminator is read:** a found `box.agent` holding a `dict` is the
 MIRROR, anything else is the agent NAME. That one test picks BOTH halves of the message — the story
@@ -445,38 +401,37 @@ Every (nested path, value) where *leaf* is present in *raw*.
 Walks exactly the `_BEHAVIOR_TABLE_SHAPES` — no free-form recursion, so an unrelated user key that
 happens to be spelled `auto_approve` deeper in some other table is not swept up.
 
-```_retired_behavior_cure(successor: str, *, level: str, tier: str, subject: str | None) -> str```
+```_retired_behavior_cure(successor: str, *, level: str, tier: str, subject: str | None, box_ref: str | None = None, node: str | None = None) -> str```
 The LEVEL-APPROPRIATE fix for a retired BEHAVIOR key (M-22).
 
-`access` is an AGENT-scope key, so where it may be WRITTEN depends on the file the stale value was
-found in — the same asymmetry `_retired_key_cure` handles for the selection keys:
+⚑ **The cure's agent is the node the entry is STORED under** (*node*, read from the entry's own
+path), never the agent being resolved (*subject*): a file may store another agent's entry. Only the
+agent file's root stores no node and falls back to *subject*; with neither, the cure renders
+`<agent>`. `access` is an AGENT-scope key (spec §2d), so where it may be WRITTEN depends on the file
+the stale value was found in — the same asymmetry `_retired_key_cure` handles for the selection keys:
 
-* `base` / `system` — a bare agent key is a DOWNWARD write from system scope, so the system verb sets
-  it for every agent.
-* `agent` — the per-agent file has its own verb (*subject* is the node).
+* `base` / `system` — `kanibako system set agent.<agent>.access=<tier>`; for the reserved `default`
+  tier, which has no node, the bare `kanibako system set access=<tier>`.
+* `agent` — the per-agent file has its own verb: `kanibako agent set <agent> access=<tier>`.
 * `workset` / `box` — a BARE agent key is an UPWARD write there (`agent ⊃ workset ⊃ box`) and is
-  dropped at assembly, so the legal spelling is the §2h REQUEST, which is exactly where a per-box
-  permission tier belongs.
+  dropped at assembly, so the legal spelling is the §2h REQUEST,
+  `kanibako <level> set <subject> pref.agent.<agent>.access=<tier>`.
 
-⚑ **Two different subjects, one word.** *subject* here names the AGENT node, NOT the box or workset
-the verb addresses. This seam is handed no box name at all, so the verb's own positional comes from
-`_cure_subject(level, None)` and is always the placeholder. Reading *subject* as the verb's subject
-is how this cure shipped as `workset set pref.agent.<agent>.access=full`, with the positional
-missing outright.
+⚑ **Two different subjects.** *subject* names the AGENT node; the verb's own positional (the box or
+workset) is *box_ref*, through `_cure_subject(level, box_ref)`, or a placeholder when none is given.
 
-```refuse_retired_behavior_keys(raw, *, level, path, subject=None) -> None```
-RAISE when *raw* still carries a RETIRED behavior key (R-41 / RQ-2).
+```refuse_retired_behavior_keys(raw, *, level, path, subject=None, box_ref=None) -> None```
+RAISE when *raw* still carries a RETIRED behavior key — `RETIRED_BEHAVIOR_KEYS`.
 
-Today that is exactly one key, `RETIRED_BEHAVIOR_KEYS`. The message names the KEY, the SPELLING
-found, the LEVEL, the FILE, the fact that THE RULE CHANGED, the user's own value translated through
-the RULED mapping, and the one-line cure. Never a warning and never a silent drop: the whole point is
-that an undeclared stored key is silent, and silence on the permission axis resolves to the PERMISSIVE
-default.
+The message names the KEY, the SPELLING found, the LEVEL, the FILE, the fact that THE RULE CHANGED,
+the user's own value translated through the RULED mapping, and the one-line cure. Never a warning
+and never a silent drop: silence on the permission axis resolves to the PERMISSIVE default.
 
-*subject* is the agent node the cure should name (the file's own node for an agent file, the box's
-active agent otherwise); `None` renders the shape `<agent>`. Called at the LAUNCH's behavior tier and
-from the §0 resolve refusal (`settings_launch._refuse_retired_spelling`, which passes no *subject* —
-it runs before agent selection, so naming one would be a guess), not inside `assemble_levels`.
+*subject* is the agent being RESOLVED, used only for the agent file's root, which stores no node;
+`None` renders `<agent>`. *box_ref* is the box or workset the `set` verb needs as its positional,
+passed straight through to `_retired_behavior_cure` and meaningful only at `level="box"`. Run by
+`read_settings_files` under `ReadPurpose.RESOLVE` and by `retired_cure` (which passes neither), not
+inside `assemble_levels`.
 
 ⚑ The value line only ever states a translation the RULING makes. An unparseable stored value gets
 the legal tiers instead of a guess.
@@ -491,9 +446,9 @@ RESOLVED path (`config.user_config_file`, site-wide `config.config_base_path`), 
 that path for every box; anything else is deleted: an undeclared or nested entry, or a `config:`
 holding a value that is not a table, that file would refuse too, and a `config:` that flattens to
 nothing means nothing in either file. The stored view shares both helpers, so it names the same
-entries with the same cures. Called from the LAUNCH seam (`settings_launch.build_launch_snapshot`),
-never from `assemble_levels`, which also serves the narrow `box.enable_vault` resolve every box verb
-runs — a raise there would stop the stored `box show` that shows the user the line to delete. Spec
+entries with the same cures. Run by `read_settings_files` under `ReadPurpose.RESOLVE` (the
+launch's read), never from `assemble_levels`, which also serves the narrow `box.enable_vault` resolve
+every box verb runs — a raise there would stop the stored `box show` that shows the user the line to delete. Spec
 §1: the `config.*` keys live only in the `.cfg` files and are not a settings tier. It is NOT a fourth
 token of the drop set below, and the difference is deliberate: §0's directional DROP governs a key of
 a CONTAINING scope in a lower file of the cascade, and `config` is not a cascade scope at all — the
@@ -514,17 +469,15 @@ Drop a CONTAINING-scope, `meta:` or `binding_derivations:` top-level table (spec
 2. **`meta`**, for EVERY file (`base` included). `meta.*` is a TOP-LEVEL protected read-only namespace
    set by the construct-time/bootstrap layer, RO everywhere (spec §0 / clause 4, "`meta.*` remains RO
    everywhere"); a settings file may not set it. `meta` is NOT a containing scope, so it earns a
-   DISTINCT warning. ⚑⚑ **NO WORKSET-SCOPE CARVE-OUT, since 2026-08-22.** A workset file's
-   `meta.workset` member used to be the spec-sanctioned NAMED-root identity marker and dropped
-   SILENTLY, with the warning naming only the OTHER members. A workset root has NO identity table
-   now — it is named by the global registry — so that member is a RETIRED shape which
+   DISTINCT warning. ⚑⚑ **NO WORKSET-SCOPE CARVE-OUT.** A workset root has NO identity table — it
+   is named by the global registry — so a `meta.workset` member is a RETIRED shape which
    `project/workset.py`'s `refuse_retired_workset_identity` hard-refuses upstream of this warning; it
    warns like every other scope, and the warning names the whole table. ⚑ **The drop is TOP-LEVEL ONLY:** the loop iterates top-level keys and
    never descends, so a nested `<scope>.meta` table rides under its scope untouched. The sole
    sanctioned meta source is the FLOOR (`dotted_partial`), inserted separately and never routed
    through this drop.
 3. **`binding_derivations`** (spec §0 fault class: "never enters the merge"). It is the RESERVED
-   INTERNAL derivations node at the snapshot root (R-8, manifest `not_keys.reserved_internal`) —
+   INTERNAL derivations node at the snapshot root (manifest `not_keys.reserved_internal`) —
    machinery output regenerated per launch by `commands.start._install_derived_bindings`, not a key.
    A hand-forged table in a settings file would otherwise ride into the snapshot beside the real
    materialization: phantom `--effective` lines, and a non-`Bind` leaf crashes the `derived_bindings`
@@ -532,10 +485,10 @@ Drop a CONTAINING-scope, `meta:` or `binding_derivations:` top-level table (spec
    name only. Any other unknown top-level entry is not dropped here: it rides into the merge and is
    REFUSED by name at the launch's §0 audit (`settings_launch._refuse_undeclared_snapshot`), which
    judges the snapshot as a WHOLE store and so has no `UNROOTED` escape (spec §0: no bare top-level
-   keys). Not in the per-agent file, whose partial reads only `self:` and `agent:` (Q92): there
-   `agent_file.level_table` REFUSES by name (`_refuse_stray_roots`) whatever the drops leave (this
-   one takes `system:`, `meta:`, `binding_derivations:`; `settings_prefs` takes `pref:`), except a
-   contained scope's table (`workset:` / `box:`), which it passes over unread pending `Q85`.
+   keys). Not in the per-agent file, which contributes its root (`self:`), `agent:` (Q92), and the
+   contained scopes' `workset:` / `box:` tables, READ as defaults (Q85; `agent_file._CONTRIBUTED`):
+   there `agent_file.level_table` REFUSES by name (`_refuse_stray_roots`) whatever the drops leave
+   (this one takes `system:`, `meta:`, `binding_derivations:`; `settings_prefs` takes `pref:`).
 
 `base` is EXEMPT for SCOPE keys (its containing set is empty — it is the system-scope floor) but NOT
 for `meta`: a base-file top-level `meta:` table would clobber the floor's materialized identity
@@ -555,13 +508,13 @@ the file and key"*) — the three §0 drops, `settings_prefs.refuse_pref_table`'
 `fold_agent_nodes`'s capital-node fold (plus `config_keys._typed_key_node`'s, keyed by the typed
 spelling with no file).
 Returns `True` (and records the pair) the first time this process drops *token* from the file at
-*path*; the caller warns only then. One command reads one settings file through several resolves, and each used to
-announce the drop again — `box show --effective` printed one dropped key four times. The memo is
+*path*; the caller warns only then. One command reads one settings file through several resolves,
+and without the guard each would announce the drop again. The memo is
 `_DROP_WARNED`, a module-level set of `(file, key)` pairs; it changes no resolution outcome (the drop
 runs on every read), which is why it may be module-level — the same footing as
 `commands.start._COLLISION_WARNED`. It lives for the process and never beyond it, so the next command
-warns again until the file is fixed. `_drop_upward_scopes`, `refuse_pref_table` and `cascade_view`
-(when handed *path*) all warn through it, so a file read by several in one command still names each
+warns again until the file is fixed. `_drop_upward_scopes`, `refuse_pref_table` and `_file_view`
+all warn through it, so a file read by several in one command still names each
 key once.
 
 ```fold_agent_nodes(raw: Any, *, path: Path | None) -> Any```
@@ -570,14 +523,13 @@ key once.
 Q87, his words: *"in our code, we refuse; if the key comes from a file or commandline, we should warn
 loudly and accept."* So a user's capital is ACCEPTED here, with one warning per `(file, key)` naming
 the file and both spellings, and the keyspace verdict does not fold — a capital built by code is
-refused there. MEASURED before this: a system file's `agent: {Claude: {model: opus}}` passed the §0
-check (the verdict folded) while the launch built `agent.claude` and never read `agent.Claude` —
-neither refused nor delivered. Two spellings of ONE node in one file (`Claude:` beside `claude:`)
+refused there. Without the fold, a system file's `agent: {Claude: {model: opus}}` would be neither
+refused nor delivered. Two spellings of ONE node in one file (`Claude:` beside `claude:`)
 are REFUSED naming both (FA = Q103: neither may silently win) by
 `agent_file.refuse_node_spelled_twice`, the one carrier the agent file's own readers share; "one
 node" is judged on the CANONICAL node (separator and case), so `nav+Claude:` beside `nav℘claude:` is
 refused too. Called by `_file_partial` (every
-file level, and `settings_prefs.collect_prefs`'s pref parse) and by `cascade_view` AFTER its drops,
+file level, and `settings_prefs.collect_prefs`'s pref parse) and by `_file_view` AFTER its drops,
 so a table the cascade drops is neither folded nor judged. Copies only what it changes.
 
 ```reset_drop_warnings() -> None```
@@ -585,49 +537,102 @@ Clear `_DROP_WARNED` — the test seam that stands in for a fresh process.
 
 The tokens rules 1-3 above remove, WITHOUT the warnings, are
 `settings_drops.upward_scope_drop_set` — one declaration, three readers here: `_drop_upward_scopes`
-(the drop), `_warn_upward_drops` (what to announce) and `cascade_view` (the view, through
-`settings_drops.cascade_drop_set`). See `settings_drops.py.md`.
+(the drop), `_warn_upward_drops` (what to announce) and `_file_view` (the view). See `settings_drops.py.md`.
 
-```cascade_view(raw: Any, *, level: str, path: Path | None) -> Any```
-The part of a raw settings doc at *level* that `assemble_levels` actually MERGES.
+```_file_view(raw: Any, *, level: str, path: Path | None, fold: bool = True) -> Any```
+The part of a RAW settings doc at *level* that `assemble_levels` actually MERGES. Private; its
+callers are `read_settings_files`.
 
 ⛑ **WHY IT EXISTS.** A consumer judging a settings file has to judge what the file CONTRIBUTES,
-not what it CONTAINS. `settings_launch._refuse_retired_spelling` read the raw doc and so prescribed
-a cure for an entry the cascade had already dropped — MEASURED: a `box.yaml` carrying both
-`agent: {claude: {auto_approve: true}}` and `box: {zippity: wibble}` refused by naming
-`auto_approve`, telling the user the box "would come up at the DEFAULT tier" and handing over a
-`pref.agent.<agent>.access` write, for a table directional enforcement had dropped one log line
-earlier — while `box.zippity` was never mentioned. `MIGRATION.md` § "Settings keys renamed or
-retired" already said of that table *"deleting it changes nothing"*; the record was right and the
-code was wrong.
+not what it CONTAINS. A retirement scan over the raw doc would prescribe a cure for an entry the
+cascade had already dropped: a `box.yaml` carrying both `agent: {claude: {auto_approve: true}}` and
+`box: {zippity: wibble}` would refuse by naming `auto_approve` — for a table directional enforcement
+drops — while `box.zippity`, the key that actually stops the resolve, goes unnamed. A cure for a
+no-op is worse than no cure.
 
-⛑ **IT WARNS ONLY WHEN HANDED *path*, THE FILE IT NAMES.** A verb that shows a file WITHOUT
-assembling it passes *path* — `config_interface._noun_stored_view`, so plain `workset show` /
-`system show` announce a dropped table as spec §0 requires (they printed nothing before) — a
-containing scope's table through `_warn_upward_drops`, an illegal `pref:` table through
-`refuse_pref_table` (the call `assemble_levels` drops it with, so the text is the same). Both ask
-`announce_drop_once`, the guard `assemble_levels` warns through, so a command that does both still
-names each key once. *path* is required, never defaulted — a default would be a lever a
-caller can pull the wrong way (P3); the retirement scans (`agent_select`, `settings_launch`,
-`commands.start`) pass it too, and the guard keeps their file named once. The rules are READ from their one declaration each, never restated.
+Each dropped table is announced through `announce_drop_once`, the guard every reader warns through,
+so a command that reads one file several times names each key once.
 
-**THREE filters, one per rule.**
+**THREE filters, one per rule**, each READ from its one declaration:
 
-1. Directional enforcement — `settings_drops.upward_scope_drop_set`.
-2. A `pref:` table survives only at a level §2h lets one be WRITTEN
-   (`settings_prefs.PREF_LEGAL_LEVELS`), matching `assemble_levels`'s three `refuse_pref_table`
-   calls. Rules 1 and 2 together are `settings_drops.cascade_drop_set`.
-3. The per-agent file contributes `agent_file.contributed_tables` — `self:` and, since Q92,
-   `agent:` — and nothing else, so a top-level `workset:` / `box:` in an `agent.yaml` is not a
-   DROP; it is not an input yet (Q85).
+1. A `pref:` table survives only at a level §2h lets one be WRITTEN
+   (`settings_prefs.PREF_LEGAL_LEVELS`); elsewhere `refuse_pref_table` drops it with a warning.
+2. Directional enforcement — `_drop_upward_scopes` (`settings_drops.upward_scope_drop_set`).
+3. The per-agent file contributes `agent_file.contributed_tables` — its root, `agent:` (Q92),
+   and the contained scopes' `workset:` / `box:` tables, READ as defaults (Q85) — after
+   `_warn_upward_drops` names what it drops.
 
-What survives is then folded by `fold_agent_nodes`, as `_file_partial` folds it, so a capital
-node reads here as it merges.
+What survives is then folded by `fold_agent_nodes` unless *fold* is off (the `NARROW` read folds
+at parse time).
 
-🛑 **TOP-LEVEL ONLY**, exactly like the filters it mirrors: which TABLES reach the merge, never
-which leaves inside one survive.
+🛑 **TOP-LEVEL ONLY**: which TABLES reach the merge, never which leaves inside one survive.
 
-```_parse_node(value, *, in_binds: bool, dest_keyed: bool = False, at_bindings: bool = False) -> Any```
+## Reading the files
+
+```class ReadPurpose(Enum)```
+WHY a settings file is read; each member fixes its stages, their order, and the file order it walks
+(`.order`):
+
+* `RESOLVE` — the launch snapshot (box, workset, agent, system, base). Refuses a `config:` table on
+  the raw doc of every non-agent file (`refuse_config_table`), then a retired behavior spelling on
+  each view (`refuse_retired_behavior_keys`).
+* `SELECT` — agent selection (base, system, workset, box). Refuses a retired selection or mirror
+  spelling on each view (`refuse_retired_keys`).
+* `NARROW` — assembly alone (base→box); every `pref:` drop, then every upward drop, then the
+  unfolded views. The node fold and the agent file's shape run in `assemble_levels`.
+* `DISPLAY` — plain `show`: the view and its warnings, no refusal.
+
+⚑ No purpose runs stage (h) (`refuse_undeclared_per_file`) inside the read. A caller that runs it
+does so AFTER its own refusals, so a caller's tailored cure is the one a user reads.
+
+```class SettingsFile(level, path, stored, view)```
+One settings file as read: the doc on disk (*stored*) and what the cascade merges (*view*).
+`loaded` is True when a file is on disk at *path*.
+
+```read_settings_files(files, *, purpose, subject=None, box_ref=None) -> tuple[SettingsFile, ...]```
+Read *files* (`(level, path)` pairs) for *purpose*, in its file order; each phase runs over every
+file before the next starts. *subject* (the agent node) and *box_ref* only fill the cures a retired
+spelling's refusal prints. A level whose file is absent gets an empty view.
+
+```cascade_files(*, purpose, system_path, agent_path, workset_path, box_path, base_path=None, subject=None, box_ref=None) -> tuple[SettingsFile, ...]```
+The five cascade files read for *purpose*; *base_path* defaults to `settings_base_path()`, the site
+base file.
+
+```refuse_undeclared_per_file(files) -> None```
+Stage (h): RAISE for the first file, MOST-SPECIFIC FIRST (`_H_AUDITED_LEVELS` = box, workset,
+system, base), whose OWN view carries an undeclared entry. The walk does not follow the read's
+order: `NARROW` reads base→box, and its order would name the WORKSET file when both carry one.
+Callers: the launch (`settings_launch`, after its §0 audit) and `commands/workset_cmd`.
+
+```refuse_undeclared_entries(view, *, level, path, stored=None) -> None```
+RAISE when *view* carries an undeclared entry, naming EVERY such key and *path*, with the cure to
+remove them BY HAND. `retired_cure` runs first, since a retired spelling is the more specific fault.
+`DISPLAY` never reaches it: `show` LISTS undeclared entries (Q5).
+
+```undeclared_listing(findings) -> tuple[str, str, str]```
+`(listing, count phrase, pronoun)` for `undeclared_store_paths` findings — the one listing stage (h)
+and the launch's §0 refusal both print (P10).
+
+```retired_cure(files) -> None```
+RAISE the TAILORED refusal when a loaded file's view still carries a RETIRED spelling:
+`refuse_retired_keys`, then `refuse_retired_behavior_keys`, per file, most-specific first. Called
+only once §0 has decided to refuse, to pick WHICH refusal the user reads; nothing is re-read.
+Callers: `settings_launch._refuse_undeclared_snapshot` and `refuse_undeclared_entries`.
+
+```agent_record(path: Path, *, node: str, purpose: ReadPurpose) -> AgentConfig```
+THE ONE READER of an agent's settings file: one `read_settings_files` read, the shape judged by
+`agent_file.level_table` (the same view `_agent_partial` takes), and the record built by
+`agent_file.record`, then `refuse_undeclared_entries` over the level's contained tables. Every
+reader — the launch, `agent show` / `info` / `list` / `get` — takes the record from here, so one file
+gets one verdict. Returns an empty record if the file does not exist. A store folder named for the
+file alias (`self`), or a present folder named for the reserved `default` tier, is refused through
+`agent_store_refusal`.
+
+```agent_store_refusal(store: Path, why: str, *, fix: str | None = None) -> SettingsError```
+THE refusal of folder *store* as an agent store, because of *why*. The default cure renames or moves
+the folder; *fix* replaces it when the folder can hold no agent's settings at all.
+
+```_parse_node(value, *, in_binds: bool, dest_keyed: bool = False, at_bindings: bool = False, path: tuple[str, ...] = (), for_pref_requests: bool = False) -> Any```
 Recursively coerce a raw settings node into the `StoreValue` space.
 
 *in_binds* is True while descending the subtree of a bind-shaped category (`bindings.{ro,rw}` /
@@ -640,7 +645,7 @@ is not descended).
 decides it (disk-store rework R-3/R-6):
 
 * `False` — NAME-keyed, a leaf is `[host_src, box_dest[, opts]]` → `Bind`. ⚑ NO bind-shaped category
-  reaches this branch any more; it survives for a MALFORMED node that `parse_bind_map` handed back.
+  reaches this branch; it serves a MALFORMED node that `parse_bind_map` handed back.
 * `True` — DEST-keyed, the key IS the destination and a leaf is `[src[, opts]]` → `BindEntry`.
 
 ⚑⚑ Both shapes admit a 2-element list with OPPOSITE meanings, so the choice is made by this CONTEXT
@@ -663,7 +668,13 @@ arm-shape message that names the key. Do not raise here instead.
 ⚑ A malformed ARITY in a structured bind leaf raises `SettingsError` — the structured shape is
 load-bearing.
 
-```parse_bind_map(raw: Any, *, category: str = "bindings") -> KeyStore```
+*path* is the KEY PATH walked so far, doc-root first. It carries the SCOPE to
+`_declaration_root_ref`, so an abstract category's bare leaf is rooted here (spec §2a) rather than
+downstream; a caller whose document does not START at a scope token seeds it (`_agent_partial`,
+because `self:` IS `agent.<node>`). *for_pref_requests* is threaded to `parse_bind_map` as
+*defer_shape* for the pref-request parse (see `_file_partial`).
+
+```parse_bind_map(raw: Any, *, category: str = "bindings", root_ref: str | None = None, declared: bool = True, defer_shape: bool = False, pref_agent: str | None = None) -> KeyStore```
 Parse a raw DEST-KEYED category map into a `KeyStore` of `BindEntry`.
 
 *raw* is the mapping stored at ANY terminal bind-shaped key: a `bindings` arm
@@ -686,11 +697,19 @@ on these keys BEFORE anything is parsed — and the function is idempotent, so d
 costs nothing and neither place is load-bearing alone.
 ⚑ The VALUE is never canonicalized: a `host_src` stays exactly as authored.
 
+*root_ref* is the declaration root an abstract category's bare source is rooted at
+(`_declared_source`) — the DECLARATION-LOAD seam, since what gets STORED must resolve on its own.
+*declared* says the map is a declaration rather than a request, for `check_bind_map`'s verdicts.
+*defer_shape* withholds ONLY the bare-scalar entry verdict, carrying the value for
+`settings_prefs.refuse_deferred_pref_shapes`; every other check still runs here, on the whole map.
+*pref_agent* is the agent segment the map sits under, judged before any shape
+(`settings_prefs.agent_segment_reason`).
+
 ⚑ A nested MAPPING entry is REFUSED by name: under dest-keying an arm's value is a flat
 `{dest: [src[, opts]]}`, so a sub-table is the retired `{name: {…}}` shape (spec §2a, "STALE SHAPES
 ARE REFUSED LOUDLY"). A 3-element list is refused one level down, by `unpack_bind_entry`.
 
-```_file_partial(raw: dict) -> KeyStore```
+```_file_partial(raw: dict, *, path: Path | None = None, for_pref_requests: bool = False) -> KeyStore```
 Build ONE level partial from a settings file's WHOLE nested content.
 
 *raw* is the parsed file (`load_doc` output). The full scope-ROOTED tree is mirrored into a nested
@@ -699,6 +718,10 @@ bind-shaped category is read as a DEST-KEYED `BindMap` of `BindEntry` leaves (R-
 `bindings.{ro,rw}`, at the CATEGORY TOKEN for the other four. ⚑ The DEPTH is not chosen here —
 `_parse_node` derives it from the CATEGORY token it walks past, so there is no flag for a caller to
 get wrong.
+
+*path* names the file in every refusal the parse raises — a key with no file is a cure the user
+has to hunt for. *for_pref_requests* marks the one reader whose consumer judges the agent segment
+(`settings_prefs.apply_prefs`), so only there is a bare-scalar entry's verdict deferred.
 
 An empty / non-dict file yields an empty `KeyStore`. This is the rule for every NON-agent level
 (`base` / `system` / `workset` / `box`); the agent tier uses `_agent_partial`. The node segments are folded first (`fold_agent_nodes`).
@@ -761,8 +784,9 @@ returning the old shape (spec §2d; empty for all first-party plugins today).
 method into a crash. These stores are module-built, but keeping the collision-safe convention uniform
 is the point.
 
-```assemble_levels(*, agent_name, base_path=None, system_path=None, agent_path=None, workset_path=None, box_path=None, floor=None) -> list[KeyStore]```
-Read each cascade scope's settings file into ONE nested `KeyStore` partial; return them ordered.
+```assemble_levels(*, agent_name: str, files: Iterable[SettingsFile], floor: dict[str, object] | None = None) -> list[KeyStore]```
+Build each cascade scope's ONE nested `KeyStore` partial from the already-read *files*; return them
+ordered.
 
 MOST-SPECIFIC-FIRST (S8). The 6 levels, in order:
 
@@ -771,46 +795,25 @@ MOST-SPECIFIC-FIRST (S8). The 6 levels, in order:
 matching spec §2's `base < system < agent.default < agent.<active> < workset < box` reversed to
 high→low precedence — the merge walks this order and the first scope that SETS a leaf wins.
 
-Each non-agent level's partial is its file's WHOLE nested content, scope token KEPT (§0). The agent
-file yields BOTH agent levels via its `default` and `<active>` sub-tables, each kept under its TRUE
-discriminated name (§2d) — NO bare-`agent` collapse.
-
-* *agent_name* selects the active agent's sub-table for the `agent.<active>` level; `agent.default`
-  reads the `default` sub-table from the SAME file.
-* *base_path* defaults to `settings_base_path()` (the `/etc` floor) — no `machine` tier (S14); the
-  cascade ends at `box` (no `required` cap). The base file uses the SAME scoped keyspace as every
-  other file, NOT a synthetic `base:` wrapper.
+* *files* come from `read_settings_files` / `cascade_files`, with the purpose the caller chose; a
+  level with no file there contributes an empty partial. No path is taken here: the filters (the
+  `pref:` drop, the upward-scope drop, the agent file's contributed tables) already ran in
+  `_file_view` during the read, and the base file's path is `cascade_files`' default.
+* *agent_name* selects the active agent's sub-table for the `agent.<active>` level. The
+  `agent.default` level holds only the agent file's `agent: default:` table (Q92); the SYSTEM file's
+  `agent: default:` table arrives on the system level.
 * *floor* (declared defaults + default-categories) is folded UNDER the base file's content into the
-  `base` level — a base-FILE set-value beats the floor at the same key, and the floor is the ultimate
-  fallback. The floor is also the SOLE sanctioned `meta.*` source: a top-level `meta:` table is
-  dropped from every FILE view (base included, spec §0 / clause 4) BEFORE it is built, so it can never
-  clobber the floor's identity anchors; the floor itself is inserted separately and never dropped.
+  `base` level — the floor is inserted FIRST and the base-file leaves overlay it (`_overlay`), so a
+  base-FILE set-value beats the floor at the same key, and the floor is the ultimate fallback. The
+  floor is also the SOLE sanctioned `meta.*` source: a top-level `meta:` table is dropped from every
+  FILE view (base included, spec §0) before the partial is built.
 
-Binds are parsed with `@`-ref / `$var` / `~` tokens left RAW (S9 / spec §0). Absent / unreadable files
-yield an empty `KeyStore` partial, skipped cleanly by the merge. NO `machine` path is consulted.
-
-⚑ **The two filters run on the RAW file view, BEFORE the partial is built, and that ordering is
-load-bearing.** The agent tier never mirrors a non-`self:` table into its partial, so a post-partial
-filter could not see — or warn about — a `system:` or `pref:` table in the agent file. The raw view
-catches both.
-
-* `refuse_pref_table` — a `pref:` table is legal in the WORKSET and BOX files ONLY (spec §2h, "this is
-  what BOUNDS the recursion"). In the base / system / agent file it is DROPPED with a warning, the
-  SAME treatment the sibling mis-scope gets: two behaviors for one fault class is the confusion §0's
-  convention 0 forbids, and dropping preserves the recursion bound at least as strongly as erroring
-  would. The HARD refusal §2h calls for lives at the WRITE site (`config set pref.*` at these scopes
-  RAISES), which is the only way a user creates one short of hand-editing.
-* `_drop_upward_scopes` — each USER settings file may set keys of its OWN scope and of scopes it
-  CONTAINS, but not of a CONTAINING scope. The `system` file's containing set is empty (outermost), so
-  its scope-key pass is a no-op. The `base` level (floor dict + `/etc` base file) is a CODE FLOOR and
-  is EXEMPT for SCOPE keys — it is the system-scope floor from which the auth gate is set — but a
-  top-level `meta:` table is dropped from it too. `file_scope="base"` yields an empty containing set,
-  so base loses ONLY `meta`; its `system.*` scope floor stays exempt.
-
-⚑ The ONE agent file builds TWO levels, so the drop-and-warn runs ONCE on the shared raw view.
-
-⚑ In the base level the floor is inserted FIRST and the file leaves overlay it, so a base-file entry
-wins WITHIN this single level.
+Each non-agent level's partial is its file's view, scope token KEPT (§0), through `_file_partial`.
+The agent file yields BOTH agent levels through `_agent_partial`, each kept under its TRUE
+discriminated name (§2d) — NO bare-`agent` collapse. The agent file's SHAPE checks
+(`agent_file.level_table`: a stray root, a nested `self:`) judge the stored file minus its dropped
+tables (`_agent_shape_input`), so a stray still refuses by name. Binds are parsed with `@`-ref /
+`$var` / `~` tokens left RAW (S9 / spec §0). NO `machine` path is consulted (S14).
 
 ```_overlay(base: KeyStore, top: KeyStore) -> None```
 Deep-overlay *top*'s leaves onto *base*, in place (same-level combine).
