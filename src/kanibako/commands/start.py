@@ -3103,7 +3103,7 @@ def _run_container(
 
     # project_dir is the reconciled subject (positional OR --box) computed in
     # run_start/run_shell.  Route it through the path-or-name resolver so a bare
-    # registered box name selects that box even when not cwd (§Design 8).
+    # registered box name selects that box even when not cwd (``resolve_box_target``).
     # B3: register=False defers a NEW box's registration past the home seed — the
     # seed gate below runs marker -> seed -> register -> remove-marker so an
     # interrupted auto-create is forward-recoverable (registered ==> seeded).

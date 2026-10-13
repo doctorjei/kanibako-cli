@@ -468,7 +468,7 @@ class TestRefuseStandaloneRename:
 
 
 # ---------------------------------------------------------------------------
-# Box-name BLOCKLIST validation (W1 Phase D, §Design 8)
+# Box-name BLOCKLIST validation (W1 Phase D; ``box_identity.box_name_reason``)
 # ---------------------------------------------------------------------------
 
 import string  # noqa: E402

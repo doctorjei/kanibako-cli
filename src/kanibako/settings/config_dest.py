@@ -542,14 +542,12 @@ def _read_dest(
 ) -> "DestRoute | None":
     """Where a plain ``get`` reads a FILE-scope key: the value STORED at this noun.
 
-    ⚑⚑ FOR THE BARE AGENT-SCOPE TERMINAL CATEGORY KEYS THE ROUTE IS WRONG,
-    MEASURABLY — the half QA′ did not touch, and BOARDED, not fixed.  It answers the
-    NOUN's settings file, while the agent tier is assembled from the FLAT tables
-    under ``self:`` in ``agents/<node>/agent.yaml``, so a hand-authored
-    ``self.caches`` reads back "(not set)".  ⚑ Until the repoint lands, NO message
-    may promise that ``config get <agent terminal key>`` works (see
-    ``config_keys.agent_node_bind_retired_error``).  ⚑ S3 did NOT close this — it
-    added a second route, it did not repoint this one.
+    ⚑ For ``agent.<node>.<category>`` the ``_CATEGORY`` arm answers the NOUN's settings
+    file, while the agent tier is assembled from ``agents/<node>/agent.yaml``.  No get
+    command reaches that arm: each refuses the key first
+    (``config_keys.scope_read_key_error`` → ``agent_category_read_error``), and
+    ``agent get`` reads the agent file directly.  The arm is latent in this low-level
+    read only.
     """
     return _dest(
         canonical, command_scope=command_scope, config_path=config_path,

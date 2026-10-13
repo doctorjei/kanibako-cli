@@ -836,8 +836,9 @@ def run_disconnect(args: argparse.Namespace) -> int:
         return 1
 
     # Reconcile the positional <project> with the blanket --box, then resolve
-    # path-or-name through the SHARED box resolver (§Design 8). A bare member name
-    # falls back to the raw token, which remove_project matches by name.
+    # path-or-name through the SHARED box resolver (``paths.resolve_box_target``).
+    # A bare member name falls back to the raw token, which remove_project matches
+    # by name.
     from kanibako.commands.flags import resolve_subject_value
     from kanibako.settings.paths import resolve_box_target
     project_token = resolve_subject_value(

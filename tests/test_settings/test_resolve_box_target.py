@@ -1,7 +1,7 @@
 """Tests for resolve_box_target() — the path-or-name box selector (W1 Phase D).
 
 resolve_box_target resolves a ``--box`` value that is EITHER a box NAME or a
-path, with box-NAME precedence in ambiguous cases (§Design 8).
+path, with box-NAME precedence in ambiguous cases.
 """
 
 from __future__ import annotations

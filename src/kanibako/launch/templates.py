@@ -35,8 +35,8 @@ if TYPE_CHECKING:
 #: the copy runs.  ⚑ It is the ONLY one: SEED DESTINATIONS ARE ENUMERATED, NEVER A
 #: WHOLE-DIRECTORY COPY, or a template could plant ``<box_dir>/box.yaml`` (=
 #: ``meta.box.settings``, the LAST cascade level).
-#: ⚑ Do not respell this host-side again; the ``dest_space`` discriminator that made
-#: the old ``@meta.box.path/home`` spelling safe is gone (2026-08-08c).
+#: ⚑ Do not respell this host-side; no ``dest_space`` discriminator exists to make a
+#: ``@meta.box.path/home`` spelling safe.
 _SEED_DEST_HOME = "~/"
 
 #: The per-layer SOURCE subpaths under each layer's ``template`` root.  The two-level
@@ -156,7 +156,7 @@ def template_seed_defaults(
     from kanibako.channels.channels import has_workset_channels
 
     def _layer(source_root: str) -> dict[str, object]:
-        # ⚑ A DEST-KEYED map, not a named entry (2026-08-08c): the destination IS
+        # ⚑ A DEST-KEYED map, not a named entry: the destination IS
         # the identity and the value is the 1-element ``(src,)`` — ``opts`` is
         # RESERVED on a COPY and no shipped layer sets it.
         return {_SEED_DEST_HOME: (f"{source_root}/{_SEED_SRC_HOME}",)}
@@ -180,10 +180,10 @@ def template_seed_defaults(
     return defs
 
 
-# ⚑ ``seed_keys_of(defs)`` USED TO LIVE HERE and is GONE (2026-08-08c).  The dest
-# above is ``~/``, a GUEST path, so there is no host destination left to
-# discriminate and nothing for a key set to select.  Do not rebuild one under
-# another name — see the llm-doc for what it did and how it broke.
+# ⚑ There is no ``seed_keys_of(defs)``.  The dest above is ``~/``, a GUEST path,
+# so there is no host destination to discriminate and nothing for a key set to
+# select.  Do not rebuild one under another name — see the llm-doc for what it
+# did and how it broke.
 
 
 def stage_layers(dest: Path, layers: list[Path]) -> None:

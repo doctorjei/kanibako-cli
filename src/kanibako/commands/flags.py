@@ -507,7 +507,7 @@ def resolve_subject_value(
 ) -> str | None:
     """Reconcile a command's positional subject with its ``--box`` flag.
 
-    The general rule wherever a positional and ``--box`` coexist (§Design 8):
+    The general rule wherever a positional and ``--box`` coexist, owned here:
     only one supplied → use it; both supplied, SAME string → warn + continue;
     both supplied, DIFFERENT strings → :class:`SubjectConflictError`.  Returns
     the effective subject string, or ``None`` for cwd.
