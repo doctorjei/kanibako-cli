@@ -82,7 +82,7 @@ def _point_at_verbatim(root: Path, value: str, target: Path) -> Path:
 class TestBoxRmReadsTheStore:
     def test_a_store_relocated_inside_the_root_is_kept_and_named(
             self, config, std, tmp_home, capsys):
-        """⚑ THE PIN, flipped by the 163rd ruling: ``rm --purge`` does NOT take a store the
+        """⚑ THE PIN, flipped: ``rm --purge`` does NOT take a store the
         box's OWN ``workset.boxes`` nominated, even one strictly below the root.
 
         Base composed ``<root>/box_data``, so it removed the composed DEFAULT LEAF and left

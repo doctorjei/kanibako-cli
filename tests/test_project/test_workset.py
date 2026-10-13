@@ -921,7 +921,7 @@ class TestWorksetProperties:
 
 
 class TestWorksetWorkspacesResolved:
-    """B2 (§3.3 ruling: ``workset.{workspaces,channelroot}`` "need to be real
+    """B2 ([Jei:2026-08-01]: ``workset.{workspaces,channelroot}`` "need to be real
     and USED — not hard-coded"): the composing sites route through the resolved
     key value — a ``workset: {workspaces: …}`` / ``{channelroot: …}`` repoint in
     the workset's workset.yaml is honored, and the default is the spec's
@@ -1116,7 +1116,7 @@ class TestWorksetWorkspacesResolved:
         project/workset.py ×2, project/names.py ×2) and the channels.py
         ``"channels"`` root join route through the resolvers.  The ONLY allowed
         spelling of each leaf is the resolver-module constant — a join-form
-        literal reappearing in these files is the hard-coding the §3.3 ruling
+        literal reappearing in these files is the hard-coding [Jei:2026-08-01]
         retired."""
         import re
 
@@ -1143,7 +1143,7 @@ class TestWorksetWorkspacesResolved:
         )
 
     def test_no_standalone_workspace_literal_join_remains_at_the_sites(self):
-        """Pins the ruled-10 follow-up (2026-08-02): the two STANDALONE
+        """Pins the follow-up [Jei:2026-08-02]: the two STANDALONE
         ``"workspace"`` composition sites — ``resolve_standalone_project``
         (settings/paths.py) and the duplicate-to-standalone copy destination
         (commands/box/_duplicate.py) — route through

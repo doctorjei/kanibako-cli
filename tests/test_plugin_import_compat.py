@@ -6,10 +6,10 @@ this file pinned the opposite of what it pins now: that the legacy paths still
 imported, re-exported the same objects, and warned.
 
 **v1.8.0 is a deliberate clean break — no aliases, no deprecation window — and a
-re-export shim IS a deprecation window.**  The four shims are DELETED (Jei,
-2026-08-17: *"I would prefer we delete them. We have the old versions in our
-source."*).  Their code is preserved in git history; nothing ships to hold their
-place.  This file now pins the break:
+re-export shim IS a deprecation window.**  The four shims are DELETED
+(MIGRATION.md § "Core module paths moved"; [Jei:2026-08-17]: *"I would prefer we
+delete them. We have the old versions in our source."*).  Their code is preserved
+in git history; nothing ships to hold their place.  This file now pins the break:
 
 * the legacy dotted path raises ``ModuleNotFoundError`` — it is gone, not
   hollowed out, not aliased, and no file re-appears at the old location;

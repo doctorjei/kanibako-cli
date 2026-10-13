@@ -560,8 +560,8 @@ def test_no_real_plugin_reaches_the_tailored_install_command(
     """Zero agent PLUGINS ⇒ the "install one" arm fires, with a TAILORED command.
 
     🛑 **The regression this pins.** The launch path used to raise
-    ``NoAgentInstalledError`` carrying ``install_method.install_command(...)``; the
-    2026-09-19 ruling deleted that class, so the launch now says *run `kanibako
+    ``NoAgentInstalledError`` carrying ``install_method.install_command(...)``;
+    [Jei:2026-09-19] deleted that class, so the launch now says *run `kanibako
     setup`* at every installed count and ``setup`` is the only place left that can
     hand a first-run user a command which works in THEIR install.
 

@@ -414,7 +414,7 @@ class TestTheCopyExcludesTheStoreByPathNotByName:
         metadata and home duplicated into a workspace — unless the same path-anchored
         exclusion applies here too.
 
-        ⚑ RE-SHAPED TO A SHAPE A REAL COMMAND PRODUCES (ruled 153).  This pin used to
+        ⚑ RE-SHAPED TO A SHAPE A REAL COMMAND PRODUCES.  This pin used to
         build a PRIMARY project whose OWN ``workset.yaml`` declared ``boxes``/
         ``workspaces``.  No command on main can make that shape: ``resolve_project(…,
         initialize=True)`` writes NOTHING under a primary project's own root (measured —
@@ -531,7 +531,7 @@ class TestAMoveKeepsAUserOwnedBoxData:
 
     def test_a_default_layout_standalone_move_keeps_its_user_box_data(
             self, config, std, tmp_home):
-        """⚑ R1, TIGHTENED to the placement the 154th ruled (DATA SAFETY).
+        """⚑ R1, TIGHTENED to the placement ruled [Jei:2026-10-06] (DATA SAFETY).
 
         A DEFAULT-LAYOUT standalone keeps its workspace at ``<root>/workspace``, so the
         workspace is NOT the root.  ``box_metadata_dir`` answers a standalone store from

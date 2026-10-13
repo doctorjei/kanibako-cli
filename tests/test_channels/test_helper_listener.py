@@ -734,7 +734,7 @@ class TestHubTreeSpawn:
 
 
 class TestHubNumberCounter:
-    """His 171-HN ruling (b): the hub keeps ONE counter for the tree's helper numbers.
+    """171-HN (b) [Jei:2026-10-11]: the hub keeps ONE counter for the tree's helper numbers.
     No blocks, so a number says nothing about where its helper sits, and a restarted
     hub rebuilds the counter from the tree on disk, so it never reissues a number a
     helper still holds there (keyspec ``meta.box.helper_num``: "unique across the

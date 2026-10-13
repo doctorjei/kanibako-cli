@@ -317,7 +317,7 @@ class TestImageSharingInRunContainer:
     def test_share_images_set_store_shares_on_probe_fail(
         self, start_mocks, tmp_path, capsys,
     ):
-        """Ruled 11a: probe-fail + a SET box.images_store still shares.
+        """[Jei:2026-08-02]: probe-fail + a SET box.images_store still shares.
 
         The probe feeds ONLY the key's DEFAULT; the RESOLVED key (here the
         box-tier file value) feeds the bind — so a failed probe with a set

@@ -649,7 +649,7 @@ class TestXdgFallbackRegression:
     $XDG_CACHE_HOME is not set in this context`` — even with the env var
     exported, because the resolver reads ONLY the ctx map, never the
     environment.  The fix routes every host-side ResolveCtx through the
-    canonical ``paths.host_xdg_map()`` (Jei ruling: XDG vars have fallbacks).
+    canonical ``paths.host_xdg_map()`` ([Jei:2026-07-02]: XDG vars have fallbacks).
 
     All three tests were verified to FAIL on the pre-fix baseline
     (``SettingsError: Variable $XDG_CACHE_HOME is not set in this context``)

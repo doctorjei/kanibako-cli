@@ -378,7 +378,7 @@ class TestValidateStandaloneName:
 
 # ---------------------------------------------------------------------------
 # refuse_nonleaf_standalone_name / refuse_standalone_rename
-# The door rule (ruling 2026-10-08: Reading A, and a typed flag is never
+# The door rule ([Jei:2026-10-08]: Reading A, and a typed flag is never
 # silently ignored).  RED ON BASE: neither helper exists there.
 # ---------------------------------------------------------------------------
 

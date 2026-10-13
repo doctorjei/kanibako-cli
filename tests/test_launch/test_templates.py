@@ -270,7 +270,7 @@ class TestTemplateSeedDefaults:
     # the ``seed-table-template`` (persona) and ``agent-seeded-layer`` / ``-bare``
     # kinemata views (2026-09-25).  The persona is the load-bearing node: for ``claude``
     # the node-rooted and harness-rooted spellings are ONE string, so only a persona
-    # separates them (RULED 2026-08-27: the key roots at the ACTIVE NODE, never
+    # separates them ([Jei:2026-08-27]: the key roots at the ACTIVE NODE, never
     # ``harness_of``).
 
     def test_landing_path_equals_layer_2_source(self, primary_proj):
@@ -1066,7 +1066,7 @@ class TestLayeredHomeSeed:
 
 
 # ---------------------------------------------------------------------------
-# The BOX HANDBOOK HOST-TEMPLATE copy — Jei's 2026-08-07g ruling: the handbook
+# The BOX HANDBOOK HOST-TEMPLATE copy — [Jei:2026-08-07g]: the handbook
 # templates are HOST templates, not GUEST templates, so they are copied beside the
 # workset mold rather than delivered through the ``seeded`` category.
 #
@@ -1151,7 +1151,7 @@ def _seed_box(std, proj, *, agent="claude", deliver_creds=True):
 
 
 class TestPersonaTemplateLayerThroughTheLink:
-    """⚑⚑ THE 2026-08-27 RULING, END TO END — a persona's layer 2 is NODE-ROOTED and
+    """⚑⚑ [Jei:2026-08-27], END TO END — a persona's layer 2 is NODE-ROOTED and
     the harness's CONTENT arrives through the SYMLINK SHIM.
 
     Two halves that must both hold, because either alone is satisfiable by the wrong
@@ -1260,9 +1260,9 @@ class TestPersonaTemplateLayerThroughTheLink:
         self, std, config, primary_proj,
     ):
         """THE ESCAPE HATCH, end to end: *"the user can always remove the symlink if
-        they want to create a separate template for the persona-based agent"* (Jei,
-        2026-08-27).  A real ``agents/<node>/template`` is never replaced by the
-        shim, and the seed reads it instead of the harness's.
+        they want to create a separate template for the persona-based agent"*
+        [Jei:2026-08-27].  A real ``agents/<node>/template`` is never replaced by
+        the shim, and the seed reads it instead of the harness's.
         """
         from kanibako.commands.start import ensure_persona_share_symlinks
 
