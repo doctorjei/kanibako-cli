@@ -60,13 +60,13 @@ the users who had already stored their own. Three entries, each at its scope for
   seam is now guarded by `tests/test_settings/test_defaults_enforcement.py`. BOX scope because it
   describes the terminal a box runs, not the host install.
 * `agent.default.env.TERM` is the second, and the first whose value is an EXPRESSION: the file
-  stores `$TERM`, and `settings_resolve` answers it with the host's terminal type — `xterm` when the
+  stores `{$TERM}`, and `settings_resolve` answers it with the host's terminal type — `xterm` when the
   host's is empty or unset, a set value passed through UNVALIDATED. AGENT DEFAULT tier because a
   terminal type belongs to every agent, not to the plain-shell box: the agent tier's two cascade
   levels are overlaid PER NAME (spec §2a), so a plugin descriptor or a settings file overrides it
   for ONE agent while the rest keep inheriting.
 * `agent.shell.env.TERM` restates it for the plain shell (keyspec §2d shell fence,
-  `agent.shell.env.TERM | $TERM`): a pseudo-agent inherits nothing from `agent.default`
+  `agent.shell.env.TERM | {$TERM}`): a pseudo-agent inherits nothing from `agent.default`
   (`settings_launch._fallback_node`), so without its own row a plain-shell box would get no `TERM`.
   Dormant for every true agent — only a shell pick reads `agent.shell`.
 * `agent.shell.env.KANIBAKO_DIRECTIVE_FINAL` (`{$GUEST_HOME}/AGENTS.md`, keyspec §2d shell fence) is
@@ -236,7 +236,7 @@ bind) — A2.
 `~/channels/workset/`; **STANDALONE OMITS** them (A10 — gated by the absence of workset channel
 paths, which is what makes the `source` lookup miss and drop the entry).
 
-⚑ B2: an entry with a `meta_ref` is ROUTED through that `@meta.*` reference (spec §2c) — the
+⚑ B2: an entry with a `meta_ref` is ROUTED through that `{meta.*}` reference (spec §2c) — the
 host_src is the `@`-ref STRING, which `expand` resolves to the SAME materialized identity literal
 as the runtime-probed source (byte-identical, JC-B2-4). The `source` gate still applies, so a
 workset-scoped meta_ref entry on a standalone box is still omitted.
@@ -279,9 +279,9 @@ DISPLAY verb must not write to disk.
 ⚑ **The @-ref routing has TWO shapes and the per-mode one is now the vault's alone.** An entry
 routed through an `@`-ref carries either a single `meta_ref` (MODE-INDEPENDENT — workspace) OR a
 `mode_meta_ref` PER-MODE map. The per-mode form serves the VAULT binds ONLY, for a
-real reason: primary/named take the per-box `/@meta.box.name` subdir that a lone standalone box does
-not have (spec §2c). Both vault arms root at the SAME `@workset.vault_*` anchor. home needs
-no arm at all and no row either — `meta.box.home` roots at `@meta.box.path`, which is where the
+real reason: primary/named take the per-box `/{meta.box.name}` subdir that a lone standalone box does
+not have (spec §2c). Both vault arms root at the SAME `{workset.vault_*}` anchor. home needs
+no arm at all and no row either — `meta.box.home` roots at `{meta.box.path}`, which is where the
 per-mode variation lives. The
 host_src is the `@`-ref STRING, which `expand` resolves to the SAME runtime-probed literal
 (byte-identical) because the `workset.*` / `meta.workset.path` anchors resolve to the launch's own
@@ -344,7 +344,7 @@ SAME path, and a second literal spelling of it anywhere is a drift waiting to ha
 
 Two consumers need the expanded form rather than the `~` spelling: the `KANIBAKO_DIRECTIVE_SEED` env
 var (it is read by a hook shell and at exec time, where `~` would resolve against whoever's HOME) and
-the transition gate (descriptor box_dests are `$GUEST_HOME`-expanded by the defaults loader, so a
+the transition gate (descriptor box_dests are `{$GUEST_HOME}`-expanded by the defaults loader, so a
 `~`-spelled dest would never match one).
 
 ```kickoff_default_categories(descriptor: "PluginDescriptor | None" = None) -> BindArmTable```
@@ -416,7 +416,7 @@ The rom-ROOT-relative posix paths of the packaged CANON bind SOURCES (spec §2c)
 
 ```HANDBOOK_REL = "handbook"```
 The handbook BOOK root under a canon root (the rom packages no handbook). The same leaf names the
-handbook under every host `@<scope>.canon`, which is why `templates._CANON_CHAPTER_LEAF` reads it
+handbook under every host `{<scope>.canon}`, which is why `templates._CANON_CHAPTER_LEAF` reads it
 from here.
 
 Declared beside `ROM_CHARTER_REL` for symmetry and because the managed-region deny list needs both
@@ -488,7 +488,7 @@ why), *seed_rels* the files a seed layer would copy to the box home.
 ⚑ **SCOPE OF WHAT IS ACTUALLY CHECKED TODAY.** The only caller (:func:`rom_default_categories`)
 passes the PACKAGED BOX-HOME template walk (`template/box/home`) — i.e. layer 1 of the three in
 :func:`kanibako.launch.templates.template_seed_defaults`. The AGENT and WORKSET layers
-(`@agent.<a>.template` / `@workset.template`, both user-repointable and both resolved at seed time,
+(`{agent.<a>.template}` / `{workset.template}`, both user-repointable and both resolved at seed time,
 not here) are NOT covered, and neither are a plugin's `default_seeds()`. This function does not
 decide that scope, it only enforces what it is handed — **WIDENING THE INPUTS IS THE CALLER'S JOB**,
 which is exactly why the bind dests and seed rels are parameters rather than computed inside.
@@ -669,10 +669,10 @@ SETTINGS file, exactly like `system.template`.
 ⚑⚑ **THE AGENT TIER** — J-1 option (a) (*"the `agent.default` tier must be able to win"*),
 implemented against a resolver that has NO agent-tier fallback:
 
-* `agent.default.canon` is ALWAYS floored at `@config.agents/default/canon`.
+* `agent.default.canon` is ALWAYS floored at `{config.agents}/default/canon`.
 * the ACTIVE NODE's `agent.<node>.canon` is floored too, but its FLOOR VALUE is chosen by whether
-  that node's own store actually PROVIDES a canon dir — `@config.agents/<node>/canon` when it does,
-  and the REF `@agent.default.canon` when it does not. So a plugin agent whose install stamped its
+  that node's own store actually PROVIDES a canon dir — `{config.agents}/<node>/canon` when it does,
+  and the REF `{agent.default.canon}` when it does not. So a plugin agent whose install stamped its
   own chapter binds that chapter, and a PERSONA (no package, no stamped store) falls back to the
   DEFAULT store — which is precisely the beneficiary case J-1 names.
 * being a FLOOR entry, any `agent.<node>.canon` a plugin or the user sets in the cascade OVERRIDES
@@ -680,7 +680,7 @@ implemented against a resolver that has NO agent-tier fallback:
 
 A literal reading of option (a) — flooring ONLY `agent.default.canon` — is not implementable here:
 `settings_expand._lookup_raw` walks the merged snapshot with no per-tier fallback, and
-`@agent.<node>.canon/handbook` is an EMBEDDED ref, so an undeclared node key coerces to `""`
+`{agent.<node>.canon}/handbook` is an EMBEDDED ref, so an undeclared node key coerces to `""`
 (spec §0) and yields the degenerate host path `/handbook` rather than falling back to the default
 tier.
 
@@ -874,7 +874,7 @@ Both box-side destinations are STATIC and carried by the declarative file as `~`
 the fixed pinned root (:data:`~kanibako.settings.settings_resolve.BOX_PINNED_ROOT_RELPATH`),
 absolutized to `GUEST_HOME` by
 :func:`~kanibako.settings.settings_resolve.normalize_bind_dest` inside :func:`add_bind` (R-11) —
-exactly like every other declared dest in the file. They carry no `$XDG_STATE_HOME` token: a mount
+exactly like every other declared dest in the file. They carry no `{$XDG_STATE_HOME}` token: a mount
 dest is written into the runtime's arguments BEFORE the box is live, and the box's real XDG
 location is served after boot by `box_supervisor.project_pinned_xdg`.
 
@@ -885,15 +885,15 @@ at the seam, GATED on `.exists()` here: a missing source simply omits its key.
 `Z`/`U` relabel/chown would break the shared socket topology. The per-entry EMPTY options value
 carries that through the bind entry's optional 2nd slot.
 
-⚑ **B2b: `helper_log` routes through the spec's own formula** `@workset.logs/@{meta.box.name}.jsonl`
+⚑ **B2b: `helper_log` routes through the spec's own formula** `{workset.logs}/{meta.box.name}.jsonl`
 (§2c) — byte-identical to the probed `src_path` in all three modes, since `workset.logs` and
 `meta.box.name` resolve to exactly what `helper_log_path(std, proj)` builds (gated by a before/after
 comparison of the resolved bind). ⚑ The `.exists()` gate keys off the PROBED path while the
 emitted host_src is the FORMULA, so the two agree only where the probe resolves the same key. **In
 every mode it does** — `paths.helper_log_path` resolves `workset.logs` in every mode, so writer,
-gate and mount name one file. The standalone arm resolves its `@meta.box.path` default through
+gate and mount name one file. The standalone arm resolves its `{meta.box.path}` default through
 `resolve_workset_logs(..., standalone=True)`, which hands the pre-snapshot route the already-resolved
-`workset.boxes` (a lone box has no `@meta.box.name` leaf under it).
+`workset.boxes` (a lone box has no `{meta.box.name}` leaf under it).
 
 ⚑ **`helper_sock` is NOT routed:** its host path is the bounded socket name
 `bounded_socket_name(<box>-<ws>, run_dir)` — the companion's name rule (§ "Box and helper
@@ -913,7 +913,7 @@ through the category resolver (the sole route), PLUS the
 *storage_conf_path*) are injected here.
 
 ⚑ **B3** (spec §2b / §2c, D-M8): the store bind — the arm's `/var/lib/shared-images` entry — is
-ROUTED THROUGH THE USER KEY. Its shipped host_src is the `@`-ref `@box.images_store` (the file's
+ROUTED THROUGH THE USER KEY. Its shipped host_src is the `@`-ref `{box.images_store}` (the file's
 `meta_ref`, helper_log parity), and the runtime-probed *graph_root* enters the keyspace HERE as that
 key's DEFAULT — the manifest §2b row spells that default as *"&lt;runtime-probed podman
 graphroot&gt;"*, and this is where it is supplied: a floor scalar in the returned table. The floor
@@ -923,9 +923,9 @@ the ONE expand pass resolves the bind's host_src to the winning value. `images_c
 INTERNAL bind and NOT a key (fixed location, generated content — spec §0's test).
 
 ⚑ **11a: the PROBE feeds ONLY that default.** *graph_root* may be `None` (probe failed),
-in which case NO floor scalar is emitted and the `@box.images_store` host_src resolves solely from a
+in which case NO floor scalar is emitted and the `{box.images_store}` host_src resolves solely from a
 set tier value (or propagates ABSENT, dropping the bind). The caller's gate is just
-"image-sharing requested" — the code realization of the spec's `%if @box.share_images%` condition on
+"image-sharing requested" — the code realization of the spec's `%if {box.share_images}%` condition on
 the `images` row; whether the RESOLVED store exists is decided after the resolve, at the seam.
 
 ⚑ `meta_ref` (when declared) is the emitted host_src — the spec's own `@`-ref spelling; the symbolic

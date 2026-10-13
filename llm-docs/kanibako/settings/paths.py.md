@@ -19,14 +19,14 @@ exist for the same reason: they let this module speak about a workset without im
 `BoxMode` is surfaced as the `box.mode` token.
 
 * **`primary`** — the implicit PRIMARY workset. Box state lives under
-  `@config.primary_workset/boxes/<name>/`.
+  `{config.primary_workset}/boxes/<name>/`.
 * **`named`** — a named workset. Box state lives under the workset's own `projects/<name>/`.
 * **`standalone`** — all state lives inside the project directory itself.
 
 ### The standalone marker (`STANDALONE_META_DIR`)
 
-`box_data` is the STANDALONE box-store dir name. It is `@meta.box.path` for a standalone box (the
-empty leaf of `@workset.boxes`, keyspec §2c) and HALF of the detection marker
+`box_data` is the STANDALONE box-store dir name. It is `{meta.box.path}` for a standalone box (the
+empty leaf of `{workset.boxes}`, keyspec §2c) and HALF of the detection marker
 (`~/canon/workbook/specs/system-design-1.8.0.md` § "Detection & import") — the other half is the ROOT `workset.yaml`.
 Both must be present; a bare `box_data/` directory is not a marker.
 
@@ -50,7 +50,7 @@ two roots:
 * the **Layer-2 `system.*` path settings** (`channelroot` / `template` / `canon` / `backup` /
   `cache` / `runtime`).
 
-`global` is not a key — its children inline `@config.data/global/...`, and the `global/` dir is
+`global` is not a key — its children inline `{config.data}/global/...`, and the `global/` dir is
 created on demand by the atomic writer when those files are first written.
 
 ### `template` — the system TEMPLATE ROOT
@@ -68,27 +68,27 @@ TEMPLATE root, holding `home/` (spec §2a layers 1–3, the `seeded` category) b
 Its `handbook/` subtree supplies `SYS_CONTENTS.md` + the `general` chapter, bound RO into every box.
 
 ⚑ It names what this SCOPE CONTRIBUTES to the canon, NOT a copy of the assembled tree: `~/canon`
-(guest) is the assembly, `@<scope>.canon` (host) is one scope's contribution to it.
+(guest) is the assembly, `{<scope>.canon}` (host) is one scope's contribution to it.
 
 ### `journal` — the lifecycle journal
 
 Write-ahead log of in-flight box-lifecycle ops, beside the registry
-(`config.journal = @config.data/global/journal.yaml`). PATH-BASED on the resolved key (mirrors
+(`config.journal = {config.data}/global/journal.yaml`). PATH-BASED on the resolved key (mirrors
 `registry`; no reconstruction).
 
 ### `boxes`, `primary_vault_ro`, `primary_vault_rw`, `primary_logs`
 
-`boxes` is the PRIMARY-workset box store, `@config.primary_workset/boxes`, a plain field. The
+`boxes` is the PRIMARY-workset box store, `{config.primary_workset}/boxes`, a plain field. The
 path-tier table carries it under the non-key name `_primary_boxes` (see `resolve_system_paths`).
 Per-box metadata/shell live under `boxes/<name>/`; the PRIMARY vault/logs live as siblings under
 the PRIMARY workset (see `resolve_project`).
 
-The vault + logs roots DEFAULT to `@config.primary_workset/vault/{ro,rw}` and
-`@config.primary_workset/logs`: the PRIMARY vault lives in the PRIMARY workset, not the workspace.
+The vault + logs roots DEFAULT to `{config.primary_workset}/vault/{ro,rw}` and
+`{config.primary_workset}/logs`: the PRIMARY vault lives in the PRIMARY workset, not the workspace.
 
 ⚑⚑ **All four PRIMARY roots are RESOLVED, not composed.** The spec declares no `system.boxes`,
 `system.logs`, `system.vault_ro` or `system.vault_rw` at all (§1) — these fields are SURROGATES
-for the PRIMARY workset's `@workset.{boxes,logs,vault_ro,vault_rw}`, which are declared,
+for the PRIMARY workset's `workset.{boxes,logs,vault_ro,vault_rw}`, which are declared,
 CLI-settable, repointable keys in EVERY mode (§2c ALL PROJECTS, R-29). The PRIMARY workset root is
 an ordinary workset root carrying an ordinary `workset.yaml`, so it repoints exactly as a named one
 does. `resolve_system_paths` reads that `workset.yaml` ONCE and routes all four through
@@ -110,7 +110,7 @@ instead is what the tripwire on those joins bans — the CONSTANT, not just the 
 ### `ProjectGroup`
 
 Captures the default-vs-workset difference as *data* rather than control flow. The implicit default
-group is the *default workset* (`is_default` is True), rooted at `@config.primary_workset` (spec
+group is the *default workset* (`is_default` is True), rooted at `{config.primary_workset}` (spec
 §2c: PRIMARY `meta.workset.path`); a named workset forms a non-default group rooted at the workset
 root. Standalone projects belong to no group (`ProjectPaths.group` is None).
 
@@ -127,7 +127,7 @@ standard data path for the default group, the workset root for a workset group.
 
 ### `_WorksetRooted`
 
-Structural type for "anything rooted at `@meta.workset.path`". Satisfied by both `ProjectGroup` (the
+Structural type for "anything rooted at `{meta.workset.path}`". Satisfied by both `ProjectGroup` (the
 launch-side view) and `kanibako.project.workset.Workset` (the workset-command view), so the workset
 file derivations serve every caller through ONE expression.
 
@@ -154,10 +154,10 @@ The two default tables and the XDG table live in `settings/bootstrap.py`, and
 
 `resolve_config_paths` resolves the bootstrap CONFIG keys FLAT, over one `LevelView` whose defaults
 are the table — **NOT** through the keyspace pipeline. Chicken-and-egg: the pipeline needs these
-resolved to find its own input files. A `config.*` ref resolves against this set; `$XDG_*`
+resolved to find its own input files. A `config.*` ref resolves against this set; `{$XDG_*}`
 against `host_xdg_map(data_home)` unless the caller passes *xdg_vars*. `layer1_foundation` (behind
 `resolve_data_path`) passes `spec_default_xdg_map` instead, so it creates nothing and an expression
-over `$XDG_RUNTIME_DIR` does not resolve there.
+over `{$XDG_RUNTIME_DIR}` does not resolve there.
 
 ### Layer 2 — system-scope SETTINGS keys that are PATHS (`SYSTEM_PATH_DEFAULTS`, spec §1/§2g)
 
@@ -184,10 +184,10 @@ default, through `resolve_xdg(XDG_RUNTIME_DIR, None)`. The table itself is in `b
 def workset_settings_path(group: _WorksetRooted | None) -> Path | None
 ```
 THE workset-tier settings-file derivation (spec §2c ALL WORKSETS: `meta.workset.settings` =
-`@meta.workset.path/workset.yaml`).
+`{meta.workset.path}/workset.yaml`).
 
-`group.root` carries `@meta.workset.path` for both modes — the PRIMARY workset roots at
-`@config.primary_workset`, a NAMED workset at its own root — so the one expression serves every
+`group.root` carries `{meta.workset.path}` for both modes — the PRIMARY workset roots at
+`{config.primary_workset}`, a NAMED workset at its own root — so the one expression serves every
 caller (launch cascade, config verbs, `--effective` displays). `None` (no group = standalone) has no
 workset tier file.
 
@@ -198,7 +198,7 @@ def _default_project_group(std: StandardPaths) -> ProjectGroup
 ```
 The PRIMARY (default) workset's `ProjectGroup`.
 
-Spec §2c: the PRIMARY workset roots at `@config.primary_workset` — the workset-tier settings/env
+Spec §2c: the PRIMARY workset roots at `{config.primary_workset}` — the workset-tier settings/env
 files derive from this root (F4). `local_shared_base` is the data path.
 
 ```python
@@ -280,13 +280,13 @@ def _box_settings_files(
 ```
 THE `(box_tier, workset_tier)` settings-file derivation (spec §2c).
 
-ONE expression, spelled ONCE. `meta.box.settings` is the UNIFORM `@meta.box.path/box.yaml` in
+ONE expression, spelled ONCE. `meta.box.settings` is the UNIFORM `{meta.box.path}/box.yaml` in
 EVERY mode (spec §2c ALL PROJECTS), so the box tier is ALWAYS a real path — never `None`:
 
 * **primary / named** — box tier = the box's own `<metadata_path>/box.yaml` (`BOX_META_FILE`,
-  which IS `@meta.box.path` for these modes); workset tier = `workset_settings_path(group)` (the
+  which IS `{meta.box.path}` for these modes); workset tier = `workset_settings_path(group)` (the
   workset root's `workset.yaml`).
-* **standalone** — `@meta.box.path` is the box's store, the resolved `workset.boxes`
+* **standalone** — `{meta.box.path}` is the box's store, the resolved `workset.boxes`
   (`standalone_box_store`; `<root>/box_data/` by default), so the box tier is `<store>/box.yaml` —
   **ABSENT BY DEFAULT**
   (spec §2c + §4 STANDALONE tree): an absent file is an empty tier, and `config_io.load_doc` yields
@@ -308,7 +308,7 @@ TYPE-CHECKED, so mypy rejects a `None` box tier and flags any `is None` narrowin
 **This one is kept as a marker in the source docstring**, because the constraint lives at that exact
 signature.
 
-*group* is anything rooted at `@meta.workset.path` — a `ProjectGroup` or a `WorksetSpec`, since the
+*group* is anything rooted at `{meta.workset.path}` — a `ProjectGroup` or a `WorksetSpec`, since the
 NAMED resolver builds its group only at return time. *early* is required on the standalone arm,
 which resolves the store (asserted).
 
@@ -410,12 +410,12 @@ many call sites that just need a spec-backed XDG base dir.
 ```python
 def host_xdg_map(data_home: Path | None = None) -> dict[str, str]
 ```
-Build the canonical HOST-side `$XDG_*` map for a `ResolveCtx`.
+Build the canonical HOST-side `{$XDG_*}` map for a `ResolveCtx`.
 
 THE single builder for the `xdg=` argument of every host-side
 `kanibako.settings.settings_resolve.ResolveCtx` (a ruling: XDG vars must have
-fallbacks). A hand-rolled partial map would make a stored value like `$XDG_CACHE_HOME/kanibako` (the
-setup-materialized `system.cache`) raise `Variable $XDG_CACHE_HOME is not set in this context` at
+fallbacks). A hand-rolled partial map would make a stored value like `{$XDG_CACHE_HOME}/kanibako` (the
+setup-materialized `system.cache`) raise `Variable {$XDG_CACHE_HOME} is not set in this context` at
 expand time — the resolver reads ONLY this map, never the environment, so a missing key is
 unrecoverable at the call site.
 
@@ -436,9 +436,9 @@ REPLACES the live `host_xdg_map(data_home)` build — the seam `resolve_data_pat
 
 *set_values* holds raw user-set `config.<leaf>` expressions (from the `kanibako.cfg` set).
 Returns `{config.<key>: resolved_str}` for every key in `CONFIG_PATH_DEFAULTS` — the FOUNDATION
-mapping injected into `kanibako.settings.settings_resolve.ResolveCtx.config` so `@config.*` refs
+mapping injected into `kanibako.settings.settings_resolve.ResolveCtx.config` so `{config.*}` refs
 resolve there (spec §1A / JC-2). Flat by design (chicken-and-egg): the keyspace pipeline needs these
-resolved to find its own input files, so they resolve OUTSIDE it, with `@config.*` refs chained
+resolved to find its own input files, so they resolve OUTSIDE it, with `{config.*}` refs chained
 within this set only.
 
 ```python
@@ -456,18 +456,18 @@ Layer-2 path settings. *data_home* is the already-resolved XDG data base exposed
 
 Returns `{name: Path}`: every Layer-1 `config.*` key and every Layer-2 `system.*` key under its full
 dotted key, plus the derived PRIMARY-workset roots under the NON-KEY names `_primary_boxes` /
-`_primary_vault_ro` / `_primary_vault_rw` / `_primary_logs` (under `@config.primary_workset`). The
+`_primary_vault_ro` / `_primary_vault_rw` / `_primary_logs` (under `{config.primary_workset}`). The
 `system.*` defaults `@`-ref a Layer-1 config key, resolved against the foundation injected into
 `ctx.config`.
 
 Internal notes:
 
-* The nested `lookup` implements the **resolver SPLIT** (spec §1A / JC-2): `@config.*` → the Layer-1
-  foundation (`ctx.config`); `@system.*` → the system path set. Prefix-driven.
+* The nested `lookup` implements the **resolver SPLIT** (spec §1A / JC-2): `{config.*}` → the Layer-1
+  foundation (`ctx.config`); `{system.*}` → the system path set. Prefix-driven.
 * `system.*` config paths are always scalar strings (no structured category leaves at this tier),
   which is why the `object`-typed value is narrowed with `str(...)` before expansion.
 * The `_primary_*` entries are the PRIMARY-workset box/vault/logs roots, derived from the
-  resolved PRIMARY workset dir (`@config.primary_workset`). ⚑ `_primary_vault_ro` /
+  resolved PRIMARY workset dir (`{config.primary_workset}`). ⚑ `_primary_vault_ro` /
   `_primary_vault_rw` are RESOLVED through the workset dir-key route (one `workset.yaml` read,
   both arms), not composed — see the `primary_vault_*` field notes above. That is the only file
   read in this function, and it is best-effort: an ABSENT or unparseable `workset.yaml` yields the
@@ -491,7 +491,7 @@ Three layers, read in cascade order so the most-authoritative present value of e
    only.**
 2. *user_config_path* — the user's global `~/.config/kanibako.cfg` (overrides the base).
    **`config.*` only.**
-3. `@config.settings` — the SYSTEM SETTINGS file's `system:` table, filtered to
+3. `{config.settings}` — the SYSTEM SETTINGS file's `system:` table, filtered to
    `SYSTEM_PATH_DEFAULTS` (most specific).
 
 Missing files are skipped (each contributes nothing). With *tolerate_bad_settings*, a SYSTEM
@@ -518,7 +518,7 @@ there. Reading the CONFIG files alone would let that write reach the launch casc
 `tests/test_settings/test_repoint_reaches_std_paths.py` asserts the EFFECT rather than the
 destination.
 
-⚑ **THE LAYER-1 RESOLVE RUNS TWICE, DELIBERATELY.** Locating the settings file IS `@config.settings`,
+⚑ **THE LAYER-1 RESOLVE RUNS TWICE, DELIBERATELY.** Locating the settings file IS `{config.settings}`,
 so the foundation must resolve before the file can be opened; `resolve_config_paths` is a pure dict
 resolve over set-values already in hand, so the second pass reopens nothing.
 
@@ -544,7 +544,7 @@ def host_config_map(std: StandardPaths) -> dict[str, str]
 The resolved Layer-1 `config.*` foundation projected BACK onto its own dotted key names — the Layer-1
 twin of `system_path_floor`, and the `config=` twin of `host_xdg_map`. A host-side `ResolveCtx` is
 built from those two builders and nothing else; consumers put this in `ctx.config` so a stored
-`@config.*` source resolves under the resolver SPLIT (spec §1A / JC-2).
+`{config.*}` source resolves under the resolver SPLIT (spec §1A / JC-2).
 
 ⚑⚑ **ONE FUNCTION, DERIVED FROM `CONFIG_PATH_DEFAULTS`.** The host-side ctx builders
 (`agent_select.host_resolve_ctx`, and `settings_launch`'s input builders) take their config map from
@@ -571,7 +571,7 @@ def system_path_floor(std: StandardPaths) -> dict[str, str | None]
 ```
 The resolved Layer-2 `system.*` tier projected BACK onto its own dotted key names — the inverse of
 what `resolve_system_paths` produced. Consumers fold it into a settings floor so a stored
-`@system.*` source resolves; each value equals the corresponding `std` attribute, so an
+`{system.*}` source resolves; each value equals the corresponding `std` attribute, so an
 `@`-ref-routed bind is byte-identical to a runtime-probed literal.
 
 ⚑⚑ **ONE FUNCTION, ONE CARRIER.** Every consumer takes the tier from here, through
@@ -635,9 +635,9 @@ When *initialize* is True (used by `start`), missing project directories are cre
 templates are copied in. When False (used by subcommands like `archive`/`purge`), the paths are
 merely computed.
 
-PRIMARY boxes/vault/logs live under `@config.primary_workset` (the real PRIMARY-workset
+PRIMARY boxes/vault/logs live under `{config.primary_workset}` (the real PRIMARY-workset
 dir); there is no layout axis. Per-box state is `boxes/<name>/` (metadata + shell) with the vault at
-`@config.primary_workset/vault/{ro,rw}/<name>`.
+`{config.primary_workset}/vault/{ro,rw}/<name>`.
 
 *enable_vault* controls whether vault directories are created and mounted. Defaults to True for new
 projects; existing projects read from `box.yaml`.
@@ -686,9 +686,9 @@ deferred-create is handled by the journal block above.)
 ### `resolve_project` — home and vault are not stored paths
 
 A ruling: there is no per-box custom home/vault path. home/vault are SOLELY the spec-derived
-location (`@meta.box.home` + `@workset.vault_{ro,rw}/@meta.box.name`); the launch routes the
-home/vault binds through those `@`-refs. `@meta.box.home` is the RO DERIVED key, itself
-`@meta.box.path/home` — the bind names the key and does not re-derive it.
+location (`{meta.box.home}` + `{workset.vault_<arm>}/{meta.box.name}`); the launch routes the
+home/vault binds through those refs. `{meta.box.home}` is the RO DERIVED key, itself
+`{meta.box.path}/home` — the bind names the key and does not re-derive it.
 
 A user customizing home/vault sets the `box.bindings.{rw,ro}.{home,vault}` CASCADE override (which
 wins naturally), NOT a stored shell path. Sparse create writes no `shell` / `vault_*` fields.
@@ -778,7 +778,7 @@ Fixed PRIMARY-mode `(shell, vault_ro, vault_rw)` (no layout axis). A NULL vault 
 for the per-box leaf too; none is invented.
 
 Shell lives under the per-box metadata dir (`boxes/<name>/home`); the vault lives under the PRIMARY
-workset (`@config.primary_workset/vault/{ro,rw}/<name>` by default), NOT inside the user's
+workset (`{config.primary_workset}/vault/{ro,rw}/<name>` by default), NOT inside the user's
 workspace: the PRIMARY workset owns boxes/vault/logs just like a named workset. ⚑ This function
 composes only the per-box NAME LEAF — the two arms arrive already resolved on
 `std.primary_vault_{ro,rw}`, so a `workset.vault_ro` repoint in the PRIMARY workset's `workset.yaml`
@@ -797,7 +797,7 @@ Shell under the per-project box dir; vault under the workset's two RESOLVED vaul
 must stay that way.** A single base with `ro`/`rw` composed onto it would spell `workset.vault_ro`
 and `workset.vault_rw` as one shared parent, which they are not: each is an independently
 repointable key, so one base cannot answer both. The ro/rw split nests ABOVE the box name to match
-PRIMARY and STANDALONE; only the `@meta.box.name` leaf is composed here, and that leaf is the whole
+PRIMARY and STANDALONE; only the `{meta.box.name}` leaf is composed here, and that leaf is the whole
 per-mode variation (§2c).
 
 ```python
@@ -831,17 +831,17 @@ box's own workset/box tree:
 
 * PRIMARY → the RESOLVED `workset.logs` of the primary root (`std.primary_logs`)
 * NAMED → the RESOLVED `workset.logs` of `proj.group.root`
-* STANDALONE → the RESOLVED `workset.logs` of the project root (default `@workset.boxes`, i.e.
+* STANDALONE → the RESOLVED `workset.logs` of the project root (default `{workset.boxes}`, i.e.
   `box_data/`), read from the root `workset.yaml`
 
 ⚑⚑ **This function is the hub's WRITER, and the MOUNT it must agree with is the spec's own
-spelling** `@workset.logs/@{meta.box.name}.jsonl` (`data/rom/settings/core-defaults.yaml`, the `helpers` table).
+spelling** `{workset.logs}/{meta.box.name}.jsonl` (`data/rom/settings/core-defaults.yaml`, the `helpers` table).
 Every arm RESOLVES `workset.logs`, in ALL THREE modes: a composed directory would disagree with the
 mount the instant a user repointed `workset.logs`, and the box would read an empty file forever. In
-the standalone arm the declared default is `@workset.boxes` (no name leaf), a ref the pre-snapshot
+the standalone arm the declared default is `{workset.boxes}` (no name leaf), a ref the pre-snapshot
 resolver must answer before the launch snapshot exists. `resolve_workset_logs(..., standalone=True)`
 takes that default, and `settings/workset_dirkeys.resolve_workset_dir_key` resolves a ref to another
-workset early key itself, with cycle protection. A ref needing the construct-time `@meta.box.name`
+workset early key itself, with cycle protection. A ref needing the construct-time `{meta.box.name}`
 is refused.
 
 🛑 A repointed standalone `workset.logs` puts the log OUTSIDE the `box_data` directory, which
@@ -851,7 +851,7 @@ through `remove_box_logs`, as `box purge` does; the directory the user nominated
 
 The caller is responsible for guarantee-creating the parent dir before the bind (L7). The box-side
 dest is the PINNED `~/.kanibako/state/helpers.jsonl` (declared in `core-defaults.yaml`), NOT a
-`$XDG_STATE_HOME` expression; see
+`{$XDG_STATE_HOME}` expression; see
 `kanibako.settings.settings_resolve.BOX_PINNED_ROOT_RELPATH` for why, and
 `box_supervisor.project_pinned_xdg` for the post-boot XDG projection.
 
@@ -957,10 +957,10 @@ non-key leaf a workset root carries (`project/workset.py::_VAULT_LEAF`), the sam
 ⚑ It is NOT `vault_ro_path.parent`: `workset.vault_ro` is repointable, so that parent is the
 skeleton only until the key moves. Three shapes show why:
 
-* `vault_ro: @meta.workset.path/store/ro` would name `<root>/store` — a directory no key gave us,
+* `vault_ro: {meta.workset.path}/store/ro` would name `<root>/store` — a directory no key gave us,
   INSIDE the root, so a containment guard would admit it and the `.gitignore` would land there
   while the real skeleton got none.
-* In PRIMARY the arm carries a `/@meta.box.name` leaf, so the parent would be the `ro` ARM ITSELF,
+* In PRIMARY the arm carries a `/{meta.box.name}` leaf, so the parent would be the `ro` ARM ITSELF,
   where an `rw/` pattern matches nothing.
 * `vault_ro: ~/store` would make it `$HOME`, which the composition makes unreachable.
 
@@ -1085,7 +1085,7 @@ Check whether *resolved_dir* is inside a registered workset.
 Returns a `DetectionResult` if found, `None` otherwise. Checks `workspaces/` first (specific
 project), then the workset root itself (inside workset but not necessarily a project workspace). The
 `workspaces` location is the RESOLVED `workset.workspaces` (repoint honored; default
-`@meta.workset.path/workspaces` — §3.3: real and USED), through
+`{meta.workset.path}/workspaces` — §3.3: real and USED), through
 `project.workset.resolve_workspaces_locator`, so a null still finds members connected before it.
 
 ```python
@@ -1328,7 +1328,7 @@ Box → workspace comes SOLELY from the PRIMARY per-workset registry, seeded at 
 DIR via `box_resolve.resolve_box_identity` (the registry is keyed by workspace PATH, not the box
 dir), so the PRIMARY registry is read here directly (identical data). There is no on-disk fallback:
 a box absent from the registry has no workspace → `None`. (These are
-PRIMARY boxes: `std.boxes` == `@config.primary_workset/boxes`, so the PRIMARY registry is the home.)
+PRIMARY boxes: `std.boxes` == `{config.primary_workset}/boxes`, so the PRIMARY registry is the home.)
 
 ```python
 def iter_workset_projects(
@@ -1364,7 +1364,7 @@ The returned object is a concrete `kanibako.project.workset.Workset` (typed stru
 root. When *project_dir* is inside `workspaces/{name}/`, the project name is returned. When inside
 the workset root but not in a specific workspace, `None` is returned as the project name. The
 `workspaces` location is the RESOLVED `workset.workspaces` (repoint honored; default
-`@meta.workset.path/workspaces` — §3.3: real and USED), through
+`{meta.workset.path}/workspaces` — §3.3: real and USED), through
 `project.workset.resolve_workspaces_locator`, so a null still finds members connected before it.
 
 Raises `WorksetError` if *project_dir* does not belong to any registered workset.
@@ -1588,7 +1588,7 @@ All project state lives inside *project_dir* itself. No data is written to `$XDG
 No layout axis. The project *root* (the runtime dir) is the standalone
 workset root and holds, in fixed positions: `workset.yaml` (the workset tier, AT THE ROOT —
 `metadata_path`), a `workspace/` subdir (the live workspace → `~/workspace` — the `project_path`;
-the resolved `workset.workspaces`, default `@meta.workset.path/workspace`), a `box_data/` marker dir
+the resolved `workset.workspaces`, default `{meta.workset.path}/workspace`), a `box_data/` marker dir
 holding `home/` + the `<box>.jsonl` helper log, and `vault/{ro,rw}/`. The box identity is
 `<kuid>_<sanitized leaf>` (generated + registered in `registry.standalone` at create time; reused
 from the stored meta after).
@@ -1603,7 +1603,7 @@ The hash + identity key off the ROOT (the standalone workset root), which is sta
 subdir is the bind source, not the identity.
 
 `project_path` is the resolved `workset.workspaces` (a ruling): the STANDALONE default
-is `@meta.workset.path/workspace` == the `workspace/` subdir, and a set `workset: {workspaces: …}`
+is `{meta.workset.path}/workspace` == the `workspace/` subdir, and a set `workset: {workspaces: …}`
 in the ROOT `workset.yaml` repoints it ("changeable from workset level", spec §2e).
 A `null` there makes it `None` (never the default subdir), and the `initialize` recovery then makes
 no workspace.
@@ -1614,7 +1614,7 @@ The mode-aware tier pair comes from the ONE derivation: the BOX tier is `<store>
 § "Detection & import") and where `workset.kuid` lives.
 
 ⚑ STANDALONE paths are derived from the (current) root, never the stored absolutes: the DEFAULT
-formulas are all `@`-anchored to the root (`@meta.workset.path/…`), so a default-shaped tree is
+formulas are all anchored to the root (`{meta.workset.path}/…`), so a default-shaped tree is
 drop-in portable BY CONSTRUCTION — a moved/imported tree resolves against its new location. A stored
 ABSOLUTE repoint (e.g. `workset.workspaces`) is the user's own choice and travels as written.
 

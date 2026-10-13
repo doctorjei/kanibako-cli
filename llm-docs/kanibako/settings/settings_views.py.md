@@ -198,12 +198,12 @@ workset-tier settings FILE is `MetaWorksetView.settings`, spelled directly off `
 **`MetaBoxView`** wraps `store.meta.box` and exposes the RO identity anchors
 materialized for the box (spec §2c; §0 meta-RO):
 
-* `mode` — the resolved mode token surfaced from `@meta.runtime.project_type` (spec §2b).
-* `name` — the box name (`proj.name`; the `@meta.box.*` binds key off it).
+* `mode` — the resolved mode token surfaced from `{meta.runtime.project_type}` (spec §2b).
+* `name` — the box name (`proj.name`; the `{meta.box.*}` binds key off it).
 * `workspace` — the resolved in-box workspace SOURCE (= `str(proj.project_path)`);
-  `box.bindings.rw.workspace` routes through `@meta.box.workspace` (spec §2c).
+  `box.bindings.rw.workspace` routes through `{meta.box.workspace}` (spec §2c).
 * `inbox` — this box's own mailbox dir (spec §2c); `box.bindings.rw.inbox` routes through
-  `@meta.box.inbox`.
+  `{meta.box.inbox}`.
 * `share_global` — this box's system-scope share dir (spec §2c).
 * `share_workset` — this box's workset-local share dir, `None` for STANDALONE (spec §2c).
 * `settings` — the RO box-TIER settings-file path, UNIFORM in every mode (spec §2c, ALL PROJECTS).
@@ -217,21 +217,21 @@ materialized for the box (spec §2c; §0 meta-RO):
 .
 
 **`MetaWorksetView`** wraps `store.meta.workset` (spec §1A/§2c). It exposes the single-source
-re-rooted `path` (= `@meta.runtime.ws_root`, a resolved `Path`); `settings`
-(= `@meta.runtime.ws_root/workset.yaml`, typed `Path | None` via `as_opt_path`: it is a path in
+re-rooted `path` (= `{meta.runtime.ws_root}`, a resolved `Path`); `settings`
+(= `{meta.runtime.ws_root}/workset.yaml`, typed `Path | None` via `as_opt_path`: it is a path in
 every mode, standalone included, whose ROOT file plays the workset tier, and `None` only where a
 narrow or partial resolve materializes none); and the `name` partition token (`__PRIMARY__` /
-`<named>` / `__STANDALONE__`), the `@meta.runtime.ws_name` anchor (spec §1A/§2c).
+`<named>` / `__STANDALONE__`), the `{meta.runtime.ws_name}` anchor (spec §1A/§2c).
 
 **`MetaAgentView`** wraps `store.meta.agent.<agent>` (spec §2d). It exposes:
 
 * `name` — the plugin-set name (spec §2d), REQUIRED when an agent exists; it identifies the store
   dir and the cascade key.
-* `path` — the agent STORE ROOT (§2d = `@config.agents/<agent>`), which is also §2a's agent
+* `path` — the agent STORE ROOT (§2d = `{config.agents}/<agent>`), which is also §2a's agent
   DECLARATION ROOT: an abstract-category source stores
-  `@meta.agent.<agent>.path/<category>/<leaf>`, so the key resolves for real.
+  `{meta.agent.<agent>.path}/<category>/<leaf>`, so the key resolves for real.
 * the materialized trio: `settings` (the agent-tier settings cascade FILE,
-  `@meta.agent.<a>.path/agent.yaml`, resolved); `mode` (the harness's INTERACTIVE launch grammar,
+  `{meta.agent.<a>.path}/agent.yaml`, resolved); `mode` (the harness's INTERACTIVE launch grammar,
   `dict[mode_key → argv fragment]`); and `exec` (the STANDALONE one-shot fragment, declared under
   the Python-safe attribute `exec`). `exec` is ABSENT for an agent with no `exec` operation, so
   access it only where it is materialized.

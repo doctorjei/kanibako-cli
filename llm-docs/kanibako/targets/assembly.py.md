@@ -237,7 +237,7 @@ snapshot with no existence check — so a caller gating on this predicate sees e
 snapshot will carry.
 
 *descriptor* may be `None` (the no-agent target has none), which answers False. *box_dest* must be
-the ABSOLUTE guest path: descriptor box_dests are `$GUEST_HOME`-expanded by the defaults loader,
+the ABSOLUTE guest path: descriptor box_dests are `{$GUEST_HOME}`-expanded by the defaults loader,
 so a `~`-spelled dest never matches and callers must expand first.
 
 Sole caller: `settings/core_defaults.kickoff_default_categories`.

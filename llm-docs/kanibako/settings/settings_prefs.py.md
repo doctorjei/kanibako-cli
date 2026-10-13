@@ -75,10 +75,10 @@ cascade-input settings FILE, so requesting it from a lower level could pull in a
 carrying its own prefs, which could relocate again — unbounded, and able to oscillate between two
 files pointing at each other.
 
-* `workset.boxes` → `meta.box.path` (`@workset.boxes[/@meta.box.name]`, §2c) → `meta.box.settings`
-  (`@meta.box.path/box.yaml`, §2c ALL PROJECTS) → THE BOX SETTINGS FILE, i.e. possibly the very
+* `workset.boxes` → `meta.box.path` (`{workset.boxes}[/{meta.box.name}]`, §2c) → `meta.box.settings`
+  (`{meta.box.path}/box.yaml`, §2c ALL PROJECTS) → THE BOX SETTINGS FILE, i.e. possibly the very
   file the request came from.
-* `workset.kuid` → `meta.box.name` for STANDALONE (`<@workset.kuid>_%leaf%`, §2c) → the
+* `workset.kuid` → `meta.box.name` for STANDALONE (`{workset.kuid}_%leaf%`, §2c) → the
   `meta.box.path` LEAF → the same chain, one hop further out.
 
 ⚑ **WHY ONLY TWO, where §2h's sketch lists seven.** `config.data`, `config.primary_workset`,

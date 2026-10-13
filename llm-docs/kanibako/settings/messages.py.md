@@ -125,7 +125,7 @@ says "vault" unqualified; and its first falls back to the project PATH when the 
 
 ```python
 ERR_SETTINGS_BAD_PATH       # ("config" | "system", key)
-ERR_SETTINGS_BAD_REF        # ("" | "config", ref)
+ERR_SETTINGS_BAD_REF        # ("" | "config ", ref)
 ERR_CONFIG_NO_FILE          # (config file path)
 ERR_CONFIG_LAYER1_SETTINGS  # (the Layer-1 file path, the offending keys)
 ERR_CONFIG_LAYER1_UNDECLARED # (the Layer-1 file path, the offending keys, the declared set)
@@ -161,9 +161,9 @@ keys, dotted and sorted, one per line — the file itself is the first.
 
 ⚑ **The first argument of each is a LAYER DISCRIMINATOR, not a value.** `ERR_SETTINGS_BAD_PATH`'s is
 literally `"config"` or `"system"`, naming which of the two layers failed. `ERR_SETTINGS_BAD_REF`'s is
-`""` or `"config"`, and it is spliced INSIDE the `@`-sigil — `"Unknown @%s-reference: %s"` renders
-either `Unknown @-reference:` or `Unknown @config-reference:`. That empty string is load-bearing
-punctuation; passing a plain scope name there would produce `@system-reference` for a ref that is not
+`""` or `"config "` (trailing space), spliced before the word — `"Unknown %sreference: {%s}"` renders
+`Unknown reference: {a.b}` or `Unknown config reference: {config.x}`. The empty string and the space
+are load-bearing; a bare scope name there would produce `Unknown systemreference` for a ref that is not
 prefix-qualified.
 
 ⚑ `ERR_SETTINGS_BAD_PATH` is raised on a branch the code marks unreachable — every key in both tables

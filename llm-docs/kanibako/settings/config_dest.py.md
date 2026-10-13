@@ -226,7 +226,7 @@ Which FILE rule a family follows:
 * `CATEGORY` — the bind-shaped category families, which follow the `SCOPED` rule.
 
 ⚑ `config_keys.SETUP_MARKER_KEY` (`system.setup_completed`) is a Layer-2 `system.*` SETTINGS key
-(spec §2g), written to and read from `@config.settings`, so it routes through `_KEY_ROUTES` under
+(spec §2g), written to and read from `{config.settings}`, so it routes through `_KEY_ROUTES` under
 `SCOPED` beside `system.agent`.
 
 🛑 **THERE IS NO "WRITE THE CONFIG FILE" RULE AND THERE MUST NOT BE ONE.** `config.*` keys LOCATE

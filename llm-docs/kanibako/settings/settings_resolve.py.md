@@ -31,7 +31,7 @@ simple mappings and lists this module consumes (kanibako's config files are all 
 no file I/O, no mounting, and holds no global mutable state — the module-level names are strings,
 three ints, two compiled regexes, and the `UNSET` sentinel, which is `__slots__`-empty and therefore
 immutable. Its reads of the process environment are `_host_term` and `_host_colorterm`, which supply
-the `$TERM` and `$COLORTERM` defaults of a `ResolveCtx` at construction — VALUES captured into the
+the `{$TERM}` and `{$COLORTERM}` defaults of a `ResolveCtx` at construction — VALUES captured into the
 context, never an environment lookup during expansion.
 
 ## The import-direction invariant — what keeps this module extractable
@@ -168,7 +168,7 @@ notice.
 The FIXED box-side root for state that CANNOT resolve without a live box but MUST be placed
 before the box is live. A mount destination goes into the container runtime's argument list
 before anything is running, and a copy category runs at `create` with no container at all — so a
-destination containing a `$XDG_*` token would have to be resolved by the HOST, guessing at what
+destination containing a `{$XDG_*}` token would have to be resolved by the HOST, guessing at what
 the box would say, by hand, in every resolver that needs it — and hand-kept guesses drift apart.
 One fixed root deletes the whole class: it resolves identically on both sides, always. XDG
 compliance comes after boot, by projecting this root onto the box's real XDG locations
@@ -184,7 +184,7 @@ roots (`config.data`, `system.cache`, `system.runtime`) resolve eagerly with a r
 to read and do NOT belong here.
 
 `BOX_PINNED_STATE_RELPATH` is the STATE facet of that root — the pinned counterpart of
-`$XDG_STATE_HOME/kanibako`. **Further facets (cache, runtime, …) become further names here, never
+`{$XDG_STATE_HOME}/kanibako`. **Further facets (cache, runtime, …) become further names here, never
 a second mechanism.**
 
 ## The `@`-ref name grammar is COMPOSED, never restated
@@ -244,7 +244,7 @@ Context for variable expansion.
 gets its `xdg=` from one builder in `paths.py`, deliberately — an ad-hoc environment read here would
 give two contexts two answers.
 
-*term* answers `$TERM` and is **defaulted, not built per call site**, which is the one place this
+*term* answers `{$TERM}` and is **defaulted, not built per call site**, which is the one place this
 class parts company with *xdg*: `TERM` is a single process-wide host fact with no per-context
 variation and no map to assemble, so a builder threaded through every construction site would buy
 nothing and would leave exactly the PARTIAL per-context namespace the spec calls a bug. The
@@ -253,17 +253,17 @@ it. The fallback lives here rather than in `paths.py` beside `resolve_xdg` becau
 import NOTHING from `settings/` — the ban is what splits the two, not a second opinion about where
 host-env defaults belong.
 
-*colorterm* answers `$COLORTERM` and is defaulted the same way, for the same reasons — but its type
+*colorterm* answers `{$COLORTERM}` and is defaulted the same way, for the same reasons — but its type
 is `str | None`, and the `None` is the whole point. `COLORTERM` is a PASSTHROUGH of a host signal
 with no substitute value, so "the host set none" is a real answer rather than a failure, and
 `_host_colorterm` returns `None` for an unset **or empty** host value. See `resolve_var` below.
 
 *config* is the Layer-1 CONFIG-key FOUNDATION (spec §1): the resolved `config.*` bootstrap paths
 keyed by their full dotted name (`config.data`, `config.settings`, `config.agents`,
-`config.primary_workset`, `config.registry`). It is consulted by the `@config.*` ref route —
+`config.primary_workset`, `config.registry`). It is consulted by the `{config.*}` ref route —
 **config is NOT a settings cascade level** (spec §1A / JC-2), it is a foundation injected here
-exactly the way `$XDG_*` is. Empty when no foundation is available (behavior-only contexts where
-`@config.*` never appears).
+exactly the way `{$XDG_*}` is. Empty when no foundation is available (behavior-only contexts where
+`{config.*}` never appears).
 
 ⚑ The dataclass is frozen; do not mutate *xdg* / *config* in place. Frozen protects rebinding, not
 the dicts themselves.
@@ -559,7 +559,7 @@ Resolve a variable name against the context namespace — THREE-STATE, and the P
 string-valued `_resolve_var` below is derived from.
 
 It answers the value, or `UNSET` for the one class of variable whose declared answer can be
-LEGITIMATE ABSENCE: a PASSTHROUGH of a host signal that has no substitute value. `$COLORTERM` is
+LEGITIMATE ABSENCE: a PASSTHROUGH of a host signal that has no substitute value. `{$COLORTERM}` is
 the only member. ⚑ `UNSET` is NEVER a way of saying "I could not work this out" — every
 other unresolvable name still raises and names itself.
 
@@ -576,7 +576,7 @@ else is an "Unknown variable". ⚑ The three messages are distinct on purpose �
 `TERM` is the one variable that can NEITHER be refused NOR be wrong: it answers `ctx.term`, which
 always holds a value (`_host_term`). An empty or unset host `TERM` falls back to `xterm`
 (`DEFAULT_TERM`) — **and only an empty one; a set value is passed through UNVALIDATED.** The
-asymmetry with the `$XDG_*` twin, which ignores a value failing `isabs`, is deliberate and
+asymmetry with the `{$XDG_*}` twin, which ignores a value failing `isabs`, is deliberate and
 structural: `isabs` is a pure test on a string, whereas "is this `TERM` usable" is a terminfo
 lookup, and the terminfo set that decides it belongs to the BOX while this resolution runs on the
 HOST. A host-side check would be guessing about a place it cannot see; the accepted failure mode
@@ -598,7 +598,7 @@ The EMBEDDED-token answer: `resolve_var` with absence coerced to `""`.
 
 Same rule the embedded `@`-ref path already keeps (`settings_expand._lookup_str`): an absent
 referent substitutes an empty string, which never deletes the HOST expression's key. On a host with
-no `COLORTERM`, `"c=$COLORTERM"` is `"c="` — the key's value is that whole string and it exists.
+no `COLORTERM`, `"c={$COLORTERM}"` is `"c="` — the key's value is that whole string and it exists.
 Its one caller is `_expand_var`, i.e. every `$VAR` reached through `expand_expr`.
 
 ```python

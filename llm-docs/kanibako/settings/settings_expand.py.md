@@ -14,9 +14,9 @@ ABSENCE — the holder key is DROPPED (whole-value, spec §0) or substitutes the
 A PRESENT-`None` referent makes the WHOLE value `None`, whole-value or embedded alike (spec §0:
 *"An embedded reference to a present `<None>` makes the whole value `<None>`."*, [R186]) — and every
 other unresolvable case is an ERROR that NAMES the key: a cycle, a depth-cap breach, an
-unknown `$VAR`, a `@pref.*` reference, or a binding destination that would resolve to no path.
+unknown `$VAR`, a `{pref.*}` reference, or a binding destination that would resolve to no path.
 
-⚑ **ABSENCE HAS A SECOND SOURCE, and it is not a failure.** A PASSTHROUGH variable — `$COLORTERM`,
+⚑ **ABSENCE HAS A SECOND SOURCE, and it is not a failure.** A PASSTHROUGH variable — `{$COLORTERM}`,
 the only one — answers absence when the host sets none, and a whole-value one drops its key by the
 same whole-value rule. Nothing is ever delivered empty on that path; see *Whole-value `$VAR`* below.
 
@@ -128,9 +128,9 @@ it with the same message from the same place it always has.
 `_resolve_whole_value_var` then calls `settings_resolve.resolve_var`, the THREE-state primitive, and
 maps its `UNSET` to `_ABSENT` — the same sentinel a missing `@`-referent produces, so `_expand_node`
 drops the key by machinery that already existed. Every REFUSING name still raises exactly as it does
-through the embedded path: an unset `$AGENT`, an unknown `$XDG_*`, an unknown name.
+through the embedded path: an unset `{$AGENT}`, an unknown `{$XDG_*}`, an unknown name.
 
-⚑ **It exists for ONE variable, and the reason is not arbitrary.** `$COLORTERM` is a PASSTHROUGH of
+⚑ **It exists for ONE variable, and the reason is not arbitrary.** `{$COLORTERM}` is a PASSTHROUGH of
 a host signal with no substitute value: `COLORTERM` is unstandardized and its modern meaning is a
 capability claim only the host can make (spec, `box.env.COLORTERM`). "The host set none" therefore
 has to reach the walk as ABSENCE and drop the key — an empty string there is a third state readers
@@ -140,13 +140,13 @@ routing them through this path changes nothing.
 🛑 **HOST SPACE ONLY, and the guard is at the `_expand_str` call site.** Under `space="defer"` a
 `$VAR` is emitted VERBATIM for the BOX resolver (S17); answering it here would resolve a box-side
 token against the HOST's environment. ⚑ **The reason is S17 for EVERY variable, not the
-passthrough** — a `Bind.box` of `"$XDG_DATA_HOME"` would bake the HOST's
+passthrough** — a `Bind.box` of `"{$XDG_DATA_HOME}"` would bake the HOST's
 `/home/<user>/.local/share` into a box destination, where that variable names a different
 directory. The passthrough's own box-side answer would be the LOUD half of the same bug: absence in
 a dest position RAISES (`_expand_dest_key`), it does not delete a binding.
 
 🛑 **THE DROP DOES REACH BINDINGS, host-side, and it is silent.** A whole-value passthrough in a
-binding's HOST SOURCE (`box.bindings.ro: {/x: "$COLORTERM"}`) makes `_expand_bind` /
+binding's HOST SOURCE (`box.bindings.ro: {/x: "{$COLORTERM}"}`) makes `_expand_bind` /
 `_expand_bind_entry` propagate `_ABSENT`, and `_expand_node` drops the entry with no message — the
 capability simply is not there. That is ONE rule, not a new silence: an absent whole-value
 `@`-referent in the same position has always dropped the same way (spec §0), and confining the `$` half
@@ -199,7 +199,7 @@ resolution hits a defect that STRICT mode would either raise on (unknown `$VAR` 
 or silently drop (a dangling `@`-ref → `_ABSENT`). `_Expander._expand_node` catches it at the OWNING
 leaf and records the dotted path → *reason*. It NEVER escapes `expand` — it is a leaf-local control
 signal, not a user error — and it is never raised in strict mode. `_expand_node` also catches
-`SettingsError` in this branch, which is how the `@pref.*` refusal below reaches the error map.
+`SettingsError` in this branch, which is how the `{pref.*}` refusal below reaches the error map.
 
 There are two lenient consumers. Set-time `config set` validation (`config_interface`) implements
 the E3 rule: apply the candidate RAW value into the merged snapshot at the edited key,
@@ -229,7 +229,7 @@ Two halves enforce it:
   the snapshot. Expanding it would also resolve every pref value TWICE, once here and once at its
   target. The carry-through is guarded on the ROOT path (`not path`) so a category legitimately NAMED
   `pref` deeper in the tree is unaffected. The copy goes through `keystore.clone_store`.
-* **`_lookup_raw` REFUSES a `@pref.…` reference** rather than resolving it. It is RAISED rather than
+* **`_lookup_raw` REFUSES a `{pref.…}` reference** rather than resolving it. It is RAISED rather than
   answered `_ABSENT` because absent would silently DROP the referring key (the whole-value
   propagation, spec §0), which is exactly the class of failure this phase exists to eliminate. The message
   says a pref is a REQUEST, not a value, and tells the reader to reference the TARGET key instead.
@@ -276,7 +276,7 @@ raises there — absence is not `<None>`. The source side needs no flag: a `None
 entry in every category, and the collapse skips it.
 
 **Refusal 2 — two dests colliding on one destination.** Files store UNRESOLVED, so
-`@meta.box.path/home` and a literal spelling of that same path are two DISTINCT keys that resolve to
+`{meta.box.path}/home` and a literal spelling of that same path are two DISTINCT keys that resolve to
 one place (disk-store-rework design §2b-CAVEAT). Installing the second would silently DELETE the
 first, which is a data loss no downstream check can see, because only one entry would ever reach
 it. It is raised rather than recorded EVEN IN LENIENT MODE: the fault is the PAIR, so there is no
@@ -316,7 +316,7 @@ non-empty. The ordinary present-`None` rules then apply to the leaf (§2h): an e
 a scalar leaf keeps `None` (consumer default), a bind entry is `None` (above), and a destination
 raises — except in a `seeded` map, where it skips the layer (Refusal 1).
 ⚑ **Why not `""`:** after substitution a `""` is indistinguishable from a real path, so
-`@workset.auth.path/x` with `workset.auth.path: null` became the HOST path `/x`, and a primary
+`{workset.auth.path}/x` with `workset.auth.path: null` became the HOST path `/x`, and a primary
 `workset.vault_ro: null` would mount host `/<box>`. It is the one rule for every leaf, so no
 category carries a second copy of it. An ABSENT referent keeps the embedded `""` (spec §0).
 
@@ -331,7 +331,7 @@ beginning with neither `.` nor `/` as the name of a NAMED VOLUME rather than as 
 ⚑ **THE PARSE CANNOT COVER THIS ONE, which is why the guard is here as well.**
 `settings_assemble._declared_source` refuses a source SPELLED relative, and that is what
 `settings_launch` relies on when it uses `host_src` AS-IS — but a source spelled
-`@box.canon/handbook` is self-resolving at the parse and becomes relative only HERE, when the path
+`{box.canon}/handbook` is self-resolving at the parse and becomes relative only HERE, when the path
 key it dereferences turns out to hold a bare relative. Measured before the guard existed: it reached
 the mount as `host_src='relcanon/handbook'`.
 
@@ -340,7 +340,7 @@ and the expanded string no longer says which one that was.
 
 ⚑ **It is NOT [R147]'s stored-value check, and the two are not interchangeable.**
 `agent_config.is_unambiguous_path_value` — the predicate behind the set-time and read-time key
-refusals — rules on the SPELLING a user stored, BEFORE any expansion, so `$XDG_DATA_HOME/kanibako`
+refusals — rules on the SPELLING a user stored, BEFORE any expansion, so `{$XDG_DATA_HOME}/kanibako`
 stays legal there whatever the environment answers. This guard rules on what a declaration's source
 EXPANDED to, which is the only layer at which the dereference case above is visible. Different rule,
 different layer, its own message; only the hazard sentence is shared.

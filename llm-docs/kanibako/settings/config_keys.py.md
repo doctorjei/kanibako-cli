@@ -32,7 +32,7 @@ mention `setup` — *"`setup` … is NOT how a value is set"*.
 **Why the marker's verbs route to the SYSTEM SETTINGS file.** Spec §2g declares
 `system.setup_completed` a `system`-tier SETTINGS key and calls it *"PERSISTS, user-resettable"*;
 the registry marks it `set: cli+file`. It is stored, written and read as one: `setup` writes it to
-`@config.settings` (`setup_cmd._write_setup_marker`) and the 5-band staleness gate reads it from
+`{config.settings}` (`setup_cmd._write_setup_marker`) and the 5-band staleness gate reads it from
 there (`config.read_setup_completed`), so it routes through `_KEY_ROUTES` beside `system.agent`.
 
 ⚑⚑ **ONE FILE.** Set, get, reset and the shipped reader name the system settings file (*"there is
@@ -244,14 +244,14 @@ per-agent override is the persona key `agent.<agent>.<key>` (spec §2d).
   (only bools are coerced, cf. `box.share_images`) and swept by [R147]'s bare-relative refusal.
 * `box.enable_vault` — ⚑ `mode` is NO LONGER a settable config-set key (block B1, spec §2b / §0):
   the project mode is the RO identity anchor `meta.box.mode` (surfacing the runtime-resolved
-  `@meta.runtime.project_type`), set by the construct-time/bootstrap layer (`[project].mode` at box
+  `{meta.runtime.project_type}`), set by the construct-time/bootstrap layer (`[project].mode` at box
   creation), NOT overridable via `config set`. The mode is not persisted to disk (create writes no
   ``project:`` section) — it derives from `box_resolve` at resolve time. On vault: `enable_vault`
   migrated to the box-scope key `box.enable_vault` (clean break — no `vault.enabled` alias). There
   are no bare `vault.ro`/`vault.rw` keys: nothing reads a ``project:`` settings section, so a set
   there would be a silent dead write. The vault override surface is now the repointable core bind
   ``box.bindings.{ro,rw}.vault`` (spec §2c).
-* `box.canon` — the per-BOX canon contribution root (spec §2b). ⚑ ``@box.canon`` is NOT ``~/canon``:
+* `box.canon` — the per-BOX canon contribution root (spec §2b). ⚑ ``{box.canon}`` is NOT ``~/canon``:
   it is ``<box_dir>/canon`` on the HOST, whose ``handbook/`` is ONE CHAPTER bound ro at
   ``~/canon/handbook/box``. The assembled guest view lives under the box HOME and arrives through the
   home bind. Same word, adjacent paths, opposite directions of travel.
@@ -259,7 +259,7 @@ per-agent override is the persona key `agent.<agent>.<key>` (spec §2d).
 **Workset keys.**
 
 * `workset.registry` — per-workset registry location. A NORMAL settable
-  STRING-path key (default ``@meta.workset.path/registry.yaml``), NOT a config-locate key — routes to
+  STRING-path key (default ``{meta.workset.path}/registry.yaml``), NOT a config-locate key — routes to
   the ``workset:`` table nested slot ``registry`` (the same nested-settings pattern as `box.image`).
 * `workset.auth.path`, `workset.boxes`, `workset.vault_ro`, `workset.vault_rw`, `workset.logs` —
   workset-scope LAYOUT anchors. These path anchors are floor-materialized
@@ -277,14 +277,14 @@ per-agent override is the persona key `agent.<agent>.<key>` (spec §2d).
   "unknown config key" and a repoint required a settings-file edit (bifrost A1). Same shape as the
   sibling anchors: STRING paths (`KEY_TYPES` type `path`), routed to the ``workset:`` nested slot.
 * `workset.template` — per-workset template SOURCE (template-trio, spec §2c; Q3). A NORMAL
-  settable STRING-path key (default ``@meta.workset.path/template``); the layer-3 seed
-  ``workset.seeded = {~/: (@workset.template/box/home,)}`` reads it, so repointing this key reroutes
+  settable STRING-path key (default ``{meta.workset.path}/template``); the layer-3 seed
+  ``workset.seeded = {~/: ({workset.template}/box/home,)}`` reads it, so repointing this key reroutes
   the workset template seed. Routed to the ``workset:`` nested slot (same pattern as
   `workset.registry`); a STRING path (`KEY_TYPES` type `path`). STANDALONE has no workset tier (source
   `<None>`).
 * `workset.canon` — per-workset CANON CONTRIBUTION root (spec §2c ALL PROJECTS). Same shape and same
   reason as `workset.template`: a NORMAL settable STRING-path key (default
-  ``@meta.workset.path/canon``) read by the ro ``canon_hb_workset`` bind as its SOURCE, so repointing
+  ``{meta.workset.path}/canon``) read by the ro ``canon_hb_workset`` bind as its SOURCE, so repointing
   it moves the workset's handbook chapter. ⚑ It is NOT a seed dest — no seed layer ever targeted it
   (no handbook seed layer exists). Routed to the ``workset:`` nested slot.
 * `workset.kuid` / `workset.skip_kuid_check` — workset kuid + advisory-check toggle
@@ -303,7 +303,7 @@ per-agent override is the persona key `agent.<agent>.<key>` (spec §2d).
   with the ruled bootstrap-file message like the other five.
 
 **Layer-2 `system.*` path SETTINGS** (the ``system:`` table of the system SETTINGS file, spec §2g).
-``global`` is ELIMINATED (children inline ``@config.data/global/...``). ⚑ Every
+``global`` is ELIMINATED (children inline ``{config.data}/global/...``). ⚑ Every
 `SYSTEM_PATH_DEFAULTS` key — the top-level roots plus the ``system.channels.*`` leaves — is here and
 in `_KEY_ROUTES`.
 
@@ -336,7 +336,7 @@ Per-entry notes displaced from the table:
 
 * `box.images_store` (B3) — routes to the ``box:`` table nested slot ``images_store``, the SAME
   nested-settings pattern as `box.image`, and exactly the file shape the launch cascade reads when
-  resolving the ``@box.images_store`` host_src of the shared-images bind.
+  resolving the ``{box.images_store}`` host_src of the shared-images bind.
 * The **auth-sharing 3-tier chain** (`system`/`workset`/`box.auth.*`) are ordinary SETTINGS keys:
   each routes to its nested ``<scope>.auth.<leaf>`` slot in the command-scope settings file (the same
   nested-settings pattern as `box.image` etc.), NOT the ``[project]`` meta table.
@@ -419,9 +419,9 @@ the user might have meant INSTEAD of the cwd, plus the LABEL that introduces it.
 
 The anchor is chosen so a key cannot get two answers at its two ends. A Layer-1/Layer-2 key takes its
 own declared default's leading token, exactly as `paths._refuse_bare_relative` derives it. Every
-`workset.*` path key takes `@meta.workset.path`, which is what `workset_dirkeys.resolve_workset_dir_key`
+`workset.*` path key takes `{meta.workset.path}`, which is what `workset_dirkeys.resolve_workset_dir_key`
 names for all of them — the six `channels.*` leaves included, because `channels.py` resolves those
-through that same seam rather than through `@workset.channelroot`. Everything else takes its spec §2a
+through that same seam rather than through `{workset.channelroot}`. Everything else takes its spec §2a
 DECLARATION ROOT.
 
 ⚑ **The label is part of the answer, not decoration.** `box.images_store` is probed from podman at
@@ -439,7 +439,7 @@ The agent NODE a per-node *canonical* key addresses, or `""` when it names none.
 gets it from somewhere different: `box set` resolves the box's ACTIVE agent through `select_agent`,
 `agent set` is handed the node the verb was invoked on, and `system set` has only the key. This
 answers that last case. Its consumer is the set-time snapshot's `meta_agent_path_floor` fold, so
-without it `system set agent.claude.canon=@meta.agent.claude.path/canon` was refused as a dangling
+without it `system set agent.claude.canon={meta.agent.claude.path}/canon` was refused as a dangling
 `@`-reference while `agent set claude canon=…` — the same key, the other spelling — accepted it.
 
 ⚑ **Derived from the same two parsers `path_key_anchor` consults, in the same order.** The anchor a
@@ -461,8 +461,8 @@ that arm because it canonicalizes a key the READ verbs still serve; this is a WR
 
 ⚑ **It is not an existence check and must not be read as one.** It says which node the write
 ADDRESSES — the node whose `agents/<node>/agent.yaml` the setter is about to reach — which is exactly
-the store root `@meta.agent.<node>.path` names for that write. A ref against a DIFFERENT node's root
-is not floored and still dangles, so the `@meta.agent.*.path` SHAPE is never accepted on sight.
+the store root `{meta.agent.<node>.path}` names for that write. A ref against a DIFFERENT node's root
+is not floored and still dangles, so the `{meta.agent.*.path}` SHAPE is never accepted on sight.
 
 ## The scope-direction guard (block B4, spec §0 directional view/set + §2a)
 
@@ -497,10 +497,10 @@ SAME-scope write.
 SETTINGS file (a downward write keeps the key's scope token, nested in the COMMAND scope's settings
 file — spec §0; the form `assemble_levels` mirrors). ``system`` is INCLUDED (F2 fix): a routed
 ``system.*`` SETTINGS key (the auth chain `system.auth.share_allowed`) lands in the system SETTINGS
-file (``@config.settings``) — the file the launch cascade's system tier reads — NOT the Layer-1
+file (``{config.settings}``) — the file the launch cascade's system tier reads — NOT the Layer-1
 `kanibako.cfg`. ⚑ the ``system.*`` PATH tier reaches this routing too, and
 lands in the same file. ⚑ ``system.setup_completed`` does too: its reader reads
-`@config.settings`. **No key routes to `kanibako.cfg`.**
+`{config.settings}`. **No key routes to `kanibako.cfg`.**
 
 **`_dot_to_flat` / `_FLAT_TO_CANONICAL` / `_route_key` ARE DELETED, and the absence is the fix.**
 They let the write verbs accept the flat underscore form of a routed key (``box_image`` for
@@ -551,8 +551,8 @@ Two of its leaves carry their own reason:
 
 * `template` — per-agent template SOURCE (template-trio, spec §2a/§2d; Q2 "agent = persona
   + harness"). A settable STRING-path leaf on the agent (persona+harness) node — default
-  ``@config.agents/<harness>/template`` — read by the layer-2 seed ``agent.<a>.seeded = {~/:
-  (@agent.<a>.template/box/home,)}``, so repointing it reroutes the agent template seed.
+  ``{config.agents}/<harness>/template`` — read by the layer-2 seed ``agent.<a>.seeded = {~/:
+  ({agent.<a>.template}/box/home,)}``, so repointing it reroutes the agent template seed.
 * `canon` — per-agent CANON CONTRIBUTION root (spec §2d), the source of the ro ``canon_hb_agent``
   bind, i.e. WHERE THIS AGENT'S HANDBOOK CHAPTER LIVES. A settable STRING-path leaf on the agent
   (persona+harness) node, wired for the same reason `template` is: both are per-agent path SOURCES a
@@ -1110,7 +1110,7 @@ Keys whose value is READ from the bootstrap config file rather than a settings f
 ONE family and no more: the Layer-1 ``[config]`` foundation keys (``config.*``, spec §1).
 
 ⚑⚑ **THAT IS THE DEFINITION, NOT A COINCIDENCE.** ``system.setup_completed`` was the
-last non-``config.*`` member; its STORAGE moved to ``@config.settings`` (spec §2g), so what is left
+last non-``config.*`` member; its STORAGE moved to ``{config.settings}`` (spec §2g), so what is left
 is exactly the set of keys whose job is to LOCATE the files everything else lives in.
 *"kanibako_config.yaml <-- cannot have settings. Period."* (Jei, on what is now `kanibako.cfg`)
 
@@ -1132,9 +1132,9 @@ the repointed path come back out of `load_std_paths`).
 
 This is a PRECISE family membership check, NOT a ``system.*``-wide catch-all (F2/F3). A ``system.*``
 SETTINGS key (the auth chain `system.auth.share_allowed`, `system.agent`, categories, env) is NOT
-this family: the launch reads it from the system SETTINGS file (``@config.settings``), so it falls
+this family: the launch reads it from the system SETTINGS file (``{config.settings}``), so it falls
 through to its settings-tier routing. ``system.setup_completed`` is not in it either — its reader
-reads ``@config.settings``, as spec §2g declares.
+reads ``{config.settings}``, as spec §2g declares.
 
 The ``config.`` branch is consulted on the READ/show path; the set/reset paths short-circuit
 ``config.*`` earlier with the ruled refusal (block B2). The `SYSTEM_PATH_DEFAULTS` import is LAZY:
@@ -1453,7 +1453,7 @@ verb door applies it uniformly.
 
 ⚑ **The `agent` NOUN has ONE writer.** `agent set` routes its writes to the shared setter
 (`config_interface.set_config_value`), so the E3 resolution probe and the typed-scalar check run
-for it exactly as for `system set`: `kanibako agent set claude canon=@bogus.ref` is refused by name.
+for it exactly as for `system set`: `kanibako agent set claude canon={bogus.ref}` is refused by name.
 
 ```_is_path_category_key(key: str) -> bool```
 True iff *key* is a PER-NAME PATH-TUPLE category key.

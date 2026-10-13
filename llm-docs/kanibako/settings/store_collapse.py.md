@@ -161,7 +161,7 @@ so with nothing bound at or above it the copy is written into the container's ow
 and is gone when the box stops. A `synced` row is a credential more often than not, so a skip
 would produce a box that starts and then fails to authenticate inside the harness, naming nothing.
 
-⚑ **IT CHECKS THE CONDITION, NEVER A CAUSE.** Refusing a `$XDG_*` TOKEN on sight is wrong in both
+⚑ **IT CHECKS THE CONDITION, NEVER A CAUSE.** Refusing a `{$XDG_*}` TOKEN on sight is wrong in both
 directions: it missed a literal `/data/z` (identically
 broken, no variable anywhere) and it refused a user deliberately mirroring the box's layout under a
 bind of their own (not broken at all). Coverage answers both correctly without naming XDG.

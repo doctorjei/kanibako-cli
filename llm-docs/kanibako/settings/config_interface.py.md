@@ -128,7 +128,7 @@ of which bit before this existed:
   is the only door left that checks it.
 * **The E3 resolution probe must run at the TARGET.** Probing at `pref.<target>` is a NO-OP by
   construction: `expand` carries the `pref` subtree through unexpanded (spec §2h), so no `@`-ref
-  in it is ever resolved and no defect can be recorded. `pref.agent.claude.template @typo` was
+  in it is ever resolved and no defect can be recorded. `pref.agent.claude.template {typo}` was
   therefore accepted and then silently DROPPED the target at launch. Applying the candidate at
   the target path is what makes the probe mean anything.
 
@@ -224,17 +224,17 @@ clause + L2 §3).
 ```_set_time_ctx(config: dict[str, str] | None = None) -> Any```
 The `settings_resolve.ResolveCtx` for the set-time E3 probe.
 
-Populates the FULL XDG var set (so `$XDG_*` host-source tokens resolve) plus home; `$AGENT` /
-`$WORKSET` are left unset here (a set-time check has no live launch agent/workset, and a category
-`host_src` carrying `$AGENT`/`$WORKSET` is unusual — an unset one falls into the resolver's "not
+Populates the FULL XDG var set (so `{$XDG_*}` host-source tokens resolve) plus home; `{$AGENT}` /
+`{$WORKSET}` are left unset here (a set-time check has no live launch agent/workset, and a category
+`host_src` carrying `{$AGENT}`/`{$WORKSET}` is unusual — an unset one falls into the resolver's "not
 set in this context" branch, which the lenient expand records as a defect, exactly as build would
-for a host-side `$AGENT` with no agent). Box-side `$XDG`/`~` in a `box_dest` are NOT validated
+for a host-side `{$AGENT}` with no agent). Box-side `$XDG`/`~` in a `box_dest` are NOT validated
 here — they are DEFERRED (S17) and the probe only resolves the `host_src` half.
 
-*config* is the Layer-1 `config.*` foundation (resolved bootstrap paths) so an `@config.*`
+*config* is the Layer-1 `config.*` foundation (resolved bootstrap paths) so an `{config.*}`
 `host_src` ref routes to the foundation (JC-2), NOT the snapshot.
 
-The `$XDG_*` map is built by the ONE canonical builder `paths.host_xdg_map` (spec §1 XDG clause +
+The `{$XDG_*}` map is built by the ONE canonical builder `paths.host_xdg_map` (spec §1 XDG clause +
 L2 §3 single-source-of-truth: a hand-rolled per-context map is a bug), reached through the
 module-private `_host_xdg_map` deferred-import hook so it stays a single source.
 
@@ -243,8 +243,8 @@ module-private `_host_xdg_map` deferred-import hook so it stays a single source.
 The path tier as `(config_foundation, floor)` of resolved paths, RAISING on failure. A snapshot
 floors them as `settings_resolve.literal_map`.
 
-The Layer-1 `config.*` foundation goes to the resolve context (so an `@config.*` `host_src`
-routes there — JC-2) and the Layer-2 `system.*` paths become the cascade FLOOR (so an `@system.*`
+The Layer-1 `config.*` foundation goes to the resolve context (so an `{config.*}` `host_src`
+routes there — JC-2) and the Layer-2 `system.*` paths become the cascade FLOOR (so an `{system.*}`
 `host_src` resolves from the snapshot).
 
 ⚑ **THE FAILURE ARM IS THE CALLER'S, DELIBERATELY.** Its two callers disagree about what a
@@ -274,7 +274,7 @@ are unused. Without one, the command's own file is backfilled into its slot (bel
 working-set anchor exists.
 
 ```_target_scope_anchors(target, *, agent_path, agent_name) -> dict[str, object]```
-The `@meta.{workset,box}.path` directories *target*'s own snapshot resolves, read from the same
+The `{meta.workset.path}`/`{meta.box.path}` directories *target*'s own snapshot resolves, read from the same
 snapshot the E3 probe judges, so a scope file that moves a root (`workset.boxes`) moves the anchor
 the [R147] refusal names. A root the target lacks, or that does not resolve, is absent; a cascade
 that cannot be assembled yields `{}` (the refusal is issued either way, naming the ref spelling).
@@ -311,8 +311,8 @@ target's settings in precedence order"): every scope's settings file (*system_pa
 *agent_path* / *workset_path* / *box_path*) is layered in its TRUE precedence slot — EXACTLY as
 `settings_launch.build_launch_snapshot` / `start._effective_behavior_for_display` assemble for
 `config --effective` — plus the resolved `system.*` config tier folded as the `base` FLOOR (so
-`@config.data` etc. resolve). So a cross-scope `@`-ref in the edited value (e.g. a `box set`
-value referencing `@workset.vault_ro/x`) resolves at set-time exactly as it would at launch — no
+`{config.data}` etc. resolve). So a cross-scope `@`-ref in the edited value (e.g. a `box set`
+value referencing `{workset.vault_ro}/x`) resolves at set-time exactly as it would at launch — no
 longer a false-block.
 
 The COMMAND-scope file (*config_path*) is placed into its OWN precedence slot by the edited key's
@@ -334,7 +334,7 @@ the CHECK only.
 ### The agent store-root anchor, and the second anchor that is gone
 
 The `meta_agent_path_floor` fold is the agent STORE-ROOT anchor (spec §2d), from the SAME builder
-the launch floor uses, so an `@meta.agent.<a>.path/…` value in the edited key resolves at set
+the launch floor uses, so an `{meta.agent.<a>.path}/…` value in the edited key resolves at set
 time exactly as it would at launch. With no agent in play the key stays absent, so such a source
 is correctly a DANGLING ref rather than a silently-empty one.
 
@@ -378,7 +378,7 @@ key at box scope to its `pref.agent.<active>.<key>` request (see `box_agent_redi
 Absent/unknown ⇒ no redirect.
 
 *system_settings_path*, when supplied (the SYSTEM scope), is the file used for SETTINGS reads
-(`system.agent` + agent settings) — i.e. `@config.settings` = `global/settings.yaml`. When `None`
+(`system.agent` + agent settings) — i.e. `{config.settings}` = `global/settings.yaml`. When `None`
 (box/workset scope) the existing `project_toml`/`global_config_path` paths are used, so those
 scopes keep their own `box.yaml`/`workset.yaml` behavior. CONFIG (`system.*` layout) reads always use
 `global_config_path`. For the semantics see "The get model — stored-at-noun" above; for
@@ -494,7 +494,7 @@ Write a config value to the appropriate store; returns a message or an error, NE
 
 *config_path* is the `box.yaml`/`workset.yaml` (for box/workset) or `kanibako.cfg` (for system).
 *system_settings_path*, when supplied (the SYSTEM scope), is the file SETTINGS (`system.agent` +
-agent settings) are written to — `@config.settings` = `global/settings.yaml` — keeping them out
+agent settings) are written to — `{config.settings}` = `global/settings.yaml` — keeping them out
 of the `kanibako.cfg` CONFIG file. When `None` (box/workset) writes go to `config_path`
 as before. Returns a human-readable confirmation message.
 
@@ -585,12 +585,12 @@ The order is deliberate at every step.
    spelling does not reach it either; it is checked AT THE TARGET in `_pref_value_error`, beside
    the `access` and `transform_settings` guards, for the same reason those live there.
 
-### The `@meta.{workset,box}.path` anchors, and why the refusal needed them
+### The `{meta.workset.path}`/`{meta.box.path}` anchors, and why the refusal needed them
 
 The command's target supplies them (`_set_time_target` → `resolve_inputs`), for the reason
 `meta_agent_path_floor` is in the snapshot: a value spelled against a declared root DANGLES at
 set time unless the root is floored. It went in with [R147]'s set-time half because the refusal
-OFFERS `@meta.workset.path/<value>` as the cure — `MIGRATION.md` § *A bare relative path in a
+OFFERS `{meta.workset.path}/<value>` as the cure — `MIGRATION.md` § *A bare relative path in a
 settings key is refused* names it as the first row of the replacement table — and the E3 probe
 was answering "dangling @-reference" to it. A rule that bans a form and then refuses its own
 replacement has not removed the guess, it has removed the key.
@@ -640,7 +640,7 @@ SET-TIME RESOLUTION PROBE for a value the EXPANDER will see (E3, spec §2a / Q9)
 `expand`" rather than "is it a scalar".
 
 The probe was wired ONLY at the category path, so a set accepted a value whose `@`-ref or `$VAR`
-does not resolve — e.g. `config set workset.boxes "@meta.nope.key/boxes"`. For an expanded value
+does not resolve — e.g. `config set workset.boxes "{meta.nope.key}/boxes"`. For an expanded value
 that is not inert: an embedded dangling ref is substituted with the EMPTY STRING at launch
 (spec §2a "VALIDATION at set-time") and the key silently resolves to something else.
 
@@ -713,7 +713,7 @@ pre-existing defect still allows the set and `config set` stays usable to REPAIR
   collision.
 * **STRUCTURAL `system.*` path-tier keys (the `SYSTEM_PATH_DEFAULTS` family) — NO BRANCH OF
   THEIR OWN, deliberately.** They are Layer-2 SETTINGS keys (spec §2g, every one `set: cli+file`)
-  and route through `_KEY_ROUTES` to the system settings file (`@config.settings`) like any other
+  and route through `_KEY_ROUTES` to the system settings file (`{config.settings}`) like any other
   setting (see `config_keys.is_config_file_only_key`). ⚑ There is no FILE-ONLY refusal naming the
   Layer-1 file as the cure; that file carries `config.*` alone. Do not add one without a spec edit.
 * **Regular config keys** — routed via the single known-key table (the H1 fix: an unknown key
@@ -724,7 +724,7 @@ pre-existing defect still allows the set and `config set` stays usable to REPAIR
   (`{agent,workset, box}.*` — including a DOWNWARD write at a containing command scope, spec §0)
   lands in the COMMAND scope's SETTINGS file with the key's scope token KEPT (the nested form
   `assemble_levels` mirrors — never remapped to the key-scope's own file). `settings_dest` ==
-  `config_path` at box/workset; at SYSTEM it is the system settings file (`@config.settings`) —
+  `config_path` at box/workset; at SYSTEM it is the system settings file (`{config.settings}`) —
   settings keys never land in the Layer-1 `kanibako.cfg` (spec §1). Non-scope keys (`allow_helpers`)
   and `system.*` regular keys land in the same `settings_dest` — no route writes the Layer-1 file
   (`config_dest._dest`).
@@ -787,7 +787,7 @@ PATH key), change the file it points at, or remove it and set `box.env.VAR`.
 Remove an override for a single key; returns a confirmation or an error, NEVER raises.
 
 *system_settings_path*, when supplied (SYSTEM scope), is where SETTINGS (`system.agent` + agent
-settings) are removed from (`@config.settings` = `global/settings.yaml`); when `None`
+settings) are removed from (`{config.settings}` = `global/settings.yaml`); when `None`
 (box/workset) they are removed from `config_path` as before.
 
 *command_scope* is the scope the `config reset` was issued at (block B2, RESET-GUARD). It drives
@@ -954,9 +954,9 @@ This is the PROGRAM editing a settings document on the user's behalf, at a point
 is running: `kanibako setup` recording `system.setup_completed`, and `setup_compat_gate`'s
 best-effort forward bump of the same marker.
 
-⚑ **The parameter is the SYSTEM SETTINGS file (`@config.settings`).** The function is
+⚑ **The parameter is the SYSTEM SETTINGS file (`{config.settings}`).** The function is
 path-agnostic — its whole body is `write_nested_key(system_settings_path, ("system",), leaf,
-value)` — and the marker lives in `@config.settings`, so nothing programmatic writes a `system:`
+value)` — and the marker lives in `{config.settings}`, so nothing programmatic writes a `system:`
 table into the Layer-1 config file. That file cannot carry settings at all, so a caller passing it
 here would be writing something no reader reads.
 
@@ -1002,7 +1002,7 @@ evaluated.
 Remove all overrides at this config level. Confirms unless *force*.
 
 *system_settings_path*, when supplied (SYSTEM scope), is where the SETTINGS (the `agent` table +
-nested SCOPE tables) are cleared from (`@config.settings` = `global/settings.yaml`), while CONFIG
+nested SCOPE tables) are cleared from (`{config.settings}` = `global/settings.yaml`), while CONFIG
 overrides are cleared from `config_path`. When `None` (box/workset) everything is cleared from
 `config_path` as before.
 
@@ -1056,7 +1056,7 @@ category key at all: that display predates the keystore and reads `load_merged_c
 it across all five scopes is a read-surface job with its own owner, not a side effect of this one.
 
 *system_settings_path*, when supplied, is the file the agent SETTINGS + `system.agent` are
-DISPLAYED from (`@config.settings` at SYSTEM); the `system.*` CONFIG
+DISPLAYED from (`{config.settings}` at SYSTEM); the `system.*` CONFIG
 display always uses `global_config_path`. ⚑ **Every noun that keeps its settings APART from its
 config file supplies it** — SYSTEM, and the WORKSET, which passes its own
 settings file here and the Layer-1 file as *config_path*. When `None` — the BOX, whose settings

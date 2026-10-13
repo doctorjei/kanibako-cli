@@ -96,7 +96,7 @@ Spec §2h's CATEGORICAL tier, which the CLI does not inherit and therefore resta
 `start._launch_selection_level`, which pins `shell` when nothing was selected), or `None` when the
 caller has no selection. It is carried through VERBATIM: it is installed on EVERY resolve, whichever
 of its three sources won, so
-`@system.agent` equals the node that actually runs. See `kanibako.settings.agent_select` for why
+`{system.agent}` equals the node that actually runs. See `kanibako.settings.agent_select` for why
 that is load-bearing.
 
 **`active_agent`** is the discriminator the agent-scope keys are spelled against. The agent-scope

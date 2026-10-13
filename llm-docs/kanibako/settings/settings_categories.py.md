@@ -85,8 +85,8 @@ here into `{VAR}` at agent start; kanibako only ever writes the mount PATH.
   a terminal `""` to suppress an inherited entry.
 
 `DECLARATION_ROOT_REF` is the single copy of spec §2a's per-SCOPE declaration-root table —
-`system` → `@config.data`, `agent` → `@meta.agent.{agent}.path`, `workset` →
-`@meta.workset.path`, `box` → `@meta.box.path`. `{agent}` is the only placeholder, because the
+`system` → `{config.data}`, `agent` → `{{meta.agent.{agent}.path}}`, `workset` →
+`{meta.workset.path}`, `box` → `{meta.box.path}`. `{agent}` is the only placeholder, because the
 agent tier is discriminated and its root names the agent. Its consumers are the
 declaration-time ref builder (agent scope) and the `config set` refusal message, which must
 name the root of the scope the user actually typed.
@@ -106,7 +106,7 @@ same order. `_SCOPE_APPLY_ORDER` is that order as data, read by `_most_specific`
 There is NONE, by rule. Every `host_src` reaching this module already resolves ON ITS OWN —
 absolute, `~`, `$var` or an `@`-ref (spec §2a) — because the ABSTRACT categories
 (`common` / `caches` / `seeded`) are rooted at DECLARATION: an author writes a bare leaf and
-the declaring loader stores the full `@<scope-root>/<category>/<leaf>`. A layer that prefixed a
+the declaring loader stores the full `{<scope-root>}/<category>/<leaf>`. A layer that prefixed a
 root on the way to a mount is the shape §2a calls FORBIDDEN — it hides the true source and
 resolves differently in any other context. Nothing here joins anything.
 
@@ -398,7 +398,7 @@ covers it rather than under the box home. Either way there are not two namespace
 nothing for an entry to carry, and every seam that groups entries groups on the bare `box_dest`.
 
 ⚑ **Do not introduce a host-spelled dest.** A seed dest spelled as an ABSOLUTE HOST path (such
-as `@meta.box.path/home`) on a host whose user home IS `/home/agent` STARTS WITH the guest home
+as `{meta.box.path}/home`) on a host whose user home IS `/home/agent` STARTS WITH the guest home
 prefix, so the guest translator would map it BACK under the box home and the copy would land where
 nothing reads it, silently reporting success. No prefix test can tell the two apart. The seed dest
 is `~/`, which needs no discriminator because it is not a host path at all.
@@ -407,9 +407,9 @@ is `~/`, which needs no discriminator because it is not a host path at all.
 
 Quarantined on the dataclass because both spellings meet there: a box store holds TWO different
 `canon` directories. `<box_dir>/home/canon` is the box's ASSEMBLED GUEST VIEW (`~/canon`,
-delivered by the home bind). `<box_dir>/canon` (= the key `@box.canon`) is the box's
+delivered by the home bind). `<box_dir>/canon` (= the key `{box.canon}`) is the box's
 CONTRIBUTION root, whose `handbook/` is ONE CHAPTER bound RO at `~/canon/handbook/box`.
-**`@box.canon` is NOT `~/canon`** — same word, adjacent paths, opposite directions of travel.
+**`{box.canon}` is NOT `~/canon`** — same word, adjacent paths, opposite directions of travel.
 
 ## The launch seam — the three questions the collapse does not answer
 

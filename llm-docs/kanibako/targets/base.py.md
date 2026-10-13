@@ -870,7 +870,7 @@ plugin's own declarations is its `name` property, the harness. ⚑ Not by the *v
 differs from the discriminator. A few §2d keys are *informational* — they describe where CORE
 derives a path, not a descriptor field:
 
-* `agent.<agent>.path` (`@config.agents/<name>`, derived in core),
+* `agent.<agent>.path` (`{config.agents}/<name>`, derived in core),
 * `agent.<agent>.template` (the layer-2 seed source, owned by the templates layer),
 * `agent.<agent>.transform` — it NAMES which binary transform runs; a plugin declares its value
   through `setting_descriptors`, so it is a behavior SETTING, not a descriptor field, and it is
