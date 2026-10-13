@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import dataclasses
 from contextlib import contextmanager
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -12414,7 +12415,7 @@ class TestReauthAtALiveBox(_RunningBoxDriver):
     before the rig prep only that container would need."""
 
     def _refuse(self, start_mocks, capsys, **over):
-        """Refuse a reauth at a live NAMED member, whose cure ref is quoted
+        """Refuse a reauth at a live NAMED member, whose cure ref is
         ``<workset>/<box>``; return (rc, stderr, the harness box's cure ref)."""
         from kanibako.settings.paths import BoxMode, project_cure_ref
 
@@ -12423,7 +12424,7 @@ class TestReauthAtALiveBox(_RunningBoxDriver):
         ) as m_rig:
             self._running(m)
             m.proj.mode = BoxMode.named
-            m.proj.group.name = "my ws"
+            m.proj.group = dataclasses.replace(m.proj.group, name="my_ws")
             rc = self._start(persistent=False, setup_only=True, **over)
             m_rig.assert_not_called()
             m.runtime.run.assert_not_called()
@@ -12433,7 +12434,7 @@ class TestReauthAtALiveBox(_RunningBoxDriver):
     def test_refusal_names_reauth_and_its_cure(self, start_mocks, capsys):
         rc, err, ref = self._refuse(start_mocks, capsys)
         assert rc == 1
-        assert ref == "'my ws/testproject'"
+        assert ref == "my_ws/testproject"
         assert ("Error: Box 'testproject' is running, so 'kanibako agent reauth' "
                 "cannot run its in-box setup, which needs a new container.") in err
         assert f"  Stop it:   kanibako stop {ref}\n" in err
