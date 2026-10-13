@@ -893,7 +893,9 @@ class TestPersistentMode:
 
         m.agent_cfg.state["allow_helpers"] = allow
         m.load_std_paths.return_value.runtime = tmp_path / "run"
-        m.runtime.is_running.return_value = box_up
+        if not box_up:
+            # The fixture's run brings the box up; this one leaves it down.
+            m.runtime.run.side_effect = lambda *a, **kw: 0
         with _patch.object(hub_daemon, "HubProcess") as m_hub:
             _run_container(
                 project_dir=None, entrypoint=None, image_override=None,
@@ -911,13 +913,16 @@ class TestPersistentMode:
             m_hub = self._launch(m, tmp_path, persistent=True)
         assert m.runtime.run.call_args.kwargs["detach"] is True
         assert m_hub.return_value.start.call_count == 1
+        m_hub.return_value.release.assert_called_once()
         m_hub.return_value.stop.assert_not_called()
 
     def test_persistent_box_that_did_not_come_up_stops_its_hub(self, start_mocks, tmp_path):
         with start_mocks() as m:
             m_hub = self._launch(m, tmp_path, persistent=True, box_up=False)
+        assert m.runtime.run.call_count == 1
         assert m_hub.return_value.start.call_count == 1
         m_hub.return_value.stop.assert_called_once()
+        m_hub.return_value.release.assert_not_called()
 
     def test_ephemeral_launch_stops_its_hub_when_the_box_exits(self, start_mocks, tmp_path):
         with start_mocks() as m:

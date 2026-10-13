@@ -41,5 +41,8 @@ class HubProcess:
     def __init__(self) -> None
 
     def start(self, socket_path: Path, context: Any, *, log_path: Path | None, container: str, stderr_path: Path | None) -> bool
+    def release(self) -> None
     def stop(self) -> None
+
+    def _at_exit(self) -> None
 ```

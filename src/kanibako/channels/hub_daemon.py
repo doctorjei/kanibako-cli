@@ -20,6 +20,7 @@ socket path no longer names its socket (:meth:`HelperHub.listening`).
 from __future__ import annotations
 
 import argparse
+import atexit
 import contextlib
 import fcntl
 import os
@@ -154,11 +155,17 @@ def _take_lock(socket_path: Path) -> IO[str] | None:
 # --------------------------------------------------------------------------- #
 
 class HubProcess:
-    """``start``'s handle on the hub process it spawns."""
+    """``start``'s handle on the hub process it spawns.
+
+    The hub outlives ``start`` only when ``start`` hands it to a box that came up
+    (:meth:`release`).  Every other way ``start`` ends stops it: the explicit
+    :meth:`stop`, or, for a return between the spawn and the launch, the exit hook.
+    """
 
     def __init__(self) -> None:
         self.socket_path: Path | None = None
         self.process: subprocess.Popen[bytes] | None = None
+        self._settled = False
 
     def start(self, socket_path: Path, context: Any, *, log_path: Path | None,
               container: str, stderr_path: Path | None) -> bool:
@@ -211,14 +218,24 @@ class HubProcess:
             proc.stdin.close()
         except OSError as exc:
             log.debug("helper hub did not take its context: %s", exc)
+        atexit.register(self._at_exit)
         ready = _read_ready(proc.stdout, READY_TIMEOUT)
         proc.stdout.close()
         return ready
 
+    def release(self) -> None:
+        """Leave the hub running: its box is up, and the hub exits when the box is gone."""
+        self._settled = True
+
     def stop(self) -> None:
         """Stop the hub: it stops its helpers, removes its socket, and exits."""
+        self._settled = True
         if self.socket_path is not None:
             stop_hub(self.socket_path)
+
+    def _at_exit(self) -> None:
+        if not self._settled:
+            self.stop()
 
 
 def _read_ready(stream: IO[bytes], timeout: float) -> bool:

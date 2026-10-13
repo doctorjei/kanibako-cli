@@ -1845,7 +1845,7 @@ class TestRmPurgeDeletesTheBoxLogsByName:
         assert (std.boxes / "project").is_dir()
         std.primary_logs.mkdir(parents=True, exist_ok=True)
         assert [p.name for p in box_log_files(std.primary_logs, "project")] == [
-            "project.jsonl", "project.creds-watcher.log",
+            "project.jsonl", "project.creds-watcher.log", "project.helper-hub.log",
         ]
         assert load_deregistered(std.registry) == {}
 

@@ -4500,15 +4500,17 @@ class TestSpawnBudgetReachesTheDirector:
     def test_a_persistent_start_without_the_hub_writes_and_binds_it_too(
         self, start_mocks, tmp_path,
     ):
-        """Spec: "Each start writes the box's resolved budget".  A ``--detach`` start forces
-        the hub off (``no_helpers``), yet still writes 1/1 and binds it ro once.
+        """Spec: "Each start writes the box's resolved budget".  A ``--detach`` start with
+        helpers off (``--no-helpers``; persistence no longer turns them off, his 184-S2)
+        runs no hub, yet still writes 1/1 and binds it ro once.
         (Bifrost 168 Step 5 C1: no document and no bind on ``--detach``.)"""
         from kanibako.channels.helpers import SpawnBudget
 
         doc, delivered, mounts = self._start(
             start_mocks, tmp_path, SpawnBudget(1, 1), persistent=True, detach=True,
+            no_helpers=True,
         )
-        assert self.hub_starts == 0, "a persistent start runs no hub"
+        assert self.hub_starts == 0, "a start with helpers off runs no hub"
         self._assert_delivered(doc, delivered, mounts, SpawnBudget(1, 1))
 
     def test_an_unset_host_delivers_the_built_in(self, start_mocks, tmp_path):

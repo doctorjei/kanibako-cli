@@ -287,3 +287,32 @@ class TestHubProcess:
         lock = hub_daemon.hub_lock_path(socket_path)
         lock.write_text(f"{os.getpid()}\n")
         assert hub_daemon._holder_pid(lock) is None
+
+
+class TestHubProcessExitHook:
+    """A ``start`` that returns between the spawn and the launch (a setup refusal, say)
+    leaves no hub behind; one that hands the hub to a box that came up does."""
+
+    def test_an_unreleased_hub_is_stopped_at_exit(self, box):
+        """(Mutation: drop the exit hook -> the hub waits out its grace -> RED.)"""
+        socket_path, ctx, _state = box
+        hub = HubProcess()
+        assert hub.start(socket_path, ctx, log_path=None, container=CONTAINER,
+                         stderr_path=None)
+        hub._at_exit()  # what interpreter exit runs
+        assert hub.process.wait(timeout=15) == 0
+        assert not socket_path.exists()
+
+    def test_a_released_hub_survives_exit(self, box):
+        socket_path, ctx, state = box
+        state.write_text("running")
+        hub = HubProcess()
+        assert hub.start(socket_path, ctx, log_path=None, container=CONTAINER,
+                         stderr_path=None)
+        try:
+            hub.release()
+            hub._at_exit()
+            time.sleep(0.5)
+            assert hub.process.poll() is None and _answers(socket_path)
+        finally:
+            hub.stop()

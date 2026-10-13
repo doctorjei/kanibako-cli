@@ -347,7 +347,8 @@ class TestBuildHelperMounts:
             container_name_segments=("primary", "testproj"),
             shell_path=tmp_path,
             helpers_dir=helpers_dir,
-            socket_path=tmp_path / "nonexistent.sock",
+            # No hub DIRECTORY: the bind source is the socket's directory.
+            socket_path=tmp_path / "nohub" / "helper.sock",
             binary_mounts=[],
             early=early_record(tmp_path, mode=BoxMode.primary),
         )
@@ -1483,7 +1484,8 @@ class TestHelperDefaultCategories:
         sock_val = cats["box.bindings.rw"][
             "/home/agent/.kanibako/state/hub"
         ]
-        assert sock_val == (str(sock), "")
+        # The socket's DIRECTORY is the source (his 184-S2 (a)).
+        assert sock_val == (str(sock.parent), "")
         assert len(sock_val) == 2 and sock_val[1] == ""
 
     def test_log_routes_ro(self, tmp_path):
@@ -1515,7 +1517,7 @@ class TestHelperDefaultCategories:
         log = tmp_path / "helpers.jsonl"
         log.touch()
         cats = core_defaults.helper_default_categories(
-            socket_path=tmp_path / "nonexistent.sock",
+            socket_path=tmp_path / "nohub" / "helper.sock",
             log_path=log,
         )
         # ⚑ Re-derived: the ``helper_sock`` NAME is retired (R-10), so the old

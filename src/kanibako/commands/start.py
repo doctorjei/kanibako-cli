@@ -5597,8 +5597,11 @@ def _run_container(
             # The hub outlives this command only while its box does: a persistent box
             # that came up keeps it, and it exits when the box is gone.  Any other
             # launch is over (or never started), so its hub stops now, with its helpers.
-            if hub is not None and not (persistent and runtime.is_running(container_name)):
-                hub.stop()
+            if hub is not None:
+                if persistent and runtime.is_running(container_name):
+                    hub.release()
+                else:
+                    hub.stop()
             # Release tweakcc cache entry (shared lock)
             if tweakcc_entry is not None and tweakcc_cache_obj is not None:
                 tweakcc_cache_obj.release(tweakcc_entry)

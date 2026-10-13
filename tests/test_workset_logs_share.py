@@ -57,6 +57,7 @@ def seed_log(logs_dir: Path, box: str) -> "dict[Path, str]":
     written = {
         logs_dir / f"{box}.jsonl": "helper line\n",
         logs_dir / f"{box}.creds-watcher.log": "watcher line\n",
+        logs_dir / f"{box}.helper-hub.log": "hub line\n",
     }
     logs_dir.mkdir(parents=True, exist_ok=True)
     for path, text in written.items():
@@ -311,7 +312,7 @@ class TestAForcedSharesPurgeTakesOnlyItsOwnPart:
         assert purge_box_logs(std, shared, "alpha", workset_root=a.root) is True
 
         assert sorted(p.name for p in shared.iterdir()) == [
-            "beta.creds-watcher.log", "beta.jsonl"]
+            "beta.creds-watcher.log", "beta.helper-hub.log", "beta.jsonl"]
         assert (shared / "beta.jsonl").is_file(), "B's box's log is not this verb's to take"
         assert (shared / "beta.creds-watcher.log").is_file()
 

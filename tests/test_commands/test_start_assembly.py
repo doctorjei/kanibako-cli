@@ -3034,15 +3034,21 @@ class TestANarrowTableDestIsMountedOnce:
             extra_mounts=mounts, selection_level=None,
         )
 
-    def _hub(self, std, proj, mounts, tmp_path):
-        """The REAL hub start, with the listener itself stubbed out.
+    def _hub(self, std, proj, mounts, tmp_path, run_dir=None):
+        """The REAL hub start, with the hub process itself stubbed out; returns the
+        runtime dir it used.
 
-        The runtime dir is moved under *tmp_path*: the real hub creates it, and the
-        host's ``$XDG_RUNTIME_DIR/kanibako`` is not a test's to create.
+        The runtime dir is a short fresh dir under ``/tmp`` (the socket in it must fit
+        the AF_UNIX limit, which ``tmp_path`` can overrun): the real hub creates it, and
+        the host's ``$XDG_RUNTIME_DIR/kanibako`` is not a test's to create.
         """
+        import tempfile
         from dataclasses import replace
         from types import SimpleNamespace
         from unittest.mock import MagicMock
+
+        if run_dir is None:
+            run_dir = Path(tempfile.mkdtemp(prefix="kbr", dir="/tmp")) / "kanibako"
 
         from kanibako.channels import hub_daemon
         from kanibako.commands.start import _start_helper_hub
@@ -3051,12 +3057,13 @@ class TestANarrowTableDestIsMountedOnce:
             _start_helper_hub(
                 runtime=MagicMock(), image="img", container_name="box",
                 proj=proj, target=None, install=None, binary_mnts=[],
-                std=replace(std, runtime=tmp_path / "run" / "kanibako"),
+                std=replace(std, runtime=run_dir),
                 container_env={}, entrypoint=None, box_shell=None,
                 agent_id="claude", system_settings_path=None, agent_cfg_path=None,
                 auth_src=SimpleNamespace(creds_shared=True),
                 extra_mounts=mounts, selection_level=None,
             )
+        return run_dir
 
     @staticmethod
     def _at(mounts, dest):
@@ -3129,12 +3136,11 @@ class TestANarrowTableDestIsMountedOnce:
     ):
         """The helper socket's dir is created 0700; one that exists keeps its mode."""
         proj = self._box(std, config, project_dir)
-        self._hub(std, proj, [], tmp_path)
-        run_dir = tmp_path / "run" / "kanibako"
+        run_dir = self._hub(std, proj, [], tmp_path)
         assert run_dir.stat().st_mode & 0o777 == 0o700
 
         run_dir.chmod(0o750)
-        self._hub(std, proj, [], tmp_path)
+        self._hub(std, proj, [], tmp_path, run_dir=run_dir)
         assert run_dir.stat().st_mode & 0o777 == 0o750
 
     def test_without_the_hub_the_main_emit_still_delivers_a_user_socket_bind(
