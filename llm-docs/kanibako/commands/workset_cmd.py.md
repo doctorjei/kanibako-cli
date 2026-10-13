@@ -358,8 +358,13 @@ mounts it.
 `ResolveSubject.WORKSET` (from `as_kwargs`) gives the §0 message this noun's verbs. The refusals
 raise `SettingsError`, so both listings report through `_preview_refusal` at rc 1.
 ⚑ **A box-scope anchor is OMITTED, never fabricated** (`resolve_inputs`): a working set names no
-box, so a source spelled `@meta.box.path/x` or `@box.canon/y` expands its missing anchor to `""`
-and lists as `/x` / `/y`.
+box, so a value that reads a `meta.box.*` key (which the box-less resolve omits) or any `box.*` key
+(which a box's own file may set) is the box's to decide. `_workset_preview_entries` asks
+`settings_launch.depends_on_the_box(refs, in_workset=True)` of each entry's refs and replaces such
+an entry's source with `DEPENDS_ON_THE_BOX`, so a share sourced at `@meta.box.path/x` or
+`@box.canon/y` lists its source as `(depends on the box)`. Both `--effective` listings share it,
+because both build their entries through `_workset_preview_entries`.
+`tests/test_commands/test_workset_share.py` pins it.
 ⚑ **`run_share_list` TAKES ITS `--effective` BRANCH BEFORE THE EMPTY-SHARES RETURN**, so a working
 set with NO shares still reaches the preview, and a `workset: {frob: 1}` refuses there as every box
 does. `_print_effective_shares` gives the raw view's one-line empty answer (`_print_no_shares`, one
