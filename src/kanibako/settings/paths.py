@@ -25,6 +25,7 @@ from kanibako.settings.messages import (PROFILE_CONTENTS, BASHRC_CONTENTS,
                                               ERR_WORKSET_WS_NOT_BOX, ERR_WORKSET_NOT_IN_BOX,
                                               ERR_WORKSET_NULL_WORKSPACES)
 
+import errno
 import os
 import shlex
 import tempfile
@@ -2415,9 +2416,11 @@ def iter_projects(
         try:
             if not is_dir_unless_gone(entry):
                 continue
-        except ConfigError:
-            from kanibako.project.workset import _symlink_loop  # lazy: layering
-            if looped is None or not _symlink_loop(entry):
+        except ConfigError as exc:
+            # ⚑ The loop is read from the OSError stat_unless_gone chains on.
+            cause = exc.__cause__
+            if (looped is None or not isinstance(cause, OSError)
+                    or cause.errno != errno.ELOOP):
                 raise
             box_path = registered.get(find_identifier(entry.name, registered) or "")
             looped.append((entry, Path(box_path) if box_path else None))
