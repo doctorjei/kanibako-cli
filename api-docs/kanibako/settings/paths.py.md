@@ -85,7 +85,7 @@ def register_primary_box_name_if_absent(primary_workset: Path, name: str, worksp
 def assign_primary_box_name(primary_workset: Path, workspace: Path | str, boxes_dir: Path | None=None, *, early: EarlyScope) -> str
 def unregister_primary_box_name(primary_workset: Path, name: str, *, early: EarlyScope) -> None
 def resolve_workset_project(ws: WorksetSpec, project_name: str, std: StandardPaths, config: BootstrapConfig, *, initialize: bool=False, enable_vault: bool | None=None) -> ProjectPaths
-def iter_projects(std: StandardPaths, config: BootstrapConfig) -> list[tuple[Path, Path | None]]
+def iter_projects(std: StandardPaths, config: BootstrapConfig, *, looped: list[tuple[Path, Path | None]] | None=None) -> list[tuple[Path, Path | None]]
 def iter_workset_projects(std: StandardPaths, config: BootstrapConfig) -> _WorksetProjectRows
 def designation_route(value: str | None, *, name_first: bool=False) -> DesignationRoute
 def resolve_designation(std: StandardPaths, value: str | None, *, unknown_name_is_path: bool, name_first: bool=False) -> str

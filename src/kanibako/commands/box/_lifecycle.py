@@ -4795,8 +4795,10 @@ def abort_if_box_running(
         print(f"Error: this box may be running: {reason}. {consequence} {stop}.",
               file=sys.stderr)
     else:
+        # ⚑ A run that already passed --force is not told to pass it.
+        offer = "" if force else ", or pass --force"
         print(f"Warning: this box may be running: {reason}. {consequence} "
-              f"{stop}, or pass --force.", file=sys.stderr)
+              f"{stop}{offer}.", file=sys.stderr)
         if force:
             return False
     if reason.startswith(_LOCK_UNANSWERED):

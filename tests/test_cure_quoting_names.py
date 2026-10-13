@@ -1257,6 +1257,25 @@ def test_the_unresolved_purge_stop_cure_names_its_box(target, std, config, tmp_h
     _assert_inert(found.group(1), ["stop", target], tmp_path)
 
 
+@pytest.mark.parametrize("force", [False, True])
+def test_the_unresolved_purge_warning_offers_force_only_without_it(
+        force, std, config, tmp_home, tmp_path, monkeypatch, capsys):
+    """An unresolved root with no lock warns; a run that passed --force is not told to."""
+    from kanibako.commands.box import _parser as P
+
+    md = tmp_path / "md"
+    md.mkdir()
+    monkeypatch.setattr(P, "_resolve_purge_probe_target",
+                        lambda *a, **k: (_ for _ in ()).throw(RuntimeError("nope")))
+    capsys.readouterr()
+    refused = P._refuse_purge_while_live(std, config, str(tmp_home / "ghost"), md, force,
+                                         "Purging this box")
+    assert refused is not force
+    err = capsys.readouterr().err
+    assert "does not resolve, so its container was never asked" in err, err
+    assert ("or pass --force" in err) is not force, err
+
+
 def _three_boxes(std, config, tmp_home):
     """A primary ``bar``, a named member ``wsx/bar``, and a standalone rooted at ``my proj``."""
     from kanibako.project.workset import add_project, create_workset

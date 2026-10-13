@@ -1958,20 +1958,30 @@ def run_list(args: argparse.Namespace) -> int:
     config = load_config(config_file)
     std = load_std_paths(config)
 
-    projects = iter_projects(std, config)
+    # ⚑ REPORT, never a refusal: a box dir that loops is listed and marked, not fatal.
+    looped: list[tuple[Path, Path | None]] = []
+    projects = iter_projects(std, config, looped=looped)
     ws_data = iter_workset_projects(std, config)
     # ⚑ STANDALONE boxes are NOT in iter_projects — list them explicitly.
     from kanibako.project import registry_store
+    from kanibako.project.workset import _resolved_unless_loop
     standalone = registry_store.load_standalone(std.registry)
     deregistered = registry_store.list_deregistered(std.registry)
     # ⚑ The ACTIVE registration wins: a parked entry naming a live box's home is stale
     # (the purge drops it, I4) and is not listed; only an UNREGISTERED box dir is hidden.
-    live_dirs = {m.resolve() for m, p in projects if p is not None}
+    live_dirs = {_resolved_unless_loop(m) for m, p in [*projects, *looped] if p is not None}
     deregistered = {n: e for n, e in deregistered.items()
-                    if Path(e["metadata"]).resolve() not in live_dirs}
-    deregistered_dirs = {Path(e["metadata"]).resolve() for e in deregistered.values()}
-    projects = [(m, p) for m, p in projects
-                if p is not None or m.resolve() not in deregistered_dirs]
+                    if _resolved_unless_loop(Path(e["metadata"])) not in live_dirs}
+    deregistered_dirs = {_resolved_unless_loop(Path(e["metadata"]))
+                         for e in deregistered.values()}
+    looped_dirs = {m for m, p in looped
+                   if p is not None or _resolved_unless_loop(m) not in deregistered_dirs}
+    projects = sorted((m, p) for m, p in [*projects, *looped]
+                      if p is not None or _resolved_unless_loop(m) not in deregistered_dirs)
+    if looped_dirs:
+        from kanibako.commands.box._lifecycle import looped_path_error
+        for looped_dir in sorted(looped_dirs):
+            print(f"Warning: {looped_path_error(looped_dir)}", file=sys.stderr)
     # DEREGISTERED boxes are never active, so they are skipped under an active-only filter.
     if active_only:
         deregistered = {}
@@ -2047,7 +2057,10 @@ def run_list(args: argparse.Namespace) -> int:
             # ⚑ A running container is ``active`` even with no workspace folder.
             # ⚑ REPORT, never a refusal: one legacy box must never blank the listing.
             running = _box_running(proj_name, WORKSET_SEGMENT_PRIMARY)
-            if project_path is None:
+            if settings_path in looped_dirs:
+                status = "active" if running else "looped"
+                label = str(project_path) if project_path else "(no breadcrumb)"
+            elif project_path is None:
                 status = "active" if running else "unknown"
                 label = "(no breadcrumb)"
             elif project_path.is_dir():
@@ -2923,7 +2936,7 @@ def _refuse_purge_while_live(std, config, standalone_root: str | None, metadata_
             print(f"Error: {why}.", file=sys.stderr)
             print("Aborted.")
             return True
-        print(f"Warning: {why}, or pass --force.", file=sys.stderr)
+        print(f"Warning: {why}{'' if force else ', or pass --force'}.", file=sys.stderr)
         if force:
             return False
         print("Aborted.")

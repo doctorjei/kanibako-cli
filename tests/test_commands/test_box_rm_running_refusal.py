@@ -107,7 +107,9 @@ class TestPrimary:
         _runtime_says(monkeypatch, True)
 
         assert _rm("proj", force=True, purge=True) == 0
-        assert "or pass --force" in capsys.readouterr().err
+        err = capsys.readouterr().err
+        assert "Warning: this box may be running" in err, err
+        assert "or pass --force" not in err, err
         boxes, _parked = _primary_state(std)
         assert "proj" not in boxes
 

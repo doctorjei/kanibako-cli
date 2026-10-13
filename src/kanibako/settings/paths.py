@@ -2388,8 +2388,15 @@ def _init_workset_project(std: StandardPaths, metadata_path: Path, shell_path: P
     print(MSG_DONE, file=sys.stderr)
 
 
-def iter_projects(std: StandardPaths, config: BootstrapConfig) -> list[tuple[Path, Path | None]]:
-    """Return ``(metadata_path, project_path | None)`` for every known project."""
+def iter_projects(
+    std: StandardPaths, config: BootstrapConfig, *,
+    looped: list[tuple[Path, Path | None]] | None = None,
+) -> list[tuple[Path, Path | None]]:
+    """Return ``(metadata_path, project_path | None)`` for every known project.
+
+    A caller that passes *looped* gets each box dir that is a symlink loop appended there,
+    in the same shape, instead of the refusal; it names the loop itself.
+    """
     # ⚑ An unlistable ``boxes/`` (or box dir) refuses, naming it: never "no boxes".
     listed = iterdir_unless_gone(std.boxes)
     if listed is None:
@@ -2405,7 +2412,15 @@ def iter_projects(std: StandardPaths, config: BootstrapConfig) -> list[tuple[Pat
     registered = workset_registry.load_workset_boxes(primary_registry)
     results: list[tuple[Path, Path | None]] = []
     for entry in sorted(listed):
-        if not is_dir_unless_gone(entry):
+        try:
+            if not is_dir_unless_gone(entry):
+                continue
+        except ConfigError:
+            from kanibako.project.workset import _symlink_loop  # lazy: layering
+            if looped is None or not _symlink_loop(entry):
+                raise
+            box_path = registered.get(find_identifier(entry.name, registered) or "")
+            looped.append((entry, Path(box_path) if box_path else None))
             continue
         # ⚑ The box dir's LEAF is a path segment; matching it to a registered box name is
         # an identifier question, so it compares case-blind (spec §0).  The directory name

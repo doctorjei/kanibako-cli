@@ -152,6 +152,7 @@ class TestALoopedStoreOnThePurgeDoors:
         assert ("this box may be running: kanibako cannot tell whether a session holds its "
                 f"lock file {store / '.kanibako.lock'}: it is a symlink loop") in text, text
         assert "a kanibako session holds its lock file" not in text, text
+        assert ("or pass --force" in text) is not force, text
         assert store.is_symlink()
 
     def test_register_of_a_parked_primary(self, config_file, tmp_home, credentials_dir,
@@ -243,6 +244,49 @@ class TestDuplicateOfALoopedStore:
                 "Remove or repair the link, then retry.") in text, text
         assert "no project data" not in text, text
         assert not (tmp_home / "dup").exists()
+
+
+class TestDuplicateReadsTheLoopFromItsOwner:
+    """The duplicate door asks ``project.workset._symlink_loop``, the owner, not a re-export."""
+
+    def test_the_owner_answers(self, tmp_path, monkeypatch, capsys):
+        from kanibako.commands.box import _duplicate
+        from kanibako.project import workset
+
+        monkeypatch.setattr(workset, "_symlink_loop", lambda path: True)
+        assert _duplicate._refuse_no_source_data(tmp_path / "gone", tmp_path / "src") == 1
+        assert "it is a symlink loop" in capsys.readouterr().err
+
+
+class TestBoxListBesideALoopedStore:
+    """One looped primary store is listed and marked; every other box is still listed."""
+
+    def test_the_rest_are_listed(self, config_file, tmp_home, credentials_dir, capsys):
+        a = _primary(tmp_home, "a")
+        q = _primary(tmp_home)
+        store = _std(config_file).boxes / "q"
+        _loop_aside(store)
+        rc, text = _ran(("box", "list"), capsys)
+        assert rc == 0, text
+        assert (f"Warning: {store}: it is a symlink loop that kanibako cannot resolve. "
+                "Remove or repair the link, then retry.") in text, text
+        rows = {line.split()[0]: line.split()[1:] for line in text.splitlines()
+                if line.split() and line.split()[0] in ("a", "q")}
+        assert rows["a"] == ["stopped", str(a)], text
+        assert rows["q"] == ["looped", str(q)], text
+        assert store.is_symlink()
+
+    def test_quiet_and_orphan_lists_survive(self, config_file, tmp_home, credentials_dir,
+                                            capsys):
+        _primary(tmp_home, "a")
+        _primary(tmp_home)
+        _loop_aside(_std(config_file).boxes / "q")
+        rc, text = _ran(("box", "list", "-q"), capsys)
+        assert rc == 0, text
+        assert {"a", "q"} <= set(text.split()), text
+        rc, text = _ran(("box", "list", "--orphan"), capsys)
+        assert rc == 0, text
+        assert "it is a symlink loop" in text and "Error:" not in text, text
 
 
 class TestAWorksetLandingOnALoop:
