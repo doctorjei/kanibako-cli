@@ -1,9 +1,9 @@
 # The Error Hierarchy — one base, one clean exit
 
 Twenty-five exception classes, almost all of them bare subclasses. The file is small and the code in
-it is trivial, which is exactly why it is worth reading carefully: **199 `raise` statements in `src/`
-and `packages/` name one of these classes directly**, so whatever these one-line descriptors say is
-what those sites believe they are raising.
+it is trivial, which is exactly why it is worth reading carefully: **about two hundred `raise`
+statements in `src/` and `packages/` name one of these classes directly**, so whatever these
+one-line descriptors say is what those sites believe they are raising.
 
 The one thing the hierarchy actually *does* is decide how a failure LEAVES the program.
 `cli.main`'s top-level dispatch has exactly three arms:
@@ -90,7 +90,7 @@ A user CONFIGURATION fault, hence a `ConfigError`. It is carried STRUCTURED rath
 text alone for two reasons: tests assert on fields instead of on wording, and a CLI seam can enrich
 the rendered text with what the pure resolver does not know.
 
-**The seam is `commands/start._annotate_pref_origin` (`start.py:7284`).** It reads `exc.entries`,
+**The seam is `commands/start._annotate_pref_origin`.** It reads `exc.entries`,
 asks `settings_prefs.pref_origin` which `pref` REQUEST installed each participant, and appends a line
 naming that request, its LEVEL, and the settings FILE it came from — then rebuilds the exception with
 the same `kind` / `box_dest` / `entries`. The user-visible payoff: a message naming
@@ -109,40 +109,36 @@ the same `kind` / `box_dest` / `entries`. The user-visible payoff: a message nam
   `settings/settings_categories.py`:
 
 `"binding_vs_binding"` — two CONCRETE declarations at one destination.
-: `CONCRETE_CATEGORIES` is `("bindings.ro", "bindings.rw", "secret_path")`
-  (`settings_categories.py:446`), so this covers two `bindings.{ro,rw}`, a `bindings.*` against a
-  `secret_path`, and any other pairing among the three. Spec §0: *"TWO MOUNTS AT ONE DESTINATION ARE
-  NOW AN ERROR IN EVERY SCOPE COMBINATION"* — unconditional, any scope, any mode, because two
-  bindings disagreeing on ro/rw is a semantic disagreement and silently picking one hands the user a
+: `CONCRETE_CATEGORIES` is `("bindings.ro", "bindings.rw", "secret_path")`, so this
+  covers two `bindings.{ro,rw}`, a `bindings.*` against a `secret_path`, and any other pairing
+  among the three. `system-design-1.8.0.md` § *Collision arbitration*: *"TWO MOUNTS AT ONE
+  DESTINATION ARE AN ERROR IN EVERY SCOPE COMBINATION BUT ONE"* — the one being `common` and `caches`
+  in one scope, which the store-shape producer decides first, so it never reaches this error. Two
+  bindings disagreeing on ro/rw is a semantic disagreement, and silently picking one hands the user a
   read-only mount where they asked for writable.
-  ⚑ **The D2 CARVE-OUT is the caller's test, not this error's** (`settings_categories.py:440-445`): a
+  ⚑ **The D2 CARVE-OUT is the caller's test, not this error's** (`secret_path_deliveries`): a
   group whose concrete members are ALL `secret_path` is not a collision at all. Their dest is
   `SECRET_MOUNT_DIR/{VAR}` by construction, so two of them at one dest are always the same VAR
   arriving from two scopes — the per-VAR cascade spec §2a documents as a FEATURE.
 
 `"extension_onto_occupied"` — an ABSTRACT declaration derives a binding onto an occupied destination.
-: `ABSTRACT_CATEGORIES` is `("common", "caches", "seeded")` (`settings_categories.py:260`) — **all
+: `ABSTRACT_CATEGORIES` is `("common", "caches", "seeded")` — **all
   three**, which is what the rendered message itself says. The explicit binding is the BASE and
-  SURVIVES; the derived EXTENSION is refused. Spec §0 states the collapse-time refusal as SYMMETRIC
-  (after the fold nothing distinguishes an explicit entry from a derived one) — no contradiction:
-  this refusal is decided inside ONE scope, at production, before the collapse ever sees it. What
-  spec §0 requires of the message is the DIAGNOSIS — name the extending declaration, the occupant,
-  and the dest — and that is what the base/extension asymmetry buys.
+  SURVIVES; the derived EXTENSION is refused. § *Collision arbitration* states the refusal as
+  SYMMETRIC (after the fold nothing distinguishes an explicit entry from a derived one) — no
+  contradiction: this refusal is decided inside ONE scope, at production, before the collapse ever
+  sees it. What that section requires of the message is the DIAGNOSIS — name the extending
+  declaration, the occupant, and the dest — and that is what the base/extension asymmetry buys.
 
 Both refusals are raised by named helpers rather than inline, so the spec-mandated message text
 exists exactly once each: `settings_categories.raise_binding_vs_binding` and
 `raise_extension_onto_occupied`, three callers apiece.
 
-⚑⚑ **KNOWN DELTA — the `§0 row-1` / `§0 row-3` numbering does not resolve.** The old docstring said
-*kind* "discriminates the §0 table row that fired" and labeled the two kinds Row 1 and Row 3. The
-live spec `~/canon/workbook/specs/settings-keyspace-1.8.0.md` §0 has no such numbering: its collision
-table (L113-118) is keyed by the ARRIVING entry (bind / mask / copy-file / copy-dir), and its
-numbered refusal list (L138-148) reads 1 = an existing MASK parent refuses every arrival, 2 =
-bind-vs-bind, 3 = mask-vs-mask. So `binding_vs_binding` is refusal **2**, and `extension_onto_occupied`
-has no numbered refusal at all — it is stated as prose at L164-169. **The numbering is stale
-throughout, not just here**: `settings_categories.py:884` and `:919` carry the same `§0 row-1` /
-`§0 row-3` spelling. Not repaired by this pass (it is a code-comment fix across another module);
-recorded so nobody treats the labels as resolvable citations.
+⚑⚑ **A `§0 row-1` / `§0 row-3` label does not resolve.** The collision table in
+`system-design-1.8.0.md` § *Collision arbitration* is keyed by the ARRIVING entry (bind / mask /
+copy-file / copy-dir), and its numbered refusal list puts bind-vs-bind at **2**;
+`extension_onto_occupied` has no number — it is the section's base-vs-extension prose. The one
+surviving `§0 row-1` label, in `settings/agent_defaults.py`, is not a resolvable citation.
 
 ### `TemplateScopeError`
 
@@ -153,33 +149,34 @@ A template/seed copy tried to write OUTSIDE its scope's allowed surface.
 rule. A template that could plant `<scope>.yaml` at a scope root would be planting
 `meta.<scope>.settings` — the cascade's own last word. At workset scope the same escape reaches
 `registry.yaml` (the AUTHORITATIVE box membership), `auth/`, `vault/` and `workspaces/`: the user's
-credentials and code. Spec §2a's note on this names those three as *"USER DATA AND SECRETS"*
-(`settings-keyspace-1.8.0.md:924`).
+credentials and code. `system-design-1.8.0.md` § *The seed whitelists — what the copier may write*
+denies them by name.
+
 
 **Where it is raised — TWO surfaces, not one.**
 
-`launch/templates.copy_tree` (`templates.py:358`) is "the ONE copier" by its own docstring: every
+`launch/templates.copy_tree` is "the ONE copier" by its own docstring: every
 template stage, box seed and host-store fill routes through it, so the defenses cannot be present on
 one path and missing on another. It enforces four points, and they are exactly what spec §2a demands
-of the copier — *"WHITELISTS, per scope. Anything not listed is DENIED by default"* (L904) and *"The
-copier MUST reject `..` components and MUST NOT follow symlinks out of the destination subtree"*
-(L929, restated for the seed dests at L966-967):
+of the copier in § *The seed whitelists* — *"WHITELISTS, per scope. Anything not listed is DENIED by
+default"* and *"The copier MUST reject `..` components and MUST NOT follow symlinks out of the
+destination subtree"*:
 
 1. **Whitelist** — an entry whose first STORE-RELATIVE path component is not in the scope's
    whitelist. Deny-by-default: an unlisted entry is an ERROR, never a silent skip.
-   (`_check_whitelist`, called at `templates.py:446`.)
+   (`_check_whitelist`, called per entry.)
 2. **Destination containment** — a resolved destination outside the scope store root, the `..`
-   escape. (`_assert_contained`, called at `:429` for the root and `:453` for each parent dir.)
-3. **Source symlink** (`:433`) — checked BEFORE `is_file()`, which would follow it. Without this,
+   escape. (`_assert_contained`, called once for the root and once for each entry's parent dir.)
+3. **Source symlink** — checked BEFORE `is_file()`, which would follow it. Without this,
    `x -> ~/.ssh/id_ed25519` would have its TARGET's bytes copied into a box home.
-4. **Destination-leaf symlink** (`:461`) — a destination whose real path escapes the subtree through
+4. **Destination-leaf symlink** — a destination whose real path escapes the subtree through
    a symlinked intermediate directory, where the escape is the leaf itself and the parent check above
    therefore cannot see it.
 
 ⚑ **`launch/templates.stage_layers` reaches it through the copier too**: it stages each layer
 with `copy_tree`, so a symlink in a layer is refused by the copier while it is still a link.
 
-`commands/workset_cmd.py:359` is the only in-tree catcher.
+`commands/workset_cmd.run_create` is the only in-tree catcher.
 
 ## Plain leaf errors
 
@@ -187,9 +184,10 @@ with `copy_tree`, so a symlink in a layer is refused by the copier while it is s
 Project cannot be resolved, or its name/location is refused.
 
 ⚑ Broader than the older *"path does not exist or cannot be resolved"*. Several raise sites are
-REFUSALS of a perfectly resolvable project: `paths.py:970` (name already used), `:974` (the directory
-IS a workset), `:966` (registration under HOME). `project/names.py` adds the ambiguous-name and
-unknown-name refusals.
+REFUSALS of a perfectly resolvable project, each with its own message constant in
+`settings/messages.py`: `ERR_PROJECT_NAME_USED`, `ERR_PROJECT_REG_HOME` (registration of HOME), and
+`ERR_PROJECT_PATH_IS_NAMED_BOX` (the path is already a named box's workspace). `project/names.py`
+adds the ambiguous-name and unknown-name refusals.
 
 ```class ContainerError(KanibakoError):```
 Container runtime or image operation failed.
@@ -256,7 +254,7 @@ Agent could not be resolved for an agent-requiring command.
 **The `str()` of the exception — and of every subclass — IS the user-facing message.** Callers do not
 reformat it; they let it reach `cli.py`, which prints it verbatim behind `Error: `. That is why each
 raise site writes a multi-line message with a cure in it, and why
-`commands/agent_cmd.py:602` and `commands/start.py:556` both note that the error "surfaces verbatim".
+comments in `commands/agent_cmd.py` and `commands/start.py` note that the error "surfaces verbatim".
 Reword one of these messages and you have reworded user-facing output.
 
 ⚑ **Only ONE of these carries an install command now — `AgentNotInstalledError`.** The retired
@@ -293,8 +291,8 @@ cannot tell the two states apart. ⚑ **It is reachable by TYPO:** YAML reads `n
 ```class AgentNotInstalledError(AgentResolutionError):```
 A name resolved (explicit `--agent`, cascade, or default) but that agent adapter is not installed.
 
-`config.py:609`. ⚑ The older descriptor said "(cascade/default)" and omitted the commonest trigger:
-`resolve_agent` reads `explicit_agent` FIRST (`config.py:600`), so a typo'd `--agent` lands here. What
+Raised by `config.resolve_agent`. ⚑ The older descriptor said "(cascade/default)" and omitted the
+commonest trigger: `resolve_agent` reads `explicit_agent` FIRST, so a typo'd `--agent` lands here. What
 must be installed is the HARNESS (`harness_of(node)`), never the composite node-name — a persona
 segment is free-form, so `navigator+claude` requires `claude` to be installed and asks nothing of
 `navigator`.
