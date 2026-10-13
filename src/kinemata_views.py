@@ -716,9 +716,9 @@ _CONSTRUCT_TIME = frozenset({
     "<generated at creation>", "<construct-time>", "<the user's real project dir>",
 })
 _AGENT = "anyagent"
-# Keyspec §2c `meta.box.container`: `<W>` and `<B>` are RENDERED placeholders, not refs
-# (director ruling, 151st) -- `<W>` renders the box's workset (`primary` and `standalone`
-# name the one partition of that mode) and `<B>` its name. Read as the anchors they render.
+# Keyspec §2c `meta.box.container`: `<W>` and `<B>` are RENDERED placeholders, not refs --
+# `<W>` renders the box's workset (`primary` and `standalone` name the one partition of that
+# mode) and `<B>` its name. Read as the anchors they render.
 _RENDERED = {"<W>": "{meta.workset.name}", "<B>": "{meta.box.name}"}
 
 

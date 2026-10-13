@@ -538,7 +538,7 @@ class CodexTarget(Target):
         ALREADY carries the ``/v1``-style prefix this appends ``/models`` and
         ``/responses`` to — NOT an origin-only host like goose's ``OPENAI_HOST``.
 
-        ⚑ **A PRESENT-null *token_path* (2026-08-17 ruling) is still PROBED, with
+        ⚑ **A PRESENT-null *token_path* (keyspec §2a secret_path.<VAR>) is still PROBED, with
         the ``Authorization`` header OMITTED** — that persona declares the
         endpoint keyless, so the request goes out bare and the server decides.
 

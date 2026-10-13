@@ -151,7 +151,7 @@ def format_remote_failure(command: str, dest: str, remote_output: str) -> str:
     compatibility gate, an argparse error, etc.), surfacing it raw under a
     local ``Error:`` line produces TWO stacked ``Error:`` lines with nothing to
     say the second came from the remote host — the user has to infer the
-    boundary (Jei, rc10 dogfood).  This wraps the remote output under a clear
+    boundary (rc10 dogfood).  This wraps the remote output under a clear
     ``Response from remote host:`` header, indented so the boundary between the
     local surfacing and the remote's own reply is unambiguous.  An empty remote
     output is called out explicitly (``(no output from remote host)``) rather

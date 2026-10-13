@@ -389,7 +389,7 @@ class ClaudeTarget(Target):
         model, since the box then rides the harness default, which the probe cannot
         send.
 
-        ⚑ **A PRESENT-null *token_path* (2026-08-17 ruling) is still PROBED,
+        ⚑ **A PRESENT-null *token_path* (keyspec §2a secret_path.<VAR>) is still PROBED,
         with the ``Authorization`` header OMITTED** — a persona whose
         ``secret_path`` key is deliberately ``null`` declares this endpoint
         keyless, and the request is sent bare for the server to decide (never a

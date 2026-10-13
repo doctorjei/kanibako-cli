@@ -591,7 +591,7 @@ agent_shell:
 # DROPPED — the box gets no such variable rather than an empty one, which is a
 # third state readers misparse (`settings_resolve._host_colorterm`).
 #
-# `TERM`: AGENT.DEFAULT scope, on Jei's 2026-09-19 ruling — *"it should be the
+# `TERM`: AGENT.DEFAULT scope, on [Jei:2026-09-19] — *"it should be the
 # default for **all** agents (host, then xterm fallback) this isnt just for shell"*.
 # The DEFAULT tier rather than a per-node row because the agent tier's two cascade
 # levels are overlaid PER NAME (spec §2a), so a plugin descriptor or any settings

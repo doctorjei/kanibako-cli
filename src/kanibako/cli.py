@@ -246,7 +246,7 @@ def _ensure_initialized() -> None:
     # First run: create the (EMPTY) config file and the data dirs.
     # ⚑ The file carries ``config.*`` and nothing else, and first run has no non-default
     # ``config.*`` to record — so it is created empty and its EXISTENCE is the whole
-    # signal this function returns early on above (Jei, 2026-08-26).
+    # signal this function returns early on above [Jei:2026-08-26].
     write_global_config(cf)
 
     # ⚑ ONE handler for the WHOLE first run.  Every step in this block can fail AFTER

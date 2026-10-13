@@ -223,7 +223,7 @@ def write_storage_conf(staging_dir: Path) -> Path:
     """GENERATE + write the shared-store ``storage.conf`` into *staging_dir*.
 
     The GENERATION half of image sharing (spec D-M8 = generated+bound), split
-    from the graph-root PROBE (ruled 11a, 2026-08-02): the probe
+    from the graph-root PROBE [Jei:2026-08-02]: the probe
     (:func:`detect_graph_root`) feeds ONLY the ``box.images_store`` DEFAULT,
     while this generated file serves the RESOLVED store — probed default OR a
     set tier value — so the launch seam writes it whenever sharing is

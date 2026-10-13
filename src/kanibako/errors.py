@@ -119,7 +119,7 @@ class AgentUnsetError(AgentResolutionError):
     """``system.agent`` is UNSET at every tier: setup has never chosen one (spec §2b).
 
     ⚑ The PAIR with :class:`AgentNoDefaultError`, and they are not interchangeable —
-    that is the whole of the 2026-09-19 ruling. UNSET means *nothing has ever set the
+    that is the whole of [Jei:2026-09-19]. UNSET means *nothing has ever set the
     key*, so the cure is ``kanibako setup``; present-``None`` means *a settings file
     deliberately declined to name a default*, so the cure is naming one. Neither ever
     auto-selects: the installed-agent COUNT decides nothing.

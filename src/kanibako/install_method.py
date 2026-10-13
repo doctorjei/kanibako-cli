@@ -3,7 +3,7 @@
 Two places surface an actionable "install a plugin" hint: ``AgentNotInstalledError``,
 when a NAMED agent's adapter is missing, and ``setup``'s Step 2, when no agent plugin
 is installed at all.  ⚑ The launch's no-agent refusals carry NO install command —
-they answer ``kanibako setup`` at every installed count (2026-09-19 ruling, spec §2b),
+they answer ``kanibako setup`` at every installed count (spec §2b),
 which is exactly why ``setup`` has to print one.  The right command depends on how
 *kanibako itself* was installed (pipx inject vs uv tool --with vs plain pip), so this
 module keys detection off kanibako's own environment.

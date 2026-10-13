@@ -108,7 +108,7 @@ class HelperHub:
         # Guarded by ``_containers_lock``.
         self._homes: dict[int, Path] = {}
 
-        # THE COUNTER (his 171-HN ruling): the next helper number this hub hands out,
+        # THE COUNTER ([Jei:2026-10-11]): the next helper number this hub hands out,
         # for the whole tree.  ``start`` sets it past every number on disk, so a hub
         # that restarts never reissues a number a helper still holds there.  Guarded
         # by ``_containers_lock``.
