@@ -1038,14 +1038,14 @@ def test_a_terminal_category_merges_per_entry_not_wholesale(tmp_path: Path) -> N
 def test_refs_left_raw_inside_bind(tmp_path: Path) -> None:
     box = _write(
         tmp_path / "box.yaml",
-        {"box": {"bindings": {"rw": {"$XDG_STATE_HOME/v": ["@workset.vault_rw/x"]}}}},
+        {"box": {"bindings": {"rw": {"{$XDG_STATE_HOME}/v": ["{workset.vault_rw}/x"]}}}},
     )
     box_scope = assemble_levels_at(agent_name="claude", box_path=box)[BOX]["box"]
     node = box_scope["bindings"]["rw"]
     # NOT expanded — tokens preserved verbatim (S9 / spec §0), on BOTH sides: the
     # ``$XDG`` dest KEY is carried through too (R-11 expands a leading ``~`` only).
-    assert list(dict.keys(node)) == ["$XDG_STATE_HOME/v"]
-    assert node["$XDG_STATE_HOME/v"].src == "@workset.vault_rw/x"
+    assert list(dict.keys(node)) == ["{$XDG_STATE_HOME}/v"]
+    assert node["{$XDG_STATE_HOME}/v"].src == "{workset.vault_rw}/x"
 
 
 def test_malformed_bind_arity_raises(tmp_path: Path) -> None:
@@ -1801,10 +1801,10 @@ def test_parse_bind_map_keys_on_dest_and_yields_bind_entries() -> None:
 def test_parse_bind_map_leaves_refs_and_vars_raw() -> None:
     # Assembly never expands (S9/spec §0 — files store UNRESOLVED). That holds for
     # the destination too, which is now a KEY.
-    node = parse_bind_map({"@meta.box.path/home": ["@config.data/seed"]})
-    assert set(dict.keys(node)) == {"@meta.box.path/home"}
-    assert dict.__getitem__(node, "@meta.box.path/home") == BindEntry(
-        "@config.data/seed"
+    node = parse_bind_map({"{meta.box.path}/home": ["{config.data}/seed"]})
+    assert set(dict.keys(node)) == {"{meta.box.path}/home"}
+    assert dict.__getitem__(node, "{meta.box.path}/home") == BindEntry(
+        "{config.data}/seed"
     )
 
 

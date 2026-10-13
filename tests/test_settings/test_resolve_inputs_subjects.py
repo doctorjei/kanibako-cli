@@ -176,7 +176,7 @@ class TestTheSystemScopeHasNoBoxAndNoWorkingSet:
         """§1A: ``meta.runtime.{user,admin}.*`` name HOST files, which the system
         scope has — nor is a key derived from one dropped."""
         floor: dict[str, object] = {k: f"/host/{k}" for k in self._HOST_RUNTIME}
-        floor["box.derived"] = "@meta.runtime.admin.settings"
+        floor["box.derived"] = "{meta.runtime.admin.settings}"
         _omit_derived(
             _system(std).ctx, lambda key: _box_less_omits(key, in_workset=False), floor,
         )
@@ -287,7 +287,7 @@ class TestAHostPathInTheRuntimeFloorIsALiteral:
         config_home.mkdir()
         monkeypatch.setenv("XDG_CONFIG_HOME", str(config_home))
         if refer:
-            _refer_to(std, {"~/host.cfg": "@meta.runtime.user.config"})
+            _refer_to(std, {"~/host.cfg": "{meta.runtime.user.config}"})
         snap = _snapshot(_subject_inputs(which, std, named_ws, named_box))
         user_config = str(config_home / CONFIG_FILENAME)
         assert _leaf(snap, "meta.runtime.user.config") == user_config

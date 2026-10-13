@@ -263,7 +263,7 @@ def test_a_value_kanibako_supplies_is_not_the_users_to_fix(tmp_path):
     assert _snapshot(tmp_path) is not None
 
 
-@pytest.mark.parametrize("value", ["/srv/canon", None, "~", "@config.data/c", ""])
+@pytest.mark.parametrize("value", ["/srv/canon", None, "~", "{config.data}/c", ""])
 def test_ambiguous_path_shape_error_refuses_to_invent_a_refusal_for_a_legal_value(value):
     """The public shape-error helper is TOTAL: a legal value raises, never returns a sentence.
 

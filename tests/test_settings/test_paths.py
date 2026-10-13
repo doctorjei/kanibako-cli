@@ -2927,12 +2927,12 @@ class TestEarlySystemTierIsData:
         self._settings(
             "system:\n  cache: null\n"
             "workset:\n  boxes: /srv/kb/{meta.workset.path}\n"
-            "  registry: /srv/reg/@meta.workset.path/r.yaml\n",
+            "  registry: /srv/reg/{meta.workset.path}/r.yaml\n",
         )
 
         resolved, rec = self._tier(tolerate=True)
         assert rec.tier["workset.boxes"] == "/srv/kb/{meta.workset.path}"
-        assert rec.tier["workset.registry"] == "/srv/reg/@meta.workset.path/r.yaml"
+        assert rec.tier["workset.registry"] == "/srv/reg/{meta.workset.path}/r.yaml"
         assert rec.system_refusal is not None
         assert "cache" in rec.system_refusal
         # The resolved-system carrier is EMPTY when the refusal is set.
@@ -2961,7 +2961,7 @@ class TestEarlySystemTierIsData:
         built AFTER the resolve -- not a second read of the stored expression."""
         self._settings(
             "system:\n  canon: '{config.data}/global/canon'\n"
-            "workset:\n  boxes: /srv/kb/@meta.workset.path\n",
+            "workset:\n  boxes: /srv/kb/{meta.workset.path}\n",
         )
 
         resolved, rec = self._tier()
