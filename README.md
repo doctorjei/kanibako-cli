@@ -764,13 +764,13 @@ overrides a workset one, which overrides the global one.
 The shell prompt is controlled by the `KANIBAKO_PS1` environment variable:
 
 ```bash
-kanibako box set 'box.env.KANIBAKO_PS1=(myproject) \\u:\\w> '
+kanibako box set 'box.env.KANIBAKO_PS1=(myproject) \\u:\\w>'
 ```
 
 A settings value reads `\\` as one literal backslash and `\~` as a literal
 `~`, so each prompt escape needs its backslash doubled; the box receives
-`(myproject) \u:\w> `.  Single quotes keep the shell from consuming the
-backslashes first.
+`(myproject) \u:\w>`.  Single quotes keep the shell from consuming the
+backslashes first.  `set` trims leading and trailing whitespace from a value.
 
 ### Init scripts
 
