@@ -18,7 +18,7 @@ something the launch accepts, which is the worse error of the two.
 hold keys of the scopes it CONTAINS ... which serve as OVERRIDABLE defaults", and a scope "may
 NOT write a setting in a containing (higher) level". The set-time resolution probe judges a
 candidate value against the COMMAND's cascade, so a referent living in the contained scope is
-absent from that snapshot by construction — and ``system set workset.auth.path=@workset.channelroot/x``
+absent from that snapshot by construction — and ``system set workset.auth.path={workset.channelroot}/x``
 was refused as a "dangling @-reference" for a key that is declared and that every launch
 resolves. :func:`_floor_blind_referents` forgives exactly that
 blindness and nothing else.
@@ -72,7 +72,7 @@ from tests.support.filenames import CONFIG_FILENAME
 _BOXES = f"workset.{BOXES_PATH}"
 #: A contained-scope key and a ref INTO the contained scope — the shape §0 says a system
 #: file may hold, and the shape the base refused as a dangling @-reference.
-#: ⚑ NOT a workset EARLY key: those take only ``@meta.workset.path``, whatever the door
+#: ⚑ NOT a workset EARLY key: those take only ``{meta.workset.path}``, whatever the door
 #: (``test_workset_early_key_set_door.py``).
 _CONTAINED_KEY = "workset.auth.path"
 _CONTAINED_REF = "{workset.channelroot}/x"
@@ -99,7 +99,7 @@ def _files(tmp_path: Path) -> dict:
 def ws_files(tmp_path, std):
     """:func:`_files` over a REAL working set, so the workset tier holds its own anchor.
 
-    ⚑ WITHOUT ONE, ``@workset.channelroot`` dangles at the WORKSET door too and the
+    ⚑ WITHOUT ONE, ``{workset.channelroot}`` dangles at the WORKSET door too and the
     "unchanged at its own door" half of Row 2 would be testing a missing anchor rather
     than the door's behavior. ``create_workset`` refuses a root that already exists, so
     the tiers are laid down around it, not before it.
@@ -305,9 +305,9 @@ class TestAContainedScopeKeyIsAcceptedAtTheContainingDoor:
 
 
 class TestAMetaRefIsJudgedByItsScopeToken:
-    """``@meta.<scope>.*`` names a scope in its SECOND segment: keyspec §2b's own default
-    for ``box.canon`` is ``@meta.box.path/canon``, so a containing door that refused
-    ``@meta.box.path/c2`` refused the shape of the declared default itself."""
+    """``{meta.<scope>.*}`` names a scope in its SECOND segment: keyspec §2b's own default
+    for ``box.canon`` is ``{meta.box.path}/canon``, so a containing door that refused
+    ``{meta.box.path}/c2`` refused the shape of the declared default itself."""
 
     def test_a_box_key_may_reference_its_own_meta_scope_at_the_workset_door(self, ws_files):
         message = _set("box.canon", "{meta.box.path}/c2", ws_files, ConfigLevel.workset,
@@ -417,8 +417,8 @@ class TestWhatStaysRefused:
     def test_a_later_set_ref_this_floor_HOLDS_is_refused_too(self, tmp_path, std, value):
         """🛑 The rule reads the SPELLING, not the floor.
 
-        The declared floor carries some ``box.*`` defaults, so ``@box.enable_vault`` and
-        ``@box.image`` RESOLVE at the system command; a check that asked the floor would
+        The declared floor carries some ``box.*`` defaults, so ``{box.enable_vault}`` and
+        ``{box.image}`` RESOLVE at the system command; a check that asked the floor would
         store them.
         """
         files = _files(tmp_path)

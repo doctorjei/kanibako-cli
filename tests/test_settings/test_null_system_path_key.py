@@ -85,7 +85,7 @@ class TestANullSurvivesTheReadAsANull:
         assert "system.channels.chat" in resolved  # its siblings are untouched
 
     def test_a_null_referent_nulls_the_value_that_names_it(self, tmp_path):
-        """``system.channels.broadcast`` is ``@system.channels.chat/broadcast.md``.
+        """``system.channels.broadcast`` is ``{system.channels.chat}/broadcast.md``.
 
         ⚑ THE ONE THAT MEASURED: with a null chat this resolved to the PATH
         ``None/broadcast.md``, and the chat seeder created that directory in the CWD.

@@ -2237,7 +2237,7 @@ class TestSystemAgent:
         from kanibako.settings.config import read_system_agent
 
         # Residuals item 2: the key lives in the system SETTINGS file
-        # (@config.settings, where read_system_agent + set/reset all agree), so a
+        # ({config.settings}, where read_system_agent + set/reset all agree), so a
         # system-scope get reads it via ``system_settings_path`` — NOT the
         # kanibako.cfg CONFIG file.
         cf = tmp_path / CONFIG_FILENAME
@@ -2460,7 +2460,7 @@ class TestConfigJournalRecognition:
 
 
 class TestSystemSettingsTierSplit:
-    """SYSTEM scope: SETTINGS route to @config.settings (global/settings.yaml),
+    """SYSTEM scope: SETTINGS route to {config.settings} (global/settings.yaml),
     while kanibako.cfg carries ``config.*`` alone — the config/settings split.
 
     The interface fns take an optional ``system_settings_path``; when set (the
@@ -3223,7 +3223,7 @@ class TestCrossScopeCascadeConfigSet:
             cascade_workset_path=ws_f,
             cascade_box_path=box_f,
         )
-        # ALLOWED: @workset.vault_ro is visible in the full cascade -> resolves.
+        # ALLOWED: {workset.vault_ro} is visible in the full cascade -> resolves.
         assert not msg.startswith("Error:"), msg
         # stored RAW (the @-ref, NOT a literal — §0 files unresolved).
         assert load_doc(box_f)["box"]["canon"] == "{workset.vault_ro}/bar"
@@ -3348,7 +3348,7 @@ class TestCommandFileTakesTheCommandScopeSlot:
         assert load_doc(ssp)["box"]["canon"] == "{box.shell}/{meta.workset.path}/{meta.box.name}"
 
 
-#: ``@box.image`` with the identity a containing scope's ``box.canon`` must reach (keyspec §0).
+#: ``{box.image}`` with the identity a containing scope's ``box.canon`` must reach (keyspec §0).
 _BOX_CANON_ANCHORED = "{box.image}/{meta.workset.path}/{meta.box.name}"
 
 
@@ -3365,7 +3365,7 @@ class TestLayer1FileIsNotASettingsSourceAtAll:
 
     ⚑ WHAT MUST STILL RESOLVE, and why the floor was not simply deleted: the box
     scalars' DECLARED DEFAULTS are a legitimate carrier (``config.KanibakoConfig``
-    fields, spec §2b), so ``@box.image`` resolves from
+    fields, spec §2b), so ``{box.image}`` resolves from
     ``config.box_scalar_defaults_floor`` — and ``@config.*`` resolves through the
     ResolveCtx FOUNDATION, which never went through any floor.
     """
@@ -3383,7 +3383,7 @@ class TestLayer1FileIsNotASettingsSourceAtAll:
     def test_a_planted_layer1_value_does_not_reach_the_probe(
         self, config_file, tmp_path, scope,
     ):
-        """The planted value is INVISIBLE: ``@box.image`` resolves to the DEFAULT.
+        """The planted value is INVISIBLE: ``{box.image}`` resolves to the DEFAULT.
 
         Proved by MUTATION rather than by asserting a refusal — a ref to ``box.image``
         resolves either way, so the question is WHICH value, and the answer must not
@@ -3405,7 +3405,7 @@ class TestLayer1FileIsNotASettingsSourceAtAll:
     def test_box_image_still_resolves_from_the_declared_default_floor(self, tmp_path):
         """🛑 The floor was SEPARATED from the file read, not deleted.
 
-        Without the declared-default half, ``@box.image`` dangles at every command
+        Without the declared-default half, ``{box.image}`` dangles at every command
         scope — a regression, not conformance.
         """
         f = tmp_path / "box.yaml"
@@ -3416,7 +3416,7 @@ class TestLayer1FileIsNotASettingsSourceAtAll:
         assert not msg.startswith("Error:"), msg
 
     def test_box_shell_resolves_as_a_present_none(self, tmp_path):
-        """``box.shell``'s declared ``<None>`` is floored PRESENT, so ``@box.shell`` resolves.
+        """``box.shell``'s declared ``<None>`` is floored PRESENT, so ``{box.shell}`` resolves.
 
         Spec §2b ``box.shell | <None>`` and §0: a whole-value ref to a present ``<None>``
         is ``<None>``, not a dangling ref.  ``box_scalar_defaults_floor`` supplies it.
@@ -3577,7 +3577,7 @@ class TestScopeDirectionGuard:
 
     def test_system_scope_allows_box_key_downward(self, tmp_path):
         """DOWNWARD (system ⊃ box): accepted, and stored in the system
-        SETTINGS file (``@config.settings``) with the ``box:`` scope token kept
+        SETTINGS file (``{config.settings}``) with the ``box:`` scope token kept
         — NOT in the Layer-1 kanibako.cfg (spec §1: settings keys never
         live in the bootstrap config file)."""
         cf = tmp_path / CONFIG_FILENAME
@@ -5570,7 +5570,7 @@ class TestSetTimeResolutionProbe:
         """V1: an embedded ref to a present ``<None>`` makes the value ``<None>`` (spec
         §0) — a value, not a dangling ref, so the set is accepted; and the effective
         value names nothing rather than the root-relative ``/auth``.  ``workset.auth.path``
-        because it is no workset EARLY key, whose reader takes only ``@meta.workset.path``."""
+        because it is no workset EARLY key, whose reader takes only ``{meta.workset.path}``."""
         from kanibako.settings.config_interface import effective_value
 
         cfg = tmp_path / BOX_META_FILE
@@ -6512,7 +6512,7 @@ class TestPrefValueValidation:
 
     def test_an_unresolvable_scalar_value_is_refused(self, tmp_path):
         """The E3 probe must run AT THE TARGET: probing at the pref path is a
-        no-op because expand skips the pref subtree, so `@typo` used to be
+        no-op because expand skips the pref subtree, so `{typo}` used to be
         accepted and then silently DROPPED the target at launch."""
         f = tmp_path / BOX_META_FILE
         msg = set_config_value(
@@ -6869,7 +6869,7 @@ def test_a_reserved_leaf_on_a_category_key_still_returns_an_error_not_a_raise(
 
 # ---------------------------------------------------------------------------
 # SYSTEM-scope file routing — get / set / reset must all name ONE file, and that
-# file must be the one the LAUNCH cascade reads (@config.settings), never the
+# file must be the one the LAUNCH cascade reads ({config.settings}), never the
 # kanibako.cfg CONFIG file.  Three branches were holdouts (F1/F2/F3).
 # ---------------------------------------------------------------------------
 
@@ -7181,7 +7181,7 @@ class TestSystemScopeCategoryFileRouting:
     write route, so there is no ``set`` left to agree with ``get`` — the asymmetry
     died with one of its two sides. What still matters, and is pinned here, is that
     the surviving READ names the file the LAUNCH cascade's system tier actually reads
-    (``@config.settings``), never the bootstrap CONFIG file — because hand-editing
+    (``{config.settings}``), never the bootstrap CONFIG file — because hand-editing
     that settings file IS the cure every refusal now prescribes, and a get that read
     the wrong file would make the cure unverifiable.
 

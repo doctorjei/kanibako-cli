@@ -50,7 +50,7 @@ def _sentinel(tmp_home: Path, key: str) -> str:
 def repointed(config_file, tmp_home):
     """Every ``SYSTEM_PATH_DEFAULTS`` key repointed IN THE SYSTEM SETTINGS FILE.
 
-    ⚑ Written to ``@config.settings`` — the file ``config set system.<key>`` writes
+    ⚑ Written to ``{config.settings}`` — the file ``config set system.<key>`` writes
     (``config_dest``/``_KEY_ROUTES``), NOT the bootstrap config file.  Writing the
     config file would exercise the layer that already worked and prove nothing.
     """

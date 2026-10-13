@@ -468,7 +468,7 @@ class TestWorksetChannelDefaults:
     ⚑ THE ARMS THE KINEMATA VIEWS DO NOT REACH, and only those.  ``workset-channels-primary``
     / ``-named`` compare the root and four local leaves in their two modes, and
     ``workset-partition`` compares the two partition leaves in NAMED mode only — the one
-    mode whose ``@meta.workset.name`` a sentinel can stand in for (its parity note).  So
+    mode whose ``{meta.workset.name}`` a sentinel can stand in for (its parity note).  So
     this class keeps the partition leaves at PRIMARY, and every leaf at STANDALONE, where
     the local derivation must answer ``None`` (``standalone-nulls`` reads the anchor
     floor's standalone ``None``, not this derivation).
@@ -791,7 +791,7 @@ class TestBindDefaults:
 #: * ``workset.registry`` (2026-08-29) — its join face
 #:   (``project/workset_registry.py::resolve_workset_registry_path``) still exists and is
 #:   still the pre-snapshot route, but the row was ALSO emitted by no floor at all, so
-#:   ``@workset.registry`` dangled in every launch snapshot.  The fix
+#:   ``{workset.registry}`` dangled in every launch snapshot.  The fix
 #:   (``settings_launch.workset_anchor_floor``, the ``channelroot`` precedent) writes the
 #:   formula STRING out.  Compared by the ``workset-anchor-floor`` kinemata view.
 #: * ``workset.template`` (2026-08-29) — false twice over: ``launch/templates.py`` wrote
@@ -851,7 +851,7 @@ NO_ORACLE_EMPTY: frozenset[str] = frozenset({
 
 #: ⚑ (E5) ``NO_ORACLE_REF_HOP`` IS GONE (2026-09-25).  Its two rows,
 #: ``agent.<agent>.canon`` and ``agent.<agent>.template``, are spelled one ``@``-hop from
-#: the code (``@meta.agent.<agent>.path`` IS ``@config.agents/<dirname>``), and its reason
+#: the code (``{meta.agent.<agent>.path}`` IS ``{config.agents}/<dirname>``), and its reason
 #: was that asserting equality would need a second resolver.  The ``canon-defaults`` and
 #: ``agent-template-source`` kinemata views compare both cells through a declared
 #: ``translate`` of exactly that hop, on a PERSONA node so the key segment and the store
@@ -901,8 +901,8 @@ class TestNoOracleExemptions:
 #
 # ⚑ TWO MEASURED DEVIATIONS from the briefing, both in the pins' favor.  First,
 # ``meta.agent.<agent>.path`` is NOT spelled identically on both sides: the manifest
-# says ``@config.agents/@meta.agent.<agent>.name`` while the floor unrolls the name hop
-# through ``store_dirname`` — so it is pinned as a RELATION (path == ``@config.agents/``
+# says ``{config.agents}/{meta.agent.<agent>.name}`` while the floor unrolls the name hop
+# through ``store_dirname`` — so it is pinned as a RELATION (path == ``{config.agents}/``
 # + the name floor's value), the one-hop shape, not a string equality that would be
 # false.  Second, ``meta.agent.shell.mode`` is CLASSIFIED, not exempt: ``{}`` here is a
 # MATERIALIZED positive declaration (the grammar-floor reader raises on an absence —
@@ -977,13 +977,13 @@ class TestValueAuthFormulas:
 
     ``meta.box.auth.workset_path`` pins like the (i-c) default chain, standalone-``None``
     arm included.  ``meta.box.agent.auth.share_support`` pins as a DOCUMENTED
-    interpolation: the manifest uses the ``<@system.agent>`` node-selector notation and
+    interpolation: the manifest uses the ``<{system.agent}>`` node-selector notation and
     the floor interpolates the selected node, because the resolver cannot express the
     selector (the floor's own docstring says so) — asserting string equality would pin a
     spelling the code cannot emit.
 
     ⚑ Both floor comparisons are the ``auth-chain-meta`` kinemata view's.  It hands the
-    floor the selector itself as the agent name (``<@system.agent>``), so the interpolated
+    floor the selector itself as the agent name (``<{system.agent}>``), so the interpolated
     ref the floor prints IS the manifest's spelling when the interpolation is right; the
     spelling stays here.
     """
@@ -1070,7 +1070,7 @@ class TestValueAgentIdentity:
     """(ii-d) The agent-identity values ARE the identity builders' formulas.
 
     The parametric ``path`` row is the measured non-literal: the manifest composes the
-    store root off ``@meta.agent.<agent>.name`` while the floor unrolls that hop through
+    store root off ``{meta.agent.<agent>.name}`` while the floor unrolls that hop through
     ``store_dirname``.  Its VALUE on a persona node is the ``agent-path-anchor`` view's,
     which declares the name hop as a ``translate``; ``settings``, one hop further down
     through the ``path`` anchor plus ``AGENT_META_FILE``, is ``agent-settings-anchor``'s.
@@ -1110,7 +1110,7 @@ class TestValueAgentIdentity:
         )
 
     def test_the_parametric_path_is_the_name_hop_unrolled(self):
-        """``meta.agent.<a>.path`` == ``@config.agents/`` + the name floor's value.
+        """``meta.agent.<a>.path`` == ``{config.agents}/`` + the name floor's value.
 
         The half ``agent-path-anchor`` cannot hold: that view answers the name hop with
         a declared literal, so only this case ties the path floor to what the NAME floor
@@ -1172,7 +1172,7 @@ class TestValueBoxAddresses:
 
     ⚑ A VALUE ORACLE, NOT A SECOND RESOLVER — the :class:`TestWorksetChannelDefaults`
     shape, one hop further out.  Each manifest formula is followed ONE HOP: its channel
-    ref answered by the derivation that owns it, its ``@meta.box.name`` by the probe
+    ref answered by the derivation that owns it, its ``{meta.box.name}`` by the probe
     name — and compared to what ``box_channel_addresses`` returns, which is exactly what
     the launch seam hands ``meta_identity_floor`` (``commands/start.py`` passes
     ``addr.inbox`` / ``addr.share_global`` / ``addr.share_workset`` and
@@ -1184,7 +1184,7 @@ class TestValueBoxAddresses:
     compare ``share_workset`` in all three modes, through ``meta_identity_floor`` fed by
     ``settings_launch.box_address_args`` (the wiring the launch unpacks); ``box-inbox``
     and ``box-share-global`` compare the two partition
-    addresses in NAMED mode only, the one mode whose ``@meta.workset.name`` a sentinel
+    addresses in NAMED mode only, the one mode whose ``{meta.workset.name}`` a sentinel
     can stand in for (the ``workset-partition`` reason).  So this class keeps those two
     at PRIMARY and STANDALONE.
     """
@@ -2393,7 +2393,7 @@ class TestThePathTypeColumnHasOneCodeCarrier:
         """The other half of the split — asserted, not assumed away.
 
         A ``set: never`` path row never travels a set route: ``meta.box.home``
-        resolves off ``@meta.box.path``, and the ``meta.runtime.*`` bootstrap
+        resolves off ``{meta.box.path}``, and the ``meta.runtime.*`` bootstrap
         locators are declared-but-unproduced (their producers are their own seam).
         Claiming one in
         ``is_path_valued_key`` would advertise a set-time refusal that has nothing to

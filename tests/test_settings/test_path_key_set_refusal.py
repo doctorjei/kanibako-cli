@@ -261,7 +261,7 @@ class TestTheLegalShapesAreAccepted:
         "~/comms",                    # home-rooted
         "{$XDG_DATA_HOME}/comms",     # an XDG base — parsed, never prefix-matched
         "{config.data}/comms",        # a reference to another key
-        # ``@meta.workset.path/comms`` — the cure [R147] offers — needs the COMMAND's
+        # ``{meta.workset.path}/comms`` — the cure [R147] offers — needs the COMMAND's
         # target to resolve, so it is pinned with a real working set below
         # (``TestSetTimeResolvesTheCommandsTarget``), not with these bare files.
     ])
@@ -270,7 +270,7 @@ class TestTheLegalShapesAreAccepted:
         # the set-time probe resolves that foundation from the REAL
         # ``$XDG_CONFIG_HOME/kanibako.cfg`` and CONCEDES on any failure, so an
         # unisolated run answers "dangling @-reference" off the host's own file.
-        # ⚑ NOT a workset EARLY key: those take only ``@meta.workset.path``
+        # ⚑ NOT a workset EARLY key: those take only ``{meta.workset.path}``
         # (``test_workset_early_key_set_door.py``).
         files = _files(tmp_path)
         message = _set("workset.auth.path", value, files, ConfigLevel.workset)
@@ -289,7 +289,7 @@ class TestTheLegalShapesAreAccepted:
 
     def test_the_cure_the_refusal_OFFERS_actually_resolves(self, std, tmp_home):
         """⚑⚑ THE PAIR IS THE POINT, and it is why the set-time snapshot resolves the
-        command's target.  The refusal names ``@meta.workset.path/comms``;
+        command's target.  The refusal names ``{meta.workset.path}/comms``;
         the table in ``MIGRATION.md`` § "A bare relative path in a settings key is
         refused" names it as the replacement for the old root-relative reading.
         Without the working set's anchors the set-time E3 probe answered "dangling
@@ -429,7 +429,7 @@ class TestTheRuleDoesNotOVERREACH:
         ).startswith("Error:")
 
     def test_the_bind_source_predicate_is_UNCHANGED_by_this(self):
-        """⚑ ``is_self_resolving`` rules on a bind SOURCE, where any ``$VAR`` is legal;
+        """⚑ ``is_self_resolving`` rules on a bind SOURCE, where any ``{$VAR}`` is legal;
         [R147]'s predicate rules on a user-typed path key.  The contrast is pinned in
         ``test_agent_config.py``; this row exists so a reader of the SET-TIME file is
         told the two are different rules before they "unify" them."""
@@ -543,7 +543,7 @@ class TestABrokenTargetIsJudgedWithoutTheTarget:
         """⚑ THE COUNTEREXAMPLE. The fallback is "strictly less context" only while the
         caller still threads its tier files: without the working-set tier, a valid
         system-level ``workset.canon`` showed through the box's DANGLING working-set
-        value and ``@workset.canon/x`` was WRITTEN, though the box's real cascade
+        value and ``{workset.canon}/x`` was WRITTEN, though the box's real cascade
         refuses it. Driven through ``box set`` itself, so the caller's threading is
         what is pinned."""
         import argparse
@@ -644,7 +644,7 @@ _OUT_OF_TIER_SHAPES = [
 
 
 class TestASystemPathValueMayNotPointOutOfItsTier:
-    """``system.template=@box.image/x`` was ACCEPTED and stored, and every launch-seam
+    """``system.template={box.image}/x`` was ACCEPTED and stored, and every launch-seam
     read then failed ``Unknown @-reference: box.image`` — whether or not ``box.image``
     held a value.  The set door judged the value against the full cascade snapshot,
     whose floor carries the box scalars' declared defaults; the system path tier
@@ -680,7 +680,7 @@ class TestASystemPathValueMayNotPointOutOfItsTier:
     def test_a_non_path_system_ref_is_refused_and_the_message_says_so(
         self, config_file, tmp_path,
     ):
-        """``@system.agent`` is a ``system.*`` key but NOT a system PATH key, so the tier
+        """``{system.agent}`` is a ``system.*`` key but NOT a system PATH key, so the tier
         lookup cannot see it.  With ``system.agent`` set, the E3 probe resolves it, so
         this door is the one that refuses — and its message must not claim that any
         ``@system.*`` key is allowed."""

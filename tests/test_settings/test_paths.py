@@ -1327,7 +1327,7 @@ class TestResolveWorksetOrConnected:
 
 
 class TestPrimaryVaultLocation:
-    """Phase 5: PRIMARY vault lives under @system.primary_workset, NOT in the
+    """Phase 5: PRIMARY vault lives under {system.primary_workset}, NOT in the
     workspace, and no discovery symlink is created (A7 deleted that machinery).
     """
 
@@ -2155,7 +2155,7 @@ class TestBoxWorksetSettingsPaths:
     """P2/M-8: the mode-aware (box_tier, workset_tier) settings-file pair
     (``box_workset_settings_paths``) — the SINGLE SOURCE for READ, WRITE and the
     ``meta.box.settings`` ANCHOR.  ``meta.box.settings`` is the UNIFORM
-    ``@meta.box.path/box.yaml`` in EVERY mode (spec §2c ALL PROJECTS)."""
+    ``{meta.box.path}/box.yaml`` in EVERY mode (spec §2c ALL PROJECTS)."""
 
     def _proj(self, tmp_path: Path, *, mode: "BoxMode", group):
         from kanibako.settings.paths import ProjectPaths
@@ -2199,7 +2199,7 @@ class TestBoxWorksetSettingsPaths:
 
     def test_standalone_box_tier_lives_under_the_box_data_marker(self, tmp_path: Path):
         """The two tiers are the two SPEC positions, not two arbitrary files: the box
-        tier sits inside ``box_data/`` (= ``@meta.box.path``) and the workset tier is
+        tier sits inside ``box_data/`` (= ``{meta.box.path}``) and the workset tier is
         the ROOT file (= the file DETECTION reads, ``system-design-1.8.0.md``
         § "Detection & import").  (Mutation: swapping the
         returned pair → RED.)"""
@@ -2456,7 +2456,7 @@ class TestStandaloneEnableVaultTier:
         """⚑⚑ THE CASE THAT DID NOT EXIST WHILE THE BUG DID (2026-08-29).
 
         ``kanibako system set box.enable_vault=false`` returns 0, writes
-        ``@config.settings``, and ``system get`` echoes it back — and until this date
+        ``{config.settings}``, and ``system get`` echoes it back — and until this date
         every box still came up with the vault created and mounted, because the value was
         read from two files that are not the system tier.  Two carriers disagreeing at a
         level the spec sanctions (``config_keys`` lets SYSTEM write ``box.*``).

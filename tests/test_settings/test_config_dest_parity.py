@@ -106,7 +106,7 @@ class Bench:
     def __init__(self, tmp: Path) -> None:
         self.tmp = tmp
         self.cf = tmp / CONFIG_FILENAME              # Layer-1 bootstrap config
-        self.ssp = tmp / "global" / "settings.yaml"  # system SETTINGS (@config.settings)
+        self.ssp = tmp / "global" / "settings.yaml"  # system SETTINGS ({config.settings})
         self.box = tmp / "box" / "box.yaml"          # a box settings file
         self.ws = tmp / "ws" / "workset.yaml"        # a workset settings file
         self.agents = tmp / "agents"                 # the per-node store root

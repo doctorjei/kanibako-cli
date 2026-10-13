@@ -14,7 +14,7 @@ The property, stated once:
 now reads: EVERY DECLARED DEFAULT EITHER RESOLVES, OR DECLARES THAT IT MAY ANSWER
 ABSENT. Both halves are read OFF THE ROW, so no dangle goes unexplained and nothing here
 names a key. The arm exists because a default that legitimately resolves to absence
-became expressible: ``box.env.COLORTERM`` declares ``$COLORTERM``, a PASSTHROUGH of a
+became expressible: ``box.env.COLORTERM`` declares ``{$COLORTERM}``, a PASSTHROUGH of a
 host signal, and the ratified spec row says the box gets NO such variable when the host
 sets none. P was written when no such default could exist. Jei, 2026-09-20, choosing a
 declared arm over the alternatives: *"(i) seems like the best for posterity, so unless
@@ -274,7 +274,7 @@ def _corpus(mode: str) -> "dict[str, dict]":
 
 
 def _answering_termini(key: str, row: dict, termini, ctx) -> "list[str]":
-  """The labels of every terminus at which a whole-value ``@key`` reaches a terminal.
+  """The labels of every terminus at which a whole-value ``{key}`` reaches a terminal.
 
   ⚑ ANY, not a designated one — the ruled property.  A ``layer: 1`` row's terminus is
   the flat foundation, which the manifest itself says is not the KeyStore pipeline; it
@@ -290,7 +290,7 @@ def _answering_termini(key: str, row: dict, termini, ctx) -> "list[str]":
 
 
 def _answers(key: str, row: dict, termini, ctx) -> bool:
-  """Does a whole-value ``@key`` reference reach a terminal at ANY terminus?"""
+  """Does a whole-value ``{key}`` reference reach a terminal at ANY terminus?"""
   return bool(_answering_termini(key, row, termini, ctx))
 
 
@@ -404,7 +404,7 @@ def _families() -> "dict[str, set[str]]":
 
   Closure adds any SAME-``scope:`` key a member's own default ``@``-references.
   ⚑ Cross-scope refs are NOT followed (``workset.channels.mailboxes`` →
-  ``@system.channels.mailboxes``); follow them and every family merges into one blob.
+  ``{system.channels.mailboxes}``); follow them and every family merges into one blob.
   """
   static = _static_rows()
   families: dict[str, set[str]] = {}
@@ -484,7 +484,7 @@ class TestTheCorpusAndTheProbe:
 
     ⚑⚑ THIS IS WHAT KEEPS THE ARM FROM BECOMING AN EXEMPTION LIST IN YAML.  A row may
     declare that its default MAY answer absent only where EVERY arm of that default IS
-    one whole-value host ``$VAR`` — a PASSTHROUGH, the single shape that can resolve to
+    one whole-value host ``{$VAR}`` — a PASSTHROUGH, the single shape that can resolve to
     absence instead of a value (spec §2c: a whole-value reference with an absent
     referent drops its key; ``settings_expand._is_whole_value_var`` decides the shape,
     and it is the production predicate, not a second copy of the grammar).  Put the arm

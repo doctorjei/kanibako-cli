@@ -204,8 +204,8 @@ class TestSourcePartition:
         # the category snapshot — not the ``workset.*`` floor · ``config get`` reads what is
         # STORED at the noun and never resolves the floor · ``system defaults`` still lists
         # 65 rows, three of them relabeled to this group.
-        # What DID change is the launch snapshot itself: ``@workset.registry`` /
-        # ``@workset.kuid`` / ``@workset.skip_kuid_check`` resolve where they used to be
+        # What DID change is the launch snapshot itself: ``{workset.registry}`` /
+        # ``{workset.kuid}`` / ``{workset.skip_kuid_check}`` resolve where they used to be
         # ``__MISSING__``, in primary and named (standalone keeps the two ABSENCES).
         # ⚑ WIDENED AGAIN 9 → 10 (2026-08-29, same day): ``workset.template``.
         # ⚑⚑ ITS DEFECT WAS A DIFFERENT SHAPE FROM THE OTHER THREE, and the distinction is
@@ -418,7 +418,7 @@ class TestEnvRows:
     def test_the_core_env_floor_is_the_shipped_emitter_s(self):
         """The listing prints the emitter's table AS EMITTED — the VALUES are not pinned here.
 
-        ⚑ AN UNRESOLVED EXPRESSION (``$TERM``) IS THE CORRECT CELL, not a leak of the
+        ⚑ AN UNRESOLVED EXPRESSION (``{$TERM}``) IS THE CORRECT CELL, not a leak of the
         declaration.  This listing is the install-wide STATIC view (module docstring) — no
         box, no resolution — so printing this host's terminal type would be answering a
         question the section does not ask, and would differ per reader; resolving here

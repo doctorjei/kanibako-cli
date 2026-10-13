@@ -93,5 +93,5 @@ def test_set_time_resolves_each_floor_fragment_as_the_launch_does(fragment, std,
 
 
 def test_set_time_keeps_the_box_scalar_floor_at_a_workset_target(std, workset):
-  """``@box.image`` resolves at a working set's ``set``, as it did before the shared fold."""
+  """``{box.image}`` resolves at a working set's ``set``, as it did before the shared fold."""
   assert "{" not in str(_set_time_value(_target(std, workset), "{box.image}"))

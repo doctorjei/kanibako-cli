@@ -408,7 +408,7 @@ class TestBoxScalarDefaultsFloor:
         """``box.shell``'s field default IS the declared ``<None>``, floored PRESENT.
 
         Spec §2b ``box.shell | <None>``: a declared ``<None>`` is SUPPLIED, so a
-        whole-value ``@box.shell`` resolves instead of dangling.  ``""`` would not do:
+        whole-value ``{box.shell}`` resolves instead of dangling.  ``""`` would not do:
         ``build_launch_snapshot`` drops a ``""`` default as a suppression.
         """
         from kanibako.settings.config import box_scalar_defaults_floor
