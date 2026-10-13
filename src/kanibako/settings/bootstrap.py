@@ -123,7 +123,7 @@ RUN_USER_UID_PATH = "/run/user/%d"
 # The detached creds watcher's log, ``{workset.logs}/<box><suffix>`` — beside the box's
 # helper log in the same resolved ``workset.logs`` dir (``paths.creds_watcher_log_path``).
 CREDS_WATCHER_LOG_SUFFIX = ".creds-watcher.log"
-# The detached helper hub's log, ``@workset.logs/<box><suffix>`` (``paths.helper_hub_log_path``).
+# The detached helper hub's log, ``{workset.logs}/<box><suffix>`` (``paths.helper_hub_log_path``).
 HELPER_HUB_LOG_SUFFIX = ".helper-hub.log"
 # The watcher's single-instance flock file, in the box's host-only ``proj.metadata_path``.
 CREDS_WATCHER_LOCK_FILE = ".kanibako-creds-watcher.lock"

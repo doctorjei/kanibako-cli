@@ -2467,7 +2467,7 @@ section = "keys"
 where = { id_matches = '^meta\.(workset\.(path|name|settings)|box\.mode)$' }
 
 # FACT: the helper SOCKET bind's host source is the name the keyspec spells --
-# `<box name>-<workset name>` (the socket's directory) under `@system.runtime` -- as the helper bind
+# `<box name>-<workset name>` (the socket's directory) under `{system.runtime}` -- as the helper bind
 # emitter installs it. The COMPOSITION half of `TestBindDefaults`' helper-socket
 # case, NAMED MODE ONLY (the parity note says why); the length BOUND and its hash
 # stay with that case ([R165]).
