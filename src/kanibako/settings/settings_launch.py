@@ -2247,10 +2247,10 @@ def fold_floor(
         for key, val in default_categories.items():
             if val == "":
                 continue
-            # masks BRIDGE: the shipped/file form is a LIST[box_dest]; the KeyStore
-            # model is a keyed ``dict[box_dest → bool]`` (S5; spec §2a "masks is a
-            # KEYED category"). ⚑ This CONVERTS, it does not filter — a different
-            # thing from the suppression below.
+            # masks BRIDGE: ``masks`` is a keyed ``dict[box_dest → bool|None]`` (S5;
+            # spec §2a "masks is a KEYED category"); a LIST[box_dest] reaching this
+            # default table is converted to that map. ⚑ This CONVERTS, it does not
+            # filter — a different thing from the suppression below.
             if (key == "masks" or key.endswith(".masks")) and isinstance(
                 val, (list, tuple)
             ):

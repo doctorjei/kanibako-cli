@@ -682,7 +682,7 @@ class TestEveryDeclaredCategoryMoves:
         ) == table
 
     def test_a_non_map_value_is_rekeyed_and_carried(self):
-        """A scalar source key or a LIST-valued ``masks`` has no source to re-root.
+        """A scalar source key has no source to re-root.
 
         INVERT: re-root unconditionally and this raises rather than carrying the
         value — the failure would land on whichever plugin declares one first.
@@ -691,14 +691,12 @@ class TestEveryDeclaredCategoryMoves:
 
         table = {
             "agent.claude.template": "{config.agents}/claude/template",
-            "agent.claude.masks": ["/home/agent/hidden"],
         }
         out = agent_categories_for_node(
             table, node_name="nav℘claude", harness="claude",
         )
         assert out == {
             "agent.nav℘claude.template": "{config.agents}/claude/template",
-            "agent.nav℘claude.masks": ["/home/agent/hidden"],
         }
 
 

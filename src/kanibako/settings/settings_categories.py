@@ -74,8 +74,8 @@ BARE_RELATIVE_SOURCE_HAZARD: Final[str] = (
 SECRET_MOUNT_DIR: Final[str] = "/run/kanibako/secrets"
 
 # The bind-shaped categories — those whose value is a 2-/3-element
-# ``[host_src, box_dest[, options]]`` tuple.  ``masks`` (a keyed list) and ``env``
-# (a scalar) have bespoke key shapes handled separately below.
+# ``[host_src, box_dest[, options]]`` tuple.  ``masks`` (a ``box_dest → bool|None``
+# map) and ``env`` (a scalar) have bespoke key shapes handled separately below.
 #
 # ⚑ FOUR TUPLES, AND EACH ANSWERS A DIFFERENT QUESTION; the other three are SUBSETS
 # of this one, and conflating any two is what the split exists to prevent (llm-doc).
@@ -205,8 +205,8 @@ BIND_KEY_RE = re.compile(
     if _NON_TERMINAL_CATEGORY_ALT
     else r"(?!)"  # matches nothing, ever
 )
-# ``{scope}.masks`` — keyed category (``{box_dest: true}``). The KEY has no
-# per-entry name; each emitted entry's name is its box_dest.
+# ``{scope}.masks`` — a map ``box_dest → bool|None`` (spec §2a). The KEY has no
+# per-entry name; each entry is keyed by its ``box_dest``.
 MASK_KEY_RE = re.compile(rf"^(?P<scope>{_FILE_SCOPE_ALT}|{_AGENT_SCOPE})\.masks$")
 # ``{scope}.env.{VAR}`` — scalar env var; VAR may NOT contain dots (env names).
 ENV_KEY_RE = re.compile(
