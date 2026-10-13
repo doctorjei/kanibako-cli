@@ -23,7 +23,7 @@ def snapshot_base(vault_rw_path: Path, *, exclusive: bool) -> tuple[Path, Path]
 def link_refusal(link: Path) -> str
 def refusal_text(exc: boxfs.SymlinkRefusedError) -> str
 def store_path(vault_rw_path: Path, *, box_name: str, exclusive: bool) -> tuple[Path, Path]
-def same_store(a: Path, b: Path) -> bool
+def stores_overlap(a: Path, b: Path) -> bool
 def checked_store(vault_rw_path: Path, *, box_name: str, exclusive: bool) -> tuple[Path, Path]
 def migrate_legacy_versions(vault_rw_path: Path, *, box_name: str, store_exclusive: bool=False, create_base: bool=False, held: Mapping[str, str] | None=None) -> dict[str, list[str]]
 def detect_snapshot_strategy(vault_path: Path) -> str
@@ -75,4 +75,7 @@ class RestoreLinkRefusedError(RestoreRefusedError):
 class SnapshotSafetyError(KanibakoError):
 
 class BrokenRepointError(boxfs.SymlinkRefusedError):
+    def __init__(self, path: Path, link: Path) -> None
+
+    def __str__(self) -> str
 ```

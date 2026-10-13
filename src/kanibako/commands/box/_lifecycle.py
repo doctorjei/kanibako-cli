@@ -3310,7 +3310,7 @@ def _snapshot_cure(old: ProjectState, new: ProjectState) -> str | None:
 
     from kanibako import boxfs
     from kanibako.snapshots import (
-        box_snapshot_store, link_refusal, refusal_text, same_store, store_path,
+        box_snapshot_store, link_refusal, refusal_text, stores_overlap, store_path,
     )
 
     if new.vault_rw is None:
@@ -3330,7 +3330,7 @@ def _snapshot_cure(old: ProjectState, new: ProjectState) -> str | None:
                                    exclusive=new.mode is BoxMode.standalone)
     except boxfs.SymlinkRefusedError as exc:
         return no_command(_old_snapshot_store(old, new), refusal_text(exc))
-    if same_store(src, dst):  # the new store is a repoint at the old one: nothing is stranded
+    if stores_overlap(src, dst):  # a repoint at or into the old store: no command
         return None
     link = boxfs.first_symlink(src, src_root) or boxfs.first_symlink(dst, dst_root)
     if link is not None:

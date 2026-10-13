@@ -297,6 +297,29 @@ class TestARepointedSharedBaseIsUsed:
         assert [p.name for p in (_versions_dir(old) / "a").iterdir()] == [TS]
         assert (_versions_dir(old) / "a" / TS / "f").read_text() == "mine"
 
+    def test_relocate_into_a_repoint_inside_the_old_store_moves_nothing(self, tmp_path):
+        """``.versions/b -> a/<TS>``: no move at all, never a partial move that nests the
+        older snapshot inside the newer."""
+        rw = _rw(tmp_path / "w")
+        _snap(_versions_dir(rw) / "a", TS)
+        _snap(_versions_dir(rw) / "a", "20230101T000000Z", "older")
+        (_versions_dir(rw) / "b").symlink_to(Path("a") / TS)
+        before = _tree(tmp_path)
+        assert relocate_snapshot_store(rw, rw, old_box="a", new_box="b") is None
+        assert _tree(tmp_path) == before
+
+    def test_nesting_counts_either_way(self, tmp_path):
+        from kanibako.snapshots import stores_overlap
+
+        (tmp_path / "s" / "inner").mkdir(parents=True)
+        (tmp_path / "t").mkdir()
+        (tmp_path / "alias").symlink_to("s")
+        assert stores_overlap(tmp_path / "s", tmp_path / "s" / "inner")
+        assert stores_overlap(tmp_path / "alias" / "inner", tmp_path / "s")
+        assert stores_overlap(tmp_path / "alias", tmp_path / "s")
+        assert not stores_overlap(tmp_path / "s", tmp_path / "t")
+        assert not stores_overlap(tmp_path / "s", tmp_path / "s2")
+
     def test_relocate_out_of_and_into_repointed_bases(self, tmp_path):
         old, new = _rw(tmp_path / "old"), _rw(tmp_path / "new")
         big_old, big_new = tmp_path / "bigold", tmp_path / "bignew"
@@ -616,6 +639,14 @@ class TestTheCureFollowsNoLink:
                 f"its target, then move them by hand.") in cure
         assert "symlink" not in cure and "run:" not in cure and "mv " not in cure
 
+    def test_a_repoint_into_the_stranded_store_gets_none(self, tmp_path):
+        """``.versions/b -> a/<TS>``: a ``mv`` would nest a's snapshots in its own child."""
+        old, new, o, n = self._states(tmp_path)
+        n.vault_rw = old
+        _snap(_versions_dir(old) / "a")
+        (_versions_dir(old) / "b").symlink_to(Path("a") / TS)
+        assert self._cure(o, n) is None
+
     def test_a_repoint_at_the_stranded_store_gets_none(self, tmp_path):
         (tmp_path / "real").mkdir()
         (tmp_path / "alias").symlink_to("real")
@@ -676,3 +707,37 @@ class TestTheCureFollowsNoLink:
         _snap(_versions_dir(old) / "a", TS)
         cure = self._cure(o, n)
         assert cure is not None and "mkdir -p -- " in cure and " mv -- " in cure
+
+
+class TestTheRelocationWarningNamesABrokenRepoint:
+    """``_relocate_snapshot_store``'s best-effort warning prints the exception: for a
+    broken shared repoint it says what is wrong, not "refusing to follow the symlink"."""
+
+    @pytest.mark.parametrize("where", ["base", "store"])
+    def test_a_dangling_shared_repoint(self, tmp_path, capsys, where):
+        from kanibako.commands.box._lifecycle import _relocate_snapshot_store
+
+        old, new = _rw(tmp_path / "old"), _rw(tmp_path / "new")
+        _snap(_versions_dir(old) / "a")
+        link = _versions_dir(new)
+        if where == "store":
+            link.mkdir()
+            link = link / "b"
+        link.symlink_to(tmp_path / "unmounted")
+        o = SimpleNamespace(vault_rw=old, name="a", mode=BoxMode.named)
+        n = SimpleNamespace(vault_rw=new, name="b", mode=BoxMode.named)
+        assert _relocate_snapshot_store(o, n) == _versions_dir(old) / "a"
+        err = capsys.readouterr().err
+        assert (f"Warning: could not move the vault snapshots from 'a' to 'b': {link} is a "
+                f"link that does not lead to a directory; fix the link or mount its "
+                f"target. They are still on disk under the old name") in err
+        assert "refusing to follow" not in err
+        assert (_versions_dir(old) / "a" / TS / "f").read_text() == "mine"
+
+    def test_its_str_is_the_fault(self, tmp_path):
+        from kanibako.snapshots import BrokenRepointError
+
+        exc = BrokenRepointError(tmp_path / "l", tmp_path / "l")
+        assert str(exc) == (f"{tmp_path / 'l'} is a link that does not lead to a directory; "
+                            f"fix the link or mount its target")
+        assert exc.errno == errno.ELOOP and exc.link == tmp_path / "l"

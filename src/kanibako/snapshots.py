@@ -177,7 +177,20 @@ def snapshot_base(vault_rw_path: Path, *, exclusive: bool) -> tuple[Path, Path]:
 
 class BrokenRepointError(boxfs.SymlinkRefusedError):
     """A link at a SHARED base or store -- the user's own repoint, which is followed --
-    does not lead to a directory (a loop, a dangling target, an unmounted disk)."""
+    does not lead to a directory (a loop, a dangling target, an unmounted disk).
+
+    ⚑ Its ``str`` names that fault, not the inherited "refusing to follow the symlink",
+    so every surface that prints the exception says what is wrong.
+    """
+
+    def __init__(self, path: Path, link: Path) -> None:
+        super().__init__(path, link)
+        self.fault = (f"{link} is a link that does not lead to a directory; fix the link "
+                      f"or mount its target")
+        self.strerror = self.fault
+
+    def __str__(self) -> str:
+        return self.fault
 
 
 def _repoint_target(link: Path) -> Path:
@@ -205,8 +218,7 @@ def refusal_text(exc: boxfs.SymlinkRefusedError) -> str:
     """What is wrong, and the cure, for a refusal from this module: a broken repoint
     (:class:`BrokenRepointError`), else :func:`link_refusal`."""
     if isinstance(exc, BrokenRepointError):
-        return (f"{exc.link} is a link that does not lead to a directory; fix the link "
-                f"or mount its target")
+        return str(exc)
     return link_refusal(exc.link)
 
 
@@ -226,13 +238,23 @@ def store_path(vault_rw_path: Path, *, box_name: str, exclusive: bool) -> tuple[
     return store, root
 
 
-def same_store(a: Path, b: Path) -> bool:
+def stores_overlap(a: Path, b: Path) -> bool:
     """True when *a* and *b* are one directory, however spelled (a resolved repoint
-    against a lexical path).  ⚑ A move or merge of a store into itself deletes it."""
+    against a lexical path), or one lies inside the other.
+
+    ⚑ Neither can be carried into the other: a merge of a store into itself deletes
+    it, and one into its own child (or parent) nests snapshots inside each other.
+    """
     try:
-        return a == b or os.path.samefile(a, b)
+        if a == b or os.path.samefile(a, b):
+            return True
     except OSError:
+        pass
+    try:
+        ra, rb = a.resolve(), b.resolve()
+    except (OSError, RuntimeError):
         return False
+    return ra in rb.parents or rb in ra.parents
 
 
 def checked_store(vault_rw_path: Path, *, box_name: str, exclusive: bool) -> tuple[Path, Path]:
@@ -799,7 +821,7 @@ def relocate_snapshot_store(
         carried = old_base / old_box
     new_store, store_root = store_path(new_vault_rw, box_name=new_box,
                                        exclusive=new_base_exclusive)
-    if same_store(carried, new_store):  # two spellings of one store: nothing to carry
+    if stores_overlap(carried, new_store):  # one store, or nested: nothing to carry
         return None
     _refuse_link(carried, carried_root)
     _refuse_link(new_store, store_root)
