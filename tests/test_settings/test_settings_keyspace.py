@@ -78,7 +78,7 @@ def test_new_name_in_a_parametric_family_is_legal():
 
     A NEW name inside a parametric family is exactly what a user may want to
     add via a pref. An EXISTENCE test would permit only modifying keys that
-    already hold a value, which is the reading Jei rejected.
+    already hold a value, which is the rejected reading.
 
     ⚑ The families that still carry a free <name> are the VAR-keyed ones
     (``env`` / ``secret_path``) and the agent discriminator. The bind-shaped
@@ -717,7 +717,7 @@ def test_the_manifest_reserved_leaf_names_match_the_code():
     ``test_the_keyspace_floor_is_the_store_set_not_a_copy``), so the two CODE
     carriers cannot drift apart. The manifest is a SEPARATE, hand-maintained
     carrier that ships in the wheel as release authority, and until this case
-    NOTHING read it: ruling 25 (2026-08-12) added the store's own two public
+    NOTHING read it: keyspec §0 "Reserved key names" added the store's own two public
     members to the code and the manifest silently stayed at the 11 ``dict``
     methods, with the whole gate green.
 
@@ -738,7 +738,7 @@ def test_the_manifest_reserved_leaf_names_match_the_code():
 
 
 # ---------------------------------------------------------------------------
-# The COLLAPSE outputs — spec §1A, ratified 2026-08-08f, MOVED to
+# The COLLAPSE outputs — spec §1A, ratified [Jei:2026-08-08f], MOVED to
 # ``meta.assembly.*`` on 2026-08-09
 # ---------------------------------------------------------------------------
 

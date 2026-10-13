@@ -416,7 +416,7 @@ class TestDescriptor:
         assert ar.setting_key == "access"
 
     def test_editing_tier_has_NO_row_and_is_refused(self):
-        """R-41 / the B7b goose ruling: goose CANNOT render ``editing``.
+        """R-41 / [Jei:2026-08-02]: goose CANNOT render ``editing``.
 
         Source-verified at goose v1.38.0: no GOOSE_MODE value realizes it
         (``smart_approve`` auto-approves READ-ONLY tools and PROMPTS for writes —

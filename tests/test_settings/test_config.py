@@ -51,7 +51,7 @@ class TestLoadConfig:
         scalar back, and it pinned the ``[config]`` table's Layer-1 DEFAULT expressions
         (a verbatim copy of ``bootstrap.CONFIG_PATH_DEFAULTS``). There is nothing
         left to round-trip — ``write_global_config`` creates the file EMPTY and takes no
-        config object, because that file cannot carry settings (Jei) and its own
+        config object, because that file cannot carry settings [Jei:2026-08-26] and its own
         ``config.*`` foundation is already declared. What loads is the defaults.
         """
         path = tmp_path / "test.yaml"
@@ -172,14 +172,14 @@ class TestLayer1FileCannotHaveSettings:
     """``kanibako.cfg`` carries ``config.*`` and NOTHING else — on the READ
     side as well as the write side.
 
-    ⚑⚑ Jei, 2026-08-26: *"kanibako_config.yaml <-- cannot have settings. Period."*
+    ⚑⚑ [Jei:2026-08-26]: *"kanibako_config.yaml <-- cannot have settings. Period."*
     Stopping the WRITE is not enough while the code still reads settings back out of
     that file: a hand-written table, or one left behind by an older build, would go on
     silently overriding the declared defaults. Spec §1 gives Layer 1 the bootstrap
     ``config.*`` paths alone; spec §2b/§2g put the box and system SETTINGS in the
     cascade files.
 
-    ⚑⚑ AND SINCE 2026-08-31 THE ANSWER IS A REFUSAL, NOT AN IGNORE (Jei). Dropping the
+    ⚑⚑ AND SINCE 2026-08-31 THE ANSWER IS A REFUSAL, NOT AN IGNORE (keyspec §1). Dropping the
     table in silence left a user running a different image than their file said, with
     nothing anywhere reporting the difference. The refusal names the file and the keys.
     """
@@ -250,7 +250,7 @@ class TestLayer1FileCannotHaveSettings:
         Before 2026-08-26 such a table entered the resolve as a real (lowest) layer,
         which made that file a settings source in the one place it most mattered: where
         every host path is decided. It was then dropped in silence, which is what the
-        2026-08-31 ruling replaced.
+        keyspec §1 rule replaced.
         """
         from kanibako.settings.paths import load_system_config
 
@@ -454,7 +454,7 @@ class TestSetupVersionConstant:
 
 
 class TestWriteGlobalConfigCreatesAnEmptyFile:
-    """``write_global_config`` creates the Layer-1 file EMPTY, always (Jei, 2026-08-26).
+    """``write_global_config`` creates the Layer-1 file EMPTY, always [Jei:2026-08-26].
 
     First: *"these should be built-in defaults; the global settings file should be an
     empty file at create time. unless non-defaults are somehow are added by the user."*
@@ -508,7 +508,7 @@ class TestWriteGlobalConfigCreatesAnEmptyFile:
 class TestReadSetupCompleted:
     """read_setup_completed: the raw ``system.setup_completed`` reader (W1 gate).
 
-    ⚑ ITS FILE IS THE SYSTEM SETTINGS FILE since 2026-08-26 (Jei: "there is no reason
+    ⚑ ITS FILE IS THE SYSTEM SETTINGS FILE since 2026-08-26 ([Jei:2026-08-26]: "there is no reason
     whatsoever that ``system.setup_completed`` should go in the config. It should not.
     It should go in the global settings file") — which is what spec §2g always declared.
     The variable is named ``ssp`` here for that reason: passing ``kanibako.cfg``
@@ -584,7 +584,7 @@ class TestRetiredTemplatesStamp:
         assert "templates_stamp" not in names
 
     def test_the_orphan_in_the_LAYER1_file_refuses_by_name(self, tmp_path):
-        """⚑ CHANGED 2026-08-31, and the change is the ruling.
+        """⚑ CHANGED 2026-08-31; keyspec §1 carries the change.
 
         The orphan used to land in the raw ``config_paths`` set and reach no consumer —
         "orphaned-ignored". A ``system:`` table is a SETTINGS table wherever it sits, and
@@ -955,7 +955,7 @@ class TestScalarOverlayPrecedence:
     two-layer path reshape (block #3a): ``load_merged_config`` no longer consults any
     ``machine_config_path``.
 
-    ⚑⚑ AND THE ``global_path`` LAYER WENT ON 2026-08-26 — Jei: *"kanibako_config.yaml
+    ⚑⚑ AND THE ``global_path`` LAYER WENT ON 2026-08-26 — [Jei:2026-08-26]: *"kanibako_config.yaml
     <-- cannot have settings. Period."*  It used to be the least-specific FILE source
     here, so these cases planted their LOWER value in it.  They plant it in the
     WORKSET tier now, which is a real settings file; the layers are built-in defaults
@@ -1529,10 +1529,11 @@ class TestTargetSettings:
 
 
 class TestPersistCreationFlags:
-    """The §1A CREATE EXCEPTION gate (B6, R-11a + the 2026-08-02 materialization
-    ruling) — the ONE function through which a shadowing flag's value ever
-    persists.  ``kanibako create`` and the launch-materialization path both call
-    THIS gate; there is no per-path persist logic anywhere else.
+    """The §1A CREATE EXCEPTION gate (B6, R-11a + the materialization ruling
+    [Jei:2026-08-02]) — the ONE function through which a shadowing flag's
+    value ever persists.  ``kanibako create`` and the launch-materialization
+    path both call THIS gate; there is no per-path persist logic anywhere
+    else.
     """
 
     def test_materializing_with_image_persists_it(self, tmp_path):

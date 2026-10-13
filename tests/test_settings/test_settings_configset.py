@@ -14,7 +14,7 @@ stub (apply the candidate at the key into a known keyspace, lenient-expand, read
 the edited key's defect) — so the validate tests test the wiring AND real
 resolution; the full multi-scope seam build is tested in test_config_interface.
 
-⚑⚑ THE WRITE-BACK HALF OF THIS FILE IS GONE (QA′, 2026-08-08, on Jei's word).
+⚑⚑ THE WRITE-BACK HALF OF THIS FILE IS GONE (QA′, [Jei:2026-08-08]).
 ``repoint_host_src`` and ``validate_config_set``'s ``is_category`` arm were deleted
 from the source, so every test whose SUBJECT was one of them went with it. Two
 graveyard blocks below name what died and what a rebuild would owe — read them
@@ -278,7 +278,7 @@ def test_an_at_before_doubled_braces_is_literal_not_a_ref() -> None:
 # ⚑⚑ THE RAW CATEGORY WRITE-BACK LIVED HERE AND IS GONE (QA′, 2026-08-08).
 #
 # ``repoint_host_src`` (S24) had had NO CALLER since DS-BL1 = (a) retired the CLI
-# category write route, and Jei ruled its deletion.  21 test functions / 24
+# category write route, and its deletion was ruled [Jei:2026-08-08].  21 test functions / 24
 # parametrized cases went with it (counted, not estimated): the
 # host_src swap keeping box_dest/options, the RAW-form preservation (``@``-refs /
 # ``{$XDG_*}`` / ``~`` stored verbatim, never expanded), the F10 cascade fallback
@@ -302,7 +302,7 @@ def test_an_at_before_doubled_braces_is_literal_not_a_ref() -> None:
 #    ``…["box"]["bindings"]["rw"]["home"] == ["/new", "~/"]`` — i.e. that a
 #    2-element value under a bindings arm is CARRIED THROUGH, not refused.  A stored
 #    ``[src, box_dest]`` and a live ``[src, options]`` are indistinguishable at two
-#    elements; the heuristic refusal was offered as option B and Jei DECLINED it in
+#    elements; the heuristic refusal was offered as option B and it was DECLINED in
 #    favor of option A (docs only, 2026-08-06e).  ⚑⚑ That test existed PRECISELY to
 #    go red if anyone built the declined thing.  Its subject is gone, so the guard is
 #    gone with it — **the 2-element accept is still the ruling, and a rebuilt
@@ -396,8 +396,8 @@ def test_e3_e_edited_value_upstream_chain_broken_blocks() -> None:
 
 
 def test_e3_e_embedded_dangling_in_edited_value_blocks() -> None:
-    # (e′ — director ruling) an EMBEDDED dangling @-ref in the EDITED value's chain
-    # is a defect that BLOCKS at set-time (NOT strict-expand's silent "").
+    # (e′, keyspec §2a "VALIDATION at set-time") an EMBEDDED dangling @-ref in the
+    # EDITED value's chain is a defect that BLOCKS at set-time (NOT strict-expand's silent "").
     v = _validate("box.bindings.rw.home", "{workset.boxes}/{bad.embedded}/x")
     assert isinstance(v, Error)
     assert "bad.embedded" in v.message

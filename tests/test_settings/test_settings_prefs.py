@@ -516,7 +516,7 @@ def test_a_pref_over_a_bindings_arm_is_ONE_request_carrying_the_whole_map(tmp_pa
     # normalization happens to the DESTINATIONS rather than to the target is the
     # same fact this test pins from the other side — they are DATA, not key
     # segments. (``masks`` below is deliberately NOT normalized: R-11 is bindings
-    # only until Jei rules DS-BL7.)
+    # only until DS-BL7 is ruled.)
     assert set(dict.keys(p.value)) == {"/home/agent/.claude", "/home/agent/data"}
 
 

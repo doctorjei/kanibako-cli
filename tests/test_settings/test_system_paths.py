@@ -759,7 +759,7 @@ class TestRuntimeBaseUsableTrustSeam:
 
 class TestHostXdgMap:
     """``host_xdg_map`` — THE canonical host-side ``$XDG_*`` map for every
-    host-side ``ResolveCtx`` (Jei ruling 2026-07-02: XDG vars must have
+    host-side ``ResolveCtx`` ([Jei:2026-07-02]: XDG vars must have
     fallbacks).  Every var must be PRESENT in the map regardless of the
     environment: the resolver reads only the ctx map, never the env, so a
     missing key raises at expand time (the 2026-07-02 dogfood bug)."""
@@ -832,7 +832,7 @@ class TestLoadSystemConfig:
     it at a tmp file via monkeypatch so the cascade can be exercised hermetically.
     (The former ``config_required`` non-overridable tier was CUT, 2026-06-29f.)
 
-    ⚑⚑ THE TWO CONFIG FILES SUPPLY ``config.*`` ONLY, SINCE 2026-08-26. Jei:
+    ⚑⚑ THE TWO CONFIG FILES SUPPLY ``config.*`` ONLY, SINCE 2026-08-26. [Jei:2026-08-26]:
     *"kanibako_config.yaml <-- cannot have settings. Period."* (that file is
     ``kanibako.cfg`` now) — and the site ``base.cfg`` is the SAME family, the site half
     of the Layer-1 CONFIG set (spec §1 names both; the settings base is the separate

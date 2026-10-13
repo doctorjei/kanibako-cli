@@ -77,9 +77,9 @@ descriptor:
   # READ-ONLY tools while PROMPTING for write/edit/shell — the INVERSE of claude's
   # acceptEdits, i.e. the analog of claude's DEFAULT mode, not of `editing`.
   # Mapping `editing` onto it would silently deliver prompt-on-every-edit; mapping
-  # it onto `auto` would silently deliver the full bypass.  Ruled (Jei,
-  # 2026-08-02): REFUSE.  A future goose that gains an edits-auto mode adds the
-  # row here and nothing else changes.
+  # it onto `auto` would silently deliver the full bypass.  Ruled
+  # [Jei:2026-08-02]: REFUSE.  A future goose that gains an edits-auto mode adds
+  # the row here and nothing else changes.
   access_realization:
     channel: env
     env_var: GOOSE_MODE

@@ -157,13 +157,13 @@ class TestIsKnownKey:
         assert is_known_key("foobar") is False
 
     def test_multifaceted_terminals_answer_false_quarantined(self):
-        """⚑ PINS THE QUARANTINE, NOT A DESIRED BEHAVIOR (Jei, 2026-08-08).
+        """⚑ PINS THE QUARANTINE, NOT A DESIRED BEHAVIOR [Jei:2026-08-08].
 
         The six bind-shaped category TERMINALS and ``<scope>.masks`` are DECLARED
         keys whose values are multi-faceted (a dest-keyed map; a list for
         ``masks``).  ``is_known_key`` is a HAND-MAINTAINED set and answers
         ``False`` for every one of them, so the system noun's ``get`` refuses a
-        key that exists.  Jei ruled QUARANTINE rather than fix: an individual
+        key that exists.  The ruling was QUARANTINE rather than fix: an individual
         read/write of a multi-faceted key is not supported, and the readable form
         is a promise whose shape is undecided.
 
@@ -683,7 +683,7 @@ class TestShowConfig:
         """--effective resolves the box scalars; the value comes from a SETTINGS file.
 
         ⚑ CHANGED 2026-08-26: the planted value used to sit in ``kanibako.cfg``
-        and be read back from there. That file cannot carry settings (Jei), so the
+        and be read back from there. That file cannot carry settings [Jei:2026-08-26], so the
         SOURCE moved to the box settings file — which is where a user's ``box.image``
         has always actually been written.
         """
@@ -707,7 +707,7 @@ class TestShowConfig:
         The replacement pin for what ``test_show_effective`` used to assert, stated as
         the ruling it now obeys: *"kanibako_config.yaml <-- cannot have settings.
         Period."* It was INERT (the view showed the declared default) until 2026-08-31,
-        when Jei ruled the stale table must refuse loudly rather than be dropped — a
+        when the stale table was ruled to refuse loudly (keyspec §1) rather than be dropped — a
         user reading their own file should not be shown a different answer in silence.
         """
         from kanibako.errors import ConfigError
@@ -2321,7 +2321,7 @@ class TestSystemConfigFileOnly:
         writer chose: a route to the wrong file would satisfy any file-shape assertion
         and still be invisible to every consumer.  ⚑⚑ THAT FILE IS THE SYSTEM SETTINGS
         FILE SINCE 2026-08-26 — the marker IS a settings-file key (spec §2g), and
-        ``kanibako.cfg`` cannot carry settings at all (Jei).  This case
+        ``kanibako.cfg`` cannot carry settings at all [Jei:2026-08-26].  This case
         asserted the exact opposite on both counts within the preceding three days;
         the invariant it pins — set and read name ONE file — never moved.
         """
@@ -2414,7 +2414,7 @@ class TestSystemConfigFileOnly:
 
 
 class TestConfigJournalRecognition:
-    """B2 (§3.3 ruling "needs to be recognized"): ``config.journal`` is a
+    """B2 ([Jei:2026-08-01] "needs to be recognized"): ``config.journal`` is a
     recognized ``config.*`` key with EXACT sibling parity — the known-key
     heuristic treats it as a key (not a project name), the get path reads the
     raw stored ``[config]`` value like its five siblings, and set/reset refuse
@@ -2929,13 +2929,13 @@ class TestCategoryConfigSet:
     swapped ``host_src`` and preserved ``box_dest`` + options RAW, WARNed on a
     not-yet-existent literal, and hard-ERRORed on the ``:`` notation / a dangling
     ``@``-ref / an unknown ``$VAR`` / a key absent from the cascade. **DS-BL1 = (a)
-    (Jei, 2026-08-07g — "accept the loss uniformly") retired that route for EVERY
+    ([Jei:2026-08-07g] — "accept the loss uniformly") retired that route for EVERY
     bind-shaped category**, so what is pinned here now is the REFUSAL: by name, with
     a cure, in the verb preamble before any write machinery, at every scope, leaving
     the stored tuple untouched.
 
     ⚑ The repoint MECHANISM (``settings_configset.repoint_host_src``) survived this
-    pass with no CLI caller and was DELETED in QA′ (2026-08-08, on Jei's word),
+    pass with no CLI caller and was DELETED in QA′ ([Jei:2026-08-08]),
     together with R-8's three-element stale-shape refusal and the test pinning the
     DECLINED 2-element option — see the graveyard block in
     ``test_settings_configset.py``. Nothing here changed: this class pins the
@@ -3185,7 +3185,7 @@ class TestCategoryConfigSet:
 
 # ---------------------------------------------------------------------------
 # Cross-scope @-ref resolution at set-time — the (b) FULL CASCADE rework
-# (Jei ruling 2026-06-29). The first cut built the set-time snapshot from the
+# ([Jei:2026-06-29]). The first cut built the set-time snapshot from the
 # command-scope file + the system.* floor ONLY, which FALSE-BLOCKED a value that
 # @-refs a higher non-system scope key. These exercise the full cascade: a box-
 # scope set whose new value references a key set ONLY at the workset scope must
@@ -3356,7 +3356,7 @@ class TestLayer1FileIsNotASettingsSourceAtAll:
     """``kanibako.cfg`` supplies NOTHING to the set-time probe — not a tier,
     and not a floor either.
 
-    ⚑⚑ Jei, 2026-08-26, hardening the ``setup_completed`` ruling into its general
+    ⚑⚑ [Jei:2026-08-26], hardening the ``setup_completed`` ruling into its general
     form: *"kanibako_config.yaml <-- cannot have settings. Period."*  A
     ``_layer1_value_floor()`` swept the file's declared values into this probe's floor
     for one day, on the reading that spec §1's "NOT part of the keyspace; NOT a
@@ -3463,7 +3463,7 @@ class TestLayer1FileIsNotASettingsSourceAtAll:
 # ⚑⚑ F10 IS NOW UNTESTED, AND SAYING SO IS THE POINT. When this block was written
 # the rule still lived in ``repoint_host_src`` and was unit-tested directly in
 # ``test_settings_configset.py`` (``test_repoint_cascade_fallback_*`` /
-# ``test_repoint_missing_key_raises``). QA′ (2026-08-08, on Jei's word) deleted that
+# ``test_repoint_missing_key_raises``). QA′ ([Jei:2026-08-08]) deleted that
 # function as an orphan, so those cases went too and F10 has NO implementation and
 # NO test anywhere in the tree.
 #
@@ -3876,7 +3876,7 @@ class TestScopeDirectionGuard:
 # ---------------------------------------------------------------------------
 
 class TestWorksetDefaultsBoxCascade:
-    """The §0 ruling end-to-end (Jei 2026-07-02): ``workset config set
+    """The §0 ruling end-to-end [Jei:2026-07-02]: ``workset config set
     box.image`` stores the key in the WORKSET yaml (scope token kept) → the
     launch snapshot resolves it for the workset's boxes → a box-level set of
     the same key OVERRIDES it (contained scope wins) → a box-level reset falls
@@ -4441,7 +4441,7 @@ class TestF6NoFabricatedDefaultOnPlainGet:
 
 
 class TestF7HonestResetMessage:
-    """F7 (Jei-ruled 07-02d) — ``reset`` must NOT claim "reverts to default:
+    """F7 [Jei:2026-07-02d] — ``reset`` must NOT claim "reverts to default:
     <built-in>" when the value falls back to a higher-tier stored default.  The
     behavior (fallback) is right; the MESSAGE must be honest: say it cleared the
     value set on THIS box (and, where cheap, the now-effective value + source)."""
@@ -4462,7 +4462,7 @@ class TestF7HonestResetMessage:
 
     def test_reset_message_says_cleared_on_this_noun(self, tmp_path):
         # Box scope (the box handler threads command_scope=ConfigLevel.box):
-        # honest wording direction (Jei) — cleared the value set on THIS box.
+        # honest wording direction — cleared the value set on THIS box.
         project_toml = tmp_path / BOX_META_FILE
         set_config_value("box.image", "custom:v2", config_path=project_toml)
         msg = reset_config_value(
@@ -4737,7 +4737,7 @@ class TestScopeBindRouteRetired:
 
     This class REPLACES ``TestF10CoreFloorRepoint``, which pinned the opposite
     behavior: a source-only repoint of a launch-only CORE bind, enabled by
-    threading the floor registry. That surface is a KNOWN, ACCEPTED LOSS (Jei:
+    threading the floor registry. That surface is a KNOWN, ACCEPTED LOSS ([Jei:2026-08-07g]:
     *"unfortunate, but this is going to have to be a cost we'll pay"*), boarded
     for review as DS-BL1. It is NOT a regression to restore.
 
@@ -4815,7 +4815,7 @@ class TestScopeBindRouteRetired:
     def test_the_retirement_now_covers_every_bind_shaped_category(self, tmp_path):
         """⚑ THIS ROW INVERTED, ON A RULING. It used to pin the retirement as
         SURGICAL — two tokens at three scopes, with ``box.synced.x`` still settable
-        as the control. DS-BL1 = (a) (Jei, 2026-08-07g) made the loss UNIFORM, so the
+        as the control. DS-BL1 = (a) [Jei:2026-08-07g] made the loss UNIFORM, so the
         control became a second retired spelling. What is pinned now is the same
         no-over/under-reach property from the other side: the SAME door refuses the
         arms and the other four, and it does NOT reach a neighboring scalar."""
@@ -6355,7 +6355,7 @@ class TestPrefShow:
         # suppression is where the user learns what UNDOES it — and WHERE, since
         # an edit at the wrong noun removes nothing.
         #
-        # ⚑ THE CURE NAMES THE FILE, NOT A VERB (Jei, 2026-08-08e). This used to
+        # ⚑ THE CURE NAMES THE FILE, NOT A VERB [Jei:2026-08-08e]. This used to
         # pin ``reset pref.agent.claude.common./home/agent/.claude/plugins`` — a
         # command that does not work and is not going to, because addressing one
         # facet of a dest-keyed key individually is not a thing the CLI does. The

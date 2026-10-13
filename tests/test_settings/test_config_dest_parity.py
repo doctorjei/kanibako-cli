@@ -697,7 +697,7 @@ class TestCategoryDest:
     ⚑⚑ THE WRITE ROWS ARE GONE, ON A RULING. This class used to pin "set repoints in
     the noun settings file" / "reset removes from the same file" for
     ``box.synced.vault`` / ``workset.caches.pip`` / ``system.caches.pip``. DS-BL1 =
-    (a) (Jei, 2026-08-07g) retired the ``config set`` route for EVERY bind-shaped
+    (a) [Jei:2026-08-07g] retired the ``config set`` route for EVERY bind-shaped
     category, so those verbs now refuse by name and touch nothing — pinned below
     with the SAME bench (the point of the bench is that a refusal moves no file).
     The surviving question is the READ slot, which is unchanged.
@@ -875,7 +875,7 @@ class TestAgentScopeCategoryDestination:
 
     * **2026-08-08c** retired the per-entry SPELLING out from under the arm (the
       dest-keyed flip), leaving the arm itself intact at the terminal spelling.
-    * **2026-08-08 (QA′)** DELETED the arm, on Jei's word, together with the
+    * **2026-08-08 (QA′)** DELETED the arm [Jei:2026-08-08], together with the
       ``agent_scope_to_config`` flag. Nothing was repaired: DS-BL1 = (a) had already
       made the route unreachable from every verb, so this removed dead machinery
       that documented a bug.
@@ -1343,7 +1343,7 @@ class TestSetupMarkerDest:
     ⚑ THE POINT IS THE AGREEMENT, not the file: a verb aimed anywhere but where
     ``config.read_setup_completed`` looks would be accepted, persisted and INERT —
     the failure this whole module exists to catch.  ⚑⚑ THE FILE CHANGED ON
-    2026-08-26 and the agreement did not: Jei moved the STORAGE to the global
+    2026-08-26 and the agreement did not: the STORAGE moved to the global
     settings file, which is what spec §2g always declared it to be, so the marker
     joined ``_KEY_ROUTES`` beside ``system.agent`` and its bespoke ``BOOTSTRAP``
     destination rule retired with no members left.

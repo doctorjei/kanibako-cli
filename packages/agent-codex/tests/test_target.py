@@ -594,7 +594,7 @@ class TestDescriptor:
         for tier in ("restricted", "editing", "full"):
             assert "--full-auto" not in ar.row(tier).flag
             assert "--yolo" not in ar.row(tier).flag
-        # codex persists the tier uniformly (2026-06-27 collapse ruling carried
+        # codex persists the tier uniformly ([Jei:2026-06-27] collapse decision carried
         # over to ``access``): redeemed via setting_key="access".
         assert ar.setting_key == "access"
 
