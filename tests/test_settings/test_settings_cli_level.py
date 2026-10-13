@@ -124,11 +124,10 @@ def test_no_access_flag_leaves_access_absent() -> None:
 def test_no_active_agent_drops_the_agent_scope_flags() -> None:
     """A shell / ``--entrypoint`` box has no agent slot to spell against.
 
-    It resolves under the ``"shell"`` slot, and the flags are still dropped
-    (``active_agent=None``) because neither parser exposes them for such a
-    launch — spelling ``agent.shell.*`` would install a flag value onto the
-    shell tier. The flags are dropped, not installed — and the selection still
-    rides.
+    It resolves under the ``"shell"`` slot and drops the flags
+    (``active_agent=None``): spelling ``agent.shell.*`` would install a flag
+    value onto the shell tier. ``shell`` does not parse them; ``start
+    --entrypoint`` names each one in a Note. The selection still rides.
     """
     level = build_cli_level(
         selection={SELECTION_KEY: "claude"},

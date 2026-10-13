@@ -28,7 +28,7 @@ _BOOTSTRAP_SESSION = 'kanibako'
 _AGENT_EXIT_STOP_BOUND = 3 * SupervisorConfig.poll_interval + 4.0
 _AGENT_EXIT_STOP_STEP = 0.1
 _NOTE_NO_EFFECT_WITH_ENTRYPOINT = 'Note: {flag} has no effect with --entrypoint'
-_NOTE_ENTRYPOINT_DROPPED_BY_DETACH = 'Note: --entrypoint has no effect with --detach; the box runs its shell'
+_NOTE_ENTRYPOINT_DROPPED_BY_DETACH = 'Note: --entrypoint has no effect with {flag}; the box runs its shell'
 _COMMAND_ENDED_BEFORE_ATTACH = "Note: the session ended before it could attach (the command after '--' exited). A persistent box does not report the command's exit status; for a one-off, use 'kanibako shell -- <command>'."
 _SOCKET_HASH_LEN = 16
 ```
@@ -195,6 +195,8 @@ def _container_logs(runtime: ContainerRuntime, name: str) -> str
 def _bootstrap_session_exists(runtime: ContainerRuntime, name: str) -> bool
 def _agent_exit_rc(runtime: ContainerRuntime, name: str, rc: int, program: str, *, session_seen: bool, supervised: bool) -> int | None
 def _await_box_stop(runtime: ContainerRuntime, name: str) -> bool
+def _agent_only_flags_given(new_session: bool, continue_override: bool, resume_mode: bool, model_given: bool, autonomous: bool, safe_mode: bool) -> list[str]
+def _print_entrypoint_notes(dropped: list[str], detach_flag: str | None) -> None
 def _persistent_command_ended(shell_command: str | None, rc: int, runtime: ContainerRuntime, name: str) -> bool
 @overload
 def _container_exit_code(runtime: ContainerRuntime, name: str) -> int

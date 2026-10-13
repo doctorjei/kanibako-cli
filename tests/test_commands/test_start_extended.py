@@ -2464,12 +2464,12 @@ class TestAgentOnlyFlagsWithEntrypoint:
         return args
 
     @pytest.mark.parametrize("argv, flag", [
-        (["-N"], "-N"),
-        (["-C"], "-C"),
-        (["-R"], "-R"),
-        (["-M", "opus"], "-M"),
-        (["-A"], "-A"),
-        (["-S"], "-S"),
+        (["-N"], "-N/--new"),
+        (["-C"], "-C/--continue"),
+        (["-R"], "-R/--resume"),
+        (["-M", "opus"], "-M/--model"),
+        (["-A"], "-A/--autonomous"),
+        (["-S"], "-S/--secure"),
         (["--no-auto-auth"], "--no-auto-auth"),
     ])
     def test_each_flag_is_noted_and_the_launch_proceeds(
@@ -2494,7 +2494,7 @@ class TestAgentOnlyFlagsWithEntrypoint:
             ))
             m.runtime.run.assert_called_once()
         err = capsys.readouterr().err
-        for flag in ("-N", "-M", "-A", "--no-auto-auth"):
+        for flag in ("-N/--new", "-M/--model", "-A/--autonomous", "--no-auto-auth"):
             assert f"Note: {flag} has no effect with --entrypoint" in err
         assert err.count("has no effect with --entrypoint") == 4
 
@@ -2531,6 +2531,19 @@ class TestAgentOnlyFlagsWithEntrypoint:
             assert not any("/bin/bash" in str(a) for a in kw.get("cli_args") or [])
         assert capsys.readouterr().err.count(self._DETACH_NOTE) == 1
 
+    def test_warm_only_names_itself_in_the_detach_note(self, start_mocks, capsys):
+        from kanibako.commands.start import run_start
+
+        with start_mocks() as m:
+            rc = run_start(self._args("--entrypoint", "/bin/bash", "--warm-only"))
+            assert rc == 0
+            m.runtime.run.assert_called_once()
+        err = capsys.readouterr().err
+        assert err.count(
+            "Note: --entrypoint has no effect with --warm-only; the box runs its shell"
+        ) == 1
+        assert "with --detach" not in err
+
     def test_no_detach_note_without_entrypoint(self, start_mocks, capsys):
         from kanibako.commands.start import run_start
 
@@ -2550,6 +2563,76 @@ class TestAgentOnlyFlagsWithEntrypoint:
         err = capsys.readouterr().err
         assert "--entrypoint cannot be applied" in err
         assert "Note:" not in err
+
+    # ⚑ ORDERING: a Note prints only past the last refusal, so a refused launch
+    # shows its Error alone.  Each refusal is probed both ways.
+
+    def test_a_stopped_container_refusal_prints_no_note(self, start_mocks, capsys):
+        from kanibako.commands.start import run_start
+
+        with start_mocks() as m:
+            m.runtime.container_exists.return_value = True
+            rc = run_start(self._args("--entrypoint", "/bin/bash", "--ephemeral", "-S"))
+            assert rc == 1
+            m.runtime.run.assert_not_called()
+        err = capsys.readouterr().err
+        assert "a stopped container is still holding its name" in err
+        assert "Note:" not in err
+
+    def test_a_virtiofs_refusal_prints_no_note(self, start_mocks, capsys):
+        from kanibako.commands.start import run_start
+
+        with start_mocks() as m:
+            m.virtiofs_check.return_value = "Error: virtiofs probe refusal"
+            rc = run_start(self._args("--entrypoint", "/bin/bash", "--detach", "-S"))
+            assert rc == 1
+            m.runtime.run.assert_not_called()
+        err = capsys.readouterr().err
+        assert "Error: virtiofs probe refusal" in err
+        assert "Note:" not in err
+
+    def test_the_notes_follow_every_refusal_on_a_launch_that_proceeds(
+        self, start_mocks, capsys,
+    ):
+        from kanibako.commands.start import run_start
+
+        notes_at_run: list[str] = []
+        with start_mocks() as m:
+            _run = m.runtime.run.side_effect
+
+            def _record_then_run(*a, **k):
+                notes_at_run.append(capsys.readouterr().err)
+                return _run(*a, **k)
+
+            m.runtime.run.side_effect = _record_then_run
+            rc = run_start(self._args("--entrypoint", "/bin/bash", "--detach", "-S"))
+            assert rc == 0
+            m.virtiofs_check.assert_called_once()
+        # Both Notes were already printed when the container was run.
+        assert "Note: -S/--secure has no effect with --entrypoint" in notes_at_run[0]
+        assert self._DETACH_NOTE in notes_at_run[0]
+
+    def test_the_live_box_exec_door_notes_the_dropped_flag(self, start_mocks, capsys):
+        from kanibako.commands.start import run_start
+
+        with start_mocks() as m:
+            m.runtime.is_running.return_value = True
+            run_start(self._args("--entrypoint", "/bin/bash", "-S"))
+            m.runtime.run.assert_not_called()
+            assert m.runtime.exec.call_args[0][1] == ["/bin/bash"]
+        err = capsys.readouterr().err
+        assert err.count("Note: -S/--secure has no effect with --entrypoint") == 1
+
+    def test_the_ephemeral_exec_door_notes_the_dropped_flag(self, start_mocks, capsys):
+        from kanibako.commands.start import run_start
+
+        with start_mocks() as m:
+            m.runtime.is_running.return_value = True
+            run_start(self._args("--entrypoint", "/bin/bash", "--ephemeral", "-S"))
+            m.runtime.run.assert_not_called()
+            assert m.runtime.exec.call_args[0][1] == ["/bin/bash"]
+        err = capsys.readouterr().err
+        assert err.count("Note: -S/--secure has no effect with --entrypoint") == 1
 
 
 # ---------------------------------------------------------------------------

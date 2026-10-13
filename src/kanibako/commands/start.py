@@ -3257,16 +3257,10 @@ def _run_container(
                     and running_door in ("attach", "detach")):
                 _rejected.append("-- <command>")
             if is_agent_mode:
-                _rejected += [
-                    _flag for _flag, _given in (
-                        ("-N/--new", new_session),
-                        ("-C/--continue", continue_override),
-                        ("-R/--resume", resume_mode),
-                        ("-M/--model", model_override is not None),
-                        ("-A/--autonomous", autonomous),
-                        ("-S/--secure", safe_mode),
-                    ) if _given
-                ]
+                _rejected += _agent_only_flags_given(
+                    new_session, continue_override, resume_mode,
+                    model_override is not None, autonomous, safe_mode,
+                )
         if _rejected:
             print(
                 f"Error: Box '{proj.name}' is already running, so "
@@ -3280,24 +3274,23 @@ def _run_container(
             return 1
 
     # An ``--entrypoint`` launch resolves no target, so the agent-only flags it
-    # still parses have nothing to act on.  The launch proceeds; each one is named.
+    # still parses have nothing to act on, and a detached one runs the box shell
+    # (the persistent no-agent ``elif detach:`` branch below).  The launch
+    # proceeds; ``_print_entrypoint_notes`` names each drop only where nothing can
+    # refuse after it: just before the fresh ``runtime.run`` and on the two exec
+    # doors into a live box.  A reattach to a running box was already refused
+    # by the gate above for ``--entrypoint --detach`` and for ``--no-auto-auth``.
+    _entrypoint_drops: list[str] = []
     if typed_entrypoint is not None:
-        for _flag, _given in (
-            ("-N", new_session),
-            ("-C", continue_override),
-            ("-R", resume_mode),
-            ("-M", model_override is not None),
-            ("-A", autonomous),
-            ("-S", safe_mode),
-            ("--no-auto-auth", no_auto_auth),
-        ):
-            if _given:
-                print(_NOTE_NO_EFFECT_WITH_ENTRYPOINT.format(flag=_flag), file=sys.stderr)
-        # A detached launch keeps the bare-shell keep-alive (the persistent
-        # no-agent ``elif detach:`` branch below); a running box refused the pair
-        # in the gate above, so this is always a new launch.
-        if detach:
-            print(_NOTE_ENTRYPOINT_DROPPED_BY_DETACH, file=sys.stderr)
+        _entrypoint_drops = _agent_only_flags_given(
+            new_session, continue_override, resume_mode,
+            model_override is not None, autonomous, safe_mode,
+        )
+        if no_auto_auth:
+            _entrypoint_drops.append("--no-auto-auth")
+    _entrypoint_detach_flag: str | None = None
+    if typed_entrypoint is not None and detach:
+        _entrypoint_detach_flag = "--warm-only" if warm_only else "--detach"
 
     # Resolve the target (agent plugin) and detect its installation.  W1 §Design 7,
     # "resolve config FIRST ... before anything else": agent resolution depends only
@@ -3743,6 +3736,7 @@ def _run_container(
             # rather than silently swallowed here.
             exec_program = typed_entrypoint
         if exec_program is not None:
+            _print_entrypoint_notes(_entrypoint_drops, _entrypoint_detach_flag)
             # The two exec doors converge: a resolved box shell and an explicit
             # ``--entrypoint`` are both "a second process in the live box" and
             # get the identical exec.  ⚑ Per-run ``-e`` is applied through BOTH,
@@ -3949,6 +3943,7 @@ def _run_container(
             # was set at launch and is inherited by exec; without
             # this, per-run -e vars would be silently dropped when the box is
             # already running.
+            _print_entrypoint_notes(_entrypoint_drops, _entrypoint_detach_flag)
             return runtime.exec(
                 live_name, exec_cmd, env=cli_env_values
             )
@@ -5236,6 +5231,8 @@ def _run_container(
                         file=sys.stderr,
                     )
                     return 1
+            # Past the last refusal: name what ``--entrypoint`` drops.
+            _print_entrypoint_notes(_entrypoint_drops, _entrypoint_detach_flag)
             # Run the container
             rc = runtime.run(
                 image,
@@ -10353,10 +10350,38 @@ def _await_box_stop(runtime: ContainerRuntime, name: str) -> bool:
 #: An agent-only flag typed with ``--entrypoint``, which runs no agent.
 _NOTE_NO_EFFECT_WITH_ENTRYPOINT = "Note: {flag} has no effect with --entrypoint"
 
-#: ``--entrypoint`` typed with ``--detach``, whose keep-alive is the box shell.
+#: ``--entrypoint`` on a detached launch (``--detach`` or ``--warm-only``), whose
+#: keep-alive is the box shell.
 _NOTE_ENTRYPOINT_DROPPED_BY_DETACH = (
-    "Note: --entrypoint has no effect with --detach; the box runs its shell"
+    "Note: --entrypoint has no effect with {flag}; the box runs its shell"
 )
+
+
+def _agent_only_flags_given(
+    new_session: bool, continue_override: bool, resume_mode: bool,
+    model_given: bool, autonomous: bool, safe_mode: bool,
+) -> list[str]:
+    """The agent-session flags given, by name: refused at a running agent box,
+    and named in a Note on an ``--entrypoint`` launch, which runs no agent."""
+    return [
+        _flag for _flag, _given in (
+            ("-N/--new", new_session),
+            ("-C/--continue", continue_override),
+            ("-R/--resume", resume_mode),
+            ("-M/--model", model_given),
+            ("-A/--autonomous", autonomous),
+            ("-S/--secure", safe_mode),
+        ) if _given
+    ]
+
+
+def _print_entrypoint_notes(dropped: list[str], detach_flag: str | None) -> None:
+    """Name on stderr each flag an ``--entrypoint`` launch drops, and the
+    entrypoint itself when *detach_flag* keeps the box shell instead."""
+    for _flag in dropped:
+        print(_NOTE_NO_EFFECT_WITH_ENTRYPOINT.format(flag=_flag), file=sys.stderr)
+    if detach_flag is not None:
+        print(_NOTE_ENTRYPOINT_DROPPED_BY_DETACH.format(flag=detach_flag), file=sys.stderr)
 
 
 # M1: a persistent ``-- <command>`` that ended before the host could attach.
