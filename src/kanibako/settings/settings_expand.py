@@ -769,6 +769,11 @@ class _Expander:
                 resolved = self._expand_str(raw, space="host", chain=chain)
             else:
                 resolved = raw  # int / float / bool / None / list — verbatim terminal.
+        except ExprSyntaxError as exc:
+            # A grammar refusal names the key that HOLDS the bad value, never the leaf
+            # that reached it (keyspec "References"); the first name given stands.
+            leaf = self._leaf_labels[-1] if self._leaf_labels else dotted
+            raise exc.naming(dotted, reached_from=None if leaf == dotted else leaf) from None
         finally:
             deps = self._reading.pop()
             reach = self._pop_reach()

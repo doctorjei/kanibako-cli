@@ -237,6 +237,31 @@ class TestShareAdd:
         assert rc == 1
         assert "invalid bind" in capsys.readouterr().err
 
+    @pytest.mark.parametrize(("bind", "half", "words"), [
+        ("/srv/a{b:/home/agent/data", "host source", "Unpaired '{'"),
+        ("/srv/a}b:/home/agent/data", "host source", "Unpaired '}'"),
+        ("/srv/{bad name}:/home/agent/data", "host source", "Malformed reference"),
+        ("/srv/{}:/home/agent/data", "host source", "Empty reference"),
+        ("/host/data:/home/agent/d{x", "destination", "Unpaired '{'"),
+    ])
+    def test_add_refuses_a_half_the_value_grammar_refuses(
+        self, config_file, tmp_home, workset, bind, half, words, capsys,
+    ):
+        """Refused at add time, naming the half, rather than stored and refused at
+        every launch (keyspec "References")."""
+        rc = run_share_add(_add_args(bind=bind))
+        assert rc == 1
+        err = capsys.readouterr().err
+        assert f"invalid bind '{bind}': the {half}" in err, err
+        assert words in err, err
+        assert read_bindings(workset.root / "workset.yaml") == {}
+
+    def test_add_stores_doubled_braces_verbatim(self, config_file, tmp_home, workset):
+        rc = run_share_add(_add_args(bind="/srv/a{{b}}:/home/agent/data"))
+        assert rc == 0
+        bindings = read_bindings(workset.root / "workset.yaml")
+        assert bindings[("rw", "/home/agent/data")] == ["/srv/a{{b}}"]
+
     def test_add_escaped_colon_in_host_src(self, config_file, tmp_home, workset):
         r"""P4 fix: a literal ':' in the host path is written ``\:`` and now parses
         via the canonical escape-aware ``split_bind`` — the split falls on the FIRST

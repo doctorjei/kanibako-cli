@@ -114,11 +114,15 @@ class ExprSyntaxError(SettingsError):
         super().__init__(message)
         self.entry = entry
 
-    def naming(self, entry: str) -> "ExprSyntaxError":
-        """This refusal with *entry* named in front; one already named is returned as is."""
+    def naming(self, entry: str, *, reached_from: str | None = None) -> "ExprSyntaxError":
+        """This refusal with *entry* named in front; one already named is returned as is.
+
+        *reached_from* names the setting whose reference led to *entry*, as a trail.
+        """
         if self.entry is not None:
             return self
-        return ExprSyntaxError(f"'{entry}': {self}", entry=entry)
+        trail = "" if reached_from is None else f" (reached from {reached_from})"
+        return ExprSyntaxError(f"'{entry}': {str(self).rstrip('.')}{trail}.", entry=entry)
 
 
 class _Unset:

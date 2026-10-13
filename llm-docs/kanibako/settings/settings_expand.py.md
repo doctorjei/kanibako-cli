@@ -201,10 +201,12 @@ leaf and records the dotted path → *reason*. It NEVER escapes `expand` — it 
 signal, not a user error — and it is never raised in strict mode. `_expand_node` also catches
 `SettingsError` in this branch, which is how the `{pref.*}` refusal below reaches the error map.
 
-STRICT mode names the entry the same way for a GRAMMAR refusal (`settings_resolve.ExprSyntaxError`:
-an unpaired brace, an empty or malformed reference, an illegal escape): `_expand_node` re-raises it
-as `'<leaf>': <reason>` via `ExprSyntaxError.naming`, once — a refusal already named by a deeper
-leaf passes through unchanged. Other strict refusals are raised as they were.
+A GRAMMAR refusal (`settings_resolve.ExprSyntaxError`: an unpaired brace, an empty or malformed
+reference, an illegal escape) is named at the key that HOLDS the bad value, in both modes and
+whatever the file order. `_resolve_ref` names a referent's refusal `'<referent>': <reason> (reached
+from <leaf>)`; strict `_expand_node` names a leaf's own refusal `'<leaf>': <reason>`. Both go
+through `ExprSyntaxError.naming`, which keeps the FIRST name given, so the referring leaf never
+claims it. Other strict refusals are raised as they were.
 
 There are two lenient consumers. Set-time `config set` validation (`config_interface`) implements
 the E3 rule: apply the candidate RAW value into the merged snapshot at the edited key,

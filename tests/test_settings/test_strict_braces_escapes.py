@@ -149,11 +149,18 @@ def test_the_lenient_expansion_records_the_entry(value) -> None:
     assert expanded["box"]["shell"] == "/x"
 
 
-def test_a_named_refusal_is_named_once() -> None:
-    store = KeyStore({"box": {"image": "{box.shell}", "shell": "a{b"}})
+@pytest.mark.parametrize("referrer_first", [True, False])
+def test_the_key_holding_the_bad_value_is_named_once(referrer_first) -> None:
+    # Named at the key that HOLDS the bad value, whatever the file order, and once.
+    items = [("image", "{box.shell}"), ("shell", "a{b")]
+    store = KeyStore({"box": dict(items if referrer_first else items[::-1])})
     with pytest.raises(SettingsError) as ei:
         expand(store, _ctx())
-    assert str(ei.value).count("': ") == 1, str(ei.value)
+    message = str(ei.value)
+    assert message.startswith("'box.shell': Unpaired '{'"), message
+    assert "'box.image'" not in message
+    if referrer_first:
+        assert message.endswith(" (reached from box.image)."), message
 
 
 def test_an_escaped_slash_is_no_absolute_path() -> None:

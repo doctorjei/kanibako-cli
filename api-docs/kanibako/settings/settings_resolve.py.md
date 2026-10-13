@@ -86,7 +86,7 @@ class SettingsError(KanibakoError):
 class ExprSyntaxError(SettingsError):
     def __init__(self, message: str, *, entry: str | None=None) -> None
 
-    def naming(self, entry: str) -> 'ExprSyntaxError'
+    def naming(self, entry: str, *, reached_from: str | None=None) -> 'ExprSyntaxError'
 
 @dataclass(frozen=True)
 class ResolveCtx:

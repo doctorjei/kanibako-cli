@@ -489,10 +489,10 @@ class ExprSyntaxError(SettingsError)
 A value the reference grammar refuses: an unpaired brace, an empty or malformed reference, an
 illegal escape, a malformed `$`/`@` token (keyspec § 0 "References"). A `SettingsError`, so every
 existing `except SettingsError` still catches it. `entry` is `None` until a reader that knows
-which setting holds the value names it with `naming(entry)`, which prefixes `'<entry>': ` once and
-returns an already-named refusal unchanged. The strict launch expansion
-(`settings_expand._Expander`) names the leaf; `config set` and the lenient pass name it their own
-way (the `'<key>': malformed value …` verdict, the error map's key).
+which setting holds the value names it with `naming(entry, reached_from=…)`, which prefixes
+`'<entry>': ` (and appends a `(reached from <leaf>)` trail) once and returns an already-named
+refusal unchanged. `settings_expand._Expander` names the key that HOLDS the bad value; `config set`
+names the key it sets (the `'<key>': malformed value …` verdict).
 
 ```python
 @dataclass(frozen=True)

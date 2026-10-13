@@ -1427,6 +1427,20 @@ def run_share_add(args: argparse.Namespace) -> int:
         )
         return 1
 
+    # ⚑ The value grammar ``config set`` checks (keyspec "References"), at the moment of
+    # the mistake: a half it refuses would be stored, then refused at every launch.
+    from kanibako.settings.settings_configset import scan_tokens
+
+    for half, text in (("host source", host_src), ("destination", guest_dest)):
+        try:
+            scan_tokens(text)
+        except ValueError as exc:
+            print(
+                f"Error: invalid bind '{bind}': the {half} {text!r} is malformed: {exc}",
+                file=sys.stderr,
+            )
+            return 1
+
     ws, _ = _resolve_share_workset(args.workset)
     if ws is None:
         return 1
