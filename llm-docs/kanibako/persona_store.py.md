@@ -5,8 +5,8 @@ tree that holds harness-NATIVE config per persona and per harness. kanibako does
 standard and does not write into it — it CONSUMES it. Everything in this module is a pure read
 against that tree, with no box, no network, and no probe.
 
-The design SOT is `~/canon/workbook/designs/persona-grata-autoimport-DESIGN.md`; the
-sections cited below (§1 through §5a) are its sections. The procedure that governs any change here is
+The design SOT is `~/canon/workbook/designs/persona-grata-autoimport-DESIGN.md`; the sections cited
+below (§1 through §5a) are its sections. The procedure that governs any change here is
 `~/canon/notebook/procedures/persona-resolution-model.md`, and it outranks this document.
 
 ## The one invariant: persona values are LIVE, never persisted

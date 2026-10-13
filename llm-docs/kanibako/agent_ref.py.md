@@ -35,7 +35,8 @@ so every bare path is byte-for-byte identical to pre-persona behavior.
 
 ## Permitted Characters (Persona / Harness)
 A segment follows the name rule (`identifiers.name_flaw`, keyspec §0): 1–64 ASCII letters, digits,
-or `_`, not starting with a digit. A refusal names the `_` spelling as its cure (`_segment_refusal`).
+or `_`, not starting with a digit. A refusal names the `_` spelling as its cure
+(`_segment_refusal`).
 
 ### Regex Details
 ``SEGMENT_CHAR_CLASS`` is the character-class BODY (no brackets) a segment draws from:

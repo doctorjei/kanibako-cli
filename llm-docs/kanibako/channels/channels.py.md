@@ -12,10 +12,10 @@ Keyspec § *CONFIG — the bootstrap PATH layer*, § *Worksets & box bindings �
 § *Channels* declare them.
 
 **System scope** — four type roots under `@system.channelroot`: `common`, `chat`, `mailboxes`,
-`share`, plus `broadcast`, a FILE under `system.channels.chat` (`{system.channels.chat}/broadcast.md`).
-The two instance-owned types (`mailboxes`, `share`) are *partitioned* by the
-workset-name token: `mailboxes/<ws>` and `share/<ws>`, where `<ws>` is `__PRIMARY__` | `<named>` |
-`__STANDALONE__`.
+`share`, plus `broadcast`, a FILE under `system.channels.chat`
+(`{system.channels.chat}/broadcast.md`). The two instance-owned types (`mailboxes`, `share`) are
+*partitioned* by the workset-name token: `mailboxes/<ws>` and `share/<ws>`, where `<ws>` is
+`__PRIMARY__` | `<named>` | `__STANDALONE__`.
 
 ⚑ **These partition roots apply to EVERY mode, standalone included (D-M9).** Do not gate
 `system_partition` off the workset-local channels: a standalone box has no workset channels and

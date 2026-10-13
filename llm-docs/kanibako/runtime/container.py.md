@@ -83,9 +83,9 @@ changes is what podman shows INSIDE the box.
 
 ⚑ **A MASK IS INDEPENDENT OF THE VAULT.** `<scope>.masks` is an ordinary user-writable key that has
 nothing to do with the vault, so the emission loop sits outside any `if enable_vault:` block: a
-vault-disabled box that declares a mask still gets it. A declared mask is emitted regardless. The same rule
-governs the mask STUB loop in `_precreate_mount_stubs`, which is outside the vault arm for exactly
-this reason.
+vault-disabled box that declares a mask still gets it. A declared mask is emitted regardless. The
+same rule governs the mask STUB loop in `_precreate_mount_stubs`, which is outside the vault arm for
+exactly this reason.
 
 There is **no default mask**: the vault lives outside `~/workspace`, so there is nothing in the
 workspace to hide. No masks emits no tmpfs mounts, and no special-case overlay rides on one.
@@ -369,10 +369,10 @@ mapped host stub (the OUTER view) and returns the box-dests that already contain
 Candidates are the vault ro/rw dests (when *enable_vault*) plus each `mount.destination` in
 *extra_mounts*. The base roots `/home/agent` and `/home/agent/workspace` are EXCLUDED — their
 content IS the box, not something shadowed (the home/workspace base binds flow through
-*extra_mounts* too). A dest under the seed-denied managed canon region (`_is_seed_denied_canon_dest`,
-`CANON_SEED_DENY_PREFIXES`) is EXCLUDED too: box create's skeleton owns it and no seed lands there,
-so a bind there shadows no user content. Tmpfs masks are not candidates: masking is intentional
-hiding, and they are not in *extra_mounts*.
+*extra_mounts* too). A dest under the seed-denied managed canon region
+(`_is_seed_denied_canon_dest`, `CANON_SEED_DENY_PREFIXES`) is EXCLUDED too: box create's skeleton
+owns it and no seed lands there, so a bind there shadows no user content. Tmpfs masks are not
+candidates: masking is intentional hiding, and they are not in *extra_mounts*.
 
 ⚑ **This function is PURE.** It performs no filesystem mutation — no mkdir, touch, unlink or
 clear-symlink. All probes are best-effort and any `OSError` skips that dest rather than raising. A
@@ -578,7 +578,8 @@ true`. Gates the TTY-inheriting interactive exec.
 ```python
 ContainerRuntime.exec_succeeds(name: str, command: list[str]) -> bool
 ```
-True iff *command* exits 0 in *name*, output captured. `exec_ready` is `exec_succeeds(name, ["true"])`.
+True iff *command* exits 0 in *name*, output captured. `exec_ready` is
+`exec_succeeds(name, ["true"])`.
 
 ```python
 ContainerRuntime.container_exists(name: str) -> bool

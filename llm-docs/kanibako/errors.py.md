@@ -312,9 +312,9 @@ Reword one of these messages and you have reworded user-facing output.
 
 ⚑ **Only ONE of these carries an install command — `AgentNotInstalledError`.** With no plugin
 installed the launch answers `AgentUnsetError`, whose cure is `kanibako setup` at every installed
-count, and `commands/setup_cmd.py`'s Step 2 prints the tailored `install_method.install_command(...)`.
-Do not add one here: the two refusals are deliberately one sentence each about what is UNSET, not a
-report on what is installed.
+count, and `commands/setup_cmd.py`'s Step 2 prints the tailored
+`install_method.install_command(...)`. Do not add one here: the two refusals are deliberately one
+sentence each about what is UNSET, not a report on what is installed.
 
 Two subclasses are raised from `settings/config.py`'s `resolve_agent`; the third,
 `AgentNoDefaultError`, is raised one seam earlier, in `settings/agent_select.py`'s `select_agent`,
