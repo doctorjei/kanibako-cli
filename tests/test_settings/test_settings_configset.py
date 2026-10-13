@@ -134,7 +134,7 @@ def test_a_colon_in_a_value_is_ordinary_content() -> None:
 
 
 def test_dangling_ref_is_hard_error() -> None:
-    v = _validate("box.bindings.rw.home", "@nope.not.a.key")
+    v = _validate("box.bindings.rw.home", "{nope.not.a.key}")
     assert isinstance(v, Error)
     assert "'{nope.not.a.key}'" in v.message
 
@@ -142,29 +142,29 @@ def test_dangling_ref_is_hard_error() -> None:
 def test_existing_whole_value_ref_repoint_is_ok_no_warn() -> None:
     # B4: repointing a value to a whole-value @-ref to an EXISTING key is OK, and
     # carries NO @-ref-repoint warning.
-    v = _validate("box.bindings.rw.home", "@workset.boxes")
+    v = _validate("box.bindings.rw.home", "{workset.boxes}")
     assert v is OK
 
 
 def test_embedded_ref_to_existing_key_is_ok() -> None:
-    v = _validate("box.bindings.rw.home", "@workset.boxes/sub/dir")
+    v = _validate("box.bindings.rw.home", "{workset.boxes}/sub/dir")
     assert v is OK
 
 
 def test_embedded_dangling_ref_is_hard_error() -> None:
-    v = _validate("box.bindings.rw.home", "@workset.boxes/@bad.ref/x")
+    v = _validate("box.bindings.rw.home", "{workset.boxes}/{bad.ref}/x")
     assert isinstance(v, Error)
     assert "'{bad.ref}'" in v.message
 
 
 def test_unknown_var_is_hard_error() -> None:
-    v = _validate("box.bindings.rw.home", "$NOPE_VAR/x")
+    v = _validate("box.bindings.rw.home", "{$NOPE_VAR}/x")
     assert isinstance(v, Error)
     assert "{$NOPE_VAR}" in v.message
 
 
 def test_known_var_is_ok() -> None:
-    v = _validate("box.bindings.rw.home", "$XDG_DATA_HOME/kanibako")
+    v = _validate("box.bindings.rw.home", "{$XDG_DATA_HOME}/kanibako")
     assert v is OK
 
 
@@ -360,10 +360,10 @@ def test_e3_a_unrelated_preexisting_defect_allows() -> None:
     # (a) A defect on a DIFFERENT branch does not block an unrelated edit.
     def probe(key, value):
         return _resolves_with(
-            {"other": {"broken": "@gone.x"}}, key=key, value=value
+            {"other": {"broken": "{gone.x}"}}, key=key, value=value
         )
 
-    v = _validate("box.bindings.rw.home", "@workset.boxes/ok", resolves=probe)
+    v = _validate("box.bindings.rw.home", "{workset.boxes}/ok", resolves=probe)
     assert v is OK
 
 
@@ -373,7 +373,7 @@ def test_e3_b_downstream_child_defect_allows() -> None:
     # not what we edit; its breakage is downstream.)
     def probe(key, value):
         return _resolves_with(
-            {"dependent": "@box.bindings.rw.home/@also.gone"},
+            {"dependent": "{box.bindings.rw.home}/{also.gone}"},
             key=key, value=value,
         )
 
@@ -383,7 +383,7 @@ def test_e3_b_downstream_child_defect_allows() -> None:
 
 def test_e3_c_edit_repoints_away_from_broken_dep_allows() -> None:
     # (c) The OLD value referenced a broken dep; the edit re-points to a good one.
-    v = _validate("box.bindings.rw.home", "@workset.boxes/x")
+    v = _validate("box.bindings.rw.home", "{workset.boxes}/x")
     assert v is OK
 
 
@@ -399,7 +399,7 @@ def test_e3_d_edit_fixes_broken_key_itself_allows() -> None:
 
 def test_e3_e_edited_value_upstream_chain_broken_blocks() -> None:
     # (e) The edited value's UPSTREAM chain stays unresolvable → BLOCK, name the dep.
-    v = _validate("box.bindings.rw.home", "@gone.upstream/x")
+    v = _validate("box.bindings.rw.home", "{gone.upstream}/x")
     assert isinstance(v, Error)
     assert "gone.upstream" in v.message
 
@@ -407,7 +407,7 @@ def test_e3_e_edited_value_upstream_chain_broken_blocks() -> None:
 def test_e3_e_embedded_dangling_in_edited_value_blocks() -> None:
     # (e′ — director ruling) an EMBEDDED dangling @-ref in the EDITED value's chain
     # is a defect that BLOCKS at set-time (NOT strict-expand's silent "").
-    v = _validate("box.bindings.rw.home", "@workset.boxes/@bad.embedded/x")
+    v = _validate("box.bindings.rw.home", "{workset.boxes}/{bad.embedded}/x")
     assert isinstance(v, Error)
     assert "bad.embedded" in v.message
 
@@ -420,7 +420,7 @@ def test_e3_embedded_dangling_ELSEWHERE_allows() -> None:
             # ⚑ BRACED: ``-`` is a ref-name char, so the bare spelling would name
             # ``gone.embedded-post``.  Inert either way (this is the UNRELATED
             # key), but the braces keep the fixture reading as written.
-            {"other": {"x": "pre-@{gone.embedded}-post"}}, key=key, value=value
+            {"other": {"x": "pre-{gone.embedded}-post"}}, key=key, value=value
         )
 
     v = _validate("box.bindings.rw.home", "/clean", resolves=probe)
@@ -431,9 +431,9 @@ def test_e3_f_edit_introduces_cycle_blocks() -> None:
     # (f) The edit makes the edited value's chain a CYCLE → BLOCK.
     def probe(key, value):
         # editing `a` to @b, with b=@a already present → a -> b -> a cycle.
-        return _resolves_with({"b": "@a"}, key=key, value=value)
+        return _resolves_with({"b": "{a}"}, key=key, value=value)
 
-    v = _validate("a", "@b", resolves=probe)
+    v = _validate("a", "{b}", resolves=probe)
     assert isinstance(v, Error)
     assert "cyclic" in v.message.lower()
 
@@ -442,10 +442,10 @@ def test_e3_g_preexisting_cycle_elsewhere_allows() -> None:
     # (g) A cycle on an UNRELATED branch does not block the edit.
     def probe(key, value):
         return _resolves_with(
-            {"loop_a": "@loop_b", "loop_b": "@loop_a"}, key=key, value=value
+            {"loop_a": "{loop_b}", "loop_b": "{loop_a}"}, key=key, value=value
         )
 
-    v = _validate("box.bindings.rw.home", "@workset.boxes/x", resolves=probe)
+    v = _validate("box.bindings.rw.home", "{workset.boxes}/x", resolves=probe)
     assert v is OK
 
 

@@ -1635,7 +1635,7 @@ class TestWorksetDisconnect:
         std = load_std_paths(config)
         root = (tmp_home / "ws_badlogs").resolve()
         ws = create_workset("badlogsws", root, std)
-        dump_doc(root / "workset.yaml", {"workset": {"logs": "@workset.nosuchkey/x"}})
+        dump_doc(root / "workset.yaml", {"workset": {"logs": "{workset.nosuchkey}/x"}})
         src = tmp_home / "badlogs_src"
         src.mkdir()
         add_project(ws, "badlogsproj", src)
@@ -3020,7 +3020,7 @@ class TestWorksetPreviewResolvesTheDeclarationRoot:
         path = _workset_config_path(ws)
         doc = load_doc(path)
         doc.setdefault("workset", {})["bindings"] = {
-            "ro": {"/opt/ref": ["@meta.workset.path/refdir"]},
+            "ro": {"/opt/ref": ["{meta.workset.path}/refdir"]},
         }
         dump_doc(path, doc)
 

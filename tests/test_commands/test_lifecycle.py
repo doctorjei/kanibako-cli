@@ -1116,7 +1116,7 @@ class TestRelocationFollowsThePartitionKEYS:
         _make_workset(env)
         pdir = _make_default(env)
         self._repoint(
-            std.primary_workset, "workset.channels.mailboxes", "@config.registry/nope",
+            std.primary_workset, "workset.channels.mailboxes", "{config.registry}/nope",
         )
 
         state = resolve_lifecycle_target(str(pdir), std, config)
@@ -3031,9 +3031,9 @@ class TestConsolidateResolvesTheRootsOwnKeys:
         relative; the directory it names is the same one ``store/ro`` used to reach."""
         root = _default_with_workset_keys(
             env, "inroot",
-            {"vault_ro": "@meta.workset.path/store/ro",
-             "vault_rw": "@meta.workset.path/store/rw",
-             "canon": "@meta.workset.path/kanon"},
+            {"vault_ro": "{meta.workset.path}/store/ro",
+             "vault_rw": "{meta.workset.path}/store/rw",
+             "canon": "{meta.workset.path}/kanon"},
         )
         (root / "store" / "ro").mkdir(parents=True)
         (root / "store" / "ro" / "SECRET").write_text("RO")
@@ -3054,7 +3054,7 @@ class TestConsolidateResolvesTheRootsOwnKeys:
         """[R144] — a keep that cannot name the path as the user's is just a leak.  The
         DEFAULT layout's keeps stay silent; only what the user repointed is announced."""
         root = _default_with_workset_keys(
-            env, "reported", {"vault_ro": "@meta.workset.path/store/ro"},
+            env, "reported", {"vault_ro": "{meta.workset.path}/store/ro"},
         )
         (root / "store" / "ro").mkdir(parents=True)
 
@@ -3097,7 +3097,7 @@ class TestConsolidateResolvesTheRootsOwnKeys:
         from kanibako.settings.settings_resolve import SettingsError
 
         root = _default_with_workset_keys(
-            env, "unresolvable", {"vault_ro": "@config.registry/ro"},
+            env, "unresolvable", {"vault_ro": "{config.registry}/ro"},
         )
         (root / "keepme").mkdir()
 
@@ -3115,7 +3115,7 @@ class TestConsolidateResolvesTheRootsOwnKeys:
         ⚑ It used to be spelled ``.``, which [R147] refuses along with every other bare
         relative; the ``@``-ref names the same directory and names it unambiguously."""
         root = _default_with_workset_keys(
-            env, "atroot", {"workspaces": "@meta.workset.path"},
+            env, "atroot", {"workspaces": "{meta.workset.path}"},
         )
         (root / "keepme").mkdir()
 
@@ -3218,7 +3218,7 @@ class TestTheVaultGitignoreClaimsOnlyWhatVaultRwAnswers:
         """🐞 ``box convert --standalone`` — the fourth sighting of the class ``722c3d59``
         cured in ``_init_common``, one function away and out of that writer's seam."""
         root = _default_with_workset_keys(
-            env, "claimfalse", {"vault_rw": "@meta.workset.path/store/rw"},
+            env, "claimfalse", {"vault_rw": "{meta.workset.path}/store/rw"},
         )
         # The skeleton is on disk because ``vault_ro`` is UNTOUCHED and defaults into it —
         # exactly the state that made the old ``is_dir()`` gate fire.
@@ -3256,7 +3256,7 @@ class TestTheVaultGitignoreClaimsOnlyWhatVaultRwAnswers:
         dst = tmp_home / "dupclaimfalse_copy"
         dst.mkdir()
         dump_doc(dst / "workset.yaml", {
-            "workset": {"vault_rw": "@meta.workset.path/store/rw"},
+            "workset": {"vault_rw": "{meta.workset.path}/store/rw"},
         })
         (dst / "vault" / "ro").mkdir(parents=True)
         (dst / "store" / "rw").mkdir(parents=True)
@@ -3320,7 +3320,7 @@ class TestStandaloneRootIsNotAPositionInThePath:
         config, std, tmp_home = env
         root = _default_with_workset_keys(
             env, "liftnested",
-            {"workspaces": "@meta.workset.path/nested/deep"},
+            {"workspaces": "{meta.workset.path}/nested/deep"},
         )
         _convert_to_standalone_in_place(env, root)
         assert (root / "nested" / "deep" / "file.txt").is_file()
@@ -3417,7 +3417,7 @@ class TestStandaloneRootIsNotAPositionInThePath:
 
         root = _default_with_workset_keys(
             env, "renamenested",
-            {"workspaces": "@meta.workset.path/nested/deep"},
+            {"workspaces": "{meta.workset.path}/nested/deep"},
         )
         first = _convert_to_standalone_in_place(env, root)
 
@@ -3438,7 +3438,7 @@ class TestStandaloneRootIsNotAPositionInThePath:
         them would move every file onto a missing parent and swallow the OSError."""
         root = _default_with_workset_keys(
             env, "unwindnested",
-            {"workspaces": "@meta.workset.path/nested/deep"},
+            {"workspaces": "{meta.workset.path}/nested/deep"},
         )
         _convert_to_standalone_in_place(env, root)
 

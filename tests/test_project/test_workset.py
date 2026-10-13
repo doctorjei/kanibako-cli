@@ -949,8 +949,8 @@ class TestWorksetWorkspacesResolved:
         # ⚑ INVERTED BY [R147]: this pair used to be spelled ``"pods"`` / ``"comms"``
         # and to assert that a BARE relative anchored under the root.  Keeping the
         # directory with the workset is still expressible — it just has to be SAID.
-        doc = {"workset": {"workspaces": "@meta.workset.path/pods",
-                           "channelroot": "@meta.workset.path/comms"}}
+        doc = {"workset": {"workspaces": "{meta.workset.path}/pods",
+                           "channelroot": "{meta.workset.path}/comms"}}
         assert resolve_workset_workspaces(tmp_path, doc,
                 early=early_record(tmp_path, mode=BoxMode.primary)) == tmp_path / "pods"
         assert resolve_workset_channelroot(tmp_path, doc,
@@ -1030,7 +1030,7 @@ class TestWorksetWorkspacesResolved:
         assert resolve_workset_logs(tmp_path, None,
                 early=early_record(tmp_path, mode=BoxMode.primary)) == tmp_path / "logs"
 
-        doc = {"workset": {"boxes": "@meta.workset.path/trees", "logs": "/var/log/kani"}}
+        doc = {"workset": {"boxes": "{meta.workset.path}/trees", "logs": "/var/log/kani"}}
         assert resolve_workset_boxes(tmp_path, doc,
                 early=early_record(tmp_path, mode=BoxMode.primary)) == tmp_path / "trees"
         assert resolve_workset_logs(tmp_path, doc,
@@ -1059,7 +1059,7 @@ class TestWorksetWorkspacesResolved:
         # Merge the repoint into the root workset.yaml (identity preserved).
         settings = root.resolve() / "workset.yaml"
         data = load_doc(settings)
-        data.setdefault("workset", {})["workspaces"] = "@meta.workset.path/pods"
+        data.setdefault("workset", {})["workspaces"] = "{meta.workset.path}/pods"
         dump_doc(settings, data)
 
         ws = load_workset(root, "repointed", early_system=std.early_system)
@@ -1082,7 +1082,7 @@ class TestWorksetWorkspacesResolved:
         std.primary_workset.mkdir(parents=True, exist_ok=True)
         dump_doc(
             std.primary_workset / "workset.yaml",
-            {"workset": {"workspaces": "@meta.workset.path/pods"}},
+            {"workset": {"workspaces": "{meta.workset.path}/pods"}},
         )
         ws = default_workset(std)
         assert ws.workspaces_dir == std.primary_workset / "pods"
@@ -1101,7 +1101,7 @@ class TestWorksetWorkspacesResolved:
         create_workset("det", root, std)
         settings = root.resolve() / "workset.yaml"
         data = load_doc(settings)
-        data.setdefault("workset", {})["workspaces"] = "@meta.workset.path/pods"
+        data.setdefault("workset", {})["workspaces"] = "{meta.workset.path}/pods"
         dump_doc(settings, data)
 
         app = root.resolve() / "pods" / "app"
@@ -1258,7 +1258,7 @@ class TestWorksetBoxesAndLogsResolved:
         root = (tmp_home / "worksets" / "moved").resolve()
         ws = create_workset("moved", root, std)
         dump_doc(root / "workset.yaml", {"workset": {
-            "boxes": "@meta.workset.path/store",
+            "boxes": "{meta.workset.path}/store",
             "logs": str(tmp_home / "elsewhere-logs"),
         }})
 
@@ -1308,7 +1308,7 @@ class TestWorksetBoxesAndLogsResolved:
 
         root = (tmp_home / "worksets" / "instore").resolve()
         ws = create_workset("instore", root, std)
-        dump_doc(root / "workset.yaml", {"workset": {"boxes": "@meta.workset.path/store"}})
+        dump_doc(root / "workset.yaml", {"workset": {"boxes": "{meta.workset.path}/store"}})
         add_project(ws, "proj", tmp_home / "project")
         assert (root / "store" / "proj").is_dir()
 
@@ -1354,7 +1354,7 @@ class TestWorksetBoxesAndLogsResolved:
         pw.mkdir(parents=True, exist_ok=True)
         dump_doc(pw / "workset.yaml", {"workset": {
             "boxes": str(tmp_home / "pw-boxes"),
-            "logs": "@meta.workset.path/log-archive",
+            "logs": "{meta.workset.path}/log-archive",
         }})
 
         moved = load_std_paths(load_config(config_file))
@@ -2736,6 +2736,6 @@ class TestCreateUnderASystemBoxesValue:
         assert [p.name for p in outside.iterdir()] == ["a"]
 
     def test_a_nested_leaf_inside_the_root_is_created(self, tmp_home, config_file):
-        std = self._system_boxes("@meta.workset.path/x/boxes", config_file)
+        std = self._system_boxes("{meta.workset.path}/x/boxes", config_file)
         ws = create_workset("nested", tmp_home / "worksets" / "nested", std)
         assert (ws.root / "x" / "boxes").is_dir()

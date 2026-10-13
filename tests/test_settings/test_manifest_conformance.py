@@ -338,7 +338,7 @@ class TestWorksetWorkspacesDefault:
         )
 
         (tmp_path / "workset.yaml").write_text(
-            "workset:\n  workspaces: '@meta.workset.path/pods'\n"
+            "workset:\n  workspaces: '{meta.workset.path}/pods'\n"
         )
         assert resolve_workset_workspaces(
             tmp_path, load_workset_settings_doc(tmp_path),

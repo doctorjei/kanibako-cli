@@ -132,7 +132,7 @@ class TestResolveSystemPathsOverrides:
     def test_data_override_tracks_dependents(self, tmp_path):
         """Overriding config.data moves dependents (which @-ref config.data)."""
         resolved = resolve_system_paths(
-            {"config.data": "$XDG_DATA_HOME/custom"},
+            {"config.data": "{$XDG_DATA_HOME}/custom"},
             data_home=tmp_path,
             home=tmp_path,
         )
@@ -167,7 +167,7 @@ class TestResolveSystemPathsOverrides:
     def test_unknown_system_ref_raises(self, tmp_path):
         with pytest.raises(SettingsError):
             resolve_system_paths(
-                {"system.channelroot": "@system.nope/x"},
+                {"system.channelroot": "{system.nope}/x"},
                 data_home=tmp_path,
                 home=tmp_path,
             )
@@ -175,7 +175,7 @@ class TestResolveSystemPathsOverrides:
     def test_unknown_config_ref_raises(self, tmp_path):
         with pytest.raises(SettingsError):
             resolve_system_paths(
-                {"system.channelroot": "@config.nope/x"},
+                {"system.channelroot": "{config.nope}/x"},
                 data_home=tmp_path,
                 home=tmp_path,
             )
@@ -271,8 +271,8 @@ class TestBareRelativeIsRefusedNotAnchored:
     def test_the_legal_shapes_still_resolve(self, tmp_path):
         home = tmp_path / "h"
         resolved = resolve_system_paths(
-            {"config.data": "~/.kani", "system.backup": "@config.data/bk",
-             "system.cache": "$XDG_CACHE_HOME/c", "system.canon": "/abs/canon"},
+            {"config.data": "~/.kani", "system.backup": "{config.data}/bk",
+             "system.cache": "{$XDG_CACHE_HOME}/c", "system.canon": "/abs/canon"},
             data_home=tmp_path, home=home,
         )
         assert resolved["system.backup"] == home / ".kani" / "bk"
@@ -992,7 +992,7 @@ class TestResolveSystemPathsXdgCtx:
         cfg_home = tmp_path / "cfg"
         monkeypatch.setenv("XDG_CONFIG_HOME", str(cfg_home))
         resolved = resolve_system_paths(
-            {"config.agents": "$XDG_CONFIG_HOME/kani-agents"},
+            {"config.agents": "{$XDG_CONFIG_HOME}/kani-agents"},
             data_home=tmp_path / "data",
             home=tmp_path,
         )
@@ -1002,7 +1002,7 @@ class TestResolveSystemPathsXdgCtx:
         run_dir = tmp_path / "run"
         monkeypatch.setenv("XDG_RUNTIME_DIR", str(run_dir))
         resolved = resolve_system_paths(
-            {"config.agents": "$XDG_RUNTIME_DIR/kani"},
+            {"config.agents": "{$XDG_RUNTIME_DIR}/kani"},
             data_home=tmp_path / "data",
             home=tmp_path,
         )
@@ -1036,7 +1036,7 @@ class TestResolverSplitRouting:
 
         # The snapshot has NO config.* node — only ctx.config does.
         snap = KeyStore()
-        snap["x"] = "@config.data/sub"
+        snap["x"] = "{config.data}/sub"
         ctx = self._ctx({"config.data": "/foundation/data"})
         out = expand(snap, ctx)
         assert out["x"] == "/foundation/data/sub"
@@ -1048,7 +1048,7 @@ class TestResolverSplitRouting:
         # A whole-value @config.* ref to a declared key absent from the foundation
         # → the holder key is DROPPED (absence propagation, spec §0).
         snap = KeyStore()
-        snap["x"] = "@config.journal"
+        snap["x"] = "{config.journal}"
         ctx = self._ctx({"config.data": "/foundation/data"})
         out = expand(snap, ctx)
         assert "x" not in out
@@ -1062,7 +1062,7 @@ class TestResolverSplitRouting:
         sysnode = KeyStore()
         sysnode["channelroot"] = "/snap/channels"
         snap["system"] = sysnode
-        snap["x"] = "@system.channelroot/chat"
+        snap["x"] = "{system.channelroot}/chat"
         ctx = self._ctx({"config.data": "/foundation/data"})
         out = expand(snap, ctx)
         assert out["x"] == "/snap/channels/chat"

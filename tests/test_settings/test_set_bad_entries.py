@@ -93,8 +93,8 @@ class TestSetRefusesOnABadEntry:
             "system": {"agent": "claude"}, "box": {"bogus": 1},
         })
         with caplog.at_level(logging.WARNING, logger=_LOGGER):
-            msg = _system_set(tmp_path, "system.template", "@system.canon/x", force=True)
-        assert msg == "Set system.template=@system.canon/x", msg
+            msg = _system_set(tmp_path, "system.template", "{system.canon}/x", force=True)
+        assert msg == "Set system.template={system.canon}/x", msg
         assert "upstream chain reaches" not in caplog.text
 
 
@@ -111,7 +111,7 @@ class TestAnInChainBadEntryIsHard:
         _write(ssp, {"box": {"bogus": "/tmp"}})
         before = ssp.read_text()
         with caplog.at_level(logging.WARNING, logger=_LOGGER):
-            msg = _system_set(tmp_path, "box.canon", "@box.bogus/x", force=True)
+            msg = _system_set(tmp_path, "box.canon", "{box.bogus}/x", force=True)
         assert msg.startswith("Error: "), msg
         assert "box.bogus" in msg and "--force does not set" in msg
         assert ssp.read_text() == before
@@ -121,7 +121,7 @@ class TestAnInChainBadEntryIsHard:
     def test_the_refusal_is_the_same_without_force(self, tmp_path):
         ssp = tmp_path / "settings.yaml"
         _write(ssp, {"box": {"bogus": "/tmp"}})
-        msg = _system_set(tmp_path, "box.canon", "@box.bogus/x")
+        msg = _system_set(tmp_path, "box.canon", "{box.bogus}/x")
         assert msg.startswith("Error: ") and "--force does not set" in msg, msg
 
     @pytest.mark.writes_undeclared("box.bogus", reason=_JUDGES)
@@ -129,10 +129,10 @@ class TestAnInChainBadEntryIsHard:
         """Two hops: the value names a DECLARED key whose own value names the bad entry."""
         ssp = tmp_path / "settings.yaml"
         _write(ssp, {
-            "agent": {"default": {"canon": "@box.bogus/x"}},
+            "agent": {"default": {"canon": "{box.bogus}/x"}},
             "box": {"canon": "/tmp/ok", "bogus": "/tmp"},
         })
-        msg = _system_set(tmp_path, "box.canon", "@agent.default.canon/y", force=True)
+        msg = _system_set(tmp_path, "box.canon", "{agent.default.canon}/y", force=True)
         assert msg.startswith("Error: ") and "box.bogus" in msg, msg
         assert "--force does not set" in msg, msg
         assert yaml.safe_load(ssp.read_text())["box"]["canon"] == "/tmp/ok"
@@ -140,8 +140,8 @@ class TestAnInChainBadEntryIsHard:
     @pytest.mark.writes_undeclared("box.self", reason=_JUDGES)
     def test_a_self_referential_entry_terminates_and_is_refused(self, tmp_path):
         ssp = tmp_path / "settings.yaml"
-        _write(ssp, {"box": {"self": "@box.self/x"}})
-        msg = _system_set(tmp_path, "box.canon", "@box.self/x", force=True)
+        _write(ssp, {"box": {"self": "{box.self}/x"}})
+        msg = _system_set(tmp_path, "box.canon", "{box.self}/x", force=True)
         assert msg.startswith("Error: ") and "box.self" in msg, msg
 
     def test_the_walk_terminates_on_a_loop_through_declared_keys(self):
@@ -149,11 +149,11 @@ class TestAnInChainBadEntryIsHard:
         pinned on the function: a two-key loop that reaches no bad entry ends empty."""
         from kanibako.settings.config import chain_reaches
 
-        stored = {"box.canon": "@box.shell/x", "box.shell": "@box.canon/y"}.get
-        assert chain_reaches("@box.canon/z", key="box.shell", targets=["box.bogus"], stored=stored) == []
-        assert chain_reaches("@box.canon/z", key="box.shell", targets=["box.shell"], stored=stored) == ["box.shell"]
-        stored2 = {"box.canon": "@box.bogus/x"}.get
-        assert chain_reaches("@box.canon/z", key="box.shell", targets=["box.bogus"], stored=stored2) == ["box.bogus"]
+        stored = {"box.canon": "{box.shell}/x", "box.shell": "{box.canon}/y"}.get
+        assert chain_reaches("{box.canon}/z", key="box.shell", targets=["box.bogus"], stored=stored) == []
+        assert chain_reaches("{box.canon}/z", key="box.shell", targets=["box.shell"], stored=stored) == ["box.shell"]
+        stored2 = {"box.canon": "{box.bogus}/x"}.get
+        assert chain_reaches("{box.canon}/z", key="box.shell", targets=["box.bogus"], stored=stored2) == ["box.bogus"]
 
 
 class TestAnEndpointHasNoChain:
@@ -178,10 +178,10 @@ class TestAnEndpointHasNoChain:
         ssp = tmp_path / "settings.yaml"
         _write(ssp, {"host": {"invalid": 1}, "agent": {"default": {"endpoint": self._EP}}})
         msg = _system_set(
-            tmp_path, "agent.claude.model", "@agent.default.endpoint", force=True,
+            tmp_path, "agent.claude.model", "{agent.default.endpoint}", force=True,
             agents_root=tmp_path / "agents",
         )
-        assert msg == "Set agent.claude.model=@agent.default.endpoint", msg
+        assert msg == "Set agent.claude.model={agent.default.endpoint}", msg
 
     def test_a_box_pref_endpoint_naming_a_bad_entry_sets_with_force(self, tmp_path):
         box = tmp_path / "box.yaml"
@@ -199,8 +199,8 @@ class TestAnEndpointHasNoChain:
         stored = {"agent.default.endpoint": "https://u:k@box.bogus/v1"}.get
         bad = ["box.bogus"]
         assert chain_reaches(self._EP, ["host.invalid"], key="endpoint", stored=stored) == []
-        assert chain_reaches("@agent.default.endpoint", bad, key="box.canon", stored=stored) == []
-        assert chain_reaches("@box.bogus/x", bad, key="box.canon", stored=stored) == bad
+        assert chain_reaches("{agent.default.endpoint}", bad, key="box.canon", stored=stored) == []
+        assert chain_reaches("{box.bogus}/x", bad, key="box.canon", stored=stored) == bad
 
 
 def _scoped_set(tmp_path, scope, key, value, **kw):
