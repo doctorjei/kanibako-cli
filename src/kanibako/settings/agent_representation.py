@@ -186,7 +186,7 @@ def agent_categories_for_node(
     host's real ``~/.claude`` means that dir for every node.
 
     ⚑ A value that is not a dict (a scalar source key) is re-keyed and carried
-    through: there is no source to re-root.  Every dict value is read as a ``BindArm``.
+    through: there is no source to re-root.  Dict values are ``BindArm``s.
     """
     if not node_name or node_name == harness:
         return dict(table)
