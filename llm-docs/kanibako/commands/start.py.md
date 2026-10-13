@@ -348,8 +348,8 @@ inside a mask, a mask may not take another mask's point nor land at or above hom
 land outside home, a sync may not take a bind's exact point, and a bind's options may not contradict
 its arm. The retired cross-scope pass permitted nested binds — it depth-sorted them and errored only
 on two concrete declarations at one IDENTICAL dest — so **configurations exist that used to launch
-fine and make the collapse raise.** That is the tightening, and it is what CHANGELOG + MIGRATION
-§2.31 owe.
+fine and make the collapse raise.** That is the tightening, and it is what CHANGELOG + MIGRATION.md
+§ "A mount set that cannot be assembled now stops the launch" owe.
 
 🐞 **AND 6-R3 CHANGED WHICH MESSAGE A CROSS-SCOPE PAIR GETS. MEASURED, not inferred.** Two binds at
 ONE identical dest in two scopes used to hit the reconcile FIRST, so the user got
@@ -385,7 +385,8 @@ gate is the resolve's own `include_base_families`, forwarded as `whole_box` rath
 
 ⚑ **A user-visible capability went with the row: a settings-file entry at `~` used to repoint the
 box home and WIN through the cascade; it is now a second bind at pid 0's point and REFUSES.** The
-cure is `workset.boxes`. CHANGELOG + MIGRATION §2.32, same commit.
+cure is `workset.boxes`. CHANGELOG + MIGRATION.md § "You can no longer repoint a box's home with a
+binding", same commit.
 
 ⚑ A partial write is worse than no write, which is why the two leaves that DESCRIBE an assembly are
 installed only after the fold returns — a half-built `meta.assembly.bindings` with no sync list
@@ -737,7 +738,8 @@ The collapse arbitrates masks against binds; the old mask arm did not arbitrate 
 two disagree, the map now decides both halves:
 
 * a **bind nested under a mask** is swept, and the mask survives — already true of the bind arm
-  since 2a-2 (MIGRATION §2.27); the mask arm now agrees with it instead of being computed elsewhere;
+  since 2a-2 (MIGRATION.md § "A mask hides the binds nested under it"); the mask arm now agrees
+  with it instead of being computed elsewhere;
 * a **bind at a mask's own destination**, declared in a LATER scope, sweeps the mask and takes the
   point. The retired cross-scope pass resolved that same collision the other way (a mask
   OVERRODE a binding at its dest), so between 2a-2 and 2a-4 the launch emitted BOTH — a `-v` bind and a

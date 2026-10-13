@@ -633,8 +633,9 @@ finds standalone boxes.
 
 ⚑ **The blanket `except Exception` here treats any detection failure as "not this box" — with ONE
 carve-out: `LegacyWorksetIdentityError` re-raises.** A workset root still on the retired
-`workset.meta` spelling (MIGRATION.md §2.43) is a named thing to fix, and swallowing it here would
-report the path as an unresolvable box instead of printing the cure.
+`workset.meta` spelling (MIGRATION.md § "A workset root no longer carries an identity table; an
+un-migrated root refuses") is a named thing to fix, and swallowing it here would report the path as
+an unresolvable box instead of printing the cure.
 
 ```_rm_standalone(std, box_name: str, root, args: argparse.Namespace) -> int```
 Remove a standalone box: always drop its registry entry, its `box_data/` on `--purge`.

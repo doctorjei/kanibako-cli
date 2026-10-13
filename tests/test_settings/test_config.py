@@ -590,7 +590,8 @@ class TestRetiredTemplatesStamp:
         "orphaned-ignored". A ``system:`` table is a SETTINGS table wherever it sits, and
         the Layer-1 file may not carry one, so the read now names it instead of carrying
         it inertly. ⚑ The orphan in a SETTINGS file is a different question and stays
-        §2.47's (an undeclared key stops the command).
+        MIGRATION.md § "An undeclared key in a settings file now stops the command,
+        and the cure is a hand-edit".
         """
         from kanibako.settings.config import load_config
         from kanibako.settings.config_interface import write_system_value

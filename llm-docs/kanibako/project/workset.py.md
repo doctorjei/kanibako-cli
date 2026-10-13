@@ -635,7 +635,7 @@ ordinary settings, drops the `meta` table with a generic unsettable-namespace wa
 looks at the `projects` list beside it, so the workset's members stop resolving with nothing printed
 to say why. The refusal names the file, the retired location, the `registry.yaml` membership
 destination and the global registry as the real home of the name; the shipped guide is
-MIGRATION.md §2.43.
+MIGRATION.md § "A workset root no longer carries an identity table; an un-migrated root refuses".
 
 ⚑ Two things the check deliberately does NOT do: a `workset.meta` that is a SCALAR is not the
 identity table and does not refuse, and an unparseable file is a miss rather than a refusal — this

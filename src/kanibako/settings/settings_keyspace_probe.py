@@ -67,8 +67,8 @@ UNIVERSAL table (``[R150]``: the ``agent.default`` tier is the partition line), 
 then whether the segment COULD name an agent (``_could_name_an_agent``): a §2a
 category token and ``default`` could not, so neither is ever conceded. Asking only
 "is it installed" made ``agent.common.plugins`` — the undiscriminated relic
-MIGRATION.md §2.11 tells users to grep for — resolve as a KEY, because no plugin
-declares an agent named ``common``.
+MIGRATION.md § "Housekeeping: renames you almost certainly don't carry" tells users
+to grep for — resolve as a KEY, because no plugin declares an agent named ``common``.
 🛑 THE RESIDUAL COST IS STATED, NOT HIDDEN, and it is IRREDUCIBLE: an agent NAME
 cannot be enumerated, so ``agent.goose.zippity`` resolves on a machine without goose
 (the price of not refusing ``agent.goose.provider`` there), and so does a typo'd

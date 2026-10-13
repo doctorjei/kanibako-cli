@@ -190,7 +190,8 @@ class TestB2bHomeVaultByteIdentity:
         assert by_dest["/home/agent/vault/rw"] == "/proj/vault/rw"
 
     def test_box_bindings_home_repoint_is_REFUSED(self):
-        """🛑 INVERTED AT CUTOVER 6-H — MIGRATION §2.32. This asserted the OPPOSITE.
+        """🛑 INVERTED AT CUTOVER 6-H — MIGRATION.md § "You can no longer repoint a
+        box's home with a binding". This asserted the OPPOSITE.
 
         It used to pin "Option A": a ``box.bindings.rw`` entry at ``~`` in a box
         settings FILE cascaded over the spec-derived core default and WON, and that was

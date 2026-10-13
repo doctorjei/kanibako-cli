@@ -119,7 +119,8 @@ def _refuse_retired_registry_sections(
         f"name, a created stamp or anything else about the workset itself.\n"
         f"\n"
         f"  Leave the rest of this file as it is. kanibako 1.8.0 ships no automatic "
-        f"migration for this — see MIGRATION.md §2.43."
+        f"migration for this — see MIGRATION.md "
+        f"§ \"A workset root no longer carries an identity table; an un-migrated root refuses\"."
     )
 
 

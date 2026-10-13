@@ -1022,7 +1022,8 @@ class TestTheFoundationIsBuiltAtTheSeam:
     def test_a_settings_file_binding_at_home_is_REFUSED(
         self, std, config, project_dir,
     ):
-        """⚑⚑ THE CAPABILITY REMOVAL, on the REAL launch seam — MIGRATION §2.32.
+        """⚑⚑ THE CAPABILITY REMOVAL, on the REAL launch seam — MIGRATION.md § "You
+        can no longer repoint a box's home with a binding".
 
         A ``box.bindings.rw`` entry at ``~`` used to be the documented way to give a
         box a custom home: it overrode the core row through the cascade and won. There
@@ -1253,7 +1254,8 @@ class TestTheEmitterConsumesTheShape:
         podman\'s depth-sort then landed the bind on top: the mask hid only what
         nothing else claimed. The collapse SWEEPS everything at or inside a mask,
         which is what a mask means. It does NOT refuse this configuration, so the
-        difference reaches the box — hence CHANGELOG + MIGRATION §2.27 at 2a-2.
+        difference reaches the box — hence CHANGELOG + MIGRATION.md § "A mask hides
+        the binds nested under it" at 2a-2.
 
         ⚑ The second half of this test — the retired route still carrying the swept
         bind — died with that route at 6-R3. The SWEEP is what matters and it is
@@ -1347,9 +1349,10 @@ class TestTheMaskArm:
     ):
         """⚑⚑ BOTH ARMS, ONE CONFIGURATION — the divergence this step closes.
 
-        A bind inside a mask is swept by the fold (MIGRATION §2.27, shipped at 2a-2
-        for the mount arm). What 2a-4 adds is that the SAME map answers the mask arm,
-        so the tmpfs the box receives is the one the sweep was performed against.
+        A bind inside a mask is swept by the fold (MIGRATION.md § "A mask hides the
+        binds nested under it", shipped at 2a-2 for the mount arm). What 2a-4 adds is
+        that the SAME map answers the mask arm, so the tmpfs the box receives is the
+        one the sweep was performed against.
         """
         proj = resolve_project(std, config, str(project_dir), initialize=True)
         snapshot, _deliveries = _resolve(std, proj, extra_default_categories={
@@ -1396,7 +1399,8 @@ class TestTheMaskArm:
     def test_a_mask_ABOVE_a_LATER_scopes_bind_STOPS_THE_LAUNCH(
         self, std, config, project_dir,
     ):
-        """⚑ MEASURED, and it is what MIGRATION §2.27 can no longer leave unsaid.
+        """⚑ MEASURED, and it is what MIGRATION.md § "A mask hides the binds nested
+        under it" can no longer leave unsaid.
 
         Whether a mask sweeps a bind nested under it depends on the SCOPE DIRECTION:
         the sweep only happens when the mask folds LAST. A mask whose scope strictly
@@ -1645,8 +1649,9 @@ class TestTheThreeMissingSourcePolicies:
         The policy sets are dest-spelled, and by the time the emitter reads the map
         the scope is gone — so a user's own bind that WINS one of the agent's delivery
         destinations inherits that destination's must-exist safe-fail rather than the
-        warn-and-drop it would have taken on the old route. Documented in MIGRATION
-        §2.28; this is the half of it the fold has to get right — that the box-scope
+        warn-and-drop it would have taken on the old route. Documented in MIGRATION.md
+        § "A missing bind source is handled by destination, not by who declared it";
+        this is the half of it the fold has to get right — that the box-scope
         declaration actually lands at that exact key.
         """
         critical = "/home/agent/.local/bin/claude"
@@ -1881,8 +1886,8 @@ class TestTheSeedApplierConsumesTheLeaf:
         ``box_dest='/home/agent/gone'`` off the real ``snapshot_category_entries``.
 
         Same change 2a-2 made for the mount warnings, now true of the seed path —
-        which is why CHANGELOG.md and MIGRATION.md §2.27 were extended rather than
-        given a second entry.
+        which is why CHANGELOG.md and MIGRATION.md § "A mask hides the binds nested
+        under it" were extended rather than given a second entry.
         """
         proj = resolve_project(std, config, str(project_dir), initialize=True)
         missing = tmp_path / "not-there"

@@ -597,8 +597,9 @@ a cure for an entry the cascade had already dropped — MEASURED: a `box.yaml` c
 `agent: {claude: {auto_approve: true}}` and `box: {zippity: wibble}` refused by naming
 `auto_approve`, telling the user the box "would come up at the DEFAULT tier" and handing over a
 `pref.agent.<agent>.access` write, for a table directional enforcement had dropped one log line
-earlier — while `box.zippity` was never mentioned. `MIGRATION.md` §2.1 already said of that table
-*"deleting it changes nothing"*; the record was right and the code was wrong.
+earlier — while `box.zippity` was never mentioned. `MIGRATION.md` § "Settings keys renamed or
+retired" already said of that table *"deleting it changes nothing"*; the record was right and the
+code was wrong.
 
 ⛑ **IT WARNS ONLY WHEN HANDED *path*, THE FILE IT NAMES.** A verb that shows a file WITHOUT
 assembling it passes *path* — `config_interface._noun_stored_view`, so plain `workset show` /

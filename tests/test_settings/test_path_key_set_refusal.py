@@ -148,8 +148,9 @@ class TestEverySetRouteRefusesABareRelative:
     def test_the_message_names_the_file_the_value_would_have_landed_in(
         self, std, tmp_home,
     ):
-        """``MIGRATION.md`` § 2.62 prints this transcript; the ``in <file>`` clause is
-        part of it, and it is the file the WRITE was routed to.  The other reading is
+        """``MIGRATION.md`` § "A bare relative path in a settings key is refused"
+        prints this transcript; the ``in <file>`` clause is part of it, and it is the
+        file the WRITE was routed to.  The other reading is
         the working set's own root, which only the working set as TARGET supplies."""
         from kanibako.settings.paths import workset_settings_path
 
@@ -288,10 +289,10 @@ class TestTheLegalShapesAreAccepted:
     def test_the_cure_the_refusal_OFFERS_actually_resolves(self, std, tmp_home):
         """⚑⚑ THE PAIR IS THE POINT, and it is why the set-time snapshot resolves the
         command's target.  The refusal names ``@meta.workset.path/comms``;
-        ``MIGRATION.md`` § 2.62's table names it as the replacement for the old
-        root-relative reading.  Without the working set's anchors the set-time E3
-        probe answered "dangling @-reference" to it — a rule that banned a form and
-        then refused its own cure."""
+        the table in ``MIGRATION.md`` § "A bare relative path in a settings key is
+        refused" names it as the replacement for the old root-relative reading.
+        Without the working set's anchors the set-time E3 probe answered "dangling
+        @-reference" to it — a rule that banned a form and then refused its own cure."""
         ws = create_workset("curews", tmp_home / "curews", std)
         refusal = _set_ws("workset.channelroot", _BARE, std, ws)
         offered = f"{{meta.workset.path}}/{_BARE}"

@@ -3224,7 +3224,7 @@ THE RULE: a workset has NO identity table on disk under its root. Its name lives
 
     2. Delete the `workset.meta` table from <path> — name, created stamp and projects together. NOTHING replaces it: `workset create` already registered this workset under its name in the global registry, and `created` is not recorded anywhere in 1.8.0.
 
-  Everything else in <path> stays put: the top-level `workset:` table is still where this workset's own SETTINGS live (`workset.bindings`, `workset.workspaces`, `workset.auth`, …), so delete only the `meta:` table from inside it. If nothing is left, delete the file outright — a workset root no longer needs one. kanibako 1.8.0 ships no automatic migration for this — see MIGRATION.md §2.43.
+  Everything else in <path> stays put: the top-level `workset:` table is still where this workset's own SETTINGS live (`workset.bindings`, `workset.workspaces`, `workset.auth`, …), so delete only the `meta:` table from inside it. If nothing is left, delete the file outright — a workset root no longer needs one. kanibako 1.8.0 ships no automatic migration for this — see MIGRATION.md § "A workset root no longer carries an identity table; an un-migrated root refuses".
 ```
 
 A root that spelled the table `meta.workset` instead gets the same refusal naming that spelling; the
@@ -3254,7 +3254,7 @@ THE RULE: this file records MEMBERSHIP and nothing else — one flat `boxes:` en
 
     2. Delete the `workset:` table. NOTHING replaces it — this workset is already named by the global registry, and no file under its root records a name, a created stamp or anything else about the workset itself.
 
-  Leave the rest of this file as it is. kanibako 1.8.0 ships no automatic migration for this — see MIGRATION.md §2.43.
+  Leave the rest of this file as it is. kanibako 1.8.0 ships no automatic migration for this — see MIGRATION.md § "A workset root no longer carries an identity table; an un-migrated root refuses".
 ```
 
 ---

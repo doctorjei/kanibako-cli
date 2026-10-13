@@ -224,13 +224,15 @@ One raise site, `project/workset.py:refuse_retired_workset_identity`, reached fr
 and from `settings/paths.py`'s ancestor walk. ⚑ **The subclass exists so ONE blanket catch can
 re-raise it:** `commands/box/_parser.py:_resolve_standalone_target` swallows every exception out of
 `detect_project_mode` as "a non-project path is simply a miss", and an un-migrated workset root in
-the ancestor walk is a named thing to fix, not a miss. Cure: MIGRATION.md §2.43.
+the ancestor walk is a named thing to fix, not a miss. Cure: MIGRATION.md § "A workset root no
+longer carries an identity table; an un-migrated root refuses".
 
 ```class LegacyRegistryIdentityError(WorksetError):```
 A per-workset `registry.yaml` still carries a RETIRED `workset:` identity table or `projects:` map
 (the unreleased 1.8.0 tree only). One raise site,
 `project/workset_registry.py:_refuse_retired_registry_sections`, reached from `_load_raw` — the
-module's ONE read seam, so every read of that file passes it. Cure: MIGRATION.md §2.43.
+module's ONE read seam, so every read of that file passes it. Cure: MIGRATION.md § "A workset
+root no longer carries an identity table; an un-migrated root refuses".
 
 ```class UserCanceled(KanibakoError):```
 User canceled an interactive prompt.

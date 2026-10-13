@@ -6275,10 +6275,11 @@ def test_a_retired_spelling_still_gets_its_own_refusal(tmp_path, parts, key):
     A fourth retirement row added to that table without a route to this seam reds
     instead of shipping a key whose documented cure the user never sees.
 
-    ⚑ WHAT WOULD BE LOST: ``MIGRATION.md`` §2.1 spends ~40 lines on these three,
-    quoting the message verbatim and handing over a copy-pasteable cure, because a
-    guessed agent seeds a DIFFERENT agent's credentials into the box. The generic
-    §0 text says only that the key is not a key.
+    ⚑ WHAT WOULD BE LOST: ``MIGRATION.md`` § "Settings keys renamed or retired"
+    spends ~40 lines on these three, quoting the message verbatim and handing over a
+    copy-pasteable cure, because a guessed agent seeds a DIFFERENT agent's
+    credentials into the box. The generic §0 text says only that the key is not a
+    key.
     """
     tier = _RETIRED_ROOT_TIER[parts[0]]
     path = tmp_path / ("box.yaml" if tier == "box_path" else "settings.yaml")
@@ -6441,8 +6442,9 @@ def test_a_dropped_table_cannot_produce_a_cure(tmp_path, tier, filename, text):
     ``box.zippity`` refused by naming ``auto_approve``, telling the user their box
     "would come up at the DEFAULT tier" and handing over a ``pref.agent.<agent>``
     write — for a table directional enforcement had dropped one log line earlier,
-    with ``box.zippity`` never mentioned at all. ``MIGRATION.md`` §2.1 says of that
-    table *"deleting it changes nothing"*, and it is right; the code was wrong.
+    with ``box.zippity`` never mentioned at all. ``MIGRATION.md`` § "Settings keys
+    renamed or retired" says of that table *"deleting it changes nothing"*, and it is
+    right; the code was wrong.
     """
     path = tmp_path / filename
     path.write_text(text, encoding="utf-8")
@@ -6587,7 +6589,8 @@ _RELIC_TIER_CASES = [
 def test_where_an_undiscriminated_agent_relic_stops_the_resolve(
     tmp_path, monkeypatch, tier, filename, refuses,
 ):
-    """⚑ ``MIGRATION.md`` §2.11 SAYS THIS PER FILE, so a pin says it per file.
+    """⚑ ``MIGRATION.md`` § "Housekeeping: renames you almost certainly don't carry"
+    SAYS THIS PER FILE, so a pin says it per file.
 
     The bullet used to claim flatly that a leftover ``agent.common.plugins`` "stops
     the resolve". It does in the system and base files, and (Q92: its ``agent:``

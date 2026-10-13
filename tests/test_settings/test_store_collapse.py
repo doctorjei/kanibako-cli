@@ -140,8 +140,8 @@ class TestHomeIsPidZero:
     distinct destinations" — two paths, no key, and no statement of what "suppress"
     means. The identical class of refusal a layer up
     (``settings_categories.raise_binding_vs_binding``) already publishes the correct
-    remedy, and MIGRATION.md §2.2 ships it verbatim, so this says the same thing in the
-    same words: one cure, one mechanism.
+    remedy, and MIGRATION.md § "Mount collisions are now hard errors" ships it
+    verbatim, so this says the same thing in the same words: one cure, one mechanism.
 
     🛑 The prefix (``COLLIDES``) was the only thing any test pinned, which meant the
     remedy could be reworded — or made wrong again — with the suite green.
@@ -1771,8 +1771,9 @@ class TestThePerRunOverride:
     """One flag, one behavior, whichever scope happens to own the variable.
 
     The core ``KANIBAKO_*`` stamps are ``system.env.*`` keys (MBR-1 P4b), the
-    outermost scope there is — so this is the case that makes MIGRATION §2.36's
-    *"-e reaches them"* true.
+    outermost scope there is — so this is the case that makes *"-e reaches them"*
+    true in MIGRATION.md § "The four `KANIBAKO_*` variables kanibako sets for itself are
+    settings now".
     """
     for scope in ("system", "workset", "box"):
       slots = self.slots({f"{scope}.env.KANIBAKO_NAME": "real"}, {"KANIBAKO_NAME": "x"})

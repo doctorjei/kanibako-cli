@@ -711,8 +711,8 @@ A stored `[system] templates_stamp` leaf on an existing host was ORPHANED-IGNORE
 2026-08-31 — an unknown `system.*` leaf reached no consumer and raised nothing. 🛑 **It now
 REFUSES**, and not as a special case: it is a `system:` table in the Layer-1 file, which that file
 may not carry at all, so the read names it like any other stale settings key. The cure is the same
-hand-edit `MIGRATION.md` § *2.67 Anything in `kanibako.cfg` that is not a declared `config.*` key
-stops the command* prescribes. Migration records: M-23, and §2.67.
+hand-edit `MIGRATION.md` § "Anything in `kanibako.cfg` that is not a declared `config.*` key stops
+the command" prescribes. Migration records: M-23, and that MIGRATION.md section.
 
 
 ```setup_compat_gate(settings_path: Path | None) -> str | None```

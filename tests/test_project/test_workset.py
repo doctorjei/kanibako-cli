@@ -2078,7 +2078,10 @@ class TestRetiredWorksetIdentityLocation:
         # ⚑ Nothing is told to write `created` anywhere; the field is gone.
         assert "`created` is not recorded anywhere in 1.8.0" in message
         # No auto-migration, and the shipped guide is cited BY FILENAME.
-        assert "MIGRATION.md §2.43" in message
+        assert (
+            'MIGRATION.md § "A workset root no longer carries an identity table; '
+            'an un-migrated root refuses"'
+        ) in message
 
     def test_cure_names_the_unreleased_spelling_when_that_is_what_is_there(
         self, tmp_home,
@@ -2329,7 +2332,10 @@ class TestRetiredRegistrySections:
         assert "global registry" in message
         assert "kanibako workset list" in message
         assert "boxes:\n           <box name>: <the path>" in message
-        assert "MIGRATION.md §2.43" in message
+        assert (
+            'MIGRATION.md § "A workset root no longer carries an identity table; '
+            'an un-migrated root refuses"'
+        ) in message
 
     def test_the_message_names_only_what_is_actually_there(self, tmp_home):
         from kanibako.errors import LegacyRegistryIdentityError

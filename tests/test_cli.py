@@ -2148,7 +2148,8 @@ class TestTemplateStalenessRetired:
 
         ⚑ THE USER-FACING COST OF THE DECLARATION, pinned so it cannot regress into a
         silent win for either key: a spelling that worked before the default shipped
-        stops the launch, and ``MIGRATION.md`` §2.79 carries the cure.
+        stops the launch, and ``MIGRATION.md`` § "Every agent now gets the host's
+        `TERM`, so a `TERM` key at another scope refuses" carries the cure.
         """
         from kanibako.settings.config_io import write_nested_key
         from kanibako.settings.settings_resolve import SettingsError

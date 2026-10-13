@@ -1479,7 +1479,8 @@ def refuse_retired_workset_identity(root: Path) -> None:
         f"\n"
         f"  Everything else in {path} stays put: {tail}. If nothing is left, delete the "
         f"file outright — a workset root no longer needs one. kanibako 1.8.0 ships no "
-        f"automatic migration for this — see MIGRATION.md §2.43."
+        f"automatic migration for this — see MIGRATION.md "
+        f"§ \"A workset root no longer carries an identity table; an un-migrated root refuses\"."
     )
 
 

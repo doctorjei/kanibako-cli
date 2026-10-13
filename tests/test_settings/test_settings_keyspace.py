@@ -1953,8 +1953,9 @@ def _category_tokens() -> "frozenset[str]":
 def test_a_category_token_under_agent_is_never_conceded(monkeypatch):
     """🛑 THE CONCESSION'S TEST IS "COULD THIS BE AN AGENT", NOT "IS IT INSTALLED".
 
-    ``agent.common.plugins`` is the UNDISCRIMINATED relic MIGRATION.md §2.11 tells
-    users to grep their stores for. Under the install-state test it classified KEY —
+    ``agent.common.plugins`` is the UNDISCRIMINATED relic MIGRATION.md
+    § "Housekeeping: renames you almost certainly don't carry" tells users to grep
+    their stores for. Under the install-state test it classified KEY —
     because nothing declares an agent named ``common`` — so the concession un-armed
     §0 over the exact shape the migration says stops a resolve. The category tokens
     are a KNOWN FINITE SET; there is nothing unknowable about them to concede.

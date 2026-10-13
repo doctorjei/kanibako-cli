@@ -1032,7 +1032,8 @@ def _could_name_an_agent(segment: str) -> bool:
     KNOWN FINITE SET the keyspace declares itself, so there is nothing unknowable
     about them and conceding one would un-arm §0 over a shape that is documented as
     a RELIC (``agent.common.plugins``, ``agent.env.<VAR>``, ``agent.seeded.*`` — the
-    undiscriminated launch-built form, MIGRATION.md §2.11).
+    undiscriminated launch-built form, MIGRATION.md § "Housekeeping: renames you almost
+    certainly don't carry").
 
     FALSE for a §2a category token and for a PSEUDO-AGENT name
     (:data:`~kanibako.agent_ref.PSEUDO_AGENT_NAMES`); all of them are then judged by
@@ -1848,8 +1849,9 @@ def key_class(
         # ⚑ THE ORDER INSIDE IS LOAD-BEARING and it is the COST order too: the
         # universal table is asked first, ``_could_name_an_agent`` second, the map
         # third. Ask the map first and ``agent.common.plugins`` — the undiscriminated
-        # relic MIGRATION.md §2.11 tells users to grep for — classifies as a KEY,
-        # because no plugin declares an agent named ``common``.
+        # relic MIGRATION.md § "Housekeeping: renames you almost certainly don't carry"
+        # tells users to grep for — classifies as a KEY, because no plugin declares an
+        # agent named ``common``.
         # ⚑ DEFERRED, not merely passed: reading the map is the production supplier's
         # plugin import, and ``AgentVocabulary`` asks it only for a leaf core cannot
         # answer. ``is_known`` is a bound method rather than a ``bool`` for the same

@@ -215,7 +215,8 @@ def test_the_concession_does_NOT_reach_the_relic_shapes(claude_only):
   there is nothing unknowable about them to concede. An earlier cut asked only the
   install question and classified all three shapes below as KEY — because no plugin
   declares an agent named ``common``, ``env`` or ``seeded`` — which un-armed §0 over
-  exactly the undiscriminated relic MIGRATION.md §2.11 tells users to grep for.
+  exactly the undiscriminated relic MIGRATION.md § "Housekeeping: renames you almost
+  certainly don't carry" tells users to grep for.
 
   ⚑ THREE NAMED SHAPES, not a corpus. The exhaustive sweep over every token in
   ``CATEGORY_FAMILY_ROOTS`` is ``test_settings_keyspace.py``'s

@@ -3198,7 +3198,8 @@ class TestXdgProjectionSh:
         assert _os.readlink(link) == before
 
     def test_existing_real_directory_is_never_clobbered(self, tmp_path):
-        """The MIGRATION.md §2.22 shape: a pre-v1.8.0 box has a REAL directory
+        """The MIGRATION.md § "New fixed box directory `~/.kanibako/`; the helper
+        socket and log moved into it" shape: a pre-v1.8.0 box has a REAL directory
         there, holding real files. Removing it is the user's call, never ours."""
         link = tmp_path / ".local" / "state" / "kanibako"
         link.mkdir(parents=True)

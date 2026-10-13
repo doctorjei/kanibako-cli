@@ -38,7 +38,8 @@ SOCKET_PATH="$HOME/.kanibako/state/helper.sock"
 # this is the same third-copy arrangement as SOCKET_PATH above; a test pins the two.
 # Edit the GENERATOR, never this block.  Skips when the two paths are already the
 # same, never re-points a symlink, never clobbers a real path (a pre-v1.8.0 box has a
-# real directory there — MIGRATION.md §2.22), never fails.  Idempotent.
+# real directory there — MIGRATION.md § "New fixed box directory `~/.kanibako/`; the
+# helper socket and log moved into it"), never fails.  Idempotent.
 _kb_pin="$HOME/.kanibako/state"
 _kb_xdg="${XDG_STATE_HOME:-}"
 case "$_kb_xdg" in /*) ;; *) _kb_xdg="$HOME/.local/state" ;; esac
