@@ -41,13 +41,13 @@ _FACE_MODULES = (workset, workset_registry)
 # ⚑ Every token shape a stored value may legally carry (spec ``:214``) that this seam
 # cannot resolve.  None of them may survive into a returned path.
 _UNRESOLVABLE = (
-    "@config.registry/x",
-    "@workset.boxes/x",
-    "@meta.box.path/x",
-    "$XDG_RUNTIME_DIR/x",
-    "$NOT_A_VARIABLE/x",
-    "$AGENT/x",
-    "$WORKSET/x",
+    "{config.registry}/x",
+    "{workset.boxes}/x",
+    "{meta.box.path}/x",
+    "{$XDG_RUNTIME_DIR}/x",
+    "{$NOT_A_VARIABLE}/x",
+    "{$AGENT}/x",
+    "{$WORKSET}/x",
 )
 
 # ⚑ Every value shape [R147] calls AMBIGUOUS: it resolves fine, but to two different
@@ -132,7 +132,7 @@ class TestNoResolverLeaksAToken:
     # ⚑ ``leaf`` USED TO BE IN THIS LIST and is now in ``_AMBIGUOUS`` below: [R147]
     # made a bare relative a REFUSAL, so it cannot also be a value that resolves.
     @pytest.mark.parametrize(
-        "value", ["@meta.workset.path/leaf", "$XDG_DATA_HOME/leaf", "~/leaf"]
+        "value", ["{meta.workset.path}/leaf", "{$XDG_DATA_HOME}/leaf", "~/leaf"]
     )
     def test_resolvable_value_leaves_no_token_behind(self, value, tmp_path):
         for label, resolver in _discover_resolvers().items():
@@ -251,14 +251,14 @@ class TestTheRouteItself:
     def test_refusal_names_the_key(self, tmp_path):
         with pytest.raises(SettingsError, match=r"workset\.channelroot"):
             resolve_workset_dir_key(
-                Path("/ws"), "@config.data/c", "channels", key="channelroot",
+                Path("/ws"), "{config.data}/c", "channels", key="channelroot",
                 early=_scope(tmp_path, {}),
             )
 
     def test_refusal_names_the_only_available_reference(self, tmp_path):
         with pytest.raises(SettingsError, match=WORKSET_PATH_REF):
             resolve_workset_dir_key(
-                Path("/ws"), "@config.data/c", "boxes", key="boxes",
+                Path("/ws"), "{config.data}/c", "boxes", key="boxes",
                 early=_scope(tmp_path, {}),
             )
 
@@ -276,7 +276,7 @@ class TestTheRouteItself:
         monkeypatch.setattr(paths_mod, "_fallback_runtime_dir", _boom)
         monkeypatch.delenv("XDG_RUNTIME_DIR", raising=False)
         assert resolve_workset_dir_key(
-            Path("/ws"), "$XDG_DATA_HOME/b", "boxes", key="boxes",
+            Path("/ws"), "{$XDG_DATA_HOME}/b", "boxes", key="boxes",
             early=early,
         ).is_absolute()
 
@@ -308,7 +308,7 @@ def _routed(key: str, value: object) -> dict:
 
 #: A system-tier value that reaches every owner's identity (keyspec §0), so the read door
 #: passes it in every mode, partition keys included.
-_ANCHORED = "/sys/x/{meta.workset.name}/@meta.workset.path"
+_ANCHORED = "/sys/x/{meta.workset.name}/{meta.workset.path}"
 
 
 class TestTheSystemFileIsTheTierBeneath:
@@ -337,7 +337,7 @@ class TestTheSystemFileIsTheTierBeneath:
     def test_a_system_value_reaches_the_faces(self, tmp_path):
         scope = _system_scope(
             _write_system({
-                "boxes": "/sys/boxes/@meta.workset.path", "registry": "@meta.workset.path/r.yaml",
+                "boxes": "/sys/boxes/{meta.workset.path}", "registry": "{meta.workset.path}/r.yaml",
             }),
             tmp_path,
         )
@@ -369,7 +369,7 @@ class TestTheSystemFileIsTheTierBeneath:
         assert "workset.boxes" in str(excinfo.value)
 
     def test_a_refusal_names_the_system_file(self, tmp_path):
-        system = _write_system({"boxes": "/z/$AGENT/{meta.workset.path}"})
+        system = _write_system({"boxes": "/z/{$AGENT}/{meta.workset.path}"})
         with pytest.raises(SettingsError) as excinfo:
             workset.resolve_workset_boxes(tmp_path, None, early=_system_scope(system, tmp_path))
         assert str(system) in str(excinfo.value)
@@ -379,15 +379,15 @@ class TestSameSetRefs:
     """A workset early key may reference another one; the same route resolves it."""
 
     def test_the_spec_channel_default_resolves(self, tmp_path):
-        doc = {"workset": {"channelroot": "@meta.workset.path/chan"}}
+        doc = {"workset": {"channelroot": "{meta.workset.path}/chan"}}
         assert resolve_workset_dir_key(
-            tmp_path, "@workset.channelroot/chat", "chat", key="channels.chat",
+            tmp_path, "{workset.channelroot}/chat", "chat", key="channels.chat",
             standalone=False, workset_settings=doc, early=_scope(tmp_path, {}),
         ) == tmp_path / "chan" / "chat"
 
     def test_an_unset_referent_takes_its_declared_default_through_a_chain(self, tmp_path):
         assert resolve_workset_dir_key(
-            tmp_path, "@workset.channels.chat/broadcast.md", "", key="channels.broadcast",
+            tmp_path, "{workset.channels.chat}/broadcast.md", "", key="channels.broadcast",
             standalone=False, early=_scope(tmp_path, {}),
         ) == tmp_path / "channels" / "chat" / "broadcast.md"
 
@@ -396,21 +396,21 @@ class TestSameSetRefs:
             _write_system({"channelroot": "/sys/chan/{meta.workset.path}"}), tmp_path,
         )
         assert resolve_workset_dir_key(
-            tmp_path, "@workset.channelroot/chat", "", key="channels.chat", standalone=False,
+            tmp_path, "{workset.channelroot}/chat", "", key="channels.chat", standalone=False,
             early=scope,
         ) == Path(f"/sys/chan/{tmp_path}/chat")
 
     @pytest.mark.parametrize(("standalone", "leaf"), [(True, "box_data"), (False, "boxes")])
     def test_the_mode_picks_the_referents_default(self, standalone, leaf, tmp_path):
         assert resolve_workset_dir_key(
-            tmp_path, "@workset.boxes/x", "", key="logs", standalone=standalone,
+            tmp_path, "{workset.boxes}/x", "", key="logs", standalone=standalone,
             early=_scope(tmp_path, {}),
         ) == tmp_path / leaf / "x"
 
     def test_an_unknown_mode_refuses_a_mode_split_default(self, tmp_path):
         with pytest.raises(SettingsError) as excinfo:
             resolve_workset_dir_key(
-                tmp_path, "@workset.boxes/x", "", key="canon", early=_scope(tmp_path, {}),
+                tmp_path, "{workset.boxes}/x", "", key="canon", early=_scope(tmp_path, {}),
             )
         message = str(excinfo.value)
         assert "'{workset.boxes}' is unset" in message
@@ -418,19 +418,19 @@ class TestSameSetRefs:
 
     def test_a_cycle_is_refused(self, tmp_path):
         doc = {"workset": {
-            "channelroot": "@workset.channels.chat/x",
-            "channels": {"chat": "@workset.channelroot/chat"},
+            "channelroot": "{workset.channels.chat}/x",
+            "channels": {"chat": "{workset.channelroot}/chat"},
         }}
         with pytest.raises(SettingsError, match=r"Cyclic reference: \{workset\.channelroot\}"):
             resolve_workset_dir_key(
-                tmp_path, "@workset.channels.chat/x", "", key="channelroot",
+                tmp_path, "{workset.channels.chat}/x", "", key="channelroot",
                 standalone=False, workset_settings=doc, early=_scope(tmp_path, {}),
             )
 
     def test_a_null_referent_is_refused(self, tmp_path):
         with pytest.raises(SettingsError, match=r"'\{workset.channelroot\}' is null"):
             resolve_workset_dir_key(
-                tmp_path, "@workset.channelroot/chat", "", key="channels.chat",
+                tmp_path, "{workset.channelroot}/chat", "", key="channels.chat",
                 standalone=False, workset_settings={"workset": {"channelroot": None}},
                 early=_scope(tmp_path, {}),
             )
@@ -438,13 +438,13 @@ class TestSameSetRefs:
     def test_a_workset_key_outside_the_early_keys_is_refused(self, tmp_path):
         with pytest.raises(SettingsError, match=r"'\{workset.kuid\}' cannot be resolved here"):
             resolve_workset_dir_key(
-                tmp_path, "@workset.kuid/x", "", key="logs", early=_scope(tmp_path, {}),
+                tmp_path, "{workset.kuid}/x", "", key="logs", early=_scope(tmp_path, {}),
             )
 
     def test_a_ref_into_a_later_set_gets_the_ordering_verdict(self, tmp_path):
         with pytest.raises(SettingsError) as excinfo:
             resolve_workset_dir_key(
-                tmp_path, "@meta.box.path", "", key="logs", standalone=True, early=_scope(tmp_path, {}),
+                tmp_path, "{meta.box.path}", "", key="logs", standalone=True, early=_scope(tmp_path, {}),
             )
         message = str(excinfo.value)
         assert 'system-design "Ordering rule"' in message
@@ -456,7 +456,7 @@ class TestSameSetRefs:
         ) == (
             tmp_path / "box_data"
         )
-        doc = {"workset": {"boxes": "@meta.workset.path/store"}}
+        doc = {"workset": {"boxes": "{meta.workset.path}/store"}}
         assert workset.resolve_workset_logs(
             tmp_path, doc, standalone=True, early=_scope(tmp_path, {}),
         ) == (
@@ -512,7 +512,7 @@ class TestARecordIsTheSystemTier:
         _write_system({"channelroot": "/file/chan"})
         scope = _scope(tmp_path, {"workset.channelroot": "/rec/chan/{meta.workset.path}"})
         assert resolve_workset_dir_key(
-            tmp_path, "@workset.channelroot/chat", "", key="channels.chat", standalone=False,
+            tmp_path, "{workset.channelroot}/chat", "", key="channels.chat", standalone=False,
             early=scope,
         ) == Path(f"/rec/chan/{tmp_path}/chat")
 
@@ -520,7 +520,7 @@ class TestARecordIsTheSystemTier:
         _write_system({"boxes": "/file/boxes", "registry": "/file/r.yaml"})
         scope = _scope(tmp_path, {
             "workset.boxes": "/rec/boxes/{meta.workset.path}",
-            "workset.registry": "@meta.workset.path/r.yaml",
+            "workset.registry": "{meta.workset.path}/r.yaml",
         })
         assert workset.resolve_workset_boxes(tmp_path, None, early=scope) == Path(
             f"/rec/boxes/{tmp_path}",
@@ -536,7 +536,7 @@ class TestARecordIsTheSystemTier:
         assert str(scope.system.file) in str(excinfo.value)
 
     def test_a_workset_carries_its_record_to_its_readers(self, tmp_path, no_system_open):
-        scope = _scope(tmp_path, {"workset.boxes": "/rec/boxes/@meta.workset.path"})
+        scope = _scope(tmp_path, {"workset.boxes": "/rec/boxes/{meta.workset.path}"})
         ws = workset.Workset(name="ws", root=tmp_path, early_system=scope.system)
         assert ws.early_scope == scope
         assert ws.projects_dir == Path(f"/rec/boxes/{tmp_path}")
@@ -565,7 +565,7 @@ class TestARecordIsTheSystemTier:
     def test_the_stamp_dirs_read_the_record(self, tmp_path, no_system_open):
         from kanibako.launch.templates import _workset_stamp_dirs
 
-        scope = _scope(tmp_path, {"workset.canon": "@meta.workset.path/c"})
+        scope = _scope(tmp_path, {"workset.canon": "{meta.workset.path}/c"})
         canon, template = _workset_stamp_dirs(tmp_path, canon_only=False, early=scope)
         assert (canon, template) == (tmp_path / "c", tmp_path / "template")
 

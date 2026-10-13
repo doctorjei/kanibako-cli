@@ -642,7 +642,7 @@ class TestLayeredHomeSeed:
         install_packaged_templates(std, ["claude"])
         (std.template / "box" / "home" / "base-only.txt").write_text("base")
         _write_system_settings(
-            std, {"system": {"seeded": {"~/from-workset/": ["@workset.template/box/home"]}}},
+            std, {"system": {"seeded": {"~/from-workset/": ["{workset.template}/box/home"]}}},
         )
 
         snapshot = _seed(std, standalone_proj)
@@ -758,7 +758,7 @@ class TestLayeredHomeSeed:
         (std.template / "box" / "home" / "base-only.txt").write_text("base")
         if spelling == "store_ref":
             root = std.agents / "shell" / "template"
-            value = "@config.agents/shell/template"
+            value = "{config.agents}/shell/template"
         else:
             root = tmp_path / "custom-tpl"
             value = str(root)
@@ -1005,7 +1005,7 @@ class TestLayeredHomeSeed:
         install_packaged_templates(std, ["shell"])
         (std.template / "box" / "home" / "base-only.txt").write_text("base")
         _write_system_settings(
-            std, {"system": {"seeded": {"~/x": ["@agent.shell.template"]}}},
+            std, {"system": {"seeded": {"~/x": ["{agent.shell.template}"]}}},
         )
 
         snapshot = _apply_init_seeds(
@@ -1582,7 +1582,7 @@ class TestBoxHandbookHostCopyThroughTheSeam:
         self._populate(std)
         self._plant_shell_store(std)
         _write_system_settings(
-            std, {"agent": {"shell": {"template": "@config.agents/shell/template"}}},
+            std, {"agent": {"shell": {"template": "{config.agents}/shell/template"}}},
         )
         _install_handbook(std, primary_proj, agent="shell")
         assert (_handbook_dir(primary_proj) / "agent-only.md").read_text() == (
@@ -1600,7 +1600,7 @@ class TestBoxHandbookHostCopyThroughTheSeam:
         self._populate(std)
         self._plant_shell_store(std)
         _cli_set_agent_key(
-            std, "system set", "shell", "template", "@config.agents/shell/template",
+            std, "system set", "shell", "template", "{config.agents}/shell/template",
         )
         _install_handbook(std, primary_proj, agent="shell")
         assert (_handbook_dir(primary_proj) / "agent-only.md").read_text() == (
@@ -2192,7 +2192,7 @@ class TestWorksetStampFollowsTheKeys:
         file must land under the repointed root and NOWHERE else — a stamp at the
         literal ``canon/`` is a tier the box's own key resolution will never read."""
         install_packaged_templates(std, ["claude"])
-        root = self._root_with_repoint(tmp_home, "solo-repoint", canon="@meta.workset.path/my_canon")
+        root = self._root_with_repoint(tmp_home, "solo-repoint", canon="{meta.workset.path}/my_canon")
         resolve_standalone_project(std, config, str(root), initialize=True)
         assert (
             root / "my_canon" / "handbook" / "SYS_WORKSET.md"
@@ -2205,7 +2205,7 @@ class TestWorksetStampFollowsTheKeys:
         from kanibako.launch.templates import install_workset_template
 
         install_packaged_templates(std, ["claude"])
-        root = self._root_with_repoint(tmp_home, "solo-seam", canon="@meta.workset.path/elsewhere/canon")
+        root = self._root_with_repoint(tmp_home, "solo-seam", canon="{meta.workset.path}/elsewhere/canon")
         install_workset_template(std, root, workset_name=WS_TOKEN_STANDALONE, canon_only=True)
         assert (
             root / "elsewhere" / "canon" / "handbook" / "SYS_WORKSET.md"
@@ -2223,7 +2223,7 @@ class TestWorksetStampFollowsTheKeys:
         bad = std.template / "workset" / "canon" / "notebook" / "NOTES.md"
         bad.parent.mkdir(parents=True, exist_ok=True)
         bad.write_text("nope\n")
-        root = self._root_with_repoint(tmp_home, "solo-pre", canon="@meta.workset.path/my_canon")
+        root = self._root_with_repoint(tmp_home, "solo-pre", canon="{meta.workset.path}/my_canon")
         with pytest.raises(TemplateScopeError):
             check_workset_template(std, root, workset_name=WS_TOKEN_STANDALONE, canon_only=True)
         assert not (root / "my_canon").exists()
@@ -2240,7 +2240,7 @@ class TestWorksetStampFollowsTheKeys:
         bad = std.template / "workset" / "canon" / "notebook" / "NOTES.md"
         bad.parent.mkdir(parents=True, exist_ok=True)
         bad.write_text("nope\n")
-        root = self._root_with_repoint(tmp_home, "solo-deny-repoint", canon="@meta.workset.path/my_canon")
+        root = self._root_with_repoint(tmp_home, "solo-deny-repoint", canon="{meta.workset.path}/my_canon")
         with pytest.raises(TemplateScopeError) as exc:
             install_workset_template(std, root, workset_name=WS_TOKEN_STANDALONE, canon_only=True)
         assert "WORKSET" in str(exc.value)
@@ -2260,7 +2260,7 @@ class TestWorksetStampFollowsTheKeys:
         ws = tmp_path / "ws-template-repoint"
         ws.mkdir()
         (ws / "workset.yaml").write_text(
-            yaml.safe_dump({"workset": {"template": "@meta.workset.path/molds"}})
+            yaml.safe_dump({"workset": {"template": "{meta.workset.path}/molds"}})
         )
         install_workset_template(std, ws, workset_name=ws.name)
         assert (ws / "molds" / "box" / "home" / "canon" / "notebook").is_dir()
@@ -2481,7 +2481,7 @@ class TestWorksetStampRefusesAnEscapingLeaf:
         from kanibako.launch.templates import install_workset_template
 
         install_packaged_templates(std, ["claude"])
-        root = self._root(tmp_path, "ws-escape", template="@meta.workset.path/../escaped")
+        root = self._root(tmp_path, "ws-escape", template="{meta.workset.path}/../escaped")
         with pytest.raises(TemplateScopeError) as exc:
             install_workset_template(std, root, workset_name=root.name)
         assert "workset.template" in str(exc.value)
@@ -2567,7 +2567,7 @@ class TestWorksetStampRefusesAnEscapingLeaf:
         from kanibako.launch.templates import install_workset_template
 
         install_packaged_templates(std, ["claude"])
-        root = self._root(tmp_path, "solo-template-noise", template="@meta.workset.path/../nowhere")
+        root = self._root(tmp_path, "solo-template-noise", template="{meta.workset.path}/../nowhere")
         install_workset_template(std, root, workset_name=WS_TOKEN_STANDALONE, canon_only=True)
         assert (root / "canon" / "handbook").is_dir()
         assert not (tmp_path / "nowhere").exists()

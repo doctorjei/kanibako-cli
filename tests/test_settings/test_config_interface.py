@@ -3218,7 +3218,7 @@ class TestCrossScopeCascadeConfigSet:
         box_f = tmp_path / "box-settings.yaml"
         ws_f = self._seed_workset(tmp_path, "vault_ro", "/srv/vault/ro")
         msg = set_config_value(
-            "box.canon", "@workset.vault_ro/bar",
+            "box.canon", "{workset.vault_ro}/bar",
             config_path=box_f, command_scope=ConfigLevel.box,
             cascade_workset_path=ws_f,
             cascade_box_path=box_f,
@@ -3226,7 +3226,7 @@ class TestCrossScopeCascadeConfigSet:
         # ALLOWED: @workset.vault_ro is visible in the full cascade -> resolves.
         assert not msg.startswith("Error:"), msg
         # stored RAW (the @-ref, NOT a literal — §0 files unresolved).
-        assert load_doc(box_f)["box"]["canon"] == "@workset.vault_ro/bar"
+        assert load_doc(box_f)["box"]["canon"] == "{workset.vault_ro}/bar"
 
     def test_cross_scope_ref_false_blocked_without_workset_file(self, tmp_path):
         """Control: the SAME @workset.* ref with NO workset file in the cascade
@@ -3234,7 +3234,7 @@ class TestCrossScopeCascadeConfigSet:
         doing (the workset key really is the only thing that resolves it)."""
         box_f = tmp_path / "box-settings.yaml"
         msg = set_config_value(
-            "box.canon", "@workset.vault_ro/bar",
+            "box.canon", "{workset.vault_ro}/bar",
             config_path=box_f, command_scope=ConfigLevel.box,
             cascade_box_path=box_f,
         )
@@ -3248,7 +3248,7 @@ class TestCrossScopeCascadeConfigSet:
         box_f = tmp_path / "box-settings.yaml"
         ws_f = self._seed_workset(tmp_path, "vault_ro", "/srv/vault/ro")
         msg = set_config_value(
-            "box.canon", "@workset.nope_absent/bar",
+            "box.canon", "{workset.nope_absent}/bar",
             config_path=box_f, command_scope=ConfigLevel.box,
             cascade_workset_path=ws_f,
             cascade_box_path=box_f,
@@ -3264,12 +3264,12 @@ class TestCrossScopeCascadeConfigSet:
         ws_f = tmp_path / "ws-settings.yaml"
         dump_doc(ws_f, {"workset": {"vault_ro": "/srv/vault/ro", "auth": {"path": "/old"}}})
         msg = set_config_value(
-            "workset.auth.path", "@workset.vault_ro/sub",
+            "workset.auth.path", "{workset.vault_ro}/sub",
             config_path=ws_f, command_scope=ConfigLevel.workset,
             cascade_workset_path=ws_f,
         )
         assert not msg.startswith("Error:"), msg
-        assert load_doc(ws_f)["workset"]["auth"]["path"] == "@workset.vault_ro/sub"
+        assert load_doc(ws_f)["workset"]["auth"]["path"] == "{workset.vault_ro}/sub"
 
 
 # ---------------------------------------------------------------------------
@@ -3299,11 +3299,11 @@ class TestCommandFileTakesTheCommandScopeSlot:
         ws_f = tmp_path / WORKSET_META_FILE
         dump_doc(ws_f, {"workset": {"vault_ro": "/srv/vault/ro"}})
         msg = set_config_value(
-            "box.canon", "@workset.vault_ro/@meta.box.name/sub",
+            "box.canon", "{workset.vault_ro}/{meta.box.name}/sub",
             config_path=ws_f, command_scope=ConfigLevel.workset,
         )
         assert not msg.startswith("Error:"), msg
-        assert load_doc(ws_f)["box"]["canon"] == "@workset.vault_ro/@meta.box.name/sub"
+        assert load_doc(ws_f)["box"]["canon"] == "{workset.vault_ro}/{meta.box.name}/sub"
         # The workset table survived the write, too.
         assert load_doc(ws_f)["workset"]["vault_ro"] == "/srv/vault/ro"
 
@@ -3321,7 +3321,7 @@ class TestCommandFileTakesTheCommandScopeSlot:
         caplog.clear()
         with caplog.at_level("WARNING", logger="kanibako.settings.settings_assemble"):
             msg = set_config_value(
-                "box.canon", "/w/@meta.workset.path/@meta.box.name",
+                "box.canon", "/w/{meta.workset.path}/{meta.box.name}",
                 config_path=cf, system_settings_path=ssp,
                 command_scope=ConfigLevel.system,
                 cascade_system_path=ssp,
@@ -3339,17 +3339,17 @@ class TestCommandFileTakesTheCommandScopeSlot:
         ssp = tmp_path / "settings.yaml"
         dump_doc(ssp, {"box": {"shell": "/srv/from-settings"}})
         msg = set_config_value(
-            "box.canon", "@box.shell/@meta.workset.path/@meta.box.name",
+            "box.canon", "{box.shell}/{meta.workset.path}/{meta.box.name}",
             config_path=cf, system_settings_path=ssp,
             command_scope=ConfigLevel.system,
             cascade_system_path=ssp,
         )
         assert not msg.startswith("Error:"), msg
-        assert load_doc(ssp)["box"]["canon"] == "@box.shell/@meta.workset.path/@meta.box.name"
+        assert load_doc(ssp)["box"]["canon"] == "{box.shell}/{meta.workset.path}/{meta.box.name}"
 
 
 #: ``@box.image`` with the identity a containing scope's ``box.canon`` must reach (keyspec §0).
-_BOX_CANON_ANCHORED = "@box.image/@meta.workset.path/@meta.box.name"
+_BOX_CANON_ANCHORED = "{box.image}/{meta.workset.path}/{meta.box.name}"
 
 
 class TestLayer1FileIsNotASettingsSourceAtAll:
@@ -3394,7 +3394,7 @@ class TestLayer1FileIsNotASettingsSourceAtAll:
         self._plant(config_file)
         f = tmp_path / f"{scope.value}.yaml"
         msg = set_config_value(
-            "box.canon", "@box.image" if scope is ConfigLevel.box else _BOX_CANON_ANCHORED,
+            "box.canon", "{box.image}" if scope is ConfigLevel.box else _BOX_CANON_ANCHORED,
             config_path=f, command_scope=scope,
         )
         assert not msg.startswith("Error:"), msg
@@ -3410,7 +3410,7 @@ class TestLayer1FileIsNotASettingsSourceAtAll:
         """
         f = tmp_path / "box.yaml"
         msg = set_config_value(
-            "box.env.PROBE", "@box.image", config_path=f,
+            "box.env.PROBE", "{box.image}", config_path=f,
             command_scope=ConfigLevel.box,
         )
         assert not msg.startswith("Error:"), msg
@@ -3423,11 +3423,11 @@ class TestLayer1FileIsNotASettingsSourceAtAll:
         """
         f = tmp_path / "box.yaml"
         msg = set_config_value(
-            "box.env.SH", "@box.shell", config_path=f,
+            "box.env.SH", "{box.shell}", config_path=f,
             command_scope=ConfigLevel.box,
         )
         assert not msg.startswith("Error:"), msg
-        assert load_doc(f)["box"]["env"]["SH"] == "@box.shell"
+        assert load_doc(f)["box"]["env"]["SH"] == "{box.shell}"
 
     def test_config_data_still_resolves_through_the_foundation(
         self, config_file, tmp_path,
@@ -3444,7 +3444,7 @@ class TestLayer1FileIsNotASettingsSourceAtAll:
         """
         f = tmp_path / "box.yaml"
         msg = set_config_value(
-            "box.env.PROBE", "@config.data", config_path=f,
+            "box.env.PROBE", "{config.data}", config_path=f,
             command_scope=ConfigLevel.system,
         )
         assert not msg.startswith("Error:"), msg
@@ -5548,7 +5548,7 @@ class TestSetTimeResolutionProbe:
 
     def test_dangling_embedded_ref_is_refused_and_names_the_referent(self, tmp_path):
         msg = set_config_value(
-            "workset.boxes", "@meta.nope.key/boxes",
+            "workset.boxes", "{meta.nope.key}/boxes",
             config_path=tmp_path / BOX_META_FILE,
             command_scope=ConfigLevel.workset,
         )
@@ -5560,7 +5560,7 @@ class TestSetTimeResolutionProbe:
         cfg = tmp_path / BOX_META_FILE
         cfg.write_text("workset:\n  template: /ws/template\n")
         msg = set_config_value(
-            "workset.auth.path", "@workset.template/auth",
+            "workset.auth.path", "{workset.template}/auth",
             config_path=cfg, cascade_workset_path=cfg,
             command_scope=ConfigLevel.workset,
         )
@@ -5576,7 +5576,7 @@ class TestSetTimeResolutionProbe:
         cfg = tmp_path / BOX_META_FILE
         cfg.write_text("workset:\n  template: null\n")
         msg = set_config_value(
-            "workset.auth.path", "@workset.template/auth",
+            "workset.auth.path", "{workset.template}/auth",
             config_path=cfg, cascade_workset_path=cfg,
             command_scope=ConfigLevel.workset,
         )
@@ -5590,7 +5590,7 @@ class TestSetTimeResolutionProbe:
         """``config set`` must stay usable to REPAIR a broken config: the probe
         blocks only on the EDITED value's own transitive upstream chain."""
         cfg = tmp_path / BOX_META_FILE
-        cfg.write_text("workset:\n  logs: '@meta.also.nope/logs'\n")
+        cfg.write_text("workset:\n  logs: '{meta.also.nope}/logs'\n")
         msg = set_config_value(
             "workset.boxes", "/abs/boxes",
             config_path=cfg, cascade_workset_path=cfg,
@@ -5655,7 +5655,7 @@ class TestSetTimeResolutionProbe:
         ``@``-ref here would otherwise resolve to ``""`` silently at launch.
         """
         msg = set_config_value(
-            "box.env.MY_PATH", "@nope.not.a.key/bin",
+            "box.env.MY_PATH", "{nope.not.a.key}/bin",
             config_path=tmp_path / BOX_META_FILE,
             command_scope=ConfigLevel.box,
         )
@@ -5669,7 +5669,7 @@ class TestSetTimeResolutionProbe:
         """
         for key in ("box.shell", "box.secret_path.TOK"):
             msg = set_config_value(
-                key, "@meta.nope.key/x",
+                key, "{meta.nope.key}/x",
                 config_path=tmp_path / f"{key.replace('.', '_')}.yaml",
                 command_scope=ConfigLevel.box,
             )
@@ -6303,7 +6303,7 @@ class TestPrefShow:
 
         snap = KeyStore({
             "pref": {"system": {"agent": "goose"},
-                     "agent": {"claude": {"template": "@workset.template/x"}}},
+                     "agent": {"claude": {"template": "{workset.template}/x"}}},
             "system": {"agent": "goose"},
             "agent": {"claude": {"template": "/ws/tpl/x"}},
         })
@@ -6318,7 +6318,7 @@ class TestPrefShow:
         assert "-> system.agent = goose" in out
         # ⚑ The REQUEST is shown as WRITTEN while the RESULT is resolved — the
         # whole reason expand carries the pref subtree through unexpanded.
-        assert "pref.agent.claude.template = @workset.template/x" in out
+        assert "pref.agent.claude.template = {workset.template}/x" in out
         assert "-> agent.claude.template = /ws/tpl/x" in out
 
     def test_effective_distinguishes_suppressed_from_unset(self, tmp_path, capsys):
@@ -6516,7 +6516,7 @@ class TestPrefValueValidation:
         accepted and then silently DROPPED the target at launch."""
         f = tmp_path / BOX_META_FILE
         msg = set_config_value(
-            "pref.agent.claude.template", "@nope.nothing/x",
+            "pref.agent.claude.template", "{nope.nothing}/x",
             config_path=f, command_scope=ConfigLevel.box,
         )
         assert msg.startswith("Error:")
@@ -7827,7 +7827,7 @@ class TestSetTimeAgentFileRootScalar:
         agent_file = agent_settings_path(tmp_path / "agents", "claude")
         agent_file.parent.mkdir(parents=True)
         dump_doc(agent_file, {"self": {"model": "opus"}})
-        value, errors = self._expand_probe(std, agent_file, "@agent.claude.model/x")
+        value, errors = self._expand_probe(std, agent_file, "{agent.claude.model}/x")
         assert self._KEY not in errors, errors
         assert value == "opus/x", value
 
@@ -7835,5 +7835,5 @@ class TestSetTimeAgentFileRootScalar:
         agent_file = agent_settings_path(tmp_path / "agents", "claude")
         agent_file.parent.mkdir(parents=True)
         dump_doc(agent_file, {"self": {"model": "opus", "zz_undeclared": "x"}})
-        value, errors = self._expand_probe(std, agent_file, "@agent.claude.model/x")
+        value, errors = self._expand_probe(std, agent_file, "{agent.claude.model}/x")
         assert self._KEY in errors, (value, errors)
