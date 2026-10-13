@@ -62,3 +62,7 @@ A global-synced workset box writes its workset dir AND host home, so it passes b
 *store_dirs*. Sorted real-path order means no single call can invert or repeat its way into a
 deadlock; a nested entry over a directory already held still self-deadlocks, because each entry
 opens a fresh descriptor.
+
+**Why the lock is TOLERANT.** The guarded operation must never be BLOCKED by a lock-infrastructure
+hiccup, so a directory that cannot be opened or locked is skipped and the operation proceeds without
+that lock.
