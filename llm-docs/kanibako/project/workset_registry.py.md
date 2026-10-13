@@ -20,11 +20,10 @@ boxes:                      # box membership — the WHOLE file
 The entry KEY is the box name (the `<leaf>` for a workset box) and the value is that box's workspace
 path: the external dir for a connect, `workspaces/<name>` for an in-tree member.
 
-⚑ **`_SECTIONS` is the canonical on-disk ORDER**, applied on every write by `_write_doc`, with
-unknown sections appended after; `_SORTED_SECTIONS` names the name-keyed sections additionally sorted
-by name. Both are one-element tuples today. They stay tuples rather than collapsing to a constant so
-a sibling-owned section can be added without reshaping the writer, and so a registry written by two
-different verbs still diffs cleanly.
+⚑ Every write rebuilds the file with `boxes:` alone, sorted by name; any other top-level section is
+dropped and printed as a warning naming the file (`_write_doc` → `registry_store.write_registry_doc`).
+`_SECTIONS` and `_SORTED_SECTIONS` are one-element tuples, kept as tuples so a sibling-owned section
+can be added without reshaping the writer.
 
 ## ⚑⚑ Why identity does NOT live here
 
@@ -34,12 +33,10 @@ system-design §Detect's registry-borne rule is about MEMBERSHIP: *"Members live
 list` reads. Nothing under the workset root repeats it, and `project/workset.py` takes the name as an
 argument rather than reading one.
 
-⚑⚑ **THE PATH IS RECORDED EXACTLY ONCE.** For one day the unreleased tree kept a `workset:` identity
-table here AND a `projects:` map holding every member path a second time. Both are RETIRED, and both
-now HARD-REFUSE (`_refuse_retired_registry_sections`), because the two copies drifted: a disconnect
-dropped the `projects:` row and orphaned the `boxes:` one — which then tripped the uniqueness
-refusal below and locked that workspace out of its own workset under any name — and an in-tree
-connect recorded two different paths for one box. v1.6.0/v1.7.x roots carry neither shape; theirs is
+⚑⚑ **THE PATH IS RECORDED EXACTLY ONCE.** A `workset:` identity table or a `projects:` map (a second
+copy of every member path) HARD-REFUSES (`_refuse_retired_registry_sections`,
+`LegacyRegistryIdentityError`), with by-hand fix steps: two copies of one path drift, and a
+disconnect that drops one row orphans the other. v1.6.0/v1.7.x roots carry neither shape; theirs is
 the `settings.yaml` table `project/workset.py` refuses.
 
 ⚑ There is no detection input here any more. A directory is a NAMED workset root **iff** the global
@@ -61,8 +58,7 @@ design consequences follow, and both run the direction that surprises people:
   workset root for box dirs to decide who is a member.
 
 The PRIMARY workset's instance of this file additionally holds the primary-mode name → EXTERNAL
-workspace mappings, which is what replaced the retired global `projects` section in
-`registry_store`. Primary is non-exceptional otherwise: its location is derivable from the Layer-1
+workspace mappings; there is no global `projects` section in `registry_store`. Primary is non-exceptional otherwise: its location is derivable from the Layer-1
 `config.primary_workset`.
 
 ⚑ **This is why a per-workset `registry.yaml` must never be templated or copied between worksets.**
@@ -82,11 +78,10 @@ registered a box reads clean.
 
 ## Write discipline
 
-Writes go through `config_io.dump_doc` — temp file plus `os.replace`, so a crash mid-write cannot
-leave a torn registry — and they **preserve every sibling section untouched**: the raw document is
-read back and only the section being written is swapped. That is what lets the three sections have
-INDEPENDENT writers, should a sibling ever own one. `register_workset_box` /
-`unregister_workset_box` swap `boxes:` and leave everything else in the document alone.
+Writes go through `registry_store.write_registry_doc` (atomic, via `config_io.dump_doc`: temp file
+plus `os.replace`, so a crash mid-write cannot leave a torn registry), under `REGISTRY_HEADER`, and
+every read-modify-write runs under `rmw_lock(registry_path)`. Every write rebuilds the file with
+`boxes:` alone; any other top-level section is dropped and printed as a warning naming the file.
 
 A write never scaffolds a section it was not asked to write. `unregister_workset_box` in particular
 short-circuits before touching disk when the file is absent or the name is not present, so an
@@ -109,14 +104,14 @@ Every section reader goes through `_section`, so it is written once.
 ⚑ `_load_raw` is **THE ONE READ SEAM**, which is why the retired-section refusal lives there: every
 read of a per-workset registry passes through it, so no caller can slip past a `workset:` or
 `projects:` section by reading some other way. A non-mapping document (a scalar YAML file) is handed
-straight back, exactly as before — `_section` already tolerates it.
+straight back; `_section` already tolerates it.
 
-## The workspace-path uniqueness invariant (the Bug A durable fix)
+## The workspace-path uniqueness invariant
 
 Within a workset's `boxes:` section, **a workspace path maps to EXACTLY ONE box name.**
 `register_workset_box` enforces it: if the incoming path is already registered under a DIFFERENT
-name, it raises `ProjectError` rather than mint a second entry pointing at the same workspace. That
-duplicate-minting was the root cause that surfaced to the user as duplicate `box list` rows.
+name, it raises `ProjectError` rather than mint a second entry pointing at the same workspace, which
+would surface as duplicate `box list` rows.
 
 The guard is deliberately narrow, and it obstructs neither legitimate flow:
 
@@ -126,23 +121,20 @@ The guard is deliberately narrow, and it obstructs neither legitimate flow:
 | a MOVED box | yes | no | the stored path is overwritten |
 | a duplicate | no | yes | **refused**, `ProjectError` |
 
-### Why the comparison is resolved-path aware
+The self test is case-blind (spec §0 NAMING RULES): `Foo` against a stored `foo` is the SAME box,
+so it is not a second registration, and the case-variant row is dropped rather than left beside
+the new one. `unregister_workset_box` and `workset_box_path` also find a name case-blind; the table
+keeps the spelling it was registered under.
 
-`_same_workspace` tries exact string equality first, because that is the common case — callers store
-already-resolved paths. It then falls back to comparing `Path.resolve()` results, so a normalization
-or symlink difference between a stored value and a re-registering caller still counts as the SAME
-workspace. That drift is exactly what let Bug A slip past a naive equality check and mint the
-duplicate.
+### Paths compare literally
 
-`Path.resolve` is called non-strict here, so a not-yet-existing path never raises; the `OSError` /
-`RuntimeError` arm covers the remaining resolution failures (a symlink loop, an unreadable
-component) by answering "not the same" rather than propagating.
+`_same_workspace` is `literal_path(a) == literal_path(b)`: links are unfollowed, so a symlink alias
+of a stored path is a different workspace.
 
 ## Reverse lookup, and the drift it catches
 
 `reverse_lookup_workset_box` is the reverse of the name → path membership map, and it shares
-`_same_workspace`, so it matches a symlink or normalization alias of the stored path for the same
-reason `register_workset_box` refuses one.
+`_same_workspace`, so it matches exactly the paths `register_workset_box` treats as one workspace.
 
 Its caller is the registration layer — `resolve_project`'s Guard 2 in `settings/paths.py` — which
 uses it to reuse an already-registered box name instead of minting a duplicate. That is defense in
@@ -152,64 +144,22 @@ already lost — for instance a purge that dropped the global name but left this
 
 ## Resolving the registry path
 
-`resolve_workset_registry_path` is a pure function of its inputs — no global state; the caller passes
-the workset root and that workset's settings document. Two arms:
+`resolve_workset_registry_path(workset_root, workset_settings, *, early)` is a pure function of its
+inputs — no global state; the caller passes the workset root, that workset's settings document, and
+the required `early=` scope (the system tier). It is one face of the no-snapshot route
+(`early_repoint` → `resolve_workset_dir_key`):
 
-* **`workset.registry` is SET** in the settings mapping — the routed nested slot
-  `workset: {registry: <path>}`, the same location `config set workset.registry=<path>` writes. It is
-  honored: `~` expands, an absolute path is used as-is, and a RELATIVE repoint anchors under the
-  workset root, deterministically, like the sibling path keys.
-* **otherwise** the default `<workset_root>/registry.yaml`, == `@meta.workset.path/registry.yaml`.
-
-`None` for the settings document, or a `workset` table that is not a mapping, falls through to the
-default. A standalone box has no per-workset registry at all (spec §2c: `workset.{registry,template}`
+* **`workset.registry` is SET** — in the root's `workset.yaml` (the nested slot
+  `workset: {registry: <path>}`), else at the system tier. The raw value may carry `@`-refs,
+  `$XDG_*`, or `~`, resolved by `resolve_workset_dir_key`'s token grammar; a bare-relative value
+  is REFUSED ([R147]), and a value that cannot resolve without the launch snapshot raises
+  `SettingsError` naming the key, the file, and the token.
+* **A present `null` REFUSES**: `SettingsError(ERR_CONFIG_NULL_PATH)`, naming the key and the file.
+  This file is the only source of box names, so the default would read a file the user says is not
+  there.
+* **otherwise** the default `<workset_root>/registry.yaml`, == `@meta.workset.path/registry.yaml`. A standalone box has no per-workset registry at all (spec §2c: `workset.{registry,template}`
 resolve to `<None>` for a lone box), so this resolver is never reached on that path.
 
 `project/workset.py` mirrors this resolver at its own no-snapshot seam for the resolved workset dir
 keys (`workset.workspaces` / `workset.channelroot`), and says so in the banner above
 `load_workset_settings_doc`.
-
----
-
-## FALSE CLAIM FOUND AND DROPPED (llm-docs pass, 2026-08-20)
-
-Recorded here rather than relocated, because relocating a drifted claim launders it into a document
-that reads as current.
-
-**"This is ADDITIVE infrastructure (settings-conformance phase P3): nothing consumes it yet — the
-launch/create cutover that moves box membership onto per-workset registries is P4/P5. It changes no
-existing flow."** — the whole paragraph is now false. The cutover happened. Measured with
-`command grep -rn` over `src/` and `packages/`: `settings/paths.py` calls
-`resolve_workset_registry_path` at five sites, and wraps the membership verbs in
-`_register_workset_box_membership`, `_unregister_workset_box_membership`,
-`_workset_box_name_for_workspace` and the workset-box path/list helpers, which `resolve_project`
-and the box-listing paths then use; `project/workset.py` registers membership during workset box
-creation and rolls it back on failure. The module is on the live create, register, resolve and list
-paths. **Dropped.**
-
-### Completeness sweep
-
-Everything else in the pre-pass source was relocated in substance into a section above, or was
-duplication of a sentence that survives elsewhere in this document. The three named duplications:
-
-1. The module docstring stated the `workset.registry` default path (`@meta.workset.path/registry.yaml`
-   == `<workset_root>/registry.yaml`) and `resolve_workset_registry_path`'s docstring stated it
-   again. Surviving carrier: "Resolving the registry path" above, plus the H1 paragraph.
-2. "Atomic; preserves every sibling section" appeared in the module docstring and again in
-   `_write_boxes`, `register_workset_box` and `unregister_workset_box`. Surviving carrier: "Write
-   discipline" above.
-3. `_same_workspace`'s resolved-path rationale was stated in its own docstring and again, in the
-   same words, in `reverse_lookup_workset_box`'s. Surviving carrier: "Why the comparison is
-   resolved-path aware" above.
-
-**Two `⚑` one-liners were KEPT IN SOURCE** under the keep test, because deleting either would let a
-future edit break something silently at that exact line:
-
-* above `_load_boxes_raw`'s `... or {}` — it reads like a redundant belt-and-braces default and is
-  not one;
-* above `register_workset_box`'s refusal loop — it looks like an over-strict check a future reader
-  would relax, and relaxing it re-opens Bug A.
-
-The authoritative-membership statement was kept in the module docstring as a correctness warning, per
-the keep rule: a reader who believes this file is a derived cache will treat it as safe to
-regenerate, template or hand-edit.
