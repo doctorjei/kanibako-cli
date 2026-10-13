@@ -14,8 +14,8 @@ is at the same path.  Key shapes, the TERMINAL / dest-keyed rules (R-5/R-6),
 
 ⚑ IT DOES NOT DISCOVER, RESOLVE OR EMIT — ``settings_launch.snapshot_category_entries``
 walks the precedence levels and CONSTRUCTS every ``CategoryEntry``.  This one is
-**pure**, importing only stdlib — an invariant, not a coincidence: a resolver import
-would close a cycle, which is why emission sits at the launch seam.
+**pure**; a module-scope resolver import would close a cycle, which is why emission
+sits at the launch seam.
 
 ⚑ Cross-category collision resolution (the spec §0 identical-dest TABLE) is NOT here
 any more.  The by-dest reconcile was RETIRED at 6-R3 and THREE seams replaced it, each
@@ -89,9 +89,9 @@ _BIND_CATEGORIES: Final[tuple[str, ...]] = (
     "bindings.ro", "bindings.rw", "caches", "seeded", "common", "synced",
 )
 #: The bind-shaped categories whose CATEGORY KEY IS TERMINAL — the whole of the key,
-#: with a destination-keyed map for a value (R-5/R-6).  ALL SIX since 2026-08-08c.
+#: with a destination-keyed map for a value (R-5/R-6).  ALL SIX.
 #: ⚑ A MIRROR, NOT THE DEFINITION — ``settings_keyspace.TERMINAL_CATEGORY_TAILS`` owns
-#: that; DERIVED rather than imported to keep this module stdlib-only, and PINNED
+#: that; DERIVED rather than imported (no module-scope keyspace edge), and PINNED
 #: EQUAL by ``test_the_bind_shaped_terminal_mirror_cannot_drift``.
 _TERMINAL_BIND_CATEGORIES: Final[tuple[str, ...]] = _BIND_CATEGORIES
 #: Those that still have a PER-ENTRY DOTTED KEY — the derived complement, so
@@ -205,8 +205,8 @@ BIND_KEY_RE = re.compile(
     if _NON_TERMINAL_CATEGORY_ALT
     else r"(?!)"  # matches nothing, ever
 )
-# ``{scope}.masks`` — value-less category (a list of box_dest paths). The KEY has
-# no per-entry name; entries are expanded per list element (name = the index).
+# ``{scope}.masks`` — keyed category (``{box_dest: true}``). The KEY has no
+# per-entry name; each emitted entry's name is its box_dest.
 MASK_KEY_RE = re.compile(rf"^(?P<scope>{_FILE_SCOPE_ALT}|{_AGENT_SCOPE})\.masks$")
 # ``{scope}.env.{VAR}`` — scalar env var; VAR may NOT contain dots (env names).
 ENV_KEY_RE = re.compile(
