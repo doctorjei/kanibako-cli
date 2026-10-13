@@ -746,7 +746,7 @@ def _resolve_system_path_keys(set_values: Mapping[str, str | None], keys: Iterab
             try:
                 return config[ref]
             except KeyError:
-                raise SettingsError(ERR_SETTINGS_BAD_REF % ("config", ref)) from None
+                raise SettingsError(ERR_SETTINGS_BAD_REF % ("config ", ref)) from None
         rv = resolve_value(ref, levels=levels, ctx=ctx, lookup=lookup)
         if isinstance(rv, _Unset):
             raise SettingsError(ERR_SETTINGS_BAD_REF % ("", ref))

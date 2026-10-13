@@ -55,9 +55,9 @@ WARN_BOX_VAULT_UNUSABLE = ("Warning: the %s vault for box '%s' at %s is %s; it l
                                          # "rw" | "ro", box name, the vault path, unusable_dir_finding()
 
 # ⚑ The 1st arg of each pair below is a LAYER DISCRIMINATOR, not a value; BAD_REF's is spliced
-# INSIDE the @-sigil, so "" is load-bearing punctuation ("Unknown @-reference:").
+# before "reference", so "" is load-bearing punctuation ("Unknown reference:").
 ERR_SETTINGS_BAD_PATH = "Unresolvable %s path: %s" # "config" | "system", key
-ERR_SETTINGS_BAD_REF =  "Unknown @%s-reference: %s" # "" | "config", ref
+ERR_SETTINGS_BAD_REF =  "Unknown %sreference: {%s}" # "" | "config ", ref
 ERR_CONFIG_NO_FILE =    "%s is missing. Run any kanibako command to initialize." # config file path
 # ⚑ The LOUD half of R153: a stale settings table in the Layer-1 file refuses, never drops.
 # ⚑ THE CURE IS ORDERED, AND THE ORDER IS LOAD-BEARING: the hand-edit comes FIRST. Every
@@ -150,11 +150,11 @@ ERR_BEHAVIOR_NULL_FLAGS = " %s overrides it for one launch."
 # empty-value doors share ONE builder. The two REASONs are the launch's own clauses.
 ERR_BOX_STORE_TRAILING_REASON = (
                         "its trailing separator means the final path segment resolved to "
-                        "nothing (an empty @meta.box.name leaves the box root pointing at the "
+                        "nothing (an empty {meta.box.name} leaves the box root pointing at the "
                         "SHARED box store, so every box in the workset would resolve the same "
                         "home)")
 ERR_BOX_STORE_EMPTY_REASON = (
-                        "the box root 'meta.box.path' derives from '@workset.boxes', so a "
+                        "the box root 'meta.box.path' derives from '{workset.boxes}', so a "
                         'settings file that sets workset.boxes to null / "" — or removes it '
                         "— leaves every key rooted at the box root pointing somewhere at the "
                         "filesystem root")
@@ -164,11 +164,11 @@ ERR_BOX_STORE_SET_HEAD = (
                         "refused too:\n  %s\n")
                                                     # the offending key
 # ⚑ THE SET DOOR'S HALF of the ordering rule (system-design "Ordering rule") for the SYSTEM PATH TIER;
-# scope and why are stated once, on ``config.system_path_ref_error``. ⚑ The @-sigils are
-# LITERAL, unlike ``ERR_SETTINGS_BAD_REF``'s spliced one — this names what the user wrote.
+# scope and why are stated once, on ``config.system_path_ref_error``. ⚑ The reference shown
+# is the BRACED spelling of the key the value names, so the user can paste it.
 ERR_CONFIG_PATH_REF_SCOPE = (
-                        "%s is set to %r, which points at '@%s' — outside the system "
-                        "path tier. A system path value may reference only @config.* keys "
+                        "%s is set to %r, which points at '{%s}' — outside the system "
+                        "path tier. A system path value may reference only {config.*} keys "
                         "and the system path keys, so it cannot be read back at that "
                         "stage — it is resolved before every other key. Reference one of "
                         "those keys instead, or set the path you mean.")
@@ -176,7 +176,7 @@ ERR_CONFIG_PATH_REF_SCOPE = (
 # ⚑ THE SET DOOR'S ordering rule (system-design "Ordering rule") for every other key;
 # scope and why are stated once, on ``config.ref_order_error``.
 ERR_CONFIG_REF_ORDER = (
-                        "%s is set to %r, which points at '@%s' — a %s key, which resolves "
+                        "%s is set to %r, which points at '{%s}' — a %s key, which resolves "
                         "after the %s keys this one belongs to. A key may reference only "
                         "keys of its own set or of a set resolved before it (system-design "
                         "\"Ordering rule\"). Reference one of those keys instead, or set the "

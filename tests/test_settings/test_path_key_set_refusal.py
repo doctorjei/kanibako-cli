@@ -113,6 +113,8 @@ def _assert_named_both_readings(
     # ...and the OTHER root, resolved or spelled, on its own line.
     anchor_ref, _label = path_key_anchor(key)
     assert anchor_ref in message or message.count(f"/{value}") >= 2
+    # The cure names the BRACED reference spelling (keyspec §0 "References").
+    assert "'{$XDG_*}/...', or a '{key}' reference." in message, message
 
 
 class TestEverySetRouteRefusesABareRelative:
@@ -373,7 +375,7 @@ class TestSetTimeResolvesTheCommandsTarget:
         ws = create_workset("noboxws", tmp_home / "noboxws", std)
         message = _set_ws("workset.auth.path", f"{ref}/auth", std, ws)
         assert message.startswith("Error:"), message
-        assert f"points at '{ref}'" in message, message
+        assert f"points at '{{{ref.removeprefix('@')}}}'" in message, message
         assert 'system-design "Ordering rule"' in message, message
 
     def test_a_write_naming_no_target_gets_no_anchor_from_its_file(self, tmp_path):
@@ -630,7 +632,7 @@ class TestEveryNounPassesItsTarget:
 
 #: Shapes whose ``@``-ref names a key OUTSIDE the system path tier.  Each parses to a
 #: real ref the set-time CASCADE floor can satisfy, and each reads as
-#: ``Unknown @-reference`` at the launch — the two doors disagreeing, which is the defect.
+#: ``Unknown reference`` at the launch — the two doors disagreeing, which is the defect.
 _OUT_OF_TIER_SHAPES = [
     "@box.image/x",
     "@box.enable_vault/x",
@@ -657,7 +659,7 @@ class TestASystemPathValueMayNotPointOutOfItsTier:
         assert message.startswith("Error:"), message
         # ⚑ THE REF AND THE WHY, not a generic complaint: the user must learn WHICH
         # reference was out of scope and that the launch could not read it back.
-        assert "@box" in message
+        assert "'{box" in message, message
         assert "outside the system path tier" in message
         # ⚑ REFUSED BEFORE THE WRITE — a poisoned settings file is what the set-time
         # half exists to prevent.
@@ -687,9 +689,9 @@ class TestASystemPathValueMayNotPointOutOfItsTier:
         files["system"].write_text("system:\n  agent: claude\n")
         message = _set("system.template", "@system.agent/x", files, ConfigLevel.system)
         assert message.startswith("Error:"), message
-        assert "'@system.agent'" in message and "outside the system path tier" in message
-        assert "@config.* keys and the system path keys" in message, message
-        assert "@system.* keys" not in message, message
+        assert "'{system.agent}'" in message and "outside the system path tier" in message
+        assert "{config.*} keys and the system path keys" in message, message
+        assert "{system.*} keys" not in message and "@system.* keys" not in message, message
         assert "template" not in str(load_doc(files["system"]))
 
     # ---- the half that breaks quietly: an over-firing door ----
@@ -769,7 +771,7 @@ class TestASystemPathValueMayNotPointOutOfItsTier:
 
     def test_the_read_seam_still_reports_the_unknown_reference(self, tmp_home):
         """THE LAUNCH IS UNCHANGED.  A value written by hand, past every set door, is
-        still read as ``Unknown @-reference`` — this door changed what may be STORED,
+        still read as ``Unknown reference`` — this door changed what may be STORED,
         not what the launch says about a value already in the file."""
         from kanibako.settings.paths import resolve_system_paths
 
@@ -778,4 +780,4 @@ class TestASystemPathValueMayNotPointOutOfItsTier:
                 {"system.template": "@box.image/x"},
                 data_home=tmp_home / "data", home=tmp_home,
             )
-        assert "Unknown @-reference" in str(exc.value), str(exc.value)
+        assert "Unknown reference: {box.image}" in str(exc.value), str(exc.value)

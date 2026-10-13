@@ -60,7 +60,7 @@ def test_a_dropped_system_table_refuses_the_ref_naming_why(value, tmp_path):
   failed = EarlyScope(
     replace(early.system, system_paths={}, system_refusal="system.cache is null"), early.workset_name,
   )
-  with pytest.raises(SettingsError, match="'@system.channels.mailboxes' cannot be read: system.cache is null"):
+  with pytest.raises(SettingsError, match=r"'\{system.channels.mailboxes\}' cannot be read: system.cache is null"):
     _read(value, failed)
 
 
@@ -69,7 +69,7 @@ def test_a_null_system_path_is_refused(value, tmp_path):
   early = early_record(tmp_path, mode=BoxMode.primary)
   paths = {**early.system.system_paths, "system.channels.mailboxes": None}
   null = EarlyScope(replace(early.system, system_paths=paths), early.workset_name)
-  with pytest.raises(SettingsError, match="'@system.channels.mailboxes' is null in"):
+  with pytest.raises(SettingsError, match=r"'\{system.channels.mailboxes\}' is null in"):
     _read(value, null)
 
 

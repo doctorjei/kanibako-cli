@@ -172,6 +172,9 @@ class TestNoResolverAnchorsAnAmbiguousValue:
             assert str(Path("/ws") / value) in message, f"{label}: no workset reading"
             assert str(link / value) in message, f"{label}: no cwd reading"
             assert str(real.resolve() / value) not in message, f"{label}: the physical cwd"
+            # The anchor and the cure both name the BRACED spelling (keyspec §0).
+            assert f"spelled '{{meta.workset.path}}/{value}'" in message, f"{label}: {message}"
+            assert "or a '{key}' reference." in message, f"{label}: {message}"
 
 
 class TestEveryFaceRoutesThroughTheOneResolver:
@@ -410,7 +413,7 @@ class TestSameSetRefs:
                 tmp_path, "@workset.boxes/x", "", key="canon", early=_scope(tmp_path, {}),
             )
         message = str(excinfo.value)
-        assert "'@workset.boxes' is unset" in message
+        assert "'{workset.boxes}' is unset" in message
         assert "box_data" in message
 
     def test_a_cycle_is_refused(self, tmp_path):
@@ -425,7 +428,7 @@ class TestSameSetRefs:
             )
 
     def test_a_null_referent_is_refused(self, tmp_path):
-        with pytest.raises(SettingsError, match="'@workset.channelroot' is null"):
+        with pytest.raises(SettingsError, match=r"'\{workset.channelroot\}' is null"):
             resolve_workset_dir_key(
                 tmp_path, "@workset.channelroot/chat", "", key="channels.chat",
                 standalone=False, workset_settings={"workset": {"channelroot": None}},
@@ -433,7 +436,7 @@ class TestSameSetRefs:
             )
 
     def test_a_workset_key_outside_the_early_keys_is_refused(self, tmp_path):
-        with pytest.raises(SettingsError, match="'@workset.kuid' cannot be resolved here"):
+        with pytest.raises(SettingsError, match=r"'\{workset.kuid\}' cannot be resolved here"):
             resolve_workset_dir_key(
                 tmp_path, "@workset.kuid/x", "", key="logs", early=_scope(tmp_path, {}),
             )

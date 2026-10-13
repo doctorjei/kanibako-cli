@@ -241,7 +241,7 @@ def ambiguous_path_value_error(
     *anchor* is the RESOLVED directory of the other candidate reading: the root this
     key's own default sits under, which is the only anchor besides the cwd that the
     user could plausibly have meant.  *anchor_ref* is that root's legal spelling
-    (``@meta.workset.path``, ``$XDG_DATA_HOME``), offered so the user can paste the
+    (``{meta.workset.path}``, ``{$XDG_DATA_HOME}``), offered so the user can paste the
     fix.  *where* names the file the value was read from, when the seam has one.
     *anchor_label* introduces the reading — see :data:`DECLARATION_ROOT_LABEL` for the
     one case where the default wording would be a lie.
@@ -262,7 +262,7 @@ def ambiguous_path_value_error(
         f"    {Path(anchor) / value}   ({anchor_label}{spelled})\n"
         f"    {Path(logical_cwd()) / value}   (the directory kanibako was run from)\n"
         f"Set the one you mean, spelled so it resolves on its own: an absolute "
-        f"path, '~/...', '$XDG_*/...', or an '@'-ref."
+        f"path, '~/...', '{{$XDG_*}}/...', or a '{{key}}' reference."
     )
 
 

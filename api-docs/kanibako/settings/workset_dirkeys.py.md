@@ -10,7 +10,7 @@ _Signatures only: no comments, no docstrings, no bodies._
 WORKSET_PATH_REF = 'meta.workset.path'
 WORKSET_NAME_REF = 'meta.workset.name'
 WORKSET_EARLY_KEYS: frozenset[str] = frozenset({WORKSPACES_PATH, BOXES_PATH, LOGS_PATH, 'channelroot', 'registry', 'canon', 'template', 'vault_ro', 'vault_rw', *(f'channels.{leaf}' for leaf in DECLARED_WORKSET_CHANNEL_LEAVES)})
-_USABLE_REFS = f"'@{WORKSET_PATH_REF}' (this workset's root), '@{WORKSET_NAME_REF}' (its partition name), a system path ('@system.channels.mailboxes', …), or another workset early key ('@workset.boxes', '@workset.channelroot', …)"
+_USABLE_REFS = f"'{{{WORKSET_PATH_REF}}}' (this workset's root), '{{{WORKSET_NAME_REF}}}' (its partition name), a system path ('{{system.channels.mailboxes}}', …), or another workset early key ('{{workset.boxes}}', '{{workset.channelroot}}', …)"
 ```
 
 ## Functions

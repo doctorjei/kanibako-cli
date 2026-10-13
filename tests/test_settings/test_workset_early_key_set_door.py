@@ -156,7 +156,7 @@ def test_a_referent_whose_default_splits_by_mode_is_refused(ws, std, tmp_path):
   ``box_data`` in standalone and ``boxes`` elsewhere: no one answer, so it is refused."""
   message = _workset_set("workset.canon", "@workset.boxes/cn", ws, std, tmp_path)
   assert message.startswith("Error: nothing was written"), message
-  assert "'@workset.boxes' is unset" in message, message
+  assert "'{workset.boxes}' is unset" in message, message
 
 
 def test_the_workset_door_reads_an_unset_referent_as_primary_and_named(ws, std, tmp_path):
@@ -177,7 +177,7 @@ def test_a_referent_split_between_primary_and_named_is_refused(ws, std, tmp_path
   """An unset ``workset.workspaces`` is null in primary and a dir in named: refused."""
   message = _workset_set("workset.logs", "@workset.workspaces/lg", ws, std, tmp_path)
   assert message.startswith("Error: nothing was written"), message
-  assert "'@workset.workspaces' is unset" in message, message
+  assert "'{workset.workspaces}' is unset" in message, message
 
 
 # --- The door's early-tier read: one open, every reader call scoped -----------------------
@@ -320,5 +320,5 @@ def test_the_system_door_takes_the_spec_mailboxes_default_and_the_case_3_cure(va
 def test_a_failed_std_refuses_a_system_ref_naming_the_failure(value, std):
   message = _std_system_set(_MAILBOXES, value, std, target_error="std boom")
   assert message.startswith("Error: nothing was written"), message
-  assert "'@system.channels.mailboxes' cannot be read: std boom" in message, message
+  assert "'{system.channels.mailboxes}' cannot be read: std boom" in message, message
   assert not std.settings.exists() or value not in std.settings.read_text()

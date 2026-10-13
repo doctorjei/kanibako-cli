@@ -2533,7 +2533,7 @@ def test_meta_views_read_runtime_typed():
 
 def test_meta_runtime_floor_requires_literal_for_non_primary():
     """A named/standalone floor needs the resolved ws_root literal (only primary
-    uses the @config.primary_workset @-ref)."""
+    uses the {config.primary_workset} reference)."""
     with pytest.raises(_SettingsError):
         meta_runtime_floor(mode="named", ws_name="kento")
     with pytest.raises(_SettingsError):

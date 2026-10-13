@@ -305,8 +305,8 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
             "'host_src:guest_dest'; the guest DESTINATION identifies the share, so "
             "re-running 'add' with the same destination overwrites its source "
             "(this is how you 'update' a share). The host source must "
-            "resolve on its own — give an absolute path, '~/…', '$VAR' or an "
-            "'@'-reference. A plain relative path is resolved against the working "
+            "resolve on its own — give an absolute path, '~/…', '{$VAR}' or a "
+            "'{key}' reference. A plain relative path is resolved against the working "
             "set root WHEN THE SHARE IS ADDED and stored absolute; it is not "
             "re-interpreted later. (The default working set has no BINDINGS root, "
             "so a relative path is refused there.)"
@@ -1438,8 +1438,8 @@ def run_share_add(args: argparse.Namespace) -> int:
                 f"the default working set (it has no bindings root — its own "
                 f"directory is kanibako's internal store, not a project dir). "
                 f"Give a path "
-                "that resolves on its own: an absolute path, '~/…', '$VAR' or an "
-                "'@'-reference.",
+                "that resolves on its own: an absolute path, '~/…', '{$VAR}' or a "
+                "'{key}' reference.",
                 file=sys.stderr,
             )
             return 1
@@ -1635,7 +1635,7 @@ def _workset_raw_shares(files: Sequence[SettingsFile]) -> dict[tuple[str, str], 
                     raise SettingsError(
                         f"workset.bindings.{mode} has an entry keyed '{dest}', "
                         f"which is not a box DESTINATION: a destination is "
-                        f"absolute or begins with '~' / '$' / '@' (spec §2a). A "
+                        f"absolute or begins with '~' or a reference such as '{{$VAR}}' or '{{key}}' (spec §2a). A "
                         f"binding is keyed BY its destination and has no entry "
                         f"name (the name was dropped 2026-08-06c), so '{dest}' is "
                         f"the RETIRED name-keyed shape. Fix it: "

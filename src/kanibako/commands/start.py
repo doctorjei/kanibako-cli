@@ -8988,7 +8988,7 @@ def _install_box_handbook(
     box_root = Path(proj.shell_path).parent
     dest = _host_copy_dest(
         f"{box_canon}/handbook", box_root,
-        label="handbook template", name="@box.canon/handbook", logger=logger,
+        label="handbook template", name="{box.canon}/handbook", logger=logger,
     )
     if dest is None:
         return

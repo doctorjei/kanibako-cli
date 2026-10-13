@@ -375,7 +375,7 @@ def meta_runtime_floor(
         if ws_root_literal is None:
             raise SettingsError(
                 f"meta_runtime_floor: ws_root_literal is required for mode "
-                f"{mode!r} (only 'primary' uses the @config.primary_workset @-ref)"
+                f"{mode!r} (only 'primary' uses the {{config.primary_workset}} reference)"
             )
         floor["meta.runtime.ws_root"] = literal_expr(ws_root_literal)
 
@@ -1332,7 +1332,7 @@ def _terminal_lookup(store: KeyStore) -> Callable[[str, tuple[str, ...]], str]:
         value = snapshot_leaf(store, ref)
         if isinstance(value, str) and value:
             return value
-        raise SettingsError(f"'@{ref}' has no resolved value in this snapshot")
+        raise SettingsError(f"'{{{ref}}}' has no resolved value in this snapshot")
 
     return lookup
 
@@ -4014,8 +4014,8 @@ def _emit_scope_node(
                 raise SettingsError(
                     f"{decl_scope_fn('secret_path', var)}.secret_path.{var} is set "
                     f"to {host_src!r}, a BARE RELATIVE path. A secret's host path must "
-                    f"resolve on its own — absolute, '~/...', '$XDG_*/...' or an "
-                    f"'@'-ref: {BARE_RELATIVE_SOURCE_HAZARD}."
+                    f"resolve on its own — absolute, '~/...', '{{$XDG_*}}/...' or a "
+                    f"'{{key}}' reference: {BARE_RELATIVE_SOURCE_HAZARD}."
                 )
             box_dest = f"{SECRET_MOUNT_DIR}/{var}"
             sort_key = (order, "secret_path", var)

@@ -330,7 +330,7 @@ def resolve_workset_dir_key(
         raise SettingsError(
             ambiguous_path_value_error(
                 f"workset.{key}", repoint,
-                anchor=str(workset_root), anchor_ref=f"@{WORKSET_PATH_REF}",
+                anchor=str(workset_root), anchor_ref=f"{{{WORKSET_PATH_REF}}}",
                 where=str(where),
             )
         )
@@ -349,7 +349,7 @@ def resolve_workset_dir_key(
         raise SettingsError(
             f"workset.{key} is set to {repoint!r} in "
             f"{where}, which cannot be resolved: {str(exc).rstrip('.')}. "
-            f"Use an absolute path, '~', '$XDG_*', or {_USABLE_REFS}; a "
+            f"Use an absolute path, '~', '{{$XDG_*}}', or {_USABLE_REFS}; a "
             f"LITERAL '$', '~' or '@' in a directory name must be "
             f"backslash-escaped."
         ) from exc
@@ -359,9 +359,9 @@ def resolve_workset_dir_key(
 
 #: The references a workset early key may use, as a refusal names them.
 _USABLE_REFS = (
-    f"'@{WORKSET_PATH_REF}' (this workset's root), '@{WORKSET_NAME_REF}' (its partition "
-    f"name), a system path ('@system.channels.mailboxes', …), or another workset early key "
-    f"('@workset.boxes', '@workset.channelroot', …)"
+    f"'{{{WORKSET_PATH_REF}}}' (this workset's root), '{{{WORKSET_NAME_REF}}}' (its partition "
+    f"name), a system path ('{{system.channels.mailboxes}}', …), or another workset early key "
+    f"('{{workset.boxes}}', '{{workset.channelroot}}', …)"
 )
 
 
@@ -387,7 +387,7 @@ def _expand_early(
                 early=early,
             )
         raise SettingsError(
-            f"'@{ref}' cannot be resolved here: this key is read before the launch "
+            f"'{{{ref}}}' cannot be resolved here: this key is read before the launch "
             f"snapshot exists, so it may reference only {_USABLE_REFS}"
         )
 
@@ -397,10 +397,10 @@ def _expand_early(
 def _system_path(ref: str, system: EarlySystem) -> str:
     """The stored expression of ``@<ref>``, a ``system.*`` path: the record's, never a re-read."""
     if system.system_refusal is not None:
-        raise SettingsError(f"'@{ref}' cannot be read: {system.system_refusal}")
+        raise SettingsError(f"'{{{ref}}}' cannot be read: {system.system_refusal}")
     value = system.system_paths.get(ref)
     if value is None:
-        raise SettingsError(f"'@{ref}' is null in {system.file}, so it names no directory")
+        raise SettingsError(f"'{{{ref}}}' is null in {system.file}, so it names no directory")
     return value
 
 
@@ -418,12 +418,12 @@ def _referent_value(
     """
     raw, where = early_repoint(workset_root, doc, referent, early=early)
     if raw is None:
-        raise SettingsError(f"'@workset.{referent}' is null in {where}, so it names no directory")
+        raise SettingsError(f"'{{workset.{referent}}}' is null in {where}, so it names no directory")
     if isinstance(raw, _Unset):
         raw = _mode_default(referent, key=key, standalone=standalone)
     elif not is_unambiguous_path_value(raw):
         raise SettingsError(
-            f"'@workset.{referent}' is set to the bare relative path {raw!r} in {where}"
+            f"'{{workset.{referent}}}' is set to the bare relative path {raw!r} in {where}"
         )
     return _expand_early(
         workset_root, doc, raw, key=key, standalone=standalone, chain=chain, early=early,
@@ -457,7 +457,7 @@ def _mode_default(referent: str, *, key: str, standalone: bool | None) -> str:
         return str(values.pop())
     shown = ", ".join(f"{mode}: {value}" for mode, value in arms.items())
     raise SettingsError(
-        f"'@workset.{referent}' is unset, and its default is not one path in the box modes "
+        f"'{{workset.{referent}}}' is unset, and its default is not one path in the box modes "
         f"this key is read in ({shown}); set workset.{referent}"
     )
 
