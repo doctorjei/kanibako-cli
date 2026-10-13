@@ -826,6 +826,7 @@ class TestStop:
         with patch("kanibako.runtime.container.subprocess.run") as m:
             m.return_value = MagicMock(returncode=0)
             assert rt.stop("mycontainer") is True
+            m.assert_called_once()
             cmd = m.call_args[0][0]
             assert cmd == ["/usr/bin/podman", "stop", "mycontainer"]
 
