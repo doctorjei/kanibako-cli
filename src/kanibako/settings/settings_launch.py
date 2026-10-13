@@ -620,8 +620,8 @@ def meta_agent_identity_floor(
     # THE WHOLE POINT OF THE KEY ([R173], [R176]). An agent's canonical case
     # lives in its NAME; the node is the fold OF that name. Substituting the
     # already-folded discriminator here would leave the declared spelling in no
-    # stored carrier at all, and would satisfy §2d's ``%tolower(…)%`` — his own
-    # adjustment, written precisely to keep the name case-carrying — with a
+    # stored carrier at all, and would satisfy §2d's ``%tolower(…)%`` — the spec's
+    # own adjustment, written precisely to keep the name case-carrying — with a
     # NO-OP. That is [R171]'s retired fold-to-store cure, re-spelled.
     # ⚑ ``with_harness``, so only the HARNESS moves: a persona segment is the
     # user's and neither ruling reaches it.
@@ -3393,7 +3393,7 @@ def effective_behavior(
     name; this pick then takes the active slot's winner over the default slot's. So an
     agent-file ``agent.<active>.model`` BEATS a box-file ``agent.default.model`` —
     active wins regardless of scope. That is the one place this differs from the old
-    per-file-active-over-default-THEN-cascade reader: a Jei-NOTED spec-CORRECTION,
+    per-file-active-over-default-THEN-cascade reader: a NOTED spec-CORRECTION,
     covered by a behavior-equivalence test, NOT silent.
 
     *keys*: when given, read exactly those; when ``None``, DISCOVER every scalar

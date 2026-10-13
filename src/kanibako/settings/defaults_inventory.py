@@ -132,7 +132,7 @@ def source_groups() -> tuple[tuple[str, frozenset[str]], ...]:
     # below that used to claim them.
     # ⚑ ``workset.template`` is the fourth, and it arrived a step later than the other
     # three: it was not "emitted by no floor" but emitted ONLY into the CREATE-time seed
-    # resolve, which an existing box never runs again. Under the user's 2026-08-29 ruling
+    # resolve, which an existing box never runs again. Under [Jei:2026-08-29]
     # — a declared default must answer FOR ANY BOX THAT EXISTS — that is the same defect.
     # ⚑ MINUS THE CHANNEL FAMILY: with no ``channelroot`` this probe takes the floor's
     # NULL-channel-root branch, which supplies the four workset-local leaves as

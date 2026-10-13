@@ -18,7 +18,7 @@ unconditionally — separate readers dereference ``{system.agent}``, so the snap
 MUST agree with the process that runs.
 
 🛑 **IF NOTHING NAMES AN AGENT, NOTHING LAUNCHES — THE INSTALLED-AGENT COUNT IS NOT
-CONSULTED** (his ruling, 2026-09-19; spec §2b). Two states, two refusals, and they
+CONSULTED** (spec §2b). Two states, two refusals, and they
 are deliberately NOT the same sentence:
 
 * ``system.agent`` **UNSET** — setup has never chosen one ⇒
@@ -222,8 +222,8 @@ def select_agent(
             # explicitly, or the launch REFUSES saying so. ⚑ Keep it distinct from
             # ``__MISSING__`` — never collapse them with a falsiness test: the two
             # states print DIFFERENT refusals, which is the whole ruling.
-            # 🛑 It used to return the NO-AGENT plain-shell box; under the
-            # 2026-09-19 ruling `<None>` no longer reaches that box — the `shell`
+            # 🛑 It used to return the NO-AGENT plain-shell box; under
+            # [Jei:2026-09-19] `<None>` no longer reaches that box — the `shell`
             # pseudo-agent does, BY NAME.
             raise AgentNoDefaultError(
                 "No default agent is set: system.agent is null (a blank value and "

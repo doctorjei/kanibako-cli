@@ -277,7 +277,7 @@ def _retired_key_cure(
     *box_ref* is the addressable box the cure is FOR, as the shell-quoted reference
     :func:`kanibako.settings.paths.project_cure_ref` gives — ``kanibako box set`` needs it as its
     ``[project]`` positional (spec: the box argument is REQUIRED unless the caller's cwd already
-    resolves to that box; Jei hit exactly that gap live). Threaded ONLY for a box-level refusal
+    resolves to that box; a live box hit exactly that gap). Threaded ONLY for a box-level refusal
     (``None`` at any other *level*, where no single box is being refused for) — a WORKSET-level
     refusal takes the ``workset set`` verb and its own placeholder (:func:`_cure_subject`).
 
@@ -294,7 +294,7 @@ def _retired_key_cure(
     # ⚑ The VERB IS THE LEVEL (:func:`_cure_subject`) — a workset file's cure is
     # ``workset set``, the same fork :func:`_retired_mirror_cure` makes.
     # 🛑 THE CURE NAMES AN AGENT AND NOTHING ELSE. It used to offer `--null
-    # pref.system.agent` "for a no-agent box"; since the 2026-09-19 ruling a null
+    # pref.system.agent` "for a no-agent box"; since [Jei:2026-09-19] a null
     # selection REFUSES to launch (spec §2b), so that half sent the user from one
     # error to another.
     if level in PREF_LEGAL_LEVELS:

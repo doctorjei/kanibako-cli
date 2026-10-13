@@ -164,7 +164,7 @@ def agent_categories_for_node(
     function reached the other two hooks — took a declared seed or category bind with
     NO mount, NO copy, no error and no warning.
 
-    BOTH halves move, and re-keying alone is not the fix (ruled 2026-08-27):
+    BOTH halves move, and re-keying alone is not the fix [Jei:2026-08-27]:
 
     * the KEY, so the §2d pick sees it;
     * the SOURCE root, so the bind resolves through ``{meta.agent.<NODE>.path}`` — a

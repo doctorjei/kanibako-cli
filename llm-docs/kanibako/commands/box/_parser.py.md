@@ -144,9 +144,8 @@ name from on-disk meta without registering), so the box resolves with `is_new` F
 pending create entry — the recovery signal.
 
 The persona load-or-error gate ran as a TRUE PRE-FLIGHT above, before box-dir creation, so by the
-time the journal opens the persona is known loadable. It STILL precedes the write-ahead entry
-(Director ruling #3): an abort after the entry would leave a pending entry whose recovery replays
-the seed.
+time the journal opens the persona is known loadable. It STILL precedes the write-ahead entry: an
+abort after the entry would leave a pending entry whose recovery replays the seed.
 
 The canon skeleton (J-7) is materialized AFTER the seed and INSIDE the journal window. After,
 because the seed writes `canon/{notebook,workbook}` under the same root this step makes 555 —

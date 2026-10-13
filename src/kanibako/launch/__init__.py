@@ -18,7 +18,7 @@ crisp is what keeps the single-route binding invariant legible.
 ⚑ NOT here: ``box_supervisor`` and ``box_lifecycle`` stay top-level.  They are
 the box's in-box PID-1 chain, nearly stdlib-only, executed in-box by
 dotted path (``python3 -m kanibako.box_supervisor``) and guarded by an
-import-chain allowlist that asserts on every ANCESTOR PACKAGE.  Ratified 2026-08-01;
+import-chain allowlist that asserts on every ANCESTOR PACKAGE.  Ratified [Jei:2026-08-01];
 the LaunchPlan phase is the scheduled carrier for that seam.
 
 PUBLIC SURFACE: the submodules named in ``__all__``.  Consumers outside this

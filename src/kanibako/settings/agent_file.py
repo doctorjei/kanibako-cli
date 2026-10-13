@@ -645,9 +645,10 @@ def record(level: AgentFileLevel, *, node: str) -> AgentConfig:
     # ⚑ EVERY modeled key, not just the ones with a scalar slot (S3/D-7): the
     # narrower test differs only for a MALFORMED file, where it swept a modeled
     # field's garbage — ``env: oops`` — into state as an agent-state knob (llm-doc).
-    # ⚑ A ``None`` value is KEPT as ``None`` (2026-08-17 ruling), never coerced
-    # through ``str()``: that turned a ``model: null`` into the four-byte string
-    # ``"None"``, a bogus model id the launch cascade took as real.
+    # ⚑ A ``None`` value is KEPT as ``None`` (as the token key, keyspec §2a
+    # secret_path.<VAR>; [Jei:2026-08-17]), never coerced through ``str()``: that
+    # turned a ``model: null`` into the four-byte string ``"None"``, a bogus model
+    # id the launch cascade took as real.
     cfg.state = {
         k: (v if v is None or isinstance(v, bool) else str(v))
         for k, v in agent_sec.items()
@@ -676,9 +677,9 @@ def record(level: AgentFileLevel, *, node: str) -> AgentConfig:
     # ``secret_path`` table (spec §2a SECRET category).  A plain string path; the
     # file's CONTENTS (the secret) are never persisted here nor read — they are
     # ro-mounted + exported IN-BOX only at launch.
-    # ⚑ A ``None`` value is KEPT as ``None`` (2026-08-17 ruling): it means "this VAR
-    # is deliberately keyless", a DECLARED third state, not a malformed second one;
-    # see ``AgentConfig.secret_path``.
+    # ⚑ A ``None`` value is KEPT as ``None`` (keyspec §2a secret_path.<VAR>): it means
+    # "this VAR is deliberately keyless", a DECLARED third state, not a malformed second
+    # one; see ``AgentConfig.secret_path``.
     secret_sub = agent_sec.get("secret_path", {})
     cfg.secret_path = {
         k: (v if v is None or isinstance(v, bool) else str(v)) for k, v in secret_sub.items()

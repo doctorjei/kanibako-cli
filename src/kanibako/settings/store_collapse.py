@@ -235,7 +235,7 @@ def collapse_seeded(store_shape_set: StoreShapeSet) -> CollapsedCopies:
   # ACROSS the two arms as well as within one. A dest carrying both a seed and a
   # sync keeps BOTH rows, because DELIVERY ORDER decides it: `box create` seeds
   # first, then writes every sync row into the bind that covers it UNCONDITIONALLY
-  # (Jei, 2026-08-11: *"write synced to it once at creation, irrespective of
+  # ([Jei:2026-08-11]: *"write synced to it once at creation, irrespective of
   # date"*). The sync therefore owns the dest by having written it LAST, which is
   # also what makes the launch-time mtime gate mean anything - it compares against a
   # dest the SYNC wrote. The earlier prune here answered the same question by
@@ -284,9 +284,9 @@ def collapse_env(
 
   *cli_env* is the per-run ``-e VAR=VALUE`` map, already parsed and validated at the
   launch door (``commands.start._parse_cli_env``). It is the CASCADE'S CLI LEVEL
-  applied to the env family — Jei, 2026-08-14: *"-e should override the key values,
-  not the environment variables themselves"* — and it is applied AFTER the walk, by
-  :func:`_apply_cli_env`.
+  applied to the env family — system-design § "Delivery at launch"; [Jei:2026-08-14]:
+  *"-e should override the key values, not the environment variables themselves"* — and
+  it is applied AFTER the walk, by :func:`_apply_cli_env`.
   """
   slots: CollapsedEnvs = {}
   for scope in SCOPE_CONTAINMENT:
@@ -342,11 +342,12 @@ def _collapse_synced(store_shape_set: StoreShapeSet) -> CollapsedCopies:
   # ⚑ NO home-only rule here: a sync dest resolves through whichever binding covers
   # it, and home is only the pid-0 foundation among them (that resolution is
   # DELIVERY - the emitted row carries the GUEST dest).
-  # ⚑⚑ AND NO BIND MAP EITHER (Jei, 2026-08-12: *"don't check for sync. Let it
-  # clobber whatever it wants."*). A sync at a binding's EXACT dest is ordinary: the
-  # copy lands on top of the bind and most of the bind remains intact. It is not the
-  # collapse's business which mount a copy shares a destination with, so this arm
-  # takes no bind map and cannot refuse for a reason the delivery half owns.
+  # ⚑⚑ AND NO BIND MAP EITHER (system-design § "Collision arbitration"; [Jei:2026-08-12]:
+  # *"don't check for sync. Let it clobber whatever it wants."*). A sync at a binding's
+  # EXACT dest is ordinary: the copy lands on top of the bind and most of the bind
+  # remains intact. It is not the collapse's business which mount a copy shares a
+  # destination with, so this arm takes no bind map and cannot refuse for a reason
+  # the delivery half owns.
   # ⚑ THAT RULING IS UNTOUCHED BY THE COVERAGE RULE, and the two must not be confused:
   # 2026-08-12 forbids refusing a sync for SHARING a dest with a mount; 2026-08-28
   # refuses one for having NO mount. Opposite conditions, so neither narrows the other
@@ -696,7 +697,7 @@ def refuse_uncovered_synced(
 ) -> None:
   """Every ``synced`` dest must be COVERED by a mount - nothing bound is nothing kept.
 
-  ⚖️ RULED 2026-08-28 - *"I don't think we should be checking for XDG; we should be
+  ⚖️ RULED [Jei:2026-08-28] - *"I don't think we should be checking for XDG; we should be
   checking that the paths resolve. That's it."* The CONDITION is what is refused, never
   a cause: a dest spelled with ``$XDG_DATA_HOME`` and a dest typed out as ``/data/z``
   are the same defect and get the same answer, and a user who MIRRORS the box's layout
@@ -737,7 +738,7 @@ def refuse_uncovered_synced(
   listing refuse a configuration that launches. So the rule lives with its siblings and
   is asked at the one seam that can honestly say its map is a whole box's.
 
-  ⚑ THE SPEC CARRIES THIS RULE (ratified 2026-08-28). §0's numbered list has a SIXTH
+  ⚑ THE SPEC CARRIES THIS RULE (ratified [Jei:2026-08-28]). §0's numbered list has a SIXTH
   entry for it, ``:196`` names the MASK **and COVERAGE** refusals, and ``:125`` now reads
   "meets mounts or is REFUSED" - a property this function is what MAKES true, and which
   was false as measured (a literal ``/data/z`` reaches ``covering_bind`` and gets

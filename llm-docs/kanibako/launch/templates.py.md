@@ -677,9 +677,9 @@ are the BOX HANDBOOK host-template copy, and it is a DELIBERATE, RULED EXCEPTION
 THE LIVE MODEL for a host template is the SINGLE-SOURCE copy `install_workset_template`: one mold,
 one `copy_tree`, one whitelist. A new host template follows THAT.
 
-THIS ONE stages THREE ordered layers, by ruling: the handbook copy is a special case. It is the ONE
-place the single-source shape does not reach. ⚑ It is NOT a pattern, NOT a precedent, and must not
-be imitated for any other host template.
+THIS ONE stages THREE ordered layers, by ruling [Jei:2026-08-07g]: the handbook copy is a special
+case. It is the ONE place the single-source shape does not reach. ⚑ It is NOT a pattern, NOT a
+precedent, and must not be imitated for any other host template.
 
 WHY IT IS HERE AT ALL — the HOST/GUEST criterion: handbook templates are system-level templates
 generated on behalf of a box, and they do not DIRECTLY interact with the box itself, so they are
