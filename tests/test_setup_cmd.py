@@ -304,6 +304,21 @@ def _stage_templates():
     install_packaged_templates(_resolve_std(), setup_cmd._known_target_names())
 
 
+#: What :func:`_stage_stale_templates` writes over the staged marker file.
+_STALE_TEXT = "an older shipped version\n"
+
+
+def _stage_stale_templates():
+    """Stage the templates, then make ONE shipped staging file differ (an UPDATE).
+
+    The 1.7.x-upgrade shape: the staging exists, but a shipped file in it no longer
+    matches this build, so Step 5 would OVERWRITE it — the one change that needs
+    consent.  A store with nothing staged is ADD-ONLY and needs none.
+    """
+    _stage_templates()
+    _staged_marker(_resolve_std()).write_text(_STALE_TEXT)
+
+
 def test_full_setup_flag_writes_marker_and_default(
     tmp_home, config_file, monkeypatch
 ):
@@ -355,7 +370,8 @@ def test_full_setup_non_tty_stale_templates_records_no_marker(
     _patch_targets(monkeypatch, {"claude": _make_target("claude")})
     _stub_probes(monkeypatch)
     monkeypatch.setattr("sys.stdin.isatty", lambda: False)
-    # No _stage_templates(): the store is stale, exactly like a 1.7.x upgrade.
+    # A shipped staging file differs, exactly like a 1.7.x upgrade.
+    _stage_stale_templates()
     rc = setup_cmd.run_setup(_ns())
     # ⚑ The EXIT STATUS carries the same claim the banner does: a run that
     # recorded nothing is a failure for anything scripting it (`kanibako setup &&
@@ -363,6 +379,8 @@ def test_full_setup_non_tty_stale_templates_records_no_marker(
     assert rc == 1
     _, ssp = _config_paths(tmp_home)
     assert read_setup_completed(ssp) is None
+    # The un-consented UPDATE was not made.
+    assert _staged_marker(_resolve_std()).read_text() == _STALE_TEXT
     out = capsys.readouterr().out
     # The banner must not claim a completion that was not recorded, and must
     # name the cure.
@@ -382,12 +400,14 @@ def test_full_setup_non_tty_stale_templates_refresh_flag_cures(
     _patch_targets(monkeypatch, {"claude": _make_target("claude")})
     _stub_probes(monkeypatch)
     monkeypatch.setattr("sys.stdin.isatty", lambda: False)
+    _stage_stale_templates()
     rc = setup_cmd.run_setup(_ns(agent="claude", refresh_templates=True))
     assert rc == 0
     cf, ssp = _config_paths(tmp_home)
     assert read_setup_completed(ssp) == __version__
     assert read_system_agent(ssp) == "claude"
-    assert _staged_marker(_resolve_std()).is_file()  # the refresh really ran
+    # The refresh really ran: the stale shipped file was UPDATED.
+    assert _staged_marker(_resolve_std()).read_text() != _STALE_TEXT
     assert "Setup Complete" in capsys.readouterr().out
 
 
@@ -404,12 +424,41 @@ def test_full_setup_tty_decline_completes_and_exits_zero(
     _stub_probes(monkeypatch)
     monkeypatch.setattr("sys.stdin.isatty", lambda: True)
     monkeypatch.setattr("builtins.input", lambda *a: "n")
-    # No _stage_templates(): the store is stale, so Step 5 reaches the prompt.
+    # A shipped staging file differs, so Step 5 reaches the prompt.
+    _stage_stale_templates()
     rc = setup_cmd.run_setup(_ns(agent="claude"))
     assert rc == 0
     _, ssp = _config_paths(tmp_home)
     assert read_setup_completed(ssp) == __version__
     assert "Setup Complete" in capsys.readouterr().out
+
+
+def test_full_setup_non_tty_fresh_store_adds_and_completes(
+    tmp_home, config_file, monkeypatch, capsys
+):
+    """⚑ REGRESSION: headless setup on FRESH data adds the templates and completes.
+
+    Nothing is staged, so every packaged file is an ADD.  Adding a file cannot
+    replace an edit, and an edit is the only thing the consent protects, so the
+    run applies without asking: rc 0, marker recorded.  It used to call the store
+    "out of date", refuse, and exit rc 1 with nothing installed.
+    """
+    _patch_targets(monkeypatch, {"claude": _make_target("claude")})
+    _stub_probes(monkeypatch)
+    monkeypatch.setattr("sys.stdin.isatty", lambda: False)
+
+    def _boom(*a, **k):
+        raise AssertionError("input() must not be called in non-TTY mode")
+
+    monkeypatch.setattr("builtins.input", _boom)
+    rc = setup_cmd.run_setup(_ns(agent="claude"))
+    assert rc == 0
+    _, ssp = _config_paths(tmp_home)
+    assert read_setup_completed(ssp) == __version__
+    assert _staged_marker(_resolve_std()).is_file()  # the adds really ran
+    out = capsys.readouterr().out
+    assert "Setup Complete" in out
+    assert "out of date" not in out
 
 
 def test_full_setup_marker_write_failure_is_incomplete_and_nonzero(
@@ -605,12 +654,15 @@ def test_template_step_nothing_to_do_reports_up_to_date(tmp_home, config_file, c
 
 
 def test_template_step_tty_accept_applies(tmp_home, config_file, monkeypatch):
+    _stage_stale_templates()
+    asked = []
     monkeypatch.setattr("sys.stdin.isatty", lambda: True)
-    monkeypatch.setattr("builtins.input", lambda *a: "y")
+    monkeypatch.setattr("builtins.input", lambda *a: asked.append(a) or "y")
     outcome = setup_cmd._run_template_refresh(_ns())
     assert outcome is setup_cmd.TemplateStep.REFRESHED
+    assert asked  # an UPDATE is asked about
     std = _resolve_std()
-    assert _staged_marker(std).is_file()  # applied
+    assert _staged_marker(std).read_text() != _STALE_TEXT  # applied
     assert "templates_stamp" not in _system_table(tmp_home)
 
 
@@ -623,14 +675,15 @@ def test_template_step_tty_decline_does_not_apply(
     outcome that DOES record setup completion (pre-R-38 this branch stamped too).
     Only the un-asked non-TTY skip withholds the marker.
     """
+    _stage_stale_templates()
     monkeypatch.setattr("sys.stdin.isatty", lambda: True)
     monkeypatch.setattr("builtins.input", lambda *a: "n")
     outcome = setup_cmd._run_template_refresh(_ns())
     assert outcome is setup_cmd.TemplateStep.DECLINED
     assert outcome.records_completion
     std = _resolve_std()
-    # Not applied — the shipped files were NOT written.
-    assert not _staged_marker(std).exists()
+    # Not applied — the shipped file was NOT updated.
+    assert _staged_marker(std).read_text() == _STALE_TEXT
     assert "templates_stamp" not in _system_table(tmp_home)
     assert "unblessed state" in capsys.readouterr().out
 
@@ -638,7 +691,8 @@ def test_template_step_tty_decline_does_not_apply(
 def test_template_step_non_tty_no_flag_skips(
     tmp_home, config_file, monkeypatch, capsys
 ):
-    """Non-tty, no forced flag → SKIP; the store is left exactly as it was."""
+    """Non-tty, no forced flag, an UPDATE pending → SKIP; the store is left as it was."""
+    _stage_stale_templates()
     monkeypatch.setattr("sys.stdin.isatty", lambda: False)
 
     def _boom(*a, **k):
@@ -649,9 +703,78 @@ def test_template_step_non_tty_no_flag_skips(
     assert outcome is setup_cmd.TemplateStep.SKIPPED
     assert not outcome.records_completion
     std = _resolve_std()
-    assert not _staged_marker(std).exists()  # not applied
+    assert _staged_marker(std).read_text() == _STALE_TEXT  # not applied
     assert "cannot be updated non-interactively" in capsys.readouterr().out
     assert "templates_stamp" not in _system_table(tmp_home)
+
+
+def test_template_step_non_tty_add_and_update_skips_both(
+    tmp_home, config_file, monkeypatch, capsys
+):
+    """⚑ An ADD does not carry an UPDATE through: a mixed plan still skips WHOLE.
+
+    One staged file differs and another is missing.  Without consent neither is
+    written — the add-only path must not apply the adds of a plan that also updates.
+    """
+    _stage_stale_templates()
+    std = _resolve_std()
+    missing = next(
+        f for f in sorted((std.template / "workset").rglob("*")) if f.is_file()
+    )
+    missing.unlink()
+    monkeypatch.setattr("sys.stdin.isatty", lambda: False)
+    outcome = setup_cmd._run_template_refresh(_ns())
+    assert outcome is setup_cmd.TemplateStep.SKIPPED
+    assert _staged_marker(std).read_text() == _STALE_TEXT
+    assert not missing.exists()
+
+
+def _boom_input(*a, **k):
+    raise AssertionError("an add-only plan must not ask")
+
+
+def test_template_step_non_tty_add_only_applies(
+    tmp_home, config_file, monkeypatch, capsys
+):
+    """⚑ Fresh data: every file is an ADD, so the step applies without asking."""
+    monkeypatch.setattr("sys.stdin.isatty", lambda: False)
+    monkeypatch.setattr("builtins.input", _boom_input)
+    outcome = setup_cmd._run_template_refresh(_ns())
+    assert outcome is setup_cmd.TemplateStep.REFRESHED
+    assert outcome.records_completion
+    assert _staged_marker(_resolve_std()).is_file()  # applied
+    out = capsys.readouterr().out
+    assert "added" in out
+    assert "out of date" not in out
+
+
+def test_template_step_tty_add_only_does_not_ask(tmp_home, config_file, monkeypatch):
+    """At a terminal too: an add-only plan has nothing to consent to."""
+    monkeypatch.setattr("sys.stdin.isatty", lambda: True)
+    monkeypatch.setattr("builtins.input", _boom_input)
+    outcome = setup_cmd._run_template_refresh(_ns())
+    assert outcome is setup_cmd.TemplateStep.REFRESHED
+    assert _staged_marker(_resolve_std()).is_file()
+
+
+def test_template_step_non_tty_kept_only_completes_and_keeps(
+    tmp_home, config_file, monkeypatch, capsys
+):
+    """A KEPT file is never written on any path, so it needs no consent either.
+
+    The user's copy of a user-owned store file differs from the shipped one; the
+    step reports it, leaves it alone, and does not skip.
+    """
+    _stage_templates()
+    std = _resolve_std()
+    edited = std.agents / "claude" / "template" / "box" / "home" / ".claude.json"
+    edited.write_text('{"edited": true}\n')
+    monkeypatch.setattr("sys.stdin.isatty", lambda: False)
+    monkeypatch.setattr("builtins.input", _boom_input)
+    outcome = setup_cmd._run_template_refresh(_ns())
+    assert outcome is setup_cmd.TemplateStep.REFRESHED
+    assert edited.read_text() == '{"edited": true}\n'
+    assert "Kept YOUR copy" in capsys.readouterr().out
 
 
 def test_setup_refresh_templates_flag_parsed(monkeypatch):

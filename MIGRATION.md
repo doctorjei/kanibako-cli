@@ -61,9 +61,9 @@ inside boxes. In order of likely impact:
    and `base.cfg`*). This is deliberate — setup is what installs the new host-store layout (see *The
    upgrade gate: nothing new appears until `kanibako setup` runs*). Run `kanibako setup` once, right
    after upgrading. Headless: `kanibako setup --refresh-templates` (add `--agent <name>` to skip the
-   menu). ⚑ Pass `--refresh-templates` on a headless run: a non-interactive setup that cannot ask
-   about the template refresh deliberately records nothing, prints `Setup Incomplete`, and exits
-   **rc 1**, so setup is not recorded (see *The upgrade gate: nothing new appears until
+   menu). ⚑ Pass `--refresh-templates` on a headless run: a non-interactive setup that would
+   update a shipped template file cannot ask about it, so it deliberately records nothing,
+   prints `Setup Incomplete`, and exits **rc 1**, so setup is not recorded (see *The upgrade gate: nothing new appears until
    `kanibako setup` runs*). 🛑 **Rename one file, then check it, before you run that
    `kanibako setup`.** The bootstrap config file is `~/.config/kanibako.cfg` in v1.8.0; through
    v1.7.2 it was `~/.config/kanibako_config.yaml`, and nothing but that gate reads the old name (see
@@ -1250,10 +1250,12 @@ reading it refuses and names the leaf (see *Anything in `kanibako.cfg` that is n
 
 **What clears the block.** Only a `setup` run that reached a settled template state: one that
 refreshed the store, one that found nothing to do, or an interactive one where you were asked
-and knowingly declined. A HEADLESS run with no `--refresh-templates` cannot ask, so it
-refreshes nothing, prints `Setup Incomplete`, exits **rc 1**, and records **no** completion —
-the block stays up rather than being cleared against a store setup never touched. `kanibako
-setup --refresh-templates` is the headless path that both refreshes and completes.
+and knowingly declined. A run that only ADDS files (fresh data, for example) replaces nothing,
+so it applies without asking, headless or not. A HEADLESS run that would UPDATE a shipped file,
+with no `--refresh-templates`, cannot ask, so it refreshes nothing, prints `Setup Incomplete`,
+exits **rc 1**, and records **no** completion — the block stays up rather than being cleared
+against a store setup never touched. `kanibako setup --refresh-templates` is the headless path
+that both refreshes and completes.
 
 In the window before setup runs, non-gated verbs (e.g. `shell`, config/list commands) still
 work; a launch in that window has no `{system.canon}/handbook` yet, so `SYS_CONTENTS.md` is

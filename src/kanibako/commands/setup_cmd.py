@@ -213,6 +213,9 @@ def _run_template_refresh(args: argparse.Namespace) -> TemplateStep:
       consent), one-line summary → ``REFRESHED``.
     * nothing to add AND nothing to overwrite AND nothing kept → say so, no prompt
       → ``CURRENT``.
+    * nothing to overwrite (ADD-ONLY, kept files reported) → apply create-if-absent,
+      no prompt, TTY or not → ``REFRESHED``.  The consent protects edits to shipped
+      files from being replaced; an add replaces nothing, so there is nothing to ask.
     * TTY → warn, show the add/overwrite plan + reassurance + peril, prompt:
       accept → apply (``REFRESHED``); decline → leave files as-is (``DECLINED``).
     * non-TTY, no flag → SKIP (no informed choice is possible without a terminal),
@@ -271,6 +274,15 @@ def _run_template_refresh(args: argparse.Namespace) -> TemplateStep:
         # nothing to do is still a COMPLETE run.
         print("  [ok] Templates are up to date.")
         return TemplateStep.CURRENT
+
+    if not overwritten:
+        # ADD-ONLY (e.g. fresh data): no shipped file is replaced, so no consent is
+        # needed.  ⚑ ``refresh=False`` is create-if-absent on EVERY row, so this
+        # call cannot overwrite even a file that changed after the plan was made.
+        install_packaged_templates(std, names)
+        print(f"  [ok] Templates installed ({len(added)} added).")
+        _report_kept()
+        return TemplateStep.REFRESHED
 
     if sys.stdin.isatty():
         print("  Your template store is out of date with this kanibako build.")
