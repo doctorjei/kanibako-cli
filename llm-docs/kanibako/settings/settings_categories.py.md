@@ -241,10 +241,13 @@ key at ANY scope, so `config get` reads `<scope>.<category>` — the WHOLE dest-
 WITHOUT a read to offer: the refusal names the terminal key and says the entry lives inside its
 value, rather than promising a `config get` of the entry.
 
-⚑ **The one exception is the AGENT-SCOPE TERMINAL READ.** `config get agent.<node>.<category>`
-resolves through `config_dest`'s known-broken `_CATEGORY` arm to the NOUN's settings file
-rather than to `agents/<node>/agent.yaml`, so the value it returns is the wrong file's. No message
-may promise that read works.
+⚑ **The AGENT-SCOPE TERMINAL READ is refused at the file-scope nouns.** `system get`,
+`workset get` and `box get` of `agent.<node>.<category>` run `config_keys.scope_read_key_error`
+first, and `config_keys.agent_category_read_error` refuses the key with a cure naming
+`kanibako agent get <node> <category>`, which reads `agents/<node>/agent.yaml`. The `default`
+node is not refused: `agent.default.<category>` lives in the system settings file and is read
+there. `config_dest`'s `_CATEGORY` arm would route the low-level `get_config_value` read to the
+noun's own file, but no command reaches it with this key.
 
 ## The key-shape regexes: recognition is not resolution
 

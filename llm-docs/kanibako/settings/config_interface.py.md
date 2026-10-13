@@ -743,13 +743,13 @@ read honest.
 ⚑ Do NOT "restore" this branch for the four: the loss is the ruling, not an oversight, and
 re-adding a write route would need a visible spec edit.
 
-⚑ It also carried the ONE known-broken destination arm in the tree (an agent-scope category set
-landed in the command's own config file, which is in no cascade level — a SILENT NO-OP WRITE).
-Retiring this branch made that arm unreachable and QA′ then DELETED it, so
-`config_dest._write_dest` and `_read_dest` now answer identically for every key. The `_CATEGORY`
-file rule itself SURVIVES in `config_dest` as the key's declared FAMILY — it is still answered
-for agent-scope terminal keys on the READ side, which is a separate, still-open defect documented
-on `config_dest._read_dest`.
+⚑ There is no write route for an agent-scope category key, so `config_dest._write_dest` and
+`_read_dest` answer identically for every key. The `_CATEGORY` file rule stays in `config_dest` as
+the key's declared FAMILY. For an agent-scope terminal key it would route the low-level
+`get_config_value` read to the noun's own file, but that is latent only: every `get` verb first
+runs `config_keys.scope_read_key_error`, whose `agent_category_read_error` refuses
+`agent.<node>.<category>` (except the `default` node) with a cure naming
+`kanibako agent get <node> <category>`. No command reaches the arm with that key.
 
 ⚑ There is also NO `agent.<node>.bindings.{ro,rw}.<name>` branch. It was a SOURCE-ONLY repoint of
 the descriptor delivery bind, routed to the category path against a detect-free descriptor floor;
