@@ -4179,7 +4179,8 @@ def _to_standalone(
         # ⚑⚑ DO NOT DELETE this file as an "orphan": the box.yaml landing in ``box_data/``
         # IS the destination's BOX TIER (spec §2c — {meta.box.path} for standalone IS
         # ``box_data/``). Deleting it discards the box's settings; detection reads the ROOT
-        # file (§5), which ``establish_standalone`` writes below.
+        # file (system-design-1.8.0.md § "Detection & import"), which ``establish_standalone``
+        # writes below.
         _deliver_carried_box_settings(
             state, dst_metadata / BOX_META_FILE,
             early=EarlyScope(std.early_system, _state_ws_token(state)))

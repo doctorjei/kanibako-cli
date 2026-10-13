@@ -479,8 +479,9 @@ class MetaBoxView(FiniteView):
 
     ⚑ ``settings`` is UNIFORM in every mode; standalone's
     ``<root>/box_data/box.yaml`` is a real path merely ABSENT BY DEFAULT
-    (§5), NOT a ``None`` terminal. It is typed ``Path | None`` only because a
-    narrow/partial resolve may materialize no box tier.
+    (keyspec §2c, the ``meta.box.settings`` note), NOT a ``None`` terminal.
+    It is typed ``Path | None`` only because a narrow/partial resolve may
+    materialize no box tier.
     """
 
     mode: str = typed_field(as_str)  # type: ignore[assignment]

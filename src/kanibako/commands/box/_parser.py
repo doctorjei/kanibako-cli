@@ -2523,9 +2523,10 @@ def _standalone_purge_plan(
         retained.append(("store", retained_store, None))
     if metadata_dir is None:
         return _without_recorded_workspaces(steps, std), retained
-    # ⚑ ROOT workset.yaml = WORKSET tier + half the §5 detection marker, so it goes LAST,
-    # AFTER the anchor.  ⚑⚑ Delete it early and a later failure makes the retry resolve
-    # composed DEFAULTS: a kept-and-named folder becomes "kanibako's own skeleton".
+    # ⚑ ROOT workset.yaml = WORKSET tier + half the detection marker (system-design-1.8.0.md
+    # § "Detection & import"), so it goes LAST, AFTER the anchor.  ⚑⚑ Delete it early and a
+    # later failure makes the retry resolve composed DEFAULTS: a kept-and-named folder
+    # becomes "kanibako's own skeleton".
     settings_file = root / WORKSET_META_FILE
     gitignore = project_gitignore_to_strip(root)
     if gitignore is not None and gitignore_holds_only_kanibako(gitignore):
