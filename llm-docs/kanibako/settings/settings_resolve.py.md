@@ -12,46 +12,9 @@ list, dest-keying, per-entry options). ⚑ **The spec is the LIVE authority; rea
 
 ---
 
-## ⚠️ Claims this pass DROPPED as false — do not restore them from git history
-
-The module docstring and its constant comments were the oldest prose in the file and four
-assertions in them had gone false. They are recorded here so a future reader who finds them in an
-old revision knows they were retired deliberately, not lost.
-
-1. **"This module has no in-tree imports beyond `kanibako.errors`."** FALSE since the `@`-ref
-   grammar was composed from the agent-side charset: the module also imports
-   `kanibako.agent_ref` (`CANONICAL_SEP`, `SEGMENT_CHAR_CLASS`). The **conclusion** the sentence
-   was defending still holds and is restated below under "The import-direction invariant" — but
-   it now has to be argued from two edges, not one.
-2. **"Every box-side `/home/agent` literal in the tree derives from this constant."** FALSE. It
-   reads as an enforced invariant and nothing enforces it. See "The box-layout contract
-   constants" for the measured exceptions.
-3. **`split_bind` "remains the parser for the CLI-INPUT edge (`config set k=h:b[:opts]`)."**
-   FALSE twice over: the bind-shaped `config set` write route is RETIRED
-   (`config_keys._bind_route_retired_message` and its two callers refuse it), and
-   `settings_configset` does not import `split_bind` at all. Its real consumer is named under
-   `split_bind` below.
-   ⚑ **This one had already SPREAD**, which is the reason to record it rather than just fix it:
-   the same wrong consumer is asserted in `tests/test_settings/test_settings_resolve.py` (the
-   section banner above the `split_bind` tests) and in `commands/workset_cmd.run_share_add`'s own
-   comment, which calls it "the same parser `config set` and the resolver use". **Both are
-   outside this module and were left alone — fixing them is a separate, boarded change.** A
-   reader who checks either one will find the false claim corroborated.
-4. **The module docstring's cascade framing** — that `resolve_value` walks
-   `[box, workset, agent, system]` as the settings cascade. FALSE for the current tree: the
-   launch/settings cascade goes through `settings_merge.merge` now, and `resolve_value`'s live
-   role is narrower. See "What `resolve_value` is still for".
-
-Two further notes were stale rather than false and were compressed rather than dropped: the
-`defer_env` flag's "existing callers are byte-for-byte unaffected" (a migration-moment claim about
-an unnameable "before"), and `LevelView` / `ResolvedValue`'s "the structural unpacking of those
-leaves lands ... in a later phase" (it landed — `settings_assemble` calls both unpackers today).
-
----
-
 ## What this module actually owns
 
-Four things, and the first line of the old docstring named only two of them:
+Four things:
 
 * **The expression grammar** — `$VAR` / `${VAR}`, bare `@a.b.c` and braced `@{a.b.c}`, a leading
   `~`, and the backslash escape rules. One parser per token family, shared out to every other
@@ -64,8 +27,7 @@ Four things, and the first line of the old docstring named only two of them:
   keys, and they live here precisely because this is the module everything can import.
 
 It is format-agnostic and operates only on already-parsed data: the caller parses YAML into the
-simple mappings and lists this module consumes. (The old prose said "TOML/YAML" — kanibako's
-config files are all YAML.) It performs no file I/O, no mounting, and holds no global mutable
+simple mappings and lists this module consumes (kanibako's config files are all YAML). It performs no file I/O, no mounting, and holds no global mutable
 state — the module-level names are strings, three ints, two compiled regexes, and the `UNSET`
 sentinel, which is `__slots__`-empty and therefore immutable. Its reads of the process environment
 are `_host_term` and `_host_colorterm`, which supply the `$TERM` and `$COLORTERM` defaults of a
@@ -83,9 +45,9 @@ import-free there is no facade to hide it behind — it would fail loudly at imp
 place far from whoever added it. **The rule needs to stay visible AT the import block**, which is
 why a one-line `⚑` sits there and only the reasoning lives here.
 
-Its two in-tree edges are `kanibako.errors` (which imports nothing at all) and
-`kanibako.agent_ref` (which imports only `re` and `kanibako.errors`). The transitive closure is
-therefore those two modules and the standard library — nothing else. **That is what makes it safe
+Its two in-tree edges are `kanibako.errors` and `kanibako.agent_ref`, which imports
+`kanibako.errors` and `kanibako.identifiers` (stdlib-only). The transitive closure is `errors`,
+`agent_ref`, `identifiers`, and the standard library — nothing else. **That is what makes it safe
 to import `GUEST_HOME` from anywhere, including the agent plugin packages, without
 circular-import risk.** The property is worth restating whenever a new import is proposed here: a
 third edge is not automatically fine, it has to be checked the same way.
@@ -156,16 +118,10 @@ settings keys** — the images hardwire agent=1000, so no configuration could me
 and the `--userns=keep-id:uid=…,gid=…` mapping (`runtime/container.py`, `KEEP_ID_USERNS`) is
 built from the two ids so the calling host user always lands on the in-box agent user.
 
-⚑ **`GUEST_HOME` is the single source of truth for the box-side home, but it is NOT enforced, and
-the old comment claiming otherwise was false.** Measured in `src/` on 2026-08-30: ONE `/home/agent`
-literal sits in an executable Python path that does not go through the constant —
-`commands/start.py` (the `kanibako-entry` mount destination). `channels/helper_listener.py`, named
-here before, no longer does: its `helper-init.sh` entrypoint path derives from `GUEST_HOME`. Two
-further Python occurrences are `--help` EXAMPLE lines in `commands/workset_cmd.py`, and **seven are
-`WORKDIR` / `ENV PATH` lines across the five bundled `containers/Containerfile.template-*` files,
-which cannot import a Python constant at all.** The remaining occurrences are prose. **Treat
-"derives from `GUEST_HOME`" as the standard to hold new code to, never as a description of the tree
-as it stands.**
+⚑ **`GUEST_HOME` is the single source of truth for the box-side home, but it is NOT enforced; the
+`containers/Containerfile.template-*` files hardwire it** (`WORKDIR` / `ENV PATH`), and they cannot
+import a Python constant at all. **Treat "derives from `GUEST_HOME`" as the standard to hold new
+code to, never as an enforced invariant.**
 
 ### The GUEST workspace and vault leaves
 
@@ -218,12 +174,10 @@ The FIXED box-side root for state that CANNOT resolve without a live box but MUS
 before the box is live. A mount destination goes into the container runtime's argument list
 before anything is running, and a copy category runs at `create` with no container at all — so a
 destination containing a `$XDG_*` token would have to be resolved by the HOST, guessing at what
-the box would say. That guess was maintained by hand across four separate resolvers and they were
-already out of agreement (`start.py` derived the helper dest from `$XDG_STATE_HOME` while
-hardcoding the matching `mkdir` at `~/.local/state`). One fixed root deletes the whole class: it
-resolves identically on both sides, always. XDG compliance is restored PROPERLY after boot, by
-projecting this root onto the box's real XDG locations
-(`kanibako.box_supervisor.project_pinned_xdg`) rather than by four resolvers agreeing.
+the box would say, by hand, in every resolver that needs it — and hand-kept guesses drift apart.
+One fixed root deletes the whole class: it resolves identically on both sides, always. XDG
+compliance comes after boot, by projecting this root onto the box's real XDG locations
+(`kanibako.box_supervisor.project_pinned_xdg`).
 
 ⚑ **HOME-RELATIVE by design.** The three consumers anchor it differently — the box's own `$HOME`
 in-box, the box-home BIND SOURCE host-side (`proj.shell_path`), and a `~` expression in the
@@ -247,16 +201,14 @@ charset rather than restating it: `agent_ref.SEGMENT_CHAR_CLASS` is exactly what
 class plus the `℘` that joins the halves. **The subset relation therefore holds BY
 CONSTRUCTION.**
 
-⚑ That composition is the point. These were two independent literals and they **drifted TWICE** —
-first missing `℘`, then missing `-` — each time truncating the name mid-segment and leaving the
-rest as a literal suffix. `@meta.agent.kimi-k3℘claude.auth.share_support` parsed as the absent
-name `meta.agent.kimi` (rendered `""`) plus the literal `-k3℘claude.auth.share_support`, which
-then fed `as_bool` and crashed every such launch with "expected bool, got str" — and at the
-`@meta.agent.<a>.path` sites it silently produced a garbage path instead. A third drift
-(non-ASCII personas, e.g. `漢字℘claude`) was latent until 2026-08-04.
+⚑ That composition is the point. Two independent literals drift: a ref charset missing `℘` or `-`
+truncates the name mid-segment and leaves the rest as a literal suffix, so
+`@meta.agent.kimi-k3℘claude.auth.share_support` would parse as the absent name `meta.agent.kimi`
+(rendered `""`) plus the literal `-k3℘claude.auth.share_support`, which then feeds `as_bool` and
+crashes the launch — and at the `@meta.agent.<a>.path` sites silently produces a garbage path.
 
-`\w`, inside `SEGMENT_CHAR_CLASS`, is what admits letters and digits in any language. It is still
-a NARROW class, not a catch-all: a broad `[^\s@]+` is **REJECTED** because it would swallow `/`
+`\w`, inside `SEGMENT_CHAR_CLASS`, is what admits letters and digits in any language (`漢字℘claude`).
+It is still a NARROW class, not a catch-all: a broad `[^\s@]+` is **REJECTED** because it would swallow `/`
 and break embedded `@config.data/...` path refs. `.` is absent from BOTH sides — it is this
 grammar's own segment separator, which is why an agent name may not contain one (`agent_ref`
 rejects it at parse time).
@@ -289,12 +241,13 @@ class ResolveCtx:
     xdg: dict[str, str]
     config: Mapping[str, str] = field(default_factory=dict)
     term: str = field(default_factory=_host_term)
+    colorterm: str | None = field(default_factory=_host_colorterm)
 ```
 Context for variable expansion.
 
 *xdg* maps XDG variable names (e.g. `"XDG_DATA_HOME"`) to host paths. Every host-side `ResolveCtx`
-gets its `xdg=` from one builder in `paths.py`, deliberately — an ad-hoc environment read here was
-a real defect once.
+gets its `xdg=` from one builder in `paths.py`, deliberately — an ad-hoc environment read here would
+give two contexts two answers.
 
 *term* answers `$TERM` and is **defaulted, not built per call site**, which is the one place this
 class parts company with *xdg*: `TERM` is a single process-wide host fact with no per-context
@@ -333,10 +286,8 @@ A single precedence level's explicitly-set values and declared defaults.
 level; *defaults* holds defaults declared at this level. The split into two mappings is what makes
 the two-pass "set beats default at any level" rule expressible at all.
 
-A value is typically a scalar `str` (a behavior setting, an `env` value), but for the
-path-delivery CATEGORIES it may be a STRUCTURED leaf — a binding pair/tuple
-`[host_src, box_dest[, opts]]`, a dest-keyed entry `[src[, opts]]`, or a `masks` list (spec §2a;
-preserved at load by `settings.config.read_categories`). **Hence `object`, not `str`.**
+It serves only the `config.*` / `system.*` FOUNDATION tier (`paths.py`). Its *values* are typed
+`object`, not `str`, because a YAML scalar may parse as a non-string.
 
 ```python
 @dataclass(frozen=True)
@@ -352,8 +303,8 @@ A resolved (but not yet expanded) value plus its provenance.
 supplied it. *is_default* is True when the value came from a declared default rather than an
 explicit set. *terminal* is True when the winning value was an explicit `""`.
 
-*value* is `object` for the same reason `LevelView.values` is: a CATEGORY value may be a
-structured leaf. Consumers that need a string narrow at their own site.
+*value* is `object`, like `LevelView.values`. Consumers that need a string narrow at their own
+site.
 
 ⚑ **`terminal=True` is not "empty", it is "suppressed".** A consumer that treats it as "no value"
 and substitutes its own fallback has reintroduced exactly the fall-through the flag exists to
@@ -379,8 +330,8 @@ The inverse direction: the expression that expands back to *text* verbatim. It p
 before every `\`, `$`, `@` and `~` (`_EXPR_SIGNIFICANT`). A leading `~` is the only `~` the
 expander reads, but escaping all of them keeps the rule one line. Use it when a floor hands
 the expander a HOST PATH as a value (`settings_launch.meta_runtime_host_floor`). A `$` or `@`
-in a directory name is data. Unescaped, it raised `Unknown variable` or was read as a reference
-and dropped.
+in a directory name is data. Unescaped, it would raise `Unknown variable` or be read as a
+reference and dropped.
 Both passes are pinned in `tests/test_settings/test_settings_resolve.py`:
 * HOST space removes every escape and gives *text* back.
 * The DEFERRED scan (`defer_env=True`) records no `@`-ref and keeps `\$ \~ \\` escaped for
@@ -401,8 +352,7 @@ literal colon in either half.
 ⚑ **Its one live consumer is `workset share add` / `workset share rm`**
 (`commands/workset_cmd.run_share_add`), which is a CLI edge whose grammar is exactly two fields —
 so it calls `split_bind` a second time on the already-unescaped guest half to catch a stray third
-field. **It is NOT the `config set` parser**, and the retired prose that said so should not come
-back: the bind-shaped `config set` write route is closed by
+field. **It is NOT the `config set` parser**: the bind-shaped `config set` write route is closed by
 `config_keys._bind_route_retired_message` and `settings_configset` does not import this function.
 Storage and the category-load path are pure structured and use the unpackers below.
 
@@ -425,18 +375,17 @@ Each element is narrowed to `str` (a YAML scalar may parse as `int`). A non-list
 a list/tuple of the wrong arity, raises `SettingsError` — **the structured shape is load-bearing
 and a malformed leaf is a configuration error, not something to silently re-derive.**
 
-⚑ The category list above is the spec's (§0, line-76 enumeration:
+⚑ The category list above is the spec's (§0, the category enumeration:
 `masks · bindings.ro · bindings.rw · caches · seeded · common · synced · env · secret_path`).
-**The name is `common`. `shared` was renamed to it on 2026-07-29 and is no longer a key** — under
-the closed-keyspace rule a stored `<scope>.shared.<name>` is an ERROR, not a silent accept. The
-docstring here named the dead spelling until this pass.
+**The name is `common`; `shared` is not a key** — under the closed-keyspace rule a stored
+`<scope>.shared.<name>` is an ERROR, not a silent accept.
 
 ```python
 unpack_bind_entry(value: object) -> tuple[str, str | None]
 ```
 Unpack a **DEST-KEYED** binding entry leaf into `(src, options)`.
 
-The dest-keyed sibling of `unpack_bind` (disk-store rework R-3/R-6). Where a name-keyed arm stores
+The dest-keyed sibling of `unpack_bind`. Where a name-keyed arm stores
 `{name: [host_src, box_dest[, opts]]}`, a dest-keyed arm stores `{box_dest: [src[, opts]]}` — the
 destination is the mapping KEY, so the VALUE carries one element fewer:
 
@@ -453,9 +402,8 @@ entry is precisely the duplicate-form confusion CONVENTIONS §0 opens with.
 ARITY.** Both accept a 2-element list and the meanings are OPPOSITE — `[a, b]` is `(host, box)`
 there and `(src, opts)` here. **The caller picks the unpacker from the NODE the value came from**
 (a name-keyed bind node vs a dest-keyed arm), never from the value's shape; see
-`settings.kb_store.BindEntry` for the full rule. Both node shapes exist during the P5→P8 bridge,
-so both unpackers are live today — `settings_assemble` calls one on each branch, adjacent lines
-apart, which is exactly where an arity-based "simplification" would land.
+`settings.kb_store.BindEntry` for the full rule. `settings_assemble` calls both unpackers, one on
+each of two adjacent branches, which is exactly where an arity-based "simplification" would land.
 
 ```python
 normalize_bind_dest(dest: str) -> str
@@ -587,8 +535,8 @@ deferred (block 3 / S17). Its one consumer is `settings_expand`, which passes
 and `~`, and must see the same escape to honor the user's "literal, NOT a var" intent. Consuming
 it would turn `\$` into `$` and let the box re-expand exactly what the user escaped. `\@` is
 STILL unescaped to `@`: this pass OWNS `@`-refs on BOTH sides, the box never processes `@`, so a
-literal `@` is the correct box-side residue. **This box-side escape contract is spec-silent and
-has been flagged to the director** — it is a real semantic decision living only in code.
+literal `@` is the correct box-side residue. **This box-side escape contract is spec-silent** — it
+is a real semantic decision living only in code.
 
 ```python
 _scan_var_span(expr: str, i: int) -> tuple[str, int]
@@ -644,8 +592,7 @@ add validation here as a missing-symmetry fix.
 `UNSET` when that is `None`. **There is no `DEFAULT_COLORTERM`, and one must not be added.** `TERM`
 can fall back because every terminal has a type; `COLORTERM` is an unstandardized convention whose
 modern meaning is a CAPABILITY CLAIM — *this display does 24-bit color* — which is the HOST's to
-make. A literal here would assert it on the host's behalf, which is exactly the defect the
-passthrough replaced (the shipped default was `truecolor` until 2026-09-20). An EMPTY host value is
+make. A literal here (such as `truecolor`) would assert it on the host's behalf. An EMPTY host value is
 treated as absence for the same reason: `COLORTERM=""` is a third state readers misparse, some
 testing only for the variable's presence.
 
@@ -685,19 +632,18 @@ precedence logic does not use them. They are in the signature so that a caller c
 
 ### What `resolve_value` is still for
 
-⚑ **It is no longer the settings cascade.** `settings_merge.merge` is: it walks
+⚑ **It is not the settings cascade.** `settings_merge.merge` is: it walks
 `settings_assemble`'s ordered `KeyStore` partials with a depth-sensitive 3-state
-`__MISSING__` / present-`None` model, which replaced both this function's `""`-as-terminal
-convention and its separate `defaults` pass (assembly folds the floor INTO the `base` level, so
+`__MISSING__` / present-`None` model instead of this function's `""`-as-terminal convention and
+its separate `defaults` pass (assembly folds the floor INTO the `base` level, so
 there is no separate defaults dict downstream).
 
-`resolve_value` is **NOT retired** — it still serves the `config.*` / `system.*` FOUNDATION path
-tier, and `paths.py` is its only production caller, at four sites across two functions. Note what
+`resolve_value` serves the `config.*` / `system.*` FOUNDATION path tier, and `paths.py` is its only
+production caller. Note what
 those calls look like: each passes a **single-element** `levels` list
-(`[LevelView("config", …)]`, `[LevelView("system", …)]`), so in production today the
-most-specific-first walk has one level to walk and the `defaults=` mapping is doing the real
-work. **The multi-level `[box, workset, agent, system]` shape survives only in the test suite**,
-which is why the retired docstring describing it as the live cascade read so plausibly.
+(`[LevelView("config", …)]`, `[LevelView("system", …)]`), so in production the most-specific-first
+walk has one level to walk and the `defaults=` mapping is doing the real work. **The multi-level
+`[box, workset, agent, system]` shape appears only in the test suite.**
 
 ```python
 _no_lookup(ref: str, chain: tuple[str, ...]) -> str
