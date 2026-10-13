@@ -1,8 +1,9 @@
 # tweakcc — the binary transform, and the key that names it
 
-`tweakcc` patches Claude Code's `cli.js` bundle. This module owns the patching lifecycle
-(config merge, cache keying); `tweakcc_cache.py` owns the flock-refcounted on-disk cache and
-`commands/start.py::_apply_tweakcc` runs it inside a throwaway container.
+`tweakcc` patches Claude Code's `cli.js` bundle. This module resolves and merges the config
+(`resolve_tweakcc_config`, `build_merged_config`, `write_merged_config`); `tweakcc_cache.py` owns
+the cache, its key, and its flock refcount; `commands/start.py::_apply_tweakcc` runs the patch
+inside a throwaway container.
 
 ## `TRANSFORM_NAME` — why the word is spelled on both sides of the seam
 
@@ -16,15 +17,11 @@ Two DIFFERENT facts share the spelling `"tweakcc"`, and they are matched, not sh
 * **the claude plugin declares that claude wants `tweakcc`** — that is the `transform` row of
   `claude-defaults.yaml`'s `behavior:` section (`default: tweakcc`), which the loader turns into
   the `TargetSetting` the plugin's `setting_descriptors()` returns. ⚑ The value is in the shipped
-  FILE, not in plugin code (D1-7), so a reader looking for the literal should open the YAML.
+  FILE, not in plugin code, so a reader looking for the literal should open the YAML.
 
 The plugin does NOT import this constant. Spec §0 makes every non-universal agent specific
-PLUGIN-established. Plugins declare `kanibako-cli>=1.8.0.dev0,<2.0` (bounded 2026-09-01; wheels
-published before v1.8.0 carry a bare `["kanibako-cli"]`), so a new plugin importing a new core
-symbol is now refused at resolve time against an older core rather than installing and breaking —
-but only where the bounded wheel is the one resolving. When the
-tweakcc implementation eventually migrates into the claude plugin (boarded, not done), this
-constant leaves core with it and the plugin's declaration is unchanged.
+PLUGIN-established. Plugins declare `kanibako-cli>=1.8.0.dev0,<2.0`, and the declaration stays in
+the data file, so the plugin never depends on a core symbol for it.
 
 ## Three things share the word "transform" — keep them apart
 

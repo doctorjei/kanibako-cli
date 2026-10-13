@@ -203,8 +203,7 @@ def snapshot_attach_state(
 
     Composes the two pure detectors over freshly probed system state; an
     explicit *proc_cmdlines* skips the ``/proc`` read entirely.  ⚑ All probing
-    in this module is confined here and to the two ``_*`` helpers.  Never
-    raises.
+    runs through ``_collect_proc_cmdlines`` and ``tmux_run``.  Never raises.
     """
     cmdlines = (
         _collect_proc_cmdlines() if proc_cmdlines is None else list(proc_cmdlines)

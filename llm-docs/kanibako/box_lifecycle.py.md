@@ -7,24 +7,22 @@ is `box_supervisor`, which imports from here and never re-implements detection.
 
 Two client surfaces are watched today — the in-box VS Code server (a panel / attach) and a tmux
 TERMINAL client (an interactive shell) — and the module emits ATTACH / DETACH transitions between
-snapshots of them. Those transitions drive two later increments: the always-on agent self-heals on
-DETACH (E2), and the credential writeback fires on DETACH (D / GAP-1).
+snapshots of them. On DETACH the always-on agent self-heals and the credential writeback fires.
 
 ## What this module is, and what it deliberately is not
 
-This is INCREMENT 1: the PURE detection + transition logic plus a thin, INJECTABLE system-probe
-layer. It makes NO launch-model changes and runs no supervisor loop. E2 imports
-`snapshot_attach_state` / `canonical_tmux_session_pid` and drives the loop itself; D subscribes to
-the `LifecycleEvent.DETACH` that `classify_transition` emits.
+This is the PURE detection + transition logic plus a thin, INJECTABLE system-probe layer; it runs
+no loop. `box_supervisor` runs the loop: it imports `snapshot_attach_state`, `classify_transition`,
+and `tmux_run`, and acts on the `LifecycleEvent.DETACH` that `classify_transition` emits.
 
-Everything here is deterministic and side-effect free EXCEPT the two probe functions at the bottom.
+Everything here is deterministic and side-effect free EXCEPT the probe layer at the bottom.
 Their only impurity — reading `/proc` cmdlines and shelling `tmux` — is funneled through injectable
 parameters, so tests never touch real processes or a real tmux server.
 
 ## The PID-1 contract
 
 `box_lifecycle` and `box_supervisor` are the PID-1 pair: **pinned flat** at the top of the package
-(ratified 2026-08-01), **stdlib-only**, and invoked in-box by a dotted literal
+**stdlib-only**, and invoked in-box by a dotted literal
 (`python3 -m kanibako.box_supervisor`). This module must never be packaged, moved, or given a
 non-stdlib import. The full reasoning — why a widened import surface silently degrades every launch
 to the bare-shell keep-alive — is in `llm-docs/kanibako/box_supervisor.py.md`, section "The PID-1
@@ -96,7 +94,8 @@ added field. It is frozen so a prev/cur pair is safe to hold across a watcher ti
 `classify_transition` compares two states surface-by-surface through it, so extending the model with
 a new surface field — added to that tuple — needs no change to the classifier at all.
 
-`LifecycleEvent` is the transition a watcher tick produces, consumed by E2 self-heal and by D.
+`LifecycleEvent` is the transition a watcher tick produces, consumed by the supervisor's self-heal
+and credential writeback.
 
 ## `classify_transition` — and why it is DETACH-biased
 
@@ -128,10 +127,11 @@ freshly probed system state and returns an `AttachState`, never raising. VS Code
 comes from process command lines, by default collected via `_collect_proc_cmdlines`, though a caller
 or a test may inject an explicit `proc_cmdlines` iterable to skip the `/proc` read entirely. tmux
 terminal attachment comes from `tmux list-clients -t <session>` run through the injectable `run`,
-tolerating an absent tmux or a dead session as "not attached". All probing in this module is
-confined to this function and the two `_*` helpers.
+tolerating an absent tmux or a dead session as "not attached". All probing runs through
+`_collect_proc_cmdlines` and `tmux_run`; `snapshot_attach_state` and `canonical_tmux_session_pid`
+are the two public probes.
 
 **`canonical_tmux_session_pid`** is the best-effort PID of the tmux server hosting a session — the
 "live marker". It runs `tmux display-message -p -t <session> '#{pid}'` and parses the first integer
-printed. ⚑ `#{pid}` is the tmux SERVER pid, not a pane or client pid. E2 uses this value to identify
-the canonical always-on instance.
+printed. ⚑ `#{pid}` is the tmux SERVER pid, not a pane or client pid; it identifies the canonical
+always-on instance.

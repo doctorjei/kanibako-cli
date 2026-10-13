@@ -11,8 +11,8 @@ box/workset/system settings) is normalized before resolver so other code only se
 * **persona** — the identity, left of the separator (``navigator``); a node
   whose persona name differs from its harness is itself called *a persona*.
 * **node-name** — the canonical fused form ``persona℘harness`` (``navigator℘claude``).
-  This is the keyspace ``agent.<node>.*`` slot; it is what ``resolve_agent`` returns
-  and what ``KANIBAKO_AGENT`` stamps.  ⚑ It is NOT the on-disk dir name: a store
+  This is the keyspace ``agent.<node>.*`` slot; it is what ``resolve_agent`` returns;
+  ``KANIBAKO_AGENT`` stamps its ``+`` display form.  ⚑ It is NOT the on-disk dir name: a store
   directory is not a key, so it takes the ``+`` form
   (``settings.agent_config.store_dirname``, ``agents/navigator+claude/``).
 
@@ -34,50 +34,32 @@ Bare ref with no separator (``claude``) parses to ``(raw, raw)`` — node == har
 so every bare path is byte-for-byte identical to pre-persona behavior.
 
 ## Permitted Characters (Persona / Harness)
-In addition to ``str.isalnum()``, these characters may appear in persona/harness names:
-
-⚑ ``str.isalnum()`` is Unicode-aware and that is DELIBERATE: letters and digits in ANY language
-are legal, so ``漢字+claude`` and ``café+claude`` are valid refs.
-
-⚑ ``-`` is a non-word character but NOT problematic — ref-name grammar admits it (``0da8778``).
-This is standard as intended: when name character broke ref grammar, GRAMMAR was widened rather
-than name charset narrowed.
-
-⚑ ``_`` is word character, so 'deny' never arises; it MUST be listed here, as predicate below tests
-``str.isalnum()``, & ``'_'.isalnum()`` is False (only divergence in ``str.isalnum()`` & ``\w``).
-
-⚑ ⚑ ⚑ ``.`` is forbidden (REMOVED 2026-08-04). To deny character, must be "not a word character"
-AND "problematic"; being symbol alone is insufficient.  ``.`` is both: it is the settings key-path
-separator, so dotted nodes make ``agent.a.b℘claude.model`` ambiguous with genuine nested key, & it
-admits ``..``, i.e. ``agents/../``.
+A segment follows the name rule (`identifiers.name_flaw`, keyspec §0): 1–64 ASCII letters, digits,
+or `_`, not starting with a digit. A refusal names the `_` spelling as its cure (`_segment_refusal`).
 
 ### Regex Details
-Regex character-class BODY (no brackets) matching EXACTLY characters func:`_is_segment_safe`
-admits, for consumers that must parse node-name out of larger string.
+``SEGMENT_CHAR_CLASS`` is the character-class BODY (no brackets) a segment draws from:
+``identifiers.NAME_CHAR_CLASS``, named here for the key-path grammar that reads it.
 
-⚑ ``settings_resolve._REF_SEG`` composed from this, which is whole point: node-name is KEY SEGMENT
-(``agent.<node>.…``), so every legal character MUST be matchable there or ``@``-ref naming node
-truncates mid-name; it silently renders ``""`` at bind-path & crashes ("expected bool, got str")
-at auth site.  The two charsets were separate literals & drifted TWICE (``℘``, then ``-``);
-deriving one from other makes subset relation hold by construction.
-
-``\w`` is exactly ``str.isalnum()`` plus ``_`` (swept over all of Unicode by
-``test_word_char_class_equals_isalnum_plus_underscore``), & extras are ``re.escape``-d so class is
-position-independent — consumer may splice characters in on any side without ``-`` forming range.
+⚑ ``settings_resolve._REF_SEG`` is composed from it: a node-name is a KEY SEGMENT
+(``agent.<node>.…``), so every legal character MUST be matchable there or an ``@``-ref naming the
+node truncates mid-name. Deriving one class from the other makes the subset relation hold by
+construction.
 
 ## The entry-point group
 
 ``AGENT_ENTRY_POINT_GROUP`` (``"kanibako.agents"``) is the group a plugin registers its agent under,
-spelled once here beside the reservation a registered name must pass (2026-09-25). Three readers:
-``targets.discover_targets`` (runtime discovery), ``settings.kinemata_keyspace.in_tree_agents``
-(the dev-tooling keyspace gate's agent-node set), and ``kinemata.toml``'s ``reserved-agent-names``
-parity, which calls that function. A distribution's ``pyproject.toml`` still spells the string,
+spelled once here beside the reservation a registered name must pass. Its readers:
+``targets.discover_targets`` (runtime discovery), ``settings.agent_file._installed`` (whether a
+node names an installed agent), ``settings.kinemata_keyspace.in_tree_agents`` (the dev-tooling
+keyspace gate's agent-node set), and ``kinemata.toml``'s ``reserved-agent-names`` parity, which
+calls that function. A distribution's ``pyproject.toml`` still spells the string,
 because packaging requires it there.
 
 ## Functions
 
 ```_is_segment_safe(segment: str) -> bool```
-Non-empty segment of only letters/digits (any language) plus `-`/`_`.
+Whether a segment follows the name rule: `identifiers.name_flaw(segment) is None`.
 
 ```_first_sep_index(raw: str) -> int```
 Index of FIRST separator in *raw*, or `-1` if none.
@@ -89,9 +71,8 @@ Parse an agent ref into `(node, harness)`.
 * Composite: `"navigator+claude"` -> `("navigator℘claude", "claude")` — persona (left) & harness
   (right) are validated & re-joined with canonical ``℘`` separator to form node-name.
 
-Splits on FIRST separator only; second separator in EITHER segment is rejected (segment must be
-fs/key-safe: letters & digits in any language, plus `-`/`_` — see :data:`_SAFE_EXTRA` for why
-`.` is not among them).
+Splits on FIRST separator only; second separator in EITHER segment is rejected (each segment
+follows the name rule, `identifiers.NAME_CHAR_CLASS`; the refusal offers the `_` spelling).
 
 raises ConfigError: on empty, empty segment, or segment w. illegal character (ex: stray separator),
 or a segment that is a RESERVED pseudo-agent name (`PSEUDO_AGENT_NAMES`, keyspec §2d).
@@ -116,12 +97,7 @@ SELECTS or LOOKS UP an existing agent uses this. The KEY-SEGMENT RECOGNIZERS —
 the `<agent>` segment of a KEY, not a selection, and the keyspace answers the pseudo-agent tiers
 itself (`is_valid_agent_segment` admits `PSEUDO_AGENT_NAMES` before it canonicalizes).
 ⚑ `config_keys.resolve_key` is NOT one of them: it REWRITES the segment to the node a write lands
-in, so it goes through `agent_address_node` (below, via `config_keys.agent_key_node`) — on the
-claimant form `agent.Shell.model` raised, was left raw, and wrote `agents/Shell/`.
-Before `parse_agent_address` existed, two sites carried their own `find_identifier(..., {"shell"})`
-arm (`config.resolve_agent`, `config_dest.check_agent_node`) and
-the rest had none (`box create`, `agent <verb>`, `start`'s reattach, the persona-store lookup) —
-which is how `start --agent shell` worked while `create --agent shell` refused.
+in, so it goes through `agent_address_node` (below, via `config_keys.agent_key_node`).
 
 ```def agent_address_node(raw: str) -> str```
 The NODE an agent ADDRESS reaches: `parse_agent_address`, then the HARNESS segment folded through

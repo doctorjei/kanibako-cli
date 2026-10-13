@@ -6,9 +6,7 @@ standard and does not write into it — it CONSUMES it. Everything in this modul
 against that tree, with no box, no network, and no probe.
 
 The design SOT is `~/canon/workbook/designs/persona-grata-autoimport-DESIGN.md`; the
-sections cited below (§1 through §5a) are its sections. ⚑ The module docstring cited it as
-`plans/…-DESIGN.md` until 2026-08-20 — a stale pointer: `plans/` holds
-`~/canon/notebook/archives/plans/persona-grata-autoimport-BUILD.md`, a DIFFERENT document. The procedure that governs any change here is
+sections cited below (§1 through §5a) are its sections. The procedure that governs any change here is
 `~/canon/notebook/procedures/persona-resolution-model.md`, and it outranks this document.
 
 ## The one invariant: persona values are LIVE, never persisted
@@ -88,10 +86,8 @@ as every other ref consumer, because a bad ref is a user error and not a store m
 
 ### ⚑ Path traversal is handled upstream, not here
 
-`.` stopped being a legal segment character on 2026-08-04. Before that, `..+claude` would have
-resolved to `<root>/../claude` — an ordinary harness config dir — and `navigator+..` to
-`<root>/navigator/..`, the store root itself. Both now RAISE from `parse_agent_address` on the first
-line of `locate_entry`, rather than being screened out afterwards.
+`..+claude` and `navigator+..` raise from `parse_agent_address` on the first line of `locate_entry`
+(the name rule admits no `.`), rather than being screened out afterwards.
 
 There is deliberately NO second dot-check in this module. One charset, enforced in one place; a
 local re-check here would be a second copy of the rule that could drift away from the grammar.

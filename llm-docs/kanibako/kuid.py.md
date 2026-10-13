@@ -36,8 +36,9 @@ A generated value can therefore NEVER be all-zero, and that reserves the all-zer
 `"00000"` as `SENTINEL`.
 
 The sentinel is not a kuid. It is the "no kuid stored here" marker — the default that
-`settings/config.py::read_workset_kuid` returns when `workset.kuid` is absent, which is what a
-pre-kuid box looks like.
+`settings/config.py::read_workset_kuid` returns when `workset.kuid` is absent, and the default
+`workset.kuid` of every primary and named box unless the user sets one (keyspec). A standalone box
+generates a real one; a standalone box with none stored is a pre-kuid box.
 
 ### ⚑ PRESENT-SENTINEL is not INVALID — the distinction callers must keep
 
@@ -64,10 +65,11 @@ and the warning tells the user to fix `workset.kuid` or set `workset.skip_kuid_c
 
 ## Who reads a kuid
 
-Standalone boxes only. `launch/box_resolve.py` composes a standalone box's LIVE name as
-`<stored workset.kuid>_<live dir leaf>`: the kuid is the stable stored prefix and the leaf
-tracks the current directory, so a MOVED box keeps its identity. `project/import_reconcile.py`
-mirrors that composition, and falls back to the bare leaf when the stored value is `SENTINEL`.
+Standalone boxes only. `launch/box_resolve.standalone_box_name` composes a standalone box's LIVE
+name as `<stored workset.kuid>_<live dir leaf>`: the kuid is the stable stored prefix and the leaf
+tracks the current directory, so a MOVED box keeps its identity. A SENTINEL box falls back to its
+`standalone:` registry key, else the leaf. `project/import_reconcile.py` calls it with no registry
+key.
 `commands/box/_duplicate.py` mints a FRESH kuid for a duplicate rather than copying the
 source's.
 
