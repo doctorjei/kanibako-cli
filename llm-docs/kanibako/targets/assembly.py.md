@@ -3,14 +3,12 @@
 `targets/assembly` is the data-driven core of the descriptor-only plugin system. Given a plugin's
 `PluginDescriptor` (`targets/base.py`), the resolved host `AgentInstall`, and a handful of
 per-launch knobs, it assembles the agent argv, the container env overlay, and the host->box
-mounts. It superseded the per-plugin `build_cli_args` / `binary_mounts` hooks, which were removed
-for the public release: divergent LOGIC stays behind the plugin `Target` hook methods, while
-everything a plugin merely DECLARES flows through here.
+mounts. Divergent LOGIC stays behind the plugin `Target` hook methods, while everything a plugin
+merely DECLARES flows through here.
 
 Every function is agent-agnostic — no plugin names appear anywhere in the module — and everything
-is pure and side-effect-free apart from filesystem *existence* checks in `descriptor_mounts` and
-`resolve_binding_source`, which only call `Path.exists()` and never read, write, or mutate
-anything.
+is pure and side-effect-free apart from `Path.exists()` checks in `descriptor_mounts`, which never
+read, write, or mutate anything.
 
 ## Where it sits in a launch
 
@@ -19,8 +17,7 @@ today means all three first-party agents.
 
 * `resolve_mode` + `assemble_argv` build the launch argv.
 * `assemble_env` + `env_realization_drivers` say which variables the descriptor REALIZES and
-  which settings key drives each; the launch turns them into agent-scope settings keys (MBR-1
-  P4c-2).
+  which settings key drives each; the launch turns them into agent-scope settings keys.
 * `descriptor_mounts` emits the delivery binds.
 
 The only descriptor-less target is `ShellTarget`, the `kanibako shell` fallback. It launches a
@@ -41,12 +38,10 @@ returns. The remaining elements, `command[1:]`, are agent args and are produced 
 
 So the list `assemble_argv` returns is everything passed to the container AFTER the
 `--entrypoint` program: it EXCLUDES `descriptor.command[0]` and starts at `descriptor.command[1:]`.
-This mirrors how `start.py` uses `cli_args` after setting `--entrypoint` separately, and
-corresponds to the old `build_cli_args + state_args` tail.
+This mirrors how `start.py` uses `cli_args` after setting `--entrypoint` separately.
 
 ## `resolve_mode` — selecting the interactive launch mode key
 
-The function lifts what used to be claude's `build_cli_args` logic into agent-agnostic form.
 *available_modes* is the set of mode keys the agent's launch grammar declares, read off the
 snapshot's `meta.agent.<a>.mode` table (B5, spec §2d), where the descriptor materialized it.
 
@@ -66,21 +61,20 @@ such as goose or codex.
 ## The access tier — `resolve_access_tier`
 
 `resolve_access_tier` validates a resolved `access` value into a permission TIER. `None`
-(unset) yields `access_default()` — `full`, R-41's ruled default: today's behavior preserved,
-because the box is the containment boundary. That default is DECLARED in `core-defaults.yaml` and
+(unset) yields `access_default()` — `full`, because the box is the containment boundary. That
+default is DECLARED in `core-defaults.yaml` and
 is not spelled in this module. Anything else must be a member of `ACCESS_TIERS` EXACTLY.
 
 ⚑ An unknown value RAISES, naming the key and the legal values. It is NEVER coerced and NEVER
 falls back to the default: on a permission axis a typo must not decide whether the agent prompts.
-The old boolean read did exactly that — `coerce_bool("flase")` returned `None`, which selected the
-permissive default — which is why the set-time guard exists. That guard stays; this validation is
-a SECOND FENCE for a value that reached the file some other way, such as a hand edit.
+The set-time guard refuses one; this validation is a SECOND FENCE for a value that reached the
+file some other way, such as a hand edit.
 
 ⚑ The EMPTY STRING is not unset. It is an INVALID VALUE and it refuses like any other; only `None`
 — the key absent from the cascade — takes the default. Both set paths already refuse `""`, so the
 only way it reaches this function is the hand edit described above, which is exactly the case the
 second fence exists for. Treating it as unset would make the ONE reachable route to this
-function's permissive arm a route the validators never approved (R-41: an unknown stored value is
+function's permissive arm a route the validators never approved (an unknown stored value is
 rejected, never treated as permissive).
 
 The per-launch flags are not folded here: `-S` (`restricted`) and `-A` (`full`) ride the §1A CLI
@@ -150,7 +144,7 @@ Build order, after `command[1:]`:
 2. Else if *mode_fragment* is set: the interactive mode fragment
    (`meta.agent.<a>.mode[mode_key]` for the resolved *mode_key*).
 3. If the descriptor's `access_realization` is FLAG-channel: emit the `flag` of its row for the
-   *access* TIER (R-41). An EMPTY row emits nothing — that is the claude/codex `restricted`
+   *access* TIER. An EMPTY row emits nothing — that is the claude/codex `restricted`
    realization, since their own default already prompts. A MISSING row RAISES (`access_row`, the
    un-rendered-tier rule), so no tier can ever fall through to a different tier's emission.
 4. For each FLAG-channel `SettingArg` WITH A `flag` whose value in *setting_values* is truthy:
@@ -178,7 +172,7 @@ through here. What this function builds is the per-launch translation of RESOLVE
 ENV channel:
 
 * If the descriptor's `access_realization` is ENV-channel with an `env_var`: set it to the
-  `env_value` of the row for the *access* TIER (R-41; goose `GOOSE_MODE=auto` at `full`,
+  `env_value` of the row for the *access* TIER (goose `GOOSE_MODE=auto` at `full`,
   `approve` at `restricted`). An EMPTY row emits nothing; a MISSING row RAISES (`access_row`).
   ⚑ For an agent whose UNSET env default is itself permissive — goose's `GOOSE_MODE` defaults to
   `auto` — every renderable tier must carry a value. Emitting nothing there would BE the bypass,
@@ -188,11 +182,10 @@ ENV channel:
 
 FLAG-channel access rows and settings are argv and are emitted by `assemble_argv` instead.
 
-⚑⚑ THE RETURN VALUE IS NOT APPLIED TO ANYTHING (MBR-1 P4c-2). It used to be pasted onto the
-finished container env. The launch now installs it as `agent.<node>.env.<VAR>` KEYS before the
-collapse, so these variables are arbitrated, overridable and refusable like every other one. This
-function stayed PURE through that move and must stay pure: it says what a descriptor realizes, and
-nothing about where the answer goes. See `commands/start._install_realized_env`.
+⚑⚑ THE RETURN VALUE IS NOT APPLIED TO ANYTHING directly. The launch installs it as
+`agent.<node>.env.<VAR>` KEYS before the collapse, so these variables are arbitrated, overridable
+and refusable like every other one. This function must stay PURE: it says what a descriptor
+realizes, and nothing about where the answer goes. See `commands/start._install_realized_env`.
 
 ## `env_realization_drivers` — the twin walk
 
@@ -219,8 +212,8 @@ No existence check happens here; that is `descriptor_mounts`'s job.
 
 A non-empty *override* always wins and is returned as `Path(override)`. It is a caller-supplied
 host source repoint; the user-cascade equivalent is `agent.<name>.bindings.{ro,rw}.<key>`,
-hand-authored in the node's settings file and resolved upstream in the launch snapshot. R-9
-retired its CLI set route, so the parameter is now used by tests only.
+hand-authored in the node's settings file and resolved upstream in the launch snapshot. No CLI
+route sets it, so the parameter is used by tests only.
 
 Otherwise the source is derived from `binding.origin`:
 
@@ -251,7 +244,7 @@ snapshot will carry.
 the ABSOLUTE guest path: descriptor box_dests are `$GUEST_HOME`-expanded by the defaults loader,
 so a `~`-spelled dest never matches and callers must expand first.
 
-Sole caller today: `settings/core_defaults.kickoff_default_categories`, the P-5 transition gate.
+Sole caller: `settings/core_defaults.kickoff_default_categories`.
 
 ## `descriptor_mounts` — the delivery binds
 
@@ -270,4 +263,4 @@ For each `Binding`, in descriptor order:
 Mount options are `"ro"` when `binding.ro` is set, else `""` (rw).
 
 ⚑ Clearing any pre-existing dest symlink in the box is the CALLER's job
-(`start._precreate_mount_stubs`), not this function's.
+(`runtime/container._precreate_mount_stubs`), not this function's.

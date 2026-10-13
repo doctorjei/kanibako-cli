@@ -3,8 +3,8 @@
 Given a plugin's :class:`~kanibako.targets.base.PluginDescriptor` plus the resolved
 host :class:`~kanibako.targets.base.AgentInstall` and a handful of per-launch knobs,
 this assembles the agent argv, container env, and host->box mounts.  Everything here
-is pure apart from ``Path.exists()`` checks in :func:`descriptor_mounts` /
-:func:`resolve_binding_source`, and agent-agnostic: no plugin names appear, and
+is pure apart from ``Path.exists()`` checks in :func:`descriptor_mounts`, and
+agent-agnostic: no plugin names appear, and
 divergent LOGIC stays behind the plugin ``Target`` hook methods.
 
 LIVE in ``commands/start.py`` for every descriptor-bearing target; the only

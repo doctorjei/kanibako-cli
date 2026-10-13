@@ -4,8 +4,8 @@ Every agent kanibako launches has **two** faces: the CLI process kanibako spawns
 gets its behavior from argv flags and env; and the **panel** — the agent's own VS Code
 extension, which spawns a *second* agent process inside the box and sees **none** of kanibako's
 launch FLAGS. The launch ENV does reach it — a panel-spawned process descends from PID 1 or from a
-`podman exec`, and every one of those inherits the container's `Config.Env` (measured on real
-podman, 2026-08-14). So anything the panel must honor that rides an argv flag rather than the env
+`podman exec`, and every one of those inherits the container's `Config.Env`. So anything the
+panel must honor that rides an argv flag rather than the env
 has to be **written to disk, in-box**, before the panel starts. That is what this module
 is: the host-side writers for those on-disk surfaces, one per agent, plus the VS Code attach config
 that gets the panel installed in the first place.
@@ -27,7 +27,7 @@ that on attach VS Code opens the box's workspace folder and auto-installs the bo
 extension (e.g. `anthropic.claude-code`, which is what makes claude's `/ide` integration work
 in-box).
 
-CONFIRMED by the Phase-0 VS Code test: the config is **IMAGE-keyed, not box-keyed**:
+The config is **IMAGE-keyed, not box-keyed**:
 
     <config_home>/Code/User/globalStorage/
         ms-vscode-remote.remote-containers/imageConfigs/<ENC>.json
@@ -117,7 +117,7 @@ code.claude.com/docs/en/hooks.md and learn.chatgpt.com/docs/hooks). The **surfac
 
 * claude → `~/.claude/settings.json`, JSON `hooks.SessionStart` (`seed_session_start_hook`).
 * codex → `~/.codex/config.toml`, an INLINE `[hooks]` table in config.toml — **not** a separate
-  `hooks.json`. That path was openai/codex#17532 speculation and is wrong for 0.141.0. codex also
+  `hooks.json`, which codex 0.141.0 does not read. codex also
   gates a config-defined hook behind a content-hash trust, so `seed_codex_config` writes the hook
   group, the pre-computed `trusted_hash`, and the directory trust together, which is what makes the
   FIRST launch fire the hook with no interactive `/hooks` prompt.
@@ -142,7 +142,7 @@ side, and it is delivered per agent:
   `[[hooks.SessionStart]]` group in the config.toml region. There is no remove side (below).
 * **goose** — no marker delivery; there is no panel-liveness surface for it yet.
 
-⚑ **Neither hook is shell any more — each is a CALL** to `pid-add.sh` / `pid-rm.sh` under
+⚑ **Each hook is a CALL** to `pid-add.sh` / `pid-rm.sh` under
 `~/canon/charter/general/scripts/util`, the PID helpers the packaged charter already ships. They reach
 a box through the `charter/general` rom bind, which `rom_default_categories` emits with no agent
 parameter and `start.py` folds in unconditionally, so a codex box has them exactly as a claude box
@@ -152,10 +152,11 @@ prefers its argument over its own `$PPID`, which by the time it runs is the hook
 
 ⚑ **Per-PID files, plus the shared `agent.pid` the same script maintains.** The marker FILENAME is
 the PID; the content is the PID too, purely for debuggability, since readers key on the filename.
-The old single-path scheme was last-writer-wins, so a CLI incumbent and a VS Code panel newcomer
-sharing one path could not both be held. A directory of per-PID files enumerates the FULL set of
-live agent PIDs, which the supervisor prunes-dead via `kill -0` in order to detect a newcomer — a
-live marker PID that is not its own agent. `pid-add.sh` writes `/tmp/kanibako/agent.pid` as well,
+A single shared path would be last-writer-wins, so a CLI incumbent and a VS Code panel newcomer
+could not both be held. A directory of per-PID files enumerates the FULL set of live agent PIDs,
+which the supervisor's `scan_marker_pids` prunes — a pid that is not alive (a zombie reads dead) or,
+alive, is not the agent session is STALE and its marker is reaped — in order to detect a newcomer:
+a live marker PID that is not its own agent. `pid-add.sh` writes `/tmp/kanibako/agent.pid` as well,
 which is a box convention rather than anything kanibako reads; `pid-rm.sh` drops it only while it
 still names the session that is ending, so the shared path is not cleared out from under a second
 agent.
@@ -178,10 +179,9 @@ literal `${...}` path — the two ends would then disagree. `/tmp` is a box-loca
 markers are tiny, so it is a safe universal home. The dir is created by `pid-add.sh`; the reader
 treats an absent dir as "no agents yet".
 
-⚑ **VERIFIED on real podman — 2026-08-30 panel dogfood, both harnesses.** Two facts this delivery
-rests on were open until then, and both hold: the VS Code panel **does** execute the box's seeded
-`SessionStart` hook, and the `$PPID` that hook passes **is** the agent PID. The `/proc`-scan
-rewrite the doubt reserved as a fallback is therefore not needed.
+⚑ **Two facts this delivery rests on hold on real podman, for both harnesses:** the VS Code panel
+**does** execute the box's seeded `SessionStart` hook, and the `$PPID` that hook passes **is** the
+agent PID.
 
 ## The codex `config.toml` manager
 
@@ -192,7 +192,7 @@ format. It gates the hook behind a content-hash trust (`[hooks.state]`) PLUS a d
 
 ### Surgical, never a round-trip
 
-kanibako ships stdlib-only (argcomplete/PyYAML/packaging), so there is **no tomlkit dependency**.
+kanibako's runtime dependencies are argcomplete, PyYAML, and packaging — **no tomlkit**.
 `tomllib` is read-only and cannot round-trip comments, and re-serializing an arbitrary user config
 through a hand-rolled emitter risks corrupting exotic TOML — multiline strings, datetimes, floats.
 So the manager edits ONLY kanibako-managed lines and leaves every other byte of the user's file,
@@ -297,13 +297,12 @@ per-handler hash shape is unverified upstream.
 ⚑ **codex has NO SessionEnd/exit hook event.** `HookEventName` was verified identical at
 `rust-v0.141.0` and 0.144.x — SessionStart/Stop/… where `Stop` is per-TURN, not process exit. So
 there is no marker-REMOVE hook, and a cleanly-exited codex leaves a stale marker whose PID
-`box_supervisor`'s `kill -0` scan classifies dead. That is the intended semantics: the panel's
+`box_supervisor.scan_marker_pids` classifies dead once and then reaps. That is the intended
+semantics: the panel's
 sessions are threads inside one long-lived `codex app-server` process, so marker-PID death is
 effectively "the panel process itself is gone".
 
-⚑ Marker **LIFETIME** on codex is a separate, still-OPEN question: the `⚑ VERIFIED on real podman`
-block above settles that the hook fires and what `$PPID` names, not how long the marker it writes
-survives.
+
 
 ⚑ `box_config_path` is the BOX-absolute config path (`/home/agent/.codex/config.toml`), NOT the host
 write path — codex keys trust by the path it reads in-box. `group_index` is the count of USER
