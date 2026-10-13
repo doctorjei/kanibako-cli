@@ -1957,8 +1957,12 @@ def run_list(args: argparse.Namespace) -> int:
                          for e in deregistered.values()}
     looped_dirs = {m for m, p in looped
                    if p is not None or _resolved_unless_loop(m) not in deregistered_dirs}
-    projects = sorted((m, p) for m, p in [*projects, *looped]
-                      if p is not None or _resolved_unless_loop(m) not in deregistered_dirs)
+    # ⚑ iter_projects yields its box dirs sorted; looped ones merge into that order by the
+    # box dir alone (a bare tuple sort would compare workspaces on a tie).
+    if looped:
+        projects = sorted([*projects, *looped], key=lambda e: e[0])
+    projects = [(m, p) for m, p in projects
+                if p is not None or _resolved_unless_loop(m) not in deregistered_dirs]
     if looped_dirs:
         from kanibako.commands.box._lifecycle import looped_path_error
         for looped_dir in sorted(looped_dirs):
