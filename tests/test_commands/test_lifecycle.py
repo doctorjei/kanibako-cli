@@ -409,7 +409,7 @@ class TestConvertInPlace:
         assert leaf == "proj"
 
     def test_convert_standalone_refuses_a_canonical_name(self, env):
-        """⚑ INVERTED by ruling 2026-10-08: a free canonical ``--name`` used to be
+        """⚑ INVERTED by [Jei:2026-10-08]: a free canonical ``--name`` used to be
         taken verbatim; a standalone box is named by its directory."""
         config, std, tmp_home = env
         pdir = _make_default(env)
@@ -422,7 +422,7 @@ class TestConvertInPlace:
             )
 
     def test_convert_standalone_refuses_a_noncanonical_name(self, env):
-        """⚑ INVERTED by ruling 2026-10-08: ``MyBox`` used to become the leaf."""
+        """⚑ INVERTED by [Jei:2026-10-08]: ``MyBox`` used to become the leaf."""
         config, std, tmp_home = env
         pdir = _make_default(env)
         src_state = resolve_lifecycle_target(str(pdir), std, config)
@@ -3403,7 +3403,7 @@ class TestStandaloneRootIsNotAPositionInThePath:
         # moved — so the composed name is the SAME identifier the box started with.
         # This line used to read ``assert first.name not in standalone``, which was only
         # ever true because the move RE-MINTED the kuid and so always produced a different
-        # name.  That re-mint is the defect kanibako ruled against on 2026-10-09; the old
+        # name.  That re-mint is the defect ruled against [Jei:2026-10-09]; the old
         # assertion was pinning the bug.  What must hold instead: ONE row for this root,
         # under the box's current name, with the kuid intact.
         assert renamed.name == first.name

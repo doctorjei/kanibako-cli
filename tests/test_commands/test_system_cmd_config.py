@@ -238,7 +238,7 @@ class TestSystemEnvTier:
 
     ⚑ FLIPPED by B9. The bare ``env.<VAR>`` spelling wrote ``{config.data}/env``,
     a docker ``.env`` FILE the launch layered as its system tier. R-39 retired
-    the spelling and Jei's RQ-1 re-ruling retired the launch READ, so the file is
+    the spelling and the RQ-1 re-ruling [Jei:2026-08-02] retired the launch READ, so the file is
     gone from both ends. The system env tier is now the settings key
     ``system.env.<VAR>``, stored in the system SETTINGS file and delivered by
     ``settings_launch._emit_scope_node`` as a system-scope ``env`` entry.
@@ -333,10 +333,10 @@ class TestSystemStructuralFileOnly:
     ⚑⚑ THE FILE IS ``{config.settings}`` SINCE 2026-08-26, and the invariant is
     unchanged: every verb names the file ``read_setup_completed`` reads, because a
     verb aimed anywhere else is accepted, persisted and INERT.  What moved was the
-    STORAGE — Jei closed the delta spec §2g had recorded all along (a Layer-2
-    ``system.*`` settings key stored in the Layer-1 config file) by moving the marker
-    to the global settings file, so ``setup``, the gate and all three verbs now name
-    the same file as ``system.agent`` does.
+    STORAGE — the delta spec §2g had recorded all along (a Layer-2 ``system.*``
+    settings key stored in the Layer-1 config file) was closed [Jei:2026-08-26] by
+    moving the marker to the global settings file, so ``setup``, the gate and all
+    three verbs now name the same file as ``system.agent`` does.
     """
 
     def test_set_writes_the_file_the_gate_reads(
@@ -485,7 +485,7 @@ class TestSystemStructuralFileOnly:
 
     def test_a_structural_table_in_the_config_file_refuses(self, config_file, tmp_home):
         """🛑 A ``system:`` path table hand-written into ``kanibako.cfg`` is not
-        "file-only, not an override" — it is not readable there at all (Jei, 2026-08-31).
+        "file-only, not an override" — it is not readable there at all (keyspec §1).
         """
         from kanibako.errors import ConfigError
 
@@ -977,7 +977,7 @@ class TestSystemAgentNodeBindWriteRouteRetired:
 #
 # ⚑⚑ AND THE RULE ITSELF IS NOW GONE, NOT JUST ITS END-TO-END DOOR. This block used
 # to say the unit coverage SURVIVED in ``test_settings_configset.py``; QA′
-# (2026-08-08, on Jei's word) deleted the whole ``is_category`` arm — the
+# ([Jei:2026-08-08]) deleted the whole ``is_category`` arm — the
 # relative-source refusal, ``_rooted_form_hint``'s per-scope cure, the ``:``
 # notation refusal and the ``Warn`` severity — as an orphan of the retired route.
 # Those unit rows went with it; the graveyard block at the foot of
@@ -1194,7 +1194,7 @@ class TestSystemGetClosedKeyspaceReadGate:
     admitted but the scope cannot serve fell through to an ordinary read, found nothing,
     and printed "(not set)" at rc 0: the fabricated answer spec §0 forbids in the same
     breath as the write, and the one ``box get``/``workset get`` were already fixed to
-    refuse.  Jei, 2026-08-27: *"the system one's answer is wrong; it should also be an
+    refuse.  [Jei:2026-08-27]: *"the system one's answer is wrong; it should also be an
     error."*
 
     THE CURE IS A DIFFERENT SURFACE, NOT A WIDER PREDICATE — the handler's own comment
@@ -1437,7 +1437,7 @@ class TestSystemGetClosedKeyspaceReadGate:
     def test_a_FOREIGN_scope_category_key_is_refused_at_this_noun(
         self, config_file, tmp_home, capsys, scope, tail,
     ):
-        """JEI'S RULING, 2026-08-28: *"i dont see any justification for crossscope 'get'.
+        """[Jei:2026-08-28]: *"i dont see any justification for crossscope 'get'.
         it makes no sense at the cli."*
 
         ⚑ The refusal must NOT demote the key: it IS declared, and saying "unknown config

@@ -352,7 +352,7 @@ def test_remote_failure_attributes_remote_error_to_host(
 ):
     """The remote's OWN error (its stderr, here itself an "Error:" line) is
     surfaced under a "Response from remote host:" header, indented — so the two
-    stacked "Error:" lines Jei saw in rc10 no longer read as one local double
+    stacked "Error:" lines seen in rc10 no longer read as one local double
     error (the boundary to the remote host is explicit)."""
     _wire_ok(tmp_path, monkeypatch)
     remote_err = (

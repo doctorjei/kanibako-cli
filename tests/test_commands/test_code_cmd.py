@@ -455,7 +455,7 @@ def test_stamp_first_wins_over_cascade(mock_runtime, _isolate_seed_path):
 
 # --- `code --remote` on an ABSENT remote box: surface the REMOTE "no box" ------
 def test_remote_no_box_surfaces_remote_create_hint(capsys):
-    """Explicit-create (Jei 2026-07-11g): when the REMOTE `kanibako start` errors
+    """Explicit-create [Jei:2026-07-11g]: when the REMOTE `kanibako start` errors
     with "no box" (the remote box does not exist), `code --remote` surfaces it as a
     REMOTE-box problem — create must be run ON THE REMOTE host — not a generic
     failure."""

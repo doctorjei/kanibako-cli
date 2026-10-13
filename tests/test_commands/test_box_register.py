@@ -945,7 +945,7 @@ class TestCreateStandaloneOptIn:
     index and nothing else, so a standalone box is independent by default and
     moves freely.  ``--name`` never names that entry — the KEY comes from the
     box's own directory — and on a standalone box it is REFUSED outright
-    (ruling 2026-10-08).  An unregistered box is adopted later by the
+    [Jei:2026-10-08].  An unregistered box is adopted later by the
     ``register`` verb (I2) — index-only and seed-free.
     """
 
@@ -992,7 +992,7 @@ class TestCreateStandaloneOptIn:
     def test_register_refuses_a_divergent_name(
         self, config_file, tmp_home, credentials_dir
     ):
-        """⚑ INVERTED by ruling 2026-10-08.  This pinned ``--name`` SOURCING the
+        """⚑ INVERTED by [Jei:2026-10-08].  This pinned ``--name`` SOURCING the
         entry's leaf; the ruling says the KEY is composed from the root, so a
         divergent ``--name`` is REFUSED rather than honored."""
         config, std = _std(config_file)
@@ -1009,7 +1009,7 @@ class TestCreateStandaloneOptIn:
     def test_name_is_refused_without_register(
         self, config_file, tmp_home, credentials_dir
     ):
-        """⚑ INVERTED by ruling 2026-10-08.  ``--name`` used to be a silent no-op
+        """⚑ INVERTED by [Jei:2026-10-08].  ``--name`` used to be a silent no-op
         with no ``--register``.  A typed flag that does nothing is never silently
         ignored in 1.8.0, so it is refused with or without the flag."""
         config, std = _std(config_file)
@@ -1028,7 +1028,7 @@ class TestCreateStandaloneOptIn:
     def test_verbatim_canonical_name_is_refused_at_create(
         self, config_file, tmp_home, credentials_dir
     ):
-        """⚑ INVERTED by ruling 2026-10-08.  At CREATE there is no stored kuid to
+        """⚑ INVERTED by [Jei:2026-10-08].  At CREATE there is no stored kuid to
         check a verbatim ``<kuid>_<leaf>`` against, so it is refused."""
         config, std = _std(config_file)
         root = tmp_home / "sa"
@@ -1044,7 +1044,7 @@ class TestCreateStandaloneOptIn:
     def test_non_ascii_root_takes_the_ascii_refusal_not_the_directory_rule(
         self, config_file, tmp_home, credentials_dir, capsys
     ):
-        """Ruling 2026-10-09: on a non-ASCII standalone root, the ASCII refusal wins.
+        """[Jei:2026-10-09]: on a non-ASCII standalone root, the ASCII refusal wins.
 
         ``refuse_nonleaf_standalone_name`` computes ``sanitize_cap(root.name)`` BEFORE it
         compares ``--name``, so a root with no ASCII spelling raises ``DerivedBoxNameError``

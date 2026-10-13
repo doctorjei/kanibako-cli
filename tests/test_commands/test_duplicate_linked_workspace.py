@@ -5,7 +5,7 @@ into the NEW BOX ROOT, so the workspace files sat beside the box's own
 ``workset.yaml`` / ``box_data/`` and the new box's live workspace came out empty.
 And because that root was the user's directory, the D1 fix had to forbid
 ``_merge_workspace`` from ever laying a linked root -- which also forbade it
-everywhere else, contradicting the class ruling **Q102 -> (a): a duplicate
+everywhere else, contradicting the class ruling **Q102 -> (a) [Jei:2026-09-27]: a duplicate
 re-creates a linked tree root AS A LINK, the copy sharing the target**.
 
 Landing the workspace in the destination's resolved ``workspace/`` subdir unties

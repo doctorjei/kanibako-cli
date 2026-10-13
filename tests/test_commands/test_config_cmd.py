@@ -718,7 +718,7 @@ class TestBoxConfigSet:
 
         This test used to assert the opposite (F10 Phase 1: the box handler
         threads the CORE floor registry, so the repoint validated and wrote the
-        RAW tuple). That surface is an ACCEPTED LOSS, boarded as DS-BL1 — Jei:
+        RAW tuple). That surface is an ACCEPTED LOSS, boarded as DS-BL1 — [Jei:2026-08-07g]:
         *"unfortunate, but this is going to have to be a cost we'll pay."* The
         end-to-end value of the test is unchanged: it proves the refusal is what
         the USER meets at the CLI, not just what the engine returns.
@@ -1439,7 +1439,7 @@ class TestStandaloneBoxTierRoundTrip:
         self, config_file, tmp_home, credentials_dir, capsys,
     ):
         """⚑ A ``box.*`` key in the ROOT file is a WORKSET-tier downward default, and a
-        duplicate must NOT persist it into the destination's BOX tier (Jei, 2026-08-26:
+        duplicate must NOT persist it into the destination's BOX tier ([Jei:2026-08-26]:
         "copy/persist only those elements that are within the box settings").  Pinning it
         at the box tier would convert an overridable workset default into a box-scope
         override that later workset edits could not reach.

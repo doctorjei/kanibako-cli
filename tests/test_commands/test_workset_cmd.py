@@ -330,7 +330,7 @@ class TestWorksetCreate:
         assert read_box_enable_vault(settings_yaml) is False
 
     def test_create_standalone_refused(self, config_file, tmp_home, capsys):
-        """``--standalone`` is REFUSED, not accepted-and-inert (Jei, 2026-08-27).
+        """``--standalone`` is REFUSED, not accepted-and-inert [Jei:2026-08-27].
 
         It still PARSES — the flag stays declared so the refusal can name it and
         hand back a cure — and it produces no working set: nothing on disk and
@@ -2390,12 +2390,12 @@ class TestWorksetEnv:
 
 
 class TestPrimaryWorksetMigration:
-    """The approved F4 migration behavior (director ruling (c), 2026-07-02):
+    """The approved F4 migration behavior (c):
     DROP the legacy locations — ``{config.data}/settings.yaml`` is never read
     into the cascade and never touched on disk."""
 
     def test_legacy_data_settings_yaml_dropped(self, config_file, tmp_home):
-        """Approved migration behavior (ruling (c) 2026-07-02: drop the legacy location).
+        """Approved migration behavior ((c): drop the legacy location).
 
         The legacy 1.6.0 read location ``{config.data}/settings.yaml`` is
         DROPPED — never read into the cascade, never touched on disk.
@@ -2723,7 +2723,7 @@ class TestWorksetShowListsTheAbstractTrio:
     ⚑ MUTATION-PROVED: drop ``system_settings_path=ws_config`` from the ``show``
     branch of ``commands/workset_cmd.py`` and all three families vanish from both
     views — which is the defect these pin.
-    ⚑ The PLAIN view is the requirement (Jei, 2026-09-19), not only ``--effective``.
+    ⚑ The PLAIN view is the requirement [Jei:2026-09-19], not only ``--effective``.
     """
 
     TRIO = {
@@ -3590,7 +3590,7 @@ class TestWorksetCreateConnectReadOnlyRegistry:
 
 
 class TestConnectDropsTheStandaloneMarker:
-    """His 181-DF3 and 182nd rulings: a box is in one workset only.  ``workset connect
+    """181-DF3 and 181-DF4 [Jei:2026-10-13]: a box is in one workset only.  ``workset connect
     --force`` of a standalone box removes its marker (the ``workset.registry`` null) and
     nothing else; ``disconnect`` writes none back, so the box ends as a plain directory."""
 

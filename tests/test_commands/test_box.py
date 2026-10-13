@@ -3104,7 +3104,7 @@ class TestCheckPersonaStoreForCreate:
     def test_a_harness_with_no_persona_block_is_not_checked_at_create(
         self, tmp_home, monkeypatch, capsys, endpoint,
     ):
-        """His 176th ruling, as at launch: no endpoint refusal and no probe for a
+        """[Jei:2026-10-12], as at launch: no endpoint refusal and no probe for a
         harness that declares no persona block.  (Mutation: drop the
         ``_persona_wiring`` test → "names no endpoint" refusal, or a probe → RED.)"""
         self._store(tmp_home)
@@ -3252,7 +3252,7 @@ class TestCheckPersonaStoreForCreate:
     def test_rejected_token_warns_but_still_creates(
         self, tmp_home, monkeypatch, capsys,
     ):
-        """⚑ Locked ruling #2: an auth reject is WARN-ONLY here.
+        """⚑ [Jei:2026-08-05]: an auth reject is WARN-ONLY here.
 
         The LAUNCH path hard-errors on the same verdict; a create must not, so a
         fixable token never blocks one.
