@@ -80,6 +80,7 @@ def _effective_transform_settings(proj, system_settings_path: 'Path | None', age
 def _plain_table(table: dict) -> dict
 def _resolve_bootstrap_program(project_dir: str | None=None, explicit_agent: str | None=None) -> BootstrapChoice
 def _check_box_components(proj) -> str | None
+def _missing_workspace_error(proj) -> str | None
 def _resolve_existing_box(std: StandardPaths, config: BootstrapConfig, project_dir: str | None) -> ProjectPaths | None
 def _probe_box(std: StandardPaths, config: BootstrapConfig, project_dir: str | None) -> ProjectPaths | None
 def _broken_standalone_error(std: StandardPaths, project_dir: str) -> str | None

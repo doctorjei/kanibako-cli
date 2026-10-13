@@ -1485,19 +1485,27 @@ def _check_box_components(proj) -> str | None:
     would be dead.  The **vault** (NON-CRITICAL) only WARNS, at resolve time,
     via ``paths._flag_missing_vault`` — never here.
     """
-    if not proj.project_path.is_dir():
-        return (
-            f"Error: the workspace for box '{proj.name or proj.project_path}' is "
-            f"missing ({proj.project_path}).\n"
-            "  Kanibako will not launch a box with no workspace.\n"
-            "  If you moved it, re-create or remap the box."
-        )
+    workspace_error = _missing_workspace_error(proj)
+    if workspace_error is not None:
+        return workspace_error
     if not proj.shell_path.is_dir():
         return (
             f"Error: the home directory for box "
             f"'{proj.name or proj.project_path}' is missing "
             f"({proj.shell_path}).\n"
             "  Kanibako cannot launch the box without it."
+        )
+    return None
+
+
+def _missing_workspace_error(proj) -> str | None:
+    """The workspace half of :func:`_check_box_components`: its refusal text, or ``None``."""
+    if not proj.project_path.is_dir():
+        return (
+            f"Error: the workspace for box '{proj.name or proj.project_path}' is "
+            f"missing ({proj.project_path}).\n"
+            "  Kanibako will not launch a box with no workspace.\n"
+            "  If you moved it, re-create or remap the box."
         )
     return None
 
@@ -1954,7 +1962,7 @@ def _warn_launch_rebuilds(proj: ProjectPaths) -> None:
     A missing HOME or STANDALONE workspace is re-created by the resolve after this,
     so it is announced here, on the NON-materializing probe, before anything exists.
     A notice, not a refusal: these launches work today.  A PRIMARY or NAMED box's
-    missing workspace is :func:`_check_box_components`'s refusal, not a rebuild.
+    missing workspace is refused, never rebuilt (before this call when the home is gone too).
     """
     logger = get_logger("start")
     label = proj.name or str(proj.project_path)
@@ -3163,6 +3171,16 @@ def _run_container(
     # Q106: the workspace bind is mounted at every launch, so a box whose workspace resolves
     # through a null ``workset.workspaces`` refuses here, on the probe, like MBR-6 above.
     _refuse_null_workspace_bind(std, _existing)
+    # MBR-6: a PRIMARY or NAMED box with no workspace is refused at launch (below, in
+    # ``_check_box_components``).  When its home is missing too, the resolve would
+    # create the home first, and a NAMED box's home would then never be seeded.  So
+    # that case gets the same refusal here, on the probe.  Only then: a live box whose
+    # workspace alone is gone still reattaches, unchecked, as before.
+    if _existing.mode is not BoxMode.standalone and not _existing.shell_path.is_dir():
+        _workspace_error = _missing_workspace_error(_existing)
+        if _workspace_error is not None:
+            print(_workspace_error, file=sys.stderr)
+            return 1
     _warn_launch_rebuilds(_existing)
 
     proj = resolve_box_target(

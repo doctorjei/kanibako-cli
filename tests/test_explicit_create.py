@@ -819,6 +819,49 @@ class TestLaunchAnnouncesRebuilds:
             "work done in the box lands in it.",
         ]
 
+    def test_named_missing_home_and_workspace_refuses_and_creates_nothing(
+        self, config_file, tmp_home, credentials_dir, caplog, capsys, monkeypatch
+    ):
+        """The workspace refusal runs on the probe, so the home is not created bare;
+        with the workspace back, the next launch still creates the home as NEW (seeded)."""
+        import kanibako.commands.start as start_mod
+        from kanibako.project.workset import add_project, create_workset
+
+        config, std = _std(config_file)
+        ws = create_workset("wsa", tmp_home / "wsa", std)
+        src = tmp_home / "member"
+        src.mkdir()
+        add_project(ws, "member", src, std)
+        home = _resolve_existing_box(std, config, str(src)).shell_path
+        assert not home.exists()
+        src.rmdir()
+        real = start_mod.resolve_box_target
+        _stop_at_materialize(monkeypatch, [])
+
+        assert _launch(str(src)) == 1
+        assert capsys.readouterr().err == (
+            f"Error: the workspace for box 'member' is missing ({src}).\n"
+            "  Kanibako will not launch a box with no workspace.\n"
+            "  If you moved it, re-create or remap the box.\n"
+        )
+        assert not home.exists()
+        assert self._notices(caplog) == []
+
+        src.mkdir()
+        is_new: list[bool] = []
+
+        def fake(std, config, project_dir, *, initialize=False, **kw):
+            proj = real(std, config, project_dir, initialize=initialize, **kw)
+            if initialize:
+                is_new.append(proj.is_new)  # the gate on ``_seed_box_home``
+                raise _ResolveStop
+            return proj
+
+        monkeypatch.setattr(start_mod, "resolve_box_target", fake)
+        with pytest.raises(_ResolveStop):
+            _launch(str(src))
+        assert is_new == [True]
+
     def test_intact_box_announces_nothing(
         self, config_file, tmp_home, credentials_dir, caplog, monkeypatch
     ):
