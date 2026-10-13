@@ -235,7 +235,7 @@ with only one of them the occupant.
 
 ### The coverage refusal sits between the fold and the leaves
 
-By ruling — *"we should be checking that the paths resolve"* — immediately after
+By ruling [Jei:2026-08-28] — *"we should be checking that the paths resolve"* — immediately after
 `collapse_store_shapes` returns and BEFORE the leaf writes,
 `store_collapse.refuse_uncovered_synced(collapsed.bindings, collapsed.synced)` refuses a `synced`
 destination no mount covers, so a refused launch never leaves an assembly a later pass could read
@@ -319,11 +319,11 @@ host-side supervisor agree under an override; the compile-time constant is only 
 
 ### `-e` is the CLI level of the env family
 
-By ruling (*"-e should override the key values, not the environment variables themselves"*) and the
-spec's `env.<VAR>` block (*"`-e` beats a realization uniformly (the CLI level overrides the owning
-key — §1A)"*): `_run_container` parses `-e` ONCE at its door, threads the map through
-`_resolve_launch_snapshot(cli_env=)` → `_install_assembly_collapse` → `collapse_env`, and the overlay
-runs there.
+By [Jei:2026-08-14] (*"-e should override the key values, not the environment variables
+themselves"*) and the spec's `env.<VAR>` block (*"`-e` beats a realization uniformly (the CLI level
+overrides the owning key — §1A)"*): `_run_container` parses `-e` ONCE at its door, threads the map
+through `_resolve_launch_snapshot(cli_env=)` → `_install_assembly_collapse` → `collapse_env`, and
+the overlay runs there.
 
 ⚑ **THE OVERLAY RUNS AFTER THE CONTAINMENT WALK, AND THAT IS THE CONSTRUCTION** —
 `store_collapse._apply_cli_env` carries the reason a reader must not "unify" it onto the CLI
@@ -343,11 +343,11 @@ and the launch cannot disagree about what the user typed.
 
 ### Realizations are launch-derived keys
 
-By the spec's `env.<VAR>` block and ruling 59 (the refusals ship, no carve-out). The five realized
-variables — goose `GOOSE_MODE` (unconditional, every launch) · `GOOSE_MODEL` · `GOOSE_PROVIDER` ·
-`OPENAI_HOST`, and claude `ANTHROPIC_BASE_URL` (each conditional on its driving key resolving truthy);
-**codex and core realize none** — are **launch-derived `agent.<node>.env.<VAR>` keys**, and
-`_assemble_launch_env` is a TOTAL projection of the leaf.
+By the spec's `env.<VAR>` block and system-design § "Delivery at launch" (the refusals ship, no
+carve-out). The five realized variables — goose `GOOSE_MODE` (unconditional, every launch) ·
+`GOOSE_MODEL` · `GOOSE_PROVIDER` · `OPENAI_HOST`, and claude `ANTHROPIC_BASE_URL` (each conditional
+on its driving key resolving truthy); **codex and core realize none** — are **launch-derived
+`agent.<node>.env.<VAR>` keys**, and `_assemble_launch_env` is a TOTAL projection of the leaf.
 
 **The seam is a POSITION, and that is the design.** A realization cannot be a floor default: its
 inputs (`effective_behavior`, the access tier `-S`/`-A` reach through the CLI level, the persona
@@ -585,9 +585,10 @@ launch.
 
 ⚑ **A dest is DATA** — compared and sliced as a path, never `.split(".")`-ed.
 
-🔴 **The MASK arm exists because the collapse ACCEPTS what delivery then JUDGES.** By ruling (*"don't
-check for sync. Let it clobber whatever it wants."*) the fold refuses no sync, so every sync row
-reaches delivery, a mask's exact point included.
+🔴 **The MASK arm exists because the collapse ACCEPTS what delivery then JUDGES.** By
+system-design § "Collision arbitration" ([Jei:2026-08-12]: *"don't check for sync. Let it clobber
+whatever it wants."*) the fold refuses no sync, so every sync row reaches delivery, a mask's exact
+point included.
 
 🔴 **The READ-ONLY arm is SPEC-SILENT and deliberately strict.** Writing into a read-only bind's host
 source delivers content the box cannot be shown to have received, and the source is usually something
@@ -616,10 +617,10 @@ At a mask's OWN point a copied **FILE** replaces the mask — one file filling o
 while a copied **DIRECTORY** there is REFUSED. Everywhere else the two rows agree, and a mask that is
 a strict PARENT refuses both.
 
-**It can only live at DELIVERY.** FILE vs DIRECTORY is a property of the copy SOURCE, so deciding it
-is a host `stat` — and the collapse is PURE (ruling 27's stage map). `store_collapse.py` carries no
-copy-vs-mask rule; `_apply_synced_copies` applies both cells over the collapsed map, before any row
-resolves.
+**It can only live at DELIVERY.** FILE vs DIRECTORY is a property of the copy SOURCE, so deciding
+it is a host `stat` — and the collapse is PURE (system-design § "Collision arbitration").
+`store_collapse.py` carries no copy-vs-mask rule; `_apply_synced_copies` applies both cells over
+the collapsed map, before any row resolves.
 
 **The deletion is a MAP EDIT, and the order around it is the contract.** The replaced mask is deleted
 from the map the launch holds (`_snapshot_assembly_bindings` copies out, so the snapshot does not
@@ -652,9 +653,9 @@ every launch. `test_start_assembly` pins it.
 
 ## `_sync_box_at_create` — the `synced` write happens ONCE at create, UNGATED
 
-**Authority:** by ruling — *"at box creation, since that's the only time seeded is copied, find the
-top-most bind in the bindings and write synced to it once at creation, irrespective of date"*, where
-"top-most" means the INNERMOST covering bind, the opposite of home.
+**Authority:** by ruling [Jei:2026-08-11] — *"at box creation, since that's the only time seeded is
+copied, find the top-most bind in the bindings and write synced to it once at creation,
+irrespective of date"*, where "top-most" means the INNERMOST covering bind, the opposite of home.
 
 It is a **CALLER**, not a mechanism. `_synced_host_dest` already resolves a guest dest by
 LONGEST-PREFIX cover (innermost), and `_apply_synced_copies` already applies the rows and raises
@@ -714,8 +715,8 @@ is REQUIRED because this resolve folds the auth chain (`{workset.auth.path}/{sys
 
 ## `_run_container` — the DOOR TABLE and the OVERRIDE GATE for an already-running box
 
-**Authority:** by ruling — *"could this setting work without restarting the box and without making a
-mangled / corrupted / unexpected state?"*
+**Authority:** by ruling [Jei:2026-08-05] — *"could this setting work without restarting the box
+and without making a mangled / corrupted / unexpected state?"*
 
 ### The four doors
 
@@ -798,7 +799,7 @@ apply them:
 
 ## `_persist_or_announce_flags` — settle a SHADOWING flag: persist it, or say OUT LOUD it is ephemeral
 
-**Authority:** ruling #12 — *"(c) BOTH"*.
+**Authority:** [Jei:2026-08-02] — *"(c) BOTH"*.
 
 ### The persist arm, and the window it closes
 
@@ -990,7 +991,7 @@ every keyspace-configured goose persona that owns a store directory.
 (`_persona_probe_error`). A non-empty `-e` value for the token var (**`cli_env`**, launch only)
 satisfies the token gate and is the token the probe sends; an empty one is ignored. `probe` is opt-in and
 set ONLY by the launch: the create path keeps its own
-WARN-ONLY probe (locked ruling #2). The bundle's `env` — the persona STORE's own block, not the
+WARN-ONLY probe [Jei:2026-08-05]. The bundle's `env` — the persona STORE's own block, not the
 collapsed `env` family — rides along so the harness can rewrite a tier alias the way its runtime
 will. See `Target.verify_persona` in the `targets/base.py` llm-doc for the measured false `REJECTED`
 that requires it, **and for the residual hole it does not close:** a mapping at the agent-file,
@@ -1245,7 +1246,8 @@ spelled.
 
 ## `_core_env_default_categories` — the four `KANIBAKO_*` stamps, as launch-DERIVED `system.env.*` keys
 
-⚑⚑ **THE ONE PLACE THEY ARE SPELLED** (by ruling: *"the 'KANIBAKO_' stuff should be in system.env"*).
+⚑⚑ **THE ONE PLACE THEY ARE SPELLED** (keyspec §2a env.<VAR>; [Jei:2026-08-14]: *"the 'KANIBAKO_'
+stuff should be in system.env"*).
 `_core_env_default_categories(proj=, target=, agent_id=)` returns `{"system.env.<VAR>": value}`, and
 `_resolve_launch_snapshot` merges it into the default-categories floor under `family="core env"`. They
 are ordinary system-scope floor keys, so they enter the ONE channel with everything else — a nearer

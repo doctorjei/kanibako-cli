@@ -274,7 +274,7 @@ def ensure_persona_share_symlinks(std, agent_id, target) -> None:
     symlink-to-existing-dir, so the harness dir is the real writeback target.
 
     ⚑⚑ THE TEMPLATE LINK IS WHAT MAKES ``launch.templates.template_seed_defaults``'
-    NODE-ROOTED layer-2 source WORK (ruled 2026-08-27: *"the user can always remove
+    NODE-ROOTED layer-2 source WORK ([Jei:2026-08-27]: *"the user can always remove
     the symlink if they want to create a separate template for the persona-based
     agent — so I think symlinking template is the right approach"*).  A COPY was the
     rejected alternative: it would go stale, and a link cannot.  The persona's escape
@@ -469,9 +469,9 @@ def add_start_parser(subparsers: argparse._SubParsersAction) -> None:
     )
     # The CURE named by the already-running override gate (_run_container): stop
     # the box, then start it fresh with this invocation's flags in force.  It is
-    # NOT a separate verb — "this only really applies to start" (Jei,
-    # 2026-08-05) — and it deliberately BYPASSES that gate: passing it IS the
-    # user saying "I know this needs a new container, do it".
+    # NOT a separate verb — "this only really applies to start"
+    # [Jei:2026-08-05] — and it deliberately BYPASSES that gate: passing it IS
+    # the user saying "I know this needs a new container, do it".
     p.add_argument(
         "--restart", action="store_true",
         help="Stop the box first, then start it fresh — the way to apply flags "
@@ -1515,7 +1515,7 @@ def _resolve_existing_box(
 ) -> ProjectPaths | None:
     """Non-materializing probe: the :class:`ProjectPaths` of an EXISTING registered box.
 
-    ``None`` when no box exists at *project_dir*.  Explicit-create gate (Jei 2026-07-11g): a launch (``start`` / bare
+    ``None`` when no box exists at *project_dir*.  Explicit-create gate [Jei:2026-07-11g]: a launch (``start`` / bare
     ``kanibako`` / ``code`` / ``shell``) NEVER auto-creates a box — the box must
     already have been made by ``kanibako create``.  We resolve through the SAME
     ``resolve_box_target`` the launch uses, but:
@@ -1891,7 +1891,7 @@ def _unbuilt_box_error(proj: ProjectPaths, std: StandardPaths) -> str | None:
     """The launch-time "registered, but its box directory is gone" refusal.
 
     ``None`` when the directory is where the registration says it is.
-    MBR-6 (Jei, 2026-08-02f): *"no, a launch should not silently rebuild
+    MBR-6 [Jei:2026-08-02f]: *"no, a launch should not silently rebuild
     anything."*  ``_run_container``'s explicit-create gate only asks whether a box
     is REGISTERED; the materializing resolve right after it re-creates a missing
     box directory UNDER that surviving registration and reports ``is_new``.  That
@@ -1958,7 +1958,7 @@ def _unbuilt_box_error(proj: ProjectPaths, std: StandardPaths) -> str | None:
 def _warn_launch_rebuilds(proj: ProjectPaths, *, live: bool = False) -> None:
     """Name what the launch resolve is about to re-create under an existing box (MBR-6).
 
-    MBR-6 (Jei, 2026-08-02f): *"a launch should not silently rebuild anything."*
+    MBR-6 [Jei:2026-08-02f]: *"a launch should not silently rebuild anything."*
     A missing HOME or STANDALONE workspace is re-created by the resolve after this,
     so it is announced here, on the NON-materializing probe, before anything exists.
     A notice, not a refusal: these launches work today.  A PRIMARY or NAMED box's
@@ -2681,10 +2681,11 @@ def _assemble_launch_env(
     # ⚑⚑ AND SINCE MBR-1 P4c-1, NEITHER DOES THE PER-RUN ``-e``: it is the CLI
     # LEVEL of the cascade applied to the key that OWNS the variable, inside
     # ``store_collapse.collapse_env``, so it arrives in these slots as well
-    # (Jei, 2026-08-14: *"-e should override the key values, not the environment
-    # variables themselves"*).  The dict update that used to paste it on top is
-    # GONE and must not come back: pasted above the channel it could not be
-    # overridden, displayed, or refused, and it silently outranked every file.
+    # (system-design § "Delivery at launch"; [Jei:2026-08-14]: *"-e should
+    # override the key values, not the environment variables themselves"*).
+    # The dict update that used to paste it on top is GONE and must not come
+    # back: pasted above the channel it could not be overridden, displayed, or
+    # refused, and it silently outranked every file.
     # ⚑⚑⚑ AND SINCE MBR-1 P4c-2, NEITHER DO THE TARGET'S REALIZATIONS — the LAST
     # writer above the channel, and now there is none.  ``GOOSE_MODE`` /
     # ``GOOSE_MODEL`` / ``GOOSE_PROVIDER`` / ``OPENAI_HOST`` /
@@ -2971,7 +2972,7 @@ def _persist_or_announce_flags(
 ) -> None:
     """Settle a launch's SHADOWING flags: persist them, or say OUT LOUD they are ephemeral.
 
-    Ruling #12 (Jei, 2026-08-02): **"(c) BOTH"**.  A creating launch saves its whole
+    [Jei:2026-08-02]: **"(c) BOTH"**.  A creating launch saves its whole
     *cli_level* — the launch's own :func:`build_cli_level` output — and the typed
     ``--agent`` through the ONE §1A CREATE-EXCEPTION helper
     (:func:`~kanibako.settings.config_interface.persist_creation_level`); this
@@ -3121,8 +3122,8 @@ def _run_container(
     # seed gate below runs marker -> seed -> register -> remove-marker so an
     # interrupted auto-create is forward-recoverable (registered ==> seeded).
     #
-    # TRUE PRE-FLIGHT for a BOX-INDEPENDENT persona (Director rulings, Jei
-    # 2026-07-03): when the effective agent is a persona resolvable WITHOUT the box
+    # TRUE PRE-FLIGHT for a BOX-INDEPENDENT persona [Jei:2026-07-03]: when the
+    # effective agent is a persona resolvable WITHOUT the box
     # we DEFER box materialization — resolve the box's PATHS only (``initialize=
     # False`` → NO mkdir, ``warn=False`` so the name flag is not doubled by the
     # later materializing resolve), run the persona load-or-error gate below, and
@@ -3133,9 +3134,9 @@ def _run_container(
     # explicit ``--agent`` OR the stored system default (``read_system_agent``); a
     # box-scoped ``pref.system.agent`` can only shadow an ALREADY-existing box (never
     # a brand-new one), so those two are exactly the sources that could otherwise
-    # leave an empty unregistered box dir for a system-default persona (Director
-    # RESIDUAL ruling).  A bare / non-persona launch materializes immediately,
-    # exactly as before (single resolve, byte-identical).
+    # leave an empty unregistered box dir for a system-default persona.  A bare /
+    # non-persona launch materializes immediately, exactly as before (single
+    # resolve, byte-identical).
     _defer_box = False
     # ⚑⚑ ONE TYPED value and ONE STORED one, so "GIVEN" IS ``is not None`` HERE
     # TOO.  Under ``or``, a blank ``--agent ""`` fell through to the stored
@@ -3155,7 +3156,7 @@ def _run_container(
         except ConfigError:
             _defer_box = False  # malformed ref: surfaced by select_agent below.
 
-    # EXPLICIT-CREATE gate (Jei 2026-07-11g, v1.7.0 BREAKING): a launch NEVER
+    # EXPLICIT-CREATE gate ([Jei:2026-07-11g], v1.7.0 BREAKING): a launch NEVER
     # materializes a NEW box.  Creating a box is a deliberate act — it must go
     # through ``kanibako create``.  Probe non-materializingly (``initialize=
     # False`` → no mkdir/name/seed) BEFORE the materializing resolve below; if no
@@ -3174,7 +3175,7 @@ def _run_container(
         print(_interrupted_create_error(_existing, _interrupted), file=sys.stderr)
         return 1
 
-    # MBR-6 (Jei 2026-08-02f, "no, a launch should not silently rebuild
+    # MBR-6 ([Jei:2026-08-02f], "no, a launch should not silently rebuild
     # anything"): the gate above passes a box whose REGISTRATION survives but
     # whose box DIRECTORY is gone — and the resolve below would rebuild it.
     # Refuse it on the probe, while nothing has been materialized yet.
@@ -3266,7 +3267,7 @@ def _run_container(
     # the direct arm right after the rig prep succeeds, the deferred-persona arm
     # right after its late materialization (itself already past the prep).  See
     # the seam's docstring for why "after the prep, before the rest of the
-    # launch" is where it lands (ruling #12), and why a REATTACH reaches it ZERO
+    # launch" is where it lands [Jei:2026-08-02], and why a REATTACH reaches it ZERO
     # times.
 
     logger = get_logger("start")
@@ -3450,7 +3451,7 @@ def _run_container(
     _DOORS_APPLYING_ENV = ("box-shell", "entrypoint")
 
     # ── OVERRIDE GATE for an ALREADY-RUNNING box ─────────────────────────────
-    # Jei's test (2026-08-05): "could this setting work without restarting the
+    # The test [Jei:2026-08-05]: "could this setting work without restarting the
     # box and without making a mangled / corrupted / unexpected state?"  For the
     # flags below the answer is no, so they are REFUSED BY NAME rather than
     # silently dropped: container-CREATION inputs (class A), agent argv (class
@@ -3470,7 +3471,7 @@ def _run_container(
     # door this launch will actually take would not apply it.
     #
     # llm-docs/kanibako/commands/start.py.md, "``_run_container`` — the DOOR
-    # TABLE and the OVERRIDE GATE", carries each class, each door and Jei's
+    # TABLE and the OVERRIDE GATE", carries each class, each door and the
     # tmux ruling, plus what is deliberately NOT gated.
     if box_running:
         _rejected: list[str] = []
@@ -3580,8 +3581,8 @@ def _run_container(
         # ``kanibako shell``). Every downstream gate keys on ``target is None``, so no
         # agent binds, no agent config, no cred delivery, no ``KANIBAKO_AGENT`` stamp,
         # and ``agent_id`` = ``"shell"``.
-        # 🛑 ``pref.system.agent: null`` NO LONGER ARRIVES HERE — since the
-        # 2026-09-19 ruling it is a REFUSAL (no default set), not a silent plain
+        # 🛑 ``pref.system.agent: null`` NO LONGER ARRIVES HERE — since
+        # [Jei:2026-09-19] it is a REFUSAL (no default set), not a silent plain
         # shell, so NO production path reaches the ``else None`` arm today.
         # ⚑ The guard is KEPT, and NOT as a reservation for ``shell``: keyspec §2b
         # makes the plain-shell box an effective ``{system.agent}`` of ``shell``, a
@@ -3784,7 +3785,7 @@ def _run_container(
     # materialized, cache the image's login shell, warn on staleness, and probe
     # the image's launch baseline in a throwaway container.  A REATTACH creates
     # nothing — the box is already up, running the image it was launched with —
-    # so the whole block is skipped for it (Jei 2026-08-05: "if the box is
+    # so the whole block is skipped for it ([Jei:2026-08-05]: "if the box is
     # already up, we should be skipping everything unless there's an agent change
     # or similar").  Skipping is safe rather than merely cheap: the only inputs
     # these steps consume that a user could have changed are ``--rig/--image``
@@ -3794,7 +3795,7 @@ def _run_container(
     # ⚑ GATED IN PLACE, not moved.  The three blocks below it (agent config,
     # persona store, launch decisions) DO feed the reattach, so the fast path
     # must fire after them — but hoisting this prep past them would reorder
-    # ruling #12's ``_persist_or_announce_flags`` seam and the user-visible error
+    # the ``_persist_or_announce_flags`` seam ([Jei:2026-08-02]) and the user-visible error
     # ordering on the ordinary launch path.  A guard changes neither.
     if not reattach_running:
         # Resolve the rig name to a kind + prep action, then materialize it.
@@ -3835,9 +3836,9 @@ def _run_container(
             return 1
         image = res.image
 
-        # §1A CREATE EXCEPTION — the DIRECT arm's call to the one seam (ruling
-        # #12).  THE EARLIEST SAFE POINT: the rig is now prepped (so a
-        # never-pulled image can never be stored) and this arm materialized
+        # §1A CREATE EXCEPTION — the DIRECT arm's call to the one seam
+        # [Jei:2026-08-02].  THE EARLIEST SAFE POINT: the rig is now prepped (so
+        # a never-pulled image can never be stored) and this arm materialized
         # ``proj`` at the resolve up top, so everything from here on is window
         # the flag would otherwise sit unstored through.  The DEFERRED arm has no
         # materialized box yet and calls the seam from its own site below.
@@ -3890,10 +3891,10 @@ def _run_container(
 
     # Load or GENERATE the agent config IN MEMORY — do NOT write it yet.  The
     # persona load-or-error pre-flight below MUST resolve loadability BEFORE any
-    # artifact for the persona is created (JEI-CRITICAL ordering, dogfood
-    # 2026-07-03): an unconfigured persona that cannot be loaded errors out here
-    # with NOTHING left behind — no ``agents/<node>/`` store, no ``agent.yaml``,
-    # no share symlinks, no box seed/registration, no ``KANIBAKO_AGENT`` stamp.
+    # artifact for the persona is created (CRITICAL ordering, [Jei:2026-07-03]):
+    # an unconfigured persona that cannot be loaded errors out here with NOTHING
+    # left behind — no ``agents/<node>/`` store, no ``agent.yaml``, no share
+    # symlinks, no box seed/registration, no ``KANIBAKO_AGENT`` stamp.
     agent_cfg_exists = bool(target) and agent_cfg_path.exists()
     if target and not agent_cfg_exists:
         # First-use: generate default agent config from the target plugin
@@ -4016,8 +4017,8 @@ def _run_container(
             # ``resolve_box_shell`` sits INSIDE the ``not reattach_running`` prep
             # block, so on this path ``entrypoint`` would still be None and we would
             # fall through to the bootstrap attach — handing the user the
-            # AGENT'S tmux session instead of a shell (ruled a bug, Jei
-            # 2026-08-05g).  The override gate above deliberately does not
+            # AGENT'S tmux session instead of a shell (ruled a bug,
+            # [Jei:2026-08-05g]).  The override gate above deliberately does not
             # refuse this: its session-shape arm is scoped to an AGENT launch,
             # and a shell is something we can just do.
             #
@@ -4049,9 +4050,9 @@ def _run_container(
             )
         elif running_door == "entrypoint":
             # An explicit ``--entrypoint`` against a live box is a SECOND
-            # PROCESS entering it, not a reattach — the one case Jei marked
-            # FEASIBLE (2026-08-05).  Route it to the very same ``runtime.exec``
-            # the ephemeral path uses further down, per-run ``-e`` included.
+            # PROCESS entering it, not a reattach — the one case marked FEASIBLE
+            # [Jei:2026-08-05].  Route it to the very same ``runtime.exec`` the
+            # ephemeral path uses further down, per-run ``-e`` included.
             # Without this the entrypoint is silently DROPPED and the user gets
             # the bootstrap session instead, because ``start`` defaults
             # ``persistent=True`` whenever the bootstrap program is present — so
@@ -4153,7 +4154,7 @@ def _run_container(
             target=target, keyspace_model=active_model,
             # The store read from above carries the store's own reject verdict
             # and the probe's env.  ``probe=True`` is the LAUNCH path only: the create
-            # path keeps its separate WARN-ONLY probe (locked ruling #2).
+            # path keeps its separate WARN-ONLY probe [Jei:2026-08-05].
             bundle=persona_bundle, probe=True,
             # ``-e`` outranks a ``secret_path`` file (spec §1A); the gate and the
             # probe read the token the box will get.
@@ -4187,16 +4188,16 @@ def _run_container(
             std, proj, agent_id, system_settings_path, _cli_scalar_overrides,
         )
 
-        # §1A CREATE EXCEPTION — the DEFERRED arm's call to the one seam (ruling
-        # #12): a shadowing flag's value persists ONLY while the box is BEING
-        # MATERIALIZED, and this arm materializes HERE, so this IS its earliest
-        # safe point (the rig was prepped further up, and ``project_toml`` was
-        # just rebound to the box's REAL settings file — never the
-        # ``__unregistered__`` placeholder the probe resolved against).  The
-        # direct arm already called the seam and does not reach this line.  For
-        # an EXISTING box (``is_new`` False) the gate no-ops and the seam
-        # announces the ephemerality instead: ``start --image`` stays strictly
-        # ephemeral, but no longer silently.
+        # §1A CREATE EXCEPTION — the DEFERRED arm's call to the one seam
+        # [Jei:2026-08-02]: a shadowing flag's value persists ONLY while the box
+        # is BEING MATERIALIZED, and this arm materializes HERE, so this IS its
+        # earliest safe point (the rig was prepped further up, and
+        # ``project_toml`` was just rebound to the box's REAL settings file —
+        # never the ``__unregistered__`` placeholder the probe resolved
+        # against).  The direct arm already called the seam and does not reach
+        # this line.  For an EXISTING box (``is_new`` False) the gate no-ops and
+        # the seam announces the ephemerality instead: ``start --image`` stays
+        # strictly ephemeral, but no longer silently.
         _persist_or_announce_flags(
             proj, project_toml,
             image_override=image_override, share_images=share_images,
@@ -4430,7 +4431,7 @@ def _run_container(
         # via the same ``_seed_box_home`` from ``run_create``.  Seed application is
         # create-if-absent, so even a re-create into a leftover dir never clobbers.
         #
-        # EXPLICIT-CREATE (Jei 2026-07-11g): a launch NEVER auto-creates a box —
+        # EXPLICIT-CREATE [Jei:2026-07-11g]: a launch NEVER auto-creates a box —
         # the explicit-create gate at the top of ``_run_container`` already errored
         # out for any target that is not a fully-registered box.  Three deliberate
         # consequences:
@@ -4441,7 +4442,7 @@ def _run_container(
         #     (re-running ``kanibako create`` replays seed → register → clear-entry
         #     in ``run_create``).  The launch must not silently resurrect/complete
         #     someone's half-finished create.
-        #   * MBR-6 (Jei 2026-08-02f) removed the OTHER way a launch reached this
+        #   * MBR-6 [Jei:2026-08-02f] removed the OTHER way a launch reached this
         #     block: a REGISTERED box whose directory had been deleted used to be
         #     rebuilt here, which is a repair rather than a creation.
         #     ``_unbuilt_box_error`` refuses it at the gate now.
@@ -4621,7 +4622,7 @@ def _run_container(
                 agent_id, agent_id,
             )
 
-        # Block 7b (ruling A — the FULL read-path swap): build the ONE launch
+        # Block 7b ([Jei:2026-06-28f] — the FULL read-path swap): build the ONE launch
         # snapshot HERE, before the behavior read, so BOTH the behavior read (just
         # below) AND the category delivery (further down) consume the SAME snapshot
         # (S12 resolve-ONCE). It carries the behavior FLOORS (core's → agent.default.*,
@@ -4810,7 +4811,7 @@ def _run_container(
                     if _cm is None else _cm
                 )
                 effective_new_session = not continue_default
-                # B5 (spec §2d, the §3.3 rulings): the launch GRAMMAR comes off
+                # B5 (spec §2d): the launch GRAMMAR comes off
                 # the ONE snapshot — ``meta.agent.<a>.mode`` / ``.exec``,
                 # materialized from the descriptor in ``settings_launch.resolve_inputs``
                 # (``meta_agent_grammar_floor``). The descriptor is NOT read for
@@ -5079,7 +5080,7 @@ def _run_container(
         # Image sharing: mount host image storage read-only into child, routed
         # through the category resolver (Phase B, D-M8) instead of hardwired
         # Mounts.  The graph root is runtime-probed (feeding ONLY the
-        # ``box.images_store`` default, ruled 11a) and the storage.conf is
+        # ``box.images_store`` default, [Jei:2026-08-02]) and the storage.conf is
         # GENERATED+written by ``write_storage_conf`` (still the SOURCE of the
         # bind); those probed/generated paths are injected at the seam into
         # the keyed ``box.bindings.ro.images_*`` binds.  CONDITIONAL: only when
@@ -5445,7 +5446,7 @@ def _run_container(
                 # increment 4b ENFORCEMENT — DEFAULT-OFF, gated behind the experimental
                 # env KANIBAKO_SESSION_TAKEOVER so 4b lands DORMANT and cannot fire in
                 # the wild before the $PPID == agent-PID / panel invariant is validated
-                # on Jei's desktop (a misidentification that evicts a legitimate SOLE
+                # on a real desktop (a misidentification that evicts a legitimate SOLE
                 # agent is catastrophic).  Unset/off ⇒ the supervisor's newcomer handling
                 # is 4a LOG-ONLY (no signals/kills).  When on, run_forever PAUSEs a panel
                 # newcomer, GRACEs + process-group-EVICTs the CLI incumbent, then RESUMEs
@@ -6167,7 +6168,7 @@ def _build_config_env(env_slots: "CollapsedEnvs") -> dict[str, str]:
     through *env_slots* like every other scope's.
 
     ⚑ The docker ``.env`` FILES (system/workset/box) that were the other three
-    tiers here are GONE — Jei's RQ-1 re-ruling (2026-08-02): the ratified
+    tiers here are GONE — the RQ-1 re-ruling [Jei:2026-08-02]: the ratified
     manifest records them as DROPPED, so a live launch read of them was an
     authority-vs-code divergence. Their replacement is ``<scope>.env.<VAR>``,
     which arrives through *env_slots* too.
@@ -6368,7 +6369,7 @@ def _directive_flatten_shim(
 
 
 # --------------------------------------------------------------------------- #
-# Persona LOAD-OR-ERROR pre-flight (Jei dogfood 2026-07-03).                    #
+# Persona LOAD-OR-ERROR pre-flight [Jei:2026-07-03].                          #
 # --------------------------------------------------------------------------- #
 #
 # A persona (node != harness, e.g. ``navigator℘claude``) that CANNOT resolve a
@@ -6562,7 +6563,7 @@ def _persona_wiring(target) -> "PersonaSpec | None":
     The resolved :class:`~kanibako.targets.base.Target`'s descriptor declares it as a
     :class:`~kanibako.targets.base.PersonaSpec`.  ``None`` means the target declares
     NONE (``ShellTarget``, no target, a plugin with no ``persona:`` block): the
-    preflight then runs no persona check at all (his 176th ruling: such a harness
+    preflight then runs no persona check at all ([Jei:2026-10-12]: such a harness
     "just run[s] with no checks").  A declared block with an empty token var is a
     different case and keeps its gates.  Core names no harness's token var.
     """
@@ -6579,7 +6580,7 @@ def _persona_token_pointer(secret_paths: "Mapping[str, object]", var: str) -> ob
     *secret_paths* is the launch's per-VAR ``secret_path`` table
     (:func:`_persona_secret_table`), so every scope that DELIVERS a pointer for *var*
     answers in the cascade's order, and a var the launch mounts nowhere is absent.
-    Returns one of the THREE states a token key may hold (2026-08-17 ruling):
+    Returns one of the THREE states a token key may hold (keyspec §2a secret_path.<VAR>):
 
     * a ``str`` — a configured path;
     * ``None`` — PRESENT-null: *var*'s winning declaration is an explicit ``null``
@@ -6621,11 +6622,11 @@ def _persona_probe_error(
     """PER-LAUNCH persona verify probe — the load gate's last question.
 
     Runs once the endpoint AND the token STATE are both settled — a usable path,
-    or a deliberate keyless declaration (``token_ptr is None``, 2026-08-17
-    ruling) — and only on the LAUNCH path (the create path keeps its own
-    WARN-ONLY probe — locked ruling #2; unifying them would turn a create with a
-    bad token into a refusal).  A keyless persona IS probed: the request is sent
-    with the ``Authorization`` header OMITTED (never a placeholder/dummy
+    or a deliberate keyless declaration (``token_ptr is None``, keyspec §2a
+    secret_path.<VAR>) — and only on the LAUNCH path (the create path keeps its
+    own WARN-ONLY probe — [Jei:2026-08-05]; unifying them would turn a create
+    with a bad token into a refusal).  A keyless persona IS probed: the request
+    is sent with the ``Authorization`` header OMITTED (never a placeholder/dummy
     credential — a hardwired-auth server could REJECT one it does not serve,
     producing a false REJECTED that refuses a working box) and the server
     decides, exactly like the omitted-model probe below it.  Applies the DESIGN
@@ -6859,7 +6860,7 @@ def _preflight_persona_load(
     ``agents/<node>/agent.yaml``.
 
     ⚑ ``probe`` is opt-in and set ONLY by the launch: the create path keeps its own
-    WARN-ONLY probe (locked ruling #2), so a create must not inherit this one's hard
+    WARN-ONLY probe [Jei:2026-08-05], so a create must not inherit this one's hard
     error on a rejected token.
 
     *cli_env* is the launch's parsed ``-e`` map (only ``start`` has ``-e``).  A
@@ -6887,7 +6888,7 @@ def _preflight_persona_load(
         ), None
 
     # A harness that declares no persona block gets no persona check: no endpoint
-    # refusal, no token or model gate, no verify probe (his 176th ruling).
+    # refusal, no token or model gate, no verify probe [Jei:2026-10-12].
     if wiring is None:
         return keyspace_endpoint, None, None
 
@@ -6924,7 +6925,7 @@ def _persona_cli_token(cli_env: "Mapping[str, str] | None", var: "str | None") -
 
 def _model_tristate(keyspace_model: object) -> object:
     """Classify a caller-supplied ``keyspace_model`` into the THREE persona-model
-    states (2026-08-17 ruling, same shape as the token key):
+    states (keyspec §2a secret_path.<VAR>; [Jei:2026-08-17], same shape as the token key):
 
     * ``__MISSING__`` — nothing configured ANYWHERE, including a stored blank
       (``""`` / whitespace-only, or the ``__MISSING__`` sentinel itself) — the
@@ -6968,18 +6969,18 @@ def _preflight_env_persona(
 
     1. the bearer token STATE under the FIXED ``wiring.token_var`` the harness
        declares, as resolved
-       (:func:`_persona_token_pointer`) — THREE states (2026-08-17
-       ruling): ABSENT (``__MISSING__``, never configured) ⇒ error pointing at
-       ``agent.<node>.secret_path.<token_var>``, unchanged from before this key
-       could hold ``None``; PRESENT-null (``None``, deliberately keyless) ⇒
-       proceed, no token mounted; a configured path that is NOT
-       :func:`_secret_pointer_usable` ⇒ the SAME error as ABSENT (it always has
-       been — "none was found (or it points at an unusable file)"). ⚑ The token
-       var is checked SPECIFICALLY (N1): a usable pointer under some OTHER
-       ``secret_path`` key does not mean a bearer token is present. A usable
-       pointer is STAT'd arm's length — never read; the value flows only
-       through the launch mount.  A declared block with NO token var gets no
-       token check.  A non-empty ``-e`` value for the token var
+       (:func:`_persona_token_pointer`) — THREE states (keyspec §2a
+       secret_path.<VAR>): ABSENT (``__MISSING__``, never configured) ⇒ error
+       pointing at ``agent.<node>.secret_path.<token_var>``, unchanged from
+       before this key could hold ``None``; PRESENT-null (``None``,
+       deliberately keyless) ⇒ proceed, no token mounted; a configured path
+       that is NOT :func:`_secret_pointer_usable` ⇒ the SAME error as ABSENT
+       (it always has been — "none was found (or it points at an unusable
+       file)"). ⚑ The token var is checked SPECIFICALLY (N1): a usable pointer
+       under some OTHER ``secret_path`` key does not mean a bearer token is
+       present. A usable pointer is STAT'd arm's length — never read; the value
+       flows only through the launch mount.  A declared block with NO token var
+       gets no token check.  A non-empty ``-e`` value for the token var
        (:func:`_persona_cli_token`) passes this gate whatever the file's state.
     2. when ``wiring.model_required`` (goose): a real cascade-resolved ``model``
        id (``keyspace_model``, :func:`_model_tristate`) — ABSENT ⇒ error (a
@@ -7117,7 +7118,7 @@ def _preflight_config_file_persona(
 
     1. the bearer token STATE under the DYNAMIC token var (the single ``secret_path``
        key the persona DECLARED == the provider ``env_key``) — THREE states
-       (2026-08-17 ruling), same as the ENV path.  "The keys the persona
+       (keyspec §2a secret_path.<VAR>), same as the ENV path.  "The keys the persona
        declares" are its own ``agent.<node>.secret_path`` names
        (:func:`_persona_secret_path_keys`), so a store-only persona resolves its
        env_key from the store and a var another SCOPE delivers is never adopted as
@@ -7157,7 +7158,7 @@ def _preflight_config_file_persona(
     model_state = _model_tristate(keyspace_model)
     if model_state is None:
         # PRESENT-null model on a CONFIG-FILE harness: a declared CONFLICT
-        # (2026-08-17 ruling), refused by name — never silently resolved either
+        # (keyspec §2a secret_path.<VAR>), refused by name — never silently resolved either
         # way. This is UNCONDITIONAL for config_file delivery, independent of
         # ``wiring.model_required``: the structural limit is the DELIVERY
         # mechanism (the provider projection types ``model`` as a non-optional
@@ -7588,8 +7589,8 @@ def _resolve_box_launch_decisions(
         # empty-model error, not a bogus default) — but ``effective_behavior``'s
         # generic present-None-is-omitted collapse would ALSO turn a deliberate
         # ``agent.<node>.model: null`` into that same ABSENT reading, losing the
-        # THREE-STATE distinction the persona model gate needs (2026-08-17
-        # ruling).
+        # THREE-STATE distinction the persona model gate needs (the token key's
+        # shape, keyspec §2a secret_path.<VAR>; [Jei:2026-08-17]).
         model = _persona_model_state(snapshot, agent_name)
     secret_paths = _persona_secret_table(
         snapshot, agent_name, inputs.ctx, cli_env=cli_env,
@@ -7895,7 +7896,7 @@ def _resolve_launch_snapshot(
             family="core env file", origins=cat_origins,
         )
         # The CORE ``KANIBAKO_*`` STAMPS as SYSTEM-scope env keys (MBR-1 P4b,
-        # ruling 2026-08-14).  Folded HERE — beside the kickoff whose box_dest one
+        # keyspec §2a env.<VAR>).  Folded HERE — beside the kickoff whose box_dest one
         # of them names — because they are core's own launch-derived floor, the
         # exact counterpart of the plugin-declared ``agent.<node>.env.*`` table
         # below.  ⚑ The per-variable gates (a named project; a real agent) live
@@ -8093,7 +8094,7 @@ def _resolve_launch_snapshot(
         else None
     )
 
-    # Block 7b (ruling A — the FULL read-path swap): the BEHAVIOR cascade now flows
+    # Block 7b ([Jei:2026-06-28f] — the FULL read-path swap): the BEHAVIOR cascade now flows
     # through THIS one snapshot too. The core floor folds in as
     # ``agent.default.<key>`` and the target's declared-default floor as
     # ``agent.<active>.<key>`` (OS1); the per-agent FILE (*agent_cfg_path*) is the
@@ -8493,7 +8494,7 @@ def _install_assembly_collapse(
     # ⚑⚑ DO NOT RE-ADD A SECOND FEED. Two feeds printed one line only because both arms
     # happened to build an EQUAL ``CategoryCollision`` and the emitter memoizes on
     # ``(box_dest, scope)`` — a coincidence of construction, not a guarantee. One
-    # builder is the guarantee (§5: "together, never apart").
+    # builder is the guarantee.
     #
     # ⚑ THIS ARM SAYS MORE THAN THE RETIRED ONE DID, on purpose. The producer folds each
     # scope ALONE, so it reports ambiguities the retired reconcile silenced for its own
@@ -8534,7 +8535,7 @@ def _install_assembly_collapse(
     # function's RETURN VALUE instead.
     collapsed = collapse_store_shapes(shapes, home_bind, entries)
     # ⚑⚑ COVERAGE IS ASKED HERE AND NOWHERE ELSE, and the seam is the whole reason.
-    # ⚖️ RULED 2026-08-28 — *"we should be checking that the paths resolve"* — so a
+    # ⚖️ RULED [Jei:2026-08-28] — *"we should be checking that the paths resolve"* — so a
     # ``synced`` destination no mount covers REFUSES the launch rather than being
     # written into ephemeral container storage and lost. The rule and its message live
     # with the collapse's other copy refusals (``store_collapse``); only the ASKING is
@@ -8943,7 +8944,7 @@ def _sync_box_at_create(
 ) -> None:
     """Write every ``synced`` copy ONCE at create, UNGATED — the SIBLING of the seed.
 
-    ⚖️ RULED 2026-08-11 — *"at box creation, since that's the only time seeded is
+    ⚖️ RULED [Jei:2026-08-11] — *"at box creation, since that's the only time seeded is
     copied, find the top-most bind in the bindings and write synced to it once at
     creation, irrespective of date"*.  This is a CALLER of :func:`_synced_host_dest`,
     not a second copy engine.
@@ -9223,9 +9224,9 @@ def persona_create_verdict(
     """The persona LOAD-OR-ERROR verdict for the `box create` path.
 
     A read-only pre-check the caller runs BEFORE the lifecycle-journal write-entry.
-    Director ruling (2026-07-03): the create guard MUST precede the journal entry
-    (an abort after the entry would leave a pending entry whose recovery replays
-    the seed).  So `run_create` calls this FIRST; a non-``None`` return is the
+    The create guard MUST precede the journal entry (an abort after the entry would
+    leave a pending entry whose recovery replays the seed).  So `run_create` calls
+    this FIRST; a non-``None`` return is the
     actionable error message → the caller prints it and refuses to create, with NO
     journal entry / seed.  Returns ``None`` for a bare / non-persona / no-agent box
     (nothing to gate).
@@ -9276,7 +9277,7 @@ def persona_create_verdict(
         selection_level=selection.selection_level if selection else None,
     )
     # ⚑ ``probe=False``: the create path runs its OWN warn-only probe in
-    # ``box/_parser._check_persona_store_for_create`` (locked ruling #2). Setting
+    # ``box/_parser._check_persona_store_for_create`` [Jei:2026-08-05]. Setting
     # it here would turn a create with a rejected token into a refusal, which is
     # exactly the unification that ruling forbids.
     _ep, error, _provider = _preflight_persona_load(
@@ -9426,7 +9427,7 @@ def seed_new_box(std, config, proj, *, explicit_agent: str | None = None) -> Non
 
 
 # ---------------------------------------------------------------------------
-# Interrupted-create recovery via the LIFECYCLE JOURNAL (J1, Jei 2026-06-30b).
+# Interrupted-create recovery via the LIFECYCLE JOURNAL (J1, [Jei:2026-06-30b]).
 #
 # A write-ahead journal entry (``kanibako.launch.journal``) records an in-flight create
 # so an interrupted `create`/auto-create-at-launch (a crash between seed-start
@@ -9705,7 +9706,7 @@ def _host_copy_dest(
     applier: a category dest arriving here would be a guest path taken for a host
     one, which is the mis-landing bug ``CategoryEntry`` documents.
     ``{box.canon}/handbook`` is not a category dest at all — it is a HOST location
-    nothing in the box reads (§5C-RULING), which is exactly why it still needs this.
+    nothing in the box reads [Jei:2026-08-07g], which is exactly why it still needs this.
 
     *box_root* is ``{meta.box.path}`` — obtained as ``shell_path.parent``, which
     equals it in EVERY mode by construction (the shell dir is ``<box_dir>/home``:
@@ -10014,7 +10015,7 @@ def _synced_host_dest(box_dest: str, bindings, *, logger) -> "Path | None":
     ``bind.src`` is touched: :data:`~kanibako.settings.store_collapse.MASK` carries
     ``src=None``, so ``Path(bind.src)`` raises ``TypeError``.
 
-    ⚑ THE FIRST ARM IS NOW A BACKSTOP, NOT A POLICY (ruling 2026-08-28, spec ratified
+    ⚑ THE FIRST ARM IS NOW A BACKSTOP, NOT A POLICY ([Jei:2026-08-28], spec ratified
     the same day): an uncovered dest refuses at the collapse seam before delivery runs,
     so what follows describes the other two arms and the residue this one is kept for.
 
@@ -10224,7 +10225,7 @@ VAULT_MASK_DEST = core_defaults.vault_mask_default()
 def _core_env_default_categories(*, proj, target, agent_id) -> dict[str, str]:
     """The four CORE ``KANIBAKO_*`` stamps, as launch-DERIVED ``system.env.*`` keys.
 
-    ⚑⚑ THE ONE PLACE THEY ARE SPELLED (MBR-1 P4b, ruling 2026-08-14: *"the
+    ⚑⚑ THE ONE PLACE THEY ARE SPELLED (MBR-1 P4b, keyspec §2a env.<VAR>; [Jei:2026-08-14]: *"the
     'KANIBAKO_' stuff should be in system.env"*).  They are ordinary system-scope
     floor keys, so they enter the ONE env channel with everything else.  Nothing
     above the channel may write these variables; adding a fifth stamp anywhere else
