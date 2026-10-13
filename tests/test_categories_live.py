@@ -119,12 +119,12 @@ class TestB2bHomeVaultByteIdentity:
         floor = {
             "box.bindings.rw": {
                 "/home/agent/vault/rw": (
-                    "@workset.vault_rw/@meta.box.name", "Z,U",
+                    "{workset.vault_rw}/{meta.box.name}", "Z,U",
                 ),
             },
             "box.bindings.ro": {
                 "/home/agent/vault/ro": (
-                    "@workset.vault_ro/@meta.box.name", "ro",
+                    "{workset.vault_ro}/{meta.box.name}", "ro",
                 ),
             },
         }
@@ -164,10 +164,10 @@ class TestB2bHomeVaultByteIdentity:
 
         floor = {
             "box.bindings.rw": {
-                "/home/agent/vault/rw": ("@workset.vault_rw", "Z,U"),
+                "/home/agent/vault/rw": ("{workset.vault_rw}", "Z,U"),
             },
             "box.bindings.ro": {
-                "/home/agent/vault/ro": ("@workset.vault_ro", "ro"),
+                "/home/agent/vault/ro": ("{workset.vault_ro}", "ro"),
             },
         }
         # meta.workset.path = @meta.runtime.ws_root = <root> (the standalone launch
@@ -856,7 +856,7 @@ class TestDeclarationRoots:
             xdg={"XDG_DATA_HOME": "/data", "XDG_CACHE_HOME": "/xcache"},
             config={"config.data": "/data", "config.agents": "/data/agents"},
         )
-        floor: dict[str, object] = {"system.cache": "$XDG_CACHE_HOME/kanibako"}
+        floor: dict[str, object] = {"system.cache": "{$XDG_CACHE_HOME}/kanibako"}
         floor.update(meta_identity_floor(
             box_name="b", project_path="/p", inbox="/i", share_global="/sg",
             share_workset=None, agent_name=agent,
@@ -906,7 +906,7 @@ class TestDeclarationRoots:
         """
         by_dest = self._resolve({
             "agent.claude.caches": {
-                "@system.cache/tweakcc": ("@system.cache/tweakcc",),
+                "{system.cache}/tweakcc": ("{system.cache}/tweakcc",),
             },
         })
         # No ``common/``, no ``caches/``, no agent-store prefix ANYWHERE.
@@ -921,8 +921,8 @@ class TestDeclarationRoots:
             "agent.claude.common": {
                 "/g/a": ("/abs/dir",),
                 "/g/b": ("~/tdir",),
-                "/g/c": ("$XDG_DATA_HOME/x",),
-                "/g/d": ("@meta.agent.claude.path/own",),
+                "/g/c": ("{$XDG_DATA_HOME}/x",),
+                "/g/d": ("{meta.agent.claude.path}/own",),
             },
         })
         assert by_dest["/g/a"] == "/abs/dir"
@@ -2191,12 +2191,12 @@ class TestAConcreteBindingTheCollapseSwallowedIsNotShownAsAMount:
         This row is a live mount, and it must be reported as one BY ARBITRATION rather
         than by being skipped — the masked twin below is what proves the difference.
         """
-        categories = {"box.bindings.ro": {"$XDG_DATA_HOME/z": ("/src",)}}
+        categories = {"box.bindings.ro": {"{$XDG_DATA_HOME}/z": ("/src",)}}
         # PREMISE, off the arbitrated map: the box receives this mount.
         assert _collapsed(categories)["/data/z"].src == "/src"
 
         text = _block(categories)
-        assert "box.bindings.ro[$XDG_DATA_HOME/z] = /src -> /data/z" in text, text
+        assert "box.bindings.ro[{$XDG_DATA_HOME}/z] = /src -> /data/z" in text, text
         assert "no mount" not in text, text
 
     def test_a_MASKED_XDG_spelled_dest_prints_the_mask_not_a_mount(self):
@@ -2241,13 +2241,13 @@ class TestAConcreteBindingTheCollapseSwallowedIsNotShownAsAMount:
         takes the point exactly as it would had both been spelled alike.
         """
         categories = {
-            "box.bindings.ro": {"$XDG_DATA_HOME/z": ("/src",)},
+            "box.bindings.ro": {"{$XDG_DATA_HOME}/z": ("/src",)},
             "box.masks": ["/data/z"],
         }
         assert _collapsed(categories)["/data/z"].src is None
 
         text = _block(categories)
-        assert "/src -> $XDG_DATA_HOME/z" not in text, text
+        assert "/src -> {$XDG_DATA_HOME}/z" not in text, text
         assert (
             f"{self._MASK_PHRASE}'box.masks[/data/z]' at /data/z covers this destination"
             in text
@@ -2311,7 +2311,7 @@ class TestAConcreteRowPrintsTheResolvedGuestPath:
     def test_a_referent_dollar_prints_unescaped(self):
         text = _block({
             "box.env.ODD": "/e\\@v\\$q",
-            "box.bindings.ro": {"@box.env.ODD/t": ("/src",)},
+            "box.bindings.ro": {"{box.env.ODD}/t": ("/src",)},
         })
         assert "/src -> /e@v$q/t\n" in text, text
 
@@ -2364,12 +2364,12 @@ class TestAPrefRequestIsReadUnderTheArmKeyItWasFiledUnder:
         return buf.getvalue()
 
     def test_an_at_ref_destination_is_found_and_prints_resolved(self, tmp_path):
-        text = self._pref_block(tmp_path, {"@box.env.ODD/p": ["/src"]})
-        assert "-> agent.claude.bindings.ro[@box.env.ODD/p] = /src -> /e@v$q/p\n" in text, text
+        text = self._pref_block(tmp_path, {"{box.env.ODD}/p": ["/src"]})
+        assert "-> agent.claude.bindings.ro[{box.env.ODD}/p] = /src -> /e@v$q/p\n" in text, text
         assert "suppressed" not in text, text
 
     @pytest.mark.parametrize(("dest", "shown"), [
-        ("$XDG_DATA_HOME/x", "/data/x"),
+        ("{$XDG_DATA_HOME}/x", "/data/x"),
         ("/opt/lit\\$b\\~c", "/opt/lit$b~c"),
     ])
     def test_a_deferred_destination_prints_resolved(self, tmp_path, dest, shown):
@@ -2382,12 +2382,12 @@ class TestAPrefRequestIsReadUnderTheArmKeyItWasFiledUnder:
         """``meta.box.agent.*`` is mirrored AFTER ``expand``, but ``expand`` derives a
         reference to it from the agent key the mirror copies, so the launch files this
         entry under ``/cn/q``; were the reference read as absent it would print ``/q``."""
-        text = self._pref_block(tmp_path, {"@meta.box.agent.canon/q": ["/src"]}, "shell")
-        assert "-> agent.shell.bindings.ro[@meta.box.agent.canon/q] = /src -> /cn/q\n" in text, text
+        text = self._pref_block(tmp_path, {"{meta.box.agent.canon}/q": ["/src"]}, "shell")
+        assert "-> agent.shell.bindings.ro[{meta.box.agent.canon}/q] = /src -> /cn/q\n" in text, text
 
     def test_a_suppressed_at_ref_entry_is_still_reported_suppressed(self, tmp_path):
-        text = self._pref_block(tmp_path, {"@box.env.ODD/gone": None})
-        assert "-> agent.claude.bindings.ro[@box.env.ODD/gone] = (omitted" in text, text
+        text = self._pref_block(tmp_path, {"{box.env.ODD}/gone": None})
+        assert "-> agent.claude.bindings.ro[{box.env.ODD}/gone] = (omitted" in text, text
 
 
 class TestALossInTheEffectiveBlockNamesTheDECLARATIONThatTookTheDestination:

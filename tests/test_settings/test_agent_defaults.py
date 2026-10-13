@@ -62,9 +62,9 @@ class TestLoadCommonRooting:
         package, filename = declfile(
             "common:\n"
             "  - host_src: plugins\n"
-            "    box_dest: \"$GUEST_HOME/.claude/plugins\"\n"
+            "    box_dest: \"{$GUEST_HOME}/.claude/plugins\"\n"
             "  - host_src: cache\n"
-            "    box_dest: \"$GUEST_HOME/.claude/cache\"\n"
+            "    box_dest: \"{$GUEST_HOME}/.claude/cache\"\n"
         )
         common_binds = agent_defaults.load_common(package, filename, "claude")
         assert common_binds == {
@@ -89,7 +89,7 @@ class TestLoadCommonRooting:
         package, filename = declfile(
             "common:\n"
             "  - host_src: plugins\n"
-            "    box_dest: \"$GUEST_HOME/.claude/p\"\n"
+            "    box_dest: \"{$GUEST_HOME}/.claude/p\"\n"
         )
         common_binds = agent_defaults.load_common(package, filename, "claude")
         assert list(common_binds) == ["agent.claude.common"]
@@ -112,7 +112,7 @@ class TestLoadCommonRooting:
             "common:\n"
             "  - key: plugins\n"
             "    host_src: plugins\n"
-            "    box_dest: \"$GUEST_HOME/.claude/plugins\"\n"
+            "    box_dest: \"{$GUEST_HOME}/.claude/plugins\"\n"
         )
         with pytest.raises(SettingsError) as e:
             agent_defaults.load_common(package, filename, "claude")
@@ -124,7 +124,7 @@ class TestLoadCommonRooting:
 
     @pytest.mark.parametrize(
         "src",
-        ["/abs/dir", "~/tdir", "$XDG_CACHE_HOME/x", "@system.cache/tweakcc"],
+        ["/abs/dir", "~/tdir", "{$XDG_CACHE_HOME}/x", "{system.cache}/tweakcc"],
     )
     def test_self_resolving_source_is_stored_verbatim(self, declfile, src):
         """An ALREADY self-resolving source is NOT root-joined (spec §2a
@@ -135,7 +135,7 @@ class TestLoadCommonRooting:
         package, filename = declfile(
             "common:\n"
             f"  - host_src: \"{src}\"\n"
-            "    box_dest: \"$GUEST_HOME/.thing\"\n"
+            "    box_dest: \"{$GUEST_HOME}/.thing\"\n"
         )
         common_binds = agent_defaults.load_common(package, filename, "claude")
         assert common_binds["agent.claude.common"]["/home/agent/.thing"][0] == src
@@ -147,7 +147,7 @@ class TestLoadCommonRooting:
         package, filename = declfile(
             "common:\n"
             "  - host_src: plugins\n"
-            "    box_dest: \"$GUEST_HOME/.claude/plugins\"\n"
+            "    box_dest: \"{$GUEST_HOME}/.claude/plugins\"\n"
             "    options: ro\n"
         )
         common_binds = agent_defaults.load_common(package, filename, "claude")
@@ -168,7 +168,7 @@ class TestLoadCommonRooting:
         package, filename = declfile(
             "common:\n"
             "  - host_src: leaf\n"
-            "    box_dest: \"$GUEST_HOME/.k\"\n"
+            "    box_dest: \"{$GUEST_HOME}/.k\"\n"
         )
         got = agent_defaults.load_common(package, filename, "goose")
         assert got["agent.goose.common"]["/home/agent/.k"][0] == (
@@ -194,7 +194,7 @@ class TestCategoryBindsTakeNoRoot:
             "category_binds:\n"
             "  - category: bindings.ro\n"
             "    meta_ref: some/relative/path\n"
-            "    box_dest: \"$GUEST_HOME/.guide\"\n"
+            "    box_dest: \"{$GUEST_HOME}/.guide\"\n"
         )
         with pytest.raises(SettingsError) as e:
             agent_defaults.load_category_binds(package, filename, "claude")
@@ -211,7 +211,7 @@ class TestCategoryBindsTakeNoRoot:
             "category_binds:\n"
             "  - category: caches\n"
             "    meta_ref: some/relative/path\n"
-            "    box_dest: \"$GUEST_HOME/.guide\"\n"
+            "    box_dest: \"{$GUEST_HOME}/.guide\"\n"
         )
         with pytest.raises(SettingsError) as e:
             agent_defaults.load_category_binds(package, filename, "claude")
@@ -236,7 +236,7 @@ class TestCategoryBindsTakeNoRoot:
             "category_binds:\n"
             f"  - category: {category}\n"
             "    meta_ref: rel/src\n"
-            "    box_dest: \"$GUEST_HOME/.guide\"\n"
+            "    box_dest: \"{$GUEST_HOME}/.guide\"\n"
         )
         with pytest.raises(SettingsError) as e:
             agent_defaults.load_category_binds(package, filename, "claude")
@@ -252,7 +252,7 @@ class TestCategoryBindsTakeNoRoot:
         )
 
     @pytest.mark.parametrize(
-        "src", ["/abs", "~/x", "$XDG_DATA_HOME/x", "@system.channelroot/x"],
+        "src", ["/abs", "~/x", "{$XDG_DATA_HOME}/x", "{system.channelroot}/x"],
     )
     def test_self_resolving_category_bind_is_accepted(self, declfile, src):
         """A source that resolves on its own is stored VERBATIM.
@@ -266,7 +266,7 @@ class TestCategoryBindsTakeNoRoot:
             "category_binds:\n"
             "  - category: caches\n"
             f"    meta_ref: \"{src}\"\n"
-            "    box_dest: \"$GUEST_HOME/.guide\"\n"
+            "    box_dest: \"{$GUEST_HOME}/.guide\"\n"
             "    ro: true\n"
         )
         binds = agent_defaults.load_category_binds(package, filename, "claude")
@@ -297,14 +297,14 @@ class TestCategoryBindsAreDestKeyed:
         package, filename = declfile(
             "category_binds:\n"
             "  - category: bindings.ro\n"
-            "    meta_ref: \"@system.channelroot/x\"\n"
-            "    box_dest: \"$GUEST_HOME/.guide\"\n"
+            "    meta_ref: \"{system.channelroot}/x\"\n"
+            "    box_dest: \"{$GUEST_HOME}/.guide\"\n"
             "    ro: true\n"
         )
         binds = agent_defaults.load_category_binds(package, filename, "claude")
         assert binds == {
             "agent.claude.bindings.ro": {
-                "/home/agent/.guide": ("@system.channelroot/x", "ro"),
+                "/home/agent/.guide": ("{system.channelroot}/x", "ro"),
             },
         }
 
@@ -316,13 +316,13 @@ class TestCategoryBindsAreDestKeyed:
         package, filename = declfile(
             "category_binds:\n"
             "  - category: bindings.rw\n"
-            "    meta_ref: \"@system.channelroot/x\"\n"
-            "    box_dest: \"$GUEST_HOME/.rwslot\"\n"
+            "    meta_ref: \"{system.channelroot}/x\"\n"
+            "    box_dest: \"{$GUEST_HOME}/.rwslot\"\n"
         )
         binds = agent_defaults.load_category_binds(package, filename, "claude")
         assert binds == {
             "agent.claude.bindings.rw": {
-                "/home/agent/.rwslot": ("@system.channelroot/x",),
+                "/home/agent/.rwslot": ("{system.channelroot}/x",),
             },
         }
 
@@ -335,30 +335,30 @@ class TestCategoryBindsAreDestKeyed:
         package, filename = declfile(
             "category_binds:\n"
             "  - category: bindings.ro\n"
-            "    meta_ref: \"@system.channelroot/a\"\n"
-            "    box_dest: \"$GUEST_HOME/.a\"\n"
+            "    meta_ref: \"{system.channelroot}/a\"\n"
+            "    box_dest: \"{$GUEST_HOME}/.a\"\n"
             "  - category: bindings.ro\n"
-            "    meta_ref: \"@system.channelroot/b\"\n"
-            "    box_dest: \"$GUEST_HOME/.b\"\n"
+            "    meta_ref: \"{system.channelroot}/b\"\n"
+            "    box_dest: \"{$GUEST_HOME}/.b\"\n"
             "    ro: true\n"
             "  - category: bindings.rw\n"
-            "    meta_ref: \"@system.channelroot/c\"\n"
-            "    box_dest: \"$GUEST_HOME/.c\"\n"
+            "    meta_ref: \"{system.channelroot}/c\"\n"
+            "    box_dest: \"{$GUEST_HOME}/.c\"\n"
             "  - category: caches\n"
-            "    meta_ref: \"@system.channelroot/d\"\n"
-            "    box_dest: \"$GUEST_HOME/.d\"\n"
+            "    meta_ref: \"{system.channelroot}/d\"\n"
+            "    box_dest: \"{$GUEST_HOME}/.d\"\n"
         )
         binds = agent_defaults.load_category_binds(package, filename, "goose")
         assert binds == {
             "agent.goose.bindings.ro": {
-                "/home/agent/.a": ("@system.channelroot/a",),
-                "/home/agent/.b": ("@system.channelroot/b", "ro"),
+                "/home/agent/.a": ("{system.channelroot}/a",),
+                "/home/agent/.b": ("{system.channelroot}/b", "ro"),
             },
             "agent.goose.bindings.rw": {
-                "/home/agent/.c": ("@system.channelroot/c",),
+                "/home/agent/.c": ("{system.channelroot}/c",),
             },
             "agent.goose.caches": {
-                "/home/agent/.d": ("@system.channelroot/d",),
+                "/home/agent/.d": ("{system.channelroot}/d",),
             },
         }
 
@@ -380,7 +380,7 @@ class TestCategoryBindsAreDestKeyed:
         package, filename = declfile(
             "category_binds:\n"
             "  - category: bindings.ro\n"
-            "    meta_ref: \"@system.channelroot/x\"\n"
+            "    meta_ref: \"{system.channelroot}/x\"\n"
             f"    box_dest: \"{declared}\"\n"
         )
         binds = agent_defaults.load_category_binds(package, filename, "claude")
@@ -398,11 +398,11 @@ class TestCategoryBindsAreDestKeyed:
         package, filename = declfile(
             "category_binds:\n"
             "  - category: bindings.ro\n"
-            "    meta_ref: \"@system.channelroot/first\"\n"
+            "    meta_ref: \"{system.channelroot}/first\"\n"
             "    box_dest: \"~/slot\"\n"
             "  - category: bindings.ro\n"
-            "    meta_ref: \"@system.channelroot/second\"\n"
-            "    box_dest: \"$GUEST_HOME/slot/\"\n"
+            "    meta_ref: \"{system.channelroot}/second\"\n"
+            "    box_dest: \"{$GUEST_HOME}/slot/\"\n"
         )
         with pytest.raises(SettingsError) as e:
             agent_defaults.load_category_binds(package, filename, "claude")
@@ -430,8 +430,8 @@ class TestCategoryBindsAreDestKeyed:
             "category_binds:\n"
             f"  - category: {category}\n"
             "    key: guide\n"
-            "    meta_ref: \"@system.channelroot/x\"\n"
-            "    box_dest: \"$GUEST_HOME/.guide\"\n"
+            "    meta_ref: \"{system.channelroot}/x\"\n"
+            "    box_dest: \"{$GUEST_HOME}/.guide\"\n"
         )
         with pytest.raises(SettingsError) as e:
             agent_defaults.load_category_binds(package, filename, "claude")
@@ -457,8 +457,8 @@ class TestCategoryBindsAreDestKeyed:
         package, filename = declfile(
             "category_binds:\n"
             "  - category: bindings.ro\n"
-            "    meta_ref: \"@system.channelroot/x\"\n"
-            "    box_dest: \"$GUEST_HOME/.guide\"\n"
+            "    meta_ref: \"{system.channelroot}/x\"\n"
+            "    box_dest: \"{$GUEST_HOME}/.guide\"\n"
             "    ro: true\n"
         )
         floor = dict(agent_defaults.load_category_binds(package, filename, "claude"))
@@ -466,7 +466,7 @@ class TestCategoryBindsAreDestKeyed:
         arm = level["agent"]["claude"]["bindings"]["ro"]
         assert list(arm) == ["/home/agent/.guide"]
         entry = arm["/home/agent/.guide"]
-        assert (entry.src, entry.opts) == ("@system.channelroot/x", "ro")
+        assert (entry.src, entry.opts) == ("{system.channelroot}/x", "ro")
 
 
 class TestLayoutSingleSource:
@@ -536,25 +536,25 @@ class TestLayoutSingleSource:
     @pytest.mark.parametrize(
         ("src", "rooted"),
         [
-            ("leaf", "@r/leaf"),
-            ("a/b", "@r/a/b"),
+            ("leaf", "{r}/leaf"),
+            ("a/b", "{r}/a/b"),
             ("/abs", "/abs"),
             ("~/x", "~/x"),
-            ("$V/x", "$V/x"),
-            ("@k/x", "@k/x"),
+            ("{$V}/x", "{$V}/x"),
+            ("{k}/x", "{k}/x"),
             # ⚑ THE TWO LEADING-ESCAPE CASES FALL ON OPPOSITE SIDES, and the rule
             # has to read them the way the RESOLVER does (asserted directly in
             # ``test_escapes_match_the_resolver`` below):
             #   \/foo  unescapes to /foo  -> ABSOLUTE, left alone
             #   \~foo  unescapes to ~foo  -> a literal relative dir, rooted
             ("\\/foo", "\\/foo"),
-            ("\\~foo", "@r/\\~foo"),
-            ("\\$V/x", "@r/\\$V/x"),
-            ("\\@k/x", "@r/\\@k/x"),
+            ("\\~foo", "{r}/\\~foo"),
+            ("\\$V/x", "{r}/\\$V/x"),
+            ("\\@k/x", "{r}/\\@k/x"),
         ],
     )
     def test_prefix_rule(self, src, rooted):
-        assert root_relative_source(src, "@r") == rooted
+        assert root_relative_source(src, "{r}") == rooted
         assert is_self_resolving(src) is (rooted == src)
 
     @pytest.mark.parametrize(

@@ -259,9 +259,8 @@ class TestTheLegalShapesAreAccepted:
     @pytest.mark.parametrize("value", [
         "/srv/comms",                 # absolute
         "~/comms",                    # home-rooted
-        "$XDG_DATA_HOME/comms",       # an XDG base, BARE
-        "${XDG_DATA_HOME}/comms",     # ...and BRACED — parsed, never prefix-matched
-        "@config.data/comms",         # an @-ref to another key
+        "{$XDG_DATA_HOME}/comms",     # an XDG base — parsed, never prefix-matched
+        "{config.data}/comms",        # a reference to another key
         # ``@meta.workset.path/comms`` — the cure [R147] offers — needs the COMMAND's
         # target to resolve, so it is pinned with a real working set below
         # (``TestSetTimeResolvesTheCommandsTarget``), not with these bare files.
@@ -279,7 +278,7 @@ class TestTheLegalShapesAreAccepted:
         assert load_doc(files["workset"])["workset"]["auth"]["path"] == value
 
     @pytest.mark.parametrize("value", [
-        "/srv/c", "~/c", "$XDG_CACHE_HOME/c", "${XDG_CACHE_HOME}/c", "@config.data/c",
+        "/srv/c", "~/c", "{$XDG_CACHE_HOME}/c", "{config.data}/c",
     ])
     def test_system_scope_accepts_it(self, value, config_file, tmp_path):
         """⚑ ``config_file`` for the same reason as the case above — host isolation."""
@@ -303,7 +302,7 @@ class TestTheLegalShapesAreAccepted:
 
     def test_the_box_root_cure_resolves_too(self, std, config_file, tmp_home):
         proj = _primary_box(std, config_file, tmp_home)
-        message = _set_box("box.canon", "@meta.box.path/canon", std, proj)
+        message = _set_box("box.canon", "{meta.box.path}/canon", std, proj)
         assert not message.startswith("Error:"), message
 
 
@@ -353,8 +352,8 @@ class TestSetTimeResolvesTheCommandsTarget:
         # ``meta.box.home`` hangs off the box's real ``meta.box.path``; only the
         # box's own resolve has it.
         proj = _primary_box(std, config_file, tmp_home)
-        message = _set_box("box.canon", "@meta.box.home/canon", std, proj)
-        assert message == "Set box.canon=@meta.box.home/canon", message
+        message = _set_box("box.canon", "{meta.box.home}/canon", std, proj)
+        assert message == "Set box.canon={meta.box.home}/canon", message
 
     def test_a_box_refusal_names_the_boxs_real_root(self, std, config_file, tmp_home):
         proj = _primary_box(std, config_file, tmp_home)
@@ -363,10 +362,10 @@ class TestSetTimeResolvesTheCommandsTarget:
 
     def test_a_workset_value_resolves_against_the_worksets_anchors(self, std, tmp_home):
         ws = create_workset("anchorws", tmp_home / "anchorws", std)
-        message = _set_ws("workset.auth.path", "@meta.runtime.ws_root/auth", std, ws)
-        assert message == "Set workset.auth.path=@meta.runtime.ws_root/auth", message
+        message = _set_ws("workset.auth.path", "{meta.runtime.ws_root}/auth", std, ws)
+        assert message == "Set workset.auth.path={meta.runtime.ws_root}/auth", message
 
-    @pytest.mark.parametrize("ref", ["@meta.box.path", "@meta.box.home"])
+    @pytest.mark.parametrize("ref", ["{meta.box.path}", "{meta.box.home}"])
     def test_a_workset_value_needing_a_box_is_judged_without_one(
         self, ref, std, tmp_home,
     ):
@@ -375,7 +374,7 @@ class TestSetTimeResolvesTheCommandsTarget:
         ws = create_workset("noboxws", tmp_home / "noboxws", std)
         message = _set_ws("workset.auth.path", f"{ref}/auth", std, ws)
         assert message.startswith("Error:"), message
-        assert f"points at '{{{ref.removeprefix('@')}}}'" in message, message
+        assert f"points at '{ref}'" in message, message
         assert 'system-design "Ordering rule"' in message, message
 
     def test_a_write_naming_no_target_gets_no_anchor_from_its_file(self, tmp_path):
@@ -439,8 +438,8 @@ class TestTheRuleDoesNotOVERREACH:
             is_unambiguous_path_value,
         )
 
-        assert is_self_resolving("$AGENT/logs") is True
-        assert is_unambiguous_path_value("$AGENT/logs") is False
+        assert is_self_resolving("{$AGENT}/logs") is True
+        assert is_unambiguous_path_value("{$AGENT}/logs") is False
 
 
 class TestTheAnchorDegradesHONESTLY:
@@ -532,7 +531,7 @@ class TestABrokenTargetIsJudgedWithoutTheTarget:
     ):
         proj = _primary_box(std, config_file, tmp_home)
         self._break(proj)
-        message = _set_box("box.canon", "@meta.box.home/canon", std, proj)
+        message = _set_box("box.canon", "{meta.box.home}/canon", std, proj)
         assert message.startswith("Error:"), message
         assert "dangling reference '{meta.box.home}'" in message
         assert "did not resolve:" in message and "DOTTED" in message
@@ -557,11 +556,11 @@ class TestABrokenTargetIsJudgedWithoutTheTarget:
         std.settings.parent.mkdir(parents=True, exist_ok=True)
         std.settings.write_text("workset:\n  canon: /sys/canon\n")
         workset_file.parent.mkdir(parents=True, exist_ok=True)
-        workset_file.write_text('workset:\n  canon: "@workset.nonexistent_zz/c"\n')
+        workset_file.write_text('workset:\n  canon: "{workset.nonexistent_zz}/c"\n')
         box_file.parent.mkdir(parents=True, exist_ok=True)
         box_file.write_text("box:\n  canon: /first\npref:\n  system.agent: claude\n")
         rc = run_set(argparse.Namespace(
-            args=[str(proj.project_path), "box.canon=@workset.canon/x"],
+            args=[str(proj.project_path), "box.canon={workset.canon}/x"],
             box=None, force=False,
         ))
         err = capsys.readouterr().err
@@ -591,7 +590,7 @@ class TestEveryNounPassesItsTarget:
 
         proj = _primary_box(std, config_file, tmp_home)
         rc = run_set(argparse.Namespace(
-            args=[str(proj.project_path), "box.canon=@meta.box.home/canon"],
+            args=[str(proj.project_path), "box.canon={meta.box.home}/canon"],
             box=None, force=False,
         ))
         assert rc == 0, capsys.readouterr().err
@@ -603,7 +602,7 @@ class TestEveryNounPassesItsTarget:
 
         create_workset("cliws", tmp_home / "cliws", std)
         rc = run_set(argparse.Namespace(
-            workset="cliws", key_value="workset.auth.path=@meta.runtime.ws_root/auth",
+            workset="cliws", key_value="workset.auth.path={meta.runtime.ws_root}/auth",
             force=False,
         ))
         assert rc == 0, capsys.readouterr().err
@@ -634,11 +633,11 @@ class TestEveryNounPassesItsTarget:
 #: real ref the set-time CASCADE floor can satisfy, and each reads as
 #: ``Unknown reference`` at the launch — the two doors disagreeing, which is the defect.
 _OUT_OF_TIER_SHAPES = [
-    "@box.image/x",
-    "@box.enable_vault/x",
-    "@box.shell/x",
+    "{box.image}/x",
+    "{box.enable_vault}/x",
+    "{box.shell}/x",
     "@box.image./x",
-    "@box.image",
+    "{box.image}",
     "@box..image/x",
     "@box.image /x",
 ]
@@ -675,7 +674,7 @@ class TestASystemPathValueMayNotPointOutOfItsTier:
         real box tier file present."""
         for name in ("no-box-tier", "box-tier-present"):
             files = _files(tmp_path / name)
-            message = _set("system.template", "@box.image/x", files, ConfigLevel.system)
+            message = _set("system.template", "{box.image}/x", files, ConfigLevel.system)
             assert message.startswith("Error:"), f"{name}: {message}"
 
     def test_a_non_path_system_ref_is_refused_and_the_message_says_so(
@@ -687,7 +686,7 @@ class TestASystemPathValueMayNotPointOutOfItsTier:
         ``@system.*`` key is allowed."""
         files = _files(tmp_path)
         files["system"].write_text("system:\n  agent: claude\n")
-        message = _set("system.template", "@system.agent/x", files, ConfigLevel.system)
+        message = _set("system.template", "{system.agent}/x", files, ConfigLevel.system)
         assert message.startswith("Error:"), message
         assert "'{system.agent}'" in message and "outside the system path tier" in message
         assert "{config.*} keys and the system path keys" in message, message
@@ -715,7 +714,7 @@ class TestASystemPathValueMayNotPointOutOfItsTier:
             assert load_doc(files["system"])["system"]["template"] == value
 
     def test_the_non_ref_shapes_are_untouched(self, config_file, tmp_path):
-        for i, value in enumerate(("/srv/t", "~/t", "$XDG_DATA_HOME/t", "${XDG_DATA_HOME}/t")):
+        for i, value in enumerate(("/srv/t", "~/t", "{$XDG_DATA_HOME}/t")):
             files = _files(tmp_path / f"v{i}")
             message = _set("system.template", value, files, ConfigLevel.system)
             assert not message.startswith("Error:"), f"{value!r}: {message}"
@@ -749,14 +748,14 @@ class TestASystemPathValueMayNotPointOutOfItsTier:
         # membership is SYSTEM_PATH_DEFAULTS ENTIRE — the system path tier.
         assert len(paths.SYSTEM_PATH_DEFAULTS) > 5
         for key in paths.SYSTEM_PATH_DEFAULTS:
-            message = system_path_ref_error(key, "@box.image/x")
-            assert message is not None and key in message and "@box.image" in message, key
+            message = system_path_ref_error(key, "{box.image}/x")
+            assert message is not None and key in message and "{box.image}" in message, key
         # ⚑ AND ``config.*`` IS NOT IN IT, by its own declaration rather than by an
         # omission here: those six are ``set: file`` with no CLI write route, so
         # ``set_config_value`` refuses them with the §1 message LONG before this door
         # runs.  They are carried by their read-time doors alone.
         for key in bootstrap.CONFIG_PATH_DEFAULTS:
-            assert system_path_ref_error(key, "@box.image/x") is None, key
+            assert system_path_ref_error(key, "{box.image}/x") is None, key
 
     def test_it_is_not_this_door_for_a_key_outside_the_system_path_tier(self):
         """⚑ THE NARROWNESS, pinned.  A downward ref is a spec question for EVERY key,
@@ -767,7 +766,7 @@ class TestASystemPathValueMayNotPointOutOfItsTier:
         from kanibako.settings.config import system_path_ref_error
 
         for key in ("box.canon", "workset.channelroot", "agent.canon", "system.model"):
-            assert system_path_ref_error(key, "@box.image/x") is None, key
+            assert system_path_ref_error(key, "{box.image}/x") is None, key
 
     def test_the_read_seam_still_reports_the_unknown_reference(self, tmp_home):
         """THE LAUNCH IS UNCHANGED.  A value written by hand, past every set door, is
@@ -777,7 +776,7 @@ class TestASystemPathValueMayNotPointOutOfItsTier:
 
         with pytest.raises(Exception) as exc:
             resolve_system_paths(
-                {"system.template": "@box.image/x"},
+                {"system.template": "{box.image}/x"},
                 data_home=tmp_home / "data", home=tmp_home,
             )
         assert "Unknown reference: {box.image}" in str(exc.value), str(exc.value)

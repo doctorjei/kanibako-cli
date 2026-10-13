@@ -75,7 +75,7 @@ _BOXES = f"workset.{BOXES_PATH}"
 #: ⚑ NOT a workset EARLY key: those take only ``@meta.workset.path``, whatever the door
 #: (``test_workset_early_key_set_door.py``).
 _CONTAINED_KEY = "workset.auth.path"
-_CONTAINED_REF = "@workset.channelroot/x"
+_CONTAINED_REF = "{workset.channelroot}/x"
 #: The ordering refusal's citation (``messages.ERR_CONFIG_REF_ORDER``).
 _ORDERING = 'system-design "Ordering rule"'
 
@@ -292,7 +292,7 @@ class TestAContainedScopeKeyIsAcceptedAtTheContainingDoor:
     def test_a_dangling_ref_at_the_keys_own_door_is_still_refused(self, ws_files):
         """The cure is keyed on the CONTAINMENT RELATION, so it cannot fire where the floor
         DOES hold the referent — the contained scope's own door is not exempt."""
-        message = _set(_CONTAINED_KEY, "@workset.nonexistent", ws_files,
+        message = _set(_CONTAINED_KEY, "{workset.nonexistent}", ws_files,
                        ConfigLevel.workset, std=ws_files["std"], ws=ws_files["ws"])
         assert message.startswith("Error:"), message
         assert "dangling reference" in message, message
@@ -310,14 +310,14 @@ class TestAMetaRefIsJudgedByItsScopeToken:
     ``@meta.box.path/c2`` refused the shape of the declared default itself."""
 
     def test_a_box_key_may_reference_its_own_meta_scope_at_the_workset_door(self, ws_files):
-        message = _set("box.canon", "@meta.box.path/c2", ws_files, ConfigLevel.workset,
+        message = _set("box.canon", "{meta.box.path}/c2", ws_files, ConfigLevel.workset,
                        std=ws_files["std"], ws=ws_files["ws"])
         assert not message.startswith("Error:"), message
-        assert "@meta.box.path/c2" in ws_files["workset"].read_text()
+        assert "{meta.box.path}/c2" in ws_files["workset"].read_text()
 
     @pytest.mark.parametrize("key, value", [
-        ("workset.template", "@meta.workset.path/t2"),   # own scope
-        ("box.canon", "@meta.workset.path/@meta.box.name/c3"),  # preceding sets
+        ("workset.template", "{meta.workset.path}/t2"),   # own scope
+        ("box.canon", "{meta.workset.path}/{meta.box.name}/c3"),  # preceding sets
     ])
     def test_own_or_containing_meta_scope_is_accepted_at_the_system_door(
         self, tmp_path, std, key, value,
@@ -328,9 +328,9 @@ class TestAMetaRefIsJudgedByItsScopeToken:
         assert value in files["system"].read_text()
 
     @pytest.mark.parametrize("value, phrase", [
-        ("@meta.box.path/t2", _ORDERING),              # meta.box resolves after workset
-        ("@meta.runtime.ws_root/t2", "dangling reference"),   # no scope token
-        ("@meta.workset.nope/t2", "dangling reference"),      # own scope, but undeclared
+        ("{meta.box.path}/t2", _ORDERING),              # meta.box resolves after workset
+        ("{meta.runtime.ws_root}/t2", "dangling reference"),   # no scope token
+        ("{meta.workset.nope}/t2", "dangling reference"),      # own scope, but undeclared
     ])
     def test_these_meta_refs_stay_refused_at_the_system_door(self, tmp_path, std, value, phrase):
         files = _files(tmp_path)
@@ -340,7 +340,7 @@ class TestAMetaRefIsJudgedByItsScopeToken:
         assert not files["system"].exists(), f"{value!r} was WRITTEN: {message}"
 
     def test_a_later_meta_ref_stays_refused_at_the_keys_own_door(self, ws_files):
-        message = _set("workset.template", "@meta.box.path/t2", ws_files,
+        message = _set("workset.template", "{meta.box.path}/t2", ws_files,
                        ConfigLevel.workset, std=ws_files["std"], ws=ws_files["ws"])
         assert message.startswith("Error:"), message
         assert _ORDERING in message, message
@@ -367,7 +367,7 @@ class TestAnUpwardWriteStaysRefused:
         """The blindness is a property of the ABSENCE, not a blanket pass: at the system
         door the ``@system.*`` referent IS in the floor, so the probe judges it as always."""
         files = _files(tmp_path)
-        message = _set("workset.template", "@system.canon", files, ConfigLevel.system, std=std)
+        message = _set("workset.template", "{system.canon}", files, ConfigLevel.system, std=std)
         assert not message.startswith("Error:"), message
 
 
@@ -375,10 +375,10 @@ class TestWhatStaysRefused:
     """🛑 A RELAXED refusal is the real risk, so every non-blindness defect is pinned here."""
 
     @pytest.mark.parametrize("value", [
-        "@workset.nonexistent",             # undeclared referent: a real dangling ref
-        "@workset.auth.path",               # self-reference: a cycle, not a missing referent
-        "@workset.channelroot/@workset.nope",   # one declared and one not
-        "@config.nonexistent",              # the Layer-1 foundation, not a cascade scope
+        "{workset.nonexistent}",            # undeclared referent: a real dangling ref
+        "{workset.auth.path}",              # self-reference: a cycle, not a missing referent
+        "{workset.channelroot}/{workset.nope}",   # one declared and one not
+        "{config.nonexistent}",             # the Layer-1 foundation, not a cascade scope
         "@",                                # malformed
     ])
     def test_these_are_still_refused_at_the_system_door(self, tmp_path, std, value):
@@ -391,12 +391,12 @@ class TestWhatStaysRefused:
         # ⚑ A ref into a LATER key set (system-design "Ordering rule"). Declared, and ABSENT
         # from the system floor exactly as a blind referent is, so the blindness rule would
         # swallow every one were the ordering rule not judged first.
-        ("workset.canon", "@box.canon/x"),          # box resolves after workset
-        ("workset.canon", "@box.canon"),
-        ("workset.boxes", "@box.bindings.ro"),      # a declared, non-path box key
-        ("workset.boxes", "@box.canon"),
-        ("workset.canon", "@box.canon/@workset.channelroot"),  # own set, in a later-set value
-        ("agent.claude.env.FOO", "@workset.canon/x"),  # workset resolves after agent
+        ("workset.canon", "{box.canon}/x"),          # box resolves after workset
+        ("workset.canon", "{box.canon}"),
+        ("workset.boxes", "{box.bindings.ro}"),      # a declared, non-path box key
+        ("workset.boxes", "{box.canon}"),
+        ("workset.canon", "{box.canon}/{workset.channelroot}"),  # own set, in a later-set value
+        ("agent.claude.env.FOO", "{workset.canon}/x"),  # workset resolves after agent
     ])
     def test_a_ref_into_a_later_set_is_refused_at_the_containing_door(
         self, tmp_path, std, key, value,
@@ -413,7 +413,7 @@ class TestWhatStaysRefused:
         assert _ORDERING in message, message
         assert not files["system"].exists(), f"{key}={value!r} was WRITTEN: {message}"
 
-    @pytest.mark.parametrize("value", ["@box.enable_vault", "@box.image"])
+    @pytest.mark.parametrize("value", ["{box.enable_vault}", "{box.image}"])
     def test_a_later_set_ref_this_floor_HOLDS_is_refused_too(self, tmp_path, std, value):
         """🛑 The rule reads the SPELLING, not the floor.
 
@@ -429,7 +429,7 @@ class TestWhatStaysRefused:
 
     def test_the_keys_own_door_refuses_the_later_set_ref_too(self, ws_files):
         """One rule, both doors, one wording."""
-        message = _set(_CONTAINED_KEY, "@box.canon/x", ws_files, ConfigLevel.workset,
+        message = _set(_CONTAINED_KEY, "{box.canon}/x", ws_files, ConfigLevel.workset,
                        std=ws_files["std"], ws=ws_files["ws"])
         assert message.startswith("Error:"), message
         assert _ORDERING in message, message
@@ -438,11 +438,11 @@ class TestWhatStaysRefused:
         """``meta.workset`` resolves before ``agent``, though the workset scope is contained
         by the agent scope: the order decides, not the containment."""
         files = _files(tmp_path)
-        message = _set("agent.claude.env.FOO", "@meta.workset.path/x", files,
+        message = _set("agent.claude.env.FOO", "{meta.workset.path}/x", files,
                        ConfigLevel.system, std=std)
         assert not message.startswith("Error:"), message
         written = [p.read_text() for p in files["agents"].rglob("*") if p.is_file()]
-        assert any("@meta.workset.path/x" in text for text in written), written
+        assert any("{meta.workset.path}/x" in text for text in written), written
 
     def test_a_malformed_dollar_is_not_forgiven(self, tmp_path, std):
         """⚑ THE ``$`` FAMILY, which the blindness rule has to read before it forgives.
@@ -451,7 +451,7 @@ class TestWhatStaysRefused:
         the resolver's own scan; a ``$`` it never parsed is a defect it could not see.
         """
         files = _files(tmp_path)
-        message = _set(_CONTAINED_KEY, "@workset.channelroot/$", files,
+        message = _set(_CONTAINED_KEY, "{workset.channelroot}/$", files,
                        ConfigLevel.system, std=std)
         assert message.startswith("Error:"), f"a malformed $ was ACCEPTED: {message}"
         assert "malformed" in message, message
@@ -544,11 +544,11 @@ class TestOneGrammarForOneValue:
     second opinion on what a value contains — including its ``$``-family tokens."""
 
     def test_the_shared_scan_is_what_the_set_door_uses(self):
-        assert scan_tokens("@workset.canon") == (["workset.canon"], [])
-        assert scan_tokens("$XDG_DATA_HOME/x") == ([], ["XDG_DATA_HOME"])
+        assert scan_tokens("{workset.canon}") == (["workset.canon"], [])
+        assert scan_tokens("{$XDG_DATA_HOME}/x") == ([], ["XDG_DATA_HOME"])
         assert scan_tokens("@{a.b}.jsonl") == (["a.b"], [])
 
-    @pytest.mark.parametrize("value", ["$", "${X", "@workset.channelroot/$"])
+    @pytest.mark.parametrize("value", ["$", "${X", "{workset.channelroot}/$"])
     def test_a_malformed_token_raises_rather_than_scanning_past_it(self, value):
         with pytest.raises(ValueError):
             scan_tokens(value)
@@ -772,10 +772,10 @@ class TestTheEndpointIsStoredAsText:
 
 
 @pytest.mark.parametrize("value, phrase", [
-    ("@agent.zzz.model", "'zzz' is not a valid agent"),
-    ("@agent.claude.zork", "'zork' is not a declared agent key of 'agent.claude'"),
-    ("@agent.goose.provider", "declared in the keyspace, but not in this command's cascade"),
-    ("@agent.claude.env.NOPE", "declared in the keyspace, but not in this command's cascade"),
+    ("{agent.zzz.model}", "'zzz' is not a valid agent"),
+    ("{agent.claude.zork}", "'zork' is not a declared agent key of 'agent.claude'"),
+    ("{agent.goose.provider}", "declared in the keyspace, but not in this command's cascade"),
+    ("{agent.claude.env.NOPE}", "declared in the keyspace, but not in this command's cascade"),
 ])
 def test_a_missing_agent_ref_is_judged_against_the_discovered_agents(tmp_path, value, phrase):
     """The set door knows which agents exist, so an unknown agent or leaf is named as such,
