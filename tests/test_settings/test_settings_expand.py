@@ -221,7 +221,7 @@ def test_whole_value_present_none_propagates_none() -> None:
 
 def test_braced_whole_value_absent_drops_key_full_chain() -> None:
     # Mirror of test_whole_value_absent_drops_key_full_chain with braces.
-    snap = KeyStore({"a": "{b}", "b": "{box.env.C}"})
+    snap = KeyStore({"a": "@{b}", "b": "@{box.env.C}"})
     out = expand(snap, _ctx())
     assert _probe(out, "a") is __MISSING__
     assert _probe(out, "b") is __MISSING__
@@ -230,7 +230,7 @@ def test_braced_whole_value_absent_drops_key_full_chain() -> None:
 def test_braced_whole_value_present_none_propagates_none() -> None:
     # ⚑ THE silent-behavior-change guard. c is present-None; a and b must carry
     # None — NOT "" (the embedded coercion) and NOT "None" (a stringification).
-    snap = KeyStore({"a": "{b}", "b": "{c}", "c": None})
+    snap = KeyStore({"a": "@{b}", "b": "@{c}", "c": None})
     out = expand(snap, _ctx())
     for key in ("a", "b", "c"):
         got = _probe(out, key)
@@ -243,7 +243,7 @@ def test_braced_whole_value_present_none_propagates_none() -> None:
 
 def test_braced_whole_value_multi_hop_chain() -> None:
     # Mixed spellings across hops collapse to the same terminal.
-    snap = KeyStore({"a": "{b}", "b": "{c}", "c": "/leaf"})
+    snap = KeyStore({"a": "@{b}", "b": "@c", "c": "/leaf"})
     out = expand(snap, _ctx())
     assert out["a"] == "/leaf" and out["b"] == "/leaf"
 
@@ -252,7 +252,7 @@ def test_braced_whole_value_resolves_non_str_terminal_verbatim() -> None:
     # VERBATIM means type-preserving, not just None-preserving: a bool referent
     # comes back a bool, never the string "True".
     snap = KeyStore({
-        "avail": "{workset.skip_kuid_check}",
+        "avail": "@{workset.skip_kuid_check}",
         "workset": {"skip_kuid_check": True},
     })
     out = expand(snap, _ctx())
@@ -262,14 +262,14 @@ def test_braced_whole_value_resolves_non_str_terminal_verbatim() -> None:
 def test_braced_embedded_absent_coerces_empty_and_keeps_key() -> None:
     # THE CONTRAST that proves the two shapes stay distinguished: the SAME ref,
     # with a suffix, is EMBEDDED — absent coerces to "" and the key survives.
-    snap = KeyStore({"a": "{box.env.XY}.jsonl", "c": "/ok"})
+    snap = KeyStore({"a": "@{box.env.XY}.jsonl", "c": "/ok"})
     out = expand(snap, _ctx())
     assert out["a"] == ".jsonl"
     assert out["c"] == "/ok"
 
 
 def test_braced_bind_whole_value_host_absent_drops_bind() -> None:
-    snap = KeyStore({"box": {"bindings": {"rw": {"x": Bind("{box.env.MISSING}", "~/x")}}}})
+    snap = KeyStore({"box": {"bindings": {"rw": {"x": Bind("@{box.env.MISSING}", "~/x")}}}})
     out = expand(snap, _ctx())
     assert _probe(out, "box", "bindings", "rw", "x") is __MISSING__
 
@@ -277,7 +277,7 @@ def test_braced_bind_whole_value_host_absent_drops_bind() -> None:
 def test_braced_bind_whole_value_host_present_none_carries_none() -> None:
     snap = KeyStore({
         "src": None,
-        "box": {"bindings": {"rw": {"x": Bind("{src}", "~/x")}}},
+        "box": {"bindings": {"rw": {"x": Bind("@{src}", "~/x")}}},
     })
     out = expand(snap, _ctx())
     assert _probe(out, "box", "bindings", "rw", "x") is None
@@ -289,7 +289,7 @@ def test_braced_bind_host_suffix_resolves_like_the_spec_row() -> None:
         "workset": {"logs": "/ws/logs"},
         "meta": {"box": {"name": "mybox"}},
         "box": {"bindings": {"ro": {"helper_log": Bind(
-            "{workset.logs}/{meta.box.name}.jsonl",
+            "@workset.logs/@{meta.box.name}.jsonl",
             "{$XDG_STATE_HOME}/kanibako/helpers.jsonl",
             "ro",
         )}}},
@@ -792,7 +792,7 @@ def test_lenient_collects_dangling_braced_ref_like_a_bare_one() -> None:
     # PHASE R: "set-time validation treats a dangling BRACED ref exactly as it
     # treats a dangling bare one" — same error map, same key, same named ref, in
     # BOTH the whole-value and the embedded (suffixed) position.
-    snap = KeyStore({"a": "{nope.missing}", "b": "{nope.missing}.jsonl", "c": "/ok"})
+    snap = KeyStore({"a": "@{nope.missing}", "b": "@{nope.missing}.jsonl", "c": "/ok"})
     expanded, errors = expand(snap, _ctx(), collect_errors=True)
     assert "a" in errors and "nope.missing" in errors["a"]
     assert "b" in errors and "nope.missing" in errors["b"]
