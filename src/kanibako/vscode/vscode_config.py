@@ -356,6 +356,60 @@ def seed_session_start_hook(settings_path: Path, *, root: Path) -> bool:
 # ``<cfg>:<event>:<group>:<handler>`` and the hash identity's ``event_name``; the
 # config.toml table key is PascalCase (``[hooks.SessionStart]``).
 _CODEX_EVENT_KEY = "session_start"
+_CODEX_EVENT_KEYS = {
+    "SessionStart": _CODEX_EVENT_KEY,
+    "PostToolUse": "post_tool_use",
+    "SessionEnd": "session_end",
+    "Stop": "stop",
+}
+
+# The packaged charter's lifecycle hooks and the handbook's mail monitor, at their BOX
+# paths — the same commands the claude seed template wires (one spelling per job).
+_CHARTER_HOOK_DIR = "~/canon/charter/general/scripts/hooks"
+_MAIL_MONITOR_COMMAND = "~/canon/handbook/general/scripts/behavior/check-comms.sh"
+# claude's tool names; codex maps ``apply_patch`` onto ``Write``/``Edit`` and
+# ``spawn_agent`` onto ``Agent``, and has no ``Read``/``Glob``/``Grep`` (the regex still
+# compiles, so one matcher serves both agents).
+_MAIL_MONITOR_MATCHER = "Bash|Read|Write|Edit|Glob|Grep|Agent"
+_EDITED_MATCHER = "Write|Edit"
+
+
+class _CodexHook(NamedTuple):
+    """One managed single-handler codex hook group."""
+
+    event: str  # the config.toml table key (PascalCase)
+    matcher: "str | None"
+    command: str
+    # ⚑ ALWAYS written explicitly and hashed with the SAME value: codex hashes its
+    # per-event DEFAULT when the key is absent (600 for SessionStart, 1 for SessionEnd),
+    # so an implicit timeout is a trust hash that silently fails to match.
+    timeout: int
+
+
+# ⚑ Order is the byte order of the region and fixes each group's trust index.  The
+# directive group stays FIRST so its trust key does not move.  The four charter start
+# scripts call ``pid-add.sh`` themselves, so they REPLACE the bare marker-write group;
+# ``end.sh`` calls ``pid-rm.sh``.  codex reports only ``other`` as a SessionEnd reason,
+# so ``clear-end.sh`` has no codex event and ``end.sh`` takes every end (no matcher).
+# SessionEnd's timeout is capped at 3 by codex.
+_CODEX_MANAGED_HOOKS: "tuple[_CodexHook, ...]" = (
+    _CodexHook("SessionStart", _SESSION_START_MATCHER, _SESSION_START_COMMAND, 600),
+    *(
+        _CodexHook(
+            "SessionStart", source, f'{_CHARTER_HOOK_DIR}/{script}.sh "$PPID"', 600,
+        )
+        for source, script in (
+            ("startup", "startup"),
+            ("resume", "resume"),
+            ("clear", "clear-start"),
+            ("compact", "compact"),
+        )
+    ),
+    _CodexHook("PostToolUse", _MAIL_MONITOR_MATCHER, _MAIL_MONITOR_COMMAND, 5),
+    _CodexHook("PostToolUse", _EDITED_MATCHER, f"{_CHARTER_HOOK_DIR}/edited.sh", 5),
+    _CodexHook("SessionEnd", None, f'{_CHARTER_HOOK_DIR}/end.sh "$PPID"', 3),
+    _CodexHook("Stop", None, f"{_CHARTER_HOOK_DIR}/stop.sh", 5),
+)
 
 # ⚑ The one managed root key; kanibako-OWNED: OVERWRITTEN at every start, never merged.
 # ``approval_policy`` is NOT managed: the tier reaches the CLI as ``-c`` on the argv, and
@@ -501,53 +555,54 @@ def _apply_root_key(
     return result
 
 
-def _count_session_start_groups(text: str) -> int:
-    """Count user ``[[hooks.SessionStart]]`` groups — the index the managed ones follow."""
+def _count_hook_groups(text: str, event: str) -> int:
+    """Count user ``[[hooks.<event>]]`` groups — the index the managed ones follow."""
     # Text-based, not tomllib, so a corrupt user file still yields a usable index.
-    header = re.compile(r"\s*\[\[\s*hooks\.SessionStart\s*\]\]\s*$")
+    header = re.compile(r"\s*\[\[\s*hooks\." + re.escape(event) + r"\s*\]\]\s*$")
     return sum(1 for ln in text.split("\n") if header.match(ln))
 
 
 def _build_codex_managed_region(
-    *, box_config_path: str, codex_cwd: str, group_index: int
+    *, box_config_path: str, codex_cwd: str, user_groups: "dict[str, int]",
 ) -> str:
     """Build the regenerated managed TOML region (hook groups + trust hashes + dir trust)."""
-    # ⚑ TWO SINGLE-HANDLER groups, never one two-handler group: the trust hash is
+    # ⚑ SINGLE-HANDLER groups, never one multi-handler group: the trust hash is
     # oracle-pinned for a ONE-command identity; the multi-handler shape is unverified.
-    # ⚑ There is no marker-REMOVE group because codex has NO SessionEnd/exit event.
     # ⚑ *box_config_path* is the BOX-absolute path, NOT the host write path: codex keys
-    # trust by the path it reads IN-BOX.
-    directive_key = f"{box_config_path}:{_CODEX_EVENT_KEY}:{group_index}:0"
-    directive_hash = codex_trusted_hash(
-        _CODEX_EVENT_KEY, _SESSION_START_MATCHER, _SESSION_START_COMMAND,
-    )
-    marker_key = f"{box_config_path}:{_CODEX_EVENT_KEY}:{group_index + 1}:0"
-    marker_hash = codex_trusted_hash(
-        _CODEX_EVENT_KEY, _SESSION_START_MATCHER, _AGENT_MARKER_WRITE_COMMAND,
-    )
+    # trust by the path it reads IN-BOX.  ⚑ A group's trust index counts the user's
+    # groups of the SAME event first (*user_groups*), then ours in order.
+    groups: list[str] = []
+    state: list[str] = []
+    next_index = dict(user_groups)
+    for hook in _CODEX_MANAGED_HOOKS:
+        event_key = _CODEX_EVENT_KEYS[hook.event]
+        index = next_index.get(hook.event, 0)
+        next_index[hook.event] = index + 1
+        groups.append(f"[[hooks.{hook.event}]]")
+        if hook.matcher is not None:
+            groups.append(f"matcher = {_toml_basic_string(hook.matcher)}")
+        groups += [
+            "",
+            f"[[hooks.{hook.event}.hooks]]",
+            'type = "command"',
+            f"command = {_toml_basic_string(hook.command)}",
+            f"timeout = {hook.timeout}",
+            "",
+        ]
+        trust_key = f"{box_config_path}:{event_key}:{index}:0"
+        trust_hash = codex_trusted_hash(
+            event_key, hook.matcher, hook.command, hook.timeout,
+        )
+        state += [
+            f"[hooks.state.{_toml_basic_string(trust_key)}]",
+            f"trusted_hash = {_toml_basic_string(trust_hash)}",
+            "",
+        ]
     return "\n".join(
         [
             _CODEX_REGION_BEGIN,
-            "[[hooks.SessionStart]]",
-            f"matcher = {_toml_basic_string(_SESSION_START_MATCHER)}",
-            "",
-            "[[hooks.SessionStart.hooks]]",
-            'type = "command"',
-            f"command = {_toml_basic_string(_SESSION_START_COMMAND)}",
-            "",
-            "[[hooks.SessionStart]]",
-            f"matcher = {_toml_basic_string(_SESSION_START_MATCHER)}",
-            "",
-            "[[hooks.SessionStart.hooks]]",
-            'type = "command"',
-            f"command = {_toml_basic_string(_AGENT_MARKER_WRITE_COMMAND)}",
-            "",
-            f"[hooks.state.{_toml_basic_string(directive_key)}]",
-            f"trusted_hash = {_toml_basic_string(directive_hash)}",
-            "",
-            f"[hooks.state.{_toml_basic_string(marker_key)}]",
-            f"trusted_hash = {_toml_basic_string(marker_hash)}",
-            "",
+            *groups,
+            *state,
             f"[projects.{_toml_basic_string(codex_cwd)}]",
             'trust_level = "trusted"',
             _CODEX_REGION_END,
@@ -578,12 +633,14 @@ def merge_codex_config(
         # WIPE: drop the kanibako-owned root keys so no stale selection lingers on a
         # box that has gone bare.
         body = _remove_provider_root_keys(body)
-    group_index = _count_session_start_groups(body)
+    user_groups = {
+        event: _count_hook_groups(body, event) for event in _CODEX_EVENT_KEYS
+    }
     regions = [
         _build_codex_managed_region(
             box_config_path=box_config_path,
             codex_cwd=codex_cwd,
-            group_index=group_index,
+            user_groups=user_groups,
         )
     ]
     if model_provider is not None:

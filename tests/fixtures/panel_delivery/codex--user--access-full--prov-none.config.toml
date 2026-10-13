@@ -20,19 +20,96 @@ matcher = "startup|resume|clear|compact"
 [[hooks.SessionStart.hooks]]
 type = "command"
 command = "python3 \"/opt/kanibako/kanibako/scripts/import-directives.py\" --additional-context \"$KANIBAKO_DIRECTIVE_SEED\" || true"
+timeout = 600
 
 [[hooks.SessionStart]]
-matcher = "startup|resume|clear|compact"
+matcher = "startup"
 
 [[hooks.SessionStart.hooks]]
 type = "command"
-command = "~/canon/charter/general/scripts/util/pid-add.sh \"$PPID\" || true"
+command = "~/canon/charter/general/scripts/hooks/startup.sh \"$PPID\""
+timeout = 600
+
+[[hooks.SessionStart]]
+matcher = "resume"
+
+[[hooks.SessionStart.hooks]]
+type = "command"
+command = "~/canon/charter/general/scripts/hooks/resume.sh \"$PPID\""
+timeout = 600
+
+[[hooks.SessionStart]]
+matcher = "clear"
+
+[[hooks.SessionStart.hooks]]
+type = "command"
+command = "~/canon/charter/general/scripts/hooks/clear-start.sh \"$PPID\""
+timeout = 600
+
+[[hooks.SessionStart]]
+matcher = "compact"
+
+[[hooks.SessionStart.hooks]]
+type = "command"
+command = "~/canon/charter/general/scripts/hooks/compact.sh \"$PPID\""
+timeout = 600
+
+[[hooks.PostToolUse]]
+matcher = "Bash|Read|Write|Edit|Glob|Grep|Agent"
+
+[[hooks.PostToolUse.hooks]]
+type = "command"
+command = "~/canon/handbook/general/scripts/behavior/check-comms.sh"
+timeout = 5
+
+[[hooks.PostToolUse]]
+matcher = "Write|Edit"
+
+[[hooks.PostToolUse.hooks]]
+type = "command"
+command = "~/canon/charter/general/scripts/hooks/edited.sh"
+timeout = 5
+
+[[hooks.SessionEnd]]
+
+[[hooks.SessionEnd.hooks]]
+type = "command"
+command = "~/canon/charter/general/scripts/hooks/end.sh \"$PPID\""
+timeout = 3
+
+[[hooks.Stop]]
+
+[[hooks.Stop.hooks]]
+type = "command"
+command = "~/canon/charter/general/scripts/hooks/stop.sh"
+timeout = 5
 
 [hooks.state."/home/agent/.codex/config.toml:session_start:1:0"]
 trusted_hash = "sha256:fcb5a2573b270adbe492e97a1b21a4cbc868744df607884eed6e2ada3023d905"
 
 [hooks.state."/home/agent/.codex/config.toml:session_start:2:0"]
-trusted_hash = "sha256:c90b7c4ad95f9b6c314fd5ddc24ed55368411e7a7ba4e76befff4a4db592e7b1"
+trusted_hash = "sha256:c19be2decc19aa830ee79460cc1ea4107b55b155e9a181b8904730314089221f"
+
+[hooks.state."/home/agent/.codex/config.toml:session_start:3:0"]
+trusted_hash = "sha256:6a5c2d915360b91389a8892883cb80a583b38d4ea4ca041364caa7ea7ea5ec6b"
+
+[hooks.state."/home/agent/.codex/config.toml:session_start:4:0"]
+trusted_hash = "sha256:3a6fdb542c872a168f4f27e4376dc393dcde4b451f57184aafdfb64138f88d8a"
+
+[hooks.state."/home/agent/.codex/config.toml:session_start:5:0"]
+trusted_hash = "sha256:e865c48f6621aec253dc3ec692c7a7cc772b68f3c1ecc91e501616d30cd42fe7"
+
+[hooks.state."/home/agent/.codex/config.toml:post_tool_use:0:0"]
+trusted_hash = "sha256:b3cd5e1cd24d46429f40ef5d0b3012d88464eed04035d83914399919dc14d0af"
+
+[hooks.state."/home/agent/.codex/config.toml:post_tool_use:1:0"]
+trusted_hash = "sha256:f46241dfdd6b6f73738aeec9d3ef42b8730cc86967b3398a21b98874940c0e67"
+
+[hooks.state."/home/agent/.codex/config.toml:session_end:0:0"]
+trusted_hash = "sha256:d10b85ab20b9801ac3610b8812a919a9cea105218361935a6215ca02d3bfc42a"
+
+[hooks.state."/home/agent/.codex/config.toml:stop:0:0"]
+trusted_hash = "sha256:62fc3978288f96bed4defb105b775a3a350a3d6104d4f048f201714cc5c965d0"
 
 [projects."/home/agent/workspace"]
 trust_level = "trusted"

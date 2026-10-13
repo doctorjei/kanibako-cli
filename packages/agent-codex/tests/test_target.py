@@ -930,28 +930,29 @@ class TestDeliverySeams:
         ) is False
         assert self._config(tmp_path).read_bytes() == before
 
-    def test_directive_hook_delivers_liveness_marker_group(self, tmp_path):
-        """Phase 2 D2: the directive write carries the per-PID liveness-marker
-        SessionStart group (claude's marker command VERBATIM) as the second
-        managed group, with its own trust entry — and NO remove hook (codex has
-        no SessionEnd event; the supervisor's kill-0 scan is the remove side)."""
+    def test_directive_hook_delivers_the_canon_hooks(self, tmp_path):
+        """The directive write carries claude's canon hooks: the directive group, the
+        four charter start scripts (each cascading to ``pid-add.sh``), the mail
+        monitor and ``edited.sh``, ``end.sh`` (cascading to ``pid-rm.sh``) and
+        ``stop.sh`` — one trust entry each, keyed on the BOX config path."""
         import tomllib
         from kanibako.settings.settings_resolve import GUEST_HOME
-        from kanibako.vscode.vscode_config import (
-            _AGENT_MARKER_WRITE_COMMAND,
-            _SESSION_START_COMMAND,
-        )
+        from kanibako.vscode.vscode_config import _CODEX_MANAGED_HOOKS
         assert CodexTarget().deliver_directive_hook(
             config_root=tmp_path, access="restricted",
         ) is True
-        out = self._config(tmp_path).read_text()
-        data = tomllib.loads(out)
+        data = tomllib.loads(self._config(tmp_path).read_text())
         commands = [
-            g["hooks"][0]["command"] for g in data["hooks"]["SessionStart"]
+            g["hooks"][0]["command"]
+            for event in ("SessionStart", "PostToolUse", "SessionEnd", "Stop")
+            for g in data["hooks"][event]
         ]
-        assert commands == [_SESSION_START_COMMAND, _AGENT_MARKER_WRITE_COMMAND]
+        assert commands == [hook.command for hook in _CODEX_MANAGED_HOOKS]
+        cfg = f"{GUEST_HOME}/.codex/config.toml"
         assert set(data["hooks"]["state"]) == {
-            f"{GUEST_HOME}/.codex/config.toml:session_start:0:0",
-            f"{GUEST_HOME}/.codex/config.toml:session_start:1:0",
+            *(f"{cfg}:session_start:{i}:0" for i in range(5)),
+            f"{cfg}:post_tool_use:0:0",
+            f"{cfg}:post_tool_use:1:0",
+            f"{cfg}:session_end:0:0",
+            f"{cfg}:stop:0:0",
         }
-        assert "SessionEnd" not in out

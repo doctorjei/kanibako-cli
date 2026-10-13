@@ -287,8 +287,10 @@ class CodexTarget(Target):
         model_provider: "CodexModelProvider | None" = None,
     ) -> bool:
         """Seed the managed codex config.toml: the instruction-delivery
-        ``[[hooks.SessionStart]]`` group, its pre-computed trust hash, the
-        directory trust, and (for a codex persona) the *model_provider* region.
+        ``[[hooks.SessionStart]]`` group and the canon hooks claude runs (charter
+        start/end/stop, edited, the mail monitor), a pre-computed trust hash for
+        each, the directory trust, and (for a codex persona) the *model_provider*
+        region.
 
         ⚑ NEVER the ``sandbox_mode`` key — it belongs to
         :meth:`deliver_panel_permissions` alone, so no managed key has two writers

@@ -18,7 +18,11 @@ from kanibako.vscode.vscode_config import (
     _AGENT_MARKER_REMOVE_RETIRED_COMMANDS,
     _AGENT_MARKER_WRITE_COMMAND,
     _AGENT_MARKER_WRITE_RETIRED_COMMANDS,
+    _CHARTER_HOOK_DIR,
     _CODEX_EVENT_KEY,
+    _CODEX_EVENT_KEYS,
+    _CODEX_MANAGED_HOOKS,
+    _MAIL_MONITOR_COMMAND,
     _SESSION_END_MATCHER,
     _SESSION_START_COMMAND,
     _SESSION_START_MATCHER,
@@ -811,7 +815,7 @@ def test_codex_merge_produces_valid_toml_with_managed_hook_group():
     group = data["hooks"]["SessionStart"][0]
     assert group["matcher"] == _SESSION_START_MATCHER
     assert group["hooks"][0] == {
-        "type": "command", "command": _SESSION_START_COMMAND,
+        "type": "command", "command": _SESSION_START_COMMAND, "timeout": 600,
     }
 
 
@@ -886,8 +890,8 @@ def test_codex_merge_is_idempotent():
     once = _merge(_TEMPLATE)
     twice = _merge(once)
     assert twice == once
-    # exactly the TWO managed groups (directive + D2 marker) after a re-merge.
-    assert once.count("[[hooks.SessionStart]]") == 2
+    # exactly the FIVE managed groups (directive + four charter starts) after a re-merge.
+    assert once.count("[[hooks.SessionStart]]") == 5
 
 
 def test_codex_merge_tolerates_corrupt_text():
@@ -897,7 +901,7 @@ def test_codex_merge_tolerates_corrupt_text():
     assert "this is {not valid toml" in out
     # the command is TOML-escaped in the file, but its stable substring is there.
     assert "import-directives.py" in out
-    assert out.count("[[hooks.SessionStart]]") == 2
+    assert out.count("[[hooks.SessionStart]]") == 5
 
 
 def test_codex_merge_counts_preceding_user_sessionstart_group():
@@ -912,12 +916,13 @@ def test_codex_merge_counts_preceding_user_sessionstart_group():
     )
     out = _merge(text)
     data = tomllib.loads(out)
-    # user group at 0, ours at 1 (directive) and 2 (marker) → BOTH state keys
-    # shift with the user count.
-    assert f"{_BOX_CFG}:{_CODEX_EVENT_KEY}:1:0" in data["hooks"]["state"]
-    assert f"{_BOX_CFG}:{_CODEX_EVENT_KEY}:2:0" in data["hooks"]["state"]
+    # user group at 0, ours at 1 (directive) through 5 → EVERY state key shifts
+    # with the user count.
+    for index in range(1, 6):
+        assert f"{_BOX_CFG}:{_CODEX_EVENT_KEY}:{index}:0" in data["hooks"]["state"]
+    assert f"{_BOX_CFG}:{_CODEX_EVENT_KEY}:0:0" not in data["hooks"]["state"]
     groups = data["hooks"]["SessionStart"]
-    assert len(groups) == 3
+    assert len(groups) == 6
     assert groups[0]["hooks"][0]["command"] == "echo hi"
     assert groups[1]["hooks"][0]["command"] == _SESSION_START_COMMAND
 
@@ -1483,57 +1488,260 @@ def test_codex_seam_composition_relaunch_is_no_op(tmp_path):
     assert path.read_bytes() == before
 
 
-# --- Phase 2 D2: codex liveness-marker SessionStart group ---------------------
+# --- codex canon-hook parity: the charter cascade, mail monitor, end + stop -------
 #
-# codex has NO SessionEnd hook event (HookEventName verified identical at
-# rust-v0.141.0 and 0.144.x), so the managed region carries ONLY the marker
-# WRITE as its second [[hooks.SessionStart]] group; the remove side is the
-# box_supervisor's kill-0 dead-PID classification.  The command is claude's
-# _AGENT_MARKER_WRITE_COMMAND VERBATIM (one SoT for both agents' marker bytes).
+# The managed region wires codex to the SAME canon hooks the claude seed template
+# wires: the four charter start scripts (each cascades to ``pid-add.sh``), the mail
+# monitor and ``edited.sh`` after tool use, ``end.sh`` at SessionEnd (codex 0.145.0+;
+# older codex ignores the unknown table) and ``stop.sh`` at Stop.  Every handler
+# carries an EXPLICIT timeout hashed with that same value: codex hashes its per-event
+# default when the key is absent (SessionEnd's is 1), so an implicit timeout is a trust
+# entry that silently fails to match and a hook that never fires.
+
+#: The managed region for an EMPTY user file, byte for byte.  ⚑ Every hash below was
+#: reported ``trustStatus: trusted`` by codex-cli 0.158.0's own ``hooks/list``
+#: (app-server) for exactly this file; a hash that moves without a command, matcher, or
+#: timeout change is a bug in ``codex_trusted_hash``, not a fixture to regenerate.
+_EXPECTED_CODEX_REGION = '''\
+# >>> kanibako-managed (instruction-delivery hook + trust) — do not edit >>>
+[[hooks.SessionStart]]
+matcher = "startup|resume|clear|compact"
+
+[[hooks.SessionStart.hooks]]
+type = "command"
+command = "python3 \\"/opt/kanibako/kanibako/scripts/import-directives.py\\" --additional-context \\"$KANIBAKO_DIRECTIVE_SEED\\" || true"
+timeout = 600
+
+[[hooks.SessionStart]]
+matcher = "startup"
+
+[[hooks.SessionStart.hooks]]
+type = "command"
+command = "~/canon/charter/general/scripts/hooks/startup.sh \\"$PPID\\""
+timeout = 600
+
+[[hooks.SessionStart]]
+matcher = "resume"
+
+[[hooks.SessionStart.hooks]]
+type = "command"
+command = "~/canon/charter/general/scripts/hooks/resume.sh \\"$PPID\\""
+timeout = 600
+
+[[hooks.SessionStart]]
+matcher = "clear"
+
+[[hooks.SessionStart.hooks]]
+type = "command"
+command = "~/canon/charter/general/scripts/hooks/clear-start.sh \\"$PPID\\""
+timeout = 600
+
+[[hooks.SessionStart]]
+matcher = "compact"
+
+[[hooks.SessionStart.hooks]]
+type = "command"
+command = "~/canon/charter/general/scripts/hooks/compact.sh \\"$PPID\\""
+timeout = 600
+
+[[hooks.PostToolUse]]
+matcher = "Bash|Read|Write|Edit|Glob|Grep|Agent"
+
+[[hooks.PostToolUse.hooks]]
+type = "command"
+command = "~/canon/handbook/general/scripts/behavior/check-comms.sh"
+timeout = 5
+
+[[hooks.PostToolUse]]
+matcher = "Write|Edit"
+
+[[hooks.PostToolUse.hooks]]
+type = "command"
+command = "~/canon/charter/general/scripts/hooks/edited.sh"
+timeout = 5
+
+[[hooks.SessionEnd]]
+
+[[hooks.SessionEnd.hooks]]
+type = "command"
+command = "~/canon/charter/general/scripts/hooks/end.sh \\"$PPID\\""
+timeout = 3
+
+[[hooks.Stop]]
+
+[[hooks.Stop.hooks]]
+type = "command"
+command = "~/canon/charter/general/scripts/hooks/stop.sh"
+timeout = 5
+
+[hooks.state."/home/agent/.codex/config.toml:session_start:0:0"]
+trusted_hash = "sha256:fcb5a2573b270adbe492e97a1b21a4cbc868744df607884eed6e2ada3023d905"
+
+[hooks.state."/home/agent/.codex/config.toml:session_start:1:0"]
+trusted_hash = "sha256:c19be2decc19aa830ee79460cc1ea4107b55b155e9a181b8904730314089221f"
+
+[hooks.state."/home/agent/.codex/config.toml:session_start:2:0"]
+trusted_hash = "sha256:6a5c2d915360b91389a8892883cb80a583b38d4ea4ca041364caa7ea7ea5ec6b"
+
+[hooks.state."/home/agent/.codex/config.toml:session_start:3:0"]
+trusted_hash = "sha256:3a6fdb542c872a168f4f27e4376dc393dcde4b451f57184aafdfb64138f88d8a"
+
+[hooks.state."/home/agent/.codex/config.toml:session_start:4:0"]
+trusted_hash = "sha256:e865c48f6621aec253dc3ec692c7a7cc772b68f3c1ecc91e501616d30cd42fe7"
+
+[hooks.state."/home/agent/.codex/config.toml:post_tool_use:0:0"]
+trusted_hash = "sha256:b3cd5e1cd24d46429f40ef5d0b3012d88464eed04035d83914399919dc14d0af"
+
+[hooks.state."/home/agent/.codex/config.toml:post_tool_use:1:0"]
+trusted_hash = "sha256:f46241dfdd6b6f73738aeec9d3ef42b8730cc86967b3398a21b98874940c0e67"
+
+[hooks.state."/home/agent/.codex/config.toml:session_end:0:0"]
+trusted_hash = "sha256:d10b85ab20b9801ac3610b8812a919a9cea105218361935a6215ca02d3bfc42a"
+
+[hooks.state."/home/agent/.codex/config.toml:stop:0:0"]
+trusted_hash = "sha256:62fc3978288f96bed4defb105b775a3a350a3d6104d4f048f201714cc5c965d0"
+
+[projects."/home/agent/workspace"]
+trust_level = "trusted"
+# <<< kanibako-managed (instruction-delivery hook + trust) <<<
+'''
 
 
-def test_codex_merge_marker_group_is_second_managed_group():
-    data = tomllib.loads(_merge(_TEMPLATE))
-    groups = data["hooks"]["SessionStart"]
-    assert len(groups) == 2
-    # directive first (byte-order the goldens freeze), marker second.
-    assert groups[0]["hooks"][0]["command"] == _SESSION_START_COMMAND
-    assert groups[1]["hooks"][0]["command"] == _AGENT_MARKER_WRITE_COMMAND
-    assert groups[1]["matcher"] == _SESSION_START_MATCHER
-    assert groups[1]["hooks"][0]["type"] == "command"
+def test_codex_region_is_exact_for_an_empty_file():
+    """The whole managed region, bytes and hashes, for a fresh box."""
+    assert _BOX_CFG == "/home/agent/.codex/config.toml"
+    assert _CODEX_CWD == "/home/agent/workspace"
+    assert _merge("") == _EXPECTED_CODEX_REGION
 
 
-def test_codex_merge_marker_group_has_own_trust_entry():
-    """Both managed groups carry their own pre-computed [hooks.state] hash so
-    the FIRST launch fires them with no /hooks prompt — the marker entry is
-    keyed on group index 1 (no user groups) and hashes the MARKER command."""
+def _managed_groups(data: dict, event: str, user_count: int = 0) -> list[dict]:
+    return data["hooks"][event][user_count:]
+
+
+def test_every_managed_handler_writes_and_hashes_one_explicit_timeout():
+    """The timeout codex READS is the timeout we HASHED — recomputed from the parsed
+    file, per group, so an omitted or mismatched timeout reds here."""
     data = tomllib.loads(_merge(_TEMPLATE))
     state = data["hooks"]["state"]
-    directive_key = f"{_BOX_CFG}:{_CODEX_EVENT_KEY}:0:0"
-    marker_key = f"{_BOX_CFG}:{_CODEX_EVENT_KEY}:1:0"
-    assert set(state) == {directive_key, marker_key}
-    assert state[marker_key]["trusted_hash"] == codex_trusted_hash(
-        _CODEX_EVENT_KEY, _SESSION_START_MATCHER, _AGENT_MARKER_WRITE_COMMAND,
-    )
-    assert state[directive_key]["trusted_hash"] == codex_trusted_hash(
-        _CODEX_EVENT_KEY, _SESSION_START_MATCHER, _SESSION_START_COMMAND,
-    )
-    # distinct commands ⇒ distinct hashes (a copy-paste of one hash would
-    # trip codex's trust prompt on the other group).
-    assert state[marker_key]["trusted_hash"] != state[directive_key]["trusted_hash"]
+    seen = 0
+    for event, event_key in _CODEX_EVENT_KEYS.items():
+        for index, group in enumerate(data["hooks"].get(event, [])):
+            (handler,) = group["hooks"]
+            assert "timeout" in handler, f"{event}:{index} has an implicit timeout"
+            key = f"{_BOX_CFG}:{event_key}:{index}:0"
+            assert state[key]["trusted_hash"] == codex_trusted_hash(
+                event_key, group.get("matcher"), handler["command"],
+                handler["timeout"],
+            )
+            seen += 1
+    assert seen == len(_CODEX_MANAGED_HOOKS) == len(state) == 9
 
 
-def test_codex_merge_no_marker_remove_hook_anywhere():
-    """No SessionEnd exists in codex — the region must not emit one (an
-    unknown hooks table would be at best ignored, at worst rejected)."""
+def test_session_end_trust_is_not_the_implicit_default_hash():
+    """The measured trap: codex hashes an implicit SessionEnd timeout at 1, and our
+    explicit 3 must hash as 3 — neither 1 nor the 600 SessionStart default."""
+    data = tomllib.loads(_merge(""))
+    (group,) = data["hooks"]["SessionEnd"]
+    command = group["hooks"][0]["command"]
+    assert group["hooks"][0]["timeout"] == 3
+    got = data["hooks"]["state"][f"{_BOX_CFG}:session_end:0:0"]["trusted_hash"]
+    assert got == codex_trusted_hash("session_end", None, command, 3)
+    assert got != codex_trusted_hash("session_end", None, command, 1)
+    assert got != codex_trusted_hash("session_end", None, command)
+
+
+def test_user_groups_shift_only_their_own_event_index():
+    """codex indexes groups PER EVENT, so a user PostToolUse and Stop group move our
+    post_tool_use and stop trust keys and nothing else (verified trusted by codex
+    0.158.0's ``hooks/list`` with this exact user content)."""
+    user = (
+        "[[hooks.PostToolUse]]\n"
+        'matcher = "Bash"\n\n'
+        "[[hooks.PostToolUse.hooks]]\n"
+        'type = "command"\n'
+        'command = "echo user-ptu"\n\n'
+        "[[hooks.Stop]]\n\n"
+        "[[hooks.Stop.hooks]]\n"
+        'type = "command"\n'
+        'command = "echo user-stop"\n'
+    )
+    data = tomllib.loads(_merge(user))
+    expected = {
+        *(f"{_BOX_CFG}:session_start:{i}:0" for i in range(5)),
+        f"{_BOX_CFG}:post_tool_use:1:0",
+        f"{_BOX_CFG}:post_tool_use:2:0",
+        f"{_BOX_CFG}:session_end:0:0",
+        f"{_BOX_CFG}:stop:1:0",
+    }
+    assert set(data["hooks"]["state"]) == expected
+    assert data["hooks"]["PostToolUse"][0]["hooks"][0]["command"] == "echo user-ptu"
+    assert data["hooks"]["Stop"][0]["hooks"][0]["command"] == "echo user-stop"
+    assert data["hooks"]["Stop"][1]["hooks"][0]["command"] == (
+        f"{_CHARTER_HOOK_DIR}/stop.sh"
+    )
+
+
+def test_codex_start_groups_are_the_charter_cascade_not_a_bare_marker():
+    """The four charter start scripts each cascade to ``pid-add.sh``, so the bare
+    marker-write group is gone; ``end.sh`` (which cascades to ``pid-rm.sh``) takes
+    every SessionEnd — codex reports only ``other`` — so it has no matcher."""
     out = _merge(_TEMPLATE)
-    assert "SessionEnd" not in out
+    data = tomllib.loads(out)
+    starts = _managed_groups(data, "SessionStart")
+    assert [(g["matcher"], g["hooks"][0]["command"]) for g in starts[1:]] == [
+        ("startup", f'{_CHARTER_HOOK_DIR}/startup.sh "$PPID"'),
+        ("resume", f'{_CHARTER_HOOK_DIR}/resume.sh "$PPID"'),
+        ("clear", f'{_CHARTER_HOOK_DIR}/clear-start.sh "$PPID"'),
+        ("compact", f'{_CHARTER_HOOK_DIR}/compact.sh "$PPID"'),
+    ]
+    (end,) = data["hooks"]["SessionEnd"]
+    assert "matcher" not in end
+    assert end["hooks"][0]["command"] == f'{_CHARTER_HOOK_DIR}/end.sh "$PPID"'
+    assert _AGENT_MARKER_WRITE_COMMAND not in out
     assert _AGENT_MARKER_REMOVE_COMMAND not in out
 
 
-def test_codex_marker_group_composes_with_sandbox_and_provider(tmp_path):
-    """Full composed file (panel sandbox invariant + directive region with
-    marker + provider) parses and carries everything — the super-set cell."""
+def test_codex_hooks_are_the_claude_seed_templates_commands():
+    """PARITY: every non-directive codex command is a command the claude seed template
+    runs on the SAME event — one spelling per job across both agents."""
+    from tests.test_claude_seed_hooks import shipped_settings
+
+    claude = shipped_settings()["hooks"]
+    for hook in _CODEX_MANAGED_HOOKS:
+        if hook.command == _SESSION_START_COMMAND:
+            continue
+        claude_groups = {
+            entry["command"]: group.get("matcher")
+            for group in claude[hook.event]
+            for entry in group["hooks"]
+        }
+        assert hook.command in claude_groups, f"{hook.event}: {hook.command}"
+        if hook.event in ("SessionStart", "PostToolUse"):
+            assert claude_groups[hook.command] == hook.matcher
+
+
+def test_codex_hook_commands_point_at_shipped_scripts():
+    """The box paths are the binds' own dests (``_canon_dest``), and the scripts there
+    ship with their executable bit — a missing one is a hook that does nothing."""
+    assert _CHARTER_HOOK_DIR == _canon_dest("charter/general/scripts/hooks")
+    behavior = _canon_dest("handbook/general/scripts/behavior")
+    assert _MAIL_MONITOR_COMMAND == f"{behavior}/check-comms.sh"
+    rom_hooks = Path(str(packaged_data_dir(*ROM_ROOT_PARTS))) / (
+        "charter/general/scripts/hooks"
+    )
+    for leaf in ("startup", "resume", "clear-start", "compact", "edited", "end", "stop"):
+        script = rom_hooks / f"{leaf}.sh"
+        assert script.is_file() and os.access(script, os.X_OK), leaf
+    monitor = Path(str(packaged_data_dir(
+        "templates", "system", "canon", "handbook", "general", "scripts",
+        "behavior", "check-comms.sh",
+    )))
+    assert monitor.is_file() and os.access(monitor, os.X_OK)
+
+
+def test_codex_full_composition_with_sandbox_and_provider(tmp_path):
+    """Full composed file (panel sandbox invariant + hook region + provider) parses and
+    carries every managed hook — the super-set cell."""
     path = tmp_path / "config.toml"
     seed_codex_sandbox_mode(path, root=tmp_path)
     seed_codex_config(
@@ -1543,7 +1751,10 @@ def test_codex_marker_group_composes_with_sandbox_and_provider(tmp_path):
     data = tomllib.loads(path.read_text())
     assert data["sandbox_mode"] == "danger-full-access"
     assert data["model_provider"] == "navigator"
-    assert [g["hooks"][0]["command"] for g in data["hooks"]["SessionStart"]] == [
-        _SESSION_START_COMMAND, _AGENT_MARKER_WRITE_COMMAND,
+    commands = [
+        group["hooks"][0]["command"]
+        for event in _CODEX_EVENT_KEYS
+        for group in data["hooks"][event]
     ]
-    assert len(data["hooks"]["state"]) == 2
+    assert commands == [hook.command for hook in _CODEX_MANAGED_HOOKS]
+    assert len(data["hooks"]["state"]) == len(_CODEX_MANAGED_HOOKS)
