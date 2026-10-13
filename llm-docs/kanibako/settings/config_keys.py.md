@@ -106,8 +106,8 @@ in step with the declarations.
 ⚑ SO IT IS INCOMPLETE, AND THE INCOMPLETENESS IS DELIBERATE. Every bind-shaped category —
 ``<scope>.bindings.ro`` / ``bindings.rw`` / ``caches`` / ``common`` / ``seeded`` / ``synced`` — is a
 DECLARED TERMINAL key whose value is a dest-keyed map, and none of the six is listed in the set, so
-`is_known_key` answers `False` for all of them at every scope. ``<scope>.masks`` answers `False` too:
-it is a keyed map (`dict[box_dest → bool|None]`, spec §2a), the same status. All seven are
+`is_known_key` answers `False` for all of them at every scope. ``<scope>.masks`` answers `False`
+too: it is a keyed map (`dict[box_dest → bool|None]`, spec §2a), the same status. All seven are
 MULTI-FACETED: one key, many facets inside one value.
 
 ⚑ THE RULING — the reason nothing in the set changes:
@@ -245,11 +245,12 @@ per-agent override is the persona key `agent.<agent>.<key>` (spec §2d).
 * `box.enable_vault` — ⚑ `mode` is NO LONGER a settable config-set key (block B1, spec §2b / §0):
   the project mode is the RO identity anchor `meta.box.mode` (surfacing the runtime-resolved
   `@meta.runtime.project_type`), set by the construct-time/bootstrap layer (`[project].mode` at box
-  creation), NOT overridable via `config set`. The mode is not persisted to disk (create writes no ``project:``
-  section) — it derives from `box_resolve` at resolve time. On vault: `enable_vault` migrated to the box-scope key
-  `box.enable_vault` (clean break — no `vault.enabled` alias). There are no bare `vault.ro`/`vault.rw`
-  keys: nothing reads a ``project:`` settings section, so a set there would be a silent dead write. The vault
-  override surface is now the repointable core bind ``box.bindings.{ro,rw}.vault`` (spec §2c).
+  creation), NOT overridable via `config set`. The mode is not persisted to disk (create writes no
+  ``project:`` section) — it derives from `box_resolve` at resolve time. On vault: `enable_vault`
+  migrated to the box-scope key `box.enable_vault` (clean break — no `vault.enabled` alias). There
+  are no bare `vault.ro`/`vault.rw` keys: nothing reads a ``project:`` settings section, so a set
+  there would be a silent dead write. The vault override surface is now the repointable core bind
+  ``box.bindings.{ro,rw}.vault`` (spec §2c).
 * `box.canon` — the per-BOX canon contribution root (spec §2b). ⚑ ``@box.canon`` is NOT ``~/canon``:
   it is ``<box_dir>/canon`` on the HOST, whose ``handbook/`` is ONE CHAPTER bound ro at
   ``~/canon/handbook/box``. The assembled guest view lives under the box HOME and arrives through the
@@ -342,14 +343,14 @@ Per-entry notes displaced from the table:
 * `system.agent` — the agent SELECTION default (spec §2g). An ORDINARY settings-tier route: the
   ``system:`` table of the system settings file, which is exactly where `assemble_levels` reads the
   system tier and where `config.read_system_agent` reads it back.
-* `box.enable_vault` — `enable_vault` is the box-scope key (clean break): it routes to the
-  ``box:`` table nested slot ``enable_vault`` (the same nested-settings pattern as `box.image`), read
-  back by `read_box_enable_vault()` from ``box.enable_vault`` — NO ``project`` fallback. There are no bare
+* `box.enable_vault` — `enable_vault` is the box-scope key (clean break): it routes to the ``box:``
+  table nested slot ``enable_vault`` (the same nested-settings pattern as `box.image`), read back by
+  `read_box_enable_vault()` from ``box.enable_vault`` — NO ``project`` fallback. There are no bare
   `vault.ro`/`vault.rw` keys: nothing reads a ``project:`` section, so a set there would be a silent
-  dead write. The vault override surface is the
-  repointable core bind ``box.bindings.{ro,rw}.vault`` (spec §2c), not a bare key here. ``mode`` was
-  removed from the settable routing table (block B1, spec §2b / §0 meta-RO): the project mode is the
-  RO identity anchor `meta.box.mode`, never via `config set`; it is not persisted to disk and derives from `box_resolve` at resolve time.
+  dead write. The vault override surface is the repointable core bind ``box.bindings.{ro,rw}.vault``
+  (spec §2c), not a bare key here. ``mode`` was removed from the settable routing table (block B1,
+  spec §2b / §0 meta-RO): the project mode is the RO identity anchor `meta.box.mode`, never via
+  `config set`; it is not persisted to disk and derives from `box_resolve` at resolve time.
 * `workset.registry` — the per-workset registry file location, routed to
   the ``workset:`` table nested slot ``registry`` (same nested-settings pattern as `box.image`). A
   STRING path — `KEY_TYPES` type `path` (no coercion); written sparsely on set.
@@ -398,8 +399,8 @@ any-agent spelling the CLI serves for the same two leaves, and the whole `secret
 have no fixed canonical string. `is_path_valued_key` is the predicate to ask; this table is only its
 first term.
 
-⚑ **`_coerce_value` signals failure with `CoercionError`, not with a bare `str`.** A test of "a typed
-key gave back a string, so coercion failed" holds only while every declared type coerces to a
+⚑ **`_coerce_value` signals failure with `CoercionError`, not with a bare `str`.** A test of "a
+typed key gave back a string, so coercion failed" holds only while every declared type coerces to a
 NON-string; `path` does not, and a legal path value would be handed back to the user as its own
 error message.
 
@@ -590,11 +591,12 @@ the two cannot drift.
 
 ⚑⚑ IT IS DELIBERATELY NARROWER THAN THAT SET: there is nothing to widen it TO. This parser picks a
 READ route (:func:`config_dest._node_bind_target` -> the agent file's address rule), and a per-entry
-key under those four is not a key at ALL, so a widened parser would invent a read for a spelling
-the keyspace refuses. The address rule reads EVERY category flat with the destination whole, so
-widening would not mis-address them — it would ADMIT them. These two arms are the only per-entry spellings whose READ survived R-9, which is exactly
-what :func:`agent_read_key_error` carves out of the ``agent`` noun's §0 read gate. ⚑ DO NOT WIDEN IT. The four are RECOGNIZED and
-refused at the agent scope through `AGENT_BIND_KEY_RE` — see :func:`agent_node_bind_retired_error`.
+key under those four is not a key at ALL, so a widened parser would invent a read for a spelling the
+keyspace refuses. The address rule reads EVERY category flat with the destination whole, so widening
+would not mis-address them — it would ADMIT them. These two arms are the only per-entry spellings
+whose READ survived R-9, which is exactly what :func:`agent_read_key_error` carves out of the
+``agent`` noun's §0 read gate. ⚑ DO NOT WIDEN IT. The four are RECOGNIZED and refused at the agent
+scope through `AGENT_BIND_KEY_RE` — see :func:`agent_node_bind_retired_error`.
 
 The regex does not match the ``box.agent.bindings.*`` box-mirror form (a ``box`` top-token).
 
@@ -610,15 +612,16 @@ env-name shape (no dots).
 
 ## The LIVE scoped env family — `settings_categories.ENV_KEY_RE`
 
-``<scope>.env.<VAR>`` for the non-agent scopes (system/workset/box) — spec §2a
-``<scope>.env.<VAR> | value | scoped env var``, and §2a's "What remains CLI-settable: scalars,
-including ``env.<VAR>``". The AGENT scope form ``agent.<node>.env.<VAR>`` is DISCRIMINATED and routed
-by `_is_persona_agent_key` (the node file); this covers the other three, which write a scalar to the
-COMMAND scope's OWN settings file at ``<scope>.env.<VAR>`` — the shape `_file_partial` reads into the
-cascade and `settings_launch._emit_scope_node` delivers as a ``category="env"`` entry. The match is
-`settings_categories.ENV_KEY_RE` through `_file_scope_match`, deliberately the SIBLING-EXACT twin
-of the secret family below: same three scopes, same VAR shape (no dots), same NOUN-file destination. VAR matching is CASE-SENSITIVE (spec §0 "Reserved key names") —
-there is no case-folding anywhere on this path.
+``<scope>.env.<VAR>`` for the non-agent scopes (system/workset/box) — spec §2a ``<scope>.env.<VAR> |
+value | scoped env var``, and §2a's "What remains CLI-settable: scalars, including ``env.<VAR>``".
+The AGENT scope form ``agent.<node>.env.<VAR>`` is DISCRIMINATED and routed by
+`_is_persona_agent_key` (the node file); this covers the other three, which write a scalar to the
+COMMAND scope's OWN settings file at ``<scope>.env.<VAR>`` — the shape `_file_partial` reads into
+the cascade and `settings_launch._emit_scope_node` delivers as a ``category="env"`` entry. The match
+is `settings_categories.ENV_KEY_RE` through `_file_scope_match`, deliberately the SIBLING-EXACT twin
+of the secret family below: same three scopes, same VAR shape (no dots), same NOUN-file destination.
+VAR matching is CASE-SENSITIVE (spec §0 "Reserved key names") — there is no case-folding anywhere on
+this path.
 
 ## The scoped SECRET family — `settings_categories.SECRET_KEY_RE`
 
@@ -890,9 +893,10 @@ never reach here: ``agent set <node> env.FOO=bar`` passes a key TAIL under an al
 which the agent file's write address rule puts at the DECLARED ``agent.<node>.env.FOO``. That arm exists so the
 GENERIC engine cannot emit the illegal spelling if an agent-scope caller is ever wired into it.)
 
-⚑ The docker ``.env`` FILES are RETIRED OUTRIGHT (the RQ-1 re-ruling; the ratified manifest
-records the files as DROPPED): the launch reads none, so a hand edit does not reach the box either. The message says so — a cure that implied
-"edit the file instead" would send the user to a surface nothing reads.
+⚑ The docker ``.env`` FILES are RETIRED OUTRIGHT (the RQ-1 re-ruling; the ratified manifest records
+the files as DROPPED): the launch reads none, so a hand edit does not reach the box either. The
+message says so — a cure that implied "edit the file instead" would send the user to a surface
+nothing reads.
 
 *verb* is the op word for the message (``"set"`` / ``"reset"`` / ``"read"``). Like
 :func:`bare_agent_key_scope_error` this gates itself — `None` for every other key — so every verb door
@@ -1028,7 +1032,8 @@ box's resolved agent in the cure so the suggested command is COPY-PASTEABLE
 agent resolves.
 
 * **BOX** — a box has a single active agent, so the refusal TEACHES the §2h request
-  ``pref.agent.<agent>.<key>`` (the box-scoped tweak surface; spec §2b retired the ``box.agent.*`` mirror).
+  ``pref.agent.<agent>.<key>`` (the box-scoped tweak surface; spec §2b retired the ``box.agent.*``
+  mirror).
 * **WORKSET** — a workset spans multiple boxes/agents, so there is deliberately no single "the agent".
   The refusal points at system scope (all agents) or the per-box request, and names the exception:
   an agent whose plugin sets its own default for the key needs ``agent.<agent>.<key>``, because
@@ -1090,14 +1095,14 @@ The branch-by-branch reasons, in dispatch order:
   KEY-SHAPED for the same reason as the bare ``env.<VAR>`` spelling: the disambiguator must read it as
   a key so the verbs can refuse it with the cure (`scope_bind_retired_error`) rather than mistake it
   for a project name. It is also still READABLE (`config get`), which on its own makes it a key here.
-* **``agent.<node>.<bind-shaped category>.<name>``** — the AGENT spelling of the branch above, RETIRED
-  the same way and refused through the same door (`agent_node_bind_retired_error`). Recognized for the
-  ONE reason that survives the shape flip: the disambiguator must read it as a KEY so the verbs can
-  refuse it by name. ⚑ It does NOT mean the key is readable — a per-entry spelling is not a key at any
-  scope now (see :func:`_is_path_category_key`); recognition here is what keeps the refusal from
-  degrading into "unknown config key", or worse into a PROJECT NAME. ⚑ It must not read
-  `_is_path_category_key`, whose regex fails closed for every key. The recognizer is derived from the same
-  ``RETIRED_BIND_CATEGORIES`` the file-scope branch uses.
+* **``agent.<node>.<bind-shaped category>.<name>``** — the AGENT spelling of the branch above,
+  RETIRED the same way and refused through the same door (`agent_node_bind_retired_error`).
+  Recognized for the ONE reason that survives the shape flip: the disambiguator must read it as a
+  KEY so the verbs can refuse it by name. ⚑ It does NOT mean the key is readable — a per-entry
+  spelling is not a key at any scope now (see :func:`_is_path_category_key`); recognition here is
+  what keeps the refusal from degrading into "unknown config key", or worse into a PROJECT NAME. ⚑
+  It must not read `_is_path_category_key`, whose regex fails closed for every key. The recognizer
+  is derived from the same ``RETIRED_BIND_CATEGORIES`` the file-scope branch uses.
 
 ```is_config_file_only_key(key: str) -> bool```
 Keys whose value is READ from the bootstrap config file rather than a settings file.
@@ -1454,10 +1459,10 @@ for it exactly as for `system set`: `kanibako agent set claude canon=@bogus.ref`
 True iff *key* is a PER-NAME PATH-TUPLE category key.
 
 ⚑⚑ **IT IS FALSE FOR EVERY KEY, AND THAT IS THE CORRECT ANSWER.** It is
-:data:`~kanibako.settings.settings_categories.BIND_KEY_RE`, which is built from the NON-TERMINAL bind
-categories — and that complement is EMPTY, since ``caches`` / ``seeded`` / ``common`` / ``synced`` are
-dest-keyed, so the regex compiles its fail-closed never-matching form. There is no per-name dotted key
-under ANY bind-shaped category left to match, at any scope.
+:data:`~kanibako.settings.settings_categories.BIND_KEY_RE`, which is built from the NON-TERMINAL
+bind categories — and that complement is EMPTY, since ``caches`` / ``seeded`` / ``common`` /
+``synced`` are dest-keyed, so the regex compiles its fail-closed never-matching form. There is no
+per-name dotted key under ANY bind-shaped category left to match, at any scope.
 
 ⚑ IT IS KEPT, NOT INLINED TO `False`, and the difference matters: this is the ONE place that asks
 "does a per-entry bind key exist here", and it must keep asking the REGEX. Re-admitting a per-name

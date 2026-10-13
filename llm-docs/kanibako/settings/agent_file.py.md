@@ -120,8 +120,8 @@ keeps a list beside it: what `record` must NOT sweep into `cfg.state`, what `_CA
 subtracts, and what `_ROOT_TABLES` unions with the flat categories to admit at the root.
 
 🛑 **A CATEGORY MUST NEVER JOIN IT WITHOUT BOTH AN `AgentConfig` FIELD AND A `save` EMISSION.** The
-failure is silent DATA LOSS, not a read that comes back empty: `record` would capture the table out of
-the opaque carrier, and `save`, having no field to emit it from, would never put it back.
+failure is silent DATA LOSS, not a read that comes back empty: `record` would capture the table out
+of the opaque carrier, and `save`, having no field to emit it from, would never put it back.
 
 ⚑ **`run_args` sits here with the other three, not behind a set borrowed from elsewhere.** It is a
 modeled field exactly like them; the only thing odd about it is that its VALUE is not a table
@@ -130,12 +130,13 @@ the correctly typed field — two carriers of one key in the record, disagreeing
 undeclared-state refusal would accept it, since `run_args` is declared.
 
 ```_FLAT_AGENT_CATEGORIES: tuple[str, ...] = tuple(sorted(CATEGORY_FAMILY_ROOTS))```
-EVERY category the file stores FLAT under `self` — DERIVED from `settings_categories.CATEGORY_FAMILY_ROOTS`.
-It is NOT the dest-keyed set (`settings_keyspace.TERMINAL_CATEGORY_TAILS`):
-`env` and `secret_path` are VAR-keyed families stored flat as well. **EIGHT TOKENS, NINE CATEGORIES** — `bindings` is
-one token whose `{ro, rw}` table rides WHOLE, exactly as the canonical `agent.<node>.bindings` key
-holds both arms. ORDER IS NOT SIGNIFICANT. It is ALSO `_read_address`'s category set, so the shape a
-value is STORED in and the shape the cascade READS are one fact rather than two lists agreeing.
+EVERY category the file stores FLAT under `self` — DERIVED from
+`settings_categories.CATEGORY_FAMILY_ROOTS`. It is NOT the dest-keyed set
+(`settings_keyspace.TERMINAL_CATEGORY_TAILS`): `env` and `secret_path` are VAR-keyed families stored
+flat as well. **EIGHT TOKENS, NINE CATEGORIES** — `bindings` is one token whose `{ro, rw}` table
+rides WHOLE, exactly as the canonical `agent.<node>.bindings` key holds both arms. ORDER IS NOT
+SIGNIFICANT. It is ALSO `_read_address`'s category set, so the shape a value is STORED in and the
+shape the cascade READS are one fact rather than two lists agreeing.
 
 ```_ROOT_TABLES: Final[frozenset[str]] = _MODELED_KEYS | frozenset(_FLAT_AGENT_CATEGORIES)```
 ⚑⚑ **THIS SET *IS* THE REFUSAL RULE.** There is no second, enumerated list of refused names,
@@ -160,11 +161,11 @@ captured into the carrier (read) nor clobbered from it (write), and nothing the 
 a shape `record` refuses.
 
 ```_VERB_WRITABLE_CATEGORIES: Final[frozenset[str]] = frozenset({"env", "secret_path"})```
-The categories `agent set` can actually WRITE, and so the only ones a cure may name that verb for.
-⚑ The dest-keyed families take a LIST value the verb cannot express — `agent set claude
-caches.X=…` would store a dotted literal — and **a message must never prescribe a verb that does
-not work** (the same rule `config_keys`' retired-bind cure follows). Their cure is the hand edit
-alone. Pinned per category, both directions, by
+The categories `agent set` can actually WRITE, and so the only ones a cure may name that verb for. ⚑
+The dest-keyed families take a LIST value the verb cannot express — `agent set claude caches.X=…`
+would store a dotted literal — and **a message must never prescribe a verb that does not work** (the
+same rule `config_keys`' retired-bind cure follows). Their cure is the hand edit alone. Pinned per
+category, both directions, by
 `TestNothingNestsUnderSelfButTheCategories::test_the_nested_spelling_refuses_when_no_flat_table_exists`.
 ⚑ **It is ALSO `_write_address`'s routing set, and that is one fact, not two**: these are the only
 categories holding a SCALAR per name, which is exactly why they are the only ones a scalar write can
@@ -371,16 +372,16 @@ door asking "did the user leave this empty?" must ask the OBJECT (`agent_cmd._ag
 both mean "this file names no value at *slot*", exactly what a FALLING-THROUGH door wants and
 exactly what a verb reporting `(not set)` must not be told. That verb uses `read_leaf`.
 
-⚑ An EMPTY LIST renders BLANK through `stored_leaf_display`, not `""` and not `(not set)`. A
-present `run_args: []` is the user's explicit "no arguments", so it is a VALUE and reads back as
-the empty command line it is; the two-character `""` spelling is the empty STRING's, a different
-idiom (spec §2h) that must not be handed to a shape which is not it. The three states stay apart:
-absent → `None` (`(not set)`), present-empty-list → a blank line, present-with-words → the words.
-⚑⚑ **THE RECORD KEEPS THEM APART TOO** (`AgentConfig.run_args: list[str] | None`, `[R169]`):
+⚑ An EMPTY LIST renders BLANK through `stored_leaf_display`, not `""` and not `(not set)`. A present
+`run_args: []` is the user's explicit "no arguments", so it is a VALUE and reads back as the empty
+command line it is; the two-character `""` spelling is the empty STRING's, a different idiom (spec
+§2h) that must not be handed to a shape which is not it. The three states stay apart: absent →
+`None` (`(not set)`), present-empty-list → a blank line, present-with-words → the words. ⚑⚑ **THE
+RECORD KEEPS THEM APART TOO** (`AgentConfig.run_args: list[str] | None`, `[R169]`):
 `agent.default.run_args` reaches a launch, so the difference is whether this agent OPTS OUT of that
-default or lets it through. The display convention here and the record's three states are the
-same fact.
-⚑ A STRING here renders through the scalar convention unchanged, and `record` splits it the same way.
+default or lets it through. The display convention here and the record's three states are the same
+fact. ⚑ A STRING here renders through the scalar convention unchanged, and `record` splits it the
+same way.
 
 ```clear_overrides(path: Path) -> int```
 Drop every user override from the file at *path*; return the count.
@@ -569,7 +570,8 @@ sorted: it names the table the user wrote first, which is the one they are most 
 ⚑ **Every route a cure names is live** — a cure naming a dead route is worse than no cure. The
 `agent set <node> secret_path.<VAR>=<path>` verb is pinned by
 `test_agent_cmd.py::test_config_set_secret_path_key`, and the all-agents seed route end to end on
-the production path by `test_start.py::TestApplyInitSeeds::test_all_agents_seed_tier_is_the_system_file`.
+the production path by
+`test_start.py::TestApplyInitSeeds::test_all_agents_seed_tier_is_the_system_file`.
 
 ```_refuse_nested_tables(root_tbl: dict, *, node: str | None, path: Path | None) -> None```
 RAISE when the file's ROOT holds a table that is not one of its own.
@@ -678,8 +680,9 @@ as the cascade folds it, Q87) in TWO passes, each the launch's own verdict:
 
 ⚑ **What pass 2 does NOT cover:** three malformed bind entries — a retired name-keyed entry
 (`bindings.ro: {/x: {q: 1}}`), an entry of three elements, and a bare relative source. They are
-refused by `settings_assemble`'s bind parse, which `agent_record`'s read runs as the launch does. Two spellings of ONE node in the `agent:` table (`claude:` beside `Claude:`) are NOT in that
-set: `_contribution` refuses them through `refuse_node_spelled_twice`, before either pass runs.
+refused by `settings_assemble`'s bind parse, which `agent_record`'s read runs as the launch does.
+Two spellings of ONE node in the `agent:` table (`claude:` beside `Claude:`) are NOT in that set:
+`_contribution` refuses them through `refuse_node_spelled_twice`, before either pass runs.
 
 ⚑ **THE PLUGIN UNION IS LOAD-BEARING, not a nicety.** `config_keys.agent_key_reason` unions the
 leaves the INSTALLED targets declare, and without it a legitimate `agent.goose.provider` would

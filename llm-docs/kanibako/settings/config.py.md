@@ -353,9 +353,9 @@ all — on every command forever. **Zero bytes, not `{}`**: this file is the han
 appended `config:` block a YAML error. It goes through the same atomic writer `dump_doc` delegates
 to, so the create is atomic either way.
 
-⚑ **NO `agent_name` row**: `box.agent_name` is RETIRED (§2b), and writing a BOX key into the
-CONFIG file was wrong even while it existed — nothing ever read it back from here. Stale copies in
-existing `kanibako.cfg` files are documentation-only (`MIGRATION.md` § *Settings keys renamed or retired*).
+⚑ **NO `agent_name` row**: `box.agent_name` is RETIRED (§2b), and writing a BOX key into the CONFIG
+file was wrong even while it existed — nothing ever read it back from here. Stale copies in existing
+`kanibako.cfg` files are documentation-only (`MIGRATION.md` § *Settings keys renamed or retired*).
 
 
 ```persist_creation_flags(box_settings_path, *, materializing, image=None, share_images=None) -> None```
@@ -382,9 +382,9 @@ the live cascade (single source of truth; the stored default stays at its own ti
 write at all — no empty `box.yaml` is materialized (the :func:`write_box_enable_vault` rule).
 
 *box_settings_path* is the BOX-TIER settings file from `box_workset_settings_paths` — the same file
-`box set box.image=…` writes and the launch cascade reads as the box tier (`MIGRATION.md` § *Standalone boxes: reads got truthful*). *share_images* is
-a real bool or `None` (absent); it is written as a bool, matching the `KEY_TYPES` coercion
-`config set box.share_images` applies.
+`box set box.image=…` writes and the launch cascade reads as the box tier (`MIGRATION.md` §
+*Standalone boxes: reads got truthful*). *share_images* is a real bool or `None` (absent); it is
+written as a bool, matching the `KEY_TYPES` coercion `config set box.share_images` applies.
 
 
 ```write_box_enable_vault(path: Path, enable_vault: bool = True) -> None```
@@ -403,8 +403,8 @@ matching
 
 ⚑ WHICH value a caller hands in is the resolver's business, not this writer's: PRIMARY and NAMED
 pass the BOX-AUTHORED read, never the workset-resolved one (spec §2b's `box.enable_vault` row keeps
-the key sparse);
-STANDALONE passes the resolved one on purpose — that write IS the migration (`MIGRATION.md` § *Standalone boxes: reads got truthful*).
+the key sparse); STANDALONE passes the resolved one on purpose — that write IS the migration
+(`MIGRATION.md` § *Standalone boxes: reads got truthful*).
 
 Paired reader: :func:`read_box_enable_vault`.
 
@@ -484,7 +484,7 @@ path produces one.
 ```read_workset_kuid(path: Path) -> str```
 The stored `workset.kuid` value at *path*, defaulting to the SENTINEL.
 
-The reader for the settable `workset.kuid` key it sources the kuid
+The reader for the settable `workset.kuid` key: it sources the kuid
 DIRECTLY from the `workset:` table of a box's `workset.yaml` — for a STANDALONE box that single
 file plays the WORKSET tier. An absent file / `workset:` table / key yields the reserved
 :data:`kanibako.kuid.SENTINEL` (`"00000"`), the primary/named default and the "no real kuid yet"
@@ -553,8 +553,8 @@ case (absent file, or absent/empty `agent` table) still returns `{}` unchanged.
 ```agent_settings_of(data: dict, agent_name: str) -> dict[str, str]```
 `read_agent_settings` over a settings doc already in hand — the same read, one body. It exists for
 `config_interface.show_config`, which hands in the file AS THE CASCADE READS IT
-(`config_interface._noun_stored_view`, the `DISPLAY` read of `settings_assemble.read_settings_files`):
-re-reading the path would see an `agent:` table that
+(`config_interface._noun_stored_view`, the `DISPLAY` read of
+`settings_assemble.read_settings_files`): re-reading the path would see an `agent:` table that
 directional enforcement drops (a box or workset file), and print its leaves as overrides.
 
 Every row is produced by `config_display.flatten_under`, the ONE show walk, relative to
@@ -574,8 +574,9 @@ reads the system tier from. Callers pass that settings-file path as *system_path
 
 `None` means "no system default" — the caller REFUSES rather than picking one (keyspec §2b).
 
-⮕ A store still carrying the retired `system.default_agent` leaf (`MIGRATION.md` § *Settings keys renamed or retired*) is REFUSED by name
-at the selection read (`settings_assemble`'s retired-key check).
+⮕ A store still carrying the retired `system.default_agent` leaf (`MIGRATION.md` § *Settings keys
+renamed or retired*) is REFUSED by name at the selection read (`settings_assemble`'s retired-key
+check).
 
 ⚑ This is the PRE-CASCADE reader, kept for the one caller that needs the stored value before a
 snapshot exists (`start`'s box-independent persona pre-flight). The
@@ -669,9 +670,9 @@ that is not a declared `config.*` key stops the command" prescribes.
 Run the 5-band setup/config compatibility gate against the marker stored in *settings_path*.
 
 ⚑ *settings_path* is the SYSTEM SETTINGS file (`@config.settings`), the marker's home — see
-`read_setup_completed`. ⚑ *legacy_config* is a ONE-RELEASE MIGRATION GUARD (v1.8.0): with no
-marker in *settings_path*, an existing v1.7-era *legacy_config* (`kanibako_config.yaml`) BLOCKS
-until it is renamed and setup runs; only its existence is read. `cli._setup_nudge` resolves *settings_path* with
+`read_setup_completed`. ⚑ *legacy_config* is a ONE-RELEASE MIGRATION GUARD (v1.8.0): with no marker
+in *settings_path*, an existing v1.7-era *legacy_config* (`kanibako_config.yaml`) BLOCKS until it is
+renamed and setup runs; only its existence is read. `cli._setup_nudge` resolves *settings_path* with
 `paths.load_system_config` (deliberately NOT `load_std_paths`, which MATERIALIZES the store — a
 non-blocking advisory must not create directories).
 

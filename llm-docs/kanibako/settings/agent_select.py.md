@@ -196,10 +196,10 @@ quiet, deliberately.
 
 ### The retired-key sweep, tier by tier
 
-RETIRED spellings are refused by name BEFORE anything is resolved (`MIGRATION.md` § *Settings keys renamed or retired*). `select_agent` runs
-the check as the `SELECT` purpose of `settings_assemble.read_settings_files`, not inside
-`assemble_levels` (the `NARROW` read), because a raise there would also break `config set` — the
-very command the message prescribes.
+RETIRED spellings are refused by name BEFORE anything is resolved (`MIGRATION.md` § *Settings keys
+renamed or retired*). `select_agent` runs the check as the `SELECT` purpose of
+`settings_assemble.read_settings_files`, not inside `assemble_levels` (the `NARROW` read), because a
+raise there would also break `config set` — the very command the message prescribes.
 
 ⚑ EVERY tier the cascade reads is checked, BASE included
 (`/etc/kanibako/settings_base.yaml`): a site admin's stale `box.agent_name` would default DOWN into

@@ -8,9 +8,10 @@ consumer walks the plain dict it returns.
 
 ## What the manifest IS
 
-The manifest is the MACHINE-READABLE PROJECTION of `~/canon/workbook/specs/settings-keyspace-1.8.0.md`: one row per
-declared key, plus the category, bind-default and not-a-key tables. Its top-level sections are
-`registry`, `policy`, `category_scopes`, `categories`, `bindmap_shape`, `keys`, `bind_default_entries`,
+The manifest is the MACHINE-READABLE PROJECTION of
+`~/canon/workbook/specs/settings-keyspace-1.8.0.md`: one row per declared key, plus the category,
+bind-default and not-a-key tables. Its top-level sections are `registry`, `policy`,
+`category_scopes`, `categories`, `bindmap_shape`, `keys`, `bind_default_entries`,
 `category_default_entries`, `pref`, `not_keys` and `plugin_contributed`. It is RELEASE AUTHORITY —
 it ships inside the wheel as package data, and its own header carries the ratification record and
 the amendment log.

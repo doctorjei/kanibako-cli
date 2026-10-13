@@ -185,12 +185,12 @@ def remove_root_key(path: Path, key: str) -> bool
 Write / remove a TOP-LEVEL scalar key, preserving other content. `remove_root_key` returns True if
 it was present.
 
-⚑⚑ **NO KEY ROUTES HERE.** Their only source call sites are the `else` arm of `if dest.sections:`
-in `config_interface.set_config_value` and `reset_config_value`, and no `_KEY_ROUTES` entry has an
-empty `sections` tuple. Every other `config_dest._key_slot` family also returns a non-empty prefix — `pref` →
-`('pref', <scope>)`, `<scope>.secret_path.<VAR>` → `(<scope>, 'secret_path')`, `<scope>.env.<VAR>` →
-`(<scope>, 'env')`, an agent setting → `('agent', 'default')`, a terminal category →
-`_category_segments(key)[:-1]`. Neither function has a test.
+⚑⚑ **NO KEY ROUTES HERE.** Their only source call sites are the `else` arm of `if dest.sections:` in
+`config_interface.set_config_value` and `reset_config_value`, and no `_KEY_ROUTES` entry has an
+empty `sections` tuple. Every other `config_dest._key_slot` family also returns a non-empty prefix —
+`pref` → `('pref', <scope>)`, `<scope>.secret_path.<VAR>` → `(<scope>, 'secret_path')`,
+`<scope>.env.<VAR>` → `(<scope>, 'env')`, an agent setting → `('agent', 'default')`, a terminal
+category → `_category_segments(key)[:-1]`. Neither function has a test.
 
 **Do not read that as "dead, delete it."** The pair is the structural complement of the nested pair:
 `if dest.sections: … else: …` is total by construction, and removing the `else` would turn a future

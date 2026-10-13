@@ -93,8 +93,8 @@ is a signature change across that bench and belongs to the KeyKind verb rewrite,
 pass. Nothing else may be threaded through them in the meantime.
 
 `reset_all` in particular does not touch the level's `.env` file: clearing it would neither change
-what the box gets nor be honestly countable as "overrides reset". `<scope>.env.<VAR>` lives in the settings file and IS swept, as part of the nested scope
-tables.
+what the box gets nor be honestly countable as "overrides reset". `<scope>.env.<VAR>` lives in the
+settings file and IS swept, as part of the nested scope tables.
 
 ## Functions
 
@@ -263,14 +263,15 @@ cascade snapshot for the COMMAND's target"): *proj* ⇒ `BOX`, *ws* ⇒ `WORKSET
 `SYSTEM`. The caller passes the objects it holds; nothing is re-loaded here. `None` without *std*.
 
 ```_set_time_snapshot(*, target, agent_name, agent_path, config_path=None, command_scope=None, system_settings_path=None, system_path=None, workset_path=None, box_path=None) -> tuple[Any, Any]```
-The set-time cascade, merged and not expanded, with the `ResolveCtx` to expand it: `(snapshot, ctx)`. With a *target*
-its tier files (`system_path`, `cascade_workset_path`, `cascade_box_path`), its `ctx` and its four
-floor fragments (`auth_chain`, `meta_runtime`, `meta_identity`, `workset_anchor`) are what the
-snapshot reads. ⚑ The fold restates `settings_launch.build_launch_snapshot`'s floor order — a second
-carrier, kept because that builder expands strictly and runs `refuse_read_time_faults`, while set
-time needs the merged UNEXPANDED snapshot to splice the candidate in and expand leniently, and the file arguments after *agent_path* are unused.
-Without one, the command's own file is backfilled into its slot (below) and no box or working-set
-anchor exists.
+The set-time cascade, merged and not expanded, with the `ResolveCtx` to expand it:
+`(snapshot, ctx)`. With a *target* its tier files (`system_path`, `cascade_workset_path`,
+`cascade_box_path`), its `ctx` and its four floor fragments (`auth_chain`, `meta_runtime`,
+`meta_identity`, `workset_anchor`) are what the snapshot reads. ⚑ The fold restates
+`settings_launch.build_launch_snapshot`'s floor order — a second carrier, kept because that builder
+expands strictly and runs `refuse_read_time_faults`, while set time needs the merged UNEXPANDED
+snapshot to splice the candidate in and expand leniently, and the file arguments after *agent_path*
+are unused. Without one, the command's own file is backfilled into its slot (below) and no box or
+working-set anchor exists.
 
 ```_target_scope_anchors(target, *, agent_path, agent_name) -> dict[str, object]```
 The `@meta.{workset,box}.path` directories *target*'s own snapshot resolves, read from the same
@@ -534,11 +535,11 @@ note under `_category_set_lookups`.
 The order is deliberate at every step.
 
 1. **`config.*` foundation keys are NEVER CLI-settable (block B2).** They locate the files
-   everything else lands in, so they cannot live in those files — they live in the bootstrap
-   config file, hand-edited by a human/admin. Refused EXPLICITLY here, BEFORE the scope guard, so
-   every command scope gets the same ruled message (not the cross-scope guard message, and not a
-   generic refusal that mentions `setup` — spec §2a forbids naming it in THIS message). The READ/show path still consults `is_config_file_only_key`'s `config.`
-   branch — only set/reset short-circuit here.
+   everything else lands in, so they cannot live in those files — they live in the bootstrap config
+   file, hand-edited by a human/admin. Refused EXPLICITLY here, BEFORE the scope guard, so every
+   command scope gets the same ruled message (not the cross-scope guard message, and not a generic
+   refusal that mentions `setup` — spec §2a forbids naming it in THIS message). The READ/show path
+   still consults `is_config_file_only_key`'s `config.` branch — only set/reset short-circuit here.
 2. **The `pref.*` WRITE-SITE guard (spec §2h)** — BEFORE the three TARGET filters and before the
    scope guard. A pref is legal only in a workset or box settings file, and that restriction is
    what BOUNDS the resolution recursion, so it is a hard rule rather than a convenience. Checked
@@ -717,16 +718,16 @@ pre-existing defect still allows the set and `config set` stays usable to REPAIR
   Layer-1 file as the cure; that file carries `config.*` alone. Do not add one without a spec edit.
 * **Regular config keys** — routed via the single known-key table (the H1 fix: an unknown key
   returns an error string and NEVER raises). ⚑ The canonical dotted spelling and ONLY it — the flat
-  underscore form is refused by name; `_coerce_value` is the H2 fix (real `bool` etc.) and only returns
-  a `str` for a typed key when coercion failed. The confirmation echoes the CANONICAL key, so a
-  successful `set` cannot advertise a form `get` refuses. A scope-prefixed SETTINGS key (`{agent,workset,
-  box}.*` — including a DOWNWARD write at a containing command scope, spec §0) lands in the
-  COMMAND scope's SETTINGS file with the key's scope token KEPT (the nested form
+  underscore form is refused by name; `_coerce_value` is the H2 fix (real `bool` etc.) and only
+  returns a `str` for a typed key when coercion failed. The confirmation echoes the CANONICAL key,
+  so a successful `set` cannot advertise a form `get` refuses. A scope-prefixed SETTINGS key
+  (`{agent,workset, box}.*` — including a DOWNWARD write at a containing command scope, spec §0)
+  lands in the COMMAND scope's SETTINGS file with the key's scope token KEPT (the nested form
   `assemble_levels` mirrors — never remapped to the key-scope's own file). `settings_dest` ==
   `config_path` at box/workset; at SYSTEM it is the system settings file (`@config.settings`) —
-  settings keys never land in the Layer-1 `kanibako.cfg` (spec §1). Non-scope keys
-  (`allow_helpers`) and `system.*` regular keys land in the same `settings_dest` — no route writes
-  the Layer-1 file (`config_dest._dest`).
+  settings keys never land in the Layer-1 `kanibako.cfg` (spec §1). Non-scope keys (`allow_helpers`)
+  and `system.*` regular keys land in the same `settings_dest` — no route writes the Layer-1 file
+  (`config_dest._dest`).
 
 ### The category SET branch that is gone
 
@@ -752,9 +753,10 @@ on `config_dest._read_dest`.
 
 ⚑ There is also NO `agent.<node>.bindings.{ro,rw}.<name>` branch. It was a SOURCE-ONLY repoint of
 the descriptor delivery bind, routed to the category path against a detect-free descriptor floor;
-R-9 retired the route and it is refused BY NAME in the preamble. Its absence is deliberate, not
-an oversight to "restore" — and the ordering concern (a bind NAMED `model` must not be captured as
-the persona state leaf by `_is_persona_agent_key`) belongs to the preamble refusal, which runs before every branch and so cannot be out-ordered.
+R-9 retired the route and it is refused BY NAME in the preamble. Its absence is deliberate, not an
+oversight to "restore" — and the ordering concern (a bind NAMED `model` must not be captured as the
+persona state leaf by `_is_persona_agent_key`) belongs to the preamble refusal, which runs before
+every branch and so cannot be out-ordered.
 
 
 ```persist_creation_level(level, *, typed_agent, box_settings_path, workset_settings_path, std, proj) -> None```
@@ -1042,12 +1044,12 @@ Display config values — overrides only, or the full resolved view. Returns an 
 * *effective=True*: show all resolved values including inherited defaults.
 
 *category_snapshot* (BOX scope, `--effective` only) is the resolved launch `KeyStore`. When
-supplied, the PATH-DELIVERY categories are rendered too: each binding, and each ABSTRACT
-declaration paired with the `binding_derivations.*` binding it produces (spec §0 — "`--effective`
-shows BOTH the declaration and the derived binding and a user can see WHY a mount exists").
-*category_error* carries a collision message when the snapshot could not be resolved, so
-`config show --effective` REPORTS a mount collision (`MIGRATION.md` § *Mount collisions are now hard errors (a working config can start failing)*) rather than dying on it — it is the
-migration's own detection recipe.
+supplied, the PATH-DELIVERY categories are rendered too: each binding, and each ABSTRACT declaration
+paired with the `binding_derivations.*` binding it produces (spec §0 — "`--effective` shows BOTH the
+declaration and the derived binding and a user can see WHY a mount exists"). *category_error*
+carries a collision message when the snapshot could not be resolved, so `config show --effective`
+REPORTS a mount collision (`MIGRATION.md` § *Mount collisions are now hard errors (a working config
+can start failing)*) rather than dying on it — it is the migration's own detection recipe.
 
 ⚑ **ONE SCOPE.** The workset / system / agent `config show --effective` verbs still render no
 category key at all: that display predates the keystore and reads `load_merged_config`. Extending
@@ -1093,11 +1095,11 @@ The plain view prints `_shown_entries` — the one carrier `reset --all` also co
 undeclared and misplaced entries in their own blocks. Its override rows are: the project overrides
 (the box scalars, at a noun whose settings file IS its config file), the `agent.default` settings,
 every persona node's entries, and ONE flatten of the noun's nested settings tables at every noun
-(`config_display._nested_settings_overrides`) — the `pref` REQUESTS (spec §2h "config show lists prefs") and the
-category declarations included, so the plain view lists `common` / `caches` / `seeded` as spec §0
-obliges ("a user sets them in YAML …, `config show` lists them"). At the box noun the box scalars
-are left out of the flatten, being rows already. Every entry is either a row or a named removal,
-never both: an undeclared or misplaced entry is subtracted from the rows.
+(`config_display._nested_settings_overrides`) — the `pref` REQUESTS (spec §2h "config show lists
+prefs") and the category declarations included, so the plain view lists `common` / `caches` /
+`seeded` as spec §0 obliges ("a user sets them in YAML …, `config show` lists them"). At the box
+noun the box scalars are left out of the flatten, being rows already. Every entry is either a row or
+a named removal, never both: an undeclared or misplaced entry is subtracted from the rows.
 
 ⚑ **It is narrowed by SCOPE as well as by category.** The flatten walks every top-level table the
 doc carries, `pref:` and hand-written junk included, and only the noun's own declarations are its
@@ -1146,7 +1148,7 @@ REFUSED spelling (R-39) — a reader who copied it into `config set` would be to
 These rows are not a key at all: they are the MERGE the box receives, whose parts live at
 `<scope>.env.<VAR>` across several scopes, so no single key names a row. The space says so.
 
-⚑ The plain view has NO docker `.env` block either: the level's `.env` files are RETIRED (R-39/RQ-1) — not written by any verb, not read at
-launch — so the rows would name a refused spelling AND assert an override that has no effect. A
-stored `<scope>.env.<VAR>` is a nested SETTINGS entry and shows through
-`_nested_settings_overrides`, under its real key.
+⚑ The plain view has NO docker `.env` block either: the level's `.env` files are RETIRED (R-39/RQ-1)
+— not written by any verb, not read at launch — so the rows would name a refused spelling AND assert
+an override that has no effect. A stored `<scope>.env.<VAR>` is a nested SETTINGS entry and shows
+through `_nested_settings_overrides`, under its real key.

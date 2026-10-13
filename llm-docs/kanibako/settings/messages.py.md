@@ -153,10 +153,11 @@ refused. ⚑ `…_UNDECLARED`'s third argument is the DECLARED set itself, enume
 from `bootstrap.CONFIG_PATH_DEFAULTS` at the raise site (P13), so a key joining §1 joins the
 message.
 
-⚑ **`ERR_CONFIG_LAYER1_SETTINGS`'s CURE IS ORDERED, and the order is load-bearing.** Every verb resolves its paths through `config.bootstrap_config_paths`, `system set`
-included, so a message that led with the command would send the user to a command that refuses for
-this same reason. It leads with the hand-edit: delete the lines, then set what you meant. Its second
-argument is the offending keys, dotted and sorted, one per line — the file itself is the first.
+⚑ **`ERR_CONFIG_LAYER1_SETTINGS`'s CURE IS ORDERED, and the order is load-bearing.** Every verb
+resolves its paths through `config.bootstrap_config_paths`, `system set` included, so a message that
+led with the command would send the user to a command that refuses for this same reason. It leads
+with the hand-edit: delete the lines, then set what you meant. Its second argument is the offending
+keys, dotted and sorted, one per line — the file itself is the first.
 
 ⚑ **The first argument of each is a LAYER DISCRIMINATOR, not a value.** `ERR_SETTINGS_BAD_PATH`'s is
 literally `"config"` or `"system"`, naming which of the two layers failed. `ERR_SETTINGS_BAD_REF`'s is

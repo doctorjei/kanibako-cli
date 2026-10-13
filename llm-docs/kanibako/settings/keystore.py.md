@@ -123,11 +123,11 @@ through. The match is **CASE-SENSITIVE** (the box is Linux, so env variable name
 reservation must widen — either case-insensitive in Windows mode, or Windows-only key mangling.
 Neither is implemented.
 
-⚑ **`RESERVED_KEY_NAMES` is PUBLIC** because it has a second reader: `settings_keyspace.RESERVED_LEAF_NAMES` **IS this object** — the
-closed-keyspace floor binds a local name to it (an alias, never a copy), so the validator and the
-write-time floor are one set and cannot disagree. They must not be two: a name accepted by the
-validator and refused by the store fails deep in the store with no reference to the key the user
-wrote.
+⚑ **`RESERVED_KEY_NAMES` is PUBLIC** because it has a second reader:
+`settings_keyspace.RESERVED_LEAF_NAMES` **IS this object** — the closed-keyspace floor binds a local
+name to it (an alias, never a copy), so the validator and the write-time floor are one set and
+cannot disagree. They must not be two: a name accepted by the validator and refused by the store
+fails deep in the store with no reference to the key the user wrote.
 
 With reserved names forbidden, a plain `__getattr__` (which fires only on a normal-lookup MISS)
 suffices; no key shadows a real attribute and no `__getattribute__` interception is needed.

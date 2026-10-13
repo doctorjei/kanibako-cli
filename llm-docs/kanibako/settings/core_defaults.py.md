@@ -59,18 +59,19 @@ the users who had already stored their own. Three entries, each at its scope for
 * `box.env.COLORTERM` was the section's first. It replaced a first-run WRITE in `cli.py`; the write
   seam is now guarded by `tests/test_settings/test_defaults_enforcement.py`. BOX scope because it
   describes the terminal a box runs, not the host install.
-* `agent.default.env.TERM` is the second, and the first whose value is an EXPRESSION:
-  the file stores `$TERM`, and `settings_resolve` answers it with the host's terminal type —
-  `xterm` when the host's is empty or unset, a set value passed through UNVALIDATED. AGENT DEFAULT
-  tier because a terminal type belongs to every agent, not to the plain-shell box: the agent tier's two cascade levels are overlaid PER NAME (spec §2a), so a
-  plugin descriptor or a settings file overrides it for ONE agent while the rest keep inheriting.
+* `agent.default.env.TERM` is the second, and the first whose value is an EXPRESSION: the file
+  stores `$TERM`, and `settings_resolve` answers it with the host's terminal type — `xterm` when the
+  host's is empty or unset, a set value passed through UNVALIDATED. AGENT DEFAULT tier because a
+  terminal type belongs to every agent, not to the plain-shell box: the agent tier's two cascade
+  levels are overlaid PER NAME (spec §2a), so a plugin descriptor or a settings file overrides it
+  for ONE agent while the rest keep inheriting.
 * `agent.shell.env.TERM` restates it for the plain shell (keyspec §2d shell fence,
   `agent.shell.env.TERM | $TERM`): a pseudo-agent inherits nothing from `agent.default`
   (`settings_launch._fallback_node`), so without its own row a plain-shell box would get no `TERM`.
   Dormant for every true agent — only a shell pick reads `agent.shell`.
 * `agent.shell.env.KANIBAKO_DIRECTIVE_FINAL` (`{$GUEST_HOME}/AGENTS.md`, keyspec §2d shell fence) is
-  the file a plain-shell launch renders the canon into; its presence in the resolved container env is
-  what wraps the launch in the directive-flatten shim (`start._directive_flatten_shim`), as every
+  the file a plain-shell launch renders the canon into; its presence in the resolved container env
+  is what wraps the launch in the directive-flatten shim (`start._directive_flatten_shim`), as every
   real agent's own FINAL does. `env_default_categories` expands the leading `{$GUEST_HOME}`.
 
 Two things in the module are NOT table producers and should not be read as such:
@@ -378,8 +379,8 @@ exactly as before.
 dropped its own kickoff delivery: `data/KICKOFF.md` + the `managed_pointer` descriptor binding gone
 from `kanibako-agent-claude`, `-codex` and `-goose`, with those releases PUBLISHED (not merely
 merged). After that the gate can only ever be false, and an ungated unconditional bind is the honest
-shape. Until then the gate is what keeps the base and the plugins independently upgradable. Recorded in
-`MIGRATION.md` § *The kickoff — upgrade base and plugins TOGETHER*.
+shape. Until then the gate is what keeps the base and the plugins independently upgradable. Recorded
+in `MIGRATION.md` § *The kickoff — upgrade base and plugins TOGETHER*.
 
 *descriptor* is the descriptor whose bindings the SAME resolve represents in the launch snapshot
 (see :func:`kanibako.settings.agent_representation.agent_default_partial`). Passing `None` (a
@@ -531,13 +532,14 @@ reasonably want to override it?"* — answers itself here: the one book a user c
 one they cannot repoint, and `COLLECTION.md` is the INDEX that defines the canon's shape and load
 order, so a repointable index would mean no guaranteed structure.
 
-⚑⚑ **SIBLINGS, NOT A WHOLE-DIR BOOK** (J-7: never one whole-directory bind). Every entry is its own bind onto a
-mountpoint that ALREADY EXISTS in the box home, materialized by :func:`materialize_canon_skeleton` at
-box create. Nothing nests inside anything, so no mountpoint ever has to live inside a bind SOURCE —
-which is what killed the whole-dir model: the plugin chapter's mountpoint would have had to exist
-inside site-packages (where a wheel cannot ship an empty directory and no runtime may write), and
-the handbook chapters' inside the user's own stores. The nested-mount physics PASSED on real podman;
-the model was retired anyway because of where it forced the mountpoints to live.
+⚑⚑ **SIBLINGS, NOT A WHOLE-DIR BOOK** (J-7: never one whole-directory bind). Every entry is its own
+bind onto a mountpoint that ALREADY EXISTS in the box home, materialized by
+:func:`materialize_canon_skeleton` at box create. Nothing nests inside anything, so no mountpoint
+ever has to live inside a bind SOURCE — which is what killed the whole-dir model: the plugin
+chapter's mountpoint would have had to exist inside site-packages (where a wheel cannot ship an
+empty directory and no runtime may write), and the handbook chapters' inside the user's own stores.
+The nested-mount physics PASSED on real podman; the model was retired anyway because of where it
+forced the mountpoints to live.
 
 `COLLECTION.md` and `ROM_CONTENTS.md` are FILE binds (file-onto-file, over the 0-byte mountpoints the
 skeleton creates). They stay BINDS rather than seeded copies because they are rom TRUTH: a copy would
@@ -859,8 +861,8 @@ message LOG, and the SPAWN BUDGET document (spec §2c `box.bindings.ro[~/spawn.y
 * A `None` *socket_path* means NO HUB: neither hub row is emitted, which is how the every-start
   budget resolve carries the budget row alone.
 * With a hub, a `None` *log_path* — the box's `workset.logs` is a present `<None>` — still emits the
-  `helper_log` formula, whose `<None>` source makes the entry `None` at expand; the collapse omits it
-  (companion, "The helper-log bind") and `settings_launch` warns when only the source is `<None>`
+  `helper_log` formula, whose `<None>` source makes the entry `None` at expand; the collapse omits
+  it (companion, "The helper-log bind") and `settings_launch` warns when only the source is `<None>`
   ([R185]). Omitting it here would be a silent second route.
 * A `None` or absent *budget_path* emits no budget entry: the start writes the document before this
   runs, so its absence means no budget was delivered.
