@@ -13,7 +13,7 @@ single root directory chosen by the user.  Terminology:
   are themselves repointable keys and are RESOLVED, so a box's vault need not
   live under this root at all.
 * **identity** — the workset's entry in the GLOBAL registry's ``worksets:``
-  section (``@config.registry``), mapping its NAME to its ROOT.  ⚑⚑ THAT MAPPING
+  section (``{config.registry}``), mapping its NAME to its ROOT.  ⚑⚑ THAT MAPPING
   IS THE WHOLE OF A WORKSET'S IDENTITY: nothing under the workset root records a
   name, and there is no identity table in either file there.  ⚑ That is a fact
   about NAMING, not about FINDING ([R139]): a root is still found on disk by its
@@ -28,7 +28,7 @@ single root directory chosen by the user.  Terminology:
   one; BOTH are RETIRED and now HARD-REFUSE — see
   :func:`refuse_retired_workset_identity`.
 * **default workset** — the synthesized, never-persisted group of default-mode
-  projects, rooted at ``@config.primary_workset``.
+  projects, rooted at ``{config.primary_workset}``.
 * **connected (external) box** — a member whose registered path lies OUTSIDE the
   workset root (D10).
 
@@ -84,7 +84,7 @@ from kanibako.settings.paths import (
 # The local names stay only because the call sites read better with them.
 
 # Default leaves for the RESOLVED workset dir keys — the spec's per-mode default
-# formula ``@meta.workset.path/<leaf>``, applied ONCE per key in its resolver below
+# formula ``{meta.workset.path}/<leaf>``, applied ONCE per key in its resolver below
 # (§3.3: real and USED).  ⚑ A default leaf is what a key falls back to, NOT the path
 # component: every one of these is repointable, so nothing may join it directly.
 BOXES_DIR_NAME = bootstrap.BOXES_PATH
@@ -106,11 +106,11 @@ _CANON_LEAF = "canon"
 _TEMPLATE_LEAF = "template"
 
 # The ref the STANDALONE ``workset.logs`` default is (spec §2c: ``workset.logs |
-# @workset.boxes``).  ⚑ A REF NAME, not a leaf: nothing here may join it as a path component.
+# {workset.boxes}``).  ⚑ A REF NAME, not a leaf: nothing here may join it as a path component.
 _BOXES_REF = f"workset.{BOXES_DIR_NAME}"
 
 # ⚑ The ONE skeleton dir that names NO KEY: the keyspec declares ``workset.vault_ro``
-# and ``workset.vault_rw`` (``@meta.workset.path/vault/{ro,rw}``) and no ``workset.vault``
+# and ``workset.vault_rw`` (``{meta.workset.path}/vault/{ro,rw}``) and no ``workset.vault``
 # at all, so ``vault/`` is only their shared DEFAULT PARENT — there is nothing to resolve
 # it through and it is always ``<root>/vault``.  ⚑ DELIBERATE: it keeps
 # the skeleton a SINGLE list that ``create_workset`` stamps and ``is_workset_skeleton``
@@ -243,8 +243,8 @@ def refuse_null_box_workspace(
     """RAISE when a box's ``meta.box.workspace`` resolves through a null ``workset.workspaces`` (Q106).
 
     The workspace bind is mounted at every launch (system-design § "The workspace bind"), so a
-    box with no workspace cannot run.  Standalone's workspace IS ``@workset.workspaces``; a
-    named member's is ``@workset.workspaces/<name>`` unless it is EXTERNAL — its recorded
+    box with no workspace cannot run.  Standalone's workspace IS ``{workset.workspaces}``; a
+    named member's is ``{workset.workspaces}/<name>`` unless it is EXTERNAL — its recorded
     *workspace* lies outside *workset_root* and resolves through no key, so it still launches.
     Primary is not asked: its workspace is the project dir.  ⚑ A LOOP REFUSES: True means
     raise here, and :func:`_path_in_tree` answers a loop False.
@@ -266,7 +266,7 @@ def resolve_workset_boxes(
 
     ⚑ THE FLAG SELECTS A DEFAULT LEAF, NOTHING ELSE — the same shape as
     ``resolve_workset_workspaces``: spec §2c gives standalone
-    ``@meta.workset.path/box_data`` where primary/named get ``.../boxes``.
+    ``{meta.workset.path}/box_data`` where primary/named get ``.../boxes``.
     ⚑ DETECTION does NOT compose ``box_data/``: a standalone root is the one whose own
     ``workset.yaml`` stores the ``workset.registry`` null.  This key's DEFAULT LEAF marks
     nothing.
@@ -297,7 +297,7 @@ def resolve_workset_logs(
     ``None`` when ``workset.logs`` is a present ``<None>``: there is no logs dir, so nothing
     writes a box log and the helper-log bind is omitted (companion, "The helper-log bind").
 
-    ⚑ STANDALONE's declared default is ``@workset.boxes`` (spec §2c): a lone box's root IS
+    ⚑ STANDALONE's declared default is ``{workset.boxes}`` (spec §2c): a lone box's root IS
     the boxes dir, with no name leaf.  It is a same-set ref, so the route resolves it like
     a set value, through the same ``workset.boxes`` face answer.
     """
@@ -1228,7 +1228,7 @@ class Workset:
         so composing ``<root>/boxes`` here while detection resolved the key left a
         repointed root DETECTED BUT MISLOCATED — found by the walk, then written to
         somewhere it does not live.  The launch seam has always resolved the same key
-        (``settings_launch``, ``meta.box.path | @workset.boxes/@meta.box.name``); this
+        (``settings_launch``, ``meta.box.path | {workset.boxes}/{meta.box.name}``); this
         property is a FACE on that answer, never a second one.
         """
         return resolve_workset_boxes(
@@ -1281,7 +1281,7 @@ class Workset:
         ``None`` when ``workset.logs`` is a present ``<None>`` (no logs dir).
 
         ⚑ The helper-log MOUNT has always been the spec spelling
-        (``@workset.logs/@{meta.box.name}.jsonl``, ``data/rom/settings/core-defaults.yaml``), so a
+        (``{workset.logs}/{meta.box.name}.jsonl``, ``data/rom/settings/core-defaults.yaml``), so a
         composed leaf here made the hub WRITE somewhere the box does not READ — the
         split migration M-14 records.  A standalone box's log is resolved through the
         same key with ``standalone=True``, not through this property, which is a
@@ -1581,7 +1581,7 @@ def find_logs_share(
     that changes nothing is never refused for a share already there.
 
     ⚑ Every workset resolves through :func:`resolve_workset_logs`, the rule its boxes
-    read, and paths compare RESOLVED: ``@meta.workset.path/../shared`` differs per file
+    read, and paths compare RESOLVED: ``{meta.workset.path}/../shared`` differs per file
     and is one directory.  No logs dir (``None``) is no member; an unresolvable value is
     skipped, as its verbs already refuse it.
     """

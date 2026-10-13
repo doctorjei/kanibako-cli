@@ -4041,7 +4041,7 @@ def _run_box_config(args: argparse.Namespace) -> int:
                 # ⚑ THE LAUNCH'S OWN ctx, off the ONE builder (P7) with the SAME
                 # arguments ``_resolve_launch_snapshot`` passes it — so the block's
                 # destination resolution and the collapse's cannot disagree about what
-                # ``$XDG_*`` / ``$AGENT`` / ``~`` mean.
+                # ``{$XDG_*}`` / ``{$AGENT}`` / ``~`` mean.
                 category_ctx = launch_resolve_ctx(std, proj, agent_id)
                 # ⚑ THE CARRIER IS KEPT, not discarded: this resolve FOLDS IN PROCESS,
                 # so ``declared_by`` — which declaration took each destination — is
@@ -4141,7 +4141,7 @@ def _run_box_config(args: argparse.Namespace) -> int:
 
     if action == ConfigAction.set:
         # ⚑ The BOX is the target (spec §2a): ``resolve_inputs`` builds its full cascade
-        # — the M-8 file pair, its real ``@meta.box.path`` and workset anchors — so a
+        # — the M-8 file pair, its real ``{meta.box.path}`` and workset anchors — so a
         # cross-scope ``@``-ref in the new value resolves at set time as at launch.
         # ⚑ THE TIER PAIR IS STILL THREADED, and it is not redundant: if the target
         # cannot be built, the target-less fallback reads these same files and differs

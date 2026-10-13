@@ -6,7 +6,7 @@ Holds one workset's MEMBERSHIP, and nothing else, in ONE section:
 
 ⚑⚑ MEMBERSHIP IS REGISTRY-BORNE (system-design §Detect: *"Members live in
 ``registry.yaml``'s ``boxes:``, keyed by name"*); IDENTITY IS NOT.  A workset is
-NAMED by the ``worksets:`` section of the GLOBAL registry (``@config.registry``),
+NAMED by the ``worksets:`` section of the GLOBAL registry (``{config.registry}``),
 which maps its name to its root — that mapping is the whole of a workset's
 identity, and nothing under the workset root repeats it.  The root
 ``workset.yaml`` carries SETTINGS ONLY, is sparse, and MAY BE ABSENT.
@@ -244,7 +244,7 @@ def resolve_workset_registry_path(
     an UNSET one falls through to ``<workset_root>/registry.yaml``.
 
     ⚑ A NINTH FACE on the ONE no-snapshot route (``project/workset.py``): its spec
-    default is ``@meta.workset.path/registry.yaml``, like the other faces', so it carries tokens
+    default is ``{meta.workset.path}/registry.yaml``, like the other faces', so it carries tokens
     and must not expand them privately.
 
     🛑 A present ``null`` REFUSES, naming the key and the file: this file holds the

@@ -63,7 +63,7 @@ The config engine and the layout tier:
 * ``workset_dirkeys`` — the NO-SNAPSHOT route for the five ``workset.*`` dir keys:
   the detection/paths side reads them BEFORE the launch snapshot it would
   otherwise resolve them through, so it reuses ``settings_resolve``'s scanner with
-  a lookup narrowed to ``@meta.workset.path`` and refuses every other reference.
+  a lookup narrowed to ``{meta.workset.path}`` and refuses every other reference.
 
 ⚑ Why no separate ``config/`` package, despite spec §1's two-layer model: that
 model partitions by RESOLUTION ORDER, and the modules do not partition along it.

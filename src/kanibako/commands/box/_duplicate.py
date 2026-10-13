@@ -409,7 +409,7 @@ def _run_duplicate_cross_mode(args: argparse.Namespace, std, config) -> int:
             if not args.bare and workspace_src is not None and workspace_src.is_dir():
                 # The copy DESTINATION is the destination root's resolved
                 # ``workset.workspaces`` (ruled 10, 2026-08-02) — the STANDALONE
-                # default ``@meta.workset.path/workspace`` for a fresh root (no
+                # default ``{meta.workset.path}/workspace`` for a fresh root (no
                 # workset.yaml yet); a pre-existing root repoint is honored.
                 from kanibako.project.workset import (
                     load_workset_settings_doc,

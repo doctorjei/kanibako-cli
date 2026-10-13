@@ -332,7 +332,7 @@ def box_writeback_context(std, proj, agent: str):
     HARNESS; the auth source resolves through the auth chain (the same launch-snapshot
     pipeline ``start`` uses), so a PRIVATE box gets a box-tier source and the writeback
     is a no-op.  ⚑ The §1A SELECTION LEVEL is REQUIRED (P7): ``meta.box.auth.workset_path``
-    resolves ``@workset.auth.path/@system.agent``, so without it the credential dir
+    resolves ``{workset.auth.path}/{system.agent}``, so without it the credential dir
     would name the agent the STORED settings select rather than the ``<auth>/<agent>``
     the launch delivered from.  The stamp IS the resolved selection for a running box.
 

@@ -527,10 +527,10 @@ class ClaudeTarget(Target):
         """Declare claude's AGENT-scope common dirs (plugins + cache).
 
         Both are shared across every box that runs claude and live under the
-        per-agent store dir ``@meta.agent.claude.path`` = ``@config.agents/claude``
+        per-agent store dir ``{meta.agent.claude.path}`` = ``{config.agents}/claude``
         — spec §2a's agent DECLARATION ROOT.  The bare ``host_src`` leaf in the
         YAML is rooted BY THE LOADER, so what is STORED is the self-resolving
-        ``@meta.agent.claude.path/common/<leaf>`` and no later layer prepends
+        ``{meta.agent.claude.path}/common/<leaf>`` and no later layer prepends
         anything (§2a).  The resolved host paths are
         ``<data>/agents/claude/common/{plugins,cache}``, bound rw to
         ``~/.claude/{plugins,cache}``:
@@ -554,9 +554,9 @@ class ClaudeTarget(Target):
 
         Read from ``claude-defaults.yaml`` (via the loader).  ONE member: the
         tweakcc patched-binary cache, ``agent.claude.caches`` at
-        ``~/.kanibako/cache/tweakcc`` from ``@meta.agent.claude.path/caches/tweakcc``
+        ``~/.kanibako/cache/tweakcc`` from ``{meta.agent.claude.path}/caches/tweakcc``
         (spec §2d instantiation — a declared entry, NOT an identity mount; the
-        former ``@system.instructions`` → ``~/.claude/KANIBAKO.md`` instructions
+        former ``{system.instructions}`` → ``~/.claude/KANIBAKO.md`` instructions
         bind was retired — the box guide now ships INSIDE the RO ``general``
         chapter bind at ``~/canon/charter/general`` + the flattened per-agent
         FINAL file).

@@ -294,7 +294,7 @@ def run_spawn(args: argparse.Namespace) -> int:
     # Tier 1 — the DELIVERED budget (the spawn-budget bind): the host's resolved budget
     # in a director, the parent's decremented copy in a helper.  It outranks tier 2.
     handed_down = read_spawn_budget(Path.home() / SPAWN_CONFIG_FILENAME)
-    # Tier 2 — this box's own system settings file (``@config.settings``).
+    # Tier 2 — this box's own system settings file (``{config.settings}``).
     own_settings = read_spawn_budget(system_settings_path())
 
     budget = resolve_spawn_budget(

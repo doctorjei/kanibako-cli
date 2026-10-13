@@ -36,7 +36,7 @@ if TYPE_CHECKING:
 #: WHOLE-DIRECTORY COPY, or a template could plant ``<box_dir>/box.yaml`` (=
 #: ``meta.box.settings``, the LAST cascade level).
 #: ⚑ Do not respell this host-side; no ``dest_space`` discriminator exists to make a
-#: ``@meta.box.path/home`` spelling safe.
+#: ``{meta.box.path}/home`` spelling safe.
 _SEED_DEST_HOME = "~/"
 
 #: The per-layer SOURCE subpaths under each layer's ``template`` root.  The two-level
@@ -61,7 +61,7 @@ def agent_template_defaults(agent_id: str | None) -> dict[str, object]:
 
     ⚑⚑ THE MAIN-LAUNCH FOLD IS THE POINT, not an extra.  These used to be emitted ONLY
     inside ``template_seed_defaults``, whose one consumer is the CREATE-time seed
-    resolve, so ``@agent.default.template`` resolved to ``__MISSING__`` for every box
+    resolve, so ``{agent.default.template}`` resolved to ``__MISSING__`` for every box
     that already existed — a declared key with a real default that the keyspace could
     not answer (ruled 2026-08-29: *"for any box thst exists, def."*).  A key that
     answers only at create is not answerable to a user.
@@ -85,7 +85,7 @@ def agent_template_defaults(agent_id: str | None) -> dict[str, object]:
     # pseudo-agent does not inherit ``agent.default`` at all (§2d), so it never reaches
     # this arm either.
     # ⚑⚑ INERT FOR DELIVERY IS NOT UNREACHABLE.  Delivery asks which arm the §2d pick
-    # lands on; REACHABILITY asks whether ``@agent.default.template`` resolves at all.
+    # lands on; REACHABILITY asks whether ``{agent.default.template}`` resolves at all.
     # Two different questions, and the answer to the second must be yes.
     # ⚑ NO NODE-STORE PROBE, unlike ``canon_default_categories``' node arm
     # (``store_canon if node_store.is_dir() else …``): that conditional is the canon
@@ -105,14 +105,14 @@ def agent_template_defaults(agent_id: str | None) -> dict[str, object]:
     # override reroutes the layer by cascade precedence.
     # ⚑⚑ NODE-ROOTED, NEVER THE HARNESS (ruled 2026-08-27).  §2d and the
     # manifest both give ``agent.<agent>.template =
-    # @meta.agent.<agent>.path/template``, and ``<agent>`` is the ACTIVE NODE:
+    # {meta.agent.<agent>.path}/template``, and ``<agent>`` is the ACTIVE NODE:
     # a persona seeds from its OWN store.  This used to spell
     # ``harness_of(agent_id)`` — the same string for a bare agent, and for a
-    # persona a SILENT divergence: ``@config.agents/<harness>/template`` is a
+    # persona a SILENT divergence: ``{config.agents}/<harness>/template`` is a
     # perfectly resolvable directory that simply names the WRONG store, so
     # nothing anywhere had cause to complain.  (⚑ The silence is NOT about
     # ``meta_agent_path_floor`` materializing both anchors — this arm never
-    # went through ``@meta.agent.<a>.path`` at all.)  The harness's CONTENT
+    # went through ``{meta.agent.<a>.path}`` at all.)  The harness's CONTENT
     # still reaches a persona: the shim
     # ``commands.start.ensure_persona_share_symlinks`` links
     # ``agents/<node>/template`` -> ``agents/<harness>/template``, exactly as it
@@ -121,7 +121,7 @@ def agent_template_defaults(agent_id: str | None) -> dict[str, object]:
     # replaces the link with a real directory.
     # ⚑ ONE HOP UNROLLED, like the ``canon`` node arm
     # (``core_defaults.canon_default_categories``): ``meta.agent.<a>.path`` IS
-    # ``@config.agents/<a>`` (``settings_launch.meta_agent_path_floor`` defines
+    # ``{config.agents}/<a>`` (``settings_launch.meta_agent_path_floor`` defines
     # it as that literal), so the two spellings resolve to one place.
     # ⚑ STILL NO NODE-STORE PROBE (see the ``agent.default.template`` note
     # above): the shim guarantees the node's ``template`` entry exists, and
@@ -406,8 +406,8 @@ def copy_tree(
     wider scope could arrive.
 
     ⚑ *overwrite* is confined to the SYSTEM-OWNED packaged STAGING
-    (``@system.template/**``).  User-owned stores — ``@system.canon/handbook``,
-    ``@config.agents/**``, worksets, boxes — are create-if-absent on EVERY path,
+    (``{system.template}/**``).  User-owned stores — ``{system.canon}/handbook``,
+    ``{config.agents}/**``, worksets, boxes — are create-if-absent on EVERY path,
     always (J-3 item 1), and the alias :data:`copy_resource_tree_if_absent` reused by
     the box-SEED apply must NEVER clobber a per-box home file.
 
@@ -479,11 +479,11 @@ PACKAGED_TEMPLATES_PARTS = ("templates",)
 #: Subtrees of the packaged template root, by their role.  ⚑ The install is an
 #: ENUMERATED set of (packaged subtree → host dest) pairs, NEVER a whole-tree copy
 #: (P-S2): copying the root wholesale would leave a SECOND, never-read copy of the
-#: handbook at ``@system.template/system``, and would stamp the agent.default content
-#: into the agent MOLD at ``@system.template/agent``.
+#: handbook at ``{system.template}/system``, and would stamp the agent.default content
+#: into the agent MOLD at ``{system.template}/agent``.
 #: ⚑ Each is named for the scope it is for: ``agent`` holds the ``agent.default`` node's
-#: content, which lands at ``@system.agents/default``; ``system/canon/handbook`` lands at
-#: ``@system.canon/handbook``.  The handbook path must not equal the chapter leaf's
+#: content, which lands at ``{system.agents}/default``; ``system/canon/handbook`` lands at
+#: ``{system.canon}/handbook``.  The handbook path must not equal the chapter leaf's
 #: spelling (:data:`_CANON_CHAPTER_LEAF`): the canon-layout duplicate-value check reads two
 #: constants with one value as one fact.
 PACKAGED_BOX_TEMPLATE = "box"
@@ -491,11 +491,11 @@ PACKAGED_WORKSET_TEMPLATE = "workset"
 PACKAGED_AGENT_DEFAULT = "agent"
 PACKAGED_HANDBOOK = "system/canon/handbook"
 
-#: The AGENT MOLD's dir name under ``@system.template`` — the host copy every agent
+#: The AGENT MOLD's dir name under ``{system.template}`` — the host copy every agent
 #: install stamps from (J-5).  ⚑ The mold ships EMPTY (D5): nothing packaged is copied
 #: into it, so the host dir is GUARANTEE-CREATED by the install action (D7).  The packaged
 #: ``templates/agent`` subtree (:data:`PACKAGED_AGENT_DEFAULT`) shares the name but NOT the
-#: role — it is the ``agent.default`` content, stamped only into ``@system.agents/default``,
+#: role — it is the ``agent.default`` content, stamped only into ``{system.agents}/default``,
 #: never into this mold.  Shipping the mold structure-only is what keeps it OVERLAP-FREE
 #: with that content — see :func:`ensure_agent_stores`.
 AGENT_MOLD_DIRNAME = "agent"
@@ -516,7 +516,7 @@ _BOX_TEMPLATE_SKELETON = (
 )
 
 #: The CANON HALF of the workset stamp ON THE MOLD SIDE — the subtree of
-#: ``@system.template/workset`` the canon-only stamp reads.  ⚑ A MOLD-LAYOUT literal,
+#: ``{system.template}/workset`` the canon-only stamp reads.  ⚑ A MOLD-LAYOUT literal,
 #: and it stays one: the mold is a SYSTEM-tier tree that every workset stamps from, so
 #: one workset's ``workset.canon`` repoint moves the DESTINATION and never the source.
 _MOLD_CANON_ROOT = "canon"
@@ -709,7 +709,7 @@ def _workset_stamp_dirs(
 
     ⚑⚑ THE STAMP FOLLOWS THE KEYS, NOT THE LITERALS.  Both are declared repointable
     (spec ``:962`` / ``:936``), and a stamp at the literal leaf seeds a tier the box's
-    own key resolution then never reads — the chapter binds ask ``@workset.canon``.
+    own key resolution then never reads — the chapter binds ask ``{workset.canon}``.
 
     ⚑ ONE read of the root's ``workset.yaml`` feeds both, exactly as
     :func:`kanibako.project.workset._workset_skeleton_dirs` does for the other four:
@@ -981,7 +981,7 @@ def install_box_handbook_template(
     """Fill a NEW box's OWN handbook chapter from the three host template layers.
 
     ⚑⚑⚑ **THE SPECIAL CASE.  READ THE QUARANTINE BLOCK ABOVE BEFORE COPYING ANY OF
-    THIS.**  *dest* is the resolved ``@box.canon/handbook``; *layer_roots* are the
+    THIS.**  *dest* is the resolved ``{box.canon}/handbook``; *layer_roots* are the
     RESOLVED ``<scope>.template`` roots in apply order.
 
     ⚑ THE ROOTS ARE PARAMETERS, DELIBERATELY — resolved at the seam that holds the

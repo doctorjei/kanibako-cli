@@ -3604,7 +3604,7 @@ def _to_default(
             state, dst_metadata / BOX_META_FILE,
             early=EarlyScope(std.early_system, _state_ws_token(state)))
 
-    # Phase 5 fixed PRIMARY table: vault under @config.primary_workset.
+    # Phase 5 fixed PRIMARY table: vault under {config.primary_workset}.
     _dst_shell, vault_ro, vault_rw = _primary_box_paths(
         std, dst_metadata, project_name,
     )
@@ -4177,7 +4177,7 @@ def _to_standalone(
             dst_metadata, shell_into_metadata=True, home_leaf="home", unwind=unwind,
         )
         # ⚑⚑ DO NOT DELETE this file as an "orphan": the box.yaml landing in ``box_data/``
-        # IS the destination's BOX TIER (spec §2c — @meta.box.path for standalone IS
+        # IS the destination's BOX TIER (spec §2c — {meta.box.path} for standalone IS
         # ``box_data/``). Deleting it discards the box's settings; detection reads the ROOT
         # file (§5), which ``establish_standalone`` writes below.
         _deliver_carried_box_settings(
@@ -4555,7 +4555,7 @@ def _state_ws_token(state: ProjectState) -> str:
 
 
 def _state_ws_root(state: ProjectState, std: StandardPaths) -> Path:
-    """Return ``@meta.workset.path`` for *state* — the root its channel keys live under.
+    """Return ``{meta.workset.path}`` for *state* — the root its channel keys live under.
 
     ⚑ The ``ProjectState`` twin of :func:`channels.workset_root`, which takes a resolved
     ``ProjectPaths`` this path does not have.  Same three arms, deliberately in the same

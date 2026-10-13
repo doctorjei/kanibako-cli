@@ -307,11 +307,11 @@ def _run_system_config(args: argparse.Namespace) -> int:
     The SYSTEM scope keeps STRUCTURAL CONFIG (the ``system.*`` path-tier
     family) in the ``~/.config/kanibako.cfg`` CONFIG file (``cf``) and
     routes SETTINGS (``system.agent``, the ``system.auth.*`` chain,
-    agent settings, downward scope defaults) to ``@config.settings`` =
+    agent settings, downward scope defaults) to ``{config.settings}`` =
     ``global/settings.yaml`` (``ssp``), via the ``system_settings_path`` arg —
     the same file the launch cascade's system tier reads (F2/F3).
 
-    ⚑ There is NO system-tier ENV FILE any more. ``@config.data/env`` was the
+    ⚑ There is NO system-tier ENV FILE any more. ``{config.data}/env`` was the
     docker ``.env`` the launch layered as its system tier; R-39 retired the bare
     ``env.<VAR>`` spelling that wrote it and Jei's RQ-1 re-ruling retired the
     launch READ, so no verb threads it. The system env family is the settings key
@@ -514,15 +514,15 @@ def _run_system_config(args: argparse.Namespace) -> int:
         # is "the agent this command is about": ``box set`` resolves the box's ACTIVE
         # agent, ``agent set`` is handed the node it was invoked on, and here the key is
         # the only carrier — so a per-node key names its own node and every other key
-        # names none. It anchors ``@meta.agent.<node>.path`` in the set-time snapshot;
-        # withheld, ``system set agent.claude.canon=@meta.agent.claude.path/canon`` was
+        # names none. It anchors ``{meta.agent.<node>.path}`` in the set-time snapshot;
+        # withheld, ``system set agent.claude.canon={meta.agent.claude.path}/canon`` was
         # refused as a dangling reference while ``agent set claude canon=…`` — the same
         # key, the other spelling — accepted it.
         # ⚑ THE NODE IS READ, NOT GUESSED: ``agent_node_of`` derives it from the same
         # parsers ``path_key_anchor`` uses, so only the node this write ADDRESSES is
         # floored. A ref against any OTHER node's store root still dangles, and a key
         # naming no node threads nothing — this cannot become a blanket accept of
-        # ``@meta.agent.*.path``.
+        # ``{meta.agent.*.path}``.
         # ⚑ CANONICAL FIRST: the node segment is spelled ``+`` on the command line and
         # ``℘`` in the keyspace, and the setter parses the CANONICAL form.
         # ⚑ THE SYSTEM SCOPE IS THE TARGET (spec §2a), and its resolve needs ``std``,

@@ -477,7 +477,7 @@ def _purge_all(std, config, *, force: bool) -> int:
     # Every box's channel dirs: never deleted, named after the run.
     channels: "list[tuple[str, Path, str | None]]" = []
     for metadata_path, project_path in projects:
-        # Phase 5: PRIMARY vault lives under @config.primary_workset/vault/
+        # Phase 5: PRIMARY vault lives under {config.primary_workset}/vault/
         # {ro,rw}/<name> (name == metadata dir name), not under metadata_path.
         _shell, vault_ro, vault_rw = _primary_box_paths(
             std, metadata_path, metadata_path.name,

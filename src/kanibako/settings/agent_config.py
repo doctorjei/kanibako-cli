@@ -78,7 +78,7 @@ def store_dirname(node: str) -> str:
 
 
 def agent_settings_path(agents_root: Path, agent_id: str) -> Path:
-    """Return ``@meta.agent.<agent>.settings`` for *agent_id*."""
+    """Return ``{meta.agent.<agent>.settings}`` for *agent_id*."""
     # ⚑ INSIDE the store dir as ``agent.yaml``, not the old sibling
     # ``agents/<agent>.yaml`` (D-2026-06-22).  Callers pass the CANONICAL node; the
     # ``+`` dirname is applied here, so no caller has to know the two differ.
@@ -119,8 +119,8 @@ def agent_category_dirname(category: str) -> str:
 # ``seedsrc``) that names no category at all, so a per-category composer could not
 # express the question.
 # 🛑 DO NOT RESURRECT IT AS A CONVENIENCE.  A resolved store path is what
-# ``@meta.agent.<a>.path`` ALREADY resolves to (``settings_launch.meta_agent_path_floor``
-# defines that anchor as ``@config.agents/<store_dirname>``); a second composer beside
+# ``{meta.agent.<a>.path}`` ALREADY resolves to (``settings_launch.meta_agent_path_floor``
+# defines that anchor as ``{config.agents}/<store_dirname>``); a second composer beside
 # it is a second answer to one layout question, free to drift, and the drift is silent
 # because every path here is create-if-absent.  A caller needing a real Path composes
 # ``agents_root / store_dirname(node) / <rel>`` — the ``store_dirname`` call IS the
@@ -191,12 +191,12 @@ def is_unambiguous_path_value(value: str) -> bool:
     (:func:`ambiguous_path_value_error` says why and names both readings).
 
     ⚑ NARROWER THAN :func:`is_self_resolving`, ON PURPOSE, AND THE DIFFERENCE IS
-    ``$VAR``.  That predicate rules on a BIND SOURCE, where a declaration may name
+    ``{$VAR}``.  That predicate rules on a BIND SOURCE, where a declaration may name
     any variable the launch namespace supplies; this one rules on a path a USER
     typed, and EVERY variable outside the ``XDG_`` family expands to a bare word
-    that anchors nothing — today an agent or workset name (``$AGENT``,
-    ``$WORKSET``) or a terminal type (``$TERM``) — so ``$AGENT/logs`` and
-    ``$TERM/logs`` are exactly as relative as ``logs``.  ⚑ The test below is the
+    that anchors nothing — today an agent or workset name (``{$AGENT}``,
+    ``{$WORKSET}``) or a terminal type (``{$TERM}``) — so ``{$AGENT}/logs`` and
+    ``{$TERM}/logs`` are exactly as relative as ``logs``.  ⚑ The test below is the
     ``XDG_`` PREFIX, not that list: a variable added to the dispatch is refused
     here the day it lands, and this sentence is examples, never an inventory.
     ⚑ The leading-escape cases fall the same way they do there: ``\/foo`` unescapes

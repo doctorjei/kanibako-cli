@@ -1,6 +1,6 @@
 """Global name registry (the ``worksets`` section of ``config.registry``).
 
-Central index at ``@config.registry`` (``{data_path}/global/registry.yaml``)
+Central index at ``{config.registry}`` (``{data_path}/global/registry.yaml``)
 mapping human-readable workset names to their root paths.  Default-mode
 (PRIMARY) box names are NOT here anymore — the former ``projects`` section was
 retired (2026-07-08, clean split): a primary box's identity now lives SOLELY in

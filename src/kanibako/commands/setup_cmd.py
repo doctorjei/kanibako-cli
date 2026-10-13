@@ -105,7 +105,7 @@ def _settings_paths() -> tuple[Path, Path]:
     """Resolve ``(config_file, system_settings_file)`` for programmatic writes.
 
     ``config_file`` = ``~/.config/kanibako.cfg`` (Layer-1 ``config.*`` bootstrap
-    paths ALONE, spec §1).  ``system_settings_file`` = ``@config.settings`` =
+    paths ALONE, spec §1).  ``system_settings_file`` = ``{config.settings}`` =
     ``global/settings.yaml`` — every ``system.*`` SETTING, i.e. both ``system.agent``
     (``read_system_agent``) and ``system.setup_completed`` (``read_setup_completed``,
     moved here 2026-08-26).

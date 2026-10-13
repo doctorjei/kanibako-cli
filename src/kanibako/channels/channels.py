@@ -41,7 +41,7 @@ class SystemPartition:
 
 @dataclass(frozen=True)
 class WorksetChannels:
-    """The workset-local channel roots under ``@workset.channelroot`` (PRIMARY/NAMED only).
+    """The workset-local channel roots under ``{workset.channelroot}`` (PRIMARY/NAMED only).
 
     ⚑ ``None`` on a leaf whose own key is null, the two INDEPENDENTLY.  ⚑ TYPE ONLY —
     what a null leaf DOES is the workset-local seam's; this exists so a ``None`` reaches
@@ -181,7 +181,7 @@ def workset_token(mode: BoxMode, group_name: str | None) -> str:
 
 
 def workset_root(proj: ProjectPaths, std: StandardPaths) -> Path:
-    """Return ``@meta.workset.path`` for *proj* (PRIMARY/NAMED/STANDALONE roots)."""
+    """Return ``{meta.workset.path}`` for *proj* (PRIMARY/NAMED/STANDALONE roots)."""
     from kanibako.settings.paths import BoxMode
 
     if proj.mode is BoxMode.primary:
@@ -326,7 +326,7 @@ def workset_channels_at(
         chat=chat,
         chat_general=None if chat is None else chat / CHAT_GENERAL_LEAF,
         # ⚑ ``broadcast`` DEFAULTS OFF ``chat`` (keyspec §2c: the row is
-        # ``@workset.channels.chat/broadcast.md``), so a null ``chat`` makes the
+        # ``{workset.channels.chat}/broadcast.md``), so a null ``chat`` makes the
         # whole value null — §0: an embedded reference to a present ``<None>``
         # makes the whole value ``<None>``.  Only an EXPLICIT ``broadcast``
         # repoint still resolves, because a stored value replaces the formula.
@@ -400,9 +400,9 @@ def box_channel_addresses(
     callers on the launch path resolve the name first.
 
     ⚑ ALL THREE ADDRESSES HANG OFF THE KEYS, which is the manifest's own spelling:
-    ``@workset.channels.mailboxes/@meta.box.name``,
-    ``@workset.channels.share_global/@meta.box.name``,
-    ``@workset.channels.share/@meta.box.name``.  Reading the partition off
+    ``{workset.channels.mailboxes}/{meta.box.name}``,
+    ``{workset.channels.share_global}/{meta.box.name}``,
+    ``{workset.channels.share}/{meta.box.name}``.  Reading the partition off
     :func:`system_partition` here is what let a user repoint ``mailboxes``, watch
     ``config get`` read the new value back, and still have their inbox mounted at the
     old one.

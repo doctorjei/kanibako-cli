@@ -219,7 +219,7 @@ class CodexTarget(Target):
         """Declare codex's AGENT-scope ``@``-ref-sourced category binds.
 
         Read from ``codex-defaults.yaml`` (via the loader), and currently EMPTY:
-        the former ``@system.instructions`` → ``~/.codex/AGENTS.md`` bind was
+        the former ``{system.instructions}`` → ``~/.codex/AGENTS.md`` bind was
         retired in favor of the RO canon bind + the flattened FINAL file.
         """
         return load_category_binds(_DEFAULTS_PACKAGE, _DEFAULTS_FILE, self.name)

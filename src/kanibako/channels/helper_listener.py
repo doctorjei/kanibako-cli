@@ -652,7 +652,7 @@ class HelperHub:
             if candidate.is_dir():
                 source_meta_dir = candidate
 
-        # Fallback: derive from shell_path (a box's shell is @meta.box.path/home, so its
+        # Fallback: derive from shell_path (a box's shell is {meta.box.path}/home, so its
         # parent is the metadata dir).  ⚑ The predicate compares that dir's parent to the
         # RESOLVED box store, never to a literal leaf name: ``workset.boxes`` is
         # repointable, so a name test silently missed every workset that repointed it and

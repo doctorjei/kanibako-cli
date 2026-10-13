@@ -2,7 +2,7 @@
 
 **_Terminology_**
 - _named_ workset: registered under a user-chosen name, rooted at a user directory it owns
-- _default_ workset: the synthesized PRIMARY workset, rooted at ``@config.primary_workset``
+- _default_ workset: the synthesized PRIMARY workset, rooted at ``{config.primary_workset}``
 (kanibako's internal store, NOT a project dir) — so it has NO bindings root
 - _share_: a ``workset.bindings.{ro,rw}`` entry, keyed BY its box DESTINATION (R-10)
 """
@@ -1338,7 +1338,7 @@ def _run_workset_config(args: argparse.Namespace) -> int:
             return 1
         # ⚑ The WORKING SET is the target (spec §2a): ``resolve_inputs`` builds its full
         # cascade — the system file, ``workset.yaml`` and the workset anchors. It names
-        # no box, so every ``@meta.box.*`` anchor is OMITTED, never fabricated.
+        # no box, so every ``{meta.box.*}`` anchor is OMITTED, never fabricated.
         msg = set_config_value(
             key, value,
             config_path=ws_config,
@@ -1657,7 +1657,7 @@ def _workset_raw_shares(files: Sequence[SettingsFile]) -> dict[tuple[str, str], 
 
 
 #: The pid-0 FOUNDATION this preview folds every scope over. ⚑ A workset names no
-#: BOX, and the home SOURCE is per-box (``@meta.box.path/home``), so it is SPELLED as
+#: BOX, and the home SOURCE is per-box (``{meta.box.path}/home``), so it is SPELLED as
 #: what it is rather than guessed — and the guess could not surface anyway: only the
 #: foundation's DEST takes part in arbitration, a share AT that dest is refused as a
 #: second bind at the foundation's point, and one INSIDE it holds its own destination.
@@ -1873,7 +1873,7 @@ def _print_effective_derivations(ws, std) -> int:
     :func:`_workset_preview_entries` runs BEFORE the gate, ``expand`` is strict, and
     ``snapshot_category_entries`` refuses an undeclared shape — while the ``show``
     arm's own rendering is a YAML flatten that expands nothing.  So a working set
-    carrying, say, ``bindings.ro`` sourced at an unknown ``$VAR`` printed its rows at
+    carrying, say, ``bindings.ro`` sourced at an unknown ``{$VAR}`` printed its rows at
     rc 0 and now reports ``Error: Unknown variable: …`` at rc 1, with no abstract
     declaration anywhere in the file.  MEASURED both ways.  That is the intended
     answer — a view that cannot resolve the file must not claim rc 0 — but it is a

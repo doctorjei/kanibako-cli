@@ -658,7 +658,7 @@ def _run_agent_config(args: argparse.Namespace) -> int:
                 )
         # ⚑⚑ THE ONE SETTER, AND THERE IS NO LONGER A SECOND ARM BESIDE IT. This verb had its
         # OWN writer straight to ``write_leaf``, so none of the set-time validation ran:
-        # measured, ``agent set claude canon=@bogus.ref`` stored the dangling reference at rc 0
+        # measured, ``agent set claude canon={bogus.ref}`` stored the dangling reference at rc 0
         # while the same value through ``system set`` was refused by name. Two writers of one
         # keyspace slot is the defect — so the checks are NOT copied here; the write is routed
         # to where they already live (the E3 resolution probe, the typed-scalar check and the
@@ -669,7 +669,7 @@ def _run_agent_config(args: argparse.Namespace) -> int:
         # ``config.agents``) and the engine's per-node routes are reachable only there —
         # see ``config_dest._agent_node_route``. The threading otherwise mirrors
         # ``system set``'s, with ONE datum that verb does not have (P7): the NODE being
-        # written, which anchors ``@meta.agent.<node>.path`` in the set-time snapshot. A
+        # written, which anchors ``{meta.agent.<node>.path}`` in the set-time snapshot. A
         # legal value spelled against the agent's own store root dangles without it.
         from kanibako.settings.config_interface import _set_confirmation, set_config_value
         from kanibako.settings.config_keys import ConfigLevel
@@ -1128,7 +1128,7 @@ def run_reauth(args: argparse.Namespace) -> int:
     # no production path produces a node-less selection and the ``target is None``
     # arm below is unreachable today.
     # ⚑ KEPT anyway, and NOT as a reservation for ``shell``: keyspec §2b makes the
-    # plain-shell box an effective ``@system.agent`` of ``shell``, a NAMED node, so
+    # plain-shell box an effective ``{system.agent}`` of ``shell``, a NAMED node, so
     # a D2 selection has ``has_agent`` TRUE and resolves a target like any other.
     # The guard stays because the incident is on record (bifrost E-NULL) and the
     # shape costs one conjunct — a floor under the two-vocabulary seam, not a plan.
@@ -1176,7 +1176,7 @@ def run_reauth(args: argparse.Namespace) -> int:
         # a box pointed at a third-party endpoint. ``None`` for a bare agent.
         persona_values=_persona_values_for(agent_name, target),
         # ⚑ REQUIRED (P7): reauth must resolve the SAME per-agent credential dir the
-        # launch delivers from (``@workset.auth.path/@system.agent``); without the
+        # launch delivers from (``{workset.auth.path}/{system.agent}``); without the
         # §1A selection level it would name the agent the STORED settings select, or
         # the workset auth ROOT when none is stored.
         selection_level=selection.selection_level,

@@ -25,7 +25,7 @@ from kanibako.utils import stat_unless_gone
 #: The built-in budget, applied when NO tier carries ``system.helpers.*``.  ⚑ DERIVED
 #: from the declared table, never restated: the launch floor spells the same two values
 #: as dotted keys (``settings_launch.SYSTEM_SCALAR_FLOOR``), and a second literal here
-#: would let a box's resolved ``@system.helpers.depth`` and this in-box fallback disagree.
+#: would let a box's resolved ``{system.helpers.depth}`` and this in-box fallback disagree.
 DEFAULT_DEPTH = SPAWN_BUDGET_DEFAULTS["depth"]
 DEFAULT_BREADTH = SPAWN_BUDGET_DEFAULTS["breadth"]
 
@@ -37,7 +37,7 @@ DEFAULT_BREADTH = SPAWN_BUDGET_DEFAULTS["breadth"]
 #:
 #: ⚑ ITS CONTENT IS A SETTINGS DOCUMENT, not a bespoke shape: the two declared
 #: ``system.helpers.*`` keys in their ordinary ``system: helpers:`` table, which is why
-#: :func:`read_spawn_budget` also answers a box's own ``@config.settings``.  A helper's
+#: :func:`read_spawn_budget` also answers a box's own ``{config.settings}``.  A helper's
 #: copy also carries its ``meta.box.helper_num`` (:func:`write_helper_number`); a
 #: director's never does.
 SPAWN_CONFIG_FILENAME = "spawn.yaml"

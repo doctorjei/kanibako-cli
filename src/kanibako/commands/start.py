@@ -132,7 +132,7 @@ def _agent_critical_dests() -> list[tuple[str, str]]:
     """Enumerate AGENT_CRITICAL bind mountpoints across ALL installed plugins.
 
     Each plugin descriptor's AGENT_CRITICAL binds carry an in-box absolute
-    ``box_dest`` (``$GUEST_HOME`` already expanded to the ``/home/agent`` literal
+    ``box_dest`` (``{$GUEST_HOME}`` already expanded to the ``/home/agent`` literal
     at load); return each as a shell_dir-relative path plus its kind
     ("file"/"dir"), for the per-launch hygiene sweep that reaps stale empty stubs
     (the 0-byte ``.local/bin/<agent>`` decoy).  EVERY plugin, not just this
@@ -305,12 +305,12 @@ def ensure_persona_share_symlinks(std, agent_id, target) -> None:
     for anything else — so this shim never treats a self-resolving source
     (an absolute path, a ``~``, an unrelated ``@``-ref) as a store path.  Reading a
     path component off the WHOLE value remains wrong for the reason it always was:
-    ``@meta.agent.<a>.path/common/<leaf>`` is a REF, and joining it would produce
-    the literal directory ``agents/<node>/@meta.agent.<a>.path/common/<leaf>``.
+    ``{meta.agent.<a>.path}/common/<leaf>`` is a REF, and joining it would produce
+    the literal directory ``agents/<node>/{meta.agent.<a>.path}/common/<leaf>``.
     Every link path here is ``agents_root / store_dirname(<node>) / <leaf>``, which is
-    what ``@meta.agent.<node>.path/<leaf>`` resolves to
+    what ``{meta.agent.<node>.path}/<leaf>`` resolves to
     (``settings_launch.meta_agent_path_floor`` defines that anchor as
-    ``@config.agents/<store_dirname>``) — so this shim and the resolver cannot drift:
+    ``{config.agents}/<store_dirname>``) — so this shim and the resolver cannot drift:
     they are two consumers of ONE layout fact, reached the two ways.
     """
     harness = harness_of(agent_id)
@@ -340,11 +340,11 @@ def ensure_persona_share_symlinks(std, agent_id, target) -> None:
     )
 
     # (2) The CANON store root — the agent-handbook-chapter SOURCE.  ⚑ WHOLE-LEAF,
-    # like (1): the ``agent.<node>.canon`` key names ``@config.agents/<node>/canon``
+    # like (1): the ``agent.<node>.canon`` key names ``{config.agents}/<node>/canon``
     # and the chapter bind reads ``<that>/handbook`` through it, so the link and
     # the key meet at the SAME dir or the persona falls back to the DEFAULT chapter
     # while its harness ships its own.  ⚑ LINK ONLY WHAT EXISTS: the node key falls
-    # back to ``@agent.default.canon`` while the node's ``canon`` is absent, and an
+    # back to ``{agent.default.canon}`` while the node's ``canon`` is absent, and an
     # unconditional link would trade that REAL default content for an EMPTY harness
     # dir this shim just mkdir'd.  Every shipped harness carries
     # ``canon/handbook``, so a missing harness dir means a harness with no canon to
@@ -1223,7 +1223,7 @@ def _agent_scalar_pick(
     swallowed error would resolve the value as if the file said nothing.
     The box's files, context and floors come off
     :func:`~kanibako.settings.settings_launch.resolve_inputs`, the launch's own, so
-    a value spelled ``@meta.workset.path/…`` answers here as it does there;
+    a value spelled ``{meta.workset.path}/…`` answers here as it does there;
     *selection_level* is the §1A selection their auth chain needs (REQUIRED, P7).
     *refuse*, when given, is *key*'s rule: a present ``None`` RAISES its refusal
     (:func:`_refuse_null_behavior`) instead of reading as no value.
@@ -2339,7 +2339,7 @@ def _tweakcc_cache_dir(std, agent_id: str) -> Path:
     ``caches/tweakcc`` leaf under the ACTIVE node — ``agents/<node>/`` for a
     persona (whose leaf the persona-share shim links at the harness's real dir
     BEFORE this runs), ``agents/claude/`` for the bare agent.  Composed from
-    ``std.agents`` (the resolved ``@config.agents``) and :func:`store_dirname`
+    ``std.agents`` (the resolved ``{config.agents}``) and :func:`store_dirname`
     (the one place a node becomes a directory) — the shared facts, never
     re-spelled — plus the FIXED category dirname (refused if undeclared).
     """
@@ -2765,13 +2765,13 @@ def _start_helper_hub(
     # Socket name = ``<box>-<ws>``, hashed only when the path would overflow
     # ``sun_path``; reattach recomputes the same deterministic name.
     socket_path = helper_socket_path(proj, _run_dir)
-    # Per-box, per-mode HOST helper log — the RESOLVED @workset.logs of that
+    # Per-box, per-mode HOST helper log — the RESOLVED {workset.logs} of that
     # box's workset root in EVERY mode (STANDALONE resolves it against the
-    # degenerate workset at the project dir, default @workset.boxes =
-    # box_data/), not the old shared @config.data/logs/<id>/ location.
+    # degenerate workset at the project dir, default {workset.boxes} =
+    # box_data/), not the old shared {config.data}/logs/<id>/ location.
     # Guarantee-create the parent before the ro bind (L7).
     # ⚑⚑ THE RESOLVED KEY IS WHAT MAKES THIS AGREE WITH THE MOUNT, which is
-    # emitted as the spec spelling @workset.logs/@{meta.box.name}.jsonl —
+    # emitted as the spec spelling {workset.logs}/{meta.box.name}.jsonl —
     # writer, .exists() gate and mount all name one file (migration M-14).
     # ``None`` when ``workset.logs`` is a present ``<None>``: no hub log, no log bind.
     from kanibako.settings.paths import helper_log_path
@@ -3097,7 +3097,7 @@ def _run_container(
     config = load_config(config_file)
 
     std = load_std_paths(config)
-    # SYSTEM tier of the SETTINGS cascade = @config.settings = global/settings.yaml
+    # SYSTEM tier of the SETTINGS cascade = {config.settings} = global/settings.yaml
     # (behavior keys), distinct from the kanibako.cfg CONFIG file (system.* layout).
     system_settings_path = std.settings
 
@@ -3571,7 +3571,7 @@ def _run_container(
         # 2026-09-19 ruling it is a REFUSAL (no default set), not a silent plain
         # shell, so NO production path reaches the ``else None`` arm today.
         # ⚑ The guard is KEPT, and NOT as a reservation for ``shell``: keyspec §2b
-        # makes the plain-shell box an effective ``@system.agent`` of ``shell``, a
+        # makes the plain-shell box an effective ``{system.agent}`` of ``shell``, a
         # NAMED node, so a D2 selection has ``has_agent`` TRUE and comes down the
         # ``resolve_target`` side like any other agent. It is kept because the
         # incident is on record (bifrost E-NULL) and the shape costs one conjunct —
@@ -3689,7 +3689,7 @@ def _run_container(
     # ⚑ ONLY AN AGENT-MODE LAUNCH READS IT OFF ``agent_id``.  A launch that runs no
     # agent program (``kanibako shell``, an explicit ``--entrypoint``) also carries
     # ``agent_id`` = ``shell``, but it is not a plain-shell BOX (keyspec §2b: the
-    # plain-shell box is an effective ``@system.agent`` of ``shell``): the box's own
+    # plain-shell box is an effective ``{system.agent}`` of ``shell``): the box's own
     # agent still owns its bootstrap, and ``run_start``'s persistence heuristic read
     # it there (:func:`_resolve_bootstrap_program`).  That read is fail-soft on
     # agent SELECTION — an illegal, ambiguous or uninstalled agent answers the
@@ -4923,7 +4923,7 @@ def _run_container(
 
             # ⚑ H6, THIRD SET: keyed by normalized box DESTINATION, not by
             # ``binding.key``. The collapsed bind map is keyed by the RESOLVED
-            # destination, and ``Binding.box_dest`` is already ``$GUEST_HOME``-
+            # destination, and ``Binding.box_dest`` is already ``{$GUEST_HOME}``-
             # expanded at load (``agent_defaults._build_binding``), so the two
             # spellings meet. Matching on ``b.key`` here would never hit, so EVERY
             # delivery bind would silently fall to the best-effort branch and a
@@ -7345,7 +7345,7 @@ def _effective_behavior_for_display(
     persona_values = _persona_values_for(active, target)
 
     # DISPLAY == LAUNCH: the box's files, ctx and floors from the ONE input builder
-    # (so a behavior value spelled ``@meta.workset.path/…`` or ``@workset.auth.path/…``
+    # (so a behavior value spelled ``{meta.workset.path}/…`` or ``{workset.auth.path}/…``
     # answers here as it does at launch); the floors fold in as ``agent.default.*``
     # and ``agent.<active>.*``, and the per-agent file as the launch reads it: its
     # values into the ``agent.<active>`` slot, its ``agent: default:`` table too.
@@ -7406,7 +7406,7 @@ def _resolve_box_auth_source(
     through the cascade; the floor is the backstop.
 
     ⚑ *selection_level* is a REQUIRED keyword — deliberately NOT defaulted (P7).
-    ``meta.box.auth.workset_path`` resolves ``@workset.auth.path/@system.agent``
+    ``meta.box.auth.workset_path`` resolves ``{workset.auth.path}/{system.agent}``
     (spec §2c), so a caller that omits it silently points the per-agent credential
     dir at the agent the STORED settings select — or the workset auth ROOT when none
     is stored: the launch would deliver from ``<auth>/<agent>`` while
@@ -7550,7 +7550,7 @@ def _resolve_box_launch_decisions(
         persona_values=persona_values,
         default_categories=dict(inputs.system_floor),
         # ⚑ REQUIRED here (P7): ``meta.box.auth.workset_path`` is now spelled
-        # ``@workset.auth.path/@system.agent`` (spec §2c), so this snapshot
+        # ``{workset.auth.path}/{system.agent}`` (spec §2c), so this snapshot
         # must carry the RESOLVED selection or, for any launch whose agent came
         # from ``--agent`` rather than from the stored key, the per-agent credential
         # source would name the STORED agent's dir (the workset auth ROOT when none
@@ -7872,7 +7872,7 @@ def _resolve_launch_snapshot(
         # resolves — the derived table below holds values only a launch can compute,
         # and where both name one VAR the DERIVED value is the authoritative one, so
         # it merges second and wins.  It carries ``box.env.COLORTERM`` since D1-4/MBR-2
-        # deleted the first-run write, and ``agent.default.env.TERM`` (= ``$TERM``,
+        # deleted the first-run write, and ``agent.default.env.TERM`` (= ``{$TERM}``,
         # the host's terminal type for every agent) since 2026-09-20.
         _merge_default_categories(
             default_categories, core_defaults.env_default_categories(),
@@ -8006,7 +8006,7 @@ def _resolve_launch_snapshot(
             # plugin builds each key DISCRIMINATED (``agent.<agent>.bindings.*``) and
             # its ``@``-ref source is resolved by ``expand`` from the ``system_floor``
             # floor.  Currently empty for all first-party plugins (the former
-            # ``@system.instructions`` instructions bind was retired — the guide now
+            # ``{system.instructions}`` instructions bind was retired — the guide now
             # ships via the RO bundle + launch-flatten).
             # ⚑ Re-keyed AND re-rooted like the two folds above.  EMPTY FOR EVERY
             # FIRST-PARTY PLUGIN is exactly what MASKED this: a persona resolved a
@@ -8113,8 +8113,8 @@ def _resolve_launch_snapshot(
         persona_values=persona_values,
         # ⚑ EVERY RESOLVE folds the auth chain (it rides *inputs*), so every caller
         # carries the §1A selection it has: the chain's ``meta.box.auth.workset_path``
-        # is ``@workset.auth.path/@system.agent`` (spec §2c). A no-agent box has
-        # none, so there ``@system.agent`` answers the STORED default — a known gap:
+        # is ``{workset.auth.path}/{system.agent}`` (spec §2c). A no-agent box has
+        # none, so there ``{system.agent}`` answers the STORED default — a known gap:
         # keyspec §2b makes it ``shell``.
         cli_level=cli_level,
         dest_keys=dest_keys,
@@ -8498,7 +8498,7 @@ def _install_assembly_collapse(
     # (spec ``:1015``): the seam reads the RO DERIVED key and pairs it with the seam's
     # own options, and the collapse seeds it beneath every scope's shape.
     # 🛑 READ THE KEY — never re-derive from ``proj.shell_path`` and never re-inline
-    # ``@meta.box.path/home``. ``settings_launch.workset_anchor_floor`` is the ONE
+    # ``{meta.box.path}/home``. ``settings_launch.workset_anchor_floor`` is the ONE
     # spelling of that derivation; a second one here is what A9 removed.
     home_bind = BindEntry(_snapshot_home(snapshot), HOME_OPTIONS)
     # ⚑ Recomputes the seed list and discards it — the SAME pure concatenation over
@@ -8870,7 +8870,7 @@ def _seed_box_home(
     CHAPTER (a HOST-side template copy, NOT a seed).
 
     ⚑ STEP 3 IS THE ONLY ROUTE THAT FILLS THE BOX HANDBOOK CHAPTER.  Step 2 does
-    NOT — nothing declares a ``seeded`` entry at ``@box.canon/handbook`` any more, so
+    NOT — nothing declares a ``seeded`` entry at ``{box.canon}/handbook`` any more, so
     a box created without step 3 gets an EMPTY chapter.  It is not a redundant second
     copy; do not "simplify" it away by folding it back into step 2.
 
@@ -8949,7 +8949,7 @@ def _sync_box_at_create(
     ⚑ THE SELECTION ONLY, never the full §1A CLI level: the create-side flags are
     not the launch's.  *selection_level* is a REQUIRED keyword (P7) because this
     whole-box resolve folds the auth chain, whose ``meta.box.auth.workset_path`` is
-    ``@workset.auth.path/@system.agent`` (spec §2c) — omit it and a ``synced`` row
+    ``{workset.auth.path}/{system.agent}`` (spec §2c) — omit it and a ``synced`` row
     sourced there reads the directory of the agent the STORED settings select, not
     the one running, or the workset auth ROOT when none is stored.  ``None`` only
     for a no-agent box.
@@ -9678,7 +9678,7 @@ def _host_copy_dest(
 
     §2a's enforcement point 2: **assert the dest lands inside the BOX STORE ROOT**
     before anything is written.  The residual escape it refuses is a
-    settings-declared dest such as ``@box.canon/../../../etc``.
+    settings-declared dest such as ``{box.canon}/../../../etc``.
 
     ⚑⚑ ITS ONLY CALLER IS THE HOST-TEMPLATE COPY (:func:`_install_box_handbook`),
     and that is the whole of what "host space" means here now.  Until 2026-08-08c
@@ -9688,10 +9688,10 @@ def _host_copy_dest(
     ``container._guest_dest_to_host``.  ⚑ Do NOT reintroduce a call from a category
     applier: a category dest arriving here would be a guest path taken for a host
     one, which is the mis-landing bug ``CategoryEntry`` documents.
-    ``@box.canon/handbook`` is not a category dest at all — it is a HOST location
+    ``{box.canon}/handbook`` is not a category dest at all — it is a HOST location
     nothing in the box reads (§5C-RULING), which is exactly why it still needs this.
 
-    *box_root* is ``@meta.box.path`` — obtained as ``shell_path.parent``, which
+    *box_root* is ``{meta.box.path}`` — obtained as ``shell_path.parent``, which
     equals it in EVERY mode by construction (the shell dir is ``<box_dir>/home``:
     ``boxes/<name>/home`` for primary, ``<project>/box_data/home`` for standalone).
 
@@ -9744,12 +9744,12 @@ def _apply_init_seeds(
     nothing for an entry to carry.
 
     ⚑ THE BOX HANDBOOK CHAPTER IS NOT SEEDED HERE, and looking for it in this
-    function is the wrong place: ``@box.canon/handbook`` is filled by the SIBLING
+    function is the wrong place: ``{box.canon}/handbook`` is filled by the SIBLING
     step 3, :func:`_install_box_handbook`, off the snapshot returned above.
 
     ⚑ *selection_level* is the §1A SELECTION only (never a launch flag), REQUIRED (P7):
-    a user ``seeded`` row resolves here, and one sourced under ``@workset.auth.path``
-    or ``@meta.box.auth.workset_path`` needs the auth chain AND the selection, or it
+    a user ``seeded`` row resolves here, and one sourced under ``{workset.auth.path}``
+    or ``{meta.box.auth.workset_path}`` needs the auth chain AND the selection, or it
     copies from the wrong host path.  ``None`` only for a no-agent box.
 
     See ``llm-docs/kanibako/commands/start.py.md``, "``_seed_box_home`` /
@@ -9869,7 +9869,7 @@ def _apply_init_seeds(
             # the layer sources IN ORDER (per-file last-wins) then seed
             # create-if-absent.
             # ``stage_layers`` skips any absent-dir source (skip-if-absent — e.g. an
-            # unpopulated @workset.template).
+            # unpopulated {workset.template}).
             # ⚑ The old ``assert host_src is not None`` here is GONE, not dropped:
             # ``CollapsedCopy.src`` is typed ``str``, and the source-less case is
             # refused upstream by ``build_store_shape`` before a row exists at all.

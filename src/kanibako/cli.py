@@ -299,9 +299,9 @@ def _ensure_initialized() -> None:
                 save_agent_file(target_toml, cls().generate_agent_config())
 
         # Packaged content → the host stores.  The content ships as static package data
-        # and is installed here into its ENUMERATED destinations (@system.template's box
-        # + workset molds, @system.canon/handbook, and every agent store under
-        # @config.agents), create-if-absent so user edits survive an upgrade.  The
+        # and is installed here into its ENUMERATED destinations ({system.template}'s box
+        # + workset molds, {system.canon}/handbook, and every agent store under
+        # {config.agents}), create-if-absent so user edits survive an upgrade.  The
         # layered seed-once apply (the three ``<scope>.seeded[~/]`` keystore keys, staged by
         # ``commands.start._apply_init_seeds`` via ``templates.stage_layers``) then copies
         # the box HOME molds into each new box store at creation; the box handbook chapter
@@ -390,7 +390,7 @@ def _setup_nudge(args: argparse.Namespace) -> None:
         from kanibako.settings.paths import default_data_home, load_system_config
 
         cf = user_config_file()
-        # The marker lives in the SYSTEM SETTINGS file (``@config.settings``) since
+        # The marker lives in the SYSTEM SETTINGS file (``{config.settings}``) since
         # 2026-08-26 — spec §2g declares it a Layer-2 ``system.*`` settings key, and
         # Layer-1 holds the ``config.*`` bootstrap paths alone (spec §1).
         # ⚑ ``load_system_config``, deliberately NOT ``load_std_paths``: the latter
