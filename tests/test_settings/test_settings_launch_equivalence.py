@@ -27,7 +27,7 @@ WHAT SURVIVES HERE, all of it independent of that oracle:
   category emitter vs the OLD ``descriptor_mounts``, per mode×agent, including the
   AGENT_CRITICAL exit-1 parity;
 * the DEPTH-ORDER property across families;
-* BEHAVIOR equivalence (ruling A) — the snapshot behavior read vs the retired
+* BEHAVIOR equivalence ([Jei:2026-06-28f]) — the snapshot behavior read vs the retired
   ``_build_effective_state``, and the resolution-order edge.
 """
 
@@ -311,9 +311,9 @@ def test_depth_order_preserved_across_families(tmp_path):
 
 
 # --------------------------------------------------------------------------- #
-# BEHAVIOR equivalence (ruling A — the FULL read-path swap): the NEW snapshot   #
-# behavior read (build_launch_snapshot + effective_behavior) vs the OLD         #
-# _build_effective_state, per agent — AND the Jei-noted resolution-order edge.  #
+# BEHAVIOR equivalence ([Jei:2026-06-28f] — the FULL read-path swap): the NEW   #
+# snapshot behavior read (build_launch_snapshot + effective_behavior) vs the    #
+# OLD _build_effective_state, per agent — AND the noted resolution-order edge.  #
 # --------------------------------------------------------------------------- #
 
 
@@ -396,7 +396,7 @@ def test_behavior_box_override_beats_agent_file(tmp_path):
 
 
 def test_behavior_resolution_order_edge_is_spec_correction(tmp_path):
-    # ⚑ The Jei-NOTED spec-CORRECTION edge (§2d): an AGENT-file
+    # ⚑ The NOTED spec-CORRECTION edge (§2d): an AGENT-file
     # agent.<active>.model vs the agent.DEFAULT.model layer. The spec model =
     # cascade THEN active-over-default → the agent file's agent.<active>.model WINS
     # (active beats default regardless of level). The retired OLD reader did

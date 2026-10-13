@@ -178,7 +178,8 @@ class TestHomeIsPidZero:
 
 
 class TestTheSeedPassIsAConcatenation:
-  """⚖️ RULED 2026-08-09d — seeds apply to the HOME bind ALONE, so nothing arbitrates them."""
+  """⚖️ RULED [Jei:2026-08-09d] — seeds apply to the HOME bind ALONE, so nothing arbitrates
+  them."""
 
   def test_the_seed_list_is_the_CONCATENATION_in_SCOPE_order(self):
     # ⚑⚑ THE DESTS DISAGREE WITH THE SCOPES ON PURPOSE: ``z`` is declared in the
@@ -277,11 +278,11 @@ class TestTheSeedPassIsAConcatenation:
     assert collapsed.synced == [CollapsedCopy("/h/sync", f"{GUEST}/y", "")]
 
   def test_one_dest_in_BOTH_arms_keeps_BOTH_ROWS(self):
-    # 🛑 RE-INVERTED 2026-08-11, and this time by RULING rather than by measurement.
+    # 🛑 RE-INVERTED [Jei:2026-08-11], and this time by RULING rather than by measurement.
     # Cutover 2b-2 added a prune here that dropped the seed row at a dest a sync also
-    # claimed, reproducing ``settings_categories._resolve_copy_group``. Jei replaced
-    # the question with a DELIVERY rule — *"write synced to it once at creation,
-    # irrespective of date"* — and confirmed the prune comes out with it.
+    # claimed, reproducing ``settings_categories._resolve_copy_group``. That ruling
+    # replaced the question with a DELIVERY rule — *"write synced to it once at
+    # creation, irrespective of date"* — and confirmed the prune comes out with it.
     #
     # ⚑ "Nothing is arbitrated at a destination" (spec :147-149) now holds ACROSS the
     # two arms as well as within one. Both rows survive; ORDER decides, at create:
@@ -365,7 +366,8 @@ class TestTheSeedPassIsAConcatenation:
 
 
 class TestTheSyncArmIsAPlainConcatenation:
-  """⚖️ RULED 2026-08-12 — *"don't check for sync. Let it clobber whatever it wants."*
+  """⚖️ system-design § "Collision arbitration"; [Jei:2026-08-12] — *"don't check for
+  sync. Let it clobber whatever it wants."*
 
   ⚑ The pass USED to fold against the final bind map, to refuse a sync at a bind's
   exact point. That refusal is GONE and the parameter went with it, so this arm is
@@ -451,7 +453,8 @@ class TestTheSyncArmIsAPlainConcatenation:
     assert collapsed.synced == [CollapsedCopy("/h/cred", f"{GUEST}/w/cred", "")]
 
   def test_a_sync_at_a_binds_EXACT_dest_is_ACCEPTED_and_the_BIND_SURVIVES(self):
-    """⚖️ RULED 2026-08-12 — *"don't check for sync. Let it clobber whatever it wants."*
+    """⚖️ system-design § "Collision arbitration"; [Jei:2026-08-12] — *"don't check for
+    sync. Let it clobber whatever it wants."*
 
     ⚑ THE REVERSAL. Until this ruling the fold REFUSED this arrangement by name.
     It is ordinary: delivery resolves the dest through the bind that covers it, so
@@ -631,7 +634,7 @@ class TestASeedMustLandInsideHome:
 
 
 class TestASyncMustBeCoveredByAMount:
-  """⚖️ RULED 2026-08-28 — *"we should be checking that the paths resolve. That's it."*
+  """⚖️ RULED [Jei:2026-08-28] — *"we should be checking that the paths resolve. That's it."*
 
   A ``synced`` dest no mount covers writes into the container's own ephemeral storage
   and is lost when the box stops — silently, and a sync row is a credential more often
@@ -1034,12 +1037,12 @@ class TestAMaskSweepsTheMountsItCovers:
 
 
 class TestAMaskMayNotSubsumeHome:
-  """⚖️ RULED 2026-08-09d — "nothing may subsume home" is ABSOLUTE and covers MASKS.
+  """⚖️ RULED [Jei:2026-08-09d] — "nothing may subsume home" is ABSOLUTE and covers MASKS.
 
   ⚑ A DELIBERATE BEHAVIOR CHANGE, not a regression: until this ruling a mask at
   ``~`` (or at ``/``) swept the home binding away and the box launched with no home,
   because the rule fell out of the BIND refusal alone, which counts bindings only.
-  His words: *"of course we should prohibit masking home directly or allowing a mask
+  [Jei:2026-08-09d]: *"of course we should prohibit masking home directly or allowing a mask
   that would have home as a child path (ie that would shadow home)"*.
   """
 
@@ -1145,7 +1148,8 @@ class TestAMaskCannotTakeOrEnterAnotherMask:
 
 
 class TestTheIntraScopeSorts:
-  """Ruling 1's mechanism, and its INVERSE for masks: no answer may turn on dict order."""
+  """The collapse DESIGN §0 ruling 1 mechanism, and its INVERSE for masks: no answer may turn
+  on dict order."""
 
   def test_a_parent_bind_declared_AFTER_its_child_in_one_scope_still_lands_first(self):
     # ⚑ Without the sort this raises: the child is already collapsed when the
@@ -1212,8 +1216,9 @@ class TestTheIntraScopeSorts:
   def test_nested_masks_in_ONE_scope_collapse_CHILD_first_either_way(self, declared):
     # ⚑⚑ THE INVERSE SORT, and it is load-bearing: the mask rule refuses a PARENT
     # and permits a CHILD, so masks must arrive child-first or one declaration
-    # order raises and the other does not. Ruling 1's argument, direction flipped —
-    # within a scope there is no precedence to express, so the sort is the answer.
+    # order raises and the other does not. The collapse DESIGN §0 ruling 1
+    # argument, direction flipped — within a scope there is no precedence to express,
+    # so the sort is the answer.
     collapsed = collapse(box=shape(mask=dict.fromkeys(declared, True)))
     assert list(collapsed.bindings) == [GUEST, f"{GUEST}/x"]
 
@@ -1688,10 +1693,10 @@ class TestTheResultPhrasesTakeTheProvenance:
 class TestThePerRunOverride:
   """``-e VAR=VALUE`` is the CASCADE'S CLI LEVEL over the env slots (MBR-1 P4c-1).
 
-  Jei, 2026-08-14: *"-e should override the key values, not the environment variables
-  themselves"* — so it is applied INSIDE the collapse, after the containment walk, and
-  it does exactly two things: it replaces the VALUE of the key that owns a variable, or
-  it fills a variable no key owns.
+  system-design § "Delivery at launch"; [Jei:2026-08-14]: *"-e should override the key
+  values, not the environment variables themselves"* — so it is applied INSIDE the
+  collapse, after the containment walk, and it does exactly two things: it replaces the
+  VALUE of the key that owns a variable, or it fills a variable no key owns.
 
   ⚑⚑ WHY THAT ORDER IS THE DESIGN AND NOT A DETAIL: ``-e`` can never CONTEST a slot, so
   no refusal can name it and none should be taught to. Ride it as a settings level

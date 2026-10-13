@@ -212,10 +212,10 @@ class TestSourcePartition:
         # the whole reason it is here. The other three were emitted by NO floor. This one
         # WAS emitted — but only into the CREATE-time seed resolve, which an existing box
         # never runs again (``_seed_box_home``'s only two callers are ``run_create`` and
-        # ``_run_container``'s ``if proj.is_new:`` block). Under the user's 2026-08-29
-        # ruling — *"for any box that exists"* — reachability that happens only at create
-        # is not reachability. ⇒ **"a floor emits it somewhere" is not the test; "an
-        # existing box can resolve it" is.**
+        # ``_run_container``'s ``if proj.is_new:`` block). Under [Jei:2026-08-29] —
+        # *"for any box that exists"* — reachability that happens only at create is not
+        # reachability. ⇒ **"a floor emits it somewhere" is not the test; "an existing box
+        # can resolve it" is.**
         # ⚑ Its standalone arm is ``<None>`` and stays an ABSENCE, so this ``mode="primary"``
         # probe sees it while standalone does not.
         # ⚑ 10 → 11 (2026-09-27): ``workset.workspaces`` joined, because the anchor floor
@@ -398,7 +398,7 @@ class TestEnvRows:
         This case used to assert the registry carried NONE, and said that a red here
         meant per-VAR rows had been ratified and the section had to be re-derived.  They
         were: spec §2b declares ``box.env.COLORTERM`` (2026-08-15, ``9ac0980``) and §2d
-        declares ``agent.default.env.TERM`` (2026-09-19, Jei's all-agents ruling).  The
+        declares ``agent.default.env.TERM`` (all-agents, [Jei:2026-09-19]).  The
         re-derivation the old text demanded is NOT a removal — section 3 reports the
         live env floor a box gets, so the vars kanibako ships belong in it, and it is
         section 1 that grew the DECLARED KEY rows.

@@ -612,7 +612,7 @@ class TestEveryDeclaredCategoryMoves:
         passes while the persona binds the HARNESS store DIRECTLY — replacing the
         node's symlink with a real directory then changes nothing, which is exactly
         the freedom the symlink exists to give (*"the user can change the symlink to
-        a directory or real target"*, ruled 2026-08-27).
+        a directory or real target"*, [Jei:2026-08-27]).
         """
         for key, arm in self._out().items():
             for dest, entry in arm.items():

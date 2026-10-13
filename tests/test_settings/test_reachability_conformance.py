@@ -16,7 +16,7 @@ ABSENT. Both halves are read OFF THE ROW, so no dangle goes unexplained and noth
 names a key. The arm exists because a default that legitimately resolves to absence
 became expressible: ``box.env.COLORTERM`` declares ``{$COLORTERM}``, a PASSTHROUGH of a
 host signal, and the ratified spec row says the box gets NO such variable when the host
-sets none. P was written when no such default could exist. Jei, 2026-09-20, choosing a
+sets none. P was written when no such default could exist. [Jei:2026-09-20], choosing a
 declared arm over the alternatives: *"(i) seems like the best for posterity, so unless
 there's another argument, lets do that."*
 
@@ -28,7 +28,7 @@ exists to avoid.
 
 ⚑⚑ THE TERMINUS IS NOT A NAMED OBJECT.  It is ANY resolve the production path performs
 for a box THAT ALREADY EXISTS — and K answers if it reaches a terminal in ANY of them.
-Jei, 2026-08-29: *"termini - for any box thst exists, def."*, and on the previous
+[Jei:2026-08-29]: *"termini - for any box thst exists, def."*, and on the previous
 wording, *"'launch snapshot' sounds a little bit like a carve out…"*.  He is right:
 naming ONE builder as *the* terminus privileges one snapshot object for no principled
 reason, and a key that resolves at a different real resolve is answerable to a user
@@ -61,9 +61,10 @@ already holds, which is the defect class this file exists to kill.
 discriminator, no allow-list and no exemption table:
 
 * NOTHING ABOUT WHETHER ANYTHING READS K.  A *reserved* key — declared now, consumer
-  later — satisfies P.  Jei's ruling on ``system.{backup,cache,runtime}`` ("reserved…
-  something will go there eventually") is untouched by this file.  Reserved and
-  reachable are ORTHOGONAL facts and P only ever asks the second.
+  later — satisfies P.  The [Jei:2026-08-27] ruling on
+  ``system.{backup,cache,runtime}`` ("reserved… something will go there eventually")
+  is untouched by this file.  Reserved and reachable are ORTHOGONAL facts and P only
+  ever asks the second.
 * NOTHING ABOUT THE VALUE.  ``_PATH_ORACLE`` in
   ``tests/test_settings/test_manifest_conformance.py`` owns value correctness; P owns
   existence.  Two properties, two carriers, no overlap.

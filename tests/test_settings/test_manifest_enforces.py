@@ -634,8 +634,8 @@ class TestTheCategoriesBlockShape:
         ⚑ WHY THE DISCRIMINATOR IS ``parametric:`` AND NOT THE ``terminal_key:`` /
         ``dest_keyed:`` FLAGS — WHICH IS NO LONGER OBVIOUS.  It was once forced:
         ``masks`` carried neither flag while its six bind-shaped siblings carried
-        both, so absence of a positive marker could not discriminate anything.  Jei
-        closed that gap on 2026-08-23 and all seven now carry both, which makes the
+        both, so absence of a positive marker could not discriminate anything.  That
+        gap was closed on 2026-08-23 and all seven now carry both, which makes the
         flags LOOK like a simpler split.  They are not the one to use.  ``parametric:``
         is the field :func:`_parametric_segments` already reads to SPELL a key, so
         discriminating on it keeps one field deciding one thing and keeps this
@@ -669,7 +669,7 @@ class TestTheBindShapedRowsCarryTheKeyShapeFlags:
     ``dest_keyed:`` while its six bind-shaped siblings carried both, even though the
     block's own prose called it dest-keyed and the code listed it in
     ``TERMINAL_CATEGORY_TAILS`` — the row was simply written before the others and never
-    caught up.  Jei brought it into line, and nothing asserted the resulting uniformity,
+    caught up.  It was brought into line, and nothing asserted the resulting uniformity,
     so the EIGHTH bind-shaped row would have reintroduced exactly the same silent
     inconsistency.  This is the case that reds instead.
 

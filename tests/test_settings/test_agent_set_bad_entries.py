@@ -4,7 +4,7 @@ retired entry outside the edited value's chain — naming it, writing nothing.
 The authority here is the agent file's OWN reader (:func:`~settings_assemble.agent_record`),
 the same one the launch and every read verb already use, so one file keeps one verdict.
 
-⚑ WHY THE READER AND NOT THE SHARED ``_cascade_bad_entries`` SCAN (ruled 2026-10-05, opt A):
+⚑ WHY THE READER AND NOT THE SHARED ``_cascade_bad_entries`` SCAN ([Jei:2026-10-05], opt A):
 the scan reads a settings file against the GENERIC keyspace, which does not know that ``self:``
 is the alias for ``agent.<node>``.  Pointed at a legitimate agent file it reports
 ``self.endpoint`` / ``self.model`` as entries that are not keys — so wiring the scan to this

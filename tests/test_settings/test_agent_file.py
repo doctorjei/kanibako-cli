@@ -68,7 +68,7 @@ class TestSecretPathSection:
         assert agent_record(cfg_path, node="claude", purpose=ReadPurpose.RESOLVE).secret_path == {}
 
     def test_load_present_null_secret_path_is_kept_as_none(self, tmp_path):
-        # 2026-08-17 ruling: the token/key MAY hold an explicit null to mean "no
+        # keyspec §2a secret_path.<VAR>: the token/key MAY hold an explicit null to mean "no
         # key" — this endpoint is deliberately KEYLESS. A ``None`` value must
         # survive the load VERBATIM (never coerced through ``str()``, which
         # would turn it into the four-byte garbage string ``"None"`` —
@@ -103,7 +103,7 @@ class TestSecretPathSection:
         assert loaded.secret_path == {"ANTHROPIC_AUTH_TOKEN": "/secure/token"}
 
     def test_round_trip_present_null_secret_path(self, tmp_path):
-        # A deliberately-keyless VAR (2026-08-17 ruling) survives save→load as a
+        # A deliberately-keyless VAR (keyspec §2a secret_path.<VAR>) survives save→load as a
         # real ``None``, not the string "None" — and a sparse write still
         # materializes the table (a dict with one None-valued entry is
         # non-empty, so it is NOT dropped as an empty category).
@@ -142,13 +142,14 @@ class TestLoad:
         assert cfg.env == {"MY_VAR": "hello"}
 
     def test_load_present_null_state_is_kept_as_none(self, tmp_path):
-        # 2026-08-17 ruling (persona MODEL, same shape as the token key): a flat
-        # state scalar (e.g. ``model``) explicitly ``null`` must survive load as
-        # a real ``None`` — never coerced through ``str()`` into the four-byte
-        # garbage string ``"None"``, which would reach the launch cascade as a
-        # BOGUS model id and silently defeat the "this persona needs no model"
-        # declaration. (Mutation: restore the unconditional ``str(v)`` and this
-        # comes back as the string ``"None"`` → RED.)
+        # keyspec §2a secret_path.<VAR>; [Jei:2026-08-17] (persona MODEL, same
+        # shape as the token key): a flat state scalar (e.g. ``model``)
+        # explicitly ``null`` must survive load as a real ``None`` — never
+        # coerced through ``str()`` into the four-byte garbage string
+        # ``"None"``, which would reach the launch cascade as a BOGUS model id
+        # and silently defeat the "this persona needs no model" declaration.
+        # (Mutation: restore the unconditional ``str(v)`` and this comes back as
+        # the string ``"None"`` → RED.)
         cfg_path = tmp_path / "test.yaml"
         cfg_path.write_text(
             'self:\n'
@@ -1536,9 +1537,10 @@ class TestTheForwardCompatPassthroughIsClosed:
         assert "agent info" not in message
 
     def test_the_self_alias_cannot_ride_in_either(self, tmp_path):
-        # ruling 55: nothing past the parse boundary recognizes ``self``. A hand-authored
-        # ``self.model:`` root leaf is a scalar the loader sweeps into state — and it stops
-        # here rather than becoming ``agent.claude.self.model`` in the snapshot.
+        # [spec:15-21, "self"]: nothing past the parse boundary recognizes ``self``. A
+        # hand-authored ``self.model:`` root leaf is a scalar the loader sweeps into state
+        # — and it stops here rather than becoming ``agent.claude.self.model`` in the
+        # snapshot.
         path = self._file(tmp_path, {"self.model": "opus"})
         with pytest.raises(SettingsError, match=r"self\.model"):
             agent_record(path, node="claude", purpose=ReadPurpose.RESOLVE)

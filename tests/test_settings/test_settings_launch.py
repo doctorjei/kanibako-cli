@@ -2789,7 +2789,7 @@ class TestMetaAgentPath:
 
 # --------------------------------------------------------------------------- #
 # B5 — meta.agent.<a>.{mode, exec, settings} materialization + the reader      #
-# spec §2d; the §3.3 rulings ("keep and use" / "it should exist and be used" / #
+# spec §2d; [Jei:2026-08-01] ("keep and use" / "it should exist and be used" / #
 # "we should be using this"); R-37 (shape in the manifest, members from        #
 # descriptors)                                                                 #
 # --------------------------------------------------------------------------- #
@@ -7351,7 +7351,7 @@ def _file_endpoint(tier: str, node: str) -> dict:
 
 class TestASettingsFileEndpointIsText:
     """Keyspec ``agent.default.endpoint``: VERBATIM TEXT in every settings file — no
-    ``@``-ref, ``$``/``~`` expansion or ``\\`` unescape (Jei, 142nd).
+    ``@``-ref, ``$``/``~`` expansion or ``\\`` unescape [Jei:2026-10-04].
 
     The persona store's half is :class:`TestPersonaValuesAreDataNotExpressions`.
     """

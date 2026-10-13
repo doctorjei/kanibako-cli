@@ -741,7 +741,7 @@ class TestABlankExplicitRefIsGivenNotUnset:
 
 
 # --------------------------------------------------------------------------- #
-# The BOX ARGUMENT in the cure — Jei's ruling, through the REAL seam           #
+# The BOX ARGUMENT in the cure — the ruling, through the REAL seam             #
 # --------------------------------------------------------------------------- #
 #
 # ⚑ ``TestRetiredKeyCureIsLevelAppropriate`` (and ``settings_assemble``'s own
