@@ -140,6 +140,8 @@ class TestNoResolverLeaksAToken:
             assert "@" not in resolved, f"{label}: '@' survived into {resolved}"
             assert "$" not in resolved, f"{label}: '$' survived into {resolved}"
             assert "~" not in resolved, f"{label}: '~' survived into {resolved}"
+            assert "{" not in resolved, f"{label}: '{{' survived into {resolved}"
+            assert "}" not in resolved, f"{label}: '}}' survived into {resolved}"
 
     def test_default_when_unset_carries_no_token(self, tmp_path):
         for label, resolver in _discover_resolvers().items():

@@ -29,7 +29,7 @@ from tests.support.early import early_record
 _EARLY = sorted(f"workset.{key}" for key in WORKSET_EARLY_KEYS)
 #: Values the reader refuses that the ordering rule alone allows: a ref into the key's own
 #: set, and a ``$`` it cannot answer.
-_REFUSED = ["@{workset.kuid}/z", "/z/{$AGENT}"]
+_REFUSED = ["{workset.kuid}/z", "/z/{$AGENT}"]
 #: Values the reader reads: the workset root ref, and a literal.
 _ACCEPTED = ["{meta.workset.path}/x", "/lit/x"]
 #: A value the system door takes for every early key: it reaches the workset and the partition.
@@ -110,13 +110,13 @@ class TestTheWorksetDoorAgreesWithTheReader:
 @pytest.mark.parametrize("key", _EARLY)
 class TestARefIntoALaterSetIsTheOrderingRulesAtBothDoors:
   def test_the_workset_door(self, key, ws, std, tmp_path):
-    message = _workset_set(key, "/z/@{box.image}", ws, std, tmp_path)
+    message = _workset_set(key, "/z/{box.image}", ws, std, tmp_path)
     assert 'system-design "Ordering rule"' in message, message
     stored = ws.root / WORKSET_META_FILE
     assert not stored.exists() or "box.image" not in stored.read_text()
 
   def test_the_system_door(self, key, std, tmp_path):
-    message = _system_set(key, "/z/@{meta.box.path}", std, tmp_path)
+    message = _system_set(key, "/z/{meta.box.path}", std, tmp_path)
     assert 'system-design "Ordering rule"' in message, message
     assert "could not be read back" not in message, message
     assert not (tmp_path / "settings.yaml").exists()
@@ -125,7 +125,7 @@ class TestARefIntoALaterSetIsTheOrderingRulesAtBothDoors:
 def test_a_system_ref_is_refused(ws, std, tmp_path):
   """``@system.agent`` is refused by the cascade probe before this door runs; pinned so
   the key stays refused whichever door answers."""
-  message = _workset_set("workset.registry", "/z/@{system.agent}", ws, std, tmp_path)
+  message = _workset_set("workset.registry", "/z/{system.agent}", ws, std, tmp_path)
   assert message.startswith("Error:"), message
 
 
@@ -221,7 +221,7 @@ def _reload(config_file):
   return load_std_paths(load_config(config_file))
 
 
-_LOGS_ON_BOXES = "@{workset.boxes}/lg"
+_LOGS_ON_BOXES = "{workset.boxes}/lg"
 #: ``workset.logs``'s readers at the system door: primary/named, then standalone.
 _SYSTEM_NAMES = ["__PRIMARY__", "__STANDALONE__"]
 
@@ -288,10 +288,10 @@ def test_the_door_opens_no_file_twice(door, std, ws, tmp_path, door_probe):
   for key in (k for k in _EARLY if k != "workset.boxes"):  # a self-ref stops before the door
     opens.clear()
     if door == "system":
-      _std_system_set(key, "@{workset.boxes}/x", std)
+      _std_system_set(key, "{workset.boxes}/x", std)
       written = std.settings
     else:
-      _workset_set(key, "@{workset.boxes}/x", ws, std, tmp_path)
+      _workset_set(key, "{workset.boxes}/x", ws, std, tmp_path)
       written = ws.root / WORKSET_META_FILE
     assert opens == [written], (key, opens)
 
