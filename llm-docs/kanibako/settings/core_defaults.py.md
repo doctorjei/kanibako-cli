@@ -2,13 +2,6 @@
 
 _thin reader of `src/kanibako/data/rom/settings/core-defaults.yaml`, plus the `~/canon` skeleton J-7 specifies_
 
-⚠️ **RELOCATION PASS, 2026-08-11.** Every explanatory paragraph that used to live in
-`src/kanibako/settings/core_defaults.py` is here; the source keeps one-line descriptors and `⚑`
-markers only. Absence of a symbol below means "nothing was displaced from it", never "does not
-exist". **Eleven claims were found FALSE against the code and were DROPPED rather than moved** —
-each is recorded under [Dropped as false](#dropped-as-false) so nobody re-derives them from git
-history.
-
 ## What the module is
 
 The STATIC, non-agent-specific launch-floor tables live as declarative data in
@@ -30,14 +23,14 @@ The shipped file declares EIGHT CATEGORY-TABLE families (seven BIND families plu
 | `helpers` | `helper_default_categories` | `box.bindings.{ro,rw}` |
 | `images` | `image_default_categories` | `box.bindings.ro` + `box.images_store` scalar |
 
-Since the DEFAULTS-1 pass the file also carries TWO NON-BIND SCALAR sections. They are flat maps
-keyed by setting name, not dest-keyed category tables, and they are why the sentence above says
-*bind* families:
+The file also carries THREE NON-BIND SCALAR sections. They are flat maps keyed by setting name, not
+dest-keyed category tables, and they are why the sentence above says *bind* families:
 
 | block | producer | emits |
 |---|---|---|
 | `agent_default` | `behavior_defaults` / `behavior_default` | the `agent.default.<key>` BEHAVIOR floor (spec §2d) — `access` · `allow_helpers` · `continue_mode` · `bootstrap` · `label`, and the `<None>` rows `model` · `endpoint` · `run_args` · `transform` as a present `None` |
-| `env` | `env_default_categories` | STATIC `<scope>.env.<VAR>` floor keys; ships exactly three — `box.env.COLORTERM`, `agent.default.env.TERM` and `agent.shell.env.TERM` |
+| `agent_shell` | `pseudo_tier_defaults` / `pseudo_tier_default` | each addressable pseudo-agent's `agent.<name>.<key>` tier floor (spec §2d fence) — read off its `agent_<name>:` table, folded into the base floor unconditionally; a `<None>` row stays a present `None` |
+| `env` | `env_default_categories` | STATIC `<scope>.env.<VAR>` floor keys; ships four — `box.env.COLORTERM`, `agent.default.env.TERM`, `agent.shell.env.TERM` and `agent.shell.env.KANIBAKO_DIRECTIVE_FINAL` (`{$GUEST_HOME}/AGENTS.md`) |
 
 Two reading traps in that pair:
 
@@ -45,7 +38,7 @@ Two reading traps in that pair:
   that read — `commands.start._declared_behavior` and
   :func:`kanibako.settings.settings_keyspace.access_default` both come here. `access` in particular
   has NO constant any more: the retired `ACCESS_DEFAULT` was a second spelling of `full`.
-  `behavior_defaults` keeps a `null` row a PRESENT `None` (as `shell_tier_defaults` does), and
+  `behavior_defaults` keeps a `null` row a PRESENT `None` (as `pseudo_tier_defaults` does), and
   `behavior_default` RAISES on one, because its consumers need a string.
 * `env_default_categories` is NOT `commands.start._core_env_default_categories`. That one emits the
   launch-DERIVED `KANIBAKO_*` stamps and its docstring forbids new entries; this one emits whatever
@@ -66,16 +59,19 @@ the users who had already stored their own. Three entries, each at its scope for
 * `box.env.COLORTERM` was the section's first. It replaced a first-run WRITE in `cli.py`; the write
   seam is now guarded by `tests/test_settings/test_defaults_enforcement.py`. BOX scope because it
   describes the terminal a box runs, not the host install.
-* `agent.default.env.TERM` (2026-09-20) is the second, and the first whose value is an EXPRESSION:
+* `agent.default.env.TERM` is the second, and the first whose value is an EXPRESSION:
   the file stores `$TERM`, and `settings_resolve` answers it with the host's terminal type —
   `xterm` when the host's is empty or unset, a set value passed through UNVALIDATED. AGENT DEFAULT
-  tier on Jei's 2026-09-19 ruling that a terminal type belongs to every agent, not to the
-  plain-shell box: the agent tier's two cascade levels are overlaid PER NAME (spec §2a), so a
+  tier because a terminal type belongs to every agent, not to the plain-shell box: the agent tier's two cascade levels are overlaid PER NAME (spec §2a), so a
   plugin descriptor or a settings file overrides it for ONE agent while the rest keep inheriting.
 * `agent.shell.env.TERM` restates it for the plain shell (keyspec §2d shell fence,
   `agent.shell.env.TERM | $TERM`): a pseudo-agent inherits nothing from `agent.default`
   (`settings_launch._fallback_node`), so without its own row a plain-shell box would get no `TERM`.
   Dormant for every true agent — only a shell pick reads `agent.shell`.
+* `agent.shell.env.KANIBAKO_DIRECTIVE_FINAL` (`{$GUEST_HOME}/AGENTS.md`, keyspec §2d shell fence) is
+  the file a plain-shell launch renders the canon into; its presence in the resolved container env is
+  what wraps the launch in the directive-flatten shim (`start._directive_flatten_shim`), as every
+  real agent's own FINAL does. `env_default_categories` expands the leading `{$GUEST_HOME}`.
 
 Two things in the module are NOT table producers and should not be read as such:
 
@@ -166,8 +162,10 @@ The shipped settings files: `core-defaults.yaml`, and the keyspace manifest and 
 ```CORE_DEFAULTS_FILENAME = "core-defaults.yaml"```
 Filename of the shipped system/core defaults, under `PACKAGED_SETTINGS_PARTS`.
 
-```_load_doc() -> dict[str, Any]```
-Read and parse the bundled system/core defaults file.
+```_parse_doc() -> dict[str, Any]``` · ```_load_doc() -> dict[str, Any]```
+`_parse_doc` parses the bundled system/core defaults file ONCE (`lru_cache(maxsize=1)`, through
+`config_io.load_packaged_mapping`) and is never handed out; `_load_doc` returns a FRESH deep copy of
+it every call (P8), so no caller can corrupt a later reader.
 
 ## The masks default
 
@@ -381,8 +379,7 @@ dropped its own kickoff delivery: `data/KICKOFF.md` + the `managed_pointer` desc
 from `kanibako-agent-claude`, `-codex` and `-goose`, with those releases PUBLISHED (not merely
 merged). After that the gate can only ever be false, and an ungated unconditional bind is the honest
 shape. Until then the gate is what keeps the base and the plugins independently upgradable. Recorded
-in migration M-12. *(Verified still needed 2026-08-11: all three plugins ship `data/KICKOFF.md` and
-declare `managed_pointer`.)*
+in migration M-12.
 
 *descriptor* is the descriptor whose bindings the SAME resolve represents in the launch snapshot
 (see :func:`kanibako.settings.agent_representation.agent_default_partial`). Passing `None` (a
@@ -625,33 +622,28 @@ The bind source for the agent chapter discriminates on the ACTIVE AGENT NODE, wh
 can spell; the loader substitutes it. A literal that could never occur in a real key (`<`/`>` are
 not key characters), so the substitution cannot collide.
 
-```canon_optional_bind_keys() -> frozenset[str]```
-The SKIP-IF-ABSENT canon bind keys, read from the same declarative rows.
+```canon_silent_dests() -> frozenset[str]```
+The canon destinations whose ABSENT source is dropped SILENTLY, as normalized box DESTS (D5).
 
-Fed to :func:`kanibako.settings.settings_launch.snapshot_category_entries` as `optional_keys` at the
-ONE launch aggregation site (spec §2c "SKIP-IF-ABSENT"). Derived from the file rather than restated:
-a row that gains or loses `optional: true` moves both the declaration and this set at once.
-🛑 The SILENT DROP itself is no longer this set's doing — the emitter reads
-:func:`canon_optional_bind_dests`, the DEST-spelled view of the same rows.
+EVERY `canon:` row's `box_dest` EXCEPT `~/canon/handbook/SYS_CONTENTS.md`, PLUS the plugin's own
+chapter (`_rom_agent_chapter_dest()`). Derived from the ROWS rather than from a per-row flag, so
+adding a handbook row cannot recreate the flag. ⚑⚑ **`SYS_CONTENTS.md` sits in neither set** and
+keeps the default warn-and-drop on purpose: it is the handbook's table of contents, so a box that
+loses it silently loses the one file naming every chapter it has. The other rows are chapter
+CONTENT — absent is the normal case for most boxes, and a warning there is per-launch noise.
 
-⚑ **H6 — RE-DERIVED FROM THE DESTINATION** (R-10/R-11). The emitted `CategoryEntry.key` is now
-`box.<category>.<box_dest>`, because a dest-keyed arm's map key IS the destination; matching on
-`entry['key']` here would silently never hit, and a missing workset chapter would go back to warning
-on every launch of almost every box. Normalized with the SAME function the producer uses, so the two
-spellings cannot drift.
+```rom_must_exist_dests() -> frozenset[str]```
+The CORE packaged-canon binds whose source MUST exist at emit time, as DESTS: the five
+`_rom_sibling_binds()` destinations, and NOT the plugin's chapter, which is optional.
+`rom_default_categories` already raises at RESOLVE time when the packaged canon is missing, empty
+or incomplete; this set is the EMIT half, for a source that resolved fine and vanished before the
+bind map is emitted. Derived from the same `_rom_sibling_binds()` declaration that builds the binds.
 
-```_canon_optional_rows() -> list[Any]```
-The `canon:` rows carrying `optional: true` — ONE filter, two views.
-
-```canon_optional_bind_dests() -> frozenset[str]```
-The SKIP-IF-ABSENT canon binds as normalized box DESTS — the EMITTER's view.
-
-⚑ The DEST basis, not the key basis: it is handed to `commands.start._emit_category_mounts` as
-`skip_if_absent`, and that decision is made against a destination (see
-`llm-docs/kanibako/commands/start.py.md`). Normalized with the SAME function that keys the arm
-(:func:`add_bind`), so the two spellings cannot drift — the failure `critical_keys` already paid for
-once, where a key-spelled set matched NOTHING and silently degraded every entry to the default
-policy.
+⚑ Both are handed to `commands.start._emit_category_mounts` on the DEST basis, normalized with the
+SAME function that keys the arm (:func:`add_bind`), so the spellings cannot drift: `must_exist` is
+`rom_must_exist_dests()` plus the agent's critical dests, and `skip_if_absent` is
+`canon_silent_dests()` plus the agent's best-effort dests, less `must_exist` (see
+`llm-docs/kanibako/commands/start.py.md`).
 
 ```canon_default_categories(std: StandardPaths, agent_name: str | None) -> dict[str, object]```
 Build the HANDBOOK binds + the agent-scope `canon` floor (spec §2c).
@@ -669,9 +661,9 @@ against: `system.canon` in the resolved `system.*` tier (`StandardPaths.canon`),
 ⚑ **THE REPOINT ROUTES DIFFER PER SCOPE**, and the difference is inherited, not chosen here:
 `workset.canon` / `box.canon` are ordinary `config set` keys (wired like `workset.template`),
 `agent.<a>.canon` is settable at the SYSTEM scope only (the per-persona agent-leaf rule
-`agent.<a>.template` already follows), and `system.canon` is CLI-REFUSED as a structural path key —
-it is a `SYSTEM_PATH_DEFAULTS` member, so it lives in the hand-edited `[system]` table of
-`kanibako.cfg`, exactly like `system.template`.
+`agent.<a>.template` already follows), and `system.canon` is an ordinary system-scope `config set`
+key: every `SYSTEM_PATH_DEFAULTS` key routes through `config_keys._KEY_ROUTES` to the system
+SETTINGS file, exactly like `system.template`.
 
 ⚑⚑ **THE AGENT TIER** — J-1 option (a) (*"the `agent.default` tier must be able to win"*),
 implemented against a resolver that has NO agent-tier fallback:
@@ -860,30 +852,33 @@ owed.
 
 ## The helper hub binds
 
-```helper_default_categories(*, socket_path: Path, log_path: Path | None) -> BindArmTable```
-Build the helper hub binds as `default_categories` (Phase B). A `None` *log_path* — the box's
-`workset.logs` is a present `<None>` — still emits the `helper_log` formula, whose `<None>` source
-makes the entry `None` at expand; the collapse omits it (companion, "The helper-log bind") and
-`settings_launch` warns when only the source is `<None>` ([R185]). Omitting it here was a silent
-second route. The socket bind is unaffected.
+```helper_default_categories(*, socket_path: Path | None, log_path: Path | None, budget_path: Path | None = None) -> BindArmTable```
+Build the `helpers` table's binds as `default_categories`: the hub's live unix SOCKET, the per-box
+message LOG, and the SPAWN BUDGET document (spec §2c `box.bindings.ro[~/spawn.yaml]`, row
+`helper_budget`, sourced at `{meta.box.path}/spawn.yaml`).
+
+* A `None` *socket_path* means NO HUB: neither hub row is emitted, which is how the every-start
+  budget resolve carries the budget row alone.
+* With a hub, a `None` *log_path* — the box's `workset.logs` is a present `<None>` — still emits the
+  `helper_log` formula, whose `<None>` source makes the entry `None` at expand; the collapse omits it
+  (companion, "The helper-log bind") and `settings_launch` warns when only the source is `<None>`
+  ([R185]). Omitting it here would be a silent second route.
+* A `None` or absent *budget_path* emits no budget entry: the start writes the document before this
+  runs, so its absence means no budget was delivered.
 
 Fills the TERMINAL `box.bindings.rw` / `box.bindings.ro` arms with one
-`box_dest -> (host_src, options)` entry for the live helper unix SOCKET and the per-box helper
-message LOG respectively — TODAY's hardwired `_HMount` appends inside the `helpers_enabled` block
-routed through the category resolver.
+`box_dest -> (host_src, options)` entry per row, routed through the category resolver.
 
 Both box-side destinations are STATIC and carried by the declarative file as `~`-spelled dests under
 the fixed pinned root (:data:`~kanibako.settings.settings_resolve.BOX_PINNED_ROOT_RELPATH`),
 absolutized to `GUEST_HOME` by
 :func:`~kanibako.settings.settings_resolve.normalize_bind_dest` inside :func:`add_bind` (R-11) —
 exactly like every other declared dest in the file. They carry no `$XDG_STATE_HOME` token: a mount
-dest is written into the runtime's arguments BEFORE the box is live, so resolving XDG host-side
-bought only a four-way hand-held agreement that had already drifted; the box's real XDG location is
-served after boot by `box_supervisor.project_pinned_xdg`.
+dest is written into the runtime's arguments BEFORE the box is live, and the box's real XDG
+location is served after boot by `box_supervisor.project_pinned_xdg`.
 
-Only the host SOURCES (*socket_path* / *log_path*) are runtime-probed and injected at the seam, GATED
-on `.exists()` here — reproducing the old skip-if-missing appends: a missing socket/log simply omits
-its key.
+Only the host SOURCES (*socket_path* / *log_path* / *budget_path*) are runtime-probed and injected
+at the seam, GATED on `.exists()` here: a missing source simply omits its key.
 
 ⚠ **`helper_sock` options MUST be `""` (empty):** it is a LIVE unix socket the hub listens on; a
 `Z`/`U` relabel/chown would break the shared socket topology. The per-entry EMPTY options value
@@ -892,11 +887,10 @@ carries that through the bind entry's optional 2nd slot.
 ⚑ **B2b: `helper_log` routes through the spec's own formula** `@workset.logs/@{meta.box.name}.jsonl`
 (§2c) — byte-identical to the probed `src_path` in all three modes, since `workset.logs` and
 `meta.box.name` resolve to exactly what `helper_log_path(std, proj)` builds (gated by a before/after
-comparison of the resolved bind, PHASE R). ⚑ The `.exists()` gate keys off the PROBED path while the
+comparison of the resolved bind). ⚑ The `.exists()` gate keys off the PROBED path while the
 emitted host_src is the FORMULA, so the two agree only where the probe resolves the same key. **In
-every mode it now does** — `paths.helper_log_path` resolves `workset.logs` in PRIMARY and NAMED as
-of 2026-08-29 and in STANDALONE as of 2026-08-30, so writer, gate and mount name one file and
-**migration M-14** is closed. The standalone arm resolves its `@meta.box.path` default through
+every mode it does** — `paths.helper_log_path` resolves `workset.logs` in every mode, so writer,
+gate and mount name one file. The standalone arm resolves its `@meta.box.path` default through
 `resolve_workset_logs(..., standalone=True)`, which hands the pre-snapshot route the already-resolved
 `workset.boxes` (a lone box has no `@meta.box.name` leaf under it).
 
@@ -912,7 +906,7 @@ Build the image-sharing binds as `default_categories` (Phase B, D-M8).
 
 Returns a MIXED table: the TERMINAL `box.bindings.ro` arm carrying one `box_dest -> (host_src,
 options)` entry for the host image graph root and one for the GENERATED `storage.conf`, routed
-through the category resolver (the sole route; the old hardwired Mounts are gone), PLUS the
+through the category resolver (the sole route), PLUS the
 `box.images_store` floor SCALAR. The box-side destinations + options come from the declarative file
 (`images:` list); the host SOURCES (the runtime-probed *graph_root* and the already-GENERATED
 *storage_conf_path*) are injected here.
@@ -927,39 +921,12 @@ is the least-specific cascade level
 the ONE expand pass resolves the bind's host_src to the winning value. `images_conf` stays an
 INTERNAL bind and NOT a key (fixed location, generated content — spec §0's test).
 
-⚑ **11a (2026-08-02): the PROBE feeds ONLY that default.** *graph_root* may be `None` (probe failed),
+⚑ **11a: the PROBE feeds ONLY that default.** *graph_root* may be `None` (probe failed),
 in which case NO floor scalar is emitted and the `@box.images_store` host_src resolves solely from a
-set tier value (or propagates ABSENT, dropping the bind). The caller's gate is now just
+set tier value (or propagates ABSENT, dropping the bind). The caller's gate is just
 "image-sharing requested" — the code realization of the spec's `%if @box.share_images%` condition on
 the `images` row; whether the RESOLVED store exists is decided after the resolve, at the seam.
 
 ⚑ `meta_ref` (when declared) is the emitted host_src — the spec's own `@`-ref spelling; the symbolic
 `source` stays the probed-literal fallback (`helper_default_categories` parity), resolved LAZILY so a
 probe-fail `None` only raises if an entry actually needs the probed literal.
-
----
-
-## Dropped as false
-
-Eleven prose claims in the pre-pass source were checked against the code and found FALSE. They were
-**deleted, not relocated** — relocating a drifted claim launders it into a document that reads as
-current. Recorded here so nobody restores them from git history.
-
-| # | site | the claim | what the code does |
-|---|---|---|---|
-| 1 | module docstring | the shipped file holds *"the `box.masks` default … and the per-mode channel bind table"* | it declares EIGHT families (`masks` · `channels` · `core` · `kani` · `kickoff` · `canon` · `helpers` · `images`), and the module additionally owns the box-create canon SKELETON, which is not a default at all |
-| 2 | module docstring | the launch path injects them as *"the AGENT-level `default_categories`"* | `build_launch_snapshot` folds them into ONE **base-level** floor; only the PLUGIN tables arrive agent-discriminated. `image_default_categories`'s own prose said `base` — the two contradicted each other inside one file |
-| 3 | `channel_default_categories` | *"the five system channel type roots (common/chat/share/mailboxes)"* | FOUR type roots; the fifth `scope: system` row is the inbox, which the same sentence names separately |
-| 4 | `kani_default_categories` | *"the in-box kanibako package + entry script"* / *"Both binds are UNCONDITIONAL"* | THREE rows — `kani_pkg`, `kani_bin`, `secret_export`. The code's own `sources` dict has three keys and the YAML calls them "the unconditional trio" |
-| 5 | `materialize_canon_skeleton` | *"the LAUNCH path never touches it"* | `commands/start.py` calls it on the post-start hook of EVERY launch (`quiet=True`) and on the connect-flow first launch. `_warn_unprotected`'s own prose ("The POST-START caller sets it") contradicted it in the same file |
-| 6 | `materialize_canon_skeleton` | *"must not cost a box the other thirteen"* | `canon_skeleton_rels()` returns **20** entries (14 dirs + 6 files); "thirteen" implies a 14-entry skeleton, i.e. pre-F1. Replaced with a direction, not a distance |
-| 7 | `HANDBOOK_CHAPTERS` comment | their binds are *"the seeds/handbook half's … which does not exist yet"* | `canon_default_categories`, in this module, emits all five `~/canon/handbook/*` binds today and floors the `agent.*.canon` keys they resolve against |
-| 8 | `CANON_SEED_DENY_PREFIXES` comment | *"`canon/handbook` IS ALREADY IN THE LIST, even though nothing BINDS it until the seeds half lands"* | same — it IS bound today. The skeleton-ownership rationale (the part that is still true) was kept |
-| 9 | `assert_canon_bind_seed_disjoint` | *"the SEEDS/handbook half appends `canon/handbook` to it, with no edit to the rom emitter"* | `canon/handbook` is already a member of `CANON_SEED_DENY_PREFIXES`; there is nothing left to append |
-| 10 | `helper_default_categories` | *"The per-entry empty-options 3rd slot carries that through `unpack_bind`"* | under dest-keying (R-6) `add_bind` writes `(host_src, options)`, so options is the **2nd** slot, and dest-keyed entries are consumed by `unpack_bind_entry` (`settings_assemble.py`), not the legacy name-keyed `unpack_bind`. The same docstring said `box_dest -> (host_src, options)` two paragraphs earlier |
-| 11 | `add_bind` | *"rather than at ten call sites"* | **eleven** today (nine here + two in `settings/agent_defaults.py`). A distance, not a direction; replaced with "at every call site" |
-
-⚑ The same two stale claims as #4 and #10 also live in `src/kanibako/data/rom/settings/core-defaults.yaml` (the
-shipped DATA file, a different seam): its `core:` header says options are *"the OPTIONAL 3rd slot …
-consumed by `settings_resolve.unpack_bind`"* and its `helpers:` header repeats the 3rd-slot wording.
-Boarded, not fixed here.
