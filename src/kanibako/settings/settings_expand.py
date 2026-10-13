@@ -525,7 +525,7 @@ class _Expander:
         ⚑ THE PARSE CANNOT COVER THIS ONE, which is why the guard is here as well.
         ``settings_assemble._declared_source`` refuses a source SPELLED relative, and
         that is what ``settings_launch`` relies on when it uses ``host_src`` AS-IS —
-        but a source spelled ``@box.canon/handbook`` is self-resolving at the parse and
+        but a source spelled ``{box.canon}/handbook`` is self-resolving at the parse and
         only becomes relative HERE, when the path key it dereferences turns out to hold
         a bare relative.  Measured before the guard existed: it reached the mount as
         ``host_src='relcanon/handbook'``.
