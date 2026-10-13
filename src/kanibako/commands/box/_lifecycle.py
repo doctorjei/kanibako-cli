@@ -4572,12 +4572,14 @@ def _linked_store_note(old: ProjectState, new: ProjectState, store: Path) -> str
 
     Not a refusal; the snapshots stay where they are.  Two cases:
 
-    * *store* is a link, which relocate never carries.  The relink cure is given only
-      when it is unambiguous: a SHARED old base (in an exclusive one a box could have
-      planted the link, and adopting it would let every auto-prune delete in a
-      box-chosen target), a shared new base, no store under the new name, and a link
-      that leads to a directory.  The command guards the destination at run time, so
-      it fails, leaving the old link, if a store appeared there since.
+    * *store* is a link, which relocate never carries.  No Note when it leads to the
+      new store itself (``.versions/a -> b``, or both linked to one store): the new name
+      lists those snapshots.  The relink cure is given only when it is unambiguous: a
+      SHARED old base (in an exclusive one a box could have planted the link, and
+      adopting it would let every auto-prune delete in a box-chosen target), a shared
+      new base, no store under the new name, and a link that leads to a directory.
+      The command guards the destination at run time, so it fails, leaving the old
+      link, if a store appeared there since.
     * *store* is a real directory, and the new store is repointed into it or onto one
       of its parents (``stores_overlap``): nothing could be moved.  No command.
     """
@@ -4587,21 +4589,30 @@ def _linked_store_note(old: ProjectState, new: ProjectState, store: Path) -> str
     from kanibako.snapshots import box_snapshot_store, store_path, stores_overlap
 
     assert new.vault_rw is not None  # a store came back
-    new_store = box_snapshot_store(new.vault_rw, new.name)
+    new_rw = new.vault_rw
+    new_store = box_snapshot_store(new_rw, new.name)
+
+    def real_new_store() -> Path | None:
+        try:
+            return store_path(new_rw, box_name=new.name,
+                              exclusive=new.mode is BoxMode.standalone)[0]
+        except boxfs.SymlinkRefusedError:
+            return None  # relocate's own warning named it
+
+    def same_store(real_new: Path) -> bool:
+        return real_new.exists() and os.path.samefile(real_new, store)
+
     if not store.is_symlink():
         if not store.is_dir():
             return None
-        try:
-            real_new, _root = store_path(new.vault_rw, box_name=new.name,
-                                         exclusive=new.mode is BoxMode.standalone)
-        except boxfs.SymlinkRefusedError:
-            return None  # relocate's own warning named it
-        same = real_new.exists() and os.path.samefile(real_new, store)
-        if same or not stores_overlap(store, real_new):
+        real_new = real_new_store()
+        if real_new is None or same_store(real_new) or not stores_overlap(store, real_new):
             return None
         return (f"Note: '{new.name}' was not given its old vault snapshots: its store "
                 f"{new_store} leads to {real_new}, which overlaps the old store {store}, "
                 f"so nothing was moved. The snapshots stay at {store}.")
+    if store.is_dir() and (real_new := real_new_store()) is not None and same_store(real_new):
+        return None  # the link leads to the new store: nothing is left behind
     target = os.path.realpath(store) if store.is_dir() else os.readlink(store)
     note = (f"Note: '{new.name}' lists none of its old vault snapshots: {store} is a link "
             f"to {target}, and a linked snapshot store is never moved. The snapshots stay "

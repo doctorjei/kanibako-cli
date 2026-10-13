@@ -826,6 +826,44 @@ class TestALinkedOldStoreIsNamed:
         assert "run:" not in err
 
 
+class TestALinkToTheNewStoreSaysNothing:
+    """An old store linked to the new store itself leaves nothing behind: no Note.
+    A link to some other store keeps it."""
+
+    def _move(self, tmp_path, capsys, *, a, b):
+        from kanibako.commands.box._lifecycle import _relocate_snapshot_store
+
+        rw = _rw(tmp_path / "w")
+        versions = _versions_dir(rw)
+        versions.mkdir()
+        x = tmp_path / "x"
+        _snap(x)
+        for name, how in (("b", b), ("a", a)):
+            if how == "dir":
+                _snap(versions / name, TS, name)
+            else:
+                (versions / name).symlink_to(x if how == "x" else how)
+        new_rw = rw.parent / "b"
+        new_rw.mkdir()
+        before = _tree(tmp_path)
+        o = SimpleNamespace(vault_rw=rw, name="a", mode=BoxMode.named)
+        n = SimpleNamespace(vault_rw=new_rw, name="b", mode=BoxMode.named)
+        _relocate_snapshot_store(o, n)
+        assert _tree(tmp_path) == before
+        return versions, x, capsys.readouterr().err
+
+    @pytest.mark.parametrize(("a", "b"), [("b", "dir"), ("x", "x")],
+                             ids=["old-links-to-new", "both-link-to-one"])
+    def test_no_note(self, tmp_path, capsys, a, b):
+        assert self._move(tmp_path, capsys, a=a, b=b)[2] == ""
+
+    def test_a_link_to_another_store_keeps_the_note(self, tmp_path, capsys):
+        versions, x, err = self._move(tmp_path, capsys, a="x", b="dir")
+        assert err == (f"Note: 'b' lists none of its old vault snapshots: {versions / 'a'} "
+                       f"is a link to {x}, and a linked snapshot store is never moved. The "
+                       f"snapshots stay at {x}.\n")
+
+
 class TestANestedRepointIsNamed:
     """A new store repointed onto the old one's base, an ancestor, or inside it: nothing
     is moved (``stores_overlap``), and a Note says where the snapshots stay."""
