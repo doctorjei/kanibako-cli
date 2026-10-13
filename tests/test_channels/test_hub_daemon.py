@@ -28,6 +28,8 @@ from tests.support.early import early_record
 CONTAINER = "kb-primary-myapp"
 
 _FAKE_RUNTIME = """#!/bin/sh
+fails=$(cat "{state}.fail" 2>/dev/null)
+if [ -n "$fails" ] && [ "$fails" -gt 0 ]; then echo $((fails - 1)) > "{state}.fail"; exit 1; fi
 state=$(cat "{state}" 2>/dev/null)
 case "$1" in
   inspect) [ "$state" = running ] && {{ echo true; exit 0; }}; exit 1 ;;
@@ -96,19 +98,25 @@ def _wait(predicate, timeout: float = 15.0) -> bool:
 # --------------------------------------------------------------------------- #
 
 class TestDecideHub:
-    @pytest.mark.parametrize(("live", "seen", "waited", "listening", "action"), [
-        (True, True, 0.0, True, HubAction.SERVE),
-        (True, True, 0.0, False, HubAction.REBIND),
+    LIMIT = hub_daemon.MISS_LIMIT
+
+    @pytest.mark.parametrize(("misses", "seen", "waited", "listening", "action"), [
+        (0, True, 0.0, True, HubAction.SERVE),
+        (0, True, 0.0, False, HubAction.REBIND),
         # The box is not up yet: wait for it, within the grace.
-        (False, False, 5.0, True, HubAction.SERVE),
-        (False, False, 5.0, False, HubAction.REBIND),
-        # Once seen, a box that is not live is gone.
-        (False, True, 5.0, True, HubAction.EXIT),
+        (LIMIT, False, 5.0, True, HubAction.SERVE),
+        (LIMIT, False, 5.0, False, HubAction.REBIND),
+        # Once seen, fewer not-live reads in a row than the limit are a hiccup.
+        (LIMIT - 1, True, 5.0, True, HubAction.SERVE),
+        (LIMIT - 1, True, 5.0, False, HubAction.REBIND),
+        # Once seen, the limit of not-live reads in a row means the box is gone.
+        (LIMIT, True, 5.0, True, HubAction.EXIT),
         # A box that never came up within the grace is gone too.
-        (False, False, 10.0, True, HubAction.EXIT),
+        (LIMIT, False, 10.0, True, HubAction.EXIT),
+        (LIMIT - 1, False, 10.0, True, HubAction.SERVE),
     ])
-    def test_matrix(self, live, seen, waited, listening, action):
-        assert decide_hub(box_live=live, seen_live=seen, waited=waited, grace=10.0,
+    def test_matrix(self, misses, seen, waited, listening, action):
+        assert decide_hub(misses=misses, seen_live=seen, waited=waited, grace=10.0,
                           listening=listening) is action
 
 
@@ -126,14 +134,28 @@ class _FakeHub:
 
 class TestServe:
     def test_exits_once_a_seen_box_is_gone(self):
-        lives = iter([False, True, True, False])
+        lives = iter([False, True, True] + [False] * hub_daemon.MISS_LIMIT)
         hub = _FakeHub()
         serve(hub, is_live=lambda: next(lives), stop=threading.Event(), poll=0,
               grace=1000.0)
         assert hub.rebinds == 0
 
+    def test_a_live_read_resets_the_misses(self):
+        """Not-live reads that a live read interrupts never add up to an exit.
+        (Mutation: misses not reset on a live read -> exits early -> RED.)"""
+        short = [False] * (hub_daemon.MISS_LIMIT - 1)
+        reads = [True] + short + [True] + short + [True]
+        calls = []
+
+        def is_live():
+            calls.append(1)
+            return reads[len(calls) - 1] if len(calls) <= len(reads) else False
+
+        serve(_FakeHub(), is_live=is_live, stop=threading.Event(), poll=0, grace=1000.0)
+        assert len(calls) == len(reads) + hub_daemon.MISS_LIMIT
+
     def test_rebinds_when_the_socket_no_longer_reaches_it(self):
-        lives = iter([True, True, False])
+        lives = iter([True, True] + [False] * hub_daemon.MISS_LIMIT)
         hub = _FakeHub(listening=[False, True])
         serve(hub, is_live=lambda: next(lives), stop=threading.Event(), poll=0,
               grace=1000.0)
@@ -239,6 +261,56 @@ class TestHubProcess:
             assert hub.process.poll() is None and _answers(socket_path)
         finally:
             hub.stop()
+
+    def test_a_failing_probe_short_of_the_limit_keeps_its_hub(self, box):
+        """D2: the runtime fails every call for ``MISS_LIMIT - 1`` ticks while the box
+        runs (an engine hiccup); the hub, and so its helpers, keep serving.  (Mutation:
+        exit on the first not-live read -> the hub stops its helpers -> RED.)"""
+        socket_path, ctx, state = box
+        state.write_text("running")
+        hub = HubProcess()
+        assert hub.start(socket_path, ctx, log_path=None, container=CONTAINER,
+                         stderr_path=None)
+        try:
+            time.sleep(3.0)  # one live poll first: the box is seen
+            # Each tick asks inspect, then ps; every call in these ticks fails.
+            fail = Path(f"{state}.fail")
+            fail.write_text(f"{2 * (hub_daemon.MISS_LIMIT - 1)}\n")
+            assert _wait(lambda: (fail.read_text().strip() == "0"
+                              or hub.process.poll() is not None), timeout=20.0)
+            assert hub.process.poll() is None, "a probe hiccup stopped the hub"
+            time.sleep(2.5)  # one more (live) tick
+            assert hub.process.poll() is None and _answers(socket_path)
+        finally:
+            hub.stop()
+
+    @pytest.mark.parametrize("empty_path_entry", [False, True])
+    def test_imports_nothing_from_the_launch_directory(
+            self, box, tmp_path, monkeypatch, empty_path_entry):
+        """D1: ``start`` runs where the user stands, often the box's own writable
+        workspace.  A module planted there never runs on the host in the hub, neither
+        from the launch directory nor through an empty ``PYTHONPATH`` entry.
+        (Mutation: drop ``-P`` and ``cwd`` -> the planted argparse runs -> RED.)"""
+        socket_path, ctx, _state = box
+        planted = tmp_path / "workspace"
+        planted.mkdir()
+        marker = tmp_path / "planted-ran"
+        (planted / "argparse.py").write_text(
+            f"open({str(marker)!r}, 'a').write('argparse\\n')\n"
+            "raise SystemExit(7)\n")
+        monkeypatch.chdir(planted)
+        if empty_path_entry:
+            monkeypatch.setenv("PYTHONPATH",
+                               os.pathsep + os.environ.get("PYTHONPATH", ""))
+        hub = HubProcess()
+        try:
+            ready = hub.start(socket_path, ctx, log_path=None, container=CONTAINER,
+                              stderr_path=None)
+            assert not marker.exists(), "a planted module ran in the hub"
+            assert ready
+        finally:
+            hub.stop()
+        assert not marker.exists()
 
     def test_stop_ends_it_and_its_socket(self, box):
         """``kanibako stop`` and a launch that is over stop the hub at once."""

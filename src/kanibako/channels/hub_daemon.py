@@ -44,6 +44,8 @@ HUB_READY = b"ready\n"
 #: How long ``start`` waits for :data:`HUB_READY`, and a stop for the lock to free.
 READY_TIMEOUT = 15.0
 STOP_TIMEOUT = 60.0  # the hub stops each helper container before it exits
+#: Consecutive not-live reads that mean the box is gone (one read per poll, 2 s by default).
+MISS_LIMIT = 3
 #: The child's command-line marker, which a stop checks before it signals a lock holder.
 _MODULE = "kanibako.channels.hub_daemon"
 
@@ -69,14 +71,17 @@ class HubAction(Enum):
     EXIT = "exit"        # the box is gone: stop the hub and its helpers, then exit
 
 
-def decide_hub(*, box_live: bool, seen_live: bool, waited: float, grace: float,
+def decide_hub(*, misses: int, seen_live: bool, waited: float, grace: float,
                listening: bool) -> HubAction:
     """PURE: a tick's action from the box's liveness and the hub's state.
 
-    The hub starts BEFORE its box exists, so a box that is not live yet is waited for,
-    up to *grace* seconds; once seen live, a box that is not live is gone.
+    *misses* counts the consecutive reads that found the box not live (0: live now).
+    A failed probe reads as not live, so the box is gone only after :data:`MISS_LIMIT`
+    such reads in a row: a probe that fails fewer times running stops nothing.  The hub
+    starts BEFORE its box exists, so a box that is not live yet is waited for, up to
+    *grace* seconds.
     """
-    if not box_live and (seen_live or waited >= grace):
+    if misses >= MISS_LIMIT and (seen_live or waited >= grace):
         return HubAction.EXIT
     return HubAction.SERVE if listening else HubAction.REBIND
 
@@ -191,14 +196,18 @@ class HubProcess:
             except OSError as exc:
                 log.warning("helper hub log unavailable (%s); its warnings will be "
                             "discarded", exc)
-        # The child imports THIS kanibako, whatever put it on this process's path.
+        # The child imports THIS kanibako, whatever put it on this process's path.  It
+        # imports nothing from the launch directory, which is often the box's own
+        # writable workspace: ``-P`` leaves that directory off ``sys.path``, and the
+        # child runs in ``/``, where an empty ``PYTHONPATH`` entry would point.
         package_root = str(Path(__file__).resolve().parents[2])
         env = dict(os.environ)
         env["PYTHONPATH"] = os.pathsep.join(
             p for p in (package_root, env.get("PYTHONPATH")) if p)
         try:
             self.process = subprocess.Popen(
-                [sys.executable, "-m", _MODULE, "--container", container],
+                [sys.executable, "-P", "-m", _MODULE, "--container", container],
+                cwd="/",
                 env=env,
                 stdin=subprocess.PIPE,
                 stdout=subprocess.PIPE,
@@ -259,25 +268,35 @@ def _read_ready(stream: IO[bytes], timeout: float) -> bool:
 # --------------------------------------------------------------------------- #
 
 def _box_live(runtime: Any, container: str) -> bool:
-    """Running or paused; a probe that fails reads as live, so a hiccup stops nothing."""
+    """Running or paused.  A probe that fails, or raises, reads as NOT live; the hub
+    exits only after :data:`MISS_LIMIT` such reads in a row (:func:`decide_hub`).
+    """
     from kanibako.commands.stop import _is_live
 
     try:
         return _is_live(runtime, container)
-    except Exception as exc:  # noqa: BLE001 - one failed probe must not end the hub
+    except Exception as exc:  # noqa: BLE001 - a failed probe is a miss, never a crash
         log.debug("liveness probe failed for %s: %s", container, exc)
-        return True
+        return False
 
 
 def serve(hub: Any, *, is_live: Any, stop: threading.Event, poll: float,
           grace: float, clock: Any = time.monotonic) -> None:
-    """Watch loop: tick every *poll* seconds until the box is gone or *stop* is set."""
+    """Watch loop: tick every *poll* seconds until the box is gone or *stop* is set.
+
+    A box that was seen live is gone after :data:`MISS_LIMIT` consecutive not-live
+    reads, so the hub exits between ``(MISS_LIMIT - 1) * poll`` and ``MISS_LIMIT * poll``
+    seconds after the box goes (4-6 s at the default 2 s poll).  A probe failure that
+    lasts that long ends the hub and stops its helpers, like a box that is gone.
+    """
     began = clock()
     seen_live = False
+    misses = 0
     while not stop.wait(poll):
         live = is_live()
         seen_live = seen_live or live
-        action = decide_hub(box_live=live, seen_live=seen_live, waited=clock() - began,
+        misses = 0 if live else misses + 1
+        action = decide_hub(misses=misses, seen_live=seen_live, waited=clock() - began,
                             grace=grace, listening=hub.listening())
         if action is HubAction.EXIT:
             log.info("box gone; helper hub exiting")

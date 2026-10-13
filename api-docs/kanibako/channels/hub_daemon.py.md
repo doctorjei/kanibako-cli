@@ -11,13 +11,14 @@ log = get_logger('hub_daemon')
 HUB_READY = b'ready\n'
 READY_TIMEOUT = 15.0
 STOP_TIMEOUT = 60.0
+MISS_LIMIT = 3
 _MODULE = 'kanibako.channels.hub_daemon'
 ```
 
 ## Functions
 ```
 def hub_lock_path(socket_path: Path) -> Path
-def decide_hub(*, box_live: bool, seen_live: bool, waited: float, grace: float, listening: bool) -> HubAction
+def decide_hub(*, misses: int, seen_live: bool, waited: float, grace: float, listening: bool) -> HubAction
 def stop_hub(socket_path: Path, *, timeout: float=STOP_TIMEOUT) -> bool
 def serve(hub: Any, *, is_live: Any, stop: threading.Event, poll: float, grace: float, clock: Any=time.monotonic) -> None
 def main(argv: list[str] | None=None) -> int
