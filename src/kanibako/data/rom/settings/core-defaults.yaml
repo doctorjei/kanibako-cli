@@ -434,7 +434,7 @@ helpers:
 # (the seam is `image_sharing.detect_graph_root` + `image_sharing.
 # write_storage_conf` feeding `core_defaults.image_default_categories`).  GATED:
 # the table is injected only when image-sharing applies (the caller's conditional
-# gate realizes the spec's `%if {box.share_images}%` condition).  ⚑ 11a
+# gate realizes the spec's "present iff {box.share_images}" condition).  ⚑ 11a
 # (2026-08-02): the PROBE feeds ONLY the `box.images_store` DEFAULT, so a failed
 # probe does not gate the table — the RESOLVED key decides, and probe-fail with
 # no set value leaves `{box.images_store}` absent (the seam then warns and skips).

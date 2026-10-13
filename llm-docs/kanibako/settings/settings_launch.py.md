@@ -207,7 +207,7 @@ per-box source root `meta.box.auth.workset_path`.
 
 ### ‼ ENABLE COMPUTATION — why the `&&` is Python, not the engine
 
-The spec writes the two box enables as `%{support} && {allow}%` expressions, but the launch `expand`
+Spec §2b makes each effective box enable support AND allow AND the box opt-in, but the launch `expand`
 engine resolves ONLY `@`-refs / `$VAR` / `~` — it does NOT evaluate `&&` boolean expressions (the
 spec's `%…%` conditionals are computed in Python, cf. the images bind in `core_defaults`). So
 the floor materializes the settable box ENABLE as a plain per-tier bool DEFAULT (`True`, the box's
@@ -219,9 +219,9 @@ generalization.
 
 ### The node-selector notation is NOT expressible
 
-Spec §2c writes the capability mirror as `@meta.agent.<@system.agent>.auth.share_support`. That is
-NODE-SELECTOR NOTATION, and the resolver cannot express it: a reference name is a literal, there is
-no second pass, and the `@{name}` form DELIMITS a name so a literal SUFFIX may follow it — it does
+Spec §2c writes the capability mirror as `{meta.agent.<agent>.auth.share_support}`, where `<agent>`
+is the value of `system.agent`. That `<agent>` is a NODE SELECTOR, and the resolver cannot express
+it: a reference name is a literal, there is no second pass, and braces DELIMIT a name — they do
 not nest a reference INSIDE a name. So the shipped mechanism is the documented equivalent: the
 selected node is interpolated in Python and the resulting `@`-ref is then followed by `expand` on a
 literal path. `agent_name` is the value the §1A selection level installs at `system.agent`, i.e.
@@ -530,7 +530,7 @@ the claude plugin's two `common` binds resolve byte-identically, and after the r
 agent, node == harness and this is a single entry.
 
 What DOES need the harness entry is a **user-written** harness-keyed ref — a `box.bindings.rw`
-source spelled `{meta.agent.claude.path}/common/plugins` on a persona box — plus the `config set`
+source spelled `@meta.agent.claude.path/common/plugins` on a persona box — plus the `config set`
 snapshot above, which folds this same builder. Two failure modes, and only one is loud: at SET time
 a dangling `@`-ref in the edited value is a hard error refusing the write (spec §2a, *VALIDATION at
 set-time*), but at LAUNCH the embedded-ref rule renders it `""` and the same bind silently becomes
@@ -732,7 +732,7 @@ rule has ONE carrier. Q82: "supplied as a present None; a value the user sets is
 
 🛑 **`meta.box.workspace` IS NOT SPELLED AGAINST THIS KEY, AND MUST NOT BE.** `meta.box.workspace`
 is the construct-time `proj.project_path` literal, and it is the `host_src` of the `~/workspace`
-bind, so its spelling decides what a box MOUNTS. The formula `{workset.workspaces}/{meta.box.name}` is
+bind, so its spelling decides what a box MOUNTS. The formula `@workset.workspaces/@meta.box.name` is
 worse in three measured cases — an external connect (D10) yields `workspaces/<name>`, a
 discoverability SYMLINK that is never mounted (the `[F2]` podman hazard); a stranded pre-repoint
 member names a directory that does not exist, which L7 guarantee-create `mkdir`s so the box mounts

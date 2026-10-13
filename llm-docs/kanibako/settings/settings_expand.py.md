@@ -316,7 +316,7 @@ non-empty. The ordinary present-`None` rules then apply to the leaf (§2h): an e
 a scalar leaf keeps `None` (consumer default), a bind entry is `None` (above), and a destination
 raises — except in a `seeded` map, where it skips the layer (Refusal 1).
 ⚑ **Why not `""`:** after substitution a `""` is indistinguishable from a real path, so
-`{workset.auth.path}/x` with `workset.auth.path: null` became the HOST path `/x`, and a primary
+`@workset.auth.path/x` with `workset.auth.path: null` became the HOST path `/x`, and a primary
 `workset.vault_ro: null` would mount host `/<box>`. It is the one rule for every leaf, so no
 category carries a second copy of it. An ABSENT referent keeps the embedded `""` (spec §0).
 
@@ -331,7 +331,7 @@ beginning with neither `.` nor `/` as the name of a NAMED VOLUME rather than as 
 ⚑ **THE PARSE CANNOT COVER THIS ONE, which is why the guard is here as well.**
 `settings_assemble._declared_source` refuses a source SPELLED relative, and that is what
 `settings_launch` relies on when it uses `host_src` AS-IS — but a source spelled
-`{box.canon}/handbook` is self-resolving at the parse and becomes relative only HERE, when the path
+`@box.canon/handbook` is self-resolving at the parse and becomes relative only HERE, when the path
 key it dereferences turns out to hold a bare relative. Measured before the guard existed: it reached
 the mount as `host_src='relcanon/handbook'`.
 

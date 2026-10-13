@@ -128,7 +128,7 @@ of which bit before this existed:
   is the only door left that checks it.
 * **The E3 resolution probe must run at the TARGET.** Probing at `pref.<target>` is a NO-OP by
   construction: `expand` carries the `pref` subtree through unexpanded (spec §2h), so no `@`-ref
-  in it is ever resolved and no defect can be recorded. `pref.agent.claude.template {typo}` was
+  in it is ever resolved and no defect can be recorded. `pref.agent.claude.template @typo` was
   therefore accepted and then silently DROPPED the target at launch. Applying the candidate at
   the target path is what makes the probe mean anything.
 
@@ -590,7 +590,7 @@ The order is deliberate at every step.
 The command's target supplies them (`_set_time_target` → `resolve_inputs`), for the reason
 `meta_agent_path_floor` is in the snapshot: a value spelled against a declared root DANGLES at
 set time unless the root is floored. It went in with [R147]'s set-time half because the refusal
-OFFERS `{meta.workset.path}/<value>` as the cure — `MIGRATION.md` § *A bare relative path in a
+OFFERS `@meta.workset.path/<value>` as the cure — `MIGRATION.md` § *A bare relative path in a
 settings key is refused* names it as the first row of the replacement table — and the E3 probe
 was answering "dangling @-reference" to it. A rule that bans a form and then refuses its own
 replacement has not removed the guess, it has removed the key.
@@ -640,7 +640,7 @@ SET-TIME RESOLUTION PROBE for a value the EXPANDER will see (E3, spec §2a / Q9)
 `expand`" rather than "is it a scalar".
 
 The probe was wired ONLY at the category path, so a set accepted a value whose `@`-ref or `$VAR`
-does not resolve — e.g. `config set workset.boxes "{meta.nope.key}/boxes"`. For an expanded value
+does not resolve — e.g. `config set workset.boxes "@meta.nope.key/boxes"`. For an expanded value
 that is not inert: an embedded dangling ref is substituted with the EMPTY STRING at launch
 (spec §2a "VALIDATION at set-time") and the key silently resolves to something else.
 

@@ -439,7 +439,7 @@ The agent NODE a per-node *canonical* key addresses, or `""` when it names none.
 gets it from somewhere different: `box set` resolves the box's ACTIVE agent through `select_agent`,
 `agent set` is handed the node the verb was invoked on, and `system set` has only the key. This
 answers that last case. Its consumer is the set-time snapshot's `meta_agent_path_floor` fold, so
-without it `system set agent.claude.canon={meta.agent.claude.path}/canon` was refused as a dangling
+without it `system set agent.claude.canon=@meta.agent.claude.path/canon` was refused as a dangling
 `@`-reference while `agent set claude canon=…` — the same key, the other spelling — accepted it.
 
 ⚑ **Derived from the same two parsers `path_key_anchor` consults, in the same order.** The anchor a

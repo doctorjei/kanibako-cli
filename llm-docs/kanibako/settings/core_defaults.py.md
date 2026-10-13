@@ -925,7 +925,7 @@ INTERNAL bind and NOT a key (fixed location, generated content — spec §0's te
 ⚑ **11a: the PROBE feeds ONLY that default.** *graph_root* may be `None` (probe failed),
 in which case NO floor scalar is emitted and the `{box.images_store}` host_src resolves solely from a
 set tier value (or propagates ABSENT, dropping the bind). The caller's gate is just
-"image-sharing requested" — the code realization of the spec's `%if {box.share_images}%` condition on
+"image-sharing requested" — the code realization of the spec's *"present iff {box.share_images}"* condition on
 the `images` row; whether the RESOLVED store exists is decided after the resolve, at the seam.
 
 ⚑ `meta_ref` (when declared) is the emitted host_src — the spec's own `@`-ref spelling; the symbolic
