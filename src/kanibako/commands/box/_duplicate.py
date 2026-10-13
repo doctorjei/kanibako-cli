@@ -408,7 +408,7 @@ def _run_duplicate_cross_mode(args: argparse.Namespace, std, config) -> int:
                 refuse_scalar_sections(new_path / STANDALONE_META_DIR / BOX_META_FILE, ("box",))
             if not args.bare and workspace_src is not None and workspace_src.is_dir():
                 # The copy DESTINATION is the destination root's resolved
-                # ``workset.workspaces`` (ruled 10, 2026-08-02) — the STANDALONE
+                # ``workset.workspaces`` [Jei:2026-08-02] — the STANDALONE
                 # default ``{meta.workset.path}/workspace`` for a fresh root (no
                 # workset.yaml yet); a pre-existing root repoint is honored.
                 from kanibako.project.workset import (
@@ -636,7 +636,7 @@ def _duplicate_to_standalone(src_proj, new_path, std, force, src_enable_vault, c
     write_project_gitignore(new_path)
 
     # Write the vault ``.gitignore`` if the skeleton is there.  ⚑ On a FRESH destination it
-    # never is, and that is CONFIRMED INTENDED (2026-08-27): a duplicate does NOT carry the
+    # never is, and that is CONFIRMED INTENDED [Jei:2026-08-27]: a duplicate does NOT carry the
     # source's vault.  establish_standalone does not create the vault dirs, so a duplicated
     # box with enable_vault true has none until its first launch creates an empty one;
     # _flag_missing_vault warns before that.

@@ -728,8 +728,8 @@ def _check_persona_store_for_create(agent_ref: str) -> str | None:
     if bundle.reject_reason is not None:
         return f"Error: {bundle.reject_reason}"
     from kanibako.commands.start import _persona_wiring
-    # No persona block: no endpoint refusal and no probe, as at launch (his 176th
-    # ruling, "just run it with no checks").
+    # No persona block: no endpoint refusal and no probe, as at launch
+    # ([Jei:2026-10-12], "just run it with no checks").
     checked = _persona_wiring(target) is not None
     if checked and not bundle.endpoint:
         return (

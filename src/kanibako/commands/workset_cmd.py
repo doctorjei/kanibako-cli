@@ -385,7 +385,7 @@ def _workset_config_path(ws) -> Path:
     return workset_settings_path(ws)
 
 
-#: Refusal for ``workset create --standalone`` (Jei, 2026-08-27).  The flag asked for
+#: Refusal for ``workset create --standalone`` [Jei:2026-08-27].  The flag asked for
 #: something no working set can be: a standalone box's workset ROOT is its own project
 #: directory and its ws_name is ``__STANDALONE__`` (``settings_launch``), so it is not a
 #: member of any working set — and mode is DETECTED from the box directory's marker

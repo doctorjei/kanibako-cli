@@ -422,7 +422,7 @@ def _hub_stop(state: dict, helper_num: int) -> dict | None:
 
 
 def run_stop(args: argparse.Namespace) -> int:
-    """Stop a helper instance and its whole subtree (his 171-HC ruling): each
+    """Stop a helper instance and its whole subtree [Jei:2026-10-11]: each
     descendant stops through the hub, deepest first, and is marked stopped.  One the
     hub refuses keeps its state, is reported, and makes the exit non-zero."""
     helpers_dir = _helpers_dir()
@@ -455,7 +455,7 @@ def run_stop(args: argparse.Namespace) -> int:
 
 
 def run_cleanup(args: argparse.Namespace) -> int:
-    """Stop and remove a helper and its whole subtree (his 171-HC ruling): every
+    """Stop and remove a helper and its whole subtree [Jei:2026-10-11]: every
     helper stops through the hub, deepest first, before any directory goes.  One the
     hub refuses keeps its state, is reported, and keeps every directory (exit 1).
     ``--cascade`` is accepted and changes nothing: removing a helper's directory

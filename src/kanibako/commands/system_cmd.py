@@ -313,7 +313,7 @@ def _run_system_config(args: argparse.Namespace) -> int:
 
     ⚑ There is NO system-tier ENV FILE any more. ``{config.data}/env`` was the
     docker ``.env`` the launch layered as its system tier; R-39 retired the bare
-    ``env.<VAR>`` spelling that wrote it and Jei's RQ-1 re-ruling retired the
+    ``env.<VAR>`` spelling that wrote it and the RQ-1 re-ruling [Jei:2026-08-02] retired the
     launch READ, so no verb threads it. The system env family is the settings key
     ``system.env.<VAR>``, stored in ``ssp`` like every other system setting.
     """
@@ -504,12 +504,13 @@ def _run_system_config(args: argparse.Namespace) -> int:
         # part of the retirement, not an oversight — leaving it would have mkdir'd an
         # ``agents/<node>/`` directory for a write that is then refused.
         #
-        # Full launch cascade for a CATEGORY set's set-time E3 probe (Jei (b),
-        # 2026-06-29): the system is the command scope, whose settings file is ssp —
-        # the SAME file the launch cascade's system tier reads (start.py) and the same
-        # file this command's RESET handler threads. It passed cf (the CONFIG file)
-        # here while a system category set wrote to cf, so the must-exist probe agreed
-        # with neither the launch nor reset; both halves now name ssp.
+        # Full launch cascade for a CATEGORY set's set-time E3 probe
+        # ([Jei:2026-06-29] (b)): the system is the command scope, whose settings
+        # file is ssp — the SAME file the launch cascade's system tier reads
+        # (start.py) and the same file this command's RESET handler threads. It
+        # passed cf (the CONFIG file) here while a system category set wrote to cf,
+        # so the must-exist probe agreed with neither the launch nor reset; both
+        # halves now name ssp.
         # ⚑ THE ONE DATUM THIS VERB HAS TO READ OFF THE KEY (P7). ``cascade_agent_name``
         # is "the agent this command is about": ``box set`` resolves the box's ACTIVE
         # agent, ``agent set`` is handed the node it was invoked on, and here the key is

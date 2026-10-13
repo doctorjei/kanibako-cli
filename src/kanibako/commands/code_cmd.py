@@ -184,7 +184,7 @@ def run_code(args: argparse.Namespace) -> int:
     config = load_config(config_file)
     std = load_std_paths(config)
 
-    # EXPLICIT-CREATE gate (Jei 2026-07-11g): `code` never auto-CREATES a box —
+    # EXPLICIT-CREATE gate [Jei:2026-07-11g]: `code` never auto-CREATES a box —
     # only auto-STARTS an existing one.  Resolve NON-materializingly (``initialize=
     # False`` → no mkdir/seed; ``register=True`` so a half-created, not-yet-
     # registered box does NOT resurrect off the create journal) and, when no
@@ -802,7 +802,7 @@ def _run_code_remote(args: argparse.Namespace, dest: str) -> int:
                 "--print-container; upgrade it (needs >= 1.7.0)."
             )
         elif "no box at" in low:
-            # Explicit-create (Jei 2026-07-11g): the REMOTE box does not exist and
+            # Explicit-create [Jei:2026-07-11g]: the REMOTE box does not exist and
             # a launch never auto-creates one.  `create` must be run ON THE REMOTE
             # host — make that unambiguous (the bare "run 'kanibako create'" in the
             # remote stderr reads as a local suggestion otherwise).  ⚑ A CURE IS PASTED

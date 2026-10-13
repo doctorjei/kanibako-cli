@@ -116,7 +116,7 @@ from pathlib import Path
 #: Naming a specific agent in the message was wrong twice over -- the constant is
 #: consulted for every harness, and on a box running a roomier one the warning fired
 #: as a false alarm about a tool that was not even present.
-#: ⚑ The message below spells this size out in words (Jei's wording, verbatim); the
+#: ⚑ The message below spells this size out in words (wording kept verbatim); the
 #: two are kept in step by hand, and by a test that asserts both.
 DIRECTIVE_SIZE_WARN_LIMIT = 32 * 1024
 
@@ -523,7 +523,7 @@ def super_of(entry: str, sep: str = ".") -> str:
 def evaluate_expression(expr: str, scope: dict[str, object]) -> object:
     """Evaluate ONE ``{expr}`` token of a title format. THE EVALUATOR SEAM.
 
-    🛑 The mini-language *"is just python (at least for now)"* (Jei, 2026-09-12),
+    🛑 The mini-language *"is just python (at least for now)"* [Jei:2026-09-12],
     and *"at least for now"* is the whole reason this is a function rather than an
     ``eval`` inlined in :func:`render_format`'s scanner: changing the language
     replaces this body and touches nothing else.
@@ -884,7 +884,7 @@ class Flattener:
         # of a process disagree with the first.
         # 🛑 KEYED ON *source* ALONE, not on ``(source, sep)``. That is not an
         # oversight: ``__SECTION__("1")`` then ``__SECTION__("1", "-")`` yields
-        # ``1.1`` then ``1-2`` in his own worked examples -- one sequence per
+        # ``1.1`` then ``1-2`` in the worked examples -- one sequence per
         # source, whatever separator each call asks to render it with.
         self._section_counter: dict[str, int] = {}
         # resolved path -> that document's OWN ``__CURRENT__`` while it is being

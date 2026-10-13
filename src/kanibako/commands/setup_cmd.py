@@ -139,7 +139,7 @@ def _write_system_agent(name: str) -> None:
 
 def _write_setup_marker() -> None:
     """Write ``system.setup_completed = __version__`` to the SYSTEM SETTINGS file (spec §2g)."""
-    # ⚑ THE SETTINGS FILE, NOT ``kanibako.cfg`` (Jei, 2026-08-26) — the same
+    # ⚑ THE SETTINGS FILE, NOT ``kanibako.cfg`` [Jei:2026-08-26] — the same
     # file :func:`_write_system_agent` writes and ``config.read_setup_completed`` now
     # reads.  Spec §2g declares the marker a Layer-2 ``system.*`` settings key; Layer-1
     # holds the ``config.*`` bootstrap paths alone (spec §1).

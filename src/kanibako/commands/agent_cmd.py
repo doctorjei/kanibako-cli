@@ -620,8 +620,9 @@ def _run_agent_config(args: argparse.Namespace) -> int:
         # ⚑ THE NOUN'S OWN §0 GATE, ahead of the shared setter and NOT a duplicate of it: it
         # judges the tail against the KNOWN-GOOD node (the canonical ``℘`` node), which is the one
         # thing ``set_config_value`` cannot do — that engine reads the node OUT of the key, so
-        # ``self.model`` parses as a node ``claude.self`` and ruling 55's spelling would be
-        # refused for the wrong reason, blaming the agent name rather than naming the key.
+        # ``self.model`` parses as a node ``claude.self`` and the ``self`` spelling, which
+        # [spec:15-21, "self"] confines to the agent file, would be refused for the wrong reason,
+        # blaming the agent name rather than naming the key.
         gate_err = _agent_key_gate(agent_id, key, path=path, verb="set")
         if gate_err is not None:
             print(gate_err, file=sys.stderr)
@@ -632,7 +633,7 @@ def _run_agent_config(args: argparse.Namespace) -> int:
         # Two arms: ERROR by default; with ``--force``, WARN and write.  ``set`` never removes it.
         # ⚑ NOT routed through ``cascade_agent_path`` / ``_cascade_bad_entries``: threading it makes
         # the set-time snapshot raise out of ``set_config_value``, and the generic view calls a
-        # legitimate ``self.endpoint`` a non-key.  Ruled 2026-10-05: the reader judges this tier.
+        # legitimate ``self.endpoint`` a non-key.  [Jei:2026-10-05]: the reader judges this tier.
         # ⚑ RESERVED ``default`` skipped — it owns no agent store.
         from kanibako.errors import ConfigError
         from kanibako.settings.config_dest import check_agent_node
@@ -740,7 +741,7 @@ def _agent_key_gate(
        a declared key" (spec §0).  It covers all five bind-shaped categories, from the same
        derived recognizer the other verbs use, so there is no bindings-only rule to widen later;
     2. the CLOSED KEYSPACE (D-5) — this verb had no vocabulary at all and stored whatever it was
-       handed, including ``self.model`` (ruling 55);
+       handed, including ``self.model`` [spec:15-21, "self"];
     3. the VALUE SHAPE (D-7) — a declared key whose value is a TABLE takes no scalar.
     """
     from kanibako.settings.agent_file import table_value_error
@@ -1123,10 +1124,10 @@ def run_reauth(args: argparse.Namespace) -> int:
     # node, and handing ``""`` to ``resolve_target`` would AUTO-DETECT an agent and
     # reauth it — credentials for an agent this box deliberately does not run (the
     # same two-vocabulary collision the launch seam guards; bifrost E-NULL).
-    # 🛑 ``pref.system.agent: null`` reaches neither line since the 2026-09-19
-    # ruling: ``select_agent`` REFUSES it above, saying no default agent is set, so
-    # no production path produces a node-less selection and the ``target is None``
-    # arm below is unreachable today.
+    # 🛑 ``pref.system.agent: null`` reaches neither line since [Jei:2026-09-19]:
+    # ``select_agent`` REFUSES it above, saying no default agent is set, so no
+    # production path produces a node-less selection and the ``target is None`` arm
+    # below is unreachable today.
     # ⚑ KEPT anyway, and NOT as a reservation for ``shell``: keyspec §2b makes the
     # plain-shell box an effective ``{system.agent}`` of ``shell``, a NAMED node, so
     # a D2 selection has ``has_agent`` TRUE and resolves a target like any other.

@@ -26,10 +26,10 @@ if TYPE_CHECKING:
 # later overlays earlier — into the box store's ONE seeded destination at create.
 # Full model in llm-docs/kanibako/launch/templates.py.md § the layered box seed.
 #
-# ⚑⚑ THERE ARE NO HANDBOOK LAYERS HERE, AND THIS IS NOT AN OVERSIGHT.  Jei ruled
-# them OUT of the category 2026-08-07g and §2a no longer declares them; the box's
-# own handbook chapter is filled by :func:`install_box_handbook_template`.  Read
-# the QUARANTINE block above that function before touching it.
+# ⚑⚑ THERE ARE NO HANDBOOK LAYERS HERE, AND THIS IS NOT AN OVERSIGHT.  They were
+# ruled OUT of the category [Jei:2026-08-07g] and §2a no longer declares them; the
+# box's own handbook chapter is filled by :func:`install_box_handbook_template`.
+# Read the QUARANTINE block above that function before touching it.
 
 #: The box home seed destination — the GUEST home, RESOLVED to the box store when
 #: the copy runs.  ⚑ It is the ONLY one: SEED DESTINATIONS ARE ENUMERATED, NEVER A
@@ -63,7 +63,7 @@ def agent_template_defaults(agent_id: str | None) -> dict[str, object]:
     inside ``template_seed_defaults``, whose one consumer is the CREATE-time seed
     resolve, so ``{agent.default.template}`` resolved to ``__MISSING__`` for every box
     that already existed — a declared key with a real default that the keyspace could
-    not answer (ruled 2026-08-29: *"for any box thst exists, def."*).  A key that
+    not answer ([Jei:2026-08-29]: *"for any box thst exists, def."*).  A key that
     answers only at create is not answerable to a user.
 
     ⚑ SOURCE KEYS ONLY.  The ``seeded`` LAYERS stay in ``template_seed_defaults`` and
@@ -103,7 +103,7 @@ def agent_template_defaults(agent_id: str | None) -> dict[str, object]:
         return defs
     # SOURCE key (spec §2a/§2d), not a hardcoded path: settable, so a user
     # override reroutes the layer by cascade precedence.
-    # ⚑⚑ NODE-ROOTED, NEVER THE HARNESS (ruled 2026-08-27).  §2d and the
+    # ⚑⚑ NODE-ROOTED, NEVER THE HARNESS [Jei:2026-08-27].  §2d and the
     # manifest both give ``agent.<agent>.template =
     # {meta.agent.<agent>.path}/template``, and ``<agent>`` is the ACTIVE NODE:
     # a persona seeds from its OWN store.  This used to spell
@@ -240,7 +240,7 @@ def _prune_dirs_shadowed_by_files(lower: Path, upper: Path) -> None:
 # another.  The packaged-install set it serves is enumerated in the llm-doc.
 # ---------------------------------------------------------------------------
 
-#: Per-SCOPE store-root WHITELISTS (spec §2a, ruled by Jei 2026-07-30).  Each
+#: Per-SCOPE store-root WHITELISTS (spec §2a, [Jei:2026-07-30]).  Each
 #: packaged per-scope template subtree MIRRORS THAT SCOPE'S STORE ROOT, so the
 #: whitelist is exactly the set of top-level entries that subtree may contain.
 #: ⚑ DENY-BY-DEFAULT: anything not listed is an ERROR.  What each scope denies, and
@@ -930,11 +930,11 @@ def install_workset_template(std: StandardPaths, workset_path: Path, *, workset_
 # ⚑⚑⚑ QUARANTINE — A NAMED SPECIAL CASE.  DO NOT COPY THIS SHAPE.
 #
 # Everything between here and ``install_packaged_templates`` is the BOX HANDBOOK
-# host-template copy: a DELIBERATE, RULED EXCEPTION to the live model.  Jei,
-# 2026-08-07g, on the handbook specifically: *"Yes, handbook copy keeps all three
-# layers. It is a special case."*  A new host template follows the SINGLE-SOURCE
-# shape of ``install_workset_template`` above instead.  ⚑ NOT a pattern, NOT a
-# precedent, and not to be imitated for any other host template.
+# host-template copy: a DELIBERATE, RULED EXCEPTION to the live model.
+# [Jei:2026-08-07g], on the handbook specifically: *"Yes, handbook copy keeps all
+# three layers. It is a special case."*  A new host template follows the
+# SINGLE-SOURCE shape of ``install_workset_template`` above instead.  ⚑ NOT a
+# pattern, NOT a precedent, and not to be imitated for any other host template.
 #
 # ⚑⚑ SINGLE-ROUTE IS INTACT, NOT BENT.  Single-route governs what enters A BOX; a
 # host template never enters one.  What enters is the RO BIND, an ordinary key.
