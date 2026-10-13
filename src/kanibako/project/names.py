@@ -412,7 +412,7 @@ def _refuse_other_space_member(
     """Step 4: refuse *name* when it is a member of a named workset outside this space.
 
     Its own space would resolve it (step 1), so outside one the bare name errors and
-    names the ``<workset>/<box>`` spelling that reaches it (plan Q4, his text).
+    names the ``<workset>/<box>`` spelling that reaches it (plan Q4; [Jei:2026-10-03]).
     """
     members = _workset_member_paths(names["worksets"], name, early_system=early_system)
     if not members:

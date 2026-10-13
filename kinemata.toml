@@ -439,7 +439,7 @@ declared_in = ["agent-cred-files", "retired-file-names", "channel-paths",
 # it. Two kinds were accepted there by date until then, and both are gone. The
 # `not_keys.code_residue` uses were renamed out of the key namespace. The
 # filenames went through `defer_to` below: a filename is a DECLARED CONSTANT,
-# never an exemption by shape (his Q67 answer), and each record had been a
+# never an exemption by shape (`Q67` [Jei:2026-09-24]), and each record had been a
 # constant's own declaration line, which `undeclared` could not see across
 # registries until `defer_to`, new in `0.4.0`. Measured zero sites on either NOT
 # EXPRESSIBLE axis, so neither contributes a record.

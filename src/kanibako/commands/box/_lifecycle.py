@@ -1161,8 +1161,9 @@ def _dest_nesting_refusal(
     forceable refusal passes under *force*.  *vacated_root* is the standalone root a
     relocating source leaves.  *subject* names what is placed (a working set's root is
     judged as a box with no name, so no other box's row is its own).  *absent* says
-    nothing exists at *dest*, so no outcome overwrites a file: every refusal is forceable
-    (his (A)), and an unforceable one keeps what it names and takes the --force cure.
+    nothing exists at *dest*, so no outcome overwrites a file: every refusal is
+    forceable (176-4B (A) [Jei:2026-10-12]), and an unforceable one keeps what it names
+    and takes the --force cure.
     """
     # The judge reads only the mode, name, workset, and metadata path; the other
     # fields are the box's own paths, which no arm asks.

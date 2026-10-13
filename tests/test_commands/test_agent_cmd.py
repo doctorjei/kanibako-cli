@@ -255,7 +255,7 @@ class TestRunInfo:
         """K4 Step 1: the file's root scalars ride the ``agent.claude`` level, so a stored
         ``""`` label would shadow the plugin's declaration there and send the label to
         ``agent.default.label``. Door 1 declines it and the later doors resolve without the
-        file (his Q3 answer: keep today's label). A ``null`` refuses instead
+        file (the plan's Q3: keep today's label). A ``null`` refuses instead
         (``test_start_access_null.py``)."""
         from kanibako.commands.agent_cmd import run_info
         from kanibako.settings.agent_file import slot_for, write_leaf

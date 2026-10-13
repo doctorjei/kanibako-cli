@@ -303,7 +303,7 @@ class TestGetWarnsOnTheSameEntries:
 
 
 class TestShowFlagsADroppedTableGetReads:
-    """His Q5 ("3 - agreed"): plain ``show`` flags, in one line, a table the cascade
+    """Q5 [Jei:2026-09-28] ("3 - agreed"): plain ``show`` flags, in one line, a table the cascade
     drops at the noun that ``get`` still reads."""
 
     def test_box_show_flags_the_dropped_tables(self, tmp_path):

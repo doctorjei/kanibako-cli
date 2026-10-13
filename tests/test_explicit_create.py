@@ -1481,7 +1481,7 @@ def _assert_launch_passes_the_gate(target, monkeypatch, capsys):
 
 
 class TestLaunchRefusesNullWorkspaceBind:
-    """His Q106 answer: *"if a critical bind is <None>, launch should fail"*.
+    """Q106 [Jei:2026-09-28]: *"if a critical bind is <None>, launch should fail"*.
 
     Named in-tree and standalone boxes refuse on the probe, before anything is created;
     primary and an external named member resolve their workspace through no workset key.

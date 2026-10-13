@@ -11774,7 +11774,7 @@ class TestPersonaPreflightBundle:
     def test_a_verified_key_refused_for_its_model_follows_H1(
         self, tmp_path, capsys, model_exact,
     ):
-        """His H1 = C, through the launch door: the credential verified without a
+        """H1 = C [Jei:2026-10-11], through the launch door: the credential verified without a
         model, the model request refused (row 4).  An exact model id blocks the
         launch; an id the probe could not match to the box's warns and launches.
         """

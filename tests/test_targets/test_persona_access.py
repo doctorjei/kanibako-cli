@@ -312,7 +312,7 @@ class TestAccessOutcomeRows:
 
 
 class TestAccessOutcomeH1:
-  """His H1 = C: a verified credential whose model request is refused (rows 4, 10)
+  """H1 = C [Jei:2026-10-11]: a verified credential whose model request is refused (rows 4, 10)
   REFUSES when the probe sent the box's own model id and WARNS when it could not.
   """
 

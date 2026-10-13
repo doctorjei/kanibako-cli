@@ -844,7 +844,8 @@ class TestDesignationCascade:
     def test_s8b_a_member_of_another_workset_errors_naming_the_qualified_spelling(
         self, std, config, tmp_home, monkeypatch, route,
     ):
-        """S8b (plan Q4, his text "Otherwise, error"): never resolved from outside its space."""
+        """S8b (plan Q4; [Jei:2026-10-03]: "Otherwise, error"): never resolved from outside
+        its space."""
         _make_member(std, config, tmp_home, "wsx", "foo")
         here = tmp_home / "here"
         here.mkdir()

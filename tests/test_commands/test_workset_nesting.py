@@ -539,7 +539,8 @@ class TestWorksetConnectUnforceableFirst:
 
 
 class TestWorksetCreateOnAMissingRecordedPath:
-    """Nothing exists there, so nothing is overwritten: refused unless --force (his (A))."""
+    """Nothing exists there, so nothing is overwritten: refused unless --force
+    (176-4B (A) [Jei:2026-10-12])."""
 
     @staticmethod
     def _missing(area: Path, which: str) -> tuple[Path, str]:

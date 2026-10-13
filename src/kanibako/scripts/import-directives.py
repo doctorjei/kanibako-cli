@@ -1006,7 +1006,7 @@ class Flattener:
         minted: list[str] = []
 
         def section(src: str = current, s: str = ".") -> str:
-            """``__SECTION__`` as a document calls it, with his signature's own
+            """``__SECTION__`` as a document calls it, with the signature's own
             defaults (``__CURRENT__`` and ``"."``). Wrapped only to RECORD."""
             sid = self.next_section(src, s)
             minted.append(sid)

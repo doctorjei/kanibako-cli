@@ -133,9 +133,9 @@ date"*.
 2. `start._synced_uptodate` skips the sync when `dest.st_mtime >= src.st_mtime`;
 3. ⇒ a seed source newer than the sync source would pin the SEED's bytes at a credential dest.
 
-Step 2 is the actual defect: **an mtime comparison against the destination only means anything if the
-destination was last written BY THE SYNC**. `start._sync_box_at_create` makes that true — it runs
-immediately after the create-time seed, **UNGATED** (`skip_if=None`, his
+Step 2 is the actual defect: **an mtime comparison against the destination only means anything if
+the destination was last written BY THE SYNC**. `start._sync_box_at_create` makes that true — it
+runs immediately after the create-time seed, **UNGATED** (`skip_if=None`; [Jei:2026-08-11]:
 *"irrespective of date"*), so from creation onward every sync dest holds sync-written bytes and the
 launch gate compares against its own prior write. A prune would delete a declared copy to work
 around a gate; this keeps the gate's own invariant instead.
@@ -197,7 +197,7 @@ names it beside the two mask refusals. This function is what MAKES coverage true
 collapsed bindings to the innermost bind containing it — so a cred file inside a bound directory
 lands in THAT BIND'S SOURCE, where the box can actually see it, instead of being written under home
 and shadowed. Home is simply the pid-0 foundation among those binds. ⚑ Applying
-`_refuse_seed_outside_home` to this arm too would reintroduce the rule his ordering deleted.
+`_refuse_seed_outside_home` to this arm too would reintroduce the rule that ordering deleted.
 
 🛑 **That resolution is DELIVERY and is NOT done here.** The emitted row carries the GUEST dest,
 exactly as a seed row does; `commands.start._synced_host_dest` does the innermost-bind lookup.

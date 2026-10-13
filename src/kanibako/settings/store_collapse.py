@@ -446,7 +446,7 @@ def _scope_binds(shape: StoreShape) -> list[tuple[str, BindEntry, str]]:
     for arm, mode in ((shape.ro, "ro"), (shape.rw, "rw"))
     for dest_path, entry in arm.items()
   ]
-  # ⚑ ``sorted`` is STABLE, so his ro-before-rw arm order survives at equal length.
+  # ⚑ ``sorted`` is STABLE, so the ro-before-rw arm order survives at equal length.
   return sorted(binds, key=lambda bind: _segments(bind[0]))
 
 
@@ -500,7 +500,7 @@ def _binds_under(combined: CollapsedBindings, dest: str) -> list[str]:
 
 
 def _masks_over(combined: CollapsedBindings, dest: str) -> list[str]:
-  """The MASK dests AT or CONTAINING *dest* - his "same or parent" side, inclusive."""
+  """The MASK dests AT or CONTAINING *dest* - the "same or parent" side, inclusive."""
   return [
     d for d, bind in combined.items() if bind.src is None and is_within(dest, d)
   ]

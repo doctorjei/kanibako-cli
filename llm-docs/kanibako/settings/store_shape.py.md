@@ -141,7 +141,7 @@ kept the LAST row.
 
 The collapse indexes `store_shape_set[scope]` for all four scopes unconditionally, so the producer
 emits all four — an empty `StoreShape` where a scope declared nothing. A missing scope would be a
-`KeyError` inside his loop; making it unrepresentable is cheaper than guarding it there.
+`KeyError` inside the collapse's loop; making it unrepresentable is cheaper than guarding it there.
 
 ## Categories with NO arm
 

@@ -582,7 +582,7 @@ def _unusable_store_root_error(canonical: str, value: "str | None") -> "str | No
     over the same path-tier split), so the refusal judges what the resolve would
     compute, not the spelling.
 
-    ⚑ SCOPED TO THE DOOR HE NAMED — ``system.state`` alone.  §2a's *"WARN, proceed"*
+    ⚑ SCOPED TO THE DOOR Q16 NAMES — ``system.state`` alone.  §2a's *"WARN, proceed"*
     arm still governs host SOURCE paths (bindings/caches/seeded/common/synced), and
     neither ``config.data`` (no CLI write route — B2) nor ``system.cache`` is named,
     so neither refuses here; with the resolve no longer materializing, both stay
@@ -3030,8 +3030,8 @@ def _undeclared_stored_entries(data: dict) -> dict[tuple[str, ...], tuple[str, s
     ``box | env.X``), anything else joined. Only the override subtraction in
     :func:`show_config` compares the joined form.
 
-    ⚑ THE ``<VAR>`` SLOT IS LEFT AS IT WAS, pending his deferred treatment of the dotted
-    var (``settings_keyspace.is_var_table``): a dotted VAR name under ``env`` /
+    ⚑ THE ``<VAR>`` SLOT IS LEFT AS IT WAS, pending the deferred treatment of the dotted
+    var [Jei:2026-08-22] (``settings_keyspace.is_var_table``): a dotted VAR name under ``env`` /
     ``secret_path`` takes the ordinary arm, so ``box: {env: {"A.B": 1}}`` is marked
     ``box.env.A.B``. The launch's §0 audit does not refuse that entry, so this view and
     the launch DISAGREE at that slot; that disagreement is part of the deferred topic.

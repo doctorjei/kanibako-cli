@@ -1288,7 +1288,7 @@ class TestExclusionRenumbersSurvivors:
 
 class TestTerminalDotConvention:
     """🛑 §5c — a single-part number carries a terminal dot (``1.`` ``2.`` ``3.``);
-    a multi-part number does not (``1.1`` ``2.4``). His, intentional, and it is
+    a multi-part number does not (``1.1`` ``2.4``). Intentional, and it is
     FORMATTING, so a renumber has to keep it right."""
 
     def test_authored_forms_are_preserved(self, home):
@@ -1559,7 +1559,7 @@ class TestSectionIdAlgebra:
         assert flattener.super_of("1-2") == ""     # read with the default ``.``
 
     def test_section_allocates_his_worked_sequence(self):
-        """His six examples, in order, against ONE render's counters."""
+        """The six worked examples, in order, against ONE render's counters."""
         fl = flattener.Flattener()
         assert fl.next_section("2", ".") == "2.1"
         assert fl.next_section("1", ".") == "1.1"
@@ -1641,7 +1641,7 @@ class TestRenderFormat:
                 flattener.render_format(fmt, "Foo", _scope())
 
     def test_four_ats_escape_to_zero_slots_and_are_refused(self):
-        """⚑ His escape ORDER, checked: ``@@@@`` is two literals, hence ZERO
+        """⚑ The escape ORDER, checked: ``@@@@`` is two literals, hence ZERO
         slots — so it raises, exactly as the empty format does."""
         with pytest.raises(flattener.FormatError):
             flattener.render_format("@@@@", "Foo", _scope())

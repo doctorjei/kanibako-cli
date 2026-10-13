@@ -229,7 +229,7 @@ class TestPerScope:
 
   def test_every_scope_has_a_shape_even_when_it_declared_nothing(self):
     # The collapse indexes all four unconditionally; a missing scope would be a
-    # KeyError inside his loop.
+    # KeyError inside its loop.
     produced = shapes({"box.bindings.rw": {"~/x": ("/h/x",)}})
     assert set(produced.shapes) == {"system", "agent", "workset", "box"}
     for scope in ("system", "agent", "workset"):

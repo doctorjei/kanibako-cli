@@ -1119,10 +1119,11 @@ subtracts it too: a request whose target is off the §2h allowlist is no key (sp
 The undeclared set is keyed by SEGMENTS; a dotted entry name is printed as the launch's refusal
 prints it (`settings_keyspace.render_store_path`: `box | env.X`), anything else joined. Only the
 subtraction compares the joined form, because the flattens it subtracts from join a dotted entry
-name into the key it spells. The `<VAR>` slot of `env` / `secret_path` (`settings_keyspace.is_var_table`)
-is LEFT AS IT WAS, pending his deferred treatment of the dotted var: a dotted VAR name there is
-marked in the older joined spelling (`box.env.A.B`), while the launch's §0 audit passes it — the
-two do NOT agree at that slot, and that disagreement is part of the deferred topic.
+name into the key it spells. The `<VAR>` slot of `env` / `secret_path`
+(`settings_keyspace.is_var_table`) is LEFT AS IT WAS, pending the deferred treatment of the dotted
+var [Jei:2026-08-22]: a dotted VAR name there is marked in the older joined spelling
+(`box.env.A.B`), while the launch's §0 audit passes it — the two do NOT agree at that slot, and
+that disagreement is part of the deferred topic.
 A top-level `config:` table is NOT among the undeclared entries (`config.data` is a key): it gets its own block after
 it, `_misplaced_config_entries`, printed with the launch refusal's own per-entry cures
 (`settings_assemble.config_entry_groups`: move a declared key to the Layer-1 file, delete the rest),

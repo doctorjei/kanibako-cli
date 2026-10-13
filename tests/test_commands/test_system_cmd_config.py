@@ -1939,9 +1939,9 @@ class TestTheEmptyIdiomsReadBackAsThemselves:
 class TestSystemStateSetRefusal:
     """Q16 — ``system set system.state=<unusable>`` is refused AT SET TIME.
 
-    *"A path we cannot use is not a path we should store."*  Scoped to the door
-    he named (``system.state`` alone — §2a's WARN-proceed arm still governs host
-    SOURCE paths, and ``system.cache`` takes no refusal here); box creation is
+    *"A path we cannot use is not a path we should store."* [Jei:2026-09-19] Scoped to
+    the door Q16 names (``system.state`` alone — §2a's WARN-proceed arm still governs
+    host SOURCE paths, and ``system.cache`` takes no refusal here); box creation is
     exempt by construction (it never routes through ``set_config_value``).
     """
 

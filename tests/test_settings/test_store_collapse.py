@@ -99,7 +99,7 @@ class TestHomeIsPidZero:
     assert collapsed.synced == []
 
   def test_home_is_keyed_by_its_NORMALIZED_dest_not_the_tilde(self):
-    # ⚑ His ``{"~": home_bind}`` is spelled symbolically. Left literal, home would
+    # ⚑ The design's ``{"~": home_bind}`` is spelled symbolically. Left literal, home would
     # compare against nothing and could subsume nothing: a dest is a GUEST path and
     # the guest home is a fixed constant, so the foundation key normalizes too.
     bindings = collapse().bindings
@@ -1190,7 +1190,7 @@ class TestTheIntraScopeSorts:
     )] == ["/h/a", "/h/b", "/h/c"]
 
   def test_the_arm_order_survives_at_EQUAL_length(self):
-    # The sort is STABLE, so his ro-before-rw walk is preserved: the ro entry is
+    # The sort is STABLE, so the ro-before-rw walk is preserved: the ro entry is
     # the OCCUPANT the collision names.
     with pytest.raises(SettingsError, match=r"'/h/ro'"):
       collapse(

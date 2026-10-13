@@ -2039,8 +2039,8 @@ def dotted_entry_reason(parent: Sequence[str], name: str) -> str:
     the ``box.env.X`` it spells, and not a key.
 
     ⚑ NOT ASKED AT THE ``<VAR>`` SLOT (:func:`is_var_table`): a dotted VAR name under
-    ``env``/``secret_path`` is left as it was, pending his deferred treatment of the
-    dotted var.
+    ``env``/``secret_path`` is left as it was, pending the deferred treatment of the
+    dotted var [Jei:2026-08-22].
     """
     if not parent:
         return (
@@ -2060,7 +2060,7 @@ def is_var_table(
     """Is the table at *parent* a per-VARIABLE family's root (:data:`VAR_KEYED_CATEGORIES`),
     so that an entry directly under it sits in the ``<VAR>`` slot?
 
-    ⚑ LEFT AS-IS AT THAT SLOT, pending his deferred treatment of the dotted var: a
+    ⚑ LEFT AS-IS AT THAT SLOT, pending the deferred treatment of the dotted var [Jei:2026-08-22]: a
     dotted VAR name there gets no :func:`dotted_entry_reason` finding from the launch's
     audit (:func:`_classify_whole_store_path`), and the stored view
     (``config_interface._undeclared_stored_entries``) keeps its own older arm for it.
@@ -2144,8 +2144,8 @@ def _classify_whole_store_path(
             # destination (``pref.box.bindings.rw``'s) as a name — a reason about key
             # spelling would be false for it.
             # ⚑ NOT at the ``<VAR>`` slot of ``env``/``secret_path`` (:func:`is_var_table`):
-            # a dotted VAR name stops here without a finding, left as-is pending his
-            # deferred treatment of the dotted var.
+            # a dotted VAR name stops here without a finding, left as-is pending the
+            # deferred treatment of the dotted var [Jei:2026-08-22].
             parent = segments[:cut - 1]
             if not parent or (
                 oracle(".".join(parent)).cls is KeyClass.NAMESPACE
