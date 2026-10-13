@@ -415,10 +415,11 @@ class _Expander:
                 continue  # whole-value ref to an absent key → drop this key (spec §0).
             if isinstance(value, BindEntry) and dict.__contains__(out, out_key):
                 # ⚑ Two DIFFERENT stored dests expanded to ONE destination (files
-                # store UNRESOLVED — design §2b-CAVEAT). Installing the second
-                # would silently DELETE the first, a data loss no downstream check
-                # can see. Raised even in LENIENT mode: the fault is the PAIR, so
-                # there is no single owning leaf to attribute it to.
+                # store UNRESOLVED — disk-store-rework design §2b-CAVEAT).
+                # Installing the second would silently DELETE the first, a data
+                # loss no downstream check can see. Raised even in LENIENT mode:
+                # the fault is the PAIR, so there is no single owning leaf to
+                # attribute it to.
                 raise _ExpandedShapeError(
                     f"Two bindings under {'.'.join(path) or '<root>'} resolve to "
                     f"the same destination {out_key!r}; the second entry "

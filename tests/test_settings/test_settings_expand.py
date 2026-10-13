@@ -1430,9 +1430,10 @@ def test_bind_entry_whole_value_dest_key_to_absent_raises() -> None:
 
 def test_two_dest_keys_resolving_to_one_destination_raise() -> None:
     # ⚑ Files store UNRESOLVED, so dest-keying is unique in the UNRESOLVED
-    # namespace only (design §2b-CAVEAT). Expansion can collapse two distinct
-    # stored keys onto one destination; installing the second would SILENTLY
-    # delete the first, and no downstream check could ever see the loss.
+    # namespace only (disk-store-rework design §2b-CAVEAT). Expansion can
+    # collapse two distinct stored keys onto one destination; installing the
+    # second would SILENTLY delete the first, and no downstream check could
+    # ever see the loss.
     snap = _arm(
         {"@meta.box.path/a": BindEntry("/h/1"), "/data/box/a": BindEntry("/h/2")}
     )

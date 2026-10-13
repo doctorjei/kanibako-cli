@@ -481,9 +481,9 @@ Two normalizations, both identity-preserving for an already-canonical dest. The 
 ⚑ Everything else is carried VERBATIM, including an `@`-ref or `$var` destination. Those cannot
 be absolutized here — they resolve later, in `settings_expand` — so a dest-keyed arm is unique in
 the UNRESOLVED namespace only, and the RESOLVED-`box_dest` collision check in
-`settings_categories` stays (design §2b-CAVEAT). Nothing is REFUSED here either: a non-absolute
-literal dest is a spec violation, but refusing it is not R-11's job and a refusal keyed on "does
-not start with `/`" would fire on every legitimate `@`-ref dest.
+`settings_categories` stays (disk-store-rework design §2b-CAVEAT). Nothing is REFUSED here either:
+a non-absolute literal dest is a spec violation, but refusing it is not R-11's job and a refusal
+keyed on "does not start with `/`" would fire on every legitimate `@`-ref dest.
 
 ```python
 match_var(expr: str, i: int) -> tuple[str, int]

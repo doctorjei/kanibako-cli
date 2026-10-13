@@ -263,10 +263,10 @@ entry in every category, and the collapse skips it.
 
 **Refusal 2 — two dests colliding on one destination.** Files store UNRESOLVED, so
 `@meta.box.path/home` and a literal spelling of that same path are two DISTINCT keys that resolve to
-one place (design §2b-CAVEAT). Installing the second would silently DELETE the first, which is a data
-loss no downstream check can see, because only one entry would ever reach it. It is raised rather
-than recorded EVEN IN LENIENT MODE: the fault is the PAIR, so there is no single owning leaf to
-attribute it to.
+one place (disk-store-rework design §2b-CAVEAT). Installing the second would silently DELETE the
+first, which is a data loss no downstream check can see, because only one entry would ever reach
+it. It is raised rather than recorded EVEN IN LENIENT MODE: the fault is the PAIR, so there is no
+single owning leaf to attribute it to.
 
 ## Bind and BindEntry — the two bind shapes
 

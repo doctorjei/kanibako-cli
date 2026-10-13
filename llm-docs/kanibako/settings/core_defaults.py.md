@@ -213,7 +213,7 @@ SHAPE itself — the second entry would simply replace the first in the dict, wi
 able to see the loss, which is the unrepresentable-collision case R-8 says to refuse LOUDLY rather
 than absorb. (Two entries at one dest in DIFFERENT arms or different categories are still two
 different keys and still reach the resolved-`box_dest` collision table in `settings_categories` —
-that check is untouched, design §2b-CAVEAT.)
+that check is untouched, disk-store-rework design §2b-CAVEAT.)
 
 ## The channel binds
 
