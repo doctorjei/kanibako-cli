@@ -32,10 +32,10 @@ path tier (`settings/paths.py`); it is the launch/settings cascade that no longe
   union of subtrees; a LEAF (scalar / `list` / `Bind`) is replaced WHOLE by the highest-precedence
   scope that SETS it. "Sets" is tested with the `__MISSING__` sentinel — NOT truthiness — at EVERY
   named leaf.
-* **Design §3** — the 3-state `None` model plus the present-`None` TERMINAL type-split.
+* **Spec §2h "Values are installed VERBATIM"** — the 3-state `None` model plus the present-`None`
+  TERMINAL type-split.
 * **Spec §2a "masks is a KEYED category"** — `masks` rides the SAME generic per-entry merge.
-* **Design §4** — cascade order. The cascade ends at `box`; the former `required` cap is CUT
-  (2026-06-29f).
+* **Spec §2 "Cascade"** — cascade order. The cascade ends at `box`; there is no `required` tier.
 * **Spec §0 "Category collisions"** — the merge keys by NAME; collision arbitration keys on the
   resolved `box_dest` (system-design § "Collision arbitration").
 * **Spec `~/canon/workbook/specs/settings-keyspace-1.8.0.md` §2** (cascade — ends at `box`) / **§2a** (the category list and
@@ -88,7 +88,7 @@ For each NAME at each depth, against the ordered partials:
 * otherwise the **highest-precedence scope that SETS the name wins** (presence tested via the S3
   probe — never truthiness, never the bound `.get`); its leaf (scalar / `list` / `Bind`) replaces
   any lower value atomically.
-* **present-`None` TERMINAL** — the type-split (design §3), keyed by the name's CATEGORY via its
+* **present-`None` TERMINAL** — the type-split (spec §2h), keyed by the name's CATEGORY via its
   PATH (S16). A present-`None` winner SETS the name, clearing lower scopes, and the snapshot result
   then depends on the category. See the table below.
 
@@ -105,7 +105,7 @@ empty snapshot.
 | category of the leaf | result |
 |---|---|
 | scalar leaf | KEEP `None` — the consumer applies its default |
-| bind / category leaf | OMIT — no mount (build-4 tier-2 honesty, design §5) |
+| bind / category leaf | OMIT — no mount (tier-2 honesty — `settings_views` § The three tiers) |
 | `masks` leaf | OMIT — unmask that path (spec §2a "masks is a KEYED category") |
 | anything under the top-level `pref` table | KEEP verbatim, with NO classification at all |
 
@@ -114,9 +114,9 @@ empty snapshot.
 `_merge_nodes` recurses whenever the winner is a subtree — ALWAYS, not only when a LOWER setter is
 also a subtree. Three reasons, and each one alone is sufficient:
 
-1. Recursing a LONE subtree winner is what carries the §3 present-`None` type-split into its leaves.
-   A present-`None` category or `masks` leaf under a subtree that ONLY ONE level sets must still be
-   OMITted.
+1. Recursing a LONE subtree winner is what carries the present-`None` type-split (spec §2h) into
+   its leaves. A present-`None` category or `masks` leaf under a subtree that ONLY ONE level sets
+   must still be OMITted.
 2. The recursion yields a fresh, non-aliasing node (S15), so the module needs no separate deep
    copy.
 3. A lower non-subtree setter at this name is shadowed by the higher subtree — it is filtered out of
@@ -136,15 +136,16 @@ appears once, at its most-specific occurrence, and iteration order within a leve
 ## `_Omit` / `_OMIT`
 
 A module-private sentinel meaning: a present-`None` leaf that must be OMITTED from the snapshot — a
-bind / category / masks reset, where there is no default to synthesize (design §3). It is never
-stored, and it is distinct from `__MISSING__` (absence) and from present-`None` (a kept scalar
-reset). Its `__repr__` is a debug aid only.
+bind / category / masks reset, where there is no default to synthesize (spec §2a "PER-ENTRY CASCADE
+MERGE"). It is never stored, and it is distinct from `__MISSING__` (absence) and from
+present-`None` (a kept scalar reset). Its `__repr__` is a debug aid only.
 
 ## `_resolve_present_none` — the classification
 
-Classifies a present-`None` leaf at *path* by CATEGORY: the §3 type-split, keyed by PATH per S16. It returns `_OMIT` for a
-bind / category / masks leaf (drop it — no mount, or unmask) or `None` for a scalar leaf (keep it —
-the consumer's default). *path* is the full segment trail to the leaf.
+Classifies a present-`None` leaf at *path* by CATEGORY: the spec §2h type-split, keyed by PATH per
+S16. It returns `_OMIT` for a bind / category / masks leaf (drop it — no mount, or unmask) or
+`None` for a scalar leaf (keep it — the consumer's default). *path* is the full segment trail to
+the leaf.
 
 A leaf is a category leaf when EITHER:
 
@@ -210,12 +211,12 @@ path shape changed and the classification did not.
 
 ### Why the ROOT case OMITs
 
-The root case keeps the design §5 tier-2 coupling honest: a category accessor promises a `Mapping` /
-`set`, so a present-`None` at the category root must OMIT — drop the whole category — never KEEP a
-bare `None` where a mapping is contracted.
+The root case keeps the tier-2 coupling (`settings_views` § The three tiers) honest: a category
+accessor promises a `Mapping` / `set`, so a present-`None` at the category root must OMIT — drop
+the whole category — never KEEP a bare `None` where a mapping is contracted.
 
-⚑ Design §3 spells the ENTRY case only. The ROOT case is its consistent extension; the design is
-silent on a whole-category reset, and that flag was raised in chat.
+⚑ Spec §2a "PER-ENTRY CASCADE MERGE" states the root case too ("a present-`None` at the CATEGORY …
+omits the whole category").
 
 ## Module-private constants
 

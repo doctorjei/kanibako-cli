@@ -8,7 +8,7 @@ Covers the brief §4 checklist for the pure ``merge(levels) -> snapshot``:
 * most-specific-first LEAF win;
 * ``__MISSING__`` vs truthiness — a leaf set to ``0`` / ``""`` / ``False`` SETS and
   wins (NOT skipped);
-* present-None TYPE-SPLIT (§3) — scalar → None KEPT; bind → OMITTED; category →
+* present-None TYPE-SPLIT (spec §2h) — scalar → None KEPT; bind → OMITTED; category →
   OMITTED; masks → UNMASKED (omitted);
 * masks 3-state via the GENERIC merge;
 * agent keys keep their §2d DISCRIMINATED form (``agent.default.*`` /
@@ -19,8 +19,7 @@ Covers the brief §4 checklist for the pure ``merge(levels) -> snapshot``:
 
 The merge keys by NAME only (NO ``box_dest`` arbitration — system-design §
 "Collision arbitration") and never expands a ref (block 3). Authority: spec §2 /
-§2a ("PER-ENTRY CASCADE MERGE", "masks is a KEYED category") / §2c; archived
-design §3 / §4.
+§2a ("PER-ENTRY CASCADE MERGE", "masks is a KEYED category") / §2c / §2h.
 """
 
 from __future__ import annotations
@@ -284,7 +283,7 @@ def test_higher_scope_overrides_one_agent_by_name() -> None:
 
 
 # --------------------------------------------------------------------------- #
-# present-None TYPE-SPLIT (§3)                                                 #
+# present-None TYPE-SPLIT (spec §2h)                                            #
 # --------------------------------------------------------------------------- #
 
 
@@ -314,10 +313,10 @@ def test_present_none_category_leaf_omitted() -> None:
 
 
 def test_present_none_lone_subtree_category_omitted_scalar_kept() -> None:
-    # The LONE-subtree case (only ONE level sets the containing subtree): the §3
-    # type-split must STILL fire on its leaves. A category present-None inside a
-    # single-setter subtree is OMITTED; a scalar present-None in the SAME subtree is
-    # KEPT. (Before the recursion-always merge fix, a lone KeyStore winner was
+    # The LONE-subtree case (only ONE level sets the containing subtree): the
+    # type-split (spec §2h) must STILL fire on its leaves. A category present-None
+    # inside a single-setter subtree is OMITTED; a scalar present-None in the SAME
+    # subtree is KEPT. (Before the recursion-always merge fix, a lone KeyStore winner was
     # deep-copied VERBATIM, so its present-None leaves survived un-classified — the
     # F8 latent crash when a box.agent null had no co-setting default.)
     lone = KeyStore(
@@ -579,9 +578,9 @@ def test_bindmap_same_dest_most_specific_wins() -> None:
 
 
 def test_bindmap_present_none_unsets_just_that_dest() -> None:
-    # A present-``None`` entry OMITs exactly ONE destination (§3 bind-entry reset,
-    # classified by the ``bindings`` ancestor segment) and leaves its siblings —
-    # at this level AND at the level below — completely alone.
+    # A present-``None`` entry OMITs exactly ONE destination (spec §2a PER-ENTRY
+    # CASCADE MERGE, classified by the ``bindings`` ancestor segment) and leaves its
+    # siblings — at this level AND at the level below — completely alone.
     box = KeyStore(
         {"box": {"bindings": {"rw": {"~/a": BindEntry("/h/a"), "~/b": None}}}}
     )

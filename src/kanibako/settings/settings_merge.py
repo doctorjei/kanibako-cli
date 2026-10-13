@@ -10,9 +10,9 @@ detection (refs stay RAW), cross-scope ``box_dest`` collision, typed views,
 ``config set``.
 
 Authority (spec §2 / §2a "PER-ENTRY CASCADE MERGE" and "masks is a KEYED
-category" / §2c; system-design § "Collision arbitration"; archived design §3 /
-§4), the seams S3 / S15 / S16, the cascade order and the full per-name case
-table: ``llm-docs/kanibako/settings/settings_merge.py.md``.
+category" / §2c / §2h "Values are installed VERBATIM"; system-design §
+"Collision arbitration"), the seams S3 / S15 / S16, the cascade order and the
+full per-name case table: ``llm-docs/kanibako/settings/settings_merge.py.md``.
 """
 
 from __future__ import annotations
@@ -70,8 +70,8 @@ def _merge_nodes(
 ) -> KeyStore:
     """Merge co-located :class:`KeyStore` nodes (MOST-SPECIFIC-FIRST) into ONE fresh node.
 
-    *path* is the scope-qualified segment trail to this node, for the §3 / S16
-    type-split.
+    *path* is the scope-qualified segment trail to this node, for the present-None
+    type-split (spec §2h, S16).
     """
     out = KeyStore()
     for name in _names_in_order(levels):
@@ -84,8 +84,8 @@ def _merge_nodes(
 
         # ⚑ RECURSE on ANY subtree winner — not only when a LOWER setter is also a
         # subtree (spec §2a "PER-ENTRY CASCADE MERGE"). A lone subtree winner must
-        # recurse too, or the §3 present-None type-split never reaches its leaves;
-        # the recursion is also what makes the node fresh (S15).
+        # recurse too, or the present-None type-split (spec §2h) never reaches its
+        # leaves; the recursion is also what makes the node fresh (S15).
         subtrees = [v for _lv, v in setters if isinstance(v, KeyStore)]
         if isinstance(winning_val, KeyStore):
             out[name] = _merge_nodes(
@@ -109,7 +109,8 @@ def _merge_nodes(
 
 
 class _Omit:
-    """Sentinel: a present-``None`` leaf that must be OMITTED from the snapshot (§3).
+    """Sentinel: a present-``None`` leaf that must be OMITTED from the snapshot
+    (spec §2a PER-ENTRY CASCADE MERGE).
 
     Never stored; distinct from :data:`__MISSING__` (absence) and from
     present-``None`` (a kept scalar reset).
@@ -123,7 +124,7 @@ _OMIT = _Omit()
 
 
 def _resolve_present_none(*, path: tuple[str, ...]) -> StoreValue | _Omit:
-    """Classify a present-``None`` leaf at *path* by CATEGORY (§3 type-split, S16).
+    """Classify a present-``None`` leaf at *path* by CATEGORY (spec §2h type-split, S16).
 
     Keyed by PATH, by POSITION: a category sits where the SCOPE ends (spec §2a), and
     :func:`~kanibako.settings.settings_keyspace.is_terminal_category_key` is the one
@@ -135,7 +136,7 @@ def _resolve_present_none(*, path: tuple[str, ...]) -> StoreValue | _Omit:
     ⚑ **The ``pref`` subtree is EXEMPT — no classification at all.** A pref is a
     REQUEST, not a value (spec §2h) and its path MIRRORS its target's, so
     classifying it would delete the RECORD of a ``null`` request. That argument and
-    the §5 reasoning behind the ROOT case are in the llm-doc.
+    the tier-2 reasoning behind the ROOT case are in the llm-doc.
     """
     if path and path[0] == _PREF_ROOT:
         return None  # a REQUEST record — kept verbatim, never classified (§2h).

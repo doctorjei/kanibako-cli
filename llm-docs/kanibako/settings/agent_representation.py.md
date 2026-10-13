@@ -93,7 +93,7 @@ no `literal_src`, or a detection field the install left unset — the entry is *
 
 This mirrors the AGENT best-effort skip in `~kanibako.targets.assembly.descriptor_mounts` and keeps
 the tier-2 typed accessor honest: `bindings` exposes `Mapping[str, BindEntry]` (NOT
-`BindEntry | None`) ONLY because build omits absent/None binds (design §5; spec §2a
+`BindEntry | None`) ONLY because build omits absent/None binds (spec §2a
 "PER-ENTRY CASCADE MERGE"). Emitting a
 `None`-host bind would be a lie a consumer crashes on.
 

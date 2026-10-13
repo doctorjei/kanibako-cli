@@ -285,7 +285,7 @@ def masks_set(node: KeyStore, *, label: str = "masks") -> set[str]:
 # Strict CHECKING coercers for tier-1 fields. ⚑ A bare constructor is the
 # foot-gun (``str(123) -> "123"``, ``bool("false") -> True``): it would LAUNDER a
 # mistyped leaf and silently hide a build bug, defeating the EXACT-type promise
-# design §5 makes. These isinstance-CHECK the stored value first and raise
+# a tier-1 view makes. These isinstance-CHECK the stored value first and raise
 # :class:`ValueError`, which ``typed_field`` wraps in :class:`ViewError`.
 
 
@@ -382,7 +382,7 @@ class typed_field(Generic[T]):
 
     Reads the named key off the wrapped node, converts it with the field's
     *coerce* callable, and returns the EXACT static type ``T`` rather than the
-    loose ``StoreValue`` union (design §5 tier-1). No ``__set__``.
+    loose ``StoreValue`` union (tier-1). No ``__set__``.
 
     ⚑ Hand it a CHECKING coercer, never a bare constructor (see above). A
     missing field, or a value the coerce rejects, RAISES :class:`ViewError`: a
@@ -443,7 +443,7 @@ class FiniteView:
 
 
 class MetaView(FiniteView):
-    """A small WORKED EXAMPLE of a tier-1 finite view (design §5 tier-1).
+    """A small WORKED EXAMPLE of a tier-1 finite view (tier-1).
 
     ⚑ NOT the full ``meta`` schema, and NOT wired into any consumer (block 7).
     """

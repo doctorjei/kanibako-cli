@@ -2,8 +2,8 @@
 
 `settings_views` is the READ side of the settings store. The expanded snapshot (assemble → merge →
 expand) is a recursive `kanibako.settings.keystore.KeyStore` whose leaves carry the loose
-`kanibako.settings.kb_store.StoreValue` union. This module adds the TYPED read surface design §5
-calls for, confining that loose union to genuinely mixed nodes only.
+`kanibako.settings.kb_store.StoreValue` union. This module adds the TYPED read surface,
+confining that loose union to genuinely mixed nodes only.
 
 It is READ-ONLY in the strongest sense: every accessor wraps an EXISTING snapshot node and exposes a
 typed lens over it. It never merges, expands, reconciles, writes, or mutates, and it does not copy
@@ -14,7 +14,7 @@ types; "masks is a KEYED category" — the resolved `masks` is a `set`). Histori
 `~/canon/notebook/archives/resources/keystore-2026-06/keystore-design.md` §5 (typed access tiers,
 including the load-bearing `Bind`-not-`Bind|None` coupling); no live clause states the tiers.
 
-## The three tiers (design §5)
+## The three tiers
 
 1. **Typed VIEWS over finite subtrees** — system paths and `meta`: fixed names, exact static types
    (`Path` / `str` / `bool`). This module ships the MECHANISM (`typed_field` plus the `FiniteView`
@@ -135,7 +135,7 @@ open with.
 
 ## Tier-1 — the checking coercers
 
-A finite view promises EXACT types (design §5), so a field's coerce must REJECT a mistyped stored
+A finite view promises EXACT types, so a field's coerce must REJECT a mistyped stored
 leaf rather than launder it. A bare constructor (`str` / `bool` / `int`) is the foot-gun: `str(123)`
 → `"123"` and `bool("false")` → `True` would silently HIDE a build bug, such as a stored `"false"`
 surfacing as the bool `True`. The helpers isinstance-CHECK the stored value first and raise
@@ -166,10 +166,10 @@ surfacing as the bool `True`. The helpers isinstance-CHECK the stored value firs
 names of KNOWN type; this descriptor declares one such field. It reads the named key off the wrapped
 snapshot node via the unbound `dict` probe (S3), converts it with the field's *coerce* callable, and
 returns the EXACT static type `T` — so a consumer of `view.field` gets `T`, not the loose
-`StoreValue` union (design §5 tier-1). It is read-only: the descriptor has no `__set__`.
+`StoreValue` union (tier-1). It is read-only: the descriptor has no `__set__`.
 
 Always hand it a CHECKING coercer, never a bare constructor, for the laundering reason above — that
-is what the §5 exact-type promise rests on.
+is what the tier-1 exact-type promise rests on.
 
 A missing field, or a value the coerce rejects, raises `ViewError`, because a finite view promises
 that every named field is present and well-typed. The *key* argument points a field at a stored key
@@ -182,7 +182,7 @@ exposes no mutation path.
 
 ## The finite views that exist today
 
-**`MetaView`** is a small WORKED EXAMPLE (design §5 tier-1). It wraps a `meta` NODE and exposes a
+**`MetaView`** is a small WORKED EXAMPLE (tier-1). It wraps a `meta` NODE and exposes a
 few representative fields at their exact types — a `Path` (`root`) and a `str` (`name`) — to
 demonstrate the `typed_field` + `FiniteView` mechanism. It is NOT the full `meta` schema and is NOT
 wired into any consumer (that is block 7). Add more fields by declaring more `typed_field`

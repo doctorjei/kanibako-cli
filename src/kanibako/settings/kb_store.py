@@ -82,6 +82,6 @@ class __Missing__:
 __MISSING__: __Missing__ = __Missing__()
 
 
-# Value space a KeyStore leaf or node may hold (design §2). ⚑ ``__MISSING__`` is excluded
+# Value space a KeyStore leaf or node may hold. ⚑ ``__MISSING__`` is excluded
 # deliberately: it marks ABSENCE and is never itself stored.
 StoreValue = Union[KeyStore, Bind, BindEntry, str, int, float, bool, list[str], None]
