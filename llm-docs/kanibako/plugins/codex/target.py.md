@@ -1,10 +1,8 @@
 # `CodexTarget` — the OpenAI Codex CLI plugin target
 
 `plugins/codex/target.py` is the `Target` implementation for the OpenAI Codex CLI
-(https://github.com/openai/codex). It was the first target written *after* the descriptor-native
-plugin interface was generalized, which makes it the proof that the interface holds for an agent
-that did not exist when the interface was designed: it implements only the irreducible surface and
-inherits the rest.
+(https://github.com/openai/codex). It implements only the irreducible surface of the
+descriptor-native plugin interface and inherits the rest.
 
 Codex is also the project's one **CONFIG-FILE harness** — its endpoint and its model reach the box
 through `~/.codex/config.toml`, not through environment variables — and most of what is unusual
@@ -18,21 +16,29 @@ What this plugin implements:
 * `detect` — the one genuinely codex-specific bit; see *Host binary detection* below.
 * `descriptor` — the declarative `PluginDescriptor`. Core `start.py` assembles launch argv, env,
   delivery binds and credential lifecycle from it. Codex implements no legacy hooks.
+* `default_category_binds` / `default_envs` — the AGENT-scope binds and env defaults, read from
+  `codex-defaults.yaml` (below).
+* `default_entrypoint` — `codex`.
+* `has_resumable_session` — whether `<home>/.codex/sessions/` holds a rollout `.jsonl`, so
+  `continue` mode's `codex resume --last` is not doomed on a fresh box.
+* `setup_entrypoint` / `setup_args` / `should_run_setup` — the in-box `codex login` run when
+  `check_auth` fails, and the login-needed signals in launch output.
 * `check_auth` — a lenient credential presence check.
+* `cred_writeback_error` — refuses to write back a box `auth.json` that is not a non-empty JSON
+  object.
 * `setting_descriptors` / `generate_agent_config` — the declarative helpers.
 * the config.toml seams: `deliver_panel_permissions`, `deliver_directive_hook`,
   `reattach_config_notice`.
 * the persona seams: `read_persona_settings`, `verify_persona`.
 
-Everything else — `build_cli_args`, `binary_mounts`, `transform_cred` — is inherited from the step-3a concrete `Target`
-defaults. Codex needs no override there: both its cred files are wholesale copies, and the
-descriptor's `init_dirs` create `.codex`.
+`transform_cred` is inherited: its one cred file is a wholesale copy. The descriptor's `init_dirs`
+create `.codex`.
 
 ## The declarative default-set lives in `codex-defaults.yaml`
 
-The descriptor's default-set is the plugin's shipped `codex-defaults.yaml` (P6c coalesce), read by
-the thin `kanibako.settings.agent_defaults` loader, which builds the `PluginDescriptor` exactly as
-the old hand-written `target.py` values did. That file documents each non-obvious field for codex
+The descriptor's default-set is the plugin's shipped `codex-defaults.yaml`, read by the thin
+`kanibako.settings.agent_defaults` loader, which builds the `PluginDescriptor`. That file documents
+each non-obvious field for codex
 0.140.0: the bare `codex` / `codex resume --last` mode grammar; the `codex exec` op; the
 `--dangerously-bypass-approvals-and-sandbox` FLAG realization of the `full` access tier; the
 `--model` FLAG; the single SYNC `.codex/auth.json` cred file (`filtered=False`, a wholesale copy,
@@ -45,11 +51,10 @@ YAML names only, declaratively, that the binary bind's host source is the detect
 
 Two consequences worth knowing without opening the YAML:
 
-* `default_category_binds()` is currently **EMPTY**. The former `@system.instructions` →
-  `~/.codex/AGENTS.md` instructions bind was retired: the box guide now ships INSIDE the RO
-  `general` chapter bind at `~/canon/charter/general` plus the flattened per-agent FINAL file, not a
-  per-agent native-slot bind. ⚑ The book ROOT `~/canon/charter` is not bound at all — under J-7 each
-  chapter is its own sibling bind, so there is no whole-dir canon bind to ship inside.
+* `default_category_binds()` is **EMPTY**. The box guide ships INSIDE the RO `general` chapter bind
+  at `~/canon/charter/general` plus the flattened per-agent FINAL file, not a per-agent
+  native-slot bind. ⚑ The book ROOT `~/canon/charter` is not bound at all — each chapter is its own
+  sibling bind, so there is no whole-dir canon bind to ship inside.
 * `default_envs()` declares exactly one variable, `KANIBAKO_DIRECTIVE_FINAL`, naming codex's native
   `~/.codex/AGENTS.md` slot — the file the box-start flattener writes. It is an ordinary settings
   key (spec §2d `agent.codex.env.*`): overridable by the SAME key in a nearer file, and refused
@@ -151,7 +156,7 @@ stat/glob error ⇒ `False`, because a fresh start is always safe.
 
 ## The managed `~/.codex/config.toml` — two seams, one key set each
 
-The box's `config.toml` is a RECONCILED PROJECTION (D1): the launch seams re-materialize its
+The box's `config.toml` is a RECONCILED PROJECTION: the launch seams re-materialize its
 model/provider/sandbox elements only on the start of a STOPPED box.
 
 ### `deliver_panel_permissions` — `sandbox_mode` only
@@ -225,34 +230,43 @@ pure read via stdlib `tomllib`, and never touches the token.
 
 ### `verify_persona`
 
-A genuine few-token completion on the RESPONSES wire — the only wire current codex speaks (the
-provider block's `wire_api = "responses"`). Per the base contract: 2xx → `PASS`, 401/403 →
-`REJECTED`, unreachable/ambiguous → `INCONCLUSIVE`.
+A two-axis probe (the base module's access model):
+
+* the GENERAL axis, `probe_general_access` on `GET <base_url>/models` — a request that names no
+  model, sent with the credential and then, only after a 2xx, once more WITHOUT it as a control;
+* the MODEL axis, `probe_model_access` on `POST <base_url>/responses` — a genuine few-token
+  completion on the RESPONSES wire, the only wire current codex speaks (the provider block's
+  `wire_api = "responses"`).
+
+Both always run, each with its own *timeout*. The verdict is
+`access_outcome(AccessReport(general, access), model_exact=bool(model))`: `model_exact` is True
+exactly when the persona names a model, because codex sends that id verbatim, and with none the box
+sends its catalog default, which the probe cannot send.
 
 ⚑ **The endpoint is the provider `base_url`, and by codex's convention that value ALREADY carries
-the `/v1`-style prefix** that the probe appends `/responses` to. It is NOT an origin-only host like
-goose's `OPENAI_HOST`; the two are not interchangeable, and the difference is easy to state
-backwards.
+the `/v1`-style prefix** that the probe appends `/models` and `/responses` to. It is NOT an
+origin-only host like goose's `OPENAI_HOST`; the two are not interchangeable, and the difference is
+easy to state backwards.
 
-The request is bearer-authed with the token at *token_path* (the `env_key` variable's value in-box)
-when one is configured. The one `NOT_APPLICABLE` this method decides for itself is a CONFIGURED
-(non-`None`) token file that is unreadable or empty. The token is read transiently for this request
-only; never logged or persisted.
+The keyed requests are bearer-authed with the token at *token_path* (the `env_key` variable's value
+in-box) when one is configured; the control request never carries it. The one `NOT_APPLICABLE`
+this method decides for itself is a CONFIGURED (non-`None`) token file that is unreadable or empty.
+The token is read once, transiently; never logged or persisted.
 
 Two probe rules, both of which fail in the direction of refusing a box that actually works
 (procedure: `~/canon/notebook/procedures/persona-resolution-model.md`):
 
-1. **A PRESENT-null *token_path* is still PROBED, with the `Authorization` header OMITTED**
-   (2026-08-17 ruling). A persona whose `secret_path` key is deliberately `null` declares this
+1. **A PRESENT-null *token_path* is still PROBED, with the `Authorization` header OMITTED.**
+   A persona whose `secret_path` key is deliberately `null` declares this
    endpoint keyless, and the request is sent bare for the server to decide. Never a placeholder
    credential: a hardwired-auth server can REJECT one it does not serve, and a false `REJECTED` is
    a hard error that would refuse a working box.
 2. **A persona that names no *model* is still PROBED, with the `model` key OMITTED from the body.**
    An OpenAI-compatible endpoint may serve exactly one model or apply its own, and declining to
-   probe would let a DEAD token reach the box. The answer is read through
-   `kanibako.targets.base.probe_outcome_no_model` so a "model required" reply is silent rather than
-   a permanent warning. NEVER substitute a placeholder / default / guessed model id to make the call
-   go through — same false-`REJECTED` failure as above.
+   probe would let a DEAD token reach the box. A "model required" reply then passes if the
+   model-free request verified the credential, warns if that request was refused, and is otherwise
+   `NOT_APPLICABLE` rather than a permanent warning. NEVER substitute a placeholder / default /
+   guessed model id to make the call go through — same false-`REJECTED` failure as above.
 
 ⚑ ***env* is accepted and DELIBERATELY UNUSED here.** It is on the base contract for a harness
 whose RUNTIME rewrites the model from an env var before the wire (claude's
@@ -278,7 +292,7 @@ may have been resolved at all.
 would be a second declaration site for something the shipped file already owns.
 
 * `model` — freeform, because OpenAI adds models regularly (no floor of its own: the row inherits
-  `agent.default.model`, whose `<None>` means codex's built-in default; Q105).
+  `agent.default.model`, whose `<None>` means codex's built-in default).
 * `endpoint` — the alternate model-provider base-URL (persona); unset means bare/harness-default.
   Unlike claude, a codex endpoint is delivered via the `~/.codex/config.toml`
   `[model_providers.<id>]` block (descriptor `persona.endpoint_delivery: config_file`), NOT an env
@@ -293,40 +307,3 @@ The permission tier is NOT a setting descriptor: it rides the uniform `access` k
 an oversight: the agent settings file holds USER INTENT only, and defaults come from the descriptor
 floor. Seeding that same value into the file would pin every install ABOVE the floor, so a later
 change to the default could never reach an existing box.
-
----
-
-## Completeness sweep (relocation pass, 2026-08-20)
-
-`~/canon/notebook/scripts/dev-tools/comment-ratio.py`: **62.7% → 52.8%** (19805/31578 → 13018/24662 characters). The module docstring,
-`detect`, `has_resumable_session`, `verify_persona` and the `_CODEX_DESCRIPTOR` block comment
-carried most of the relocated bulk.
-
-`~/canon/notebook/scripts/dev-tools/prose-relocation-check.py`: **281 prose lines at HEAD, 233 removed, 0 scoring below 0.6** against
-this document — no removed line is orphaned. (Note the doc path: this is a plugin package, so the
-mirror drops everything up to and including the first `src` component, and the checker's default
-guess must be overridden with `--doc llm-docs/kanibako/plugins/codex/target.py.md`.)
-`~/canon/notebook/scripts/dev-tools/prose-pass-check.py`: all three checks pass — 1666 AST lines identical with docstrings stripped,
-26 symbols with `added=[] removed=[]`, 104 string literals multiset-identical.
-
-**Deliberate duplication drops — nothing else was cut:**
-
-1. The `_CODEX_BEHAVIOR` comment and `setting_descriptors`'s closing paragraph both said "no
-   default value is written in this module". The one-liner at `_CODEX_BEHAVIOR` survives in source;
-   the fuller statement is the *Declared settings* section above.
-2. The module docstring's E2E-GATED paragraph and `detect`'s were the same warning twice, in the
-   same file. A short warning survives at both sites; the full text is *⚑ E2E-GATED* above.
-
-**Warnings deliberately KEPT IN SOURCE**, because deleting each would let a future edit break
-something silently at that exact line:
-
-* `deliver_panel_permissions` — the `sandbox_mode` invariant; writing `workspace-write` there hangs
-  the panel's app-server.
-* `deliver_directive_hook` — "NEVER the `sandbox_mode` key"; the file is right there and adding
-  a second writer to a managed key is a one-line temptation.
-* `verify_persona` — both probe rules and the `/v1` `base_url` note. All three are stated backwards
-  easily, and each wrong version refuses a box that works.
-* `detect` and the module docstring — the E2E gate, so nobody reads mocked unit tests as proof the
-  real install resolves.
-* `_resolve_path_executable` — why a `$PATH` lookup is not the injection vector anchoring guards
-  against for the fixed-path agents.

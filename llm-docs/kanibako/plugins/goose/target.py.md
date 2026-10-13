@@ -7,12 +7,8 @@ it, and this class is the code that (a) finds the host binary, (b) answers the f
 file cannot answer, and (c) states the two places kanibako must NOT speak for goose — its
 provider/model, and its own `config.yaml`.
 
-Plugins declare `kanibako-cli>=1.8.0.dev0,<2.0` (bounded 2026-09-01). **Every wheel published before
-v1.8.0 carries a bare `["kanibako-cli"]`**, so an old plugin wheel can still land on a new core; when
-the contract it was written against is gone, the failure is a NAMED error rather than a silent
-misbehavior. The bound removes that pairing only for wheels published from v1.8.0 on, so the named
-error stays the safety net and the reason this surface stays small. That is the reason the surface here stays small and the
-declarations stay in the data file.
+Plugins declare `kanibako-cli>=1.8.0.dev0,<2.0`; declarations stay in the data file so an old wheel
+on a new core fails with a named error.
 
 **Authority:** `~/canon/workbook/specs/settings-keyspace-1.8.0.md` — §2d (the per-agent keyspace: `agent.goose.env.*`,
 the `synced` category view, which env vars are plugin-declared and which are user preference).
@@ -42,10 +38,9 @@ its binding uses the BINARY origin (`install.binary`). A dangling or unresolvabl
 
 `_GOOSE_DESCRIPTOR` is the declarative descriptor for the generalized plugin interface, and it is
 LIVE: core `start.py` assembles goose's launch argv, env, delivery mounts and credential lifecycle
-from it. The legacy `build_cli_args` / `binary_mounts` / refresh / writeback hooks are bypassed for
-goose entirely.
+from it.
 
-The descriptor's default-set lives in this plugin's shipped `goose-defaults.yaml` (P6c coalesce) and
+The descriptor's default-set lives in this plugin's shipped `goose-defaults.yaml` and
 is read by the thin `kanibako.settings.agent_defaults` loader. That file documents each non-obvious
 field; everything below was empirically verified against **goose 1.37.0**:
 
@@ -64,7 +59,8 @@ field; everything below was empirically verified against **goose 1.37.0**:
 (`_BINARY`, above), read in `detect()`.
 
 `_GOOSE_BEHAVIOR` is the declared BEHAVIOR floor — the file's `behavior:` section. No default value
-is written in this module; goose's three floors are EMPTY on purpose, and the YAML file states why.
+is written in this module; the provider, model, and endpoint floors are empty on purpose, and the
+YAML file states why.
 
 ## The category binds are EMPTY, and that is the current design
 
@@ -74,7 +70,7 @@ is written in this module; goose's three floors are EMPTY on purpose, and the YA
 The former `@system.instructions` → `~/.config/goose/KANIBAKO.md` instructions bind was **retired**.
 The box guide now ships INSIDE the read-only `general` chapter bind at `~/canon/charter/general`,
 together with the flattened FINAL file. Do not reintroduce a per-agent instructions bind to "fix" the
-emptiness. ⚑ The book ROOT `~/canon/charter` is not bound at all — under J-7 each chapter is its own
+emptiness. ⚑ The book ROOT `~/canon/charter` is not bound at all — each chapter is its own
 sibling bind, so there is no whole-dir canon bind to ship inside.
 
 ## The env defaults, and the two variables kanibako refuses to declare
@@ -165,8 +161,12 @@ goose's `secrets.yaml` host↔box SYNC is the `CredFileSpec` set in `goose-defau
 by the credsync engine (`seed_cred_files` / `refresh_cred_files` / `writeback_cred_files`) — the
 §2d `synced` category view.
 
-`credential_check_path` and `invalidate_credentials` both name `~/.config/goose/secrets.yaml`, the
-file whose presence stands for "goose has credentials".
+`credential_check_path` (base, derived from the first declared cred file) names
+`~/.config/goose/secrets.yaml`, the file whose presence stands for "goose has credentials".
+
+`cred_writeback_error` refuses to write back a box `secrets.yaml` that is not a non-empty YAML
+mapping — the mapping `credentials.read_yaml` reads; an empty one is refused as the `config.yaml`
+writeback refuses one.
 
 ## Provider and model are NEVER pinned by kanibako
 
@@ -182,7 +182,7 @@ interactively.
 * **`provider`** and **`model`** set nothing, so with nothing set the launch omits the env vars
   entirely — goose then reads provider/model from its own `config.yaml`. `provider` is goose's own
   key, so its `<None>` is written `default: null` (a PRESENT `None` at `agent.goose.provider`);
-  `model` omits `default:` and inherits `agent.default.model` (Q105), so a user's
+  `model` omits `default:` and inherits `agent.default.model`, so a user's
   `agent.default.model` reaches goose as `GOOSE_MODEL`. An EXPLICIT `agent.goose.provider` /
   `agent.goose.model` setting still wins the cascade and IS emitted, so a user who *wants* to pin a
   provider through kanibako settings still can.
@@ -199,23 +199,4 @@ file already owns.
 The translation half is the descriptor, not a method: `provider` → `GOOSE_PROVIDER` and `model` →
 `GOOSE_MODEL` are ENV `SettingArg` rows in `goose-defaults.yaml`, emitted by `assemble_env` only
 when the resolved value is non-empty. Goose overrides provider/model by env var rather than CLI
-flag, so neither contributes an argv token. The retired `apply_state` hook did the same translation
-in Python; it was removed once nothing dispatched it, and the descriptor rows are the whole route.
-
----
-
-## Relocation pass, 2026-08-20
-
-Comment ratio 66.0% → 50.0%. Everything removed from the source is above, in substance; nothing was
-dropped as false or obsolete. `~/canon/notebook/scripts/dev-tools/prose-relocation-check.py`: 179 prose lines at HEAD, 163 removed
-(most of them reflowed rather than cut), **0 scoring below 0.6** against this document.
-
-Kept in the `.py` under the keep test, because each one guards a specific line against a plausible
-"tidy-up":
-
-* the `_BINARY` `⚑` — `shutil.which` looks like the obvious idiom and is the vulnerability;
-* `transform_cred`'s two in-body `⚑`s — the empty-box-config guard and the no-diff early return
-  both read as redundancy and are data-protection;
-* the `NOTE:` on the absent credential overrides — it reads as a missing implementation;
-* `generate_agent_config` / `setting_descriptors` — the empty state and empty floors read as
-  oversights and are the whole provider/model rule.
+flag, so neither contributes an argv token. The descriptor rows are the whole route.
