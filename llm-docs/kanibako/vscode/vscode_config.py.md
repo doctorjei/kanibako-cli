@@ -298,11 +298,8 @@ per-handler hash shape is unverified upstream.
 `rust-v0.141.0` and 0.144.x — SessionStart/Stop/… where `Stop` is per-TURN, not process exit. So
 there is no marker-REMOVE hook, and a cleanly-exited codex leaves a stale marker whose PID
 `box_supervisor.scan_marker_pids` classifies dead once and then reaps. That is the intended
-semantics: the panel's
-sessions are threads inside one long-lived `codex app-server` process, so marker-PID death is
-effectively "the panel process itself is gone".
-
-
+semantics: the panel's sessions are threads inside one long-lived `codex app-server` process, so
+marker-PID death is effectively "the panel process itself is gone".
 
 ⚑ `box_config_path` is the BOX-absolute config path (`/home/agent/.codex/config.toml`), NOT the host
 write path — codex keys trust by the path it reads in-box. `group_index` is the count of USER

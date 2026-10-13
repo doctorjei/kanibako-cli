@@ -237,8 +237,10 @@ Raised by `runtime/container.py` when `ps` does not run or fails. A destructive 
 ```class PackagingError(KanibakoError):```
 kanibako's packaged data is missing or incomplete; the install is broken.
 
-Raised by `settings/core_defaults.py` when a shipped data file is missing or malformed. No in-tree
-caller catches it by name, so it reaches `cli.py` as an `Error:` line.
+Raised by `settings/core_defaults.py` when a shipped data file is missing or malformed, by
+`settings/config_io.py` when a packaged YAML file is empty or not a mapping, and by
+`settings/settings_keyspace.py` when `core-defaults.yaml` declares an `agent_default.access` that is
+not a tier. No in-tree caller catches it by name, so it reaches `cli.py` as an `Error:` line.
 
 ```class ArchiveError(KanibakoError):```
 Archive creation, extraction, or validation failed.

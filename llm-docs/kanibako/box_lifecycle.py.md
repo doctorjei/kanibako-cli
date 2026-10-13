@@ -7,7 +7,8 @@ is `box_supervisor`, which imports from here and never re-implements detection.
 
 Two client surfaces are watched today — the in-box VS Code server (a panel / attach) and a tmux
 TERMINAL client (an interactive shell) — and the module emits ATTACH / DETACH transitions between
-snapshots of them. On DETACH the always-on agent self-heals and the credential writeback fires.
+snapshots of them. A DETACH fires the supervisor's credential-writeback signal; it does not
+self-heal the agent, which follows agent death, a separate signal (`box_supervisor.decide`).
 
 ## What this module is, and what it deliberately is not
 
@@ -21,7 +22,7 @@ parameters, so tests never touch real processes or a real tmux server.
 
 ## The PID-1 contract
 
-`box_lifecycle` and `box_supervisor` are the PID-1 pair: **pinned flat** at the top of the package
+`box_lifecycle` and `box_supervisor` are the PID-1 pair: **pinned flat** at the top of the package,
 **stdlib-only**, and invoked in-box by a dotted literal
 (`python3 -m kanibako.box_supervisor`). This module must never be packaged, moved, or given a
 non-stdlib import. The full reasoning — why a widened import surface silently degrades every launch
@@ -94,8 +95,8 @@ added field. It is frozen so a prev/cur pair is safe to hold across a watcher ti
 `classify_transition` compares two states surface-by-surface through it, so extending the model with
 a new surface field — added to that tuple — needs no change to the classifier at all.
 
-`LifecycleEvent` is the transition a watcher tick produces, consumed by the supervisor's self-heal
-and credential writeback.
+`LifecycleEvent` is the transition a watcher tick produces. The supervisor's `decide` turns a DETACH
+into `fire_detach_hook`, the credential-writeback signal, orthogonal to its agent-death self-heal.
 
 ## `classify_transition` — and why it is DETACH-biased
 

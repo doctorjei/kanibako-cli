@@ -103,26 +103,22 @@ blame the agent for an install problem and send the user looking for a capabilit
 not exist. The refusal message instead tells the user to upgrade the `kanibako-agent-*` packages
 to match the base, since they are released together.
 
-⚑ SPELLING, old versus new: the block is named `access_realization:` in this release; it was named
-`safe_bypass:` before. A descriptor still using the OLD KEY never reaches this function — it is
-refused at descriptor load by `settings/agent_defaults.load_descriptor`, because an unknown
-descriptor key would otherwise be ignored and leave the agent with NO permission surface at all.
-So the only pre-tier shape that survives to this point is the old BODY under the NEW key, which is
-what the version-skew message describes.
+⚑ SPELLING: the block is named `access_realization:`. A descriptor using the retired key
+`safe_bypass:` never reaches this function — `settings/agent_defaults.load_descriptor` refuses it by
+name, because an unknown descriptor key would otherwise be ignored and leave the agent with NO
+permission surface at all. So the only pre-tier shape that reaches this point is a pre-tier BODY
+under `access_realization:`, which is what the version-skew message describes.
 
-## Why `resolve_new_session` is gone
+## The `-N` / `-C` / `-R` fold is not here
 
-`resolve_new_session` was DELETED in P8 (v1.8.0). Its whole body was the fold *"the per-launch
-`-N` / `-C` / `-R` flags over the persisted `continue_mode` key"* — one hand-rolled precedence
-chain for one flag family.
+Spec §1A makes the COMMAND LINE its own LEVEL, the highest, so the per-launch `-N` / `-C` / `-R`
+flags fold over the persisted `continue_mode` key ONCE, declaratively, in
+`settings/settings_cli_level.build_cli_level`: `-N` implies `continue_mode` False, `-C` / `-R`
+imply True. The launch simply reads the resolved key — `effective_new_session = not
+continue_default`.
 
-Spec §1A makes the COMMAND LINE its own LEVEL, the highest, so that fold now happens ONCE,
-declaratively, in `settings/settings_cli_level.build_cli_level`: `-N` implies `continue_mode`
-False, `-C` / `-R` imply True. The launch simply reads the resolved key —
-`effective_new_session = not continue_default`.
-
-⚑ Do NOT reintroduce it. Two places folding the same flags from two different inputs is the "two
-forms that mean the same thing" failure, and the second one would be the one nobody tested.
+⚑ Do NOT add a second fold here. Two places folding the same flags from two different inputs is the
+"two forms that mean the same thing" failure, and the second one would be the one nobody tested.
 
 `resolve_mode` still takes the raw *resume_mode*, because `-R` selects a launch GRAMMAR (the
 resume mode fragment), which is not a key.

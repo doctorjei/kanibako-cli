@@ -13,7 +13,7 @@ The source keeps one-line descriptors and `⚑` markers only. The reasons live h
 
 ## Why this module exists
 
-A box used to die with its agent session. The always-on-instance design
+A box's life is not tied to its agent session. The always-on-instance design
 (`~/canon/workbook/designs/split-brain-persistence-DESIGN.md`, "E2 BUILD DESIGN") makes a box's keep-alive PID-1 a
 **SUPERVISOR**: it runs the agent in a DETACHED tmux session, watches client attach/detach via
 `kanibako.box_lifecycle`, and SELF-HEALS the agent (restart with `--continue` plus a continue-marker)
@@ -162,7 +162,7 @@ normal default and does NOT accumulate lingering dead panes or fire the exit hoo
 the AGENT pane is covered — by the global (steps 2→3), then by its session-local value (after
 step 3) — so there is no gap.
 
-**[UNVERIFIED-PLATFORM]** Arming AFTER a bare `new-session -- <agent>` (the pre-fix approach) loses
+**[UNVERIFIED-PLATFORM]** Arming AFTER a bare `new-session -- <agent>` loses
 the race essentially always — empirically **0/20** instant crashes left a dead pane — while
 arm-before-birth won **20/20** on real tmux. Verified likewise that a sibling session's pane is still
 destroyed normally.
@@ -175,8 +175,8 @@ gone before `new-session` runs.
 
 A standalone `;` token inside the agent argv would be read by tmux as a top-level command separator in
 the combined form — `--` ends new-session's OWN option parsing, not tmux's command splitting — so it
-would break the launch. That essentially never occurs in a real agent grammar, but to avoid making a
-rare input WORSE than the pre-fix behavior, `_arm_and_start_session` falls back to a plain
+would break the launch. That essentially never occurs in a real agent grammar, but so a rare input
+still launches, `_arm_and_start_session` falls back to a plain
 `new-session` followed by a best-effort per-session arm. LAUNCH stays correct; only the instant-crash
 dead-pane capture is not guaranteed for that edge.
 
@@ -582,10 +582,10 @@ left the marker behind) lands in the STALE set. When *is_agent* is given, a LIVE
 positively **not an agent** is STALE too — that is how a leaked marker reads once the kernel has
 REISSUED its PID to something else.
 
-**Both stale kinds are handed to *remove*, and this is the fix for the stale-marker hazards.** A
-leaked marker used to be a LEVEL the supervisor read forever: `panel_agent_state` returned `DEAD` on
-every tick for the life of the box, and with `session_takeover` armed a reissued PID read as a live
-NEWCOMER and evicted the real agent. Reaping makes it an EDGE — the call still RETURNS the stale PID,
+**Both stale kinds are handed to *remove*.** A leaked marker left on disk would be a LEVEL the
+supervisor reads forever: `panel_agent_state` would return `DEAD` on every tick for the life of the
+box, and with `session_takeover` armed a reissued PID would read as a live NEWCOMER and evict the
+real agent. Reaping makes it an EDGE — the call still RETURNS the stale PID,
 so the panel agent's death still reaches `decide_panel` on the tick that noticed it, and no later
 tick re-decides on the same corpse.
 

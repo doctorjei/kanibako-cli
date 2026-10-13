@@ -41,7 +41,7 @@ return f"{base}:{self.options}" if self.options else base
 
 ⚑ **The `if self.options` is LOAD-BEARING, not tidiness.** An unconditional interpolation yields the
 literal `src:dst:` form for a mount with no options, and **podman REJECTS that with exit 125**
-(UNVERIFIED here — no podman on this box; recorded from the original debugging). Mounts with empty
+(UNVERIFIED here — no podman on this box). Mounts with empty
 options are ordinary and common: the box home bind and the package bind both carry none.
 
 ⚑ `to_volume_arg` does **NOT** validate. It will happily emit a nonexistent source, a relative path,
@@ -318,6 +318,12 @@ stub inside its root. A link that leads OUTSIDE the root, does not resolve, or r
 something that is not a directory raises `ContainerError`, naming the dest, the root, the link and
 its target: a stub made under such a link would land elsewhere, or not at all, and the launch would
 fail naming neither. A link resolving to a directory INSIDE the root is stubbed.
+
+⚑ **The plan is built before any stub is made**, so a refusal creates nothing. `_plan_dir` refuses
+a symlinked parent and queues a dir stub; `_root_of` names the root that bounds a dest's walk (the
+project directory for a workspace dest, else the box home) so a refusal names the right one;
+`_parents_within` yields a stub's parents up to the first symlink or (excluded) the root, by PATH
+POSITION, never `resolve()`, which would follow a link further up out of the root.
 
 ### What gets stubbed
 
@@ -749,8 +755,9 @@ _precreate_mount_stubs(shell_path, project_path, extra_mounts, enable_vault,
 ```
 Pre-create mount destination stubs to avoid crun permission errors in LXC. The mutating twin of
 `detect_shadowed_mounts`. Raises `ContainerError` for a refused symlinked parent; otherwise
-best-effort. Hosts the nested helpers `_clear_symlink`, `_loosen_parents`, `_refused_symlink`,
-`_refuse_symlinked_parent`, `_ensure_dir`, `_ensure_file` and `_home_root`, all documented above.
+best-effort. Hosts the nested helpers `_clear_symlink`, `_parents_within`, `_refused_symlink`,
+`_refuse_symlinked_parent`, `_loosen_parents`, `_ensure_dir`, `_ensure_file`, `_home_root`,
+`_root_of` and `_plan_dir`.
 
 ## UNVERIFIED on this box
 

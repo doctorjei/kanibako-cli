@@ -2,13 +2,15 @@
 
 `target.py` is the whole of what `kanibako-agent-goose` implements against the `Target` ABC in
 `kanibako.targets.base`. It is thin on purpose: goose is **descriptor-bearing**, so nearly every
-declaration a plugin used to make in Python now lives in the shipped `goose-defaults.yaml` beside
-it, and this class is the code that (a) finds the host binary, (b) answers the few questions a YAML
+declaration lives in the shipped `goose-defaults.yaml` beside it, and this class is the code that
+(a) finds the host binary, (b) answers the few questions a YAML
 file cannot answer, and (c) states the two places kanibako must NOT speak for goose — its
 provider/model, and its own `config.yaml`.
 
-Plugins declare `kanibako-cli>=1.8.0.dev0,<2.0`; declarations stay in the data file so an old wheel
-on a new core fails with a named error.
+Plugins declare `kanibako-cli>=1.8.0.dev0,<2.0`. The declarations live in the data file, which the
+core loader reads: a retired descriptor key (`safe_bypass:`, `container_env:`) is refused by name
+(`settings.agent_defaults`), and a plugin that fails to import is skipped at discovery with a named
+warning (`targets.discover_targets`).
 
 **Authority:** `~/canon/workbook/specs/settings-keyspace-1.8.0.md` — §2d (the per-agent keyspace: `agent.goose.env.*`,
 the `synced` category view, which env vars are plugin-declared and which are user preference).

@@ -41,15 +41,12 @@ It is **not** `core_defaults.BindArmTable`, which maps the terminal key **to** t
 `CategoryBindDefaults` is what `Target.default_category_binds` / `default_common` / `default_seeds`
 return: a TERMINAL category key mapped to its whole `BindArm`.
 
-### ⚑ `BindDefault` IS GONE — and this is a tombstone, not a description
+### ⚑ No bind-shaped category takes a NAME-keyed entry
 
-`BindDefault` — the NAME-keyed `(host_src, box_dest[, options])` tuple — no longer exists. It was
-the value of a `<scope>.<category>.<name>` key, and no such key exists in any bind-shaped category
-any more: **the destination is the identity, so it cannot also be a tuple element.**
-
-A plugin still emitting one produces a key the reader refuses BY NAME
-(`settings_assemble._insert_dotted`) rather than a silent mis-bind — the refusal IS the migration,
-v1.8.0 being a clean break. There is no shim.
+No bind-shaped category has a `<scope>.<category>.<name>` key whose value is a
+`(host_src, box_dest[, options])` tuple: **the destination is the identity, so it cannot also be a
+tuple element.** A plugin that emits such a key gets a key the reader refuses BY NAME
+(`settings_assemble._insert_dotted`) rather than a silent mis-bind. There is no shim.
 
 ## The declarative value types
 
@@ -58,7 +55,7 @@ v1.8.0 being a clean break. There is no shim.
 class TargetSetting:
     key: str
     description: str
-    default: str | None | _Unset = ""
+    default: str | None | _Unset = UNSET
     choices: tuple[str, ...] = ()
 
 def descriptor_floor(descriptors: Iterable[TargetSetting], *,
@@ -139,8 +136,15 @@ class Binding:
     scope: BindScope
     ro: bool = True
     literal_src: Path | None = None
+    owner: str = "shared"
 ```
 One bound element: a delivery binary/launcher/share, or an agent share.
+
+*owner* is whose identity the bind's path must reach: `"shared"` (the default), or one of the
+`settings.messages.PER_OWNER_SET_WORDS` owners (`workset`, `partition`, `box`, `agent`); the
+defaults loader refuses any other value by name. The launch passes the active descriptor's rows'
+owners, by normalized dest, as `plugin_owners` to `settings_launch.refuse_read_time_faults`, which
+judges a user's value at that dest against that owner.
 
 The resolved host source is the cascade override `agent.<name>.bindings.{ro,rw}.<key>` if set, else
 the *origin* — a detection field (`LAUNCHER`/`INSTALL_DIR`/`BINARY`) or `literal_src` (`LITERAL`).
@@ -300,13 +304,12 @@ MECHANISM express no model at all"* — not a per-server one, and the two can co
 `endpoint_delivery == "config_file"`, not on this field, because the structural limit is the
 DELIVERY MECHANISM, not the flag.
 
-### The `PersonaSpec`-less fallback
+### No `PersonaSpec`, no persona checks
 
-A target with no `PersonaSpec` (`descriptor.persona is None`) resolves through the fallback in
-`start.py`'s `_persona_wiring`, which spells out the claude shape EXPLICITLY: ENV endpoint
-delivery, `ANTHROPIC_AUTH_TOKEN` token var, no provider pin, no model gate. That explicit spelling
-is what keeps the fallback claude-shaped; the field defaults above are the declared-nothing
-defaults.
+A target with no `PersonaSpec` (`descriptor.persona is None`: `ShellTarget`, no target, or a plugin
+with no `persona:` block) gets `None` from `start.py`'s `_persona_wiring`, and the preflight runs
+no persona check at all. A declared block with an empty token var is a different case and keeps
+its gates. Core names no harness's token var.
 
 ```python
 class ProbeResponse(NamedTuple):
@@ -348,8 +351,9 @@ that echoes one back in its own error cannot reach any message a caller prints.
 
 **EVERY caller-supplied header value is a secret, not just `Authorization`** (`_request_secrets`).
 `http_probe` is a *published* helper: a third-party plugin authenticating with `x-api-key` — or a
-header name nobody here foresaw — must not depend on this module recognizing it. Both first-party
-plugins happen to send `Authorization`, which made them safe by luck rather than by construction.
+header name nobody here foresaw — must not depend on this module recognizing it. The two probing
+first-party plugins (claude, codex) happen to send `Authorization`; recognizing only that name would
+make them safe by luck rather than by construction.
 A scheme-prefixed value contributes its remainder too, so `Bearer <tok>` redacts on the bare token
 as well. **The only exclusion is LENGTH, never a header name** — `_SECRET_MIN_CHARS` — because a
 name-keyed exemption list is exactly the shape that lets the next credential through under an
@@ -695,7 +699,8 @@ def probe_outcome_no_model(response: ProbeResponse, sent: ProbeEvidence) -> Pers
 `_MODEL_REQUIRED_STATUSES` is the set of statuses an endpoint answers when the request is
 well-formed EXCEPT for a missing `model` field: 400 (the `invalid_request_error` the reference
 anthropic/OpenAI APIs return) and 422 (the validation status FastAPI/vLLM-style
-OpenAI-compatible servers use for the same thing). Consulted ONLY by `probe_outcome_no_model`.
+OpenAI-compatible servers use for the same thing). Read by `probe_outcome_no_model` and by
+`probe_model_access` (as `MODEL_REQUIRED`), and in both ONLY when the request omitted the model.
 
 `probe_outcome_no_model` is `probe_outcome`, for a probe that deliberately OMITTED `model`.
 
@@ -722,8 +727,8 @@ deliberately NARROW and applies ONLY when the caller omitted the field. It never
 
 ### The two-axis access model
 
-Both first-party `verify_persona` implementations ask TWO questions and let one function rule on
-the pair.
+The claude and codex `verify_persona` implementations ask TWO questions and let one function rule
+on the pair (goose implements no probe; it inherits the `NOT_APPLICABLE` default).
 
 ```python
 class GeneralAccess(Enum):   # VERIFIED, OPEN, UNTESTED, DENIED, NO_ANSWER
@@ -840,8 +845,8 @@ The declarative data a plugin exposes via `Target.descriptor`; divergent LOGIC s
 * *bindings* — ALL bound elements; ordered; at least one.
 * *mode* — INTERACTIVE launch ONLY: `{"start", "continue"}`.
 * *operations* — standalone ops, no mode.
-* *persona* — harness-specific persona endpoint/token delivery; `None` = claude-style env +
-  `ANTHROPIC_AUTH_TOKEN`.
+* *persona* — harness-specific persona endpoint/token delivery; `None` = no persona block, so no
+  persona checks (see "No `PersonaSpec`, no persona checks").
 * *host_prep* — `True` makes core call `Target.prepare_host` before mounts.
 * *init_dirs* — extra dirs to `mkdir` in the project home (home-relative).
 * *auth_share_support* — an **RO CAPABILITY** (spec §2d): does this agent SUPPORT shared
@@ -888,9 +893,9 @@ The check runs on the HOST path (`AgentInstall.binary`) at launch time, BEFORE t
 mounted/run.
 
 ⚑ **Deliberately LENIENT**, to avoid false positives on legitimate native binaries OR shebang
-wrappers: it fails only when the path is missing, zero bytes (the documented 0-byte/corrupt-binary
-incident), not marked executable, or begins with all-NUL bytes (a truncated/corrupt download).
-**ELF magic is deliberately NOT required.**
+wrappers: it fails only when the path is missing, not a regular file, cannot be stat'd, zero bytes
+(a corrupt binary), not marked executable, or begins with all-NUL bytes (a truncated/corrupt
+download). **ELF magic is deliberately NOT required.**
 
 The NUL check reads only a few bytes and never rejects on a read failure: a non-empty file whose
 leading bytes are all NUL is neither a native binary nor a shebang wrapper.
@@ -904,14 +909,10 @@ The abstract base class for agent targets. A target holds ALL agent-specific kno
 declared defaults, credential lifecycle, persona delivery — so that kanibako's core stays
 agent-agnostic.
 
-⚑ **The per-METHOD launch hooks are GONE** (see `descriptor` below). Core assembles launch argv,
-bindings, container env and credential sync DECLARATIVELY from `PluginDescriptor`; do not write
-against `binary_mounts()`, `init_home()`, `build_cli_args()`, `resource_mappings()`,
-`apply_state()`, `should_retry_new_session()` or `instruction_files()` — **none of them is
-declared on `Target` or called by core.** Every surviving mention of those names in the tree is
-itself a removal note
-(`targets/assembly.py`, `targets/credsync.py`, the three plugins' module headers), and the
-credential half of `init_home` was replaced by `credsync.seed_cred_files`.
+⚑ **There are no per-METHOD launch hooks** (see `descriptor` below). Core assembles launch argv,
+bindings, container env and credential sync DECLARATIVELY from `PluginDescriptor`; `Target`
+declares no `build_cli_args()`, `binary_mounts()`, `init_home()` or `apply_state()` method, and
+core calls none. Credential seeding is `credsync.seed_cred_files`.
 
 ### Identity and detection
 
@@ -941,11 +942,10 @@ def check_auth(self) -> bool          # default True
 `has_binary` says whether this target requires a host-installed binary; `check_auth` returns
 whether the agent is authenticated.
 
-`descriptor` is the declarative plugin descriptor, `None` ONLY for the built-in `shell` pseudo-agent.
-Core assembles launch argv, bindings, container env and credential sync declaratively from it; the
-legacy per-method launch hooks were removed for the public release. **Every shipped agent plugin
-returns a descriptor.** The sole descriptor-less target is `shell.ShellTarget`, which launches
-a plain shell with no agent argv and no delivery binds.
+`descriptor` is the declarative plugin descriptor, `None` ONLY for the built-in `shell`
+pseudo-agent. Core assembles launch argv, bindings, container env and credential sync declaratively
+from it. **Every shipped agent plugin returns a descriptor.** The sole descriptor-less target is
+`shell.ShellTarget`, which launches a plain shell with no agent argv and no delivery binds.
 
 ### Host preparation
 
@@ -1130,9 +1130,8 @@ POSITIVELY reports nothing to resume, it builds the new-session command directly
 ATTEMPTING a doomed resume, whose fast-dying container races the attach path into a raw runtime
 error.
 
-⚑ **This is now the SOLE continue-vs-fresh guard**, the launch-time crash-and-retry net having been
-removed with the dead-pane dependency it relied on, so a target with a doomable resume MUST
-override it to positively detect an empty store.
+⚑ **This is the SOLE continue-vs-fresh guard** — there is no launch-time crash-and-retry net — so a
+target with a doomable resume MUST override it to positively detect an empty store.
 
 Implementations read HOST-side state only — no container exec. ⚑ **Return `False` only on a
 POSITIVE determination that no resumable session exists: a wrong `False` silently drops a real
@@ -1256,8 +1255,8 @@ The default `PersonaReadOutcome(None, None)` means this harness has no persona r
 Probes *endpoint*, credential-authed with the token at *token_path* — a minimal real ack.
 
 The persona verify probe (DESIGN §3b), specific to the harness API (anthropic messages vs OpenAI
-responses wire). Both first-party plugins run the two-axis model above — `probe_general_access` on
-the model list and `probe_model_access` with a few-token genuine completion — and return
+responses wire). The claude and codex plugins run the two-axis model above — `probe_general_access`
+on the model list and `probe_model_access` with a few-token genuine completion — and return
 `access_outcome`. Returns a `PersonaProbeOutcome`, whose four arms separate a probe that RAN and
 could not decide (`INCONCLUSIVE`) from one that learned nothing about the token and never will for
 this input (`NOT_APPLICABLE`, carrying the named cause).
