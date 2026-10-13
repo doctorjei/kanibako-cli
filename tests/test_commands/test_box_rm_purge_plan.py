@@ -392,7 +392,7 @@ class TestStandalonePurge:
         root = tmp_home / "sa"
         _create(root, standalone=True)
         with (root / "workset.yaml").open("a") as fh:
-            fh.write("  vault_rw: '@meta.workset.path/data'\n")
+            fh.write("  vault_rw: '{meta.workset.path}/data'\n")
         (root / "data").mkdir()
         (root / "data" / "ufile.txt").write_text("mine\n")
         digest = hashlib.sha256((root / "data" / "ufile.txt").read_bytes()).hexdigest()
@@ -572,7 +572,7 @@ class TestPurgeGuardRows:
         root = tmp_home / "sa"
         _create(root, standalone=True)
         with (root / "workset.yaml").open("a") as fh:
-            fh.write("  vault_rw: '@meta.workset.path/data'\n")
+            fh.write("  vault_rw: '{meta.workset.path}/data'\n")
         (root / "data").mkdir()
         capsys.readouterr()
         _closed_stdin(monkeypatch)
@@ -658,7 +658,7 @@ class TestPurgeGuardRows:
 
         root = tmp_home / "sa"
         dump_doc(system_settings_path(),
-                {"workset": {"boxes": "@meta.workset.path/store_x"}})
+                {"workset": {"boxes": "{meta.workset.path}/store_x"}})
         _create(root, standalone=True)
         store = root / "store_x"
         assert store.is_dir(), "the system value should have placed the store here"
@@ -678,7 +678,7 @@ class TestPurgeGuardRows:
 
         root = tmp_home / "sa"
         dump_doc(system_settings_path(),
-                {"workset": {"vault_rw": "@meta.workset.path/vault_w"}})
+                {"workset": {"vault_rw": "{meta.workset.path}/vault_w"}})
         _create(root, standalone=True)
         arm = root / "vault_w"
         assert arm.is_dir()
@@ -702,7 +702,7 @@ class TestPurgeGuardRows:
         root = tmp_home / "sa"
         _create(root, standalone=True)
         with (root / "workset.yaml").open("a") as fh:
-            fh.write("  boxes: '@meta.workset.path/store_x'\n")
+            fh.write("  boxes: '{meta.workset.path}/store_x'\n")
         store = root / "store_x"
         store.mkdir()
         (store / "f.txt").write_text("mine\n")
@@ -791,7 +791,7 @@ class TestLeftoverDefaultCanon:
     def _repoint_canon(self, root: Path) -> None:
         (root / "mycanon").mkdir()
         with (root / "workset.yaml").open("a") as fh:
-            fh.write("  canon: '@meta.workset.path/mycanon'\n")
+            fh.write("  canon: '{meta.workset.path}/mycanon'\n")
 
     def test_a_create_stamp_left_by_a_repoint_is_removed(self, config_file, tmp_home,
                                                       credentials_dir, capsys):

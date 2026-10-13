@@ -141,7 +141,7 @@ class TestAFailedMoveLeavesTheCanonAsFound:
     def test_an_unresolvable_canon_repoint_refuses_before_any_write(self, env):
         _config, std, tmp_home = env
         root = _standalone(env)
-        _repoint(root, "workset.canon", "@nosuch.ref/x")
+        _repoint(root, "workset.canon", "{nosuch.ref}/x")
         before = _snapshot(tmp_home)
         with pytest.raises(Exception, match="workset.canon"):
             _run(env, root, TargetSpec(location=INPLACE, ownership="default"))

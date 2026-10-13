@@ -141,7 +141,7 @@ class TestTheCreateTimeSeedCarriesTheChain:
     """A user ``seeded`` row sourced at ``@workset.auth.path/x`` names ``<ws>/auth/x``."""
     box_file, _workset_file = box_workset_settings_paths(primary_proj)
     box_file.parent.mkdir(parents=True, exist_ok=True)
-    box_file.write_text('box:\n  seeded:\n    "~/probe": ["@workset.auth.path/x"]\n')
+    box_file.write_text('box:\n  seeded:\n    "~/probe": ["{workset.auth.path}/x"]\n')
     snapshot = start_cmd._apply_init_seeds(
       std=std, proj=primary_proj, agent_name=NODE,
       global_config_path=None, agent_config_path=None,

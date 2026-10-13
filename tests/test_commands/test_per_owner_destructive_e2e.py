@@ -251,7 +251,7 @@ def _own_mailboxes(root: Path) -> None:
     meta = root / WORKSET_META_FILE
     doc = load_doc(meta) or {}
     doc.setdefault("workset", {}).setdefault("channels", {})["mailboxes"] = (
-        "@meta.workset.path/channels/mailboxes")
+        "{meta.workset.path}/channels/mailboxes")
     dump_doc(meta, doc)
 
 
