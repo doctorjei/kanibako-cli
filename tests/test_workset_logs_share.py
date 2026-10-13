@@ -119,7 +119,7 @@ class TestTheShareIsRefusedByName:
     def test_two_values_that_only_resolve_alike_still_collide(self, std, tmp_home):
         """⚑ RESOLVED, not lexical: the dotdot form differs per workset, lands as one dir."""
         a, b = two_worksets(std, tmp_home)
-        dotdot = "@meta.workset.path/../shared_logs"
+        dotdot = "{meta.workset.path}/../shared_logs"
         set_own_logs(a.root, dotdot)
 
         assert a.root.joinpath("..", "shared_logs").resolve() == b.root.joinpath(
@@ -150,21 +150,21 @@ class TestTheShareIsRefusedByName:
         """A SYSTEM value that reaches identity still lands every workset on one dir."""
         two_worksets(std, tmp_home)
 
-        msg = logs_share_refusal("workset.logs", "@meta.workset.path/../shared_logs", std,
+        msg = logs_share_refusal("workset.logs", "{meta.workset.path}/../shared_logs", std,
                                 force=False, scope="system")
         assert msg is not None
 
     def test_the_system_tier_share_is_forced_the_same_way(self, std, tmp_home):
         two_worksets(std, tmp_home)
 
-        assert logs_share_refusal("workset.logs", "@meta.workset.path/../shared_logs", std,
+        assert logs_share_refusal("workset.logs", "{meta.workset.path}/../shared_logs", std,
                                  force=True, scope="system") is None
 
     def test_a_null_write_is_never_a_share(self, std, tmp_home, config_file):
         """``--null`` stores a null: NO logs directory, so nothing to share, whatever the
         tier below says (``resolve_workset_logs``)."""
         two_worksets(std, tmp_home)
-        std_with_tier = with_system_logs(config_file, "@meta.workset.path/../shared_logs")
+        std_with_tier = with_system_logs(config_file, "{meta.workset.path}/../shared_logs")
 
         assert logs_share_refusal("workset.logs", None, std_with_tier, force=False,
                                  scope="workset", target_name="A") is None
@@ -188,7 +188,7 @@ class TestTheShareIsRefusedByName:
 class TestResetAndCreateAreDoorsToo:
     """A reset or a new workset can fall through onto a system value another reads."""
 
-    DOTDOT = "@meta.workset.path/../shared_logs"
+    DOTDOT = "{meta.workset.path}/../shared_logs"
 
     def test_a_reset_that_falls_through_onto_anothers_dir_is_refused(
             self, std, tmp_home, config_file):
@@ -208,7 +208,7 @@ class TestResetAndCreateAreDoorsToo:
     def test_a_reset_onto_a_dir_of_its_own_is_not_refused(self, std, tmp_home, config_file):
         _a, b = two_worksets(std, tmp_home)
         set_own_logs(b.root, str(tmp_home / "logs_b"))
-        std2 = with_system_logs(config_file, "@meta.workset.path/mylogs")
+        std2 = with_system_logs(config_file, "{meta.workset.path}/mylogs")
 
         assert logs_share_refusal("workset.logs", UNSET, std2, force=False,
                                  scope="workset", target_name="B",
@@ -241,7 +241,7 @@ class TestResetAndCreateAreDoorsToo:
     def test_a_new_workset_on_a_dir_of_its_own_is_not_refused(
             self, std, tmp_home, config_file):
         two_worksets(std, tmp_home)
-        std2 = with_system_logs(config_file, "@meta.workset.path/mylogs")
+        std2 = with_system_logs(config_file, "{meta.workset.path}/mylogs")
 
         assert logs_share_refusal("workset.logs", UNSET, std2, force=False,
                                  scope="workset", target_name="C",
@@ -261,7 +261,7 @@ class TestTheCliDoorsRefuse:
     def test_a_system_reset_that_lands_two_worksets_on_one_dir_is_refused(
             self, std, tmp_home, config_file, capsys):
         a, b = two_worksets(std, tmp_home)
-        with_system_logs(config_file, "@meta.workset.path/mylogs")
+        with_system_logs(config_file, "{meta.workset.path}/mylogs")
         set_own_logs(a.root, str(b.root / "logs"))
         before = system_settings_path().read_bytes()
 
@@ -278,7 +278,7 @@ class TestTheCliDoorsRefuse:
     def test_a_system_reset_that_shares_nothing_is_not_refused(
             self, std, tmp_home, config_file):
         two_worksets(std, tmp_home)
-        with_system_logs(config_file, "@meta.workset.path/mylogs")
+        with_system_logs(config_file, "{meta.workset.path}/mylogs")
 
         assert self.run("system", "reset", "workset.logs") == 0
 
@@ -286,7 +286,7 @@ class TestTheCliDoorsRefuse:
             self, std, tmp_home, config_file, capsys):
         """The logs check runs after create's own checks, so its reason is never false."""
         two_worksets(std, tmp_home)
-        with_system_logs(config_file, "@meta.workset.path/../shared_logs")
+        with_system_logs(config_file, "{meta.workset.path}/../shared_logs")
         (tmp_home / "wsC").mkdir()
 
         assert self.run("workset", "create", "--name", "C", str(tmp_home / "wsC")) == 1
@@ -401,7 +401,7 @@ class TestAForcedSharesPurgeTakesOnlyItsOwnPart:
 
 @pytest.mark.parametrize("value", [
     "/tmp/one_logs",
-    "@meta.workset.path/../one_logs",
+    "{meta.workset.path}/../one_logs",
 ])
 class TestBothCollidingValueShapesCloseTheSameDoor:
     """A literal and an anchored dotdot value are the same hazard and get the same answer."""
@@ -419,7 +419,7 @@ class TestTheDefaultWorksetResolvesUnderTheTokenItsBoxesRead:
     """The default's log dir is the one its boxes write: ``@meta.workset.name`` is
     ``__PRIMARY__`` for it, never the registry id ``__default__``."""
 
-    NAMED = "@meta.workset.name"
+    NAMED = "{meta.workset.name}"
 
     def _primary_box_and_a(self, config_file, tmp_home):
         """A primary box ``alpha``, its log written; a named ``A`` holding an ``alpha`` too."""

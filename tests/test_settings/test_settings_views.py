@@ -55,7 +55,7 @@ def _rw_node() -> KeyStore:
     """
     node = KeyStore()
     node["~/"] = BindEntry("/host/home")
-    node["~/vault"] = BindEntry("@workset.vault_rw", "Z,U")
+    node["~/vault"] = BindEntry("{workset.vault_rw}", "Z,U")
     node["/box/getter"] = BindEntry("/host/getter")
     return node
 

@@ -63,7 +63,7 @@ def _relocate_store(root: Path, value: str) -> Path:
 def _workspace_at(root: Path) -> None:
     """Put the box's workspace AT its own root, so the store sits INSIDE the copied tree."""
     write_nested_key(root / "workset.yaml", ("workset",), "workspaces",
-                     "@meta.workset.path")
+                     "{meta.workset.path}")
 
 
 def _cli(*argv: str) -> int:
@@ -227,7 +227,7 @@ class TestTheWorkspaceCopyOmitsTheStore:
         (elsewhere / "box_data" / "USER_FILE.txt").write_text("mine\n")
         # The store leaves the root by spelling, and the copied tree is elsewhere.
         write_nested_key(root / "workset.yaml", ("workset",), "boxes",
-                         "@meta.workset.path/../outside_ws/box_data")
+                         "{meta.workset.path}/../outside_ws/box_data")
         _r(std, config, str(root))
 
         ignore = _workspace_copy_ignore(
@@ -274,8 +274,8 @@ class TestTheRootSweepKeepsTheStore:
         store.mkdir()
         (store / "MY_OWN_THINGS.md").write_text("the user's own data\n")
         dump_doc(root / "workset.yaml", {"workset": {
-            "boxes": "@meta.workset.path/store",
-            "workspaces": "@meta.workset.path/nested",
+            "boxes": "{meta.workset.path}/store",
+            "workspaces": "{meta.workset.path}/nested",
         }})
         assert standalone_box_store(
             root, early=_early_scope(std, BoxMode.standalone)) == store
@@ -309,7 +309,7 @@ class TestTheRootSweepKeepsTheStore:
         (root / "file.txt").write_text("mine")
         resolve_project(std, config, project_dir=str(root), initialize=True)
         dump_doc(root / "workset.yaml", {
-            "workset": {"workspaces": "@meta.workset.path/nested"},
+            "workset": {"workspaces": "{meta.workset.path}/nested"},
         })
 
         state = resolve_lifecycle_target(str(root), std, config)
@@ -340,7 +340,7 @@ class TestTheRootSweepKeepsTheStore:
         (root / "file.txt").write_text("mine")
         resolve_project(std, config, project_dir=str(root), initialize=True)
         dump_doc(root / "workset.yaml", {
-            "workset": {"boxes": None, "workspaces": "@meta.workset.path/nested"},
+            "workset": {"boxes": None, "workspaces": "{meta.workset.path}/nested"},
         })
 
         with pytest.raises(SettingsError, match="workset.boxes"):
@@ -786,7 +786,7 @@ class TestATeardownPlanFollowsASystemTierRepoint:
         sysf.parent.mkdir(parents=True, exist_ok=True)
         doc = load_doc(sysf) if sysf.exists() else {}
         doc.setdefault("workset", {})
-        doc["workset"]["boxes"] = "@meta.workset.path/sysstore"
+        doc["workset"]["boxes"] = "{meta.workset.path}/sysstore"
         dump_doc(sysf, doc)
         # The EARLY SYSTEM TIER is read when ``std`` is built, so the fixture predates
         # the repoint written above.  Rebuild both or the plan reads a tier without it.

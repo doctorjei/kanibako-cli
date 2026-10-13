@@ -100,7 +100,7 @@ class TestResolveStandaloneProject:
         )
         settings = project_dir.resolve() / "workset.yaml"
         data = load_doc(settings)
-        data.setdefault("workset", {})["workspaces"] = "@meta.workset.path/code"
+        data.setdefault("workset", {})["workspaces"] = "{meta.workset.path}/code"
         dump_doc(settings, data)
 
         proj = resolve_standalone_project(std, config, str(project_dir))
@@ -357,7 +357,7 @@ class TestStandaloneFixedPaths:
             std, config, str(project_dir), initialize=True,
         )
         resolved = project_dir.resolve()
-        self._set_workset_key(resolved, "logs", "@workset.boxes/logs")
+        self._set_workset_key(resolved, "logs", "{workset.boxes}/logs")
         assert helper_log_path(std, proj) == (
             resolved / "box_data" / "logs" / f"{proj.name}.jsonl"
         )
@@ -371,7 +371,7 @@ class TestStandaloneFixedPaths:
             std, config, str(project_dir), initialize=True,
         )
         resolved = project_dir.resolve()
-        self._set_workset_key(resolved, "logs", "@meta.box.path/logs")
+        self._set_workset_key(resolved, "logs", "{meta.box.path}/logs")
         from kanibako.settings.settings_resolve import SettingsError
 
         with pytest.raises(SettingsError) as excinfo:
@@ -393,7 +393,7 @@ class TestStandaloneFixedPaths:
             std, config, str(project_dir), initialize=True,
         )
         resolved = project_dir.resolve()
-        self._set_workset_key(resolved, "boxes", "@meta.workset.path/store")
+        self._set_workset_key(resolved, "boxes", "{meta.workset.path}/store")
         assert helper_log_path(std, proj) == (
             resolved / "store" / f"{proj.name}.jsonl"
         )
@@ -410,12 +410,12 @@ class TestStandaloneFixedPaths:
             std, config, str(project_dir), initialize=True,
         )
         resolved = project_dir.resolve()
-        self._set_workset_key(resolved, "logs", "@config.data/x")
+        self._set_workset_key(resolved, "logs", "{config.data}/x")
         with pytest.raises(SettingsError) as excinfo:
             helper_log_path(std, proj)
         message = str(excinfo.value)
         assert "workset.logs" in message
-        assert "@config.data/x" in message
+        assert "{config.data}/x" in message
         assert str(resolved / "workset.yaml") in message
 
 

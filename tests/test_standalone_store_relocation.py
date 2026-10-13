@@ -216,7 +216,7 @@ class TestAStoreThatLeavesTheRootIsNeverRemoved:
         root = _make_standalone(config, std, tmp_home, "esc_parent")
         other = root.parent / "OTHER_PROJECT.txt"
         other.write_text("another project's data\n")
-        _point_at_verbatim(root, "@meta.workset.path/..", root.parent)
+        _point_at_verbatim(root, "{meta.workset.path}/..", root.parent)
 
         rc = _rm(root, "--purge")
 
@@ -235,7 +235,7 @@ class TestAStoreThatLeavesTheRootIsNeverRemoved:
         (elsewhere / "MY_DATA.txt").write_text("mine\n")
         store = elsewhere / "store"
         (root / "via").symlink_to(elsewhere)
-        _point_at_verbatim(root, "@meta.workset.path/via/store", store)
+        _point_at_verbatim(root, "{meta.workset.path}/via/store", store)
 
         rc = _rm(root, "--purge")
 
@@ -249,7 +249,7 @@ class TestAStoreThatLeavesTheRootIsNeverRemoved:
         """``workset.boxes: '@meta.workset.path'`` nominates the root; only STRICTLY
         below counts as kanibako's."""
         root = _make_standalone(config, std, tmp_home, "esc_at_root")
-        _point_at_verbatim(root, "@meta.workset.path", root)
+        _point_at_verbatim(root, "{meta.workset.path}", root)
 
         rc = _rm(root, "--purge")
 
@@ -270,7 +270,7 @@ class TestAStoreThatLeavesTheRootIsNeverRemoved:
 
         root = _make_standalone(config, std, tmp_home, "esc_symlinked_root")
         store = root / "stores" / "box_data"
-        _point_at_verbatim(root, "@meta.workset.path/stores/box_data", store)
+        _point_at_verbatim(root, "{meta.workset.path}/stores/box_data", store)
         via = tmp_home / "esc_symlinked_root_link"
         via.symlink_to(root)
 

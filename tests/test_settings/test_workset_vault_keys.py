@@ -52,8 +52,8 @@ class TestVaultResolverFaces:
         assert resolve_workset_vault_rw(tmp_path, None, early=early) == tmp_path / "vault" / "rw"
 
     def test_declared_default_written_out_degenerates_to_the_default(self, tmp_path, early):
-        _repoint(tmp_path, "vault_ro", "@meta.workset.path/vault/ro")
-        _repoint(tmp_path, "vault_rw", "@meta.workset.path/vault/rw")
+        _repoint(tmp_path, "vault_ro", "{meta.workset.path}/vault/ro")
+        _repoint(tmp_path, "vault_rw", "{meta.workset.path}/vault/rw")
         doc = load_workset_settings_doc(tmp_path)
         assert resolve_workset_vault_ro(tmp_path, doc, early=early) == tmp_path / "vault" / "ro"
         assert resolve_workset_vault_rw(tmp_path, doc, early=early) == tmp_path / "vault" / "rw"
@@ -95,17 +95,17 @@ class TestVaultResolverFaces:
         assert resolve_workset_vault_rw(tmp_path, doc, early=early) == tmp_home / "home" / "outside" / "rw"
 
     def test_workset_path_ref_with_a_repointed_leaf(self, tmp_path, early):
-        _repoint(tmp_path, "vault_ro", "@meta.workset.path/data/ro")
+        _repoint(tmp_path, "vault_ro", "{meta.workset.path}/data/ro")
         doc = load_workset_settings_doc(tmp_path)
         assert resolve_workset_vault_ro(tmp_path, doc, early=early) == tmp_path / "data" / "ro"
 
     def test_unresolvable_ref_refuses_and_names_the_key(self, tmp_path, early):
-        _repoint(tmp_path, "vault_ro", "@config.registry/ro")
+        _repoint(tmp_path, "vault_ro", "{config.registry}/ro")
         doc = load_workset_settings_doc(tmp_path)
         with pytest.raises(SettingsError) as exc:
             resolve_workset_vault_ro(tmp_path, doc, early=early)
         assert "workset.vault_ro" in str(exc.value)
-        assert "@config.registry" in str(exc.value)
+        assert "{config.registry}" in str(exc.value)
 
 
 class TestNullVaultArmFrontDoor:
@@ -272,7 +272,7 @@ class TestPrimaryModeVault:
         self, std, config_file, tmp_home,
     ):
         """🐞 The skeleton is COMPOSED off the root, never POSITIONED off ``workset.vault_ro``."""
-        _repoint(std.primary_workset, "vault_ro", "@meta.workset.path/store/ro")
+        _repoint(std.primary_workset, "vault_ro", "{meta.workset.path}/store/ro")
         reloaded = load_std_paths(load_config(config_file))
         workspace = tmp_home / "code" / "storeapp"
         workspace.mkdir(parents=True)
@@ -334,7 +334,7 @@ class TestStandaloneModeVault:
     ):
         """🐞 The skeleton is COMPOSED off the root, never POSITIONED off ``workset.vault_ro``."""
         root = project_dir.resolve()
-        _repoint(root, "vault_ro", "@meta.workset.path/store/ro")
+        _repoint(root, "vault_ro", "{meta.workset.path}/store/ro")
         proj = resolve_standalone_project(std, config, str(project_dir), initialize=True)
         # Anti-vacuity: the repoint took effect AND stayed INSIDE the root, so the
         # containment guard admits it — the derivation is the only thing wrong.
@@ -365,7 +365,7 @@ class TestStandaloneModeVault:
     ):
         """⚑ STRICT: an arm pointed AT the skeleton is the user's rw store, not its parent."""
         root = project_dir.resolve()
-        _repoint(root, "vault_rw", "@meta.workset.path/vault")
+        _repoint(root, "vault_rw", "{meta.workset.path}/vault")
         proj = resolve_standalone_project(std, config, str(project_dir), initialize=True)
         assert proj.vault_rw_path == root / "vault"
         assert (root / "vault").is_dir()

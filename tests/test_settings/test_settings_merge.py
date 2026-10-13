@@ -440,10 +440,10 @@ def test_masks_three_state_generic_merge() -> None:
 
 
 def test_refs_left_raw() -> None:
-    box = KeyStore({"box": {"bindings": {"rw": {"v": Bind("@workset.vault", "~/v")}}}})
+    box = KeyStore({"box": {"bindings": {"rw": {"v": Bind("{workset.vault}", "~/v")}}}})
     snap = merge([box])
     # The merge never resolves a ref — both raw tokens survive verbatim.
-    assert _probe(snap, "box", "bindings", "rw", "v") == Bind("@workset.vault", "~/v")
+    assert _probe(snap, "box", "bindings", "rw", "v") == Bind("{workset.vault}", "~/v")
 
 
 # --------------------------------------------------------------------------- #
