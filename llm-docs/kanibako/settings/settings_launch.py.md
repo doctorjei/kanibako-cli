@@ -263,9 +263,9 @@ selection level, both applied BEFORE this level resolves. NO braces are needed �
 terminated by `/` (not segment-legal) and the second ends the value, so `_REF_NAME_RE`'s greed
 cannot swallow anything (PHASE R's `@{name}` exists for a LITERAL SUFFIX after a ref; there is none
 here). Both refs are EMBEDDED, so an absent `system.agent` coerces to `""` (spec §0) rather than
-dropping the key: a NO-AGENT box resolves this to `<auth.path>/`. That is INERT —
-`resolve_auth_source` scrubs `workset_source` for every non-workset tier, and the workset tier needs
-`share_support`, which no-agent cannot have.
+dropping the key: a resolve with no `system.agent` at all resolves this to `<auth.path>/`. That is
+INERT — `resolve_auth_source` scrubs `workset_source` for every non-workset tier, and the workset
+tier needs `share_support`, which a resolve with no agent cannot have.
 
 ### STANDALONE (the degenerate lone box, spec §2c)
 
@@ -1042,7 +1042,10 @@ that way is what cost the credential path once already:
   (`_agent_scalar_pick` behind `bootstrap` / `transform`, `_effective_behavior_for_display`). Every
   box resolve takes its inputs from `resolve_inputs`, so every one folds the chain, and each takes
   the selection as a REQUIRED keyword.
-* `None` for a NO-AGENT box (`kanibako shell`, `--entrypoint`): no level is installed — never one pinned to the `"general"` template slot — so `@system.agent` answers the STORED default. ⚑ A known gap, not a design: keyspec §2b makes that box's effective `@system.agent` `shell`, so `meta.box.auth.workset_path` names the stored agent's directory there.
+* A launch with no target (`kanibako shell`, `--entrypoint`) passes `{system.agent: shell}`
+  (`start._launch_selection_level`, keyspec §2b), so `@system.agent` is `shell` there too. A caller
+  with no selection passes `None`: no level is installed, and `@system.agent` answers the STORED
+  default.
 
 ⚑ **WHICH RESOLVES SEE THE EPHEMERAL FLAGS** (P8, spec §1A *"EPHEMERAL, always … a flag NEVER mutates
 a stored value"*): the SELECTION rides every resolve that needs it (the list above); the FLAGS ride
@@ -1430,8 +1433,7 @@ state, and a caller behavior no caller has.
   tier ALONE (`_fallback_node`: no `agent.default` value). `meta.box.agent` holds `auth` (the floor's
   capability key) PLUS the shell tier's own leaves (`label`, `access`, `bootstrap`, …). NOTHING consumes those leaves: the
   only runtime reader under `meta.box.agent` is `auth.share_support`, which the auth FLOOR
-  materializes pre-expand, not this copy. rc2's no-agent box ran as `"general"` and mirrored the
-  `agent.default` backstop instead.
+  materializes pre-expand, not this copy.
 * A caller that passes a BLANK `active_agent` (tests, and any future caller that wants the strict
   reading) gets an EMPTY mirror — the short-circuit. It does NOT fall back to `agent.default`, which
   is the all-agents backstop, not an ACTIVE agent the box runs.
