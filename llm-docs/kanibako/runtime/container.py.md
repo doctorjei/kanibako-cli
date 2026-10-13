@@ -81,41 +81,30 @@ read-only instead. A mask is a VOID: there is nothing inside it (collapse DESIGN
 this option restores the old behavior **silently, with every test still green**, because what
 changes is what podman shows INSIDE the box.
 
-⚑ **A MASK IS INDEPENDENT OF THE VAULT.** The emission loop used to sit inside an `if enable_vault:`
-block, which was residue: back then the ONLY mask was the hardcoded `~/workspace/vault` tmpfs, so
-the block held the vault binds AND their mask. `4e96daa` routed the vault binds out through the
-category resolver and left the wrapper behind, and `242bfde` then dropped the default mask — so a
-vault-disabled box silently got NO masks at all, while `<scope>.masks` is an ordinary user-writable
-key that has nothing to do with the vault. A declared mask is emitted regardless. The same rule
+⚑ **A MASK IS INDEPENDENT OF THE VAULT.** `<scope>.masks` is an ordinary user-writable key that has
+nothing to do with the vault, so the emission loop sits outside any `if enable_vault:` block: a
+vault-disabled box that declares a mask still gets it. A declared mask is emitted regardless. The same rule
 governs the mask STUB loop in `_precreate_mount_stubs`, which is outside the vault arm for exactly
 this reason.
 
-There is **no default mask**: the vault moved out of `~/workspace` in 1.6.0, so there is nothing in
-the workspace to hide. No masks emits no tmpfs mounts. The `.gitignore` overlay that used to ride on
-the vault tmpfs is DROPPED — no special-case overlay survives.
+There is **no default mask**: the vault lives outside `~/workspace`, so there is nothing in the
+workspace to hide. No masks emits no tmpfs mounts, and no special-case overlay rides on one.
 
 ## Nothing is hardwired into a box
 
 The home + workspace + vault binds are **not** built here. They flow in via *extra_mounts* — the
 core box mounts the caller resolves through the category keyspace and folds through the assembly
 COLLAPSE — so nothing is bound into a box except through the keyspace. Only `-w` (a flag, not a
-mount) stays in this module's own argv.
-
-⚑ Prior text here named `start._build_core_mounts` as the producer, then the retired
-`reconcile_categories` pipeline. **Neither symbol exists** — the first went in `f56211f` when the
-launch read-path moved onto the KeyStore, the second at cutover 6-R3. The core mounts arrive from
-`_resolve_launch_snapshot` → `_install_assembly_collapse` → `meta.assembly.bindings` →
-`_emit_category_mounts`. Dead names are not carried forward. (It survives in two comments in
-`tests/test_runtime/test_container_extended.py`, which is outside this pass's seam.)
+mount) stays in this module's own argv. The core mounts arrive from `_resolve_launch_snapshot` →
+`_install_assembly_collapse` → `meta.assembly.bindings` → `_emit_category_mounts`.
 
 ## `post_start` — the `:U` re-chown repair seam
 
 *post_start* runs after podman has set the box's mounts up. It is the seam for work that must happen
 AFTER that moment — specifically the **canon re-protect**, because the home bind's `:U` option makes
 podman RECURSIVELY RE-CHOWN the home bind SOURCE to the container user's mapping at container
-creation, which resets the box-create canon skeleton from container-root back to the agent
-(measured on bifrost, 2026-07-31: host `165536 165536 555` post-create → `1000 1000 555`
-post-start).
+creation, which resets the box-create canon skeleton from container-root back to the agent (host
+`165536 165536 555` post-create → `1000 1000 555` post-start).
 
 The hook is wired inside `run()` rather than as a separate step after each `runtime.run(...)` call,
 so that the ORDERING — and the detach/foreground split below — exists in ONE place instead of being
@@ -198,7 +187,7 @@ root, so the operation succeeds.
 * `unshare_rm` — the read side of the problem: a plain `rmtree` of a box's shell dir can fail with
   EACCES.
 * `unshare_chown` — the write-side counterpart, and the mechanism behind the canon skeleton's
-  root-owned book roots (J-7): a host user cannot hand a file to one of their own subuids directly,
+  root-owned book roots: a host user cannot hand a file to one of their own subuids directly,
   but inside `podman unshare` those subuids are ordinary namespace uids.
 * `unshare_chmod` — runs inside the namespace because the paths are, by then, owned by a subuid the
   host user cannot chmod directly.
@@ -215,7 +204,7 @@ All four are podman-only and return False for docker, for an empty *paths*, or o
 ## `remove_box_tree` — THE box-tree deleter
 
 A box's home can contain files owned by mapped subuids — files a `--userns=keep-id` container wrote
-as root, and (since J-7) the root-owned canon skeleton kanibako itself creates at box create — which
+as root, and the root-owned canon skeleton kanibako itself creates at box create — which
 the host user cannot unlink. A plain `shutil.rmtree` then fails with EACCES.
 
 ⚑ **EVERY verb that deletes a box home or box metadata tree must come through here** — `rm --purge`,
@@ -279,8 +268,7 @@ in `kanibako.commands.start`.
   copy (the `seeded[~/]` trio) stages straight into the box HOME.
 
 Both COPY callers gain the `/workspace` split for free by routing here: a `~/workspace/...` copy
-dest lands under *project_path* (the workspace bind), not the shadowed `shell_path/workspace` stub —
-closing the former inline translators' latent drift bug (audit P3).
+dest lands under *project_path* (the workspace bind), not the shadowed `shell_path/workspace` stub.
 
 ### `_clear_symlink`
 
@@ -294,7 +282,7 @@ guarantees the bind takes on a real, non-symlink mountpoint that we own.
 **WHY.** crun's openat2 destination resolution must TRAVERSE every parent of a bind dest. A
 pre-existing box home commonly ships XDG dirs like `~/.config` at 0700 (gh/podman/XDG tools create
 them private); a file bind placed under such a dir — the agent kickoff SEED at
-`~/.config/kanibako/kickoff.md`, new in rc12 — then dies at launch with `crun: creating ... openat2
+`~/.config/kanibako/kickoff.md` — then dies at launch with `crun: creating ... openat2
 home/agent/.config: Permission denied` (exit 126). Fresh boxes never hit it, because our own mkdir
 makes `.config` traversable; pre-existing homes do.
 
@@ -306,7 +294,7 @@ that makes the path resolve.
 deliberately narrow:
 
 * *root* is *shell_path* ONLY; callers never pass a project_path (workspace) dest — that is the
-  user's real tree, and loosening its modes is a policy call not being made this increment.
+  user's real tree, and loosening its modes is a policy call this module does not make.
 * Never chmod AT or ABOVE *root*: the walk stops when it reaches root, so root itself and its
   ancestors are untouched.
 * A SYMLINKED parent stops the walk — we must not follow a symlink OUT of the box home and chmod a
@@ -323,6 +311,13 @@ Best-effort like the sibling stub helpers: any `OSError` is debug-logged and swa
 pre-create hiccup must never abort a launch (crun may still succeed, or the real error surfaces
 there). On a probe failure the walk STOPS, because we can no longer safely reason about ancestors we
 cannot probe.
+
+⚑ **The one refusal: a symlinked parent (`_refuse_symlinked_parent`).** Before a home-side,
+mask, or extra-mount stub is made, `_refused_symlink` finds the nearest symlinked parent of the
+stub inside its root. A link that leads OUTSIDE the root, does not resolve, or resolves to
+something that is not a directory raises `ContainerError`, naming the dest, the root, the link and
+its target: a stub made under such a link would land elsewhere, or not at all, and the launch would
+fail naming neither. A link resolving to a directory INSIDE the root is stubbed.
 
 ### What gets stubbed
 
@@ -341,13 +336,13 @@ Only home-side (shell_path) parents are loosened for traversal; project_path des
 
 ### The canon-skeleton skip is EXISTENCE-aware, not PATH-aware
 
-⚑ **THE CANON SKELETON OWNS ITS OWN MOUNTPOINTS (J-7) — BUT ONLY WHERE IT EXISTS.** On a box created
-by R1b the mountpoint is already there, root-owned and unwritable, so stubbing it is pointless and
-wrong-headed.
+⚑ **THE CANON SKELETON OWNS ITS OWN MOUNTPOINTS — BUT ONLY WHERE IT EXISTS.** On a box whose create
+built the skeleton the mountpoint is already there, root-owned and unwritable, so stubbing it is
+pointless and wrong-headed.
 
 ⚑ **That the skip tests EXISTENCE rather than just the path is load-bearing.** Boxes with NO
-skeleton exist and will keep arriving: every R1-era and pre-canon box, plus any box whose create hit
-the degraded path. An unconditional path-based skip leaves their five-or-six canon binds with no
+skeleton exist: a box created before the skeleton, and any box whose create hit the degraded path.
+An unconditional path-based skip leaves their canon binds with no
 mountpoints at all, and in LXC crun cannot mkdir inside a bind-mounted overlay — that is a **launch
 failure (exit 126)**, not a degradation. Falling through to the tolerant stub helpers instead
 pre-creates the mountpoints for exactly those boxes, which also makes this a free self-healing
@@ -373,9 +368,11 @@ mapped host stub (the OUTER view) and returns the box-dests that already contain
 
 Candidates are the vault ro/rw dests (when *enable_vault*) plus each `mount.destination` in
 *extra_mounts*. The base roots `/home/agent` and `/home/agent/workspace` are EXCLUDED — their
-content IS the box, not something shadowed (since 1.6.0 the home/workspace base binds flow through
-*extra_mounts* too). Tmpfs masks are not candidates: masking is intentional hiding, and they are not
-in *extra_mounts*.
+content IS the box, not something shadowed (the home/workspace base binds flow through
+*extra_mounts* too). A dest under the seed-denied managed canon region (`_is_seed_denied_canon_dest`,
+`CANON_SEED_DENY_PREFIXES`) is EXCLUDED too: box create's skeleton owns it and no seed lands there,
+so a bind there shadows no user content. Tmpfs masks are not candidates: masking is intentional
+hiding, and they are not in *extra_mounts*.
 
 ⚑ **This function is PURE.** It performs no filesystem mutation — no mkdir, touch, unlink or
 clear-symlink. All probes are best-effort and any `OSError` skips that dest rather than raising. A
@@ -444,10 +441,13 @@ Wrapper around the podman/docker CLI. `__init__` takes an explicit *command* or 
 `_detect`.
 
 ```python
-ContainerRuntime._detect() -> str
+ContainerRuntime._detect() -> tuple[str, bool]
 ```
-Resolve the runtime binary: `KANIBAKO_DOCKER_CMD` if set, else the first of `podman`/`docker` on
-PATH. Raises `ContainerError` naming both install routes when neither is present.
+Resolve the runtime command and whether `KANIBAKO_DOCKER_CMD` supplied it; `__init__` stores the
+pair as `cmd` and `cmd_overridden` (an explicit *command* skips detection, so `cmd_overridden` stays
+False). `KANIBAKO_DOCKER_CMD` wins when set, and raises `ContainerError` when it names something
+that is not a runnable command; otherwise the first of `podman`/`docker` on PATH. Raises
+`ContainerError` naming both install routes when neither is present.
 
 ```python
 ContainerRuntime.image_exists(image: str) -> bool
@@ -548,11 +548,12 @@ failure. *containers_dir* is unused.
 ```python
 ContainerRuntime.run(image, *, shell_path, project_path, vault_ro_path, vault_rw_path,
                      extra_mounts=None, tmpfs_masks=None, enable_vault=True, env=None,
-                     name=None, entrypoint=None, cli_args=None, detach=False,
+                     name=None, labels=None, entrypoint=None, cli_args=None, detach=False,
                      post_start=None) -> int
 ```
 THE box launcher, and the only container-CREATION seam in the tree. Pre-creates stubs, assembles the
-argv described above, and returns the exit code. *detach* backgrounds it (`-dt`, no `--rm`); the
+argv described above, and returns the exit code. *labels* become `--label` options on the
+container. *detach* backgrounds it (`-dt`, no `--rm`); the
 foreground arm inherits the terminal and blocks. See the argv, mask and `post_start` sections — every
 parameter here has a platform note attached to it.
 
@@ -575,6 +576,11 @@ Probe whether the container can accept an exec session right now, via a cheap CA
 true`. Gates the TTY-inheriting interactive exec.
 
 ```python
+ContainerRuntime.exec_succeeds(name: str, command: list[str]) -> bool
+```
+True iff *command* exits 0 in *name*, output captured. `exec_ready` is `exec_succeeds(name, ["true"])`.
+
+```python
 ContainerRuntime.container_exists(name: str) -> bool
 ```
 True if a container exists, running or stopped.
@@ -584,7 +590,15 @@ ContainerRuntime.stop(name: str) -> bool
 ```
 Ask the runtime to stop *name*; True on exit status 0. **Not a liveness reading:** `podman stop`
 exits 0 on an already-exited container, so True means the runtime found it and it is now down,
-never that it was up. Take liveness from `is_running` first.
+never that it was up. Take liveness first, from `commands.stop._is_live` (a PAUSED box is live, and
+`is_running` alone reads it as not running). ⚑ A PAUSED container refuses a stop (podman exits 125)
+while it still holds the name, so a failed stop of one is answered by `unpause` and a second stop
+request; only that retry's status is returned.
+
+```python
+ContainerRuntime.unpause(name: str) -> bool
+```
+Unpause container *name*; True on exit status 0.
 
 ```python
 ContainerRuntime.rm(name: str) -> bool
@@ -592,14 +606,29 @@ ContainerRuntime.rm(name: str) -> bool
 Remove a stopped container by name; True if removed.
 
 ```python
+ContainerRuntime.container_states(prefix: str = CONTAINER_NAME_PREFIX) -> dict[str, str]
+```
+`{name: state}` (`running`, `exited`, `removing`, …) for every container, running or not, whose name
+starts with *prefix*. ⚑ Read from `ps -a`, never `inspect`: a container stuck in `removing` has a
+half-deleted layer, so `inspect` fails on it, yet it still holds its name. A runtime that fails or
+cannot run answers none.
+
+```python
+ContainerRuntime.container_state(name: str) -> str | None
+```
+Container *name*'s state, else None: the ONE state reader, from `container_states`. ⚑ podman reads
+a PAUSED container as not running (`.State.Running` false), so a caller asking "is the box live"
+asks this too.
+
+```python
 ContainerRuntime.is_running(name: str) -> bool
 ```
-True iff `.State.Running` inspects as exactly `true`.
+True iff `.State.Running` inspects as exactly `true` (`running_from_inspect`).
 
 ```python
 ContainerRuntime.inspect_env(name: str, key: str) -> str | None
 ```
-Return the value of env var *key* recorded on container *name*, or None.
+Return the value of env var *key* recorded on container *name*, or None (`env_from_inspect`).
 
 ```python
 ContainerRuntime.container_image(name: str) -> str | None
@@ -608,10 +637,21 @@ Return the image reference container *name* was created from, or None. ⚑ podma
 meaning of None belongs to the caller.
 
 ```python
-ContainerRuntime.list_running(prefix: str = 'kanibako-') -> list[tuple[str, str, str]]
+ContainerRuntime.find_labeled(labels: Mapping[str, str | None], *, without: str | None = None,
+                              check: bool = False) -> list[str]
 ```
-Return running containers matching *prefix* as (name, image, status) tuples. Lines that do not split
-into exactly three tab-separated fields are dropped.
+The names of the containers, running or not, that carry every one of *labels* (a `None` value: the
+key, with any value) and, when *without* is given, no label of that key. A runtime that fails or
+cannot run answers none; with *check* it raises `LabelQueryError` instead, so a destructive caller
+never reads a failed query as "no container". With no *labels*, none is answered.
+
+```python
+ContainerRuntime.list_running(prefix: str = CONTAINER_NAME_PREFIX, *, include_stopped: bool = False,
+                              check: bool = False) -> list[tuple[str, str, str]]
+```
+Return containers whose name starts with *prefix* (`"kb-"`) as (name, image, status) tuples;
+*include_stopped* adds `-a`. Lines that do not split into exactly three tab-separated fields are
+dropped; with *check*, a runtime failure or an unparseable line raises `ContainerError` instead.
 
 ```python
 ContainerRuntime.get_local_digests(image: str) -> list[str]
@@ -650,6 +690,30 @@ Local kanibako images as (repo:tag, size) tuples — filtered by a case-insensit
 substring on the whole line.
 
 ```python
+image_ref_or_none(raw: str) -> str | None
+```
+Return `inspect` output *raw* as an image reference, or None if it cannot be one. The ONE guard for
+every `inspect --format` read of an image reference, local (`container_image`) and remote
+(`vscode.vscode_remote.RemoteEngine.container_image`): an engine can print Go's `<no value>` at
+exit 0 for a missing map key. It does not check that the image exists or is fully qualified.
+
+```python
+running_from_inspect(result: subprocess.CompletedProcess[str]) -> bool
+env_from_inspect(result: subprocess.CompletedProcess[str], key: str) -> str | None
+```
+The parsers shared by the local `is_running` / `inspect_env` and their remote twins in
+`vscode.vscode_remote.RemoteEngine`. A failed `inspect` reads as not running, or None.
+
+`STUCK_STATES` (`removing`, `stopping`) are the `ps -a` states of a container caught part-way out:
+it still holds its name, so a launch under that name fails, and only `<runtime> rm -f` clears it.
+
+```python
+remove_path(path: Path) -> bool
+```
+Remove *path*; a symlink loses only the link, never its target, and a directory goes through
+`remove_box_tree`. True when gone.
+
+```python
 remove_box_tree(target: Path) -> bool
 ```
 THE box-tree deleter; three escalating attempts. True iff *target* is gone afterwards. A symlink
@@ -660,6 +724,13 @@ box-deleting verb must route through it, and a False return does NOT mean the tr
 _is_managed_canon_dest(dest: str) -> bool
 ```
 True for a bind dest the CANON SKELETON owns, which must not be stubbed. Path-shaped by design.
+
+```python
+_is_seed_denied_canon_dest(dest: str) -> bool
+```
+True for a bind dest under the seed-denied managed canon region (`CANON_SEED_DENY_PREFIXES`, spec
+§2c). NARROWER than `_is_managed_canon_dest`: `canon/{notebook,workbook}` stay seedable, so a bind
+there still reports a shadow.
 
 ```python
 _guest_dest_to_host(dest, shell_path, project_path, *, map_home_root=False) -> Path | None
@@ -676,13 +747,14 @@ _precreate_mount_stubs(shell_path, project_path, extra_mounts, enable_vault,
                        vault_ro_path, vault_rw_path, tmpfs_masks) -> None
 ```
 Pre-create mount destination stubs to avoid crun permission errors in LXC. The mutating twin of
-`detect_shadowed_mounts`. Hosts the nested helpers `_clear_symlink`, `_loosen_parents`,
-`_ensure_dir`, `_ensure_file` and `_home_root`, all documented above.
+`detect_shadowed_mounts`. Raises `ContainerError` for a refused symlinked parent; otherwise
+best-effort. Hosts the nested helpers `_clear_symlink`, `_loosen_parents`, `_refused_symlink`,
+`_refuse_symlinked_parent`, `_ensure_dir`, `_ensure_file` and `_home_root`, all documented above.
 
 ## UNVERIFIED on this box
 
-There is no working podman here, so the following are recorded from prior debugging and could not be
-re-measured in this pass. **Do not delete them for lack of a test; confirm at a bifrost e2e.**
+There is no working podman here, so the following are recorded from prior debugging and cannot be
+measured on this box. **Do not delete them for lack of a test; confirm at a bifrost e2e.**
 
 1. That podman REJECTS the `src:dst:` volume form with **exit 125** (the `to_volume_arg` falsy-options
    guard).
@@ -695,5 +767,5 @@ re-measured in this pass. **Do not delete them for lack of a test; confirm at a 
 5. That crun cannot mkdir a mount destination inside a bind-mounted overlay under LXC (exit 126),
    and that `openat2` traversal needs the `0o011` search bits.
 6. The `keep-id` uid-mapping consequences, and the podman >= 4.3 floor for `uid=`/`gid=`.
-7. The bifrost 2026-07-31 `:U` re-chown measurement (`165536 165536 555` → `1000 1000 555`).
+7. The `:U` re-chown measurement (`165536 165536 555` → `1000 1000 555`).
 8. The 20 ms/50 ms short-lived-container timing behind the foreground `finally` guarantee.
