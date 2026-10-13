@@ -1349,19 +1349,13 @@ class Target(ABC):
         (`Authorization` for the first-party plugins) OMITTED rather than decline, and NEVER
         substitute a placeholder credential.
         ⚑ *model* MAY be `None`: probe with the field OMITTED, never a placeholder id.
-        ⚑ *env* is the PERSONA-STORE passthrough env block — that store entry's own `env:`
-        map, less the two single-source vars — and NOTHING ELSE.  🛑 IT IS NOT THE COLLAPSED
-        `env` FAMILY the box receives: a mapping set at the agent-file, workset or box rung,
-        or on a keyspace-only persona, is ABSENT here.  A harness whose runtime resolves
-        *model* through one of these (claude reads a tier alias through
-        `ANTHROPIC_DEFAULT_<TIER>_MODEL`) MUST resolve it here too.
-        ⚑ Where the mapping lives OUTSIDE this block the alias goes out raw.  A plugin that
-        reports it with `model_exact=False` to :func:`access_outcome` turns a refusal into a
-        warning when the model-free request VERIFIED the credential; a false `REJECTED`
-        survives only when that request could not verify it (a public model list, no answer,
-        a refusal, or a keyless persona): a KNOWN UNCLOSED HOLE, not a contract this argument
-        keeps (llm-doc).  Resolving a mapping the USER wrote is not the substitution the rule
-        above forbids; inventing one is.
+        ⚑ *env* is the box's env.  At LAUNCH it is the collapsed `env` family (every rung,
+        the store, `-e`), folded off the pre-flight snapshot; at CREATE, which resolves no
+        cascade, it is the persona store's own `env:` block, less the two single-source vars.
+        A harness whose runtime resolves *model* through one of these (claude reads a tier
+        alias through `ANTHROPIC_DEFAULT_<TIER>_MODEL`) MUST resolve it here too.
+        Resolving a mapping the USER wrote is not the substitution the rule above forbids;
+        inventing one is.
         ⚑ Contract: NEVER raises; SHORT *timeout*; the token is read TRANSIENTLY for the
         request only — never logged, never persisted, never returned.
         """

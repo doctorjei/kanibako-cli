@@ -130,6 +130,7 @@ def _warn_persona_store_diagnostics(agent_id: str, bundle) -> None
 def _persona_wiring(target) -> 'PersonaSpec | None'
 def _persona_token_pointer(secret_paths: 'Mapping[str, object]', var: str) -> object
 def _persona_secret_path_keys(secret_paths: 'Mapping[str, object]') -> 'list[str]'
+def _persona_probe_env(secret_paths, bundle) -> 'Mapping[str, str] | None'
 def _persona_probe_error(target, endpoint: str, token_ptr: 'str | None', model: 'str | None', display: str, logger, env: 'Mapping[str, str] | None'=None) -> 'str | None'
 def _resolve_codex_persona_env_key(secret_paths, wiring) -> 'str | None'
 def _resolve_codex_persona_provider(agent_id: str, endpoint: str, env_key: str, model: str, wiring) -> 'CodexModelProvider'
@@ -142,8 +143,8 @@ def _preflight_config_file_persona(agent_id: str, secret_paths, endpoint: str, k
 def _codex_persona_token_error(secret_paths, wiring, endpoint: str, display: str) -> 'str | None'
 def _effective_behavior_for_display(target, agent_cfg, *, std, proj, system_settings_path, selection_level: 'Mapping[str, object] | None', node_name=None, agent_cfg_path=None) -> dict[str, str]
 def _resolve_box_auth_source(*, std, proj, agent_name: str, system_settings_path, agent_cfg_path, selection_level: 'Mapping[str, object] | None')
-def _resolve_box_launch_decisions(*, std, proj, target, agent_name: str, system_settings_path, agent_cfg_path, selection_level: 'Mapping[str, object] | None', persona_values: 'Mapping[str, str] | None'=None) -> 'tuple[AuthSource, str | None, object, dict[str, object]]'
-def _persona_secret_table(snapshot, active_agent: str, box_ctx) -> PersonaSecretTable
+def _resolve_box_launch_decisions(*, std, proj, target, agent_name: str, system_settings_path, agent_cfg_path, selection_level: 'Mapping[str, object] | None', persona_values: 'Mapping[str, str] | None'=None, cli_env: 'Mapping[str, str] | None'=None) -> 'tuple[AuthSource, str | None, object, dict[str, object]]'
+def _persona_secret_table(snapshot, active_agent: str, box_ctx, *, cli_env: 'Mapping[str, str] | None'=None) -> PersonaSecretTable
 def _persona_model_state(snapshot: 'KeyStore', active_agent: str) -> object
 def _merge_default_categories(table: dict[str, object], incoming: 'Mapping[str, object]', *, family: str, origins: dict[tuple[str, str], str]) -> None
 def _box_scalars(std, proj, agent_id: str, system_path, cli_overrides) -> KanibakoConfig
@@ -228,9 +229,9 @@ class BootstrapChoice(NamedTuple):
     from_default: bool = False
 
 class PersonaSecretTable(dict):
-    __slots__ = ('declared',)
+    __slots__ = ('declared', 'env')
 
-    def __init__(self, state: 'Mapping[str, object]', declared: 'tuple[str, ...]')
+    def __init__(self, state: 'Mapping[str, object]', declared: 'tuple[str, ...]', env: 'dict[str, str] | None'=None)
 
 class StoredBoxAgent(NamedTuple):
     selection: 'AgentSelection | None'

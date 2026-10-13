@@ -3878,6 +3878,8 @@ def _run_container(
         agent_cfg_path=agent_cfg_path,
         persona_values=persona_values,
         selection_level=selection_level,
+        # The verify probe's env only (the box gets ``-e``, so the probe does too).
+        cli_env=cli_env_values,
     )
 
     # Plugin descriptor (None only for the built-in shell).  Hoisted here so
@@ -6516,6 +6518,19 @@ def _persona_secret_path_keys(secret_paths: "Mapping[str, object]") -> "list[str
     """
     return sorted(getattr(secret_paths, "declared", secret_paths))
 
+
+def _persona_probe_env(secret_paths, bundle) -> "Mapping[str, str] | None":
+    """The env the verify probe reads: the box's own (:attr:`PersonaSecretTable.env`).
+
+    Falls back to the store block's ``env:`` only when the table carries none (a fold
+    that refused, which the launch then refuses itself).
+    """
+    env = getattr(secret_paths, "env", None)
+    if env is not None:
+        return env
+    return bundle.env if bundle is not None else None
+
+
 def _persona_probe_error(
     target, endpoint: str, token_ptr: "str | None", model: "str | None", display: str,
     logger, env: "Mapping[str, str] | None" = None,
@@ -6558,20 +6573,13 @@ def _persona_probe_error(
     REJECTED sentence there is the Q29 table's own wording, and the H1 cell that
     could not send the box's model id arrives here as ``INCONCLUSIVE`` and warns.
 
-    ⚑ *env* is the PERSONA STORE's passthrough env block (``PersonaBundle.env``),
-    handed to the probe so the harness can rewrite a tier alias the way its runtime
-    will (claude resolves one through ``ANTHROPIC_DEFAULT_<TIER>_MODEL``).  Probing a
-    raw alias is what produced the measured false REJECTED this signature exists to
-    prevent.
-    🛑 IT IS NOT THE COLLAPSED ``env`` FAMILY, AND THAT GAP IS AN OPEN DEFECT.  The box's
-    variables are the ``meta.assembly.env`` slots, which only a WHOLE-BOX resolve folds
-    (:func:`_install_assembly_collapse`, below its ``whole_box`` gate) — and on this path
-    that resolve runs AFTER this pre-flight, which must precede box materialization.  So
-    a mapping at the agent-file / workset / box rung, or a keyspace-only persona with no
-    store block, still probes with the RAW alias.  When the model-free request verified
-    the credential that refusal only warns (the Q29 H1 cell); when it could not (a public
-    model list, no answer, a refusal, or no credential) the 403 still refuses the launch.
-    Closing it means collapsing before materialization: a design change, not a wiring.
+    ⚑ *env* is the box's env (:func:`_persona_probe_env`), handed to the probe so the
+    harness can rewrite a tier alias the way its runtime will (claude resolves one
+    through ``ANTHROPIC_DEFAULT_<TIER>_MODEL``).  Probing a raw alias is what produced
+    the measured false REJECTED this signature exists to prevent.  It is folded by the
+    launch's own ``collapse_env`` over the pre-flight snapshot's entries
+    (:func:`_persona_secret_table`), so a mapping at any rung, the store's, or ``-e``
+    reaches the probe as it reaches the box.
 
     🛑 THE REJECTED MESSAGE NAMES WHAT WAS REFUSED, NEVER WHAT TO FIX.  It used to
     assert the token was bad and send the user to replace a VALID one; the probe cannot
@@ -6881,7 +6889,7 @@ def _preflight_env_persona(
     if probe:
         probe_err = _persona_probe_error(
             target, endpoint, token_ptr, model, display, logger,
-            env=bundle.env if bundle is not None else None,
+            env=_persona_probe_env(secret_paths, bundle),
         )
         if probe_err is not None:
             return None, probe_err, None
@@ -7062,7 +7070,7 @@ def _preflight_config_file_persona(
             target, endpoint,
             probe_token_state if isinstance(probe_token_state, str) else None,
             model, display, logger,
-            env=bundle.env if bundle is not None else None,
+            env=_persona_probe_env(secret_paths, bundle),
         )
         if probe_err is not None:
             return None, probe_err, None
@@ -7339,8 +7347,12 @@ def _resolve_box_launch_decisions(
     agent_cfg_path,
     selection_level: "Mapping[str, object] | None",
     persona_values: "Mapping[str, str] | None" = None,
+    cli_env: "Mapping[str, str] | None" = None,
 ) -> "tuple[AuthSource, str | None, object, dict[str, object]]":
     """Resolve the launch's per-box decisions off ONE snapshot.
+
+    *cli_env* is the launch's parsed ``-e`` map. It reaches ONLY the verify probe's
+    env (:attr:`PersonaSecretTable.env`), which nothing writes to disk.
 
     Auth SOURCE + persona endpoint + persona model + the launch's per-VAR
     ``secret_path`` table (:class:`PersonaSecretTable`) — the single-source
@@ -7423,7 +7435,9 @@ def _resolve_box_launch_decisions(
         # THREE-STATE distinction the persona model gate needs (2026-08-17
         # ruling).
         model = _persona_model_state(snapshot, agent_name)
-    secret_paths = _persona_secret_table(snapshot, agent_name, inputs.ctx)
+    secret_paths = _persona_secret_table(
+        snapshot, agent_name, inputs.ctx, cli_env=cli_env,
+    )
     return auth_src, endpoint, model, secret_paths
 
 
@@ -7438,16 +7452,27 @@ class PersonaSecretTable(dict):
     the name list off it let an unrelated scope's var become this persona's token.
 
     A ``dict`` so a state read (:func:`_persona_token_pointer`) is a plain
-    ``get``/compare; only the name list is extra.
-    """
-    __slots__ = ("declared",)
+    ``get``/compare; the name list and *env* are extra.
 
-    def __init__(self, state: "Mapping[str, object]", declared: "tuple[str, ...]"):
+    *env* is the box's env VALUES off the same entry list, ``VAR -> value``, for the
+    verify probe (a tier alias resolves through ``ANTHROPIC_DEFAULT_<TIER>_MODEL``,
+    which any scope may set).  ``None`` when the fold refused; the launch's own
+    collapse then refuses the same way.
+    """
+    __slots__ = ("declared", "env")
+
+    def __init__(
+        self, state: "Mapping[str, object]", declared: "tuple[str, ...]",
+        env: "dict[str, str] | None" = None,
+    ):
         super().__init__(state)
         self.declared: "tuple[str, ...]" = declared
+        self.env: "dict[str, str] | None" = env
 
 
-def _persona_secret_table(snapshot, active_agent: str, box_ctx) -> PersonaSecretTable:
+def _persona_secret_table(
+    snapshot, active_agent: str, box_ctx, *, cli_env: "Mapping[str, str] | None" = None,
+) -> PersonaSecretTable:
     """The per-VAR ``secret_path`` state this launch DELIVERS, for the token gate.
 
     ⚑ THE GATE COUNTS WHAT THE LAUNCH MOUNTS, so the two cannot disagree: the cascade
@@ -7463,6 +7488,8 @@ def _persona_secret_table(snapshot, active_agent: str, box_ctx) -> PersonaSecret
     from kanibako.settings.settings_categories import (
         secret_path_deliveries, secret_path_winners,
     )
+    from kanibako.settings.settings_resolve import SettingsError
+    from kanibako.settings.store_collapse import collapse_env
 
     entries = settings_launch.snapshot_category_entries(
         snapshot, active_agent=active_agent, box_ctx=box_ctx,
@@ -7479,7 +7506,16 @@ def _persona_secret_table(snapshot, active_agent: str, box_ctx) -> PersonaSecret
     # its var here.
     node = settings_launch.snapshot_leaf(snapshot, f"agent.{active_agent}.secret_path")
     declared = _plain_table(node) if isinstance(node, dict) else {}
-    return PersonaSecretTable(table, tuple(sorted(declared)))
+    # ⚑ THE ENV IS THE LAUNCH'S OWN FOLD (``collapse_env``, as
+    # :func:`_install_assembly_collapse` runs it) over these SAME entries.  The
+    # whole-box resolve adds only core floors and realized variables; a user key at
+    # a floor's own key wins the cascade in both, and at another scope contests the
+    # slot, which the launch refuses.  So every value here is the box's value.
+    try:
+        env: "dict[str, str] | None" = _build_config_env(collapse_env(entries, cli_env))
+    except SettingsError:
+        env = None
+    return PersonaSecretTable(table, tuple(sorted(declared)), env)
 
 
 def _persona_model_state(snapshot: "KeyStore", active_agent: str) -> object:
