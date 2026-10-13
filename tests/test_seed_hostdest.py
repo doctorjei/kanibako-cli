@@ -35,10 +35,11 @@ dest would be a guest path taken for a host one, which is exactly the bug above.
 
 ⚑ WHAT STILL CARRIES A HOST DEST.  Exactly one thing, and it is NOT a category
 dest: ``{box.canon}/handbook``, the HOST template location nothing in the box
-reads (§5C-RULING), copied by ``launch.templates.install_box_handbook_template``
-through ``start._host_copy_dest``'s containment guard.  §1 pins that guard from
-the host side and the seed's route through ``container._guest_dest_to_host``
-from the guest side; between them no copy on either path can land off-target.
+reads [Jei:2026-08-07g], copied by
+``launch.templates.install_box_handbook_template`` through
+``start._host_copy_dest``'s containment guard.  §1 pins that guard from the host
+side and the seed's route through ``container._guest_dest_to_host`` from the
+guest side; between them no copy on either path can land off-target.
 
 ⚑ THE FILE NAME IS STALE — ``hostdest`` no longer names the subject.  The rename
 is boarded separately; do not infer from the name that a host dest is still a
@@ -238,9 +239,9 @@ def _entry(**kw) -> CategoryEntry:
 # 🕯️ ``TestReconcileAtOneDestination`` DIED AT 6-R3, with the cross-delivery ladder
 # it pinned. It asserted that a COPY and a MOUNT at one destination resolve to the
 # MOUNT ALONE — the retired ``_resolve_dest_group``'s answer. That rule was ruled the
-# OPPOSITE way (Jei, 2026-08-12: a copy lands ON TOP of a bind and most of the bind
-# remains intact), so rebasing the class would have pinned a behavior that no longer
-# exists. Its successor is
+# OPPOSITE way (system-design § "Collision arbitration": a copy lands ON TOP of a
+# bind and most of the bind remains intact), so rebasing the class would have pinned
+# a behavior that no longer exists. Its successor is
 # ``tests/test_settings/test_store_collapse.py::TestNothingPrunesACopy``, which states
 # the surviving rule: nothing prunes a copy for sharing a destination with a mount.
 #

@@ -162,8 +162,9 @@ class TestLazyInit:
 
         # Write custom config first.
         # ⚑ A ``config.*`` value, not ``box.image``: since 2026-08-26 the Layer-1 file
-        # carries the bootstrap foundation and nothing else (Jei), so a settings key
-        # planted here would be inert and the test would pass without meaning it.
+        # carries the bootstrap foundation and nothing else [Jei:2026-08-26], so a
+        # settings key planted here would be inert and the test would pass without
+        # meaning it.
         config_file = tmp_path / "config" / CONFIG_FILENAME
         config_file.parent.mkdir(parents=True, exist_ok=True)
         write_global_config(config_file)

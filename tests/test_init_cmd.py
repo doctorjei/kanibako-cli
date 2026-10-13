@@ -612,7 +612,7 @@ class TestCreateImage:
 
         # ⚑ THE STORED SYSTEM DEFAULT IS THE SYSTEM SETTINGS FILE, which is what this
         # case is named for. It used to write ``kanibako.cfg`` instead; that
-        # file cannot carry settings (Jei, 2026-08-26), and this is the file
+        # file cannot carry settings [Jei:2026-08-26], and this is the file
         # ``kanibako system set box.image=…`` has always written.
         ssp = load_std_paths(load_config(config_file)).settings
         write_nested_key(ssp, ("box",), "image", "changed-later:1")

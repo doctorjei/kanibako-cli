@@ -620,8 +620,8 @@ class TestTheAgentTierIsONEScope:
         ``agent`` precedence token, and two entries surviving the active-over-
         default pick at one dest are two different NAMES in one effective agent
         view — an ambiguity the user must resolve. So P5 treats the whole agent
-        tier as ONE scope and WARNS, which is the LOUD direction. If Jei rules
-        the other way, this assertion is the single place that flips.
+        tier as ONE scope and WARNS, which is the LOUD direction. If that is
+        ruled the other way, this assertion is the single place that flips.
 
         ⚑ The collapse reads it the same way, and that is why this case outlived
         the cross-scope ones beside it: both entries carry the one ``agent`` scope
@@ -846,11 +846,12 @@ class TestPreservedCopyRules:
     """The copy layer — not in the §0 table, and it outlived the table's helper.
 
     🕯️ THE CROSS-DELIVERY HALF OF THIS CLASS DIED AT 6-R3, and not merely because
-    the helper did: the ladder it pinned was RULED THE OTHER WAY (Jei, 2026-08-12 —
-    *"don't check for sync. Let it clobber whatever it wants."*). ``synced`` no
-    longer REPLACES a ``seeded`` at one dest, a ``synced`` winner is not picked by
-    scope precedence, and nothing prunes a copy for sharing a destination with a
-    mount. The surviving rule is the collapse's and is stated where it lives:
+    the helper did: the ladder it pinned was RULED THE OTHER WAY (system-design §
+    "Collision arbitration"; [Jei:2026-08-12] — *"don't check for sync. Let it
+    clobber whatever it wants."*). ``synced`` no longer REPLACES a ``seeded`` at one
+    dest, a ``synced`` winner is not picked by scope precedence, and nothing prunes
+    a copy for sharing a destination with a mount. The surviving rule is the
+    collapse's and is stated where it lives:
 
     * ``tests/test_settings/test_store_collapse.py::TestNothingPrunesACopy`` — a
       copy at a mount's dest keeps BOTH, at every scope;

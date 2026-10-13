@@ -493,8 +493,8 @@ def _subtree(helpers: Path) -> tuple[Path, Path]:
 
 
 class TestStopCascades:
-    """His 171-HC ruling (a): stopping a helper stops its whole subtree, deepest first,
-    each through the hub and each marked stopped."""
+    """171-HC (a) [Jei:2026-10-11]: stopping a helper stops its whole subtree, deepest
+    first, each through the hub and each marked stopped."""
 
     def test_stop_stops_every_descendant(self, helpers_env, capsys, monkeypatch):
         run_spawn(_make_args(depth=None, breadth=None, model=None))
@@ -1197,9 +1197,9 @@ class TestNoHub:
 
 class TestTreeWideNumbering:
     """keyspec ``meta.box.helper_num``: "helper index, unique across the director's
-    helper tree".  His 171-HN ruling (b): the HUB numbers every helper from one counter
-    for the whole tree (no blocks, so a number no longer says where its helper sits),
-    and the spawn names the requester, which a box learns from its bound spawn
+    helper tree".  171-HN (b) [Jei:2026-10-11]: the HUB numbers every helper from one
+    counter for the whole tree (no blocks, so a number no longer says where its helper
+    sits), and the spawn names the requester, which a box learns from its bound spawn
     document."""
 
     def test_the_director_takes_the_hubs_number_and_names_no_requester(self, helpers_env):

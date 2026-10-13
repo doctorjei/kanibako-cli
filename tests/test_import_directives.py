@@ -2005,7 +2005,7 @@ class TestTemplateImportAndLink:
 
 
 class TestLinkTargetsAreHomeRelative:
-    """🛑 A LINK TARGET NEVER CARRIES THE HOST PATH — his call, and he classed it as
+    """🛑 A LINK TARGET NEVER CARRIES THE HOST PATH — classed as
     a security issue rather than a cosmetic one; the why is in the flattener's
     ``home_relative``.
 

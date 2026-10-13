@@ -76,9 +76,9 @@ class TestInstallFilesystem:
 
         # Hand-write a non-default Layer-1 value.
         # ⚑ A ``config.*`` key, not ``box.image``: since 2026-08-26 the bootstrap file
-        # carries the ``config.*`` foundation and nothing else (Jei), so a settings key
-        # planted here is inert — this case is about the FILE surviving, and the
-        # foundation is what the file actually holds.
+        # carries the ``config.*`` foundation and nothing else [Jei:2026-08-26], so a
+        # settings key planted here is inert — this case is about the FILE surviving,
+        # and the foundation is what the file actually holds.
         write_nested_key(integration_config, ("config",), "agents", "/custom/agents")
 
         # Reload and verify the custom value is preserved

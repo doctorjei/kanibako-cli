@@ -96,12 +96,13 @@ class TestKanibakoLazyInit:
 
         ⚑ There is no env seed at all any more.  Lazy init used to write a
         docker-style ``<data>/env``; B9 (``77c4cf4``) retired that file under
-        Jei's RQ-1 re-ruling and re-homed the seed to ``system.env.COLORTERM``,
-        ``6e3d016`` moved it to ``box.env.COLORTERM``, and MBR-2/D1-4 deleted the
-        write outright — ``COLORTERM`` is DECLARED in ``core-defaults.yaml`` and
-        resolves without being stored.  All three storage locations are asserted
-        ABSENT below, because each one was live at some point and a restored
-        writer would look like history rather than a regression.
+        the RQ-1 re-ruling [Jei:2026-08-02] and re-homed the seed to
+        ``system.env.COLORTERM``, ``6e3d016`` moved it to ``box.env.COLORTERM``,
+        and MBR-2/D1-4 deleted the write outright — ``COLORTERM`` is DECLARED in
+        ``core-defaults.yaml`` and resolves without being stored.  All three
+        storage locations are asserted ABSENT below, because each one was live at
+        some point and a restored writer would look like history rather than a
+        regression.
         """
         result = _run_kanibako("system", "info", env=cli_env["env"], cwd=str(cli_env["project"]))
         assert result.returncode == 0, f"lazy init failed: {result.stderr}"
@@ -238,7 +239,7 @@ class TestKanibakoShell:
     ):
         """``<scope>.env.<VAR>`` reaches the box; the retired env FILE does not.
 
-        The RQ-1 contract (Jei's re-ruling, 2026-08-02), proved end to end on a
+        The RQ-1 contract [Jei:2026-08-02], proved end to end on a
         real container by B9 ``77c4cf4``, which retired the file and re-homed the
         seed.
 

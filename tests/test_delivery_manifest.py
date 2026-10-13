@@ -111,7 +111,7 @@ class SeedFile:
     """One file ``box create`` must deposit in the box STORE.
 
     ⚑ "SEED" IS THE PHASE, NOT THE MECHANISM — two mechanisms fill this manifest and
-    the distinction is Jei's 2026-08-07g ruling: the ``home/...`` rows arrive through
+    the distinction is [Jei:2026-08-07g]: the ``home/...`` rows arrive through
     the ``seeded`` CATEGORY (spec §2a layers 1-3), the ``canon/handbook/...`` row
     through the HOST-side template copy that replaced the retired handbook layers
     (``launch.templates.install_box_handbook_template``).  Both run at create, both
@@ -292,8 +292,8 @@ _KICKOFF_BOX_DEST = f"{GUEST_HOME}/.config/kanibako/kickoff.md"
 # --- BIND layer: the RO packaged canon (five core siblings + the gated plugin one). ---
 #
 # ⚑ rom-root-relative source paths are NO LONGER their own ``~``-dests: the packaged
-# tree is FLAT (``rom/{COLLECTION.md, charter/**}``, no ``canon/`` wrapper — J-7 /
-# Jei's samples), while every guest dest lives under ``~/canon``. The two are spelled
+# tree is FLAT (``rom/{COLLECTION.md, charter/**}``, no ``canon/`` wrapper — J-7
+# samples), while every guest dest lives under ``~/canon``. The two are spelled
 # separately here on purpose, so a relayout that moves one without the other fails.
 _COLLECTION_REL_IN_ROM = ROM_COLLECTION_REL
 _CONTENTS_REL_IN_ROM = ROM_CONTENTS_REL

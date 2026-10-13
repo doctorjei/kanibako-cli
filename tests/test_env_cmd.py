@@ -7,7 +7,7 @@ from the discriminated key. The verbs now REFUSE it with a cure; get returns
 ``None`` at the engine, with the handler-side read guards carrying the same cure
 (see the per-handler command tests).
 
-⚑ RQ-1 (Jei, 2026-08-02): the ``.env`` FILES are RETIRED OUTRIGHT — the
+⚑ RQ-1 [Jei:2026-08-02]: the ``.env`` FILES are RETIRED OUTRIGHT — the
 three-tier launch read is gone too, so a hand edit reaches nothing either. These
 tests pin that no verb writes them, that no verb reads them, and that the cure
 the refusal names is a key that really works.
