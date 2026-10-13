@@ -207,11 +207,11 @@ def _is_bind_floor_key(key: str) -> bool:
 # AND/OR workset-shared. The FINAL KEY MODEL, the stores, and the standalone
 # degeneration are in the llm-doc.
 #
-# ‼ ENABLE COMPUTATION: the spec writes the two box enables as ``%{support} &&
-# {allow}%``, but ``expand`` resolves ONLY {key}-refs / {$VAR} / ~ — it does NOT evaluate
-# ``&&``. So the floor materializes the box ENABLE as a plain per-tier bool DEFAULT
-# plus the resolvable INPUTS, and :func:`resolve_auth_source` ANDs support && allow
-# && box_enable in PYTHON. Folding ``&&`` into the engine is a deferred
+# ‼ ENABLE COMPUTATION: spec §2b makes each effective box enable support AND
+# allow AND the enable, but ``expand`` resolves ONLY {key}-refs / {$VAR} / ~ — it
+# does NOT evaluate ``&&``. So the floor materializes the box ENABLE as a plain
+# per-tier bool DEFAULT plus the resolvable INPUTS, and :func:`resolve_auth_source`
+# ANDs support && allow && box_enable in PYTHON. Folding ``&&`` into the engine is a deferred
 # generalization.
 
 #: The GLOBAL-share gate default (spec §2g / §2b). The single host-wide allow flag.
@@ -260,7 +260,7 @@ def auth_chain_floor(
         # The GLOBAL-share gate — the single host-wide allow flag (settable).
         _SYSTEM_SHARE_ALLOWED_KEY: True,
         # The box-scoped MIRROR of the active agent's capability (RO / meta). The
-        # spec's ``{meta.agent.<{system.agent}>...}`` NODE-SELECTOR notation is not
+        # spec's ``<agent>`` NODE SELECTOR (= the value of ``system.agent``) is not
         # expressible by the resolver, so the selected node is interpolated here and
         # the resulting ref is followed on a literal path (llm-doc).
         #
@@ -817,7 +817,7 @@ def workset_anchor_floor(
         "box.canon": "{meta.box.path}/canon",
         # The advisory kuid-CHECK knob, UNIFORM (the manifest declares one bool, not a
         # per-mode map). ⚑ Same defect as ``workset.channelroot`` below: declared with a
-        # default and emitted by no floor, so ``{workset.skip_kuid_check}`` dangled in
+        # default and emitted by no floor, so ``@workset.skip_kuid_check`` dangled in
         # every launch snapshot. The value is the one the pre-snapshot reader
         # ``config.read_workset_skip_kuid_check`` already returns with no file — a
         # conformance case pins the two equal so they cannot drift apart.
@@ -848,7 +848,7 @@ def workset_anchor_floor(
         # The LAYER-3 SEED SOURCE (spec §2c/§2a) — same defect, same fix. Its value was
         # spelled ONLY by ``launch.templates.template_seed_defaults``, and that table
         # feeds the CREATE-time seed resolve alone, so for a box that ALREADY EXISTS
-        # ``{workset.template}`` resolved to ``__MISSING__`` at every launch. The seed
+        # ``@workset.template`` resolved to ``__MISSING__`` at every launch. The seed
         # table now REFERENCES the key instead of declaring it, so this line is the one
         # spelling — and the ``template`` leaf itself still comes from the constant
         # ``launch.templates`` owns.
@@ -878,7 +878,7 @@ def workset_anchor_floor(
         for leaf in sorted(_WORKSET_LOCAL_CHANNEL_LEAVES):
             floor[f"workset.channels.{leaf}"] = None
     # ⚑ The MEMBER-WORKSPACE root, same defect and same fix: a manifest row with real
-    # NAMED and STANDALONE arms that no floor emitted, so ``{workset.workspaces}`` was
+    # NAMED and STANDALONE arms that no floor emitted, so ``@workset.workspaces`` was
     # ``__MISSING__`` in every launch snapshot and its dependent ``meta.box.workspace``
     # demanded a key that answered nowhere. The value is the RESOLVED literal — see the
     # docstring for why the formula would be wrong here more sharply than anywhere else.

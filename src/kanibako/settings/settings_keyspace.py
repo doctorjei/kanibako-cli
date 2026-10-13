@@ -211,8 +211,9 @@ DECLARED_WORKSET_AUTH_LEAVES: Final[frozenset[str]] = frozenset({
 #: the workset-LOCAL type roots (``common``/``chat``/``broadcast``/``share`` —
 #: primary+named only, rooted at ``{workset.channelroot}``) and the ALL-PROJECTS
 #: per-workset ADDRESSES into the SYSTEM stores (``mailboxes``/``share_global``
-#: — ``{system.channels.{mailboxes,share}}/{meta.workset.name}``, present in
-#: EVERY mode, keyed ``__PRIMARY__`` | ``<named>`` | ``__STANDALONE__``).
+#: — ``{system.channels.mailboxes}/{meta.workset.name}`` and
+#: ``{system.channels.share}/{meta.workset.name}``, present in EVERY mode, keyed
+#: ``__PRIMARY__`` | ``<named>`` | ``__STANDALONE__``).
 #: Mailboxes still AGGREGATE at system only (§2f) — the workset leaf is the
 #: workset's declared ADDRESS into that aggregate, not a second aggregate,
 #: which is why the earlier "a workset has no mailboxes" exclusion here was a

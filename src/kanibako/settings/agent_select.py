@@ -150,7 +150,7 @@ def host_resolve_ctx(std, group: "_WorksetGroup | None", agent_name: "str | None
         # ⚑⚑ BOTH MAPS ARE DERIVED BUILDERS, NEITHER IS A LITERAL HERE. The
         # ``config=`` half used to be five string literals, and ``CONFIG_PATH_DEFAULTS``
         # has declared SIX since ``config.journal`` landed the day after they were
-        # written: a binding sourced at ``{config.journal}`` was accepted by ``config
+        # written: a binding sourced at ``@config.journal`` was accepted by ``config
         # set`` and DROPPED at launch, silently, rc 0. ``paths.host_config_map`` derives
         # the tier from the declared table, so the two cannot part again.
         xdg=host_xdg_map(std.data_home),

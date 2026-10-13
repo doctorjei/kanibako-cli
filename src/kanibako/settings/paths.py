@@ -734,7 +734,7 @@ def _resolve_system_path_keys(set_values: Mapping[str, str | None], keys: Iterab
     # This cell is how the null travels instead: ``lookup`` records the ref, and the key
     # being resolved is then omitted whole, which is what §0 says an embedded reference
     # to a present ``<None>`` means.  ⭐ MEASURED, not hypothetical: without it
-    # ``system.channels.broadcast`` (``{system.channels.chat}/broadcast.md``) resolved to
+    # ``system.channels.broadcast`` (``@system.channels.chat/broadcast.md``) resolved to
     # the path ``None/broadcast.md`` under a null chat, and the chat seeder created that
     # directory in the CWD.  ⚑ REBOUND PER KEY below — a null referent nulls only the
     # value that NAMES it, never a sibling that happens to resolve after it.
@@ -825,7 +825,8 @@ def _resolve_system_tier(set_values: Mapping[str, str | None], *, data_home: Pat
     # PRIMARY-workset box/vault/logs roots, derived from ``{config.primary_workset}``.
     # ⚑⚑ ALL FOUR ARE RESOLVED, NOT COMPOSED.  There are no ``system.{boxes,logs,vault_*}``
     # keys at all (spec ``:335``) — these are SURROGATES for the PRIMARY workset's
-    # ``{workset.{boxes,logs,vault_ro,vault_rw}}``, which are declared, CLI-settable and
+    # ``{workset.boxes}``, ``{workset.logs}``, ``{workset.vault_ro}`` and
+    # ``{workset.vault_rw}``, which are declared, CLI-settable and
     # repointable in EVERY mode (§2c ALL PROJECTS, R-29).  Composing them here answered
     # the key a second way: the settings file accepted a repoint and the filesystem
     # ignored it.  ⚑ The PRIMARY workset root is an ordinary workset root and carries an
@@ -888,7 +889,7 @@ def host_config_map(std: StandardPaths) -> dict[str, str]:
     ``commands/workset_cmd._print_effective_shares``, five string literals each — and the
     table has held SIX keys since ``config.journal`` was declared the day after those
     literals were written.  So ``config set config.journal=…`` was accepted, and a binding
-    sourced at ``{config.journal}`` resolved at SET time and reached ``_ABSENT`` at launch:
+    sourced at ``@config.journal`` resolved at SET time and reached ``_ABSENT`` at launch:
     the key was dropped with no message and rc 0.  That is the ``system.channels.broadcast``
     shape exactly, one layer down — two carriers of one shape, with nothing comparing them.
     Deriving the key set means a Layer-1 key declared tomorrow reaches every host ctx
@@ -952,7 +953,7 @@ def system_path_floor(std: StandardPaths) -> dict[str, str | None]:
     ``system.channels.broadcast``, so a binding sourcing that declared key collapsed to
     ``None`` and was DROPPED with no message and rc 0; the display map omitted all five
     ``system.channels.*`` leaves, so a workset binding sourcing
-    ``{system.channels.chat}`` mounted at launch and did not appear in ``--effective``.
+    ``@system.channels.chat`` mounted at launch and did not appear in ``--effective``.
     A display that lies about what a launch does is precisely what those comments
     existed to prevent, and a hand list on each side is how they failed to.
 
@@ -962,7 +963,7 @@ def system_path_floor(std: StandardPaths) -> dict[str, str | None]:
     ``system.cache`` and ``system.runtime`` — declared, manifest-defaulted, CLI-settable,
     and resolved by the SET-time tier (``config_interface._path_tier_split``) — answered
     ``__MISSING__`` in every launch snapshot.  ``config set`` therefore ACCEPTED a
-    binding sourced at ``{system.cache}`` and the launch dropped it with no message and
+    binding sourced at ``@system.cache`` and the launch dropped it with no message and
     rc 0: the ``system.channels.broadcast`` shape again, one omission over.  [R143]
     settles that it is a defect rather than a report — *"if it has a default value, yes,
     thay value should be placed in the keystore"* — universally, with no exemption list.

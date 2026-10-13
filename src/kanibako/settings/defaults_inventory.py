@@ -125,7 +125,7 @@ def source_groups() -> tuple[tuple[str, frozenset[str]], ...]:
     ("bootstrap.py (system tier)", frozenset(SYSTEM_PATH_DEFAULTS)),
     # ⚑ WIDENED 2026-08-29, from 6 keys to 10.
     # ``workset.{skip_kuid_check,registry,kuid,template}`` were declared rows that no floor
-    # emitted, so a whole-value ``{key}``-ref to any of them resolved to ``__MISSING__`` at
+    # emitted, so a whole-value ``@``-ref to any of them resolved to ``__MISSING__`` at
     # launch; they are now built by the same builder (the ``workset.channelroot`` fix of
     # 2026-08-25, R-35 "fix the CODE", applied to the rows it left behind). The group is
     # DERIVED, so the widening arrived here on its own — what moved by hand is the labels

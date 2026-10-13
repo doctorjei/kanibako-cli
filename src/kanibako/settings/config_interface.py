@@ -441,7 +441,7 @@ def _target_scope_anchors(
     agent_path: "Path | None",
     agent_name: str,
 ) -> dict[str, object]:
-    """The ``{meta.{workset,box}.path}`` directories *target*'s own snapshot resolves.
+    """The ``{meta.workset.path}`` and ``{meta.box.path}`` dirs *target*'s own snapshot resolves.
 
     Read out of the SAME set-time snapshot the E3 probe judges against, so a scope file
     that moves a root (``workset.boxes``, which ``meta.box.path`` hangs off) moves the
