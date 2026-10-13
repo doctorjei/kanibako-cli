@@ -3390,10 +3390,9 @@ def effective_behavior(
     are NOT behavior and are skipped.
 
     A key absent from BOTH slots is omitted. A present-``None`` scalar in the WINNING
-    slot is omitted too, but it SETS the name and shadows the ``agent.default`` value
-    below it: the consumer reads the omission as ``None``, never the key's default
-    (keyspec §2h).  Where absent and present-``None`` must be told apart, read
-    :func:`behavior_pick`.  Values are stringified. Reads via the UNBOUND ``dict`` probe (S3).
+    slot is omitted (the consumer applies its own default, §3) — and, since
+    present-``None`` SETS the name, it shadows the ``agent.default`` value below it.
+    Values are stringified. Reads via the UNBOUND ``dict`` probe (S3).
 
     ⚑ A LEAF WHOSE STORED SHAPE IS NOT A SCALAR IS STRINGIFIED BY THE MODULE THAT OWNS THE
     SHAPE, not by ``str()`` — :func:`~kanibako.settings.agent_file.stored_leaf_text`.  Today

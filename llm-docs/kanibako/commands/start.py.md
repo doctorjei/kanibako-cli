@@ -1354,8 +1354,9 @@ identity). A target with no declared settings contributes no floor → endpoint 
 
 ### Why the model is read by `_persona_model_state`, not by `effective_behavior`
 
-`effective_behavior` COLLAPSES a present-None scalar into omission, the same shape as an absent key
-— and that is exactly the distinction the persona model gate needs KEPT APART.
+`effective_behavior` deliberately COLLAPSES a present-None scalar into omission — its own docstring:
+*"the consumer applies its own default"*, the general reset-to-default convention every OTHER
+behavior key wants — and that is exactly the distinction the persona model gate needs KEPT APART.
 `_persona_model_state` reads the SAME snapshot through the SAME pick
 (`settings_launch.behavior_pick`, the one carrier of the §2d active-over-default choice) and keeps
 the raw value, mirroring `agent_select.resolve_selected_agent` / `settings_launch.snapshot_leaf`'s

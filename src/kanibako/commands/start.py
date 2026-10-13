@@ -4412,28 +4412,23 @@ def _run_container(
         # coerced to bool. Resolved here for BOTH the agent and the no-agent/shell
         # path (agent_id == "shell") so the helper hub gate below sees the
         # effective value regardless of target.
-        # ⚑ ABSENT and PRESENT-``None`` are TWO cases, kept apart by
-        # ``behavior_pick`` (``effective_behavior`` omits both).  ABSENT — an
-        # agent-less / mocked target with no snapshot floor — applies the DECLARED
-        # value; a shell box's is ``agent.shell.allow_helpers``, not the default's.
-        # PRESENT-``None`` in the winning slot shadows the agent.default rung and
-        # reads as None, never the key's default (keyspec §2h): helpers OFF, as
-        # ``bootstrap`` reads a ``None`` program as none (:func:`_is_no_bootstrap`).
+        # ⚑ THE None-GUARD STAYS, and applies the DECLARED value, because TWO
+        # distinct paths still reach it: an agent-less / mocked target carries no
+        # snapshot floor at all, and a user's present-``None`` reset-to-default in
+        # the winning slot is OMITTED by ``effective_behavior`` by contract (it
+        # shadows the agent.default rung below, leaving the consumer to apply its
+        # own default — settings_launch.effective_behavior's docstring).  A shell
+        # box's declared value is ``agent.shell.allow_helpers``, not the default's.
         from kanibako.settings import settings_launch as _settings_launch
         _ah = coerce_bool(
             _settings_launch.effective_behavior(
                 _snapshot, active_agent=agent_id,
             ).get("allow_helpers")
         )
-        if _settings_launch.behavior_pick(
-            _snapshot, active_agent=agent_id, key="allow_helpers",
-        )[1] is None:
-            helpers_allowed = False
-        else:
-            helpers_allowed = (
-                _declared_behavior_bool("allow_helpers", agent_id)
-                if _ah is None else _ah
-            )
+        helpers_allowed = (
+            _declared_behavior_bool("allow_helpers", agent_id)
+            if _ah is None else _ah
+        )
 
         # E2b: the CONTINUE-mode agent grammar for a detached box's always-on
         # supervisor self-heal restart (threaded to the detach branch below via
@@ -4497,11 +4492,11 @@ def _run_container(
                 # continue_mode is an AGENT-scope behavior key (spec §2d
                 # ``agent.default.continue_mode``): resolve it off the SAME launch
                 # snapshot via the §2d active-over-default pick, coerced to bool —
-                # the same snapshot read as the ``access`` resolve above.  ⚑ ABSENT
-                # vs PRESENT-``None``, exactly as ``allow_helpers`` above: an absent
-                # key (a mocked / floor-less snapshot) applies the DECLARED value; a
-                # present-``None`` reads as None, never the key's default (keyspec
-                # §2h) — continue OFF, i.e. a fresh session.
+                # the same snapshot read as the ``access`` resolve above.  ⚑ The
+                # None-guard stays, and applies the DECLARED value, for the same
+                # two reasons as ``allow_helpers`` above: a mocked / floor-less
+                # snapshot, and a present-``None`` reset-to-default in the winning
+                # slot, which ``effective_behavior`` omits by contract.
                 #
                 # ⚑ P8: the per-launch ``-N``/``-C``/``-R`` flags are ALREADY folded
                 # in — they rode the §1A CLI LEVEL as ``agent.<active>.continue_mode``
@@ -4520,15 +4515,10 @@ def _run_container(
                 # skip_continue test, where a stored ``continue_mode: false`` would
                 # otherwise turn ``-R`` into a fresh start.)
                 _cm = coerce_bool(effective_state.get("continue_mode"))
-                if settings_launch.behavior_pick(
-                    _snapshot, active_agent=agent_id, key="continue_mode",
-                )[1] is None:
-                    continue_default = False
-                else:
-                    continue_default = (
-                        _declared_behavior_bool("continue_mode", agent_id)
-                        if _cm is None else _cm
-                    )
+                continue_default = (
+                    _declared_behavior_bool("continue_mode", agent_id)
+                    if _cm is None else _cm
+                )
                 effective_new_session = not continue_default
                 # B5 (spec §2d, the §3.3 rulings): the launch GRAMMAR comes off
                 # the ONE snapshot — ``meta.agent.<a>.mode`` / ``.exec``,

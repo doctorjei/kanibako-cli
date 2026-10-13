@@ -1968,22 +1968,6 @@ class TestDescriptorLaunchPath:
             assert "--continue" not in cli_args
             assert "--resume" not in cli_args
 
-    def test_persisted_continue_mode_none_starts_fresh(self, start_mocks):
-        """A present ``continue_mode: null`` reads as None, never the key's declared
-        default true (keyspec §2h) -> FRESH -> ``--continue`` ABSENT.  The ABSENT
-        key keeps the declared default (``test_default_continue_model_and_env``)."""
-        with start_mocks() as m:
-            self._drive(m)
-            m.agent_cfg.state = {"model": "opus", "continue_mode": None}
-            _run_container(
-                project_dir=None, entrypoint=None, image_override=None,
-                new_session=False, safe_mode=False, resume_mode=False,
-                extra_args=[],
-            )
-            cli_args = m.runtime.run.call_args.kwargs.get("cli_args") or []
-            assert "--continue" not in cli_args
-            assert "--resume" not in cli_args
-
     def test_continue_flag_overrides_persisted_false(self, start_mocks):
         """-C (continue_override) WINS over a persisted continue_mode=false ->
         ``--continue`` PRESENT (the per-launch flag overrides the persisted key)."""
