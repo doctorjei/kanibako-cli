@@ -20,12 +20,12 @@ _AGENT_MARKER_REMOVE_COMMAND = f'{_PID_SCRIPT_DIR}/pid-rm.sh "$PPID" || true'
 _AGENT_MARKER_WRITE_RETIRED_COMMANDS: 'frozenset[str]' = frozenset({'~/canon/bible/general/scripts/util/pid-add.sh "$PPID" || true', 'd="${KANIBAKO_AGENT_MARKERS_DIR:-/tmp/kanibako/agents}"; mkdir -p "$d" && printf %s "$PPID" > "$d/$PPID" || true'})
 _AGENT_MARKER_REMOVE_RETIRED_COMMANDS: 'frozenset[str]' = frozenset({'~/canon/bible/general/scripts/util/pid-rm.sh "$PPID" || true', 'd="${KANIBAKO_AGENT_MARKERS_DIR:-/tmp/kanibako/agents}"; rm -f "$d/$PPID" || true'})
 _CODEX_EVENT_KEY = 'session_start'
-_CODEX_EVENT_KEYS = {'SessionStart': _CODEX_EVENT_KEY, 'PostToolUse': 'post_tool_use', 'SessionEnd': 'session_end', 'Stop': 'stop'}
+_CODEX_EVENT_KEYS = {'SessionStart': _CODEX_EVENT_KEY, 'PostToolUse': 'post_tool_use', 'Stop': 'stop'}
 _CHARTER_HOOK_DIR = '~/canon/charter/general/scripts/hooks'
 _MAIL_MONITOR_COMMAND = '~/canon/handbook/general/scripts/behavior/check-comms.sh'
 _MAIL_MONITOR_MATCHER = 'Bash|Read|Write|Edit|Glob|Grep|Agent'
 _EDITED_MATCHER = 'Write|Edit'
-_CODEX_MANAGED_HOOKS: 'tuple[_CodexHook, ...]' = (_CodexHook('SessionStart', _SESSION_START_MATCHER, _SESSION_START_COMMAND, 600), *(_CodexHook('SessionStart', source, f'{_CHARTER_HOOK_DIR}/{script}.sh "$PPID"', 600) for source, script in (('startup', 'startup'), ('resume', 'resume'), ('clear', 'clear-start'), ('compact', 'compact'))), _CodexHook('PostToolUse', _MAIL_MONITOR_MATCHER, _MAIL_MONITOR_COMMAND, 5), _CodexHook('PostToolUse', _EDITED_MATCHER, f'{_CHARTER_HOOK_DIR}/edited.sh', 5), _CodexHook('SessionEnd', None, f'{_CHARTER_HOOK_DIR}/end.sh "$PPID"', 3), _CodexHook('Stop', None, f'{_CHARTER_HOOK_DIR}/stop.sh', 5))
+_CODEX_MANAGED_HOOKS: 'tuple[_CodexHook, ...]' = (_CodexHook('SessionStart', _SESSION_START_MATCHER, _SESSION_START_COMMAND, 600), *(_CodexHook('SessionStart', source, f'{_CHARTER_HOOK_DIR}/{script}.sh "$PPID"', 600) for source, script in (('startup', 'startup'), ('resume', 'resume'), ('clear', 'clear-start'), ('compact', 'compact'))), _CodexHook('PostToolUse', _MAIL_MONITOR_MATCHER, _MAIL_MONITOR_COMMAND, 5), _CodexHook('PostToolUse', _EDITED_MATCHER, f'{_CHARTER_HOOK_DIR}/edited.sh', 5), _CodexHook('Stop', None, f'{_CHARTER_HOOK_DIR}/stop.sh', 5))
 _CODEX_SANDBOX_MODE_KEY = 'sandbox_mode'
 _CODEX_SANDBOX_MODE = 'danger-full-access'
 _CODEX_REGION_BEGIN = '# >>> kanibako-managed (instruction-delivery hook + trust) — do not edit >>>'

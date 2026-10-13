@@ -1150,13 +1150,14 @@ throughout:
 This preserves the E2f contract the single-pidfile scheme drove (a clean exit → NONE, a crash → DEAD
 → SELF_HEAL_CLI), now over the per-PID dir.
 
-⚑ **AGENT ASYMMETRY.** **[UNVERIFIED-PLATFORM]** Only claude has a marker-REMOVE hook — codex's hook
-surface has NO SessionEnd/exit event (verified against codex-rs at rust-v0.141.0 and 0.144.x), so a
-cleanly-exited codex agent leaves a stale marker. DEAD fires once (the edge), and the marker is
-reaped (`scan_marker_pids`), so later ticks read NONE. Intended: the codex panel's sessions are
-threads inside one long-lived `codex app-server` process, so its marker-PID dying ≈ the panel
-process itself is gone — DEAD (→ SELF_HEAL_CLI when the VS Code server is still attached) is the
-useful verdict, and at worst a clean exit costs one benign self-heal.
+⚑ **AGENT ASYMMETRY.** **[UNVERIFIED-PLATFORM]** Only claude has a marker-REMOVE hook. codex DOES
+fire SessionEnd, but once per THREAD shutdown (the app-server also shuts idle threads), and every
+thread lives in the one `codex app-server` PID, so a remove hook there would clear the marker while
+the panel's other threads live — NONE, never DEAD. kanibako wires none, so an exited codex agent
+leaves a stale marker. DEAD fires once (the edge), and the marker is reaped (`scan_marker_pids`), so
+later ticks read NONE. Intended: the codex marker-PID dying ≈ the panel process itself is gone —
+DEAD (→ SELF_HEAL_CLI when the VS Code server is still attached) is the useful verdict, and at worst
+a clean exit costs one benign self-heal.
 
 ### self-heal
 
@@ -1453,8 +1454,9 @@ real tmux server under PID-1). None can be confirmed on the dev box.
 18. A panel incumbent has no send-keys injection vector; only the tmux CLI agent can be nudged.
 19. A paused (SIGSTOP'd) panel's stdio blocks, so a long grace risks the VS Code extension's watchdog
     respawning it.
-20. codex's hook surface has NO SessionEnd/exit event (verified against codex-rs rust-v0.141.0 and
-    0.144.x), so a cleanly-exited codex agent leaves a stale marker.
+20. codex fires SessionEnd once per THREAD shutdown, and every thread shares the one
+    `codex app-server` PID, so kanibako wires no codex marker-REMOVE hook and a cleanly-exited
+    codex agent leaves a stale marker.
 21. Under `podman run -dt` the pty merges the container's stdout and stderr into the single stream
     `podman logs` replays, so PID-1's stderr handler reaches the host. The `-dt` argv and the
     handler's stream are verified on the dev box; the capture itself is not.

@@ -76,10 +76,12 @@ DELIBERATE content changes so far (each = a reviewed regeneration commit):
 * codex gets claude's canon hooks: the 18 ``codex--*`` fixtures swap the bare
   ``pid-add.sh`` SessionStart group for the four charter start scripts (each
   cascades to ``pid-add.sh``), gain the mail monitor and ``edited.sh``
-  (PostToolUse), ``end.sh`` (SessionEnd) and ``stop.sh`` (Stop), and every managed
-  handler gains an explicit ``timeout`` with one ``[hooks.state]`` entry each.  The
-  directive group's hash is unchanged (600 was already its implicit timeout); the
-  9 ``claude--*`` fixtures are byte-UNCHANGED.
+  (PostToolUse) and ``stop.sh`` (Stop), and every managed handler gains an
+  explicit ``timeout`` with one ``[hooks.state]`` entry each.  NO ``end.sh``
+  SessionEnd group: codex fires SessionEnd per thread in one shared app-server
+  PID, so its pid-rm would clear a live panel's marker.  The directive group's
+  hash is unchanged (600 was already its implicit timeout); the 9 ``claude--*``
+  fixtures are byte-UNCHANGED.
 
 Matrix per agent (delivered file: claude ``.claude/settings.json``, codex
 ``.codex/config.toml``).  goose delivers NOTHING — its tier reaches the launched

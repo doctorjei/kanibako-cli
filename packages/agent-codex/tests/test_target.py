@@ -887,7 +887,7 @@ class TestDeliverySeams:
         ) is True
         data = tomllib.loads(self._config(tmp_path).read_text())
         # hook + GUEST_HOME-derived trust literals (directive group 0, the four
-        # charter start scripts, then one per PostToolUse/SessionEnd/Stop group):
+        # charter start scripts, then one per PostToolUse/Stop group):
         assert data["hooks"]["SessionStart"]
         cfg = f"{GUEST_HOME}/.codex/config.toml"
         state_keys = list(data["hooks"]["state"])
@@ -895,7 +895,6 @@ class TestDeliverySeams:
             *(f"{cfg}:session_start:{i}:0" for i in range(5)),
             f"{cfg}:post_tool_use:0:0",
             f"{cfg}:post_tool_use:1:0",
-            f"{cfg}:session_end:0:0",
             f"{cfg}:stop:0:0",
         ]
         assert (
@@ -937,8 +936,9 @@ class TestDeliverySeams:
     def test_directive_hook_delivers_the_canon_hooks(self, tmp_path):
         """The directive write carries claude's canon hooks: the directive group, the
         four charter start scripts (each cascading to ``pid-add.sh``), the mail
-        monitor and ``edited.sh``, ``end.sh`` (cascading to ``pid-rm.sh``) and
-        ``stop.sh`` — one trust entry each, keyed on the BOX config path."""
+        monitor and ``edited.sh``, and ``stop.sh`` — one trust entry each, keyed on
+        the BOX config path.  NO SessionEnd: codex fires it per thread in one shared
+        PID, so ``end.sh``'s pid-rm would clear a live panel's marker."""
         import tomllib
         from kanibako.settings.settings_resolve import GUEST_HOME
         from kanibako.vscode.vscode_config import _CODEX_MANAGED_HOOKS
@@ -948,15 +948,15 @@ class TestDeliverySeams:
         data = tomllib.loads(self._config(tmp_path).read_text())
         commands = [
             g["hooks"][0]["command"]
-            for event in ("SessionStart", "PostToolUse", "SessionEnd", "Stop")
+            for event in ("SessionStart", "PostToolUse", "Stop")
             for g in data["hooks"][event]
         ]
         assert commands == [hook.command for hook in _CODEX_MANAGED_HOOKS]
+        assert "SessionEnd" not in data["hooks"]
         cfg = f"{GUEST_HOME}/.codex/config.toml"
         assert set(data["hooks"]["state"]) == {
             *(f"{cfg}:session_start:{i}:0" for i in range(5)),
             f"{cfg}:post_tool_use:0:0",
             f"{cfg}:post_tool_use:1:0",
-            f"{cfg}:session_end:0:0",
             f"{cfg}:stop:0:0",
         }

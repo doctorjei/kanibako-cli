@@ -203,8 +203,8 @@ def _drift_managed_bytes(cfg: bytes) -> bytes:
 
 def test_codex_delivery_real_box(e2e_env):
     """Real `start --agent codex` delivers the FULL managed config.toml:
-    directive + charter start SessionStart groups, the PostToolUse, SessionEnd
-    and Stop canon hooks, one trust entry each, project trust, the sandbox
+    directive + charter start SessionStart groups, the PostToolUse and Stop
+    canon hooks (NO SessionEnd), one trust entry each, project trust, the sandbox
     invariant — and a restart re-delivers it byte-identically
     (both seams reconverge on the real path)."""
     env, project, box = e2e_env["env"], e2e_env["project"], "codexpanel_deliv"
@@ -233,15 +233,13 @@ def test_codex_delivery_real_box(e2e_env):
         # LIVE container, which this test does not have — its box exits the moment
         # the ``/bin/true`` codex does.  It is asserted by
         # ``test_codex_box_has_charter_pid_helper`` below, on a detached box.
-        assert [g["hooks"][0]["command"] for g in data["hooks"]["SessionEnd"]] == [
-            f'{CHARTER_HOOKS}/end.sh "$PPID"',
-        ]
+        # codex fires SessionEnd per thread in one shared PID: no pid-rm hook there.
+        assert "SessionEnd" not in data["hooks"]
         box_cfg = f"{GUEST_HOME}/.codex/config.toml"
         assert set(data["hooks"]["state"]) == {
             *(f"{box_cfg}:session_start:{i}:0" for i in range(5)),
             f"{box_cfg}:post_tool_use:0:0",
             f"{box_cfg}:post_tool_use:1:0",
-            f"{box_cfg}:session_end:0:0",
             f"{box_cfg}:stop:0:0",
         }
         for entry in data["hooks"]["state"].values():
@@ -287,7 +285,7 @@ def test_codex_box_has_charter_pid_helper(e2e_env):
         )
         _require_executable(name, PID_ADD_SCRIPT)
         for leaf in ("startup", "resume", "clear-start", "compact", "edited",
-                     "end", "stop"):
+                     "stop"):
             _require_executable(name, f"{CHARTER_HOOKS}/{leaf}.sh")
     finally:
         rm(name)

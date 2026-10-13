@@ -1492,11 +1492,11 @@ def test_codex_seam_composition_relaunch_is_no_op(tmp_path):
 #
 # The managed region wires codex to the SAME canon hooks the claude seed template
 # wires: the four charter start scripts (each cascades to ``pid-add.sh``), the mail
-# monitor and ``edited.sh`` after tool use, ``end.sh`` at SessionEnd (codex 0.145.0+;
-# older codex ignores the unknown table) and ``stop.sh`` at Stop.  Every handler
-# carries an EXPLICIT timeout hashed with that same value: codex hashes its per-event
-# default when the key is absent (SessionEnd's is 1), so an implicit timeout is a trust
-# entry that silently fails to match and a hook that never fires.
+# monitor and ``edited.sh`` after tool use, and ``stop.sh`` at Stop.  NOT ``end.sh``:
+# codex fires SessionEnd per THREAD inside one shared app-server PID, so its pid-rm
+# would clear a live panel's marker.  Every handler carries an EXPLICIT timeout hashed
+# with that same value: codex hashes its per-event default when the key is absent, so
+# an implicit timeout is a trust entry that silently fails to match.
 
 #: The managed region for an EMPTY user file, byte for byte.  ⚑ Every hash below was
 #: reported ``trustStatus: trusted`` by codex-cli 0.158.0's own ``hooks/list``
@@ -1560,13 +1560,6 @@ type = "command"
 command = "~/canon/charter/general/scripts/hooks/edited.sh"
 timeout = 5
 
-[[hooks.SessionEnd]]
-
-[[hooks.SessionEnd.hooks]]
-type = "command"
-command = "~/canon/charter/general/scripts/hooks/end.sh \\"$PPID\\""
-timeout = 3
-
 [[hooks.Stop]]
 
 [[hooks.Stop.hooks]]
@@ -1594,9 +1587,6 @@ trusted_hash = "sha256:b3cd5e1cd24d46429f40ef5d0b3012d88464eed04035d83914399919d
 
 [hooks.state."/home/agent/.codex/config.toml:post_tool_use:1:0"]
 trusted_hash = "sha256:f46241dfdd6b6f73738aeec9d3ef42b8730cc86967b3398a21b98874940c0e67"
-
-[hooks.state."/home/agent/.codex/config.toml:session_end:0:0"]
-trusted_hash = "sha256:d10b85ab20b9801ac3610b8812a919a9cea105218361935a6215ca02d3bfc42a"
 
 [hooks.state."/home/agent/.codex/config.toml:stop:0:0"]
 trusted_hash = "sha256:62fc3978288f96bed4defb105b775a3a350a3d6104d4f048f201714cc5c965d0"
@@ -1634,20 +1624,28 @@ def test_every_managed_handler_writes_and_hashes_one_explicit_timeout():
                 handler["timeout"],
             )
             seen += 1
-    assert seen == len(_CODEX_MANAGED_HOOKS) == len(state) == 9
+    assert seen == len(_CODEX_MANAGED_HOOKS) == len(state) == 8
 
 
-def test_session_end_trust_is_not_the_implicit_default_hash():
-    """The measured trap: codex hashes an implicit SessionEnd timeout at 1, and our
-    explicit 3 must hash as 3 — neither 1 nor the 600 SessionStart default."""
+def test_codex_wires_no_session_end_hook():
+    """codex fires SessionEnd per THREAD, and every thread shares the app-server PID,
+    so an ``end.sh "$PPID"`` there would pid-rm a LIVE panel's marker (state NONE,
+    never DEAD, so never SELF_HEAL_CLI).  No managed SessionEnd group, no trust
+    entry — and a user's own SessionEnd group is preserved untouched."""
     data = tomllib.loads(_merge(""))
+    assert "SessionEnd" not in data["hooks"]
+    assert not any(":session_end:" in key for key in data["hooks"]["state"])
+    assert "SessionEnd" not in _CODEX_EVENT_KEYS
+    user = (
+        "[[hooks.SessionEnd]]\n\n"
+        "[[hooks.SessionEnd.hooks]]\n"
+        'type = "command"\n'
+        'command = "echo user-end"\n'
+    )
+    data = tomllib.loads(_merge(user))
     (group,) = data["hooks"]["SessionEnd"]
-    command = group["hooks"][0]["command"]
-    assert group["hooks"][0]["timeout"] == 3
-    got = data["hooks"]["state"][f"{_BOX_CFG}:session_end:0:0"]["trusted_hash"]
-    assert got == codex_trusted_hash("session_end", None, command, 3)
-    assert got != codex_trusted_hash("session_end", None, command, 1)
-    assert got != codex_trusted_hash("session_end", None, command)
+    assert group["hooks"][0]["command"] == "echo user-end"
+    assert not any(":session_end:" in key for key in data["hooks"]["state"])
 
 
 def test_user_groups_shift_only_their_own_event_index():
@@ -1670,7 +1668,6 @@ def test_user_groups_shift_only_their_own_event_index():
         *(f"{_BOX_CFG}:session_start:{i}:0" for i in range(5)),
         f"{_BOX_CFG}:post_tool_use:1:0",
         f"{_BOX_CFG}:post_tool_use:2:0",
-        f"{_BOX_CFG}:session_end:0:0",
         f"{_BOX_CFG}:stop:1:0",
     }
     assert set(data["hooks"]["state"]) == expected
@@ -1683,8 +1680,7 @@ def test_user_groups_shift_only_their_own_event_index():
 
 def test_codex_start_groups_are_the_charter_cascade_not_a_bare_marker():
     """The four charter start scripts each cascade to ``pid-add.sh``, so the bare
-    marker-write group is gone; ``end.sh`` (which cascades to ``pid-rm.sh``) takes
-    every SessionEnd — codex reports only ``other`` — so it has no matcher."""
+    marker-write group is gone; no marker-REMOVE hook of either spelling is wired."""
     out = _merge(_TEMPLATE)
     data = tomllib.loads(out)
     starts = _managed_groups(data, "SessionStart")
@@ -1694,9 +1690,7 @@ def test_codex_start_groups_are_the_charter_cascade_not_a_bare_marker():
         ("clear", f'{_CHARTER_HOOK_DIR}/clear-start.sh "$PPID"'),
         ("compact", f'{_CHARTER_HOOK_DIR}/compact.sh "$PPID"'),
     ]
-    (end,) = data["hooks"]["SessionEnd"]
-    assert "matcher" not in end
-    assert end["hooks"][0]["command"] == f'{_CHARTER_HOOK_DIR}/end.sh "$PPID"'
+    assert "end.sh" not in out
     assert _AGENT_MARKER_WRITE_COMMAND not in out
     assert _AGENT_MARKER_REMOVE_COMMAND not in out
 
@@ -1718,6 +1712,20 @@ def test_codex_hooks_are_the_claude_seed_templates_commands():
         assert hook.command in claude_groups, f"{hook.event}: {hook.command}"
         if hook.event in ("SessionStart", "PostToolUse"):
             assert claude_groups[hook.command] == hook.matcher
+    # The ONE deliberate gap: claude's SessionEnd hooks (codex fires SessionEnd per
+    # thread in a shared PID, so their pid-rm would clear a live panel's marker).
+    codex_commands = {hook.command for hook in _CODEX_MANAGED_HOOKS}
+    unwired = {
+        (event, entry["command"])
+        for event, groups in claude.items()
+        for group in groups
+        for entry in group["hooks"]
+        if entry["command"] not in codex_commands
+    }
+    assert unwired == {
+        ("SessionEnd", f'{_CHARTER_HOOK_DIR}/clear-end.sh "$PPID"'),
+        ("SessionEnd", f'{_CHARTER_HOOK_DIR}/end.sh "$PPID"'),
+    }
 
 
 def test_codex_hook_commands_point_at_shipped_scripts():
@@ -1729,7 +1737,7 @@ def test_codex_hook_commands_point_at_shipped_scripts():
     rom_hooks = Path(str(packaged_data_dir(*ROM_ROOT_PARTS))) / (
         "charter/general/scripts/hooks"
     )
-    for leaf in ("startup", "resume", "clear-start", "compact", "edited", "end", "stop"):
+    for leaf in ("startup", "resume", "clear-start", "compact", "edited", "stop"):
         script = rom_hooks / f"{leaf}.sh"
         assert script.is_file() and os.access(script, os.X_OK), leaf
     monitor = Path(str(packaged_data_dir(

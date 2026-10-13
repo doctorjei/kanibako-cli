@@ -60,13 +60,6 @@ type = "command"
 command = "~/canon/charter/general/scripts/hooks/edited.sh"
 timeout = 5
 
-[[hooks.SessionEnd]]
-
-[[hooks.SessionEnd.hooks]]
-type = "command"
-command = "~/canon/charter/general/scripts/hooks/end.sh \"$PPID\""
-timeout = 3
-
 [[hooks.Stop]]
 
 [[hooks.Stop.hooks]]
@@ -94,9 +87,6 @@ trusted_hash = "sha256:b3cd5e1cd24d46429f40ef5d0b3012d88464eed04035d83914399919d
 
 [hooks.state."/home/agent/.codex/config.toml:post_tool_use:1:0"]
 trusted_hash = "sha256:f46241dfdd6b6f73738aeec9d3ef42b8730cc86967b3398a21b98874940c0e67"
-
-[hooks.state."/home/agent/.codex/config.toml:session_end:0:0"]
-trusted_hash = "sha256:d10b85ab20b9801ac3610b8812a919a9cea105218361935a6215ca02d3bfc42a"
 
 [hooks.state."/home/agent/.codex/config.toml:stop:0:0"]
 trusted_hash = "sha256:62fc3978288f96bed4defb105b775a3a350a3d6104d4f048f201714cc5c965d0"

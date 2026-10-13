@@ -359,7 +359,6 @@ _CODEX_EVENT_KEY = "session_start"
 _CODEX_EVENT_KEYS = {
     "SessionStart": _CODEX_EVENT_KEY,
     "PostToolUse": "post_tool_use",
-    "SessionEnd": "session_end",
     "Stop": "stop",
 }
 
@@ -381,17 +380,18 @@ class _CodexHook(NamedTuple):
     matcher: "str | None"
     command: str
     # ⚑ ALWAYS written explicitly and hashed with the SAME value: codex hashes its
-    # per-event DEFAULT when the key is absent (600 for SessionStart, 1 for SessionEnd),
-    # so an implicit timeout is a trust hash that silently fails to match.
+    # per-event DEFAULT when the key is absent, so an implicit timeout is a trust hash
+    # that silently fails to match.
     timeout: int
 
 
 # ⚑ Order is the byte order of the region and fixes each group's trust index.  The
 # directive group stays FIRST so its trust key does not move.  The four charter start
-# scripts call ``pid-add.sh`` themselves, so they REPLACE the bare marker-write group;
-# ``end.sh`` calls ``pid-rm.sh``.  codex reports only ``other`` as a SessionEnd reason,
-# so ``clear-end.sh`` has no codex event and ``end.sh`` takes every end (no matcher).
-# SessionEnd's timeout is capped at 3 by codex.
+# scripts call ``pid-add.sh`` themselves, so they REPLACE the bare marker-write group.
+# ⚑ NO SessionEnd group (``end.sh`` calls ``pid-rm.sh``): codex DOES fire SessionEnd,
+# but per THREAD, and every thread lives in ONE shared app-server PID, so a pid-rm
+# there clears a live panel's marker.  The supervisor reads a stale marker as DEAD,
+# the useful verdict (SELF_HEAL_CLI).
 _CODEX_MANAGED_HOOKS: "tuple[_CodexHook, ...]" = (
     _CodexHook("SessionStart", _SESSION_START_MATCHER, _SESSION_START_COMMAND, 600),
     *(
@@ -407,7 +407,6 @@ _CODEX_MANAGED_HOOKS: "tuple[_CodexHook, ...]" = (
     ),
     _CodexHook("PostToolUse", _MAIL_MONITOR_MATCHER, _MAIL_MONITOR_COMMAND, 5),
     _CodexHook("PostToolUse", _EDITED_MATCHER, f"{_CHARTER_HOOK_DIR}/edited.sh", 5),
-    _CodexHook("SessionEnd", None, f'{_CHARTER_HOOK_DIR}/end.sh "$PPID"', 3),
     _CodexHook("Stop", None, f"{_CHARTER_HOOK_DIR}/stop.sh", 5),
 )
 

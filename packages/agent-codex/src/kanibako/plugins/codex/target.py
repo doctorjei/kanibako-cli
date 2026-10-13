@@ -288,7 +288,7 @@ class CodexTarget(Target):
     ) -> bool:
         """Seed the managed codex config.toml: the instruction-delivery
         ``[[hooks.SessionStart]]`` group and the canon hooks claude runs (charter
-        start/end/stop, edited, the mail monitor), a pre-computed trust hash for
+        start/stop, edited, the mail monitor), a pre-computed trust hash for
         each, the directory trust, and (for a codex persona) the *model_provider*
         region.
 

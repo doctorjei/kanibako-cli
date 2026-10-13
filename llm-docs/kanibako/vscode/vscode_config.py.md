@@ -138,8 +138,9 @@ side, and it is delivered per agent:
 * **claude** — a `SessionStart` hook writes the marker file, and a `SessionEnd` hook removes it on
   a clean exit, so a clean shutdown clears its own marker. Both are managed as their own groups,
   idempotent and user-hook-preserving, exactly like the directive hook.
-* **codex** — the SAME marker-write command, delivered as the second managed
-  `[[hooks.SessionStart]]` group in the config.toml region. There is no remove side (below).
+* **codex** — the four charter start scripts (`startup.sh`, `resume.sh`, `clear-start.sh`,
+  `compact.sh`, each passed `"$PPID"`) as managed `[[hooks.SessionStart]]` groups in the
+  config.toml region; each calls `pid-add.sh` itself. There is no remove side (below).
 * **goose** — no marker delivery; there is no panel-liveness surface for it yet.
 
 ⚑ **Each hook is a CALL** to `pid-add.sh` / `pid-rm.sh` under
@@ -271,41 +272,45 @@ SHA-256'd and prefixed `sha256:`. The identity is a WIRE FORMAT:
                 "async": false}]}
 
 ⚑ `command` is the RAW string BEFORE any `${ENV}` expansion — codex hashes the config **text**, not
-the expanded command — and `timeout` normalizes to the 600 s default. Pinned to a real-oracle
-vector in the tests.
+the expanded command. Pinned to a real-oracle vector in the tests. ⚑ When a handler omits
+`timeout`, codex hashes its PER-EVENT default, so every managed handler writes an explicit
+`timeout` and is hashed with that same value.
 
-`_CODEX_EVENT_KEY` is codex's INTERNAL snake_case event id (`session_start`), used both in the trust
-state-table key `<cfg>:<event>:<group>:<handler>` and in the hash identity's `event_name`. The
-config.toml table key is PascalCase (`[hooks.SessionStart]`); codex maps it to the event id
-internally.
+`_CODEX_EVENT_KEYS` maps each managed config.toml table key (PascalCase, `[hooks.SessionStart]`)
+to codex's INTERNAL snake_case event id (`session_start`, `post_tool_use`, `stop`), used both in
+the trust state-table key `<cfg>:<event>:<group>:<handler>` and in the hash identity's
+`event_name`. `_CODEX_EVENT_KEY` is the `session_start` entry.
 
 ### The managed hook region
 
-`_build_codex_managed_region` holds TWO `[[hooks.SessionStart]]` groups, each with its own
-pre-computed `[hooks.state]` trusted hash, plus the `[projects."<codex_cwd>"] trust_level =
-"trusted"` directory trust:
+`_build_codex_managed_region` writes one group per `_CODEX_MANAGED_HOOKS` entry, in order, each
+with its own pre-computed `[hooks.state]` trusted hash, plus the `[projects."<codex_cwd>"]
+trust_level = "trusted"` directory trust. The entries are the commands the claude seed template
+runs on the same events:
 
-* group *group_index* — the instruction-delivery hook, exactly as claude's;
-* group *group_index*+1 — the per-PID liveness marker write, reusing claude's
-  `_AGENT_MARKER_WRITE_COMMAND` VERBATIM (one source of truth for the command bytes on both
-  agents).
+* `SessionStart` — the instruction-delivery hook (FIRST, so its trust key does not move), then the
+  four charter start scripts, each of which calls `pid-add.sh` itself;
+* `PostToolUse` — the mail monitor (`check-comms.sh`) and `edited.sh`;
+* `Stop` — `stop.sh`.
 
-⚑ TWO SINGLE-HANDLER groups, deliberately NOT one two-handler group: the trust hash is oracle-pinned
+⚑ SINGLE-HANDLER groups, deliberately NOT one multi-handler group: the trust hash is oracle-pinned
 for the `{event_name, matcher, hooks:[ONE command]}` identity, and a multi-handler group's
 per-handler hash shape is unverified upstream.
 
-⚑ **codex has NO SessionEnd/exit hook event.** `HookEventName` was verified identical at
-`rust-v0.141.0` and 0.144.x — SessionStart/Stop/… where `Stop` is per-TURN, not process exit. So
-there is no marker-REMOVE hook, and a cleanly-exited codex leaves a stale marker whose PID
+⚑ **No SessionEnd group, on purpose.** codex DOES fire SessionEnd, but once per THREAD shutdown, and
+the app-server shuts idle threads; every thread lives in the one shared `codex app-server` PID. An
+`end.sh "$PPID"` there would `pid-rm` the marker while the panel's other threads live. So there is
+no marker-REMOVE hook, and an exited codex leaves a stale marker whose PID
 `box_supervisor.scan_marker_pids` classifies dead once and then reaps. That is the intended
-semantics: the panel's sessions are threads inside one long-lived `codex app-server` process, so
-marker-PID death is effectively "the panel process itself is gone".
+semantics: marker-PID death is effectively "the panel process itself is gone", and the DEAD verdict
+is what drives the panel's crash fallback.
 
 ⚑ `box_config_path` is the BOX-absolute config path (`/home/agent/.codex/config.toml`), NOT the host
-write path — codex keys trust by the path it reads in-box. `group_index` is the count of USER
-`[[hooks.SessionStart]]` groups, since the managed groups are appended after them.
-`_count_session_start_groups` is text-based rather than tomllib-based so a corrupt user file still
-yields a usable index (0 for the empty template, the common case, matching the oracle `:0:0`).
+write path — codex keys trust by the path it reads in-box. ⚑ codex indexes groups PER EVENT, so
+*user_groups* maps each event to the count of the USER's groups of that event, and a managed
+group's trust index starts after them. `_count_hook_groups` is text-based rather than
+tomllib-based so a corrupt user file still yields a usable index (0 for the empty template, the
+common case, matching the oracle `:0:0`).
 
 ## The model-provider projection
 
@@ -429,10 +434,10 @@ Force the managed `sandbox_mode` root key to the box invariant.
 ```_apply_root_key(lines: list[str], key: str, *, desired: str | None, managed: tuple[str, ...], unconditional: bool = False) -> list[str]```
 Apply the SET-or-CLEAR discipline for one managed root key. Returns a NEW list.
 
-```_count_session_start_groups(text: str) -> int```
-Count user `[[hooks.SessionStart]]` groups — the index the managed ones follow.
+```_count_hook_groups(text: str, event: str) -> int```
+Count user `[[hooks.<event>]]` groups — the index the managed ones follow.
 
-```_build_codex_managed_region(*, box_config_path: str, codex_cwd: str, group_index: int) -> str```
+```_build_codex_managed_region(*, box_config_path: str, codex_cwd: str, user_groups: dict[str, int]) -> str```
 Build the regenerated managed TOML region (hook groups + trust hashes + dir trust).
 
 ```merge_codex_config(text: str, *, box_config_path: str, codex_cwd: str, model_provider: CodexModelProvider | None = None) -> str```
