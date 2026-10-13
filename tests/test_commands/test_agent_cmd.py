@@ -388,7 +388,7 @@ class TestRunInfo:
         from kanibako.settings.paths import load_std_paths
 
         std = load_std_paths(load_config(config_file))
-        dump_doc(std.settings, {"agent": {"claude": {"label": "@meta.agent.claude.name"}}})
+        dump_doc(std.settings, {"agent": {"claude": {"label": "{meta.agent.claude.name}"}}})
         capsys.readouterr()
         assert run_info(argparse.Namespace(agent_id="claude")) == 0
         out = capsys.readouterr().out
@@ -2215,8 +2215,8 @@ class TestAgentSetRefusesABareRelativePath:
         assert "@meta.agent.claude.path" in err or "/mydir" in err
         assert _stored_doc(agent_env) == before
 
-    @pytest.mark.parametrize("value", ("/srv/x", "~/x", "$XDG_DATA_HOME/x",
-                                       "@meta.agent.claude.path/x"))
+    @pytest.mark.parametrize("value", ("/srv/x", "~/x", "{$XDG_DATA_HOME}/x",
+                                       "{meta.agent.claude.path}/x"))
     def test_the_legal_spellings_still_write(self, value, agent_env, capsys):
         """⚑ THE OVER-FIRE GUARD. A refusal one notch too wide here bans the ``@``-ref
         the message itself offers as the cure."""
@@ -2383,7 +2383,7 @@ class TestAgentSetRoutesThroughTheOneSetter:
 
         before = _stored_doc(agent_env)
         rc = run_set(argparse.Namespace(
-            agent_id="claude", key_value="canon=@bogus.ref",
+            agent_id="claude", key_value="canon={bogus.ref}",
         ))
         assert rc == 1
         err = capsys.readouterr().err
@@ -2403,12 +2403,12 @@ class TestAgentSetRoutesThroughTheOneSetter:
         from kanibako.settings.config_keys import ConfigLevel
 
         assert run_set(argparse.Namespace(
-            agent_id="claude", key_value="canon=@bogus.ref",
+            agent_id="claude", key_value="canon={bogus.ref}",
         )) == 1
         by_verb = capsys.readouterr().err.strip()
 
         by_config = set_config_value(
-            "agent.claude.canon", "@bogus.ref",
+            "agent.claude.canon", "{bogus.ref}",
             config_path=tmp_path / "box.yaml",
             command_scope=ConfigLevel.system,
             agents_root=agents_dir(agent_env),
@@ -2426,12 +2426,12 @@ class TestAgentSetRoutesThroughTheOneSetter:
         from kanibako.commands.agent_cmd import run_set
 
         rc = run_set(argparse.Namespace(
-            agent_id="claude", key_value="canon=@meta.agent.claude.path/canon",
+            agent_id="claude", key_value="canon={meta.agent.claude.path}/canon",
         ))
         assert rc == 0
         assert (
             _stored_doc(agent_env)["self"]["canon"]
-            == "@meta.agent.claude.path/canon"
+            == "{meta.agent.claude.path}/canon"
         )
 
     def test_a_poisoned_file_is_still_repairable(self, agent_env, capsys):

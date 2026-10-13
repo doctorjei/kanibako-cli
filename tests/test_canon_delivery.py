@@ -948,7 +948,7 @@ class TestLaunchWiring:
         dest = f"{GUEST_HOME}/canon/handbook/box"
         assert dest in {e.box_dest for e in self._launch_entries(
             std, proj, _WiringTarget())}
-        box_path = self._write_box_settings(proj, {"canon": "@box.shell/sub"})
+        box_path = self._write_box_settings(proj, {"canon": "{box.shell}/sub"})
 
         with caplog.at_level(logging.WARNING, logger="kanibako"):
             entries = self._launch_entries(std, proj, _WiringTarget())
@@ -966,7 +966,7 @@ class TestLaunchWiring:
         proj = resolve_project(std, config, str(project_dir), initialize=True)
         self._write_box_settings(proj, {
             "shell": "/bin/zsh", "image": "example.org/rig:1",
-            "canon": "@box.shell/sub",
+            "canon": "{box.shell}/sub",
         })
         snapshot, _ = self._launch_resolve(std, proj, _WiringTarget())
         assert snapshot_leaf(snapshot, "box.shell") == "/bin/zsh"
@@ -1391,8 +1391,8 @@ class TestInternalBindEntryRefusal:
         self._refuse([(self._level(box), tmp_path / "box.yaml", None)])
 
     @pytest.mark.parametrize("arm", [
-        '  bindings:\n    rw:\n      "@box.canon/kanibako": [/tmp/evil]\n',
-        '  caches:\n    "@box.canon/kanibako": [/tmp/evil]\n',
+        '  bindings:\n    rw:\n      "{box.canon}/kanibako": [/tmp/evil]\n',
+        '  caches:\n    "{box.canon}/kanibako": [/tmp/evil]\n',
     ], ids=["rw", "caches"])
     def test_an_at_ref_dest_meets_a_collision_that_keeps_the_internal_bind(
         self, tmp_path, arm,

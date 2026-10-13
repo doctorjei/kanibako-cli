@@ -101,7 +101,7 @@ class TestWorksetLocalLeafRepoints:
     def test_channelroot_repoint_moves_the_whole_family(self, named_proj, std):
         """The pre-existing behavior, kept honest: the leaves follow their root."""
         ws_root = named_proj.group.root
-        _repoint(ws_root, "workset.channelroot", "@meta.workset.path/comms")
+        _repoint(ws_root, "workset.channelroot", "{meta.workset.path}/comms")
         wch = channels.workset_channel_paths(named_proj, std)
         assert wch is not None
         assert wch.root == ws_root / "comms"
@@ -235,11 +235,11 @@ class TestWorksetLocalLeafRepoints:
         from kanibako.settings.settings_resolve import SettingsError
 
         ws_root = named_proj.group.root
-        _repoint(ws_root, "workset.channels.chat", "@config.registry/nope")
+        _repoint(ws_root, "workset.channels.chat", "{config.registry}/nope")
         with pytest.raises(SettingsError) as exc:
             channels.workset_channel_paths(named_proj, std)
         assert "workset.channels.chat" in str(exc.value)
-        assert "@config.registry" in str(exc.value)
+        assert "{config.registry}" in str(exc.value)
 
     def test_a_bare_relative_repoint_is_REFUSED_naming_both_readings(
         self, named_proj, std, tmp_path, monkeypatch,
@@ -271,7 +271,7 @@ class TestWorksetLocalLeafRepoints:
 
     def test_the_root_relative_reading_stays_expressible(self, named_proj, std):
         ws_root = named_proj.group.root
-        _repoint(ws_root, "workset.channels.chat", "@meta.workset.path/talk")
+        _repoint(ws_root, "workset.channels.chat", "{meta.workset.path}/talk")
         wch = channels.workset_channel_paths(named_proj, std)
         assert wch is not None
         assert wch.chat == ws_root / "talk"

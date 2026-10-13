@@ -217,10 +217,10 @@ class TestTheLaunchFloorCarriesTheWholeFamily:
         # the key.
         doc = load_doc(box_path) or {}
         doc.setdefault("box", {}).setdefault("bindings", {})["rw"] = {
-            "/home/agent/bcast.md": ["@system.channels.broadcast"],
+            "/home/agent/bcast.md": ["{system.channels.broadcast}"],
             # The CONTROL: a sibling leaf that already worked, so a green here cannot
             # come from the whole binding table failing to arrive.
-            "/home/agent/chat": ["@system.channels.chat"],
+            "/home/agent/chat": ["{system.channels.chat}"],
         }
         dump_doc(box_path, doc)
 
@@ -228,7 +228,7 @@ class TestTheLaunchFloorCarriesTheWholeFamily:
         binds = _launch_bind_map(snapshot)
         assert binds["/home/agent/chat"].src == str(std.channels_chat)
         assert "/home/agent/bcast.md" in binds, (
-            "@system.channels.broadcast resolved to nothing, so the bind was dropped "
+            "{system.channels.broadcast} resolved to nothing, so the bind was dropped "
             "from the collapse entirely — no mount, no warning, rc 0"
         )
         assert binds["/home/agent/bcast.md"].src == str(std.channels_broadcast)
@@ -261,11 +261,11 @@ class TestTheEffectiveDisplayIsTheLaunchTier:
         from kanibako.commands import workset_cmd
 
         self._ws_with_bindings(std, tmp_home, {
-            "/home/agent/chat-ro": ["@system.channels.chat"],
-            "/home/agent/bcast-ro": ["@system.channels.broadcast"],
+            "/home/agent/chat-ro": ["{system.channels.chat}"],
+            "/home/agent/bcast-ro": ["{system.channels.broadcast}"],
             # The CONTROL rows: a literal and a key the old floor DID carry.
             "/home/agent/lit-ro": ["/tmp"],
-            "/home/agent/root-ro": ["@system.channelroot"],
+            "/home/agent/root-ro": ["{system.channelroot}"],
         })
         rc = workset_cmd.run_share_list(
             argparse.Namespace(workset="my_set", effective=True)
