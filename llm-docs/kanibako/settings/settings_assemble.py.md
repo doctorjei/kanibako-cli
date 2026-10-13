@@ -208,8 +208,7 @@ The ARMED bind-shaped category — the one whose category token is not the whole
 ```_BIND_ARMS: tuple[str, str] = ("ro", "rw")```
 The two arms a dest-keyed `bindings` node carries; each holds a `BindMap`.
 
-`settings_keyspace.BIND_LEAF_CATEGORIES` (imported; this module's literal copy
-`_DEST_KEYED_LEAF_CATEGORIES` was deleted) is the set of bind-shaped categories whose CATEGORY TOKEN IS
+`settings_keyspace.BIND_LEAF_CATEGORIES` (imported, never copied here) is the set of bind-shaped categories whose CATEGORY TOKEN IS
 THE WHOLE KEY: `{"caches", "seeded", "common", "synced"}` — terminal ONE LEVEL SHALLOWER than a
 `bindings` arm, with a `BindMap` for a value. See "the depth rule" above for why this set is not
 redundant with `BIND_CATEGORY_TOKENS`.
@@ -311,8 +310,8 @@ The `<key>=<value>` tail a cure can be COPY-PASTED with, for ONE retired mirror 
 TWO shapes, because the file's leaf has two. A SCALAR is quoted verbatim so the command runs AS
 PRINTED — a `bool` through YAML's spelling, never Python's `True` / `False`, which is not what the
 CLI parses. A nested TABLE has no single-token spelling at all, so its tail stays a PLACEHOLDER one
-level deeper (`<sub>.<key>=<value>`) rather than a repr that cannot work. Both of those were caught
-by PROBING the emitted commands rather than reading them; a cure is a command a user pastes.
+level deeper (`<sub>.<key>=<value>`) rather than a repr that cannot work. Probe the emitted
+commands rather than reading them; a cure is a command a user pastes.
 
 ```_cure_subject(level: str, box_ref: str | None) -> str```
 The REQUIRED subject positional for `kanibako <level> set` — ONE derivation, shared by every cure
@@ -328,11 +327,10 @@ positional does not fail loudly at either level. `workset set` binds the KEY to 
 positional and leaves `key_value` empty, so the pasted line hunts for a working set named
 `pref.agent.<agent>.access=full`. `box set` takes its arguments as a LIST, so the key alone parses
 and the write lands on whatever box the reader's cwd resolves to — a different box, silently. Both
-were measured against the real parser; both read fine on the page.
+read fine on the page.
 
-⮕ This function exists because the two cures DIVERGED: `_retired_mirror_cure` forked on the level
-correctly while `_retired_key_cure` hardcoded `box` and populated the positional only at box level,
-so a workset file got `box set` with no subject. One derivation, so they cannot drift again.
+⮕ Every cure takes its verb and subject from here, so a workset file's cure cannot come out as
+`box set` with no subject. One derivation, so the cures cannot drift apart.
 
 ```_retired_mirror_cure(*, level: str, box_ref: str | None, table: dict[Any, Any]) -> str```
 The LEVEL-APPROPRIATE fix for a TABLE-valued `box.agent` — the retired settable agent MIRROR (R-4).
