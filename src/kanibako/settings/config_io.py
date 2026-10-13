@@ -341,8 +341,8 @@ def dump_doc_commented(
 # Document mutators (load → mutate → dump)
 # ---------------------------------------------------------------------------
 
-# ⚑ No key routes to empty ``sections`` today — this pair is the nested pair's
-# structural complement, not dead code.  See llm-docs for the measurement.
+# ⚑ No key routes to empty ``sections`` — this pair is the nested pair's
+# structural complement, not dead code.  See llm-docs.
 def write_root_key(path: Path, key: str, value: object) -> None:
     """Write a TOP-LEVEL scalar key, preserving other content."""
     data = load_doc(path)

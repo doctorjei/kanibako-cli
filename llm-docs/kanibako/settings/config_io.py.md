@@ -13,78 +13,86 @@ KEYSPACE: a caller hands them a resolved path into a document and they preserve 
 it. Which file, and which nested slot, a config KEY maps to is a different question, answered by
 `kanibako.settings.config_keys` and `kanibako.settings.config_dest`.
 
-`load_doc` is one of the highest-fan-in functions in the tree (23 other source modules reference it,
-plus 401 references across `tests/`), which is the reason the parse-failure normalization below is
-not optional.
+`load_doc` is one of the highest-fan-in functions in the tree, which is the reason the
+parse-failure normalization below is not optional.
 
 ## Scope — what "every document" does and does not cover
 
-The two arms above are the route for **settings-cascade** documents. Two in-tree YAML writers
-deliberately sit outside it, and both say so at their own site:
+The two arms above are the route for **settings-cascade** documents. Two in-tree YAML writers sit
+outside it:
 
 * `runtime/rig_meta.py` — `/etc/kanibako/rig.yaml`, the truth-in-image metadata for an extended
   rig. It rides inside the image rootfs rather than living in the cascade, and calls
   `yaml.safe_dump` directly.
-* `vscode/vscode_config.py` — the goose `config.yaml` `GOOSE_MODE` projection, which carries the
-  comment *"⚑ Write via the Path object, NOT `config_io.dump_doc`"*: `atomic_write_text` does a
-  REAL `mkdir`, so a mocked path would materialize a stray on-disk dir, and a best-effort re-seed
-  is idempotent anyway.
+* `plugins/goose/credentials.py` (agent-goose package) — goose's OWN config and secrets files,
+  owned by the agent, not kanibako; it calls `yaml.safe_dump` directly.
 
-⚑ **`config.yaml` is the AGENT's own file, not kanibako's.** goose owns provider/model in it
-(`settings/agent_defaults.py`, `targets/credsync.py`); kanibako only projects into it.
+## Packaged documents
 
-⚑ **CORRECTED 2026-08-18 (relocation pass).** The prior module docstring claimed "*all* kanibako-owned
-config files … are serialized … through `load_doc`/`dump_doc`" and enumerated `general.yaml` —
-a file that no longer exists anywhere in the tree (`MIGRATION.md`: *"The default `general.yaml`
-likewise becomes `general/settings.yaml`"*) — and listed `settings.yaml` twice. See the false-claim
-notes at the bottom of this document.
-
-## The naming history
-
-⚑ These mutators were named `_write_toml_key*` / `_remove_toml_key*` while living in
-`config_interface`. kanibako has no TOML config file — they called `load_doc`/`dump_doc` (YAML) the
-whole time. The names are now honest. (Commit `536e349`, *"Move the config document mutators to
-config_io under honest names"*; the old names survive in the tree only inside build/cache
-artifacts.)
+```python
+def parse_packaged(text: str) -> object
+def load_packaged_mapping(ref: Traversable, filename: str) -> dict[str, Any]
+```
+`parse_packaged` parses a YAML file kanibako SHIPS (never a user's file) with the fastest safe
+loader (`CSafeLoader` when present). `load_packaged_mapping` reads the shipped document at *ref* and
+raises `PackagingError` when it is empty or not a mapping: a broken install, never an empty
+document (spec §0). `core_defaults`, `keyspace_manifest` and `agent_defaults` read through it.
 
 ## The parse-failure seam
 
 ```python
-def _yaml_problem(exc: yaml.YAMLError) -> str
+def yaml_problem(exc: yaml.YAMLError) -> str
 ```
 One-line rendering of a YAML parse failure (the problem + where).
 
-`yaml`'s own `str()` is multi-line and cites `"<unicode string>"` as the source (we hand
-`yaml.safe_load` TEXT, not the file), so it names everything except the file. The caller supplies
-the file; this supplies the problem and its line/column.
+`yaml`'s own `str()` is multi-line and cites `"<unicode string>"` as the source (we hand the loader
+TEXT, not the file), so it names everything except the file. The caller supplies the file; this
+supplies the problem and its line/column. ⚑ **THE ONE RENDERER, AND IT IS PUBLIC BECAUSE IT HAS A
+SECOND READER:** a file's own loader (`rig.yaml`'s, an overlay's) wraps the failure in its own error
+type and renders it here, so one failure reads in one set of words.
 
-⚑ **MEASURED, PyYAML 6.0.3 (2026-08-18):** a `ScannerError` renders as 5 lines, a `ParserError` as
-8, and every one contains `in "<unicode string>", line N, column M:`. Both are
-`yaml.MarkedYAMLError` subclasses with a populated `.problem` and `.problem_mark`, which is what the
-`isinstance` arm keys on. The `" ".join(str(exc).split())` fallback exists for the unmarked case.
+A `yaml.MarkedYAMLError` (a `ScannerError`, a `ParserError`) carries a populated `.problem` and
+`.problem_mark`, which is what the `isinstance` arm keys on. The `" ".join(str(exc).split())`
+fallback exists for the unmarked case.
+
+```python
+def parse_doc_text(text: str) -> object
+```
+Parse ONE document from *text* under kanibako's reading rules — **THE TEXT DOOR `load_doc` ALSO
+OPENS**, so a caller holding YAML instead of a file gets the SAME refusals in the SAME words. It
+parses with `_UniqueKeyLoader` (below) and then guards the result. The three refusals —
+`DuplicateKeyError`, `CyclicAnchorError` and `DocumentTooDeepError` — are `yaml.YAMLError`s, so one
+`except yaml.YAMLError` covers all of them. A flow collection deep enough to exhaust the Python
+stack is the same `DocumentTooDeepError`. `runtime/rig_meta.py`, `launch/templates.py`'s
+`_equivalent` and `paths.drop_standalone_marker` read through it.
+
+`MAX_DOC_DEPTH` (64) bounds nesting: deeper than that is refused rather than reaching the user as a
+bare `RecursionError` traceback from whatever walks it next. No declared key path comes near it.
 
 ```python
 def load_doc(path: Path | None) -> dict
 ```
-Load a config document → dict. Missing/empty → `{}`; any other non-mapping raises.
+Load a config document → dict. Missing/empty → `{}`; anything else that is not a mapping, a
+repeated key, a self-reference, unbounded nesting or an unreadable path raises.
 
-A file that is not parseable YAML raises `~kanibako.errors.ConfigError` naming the FILE and the
-parse problem. A file that parses to one value or a list raises `ConfigError` naming the FILE and
-which of the two it is (spec §0: never a silent accept) — it holds no keys to read, and reading it
-as empty would drop whatever the user meant by it without a word.
+Only `ENOENT` / `ENOTDIR` read as missing, never `Path.exists()`: a file kanibako cannot reach
+(EACCES or EPERM on it or a parent, a link loop — ELOOP) refuses through
+`utils.unreadable_path_error`, naming it, because the file may be fine and the cure is to make the
+path reachable. Text that is not UTF-8 refuses too. A file that is not parseable YAML raises
+`~kanibako.errors.ConfigError` naming the FILE and the parse problem. A file that parses to one
+value or a list raises `ConfigError` naming the FILE and which of the two it is (spec §0: never a
+silent accept) — it holds no keys to read, and reading it as empty would drop whatever the user
+meant by it without a word.
 
 ⚑ **THE NORMALIZATION BELONGS HERE and nowhere else:** this is the one seam that knows WHICH file is
 being read — `yaml` is handed a string, so its own mark says `"<unicode string>"` — and a raw
 `yaml.YAMLError` escaping to the CLI (which converts only `KanibakoError` into a clean rc1) is a
 traceback on any verb that touches the cascade, including the BOX-LESS ones (`rig list` / `setup` /
-`baseline`) that reach it through `load_merged_config`'s box-scalar resolve (B6-Editor S-3).
+`baseline`) that reach it through `load_merged_config`'s box-scalar resolve. `cli.py` catches
+`KanibakoError` (and `UserCanceled`) and nothing broader.
 
-*Verified 2026-08-18: `cli.py` catches `KanibakoError` (and `UserCanceled`) and nothing broader —
-`errors.py` carries a `⚑` saying exactly that. `commands/image.py` (`rig list`),
-`commands/setup_cmd.py` and `commands/baseline_cmd.py` all call `load_merged_config`.*
-
-⚑ **MEASURED PyYAML behavior the `Missing/empty → {}` contract and the non-mapping refusal rest
-on** — keep, do not "simplify":
+⚑ **PyYAML behavior the `Missing/empty → {}` contract and the non-mapping refusal rest on** — keep,
+do not "simplify":
 
 | input | `yaml.safe_load` returns | `load_doc` returns |
 |---|---|---|
@@ -96,14 +104,15 @@ on** — keep, do not "simplify":
 | `"﻿a: 1\n"` (BOM) | `{'a': 1}` — BOM is stripped, no error | `{'a': 1}` |
 | a leading TAB | raises `ScannerError` | `ConfigError` |
 
-## The repeated-key refusal (`_UniqueKeyLoader`, Q103 / S4 I17)
+## The repeated-key refusal (`_UniqueKeyLoader`, Q103)
 
-`load_doc` parses with `_UniqueKeyLoader`, a `yaml.SafeLoader` subclass, not `yaml.safe_load`. Its
-`construct_document` walks the composed node tree before constructing anything and raises the
-private `_DuplicateKey` at the first mapping that repeats a key, carrying the key's dotted path
-(`box.env.A`, `list[1].k` inside a sequence) and both locations; `load_doc` turns that into a
-`ConfigError` naming the file. Spec §0: PyYAML's last-wins (table above) is a silent accept that
-drops the first spelling.
+`parse_doc_text` parses with `_UniqueKeyLoader`, a `yaml.SafeLoader` subclass, not
+`yaml.safe_load`. Its `construct_document` walks the composed node tree before constructing anything
+and raises `DuplicateKeyError(yaml.YAMLError)` at the first mapping that repeats a key, carrying the
+key's dotted path (`box.env.A`, `list[1].k` inside a sequence) and both locations; `load_doc` turns
+that into a `ConfigError` naming the file. Spec §0: PyYAML's last-wins (table above) is a silent
+accept that drops the first spelling. Being a `yaml.YAMLError`, a reader that forgot this subclass
+still reads the document as unreadable rather than last-wins.
 
 * **Why the node tree:** the constructed `dict` has already lost the first spelling, and only the
   nodes carry lines and parentage.
@@ -115,27 +124,24 @@ drops the first spelling.
   `flatten_mapping` reads it as the string `"="`, so the pre-pass does the same without building it
   (`=:` beside `"=":` is a repeat).
 * **Where:** both 1-based lines; the columns too when the two share a line (a flow map).
-* **Aliases:** each node is visited once (`id` set), which also stops a recursive alias
-  (`a: &x [*x]`) from looping.
+* **Aliases:** each node is visited once (`id` set). A recursive alias (`a: &x [*x]`) — a table
+  reachable from inside itself — is REFUSED after the parse (`CyclicAnchorError`); sharing one
+  table under two keys (`<<`, or `b: *x`) is legal and loads.
 * **What it does not do:** fold case. `Claude:` beside `claude:` is two YAML keys; that collision is
   the agent-node layer's refusal, not this loader's.
 
 ### YAML reads that do NOT go through `load_doc`, and why
 
 Every settings-cascade, agent, workset, box and registry file is read by `load_doc` (so by this
-loader). The other `yaml.safe_load` sites parse something else:
+loader), and so is `runtime/baseline.py`'s image-baseline manifest. The other reads:
 
 * `settings/core_defaults.py`, `settings/keyspace_manifest.py`, `settings/agent_defaults.py` —
-  SHIPPED package data (and plugin declaration files), never user-edited.
-* `runtime/baseline.py` — the image-baseline manifest: the shipped default plus the optional
-  `/etc/kanibako/` and `<config.data>/global/` overlays. The overlays ARE hand-editable, but the file
-  is a tool list, not a settings file, and its reader tolerates a non-mapping as empty — a different
-  contract from `load_doc`'s. A repeated package there still keeps the last (not changed here).
-* `runtime/rig_meta.py` — the rig metadata, generated by kanibako into an image or a `.rig.tgz` export (see Scope above).
-* `launch/templates.py` (`_equivalent`) — compares two template files for
-  equality, reading neither as settings.
-* `plugins/goose/credentials.py` (agent-goose package) — goose's OWN `config.yaml`/secrets, owned by
-  the agent, not kanibako.
+  SHIPPED package data (and plugin declaration files), never user-edited: `load_packaged_mapping`.
+* `runtime/rig_meta.py` (the rig metadata, generated by kanibako into an image or a `.rig.tgz`
+  export) and `launch/templates.py`'s `_equivalent` (which compares two template files) hold TEXT,
+  not a file to read: `parse_doc_text`, the same rules.
+* `plugins/goose/credentials.py` (agent-goose package) — goose's OWN config/secrets, owned by the
+  agent, not kanibako: the one remaining `yaml.safe_load`.
 
 ⚑ **The `isinstance(text, str)` guard is a HOST-SAFETY guard, not a type nicety.** A non-`str`
 (e.g. a `MagicMock` from an under-mocked test path) fed to `yaml.safe_load` can balloon memory
@@ -144,9 +150,9 @@ also why the pytest runner is memory-capped. Guard the host instead of trusting 
 one-line `⚑` at that statement is deliberate: deleting the guard is silent until it OOMs the box.
 
 ```python
-def dump_doc(path: Path, data: dict) -> None
+def dump_doc(path: Path, data: dict, *, header: str = "") -> None
 ```
-Serialize *data* to *path* as YAML (creates parent dirs).
+Serialize *data* to *path* as YAML (creates parent dirs), after *header*.
 
 The write is atomic (temp file in the same dir + `os.replace`) so a crash mid-write can never leave
 a torn/corrupt config document on disk. `_atomic.atomic_write_text` additionally `fsync`s before the
@@ -157,6 +163,13 @@ Dump options are pinned: `sort_keys=False` (authoring order survives a round-tri
 `default_flow_style=False` (block style), `allow_unicode=True` (non-ASCII is emitted literally
 rather than `\uXXXX`-escaped).
 
+```python
+def dump_doc_commented(path: Path, data: dict, sections: tuple[str, ...], key: str, comment: str) -> None
+```
+`dump_doc`, with `# comment` ending *key*'s line in the *sections* table. It raises `ConfigError`,
+writing nothing, unless that line occurs exactly once, or if the commented text would parse to
+different content. `paths.py` writes the standalone `workset.registry` comment through it.
+
 ## Document mutators (load → mutate → dump)
 
 ```python
@@ -166,10 +179,9 @@ def remove_root_key(path: Path, key: str) -> bool
 Write / remove a TOP-LEVEL scalar key, preserving other content. `remove_root_key` returns True if
 it was present.
 
-⚑⚑ **NO KEY ROUTES HERE TODAY — MEASURED 2026-08-18.** Their only source call sites are the `else`
-arm of `if dest.sections:` in `config_interface.set_config_value` (line ~752) and
-`reset_config_value` (line ~906), and **0 of the 30 `_KEY_ROUTES` entries has an empty `sections`
-tuple.** Every other `config_dest._key_slot` family also returns a non-empty prefix — `pref` →
+⚑⚑ **NO KEY ROUTES HERE.** Their only source call sites are the `else` arm of `if dest.sections:`
+in `config_interface.set_config_value` and `reset_config_value`, and no `_KEY_ROUTES` entry has an
+empty `sections` tuple. Every other `config_dest._key_slot` family also returns a non-empty prefix — `pref` →
 `('pref', <scope>)`, `<scope>.secret_path.<VAR>` → `(<scope>, 'secret_path')`, `<scope>.env.<VAR>` →
 `(<scope>, 'env')`, an agent setting → `('agent', 'default')`, a terminal category →
 `_category_segments(key)[:-1]`. Neither function has a test.
@@ -179,12 +191,20 @@ tuple.** Every other `config_dest._key_slot` family also returns a non-empty pre
 root-level route into an `IndexError` rather than a write. It is the symmetry that is load-bearing,
 not the current reachability.
 
-⚑ **The prior docstring's claim — "*used for flat `KanibakoConfig` fields that live at the document
-root*" — is FALSE and was dropped.** `KanibakoConfig`'s fields (`box_image`, `box_shell`,
-`box_share_images`, `box_enable_vault`) are **in-memory** names; on disk they are NESTED
-(`box:` → `image:`). Nothing writes them through this function. ⚑ Since 2026-08-31 the reader walks
-IN through the declared dotted spellings rather than flattening the document outward, so a
-root-level `box_image:` is not read as that field at all — the on-disk shape is the ONLY shape.
+⚑ **They are not for `KanibakoConfig` fields.** `KanibakoConfig`'s fields (`box_image`,
+`box_shell`, `box_share_images`, `box_enable_vault`) are **in-memory** names; on disk they are
+NESTED (`box:` → `image:`). Nothing writes them through this function, and the reader walks IN
+through the declared dotted spellings, so a root-level `box_image:` is not read as that field at
+all — the on-disk shape is the ONLY shape.
+
+```python
+def refuse_scalar_sections(path: Path, sections: tuple[str, ...], *, data: dict | None = None) -> None
+```
+RAISE `ConfigError` when *sections* walks into a value that is not a table. Every section walked is
+a namespace, so a value where a table belongs refuses, `null` included (spec §0). An absent section,
+or a *path* that is not a file, is a writer's to create, so neither refuses. *data* is the
+ALREADY-READ document, not re-read. The box, workset and lifecycle writers (`config`, `paths`,
+`commands/box/`) call it before writing.
 
 ```python
 def write_nested_key(path: Path, sections: tuple[str, ...], key: str, value: object) -> None
@@ -193,9 +213,9 @@ Write *key* into a nested table (e.g. `("system", "path")`), creating ABSENT int
 
 Preserves other content. An ABSENT intermediate is created as a fresh table. A PRESENT intermediate
 that is not a table raises `ConfigError` naming the file, the dotted section path, and the value
-found; the file is left untouched. Until 2026-09-28 such a value was replaced by a table without a
-word (`system: /x` plus `system set system.agent=shell` answered `Set` and destroyed `/x`) — a
-silent discard spec §0 forbids.
+found; the file is left untouched. Replacing it by a table would discard it without a word
+(`system: /x` plus `system set system.agent=shell` would destroy `/x`) — a silent discard spec §0
+forbids.
 ⚑ **A present `null` is refused too, deliberately.** Every section this function walks is a
 NAMESPACE, never a category: a category is always the leaf written, never walked through. A value
 at a namespace, an empty line included, is not a setting the closed keyspace accepts
@@ -229,9 +249,8 @@ Count the leaf entries under a nested table — the unit every `reset --all` rep
 A `dict` recurses; anything else (scalar, list, `None`) is ONE leaf, so an empty table counts 0.
 ⚑ It lives HERE, below both of its callers, because they sit on opposite sides of an import edge:
 `config_interface.reset_all` (the scope files) imports `agent_file`, whose `clear_overrides`
-(`agent reset --all`) counts the same way. It moved out of `config_interface` so every reset
-reports one unit: `agent reset --all` and `reset_all`'s pass over a file's `agent:` table used to
-count each KEY once (a two-variable `env:` table was 1), while its scope-table pass counted leaves.
+(`agent reset --all`) counts the same way, so every reset reports one unit (a two-variable `env:`
+table is 2).
 
 ## Stored-value reads (the `get` model's stored-at-noun read + its rendering)
 
@@ -245,17 +264,14 @@ The single rendering function, shared by the stored read below and by `config sh
 (`config_interface`) so one value cannot display two ways. `commands/agent_cmd.py` and
 `settings/config_display.py` name it for the same reason.
 
-⚑ **TOTAL, AND THE TYPE IS THE RULE (P3).** It answered `str | None` until 2026-09-20, with the tail
-`return str(v) if v != "" else None` — so a leaf the user had deliberately set to `""` read back
-`(not set)`, the answer reserved for a key the file does not mention. Spec §2h names `""` as a
-terminal value that is **not** unset, so that collapse was a defect, not a convention. Absence is
-reported by the READ, above any rendering; a renderer able to answer `None` can therefore only
-collapse "not set" into a value that is really there.
+⚑ **TOTAL, AND THE TYPE IS THE RULE (P3).** Spec §2h names `""` as a terminal value that is **not**
+unset, so a leaf set to `""` must not read back `(not set)`, the answer reserved for a key the file
+does not mention. Absence is reported by the READ, above any rendering; a renderer able to answer
+`None` could only collapse "not set" into a value that is really there.
 
 🛑 **A DOOR THAT JUDGES EMPTINESS MUST NOT JUDGE THE RENDERING.** These spellings are not
-injective on purpose: a stored `""` and a stored `'""'` both render `""`. `commands/agent_cmd.py`'s
-`_agent_label` briefly tested `rendered != '""'` and so discarded a user's two-character label.
-Such a door reads `stored_leaf_object` below.
+injective on purpose: a stored `""` and a stored `'""'` both render `""`. Such a door reads
+`stored_leaf_object` below.
 
 ⚑ `null` names **the YAML the file holds, not the word you type to write it**: `--null` is the write
 spelling, and `set <key>=null` stores the three-character STRING, which reads back through this same
@@ -267,7 +283,7 @@ def stored_leaf_object(noun_file, sections, leaf, *, default: object = None) -> 
 The RAW value stored at `sections/leaf` in *noun_file*, or *default* when absent.
 
 ⚑ **THE ONE WALK.** Both rendering readers below are this plus their own renderer, so the two cannot
-grow separate ideas of where a leaf lives. (They were two hand-copied walks until 2026-09-20.)
+grow separate ideas of where a leaf lives.
 
 🛑 *default* is what "not there" looks like **to the caller**, and the caller owns that choice
 because the raw answer cannot make it: a present-`None` is indistinguishable from the `None`
@@ -290,8 +306,8 @@ ambiguous result and does not have to know the rule.
 
 ⚑ `render` is a PARAMETER because the scalar convention is not universal: `agent_file.read_leaf`
 passes `stored_leaf_display` for its one list-valued leaf (`run_args`), because a shape rule belongs
-with the module that owns the shape and `str()` on a list printed the Python repr `['--e', '--f']`
-at the user. Every other caller takes the default.
+with the module that owns the shape and `str()` on a list would print the Python repr
+`['--e', '--f']` at the user. Every other caller takes the default.
 
 ⚑ Spec §2a's read-verb rule: **plain `get` = stored-at-noun, `--effective` = cascade.** This
 function is the stored-at-noun half. It never consults the cascade, which is why a system-scope
@@ -304,15 +320,13 @@ Read a stored `pref` REQUEST, rendering all THREE empty idioms apart.
 
 absent → `None` (`"(not set)"`) · present-`None` → `"null"` · `""` → `'""'` · else the value.
 
-*Spec check, 2026-08-18: `~/canon/workbook/specs/settings-keyspace-1.8.0.md` §2h reads verbatim* "`config get
-pref.system.agent` returns the REQUEST" *and continues* "`--effective` shows BOTH the request and the
+*`~/canon/workbook/specs/settings-keyspace-1.8.0.md` §2h:* "`config get
+pref.system.agent` returns the REQUEST" *and* "`--effective` shows BOTH the request and the
 resulting value — so *"why did `system.agent` resolve to zippity"* is answerable from the snapshot
 instead of by reading files. This is what closes the 'I set it and nothing happened' failure family."
 
-⚑ **`render_stored_pref` AGREES WITH `render_stored_scalar` TODAY, STRING FOR STRING, AND IS STILL
-NOT IT — do not fold them.** The old justification here was that the scalar renderer *collapsed*
-`""` into the absent answer; it no longer does, and the reason the two stay apart is now the
-different one the source states: they answer different QUESTIONS. `render_stored_scalar` **decides**
+⚑ **`render_stored_pref` AGREES WITH `render_stored_scalar`, STRING FOR STRING, AND IS STILL NOT IT
+— do not fold them.** They answer different QUESTIONS. `render_stored_scalar` **decides**
 what a scalar leaf reads back as; `render_stored_pref` may only **forward** — *"the pref layer MUST
 NOT interpret emptiness AT ALL … otherwise it becomes a FOURTH place deciding what 'empty' means"*
 (§2h). A request also carries whatever shape its TARGET holds, so a rule the scalar convention may
@@ -321,88 +335,3 @@ two authorities; **the agreement is the point, not a reason to merge.**
 
 ⚑ The `""` test precedes the `bool` test safely (`False == ""` is `False`), but the ORDER is not
 arbitrary: `None` must be checked before anything that would stringify it.
-
----
-
-## FALSE CLAIMS FOUND AND DROPPED (relocation pass, 2026-08-18)
-
-Recorded here rather than relocated, because relocating a drifted claim launders it into a document
-that reads as current. Each was measured, not inferred.
-
-1. **`general.yaml`** (module docstring file list) — the file does not exist. Whole-repo search
-   (`command grep -rn -I`, excluding `.git`) on 2026-08-18 FOUND it in exactly four places: this
-   docstring, its copy in the wheel-staging tree, `CHANGELOG.md` (history), and `MIGRATION.md`,
-   which states it *becomes* `general/settings.yaml`. Zero references in `src/` (other than the
-   docstring itself) and zero in `tests/`. **Dropped.**
-   ⚑ The measurement is PAST TENSE and cited BY CONTENT, deliberately. It was written in the
-   present, with two line numbers and a path into the wheel-staging tree; by the time anyone
-   followed them the line numbers had moved, the staging tree was gone, and the docstring arm had
-   been dropped by this very pass — so the sentence asserted four places of which two survive.
-   **Cite a document by a phrase that can be grepped, and never rest a claim on an artifact that
-   may already have been cleaned away when the reader arrives** — a line citation is invalidated by
-   any edit to the cited file, including one that leaves the sentence itself untouched, and a
-   staging path is only there while someone happens to have built.
-2. **`settings.yaml` listed TWICE** in the same parenthetical list. **Dropped one.**
-3. **`config.yaml` listed as a kanibako-owned config file.** It is goose's own agent config, already
-   covered by the list's own "agent configs", and one of its write sites deliberately bypasses
-   `dump_doc`. **Dropped; replaced by the scope section above.**
-4. **"*All* kanibako-owned config files … are serialized … through `load_doc`/`dump_doc`."** —
-   `runtime/rig_meta.py` calls `yaml.safe_dump` directly, with a documented reason. **Rewritten to the true scope (settings-cascade documents).**
-   The adjacent sentence "there is no hand-rolled serializer" is TRUE and was kept.
-5. **`load_doc`'s parenthetical `("Configuration file missing or malformed")`** — a quotation of
-   `ConfigError`'s docstring that no longer matches it. Live `errors.py` reads
-   `"""Configuration missing, malformed, or refused."""`; at the time of measurement the quoted
-   wording survived nowhere in this tree but the wheel-staging copy of that module, which has since
-   been cleaned away. It was misleading twice over, since it is also not the message `load_doc`
-   actually raises (`the config file {path} is not valid YAML: …`). **Dropped.**
-6. **`write_root_key`'s "used for flat `KanibakoConfig` fields that live at the document root"** —
-   false on both halves; see the measurement under that symbol. **Dropped.**
-
-### Completeness sweep
-
-`~/canon/notebook/scripts/dev-tools/prose-relocation-check.py`: **69 prose lines at HEAD, 55 removed, 0 scoring below 0.6** against
-this document — no removed line is orphaned. 14 prose lines remain in source: the trimmed module
-docstring, the ten one-line symbol descriptors (`prose-pass-check` check 2 counts 11 docstring-bearing
-symbols — the module plus ten functions, added=[] removed=[]), the two section banners, and the `⚑`
-keep-test one-liners below.
-
-**Deliberate content drops: 6, all listed above** — 5 false claims (items 1, 3, 4, 5, 6) and 1 plain
-duplication (item 2). Nothing else was dropped: every other pre-pass prose line was relocated, in
-substance, into a section above.
-
-**Three `⚑` one-liners were KEPT IN SOURCE** under the keep test, because deleting each would let a
-future edit break something silently at that exact line:
-
-* at the `isinstance(text, str)` guard — deleting the guard is silent until it OOMs the box;
-* above the `try:` — the parse-failure normalization is what stops a raw `yaml.YAMLError` reaching
-  the CLI as a traceback, and it looks like boilerplate;
-* at `render_stored_pref`'s four-branch tail — it now agrees with `render_stored_scalar` string for
-  string, which makes it look exactly like a candidate for collapsing into it, and that is the one
-  thing it must not do.
-
-A fourth was ADDED above `write_root_key`, pointing here: the pair currently has no reachable route
-and reads as dead code.
-
-### Packaging
-
-`llm-docs/` is **not shipped**, verified rather than assumed: `pyproject.toml` has
-`[tool.setuptools.packages.find] where = ["src"]`, there is no `MANIFEST.in`, and the sdist manifest
-`src/kanibako_cli.egg-info/SOURCES.txt` has zero `llm-docs` entries.
-
-⚑ The wheel-staging arm this paragraph once carried was DROPPED, and so was the manifest's entry
-COUNT. Staging output is transient and gitignored, so "it is not in the staging tree" is evidence
-only while someone has built; and a count rots on the next added module. **State the PROPERTY —
-zero `llm-docs` entries — which stays true as the manifest grows.**
-
-⚑ The manifest arm that remains is itself a LOCAL BUILD PRODUCT — the egg-info tree is untracked
-and gitignored, here only because someone last built on this box, and absent from a fresh clone. It
-is kept because it CORROBORATES, not because it carries: the two arms before it are TRACKED and
-settle the question between them. So the conclusion does not REST on an artifact that may already
-have been cleaned away, which is what the rule above bars; read the third arm as confirmation a
-reader may be unable to reproduce.
-
-### Kept and MARKED, per the invert-the-drop rule for library behavior
-
-All PyYAML claims (`str()` shape, `"<unicode string>"`, empty-file `None`, non-mapping passthrough)
-were **re-measured on PyYAML 6.0.3 rather than assumed**, and the measurements are tabulated above.
-None needed dropping; all four were true.
