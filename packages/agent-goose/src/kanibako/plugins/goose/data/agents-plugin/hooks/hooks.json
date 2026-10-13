@@ -1,0 +1,55 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/canon/charter/general/scripts/hooks/startup.sh \"$PPID\""
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/canon/charter/general/scripts/hooks/end.sh \"$PPID\""
+          }
+        ]
+      }
+    ],
+    "AfterFileEdit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/canon/charter/general/scripts/hooks/edited.sh",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/canon/charter/general/scripts/hooks/stop.sh",
+            "timeout": 5
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${PLUGIN_ROOT}/hooks/mail-stop.sh\"",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  }
+}

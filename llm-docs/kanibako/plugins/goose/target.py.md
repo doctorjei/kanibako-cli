@@ -112,11 +112,56 @@ the base-class default.
 
 ## Panel and directive seams
 
-goose overrides neither `deliver_panel_permissions` nor `deliver_directive_hook`; both stay the
+goose overrides `deliver_directive_hook` but not `deliver_panel_permissions`, which stays the
 inherited no-op. The `block.vscode-goose` panel spawns its own in-box goose, which reads
 `GOOSE_MODE` from the box's `config.yaml`; kanibako does not write the `access` tier there. The
 launched goose gets the tier only as the `GOOSE_MODE` env var (`access_realization`), and the
 launch refuses `editing`, which no goose mode realizes.
+
+## The canon hooks plugin
+
+goose 1.38 loads hooks only from plugins: any directory under `~/.agents/plugins/` with a
+`hooks/hooks.json` (claude-shaped; no manifest or trust step). `deliver_directive_hook` writes the
+kanibako-owned `~/.agents/plugins/kanibako/hooks/` from this package's
+`data/agents-plugin/hooks/` at EVERY start, so existing boxes get it too: `hooks.json` (0644) and
+the `mail-stop.sh` adapter (0755). A file whose bytes and mode already match is left alone (the
+seam returns whether it wrote). Every operation goes through `kanibako.boxfs`; a symlink at the
+leaf or a parent skips the write with a warning. Directives still reach goose as a context file
+(`goose-defaults.yaml`, `KANIBAKO_DIRECTIVE_FINAL`), not through this plugin.
+
+| claude event | goose event | runs |
+|---|---|---|
+| SessionStart `startup` / `resume` | SessionStart (no matcher) | charter `startup.sh "$PPID"` |
+| SessionEnd `logout` / `prompt_input_exit` / `other` | SessionEnd (no matcher) | charter `end.sh "$PPID"` |
+| PostToolUse `Write\|Edit` | AfterFileEdit | charter `edited.sh` |
+| Stop | Stop | charter `stop.sh`, then `mail-stop.sh` |
+| PostToolUse check-comms (mail) | Stop | `mail-stop.sh` |
+
+goose tests a matcher on SessionStart/SessionEnd against `""`, so those rules carry none; `$PPID`
+in the hook shell is goose.
+
+**No goose equivalent:**
+
+* SessionStart `clear` / `compact` (`clear-start.sh`, `compact.sh`) — goose emits SessionStart only
+  when a CLI session starts, with no source; a resume runs `startup.sh`, not `resume.sh`.
+* SessionEnd `clear` (`clear-end.sh`) — goose has no clear event.
+* The SessionStart `import-directives.py` hook — goose hooks cannot inject context.
+
+**Mail.** goose discards hook output for every event but PreToolUse and Stop, and `check-comms.sh`
+advances its mail marker once it has printed, so wired to PostToolUse it would mark mail seen
+without showing it. `mail-stop.sh` runs `check-comms.sh` at Stop instead and turns its alert into
+`{"decision":"block","reason":<alert>}`; goose adds the reason to the context and continues the
+turn, and the next Stop finds nothing new. Canon scripts are read-only, which is why the adapter
+ships with the plugin. It never exits non-zero (goose would ignore a failure, and exit 2 would block
+with stderr). It does not block twice running with the same alert: a `check-comms.sh` fault
+re-alerts on every run, and goose would otherwise block each turn end up to
+`GOOSE_STOP_HOOK_BLOCK_CAP` (default 8) times. The memo
+(`/tmp/kanibako-comms-<name>/goose-stop-last`) clears on the first clean check.
+
+⚑ **KNOWN LIMITS.** goose fires SessionStart/SessionEnd only from goose-cli sessions (`goose acp` /
+`serve` were not checked). A turn that ends without reaching a blocking Stop (cancel, error, max
+turns) fires Stop fire-and-forget, so mail found there is marked seen without being shown. The
+Stop stdin has no transcript, so notebook stop hooks that read one see nothing.
 
 ## Setup — detecting an unconfigured goose
 

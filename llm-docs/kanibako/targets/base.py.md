@@ -1207,7 +1207,8 @@ letting plugins drift.
 non-persona launches — the write must then be BYTE-IDENTICAL to a provider-less one. Today only
 codex consumes it; the type generalizes when the emitter bodies move into the plugins.
 
-The `False` default is inherited by an agent with no directive-hook surface (goose, `ShellTarget`).
+The `False` default is inherited by an agent with no directive-hook surface (`ShellTarget`). goose
+has none either, and uses the seam to write its canon-hooks plugin instead (its llm-doc).
 
 #### `reattach_config_notice`
 

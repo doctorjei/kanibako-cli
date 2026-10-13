@@ -13,6 +13,8 @@ GOOSE_CONFIG_FILE = 'config.yaml'
 _BINARY = Path.home() / '.local' / 'bin' / 'goose'
 _DEFAULTS_PACKAGE = 'kanibako.plugins.goose'
 _DEFAULTS_FILE = 'goose-defaults.yaml'
+_HOOKS_DIR = ('.agents', 'plugins', 'kanibako', 'hooks')
+_HOOK_FILES = (('hooks.json', 420), ('mail-stop.sh', 493))
 _GOOSE_DESCRIPTOR = load_descriptor(_DEFAULTS_PACKAGE, _DEFAULTS_FILE)
 _GOOSE_BEHAVIOR = load_behavior(_DEFAULTS_PACKAGE, _DEFAULTS_FILE)
 ```
@@ -35,6 +37,7 @@ class GooseTarget(Target):
     def config_dir_name(self) -> str
     @property
     def default_entrypoint(self) -> str | None
+    def deliver_directive_hook(self, *, config_root: Path, access: str, model_provider: 'CodexModelProvider | None'=None) -> bool
     def has_resumable_session(self, home: Path) -> bool
     def should_run_setup(self, output: str) -> bool
     @property

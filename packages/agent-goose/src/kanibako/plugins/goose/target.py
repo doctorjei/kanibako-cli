@@ -24,6 +24,7 @@ from kanibako.targets.base import (
 
 if TYPE_CHECKING:
     from kanibako.settings.agent_config import AgentConfig
+    from kanibako.vscode.vscode_config import CodexModelProvider
 
 logger = get_logger("targets.goose")
 
@@ -48,6 +49,11 @@ _DEFAULTS_FILE = "goose-defaults.yaml"
 
 #: goose's own config file, under ``~/.config/goose/`` -- goose's name, not a kanibako key.
 GOOSE_CONFIG_FILE = "config.yaml"
+
+#: Where goose (1.38: plugins only) finds kanibako's hooks, under the box home; the
+#: files written there, from ``data/agents-plugin/hooks/``, with their modes.
+_HOOKS_DIR = (".agents", "plugins", "kanibako", "hooks")
+_HOOK_FILES = (("hooks.json", 0o644), ("mail-stop.sh", 0o755))
 
 _GOOSE_DESCRIPTOR = load_descriptor(_DEFAULTS_PACKAGE, _DEFAULTS_FILE)
 # The declared BEHAVIOR floor (the file's `behavior:` section) — no default value is
@@ -150,6 +156,46 @@ class GooseTarget(Target):
     def default_entrypoint(self) -> str | None:
         """Goose binary as container entrypoint."""
         return "goose"
+
+    def deliver_directive_hook(
+        self,
+        *,
+        config_root: Path,
+        access: str,
+        model_provider: "CodexModelProvider | None" = None,
+    ) -> bool:
+        """Write the kanibako goose plugin that wires the canon hooks, at EVERY start.
+
+        goose 1.38 loads hooks only from plugins, so the box gets the kanibako-owned
+        ``~/.agents/plugins/kanibako/hooks/`` — this plugin's shipped ``hooks.json``
+        and its ``mail-stop.sh`` adapter — rewritten when it differs, so existing boxes
+        get it too.  Every file op goes through :mod:`kanibako.boxfs`; a symlink on the
+        path skips the write with a warning.  *access* / *model_provider* are unused.
+        The event map, and the claude events goose has no equivalent for: llm-doc.
+        """
+        from importlib.resources import files
+
+        from kanibako import boxfs
+
+        src = files(_DEFAULTS_PACKAGE).joinpath("data", "agents-plugin", "hooks")
+        dest = config_root.joinpath(*_HOOKS_DIR)
+        wrote = False
+        for name, mode in _HOOK_FILES:
+            path = dest / name
+            if not boxfs.no_symlink_or_warn(path, config_root):
+                return wrote
+            data = src.joinpath(name).read_bytes()
+            try:
+                st = boxfs.stat(path, config_root)
+                current = boxfs.read_bytes(path, config_root)
+            except FileNotFoundError:
+                pass
+            else:
+                if current == data and (st.st_mode & 0o777) == mode:
+                    continue
+            boxfs.write_bytes(path, config_root, data, mode=mode)
+            wrote = True
+        return wrote
 
     def has_resumable_session(self, home: Path) -> bool:
         """Report whether goose has a session to resume under the box home.

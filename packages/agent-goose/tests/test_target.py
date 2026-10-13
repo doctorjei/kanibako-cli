@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import shutil
 from pathlib import Path
 from unittest.mock import patch
@@ -759,9 +760,9 @@ class TestDescriptorAssembly:
 
 
 class TestDeliverySeams:
-    """T1 seams: goose inherits BOTH base no-ops — it writes neither the ``access``
-    tier (the launch carries it as the ``GOOSE_MODE`` env var) nor a directive
-    hook (goose has no instruction-delivery hook surface)."""
+    """T1 seams: goose writes no ``access`` tier (the launch carries it as the
+    ``GOOSE_MODE`` env var); its directive-hook seam writes the canon-hooks plugin
+    (``TestCanonHooksPlugin``)."""
 
     def _config(self, config_root: Path) -> Path:
         return config_root / ".config" / "goose" / "config.yaml"
@@ -787,9 +788,90 @@ class TestDeliverySeams:
         ) is False
         assert not (tmp_path / ".config").exists()
 
-    def test_directive_hook_is_inherited_no_op(self, tmp_path):
-        assert GooseTarget().deliver_directive_hook(
-            config_root=tmp_path, access="full",
-        ) is False
+
+
+_HOOKS = Path(".agents", "plugins", "kanibako", "hooks")
+_CANON_HOOKS = "~/canon/charter/general/scripts/hooks/"
+
+
+class TestCanonHooksPlugin:
+    """``deliver_directive_hook`` writes the kanibako goose plugin at every start."""
+
+    def _deliver(self, root: Path) -> bool:
+        return GooseTarget().deliver_directive_hook(config_root=root, access="full")
+
+    def test_writes_plugin_files_with_modes(self, tmp_path):
+        assert self._deliver(tmp_path) is True
+        hooks = tmp_path / _HOOKS
+        assert sorted(p.name for p in hooks.iterdir()) == ["hooks.json", "mail-stop.sh"]
+        assert (hooks / "hooks.json").stat().st_mode & 0o777 == 0o644
+        assert (hooks / "mail-stop.sh").stat().st_mode & 0o777 == 0o755
         assert not (tmp_path / ".config").exists()
-        assert not (tmp_path / ".goose").exists()
+
+    def test_event_map(self, tmp_path):
+        self._deliver(tmp_path)
+        doc = json.loads((tmp_path / _HOOKS / "hooks.json").read_text())["hooks"]
+        commands = {
+            event: [h["command"] for rule in rules for h in rule["hooks"]]
+            for event, rules in doc.items()
+        }
+        assert commands == {
+            "SessionStart": [_CANON_HOOKS + 'startup.sh "$PPID"'],
+            "SessionEnd": [_CANON_HOOKS + 'end.sh "$PPID"'],
+            "AfterFileEdit": [_CANON_HOOKS + "edited.sh"],
+            "Stop": [
+                _CANON_HOOKS + "stop.sh",
+                'bash "${PLUGIN_ROOT}/hooks/mail-stop.sh"',
+            ],
+        }
+        # goose tests a matcher against "" for session events, so none may be set.
+        assert all("matcher" not in rule for rules in doc.values() for rule in rules)
+
+    def test_check_comms_is_never_a_post_tool_use_hook(self, tmp_path):
+        """goose discards PostToolUse output, so check-comms there eats mail unseen."""
+        self._deliver(tmp_path)
+        text = (tmp_path / _HOOKS / "hooks.json").read_text()
+        assert "check-comms" not in text
+        assert "PostToolUse" not in text
+
+    def test_unchanged_files_are_not_rewritten(self, tmp_path):
+        self._deliver(tmp_path)
+        before = {p: p.stat().st_mtime_ns for p in (tmp_path / _HOOKS).iterdir()}
+        assert self._deliver(tmp_path) is False
+        assert {p: p.stat().st_mtime_ns for p in before} == before
+
+    def test_existing_box_is_rewritten(self, tmp_path):
+        """A box that predates the plugin, or holds a stale copy, gets the shipped one."""
+        hooks = tmp_path / _HOOKS
+        hooks.mkdir(parents=True)
+        (hooks / "hooks.json").write_text("{}")
+        (hooks / "mail-stop.sh").write_text("old")
+        (hooks / "mail-stop.sh").chmod(0o600)
+        assert self._deliver(tmp_path) is True
+        assert "SessionStart" in (hooks / "hooks.json").read_text()
+        assert (hooks / "mail-stop.sh").read_text().startswith("#!/usr/bin/env bash")
+        assert (hooks / "mail-stop.sh").stat().st_mode & 0o777 == 0o755
+
+    def test_mode_only_drift_is_repaired(self, tmp_path):
+        self._deliver(tmp_path)
+        (tmp_path / _HOOKS / "mail-stop.sh").chmod(0o644)
+        assert self._deliver(tmp_path) is True
+        assert (tmp_path / _HOOKS / "mail-stop.sh").stat().st_mode & 0o777 == 0o755
+
+    def test_symlinked_parent_is_not_followed(self, tmp_path):
+        home, outside = tmp_path / "home", tmp_path / "outside"
+        home.mkdir()
+        outside.mkdir()
+        (home / ".agents").symlink_to(outside)
+        assert self._deliver(home) is False
+        assert list(outside.rglob("*")) == []
+
+    def test_symlinked_leaf_is_not_written_through(self, tmp_path):
+        hooks = tmp_path / "home" / _HOOKS
+        hooks.mkdir(parents=True)
+        victim = tmp_path / "victim"
+        victim.write_text("keep")
+        (hooks / "hooks.json").symlink_to(victim)
+        assert self._deliver(tmp_path / "home") is False
+        assert victim.read_text() == "keep"
+        assert (hooks / "hooks.json").is_symlink()
