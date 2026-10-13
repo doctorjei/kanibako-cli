@@ -9,11 +9,12 @@ DIRECT readers (`workset.kuid`, `workset.skip_kuid_check`, `system.agent`,
 `system.setup_completed`, `system.helpers.*`, and — for the AUTHORING TIER only —
 `box.enable_vault`) that must answer BEFORE a cascade snapshot exists. It also carries two
 arbiters that are not config reads at all and live here only because their inputs do:
-`setup_compat_gate` and `resolve_agent`.
+`setup_compat_gate` and `resolve_agent`, and the shared refusal predicates every door asks — see
+"The null, identity and ordering refusals" below.
 
 ⚑ **`system.agent` and `system.setup_completed` read the SYSTEM SETTINGS file, not
 `kanibako.cfg`** — they live in this module for their pre-cascade TIMING, not for their
-file. The marker joined its sibling on 2026-08-26; see `read_setup_completed`.
+file; see `read_setup_completed`.
 
 It is the OLDEST tier in the settings stack and the most nearly-retired. Almost everything a box
 resolves at launch goes through the keyspace cascade, not through here; what remains is (a) the
@@ -32,12 +33,8 @@ Two DIFFERENT file families are read here and confusing them is the standing haz
   `$XDG_CONFIG_HOME/kanibako.cfg`. It carries the Layer-1 `[config]` foundation keys and
   NOTHING ELSE, and it is what tells everything else where the settings files LIVE. Read by
   `load_config` into `BootstrapConfig.config_paths`.
-  ⚑⚑ **THE RULE IS IN THE READ's SHAPE since 2026-08-31 (Jei), and this is the passage most
-  likely to be remembered wrong.** It was a `config.`-PREFIX FILTER applied at each of the four
-  Layer-1 read sites, over a `KanibakoConfig` that also carried the box scalars — `load_config`
-  being a GENERAL document reader that read the settings file too. So a Layer-1 read still
-  RETURNED settings (`load_config(<file with a box: table>).box_image` was the file's value) and
-  the filter dropped the rest in silence. Now `bootstrap_config_paths` walks IN through the
+  ⚑⚑ **THE RULE IS IN THE READ's SHAPE, and this is the passage most likely to be remembered
+  wrong.** It is not a `config.`-prefix filter: `bootstrap_config_paths` walks IN through the
   `config:` table, so `config.`-prefixed is all it can produce, and its return type has nowhere to
   put a settings value. A settings table in that file is REFUSED, naming the file and the keys
   (`messages.ERR_CONFIG_LAYER1_SETTINGS`). The settings file's own `system:` path table has
@@ -67,75 +64,88 @@ each resolved value on its `KanibakoConfig` field. Path resolution reads `box.en
 declared-default floor, the field typing (`_typed_box_scalar`), and the null rule
 (`refuses_null_box_scalar`).
 
-⚑ The Layer-1 file carries no settings (Jei, 2026-08-26: *"kanibako_config.yaml <-- cannot have
-settings. Period."*), so the scalars START at the declared defaults and no Layer-1 value reaches
-them.
+⚑ The Layer-1 file carries no settings (*"kanibako_config.yaml <-- cannot have settings.
+Period."*), so the scalars START at the declared defaults and no Layer-1 value reaches them.
 
 ### The floor
 
-⚑⚑ **THE FLOOR IS THE DECLARED DEFAULTS, AND IT USED TO BE THE LAYER-1 FILE'S `[box]` TABLE.**
-That table was written at init on every install, the settings cascade did not read it, and its
-values would therefore have been STRANDED (consumer-map risk 1) — so they were mapped in as the
-resolve's floor. Jei's 2026-08-26 ruling took settings out of that file entirely, so there is
-nothing left to strand, and `config.box_scalar_defaults_floor()` builds the floor from
-`KanibakoConfig`'s own field defaults instead.
-
-🛑 **The floor was SEPARATED from the file read, not deleted.** The old expression
-(`getattr(load_config(cf), field)`) fused two things: the file's value when the file spoke, the
-declared default when it did not. Only the first is the violation; deleting both would make
-`@box.image` dangle at launch AND at set time. `box_scalar_defaults_floor` is the ONE recipe, folded
+⚑⚑ **THE FLOOR IS THE DECLARED DEFAULTS.** `config.box_scalar_defaults_floor()` builds it from
+`KanibakoConfig`'s own field defaults; without it `@box.image` would dangle at launch AND at set
+time. `box_scalar_defaults_floor` is the ONE recipe, folded
 by `settings_launch.fold_floor` into every resolve, by `paths._narrow_box_scalar_cascade`, and by
 `config_interface._category_set_lookups`, so the launch floor and the set-time floor cannot drift. `box.shell`'s field default is `None`,
 the declared `<None>` (spec §2b `box.shell | <None>`), and the floor SUPPLIES it as a present
 `None` ([R177]). It is not
-`""`: a `default_categories` fold drops a `""` as a suppression (`if val == "": continue`), which left
-`@box.shell` dangling, so `set box.env.SH=@box.shell` refused by name until 2026-09-27. A whole-value
-ref to it now resolves to `None` (§0). A winning `None` lands on the flat `box_shell` field as
+`""`: a `default_categories` fold drops a `""` as a suppression (`if val == "": continue`), which
+would leave `@box.shell` dangling. A whole-value ref to it resolves to `None` (§0). A winning `None`
+lands on the flat `box_shell` field as
 `None`, and `launch.shells.resolve_box_shell` auto-detects.
 
 ⚑ The floor is the DECLARED DEFAULTS, folded into the base level, so a workset or box value
 cannot masquerade as the system-stored default — it enters the resolve at its OWN tier instead.
 
-A `box:` table in `global/settings.yaml` — where `kanibako system set box.image=…` has always
-written — now resolves too. It was silently stranded before B6.
+A `box:` table in `global/settings.yaml` — where `kanibako system set box.image=…` writes —
+resolves too.
 
-### The old machine-wide third file is DELETED
+### There is no machine-wide third file
 
-`/etc/kanibako/kanibako.yaml` is gone (spec §2). The admin authority is exactly the
+There is no `/etc/kanibako/kanibako.yaml` (spec §2). The admin authority is exactly the
 `base.cfg` / `settings_base.yaml` base tiers, resolved on the PATH side; this scalar
 loader starts from the built-in defaults.
 
-## The pre-cascade readers, and the rule that no longer follows from it
+## The pre-cascade readers, and the rule that does not follow from them
 
 `read_box_enable_vault`, `read_workset_kuid`, `read_workset_skip_kuid_check`,
 `read_system_agent` and `read_system_helpers` all read a DECLARED key DIRECTLY out of a settings
 file rather than through the resolver, because each has a caller that runs before a snapshot
-exists. That much is still true, and still the reason these functions exist.
+exists. That is the reason these functions exist.
 
-⚑⚑ **WHAT DOES NOT FOLLOW FROM IT — AND USED TO BE WRITTEN HERE AS IF IT DID — IS *"the DEFAULT
-lives in the reader, not in a cascade floor"*.** The premise ("a caller runs before a snapshot
-exists") is about a FULL launch snapshot. A NARROW resolve needs only FILE PATHS, and every one of
-these callers already computes them a line or two above the read, so the conclusion was never
-licensed by the premise. Its cost was paid twice:
+⚑⚑ **WHAT DOES NOT FOLLOW FROM IT IS *"the DEFAULT lives in the reader, not in a cascade
+floor"*.** The premise ("a caller runs before a snapshot exists") is about a FULL launch snapshot.
+A NARROW resolve needs only FILE PATHS, and every one of these callers computes them a line or two
+above the read. A default living only in the reader would cost twice:
 
-* the declared default reached NO cascade floor, so a whole-value `@`-reference to the key resolved
-  to `__MISSING__` in every launch snapshot; and
-* the reader defined the resolution ORDER by which files it happened to open, so tiers it did not
-  open were silently dropped — a `kanibako system set box.enable_vault=false` returned 0, persisted,
-  and was then ignored by every box.
+* the declared default would reach NO cascade floor, so a whole-value `@`-reference to the key
+  would resolve to `__MISSING__` in every launch snapshot; and
+* the reader would define the resolution ORDER by which files it happened to open, so a tier it
+  did not open would be silently dropped.
 
-The pattern is **RETIRED** (user ruling, 2026-08-29: *"If you are asking if we should avoid a carve
-out, the answer is yes"*). Its four members left one at a time: `workset.skip_kuid_check` and
-`workset.kuid` to `settings_launch.workset_anchor_floor`, and `box.enable_vault` to
-`_BOX_SCALAR_FIELDS` / `box_scalar_defaults_floor`. 🛑 **A reader keeping a literal default is not
-the same thing as a reader OWNING it** — `read_workset_skip_kuid_check` still returns `True` and
-`read_box_enable_vault` still returns `True`, and in both cases each carrier is held to the
-manifest cell by a kinemata view — the readers by `reader-defaults`, the floors by
-`workset-anchor-floor` and `box-scalar-floor` — so the two carriers cannot drift.
+So every such default has a cascade floor (*"If you are asking if we should avoid a carve out, the
+answer is yes"*): `workset.skip_kuid_check` and `workset.kuid` in
+`settings_launch.workset_anchor_floor`, and `box.enable_vault` in `_BOX_SCALAR_FIELDS` /
+`box_scalar_defaults_floor`. 🛑 **A reader keeping a literal default is not the same thing as a
+reader OWNING it** — `read_workset_skip_kuid_check` and `read_box_enable_vault` return `True`, and
+each carrier is held to the manifest cell by a kinemata view — the readers by `reader-defaults`, the
+floors by `workset-anchor-floor` and `box-scalar-floor` — so the two carriers cannot drift.
 
-⚑ `read_box_enable_vault` did not become redundant; it became NARROWER. Its question is now *which
-TIER authored this value*, which a merge structurally cannot answer, and which lifecycle ops need
-so they never pin an inherited workset default as a box-scope override at a destination.
+⚑ `read_box_enable_vault` is NARROW. Its question is *which TIER authored this value*, which a
+merge structurally cannot answer, and which lifecycle ops need so they never pin an inherited
+workset default as a box-scope override at a destination.
+
+## The null, identity and ordering refusals
+
+The predicates every door asks — the `set` door, the read-time refusals and the launch — so each
+rule has one carrier:
+
+* **null path keys** — `refuses_null_path_key(canonical)` is the membership (derived from the
+  readers: both path tiers' defaults tables, plus `workset.boxes` and `workset.registry`), and
+  `null_path_keys_error(path, keys, ...)` THE message builder, with a read-time lead that names the
+  file and a `set` door lead that cannot. The one exclusion is `STANDARD_BIND_SOURCE_KEYS`: the
+  `system.*` path keys a `<None>` OMITS rather than refuses, because each sources a standard bind.
+* **null box scalars** — `refuses_null_box_scalar(canonical)`: true iff the key's own declared
+  default is a value, so a null has nothing to say (every box scalar but `box.shell`).
+* **the box store** — `usable_box_store_value(value)` is the launch's own test of a box-store root,
+  and `refuses_box_store_value(canonical, value)` adds the key membership for the `set` door.
+* **per-owner identity** (keyspec §0 "Per-owner resources") — `key_owner(key)` reads the owner from
+  `config_keys.KEY_OWNERS`; `reaches_identity(...)` asks whether a value's `@`-chain reaches its
+  owner's `meta.*` identity in a box mode (`kb_store.IDENTITY_*`); `identity_gap(...)` returns the
+  `IdentityGap` (cure, who, sharers) a refusal prints; `chain_reaches(...)` is the one transitive
+  walk under both.
+* **ordering** — `ref_order_error(canonical, value)` refuses an `@`-ref naming a key set resolved
+  after the key's own (`kb_store.RESOLUTION_ORDER`); `system_path_ref_error(canonical, value)`
+  holds a `system.*` path value to the system path tier.
+* **the system table** — `system_table_set_values(settings_path, doc)` is `system_path_set_values`
+  over an already-read document.
 
 ## Functions
 
@@ -151,8 +161,7 @@ writer (`config_interface`) AND the box.meta writer so both round-trip identical
 The Layer-1 bootstrap file's WHOLE content: the `config.*` foundation, and nothing else.
 
 ⚑⚑ **THE TYPE IS THE RULE (P3/P4).** It has no settings field, so no filter can be needed and none
-exists — the code that used to enforce *"`kanibako_config.yaml` cannot have settings"* at four call
-sites is DELETED rather than moved. `load_config` returns this; `load_std_paths`, `resolve_project`
+exists. `load_config` returns this; `load_std_paths`, `resolve_project`
 and every pass-through signature down through `commands/box/_lifecycle.py` and
 `launch/box_resolve.py` are annotated with it, so a `KanibakoConfig` handed to one of them is a
 type error rather than a value that silently carries the wrong layer.
@@ -164,20 +173,17 @@ The flat merged SETTINGS object.
 `settings_launch.load_merged_config` builds it: the CLI overrides that name a field, then each
 `box.*` scalar from the keyspace resolve (see "B6" above), which beats them.
 
-⚑ `box_enable_vault` JOINED 2026-08-29 as the fourth. Its field default is now THE carrier of
-`box.enable_vault`'s declared default — that is what `box_scalar_defaults_floor` publishes, and
-what makes `box show --effective` grow a row for the key (the display iterates `fields(cfg)`, so
-there was no row at all while the default lived inside a reader).
+⚑ `box_enable_vault`'s field default is THE carrier of `box.enable_vault`'s declared default —
+that is what `box_scalar_defaults_floor` publishes, and what gives `box show --effective` a row for
+the key (the display iterates `fields(cfg)`).
 
-⚑ `box_agent_name` is GONE (P7, spec §2b). `box.agent_name` is RETIRED and a box selects its agent
-with the REQUEST `pref.system.agent` (§2h), resolved off the launch snapshot by
-:mod:`kanibako.settings.agent_select`. There is no flat-scalar agent field any more — the
-selection is a KEY.
+⚑ There is no agent field: `box.agent_name` is RETIRED (spec §2b) and a box selects its agent with
+the REQUEST `pref.system.agent` (§2h), resolved off the launch snapshot by
+:mod:`kanibako.settings.agent_select` — the selection is a KEY.
 
-⚑ **THERE IS NO `config_paths` FIELD HERE** (2026-08-31). It used to hold the bootstrap PATH
-set-values — the Layer-1 `config.<leaf>` foundation AND the Layer-2 `system.<leaf>` path settings,
-merged into one set — which is exactly how one read came to answer two layers' questions. It is
-`BootstrapConfig.config_paths` now, and it carries `config.*` alone.
+⚑ **THERE IS NO `config_paths` FIELD HERE.** The Layer-1 `config.*` set-values are
+`BootstrapConfig.config_paths`, and the Layer-2 `system.*` path settings have their own reader, so
+one read never answers two layers' questions.
 
 ⚑ `BOX_META_FILE` (`"box.yaml"`) is the per-box construct-time metadata + box-tier settings
 cascade file (spec §2c, `meta.box.*`).
@@ -189,16 +195,11 @@ A settings-file scalar as the flat object carries it.
 Booleans are preserved (`str(False)` is the truthy `"False"`); `None` is preserved as a value (see
 "The `None` sentinel" above); other scalars are stringified.
 
-⚑ It replaced `_flatten_toml`, which flattened a whole document into underscore-joined names
-(`{"paths": {"boxes": "x"}}` → `{"paths_boxes": "x"}`) — the namespace that collided with the
-`KanibakoConfig` field names. Only the per-leaf coercion survived the change; see
-`_present_scalar_fields`.
-
 
 ```config_file_path(config_home: Path) -> Path```
 The bootstrap config file `$XDG_CONFIG_HOME/kanibako.cfg`.
 
-CLEAN BREAK (JC-1): the old `kanibako.yaml` name is NOT read-compat (pre-release; Jei's own data).
+CLEAN BREAK (JC-1): the old `kanibako.yaml` name is NOT read.
 
 
 ```config_base_path() -> Path```
@@ -224,13 +225,11 @@ The DECLARED box scalars PRESENT in a SETTINGS file, as field-name → value.
 `None` is preserved as a VALUE, not a request for the default (spec §2h); callers must
 distinguish it from an absent key (which simply will not appear in the returned dict).
 
-⚑⚑ **IT WALKS IN THROUGH `_BOX_SCALAR_FIELDS`' DOTTED SPELLINGS, and that is the closed-keyspace
-half of the 2026-08-31 change.** It used to flatten the whole document into underscore-joined names
-and keep whichever matched a `KanibakoConfig` FIELD name — a namespace that COLLIDES with those
-names, so an undeclared top-level `box_image:` resolved identically to the declared `box: image:`
-(spec §0: an undeclared key is not a key). Reading in through the declared spelling makes the flat
-one UNREACHABLE rather than refused by a list (P4), and it is also why the `[config]`/`[system]`
-pops are gone: a table the walk never enters cannot leak.
+⚑⚑ **IT WALKS IN THROUGH `_BOX_SCALAR_FIELDS`' DOTTED SPELLINGS — the closed keyspace.** A
+flattened, underscore-joined namespace would COLLIDE with the `KanibakoConfig` field names, so an
+undeclared top-level `box_image:` would resolve identically to the declared `box: image:` (spec §0:
+an undeclared key is not a key). Reading in through the declared spelling makes the flat one
+UNREACHABLE rather than refused by a list (P4): a table the walk never enters cannot leak.
 
 
 ```_layer1_settings_keys(data: dict) -> list[str]```
@@ -239,13 +238,11 @@ Every SETTINGS entry a Layer-1 document carries, dotted and sorted; empty ⇒ th
 The message's key list. ⚑⚑ **A TABLE WITH NO LEAF IS NAMED BY ITS TABLE NAME**, which is what the
 `or [name]` fallback is for. The three empty spellings a user reads as identical — `box:` with
 nothing under it (**YAML parses that to `None`, not `{}`**), an explicit `box: {}`, and a `box:`
-whose only leaf is itself an empty table — used to give TWO different answers: the first was
-refused as a bare `box`, the other two were silently ACCEPTED. Convention 0 forbids that pair, and
-the silent arm was the only thing in this rule that behaved like a carve-out. All three are
-settings tables that do not belong in this file, so all three refuse.
+whose only leaf is itself an empty table — all three are settings tables that do not belong in
+this file, so all three refuse (convention 0: one rule, one answer).
 
-⚑ The fallback is `str(name)`, not `name` (2026-09-09) — see `_flatten_dotted` for why a YAML key
-that is not a string used to reach `sorted` and `join` raw.
+⚑ The fallback is `str(name)`, not `name` — see `_flatten_leaves`: a YAML key need not be a string,
+and this list is sorted and joined.
 
 
 ```bootstrap_config_paths(path: Path) -> dict[str, str]```
@@ -254,20 +251,16 @@ The Layer-1 file's `config.*` foundation, read from its `config:` table ALONE.
 ⚑ **NO FILTER, AND THAT IS THE POINT (P4).** The walk STARTS at the `config:` table, so a `config.`
 prefix is the only thing it can produce; the rule is in the shape of the read rather than in a test
 applied after it. 🛑 A settings table here RAISES `ConfigError` naming the file and the keys — it is
-not dropped. That refusal is what a user with a stale `[box]` or `[system]` table now sees instead
+not dropped. That refusal is what a user with a stale `[box]` or `[system]` table sees instead
 of silently running something other than what their file says.
 
-⚑⚑ **AN UNDECLARED LEAF INSIDE `config:` REFUSES TOO (2026-09-09), and closing that was closing an
-ASYMMETRY.** Starting the walk at the table makes the `config.` PREFIX unfakeable and says nothing
-about the TAIL, so the extraction used to be unfiltered by leaf name: an unrecognized
-`config.<leaf>` landed in the set under its dotted name. 🛑 **It was NOT inert.** `resolve_config_paths`
-walks `CONFIG_PATH_DEFAULTS` for its **output** — that is the sense in which an undeclared leaf never
-became a resolved path — but its inner `lookup` resolves `@`-refs through
-`LevelView("config", values=dict(set_values), …)`, i.e. **the file's set-values, undeclared leaves
-included**. So `data: "@config.nonsense/kanibako"` beside `nonsense: /srv/elsewhere` rooted the store
-at `/srv/elsewhere/kanibako`: an undeclared NAME the resolver would follow, which is a §0 breach and
-not a silent typo-drop (measured on both sides, 2026-09-09). A bare `nonsense` loud,
-`config.nonsense` silent *and resolvable* — one rule with two answers.
+⚑⚑ **AN UNDECLARED LEAF INSIDE `config:` REFUSES TOO.** Starting the walk at the table makes the
+`config.` PREFIX unfakeable and says nothing about the TAIL. 🛑 **An undeclared leaf would NOT be
+inert.** `resolve_config_paths` walks `CONFIG_PATH_DEFAULTS` for its **output**, but its inner
+`lookup` resolves `@`-refs through `LevelView("config", values=dict(set_values), …)`, i.e. **the
+file's set-values**. So `data: "@config.nonsense/kanibako"` beside `nonsense: /srv/elsewhere` would
+root the store at `/srv/elsewhere/kanibako`: an undeclared NAME the resolver would follow, a §0
+breach.
 Spec §1: *"The Layer-1 set is exactly the config keys in the table below."* The admitted set is
 `CONFIG_PATH_DEFAULTS`, **the table `resolve_config_paths` itself iterates**, so ACCEPTED HERE ⇒
 RESOLVED THERE holds by construction and a key joining §1 carries its own admission (P13). It is the
@@ -277,24 +270,23 @@ same six spellings as `settings_keyspace.DECLARED_CONFIG_LEAVES`, pinned equal t
 reader takes because Layer 1 resolves
 through the flat resolver, NOT the keyspace pipeline (spec §1).
 
-⚑ A `config:` entry that is **not a table** refuses as well; it used to yield `{}` in silence, which
-is the whole store back at its default location for a user whose one line meant to move it. A
+⚑ A `config:` entry that is **not a table** refuses as well; reading it as `{}` would put the whole
+store back at its default location for a user whose one line meant to move it. A
 `config:` with NOTHING under it is not that case — `write_global_config` writes zero bytes, so
 absent, `config:` and `config: {}` must agree, and all three read as the empty foundation.
 
-⚑ A `null` leaf refuses by name (`_refuse_null_paths`, `ERR_CONFIG_NULL_PATH`). It used to become
-the text `None` and be refused as a bare relative path, a directory the user never wrote.
+⚑ A `null` leaf refuses by name (`_refuse_null_paths`, through `null_path_keys_error`), never read
+as the text `None`.
 
 ⚑ A stale `[system] templates_stamp` or `[system] setup_completed` is in neither band — it is a
 `system:` table, so it refuses as settings; see "The retired template-stamp gate" below.
 
 
-```system_path_set_values(settings_path: Path) -> dict[str, str]```
+```system_path_set_values(settings_path: Path) -> dict[str, str | None]```
 A SETTINGS file's `system.*` set-values, dotted — the Layer-2 half of the path tier.
 
-Its own reader since 2026-08-31. This was `load_config(path).config_paths`, the very call the
-LAYER-1 read used, over one field that held `config.*` and `system.*` together — one function
-answering two layers' questions is what let each layer's file speak for the other. Nested sub-keys
+Its own reader, separate from the Layer-1 read, so neither layer's file speaks for the other.
+Nested sub-keys
 (e.g. `system.channels.common`) become dotted keys. ⚑ NOT filtered to the path tier: that is
 `paths.load_system_config`'s own P13 job, and this file's `system:` table legitimately holds
 `system.agent` and the category families too. That is also why the `null` refusal
@@ -310,10 +302,9 @@ carrier. Layer 1 is outside the keyspace, and no later read would catch it.
 ```load_config(path: Path) -> BootstrapConfig```
 Read the LAYER-1 bootstrap file — the one reader of `kanibako.cfg`.
 
-⚑⚑ **IT RETURNS A `BootstrapConfig`, AND THAT IS THE WHOLE OF THE 2026-08-31 RULING:** a Layer-1
-read has no settings field to return. It was a GENERAL document reader — the same call read the
-settings file — which is how the Layer-1 file came to hand back a `box.image` it may not carry. The
-box scalars are read from SETTINGS files by `settings_launch.load_merged_config`; a settings
+⚑⚑ **IT RETURNS A `BootstrapConfig`:** a Layer-1 read has no settings field to return, so the
+Layer-1 file cannot hand back a `box.image` it may not carry. The box scalars are read from
+SETTINGS files by `settings_launch.load_merged_config`; a settings
 file's `system.*` path set-values by `system_path_set_values`.
 
 
@@ -325,51 +316,35 @@ scalars; this module keeps the field map and the typing they use.
 ⚑ `_BOX_SCALAR_FIELDS` maps the box-scope SCALAR keys that resolve through the KEYSPACE (B6,
 R-11a(a)): dotted key → the flat `KanibakoConfig` field it lands on. `box.shell` rides the same
 resolve — it lives on the same object and the same `box:` tables (consumer-map risk 4).
-`box.enable_vault` joined 2026-08-29; see "The pre-cascade readers" above for why it was not there
-from the start and what that cost.
+`box.enable_vault` is one of them; see "The pre-cascade readers" above.
 
 ⚑ `_typed_box_scalar` lands each resolved value on its field's own type: a field whose DATACLASS
 DEFAULT is a bool goes through :func:`coerce_bool` (falling back to `bool(value)` for an
 unrecognized literal), a `None` on a field whose default is `None` stays `None`, and everything
 else is stringified. The arm
-is selected off the default rather than a hand-kept name list, because `box.enable_vault` joining as
-the second bool (2026-08-29) is exactly the edit that would otherwise ship a stringified `"False"` —
-which is truthy, i.e. a stored `enable_vault: false` silently reading as ON.
+is selected off the default rather than a hand-kept name list, because adding a bool field is
+exactly the edit that would otherwise ship a stringified `"False"` — which is truthy, i.e. a stored
+`enable_vault: false` silently reading as ON.
 
 
 ```write_global_config(path: Path) -> None```
 Create the bootstrap config file EMPTY — it may carry `config.*` and nothing else.
 
-⚑⚑ **THE FILE CANNOT HAVE SETTINGS** (Jei, 2026-08-26: *"kanibako_config.yaml <-- cannot have
-settings. Period."* — the general form of the `system.setup_completed` ruling of the same day). It
-is created **EMPTY — zero bytes**, always.
+⚑⚑ **THE FILE CANNOT HAVE SETTINGS** (*"kanibako_config.yaml <-- cannot have settings.
+Period."*). It is created **EMPTY — zero bytes**, always.
 
-Until then it wrote THREE tables:
-
-* `[config]` — the six Layer-1 foundation keys (spec §1), a VERBATIM copy of
-  `bootstrap.CONFIG_PATH_DEFAULTS`;
-* `[system]` — six of the eleven Layer-2 `system.*` path SETTINGS (spec §2g), a verbatim copy of
-  that slice of `bootstrap.SYSTEM_PATH_DEFAULTS`;
-* `[box]` — `image` and `share_images` at their own `KanibakoConfig` field defaults.
-
-The first was Layer-1's own content at its own default. The other two were **SETTINGS** (spec §2g /
-§2b) sitting in the Layer-1 file, which is the thing the ruling forbids outright.
-
-⚑ **THERE IS NO `cfg` PARAMETER ANY MORE, and that is the ruling in the signature.** A
+⚑ **THERE IS NO `cfg` PARAMETER, and that is the rule in the signature.** A
 `KanibakoConfig` *is* settings, so there is nothing it could legitimately contribute here; keeping
 it and ignoring it would be a silent no-op for every caller that passed one. A non-default
 `box.image` belongs in a SETTINGS file — which is where `kanibako system set box.image=…` has
 always written it.
 
-⚑ **WHY DROPPING THEM MOVES NO RESOLVED VALUE.** `paths.resolve_config_paths` /
-`resolve_system_paths` take those two tables as their `LevelView(defaults=…)` and layer STORED
-values OVER them, so a file storing exactly the defaults was a fourth carrier that changed nothing
-— while making every default edit need a matching edit here, in lock-step, BY HAND. Measured
-against two real stores: the old file (568 bytes) and the new one (0 bytes) resolve to a
-byte-identical 21-key system path map, and to identical flat scalars.
+⚑ **WHY AN EMPTY FILE MOVES NO RESOLVED VALUE.** `paths.resolve_config_paths` /
+`resolve_system_paths` take the defaults tables as their `LevelView(defaults=…)` and layer STORED
+values OVER them, so a file storing exactly the defaults would be another carrier that changes
+nothing — while making every default edit need a matching edit here, BY HAND.
 `tests/test_settings/test_config.py::test_sparse_file_resolves_identically_to_the_old_verbatim_defaults`
-is the standing pin. This generalizes the rule spec §2b already states for one key,
-`box.enable_vault`.
+is the pin. This generalizes the rule spec §2b states for one key, `box.enable_vault`.
 
 ⚑ **THE FILE IS STILL CREATED.** `cli._ensure_initialized` uses its EXISTENCE as the "already
 initialized" test, so an absent file would re-run first-run init — packaged-template install and
@@ -387,20 +362,19 @@ existing `kanibako.cfg` files are documentation-only (migration M-4).
 The §1A **CREATE EXCEPTION** — the ONE gate through which a shadowing CLI flag's value ever
 PERSISTS.
 
-R-11a; materialization ruling 2026-08-02. Spec §1A: a flag applies to ONE launch and NEVER mutates
+R-11a. Spec §1A: a flag applies to ONE launch and NEVER mutates
 an EXISTING stored value — *"at box CREATION only, a shadowing flag's value PERSISTS — it
 INITIALIZES the box's stored config."*
 
-Launch-MATERIALIZATION counts as creation (Jei, 2026-08-02): the one signal is *materializing* —
-"is this box being materialized by THIS invocation?" — which `kanibako create` and the launch path
-both read off their resolve's `proj.is_new`. Every caller routes through THIS gate; there is no
-per-path persist logic (the former `start._persist_image_override` and its deferred-arm replay
-collapsed into it), so `create`, the first launch of a `workset connect`-ed box (connect registers
+Launch-MATERIALIZATION counts as creation: the one signal is *materializing* — "is this box being
+materialized by THIS invocation?" — which `kanibako create` and the launch path both read off their
+resolve's `proj.is_new`. Every caller routes through THIS gate; there is no per-path persist logic,
+so `create`, the first launch of a `workset connect`-ed box (connect registers
 the box and creates its dir but never seeds, so that launch IS the materialization), and a plain
 `start --image` on an EXISTING box (strictly ephemeral) all get the rule from one place.
 
-⚑ A launch that rebuilt a REGISTERED box whose directory had been deleted used to reach here too;
-MBR-6 refuses that case at the launch gate now — it is a repair, not a creation.
+⚑ A launch of a REGISTERED box whose directory was deleted never reaches here: MBR-6 refuses it at
+the launch gate — it is a repair, not a creation.
 
 Only EXPLICITLY-GIVEN flag values persist: an absent flag (`None`; `""` for *image* — absent ≠
 `""`) writes NOTHING, so a no-flag create bakes NO default into the box tier and the box resolves
@@ -416,9 +390,9 @@ a real bool or `None` (absent); it is written as a bool, matching the `KEY_TYPES
 ```write_box_enable_vault(path: Path, enable_vault: bool = True) -> None```
 Sparsely persist the box-scope `box.enable_vault` key at *path*.
 
-The single writer for `box.enable_vault` at box create/move time (P8b — extracted from the retired
-`write_project_meta` identity write so create no longer emits a `project:` / `resolved:` section:
-box identity lives in the registries (`box_resolve`), not on disk — Option A). Sparse, matching
+The single writer for `box.enable_vault` at box create/move time. Create emits no `project:` /
+`resolved:` section: box identity lives in the registries (`box_resolve`), not on disk. Sparse,
+matching
 `config set box.enable_vault`:
 
 * `enable_vault` explicitly `False` → write `box.enable_vault = False` into the `box:` table
@@ -445,23 +419,20 @@ built-in `True`. What it answers is the question a MERGE STRUCTURALLY CANNOT —
 this value* (`settings_launch.py`, in its own words: *"Which of them carried it is not knowable
 here, because the snapshot is the MERGE of all of them"*).
 
-Its three callers are all lifecycle destination writes: `commands/box/_lifecycle.py` (×2, feeding
-`ProjectState.box_authored_vault`) and `commands/box/_duplicate.py` (×1, feeding
-`establish_standalone`). 🛑 **Do NOT give this a workset-tier fallback again and do NOT route it
-through the cascade** — either one pins an INHERITED workset default as a box-scope override at the
-destination, the exact corruption `carried_box_settings` exists to prevent.
+Its five callers write a box's authored value: `paths.py` (×2, the create and initialize paths),
+`commands/box/_lifecycle.py` (×2, feeding `ProjectState.box_authored_vault`) and
+`commands/box/_duplicate.py` (×1, feeding `establish_standalone`). 🛑 **Do NOT give this a
+workset-tier fallback and do NOT route it through the cascade** — either one pins an INHERITED
+workset default as a box-scope override at the destination, the exact corruption
+`carried_box_settings` exists to prevent.
 
-⚑ IT HAD A *default_from* PARAMETER UNTIL 2026-08-29 — the WORKSET-tier R2 downward-default
-(`box` ⊂ `workset`; spec §0 *Directional view/set across CONTAINMENT levels*), which all three
-`paths.py` resolvers passed and which made `workset create --no-vault` reach contained boxes,
-let a pre-M-8 standalone box keep a stored `box.enable_vault: false` with zero migration, and let
-the primary workset default its boxes like any other workset (spec §2c). **That capability did not
-go — it MOVED to `resolve_box_enable_vault`**, where the workset tier is one cascade level among
-four instead of a second hand-opened file. The parameter went with it because the only thing it
-could still do here is the corruption above.
+⚑ The WORKSET-tier downward default (`box` ⊂ `workset`; spec §0 *Directional view/set across
+CONTAINMENT levels*) — `workset create --no-vault` reaching contained boxes, the primary workset
+defaulting its boxes like any other (spec §2c) — lives in `resolve_box_enable_vault`, where the
+workset tier is one cascade level among four instead of a second hand-opened file.
 
 Box identity derives entirely from the registries (`box_resolve`) — there is no on-disk `project:`
-identity section (P8b sparse create) — while `enable_vault` stays a plain box-settings read: the
+identity section — while `enable_vault` stays a plain box-settings read: the
 two concerns are decoupled. Paired writer: :func:`write_box_enable_vault`.
 
 
@@ -475,8 +446,8 @@ non-`box:` sections such as agent config). Returns the DOC to write at the DESTI
 
 ### The box tier, and nothing else
 
-Jei, 2026-08-26: *"we should copy/persist only those elements that are within the box settings."*
-The function reads ONE file.
+*"we should copy/persist only those elements that are within the box settings."* The function
+reads ONE file.
 
 A `box.*` key at the WORKSET tier is not the box's — it is an OVERRIDABLE DOWNWARD DEFAULT for the
 boxes that workset contains (`resolve_box_enable_vault`, spec §0 *Directional view/set across
@@ -492,13 +463,8 @@ source authored at ITS workset tier does not reach the destination by any route.
 `test_a_workset_default_resolves_inside_and_is_never_persisted_on_the_way_out` and its three
 siblings in `tests/test_commands/test_lifecycle_cmd.py`, plus
 `test_duplicate_does_not_pin_a_root_stored_value_at_the_box_tier`
-(`tests/test_commands/test_config_cmd.py`).
-
-⚑ HISTORY, so it is not re-litigated: this function used to underlay the workset tier's `box:`
-subtree beneath the box tier's, to keep a box created before the box tier existed from losing
-`box.image`. Jei's ruling above settles it the other way, and his same-day ruling that there is no
-installed base (*"there's not been real deployment before me up to now"*) leaves that rescue with
-no population to rescue.
+(`tests/test_commands/test_config_cmd.py`). The workset tier's `box:` subtree is never laid under
+the box tier's.
 
 ### `workset:` is never carried
 
@@ -510,9 +476,9 @@ because the kuid is read directly from the ROOT file, never resolved through the
 by `test_kuid_is_read_from_the_root_file_not_the_box_tier`
 (`tests/test_settings/test_paths.py`) and verified experimentally.
 
-⚑ Now that the read is box-tier-only, the strip is DEFENSIVE and no test exercises it: a
-`workset:` section can only reach a `box.yaml` by hand. Removing it leaves the whole suite green.
-It is kept because a hand-authored one should not travel, not because a code path produces one.
+⚑ The read is box-tier-only, so the strip is DEFENSIVE: a `workset:` section can only reach a
+`box.yaml` by hand. It is kept because a hand-authored one should not travel, not because a code
+path produces one.
 
 
 ```read_workset_kuid(path: Path) -> str```
@@ -524,11 +490,10 @@ file plays the WORKSET tier. An absent file / `workset:` table / key yields the 
 :data:`kanibako.kuid.SENTINEL` (`"00000"`), the primary/named default and the "no real kuid yet"
 marker.
 
-⚑ THE LITERAL IS STILL HERE, BUT IT IS NO LONGER THE CARRIER. `settings_launch.workset_anchor_floor`
-emits `kuid.SENTINEL` by reference (2026-08-29, `da2050a1`), so the keyspace answers this key from
-the floor and this reader is the PRE-SNAPSHOT route to the same value. A conformance case asserts
-the pair equal. See "The pre-cascade readers" above for why the old *"the DEFAULT lives in the
-reader"* rule was retired.
+⚑ THE LITERAL IS HERE, BUT IT IS NOT THE CARRIER. `settings_launch.workset_anchor_floor` emits
+`kuid.SENTINEL` by reference, so the keyspace answers this key from the floor and this reader is
+the PRE-SNAPSHOT route to the same value. A conformance case asserts the pair equal. See "The
+pre-cascade readers" above.
 
 
 ```read_workset_skip_kuid_check(path: Path) -> bool```
@@ -538,8 +503,8 @@ The reader for the settable key (P6d; spec default `true` — the advisory "inva
 OPT-IN strictness, INVERTING the old D9). Sourced from the `workset:` table of a box's
 `workset.yaml`. An absent file / table / key yields `True` (checking OFF).
 
-⚑ SAME SHAPE AS `read_workset_kuid` ABOVE: `workset_anchor_floor` emits this key too (2026-08-29,
-`da2050a1`), so the literal here is the PRE-SNAPSHOT carrier and not the one the keyspace answers
+⚑ SAME SHAPE AS `read_workset_kuid` ABOVE: `workset_anchor_floor` emits this key too, so the
+literal here is the PRE-SNAPSHOT carrier and not the one the keyspace answers
 from; the `reader-defaults` and `workset-anchor-floor` kinemata views hold each to the manifest
 cell, so the two cannot part without a red.
 
@@ -563,7 +528,7 @@ Remove a single key from a `box.yaml`; `True` if it was found and removed.
 An emptied section is cleaned up rather than left as a bare `{}`.
 
 
-```load_project_overrides(path: Path) -> dict[str, str]```
+```load_project_overrides(path: Path) -> dict[str, object]```
 The project-level overrides in a `box.yaml` — flat_key → value for keys that differ from
 defaults.
 
@@ -588,7 +553,8 @@ case (absent file, or absent/empty `agent` table) still returns `{}` unchanged.
 ```agent_settings_of(data: dict, agent_name: str) -> dict[str, str]```
 `read_agent_settings` over a settings doc already in hand — the same read, one body. It exists for
 `config_interface.show_config`, which hands in the file AS THE CASCADE READS IT
-(`settings_assemble.cascade_view`): re-reading the path would see an `agent:` table that
+(`config_interface._noun_stored_view`, the `DISPLAY` read of `settings_assemble.read_settings_files`):
+re-reading the path would see an `agent:` table that
 directional enforcement drops (a box or workset file), and print its leaves as overrides.
 
 Every row is produced by `config_display.flatten_under`, the ONE show walk, relative to
@@ -608,14 +574,11 @@ reads the system tier from. Callers pass that settings-file path as *system_path
 
 `None` means "no system default" — the caller REFUSES rather than picking one (keyspec §2b).
 
-⮕ **RENAMED + RELOCATED (P7, spec §2g).** Was `read_default_agent`, reading `system.default_agent`
-out of the reserved any-agent `agent.default` table under the leaf `default_agent` — a location
-that made the stored default an UNDECLARED key riding the AGENT tier of the real cascade. A store
-still carrying the old leaf is migration M-4 (documentation only) and is REFUSED by name at
-assembly (`settings_assemble`'s retired-key check).
+⮕ A store still carrying the retired `system.default_agent` leaf (migration M-4) is REFUSED by name
+at the selection read (`settings_assemble`'s retired-key check).
 
-⚑ This is the PRE-CASCADE reader, kept for the two callers that need the stored value before a
-snapshot exists (`start`'s box-independent persona pre-flight, and `setup`'s round-trip). The
+⚑ This is the PRE-CASCADE reader, kept for the one caller that needs the stored value before a
+snapshot exists (`start`'s box-independent persona pre-flight). The
 LAUNCH does not use it: agent selection resolves `system.agent` off the snapshot, prefs included
 (:mod:`kanibako.settings.agent_select`).
 
@@ -626,11 +589,11 @@ The `system.setup_completed` marker from the SYSTEM SETTINGS file; `None` when a
 `system.setup_completed` is a host-global `system.*` value recording the build version at which
 `kanibako setup` last succeeded (W1). `None` means "setup never run" — the gate then re-nudges.
 
-⚑⚑ **ITS FILE IS `@config.settings` (`<data>/global/settings.yaml`) SINCE 2026-08-26** — the same
-file `read_system_agent` reads and the launch cascade's system tier assembles from, NOT
-`kanibako.cfg`. Jei: *"there is no reason whatsoever that `system.setup_completed` should go
-in the config. It should not. It should go in the global settings file."* That is also what spec §2g
-has always declared — a Layer-2 `system.*` SETTINGS key — while spec §1 gives Layer 1 the `config.*`
+⚑⚑ **ITS FILE IS `@config.settings` (`<data>/global/settings.yaml`)** — the same file
+`read_system_agent` reads and the launch cascade's system tier assembles from, NOT `kanibako.cfg`
+(*"there is no reason whatsoever that `system.setup_completed` should go in the config. It should
+not. It should go in the global settings file."*). That is what spec §2g declares — a Layer-2
+`system.*` SETTINGS key — while spec §1 gives Layer 1 the `config.*`
 bootstrap paths ALONE. It is exactly one file: **there is no fallback read of the old location**, and
 adding one would be the deprecation window this release refuses.
 
@@ -638,23 +601,15 @@ adding one would be the deprecation window this release refuses.
 its NON-BLOCKING nudge — never "already set up", and never a block. Measured on a real store: the
 advisory goes to stderr and the command proceeds to its own outcome unchanged.
 
-⚑ **Why a RAW reader is required.** The gate runs PRE-CASCADE, before any snapshot exists.
-(Historically there was a second reason, now moot: while the marker lived in `kanibako.cfg`,
-`load_config` captured the leaf into the bootstrap-PATH set, whose only consumer
-`resolve_system_paths` iterates `SYSTEM_PATH_DEFAULTS` and never the file's set-values — so the
-captured leaf reached nothing. Since 2026-08-31 a marker left in that file does not reach nothing:
-it REFUSES. `setup_compat_gate` still reads through `load_doc`, not `load_config`, so the gate
-itself is unaffected — but every verb that resolves a path first will have refused already.)
-
-*(The older wording here claimed the typed loader "maps only KNOWN system leaves and ignores
-unknown ones". It has no known/unknown filter at all — measured 2026-08-11 — so that mechanism was
-dropped rather than moved. The conclusion it supported is unchanged.)*
+⚑ **Why a RAW reader is required.** The gate runs PRE-CASCADE, before any snapshot exists. A marker
+left in `kanibako.cfg` REFUSES, as any `system:` table there does.
 
 ```read_system_helpers(settings_path: Path | None) -> dict[str, int]```
 The helper-hub SPAWN BUDGET — the two declared `system.helpers.*` leaves (spec §2g), read out of the
-`system: helpers:` table of a settings document. `SYSTEM_HELPERS_SECTION` and
-`SYSTEM_HELPERS_LEAVES` are exported beside it: they are the one spelling of that slot, shared with
-the per-child document `channels/helpers.py` writes.
+`system: helpers:` table of a settings document. `SYSTEM_HELPERS_SECTION` is exported beside it and
+the leaf set is `settings_keyspace.DECLARED_SYSTEM_HELPERS_LEAVES`: the one spelling of that slot,
+shared with the per-child document `channels/helpers.py` writes. `system_helpers_leaf_int` is the
+one per-leaf refusal, for this reader and the start's resolved budget.
 
 🛑 **There is deliberately NO writer here.** The only thing that writes a budget is a parent handing
 one to its child, and its target is `helpers/<N>/spawn.yaml` — a DELIVERY document mounted RO into
@@ -664,10 +619,8 @@ that seam is allowlisted precisely so a runtime-computed default cannot be persi
 settings file, and a child's budget is runtime-computed. Putting the write here, next to a reader
 whose other caller really is `@config.settings`, would invite exactly that.
 
-⚑ **DECLARED 2026-09-19, and that is why the pair is here.** The budget was a LIVE, UNDECLARED key:
-`channels/helpers.py` read a `spawn:` table out of a bespoke
-`<XDG_CONFIG_HOME>/kanibako/spawn.yaml` — the same §0 violation `system.templates_stamp` was
-retired for (next section). Both the bespoke file and the `spawn:` spelling are gone.
+⚑ **The budget is a DECLARED key**, read from settings documents; there is no bespoke `spawn:`
+table (the §0 violation `system.templates_stamp` was retired for, next section).
 
 ⚑ **TWO TIERS, ONE READER, which is why the reader takes a PATH rather than resolving one.**
 `kanibako box helper spawn` consults the budget a PARENT handed it (the RO document at
@@ -695,32 +648,30 @@ still carry their own (materializing) copies of; consolidating those is a separa
 
 ### The retired template-stamp gate
 
-⚑ `read_templates_stamp` + `template_staleness_gate` lived in this module and are RETIRED (R-38,
-2026-08-01). `system.templates_stamp` was a LIVE but UNDECLARED key — a §0 closed-keyspace
-violation — and its HARD gate false-blocked hosts whose only sin was a packaged-content digest the
-config had never recorded.
+⚑ There is no template-stamp gate (R-38): `system.templates_stamp` is not a declared key, and a
+hard gate on a packaged-content digest would false-block hosts whose only sin is a digest the
+config never recorded.
 
 The protection folds into :func:`setup_compat_gate`: a template CONTENT change ⇒ `SETUP_FCV` bump
 (nudge), a STRUCTURAL/breaking one ⇒ `SETUP_BCV` bump (hard block), with a CI check comparing the
 packaged-template digest against the previous tag to REQUIRE the bump.
 
 ACCEPTED LOSS (ruled): drift WITHIN one version — a dev build, or a plugin pip-installed after
-first run — is no longer detected; the cure is the same `kanibako setup` the gate used to demand.
+first run — is not detected; the cure is `kanibako setup`.
 
-A stored `[system] templates_stamp` leaf on an existing host was ORPHANED-IGNORED until
-2026-08-31 — an unknown `system.*` leaf reached no consumer and raised nothing. 🛑 **It now
-REFUSES**, and not as a special case: it is a `system:` table in the Layer-1 file, which that file
-may not carry at all, so the read names it like any other stale settings key. The cure is the same
-hand-edit `MIGRATION.md` § "Anything in `kanibako.cfg` that is not a declared `config.*` key stops
-the command" prescribes. Migration records: M-23, and that MIGRATION.md section.
+🛑 A stored `[system] templates_stamp` leaf REFUSES, and not as a special case: it is a `system:`
+table in the Layer-1 file, which that file may not carry at all, so the read names it like any
+other stale settings key. The cure is the hand-edit `MIGRATION.md` § "Anything in `kanibako.cfg`
+that is not a declared `config.*` key stops the command" prescribes.
 
 
-```setup_compat_gate(settings_path: Path | None) -> str | None```
+```setup_compat_gate(settings_path: Path | None, legacy_config: Path | None = None) -> str | None```
 Run the 5-band setup/config compatibility gate against the marker stored in *settings_path*.
 
-⚑ *settings_path* is the SYSTEM SETTINGS file (`@config.settings`), the marker's home since
-2026-08-26 — see `read_setup_completed`. The gate knows exactly ONE file, as it always did; which
-file that is changed, and the arity did not. `cli._setup_nudge` resolves it with
+⚑ *settings_path* is the SYSTEM SETTINGS file (`@config.settings`), the marker's home — see
+`read_setup_completed`. ⚑ *legacy_config* is a ONE-RELEASE MIGRATION GUARD (v1.8.0): with no
+marker in *settings_path*, an existing v1.7-era *legacy_config* (`kanibako_config.yaml`) BLOCKS
+until it is renamed and setup runs; only its existence is read. `cli._setup_nudge` resolves *settings_path* with
 `paths.load_system_config` (deliberately NOT `load_std_paths`, which MATERIALIZES the store — a
 non-blocking advisory must not create directories).
 
@@ -744,7 +695,7 @@ The bands (design `~/canon/notebook/archives/plans/2026-06-23-setup-version-tier
 * `BCV <= ConfigVer < FCV` → return the NUDGE string (non-blocking; re-run `kanibako setup`).
 * `ConfigVer < BCV` → **raise** :class:`~kanibako.errors.ConfigError` (too old to auto-fill; must
   re-run `kanibako setup`).
-* absent marker → return the first-run nudge (Jei 2026-06-23).
+* absent marker → return the first-run nudge (or raise, for a *legacy_config* that exists).
 * unparseable marker → `None` (a hand-edited value; assume the user knows what they are doing —
   don't nag and don't block).
 
@@ -752,15 +703,14 @@ The two `raise` bands are the only blocking outcomes; the CLI surfaces them as r
 string is a NON-BLOCKING advisory the caller prints to stderr before continuing.
 
 
-```resolve_agent(*, explicit_agent: str | None, requested: str | None = None, project_path: Path | None = None) -> str```
+```resolve_agent(*, explicit_agent: str | None, requested: str | None = None) -> str```
 Validate the effective agent name against the installed set, or REFUSE.
 
-⮕ **P7: the CASCADE moved out.** `system.agent` and the `pref.system.agent` requests of the
+⮕ **The CASCADE is not here.** `system.agent` and the `pref.system.agent` requests of the
 workset/box files are resolved off the launch snapshot by
 :func:`kanibako.settings.agent_select.select_agent`, which passes the winner here as *requested*.
 What stays here is what is NOT a key: name VALIDATION against the installed set and persona-ref
-canonicalization. (Was: `explicit_agent > box_agent_name > workset_agent > system default`, with
-`box.agent_name` — RETIRED, spec §2b — as the box tier.)
+canonicalization.
 
 Precedence: *explicit_agent* (the §1A CLI level) > *requested* (whatever the settings cascade
 resolved). The FIRST **PRESENT** one resolves a name — never the first non-EMPTY one. `None` is
@@ -768,8 +718,7 @@ the only spelling of absence either argument has (no `--agent` at all; `__MISSIN
 selection key), so a present `""` is a VALUE: spec §2h keeps `present-None`, terminal `""` (**≠
 unset**) and the COPY-disable sentinel apart as three idioms. A blank tier therefore reaches
 `parse_agent_address` and is refused as an empty ref, instead of falling through to the next
-tier (a typed `--agent ""` taking the cascade's agent) or to the then-live count rule (a stored
-`system.agent: ""` taking the single installed one), silently in both cases.
+tier (a typed `--agent ""` silently taking the cascade's agent).
 
 A resolved name is validated against the installed set — the keys of `targets.discover_targets`,
 i.e. the DISCOVERED PLUGINS:
@@ -780,9 +729,9 @@ i.e. the DISCOVERED PLUGINS:
 
 Nothing resolved → raise :class:`~kanibako.errors.AgentUnsetError`, naming `kanibako setup`.
 
-🛑 **THE INSTALLED COUNT IS NOT CONSULTED HERE, AND THE SET IS NOT EVEN IN SCOPE.** The retired
-rule (1 → use / 0 → error / 2+ → error) was deleted 2026-09-19 on his ruling; `discover_targets` is
-called INSIDE the named-ref branch above, so reinstating a count rule on this path would mean
+🛑 **THE INSTALLED COUNT IS NOT CONSULTED HERE, AND THE SET IS NOT EVEN IN SCOPE.** Nothing
+auto-picks an agent; `discover_targets` is called INSIDE the named-ref branch above, so a count
+rule on this path would mean
 re-adding that call where a reader can see it (P3/P4). The sibling state — present-`None`, *no
 default set* — never reaches this function at all: `select_agent` raises
 :class:`~kanibako.errors.AgentNoDefaultError` for it, because the two states must print different
@@ -800,34 +749,27 @@ the composite node-name: a persona's name segment is free-form.
 ⚑ The parse is `agent_ref.parse_agent_address`, the ADDRESS grammar: a ref naming the shell
 pseudo-agent (any case) returns the `shell` node WITHOUT consulting the installed set — it is the
 built-in occupying its own slot (`[R175]`), selectable by name (keyspec §2b). `default` still
-refuses as a reserved name. This function used to carry its own fold-to-compare arm for `shell`;
-the grammar owns it now, so `box create`'s `--agent` validation cannot disagree with it.
+refuses as a reserved name. The grammar owns the `shell` fold, so `box create`'s `--agent`
+validation cannot disagree with it.
 
-### The pseudo-agent discount — GONE with the rule it served
-
-`_PSEUDO_AGENTS` (`no_agent`, `general`) existed to subtract non-launchable targets from the
-installed COUNT. With the count rule retired (2026-09-19) there is no count to discount from, and
-the set is deleted. 🛑 **It was never the keyspec's pseudo-agents** (`default`, `shell` —
-`agent_ref.PSEUDO_AGENT_NAMES`, the RESERVED names, spec §2d), shared no member with them, and the
-two must not be conflated now that only one of them exists.
-
-⚑ **Nothing about explicit selection changed.** A named harness validates against the FULL
-`installed` set. `general` is NOT a target any distribution registers — the agent-less
-slot is `shell` (`GENERAL_SLOT`), which is what those paths pass as `agent_name` — so
-`--agent general` raises `AgentNotInstalledError`, as it did before.
+⚑ A named harness validates against the FULL `installed` set. The keyspec's pseudo-agents
+(`default`, `shell` — `agent_ref.PSEUDO_AGENT_NAMES`, the RESERVED names, spec §2d) are the only
+pseudo-agents. `general` is NOT a target any distribution registers — the agent-less slot is
+`shell` (`GENERAL_SLOT`) — so `--agent general` raises `AgentNotInstalledError`.
 
 ⚑ The imports inside the function are lazy on purpose: `kanibako.targets` imports `paths` / this
 module indirectly, so importing it at module scope risks a cycle. This mirrors `discover_targets`'
 use elsewhere.
 
 
-```_flatten_leaves(data: dict, prefix: str = "") -> dict[str, object]```
+```_flatten_leaves(data: dict, prefix: str = "", *, with_nodes: bool = False) -> dict[str, object]```
 Flatten nested dict into DOTTED-key form, each leaf AS STORED. ⚑ THE ONE WALK: `_flatten_dotted`
 below is this with its leaves stringified, so the keys one names are the keys the other names. The
 raw leaf serves the SETTINGS files' `config:` refusal and its stored view
 (`settings_assemble.stored_config_entries`), which read that table exactly as the Layer-1 read
 would and DISPLAY the values — `str()` would print a stored `null` as `None`, a spelling the file
-never held.
+never held. ⚑ *with_nodes* also reports each `dict` position as its own entry before descending,
+so a map is visible at its own key.
 
 ```_flatten_dotted(data: dict, prefix: str = "") -> dict[str, str]```
 Flatten nested dict into DOTTED-key form, stringifying scalar leaves (`_flatten_leaves`, the walk).
@@ -842,20 +784,13 @@ DATA, not a key segment — so nothing here flattens one.
 
 ⚑ A `null` leaf becomes the string `"None"`, so both path reads call `_refuse_null_paths` first.
 
-⚑ **`str(k)` ON THE UNPREFIXED ARM (2026-09-09; the arm now lives in `_flatten_leaves`): a YAML
-key need not be a string.** Only the
-f-string arm stringified one, so a top-level `1:` / `true:` / `~:` handed an `int`/`bool`/`None`
-out to `_layer1_settings_keys`, which sorts and joins — a `TypeError` traceback in the one file
-whose whole purpose is that a hand-editing user finds out.
-
-*(A section banner above this function used to read "Scope categories (settings-framework
-{scope}.&lt;category&gt;.\* — the unified masks/bindings/caches/seeded/shared/synced/env
-primitive)". It was wrong three ways — `shared` is the RETIRED spelling of `common`, the
-`<category>.<name>` key shape went terminal on 2026-08-08c, and the section contains no category
-code at all — so it was dropped rather than moved. The live set is
-`settings_keyspace.TERMINAL_CATEGORY_TAILS`.)*
+⚑ **`str(k)` ON THE UNPREFIXED ARM (in `_flatten_leaves`): a YAML key need not be a string.** A
+top-level `1:` / `true:` / `~:` would otherwise hand an `int`/`bool`/`None` to
+`_layer1_settings_keys`, which sorts and joins — a `TypeError` traceback in the one file whose
+whole purpose is that a hand-editing user finds out.
 
 ```_refuse_null_paths(path: Path, table: dict, prefix: str, path_keys: Iterable[str]) -> None```
-Refuse a `null` at any of *path_keys* in *table*, naming *path* and the keys
-(`ERR_CONFIG_NULL_PATH`). Callers: `bootstrap_config_paths` (`CONFIG_PATH_DEFAULTS`) and
-`system_path_set_values` (`SYSTEM_PATH_DEFAULTS`).
+Refuse a `null` at any of *path_keys* in *table*, naming *path* and the keys. It raises through
+`null_path_keys_error`, with membership from `refuses_null_path_key` — the same set the `set` door
+asks. Callers: `bootstrap_config_paths` (`CONFIG_PATH_DEFAULTS`) and `system_path_set_values`
+(`SYSTEM_PATH_DEFAULTS`).
