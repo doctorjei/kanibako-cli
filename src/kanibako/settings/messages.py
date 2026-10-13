@@ -53,6 +53,17 @@ WARN_BOX_NO_VAULT =    ("Warning: cannot find vault for box '%s' (expected at %s
 WARN_BOX_VAULT_UNUSABLE = ("Warning: the %s vault for box '%s' at %s is %s; it launches without " +
                            "that vault; fix the path or set box.enable_vault=false to silence.")
                                          # "rw" | "ro", box name, the vault path, unusable_dir_finding()
+# MBR-6: a launch rebuilds nothing silently.  NAMED says "seeds it" because its first launch
+# does seed (a connected box is never seeded by ``workset connect``).
+WARN_BOX_HOME_REBUILT = ("Warning: the home directory for box '%s' is missing (%s); this launch " +
+                         "re-creates it with only a minimal shell profile; the seed and " +
+                         "templates are not re-applied.")
+                                                                     # box name, the home path
+WARN_BOX_HOME_SEEDED =  ("Note: box '%s' has no home directory (%s); this launch creates it " +
+                         "and seeds it.")                            # box name, the home path
+WARN_BOX_WORKSPACE_REBUILT = ("Warning: the workspace for box '%s' is missing (%s); this launch " +
+                              "creates a new, empty folder there, and work done in the box lands " +
+                              "in it.")                              # box name, the workspace path
 
 # ⚑ The 1st arg of each pair below is a LAYER DISCRIMINATOR, not a value; BAD_REF's is spliced
 # before "reference", so "" is load-bearing punctuation ("Unknown reference:").

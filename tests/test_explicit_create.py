@@ -712,6 +712,126 @@ class TestUnbuiltBoxErrorMessage:
         ) in msg
 
 
+class _ResolveStop(Exception):
+    """Raised by the stubbed materializing resolve: the launch got PAST the gate."""
+
+
+def _stop_at_materialize(monkeypatch, seen):
+    """Stub ``start.resolve_box_target`` so a launch stops at its MATERIALIZING resolve.
+
+    The non-materializing probe runs for real.  *seen* records whether the home
+    existed when the materializing call came, so a test can show the notice was
+    printed BEFORE anything was rebuilt.
+    """
+    import kanibako.commands.start as start_mod
+
+    real = start_mod.resolve_box_target
+
+    def fake(std, config, project_dir, *, initialize=False, **kw):
+        proj = real(std, config, project_dir, initialize=False, **kw)
+        if initialize:
+            seen.append(proj.shell_path.is_dir())
+            raise _ResolveStop
+        return proj
+
+    monkeypatch.setattr(start_mod, "resolve_box_target", fake)
+
+
+class TestLaunchAnnouncesRebuilds:
+    """MBR-6 residual 1: a missing home (any mode) or STANDALONE workspace is
+    re-created by the launch, so the launch SAYS so — a notice, never a refusal
+    (the launch works today).  Printed on the probe, before anything is created.
+    """
+
+    def _notices(self, caplog):
+        return [r.getMessage() for r in caplog.records
+                if "home directory" in r.getMessage() or "workspace for box" in r.getMessage()]
+
+    def test_primary_missing_home_warns_it_comes_back_unseeded(
+        self, config_file, tmp_home, credentials_dir, caplog, monkeypatch, protected_canon
+    ):
+        from kanibako.commands.box._parser import run_create
+
+        config, std = _std(config_file)
+        assert run_create(_create_args(tmp_home / "project")) == 0
+        home = _resolve_existing_box(std, config, None).shell_path
+        assert remove_box_tree(home)
+        seen: list[bool] = []
+        _stop_at_materialize(monkeypatch, seen)
+
+        with pytest.raises(_ResolveStop):
+            _launch(None)
+        assert seen == [False]  # announced before anything was rebuilt
+        assert self._notices(caplog) == [
+            f"Warning: the home directory for box 'project' is missing ({home}); this "
+            "launch re-creates it with only a minimal shell profile; the seed and "
+            "templates are not re-applied."
+        ]
+
+    def test_named_missing_home_says_it_is_created_and_seeded(
+        self, config_file, tmp_home, credentials_dir, caplog, monkeypatch
+    ):
+        from kanibako.project.workset import add_project, create_workset
+
+        config, std = _std(config_file)
+        ws = create_workset("wsa", tmp_home / "wsa", std)
+        src = tmp_home / "member"
+        src.mkdir()
+        add_project(ws, "member", src, std)
+        home = _resolve_existing_box(std, config, str(src)).shell_path
+        assert not home.exists()
+        seen: list[bool] = []
+        _stop_at_materialize(monkeypatch, seen)
+
+        with pytest.raises(_ResolveStop):
+            _launch(str(src))
+        assert seen == [False]
+        assert self._notices(caplog) == [
+            f"Note: box 'member' has no home directory ({home}); this launch creates it "
+            "and seeds it."
+        ]
+
+    def test_standalone_missing_home_and_workspace_both_warn(
+        self, config_file, tmp_home, credentials_dir, caplog, monkeypatch, protected_canon
+    ):
+        from kanibako.commands.box._parser import run_create
+
+        config, std = _std(config_file)
+        root = tmp_home / "solo"
+        root.mkdir()
+        assert run_create(_create_args(root, standalone=True)) == 0
+        proj = _resolve_existing_box(std, config, str(root))
+        assert proj is not None and proj.project_path is not None
+        assert remove_box_tree(proj.shell_path)
+        assert remove_box_tree(proj.project_path)
+        seen: list[bool] = []
+        _stop_at_materialize(monkeypatch, seen)
+
+        with pytest.raises(_ResolveStop):
+            _launch(str(root))
+        assert seen == [False]
+        assert self._notices(caplog) == [
+            f"Warning: the home directory for box '{proj.name}' is missing "
+            f"({proj.shell_path}); this launch re-creates it with only a minimal shell "
+            "profile; the seed and templates are not re-applied.",
+            f"Warning: the workspace for box '{proj.name}' is missing "
+            f"({proj.project_path}); this launch creates a new, empty folder there, and "
+            "work done in the box lands in it.",
+        ]
+
+    def test_intact_box_announces_nothing(
+        self, config_file, tmp_home, credentials_dir, caplog, monkeypatch
+    ):
+        from kanibako.commands.box._parser import run_create
+
+        assert run_create(_create_args(tmp_home / "project")) == 0
+        _stop_at_materialize(monkeypatch, [])
+
+        with pytest.raises(_ResolveStop):
+            _launch(None)
+        assert self._notices(caplog) == []
+
+
 # ---------------------------------------------------------------------------
 # `_no_box_error` message shape (unit)
 # ---------------------------------------------------------------------------

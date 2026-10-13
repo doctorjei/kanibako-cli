@@ -89,6 +89,7 @@ def _interrupted_create_error(proj: ProjectPaths, pending: dict) -> str
 def _unregistered_pending_create_error(std: StandardPaths, project_dir: str | None) -> str | None
 def _no_box_error(project_dir: str | None, std: StandardPaths | None=None, verb: str='start', *, probe: ProjectPaths | None=None) -> str
 def _unbuilt_box_error(proj: ProjectPaths, std: StandardPaths) -> str | None
+def _warn_launch_rebuilds(proj: ProjectPaths) -> None
 def _refuse_null_workspace_bind(std, proj: ProjectPaths) -> None
 def _launch_issues_path(std, container_name: str) -> Path
 def _check_launch_baseline(runtime, image, bootstrap_program, container_name, std, *, setting: str | None, cure_ref: str, attached: bool)

@@ -81,6 +81,11 @@ from kanibako.settings.settings_keyspace import (
 )
 from kanibako.settings.settings_resolve import BOX_PINNED_STATE_RELPATH, literal_expr
 from kanibako.settings.settings_cli_level import SELECTION_KEY, build_cli_level
+from kanibako.settings.messages import (
+    WARN_BOX_HOME_REBUILT,
+    WARN_BOX_HOME_SEEDED,
+    WARN_BOX_WORKSPACE_REBUILT,
+)
 from kanibako.settings.paths import (
     BoxMode,
     DesignationRoute,
@@ -1942,6 +1947,26 @@ def _unbuilt_box_error(proj: ProjectPaths, std: StandardPaths) -> str | None:
     return head + cure
 
 
+def _warn_launch_rebuilds(proj: ProjectPaths) -> None:
+    """Name what the launch resolve is about to re-create under an existing box (MBR-6).
+
+    MBR-6 (Jei, 2026-08-02f): *"a launch should not silently rebuild anything."*
+    A missing HOME or STANDALONE workspace is re-created by the resolve after this,
+    so it is announced here, on the NON-materializing probe, before anything exists.
+    A notice, not a refusal: these launches work today.  A PRIMARY or NAMED box's
+    missing workspace is :func:`_check_box_components`'s refusal, not a rebuild.
+    """
+    logger = get_logger("start")
+    label = proj.name or str(proj.project_path)
+    if not proj.shell_path.is_dir():
+        template = (WARN_BOX_HOME_SEEDED if proj.mode is BoxMode.named
+                    else WARN_BOX_HOME_REBUILT)
+        logger.warning(template, label, proj.shell_path)
+    if (proj.mode is BoxMode.standalone and proj.project_path is not None
+            and not proj.project_path.is_dir()):
+        logger.warning(WARN_BOX_WORKSPACE_REBUILT, label, proj.project_path)
+
+
 def _refuse_null_workspace_bind(std, proj: ProjectPaths) -> None:
     """RAISE when *proj*'s workspace bind resolves through a null ``workset.workspaces`` (Q106).
 
@@ -3138,6 +3163,7 @@ def _run_container(
     # Q106: the workspace bind is mounted at every launch, so a box whose workspace resolves
     # through a null ``workset.workspaces`` refuses here, on the probe, like MBR-6 above.
     _refuse_null_workspace_bind(std, _existing)
+    _warn_launch_rebuilds(_existing)
 
     proj = resolve_box_target(
         std, config, project_dir,
