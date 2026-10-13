@@ -166,7 +166,8 @@ class TemplateStep(Enum):
 
     #: Packaged templates were copied into the system-owned staging.
     REFRESHED = "refreshed"
-    #: Nothing to add, nothing to overwrite, nothing kept — already current.
+    #: Nothing to add, nothing to overwrite — already current (kept files, which
+    #: are never written, are reported).
     CURRENT = "current"
     #: The user was asked at a terminal and said no.  An INFORMED choice.
     DECLINED = "declined"
@@ -211,9 +212,10 @@ def _run_template_refresh(args: argparse.Namespace) -> TemplateStep:
 
     * ``--refresh-templates`` forced flag → apply the refresh (the flag IS the
       consent), one-line summary → ``REFRESHED``.
-    * nothing to add AND nothing to overwrite AND nothing kept → say so, no prompt
-      → ``CURRENT``.
-    * nothing to overwrite (ADD-ONLY, kept files reported) → apply create-if-absent,
+    * nothing to add AND nothing to overwrite → say so, report kept files, no
+      prompt → ``CURRENT``.
+    * something to add, nothing to overwrite (ADD-ONLY, kept files reported) →
+      apply create-if-absent,
       no prompt, TTY or not → ``REFRESHED``.  The consent protects edits to shipped
       files from being replaced; an add replaces nothing, so there is nothing to ask.
     * TTY → warn, show the add/overwrite plan + reassurance + peril, prompt:
@@ -269,10 +271,12 @@ def _run_template_refresh(args: argparse.Namespace) -> TemplateStep:
         _report_kept()
         return TemplateStep.REFRESHED
 
-    if not added and not overwritten and not kept:
+    if not added and not overwritten:
         # Already current: nothing to copy and nothing to ask about.  A run with
-        # nothing to do is still a COMPLETE run.
+        # nothing to do is still a COMPLETE run.  KEPT files are never written on
+        # any path, so a kept-only plan is current too; it just reports them.
         print("  [ok] Templates are up to date.")
+        _report_kept()
         return TemplateStep.CURRENT
 
     if not overwritten:

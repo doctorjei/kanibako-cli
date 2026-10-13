@@ -6206,10 +6206,10 @@ migration code.** Four released config surfaces are removed outright
   would overwrite. A third case was silent: a file you had edited that the shipped copy has
   since moved past is neither added nor overwritten — kanibako keeps yours — and nothing said
   so, which read as though the file were current. The step now prints `Kept YOUR copy (N
-  file(s) differ from the shipped one):` and lists each path, on the interactive prompt and
-  under `--refresh-templates` alike. One consequence: a store whose *only* difference is
-  files in that class no longer reports `Templates are up to date` — it prints the list and
-  asks, so you can see the divergence you are carrying.
+  file(s) differ from the shipped one):` and lists each path on every outcome: after
+  `Templates are up to date.`, after `Templates installed (N added).`, at the prompt, and
+  under `--refresh-templates`. A kept file is never written, so it never makes setup ask;
+  only a plan that would UPDATE a shipped file prompts.
 - **`meta.box.path`** — a read-only per-mode anchor for the box root. The per-mode
   variation now lives in the anchor rather than in three downstream spellings, so
   `box.bindings.rw.home` is one declaration for every mode. The anchor and its settable

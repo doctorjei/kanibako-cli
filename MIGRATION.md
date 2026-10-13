@@ -930,12 +930,15 @@ forced, not optional):
    `kanibako setup` runs*). Setup is what rebuilds the template store, and a setup run that could
    not rebuild it records no completion (see *The upgrade gate: nothing new appears until
    `kanibako setup` runs*), so the gate keeps erroring: you cannot create a box on the unmigrated
-   store, and the "new box seeds empty" hazard is **unreachable without an informed decline**. The
-   one way out is the deliberate one — decline the refresh at the interactive prompt, which setup
-   warns you leaves the store "out of date … an unblessed state you're choosing knowingly".
+   store, and the "new box seeds empty" hazard is **unreachable without an informed decline**. A
+   decline is possible only when setup would also UPDATE a shipped file: then it prompts, and
+   declining there, which setup warns you leaves the store "out of date … an unblessed state
+   you're choosing knowingly", is the one way out. A plan that only ADDS files has no prompt.
 2. `kanibako setup` re-creates the NEW tree — `global/template/{box,workset,agent}` and
    `global/canon/handbook` — with **stock packaged content** (reported as
-   `Templates refreshed (N added, M updated)`), and records the setup completion.
+   `Templates installed (N added).` when it only adds files, `Templates refreshed.` when you
+   accept the prompt, or `Templates refreshed (N added, M updated).` under
+   `--refresh-templates`), and records the setup completion.
 3. Your old `global/base_template/` is **orphaned but preserved**: untouched on disk, read by
    nothing, and mentioned by nothing — setup does not warn about it. New boxes now seed the
    stock content, **not yours**. That masking is the real exposure: if you customized the old
@@ -5063,21 +5066,24 @@ rm ~/.local/share/kanibako/global/canon/handbook/general/scripts/behavior/check-
 kanibako setup --refresh-templates
 ```
 
-⚠️ **Plain `kanibako setup` is not enough.** The template step is behind a prompt that defaults to
-**no** (`Update templates now? [y/N]`), and in a non-interactive shell with no flag it is skipped
-entirely — so deleting the file and pressing Enter leaves you with **no hook at all**, which is
-worse than the stale one. Pass the flag, or answer `y`.
+⚠️ **Plain `kanibako setup` is not enough when it would also update a shipped file.** If adding
+missing files is all it would do, it re-lays the deleted file without asking (`Templates installed
+(N added).`). But if it would also UPDATE a shipped file, the whole step waits on a prompt that
+defaults to **no** (`Update templates now? [y/N]`), and in a non-interactive shell with no flag it
+is skipped entirely — so deleting the file and pressing Enter leaves you with **no hook at all**,
+which is worse than the stale one. Pass the flag, or answer `y`.
 
 ⚠️ **`--refresh-templates` is wider than this one file:** it also replaces edits you made to other
 *shipped* template files. If you have such edits, prefer the copy-one-file route above.
 
 ⚠️ **Deleting discards any edits you made to `check-comms.sh`** — which is exactly why the installer
 refuses to overwrite it. **To see what is at stake before you touch anything, run plain
-`kanibako setup` and answer `n`** (or press Enter) at `Update templates now? [y/N]`. Plain `setup` is
-fine for *looking* — it is only insufficient for *fixing*, which is what the warning above is about.
-It lists `Kept YOUR copy (N file(s) differ from the shipped one):`, and `Files to ADD` /
-`Files to UPDATE` when those are non-empty, tells you that edits to shipped files would be replaced,
-and then writes nothing when you decline.
+`kanibako setup`.** Plain `setup` is fine for *looking*; the warning above is about *fixing*. It
+lists `Kept YOUR copy (N file(s) differ from the shipped one):` and never writes a kept file. If it
+would only add missing files, it adds them without asking (`Templates installed (N added).`) and
+changes no existing file. If it would UPDATE a shipped file, it lists `Files to ADD` /
+`Files to UPDATE`, tells you that edits to shipped files would be replaced, and asks `Update
+templates now? [y/N]`: answer `n` (or press Enter) and it writes nothing.
 🛑 **Do not use `--refresh-templates` to look:** it is not a dry run — it writes first and reports
 afterwards, so by the time you read the list your shipped-template edits are already gone.
 
@@ -7745,7 +7751,8 @@ of each existing box's `~/.claude/settings.json`:
 
 Or delete the host copy and run `kanibako setup --refresh-templates`, which lays the new file because
 it is then absent. That discards your edits to the file, and the refresh also replaces edits to other
-shipped templates; plain `kanibako setup` is not enough (see
+shipped templates. Plain `kanibako setup` re-lays it without asking only when it would update no
+shipped file; otherwise it prompts, and a headless run skips (see
 "A store set up by `1.8.0rc2` has a broken comms hook, and upgrading does not replace it").
 
 ### A login shell in an older box cannot find `claude`

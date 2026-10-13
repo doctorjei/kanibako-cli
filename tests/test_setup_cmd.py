@@ -763,7 +763,8 @@ def test_template_step_non_tty_kept_only_completes_and_keeps(
     """A KEPT file is never written on any path, so it needs no consent either.
 
     The user's copy of a user-owned store file differs from the shipped one; the
-    step reports it, leaves it alone, and does not skip.
+    step reports it as up to date (CURRENT, not "installed (0 added)"), leaves it
+    alone, and does not skip.
     """
     _stage_templates()
     std = _resolve_std()
@@ -772,9 +773,12 @@ def test_template_step_non_tty_kept_only_completes_and_keeps(
     monkeypatch.setattr("sys.stdin.isatty", lambda: False)
     monkeypatch.setattr("builtins.input", _boom_input)
     outcome = setup_cmd._run_template_refresh(_ns())
-    assert outcome is setup_cmd.TemplateStep.REFRESHED
+    assert outcome is setup_cmd.TemplateStep.CURRENT
     assert edited.read_text() == '{"edited": true}\n'
-    assert "Kept YOUR copy" in capsys.readouterr().out
+    out = capsys.readouterr().out
+    assert "Templates are up to date." in out
+    assert "Kept YOUR copy" in out
+    assert "installed" not in out
 
 
 def test_setup_refresh_templates_flag_parsed(monkeypatch):
