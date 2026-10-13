@@ -12408,6 +12408,35 @@ class TestShellAtALiveBoxResolvesFromTheRunningImage(_RunningBoxDriver):
         m.runtime.exec.assert_not_called()
 
 
+class TestReauthAtALiveBox(_RunningBoxDriver):
+    """``agent reauth`` (``setup_only``) needs a NEW container for its in-box setup,
+    which a live box blocks.  The refusal names reauth and its cure, and comes
+    before the rig prep only that container would need."""
+
+    def test_refusal_names_reauth_and_its_cure(self, start_mocks, capsys):
+        with start_mocks() as m, patch(
+            "kanibako.commands.start.resolve_rig",
+        ) as m_rig:
+            self._running(m)
+            rc = self._start(persistent=False, setup_only=True)
+            m_rig.assert_not_called()
+            m.runtime.run.assert_not_called()
+        err = capsys.readouterr().err
+        assert rc == 1
+        assert "'kanibako agent reauth' cannot run its in-box setup" in err
+        assert "Stop it:   kanibako stop " in err
+        assert "Then run:  kanibako agent reauth " in err
+
+    def test_a_stopped_box_still_runs_the_setup(self, start_mocks, capsys):
+        """Control: the refusal is about liveness alone."""
+        with start_mocks(), patch(
+            "kanibako.commands.start.resolve_rig",
+        ) as m_rig:
+            self._start(persistent=False, setup_only=True)
+            assert m_rig.called
+        assert "agent reauth" not in capsys.readouterr().err
+
+
 class TestRunningBoxOverrideGate(_RunningBoxDriver):
     """Overrides that cannot be integrated into a live box are REFUSED BY NAME
     (Jei 2026-08-05: "could this setting work without restarting the box and

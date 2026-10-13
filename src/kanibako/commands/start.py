@@ -3281,6 +3281,18 @@ def _run_container(
     # at a live box, and that invocation is precisely one where the box IS
     # running but a reattach is NOT what would happen.
     box_running = not restart_stop and runtime.is_running(live_name)
+    # ``agent reauth`` runs its in-box setup in a NEW container, which a live box
+    # blocks.  Say so here, by name, before the rig prep and persona pre-flight
+    # that only that container would need.
+    if setup_only and box_running:
+        print(
+            f"Error: Box '{proj.name}' is running, so 'kanibako agent reauth' "
+            "cannot run its in-box setup, which needs a new container.\n"
+            f"  Stop it:   kanibako stop {project_cure_ref(proj)}\n"
+            f"  Then run:  kanibako agent reauth {project_cure_ref(proj)}",
+            file=sys.stderr,
+        )
+        return 1
     reattach_running = False
     stored_agent: str | None = None
     if persistent and box_running:
