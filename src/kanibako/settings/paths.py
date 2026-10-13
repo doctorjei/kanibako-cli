@@ -2369,15 +2369,13 @@ def resolve_workset_project(ws: WorksetSpec, project_name: str, std: StandardPat
             # ⚑ A kill between the membership write and the marker drop leaves a forced
             # connect's marker; drop it now, BEFORE the clear, so a second kill replays it.
             if pending.get("op") == "connect" and registered_workspace is not None:
-                from kanibako.launch.box_resolve import stores_standalone_registry_null
-
                 # ⚑ The replay never raises: an unreadable file keeps its marker, warned,
                 # and the entry still clears (a stuck entry is worse than a kept marker).
                 # RuntimeError: Python 3.11's resolve() on a link loop.
                 root = Path(registered_workspace)
                 try:
                     root = root.resolve()
-                    marked = stores_standalone_registry_null(root)
+                    marked = _is_standalone_meta_dir(root)
                 except (ConfigError, OSError, RuntimeError) as exc:
                     marked = False
                     # A ConfigError already names the file; the path goes in once.
