@@ -154,6 +154,7 @@ from kanibako.settings.settings_prefs import (
 from kanibako.settings.settings_resolve import (
     ResolveCtx,
     SettingsError,
+    data_expr,
     expand_expr,
     is_verbatim_text,
     literal_expr,
@@ -3556,8 +3557,11 @@ def resolve_box_dest(raw: str, box_ctx: ResolveCtx) -> str:
 
     An escape survives the deferral verbatim and unescapes here, so a literal ``\\`` or
     ``~`` the user meant stays one. The build already resolved every ``{key}``-ref.
+    BARE-REF-GUARD: *raw* is the build's output, so it enters as
+    :func:`~kanibako.settings.settings_resolve.data_expr`: the guard already read the
+    user's text there, and a referent's value spliced into it is data.
     """
-    return expand_expr(raw, space="guest", ctx=box_ctx, lookup=_no_lookup)
+    return expand_expr(data_expr(raw), space="guest", ctx=box_ctx, lookup=_no_lookup)
 
 
 def snapshot_category_entries(

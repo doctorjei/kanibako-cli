@@ -62,4 +62,6 @@ class _UniqueKeyLoader(yaml.SafeLoader):
     def construct_document(self, node: yaml.Node) -> object
 
     def _check_duplicates(self, node: yaml.Node, where: str, seen_nodes: set[int]) -> None
+
+class _SafeDumper(yaml.SafeDumper):
 ```

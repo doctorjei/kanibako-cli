@@ -3,7 +3,8 @@
 A bare ``@a.b.c`` naming a declared key, a bare ``$NAME`` naming a known variable,
 ``@{a.b.c}``, ``${NAME}``, and a bare run whose leading dotted part is a declared key are
 refused by name, and the cure names the braced spelling. Any other ``@`` or ``$`` is text.
-``\\@`` and ``\\$`` are no longer escapes. Braced-refs step 5, B1b.
+``\\@`` and ``\\$`` are no longer escapes. The guard reads text a user wrote; data the code
+feeds the expander (``literal_expr``) resolves as written. Braced-refs step 5, B1b.
 """
 
 from __future__ import annotations
@@ -18,12 +19,18 @@ import pytest
 from kanibako.settings.keystore import KeyStore
 from kanibako.settings.settings_configset import Error, scan_tokens, validate_config_set
 from kanibako.settings.settings_expand import expand
+from kanibako.settings.agent_config import is_self_resolving, is_unambiguous_path_value
+from kanibako.settings.config_io import dump_doc, load_doc
+from kanibako.settings.paths import BoxMode
+from kanibako.settings.settings_launch import _persona_partial, resolve_box_dest
 from kanibako.settings.settings_resolve import (
     ResolveCtx,
     SettingsError,
     expand_expr,
     literal_expr,
 )
+from kanibako.settings.workset_dirkeys import resolve_workset_dir_key
+from tests.support.early import early_record
 
 REPO_SRC = Path(__file__).resolve().parents[2] / "src"
 
@@ -98,6 +105,8 @@ def test_backslash_at_and_dollar_are_illegal_escapes(expr) -> None:
         _host(expr)
     assert f"Illegal escape '{expr[expr.index(chr(92)):][:2]}'" in str(ei.value)
     assert "only \\\\ and \\~ escape" in str(ei.value), str(ei.value)
+    char = expr[expr.index(chr(92)) + 1]
+    assert f"write '\\{char}' as '{char}'" in str(ei.value), str(ei.value)
     with pytest.raises(ValueError):
         scan_tokens(expr)
 
@@ -220,3 +229,119 @@ def test_resetting_the_guarded_key_is_the_repair(cli) -> None:
     assert proc.returncode == 0, proc.stderr
     assert "@system.agent" not in path.read_text()
     assert cli("system", "show", "--effective").returncode == 0
+
+
+# The guard reads text a USER wrote. A value the code builds from data -- a host path, a
+# persona value, a probed source -- enters as ``literal_expr`` and resolves as written:
+# never newly refuse a value that resolves today.
+_DATA = [
+    "/tmp/x/q@box.image",
+    "/p/p$TERM",
+    "$XDG_CONFIG_HOME/claude",
+    "@{box.image}",
+    "x${TERM}y",
+    "/l/@meta.box.name.jsonl",
+]
+
+
+@pytest.mark.parametrize("text", _DATA)
+def test_code_built_data_bypasses_the_guard(text) -> None:
+    assert _host(literal_expr(text)) == text
+    assert _host(str(literal_expr(text))) == text  # str() keeps the data mark
+
+
+@pytest.mark.parametrize("text", _DATA)
+def test_deferred_data_survives_the_box_pass(text) -> None:
+    assert resolve_box_dest(_host(literal_expr(text), defer=True), _ctx()) == text
+
+
+def test_a_spliced_referent_is_data_and_a_deferred_variable_still_expands() -> None:
+    deferred = expand_expr(
+        "/d/{$TERM}/{box.image}", space="host", ctx=_ctx(), defer_env=True,
+        lookup=lambda ref, chain: literal_expr({"box.image": "q@box.image$TERM"}[ref]),
+    )
+    assert resolve_box_dest(deferred, _ctx()) == "/d/xterm/q@box.image$TERM"
+
+
+@pytest.mark.parametrize("text", _DATA)
+def test_the_same_text_typed_by_a_user_is_refused(text) -> None:
+    with pytest.raises(SettingsError, match="Old reference spelling"):
+        _host(text)
+
+
+def test_a_persona_value_is_delivered_as_written() -> None:
+    value = "$XDG_CONFIG_HOME/claude"
+    out = expand(_persona_partial("claude", {"env.FOO": value, "model": value}), _ctx())
+    assert dict(out["agent"]["claude"]["env"]) == {"FOO": value}
+    assert out["agent"]["claude"]["model"] == value
+
+
+def test_a_data_value_dumps_as_a_plain_string(tmp_path) -> None:
+    path = tmp_path / "s.yaml"
+    dump_doc(path, {"k": literal_expr("/x/@box.image")})
+    assert load_doc(path) == {"k": "/x/@box.image"}
+
+
+# A leading ``@`` or ``$`` is no sigil: ``@foo/x`` and ``$HOME/x`` are bare relative paths.
+# A leading OLD spelling passes the predicates so the expander names its braced cure.
+@pytest.mark.parametrize(("value", "verdict"), [
+    ("@foo/x", False), ("$HOME/x", False), ("$5", False), ("@", False),
+    ("@box.image/x", True), ("$XDG_DATA_HOME/x", True),
+    ("~/x", True), ("/x", True), ("{meta.box.path}/x", True),
+])
+def test_the_path_predicates_read_a_leading_at_and_dollar_as_text(value, verdict) -> None:
+    assert is_self_resolving(value) is verdict
+    assert is_unambiguous_path_value(value) is verdict
+
+
+def test_a_workset_dir_key_at_a_leading_at_is_refused_as_bare_relative(tmp_path) -> None:
+    early = early_record(tmp_path, mode=BoxMode.primary)
+    with pytest.raises(SettingsError, match="BARE RELATIVE"):
+        resolve_workset_dir_key(Path("/tmp/ws"), "@foo/logs", "logs", key="logs", early=early)
+
+
+def test_create_takes_a_path_holding_an_old_spelling(cli, tmp_path) -> None:
+    for name, leaf in (("qat", "q@box.image"), ("pat", "p$TERM")):
+        project = tmp_path / leaf
+        project.mkdir()
+        proc = cli("create", str(project), "--name", name)
+        assert proc.returncode == 0, proc.stderr
+        info = cli("box", "info", name)
+        assert info.returncode == 0, info.stderr
+
+
+@pytest.mark.parametrize("args", [
+    ("box", "set", "qat", "box.canon=@foo/x"),
+    ("box", "set", "qat", "box.canon=$HOME/x"),
+    ("workset", "set", "default", "workset.logs=@foo/logs/{meta.workset.path}"),
+])
+def test_a_leading_at_or_dollar_path_is_refused_at_set(cli, tmp_path, args) -> None:
+    project = tmp_path / "proj"
+    project.mkdir()
+    assert cli("create", str(project), "--name", "qat").returncode == 0
+    proc = cli(*args)
+    assert proc.returncode == 1, proc.stdout + proc.stderr
+    assert "BARE RELATIVE" in proc.stderr, proc.stderr
+
+
+@pytest.mark.parametrize(("value", "cure"), [
+    ("box.canon=$XDG_DATA_HOME/x", "write '{$XDG_DATA_HOME}'"),
+    ("box.canon=@box.image/x", "write '{box.image}'"),
+])
+def test_a_leading_old_spelling_path_names_its_braced_cure(cli, tmp_path, value, cure) -> None:
+    project = tmp_path / "proj"
+    project.mkdir()
+    assert cli("create", str(project), "--name", "qat").returncode == 0
+    proc = cli("box", "set", "qat", value)
+    assert proc.returncode == 1, proc.stdout + proc.stderr
+    assert cure in proc.stderr, proc.stderr
+
+
+@pytest.mark.parametrize(("value", "cure"), [
+    ("system.env.E=@box.image", "write '{box.image}'"),
+    ("system.env.E=$TERM", "write '{$TERM}'"),
+])
+def test_a_typed_old_spelling_is_still_refused(cli, value, cure) -> None:
+    proc = cli("system", "set", value)
+    assert proc.returncode == 1, proc.stderr
+    assert cure in proc.stderr, proc.stderr

@@ -299,9 +299,21 @@ def load_doc(path: Path | None) -> dict:
     return data
 
 
+class _SafeDumper(yaml.SafeDumper):
+    """``yaml.SafeDumper`` that writes a ``str`` SUBCLASS as a plain string.
+
+    BARE-REF-GUARD: ``settings_resolve.DataExpr`` is a ``str`` subclass, which the stock
+    safe representer refuses outright.
+    """
+
+
+_SafeDumper.add_multi_representer(str, yaml.SafeDumper.represent_str)
+
+
 def _dump_text(data: dict) -> str:
-    return yaml.safe_dump(
-        data, sort_keys=False, default_flow_style=False, allow_unicode=True,
+    return yaml.dump(
+        data, Dumper=_SafeDumper, sort_keys=False, default_flow_style=False,
+        allow_unicode=True,
     )
 
 

@@ -195,7 +195,7 @@ caller needing a real `Path` composes `agents_root / store_dirname(node) / <rel>
 `root_relative_source(src, root_ref)` is THE declaration-time rooting, implemented ONCE (spec §2a): a
 self-resolving source is emitted VERBATIM, and a bare relative leaf becomes `<root_ref>/<src>`.
 
-⚑ An ABSOLUTE (or `~` / `$var` / `@`-ref) source in an abstract category is LEGAL and is NOT
+⚑ An ABSOLUTE (or `~`-rooted or braced-reference) source in an abstract category is LEGAL and is NOT
 root-joined. The root is a **default for relative sources, not a universal law** (spec §2a).
 
 It is applied ONLY by the ABSTRACT-category declaration loaders. `bindings.{ro,rw}` take no root at
@@ -204,16 +204,19 @@ declared.
 
 ### `is_self_resolving(src)` and the escape cases
 
-`_SELF_RESOLVING_TOKENS` is the tuple of TOKEN prefixes that make a `host_src` resolve on its own when
-UNESCAPED (spec §2a): `~`, `$`, `@`. A leading `/` is handled separately.
-
-`is_self_resolving` is true iff *src* is ABSOLUTE, begins with an unescaped `~` / `$` / `@`, or
-begins with a braced reference `{…}` (a key `{a.b}` or a variable `{$NAME}`, parsed by
+`is_self_resolving` is true iff *src* is ABSOLUTE, begins with an unescaped `~`, or begins with a
+braced reference `{…}` (a key `{a.b}` or a variable `{$NAME}`, parsed by
 `settings_resolve.match_braced`). Anything else is a BARE RELATIVE leaf: meaningful only under a
-root, and a DEFECT wherever no root exists.
+root, and a DEFECT wherever no root exists. `@` and `$` are ordinary characters (keyspec § 0
+"References"), so `@foo/x` and `$HOME/x` are bare relative leaves.
+
+⚑ **BARE-REF-GUARD:** a value that OPENS with an old reference spelling the guard refuses
+(`settings_resolve.starts_bare_reference`: `@box.image/x`, `$XDG_DATA_HOME/x`) answers True here
+and in `is_unambiguous_path_value`, so the expander refuses it by name with its braced cure rather
+than calling it a bare relative path. Both arms go with the guard.
 
 ⚑ **Escapes are read the way the RESOLVER reads them.** This is why the test cannot be a plain
-first-character check: the token prefixes count only when they are NOT escaped, so `\~foo` (the
+first-character check: `~` counts only when it is NOT escaped, so `\~foo` (the
 literal `~foo`, a plain relative dir that merely starts with a tilde) is a bare relative leaf.
 `\/` is no escape (keyspec § 0 "References"), so `\/foo` is not absolute here and its expansion
 refuses it.
@@ -231,9 +234,9 @@ settings file stores.
 
 ### `is_unambiguous_path_value(value)`
 
-True for an absolute path, `~`, an `@`-ref, a `$XDG_*` variable, or a braced reference that is a key
-(`{a.b}`) or an `XDG_*` variable (`{$XDG_DATA_HOME}`). Anything else — a bare leaf, `./x`, `../x`,
-a non-XDG variable — is ambiguous.
+True for an absolute path, `~`, or a braced reference that is a key (`{a.b}`) or an `XDG_*`
+variable (`{$XDG_DATA_HOME}`). Anything else — a bare leaf, `./x`, `../x`, `@foo/x`, `$HOME/x`, a
+non-XDG variable — is ambiguous.
 
 ⚑⚑ **THE TEST IS ON THE STORED SPELLING, BEFORE EXPANSION, and that is the load-bearing part.**
 [R147] rules on what is a legal value to have WRITTEN, so `{$XDG_DATA_HOME}/kanibako` is legal even in
@@ -246,9 +249,9 @@ and must not be merged.
 ⚑ **It is NARROWER than `is_self_resolving`, on purpose, and the difference is `{$VAR}`.** That
 predicate rules on a BIND SOURCE, where a declaration may name any variable the launch namespace
 supplies. This one rules on a path a USER typed, and the keyspace's non-XDG variables (`{$AGENT}`,
-`{$WORKSET}`) expand to a bare NAME — so `{$AGENT}/logs` is exactly as relative as `logs`. A `$` is
-therefore PARSED (`settings_resolve.match_var`, or `match_braced` for `{$…}`) and the variable's own
-name tested for the `XDG_` prefix; a malformed `$…` or `{…}` answers False rather than raising. A
+`{$WORKSET}`) expand to a bare NAME — so `{$AGENT}/logs` is exactly as relative as `logs`. A `{$…}`
+is therefore PARSED (`settings_resolve.match_braced`) and the variable's own name tested for the
+`XDG_` prefix; a malformed `{…}` answers False rather than raising. A
 leading escape falls the way it does above: `\~foo` is a plain relative dir, and `\/foo` is no
 absolute path.
 

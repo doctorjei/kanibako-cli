@@ -43,7 +43,8 @@ ExprTokenKind = Literal['text', 'home', 'escape', 'brace', 'ref', 'var']
 ## Functions
 ```
 def expand_guest_home(value: str) -> str
-def literal_expr(text: str) -> str
+def data_expr(text: str) -> DataExpr
+def literal_expr(text: str) -> DataExpr
 def literal_map(values: Mapping[str, str]) -> dict[str, str]
 def is_verbatim_text(path: Sequence[str]) -> bool
 def split_bind(value: str) -> tuple[str, str | None]
@@ -56,10 +57,10 @@ def unrooted_source_message(entry: str, src: str, category: str, *, unrooted_bec
 def refuse_scalar_at_table_key(key: str, value: Any, *, where: str | None=None) -> None
 def check_bind_map(raw: Mapping[str, Any], *, category: str, where: str | None=None, declared: bool=True, pref_agent: str | None=None) -> None
 def check_bind_tables(tables: Mapping[str, Any], *, root: str, scope: str, contained: Sequence[str], where: str | None) -> None
-def match_var(expr: str, i: int) -> tuple[str, int]
 def match_braced(expr: str, i: int) -> tuple[Literal['ref', 'var'], str, int] | None
 def is_known_var(name: str) -> bool
 def refuse_bare_reference(expr: str, i: int) -> None
+def starts_bare_reference(expr: str) -> bool
 def iter_expr_tokens(expr: str) -> Iterator[ExprToken]
 def expand_expr(expr: str, *, space: Literal['host', 'guest'], ctx: ResolveCtx, lookup: Callable[[str, tuple[str, ...]], str], chain: tuple[str, ...]=(), defer_env: bool=False) -> str
 def resolve_var(name: str, ctx: ResolveCtx) -> str | _Unset
@@ -73,7 +74,6 @@ def _brace_literal(c: str) -> str
 def _check_node_binds(table: Mapping[str, Any], *, where: str | None) -> None
 def _check_dest_map(raw: Mapping[str, Any], *, category: str, where: str | None) -> None
 def _in_file(where: str | None) -> str
-def _match_sigil(expr: str, i: int, name_re: re.Pattern[str], noun: str) -> tuple[str, int]
 def _is_declared_key(name: str) -> bool
 def _brace_refusal(expr: str, i: int) -> ExprSyntaxError
 def _resolve_var(name: str, ctx: ResolveCtx) -> str
@@ -112,6 +112,11 @@ class ResolvedValue:
     level: str
     is_default: bool = False
     terminal: bool = False
+
+class DataExpr(str):
+    __slots__ = ()
+
+    def __str__(self) -> str
 
 @dataclass(frozen=True)
 class ExprToken:

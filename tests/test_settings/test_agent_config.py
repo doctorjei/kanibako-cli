@@ -105,8 +105,9 @@ class TestUnambiguousPathValue:
     """
 
     @pytest.mark.parametrize("value", [
-        "/abs", "~/x", "~", "$XDG_DATA_HOME/x", "${XDG_CACHE_HOME}/x",
-        "@meta.workset.path/x", "@{config.data}/x",
+        "/abs", "~/x", "~", "{$XDG_DATA_HOME}/x", "{meta.workset.path}/x", "{config.data}/x",
+        # BARE-REF-GUARD: an old spelling passes on, so the expander names its braced cure.
+        "$XDG_DATA_HOME/x", "${XDG_CACHE_HOME}/x", "@meta.workset.path/x", "@{config.data}/x",
     ])
     def test_legal_shapes(self, value):
         assert is_unambiguous_path_value(value) is True
@@ -114,11 +115,12 @@ class TestUnambiguousPathValue:
     @pytest.mark.parametrize("value", [
         "leaf", "sub/dir", "./here", "../sibling", "\\~foo", "",
         "\\/abs",  # no escape (keyspec "References"): the expansion refuses it
+        "@foo/x", "$HOME/x",  # ``@`` and ``$`` are ordinary characters
     ])
     def test_ambiguous_shapes(self, value):
         assert is_unambiguous_path_value(value) is False
 
-    @pytest.mark.parametrize("value", ["$AGENT/logs", "$WORKSET/x", "$HOME/x"])
+    @pytest.mark.parametrize("value", ["{$AGENT}/logs", "{$WORKSET}/x", "{$TERM}/x"])
     def test_a_non_xdg_variable_is_a_source_root_but_not_a_path_value(self, value):
         # ⚑ The contrast that justifies a second predicate existing at all.
         assert is_self_resolving(value) is True

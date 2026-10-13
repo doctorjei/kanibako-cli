@@ -19,7 +19,7 @@ from typing import Final, Mapping
 from kanibako.agent_ref import display_agent_ref
 from kanibako.settings.config import AGENT_META_FILE
 from kanibako.settings.settings_categories import ABSTRACT_CATEGORIES, DECLARATION_ROOT_REF
-from kanibako.settings.settings_resolve import SettingsError, match_braced, match_var
+from kanibako.settings.settings_resolve import match_braced, starts_bare_reference
 from kanibako.utils import logical_cwd
 
 
@@ -161,19 +161,18 @@ def agent_category_root_ref(agent: str, category: str) -> str:
     return category_root_ref("agent", category, agent=agent)
 
 
-#: TOKEN prefixes that make a ``host_src`` resolve on its own when UNESCAPED
-#: (spec §2a). A leading ``/`` is handled separately in :func:`is_self_resolving`.
-_SELF_RESOLVING_TOKENS: Final[tuple[str, ...]] = ("~", "$", "@")
-
-
 def is_self_resolving(src: str) -> bool:
-    r"""Whether *src* resolves on its own — absolute, an unescaped ``~``/``$``/``@``, or a braced reference.
+    r"""Whether *src* resolves on its own — absolute, an unescaped leading ``~``, or a braced reference.
 
-    ⚑ NOT a plain first-char test: the tokens count only UNESCAPED, so ``\~foo`` is a
+    ⚑ NOT a plain first-char test: ``~`` counts only UNESCAPED, so ``\~foo`` is a
     plain relative dir.  ``\/`` is no escape (keyspec "References"), so a value that
     starts with it is refused where it is expanded, never read as absolute here.
+    ``@`` and ``$`` are ordinary characters (keyspec "References"): ``@foo/x`` and
+    ``$HOME/x`` are bare relative paths.
     """
-    if src[:1] in _SELF_RESOLVING_TOKENS:
+    if src[:1] == "~":
+        return True
+    if starts_bare_reference(src):  # BARE-REF-GUARD: the expander refuses it with its cure.
         return True
     if src[:1] == "{" and match_braced(src, 0) is not None:
         return True
@@ -199,7 +198,9 @@ def is_unambiguous_path_value(value: str) -> bool:
     ⚑ A leading escape falls the same way it does there: ``\~foo`` is a plain
     relative dir.
     """
-    if value[:1] in ("~", "@"):
+    if value[:1] == "~":
+        return True
+    if starts_bare_reference(value):  # BARE-REF-GUARD: the expander refuses it with its cure.
         return True
     if value[:1] == "{":
         braced = match_braced(value, 0)
@@ -207,12 +208,6 @@ def is_unambiguous_path_value(value: str) -> bool:
             return False
         kind, name, _ = braced
         return kind == "ref" or name.startswith("XDG_")
-    if value[:1] == "$":
-        try:
-            name, _ = match_var(value, 0)
-        except SettingsError:
-            return False
-        return name.startswith("XDG_")
     return value[:1] == "/"
 
 
@@ -307,7 +302,7 @@ def root_relative_source(src: str, root_ref: str) -> str:
     """Root a BARE RELATIVE *src* under *root_ref*; return it unchanged otherwise.
 
     THE declaration-time rooting, implemented ONCE (spec §2a).  ⚑ An ABSOLUTE (or
-    ``~``/``$var``/``@``-ref) source is LEGAL and is NOT joined — the root is a
+    ``~``-rooted or braced-reference) source is LEGAL and is NOT joined — the root is a
     DEFAULT FOR RELATIVE SOURCES, not a universal law.  Applied ONLY by the
     ABSTRACT-category declaration loaders; ``bindings.{ro,rw}`` take no root at any
     scope, so a relative source there is a DEFECT and is refused where declared.

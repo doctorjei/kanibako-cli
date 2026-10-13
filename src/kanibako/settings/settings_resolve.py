@@ -29,8 +29,8 @@ from typing import Any, Literal
 # is_terminal_category_tail}``, because a map's own checks need the keyspace to decide what a map
 # IS and every reader of one must run them. ⚑ THE CYCLE IS MEASURED, NOT ASSUMED: hoisting
 # ``agent_config.is_self_resolving`` to module level raises ``ImportError: cannot import name
-# 'SettingsError' from partially initialized module 'kanibako.settings.settings_resolve'``, because
-# ``agent_config`` imports ``SettingsError`` from here at ITS module level. The other two modules
+# 'match_braced' from partially initialized module 'kanibako.settings.settings_resolve'``, because
+# ``agent_config`` imports ``match_braced`` from here at ITS module level. The other two modules
 # measure clean at import time and stay call-time anyway: a module-level edge is a standing claim
 # about two modules' relative import order, which only the imported module can honor.
 # BARE-REF-GUARD: the one-release guard adds a second call-time edge,
@@ -258,15 +258,42 @@ def _brace_literal(c: str) -> str:
     return c * 2 if c in "{}" else c
 
 
-def literal_expr(text: str) -> str:
+# BARE-REF-GUARD: the guard's data mode. Removing the guard: delete this class and return
+# a plain ``str`` from :func:`literal_expr` and :func:`data_expr`'s callers.
+class DataExpr(str):
+    """An expression the CODE built from data, never user-authored settings text.
+
+    :func:`iter_expr_tokens` reads it with the same grammar but skips
+    :func:`refuse_bare_reference`: the one-release guard is for text a user wrote, and
+    a host path, a persona value, or a probed source holding ``@box.image`` or
+    ``$TERM`` is data that resolves as written (keyspec "References"). Built by
+    :func:`literal_expr`, and by :func:`data_expr` for a deferred value the host pass
+    already tokenized. ``str()`` keeps the mark; a concatenation or a slice returns a
+    plain ``str``, which the guard reads as user text again.
+    """
+
+    __slots__ = ()
+
+    def __str__(self) -> str:
+        return self
+
+
+def data_expr(text: str) -> DataExpr:
+    """*text* as a :class:`DataExpr`: an expression whose tokens the guard already passed."""
+    return DataExpr(text)
+
+
+def literal_expr(text: str) -> DataExpr:
     """The expression that expands to *text* VERBATIM: ``\\`` and ``~`` backslashed, braces
-    doubled.
+    doubled, as a :class:`DataExpr`.
 
     For a host path a floor hands the expander as a value (a ``{`` in a directory name is
     data, not a token). Host-space expansion removes every escape; a deferred scan keeps
     them, so the box pass reads the same text.
     """
-    return "".join(f"\\{c}" if c in _EXPR_SIGNIFICANT else _brace_literal(c) for c in text)
+    return DataExpr(
+        "".join(f"\\{c}" if c in _EXPR_SIGNIFICANT else _brace_literal(c) for c in text)
+    )
 
 
 def literal_map(values: Mapping[str, str]) -> dict[str, str]:
@@ -653,38 +680,6 @@ def _in_file(where: str | None) -> str:
     return f" (in settings file {where})" if where is not None else ""
 
 
-def match_var(expr: str, i: int) -> tuple[str, int]:
-    """Parse ``$VAR`` / ``${VAR}`` at index *i*, returning ``(name, end_index)``.
-
-    ⚑ PRECONDITION: ``expr[i] == "$"`` — NOT re-verified here; the caller has already dispatched.
-    ⚑ The old bare/``${...}`` spelling: only ``agent_config`` and ``config_interface`` still
-    read it (braced-refs plan B1c retires them); the value tokenizer does not.
-    """
-    return _match_sigil(expr, i, _VAR_NAME_RE, "variable reference")
-
-
-def _match_sigil(
-    expr: str, i: int, name_re: re.Pattern[str], noun: str,
-) -> tuple[str, int]:
-    """The bare / ``{``-after-sigil scan :func:`match_var` reads.
-
-    The sigil is ``expr[i]``; *name_re* matches the name after it and *noun* names the
-    family in the malformed-reference refusal.
-    """
-    n = len(expr)
-    braced = i + 1 < n and expr[i + 1] == "{"
-    name_start = i + 2 if braced else i + 1
-    m = name_re.match(expr, name_start)
-    if m is None:
-        raise ExprSyntaxError(f"Malformed {noun} at: {expr[i:]!r}")
-    end = m.end()
-    if braced:
-        if end >= n or expr[end] != "}":
-            raise ExprSyntaxError(f"Unterminated {{...}} reference: {expr[i:]!r}")
-        end += 1
-    return m.group(0), end
-
-
 def match_braced(expr: str, i: int) -> tuple[Literal["ref", "var"], str, int] | None:
     """Parse ``{a.b.c}`` (a key) or ``{$NAME}`` (a variable) at index *i*.
 
@@ -778,6 +773,24 @@ def refuse_bare_reference(expr: str, i: int) -> None:
             f"now: write '{cure}'."
         )
 
+
+# BARE-REF-GUARD: delete with :func:`refuse_bare_reference`, and the callers' arms with it.
+def starts_bare_reference(expr: str) -> bool:
+    """Whether *expr* OPENS with an old reference spelling :func:`refuse_bare_reference` refuses.
+
+    For a predicate that reads a value's leading anchor (``agent_config``): it passes
+    such a value on, so the expander refuses it by name with the braced cure, rather
+    than calling it a bare relative path.
+    """
+    if expr[:1] not in ("@", "$"):
+        return False
+    try:
+        refuse_bare_reference(expr, 0)
+    except ExprSyntaxError:
+        return True
+    return False
+
+
 ExprTokenKind = Literal["text", "home", "escape", "brace", "ref", "var"]
 
 
@@ -823,6 +836,8 @@ def iter_expr_tokens(expr: str) -> Iterator[ExprToken]:
     ``{{``/``}}`` are literal braces, a leading ``~`` is a ``home`` token, a TRAILING lone
     backslash is literal text, and ``@`` and ``$`` are text.
     """
+    # BARE-REF-GUARD: a :class:`DataExpr` is code-built data, not user text.
+    guard = not isinstance(expr, DataExpr)
     n = len(expr)
     i = 0
     if n and expr[0] == "~":
@@ -836,7 +851,8 @@ def iter_expr_tokens(expr: str) -> Iterator[ExprToken]:
             continue
         if c in "@$":
             # BARE-REF-GUARD: ``@`` and ``$`` are text once the guard passes them.
-            refuse_bare_reference(expr, i)
+            if guard:
+                refuse_bare_reference(expr, i)
             i += 1
             continue
         if start < i:
@@ -849,9 +865,15 @@ def iter_expr_tokens(expr: str) -> Iterator[ExprToken]:
                 yield ExprToken("escape", expr[i + 1], i, i + 2)
                 i += 2
             else:
+                ordinary = expr[i + 1]
+                # ``\@``/``\$`` escaped a sigil before ``@`` and ``$`` became ordinary.
+                cure = (
+                    f" '{ordinary}' is an ordinary character: write '\\{ordinary}' as "
+                    f"'{ordinary}'." if ordinary in "@$" else ""
+                )
                 raise ExprSyntaxError(
                     f"Illegal escape '{expr[i:i + 2]}' at: {expr[i:]!r} — only "
-                    f"\\\\ and \\~ escape; write a literal '\\' as '\\\\'."
+                    f"\\\\ and \\~ escape; write a literal '\\' as '\\\\'.{cure}"
                 )
         elif c in "{}":
             if expr[i + 1:i + 2] == c:

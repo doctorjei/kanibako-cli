@@ -11,7 +11,6 @@ Prose for these symbols lives in `llm-docs/kanibako/settings/agent_config.py.md`
 AGENT_CATEGORY_DIRNAME: Final[Mapping[str, str]] = {category: category for category in ABSTRACT_CATEGORIES}
 DEFAULT_ROOT_LABEL = "this key's default root"
 DECLARATION_ROOT_LABEL = "this key's scope root"
-_SELF_RESOLVING_TOKENS: Final[tuple[str, ...]] = ('~', '$', '@')
 ```
 
 ## Functions

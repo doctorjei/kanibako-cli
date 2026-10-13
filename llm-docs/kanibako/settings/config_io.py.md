@@ -167,7 +167,9 @@ temp file and leaves the original intact.
 
 Dump options are pinned: `sort_keys=False` (authoring order survives a round-trip),
 `default_flow_style=False` (block style), `allow_unicode=True` (non-ASCII is emitted literally
-rather than `\uXXXX`-escaped).
+rather than `\uXXXX`-escaped). The dumper is `_SafeDumper`, a `yaml.SafeDumper` that writes a `str`
+SUBCLASS as a plain string (BARE-REF-GUARD: `settings_resolve.DataExpr`); the stock safe
+representer refuses a subclass outright.
 
 ```python
 def dump_doc_commented(path: Path, data: dict, sections: tuple[str, ...], key: str, comment: str) -> None

@@ -18,7 +18,6 @@ from kanibako.settings.settings_resolve import (
     expand_guest_home,
     literal_expr,
     match_braced,
-    match_var,
     resolve_value,
     split_bind,
     unpack_bind,
@@ -453,38 +452,6 @@ def test_expand_braced_ref_cycle_via_lookup_reentry_raises() -> None:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize(
-    "expr,name,end",
-    [
-        ("{a.b.c}", "a.b.c", 7),  # end is PAST the closing brace.
-        ("{a.b.c}/x", "a.b.c", 7),
-        ("{a.b.c}.jsonl", "a.b.c", 7),
-        ("{a}", "a", 3),
-    ],
-)
-def test_match_braced_name_and_end(expr: str, name: str, end: int) -> None:
-    assert match_braced(expr, 0) == ("ref", name, end)
-
-
-def test_match_braced_at_an_offset() -> None:
-    # Callers scan left-to-right and hand it the index OF the ``{``.
-    assert match_braced("pre-{a.b}-post", 4) == ("ref", "a.b", 9)
-
-
-@pytest.mark.parametrize(
-    "expr,name,end",
-    [
-        ("$AGENT", "AGENT", 6),
-        ("$XDG_DATA_HOME/x", "XDG_DATA_HOME", 14),
-        ("${XDG_DATA_HOME}", "XDG_DATA_HOME", 16),  # end is PAST the brace.
-        ("${A}b", "A", 4),
-    ],
-)
-def test_match_var_name_and_end(expr: str, name: str, end: int) -> None:
-    # The old ``$`` spelling's parser, still read by B1c's callers; not the tokenizer.
-    assert match_var(expr, 0) == (name, end)
-
-
 def test_the_tokenizer_reads_dollar_as_text() -> None:
     """``$`` is an ordinary character: no ``var`` token, and ``scan_tokens`` finds none."""
     from kanibako.settings.settings_configset import scan_tokens
@@ -493,15 +460,6 @@ def test_the_tokenizer_reads_dollar_as_text() -> None:
     for expr in ("$FOO", "a$FOO/x", "cost $5"):
         assert [(t.kind, t.value) for t in iter_expr_tokens(expr)] == [("text", expr)]
         assert scan_tokens(expr) == ([], [])
-
-
-@pytest.mark.parametrize(
-    "expr,match",
-    [("$", "Malformed"), ("${", "Malformed"), ("$/x", "Malformed"), ("${X", "Unterminated")],
-)
-def test_match_var_malformed_raises(expr: str, match: str) -> None:
-    with pytest.raises(SettingsError, match=match):
-        match_var(expr, 0)
 
 
 def test_expand_substituted_value_is_leaf() -> None:

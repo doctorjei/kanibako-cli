@@ -7941,7 +7941,9 @@ relied on the secret winning. Drop that `-e`.
   variable, are refused by name, and the message gives the braced spelling. So are `@{a.b.c}` and
   `${NAME}`: `@{a.b.c}x` used to mean the value of `a.b.c` followed by `x`. Once the guard is gone,
   a bare `@a.b.c` or `$NAME` is plain text, `@{a.b.c}x` is a literal `@`, the value, and `x`, and
-  `${NAME}` is a literal `$` followed by the variable's value.
+  `${NAME}` is a literal `$` followed by the variable's value. The guard reads only settings values;
+  a path kanibako is given, such as a project directory named `q@box.image`, and a persona's values
+  are kept as written.
 - **`@` and `$` are ordinary characters.** Any other text holding them is kept as written:
   `user@host`, `https://user:key@host/v1`, `$HOME/bin`. `HOME` is not a kanibako variable, so the
   box gets those characters and its own shell may expand them.

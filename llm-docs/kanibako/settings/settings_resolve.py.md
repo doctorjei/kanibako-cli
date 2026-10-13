@@ -321,20 +321,32 @@ raising there would make an unremarkable path illegal. ⚑ This is `split_bind`'
 NOT the value grammar: a value's escapes are `iter_expr_tokens`'s, which refuses most of them.
 
 ```python
-literal_expr(text: str) -> str
+literal_expr(text: str) -> DataExpr
 ```
 The inverse direction: the expression that expands back to *text* verbatim. It puts a backslash
 before every `\` and `~` (`_EXPR_SIGNIFICANT`) and doubles every brace. A leading `~` is the only
 `~` the expander reads, but escaping all of them keeps the rule one line. Use it when a floor
 hands the expander a HOST PATH as a value (`settings_launch.meta_runtime_host_floor`). `@` and `$`
-are text and need no escape. ⚑ During the one-release guard there is no literal spelling for an
-old reference spelling, so a host path holding `@<declared key>` or `$<known variable>` is refused
-like any value that holds one.
+are text and need no escape. It returns a `DataExpr` (below), so a host path, a persona value, or a
+probed source holding `@box.image` or `$TERM` resolves as written under the guard.
 Both passes are pinned in `tests/test_settings/test_settings_resolve.py`:
 * HOST space removes every escape and gives *text* back.
 * The DEFERRED scan (`defer_env=True`) keeps every escape and doubled brace for the box pass, which
   reads the residue to the same *text*. `settings_expand` enters a resolved referent's value
   under deferral through this same function.
+
+```python
+class DataExpr(str)
+data_expr(text: str) -> DataExpr
+```
+**BARE-REF-GUARD's data mode.** The guard reads text a USER wrote: the set doors, settings-file
+loads, and the launch expansion of those stored values. A `DataExpr` is an expression the CODE built
+from data; `iter_expr_tokens` reads it with the same grammar but never calls
+`refuse_bare_reference`. `literal_expr` returns one; `data_expr` marks a deferred value the host
+pass already tokenized (`settings_launch.resolve_box_dest`, the box pass). `str()` keeps the mark
+(`__str__` returns self); a concatenation or slice gives a plain `str`, which the guard reads as
+user text. `config_io` dumps a `str` subclass as a plain string. Removing the guard deletes the
+class and both constructors' marks.
 
 ```python
 split_bind(value: str) -> tuple[str, str | None]
@@ -435,22 +447,6 @@ keyed on "does not start with `/`" would fire on every legitimate `{key}`-ref de
 are text, so a dest holding them is normalized like any other.
 
 ```python
-match_var(expr: str, i: int) -> tuple[str, int]
-```
-Parse the `$VAR` / `${VAR}` reference starting at index *i* (the `$`).
-
-Returns `(var_name, end_index)` — the name WITHOUT its `$` (and without the braces, when braced),
-plus the index one past the whole token. Raises `SettingsError` on a malformed reference.
-
-⚑ **PRECONDITION: `expr[i] == "$"`.** The caller has already dispatched on that character; this
-function does NOT re-verify it and will happily parse a name starting at `i + 1` regardless of
-what `expr[i]` actually is.
-
-⚑ **The OLD spelling, and the value tokenizer no longer calls it**: `$` is text in a value.
-Its remaining callers, `agent_config.is_self_resolving` and `config_interface._set_time_anchor`,
-retire in braced-refs plan B1c.
-
-```python
 class ExprSyntaxError(SettingsError)
 ```
 A value the reference grammar refuses: an unpaired brace, an empty or malformed reference, an
@@ -481,8 +477,9 @@ Refused with `ExprSyntaxError`, each naming the doubled spelling where a brace i
 * an unpaired `{` (no `}` after it) or `}`;
 * an empty `{}` or a malformed `{…}` (`{bad name}`, `{a.b.}`, `{$}`) — `{` opens a reference
   running to the first `}`, so its content must be one name;
-* a backslash before anything outside `\\ ~` (`\@`, `\$`, `\/`, `\{`, `\:`, `\x`);
-* an old reference spelling, by `refuse_bare_reference` (below).
+* a backslash before anything outside `\\ ~` (`\@`, `\$`, `\/`, `\{`, `\:`, `\x`); for `\@`
+  and `\$` the cure adds that the character is ordinary: write `\@` as `@`;
+* an old reference spelling, by `refuse_bare_reference` (below), unless *expr* is a `DataExpr`.
 
 A leading `~` is a `home` token; a TRAILING lone backslash is literal text; `@` and `$` are text.
 `{` defers to `match_braced`, which stays the one braced parser; its `None` becomes the refusal
@@ -490,6 +487,7 @@ here.
 
 ```python
 refuse_bare_reference(expr: str, i: int) -> None
+starts_bare_reference(expr: str) -> bool
 KNOWN_VARS: frozenset[str]; KNOWN_VAR_PREFIX = "XDG_"; is_known_var(name: str) -> bool
 ```
 **The one-release migration guard** (keyspec § 0 "References"). The tokenizer calls it at every
@@ -504,6 +502,8 @@ and the character is text. Refused:
 call time (the import-time closure stays `agent_ref` + `errors`). "Known" is `is_known_var`:
 `KNOWN_VARS` (the names `resolve_var` answers) or any `XDG_*` name. Everything else is text:
 `user@example.com`, `cost $5`, an undeclared `@foo.bar`, `$HOME`, a namespace like `@box`.
+`starts_bare_reference` asks, without raising, whether a value OPENS with a refused spelling;
+`agent_config`'s path predicates pass such a value on so the expander names its cure.
 ⚑ Every site carries the marker `BARE-REF-GUARD`. Removing the guard is: delete this function and
 its call, drop `@$` from `_TOKEN_START`, and grep the marker for the rest.
 

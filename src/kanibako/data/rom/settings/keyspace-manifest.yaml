@@ -114,6 +114,7 @@ policy:
     escapes: ['\\', '\~']       # the only escapes; any other \x is refused by name
     ordinary: "@ and $ are normal characters"
     positions: "WHOLE-VALUE and EMBEDDED alike"
+    # BARE-REF-GUARD: the one-release migration guard; delete this line with it.
     guard: "for one release, a bare @a.b.c naming a declared key (or whose leading
             dotted part is one), @{a.b.c}, and a bare $NAME or ${NAME} naming a known
             variable are refused by name; the cure names the braced spelling"

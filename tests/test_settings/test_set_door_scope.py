@@ -553,15 +553,11 @@ class TestOneGrammarForOneValue:
         with pytest.raises(ValueError):
             scan_tokens(value)
 
-    def test_the_set_door_does_not_carry_a_scanner_of_its_own(self):
+    def test_the_set_door_does_not_carry_a_snapshot_walk_of_its_own(self):
         """A private re-walk of a value is what this removed; assert the shape, since a
         behavioral test cannot see a duplicate that happens to agree today."""
-        import inspect
-
         from kanibako.settings import config_interface
 
-        source = inspect.getsource(config_interface)
-        assert "match_ref" not in source, "config_interface re-parses @-refs itself"
         assert not hasattr(config_interface, "_snapshot_has"), (
             "config_interface still carries its own snapshot walk"
         )
