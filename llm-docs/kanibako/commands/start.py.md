@@ -470,7 +470,7 @@ scope-ordered lists"*, *"nothing is arbitrated at a destination"*).
 sync arm are two SEPARATE leaves, so there is no category discriminator to test, and a collapsed row
 is `CollapsedCopy(src, dest, opts)` — **no `name`, no `category`.** The DEST is the row's identity
 (R-10), so it is what a warning prints (normalized, `/home/agent/x`), and `_apply_shell_copy` is
-labelled with it. `CollapsedCopy.src` is typed `str`, and `build_store_shape` refuses a source-less
+labeled with it. `CollapsedCopy.src` is typed `str`, and `build_store_shape` refuses a source-less
 copy row before one exists.
 
 ⚑⚑ **`seeded` and `synced` ARE COPIES AND STAY COPIES.** Nothing here turns one into a mount, and
