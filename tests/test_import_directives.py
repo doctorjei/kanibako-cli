@@ -1558,7 +1558,7 @@ class TestSectionIdAlgebra:
         assert flattener.super_of("1") == ""
         assert flattener.super_of("1-2") == ""     # read with the default ``.``
 
-    def test_section_allocates_his_worked_sequence(self):
+    def test_section_allocates_the_worked_sequence(self):
         """The six worked examples, in order, against ONE render's counters."""
         fl = flattener.Flattener()
         assert fl.next_section("2", ".") == "2.1"
