@@ -66,8 +66,8 @@ class ConfigLevel(Enum):
 
 # ---------------------------------------------------------------------------
 # ⚑⚑⚑ QUARANTINE — THIS SET IS NOT THE MODEL OF WHAT A KEY IS. It is a
-# HAND-MAINTAINED, DELIBERATELY INCOMPLETE "key or project name?" list (Jei's
-# 2026-08-08 multi-faceted-key ruling); its known-wrong messages are KNOWN.
+# HAND-MAINTAINED, DELIBERATELY INCOMPLETE "key or project name?" list
+# ([Jei:2026-08-08] multi-faceted-key ruling); its known-wrong messages are KNOWN.
 # ⚑⚑ DO NOT derive it from the declaration SoT — proposed and DECLINED.
 # ⚑⚑ SINCE 2026-08-28 NO VERB'S VOCABULARY IS ON IT: ``system get`` was the last
 # read gate, and the seven False answers it forwarded ("unknown config key" for a
@@ -78,7 +78,7 @@ class ConfigLevel(Enum):
 # cost, and the seven False answers: llm-docs/kanibako/settings/config_keys.py.md.
 # ---------------------------------------------------------------------------
 #: The setup VERSION MARKER (spec §2g) — spelled ONCE, here.
-#: ⚑⚑ THE STORAGE/DECLARATION DELTA IS CLOSED (Jei, 2026-08-26).  Spec §2g declares this a
+#: ⚑⚑ THE STORAGE/DECLARATION DELTA IS CLOSED [Jei:2026-08-26].  Spec §2g declares this a
 #: Layer-2 ``system`` SETTINGS key, and the code now stores it as one: ``setup`` writes it
 #: to ``{config.settings}`` (``setup_cmd._write_setup_marker``) and the staleness gate reads
 #: it from there (``config.read_setup_completed``), so it is an ORDINARY ``system.*`` key
@@ -1440,7 +1440,7 @@ def _user_config_file_str() -> "Path | str":
 def _config_key_refusal(canonical: str, *, action: str) -> str:
     """Error string refusing a CLI set/reset of a ``config.*`` foundation key."""
     # ⚑ The message deliberately does NOT mention ``setup`` — it is not how a
-    # ``config.*`` value is set. Rationale (Jei, load-bearing): llm-docs.
+    # ``config.*`` value is set. Rationale (load-bearing): llm-docs.
     config_file = _user_config_file_str()
     verb = "changed" if action == "reset" else "set"
     return (
@@ -1725,8 +1725,9 @@ def agent_key_reason(node: str, tail: str) -> str | None:
 
     ⚑⚑ ``key_validity`` ON THE CANONICAL KEY, NEVER ``is_known_key``, AND THE DIFFERENCE IS
     MEASURED: ``is_known_key("agent.claude.self.model")`` is **True** (the persona parser splits on
-    the LAST segment and reads the node as ``claude.self``), so the shape ruling 55 exists to
-    refuse would sail through, while ``run_args`` — live and pinned — would be refused.
+    the LAST segment and reads the node as ``claude.self``), so the shape [spec:15-21, "self"]
+    exists to refuse would sail through, while ``run_args`` — live and pinned — would be
+    refused.
     ``is_known_key`` answers "is this key-SHAPED, as opposed to a project name"; §0 asks
     "is this a DECLARED key", and only ``key_validity`` answers that.
 
@@ -1773,7 +1774,7 @@ def agent_write_key_error(node: str, tail: str, *, verb: str) -> str | None:
     ``set_config_value``, which owns this check for every other noun; this one has its own writer
     and had NO validation at all, so ``agent set claude anything.at.all=x`` stored garbage rc=0 —
     a closed-keyspace breach on a first-class write path, and the ONE place a user could type
-    ``self.`` and have it land (ruling 55).
+    ``self.`` and have it land [spec:15-21, "self"].
     """
     reason = agent_key_reason(node, tail)
     if reason is None:
@@ -1923,7 +1924,7 @@ def foreign_scope_read_error(
 ) -> str | None:
     """Why a declared key belongs to a scope THIS noun cannot answer for, or ``None``.
 
-    ⚑⚑ JEI'S RULING, 2026-08-28: *"i dont see any justification for crossscope 'get'. it makes
+    ⚑⚑ [Jei:2026-08-28]: *"i dont see any justification for crossscope 'get'. it makes
     no sense at the cli."*  A ``get`` reads what its own noun answers for; asking the ``system``
     noun for ``box.caches`` is asking a question the CLI has no reason to answer.
 
@@ -1938,9 +1939,10 @@ def foreign_scope_read_error(
     why the measurements are kept here rather than compressed to the verdict.
 
     1. **THE WRITE ROUTE** (``has_no_cli_write_route``) — REJECTED, though it selects exactly
-       the right rows today.  It derives a ``get`` gate from whether ``set`` works, and Jei has
-       held the two verbs apart deliberately: *"set is different tho"*, and *"i did not say
-       anything about set. set is different, i said, specifically."*  Right rows, wrong reason:
+       the right rows today.  It derives a ``get`` gate from whether ``set`` works, and the
+       two verbs are held apart deliberately [Jei:2026-08-28]: *"set is different tho"*, and
+       *"i did not say anything about set. set is different, i said, specifically."*  Right
+       rows, wrong reason:
        if ``set``'s rules move, ``get`` would follow for a reason that has nothing to do with
        reading.
     2. **"DOES THIS NOUN'S OWN FILE CARRY THE KEY?"** — REJECTED BY MEASUREMENT, and this is the

@@ -2,7 +2,7 @@
 
 ⚑ The file keeps the RAW form — resolution here is for the CHECK only (spec §0).
 
-⚑⚑⚑ SCALAR-ONLY, AND THAT IS A RULING (DS-BL1 = (a), Jei 2026-08-07g). The category half —
+⚑⚑⚑ SCALAR-ONLY, AND THAT IS A RULING (DS-BL1 = (a), [Jei:2026-08-07g]). The category half —
 ``repoint_host_src`` (S24), the ``is_category`` arm, ``Warn``, R-8's stale-shape refusal — was
 DELETED in QA′. Rebuilding any of it needs a spec edit and a fresh ruling; the reasoning is in
 ``llm-docs/kanibako/settings/settings_configset.py.md``.

@@ -138,7 +138,7 @@ class _Unset:
 
 UNSET = _Unset()
 
-#: The terminal type a box gets when the HOST has none. Jei, 2026-09-08: an EMPTY (or unset)
+#: The terminal type a box gets when the HOST has none. [Jei:2026-09-08]: an EMPTY (or unset)
 #: ``TERM`` falls back to this — and ONLY an empty one; a SET value passes through UNVALIDATED.
 DEFAULT_TERM = "xterm"
 

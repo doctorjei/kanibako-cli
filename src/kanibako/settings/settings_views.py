@@ -512,7 +512,7 @@ class MetaAgentView(FiniteView):
     ``path`` is the agent STORE ROOT (``{config.agents}/<agent>``) and doubles as
     §2a's agent DECLARATION ROOT, so an abstract-category source storing
     ``{meta.agent.<agent>.path}/<category>/<leaf>`` resolves for real. The
-    B5-materialized trio (§3.3 rulings) is ``settings`` (the agent-tier cascade
+    B5-materialized trio ([Jei:2026-08-01]) is ``settings`` (the agent-tier cascade
     FILE), ``mode`` (the harness's INTERACTIVE launch grammar) and ``exec`` (the
     STANDALONE one-shot fragment).
 

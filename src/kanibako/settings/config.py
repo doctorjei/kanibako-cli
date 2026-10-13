@@ -97,8 +97,8 @@ class KanibakoConfig:
 class BootstrapConfig:
     """The Layer-1 bootstrap file's WHOLE content: the ``config.*`` foundation, and nothing else.
 
-    ⚑⚑ THE TYPE IS THE RULE (P3/P4; Jei's ruling, 2026-08-31).  ``kanibako.cfg``
-    cannot have settings (Jei, 2026-08-26: *"kanibako_config.yaml <-- cannot have settings.
+    ⚑⚑ THE TYPE IS THE RULE (P3/P4; keyspec §1).  ``kanibako.cfg``
+    cannot have settings ([Jei:2026-08-26]: *"kanibako_config.yaml <-- cannot have settings.
     Period."*), and spec §1 gives Layer 1 the ``config.*`` bootstrap paths alone.  That rule
     used to be a ``config.``-PREFIX FILTER spelled at each of the four Layer-1 read sites,
     over a :class:`KanibakoConfig` that also carried the box scalars — so a Layer-1 read
@@ -144,7 +144,7 @@ def _layer1_settings_keys(data: dict) -> list[str]:
     """Every SETTINGS entry a Layer-1 document carries, dotted and sorted; empty ⇒ the file is clean.
 
     ⚑⚑ A TABLE WITH NO LEAF IS NAMED BY ITS TABLE NAME, and that is the whole reason for the
-    ``or [name]`` (Jei, 2026-08-31).  The three empty spellings a user reads as identical —
+    ``or [name]`` (keyspec §1).  The three empty spellings a user reads as identical —
     ``box:`` with nothing under it (which YAML parses to ``None``, NOT ``{}``), an explicit
     ``box: {}``, and a ``box:`` whose only leaf is itself an empty table — used to give TWO
     different answers: the first was refused as a bare ``box`` (the non-dict arm), the other
@@ -177,7 +177,7 @@ def bootstrap_config_paths(path: Path) -> dict[str, str]:
     ⚑ NO FILTER, AND THAT IS THE POINT (P4).  The walk STARTS at the ``config:`` table, so
     a ``config.`` prefix is the only thing it can produce; the rule is in the shape of the
     read rather than in a test applied after it.
-    🛑 A settings table here is REFUSED, not dropped (Jei, 2026-08-31) — a user running a
+    🛑 A settings table here is REFUSED, not dropped (keyspec §1) — a user running a
     different image than their file says should learn it.
 
     ⚑⚑ AND SO IS AN UNDECLARED LEAF *INSIDE* ``config:`` (2026-09-09).  Starting the walk
@@ -333,8 +333,8 @@ def _present_scalar_fields(path: Path) -> dict[str, object]:
 def load_config(path: Path) -> BootstrapConfig:
     """Read the LAYER-1 bootstrap file — the one reader of ``kanibako.cfg``.
 
-    ⚑⚑ IT RETURNS A :class:`BootstrapConfig`, AND THAT IS THE WHOLE OF THE 2026-08-31
-    RULING: a Layer-1 read has no settings field to return.  It was a GENERAL document
+    ⚑⚑ IT RETURNS A :class:`BootstrapConfig`, AND THAT IS THE WHOLE OF THE keyspec §1
+    RULE: a Layer-1 read has no settings field to return.  It was a GENERAL document
     reader — the same call read the settings file — which is how the Layer-1 file came to
     hand back a ``box.image`` it may not carry.  The box scalars are read from SETTINGS
     files by ``settings_launch.load_merged_config``; a settings file's ``system.*`` path set-values by
@@ -347,7 +347,7 @@ def box_scalar_defaults_floor() -> dict[str, object]:
     """The box scalars' DECLARED-DEFAULT floor — the ONE recipe every floor builder uses.
 
     ⚑⚑ DECLARED DEFAULTS, NEVER FILE VALUES.  ``kanibako.cfg`` cannot have
-    settings (Jei, 2026-08-26: *"kanibako_config.yaml <-- cannot have settings.
+    settings ([Jei:2026-08-26]: *"kanibako_config.yaml <-- cannot have settings.
     Period."*), so a floor built by reading that file is the violation; a floor built
     from the declared defaults is what spec §1/§2b sanction.  Those two were ONE
     expression until now — ``getattr(load_config(cf), field)`` is the file's value when
@@ -402,7 +402,7 @@ def _system_settings_path(global_path: Path) -> Path | None:
 
 def write_global_config(path: Path) -> None:
     """Create the bootstrap config file EMPTY — it may carry ``config.*`` and nothing else."""
-    # ⚑⚑ THE FILE CANNOT HAVE SETTINGS (Jei, 2026-08-26: "kanibako_config.yaml <-- cannot
+    # ⚑⚑ THE FILE CANNOT HAVE SETTINGS ([Jei:2026-08-26]: "kanibako_config.yaml <-- cannot
     # have settings. Period.").  Its ``config.*`` defaults live in
     # ``paths.resolve_config_paths``'s ``LevelView``, not here.
     #
@@ -510,7 +510,7 @@ def read_box_enable_vault(path: Path) -> bool:
 def carried_box_settings(box_tier: Path) -> dict:
     """The box-scope settings doc a LIFECYCLE op carries to a new box's box tier.
 
-    ⚑ THE BOX TIER AND NOTHING ELSE (Jei, 2026-08-26: "copy/persist only those
+    ⚑ THE BOX TIER AND NOTHING ELSE ([Jei:2026-08-26]: "copy/persist only those
     elements that are within the box settings").  A ``box.*`` key at the WORKSET
     tier is an OVERRIDABLE DEFAULT for the boxes that workset contains
     (:func:`read_box_enable_vault`), so persisting it here would PIN it — silently
@@ -754,7 +754,7 @@ def read_setup_completed(settings_path: Path | None) -> str | None:
 
     ⚑⚑ *settings_path* is ``{config.settings}`` = ``<data>/global/settings.yaml``, NOT
     ``kanibako.cfg`` — the SAME file :func:`read_system_agent` reads and the
-    launch cascade's system tier assembles from.  It moved there on 2026-08-26 (Jei:
+    launch cascade's system tier assembles from.  It moved there on 2026-08-26 ([Jei:2026-08-26]:
     "there is no reason whatsoever that ``system.setup_completed`` should go in the
     config. It should not. It should go in the global settings file"), which is also
     what spec §2g has always declared: the marker is a Layer-2 ``system.*`` SETTINGS
@@ -853,7 +853,7 @@ def resolve_agent(
 
     ⮕ **P7: the CASCADE moved out** — what stays here is what is NOT a key.
 
-    🛑 **THERE IS NO INSTALLED-AGENT COUNT RULE** (retired 2026-09-19, his ruling). A
+    🛑 **THERE IS NO INSTALLED-AGENT COUNT RULE** (retired [Jei:2026-09-19]). A
     name that resolved is validated; a name that did NOT resolve is a REFUSAL naming
     ``kanibako setup``, whatever the count — **one installed agent does not make the
     choice for the user.** Present-``None`` never reaches here: it is a DIFFERENT

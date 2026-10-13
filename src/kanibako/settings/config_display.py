@@ -299,7 +299,7 @@ def _print_pref_block(
             # too (B-6): suppression has no verb of its own, so the only place a
             # user learns what undoes it is a message like this one.
             #
-            # ⚑⚑ THE CURE NAMES THE FILE, NOT A VERB (Jei, 2026-08-08e). It used to
+            # ⚑⚑ THE CURE NAMES THE FILE, NOT A VERB [Jei:2026-08-08e]. It used to
             # spell ``reset pref.<target>.<dest>``, a command that does not work and
             # is not going to: individually reading or writing one facet of a
             # multi-faceted (dest-keyed) key does not make sense, and the access form
@@ -462,8 +462,8 @@ def _print_category_block(
     # arm holds ``{$XDG_DATA_HOME}/z`` while the map holds ``/data/z`` — two spellings of
     # one destination. Both sides are put in the map's spelling before pairing, or a
     # row is looked up under a name nothing was ever filed under and every answer about
-    # it is a miss. ⚑ Resolution BEFORE binding OR comparison is the rule (Jei,
-    # 2026-08-27), and this is the comparison half of it.
+    # it is a miss. ⚑ Resolution BEFORE binding OR comparison is the rule
+    # [Jei:2026-08-27], and this is the comparison half of it.
     #
     # ⚑ NEITHER STEP IS A RE-DERIVATION. ``resolve_box_dest`` is the ONE box_dest
     # expansion — the same call ``snapshot_category_entries`` fed the collapse from —

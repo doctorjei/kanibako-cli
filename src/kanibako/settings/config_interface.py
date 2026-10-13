@@ -580,7 +580,7 @@ def _bare_relative_path_error(
 def _unusable_store_root_error(canonical: str, value: "str | None") -> "str | None":
     """Q16 set-time refusal — ``system.state`` naming a path kanibako cannot use.
 
-    His ruling, built exactly: refuse a store-root path that does not exist AND one
+    [Jei:2026-09-19], built exactly: refuse a store-root path that does not exist AND one
     we cannot write to — *"a path we cannot use is not a path we should store."*
     The value is expanded the way the read tier will read it (the same ``expand_expr``
     over the same path-tier split), so the refusal judges what the resolve would
@@ -980,7 +980,7 @@ def _set_time_snapshot(
     # The box scalars' DECLARED-DEFAULT floor, so a ``{box.image}`` ref RESOLVES at set
     # time.  ⚑⚑ DECLARED DEFAULTS, NOT A SWEEP OF ``kanibako.cfg``.  A
     # ``_layer1_value_floor()`` stood here for one day and read every declared value out of
-    # the Layer-1 file into this floor; Jei ruled that file cannot carry settings at all
+    # the Layer-1 file into this floor; that file cannot carry settings at all [Jei:2026-08-26]
     # ("kanibako_config.yaml <-- cannot have settings. Period.", 2026-08-26), so the sweep
     # went and the DECLARED half stayed.  🛑 Do not delete the floor to finish the job:
     # without it ``{box.image}`` dangles at every command scope, which is a REGRESSION, not
@@ -1032,7 +1032,7 @@ def _set_time_snapshot(
     # legitimate ``workset:`` table out of the snapshot the E3 probe judges against. At the
     # SYSTEM scope it filed the Layer-1 ``kanibako.cfg`` as a real settings TIER,
     # which spec §1 forbids ("NOT part of the keyspace; NOT a settings tier"). ⚑⚑ AND THE
-    # FILE HAS NO VALUES TO REACH ANY MORE: Jei's 2026-08-26 ruling took the settings out of
+    # FILE HAS NO VALUES TO REACH ANY MORE: [Jei:2026-08-26] took the settings out of
     # it entirely, so there is neither a tier nor a reference to it — what a ``{box.*}`` ref
     # resolves against is the DECLARED-DEFAULT floor built above.
     #
@@ -1848,7 +1848,7 @@ def set_config_value(
     # ⚑ ``--null`` NEEDS NO EXCEPTION HERE ANY MORE, and the absence is deliberate: the one
     # route that could not express it (the category repoint) is refused by the preamble above.
 
-    # ⚑ Write-time validation for the auth-critical ``access`` key ONLY (Jei) — it routes
+    # ⚑ Write-time validation for the auth-critical ``access`` key ONLY — it routes
     # VERBATIM below, so a typo would otherwise be STORED and re-read at every launch.
     if value is not None and is_access_key(canonical):
         access_err = access_value_error(canonical, value)
@@ -2617,7 +2617,7 @@ def _honest_reset_message(
     command_scope: "ConfigLevel | None",
     effective: "tuple[str, str] | None" = None,
 ) -> str:
-    """The HONEST ``reset`` confirmation (F7, Jei-ruled 2026-07-02d)."""
+    """The HONEST ``reset`` confirmation (F7, [Jei:2026-07-02d])."""
     # ⚑ *key* is the key AS THE USER MAY RETYPE IT — the canonical dotted spelling, or a
     # persona/secret DISPLAY key. It was named ``flat`` while the generic branch handed
     # it an underscore spelling no verb accepted.

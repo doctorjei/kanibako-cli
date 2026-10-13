@@ -788,8 +788,8 @@ def pref_value(
 
     🛑 A present-``None`` request is indistinguishable from "no request" through
     this helper's return type, **and for ``system.agent`` those are no longer the
-    same thing.** Since the 2026-09-19 ruling (spec §2b) ``pref.system.agent:
-    null`` means NO DEFAULT IS SET and refuses with one message, while *no request*
+    same thing.** Under spec §2b, ``pref.system.agent: null`` means NO DEFAULT IS
+    SET and refuses with one message, while *no request*
     falls through to an unset key and refuses with a DIFFERENT one. **Any caller
     that must tell them apart has to use :func:`pref_request_for`** — which is why
     the selection seam reads the cascade (``resolve_selected_agent``) rather than

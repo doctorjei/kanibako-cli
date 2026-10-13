@@ -995,7 +995,7 @@ def layer1_set_values(user_config_path: Path) -> dict[str, str]:
 
     An absent file yields ``{}``, so a missing layer is skipped.  ⚑⚑ ``config.*`` BY
     CONSTRUCTION (2026-08-31).  The CONFIG files carry the Layer-1 foundation and NOTHING
-    ELSE — Jei: *"kanibako_config.yaml <-- cannot have settings. Period."*  The read
+    ELSE — [Jei:2026-08-26]: *"kanibako_config.yaml <-- cannot have settings. Period."*  The read
     (``bootstrap_config_paths``) REFUSES a ``system:`` table hand-written into one, naming
     the file and the keys.
     """
@@ -1060,7 +1060,7 @@ def _path_tier_set_values(user_config_path: Path, *, data_home: Path, home: Path
 
     ⚑⚑ AND THE MIRROR OF THAT: a ``system:`` table hand-written into a CONFIG file must
     never reach Layer 2.  The two files each hold exactly one layer —
-    *"kanibako_config.yaml <-- cannot have settings. Period."* (Jei, on what is now
+    *"kanibako_config.yaml <-- cannot have settings. Period."* ([Jei:2026-08-26], on what is now
     ``kanibako.cfg``) — and since 2026-08-31
     that is a property of the READS rather than of filters applied after them:
     ``bootstrap_config_paths`` walks the ``config:`` table and REFUSES anything else in the
@@ -2907,8 +2907,8 @@ def resolve_standalone_project(std: StandardPaths, config: BootstrapConfig,
 
     from kanibako.project.workset import (load_workset_settings_doc, resolve_workset_workspaces)
 
-    # Metadata at the ROOT; ``project_path`` is the RESOLVED ``workset.workspaces`` (ruled 10),
-    # ``None`` when the root nulls it.
+    # Metadata at the ROOT; ``project_path`` is the RESOLVED ``workset.workspaces``
+    # [Jei:2026-08-02], ``None`` when the root nulls it.
     metadata_path = root
     standalone_early = _early_scope(std, BoxMode.standalone)
     box_data = standalone_box_store(root, early=standalone_early)
