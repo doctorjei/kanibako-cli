@@ -170,10 +170,7 @@ def validate_config_set(
     #    value has no terminal type until build, so it is NOT type-checked here.
     if key in KEY_TYPES and not (ref_names or var_names):
         coerced = _coerce_value(key, value)
-        # ⚑ THE FAILURE IS A TYPE, NOT A STRING. This used to read "a typed key gave back
-        # a ``str``, so coercion failed" — true only while every declared type coerced to
-        # a NON-string. ``path`` does not, and a legal path value would have been reported
-        # as its own error message.
+        # ⚑ THE FAILURE IS A TYPE, NOT A STRING: a ``path`` coerces to a ``str``.
         if isinstance(coerced, CoercionError):
             return Error(f"'{key}': {coerced.message}")
 

@@ -1,4 +1,4 @@
-# The `store_shape` Producer (roadmap step 4)
+# The `store_shape` Producer
 
 A `store_shape` is the REALIZATION view of ONE scope: `{ro, rw, mask, seed, sync}` — the three MOUNT
 arms dest-keyed, the two COPY arms flat ordered lists — with the ABSTRACT categories (`caches`,
@@ -7,13 +7,13 @@ carrying CONCRETE mount options. A `StoreShapeSet` holds one per scope over
 `("system", "agent", "workset", "box")` — **four scopes, deliberately not the six cascade levels.**
 
 This module builds one per scope and **stops there**: it never compares two scopes, because
-comparing scopes is the grand-unification collapse's whole job (roadmap step 6).
+comparing scopes is the collapse's whole job (`store_collapse`).
 
-**Authority:** `~/canon/workbook/designs/store-shape-producer-DESIGN.md` (this step) ·
+**Authority:** `~/canon/workbook/designs/store-shape-producer-DESIGN.md` ·
 `~/canon/workbook/designs/grand-unification-collapse-DESIGN.md` §2/§2a (the consumer) ·
 `~/canon/workbook/specs/settings-keyspace-1.8.0.md` §0 (the collision table).
 
-## Status: CONSUMED — all three SHAPE-FED leaves, and there is no second route left
+## Consumers — all three SHAPE-FED leaves, and no second route
 
 `commands/start.py:_install_assembly_collapse` calls `build_store_shape_set` on the launch path and
 feeds it to `collapse_store_shapes`, storing the result at
@@ -25,19 +25,16 @@ it, and that is deliberate — the sixth arm is the obvious place and the ruled-
 ⚑ **All three SHAPE-FED leaves have consumers, and each is the ONLY route to what it delivers**
 (`meta.assembly.env` is read too — through `start.py:_launch_env_map`, by the launch and by
 `box show --effective` — but it is NOT a shape output, so it is not one of the three).
-`start.py:_launch_bind_map` reads `bindings` (2a-3), `_launch_seed_list` reads `seeded` (2b-2) and
-`_launch_synced_list` reads `synced` (2b-3); an ABSENT leaf on a whole-box resolve is a NAMED error,
-not a fallback. ⚑ **Cutover 6-R3 deleted the second, cross-scope route entirely** — there is no
-`reconcile_categories` and no `ReconciledCategories`. §0 is applied by this producer (all that is
+`start.py:_launch_bind_map` reads `bindings`, `_launch_seed_list` reads `seeded`, and
+`_launch_synced_list` reads `synced`; an ABSENT leaf on a whole-box resolve is a NAMED error,
+not a fallback. ⚑ **There is no second, cross-scope route.** §0 is applied by this producer (all that is
 decidable inside ONE scope), by the collapse (masks and every CROSS-scope pair), and by the launch
 seam's two functions for the inputs the collapse cannot see (`secret_path_deliveries`,
 `narrow_table_winners`).
 
-⚑ The collapse REFUSES some shapes the retired route accepted, and since cutover 2c that refusal IS
-the launch's: it propagates out of the resolve and stops the box. 🛑 **This paragraph used to say the
-call site catches `SettingsError`, leaves the leaves ABSENT and logs at `debug`.** That swallow was
-deleted with 2c, so an absent leaf now means a NARROW resolve and never a refusal — do not "fix" the
-collapse to stop raising, and do not restore a catch to keep a launch alive.
+⚑ A collapse refusal IS the launch's: it propagates out of the resolve and stops the box. The call
+site does not catch `SettingsError`, so an absent leaf means a NARROW resolve and never a refusal —
+do not "fix" the collapse to stop raising, and do not add a catch to keep a launch alive.
 
 ## The seam — WITHIN-SCOPE is the producer's, CROSS-SCOPE is the collapse's
 
@@ -119,22 +116,21 @@ kept the LAST row.
   `for dest_path, (src_path, opts) in ....items()`.
 * `seed` · `sync` are `CopyList` = `list[CopyRow(dest, entry)]`, in DECLARATION order, duplicates
   kept. The collapse iterates them directly and concatenates scope by scope.
-  * ⚑ **MEASURED 2026-08-11, and it is the honest scope of the repair:** the live emitter cannot
-    yet hand this arm two rows at one dest in one scope — the store LEAF is itself dest-keyed, so
-    `~/x` and `/home/agent/x` merge inside `build_launch_snapshot`, and `agent.default` vs
-    `agent.<active>` resolve through the cascade before an entry exists. The repair is therefore a
-    REPRESENTATION fix, not a live-loss fix. It still matters: nothing else in the chain prunes a
-    copy for sharing a destination (the collapse's sync arm is a plain scope-ordered concatenation),
-    so the dict arm was the one place where a declared copy could vanish with no warning at any log
-    level, and it chose the survivor by raw dest SPELLING rather than by the user's file order.
+  * ⚑ The live emitter does not hand this arm two rows at one dest in one scope — the store LEAF is
+    itself dest-keyed, so `~/x` and `/home/agent/x` merge inside `build_launch_snapshot`, and
+    `agent.default` vs `agent.<active>` resolve through the cascade before an entry exists. The
+    list is still the right REPRESENTATION: nothing else in the chain prunes a copy for sharing a
+    destination (the collapse's sync arm is a plain scope-ordered concatenation), so a dict arm
+    would be the one place a declared copy could vanish with no warning, and it would choose the
+    survivor by raw dest SPELLING rather than by the user's file order.
   * ⚑ **Do not "tidy" the two arms back into a `BindMap` for symmetry with the mounts.** The
     asymmetry is the ruling; symmetry here is the bug.
 * `mask` is dest-keyed and its **VALUE IS NEVER READ**: the collapse touches `shape.mask` in exactly
   two places and both iterate KEYS. The `(None, None)` sentinel it writes goes into its OUTPUT map,
   not back into this arm.
   * The value is `True`, mirroring the store leaf (`dict[dest -> bool]`, present = masked, with
-    present-`None` unmasks already dropped at build). `None` was rejected as the carrier precisely
-    because `None` MEANS UNMASK in the store shape.
+    present-`None` unmasks already dropped at build). `None` is not the carrier because `None` MEANS
+    UNMASK in the store shape.
   * ⚑ **Do not "tidy" this arm into a set, a list or a `BindMap`.** The mask VALUE reshape is a
     separate, parked roadmap step and is not this module's to settle; when it lands the change is
     confined to this one field.
@@ -166,12 +162,10 @@ loudly rather than dropping its entries.
 
 1. **Not arbitrate across scopes.** A `StoreShapeSet` must keep all four scopes' entries intact and
    separate, because the collapse re-derives the cross-scope answer itself. ⚑ This is why the
-   producer consumes the ENTRY LIST and not a pre-resolved winner set: the retired
-   `reconcile_categories` returned ONE winner per dest across all four scopes, which had already
-   thrown away the per-scope structure the collapse needs.
-2. **Not apply the whole table per scope.** It looks like the free win — the retired
-   `_resolve_dest_group` implemented every case — and **the failure is silent.** It also
-   implemented MASKS, and a mask and a binding can perfectly well share ONE scope: applied per scope
+   producer consumes the ENTRY LIST and not a pre-resolved winner set: ONE winner per dest across
+   all four scopes throws away the per-scope structure the collapse needs.
+2. **Not apply the whole table per scope.** It looks like the free win, and **the failure is
+   silent.** The table includes MASKS, and a mask and a binding can perfectly well share ONE scope: applied per scope
    the mask would EAT the
    binding inside the producer, and `shape.rw` would arrive at the collapse missing the entry the
    collapse's own mask loop is written to override. The collapse would be correct and the answer
@@ -180,11 +174,11 @@ loudly rather than dropping its entries.
    beats `seeded`"). ⚑ The collapse does not supersede that ladder with scope order — **it does not
    arbitrate copies AT ALL.** Copies apply to the home bind alone, the copy half runs before any binding
    is read, and its output is a concatenation whose only ordering is scope order. Reproducing the ladder
-   here would re-create, one layer earlier, the thing the cutover deletes.
+   here would re-create, one layer earlier, an arbitration the collapse does not perform.
 4. **Not sort by path depth.** Depth ordering is EMISSION order, not precedence. Arms preserve input
    order; the collapse sorts each scope's binds shallowest-first before processing, which is its own
-   ruling and its own intra-scope mechanism. ⚑ For the COPY arms "preserve input order" is now
-   load-bearing rather than incidental, which is why the fold walks `_scope_survivors` — the
+   ruling and its own intra-scope mechanism. ⚑ For the COPY arms "preserve input order" is
+   load-bearing, which is why the fold walks `_scope_survivors` — the
    collision rules are decided per DEST, but the survivors come back in DECLARATION order. Grouping
    the emission by dest would pull two copies at one dest together and land a copy at a NESTING
    dest after both, inverting which one overwrites which at apply time.
@@ -197,26 +191,19 @@ loudly rather than dropping its entries.
 
 ## Two rules that are same-scope-decidable and are NOT implemented here
 
-Recorded so they are not discovered during step 6.
-
 * **`seeded` onto a binding.** No code has ever refused it: `seeded` is a COPY, so it never reaches
-  a MOUNT group where the extension refusal lives, and §0 now states the same — *"`seeded` NEVER
+  a MOUNT group where the extension refusal lives, and §0 states the same — *"`seeded` NEVER
   REACHES THIS TABLE"*, because it applies to the HOME bind alone and completes before any binding
-  folds. (The retired `reconcile_categories` resolved it through its cross-delivery ladder instead —
-  the mount won, silently — and that ladder went with it at 6-R3.) ⚑ The collapse does not rule the
+  folds. ⚑ The collapse does not rule the
   case at all — a copy never meets a bind
   there, so nothing is refused and nothing is removed. A mount shadowing a copied file is a DELIVERY
-  fact, and it is legal ("it's ok for a mount to shadow a seeded file"). Refusing it here would have
-  invented an error that neither ships today nor is wanted downstream, so the producer folds `seeded`
-  without arbitrating it against a bind.
-* **`synced` vs a binding at one dest.** ⚖️ **RULED 2026-08-12 — NOBODY rules it, because it is not
-  a collision** (*"don't check for sync. Let it clobber whatever it wants."*). The producer never
-  implemented it, so a same-scope pair survives into `sync` and `rw` — and that is now simply the
-  right answer rather than a gap another stage closed. `_resolve_dest_group`'s
-  `synced_vs_binding` `CategoryCollisionError` went at cutover 5-1b (the kind no longer exists) and
-  `store_collapse._refuse_sync_at_a_bind_dest` went with the ruling. A sync resolves THROUGH the
+  fact, and it is legal ("it's ok for a mount to shadow a seeded file"), so the producer folds
+  `seeded` without arbitrating it against a bind.
+* **`synced` vs a binding at one dest.** ⚖️ **A ruling: NOBODY rules it, because it is not a
+  collision** (*"don't check for sync. Let it clobber whatever it wants."*). A same-scope pair
+  survives into `sync` and `rw`, and no stage refuses it. A sync resolves THROUGH the
   bind covering its dest into that bind's host source, at its exact point as much as inside it, so
-  it overwrites CONTENT and the mount stands. §0 now says the same: a copy at a bind's point is
+  it overwrites CONTENT and the mount stands. §0 says the same: a copy at a bind's point is
   *"ok — append"*, and *"do not reintroduce a `synced`-vs-binding refusal at an exact destination"*.
 
 ## Warnings are DATA
@@ -224,15 +211,13 @@ Recorded so they are not discovered during step 6.
 The exempt pair returns `CategoryCollision` on `StoreShapeSet.warnings`, and the ONE emission seam
 (`commands.start.emit_collision_warnings`) renders them. The producer stays PURE.
 
-⚑ **It is the ONLY channel.** A second one existed on the retired `ReconciledCategories.warnings`;
-5-1c deleted that feed and the field, and 6-R3 deleted the class. One ambiguity, one builder, one
-path to the user — re-adding a second means re-adding a type, which is a visible design act.
+⚑ **It is the ONLY channel.** One ambiguity, one builder, one path to the user — adding a second
+means adding a type, which is a visible design act.
 
 ## Message single-sourcing
 
 The two refusals are raised through `settings_categories.raise_binding_vs_binding` and
-`raise_extension_onto_occupied`, which were extracted from the retired cross-scope pass verbatim and
-made public for this second caller. They have THREE callers now — this producer, plus
+`raise_extension_onto_occupied`, public so every refusing caller shares them: this producer, plus
 `secret_path_deliveries` and `narrow_table_winners` at the launch seam. The message text is
 spec-mandated (it must point at SUPPRESS-THEN-ADD and name the extending entry, the occupant and the
 dest), so there is ONE copy of it and no second remedy text.
@@ -245,5 +230,4 @@ identical message, which keeps them byte-identical rather than forking the wordi
 
 ⚑⚑ A box destination is DATA and is **never** `.split(".")`/rejoined. Dests routinely contain dots
 (`~/.cache/uv`). `CategoryEntry.key_segments` carries segments; `.key` is derived for display and
-matching only. One root cause here produced four bugs, one of which silently deleted a declaration
-on every real launch.
+matching only. Splitting a dest on `.` silently deletes or misplaces a declaration.

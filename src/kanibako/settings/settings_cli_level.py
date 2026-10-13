@@ -116,7 +116,7 @@ def guard_cli_level(
 ) -> None:
     """Refuse an illegal CLI-level key, NAMING it (spec §1A, §0).
 
-    Called from INSIDE :func:`kanibako.settings.settings_launch.build_launch_snapshot`, before
+    Called from INSIDE :func:`kanibako.settings.settings_launch.assemble_cascade`, before
     the splice, so no call site can bypass it. A no-op for an empty level. The three arms
     below run in order: closed keyspace, categorical head, locator closure.
 

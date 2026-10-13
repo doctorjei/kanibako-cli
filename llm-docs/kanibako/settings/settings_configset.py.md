@@ -1,43 +1,41 @@
-# `config set` Validation — the set-time value check, and the arm that was deleted
+# `config set` Validation — the set-time value check
 
-`settings_configset` is Block 5 of the KeyStore implementation: the value check that runs *before*
-`config set` writes anything. It is one pure function, `validate_config_set`, returning a typed
-`Verdict` — `OK`, or an `Error` carrying a human-readable reason. It touches no file, no
-environment and no clock; its only reach into the cascade is an injected callback.
+`settings_configset` holds the value check that runs *before* `config set` writes anything:
+`validate_config_set`, returning a typed `Verdict` — `OK`, or an `Error` carrying a human-readable
+reason — plus the two helpers it and other set-time readers share, `scan_tokens` and
+`holds_verbatim_text`. It touches no file, no environment, and no clock; its only reach into the
+cascade is an injected callback.
 
 It invents no grammar and no type table of its own. Token parsing calls the resolver's OWN
-`match_var` / `match_ref` inside the same escape-aware scan `settings_resolve.expand_expr` uses, and
-typing reuses the `config_keys` key registry (`KEY_TYPES` / `_coerce_value`). That single-validator
-property is the seam **S25**; hand-rolling either half here is exactly what let them drift before.
+`match_var` / `match_ref` / `match_braced` inside the same escape-aware scan
+`settings_resolve.expand_expr` uses, and typing reuses the `config_keys` key registry (`KEY_TYPES` /
+`_coerce_value`). That single-validator property is the seam **S25**; hand-rolling either half here
+lets the two grammars drift.
 
-The FILE still stores the RAW, unresolved form. Resolution happens for the CHECK only — spec §0,
-*"files store UNRESOLVED"*.
+The FILE stores the RAW, unresolved form. Resolution happens for the CHECK only — spec §0, *"files
+store UNRESOLVED"*.
 
 ## Authority
 
-* Spec §2a "VALIDATION at set-time" (B5 — PRIMARY). Historical (NOT AUTHORITY):
-  `~/canon/notebook/archives/resources/keystore-2026-06/keystore-design.md` §6d (B4, the
-  no-repoint-warning ruling, which no live clause restates).
-* Spec `~/canon/workbook/specs/settings-keyspace-1.8.0.md` §2a (the config-set block: source-only, key-must-exist, value
-  types), §0 (files store UNRESOLVED).
+* Spec `~/canon/workbook/specs/settings-keyspace-1.8.0.md` §2a "VALIDATION at set-time" (the
+  config-set block: source-only, key-must-exist, value types), §0 (files store UNRESOLVED).
+* Historical (NOT AUTHORITY): `~/canon/notebook/archives/resources/keystore-2026-06/keystore-design.md`
+  §6d (the no-repoint-warning ruling, which no live clause restates).
 * Seams: `~/canon/workbook/plans/keystore-blocks/SEAMS.md`.
 
-## The B5 severity split
-
-Spec §2a "VALIDATION at set-time" (B5, ratified by Jei 2026-06-27), plus B4 (see Authority):
+## The severity split
 
 * **Hard ERROR, refuse to write** — do not poison the file. Three cases: malformed `$` / `@` token
   syntax; a type mismatch for a typed scalar key; a dangling reference (an `@`-ref to a
   non-existent config key, or an unknown `$VAR`) in the edited value's own post-edit chain.
-* **No `@`-ref-repoint warning (B4).** Repointing a value's `@`-ref to a literal, or the reverse,
-  is a normal explicit file edit at the command's own scope — identical to hand-editing the YAML —
-  so it does not warn.
+* **No `@`-ref-repoint warning.** Repointing a value's `@`-ref to a literal, or the reverse, is a
+  normal explicit file edit at the command's own scope — identical to hand-editing the YAML — so it
+  does not warn.
 
-## Q9 — the dangling judgment is FULL RESOLUTION, not per-token existence
+## The dangling judgment is FULL RESOLUTION, not per-token existence
 
-Spec §2a, ruling 2026-06-29. The dangling / unknown / cycle judgment is made by the injected E3
-`resolves` probe, which answers ONE question: *does the edited value resolve cleanly post-edit?*
-This REPLACED the retired conservative per-token existence check (`ref_exists` / `var_known`).
+The dangling / unknown / cycle judgment is made by the injected E3 `resolves` probe, which answers
+ONE question: *does the edited value resolve cleanly post-edit?*
 
 The caller builds the full lenient COMMAND-target snapshot (assemble → merge → expand [lenient]),
 applies the candidate raw value at *key*, and lenient-`expand`s it:
@@ -57,48 +55,17 @@ module's perspective the callback is pure.
 
 ## ⚑⚑⚑ SCALAR-ONLY, AND THAT IS A RULING
 
-DS-BL1 = (a), Jei 2026-08-07g — *"accept the loss uniformly"*. Every bind-shaped category is
-YAML-only: `config set` / `reset` refuse all six BY NAME in the verb preamble, and nothing routes a
-category write. Rather than leave the category half of this module to rot, it was deleted in QA′
-(2026-08-08, on Jei's word). There is no `is_category` discrimination any more. The three checks
-that remain are the ones that were ALREADY unconditional — nothing was widened from a category
-rule into a scalar one.
+Every bind-shaped category is YAML-only: `config set` / `reset` refuse each of them BY NAME in the
+verb preamble, and nothing routes a category write. This module has no category arm and no
+`is_category` discrimination. **Do not add one without a spec edit and a fresh ruling.** If a
+category write route is ever built, the three-element stale-shape refusal (a ruling: docs only, no
+two-element heuristic) must be built with it. Seam S24 (the CLI category repoint) is realized
+nowhere; S25 is the only seam this module realizes.
 
-**Do not rebuild either half without a spec edit and a fresh ruling.** What went:
-
-### `repoint_host_src` — the RAW category write-back (S24)
-
-Deleted with `_bindings_arm_of`, `_refuse_stale_bind_shape` and `ConfigSetError`. Its last caller
-was `config_interface._set_category_value`, deleted with the route.
-
-⚑ **R-8's THREE-ELEMENT stale-shape refusal went with it, and R-8 was a RULING** — Jei 2026-08-06e
-chose option A (docs only); the 2-element heuristic was option B and was DECLINED. It is recorded
-here rather than merely dropped: if a category write route is ever rebuilt, R-8 must be rebuilt
-with it.
-
-⚑ **S24 is therefore NO LONGER REALIZED ANYWHERE.** Its whole surface was the CLI category repoint,
-retired by DS-BL1 = (a). S25 is the only seam this module still realizes.
-
-### `validate_config_set`'s `is_category=True` arm
-
-That arm carried the `:` `src:dest` refusal, the bare-relative refusal with `_rooted_form_hint`,
-and the not-yet-existent-host-path `Warn`. The live caller — `set_config_value`'s E3 set-time probe
-— always passed `is_category=False`, so removing it was a zero-behavior-change deletion.
-
-⚑ **A COLON IS ORDINARY CONTENT ON THIS PATH.** The forbidden `:` `src:dest` notation was a
-CATEGORY rule about the bind SHAPE — a structured pair spelled as a joined string. A scalar has no
-such shape, and `endpoint = https://api.anthropic.com` is the obvious value that must pass. Do not
-reintroduce a colon check here.
-
-### `Warn` and the `HostExists` callback
-
-`Warn` existed for exactly one case — a category `host_src` naming a host path that does not exist
-yet — so deleting the category arm left the `Verdict` union with no producer for it.
-
-⚑ **`Verdict` IS A TWO-WAY UNION NOW, AND THE MISSING THIRD MEMBER IS THE POINT.** A union member
-no code path can produce is a shape a future consumer branches on for nothing, so it was deleted
-rather than kept "in case". Restoring a warn severity means restoring a producer for it in the same
-change.
+⚑ **A COLON IS ORDINARY CONTENT ON THIS PATH.** The forbidden `:` `src:dest` notation is a CATEGORY
+rule about the bind SHAPE — a structured pair spelled as a joined string. A scalar has no such
+shape, and `endpoint = https://api.anthropic.com` is the obvious value that must pass. Do not add a
+colon check here.
 
 ## Out of scope — hard boundaries
 
@@ -108,9 +75,14 @@ literals — files store UNRESOLVED.
 
 ## `Verdict`, `OK`, `Error`
 
-`OK` is a singleton instance of the empty frozen dataclass `_OK` — it carries no data, so one
-instance is enough; compare with `verdict is OK` or `isinstance(verdict, _OK)`. `Error` carries a
-single `message` field, the human-readable reason, and means `config set` must REFUSE to write.
+`Verdict` is the two-way union `_OK | Error`. `OK` is a singleton instance of the empty frozen
+dataclass `_OK` — it carries no data, so one instance is enough; compare with `verdict is OK` or
+`isinstance(verdict, _OK)`. `Error` carries a single `message` field, the human-readable reason, and
+means `config set` must REFUSE to write.
+
+⚑ **There is no warn severity.** A union member no code path can produce is a shape a future
+consumer branches on for nothing; adding a warn severity means adding a producer for it in the same
+change.
 
 ## `scan_tokens` — the shared parse grammar
 
@@ -119,70 +91,49 @@ resolving anything (spec §2a "VALIDATION at set-time": resolution is for the ch
 file keeps the RAW form; resolving is the E3 probe's job, not this scanner's). A malformed `$` /
 `@` token raises `ValueError`, which the caller maps to an `Error`.
 
-It mirrors `settings_resolve.expand_expr`'s scanner EXACTLY — the same escape rule, and BOTH token
-families through the scanner's own parsers, called rather than re-derived:
+It mirrors `settings_resolve.expand_expr`'s scanner EXACTLY — the same escape rule, and every token
+family through the scanner's own parsers, called rather than re-derived:
 
 * `\` consumes the next character as a literal, so `\@` and `\$` are not tokens.
-* `$` → `match_var`, covering `$VAR` and `${VAR}`. Same deal as the `@` arm: the resolver's OWN
-  parser, never a third copy of it. Both token families speak one grammar AND one error style;
-  hand-rolling either arm here is exactly what let them drift.
+* `$` → `match_var`, covering `$VAR` and `${VAR}`.
 * `@` → `match_ref`, covering both spellings: bare `@a.b` and braced `@{a.b}`. The braced form lets
   a literal suffix follow — `@{a.b}.jsonl` yields the ONE ref `a.b`, not the swallowed
   `a.b.jsonl`.
+* `{` → `match_braced`, covering the bare braced forms `{a.b}` (a ref) and `{$X}` (a variable).
+  `{{` is a literal brace, and a `{` that starts no reference is literal.
 
 So "well-formed" here means EXACTLY what the build expander will later accept: one grammar, not a
 second (S25). A DANGLING braced ref is judged exactly like a dangling bare one, because the
 judgment is made downstream by the E3 probe, which sees only the ref NAME this function returns.
 
-A leading `~` is the home token (environment; validated for existence elsewhere, or box-deferred).
-It carries no name to check, so the scanner ignores it — but a caller must still treat a value
-bearing one as a reference expression rather than a literal.
+A leading `~` is the home token. It carries no name, so the scanner ignores it, and a value whose
+only token is a `~` is type-checked in step 3 like a literal.
 
-## The three checks, in order
+Other readers: `config` and `config_interface` call `scan_tokens` for their own set-time checks.
+
+## `holds_verbatim_text(key)`
+
+Whether the value at the CLI key *key* is TEXT (`settings_resolve.is_verbatim_text`) — never an
+expression. It is judged at the slot the value is WRITTEN to (`config_dest._key_slot`), so the bare
+`endpoint` is `agent.default.endpoint`; a `pref.<target>` request is judged at its target.
+
+## `validate_config_set(key, value, *, resolves)` — the checks, in order
 
 *key* is the canonical config key; *value* is the user's RAW input.
 
+0. **Text keys.** For a key `holds_verbatim_text` answers yes, steps 1 and 2 are skipped: a text
+   value has no tokens and no upstream chain, and the scan would refuse
+   `https://user:key@host/v1` for a ref `@host` it does not contain.
 1. **Token well-formedness.** A fast, pure pre-check for MALFORMED syntax — an unterminated `${`, a
    bare `$` — before any snapshot work. It also tells the function whether the value bears tokens
    at all, which step 3 needs. Dangling / unknown / cycle is deliberately NOT judged here.
 2. **The E3 full-resolution check.** As above: a reason blocks, `None` continues.
 3. **Typed scalar keys.** For a key in `KEY_TYPES`, reuse the key registry's coercion — the H2
-   check. A value carrying any token (`@`, `$`, or a leading `~`) is a reference expression, not a
-   literal scalar to type-check: its terminal type is only known after build, so it is skipped
-   here (§0 again).
+   check. A value carrying any `@` or `$` token is a reference expression, not a literal scalar to
+   type-check: its terminal type is only known after build, so it is skipped here (§0 again).
 
 ⚑ **How step 3 detects failure, and why it is neither a prefix match nor a type sniff.** This
 mirrors the live setter in `set_config_value`: `_coerce_value` returns a `CoercionError` and nothing
 else on failure, so the check is `isinstance(coerced, CoercionError)` and the carried `.message` is
-what the user reads. It USED to read "a typed key gave back a `str`, so coercion failed", which was
-true only while every declared type coerced to a NON-string. `KEY_TYPES` carries `path` since
-[R147], a path stays a raw string, and under the old test a legal path value would have been handed
-straight back to the user as its own error message.
-
----
-
-## Relocation pass, 2026-08-20
-
-Source went from 84.0% comment characters to 59.9% (`[R135]`, 60% bar). Everything
-above was MOVED out of the module docstring, the `#:` attribute comments and the three inline step
-comments; nothing was dropped as false.
-
-What was cut as duplication rather than relocated, with its surviving carrier:
-
-* The B5 severity split and the Q9 / E3 rule were each stated **twice** — once in the module
-  docstring and again in `validate_config_set`'s docstring. One carrier each, here (P12).
-* The E3 probe contract was stated **three** times: the `ResolveProbe` `#:` block, the
-  `validate_config_set` docstring bullet, and the step-2 inline comment. One carrier, here.
-* "files store UNRESOLVED" (§0) appeared five times in the source. It survives here, plus once in
-  the module docstring.
-* The archived keystore design's §6d citation and the `SEAMS.md` S24/S25 notes were in both
-  the docstring body and the two trailing `Authority` / `Seams realized here` sections.
-
-Kept in source under the keep test, because deleting each lets a future edit break something at
-that exact line:
-
-* the ⚑ scalar-only ruling marker on `validate_config_set`, plus the "no colon check" warning —
-  both are things a reader would otherwise re-add;
-* the ⚑ on `Verdict` about the missing third union member;
-* the ⚑ at the step-3 `isinstance(coerced, str)` test, which reads like a type nicety and is
-  actually the coercion-failure protocol.
+what the user reads. A `str` result is not a failure: `KEY_TYPES` carries `path` (`[R147]`), and a
+path stays a raw string.

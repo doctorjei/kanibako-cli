@@ -7,15 +7,13 @@ and produces ONE raw merged snapshot. It is PURE: no file, env or clock access, 
 output, and it NEVER mutates its input partials (S15) — it builds a fresh
 `kanibako.settings.keystore.KeyStore`.
 
-## What it replaced, and what it did NOT retire
+## How it differs from `resolve_value`
 
-It is the depth-sensitive successor to `settings_resolve.resolve_value`'s most-specific-first
-winner-take-all, which used `""` as a terminal plus a separate `defaults` pass. Here the 3-state
-`__MISSING__` / present-`None` model replaces both: assembly already folded the floor INTO the
-`base` level, so there is no separate defaults dict.
-
-⚑ **`resolve_value` itself is NOT retired.** It still serves the `config.*` / `system.*` FOUNDATION
-path tier (`settings/paths.py`); it is the launch/settings cascade that no longer goes through it.
+`settings_resolve.resolve_value` is a most-specific-first winner-take-all with `""` as a terminal
+plus a separate `defaults` pass; it serves the `config.*` / `system.*` FOUNDATION path tier
+(`settings/paths.py`). The launch/settings cascade uses this merge instead: the 3-state
+`__MISSING__` / present-`None` model replaces both, and assembly folds the floor INTO the `base`
+level, so there is no separate defaults dict.
 
 ## Out of scope — hard boundaries
 
@@ -49,19 +47,18 @@ semantics.*
 The 6-level bracket, least → most authoritative, is
 `base < system < agent.default < agent.<active> < workset < box`.
 
-`merge` receives it REVERSED, MOST-SPECIFIC-FIRST (S8), exactly as block 2a's `assemble_levels`
-emits it:
+`merge` receives it REVERSED, MOST-SPECIFIC-FIRST (S8), exactly as `assemble_levels` emits it:
 
 ```
 [box, workset, agent.<active>, agent.default, system, base]
 ```
 
 The agent tier keeps its `default` / `<active-name>` discriminator as the true §2d key
-(`agent.default.*` / `agent.<active-name>.*`) in 2a — the merge unions by that scope-qualified name
+(`agent.default.*` / `agent.<active-name>.*`) — the merge unions by that scope-qualified name
 like every other level.
 
-⚑ **The cascade ends at `box`.** The former `required` non-overridable cap was CUT on 2026-06-29f,
-so the most-specific level is `box` and the merge is a pure highest-precedence-wins union: **no
+⚑ **The cascade ends at `box`.** There is no non-overridable cap, so the most-specific level is
+`box` and the merge is a pure highest-precedence-wins union: **no
 level is treated specially anywhere in this module.**
 
 ## Seams realized here (`~/canon/workbook/plans/keystore-blocks/SEAMS.md`)
@@ -82,8 +79,8 @@ level is treated specially anywhere in this module.**
 For each NAME at each depth, against the ordered partials:
 
 * **absent everywhere** (`__MISSING__` at every level) → not in the snapshot.
-* the highest-precedence setter's value AND a lower setter's value are both `KeyStore` subtrees →
-  RECURSE, a per-name union of those subtrees. A lower NON-subtree value at the same name is
+* the highest-precedence setter's value is a `KeyStore` subtree → RECURSE over every setter's
+  subtree, a per-name union of those subtrees. A lower NON-subtree value at the same name is
   shadowed by the higher subtree.
 * otherwise the **highest-precedence scope that SETS the name wins** (presence tested via the S3
   probe — never truthiness, never the bound `.get`); its leaf (scalar / `list` / `Bind`) replaces
@@ -97,7 +94,7 @@ their value, MOST-SPECIFIC-FIRST — so `setters[0]` is the winner. That list is
 because the name came from the union of SET names in the first place.
 
 `merge` returns the merged `snapshot`. PURE: no I/O; `@`-ref / `$var` / `~` tokens stay RAW
-(expansion is block 3); the input partials are NOT mutated (S15). An empty *levels* list yields an
+(expansion is `settings_expand`'s); the input partials are NOT mutated (S15). An empty *levels* list yields an
 empty snapshot.
 
 ### The present-`None` outcomes
@@ -164,34 +161,25 @@ ROOT is a path that is such a key; an ENTRY is a path with a proper prefix that 
 ⚑ A bare `<scope>.bindings` is NOT a category root. Spec §0 ends the key "at the category (for
 bindings, at the ro/rw ARM)" and §2a resets "at the CATEGORY (for bindings, at the ARM)", so the
 bare node is the NAMESPACE the arms hang under. A `None` there is KEPT and the §0 audit refuses it
-by name, as it does `<scope>.env = None`. Until 2026-09-25 `_is_category_root` also asked about
-`<key>.ro`, which made the bare node a root and OMITTED it, so `bindings: null` silently emptied
-both arms.
+by name, as it does `<scope>.env = None`; treating it as a root would let `bindings: null`
+silently empty both arms.
 
-Until 2026-09-24 both tests read category TOKENS wherever they fell. The root case read the leaf's
-LAST segment, so a present `None` was OMITTED as a category reset at:
+A category TOKEN outside that position is not a category. These present `None`s are KEPT:
 * `workset.channels.common` / `system.channels.common` — path scalars that merely END in the
-  `common` token (spec §2a: the `channels.` segment is the discriminator). That dropped a
-  standalone box's declared `<None>` for `workset.channels.common` (spec §2c) from the snapshot;
+  `common` token (spec §2a: the `channels.` segment is the discriminator), so a standalone box's
+  declared `<None>` for `workset.channels.common` (spec §2c) stays in the snapshot;
 * `<scope>.env.<VAR>` / `<scope>.secret_path.<VAR>` with a VAR spelled like a category
-  (`common`, `seeded`, `masks`, `bindings`) — scalar resets, now KEPT;
-* `meta.assembly.{bindings,seeded,synced}` — never reached: a settings file's `meta:` table is
-  dropped at assembly, and the collapse installs `meta.assembly.*` after the resolve.
-The entry case read ANY ancestor token. Measured over every declared key and every scope × category
-root and entry, the position rule changed no declared key's class; it changed four NON-keys
-(`agent.seeded.<dest>`, `box.bindings.<name>`, `meta.assembly.bindings.<dest>`,
-`workset.channels.common.<x>`) from OMIT to KEEP. Two are reachable, and a `null` at them now
-reaches the closed-keyspace refusal instead of vanishing (`agent.seeded.<dest>`,
-`box.bindings.<name>`). The other two never reach the merge: the `meta:` table is dropped at
-assembly, and `workset.channels.common.<x>` is refused earlier by the path-value check.
+  (`common`, `seeded`, `masks`, `bindings`) — scalar resets;
+* non-keys such as `agent.seeded.<dest>` and `box.bindings.<name>`, so a `null` there reaches the
+  closed-keyspace refusal instead of vanishing.
 
 ### ⚑ The `pref` subtree is EXEMPT — no classification at all
 
 A pref is a REQUEST, not a value (spec §2h), and the request's own path MIRRORS its TARGET's. So
-`pref.agent.claude.common.<box_dest>` carries `common` among its ancestors, and the token rule this
-module used until 2026-09-24 would OMIT it — deleting the RECORD of a `null` request from the snapshot
-while the request itself was applied, so `config show` / `--effective` could not show it. (The
-position rule would not, since `pref` is not a scope; the guard stays so a pref is never classified.)
+`pref.agent.claude.common.<box_dest>` carries `common` among its ancestors; a classifier that
+OMITted it would delete the RECORD of a `null` request from the snapshot while the request itself
+was applied, so `config show` / `--effective` could not show it. The position rule would not OMIT
+it, since `pref` is not a scope; the guard keeps a pref from ever being classified.
 
 It is also the literal implementation of §2h's *"the pref layer MUST NOT interpret emptiness AT
 ALL"*: three idioms already exist downstream (present-`None`, terminal `""`, and the COPY-disable
@@ -200,14 +188,9 @@ sentinel), and the pref layer must not become a fourth place deciding what "empt
 The classification the spec DOES want happens at the INSTALLED target key, where the path is
 `agent.claude.common.<box_dest>` and the ordinary rule applies.
 
-⚑ The trailing segment there is a DESTINATION, not a name. The four categories went TERMINAL and
-dest-keyed on 2026-08-08c, so `.plugins` — which this note used to spell — is no longer a key
-segment anywhere.
-
-### ⚑ Both reset spellings survived the 2026-08-08c dest-key retool with NO edit here
-
-The entry test never cared whether the segment below a category was a NAME or a DESTINATION, so the
-path shape changed and the classification did not.
+⚑ The trailing segment there is a DESTINATION, not a name: the copy categories are TERMINAL and
+dest-keyed. The entry test does not care whether the segment below a category is a NAME or a
+DESTINATION.
 
 ### Why the ROOT case OMITs
 

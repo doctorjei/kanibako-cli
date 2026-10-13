@@ -7,10 +7,6 @@ module is where that generality lives. It declares the FLAG→KEY table, builds 
 launch, and guards it, so the level is ONE mechanism rather than N checks scattered across the
 launch.
 
-P7 built the first instance of that level for exactly one key: `system.agent`, the resolved agent
-selection. P8 generalizes it into the builder and the guard here (P8 also being the boundary-cost
-principle the split pays for).
-
 **PURE:** no I/O and no plugin import at module load, like `kanibako.settings.settings_keyspace`.
 The set of valid agent NAMES is INJECTED by the caller rather than discovered here; the per-agent
 leaf VOCABULARY is the opposite and the guard section says why.
@@ -48,7 +44,7 @@ BOTH halves hold here, and the explicit guard is implemented anyway:
 (`meta.agent.<agent>.settings`). It is excluded from `settings_prefs.LOCATOR_CLOSURE` for the reason
 recorded there — an agent file may not carry prefs, so re-selecting one introduces no new requests —
 and the same argument covers the CLI level. It is the whole point of the feature; a guard that
-refused it would break P7.
+refused it would break agent selection.
 
 ## `SELECTION_KEY`
 
@@ -69,12 +65,9 @@ seams write box invariants only), so the tier reaches the harness only as launch
 the flag stays ephemeral. The realizer also reads this entry directly, for a descriptor whose
 `access_realization.setting_key` is empty and so redeems no stored key.
 
-`-M` is barred from the codex config-projection RESOLVE (that consumer reads the cascade,
-never the CLI level), though the flag itself is wired here for the launch argv.
-
 ### Why `--image` / `--share-images` ARE listed
 
-They are WIRED (B6, R-11a(a)): `box.image` / `box.share_images` resolve through the keyspace (the
+They are WIRED: `box.image` / `box.share_images` resolve through the keyspace (the
 box-scalar resolve in `settings_launch.load_merged_config`), agent-lessly — a box-scope flag needs
 no active-agent discriminator.
 
@@ -95,7 +88,7 @@ Spec §2h's CATEGORICAL tier, which the CLI does not inherit and therefore resta
 
 `build_cli_level` returns the level for one launch, or `None` when it would be empty.
 
-**`selection`** is P7's resolved-agent level (`{"system.agent": node}`; a launch builds it in
+**`selection`** is the resolved-agent level (`{"system.agent": node}`; a launch builds it in
 `start._launch_selection_level`, which pins `shell` when nothing was selected), or `None` when the
 caller has no selection. It is carried through VERBATIM: it is installed on EVERY resolve, whichever
 of its three sources won, so
@@ -107,7 +100,8 @@ entries are emitted ONLY when it is truthy. A launch with no target (`kanibako s
 --entrypoint`) passes `None` and resolves in the `shell` slot (`agent_ref.GENERAL_SLOT`). Spelling
 `agent.shell.model` would install the flag on the shell tier, which is DECLARED. ⚑ The `shell`
 parser has no `-M`, but `start` does and `--entrypoint` is shared, so `start --entrypoint X -M foo`
-parses and the `-M` value is DROPPED, with nothing printed.
+parses and the `-M` value is dropped, and a `Note:` line names it
+(`start._print_entrypoint_notes`).
 
 ⚑ **The agent-scope spelling is `agent.<active>.<leaf>`, never `agent.default.<leaf>`.**
 `effective_behavior` performs the §2d active-over-default pick AFTER the cascade merge, so a value at
@@ -131,12 +125,11 @@ group) fold into `agent.<active>.continue_mode`:
 * none of them → the key is ABSENT and the stored/default value stands.
 
 ⚑ **`-R` installing `True` is LOAD-BEARING, not cosmetic.** `assembly.resolve_mode` falls through its
-picker arm for a descriptor with no `resume` mode (goose/codex) and then keys on `skip_continue`. The
-retired `resolve_new_session` returned "not fresh" for `-R` regardless of the stored key, so a
-picker-less `-R` yielded `"continue"`. If `-R` installed nothing, a box with a stored
-`continue_mode: false` would flip to `"start"`.
+picker arm for a descriptor with no `resume` mode (goose/codex) and then keys on `skip_continue`, so a
+picker-less `-R` must yield `"continue"` whatever the stored key says. If `-R` installed nothing, a box
+with a stored `continue_mode: false` would flip to `"start"`.
 
-**`image`** (`--image`, B6/R-11a(a)): a non-empty string installs `box.image`. `None` or `""` installs
+**`image`** (`--image`): a non-empty string installs `box.image`. `None` or `""` installs
 NOTHING (absent ≠ `""`, same rule as `model`). BOX-scope — installed independently of `active_agent`,
 because a box selects its rig whether or not an agent launches (`kanibako shell` included).
 
@@ -148,8 +141,8 @@ arrives here as `False` and must mean ABSENT (the stored value stands), never an
 ## The guard
 
 `guard_cli_level` refuses an illegal CLI-level key, NAMING it (spec §1A, §0). It is called from
-INSIDE `kanibako.settings.settings_launch.build_launch_snapshot`, before the splice, so no call site
-can bypass it. It is a no-op for `None` / an empty level.
+inside `kanibako.settings.settings_launch.assemble_cascade` (every snapshot route,
+`build_launch_snapshot` included), before the splice, so no call site can bypass it. It is a no-op for `None` / an empty level.
 
 It refuses in this order, each arm reporting the key and the section that bars it:
 
@@ -165,10 +158,15 @@ It refuses in this order, each arm reporting the key and the section that bars i
 the active agent is valid BY CONSTRUCTION, having just been resolved by
 `kanibako.settings.agent_select.select_agent`.
 
-When `valid_agents` is `None` the set is exactly `{active_agent}`: every agent-scope key this module
-builds is spelled against that same discriminator, so plugin discovery would be pure cost — a
-flag-free launch keeps paying nothing, the same trade `settings_prefs.apply_prefs` makes. The union
-is not a bypass: a key naming any OTHER agent is still refused.
+When `valid_agents` is `None` the set is exactly `{active_agent}`. `assemble_cascade` does not pass
+`None`: it resolves `valid_agents` once through `resolve_valid_agents`, over the pref targets plus
+`keys_needing_agent_names(cli_level, active_agent=...)`, and hands the same object to both doors.
+The union is not a bypass: a key naming any OTHER agent is still refused.
+
+```keys_needing_agent_names(level, *, active_agent) -> list[str]```
+The keys of *level* whose agent NAME the guard must look up: every key but `agent.<active_agent>.*`,
+which the active-agent union answers. `build_cli_level` spells only that agent scope, so a launch
+whose level holds core flags alone triggers no plugin discovery.
 
 ### The leaf VOCABULARY is sourced, and that asymmetry is the point
 
@@ -177,21 +175,17 @@ to answer. This door is the TWIN of `config_keys.agent_key_reason`: names inject
 the on-disk store dir; here, the agent the launch just resolved), vocabulary read from
 `config_keys.AGENT_LEAF_MAP`.
 
-It was a PARAMETER until 2026-09-01 and **no caller ever passed one**, so the door judged every agent
-against core's §2d table alone. `agent.goose.provider` — a real goose `setting_descriptor` leaf — was
-refused at the CLI level while the config verb and the pref door both accepted it. That is a §0
-breach in the STRICT direction, which is why it went unnoticed for as long as it did: the failure
-mode is a user being told no. It was harmless only because `build_cli_level` emits nothing but core
-leaves; it would have stopped being harmless the first time a plugin leaf got a flag, and a rule a
-caller can forget is not a rule (P15 — the shape is now unavailable, not merely discouraged).
+It is not a parameter. A vocabulary a caller may omit judges every agent against core's §2d table
+alone, so `agent.goose.provider` — a real goose `setting_descriptor` leaf — would be refused at the
+CLI level while the config verb and the pref door both accept it: a §0 breach in the STRICT
+direction. A rule a caller can forget is not a rule (P15).
 
 Two properties of the map are load-bearing, and neither survives being "simplified":
 
 * **It is a thing to ASK, not a value.** `AgentVocabulary` consults core's table first and reaches the
   map only for a leaf core cannot answer, so `-M` and `-N`/`-C`/`-R` still import no plugin. Handing
-  the guard a materialized map instead would change no verdict and restore the whole cost silently
-  (measured at 73% of a settings resolve) — `test_a_CORE_leaf_costs_no_plugin_discovery` is the only
-  thing that would notice.
+  the guard a materialized map instead would change no verdict and restore the whole discovery cost
+  silently — `test_a_CORE_leaf_costs_no_plugin_discovery` is the only thing that would notice.
 * **It CONCEDES rather than refuses** what discovery could not read (`[R150]`, spec §0: *"Where an
   agent's vocabulary cannot be read — its plugin is not installed — the leaf is CONCEDED, never
   refused."*). A bare `{}` or a
@@ -205,9 +199,9 @@ door only has to hand it the map.
 ### The dotted-key split
 
 ⚑ A dotted key is split on `.`, so an agent NODE whose name contains a dot (`a.b℘claude`) is refused
-by arm 1 rather than silently mis-parsed. As of 2026-08-04 such a node can no longer be CONSTRUCTED —
-`agent_ref` rejects `.` in a persona/harness segment for exactly this ambiguity — so this arm is now
-defense in depth against a node that reached here by some other route, not a live case. It stays
+by arm 1 rather than silently mis-parsed. Such a node cannot be CONSTRUCTED — `agent_ref` rejects
+`.` in a persona/harness segment for exactly this ambiguity — so this arm is defense in depth against
+a node that reached here by some other route. It stays
 because it is free and because every dotted-key builder in the launch (`agent_defaults`,
 `meta_agent_path_floor`, `dotted_partial`) splits the same way and would never re-find the node;
 refusing loudly beats mis-resolving silently.

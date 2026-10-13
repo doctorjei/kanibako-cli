@@ -19,19 +19,18 @@ including the load-bearing `Bind`-not-`Bind|None` coupling); no live clause stat
 1. **Typed VIEWS over finite subtrees** — system paths and `meta`: fixed names, exact static types
    (`Path` / `str` / `bool`). This module ships the MECHANISM (`typed_field` plus the `FiniteView`
    base) and ONE small worked example (`MetaView`). It does NOT port `StandardPaths`, which still
-   resolves through `resolve_value` on the FOUNDATION path tier (that port is block 7).
+   resolves through `resolve_value` on the FOUNDATION path tier.
 2. **Typed CATEGORY accessors** — each §2a category has DYNAMIC keys but ONE known value type, so it
    is a typed read-only mapping. `bind_map` gives `Mapping[box_dest, BindEntry]` for EVERY
    bind-shaped category: the `bindings.{ro,rw}` arms and `caches` / `seeded` / `common` / `synced`,
-   all of them dest-keyed terminal keys (R-5/R-6; the four followed on 2026-08-08c). `env_view`
+   all of them dest-keyed terminal keys. `env_view`
    gives `Mapping[str, scalar]` for `env`. `masks_set` gives `set[box_dest]` for the resolved
    `masks` (spec §2a "masks is a KEYED category").
 3. **Raw attribute / `[]` access** returning the full union — already provided by `KeyStore` itself
-   (block 1), for genuinely mixed nodes only.
+   for genuinely mixed nodes only.
 
-⚑ The NAME-keyed `bind_category` / `bindings` lenses were DELETED in the 2026-08-08c pass. They had
-no production caller and their `Mapping[str, Bind]` contract was the retired shape, so leaving them
-would have left a typed accessor promising a value the store can no longer hold.
+⚑ There is no NAME-keyed category lens: a `Mapping[str, Bind]` contract would promise a value the
+store cannot hold.
 
 ## PER-SCOPE, not cross-scope (S21)
 
@@ -53,7 +52,7 @@ otherwise ill-typed — leaf under a category node, that is a BUILD-INVARIANT BR
 The same reasoning makes `masks_set` honestly a `set`: a resolved `masks` value is the mask marker,
 because present-`None` unmasks were dropped at build (spec §2a "masks is a KEYED category").
 
-`ViewError` is therefore a signal about a BUILD bug upstream (block 2b/3), NOT about bad user input.
+`ViewError` is therefore a signal about a BUILD bug upstream (the merge or expansion), NOT about bad user input.
 It is raised when an accessor sees a leaf its tier's contract says cannot exist — a `None` or
 non-`Bind` leaf under a bind category (the S22 coupling breach), a non-scalar under `env`, or a
 missing / wrong-typed field under a finite view.
@@ -75,7 +74,7 @@ present-`None` entries, so a `None` here is a build breach. It is a `Mapping`, n
 
 ⚑ The check is `isinstance(value, BindEntry)`, which is FALSE for a legacy 3-tuple `Bind` even
 though both are tuples. A stale name-keyed arm handed to this lens is REFUSED at read rather than
-mis-read. The P5→P8 bridge keeps both shapes alive, and nothing may tell them apart by arity.
+mis-read. Both shapes are tuples, so nothing may tell them apart by arity.
 
 `bind_map(node, label=...)` is the public entry. *node* is the `KeyStore` that a terminal
 bind-shaped key holds — `<scope>.bindings.{ro,rw}` or `<scope>.{caches,seeded,common,synced}` — i.e.
@@ -115,8 +114,8 @@ declaration AND the binding it produces (spec §0).
 
 Unlike the tier-2 lenses this returns a fresh dict rather than a live view. The node is PARAMETRIC
 over the whole key space below it — `binding_derivations.agent.claude.common.~/.claude/plugins` is
-the declaration key plus the entry's DEST, since the four categories went terminal and dest-keyed on
-2026-08-08c — so the useful shape is the FLAT declaration key, which no lens over one node can
+the declaration key plus the entry's DEST, since the copy categories are terminal and dest-keyed —
+so the useful shape is the FLAT declaration key, which no lens over one node can
 present. The `Bind`s themselves are shared, not copied, because they are immutable.
 
 An absent or empty node yields `{}`. A non-`Bind` leaf raises `ViewError` (S22 — a build breach,
@@ -153,7 +152,7 @@ surfacing as the bool `True`. The helpers isinstance-CHECK the stored value firs
   as-is; a non-str / non-None leaf is rejected.
 * `as_argv_fragment` — a stored argv fragment (`list`/`tuple` of `str`) → `list[str]`, for the
   plugin-set launch-grammar leaves `meta.agent.<a>.exec` and the values inside
-  `meta.agent.<a>.mode` (spec §2d / B5). It rejects any non-str element, and normalizes a tuple (the
+  `meta.agent.<a>.mode` (spec §2d). It rejects any non-str element, and normalizes a tuple (the
   descriptor's in-memory form) to a list.
 * `as_mode_table` — the `meta.agent.<a>.mode` NODE → `dict[str, list[str]]`. The launch-grammar
   table is materialized as a KeyStore sub-node (the floor's dict value, spec §2d
@@ -185,55 +184,53 @@ exposes no mutation path.
 **`MetaView`** is a small WORKED EXAMPLE (tier-1). It wraps a `meta` NODE and exposes a
 few representative fields at their exact types — a `Path` (`root`) and a `str` (`name`) — to
 demonstrate the `typed_field` + `FiniteView` mechanism. It is NOT the full `meta` schema and is NOT
-wired into any consumer (that is block 7). Add more fields by declaring more `typed_field`
+wired into any consumer. Add more fields by declaring more `typed_field`
 descriptors.
 
-**`MetaRuntimeView`** wraps `store.meta.runtime` (block B1, spec §1A) and surfaces the
+**`MetaRuntimeView`** wraps `store.meta.runtime` (spec §1A) and surfaces the
 runtime-resolved identity anchors at their exact types: the workset root `ws_root` (a resolved
 `Path`) and the resolved mode token `project_type` (a `str`, one of `"primary"` / `"named"` /
-`"standalone"`). ADDITIVE — no consumer reads it yet (B1).
+`"standalone"`). No consumer reads it.
 
-⚑ There is NO `ws_settings` field. `meta.runtime.ws_settings` is CUT from the keyspace (spec §1A);
-the workset-tier settings FILE is `MetaWorksetView.settings`, which now spells itself directly off
-`ws_root`.
+⚑ There is NO `ws_settings` field: `meta.runtime.ws_settings` is not a key (spec §1A). The
+workset-tier settings FILE is `MetaWorksetView.settings`, spelled directly off `ws_root`.
 
-**`MetaBoxView`** wraps `store.meta.box` (block B1 + B2) and exposes the RO identity anchors
+**`MetaBoxView`** wraps `store.meta.box` and exposes the RO identity anchors
 materialized for the box (spec §2c; §0 meta-RO):
 
-* `mode` (B1) — the resolved mode token surfaced from `@meta.runtime.project_type` (spec §2b; this
-  was the settable `box.mode`).
-* `name` (B2) — the box name (`proj.name`; the `@meta.box.*` binds key off it).
-* `workspace` (B2) — the resolved in-box workspace SOURCE (= `str(proj.project_path)`);
+* `mode` — the resolved mode token surfaced from `@meta.runtime.project_type` (spec §2b).
+* `name` — the box name (`proj.name`; the `@meta.box.*` binds key off it).
+* `workspace` — the resolved in-box workspace SOURCE (= `str(proj.project_path)`);
   `box.bindings.rw.workspace` routes through `@meta.box.workspace` (spec §2c).
-* `inbox` (B2) — this box's own mailbox dir (spec §2c); `box.bindings.rw.inbox` routes through
+* `inbox` — this box's own mailbox dir (spec §2c); `box.bindings.rw.inbox` routes through
   `@meta.box.inbox`.
-* `share_global` (B2) — this box's system-scope share dir (spec §2c).
-* `share_workset` (B2) — this box's workset-local share dir, `None` for STANDALONE (spec §2c).
+* `share_global` — this box's system-scope share dir (spec §2c).
+* `share_workset` — this box's workset-local share dir, `None` for STANDALONE (spec §2c).
 * `settings` — the RO box-TIER settings-file path, UNIFORM in every mode (spec §2c, ALL PROJECTS).
-  Standalone's is `<root>/box_data/box.yaml`, a real path that is merely ABSENT BY DEFAULT
+  Standalone's is `box.yaml` in its store — the resolved `workset.boxes`
+  (`paths.standalone_box_store`), `<root>/box_data/` by default — a real path that is merely ABSENT BY DEFAULT
   (`system-design` § "Detection & import": detection reads the ROOT file and must NOT
   depend on `box_data/box.yaml`, "which may be absent") — NOT a `None` terminal. It is typed `Path | None` only because a narrow or partial resolve
   may materialize no box tier; the launch always supplies one.
 
 `container_name` and `helper_num` are a non-bind RENDER and are deliberately not materialized here
-(JC-B2-3).
+.
 
-**`MetaWorksetView`** wraps `store.meta.workset` (block B1 + B2, spec §1A/§2c). It exposes the
-single-source re-rooted `path` (= `@meta.runtime.ws_root`, a resolved `Path`); `settings`
-(= `@meta.runtime.ws_root/workset.yaml`, a `Path` for ALL modes including standalone, whose ROOT
-file plays the workset tier — spelled directly off `ws_root` now that the `meta.runtime.ws_settings`
-hop is CUT, spec §1A); and the `name` partition token (`__PRIMARY__` / `<named>` /
-`__STANDALONE__`), which is now the `@meta.runtime.ws_name` anchor (block B1, single source, spec
-§1A/§2c 2026-07-04; it was a direct B2 literal).
+**`MetaWorksetView`** wraps `store.meta.workset` (spec §1A/§2c). It exposes the single-source
+re-rooted `path` (= `@meta.runtime.ws_root`, a resolved `Path`); `settings`
+(= `@meta.runtime.ws_root/workset.yaml`, typed `Path | None` via `as_opt_path`: it is a path in
+every mode, standalone included, whose ROOT file plays the workset tier, and `None` only where a
+narrow or partial resolve materializes none); and the `name` partition token (`__PRIMARY__` /
+`<named>` / `__STANDALONE__`), the `@meta.runtime.ws_name` anchor (spec §1A/§2c).
 
-**`MetaAgentView`** wraps `store.meta.agent.<agent>` (block B2 + B5, spec §2d). It exposes:
+**`MetaAgentView`** wraps `store.meta.agent.<agent>` (spec §2d). It exposes:
 
 * `name` — the plugin-set name (spec §2d), REQUIRED when an agent exists; it identifies the store
   dir and the cascade key.
 * `path` — the agent STORE ROOT (§2d = `@config.agents/<agent>`), which is also §2a's agent
   DECLARATION ROOT: an abstract-category source stores
   `@meta.agent.<agent>.path/<category>/<leaf>`, so the key resolves for real.
-* the B5-materialized trio (§3.3 rulings): `settings` (the agent-tier settings cascade FILE,
+* the materialized trio: `settings` (the agent-tier settings cascade FILE,
   `@meta.agent.<a>.path/agent.yaml`, resolved); `mode` (the harness's INTERACTIVE launch grammar,
   `dict[mode_key → argv fragment]`); and `exec` (the STANDALONE one-shot fragment, declared under
   the Python-safe attribute `exec`). `exec` is ABSENT for an agent with no `exec` operation, so

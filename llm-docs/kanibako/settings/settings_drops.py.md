@@ -11,9 +11,7 @@ The containment rule has readers on opposite sides of import edges: `settings_as
 cascade, which drops and warns), `config_keys` (the `config set` direction guard) and
 `agent_file` (the per-agent file's stray-root refusal). The assembler imports `agent_file`, so the rule cannot
 live in the assembler. Here, below all of them — it imports only `kb_store` and `settings_prefs` —
-it has one derivation, and every reader imports it. Before this module, `config_keys` sliced the
-containment order itself and `settings_assemble` kept a private copy of the same rule: two
-derivations of one fact.
+it has one derivation, and every reader imports it.
 
 ## Functions
 
@@ -43,5 +41,7 @@ the warning; `settings_assemble._drop_upward_scopes` and `_warn_upward_drops` ad
 ```cascade_drop_set(level: str) -> frozenset[str]```
 Every top-level token the cascade drops from a *level* file before the merge:
 `upward_scope_drop_set(level)`, plus `pref` wherever §2h forbids writing a request
-(`settings_prefs.PREF_LEGAL_LEVELS`). `settings_assemble.cascade_view` filters with it. The
-per-agent file's own contribution rule (root table only) is `cascade_view`'s, not this set's.
+(`settings_prefs.PREF_LEGAL_LEVELS`). `settings_assemble._file_view` applies the same filters
+(`refuse_pref_table`, then `_drop_upward_scopes`, or `contributed_tables` for the agent file);
+`cascade_drop_set`'s readers are `settings_assemble._agent_shape_input`, `agent_file` (the
+stray-root check), and `config_interface`.
