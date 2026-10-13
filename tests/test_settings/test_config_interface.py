@@ -2776,7 +2776,7 @@ class TestScopeFileStoresArgvWords:
 # ---------------------------------------------------------------------------
 # Category `config set` — the source-only RAW host_src repoint (block 7c).
 # Drives the REAL `set_config_value` router (not the unit `settings_configset`).
-# Spec §2a / design §6d / SEAMS S24/S25.
+# Spec §2a / SEAMS S24/S25.
 # ---------------------------------------------------------------------------
 
 class TestTerminalCategoryWriteRefusal:

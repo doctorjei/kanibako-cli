@@ -226,7 +226,7 @@ def _pref_value_error(
 
     target = canonical[len(PREF_ROOT) + 1:]
     if value is None:
-        return None  # the suppression request — legal at any leaf (§3 / §2h).
+        return None  # the suppression request — legal at any leaf (spec §2h).
 
     # ⚑ DELIBERATE, DO NOT "FIX": ``pref.system.agent``'s VALUE is not checked against the
     # installed agents — an unknown name surfaces at agent RESOLUTION (P7), not here.

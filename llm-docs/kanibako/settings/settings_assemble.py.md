@@ -36,9 +36,9 @@ Provenance: block 2a of the KeyStore implementation.
   cap was cut 2026-06-29f). Spec §2 states both directly. This module consults no machine path.
   *(The source used to phrase this as "reads NO `machine_config_path()`"; that function no longer
   exists anywhere in the tree, so the symbol name was dropped and the substance kept.)*
-* **`~/canon/notebook/archives/resources/keystore-2026-06/keystore-design.md`** (archived at `~/canon/notebook/archives/resources/keystore-2026-06/`) §2 (storage —
-  partials are `KeyStore`s, binds are `Bind`); §3
-  (`None` semantics — the per-entry reset the merge classifies as an OMIT).
+* Historical (NOT AUTHORITY): `~/canon/notebook/archives/resources/keystore-2026-06/keystore-design.md`
+  §2 (storage — partials are `KeyStore`s, binds are `Bind`). The per-entry reset the merge
+  classifies as an OMIT: spec §2a "PER-ENTRY CASCADE MERGE".
   ⚑ Cite spec §2, not design §4, for the bracket: design §4 still writes it with a 7th `required`
   tier, which S14 and spec §2 cut.
 
@@ -53,7 +53,7 @@ Provenance: block 2a of the KeyStore implementation.
 * **S9** — binds parsed at ASSEMBLY with `@`-refs / `$vars` / `~` left RAW inside the entry
   (expansion is block 3).
 * **S13** — ONE unified `KeyStore` partial per level holding BOTH behavior leaves AND category
-  subtrees together (design §1/§2 single-source).
+  subtrees together (single source).
 * **S14** — no `machine` tier; floor → `base`; cascade ends at `box` (no `required` cap).
 * **S3** — every walk here uses UNBOUND `dict.get` / `dict.__setitem__`, never the bound method: a
   leaf legitimately named `get` must not shadow the protocol into a crash.
@@ -674,8 +674,9 @@ names the key in the refusals.
 Returns the map as a nested `KeyStore` node, NOT an opaque dict leaf, so it merges PER-ENTRY across
 cascade levels through the generic node recursion (the `masks` precedent) instead of a box-level arm
 wiping an inherited workset entry wholesale. A `None` entry value is preserved VERBATIM — the
-per-entry reset the merge classifies as an OMIT (design §3). A non-mapping *raw* raises
-`SettingsError`; so does a malformed entry (`settings_resolve.unpack_bind_entry`).
+per-entry reset the merge classifies as an OMIT (spec §2a "PER-ENTRY CASCADE MERGE"). A
+non-mapping *raw* raises `SettingsError`; so does a malformed entry
+(`settings_resolve.unpack_bind_entry`).
 
 ⚑ **THIS IS THE ONE PLACE A STORED DEST IS CANONICALIZED ON READ** (R-11): every key goes through
 `settings_resolve.normalize_bind_dest`, so `~` and `~/` are ONE entry and not two colliding at one

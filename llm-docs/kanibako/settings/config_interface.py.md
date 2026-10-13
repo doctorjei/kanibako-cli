@@ -31,7 +31,7 @@ verbs), §2a (categories + value types), §2b (`meta.box.agent.*`), §2h (`pref.
 declared `bool` in `KEY_TYPES` coerce) — so there is no existing rule under which the string
 `"null"` would become `None`, and inventing one for this route alone would be a dialect:
 `box.env.X=null` and `box.image=null` are legitimate strings. The flag says what is meant,
-applies to EVERY key whose leaf accepts the §3 present-`None` terminal, and cannot collide with
+applies to EVERY key whose leaf accepts the present-`None` terminal, and cannot collide with
 data. It is the CLI spelling of §2h's suppression request
 (`pref.agent.<agent>.<category>.<name>: null`), which is the ONLY channel a box has to drop
 something its agent declares.
@@ -134,7 +134,7 @@ of which bit before this existed:
   the target path is what makes the probe mean anything.
 
 Returns an `Error: …` string when refused, else `None`. A `None` *value* (the `--null`
-suppression request) is always shape-legal: present-`None` is the §3 terminal every category and
+suppression request) is always shape-legal: present-`None` is the terminal every category and
 scalar leaf accepts, and it is §2h's ONLY suppression channel.
 
 ### The `pref.system.agent` non-check
@@ -754,7 +754,7 @@ pre-existing defect still allows the set and `config set` stays usable to REPAIR
 
 ⚑ **THERE IS NO CATEGORY SET BRANCH ANY MORE (DS-BL1 = (a), Jei 2026-08-07g — *"accept the loss
 uniformly"*), and its absence is DELIBERATE.** It ran the source-only RAW repoint (S24/S25, spec
-§2a / design §6d) for `caches` / `seeded` / `common` / `synced` at every scope: validate the raw
+§2a) for `caches` / `seeded` / `common` / `synced` at every scope: validate the raw
 value, then swap ONLY `host_src` in the existing tuple at the command-scope file. Every
 bind-shaped category is now YAML-only, so all six are REFUSED BY NAME in the preamble
 (`scope_bind_retired_error` at the file scopes, `agent_node_bind_retired_error` at the agent

@@ -1810,7 +1810,7 @@ def test_parse_bind_map_leaves_refs_and_vars_raw() -> None:
 
 def test_parse_bind_map_preserves_a_present_none_entry() -> None:
     # A per-entry reset stays a present-``None`` leaf for the merge to classify as
-    # an OMIT (§3) — it must NOT be parsed away or rejected here.
+    # an OMIT (spec §2a PER-ENTRY CASCADE MERGE) — it must NOT be parsed away or rejected here.
     node = parse_bind_map({"~/a": ["/h/a"], "~/b": None})
     assert dict.__getitem__(node, "/home/agent/b") is None
 
