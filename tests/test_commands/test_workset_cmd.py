@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import errno
 import os
 from pathlib import Path
 
@@ -3914,6 +3915,10 @@ class TestConnectDropsTheStandaloneMarker:
         [warning] = [r.getMessage() for r in caplog.records
                      if "could not check the standalone marker" in r.getMessage()]
         assert warning.count(str(marker)) == 1
+        assert "retry" not in warning  # the entry clears, so a retry would drop nothing
+        assert "remove that line by hand" in warning
+        assert (f"({os.strerror(errno.EACCES)})" if damage == "unreadable"
+                else f"({os.strerror(errno.ELOOP)})") in warning
         if damage == "unreadable":
             assert marker.read_text() == before
         else:
