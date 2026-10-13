@@ -283,7 +283,7 @@ def test_higher_scope_overrides_one_agent_by_name() -> None:
 
 
 # --------------------------------------------------------------------------- #
-# present-None TYPE-SPLIT (spec §2h)                                            #
+# present-None TYPE-SPLIT (spec §2h)                                          #
 # --------------------------------------------------------------------------- #
 
 

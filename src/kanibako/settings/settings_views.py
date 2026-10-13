@@ -443,7 +443,7 @@ class FiniteView:
 
 
 class MetaView(FiniteView):
-    """A small WORKED EXAMPLE of a tier-1 finite view (tier-1).
+    """A small WORKED EXAMPLE of a tier-1 finite view.
 
     ⚑ NOT the full ``meta`` schema, and NOT wired into any consumer (block 7).
     """
