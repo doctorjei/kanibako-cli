@@ -21,6 +21,9 @@ _LEGACY_TS_RE = re.compile('^\\d{8}T\\d{6}Z$')
 def box_snapshot_store(vault_rw_path: Path, box_name: str) -> Path
 def snapshot_base(vault_rw_path: Path, *, exclusive: bool) -> tuple[Path, Path]
 def link_refusal(link: Path) -> str
+def refusal_text(exc: boxfs.SymlinkRefusedError) -> str
+def store_path(vault_rw_path: Path, *, box_name: str, exclusive: bool) -> tuple[Path, Path]
+def same_store(a: Path, b: Path) -> bool
 def checked_store(vault_rw_path: Path, *, box_name: str, exclusive: bool) -> tuple[Path, Path]
 def migrate_legacy_versions(vault_rw_path: Path, *, box_name: str, store_exclusive: bool=False, create_base: bool=False, held: Mapping[str, str] | None=None) -> dict[str, list[str]]
 def detect_snapshot_strategy(vault_path: Path) -> str
@@ -36,6 +39,7 @@ def auto_snapshot(vault_rw_path: Path, *, box_name: str, strategy: str | None='h
 def _versions_dir(vault_rw_path: Path) -> Path
 def _box_store(vault_rw_path: Path, box_name: str) -> Path
 def _is_migrated(versions: Path) -> bool
+def _repoint_target(link: Path) -> Path
 def _refuse_link(path: Path, root: Path) -> None
 def _write_layout_marker(versions: Path, root: Path) -> None
 def _unique_snapshot_dest(target: Path, name: str, owner: str | None) -> Path
@@ -69,4 +73,6 @@ class RestoreUndoFailedError(KanibakoError):
 class RestoreLinkRefusedError(RestoreRefusedError):
 
 class SnapshotSafetyError(KanibakoError):
+
+class BrokenRepointError(boxfs.SymlinkRefusedError):
 ```

@@ -22,10 +22,10 @@ from kanibako.snapshots import (
     checked_store,
     create_snapshot,
     list_snapshots,
-    link_refusal,
     list_unsorted,
     migrate_legacy_versions,
     prune_snapshots,
+    refusal_text,
     restore_snapshot,
     snapshots_to_prune,
 )
@@ -289,7 +289,7 @@ def run_prune(args: argparse.Namespace) -> int:
 
 def _link_refused(exc: SymlinkRefusedError) -> int:
     """Print the refusal of a snapshot store behind a symlink; rc 1."""
-    print(f"Error: {link_refusal(exc.link)}, and try again. Nothing was changed.",
+    print(f"Error: {refusal_text(exc)} and try again. Nothing was changed.",
           file=sys.stderr)
     return 1
 

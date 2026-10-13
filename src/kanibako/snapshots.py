@@ -163,7 +163,7 @@ def snapshot_base(vault_rw_path: Path, *, exclusive: bool) -> tuple[Path, Path]:
 
     ⚑ A SHARED base (*exclusive* False) sits in the host-only parent of every box's
     vault, which no box can reach: a link AT it is the user's own repoint, so it is
-    resolved and the links below it are still refused.  An exclusive base is in the
+    resolved (and so is one at a store in it: :func:`store_path`).  An exclusive base is in the
     box's own tree, so it stays lexical and a link at it is refused.  A link that
     cannot be resolved (a loop, a dangling target) raises
     :class:`boxfs.SymlinkRefusedError`: fail closed.
@@ -171,13 +171,25 @@ def snapshot_base(vault_rw_path: Path, *, exclusive: bool) -> tuple[Path, Path]:
     versions = _versions_dir(vault_rw_path)
     if exclusive or not versions.is_symlink():
         return versions, vault_rw_path.parent
-    try:
-        real = versions.resolve(strict=True)
-    except (OSError, RuntimeError) as exc:
-        raise boxfs.SymlinkRefusedError(versions, versions) from exc
-    if not real.is_dir():
-        raise boxfs.SymlinkRefusedError(versions, versions)
+    real = _repoint_target(versions)
     return real, real.parent
+
+
+class BrokenRepointError(boxfs.SymlinkRefusedError):
+    """A link at a SHARED base or store -- the user's own repoint, which is followed --
+    does not lead to a directory (a loop, a dangling target, an unmounted disk)."""
+
+
+def _repoint_target(link: Path) -> Path:
+    """The directory the user's repoint *link* leads to; :class:`BrokenRepointError`
+    when it leads to none (fail closed)."""
+    try:
+        real = link.resolve(strict=True)
+    except (OSError, RuntimeError) as exc:
+        raise BrokenRepointError(link, link) from exc
+    if not real.is_dir():
+        raise BrokenRepointError(link, link)
+    return real
 
 
 def link_refusal(link: Path) -> str:
@@ -189,15 +201,48 @@ def link_refusal(link: Path) -> str:
     return f"{link} cannot be opened; make it readable"
 
 
-def checked_store(vault_rw_path: Path, *, box_name: str, exclusive: bool) -> tuple[Path, Path]:
-    """``(store, root)`` for *box_name*, under :func:`snapshot_base`'s base.
+def refusal_text(exc: boxfs.SymlinkRefusedError) -> str:
+    """What is wrong, and the cure, for a refusal from this module: a broken repoint
+    (:class:`BrokenRepointError`), else :func:`link_refusal`."""
+    if isinstance(exc, BrokenRepointError):
+        return (f"{exc.link} is a link that does not lead to a directory; fix the link "
+                f"or mount its target")
+    return link_refusal(exc.link)
 
-    Raises :class:`boxfs.SymlinkRefusedError` when a link a box could plant stands at
-    the store or between it and *root*.  A reader calls it too: a listing or a prune
-    through such a link would show, or delete, what the link points at.
+
+def store_path(vault_rw_path: Path, *, box_name: str, exclusive: bool) -> tuple[Path, Path]:
+    """``(store, root)`` for *box_name*: the store a writer works in, and the root its
+    writes are checked below.  Nothing is refused here but a broken repoint.
+
+    ⚑ In a SHARED base the store, like the base, sits in the host-only parent: a link
+    AT it is the user's repoint and is resolved (:func:`snapshot_base`).  In an
+    exclusive base it stays lexical, for :func:`checked_store` to refuse.
     """
     base, root = snapshot_base(vault_rw_path, exclusive=exclusive)
     store = base / _box_store(vault_rw_path, box_name).name
+    if not exclusive and os.path.islink(store):  # False where unreadable: refused below
+        store = _repoint_target(store)
+        root = store.parent
+    return store, root
+
+
+def same_store(a: Path, b: Path) -> bool:
+    """True when *a* and *b* are one directory, however spelled (a resolved repoint
+    against a lexical path).  ⚑ A move or merge of a store into itself deletes it."""
+    try:
+        return a == b or os.path.samefile(a, b)
+    except OSError:
+        return False
+
+
+def checked_store(vault_rw_path: Path, *, box_name: str, exclusive: bool) -> tuple[Path, Path]:
+    """:func:`store_path`, refused (:class:`boxfs.SymlinkRefusedError`) when a link a box
+    could plant stands at the store or between it and *root*.
+
+    A reader calls it too: a listing or a prune through such a link would show, or
+    delete, what the link points at.
+    """
+    store, root = store_path(vault_rw_path, box_name=box_name, exclusive=exclusive)
     _refuse_link(store, root)
     return store, root
 
@@ -573,7 +618,7 @@ def create_snapshot(
     later reader would let a timestamp-named box made in between be swept.
 
     *strategy* ``None`` detects one (:func:`detect_snapshot_strategy`) once the store
-    has been checked.  A symlink at the store or the base raises
+    has been checked.  A link :func:`checked_store` refuses raises
     :class:`boxfs.SymlinkRefusedError` before anything is written.
 
     Returns the path to the snapshot directory, or ``None`` if the directory
@@ -744,32 +789,33 @@ def relocate_snapshot_store(
                 and not old_store.is_symlink()):
             return None
 
-    # ⚑ Before any write: a link below either base (or at an exclusive one) is
-    # refused, never moved through.
+    # ⚑ Before any write: a link a box could plant (at or below an exclusive base) is
+    # refused, never moved through; a shared base's or store's repoint is resolved.
     new_base, new_root = snapshot_base(new_vault_rw, exclusive=new_base_exclusive)
     if from_new:
         carried, carried_root = new_base / old_box, new_root
     else:
         old_base, carried_root = snapshot_base(old_vault_rw, exclusive=old_base_exclusive)
         carried = old_base / old_box
-    new_store = new_base / new_box
-    if carried == new_store:  # two spellings of one base: nothing to carry
+    new_store, store_root = store_path(new_vault_rw, box_name=new_box,
+                                       exclusive=new_base_exclusive)
+    if same_store(carried, new_store):  # two spellings of one store: nothing to carry
         return None
     _refuse_link(carried, carried_root)
-    _refuse_link(new_store, new_root)
+    _refuse_link(new_store, store_root)
     _migrate_flat_and_mark(
         new_vault_rw, box_name=new_box, store_exclusive=new_base_exclusive,
         create_base=True,
     )
     if not new_store.exists():
-        _move_tree(carried, new_store, carried_root, dst_root=new_root)
+        _move_tree(carried, new_store, carried_root, dst_root=store_root)
         return new_store
 
     # Destination store already exists: merge, never clobber.
-    boxfs.mkdir(new_store, new_root, parents=True, exist_ok=True)
+    boxfs.mkdir(new_store, store_root, parents=True, exist_ok=True)
     for name in sorted(boxfs.listdir(carried, carried_root)):
         dest = _unique_snapshot_dest(new_store, name, old_box)
-        _move_tree(carried / name, dest, carried_root, dst_root=new_root)
+        _move_tree(carried / name, dest, carried_root, dst_root=store_root)
     with contextlib.suppress(OSError):
         boxfs.rmtree(carried, carried_root)
     return new_store

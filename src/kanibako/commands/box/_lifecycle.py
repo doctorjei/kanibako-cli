@@ -3302,35 +3302,39 @@ def _snapshot_cure(old: ProjectState, new: ProjectState) -> str | None:
 
     ⚑ An existing store is never merged over: only entries it lacks move in, and the
     Note names the ones left behind.  A symlink a box could have planted (below a
-    shared base, or at or below an exclusive one) gets no command, which would follow
-    it; the Note names the link instead.
+    shared store, or at or below an exclusive base) gets no command, which would follow
+    it; the Note names the link instead.  So does a broken repoint of a shared base or
+    store.
     """
     import os
 
     from kanibako import boxfs
-    from kanibako.snapshots import box_snapshot_store, link_refusal, snapshot_base
+    from kanibako.snapshots import (
+        box_snapshot_store, link_refusal, refusal_text, same_store, store_path,
+    )
 
     if new.vault_rw is None:
         return None
     lexical_dst = box_snapshot_store(new.vault_rw, new.name)
 
-    def no_command(at: Path | None, link: Path) -> str:
+    def no_command(at: Path | None, why: str) -> str:
         return (f"Note: '{new.name}'s snapshots are still at {at}. No command is "
-                f"printed to move them into {lexical_dst}: {link_refusal(link)}, then "
-                f"move them by hand.")
+                f"printed to move them into {lexical_dst}: {why}, then move them by hand.")
 
     try:
         picked = _stranded_snapshot_store(old, new)
         if picked is None:
             return None
         src, src_root = picked
-        base, dst_root = snapshot_base(new.vault_rw, exclusive=new.mode is BoxMode.standalone)
+        dst, dst_root = store_path(new.vault_rw, box_name=new.name,
+                                   exclusive=new.mode is BoxMode.standalone)
     except boxfs.SymlinkRefusedError as exc:
-        return no_command(_old_snapshot_store(old, new), exc.link)
-    dst = base / new.name
+        return no_command(_old_snapshot_store(old, new), refusal_text(exc))
+    if same_store(src, dst):  # the new store is a repoint at the old one: nothing is stranded
+        return None
     link = boxfs.first_symlink(src, src_root) or boxfs.first_symlink(dst, dst_root)
     if link is not None:
-        return no_command(src, link)
+        return no_command(src, link_refusal(link))
     if not os.path.lexists(dst):
         cmd = (f"mkdir -p -- {shlex.quote(str(dst.parent))} && "
                f"{shlex.join(['mv', '--', str(src), str(dst)])}")

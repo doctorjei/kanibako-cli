@@ -151,6 +151,7 @@ class TestAPlantedLinkIsRefused:
         assert (_versions_dir(old) / "a" / TS / "f").read_text() == "mine"
 
     def test_relocate_writes_nothing_into_a_linked_new_store(self, tmp_path):
+        """An exclusive (standalone) new base: a link at the store is refused."""
         old, new = _rw(tmp_path / "old"), _rw(tmp_path / "new")
         _snap(_versions_dir(old) / "a")
         elsewhere = tmp_path / "elsewhere"
@@ -158,14 +159,16 @@ class TestAPlantedLinkIsRefused:
         _versions_dir(new).mkdir()
         (_versions_dir(new) / "b").symlink_to(elsewhere)
         with pytest.raises(OSError) as exc:
-            relocate_snapshot_store(old, new, old_box="a", new_box="b")
+            relocate_snapshot_store(old, new, old_box="a", new_box="b",
+                                    new_base_exclusive=True)
         assert exc.value.errno == errno.ELOOP
         assert _tree(elsewhere) == {}
         assert not (_versions_dir(new) / ".layout").exists()
         assert (_versions_dir(old) / "a" / TS / "f").read_text() == "mine"
 
-    @pytest.mark.parametrize("where", ["base", "store", "shared-store"])
+    @pytest.mark.parametrize("where", ["base", "store"])
     def test_create_snapshot_copies_nothing_through_a_link(self, tmp_path, where):
+        """An exclusive (standalone) base: a link at it or at the store is refused."""
         rw = _rw(tmp_path / "w")
         (rw / "data").write_text("live")
         outside = tmp_path / "outside"
@@ -176,7 +179,7 @@ class TestAPlantedLinkIsRefused:
             _versions_dir(rw).mkdir()
             (_versions_dir(rw) / "b").symlink_to(outside)
         with pytest.raises(boxfs.SymlinkRefusedError):
-            create_snapshot(rw, box_name="b", store_exclusive=where != "shared-store")
+            create_snapshot(rw, box_name="b", store_exclusive=True)
         assert _tree(outside) == {}
 
 
@@ -220,15 +223,79 @@ class TestARepointedSharedBaseIsUsed:
         assert out.err == ""
         assert [p.name for p in (big / "b").iterdir()] == [out.out.split()[-1]]
 
-    def test_a_link_below_it_is_still_refused(self, tmp_path):
-        rw, big = self._repoint(tmp_path)
+    @pytest.mark.parametrize("repointed_base", [False, True])
+    def test_a_repointed_store_is_used_too(self, tmp_path, repointed_base):
+        """``.versions/<box>`` in a shared base is as host-only as the base itself."""
+        if repointed_base:
+            rw, base = self._repoint(tmp_path)
+        else:
+            rw = _rw(tmp_path / "w")
+            (rw / "data").write_text("live")
+            base = _versions_dir(rw)
+            base.mkdir()
+            (base / ".layout").write_text("per-box-v1\n")
         elsewhere = tmp_path / "elsewhere"
         elsewhere.mkdir()
-        (big / "b").symlink_to(elsewhere)
-        with pytest.raises(boxfs.SymlinkRefusedError) as exc:
+        (base / "b").symlink_to(elsewhere)
+        snap = create_snapshot(rw, box_name="b")
+        assert snap is not None and snap.parent == elsewhere
+        assert (snap / "data").read_text() == "live"
+        assert (base / "b").is_symlink()
+
+    @pytest.mark.parametrize("target", ["dangling", "loop", "file"])
+    @pytest.mark.parametrize("where", ["base", "store"])
+    def test_a_broken_repoint_fails_closed(self, tmp_path, where, target):
+        """A repoint that leads to no directory is refused, as a broken repoint."""
+        from kanibako.snapshots import BrokenRepointError, refusal_text
+
+        rw = _rw(tmp_path / "w")
+        (rw / "data").write_text("live")
+        link = _versions_dir(rw)
+        if where == "store":
+            link.mkdir()
+            (link / ".layout").write_text("per-box-v1\n")
+            link = link / "b"
+        if target == "dangling":
+            link.symlink_to(tmp_path / "unmounted")
+        elif target == "loop":
+            link.symlink_to(link.name)
+        else:
+            (tmp_path / "f").write_text("")
+            link.symlink_to(tmp_path / "f")
+        before = _tree(tmp_path)
+        with pytest.raises(BrokenRepointError) as exc:
             create_snapshot(rw, box_name="b")
-        assert exc.value.link == big / "b"
-        assert _tree(elsewhere) == {}
+        assert exc.value.link == link
+        assert refusal_text(exc.value) == (
+            f"{link} is a link that does not lead to a directory; fix the link or mount "
+            f"its target")
+        assert _tree(tmp_path) == before
+
+    def test_relocate_into_a_repointed_store_merges_there(self, tmp_path):
+        old, new = _rw(tmp_path / "old"), _rw(tmp_path / "new")
+        _snap(_versions_dir(old) / "a")
+        elsewhere = tmp_path / "elsewhere"
+        _snap(elsewhere, "20230101T000000Z", "theirs")
+        _versions_dir(new).mkdir()
+        (_versions_dir(new) / "b").symlink_to(elsewhere)
+        assert relocate_snapshot_store(old, new, old_box="a", new_box="b") == elsewhere
+        assert sorted(p.name for p in elsewhere.iterdir()) == ["20230101T000000Z", TS]
+        assert (elsewhere / TS / "f").read_text() == "mine"
+        assert (_versions_dir(new) / "b").is_symlink()
+        assert not (_versions_dir(old) / "a").exists()
+
+    @pytest.mark.parametrize("aliased", [False, True])
+    def test_relocate_into_a_repoint_at_the_old_store_carries_nothing(self, tmp_path, aliased):
+        """*aliased*: the vault is reached through a linked parent, so the lexical old
+        store and the resolved new one are two spellings of one directory."""
+        (tmp_path / "real").mkdir()
+        (tmp_path / "alias").symlink_to("real")
+        old = _rw(tmp_path / ("alias" if aliased else "real") / "w")
+        _snap(_versions_dir(old) / "a")
+        (_versions_dir(old) / "b").symlink_to("a")
+        assert relocate_snapshot_store(old, old, old_box="a", new_box="b") is None
+        assert [p.name for p in (_versions_dir(old) / "a").iterdir()] == [TS]
+        assert (_versions_dir(old) / "a" / TS / "f").read_text() == "mine"
 
     def test_relocate_out_of_and_into_repointed_bases(self, tmp_path):
         old, new = _rw(tmp_path / "old"), _rw(tmp_path / "new")
@@ -308,6 +375,7 @@ class TestAStartWithALinkedBaseSkipsTheSnapshot:
         assert rc == 0
         err = capsys.readouterr().err
         assert f"Warning: no vault snapshot was taken: {link} is a symlink" in err
+        assert "replace it with a directory to resume snapshots.\n" in err
         assert "Vault snapshot:" not in err
         assert _tree(outside) == before
 
@@ -320,14 +388,20 @@ class TestAStartWithALinkedBaseSkipsTheSnapshot:
         assert rc == 0
         assert f"no vault snapshot was taken: {link} is a symlink" in capsys.readouterr().err
 
-    def test_a_looped_shared_base_fails_closed(self, start_mocks, tmp_path, capsys):
+    @pytest.mark.parametrize("target", ["loop", "dangling"])
+    def test_a_broken_shared_repoint_fails_closed(self, start_mocks, tmp_path, capsys, target):
+        """The repoint is followed, so the fault named is where it leads, not the link."""
         def plant(rw):
-            _versions_dir(rw).symlink_to(".versions")
-            return _versions_dir(rw)
+            versions = _versions_dir(rw)
+            versions.symlink_to(".versions" if target == "loop" else tmp_path / "unmounted")
+            return versions
 
         rc, link = self._start(start_mocks, tmp_path, plant, mode=BoxMode.primary)
         assert rc == 0
-        assert f"no vault snapshot was taken: {link} is a symlink" in capsys.readouterr().err
+        err = capsys.readouterr().err
+        assert (f"Warning: no vault snapshot was taken: {link} is a link that does not lead "
+                f"to a directory; fix the link or mount its target to resume snapshots.") in err
+        assert "symlink" not in err and "Vault snapshot:" not in err
 
     def test_a_repointed_shared_base_snapshots(self, start_mocks, tmp_path, capsys):
         big = tmp_path / "bigdisk"
@@ -370,6 +444,7 @@ class TestTheVaultVerbsNameTheLink:
         assert rc == 1
         err = capsys.readouterr().err
         assert err.startswith(f"Error: {_versions_dir(rw)} is a symlink")
+        assert "replace it with a directory and try again. Nothing was changed.\n" in err
         assert _tree(outside) == before
 
 
@@ -419,12 +494,12 @@ class TestTheMoveIsOtherwiseUnchanged:
 
 
 class TestAVerbNeverReadsThroughALinkedStore:
-    """A box-writable store link: ``list``/``restore``/``prune``/``snapshot`` name it,
-    rc 1 -- never "No snapshots found.", never a listing or a delete through it."""
+    """A store link in an exclusive (standalone) base is box-writable:
+    ``list``/``restore``/``prune``/``snapshot`` name it, rc 1 -- never "No snapshots
+    found.", never a listing or a delete through it.  In a shared base the link is the
+    user's repoint, and every verb uses it."""
 
-    @pytest.mark.parametrize("verb", ["snapshot", "list", "restore", "prune"])
-    @pytest.mark.parametrize("exclusive", [False, True])
-    def test_a_linked_store(self, verb, exclusive, tmp_path, monkeypatch, capsys):
+    def _linked(self, tmp_path, exclusive, monkeypatch):
         from kanibako.commands import vault_cmd
 
         rw = _rw(tmp_path / "w")
@@ -435,9 +510,37 @@ class TestAVerbNeverReadsThroughALinkedStore:
         _versions_dir(rw).mkdir()
         (_versions_dir(rw) / ".layout").write_text("per-box-v1\n")
         (_versions_dir(rw) / "b").symlink_to(outside)
-        before = _tree(outside)
         monkeypatch.setattr(vault_cmd, "_resolve_vault_rw",
                             lambda *_a: (rw, "b", exclusive, {}, "b"))
+        return rw, outside
+
+    @pytest.mark.parametrize("verb", ["snapshot", "list", "restore", "prune"])
+    def test_a_shared_repointed_store_is_used(self, verb, tmp_path, monkeypatch, capsys):
+        from kanibako.commands import vault_cmd
+
+        rw, outside = self._linked(tmp_path, False, monkeypatch)
+        args = SimpleNamespace(project=None, quiet=False, name=TS, force=True, keep=1)
+        rc = getattr(vault_cmd, f"run_{verb}")(args)
+        out = capsys.readouterr()
+        assert rc == 0, out.err
+        assert "symlink" not in out.err
+        names = sorted(p.name for p in outside.iterdir())
+        if verb == "list":
+            assert TS in out.out and "20230101T000000Z" in out.out
+        elif verb == "prune":
+            assert names == [TS]
+        else:  # a new snapshot (restore's safety copy) lands behind the repoint
+            assert len(names) == 3
+        if verb == "restore":
+            assert (rw / "f").read_text() == "mine" and not (rw / "data").exists()
+        assert (_versions_dir(rw) / "b").is_symlink()
+
+    @pytest.mark.parametrize("verb", ["snapshot", "list", "restore", "prune"])
+    def test_a_linked_store(self, verb, tmp_path, monkeypatch, capsys):
+        from kanibako.commands import vault_cmd
+
+        rw, outside = self._linked(tmp_path, True, monkeypatch)
+        before = _tree(outside)
         args = SimpleNamespace(project=None, quiet=False, name=TS, force=True, keep=1)
         rc = getattr(vault_cmd, f"run_{verb}")(args)
         out = capsys.readouterr()
@@ -470,10 +573,9 @@ class TestTheCureFollowsNoLink:
         assert self._cure(o, n) is None
 
     @pytest.mark.parametrize(
-        "side", ["old-exclusive-base", "new-exclusive-base", "new-store", "new-looped-base"])
+        "side", ["old-exclusive-base", "new-exclusive-base", "new-exclusive-store"])
     def test_a_link_is_named_with_no_command(self, tmp_path, side):
-        """A link a box could plant: at or below an exclusive (standalone) base, below a
-        shared one, or a shared base that cannot be resolved."""
+        """A link a box could plant: at or below an exclusive (standalone) base."""
         old, new, o, n = self._states(tmp_path)
         elsewhere = tmp_path / "elsewhere"
         if side == "old-exclusive-base":
@@ -487,10 +589,8 @@ class TestTheCureFollowsNoLink:
                 n.mode = BoxMode.standalone
                 _link_versions(new, elsewhere)
                 link = _versions_dir(new)
-            elif side == "new-looped-base":
-                _versions_dir(new).symlink_to(".versions")
-                link = _versions_dir(new)
             else:
+                n.mode = BoxMode.standalone
                 elsewhere.mkdir()
                 _versions_dir(new).mkdir()
                 (_versions_dir(new) / "b").symlink_to(elsewhere)
@@ -499,6 +599,43 @@ class TestTheCureFollowsNoLink:
         assert cure is not None
         assert f"{link} is a symlink" in cure
         assert "run:" not in cure and "mv " not in cure
+
+    @pytest.mark.parametrize("target", ["loop", "dangling"])
+    @pytest.mark.parametrize("where", ["base", "store"])
+    def test_a_broken_shared_repoint_is_named_with_no_command(self, tmp_path, where, target):
+        old, new, o, n = self._states(tmp_path)
+        _snap(_versions_dir(old) / "a")
+        link = _versions_dir(new)
+        if where == "store":
+            link.mkdir()
+            link = link / "b"
+        link.symlink_to(link.name if target == "loop" else tmp_path / "unmounted")
+        cure = self._cure(o, n)
+        assert cure is not None
+        assert (f"{link} is a link that does not lead to a directory; fix the link or mount "
+                f"its target, then move them by hand.") in cure
+        assert "symlink" not in cure and "run:" not in cure and "mv " not in cure
+
+    def test_a_repoint_at_the_stranded_store_gets_none(self, tmp_path):
+        (tmp_path / "real").mkdir()
+        (tmp_path / "alias").symlink_to("real")
+        rw = _rw(tmp_path / "alias" / "w")
+        o = SimpleNamespace(vault_rw=rw, name="a", mode=BoxMode.named)
+        n = SimpleNamespace(vault_rw=rw, name="b", mode=BoxMode.named)
+        _snap(_versions_dir(rw) / "a")
+        (_versions_dir(rw) / "b").symlink_to("a")
+        assert self._cure(o, n) is None
+
+    def test_a_repointed_shared_store_gets_the_command(self, tmp_path):
+        old, new, o, n = self._states(tmp_path)
+        _snap(_versions_dir(old) / "a")
+        elsewhere = tmp_path / "elsewhere"
+        _snap(elsewhere, "20230101T000000Z", "theirs")
+        _versions_dir(new).mkdir()
+        (_versions_dir(new) / "b").symlink_to(elsewhere)
+        cure = self._cure(o, n)
+        assert cure is not None
+        assert f"run: mv -n -- {_versions_dir(old) / 'a'}/* {elsewhere}/" in cure
 
     def test_a_repointed_shared_base_gets_the_command(self, tmp_path):
         """A link AT a shared base is the user's own repoint: resolved, not refused."""
