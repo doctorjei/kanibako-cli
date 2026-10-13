@@ -23,9 +23,9 @@ a genuine exit-of-everything, or an explicit `kanibako stop`, tears the box down
 ⚑ **Read the module's scope as TWO jobs, not one.** Besides the in-box supervisor it is also the
 **single source of truth for two host-side launch literals** — `CONTINUE_MARKER` and
 `KANIBAKO_PKG_MOUNT_ROOT`, which `commands/start.py` imports from here at MODULE scope, on the host,
-on every launch. The module docstring described only the supervisor job; a reader who took that
-framing literally would move a constant out of a "box-only" module and break the host launcher. The
-constants live at the LOWEST module that needs them, and that module happens to be this one.
+on every launch. A reader who took the module for "box-only" would move a constant out of it and
+break the host launcher. The constants live at the LOWEST module that needs them, and that module
+happens to be this one.
 
 `PINNED_ROOT_RELPATH` / `XDG_PROJECTIONS` are **not** in that set. Nothing host-side imports either
 (the projection is applied in-box), and the pinned root's single source lives in another module —
@@ -33,7 +33,7 @@ see "`PINNED_ROOT_RELPATH` is a QUARANTINED DUPLICATE" below.
 
 ## The PID-1 contract — stdlib-only, pinned flat, dotted-literal invocation
 
-`box_supervisor` and `box_lifecycle` are **pinned flat** (ratified 2026-08-01) and invoked in-box by
+`box_supervisor` and `box_lifecycle` are **pinned flat** and invoked in-box by
 a dotted literal (`python3 -m kanibako.box_supervisor`). They must import **stdlib only**, plus each
 other, `kanibako.log`, and the import-free `kanibako.settings.bootstrap` leaf, which owns the XDG
 literals `XDG_PROJECTIONS` reads.
@@ -41,9 +41,12 @@ literals `XDG_PROJECTIONS` reads.
 **PINNED BY TEST:** `import kanibako.box_supervisor` pulls in exactly `kanibako`,
 `kanibako.box_lifecycle`, `kanibako.log`, `kanibako.settings` (a docstring-only `__init__`) and
 `kanibako.settings.bootstrap`, and nothing else from the package; the static walk and a `python -S`
-import in `tests/test_box_supervisor.py` both check it;
+import in `tests/test_box_supervisor.py` both check it (`PID1_ALLOWED_KANIBAKO`).
 `box_lifecycle` imports only `__future__ · collections.abc · dataclasses · enum · glob · pathlib ·
-subprocess`, and `log` only `__future__ · logging · sys`. The contract holds today.
+subprocess`, and `log` only `__future__ · logging · sys · pathlib`, plus ONE lazy edge: the box-tree
+branch of `log.rotate_if_over` imports `kanibako.boxfs` (stdlib plus `kanibako.log`) inside the
+function. A bare import does not load it, so the `python -S` check does not see it; the static walk
+follows it (`PID1_LAZY_KANIBAKO = {"kanibako.boxfs"}`).
 
 Why it is load-bearing: every launch runs a forward-compat probe — `import kanibako.box_supervisor`
 — whose FAILURE silently degrades the launch to the bare-shell keep-alive. Widening the import
@@ -92,7 +95,8 @@ functions and
 | 4a | single-state DETECTION — `scan_marker_pids` enumerates the per-agent markers dir; `newcomer_pids` flags any live marker PID that is NOT the supervisor's own agent (the split-brain hazard: a second agent has bound the session) |
 | 4b | single-writer ENFORCEMENT — `BoxSupervisor._takeover` |
 | D | the credential-writeback SIGNAL flag (`_on_detach` / `--creds-flag`) |
-| — | the pinned-root XDG projection and the bootstrap-PYTHONPATH scrub (not numbered in the original provenance list, but owned here) |
+| — | the pinned-root XDG projection and the bootstrap-PYTHONPATH scrub (unnumbered, owned here) |
+| — | directive freshness — `DirectiveWatch` / `decide_directives` / `check_directives` (unnumbered) |
 
 ## Increment 4b — the single-writer takeover
 
@@ -126,48 +130,44 @@ heading.
 its real exit code in `#{pane_dead_status}` and its final output in scrollback. That is what lets an
 INSTANT-crashing agent still be diagnosed.
 
-**Which launches arm it:**
+**Both launch policies arm it** (`_session_arms()` always holds `set-option remain-on-exit on`):
 
-* **`on_agent_exit == "self-heal"`** (detached / panel launches) — ARM it. A dead agent leaves a
-  capturable dead pane for the restart plus output capture.
-* **`on_agent_exit == "teardown"`** (a FOREGROUND CLI launch, human present) — do **NOT** arm it at
-  all. Start a plain detached `new-session` so the agent pane CLOSES on ANY exit, clean or crash.
-  With no lingering dead pane an attached foreground client returns straight to the shell instead of
-  stranding the user on tmux's *"Pane is dead"* overlay. A teardown launch never self-heals, so the
-  dead-pane capture / exit-code machinery is not needed (the human saw the agent's output live).
+* **`on_agent_exit == "self-heal"`** (detached / panel launches) — a dead agent leaves a capturable
+  dead pane for the restart plus output capture.
+* **`on_agent_exit == "teardown"`** (a FOREGROUND CLI launch, human present) — also arms a
+  `set-hook pane-died` (`_exit_hook`). When the agent pane dies, the hook saves the pane's output
+  (`<record>.out`) and the exit record (`PANE_DEATH_FORMAT`, `status=N signal=S`), then runs
+  `kill-pane`. `run-shell` without `-b` blocks, so the pane closes only AFTER both exist; closing
+  it spares an attached user tmux's *"Pane is dead"* screen, and the attached client returns
+  straight to the shell. The record lives under a private `/tmp` dir (never `$TMPDIR`, which a
+  user's `env` sets); a record path that is not shell-safe arms no hook, and the pane probe still
+  answers.
 
-⚠️ **CORRECTED THIS PASS.** `start_agent_session`'s docstring said *"Start the agent DETACHED with
-`remain-on-exit` armed globally first"* and `restart_agent_session`'s said *"Arms `remain-on-exit`
-globally and starts … in one invocation"* — both **unconditional**, both **false on the teardown
-path**, which is the ordinary foreground `kanibako start` launch. Proven by driving the production
-path with an injected runner: with `on_agent_exit="teardown"` the emitted argv is exactly
-`tmux new-session -d -s kanibako -- <agent>` — no `set-option` at all. The false clauses were dropped,
-not relocated; the accurate statement is the bullet list above.
+### The arm, and why it is ONE invocation
 
-### The four-command arm, and why it is ONE invocation
+`_start_session_argv` emits one tmux invocation, `;`-separated (each `;` a standalone argument —
+tmux's command separator), built from `_session_arms()`:
 
-`_start_session_argv` emits four tmux commands in one invocation, `;`-separated (each `;` a
-standalone argument — tmux's command separator):
-
-1. `set-option -g remain-on-exit on` — the server-global default, set BEFORE the pane exists so it is
-   effective the instant the agent pane is born.
+1. for each arm: `<command> -g <name> <value>` — the server-global default, set BEFORE the pane
+   exists so it is effective the instant the agent pane is born.
 2. `new-session -d -s <session> -- <agent>` — `-d` detached (agent executing, no client); `--` ends
    new-session's option parsing so the agent grammar is verbatim.
-3. `set-option -t <session> remain-on-exit on` — pin the option SESSION-LOCAL so it outlives step 4.
-4. `set-option -g remain-on-exit off` — REVERT the global default.
+3. for each arm: `<command> -t <session> <name> <value>` — pin it SESSION-LOCAL so it outlives
+   step 4.
+4. for each arm: `<command> -gu <name>` — UNSET the global.
 
-So the global is `on` only across the pane's birth (steps 1→3); any OTHER window sharing this box's
+So each global is set only across the pane's birth (steps 1→3); any OTHER window sharing this box's
 tmux server (a user's own `tmux` windows, a VS Code integrated terminal running tmux) keeps the
-normal default and does NOT accumulate lingering dead panes. At every instant the AGENT pane is
-covered — by the global (steps 2→3), then by its session-local value (after step 3) — so there is no
-gap.
+normal default and does NOT accumulate lingering dead panes or fire the exit hook. At every instant
+the AGENT pane is covered — by the global (steps 2→3), then by its session-local value (after
+step 3) — so there is no gap.
 
 **[UNVERIFIED-PLATFORM]** Arming AFTER a bare `new-session -- <agent>` (the pre-fix approach) loses
 the race essentially always — empirically **0/20** instant crashes left a dead pane — while
 arm-before-birth won **20/20** on real tmux. Verified likewise that a sibling session's pane is still
 destroyed normally.
 
-**[UNVERIFIED-PLATFORM]** All four MUST share one invocation: a separate `set-option -g` on a
+**[UNVERIFIED-PLATFORM]** All of it MUST share one invocation: a separate `set-option -g` on a
 not-yet-running server starts a server that immediately exits (no session), so the global would be
 gone before `new-session` runs.
 
@@ -278,8 +278,8 @@ Single-sourced HERE — the lowest module that needs it: `start.py` imports it a
 `scrub_bootstrap_pythonpath` strips it back out — so the mount dest and the injected/scrubbed
 PYTHONPATH can never drift. ⚑ `scripts/kanibako-entry` and `data/rom/settings/core-defaults.yaml` also carry this
 literal (the entry script runs BEFORE kanibako is importable, and a YAML data file cannot reference a
-constant); keep those literals in sync. *(Both confirmed present this pass: the `kani_pkg` entry's
-`box_dest` in `data/rom/settings/core-defaults.yaml`, and `scripts/kanibako-entry`'s `sys.path.insert`.)*
+constant); keep those literals in sync: the `kani_pkg` entry's `box_dest` in
+`data/rom/settings/core-defaults.yaml`, and `scripts/kanibako-entry`'s `sys.path.insert`.
 
 ### Why the children must NOT inherit it
 
@@ -300,8 +300,7 @@ The single source of truth is `kanibako.settings.settings_resolve.BOX_PINNED_ROO
 this module deliberately does **NOT** import — see the stdlib-only contract above.
 `test_pinned_socket_dest_agrees_across_every_spelling` (`tests/test_channels/test_helpers.py`) pins
 the two literals together (`PINNED_ROOT_RELPATH == BOX_PINNED_ROOT_RELPATH == ".kanibako"`), and
-`scripts/helper-init.sh`'s `_kb_pin` carries the third (bash can import neither). All three confirmed
-present this pass.
+`scripts/helper-init.sh`'s `_kb_pin` carries the third (bash can import neither).
 
 ⚑ `XDG_PROJECTIONS` has **ONE ROW TODAY and is deliberately a TABLE**: the pinned root is the fixed
 answer for the whole resolve-before-liveness class, so a second facet (cache, runtime, …) is a ROW
@@ -350,6 +349,26 @@ the incumbent is idle, or queues mid-loop — a best-effort nudge to wind down/c
 bounded grace window elapses and the incumbent's process group is evicted.
 **[UNVERIFIED-PLATFORM]** Injection is feasible ONLY toward the tmux (CLI) agent; a panel incumbent
 has no injection vector (the DIRECTIONAL limit), so this is used only in the CRITICAL direction.
+
+```PANE_DEATH_FORMAT = "#{?pane_dead,status=#{pane_dead_status} signal=#{pane_dead_signal},}"```
+How the agent pane's process ended: EMPTY while it lives, else `status=N signal=S`. The pane probe
+(`agent_pane_exit_code`) and the `pane-died` hook both emit it; `agent_exit_code` reads it.
+
+```UNDETERMINED_AGENT_EXIT = 70```
+PID 1's code when HOW the agent ended is unknown (sysexits `EX_SOFTWARE`); never 0.
+
+```_HOOK_SAFE_PATH```
+What the `pane-died` hook may paste into its shell line: `[A-Za-z0-9_./-]+` — no space, quote, or
+`#`.
+
+```DIRECTIVE_MANIFEST_VERSION = 1```
+The flatten-manifest format the directive watcher understands. Anything else reads as STALE and
+costs one re-flatten. ⚑ The writer (`kanibako/scripts/import-directives.py`, `MANIFEST_VERSION`)
+carries the same number: a standalone box-side script imports nothing from the package, so the skew
+is made SAFE by this rule instead of being prevented.
+
+```FLATTEN_TIMEOUT = 60.0```
+Seconds PID 1 waits for one re-flatten — a cap on a HANG (a stalled NFS home), not a work budget.
 
 ```KANIBAKO_PKG_MOUNT_ROOT = "/opt/kanibako"```
 In-box read-only bind-mount ROOT of the HOST kanibako package. — see the section above.
@@ -618,19 +637,29 @@ Strip the injected `KANIBAKO_PKG_MOUNT_ROOT` entry from `PYTHONPATH`.
 Rationale in "The host-package mount and the PYTHONPATH scrub" above. Defaults to `os.environ` (the
 real child-inheritance source); a caller may pass an explicit mapping (tests).
 
-```decide(prev_state: AttachState, cur_state: AttachState, agent_alive: bool) -> SupervisorAction```
+```decide(prev_state: AttachState, cur_state: AttachState, agent_alive: bool, exit_code: int | None = None) -> SupervisorAction```
 PURE: decide a tick's action from the attach-state transition + agent liveness.
 
 Two ORTHOGONAL signals combine:
 
-* **agent liveness** — a DEAD agent session (`agent_alive` False) ⇒ `ActionKind.SELF_HEAL` regardless
-  of any client transition (the always-on guarantee: whenever no instance is live, restart one).
+* **agent liveness** — a DEAD agent session (`agent_alive` False) whose *exit_code* is `0` while a
+  tmux terminal is still attached (`cur_state.tmux_terminal`) ⇒ `ActionKind.END`: the user exited
+  the agent. Any other death ⇒ `ActionKind.SELF_HEAL`, regardless of any client transition (the
+  always-on guarantee: whenever no instance is live, restart one). The loop passes *exit_code* only
+  on a self-heal box with a terminal on the dead pane, the one place it can change the decision.
 * **the client-attach transition** — `classify_transition` over `prev_state` → `cur_state`; a
   `LifecycleEvent.DETACH` sets *fire_detach_hook* (ATTACH / NONE do not). This is independent of
   liveness, so "agent died AND a surface detached in the same tick" yields BOTH.
 
 Deterministic and side-effect free over its inputs — the whole loop's logic lives here so tests can
 exhaust it without any tmux.
+
+```agent_exit_code(death: str) -> int```
+PURE: the shell-convention code of a `PANE_DEATH_FORMAT` record: `status=N` ⇒ N; `signal=S` ⇒
+128+S; neither ⇒ `UNDETERMINED_AGENT_EXIT`.
+
+```decide_directives(manifest: object, seed: str, dest: str, probe: Mapping[str, str | None]) -> DirectiveVerdict```
+PURE: read a flatten receipt against the current world and decide. See "Directive freshness" below.
 
 ```decide_panel(tmux_alive: bool, panel: PanelAgentState, vscode_server: bool, any_attached: bool, seen_surface: bool) -> PanelAction```
 PURE: decide a panel-watch tick's action (E2f state machine, design 3a/3b).
@@ -667,6 +696,46 @@ The state machine, in evaluation order:
 Deterministic and side-effect free, so the whole panel-watch loop's logic is exhaustively
 unit-testable without any tmux / FS / os.
 
+## Directive freshness
+
+The launch shim flattens the directive chain into the agent's native instruction slot ONCE per
+agent launch, so a source edited mid-container-life would leave that file stale and silent. PID 1
+outlives every session and every harness, so it keeps the file continuously true.
+
+```class DirectiveWatch```
+`seed`, `dest`, `manifest`, `flattener`, `interval: float = 5.0` — all four paths, or none.
+
+Every path is DECIDED BY THE LAUNCHER and arrives in argv (`--directive-*`); the supervisor derives
+none. Grouping them is the guard: a half-wired watcher cannot be represented. *seed* / *dest* are the
+flattener's SOURCE and the agent's native slot (`$KANIBAKO_DIRECTIVE_SEED` / `_FINAL`); *manifest* is
+the receipt the flattener leaves; *flattener* is the in-box script path, PASSED and never spelled
+here (the literal already has two carriers). *interval* is target seconds between checks, converted
+to whole ticks against `poll_interval` (`_directive_tick_period`).
+
+```class DirectiveVerdict(Enum)```
+`FRESH` (the slot matches its receipt — do nothing), `STALE` (re-render and rewrite the slot),
+`HAND_EDITED` (inputs unchanged, slot changed — LEAVE IT ALONE).
+
+`decide_directives` (PURE) reads the receipt against *probe*, which maps each receipt input plus
+*dest* to the sha256 of its content NOW, or `None` when nothing can be read. Hashes, never mtimes:
+the sources span an NFS home and read-only package binds, where mtime is not comparable. **Every way
+of not understanding the receipt returns `STALE`** — a wrong version, a different seed or dest, a
+malformed input list — so the worst outcome of any confusion is one unnecessary re-render. ⚑ The
+MISS side: an input recorded `absent` that can now be read is `STALE`, because an import that
+pointed nowhere and now yields content changes the render while nothing on the hit side moved. A
+missing *dest* is `STALE`; a *dest* that differs from the receipt's `output_sha256` while every
+input matches is `HAND_EDITED` — rewriting it would be the seed-clobber class of data loss.
+
+`check_directives` runs one check: read the manifest (`_read_directive_manifest`, `None` if not
+JSON), hash every path it names (`_probe_directives`, `_sha256_of`), decide, and on `STALE`
+re-run the flattener (`_reflatten_directives`) as a SUBPROCESS, bounded by `FLATTEN_TIMEOUT`. The
+flattener owns the write and the receipt, so there is one producer of both; a failure is logged and
+dropped — a stale instruction file is bad, PID 1 dying is fatal. `HAND_EDITED` is logged ONCE until
+the verdict changes. `None` when no watch is configured.
+
+`_directive_tick` advances a tick counter and runs `_safe_check_directives` (which swallows any
+exception) on every Nth tick; it runs right after the reap in both watch loops.
+
 ## `SupervisorConfig` — immutable configuration for a `BoxSupervisor`
 
 | Field | Meaning |
@@ -685,14 +754,15 @@ unit-testable without any tmux / FS / os.
 | `panel_watch` | PANEL-WATCH mode — see below |
 | `agent_markers_dir` | box-local per-agent liveness MARKERS directory — see below |
 | `creds_flag` | box-local ABSOLUTE path to the credential-writeback SIGNAL flag — see below |
-| `capture_history` | bounded scrollback (lines) captured from the dead agent pane on a foreground teardown and echoed to PID-1's stdout so `podman logs` surfaces the agent's final output to the host (`capture_agent_output`) |
+| `directives` | the directive-freshness watch (`DirectiveWatch`), or `None` — the watcher is then inert and every tick is byte-unchanged; see "Directive freshness" below |
+| `capture_history` | bounded scrollback (lines) captured from the dead agent pane on a teardown and echoed to PID-1's stdout so `podman logs` surfaces the agent's final output to the host (`capture_agent_output`, and the `pane-died` hook's saved copy) |
 
 **`on_agent_exit`** (design § *STARTUP case matrix* `[A94]`, E2c) — what happens when the agent
 exits. `"self-heal"` (the default; detached and panel launches) keeps the always-on bounded-retry
 restart. `"teardown"` (a FOREGROUND CLI launch, where a human is the driver) treats an agent EXIT
 as a NORMAL termination and lets PID-1 return so the box closes — no self-heal loop while a CLI is
 the surface. **Any value other than `"teardown"` is treated as `"self-heal"`** (safe default). ⚑ It
-also decides whether `remain-on-exit` is armed at all — see that section.
+also decides whether the `pane-died` exit hook is armed — see the `remain-on-exit` section.
 
 **`session_takeover`** (design § *INCREMENT 4*) — DEFAULT-OFF so 4b lands DORMANT. `False` (unset)
 ⇒ the `run_forever` loop's newcomer handling is 4a LOG-ONLY: no `SIGSTOP`, no send-keys, no newcomer
@@ -733,17 +803,17 @@ no flag simply signals nothing.
 ## The action model
 
 ```class ActionKind(Enum)```
-What the supervisor must DO for a tick (besides the detach hook). — `NONE`, `SELF_HEAL`.
+What the supervisor must DO for a tick (besides the detach hook). — `NONE`, `SELF_HEAL`, `END`.
 
 ```class SupervisorAction```
 The decision a single watch-loop tick produces.
 
 * *kind* — `ActionKind.SELF_HEAL` when the agent session has died (restart it with the continue
-  grammar + marker); otherwise `ActionKind.NONE`.
+  grammar + marker); `ActionKind.END` when it exited cleanly (code 0) with a terminal attached (end
+  it, start no other); otherwise `ActionKind.NONE`.
 * *fire_detach_hook* — `True` when this tick is a DETACH transition (a client surface that was
-  attached is gone), so the loop calls the best-effort `BoxSupervisor._on_detach` hook. ⚑ That hook
-  is the GAP-1 cred-writeback point and increment **D FILLED IT** — the original note read *"fills it
-  in D"*, future tense, which is now stale.
+  attached is gone), so the loop calls the best-effort `BoxSupervisor._on_detach` hook, the
+  credential-writeback signal.
 
 ## The panel-watch model (E2f) — the agent-independent `code` warm-up path
 
@@ -754,17 +824,14 @@ Computed from the NON-OWN markers (excluding a self-healed CLI's own tmux pane):
 
 * `NONE` — no non-own marker (dir absent, or every panel agent exited cleanly and removed its
   `<dir>/$PPID`): no panel agent is present.
-* `ALIVE` — a non-own marker names a LIVE process. ⚠️ **CORRECTED THIS PASS:** the original said
-  *"`os.kill(pid, 0)` ok"*, which is the pre-zombie-check definition and is now false — kill-0
-  succeeds for a zombie. Liveness is kill-0 **AND** `/proc/<pid>/stat` state `!= "Z"`. Proven by
-  driving `_default_pid_alive` with kill-0 succeeding and stat state `Z` ⇒ `False`, state `S` ⇒
-  `True`.
+* `ALIVE` — a non-own marker names a LIVE process: kill-0 **AND** `/proc/<pid>/stat` state `!= "Z"`
+  (kill-0 alone succeeds for a zombie).
 * `DEAD` — no live non-own marker but a STALE one remains (a crash left the per-PID file behind): the
   panel agent exited. ⚑ **DEAD is an EDGE, not a level.** The scan that produces this verdict also
   REAPS the stale marker (`scan_marker_pids`), so the verdict fires on the tick that noticed the
-  death and not on every tick thereafter. Before that, a single leaked marker pinned `DEAD` for the
-  life of the box, and `decide_panel` turned `DEAD` + `vscode_server` into `SELF_HEAL_CLI` — a CLI
-  agent nobody asked for, re-spawned every time the box had no live tmux agent.
+  death and not on every tick thereafter. A marker left in place would pin `DEAD` for the life of
+  the box, and `decide_panel` turns `DEAD` + `vscode_server` into `SELF_HEAL_CLI` — a CLI agent
+  nobody asked for, re-spawned every time the box had no live tmux agent.
 
 ```class PanelActionKind(Enum)```
 What a PANEL-WATCH tick must DO (besides the detach hook). — `NONE`, `SELF_HEAL_CLI`, `TEARDOWN`.
@@ -790,7 +857,11 @@ self-heal that exhausts its bounded retries (principle B: then PID-1 returns so 
 
 ### Constructor state
 
-```__init__(self, config, *, run=subprocess.run, sleep=time.sleep, proc_cmdlines=None, pid_alive=_default_pid_alive, list_marker_pids=_default_list_marker_pids, cmdline_of=_proc_cmdline, remove_marker=_default_remove_marker, kill=os.kill, killpg=os.killpg, getpgid=os.getpgid, getpgrp=os.getpgrp, reap=reap_zombie_children)```
+```__init__(self, config, *, run=subprocess.run, sleep=time.sleep, proc_cmdlines=None, pid_alive=_default_pid_alive, list_marker_pids=_default_list_marker_pids, cmdline_of=_proc_cmdline, remove_marker=_default_remove_marker, kill=os.kill, killpg=os.killpg, getpgid=os.getpgid, getpgrp=os.getpgrp, reap=reap_zombie_children, exit_record=None)```
+
+* `_exit_record` — the path the teardown `pane-died` hook writes the exit record to (its output goes
+  to `<record>.out`); `None` ⇒ `_exit_record_path` creates a private `kanibako-agent-exit-*` dir
+  under `/tmp` on first use. Tests inject a path.
 
 * `_proc_cmdlines` — when provided, a fixed process-cmdline listing handed to `snapshot_attach_state`
   (tests inject it to skip the real `/proc` walk); `None` ⇒ each snapshot collects fresh from `/proc`
@@ -830,20 +901,34 @@ Run `tmux <args>` via the injected runner; return its STDOUT, or `None`.
 The stdout sibling of `_run_tmux`, for probes that read a tmux FORMAT string (`display-message`)
 rather than only its rc. Same tolerance, plus: a **non-zero rc also resolves to `None`**.
 
-```_start_session_argv(self, session_argv: list[str]) -> list[str]```
-tmux argv that arms `remain-on-exit`, starts the detached session, and SCOPES the arm.
+```_exit_record_path(self) -> str```
+The exit-record path, creating its private `/tmp/kanibako-agent-exit-*` dir on first use (a FIXED
+`/tmp`, never `$TMPDIR`, which a user's `env` sets).
 
-The four commands and their ordering proof are in "The four-command arm" above.
+```_exit_hook(self) -> str | None```
+A teardown launch's `pane-died` hook: `run-shell` captures the pane (`_capture_argv`) to
+`<record>.out`, writes `PANE_DEATH_FORMAT` to the record (via a `.tmp` and `mv`), then `kill-pane`.
+The capture runs in the job's shell, so its failure cannot skip the record or the close. `None`
+(and a warning) when the record path does not match `_HOOK_SAFE_PATH` (no space, quote, or `#`):
+the agent start never fails over it, and the pane probe still answers.
+
+```_session_arms(self) -> list[tuple[str, str, str]]```
+`(command, name, value)` per tmux option/hook armed on the agent session: always
+`("set-option", "remain-on-exit", "on")`, plus `("set-hook", "pane-died", <_exit_hook>)` under
+`teardown`.
+
+```_start_session_argv(self, session_argv: list[str]) -> list[str]```
+ONE tmux argv: arm globally, start the session, scope each arm to it, unset the globals.
+
+The commands and their ordering proof are in "The arm, and why it is ONE invocation" above.
 
 ```_arm_and_start_session(self, session_argv: list[str]) -> int | None```
-Arm remain-on-exit (unless the policy is `teardown`) + start the detached session; return the tmux rc.
+Start the session with `_session_arms()` armed; return the tmux rc.
 
-The policy split and the `;`-in-argv guard are in the `remain-on-exit` section above.
+The `;`-in-argv guard is in the `remain-on-exit` section above.
 
 ```start_agent_session(self) -> bool```
-Start the agent detached; returns `True` on rc 0.
-
-⚠️ Whether `remain-on-exit` is armed depends on `on_agent_exit` — see the corrected claim above.
+Start the agent detached via `_arm_and_start_session`; returns `True` on rc 0.
 
 ```restart_agent_session(self) -> bool```
 Restart the agent for self-heal, with the CONTINUE grammar + marker.
@@ -876,26 +961,35 @@ Best-effort GRACE nudge (design § *4b — ENFORCEMENT*): lands as a real acting
 is idle, or queues mid-loop — either way the incumbent is warned before the bounded grace elapses.
 Feasible ONLY toward the tmux (CLI) agent (the DIRECTIONAL limit).
 
-```agent_pane_dead_status(self) -> int | None```
-Return the agent pane's DEAD exit status, or `None` when it is not dead.
+```agent_pane_exit_code(self) -> int | None```
+The DEAD agent pane's `agent_exit_code`, or `None` while it lives or is gone.
 
 **[UNVERIFIED-PLATFORM]** With `remain-on-exit on` a pane whose agent process exits stays in the
-session as a DEAD pane, and tmux exposes its real exit code via `#{pane_dead_status}`. Read with
-`tmux display-message -p -t <session> '#{pane_dead_status}'`: tmux prints the integer exit code for a
-DEAD pane and an EMPTY string for a live one.
+session as a DEAD pane, and tmux exposes how it ended via `#{pane_dead_status}` /
+`#{pane_dead_signal}`. Read with `tmux display-message -p -t <session> '<PANE_DEATH_FORMAT>'`: tmux
+prints `status=N signal=S` for a DEAD pane and an EMPTY string for a live one; `agent_exit_code`
+maps it (a signal ⇒ 128+S).
 
 Tolerant like every probe: a missing tmux / dead server / no session (non-zero rc → `None` output) OR
-empty / unparseable output all resolve to `None` — treated by callers as "not dead / unknown".
-Returns a parsed `int` only for a genuinely dead pane.
+empty output resolve to `None` — treated by callers as "not dead / unknown".
+
+```recorded_agent_exit(self) -> int | None```
+The `agent_exit_code` the `pane-died` hook recorded, or `None` (no record path, or unreadable).
+Reading it removes the private record dir.
+
+```recorded_agent_output(self) -> str | None```
+The pane text the `pane-died` hook saved before closing the pane (`<record>.out`, trimmed), or
+`None`.
 
 ```capture_agent_output(self) -> str | None```
 Return the agent pane's captured MAIN-screen text (scrollback), or `None`.
 
-`tmux capture-pane -p -S -<n> -E - -t <session>` prints the pane's content through the END of
-history. With `remain-on-exit on` the pane PERSISTS after the agent exits, so this recovers the
-exited agent's main-screen output — which the self-heal host relies on (via `podman logs`) to show
-the user WHY the agent died. A `teardown` launch does NOT arm `remain-on-exit`, so this capture is
-only meaningful for the self-heal / panel modes.
+`tmux capture-pane -p -S -<n> -E - -t <session>` (`_capture_argv`) prints the pane's content through
+the END of history. With `remain-on-exit on` the pane PERSISTS after the agent exits, so this
+recovers the exited agent's main-screen output — which the host relies on (via `podman logs`) to show
+the user WHY the agent died. Under `teardown` the `pane-died` hook usually closes the pane first, so
+the loop falls back to `recorded_agent_output`, the same capture the hook saved. Trailing padding
+and tmux's *"Pane is dead"* line are dropped (`_trim_capture`).
 
 **[UNVERIFIED-PLATFORM]** Under the supervisor PID-1 that output lives in the tmux pane, NOT PID-1's
 own stdout, so without echoing it here `podman logs` would be empty and both surfaces would silently
@@ -905,8 +999,8 @@ break (the E2c/E2d observability residual).
 TUI (e.g. claude's *"No conversation found"*, a config error, an immediate crash) — which is the
 class the host actually acts on. **[UNVERIFIED-PLATFORM]** An agent that dies while in the tmux
 ALTERNATE screen (a running full-screen TUI mid-session) leaves only tmux's *"Pane is dead"* overlay
-behind, which capture cannot see past; that output is not recoverable here. Best-effort improvement
-over the pre-fix state (nothing surfaced at all), not a total transcript.
+behind, which capture cannot see past; that output is not recoverable here. Best-effort, not a total
+transcript.
 
 ⚑ **`-E -` = capture through the END OF HISTORY.** **[UNVERIFIED-PLATFORM]** Without it the end
 defaults to the VISIBLE screen, which for a dead pane is tmux's *"Pane is dead (status N)"* overlay —
@@ -923,7 +1017,7 @@ True iff the agent session EXISTS and its pane is NOT dead.
 
 ⚑ **`tmux has-session` alone is NOT sufficient:** with `remain-on-exit on` the session PERSISTS after
 the agent process exits (a dead pane), so `has-session` stays rc 0. Liveness is therefore has-session
-(rc 0) **AND** `agent_pane_dead_status()` is `None`. Tolerant throughout — a missing tmux / dead
+(rc 0) **AND** `agent_pane_exit_code()` is `None`. Tolerant throughout — a missing tmux / dead
 server / no such session all resolve to `False`.
 
 ```_kill_process_group(self, pid: int, sig: int) -> bool```
@@ -952,9 +1046,6 @@ free the dead-pane name), AND as the 4b single-writer EVICT. First reaps each of
 pane agents (`_own_agent_pids`) as a PROCESS GROUP, so no orphaned subagent / worker survives; then
 `tmux kill-session` removes the (now-dead) session so its name is reusable. Tolerant throughout — an
 already-absent session / dead pane / missing tmux all resolve to a logged no-op.
-
-*(The original docstring said the process-group handling was "RESERVED for increment 4" by this
-method's own docstring — a self-reference to text that no longer exists. Dropped as dangling.)*
 
 ```_snapshot(self) -> AttachState```
 Probe the current client-attach state (delegates to `box_lifecycle`).
@@ -1059,14 +1150,13 @@ throughout:
 This preserves the E2f contract the single-pidfile scheme drove (a clean exit → NONE, a crash → DEAD
 → SELF_HEAL_CLI), now over the per-PID dir.
 
-⚑ **AGENT ASYMMETRY (Phase 2 D2).** **[UNVERIFIED-PLATFORM]** Only claude has a marker-REMOVE hook —
-codex's hook surface has NO SessionEnd/exit event (verified against codex-rs at rust-v0.141.0 and
-0.144.x), so a cleanly-exited codex agent leaves a stale marker and reads DEAD here, never NONE.
-Intended: the codex panel's sessions are threads inside one long-lived `codex app-server` process, so
-its marker-PID dying ≈ the panel process itself is gone — DEAD (→ SELF_HEAL_CLI when the VS Code
-server is still attached) is the useful verdict, and at worst a clean exit costs one benign
-self-heal. **Do NOT "fix" this by janitor-unlinking stale markers at scan: DEAD-vs-NONE is exactly the
-information `decide_panel` consumes.**
+⚑ **AGENT ASYMMETRY.** **[UNVERIFIED-PLATFORM]** Only claude has a marker-REMOVE hook — codex's hook
+surface has NO SessionEnd/exit event (verified against codex-rs at rust-v0.141.0 and 0.144.x), so a
+cleanly-exited codex agent leaves a stale marker. DEAD fires once (the edge), and the marker is
+reaped (`scan_marker_pids`), so later ticks read NONE. Intended: the codex panel's sessions are
+threads inside one long-lived `codex app-server` process, so its marker-PID dying ≈ the panel process
+itself is gone — DEAD (→ SELF_HEAL_CLI when the VS Code server is still attached) is the useful
+verdict, and at worst a clean exit costs one benign self-heal.
 
 ### self-heal
 
@@ -1134,33 +1224,39 @@ the launch-intent policy). Each tick's body is guarded so a raising probe/action
 loop CONTINUES.
 
 ⚑ **The response to a DEAD agent is LAUNCH-INTENT AWARE** (`config.on_agent_exit`, E2c). The pure
-`decide` still just reports the SELF_HEAL signal (a transition/liveness fact); **this loop** decides
-what to DO with it — keeping `decide` byte-identical and the policy in exactly one place.
+`decide` reports `SELF_HEAL` or `END` (a transition/liveness fact); **this loop** decides what to DO
+with it — the policy lives in exactly one place.
+
+⚑ **The `ended` latch.** On a self-heal box, the loop reads the dead pane's code
+(`agent_pane_exit_code`) only when a terminal is still on the pane. A code of 0 there means the
+user exited the agent, `decide` returns `END`, and `ended` latches True: from then on the box only
+waits out any other surface, then stops with rc 0 — it never restarts the agent.
 
 * **`"self-heal"`** (default; detached / panel) → bounded-retry restart; the one clean exit is a
-  self-heal that EXHAUSTS its retries (returns 0 so the box can stop).
-* **`"teardown"`** (foreground CLI, human present) → an agent exit is a NORMAL termination, but
-  **SURFACE-AWARE** (E2e, principle B / ref-count): PID-1 closes the box ONLY when no OTHER client
-  surface is still attached.
+  self-heal that EXHAUSTS its retries (returns 0 so the box can stop) — or, once `ended`, the
+  teardown branch below.
+* **`"teardown"`** (foreground CLI, human present), and any box once `ended` → an agent exit is a
+  NORMAL termination, but **SURFACE-AWARE** (E2e, principle B / ref-count): PID-1 closes the box
+  ONLY when no OTHER client surface is still attached.
   * **With another surface (a VS Code panel) attached** — do NOT tear down. Stay an AGENTLESS
     keep-alive (the box persists for the panel), and do NOT self-heal a CLI agent while the panel is
     the live surface (**the one-agent invariant**). Keep polling; close on a LATER tick once that last
     surface also detaches. The entry is logged ONCE, guarded against per-tick spam.
-  * **With no other surface** — close the box with a TRUTHFUL-as-possible exit code. A teardown
-    launch does NOT arm `remain-on-exit`, so on exit the pane simply CLOSES and there is normally no
-    `#{pane_dead_status}` to read. The code is derived as:
-    * a dead pane status IS present (stale/armed) ⇒ **honor it verbatim**;
-    * else the agent CAME UP and then exited (`started`) ⇒ **0** — a clean quit must NOT masquerade
-      as a failure (the whole point of dropping the dead pane). ⚑ A sole-agent CRASH is
-      indistinguishable from a clean exit here so it ALSO returns 0, until a pipe-pane follow-up
-      restores truthful crash codes;
-    * else it NEVER came up (the initial start failed) ⇒ **1**, a real failure the host must surface.
+  * **With no other surface** — close the box with a TRUTHFUL exit code. Under `teardown` the
+    `pane-died` hook has usually closed the pane already, after writing the output and the record,
+    so a pane already gone means both are written. The output is read FIRST (reading the record
+    removes it): `capture_agent_output() or recorded_agent_output()`. The code is derived as:
+    * `0` if `ended` (read as 0 on the tick it ended);
+    * else the dead pane's code, `agent_pane_exit_code()`;
+    * else the hook's record, `recorded_agent_exit()`;
+    * else `UNDETERMINED_AGENT_EXIT` (70, sysexits `EX_SOFTWARE`) if the agent CAME UP (`started`) —
+      how it ended is unknown, and an unknown is never reported as a clean 0;
+    * else `1`: it NEVER came up (the initial start failed), a real failure the host must surface.
 
-  Before returning, any captured agent output is echoed to stdout. **[UNVERIFIED-PLATFORM]** The
-  host's foreground path reads `podman logs` (PID-1's stdout) to show WHY the agent died — but the
-  agent ran in a tmux pane, so its output never reached PID-1's stdout. With `remain-on-exit` OFF in
-  teardown the pane has closed and this normally captures nothing; it still recovers output from a
-  stale/armed pane if one is present.
+  The captured output is echoed to stdout ONLY when the code is non-zero.
+  **[UNVERIFIED-PLATFORM]** The host's foreground path reads `podman logs` (PID-1's stdout) to show
+  WHY the agent died — but the agent ran in a tmux pane, so its output never reached PID-1's stdout
+  until echoed here. A clean exit adds nothing to `podman logs`.
 
 **Startup, and the `started` flag.** Startup runs BEFORE the per-tick guard, so it is guarded too: a
 probe raising there (e.g. an unexpected snapshot failure) must not kill PID-1 before the loop even
@@ -1169,9 +1265,8 @@ teardown, closes on) a missing agent on its first tick.
 
 `started` answers *did the agent ever COME UP?* A warm box already has a live session; a cold box is
 up iff the initial start returns rc 0. It distinguishes, in the teardown branch, a NEVER-STARTED
-failure (rc 1) from a normal ran-then-exited quit (rc 0) once the pane has closed and there is no
-dead-pane status to read. ⚑ **Defaults `True`** so a startup-probe hiccup (the except path) prefers 0
-— never fabricate a failure from a clean quit.
+failure (rc 1) from an agent that ran and ended with no readable code (`UNDETERMINED_AGENT_EXIT`).
+⚑ **Defaults `True`**, so a startup-probe hiccup (the except path) prefers 70 over 1.
 
 ⚑ **A failed INITIAL start does NOT return early.** It is handled UNIFORMLY by the loop's first tick
 (the E2e factoring): under `self-heal` the loop self-heals a missing agent; under `teardown` the
@@ -1184,8 +1279,11 @@ error, human-direct).
 
 1. **PID-1 duty FIRST** — `self._reap()`, so a dead panel process cannot sit as a zombie and
    read ALIVE to the marker probes below.
-2. snapshot, then `agent_session_alive`.
-3. **Newcomer detection**, gated on a configured markers dir so an old launcher (or a test) that
+2. **Directive freshness** — `self._directive_tick()`, every Nth tick, inert unless the launcher
+   threaded a watch. Independent of the agent: a source edit must land whether or not one is
+   running. See "Directive freshness" below.
+3. snapshot, then `agent_session_alive`.
+4. **Newcomer detection**, gated on a configured markers dir so an old launcher (or a test) that
    threads none is byte-unchanged. A live marker PID that is NOT this supervisor's own tmux agent =
    a second agent bound the session (e.g. the VS Code panel auto-`--resume` over a live CLI agent).
    * `session_takeover` ON → 4b ENFORCEMENT. Act ONLY when there IS a pane incumbent to evict (`own`
@@ -1193,7 +1291,7 @@ error, human-direct).
      newcomer is the sole writer, so hand off to the agentless panel-watch keep-alive (E2f
      self-heal-to-CLI on the newcomer's death) by tail-calling `_run_panel_watch()`.
    * OFF (default) → 4a LOG-ONLY: no signals, no kills.
-4. `decide`, then act.
+5. the dead pane's code where it can change the decision (above), `decide`, then act.
 
 ⚑ Panel-watch short-circuits at the top: when `config.panel_watch` is set the E2f `code`
 AGENT-INDEPENDENT warm-up runs a distinct loop that starts NO CLI agent and watches the panel-agent
@@ -1230,7 +1328,7 @@ tick's body is guarded so a raising probe/action is logged and the loop CONTINUE
 
 The per-tick order matches `run_forever`: **PID-1 reaping duty FIRST**, so a dead panel agent cannot
 sit as a zombie and hold `panel_agent_state` at ALIVE forever, wedging `SELF_HEAL_CLI` and `TEARDOWN`
-alike. Newcomer detection here uses `own` = the self-healed CLI's tmux pane(s) PLUS the latched
+alike; then the directive tick, as in `run_forever`. Newcomer detection here uses `own` = the self-healed CLI's tmux pane(s) PLUS the latched
 fronted panel incumbent; a live marker outside that set is a newcomer. **NO action in this loop** —
 the reverse direction has no injection vector (see 4b above).
 
@@ -1258,8 +1356,15 @@ CLI: parse args, build the supervisor, run the watch loop forever.
 python3 -m kanibako.box_supervisor --session NAME --marker 'STR' [--poll SEC]
   [--max-retries N] [--continue-cmd 'ARGV'] [--on-agent-exit self-heal|teardown]
   [--session-takeover] [--takeover-grace SEC] [--panel-watch]
-  [--agent-markers-dir DIR] [--creds-flag PATH] -- <agent entrypoint + argv...>
+  [--agent-markers-dir DIR] [--creds-flag PATH]
+  [--directive-seed PATH --directive-dest PATH --directive-manifest PATH
+   --directive-flattener PATH] -- <agent entrypoint + argv...>
 ```
+
+The four `--directive-*` options arm the directive-freshness watch together (`_directive_watch`
+builds `SupervisorConfig.directives`). A PARTIAL set is a launcher bug: PID 1 logs which options
+came without which and stays inert, rather than refusing to start a box over a watch that is not
+the box's purpose, or guessing a missing path.
 
 In `--panel-watch` mode (E2f) the host still passes `-- <agent argv>`, but the panel-watch loop never
 runs it: it is the self-heal fallback and, through `agent_launch_heads`, the head a panel session is
@@ -1279,12 +1384,12 @@ continue grammar alone, its live marker was reaped and a second agent self-heale
 ### Why PID 1 configures logging, and why at DEBUG
 
 Every other module in the package logs through a logger that `cli.main` configured. PID 1 has no
-`cli.main` above it — it is exec'd directly as `python3 -m kanibako.box_supervisor` — so until this
-call landed the `kanibako` logger had no handler at all, and Python dropped everything below WARNING.
-(WARNING and above still escaped, via `logging.lastResort`. That is why the symptom was *thin* logs
-rather than obviously broken ones.) Measured consequence: `podman logs <box>` was EMPTY on a box that
-had just forked a second agent, because self-heal, panel-watch entry, teardown and every marker reap
-are `info`/`debug` decisions.
+`cli.main` above it — it is exec'd directly as `python3 -m kanibako.box_supervisor` — so without this
+call the `kanibako` logger has no handler at all, and Python drops everything below WARNING
+(WARNING and above still escape, via `logging.lastResort`, so the symptom is *thin* logs rather than
+obviously broken ones). Measured consequence: `podman logs <box>` was EMPTY on a box that had just
+forked a second agent, because self-heal, panel-watch entry, teardown and every marker reap are
+`info`/`debug` decisions.
 
 **Placement.** In `main`, ahead of `config_from_argv` — `_directive_watch` warns there about a
 half-armed directive watch, and that warning is itself a decision worth reading. **Not** at module
@@ -1314,7 +1419,7 @@ what is verified here is the argv (`-dt`) and the handler stream, not a `podman 
 ## `[UNVERIFIED-PLATFORM]` index
 
 Every claim below is a platform fact that CANNOT be reproduced on the dev box (no working podman, no
-real tmux server under PID-1). None was dropped; none was independently confirmed this pass.
+real tmux server under PID-1). None can be confirmed on the dev box.
 
 1. `remain-on-exit` arm-before-birth wins the race 20/20 on real tmux; arming after a bare
    `new-session` loses it 0/20.
@@ -1342,8 +1447,8 @@ real tmux server under PID-1). None was dropped; none was independently confirme
 15. `tmux list-panes -F '#{pane_pid}'` gives the pane ROOT process, which IS the agent, and equals the
     `$PPID` the marker hook writes.
 16. A freshly created pane may not accept `send-keys` the instant `new-session` returns.
-17. tmux exposes a dead pane's real exit code via `#{pane_dead_status}` (integer for dead, empty for
-    live).
+17. tmux exposes how a dead pane ended via `#{pane_dead_status}` / `#{pane_dead_signal}` (set for
+    dead, empty for live).
 18. A panel incumbent has no send-keys injection vector; only the tmux CLI agent can be nudged.
 19. A paused (SIGSTOP'd) panel's stdio blocks, so a long grace risks the VS Code extension's watchdog
     respawning it.
@@ -1352,16 +1457,5 @@ real tmux server under PID-1). None was dropped; none was independently confirme
 21. Under `podman run -dt` the pty merges the container's stdout and stderr into the single stream
     `podman logs` replays, so PID-1's stderr handler reaches the host. The `-dt` argv and the
     handler's stream are verified on the dev box; the capture itself is not.
-
-## Corrections made in this pass
-
-| Site | The claim | What the code does |
-|------|-----------|--------------------|
-| `start_agent_session` docstring | *"Start the agent DETACHED with `remain-on-exit` armed globally first."* | Only when `on_agent_exit != "teardown"`. The foreground CLI path emits a bare `new-session` with no `set-option` at all. |
-| `restart_agent_session` docstring | *"Arms `remain-on-exit` globally and starts … in one invocation (`_start_session_argv`)."* | Delegates to `_arm_and_start_session`, which skips the arm under `teardown` and splits into two invocations when `;` is in the argv. |
-| `PanelAgentState.ALIVE` docstring | *"a non-own marker names a LIVE process (`os.kill(pid, 0)` ok)"* | Liveness is kill-0 **AND** `/proc` state `!= "Z"`; the zombie layer was added after this line. |
-| `SupervisorAction.fire_detach_hook` | *"GAP-1 cred-writeback fills it in D"* — future tense | Increment D is SHIPPED: `_on_detach` writes the flag and `start.py` threads `--creds-flag`. |
-| `newcomer_pids` / `_log_newcomers` | *"4b will act"* — future tense | 4b is SHIPPED as `_takeover`, gated OFF by `session_takeover`. |
-| `kill_agent_session` | *"the process-group handling this method's docstring RESERVED for increment 4"* | Self-reference to docstring text that no longer exists. Dangling; dropped. |
-| module docstring | *"EVERY subprocess call funnels through an injectable runner"* — true but incomplete WHEN WRITTEN | ⚑ **RESOLVED SINCE** — the signal ops and the reap duty now go through injected primitives too, so the promise covers the whole surface again (see "Design for testability"). |
-| module docstring | scope framed as in-box supervisor only | It is ALSO the single source of three host-side launch literals that `start.py` imports at module scope. |
+22. A `pane-died` hook's blocking `run-shell` finishes before its trailing `kill-pane` runs, so the
+    pane closes only after the output and the record are written.
