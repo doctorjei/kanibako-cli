@@ -53,68 +53,85 @@ nothing translates them.
 `run_create` is a sequence of gates whose ORDER is load-bearing at almost every step. Reordering
 any of them reopens a bug that has already been paid for.
 
-1. **Fold `--name` to lowercase, THEN validate** (R2). The blocklist must see the folded name.
-   The folded value is then read into `standalone_name`, which is `""` unless `--register` was
-   given: for a standalone box `--name` names the REGISTRY ENTRY, so with no entry to name it is
-   dropped before it reaches the resolver and never reaches `resolve_standalone_name` (I3/§D4a).
-   ⚑ It is still folded and validated first — the flag's VALUE is checked even on the path that
-   ignores it, which is a known incoherence held for a ruling, not an accident to copy.
-2. **The `$HOME` guard.** A home-directory project mounts the entire home tree, so it must be BOTH
-   standalone AND an explicit `--allow-home`. Default mode at `$HOME` is never permitted.
-3. **The cross-kind name guard**, run HERE rather than at registration, so it refuses cleanly
-   BEFORE the box dir and seed materialize. An EXPLICIT `--name` for a PRIMARY box that collides
-   with a WORKSET name shadows that workset in bare-name resolution (the box wins), so it is
-   refused unless `--force`; a SAME-KIND collision is unconditional. Standalone boxes are not in
-   the primary/workset name domain and skip it. The deferred registration
-   (`_register_new_box`) re-checks with the same flag.
-4. **The I4 home guard** (`_assert_primary_home_free_for_create`) — see below.
-5. **The persona pre-flight**, on a NON-materializing probe (`initialize=False`, no `mkdir`), so
-   an unloadable persona refuses with NOTHING on disk: no box dir, no meta, no journal entry, no
-   seed. This applies the same probe → gate → initialize pattern the launch path uses. The probe
-   carries the deterministic name it WILL materialize under (`_name_new_box_probe`) so the gate's
-   channel-address derivation resolves instead of raising "box has no name".
-6. **The persona-grata STORE check**, before the create verdict, so a store that cannot yield a
-   usable persona is reported as ITSELF rather than as the verdict's downstream "no endpoint
-   configured".
-7. **The already-initialized refusal**, HOISTED above the materializing resolve.
-8. **The materializing resolve**, with `register=False`.
-9. **The J1 write-ahead sequence**: write entry → seed → canon skeleton → register → clear entry.
-   ⚑ The register step is CONDITIONAL for a standalone box (I3/§D4a): `_register_new_box` runs
-   for every PRIMARY box, whose membership IS its workset, but for a standalone box only on
-   `--register`. The default leaves an independent, unindexed box that `kanibako box register
-   <path>` adopts later, index-only and seed-free. The gate lives at this call site, not inside
-   `_register_new_box`, because the flag is a create-verb concern. A created box then reports
-   its own state: an unregistered one prints the `box register` cure, gated on the REGISTRY
-   rather than on the flag so a journal-recovery re-run of an already-registered box stays quiet.
+0. **`precheck_create`**, settings-free, before first-run setup: validate `--name` AS TYPED (spec
+   §0 NAMING RULES; `validate_box_name`, with `box_name_cure`'s spelling as the cure); refuse an
+   unreachable target by name (`stat_unless_gone`); and the `$HOME` guard — a home-directory
+   project mounts the entire home tree, so it must be BOTH standalone AND an explicit
+   `--allow-home`. Default mode at `$HOME` is never permitted.
+1. **Standalone, before any write**: `import_reconcile.check_standalone` refuses another spelling of
+   a registered or parked standalone root ([R188]); the directory leaf must have an ASCII spelling
+   (`sanitize_cap`); a `--name` other than the name the box gets is refused
+   (`refuse_nonleaf_standalone_name`) — standalone identity is machine-generated, and `--register`
+   does not make `--name` source the registry entry; then the scalar-section and inherited
+   per-owner refusals.
+2. **The workset path space** — the named workset whose root holds the CWD. There, a member NAME
+   creates a named member (`_plan_workset_member`); any other target inside a named workset's
+   space, by path or by the cwd, refuses (`_create_in_workset_space`).
+3. **The same-kind name guard**, for an explicit primary `--name`: `check_primary_box_name_free`,
+   run HERE so it refuses BEFORE the box dir and seed materialize, then the I4 home guard
+   (`_assert_primary_home_free_for_create`, below). Box and workset names are separate namespaces
+   (system-design § Detection & import); only a same-kind collision refuses.
+4. **The path's conflict arm** (`check_workspace_not_named_box`), and, for a new primary box with no
+   `--name`, the box-name rule on its directory's derived name (`refuse_derived_box_name`).
+5. **The non-materializing probe** (`initialize=False`, no `mkdir`). `_already` is captured, the
+   probe is named (`_name_new_box_probe`), and the pending create entry is read.
+6. **The recovery refusal** (`_create_recovery_refusal`). RECOVERY IS NEVER IMPLICIT: a pending
+   create entry is refused unless `--recover`, and `--recover` with nothing pending is refused. It
+   runs ahead of every door below, so a flag about to be refused never reaches the persona
+   pre-flight, the agent persist, or the seed.
+7. **The pre-journal fork** (`_orphaned_primary_box_dir`): a crash that left a primary box dir but
+   nothing for `--recover` to find.
+8. **The nesting refusal** (`_create_nesting_refusal`): a workspace inside another box's, or holding
+   one (keyspace § 0 "Per-owner resources").
+9. **The persona pre-flight and the persona-grata STORE check**, on the probe, so an unloadable
+   persona refuses with NOTHING on disk; the store check runs before the create verdict, so a store
+   that cannot yield a usable persona is reported as ITSELF rather than as the verdict's downstream
+   "no endpoint configured".
+10. **The already-initialized refusal**, HOISTED above the materializing resolve.
+11. **The create entry**, CLAIMED before any box write (`_claim_create_entry`), recording the
+    create's `state`.
+12. **The membership write** (a named member, `add_project`), then **the materializing resolve**,
+    with `register=False`, the fresh-create writes, the seed, the canon skeleton, the register, and
+    the clear.
+
+The J1 order is: write entry → seed → canon skeleton → register → clear entry. ⚑ The register step
+is CONDITIONAL for a standalone box (I3/§D4a): `_register_new_box` runs for every PRIMARY box, whose
+membership IS its workset, but for a standalone box only on `--register`. The default leaves an
+independent, unindexed box that `kanibako box register <path>` adopts later, index-only and
+seed-free. The gate lives at this call site, not inside `_register_new_box`, because the flag is a
+create-verb concern. A created box then reports its own state: an unregistered one prints the
+`box register` cure, gated on the REGISTRY rather than on the flag so a recovery of an
+already-registered box stays quiet.
 
 ### Why `_already` is captured where it is
 
-`box_tree_materialized(_probe)` is read BEFORE `_name_new_box_probe`, which MUTATES `_probe.name`.
-The refusal itself is deferred to just past the persona pre-flight so error ORDERING is unchanged;
-only the mutation it used to trail now happens after it.
+`box_tree_materialized(_probe)` is read BEFORE `_name_new_box_probe`, which MUTATES `_probe.name`. A
+NAMED member's answer is whether its box dir exists, read before any write.
 
 ### Why the already-initialized refusal is hoisted
 
-It used to sit AFTER the materializing resolve, reading `proj.is_new`. But that resolve runs with
-`initialize=True`, and its recovery arms re-create a missing home (`resolve_project`) and a missing
-home + workspace (`resolve_standalone_project`) BEFORE returning — so a box whose home had been
-deleted got it silently bootstrapped and was THEN told "already initialized", a message that was
-false at the moment it printed. Asking the NON-materializing probe makes the message TRUE: nothing
-has been written when it prints. Message and exit code are unchanged.
+The materializing resolve runs with `initialize=True`, and its recovery arms re-create a missing
+home (`resolve_project`) and a missing home + workspace (`resolve_standalone_project`) BEFORE
+returning — so a refusal after it would bootstrap a deleted home and THEN say "already
+initialized", false at the moment it printed. Asking the NON-materializing probe makes the message
+TRUE: nothing has been written when it prints.
 
-J1 interrupted-create RECOVERY still takes precedence: a box that already exists but carries a
-pending create journal entry is a half-completed create (a crash between seed-start and the
-registry write) and is COMPLETED by replay rather than refused. **The journal entry, not
-`is_new`, drives completion** — that is the central J1 fix, restoring the hard invariant
-"registered ⇒ no pending entry" for PRIMARY and STANDALONE alike. `_pending_create_entry` keys on
-the box dir, which the probe resolves identically to the materializing call.
+### Interrupted-create recovery is `--recover`
+
+A box that carries a pending create journal entry is a half-completed create (a crash between the
+entry and its clear). **The journal entry, not `is_new`, drives recovery**, and recovery is never
+implicit: a plain `create` refuses with the `--recover` cure, and a launch refuses too
+(`start._interrupted_create_error`) and never completes a create. `box create --recover` replays
+the recorded `state` — a create-shaping flag given again is refused, even when it agrees, because
+the entry is the only record of what attempt one was told. `_pending_create_entry` keys on the box
+dir, which the probe resolves identically to the materializing call.
 
 ### The J1 write-ahead journal
 
-The four steps are write-ahead: write the create journal entry (intent), seed the home
+The steps are write-ahead: write the create journal entry (intent), seed the home
 (create-if-absent), THEN register (deferred by `register=False`), then clear the entry — clearing
 is the IMMEDIATE step after the registry write. A crash anywhere before the entry is cleared
-leaves it, so the next `create`/launch re-seeds, completes registration and clears the entry:
+leaves it, so `create --recover` re-seeds, completes registration and clears the entry:
 forward-recovery, not rollback. `_register_new_box` is register-if-absent, so recovering a box
 that was already registered (a crash in the register → clear window) is a no-op plus the clear. If
 register raises a genuine collision the entry is intentionally LEFT (the box is incomplete) and
@@ -260,9 +277,9 @@ composes the kuid-first name, and already refuses a name collision to a differen
 
 Conflict safety comes from the reused registration APIs, not from checks here.
 `check_primary_box_name_free` / `register_primary_box_name` enforce `$HOME`, the SAME-kind
-active-box name, the one-box-per-workspace-path invariant (`register_workset_box`'s
-one-box-per-path guard) and the CROSS-kind workset-shadow refusal unless `--force`; a violation
-refuses cleanly with guidance. The standalone arm checks the name against a different root itself,
+active-box name (case-blind), and the one-box-per-workspace-path invariant (`register_workset_box`'s
+one-box-per-path guard); worksets are not consulted, since box and workset names are separate
+namespaces. A violation refuses cleanly with guidance. The standalone arm checks the name against a different root itself,
 and its re-register overwrites a matching name→root. A readopt therefore never clobbers a live
 box. Both arms self-heal a stale entry whose metadata is
 gone: drop it, report nothing to restore.
