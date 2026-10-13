@@ -123,7 +123,7 @@ class TestTheTierBuilderIsDerivedNotListed:
         ``system.{backup,cache,runtime}`` were declared, carried manifest defaults and
         were CLI-settable, and no floor installed them — while the SET-time tier
         (``config_interface._path_tier_split``) resolved all eleven.  So ``config set``
-        ACCEPTED a binding sourced at ``{system.cache}`` and the launch snapshot answered
+        ACCEPTED a binding sourced at ``@system.cache`` and the launch snapshot answered
         ``__MISSING__``, dropping it with no message and rc 0: the
         ``system.channels.broadcast`` shape, one omission over.  ``[R143]`` settles that
         this is a defect rather than a stated omission — *"if it has a default value,

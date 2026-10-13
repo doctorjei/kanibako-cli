@@ -2183,7 +2183,7 @@ class TestAConcreteBindingTheCollapseSwallowedIsNotShownAsAMount:
 
         Binds are resolved on the HOST, so a ``box_dest``'s env vars derive from the
         host and every consumer receives an absolute guest path (keyspec ``:344-347``).
-        The arm KEY still holds ``$XDG_DATA_HOME/z``, because the eager build defers the
+        The arm KEY still holds ``{$XDG_DATA_HOME}/z``, because the eager build defers the
         token; the arbitrated map holds ``/data/z``.  The display resolves the arm's
         spelling through the SAME ``resolve_box_dest`` the collapse was fed from, so the
         two meet.
