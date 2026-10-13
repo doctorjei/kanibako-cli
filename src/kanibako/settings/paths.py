@@ -2371,8 +2371,23 @@ def resolve_workset_project(ws: WorksetSpec, project_name: str, std: StandardPat
             if pending.get("op") == "connect" and registered_workspace is not None:
                 from kanibako.launch.box_resolve import stores_standalone_registry_null
 
-                root = Path(registered_workspace).resolve()
-                if stores_standalone_registry_null(root):
+                # ⚑ The replay never raises: an unreadable file keeps its marker, warned,
+                # and the entry still clears (a stuck entry is worse than a kept marker).
+                # RuntimeError: Python 3.11's resolve() on a link loop.
+                root = Path(registered_workspace)
+                try:
+                    root = root.resolve()
+                    marked = stores_standalone_registry_null(root)
+                except (ConfigError, OSError, RuntimeError) as exc:
+                    marked = False
+                    # A ConfigError already names the file; the path goes in once.
+                    why = (str(exc) if isinstance(exc, ConfigError) else
+                           f"{root / WORKSET_META_FILE}: {getattr(exc, 'strerror', None) or exc}.")
+                    get_logger(__name__).warning(
+                        "an interrupted connect could not check the standalone marker: %s "
+                        "The box is the workset's box; if that file still says "
+                        "workset.registry: null, remove that line by hand.", why)
+                if marked:
                     drop_standalone_marker(root, lambda _undo: None)
             _journal.clear_entry(journal_path, box_key)
 

@@ -3867,3 +3867,55 @@ class TestConnectDropsTheStandaloneMarker:
         assert load_doc(root / "workset.yaml") == {"workset": {"kuid": kuid}}
         assert (root / "box_data" / "home.txt").read_text() == "state"
         assert _workset_boxes(ws) == {"sb": str(root)}
+
+    @pytest.mark.parametrize("damage", ["unreadable", "link_loop"])
+    def test_a_replay_that_cannot_read_the_marker_warns_and_clears(
+        self, config_file, tmp_home, monkeypatch, caplog, damage,
+    ):
+        """The replay never raises: an unreadable or looping ``workset.yaml`` keeps its
+        marker, with a warning naming it, and the entry still clears, as it did before."""
+        from kanibako.launch import journal
+        from kanibako.project.workset import load_workset
+        from kanibako.settings import paths
+
+        if damage == "unreadable" and os.geteuid() == 0:
+            pytest.skip("root ignores the file mode")
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        create_workset("dm", (tmp_home / "ws_dm").resolve(), std)
+        root = (tmp_home / "sa").resolve()
+        self._standalone(std, root)
+        marker = root / "workset.yaml"
+        before = marker.read_text()
+
+        monkeypatch.setattr(paths, "drop_standalone_marker", lambda root_, push_undo: None)
+        monkeypatch.setattr(journal, "clear_entry", lambda journal_path, box_path: None)
+        assert self._connect("dm", root) == 0
+        monkeypatch.undo()
+        ws = load_workset(list_worksets(std)["dm"], "dm", early_system=std.early_system)
+        box_key = ws.projects_dir / "sb"
+        assert journal.pending_import(std.journal, box_key)["op"] == "connect"
+
+        if damage == "unreadable":
+            marker.chmod(0)
+        else:
+            marker.rename(root / "kept.yaml")
+            (root / "loop.yaml").symlink_to(marker)
+            marker.symlink_to(root / "loop.yaml")
+        try:
+            with caplog.at_level("WARNING"):
+                paths.resolve_workset_project(paths.WorksetSpec.from_workset(ws), "sb", std,
+                                              config)
+        finally:
+            if damage == "unreadable":
+                marker.chmod(0o644)
+
+        assert journal.pending_import(std.journal, box_key) is None
+        [warning] = [r.getMessage() for r in caplog.records
+                     if "could not check the standalone marker" in r.getMessage()]
+        assert warning.count(str(marker)) == 1
+        if damage == "unreadable":
+            assert marker.read_text() == before
+        else:
+            assert marker.is_symlink() and (root / "kept.yaml").read_text() == before
+        assert _workset_boxes(ws) == {"sb": str(root)}
