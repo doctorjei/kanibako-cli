@@ -411,6 +411,38 @@ def test_full_setup_non_tty_stale_templates_refresh_flag_cures(
     assert "Setup Complete" in capsys.readouterr().out
 
 
+def test_full_setup_non_tty_skip_reports_kept_and_writes_nothing(
+    tmp_home, config_file, monkeypatch, capsys
+):
+    """A headless SKIP lists the kept files too, and writes nothing.
+
+    The kept list prints on every Step 5 outcome, so a headless user sees the
+    divergence they carry even when the update itself cannot be asked about.
+    """
+    _patch_targets(monkeypatch, {"claude": _make_target("claude")})
+    _stub_probes(monkeypatch)
+    monkeypatch.setattr("sys.stdin.isatty", lambda: False)
+    _stage_stale_templates()
+    std = _resolve_std()
+    edited = std.agents / "claude" / "template" / "box" / "home" / ".claude.json"
+    edited.write_text('{"edited": true}\n')
+    before = {
+        p: p.read_bytes() for p in std.data_path.rglob("*") if p.is_file()
+    }
+    rc = setup_cmd.run_setup(_ns())
+    assert rc == 1
+    out = capsys.readouterr().out
+    assert "cannot be updated non-interactively" in out
+    assert "Kept YOUR copy" in out
+    assert str(edited) in out
+    assert _staged_marker(std).read_text() == _STALE_TEXT
+    assert edited.read_text() == '{"edited": true}\n'
+    after = {
+        p: p.read_bytes() for p in std.data_path.rglob("*") if p.is_file()
+    }
+    assert after == before
+
+
 def test_full_setup_tty_decline_completes_and_exits_zero(
     tmp_home, config_file, monkeypatch, capsys
 ):

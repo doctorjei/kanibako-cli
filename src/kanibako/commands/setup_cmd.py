@@ -332,6 +332,7 @@ def _run_template_refresh(args: argparse.Namespace) -> TemplateStep:
         "       Re-run `kanibako setup` in a terminal, or pass "
         "`--refresh-templates`."
     )
+    _report_kept()
     return TemplateStep.SKIPPED
 
 
