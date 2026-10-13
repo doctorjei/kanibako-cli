@@ -2212,7 +2212,7 @@ class TestAgentSetRefusesABareRelativePath:
         # Both readings named — the refusal removes the guess rather than relaying it.
         assert str(link / "mydir") in err
         assert str(real.resolve() / "mydir") not in err
-        assert "@meta.agent.claude.path" in err or "/mydir" in err
+        assert "{meta.agent.claude.path}" in err
         assert _stored_doc(agent_env) == before
 
     @pytest.mark.parametrize("value", ("/srv/x", "~/x", "{$XDG_DATA_HOME}/x",
