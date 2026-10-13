@@ -251,8 +251,7 @@ is the most natural guard to write there and it silently implements the REJECTED
 request"), deleting a box's ONLY suppression channel with no error and no visible diff. There is
 deliberately no such guard, and
 `TestPrefNullSuppression.test_a_null_pref_suppresses_an_inherited_agent_bind` in
-`tests/test_settings/test_settings_launch.py` reddens if one appears (⚑ CORRECTED in the same pass
-from the non-existent `test_null_pref_suppresses_agent_bind`). The companion
+`tests/test_settings/test_settings_launch.py` reddens if one appears. The companion
 `test_a_null_pref_on_a_SCALAR_leaf_is_kept_as_none` pins the scalar half.
 
 A present-`None` lands on the target key and is then classified by the ORDINARY present-`None` rule
