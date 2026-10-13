@@ -15,7 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **References are braced: `{a.b.c}` names a key and `{$NAME}` a variable.** For this release, a bare `@a.b.c`
   naming a declared key, a bare `$NAME` naming a known variable, `@{a.b.c}`, and `${NAME}` stop the command, naming
   the braced spelling; otherwise `@` and `$` are ordinary characters. A literal brace is doubled (`{{`, `}}`). Only
-  `\\` and `\~` escape, so `\@`, `\$`, `\{`, and `\/` become `@`, `$`, `{{`, and `/`. Plugin defaults files spell
+  `\\` and `\~` escape: respell an old `\@`, `\$`, `\{`, or `\/` as `@`, `$`, `{{`, or `/`. Plugin defaults files spell
   `{$GUEST_HOME}` and braced `meta_ref` sources. See `MIGRATION.md`, "References are braced: `{a.b.c}` names a key
   and `{$NAME}` a variable".
 - **The persona probe tests the credential without a model before it tests the model.** The claude and codex
