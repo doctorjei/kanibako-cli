@@ -52,7 +52,7 @@ of the system settings file.
 
 Whatever wins, `select_agent` reports it and the launch installs it at `system.agent` as the §1A
 top-most level (`build_launch_snapshot(cli_level=…)`). That is not tidiness — keys dereference
-`@system.agent` (e.g. the §2c anchors `meta.box.auth.workset_path` and
+`{system.agent}` (e.g. the §2c anchors `meta.box.auth.workset_path` and
 `meta.box.agent.auth.share_support`), so the snapshot MUST agree with the process that runs.
 
 Without the install there are two ways to disagree:
@@ -117,7 +117,7 @@ launching claude, with claude's binary, commons and CREDENTIALS delivered. 🛑 
 null` produces no node-less selection** — it refuses — so no production path reaches this guard.
 
 ⚑ **It is KEPT, and NOT because `shell` will arrive through it.** Keyspec §2b expresses the
-plain-shell box as an effective `@system.agent` of `shell`, and §2d gives that pseudo-agent a name
+plain-shell box as an effective `{system.agent}` of `shell`, and §2d gives that pseudo-agent a name
 (`meta.agent.shell.name` = `"shell"`), so a D2 selection is `node="shell"` — `has_agent` is TRUE for
 it and it resolves a target like any other agent. Nothing on the board is waiting to produce a
 node-less selection. The guard stays for the two reasons that do not expire: `""` means opposite
@@ -162,20 +162,20 @@ box, which the box-less `resolve_inputs` subjects call directly: *group* is a `P
 working set is spelled like `None`, because `ResolveCtx.workset_name` names a NAMED working set only.
 
 **Resolver SPLIT (spec §1A / JC-2):** the Layer-1 `config.*` foundation goes into `ctx.config` (so
-`@config.*` category refs route THERE, not the snapshot); the Layer-2 `system.*` path settings stay
-folded into the snapshot floor so `@system.*` resolves from it.
+`{config.*}` category refs route THERE, not the snapshot); the Layer-2 `system.*` path settings stay
+folded into the snapshot floor so `{system.*}` resolves from it.
 
 The xdg map is the canonical FULL host map — a data-home-only partial map raised on stored
-`$XDG_CACHE_HOME/...` values — anchored on the resolved `std.data_home`.
+`{$XDG_CACHE_HOME}/...` values — anchored on the resolved `std.data_home`.
 
 ⚑⚑ **BOTH HALVES OF THE CTX ARE DERIVED BUILDERS, NEVER HAND LISTS.** `config=` is
 `settings/paths.host_config_map(std)`, the Layer-1 twin of `system_path_floor` and the `config=`
 twin of `host_xdg_map`. A hand list misses a key `CONFIG_PATH_DEFAULTS` declares: `config set` then
-accepts the key and `@config.<key>` resolves at set time, but it reaches `_ABSENT` at launch and the
+accepts the key and `{config.<key>}` resolves at set time, but it reaches `_ABSENT` at launch and the
 referring key is dropped with no message and rc 0. `tests/test_settings/test_path_tier_parity.py`
 compares the carriers, and it is EFFECT-based on both sides.
 
-*agent_name* is `None` for the SELECTION pass: no agent is known yet, so a `$AGENT` anywhere
+*agent_name* is `None` for the SELECTION pass: no agent is known yet, so a `{$AGENT}` anywhere
 resolves to a refusal rather than to a silent `""`. That refusal is recorded (never raised) because
 selection expands LENIENTLY; see `kanibako.settings.settings_launch.resolve_selected_agent`.
 

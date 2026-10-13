@@ -169,9 +169,9 @@ home_bind = BindEntry(_snapshot_home(snapshot), HOME_OPTIONS)
 ```
 
 — from the RO DERIVED key `meta.box.home`, which `settings_launch.workset_anchor_floor` materializes
-as `@meta.box.path/home`. Home does **not** route through `bindings.rw` (spec §2c's `meta.box.home`
+as `{meta.box.path}/home`. Home does **not** route through `bindings.rw` (spec §2c's `meta.box.home`
 row). 🛑 **That key is the ONE spelling of the derivation.** Never re-derive the foundation from
-`proj.shell_path`, and never re-inline `@meta.box.path/home` here.
+`proj.shell_path`, and never re-inline `{meta.box.path}/home` here.
 
 `HOME_OPTIONS` (`store_collapse`) is a BARE `Z,U` — no `rw` token. The foundation is pre-seeded into
 the collapse map and never passes `_merge_bindings`' `fold_opt`, which is exactly what distinguishes
@@ -708,7 +708,7 @@ establishes the invariant, and the launch-time gate then correctly no-ops.
 
 ⚑ **The SELECTION only, never the full CLI level (§1A)** on the create-side resolve: the create path's
 flags are not the launch's, and the ephemeral ones (`-M`/`-N`/`-C`/`-R`) carry no bind. The selection
-is REQUIRED because this resolve folds the auth chain (`@workset.auth.path/@system.agent`).
+is REQUIRED because this resolve folds the auth chain (`{workset.auth.path}/{system.agent}`).
 
 ---
 
@@ -1116,7 +1116,7 @@ ONLY their own table plus any config-file keys.
 ⚑⚑ **The base families include `launch.templates.agent_template_defaults` — the AGENT `template`
 SOURCE arms, folded beside `core_defaults.canon_default_categories`, their declared sibling.** Both
 arms are DECLARED rows with real defaults; emitted only inside `template_seed_defaults`, which reaches
-the keyspace through the CREATE-time seed resolve alone, `@agent.default.template` would be
+the keyspace through the CREATE-time seed resolve alone, `{agent.default.template}` would be
 `__MISSING__` for every box that already exists. The two folds cannot collide: the seed table arrives
 through `extra_default_categories` with `include_base_families=False`. ⚑ **SOURCE SCALARS ONLY.** The
 `seeded` LAYERS are deliberately not folded here; seed-once is the failsafe against re-seed DATA
@@ -1147,7 +1147,7 @@ values (`-M` / `-N`-`-C`-`-R`), because its output is this launch's argv / env /
 here is written back. The create-time seed and sync, the persona-endpoint, the narrow and the
 `--effective` resolves take a selection-ONLY level. ⚑ Every resolve folds the auth chain — it rides
 the `settings_launch.resolve_inputs` inputs — so every one must carry the selection:
-`meta.box.auth.workset_path` is `@workset.auth.path/@system.agent`. The keyword is REQUIRED (P3).
+`meta.box.auth.workset_path` is `{workset.auth.path}/{system.agent}`. The keyword is REQUIRED (P3).
 
 **`cli_env`** is the parsed per-run `-e` map, forwarded UNTOUCHED to the collapse, which applies it as
 the CLI level over the key owning each variable. ⚑ Only the main launch resolve takes it: a `-e` value
@@ -1181,12 +1181,12 @@ never clobbers user content:
    keys resolved off the committed snapshot in `_apply_init_seeds`;
 3. the box's own HANDBOOK CHAPTER — a HOST-side template copy (`_install_box_handbook`), NOT a seed
    and NOT a `seeded` category entry: handbook templates are HOST templates, not GUEST templates. It
-   fills `@box.canon/handbook`, which no guest sees directly — the RO
+   fills `{box.canon}/handbook`, which no guest sees directly — the RO
    `box.bindings.ro[~/canon/handbook/box]` BIND delivers it, and that bind is an ordinary key, so
    single-route is intact.
 
 ⚑ **Step 3 is THE ONLY ROUTE THAT FILLS THE BOX HANDBOOK CHAPTER.** Nothing declares a `seeded` entry
-at `@box.canon/handbook`, so a box created without step 3 gets an EMPTY chapter. Do not "simplify" it
+at `{box.canon}/handbook`, so a box created without step 3 gets an EMPTY chapter. Do not "simplify" it
 away by folding it into step 2.
 
 ⚑⚑ **The create-time `synced` write is NOT a fourth step here** — it is the SIBLING
@@ -1221,7 +1221,7 @@ The template layers all target `~` (the create-time home); the collapse's seeded
 same-dest COPY (copies OVERLAY, they do not shadow — `settings.store_collapse.collapse_seeded`), so
 the `~`-group is a list of layer sources in scope apply order that `launch.templates.stage_layers`
 stages PER-FILE LAST-WINS, then copies into home CREATE-IF-ABSENT. A layer whose source dir is absent
-(an unpopulated `@workset.template`, say) is skipped.
+(an unpopulated `{workset.template}`, say) is skipped.
 
 ⚑ **`seeded[~/]` IS THE SPELLING OF THE TRIO** — spec §2a's own seed-table form: the TERMINAL key
 `<scope>.seeded` (`system` / `agent.<a>` / `workset`), at the one entry its dest-keyed map holds — the

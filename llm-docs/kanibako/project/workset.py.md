@@ -52,7 +52,7 @@ Three notes the diagram cannot carry:
   (see below), and the PRIMARY per-mode default is `<None>` — primary boxes have EXTERNAL
   workspaces. Reading `<root>/workspaces` as a fixed fact is exactly the mistake the resolver exists
   to prevent.
-* ⚑ **`boxes/` and `logs/` are ALSO repointable spec keys** (`@meta.workset.path/{boxes,logs}`),
+* ⚑ **`boxes/` and `logs/` are ALSO repointable spec keys** (`{meta.workset.path}/{boxes,logs}`),
   resolved by the detection locator and composed as default leaves by the `Workset` convenience
   properties — the KNOWN GAP recorded under **Resolved workset dir keys**. Reading either leaf off
   this diagram as a fixed fact is the same mistake `workspaces/` invites.
@@ -98,38 +98,38 @@ need the launch snapshot. ⚑ Do not give one of these faces a private expansion
 They are read on the DETECTION / paths side — the pass that FINDS the workset a snapshot will later
 be built for — which is why that route exists separately from `settings_expand.expand` at all.
 
-The leaf constants exist so the spec's per-mode default formula `@meta.workset.path/<leaf>` is
+The leaf constants exist so the spec's per-mode default formula `{meta.workset.path}/<leaf>` is
 spelled ONCE. §3.3's ruling is that these keys are "real and USED — not hard-coded"; the per-mode
 default TABLE is the source, never a second literal at a consumer site.
 
-* **`workset.workspaces`** — spec §2c NAMED default `@meta.workset.path/workspaces`. PRIMARY
+* **`workset.workspaces`** — spec §2c NAMED default `{meta.workset.path}/workspaces`. PRIMARY
   declares `<None>` (primary boxes have EXTERNAL workspaces), but the synthesized default workset
   keeps composing the same leaf — that is today's behavior, recorded as such. STANDALONE's default
-  is the SINGULAR `@meta.workset.path/workspace` arm, which is what the `standalone=` flag on
+  is the SINGULAR `{meta.workset.path}/workspace` arm, which is what the `standalone=` flag on
   `resolve_workset_workspaces` selects.
-* **`workset.channelroot`** — spec §2c ALL-WORKSETS default `@meta.workset.path/channels`.
+* **`workset.channelroot`** — spec §2c ALL-WORKSETS default `{meta.workset.path}/channels`.
   Standalone has no workset channels (the key is `<None>` there), so callers gate on mode before
   calling the resolver.
 
 ⚑ **A present `<None>` resolves to `None`** for `channelroot`, `canon`, `template`, `vault_ro`,
 and `vault_rw` ([R177]): nothing collapses it to the default. A null `canon` or `template` skips its
 layer, and a null `channelroot` or vault arm omits its bind.
-* **`workset.canon`** — default `@meta.workset.path/canon`, and spec §2c declares it UNIFORM IN
+* **`workset.canon`** — default `{meta.workset.path}/canon`, and spec §2c declares it UNIFORM IN
   EVERY MODE, deliberately not a per-mode key, so a lone standalone root carries the tier too.
-* **`workset.template`** — default `@meta.workset.path/template`; `<None>` in standalone (spec
+* **`workset.template`** — default `{meta.workset.path}/template`; `<None>` in standalone (spec
   §2c), which has no future boxes for a workset template to seed. Its sibling above still
   applies there — the two halves do not travel together.
-* **`workset.boxes` / `workset.logs`** — defaults `@meta.workset.path/{boxes,logs}`. Resolved by
+* **`workset.boxes` / `workset.logs`** — defaults `{meta.workset.path}/{boxes,logs}`. Resolved by
   the DETECTION locator (`_workset_skeleton_dirs`), by the `Workset.projects_dir` / `logs_dir`
   convenience properties, and by `delete_workset`'s unshare pre-pass — so a repointed root is both
   FOUND and WRITTEN TO in the same place. ⚑ If detection alone resolved the keys while the
   properties composed the default leaf, a repointed root would be **detected but mislocated** —
   found by the walk, then created, moved and purged under `<root>/boxes`.
   ⚑ **The launch seam was always the correct owner** (`settings_launch`, `meta.box.path |
-  @workset.boxes/@meta.box.name`); these properties are FACES on that answer, not a second one.
+  {workset.boxes}/{meta.box.name}`); these properties are FACES on that answer, not a second one.
   ⚑ **BOTH take a `standalone=` flag, and it selects a DEFAULT LEAF** — the same shape as
   `resolve_workset_workspaces`. Spec §2c gives standalone `workset.boxes` the leaf `box_data`
-  (not `boxes`) and `workset.logs` the default `@workset.boxes` (no name leaf), which the route
+  (not `boxes`) and `workset.logs` the default `{workset.boxes}` (no name leaf), which the route
   resolves itself, so the host-side writer (`settings/paths.py::helper_log_path`) and the
   `helpers.jsonl` MOUNT name one file in standalone too. 🛑 The `boxes` flag does NOT make the standalone box STORE repointable end to end: home, the vault teardown,
   `box purge` and standalone DETECTION all still compose the literal `box_data`, which
@@ -143,8 +143,8 @@ layer, and a null `channelroot` or vault arm omits its bind.
   box under `<root>/boxes`. Because `paths` resolves the primary store when it loads the path
   table, a null at primary stops any command that loads the standard paths until the line is removed.
   In standalone the refusal is PER PATH, because the literal `box_data` sites above never read
-  the key: `box rm --purge` refuses through the logs default (`@meta.box.path` =
-  `@workset.boxes`), and `box info`/`start`/`shell` run from inside the box's workspace refuse
+  the key: `box rm --purge` refuses through the logs default (`{meta.box.path}` =
+  `{workset.boxes}`), and `box info`/`start`/`shell` run from inside the box's workspace refuse
   with this same message; `box info <name>` (by name, or from the box root) does not read the key
   and does not refuse.
   ⚑ The three destructive paths RESOLVE BEFORE THEY UNREGISTER, so the refusal lands while the
@@ -158,7 +158,7 @@ layer, and a null `channelroot` or vault arm omits its bind.
   rmtree (the line `standalone_vault_teardown` already draws).
 * **A present-`<None>` `workset.logs` names NO dir** (companion, "The helper-log bind": a `null`
   one makes the bind's source `<None>` and the bind is omitted). `resolve_workset_logs` returns
-  `None` in every mode — the standalone `@meta.box.path` default does not stand in for it — and so
+  `None` in every mode — the standalone `{meta.box.path}` default does not stand in for it — and so
   do `Workset.logs_dir`, `StandardPaths.primary_logs`, `settings/paths.py`'s `helper_log_path`,
   `creds_watcher_log_path` and `standalone_logs_dir`. `_workset_skeleton_dirs` then omits the logs
   dir (and the workspaces dir under a null `workset.workspaces`), so such a root is still detected; `remove_box_logs(None, …)` deletes nothing; the hub keeps
@@ -191,7 +191,7 @@ its relocation tail (`push_first`, `on_success`, `finish`, `note_interrupted`); 
 ## ⚑⚑ Identity is the GLOBAL registry; nothing under the root records a name
 
 A workset's identity is its `name → root` entry in the `worksets:` section of the global registry
-(`@config.registry`). That entry — written by `register_name` at `create_workset` and read by
+(`{config.registry}`). That entry — written by `register_name` at `create_workset` and read by
 `list_worksets` — is the whole of it. **Nothing under the workset root repeats it**, in either file,
 and system-design §Detect's registry-borne rule covers MEMBERSHIP only: *"Members live in
 `registry.yaml`'s `boxes:`, keyed by name."*
@@ -222,7 +222,7 @@ Named for its TIER, as `BOX_META_FILE` is (`settings/config.py`: `"workset.yaml"
 ## The global registry
 
 The global registry is the `worksets` SECTION of the single registry document located by
-`config.registry` (spec §1: `@config.data/global/registry.yaml`), reached as `StandardPaths.registry`.
+`config.registry` (spec §1: `{config.data}/global/registry.yaml`), reached as `StandardPaths.registry`.
 
 ⚑ **There is ONE section and ONE file.** This is the SAME `worksets` section the human-name index
 (`project/names.py`) reads and writes; no `names.yaml` / `worksets.yaml` file is read or written
@@ -421,10 +421,10 @@ def resolve_workspaces_locator(workset_root: Path, workset_settings: Mapping[str
 ```
 Return the resolved `workset.workspaces` dir for a workset.
 
-Honors a set `workset: {workspaces: …}`; else the spec default `@meta.workset.path/workspaces` ==
+Honors a set `workset: {workspaces: …}`; else the spec default `{meta.workset.path}/workspaces` ==
 `<root>/workspaces`.
 
-*standalone* selects the STANDALONE arm of the per-mode default table (spec §2e): the degenerate one-box workset defaults to the singular `@meta.workset.path/workspace`
+*standalone* selects the STANDALONE arm of the per-mode default table (spec §2e): the degenerate one-box workset defaults to the singular `{meta.workset.path}/workspace`
 == `<root>/workspace`. ⚑ The repoint SLOT is the same `workset: {workspaces: …}` key either way —
 only the default formula varies by mode.
 
@@ -462,8 +462,8 @@ def refuse_null_box_workspace(workset_root: Path, workspace: Path | None, box: s
 ```
 The LAUNCH refusal (Q106): raises `WorksetError` with `messages.ERR_NULL_WORKSPACE_BIND`, naming
 the box, the key and `<root>/workset.yaml`, when the root nulls `workset.workspaces` and the box's
-`meta.box.workspace` resolves through it — always for *standalone* (`@workset.workspaces`), and for
-a named member whose recorded *workspace* lies inside the root (`@workset.workspaces/<name>`). An
+`meta.box.workspace` resolves through it — always for *standalone* (`{workset.workspaces}`), and for
+a named member whose recorded *workspace* lies inside the root (`{workset.workspaces}/<name>`). An
 EXTERNAL member's recorded workspace resolves through no key, so it still launches; primary is
 never asked (its workspace is the project dir). *workspace* is `None` only for a standalone box under
 a null, which refuses either way. The one caller is
@@ -478,7 +478,7 @@ def resolve_workset_channelroot(workset_root: Path, workset_settings: Mapping[st
 ```
 Return the resolved `workset.channelroot` for a workset (primary/named).
 
-Honors a set `workset: {channelroot: …}`; else the spec default `@meta.workset.path/channels`;
+Honors a set `workset: {channelroot: …}`; else the spec default `{meta.workset.path}/channels`;
 `None` for a present `<None>` (no channel root, so no channel bind).
 ⚑ Standalone has NO workset channels (the key is `<None>` there) — **callers gate on mode before
 calling this**; the function itself will happily compose a path that should not exist.
@@ -503,11 +503,11 @@ def resolve_workset_vault_pair(workset_root: Path, *, early: EarlyScope, setting
 The resolved `workset.vault_ro` / `workset.vault_rw` dirs — **the box's vault, in every mode.**
 `None` for a present `<None>`: no arm, so its bind is omitted.
 
-Defaults are `@meta.workset.path/vault/{ro,rw}` — the only TWO-SEGMENT default leaves on the route,
+Defaults are `{meta.workset.path}/vault/{ro,rw}` — the only TWO-SEGMENT default leaves on the route,
 because the spec declares no `workset.vault` parent for them to hang off. ⚑⚑ **Both keys are
 declared ONCE FOR EVERY MODE** (§2c ALL PROJECTS, R-29): there is NO `standalone: <None>`
 carve-out, unlike `template`, `registry`, `auth.path` and the channel keys. Only the box BIND
-differs per mode — primary and named take a `/@meta.box.name` leaf, a lone box takes the arm
+differs per mode — primary and named take a `/{meta.box.name}` leaf, a lone box takes the arm
 itself. Do not add a mode parameter here; the variation is downstream.
 
 `resolve_workset_vault_pair` is the form callers should reach for: every consumer wants BOTH arms,
@@ -685,7 +685,7 @@ Synthesize the default workset (the group of default-mode projects).
 
 The default workset is VIRTUAL. Its members are the default-mode boxes in the PRIMARY per-workset
 `boxes:` membership — the sole store; there is no global `projects:` section. It
-roots at `@config.primary_workset` (spec §2c: PRIMARY `meta.workset.path`), so its settings/env
+roots at `{config.primary_workset}` (spec §2c: PRIMARY `meta.workset.path`), so its settings/env
 files derive from `root` exactly like a named workset's (F4).
 
 ⚑ **NEVER persisted to disk:** nothing is written, and it is never in the global `worksets:`

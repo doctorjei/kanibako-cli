@@ -70,14 +70,14 @@ Period."*), so the scalars START at the declared defaults and no Layer-1 value r
 ### The floor
 
 ⚑⚑ **THE FLOOR IS THE DECLARED DEFAULTS.** `config.box_scalar_defaults_floor()` builds it from
-`KanibakoConfig`'s own field defaults; without it `@box.image` would dangle at launch AND at set
+`KanibakoConfig`'s own field defaults; without it `{box.image}` would dangle at launch AND at set
 time. `box_scalar_defaults_floor` is the ONE recipe, folded
 by `settings_launch.fold_floor` into every resolve, by `paths._narrow_box_scalar_cascade`, and by
 `config_interface._category_set_lookups`, so the launch floor and the set-time floor cannot drift. `box.shell`'s field default is `None`,
 the declared `<None>` (spec §2b `box.shell | <None>`), and the floor SUPPLIES it as a present
 `None` ([R177]). It is not
 `""`: a `default_categories` fold drops a `""` as a suppression (`if val == "": continue`), which
-would leave `@box.shell` dangling. A whole-value ref to it resolves to `None` (§0). A winning `None`
+would leave `{box.shell}` dangling. A whole-value ref to it resolves to `None` (§0). A winning `None`
 lands on the flat `box_shell` field as
 `None`, and `launch.shells.resolve_box_shell` auto-detects.
 
@@ -258,7 +258,7 @@ of silently running something other than what their file says.
 `config.` PREFIX unfakeable and says nothing about the TAIL. 🛑 **An undeclared leaf would NOT be
 inert.** `resolve_config_paths` walks `CONFIG_PATH_DEFAULTS` for its **output**, but its inner
 `lookup` resolves `@`-refs through `LevelView("config", values=dict(set_values), …)`, i.e. **the
-file's set-values**. So `data: "@config.nonsense/kanibako"` beside `nonsense: /srv/elsewhere` would
+file's set-values**. So `data: "{config.nonsense}/kanibako"` beside `nonsense: /srv/elsewhere` would
 root the store at `/srv/elsewhere/kanibako`: an undeclared NAME the resolver would follow, a §0
 breach.
 Spec §1: *"The Layer-1 set is exactly the config keys in the table below."* The admitted set is
@@ -567,8 +567,8 @@ so a category map prints `caches./home/agent/c = uv` — destination normalized,
 The stored `system.agent` SETTING from the system settings tier; `None` when unset or empty.
 
 `system.agent` (spec §2g) is the CURRENT agent's name — a system-scope SETTINGS key (behavior, not
-a config path), so it lives in the `system:` table of the system settings file `@config.settings` =
-`@config.data/global/settings.yaml` (the `std.settings` path), exactly where `assemble_levels`
+a config path), so it lives in the `system:` table of the system settings file `{config.settings}` =
+`{config.data}/global/settings.yaml` (the `std.settings` path), exactly where `assemble_levels`
 reads the system tier from. Callers pass that settings-file path as *system_path*, NOT
 `~/.config/kanibako.cfg`, which holds only the bootstrap PATH tables.
 
@@ -590,7 +590,7 @@ The `system.setup_completed` marker from the SYSTEM SETTINGS file; `None` when a
 `system.setup_completed` is a host-global `system.*` value recording the build version at which
 `kanibako setup` last succeeded (W1). `None` means "setup never run" — the gate then re-nudges.
 
-⚑⚑ **ITS FILE IS `@config.settings` (`<data>/global/settings.yaml`)** — the same file
+⚑⚑ **ITS FILE IS `{config.settings}` (`<data>/global/settings.yaml`)** — the same file
 `read_system_agent` reads and the launch cascade's system tier assembles from, NOT `kanibako.cfg`
 (*"there is no reason whatsoever that `system.setup_completed` should go in the config. It should
 not. It should go in the global settings file."*). That is what spec §2g declares — a Layer-2
@@ -618,14 +618,14 @@ that helper, read back by explicit path, assembled by no cascade. It is written 
 `channels/helpers.write_spawn_budget` with `dump_doc`, NOT through `config_io.write_nested_key`:
 that seam is allowlisted precisely so a runtime-computed default cannot be persisted into a cascade
 settings file, and a child's budget is runtime-computed. Putting the write here, next to a reader
-whose other caller really is `@config.settings`, would invite exactly that.
+whose other caller really is `{config.settings}`, would invite exactly that.
 
 ⚑ **The budget is a DECLARED key**, read from settings documents; there is no bespoke `spawn:`
 table (the §0 violation `system.templates_stamp` was retired for, next section).
 
 ⚑ **TWO TIERS, ONE READER, which is why the reader takes a PATH rather than resolving one.**
 `kanibako box helper spawn` consults the budget a PARENT handed it (the RO document at
-`~/spawn.yaml`, mounted into a helper by the hub) and then its own `@config.settings`. Both are
+`~/spawn.yaml`, mounted into a helper by the hub) and then its own `{config.settings}`. Both are
 ordinary settings documents carrying the same two keys; a second shape would be a second keyspace.
 
 🛑 **A non-numeric leaf is REFUSED BY NAME, never coerced.** A fabricated default would answer a
@@ -637,7 +637,7 @@ before any snapshot exists — the same timing argument the readers above make.
 
 
 ```system_settings_path() -> Path```
-THE system SETTINGS file (`@config.settings`), resolved from Layer 1 alone.
+THE system SETTINGS file (`{config.settings}`), resolved from Layer 1 alone.
 
 ⚑ Deliberately NOT `paths.load_std_paths`: that one MATERIALIZES the store and RAISES when no
 Layer-1 file exists, neither of which a pre-cascade reader may do to a box that has never been set
@@ -669,7 +669,7 @@ that is not a declared `config.*` key stops the command" prescribes.
 ```setup_compat_gate(settings_path: Path | None, legacy_config: Path | None = None) -> str | None```
 Run the 5-band setup/config compatibility gate against the marker stored in *settings_path*.
 
-⚑ *settings_path* is the SYSTEM SETTINGS file (`@config.settings`), the marker's home — see
+⚑ *settings_path* is the SYSTEM SETTINGS file (`{config.settings}`), the marker's home — see
 `read_setup_completed`. ⚑ *legacy_config* is a ONE-RELEASE MIGRATION GUARD (v1.8.0): with no marker
 in *settings_path*, an existing v1.7-era *legacy_config* (`kanibako_config.yaml`) BLOCKS until it is
 renamed and setup runs; only its existence is read. `cli._setup_nudge` resolves *settings_path* with

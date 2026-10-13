@@ -133,11 +133,11 @@ store probe and pseudo stores, `config_interface`'s `meta.agent.<a>.path` readin
 `commands.start.ensure_persona_share_symlinks` lays. ⚑ Miss one and the store SPLITS with no error
 raised anywhere — every path is create-if-absent, so the box gets two half-stores.
 
-`agent_settings_path(agents_root, agent_id)` is `@meta.agent.<agent>.settings`. Callers pass the
+`agent_settings_path(agents_root, agent_id)` is `{meta.agent.<agent>.settings}`. Callers pass the
 CANONICAL node; the `+` dirname is applied inside.
 
 The per-agent SETTINGS cascade file lives **inside** the per-agent store dir
-(`@meta.agent.<agent>.path` = `agents/<agent>/`) as `agent.yaml`. It is NOT the old sibling
+(`{meta.agent.<agent>.path}` = `agents/<agent>/`) as `agent.yaml`. It is NOT the old sibling
 `agents/<agent>.yaml` file. The layout parallels the per-agent template dir
 `agents/<agent>/template` and the per-category store dirs `agents/<agent>/{common,caches,seeded}/`.
 
@@ -150,8 +150,8 @@ principle P10: no duplicated shared data).
 ⚑ **THE PERSONA SHIM IS NOT A CONSUMER.** It re-roots WHOLE store-relative paths
 (`agent_representation.harness_store_leaf`), which is generic over categories and over anything
 else a plugin names, so it composes `agents/<store_dirname>/<leaf>` directly and never asks what a
-category's dirname is. The two still land on ONE directory, because `@meta.agent.<a>.path` IS
-`@config.agents/<store_dirname>` (`settings_launch.meta_agent_path_floor`).
+category's dirname is. The two still land on ONE directory, because `{meta.agent.<a>.path}` IS
+`{config.agents}/<store_dirname>` (`settings_launch.meta_agent_path_floor`).
 
 It maps a category to the FIXED sub-dirname under the per-agent store root, and it is DERIVED from
 `ABSTRACT_CATEGORIES` rather than re-typed: the dirname IS the category name, so spelling the three
@@ -178,13 +178,13 @@ is read. *agent* is REQUIRED for the discriminated agent row, and an undeclared 
 `ValueError` rather than taking a bare root (spec §0). This is what a loader STORES, so the stored
 value resolves on its own with no layer prepending anything later.
 
-`agent_category_root_ref(agent, category)` is the AGENT row — `@meta.agent.<agent>.path/<dirname>` —
+`agent_category_root_ref(agent, category)` is the AGENT row — `{meta.agent.<agent>.path}/<dirname>` —
 kept as a named entry point for the per-agent loaders that never see another scope; it delegates to
 `category_root_ref`.
 
-⚑ **There is no RESOLVED twin.** A resolved store path is what `@meta.agent.<a>.path` already
+⚑ **There is no RESOLVED twin.** A resolved store path is what `{meta.agent.<a>.path}` already
 resolves to (`settings_launch.meta_agent_path_floor` defines the anchor as
-`@config.agents/<store_dirname>`), so a second composer beside it would be a second answer to one
+`{config.agents}/<store_dirname>`), so a second composer beside it would be a second answer to one
 layout question — free to drift, and silently, because every path here is create-if-absent. A
 caller needing a real `Path` composes `agents_root / store_dirname(node) / <rel>`; the
 `store_dirname` call IS the shared fact, and it is the one that must not be re-spelled.
@@ -240,17 +240,17 @@ True for an absolute path, `~`, an `@`-ref, a `$XDG_*` variable, or a braced ref
 a non-XDG variable — is ambiguous.
 
 ⚑⚑ **THE TEST IS ON THE STORED SPELLING, BEFORE EXPANSION, and that is the load-bearing part.**
-[R147] rules on what is a legal value to have WRITTEN, so `$XDG_DATA_HOME/kanibako` is legal even in
+[R147] rules on what is a legal value to have WRITTEN, so `{$XDG_DATA_HOME}/kanibako` is legal even in
 an environment where that variable answers something odd. Testing the EXPANDED value would refuse it
 there — reporting a KEY defect for an ENVIRONMENT one, with a "did you mean" line that pastes the
 token back into itself. A SOURCE that expands to a relative path is a different rule at a different
 layer (`settings_expand._refuse_relative_host_src`), with its own message; the two are not one check
 and must not be merged.
 
-⚑ **It is NARROWER than `is_self_resolving`, on purpose, and the difference is `$VAR`.** That
+⚑ **It is NARROWER than `is_self_resolving`, on purpose, and the difference is `{$VAR}`.** That
 predicate rules on a BIND SOURCE, where a declaration may name any variable the launch namespace
-supplies. This one rules on a path a USER typed, and the keyspace's non-XDG variables (`$AGENT`,
-`$WORKSET`) expand to a bare NAME — so `$AGENT/logs` is exactly as relative as `logs`. A `$` is
+supplies. This one rules on a path a USER typed, and the keyspace's non-XDG variables (`{$AGENT}`,
+`{$WORKSET}`) expand to a bare NAME — so `{$AGENT}/logs` is exactly as relative as `logs`. A `$` is
 therefore PARSED (`settings_resolve.match_var`, or `match_braced` for `{$…}`) and the variable's own
 name tested for the `XDG_` prefix; a malformed `$…` or `{…}` answers False rather than raising. The
 leading-escape cases fall the way they do above: `\/foo` unescapes to an absolute path, `\~foo` to
@@ -264,7 +264,7 @@ the user instead of removing it. The text therefore prints the *anchor* reading 
 run-from-directory reading as two resolved paths, one per line, before naming the legal forms.
 
 *anchor* is the RESOLVED other candidate; *anchor_ref* is that root's legal spelling
-(`@meta.workset.path`, `$XDG_DATA_HOME`), offered so the user can paste the fix; *where* names the
+(`{meta.workset.path}`, `{$XDG_DATA_HOME}`), offered so the user can paste the fix; *where* names the
 file the value was read from, when the seam has one. ⚑ An UNRESOLVABLE anchor is passed as its own
 ref spelling with *anchor_ref* left unset — the reading is still named, and in a pasteable form,
 without the line saying the same thing twice.

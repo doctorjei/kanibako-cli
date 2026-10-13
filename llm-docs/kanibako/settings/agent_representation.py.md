@@ -31,7 +31,7 @@ functions that write down where a harness's agent-scope store lives.
 * **No expansion (spec §0 "Files store entries UNRESOLVED").** `@`-refs / `$XDG` / `~` are
   left RAW — expansion happens at resolve.
   `box_dest` is carried VERBATIM: the descriptor loader
-  (`kanibako.settings.agent_defaults._build_binding`) has ALREADY expanded the `$GUEST_HOME` box
+  (`kanibako.settings.agent_defaults._build_binding`) has ALREADY expanded the `{$GUEST_HOME}` box
   constant at load, so the `Binding` this module receives is post-expansion; re-expanding would be
   wrong. A LITERAL-origin raw `@`/`$XDG`/`~` `box_dest` therefore stays raw for free.
 * ⚑ The `assembly.py` meant here is `targets/assembly.py`, spelled WITH its package on purpose:
@@ -157,7 +157,7 @@ doesn't resolve to the claude dir. It resolves to its own symlink… This is imp
 user can change the symlink to a directory or real target"*):
 
 * the KEY `agent.<harness>.<category>` → `agent.<node>.<category>`, so the pick actually sees it;
-* the SOURCE `@meta.agent.<harness>.path/<leaf>` → `@meta.agent.<node>.path/<leaf>`, so the bind
+* the SOURCE `{meta.agent.<harness>.path}/<leaf>` → `{meta.agent.<node>.path}/<leaf>`, so the bind
   resolves through the NODE path — the symlink (shared with the harness) by default, or the
   persona's OWN directory when it has one. Re-keying WITHOUT re-rooting would bind the harness dir
   directly and make the shim's own-dir branch unreachable: it looks identical in every arrival
@@ -197,7 +197,7 @@ rides along, so a `ro` arm keeps its explicit option through the rebuild.
 `harness_store_root(node)` is the `@`-ref DECLARATION ROOT of *node*'s whole agent store, read from
 the single copy of the spec's table (`DECLARATION_ROOT_REF`). `harness_store_leaf(host_src,
 harness)` is its inverse: the store-relative path *host_src* names under *harness*'s store —
-`@meta.agent.claude.path/common/plugins` → `"common/plugins"`, `@meta.agent.claude.path/seedsrc` →
+`{meta.agent.claude.path}/common/plugins` → `"common/plugins"`, `{meta.agent.claude.path}/seedsrc` →
 `"seedsrc"`; anything else → `None`.
 
 ⚑ **THE LEAF RULE IS WRITTEN IN ONE PLACE**, and it has two consumers that would otherwise each

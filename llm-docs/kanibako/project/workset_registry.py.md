@@ -1,7 +1,7 @@
 # The Per-Workset Registry — membership, and the name anchors it yields
 
 `workset_registry` is the read/write layer for one file per workset: the resolved `workset.registry`
-key, whose default is `@meta.workset.path/registry.yaml` == `<workset_root>/registry.yaml`. That file
+key, whose default is `{meta.workset.path}/registry.yaml` == `<workset_root>/registry.yaml`. That file
 holds the workset's **membership**, and nothing else.
 
 It is a document layer, not a policy layer. It loads its one section, writes it back atomically, and
@@ -29,7 +29,7 @@ can be added without reshaping the writer.
 
 system-design §Detect's registry-borne rule is about MEMBERSHIP: *"Members live in `registry.yaml`'s
 `boxes:`, keyed by name."* A workset's IDENTITY is its `name → root` entry in the GLOBAL registry's
-`worksets:` section (`@config.registry`) — the entry `workset create` writes and `kanibako workset
+`worksets:` section (`{config.registry}`) — the entry `workset create` writes and `kanibako workset
 list` reads. Nothing under the workset root repeats it, and `project/workset.py` takes the name as an
 argument rather than reading one.
 
@@ -157,7 +157,7 @@ the required `early=` scope (the system tier). It is one face of the no-snapshot
 * **A present `null` REFUSES**: `SettingsError(ERR_CONFIG_NULL_PATH)`, naming the key and the file.
   This file is the only source of box names, so the default would read a file the user says is not
   there.
-* **otherwise** the default `<workset_root>/registry.yaml`, == `@meta.workset.path/registry.yaml`. A standalone box has no per-workset registry at all (spec §2c: `workset.{registry,template}`
+* **otherwise** the default `<workset_root>/registry.yaml`, == `{meta.workset.path}/registry.yaml`. A standalone box has no per-workset registry at all (spec §2c: `workset.{registry,template}`
 resolve to `<None>` for a lone box), so this resolver is never reached on that path.
 
 `project/workset.py` mirrors this resolver at its own no-snapshot seam for the resolved workset dir

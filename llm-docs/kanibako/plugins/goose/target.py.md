@@ -69,7 +69,7 @@ YAML file states why.
 `default_category_binds` reads goose's AGENT-scope `@`-ref-sourced category binds from
 `goose-defaults.yaml`, and the answer today is an empty map.
 
-The former `@system.instructions` → `~/.config/goose/KANIBAKO.md` instructions bind was **retired**.
+The former `{system.instructions}` → `~/.config/goose/KANIBAKO.md` instructions bind was **retired**.
 The box guide now ships INSIDE the read-only `general` chapter bind at `~/canon/charter/general`,
 together with the flattened FINAL file. Do not reintroduce a per-agent instructions bind to "fix" the
 emptiness. ⚑ The book ROOT `~/canon/charter` is not bound at all — each chapter is its own

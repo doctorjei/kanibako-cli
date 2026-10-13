@@ -1,7 +1,7 @@
 # The Consolidated Name Registry — one `registry.yaml` behind every global name store
 
-`registry_store` is the read/write layer for a single file at `@config.registry`
-(`@config.data/global/registry.yaml` == `{data_path}/global/registry.yaml`). That one file backs
+`registry_store` is the read/write layer for a single file at `{config.registry}`
+(`{config.data}/global/registry.yaml` == `{data_path}/global/registry.yaml`). That one file backs
 every kanibako *global* name store: which worksets exist and where their roots are, which
 standalone boxes are registered, which boxes have been deregistered but not yet purged, which rigs
 have been added, and which login shell each image was captured with.
@@ -53,7 +53,7 @@ sibling sections; this module passes their values through verbatim and never int
 per-workset registry as a `boxes:` entry (design D10).
 
 **There is no `projects` section.** A PRIMARY box's identity lives SOLELY in the primary workset's
-per-workset `boxes:` membership (`@config.primary_workset/registry.yaml`, via
+per-workset `boxes:` membership (`{config.primary_workset}/registry.yaml`, via
 `kanibako.project.workset_registry`), which is the AUTHORITATIVE source of box names (spec §2c's
 `workset.registry` row). `_SECTIONS` is the retirement mechanism: a section absent from it is
 neither surfaced by the loader nor rewritten, so a stale `projects` block is dropped on the next

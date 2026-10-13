@@ -407,7 +407,7 @@ disagree. The box's docker `env` FILE tier is GONE (R-39/RQ-1); the env family i
 one pair so it clears exactly the file `set`/`get` address.
 
 `set` names the BOX as its target (`std=std, proj=proj`, spec §2a): `set_config_value` builds the
-box's own `resolve_inputs`, so its settings files, its real `@meta.box.path` and its workset anchors
+box's own `resolve_inputs`, so its settings files, its real `{meta.box.path}` and its workset anchors
 come from the resolve the launch runs, never from the file positions. The caller still threads its
 tier files (`cascade_workset_path`, `cascade_box_path`), so the target-less fallback reads the same
 files as the target and differs only by the floors. `reset` threads the same pair so its
@@ -458,7 +458,7 @@ the slots and nothing else.
 #### `cli_level` — selection only, and the inert `--agent`
 
 ⚑ The display installs the SAME §1A selection level the launch installs (P7). Without it, this
-view would resolve `@system.agent` DIFFERENTLY from the launch it claims to show — an `--agent` box
+view would resolve `{system.agent}` DIFFERENTLY from the launch it claims to show — an `--agent` box
 would render `meta.box.auth.workset_path` with the agent segment dropped. A display that disagrees
 with the launch is worse than no display.
 

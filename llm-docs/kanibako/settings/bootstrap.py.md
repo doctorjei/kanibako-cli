@@ -108,7 +108,7 @@ in the table reaches `StandardPaths`.
 
 ⚑ `system.template` and `system.canon` are ROOTS rather than leaves, so each leaves room for
 further subtrees without minting a new key (spec §2g). The box-bound handbook is
-`@system.canon/handbook`.
+`{system.canon}/handbook`.
 
 `settings/defaults_inventory.py` registers both tables by name (`"bootstrap.py (config tier)"` /
 `"bootstrap.py (system tier)"`).
@@ -155,23 +155,23 @@ changes that warning's argument contract; see `messages.py.md`.
 ```python
 CREDS_WATCHER_LOG_SUFFIX · CREDS_WATCHER_LOCK_FILE · CREDS_LOCK_KEPT_WHY
 ```
-The detached creds watcher's log suffix (`@workset.logs/<box><suffix>`, beside the box's helper
+The detached creds watcher's log suffix (`{workset.logs}/<box><suffix>`, beside the box's helper
 log), its single-instance flock file in the box's `metadata_path`, and the one reason every verb
 gives for leaving that file alone while a live watcher holds it.
 
 ```python
 STANDALONE_META_DIR = 'box_data'
 ```
-The STANDALONE box-store dir name — `@meta.box.path`, and half the detection marker.
+The STANDALONE box-store dir name — `{meta.box.path}`, and half the detection marker.
 
 Standalone detection (system-design § "Detection & import") looks for an ancestor with a `box_data/`
 marker DIR plus a `workset.yaml` declaring standalone. Renaming the constant breaks detection for
 every standalone box already on disk — a data-layout change, not a code change.
 
 ⚑ It is **not a bare marker dir** (spec §4): it is the real box store, holding `home/` and the
-by-default-ABSENT `box.yaml`. `@workset.boxes` defaults to it in standalone mode
+by-default-ABSENT `box.yaml`. `{workset.boxes}` defaults to it in standalone mode
 (`{meta.workset.path}/box_data`; `project/workset.py`'s `_STANDALONE_BOXES_LEAF`), so
-`@meta.box.path` is that same dir, and the standalone `workset.logs` default is `@workset.boxes`.
+`{meta.box.path}` is that same dir, and the standalone `workset.logs` default is `{workset.boxes}`.
 Import the constant; never re-spell the string.
 
 ## Registry tokens

@@ -38,11 +38,11 @@ and R-39; the J2 lifecycle journal.
 ## The workset settings file
 
 `_workset_config_path` is the ONE derivation for every mode (spec §2c: `meta.workset.settings` =
-`@meta.workset.path/workset.yaml`) — always `<root>/workset.yaml`. The cascade tables
+`{meta.workset.path}/workset.yaml`) — always `<root>/workset.yaml`. The cascade tables
 (`box`/`agent`/`workset.bindings`) coexist there, which is why `run_create` and `share add` both
 LOAD-then-MERGE.
 
-The PRIMARY ("default") workset roots at `@config.primary_workset`, so its settings file is
+The PRIMARY ("default") workset roots at `{config.primary_workset}`, so its settings file is
 `<primary_workset>/workset.yaml`, the file the launch cascade reads (finding **F4** of
 `~/canon/notebook/archives/resources/reference/2026-07-02-scoping-cascade-audit.md`).
 
@@ -67,7 +67,7 @@ and `.`). `--force` also reaches `create_workset` as `force_logs_share`: a `work
 another workset resolves to is accepted.
 
 `install_workset_template` is the **J-6 A-action (INSTANTIATION)**: it stamps the new workset store
-from the host workset mold (`@system.template/workset`) under the WORKSET whitelist. This is what
+from the host workset mold (`{system.template}/workset`) under the WORKSET whitelist. This is what
 gives a workset its own handbook chapter dir and its own box template. The pre-flight above already proved the mold passes that whitelist, so this call
 cannot refuse half-way.
 
@@ -174,8 +174,8 @@ so a working set that declares none of the trio cannot meet one from this verb.
 🛑 **THE RESOLVE IS NOT GATED.** The entry list is
 built BEFORE the gate, `expand` is strict, and `snapshot_category_entries` refuses an undeclared
 shape — while the `show` arm's own rendering is a YAML flatten that expands nothing. So a working
-set carrying only `bindings.ro: {/opt/x: ["$NOPE/y"]}`, with no abstract declaration anywhere,
-prints `Error: Unknown variable: $NOPE` and returns 1. The `show_config` call alone returns 0 on
+set carrying only `bindings.ro: {/opt/x: ["{$NOPE}/y"]}`, with no abstract declaration anywhere,
+prints `Error: Unknown variable: {$NOPE}` and returns 1. The `show_config` call alone returns 0 on
 that file, so the rc is this block's.
 
 ⚑ **THAT IS THE INTENDED ANSWER, and it is why the code is not "fixed" to suppress it.** A view
@@ -233,7 +233,7 @@ at the workset command level.
 * **SET** names the WORKING SET as its target (`std=std, ws=ws`, spec §2a, "Build the full cascade
   snapshot for the COMMAND's target"): `set_config_value` builds its `resolve_inputs(WORKSET)`, so
   the system file, the workset settings file and every workset anchor (`meta.workset.path`,
-  `meta.runtime.ws_root`, the auth chain) resolve here as at launch, and every `@meta.box.*` anchor
+  `meta.runtime.ws_root`, the auth chain) resolve here as at launch, and every `{meta.box.*}` anchor
   is OMITTED — a value that needs one is refused as a dangling reference, never judged against a
   fabricated box.
 
@@ -303,9 +303,9 @@ applies a root-join. The command says so when it happens: `share add <ws> reldir
 …)".
 
 The DEFAULT workset REFUSES a relative source instead, because it has no bindings root:
-`@config.primary_workset` is kanibako's own internal store, not a user project dir, so rooting
+`{config.primary_workset}` is kanibako's own internal store, not a user project dir, so rooting
 there would swap a visible failure for a silent wrong path. Refusing names the mistake at the
-moment it is made, with the "an absolute path, '~/…', '$VAR' or an '@'-reference" cure.
+moment it is made, with the "an absolute path, '~/…', '{$VAR}' or a '{key}' reference" cure.
 
 ### The bind grammar
 
@@ -353,7 +353,7 @@ and base files, the `pref:` requests and the §2c auth chain included — and `r
 the retired-spelling refusal and `refuse_read_time_faults` run inside `build_launch_snapshot` as
 they do at launch. So a working set the launch refuses (a `config:` table in the workset file, a
 bare-relative `pref.agent.<a>.canon` request, an undeclared key in the system file) refuses here
-too, and a share sourced at `@workset.auth.path/notes` lists `<ws_root>/auth/notes`, as a launch
+too, and a share sourced at `{workset.auth.path}/notes` lists `<ws_root>/auth/notes`, as a launch
 mounts it.
 `ResolveSubject.WORKSET` (from `as_kwargs`) gives the §0 message this noun's verbs. The refusals
 raise `SettingsError`, so both listings report through `_preview_refusal` at rc 1.
@@ -361,8 +361,8 @@ raise `SettingsError`, so both listings report through `_preview_refusal` at rc 
 box, so a value that reads a `meta.box.*` key (which the box-less resolve omits) or any `box.*` key
 (which a box's own file may set) is the box's to decide. `_workset_preview_entries` asks
 `settings_launch.depends_on_the_box(refs, in_workset=True)` of each entry's refs and replaces such
-an entry's source with `DEPENDS_ON_THE_BOX`, so a share sourced at `@meta.box.path/x` or
-`@box.canon/y` lists its source as `(depends on the box)`. Both `--effective` listings share it,
+an entry's source with `DEPENDS_ON_THE_BOX`, so a share sourced at `{meta.box.path}/x` or
+`{box.canon}/y` lists its source as `(depends on the box)`. Both `--effective` listings share it,
 because both build their entries through `_workset_preview_entries`.
 `tests/test_commands/test_workset_share.py` pins it.
 ⚑ **`run_share_list` TAKES ITS `--effective` BRANCH BEFORE THE EMPTY-SHARES RETURN**, so a working
@@ -373,9 +373,9 @@ carrier) — but only AFTER the resolve and the arbitration have run.
 The context and floors come from `resolve_inputs`, which keeps the **resolver SPLIT** (spec §1A /
 JC-2): Layer-1 `config.*` is the `ctx.config` foundation (`agent_select.host_resolve_ctx`), and
 Layer-2 `system.*` (`inputs.system_floor`) rides into the snapshot as a default category table, so a
-share value's `@`-ref such as `@system.channelroot` resolves from the snapshot itself. The xdg map
+share value's `@`-ref such as `{system.channelroot}` resolves from the snapshot itself. The xdg map
 is the canonical FULL host map anchored on the resolved `std.data_home` — a data-home-only partial
-map RAISES on a stored `$XDG_CACHE_HOME/…` value.
+map RAISES on a stored `{$XDG_CACHE_HOME}/…` value.
 
 ⚑⚑ **THE `ctx.config` FOUNDATION IS `settings/paths.host_config_map`, AND IT IS SHARED WITH THE
 LAUNCH TOO** (`settings/agent_select.launch_resolve_ctx`). It derives the tier from the declared
@@ -387,14 +387,14 @@ binding sourced at an omitted key: `_lookup_raw` answers `_ABSENT` and the row v
 `system_floor` of `settings_launch.resolve_inputs` is the same call, derived from
 `SYSTEM_PATH_DEFAULTS` entire. Two hand-written floors would disagree, and an unresolvable `@`-ref
 is a legitimately-absent referent rather than a failure — so a binding sourcing a key one floor
-lacked (say `@system.channels.chat`) would mount at launch and be **silently omitted from this
+lacked (say `{system.channels.chat}`) would mount at launch and be **silently omitted from this
 listing**, rc 0. This display folds the map into a resolve floor and prints collapsed BINDINGS,
 never the floor.
 
 ⚑⚑ **THE FLOOR ALSO CARRIES `meta.workset.path`, AND WITHOUT IT THIS LISTING WOULD PRINT A PATH
 THAT EXISTS NOWHERE.** `system_path_floor` is the `system.*` tier and carries no `meta.*` key at
 all, while `settings_expand` renders an anchor with no referent as the EMPTY STRING — so a share
-written `@meta.workset.path/refdir` would be listed as mounting `/refdir`, at the filesystem root,
+written `{meta.workset.path}/refdir` would be listed as mounting `/refdir`, at the filesystem root,
 rc 0, no warning. The anchor is spec §2a's workset
 `<scope-root>`, so the same gap mis-rooted every `common` / `caches` / `seeded` declaration by
 definition — which is what made this a PREREQUISITE of rendering the derived half at all, not a
@@ -402,11 +402,11 @@ neighboring fix. 🛑 **THIS IS NOT A ROOT-JOIN** (the section above still holds
 prepended to a stored value; an anchor the stored value already names is given its referent.
 
 ⚑ **`ws.root` IS the anchor, and there is NO per-mode branch to reproduce.**
-`paths.workset_settings_path` declares the workset tier as `@meta.workset.path/workset.yaml`, so the
+`paths.workset_settings_path` declares the workset tier as `{meta.workset.path}/workset.yaml`, so the
 working set's own root is that anchor by declaration and nothing here decides where a root is. And
 the key itself does not vary by mode: §2c's **RUNTIME-DERIVED — ALL PROJECTS (every mode)** block
-declares `meta.workset.path | @meta.runtime.ws_root` once, for all three. The launch reaches that
-same value through `@config.primary_workset` at primary because `meta.runtime.ws_root` is where the
+declares `meta.workset.path | {meta.runtime.ws_root}` once, for all three. The launch reaches that
+same value through `{config.primary_workset}` at primary because `meta.runtime.ws_root` is where the
 per-mode choice lives (§1A) — one rung below this key, and not a variation at this key. Primary and
 named both land on `ws.root` here; standalone cannot reach this noun at all (`workset create
 --standalone` is refused, and `resolve_workset_name` reads the registry).
@@ -466,7 +466,7 @@ remedy block, and a reader should be told what they are about to read before wad
 
 ⚑ **THE pid-0 FOUNDATION IS `_PREVIEW_HOME_SRC`, and it is SPELLED rather than guessed.** The
 collapse folds every scope over a home bind; a workset names no BOX, and the home SOURCE is per-box
-(`@meta.box.path/home`), so there is no true answer to give. Only the foundation's DEST takes part in
+(`{meta.box.path}/home`), so there is no true answer to give. Only the foundation's DEST takes part in
 arbitration, and the placeholder cannot reach the display anyway: a share AT that dest is refused as
 a second bind at the foundation's point, and one INSIDE it holds its own destination. It carries NO
 options — home's are seam machinery (spec §2c's `meta.box.home` row), and `config_display` declines

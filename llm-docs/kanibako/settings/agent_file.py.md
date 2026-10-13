@@ -523,7 +523,7 @@ mounted.
 
 🛑 **`env` IS ON THAT LIST, AND ITS ABSENCE WOULD BE A DEFECT, NOT A DESIGN.** A private env
 under-layer outside the cascade would sit BELOW `system.env.*`, inverting the bracket in which the
-agent tier outranks system, and would never reach the expand pass — one written `~` or `$VAR` would
+agent tier outranks system, and would never reach the expand pass — one written `~` or `{$VAR}` would
 behave two ways depending on which FILE spelled it. An `agent.<node>.env.<VAR>` is an ordinary key
 that cascades to its true rung and realizes through the collapse's env slots like every other
 scope's; do not introduce a second env channel.

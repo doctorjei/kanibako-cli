@@ -177,7 +177,7 @@ already enforced that (`STUBBORN_INPLACE_MSG`). A standard move `copytree`s the 
   * **target is standalone** — an in-place RENAME. `_to_standalone` reads its `root` argument as
     the root, so it gets the root; the earlier spelling handed it the workspace and built a
     second box inside the first (see `_to_standalone`).
-  * **workspace resolves AT the root** (`workspaces: @meta.workset.path`) — already the shape
+  * **workspace resolves AT the root** (`workspaces: {meta.workset.path}`) — already the shape
     every other mode wants; nothing to lift.
   * **workspace resolves BELOW the root** — the reverse of drift H: lift the files up to the root
     and root the converted box there, so the project stays at the directory the user is standing
@@ -398,7 +398,7 @@ primary box.
 
 ## Channel partition relocation (D-M10, §6)
 
-A box's mailbox and system-scope share are partitioned by `@meta.workset.name` and keyed by box
+A box's mailbox and system-scope share are partitioned by `{meta.workset.name}` and keyed by box
 name, so a move/convert that changes the workset and/or the box name **changes its channel
 address**. `_relocate_channel_partition` moves the OWN `mailboxes/<ws>/<box>` and `share/<ws>/<box>`
 dirs from the OLD partition to the NEW one.
@@ -450,7 +450,7 @@ creates a skeleton at its own destination and an `ignore_errors=True` rmtree wou
 ## Layout facts recorded here so nobody re-derives them
 
 * **PRIMARY vault** is a per-box `<name>` LEAF under the primary workset's RESOLVED
-  `@workset.{vault_ro,vault_rw}` (default `@config.primary_workset/vault/{ro,rw}/<name>`, Phase 5),
+  `{workset.vault_ro}`/`_rw` (default `{config.primary_workset}/vault/{ro,rw}/<name>`, Phase 5),
   so it is NOT under `metadata_path`. `_plan_source_teardown` plans the per-box `ro`/`rw` dirs
   explicitly and never their shared arm, which holds EVERY box's vault.
   ⚑⚑ **The containment guard's subject is the ARM (`std.primary_vault_{ro,rw}`), not the workset
@@ -841,7 +841,7 @@ and a rollback restores both files.
 
 ⚑ *root* is the caller's READ root, never a parent counted off *workspace_subdir* — see the
 standalone arm of **STEP 2**. The removal walks UP from the workspace dir, so the directories a
-repoint interposed (`workspaces: @meta.workset.path/nested/deep` leaves `nested/`) go too: they
+repoint interposed (`workspaces: {meta.workset.path}/nested/deep` leaves `nested/`) go too: they
 existed only to hold the workspace, and the root `workset.yaml` that named them is about to be
 unlinked. `rmdir` IS the emptiness test, so a parent the user keeps their own files in stops the
 walk.
@@ -893,8 +893,8 @@ else. ⚑ The destination comes from `_resolve_standalone_workspaces(root, …)`
 directory the box will later resolve; see the sweep's own section above.
 
 ⚑⚑ **The `box.yaml` landing in the store must NOT be deleted as an "orphan".** It IS the
-destination's BOX TIER (spec §2c ALL PROJECTS: `meta.box.settings = @meta.box.path/box.yaml`, and
-`@meta.box.path` for a standalone IS its store). Detection is unaffected either way: it reads the
+destination's BOX TIER (spec §2c ALL PROJECTS: `meta.box.settings = {meta.box.path}/box.yaml`, and
+`{meta.box.path}` for a standalone IS its store). Detection is unaffected either way: it reads the
 ROOT file (`system-design` § "Detection & import"), which `establish_standalone` writes.
 
 ⚑ The vault `.gitignore` goes through `settings/paths.py::write_vault_gitignore`, handed the

@@ -59,7 +59,7 @@ These read `claude-defaults.yaml` through `kanibako.settings.agent_defaults`; no
 written in this module.
 
 * `default_common` — `plugins` and `cache`, shared across this agent's boxes under
-  `@meta.agent.claude.path/common/`, bound rw to `~/.claude/{plugins,cache}`.
+  `{meta.agent.claude.path}/common/`, bound rw to `~/.claude/{plugins,cache}`.
 * `default_category_binds` — one entry, the tweakcc patched-binary cache at
   `~/.kanibako/cache/tweakcc`. The old instructions bind is retired; the box guide ships in the
   read-only `general` chapter bind. Do not reintroduce a per-agent instructions bind.
