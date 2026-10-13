@@ -2364,7 +2364,16 @@ def resolve_workset_project(ws: WorksetSpec, project_name: str, std: StandardPat
     if journal_path is not None:
         from kanibako.launch import journal as _journal
         box_key = Path(shell_path).parent
-        if _journal.pending_import(journal_path, box_key) is not None:
+        pending = _journal.pending_import(journal_path, box_key)
+        if pending is not None:
+            # ⚑ A kill between the membership write and the marker drop leaves a forced
+            # connect's marker; drop it now, BEFORE the clear, so a second kill replays it.
+            if pending.get("op") == "connect" and registered_workspace is not None:
+                from kanibako.launch.box_resolve import stores_standalone_registry_null
+
+                root = Path(registered_workspace).resolve()
+                if stores_standalone_registry_null(root):
+                    drop_standalone_marker(root, lambda _undo: None)
             _journal.clear_entry(journal_path, box_key)
 
     return ProjectPaths(project_path=project_path, project_hash=phash, metadata_path=metadata_path,
@@ -2846,7 +2855,7 @@ def drop_standalone_marker(root: Path, push_undo: Callable[[Callable[[], None]],
         get_logger(__name__).warning(
             "could not remove the standalone marker (workset.registry: null) from %s: %s. "
             "The box is the workset's box all the same; remove that line by hand.",
-            path, exc)
+            path, getattr(exc, "strerror", None) or exc)  # the path once, not again in exc
 
 
 def resolve_standalone_project(std: StandardPaths, config: BootstrapConfig,

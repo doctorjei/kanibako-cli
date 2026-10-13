@@ -3798,8 +3798,10 @@ class TestConnectDropsTheStandaloneMarker:
 
         assert (root / "workset.yaml").is_symlink()
         assert target.read_text() == before
-        assert any("could not remove the standalone marker" in r.getMessage()
-                   for r in caplog.records)
+        [warning] = [r.getMessage() for r in caplog.records
+                     if "could not remove the standalone marker" in r.getMessage()]
+        assert "refusing to follow the symlink" in warning
+        assert warning.count(str(root / "workset.yaml")) == 2  # the subject, the link: once each
         assert _workset_boxes(ws) == {"sb": str(root)}
         assert box_resolve.detect_box_mode(root, std, config) == DetectionResult(
             BoxMode.named, root)
@@ -3828,3 +3830,40 @@ class TestConnectDropsTheStandaloneMarker:
                    for r in caplog.records)
         assert _workset_boxes(ws) == {"sb": str(root)}
         assert box_resolve.detect_box_mode(root, std, config).mode is BoxMode.named
+
+    @pytest.mark.parametrize("dropped", [False, True], ids=["before_the_drop", "after_the_drop"])
+    def test_a_killed_connect_replays_the_marker_drop(
+        self, config_file, tmp_home, monkeypatch, dropped,
+    ):
+        """A kill after the membership write leaves the ``connect`` entry, and the marker
+        when it came before the drop; the next resolve drops the marker, then clears it."""
+        from kanibako.launch import box_resolve, journal
+        from kanibako.project.workset import load_workset
+        from kanibako.settings import paths
+        from kanibako.settings.config_io import load_doc
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        create_workset("dm", (tmp_home / "ws_dm").resolve(), std)
+        root = (tmp_home / "sa").resolve()
+        self._standalone(std, root)
+        kuid = load_doc(root / "workset.yaml")["workset"]["kuid"]
+
+        # The kill: the process never reaches the drop (or the clear after it).
+        if not dropped:
+            monkeypatch.setattr(paths, "drop_standalone_marker", lambda root_, push_undo: None)
+        monkeypatch.setattr(journal, "clear_entry", lambda journal_path, box_path: None)
+        assert self._connect("dm", root) == 0
+        monkeypatch.undo()
+
+        ws = load_workset(list_worksets(std)["dm"], "dm", early_system=std.early_system)
+        box_key = ws.projects_dir / "sb"
+        assert journal.pending_import(std.journal, box_key)["op"] == "connect"
+        assert box_resolve.stores_standalone_registry_null(root) is not dropped
+
+        paths.resolve_workset_project(paths.WorksetSpec.from_workset(ws), "sb", std, config)
+
+        assert journal.pending_import(std.journal, box_key) is None
+        assert load_doc(root / "workset.yaml") == {"workset": {"kuid": kuid}}
+        assert (root / "box_data" / "home.txt").read_text() == "state"
+        assert _workset_boxes(ws) == {"sb": str(root)}

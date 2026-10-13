@@ -7743,8 +7743,10 @@ line, and connects the box anyway; it is the working set's box all the same.
 its files where they are, and the printed `kanibako workset connect` cure re-adopts it without
 `--force`. Before, it stayed a standalone box, unregistered.
 
-**What you must do.** Nothing. To make the directory a standalone box after a disconnect, create one
-there: `kanibako box create --standalone <path>`.
+**What you must do.** Nothing. After a disconnect the directory is not a box, and nothing makes it
+the old standalone box again. To make a new standalone box there, move `box_data/` out of it first
+(`box create --standalone` refuses while it is there); then `kanibako box create --standalone <path>`
+seeds a new home.
 
 ---
 
