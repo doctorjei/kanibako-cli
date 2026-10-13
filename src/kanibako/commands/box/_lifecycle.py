@@ -1433,8 +1433,10 @@ def _validate(
         # ⚑ A retry after an interrupted tail: the store step 4c did not carry is moved now.
         vacated = None if spec.records_only else _vacated_root_store(state, std)
         if vacated is None:
+            cure = None if spec.records_only else _stranded_store_cure(state, std)
             raise ProjectError(
                 "Nothing to do: target equals the current location, owner, and name."
+                + (f"\n{cure}" if cure else "")
             )
         return {"stranded_snapshots": vacated}
 
@@ -3363,9 +3365,10 @@ def _vacated_root_store(state: ProjectState, std: StandardPaths) -> tuple[Path, 
     of standalone left in the root it vacated, which is now the box's workspace; or ``None``.
 
     Step 4c carries it into the box's own base, so an interrupt before 4c leaves it there and
-    a retry finds the box already converted.  The store is the one named for this box, or
-    else the only store in a base kanibako marked (a convert to the default workset renames
-    the box): that base was this box's alone.  ⚑ Raises ``ProjectError`` before any write
+    a retry finds the box already converted.  The base must carry kanibako's layout marker
+    (every snapshot write leaves it), and the store is the one named for this box or else
+    its only store (a convert to the default workset renames the box): that base was this
+    box's alone.  ⚑ Raises ``ProjectError`` before any write
     when a symlink stands between the root and the store, or the box's own store already
     holds snapshots: two stores are never merged.
     """
@@ -3406,9 +3409,10 @@ def _vacated_root_store(state: ProjectState, std: StandardPaths) -> tuple[Path, 
         return None
     entries = {n: os.lstat(base / n).st_mode for n in boxfs.listdir(base, root)
                if n not in RESERVED_STORE_KEYS}
-    marked = (base / LAYOUT_MARKER_NAME).exists()
+    if not (base / LAYOUT_MARKER_NAME).exists():
+        return None  # ⚑ an unmarked dir is the user's, whatever its name
     name = (state.name if state.name in entries
-            else next(iter(entries)) if marked and len(entries) == 1 else None)
+            else next(iter(entries)) if len(entries) == 1 else None)
     if name is None or not (stat.S_ISDIR(entries[name]) or stat.S_ISLNK(entries[name])):
         return None
     if stat.S_ISLNK(entries[name]):
@@ -3433,6 +3437,38 @@ def _vacated_root_store(state: ProjectState, std: StandardPaths) -> tuple[Path, 
             f"snapshot stores: move the snapshots you want into {new_store} by hand, "
             f"then remove {base / name}.")
     return old_rw, name
+
+
+def _stranded_store_cure(state: ProjectState, std: StandardPaths) -> str | None:
+    """The manual cure a no-op retry names when the box's own store is absent or empty.
+
+    Nothing records the owner or name a box had before an interrupted relocation, so the
+    old store is named by its shape only, and nothing is moved.
+    """
+    import os
+
+    from kanibako import boxfs
+    from kanibako.snapshots import box_snapshot_store, checked_store
+
+    if state.vault_rw is None:
+        return None
+    try:
+        store, root = checked_store(state.vault_rw, box_name=state.name,
+                                    exclusive=state.mode is BoxMode.standalone)
+        if os.path.lexists(store) and boxfs.listdir(store, root):
+            return None
+    except (KanibakoError, OSError):
+        return None
+    where = "the old owner's .versions/<old name>"
+    if std.primary_vault_rw is not None:
+        primary = box_snapshot_store(std.primary_vault_rw / state.name, "<old name>")
+        where += f" ({primary} if it was in the default workset)"
+    cmd = (f"mv -n -- <that directory>/* {shlex.quote(str(store))}/"
+           if os.path.lexists(store) else
+           f"mkdir -p -- {shlex.quote(str(store.parent))} && "
+           f"mv -- <that directory> {shlex.quote(str(store))}")
+    return (f"Note: if an interrupted run left '{state.name}'s vault snapshots under its "
+            f"old name, they are in {where}; move them in with: {cmd}")
 
 
 def _carry_vacated_root_store(state: ProjectState, old_rw: Path, old_name: str) -> None:

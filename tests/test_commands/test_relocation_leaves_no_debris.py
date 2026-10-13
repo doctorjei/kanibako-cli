@@ -661,8 +661,13 @@ class TestAnInterruptLosesNothingAndLeavesOneRow:
             assert _digest(_homes(new, sc.std)["XSNAP"] / "XSNAP") == sc.digests["XSNAP"]
             assert not (sc.src_homes["XSNAP"] / "XSNAP").exists()
         elif sc.inplace:
-            with pytest.raises(ProjectError, match="Nothing to do"):
+            with pytest.raises(ProjectError, match="Nothing to do") as exc:
                 sc.run()
+            # The box's store is empty exactly when 4c left it behind: then the cure is named.
+            stranded = (sc.src_homes["XSNAP"] / "XSNAP").exists()
+            assert ("an interrupted run left" in str(exc.value)) is stranded, str(exc.value)
+            if stranded:
+                assert str(homes["XSNAP"]) in str(exc.value)
 
 
 #: The in-place converts OUT of standalone: the root they vacate becomes the workspace.
@@ -715,9 +720,20 @@ class TestARetryCarriesTheStoreAnInterruptedTailLeft:
     def test_new_only_has_nothing_to_do(self, env, monkeypatch, kind):
         sc = _Scenario(env, kind)
         new = _homes(sc.run(), sc.std)["XSNAP"]
-        with pytest.raises(ProjectError, match="Nothing to do"):
+        with pytest.raises(ProjectError, match="Nothing to do") as exc:
             sc.run()
+        assert "Note:" not in str(exc.value)  # a real no-op: the box has its snapshots
         assert _digest(new / "XSNAP") == sc.digests["XSNAP"]
+
+    def test_an_unmarked_store_named_for_the_box_is_left(self, env, monkeypatch, kind):
+        sc, old, new = self._stranded(env, monkeypatch, kind)
+        from kanibako.snapshots import LAYOUT_MARKER_NAME
+        (old.parent / LAYOUT_MARKER_NAME).unlink()
+        with pytest.raises(ProjectError, match="Nothing to do") as exc:
+            sc.run()
+        assert "an interrupted run left" in str(exc.value)
+        assert _digest(old / "XSNAP") == sc.digests["XSNAP"]
+        assert not new.exists()
 
     def test_an_empty_store_under_the_new_name_takes_the_old(self, env, monkeypatch, kind):
         sc, old, new = self._stranded(env, monkeypatch, kind)
@@ -803,6 +819,27 @@ class TestARetryCarriesTheStoreAnInterruptedTailLeft:
             sc.run()
         assert str(looped) in str(exc.value)
         assert not new.exists()
+
+
+@pytest.mark.usefixtures("stash_dir")
+def test_a_users_own_versions_dir_is_never_moved_by_a_no_op(env):
+    """An ordinary ``vault/.versions/<box>`` in a primary box's workspace is the user's."""
+    from kanibako.snapshots import box_snapshot_store
+
+    config, std, tmp_home = env
+    pdir = tmp_home / "p" / "k"
+    pdir.mkdir(parents=True)
+    resolve_project(std, config, project_dir=str(pdir), initialize=True)
+    state = resolve_lifecycle_target(str(pdir), std, config)
+    mine = pdir / "vault" / ".versions" / state.name
+    (mine / "notes").mkdir(parents=True)
+    (mine / "notes" / "a.txt").write_text("user data")
+    with pytest.raises(ProjectError, match="Nothing to do") as exc:
+        execute_lifecycle(state, TargetSpec(location=lc.INPLACE, ownership="default"),
+                          std, config, confirm=lambda: True)
+    assert (mine / "notes" / "a.txt").read_text() == "user data"
+    assert not box_snapshot_store(state.vault_rw, state.name).exists()
+    assert "an interrupted run left" in str(exc.value)
 
 
 class TestTheTailKeepsWhatItCouldNotCarry:

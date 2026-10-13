@@ -115,6 +115,7 @@ def _unmoved_snapshots(old: ProjectState, new: ProjectState) -> list[str]
 def _stranded_snapshot_store(old: ProjectState, new: ProjectState) -> tuple[Path, Path] | None
 def _snapshot_cure(old: ProjectState, new: ProjectState) -> str | None
 def _vacated_root_store(state: ProjectState, std: StandardPaths) -> tuple[Path, str] | None
+def _stranded_store_cure(state: ProjectState, std: StandardPaths) -> str | None
 def _carry_vacated_root_store(state: ProjectState, old_rw: Path, old_name: str) -> None
 def _retire_old_store(ws: Workset, name: str, dst_vault: tuple[Path | None, Path | None], vault_enabled: bool=True, *, reraise: bool=False) -> None
 def _report_store_leftovers(name: str, left: Collection[Path], why: str='', *, unmoved: Collection[str]=()) -> None
