@@ -6779,8 +6779,10 @@ for `allow_helpers` and `continue_mode`; `none` for no bootstrap program; `""` f
 **What is NOT covered.** A file that never mentions the key still gets its default. A `null`
 overridden by a higher tier or by a typed flag is not refused: the override wins. The flags are
 `-S` or `-A` for `access`, and `-N`, `-C`, or `-R` for `continue_mode`. A reattach to a running
-box reads none of these keys. A key whose default is `null` is untouched: `model`, `endpoint`,
-and `run_args`, and `transform` for every agent but `claude`, whose default is `tweakcc`.
+box skips `access`, `allow_helpers`, `continue_mode`, and `transform`; `bootstrap` is read on
+every start, since it decides whether the launch reattaches. A key whose default is `null` is
+untouched: `model`, `endpoint`, and `run_args`, and `transform` for every agent but `claude` and
+its personas, whose default is `tweakcc`.
 
 ### `workset.boxes` is refused at the door at a value the launch refuses
 
