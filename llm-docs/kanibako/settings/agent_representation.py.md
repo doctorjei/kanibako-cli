@@ -173,9 +173,9 @@ self-resolving by the plugin's own choice (spec §2a) and are not the plugin say
 
 ⚑ **A value that is not a dict** — a scalar source key — is re-keyed and carried through: there is
 no source to re-root. The hooks' declared type is `targets.base.CategoryBindDefaults`, a terminal
-key → `BindArm` (`{box_dest: (src, …)}`); every dict value is treated as an arm. A `masks` map
-(`{box_dest: bool | None}`, spec §2a) is outside that type, and `_reroot_arm` raises `TypeError` on
-it for a persona node.
+key → `BindArm` (`{box_dest: (src, …)}`). A `masks` map (`{box_dest: bool | None}`, spec §2a) is
+outside that type but still accepted: `_reroot_arm` re-roots only a structured `[src[, options]]`
+entry and carries any other entry verbatim.
 
 A BARE agent (`node_name == harness`) gets the IDENTITY back — byte-identical to the plugin's
 table, so nothing about a non-persona launch changes. A key that is not this harness's is left

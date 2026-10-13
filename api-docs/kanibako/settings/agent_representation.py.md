@@ -19,5 +19,5 @@ def agent_categories_for_node(table: 'dict[str, object]', *, node_name: str, har
 def harness_store_root(node: str) -> str
 def harness_store_leaf(host_src: object, harness: str) -> str | None
 def _rekey_agent_keys(table: 'Mapping[str, _V]', *, node_name: str, harness: str) -> 'dict[str, _V]'
-def _reroot_arm(arm: 'dict[str, tuple]', *, node_name: str, harness: str) -> 'dict[str, tuple]'
+def _reroot_arm(arm: 'dict[str, object]', *, node_name: str, harness: str) -> 'dict[str, object]'
 ```

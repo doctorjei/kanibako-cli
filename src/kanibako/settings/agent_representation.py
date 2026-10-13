@@ -186,7 +186,9 @@ def agent_categories_for_node(
     host's real ``~/.claude`` means that dir for every node.
 
     ⚑ A value that is not a dict (a scalar source key) is re-keyed and carried
-    through: there is no source to re-root.  Dict values are ``BindArm``s.
+    through: there is no source to re-root.  Dict values are dest-keyed maps: a
+    ``BindArm``, or a ``masks`` map (spec §2a: ``dict[box_dest → bool|None]``)
+    whose entries hold no source and are carried verbatim by :func:`_reroot_arm`.
     """
     if not node_name or node_name == harness:
         return dict(table)
@@ -202,12 +204,19 @@ def agent_categories_for_node(
 
 
 def _reroot_arm(
-    arm: "dict[str, tuple]", *, node_name: str, harness: str,
-) -> "dict[str, tuple]":
-    """Re-root every HARNESS-store source in one dest-keyed arm onto *node_name*'s store."""
+    arm: "dict[str, object]", *, node_name: str, harness: str,
+) -> "dict[str, object]":
+    """Re-root every HARNESS-store source in one dest-keyed arm onto *node_name*'s store.
+
+    Only a structured ``[src[, options]]`` entry has a source. Any other entry — a
+    ``masks`` marker (``True`` / ``None``) — is carried verbatim, never refused.
+    """
     node_root = harness_store_root(node_name) + "/"
-    rerooted: "dict[str, tuple]" = {}
+    rerooted: "dict[str, object]" = {}
     for dest, entry in arm.items():
+        if not isinstance(entry, (list, tuple)) or not entry:
+            rerooted[dest] = entry
+            continue
         host_src = entry[0]
         leaf = harness_store_leaf(host_src, harness)
         if leaf is not None:

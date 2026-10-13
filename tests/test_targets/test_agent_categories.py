@@ -351,3 +351,39 @@ class TestTheCreatePathCarriesTheSeed:
             selection_level=AgentSelection(node=NODE, source="settings").selection_level,
         )
         assert not (proj.shell_path / "kani_seed").exists()
+
+
+class MaskDeclaringTarget(DeclaringTarget):
+    """A target whose category hook also declares a spec-shaped ``masks`` map.
+
+    Spec §2a: ``<scope>.masks`` is ``dict[box_dest → bool|None]`` — a keyed 3-state
+    marker with NO source, so there is nothing in an entry to re-root.
+    """
+
+    def default_category_binds(self):
+        return {
+            **DECLARED_BINDS,
+            "agent.claude.masks": {"/home/agent/.hidden": True, "/home/agent/.shown": None},
+        }
+
+
+class TestADeclaredMasksMapAdaptsToAPersona:
+    """A plugin may declare ``masks`` like any category; the adapter must carry it."""
+
+    def test_the_masks_map_is_rekeyed_and_carried_verbatim(self):
+        table = MaskDeclaringTarget().default_category_binds()
+        adapted = agent_categories_for_node(table, node_name=NODE, harness=HARNESS)
+        assert adapted[f"agent.{NODE}.masks"] == {
+            "/home/agent/.hidden": True, "/home/agent/.shown": None,
+        }
+        assert "agent.claude.masks" not in adapted
+        # The bind arms beside it still re-root onto the NODE store.
+        assert adapted[f"agent.{NODE}.caches"] == {
+            "/home/agent/.kani_cache": (f"{{meta.agent.{NODE}.path}}/caches/kani",),
+        }
+
+    def test_a_bare_agent_is_identity_with_masks(self):
+        table = MaskDeclaringTarget().default_category_binds()
+        assert agent_categories_for_node(
+            table, node_name=HARNESS, harness=HARNESS,
+        ) == table

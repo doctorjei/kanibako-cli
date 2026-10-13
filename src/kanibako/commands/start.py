@@ -7498,9 +7498,9 @@ def _merge_default_categories(
 
     ⚑⚑ Do NOT generalize the merge branch into a deep merge for every value. Two call
     sites — ``extra_default_categories`` and ``inputs.system_floor`` — are LATE INJECTIONS
-    that are supposed to override, and a deep merge would quietly stop them.  The
-    ``dict`` test is also what keeps the LIST-valued ``<scope>.masks`` on the
-    last-wins branch where it belongs — **masks hold whole.**
+    that are supposed to override, and a deep merge would quietly stop them.
+    ``<scope>.masks`` is a dest-keyed map too (spec §2a: ``dict[box_dest → bool|None]``),
+    so it takes the per-destination branch with the bind arms.
 
     A destination already claimed in the SAME key RAISES, naming both families
     (*origins* carries who claimed it).  ⚑ That refuses no legitimate overlay: seed

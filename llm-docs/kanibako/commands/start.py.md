@@ -1024,9 +1024,10 @@ keyspace's own declaration so it cannot fall behind.
 
 ⚑⚑ Do NOT generalize this into a deep merge for every value. Two call sites —
 `extra_default_categories` and `inputs.system_floor` — are LATE INJECTIONS that are supposed to
-override, and a deep merge would quietly stop them. The `dict` test keeps the LIST-valued
-`<scope>.masks` on the last-wins branch — **masks hold whole.** ⚑ A scalar leaf that merely ends in a
-category token (`system.channels.common`) fails `is_terminal_category_key` itself, on POSITION.
+override, and a deep merge would quietly stop them. `<scope>.masks` is a dest-keyed map too
+(spec §2a: `dict[box_dest → bool|None]`), so it takes the entry-by-entry branch. ⚑ A scalar leaf
+that merely ends in a category token (`system.channels.common`) fails `is_terminal_category_key`
+itself, on POSITION.
 
 ### The same-key duplicate-dest refusal is STRUCTURAL
 
