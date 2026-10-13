@@ -192,7 +192,7 @@ normalization and the act-once refusal are written ONCE rather than at every cal
 rework R-3/R-6/R-11).
 
 * *category* is any TERMINAL bind-shaped category — the ARMED `bindings.ro` / `bindings.rw`, or
-  (since 2026-08-08c) `caches` / `seeded` / `common` / `synced`. `{scope}.{category}` is the WHOLE
+  `caches` / `seeded` / `common` / `synced`. `{scope}.{category}` is the WHOLE
   key and the destination is NOT part of it. ⚑ It works for all six because it only ever JOINS the
   two, never parses them: a category with a dot in it is an arm and one without is not, and nothing
   here needs to know which.
@@ -406,7 +406,7 @@ writable template seed.
 The guest canon root, `~/canon`.
 
 ⚑ The packaged rom tree is FLAT — `rom/{COLLECTION.md, charter/**}`, with NO `canon/` wrapper level
-(J-7, 2026-07-31). It therefore NO LONGER mirrors the guest layout, so a rom-relative path is NOT
+(J-7). It therefore does not mirror the guest layout, so a rom-relative path is NOT
 its own `~/`-dest: every guest dest is built by :func:`_canon_dest`, which prefixes the guest canon
 root.
 
@@ -531,8 +531,7 @@ reasonably want to override it?"* — answers itself here: the one book a user c
 one they cannot repoint, and `COLLECTION.md` is the INDEX that defines the canon's shape and load
 order, so a repointable index would mean no guaranteed structure.
 
-⚑⚑ **SIBLINGS, NOT A WHOLE-DIR BOOK** (J-7, 2026-07-31 — REPLACES R1's single `canon_bible`
-directory bind, which shipped only in the unreleased `93b9a9d`). Every entry is its own bind onto a
+⚑⚑ **SIBLINGS, NOT A WHOLE-DIR BOOK** (J-7: never one whole-directory bind). Every entry is its own bind onto a
 mountpoint that ALREADY EXISTS in the box home, materialized by :func:`materialize_canon_skeleton` at
 box create. Nothing nests inside anything, so no mountpoint ever has to live inside a bind SOURCE —
 which is what killed the whole-dir model: the plugin chapter's mountpoint would have had to exist
@@ -598,8 +597,8 @@ binding is not"*.
 `agent.<agent>.canon`, personas included). A persona has no package, so it has no charter chapter;
 what it can have is a handbook chapter. Two books, two cardinalities, no overlap.
 
-⚑ **A SIBLING, not a nested bind** (J-7, 2026-07-31 — REPLACES R1's shadow model). Its dest no
-longer sits inside another bind's: `~/canon/charter` is not bound at all, only its chapters are, and
+⚑ **A SIBLING, not a nested bind** (J-7). Its dest does not
+sit inside another bind's: `~/canon/charter` is not bound at all, only its chapters are, and
 this one lands on a mountpoint the box-create skeleton already made. Nothing shadows anything, so
 the ascending mount depth-sort is not load-bearing here any more.
 
@@ -698,7 +697,7 @@ mkdir-ing into an already-555 tree. (Their BINDS are
 [`canon_default_categories`](#the-handbook-binds--the-scopecanon-floor)'s.)
 
 ```HANDBOOK_FALLBACK_ENTRIES```
-⚑⚑ THE IMPORT-FALLBACK FILES (seeds-gate F1, 2026-08-01) — the per-scope chapters whose ENTRY FILE
+⚑⚑ THE IMPORT-FALLBACK FILES (seeds-gate F1) — the per-scope chapters whose ENTRY FILE
 the skeleton pre-creates 0-byte, keyed chapter → entry filename.
 
 **WHY THEY EXIST, and why skip-if-absent did NOT already cover it:** the packaged `SYS_CONTENTS.md`
@@ -747,7 +746,7 @@ in-box. The SAFETY property is unaffected: the owner is still a subuid and still
 so the books stay unwritable by the agent; only the cosmetic "shows as uid 0" would differ.
 
 ```CANON_SKELETON_DIR_MODE = "555" · CANON_SKELETON_FILE_MODE = "444"```
-⚑ TWO MODES, NOT ONE (spec J-7 banner, amended 2026-07-31).
+⚑ TWO MODES, NOT ONE (spec J-7 banner).
 
 **DIRS `r-xr-xr-x`:** unwritable by everyone, but the SEARCH bit stays set so crun's openat2
 destination resolution can still traverse `~/canon` and `~/canon/charter` to reach the chapter

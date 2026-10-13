@@ -111,17 +111,15 @@ to see the loss — so it is named at build time instead, as a `SettingsError` c
 the destination and the arm. The descriptor is the plugin's, and the plugin author is who has to
 fix it.
 
-## `agent_default_bind_keys` used to live here and is GONE (R-9)
+## No set-time agent bind-key registry (R-9)
 
-⚑ It emitted the same `agent.<node>.bindings.{ro,rw}.<key>` keys as `agent_default_partial`,
-detect-free and with a placeholder host_src, as a context-light SET-TIME floor registry. Its only
-purpose was to let `config set` repoint a descriptor bind's source without the must-exist gate
-refusing it as "nowhere in the cascade". That CLI write route is retired (disk-store rework step 1,
-an accepted loss tracked as DS-BL1), so the registry had no consumer left.
+⚑ There is no context-light SET-TIME floor registry of agent bind keys (placeholder host_src,
+detect-free). Its only use would be letting `config set` repoint a descriptor bind's source past the
+must-exist gate, and that CLI write route is retired (an accepted loss tracked as DS-BL1).
 
-⚑ **NOTHING ABOUT LAUNCH CHANGED.** `agent_default_partial` is the LAUNCH representation and is
-untouched; a user override authored by hand in `agents/<node>/agent.yaml` still beats it by
-cascade merge. **Do not resurrect this function to "restore" a delivery path — it never was one.**
+⚑ `agent_default_partial` is the LAUNCH representation; a user override authored by hand in
+`agents/<node>/agent.yaml` beats it by cascade merge. **Do not add such a registry to "restore" a
+delivery path — it never was one.**
 
 ## `agent_env_for_node` — the env twin, and the key swap is the whole job
 

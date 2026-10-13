@@ -5,10 +5,13 @@ and where its store sits on the host**: the `AgentConfig` record, the `agents/<a
 it, and each abstract category's root under them. The second is **shared and not agent-shaped at
 all** ([R147]): whether a stored path value says on its own where it points, what a bare relative one
 roots under, and the refusal when it can say neither. [R147]'s own predicate and message are consumed
-by `settings/paths.py`, `settings/workset_dirkeys.py`, `settings/config_interface.py` and
-`settings/config_keys.py` (the two anchor labels), none of which is asking about an agent; the §2a
-rooting half is consumed by `settings/agent_defaults.py` and `settings/settings_assemble.py`, which
-pass a root ref IN — an agent's among them — but never ask this module for one, and by
+by `settings/paths.py`, `settings/workset_dirkeys.py`, `settings/settings_launch.py`,
+`settings/config_interface.py` and `settings/config_keys.py` (the two anchor labels), and the §2a
+TYPE refusal (`ambiguous_path_shape_error`) by `settings/config.py`, `settings/workset_dirkeys.py`
+and `settings/settings_launch.py` — none of which is asking about an agent. The §2a rooting half
+(`root_relative_source`) is consumed by `settings/agent_defaults.py` and
+`settings/settings_assemble.py`, which pass a root ref IN — an agent's among them — but never ask
+this module for one; `is_self_resolving` also by `settings/settings_resolve.py` and by
 `commands/workset_cmd.py`, which tests workset-scope sources and destinations with no root at all.
 Read the two as two, and do not fold either into the other's wording.
 

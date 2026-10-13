@@ -138,23 +138,20 @@ because it asks ``key_validity``, which DECLARES it. Declining to invent a refus
 key is not a decision about the promised map surface, and this paragraph still governs that.)
 
 ⚑⚑ **``system get`` IS ONE OF THOSE DOORS, AND THE ASYMMETRY IT LEAVES IS THE ONE TO
-KNOW.** It carried an ``is_known_key`` PRE-GATE ahead of :func:`scope_read_key_error`, so it alone
-answered "unknown config key" for all seven — a SECOND vocabulary, telling a user that a declared key
-does not exist, which §0 forbids as squarely as it forbids fabricating a value. The pre-gate is gone
-and the verb now asks ``key_validity`` like its siblings, so ``kanibako system get system.caches``
-returns the map. **Read what that did and did not decide:**
+KNOW.** It asks ``key_validity`` like its siblings, with no ``is_known_key`` pre-gate — that would
+be a SECOND vocabulary, telling a user that a declared key does not exist, which §0 forbids as
+squarely as it forbids fabricating a value — so ``kanibako system get system.caches`` returns the
+map. **Read what that does and does not decide:**
 
-* It removed a wrong refusal at the key's OWN noun; it did not CHOOSE the readable form. The
+* It answers at the key's OWN noun; it does not CHOOSE the readable form. The
   `repr()` is what falls out of the generic scalar renderer, not a designed rendering, and
   🛑 **THE PROMISED SURFACE IS STILL UNCHOSEN AND STILL JEI'S** — this paragraph governs it.
-* 🛑🛑 **CROSS-SCOPE IS OUT, AND THE FIRST CUT OF THIS CHANGE GOT IT WRONG.** Removing the pre-gate
-  ALSO made ``system get box.caches`` answer — the exact outcome the DECLINED derivation would have
-  produced. **His ruling: *"i dont see any justification for crosscope 'get'. it makes no sense
-  at the cli."*** It is refused again, by :func:`foreign_scope_read_error`. ⚑ THE LESSON FOR THE
-  NEXT READER: the evidence offered for the first cut — *"the sibling nouns already print the
-  map"* — was a SAME-SCOPE measurement (``workset get <ws> workset.masks``) used to argue a
-  CROSS-SCOPE case. **Two different surfaces; the declined one is the cross-scope one.**
-  Weigh the OUTCOME as well as the mechanism, and check which surface a measurement is actually of.
+* 🛑🛑 **CROSS-SCOPE IS OUT.** ``system get box.caches`` — the outcome the DECLINED derivation would
+  produce — is refused by :func:`foreign_scope_read_error` (*"i dont see any justification for
+  crosscope 'get'. it makes no sense at the cli."*). ⚑ A SAME-SCOPE read (``workset get <ws>
+  workset.masks`` printing the map) is no evidence for a CROSS-SCOPE one: **two different
+  surfaces.** Weigh the OUTCOME as well as the mechanism, and check which surface a measurement is
+  of.
 
 **THE CROSS-SCOPE GATE'S BASIS — THREE WERE TRIED, TWO ARE DEAD.** The full statement lives in
 :func:`foreign_scope_read_error`'s docstring; it is summarized here because the two dead ones are
@@ -406,10 +403,10 @@ any-agent spelling the CLI serves for the same two leaves, and the whole `secret
 have no fixed canonical string. `is_path_valued_key` is the predicate to ask; this table is only its
 first term.
 
-⚑ **`_coerce_value` signals failure with `CoercionError`, not with a bare `str`.** Its two callers
-used to test ``isinstance(result, str) and KEY_TYPES.get(key)`` — "a typed key gave back a string, so
-coercion failed" — which was true only while every declared type coerced to a NON-string. `path` does
-not, and a legal path value would have been handed back to the user as its own error message.
+⚑ **`_coerce_value` signals failure with `CoercionError`, not with a bare `str`.** A test of "a typed
+key gave back a string, so coercion failed" holds only while every declared type coerces to a
+NON-string; `path` does not, and a legal path value would be handed back to the user as its own
+error message.
 
 NOTE: the agent-scope BEHAVIOR scalars (`allow_helpers` / `access`) are NOT here — the bare key
 routes through `_is_agent_setting` (verbatim string write, like `model`) and the launch reader
@@ -506,9 +503,8 @@ file — spec §0; the form `assemble_levels` mirrors). ``system`` is INCLUDED (
 ``system.*`` SETTINGS key (the auth chain `system.auth.share_allowed`) lands in the system SETTINGS
 file (``@config.settings``) — the file the launch cascade's system tier reads — NOT the Layer-1
 `kanibako.cfg`. ⚑ the ``system.*`` PATH tier reaches this routing too, and
-lands in the same file. ⚑ ``system.setup_completed`` does too — it was the one key
-routed elsewhere (to the Layer-1 config file, where its shipped reader used to look), and its
-storage moved to `@config.settings` with the rest. **No key routes to `kanibako.cfg`.**
+lands in the same file. ⚑ ``system.setup_completed`` does too: its reader reads
+`@config.settings`. **No key routes to `kanibako.cfg`.**
 
 **`_dot_to_flat` / `_FLAT_TO_CANONICAL` / `_route_key` ARE DELETED, and the absence is the fix.**
 They let the write verbs accept the flat underscore form of a routed key (``box_image`` for
@@ -597,17 +593,11 @@ to be split non-greedily around them. The literal is pinned as a SUBSET of
 `settings_categories.RETIRED_BIND_CATEGORIES` by `test_config_interface.TestAgentNodeBindRouting` so
 the two cannot drift.
 
-⚑⚑ IT IS DELIBERATELY NARROWER THAN THAT SET, AND THE SHAPE CUTOVER DID NOT CHANGE THAT — it
-CONFIRMED it. The older note said widening this parser "belongs with the shape cutover"; the cutover
-landed and the answer turned out to be that there is nothing to widen it TO. This parser
-picks a READ route (:func:`config_dest._node_bind_target` -> the agent file's address rule), and — decisively —
-a per-entry key under those four is not a key at ALL now, so a widened parser would invent a read for
-a spelling the keyspace refuses. ⚑ **THE REASON MOVED AT S3, THE ANSWER DID NOT.** It used to be a
-STORAGE fact — the file-shape SoT had a nested table for ``bindings.<arm>.<name>`` and none for the
-other four, so widening would have resolved ``agent.claude.common.plugins`` to the dotted leaf
-``self."common.plugins"`` and answered a silent "(not set)". Since S3 the address rule reads EVERY
-category flat with the destination whole, so widening would no longer mis-address them — it would
-ADMIT them. These two arms are the only per-entry spellings whose READ survived R-9, which is exactly
+⚑⚑ IT IS DELIBERATELY NARROWER THAN THAT SET: there is nothing to widen it TO. This parser picks a
+READ route (:func:`config_dest._node_bind_target` -> the agent file's address rule), and a per-entry
+key under those four is not a key at ALL, so a widened parser would invent a read for a spelling
+the keyspace refuses. The address rule reads EVERY category flat with the destination whole, so
+widening would not mis-address them — it would ADMIT them. These two arms are the only per-entry spellings whose READ survived R-9, which is exactly
 what :func:`agent_read_key_error` carves out of the ``agent`` noun's §0 read gate. ⚑ DO NOT WIDEN IT. The four are RECOGNIZED and
 refused at the agent scope through `AGENT_BIND_KEY_RE` — see :func:`agent_node_bind_retired_error`.
 
@@ -941,8 +931,9 @@ shape the derivation above exists to end.
 ⚑ **IT NAMES THE KEY AND THE SHAPE, never "unknown config key".** The key is declared, `config get`
 reads it, and it is hand-authored in YAML today; what the CLI cannot do is express a map as a
 scalar. The FILE-shape twin of this fact is `agent_file.table_value_error`, and the two are pinned
-against each other by `tests/test_settings/test_agent_leaf_shape.py` — a scalar stored at
-`self.transform_settings` used to crash every subsequent `agent_file.load`, i.e. every launch.
+against each other by `tests/test_settings/test_agent_leaf_shape.py`: a scalar stored at
+`self.transform_settings` would break every later read of the file (`agent_file.record`, through
+`settings_assemble.agent_record`), i.e. every launch.
 
 ⚑ **THE REGISTRY DISAGREES, AND THE CHECK IS HELD RED RATHER THAN EXEMPTED.**
 `agent.default.transform_settings` carries `set: cli+file` while being the ONLY dict-typed row that
@@ -1003,8 +994,8 @@ at output the user will not find is worse than no pointer.
 The canonical ``pref.agent.<active>.<key>`` request a BARE agent behavior key redirects to at BOX
 command scope, or `None` when this case does not apply.
 
-⮕ **P7 RETARGETED THIS.** It used to name the settable ``box.agent.<key>`` mirror, which spec §2b
-retired; the box-scoped way to set an agent value is now the §2h request. *active_agent* is the box's
+⮕ The box-scoped way to set an agent value is the §2h request (spec §2b retired the
+``box.agent.<key>`` mirror). *active_agent* is the box's
 resolved agent NODE — required, because the request targets a DISCRIMINATED agent slot (there is no
 bare ``agent.<key>``, §0). With no resolvable agent there is nothing to redirect to, so this returns
 `None` and the caller falls through to the ordinary bare-key refusal, which names the shape.
@@ -1124,11 +1115,10 @@ last non-``config.*`` member; its STORAGE moved to ``@config.settings`` (spec §
 is exactly the set of keys whose job is to LOCATE the files everything else lives in.
 *"kanibako_config.yaml <-- cannot have settings. Period."* (Jei, on what is now `kanibako.cfg`)
 
-⚑⚑ **IT IS A READ ROUTE NOW, NOT ALSO A REFUSAL.** It used to double as *"and
-therefore the write verbs refuse it"*, which is how `system.setup_completed` — declared
-`set: cli+file`, *"PERSISTS, user-resettable"* (spec §2g) — ended up unsettable AND unresettable.
-`config.*` is refused earlier by `_config_key_refusal`, its own ruled message. What is left here is
-one question: does a READ come from the config file.
+⚑⚑ **IT IS A READ ROUTE, NOT ALSO A REFUSAL.** Doubling as *"and therefore the write verbs refuse
+it"* would make a key declared `set: cli+file`, *"PERSISTS, user-resettable"* (spec §2g),
+unsettable AND unresettable. `config.*` is refused earlier by `_config_key_refusal`, its own ruled
+message. What is left here is one question: does a READ come from the config file.
 
 ⚑⚑ **THE ``SYSTEM_PATH_DEFAULTS`` FAMILY IS NOT IN THIS PREDICATE.** Every one of those keys is an
 ordinary Layer-2 settings key (spec §2g), the manifest marks each ``set: cli+file``, and §2a names
@@ -1333,10 +1323,9 @@ command that does not exist would be worse than naming the loss.
 
 *survives* is the closing sentence: WHAT the user still has. ⚑ IT IS A REQUIRED PARAMETER, not a
 default, because the honest answer genuinely differs by door and a default would let a door inherit
-the wrong one silently. It used to be a hardcoded "reading it back still works", which the
-shape flip made false at the agent scope: the per-entry AGENT spelling has no read route at all now
-(`_is_path_category_key` answers False for every key), so a message promising one would prescribe a
-cure the user cannot verify — the F6 lie in a new place.
+the wrong one silently. A hardcoded "reading it back still works" is false at the agent scope:
+the per-entry AGENT spelling has no read route at all (`_is_path_category_key` answers False for
+every key), so a message promising one would prescribe a cure the user cannot verify — the F6 lie.
 
 ```scope_bind_retired_error(canonical: str, *, verb: str) -> str | None```
 The refusal + cure for a RETIRED file-scope bind-shaped WRITE
@@ -1419,7 +1408,8 @@ The §0 reason *tail* is not a declared key of agent *node*, or `None` when it i
 noun's closed keyspace, spelled ONCE** (S3, defect D-5).
 
 ⚑ **ONE CONSTRUCTION, THREE CONSUMERS**: the verb's WRITE gate, its READ gate, and the refusal
-as an agent file is read (`agent_file.load`, which every reader, the launch included, uses). A REASON rather than a message, for the
+as an agent file is read (`agent_file.record`, through `settings_assemble.agent_record`, which
+every reader, the launch included, uses). A REASON rather than a message, for the
 reason `config_dest.NodeRouteRefusal` gives — the rule is one, but a verb owes a cure and a refused
 launch owes a file to open.
 
@@ -1512,9 +1502,9 @@ refused before the dispatch (the bare-agent scalars at box/workset; the retired 
 R-39) never reaches the probe this feeds, so a term for it here would be a second spelling of the
 refusal. **Every BIND-SHAPED category is now in exactly that position** — the two ``bindings.{ro,rw}``
 arms (R-9) and, since DS-BL1 = (a), ``caches`` / ``seeded`` / ``common`` / ``synced`` as well, at every
-scope. None has a term here: all are refused in the verb preamble and never reach the dispatch. ⚑ The
-`_is_path_category_key` term that used to sit here went with the repoint route it claimed; do NOT
-restore it "so categories are covered" — it would report a route for a key nothing writes.
+scope. None has a term here: all are refused in the verb preamble and never reach the dispatch. ⚑ Do
+NOT add an `_is_path_category_key` term "so categories are covered" — it would report a route for a
+key nothing writes.
 
 ⚑ **THE `agent_default_tier_category` TERM IS A SUBSET OF THE TWO BELOW IT, AND IS LISTED ANYWAY.**
 `agent.default.env.<VAR>` is already claimed by `_is_persona_agent_key` and
@@ -1543,11 +1533,8 @@ Excluded, and why:
 Every RETIRED bind-shaped route is in the SAME position as the bare env spelling: refused in the verb
 preamble (:func:`scope_bind_retired_error` / :func:`agent_node_bind_retired_error`), so none reaches
 this predicate and none needs an exclusion term of its own. ⚑ That now includes ``caches`` / ``seeded``
-/ ``common`` / ``synced`` (DS-BL1 = (a); name-keyed at the time, terminal), whose
-`_is_path_category_key` exclusion used to be the first term here: it existed because the category path
-ran its OWN probe through `validate_config_set`'s category arm, and probing twice would duplicate the
-diagnosis. There is no category path any more (and QA′ deleted that arm), so the exclusion went with it
-rather than being left to look like a live rule.
+/ ``common`` / ``synced`` (DS-BL1 = (a)): there is no category set path with a probe of its own,
+so this predicate needs no exclusion term for one.
 
 The docker ``.env`` family (bare ``env.<VAR>``, written VERBATIM to a file the expander never saw) WAS
 the third exclusion. R-39 retired the spelling: it is refused in the verb preamble

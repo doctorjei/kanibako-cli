@@ -239,8 +239,9 @@ L2 §3 single-source-of-truth: a hand-rolled per-context map is a bug), reached 
 module-private `_host_xdg_map` deferred-import hook so it stays a single source.
 
 
-```_path_tier_split() -> tuple[dict[str, str], dict[str, object]]```
-The path tier as `(config_foundation, floor)`, RAISING on failure.
+```_path_tier_split() -> tuple[dict[str, str], dict[str, str]]```
+The path tier as `(config_foundation, floor)` of resolved paths, RAISING on failure. A snapshot
+floors them as `settings_resolve.literal_map`.
 
 The Layer-1 `config.*` foundation goes to the resolve context (so an `@config.*` `host_src`
 routes there — JC-2) and the Layer-2 `system.*` paths become the cascade FLOOR (so an `@system.*`
@@ -261,8 +262,8 @@ The COMMAND's target as `settings_launch.resolve_inputs` builds it (spec §2a, "
 cascade snapshot for the COMMAND's target"): *proj* ⇒ `BOX`, *ws* ⇒ `WORKSET`, neither ⇒
 `SYSTEM`. The caller passes the objects it holds; nothing is re-loaded here. `None` without *std*.
 
-```_set_time_snapshot(*, target, agent_name, agent_path, config_path=None, command_scope=None, system_settings_path=None, system_path=None, workset_path=None, box_path=None) -> tuple[KeyStore, ResolveCtx]```
-The set-time cascade, merged and not expanded, with the `ResolveCtx` to expand it. With a *target*
+```_set_time_snapshot(*, target, agent_name, agent_path, config_path=None, command_scope=None, system_settings_path=None, system_path=None, workset_path=None, box_path=None) -> tuple[Any, Any]```
+The set-time cascade, merged and not expanded, with the `ResolveCtx` to expand it: `(snapshot, ctx)`. With a *target*
 its tier files (`system_path`, `cascade_workset_path`, `cascade_box_path`), its `ctx` and its four
 floor fragments (`auth_chain`, `meta_runtime`, `meta_identity`, `workset_anchor`) are what the
 snapshot reads. ⚑ The fold restates `settings_launch.build_launch_snapshot`'s floor order — a second
@@ -663,7 +664,8 @@ pre-existing defect still allows the set and `config set` stays usable to REPAIR
   answered "(not set)" over the value the user hand-authored where it said to.
 * **`agent.<node>.secret_path.<VAR>`** — the per-node SECRET category (spec §2a). A SCALAR path
   write to the node's OWN settings file at the DISCRIMINATED `agent.<node>.secret_path`
-  sub-table (the shape `_agent_partial` reads into the cascade + `agent_file.load` reads back).
+  sub-table (the shape `_agent_partial` reads into the cascade and `agent_file.record`, through
+  `settings_assemble.agent_record`, reads back).
   ⚑ Checked BEFORE the persona branch (`env_file` was there in rc; `secret_path` is discriminated
   node storage, a clean break). The §0 directional guard already ran: `agent.*` is settable only
   DOWNWARD from system, so box/workset was refused above; SYSTEM threads `agents_root`.
@@ -684,7 +686,9 @@ pre-existing defect still allows the set and `config set` stays usable to REPAIR
   host-expanded at launch, so a dangling `@`-ref must be caught now).
 * **`agent.<node>.<key>`** — the PER-PERSONA agent key (block B1): a write to the agent's OWN
   `agents/<node>/agent.yaml` (NOT the command scope's settings file), at the FLAT slot
-  `agent_file.load` reads back (state leaf under `agent:`; `env.<VAR>` under `env:`). The
+  `agent_file.record` reads back through `settings_assemble.agent_record`: a state leaf directly
+  under the file's `self:` root, `env.<VAR>` under `self: env:` — or under `agent: <node>:` when
+  that spelling already holds the leaf (`agent_file._spelled_sections`). The
   SECRET pointer `secret_path.<VAR>` is handled EARLIER (discriminated node storage), not here.
   The node was `℘`-canonicalized by `resolve_key`. Sparse by construction: `write_nested_key` is
   read-modify-write, so only the key the user set is materialized — a default-only persona file
@@ -962,8 +966,14 @@ agree on the address on purpose — that agreement is what makes the CLI verb no
 all other content (read-modify-write via `write_nested_key`).
 
 
-```_clear_writable_tables(path: Path, command_scope: ConfigLevel | None) -> int```
-Drop the top-level tables *command_scope* may write from *path*; count the leaves.
+```_clear_writable_tables(path: Path, command_scope: ConfigLevel | None) -> dict[str, int]```
+Drop the top-level tables *command_scope* may write from *path*; return `token → leaves` — WHICH
+tables went, and how many leaves each held.
+
+⚑ **IT RETURNS WHICH TABLES WENT, not only a count:** `reset_all` sums the leaves into its count,
+and takes the token set as the tables its sweep emptied, so it can name the undeclared entries
+those tables held (the second clause of its message). A VALUE where a table goes (`workset: null`)
+goes too, as one leaf — the shape `agent_file.clear_overrides` takes.
 
 `reset --all` mirrors a per-key reset over the WHOLE file: a nested scope table (`box:` in a
 workset file, `system: auth:` / `workset: auth:` / `box: bindings:` …) is cleared IFF a single
@@ -1025,7 +1035,7 @@ leaf each.
 `box show` hides (the cascade drops it), so "Reset N" can exceed what `show` listed.
 
 
-```show_config(*, global_config_path, command_scope, config_path=None, env_global=None, env_project=None, effective=False, file=None, workset_path=None, agent_state=None, env_resolved=None, system_settings_path=None, category_snapshot=None, category_ctx=None, category_error=None, category_declared_by=None, category_dest_keys=None, category_convenience_sources=None, inputs=None, agent_name=None, agent_path=None) -> int```
+```show_config(*, global_config_path, command_scope, config_path=None, env_global=None, env_project=None, effective=False, file=None, workset_path=None, agent_state=None, env_resolved=None, system_settings_path=None, category_snapshot=None, category_ctx=None, category_error=None, category_declared_by=None, category_dest_keys=None, category_convenience_sources=None, inputs=None, agent_name=GENERAL_SLOT, agent_path=None) -> int```
 Display config values — overrides only, or the full resolved view. Returns an exit code.
 
 * *effective=False*: show only overrides at this level.

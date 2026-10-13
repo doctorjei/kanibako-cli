@@ -33,8 +33,9 @@ whether a NODE is routable (`config_dest.check_agent_node` — key classificatio
 
 ## The two carriers
 
-```AgentFileSlot(path: Path, tail: str, node: str)```  — frozen dataclass
-WHERE one per-node value lives.
+```AgentFileSlot(path: Path, tail: str, node: str, self_root: bool = True)```  — frozen dataclass
+WHERE one per-node value lives. *self_root* is `False` for a file with no `self:` root (the system
+settings file, whose `self:` is not a key): the slot then lives under `agent: <node>:` alone.
 
 ⚑ **It carries the `node`.** The file's `agent:` table is READ (Q92), so `agent: <node>:` is a
 second spelling of the node's own settings, and which spelling holds a value depends on the node.
@@ -52,12 +53,15 @@ every `path, sections, leaf = route` unpacking silently working at the WRONG ari
 shape flip that passes green while the meaning changes. The dataclass makes both go loudly false;
 `TestRouteCarriesNoAddress` pins it.
 
-```AgentFileLevel(node: str, table: dict, path: Path | None = None, scope: dict = {})```  — frozen dataclass
+```AgentFileLevel(node: str, table: dict, path: Path | None = None, scope: dict = field(default_factory=dict), state: dict = field(default_factory=dict), contained: dict = field(default_factory=dict))```  — frozen dataclass
 ONE cascade tier read out of the file: its §2d discriminator and its RAW table.
 
 *scope* is the file's top-level `agent:` table, RAW, on BOTH tiers (Q92), already judged by
 `_contribution`; `settings_assemble._agent_partial` parses it with the scope files' own builder.
-It defaults to empty (`field(default_factory=dict)`).
+*contained* is the file's `workset:` / `box:` tables, RAW, likewise (Q85). The file's ROOT is split
+by KEY (`level_table`): *table* holds every category key, whatever it holds, and *state* every
+other key; `settings_assemble._agent_partial` sets both on the active tier's node, so the file
+reaches the cascade as one level. *scope*, *state* and *contained* default to empty.
 
 *node* is the discriminator the tier merges under (`default` or the active agent), NOT necessarily
 the agent whose file it is — `assemble_levels` builds BOTH tiers from the one file.
