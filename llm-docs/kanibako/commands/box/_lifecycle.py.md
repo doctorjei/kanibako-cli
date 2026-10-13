@@ -1,9 +1,5 @@
 # Box Lifecycle — the transactional `remap` / `move` / `convert` engine
 
-⚠️ **This mirror is COMPLETE for displaced prose** (relocation pass, 2026-08-11). A symbol absent
-below carried nothing worth displacing — never "does not exist". The source keeps one-line
-descriptors and `⚑` markers; the reasons live here.
-
 🛑 **This module is DESTRUCTIVE.** It `copytree`s a user's project directory and, once the whole op
 has succeeded, `rmtree`s the old one, and
 it removes registry entries that are the only record of where a box lives. Almost every note below
@@ -71,28 +67,41 @@ RECORDING its `dest` as the box's workspace, so the in-tree-landing refusal belo
   project, the user's own directory. **Every destructive branch keys on this flag.**
 * ⚑ **Two vault fields, and they are not interchangeable.** `enable_vault` is the RESOLVED
   `box.enable_vault` — the whole cascade, `base < system < workset < box`, via
-  `paths.resolve_box_enable_vault` (it was a two-file read until 2026-08-29, which is why a
-  system-scope value used to be ignored).
+  `paths.resolve_box_enable_vault`.
   `box_authored_vault` is what the BOX ITSELF authored: one file, `config.read_box_enable_vault`,
-  which since the same date takes no fallback parameter at all. **Only the authored
+  which takes no fallback parameter at all. **Only the authored
   value is ever persisted at a destination box tier**; writing the resolved one pins a value the box
   was merely inheriting, so a later edit to the workset that published it can no longer reach the
   box, and the default follows the box into a workset that never declared it.
 
 ## The canonical 5-step order
 
-From the redesign DESIGN. `execute_lifecycle` runs it; `_run_steps` is the body.
+From the redesign DESIGN. `execute_lifecycle` runs it; `_run_steps` is the body of steps 2–4.
 
 1. **Validate everything up front** (`_validate`) — refuse early ⇒ zero partial state.
 2. **Move files**, if relocating.
 3. **Update location records / markers.**
 4. **Apply the ownership / mode change** — re-root metadata/shell/vault, registry, names, write the
-   destination `box.yaml` (sparse — see the drifted-claim note below for what it does NOT carry).
+   destination `box.yaml` (sparse — see **Sparse identity** for what it does NOT carry), carry the
+   vault contents and logs, and PLAN the source teardown (`_plan_source_teardown`) while the source
+   is still whole.
 5. **Retire the old workspace, on success only** — never the user's external source dir.
 
-Steps 2–5 push compensating actions onto an unwind stack; on ANY failure the stack runs in
-reverse to restore a consistent state, then re-raises. `confirm`, if given, is called AFTER
+Steps 2–4 push compensating actions onto an unwind stack; on ANY failure before the seal the stack
+runs in reverse to restore a consistent state, then re-raises. `confirm`, if given, is called AFTER
 validation; returning False aborts cleanly (no changes) by raising `ProjectError`.
+
+⚑⚑ **THE POINT OF NO RETURN is `_drop_source_row`**, run at the end of the `try`: it pushes the
+row's restore first (so it runs last) and drops the source's registry row. Before it, an interrupt
+unwinds to the source alone; after it (`sealed`) only the destination row exists, nothing is
+unwound, and an interrupt is named (`note_interrupted`). The source's FILES go in the ONE success
+tail, `_finish_relocation`, registered with `unwind.on_success`, in this order: step 4b (channel
+partition), step 4c (snapshot store), the source's box trees, its vault leaves (and the keep
+Notes), its root files (a standalone canon tier named, the `.gitignore` line stripped), a workset
+source's store (`_retire_old_store`), then the `later` steps — STEP 5's retire, a deferred
+discoverability link, the `remap` Note — and last the ws→ws stash. A failed tail step is passed
+over and kept for its Note; `_report_store_leftovers` names what is left, and an emptied
+standalone root is pruned. `_note_interrupted_tail` names an interrupt by the step it stopped in.
 
 ⚑ The catch around `_run_steps` is on `BaseException`, not `Exception`. A `KeyboardInterrupt`
 arriving after the ws→ws release would otherwise skip every compensating action, leaving the
@@ -187,41 +196,35 @@ metadata/shell/vault dirs for the target owner, copy them, write the destination
 update registry/names, then clean up the old side. It dispatches to exactly one of `_to_workset` /
 `_to_standalone` / `_to_default`.
 
-⚑ **A drifted claim, corrected rather than relocated (2026-08-11):** the pre-relocation prose said
-this path writes a "rewritten `settings.yaml` (mode + workspace override + hash + markers)" — in
-five places, including the module docstring and `run_remap`. **No hash is computed or written
-anywhere in this module**, and under sparse identity (P8b) the only thing written to the
-destination `box.yaml` is the non-default `box.enable_vault`; mode and workspace override are
-not persisted either. The word `hash` survived only in comments, never in code. Those claims were
-DROPPED, not carried here.
+⚑ **No hash, mode, or workspace override is written.** Under sparse identity the destination
+`box.yaml` carries the source's carried box-tier settings (`_deliver_carried_box_settings`) and the
+non-default `box.enable_vault`, and nothing else.
 
-### ⚑ STEP 4b runs AFTER identity is final (A9 / IN-8)
+### ⚑ STEPS 4b and 4c run AFTER identity is final (A9 / IN-8)
 
-Channel relocation reads the box's address off `new_state`, not `state`, because a **standalone
-convert REGENERATES the box name**. Run before identity is finalized, it would move the partition to
-an address that is about to change. This is the one ordering constraint in the file that is not
-about file safety.
+Channel relocation (4b) and the snapshot store carry (4c, `_relocate_snapshot_store`) read the
+box's address off `new_state`, not `state`, because a **standalone convert REGENERATES the box
+name**. Run before identity is finalized, they would move to an address that is about to change.
+Both run in the success tail, after the source row is dropped. This is the one ordering constraint
+in the file that is not about file safety.
 
 ### ⚑⚑ STEP 5 retires the old workspace ON SUCCESS ONLY
 
 **Rule: no lifecycle step deletes a workspace before the whole op succeeded AND a copy of it landed
-elsewhere.** The releases (`release_project` in `_to_workset`'s leg 1 and `_remove_old_metadata`)
-drop records and the store, never the workspace leaf, so every failure path finds the source
-workspace whole. See **Rollbacks delete only what the op created** for the store. STEP 5 registers `_retire_old_workspace(old, dest)` with
-`unwind.on_success` for a real, INTERNAL move (`not records_only and relocating and dest and not state.is_external`). The
-retire itself skips an absent `old`, and an `old` that is or holds the copy's landing — a move into
-its own subtree, which `_validate` refuses first. Every relocation that reaches it records its
-landing, so an `old` the box still records is not a case it has to recognize.
+elsewhere.** The releases (`release_project` in `_to_workset`'s leg 1, and a workset source's
+dropped row) drop records, never the workspace leaf, so every failure path finds the source
+workspace whole. See **Rollbacks delete only what the op created** for the store. `_run_steps`
+appends `_retire_old_workspace(old, dest)` to the success tail's `later` list for a real, INTERNAL
+move (`not records_only and relocating and dest and not state.is_external`), and
+`_retire_old_workspace(old_leaf)` for the in-tree leaf `_to_workset` copied in place
+(`teardown.old_leaf`: an in-place rename, `convert --name`, never passes STEP 2). The retire itself
+skips an absent `old`, and an `old` that is or holds the copy's landing — a move into its own
+subtree, which `_validate` refuses first.
 
-It used to be an in-op `rmtree(old_ws, ignore_errors=True)`, and the named release deleted the leaf
-even earlier, before the copy that read it — so a rename in place, or any failure after the
-release, lost the workspace. An in-place rename (`convert --name`) never passes STEP 2, so `_to_workset` registers the
-same retire after its own copy.
-
-⚑ An EXTERNAL landing in the source's own workset (same name) finds `workspaces/<name>` held by the
-old leaf, so `add_project` writes no discoverability link. STEP 5 therefore registers
-`ensure_discoverability_link` AFTER the retire (success actions run in registration order); on an
-occupied leaf it is a no-op.
+⚑ An EXTERNAL landing in the target workset finds `workspaces/<name>` possibly held by the old leaf,
+so `add_project` writes no discoverability link. `_run_steps` therefore appends
+`ensure_discoverability_link` AFTER the retire (the tail runs `later` in order); on an occupied leaf
+it is a no-op.
 
 ## The unwind stack (`_Unwind`)
 
@@ -232,13 +235,14 @@ A `KeyboardInterrupt` from an action (a second Ctrl-C) is held until every actio
 re-raised; `note_interrupted` does the same, so a second interrupt neither stops the unwind part-way
 nor drops a `Note`.
 
-`on_success` is the second list: actions that run only when the WHOLE operation succeeds. It exists
-for work that must wait for completion: discarding the ws→ws stash (`_dispose_stash`), removing a
-workset source's old store (`_retire_old_store`), retiring the old workspace
-(`_retire_old_workspace`), writing a deferred discoverability link, and the `remap` Note.
+`on_success` is the second list: actions that run only when the WHOLE operation succeeds, with an
+optional `interrupted` Note. A relocation registers ONE: `_finish_relocation`, the success tail
+(see **The canonical 5-step order**). `push_first` places an action so it runs LAST — the source
+row's restore. The stack's `failed` / `errors` feed `_note_unwind_incomplete` and
+`_note_unwind_errors`.
 
 ⚑ Both lists swallow what an action raises, so an action that can leave something behind prints its
-own `Note` naming it. None of them prints through the caller.
+own `Note` naming it, or leaves the error in `errors` for the caller's Note.
 
 ### ⚑⚑ Rollbacks delete only what the op created
 
@@ -254,7 +258,6 @@ nothing can still need it.**
 * **Leg 1 (ws→ws).** `_restore_source` is pushed BEFORE `release_project` +
   `remove_member_store`: once the release starts, the stash holds the only copy of the store, and a
   store removal that fails part-way (an undeletable file in a vault leaf) must restore from it.
-  Before, the leg-1 `except` dropped the stash, and the box, its home, and its record were gone.
   A box tree `remove_box_tree` could not delete does not raise, so leg 1 then calls
   `_report_store_leftovers`: the leftover may hold credentials, and a later `add_project` under the
   same name would adopt it.
@@ -274,14 +277,18 @@ nothing can still need it.**
 * **The stash** is disposed of through `remove_box_tree` (`_dispose_stash`), because it holds a copy
   of the box home and its 0o555 canon dirs defeat a plain `rmtree`. A `False` prints
   `Note: could not remove <stash>; it may hold credentials`.
-* **A workset source converted to primary or standalone** (`_remove_old_metadata`'s workset arm)
-  releases its record in-op and registers `_retire_old_store` on success. A store removal that fails
-  there lands after the new box is complete: rc stays 0 and `Note: could not remove the old store of
-  '<name>'[: <err>]; left <paths>` names every leaf still on disk.
+* **A workset source converted to primary or standalone** (`_plan_source_teardown`'s workset arm)
+  has its row dropped by `release_project` at the point of no return (restore: `add_project(...,
+  restoring=True)`), and its store removed in the success tail by `_retire_old_store`. A store
+  removal that fails there lands after the new box is complete: rc stays 0 and the
+  `_report_store_leftovers` Note names every leaf still on disk.
+* **Registry rows.** `_to_default` arms `_restore_primary_rows` with a snapshot of the PRIMARY
+  membership BEFORE its first write, and `_to_standalone` arms `_restore_standalone_rows` before
+  its register: a rollback puts the section back as it was, the freed name and the new
+  registration included. Each prints a `Note` per row it could not restore.
 
-⚑ **Reverse order is load-bearing, not incidental.** `_to_default`'s FIX1 restore relies on it: that
-unwind runs BEFORE any later one, so a failed re-register leaves the source's `name -> old path`
-mapping intact rather than orphaned.
+⚑ **Reverse order is load-bearing, not incidental.** The source row's restore is pushed with
+`push_first`, so it runs LAST, after every destination undo has freed what it claimed.
 
 ## Mode shapes the steps must respect
 
@@ -294,12 +301,13 @@ the resolved workspace dir; `metadata_path` is the root, and it is where every o
 the root from.) A standalone box's tree roots at `<root>` with:
 
 * `workset.yaml` **AT THE ROOT** (drift I — and `ProjectState.metadata_path` for a standalone IS
-  that root),
-* a `box_data/` marker dir (home + helper log) — the real box metadata dir,
+  that root); it storing `workset.registry: null` is the standalone MARKER,
+* the box store (home + helper log), the resolved `workset.boxes` — by default `box_data/`, which
+  is NOT the marker,
 * `vault/{ro,rw}/`,
 * and the **live workspace as a `workspace/` SUBDIR** (drift H) — ⚑ that leaf is the DEFAULT of
   `workset.workspaces`, not a fixed name; a standalone root is a degenerate workset root, so every
-  directory in this list except `box_data/` and the root meta is a repointable key.
+  directory in this list is a repointable key.
 
 Every other mode roots its live workspace at the project dir itself. That single difference is the
 source of the consolidate/unconsolidate pair, of the root-artifact split described under
@@ -338,16 +346,14 @@ stops self-describing, so the D10 connection record is the authoritative externa
 
 Four separate rulings converge on `_to_default`, and they are easy to mistake for one rule.
 
-**F-7 — an explicit `--name` landing in default mode is HONORED** (it used to be silently dropped)
-and is held to the SAME per-kind name policy as `create`:
-
-* a **WORKSET-name** collision refuses UNLESS `--force` — the box would shadow the workset in
-  bare-name resolution;
-* a **SAME-KIND** collision (another primary box) refuses UNCONDITIONALLY.
-
-`_validate` checks this up front, via `check_primary_box_name_free`, so a name refusal costs no file
-copy. NAMED-workset targets are out of scope (the same-kind workset-membership check covers them);
-standalone targets are outside the cross-kind domain entirely.
+**F-7 — an explicit `--name` landing in default mode is HONORED** and is held to the same name
+policy as `create`: a SAME-KIND collision (another primary box, case-blind) refuses. Box and
+workset names are separate namespaces (system-design § Detection & import); only a same-kind
+collision refuses. `_validate` checks this up front, via `check_primary_box_name_free`, so a name
+refusal costs no file copy. It also refuses a landing where ANOTHER primary box is registered.
+NAMED-workset targets are covered by the workset-membership check; a STANDALONE target has no
+user-settable name, so `_validate` refuses its `--name` (`refuse_nonleaf_standalone_name`) unless
+it is the name the box gets anyway.
 
 **F-3-fix2 — an in-place rename of a primary box is REFUSED, not ignored.** For a primary-source
 SAME-PATH edge, a `--name` that DIFFERS from the current name would be an in-place rename, which is
@@ -356,15 +362,15 @@ Rather than silently drop the name, `_default_rename_name` raises an actionable 
 telling the user to move the box to rename it.
 
 **L2 — same-name in-place convert.** When the converted box reuses its own name, the destination
-metadata/vault **IS** the source. `preserve_name` therefore tells `_remove_old_metadata` to neither
+metadata/vault **IS** the source. `preserve_name` therefore tells `_plan_source_teardown` to neither
 re-unregister the name nor delete the reused `boxes/<name>` dir — cleaning up here would delete the
 box that was just written.
 
 **FIX1 — self-reuse is not a collision.** A relocating move/convert that KEEPS the same name reuses
 the SOURCE box's OWN registration (its name → its own current path). Both the `_validate` guard and
 the `_to_default` register path must exempt it, or `register_primary_box_name` reads the box's own
-still-live entry as "already registered". Genuine same-kind and cross-kind collisions (where `mint`
-names a DIFFERENT box, or a workset) still refuse.
+still-live entry as "already registered". A genuine same-kind collision (where `mint` names a
+DIFFERENT box) still refuses.
 
 ### The `_to_default` register dance, in order
 
@@ -378,13 +384,13 @@ outright. Two reuse shapes need the source entry freed FIRST:
 
 * **SAME-PATH in-place convert** — the source is registered AT `new_workspace`; unregister so
   `assign_primary_box_name` reuses the name verbatim rather than suffixing it.
-* **RELOCATING same-name move** — the source's OWN name (`== mint`) is still registered at its OLD
-  path, while `new_workspace` is the fresh destination. Unregister so the re-register at the new
-  path is not a self-collision, and push a FAILURE-WINDOW unwind that RESTORES the old registration
-  if the re-register (or any later step) fails.
+* **RELOCATING same-name move** — the source's OWN name (`_relocated_own_name`) is still
+  registered at its OLD path, while `new_workspace` is the fresh destination. Unregister so the
+  re-register at the new path is not a self-collision.
 
-In both, `preserved_name` is set so `_remove_old_metadata` leaves the reused name and metadata
-alone.
+The `_restore_primary_rows` snapshot, armed before the first write, restores the old registration
+if the re-register (or any later step) fails. In both shapes `preserved_name` is set so
+`_plan_source_teardown` leaves the reused name and metadata alone.
 
 `_primary_source_own_name` is the reverse lookup those guards exempt on: it answers what name the
 SOURCE primary box is currently registered under, or `None` when the source is not a registered
@@ -397,22 +403,22 @@ name, so a move/convert that changes the workset and/or the box name **changes i
 address**. `_relocate_channel_partition` moves the OWN `mailboxes/<ws>/<box>` and `share/<ws>/<box>`
 dirs from the OLD partition to the NEW one.
 
-⚑⚑ **EACH SIDE'S PARTITION IS READ THROUGH ITS OWN WORKSET'S KEYS (2026-08-26).** Both addresses
-were built from `(std, ws_token)` alone, which can only produce the partition's DEFAULT — while
-`channels.box_channel_addresses` has routed through `workset.channels.{mailboxes,share_global}`
-since R-35. So a workset that repointed `mailboxes` had its boxes MOUNTED at the repointed address
-and this step moved the default directory: an empty one, leaving every message the box had received
-stranded at an address no longer registered to it. `own_partition_dirs` now REQUIRES a `ws_root`,
+⚑⚑ **EACH SIDE'S PARTITION IS READ THROUGH ITS OWN WORKSET'S KEYS.** An address built from
+`(std, ws_token)` alone can only produce the partition's DEFAULT — while
+`channels.box_channel_addresses` routes through `workset.channels.{mailboxes,share_global}` — so a
+workset that repoints `mailboxes` would have its boxes MOUNTED at the repointed address while this
+step moved the empty default, stranding the box's mail. `own_partition_dirs` REQUIRES a `ws_root`,
 and `_state_ws_root` is the `ProjectState` twin of `channels.workset_root` that supplies it —
 primary → `std.primary_workset`, named → `state.ws.root`, standalone → `state.metadata_path` (which
 IS the standalone root). It has the same three arms in the same order as `_state_ws_token`, because
 a relocation needs both answers for both sides: the token says WHICH partition, the root says which
 `workset.yaml` may repoint it.
 
-⚑ Reading a key put a **refusing** resolver on this path for the first time — the channel key read
-raises, naming the key, on a repoint it cannot resolve. That is caught here, warned and skipped:
-this step runs AFTER the files have moved, and a settings error in a best-effort cleanup must not
-abort an otherwise-complete lifecycle operation.
+⚑ The channel key read raises, naming the key, on a repoint it cannot resolve. That is caught,
+warned and skipped: this step runs in the success tail, and a settings error in a best-effort
+cleanup must not abort an otherwise-complete lifecycle operation. ⚑ A STANDALONE source's own
+partition is read at PLANNING time (`_SourceTeardown.partition`), through its root
+`workset.yaml`, before the marker stash takes that file.
 
 ⚑ The idempotent no-op is still compared on the TOKEN and the box name, not on the resolved paths:
 two tokens that happen to repoint to one directory are still two partitions, and the box's own
@@ -436,38 +442,37 @@ so `materialize_canon_skeleton` is called on the destination shell (idempotent).
 
 The same fact makes removal asymmetric: a plain `shutil.rmtree` over a tree containing a root-owned
 canon skeleton fails with `EACCES` and leaves the old box behind. Every box-tree deletion therefore
-goes through `remove_box_tree`, which escalates — including the one on the UNWIND path
-(`_unwind_box_tree`), since `_copy_metadata` creates a skeleton at its own destination and an
-`ignore_errors=True` rmtree would swallow the `PermissionError` and silently leave the failed
-destination in place.
+goes through `remove_box_tree` (or the escalating `remove_path`), which escalates — including the
+one on the UNWIND path (`_unwind_created_root(dst, remove_box_tree)`), since `_copy_metadata`
+creates a skeleton at its own destination and an `ignore_errors=True` rmtree would swallow the
+`PermissionError` and silently leave the failed destination in place.
 
 ## Layout facts recorded here so nobody re-derives them
 
 * **PRIMARY vault** is a per-box `<name>` LEAF under the primary workset's RESOLVED
   `@workset.{vault_ro,vault_rw}` (default `@config.primary_workset/vault/{ro,rw}/<name>`, Phase 5),
-  so it is NOT under `metadata_path`. `_remove_old_metadata` removes the per-box `ro`/`rw` dirs
+  so it is NOT under `metadata_path`. `_plan_source_teardown` plans the per-box `ro`/`rw` dirs
   explicitly and never their shared arm, which holds EVERY box's vault.
   ⚑⚑ **The containment guard's subject is the ARM (`std.primary_vault_{ro,rw}`), not the workset
-  root.** It was the root only because the arms were composed off it and could not be anywhere
-  else; once both became repointable keys a root-subject guard began SKIPPING an out-of-root
-  repoint, silently leaving the box's real vault behind. Naming the arm is also strictly NARROWER
-  than the root was — it admits exactly the leaves this loop may delete.
+  root.** Both arms are repointable keys, so a root-subject guard would SKIP an out-of-root
+  repoint, silently leaving the box's real vault behind. Naming the arm admits exactly the leaves
+  this teardown may delete.
   ⚑ **Containment is STRICT** (`arm not in vault_dir.parents`, the `_assert_deletable` spelling):
   `relative_to` ACCEPTS an equal path, so a leafless `vault_dir` would take every box's vault. A
   path that fails the guard is REPORTED on stderr, never silently skipped.
 * **Every tree copy here keeps symlinks VERBATIM** (Q70/Q74): the vault carry, the workspace, the
   box data and home, and both workset-to-workset stash legs go through `copy_tree_keeping_links`
-  in `src/kanibako/tree_copy.py`, never a bare `copytree`, which materialized a linked outside
-  tree and failed the move on a dangling link. Relative text is never rewritten, even when it
+  in `src/kanibako/tree_copy.py`, never a bare `copytree`, which would materialize a linked outside
+  tree and fail the move on a dangling link. Relative text is never rewritten, even when it
   leaves the tree: the tree lands at the same box path, and the box view is what a link means.
-* **Phase 5 / A7:** layouts are gone and the vault is never "hidden" inside the workspace, so the
-  human-vault / project-vault discovery symlinks were deleted. There is nothing left to clean up.
-* **B2b (Option A, Jei-ruled):** the per-box `meta["shell"]` / `meta["vault_*"]` custom-path
+* **A7:** the vault is never "hidden" inside the workspace, and there are no vault discovery
+  symlinks to clean up.
+* **B2b (Option A, ruled):** the per-box `meta["shell"]` / `meta["vault_*"]` custom-path
   OVERRIDE is dropped in `_default_state_from_meta` too, to stay CONSISTENT with the launch path
   (`resolve_project`), which derives home/vault SOLELY from the default location. Reading the stored
   override here would make stop/cleanup/move target a DIFFERENT home than the launch binds
   (JC-B2b-4).
-* **Standalone registration** is `registry.standalone` (Phase 5d) — the GLOBAL registry's own
+* **Standalone registration** is `registry.standalone` — the GLOBAL registry's own
   section, NOT the per-workset `registry.yaml` `boxes:` membership that carries primary and named
   boxes. A standalone source's entry must be dropped on a move or a standalone→standalone move
   strands the old name → root mapping.
@@ -487,15 +492,15 @@ true `--name` rename edge landing in default mode. It returns `None` for:
 * the primary-source SAME-PATH REUSE case where `--name` equals the current name — the box keeps
   its existing name, so `--name` is moot.
 
-The returned name is exactly the one the cross-kind (box-vs-workset) name policy must gate; see
-**F-7** and **F-3-fix2** above for the policy and for the refusal this function raises.
+The returned name is exactly the one the same-kind name policy must gate; see **F-7** and
+**F-3-fix2** above for the policy and for the refusal this function raises.
 
 ```def _primary_source_own_name(state: ProjectState, std: StandardPaths) -> str | None```
 The name the SOURCE primary box is CURRENTLY registered under, else `None`.
 
 Reverse-looks-up `state.workspace_path` in the PRIMARY membership. A same-name move/convert reuses
-THIS entry (source's own name → its own current path), which the cross-kind/same-kind name guards
-must exempt: it is not a foreign collision. See **FIX1**.
+THIS entry (source's own name → its own current path), which the same-kind name guard must exempt:
+it is not a foreign collision. See **FIX1**.
 
 ```def _ownership_to_mode(ownership: str) -> tuple[BoxMode, str | None]```
 Map a TargetSpec ownership value to `(mode, workset_name | None)`.
@@ -531,10 +536,9 @@ home/vault are the default location only.
 ⚑ It derives its settings pair from `_default_project_group(std)` — the PRIMARY workset, the same
 group `resolve_project` builds — and hands both to the same `paths.resolve_box_enable_vault`, so
 `box.enable_vault` resolves here exactly as it does on the live path. Passing `None` as the group
-made `remap` answer differently depending only on whether the workspace directory still existed:
-present ⇒ the workset's `false` applied, gone ⇒ it did not and the vault was created. ⚑ Calling the
-two-file READER here (which this did until 2026-08-29) was the same defect one level up: it made
-`remap` disagree with `resolve_project` whenever a base- or system-tier value existed.
+would make `remap` answer differently depending only on whether the workspace directory still
+existed; calling a two-file READER would make it disagree with `resolve_project` whenever a base-
+or system-tier value existed.
 
 ```def _resolve_workset_state(raw_path: Path, std: StandardPaths, config: BootstrapConfig) -> ProjectState```
 Resolve a workset project (internal or external-connected) to a state.
@@ -543,12 +547,13 @@ Falls back to `box_resolve.find_connected_external_box` when the path is not ins
 tree. EXTERNAL is then decided by the same test the rest of the module uses: the live workspace is
 not one of the workset's own (`is_in_tree_workspace`).
 
-```def _state_from_paths(owner: str, proj: ProjectPaths, *, ws: Workset | None, is_external: bool = False) -> ProjectState```
+```def _state_from_paths(owner: str, proj: ProjectPaths, *, std: StandardPaths, ws: Workset | None, early: EarlyScope, is_external: bool = False, workspace: Path | None = None) -> ProjectState```
 Adapter from `ProjectPaths` to `ProjectState`.
 
 ⚑ `ProjectPaths.enable_vault` is the RESOLVED value only, so the adapter re-reads the BOX TIER
 (`box_workset_settings_paths(proj)[0]`) for `box_authored_vault`.
-⚑ A standalone box whose root nulls `workset.workspaces` has `project_path = None` (Q106 review):
+⚑ A named caller passes its RECORDED *workspace*, which wins over `proj.project_path`.
+⚑ A standalone box whose root nulls `workset.workspaces` has `project_path = None` (Q106):
 the adapter refuses it with `refuse_null_workspaces(..., standalone=True)`, so `box move`, `remap`
 and `convert` name the key instead of moving or copying a workspace that does not exist.
 
@@ -570,7 +575,7 @@ source-into-symlink `copytree` collision that registering the external *source* 
 *shell_path* are the SOURCE project's dirs to copy from.
 
 ⚑ **Failure-consistency:** a crash AFTER `add_project` (which registers the project in the
-`meta.workset` identity and creates per-project dirs) but DURING the copies would strand a
+workset's `boxes:` membership and creates per-project dirs) but DURING the copies would strand a
 registered-but-incomplete project. The whole copy block therefore rolls the registration and partial
 dirs back on any failure, then re-raises. The rollback is `_unwind_target_member` with the leaves
 that existed before `add_project`, so a `--bare` or `--force` duplicate that adopted an existing leaf
@@ -591,16 +596,22 @@ destination so `execute_lifecycle` need not re-derive them.
 The guards, in order, and what each protects:
 
 * **bare-into-ws** requires a workset target (the sentinel names a path inside one).
+* **a LOOPED landing or source** (a symlink loop) refuses, naming it.
 * **no-op guard** — nothing to do when the target equals the current location, owner, AND name.
 * **ws→ws with an INTERNAL workspace requires relocation** — refused with
   `STUBBORN_INPLACE_MSG`, which is a module-level constant because it is user-facing text several
   paths could reach.
+* **an EXTERNAL source cannot be relocated** (not `records_only`) — see the three landing
+  refusals above.
 * **destination not already occupied** — `records_only` exempt, see above. Beside it (same
   exemption): **a destination inside the source workspace** is refused ("Destination is inside the
   project being moved") — STEP 2 would copy into a child of the tree the retire deletes (shape X1).
   `_retire_old_workspace` also skips that shape, as a second guard.
-* **membership guard** — refuse landing the project inside a workset it is not (becoming) a member
-  of. ⚑ The test is `is_in_tree_workspace`, NOT `landing.resolve()` against the root alone, so a
+* **remap onto ANOTHER box's path** (`_remap_dest_holder`), refused before any write; an in-tree
+  landing for a named target must be its recorded leaf; an IN-PLACE convert records the box only
+  where it stands.
+* **membership guard** (`_refuse_foreign_workset_landing`) — refuse landing the project inside a
+  workset it is not (becoming) a member of. ⚑ The test is `is_in_tree_workspace`, NOT `landing.resolve()` against the root alone, so a
   landing under a repointed `workset.workspaces` dir and a **symlinked** in-tree leaf are refused
   like a plain one. `relocating` is exactly `dest is not None`; the code tests `dest` directly so
   mypy narrows away the `None` for the `.resolve()`.
@@ -610,8 +621,17 @@ The guards, in order, and what each protects:
   root's workset.yaml nulls the key (`_consolidate_workspace_subdir` would fill it).
 * **CWD-inside-old guard** — a move is copytree+retire, NOT a rename, so a shell sitting inside the
   source would be stranded on a removed directory. Refused unless `--force`; `records_only` exempt.
-* **name not taken in the target workset.**
-* **cross-kind name policy** on a DEFAULT-mode `--name` rename edge — F-7, above.
+* **name not taken in the target workset** (case-blind), nor held on disk by an UNREGISTERED leaf
+  of that name; the same leftover refusal on a standalone landing's vault arm.
+* **a standalone target's `--name`** — refused unless it is the name the box gets
+  (`refuse_nonleaf_standalone_name`).
+* **same-kind name policy** on a DEFAULT-mode `--name` rename edge — F-7, above — and a landing
+  another primary box is registered at.
+* **a standalone source's canon tier** must resolve before the first write
+  (`standalone_canon_teardown`).
+* **keyspace § 0 nesting** (`_refuse_relocation_nesting`), **a user entry under a name the
+  standalone root reserves** (`_refuse_root_name_collisions`), and **a disabled vault that still
+  holds data** (Q64).
 
 `requested_name` in the returned plan is the user's EXPLICIT `--name` (empty when not given).
 ⚑ Unlike `new_name`, which defaults to the source name, it distinguishes "no `--name`" from
@@ -623,40 +643,32 @@ Apply *spec* to *state* transactionally and return the new state.
 
 See **The canonical 5-step order**.
 
-```def _run_steps(state: ProjectState, spec: TargetSpec, std: StandardPaths, config: BootstrapConfig, plan: dict, unwind: _Unwind) -> ProjectState```
-The step body of `execute_lifecycle`.
+```def _run_steps(state: ProjectState, spec: TargetSpec, std: StandardPaths, config: BootstrapConfig, plan: dict, unwind: _Unwind) -> tuple[ProjectState, _SourceTeardown | None]```
+The step body of `execute_lifecycle`: steps 2 and 3+4 in-op, then STEP 5's retires and the deferred
+link onto the tail's `later` list, and the one `unwind.on_success(_finish_relocation, …)`. Returns
+the new state and the planned source teardown, whose row `execute_lifecycle` drops. See the
+step-order section for each arm and each ordering constraint.
 
-Steps 2, 3+4, 4b and 5 in order; see the step-order section for each arm and each ordering
-constraint.
+```def _retire_old_workspace(old: Path, landed: Path) -> None```
+Delete the relocated-from workspace *old*, whose copy landed at *landed* — a success-tail step only;
+see **STEP 5**.
 
-```def _retire_old_workspace(old: Path, landed: Path, recorded: Path) -> None```
-Delete the relocated-from workspace *old*, whose copy landed at *landed* — an `on_success` action
-only; see **STEP 5**.
+It skips an absent *old*, and an *old* that is or holds *landed*. A symlink is unlinked, never
+followed (judged by its own path), and `Note: left <target>; it is yours` names what stays. A
+non-directory is unlinked. A directory goes through a plain `shutil.rmtree`; when that fails (in-box
+root owns entries the host user cannot unlink) it goes to `remove_box_tree`, which may act only on
+*old*, a real dir already copied to *landed*. A failure prints `Note: could not fully remove the old
+workspace <old>: <err>. The move is complete at <landed>; …` naming what it still holds, and stops:
+the op already succeeded, so the exit code stays 0.
 
-It skips an absent *old*, and an *old* that is or holds *landed* or *recorded* — the workspace the
-box now records. The *recorded* guard covers a same-workset, same-name move that lands back on its
-own leaf, and a `workspaces` dir repointed inside the moving box's own tree. A symlink is unlinked, never followed, and `Note: left <target>; it is yours` names what
-stays. A directory goes through a plain `shutil.rmtree`; when that fails (in-box root owns entries
-the host user cannot unlink) it goes to `remove_box_tree`, which may act only on *old*, a real dir
-already copied to *landed*. A non-directory *old* never reaches it. A failure of both prints
-`Note: could not fully remove the old workspace <old>: <err>` naming the rmtree's error and stops:
-the op already succeeded, so the exit code stays 0. It prints its own Notes because
-`_Unwind.finish` swallows exceptions.
-
-```def _apply_ownership_and_markers(state: ProjectState, std: StandardPaths, config: BootstrapConfig, unwind: _Unwind, *, target_mode: BoxMode, target_ws: Workset | None, new_name: str, new_workspace: Path, relocating: bool, dest: Path | None, requested_name: str = "", force: bool = False) -> ProjectState```
+```def _apply_ownership_and_markers(state: ProjectState, std: StandardPaths, config: BootstrapConfig, unwind: _Unwind, *, target_mode: BoxMode, target_ws: Workset | None, new_name: str, new_workspace: Path, relocating: bool, dest: Path | None, requested_name: str = "") -> tuple[ProjectState, _SourceTeardown | None]```
 Re-root metadata/shell/vault into the target owner + rewrite markers.
 
 Handles EVERY transition the same way: copy the source metadata into the target owner's metadata
-root, write the destination `box.yaml`, update registry/names, remove the old owner's
-metadata. Returns the resulting `ProjectState`. Dispatch is purely on `target_mode`. (See the
-drift note under **STEPS 3+4** for what that `box.yaml` write actually contains.)
-
-```def _unwind_box_tree(path: Path) -> None```
-Best-effort box-tree removal shaped for `_Unwind.push`.
-
-`remove_box_tree` returns a bool; `_Unwind` wants `Callable[[], None]`. A NAMED wrapper rather than
-an inline lambda that discards the result, because "swallow this value" is exactly the kind of thing
-worth saying out loud.
+root, write the destination `box.yaml`, update registry/names, carry the vault, and plan the
+source teardown the success tail runs. Returns the new `ProjectState` and that teardown. Dispatch is
+purely on `target_mode`; only `_to_default` takes `requested_name`. (See **STEPS 3+4** for what
+that `box.yaml` write actually contains.)
 
 ```def _copy_metadata(src_metadata: Path, src_shell: Path, dst_metadata: Path, *, shell_into_metadata: bool, home_leaf: str = "home", unwind: _Unwind) -> Path```
 Copy metadata (minus lock+home) and shell into *dst_metadata*.
@@ -665,7 +677,7 @@ Returns the destination shell path (`dst_metadata / home_leaf`) and pushes a rem
 *dst_metadata* onto *unwind*. See **The canon-skeleton hazard** for why that removal must escalate
 and why the copied shell is re-materialized.
 
-```def _deliver_carried_box_settings(state: ProjectState, dst_box_tier: Path) -> None```
+```def _deliver_carried_box_settings(state: ProjectState, dst_box_tier: Path, *, early: EarlyScope) -> None```
 Write the source box's carried box-scope settings to *dst_box_tier* (M-8).
 
 A convert/move makes a NEW box that INHERITS the source's box settings. The source's box tier and
@@ -677,49 +689,57 @@ tier is that workset's downward default, not the box's, and is left where it was
 A no-op when the source carries nothing, so a box with no settings file still produces no
 destination file — sparse, matching `create`.
 
-⚑ `group=None` is deliberate: only the STANDALONE arm consults it, and standalone's workset tier is
-derived from the ROOT, not from a `ProjectGroup` (which `ProjectState` does not carry). For
-primary/named the workset tier is therefore `None` — no legacy underlay, so those modes stay
-byte-identical to pre-P2.
+⚑ `group=None` is harmless: only the WORKSET tier is derived from the group, and the carry reads the
+BOX tier alone — `ProjectState` carries no `ProjectGroup` anyway.
 
-```def _remove_old_metadata(state: ProjectState, std: StandardPaths, config: BootstrapConfig, unwind: _Unwind, *, preserve_name: str | None = None, preserve_root: Path | None = None) -> None```
-Remove the source project's metadata/shell (+ PRIMARY vault).
+```class _SourceTeardown```
+```def _plan_source_teardown(state: ProjectState, std: StandardPaths, dst_vault: tuple[Path | None, Path | None], *, preserve_name: str | None = None, new_name: str | None = None, preserve_root: Path | None = None) -> _SourceTeardown```
+Plan the removal of the source's metadata/shell (+ vault) and the drop of its row, while the source
+is whole. Runs once, before the vault carry: every resolution that can raise happens here, while
+the unwind still restores a whole source. Nothing planned is ever unwound; the row is dropped by
+`_drop_source_row` (the point of no return) and the files by `_finish_relocation`.
 
 ⚑ **TWO reuse signals, because each mode's IDENTITY on disk is a different thing:**
 `preserve_name` for a primary source (whose metadata dir is named after the box) and
 `preserve_root` for a standalone one (whose metadata IS a root, and whose NAME is exactly what an
 in-place rename changes). A destination that reused the source must not then have the source torn
-out from under it.
+out from under it. *new_name* is what the destination registered: the source's name is dropped
+only while they differ (case-blind), since a carried-kuid move can compose the SAME name.
+*dst_vault* is the destination's `(ro, rw)`: a side it has NO leaf for (`_unreceived_vault_leaves`
+— a `<None>` arm, or a disabled vault holding data) is RETAINED with a Note, never deleted.
 
 🛑 The three arms differ in what they are allowed to touch, and the difference is the whole point:
 
-* **Standalone source** — removes the in-tree kanibako artifacts (the `box_data/` marker dir, the
-  root `workset.yaml`, and the vault) and **NOT the project root itself**. For a standalone the root
-  IS `metadata_path`: deleting it would wipe the user's whole project directory AND the
-  already-converted destination. The success tail `rmdir`s the root last (`old_root`), so it goes
-  only when nothing is left in it; it first deletes a started box's stale `CREDS_WATCHER_LOCK_FILE`.
-  ⚑ `preserve_root` naming THIS root (an in-place rename) drops the OLD name's `registry.standalone`
-  entry and returns: `box_data/`, the root meta and the vault are the box just re-established, and
-  the only stale thing is the name.
-  ⚑⚑ The vault comes from `project.workset.standalone_vault_teardown(root)`, **called before
-  anything at all is dropped — the registry entry included**. Two reasons and both bite: the root
-  `workset.yaml` this arm unlinks is the only carrier of a `workset.vault_*` repoint, so a later
-  read answers the composed default; and an UNRESOLVABLE repoint raises there, which must happen
-  while the source is still whole and the unwind still has something to restore. An arm the user
-  pointed OUTSIDE the root is reported and left — see that function for why.
-* **Primary source** — unregisters the name, removes the `boxes/` metadata dir, and removes the
-  per-box leaf under the primary workset's resolved vault arms (Phase 5 moved it out of the
-  workspace), through `remove_path` like every other mode. A leaf linking outside its arm was not
-  carried, so `_unreceived_vault_leaves` (given the arms and the box name) retains it with a Note.
-  A carried link loses only the link, and the tail's Note names the target it left. `preserve_name` (L2) suppresses both when the
+* **Standalone source** — plans the in-tree kanibako artifacts (the store, the root `workset.yaml`
+  marker, the vault, the canon tier, the `.gitignore` line) and **NOT the project root itself**.
+  For a standalone the root IS `metadata_path`: deleting it would wipe the user's whole project
+  directory AND the already-converted destination. The success tail prunes the root last
+  (`old_root`), so it goes only when nothing is left in it; it first deletes a started box's stale
+  `CREDS_WATCHER_LOCK_FILE` and a stale session lock.
+  ⚑ `preserve_root` naming THIS root (an in-place rename) plans only the drop of the OLD name's
+  `registry.standalone` entry: the store, the root meta and the vault are the box just
+  re-established.
+  ⚑⚑ The vault comes from `project.workset.standalone_vault_teardown(root)`, and the store from
+  `standalone_store_teardown_plan`, **resolved before anything at all is dropped**. The root
+  `workset.yaml` is the only carrier of a `workset.vault_*` repoint, so a later read answers the
+  composed default; and an UNRESOLVABLE repoint raises there, which must happen while the source is
+  still whole. An arm the user pointed OUTSIDE the root is reported and left — see that function.
+  ⚑ The partition step 4b moves is read here too, before the marker stash takes the root file.
+* **Primary source** — plans the drop of the name, the `boxes/` metadata dir, and the per-box leaf
+  under the primary workset's resolved vault arms. A leaf outside its arm is warned about and left;
+  an unreceived leaf is retained with a Note. `preserve_name` (L2) suppresses all of it when the
   converted box reuses its own name in place.
-* **Workset source** — `release_project` (the registration, and an external member's
-  discoverability link) in-op; the store (box tree, vault leaves) goes on success through
+* **Workset source** — the drop is `release_project` (the registration, and an external member's
+  discoverability link); the store (box tree, vault leaves) goes in the tail through
   `_retire_old_store`. **The workspace leaf is NEVER deleted here** — in-tree or external; a
-  relocation retires an in-tree leaf in STEP 5. The primary and standalone arms do not use
-  *unwind*.
+  relocation retires an in-tree leaf in STEP 5.
 
-```def _to_default(state: ProjectState, std: StandardPaths, config: BootstrapConfig, unwind: _Unwind, *, new_name: str, new_workspace: Path, requested_name: str = "", force: bool = False) -> ProjectState```
+`_carry_vault_contents` then copies the source vault into the destination leaves (a copy failure
+RAISES, before anything is deleted), and `_stash_source_marker` moves a standalone source's root
+marker into a stash the undo restores — the marker alone reads as a box. `_carry_standalone_canon`
+copies a standalone source's `workset.canon` tier to a standalone destination.
+
+```def _to_default(state: ProjectState, std: StandardPaths, config: BootstrapConfig, unwind: _Unwind, *, new_name: str, new_workspace: Path, requested_name: str = "") -> tuple[ProjectState, _SourceTeardown | None]```
 Convert/relocate the project so its owner becomes the default workset.
 
 See **Naming — the PRIMARY membership register** for the mint/unregister/register ordering, and
@@ -734,25 +754,24 @@ The sweep decides, for each child of the root, "is this kanibako's or the user's
 parts, and the split is the whole design:
 
 ```_STANDALONE_FIXED_ARTIFACTS```
-The four names NO key can repoint: `box_data/` (spec §2c fixes the standalone box dir), the root
-`workset.yaml` and `box.yaml` (drift I), and `.kanibako.lock`. A name test is correct for these
-because there is nothing for a name to be wrong about.
+The four LEAF NAMES a standalone root keeps whatever `workset.*` says: `box_data/` (the
+`workset.boxes` DEFAULT leaf — not a detection marker), the root `workset.yaml` and `box.yaml`
+(drift I), and `.kanibako.lock`.
 
-```_STANDALONE_ROOT_DIR_KEYS``` / ```def _standalone_root_artifacts(root: Path) -> list[tuple[str, Path, bool]]```
+```_STANDALONE_ROOT_DIR_KEYS``` / ```def _standalone_root_artifacts(root: Path, *, early: EarlyScope) -> list[tuple[str, Path, bool]]```
 Everything else the root owns is a declared, repointable `workset.*` DIRECTORY key —
-`workspaces`, `vault_ro`, `vault_rw`, `canon` — and each is RESOLVED off one `workset.yaml` read,
-returned as `(key, path, repointed)`. `boxes` is absent because §2c fixes the box dir; `logs`,
-`template` and `channelroot` are absent because standalone does not materialize them (each
-resolver's own docstring is the source). The literal `vault/` skeleton parent is appended when it is
+`workspaces`, `boxes`, `vault_ro`, `vault_rw`, `canon` — and each is RESOLVED off one
+`workset.yaml` read, returned as `(key, path, repointed)`; a null key owns no artifact. `boxes` is
+here as well as in the leaf set, because the STORE answers to `workset.boxes` wherever the user
+put it. `logs`, `template` and `channelroot` are absent because standalone does not materialize
+them. The literal `vault/` skeleton parent is appended when it is
 on disk — exactly the tail `standalone_vault_teardown` appends, and for its reason: no key names it.
 
-⚑ This replaced a frozenset of LEAF NAMES, which could not express a repoint. A root carrying
-`workset.vault_ro: store/ro` had its `store/` swept into the workspace dir, because the root child
-is `store` — a name no list held — and the box then resolved its vault to an empty directory.
-`workset.canon` was never listed at all, so a round trip through `convert --default` and back swept
-kanibako's own canon tree with NO repoint involved. And an ABSOLUTE repoint is not representable in
-a name set at all: with `workset.workspaces` pointed outside the root, the literal
-`root / "workspace"` destination filled a directory the box never opens.
+⚑ A frozenset of LEAF NAMES cannot express a repoint. A root carrying `workset.vault_ro: store/ro`
+would have its `store/` swept into the workspace dir, because the root child is `store`, and the
+box would then resolve its vault to an empty directory. An ABSOLUTE repoint is not representable in
+a name set at all: with `workset.workspaces` pointed outside the root, a literal
+`root / "workspace"` destination fills a directory the box never opens.
 
 ⚑ `_artifact_claiming` uses an ANCESTOR test, not equality — `store/ro` is not itself a child of the
 root; `store` is, and it HOLDS the arm.
@@ -766,7 +785,7 @@ guessing. A root whose layout keys do not answer is a root whose children cannot
 the sweep MOVES USER DATA — so the refusal lands before `_to_standalone` has copied or written
 anything, the same call order `standalone_vault_teardown` demands for the same reason.
 
-```def _consolidate_workspace_subdir(root: Path, workspace_subdir: Path, unwind: _Unwind) -> None```
+```def _consolidate_workspace_subdir(root: Path, workspace_subdir: Path, unwind: _Unwind, *, early: EarlyScope) -> None```
 Move the project's top-level files into the standalone workspace dir.
 
 Drift H: a standalone box's live workspace is a SUBDIR of the root, not the root itself. On an
@@ -787,8 +806,9 @@ null from ever reading as the default.
 source dir; relocating: the copy STEP 2 made at *dest*; external-in-place: the external dir that is
 BECOMING the standalone root. That uniformity is what lets one call serve every transition.
 
-```def _undo_consolidate(src_dir: Path, dest_dir: Path, moved: list[Path], *, root: Path) -> None```
-Best-effort reversal of EITHER sweep — *moved*'s leaves go back from *src_dir* to *dest_dir*.
+```def _undo_consolidate(src_dir: Path, dest_dir: Path, moved: list[Path], *, root: Path) -> bool```
+Best-effort reversal of EITHER sweep — *moved*'s leaves go back from *src_dir* to *dest_dir*;
+`False` when a leaf it reported did not go back.
 ⚑ *dest_dir* is RE-CREATED first: the unconsolidate direction removes it (with any repoint parents)
 once emptied, so a restore would otherwise land nowhere and every move would fail silently.
 Every entry is tried, even past a `KeyboardInterrupt` (re-raised at the end, as `_Unwind.run`
@@ -826,79 +846,63 @@ existed only to hold the workspace, and the root `workset.yaml` that named them 
 unlinked. `rmdir` IS the emptiness test, so a parent the user keeps their own files in stops the
 walk.
 
-```def _to_standalone(state: ProjectState, std: StandardPaths, config: BootstrapConfig, unwind: _Unwind, *, new_name: str, root: Path, requested_name: str = "") -> ProjectState```
+```def _to_standalone(state: ProjectState, std: StandardPaths, config: BootstrapConfig, unwind: _Unwind, *, new_name: str, root: Path) -> tuple[ProjectState, _SourceTeardown | None]```
 Convert/relocate the project so it becomes standalone (in-tree metadata).
 
 ⚑⚑ The parameter is `root`, and it is the caller's `new_workspace`: standalone is the ONE target
-mode where the live workspace is not the project dir, so what arrives is the ROOT. It was named
-`new_workspace` and read as the root, and an in-place standalone RENAME then handed it the box's
-own workspace — laying a second complete standalone tree inside the first, after which
-`_remove_old_metadata` tore out the original's `box_data/` (home included) and vault, because from
-the destination's position they belonged to some other box.
+mode where the live workspace is not the project dir, so what arrives is the ROOT. Passing the
+workspace instead would lay a second complete standalone tree inside the first, whose teardown
+would then tear out the original's store and vault.
 
-⚑ **`reused_in_place`** — `dst_metadata` and the source's `box_metadata_dir` are the SAME directory
-— governs three things, and each is a different failure without it: the metadata copy is SKIPPED (a
-`copytree` onto itself raises), the consolidate sweep is SKIPPED (the sweep exists because an
-in-place convert's project files sit AT the root; on a root that is ALREADY this box's, they sit in
-the workspace dir and everything beside them is kanibako's — starting with the root `.gitignore`
-this function writes, which the sweep would relocate into the user's workspace), and
-`_remove_old_metadata` is passed `preserve_root` so the teardown does not delete the box that was
-just re-established.
+⚑ **`reused_in_place`** — `dst_metadata` (the resolved store, `standalone_box_store`) and the
+source's `box_metadata_dir` are the SAME directory — governs three things, and each is a different
+failure without it: the metadata copy is SKIPPED (a `copytree` onto itself raises), the
+consolidate sweep is SKIPPED (on a root that is ALREADY this box's, the files sit in the workspace
+dir and everything beside them is kanibako's — starting with the root `.gitignore` this function
+writes, which the sweep would relocate into the user's workspace), and `_plan_source_teardown` is
+passed `preserve_root` so the teardown does not delete the box that was just re-established.
+⚑ Otherwise a NON-EMPTY directory at the DEFAULT store leaf that this transaction did not carry
+there refuses: merging would overwrite the user's files by name and later delete them with the
+store.
 
-A standalone box's identity is the canonical opaque `<kuid>_<leaf>`, matching `create --standalone`
-/ `duplicate --standalone`. Standalone boxes are NOT members of any workset's `boxes:` table; they
-are registered in `registry.standalone`.
+A standalone box's identity is the canonical opaque `<kuid>_<leaf>`, named after its directory —
+`establish_standalone` takes no name. A standalone source KEEPS its kuid (`carry_kuid`, so the leaf
+tracks the directory); any other source gets a fresh kuid. A typed `--name` was already refused in
+`_validate` unless it is that name. A standalone source keeps its registration state: an
+unregistered box stays unregistered; any other source is registered in `registry.standalone`,
+with `_restore_standalone_rows` armed first.
 
-Convert ESTABLISHES the box uniformly via `establish_standalone`, which HONORS an explicit `--name`
-through `box_identity.resolve_standalone_name`:
+It writes `workset.kuid` into `<root>/workset.yaml` — that write MATERIALIZES the detection marker
+alongside `workset.registry: null`; NO `mode` is persisted anywhere. ⚑ It is handed
+`state.box_authored_vault`: it writes straight into the box tier `_deliver_carried_box_settings`
+just laid down, so the resolved value would undo that carry and pin the source workset's default on
+a box that has LEFT it. The new root `workset.yaml` carries no vault key, so the standalone box's
+resolved value IS what it authored. A non-standalone source has the workset canon tier stamped
+(`install_workset_template(..., canon_only=True)`, pre-flighted first); a standalone source
+carries its own (`_carry_standalone_canon`).
 
-* a verbatim canonical id is used if free, and REFUSED if taken;
-* a non-canonical `--name` becomes a fresh `<kuid>_<sanitized name>`;
-* NO `--name` generates a fresh canonical id from the root basename.
-
-It writes `workset.kuid` into `<root>/workset.yaml` — that write MATERIALIZES the detection marker,
-and it is the ONLY key laid there; NO `mode` is persisted anywhere (see the drift note under
-**STEPS 3+4**) — then registers the box, with an unwind to drop the registration on failure.
-⚑ It is handed `state.box_authored_vault`: it writes straight into the box tier
-`_deliver_carried_box_settings` just laid down, so the resolved value would undo that carry and pin
-the source workset's default on a box that has LEFT it. The new root `workset.yaml` carries only
-`workset.kuid`, so the standalone box's resolved value IS what it authored. `_remove_old_metadata`
-purges the source's prior registry entry so it does not dangle — and for BOTH non-standalone modes
-that entry is the same thing: the source workset's own `boxes:` row.
-
-⚑ **The two arms reach it by different doors and land on ONE carrier.** A `primary` source goes
+⚑ **The two non-standalone arms reach one carrier.** The source row a `primary` source drops goes
 `unregister_primary_box_name` → `settings/paths.py::_unregister_workset_box_membership`; a workset
-member goes `release_project`, which unlinks an external member's discoverability link and then calls that SAME
-helper as its last durable step. The helper resolves the per-workset registry FILE
-(`resolve_workset_registry_path` — a `workset.registry` repoint wins, else
-`<workset_root>/registry.yaml`) and calls `workset_registry.unregister_workset_box`. So the thing
-dropped is a `boxes:` row in a `registry.yaml`, never a free-standing per-mode index.
-
-⚑ `new_name` is only a *requested* name: the source's name is passed as the default when the caller
-gave no `--name` (i.e. `new_name == state.name`), in which case it is NOT treated as a user
-assertion and a fresh canonical id is generated instead. This is exactly why the plan carries
-`requested_name` separately (R1/R3).
+member goes `release_project`, which unlinks an external member's discoverability link and then
+calls that SAME helper as its last durable step. So the thing dropped is a `boxes:` row in a
+`registry.yaml`, never a free-standing per-mode index.
 
 ⚑ **ORDER:** consolidate the source's top-level files into the resolved workspace dir FIRST, THEN
 lay down the kanibako artifacts — otherwise the artifacts get swept into the subdir with everything
 else. ⚑ The destination comes from `_resolve_standalone_workspaces(root, …)`, so it is the same
 directory the box will later resolve; see the sweep's own section above.
 
-⚑⚑ **The `box.yaml` landing in `box_data/` must NOT be deleted as an "orphan".** It IS the
-destination's BOX TIER now (spec §2c ALL PROJECTS: `meta.box.settings = @meta.box.path/box.yaml`,
-and `@meta.box.path` for a standalone IS `box_data/`). It used to be deleted here on the theory that
-the box meta lived only at the ROOT — that theory is the RETIRED model, and deleting the file now
-discards the box's settings. Detection is unaffected either way: it reads the ROOT file
-(`system-design` § "Detection & import"), which
-`establish_standalone` writes.
+⚑⚑ **The `box.yaml` landing in the store must NOT be deleted as an "orphan".** It IS the
+destination's BOX TIER (spec §2c ALL PROJECTS: `meta.box.settings = @meta.box.path/box.yaml`, and
+`@meta.box.path` for a standalone IS its store). Detection is unaffected either way: it reads the
+ROOT file (`system-design` § "Detection & import"), which `establish_standalone` writes.
 
-⚑ The vault `.gitignore` goes through `settings/paths.py::write_vault_gitignore`, handed the arm
-`establish_standalone` just RESOLVED against this root's `workset.yaml`. This site used to write it
-on `(<root>/vault).is_dir()` alone — a position answering a key, and the fourth sighting of the class
-`722c3d59` cured in `_init_common`: the skeleton is the `ro` arm's DEFAULT parent, so it can sit on
-disk while `workset.vault_rw` points elsewhere and the file's `rw/` names nothing.
+⚑ The vault `.gitignore` goes through `settings/paths.py::write_vault_gitignore`, handed the
+`vault_rw` arm `establish_standalone` just RESOLVED against this root's `workset.yaml` — never
+gated on `(<root>/vault).is_dir()`, since the skeleton is the `ro` arm's DEFAULT parent and can sit
+on disk while `workset.vault_rw` points elsewhere. A null arm writes none.
 
-```def _to_workset(state: ProjectState, std: StandardPaths, config: BootstrapConfig, unwind: _Unwind, *, target_ws: Workset, new_name: str, new_workspace: Path, relocating: bool, dest: Path | None) -> ProjectState```
+```def _to_workset(state: ProjectState, std: StandardPaths, config: BootstrapConfig, unwind: _Unwind, *, target_ws: Workset, new_name: str, new_workspace: Path, relocating: bool, dest: Path | None) -> tuple[ProjectState, _SourceTeardown | None]```
 Convert/relocate the project into *target_ws* (std-aware external wiring).
 
 `source_for_add` is the path `add_project` records and decides external wiring from: the in-tree
@@ -911,10 +915,10 @@ workspace dir for an internal landing, the live external workspace path for an e
   copied again; nor when the SOURCE leaf is that dir (same workset, same name) — a copy onto itself;
 * external ⇒ never copy.
 
-⚑ After the copy, an in-tree WORKSET source registers `_retire_old_workspace(source leaf, landing, landing)`
-on success — the `convert --name` in-place rename (shape S17), which STEP 2 never sees. Other sources
-keep their tree: an in-place convert out of primary or standalone deleted nothing before, and still
-does not.
+⚑ After the copy, an in-tree WORKSET source records `old_leaf = (source leaf, landing)` on its
+teardown, which STEP 5 retires — the `convert --name` in-place rename (shape S17), which STEP 2 never
+sees. Other sources keep their tree: an in-place convert out of primary or standalone deletes
+nothing.
 
 ⚑⚑ **ws→ws re-root: the SOURCE workset must RELEASE the project BEFORE the target registers it.**
 The connection record is 1:1, so an external source still mapped to the OLD workset would collide
@@ -939,23 +943,22 @@ landing — writes the markers.
 
 ⚑ `add_project(..., force=True)`: a convert/move/duplicate INTO a workset is a DELIBERATE absorb, so
 it must override the standalone-marker connect guard (B2a) — the source of a standalone→workset
-convert still carries its in-place `box_data/` marker at this point, because the marker is removed
-LATER in the convert. `force` affects only a standalone-marked source, so it is a no-op for the
+convert still carries its in-place root marker at this point, because the marker is stashed LATER
+in the convert. `force` affects only a standalone-marked source, so it is a no-op for the
 non-standalone move/duplicate cases.
 
 ⚑ `_deliver_carried_box_settings` is called even though the metadata was just copied: the copy is
 mode-shaped, and the delivery is what guarantees the source's box tier lands at the file the
 DESTINATION reads as its box tier (M-8) — with the source's `workset:` identity stripped.
 
-⚑ `_remove_old_metadata` is skipped when the source was a workset — the registration was ALREADY
-released above, and cleaning again would double-remove.
+⚑ A ws→ws source was ALREADY released above, so its teardown carries only the stash and
+`old_leaf` (no row to drop); any other source gets `_plan_source_teardown`, the vault carry, and
+the marker stash. `_carry_box_logs` carries the box's log files beside the vault carry.
 
-⚑⚑ **The returned state's vault comes from `resolve_workset_vault_pair(target_ws.root)`, never from
-`target_ws.vault_dir / "ro"`.** `add_project` above creates the per-box leaves under the target
-workset's RESOLVED arms; composing off `vault_dir` handed back a state naming a directory the box
-does not use — two answers for one box. Nothing reads those fields into a deletion TODAY (the state
-flows to `_relocate_channel_partition` and the summary print), which is why this was latent rather
-than destructive; it is still the wrong path to hand a caller.
+⚑⚑ **The returned state's vault comes from the target workset's RESOLVED arms, never from
+`target_ws.vault_dir / "ro"`.** `add_project` above creates the per-box leaves under them;
+composing off `vault_dir` would hand back a state naming a directory the box does not use — two
+answers for one box.
 
 ```def _state_ws_token(state: ProjectState) -> str```
 Return the channel-partition workset-name token for *state*.
@@ -965,50 +968,57 @@ standalone. Mirrors `kanibako.channels.channels.workset_name_token` but reads of
 `ProjectState` (mode + loaded `ws`) rather than a `ProjectPaths`. Raises `ValueError` when a named
 box is missing its workset — the caller treats that as "nothing to relocate" and warns.
 
-```def _relocate_channel_partition(old: ProjectState, new: ProjectState, std: StandardPaths) -> None```
+```def _relocate_channel_partition(old: ProjectState, new: ProjectState, std: StandardPaths, plan: _SourceTeardown) -> None```
 Best-effort relocate THIS box's OWN channel partition (D-M10, §6).
 
 *old* is the pre-convert identity, *new* the FINAL post-convert identity. See **Channel partition
 relocation** for the address model, the A9 ordering requirement, and the swallow-and-warn policy. An
-unchanged address is an idempotent no-op, and an existing destination is never clobbered.
+unchanged address is an idempotent no-op, and an existing destination is never clobbered. *plan*
+carries a standalone source's partition, read before the marker stash.
 
-```def _safe_unregister(std: StandardPaths, name: str) -> None```
-Swallowing wrapper around `unregister_primary_box_name`.
+```def _safe_unregister(std: StandardPaths, name: str) -> bool```
+Swallowing wrapper around `unregister_primary_box_name`; `False` if it raised.
 
-```def _safe_register_membership(std: StandardPaths, name: str, workspace: Path) -> None```
-Best-effort re-register *name* → *workspace* in the PRIMARY membership.
+```def _safe_register_membership(std: StandardPaths, name: str, workspace: Path) -> bool```
+Best-effort re-register *name* → *workspace* in the PRIMARY membership; `False` if it raised.
 
-The failure-window restore for **FIX1**: it writes the RAW membership entry directly, with no
-cross-kind/same-kind guard, so restoring the source box's OWN prior registration is unconditional.
-Errors are swallowed — the unwind stack is best-effort restore.
+The restore for a primary source's dropped row (FIX1): it writes the RAW membership entry
+directly, with no name guard, so restoring the source box's OWN prior registration is
+unconditional.
 
-```def _member_leaves(ws: Workset, name: str) -> tuple[Path | None, Path, Path, Path]```
+```def _member_leaves(ws: Workset, name: str) -> tuple[Path | None, Path, Path | None, Path | None]```
 Member *name*'s four leaves: `workspaces/<name>`, `boxes/<name>`, and the per-box leaves under the
 RESOLVED vault arms, as `add_project` creates them. The workspace leaf is `None` under a null
-`workset.workspaces` (no dir to hold it); `_existing_member_leaves` and `_unwind_target_member` skip it.
+`workset.workspaces`, and a vault leaf is `None` under a null arm; `_existing_member_leaves` and
+`_unwind_target_member` skip them.
 
-```def _existing_member_leaves(ws: Workset, name: str) -> frozenset[Path]```
-Those of `_member_leaves` already on disk; a dangling link counts.
+```def _existing_member_leaves(ws: Workset, name: str) -> dict[Path, frozenset[str] | None]```
+Those of `_member_leaves` already on disk (a dangling link counts), each mapped to its entry names,
+so `note_added_leftovers` can name what the op added to a pre-existing leaf.
 
-```def _unwind_target_member(ws: Workset, name: str, existed: frozenset[Path]) -> None```
+```def _unwind_target_member(ws: Workset, name: str, existed: Mapping[Path, frozenset[str] | None]) -> bool```
 Undo a target registration (`_to_workset`, `copy_into_workset`): `release_project` with
 `keep_link=True`, then each leaf NOT in *existed* — so a pre-existing `workspaces/<name>` symlink
-survives a same-workset rollback. See **Rollbacks delete only what the op created**. A failed release or a leaf it
-cannot remove is reported in a `Note`; the other leaves still go, even past a `KeyboardInterrupt`,
-which is re-raised at the end.
+survives a same-workset rollback; a Note names what the op added to a leaf that existed. A link is
+unlinked, never followed; every tree goes through the escalating `remove_path`. See **Rollbacks
+delete only what the op created**. A failed release or a leaf it cannot remove is reported in a
+`Note`; the other leaves still go, even past a `KeyboardInterrupt`, which is re-raised at the end.
+Returns `False` when the record could not be dropped or a created leaf remains.
 
 ```def _dispose_stash(stash: Path) -> None```
 Delete a ws→ws stash through `remove_box_tree`; a `False` prints a `Note` naming it, because the
 stash holds a copy of the box home and may hold credentials.
 
-```def _retire_old_store(ws: Workset, name: str) -> None```
-`remove_member_store` for a workset source that was converted out — an `on_success` action only.
-A raise does not propagate; `_report_store_leftovers` names what is left.
+```def _retire_old_store(ws: Workset, name: str, dst_vault: tuple[Path | None, Path | None], vault_enabled: bool = True, *, reraise: bool = False) -> None```
+Delete relocated-from member *name*'s store — a success-tail step for a workset source converted
+out. A vault leaf the destination never received is retained. A failed removal prints a Note naming
+every leaf left behind; rc is unchanged. With *reraise* the failure propagates instead, for a caller
+whose unwind restores the store.
 
-```def _report_store_leftovers(ws: Workset, name: str, err: OSError | None = None) -> None```
-Print `Note: could not remove the old store of '<name>'[: <err>]; left <paths>` for each of the
-member's store leaves still on disk. `remove_box_tree` reports a failure by returning `False`, which
-`remove_member_store` does not pass on, so the disk is the only witness.
+```def _report_store_leftovers(name: str, left: Collection[Path], why: str = "", *, unmoved: Collection[str] = ()) -> None```
+THE Note for what a relocation leaves of *name*'s old store: the paths in *left* still on disk, and
+*unmoved* — the steps 4b and 4c leftovers. `remove_box_tree` reports a failure by returning
+`False`, so the disk is the only witness.
 
 ```def _ownership_from_args(args) -> str | _Sentinel```
 Map the uniform target flags (`--default` / `--standalone` / `--workset`) to an ownership value, or
@@ -1017,12 +1027,9 @@ Map the uniform target flags (`--default` / `--standalone` / `--workset`) to an 
 The three flags are mutually exclusive, enforced by an argparse mutually-exclusive group;
 `--workset` carries the workset name.
 
-```def _lower_name(args) -> str | None```
-Return the user's `--name` folded to lowercase (R2), or `None`.
-
-Every box name is lowercase, so a user-supplied `--name` is silently lowercased on acceptance — no
-rejection of mixed-case input. After folding, the name is validated against the §Design 8 blocklist
-(NEW and renamed boxes are held to the constraint); an invalid name raises `ProjectError`.
+```def _validated_name(args) -> str | None```
+The user's `--name`, validated as typed (spec §0), or `None`. An invalid name raises
+`BoxNameError` (`validate_box_name`); the caller adds the `box_name_cure`.
 
 ```def _make_confirm(force: bool, summary: str)```
 Return a `Callable[[], bool]` for `execute_lifecycle`'s *confirm*.
