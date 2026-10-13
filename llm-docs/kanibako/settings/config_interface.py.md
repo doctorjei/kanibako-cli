@@ -38,7 +38,7 @@ something its agent declares.
 
 ## The get model — stored-at-noun
 
-Spec §2a "Read verbs" clause (folded 2026-07-02 — Jei clause 5, impl `3e0eb9e`): a plain
+Spec §2a "Read verbs" clause: a plain
 `get <key>` returns the value STORED AT THIS NOUN'S settings file (including a downward key it
 stored), else `None` (rendered "(not set)"). It NEVER fabricates a built-in default and NEVER
 returns another tier's value — that is the `--effective` cascade view (the `show` path), which is
@@ -69,8 +69,8 @@ Three retirements shape almost every branch in this module:
   parameters survive only for call-site stability (see below).
 * **R-9 — the two bind CLI write routes**, `{system,workset,box}.bindings.{ro,rw}.<name>` and
   `agent.<node>.bindings.{ro,rw}.<name>`.
-* **DS-BL1 = (a) (Jei 2026-08-07g, *"accept the loss uniformly"*) — the direct category set/reset
-  route** for `caches` / `seeded` / `common` / `synced` at every scope.
+* **DS-BL1 = (a) (*"accept the loss uniformly"*) — the direct category set/reset route** for
+  `caches` / `seeded` / `common` / `synced` at every scope.
 
 ⚑ In all three cases the KEY is not retired — only the CLI WRITE route is. So the write verbs
 refuse BY NAME in their preamble (spec §0: refuse loudly, never degrade to "unknown config key")
@@ -92,9 +92,8 @@ are ACCEPTED and feed nothing. They named the docker `.env` files. They are kept
 is a signature change across that bench and belongs to the KeyKind verb rewrite, not to a prose
 pass. Nothing else may be threaded through them in the meantime.
 
-`reset_all` in particular used to WIPE the level's `.env` file and count its lines as overrides;
-clearing it now would neither change what the box gets nor be honestly countable as "overrides
-reset". `<scope>.env.<VAR>` lives in the settings file and IS swept, as part of the nested scope
+`reset_all` in particular does not touch the level's `.env` file: clearing it would neither change
+what the box gets nor be honestly countable as "overrides reset". `<scope>.env.<VAR>` lives in the settings file and IS swept, as part of the nested scope
 tables.
 
 ## Functions
@@ -112,7 +111,7 @@ Parse a single positional config argument into `(action, key, value)`.
 UNDOES a `--null`). See "Why `--null` is a FLAG" above.
 
 
-```_pref_value_error(canonical, value, *, config_path, command_scope, system_settings_path, system_path, agent_path, workset_path, box_path, agent_name) -> str | None```
+```_pref_value_error(canonical, value, *, config_path, command_scope, system_settings_path, system_path, agent_path, workset_path, box_path, agent_name, set_target) -> str | None```
 Validate a pref's VALUE against the shape + resolution of its TARGET key.
 
 ⚑ **THE VALUE IS VALIDATED AT THE TARGET PATH, NEVER AT THE `pref.*` PATH.** A pref's key
@@ -123,8 +122,8 @@ of which bit before this existed:
   accepted-then-fatal without this guard: it killed the LAUNCH with "category
   agent.claude.common is str, expected a Bind" — naming a key the user never wrote. ⚑ The
   per-name spelling that example used (`pref.agent.claude.common.x`) is refused by a filter
-  EARLIER now — the four categories went TERMINAL on 2026-08-08c, so the target is not a key at
-  all — and the DIRECT category set route it appealed to is gone with DS-BL1 = (a). Neither
+  EARLIER — the four categories are TERMINAL, so the target is not a key at all — and there is no
+  DIRECT category set route (DS-BL1 = (a)). Neither
   retirement weakens the rule: the bare terminal target still takes a structured value, and this
   is the only door left that checks it.
 * **The E3 resolution probe must run at the TARGET.** Probing at `pref.<target>` is a NO-OP by
@@ -167,11 +166,11 @@ at a bind-shaped target is still wrong and must still be refused HERE. Dropping 
 open exactly the hole this guard exists to close, on the very keys that lost their direct route
 (spec §2h: a pref's value is legal iff it is legal at its target).
 
-* ⚑ `BIND_KEY_RE` **never matches any more** (2026-08-08c emptied the non-terminal complement and
-  it compiles its fail-closed form). The term is KEPT, not deleted: it is the ONE place that asks
+* ⚑ `BIND_KEY_RE` **never matches** (its non-terminal complement is empty, so it compiles its
+  fail-closed form). The term is KEPT, not deleted: it is the ONE place that asks
   "does a per-entry bind key exist at this scope", and it must keep asking through the regex
   rather than through a hardcoded `False`, so re-admitting one is an edit to the tuple and not to
-  this guard. The per-entry AGENT-scope spelling it used to catch is now refused a step EARLIER,
+  this guard. The per-entry AGENT-scope spelling is refused a step EARLIER,
   by `_pref_target_error` — the target is not a key at all.
 * ⚑ `pref` is NOT a retired route — a box may still REQUEST a bind change — so the retired
   spellings must keep being recognized here even though the verbs refuse them.
@@ -181,8 +180,8 @@ open exactly the hole this guard exists to close, on the very keys that lost the
   "which targets are bind-shaped" must not silently depend on which targets a different rule
   happens to admit today.
 * ⚑ **The terminal-tail term** (`is_terminal_category_key`), added with the P4′ terminalization
-  (R-5/R-10), now carries the whole weight: the BARE `<scope>.bindings.{ro,rw}` arm and, since
-  2026-08-08c, the bare `<scope>.{caches,seeded,common,synced}`. Those are the ONLY bind-shaped
+  (R-5/R-10), carries the whole weight: the BARE `<scope>.bindings.{ro,rw}` arm and the bare
+  `<scope>.{caches,seeded,common,synced}`. Those are the ONLY bind-shaped
   targets a pref can name — none of the per-name terms match them (they all require a trailing
   `.<name>`), so without this a scalar at `pref.agent.claude.common` would be WRITTEN and the
   launch would refuse it later. `masks` has had this guard all along (`MASK_KEY_RE` matches the
@@ -201,11 +200,11 @@ A user refused a CLI spelling needs the spelling that DOES work; printing the do
 just typed would only repeat what failed.
 
 ⚑ **THE LEAF LINE DEPENDS ON THE CATEGORY**, and getting it wrong hands the user a shape that
-will be refused again. EVERY bind-shaped category is a TERMINAL DEST-KEYED key now (`masks`,
-`bindings.{ro,rw}` — R-5/R-10; `caches` / `seeded` / `common` / `synced` — 2026-08-08c), so the
-leaf is always a MAP: the key ends AT the category and the destinations live inside its value.
-The NAME-KEYED pair form `[<host_src>, <box_dest>]` this used to print for the four is GONE —
-printing it would hand the user a shape the reader now refuses by name.
+will be refused again. EVERY bind-shaped category is a TERMINAL DEST-KEYED key (`masks`,
+`bindings.{ro,rw}`, `caches` / `seeded` / `common` / `synced`), so the leaf is always a MAP: the
+key ends AT the category and the destinations live inside its value. It never prints the
+NAME-KEYED pair form `[<host_src>, <box_dest>]`: that would hand the user a shape the reader refuses
+by name.
 
 ⚑ The test is the WHOLE-KEY predicate (QC): *target* is a canonical scope-rooted key, and a
 scalar leaf that merely ends in a category token must not be handed a dest-keyed skeleton.
@@ -303,7 +302,7 @@ NOT re-implemented), then:
   every scope's settings FILE plus the resolved `system.*` floor; the runtime-gathered default
   binds (core/kani/channel/target tables, launch-only floor) are NOT in it.
 
-### FULL CASCADE at set-time (Jei ruling 2026-06-29 — (b))
+### FULL CASCADE at set-time (ruling (b))
 
 The visible keyspace is the SAME resolved cascade the launch would see (spec §2a "layer the
 target's settings in precedence order"): every scope's settings file (*system_path* /
@@ -337,22 +336,15 @@ the launch floor uses, so an `@meta.agent.<a>.path/…` value in the edited key 
 time exactly as it would at launch. With no agent in play the key stays absent, so such a source
 is correctly a DANGLING ref rather than a silently-empty one.
 
-⚑ **THE SECOND ANCHOR IS GONE (DS-BL1 = (a)).** It read the agent out of the EDITED KEY
-(`_agent_scope_node`) because an agent-scope CATEGORY set arrived here with no *agent_name*
-threaded, and the bare-relative refusal's rooted-form hint had to resolve. No bind-shaped
-category reaches a set any more — all six are refused by name in the verb preamble — so every key
-that reaches this function is a SCALAR, for which that predicate answered `""` anyway.
+⚑ **There is ONE anchor.** No bind-shaped category reaches a set — all six are refused by name in
+the verb preamble — so every key that reaches this function is a SCALAR, and no anchor needs the
+agent read out of the edited key.
 
-### The set-time floor-registry fold that is gone
+### No set-time floor-registry fold
 
-⚑ **THERE IS NO SET-TIME FLOOR-REGISTRY FOLD HERE ANY MORE, and its absence is deliberate.** A
-`default_categories` registry (the CORE box mounts, and before them the per-node descriptor
-binds) used to be folded into *floor* so a source-only repoint of a LAUNCH-ONLY bind would pass
-the F10 must-exist-in-the-cascade gate. R-9 retired BOTH bind CLI write routes, which left the
-fold unable to change any outcome: no `bindings.*` key of any scope reaches this function, and
-the categories that still do (`caches`/`seeded`/`common`/`synced`) were never in that registry.
-The whole thread — the parameter on five functions, both producers, and the three handler call
-sites — was removed together rather than left inert.
+⚑ **THERE IS NO SET-TIME FLOOR-REGISTRY FOLD HERE, and its absence is deliberate.** A
+`default_categories` registry folded into *floor* would serve only a source-only repoint of a
+LAUNCH-ONLY bind, and no `bindings.*` key of any scope reaches this function (R-9).
 
 ⚑ Do NOT restore it to "fix" a refused bind repoint: that surface is a KNOWN, ACCEPTED LOSS of
 R-9 (boarded as DS-BL1), and the cure the refusal prescribes is hand-editing the settings file.
@@ -360,37 +352,23 @@ The LAUNCH-time floor fold in `settings_launch.build_launch_snapshot` is a DIFFE
 mechanism and is untouched by this.
 
 
-```_clone_keystore(store: Any) -> Any```
-Deep-clone a `KeyStore` — nested nodes rebuilt, immutable leaves shared (S19).
+### The candidate edit — `keystore.clone_store` and `KeyStore.insert_segments`
 
-Leaves are shared because they are immutable `Bind`s / scalars. Used so the candidate-edit +
-lenient expand never mutate the shared base merged snapshot. Unbound `dict` ops (S3).
+The set-time probe copies the base merged snapshot with `keystore.clone_store` — every node rebuilt
+and every LIST copied, other leaves shared — so the candidate edit and the lenient expand never
+mutate the shared snapshot, and places the edit with `KeyStore.insert_segments`.
 
+### No category repoint
 
-```_set_leaf(store: Any, parts: list, value: object) -> None```
-Set *value* at the *parts* path in *store*, creating nested `KeyStore` nodes as needed.
-
-Unbound `dict` ops (S3). Used to apply the candidate edit into the cloned snapshot before the E3
-lenient-expand check.
-
-
-### `_set_category_value` — GONE, and what went with it
-
-⚑ `_set_category_value` IS GONE (DS-BL1 = (a), Jei 2026-08-07g — *"accept the loss uniformly"*).
-It was the glue for the source-only RAW category repoint (S24/S25): validate the raw value, then
-swap element 0 of the existing tuple in the command-scope file. Every bind-shaped category is now
-YAML-only, so the set and reset branches it served are gone and the write verbs refuse all six BY
-NAME in their preamble (spec §0 — refuse loudly, never degrade to "unknown key").
-
-⚑ Its callee `settings_configset.repoint_host_src` was thereby left with no live caller and is
-now DELETED TOO (QA′, 2026-08-08), along with R-8's three-element stale-shape refusal and
-`validate_config_set`'s `is_category` arm. Do not reach for either name: see the banner on
-`settings_configset`'s module docstring for what went and what a rebuild would owe.
+⚑ Every bind-shaped category is YAML-only (DS-BL1 = (a), *"accept the loss uniformly"*): there is
+no source-only RAW category repoint, and the write verbs refuse all six BY NAME in their preamble
+(spec §0 — refuse loudly, never degrade to "unknown key"). See the banner on
+`settings_configset`'s module docstring for what a rebuild would owe.
 
 
 ## The verbs
 
-```get_config_value(key, *, global_config_path, project_toml=None, env_global=None, env_project=None, system_settings_path=None, agents_root=None, command_scope=None, active_agent=None) -> str | None```
+```get_config_value(key, *, global_config_path, project_toml=None, env_global=None, env_project=None, system_settings_path=None, agents_root=None, command_scope=None, active_agent=None, cascade_system_path=None, cascade_workset_path=None, node_store=True, std=None, proj=None, ws=None) -> str | None```
 Read one config value STORED AT THIS NOUN, or `None` when it is not set there.
 
 *active_agent* is the box's resolved agent NODE, needed ONLY to redirect a BARE agent behavior
@@ -462,12 +440,12 @@ The order below is the order in the source, and several steps of it are load-bea
   `kanibako.cfg` CONFIG file.
 * **`box.agent.<key>`** — RETIRED (P7, spec §2b): there is no settable box-scoped agent mirror
   any more, so there is no stored value to read. Returning `None` (rather than reading a
-  hand-written legacy leaf) is deliberate: reading it would report a value that no longer has ANY
+  hand-written legacy leaf) is deliberate: reading it would report a value that has no
   effect on the launch, which is worse than "(not set)". The set/reset verbs refuse with the
   cure; the effective value is readable at `meta.box.agent.<key>` via `--effective`.
 * **Category keys, ALL READ-ONLY** — the DECLARED terminal keys (`<scope>.masks`,
   `<scope>.bindings.{ro,rw}`, `<scope>.{caches,seeded,common,synced}`, each holding a whole
-  dest-keyed MAP since 2026-08-08c) plus the RETIRED per-name spellings, still claimed so their
+  dest-keyed MAP) plus the RETIRED per-name spellings, still claimed so their
   read lands somewhere explicable. ⚑ Checked BEFORE the `system.*` file-only branch because a
   SYSTEM-scope category key (`system.caches`) only LOOKS like a `system.*` config key —
   categories are gettable at every scope. See below for the missing write twin.
@@ -492,14 +470,13 @@ The order below is the order in the source, and several steps of it are load-bea
 
 ⚑⚑ **THERE IS NO WRITE TWIN LEFT TO BE SYMMETRIC WITH, and that is the whole shape of this branch
 now.** DS-BL1 = (a) retired the CLI write route for every bind-shaped category at every scope
-(R-9 took the `bindings` arms first), so the set/reset branches this used to mirror are GONE and
-the verbs refuse those keys BY NAME in their preamble. The READ SURVIVES ON PURPOSE — see "The
+so there are no set/reset branches for this to mirror, and the verbs refuse those keys BY NAME in
+their preamble. The READ SURVIVES ON PURPOSE — see "The
 retired routes" above.
 
 ⚑ The old get/set-symmetry note here (a SYSTEM-scope set once wrote the `kanibako.cfg`
 CONFIG file this branch never read; an AGENT-scope category set was a SILENT NO-OP WRITE into a
-file in no cascade level) is RETIRED WITH THE WRITES, not fixed — there is no longer a write to
-disagree with.
+file in no cascade level) does not arise: there is no write to disagree with.
 
 ⚑ The agent-scope read still routes through `_read_dest` (the `self:` table of
 `agents/<node>/agent.yaml` is what the agent tier actually reads, and re-pointing this read at
@@ -510,7 +487,7 @@ site the write side uses is what makes `_read_dest`'s one documented divergence 
 docstring nothing exercised.
 
 
-```set_config_value(key, value, *, config_path, env_path=None, system_settings_path=None, cascade_system_path=None, cascade_agent_path=None, cascade_workset_path=None, cascade_box_path=None, cascade_agent_name="", command_scope=None, agents_root=None, std=None, proj=None, ws=None, target_error=None) -> str```
+```set_config_value(key, value, *, config_path, env_path=None, system_settings_path=None, cascade_system_path=None, cascade_agent_path=None, cascade_workset_path=None, cascade_box_path=None, cascade_agent_name="", command_scope=None, agents_root=None, std=None, proj=None, ws=None, target_error=None, force=False, node_store=True) -> str```
 Write a config value to the appropriate store; returns a message or an error, NEVER raises.
 
 *config_path* is the `box.yaml`/`workset.yaml` (for box/workset) or `kanibako.cfg` (for system).
@@ -520,7 +497,7 @@ of the `kanibako.cfg` CONFIG file. When `None` (box/workset) writes go to `confi
 as before. Returns a human-readable confirmation message.
 
 The `cascade_*` kwargs supply the FULL launch cascade (every scope's settings file + the active
-agent name) for the set-time E3 resolution probe (Jei (b), 2026-06-29): the three set handlers
+agent name) for the set-time E3 resolution probe (ruling (b)): the three set handlers
 (`box/_parser.py` / `workset_cmd.py` / `system_cmd.py`) already hold this context and thread it
 here so a cross-scope `@`-ref resolves at set-time exactly as it would at launch. They are
 additive; absent, the command-scope file is still placed in its true slot. (The older wording
@@ -733,13 +710,11 @@ pre-existing defect still allows the set and `config set` stays usable to REPAIR
 * **STRUCTURAL `system.*` path-tier keys (the `SYSTEM_PATH_DEFAULTS` family) — NO BRANCH OF
   THEIR OWN, deliberately.** They are Layer-2 SETTINGS keys (spec §2g, every one `set: cli+file`)
   and route through `_KEY_ROUTES` to the system settings file (`@config.settings`) like any other
-  setting (see `config_keys.is_config_file_only_key`). ⚑ A FILE-ONLY refusal stood here until
-  2026-08-23 and named the Layer-1 file as the cure; that file carries `config.*` alone.
-  Do not restore it without a spec edit.
+  setting (see `config_keys.is_config_file_only_key`). ⚑ There is no FILE-ONLY refusal naming the
+  Layer-1 file as the cure; that file carries `config.*` alone. Do not add one without a spec edit.
 * **Regular config keys** — routed via the single known-key table (the H1 fix: an unknown key
   returns an error string and NEVER raises). ⚑ The canonical dotted spelling and ONLY it — the flat
-  underscore form used to be normalized in here and is now refused by name (see the deleted
-  `config_keys._route_key`); `_coerce_value` is the H2 fix (real `bool` etc.) and only returns
+  underscore form is refused by name; `_coerce_value` is the H2 fix (real `bool` etc.) and only returns
   a `str` for a typed key when coercion failed. The confirmation echoes the CANONICAL key, so a
   successful `set` cannot advertise a form `get` refuses. A scope-prefixed SETTINGS key (`{agent,workset,
   box}.*` — including a DOWNWARD write at a containing command scope, spec §0) lands in the
@@ -752,8 +727,8 @@ pre-existing defect still allows the set and `config set` stays usable to REPAIR
 
 ### The category SET branch that is gone
 
-⚑ **THERE IS NO CATEGORY SET BRANCH ANY MORE (DS-BL1 = (a), Jei 2026-08-07g — *"accept the loss
-uniformly"*), and its absence is DELIBERATE.** It ran the source-only RAW repoint (S24/S25, spec
+⚑ **THERE IS NO CATEGORY SET BRANCH (DS-BL1 = (a), *"accept the loss uniformly"*), and its absence
+is DELIBERATE.** It ran the source-only RAW repoint (S24/S25, spec
 §2a) for `caches` / `seeded` / `common` / `synced` at every scope: validate the raw
 value, then swap ONLY `host_src` in the existing tuple at the command-scope file. Every
 bind-shaped category is now YAML-only, so all six are REFUSED BY NAME in the preamble
@@ -775,9 +750,8 @@ on `config_dest._read_dest`.
 ⚑ There is also NO `agent.<node>.bindings.{ro,rw}.<name>` branch. It was a SOURCE-ONLY repoint of
 the descriptor delivery bind, routed to the category path against a detect-free descriptor floor;
 R-9 retired the route and it is refused BY NAME in the preamble. Its absence is deliberate, not
-an oversight to "restore" — and the ordering note that used to live there (checked before
-`_is_persona_agent_key` so a bind NAMED `model` is not captured as the persona state leaf) now
-belongs to the preamble refusal, which runs before every branch and so cannot be out-ordered.
+an oversight to "restore" — and the ordering concern (a bind NAMED `model` must not be captured as
+the persona state leaf by `_is_persona_agent_key`) belongs to the preamble refusal, which runs before every branch and so cannot be out-ordered.
 
 
 ```persist_creation_level(level, *, typed_agent, box_settings_path, workset_settings_path, std, proj) -> None```
@@ -804,7 +778,7 @@ and registered, so the refusal says the box exists with its other flags saved, n
 and the cure: per-run on the next launch, or set the owning `env` key; for a `secret_path` owner (a
 PATH key), change the file it points at, or remove it and set `box.env.VAR`.
 
-```reset_config_value(key, *, config_path, env_path=None, system_settings_path=None, command_scope=None, cascade_system_path=None, cascade_agent_path=None, cascade_workset_path=None, cascade_box_path=None, cascade_agent_name="", agents_root=None) -> str```
+```reset_config_value(key, *, config_path, env_path=None, system_settings_path=None, command_scope=None, cascade_system_path=None, cascade_agent_path=None, cascade_workset_path=None, cascade_box_path=None, cascade_agent_name="", agents_root=None, node_store=True) -> str```
 Remove an override for a single key; returns a confirmation or an error, NEVER raises.
 
 *system_settings_path*, when supplied (SYSTEM scope), is where SETTINGS (`system.agent` + agent
@@ -865,9 +839,9 @@ only resettable at the system scope, and a MALFORMED node ref named instead);
 `<scope>.env.<VAR>`; `agent.<node>.<key>` (`remove_nested_key` prunes now-empty `agent:`/`env:`
 tables, keeping the file sparse); the bare agent settings (`agent.default`, SYSTEM routing to the
 system settings file); `box.agent.<key>` — RETIRED (P7, spec §2b), refused with the cure rather
-than silently clearing a key that no longer does anything, and with the SAME named agent the set
+than silently clearing a key that does nothing, and with the SAME named agent the set
 path uses so the two verbs prescribe the identical spelling; STRUCTURAL `system.*` path-tier keys
-— no branch of their own since 2026-08-23: they are routed settings keys, removed from the system
+— no branch of their own: they are routed settings keys, removed from the system
 settings file like the regular keys below;
 and the regular keys, routed through the same known-key table as set/get (no
 get-validated/set-unguarded asymmetry). The regular arm is symmetric with `set_config_value` BY
@@ -918,7 +892,7 @@ surface, not to route around.
 
 
 ```_honest_reset_message(key, command_scope, effective=None) -> str```
-The HONEST `reset` confirmation (F7, Jei-ruled 2026-07-02d).
+The HONEST `reset` confirmation (F7).
 
 The behavior is right — clearing a scope override lets the value fall back through the cascade —
 but the OLD message lied: it printed "reverts to default: `<built-in>`" even when the fallback
@@ -979,12 +953,12 @@ best-effort forward bump of the same marker.
 
 ⚑ **The parameter is the SYSTEM SETTINGS file (`@config.settings`).** The function is
 path-agnostic — its whole body is `write_nested_key(system_settings_path, ("system",), leaf,
-value)` — and the marker's storage moved to `@config.settings` on 2026-08-26, so nothing
-programmatic writes a `system:` table into the Layer-1 config file any more. That file cannot carry
-settings at all (Jei), so a caller passing it here would be writing something no reader reads.
+value)` — and the marker lives in `@config.settings`, so nothing programmatic writes a `system:`
+table into the Layer-1 config file. That file cannot carry settings at all, so a caller passing it
+here would be writing something no reader reads.
 
-⚑ **IT DOES NOT "BYPASS A GUARD" (2026-08-23), and the older wording claimed a guard that is gone.**
-`config set system.setup_completed=…` writes the same table through `_KEY_ROUTES`. The two writers
+⚑ **IT BYPASSES NO GUARD.** `config set system.setup_completed=…` writes the same table through
+`_KEY_ROUTES`. The two writers
 agree on the address on purpose — that agreement is what makes the CLI verb non-inert.
 
 *leaf* is the bare key name under the `system:` table (NOT prefixed with `system.`). Writes preserve
@@ -1002,7 +976,7 @@ namespace + those it CONTAINS). ⚑ An UPWARD table (e.g. a hostile `system:` ha
 box file) is LEFT INTACT — a single reset of such a key is refused, so `--all` must not clear it
 either.
 
-The `pref:` table follows the same mirror (Q86 = (a), 2026-09-25): it is cleared, and counted
+The `pref:` table follows the same mirror (Q86 = (a)): it is cleared, and counted
 leaf by leaf (as `show` lists it, one per destination of a bind-shaped request; an undeclared entry
 under the table is removed and counted with it), IFF `_pref_level(command_scope)` names a level —
 workset or box, the site rule `reset pref.<key>` applies (spec §2h). At the system scope a `pref:` table is LEFT INTACT, as its
@@ -1015,7 +989,7 @@ When *command_scope* is `None` (no scope context) NOTHING is cleared here — th
 evaluated.
 
 
-```reset_all(*, config_path, env_path=None, force=False, system_settings_path=None, command_scope=None) -> str```
+```reset_all(*, config_path, env_path=None, force=False, system_settings_path=None, command_scope=None, agent_node=None) -> str```
 Remove all overrides at this config level. Confirms unless *force*.
 
 *system_settings_path*, when supplied (SYSTEM scope), is where the SETTINGS (the `agent` table +
@@ -1035,12 +1009,9 @@ reserved `default` tier included), and the nested SCOPE tables plus, at workset/
 table.
 
 ⚑ **COUNT ONLY WHAT WAS ACTUALLY REMOVED (Editor F2).** `unset_project_config_key` returns
-`False` when the flat key names no real top-level entry, so an unconditional `count += 1`
-over-reported: a file with only a `[system]` table said "Reset 1" while removing nothing, and
-SYSTEM-scope `--all` could never say "No overrides". ⚑ The other half of that defect is GONE at its
-source (2026-08-31): `load_project_overrides` used to report a phantom `config_paths` field for any
-file carrying a `[system]`/`[config]` table, because the flat object folded those in. It reads the
-DECLARED `box.*` spellings now and can report nothing else.
+`False` when the flat key names no real top-level entry, so an unconditional `count += 1` would
+over-report "Reset 1" for a file it removed nothing from. `load_project_overrides` reads the
+DECLARED `box.*` spellings and can report nothing else.
 
 ⚑ The nested SCOPE table pass exists because the flat `load_project_overrides` pass only reaches
 the `KanibakoConfig` dataclass fields, leaving nested scope tables (`<scope>.auth` /
@@ -1057,7 +1028,7 @@ leaf each.
 `box show` hides (the cascade drops it), so "Reset N" can exceed what `show` listed.
 
 
-```show_config(*, global_config_path, command_scope, config_path=None, env_global=None, env_project=None, effective=False, file=None, workset_path=None, agent_state=None, env_resolved=None, system_settings_path=None, category_snapshot=None, category_ctx=None, category_error=None, category_declared_by=None) -> int```
+```show_config(*, global_config_path, command_scope, config_path=None, env_global=None, env_project=None, effective=False, file=None, workset_path=None, agent_state=None, env_resolved=None, system_settings_path=None, category_snapshot=None, category_ctx=None, category_error=None, category_declared_by=None, category_dest_keys=None, category_convenience_sources=None, inputs=None, agent_name=None, agent_path=None) -> int```
 Display config values — overrides only, or the full resolved view. Returns an exit code.
 
 * *effective=False*: show only overrides at this level.
@@ -1078,22 +1049,21 @@ it across all five scopes is a read-surface job with its own owner, not a side e
 *system_settings_path*, when supplied, is the file the agent SETTINGS + `system.agent` are
 DISPLAYED from (`@config.settings` at SYSTEM); the `system.*` CONFIG
 display always uses `global_config_path`. ⚑ **Every noun that keeps its settings APART from its
-config file supplies it** — SYSTEM, and the WORKSET since 2026-09-19, which passes its own
+config file supplies it** — SYSTEM, and the WORKSET, which passes its own
 settings file here and the Layer-1 file as *config_path*. When `None` — the BOX, whose settings
 file IS its config file — the settings display reads *config_path*.
 
 ⚑⚑ **THE NOUN'S SETTINGS FILE IS READ AS THE CASCADE READS IT** (`_noun_stored_view`:
-`settings_assemble.cascade_view` at *command_scope*'s level): every block below that shows a table
-the cascade could drop takes that view, never the path. The box scalars read
-*config_path*, whose `box:` table the cascade never drops at the box. `cascade_view` is
-what the launch's own seams judge a file by,
-so a table the launch drops — an `agent:` table in a box's settings file, a `system:` table in a
-workset's file, a `pref:` table in the system settings file — gets no row here either. Read raw,
-the box case printed the table's leaves as overrides and a dotted entry in it as undeclared, under the
-launch's own warning that the table is ignored: one file, two readers, two answers. The view NAMES
-THE FILE (`cascade_view(..., path=path)`), so the dropped table is announced here as spec §0 requires
-(*"with a warning naming the file and key"*) — plain `workset show` and `system show` assemble
-nothing else and printed nothing for such a table before. The warning shares `assemble_levels`'s
+`read_settings_files(((scope, path),), purpose=ReadPurpose.DISPLAY)[0].view` at *command_scope*'s
+level): every block below that shows a table the cascade could drop takes that view, never the
+path. The box scalars read *config_path*, whose `box:` table the cascade never drops at the box.
+That view is what the launch's own seams judge a file by, so a table the launch drops — an `agent:`
+table in a box's settings file, a `system:` table in a workset's file, a `pref:` table in the
+system settings file — gets no row here either. Read raw, the box case would print the table's
+leaves as overrides and a dotted entry in it as undeclared, under the launch's own warning that the
+table is ignored: one file, two readers, two answers. The read NAMES THE FILE, so the dropped table
+is announced here as spec §0 requires (*"with a warning naming the file and key"*) — plain
+`workset show` and `system show` assemble nothing else. The warning shares `assemble_levels`'s
 once-per-`(file, key)` guard (`settings_assemble._warn_upward_drops`), so a verb that also assembles
 the file — every box verb, every `--effective` view — still names each dropped key once.
 
@@ -1112,26 +1082,15 @@ set wrote); the `pref`
 REQUESTS and the RESULT each produced (spec §2h read verbs); the path-delivery CATEGORIES and
 their materialized derivations (§0); and the env vars.
 
-The plain view prints the project overrides, the agent settings, that same noun's nested
-settings-tier overrides (they ARE overrides at this level), and the `pref` REQUESTS stored at this
-noun (spec §2h "config show lists prefs" — also overrides at this level).
-
-⚑ **Where that nested block cannot run — the BOX, whose settings file IS its config file — the
-ABSTRACT declarations are printed instead** (`_abstract_declarations`). Spec §0 obliges the plain
-view to list `common` / `caches` / `seeded` ("a user sets them in YAML …, `config show` lists
-them"), and every other reader in the branch is blind to them. Its rows render through the SAME
-bind-map renderer the SYSTEM block's flatten uses (`config_display._flatten_bind_map`), over only
-the noun's own category tables: the whole flatten here would print the box scalars and the `pref`
-requests a second time, the scalars under a second spelling. The narrowing is to the spec's clause, not to
-the file — a box's `bindings` / `masks` / `synced` / `env` / `secret_path` stay unlisted in this
-view, no clause obliging them and [R149] reading the other way for the last.
-
-⚑ **The selection reads the STORED STRUCTURE, never a rendered row**: a declaration is a dict
-stored at `<scope>.<category>` for each category in `ABSTRACT_CATEGORIES`, and only that dict is
-rendered. Parsing the row label (`box.caches[/home/agent/.cache/uv]`) for its `[` would take an
-undeclared stored key that merely holds one (`box: {"caches[/foo]": …}`) for a declaration and
-print it twice; it is listed once, in the undeclared block. An undeclared table named after a
-category (`box.bogus.common.x`) is not at `<scope>.<category>` and never counts.
+The plain view prints `_shown_entries` — the one carrier `reset --all` also counts — and lists
+undeclared and misplaced entries in their own blocks. Its override rows are: the project overrides
+(the box scalars, at a noun whose settings file IS its config file), the `agent.default` settings,
+every persona node's entries, and ONE flatten of the noun's nested settings tables at every noun
+(`config_display._nested_settings_overrides`) — the `pref` REQUESTS (spec §2h "config show lists prefs") and the
+category declarations included, so the plain view lists `common` / `caches` / `seeded` as spec §0
+obliges ("a user sets them in YAML …, `config show` lists them"). At the box noun the box scalars
+are left out of the flatten, being rows already. Every entry is either a row or a named removal,
+never both: an undeclared or misplaced entry is subtracted from the rows.
 
 ⚑ **It is narrowed by SCOPE as well as by category.** The flatten walks every top-level table the
 doc carries, `pref:` and hand-written junk included, and only the noun's own declarations are its
@@ -1146,7 +1105,7 @@ fabricated. It exists because `box get` / `workset get` now REFUSE such a name (
 cure is a hand edit — a cure nobody can follow for a line they cannot see. That nested block
 SUBTRACTS this set before printing: that flatten has no key semantics, so without the subtraction
 one line would appear twice, once called an override and once called junk. The `pref` block
-subtracts it too (2026-09-25): a request whose target is off the §2h allowlist is no key (spec §0,
+subtracts it too: a request whose target is off the §2h allowlist is no key (spec §0,
 `settings_keyspace.PREF_ALLOWLIST`), so a hand-written `pref.box.image` is listed once, as junk.
 The undeclared set is keyed by SEGMENTS; a dotted entry name is printed as the launch's refusal
 prints it (`settings_keyspace.render_store_path`: `box | env.X`), anything else joined. Only the
@@ -1168,9 +1127,9 @@ matching the two would need this display to re-derive a key's spelling.
 
 ### The env rows, and the two `.env` absences
 
-⚑ *env_global* / *env_project* are VESTIGIAL and are NOT displayed. This display used to harvest
-`env.<K>` rows from the docker `.env` files whenever *env_resolved* was absent, which after the
-RQ-1 retirement would render as EFFECTIVE config values that never reach the box — the false
+⚑ *env_global* / *env_project* are VESTIGIAL and are NOT displayed. Harvesting `env.<K>` rows from
+the docker `.env` files whenever *env_resolved* is absent would, after the RQ-1 retirement, render
+EFFECTIVE config values that never reach the box — the false
 surface this project refuses. Env rows now come from *env_resolved* alone (the BOX view, composed
 by `commands.start._build_config_env` from exactly what the launch applies), so a row shown here
 is a value the box gets. A scope with no box view shows no env block rather than a fabricated one.
@@ -1180,8 +1139,7 @@ REFUSED spelling (R-39) — a reader who copied it into `config set` would be to
 These rows are not a key at all: they are the MERGE the box receives, whose parts live at
 `<scope>.env.<VAR>` across several scopes, so no single key names a row. The space says so.
 
-⚑ The plain view has NO docker `.env` block either. It used to list the level's `.env` file as
-`env.<K>` overrides; those files are RETIRED (R-39/RQ-1) — not written by any verb, not read at
+⚑ The plain view has NO docker `.env` block either: the level's `.env` files are RETIRED (R-39/RQ-1) — not written by any verb, not read at
 launch — so the rows would name a refused spelling AND assert an override that has no effect. A
 stored `<scope>.env.<VAR>` is a nested SETTINGS entry and shows through
 `_nested_settings_overrides`, under its real key.
