@@ -13,5 +13,6 @@ def run_restore(args: argparse.Namespace) -> int
 def run_prune(args: argparse.Namespace) -> int
 def _add_vault_subcommands(p: argparse.ArgumentParser) -> None
 def _resolve_vault_rw(project_dir: str | None, usage: str)
+def _link_refused(exc: SymlinkRefusedError) -> int
 def _human_size(nbytes: int) -> str
 ```

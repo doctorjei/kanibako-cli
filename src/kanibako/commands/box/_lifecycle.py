@@ -3271,42 +3271,65 @@ def _unmoved_snapshots(old: ProjectState, new: ProjectState) -> list[str]:
             "'kanibako box vault list' will not show them"]
 
 
-def _stranded_snapshot_store(old: ProjectState, new: ProjectState) -> Path | None:
-    """The store step 4c would carry, still under *old*'s name, or ``None``.
+def _stranded_snapshot_store(old: ProjectState, new: ProjectState) -> tuple[Path, Path] | None:
+    """The store step 4c would carry, still under *old*'s name, with the vault root it
+    sits under; or ``None``.
 
     The pick is ``relocate_snapshot_store``'s: in a standalone landing the copy the
-    tree copy brought into the new base, else *old*'s own store.
+    tree copy brought into the new base, else *old*'s own store; a store that is
+    itself a symlink is never picked.
     """
     from kanibako.snapshots import box_snapshot_store
 
     store = _old_snapshot_store(old, new)
     if store is None:
         return None
+    assert old.vault_rw is not None and new.vault_rw is not None  # a store came back
     if new.mode is BoxMode.standalone and old.name != new.name:
-        assert new.vault_rw is not None  # _old_snapshot_store returned a store
         copied = box_snapshot_store(new.vault_rw, old.name)
         if copied.is_dir() and not copied.is_symlink():
-            return copied
-    return store if store.is_dir() else None
+            return copied, new.vault_rw.parent
+    if store.is_dir() and not store.is_symlink():
+        return store, old.vault_rw.parent
+    return None
 
 
 def _snapshot_cure(old: ProjectState, new: ProjectState) -> str | None:
     """The Note naming the one command that carries a stranded store by hand.
 
-    ⚑ An existing store is never merged over: only entries it lacks move in.
+    ⚑ An existing store is never merged over: only entries it lacks move in, and the
+    Note names the ones left behind.  A symlink at either store or base gets no
+    command, which would follow it; the Note names the link instead.
     """
+    import os
+
+    from kanibako import boxfs
     from kanibako.snapshots import box_snapshot_store
 
-    src = _stranded_snapshot_store(old, new)
-    if src is None or new.vault_rw is None:
+    picked = _stranded_snapshot_store(old, new)
+    if picked is None or new.vault_rw is None:
         return None
-    dst = box_snapshot_store(new.vault_rw, new.name)
-    if dst.exists() or dst.is_symlink():
-        cmd = f"mv -n -- {shlex.quote(str(src))}/* {shlex.quote(str(dst))}/"
-    else:
+    src, src_root = picked
+    dst, dst_root = box_snapshot_store(new.vault_rw, new.name), new.vault_rw.parent
+    link = boxfs.first_symlink(src, src_root) or boxfs.first_symlink(dst, dst_root)
+    if link is not None:
+        return (f"Note: '{new.name}'s snapshots are still at {src}. No command is "
+                f"printed to move them into {dst}: {link} is a symlink, which it would "
+                f"follow. Replace the link with a directory, then move them by hand.")
+    if not os.path.lexists(dst):
         cmd = (f"mkdir -p -- {shlex.quote(str(dst.parent))} && "
                f"{shlex.join(['mv', '--', str(src), str(dst)])}")
-    return f"Note: to give '{new.name}' those snapshots back, run: {cmd}"
+        return f"Note: to give '{new.name}' those snapshots back, run: {cmd}"
+    cmd = f"mv -n -- {shlex.quote(str(src))}/* {shlex.quote(str(dst))}/"
+    note = f"Note: to give '{new.name}' those snapshots back, run: {cmd}"
+    try:
+        taken = sorted(set(boxfs.listdir(src, src_root)) & set(boxfs.listdir(dst, dst_root)))
+    except OSError:
+        taken = []
+    if taken:
+        note += (f"\n  It leaves {', '.join(taken)} in {src}: {dst} already has "
+                 f"snapshots of those names. Rename them there and run it again.")
+    return note
 
 
 def _retire_old_store(

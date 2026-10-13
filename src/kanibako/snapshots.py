@@ -157,12 +157,24 @@ def _is_migrated(versions: Path) -> bool:
     return (versions / LAYOUT_MARKER_NAME).exists()
 
 
-def _write_layout_marker(versions: Path) -> None:
-    """Declare *versions* a per-box base, so legacy detection never runs on it."""
-    versions.mkdir(parents=True, exist_ok=True)
+def _refuse_link(path: Path, root: Path) -> None:
+    """Raise :class:`boxfs.SymlinkRefusedError` naming the link when *path*, or a parent
+    of it below *root*, is a symlink (a looped one included).  Called before a write."""
+    link = boxfs.first_symlink(path, root)
+    if link is not None:
+        raise boxfs.SymlinkRefusedError(path, link)
+
+
+def _write_layout_marker(versions: Path, root: Path) -> None:
+    """Declare *versions* (under *root*) a per-box base, so legacy detection never
+    runs on it.  Through :mod:`kanibako.boxfs`: a link is refused, never written through."""
+    root.mkdir(parents=True, exist_ok=True)  # the caller's own dir, as before
+    boxfs.mkdir(versions, root, parents=True, exist_ok=True)
     marker = versions / LAYOUT_MARKER_NAME
-    if not marker.exists():
-        marker.write_text(LAYOUT_MARKER_VALUE)
+    try:
+        boxfs.stat(marker, root)
+    except FileNotFoundError:
+        boxfs.write_text(marker, root, LAYOUT_MARKER_VALUE, mode=0o644)
 
 
 def _unique_snapshot_dest(
@@ -204,12 +216,17 @@ def _migrate_flat_and_mark(
     *create_base* (a writer); a reader must never create one.
     """
     versions = _versions_dir(vault_rw_path)
+    root = vault_rw_path.parent
     moved: dict[str, list[str]] = {"attributed": [], "unsorted": []}
     if _is_migrated(versions):
         return moved
-    if not versions.is_dir():
-        if create_base:
-            _write_layout_marker(versions)
+    exists = versions.is_dir()
+    if not exists and not create_base:
+        return moved
+    # ⚑ Before any write: a linked (or looped) base is refused, never written through.
+    _refuse_link(versions, root)
+    if not exists:
+        _write_layout_marker(versions, root)
         return moved
     legacy = [
         entry for entry in versions.iterdir()
@@ -219,19 +236,19 @@ def _migrate_flat_and_mark(
     if legacy:
         target = _box_store(vault_rw_path, box_name) if store_exclusive \
             else versions / UNSORTED_DIRNAME
-        target.mkdir(parents=True, exist_ok=True)
+        boxfs.mkdir(target, root, parents=True, exist_ok=True)
         bucket = "attributed" if store_exclusive else "unsorted"
         for entry in sorted(legacy, key=lambda p: p.name):
             dest = _unique_snapshot_dest(
                 target, entry.name, box_name if store_exclusive else None
             )
-            _move_tree(entry, dest, vault_rw_path.parent)
+            _move_tree(entry, dest, root)
             moved[bucket].append(entry.name)
             logger.info(
                 "Migrated legacy vault snapshot %s to %s.", entry.name,
                 dest.relative_to(versions)
             )
-    _write_layout_marker(versions)
+    _write_layout_marker(versions, root)
     return moved
 
 
@@ -501,7 +518,7 @@ def _unique_snapshot_name(store: Path, ts: str) -> str:
 
 
 def create_snapshot(
-    vault_rw_path: Path, *, box_name: str, strategy: str = "hardlink",
+    vault_rw_path: Path, *, box_name: str, strategy: str | None = "hardlink",
     store_exclusive: bool = False, held: Mapping[str, str] | None = None,
 ) -> Path | None:
     """Create a directory snapshot of *vault_rw_path* in *box_name*'s own store.
@@ -509,6 +526,10 @@ def create_snapshot(
     ⚑ Every write migrates the base first, so a base this code writes into is a
     per-box base before the first snapshot lands in it.  Leaving the marker to a
     later reader would let a timestamp-named box made in between be swept.
+
+    *strategy* ``None`` detects one (:func:`detect_snapshot_strategy`) once the store
+    has been checked.  A symlink at the store or the base raises
+    :class:`boxfs.SymlinkRefusedError` before anything is written.
 
     Returns the path to the snapshot directory, or ``None`` if the directory
     is empty (nothing to snapshot).
@@ -521,13 +542,18 @@ def create_snapshot(
     if not contents:
         return None
 
+    store = _box_store(vault_rw_path, box_name)
+    root = vault_rw_path.parent
+    # ⚑ Before any write: the copy below lands in *store*, so a link at it or at the
+    # base is refused here rather than copied through.
+    _refuse_link(store, root)
     migrate_legacy_versions(
         vault_rw_path, box_name=box_name, store_exclusive=store_exclusive,
         create_base=True, held=held,
     )
-
-    store = _box_store(vault_rw_path, box_name)
-    store.mkdir(parents=True, exist_ok=True)
+    boxfs.mkdir(store, root, parents=True, exist_ok=True)
+    if strategy is None:
+        strategy = detect_snapshot_strategy(vault_rw_path)
 
     ts = _unique_snapshot_name(store, utc_stamp("compact"))
 
@@ -633,8 +659,10 @@ def adopt_standalone_store(
         logger.warning("Note: snapshot store %s is the store of the box registered at %s; "
                        "it is not adopted as %s.", candidates[0], (held or {})[holder], box_name)
         return None
-    store.parent.mkdir(parents=True, exist_ok=True)
-    _move_tree(candidates[0], store, vault_rw_path.parent)
+    root = vault_rw_path.parent
+    _refuse_link(store, root)  # ⚑ before any write
+    boxfs.mkdir(store.parent, root, parents=True, exist_ok=True)
+    _move_tree(candidates[0], store, root)
     # AFTER the move: run first, the helper would create this store and the
     # adopted one would land inside it.
     _migrate_flat_and_mark(
@@ -677,6 +705,9 @@ def relocate_snapshot_store(
     if carried is None:
         return None
 
+    # ⚑ Before any write: a link on either side is refused, never moved through.
+    _refuse_link(carried, carried_root)
+    _refuse_link(new_store, new_root)
     _migrate_flat_and_mark(
         new_vault_rw, box_name=new_box, store_exclusive=new_base_exclusive,
         create_base=True,
@@ -686,7 +717,7 @@ def relocate_snapshot_store(
         return new_store
 
     # Destination store already exists: merge, never clobber.
-    new_store.mkdir(parents=True, exist_ok=True)
+    boxfs.mkdir(new_store, new_root, parents=True, exist_ok=True)
     for name in sorted(boxfs.listdir(carried, carried_root)):
         dest = _unique_snapshot_dest(new_store, name, old_box)
         _move_tree(carried / name, dest, carried_root, dst_root=new_root)
@@ -920,7 +951,7 @@ def auto_snapshot(
     vault_rw_path: Path,
     *,
     box_name: str,
-    strategy: str = "hardlink",
+    strategy: str | None = "hardlink",
     max_keep: int = _DEFAULT_MAX_SNAPSHOTS,
     store_exclusive: bool = False,
     held: Mapping[str, str] | None = None,

@@ -6,6 +6,7 @@ import argparse
 import shlex
 import sys
 
+from kanibako.boxfs import SymlinkRefusedError
 from kanibako.errors import ProjectError
 from kanibako.settings.config import user_config_file, load_config
 from kanibako.settings.paths import (
@@ -153,7 +154,11 @@ def run_snapshot(args: argparse.Namespace) -> int:
         return 1
     vault_rw, box_name, exclusive, held, _ref = resolved
 
-    snap = create_snapshot(vault_rw, box_name=box_name, store_exclusive=exclusive, held=held)
+    try:
+        snap = create_snapshot(vault_rw, box_name=box_name, store_exclusive=exclusive,
+                               held=held)
+    except SymlinkRefusedError as e:
+        return _link_refused(e)
     if snap is None:
         print("Nothing to snapshot (share-rw is empty or missing).", file=sys.stderr)
         return 0
@@ -171,7 +176,11 @@ def run_list(args: argparse.Namespace) -> int:
 
     quiet = getattr(args, "quiet", False)
 
-    migrate_legacy_versions(vault_rw, box_name=box_name, store_exclusive=exclusive, held=held)
+    try:
+        migrate_legacy_versions(vault_rw, box_name=box_name, store_exclusive=exclusive,
+                                held=held)
+    except SymlinkRefusedError as e:
+        return _link_refused(e)
 
     snaps = list_snapshots(vault_rw, box_name=box_name)
     if not snaps:
@@ -203,7 +212,11 @@ def run_restore(args: argparse.Namespace) -> int:
     vault_rw, box_name, exclusive, held, box_ref = resolved
 
     # ⚑ Migrate first: ``known`` gates the prompt, and the move makes names visible.
-    migrate_legacy_versions(vault_rw, box_name=box_name, store_exclusive=exclusive, held=held)
+    try:
+        migrate_legacy_versions(vault_rw, box_name=box_name, store_exclusive=exclusive,
+                                held=held)
+    except SymlinkRefusedError as e:
+        return _link_refused(e)
 
     known = {
         name for name, _ts, _size in list_snapshots(vault_rw, box_name=box_name)
@@ -246,7 +259,11 @@ def run_prune(args: argparse.Namespace) -> int:
         return 1
     vault_rw, box_name, exclusive, held, _ref = resolved
 
-    migrate_legacy_versions(vault_rw, box_name=box_name, store_exclusive=exclusive, held=held)
+    try:
+        migrate_legacy_versions(vault_rw, box_name=box_name, store_exclusive=exclusive,
+                                held=held)
+    except SymlinkRefusedError as e:
+        return _link_refused(e)
 
     doomed = snapshots_to_prune(vault_rw, args.keep, box_name=box_name)
     if doomed and not confirm_or_abort(
@@ -263,6 +280,14 @@ def run_prune(args: argparse.Namespace) -> int:
     else:
         print("Nothing to prune.")
     return 0
+
+
+def _link_refused(exc: SymlinkRefusedError) -> int:
+    """Print the refusal of a snapshot store behind a symlink; rc 1."""
+    print(f"Error: {exc.link} is a symlink, and kanibako does not follow symlinks in a "
+          f"box. Nothing was changed; replace it with a directory and try again.",
+          file=sys.stderr)
+    return 1
 
 
 def _human_size(nbytes: int) -> str:
