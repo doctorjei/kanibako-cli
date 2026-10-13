@@ -542,12 +542,11 @@ class TestLayoutSingleSource:
             ("~/x", "~/x"),
             ("{$V}/x", "{$V}/x"),
             ("{k}/x", "{k}/x"),
-            # ⚑ THE TWO LEADING-ESCAPE CASES FALL ON OPPOSITE SIDES, and the rule
-            # has to read them the way the RESOLVER does (asserted directly in
-            # ``test_escapes_match_the_resolver`` below):
-            #   \/foo  unescapes to /foo  -> ABSOLUTE, left alone
+            # ⚑ A LEADING ESCAPE is read the way the RESOLVER reads it (asserted
+            # directly in ``test_escapes_match_the_resolver`` below):
             #   \~foo  unescapes to ~foo  -> a literal relative dir, rooted
-            ("\\/foo", "\\/foo"),
+            #   \/foo  is no escape       -> not absolute; the expansion refuses it
+            ("\\/foo", "{r}/\\/foo"),
             ("\\~foo", "{r}/\\~foo"),
             ("\\$V/x", "{r}/\\$V/x"),
             ("\\@k/x", "{r}/\\@k/x"),
@@ -560,8 +559,8 @@ class TestLayoutSingleSource:
     @pytest.mark.parametrize(
         ("src", "expanded"),
         [
-            (r"\/foo", "/foo"),      # escaped slash -> still ABSOLUTE
             (r"\~foo", "~foo"),      # escaped tilde -> a literal relative dir
+            (r"\\foo", "\\foo"),    # escaped backslash -> a literal relative dir
             (r"\$V/x", "$V/x"),
             (r"\@k/x", "@k/x"),
             ("/abs", "/abs"),

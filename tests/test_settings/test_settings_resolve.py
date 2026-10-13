@@ -474,11 +474,15 @@ def test_expand_brace_not_after_at_opens_a_braced_ref() -> None:
 
 
 def test_expand_escaped_at_brace_is_literal() -> None:
-    # The escape rule is unchanged and takes precedence — this is the way to
-    # write a literal ``@{`` in a value.
+    # ``\@`` escapes the ``@`` alone and ``{`` opens a reference (keyspec
+    # "References"), so a literal ``@{`` doubles its brace.
     assert (
-        expand_expr("\\@{a.b}", space="host", ctx=make_ctx(), lookup=no_lookup)
+        expand_expr("\\@{{a.b}}", space="host", ctx=make_ctx(), lookup=no_lookup)
         == "@{a.b}"
+    )
+    assert (
+        expand_expr("\\@{a.b}", space="host", ctx=make_ctx(), lookup=lambda r, c: "X")
+        == "@X"
     )
 
 
@@ -562,23 +566,21 @@ def test_match_var_name_and_end(expr: str, name: str, end: int) -> None:
 
 
 def test_match_var_is_the_one_parser_for_the_dollar_family() -> None:
-    """``_expand_var`` / ``_scan_var_span`` / ``scan_tokens`` share ONE parse.
+    """The tokenizer and ``scan_tokens`` share ``match_var``'s ONE parse.
 
-    They carried three copies of the same ten lines. Agreement on token
-    BOUNDARIES is what the ``defer_env`` deferral depends on (the span re-emitted
-    box-side must be exactly the span the host-side expander would have consumed),
-    so it is asserted structurally rather than left to three copies happening to
-    match — the same argument that made ``match_ref`` public.
+    Agreement on token BOUNDARIES is what the ``defer_env`` deferral depends on (the
+    span re-emitted box-side must be exactly the span the host-side expander would
+    have consumed), so it is asserted structurally rather than left to copies
+    happening to match — the same argument that made ``match_ref`` public.
     """
     from kanibako.settings.settings_configset import scan_tokens
-    from kanibako.settings.settings_resolve import _scan_var_span
+    from kanibako.settings.settings_resolve import iter_expr_tokens
 
     for expr in ("$AGENT", "${XDG_DATA_HOME}", "$XDG_DATA_HOME/x"):
         name, end = match_var(expr, 0)
-        span, span_end = _scan_var_span(expr, 0)
-        assert span_end == end  # identical boundary...
-        assert span == expr[:end]  # ...and the span IS that slice.
-        assert name in span
+        tok = next(iter_expr_tokens(expr))
+        assert (tok.kind, tok.start, tok.end) == ("var", 0, end)  # identical boundary...
+        assert tok.value == name
         assert scan_tokens(expr)[1] == [name]  # ...and the same name.
 
 

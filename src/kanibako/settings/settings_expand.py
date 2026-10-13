@@ -52,6 +52,7 @@ from kanibako.settings.settings_categories import BARE_RELATIVE_SOURCE_HAZARD, _
 from kanibako.settings.settings_keyspace import KeyClass, entry_label
 from kanibako.settings.settings_keyspace_probe import keyspace_verdict
 from kanibako.settings.settings_resolve import (
+    ExprSyntaxError,
     ResolveCtx,
     SettingsError,
     deferred_literal_expr,
@@ -398,12 +399,17 @@ class _Expander:
                         self.errors[".".join(child_path)] = reason
                         continue
                 else:
-                    out_key = self._expand_dest_key(
-                        key, value, chain=child_path, seed=seed_map,
-                    )
-                    if out_key is None:
-                        continue  # a seeded layer with a <None> dest is SKIPPED (§2a).
-                    resolved = self._expand_leaf(value, path=child_path)
+                    try:
+                        out_key = self._expand_dest_key(
+                            key, value, chain=child_path, seed=seed_map,
+                        )
+                        if out_key is None:
+                            continue  # a seeded layer with a <None> dest is SKIPPED (§2a).
+                        resolved = self._expand_leaf(value, path=child_path)
+                    except ExprSyntaxError as exc:
+                        # A grammar refusal names its entry (keyspec "References");
+                        # LENIENT keys its record by the same path instead.
+                        raise exc.naming(_leaf_label(child_path)) from None
             finally:
                 read = self._reading.pop()
                 self._leaf_labels.pop()

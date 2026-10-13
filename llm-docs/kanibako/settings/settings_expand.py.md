@@ -32,7 +32,7 @@ What this module adds are the three things the single-expression engine lacks (b
 1. **Snapshot-backed TRANSITIVE lookup.** The `lookup` callback resolves a ref by reading the
    snapshot at that dotted path AND fully expanding THAT value first (recursing), so chains collapse
    to terminals regardless of dict order — `A=@B`, `B=@C`, `C=term` collapses to `term`. It reuses
-   `_expand_ref`'s `chain`-based cycle guard. Results are MEMOIZED, so the pass is a fixpoint, not
+   `expand_expr`'s `chain`-based cycle guard (`settings_resolve.guard_ref`). Results are MEMOIZED, so the pass is a fixpoint, not
    re-resolution per reference.
 2. **Whole-value `@`-ref 3-state propagation (spec §0 "References").** A value that IS exactly one `@x`
    (decided by PARSE — S18, never guessed) inherits the referent's 3-state through every link:
@@ -161,7 +161,7 @@ the chain in the message. It is KEPT DISTINCT from a legitimately absent or pres
 that is absence propagation (spec §0), NOT an error.
 
 The guard lives in `_resolve_ref`. The `chain` argument is the in-progress ref trail, ending in the
-path being resolved: the caller (`expand_expr`'s `_expand_ref`, or `_expand_str`) has already checked
+path being resolved: the caller (`expand_expr`'s `_lookup_ref`, or `_expand_str`) has already checked
 and appended it, mirroring `expand_expr`'s own contract. A PRIOR occurrence of the path in the chain
 means we re-entered a ref that is still in progress → a cycle, raised with the full trail. The depth
 cap `MAX_REF_DEPTH` bounds pathological non-cyclic chains.
@@ -200,6 +200,11 @@ or silently drop (a dangling `@`-ref → `_ABSENT`). `_Expander._expand_node` ca
 leaf and records the dotted path → *reason*. It NEVER escapes `expand` — it is a leaf-local control
 signal, not a user error — and it is never raised in strict mode. `_expand_node` also catches
 `SettingsError` in this branch, which is how the `{pref.*}` refusal below reaches the error map.
+
+STRICT mode names the entry the same way for a GRAMMAR refusal (`settings_resolve.ExprSyntaxError`:
+an unpaired brace, an empty or malformed reference, an illegal escape): `_expand_node` re-raises it
+as `'<leaf>': <reason>` via `ExprSyntaxError.naming`, once — a refusal already named by a deeper
+leaf passes through unchanged. Other strict refusals are raised as they were.
 
 There are two lenient consumers. Set-time `config set` validation (`config_interface`) implements
 the E3 rule: apply the candidate RAW value into the merged snapshot at the edited key,
@@ -350,7 +355,7 @@ different layer, its own message; only the hazard sentence is shared.
 `_expand_embedded` substitutes embedded tokens via `expand_expr`. An `@`-ref token resolves through
 `_lookup_str` (absent/None → `""`); `~` / `$VAR` expand host-side for `space="host"` and are left RAW
 (`defer_env=True`) for `space="defer"` (S17). A cycle reached through an embedded token still raises
-(B7 — the chain guard is in `expand_expr`'s `_expand_ref` AND in `_resolve_ref`).
+(B7 — the chain guard is in `expand_expr`'s `_lookup_ref` AND in `_resolve_ref`).
 
 It reuses the SINGLE `expand_expr` scanner for BOTH spaces, with no fork: the box-side deferral is
 the engine's additive `defer_env` flag.

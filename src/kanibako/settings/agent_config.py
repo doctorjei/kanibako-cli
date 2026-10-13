@@ -169,18 +169,15 @@ _SELF_RESOLVING_TOKENS: Final[tuple[str, ...]] = ("~", "$", "@")
 def is_self_resolving(src: str) -> bool:
     r"""Whether *src* resolves on its own — absolute, an unescaped ``~``/``$``/``@``, or a braced reference.
 
-    ⚑ NOT a plain first-char test.  Escapes are read the way the RESOLVER reads
-    them, and the two leading-escape cases fall on OPPOSITE sides: ``\/foo``
-    unescapes to an ABSOLUTE path, ``\~foo`` to a plain relative dir.  So ``/`` is
-    tested AFTER unescaping while the tokens count only UNESCAPED.  Both cases are
-    worked through in the llm-doc.
+    ⚑ NOT a plain first-char test: the tokens count only UNESCAPED, so ``\~foo`` is a
+    plain relative dir.  ``\/`` is no escape (keyspec "References"), so a value that
+    starts with it is refused where it is expanded, never read as absolute here.
     """
     if src[:1] in _SELF_RESOLVING_TOKENS:
         return True
     if src[:1] == "{" and match_braced(src, 0) is not None:
         return True
-    # A leading ``/``, escaped or not, is absolute once the resolver unescapes it.
-    return src[:1] == "/" or src[:2] == "\\/"
+    return src[:1] == "/"
 
 
 def is_unambiguous_path_value(value: str) -> bool:
@@ -199,8 +196,8 @@ def is_unambiguous_path_value(value: str) -> bool:
     ``{$TERM}/logs`` are exactly as relative as ``logs``.  ⚑ The test below is the
     ``XDG_`` PREFIX, not that list: a variable added to the dispatch is refused
     here the day it lands, and this sentence is examples, never an inventory.
-    ⚑ The leading-escape cases fall the same way they do there: ``\/foo`` unescapes
-    to an absolute path, ``\~foo`` to a plain relative dir.
+    ⚑ A leading escape falls the same way it does there: ``\~foo`` is a plain
+    relative dir.
     """
     if value[:1] in ("~", "@"):
         return True
@@ -216,7 +213,7 @@ def is_unambiguous_path_value(value: str) -> bool:
         except SettingsError:
             return False
         return name.startswith("XDG_")
-    return value[:1] == "/" or value[:2] == "\\/"
+    return value[:1] == "/"
 
 
 #: How the other reading is INTRODUCED when the anchor is the root the key's own

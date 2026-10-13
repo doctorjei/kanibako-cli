@@ -212,15 +212,11 @@ begins with a braced reference `{…}` (a key `{a.b}` or a variable `{$NAME}`, p
 `settings_resolve.match_braced`). Anything else is a BARE RELATIVE leaf: meaningful only under a
 root, and a DEFECT wherever no root exists.
 
-⚑ **Escapes are read the way the RESOLVER reads them, and the two leading-escape cases fall on
-OPPOSITE sides.** This is why the test cannot be a plain first-character check:
-
-* `\/foo` unescapes to `/foo`, which is ABSOLUTE, so it is self-resolving.
-* `\~foo` unescapes to the literal `~foo`, a plain relative dir that merely starts with a tilde, NOT
-  a home reference, so it is a bare relative leaf.
-
-So a leading `/` is tested AFTER unescaping, while the token prefixes count only when they are NOT
-escaped. That asymmetry is the whole content of the function.
+⚑ **Escapes are read the way the RESOLVER reads them.** This is why the test cannot be a plain
+first-character check: the token prefixes count only when they are NOT escaped, so `\~foo` (the
+literal `~foo`, a plain relative dir that merely starts with a tilde) is a bare relative leaf.
+`\/` is no escape (keyspec § 0 "References"), so `\/foo` is not absolute here and its expansion
+refuses it.
 
 ## Stored path values — [R147]'s predicate and its refusal
 
@@ -252,9 +248,9 @@ predicate rules on a BIND SOURCE, where a declaration may name any variable the 
 supplies. This one rules on a path a USER typed, and the keyspace's non-XDG variables (`{$AGENT}`,
 `{$WORKSET}`) expand to a bare NAME — so `{$AGENT}/logs` is exactly as relative as `logs`. A `$` is
 therefore PARSED (`settings_resolve.match_var`, or `match_braced` for `{$…}`) and the variable's own
-name tested for the `XDG_` prefix; a malformed `$…` or `{…}` answers False rather than raising. The
-leading-escape cases fall the way they do above: `\/foo` unescapes to an absolute path, `\~foo` to
-a plain relative dir.
+name tested for the `XDG_` prefix; a malformed `$…` or `{…}` answers False rather than raising. A
+leading escape falls the way it does above: `\~foo` is a plain relative dir, and `\/foo` is no
+absolute path.
 
 ### `ambiguous_path_value_error(key, value, ...)`
 

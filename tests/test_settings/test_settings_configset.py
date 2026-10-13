@@ -276,10 +276,10 @@ def test_both_token_families_report_in_the_resolvers_message_style() -> None:
 
 
 def test_escaped_at_brace_is_literal_not_a_ref() -> None:
-    # ``\@{`` is the escape hatch for a literal ``@{`` — not a token, so no
-    # dangling-ref error (matches expand_expr's escape rule).
+    # A literal ``@{`` is ``\@`` and a doubled brace — not a token, so no
+    # dangling-ref error (matches expand_expr's rule).
     # Anchored ABSOLUTE — see ``test_escaped_dollar_is_literal_not_a_var``.
-    v = _validate("box.bindings.rw.home", r"/abs/\@{nope}/x")
+    v = _validate("box.bindings.rw.home", r"/abs/\@{{nope}}/x")
     assert v is OK
 
 

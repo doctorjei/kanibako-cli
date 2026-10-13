@@ -1,8 +1,8 @@
 """The braced reference spelling ``{a.b.c}`` / ``{$NAME}``, read alongside the old one.
 
 Braced-refs plan step 0: the parser accepts both grammars while the tree converts;
-``{{`` / ``}}`` are literal braces; a ``{`` that opens no reference stays literal
-until step 5 refuses it.
+``{{`` / ``}}`` are literal braces; a brace that opens no reference is refused
+(step 5, B1a — ``test_strict_braces_escapes``).
 """
 
 from __future__ import annotations
@@ -65,11 +65,7 @@ def test_match_braced_answers_none_where_no_reference_starts(expr) -> None:
     ("{{ {a.b} }}", "{ AB }"),
     ("@a.b/{c}", "AB/C"),
     ("$TERM-{$TERM}", "xterm-xterm"),
-    ("{", "{"),
-    ("}", "}"),
-    ("{bad name}", "{bad name}"),
-    ("\\{a.b}", "{a.b}"),
-    ("\\@{a.b}", "@{a.b}"),
+    ("\\@{a.b}", "@AB"),
     ("\\@{{a.b}}", "@{a.b}"),
 ])
 def test_host_expansion_reads_both_grammars(expr, expected) -> None:
@@ -87,9 +83,7 @@ def test_a_braced_reference_keeps_the_cycle_guard() -> None:
 @pytest.mark.parametrize(("expr", "residue"), [
     ("{$XDG_DATA_HOME}/k", "{$XDG_DATA_HOME}/k"),
     ("{{x}}", "{{x}}"),
-    ("\\{x\\}", "{{x}}"),
     ("{a.b}/{{", "AB/{{"),
-    ("{", "{{"),
 ])
 def test_deferral_carries_braces_for_the_box_pass(expr, residue) -> None:
     out = expand_expr(expr, space="host", ctx=_ctx(), lookup=_lookup, defer_env=True)
@@ -107,15 +101,15 @@ def test_deferred_literal_expr_round_trips_through_the_box_pass(text) -> None:
     assert expand_expr(residue, space="guest", ctx=_ctx(), lookup=_lookup) == text
 
 
-def test_an_old_literal_at_brace_survives_both_passes() -> None:
-    residue = expand_expr("\\@{a.b}", space="host", ctx=_ctx(), lookup=_lookup, defer_env=True)
+def test_a_literal_at_brace_survives_both_passes() -> None:
+    residue = expand_expr("\\@{{a.b}}", space="host", ctx=_ctx(), lookup=_lookup, defer_env=True)
     # The box pass escapes every ``@`` first (``settings_launch.resolve_box_dest``).
     box = expand_expr(residue.replace("@", "\\@"), space="guest", ctx=_ctx(), lookup=_lookup)
     assert box == "@{a.b}"
 
 
 def test_scan_tokens_reads_braced_names_and_skips_literal_braces() -> None:
-    assert scan_tokens("{a.b}/{$TERM}/{{c}}/@d.e/{/\\@{f.g}") == (["a.b", "d.e"], ["TERM"])
+    assert scan_tokens("{a.b}/{$TERM}/{{c}}/@d.e/{{/\\@{{f.g}}") == (["a.b", "d.e"], ["TERM"])
 
 
 @pytest.mark.parametrize(("value", "ref", "var"), [

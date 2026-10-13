@@ -6,9 +6,8 @@ reason — plus the two helpers it and other set-time readers share, `scan_token
 `holds_verbatim_text`. It touches no file, no environment, and no clock; its only reach into the
 cascade is an injected callback.
 
-It invents no grammar and no type table of its own. Token parsing calls the resolver's OWN
-`match_var` / `match_ref` / `match_braced` inside the same escape-aware scan
-`settings_resolve.expand_expr` uses, and typing reuses the `config_keys` key registry (`KEY_TYPES` /
+It invents no grammar and no type table of its own. Token parsing reads the resolver's OWN
+tokenizer, `settings_resolve.iter_expr_tokens` — the one `expand_expr` reads — and typing reuses the `config_keys` key registry (`KEY_TYPES` /
 `_coerce_value`). That single-validator property is the seam **S25**; hand-rolling either half here
 lets the two grammars drift.
 
@@ -88,19 +87,19 @@ change.
 
 Scans a value for `@`-ref and `$VAR` token NAMES and returns `(ref_names, var_names)`, WITHOUT
 resolving anything (spec §2a "VALIDATION at set-time": resolution is for the check only and the
-file keeps the RAW form; resolving is the E3 probe's job, not this scanner's). A malformed `$` /
-`@` token raises `ValueError`, which the caller maps to an `Error`.
+file keeps the RAW form; resolving is the E3 probe's job, not this scanner's). Every refusal of
+the tokenizer — a malformed `$` / `@` token, an unpaired `{` or `}`, an empty or malformed `{…}`, an
+illegal escape — is re-raised as `ValueError` with the resolver's own text, which the caller maps to
+an `Error` naming the key (`'<key>': malformed value …`).
 
-It mirrors `settings_resolve.expand_expr`'s scanner EXACTLY — the same escape rule, and every token
-family through the scanner's own parsers, called rather than re-derived:
+It collects the `ref` and `var` tokens of `settings_resolve.iter_expr_tokens`, the tokenizer
+`expand_expr` reads, so the two cannot disagree about a token or a refusal:
 
-* `\` consumes the next character as a literal, so `\@` and `\$` are not tokens.
-* `$` → `match_var`, covering `$VAR` and `${VAR}`.
-* `@` → `match_ref`, covering both spellings: bare `@a.b` and braced `@{a.b}`. The braced form lets
-  a literal suffix follow — `@{a.b}.jsonl` yields the ONE ref `a.b`, not the swallowed
-  `a.b.jsonl`.
-* `{` → `match_braced`, covering the bare braced forms `{a.b}` (a ref) and `{$X}` (a variable).
-  `{{` is a literal brace, and a `{` that starts no reference is literal.
+* an escape (`\\`, `\~`, and while they are sigils `\@`, `\$`) is no token;
+* `$VAR` / `${VAR}` and `{$X}` are variables;
+* `@a.b`, `@{a.b}` and `{a.b}` are refs. A braced form lets a literal suffix follow —
+  `{a.b}.jsonl` yields the ONE ref `a.b`, not the swallowed `a.b.jsonl`;
+* `{{` / `}}` are literal braces.
 
 So "well-formed" here means EXACTLY what the build expander will later accept: one grammar, not a
 second (S25). A DANGLING braced ref is judged exactly like a dangling bare one, because the

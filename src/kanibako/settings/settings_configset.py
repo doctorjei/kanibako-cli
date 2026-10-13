@@ -17,9 +17,7 @@ from kanibako.settings.config_keys import KEY_TYPES, CoercionError, _coerce_valu
 from kanibako.settings.settings_resolve import (
     SettingsError,
     is_verbatim_text,
-    match_braced,
-    match_ref,
-    match_var,
+    iter_expr_tokens,
 )
 
 __all__ = [
@@ -68,46 +66,20 @@ ResolveProbe = Callable[[str, str], "str | None"]
 def scan_tokens(value: str) -> tuple[list[str], list[str]]:
     """Scan *value* for key-reference and variable token NAMES, resolving nothing.
 
-    ⚑ THE ONE grammar for a value: a second scanner is a second opinion on the
-    value, and one that never parsed the ``$`` family is blind to it. Malformed →
-    ``ValueError``.
+    ⚑ THE ONE grammar for a value: the tokens are the expander's own
+    (:func:`~kanibako.settings.settings_resolve.iter_expr_tokens`), so this scan
+    and the expansion cannot disagree. Malformed → ``ValueError``.
     """
     refs: list[str] = []
     var_names: list[str] = []
-    i = 0
-    n = len(value)
-    while i < n:
-        c = value[i]
-        if c == "\\":
-            # An escape consumes the next char, so ``\@`` / ``\$`` are NOT tokens; nor is
-            # the ``{`` of an old-grammar literal ``\@{`` (the expander's same rule).
-            i += 3 if value[i + 1:i + 3] == "@{" and value[i + 3:i + 4] != "{" else 2
-            continue
-        if c == "$":
-            try:
-                name, i = match_var(value, i)
-            except SettingsError as exc:
-                raise ValueError(str(exc)) from None
-            var_names.append(name)
-            continue
-        if c == "@":
-            # Both spellings — ``@{a.b}.jsonl`` yields the ONE ref ``a.b``, not ``a.b.jsonl``.
-            try:
-                name, i = match_ref(value, i)
-            except SettingsError as exc:
-                raise ValueError(str(exc)) from None
-            refs.append(name)
-            continue
-        if c == "{":
-            if value[i + 1:i + 2] == "{":
-                i += 2  # ``{{`` is a literal brace, not a token.
-                continue
-            braced = match_braced(value, i)
-            if braced is not None:
-                kind, name, i = braced
-                (var_names if kind == "var" else refs).append(name)
-                continue
-        i += 1
+    try:
+        for tok in iter_expr_tokens(value):
+            if tok.kind == "ref":
+                refs.append(tok.value)
+            elif tok.kind == "var":
+                var_names.append(tok.value)
+    except SettingsError as exc:
+        raise ValueError(str(exc)) from None
     return refs, var_names
 
 

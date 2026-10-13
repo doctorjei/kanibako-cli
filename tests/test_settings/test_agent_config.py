@@ -105,7 +105,7 @@ class TestUnambiguousPathValue:
     """
 
     @pytest.mark.parametrize("value", [
-        "/abs", "\\/abs", "~/x", "~", "$XDG_DATA_HOME/x", "${XDG_CACHE_HOME}/x",
+        "/abs", "~/x", "~", "$XDG_DATA_HOME/x", "${XDG_CACHE_HOME}/x",
         "@meta.workset.path/x", "@{config.data}/x",
     ])
     def test_legal_shapes(self, value):
@@ -113,6 +113,7 @@ class TestUnambiguousPathValue:
 
     @pytest.mark.parametrize("value", [
         "leaf", "sub/dir", "./here", "../sibling", "\\~foo", "",
+        "\\/abs",  # no escape (keyspec "References"): the expansion refuses it
     ])
     def test_ambiguous_shapes(self, value):
         assert is_unambiguous_path_value(value) is False

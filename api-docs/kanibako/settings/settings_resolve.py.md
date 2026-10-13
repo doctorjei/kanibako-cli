@@ -29,6 +29,14 @@ _REF_SEG = f'[{SEGMENT_CHAR_CLASS}{CANONICAL_SEP}]+'
 _REF_NAME_RE = re.compile(f'{_REF_SEG}(?:\\.{_REF_SEG})*')
 _EXPR_SIGNIFICANT: frozenset[str] = frozenset('\\$@~')
 _DEFERRED_SIGNIFICANT: frozenset[str] = frozenset('\\$~')
+_ESCAPABLE: frozenset[str] = frozenset('\\~@$')
+_TOKEN_START: frozenset[str] = frozenset('\\{}$@')
+```
+
+## Types
+```
+ExprTokenKind = Literal['text', 'home', 'escape', 'brace', 'ref', 'var']
+
 ```
 
 ## Functions
@@ -51,6 +59,7 @@ def check_bind_tables(tables: Mapping[str, Any], *, root: str, scope: str, conta
 def match_var(expr: str, i: int) -> tuple[str, int]
 def match_ref(expr: str, i: int) -> tuple[str, int]
 def match_braced(expr: str, i: int) -> tuple[Literal['ref', 'var'], str, int] | None
+def iter_expr_tokens(expr: str) -> Iterator[ExprToken]
 def expand_expr(expr: str, *, space: Literal['host', 'guest'], ctx: ResolveCtx, lookup: Callable[[str, tuple[str, ...]], str], chain: tuple[str, ...]=(), defer_env: bool=False) -> str
 def resolve_var(name: str, ctx: ResolveCtx) -> str | _Unset
 def guard_ref(ref_name: str, trail: tuple[str, ...], depth: int) -> None
@@ -64,10 +73,8 @@ def _check_node_binds(table: Mapping[str, Any], *, where: str | None) -> None
 def _check_dest_map(raw: Mapping[str, Any], *, category: str, where: str | None) -> None
 def _in_file(where: str | None) -> str
 def _match_sigil(expr: str, i: int, name_re: re.Pattern[str], noun: str) -> tuple[str, int]
-def _scan_var_span(expr: str, i: int) -> tuple[str, int]
-def _expand_var(expr: str, i: int, ctx: ResolveCtx) -> tuple[str, int]
+def _brace_refusal(expr: str, i: int) -> ExprSyntaxError
 def _resolve_var(name: str, ctx: ResolveCtx) -> str
-def _expand_ref(expr: str, i: int, lookup: Callable[[str, tuple[str, ...]], str], chain: tuple[str, ...]) -> tuple[str, int]
 def _lookup_ref(ref_name: str, lookup: Callable[[str, tuple[str, ...]], str], chain: tuple[str, ...]) -> str
 ```
 
@@ -75,6 +82,11 @@ def _lookup_ref(ref_name: str, lookup: Callable[[str, tuple[str, ...]], str], ch
 
 ```
 class SettingsError(KanibakoError):
+
+class ExprSyntaxError(SettingsError):
+    def __init__(self, message: str, *, entry: str | None=None) -> None
+
+    def naming(self, entry: str) -> 'ExprSyntaxError'
 
 @dataclass(frozen=True)
 class ResolveCtx:
@@ -98,6 +110,13 @@ class ResolvedValue:
     level: str
     is_default: bool = False
     terminal: bool = False
+
+@dataclass(frozen=True)
+class ExprToken:
+    kind: ExprTokenKind
+    value: str
+    start: int
+    end: int
 
 class _Unset:
     __slots__ = ()

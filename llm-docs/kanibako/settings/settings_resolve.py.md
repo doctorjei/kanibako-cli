@@ -16,9 +16,10 @@ list, dest-keying, per-entry options). ⚑ **The spec is the LIVE authority; rea
 
 Four things:
 
-* **The expression grammar** — `$VAR` / `${VAR}`, bare `@a.b.c` and braced `@{a.b.c}`, a leading
-  `~`, and the backslash escape rules. One parser per token family, shared out to every other
-  module that needs to recognize the same token.
+* **The expression grammar** — `{a.b.c}` / `{$NAME}`, `$VAR` / `${VAR}`, bare `@a.b.c` and braced
+  `@{a.b.c}`, a leading `~`, doubled braces, and the backslash escape rules. ONE tokenizer
+  (`iter_expr_tokens`) reads a value for every reader, and one parser per token family is shared
+  out to every other module that needs to recognize the same token.
 * **The precedence walk** — `resolve_value` and its three-valued result.
 * **The bind value shapes** — `split_bind` (the colon form), `unpack_bind` and `unpack_bind_entry`
   (the structured forms), and `normalize_bind_dest` (destination canonicalization, R-11).
@@ -316,7 +317,8 @@ Resolve backslash escapes consistently.
 
 A backslash before any character yields that character literally (`\:` → `:`, `\\` → `\`,
 `\x` → `x`). A trailing lone backslash is kept literal — there is nothing for it to escape, and
-raising there would make an unremarkable path illegal.
+raising there would make an unremarkable path illegal. ⚑ This is `split_bind`'s CLI-edge rule,
+NOT the value grammar: a value's escapes are `iter_expr_tokens`'s, which refuses most of them.
 
 ```python
 literal_expr(text: str) -> str
@@ -441,11 +443,10 @@ plus the index one past the whole token. Raises `SettingsError` on a malformed r
 function does NOT re-verify it and will happily parse a name starting at `i + 1` regardless of
 what `expr[i]` actually is.
 
-**The SINGLE parser for the `$` token family**, exactly as `match_ref` is for `@`: shared by
-`_expand_var` (which resolves the name), `_scan_var_span` (which re-emits the source span for
-`defer_env`) and `settings_configset.scan_tokens` (which collects names for set-time
-validation). One grammar, one copy, so a change to the token shape cannot land in some of them and
-not others.
+**The SINGLE parser for the `$` token family**, exactly as `match_ref` is for `@`: the tokenizer
+(`iter_expr_tokens`) calls it for every `$`, so expansion, the `defer_env` span and
+`settings_configset.scan_tokens` read one token boundary. One grammar, one copy, so a change to
+the token shape cannot land in some readers and not others.
 
 ```python
 match_ref(expr: str, i: int) -> tuple[str, int]
@@ -471,16 +472,54 @@ TWO SPELLINGS, one meaning:
   parses as the single (absent) name `meta.box.name.jsonl` and silently loses both the box name
   and the extension. Where both forms are expressible they resolve identically.
 
-**The SINGLE parser for both spellings**, shared by the scanner (`_expand_ref`), the whole-value
+**The SINGLE parser for both spellings**, shared by the tokenizer (`iter_expr_tokens`), the whole-value
 shape test (`settings_expand._is_whole_value_ref`), set-time validation
 (`settings_configset.scan_tokens`) and the kinemata keyspace adapter's `@`-ref candidates
 (`kinemata_keyspace._ref_names`) — one grammar for every reader (seam S25).
 
-The braced form deliberately MIRRORS `${...}` (`_expand_var` / `_scan_var_span`): optional brace,
+The braced form deliberately MIRRORS `${...}` (`match_var`): optional brace,
 the same name regex, a required closing brace, and a distinct "unterminated" error. Same idea,
 same spelling, so the two token families cannot drift apart. **NESTING IS NOT SUPPORTED and fails
 loudly** (`@{a@{b}}` is unterminated): a substituted value is a LEAF and is never re-scanned, so a
 nested form would imply a second, contradictory model of when expansion happens.
+
+```python
+class ExprSyntaxError(SettingsError)
+```
+A value the reference grammar refuses: an unpaired brace, an empty or malformed reference, an
+illegal escape, a malformed `$`/`@` token (keyspec § 0 "References"). A `SettingsError`, so every
+existing `except SettingsError` still catches it. `entry` is `None` until a reader that knows
+which setting holds the value names it with `naming(entry)`, which prefixes `'<entry>': ` once and
+returns an already-named refusal unchanged. The strict launch expansion
+(`settings_expand._Expander`) names the leaf; `config set` and the lenient pass name it their own
+way (the `'<key>': malformed value …` verdict, the error map's key).
+
+```python
+@dataclass(frozen=True)
+class ExprToken
+```
+One token: `kind` (`text`, `home`, `escape`, `brace`, `ref`, `var`), `value` (the text; `~`; the
+escaped character; the brace; the NAME), and the source span `start`/`end`. The span is what
+`defer_env` re-emits verbatim for a deferred variable.
+
+```python
+iter_expr_tokens(expr: str) -> Iterator[ExprToken]
+```
+**THE ONE tokenizer of a value.** `expand_expr` and `settings_configset.scan_tokens` both read it,
+so the expander and the set-time scan cannot disagree about a token or a refusal. A GENERATOR, so a
+refusal raises at its own position, after the tokens before it (a recording `lookup` sees the refs
+to its left, as it did when the scan was inline).
+
+Refused with `ExprSyntaxError`, each naming the doubled spelling where a brace is the fault:
+* an unpaired `{` (no `}` after it) or `}`;
+* an empty `{}` or a malformed `{…}` (`{bad name}`, `{a.b.}`, `{$}`) — `{` opens a reference
+  running to the first `}`, so its content must be one name;
+* a backslash before anything outside `\\ ~ @ $` (`\/`, `\{`, `\:`, `\x`); `\@`/`\$` leave
+  this set when the sigils retire (braced-refs plan, B1b);
+* a malformed `$`/`@` token (`match_var` / `match_ref`).
+
+A leading `~` is a `home` token; a TRAILING lone backslash is literal text. `{` defers to
+`match_braced`, which stays the one braced parser; its `None` becomes the refusal here.
 
 ```python
 expand_expr(
@@ -491,13 +530,16 @@ expand_expr(
 ```
 Expand a single path/scalar expression (one bind half) in the named *space*.
 
-Single left-to-right scan emitting literal vs expanded segments. ⚑ **A substituted value is a
-LEAF — it is not re-scanned**, which is what prevents double-expansion and expansion loops.
+One left-to-right pass over `iter_expr_tokens`, emitting literal vs expanded segments. ⚑ **A
+substituted value is a LEAF — it is not re-scanned**, which is what prevents double-expansion and
+expansion loops.
 
-Grammar:
+Grammar (refusals are the tokenizer's, below):
 
-* **Escapes:** `\@`→`@`, `\$`→`$`, `\\`→`\`; a backslash before any other char yields that char
-  literally.
+* **Escapes:** `\\`→`\`, `\~`→`~`, and, while `@`/`$` are still sigils, `\@`→`@`, `\$`→`$`. A
+  trailing lone backslash is literal.
+* **Braces:** `{a.b.c}` is a key reference and `{$NAME}` a variable; `{{` is a literal `{` and
+  `}}` a literal `}`.
 * **`~`:** ONLY when it is the FIRST character of *expr*. Expands to `ctx.host_home`
   (`space=="host"`) or `GUEST_HOME` (`space=="guest"`). A `~` elsewhere is literal.
 * **`$VAR` / `${VAR}`:** name = `[A-Za-z_][A-Za-z0-9_]*`. `AGENT` → `ctx.agent_name`, `WORKSET` →
@@ -507,9 +549,11 @@ Grammar:
   value (`xterm` when the host has none), and `COLORTERM` is the one name that may answer NOTHING.
   See `resolve_var` below for the three distinct refusals, for why a set `TERM` is not validated,
   and for the three-state split.
-* **`@`-ref:** two spellings, parsed by `match_ref` and resolved IDENTICALLY. Cycle-guarded
-  against *chain*, capped at `MAX_REF_DEPTH` (64), and substitutes
-  `lookup(ref_name, chain + (ref_name,))`; the result is a leaf.
+* **`@`-ref / `{key}`-ref:** three spellings (`@a.b`, `@{a.b}`, `{a.b}`), resolved IDENTICALLY
+  through `_lookup_ref`. Cycle-guarded against *chain*, capped at `MAX_REF_DEPTH` (64), and
+  substitutes `lookup(ref_name, chain + (ref_name,))`; the result is a leaf. A ref already present
+  in *chain* raises with the full cycle rendered (`a -> b -> a`), and a chain at `MAX_REF_DEPTH`
+  raises naming the ref that hit the cap.
 
 ⚑ *lookup* is a REQUIRED keyword with no default. There is deliberately no ambient fallback — a
 caller must state what an `@`-ref means in its tier, even when the answer is "refuse them".
@@ -533,24 +577,6 @@ it would turn `\$` into `$` and let the box re-expand exactly what the user esca
 STILL unescaped to `@`: this pass OWNS `@`-refs on BOTH sides, the box never processes `@`, so a
 literal `@` is the correct box-side residue. **This box-side escape contract is spec-silent** — it
 is a real semantic decision living only in code.
-
-```python
-_scan_var_span(expr: str, i: int) -> tuple[str, int]
-```
-Return the VERBATIM `$VAR` / `${VAR}` source span starting at *i*, plus the index past it.
-
-The `defer_env` twin of `_expand_var`. It recognizes the SAME token shape `_expand_var` resolves —
-so deferral and expansion agree on token boundaries — but emits the source text unchanged
-(`$XDG_STATE_HOME` / `${XDG_STATE_HOME}`) rather than a resolved value. A malformed reference
-raises identically, because **both delegate the parse to `match_var`**: a deferred token must
-still be well-formed at build time, just not resolved here, and "identically" is structural.
-
-```python
-_expand_var(expr: str, i: int, ctx: ResolveCtx) -> tuple[str, int]
-```
-Expand a `$VAR` or `${VAR}` starting at index *i*.
-
-Parses via the shared `match_var`; only the RESOLUTION of the name is this function's own.
 
 ```python
 resolve_var(name: str, ctx: ResolveCtx) -> str | _Unset
@@ -599,18 +625,7 @@ The EMBEDDED-token answer: `resolve_var` with absence coerced to `""`.
 Same rule the embedded `@`-ref path already keeps (`settings_expand._lookup_str`): an absent
 referent substitutes an empty string, which never deletes the HOST expression's key. On a host with
 no `COLORTERM`, `"c={$COLORTERM}"` is `"c="` — the key's value is that whole string and it exists.
-Its one caller is `_expand_var`, i.e. every `$VAR` reached through `expand_expr`.
-
-```python
-_expand_ref(expr, i, lookup, chain) -> tuple[str, int]
-```
-Expand an `@ref` starting at index *i*.
-
-Both spellings are parsed by the shared `match_ref`; everything below — the cycle guard, the depth
-cap, the `lookup` substitution — is **spelling-agnostic and identical for the two**. A ref already
-present in *chain* raises with the full cycle rendered (`a -> b -> a`), and a chain at
-`MAX_REF_DEPTH` raises naming the ref that hit the cap, so both errors are actionable rather than
-merely correct.
+Its one caller is `expand_expr`, for every embedded variable token.
 
 ```python
 resolve_value(key, *, levels: list[LevelView], ctx, lookup) -> ResolvedValue | _Unset
