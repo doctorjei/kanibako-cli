@@ -6345,7 +6345,7 @@ class TestPrefShow:
         )
         out = capsys.readouterr().out
         assert "(omitted — the entry is suppressed; no mount." in out
-        assert "(None — never the key's default)" in out
+        assert "(unset — reads as None, not the key's default)" in out
         # B-6: suppression has no verb of its own, so the message that reports a
         # suppression is where the user learns what UNDOES it — and WHERE, since
         # an edit at the wrong noun removes nothing.

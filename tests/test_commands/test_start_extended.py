@@ -3413,11 +3413,11 @@ class TestAllowHelpersGate:
 
     def test_unset_snapshot_defaults_helpers_on(self, start_mocks):
         # The UNSET default (spec §2d ``agent.default.allow_helpers | true``): with
-        # NO allow_helpers anywhere in the snapshot, the key is ABSENT and start.py
-        # takes the else-branch fallback ``_declared_behavior_bool("allow_helpers",
-        # agent_id)`` (declared true, helpers ON). Mutation guard on that fallback —
-        # flipping it to ``False`` makes helpers_enabled False → resolve_box_shell is
-        # never reached → the sentinel never raises → pytest.raises reddens this test.
+        # NO allow_helpers anywhere in the snapshot, the launch read resolves None
+        # and start.py falls back to the True floor (helpers ON). Mutation guard on
+        # ``helpers_allowed = True if _ah is None else _ah`` — flipping that ``True``
+        # to ``False`` makes helpers_enabled False → resolve_box_shell is never
+        # reached → the sentinel never raises → pytest.raises reddens this test.
         #
         # The start_mocks stub seeds the agent.default FLOOR with allow_helpers=false
         # (so every OTHER unit test keeps helpers off). Simulate a genuinely-unset
