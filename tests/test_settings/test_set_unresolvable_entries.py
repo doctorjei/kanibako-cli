@@ -160,16 +160,16 @@ def test_box_get_warns_on_a_genuinely_missing_ref(cli):
     assert "do not resolve" in proc.stderr and "box.env.X" in proc.stderr, proc.stderr
 
 
-_NS_DEST = 'box:\n  bindings:\n    rw:\n      "@box.env": ["/h"]\n'
+_NS_DEST = 'box:\n  bindings:\n    rw:\n      "{box.env}": ["/h"]\n'
 _NS_REASON = "'box.env' is a namespace, not a key"
 
 
 @pytest.mark.parametrize("stored, entry, reason", [
-    (_NS_DEST, "box.bindings.rw[@box.env] = ['/h']", _NS_REASON),
-    ('box:\n  bindings:\n    rw:\n      "@box.env.FOO": ["/h"]\n',
-     "box.bindings.rw[@box.env.FOO] = ['/h']", "dangling reference '{box.env.FOO}'"),
-    ('box:\n  env:\n    FOO: null\n  bindings:\n    rw:\n      "@box.env.FOO": ["/h"]\n',
-     "box.bindings.rw[@box.env.FOO] = ['/h']", "references a present-None config key"),
+    (_NS_DEST, "box.bindings.rw[{box.env}] = ['/h']", _NS_REASON),
+    ('box:\n  bindings:\n    rw:\n      "{box.env.FOO}": ["/h"]\n',
+     "box.bindings.rw[{box.env.FOO}] = ['/h']", "dangling reference '{box.env.FOO}'"),
+    ('box:\n  env:\n    FOO: null\n  bindings:\n    rw:\n      "{box.env.FOO}": ["/h"]\n',
+     "box.bindings.rw[{box.env.FOO}] = ['/h']", "references a present-None config key"),
 ], ids=["namespace", "absent", "present-none"])
 def test_an_unresolvable_bind_destination_refuses_an_unrelated_set(cli, stored, entry, reason):
     """A destination key holds dots, so the lenient mark's joined name must be matched against
@@ -198,7 +198,7 @@ def test_the_workset_box_and_agent_doors_refuse_an_unresolvable_destination(cli)
     box_file.write_text(_NS_DEST)
     before = box_file.read_bytes()
     proc = cli("box", "set", "b1", "box.shell=bash")
-    assert proc.returncode == 1 and "box.bindings.rw[@box.env]" in proc.stderr, proc.stderr
+    assert proc.returncode == 1 and "box.bindings.rw[{box.env}]" in proc.stderr, proc.stderr
     assert box_file.read_bytes() == before
 
     box_file.write_text("box:\n  shell: zsh\n")

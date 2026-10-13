@@ -142,9 +142,19 @@ def _refuse_unanchored(
     from kanibako.settings.messages import ERR_PER_OWNER_READ, PER_OWNER_SET_WORDS
     from kanibako.settings.paths import BoxMode
 
+    from kanibako.settings.settings_configset import scan_tokens
+
     dotted = f"workset.{key}"
     owner = KEY_OWNERS[dotted]
     if owner == "shared":
+        return
+    # GRAMMAR FIRST: a value the grammar refuses -- an old reference spelling under the
+    # BARE-REF-GUARD included -- is left to the expander, which refuses it by name with
+    # its cure. Judged here it reaches nothing, and the per-owner cure would be built on
+    # the refused spelling.
+    try:
+        scan_tokens(value)
+    except ValueError:
         return
 
     def stored(ref: str) -> object:

@@ -1,8 +1,9 @@
 """Keyspec §0 "Per-owner resources" at the read door: a per-owner early key the system file
 holds with a value that reaches no owner identity is refused by every reader, naming the file.
 
-The set door's judgment, so the two doors agree; in both reference spellings (``@x`` and
-``{x}``), since both grammars are live until braced step 5.
+The set door's judgment, so the two doors agree; in the braced reference spelling. An old
+``@x`` spelling is the guard's to refuse, by name with its braced cure, never this door's
+(:class:`TestAnOldSpellingIsTheGuards`).
 """
 
 from __future__ import annotations
@@ -15,15 +16,16 @@ import yaml
 from kanibako.errors import ConfigError
 from kanibako.settings.config import WORKSET_META_FILE, load_config
 from kanibako.settings.paths import load_std_paths
+from kanibako.settings.settings_resolve import SettingsError
 from kanibako.settings.workset_dirkeys import (
     EarlyScope, EarlySystem, early_repoint, refuse_inherited_per_owner,
 )
 
-_FORMS = ("@", "{")
+_FORMS = ("{",)
 
 
 def _ref(form: str, name: str) -> str:
-    return f"@{name}" if form == "@" else "{" + name + "}"
+    return "{" + name + "}"
 
 
 def _write_system(std, workset: dict, system: dict | None = None) -> None:
@@ -175,3 +177,24 @@ class TestWorksetCreate:
         assert code == 0
         assert (tmp_path / "ws").is_dir()
         assert "kento" in std.registry.read_text()
+
+
+class TestAnOldSpellingIsTheGuards:
+    """BARE-REF-GUARD: grammar first. Judged by this door, an old spelling reaches nothing
+    and would be refused with a per-owner cure built on the refused spelling."""
+
+    _OLD = "/srv/kb/@meta.workset.path"
+
+    def test_load_names_the_braced_cure_not_a_per_owner_one(self, std, config_file):
+        _write_system(std, {"boxes": self._OLD})
+        with pytest.raises(SettingsError) as excinfo:
+            load_std_paths(load_config(config_file))
+        text = str(excinfo.value)
+        assert "Old reference spelling '@meta.workset.path'" in text, text
+        assert "write '{meta.workset.path}'" in text, text
+        assert "does not reach" not in text, text
+
+    def test_the_per_owner_door_passes_it_on(self, tmp_path):
+        scope = _scope({"workset.boxes": self._OLD}, tmp_path / "settings.yaml")
+        refuse_inherited_per_owner(tmp_path, scope)
+        assert early_repoint(tmp_path, None, "boxes", early=scope)[0] == self._OLD

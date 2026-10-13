@@ -1,7 +1,8 @@
 """Keyspec §0 "Per-owner resources": a per-owner value must reach its owner's identity.
 
-DESIGN § 6 Cases 1–4, each refused value beside its cure, in both reference spellings
-(``@x`` and ``{x}``): both grammars are live until braced step 5.
+DESIGN § 6 Cases 1–4, each refused value beside its cure, in the braced reference spelling
+(keyspec § 0 "References"). ``@`` is an ordinary character, so an old ``@x`` spelling reaches
+nothing here; the guard refuses it by name where the value is read.
 """
 
 from __future__ import annotations
@@ -25,10 +26,22 @@ def _reaches(value, owner, mode, *, key, stored=None):
     return reaches_identity(value, owner, mode, key=key, stored=stored or _stored())
 
 
-def _forms(template: str) -> tuple[str, str]:
-    """*template* in the old spelling and the new: ``<x>`` becomes ``@x`` and ``{x}``."""
+def _forms(template: str) -> tuple[str]:
+    """*template* in the braced spelling: ``<x>`` becomes ``{x}``."""
     import re
-    return (re.sub(r"<([a-z_.]+)>", r"@\1", template), re.sub(r"<([a-z_.]+)>", r"{\1}", template))
+    return (re.sub(r"<([a-z_.]+)>", r"{\1}", template),)
+
+
+@pytest.mark.parametrize("value", [
+    "/srv/kb/@meta.workset.path", "@workset.boxes/@meta.box.name", "@x.via/y",
+])
+@pytest.mark.parametrize("mode", ALL_MODES)
+def test_an_old_spelling_reaches_no_identity(value, mode):
+    """``@`` is text, so the predicate reads no reference in an old spelling. The read door
+    leaves such a value to the guard, which names the braced cure
+    (``test_per_owner_read_door``)."""
+    stored = _stored({"x.via": "{meta.workset.path}/z"})
+    assert not _reaches(value, "workset", mode, key="workset.boxes", stored=stored)
 
 
 class TestCase1WorksetBoxesFromTheSystem:

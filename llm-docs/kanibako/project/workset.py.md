@@ -646,7 +646,8 @@ Create a new workset directory structure and register it globally.
    import); only a same-kind collision refuses.
 4. **The root already exists.**
 5. **An inherited per-owner key** (`refuse_inherited_per_owner`): a system-tier value for a
-   per-owner early key that reaches no owner identity.
+   per-owner early key that reaches no owner identity. A value the grammar refuses (an old
+   reference spelling included) is not judged here; its expansion refuses it by name.
 6. **A shared logs dir** (`logs_share_refusal`): the resolved `workset.logs` is another workset's,
    unless *force_logs_share*.
 
