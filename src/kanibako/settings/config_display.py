@@ -319,7 +319,7 @@ def _print_pref_block(
                 f"at the scope that set it)"
             )
         elif value is None:
-            result = "(unset — reads as None, not the key's default)"
+            result = "(None — never the key's default)"
         else:
             result = _render(value, dest, leaf)
         print(f"    -> {shown} = {result}", file=out)
