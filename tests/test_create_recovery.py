@@ -303,12 +303,12 @@ def _run_printed_cure(err: str, verb: str) -> int:
 
 
 class TestRunCreatePersonaGate:
-    """`box create` for an UNLOADABLE persona: a TRUE PRE-FLIGHT (F5, Director
-    ruling 2026-07-03).  The load-or-error gate runs on a NON-materializing probe
-    BEFORE the box dir is created (and before the write-ahead journal entry, ruling
-    #3), so a failed create leaves NOTHING behind: no box dir / box.yaml, no
-    journal entry, no seed, and the registry untouched.  Real filesystem — these
-    are fs-level, not mock-level, assertions.
+    """`box create` for an UNLOADABLE persona: a TRUE PRE-FLIGHT (F5).  The
+    load-or-error gate runs on a NON-materializing probe BEFORE the box dir is
+    created (and before the write-ahead journal entry (#3)), so a failed create
+    leaves NOTHING behind: no box dir / box.yaml, no journal entry, no seed, and the
+    registry untouched.  Real filesystem — these are fs-level, not mock-level,
+    assertions.
 
     UNMASKED: nothing patches ``_resolve_box_launch_decisions``.  The verdict runs
     the REAL launch-decision resolve on the pick_name()'d probe; reverting the
@@ -337,7 +337,7 @@ class TestRunCreatePersonaGate:
             seed_called["v"] = True
 
         monkeypatch.setattr("kanibako.commands.start.seed_new_box", spy_seed)
-        # The journal write-entry must be UNREACHED (guard precedes it, ruling #3).
+        # The journal write-entry must be UNREACHED (guard precedes it, #3).
         m_write_entry = MagicMock()
         monkeypatch.setattr(
             "kanibako.commands.start._write_create_entry", m_write_entry
@@ -3473,7 +3473,7 @@ class TestAKilledCreateIsRecoveredWithWhatItWasTold:
         """``--register`` survives a kill: ``--recover`` refuses ``--name``, so only
         the entry can carry it, and it carries the ``--register`` with it.
 
-        ⚑ Driven by the leaf no-op since ruling 2026-10-08 — a divergent
+        ⚑ Driven by the leaf no-op since [Jei:2026-10-08] — a divergent
         ``--name`` never reaches the journal any more.
         """
         from kanibako.commands.box._parser import run_create

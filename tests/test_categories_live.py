@@ -714,7 +714,7 @@ class TestB3ImagesStoreKey:
         settings FILE — the tier a user's ``box: images_store:`` repoint lives
         in.  All host sources are real dirs/files so the resolve keeps them.
 
-        *probed_ok* False is the FAILED PROBE (ruled 11a): ``graph_root=None``,
+        *probed_ok* False is the FAILED PROBE [Jei:2026-08-02]: ``graph_root=None``,
         so the table carries no floor scalar for ``box.images_store`` and only a
         set tier value can resolve the bind.
         """
@@ -759,7 +759,7 @@ class TestB3ImagesStoreKey:
     def test_images_bind_follows_a_repointed_images_store(self, tmp_path):
         """A box-file ``box.images_store`` repoint MOVES the store mount.
 
-        THE key ruling of B3 (§3.3): the key is consulted — a cascade value
+        THE key decision of B3 ([Jei:2026-08-01]): the key is consulted — a cascade value
         beats the probed default by name, and the bind lands on the user's
         store, not the probe's.
         """
@@ -783,7 +783,7 @@ class TestB3ImagesStoreKey:
         )
 
     def test_probe_fail_emits_no_floor_scalar(self):
-        """Ruled 11a: a FAILED probe contributes no ``box.images_store`` default.
+        """[Jei:2026-08-02]: a FAILED probe contributes no ``box.images_store`` default.
 
         The probe feeds ONLY the key's default, so ``graph_root=None`` leaves the
         key unset in the table — the bind is still spelled as the @-ref (nothing
@@ -2179,7 +2179,7 @@ class TestAConcreteBindingTheCollapseSwallowedIsNotShownAsAMount:
         assert "no mount" not in text, text
 
     def test_a_dest_spelled_with_an_XDG_var_arbitrates_like_any_other(self):
-        """⚑⚑ A ``$XDG_*`` DESTINATION IS AN ORDINARY ROW — no carve-out (Jei, 2026-08-27).
+        """⚑⚑ A ``$XDG_*`` DESTINATION IS AN ORDINARY ROW — no carve-out [Jei:2026-08-27].
 
         Binds are resolved on the HOST, so a ``box_dest``'s env vars derive from the
         host and every consumer receives an absolute guest path (keyspec ``:344-347``).
@@ -2237,7 +2237,7 @@ class TestAConcreteBindingTheCollapseSwallowedIsNotShownAsAMount:
 
         The bind names the variable, the mask names the resolved path.  Both resolve
         through ``resolve_box_dest`` before anything is compared — *"the ``$var`` should
-        be resolved before any binding or comparison"* (Jei, 2026-08-27) — so the mask
+        be resolved before any binding or comparison"* [Jei:2026-08-27] — so the mask
         takes the point exactly as it would had both been spelled alike.
         """
         categories = {

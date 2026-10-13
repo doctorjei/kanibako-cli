@@ -13,10 +13,10 @@ real vault is orphaned while a directory it never used is what gets removed.
   kanibako's DEFAULT layout stamps for the role (``canon/``, ``vault/ro``, ``vault/rw``,
   ``box_data``), or one whose key is UNSET / inherited from the SYSTEM tier.  A folder the
   box's OWN ``workset.yaml`` repoints at — INSIDE the root or out — is the user's and is
-  never deleted; it is kept and NAMED as left in place.  ⚑ Ruled 2026-10-10 (163rd): a
-  leftover that is NAMED is recoverable, a deleted user folder is not.  The old doctrine
-  here read "an IN-ROOT repoint is unambiguously kanibako's to delete"; that was the data
-  loss, and it lived only in this header, never in the spec.
+  never deleted; it is kept and NAMED as left in place.  ⚑ A leftover that is NAMED is
+  recoverable, a deleted user folder is not.  The old doctrine here read "an IN-ROOT
+  repoint is unambiguously kanibako's to delete"; that was the data loss, and it lived
+  only in this header, never in the spec.
 """
 
 from __future__ import annotations

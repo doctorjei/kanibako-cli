@@ -2,7 +2,7 @@
 
 The destination vault leaves are created EMPTY and the source leaves are then
 deleted, so without the carry in ``_carry_vault_contents`` a move/convert
-destroys the vault's contents.  His ruling (96th) prices the vault as a STORE:
+destroys the vault's contents.  [Jei:2026-09-18] prices the vault as a STORE:
 contents must survive a relocation.  These tests pin the carry on every path
 that relocates the vault, plus the two reuse-in-place edges (whose teardown is
 skipped — nothing to carry) and the shared-arm guard (warn-on-skip, never copy

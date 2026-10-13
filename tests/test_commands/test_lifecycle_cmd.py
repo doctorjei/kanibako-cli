@@ -2079,7 +2079,7 @@ class TestLifecycleCarriesBoxSettings:
         self, env, capsys,
     ):
         """⚑ A ``box.*`` key in a standalone's ROOT file sits at the WORKSET tier, and
-        a convert must NOT persist it into the destination's BOX tier (Jei, 2026-08-26:
+        a convert must NOT persist it into the destination's BOX tier ([Jei:2026-08-26]:
         "copy/persist only those elements that are within the box settings").  Doing so
         would PIN an overridable workset default as a box-scope override that later
         workset edits could not reach.  The box leaves the workset the value belonged

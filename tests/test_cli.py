@@ -1346,7 +1346,7 @@ class TestVerboseFlag:
 def _marker_file(tmp_path):
     """The SYSTEM SETTINGS file ``_setup_nudge`` resolves under these tests' patches.
 
-    ⚑ The setup marker left ``kanibako.cfg`` on 2026-08-26 (Jei; spec §2g has
+    ⚑ The setup marker left ``kanibako.cfg`` on 2026-08-26 (spec §2g has
     always declared it a Layer-2 ``system.*`` SETTINGS key), so a test that PLANTS one
     must plant it where the shipped code looks.  Computed by the SHIPPED resolver
     rather than spelled out here: a literal would pin a path instead of the behavior,
@@ -2083,7 +2083,7 @@ class TestTemplateStalenessRetired:
     def test_term_arrives_in_the_container_env_for_every_agent(
         self, tmp_home, monkeypatch,
     ):
-        """⚑ THE DELIVERY PROOF for ``agent.default.env.TERM`` (Jei, 2026-09-19).
+        """⚑ THE DELIVERY PROOF for ``agent.default.env.TERM`` [Jei:2026-09-19].
 
         The value shipped is the EXPRESSION ``$TERM``, so this pins two things one
         assertion apart: that the floor reaches the container env at all, and that the
@@ -2104,7 +2104,7 @@ class TestTemplateStalenessRetired:
     def test_term_falls_back_to_xterm_when_the_host_has_none(
         self, tmp_home, monkeypatch,
     ):
-        """An empty host ``TERM`` still delivers one — Jei, 2026-09-08.
+        """An empty host ``TERM`` still delivers one — [Jei:2026-09-08].
 
         ⚑ EMPTY, not merely unset: the shell exports an empty ``TERM`` readily, and a
         box handed ``TERM=`` is the degraded terminal the fallback exists to prevent.

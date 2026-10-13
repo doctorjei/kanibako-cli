@@ -1178,9 +1178,9 @@ _UNDO_EXAMPLES = [
 
 
 class TestNullFlagHelpTeachesSuppression:
-    """Jei rejected a dedicated suppress verb as "unnecessary and redundant"
-    (2026-07-31), which makes this help string the ONLY place the feature is
-    taught.  It must say what --null does AND what undoes it."""
+    """A dedicated suppress verb was rejected as "unnecessary and redundant"
+    [Jei:2026-07-31], which makes this help string the ONLY place the feature
+    is taught.  It must say what --null does AND what undoes it."""
 
     def test_help_says_it_suppresses(self):
         from kanibako.commands.flags import NULL_FLAG_HELP_TEMPLATE

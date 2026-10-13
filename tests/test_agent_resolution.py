@@ -7,7 +7,7 @@ off the settings snapshot (``settings_launch.resolve_selected_agent``), and
 canonicalization. The retired ``box.agent_name`` / ``workset_agent`` /
 ``system_default_path`` parameters are gone.
 
-🛑 **THERE IS NO INSTALLED-AGENT COUNT RULE** (retired 2026-09-19, his ruling; spec
+🛑 **THERE IS NO INSTALLED-AGENT COUNT RULE** (retired [Jei:2026-09-19]; spec
 §2b). ``resolve_agent`` never picks — the installed set answers *"is this name
 installed?"* and nothing else. The tests below assert that the count is not read,
 at every count, which is the property the rule's deletion has to hold.
@@ -121,7 +121,7 @@ def test_a_blank_tier_is_a_value_not_an_unset(monkeypatch, blank):
 def test_unset_refuses_whatever_is_installed(monkeypatch, installed):
     """Nothing named an agent ⇒ one refusal, and the COUNT does not change it.
 
-    🛑 **This is the retired count rule's grave** (his ruling, 2026-09-19; spec §2b).
+    🛑 **This is the retired count rule's grave** (spec §2b).
     The ``["claude"]`` row is the one that used to launch: exactly one installed
     plugin was auto-picked, and a user on a single-agent host never ran ``setup``.
 

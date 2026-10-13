@@ -1,4 +1,4 @@
-"""Explicit box creation — no auto-create on launch (Jei 2026-07-11g, v1.7.0).
+"""Explicit box creation — no auto-create on launch ([Jei:2026-07-11g], v1.7.0).
 
 Creating a box is a deliberate act: it must go through ``kanibako create``.  A
 launch (``start`` / bare ``kanibako`` / ``code`` / ``shell``) NEVER materializes a
@@ -272,7 +272,7 @@ class TestCreateAndThenLaunch:
         assert rc == 0
         out = capsys.readouterr().out
         assert "Created default project in" in out
-        # The copy-pasteable start hint (Jei's exact wording).
+        # The copy-pasteable start hint (exact wording).
         assert "Start the box by executing 'kanibako'" in out
         assert "shortcuts to 'kanibako start'" in out
 
@@ -556,7 +556,7 @@ class TestInterruptedCreateBoundary:
 # ---------------------------------------------------------------------------
 
 class TestLaunchRefusesUnbuiltBox:
-    """Jei 2026-08-02f: *"no, a launch should not silently rebuild anything."*
+    """[Jei:2026-08-02f]: *"no, a launch should not silently rebuild anything."*
 
     A registered box whose directory has been deleted used to be re-materialized
     by the launch resolve — a REPAIR, not a creation.  It now refuses, names the
@@ -1029,8 +1029,8 @@ class TestBrokenStandaloneNoBoxError:
     suggestion is built from the user's own spec.  For a bare standalone NAME that
     yields ``kanibako create <name>``, and running THAT mkdirs a directory
     literally named ``<name>`` in the CWD and puts a PRIMARY box in it.  These pin
-    the replacement (Director ruling D-1/A2, 2026-08-06) and, negatively, the
-    floor: the damaging form must never appear.
+    the replacement (D-1/A2) and, negatively, the floor: the damaging form must
+    never appear.
     """
 
     def _broken(self, config_file, tmp_home):

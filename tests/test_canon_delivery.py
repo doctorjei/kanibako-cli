@@ -538,7 +538,7 @@ class TestDisjointness:
 
 class TestPackagedCanonTree:
     def test_layout_is_flat_with_no_canon_wrapper(self):
-        """J-7 / Jei's samples: the packaged rom is ``rom/{COLLECTION.md, charter/**}``.
+        """J-7 samples: the packaged rom is ``rom/{COLLECTION.md, charter/**}``.
         The old ``rom/canon/**`` level is gone, so a rom-relative path is no longer
         its own ``~``-dest — every dest goes through ``_canon_dest``.
 
