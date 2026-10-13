@@ -268,11 +268,11 @@ def _bind_sources(snap: KeyStore) -> dict[str, str]:
 
 
 #: One expander-significant character each, spelled into a host directory name.
-_SIGNIFICANT = ["$HOME", "@b", "@meta.box.name", "\\q", "~"]
+_SIGNIFICANT = ["$HOME", "@b", "@meta.box.name", "\\q", "~", "{", "}", "{b}"]
 
 
 class TestAHostPathInTheRuntimeFloorIsALiteral:
-    """§1A: a ``meta.runtime`` host-file path is DATA. A ``$``, ``@``, ``\\`` or ``~`` in a
+    """§1A: a ``meta.runtime`` host-file path is DATA. A ``$``, ``@``, ``\\``, ``~`` or brace in a
     directory name is neither expanded nor read as a reference, in every subject."""
 
     @pytest.mark.parametrize("refer", [False, True])

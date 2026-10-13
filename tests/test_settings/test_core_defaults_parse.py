@@ -52,7 +52,7 @@ def test_mutating_a_returned_doc_does_not_reach_the_next(cold_parse):
 
 
 def test_env_floor_expands_a_guest_home_value_and_leaves_the_rest(monkeypatch):
-  """A ``$GUEST_HOME/…`` env value comes back as a guest path; a ``$VAR`` value is left for the snapshot."""
+  """A ``{$GUEST_HOME}/…`` env value comes back as a guest path; a ``{$VAR}`` value is left for the snapshot."""
   doc = {"env": {"agent.shell": {"FINAL": "{$GUEST_HOME}/AGENTS.md", "TERM": "{$TERM}"}}}
   monkeypatch.setattr(core_defaults, "_load_doc", lambda: doc)
   assert core_defaults.env_default_categories() == {

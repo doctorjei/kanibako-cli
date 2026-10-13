@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import re
+
 import pytest
 
 from kanibako.agent_ref import CANONICAL_SEP
 from kanibako.settings.settings_resolve import (
     DEFAULT_TERM,
+    ExprSyntaxError,
     GUEST_HOME,
     MAX_REF_DEPTH,
     UNSET,
@@ -882,21 +885,30 @@ def test_the_two_unpackers_read_one_2_element_list_oppositely() -> None:
 
 
 # ---------------------------------------------------------------------------
-# expand_guest_home — the one ``$GUEST_HOME`` prefix expander
+# expand_guest_home — the one ``{$GUEST_HOME}`` prefix expander
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.parametrize(
     ("value", "expected"),
     [
-        ("$GUEST_HOME/x", f"{GUEST_HOME}/x"),
-        ("$GUEST_HOME", GUEST_HOME),
+        ("{$GUEST_HOME}/x", f"{GUEST_HOME}/x"),
+        ("{$GUEST_HOME}", GUEST_HOME),
         ("~/x", "~/x"),
         ("/etc/x", "/etc/x"),
         ("$TERM", "$TERM"),
+        ("$GUEST_HOMEX/x", "$GUEST_HOMEX/x"),
         ("a/$GUEST_HOME/x", "a/$GUEST_HOME/x"),
+        ("a/{$GUEST_HOME}/x", "a/{$GUEST_HOME}/x"),
         ("", ""),
     ],
 )
 def test_expand_guest_home_substitutes_only_a_leading_token(value: str, expected: str) -> None:
     assert expand_guest_home(value) == expected
+
+
+@pytest.mark.parametrize("value", ["$GUEST_HOME/x", "$GUEST_HOME", "${GUEST_HOME}/x"])
+def test_expand_guest_home_refuses_the_old_spelling_with_the_braced_cure(value: str) -> None:
+    # BARE-REF-GUARD (keyspec "References"): refused for one release, naming the cure.
+    with pytest.raises(ExprSyntaxError, match=re.escape("write '{$GUEST_HOME}'")):
+        expand_guest_home(value)

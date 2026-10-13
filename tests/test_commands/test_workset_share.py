@@ -192,6 +192,28 @@ class TestShareAdd:
         # user typed is the kind of thing they should hear about once).
         assert str(workset.root / "sub" / "dir") in capsys.readouterr().out
 
+    @pytest.mark.parametrize("leaf", ["my{ws}", "a{b", "c}d", "e\\f", "g~h"])
+    def test_add_relative_under_a_root_whose_name_is_significant(
+        self, config_file, tmp_home, std, leaf, capsys,
+    ):
+        """The workset ROOT is data: a brace, backslash, or ``~`` in its directory
+        name is stored as a literal (keyspec "References"), so the join still mounts
+        the root it names.  (Mutation: join ``str(ws.root)`` raw → ``{ws}`` reads as
+        a key reference, a lone brace is malformed → RED.)"""
+        from kanibako.settings.settings_resolve import literal_expr
+
+        ws = create_workset("sigws", tmp_home / leaf, std)
+        rc = run_share_add(_add_args(workset="sigws", bind="sub/dir:/home/agent/data"))
+        assert rc == 0, capsys.readouterr().err
+        bindings = read_bindings(ws.root / "workset.yaml")
+        assert bindings[("rw", "/home/agent/data")] == [
+            f"{literal_expr(str(ws.root))}/sub/dir",
+        ]
+        capsys.readouterr()
+        assert run_share_list(_list_args(workset="sigws", effective=True)) == 0
+        expected = f"{ws.root / 'sub' / 'dir'} -> /home/agent/data  [rw]"
+        assert expected in capsys.readouterr().out
+
     @pytest.mark.parametrize(
         "src", ["/abs/host", "~/tdir", "{$XDG_DATA_HOME}/x", "{system.channelroot}/x"],
     )

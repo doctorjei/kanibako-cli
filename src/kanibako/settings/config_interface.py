@@ -482,19 +482,15 @@ def _set_time_anchor(
     """The DIRECTORY *anchor_ref* names AT SET TIME, or ``None`` when it is not knowable here."""
     from kanibako.settings.settings_resolve import match_braced
 
-    if anchor_ref.startswith("{"):
-        # ⚑ THE BRACED SPELLING IS A REFERENCE. PARSED, not stripped: ``{{`` is a
-        # literal brace and ``{$NAME}`` a VARIABLE, so a blind ``[1:-1]`` hands
-        # the lookup a bogus key and one named ``$NAME``.
-        braced = match_braced(anchor_ref, 0)
-        if braced is None:
-            return None
-        kind, ref = braced[0], braced[1]
-        if kind == "var":
-            return _host_xdg_map().get(ref)
-    else:
-        # ``path_key_anchor`` answers braced refs; ``@`` and ``$`` are ordinary characters.
-        ref = anchor_ref
+    # ⚑ ``path_key_anchor`` answers a braced reference, PARSED, not stripped: ``{{`` is a
+    # literal brace and ``{$NAME}`` a VARIABLE, so a blind ``[1:-1]`` hands the lookup a
+    # bogus key and one named ``$NAME``. Anything else names no anchor.
+    braced = match_braced(anchor_ref, 0) if anchor_ref[:1] == "{" else None
+    if braced is None:
+        return None
+    kind, ref = braced[0], braced[1]
+    if kind == "var":
+        return _host_xdg_map().get(ref)
     if ref in scope_anchors:
         return str(scope_anchors[ref])
     if ref.startswith("meta.agent.") and ref.endswith(".path"):

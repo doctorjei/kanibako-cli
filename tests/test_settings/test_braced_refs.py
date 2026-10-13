@@ -7,6 +7,8 @@ spellings are refused for one release (``test_bare_reference_guard``).
 
 from __future__ import annotations
 
+import re
+
 import pytest
 
 from kanibako.settings.agent_config import is_self_resolving, is_unambiguous_path_value
@@ -138,7 +140,8 @@ def test_is_unambiguous_path_value_reads_the_braced_form(value, expected) -> Non
 
 def test_expand_guest_home_takes_the_braced_token() -> None:
     assert expand_guest_home("{$GUEST_HOME}/.config") == GUEST_HOME + "/.config"
-    assert expand_guest_home("$GUEST_HOME/.config") == GUEST_HOME + "/.config"
+    with pytest.raises(SettingsError, match=re.escape("write '{$GUEST_HOME}'")):
+        expand_guest_home("$GUEST_HOME/.config")
 
 
 def test_normalize_bind_dest_carries_a_braced_reference_verbatim() -> None:

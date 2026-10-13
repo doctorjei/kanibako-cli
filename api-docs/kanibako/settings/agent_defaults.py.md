@@ -14,7 +14,9 @@ def load_category_binds(package: str, filename: str, agent: str) -> CategoryBind
 def load_envs(package: str, filename: str, agent: str) -> 'dict[str, str]'
 def load_common(package: str, filename: str, agent: str) -> 'dict[str, BindArm]'
 def _load_doc(package: str, filename: str) -> dict[str, Any]
-def _build_binding(entry: dict[str, Any], package: str) -> Binding
+def _guest_path(value: str, filename: str) -> str
+def _refuse_bad_source(src: str, filename: str, what: str) -> None
+def _build_binding(entry: dict[str, Any], package: str, filename: str) -> Binding
 def _build_access_row(tier: str, raw: dict[str, Any] | None, *, channel: Channel, source: str='') -> AccessTierRow
 def _build_access_realization(raw: dict[str, Any] | None, *, source: str='') -> AccessRealization | None
 def _build_setting_arg(entry: dict[str, Any], *, source: str='') -> SettingArg

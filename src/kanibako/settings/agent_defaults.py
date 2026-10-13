@@ -55,8 +55,10 @@ from kanibako.settings.settings_keyspace import (
 )
 from kanibako.settings.settings_resolve import (
     UNSET,
+    ExprSyntaxError,
     SettingsError,
     expand_guest_home,
+    iter_expr_tokens,
     unrooted_source_message,
 )
 from kanibako.targets.base import (
@@ -84,7 +86,29 @@ def _load_doc(package: str, filename: str) -> dict[str, Any]:
     return load_packaged_mapping(importlib.resources.files(package).joinpath(filename), filename)
 
 
-def _build_binding(entry: dict[str, Any], package: str) -> Binding:
+def _guest_path(value: str, filename: str) -> str:
+    """:func:`expand_guest_home` of a box-side *value*; its refusal names *filename*."""
+    try:
+        return expand_guest_home(value)
+    except ExprSyntaxError as exc:
+        raise SettingsError(f"{filename}: {exc}") from None
+
+
+def _refuse_bad_source(src: str, filename: str, what: str) -> None:
+    """Refuse at LOAD a host source the value grammar refuses, naming *filename*.
+
+    The launch would refuse it on every start; a plugin author hears it here, with the
+    cure (an old ``@a.b``/``$NAME`` spelling gets its braced form).  The one tokenizer
+    rules: :func:`~kanibako.settings.settings_resolve.iter_expr_tokens`.
+    """
+    try:
+        for _ in iter_expr_tokens(src):
+            pass
+    except ExprSyntaxError as exc:
+        raise SettingsError(f"{filename}: {what} source {src!r}: {exc}") from None
+
+
+def _build_binding(entry: dict[str, Any], package: str, filename: str) -> Binding:
     """Build one :class:`Binding` from a declarative file entry.
 
     ``origin`` names the detected install field that supplies the host source
@@ -117,7 +141,7 @@ def _build_binding(entry: dict[str, Any], package: str) -> Binding:
     return Binding(
         key=entry["key"],
         origin=HostSrcOrigin(entry["origin"]),
-        box_dest=expand_guest_home(entry["box_dest"]),
+        box_dest=_guest_path(entry["box_dest"], filename),
         kind=BindKind(entry["kind"]),
         scope=BindScope(entry["scope"]),
         ro=bool(entry.get("ro", True)),
@@ -567,7 +591,7 @@ def load_descriptor(package: str, filename: str) -> PluginDescriptor:
 
     return PluginDescriptor(
         command=tuple(desc["command"]),
-        bindings=tuple(_build_binding(b, package) for b in desc.get("bindings", [])),
+        bindings=tuple(_build_binding(b, package, filename) for b in desc.get("bindings", [])),
         mode={k: tuple(v) for k, v in desc.get("mode", {}).items()},
         operations={
             k: Operation(tuple(v["fragment"]))
@@ -710,7 +734,7 @@ def load_category_binds(
                 f"bind-shaped categories are 'caches' / 'seeded' / 'common' / "
                 f"'synced' (spec §0 — the keyspace is CLOSED)."
             )
-        box_dest = expand_guest_home(entry["box_dest"])
+        box_dest = _guest_path(entry["box_dest"], filename)
         host_src = entry["meta_ref"]
         options = "ro" if entry.get("ro", False) else None
 
@@ -727,6 +751,7 @@ def load_category_binds(
                 f"load but bind under a different key than it names."
             )
         ident = f"{category_key!r} entry at {box_dest!r}"
+        _refuse_bad_source(host_src, filename, f"category_bind {ident}")
 
         if not is_self_resolving(host_src):
             because = None
@@ -774,7 +799,7 @@ def _env_values(doc: dict[str, Any], filename: str) -> dict[str, str]:
                 f"{type(value).__name__} value; an environment variable is a "
                 f'STRING — quote it (e.g. "1", "true")'
             )
-        values[str(var)] = expand_guest_home(value)
+        values[str(var)] = _guest_path(value, filename)
     return values
 
 
@@ -861,10 +886,11 @@ def load_common(package: str, filename: str, agent: str) -> "dict[str, BindArm]"
                 f"by box DESTINATION; the entry name was dropped 2026-08-08c "
                 f"(spec §2a). Delete the 'key:' line."
             )
+        _refuse_bad_source(entry["host_src"], filename, "common entry")
         host_src = root_relative_source(entry["host_src"], root_ref)
         try:
             add_bind(
-                binds, "common", expand_guest_home(entry["box_dest"]), host_src,
+                binds, "common", _guest_path(entry["box_dest"], filename), host_src,
                 entry.get("options"), scope=f"agent.{agent}",
             )
         except ValueError as exc:

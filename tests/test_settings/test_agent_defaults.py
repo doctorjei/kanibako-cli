@@ -275,6 +275,88 @@ class TestCategoryBindsTakeNoRoot:
         }
 
 
+class TestOldReferenceSpellingsAreRefusedAtLoad:
+    """BARE-REF-GUARD (keyspec "References"): a plugin file that still spells a reference
+    the old way is refused when it LOADS, naming the file and the braced cure, rather
+    than loading and failing every launch.  ``GUEST_HOME`` is a known variable in a
+    plugin file, so a bare ``$GUEST_HOME`` is guarded too.
+    (Mutation: drop ``_refuse_bad_source`` or the ``expand_guest_home`` refusal → the
+    file loads → RED.)"""
+
+    @pytest.mark.parametrize("src, cure", [
+        ("@meta.agent.claude.path/caches/x", "{meta.agent.claude.path}"),
+        ("@{meta.agent.claude.path}/caches/x", "{meta.agent.claude.path}"),
+        ("$XDG_CACHE_HOME/x", "{$XDG_CACHE_HOME}"),
+    ])
+    def test_category_bind_meta_ref(self, declfile, src, cure):
+        package, filename = declfile(
+            "category_binds:\n"
+            "  - category: caches\n"
+            f"    meta_ref: \"{src}\"\n"
+            "    box_dest: \"{$GUEST_HOME}/.guide\"\n"
+        )
+        with pytest.raises(SettingsError) as e:
+            agent_defaults.load_category_binds(package, filename, "claude")
+        msg = str(e.value)
+        assert filename in msg and f"write '{cure}'" in msg, msg
+
+    def test_common_host_src(self, declfile):
+        package, filename = declfile(
+            "common:\n"
+            "  - host_src: \"@meta.agent.claude.path/common/x\"\n"
+            "    box_dest: \"{$GUEST_HOME}/.x\"\n"
+        )
+        with pytest.raises(SettingsError) as e:
+            agent_defaults.load_common(package, filename, "claude")
+        msg = str(e.value)
+        assert filename in msg and "write '{meta.agent.claude.path}'" in msg, msg
+
+    @pytest.mark.parametrize("old", ["$GUEST_HOME", "${GUEST_HOME}"])
+    @pytest.mark.parametrize("route", ["category_binds", "common", "env", "descriptor"])
+    def test_bare_guest_home(self, declfile, old, route):
+        text = {
+            "category_binds": (
+                "category_binds:\n  - category: caches\n    meta_ref: /abs\n"
+                f"    box_dest: \"{old}/.guide\"\n"
+            ),
+            "common": f"common:\n  - host_src: leaf\n    box_dest: \"{old}/.x\"\n",
+            "env": f"env:\n  PROBE_DIR: \"{old}/bin\"\n",
+            "descriptor": (
+                "descriptor:\n  command: [\"probe\"]\n  bindings:\n    - key: share\n"
+                f"      origin: install_dir\n      box_dest: \"{old}/.share\"\n"
+                "      kind: dir\n      scope: agent_critical\n"
+            ),
+        }[route]
+        package, filename = declfile(text)
+        load = {
+            "category_binds": lambda: agent_defaults.load_category_binds(
+                package, filename, "claude"),
+            "common": lambda: agent_defaults.load_common(package, filename, "claude"),
+            "env": lambda: agent_defaults.load_envs(package, filename, "claude"),
+            "descriptor": lambda: agent_defaults.load_descriptor(package, filename),
+        }[route]
+        with pytest.raises(SettingsError) as e:
+            load()
+        msg = str(e.value)
+        assert filename in msg and "write '{$GUEST_HOME}'" in msg, msg
+
+    def test_ordinary_at_and_dollar_still_load(self, declfile):
+        """Only an old SPELLING is refused: ``@``/``$`` before a name that is no
+        declared key or known variable are ordinary characters."""
+        package, filename = declfile(
+            "category_binds:\n"
+            "  - category: caches\n"
+            "    meta_ref: \"/srv/a@b/$HOME\"\n"
+            "    box_dest: \"{$GUEST_HOME}/.guide\"\n"
+            "env:\n  PROBE_DIR: \"$GUEST_HOMEX/bin\"\n"
+        )
+        binds = agent_defaults.load_category_binds(package, filename, "claude")
+        assert binds == {"agent.claude.caches": {"/home/agent/.guide": ("/srv/a@b/$HOME",)}}
+        assert agent_defaults.load_envs(package, filename, "claude") == {
+            "agent.claude.env.PROBE_DIR": "$GUEST_HOMEX/bin",
+        }
+
+
 class TestCategoryBindsAreDestKeyed:
     """EVERY ``category_binds:`` declaration lands in a TERMINAL category key,
     keyed by box DESTINATION (spec §2a; disk-store rework R-5/R-10/R-11).

@@ -1459,8 +1459,11 @@ def run_share_add(args: argparse.Namespace) -> int:
             )
             return 1
         # ⚑ The SAME join the launch used to apply, moved to WRITE time so the stored
-        # value resolves on its own (spec §2a). Same input, same mount.
-        host_src = str(ws.root / host_src)
+        # value resolves on its own (spec §2a). Same input, same mount. The root is DATA:
+        # a brace, backslash, or ``~`` in its directory names is literal, never grammar.
+        from kanibako.settings.settings_resolve import literal_expr
+
+        host_src = f"{literal_expr(str(ws.root))}/{host_src}"
 
     ws_config = _workset_config_path(ws)
     data = _load_share_doc(ws_config)

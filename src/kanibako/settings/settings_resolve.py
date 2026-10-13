@@ -49,16 +49,20 @@ GUEST_GID = 1000
 
 
 def expand_guest_home(value: str) -> str:
-    """Expand a ``$GUEST_HOME`` prefix in a box-side path expression.
+    """Expand a leading ``{$GUEST_HOME}`` in a box-side path expression.
 
-    The defaults files write every in-box destination as a ``$GUEST_HOME``
+    The defaults files write every in-box destination as a ``{$GUEST_HOME}``
     expression so the guest-home literal lives in exactly one place (the
     :data:`~kanibako.settings.settings_resolve.GUEST_HOME` constant, single SoT).  Only the
-    leading ``$GUEST_HOME`` / ``{$GUEST_HOME}`` token is substituted; the rest is left verbatim.
+    leading token is substituted; the rest is left verbatim.
+    BARE-REF-GUARD: a leading ``$GUEST_HOME`` / ``${GUEST_HOME}`` is refused with the
+    braced cure (keyspec "References"); ``GUEST_HOME`` is a known variable here only.
     """
-    for token in ("{$GUEST_HOME}", "$GUEST_HOME"):
-        if value.startswith(token):
-            return GUEST_HOME + value[len(token):]
+    token = "{$GUEST_HOME}"
+    if value.startswith(token):
+        return GUEST_HOME + value[len(token):]
+    if value[:1] == "$":
+        refuse_bare_reference(value, 0, is_var=lambda name: name == "GUEST_HOME")
     return value
 
 
@@ -731,13 +735,16 @@ def _is_declared_key(name: str) -> bool:
 # delete this function and :func:`refuse_bare_reference`, their calls in
 # :func:`iter_expr_tokens`, and ``@$`` from :data:`_TOKEN_START`; grep BARE-REF-GUARD for
 # every other site.
-def bare_reference_at(expr: str, i: int) -> tuple[str, str] | None:
+def bare_reference_at(
+    expr: str, i: int, *, is_var: Callable[[str], bool] = is_known_var,
+) -> tuple[str, str] | None:
     """``(old spelling, braced cure)`` when the ``@`` or ``$`` at *i* starts an old
     reference spelling; else ``None``.
 
     The spellings: a bare ``@a.b.c`` naming a declared key, or whose leading dotted part
     is one (``@meta.box.name.jsonl``); ``@{a.b.c}`` naming a declared key; a bare
-    ``$NAME`` or ``${NAME}`` naming a known variable. Any other ``@`` or ``$`` is text.
+    ``$NAME`` or ``${NAME}`` naming a known variable (*is_var*). Any other ``@`` or ``$``
+    is text.
     ⚑ PRECONDITION: ``expr[i]`` is ``@`` or ``$``.
     """
     rest = expr[i + 1:]
@@ -758,7 +765,7 @@ def bare_reference_at(expr: str, i: int) -> tuple[str, str] | None:
         return None
     in_braces = rest.startswith("{")
     m = _VAR_NAME_RE.match(expr, i + 2 if in_braces else i + 1)
-    if m is None or not is_known_var(m.group(0)):
+    if m is None or not is_var(m.group(0)):
         return None
     end = m.end()
     if in_braces:
@@ -768,13 +775,15 @@ def bare_reference_at(expr: str, i: int) -> tuple[str, str] | None:
     return expr[i:end], f"{{${m.group(0)}}}"
 
 
-def refuse_bare_reference(expr: str, i: int) -> None:
+def refuse_bare_reference(
+    expr: str, i: int, *, is_var: Callable[[str], bool] = is_known_var,
+) -> None:
     """RAISE when the ``@`` or ``$`` at *i* starts an old reference spelling
     (:func:`bare_reference_at`), naming the braced spelling that cures it; else return.
 
     ⚑ PRECONDITION: ``expr[i]`` is ``@`` or ``$``.
     """
-    found = bare_reference_at(expr, i)
+    found = bare_reference_at(expr, i, is_var=is_var)
     if found is not None:
         old, cure = found
         raise ExprSyntaxError(
