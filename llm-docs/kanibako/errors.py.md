@@ -111,11 +111,11 @@ the same `kind` / `box_dest` / `entries`. The user-visible payoff: a message nam
 `"binding_vs_binding"` — two CONCRETE declarations at one destination.
 : `CONCRETE_CATEGORIES` is `("bindings.ro", "bindings.rw", "secret_path")`, so this
   covers two `bindings.{ro,rw}`, a `bindings.*` against a `secret_path`, and any other pairing
-  among the three. `system-design-1.8.0.md` § *Collision arbitration*: *"TWO MOUNTS AT ONE
-  DESTINATION ARE AN ERROR IN EVERY SCOPE COMBINATION BUT ONE"* — the one being `common` and `caches`
-  in one scope, which the store-shape producer decides first, so it never reaches this error. Two
-  bindings disagreeing on ro/rw is a semantic disagreement, and silently picking one hands the user a
-  read-only mount where they asked for writable.
+  among the three. `~/canon/workbook/specs/system-design-1.8.0.md` § *Collision arbitration*:
+  *"TWO MOUNTS AT ONE DESTINATION ARE AN ERROR IN EVERY SCOPE COMBINATION BUT ONE"* — the one
+  being `common` and `caches` in one scope, which the store-shape producer decides first, so it
+  never reaches this error. Two bindings disagreeing on ro/rw is a semantic disagreement, and
+  silently picking one hands the user a read-only mount where they asked for writable.
   ⚑ **The D2 CARVE-OUT is the caller's test, not this error's** (`secret_path_deliveries`): a
   group whose concrete members are ALL `secret_path` is not a collision at all. Their dest is
   `SECRET_MOUNT_DIR/{VAR}` by construction, so two of them at one dest are always the same VAR
@@ -134,8 +134,8 @@ Both refusals are raised by named helpers rather than inline, so the spec-mandat
 exists exactly once each: `settings_categories.raise_binding_vs_binding` and
 `raise_extension_onto_occupied`, three callers apiece.
 
-⚑⚑ **A `§0 row-1` / `§0 row-3` label does not resolve.** The collision table in
-`system-design-1.8.0.md` § *Collision arbitration* is keyed by the ARRIVING entry (bind / mask /
+⚑⚑ **A `§0 row-1` / `§0 row-3` label does not resolve.** The collision table in the
+system design's § *Collision arbitration* is keyed by the ARRIVING entry (bind / mask /
 copy-file / copy-dir), and its numbered refusal list puts bind-vs-bind at **2**;
 `extension_onto_occupied` has no number — it is the section's base-vs-extension prose. The one
 surviving `§0 row-1` label, in `settings/agent_defaults.py`, is not a resolvable citation.
@@ -149,7 +149,7 @@ A template/seed copy tried to write OUTSIDE its scope's allowed surface.
 rule. A template that could plant `<scope>.yaml` at a scope root would be planting
 `meta.<scope>.settings` — the cascade's own last word. At workset scope the same escape reaches
 `registry.yaml` (the AUTHORITATIVE box membership), `auth/`, `vault/` and `workspaces/`: the user's
-credentials and code. `system-design-1.8.0.md` § *The seed whitelists — what the copier may write*
+credentials and code. The system design's § *The seed whitelists — what the copier may write*
 denies them by name.
 
 
