@@ -4510,7 +4510,7 @@ parent — which is the root only when `workset.workspaces` is left at its defau
 `workset.yaml` live), so the lift aims at it in every layout. Two things follow, and the second is
 the reason this is here rather than only in the changelog:
 
-- With `workset.workspaces` set **one level deeper** (`{meta.workset.path}/nested/deep`), the files
+- With `workset.workspaces` set **one level deeper** (`@meta.workset.path/nested/deep`), the files
   used to land in `nested/` and the box was registered there, one level below the directory you
   converted. They now land at the root. The interposed directory is removed once emptied; if it
   holds anything else of yours, it stays.
@@ -4757,7 +4757,7 @@ one level too far and so sitting *under* `config:`. Neither took effect before, 
 so. **If you have ever hand-written this file, read the keys under `config:` once.**
 
 🛑 **The reference case is the one that can break a working host, so check for it specifically.**
-If a declared key's value contains `{config.<something>}` and that something is not in the list the
+If a declared key's value contains `@config.<something>` and that something is not in the list the
 message prints, the file now refuses where it used to resolve. The cure is to inline the value:
 write `data: /srv/elsewhere/kanibako` and delete the invented key. Nothing moves on disk — the path
 you were already resolving to is the one you write down.
