@@ -185,8 +185,8 @@ def agent_categories_for_node(
     unrelated ``@``-ref source is carried VERBATIM (spec §2a) — a plugin naming the
     host's real ``~/.claude`` means that dir for every node.
 
-    ⚑ A value that is not a dest-keyed map (a scalar source key, a LIST-valued
-    ``masks``) is re-keyed and carried through: there is no source to re-root.
+    ⚑ A value that is not a dict (a scalar source key) is re-keyed and carried
+    through: there is no source to re-root.  Every dict value is read as a ``BindArm``.
     """
     if not node_name or node_name == harness:
         return dict(table)

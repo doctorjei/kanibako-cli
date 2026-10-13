@@ -33,25 +33,22 @@ invocation needs directly and carries the rest opaquely.
 ### `run_args`, `state` — the `[agent]` section
 
 `run_args` is the one launch-invocation value the record models as a field of its own; `state` holds
-the agent-state knobs beside it — `model`, `access`, `allow_helpers`, `endpoint`, and so on. Since
-the S2 flatten, all of them sit FLAT under the file's root, beside the category tables, because
-`self` IS `agent.<node>`: there is no per-node sub-table to nest them in.
+the agent-state knobs beside it — `model`, `access`, `allow_helpers`, `endpoint`, and so on. All of
+them sit FLAT under the file's root, beside the category tables, because `self` IS
+`agent.<node>`: there is no per-node sub-table to nest them in.
 
 ⚑⚑ **`run_args` IS THREE-STATE (`list[str] | None`), the same shape and the same reason as
 `secret_path`** — `[R169]`. ABSENT is `None` ("this file says nothing about the argv"); an explicit
-`run_args: []` is the user's "no arguments". Both used to load as one empty list, which was harmless
-only while this file was the argv's sole source: `agent.default.run_args` reaches a launch now, so
-the difference is whether this agent OPTS OUT of that default or lets it through. **Test
+`run_args: []` is the user's "no arguments". `agent.default.run_args` reaches a launch, so the
+difference is whether this agent OPTS OUT of that default or lets it through. **Test
 `cfg.run_args is None`** — a truthy test cannot tell them apart, and the one that folds them hands an
 opted-out agent the default it refused. ⚑ A bare `run_args:` in the YAML is a PRESENT "no arguments"
-and loads as `[]`, not as the absent state; the membership test in `agent_file.load` is what parts
+and loads as `[]`, not as the absent state; the membership test in `agent_file.record` is what parts
 the two `None`-looking shapes.
 
-⚑ **`name` was a field here and is gone** (D8b, 2026-09-15) — the FILE's own identity field, never a
-keyspace leaf. `agent.<agent>.label` carries an agent's description now, as an ordinary §2d key.
-⚑ **And the `IDENTITY_KEYS` set that spelled the pair is gone with it** (2026-09-18): with one member
-left, its name was false of what it held. **Which three jobs it was doing, and where each one went,
-is enumerated once — at the `_SCALAR_WRITABLE_KEYS` block in `agent_file.py.md`.**
+⚑ **The record has no `name` field.** `agent.<agent>.label` carries an agent's description, as an
+ordinary §2d key, and a file still holding a `name:` line REFUSES the launch by name
+(`agent_file._refuse_undeclared_state`).
 
 ### `env` — the ENV category
 
@@ -65,12 +62,12 @@ What the field is FOR is the READ side of the `agent` verbs: `agent info` and `a
 (`commands/agent_cmd.py`'s `run_info` and `_show_agent_config`, both through `_stored_rows`), and
 `agent get <node> env.<VAR>` returns it (`_get_agent_key`).
 
-⚑ **`dict[str, str | None]`, THE SAME THREE STATES AS `secret_path`** — since 2026-09-20, and the
-lag is the lesson. Typed `dict[str, str]` it *forced* `load` to `str()` a present-`None` into the
-word `"None"`, two lines from the `secret_path` comprehension that keeps it; the record then carried
-the four-byte string past every file-level fallback, so `agent get <node> env.<VAR>` printed `None`
-where the identical `secret_path` read printed `null`. **A field's TYPE can be the thing that makes
-a reader wrong.**
+⚑ **`dict[str, str | bool | None]`, THE SAME SHAPE AS `secret_path`** — one arm per STORED
+spelling: a present-`None` is the declared suppression state (spec §2h) and a bool is a stored
+arm, so the record holds both UNRENDERED. Typed `dict[str, str]`, the reader would have to `str()`
+them into the words `"None"` and `"True"`, and `agent get <node> env.<VAR>` would print `None` where
+the identical `secret_path` read prints `null`. **A field's TYPE can be the thing that makes a
+reader wrong.**
 
 ⚑ It is NOT needed to preserve a user's `agent set`. That verb routes through
 `config_interface.set_config_value`, which writes one leaf (`agent_file.write_leaf`) and never builds
@@ -79,8 +76,8 @@ an `AgentConfig`, and every `agent_file.save` caller persists a FRESHLY GENERATE
 
 ### `secret_path` — the SECRET category
 
-Spec §2a, added 2026-07-06; RENAMED from the rc0–rc2 `env_file`. A mapping of VAR to a host PATH
-pointing at secret material — for example a 0600 bearer-token file.
+Spec §2a. A mapping of VAR to a host PATH pointing at secret material — for example a 0600
+bearer-token file.
 
 Stored DISCRIMINATED under `agent.<node>.secret_path.<VAR>`: the same first-class category shape that
 `config set agent.<node>.secret_path.<VAR>` writes and that `_agent_partial` reads into the launch
@@ -89,11 +86,12 @@ cascade. That is what makes it resolve through `system → workset → box → a
 The value is a PATH only. At launch the file is ro-bind-mounted arm's-length and exported IN-BOX;
 kanibako NEVER reads the secret VALUE — it appears in no snapshot, no keystore, no log, and no argv.
 
-🛑 **A VAR's value is THREE-STATE** (ruling of 2026-08-17). The VAR is either:
+🛑 **A VAR's value has three shapes beyond absence**, typed `str | bool | None`. The VAR is either:
 
 * **ABSENT** from the dict — never configured;
 * mapped to `None` — **PRESENT-null**, written by `--null` or by a hand-edit, meaning this endpoint
   is deliberately KEYLESS;
+* mapped to a `bool` — a stored arm, held unrendered;
 * mapped to a path `str`.
 
 ⚑ Test membership (`var in cfg.secret_path`) before reading a value. `.get(var)` alone cannot tell
@@ -102,15 +100,15 @@ ABSENT from deliberately-keyless: both are falsy/`None`, and they mean different
 ### `category_tables` — the tables this record does not model
 
 The category tables that get no field of their own: `bindings` (the `{ro, rw}` pair, carried whole),
-`caches`, `seeded`, `common`, `synced`, `masks`. All flat under the file's root since the S2 flatten,
-again because `self` IS `agent.<node>`.
+`caches`, `seeded`, `common`, `synced`, `masks`. All flat under the file's root, again because
+`self` IS `agent.<node>`.
 
 They are not modeled as fields because they ride `_agent_partial` into the launch **cascade**, not
 into the launch invocation. They are carried OPAQUELY through the load → write round trip.
 
-⚑ **That round trip has no live producer, MEASURED.** All four `agent_file.save` callers persist a
+⚑ **That round trip has no live producer.** All three `agent_file.save` callers persist a
 freshly generated config: both `commands/start.py` sites gate on `agent_cfg_dirty`, which is
-first-use-only, and both `cli.py` sites build the config inline. Nothing today loads this file, edits
+first-use-only, and the one `cli.py` site builds the config inline. Nothing loads this file, edits
 it and writes it back. The opaque carry protects a shape no caller currently exercises — a guard,
 not a running guarantee. That is a reason to keep it, not a reason to trust it.
 
@@ -125,21 +123,19 @@ that hold a *data_path* rather than a resolved agents root — it just delegates
 module has to know the two spellings differ. A persona node is `navigator℘claude` inside a key —
 `℘` exists solely so the node is spellable in a dot-separated key path (`agent_ref`) — but a store
 directory is not a key, so it carries the `+` the user typed: `agents/navigator+claude/`. The
-function DELEGATES to `agent_ref.display_agent_ref` rather than repeating the substitution. Five
-independent compositions of the store path go through it: `agent_settings_path`,
-`settings_launch.meta_agent_path_floor`'s VALUE,
-`core_defaults.canon_default_categories`' value + store probe, `launch.templates.
-template_seed_defaults`' VALUE, and EVERY link `commands.start.
-ensure_persona_share_symlinks` lays. ⚑ Miss one and the store SPLITS with no error raised anywhere —
-every path is create-if-absent, so the box gets two half-stores; each site is mutation-guarded by a
-literal-spelling assertion in its own test file.
+function DELEGATES to `agent_ref.display_agent_ref` rather than repeating the substitution. Every
+composition of the store path goes through it — e.g. `agent_settings_path`,
+`settings_launch.meta_agent_path_floor`'s VALUE, `core_defaults.canon_default_categories`' value,
+store probe and pseudo stores, `config_interface`'s `meta.agent.<a>.path` reading, and EVERY link
+`commands.start.ensure_persona_share_symlinks` lays. ⚑ Miss one and the store SPLITS with no error
+raised anywhere — every path is create-if-absent, so the box gets two half-stores.
 
 `agent_settings_path(agents_root, agent_id)` is `@meta.agent.<agent>.settings`. Callers pass the
 CANONICAL node; the `+` dirname is applied inside.
 
 The per-agent SETTINGS cascade file lives **inside** the per-agent store dir
 (`@meta.agent.<agent>.path` = `agents/<agent>/`) as `agent.yaml`. It is NOT the old sibling
-`agents/<agent>.yaml` file (decision D-2026-06-22). The layout parallels the per-agent template dir
+`agents/<agent>.yaml` file. The layout parallels the per-agent template dir
 `agents/<agent>/template` and the per-category store dirs `agents/<agent>/{common,caches,seeded}/`.
 
 ## The per-agent HOST LAYOUT of the abstract categories (spec §2a)
@@ -148,14 +144,11 @@ The per-agent SETTINGS cascade file lives **inside** the per-agent store dir
 declaration-time ref builder (`agent_defaults.load_common`), so the dirname is spelled ONCE (design
 principle P10: no duplicated shared data).
 
-⚑ **THE PERSONA SHIM IS NO LONGER A CONSUMER.** It re-roots WHOLE store-relative paths
+⚑ **THE PERSONA SHIM IS NOT A CONSUMER.** It re-roots WHOLE store-relative paths
 (`agent_representation.harness_store_leaf`), which is generic over categories and over anything
 else a plugin names, so it composes `agents/<store_dirname>/<leaf>` directly and never asks what a
 category's dirname is. The two still land on ONE directory, because `@meta.agent.<a>.path` IS
 `@config.agents/<store_dirname>` (`settings_launch.meta_agent_path_floor`).
-
-⚑ `agent_category_root` — the resolved twin of `agent_category_root_ref` — lost its last production
-caller with that change and is exercised only by `TestLayoutSingleSource`.
 
 It maps a category to the FIXED sub-dirname under the per-agent store root, and it is DERIVED from
 `ABSTRACT_CATEGORIES` rather than re-typed: the dirname IS the category name, so spelling the three
@@ -172,25 +165,27 @@ bare root — the closed-keyspace rule, spec §0. The concrete `bindings.{ro,rw}
 root at any scope (§2a), so asking for their dirname is a caller bug, and the `ValueError` says so
 and names the declared set.
 
-### `agent_category_root_ref` — the stored ref (and the twin that is GONE)
+### `category_root_ref` and `agent_category_root_ref` — the stored ref
 
-`agent_category_root_ref(agent, category)` is the self-resolving `@`-ref:
-`@meta.agent.<agent>.path/<dirname>`. This is the AGENT row of the spec's DECLARATION-ROOT table
-(§2a), read from the single copy of that table in
-`kanibako.settings.settings_categories.DECLARATION_ROOT_REF`. This is what a loader STORES, so the
-stored value resolves on its own with no layer prepending anything later.
+`category_root_ref(scope, category, *, agent=None)` is the self-resolving `@`-ref an abstract
+category's sources root at, per SCOPE: `<root>/<dirname>`, where `<root>` is the scope's row of the
+spec's DECLARATION-ROOT table (§2a), read from the single copy of that table in
+`kanibako.settings.settings_categories.DECLARATION_ROOT_REF`. The scopes differ only in which row
+is read. *agent* is REQUIRED for the discriminated agent row, and an undeclared *scope* raises
+`ValueError` rather than taking a bare root (spec §0). This is what a loader STORES, so the stored
+value resolves on its own with no layer prepending anything later.
 
-⚑ **`agent_category_root` — the RESOLVED twin — is GONE**, and the module carries a tombstone
-saying why. Its one consumer was the persona symlink shim, which stopped asking "where does this
-CATEGORY store?" when the re-root went generic: it carries a WHOLE store-relative path
-(`common/plugins`, `seedsrc`) that names no category at all. A resolved store path is what
-`@meta.agent.<a>.path` already resolves to (`settings_launch.meta_agent_path_floor` defines the
-anchor as `@config.agents/<store_dirname>`), so a second composer beside it would be a second answer
-to one layout question — free to drift, and silently, because every path here is create-if-absent.
-A caller needing a real `Path` composes `agents_root / store_dirname(node) / <rel>`; the
+`agent_category_root_ref(agent, category)` is the AGENT row — `@meta.agent.<agent>.path/<dirname>` —
+kept as a named entry point for the per-agent loaders that never see another scope; it delegates to
+`category_root_ref`.
+
+⚑ **There is no RESOLVED twin.** A resolved store path is what `@meta.agent.<a>.path` already
+resolves to (`settings_launch.meta_agent_path_floor` defines the anchor as
+`@config.agents/<store_dirname>`), so a second composer beside it would be a second answer to one
+layout question — free to drift, and silently, because every path here is create-if-absent. A
+caller needing a real `Path` composes `agents_root / store_dirname(node) / <rel>`; the
 `store_dirname` call IS the shared fact, and it is the one that must not be re-spelled.
-`TestLayoutSingleSource` moved with the subject: it now pins the ref builder against
-`meta_agent_path_floor`, two producers that are both still live.
+`TestLayoutSingleSource` pins the ref builder against `meta_agent_path_floor`.
 
 ## Declaration-time rooting
 
@@ -209,26 +204,24 @@ declared.
 `_SELF_RESOLVING_TOKENS` is the tuple of TOKEN prefixes that make a `host_src` resolve on its own when
 UNESCAPED (spec §2a): `~`, `$`, `@`. A leading `/` is handled separately.
 
-`is_self_resolving` is true iff *src* is ABSOLUTE, or begins with an unescaped `~` / `$` / `@`.
-Anything else is a BARE RELATIVE leaf: meaningful only under a root, and a DEFECT wherever no root
-exists.
+`is_self_resolving` is true iff *src* is ABSOLUTE, begins with an unescaped `~` / `$` / `@`, or
+begins with a braced reference `{…}` (a key `{a.b}` or a variable `{$NAME}`, parsed by
+`settings_resolve.match_braced`). Anything else is a BARE RELATIVE leaf: meaningful only under a
+root, and a DEFECT wherever no root exists.
 
 ⚑ **Escapes are read the way the RESOLVER reads them, and the two leading-escape cases fall on
 OPPOSITE sides.** This is why the test cannot be a plain first-character check:
 
-* `\/foo` unescapes to `/foo`, which is ABSOLUTE. The retired post-expand join never joined it — it
-  tested the *unescaped* string for a leading `/` — so calling it relative here would DIVERGE from
-  the behavior this phase preserves.
+* `\/foo` unescapes to `/foo`, which is ABSOLUTE, so it is self-resolving.
 * `\~foo` unescapes to the literal `~foo`, a plain relative dir that merely starts with a tilde, NOT
-  a home reference. The retired join did not join that one either, but only because `~foo` expands
-  home-ward before the test; the answer (leave it alone, treat as relative) matches anyway.
+  a home reference, so it is a bare relative leaf.
 
 So a leading `/` is tested AFTER unescaping, while the token prefixes count only when they are NOT
 escaped. That asymmetry is the whole content of the function.
 
 ## Stored path values — [R147]'s predicate and its refusal
 
-A path key's STORED value must say ON ITS OWN where it points ([R147], 2026-08-29): a bare relative
+A path key's STORED value must say ON ITS OWN where it points ([R147]): a bare relative
 is AMBIGUOUS and is REFUSED rather than anchored. `is_unambiguous_path_value` is that test and
 `ambiguous_path_value_error` is the wording every seam refuses with. Both live here so the rule has
 ONE predicate and ONE message wherever it fires: `config_interface._bare_relative_path_error` at set
@@ -239,8 +232,9 @@ settings file stores.
 
 ### `is_unambiguous_path_value(value)`
 
-True for an absolute path, `~`, an `@`-ref, or a `$XDG_*` variable. Anything else — a bare leaf,
-`./x`, `../x` — is ambiguous.
+True for an absolute path, `~`, an `@`-ref, a `$XDG_*` variable, or a braced reference that is a key
+(`{a.b}`) or an `XDG_*` variable (`{$XDG_DATA_HOME}`). Anything else — a bare leaf, `./x`, `../x`,
+a non-XDG variable — is ambiguous.
 
 ⚑⚑ **THE TEST IS ON THE STORED SPELLING, BEFORE EXPANSION, and that is the load-bearing part.**
 [R147] rules on what is a legal value to have WRITTEN, so `$XDG_DATA_HOME/kanibako` is legal even in
@@ -254,9 +248,10 @@ and must not be merged.
 predicate rules on a BIND SOURCE, where a declaration may name any variable the launch namespace
 supplies. This one rules on a path a USER typed, and the keyspace's non-XDG variables (`$AGENT`,
 `$WORKSET`) expand to a bare NAME — so `$AGENT/logs` is exactly as relative as `logs`. A `$` is
-therefore PARSED (`settings_resolve.match_var`) and the variable's own name tested for the `XDG_`
-prefix; a malformed `$…` answers False rather than raising. The leading-escape cases fall the way
-they do above: `\/foo` unescapes to an absolute path, `\~foo` to a plain relative dir.
+therefore PARSED (`settings_resolve.match_var`, or `match_braced` for `{$…}`) and the variable's own
+name tested for the `XDG_` prefix; a malformed `$…` or `{…}` answers False rather than raising. The
+leading-escape cases fall the way they do above: `\/foo` unescapes to an absolute path, `\~foo` to
+a plain relative dir.
 
 ### `ambiguous_path_value_error(key, value, ...)`
 
@@ -287,42 +282,12 @@ its second reading being the scope root `config_keys.path_key_anchor` picks. `se
 §2a SOURCE refusal, raised when the mounts are built, covers what that check does not judge: a value
 kanibako supplies itself, and a snapshot `build_launch_snapshot` did not build.
 
----
+### `ambiguous_path_shape_error(key, value, *, where=None)`
 
-## Relocation pass, 2026-08-20
-
-Source went from **79.1%** comment characters (9563/12088) to **59.4%** (3620/6092). Everything above
-was MOVED out of `src/kanibako/settings/agent_config.py`, not deleted.
-
-`~/canon/notebook/scripts/dev-tools/prose-relocation-check.py`: **133 prose lines at HEAD, 120 removed, 0 scoring below 0.6** against
-this document — no removed line is orphaned. `~/canon/notebook/scripts/dev-tools/prose-pass-check.py`: AST identical with docstrings
-stripped, **10 docstring-bearing symbols, added=[] removed=[]**, string-literal multiset identical.
-
-**Kept in source under the keep test** — deleting any of these would let a future edit break
-something silently at that exact line:
-
-* the module docstring's `⚑` pointing the file's shape at `agent_file` (the obvious next edit is to
-  start spelling the root table here);
-* the three-state `secret_path` note, shortened to the membership test (`.get()` alone reads as
-  correct);
-* `env` is the READ side of the `agent` verbs, not a delivery route (the obvious mistake is wiring it
-  into the launch invocation);
-* `category_tables` is carried opaquely and has no live producer (the obvious mistake is deleting it
-  as dead);
-* `is_self_resolving`'s "not a plain first-char test" (the function looks exactly like a candidate
-  for `src[0] in "~$@/"`);
-* `root_relative_source`'s "absolute sources are legal and are NOT joined" (the obvious
-  simplification is to join unconditionally);
-* `AGENT_CATEGORY_DIRNAME`'s "derived, not re-typed" (the obvious edit is to write the three names
-  out);
-* `agent_settings_path`'s "not the old sibling `agents/<agent>.yaml`" and
-  `agent_category_dirname`'s "an undeclared category is REFUSED".
-
-**Deliberate drops — duplication only, no content lost.** Both survive above, so the relocation
-check finds no orphan; recorded here because they were cut rather than relocated line-for-line:
-
-* the S2-flatten rationale (flat under the file's root because `self` IS `agent.<node>`) was stated
-  three times in the class docstring, once each for the `[agent]` section, `env` and
-  `category_tables`. One carrier now, in the `env` and `category_tables` sections above.
-* `agent_config_path`'s "Return the path to an agent's config (settings) file", which its own name
-  and its surviving one-line docstring already say.
+The §2a TYPE refusal for a non-string value stored at a PATH key. ⚑ **The sentence is not written
+here:** it calls `settings_categories.refuse_non_scalar_family_value` at its `path` category and
+returns that refusal's text, so the scalar families and the path keys share ONE carrier; *where*
+names the file the value was read from. It RAISES `ValueError` for a value a path key may hold —
+every caller asks `settings_categories.is_path_key_value` first, so that raise marks a caller that
+skipped the predicate. Callers: `config` (the path-tier reads), `workset_dirkeys` and
+`settings_launch`.

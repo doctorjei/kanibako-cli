@@ -17,35 +17,25 @@ ALL THREE of its category hooks (`default_common()`, `default_seeds()`,
 `default_category_binds()`) — sharing one private key swapper, plus the two `harness_store_*`
 functions that write down where a harness's agent-scope store lives.
 
-Historically this module is **block 7a — PURE, ALONGSIDE**, and it is item-0's hard half. The
-descriptor's OWN agent name `<name>` (`install.name`; S27) was the original root; see "Rooting"
-below for why the active NODE name superseded it.
-
-## PURE + ALONGSIDE — the block-7a boundaries
+## PURE — the boundaries
 
 * **Imported, single-source resolution.** host_src is resolved by IMPORTING
   `~kanibako.targets.assembly.resolve_binding_source` — the origin→path logic is NOT
   re-implemented here.
 * **No override application (S26).** `resolve_binding_source` is called with `override=""` so this
-  emits the origin DEFAULT only. A user repoint now comes from a HIGHER cascade level (`box` /
-  `workset` / `agent.<active>`), merged by block 2b — NOT baked into the agent default here.
+  emits the origin DEFAULT only. A user repoint comes from a HIGHER cascade level (`box` /
+  `workset` / `agent.<active>`), merged by the cascade — NOT baked into the agent default here.
 * **No existence check (S26).** These functions NEVER touch the filesystem (no `Path.exists()`);
-  the `AGENT_CRITICAL` must-exist safe-fail is a CONSUMER concern (the block-7b mount/reconcile
-  step), not representation. Feed it a fixture install whose paths do not exist and it still
-  represents them.
+  the `AGENT_CRITICAL` must-exist safe-fail is a CONSUMER concern (the mount/reconcile step), not
+  representation. Feed it a fixture install whose paths do not exist and it still represents them.
 * **No expansion (spec §0 "Files store entries UNRESOLVED").** `@`-refs / `$XDG` / `~` are
-  left RAW — expansion is block 3.
+  left RAW — expansion happens at resolve.
   `box_dest` is carried VERBATIM: the descriptor loader
   (`kanibako.settings.agent_defaults._build_binding`) has ALREADY expanded the `$GUEST_HOME` box
   constant at load, so the `Binding` this module receives is post-expansion; re-expanding would be
   wrong. A LITERAL-origin raw `@`/`$XDG`/`~` `box_dest` therefore stays raw for free.
-* **Build ALONGSIDE.** Nothing here was wired into the launch path when it was written; block 7b
-  swaps `descriptor_mounts` onto this representation. `targets/assembly.py` /
-  `settings/agent_defaults.py` / `commands/start.py` were UNTOUCHED by 7a.
-  ⚑ Each is spelled WITH its package on purpose. Bare, `assembly.py` reads as a sibling of this
-  module — and there is no `settings/assembly.py`, in this tree or in any commit that reached it.
-  The `assembly.py` meant here is `targets/assembly.py`, the one the bullets above import
-  `resolve_binding_source` from.
+* ⚑ The `assembly.py` meant here is `targets/assembly.py`, spelled WITH its package on purpose:
+  there is no `settings/assembly.py`.
 
 There is no mutation of the *descriptor* or the *install* either — the partial is built from copies
 of what they report.
@@ -55,9 +45,10 @@ of what they report.
 For each `Binding` in `descriptor.bindings`, order preserved:
 
 * **host_src** = `resolve_binding_source(binding, install, override="")` — the origin-resolved
-  `LAUNCHER` / `INSTALL_DIR` / `BINARY` / `LITERAL` path — stored as `str(host_src)`
-  (`BindEntry.src` is `str`, S1) and, ⚑ R-11, NEVER canonicalized: a source is a HOST path and
-  resolves on its own.
+  `LAUNCHER` / `INSTALL_DIR` / `BINARY` / `LITERAL` path — stored as `literal_expr(str(src))`
+  (`BindEntry.src` is `str`, S1): a `$`, `@` or `{` in a host directory name is ESCAPED as data, so
+  the resolved path is never re-read as a reference. ⚑ R-11: it is NEVER canonicalized — a source
+  is a HOST path and resolves on its own.
 * **box_dest** = the MAP KEY, `binding.box_dest` normalized by
   `~kanibako.settings.settings_resolve.normalize_bind_dest` (R-11: a dest is a GUEST path, so `~`
   expands to the fixed guest home and `~` / `~/` are one destination). It is no longer part of the
@@ -97,7 +88,7 @@ the tier-2 typed accessor honest: `bindings` exposes `Mapping[str, BindEntry]` (
 "PER-ENTRY CASCADE MERGE"). Emitting a
 `None`-host bind would be a lie a consumer crashes on.
 
-## Rooting: the ACTIVE node, never the harness (Block E fix 2a)
+## Rooting: the ACTIVE node, never the harness
 
 The read side (`_agent_pick_node`) walks `agent.default` ∪ `agent.<active_agent>`, where
 `<active_agent>` is the resolved NODE-name — `navigator℘claude` for a persona. The descriptor's
@@ -155,19 +146,17 @@ A plugin declares its agent-scope categories against its OWN name, the HARNESS
 every harness-keyed declaration was invisible: a persona box mounted NEITHER `~/.claude/plugins`
 NOR `~/.claude/cache`, and `ensure_persona_share_symlinks` maintained links nothing consumed.
 
-⚑ **THE FIX LANDED ON `common` FIRST AND STOPPED THERE**, which is how the same defect survived on
-the other two hooks. `default_seeds()` and `default_category_binds()` were still folded HARNESS-KEYED
-at THREE call sites — twice in `_resolve_launch_snapshot`, and again on the CREATE path in
-`_apply_init_seeds`, where fixing one seed site leaves the other broken. What MASKED it is that
-every first-party plugin returns `{}` from both hooks, so no shipped configuration and no test
-driven by claude/goose/codex could show it. Hence ONE adapter over all three: a per-category
-adapter is exactly what lets the next hook be forgotten.
+⚑ **ONE adapter over all three hooks**, folded at THREE call sites — twice in
+`_resolve_launch_snapshot`, and again on the CREATE path in `_apply_init_seeds`, where fixing one
+seed site leaves the other broken. A per-category adapter is exactly what lets the next hook be
+forgotten, and every first-party plugin returns `{}` from `default_seeds()` and
+`default_category_binds()`, so no shipped configuration would show the miss.
 
 **A persona INHERITS its harness's content BY LINK.** That is the documented intent of the symlink
 shim, which points `agents/<node>/<leaf>` at `agents/<harness>/<leaf>` and explicitly steps aside
-when the persona has a real dir of its own. Both halves move so that intent holds (ruled
-2026-08-27 — *"the persona doesn't resolve to the claude dir. It resolves to its own symlink…
-This is important, because the user can change the symlink to a directory or real target"*):
+when the persona has a real dir of its own. Both halves move so that intent holds (*"the persona
+doesn't resolve to the claude dir. It resolves to its own symlink… This is important, because the
+user can change the symlink to a directory or real target"*):
 
 * the KEY `agent.<harness>.<category>` → `agent.<node>.<category>`, so the pick actually sees it;
 * the SOURCE `@meta.agent.<harness>.path/<leaf>` → `@meta.agent.<node>.path/<leaf>`, so the bind
@@ -184,14 +173,17 @@ is why both sides read `harness_store_leaf` and why the shim enumerates the same
 moved. An absolute / `~` / `$var` / unrelated `@`-ref source is carried VERBATIM — those are
 self-resolving by the plugin's own choice (spec §2a) and are not the plugin saying "my store".
 
-⚑ **A value that is not a dest-keyed map** — a scalar source key, a LIST-valued `masks` — is
-re-keyed and carried through: there is no source to re-root.
+⚑ **A value that is not a dict** — a scalar source key — is re-keyed and carried through: there is
+no source to re-root. The hooks' declared type is `targets.base.CategoryBindDefaults`, a terminal
+key → `BindArm` (`{box_dest: (src, …)}`); every dict value is treated as an arm. A `masks` map
+(`{box_dest: bool | None}`, spec §2a) is outside that type, and `_reroot_arm` raises `TypeError` on
+it for a persona node.
 
 A BARE agent (`node_name == harness`) gets the IDENTITY back — byte-identical to the plugin's
 table, so nothing about a non-persona launch changes. A key that is not this harness's is left
 untouched, `agent.default.*` included.
 
-### ⚑⚑ THE TABLES ARE DEST-KEYED (2026-08-08c), SO THE KEY TEST IS A PREFIX ON THE NODE
+### ⚑⚑ THE TABLES ARE DEST-KEYED, SO THE KEY TEST IS A PREFIX ON THE NODE
 
 Each category is a TERMINAL key, so a table holds
 `agent.<harness>.<category> -> {box_dest: (host_src[, opts])}` and the swap matches the leading
@@ -213,8 +205,7 @@ harness)` is its inverse: the store-relative path *host_src* names under *harnes
 ⚑ **THE LEAF RULE IS WRITTEN IN ONE PLACE**, and it has two consumers that would otherwise each
 invent it: `_reroot_arm`, which re-roots a persona's inherited source, and
 `commands.start.ensure_persona_share_symlinks`, which lays the link that source then resolves
-through. Before 2026-08-08c both read it off the KEY (`agent.<a>.common.<leaf>`); dest-keying
-removed the entry name, so the rooted `host_src` is the only remaining carrier.
+through. A dest-keyed entry has no name, so the rooted `host_src` is the only carrier of the leaf.
 
 ⚑ **IT IS THE WHOLE RELATIVE PATH, not the first segment**, because the link must be laid at the
 directory the source NAMES. `launch.templates.stage_layers` selects layers with `is_dir()`, which
@@ -230,7 +221,7 @@ re-root / nothing to shim", never as a parse failure.
 
 ## Authority
 
-Spec `~/canon/workbook/specs/settings-keyspace-1.8.0.md` §2d (`agent.<agent>.bindings.{ro,rw}.<key>` — the ONLY agent key
+Spec `~/canon/workbook/specs/settings-keyspace-1.8.0.md` §2d (`agent.<agent>.bindings.{ro,rw}` — the ONLY agent key
 form; §0 forbids a bare `agent.<key>`) and §2a (binding REPRESENTATION), §0 "Files store
 entries UNRESOLVED" (raw refs). Historical (NOT AUTHORITY):
 `~/canon/notebook/archives/resources/keystore-2026-06/keystore-design.md` §2 (binds are
