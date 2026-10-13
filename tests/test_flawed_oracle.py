@@ -1035,7 +1035,7 @@ class TestCoreDefaultCategories:
         row back.  The vault bind stays per-mode (a lone box has no per-box
         ``/{meta.box.name}`` subdir) but BOTH arms now root at the SAME
         ``{workset.vault_*}`` anchor; the standalone arm used to carry a SECOND spelling
-        of that root (``{meta.workset.path}/vault/*``).
+        of that root (``@meta.workset.path/vault/*``).
         """
         from kanibako.settings import core_defaults
 

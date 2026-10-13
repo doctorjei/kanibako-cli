@@ -251,7 +251,7 @@ class TestTemplateSeedDefaults:
         also catches a fourth layer added at a dest of its own.
 
         ⚑ It ALSO pins the 2026-08-08c RESPELL: the dest used to be the absolute
-        HOST path ``{meta.box.path}/home``, which needed a per-entry space
+        HOST path ``@meta.box.path/home``, which needed a per-entry space
         discriminator to stop the guest translator re-rooting it (see
         ``settings_categories.CategoryEntry``). A host-spelled dest coming back
         makes this RED, which is the point — the discriminator that made one safe
@@ -2473,7 +2473,7 @@ class TestWorksetStampRefusesAnEscapingLeaf:
         skeleton dirs (seven directories in all) outside the workset root, and nothing
         refused — the skeleton loop never reached a guard.
 
-        ⚑ Spelled ``{meta.workset.path}/../escaped`` since [R147]; it read ``../escaped``
+        ⚑ Rooted at ``meta.workset.path`` since [R147]; it read ``../escaped``
         when it was written.  The escape is unchanged — it is the ANCHOR that now has to
         be stated, and stating it is what lets this case still reach the scope guard
         instead of dying earlier on an ambiguous value."""

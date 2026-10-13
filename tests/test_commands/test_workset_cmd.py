@@ -3002,7 +3002,7 @@ class TestWorksetPreviewResolvesTheDeclarationRoot:
     every value a user spells against it depends on it.  It was absent from the
     preview floor — ``paths.system_path_floor`` carries no ``meta.*`` key — and
     ``settings_expand`` renders an unresolvable anchor as the EMPTY string, so a
-    share sourced ``{meta.workset.path}/refdir`` listed as ``/refdir`` at rc 0 with no
+    share sourced ``@meta.workset.path/refdir`` listed as ``/refdir`` at rc 0 with no
     warning.  MEASURED on the shipped ``workset share list --effective``.
     """
 

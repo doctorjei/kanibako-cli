@@ -26,7 +26,7 @@ WHERE a delivery lands or WHETHER it is emitted at all:
 
 ⚑⚑ ONE DEST SPACE, TWO DELIVERIES (spec §0; 2026-08-08c).  EVERY category
 destination is GUEST-spelled now, copies included, and the seed dest was
-respelled from the absolute host path ``{meta.box.path}/home`` to the guest
+respelled from the absolute host path ``@meta.box.path/home`` to the guest
 ``~/``.  So the collision in §1 is closed AT THE SOURCE, and the three things
 that used to discriminate the two spaces — ``CategoryEntry.dest_space``,
 ``snapshot_category_entries(host_dest_keys=…)`` and ``templates.seed_keys_of`` —
@@ -137,7 +137,7 @@ class TestSeedRoutesThroughTheOneGuestTranslator:
 
     ⚑⚑ INVERTED 2026-08-08c, deliberately.  This class used to guarantee the
     OPPOSITE — that the three §2a keys NEVER touch the translator — and that was
-    true while the seed dest was the absolute HOST path ``{meta.box.path}/home``,
+    true while the seed dest was the absolute HOST path ``@meta.box.path/home``,
     which the translator would have re-rooted under the box home.  The respell to
     the guest ``~/`` made routing through the translator the CORRECT behavior, so
     the guarantee is replaced rather than dropped: the same mis-landing bug is now

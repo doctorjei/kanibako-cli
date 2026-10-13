@@ -1518,7 +1518,7 @@ class TestSystemSetAnchorsTheNodeItWrites:
     """
 
     KEY = "agent.claude.canon"
-    VALUE = "@meta.agent.claude.path/canon"
+    VALUE = "{meta.agent.claude.path}/canon"
 
     def _stored(self, config_file):
         return load_doc(_std(config_file).settings)["agent"]["claude"]
@@ -1552,7 +1552,7 @@ class TestSystemSetAnchorsTheNodeItWrites:
         THIS test reds alone — the three ``canon`` rows above do not move.
         """
         capsys.readouterr()
-        value = "@meta.agent.claude.path/tok"
+        value = "{meta.agent.claude.path}/tok"
         rc = _set(f"agent.claude.secret_path.ANTHROPIC_AUTH_TOKEN={value}")
         assert rc == 0, capsys.readouterr().err
         assert self._stored(config_file)["secret_path"][
@@ -1562,7 +1562,7 @@ class TestSystemSetAnchorsTheNodeItWrites:
     def test_another_node_s_root_still_dangles(self, config_file, tmp_home, capsys):
         """WHAT "THE NODE EXISTS" MEANS HERE: the node this write ADDRESSES.  A ref
         spelled against a DIFFERENT node's store root is not anchored by this write and
-        is refused, so the shape ``@meta.agent.*.path`` is never accepted on sight."""
+        is refused, so the shape ``{meta.agent.*.path}`` is never accepted on sight."""
         capsys.readouterr()
         assert _set(f"{self.KEY}=@meta.agent.goose.path/canon") == 1
         assert "meta.agent.goose.path" in capsys.readouterr().err
