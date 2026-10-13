@@ -418,7 +418,7 @@ class TestSameSetRefs:
             "channelroot": "@workset.channels.chat/x",
             "channels": {"chat": "@workset.channelroot/chat"},
         }}
-        with pytest.raises(SettingsError, match="Cyclic @-reference: workset.channelroot"):
+        with pytest.raises(SettingsError, match=r"Cyclic reference: \{workset\.channelroot\}"):
             resolve_workset_dir_key(
                 tmp_path, "@workset.channels.chat/x", "", key="channelroot",
                 standalone=False, workset_settings=doc, early=_scope(tmp_path, {}),

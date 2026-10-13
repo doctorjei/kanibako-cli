@@ -136,7 +136,7 @@ def test_a_colon_in_a_value_is_ordinary_content() -> None:
 def test_dangling_ref_is_hard_error() -> None:
     v = _validate("box.bindings.rw.home", "@nope.not.a.key")
     assert isinstance(v, Error)
-    assert "@nope.not.a.key" in v.message
+    assert "'{nope.not.a.key}'" in v.message
 
 
 def test_existing_whole_value_ref_repoint_is_ok_no_warn() -> None:
@@ -154,13 +154,13 @@ def test_embedded_ref_to_existing_key_is_ok() -> None:
 def test_embedded_dangling_ref_is_hard_error() -> None:
     v = _validate("box.bindings.rw.home", "@workset.boxes/@bad.ref/x")
     assert isinstance(v, Error)
-    assert "@bad.ref" in v.message
+    assert "'{bad.ref}'" in v.message
 
 
 def test_unknown_var_is_hard_error() -> None:
     v = _validate("box.bindings.rw.home", "$NOPE_VAR/x")
     assert isinstance(v, Error)
-    assert "$NOPE_VAR" in v.message
+    assert "{$NOPE_VAR}" in v.message
 
 
 def test_known_var_is_ok() -> None:
@@ -176,7 +176,7 @@ def test_braced_known_var_is_ok() -> None:
 def test_braced_unknown_var_is_hard_error() -> None:
     v = _validate("box.bindings.rw.home", "${NOPE}/x")
     assert isinstance(v, Error)
-    assert "$NOPE" in v.message
+    assert "{$NOPE}" in v.message
 
 
 # --------------------------------------------------------------------------- #
@@ -265,10 +265,10 @@ def test_both_token_families_report_in_the_resolvers_message_style() -> None:
     from kanibako.settings.settings_configset import scan_tokens
 
     for value, expected in (
-        ("@", "Malformed @-reference at:"),
+        ("@", "Malformed key reference at:"),
         ("$", "Malformed variable reference at:"),
-        ("@{x", "Unterminated @{...} reference:"),
-        ("${X", "Unterminated ${...} reference:"),
+        ("@{x", "Unterminated {...} reference:"),
+        ("${X", "Unterminated {...} reference:"),
     ):
         with pytest.raises(ValueError) as ei:
             scan_tokens(value)

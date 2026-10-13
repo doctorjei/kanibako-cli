@@ -48,11 +48,11 @@ _DEEP = "system:\n  env:\n" + "".join(
 
 
 @pytest.mark.parametrize("stored, entry, reason", [
-    (_CYCLE, "system.env.V0 = {system.env.V1}", "cyclic @-reference"),
+    (_CYCLE, "system.env.V0 = {system.env.V1}", "cyclic reference"),
     ('system:\n  env:\n    D: "a{system.env.NOPE}"\n', "system.env.D = a{system.env.NOPE}",
-     "dangling @-reference '@system.env.NOPE'"),
+     "dangling reference '{system.env.NOPE}'"),
     ('system:\n  env:\n    U: "{$KB_NOPE_UNSET}"\n', "system.env.U = {$KB_NOPE_UNSET}",
-     "Unknown variable: $KB_NOPE_UNSET"),
+     "Unknown variable: {$KB_NOPE_UNSET}"),
     (_DEEP, "system.env.V0 = {system.env.V1}", "depth cap (64) exceeded"),
 ], ids=["cycle", "dangling", "unknown-variable", "depth-cap"])
 def test_an_unresolvable_entry_refuses_an_unrelated_set(cli, stored, entry, reason):
@@ -84,7 +84,7 @@ def test_get_warns_and_reads_on(cli):
     proc = cli("system", "get", "system.agent")
     assert proc.returncode == 0, proc.stderr
     assert "shell" in proc.stdout
-    assert "Warning:" in proc.stderr and "cyclic @-reference" in proc.stderr, proc.stderr
+    assert "Warning:" in proc.stderr and "cyclic reference" in proc.stderr, proc.stderr
 
 
 def test_setting_the_bad_key_itself_is_the_repair(cli):
@@ -167,7 +167,7 @@ _NS_REASON = "'box.env' is a namespace, not a key"
 @pytest.mark.parametrize("stored, entry, reason", [
     (_NS_DEST, "box.bindings.rw[@box.env] = ['/h']", _NS_REASON),
     ('box:\n  bindings:\n    rw:\n      "@box.env.FOO": ["/h"]\n',
-     "box.bindings.rw[@box.env.FOO] = ['/h']", "dangling @-reference '@box.env.FOO'"),
+     "box.bindings.rw[@box.env.FOO] = ['/h']", "dangling reference '{box.env.FOO}'"),
     ('box:\n  env:\n    FOO: null\n  bindings:\n    rw:\n      "@box.env.FOO": ["/h"]\n',
      "box.bindings.rw[@box.env.FOO] = ['/h']", "references a present-None config key"),
 ], ids=["namespace", "absent", "present-none"])

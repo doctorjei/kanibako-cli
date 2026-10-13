@@ -385,7 +385,7 @@ class TestSetTimeResolvesTheCommandsTarget:
             ConfigLevel.workset,
         )
         assert message.startswith("Error:"), message
-        assert "dangling @-reference '@meta.workset.path'" in message
+        assert "dangling reference '{meta.workset.path}'" in message
 
 
 class TestTheRuleDoesNotOVERREACH:
@@ -532,7 +532,7 @@ class TestABrokenTargetIsJudgedWithoutTheTarget:
         self._break(proj)
         message = _set_box("box.canon", "@meta.box.home/canon", std, proj)
         assert message.startswith("Error:"), message
-        assert "dangling @-reference '@meta.box.home'" in message
+        assert "dangling reference '{meta.box.home}'" in message
         assert "did not resolve:" in message and "DOTTED" in message
 
     @_WRITES_THE_DOTTED_PREF

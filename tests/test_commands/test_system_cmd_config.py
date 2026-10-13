@@ -1526,7 +1526,7 @@ class TestSystemSetAnchorsTheNodeItWrites:
     def test_the_node_s_own_store_root_resolves(self, config_file, tmp_home, capsys):
         """MUTATION PROOF: drop ``cascade_agent_name`` from ``system_cmd``'s
         ``set_config_value`` call and this reddens with
-        ``dangling @-reference '@meta.agent.claude.path'`` — while the two refusals below
+        ``dangling reference '{meta.agent.claude.path}'`` — while the two refusals below
         stay green, so the fix cannot be a blanket accept wearing a pass."""
         capsys.readouterr()
         rc = _set(f"{self.KEY}={self.VALUE}")
@@ -1537,7 +1537,7 @@ class TestSystemSetAnchorsTheNodeItWrites:
         """The floor anchors ONE node, so it cannot become a blanket accept."""
         capsys.readouterr()
         assert _set(f"{self.KEY}=@bogus.ref") == 1
-        assert "@bogus.ref" in capsys.readouterr().err
+        assert "dangling reference '{bogus.ref}'" in capsys.readouterr().err
 
     def test_the_secret_family_is_anchored_too(self, config_file, tmp_home, capsys):
         """THE SECOND ARM, and it is the reason ``agent_node_of`` reads TWO parsers.

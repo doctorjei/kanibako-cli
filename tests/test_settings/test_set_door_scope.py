@@ -295,7 +295,7 @@ class TestAContainedScopeKeyIsAcceptedAtTheContainingDoor:
         message = _set(_CONTAINED_KEY, "@workset.nonexistent", ws_files,
                        ConfigLevel.workset, std=ws_files["std"], ws=ws_files["ws"])
         assert message.startswith("Error:"), message
-        assert "dangling @-reference" in message, message
+        assert "dangling reference" in message, message
 
     def test_a_contained_key_with_a_bare_value_is_unaffected(self, tmp_path, std):
         """The cure is about a ref this floor cannot see; a plain value never went near it."""
@@ -329,8 +329,8 @@ class TestAMetaRefIsJudgedByItsScopeToken:
 
     @pytest.mark.parametrize("value, phrase", [
         ("@meta.box.path/t2", _ORDERING),              # meta.box resolves after workset
-        ("@meta.runtime.ws_root/t2", "dangling @-reference"),   # no scope token
-        ("@meta.workset.nope/t2", "dangling @-reference"),      # own scope, but undeclared
+        ("@meta.runtime.ws_root/t2", "dangling reference"),   # no scope token
+        ("@meta.workset.nope/t2", "dangling reference"),      # own scope, but undeclared
     ])
     def test_these_meta_refs_stay_refused_at_the_system_door(self, tmp_path, std, value, phrase):
         files = _files(tmp_path)
@@ -467,7 +467,7 @@ class TestWhatStaysRefused:
         files = _files(tmp_path)
         message = _set(_CONTAINED_KEY, r"\@workset.nonexistent", files,
                        ConfigLevel.system, std=std)
-        assert "dangling @-reference" not in message, message
+        assert "dangling reference" not in message, message
         assert not files["system"].exists(), message
 
 
@@ -587,19 +587,19 @@ class TestTheRefusalNamesTheReallyBrokenRef:
 
     def test_a_direct_value_names_the_undeclared_ref(self, tmp_path, std):
         message = self._refused(_files(tmp_path), self._BOTH, std)
-        assert "'@box.nope'" in message, message
-        assert "@meta.workset.path" not in message, message
+        assert "'{box.nope}'" in message, message
+        assert "'{meta.workset.path}'" not in message, message
 
     def test_a_stored_chain_names_the_undeclared_ref(self, tmp_path, std):
         files = _files(tmp_path)
         files["system"].write_text(self._STORED_BOTH)
         message = self._refused(files, "/x/{box.shell}", std)
-        assert "'@box.nope'" in message, message
-        assert "@meta.workset.path" not in message, message
+        assert "'{box.nope}'" in message, message
+        assert "'{meta.workset.path}'" not in message, message
 
     def test_only_the_undeclared_ref_is_refused_as_before(self, tmp_path, std):
         message = self._refused(_files(tmp_path), "/x/{box.nope}", std)
-        assert "'@box.nope'" in message, message
+        assert "'{box.nope}'" in message, message
 
     def test_only_the_blind_ref_is_accepted_as_before(self, tmp_path, std):
         files = _files(tmp_path)
@@ -617,9 +617,9 @@ class TestTheRefusalNamesTheReallyBrokenRef:
 
     @pytest.mark.parametrize("stored, phrase", [
         ("box:\n  shell: /s/{meta.workset.path}/{box.image}\n  image: /i/{box.shell}\n",
-         "Cyclic @-reference"),
+         "Cyclic reference"),
         ("box:\n  shell: /s/{meta.workset.path}/{$NOPE_UNKNOWN}\n",
-         "Unknown variable: $NOPE_UNKNOWN"),
+         "Unknown variable: {$NOPE_UNKNOWN}"),
         ("box:\n  shell: /s/{meta.workset.path}/{box.env.V0}\n  env:\n"
          + "".join(f"    V{i}: /{{box.env.V{i + 1}}}\n" for i in range(70))
          + "    V70: /{meta.workset.path}/end\n",
@@ -632,12 +632,12 @@ class TestTheRefusalNamesTheReallyBrokenRef:
         files["system"].write_text(stored)
         message = self._refused(files, self._CHAIN, std)
         assert phrase in message, message
-        assert "@meta.workset.path" not in message, message
+        assert "'{meta.workset.path}'" not in message, message
 
     @pytest.mark.parametrize("stored, ref, phrase", [
-        ("", "{$NOPE_UNKNOWN}", "Unknown variable: $NOPE_UNKNOWN"),
+        ("", "{$NOPE_UNKNOWN}", "Unknown variable: {$NOPE_UNKNOWN}"),
         ("box:\n  shell: /s/{box.image}\n  image: /i/{box.shell}\n", "{box.shell}",
-         "Cyclic @-reference"),
+         "Cyclic reference"),
     ], ids=["unknown-variable", "cycle"])
     def test_a_direct_value_names_the_defect_beside_the_blind_ref(
         self, tmp_path, std, stored, ref, phrase,
@@ -647,7 +647,7 @@ class TestTheRefusalNamesTheReallyBrokenRef:
             files["system"].write_text(stored)
         message = self._refused(files, f"/x/{{meta.workset.path}}/{{meta.box.name}}/{ref}", std)
         assert phrase in message, message
-        assert "@meta.workset.path" not in message, message
+        assert "'{meta.workset.path}'" not in message, message
 
 
 class TestADefectInATableReferentIsTheReferrersDefect:
@@ -662,8 +662,8 @@ class TestADefectInATableReferentIsTheReferrersDefect:
         return files["system"].read_text()
 
     @pytest.mark.parametrize("extra, phrase", [
-        ("      Y: '{agent.default.env.Y}'\n", "cyclic @-reference"),
-        ("      Y: '{box.nope}'\n", "dangling @-reference '@box.nope'"),
+        ("      Y: '{agent.default.env.Y}'\n", "cyclic reference"),
+        ("      Y: '{box.nope}'\n", "dangling reference '{box.nope}'"),
         ("".join(f"      V{i}: /{{agent.default.env.V{i + 1}}}\n" for i in range(70))
          + "      V70: end\n", "depth cap"),
     ], ids=["cycle", "undeclared", "depth-cap"])
@@ -679,7 +679,7 @@ class TestADefectInATableReferentIsTheReferrersDefect:
         files = _files(tmp_path)
         files["system"].write_text("box:\n  env:\n    A: a\n")
         message = _set("box.env.B", "{box.env}", files, ConfigLevel.system, std=std)
-        assert message.startswith("Error:") and "cyclic @-reference" in message, message
+        assert message.startswith("Error:") and "cyclic reference" in message, message
         assert "B:" not in files["system"].read_text()
 
     def test_the_trail_into_the_table_lends_its_leaves_no_depth(self, tmp_path, std):

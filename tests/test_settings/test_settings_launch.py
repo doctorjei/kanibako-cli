@@ -7404,11 +7404,11 @@ class TestASettingsFileEndpointIsText:
 
 
 @pytest.mark.parametrize("box, named", [
-    ({"bindings": {"rw": {"@meta.agent.home/x": ["/h/src"]}}}, "@meta.agent.home"),
-    ({"bindings": {"rw": {"@meta.agent.home": ["/h/src"]}}}, "@meta.agent.home"),
-    ({"bindings": {"ro": {"/opt/u": ["@box.nope/sub"]}}}, "@box.nope"),
-    ({"env": {"ZED": "@box.nope"}}, "@box.nope"),
-    ({"env": {"ODD": "/e@v\\$q"}}, "@v"),
+    ({"bindings": {"rw": {"@meta.agent.home/x": ["/h/src"]}}}, "{meta.agent.home}"),
+    ({"bindings": {"rw": {"@meta.agent.home": ["/h/src"]}}}, "{meta.agent.home}"),
+    ({"bindings": {"ro": {"/opt/u": ["@box.nope/sub"]}}}, "{box.nope}"),
+    ({"env": {"ZED": "@box.nope"}}, "{box.nope}"),
+    ({"env": {"ODD": "/e@v\\$q"}}, "{v}"),
 ], ids=["embedded-dest", "whole-dest", "embedded-src", "whole-env", "embedded-env"])
 def test_a_ref_that_names_no_key_is_refused_by_name(tmp_path: Path, box, named):
     """Spec §0: the keyspace is closed, so an ``@``-ref to an undeclared key is refused
@@ -7437,7 +7437,7 @@ def test_the_refusal_names_the_key_that_holds_the_ref(tmp_path: Path, env):
             workset_path=None,
             box_path=_write_yaml(tmp_path / "box.yaml", {"box": {"env": env}}),
         )
-    assert str(exc.value).startswith("box.env.B: '@box.nope' references no key"), exc.value
+    assert str(exc.value).startswith("box.env.B: '{box.nope}' references no key"), exc.value
 
 
 def test_the_refusal_names_a_binding_entry_by_its_index(tmp_path: Path):
@@ -7451,7 +7451,7 @@ def test_the_refusal_names_a_binding_entry_by_its_index(tmp_path: Path):
                 "bindings": {"ro": {"/opt/u": ["@box.nope/sub"]}},
             }}),
         )
-    assert str(exc.value).startswith("box.bindings.ro[/opt/u]: '@box.nope'"), exc.value
+    assert str(exc.value).startswith("box.bindings.ro[/opt/u]: '{box.nope}'"), exc.value
 
 
 # --------------------------------------------------------------------------- #

@@ -2387,7 +2387,7 @@ class TestAgentSetRoutesThroughTheOneSetter:
         ))
         assert rc == 1
         err = capsys.readouterr().err
-        assert "@bogus.ref" in err
+        assert "dangling reference '{bogus.ref}'" in err
         assert _stored_doc(agent_env) == before
 
     def test_the_refusal_is_the_one_the_shared_setter_produces(

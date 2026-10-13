@@ -539,7 +539,7 @@ class _Expander:
             f"{chain[0]} declares the host source {raw!r}{became} — a BARE RELATIVE "
             f"path. A stored source must resolve on its own (spec §2a): "
             f"{BARE_RELATIVE_SOURCE_HAZARD}. Set the path key it dereferences to an "
-            f"absolute path, '~/...', '$XDG_*/...' or an '@'-ref."
+            f"absolute path, '~/...', '{{$XDG_*}}/...' or a '{{key}}' reference."
         )
 
     @staticmethod
@@ -722,10 +722,10 @@ class _Expander:
                 # the strict silent drop. Raised so the OWNING leaf gets it.
                 reason = _absent_reason(dotted)
                 if reason is not None:
-                    raise _LenientDefect(f"dangling @-reference '@{dotted}' ({reason})")
+                    raise _LenientDefect(f"dangling reference '{{{dotted}}}' ({reason})")
                 if not self._blind_absent:
                     raise _LenientDefect(
-                        f"dangling @-reference '@{dotted}' ({_NOT_IN_CASCADE})", blind=True,
+                        f"dangling reference '{{{dotted}}}' ({_NOT_IN_CASCADE})", blind=True,
                     )
             # ⚑ Absence propagates only from a KEY; a ref that names no key is
             # refused by name (spec §0), never dropped.
@@ -736,7 +736,7 @@ class _Expander:
                 holder = leaf if len(chain) == 2 else chain[-2]
                 trail = "" if holder == leaf else f" (reached from {leaf})"
                 raise SettingsError(
-                    f"{holder}: '@{dotted}' references no key: "
+                    f"{holder}: '{{{dotted}}}' references no key: "
                     f"{verdict.reason}{trail}."
                 )
             if not self._collect_errors:
@@ -786,7 +786,7 @@ class _Expander:
             self.errors.update(inner)
         for leaf, reason in inner.items():
             if not is_cascade_blindness(reason):
-                raise _LenientDefect(f"{leaf}, in the table '@{dotted}': {reason}")
+                raise _LenientDefect(f"{leaf}, in the table '{{{dotted}}}': {reason}")
         return resolved
 
     def _pop_reach(self) -> int:
@@ -845,7 +845,7 @@ class _Expander:
             # the referring key (spec §0), the failure class this phase exists to
             # eliminate. ``_expand_node`` catches it into the lenient error map.
             raise SettingsError(
-                f"'@{dotted}' is not resolvable: a pref is a REQUEST, not a "
+                f"'{{{dotted}}}' is not resolvable: a pref is a REQUEST, not a "
                 f"value (spec §2h). Reference the TARGET key instead."
             )
         if dotted.startswith("config."):

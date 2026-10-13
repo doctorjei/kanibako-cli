@@ -455,7 +455,7 @@ def unrooted_source_message(
     )
     return (
         f"{entry} declares a bare-relative host source {src!r}; a source must fully "
-        f"resolve on its own — absolute, ~, $var or an @-ref. {because}: "
+        f"resolve on its own — absolute, ~, {{$VAR}} or a {{key}} reference. {because}: "
         f"{BARE_RELATIVE_SOURCE_HAZARD}. Spell the source out."
     )
 
@@ -662,7 +662,7 @@ def match_ref(expr: str, i: int) -> tuple[str, int]:
     ⚑ THE SINGLE parser for both spellings, shared across modules (seam S25).
     ⚑ NESTING IS NOT SUPPORTED and fails loudly: a substituted value is a LEAF, never re-scanned.
     """
-    return _match_sigil(expr, i, _REF_NAME_RE, "@-reference")
+    return _match_sigil(expr, i, _REF_NAME_RE, "key reference")
 
 
 def _match_sigil(
@@ -682,7 +682,7 @@ def _match_sigil(
     end = m.end()
     if braced:
         if end >= n or expr[end] != "}":
-            raise SettingsError(f"Unterminated {expr[i]}{{...}} reference: {expr[i:]!r}")
+            raise SettingsError(f"Unterminated {{...}} reference: {expr[i:]!r}")
         end += 1
     return m.group(0), end
 
@@ -827,11 +827,11 @@ def resolve_var(name: str, ctx: ResolveCtx) -> str | _Unset:
     """
     if name == "AGENT":
         if ctx.agent_name is None:
-            raise SettingsError("Variable $AGENT is not set in this context.")
+            raise SettingsError("Variable {$AGENT} is not set in this context.")
         return ctx.agent_name
     if name == "WORKSET":
         if ctx.workset_name is None:
-            raise SettingsError("Variable $WORKSET is not set in this context.")
+            raise SettingsError("Variable {$WORKSET} is not set in this context.")
         return ctx.workset_name
     if name == "TERM":
         # Never refuses and never validates — see :func:`_host_term`.
@@ -843,9 +843,9 @@ def resolve_var(name: str, ctx: ResolveCtx) -> str | _Unset:
         return ctx.colorterm if ctx.colorterm is not None else UNSET
     if name.startswith("XDG_"):
         if name not in ctx.xdg:
-            raise SettingsError(f"Variable ${name} is not set in this context.")
+            raise SettingsError(f"Variable {{${name}}} is not set in this context.")
         return ctx.xdg[name]
-    raise SettingsError(f"Unknown variable: ${name}")
+    raise SettingsError(f"Unknown variable: {{${name}}}")
 
 
 def _resolve_var(name: str, ctx: ResolveCtx) -> str:
@@ -890,12 +890,12 @@ def guard_ref(ref_name: str, trail: tuple[str, ...], depth: int) -> None:
     ⚑ THE ONE guard for both resolvers: :func:`_lookup_ref` and ``settings_expand._Expander``.
     """
     if ref_name in trail:
-        cycle = " -> ".join((*trail, ref_name))
-        raise SettingsError(f"Cyclic @-reference: {cycle}")
+        cycle = " -> ".join(f"{{{name}}}" for name in (*trail, ref_name))
+        raise SettingsError(f"Cyclic reference: {cycle}")
     if depth >= MAX_REF_DEPTH:
         raise SettingsError(
-            f"@-reference depth cap ({MAX_REF_DEPTH}) exceeded resolving "
-            f"'{ref_name}'."
+            f"Reference depth cap ({MAX_REF_DEPTH}) exceeded resolving "
+            f"'{{{ref_name}}}'."
         )
 
 

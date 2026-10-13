@@ -197,7 +197,7 @@ class TestTheCureChainsAtTheSystemDoor:
         seeded.settings.write_text(yaml.safe_dump({"workset": {"boxes": boxes}}))
         before = _digest(seeded.settings)
         message = _system_set("workset.logs", "{workset.boxes}/lg", seeded)
-        assert message.startswith("Error:") and "dangling @-reference" in message, message
+        assert message.startswith("Error:") and "dangling reference" in message, message
         assert _digest(seeded.settings) == before
 
 
