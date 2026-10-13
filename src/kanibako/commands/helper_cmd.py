@@ -203,11 +203,12 @@ def _check_helpers_enabled() -> bool:
 
 
 #: Why a spawn or respawn refuses in a box with no hub: nothing could launch the helper.
-#: A hub runs only on a start that is not persistent, with helpers allowed
-#: (``commands.start``: a persistent start forces ``no_helpers``).
+#: Every ``kanibako start`` with helpers allowed and no ``--no-helpers`` runs a hub,
+#: which lives until its box is gone (``commands.start``, ``channels.hub_daemon``).
 _NO_HUB = (
-    "Cannot %s: this box runs no helper hub. "
-    "A hub runs only on an ephemeral start (`kanibako start --ephemeral`) with helpers allowed."
+    "Cannot %s: this box runs no helper hub. A hub runs from a `kanibako start` with "
+    "helpers allowed and no `--no-helpers` until the box stops; "
+    "`kanibako start --restart` starts a new one."
 )
 
 #: Why a spawn fails when the hub could not start the helper's container.

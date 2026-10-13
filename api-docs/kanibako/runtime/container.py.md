@@ -64,9 +64,9 @@ class ContainerRuntime:
     def stop(self, name: str) -> bool
     def unpause(self, name: str) -> bool
     def rm(self, name: str) -> bool
-    def container_states(self, prefix: str=CONTAINER_NAME_PREFIX) -> dict[str, str]
-    def container_state(self, name: str) -> str | None
-    def is_running(self, name: str) -> bool
+    def container_states(self, prefix: str=CONTAINER_NAME_PREFIX, *, timeout: float | None=None) -> dict[str, str]
+    def container_state(self, name: str, *, timeout: float | None=None) -> str | None
+    def is_running(self, name: str, *, timeout: float | None=None) -> bool
     def inspect_env(self, name: str, key: str) -> str | None
     def container_image(self, name: str) -> str | None
     def find_labeled(self, labels: Mapping[str, str | None], *, without: str | None=None, check: bool=False) -> list[str]

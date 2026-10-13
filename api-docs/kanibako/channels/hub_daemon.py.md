@@ -12,6 +12,7 @@ HUB_READY = b'ready\n'
 READY_TIMEOUT = 15.0
 STOP_TIMEOUT = 60.0
 MISS_LIMIT = 3
+PROBE_TIMEOUT = 10.0
 _MODULE = 'kanibako.channels.hub_daemon'
 ```
 

@@ -167,6 +167,28 @@ class TestServe:
         serve(_FakeHub(), is_live=lambda: True, stop=stop, poll=0, grace=1000.0)
 
 
+class TestBoxLiveProbe:
+    def test_a_hung_runtime_call_is_a_miss_within_the_timeout(self, tmp_path, monkeypatch):
+        """bifrost: ``podman inspect`` hung on the storage lock and the hub outlived its
+        grace.  A call past :data:`PROBE_TIMEOUT` is killed and reads as not live.
+        (Mutation: no timeout -> the probe waits out the whole hang -> RED.)"""
+        hung = tmp_path / "hung-runtime"
+        hung.write_text("#!/bin/sh\nexec sleep 5\n")
+        hung.chmod(hung.stat().st_mode | stat.S_IXUSR)
+        monkeypatch.setattr(hub_daemon, "PROBE_TIMEOUT", 0.5)
+        began = time.monotonic()
+        live = hub_daemon._box_live(ContainerRuntime(command=str(hung)), CONTAINER)
+        assert live is False
+        assert time.monotonic() - began < 3.0
+
+    def test_a_slow_live_answer_still_reads_live(self, tmp_path):
+        """A runtime that answers inside the timeout is read as before."""
+        slow = tmp_path / "slow-runtime"
+        slow.write_text("#!/bin/sh\nsleep 0.2\necho true\n")
+        slow.chmod(slow.stat().st_mode | stat.S_IXUSR)
+        assert hub_daemon._box_live(ContainerRuntime(command=str(slow)), CONTAINER) is True
+
+
 # --------------------------------------------------------------------------- #
 # The hub's socket in a bound DIRECTORY.                                       #
 # --------------------------------------------------------------------------- #

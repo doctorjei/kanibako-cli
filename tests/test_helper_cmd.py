@@ -121,7 +121,7 @@ def _listening_socket() -> tuple[socket.socket, Path]:
 
 
 def _no_hub(home: Path) -> None:
-    """Take the hub away: the box a persistent start leaves (no socket)."""
+    """Take the hub away: the box a ``--no-helpers`` start leaves (no socket)."""
     (home / ".kanibako" / "state" / "hub" / "helper.sock").unlink()
 
 
@@ -1129,7 +1129,7 @@ class TestInitScriptNameCopySite:
 
 
 class TestNoHub:
-    """A box with no helper hub (a persistent start runs none) cannot launch a helper,
+    """A box with no helper hub (``--no-helpers``, or its hub died) cannot launch a helper,
     so spawn and respawn REFUSE, naming why, before they write anything (bifrost hb5:
     ``Spawned helper 1`` rc 0 with no container)."""
 
@@ -1140,7 +1140,10 @@ class TestNoHub:
         out, err = capsys.readouterr()
         assert "Spawned" not in out
         assert "Cannot spawn: this box runs no helper hub" in err
-        assert "--ephemeral" in err
+        # Every start with helpers runs a hub now: the cure is a new start, never
+        # "an ephemeral start".  (Mutation: the pre-S2 wording -> RED.)
+        assert "--ephemeral" not in err
+        assert "`kanibako start --restart`" in err
         assert not (helpers_env / "helpers").exists()
 
     def test_respawn_refuses_and_keeps_the_stopped_state(self, helpers_env, capsys):

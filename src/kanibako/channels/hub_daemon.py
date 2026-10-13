@@ -46,6 +46,8 @@ READY_TIMEOUT = 15.0
 STOP_TIMEOUT = 60.0  # the hub stops each helper container before it exits
 #: Consecutive not-live reads that mean the box is gone (one read per poll, 2 s by default).
 MISS_LIMIT = 3
+#: How long one liveness call to the runtime may take; a call that hangs is a miss.
+PROBE_TIMEOUT = 10.0
 #: The child's command-line marker, which a stop checks before it signals a lock holder.
 _MODULE = "kanibako.channels.hub_daemon"
 
@@ -233,7 +235,8 @@ class HubProcess:
         return ready
 
     def release(self) -> None:
-        """Leave the hub running: its box is up, and the hub exits when the box is gone."""
+        """Leave the hub running: its box is up, and the hub exits when the box is gone
+        (see :func:`serve` for how long that takes)."""
         self._settled = True
 
     def stop(self) -> None:
@@ -268,13 +271,14 @@ def _read_ready(stream: IO[bytes], timeout: float) -> bool:
 # --------------------------------------------------------------------------- #
 
 def _box_live(runtime: Any, container: str) -> bool:
-    """Running or paused.  A probe that fails, or raises, reads as NOT live; the hub
-    exits only after :data:`MISS_LIMIT` such reads in a row (:func:`decide_hub`).
+    """Running or paused.  A probe that fails, raises, or outlasts :data:`PROBE_TIMEOUT`
+    (the runtime call is killed) reads as NOT live; the hub exits only after
+    :data:`MISS_LIMIT` such reads in a row (:func:`decide_hub`).
     """
     from kanibako.commands.stop import _is_live
 
     try:
-        return _is_live(runtime, container)
+        return _is_live(runtime, container, timeout=PROBE_TIMEOUT)
     except Exception as exc:  # noqa: BLE001 - a failed probe is a miss, never a crash
         log.debug("liveness probe failed for %s: %s", container, exc)
         return False
@@ -285,9 +289,15 @@ def serve(hub: Any, *, is_live: Any, stop: threading.Event, poll: float,
     """Watch loop: tick every *poll* seconds until the box is gone or *stop* is set.
 
     A box that was seen live is gone after :data:`MISS_LIMIT` consecutive not-live
-    reads, so the hub exits between ``(MISS_LIMIT - 1) * poll`` and ``MISS_LIMIT * poll``
-    seconds after the box goes (4-6 s at the default 2 s poll).  A probe failure that
-    lasts that long ends the hub and stops its helpers, like a box that is gone.
+    reads, so the hub decides to exit between ``(MISS_LIMIT - 1) * poll`` and
+    ``MISS_LIMIT * poll`` seconds after the box goes (4-6 s at the default 2 s poll).
+    It then stops each helper, and ``podman stop`` waits its 10 s for a helper whose
+    PID 1 ignores SIGTERM, so the hub is gone 11-14 s after its box.  A foreground
+    persistent start whose box is still read running at its end leaves the hub this
+    way too, about 18 s after the agent exits.  A probe failure that lasts that long
+    ends the hub and stops its helpers, like a box that is gone; a hung probe is
+    killed after :data:`PROBE_TIMEOUT` and counts as one failure, so a tick takes at
+    most ``poll + 2 * PROBE_TIMEOUT`` seconds and the grace is overrun by at most that.
     """
     began = clock()
     seen_live = False

@@ -595,19 +595,22 @@ class ContainerRuntime:
         )
         return result.returncode == 0
 
-    def container_states(self, prefix: str = CONTAINER_NAME_PREFIX) -> dict[str, str]:
+    def container_states(self, prefix: str = CONTAINER_NAME_PREFIX, *,
+                         timeout: float | None = None) -> dict[str, str]:
         """``{name: state}`` (``{{.State}}``: ``running``, ``exited``, ``removing``, …) for
         every container, running or not, whose name starts with *prefix*.
 
         ⚑ Read from ``ps -a``, never ``inspect``: a container stuck in ``removing`` has a
         half-deleted layer, so ``inspect`` fails on it, yet it still holds its name and
-        ``ps -a`` still lists it.  A runtime that fails or cannot run answers none.
+        ``ps -a`` still lists it.  A runtime that fails or cannot run answers none.  A
+        call that outlasts *timeout* seconds is killed and raises
+        :class:`subprocess.TimeoutExpired`.
         """
         try:
             result = subprocess.run(
                 [self.cmd, "ps", "-a", "--filter", f"name={prefix}",
                  "--format", "{{.Names}}\t{{.State}}"],
-                capture_output=True, text=True,
+                capture_output=True, text=True, timeout=timeout,
             )
         except OSError:
             return {}
@@ -620,21 +623,27 @@ class ContainerRuntime:
                 states[found] = state.strip().lower()
         return states
 
-    def container_state(self, name: str) -> str | None:
+    def container_state(self, name: str, *, timeout: float | None = None) -> str | None:
         """Container *name*'s state (``running``, ``paused``, ``exited``, ``removing``, ...),
         else None: the ONE state reader, from ``ps -a`` (see :meth:`container_states`).
 
         ⚑ podman reads a PAUSED container as not running (``.State.Running`` false), so a
-        caller asking "is the box live" asks this too.
+        caller asking "is the box live" asks this too.  *timeout* as in
+        :meth:`container_states`.
         """
-        return self.container_states(prefix=name).get(name)
+        return self.container_states(prefix=name, timeout=timeout).get(name)
 
-    def is_running(self, name: str) -> bool:
-        """Check if a named container is currently running."""
+    def is_running(self, name: str, *, timeout: float | None = None) -> bool:
+        """Check if a named container is currently running.
+
+        A call that outlasts *timeout* seconds is killed and raises
+        :class:`subprocess.TimeoutExpired`.
+        """
         result = subprocess.run(
             [self.cmd, "inspect", "--format", "{{.State.Running}}", name],
             capture_output=True,
             text=True,
+            timeout=timeout,
         )
         return running_from_inspect(result)
 

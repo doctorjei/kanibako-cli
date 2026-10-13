@@ -18,7 +18,7 @@ def _writeback_on_stop(runtime, proj, container_name: str, *, std, config, box_i
 def _warn_settings(exc: KanibakoError) -> None
 def _load_paths(config: BootstrapConfig) -> tuple[StandardPaths, ConfigError | None]
 def _resolve_target(std: StandardPaths, config: BootstrapConfig, project_dir: str | None) -> tuple[ProjectPaths, ConfigError | None]
-def _is_live(runtime: ContainerRuntime, name: str) -> bool
+def _is_live(runtime: ContainerRuntime, name: str, *, timeout: float | None=None) -> bool
 def _stop_one(runtime: ContainerRuntime, *, project_dir: str | None) -> int
 def _boxes_rendering_no_name() -> list[str]
 def _stop_all(runtime: ContainerRuntime, *, force: bool=False) -> int

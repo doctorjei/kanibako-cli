@@ -8,7 +8,7 @@ _Signatures only: no comments, no docstrings, no bodies._
 
 ```
 _PROBE_TIMEOUT = 2.0
-_NO_HUB = 'Cannot %s: this box runs no helper hub. A hub runs only on an ephemeral start (`kanibako start --ephemeral`) with helpers allowed.'
+_NO_HUB = 'Cannot %s: this box runs no helper hub. A hub runs from a `kanibako start` with helpers allowed and no `--no-helpers` until the box stops; `kanibako start --restart` starts a new one.'
 _SPAWN_FAILED = 'Cannot spawn: helper %d did not launch: %s. Its directory is kept, marked failed; `kanibako box helper cleanup %d` removes it.'
 _RESPAWN_FAILED = 'Cannot respawn: helper %d did not launch: %s. It stays stopped, the reason in its state.json; fix the cause and retry `kanibako box helper respawn %d`.'
 ```

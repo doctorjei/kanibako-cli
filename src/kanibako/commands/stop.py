@@ -195,9 +195,16 @@ def _resolve_target(
         ), exc
 
 
-def _is_live(runtime: ContainerRuntime, name: str) -> bool:
-    """Running, or PAUSED: podman reads a paused container as not running, yet it is live."""
-    return runtime.is_running(name) or runtime.container_state(name) == "paused"
+def _is_live(runtime: ContainerRuntime, name: str, *, timeout: float | None = None) -> bool:
+    """Running, or PAUSED: podman reads a paused container as not running, yet it is live.
+
+    *timeout* bounds each runtime call, which then raises
+    :class:`subprocess.TimeoutExpired` (the helper hub's probe); ``None`` waits.
+    """
+    if timeout is None:
+        return runtime.is_running(name) or runtime.container_state(name) == "paused"
+    return (runtime.is_running(name, timeout=timeout)
+            or runtime.container_state(name, timeout=timeout) == "paused")
 
 
 def _stop_one(runtime: ContainerRuntime, *, project_dir: str | None) -> int:
