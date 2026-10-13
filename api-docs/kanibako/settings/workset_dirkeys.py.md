@@ -24,6 +24,7 @@ def early_key_set_error(canonical: str, value: str | None, *, written_file: Path
 def _stored_repoint(doc: Mapping[str, Any] | None, key: str, *, where: Path | None=None) -> str | None | _Unset
 def _refuse_unanchored(workset_settings: Mapping[str, Any] | None, key: str, value: str, *, early: EarlyScope, where: Path | None=None) -> None
 def _host_ctx() -> ResolveCtx
+def _unresolvable_error(key: str, value: str, where: Path | str | None, reason: str) -> SettingsError
 def _expand_early(workset_root: Path, doc: Mapping[str, Any] | None, value: str, *, key: str, standalone: bool | None, chain: tuple[str, ...], early: EarlyScope) -> str
 def _system_path(ref: str, system: EarlySystem) -> str
 def _referent_value(workset_root: Path, doc: Mapping[str, Any] | None, referent: str, *, key: str, standalone: bool | None, chain: tuple[str, ...], early: EarlyScope) -> str

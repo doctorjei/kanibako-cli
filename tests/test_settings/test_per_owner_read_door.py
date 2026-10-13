@@ -8,6 +8,9 @@ The set door's judgment, so the two doors agree; in the braced reference spellin
 
 from __future__ import annotations
 
+import os
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -20,6 +23,8 @@ from kanibako.settings.settings_resolve import SettingsError
 from kanibako.settings.workset_dirkeys import (
     EarlyScope, EarlySystem, early_repoint, refuse_inherited_per_owner,
 )
+
+REPO_SRC = Path(__file__).resolve().parents[2] / "src"
 
 _FORMS = ("{",)
 
@@ -180,8 +185,9 @@ class TestWorksetCreate:
 
 
 class TestAnOldSpellingIsTheGuards:
-    """BARE-REF-GUARD: grammar first. Judged by this door, an old spelling reaches nothing
-    and would be refused with a per-owner cure built on the refused spelling."""
+    """BARE-REF-GUARD: grammar first. Judged for its reach, an old spelling reaches nothing
+    and would be refused with a per-owner cure built on the refused spelling; this door
+    refuses it with the expansion's words and the guard's braced cure instead."""
 
     _OLD = "/srv/kb/@meta.workset.path"
 
@@ -194,7 +200,56 @@ class TestAnOldSpellingIsTheGuards:
         assert "write '{meta.workset.path}'" in text, text
         assert "does not reach" not in text, text
 
-    def test_the_per_owner_door_passes_it_on(self, tmp_path):
-        scope = _scope({"workset.boxes": self._OLD}, tmp_path / "settings.yaml")
-        refuse_inherited_per_owner(tmp_path, scope)
-        assert early_repoint(tmp_path, None, "boxes", early=scope)[0] == self._OLD
+    @pytest.mark.parametrize(("value", "reason"), [
+        (_OLD, "write '{meta.workset.path}'"),
+        ("}x", "write a literal '}' as '}}'"),
+    ])
+    def test_the_per_owner_door_refuses_with_the_expansions_words(self, tmp_path, value, reason):
+        settings = tmp_path / "settings.yaml"
+        scope = _scope({"workset.boxes": value}, settings)
+        for read in (lambda: refuse_inherited_per_owner(tmp_path, scope),
+                     lambda: early_repoint(tmp_path, None, "boxes", early=scope)):
+            with pytest.raises(SettingsError) as excinfo:
+                read()
+            text = str(excinfo.value)
+            assert text.startswith(
+                f"workset.boxes is set to {value!r} in {settings}, which cannot be resolved: "
+            ), text
+            assert reason in text and "does not reach" not in text, text
+
+
+@pytest.fixture
+def cli(tmp_path):
+    home = tmp_path / "home"
+    home.mkdir()
+    env = {k: v for k, v in os.environ.items() if not k.startswith(("XDG_", "KANIBAKO"))}
+    env.update(HOME=str(home), XDG_RUNTIME_DIR=str(tmp_path), PYTHONPATH=str(REPO_SRC))
+
+    def run(*args: str) -> subprocess.CompletedProcess[str]:
+        return subprocess.run(
+            [sys.executable, "-m", "kanibako", *args], env=env, cwd=home,
+            capture_output=True, text=True, timeout=300, check=False,
+        )
+
+    run.home = home  # type: ignore[attr-defined]
+    assert run("system", "get", "system.agent").returncode == 0  # bootstrap the store
+    return run
+
+
+@pytest.mark.parametrize("stored", [
+    {"channels": {"common": "}x"}},
+    {"channels": {"common": "/srv/c/@meta.workset.name"}},
+    {"channelroot": "}x"},
+    {"channelroot": "/srv/cr/@meta.workset.path"},
+], ids=["common-malformed", "common-old", "channelroot-malformed", "channelroot-old"])
+def test_workset_create_refuses_an_inherited_value_the_grammar_refuses(cli, stored):
+    """``workset create`` never expands these keys; the read door is their only judge."""
+    settings = cli.home / ".local/share/kanibako/global/settings.yaml"
+    settings.parent.mkdir(parents=True, exist_ok=True)
+    settings.write_text(yaml.safe_dump({"workset": stored}))
+    proc = cli("workset", "create", "ws1")
+    assert proc.returncode == 1, proc.stdout + proc.stderr
+    assert "which cannot be resolved" in proc.stderr, proc.stderr
+    assert not (cli.home / "ws1").exists()
+    listed = cli("workset", "list")
+    assert "ws1" not in listed.stdout + listed.stderr

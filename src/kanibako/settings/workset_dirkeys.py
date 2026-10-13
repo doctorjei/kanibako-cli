@@ -149,13 +149,14 @@ def _refuse_unanchored(
     if owner == "shared":
         return
     # GRAMMAR FIRST: a value the grammar refuses -- an old reference spelling under the
-    # BARE-REF-GUARD included -- is left to the expander, which refuses it by name with
-    # its cure. Judged here it reaches nothing, and the per-owner cure would be built on
-    # the refused spelling.
+    # BARE-REF-GUARD included -- is refused here with the expansion's own words and cure.
+    # Judged for its reach it reaches nothing, and the per-owner cure would be built on the
+    # refused spelling; passed on, a reader that never expands it (``workset create``) would
+    # accept it.
     try:
         scan_tokens(value)
-    except ValueError:
-        return
+    except ValueError as exc:
+        raise _unresolvable_error(key, value, early.system.file, str(exc)) from None
 
     def stored(ref: str) -> object:
         referent = ref.removeprefix("workset.")
@@ -356,15 +357,23 @@ def resolve_workset_dir_key(
             chain=(f"workset.{key}",), early=early,
         )
     except SettingsError as exc:
-        raise SettingsError(
-            f"workset.{key} is set to {repoint!r} in "
-            f"{where}, which cannot be resolved: {str(exc).rstrip('.')}. "
-            f"Use an absolute path, '~', '{{$XDG_*}}', or {_USABLE_REFS}; a "
-            f"LITERAL '~' or '\\' in a directory name is written '\\~' or '\\\\', "
-            f"and a literal brace is doubled."
-        ) from exc
+        raise _unresolvable_error(key, repoint, where, str(exc)) from exc
 
     return Path(expanded)
+
+
+def _unresolvable_error(
+    key: str, value: str, where: Path | str | None, reason: str,
+) -> SettingsError:
+    """The refusal for a ``workset.<key>`` *value* stored in *where* that cannot be resolved,
+    for *reason*: the expansion's and the read door's one wording."""
+    return SettingsError(
+        f"workset.{key} is set to {value!r} in "
+        f"{where}, which cannot be resolved: {reason.rstrip('.')}. "
+        f"Use an absolute path, '~', '{{$XDG_*}}', or {_USABLE_REFS}; a "
+        f"LITERAL '~' or '\\' in a directory name is written '\\~' or '\\\\', "
+        f"and a literal brace is doubled."
+    )
 
 
 #: The references a workset early key may use, as a refusal names them.
