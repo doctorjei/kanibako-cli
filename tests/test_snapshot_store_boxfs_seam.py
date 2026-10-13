@@ -932,6 +932,41 @@ class TestAnUnsearchableNewBaseRaisesNothing:
         assert note is None
 
 
+class TestAnUninspectableOldStoreIsKept:
+    """An old store link whose target sits behind an unsearchable directory: relocate
+    warns, and the store stays on the keep list -- nothing it could not inspect is
+    torn down."""
+
+    @pytest.mark.parametrize("target", ["new-store", "outside"])
+    def test_it_is_kept(self, tmp_path, capsys, target):
+        from kanibako.commands.box._lifecycle import _relocate_snapshot_store
+
+        if os.geteuid() == 0:
+            pytest.skip("root opens any directory")
+        rw, new_rw = _rw(tmp_path / "old"), _rw(tmp_path / "new")
+        _versions_dir(rw).mkdir()
+        nv = _versions_dir(new_rw)
+        _snap(nv / "b")
+        store = _versions_dir(rw) / "a"
+        if target == "new-store":
+            store.symlink_to(nv / "b")
+            lock = nv
+        else:
+            lock = tmp_path / "q"
+            _snap(lock / "x")
+            store.symlink_to(lock / "x")
+        o = SimpleNamespace(vault_rw=rw, name="a", mode=BoxMode.named)
+        n = SimpleNamespace(vault_rw=new_rw, name="b", mode=BoxMode.named)
+        lock.chmod(0)
+        try:
+            kept = _relocate_snapshot_store(o, n)
+        finally:
+            lock.chmod(0o755)
+        assert kept == store and store.is_symlink()
+        assert "Warning: could not move the vault snapshots from 'a' to 'b'" in (
+            capsys.readouterr().err)
+
+
 class TestANestedRepointIsNamed:
     """A new store repointed onto the old one's base, an ancestor, or inside it: nothing
     is moved (``stores_overlap``), and a Note says where the snapshots stay."""

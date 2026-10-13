@@ -4672,7 +4672,8 @@ def _relocate_snapshot_store(state: ProjectState, new_state: ProjectState) -> Pa
     ⚑ MUST run AFTER identity is finalized, as step 4b does: a standalone convert
     REGENERATES the box name, so the key the store lands under is only readable off
     *new_state*.  Best-effort: a failure strands the store rather than losing it, and
-    the old store still on disk is returned so the teardown keeps it.
+    the old store still on disk (or one that cannot be inspected) is returned so the
+    teardown keeps it.
     """
     import sys
 
@@ -4700,7 +4701,10 @@ def _relocate_snapshot_store(state: ProjectState, new_state: ProjectState) -> Pa
         note = _linked_store_note(state, new_state, old_store) if carried is None else None
         if note is not None:
             print(note, file=sys.stderr)
-    return old_store if old_store.is_dir() else None
+    try:
+        return old_store if is_dir_unless_gone(old_store) else None
+    except ConfigError:
+        return old_store  # it cannot be inspected: keep it, never tear it down
 
 
 def _linked_store_note(old: ProjectState, new: ProjectState, store: Path) -> str | None:
