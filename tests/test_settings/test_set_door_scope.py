@@ -18,7 +18,7 @@ something the launch accepts, which is the worse error of the two.
 hold keys of the scopes it CONTAINS ... which serve as OVERRIDABLE defaults", and a scope "may
 NOT write a setting in a containing (higher) level". The set-time resolution probe judges a
 candidate value against the COMMAND's cascade, so a referent living in the contained scope is
-absent from that snapshot by construction — and ``system set workset.auth.path={workset.channelroot}/x``
+absent from that snapshot by construction — and ``system set workset.auth.path=@workset.channelroot/x``
 was refused as a "dangling @-reference" for a key that is declared and that every launch
 resolves. :func:`_floor_blind_referents` forgives exactly that
 blindness and nothing else.

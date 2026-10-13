@@ -543,7 +543,7 @@ class TestABrokenTargetIsJudgedWithoutTheTarget:
         """⚑ THE COUNTEREXAMPLE. The fallback is "strictly less context" only while the
         caller still threads its tier files: without the working-set tier, a valid
         system-level ``workset.canon`` showed through the box's DANGLING working-set
-        value and ``{workset.canon}/x`` was WRITTEN, though the box's real cascade
+        value and ``@workset.canon/x`` was WRITTEN, though the box's real cascade
         refuses it. Driven through ``box set`` itself, so the caller's threading is
         what is pinned."""
         import argparse
@@ -644,7 +644,7 @@ _OUT_OF_TIER_SHAPES = [
 
 
 class TestASystemPathValueMayNotPointOutOfItsTier:
-    """``system.template={box.image}/x`` was ACCEPTED and stored, and every launch-seam
+    """``system.template=@box.image/x`` was ACCEPTED and stored, and every launch-seam
     read then failed ``Unknown @-reference: box.image`` — whether or not ``box.image``
     held a value.  The set door judged the value against the full cascade snapshot,
     whose floor carries the box scalars' declared defaults; the system path tier
