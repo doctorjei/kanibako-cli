@@ -1819,7 +1819,7 @@ class TestDefaultsCoverage:
         arrive PINNED against the spawn resolver's own fallback; a budget default with no
         oracle would be a number nobody is answerable for.
         ⚑ 55/14 → 56/14 (2026-09-20): ``agent.default.env.TERM``, the second shipped
-        ``env`` default (Jei's all-agents ruling). PINNED for the same reason its
+        ``env`` default (all-agents, [Jei:2026-09-19]). PINNED for the same reason its
         ``box.env.COLORTERM`` twin is — ``core-defaults.yaml``'s ``env:`` table carries
         it, and ``TestSingletonDefaults.test_the_core_env_floor`` (retired 2026-09-25 for
         the ``env-defaults`` kinemata view) reads that emitter.

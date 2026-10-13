@@ -88,7 +88,7 @@ class TestResolveStandaloneProject:
         self, std, config, project_dir,
     ):
         """A set ``workset: {workspaces: …}`` in the ROOT workset.yaml
-        repoints the standalone workspace (ruled 10, 2026-08-02: the spec's
+        repoints the standalone workspace ([Jei:2026-08-02]: the spec's
         "changeable from workset level").  ⚑ The repoint is spelled
         ``{meta.workset.path}/code`` because [R147] refuses a BARE relative; it
         used to read ``"code"``, and the root-relative reading it meant is the

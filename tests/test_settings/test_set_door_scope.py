@@ -746,7 +746,7 @@ def _stored_endpoints(root: Path) -> list:
 
 
 class TestTheEndpointIsStoredAsText:
-    """Jei, 142nd: the endpoint is stored VERBATIM at ``set`` and is never refused for the
+    """[Jei:2026-10-04]: the endpoint is stored VERBATIM at ``set`` and is never refused for the
     characters it contains — ``https://u:k@host/v1`` was refused as a dangling ``@host``."""
 
     @pytest.mark.parametrize("key,scope", [

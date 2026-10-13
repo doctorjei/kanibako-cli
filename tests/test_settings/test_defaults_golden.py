@@ -832,7 +832,7 @@ class TestCoreStaticEnvDefaults:
     #: a box from this file that somebody did not decide to ship.
     #: ⚑ THE SECOND VALUE (2026-09-20) is ``agent.default.env.TERM``: the stored
     #: value is ``$TERM``, resolved per launch. Its scope head is the AGENT DEFAULT
-    #: tier on Jei's 2026-09-19 ruling that a terminal type belongs to every agent,
+    #: tier on [Jei:2026-09-19] that a terminal type belongs to every agent,
     #: not to the plain-shell box.
     #: ⚑ ``COLORTERM`` BECAME AN EXPRESSION THE SAME WEEK (2026-09-20) and the two
     #: expressions do NOT behave alike: ``$TERM`` always answers (``xterm`` when the

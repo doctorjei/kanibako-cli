@@ -135,7 +135,7 @@ def test_scope_token_kept_not_stripped(tmp_path: Path) -> None:
 def test_upward_scope_key_in_box_file_dropped_with_warning(
     tmp_path: Path, caplog: pytest.LogCaptureFixture
 ) -> None:
-    # §0 "Directional enforcement at RESOLVE" (Jei 2026-07-02, clause 4): a box
+    # §0 "Directional enforcement at RESOLVE" ([Jei:2026-07-02], clause 4): a box
     # file may NOT set a CONTAINING scope's key — a top-level system: table is an
     # upward write, DROPPED at assembly with a warning naming the file + token; it
     # never enters the partial. (Supersedes the old "namespace orthogonal so a box

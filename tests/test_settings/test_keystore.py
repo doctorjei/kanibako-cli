@@ -348,7 +348,7 @@ def _key_can_never_shadow(name: str) -> bool:
 
 
 def test_every_non_dunder_class_member_is_mangled_or_reserved() -> None:
-    # CLASS INVARIANT (director/Jei). ``__getattr__`` fires on a lookup MISS ONLY,
+    # CLASS INVARIANT (design rule). ``__getattr__`` fires on a lookup MISS ONLY,
     # so a class member ALWAYS wins over a same-named stored key. The exposure is
     # NOT that a key breaks a method — it is that such a key becomes silently
     # UNREADABLE by attribute access while ``store[name]`` still returns it.

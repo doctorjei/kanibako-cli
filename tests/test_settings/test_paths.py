@@ -434,7 +434,7 @@ class TestProjectMeta:
         assert proj2.vault_rw_path == proj1.vault_rw_path
 
     def test_stored_shell_override_is_dropped(self, config_file, tmp_home, credentials_dir):
-        """B2b (Option A, Jei-ruled): the per-box meta["shell"] custom-path OVERRIDE
+        """B2b (Option A): the per-box meta["shell"] custom-path OVERRIDE
         is DROPPED.  Editing the stored ``shell`` field in box.yaml NO LONGER
         moves the resolved home — home is SOLELY the spec-derived default location
         (boxes/<name>/home).  A user customizing home now sets the

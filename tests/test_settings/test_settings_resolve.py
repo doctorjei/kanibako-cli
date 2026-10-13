@@ -189,7 +189,7 @@ def test_expand_term_var_takes_the_host_value(
 def test_expand_term_var_empty_or_unset_falls_back_to_xterm(
     monkeypatch: pytest.MonkeyPatch, set_empty: bool
 ) -> None:
-    # Jei, 2026-09-08: "if TERM is empty, we should fall back to xterm". UNSET is the same
+    # [Jei:2026-09-08]: "if TERM is empty, we should fall back to xterm". UNSET is the same
     # nothing as EMPTY — the XDG twin reads both through one ``environ.get(var, "")``.
     if set_empty:
         monkeypatch.setenv("TERM", "")

@@ -160,9 +160,9 @@ class TestPurgeWithARelocatedStore:
 
     def test_a_store_relocated_inside_the_root_is_kept_and_named(self, config, std, tmp_home,
                                                              capsys):
-        """⚑ Ruled (A) 2026-10-10: being strictly below the root does NOT make a store
-        kanibako's.  The box's OWN ``workset.boxes`` nominated it, so purge keeps it and
-        NAMES it — a leftover that is named is recoverable, a deleted user folder is not."""
+        """⚑ Ruled (A): being strictly below the root does NOT make a store kanibako's.  The
+        box's OWN ``workset.boxes`` nominated it, so purge keeps it and NAMES it — a leftover
+        that is named is recoverable, a deleted user folder is not."""
         root, _name = _make_standalone(config, std, tmp_home, "sa_purge_inside")
         store = _relocate(root, root / "inside_store")
         (store / "MY_OWN_NOTES.md").write_text("mine\n")
