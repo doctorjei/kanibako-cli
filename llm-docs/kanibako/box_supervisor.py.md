@@ -117,10 +117,8 @@ marker PID. The **REVERSE** direction (a CLI newcomer over a live-panel incumben
 has no panel injection vector, so it stays LOG-ONLY (deferred). `kill_agent_session` is BOTH the
 total-teardown kill and the 4b eviction primitive.
 
-Design refs: `~/canon/workbook/designs/split-brain-persistence-DESIGN.md` §85-96, §108, §189/§217, §267/§348, §338-359, §346,
-§89-96, §86-88. ⚑ Those `§` numbers are LINE numbers into that design doc, and the doc has been
-edited since; spot-checked this pass, §85-96 · §267 · §346 land in the right region, §108 lands
-adjacent. Treat them as approximate pointers, not addresses.
+Design refs: `~/canon/workbook/designs/split-brain-persistence-DESIGN.md`, cited below by section
+heading.
 
 ## `remain-on-exit` — and the two launch policies
 
@@ -340,17 +338,18 @@ field, so the state is the first token AFTER the **last** `)`.
 The continue-marker string a self-heal restart delivers.
 
 Sent via `tmux send-keys` as a real acting turn so a resurrected agent autonomously resumes the prior
-task(s) (design §108). Defined ONCE here so the host-side launch wiring (`commands/start.py` →
-`--marker`) and the in-box supervisor share a single source of truth — never a duplicated literal.
+task(s) (design § *Handoff loop-preservation — continue-marker injection* `[A103]`). Defined ONCE
+here so the host-side launch wiring (`commands/start.py` → `--marker`) and the in-box supervisor
+share a single source of truth — never a duplicated literal.
 
 ```TAKEOVER_HEADS_UP```
 The heads-up string 4b ENFORCEMENT delivers to a CLI incumbent about to be evicted.
 
-Design §346, *"GRACE + heads-up to the incumbent"*. It lands as a real acting turn if the incumbent
-is idle, or queues mid-loop — a best-effort nudge to wind down/checkpoint before the bounded grace
-window elapses and the incumbent's process group is evicted. **[UNVERIFIED-PLATFORM]** Injection is
-feasible ONLY toward the tmux (CLI) agent; a panel incumbent has no injection vector (the DIRECTIONAL
-limit), so this is used only in the CRITICAL direction.
+Design § *4b — ENFORCEMENT*, step 2: *"GRACE to the incumbent"*. It lands as a real acting turn if
+the incumbent is idle, or queues mid-loop — a best-effort nudge to wind down/checkpoint before the
+bounded grace window elapses and the incumbent's process group is evicted.
+**[UNVERIFIED-PLATFORM]** Injection is feasible ONLY toward the tmux (CLI) agent; a panel incumbent
+has no injection vector (the DIRECTIONAL limit), so this is used only in the CRITICAL direction.
 
 ```KANIBAKO_PKG_MOUNT_ROOT = "/opt/kanibako"```
 In-box read-only bind-mount ROOT of the HOST kanibako package. — see the section above.
@@ -640,7 +639,8 @@ PURE: decide a panel-watch tick's action (E2f state machine, design 3a/3b).
 the bug this signature exists to prevent:
 
 * *vscode_server* — the **PANEL specifically**. It gates `SELF_HEAL_CLI`, which is the panel-specific
-  §89-96 fallback ("the PANEL died while the panel is connected → launch a CLI agent"). A tmux
+  detach → self-heal fallback of design § *STARTUP case matrix* `[A94]`: the PANEL died while the
+  panel is connected, so a CLI agent launches. A tmux
   terminal is NOT a panel, so it cannot trigger a panel-death self-heal.
 * *any_attached* — **ANY** client surface (panel OR tmux terminal). It gates the ref-count
   KEEP-ALIVE / TEARDOWN: a box must persist while ANY surface is attached, so tearing down keys on
@@ -687,15 +687,15 @@ unit-testable without any tmux / FS / os.
 | `creds_flag` | box-local ABSOLUTE path to the credential-writeback SIGNAL flag — see below |
 | `capture_history` | bounded scrollback (lines) captured from the dead agent pane on a foreground teardown and echoed to PID-1's stdout so `podman logs` surfaces the agent's final output to the host (`capture_agent_output`) |
 
-**`on_agent_exit`** (design §85-96, E2c) — what happens when the agent exits. `"self-heal"` (the
-default; detached and panel launches) keeps the always-on bounded-retry restart. `"teardown"` (a
-FOREGROUND CLI launch, where a human is the driver) treats an agent EXIT as a NORMAL termination and
-lets PID-1 return so the box closes — no self-heal loop while a CLI is the surface. **Any value other
-than `"teardown"` is treated as `"self-heal"`** (safe default). ⚑ It also decides whether
-`remain-on-exit` is armed at all — see that section.
+**`on_agent_exit`** (design § *STARTUP case matrix* `[A94]`, E2c) — what happens when the agent
+exits. `"self-heal"` (the default; detached and panel launches) keeps the always-on bounded-retry
+restart. `"teardown"` (a FOREGROUND CLI launch, where a human is the driver) treats an agent EXIT
+as a NORMAL termination and lets PID-1 return so the box closes — no self-heal loop while a CLI is
+the surface. **Any value other than `"teardown"` is treated as `"self-heal"`** (safe default). ⚑ It
+also decides whether `remain-on-exit` is armed at all — see that section.
 
-**`session_takeover`** (design §338-359) — DEFAULT-OFF so 4b lands DORMANT. `False` (unset) ⇒ the
-`run_forever` loop's newcomer handling is 4a LOG-ONLY: no `SIGSTOP`, no send-keys, no newcomer
+**`session_takeover`** (design § *INCREMENT 4*) — DEFAULT-OFF so 4b lands DORMANT. `False` (unset)
+⇒ the `run_forever` loop's newcomer handling is 4a LOG-ONLY: no `SIGSTOP`, no send-keys, no newcomer
 eviction; the newcomer path is 4a-identical. ⚑ Note the teardown/self-heal process-group kill is
 flag-INDEPENDENT. `True` ⇒ full single-writer TAKEOVER (pause the panel newcomer, grace + evict the
 CLI incumbent, resume the newcomer). Gated behind an internal/experimental env
@@ -712,11 +712,11 @@ extension's watchdog respawning it — a desktop-gated unknown.
 **`panel_watch`** (E2f, design cases 3a/3b) — when `True` the supervisor starts NO CLI agent (the VS
 Code panel is the agent), enumerates the *agent_markers_dir* liveness MARKERS plus the vscode_server
 surface, and self-heals a CLI agent ONLY when the panel agent DIES with the panel still connected
-(the §89-96 fallback). `False` (default) is the E2b–E2e tmux-agent path, byte-unchanged EXCEPT the 4a
-newcomer detection (LOG-ONLY, or the 4b takeover when `session_takeover` is on). This is the
-`kanibako code` AGENT-INDEPENDENT warm-up. ⚑ In panel-watch the `on_agent_exit` policy is INERT — the
-panel-watch loop never reads it — but `start.py` passes it anyway for a uniform, forward-compatible
-argv.
+(the detach → self-heal fallback). `False` (default) is the E2b–E2e tmux-agent path, byte-unchanged
+EXCEPT the 4a newcomer detection (LOG-ONLY, or the 4b takeover when `session_takeover` is on). This
+is the `kanibako code` AGENT-INDEPENDENT warm-up. ⚑ In panel-watch the `on_agent_exit` policy is
+INERT — the panel-watch loop never reads it — but `start.py` passes it anyway for a uniform,
+forward-compatible argv.
 
 **`agent_markers_dir`** (E2g / increment 4a) — each agent session's start hook writes a per-PID marker
 `<dir>/$PPID`. Enumerated tolerantly by `BoxSupervisor.panel_agent_state` (panel liveness) and by the
@@ -773,8 +773,8 @@ What a PANEL-WATCH tick must DO (besides the detach hook). — `NONE`, `SELF_HEA
 The decision a single panel-watch tick produces.
 
 *kind* — `SELF_HEAL_CLI` when the panel agent died with the panel still connected (launch a CLI agent
-in tmux, the §89-96 fallback); `TEARDOWN` when every surface + agent is gone (ref-count / principle
-B); otherwise `NONE` (keep-alive).
+in tmux, the detach → self-heal fallback); `TEARDOWN` when every surface + agent is gone (ref-count
+/ principle B); otherwise `NONE` (keep-alive).
 
 ## `class BoxSupervisor` — PID-1 keep-alive supervising an agent in a detached tmux session
 
@@ -872,9 +872,9 @@ Send the continue-marker to the session (self-heal restart).
 ```_send_takeover_heads_up(self) -> bool```
 Send the 4b takeover heads-up (`TAKEOVER_HEADS_UP`) to the CLI incumbent.
 
-Best-effort GRACE nudge (design §346): lands as a real acting turn if the incumbent is idle, or
-queues mid-loop — either way the incumbent is warned before the bounded grace elapses. Feasible ONLY
-toward the tmux (CLI) agent (the DIRECTIONAL limit).
+Best-effort GRACE nudge (design § *4b — ENFORCEMENT*): lands as a real acting turn if the incumbent
+is idle, or queues mid-loop — either way the incumbent is warned before the bounded grace elapses.
+Feasible ONLY toward the tmux (CLI) agent (the DIRECTIONAL limit).
 
 ```agent_pane_dead_status(self) -> int | None```
 Return the agent pane's DEAD exit status, or `None` when it is not dead.
@@ -933,10 +933,10 @@ Send *sig* to *pid*'s whole PROCESS GROUP (child-kill-with-parent); tolerant.
 tmux starts it as a session/process-group LEADER — its PID is the group id — and every subagent /
 worker it spawns inherits that group. Signaling the GROUP (`os.killpg`) therefore reaps the agent
 AND all its descendants, so no orphaned worker survives a takeover/teardown (the child-kill-with-
-parent ruling, design §267 / §348). Resolves the real pgid via the injected `getpgid` (falling back
-to the pid itself when it cannot — a group leader's pgid == its pid), then signals it through the
-injected `killpg`. Tolerant like every PID-1 op: `ProcessLookupError` or any `OSError` resolves to
-`False` and is logged at debug.
+parent ruling, design § *Open rulings for Jei* and § *4b — ENFORCEMENT*). Resolves the real pgid
+via the injected `getpgid` (falling back to the pid itself when it cannot — a group leader's pgid
+== its pid), then signals it through the injected `killpg`. Tolerant like every PID-1 op:
+`ProcessLookupError` or any `OSError` resolves to `False` and is logged at debug.
 
 ⚑ **SAFETY GUARD — a wrong pgid here could kill the whole box.** **[UNVERIFIED-PLATFORM]** A real
 pane agent is its OWN `setsid` session/group leader, so its pgid is never 0/1 nor the SUPERVISOR's
@@ -1177,7 +1177,8 @@ dead-pane status to read. ⚑ **Defaults `True`** so a startup-probe hiccup (the
 (the E2e factoring): under `self-heal` the loop self-heals a missing agent; under `teardown` the
 loop's SURFACE-AWARE branch closes the box (rc 1) UNLESS a panel is attached, in which case it stays
 up as an agentless keep-alive. One start attempt, then the loop's ref-count policy decides — which
-keeps the teardown decision in exactly ONE place (design §86-88, cold-start-error-human-direct).
+keeps the teardown decision in exactly ONE place (design § *Error handling* `[A98]`, cold-start
+error, human-direct).
 
 **Per-tick order, and why:**
 

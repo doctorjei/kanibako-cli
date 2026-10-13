@@ -1284,7 +1284,8 @@ file `box set box.image=…` writes.
 
 ## `_build_supervisor_pid1` — the import-GATED PID-1 for a DETACHED agent box (E2b)
 
-**Authority:** design §221-225 (forward-compat) · the 2026-08-17 measurement below.
+**Authority:** `~/canon/workbook/designs/split-brain-persistence-DESIGN.md` § *E2 BUILD DESIGN*, its
+forward-compat FALLBACK · the 2026-08-17 measurement below.
 
 The always-on supervisor (`kanibako.box_supervisor`) runs the agent in a detached tmux session and
 self-heals it, so a detached AGENT box makes the supervisor PID-1 instead of a bare-shell keep-alive.
