@@ -40,16 +40,13 @@ assignment order. This module resolves that much with a NARROW pre-pass,
 `SELECTION_KEY` is the key naming the agent a box runs (spec §2g), re-exported from here so callers
 spell it once.
 
-## P7 (v1.8.0) — what changed and why
+## `box.agent_name` is retired; a box requests its agent
 
-The box tier used to be the flat scalar key `box.agent_name`, read by a private loader
-(`config.load_merged_config` → `KanibakoConfig.box_agent_name`) that had nothing to do with the
-keyspace. Spec §2b RETIRED it: it made the L4.1 anchors `meta.box.auth.workset_path` and
-`meta.box.agent.auth.share_support` derive from a SETTABLE key at their own level, which §0's
-bootstrap rule forbids.
-
-The replacement is the §2h REQUEST `pref.system.agent`, and the system default is now the
-spec-named `system.agent` (§2g) living in the `system:` table of the system settings file.
+`box.agent_name` is RETIRED (spec §2b): as a box key it would make the L4.1 anchors
+`meta.box.auth.workset_path` and `meta.box.agent.auth.share_support` derive from a SETTABLE key at
+their own level, which §0's bootstrap rule forbids. A box or workset selects its agent with the §2h
+REQUEST `pref.system.agent`, and the system default is `system.agent` (§2g), in the `system:` table
+of the system settings file.
 
 ## The selection LEVEL, and why the resolved answer is installed unconditionally
 
@@ -67,9 +64,9 @@ Suppressing the pref when `--agent` is given fixes neither: it only changes WHIC
 snapshot reports. One rule — *the resolved selection is installed at the top* — covers both, is a
 no-op when the cascade already said it, and is the mechanism every key-shadowing flag uses.
 
-## P8 (v1.8.0) landed that generalization
+## The CLI level is built by `settings_cli_level.build_cli_level`
 
-The level is now built by `kanibako.settings.settings_cli_level.build_cli_level`, which owns the
+The level is built by `kanibako.settings.settings_cli_level.build_cli_level`, which owns the
 flag→key table and carries this selection alongside the launch's ephemeral flag values, and it is
 validated by `guard_cli_level` inside `build_launch_snapshot`.
 
