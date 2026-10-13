@@ -1,27 +1,14 @@
 """Per-box HOST-side credential-writeback watcher (increment D — the trusted half).
 
-The always-on-instance design (``split-brain-persistence-DESIGN.md`` GAP-1) needs a
-box's in-box credential refresh (a panel/agent login that refreshes a SHARED token)
-to reach the host credential STORE PROMPTLY — provider refresh-token rotation means a
-panel refresh in one box can lock another box out until the new token lands in the
-store, so writeback is a CORRECTNESS need, not just hygiene.
+The host credential store must NEVER be writable from inside a box, so the in-box
+supervisor only SIGNALS a detach, by edge-triggering a flag in its own box home
+(:meth:`kanibako.box_supervisor.BoxSupervisor._on_detach`).  This trusted HOST daemon
+watches that flag and copies box home → store through
+:func:`kanibako.commands.start.writeback_session_credentials` (llm-doc).
 
-The LOAD-BEARING TRUST INVARIANT (Jei, 2026-07-11): the host credential store must
-NEVER be writable from inside a box — a bind mount is not process-scoped, so the
-untrusted in-box agent would inherit any store-write handle.  So the WRITE stays
-HOST-side (trusted).  The in-box supervisor only SIGNALS a detach by edge-triggering a
-flag in its OWN box-home (:meth:`kanibako.box_supervisor.BoxSupervisor._on_detach`);
-THIS module is the trusted HOST daemon that watches that flag (box-home is host-visible
-via the existing bind mount) and does the privileged box-home → store copy through the
-EXISTING host writeback (:func:`kanibako.commands.start.writeback_session_credentials`,
-unchanged logic).
-
-Design for testability mirrors :mod:`kanibako.box_lifecycle` / :mod:`kanibako.box_supervisor`:
-the PURE decision (:func:`decide_watch`) is split from the impure box probe / flag I/O /
-writeback, and EVERY side effect funnels through an injected callable (plus an injected
-``sleep``), so the whole loop is driven in unit tests with no real box, FS, or waiting.
-Every probe is TOLERANT — a watcher that crashed on a transient error would silently
-stop propagating credentials — so a failing writeback is logged, never raised.
+The PURE decision (:func:`decide_watch`) is split from the impure probe, flag I/O and
+writeback, each injected, so the loop is unit-tested with no real box, FS, or waiting.
+Every probe is TOLERANT: a failing writeback is logged, never raised.
 """
 
 from __future__ import annotations
@@ -113,45 +100,18 @@ def clear_creds_dirty(project_home: Path) -> None:
 def creds_store_lock(*store_dirs: Path) -> "Iterator[None]":
     """Serialize credential-STORE access by flocking the store directories.
 
-    Two writers to the same SHARED store must not interleave, and they come in two
-    kinds.  The WRITEBACK copies box-home creds into the store — a ``kanibako stop``,
-    a foreground reattach, and this per-box daemon can all fire at once — through
-    :func:`kanibako.commands.start.writeback_session_credentials`, the sole writeback
-    site; this module's daemon reaches the store THROUGH that function rather than
-    entering the lock itself.  The start-time REFRESH of a global-synced workset store
-    writes that store and reads host home while another box may be writing back into
-    either, so :func:`kanibako.targets.credsync._sync_workset_dir_from_global` takes
-    this lock too, over both — a torn source file is as corrupting as a torn write.
-    For the same reason the BOX-level seed and refresh READ of a store
-    (:func:`kanibako.targets.credsync._box_from_source`) takes it over the box's source
-    root.  So a create or start waits behind any writeback into a store it reads:
-    milliseconds normally, and as unbounded as the writeback's own wait if a holder
-    hangs.  ⚑ Never enter it while already holding it: each entry opens a fresh
-    descriptor, and ``flock`` conflicts between descriptors in one process, so a
-    nested entry over a directory already held self-deadlocks.
-    ⚑ A new store writer or reader must take it: enumerate them by grepping for WRITES
-    to and READS from a store directory, never for callers of this lock.  There is no
-    other lock on these writes (the launch-path flock is the EPHEMERAL session lock,
-    SKIPPED for persistent boxes).
+    Every store writer and reader takes it: the writeback
+    (:func:`kanibako.commands.start.writeback_session_credentials`, which this module's
+    daemon goes through) and the workset refresh and box seed/refresh reads in
+    :mod:`kanibako.targets.credsync`.  ⚑ A new store writer or reader must take it too;
+    find them by grepping for store READS and WRITES, never for callers of this lock.
+    ⚑ Never enter it while already holding it: ``flock`` conflicts between descriptors in
+    one process, so a nested entry self-deadlocks.
+    🛑 The lock is the destination DIRECTORY, never a file ([R167]) (llm-doc).
 
-    ⚑ The lock IS the destination directory (``os.open`` + ``flock(LOCK_EX)`` on the
-    dir itself): it creates no file and mints no key, and its SCOPE is the
-    destination's scope BY CONSTRUCTION.  The ``"global"`` tier's destination is
-    ``host_home`` ITSELF (:func:`kanibako.targets.credsync.selected_source_root`), so a
-    global writeback still takes a HOST-WIDE lock, while a workset-tier writeback takes
-    only its own auth dir instead of over-serializing against unrelated stores.
-    🛑 Do NOT lock a FILE instead ([R167]): not a sentinel under a composed path (the bug
-    this replaced), and not the destination file, which a rename defeats —
-    ``writeback_extra`` rewrites ``~/.claude.json`` by temp+rename while ``cred_files``
-    copies IN PLACE, so a file lock would hold for one destination and silently not for
-    the other.
-
-    *store_dirs* is EVERY store directory the guarded operation writes into or reads
-    from — a global-synced workset box writes its workset dir AND host home, so it
-    passes both.  They are taken in sorted real-path order, so no single call can
-    invert or repeat its way into a deadlock.
-    TOLERANT: a directory that cannot be opened / locked is SKIPPED and the guarded
-    operation proceeds without THAT lock (it must never be BLOCKED by a lock-infra hiccup).
+    *store_dirs* is every store directory the guarded operation writes into or reads
+    from; they are taken in sorted real-path order.  TOLERANT: a directory that cannot be
+    opened or locked is SKIPPED, and the operation proceeds without that lock.
     """
     held: list[int] = []
     for dest in sorted({os.path.realpath(d) for d in store_dirs}):
