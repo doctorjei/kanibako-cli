@@ -159,14 +159,14 @@ def test_expand_tilde_path_host() -> None:
 def test_expand_xdg_var() -> None:
     assert (
         expand_expr(
-            "$XDG_DATA_HOME/kanibako", space="host", ctx=make_ctx(), lookup=no_lookup
+            "{$XDG_DATA_HOME}/kanibako", space="host", ctx=make_ctx(), lookup=no_lookup
         )
         == "/home/u/.local/share/kanibako"
     )
 
 
 def test_expand_agent_var() -> None:
-    assert expand_expr("$AGENT", space="host", ctx=make_ctx(), lookup=no_lookup) == "myagent"
+    assert expand_expr("{$AGENT}", space="host", ctx=make_ctx(), lookup=no_lookup) == "myagent"
 
 
 # --------------------------------------------------------------------------- #
@@ -175,7 +175,7 @@ def test_expand_agent_var() -> None:
 
 
 def _expand_term(ctx: ResolveCtx) -> str:
-    return expand_expr("$TERM", space="host", ctx=ctx, lookup=no_lookup)
+    return expand_expr("{$TERM}", space="host", ctx=ctx, lookup=no_lookup)
 
 
 @pytest.mark.parametrize("value", ["xterm-256color", "screen.linux"])
@@ -262,7 +262,7 @@ def test_expand_ref_simple() -> None:
 
     assert (
         expand_expr(
-            "@system.path.data/crabs", space="host", ctx=make_ctx(), lookup=lookup
+            "{system.path.data}/crabs", space="host", ctx=make_ctx(), lookup=lookup
         )
         == "/data/crabs"
     )
@@ -276,12 +276,12 @@ def test_expand_ref_double_hop() -> None:
         calls.append(ref)
         if ref == "a":
             # Re-enter resolution for "a"'s value, threading the chain.
-            return expand_expr("@b", space="host", ctx=make_ctx(), lookup=lookup, chain=chain)
+            return expand_expr("{b}", space="host", ctx=make_ctx(), lookup=lookup, chain=chain)
         if ref == "b":
             return "/leaf"
         raise AssertionError(ref)
 
-    assert expand_expr("@a", space="host", ctx=make_ctx(), lookup=lookup) == "/leaf"
+    assert expand_expr("{a}", space="host", ctx=make_ctx(), lookup=lookup) == "/leaf"
     assert calls == ["a", "b"]
 
 
@@ -488,7 +488,7 @@ def test_expand_braced_ref_in_guest_space() -> None:
         return "/g"
 
     assert (
-        expand_expr("~/x/@{a.b}.log", space="guest", ctx=make_ctx(), lookup=lookup)
+        expand_expr("~/x/{a.b}.log", space="guest", ctx=make_ctx(), lookup=lookup)
         == f"{GUEST_HOME}/x//g.log"
     )
 
@@ -502,13 +502,13 @@ def test_expand_braced_ref_expands_under_defer_env() -> None:
 
     assert (
         expand_expr(
-            "$XDG_STATE_HOME/@{a.b}.jsonl",
+            "{$XDG_STATE_HOME}/{a.b}.jsonl",
             space="host",
             ctx=make_ctx(),
             lookup=lookup,
             defer_env=True,
         )
-        == "$XDG_STATE_HOME//cfg.jsonl"
+        == "{$XDG_STATE_HOME}//cfg.jsonl"
     )
 
 
@@ -516,11 +516,11 @@ def test_expand_braced_ref_cycle_via_lookup_reentry_raises() -> None:
     # The cycle guard lives past the parse and is spelling-agnostic.
     def lookup(ref: str, chain: tuple[str, ...]) -> str:
         return expand_expr(
-            "@{a}", space="host", ctx=make_ctx(), lookup=lookup, chain=chain
+            "{a}", space="host", ctx=make_ctx(), lookup=lookup, chain=chain
         )
 
     with pytest.raises(SettingsError, match="Cyclic"):
-        expand_expr("@{a}x", space="host", ctx=make_ctx(), lookup=lookup)
+        expand_expr("{a}x", space="host", ctx=make_ctx(), lookup=lookup)
 
 
 # ---------------------------------------------------------------------------
@@ -594,9 +594,9 @@ def test_match_var_malformed_raises(expr: str, match: str) -> None:
 def test_expand_substituted_value_is_leaf() -> None:
     # A returned value containing $ / @ is NOT re-scanned.
     def lookup(ref: str, chain: tuple[str, ...]) -> str:
-        return "$AGENT@b"
+        return "{$AGENT}{b}"
 
-    assert expand_expr("@a", space="host", ctx=make_ctx(), lookup=lookup) == "$AGENT@b"
+    assert expand_expr("{a}", space="host", ctx=make_ctx(), lookup=lookup) == "{$AGENT}{b}"
 
 
 def test_expand_escaped_dollar_and_backslash() -> None:
@@ -652,41 +652,41 @@ def test_literal_expr_has_no_refs_and_survives_deferral(text: str) -> None:
 
 def test_expand_unknown_var_raises() -> None:
     with pytest.raises(SettingsError, match="FOO"):
-        expand_expr("$FOO", space="host", ctx=make_ctx(), lookup=no_lookup)
+        expand_expr("{$FOO}", space="host", ctx=make_ctx(), lookup=no_lookup)
 
 
 def test_expand_agent_none_raises() -> None:
     with pytest.raises(SettingsError, match="AGENT"):
-        expand_expr("$AGENT", space="host", ctx=make_ctx(agent_name=None), lookup=no_lookup)
+        expand_expr("{$AGENT}", space="host", ctx=make_ctx(agent_name=None), lookup=no_lookup)
 
 
 def test_expand_workset_none_raises() -> None:
     with pytest.raises(SettingsError, match="WORKSET"):
         expand_expr(
-            "$WORKSET", space="host", ctx=make_ctx(workset_name=None), lookup=no_lookup
+            "{$WORKSET}", space="host", ctx=make_ctx(workset_name=None), lookup=no_lookup
         )
 
 
 def test_expand_missing_xdg_raises() -> None:
     with pytest.raises(SettingsError, match="XDG_STATE_HOME"):
-        expand_expr("$XDG_STATE_HOME", space="host", ctx=make_ctx(), lookup=no_lookup)
+        expand_expr("{$XDG_STATE_HOME}", space="host", ctx=make_ctx(), lookup=no_lookup)
 
 
 def test_expand_direct_cycle_via_chain_raises() -> None:
     # Chain already contains the ref → cycle.
     with pytest.raises(SettingsError, match="Cyclic"):
         expand_expr(
-            "@a", space="host", ctx=make_ctx(), lookup=no_lookup, chain=("a",)
+            "{a}", space="host", ctx=make_ctx(), lookup=no_lookup, chain=("a",)
         )
 
 
 def test_expand_cycle_via_lookup_reentry_raises() -> None:
     def lookup(ref: str, chain: tuple[str, ...]) -> str:
         # Re-reference the same ref → cycle caught on re-entry.
-        return expand_expr("@a", space="host", ctx=make_ctx(), lookup=lookup, chain=chain)
+        return expand_expr("{a}", space="host", ctx=make_ctx(), lookup=lookup, chain=chain)
 
     with pytest.raises(SettingsError, match="Cyclic"):
-        expand_expr("@a", space="host", ctx=make_ctx(), lookup=lookup)
+        expand_expr("{a}", space="host", ctx=make_ctx(), lookup=lookup)
 
 
 @pytest.mark.parametrize(
@@ -717,7 +717,7 @@ def test_expand_depth_cap_raises() -> None:
     deep_chain = tuple(f"n{i}" for i in range(MAX_REF_DEPTH))
     with pytest.raises(SettingsError, match="depth cap"):
         expand_expr(
-            "@fresh", space="host", ctx=make_ctx(), lookup=no_lookup, chain=deep_chain
+            "{fresh}", space="host", ctx=make_ctx(), lookup=no_lookup, chain=deep_chain
         )
 
 

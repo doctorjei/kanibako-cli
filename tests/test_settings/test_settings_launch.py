@@ -254,7 +254,7 @@ def test_a_box_file_scalar_beats_the_box_scalar_floor(tmp_path: Path):
     box_file = tmp_path / "box.yaml"
     dump_doc(box_file, {"box": {
         "shell": "/bin/zsh", "share_images": True, "enable_vault": False,
-        "canon": "@box.shell/sub",
+        "canon": "{box.shell}/sub",
     }})
     snap = build_launch_snapshot(
         agent_name="claude", ctx=_ctx(), system_path=None, agent_path=None,
@@ -2013,7 +2013,7 @@ def test_R147_a_value_kanibako_supplies_itself_is_not_judged():
 
 
 @pytest.mark.parametrize("value", [
-    "/custom/store", "~/store", "$XDG_DATA_HOME/store", "@meta.workset.path/store",
+    "/custom/store", "~/store", "{$XDG_DATA_HOME}/store", "{meta.workset.path}/store",
 ])
 def test_R147_an_unambiguous_workset_auth_path_passes_the_sweep(tmp_path, value):
     """Each of the four legal spellings builds."""
@@ -2143,9 +2143,9 @@ def test_R147_an_AGENT_rooted_value_is_refused(tmp_path):
     with pytest.raises(SettingsError) as exc:
         _auth_snapshot(
             "primary", tmp_path=tmp_path,
-            workset_file={"workset": {"auth": {"path": "$AGENT/x"}}},
+            workset_file={"workset": {"auth": {"path": "{$AGENT}/x"}}},
         )
-    assert "workset.auth.path is set to '$AGENT/x'" in str(exc.value)
+    assert "workset.auth.path is set to '{$AGENT}/x'" in str(exc.value)
 
 
 def test_R147_a_shadowed_value_is_judged_and_names_its_own_file(tmp_path):
@@ -3128,7 +3128,7 @@ def test_workspace_bind_routes_through_meta_box_workspace():
     snap = _identity_snapshot(
         project_path="/code/droste",
         default_categories={
-            "box.bindings.rw": {"~/workspace": ("@meta.box.workspace", "Z,U")},
+            "box.bindings.rw": {"~/workspace": ("{meta.box.workspace}", "Z,U")},
         },
     )
     # The DEST is now the map KEY, canonicalized by R-11 (``~/workspace`` →
@@ -3147,7 +3147,7 @@ def test_inbox_bind_routes_through_meta_box_inbox():
     snap = _identity_snapshot(
         inbox="/data/channels/mailboxes/__PRIMARY__/droste",
         default_categories={
-            "box.bindings.rw": {"~/channels/inbox": ("@meta.box.inbox",)},
+            "box.bindings.rw": {"~/channels/inbox": ("{meta.box.inbox}",)},
         },
     )
     bind = _meta_node(snap, "box", "bindings", "rw", "/home/agent/channels/inbox")
@@ -3196,8 +3196,8 @@ def test_routed_bind_equivalence_vs_literal_injection():
         project_path=project_path, inbox=inbox,
         default_categories={
             "box.bindings.rw": {
-                "~/workspace": ("@meta.box.workspace", "Z,U"),
-                "~/channels/inbox": ("@meta.box.inbox",),
+                "~/workspace": ("{meta.box.workspace}", "Z,U"),
+                "~/channels/inbox": ("{meta.box.inbox}",),
             },
         },
     )
@@ -4116,7 +4116,7 @@ def test_box_root_that_does_not_resolve_is_a_named_error(tmp_path: Path):
     # WHOLE-VALUE ref (-> the host "/home"). Confirmed pre-guard.
     for mode in ("primary", "standalone"):
         floor: dict[str, object] = {
-            "box.bindings.rw": {"~": ("@meta.box.path/home", "Z,U")},
+            "box.bindings.rw": {"~": ("{meta.box.path}/home", "Z,U")},
             "meta.box.name": "mybox",
             "meta.workset.path": "/data/ws",
         }
@@ -4151,7 +4151,7 @@ def test_box_root_with_a_vanished_name_leaf_is_a_named_error():
 
     for name in ("", None):
         floor: dict[str, object] = {
-            "box.bindings.rw": {"~": ("@meta.box.path/home", "Z,U")},
+            "box.bindings.rw": {"~": ("{meta.box.path}/home", "Z,U")},
             "meta.box.name": name,
             "meta.workset.path": "/data/ws",
         }
@@ -4622,7 +4622,7 @@ class TestPrefRecomputeNotDelta:
             box={
                 "pref": {"agent": {"claude": {"template": "/custom/tpl"}}},
                 "box": {"bindings": {"rw": {
-                    "~/probe": ["@agent.claude.template/sub"],
+                    "~/probe": ["{agent.claude.template}/sub"],
                 }}},
             },
         )
@@ -4638,7 +4638,7 @@ class TestPrefRecomputeNotDelta:
             box={
                 "pref": {"system": {"agent": "goose"}},
                 "box": {"bindings": {"rw": {
-                    "~/probe": ["/src/@system.agent"],
+                    "~/probe": ["/src/{system.agent}"],
                 }}},
             },
         )
@@ -4651,7 +4651,7 @@ class TestPrefRecomputeNotDelta:
         UNRESOLVED) value and resolution handles it like any other key."""
         snap = _pref_snap(
             tmp_path,
-            box={"pref": {"agent": {"claude": {"template": "@workset.template/x"}}}},
+            box={"pref": {"agent": {"claude": {"template": "{workset.template}/x"}}}},
             workset={"workset": {"template": "/ws/tpl"}},
         )
         assert snap.agent.claude.template == "/ws/tpl/x"
@@ -6851,7 +6851,7 @@ class TestLoneNoneStandardBind:
     _DEST = f"{GUEST_HOME}/.kanibako/state/helpers.jsonl"
     _FLOOR = {
         "workset.logs": "/h/logs",
-        "box.bindings.ro": {_DEST: ("@workset.logs/@{meta.box.name}.jsonl", "ro")},
+        "box.bindings.ro": {_DEST: ("{workset.logs}/{meta.box.name}.jsonl", "ro")},
     }
     _NULL_ENTRY = {"box": {"bindings": {"ro": {"~/.kanibako/state/helpers.jsonl": None}}}}
     _NULL_SOURCE = {"workset": {"logs": None}}
@@ -6924,7 +6924,7 @@ class TestLoneNoneStandardBind:
         # [Q94] 2 / [Q80] (a): skipped — not refused, not warned.
         mounted, warnings = self._resolve(
             tmp_path, caplog,
-            box={"box": {"bindings": {"rw": {"~/mine": ["@workset.logs/x"]}}}},
+            box={"box": {"bindings": {"rw": {"~/mine": ["{workset.logs}/x"]}}}},
             workset=self._NULL_SOURCE, floor={"workset.logs": "/h/logs"},
         )
         assert (mounted, warnings) == (set(), [])
@@ -6956,12 +6956,12 @@ class TestHalfNullCureOnlyWhereADoorAdmitsIt:
     _ROOT_DEST = f"{GUEST_HOME}/cache"
     _ROOT_FLOOR = {
         "system.cache": "/h/cache",
-        "box.bindings.ro": {_ROOT_DEST: ("@system.cache", "ro")},
+        "box.bindings.ro": {_ROOT_DEST: ("{system.cache}", "ro")},
     }
     _LOG_DEST = f"{GUEST_HOME}/.kanibako/state/helpers.jsonl"
     _LOG_FLOOR = {
         "workset.logs": "/h/logs",
-        "box.bindings.ro": {_LOG_DEST: ("@workset.logs/@{meta.box.name}.jsonl", "ro")},
+        "box.bindings.ro": {_LOG_DEST: ("{workset.logs}/{meta.box.name}.jsonl", "ro")},
     }
 
     def _resolve(self, tmp_path, caplog, *, floor, entry_dest):
@@ -7004,7 +7004,7 @@ class TestHalfNullCureOnlyWhereADoorAdmitsIt:
             tmp_path, caplog,
             floor={
                 "system.canon": "/h/canon",
-                "box.bindings.ro": {canon_dest: ("@system.canon/handbook/general", "ro")},
+                "box.bindings.ro": {canon_dest: ("{system.canon}/handbook/general", "ro")},
             },
             entry_dest="~/canon/handbook/general",
         )
@@ -7040,7 +7040,7 @@ class TestNullRefSecretPath:
     launch warns, naming the key and where the ``<None>`` was set (fail-soft).
     """
 
-    _SECRET = {"box": {"secret_path": {"TOK": "@workset.auth.path/tok"}}}
+    _SECRET = {"box": {"secret_path": {"TOK": "{workset.auth.path}/tok"}}}
 
     def _resolve(self, tmp_path, caplog, *, box, floor, workset=None):
         from kanibako.settings.settings_launch import reset_none_warnings
@@ -7099,7 +7099,7 @@ class TestNullRefSecretPath:
             if r.name == "kanibako.settings.settings_launch"
         ]
         assert warnings == [
-            "box.secret_path.TOK is '@workset.auth.path/tok', which references "
+            "box.secret_path.TOK is '{workset.auth.path}/tok', which references "
             "workset.auth.path (null in kanibako's defaults for this box), so it is "
             "null and the secret TOK is not mounted from it."
         ]
@@ -7122,7 +7122,7 @@ class TestNullRefSecretPath:
     def test_an_env_value_with_a_null_ref_is_left_out(self, tmp_path, caplog):
         # B5: ``env`` skips a ``<None>`` value, an embedded one included; no warning.
         assert self._resolve(
-            tmp_path, caplog, box={"box": {"env": {"PROBE": "@workset.auth.path/y"}}},
+            tmp_path, caplog, box={"box": {"env": {"PROBE": "{workset.auth.path}/y"}}},
             floor={"workset.auth.path": None},
         ) == (set(), [])
 
@@ -7386,7 +7386,7 @@ class TestASettingsFileEndpointIsText:
         snap = _persona_snap(
             tmp_path, persona_values={},
             system={"agent": {"claude": {
-                "endpoint": _TEXT_ENDPOINT, "env": {"BASE": "@agent.claude.endpoint"},
+                "endpoint": _TEXT_ENDPOINT, "env": {"BASE": "{agent.claude.endpoint}"},
             }}},
         )
         assert _leaf(snap, ("env", "BASE")) == _TEXT_ENDPOINT
@@ -7397,18 +7397,18 @@ class TestASettingsFileEndpointIsText:
         snap = _persona_snap(
             tmp_path, persona_values={},
             system={"agent": {"claude": {
-                "model": "m-@{agent.claude.env.TAG}\\@x", "env": {"TAG": "t"},
+                "model": "m-{agent.claude.env.TAG}\\@x", "env": {"TAG": "t"},
             }}},
         )
         assert effective_behavior(snap, active_agent="claude")["model"] == "m-t@x"
 
 
 @pytest.mark.parametrize("box, named", [
-    ({"bindings": {"rw": {"@meta.agent.home/x": ["/h/src"]}}}, "{meta.agent.home}"),
-    ({"bindings": {"rw": {"@meta.agent.home": ["/h/src"]}}}, "{meta.agent.home}"),
-    ({"bindings": {"ro": {"/opt/u": ["@box.nope/sub"]}}}, "{box.nope}"),
-    ({"env": {"ZED": "@box.nope"}}, "{box.nope}"),
-    ({"env": {"ODD": "/e@v\\$q"}}, "{v}"),
+    ({"bindings": {"rw": {"{meta.agent.home}/x": ["/h/src"]}}}, "{meta.agent.home}"),
+    ({"bindings": {"rw": {"{meta.agent.home}": ["/h/src"]}}}, "{meta.agent.home}"),
+    ({"bindings": {"ro": {"/opt/u": ["{box.nope}/sub"]}}}, "{box.nope}"),
+    ({"env": {"ZED": "{box.nope}"}}, "{box.nope}"),
+    ({"env": {"ODD": "/e{v}\\$q"}}, "{v}"),
 ], ids=["embedded-dest", "whole-dest", "embedded-src", "whole-env", "embedded-env"])
 def test_a_ref_that_names_no_key_is_refused_by_name(tmp_path: Path, box, named):
     """Spec §0: the keyspace is closed, so an ``@``-ref to an undeclared key is refused
@@ -7424,8 +7424,8 @@ def test_a_ref_that_names_no_key_is_refused_by_name(tmp_path: Path, box, named):
 
 
 @pytest.mark.parametrize("env", [
-    {"A": "x-@box.env.B", "B": "@box.nope"},
-    {"B": "@box.nope", "A": "x-@box.env.B"},
+    {"A": "x-{box.env.B}", "B": "{box.nope}"},
+    {"B": "{box.nope}", "A": "x-{box.env.B}"},
 ], ids=["holder-reached-through-a-ref", "holder-resolved-first"])
 def test_the_refusal_names_the_key_that_holds_the_ref(tmp_path: Path, env):
     """The key named is the one HOLDING the bad ref, whichever key the resolve reached first."""
@@ -7448,7 +7448,7 @@ def test_the_refusal_names_a_binding_entry_by_its_index(tmp_path: Path):
         build_launch_snapshot(
             agent_name="claude", ctx=_ctx(), system_path=None, agent_path=None,
             workset_path=None, box_path=_write_yaml(tmp_path / "box.yaml", {"box": {
-                "bindings": {"ro": {"/opt/u": ["@box.nope/sub"]}},
+                "bindings": {"ro": {"/opt/u": ["{box.nope}/sub"]}},
             }}),
         )
     assert str(exc.value).startswith("box.bindings.ro[/opt/u]: '{box.nope}'"), exc.value
@@ -7473,7 +7473,7 @@ class TestAFloorNullAddressNamesTheFileKeyBehindIt:
     _DEST = f"{GUEST_HOME}/.kanibako/state/inbox"
     _INBOX = f"{GUEST_HOME}/channels/inbox"
     _FLOOR = {
-        "box.bindings.rw": {_DEST: ("@meta.box.inbox",)},
+        "box.bindings.rw": {_DEST: ("{meta.box.inbox}",)},
         "meta.box.inbox": None,
     }
 
