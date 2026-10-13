@@ -431,8 +431,8 @@ destination. The call is dropped entirely, not repaired, and a test pins the two
 
   ⚑⚑ **Its REMEDY sentence is `raise_binding_vs_binding`'s — now the SAME OBJECT, not a matching
   copy:** `settings_categories.SUPPRESS_THEN_ADD`, which the two mask refusals below also take and
-  which `_suppress_then_add` WRAPS for its YAML block (and MIGRATION.md §2.2
-  ships that text): suppress the entry you do not want, then declare the one you do; an override is
+  which `_suppress_then_add` WRAPS for its YAML block (and MIGRATION.md § "Mount collisions are now hard
+  errors" ships that text): suppress the entry you do not want, then declare the one you do; an override is
   not enough, because these are two different keys and both survive the cascade; set the unwanted key
   to null in the settings file for its scope. It read *"Suppress one of them, or bind them at
   distinct destinations"* until cutover 2c — two paths, no key, and no statement of what "suppress"

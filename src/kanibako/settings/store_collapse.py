@@ -527,10 +527,10 @@ def _refuse_bind_over_bind(
   """A bind may NEST inside a bind - never take its point, never land above it.
 
   ⚑ THE REMEDY SENTENCE IS THE ONE ALREADY PUBLISHED for the identical class of
-  refusal a layer up (``raise_binding_vs_binding``, MIGRATION.md §2.2), and it is now
-  the SAME OBJECT rather than a matching copy - :data:`~kanibako.settings
-  .settings_categories.SUPPRESS_THEN_ADD`, which the two mask refusals below take as
-  well: a user meeting one of these has met the others, and two spellings
+  refusal a layer up (``raise_binding_vs_binding``; MIGRATION.md § "Mount collisions
+  are now hard errors"), and it is now the SAME OBJECT rather than a matching copy -
+  :data:`~kanibako.settings.settings_categories.SUPPRESS_THEN_ADD`, which the two mask
+  refusals below take as well: a user meeting one of these has met the others, and two spellings
   of one cure send them to two mechanisms. ⚑ "Suppress" is a present-``None`` at the
   key, resolved to an OMIT at cascade merge - it is NOT masking, and saying "suppress
   one of them" without saying HOW was this message's defect until cutover 2c, when it
