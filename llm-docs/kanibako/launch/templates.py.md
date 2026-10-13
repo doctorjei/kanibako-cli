@@ -217,6 +217,15 @@ guarantee-create acts on MOUNT sources, and a seed source is a COPY; `ensure_age
 DOES mkdir a `template/box/...` skeleton, and would do it THROUGH the link) is only ever called
 with discovered plugin/harness names, never a persona node.
 
+### There is no host-space seed key set
+
+Nothing derives a HOST-space set of seed keys for the launch resolve
+(`settings_launch.snapshot_category_entries`): the seed dest is `~/`, a GUEST path, so there is no
+host destination to discriminate and nothing for a key set to select. A `".seeded." in key`
+predicate would also match nothing — the key is `system.seeded`, not `system.seeded.template` — and
+an empty set would silently tag the trio guest-side and land the box-home seed where nothing reads it.
+Do not build one under any name.
+
 ## `stage_layers` — the layered-copy MECHANISM
 
 Seeds *dest* once from the ordered *layers* via a TEMP staging dir. The per-file LAST-WINS merge

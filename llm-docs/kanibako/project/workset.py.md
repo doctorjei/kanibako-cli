@@ -523,8 +523,9 @@ nothing may treat the two as sharing a parent — that assumption is exactly wha
 def standalone_vault_teardown(root: Path, *, early: EarlyScope) -> tuple[list[Path], list[Path]]
 ```
 The `(removable, retained)` split a STANDALONE teardown must use — `commands.box._parser`'s
-`_teardown_standalone_box`, `commands.clean._purge_one` and
-`commands.box._lifecycle._remove_old_metadata`'s standalone arm all go through it.
+`_standalone_purge_plan` (which `box rm --purge` and `commands.clean`'s purge call) and
+`commands.box._lifecycle._plan_source_teardown`'s standalone arm go through it, and the lifecycle's
+vault carry reads the same split.
 
 ⚑⚑ **Why a SPLIT and not a list.** A standalone box's vault IS the resolved arm — there is no
 per-box leaf under it (`settings.paths._standalone_box_paths`). So "delete this box's vault" and
