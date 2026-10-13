@@ -31,7 +31,7 @@ empty leaf of `@workset.boxes`, keyspec §2c) and HALF of the detection marker
 Both must be present; a bare `box_data/` directory is not a marker.
 
 It is a LAYOUT constant rather than a detail of detection, so it is defined in `settings/bootstrap`
-and re-bound at the TOP of this module, not inside the detection helper that used to own it.
+and re-bound at the TOP of this module, not inside a detection helper.
 `standalone_store_teardown_plan` reads it here; `commands/start` and `commands/box/_lifecycle`
 import it from here.
 
@@ -61,7 +61,7 @@ leaves room for further template subtrees without new keys.
 
 ⚑ The box-HOME seed is `template/box/home`, **NOT** the root and **NOT** `box/`: `box/` is the box
 TEMPLATE root, holding `home/` (spec §2a layers 1–3, the `seeded` category) beside `canon/handbook/`
-(the box handbook HOST template — not a seed since 2026-08-07g; see
+(the box handbook HOST template, not a seed; see
 `launch.templates.install_box_handbook_template`).
 
 ### `canon` — the SYSTEM-level CANON CONTRIBUTION root (spec §2g)
@@ -105,10 +105,9 @@ answer, with no edit at any of those sites.
 path-tier table holds paths only, so `resolve_system_paths` OMITS `_primary_logs` in that case and
 `load_std_paths` reads the omission as `None`.
 
-⚑ `boxes` and `primary_logs` joined the resolved set on 2026-08-29, with `Workset.projects_dir` /
-`logs_dir` and the named arm of `helper_log_path`. Before that they composed `pw / BOXES_PATH` and
-`pw / LOGS_PATH`, which is why the tripwire on those joins bans the CONSTANT and not just the
-string.
+⚑ `boxes` and `primary_logs` are in the resolved set, and `Workset.projects_dir` / `logs_dir` and the
+named arm of `helper_log_path` read them. Composing `pw / BOXES_PATH` or `pw / LOGS_PATH` instead is
+what the tripwire on those joins bans — the CONSTANT, not just the string.
 
 ## Groups and the workset tier
 
@@ -220,8 +219,8 @@ instead.
 * PRIMARY / NAMED — the box dir IS `metadata_path`, and `resolve_project` gates `is_new` on exactly
   that dir, so with `initialize=True` this is precisely `not is_new`.
 * STANDALONE — `metadata_path` is the USER'S OWN project root, which always exists (it is their
-  runtime dir), so it says nothing. The marker is `<root>/box_data` — the same dir
-  `resolve_standalone_project` gates `is_new` on.
+  runtime dir), so it says nothing. The marker is the box's store, `standalone_box_store(root)`
+  (`<root>/box_data` by default) — the same dir `resolve_standalone_project` gates `is_new` on.
 
 ⚑ For a BRAND-NEW primary box `_resolve_local_dir` misses and `metadata_path` is the
 `__unregistered__` placeholder, which does not exist ⇒ False ⇒ the create proceeds. That coupling is
@@ -231,7 +230,29 @@ The mode split is NOT restated here — `box_metadata_dir` already owns it, and 
 the two dirs the two resolvers gate `is_new` on. One derivation, not a second copy that can drift.
 
 ```python
-def _standalone_settings_files(root: Path) -> tuple[Path, Path]
+def standalone_box_store(root: Path, *, early: EarlyScope, settings_doc: "Mapping[str, Any] | None" = None) -> Path
+```
+The RESOLVED `workset.boxes` of the standalone box rooted at *root* — ITS store
+(`project.workset.resolve_workset_boxes`, `standalone=True`). `<root>/box_data` is only the default.
+⭐ **THE ONE PLACE A STANDALONE STORE PATH IS ANSWERED**: every reader and deleter goes through here
+or `box_metadata_dir`, which calls it; composing `box_data/` instead names a directory a repointed
+box never uses. *settings_doc* is a `workset.yaml` the caller already read, so the resolver and its
+own guard cannot answer two versions.
+
+```python
+def standalone_store_teardown_plan(root: Path, *, early: EarlyScope) -> tuple[Path | None, Path | None]
+```
+The standalone box store as `(removable, retained)` for a teardown — ONE split. ⚑⚑ Only the store
+kanibako CREATED for this role is removable: the default `box_data/`, or a repoint that RESOLVES
+back inside the root. A store the box's OWN `workset.yaml` repoints elsewhere is the USER'S OWN
+directory, and no verb `rm -rf`s it on their behalf (`report_retained_store` names it instead); a
+value inherited from the SYSTEM tier is not that nomination, so it stays removable. Both ends are
+RESOLVED, so a `..` or a symlinked parent cannot read as a descendant while sitting outside the
+root. One `workset.yaml` read feeds both the resolution and the tier guard. `None` on either arm
+means nothing to act on (no store dir, or a symlinked one).
+
+```python
+def _standalone_settings_files(root: Path, *, early: EarlyScope) -> tuple[Path, Path]
 ```
 The STANDALONE `(box_tier, workset_tier)` pair — BOTH always real paths.
 
@@ -242,22 +263,24 @@ files — and getting it from the type system beats asserting it at each site. S
 `_box_settings_files` delegates here rather than restating it.
 
 ```python
-def box_metadata_dir(mode: BoxMode, metadata_path: Path) -> Path
+def box_metadata_dir(mode: BoxMode, metadata_path: Path, *, early: EarlyScope) -> Path
 ```
 The DIR holding a box's own metadata — home, session state, box tier.
 
 Equals `metadata_path` for primary/named, but for STANDALONE `metadata_path` is the PROJECT ROOT,
-whose box metadata lives one level down in `box_data/` (beside `workspace/` and `vault/`, which are
-NOT box metadata).
+whose box metadata lives in its store, `standalone_box_store(root, early=early)` — `box_data/` by
+default (beside `workspace/` and `vault/`, which are NOT box metadata). *early* is read on the
+standalone arm only, and is required rather than optional-plus-assert.
 
 ⚑ Lifecycle ops (convert / move / duplicate) must copy from HERE, not from `metadata_path`. Copying
 a standalone ROOT "as if it were box metadata" both drags the workspace + vault into the
 destination's box dir AND delivers the source's WORKSET-tier file to the destination's BOX tier —
-which after P2 means the real box settings (one level down) are never read again.
+so the real box settings (in the store) are never read again.
 
 ```python
 def _box_settings_files(
-    mode: BoxMode, metadata_path: Path, group: "ProjectGroup | None",
+    mode: BoxMode, metadata_path: Path, group: "_WorksetRooted | None", *,
+    early: EarlyScope | None = None,
 ) -> tuple[Path, Path | None]
 ```
 THE `(box_tier, workset_tier)` settings-file derivation (spec §2c).
@@ -268,8 +291,9 @@ EVERY mode (spec §2c ALL PROJECTS), so the box tier is ALWAYS a real path — n
 * **primary / named** — box tier = the box's own `<metadata_path>/box.yaml` (`BOX_META_FILE`,
   which IS `@meta.box.path` for these modes); workset tier = `workset_settings_path(group)` (the
   workset root's `workset.yaml`).
-* **standalone** — `@meta.box.path` is the `box_data/` marker dir (the empty leaf of
-  `@workset.boxes`), so the box tier is `<root>/box_data/box.yaml` — **ABSENT BY DEFAULT**
+* **standalone** — `@meta.box.path` is the box's store, the resolved `workset.boxes`
+  (`standalone_box_store`; `<root>/box_data/` by default), so the box tier is `<store>/box.yaml` —
+  **ABSENT BY DEFAULT**
   (spec §2c + §4 STANDALONE tree): an absent file is an empty tier, and `config_io.load_doc` yields
   `{}` for it, so a standalone box with no box file resolves byte-identically to one with no box
   tier at all. The workset tier is the ROOT `<root>/workset.yaml` — the file that plays the
@@ -277,7 +301,7 @@ EVERY mode (spec §2c ALL PROJECTS), so the box tier is ALWAYS a real path — n
   (`~/canon/workbook/specs/system-design-1.8.0.md` § "Detection & import"; `box_resolve.stores_standalone_registry_null`).
   A `box.*` key stored THERE still resolves for box scope via R2 downward-defaults (`box` ⊂
   `workset` in `SCOPE_CONTAINMENT` — the workset-tier read KEEPS `box.*`). That is DECLARED DESIGN
-  (keyspec §2c), and it is also how a pre-P2 standalone box keeps working with no migration.
+  (keyspec §2c).
 
 ⚑ This pair is the SINGLE SOURCE for READ, WRITE **and** ANCHOR (M-8): the launch cascade's
 `box_path`/`workset_path`, the `meta.box.settings` anchor, and the `config set` / `get` / `show` /
@@ -289,7 +313,11 @@ TYPE-CHECKED, so mypy rejects any re-introduction of a `None` box tier and flags
 narrowing at a call site. **This one is kept as a marker in the source docstring**, because the
 constraint lives at that exact signature.
 
-Takes the three primitives rather than a `ProjectPaths` because the standalone/primary/named
+*group* is anything rooted at `@meta.workset.path` — a `ProjectGroup` or a `WorksetSpec`, since the
+NAMED resolver builds its group only at return time. *early* is required on the standalone arm,
+which resolves the store (asserted).
+
+Takes the primitives rather than a `ProjectPaths` because the standalone/primary/named
 resolvers must consult it WHILE that dataclass is still being constructed (`enable_vault` is read
 before the instance exists). `box_workset_settings_paths` is the `ProjectPaths` adapter.
 
@@ -362,12 +390,18 @@ by us; otherwise a `0700` per-user temp dir. Never substitutes silently — warn
 (cached per process so repeated calls don't leak temp dirs or re-warn).
 
 ```python
-def _runtime_base_usable(base: Path) -> bool
+def _runtime_base_usable(
+    base: Path, *, follow_symlinks: bool = True, require_private: bool = False,
+) -> bool
 ```
 True iff *base* is a directory we own and can write to.
 
 Mirrors the freedesktop requirement that the runtime dir be owned by the user and writable.
-Best-effort: any OS error → not usable.
+Best-effort: any OS error → not usable. ⚑ The owner test is spelled ONCE, here, for both callers.
+*follow_symlinks* and *require_private* default to what the `/run/user` base gets (`stat`, which
+follows a link, and no mode test). The stable temp dir — a PREDICTABLE name in a world-writable
+root — passes both: `lstat`, so a planted symlink is refused as a symlink, and a mode test, so a
+group- or other-accessible directory is refused.
 
 ```python
 def xdg(env_var: str, default_suffix: str) -> Path
@@ -384,7 +418,7 @@ def host_xdg_map(data_home: Path | None = None) -> dict[str, str]
 Build the canonical HOST-side `$XDG_*` map for a `ResolveCtx`.
 
 THE single builder for the `xdg=` argument of every host-side
-`kanibako.settings.settings_resolve.ResolveCtx` (Jei ruling 2026-07-02: XDG vars must have
+`kanibako.settings.settings_resolve.ResolveCtx` (a ruling: XDG vars must have
 fallbacks). Hand-rolled partial maps caused stored values like `$XDG_CACHE_HOME/kanibako` (the
 setup-materialized `system.cache`) to raise `Variable $XDG_CACHE_HOME is not set in this context` at
 expand time — the resolver reads ONLY this map, never the environment, so a missing key is
@@ -398,10 +432,12 @@ from the environment like the rest.
 
 ```python
 def resolve_config_paths(
-    set_values: Mapping[str, str], *, data_home: Path, home: Path,
+    set_values: Mapping[str, str | None], *, data_home: Path, home: Path, xdg_vars: Mapping[str, str] | None = None,
 ) -> dict[str, str]
 ```
-Resolve the Layer-1 CONFIG-key foundation to concrete host paths.
+Resolve the Layer-1 CONFIG-key foundation to concrete host paths. *xdg_vars*, when given,
+REPLACES the live `host_xdg_map(data_home)` build — the seam `resolve_data_path` uses to resolve
+`config.data` without touching `XDG_RUNTIME_DIR`, whose fallback can mkdir.
 
 *set_values* holds raw user-set `config.<leaf>` expressions (from the `kanibako.cfg` set).
 Returns `{config.<key>: resolved_str}` for every key in `CONFIG_PATH_DEFAULTS` — the FOUNDATION
@@ -448,7 +484,7 @@ Internal notes:
 
 ```python
 def load_system_config(
-    user_config_path: Path, *, data_home: Path, home: Path,
+    user_config_path: Path, *, data_home: Path, home: Path, tolerate_bad_settings: bool = False,
 ) -> dict[str, Path]
 ```
 Resolve the path tier from the CONFIG file set **and the SYSTEM SETTINGS file**.
@@ -463,30 +499,29 @@ Three layers, read in cascade order so the most-authoritative present value of e
 3. `@config.settings` — the SYSTEM SETTINGS file's `system:` table, filtered to
    `SYSTEM_PATH_DEFAULTS` (most specific).
 
-Missing files are skipped (each contributes nothing). The merged set-values are split by prefix into
+Missing files are skipped (each contributes nothing). With *tolerate_bad_settings*, a SYSTEM settings
+file that does not load contributes nothing, and one whose `system:` table is refused still
+contributes its early `workset.*` tier; the CONFIG files are read strictly either way
+(`_path_tier_set_values`). The merged set-values are split by prefix into
 the Layer-1 `config.*` foundation and the Layer-2 `system.*` path settings, then handed to
 `resolve_system_paths`, which fills in the defaults and resolves `@`-/`$XDG_*`-references.
 
-⚑⚑ **EACH FILE CONTRIBUTES EXACTLY ONE LAYER, AND THE CONFIG FILTER IS NEW (2026-08-26).** A
-`system:` table hand-written into a CONFIG file used to enter `raw` here as a real (if lowest) layer
-of the Layer-2 path tier — which made the bootstrap file a settings source in the one place it most
-mattered, where every host path is decided. *"kanibako_config.yaml <-- cannot have settings.
-Period."* (Jei, on what is now `kanibako.cfg`) This is the exact mirror of the filter layer 3
-already had in the other direction (a `config:` table in a SETTINGS file must never reach Layer 1,
-spec §1), and it is the same filter `resolve_data_path` already applied to the same two files —
-one rule, two sites, and this was the site that lacked it.
+⚑⚑ **EACH FILE CONTRIBUTES EXACTLY ONE LAYER.** A `system:` table hand-written into a CONFIG file
+never enters the Layer-2 path tier — *"kanibako_config.yaml <-- cannot have settings. Period."* (a
+ruling, on what is now `kanibako.cfg`). It mirrors the filter layer 3 applies in the other direction
+(a `config:` table in a SETTINGS file never reaches Layer 1, spec §1), and `resolve_data_path`
+applies the same filter to the same two files.
 
-Back-compat: a user with only `~/.config/kanibako.cfg` (no `/etc` file) gets the base layer
-empty, so the user file is the sole set-source.
+A user with only `~/.config/kanibako.cfg` (no `/etc` file) gets the base layer empty, so the user
+file is the sole set-source.
 
-⚑⚑ **LAYER 3 IS NEW (2026-08-23), AND ITS ABSENCE WAS A PARTIAL SUCCESS — the failure shape that is
-worse than a refusal.** Spec §2g declares `system.{template,canon,cache,runtime,backup,channelroot}`
-and `system.channels.*` SETTINGS keys, *"set in settings files at the `system` cascade level"*, and
-`config set system.canon=…` writes them there. Reading the CONFIG files only meant that write
-reached the launch cascade — binds, seeds, `show --effective` — and NEVER reached `StandardPaths`:
-`std.canon` kept answering the default. Accepted, persisted, half-effective, and silent about it.
+⚑⚑ **LAYER 3 IS LOAD-BEARING.** Spec §2g declares
+`system.{template,canon,cache,runtime,backup,channelroot}` and `system.channels.*` SETTINGS keys,
+*"set in settings files at the `system` cascade level"*, and `config set system.canon=…` writes them
+there. Reading the CONFIG files alone would let that write reach the launch cascade — binds, seeds,
+`show --effective` — and never `StandardPaths`: accepted, persisted, half-effective, and silent.
 `tests/test_settings/test_repoint_reaches_std_paths.py` asserts the EFFECT rather than the
-destination, because the destination pins were green the whole time.
+destination.
 
 ⚑ **THE LAYER-1 RESOLVE RUNS TWICE, DELIBERATELY.** Locating the settings file IS `@config.settings`,
 so the foundation must resolve before the file can be opened; `resolve_config_paths` is a pure dict
@@ -503,7 +538,7 @@ in `kanibako.cfg` alone (spec §1). Both halves are pinned.
 
 `bootstrap_config_paths(...)` yields the CONFIG file's set-values keyed by their full dotted name
 (`config.*` alone), or `{}` when the file is absent — so missing layers are skipped automatically.
-🛑 It RAISES on a settings table in that file (2026-08-31), which is why every verb that resolves a
+🛑 It RAISES on a settings table in that file, which is why every verb that resolves a
 path is where a user with a stale `kanibako.cfg` first hears about it. The SETTINGS file's
 `system.*` half is read by `config.system_path_set_values`, a separate walk over that file's
 `system:` table.
@@ -516,27 +551,22 @@ twin of `system_path_floor`, and the `config=` twin of `host_xdg_map`. A host-si
 built from those two builders and nothing else; consumers put this in `ctx.config` so a stored
 `@config.*` source resolves under the resolver SPLIT (spec §1A / JC-2).
 
-⚑⚑ **IT IS ONE FUNCTION BECAUSE IT USED TO BE TWO HAND-WRITTEN MAPS, AND BOTH WERE THE SAME KEY
-SHORT** — the `system_path_floor` story below, one layer down, found 2026-08-28.
-`settings/agent_select.launch_resolve_ctx` and `commands/workset_cmd._print_effective_shares` each
-wrote five string literals; `CONFIG_PATH_DEFAULTS` has declared six since `config.journal` was added
-on 2026-06-30, the day after the original map was written on 2026-06-29. `config.journal` is
-declared `layer: 1` with a real default in the keyspace manifest, is `set: file`, and is in
-`config_keys.KNOWN_CONFIG_KEYS` — so `config set config.journal=…` was accepted and a binding sourced at
-`@config.journal` resolved at SET time (`config_interface._path_tier_split()[0]` iterates the whole
-resolve, so it always carried six) and hit `_ABSENT` at launch. The referring key was dropped with no
-message and rc 0: accepted-then-silently-discarded, which is strictly worse than either side being
-consistently wrong.
+⚑⚑ **ONE FUNCTION, DERIVED FROM `CONFIG_PATH_DEFAULTS`.** The host-side ctx builders
+(`agent_select.host_resolve_ctx`, and `settings_launch`'s input builders) take their config map from
+here. A hand-written map that misses one declared key (`config.journal`, say) lets `config set`
+accept a binding sourced at that key — the set-time foundation iterates the whole resolve — while
+the launch drops it with no message and rc 0: accepted-then-silently-discarded, which is strictly
+worse than either side being consistently wrong.
 
 ⚑ **THE KEY SET IS DERIVED, AND THE ATTRIBUTE NAME IS A RULE, NOT A COINCIDENCE.** Layer 1 names its
 `StandardPaths` fields after its keys (`config.data` → `data`, `config.primary_workset` →
 `primary_workset`, …), all six, which is exactly why this needs no alias at all where
 `system_path_floor` needs exactly one — `system.channelroot` resolves into `std.channels`, the single
 Layer-2 field whose name does not follow from its key. A Layer-1 key declared without the matching field raises
-`AttributeError` on the next ctx build, at every launch. Silent omission is the failure this replaces;
-a crash is the strictly better one.
+`AttributeError` on the next ctx build, at every launch: a crash is strictly better than a silent
+omission.
 
-⚑ `tests/test_settings/test_path_tier_parity.py` is the comparison that did not exist — it pins this
+⚑ `tests/test_settings/test_path_tier_parity.py` pins this
 map against the set-time foundation across all three box modes plus the `agent_name=None` selection
 pass, effect-based on both sides, with an anti-vacuity arm pinning the derived side to
 `CONFIG_PATH_DEFAULTS` so a filter bug emptying both cannot pass.
@@ -549,27 +579,18 @@ what `resolve_system_paths` produced. Consumers fold it into a settings floor so
 `@system.*` source resolves; each value equals the corresponding `std` attribute, so an
 `@`-ref-routed bind is byte-identical to a runtime-probed literal.
 
-⚑⚑ **IT IS ONE FUNCTION BECAUSE IT USED TO BE TWO HAND-WRITTEN MAPS, AND BOTH WERE WRONG.**
-`commands/start._launch_snapshot_inputs` (the launch snapshot; now `settings_launch.resolve_inputs`)
-and `commands/workset_cmd._print_effective_shares` (`workset share list --effective`) each wrote the
-tier out inline, under paired comments saying they had to agree. The launch map omitted
-`system.channels.broadcast` — a declared key with a manifest default, resolved into
-`StandardPaths.channels_broadcast`, reaching no floor — so `@system.channels.broadcast` was
-`__MISSING__` in every snapshot and a binding sourced at it was **dropped from the collapse with no
-message and rc 0**. The display map omitted all five `system.channels.*` leaves, so a workset
-binding sourcing `@system.channels.chat` mounted at launch and did not print. Two carriers of one
+⚑⚑ **ONE FUNCTION, ONE CARRIER.** Every consumer takes the tier from here, through
+`settings_launch.resolve_inputs` (`system_floor`) — the launch and the workset preview alike. Two
+hand-written maps of one shape drift, and a key one misses is `__MISSING__` in the snapshot, so a
+binding sourced at it is dropped from the collapse with no message and rc 0. Two carriers of one
 shape is the defect class; the repair is one carrier, not a better promise.
 
-⚑⚑ **THE KEY SET IS `SYSTEM_PATH_DEFAULTS` ENTIRE — 11 keys since 2026-08-28, and it was 8.** The
-`_FLOOR_ROOT_KEYS` tuple this replaced named three roots by hand and derived only the channel
-leaves, which left `system.backup`, `system.cache` and `system.runtime` out: declared, carrying
-manifest defaults, CLI-settable, and resolved by the SET-time tier
-(`config_interface._path_tier_split`, which iterates the whole table) — so `config set` accepted a
-binding sourced at `@system.cache` and the launch snapshot answered `__MISSING__`, dropping it with
-no message and rc 0. Measured on the real snapshot before and after: those three go `__MISSING__` →
-their resolved paths, the other eight are byte-identical, and the set-time/launch pair goes 11-vs-8
-to 11-vs-11. [R143] is the authority — *"if it has a default value, yes, thay value should be placed
-in the keystore"* — universal, no allowlist and no origin test.
+⚑⚑ **THE KEY SET IS `SYSTEM_PATH_DEFAULTS` ENTIRE**, derived, with no hand-named roots: every
+declared key with a manifest default — `system.backup`, `system.cache`, and `system.runtime`
+included — reaches the floor, so the set-time tier (`config_interface._path_tier_split`, which
+iterates the whole table) and the launch snapshot answer the same keys. [R143] is the authority —
+*"if it has a default value, yes, thay value should be placed in the keystore"* — universal, no
+allowlist and no origin test.
 
 ⚑ **RESERVED AND REACHABLE ARE ORTHOGONAL, WHICH IS WHY THIS NEEDS NO DISCRIMINATOR.** Nothing reads
 `system.backup`, and nothing here gives it a consumer: *reserved* is a fact about consumers, this
@@ -577,37 +598,33 @@ floor is a fact about the keystore, and a reserved key still answers.
 
 ⚑ **`_FLOOR_FIELD_ALIASES` IS A SPELLING TABLE, NOT A MEMBERSHIP LIST**, and the distinction is the
 point. Membership is the declared table; the alias map only carries the one key whose
-`StandardPaths` field does not follow from its name (`system.channelroot` → `std.channels`, a field
-older than the key). Everything else is `key.split(".", 1)[1].replace(".", "_")`. A key declared
+`StandardPaths` field does not follow from its name (`system.channelroot` → `std.channels`). Everything else is `key.split(".", 1)[1].replace(".", "_")`. A key declared
 without a matching field raises `AttributeError` at the next floor build — a membership list fails
 by silence, this fails by crash, the same trade `host_config_map` makes one layer down.
 
-⚑ **CONSUMERS, BOTH OF THEM, CHECKED IN THE SAME CHANGE.**
-`settings_launch.resolve_inputs` carries the map (`system_floor`); the launch folds it into
-`default_categories` through
-`_merge_default_categories` as a deliberate late-injection override; the three additions are
-scalars, so they take the last-wins arm, claim no category destination and trigger no origin
-refusal, and being declared they pass `_refuse_undeclared_snapshot` — the snapshot gains three
-`system.*` leaves and no top-level key. `commands/workset_cmd._print_effective_shares` folds the
-same map into an `assemble_levels` floor and prints collapsed BINDINGS, never the floor, so
-`workset share list --effective` gains no row from the widening — what changes is that a binding
-sourced at one of the three now resolves instead of vanishing.
-`tests/test_channels/test_system_channel_keys.py` held the by-name pin on the omission; it is
-**inverted, not deleted**.
+⚑ **CONSUMERS.** `settings_launch.resolve_inputs` carries the map (`system_floor`); each resolver
+folds it into its `default_categories` through `_merge_default_categories` as a deliberate
+late-injection override. The leaves are scalars, so they take the last-wins arm, claim no category
+destination and trigger no origin refusal, and being declared they pass
+`_refuse_undeclared_snapshot`.
 
 ```python
-def load_std_paths(config: BootstrapConfig | None = None) -> StandardPaths
+def load_std_paths(
+    config: BootstrapConfig | None = None, *, tolerate_bad_settings: bool = False,
+) -> StandardPaths
 ```
 Compute all standard kanibako directories.
 
-If *config* is None, it is loaded from the config file (which must exist). Directories are created
-as needed.
+If *config* is None, it is loaded from the config file (which must exist). ⚑ RESOLVE-ONLY: it
+creates NOTHING. Each store materializes at its own point of use, so one stored-but-unusable value
+cannot brick every command — including the `reset` that would un-store it.
+*tolerate_bad_settings* is forwarded to the path tier (see `load_system_config`).
 
 The system-level path tier (settings-framework `system.path.*`) is resolved from the CONFIG file
-set: `/etc` `base.cfg` < user-global. A user with only `~/.config/kanibako.cfg` gets the
-prior behavior (empty `/etc` layer). Neither the cache nor the state root derives from the data
+set: `/etc` `base.cfg` < user-global. A user with only `~/.config/kanibako.cfg` gets an empty
+`/etc` layer. Neither the cache nor the state root derives from the data
 dir's leaf: `system.cache` and `system.state` are keys of their own, and this is where each one's
-resolved value is materialized ([R166] retired the state reading; the cache reading followed it).
+resolved value is materialized ([R166]).
 
 ```python
 def resolve_project(
@@ -644,16 +661,16 @@ resolution so the eventual error stays informative.
 
 ### `resolve_project` — the registry reverse-lookup miss
 
-**`register=True` (a normal resolve):** P8b/Option A — an unregistered on-disk PRIMARY box is NOT
-auto-rediscovered. The registry is the SOLE identity authority; a primary box no longer
-self-describes on disk (sparse create), so there is nothing on disk to re-import from.
+**`register=True` (a normal resolve):** an unregistered on-disk PRIMARY box is NOT
+auto-rediscovered. The registry is the SOLE identity authority; a primary box does not self-describe
+on disk (sparse create), so there is nothing on disk to re-import from.
 `project_name` stays empty and the code falls through to the not-found/create path (a fresh name is
 assigned when `initialize`; otherwise the miss surfaces downstream). The future `system recover` is
 the remedy for a lost registry entry.
 
 **`register=False` (a deferred-registration create/recovery resolve):** the box's name is read from
-the pending CREATE JOURNAL entry whose recorded workspace == this workspace (P8b — identity no
-longer self-describes in on-disk meta). Re-discovering a half-built box during a re-create must NOT
+the pending CREATE JOURNAL entry whose recorded workspace == this workspace (identity does
+not self-describe in on-disk meta). Re-discovering a half-built box during a re-create must NOT
 prematurely register it (the caller completes seed → register → clear-entry), so the resolved name
 re-associates the on-disk dir directly (the registry is still empty, so `_resolve_local_dir` would
 miss again).
@@ -670,22 +687,20 @@ no unwind → stranded half-box). The lookup is exception-guarded (a symlink-cyc
 must not crash `resolve_project`) — matching `_same_workspace`'s own guarding. (`register=False`
 deferred-create is handled by the journal block above and left untouched here.)
 
-### `resolve_project` — B2b: the custom home/vault override is DROPPED
+### `resolve_project` — home and vault are not stored paths
 
-Option A, Jei-ruled: the per-box `meta["shell"]` / `["vault_ro"]` / `["vault_rw"]` custom-path
-OVERRIDE is DROPPED. home/vault are now SOLELY the spec-derived default location
+A ruling: there is no per-box custom home/vault path. home/vault are SOLELY the spec-derived location
 (`@meta.box.home` + `@workset.vault_{ro,rw}/@meta.box.name`); the launch routes the home/vault binds
 through those `@`-refs. `@meta.box.home` is the RO DERIVED key, itself `@meta.box.path/home` — the
 bind names the key and does not re-derive it.
 
-A user customizing home/vault now sets the `box.bindings.{rw,ro}.{home,vault}` CASCADE override
-(which wins naturally), NOT a stored shell path. The `shell` / `vault_*` fields are no longer written
-to disk at all under sparse create (P8b/Option A).
+A user customizing home/vault sets the `box.bindings.{rw,ro}.{home,vault}` CASCADE override (which
+wins naturally), NOT a stored shell path. Sparse create writes no `shell` / `vault_*` fields.
 
-### `resolve_project` — `enable_vault` (P5a)
+### `resolve_project` — `enable_vault`
 
-An explicit param wins; otherwise the stored box-scope `box.enable_vault` (absent ⇒ True). Decoupled
-from box identity — which now derives from the registries (`box_resolve`), not `read_project_meta`.
+An explicit param wins; otherwise the resolved box-scope `box.enable_vault` (absent ⇒ True). Box
+identity derives from the registries (`box_resolve`), separately.
 
 ⚑ THE WORKSET TIER HERE IS THE PRIMARY WORKSET. The primary workset IS a workset (spec §2c gives it
 the same `meta.workset.settings`), so spec §0's containment rule makes a `box.*` key stored there an
@@ -693,21 +708,19 @@ OVERRIDABLE downward default for every box it contains — the box tier still wi
 box`). What the create branch PERSISTS is the BOX-AUTHORED value, never the resolved one: see the
 NAMED resolver for the full reasoning.
 
-⚑⚑ **IT IS `resolve_box_enable_vault` SINCE 2026-08-29, NOT `read_box_enable_vault`.** The
-resolved value now comes from the real cascade — `base < system < workset < box` — instead of two
-hand-opened files, so a `kanibako system set box.enable_vault=false` reaches the box. It did not
-before: the write was accepted, persisted and echoed back by `system get`, and every box still came
-up with the vault created and mounted.
+⚑⚑ **IT IS `resolve_box_enable_vault`.** The value comes from the real cascade —
+`base < system < workset < box` — not from hand-opened files, so a
+`kanibako system set box.enable_vault=false` reaches every box.
 
 ### `resolve_project` — the create branch
 
 New project: SELECT a name first (no store write there), then create `boxes/{name}/` and register
-the PRIMARY membership below. The former global `projects:` name registry retired (2026-07-08); the
-primary per-workset `boxes:` membership is the SOLE store now.
+the PRIMARY membership below. The primary per-workset `boxes:` membership is the SOLE store of
+primary box names.
 
 An explicit override (e.g. `kanibako create --name X`) registers strictly; collisions error rather
 than auto-suffix — so for a normal (`register=True`) create the override is validated against the
-PRIMARY-box name domain (membership ∪ workset names) UP FRONT, before the dir is materialized. A
+PRIMARY-box name domain (primary boxes only, case-blind) UP FRONT, before the dir is materialized. A
 deferred (`register=False`) create leaves that domain check to the post-seed commit
 (`_register_new_box`).
 
@@ -725,12 +738,11 @@ existed at its FINAL (post-`name_override` reassignment) path, BEFORE `_init_pro
 `rmtree`d on a Guard-1 raise — that would delete a pre-existing box's `home/` (credentials, session
 state). The unwind only removes a dir THIS call created.
 
-**Sparse create (P8b/Option A):** NO `project:`/`resolved:` identity is written — the box's identity
+**Sparse create:** NO `project:`/`resolved:` identity is written — the box's identity
 + workspace live in the PRIMARY per-workset `boxes:` membership (`box_resolve` reads it). Only a
 NON-default BOX-AUTHORED `box.enable_vault` is persisted, sparsely (above).
 
-**Registering the PRIMARY membership** (name → external workspace) is the SOLE store since the
-global `projects:` section retired. The PRIMARY workset is NON-EXCEPTIONAL (D0/D1): its registry is
+**Registering the PRIMARY membership** (name → external workspace) is the SOLE store. The PRIMARY workset is NON-EXCEPTIONAL (D0/D1): its registry is
 anchored by `std.primary_workset`. Idempotent — `register_workset_box` overwrites a moved box's
 path. `register=False` DEFERS this write to the caller's post-seed commit (`_register_new_box` →
 `register_primary_box_name_if_absent`).
@@ -743,18 +755,17 @@ never delete a pre-existing orphan's `home/`) so a genuine invariant violation f
 stranded half-box), then re-raise. The membership write is the sole store, so a Guard-1 raise leaves
 nothing else to unwind.
 
-**No box.yaml backfill (P8b/Option A):** a primary box's identity, workspace and
-`box.enable_vault` all live in the registries now (not a self-describing `project:`/`resolved:` on
-disk), so a box dir lacking a `box.yaml` is not a defect to repair on the recovery path. The
-former pre-v0.8 backfill materialized an identity that no longer exists on disk.
+**No box.yaml backfill:** a primary box's identity and workspace live in the registries (not a
+self-describing `project:`/`resolved:` on disk), and `box.enable_vault` is stored only when authored,
+so a box dir lacking a `box.yaml` is not a defect to repair on the recovery path.
 
 ```python
 def _resolve_local_dir(std: StandardPaths, project_path_str: str) -> tuple[str, Path]
 ```
 Find the boxes directory for a default-mode project.
 
-Reverse-looks-up the project name in the PRIMARY per-workset `boxes:` membership (the sole store
-since the global `projects:` section retired) and returns `(project_name, std.boxes/{name}/)`. The
+Reverse-looks-up the project name in the PRIMARY per-workset `boxes:` membership (the sole store)
+and returns `(project_name, std.boxes/{name}/)`. The
 membership reverse-lookup is resolved-path aware (via `primary_box_name_for_workspace`), so a
 symlink/normalization alias of the stored workspace still matches.
 
@@ -792,7 +803,7 @@ nests ABOVE the box name to match PRIMARY and STANDALONE; only the `@meta.box.na
 composed here, and that leaf is the whole per-mode variation (§2c).
 
 ```python
-def _standalone_box_paths(root: Path) -> tuple[Path, Path, Path]
+def _standalone_box_paths(root: Path, *, early: EarlyScope) -> tuple[Path, Path | None, Path | None]
 ```
 Fixed STANDALONE-mode `(home, vault_ro, vault_rw)` (no layout axis).
 
@@ -829,8 +840,7 @@ box's own workset/box tree (never the old shared `@config.data/logs/<id>/` locat
 spelling** `@workset.logs/@{meta.box.name}.jsonl` (`data/rom/settings/core-defaults.yaml`, the `helpers` table).
 While an arm COMPOSED its directory the two disagreed the instant a user repointed `workset.logs`:
 the mount moved and the writer did not, so the box read an empty file forever. That is the split
-**migration M-14** records, and it is CLOSED in ALL THREE modes — PRIMARY and NAMED as of
-2026-08-29, STANDALONE as of 2026-08-30. The standalone arm was the hard one: its declared default
+**migration M-14** records, and it is CLOSED in ALL THREE modes. In the standalone arm the declared default
 is `@workset.boxes` (no name leaf), a ref the pre-snapshot resolver must answer before the launch
 snapshot exists. `resolve_workset_logs(..., standalone=True)` takes that default, and
 `settings/workset_dirkeys.resolve_workset_dir_key` resolves a ref to another workset early key
@@ -867,16 +877,16 @@ watcher's WARNING and ERROR records reach the user. Nothing is bound into the bo
 ```python
 class BoxLogFiles(NamedTuple)          # helper: Path, creds_watcher: Path
 def box_log_files(logs_dir: Path, box: str) -> BoxLogFiles
-def remove_box_logs(logs_dir: Path | None, box: str) -> list[Path]
+def remove_box_logs(logs_dir: Path | None, box: str, *, keep: Iterable[Path] = ()) -> list[Path]
 def box_logs_location(std: StandardPaths, proj: ProjectPaths) -> tuple[Path | None, str]
-def standalone_logs_dir(root: Path) -> Path | None
+def standalone_logs_dir(root: Path, *, early: EarlyScope) -> Path | None
 ```
 The `None` logs dir is a present-`<None>` `workset.logs`: it holds no logs, so
 `remove_box_logs(None, …)` returns `[]` and every delete path needs no guard of its own.
 
 `box_log_files` is THE one place a box's files under `workset.logs` are named; both path functions
 above derive from it, and `remove_box_logs` deletes whatever it lists (returning the files that
-existed). Every path that deletes a box's logs calls `remove_box_logs` — `box purge` and
+existed), sparing any file in *keep*. Every path that deletes a box's logs calls `remove_box_logs` — `box purge` and
 `box purge --all` (`commands/clean.py`); both teardowns behind `box rm --purge` and the
 deregistered-box purge, primary and standalone (`commands/box/_parser.py`); and
 `workset disconnect --remove-files` (`commands/workset_cmd.py`, NOT `project.workset.remove_project`,
@@ -887,7 +897,7 @@ resolves `(logs dir, box name)` for a `ProjectPaths` in any mode; the removal pa
 `ProjectPaths` pass the dir and name they already resolved.
 
 ```python
-_SHELL_D_SOURCE_LINE: str
+SHELL_D_CONTENTS: str  # settings.messages, built from messages._SHELL_D_SOURCE_LINE
 ```
 `~/.shell.d/*.sh` is a user/template extension point for customizing a box's INTERACTIVE shell. A
 box user (or a seed/template) drops `*.sh` scripts into `~/.shell.d/` and kanibako guarantees
@@ -904,7 +914,7 @@ box); it does NOT reach the agent (exec'd directly), the agent's `bash -c` tool 
 def _bootstrap_shell(shell_path: Path) -> None
 ```
 Write minimal shell skeleton files into a new shell directory: a `.bashrc` (sourcing `/etc/bashrc`,
-setting `PS1`, and sourcing `_SHELL_D_SOURCE_LINE`), a `.profile` that sources `.bashrc`, and the
+setting `PS1`, and the `SHELL_D_CONTENTS` source line), a `.profile` that sources `.bashrc`, and the
 `.shell.d/` drop-in directory. Each file is written only when absent.
 
 ```python
@@ -982,8 +992,7 @@ def _find_local_ancestor(target: Path, std: StandardPaths) -> Path | None
 ```
 Find the deepest registered default-mode project that is an ancestor of *target*.
 
-Reads the PRIMARY per-workset `boxes:` membership (the sole store since the global `projects:`
-section retired) and, for each entry whose registered workspace path is a prefix of *target*, checks
+Reads the PRIMARY per-workset `boxes:` membership (the sole store) and, for each entry whose registered workspace path is a prefix of *target*, checks
 that `std.boxes/{name}/` actually exists on disk. Among all valid matches, the deepest (most path
 components) wins. Returns the matched path or `None`.
 
@@ -993,10 +1002,9 @@ def _is_standalone_meta_dir(root: Path, *, strict: bool = False) -> bool
 True only if *root* carries the standalone box MARKER (presence-based). *strict* refuses a malformed
 `workset.yaml` instead of reading it as no marker; `detect_project_mode`'s step 2 passes it.
 
-P5a: the marker is a STORED `workset.registry: null` in the root `workset.yaml` AT *root*
-(`<root>/workset.yaml`, NOT inside `box_data/`), PRESENT. The FILE (carrying that null)
-is the standalone self-declaration (design D4; the former `box.mode == "standalone"` read was
-DROPPED). The settings file OVERRIDES any workset tree determination (D3-mode 3); reading the
+The marker is a STORED `workset.registry: null` in the root `workset.yaml` AT *root*
+(`<root>/workset.yaml`, NOT inside the box store), PRESENT. The FILE (carrying that null)
+is the standalone self-declaration (design D4). The settings file OVERRIDES any workset tree determination (D3-mode 3); reading the
 stored null keeps an unrelated `box_data/` from being mistaken for a marker. Delegates to
 `box_resolve.stores_standalone_registry_null` (the single definition of the presence check).
 
@@ -1037,7 +1045,7 @@ Detection order:
 The connected-external check MUST run BEFORE the standalone-marker check to preserve the
 single-registry invariant. A FORCE-CONNECTED standalone box (absorbed via
 `workset.add_project(force=True)`) deliberately KEEPS its on-disk root `workset.yaml`
-marker while its global `standalone:` registry entry is DROPPED and a per-workset `boxes:`
+marker while its global `standalone:` registry entry is REMOVED and a per-workset `boxes:`
 connection entry is written — the box lives in EXACTLY ONE registry (no dual registration). Such a
 box is EXTERNAL (outside the workset tree), so the workset-tree check (step 3) does NOT match it;
 the live connection is what claims it as its named workset box. Were the marker check to run first,
@@ -1083,7 +1091,9 @@ project), then the workset root itself (inside workset but not necessarily a pro
 `project.workset.resolve_workspaces_locator`, so a null still finds members connected before it.
 
 ```python
-def _workset_box_name_for_workspace(ws_root: Path, workspace: str) -> str | None
+def _workset_box_name_for_workspace(
+    ws_root: Path, workspace: str, *, early: EarlyScope,
+) -> str | None
 ```
 Reverse-look-up *workspace* in *ws_root*'s per-workset `boxes:` membership.
 
@@ -1093,7 +1103,9 @@ reverse-lookup (Guard 2) consult the SAME per-workset `boxes:` registry — the 
 `box_resolve` read — closing the drift where a global-name miss let Guard 1 fire mid-create.
 
 ```python
-def _workset_box_workspace_for_name(ws_root: Path, box_name: str) -> str | None
+def _workset_box_workspace_for_name(
+    ws_root: Path, box_name: str, *, early: EarlyScope,
+) -> str | None
 ```
 Forward-look-up *box_name* in *ws_root*'s per-workset `boxes:` membership.
 
@@ -1105,19 +1117,19 @@ CURRENT composition (bifrost A0).
 
 ```python
 def _register_workset_box_membership(
-    ws_root: Path, box_name: str, workspace: Path,
+    ws_root: Path, box_name: str, workspace: Path, *, early: EarlyScope,
 ) -> None
 ```
 Register *box_name* → *workspace* in *ws_root*'s per-workset registry.
 
-The P5a dual-register helper (D1/D3-auth): resolves the workset's `workset.registry` path (honoring
+The dual-register helper (D1/D3-auth): resolves the workset's `workset.registry` path (honoring
 a repoint via its `workset.yaml`) and records the box's membership. Idempotent —
 `register_workset_box` overwrites a moved box's stored path. Used for both NAMED worksets (`ws_root`
 = the workset root) and the PRIMARY workset (`ws_root` = `std.primary_workset` — NON-EXCEPTIONAL per
 D0/D1).
 
 ```python
-def _unregister_workset_box_membership(ws_root: Path, box_name: str) -> None
+def _unregister_workset_box_membership(ws_root: Path, box_name: str, *, early: EarlyScope) -> None
 ```
 Drop *box_name* from *ws_root*'s per-workset registry (compensating action).
 
@@ -1137,116 +1149,83 @@ write. `add_project` uses it.
 
 ## The PRIMARY-box name registry
 
-The primary per-workset `boxes:` membership is the SOLE store of default-mode (PRIMARY) box names
-since the global `projects:` section retired (clean split, 2026-07-08). Membership is name →
-EXTERNAL-workspace path in `@config.primary_workset/registry.yaml` (spec §2c's `workset.registry`
-row, via `kanibako.project.workset_registry`).
+The primary per-workset `boxes:` membership is the SOLE store of default-mode (PRIMARY) box names.
+Membership is name → EXTERNAL-workspace path in the primary workset's registry file, the resolved
+`workset.registry` (`project.workset_registry.resolve_workset_registry_path`; spec §2c).
 
-These helpers mirror the retired `names.py` project-name API
-(`pick`/`assign`/`register`/`unregister`/reverse-lookup) but on the primary membership, so callers
-re-route store-for-store. The name-collision DOMAIN is primary membership names ∪ global workset
-names (semantics preserved from the old `projects ∪ worksets` domain); the `$HOME` guard and
-auto-suffix numbering are carried verbatim. Every function takes the primary workset root + the
-global registry file explicitly (the same no-hidden-state convention as
-`_register_workset_box_membership`).
+The name domain is PRIMARY BOXES ONLY: worksets are not consulted, so a box and a workset may share
+a name. Names compare CASE-BLIND (spec §0, NAMING RULES; `find_identifier`). Every function takes
+the primary workset root explicitly and an `early: EarlyScope`, which the registry path's
+resolution needs.
 
 ```python
-def load_primary_boxes(primary_workset: Path) -> dict[str, str]
+def load_primary_boxes(primary_workset: Path, *, early: EarlyScope) -> dict[str, str]
 ```
-Return the PRIMARY box membership as `{box_name: workspace_path_str}`.
-
-Reverse of the old `read_names(...)['projects']` read: the primary per-workset `boxes:` membership
-is the sole store now. *primary_workset* is `std.primary_workset`.
+Return the PRIMARY box membership as `{box_name: workspace_path_str}`. *primary_workset* is
+`std.primary_workset`.
 
 ```python
-def primary_box_name_for_workspace(primary_workset: Path, workspace: str) -> str | None
+def primary_box_name_for_workspace(primary_workset: Path, workspace: str, *, early: EarlyScope) -> str | None
 ```
-Return the PRIMARY box name registered for *workspace*, or `None`.
-
-Resolved-path aware (via `_workset_box_name_for_workspace`), the membership replacement for the old
-`lookup_by_path` projects-arm.
+Return the PRIMARY box name registered for *workspace*, or `None`. Resolved-path aware (via
+`_workset_box_name_for_workspace`).
 
 ```python
-def _primary_name_domain(primary_workset: Path, registry: Path) -> set[str]
+def check_primary_box_name_free(primary_workset: Path, name: str, workspace: str, *, early: EarlyScope) -> None
 ```
-The PRIMARY-box name collision domain: primary membership ∪ global worksets.
-
-Preserves the retired `names.py` auto-name pair's cross-section domain (`projects ∪ worksets`) with
-`projects` replaced by the primary membership. *registry* is `std.registry` (for the global
-`worksets:` names); *primary_workset* is `std.primary_workset`.
+Raise `ProjectError` if *name* is already a PRIMARY box's (case-blind), or if *workspace* is the
+user's `$HOME`. Writes nothing. Used at the `--name` registration edge so a collision fails BEFORE
+the box dir is materialized. Worksets are not consulted, and there is no override.
 
 ```python
-def check_primary_box_name_free(
-    primary_workset: Path, registry: Path, name: str, workspace: str, *, force: bool = False,
-) -> None
+def check_workspace_not_named_box(std: StandardPaths, workspace: str) -> None
 ```
-Raise `ProjectError` if *name* collides in the PRIMARY-box domain.
-
-Mirrors `names.register_name`'s pre-write guards without writing: the `$HOME` guard on *workspace*
-and the name-collision check across the PRIMARY-box domain (primary membership ∪ global worksets).
-Used at the `--name` registration edge so a collision fails BEFORE the box dir is materialized.
-
-Per-kind name policy (Jei 2026-07-08): box and workset names are SEPARATE namespaces. The collision
-splits into two arms:
-
-* **SAME-KIND** — *name* already names another PRIMARY box (primary membership). Unconditional: two
-  primary boxes can NEVER share a name; *force* never bypasses it.
-* **CROSS-KIND** — *name* is a global WORKSET name. A bare name that is both a box and a workset
-  resolves deterministically to the box (shadowing the workset in bare-name lookups), so this
-  refuses UNLESS *force*.
+Raise `ProjectError` when a NAMED box already holds *workspace* (no write), read through
+`box_resolve.find_connected_external_box`, the one resolver that consults the per-workset `boxes:`
+membership.
 
 ```python
-def pick_primary_box_name(
-    primary_workset: Path, registry: Path, workspace: str, boxes_dir: Path | None = None,
-) -> str
+def refuse_derived_box_name(base: str) -> str
 ```
-Pick a collision-free PRIMARY box name from *workspace*'s basename (no write).
-
-The membership-domain counterpart of the retired `names.py` picker: collisions append a number
-(`name`, `name2`, ...); a candidate is rejected when it is in the PRIMARY-box domain (primary
-membership ∪ global worksets) OR — when *boxes_dir* is supplied — when `boxes_dir/<candidate>`
-already exists (the interrupted-create reservation guard). Performs no mutation.
+The box name derived from directory name *base* (spec §0): `identifiers.derived_name` writes `_`
+for each `-` and `.`; the directory keeps its spelling. Raises `DerivedBoxNameError` naming *base*
+when the derived name fails the box-name rule (`launch.box_identity.box_name_reason`).
 
 ```python
-def register_primary_box_name(
-    primary_workset: Path, registry: Path, name: str, workspace: Path | str, *, force: bool = False,
-) -> None
+def pick_primary_box_name(primary_workset: Path, workspace: str, boxes_dir: Path | None = None, *, early: EarlyScope, journal: Path | None = None) -> str
 ```
-Register *name* → *workspace* in the PRIMARY membership (with guards).
-
-The membership counterpart of `names.register_name`: the `$HOME` guard + the PRIMARY-box-domain
-name-collision check, then the actual write (which also enforces `register_workset_box`'s
-one-box-per-workspace-path invariant). *force* is forwarded to `check_primary_box_name_free`: it
-bypasses the CROSS-KIND (workset-name) refusal only — the SAME-KIND (another primary box) arm stays
-unconditional.
+Pick a PRIMARY box name from *workspace*'s basename (no write): the base is
+`refuse_derived_box_name(<basename> or "project")`, and `identifiers.first_free_name` appends a
+number (`name`, `name2`, ...) while a candidate is taken. A candidate is taken when it names a
+PRIMARY box (case-blind); or, with *boxes_dir*, when `boxes_dir/<candidate>` exists (a PATH probe,
+never folded); or, with *journal* and *boxes_dir*, when the lifecycle journal holds a pending entry
+for `boxes_dir/<candidate>` — an interrupted create may have claimed it before making its dir.
 
 ```python
-def register_primary_box_name_if_absent(
-    primary_workset: Path, registry: Path, name: str, workspace: Path | str, *, force: bool = False,
-) -> None
+def register_primary_box_name(primary_workset: Path, name: str, workspace: Path | str, *, early: EarlyScope) -> None
 ```
-Idempotent `register_primary_box_name` for deferred-create recovery.
-
-A no-op when *name* already maps to the SAME *workspace* in the primary membership (the
-register→clear-entry recovery re-entry); any other state goes through `register_primary_box_name`
-(which raises on a genuine collision). Mirrors `names.register_name_if_absent`. *force* is forwarded
-(bypasses only the CROSS-KIND workset-name refusal).
+Register *name* → *workspace* in the PRIMARY membership: `check_primary_box_name_free`, then the
+write (`_register_workset_box_membership`, which also enforces the one-box-per-workspace-path
+invariant).
 
 ```python
-def assign_primary_box_name(
-    primary_workset: Path, registry: Path, workspace: Path | str, boxes_dir: Path | None = None,
-) -> str
+def register_primary_box_name_if_absent(primary_workset: Path, name: str, workspace: Path | str, *, early: EarlyScope) -> None
 ```
-Auto-assign + register a PRIMARY box name from *workspace*'s basename.
-
-Equivalent to `pick_primary_box_name` followed by `register_primary_box_name` — the membership
-counterpart of the retired `names.py` auto-namer.
+Idempotent `register_primary_box_name` for deferred-create recovery: a no-op when *name*
+(case-blind) already maps to the SAME *workspace*; any other state goes through
+`register_primary_box_name`, which raises on a genuine collision.
 
 ```python
-def unregister_primary_box_name(primary_workset: Path, name: str) -> None
+def assign_primary_box_name(primary_workset: Path, workspace: Path | str, boxes_dir: Path | None = None, *, early: EarlyScope) -> str
 ```
-Drop *name* from the PRIMARY membership — the membership counterpart of `unregister_name`. Thin
-delegation to `_unregister_workset_box_membership`; idempotent.
+Auto-assign and register a PRIMARY box name from *workspace*'s basename: `pick_primary_box_name`,
+then `register_primary_box_name`.
+
+```python
+def unregister_primary_box_name(primary_workset: Path, name: str, *, early: EarlyScope) -> None
+```
+Drop *name* from the PRIMARY membership. Thin delegation to `_unregister_workset_box_membership`;
+idempotent.
 
 ```python
 def resolve_workset_project(
@@ -1274,38 +1253,37 @@ its first start, or a fresh `initialize` create) falls back to the composed defa
 `box_resolve` identity derivation preserved for any residual override. Under a null `workset.workspaces` there is no default to compose, so an unregistered member
 raises `WorksetError` (`ERR_WORKSET_NULL_WORKSPACES`); a registered one resolves as before.
 
-### B2b and `enable_vault` in the NAMED resolver
+### Home, vault, and `enable_vault` in the NAMED resolver
 
-B2b (Option A, Jei-ruled): the per-box `meta["shell"]` / `["vault_*"]` custom-path OVERRIDE is
-DROPPED (mirrors the PRIMARY path) — home/vault are SOLELY the spec-derived default location,
+As on the PRIMARY path, there is no per-box custom home/vault path — home/vault are SOLELY the
+spec-derived default location,
 customized via the `box.bindings` cascade. The workspace override above (an EXTERNAL-connected live
 dir) is a SEPARATE concern and STAYS.
 
-`enable_vault` (P5a): explicit param wins; else `box.enable_vault` (absent everywhere ⇒ True)
+`enable_vault`: explicit param wins; else `box.enable_vault` (absent everywhere ⇒ True)
 resolved through the CASCADE by `resolve_box_enable_vault` — `base < system < workset < box`.
 ⚑ The WORKSET tier is REQUIRED: `workset create --no-vault` writes the key there, where spec §0's
 containment rule makes it an OVERRIDABLE default for the workset's boxes (the contained scope still
 wins). Without it the flag is a silent no-op for every named box.
 
-⚑⚑ **IT WAS `read_box_enable_vault(box_tier, default_from=workset_tier)` UNTIL 2026-08-29** — two
-files, so `base` and `system` were dropped silently. A `kanibako system set box.enable_vault=false`
-returned 0, persisted to `global/settings.yaml`, was echoed back by `system get`, and every box
-still came up with the vault created and mounted.
+⚑⚑ **The whole cascade, not two files**: reading only the box and workset files would drop `base`
+and `system` silently, so a `kanibako system set box.enable_vault=false` would persist, echo back,
+and change no box.
 
 ⚑ **The resolved value is not the written one.** `ProjectPaths.vault_enabled()` resolves through the
 cascade and drives the mounts; `authored_vault` reads the box tier ALONE (via
-`read_box_enable_vault`, which no longer takes a fallback at all) and is the only one persisted,
+`read_box_enable_vault`, which takes no fallback) and is the only one persisted,
 since spec §2b's `box.enable_vault` row keeps the key sparse — persisting an inherited default would
 PIN it, turning an
 overridable workset default into a box override later workset edits cannot reach.
 
 ### Sparse create + dual-register on the NAMED path
 
-Sparse create (P8b/Option A): NO `project:`/`resolved:` identity — the box's name lives in the
+Sparse create: NO `project:`/`resolved:` identity — the box's name lives in the
 workset's per-workset registry (the `boxes:` entry, which `box_resolve` reads) and its workspace
 override in that same registry. Only a NON-default BOX-AUTHORED `box.enable_vault` is persisted.
 
-P5a dual-register: record membership in the workset's per-workset registry (name → workspace) — the
+Dual-register: record membership in the workset's per-workset registry (name → workspace) — the
 SOLE on-disk identity record now that sparse create writes no `project:` entry. Sourced from the
 resolved *project_path* so an external-connect override seeds the registry with the external dir
 (the D10/P7 home for that record). Idempotent — overwrites a moved box's path.
@@ -1335,21 +1313,22 @@ repo). The shell dir is the one mounted as `/home/agent`. Credential copy is han
 
 ```python
 def iter_projects(
-    std: StandardPaths, config: BootstrapConfig,
+    std: StandardPaths, config: BootstrapConfig, *, looped: list[tuple[Path, Path | None]] | None = None,
 ) -> list[tuple[Path, Path | None]]
 ```
-Return `(metadata_path, project_path | None)` for every known project.
+Return `(metadata_path, project_path | None)` for every known project. A caller that passes
+*looped* gets each box dir that is a symlink loop appended there, in the same shape, instead of the
+refusal.
 
 *project_path* is the box's workspace, sourced from the PRIMARY per-workset registry (`name →
 workspace`). A box with no registry entry yields `None` (an un-registered / half-created box has no
 resolvable workspace).
 
-P8a: box → workspace comes SOLELY from the PRIMARY per-workset registry, the new-model source seeded
-at create (`_register_new_box`) — the SAME source `box_resolve` reads. A box cannot be resolved from
-its box DIR via `box_resolve.resolve_box_identity` (the registry is keyed by workspace PATH, not the
-box dir), so the PRIMARY registry is read here directly (identical data). The transitional
-`read_project_meta` (the box's `box.yaml` `resolved.workspace`) + legacy `project-path.txt` breadcrumb
-fallbacks are DROPPED (P8a): a box absent from the registry has no workspace → `None`. (These are
+Box → workspace comes SOLELY from the PRIMARY per-workset registry, seeded at create
+(`_register_new_box`) — the SAME source `box_resolve` reads. A box cannot be resolved from its box
+DIR via `box_resolve.resolve_box_identity` (the registry is keyed by workspace PATH, not the box
+dir), so the PRIMARY registry is read here directly (identical data). There is no on-disk fallback:
+a box absent from the registry has no workspace → `None`. (These are
 PRIMARY boxes: `std.boxes` == `@config.primary_workset/boxes`, so the PRIMARY registry is the home.)
 
 ```python
@@ -1467,7 +1446,7 @@ def resolve_box_target(
 Resolve a `--box` value (a box NAME or a path) to its `ProjectPaths`.
 
 The single path-or-name resolver behind the `--box` selector and the
-`start`/`shell`/`refresh`/`workset disconnect` targeting (§Design 8). Returns the SAME `ProjectPaths`
+`start`/`shell`/`refresh`/`workset disconnect` targeting. Returns the SAME `ProjectPaths`
 the positional-`project` path returns, so callers swap cleanly.
 
 *value* is EITHER a box NAME or a filesystem path. **Box NAME takes precedence in ambiguous cases**
@@ -1485,8 +1464,8 @@ relative directory in cwd resolves to the NAME. Resolution order:
    filesystem path, through the same `_resolve_designated_path` as `resolve_any_project`
    (`box_resolve.detect_box_or_default`). No detection is reimplemented here.
 
-A pre-existing box whose name does not satisfy the §Design 8 blocklist is not addressable by that
-name — the name is a PATH designation — but resolves by its path and is FLAGGED
+A pre-existing box whose name fails the box-name rule (`launch.box_identity.box_name_reason`) is
+not addressable by that name — the name is a PATH designation — but resolves by its path and is FLAGGED
 (`_flag_nonconforming`); this resolver does not reject on name shape.
 
 `None` / empty *value* resolves the cwd box, matching the positional-`project` default.
@@ -1502,11 +1481,12 @@ clear-entry). Defaults True.
 ```python
 def _flag_nonconforming(proj: ProjectPaths) -> ProjectPaths
 ```
-Warn (do NOT reject) when a resolved box's name violates the blocklist.
+Warn (do NOT reject) when a resolved box's name fails the box-name rule
+(`launch.box_identity.box_name_reason`), through `WARN_WS_BOX_BAD_NAME`.
 
-Pre-existing boxes created before the §Design 8 box-name constraint still resolve (the
-canonical-id/registry matchers are structural, not policy-gated); but a non-conforming name is
-FLAGGED on use so the drift is visible. Returns *proj* unchanged.
+A box whose name fails the rule still resolves (the canonical-id/registry matchers are structural,
+not policy-gated); `validate_box_name` enforces the rule on NEW names only, so a non-conforming name
+already on disk is FLAGGED on use and the drift is visible. Returns *proj* unchanged.
 
 ```python
 def _flag_invalid_kuid(proj: ProjectPaths) -> ProjectPaths
@@ -1514,7 +1494,7 @@ def _flag_invalid_kuid(proj: ProjectPaths) -> ProjectPaths
 Advisory (never fatal): flag a standalone box whose stored `workset.kuid` is a NON-sentinel value
 that fails the kuid parity/charset check.
 
-Fires ONLY when ALL hold (spec D9, INVERTED 2026-07-04):
+Fires ONLY when ALL hold (spec D9):
 
 * the box is STANDALONE (only standalone stores a real kuid);
 * `workset.kuid` is NON-sentinel (`!= kuid.SENTINEL`) — the sentinel `"00000"` is the DEFAULT,
@@ -1548,29 +1528,32 @@ other `_flag` advisories. Returns *proj* unchanged.
 
 ```python
 def establish_standalone(
-    std: StandardPaths, root: Path, *, enable_vault: bool, name: str = "", register: bool = True,
-) -> tuple[str, Path, Path, Path]
+    std: StandardPaths, root: Path, *, enable_vault: bool | None, carry_kuid: str | None = None, own_name: str | None = None, register: bool = True,
+) -> tuple[str, Path, Path | None, Path | None]
 ```
 Establish a standalone box at *root*: identity + meta + registration.
 
 The single shared core behind all three standalone paths (`create --standalone`, `convert
 --standalone`, `duplicate --standalone`). It
 
-1. derives the box identity via `box_identity.resolve_standalone_name` — a fresh canonical
-   `<kuid>_<leaf>` (whole-name collision regen vs `registry.standalone`) when *name* is empty,
-   otherwise honoring the supplied (lowercased) `--name`: a verbatim canonical id if free (else
-   refuse), or a fresh prefix over the supplied string as the leaf;
+1. derives the box identity from its DIRECTORY, never a caller-supplied name (there is no *name*
+   parameter): `box_identity.make_standalone_box_name` mints a fresh canonical `<kuid>_<leaf>`
+   (whole-name collision regen vs `registry.standalone`); with *carry_kuid* (a MOVING box),
+   `box_identity.carry_standalone_name` keeps the kuid and re-derives the leaf from *root*,
+   re-minting only when the whole name is taken by ANOTHER box — *own_name*, the box's own
+   registered name, is not a collision;
 2. writes the SPARSE settings, each key AT ITS OWN SCOPE'S TIER (M-8): the workset-scope
    `workset.kuid` into the ROOT `<root>/workset.yaml` (which MATERIALIZES that file — half the
    standalone detection marker, `~/canon/workbook/specs/system-design-1.8.0.md` § "Detection & import"), and a NON-default
-   box-scope `box.enable_vault` into the BOX tier `<root>/box_data/box.yaml` — the SAME file
+   box-scope `box.enable_vault` (only when *enable_vault* is not `None`) into the BOX tier
+   `<store>/box.yaml` (`_standalone_settings_files`; `<root>/box_data/` by default) — the SAME file
    `config set box.*` writes, so create and set can never disagree. A default-vault box therefore
    writes NO box-tier file at all, which is the spec's "ABSENT BY DEFAULT" (§2c + §4 STANDALONE
    tree). NO `project:`/`resolved:` identity is written — the name/mode/workspace derive from
    `registry.standalone` + the live kuid;
 3. registers the box in `registry.standalone` (`box_name` → *root*).
 
-*root* is the standalone project dir. The box-data dir (`root/box_data`) must already exist (each
+*root* is the standalone project dir. The box store (`root/box_data` by default) must already exist (each
 caller creates/copies it before calling). Returns `(box_name, shell_path, vault_ro, vault_rw)` so
 callers can build their result state without recomputing the table. Callers own their own
 surrounding concerns (file copies, unwind registration, old-name unregister) — only the
@@ -1586,7 +1569,7 @@ convert/duplicate lifecycle callers register inline, unchanged).
 unconditionally by the `workset.kuid` write, so moving the box key out to the box tier does NOT cost
 the file detection needs.
 
-The kuid is persisted as the settable `workset.kuid` key (P6d) via the SAME keystore sparse-write
+The kuid is persisted as the settable `workset.kuid` key via the SAME keystore sparse-write
 engine `config set` uses — memory `[[settings-must-map-to-keystore-key]]`. The kuid IS the name's
 prefix (`box_identity.standalone_kuid`); storing it makes it the STABLE cross-move handle (the
 launch re-composes the name as `<stored kuid>_<live leaf>` so a moved box keeps its identity).
@@ -1619,14 +1602,14 @@ after the home seed. Defaults True (existing callers unchanged).
 The hash + identity key off the ROOT (the standalone workset root), which is stable; the workspace
 subdir is the bind source, not the identity.
 
-`project_path` is the resolved `workset.workspaces` (ruled 10, 2026-08-02): the STANDALONE default
+`project_path` is the resolved `workset.workspaces` (a ruling): the STANDALONE default
 is `@meta.workset.path/workspace` == the `workspace/` subdir, and a set `workset: {workspaces: …}`
 in the ROOT `workset.yaml` repoints it ("changeable from workset level", spec §2e).
 A `null` there makes it `None` (never the default subdir), and the `initialize` recovery then makes
 no workspace.
 
 The mode-aware tier pair comes from the ONE derivation (M-8): the BOX tier is
-`box_data/box.yaml` (absent by default) and the WORKSET tier is the ROOT `workset.yaml` — the
+`<store>/box.yaml` (`box_data/box.yaml` by default; absent by default) and the WORKSET tier is the ROOT `workset.yaml` — the
 file detection reads (`~/canon/workbook/specs/system-design-1.8.0.md` § "Detection & import") and where `workset.kuid`
 lives.
 
@@ -1635,26 +1618,22 @@ formulas are all `@`-anchored to the root (`@meta.workset.path/…`), so a defau
 drop-in portable BY CONSTRUCTION — a moved/imported tree resolves against its new location. A stored
 ABSOLUTE repoint (e.g. `workset.workspaces`) is the user's own choice and travels as written.
 
-`enable_vault` (P5a): explicit param wins; else the box-scope `box.enable_vault` resolved through
-the CASCADE by `resolve_box_enable_vault` — `base < system < workset < box`, the BOX tier
-being `box_data/box.yaml` and the WORKSET tier the ROOT `workset.yaml`. ⚑ The workset level is LIVE
-DESIGN, not a compat path — keyspec §2c's STANDALONE block declares it ("Box values … still resolve
-from the workset tier … as downward defaults when no box file exists"). It is ALSO why a pre-P2
-standalone box, whose value was written to the root file, keeps working with no migration (M-8) — a
-consequence of the rule, never its reason. ALL THREE resolvers go through the same cascade
-(2026-08-29; they hand-opened two files each before that, and so could not see a base- or
-system-tier value); standalone alone then PERSISTS the RESOLVED value — that write IS the M-8
-migration, landing the root file's value at the box tier.
+`enable_vault`: explicit param wins; else the box-scope `box.enable_vault` resolved through the
+CASCADE by `resolve_box_enable_vault` — `base < system < workset < box`, the BOX tier being
+`<store>/box.yaml` and the WORKSET tier the ROOT `workset.yaml`. ⚑ The workset level is LIVE DESIGN,
+not a compat path — keyspec §2c's STANDALONE block declares it ("Box values … still resolve from the
+workset tier … as downward defaults when no box file exists"). ALL THREE resolvers go through the
+same cascade; standalone alone then PERSISTS the RESOLVED value — that write IS the M-8 migration,
+landing the root file's value at the box tier.
 
-**Box identity name (P8a):** sourced from `box_resolve` for a MATERIALIZED standalone — the
+**Box identity name:** sourced from `box_resolve` for a MATERIALIZED standalone — the
 `workset.yaml`-stored `workset.registry: null` (`stores_standalone_registry_null`'s gate). `box_resolve` composes
-the name LIVE (P6d) as `<stored workset.kuid>_<live leaf>` — the kuid is the STABLE stored prefix
+the name LIVE as `<stored workset.kuid>_<live leaf>` — the kuid is the STABLE stored prefix
 (from the box's OWN `workset.yaml`, design D6) and the leaf is re-derived from the CURRENT root
-basename, so a moved standalone tree keeps its kuid identity while the leaf tracks the new dir (spec
-2026-07-04); a pre-kuid box (no `workset.kuid` ⇒ SENTINEL) falls back to the registered
-`standalone:` key, else the dir leaf. A not-yet-materialized root (no `box_data/`) yields `""` (the
-create block assigns it authoritatively via `establish_standalone`). Replaces the transitional
-`read_project_meta` `project.name` read.
+basename, so a moved standalone tree keeps its kuid identity while the leaf tracks the new dir; a
+pre-kuid box (no `workset.kuid` ⇒ SENTINEL) falls back to the registered
+`standalone:` key, else the dir leaf. A not-yet-materialized root (no box store) yields `""` (the
+create block assigns it authoritatively via `establish_standalone`).
 
 The user's explicit `--name` is only meaningful when establishing a NEW box; it is ignored once the
 box exists, since the stored identity is authoritative.
@@ -1672,9 +1651,7 @@ user-supplied `--name` (empty → fresh canonical).
 
 ```python
 def _init_standalone_project(
-    std: StandardPaths, metadata_path: Path, shell_path: Path,
-    vault_ro_path: Path, vault_rw_path: Path, project_path: Path, *,
-    enable_vault: bool = True,
+    std: StandardPaths, metadata_path: Path, shell_path: Path, vault_ro_path: Path | None, vault_rw_path: Path | None, project_path: Path, *, enable_vault: bool = True, workset_root: Path,
 ) -> None
 ```
 First-time standalone project setup: all state inside project dir.

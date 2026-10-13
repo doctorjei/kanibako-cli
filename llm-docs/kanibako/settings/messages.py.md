@@ -114,9 +114,9 @@ plausible-looking wrong message and nothing catches it.
 
 ⚑ `WARN_WS_BOX_BAD_NAME`'s second argument is the reason string from
 `launch.box_identity.box_name_reason`, not the rules themselves. The name is WARNED about, never
-rejected: `validate_box_name` enforces the same box-name rule at CREATION, while a name already on
-disk only ever gets this advisory (`_flag_nonconforming`). That asymmetry is the point — tightening
-the rule must not strand existing boxes.
+rejected: `validate_box_name` enforces the same box-name rule on NEW names (creation and `--name`),
+while a name already on disk only ever gets this advisory (`_flag_nonconforming`). That asymmetry is
+the point — tightening the rule must not strand existing boxes.
 
 ⚑ `WARN_BOX_NO_VAULT`'s second argument is specifically the **RW** vault path, though the message
 says "vault" unqualified; and its first falls back to the project PATH when the box has no name.
