@@ -33,6 +33,8 @@ def repoint_box_mounted_links(links: list[MountedLink], relocated: Mapping[Path,
 def copy_into_workset(ws: Workset, proj_name: str, metadata_path: Path, shell_path: Path, source_path: Path, source_mode: BoxMode, *, copy_workspace: bool, std: StandardPaths) -> None
 def execute_lifecycle(state: ProjectState, spec: TargetSpec, std: StandardPaths, config: BootstrapConfig | None=None, *, force: bool=False, confirm: Callable[[], bool] | None=None) -> ProjectState
 def note_added_leftovers(path: Path, before: frozenset[str] | None) -> None
+def looped_path_error(path: Path) -> ConfigError
+def looped_lock_reason(lock_file: Path) -> str
 def session_lock_held(lock_file: Path) -> bool
 def box_running_reason(proj: ProjectPaths | None, lock_file: Path, *, container_name: str | None=None, box_ref: tuple[str, str] | None=None) -> str | None
 def abort_if_box_running(proj: ProjectPaths | None, lock_file: Path, force: bool, consequence: str, *, container_name: str | None=None, box_ref: tuple[str, str] | None=None, cure_ref: str | None=None, announce_abort: bool=True, forceable: bool=True) -> bool
@@ -85,7 +87,8 @@ def _vault_copy_failure_message(src: Path, dst: Path, err: shutil.Error) -> str
 def _is_per_box_leaf(leaf: Path, arm: Path) -> bool
 def _eloop(path: Path) -> OSError
 def _loop_named(err: BaseException) -> BaseException
-def _refuse_looped_carry_dst(dst: Path) -> None
+def _holds_a_leaf(src: Path) -> bool
+def _refuse_looped_carry_dst(src: Path, dst: Path) -> None
 def _vault_carry_pairs(state: ProjectState, std: StandardPaths, dst_ro: Path | None, dst_rw: Path | None) -> list[tuple[Path, Path]]
 def _carry_vault_contents(state: ProjectState, std: StandardPaths, dst_ro: Path | None, dst_rw: Path | None, teardown: _SourceTeardown, relocated: Mapping[Path, Path] | None=None) -> None
 def _landings(*pairs: tuple[Path, Path]) -> dict[Path, Path] | None

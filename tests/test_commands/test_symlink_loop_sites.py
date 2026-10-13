@@ -74,6 +74,23 @@ class TestADestinationVaultOnALoop:
         assert (root / "box_data").is_dir() and (root / "workspace").is_dir()
 
 
+    def test_an_absent_source_leaf_carries_nothing_so_converts(
+            self, config_file, tmp_home, credentials_dir, capsys):
+        import shutil
+
+        root = _standalone(tmp_home)
+        _primary(tmp_home, "other")
+        arm = _std(config_file).primary_vault_rw
+        _loop(arm / "k")
+        shutil.rmtree(root / "vault" / "ro")
+        shutil.rmtree(root / "vault" / "rw")
+        rc, text = _ran(("box", "convert", "--force", str(root), "--default"), capsys)
+        assert rc == 0, text
+        assert "Converted 'k' to primary" in text, text
+        assert "symlink loop" not in text and "Symlink loop" not in text, text
+        assert (arm / "k").is_symlink()
+
+
 class TestTheCarrySourceCure:
     """``box remap`` records where a workspace is; it is no cure for a looped store."""
 
@@ -180,6 +197,52 @@ class TestALoopedPrimaryStoreOnMoveAndConvert:
                 "repair the link, then retry.") in text, text
         assert "No project data" not in text, text
         assert store.is_symlink() and (ws / "f.txt").read_text() == "keep"
+
+
+class TestAMoveOntoALoopedStore:
+    """A retried move onto a box whose store loops still says the SOURCE has no data."""
+
+    def test_the_source_is_named(self, config_file, tmp_home, credentials_dir, capsys):
+        ws = _primary(tmp_home)
+        _loop_aside(_std(config_file).boxes / "q")
+        nobox = tmp_home / "nobox"
+        nobox.mkdir()
+        rc, text = _ran(("box", "move", "--force", str(nobox), str(ws)), capsys)
+        assert rc == 1, text
+        assert f"No project data found for {nobox}" in text, text
+        assert "symlink loop" not in text, text
+
+
+class TestInfoOnALoopedLock:
+    """``box info`` reads a looped lock as a loop, not as a session holding it."""
+
+    def test_the_lock_row_names_the_loop(self, config_file, tmp_home, credentials_dir,
+                                         capsys):
+        _primary(tmp_home)
+        lock = _std(config_file).boxes / "q" / ".kanibako.lock"
+        lock.unlink(missing_ok=True)
+        lock.symlink_to(lock.name)
+        rc, text = _ran(("box", "info", "q"), capsys)
+        assert rc == 0, text
+        assert ("kanibako cannot tell whether a session holds its lock file "
+                f"{lock}: it is a symlink loop that kanibako cannot resolve") in text, text
+        assert "ACTIVE" not in text, text
+
+
+class TestDuplicateOfALoopedStore:
+    """A duplicate whose source store loops names the loop, not "no project data"."""
+
+    def test_the_loop_is_named(self, config_file, tmp_home, credentials_dir, capsys):
+        ws = _primary(tmp_home)
+        store = _std(config_file).boxes / "q"
+        _loop_aside(store)
+        rc, text = _ran(("box", "duplicate", "--force", str(ws), str(tmp_home / "dup")),
+                        capsys)
+        assert rc == 1, text
+        assert (f"Error: {store}: it is a symlink loop that kanibako cannot resolve. "
+                "Remove or repair the link, then retry.") in text, text
+        assert "no project data" not in text, text
+        assert not (tmp_home / "dup").exists()
 
 
 class TestAWorksetLandingOnALoop:

@@ -501,8 +501,8 @@ def _resolve_primary_state(
         std, config, project_dir=str(root), initialize=False,
     )
     if not proj.metadata_path.is_dir():
-        if _symlink_loop(proj.metadata_path):
-            raise unreadable_path_error(proj.metadata_path, _eloop(proj.metadata_path))
+        if _symlink_loop(proj.metadata_path):  # ⚑ a ProjectError, as the refusal below
+            raise ProjectError(str(looped_path_error(proj.metadata_path)))
         raise ProjectError(f"No project data found for {root}")
     return _state_from_paths("primary", proj, std=std, ws=None, early=_early_scope(std, BoxMode.primary))
 
@@ -1710,7 +1710,7 @@ def _validate(
         if taken and _symlink_loop(taken[0]):
             raise ProjectError(
                 f"Refusing to land '{new_name}' in workset '{target_ws.name}': "
-                f"{unreadable_path_error(taken[0], _eloop(taken[0]))}")
+                f"{looped_path_error(taken[0])}")
         if taken:
             raise ProjectError(
                 f"Refusing to land '{new_name}' in workset '{target_ws.name}': "
@@ -2322,7 +2322,7 @@ def _copy_vault_leaf_contents(src: Path, dst: Path | None,
     """
     if dst is None:
         return
-    if not src.is_dir() and not (src.is_symlink() and not src.exists()):
+    if not _holds_a_leaf(src):
         return
     if src.resolve() == dst.resolve():
         return
@@ -2391,6 +2391,17 @@ def _eloop(path: Path) -> OSError:
     return OSError(errno.ELOOP, os.strerror(errno.ELOOP), str(path))
 
 
+def looped_path_error(path: Path) -> ConfigError:
+    """The refusal naming *path*, which runs through a symlink loop."""
+    return unreadable_path_error(path, _eloop(path))
+
+
+def looped_lock_reason(lock_file: Path) -> str:
+    """Why a looped *lock_file* answers "may be running": the probe fails closed on it."""
+    return (f"kanibako cannot tell whether a session holds its lock file {lock_file}: "
+            f"{CANON_SYMLINK_LOOP_WHY}")
+
+
 def _loop_named(err: BaseException) -> BaseException:
     """*err*, or the refusal naming its path when it is an ``ELOOP`` on a real loop.
 
@@ -2403,9 +2414,15 @@ def _loop_named(err: BaseException) -> BaseException:
     return err
 
 
-def _refuse_looped_carry_dst(dst: Path) -> None:
-    """Raise ``ELOOP`` for a destination vault leaf on a loop: nothing can be carried into it."""
-    if _symlink_loop(dst):
+def _holds_a_leaf(src: Path) -> bool:
+    """Whether vault leaf *src* is there to carry: a dir, or a dangling link (the user's pointer)."""
+    return src.is_dir() or (src.is_symlink() and not src.exists())
+
+
+def _refuse_looped_carry_dst(src: Path, dst: Path) -> None:
+    """Raise ``ELOOP`` when *src* would be carried into a looped *dst*; an absent *src*
+    carries nothing, so its looped *dst* is no reason to refuse."""
+    if _holds_a_leaf(src) and _symlink_loop(dst):
         raise _eloop(dst)
 
 
@@ -2463,8 +2480,7 @@ def _vault_carry_pairs(
             # carry, and ``resolve`` raises on it under Python 3.11.
             if _symlink_loop(src):
                 continue
-            _refuse_looped_carry_dst(dst)
-            if src.resolve() == dst.resolve():
+            if src.resolve() == _resolved_unless_loop(dst):
                 continue
             if src.resolve() not in removable_roots:
                 # ⚑ Retained: the teardown leaves it in place AND prints where, so
@@ -2477,6 +2493,7 @@ def _vault_carry_pairs(
                         file=sys.stderr,
                     )
                 continue
+            _refuse_looped_carry_dst(src, dst)
             out.append((src, dst))
         return out
     if state.mode == BoxMode.primary:
@@ -2493,8 +2510,7 @@ def _vault_carry_pairs(
         src, dst = side
         if _symlink_loop(src):
             continue
-        _refuse_looped_carry_dst(dst)
-        if src.resolve() == dst.resolve():
+        if src.resolve() == _resolved_unless_loop(dst):
             continue
         if not _is_per_box_leaf(src, arm):
             # ⚑ The teardown prints its own leaving-in-place warning for the same
@@ -2506,6 +2522,7 @@ def _vault_carry_pairs(
                     file=sys.stderr,
                 )
             continue
+        _refuse_looped_carry_dst(src, dst)
         out.append((src, dst))
     return out
 
@@ -3162,9 +3179,10 @@ def _finish_relocation(
         except Exception as err:  # noqa: BLE001 - kept for the caller's Note
             if errors is not None:
                 errors.append(err)
-    landed = [p.resolve() for p in (new_state.workspace_path, new_state.metadata_path,
-                                    new_state.shell_path, new_state.vault_ro,
-                                    new_state.vault_rw) if p is not None]
+    landed = [_resolved_unless_loop(p)
+              for p in (new_state.workspace_path, new_state.metadata_path,
+                        new_state.shell_path, new_state.vault_ro, new_state.vault_rw)
+              if p is not None]
     # A finished session's lock is stale once the root is no longer the box's metadata dir.
     stale = plan.old_root / ".kanibako.lock" if plan.old_root is not None else None
     if (stale is not None and stale.parent.resolve() != new_state.metadata_path.resolve()
@@ -4690,8 +4708,7 @@ def box_running_reason(
 
     if session_lock_held(lock_file):
         if _symlink_loop(lock_file):  # ⚑ fails closed, so the reason is the loop
-            return (f"kanibako cannot tell whether a session holds its lock file {lock_file}: "
-                    f"{CANON_SYMLINK_LOOP_WHY}")
+            return looped_lock_reason(lock_file)
         return "a kanibako session holds its lock file"
     if box_ref is not None and (proj is not None or container_name is not None):
         box_ref = None  # *proj* or *container_name* already names the container

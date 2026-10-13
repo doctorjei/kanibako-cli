@@ -3688,10 +3688,11 @@ def run_info(args: argparse.Namespace) -> int:
             print("This directory has not been initialized.")
         return 1
 
-    from kanibako.commands.box._lifecycle import session_lock_held
+    from kanibako.commands.box._lifecycle import looped_lock_reason, session_lock_held
 
     lock_file = proj.metadata_path / ".kanibako.lock"
-    lock_state = ("ACTIVE" if session_lock_held(lock_file)
+    lock_state = (looped_lock_reason(lock_file) if _symlink_loop(lock_file)
+                  else "ACTIVE" if session_lock_held(lock_file)
                   else "stale (no session holds it)" if lock_file.exists() else "none")
 
     container_running, container_detail = _check_container_running(proj)

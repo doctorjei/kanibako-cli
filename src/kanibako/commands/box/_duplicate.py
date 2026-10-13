@@ -240,6 +240,10 @@ def _refuse_no_source_data(metadata_dir: Path, source_path: Path) -> int | None:
     """Print the refusal and return ``1`` when the source box holds no metadata dir."""
     if metadata_dir.is_dir():
         return None
+    from kanibako.commands.box._lifecycle import _symlink_loop, looped_path_error
+    if _symlink_loop(metadata_dir):
+        print(f"Error: {looped_path_error(metadata_dir)}", file=sys.stderr)
+        return 1
     print(f"Error: no project data found for source path: {source_path}", file=sys.stderr)
     return 1
 
