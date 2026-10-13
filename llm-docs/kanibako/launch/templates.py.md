@@ -25,8 +25,8 @@ creation (base → agent → workset; later overlays earlier) — THREE keys in 
 ```
 
 The layer SOURCES are NOT derived on disk — they are ORDINARY keystore `seeded` category keys
-resolved through the launch snapshot (ruled 2026-07-09 Q1: everything goes through the keystore
-plus seeding, no bespoke template route). `template_seed_defaults` declares them as
+resolved through the launch snapshot: everything goes through the keystore plus seeding, with no
+bespoke template route. `template_seed_defaults` declares them as
 default-category entries; the seed seam (`commands.start._apply_init_seeds`) resolves them off the
 committed snapshot and applies the dest's layers IN ORDER via `stage_layers`.
 
@@ -37,10 +37,8 @@ layer whose source dir is absent).
 
 ### THERE ARE NO HANDBOOK LAYERS HERE, AND THIS IS NOT AN OVERSIGHT
 
-Until 2026-08-07g three more layers seeded `@box.canon/handbook` from each scope's
-`box/canon/handbook` subtree. Jei RULED them OUT of the category — *"they do not DIRECTLY interact
-with the box itself … They are HOST templates, not GUEST templates"* — and the ratified spec's §2a
-no longer declares them, so nothing in the keyspace names a `seeded` entry at `@box.canon/handbook`.
+Handbook templates are HOST templates, not GUEST templates: they do not directly interact with the
+box itself. Spec §2a declares no `seeded` entry at `@box.canon/handbook`.
 The box's own handbook chapter is filled by `install_box_handbook_template`, a HOST-side copy at
 create; read the QUARANTINE section below before touching it. The box HOME layers stay in the
 category because the home IS what the guest sees at `~`.
@@ -58,13 +56,11 @@ COPY", because a wholesale `template/box/* -> <box_dir>/*` copy could plant
 GUEST home rather than the box dir makes that stronger, not weaker: `~/` cannot name
 `<box_dir>/box.yaml` at all, because the box dir has no guest spelling.
 
-⚑ RESPELLED 2026-08-08c from the host path `@meta.box.path/home`, TOGETHER with the key-shape flip.
-That absolute HOST spelling needed a per-entry `dest_space` discriminator to stop the guest
-translator re-rooting it under the box home on a host whose user home is `/home/agent`: a box store
-under `/home/agent/.local/share/…` starts with the GUEST home prefix and no prefix test can tell
-the two apart. The respell removed the ambiguity instead of carrying it. See
-`settings_categories.CategoryEntry`. Do not spell a copy dest host-side again; the discriminator
-that made it safe is gone.
+⚑ Do not spell a copy dest host-side (`@meta.box.path/home`). A host spelling would need a
+per-entry `dest_space` discriminator to stop the guest translator re-rooting it under the box home
+on a host whose user home is `/home/agent`: a box store under `/home/agent/.local/share/…` starts
+with the GUEST home prefix and no prefix test can tell the two apart. No such discriminator exists.
+See `settings_categories.CategoryEntry`.
 
 ⚑ `@box.canon` IS NOT `~/canon`. See `settings_categories.CategoryEntry`.
 
@@ -73,9 +69,8 @@ that made it safe is gone.
 `_SEED_SRC_HOME = "box/home"` and `_SEED_SRC_HANDBOOK = "box/canon/handbook"` are the subpaths
 under each layer's `template` root. The two-level `box/` is the declared WHITELIST BOUNDARY (J-2):
 everything under it is box ENDPOINT content and gets the box whitelist; `home` and `canon/handbook`
-are the box store's two allowed top-level entries, not decoration. ⚑ Only `home` is a SEED source
-now — `canon/handbook` is read by the host-side `install_box_handbook_template` copy (2026-08-07g),
-which is why the two constants no longer sit in the same table.
+are the box store's two allowed top-level entries, not decoration. ⚑ Only `home` is a SEED source;
+`canon/handbook` is read by the host-side `install_box_handbook_template` copy.
 
 `AGENT_TEMPLATE_STORE_REL = "template"` is the `template` entry of a SCOPE STORE — the subtree the
 per-agent and per-workset layer SOURCES (`@agent.<a>.template` / `@workset.template`) point at by
@@ -109,17 +104,17 @@ the cascade (setting `workset.template` / `agent.<a>.template` reroutes that lay
   (`settings_launch._emit_bind_map`) skips a `None` `seeded` entry. One rule for every layer and
   every scope: a user's `agent.<a>.template: null` or `workset.template: null` skips its layer the
   same way.
-  ⚑ Until 2026-09-24 this table gated the layer on the DEFAULT arm's value. That dropped a user-set
-  `agent.shell.template` at create, and left a user's null rendering as `/box/home`.
+  ⚑ Never gate the layer on the DEFAULT arm's value: that drops a user-set `agent.shell.template`
+  at create, and renders a user's null as `/box/home`.
   ⚑ The KEY segment is the CANONICAL node (`persona℘harness`); the VALUE is a store DIRECTORY, so
-  it is the `+` spelling `settings.agent_config.store_dirname` produces. Absent when *agent_id* is empty; the `shell` node declares it like any agent. ⚑ NODE-ROOTED since 2026-08-27 — see "the persona's template
-  is SHARED BY LINK" below; it used to spell `harness_of(<a>)`, which for a bare agent is the same
-  string and for a persona silently named the wrong store.
+  it is the `+` spelling `settings.agent_config.store_dirname` produces. Absent when *agent_id* is empty; the `shell` node declares it like any agent. ⚑ NODE-ROOTED — see
+  "the persona's template is SHARED BY LINK" below; `harness_of(<a>)` would be the same string for a
+  bare agent and silently name the wrong store for a persona.
 * `workset.seeded` — only for a PRIMARY/NAMED box (a workset tier exists); the source key
-  `workset.template` defaults to `@meta.workset.path/template` (Q3, was `<None>`). STANDALONE has
+  `workset.template` defaults to `@meta.workset.path/template`. STANDALONE has
   no workset tier, so the layer is OMITTED. Each layer is SKIPPED when its source dir is absent —
   the seeded category's ordinary missing-source semantics.
-  ⚑⚑ THE SOURCE KEY IS NO LONGER DECLARED HERE (2026-08-29). This table only `@`-REFERENCES
+  ⚑⚑ THE SOURCE KEY IS NOT DECLARED HERE. This table only `@`-REFERENCES
   `@workset.template`; the value lives in `settings_launch.workset_anchor_floor`, beside
   `workset.registry`. Reason: a source key spelled only in this table answered for a box being
   CREATED and for no box that already existed, because this table's one consumer is the
@@ -140,9 +135,8 @@ the cascade (setting `workset.template` / `agent.<a>.template` reroutes that lay
 never reaches a shell box: a pseudo-agent has no `agent.default` fallback at all
 (`settings_launch._fallback_node`, keyspec §2d). `[R177]` rejected OMITTING the key — with no
 fallback, an omitted row would leave the shell box no `template` at all. The `agent.shell.seeded` layer is still declared; the `None` source
-skips it at resolve (see the seed table above). Until 2026-09-24 the node arm was emitted for
-`shell` as a store path: the floor carried `@config.agents/shell/template` and every shell box was
-seeded from that store (which `install_packaged_templates` creates). Pinned by `test_templates.py`'s
+skips it at resolve (see the seed table above); no shell box is seeded from the
+`@config.agents/shell/template` store. Pinned by `test_templates.py`'s
 `test_the_shell_node_arm_is_a_present_none_over_a_declared_layer`,
 `test_a_shell_node_box_takes_no_seed_from_the_shell_store`,
 `test_a_user_set_shell_template_seeds_its_files_at_create` and
@@ -153,13 +147,13 @@ SOURCE SCALARS ONLY — no `seeded` layer, which is what lets it be folded into 
 resolve is unchanged), and `commands.start._resolve_launch_snapshot` folds it beside
 `core_defaults.canon_default_categories` under `include_base_families`. The two never meet — the
 narrow seed resolve runs with `include_base_families=False` — so there is one spelling of each arm
-and no second carrier. Before the split, both arms were emitted ONLY in the seed table, so
-`@agent.default.template` resolved to `__MISSING__` for every box that already existed.
+and no second carrier. Emitted ONLY in the seed table, `@agent.default.template` would resolve to
+`__MISSING__` for every box that already existed.
 
 ⚑ INERT FOR DELIVERY IS NOT UNREACHABLE, and conflating the two is how this stayed broken. The
 default arm IS inert for delivery — the node arm is emitted for every agent node — a store path for
-a true agent, a present `None` for `shell` — so the §2d fallback to it never fires (proved by mutation: poisoning this arm moves no seed, poisoning the node arm reds
-ten cases). DELIVERY asks which arm the §2d pick lands on; REACHABILITY asks whether
+a true agent, a present `None` for `shell` — so the §2d fallback to it never fires (by mutation:
+poisoning this arm moves no seed, poisoning the node arm reds the node-arm tests). DELIVERY asks which arm the §2d pick lands on; REACHABILITY asks whether
 `@agent.default.template` resolves at all, and the answer to that must be yes: the key is DECLARED
 with a real default, so some artifact must carry its value or `system defaults` prints a row it
 cannot source.
@@ -168,8 +162,7 @@ The arms live HERE rather than beside their sibling `agent.default.canon` (`core
 this module owns `AGENT_TEMPLATE_STORE_REL`; `defaults_inventory.source_groups` labels them
 `launch/templates.py (layer-2 seed, default arm)` and `launch/templates.py (layer-2 seed)`, split
 because the node arm is spelled one `@`-hop from the registry and the default arm has a plain value
-oracle. (The node arm's harness-vs-node divergence — finding 1 — is CLOSED as of 2026-08-27; only
-the hop is left.)
+oracle.
 ⚑ Neither arm carries a node-store probe, unlike `canon_default_categories`' `store_canon if
 node_store.is_dir() else …` node arm — that conditional is the canon key's own behavior.
 
@@ -182,17 +175,17 @@ are `@meta.box.path`, `@box.canon` and now `@workset.template`
 
 ⚑ The SOURCE keys are shared with the box HANDBOOK host-template copy
 (`handbook_layer_source_keys`), which enumerates the SAME three `<scope>.template` scalars and is
-gated off the LAYERS this table carries — that is why the handbook layers leaving the `seeded`
-category (2026-08-07g) did not make the box handbook any less repointable.
+gated off the LAYERS this table carries — that is why the handbook being outside the `seeded`
+category does not make the box handbook any less repointable.
 
-Each layer's value is a DEST-KEYED map, not a named entry (2026-08-08c): the destination IS the
+Each layer's value is a DEST-KEYED map, not a named entry: the destination IS the
 identity and the value is the 1-element `(src,)` — `opts` is RESERVED on a COPY and no shipped
 layer sets it. The per-agent SOURCE key is `@config.agents/<a>/template`, a resolvable/settable
 keystore key. For STANDALONE (no workset channels) this table declares no workset layer, because
 its workset tier is `<None>`; the source key itself is the anchor floor's, supplied there as a
 present `None`.
 
-### The persona's template is SHARED BY LINK, not by copy (ruled 2026-08-27)
+### The persona's template is SHARED BY LINK, not by copy
 
 Layer 2 is rooted at the ACTIVE NODE, so a persona (key `navigator℘claude`) reads
 `agents/navigator+claude/template`, not `agents/claude/template`. The harness's CONTENT still
@@ -200,10 +193,8 @@ reaches it: `commands.start.ensure_persona_share_symlinks` — the shim that alr
 persona's `common/<leaf>` dirs at the harness's — also links the whole `template` store root
 `agents/<node>/template` -> `agents/<harness>/template`.
 
-Jei's reasoning, and the alternative he rejected: *"I thought about copying the template. And I
-think some users will want to. But of course there is the staleness issue. And chewing on it, the
-user can always remove the symlink if they want to create a separate template for the persona-based
-agent — so I think symlinking template is the right approach here."* The ESCAPE HATCH is the shim's
+A copy was rejected for staleness; a user who wants a separate template for the persona removes
+the symlink. The ESCAPE HATCH is the shim's
 own never-clobber rule: a real `agents/<node>/template` directory is left alone for ever, so
 replacing the link IS how a persona takes ownership.
 
@@ -225,20 +216,6 @@ TRUE agent id (the `shell` pseudo-agent's arm is a present `None`), installed pl
 guarantee-create acts on MOUNT sources, and a seed source is a COPY; `ensure_agent_stores` (which
 DOES mkdir a `template/box/...` skeleton, and would do it THROUGH the link) is only ever called
 with discovered plugin/harness names, never a persona node.
-
-### `seed_keys_of` is GONE — do not rebuild it
-
-`seed_keys_of(defs)` USED TO LIVE HERE and was removed 2026-08-08c. It derived the HOST-space key
-set the launch resolve needed (`settings_launch.snapshot_category_entries(host_dest_keys=…)`) as
-`{key for key in defs if ".seeded." in key}`. TWO things retired it at once, and only the second is
-a design decision:
-
-1. It BREAKS MECHANICALLY at the key-shape flip. The key is `system.seeded` now, not
-   `system.seeded.template`, so the predicate is False for every layer and the set would come back
-   EMPTY — silently, tagging the trio guest and landing the box-home seed where nothing reads it.
-2. The CURE is the RESPELL, not a replacement carrier. The dest is `~/` — a guest path — so there
-   is no host destination left to discriminate and nothing for a key set to select. Do not rebuild
-   one under another name.
 
 ## `stage_layers` — the layered-copy MECHANISM
 
@@ -343,7 +320,7 @@ in the staging the preview just called unchanged. Same classifier, same verdict,
 
 ## The per-scope whitelists — `SCOPE_WHITELISTS`
 
-Per-SCOPE store-root WHITELISTS (spec §2a, ruled by Jei 2026-07-30). The KEY INSIGHT that makes
+Per-SCOPE store-root WHITELISTS (spec §2a). The KEY INSIGHT that makes
 them one predicate instead of a list of special cases: each packaged per-scope template subtree
 MIRRORS THAT SCOPE'S STORE ROOT, so the whitelist is exactly the set of top-level entries that
 subtree may contain.
@@ -360,8 +337,8 @@ their severities differ:
 ⚑ STANDALONE is where this bites hardest: `<workset_path>` is a directory the user ALREADY HAD, and
 kanibako never deletes it — so a refused copy is not cleanable by removing the destination.
 
-⚑ The sets are NOT one uniform rule. `common/` is allowed at AGENT scope only (Jei: there are use
-cases) and behaves differently from its siblings — `canon/` is delivered RO and `template/` is
+⚑ The sets are NOT one uniform rule. `common/` is allowed at AGENT scope only (it has use cases
+there) and behaves differently from its siblings — `canon/` is delivered RO and `template/` is
 inert until a box is created, whereas `common/` is bound RW and SHARED by every box running that
 agent, so starter content there is live data, not a template. ONLY `canon/handbook` is seedable,
 never `canon/` wholesale: no other canon subtree has a justified seed today, and deny-by-default
@@ -591,7 +568,8 @@ names whose store was touched, for the caller's report.
 ## The workset host template
 
 `install_workset_template` stamps a NEW workset store from the host workset mold — the J-6
-A-action. `@system.template/workset` → `<workset_path>`, called from `workset create`, under the
+A-action. `@system.template/workset` → `<workset_path>`, called from `workset create` and, with
+`canon_only=True`, from the standalone create paths (`settings/paths.py`, `commands/box/_lifecycle.py`), under the
 WORKSET whitelist, whose DEFAULT leaves are `template/` and `canon/handbook/`. It is
 create-if-absent, so re-running over an existing workset adds only what is missing.
 
@@ -654,7 +632,7 @@ so the message can say *"takes its default `canon` leaf"* rather than print `set
 
 The skeleton loop and the canon-chapter `mkdir` run AFTER `copy_tree` and reach neither of its
 guards. Once both leaves became RESOLVED keys that stopped being cosmetic: MEASURED, a
-`workset.template` of `../elsewhere` planted all three skeleton dirs (seven directories) outside the
+`workset.template` of `../elsewhere` planted all three skeleton dirs outside the
 workset root with nothing refusing, and on the standalone path an out-of-root `workset.canon` was
 refused only INCIDENTALLY — by the copy that happened to share its destination. Empty the mold's
 `canon/` half and `copy_tree` returns on its first line, and the chapter `mkdir` then landed outside
@@ -690,18 +668,16 @@ are the BOX HANDBOOK host-template copy, and it is a DELIBERATE, RULED EXCEPTION
 THE LIVE MODEL for a host template is the SINGLE-SOURCE copy `install_workset_template`: one mold,
 one `copy_tree`, one whitelist. A new host template follows THAT.
 
-THIS ONE stages THREE ordered layers. Jei, 2026-08-07g, ruling on the handbook specifically:
-*"Yes, handbook copy keeps all three layers. It is a special case."* It is the ONE place the
-single-source shape does not reach, and he named that himself. ⚑ It is NOT a pattern, NOT a
-precedent, and must not be imitated for any other host template.
+THIS ONE stages THREE ordered layers, by ruling: the handbook copy is a special case. It is the ONE
+place the single-source shape does not reach. ⚑ It is NOT a pattern, NOT a precedent, and must not
+be imitated for any other host template.
 
-WHY IT IS HERE AT ALL — the HOST/GUEST criterion (his ruling, verbatim): *"we should NOT be copying
-the handbook templates as if they are 'box' templates - they are system level templates that happen
-to be generated on behalf of a box, but crucially, they do not DIRECTLY interact with the box
-itself. That's the key. They are HOST templates, not GUEST templates."* The box-HOME templates land
+WHY IT IS HERE AT ALL — the HOST/GUEST criterion: handbook templates are system-level templates
+generated on behalf of a box, and they do not DIRECTLY interact with the box itself, so they are
+HOST templates, not GUEST templates. The box-HOME templates land
 in the very directory the guest sees at `~` ⇒ GUEST, and they stay in the `seeded` category. The
-handbook templates fill a HOST location that a separate RO bind (`canon_hb_box`:
-`@box.canon/handbook` → `~/canon/handbook/box`) later reads ⇒ HOST, so they leave the category and
+handbook templates fill a HOST location that a separate RO bind
+(`box.bindings.ro[~/canon/handbook/box]`: `@box.canon/handbook` → `~/canon/handbook/box`) later reads ⇒ HOST, so they leave the category and
 are copied here instead.
 
 ⚑⚑ SINGLE-ROUTE IS INTACT, NOT BENT. Single-route governs what enters A BOX. A host template never
@@ -709,7 +685,7 @@ enters one; what enters is the RO BIND, which remains an ordinary settings key. 
 copy + keyed bind = single route.
 
 ⚑⚑ AND THE THREE LAYERS ARE NOT REDUNDANT WITH THE CHAPTER BINDS — measured, so that nobody
-"simplifies" them to one source. The five `canon_hb_*` binds read each scope's OWN canon store
+"simplifies" them to one source. The `box.bindings.ro[~/canon/handbook/…]` chapter binds read each scope's OWN canon store
 (`@system.canon/handbook`, `@agent.<active>.canon/handbook`, `@workset.canon/handbook`). These
 three layers read each scope's TEMPLATE subdir (`<scope>.template/box/canon/handbook`) — *what that
 scope wants in a NEW BOX's own chapter*. DIFFERENT TREES. Collapsing to one source would silently
@@ -726,8 +702,8 @@ function: the gate that decides whether a layer exists is read from the one tabl
 re-implemented here where it could drift. `system.template` is not in that table because it is
 already floor-materialized (a `system.*` settings-tier path), so it is named directly.
 
-⚑⚑ THE GATE IS THE `seeded` LAYER ENTRY, NOT THE SOURCE SCALAR (changed 2026-08-29). A layer's
-source key may now be floored elsewhere — `workset.template` is `workset_anchor_floor`'s — so
+⚑⚑ THE GATE IS THE `seeded` LAYER ENTRY, NOT THE SOURCE SCALAR. A layer's
+source key may be floored elsewhere — `workset.template` is `workset_anchor_floor`'s — so
 testing for the scalar would ask the seed table about a row it no longer declares, and the workset
 layer would silently vanish from the handbook copy. The LAYER is what this function is enumerating
 the roots of, and it is the entry the table always carries.
@@ -747,7 +723,7 @@ hardcodes a path.
 Fills a NEW box's OWN handbook chapter from the three host template layers.
 
 *dest* is the resolved `@box.canon/handbook` — the box store's CONTRIBUTION root, which lives
-OUTSIDE the box home and is the SOURCE of the RO `canon_hb_box` bind. *layer_roots* are the
+OUTSIDE the box home and is the SOURCE of the RO `box.bindings.ro[~/canon/handbook/box]` bind. *layer_roots* are the
 RESOLVED `<scope>.template` roots in apply order (system → agent → workset), each of which
 contributes its `box/canon/handbook` subtree.
 
@@ -761,12 +737,11 @@ overwrites a chapter the user has edited. That failsafe answers a shipped data-l
 refactorable away. SKIP-IF-ABSENT: a layer whose `box/canon/handbook` dir does not exist is skipped
 (an unpopulated `@workset.template` is the normal case).
 
-GUARANTEE-CREATE, and it is a real (intended) behavior change, so it is stated rather than left to
-be discovered: the `mkdir` is UNCONDITIONAL, so `@box.canon/handbook` exists after every create
-even when all three layers are empty or absent. The RO `canon_hb_box` bind is declared
-`optional: true`, i.e. omitted when its source is missing — so it now ALWAYS mounts, and a user who
-has emptied all three handbook template subtrees gets an EMPTY read-only mount where the bind used
-to be dropped. `install_workset_template` guarantee-creates its own canon chapter the same way for
+GUARANTEE-CREATE: the `mkdir` is UNCONDITIONAL, so `@box.canon/handbook` exists after every create
+even when all three layers are empty or absent. The RO `box.bindings.ro[~/canon/handbook/box]` bind
+is omitted when its source is missing (keyspec's canon MISSING SOURCES rule) — so for a created box
+it ALWAYS mounts, and a user who has emptied all three handbook template subtrees gets an EMPTY
+read-only mount. `install_workset_template` guarantee-creates its own canon chapter the same way for
 the same reason (the chapter is a place the user is expected to fill later, not an artifact of the
 template).
 
@@ -792,7 +767,7 @@ prevent, free to drift.
 
 ## `install_packaged_templates`
 
-Installs the packaged content into its host stores — an ENUMERATED set (P-S2). Four destination
+Installs the packaged content into its host stores — an ENUMERATED set (P-S2). The destination
 pairs, each named because each has a different OWNER and therefore a different copy rule:
 
 | packaged subtree | host destination |
@@ -825,7 +800,8 @@ and the box-handbook host template) read `box/home` and `box/canon/handbook` dir
 
 ⚑ The system handbook copy is UNSCOPED on purpose: the dest is INSIDE the canon root, not a scope
 store root, so there is no store whitelist to apply (the equivalent guarantee is that the dest is
-key-fixed). The agent MOLD dir is created even though nothing packages it (D5/D7).
+key-fixed). A null `system.canon` has no root, so no system handbook is copied
+(`if std.canon is not None`). The agent MOLD dir is created even though nothing packages it (D5/D7).
 
 ## The shipped-file walk and the content digest
 
@@ -869,8 +845,7 @@ It is a CONTENT hash over `_packaged_manifest_entries`, not a version marker: it
 packaged template content actually changes, and it is immune to the `setup_completed` silent
 forward-bump that would mask template drift.
 
-⚑ NO RUNTIME CONSUMER since R-38 (verified 2026-08-02: the host-side `template_staleness_gate` and
-both stamp writers were deleted; the only callers left in-tree are this module's own tests). It is
+⚑ NO RUNTIME CONSUMER: the only callers in-tree are this module's own tests. It is
 kept for the RELEASE-TIME check — compare the digest against the previous tag and REQUIRE the
 matching `SETUP_FCV`/`SETUP_BCV` bump — which is planned CI work (plan step C2) and is NOT wired
 yet.

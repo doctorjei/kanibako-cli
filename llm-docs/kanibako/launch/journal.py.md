@@ -7,10 +7,8 @@ It makes no decisions. Every recovery decision lives in the callers — `command
 (resolve-time recovery), `commands/diagnose.py` (reporting) — and this module is the one place any
 of them writes the intent down.
 
-Design authority: `~/canon/workbook/designs/lifecycle-journal-DESIGN.md` (Jei-blessed 2026-06-30b,
-`[A225]`). ⚑ The module docstring cited that document by the stale path `plans/lifecycle-journal-DESIGN.md`; it
-lives in `designs/`, not `plans/`. The pointer in source now names this file instead, and this is
-the one place the design path is spelled.
+Design authority: `~/canon/workbook/designs/lifecycle-journal-DESIGN.md` (`[A225]`). This is the
+one place the design path is spelled; the source points here.
 
 ## Registry against journal — two different truths
 
@@ -36,23 +34,17 @@ its own box directory — it sits as a sibling of `home/`, so the metadata dir m
 hold it. A global journal entry can predate any directory, which is the whole reason the journal
 won the design.
 
-⚑ **Interrupted-create recovery is why the seed gate reads "`is_new` OR pending create entry."**
+⚑ **Interrupted-create recovery is why the seed gate reads "`is_new` OR pending create entry"**
+(`is_recovery` in `commands/box/_parser.py`, reached only through `box create --recover`).
 `~/canon/notebook/procedures/seed-and-create-model.md` records this explicitly: the create path
 gating on a pending journal entry looks like a contradiction of the seed model and is not one.
 Removing the journal arm deletes interrupted-create recovery. Do not "fix" it.
 
-## The remaining gap — not yet a TRUE pre-dir write-ahead
+## When the create entry is written
 
-The design's stated goal is "write-ahead before any dir exists." The code does not reach it yet, and
-the module docstring said so; the note is preserved here rather than dropped, because a reader who
-does not find it will assume the window is closed.
-
-Today the resolver materializes the box dir plus `meta` BEFORE the entry is written — the resolver
-still creates dirs. A crash DURING that resolver dir-creation, before the entry exists, leaves the
-same unrecoverable limbo, only narrower. Closing it fully is deferred tech debt: extract
-registration and dir-creation OUT of the resolver, after which the entry can be written before any
-dir exists and the design's goal is realized. J1 covers the seed → register window, which is the
-defect that was actually costing recoveries.
+`box create` writes its entry from the non-materializing probe, through `_claim_create_entry` under
+`rmw_lock(std.journal)`, before the `initialize=True` resolve — that is, before the create's first
+box write. The entry is written ONCE; its `state` records the create's inputs (below).
 
 ## Recovery model — forward-complete by REPLAY
 
@@ -92,6 +84,7 @@ entries:
     mode: primary                # primary|named|standalone
     workset: __PRIMARY__         # if relevant (else absent)
     workspace: /home/jei/src/foo # if provided (else absent)
+    state: {image: ..., agent: ...} # the create's recorded inputs (omitted when empty)
     started_at: 2026-06-30T07:12:00Z
     host: blue                   # reserved for liveness detection (later)
 ```
@@ -100,7 +93,10 @@ entries:
 
 Field notes that are not visible from the code:
 
-* **`started_at`** is stamped from a real `datetime.now(UTC)`, rendered `%Y-%m-%dT%H:%M:%SZ`.
+* **`started_at`** is `utils.utc_stamp("seconds")`.
+* **`state`** is a RECORD OF INTENT, not a progress marker: everything the create was told that
+  sets box state, so `box create --recover` finishes that attempt rather than guessing it. It never
+  changes after the write.
 * **`host`** is `socket.gethostname()`, recorded for a liveness-detection feature that does not
   exist yet. It has no reader today; that is intentional, not dead weight.
 * **`started_at` and `host` are assigned AFTER the optional fields** rather than inside the dict
@@ -108,13 +104,6 @@ Field notes that are not visible from the code:
   insertion order IS the emitted YAML order, and the schema above is what a human sees in the file.
 * **`workspace`** is the P8b field; see below. Both it and `workset` are persisted only when
   provided, so an entry never carries an empty slot.
-
-⚑ **FALSE CLAIM FOUND AND DROPPED.** The schema comment in the module docstring enumerated `mode`
-as `primary|workset|standalone`. `workset` is not a mode token and never was one at this spelling:
-`settings/paths.py` declares `BoxMode` as `primary` / `named` / `standalone`, and both writers agree
-with the enum — `commands/start.py` passes `proj.mode.value`, `project/workset.py`'s `connect`
-bracket passes the literal `"named"`. Corrected in the table above; not relocated in its wrong form,
-because relocating a drifted claim launders it into a document that reads as current.
 
 ## The entry KEY
 
@@ -139,13 +128,15 @@ log that could be corrupted by the crash it exists to survive would be worthless
 is a requirement, not a convenience.
 
 Both mutators (`write_entry`, `clear_entry`) are therefore read-modify-write over the whole
-document: load, mutate the `entries` mapping, dump.
+document, under `rmw_lock(journal_path)`: load, mutate the `entries` mapping, dump.
 
 ## Writing and clearing
 
-**`write_entry`** records an in-flight op keyed by *box_path*. It OVERWRITES any existing entry for
-the same path. That is deliberate and harmless: a re-run before recovery simply re-stamps the same
-intent, and the op it describes is idempotent either way.
+**`write_entry`** records an in-flight op keyed by *box_path*, with optional *workset*, *workspace*,
+and *state*. Without *claim* it OVERWRITES any existing entry for the same path. With *claim*, an
+entry already holding the key, or a pending `create` of the same *workspace*, is returned and
+nothing is written: two writers never share one key, and one workspace never has two creates.
+`None` means written.
 
 Its *workspace* argument is the **P8b** field — the box's workspace dir, recorded so that a create
 can be re-discovered BY WORKSPACE during deferred-registration recovery. The journal is keyed by box
@@ -165,13 +156,14 @@ create entry must never drive a register-only replay and vice versa.
 
 * **`pending_create`** — the entry for *box_path* iff `op == "create"`. A non-`None` result means a
   create was started for this box and never completed (a crash before `clear_entry`). This is the
-  create/seed-path recovery signal, consumed by `commands/start.py::_pending_create_entry` and by
-  `commands/box/_parser.py`.
+  create recovery signal, read through `commands/start.py::_pending_create_entry`. In
+  `commands/box/_parser.py` it feeds `box create --recover`; a launch refuses on a pending entry
+  (`_interrupted_create_error`) and never completes it.
 * **`pending_create_for_workspace`** — the PRIMARY deferred-registration create-recovery signal
   (P8b), consumed by `settings/paths.py`. Because the journal is keyed by box host-side PATH, a
-  lookup BY WORKSPACE must scan every entry for an `op: create` whose recorded `workspace` resolves
-  to the same directory as the argument. Both sides are `resolve()`d so symlinks and trailing
-  slashes compare equal. When it hits, the box's NAME is read from the journal, not from on-disk
+  lookup BY WORKSPACE must scan every entry for an `op: create` whose recorded `workspace` is the
+  argument. Both sides compare literally (`literal_path`); two paths to one directory are two
+  workspaces. When it hits, the box's NAME is read from the journal, not from on-disk
   meta — the box was never registered, so there is nothing else to read it from. `None` is the
   ordinary case: the registry-hit resolve.
 * **`pending_import`** — the entry iff its op is register-only (`import` or `connect`, the
@@ -187,26 +179,3 @@ replay is register-if-absent → clear, with no seed step.
 That is the entire reason the entry is op-typed: the `op` field is how the journal distinguishes a
 create (seed + register) from an import/connect (register-only). A create entry landing on an
 imported box would wrongly trigger a re-seed, and the type filter is what makes that unavailable.
-
----
-
-## Completeness sweep
-
-Deliberate content drops: **one** — the `primary|workset|standalone` mode enumeration, recorded
-above as a false claim with its correction and its evidence, rather than relocated verbatim.
-Everything else that left the source landed in a section above.
-
-Kept IN SOURCE, under the keep test (deleting each lets a future edit break something silently at
-that exact line):
-
-* the module docstring's HARD INVARIANT and the write-ahead order — the ordering rule is invisible
-  in this module, because the committing step it brackets lives in the callers;
-* "replay, so every op must stay idempotent; NO `phase`, NO rollback" — a future contributor's
-  first instinct on a write-ahead log is to add a progress field;
-* the "not yet a true pre-dir write-ahead" note, shortened to the fact plus a pointer here — a
-  reader who does not see it will believe the window is already closed;
-* at `write_entry`, that the overwrite is intentional, and that `host` has no reader yet;
-* at `clear_entry`, that keeping an emptied document is a decision (the absence of a delete is not
-  visible as code);
-* at `pending_create_for_workspace`, that both sides are `resolve()`d;
-* at `_IMPORT_OPS`, that the op TYPE is what keeps the two replay tables apart.

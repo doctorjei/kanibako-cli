@@ -1,18 +1,18 @@
 # Launch Shells — which shell a no-agent box runs, and where that answer is stored
 
-`launch/shells.py` answers one question: when a box is launched with no agent, what program does
-it run? `resolve_box_shell` is the single source of that answer, and both callers that need it —
+`launch/shells.py` mainly answers one question: when a box is launched with no agent, what program
+does it run? `resolve_box_shell` is the single source of that answer, and both callers that need it —
 `commands/start.py` at launch and `commands/diagnose.py` for its "Shell" detail line — go through
 it, so what a user is told matches what they will get.
 
 Around the resolver sits the machinery that makes step 2 of its precedence possible: a probe that
 reads an image's own login shell, a per-image store that remembers the result, and an install-time
-capture hook so the resolver reads instead of probing in the hot path.
+capture hook so the resolver reads instead of probing in the hot path. It also builds the
+`shell` command string (below).
 
-⚑ **`box.shell` means the LOGIN SHELL and nothing else.** It once doubled as a shell-*variant*
-selector picking a template subdirectory; that axis was DROPPED — the template is chosen by
-`@agent.<agent>.template` with no variant subdir, which is precisely what freed `box.shell` to
-mean only this. Do not read a variant dimension back into this module.
+⚑ **`box.shell` means the LOGIN SHELL and nothing else.** The template is chosen by
+`@agent.<agent>.template` with no variant subdir; do not read a variant dimension into this
+module.
 
 ## The precedence — three steps, first defined wins
 
@@ -45,9 +45,6 @@ It is the `image_shells` section of the consolidated `system.registry` file — 
 `{data_path}/global/registry.yaml`, reached through `std.registry` so a repointed
 `config.registry` is honored. This module owns the section's shape and reads and writes it through
 `registry_store.load_section` / `save_section`, which preserve every sibling section.
-
-The store used to be its own `image-shells.yaml` file. Only the on-disk *location* moved when it
-was consolidated; the `std`-based public API here is unchanged from that era.
 
 ### The store key
 
@@ -96,3 +93,16 @@ branches:
 and value to `str` on the way out. A corrupt store must never crash the launch or diagnose path;
 degrading to `{}` costs a user the image step of the precedence and drops them to `sh`, which is a
 working shell. Raising would cost them the box.
+
+## The `-- <words>` command string (keyspec §2d `shell`)
+
+`shell_command_string(words)` builds the command a shell box runs from the words after `--`:
+`None` for no words, one word verbatim, several words joined as `shlex.join` does. A joined string
+over `ARG_STRLEN_LIMIT` (131071 bytes, Linux `MAX_ARG_STRLEN` less the NUL) raises
+`KanibakoError` with its cure; only a join can exceed it, since each word arrived through `execve`.
+`commands/start.py` calls it, when the launch runs the box shell, ahead of the rig, flag, and
+image-shell writes, so an over-long command refuses before them; the result becomes `-lc <S>`.
+
+`TMUX_COMMAND_BUDGET` (16300 bytes) is the most a persistent launch hands tmux as its session
+command; `tmux_command_bytes(args)` counts each argument plus its NUL, and `start.py` refuses a
+command over the budget.
