@@ -1,7 +1,7 @@
 # `@`-Reference Expansion — the merged snapshot's tokens resolved to terminals
 
 `settings_expand` is the eager build-time expansion pass. ONE pure function, `expand`, walks the raw
-merged `KeyStore` snapshot produced by `kanibako.settings.settings_merge` (block 2b) and resolves
+merged `KeyStore` snapshot produced by `kanibako.settings.settings_merge` and resolves
 every `@`-ref (CONFIG, on both bind sides) and every host-side `$VAR` / `~` (ENVIRONMENT) to
 terminals — TRANSITIVELY, as a fixpoint, with cycle detection.
 
@@ -49,9 +49,23 @@ What this module adds are the three things the single-expression engine lacks (b
 
 ## The per-leaf case enumeration
 
-`expand(snapshot, ctx)` takes block 2b's raw merged store (refs / vars / `~` intact) and a
-`ResolveCtx` carrying the host-side expansion namespace — `host_home`, `xdg`, `agent_name`,
-`workset_name` — consumed for host-side `$VAR` / `~`. Per leaf:
+`expand(snapshot, ctx, *, collect_errors=False, null_sources=None, refs_read=None, dest_keys=None,
+derive=None)` takes the raw merged store `settings_merge.merge` returns (refs / vars / `~` intact)
+and a `ResolveCtx` carrying the host-side expansion namespace — `host_home`, `xdg`, `agent_name`,
+`workset_name` — consumed for host-side `$VAR` / `~`. The optional parameters:
+
+* `collect_errors` — LENIENT mode (below).
+* `null_sources` — filled with the E2 side table (`NullSources`, below).
+* `refs_read` — filled with `RefsRead`: each expanded leaf's path → every key its value read,
+  references followed through.
+* `dest_keys` — filled with `DestKeys`: a bind entry's arm path plus its STORED destination → the
+  arm key it was filed under, so a reader holding the stored destination finds the entry without
+  expanding it a second time.
+* `derive` — a `Derive` callback answering a reference to a key the caller materializes after this
+  pass (`settings_launch.post_expand_keys`). It is asked only when the snapshot lacks the key, and
+  returns `__MISSING__` for a key it does not derive.
+
+Per leaf:
 
 * **scalar str** → expanded host-side (`space="host"`); a whole-value `@`-ref inherits the referent's
   3-state (absent → the key is DROPPED; present-None → `None`); a whole-value `$VAR` answers its
@@ -100,9 +114,8 @@ the SAME call.
 
 **It NEVER RAISES — a total predicate.** A malformed reference (`"@{a.b"`, `"@{"`) answers `None` so
 it falls through to `_Expander._expand_embedded`, where `expand_expr` raises it with the same message
-from the same place it always has. That keeps error provenance identical for malformed input in
-STRICT and LENIENT mode alike; the only behavior delta in this function is that a WELL-FORMED braced
-ref now answers its name instead of `None`.
+from one place. That keeps error provenance identical for malformed input in STRICT and LENIENT
+mode alike; a WELL-FORMED braced ref answers its name.
 
 ## Whole-value `$VAR` — the `$` twin, and why only one variable needs it
 
@@ -169,11 +182,10 @@ ref), so absence from the memo is tested with `in`, never by comparing against a
 instance per `expand` call, so there is no cross-call state; the snapshot is read-only within it
 (S19) and the fresh tree is built by `run`.
 
-## LENIENT (error-COLLECTING) mode — Q9 set-time validation
+## LENIENT (error-COLLECTING) mode
 
-Spec §2a / design Q9. `expand` takes an opt-in `collect_errors` flag: additive, default OFF, and
-STRICT mode is byte-identical to what it was before the flag existed — the launch read-path is
-unchanged.
+Spec §2a / design Q9. `expand` takes an opt-in `collect_errors` flag, default OFF; STRICT mode — the
+launch read-path — is unaffected by it.
 
 When ON, expansion resolves everything resolvable and, instead of raising or silently dropping,
 RECORDS each unresolvable leaf in an error map keyed by the leaf's dotted path: a dangling `@`-ref
@@ -189,13 +201,15 @@ leaf and records the dotted path → *reason*. It NEVER escapes `expand` — it 
 signal, not a user error — and it is never raised in strict mode. `_expand_node` also catches
 `SettingsError` in this branch, which is how the `@pref.*` refusal below reaches the error map.
 
-Set-time `config set` validation is the only lenient consumer. It implements the E3 rule: apply the
-candidate RAW value into the merged snapshot at the edited key, lenient-`expand` the result, and
-ALLOW iff the edited key is NOT in the error map — that is, iff its own transitive upstream chain
-resolved cleanly.
+There are two lenient consumers. Set-time `config set` validation (`config_interface`) implements
+the E3 rule: apply the candidate RAW value into the merged snapshot at the edited key,
+lenient-`expand` the result, and ALLOW iff the edited key is NOT in the error map — that is, iff its
+own transitive upstream chain resolved cleanly. Agent selection
+(`settings_launch.resolve_selected_agent`) expands the narrow selection cascade leniently and reads
+`system.agent`'s entry in the error map.
 
-An embedded dangling ref is a set-time DEFECT rather than the strict `""` coercion, per the
-director's 2026-06-29 ruling, and it is attributed to the owning edited leaf. A present-`None`
+An embedded dangling ref is a set-time DEFECT rather than the strict `""` coercion, (a
+ruling), and it is attributed to the owning edited leaf. A present-`None`
 referent is NOT a defect: it makes the leaf `None`, in lenient mode as in strict. Lenient differs
 from strict only for an absent referent, and only when `collect_errors=True`.
 
@@ -233,7 +247,7 @@ which keeps it single-route.
 
 The snapshot walk itself uses the UNBOUND `dict.get(node, seg, _ABSENT)` probe (S3): any missing
 segment, or a non-`KeyStore` node reached before the last segment, yields `_ABSENT` — the path does
-not exist. The final segment's value is returned verbatim, so a present-`None` leaf answers `None`.
+not exist — unless `derive` answers the key (`_resolve_ref` asks it before settling on `_ABSENT`). The final segment's value is returned verbatim, so a present-`None` leaf answers `None`.
 
 ## Destinations: the dest-keyed arm and its two refusals
 
@@ -290,7 +304,7 @@ records the refs that did it, keyed by the entry's path (segments, raw destinati
 the [R185] warning for a STANDARD bind. Only an entry reached by the walk is recorded, never a
 transitive read of the same value.
 ⚑ `None`, not `_ABSENT`: a supplied `<None>` is a value, and a default is a fallback that applies
-only where nothing was supplied (`[R177]`) — an `_ABSENT` seeded entry let the §2d pick
+only where nothing was supplied (`[R177]`) — an `_ABSENT` seeded entry would let the §2d pick
 (`settings_launch._agent_pick_node`) refill a shell box's `~/` from a user's `agent.default.seeded`.
 
 ## Embedded `None` — the WHOLE value is `None` (spec §0, [R186])
@@ -303,10 +317,8 @@ a scalar leaf keeps `None` (consumer default), a bind entry is `None` (above), a
 raises — except in a `seeded` map, where it skips the layer (Refusal 1).
 ⚑ **Why not `""`:** after substitution a `""` is indistinguishable from a real path, so
 `@workset.auth.path/x` with `workset.auth.path: null` became the HOST path `/x`, and a primary
-`workset.vault_ro: null` mounted host `/<box>` (both measured on the launch path, shipped in
-v1.8.0-rc2). This was once a `seeded`-only rule (the shipped layers embed their root,
-`@agent.<a>.template/box/home`); it is now the one rule for every leaf, so no category carries a
-second copy of it. An ABSENT referent keeps the embedded `""` (spec §0).
+`workset.vault_ro: null` would mount host `/<box>`. It is the one rule for every leaf, so no
+category carries a second copy of it. An ABSENT referent keeps the embedded `""` (spec §0).
 
 ## The host-source refusal — POST-expansion, and deliberately not [R147]'s test
 
@@ -341,7 +353,7 @@ different layer, its own message; only the hazard sentence is shared.
 (B7 — the chain guard is in `expand_expr`'s `_expand_ref` AND in `_resolve_ref`).
 
 It reuses the SINGLE `expand_expr` scanner for BOTH spaces, with no fork: the box-side deferral is
-the engine's additive `defer_env` flag, proposed in chat and held pending the director's call.
+the engine's additive `defer_env` flag.
 
 `_lookup_str` is the callback `expand_expr` calls. It resolves the dotted path through the transitive
 resolver — so embedded refs are also fixpoint- and cycle-guarded (B7) — and coerces the result to a
@@ -379,53 +391,15 @@ chains.
   order" (*Cycle handling (per layer)*) and § "Host-side and box-side resolution — who expands what"
   (CONFIG-vs-ENV split; box-side `$XDG` / `~` deferred). Historical (NOT AUTHORITY):
   `~/canon/notebook/archives/resources/keystore-2026-06/keystore-design.md` §6h, §6a, §3.
-* Spec `~/canon/workbook/specs/settings-keyspace-1.8.0.md` §0, §1 (the box-side XDG line, ~line 94), §2c, §2h, §2a, §1A.
-* The merged snapshot this pass consumes is `settings_merge`'s raw output (`d33db5c`).
+* Spec `~/canon/workbook/specs/settings-keyspace-1.8.0.md` §0, §1 (the box-side XDG line), §2c, §2h, §2a, §1A.
+* The merged snapshot this pass consumes is `settings_merge`'s raw output.
 
 ## Seams realized here (`~/canon/workbook/plans/keystore-blocks/SEAMS.md`)
 
 * **S17** — box-side `$XDG` / `~` left RAW in `Bind.box`; `@`-refs expand BOTH sides. The concrete
   realization of S12's deferral contract.
-* **S18** — whole-value vs embedded decided by PARSE, never by guess — for `@`-refs and, since
-  2026-09-20, for `$VAR` on the host side.
+* **S18** — whole-value vs embedded decided by PARSE, never by guess — for `@`-refs and for `$VAR`
+  on the host side.
 * **S19** — expansion does NOT mutate the input snapshot (pure; fresh tree).
 * **S3** — every snapshot access uses the UNBOUND `dict.<method>(obj, …)` bypass, so a key named
   `get` / `items` / `keys` cannot shadow the protocol into a crash.
-
----
-
-## Completeness sweep (relocation pass, 2026-08-20)
-
-Every prose line removed from `settings_expand.py` in this pass was RELOCATED into a section above,
-in substance. Nothing was dropped as a false claim.
-
-**Deliberate content drops: 0.** Two categories were cut as pure DUPLICATION rather than relocated,
-and both surviving carriers are in this document:
-
-1. The module docstring's per-leaf enumeration and its restatement inside `expand`'s docstring said
-   the same thing twice in one file (P12). The single carrier is *The per-leaf case enumeration*
-   above.
-2. The `_expand_bind` / `_expand_bind_entry` docstrings each restated the 3-state rule that the
-   module docstring already stated. The single carrier is *The three things it adds* item 2, with the
-   per-shape wording under *Bind and BindEntry*.
-
-**Warnings KEPT IN SOURCE** under the keep test, because deleting each would let a future edit break
-something silently at that exact line:
-
-* the closed-keyspace / no-fabricated-default statement in the module docstring — the invariant the
-  whole pass exists to hold;
-* the `$XDG`-deferral statement in the module docstring — S17 is the one thing about this pass that
-  surprises every new reader of `Bind.box`;
-* `_is_whole_value_ref`'s ⚑ braced-form warning — the misroute it names is silent and turns absence
-  into a real value;
-* `_expand_dest_key`'s ⚑ discrimination-by-TYPE warning — `Bind` and `BindEntry` are both
-  2-element-legal with opposite meanings;
-* `_expand_node`'s ⚑ `pref`-carried-verbatim comment and `_lookup_raw`'s ⚑ `pref`-refusal comment —
-  the two halves of §2h, and the refusal's "raise, do not answer absent" is the non-obvious half;
-* the ⚑ on the destination-collision raise — a silent data loss no downstream check can see;
-* the ⚑ on the `box_dest` absent/None raise — it reads like dead code until you know the spec has no
-  whole-value `box_dest`;
-* the ⚑ on the memo — `None` and `_ABSENT` are valid memo values, so `in` is load-bearing;
-* the ⚑ on the cycle guard preceding the memo lookup;
-* the ⚑ on the nested-`KeyStore` referent routing through `_expand_node` — aliasing breaks S19
-  silently.

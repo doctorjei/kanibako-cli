@@ -253,7 +253,7 @@ def expand(
 ) -> KeyStore | tuple[KeyStore, dict[str, str]]:
     """Expand *snapshot*'s tokens to terminals, returning a FRESH KeyStore (S19).
 
-    *snapshot* is block 2b's raw merged store (refs/vars/``~`` intact). *ctx*
+    *snapshot* is the raw merged store (refs/vars/``~`` intact). *ctx*
     carries the host-side expansion namespace (``host_home``, ``xdg``,
     ``agent_name``, ``workset_name``) consumed for host-side ``$VAR`` / ``~``.
     Every value is resolved TRANSITIVELY to its terminal (spec §0
@@ -266,7 +266,7 @@ def expand(
     chain; this is DISTINCT from a legitimately absent/None referent (propagated,
     not raised). Returns the fresh expanded :class:`KeyStore`.
 
-    LENIENT mode (``collect_errors=True`` — Q9 set-time validation only): nothing
+    LENIENT mode (``collect_errors=True`` — set-time validation and agent selection): nothing
     raises; each DEFECTIVE leaf is RECORDED in an error map keyed by its dotted
     path (path → human reason) and OMITTED, while every clean leaf still resolves.
     Returns ``(snapshot, errors)``.

@@ -33,16 +33,12 @@ NOT, because a pref's value is an INPUT to resolution.
 `TestPrefRecomputeNotDelta.test_a_key_derived_from_a_prefd_value_updates` is the discriminator —
 its own docstring calls itself *"THE discriminator for the delta implementation"*.
 
-⚑ CORRECTED in the 2026-08-20 relocation pass: the source docstring cited a path
-and a test name that do not exist in the tree, `tests/test_settings_prefs.py` and
-`test_pref_propagates_to_a_derived_key`.
-
 ### Placement
 
-In `settings_launch.build_launch_snapshot`, MOST-SPECIFIC-FIRST:
+In `settings_launch.assemble_cascade`, MOST-SPECIFIC-FIRST:
 
 ```
-[*box_agent_folds, box, BOX_PREFS, workset, WORKSET_PREFS, …]
+[cli_level, box, BOX_PREFS, workset, WORKSET_PREFS, agent.<active>, …]
 ```
 
 Each level's overlay sits immediately BELOW that level's own partial, because §2h expands prefs
@@ -130,12 +126,12 @@ which is the only way a user creates one short of hand-editing.
 ## The §0 glob convention
 
 `settings_keyspace.glob_match` implements it, and `settings_keyspace.PREF_ALLOWLIST` is written in it
-(both moved there 2026-09-25: the allowlist bounds the KEYSPACE — spec §0 declares the family as
+(both live there because the allowlist bounds the KEYSPACE — spec §0 declares the family as
 *"`pref.<target-key>` for the allowlisted targets"* — so `key_class` needs it, and this module
 imports it rather than keeping a second carrier): `*` matches exactly ONE segment, `**`
 matches the remaining tail at ANY depth. `**` is one-or-more *by construction*, not by rule — the
 separator is part of the pattern, so a zero-length tail on `agent.*.**` would yield the malformed
-`agent.foo.` with a trailing dot. (Ruled by Jei 2026-07-29.)
+`agent.foo.` with a trailing dot (a ruling).
 
 The empty-segment guard in the matcher is where that argument bites: without it, `agent.*.**` would
 MATCH the malformed `agent.claude.` — the very zero-length tail the convention says cannot arise.
@@ -152,7 +148,7 @@ on how it was spelled. One form, enforced (§0 convention 0).
 ⚑⚑ **The walk stops at a terminal dest-keyed category** — `<scope>.masks` and
 `<scope>.bindings.{ro,rw}`, tested with
 `kanibako.settings.settings_keyspace.is_terminal_category_tail`. Those keys' VALUES are maps keyed
-by box DESTINATION, and a destination is DATA, not a key segment (spec §2a; disk-store R-5/R-10).
+by box DESTINATION, and a destination is DATA, not a key segment (spec §2a).
 
 Descending into one would manufacture a target that is not a key —
 `pref.agent.claude.bindings.rw./home/agent/x` — and, because a real destination contains dots, it
@@ -183,11 +179,10 @@ the file is deliberate: it is ONE spelling of the parse, called from one collect
 family is exactly what a user may want to add. An existence test would permit only modifying keys
 that already hold a value.
 
-⚑⚑ **NO BIND-SHAPED CATEGORY IS SUCH A FAMILY ANY MORE, and this docstring twice said otherwise.**
-Its example was `agent.claude.bindings.rw.boooooo` until those arms went TERMINAL and DEST-KEYED
-(spec §2a; R-5/R-10), then `agent.claude.common.boooooo` until 2026-08-08c did the same to `common`
-/ `caches` / `seeded` / `synced`. Both spellings are now REFUSED by `key_validity` — correctly — so
-only the BARE terminal key (`agent.claude.common`) is a valid pref target and the destinations live
+⚑⚑ **NO BIND-SHAPED CATEGORY IS SUCH A FAMILY.** The bind arms and `common` / `caches` / `seeded` /
+`synced` are TERMINAL and DEST-KEYED (spec §2a), so `agent.claude.bindings.rw.boooooo` and
+`agent.claude.common.boooooo` are REFUSED by `key_validity` — correctly — and only the BARE terminal
+key (`agent.claude.common`) is a valid pref target and the destinations live
 inside its value. The families that DO still carry a free `<name>` are `env.<VAR>`,
 `secret_path.<VAR>` and the agent discriminator itself.
 
@@ -209,8 +204,7 @@ actually possible. `meta.*` is RO by contract, `config.*` is hand-edited in the 
 send them somewhere that does not exist.
 
 ⚑ SAME RULE, SECOND CLASS OF TARGET: a YAML-only key has no direct set either. The bind-shaped
-categories lost their CLI write route (R-9 for the two `bindings` arms, DS-BL1 = (a) for `caches` /
-`seeded` / `common` / `synced`) and `masks` never had one, so the suggestion would prescribe a
+categories and `masks` have no CLI write route, so the suggestion would prescribe a
 command that refuses. ONE predicate answers it for both message sites —
 `config_keys.has_no_cli_write_route` — deferred-imported to keep this module free of a module-scope
 edge back to the key registry.
@@ -223,8 +217,10 @@ ruling makes that explicit — *"the forbidden-tier check must return a REASON, 
 Three arms, checked in the spec's order:
 
 * **Structural** — the target must resolve STRICTLY EARLIER than the level setting it. A
-  later-resolving key needs no pref: set it directly. `_LEVEL_ORDER` is the rank table
-  (`config` `meta` `base` `system` `agent` `workset` `box`, L0.1 → L4.2, spec §1A).
+  later-resolving key needs no pref: set it directly. The rank table is `kb_store.RESOLUTION_ORDER`
+  = (`config`, `meta.runtime`, `meta.agent`, `meta.workset`, `base`, `system`, `agent`, `workset`,
+  `meta.box`, `box`), spec §1A. A bare `meta.*` head is no rung there, so this arm does not judge it;
+  the categorical arm does.
 * **Categorical** — never `meta.*`, `config.*` or `pref.*` itself. ⚑ This does NOT stop meta VALUES
   from changing: `meta.box.auth.workset_path` changes because `system.agent` changed, which is the
   entire point. Only DIRECT targeting is barred.
@@ -261,8 +257,8 @@ scalar leaf. This layer classifies nothing.
 ⚑ So `pref.system.agent: null` is KEPT as `None` — `system.agent` is a scalar leaf — and it means
 **NO DEFAULT IS SET** (§2b): an agent must be named explicitly, or the launch refuses saying so.
 
-🛑 `pref_value` cannot express that distinction through its return type, and since the 2026-09-19
-ruling the distinction MATTERS: present-`None` and absent get DIFFERENT refusals (*no default set*
+🛑 `pref_value` cannot express that distinction through its return type, and the distinction
+MATTERS: present-`None` and absent get DIFFERENT refusals (*no default set*
 vs *setup has never run*). A caller that needs them told apart must use `pref_request_for`. No
 production caller reads `system.agent` through `pref_value` today — the selection seam reads the
 cascade — and adding one would silently merge the two refusals.
@@ -308,8 +304,7 @@ not-yet-installed agent name is legal there.
 A settings ENTRY is named in launch messages (collision errors, the adapter's leaf refusal) by
 `settings_keyspace.entry_label`. For most targets that label IS the pref target —
 `pref.agent.claude.env.FOO` requests exactly the key `agent.claude.env.FOO`, because `<VAR>` is a
-key SEGMENT. For the SEVEN terminal dest-keyed categories (the six bind-shaped ones plus `masks`) it
-is not: the target stops at the category — `key_reason` REFUSES `agent.claude.common.<name>` — and
+key SEGMENT. For the terminal dest-keyed categories (the bind-shaped ones plus `masks`) it is not: the target stops at the category — `key_reason` REFUSES `agent.claude.common.<name>` — and
 the destinations live INSIDE the value, so the label is `<target>[<dest>]` (spec §2c: the bracket is
 a dict index). One request there accounts for one entry PER DESTINATION IT DECLARES.
 
