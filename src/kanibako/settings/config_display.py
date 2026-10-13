@@ -179,7 +179,7 @@ def _print_pref_block(
 
     Both halves come off the SAME snapshot, and that is exactly why ``expand``
     carries the ``pref`` subtree through UNEXPANDED: the request is readable in
-    the form it was WRITTEN (``@meta.workset.path/tpl``) while the target holds
+    the form it was WRITTEN (``{meta.workset.path}/tpl``) while the target holds
     the resolved terminal. Rendering an expanded request beside its result would
     print the same string twice and answer nothing.
 
@@ -196,7 +196,7 @@ def _print_pref_block(
 
     ⚑ A REQUEST'S DESTINATION IS LOOKED UP UNDER THE ARM KEY ``expand`` FILED IT UNDER,
     read off *dest_keys* (``settings_expand.DestKeys``, the same resolve's record): the
-    request keeps its ``@``-refs and the arm does not.  A destination with no record
+    request keeps its ``{key}``-refs and the arm does not.  A destination with no record
     was filed as written.  The result prints the guest path ``resolve_box_dest`` yields
     off that key with *box_ctx*, the launch's own, as the concrete rows do.
     """
@@ -456,10 +456,10 @@ def _print_category_block(
     # the containment and its separator guard.
     bindings = snapshot_leaf(snapshot, "meta.assembly.bindings")
     collapsed = dict(bindings) if isinstance(bindings, dict) else {}
-    # ⚑⚑ THE ARM KEY IS THE DESTINATION AS WRITTEN (an ``@``-ref shows its referent's
+    # ⚑⚑ THE ARM KEY IS THE DESTINATION AS WRITTEN (a ``{key}``-ref shows its referent's
     # escaped residue instead); THE ARBITRATED MAP IS KEYED BY THE
-    # RESOLVED ONE. The eager build defers ``~`` and ``$VAR`` in a destination, so an
-    # arm holds ``$XDG_DATA_HOME/z`` while the map holds ``/data/z`` — two spellings of
+    # RESOLVED ONE. The eager build defers ``~`` and ``{$VAR}`` in a destination, so an
+    # arm holds ``{$XDG_DATA_HOME}/z`` while the map holds ``/data/z`` — two spellings of
     # one destination. Both sides are put in the map's spelling before pairing, or a
     # row is looked up under a name nothing was ever filed under and every answer about
     # it is a miss. ⚑ Resolution BEFORE binding OR comparison is the rule (Jei,
@@ -471,8 +471,8 @@ def _print_category_block(
     # idempotent by contract (R-11 applies it at every producer AND again on read).
     #
     # ⚑ IT CANNOT RAISE HERE. Every arm key reached the collapse through the same
-    # expansion under the same ctx, so a dest this would refuse (an unknown ``$VAR``,
-    # a surviving ``@``-ref) stopped the LAUNCH before any display ran — measured.
+    # expansion under the same ctx, so a dest this would refuse (an unknown ``{$VAR}``,
+    # a surviving ``{key}``-ref) stopped the LAUNCH before any display ran — measured.
     declarations = [
         Declaration(
             key=key,
@@ -505,7 +505,7 @@ def _print_category_block(
         # the block for mounts cannot take a loss for one.
         # ⚑ THE DESTINATION PRINTS RESOLVED — the guest path the mount lands on, the
         # one the pairing decided on. The key in *shown* keeps the user's spelling,
-        # except an ``@``-ref, which shows its referent's escaped residue.
+        # except a ``{key}``-ref, which shows its referent's escaped residue.
         if derivation.outcome == DERIVED_MOUNT:
             print(f"  {shown} = {entry.src} -> {dest}{opts}", file=out)
             continue

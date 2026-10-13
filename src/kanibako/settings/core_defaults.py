@@ -190,9 +190,9 @@ def env_default_categories() -> dict[str, str]:
     ⚑ A SEPARATE emitter from ``start._core_env_default_categories``, whose docstring
     forbids new entries: that one carries the launch-DERIVED ``KANIBAKO_*`` stamps —
     values that do not exist until a launch runs — while these are values a FILE can
-    hold, which includes a ``$VAR`` EXPRESSION and is not limited to literals.  The
+    hold, which includes a ``{$VAR}`` EXPRESSION and is not limited to literals.  The
     floor folds under the base level and the snapshot is expanded before any entry is
-    walked, so ``TERM: "$TERM"`` resolves here.  The derived table merges AFTER this
+    walked, so ``TERM: "{$TERM}"`` resolves here.  The derived table merges AFTER this
     one, so a stamp still wins a VAR this section also names.
     ⚑ Values are STRINGS, as in :func:`behavior_defaults`: an unquoted YAML bool would
     reach the box as ``"True"``.
@@ -203,7 +203,7 @@ def env_default_categories() -> dict[str, str]:
     VAR that is not an env-name RAISES, naming the file and the head.  It used to be
     a silent no-op: the bad key entered ``default_categories``, matched nothing
     downstream and simply never reached a box.
-    ⚑ A leading ``$GUEST_HOME`` is expanded HERE, as the plugin loader does: left to
+    ⚑ A leading ``{$GUEST_HOME}`` is expanded HERE, as the plugin loader does: left to
     the snapshot it would resolve from the HOST and drop the key.
     """
     from kanibako.settings.settings_resolve import expand_guest_home
@@ -340,7 +340,7 @@ def channel_default_categories(
     # sources exist only for PRIMARY/NAMED, and their absence IS the standalone-omit gate below.
     # ⚑ A NULL ``std`` STAYS ``None`` HERE, on the terms
     # :func:`core_default_categories` states below: ``str()`` would write the WORD "None"
-    # into a table of host paths.  The bind itself omits through the ``@system.channels.*``
+    # into a table of host paths.  The bind itself omits through the ``{system.channels.*}``
     # ref and the launch floor (``paths.system_path_floor``); this map is the mode gate.
     # ⛔ NOT the workset rows below — those belong to ``_workset_channel_floor_values``.
     sources: dict[str, str | None] = {
@@ -358,7 +358,7 @@ def channel_default_categories(
         })
     elif _ch.has_workset_channels(proj):
         # ⚑ A NULL ``workset.channelroot`` KEEPS THE THREE ROWS: each emits its own
-        # ``@workset.channels.*`` ref, which resolves to null — the floor SUPPLIES that
+        # ``{workset.channels.*}`` ref, which resolves to null — the floor SUPPLIES that
         # null (``workset_anchor_floor``) — so the collapse omits the bind and §2a warns
         # (MIGRATION "…only its entry or only its source is `null`").
         for row in _load_doc().get("channels", []):
@@ -371,7 +371,7 @@ def channel_default_categories(
         if source not in sources:
             # Workset-scoped entry on a standalone box: no host source → omit.
             continue
-        # ⚑ B2: a ``meta_ref`` entry emits the @-ref STRING as host_src (spec §2c); the
+        # ⚑ B2: a ``meta_ref`` entry emits the {key}-ref STRING as host_src (spec §2c); the
         # ``source`` gate above still applies to it.
         host_src = entry.get("meta_ref", sources[source])
         add_bind(binds, "bindings.rw", str(entry["box_dest"]), host_src)
@@ -416,7 +416,7 @@ def core_default_categories(
             src_name = entry["source"]
             if src_name not in vault_dir:
                 continue  # unknown source name (defensive)
-            # ⚡ A NULL ARM STILL EMITS ITS ENTRY — its ``@workset.vault_*`` source
+            # ⚡ A NULL ARM STILL EMITS ITS ENTRY — its ``{workset.vault_*}`` source
             # resolves to null, so the collapse omits the bind and §2a warns.
             src_path = vault_dir[src_name]
             # ⚑ A dangling link or a non-directory there gets NO bind, on display and launch
@@ -430,7 +430,7 @@ def core_default_categories(
             if guarantee_create and src_path is not None:
                 src_path.mkdir(parents=True, exist_ok=True)
         category = entry["category"]
-        # ⚑ TWO @-ref shapes: a single ``meta_ref`` (mode-independent — workspace) or a
+        # ⚑ TWO {key}-ref shapes: a single ``meta_ref`` (mode-independent — workspace) or a
         # ``mode_meta_ref`` PER-MODE map, which today serves the VAULT binds ONLY (spec §2c).
         mode_ref = entry.get("mode_meta_ref")
         if mode_ref is not None:
@@ -829,7 +829,7 @@ def canon_default_categories(
 ) -> dict[str, object]:
     """Build the HANDBOOK binds + the agent-scope ``canon`` floor (spec §2c).
 
-    ⚑ A MIXED table — the ``box.bindings.ro`` entries PLUS the agent scalars their ``@``-refs
+    ⚑ A MIXED table — the ``box.bindings.ro`` entries PLUS the agent scalars their ``{key}``-refs
     resolve against; both land in the SAME floor, so a user override of the scalar reroutes
     the bind.  ⚑⚑ The ACTIVE NODE's floor value is store-dependent (J-1 option (a)).
     """
@@ -1314,7 +1314,7 @@ def helper_default_categories(
 
     ⚠ ``helper_sock`` options MUST be ``""``: a ``Z``/``U`` relabel/chown would break the
     shared socket topology of a LIVE unix socket the hub listens on.
-    ⚑ The dests carry no ``$XDG_STATE_HOME`` token — they are written into the runtime's
+    ⚑ The dests carry no ``{$XDG_STATE_HOME}`` token — they are written into the runtime's
     arguments BEFORE the box is live; ``box_supervisor.project_pinned_xdg`` restores XDG later.
     """
     sources: dict[str, Path | None] = {
@@ -1343,9 +1343,9 @@ def helper_default_categories(
         # ⚑ B2b: the ``.exists()`` gate above keys off the PROBED path while ``helper_log``'s
         # emitted host_src is the spec FORMULA.  The two agree in EVERY mode — as of
         # 2026-08-30 ``paths.helper_log_path`` resolves ``workset.logs`` in standalone too
-        # (its ``@workset.boxes`` default resolves through the same no-snapshot route),
+        # (its ``{workset.boxes}`` default resolves through the same no-snapshot route),
         # closing migration M-14.  ⚑ ``helper_sock`` is NOT
-        # routed: its bounded name is the companion's name rule, not an ``@``-formula (JC-B2b-3).
+        # routed: its bounded name is the companion's name rule, not a ref formula (JC-B2b-3).
         host_src = entry.get("meta_ref", literal_expr(str(src_path)))
         add_bind(binds, category, box_dest, host_src, str(entry["options"]))
     return binds
@@ -1358,7 +1358,7 @@ def image_default_categories(
 ) -> dict[str, object]:
     """Build the image-sharing binds as ``default_categories`` (Phase B, D-M8).
 
-    ⚑ B3: the store bind is ROUTED THROUGH THE USER KEY ``@box.images_store``, whose DEFAULT is
+    ⚑ B3: the store bind is ROUTED THROUGH THE USER KEY ``{box.images_store}``, whose DEFAULT is
     the probed *graph_root* — a floor scalar in this same MIXED table.  ⚑ 11a: the probe feeds
     ONLY that default, so ``graph_root=None`` emits no scalar rather than gating the table.
     ``images_conf`` stays an INTERNAL bind and NOT a key (spec §0's test).

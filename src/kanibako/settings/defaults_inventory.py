@@ -125,7 +125,7 @@ def source_groups() -> tuple[tuple[str, frozenset[str]], ...]:
     ("bootstrap.py (system tier)", frozenset(SYSTEM_PATH_DEFAULTS)),
     # ⚑ WIDENED 2026-08-29, from 6 keys to 10.
     # ``workset.{skip_kuid_check,registry,kuid,template}`` were declared rows that no floor
-    # emitted, so a whole-value ``@``-ref to any of them resolved to ``__MISSING__`` at
+    # emitted, so a whole-value ``{key}``-ref to any of them resolved to ``__MISSING__`` at
     # launch; they are now built by the same builder (the ``workset.channelroot`` fix of
     # 2026-08-25, R-35 "fix the CODE", applied to the rows it left behind). The group is
     # DERIVED, so the widening arrived here on its own — what moved by hand is the labels
@@ -229,17 +229,17 @@ def source_groups() -> tuple[tuple[str, frozenset[str]], ...]:
     ("(empty — the category starts with no entries)", frozenset({
       "box.bindings.ro", "box.bindings.rw", "box.masks",
       "agent.default.transform_settings", "agent.shell.transform_settings"})),
-    # The per-NODE arm of the same producer, spelled ONE @-hop differently from the
-    # registry (``@meta.agent.<a>.path`` IS ``@config.agents/<a>``; both resolve to one
+    # The per-NODE arm of the same producer, spelled ONE ref hop differently from the
+    # registry (``{meta.agent.<a>.path}`` IS ``{config.agents}/<a>``; both resolve to one
     # place). Labeled apart from the ``agent.default`` arm above because they are two
     # rows a reader will otherwise wonder about, not because two producers exist.
     ("core_defaults.py (canon producer, per node)", frozenset({"agent.<agent>.canon"})),
     # The layer-2 SOURCE key, split by ARM for the same reason the canon pair above
     # is: ONE producer (``agent_template_defaults``) emits both, but the per-node arm
-    # is spelled one @-hop from the registry, while the default arm is a plain literal.
+    # is spelled one ref hop from the registry, while the default arm is a plain literal.
     # Two labels because a reader would otherwise wonder.
     # ⚑ The per-node arm's HARNESS-vs-NODE divergence was a boarded question and is
-    # CLOSED (2026-08-27): it is node-rooted now, and only the @-hop is left.
+    # CLOSED (2026-08-27): it is node-rooted now, and only the ref hop is left.
     # ⚑ The PRODUCER was split 2026-08-29: ``agent_template_defaults`` carries these two
     # AGENT arms and no ``seeded`` layer, so an ordinary launch can fold it in;
     # ``template_seed_defaults`` COMPOSES it and adds the create-time seed layer. The
@@ -431,7 +431,7 @@ def bind_rows() -> list[DefaultRow]:
 # OTHER env instance (each plugin's declared vars) is a family member with no registry
 # row, and this is where it is reported.
 # ⚑ A VALUE PRINTS AS DECLARED, NOT AS RESOLVED.  ``agent.default.env.TERM`` reads
-# ``$TERM`` here: this is the STATIC view (see the module docstring), so resolving it
+# ``{$TERM}`` here: this is the STATIC view (see the module docstring), so resolving it
 # would answer for THIS host rather than for the install.  ``box show --effective`` is
 # the surface that resolves.
 

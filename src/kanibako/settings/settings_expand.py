@@ -3,7 +3,7 @@
 ONE pure function, :func:`expand`, walks
 :mod:`kanibako.settings.settings_merge`'s raw merged
 :class:`~kanibako.settings.keystore.KeyStore` snapshot and resolves every
-``@``-ref (CONFIG, both bind sides) and host-side ``$VAR`` / ``~`` (ENVIRONMENT)
+``{key}``-ref (CONFIG, both bind sides) and host-side ``{$VAR}`` / ``~`` (ENVIRONMENT)
 to terminals — TRANSITIVELY (a fixpoint), with cycle detection. It is PURE, and it
 NEVER mutates the input snapshot (S19): it builds a fresh ``KeyStore``.
 
@@ -13,21 +13,21 @@ declared key propagates ABSENCE (spec §0: whole-value → the holder key is DRO
 embedded → ``""``). A present-``None`` referent makes the WHOLE value ``None``,
 whole-value or embedded alike (spec §0, [R186]). Every other unresolvable case is an
 ERROR that NAMES the key: a ref that names no declared key, a cycle, a depth-cap
-breach, an unknown ``$VAR``, a ``@pref.*`` ref, or a binding destination that would
+breach, an unknown ``{$VAR}``, a ``{pref.*}`` ref, or a binding destination that would
 resolve to no path.
 
 ⚑ ABSENCE HAS A SECOND SOURCE, and it is not a failure: a PASSTHROUGH variable
-(``$COLORTERM``) whose host signal is unset answers absence too, and a whole-value
+(``{$COLORTERM}``) whose host signal is unset answers absence too, and a whole-value
 one DROPS its key by the same whole-value rule. Nothing is delivered empty on that path.
 🛑 THE DROP IS NOT CONFINED TO ``env``, and the reach is worth stating plainly: a
 whole-value passthrough written as a BINDING's host source drops that binding, with
-no message — exactly as an absent whole-value ``@``-referent in the same position
+no message — exactly as an absent whole-value referent in the same position
 always has. One rule, two spellings. A passthrough is a terminal CLAIM about the
 host's display, never a path, so naming one as a source is a mis-write the expansion
 cannot tell from a deliberate whole-value drop.
 
-⚑ ``box_dest`` keeps its ``$XDG``/``~`` RAW (S17): ENVIRONMENT differs host vs box,
-so those tokens are DEFERRED to mount time. ``@``-refs (CONFIG) expand BOTH sides.
+⚑ ``box_dest`` keeps its ``{$XDG_*}``/``~`` RAW (S17): ENVIRONMENT differs host vs box,
+so those tokens are DEFERRED to mount time. ``{key}``-refs (CONFIG) expand BOTH sides.
 An expanded ``Bind.box`` may therefore still carry a token — a known, bounded
 residue, NOT lazy config re-resolution.
 
@@ -84,7 +84,7 @@ class _Absent:
         return "_ABSENT"
 
 
-#: A whole-value ``@``-ref whose referent (transitively) does not exist resolves
+#: A whole-value ``{key}``-ref whose referent (transitively) does not exist resolves
 #: to this; the holder key is then DROPPED from the expanded snapshot (spec §0).
 _ABSENT: _Absent = _Absent()
 
@@ -111,7 +111,7 @@ def is_cascade_blindness(reason: str) -> bool:
 
 
 #: The top-level table holding ``pref.*`` REQUESTS (spec §2h): carried through
-#: UNEXPANDED and never ``@``-referenceable. Spelled here rather than imported —
+#: UNEXPANDED and never ``{key}``-referenceable. Spelled here rather than imported —
 #: a ``settings_prefs`` import would cycle through the settings stack.
 _PREF_ROOT = "pref"
 
@@ -173,7 +173,7 @@ def _is_whole_value_var(value: str) -> str | None:
     The ``$`` twin of :func:`_is_whole_value_ref`, and it exists for the SAME reason:
     the two paths differ in what they can SAY. An embedded token is string
     substitution and can only ever produce a string, while a whole-value expression
-    inherits a THREE-state — and one variable needs the third. ``$COLORTERM`` is a
+    inherits a THREE-state — and one variable needs the third. ``{$COLORTERM}`` is a
     PASSTHROUGH of a host signal with no substitute value (spec, ``box.env.COLORTERM``),
     so "the host set none" must reach the walk as absence and DROP the key, never as
     an empty string a reader would take for a capability claim.
@@ -220,7 +220,7 @@ def _whole_braced(value: str, kind: str) -> str | None:
 
 
 #: The E2 side table :func:`expand` fills on request: a bind ENTRY's path (its segments,
-#: the raw destination last) → the ``@``-refs in its source that resolved to a present
+#: the raw destination last) → the ``{key}``-refs in its source that resolved to a present
 #: ``None`` and made the entry ``None`` (spec §0).
 NullSources = dict[tuple[str, ...], tuple[str, ...]]
 #: Each expanded leaf's path → every key its value read, references followed through.
@@ -255,7 +255,7 @@ def expand(
 
     *snapshot* is the raw merged store (refs/vars/``~`` intact). *ctx*
     carries the host-side expansion namespace (``host_home``, ``xdg``,
-    ``agent_name``, ``workset_name``) consumed for host-side ``$VAR`` / ``~``.
+    ``agent_name``, ``workset_name``) consumed for host-side ``{$VAR}`` / ``~``.
     Every value is resolved TRANSITIVELY to its terminal (spec §0
     "References"), so a multi-hop chain collapses to its terminal regardless of
     dict order. The per-leaf rules for each value shape are enumerated in the
@@ -352,7 +352,7 @@ class _Expander:
         """Build a fresh expanded KeyStore mirroring *node* at *path*.
 
         A child KeyStore recurses; a leaf goes to :meth:`_expand_leaf`; a
-        whole-value ``@``-ref leaf that resolves ABSENT is DROPPED (spec §0). Uses the
+        whole-value ``{key}``-ref leaf that resolves ABSENT is DROPPED (spec §0). Uses the
         UNBOUND ``dict`` protocol (S3) so a key named ``keys`` / ``items`` / ``get``
         cannot shadow it.
         """
@@ -499,7 +499,7 @@ class _Expander:
         Returns the expanded terminal, ``None`` (present-None inherited from a
         referenced key), or :data:`_ABSENT` (the caller DROPS the key). The
         ``chain`` starts at this leaf's own dotted path so a self-referential
-        whole-value ``@`` is a cycle, not an infinite recurse.
+        whole-value ref is a cycle, not an infinite recurse.
         """
         chain = (".".join(path),)
         if isinstance(value, Bind):
@@ -525,7 +525,7 @@ class _Expander:
         ⚑ THE PARSE CANNOT COVER THIS ONE, which is why the guard is here as well.
         ``settings_assemble._declared_source`` refuses a source SPELLED relative, and
         that is what ``settings_launch`` relies on when it uses ``host_src`` AS-IS —
-        but a source spelled ``@box.canon/handbook`` is self-resolving at the parse and
+        but a source spelled ``{box.canon}/handbook`` is self-resolving at the parse and
         only becomes relative HERE, when the path key it dereferences turns out to hold
         a bare relative.  Measured before the guard existed: it reached the mount as
         ``host_src='relcanon/handbook'``.
@@ -548,7 +548,7 @@ class _Expander:
     ) -> str:
         """*got*, the expansion of the path *raw*, if it is a string; else a named refusal.
 
-        A whole-value ``@``-ref inherits its referent's value, so one naming a table or
+        A whole-value ``{key}``-ref inherits its referent's value, so one naming a table or
         a number yields no path at all.
         """
         if isinstance(got, str):
@@ -560,7 +560,7 @@ class _Expander:
 
     def _expand_bind(self, bind: Bind, *, chain: tuple[str, ...]) -> StoreValue | _Absent:
         """Expand a :class:`Bind`: ``host_src`` fully host-side; ``box_dest``
-        ``@``-refs only (``$XDG``/``~`` left RAW, deferred box-side — S17).
+        ``{key}``-refs only (``{$XDG_*}``/``~`` left RAW, deferred box-side — S17).
 
         A whole-value ``host_src`` ref that resolves absent, or any ``host_src`` ref
         to a present-None key, gives the WHOLE Bind that state — the binding cannot
@@ -616,16 +616,16 @@ class _Expander:
     ) -> StoreValue | _Absent:
         """Expand a single string leaf in *space* (``"host"`` or ``"defer"``).
 
-        WHOLE-VALUE ``@``-ref (S18) → INHERIT the referent's full 3-state
-        (``_ABSENT`` / ``None`` / the terminal). WHOLE-VALUE ``$VAR``, host space only
+        WHOLE-VALUE ``{key}``-ref (S18) → INHERIT the referent's full 3-state
+        (``_ABSENT`` / ``None`` / the terminal). WHOLE-VALUE ``{$VAR}``, host space only
         → the value or ``_ABSENT`` (:meth:`_resolve_whole_value_var`). EMBEDDED token
-        or plain literal → ``expand_expr`` substitution, where an absent ``@``-ref
-        substitutes ``""`` — but ANY embedded ``@``-ref to a present-``None`` key makes
+        or plain literal → ``expand_expr`` substitution, where an absent ``{key}``-ref
+        substitutes ``""`` — but ANY embedded ``{key}``-ref to a present-``None`` key makes
         the whole value ``None`` (spec §0, [R186]).  ⚑ Never ``""`` for that case:
-        ``@key/x`` with ``key`` null would otherwise become the host path ``/x``.
+        ``{key}/x`` with ``key`` null would otherwise become the host path ``/x``.
 
-        *space*: ``"host"`` expands ``~``/``$VAR`` host-side; ``"defer"`` leaves
-        them RAW for the box side (S17). ``@``-refs expand in BOTH spaces, and under
+        *space*: ``"host"`` expands ``~``/``{$VAR}`` host-side; ``"defer"`` leaves
+        them RAW for the box side (S17). ``{key}``-refs expand in BOTH spaces, and under
         ``"defer"`` a referent's value enters as :func:`deferred_literal_expr`: it is a
         resolved terminal, so the box resolver must not read its characters as tokens.
 
@@ -654,13 +654,13 @@ class _Expander:
         return None
 
     def _resolve_whole_value_var(self, name: str) -> StoreValue | _Absent:
-        """A whole-value ``$VAR`` host-side: the value, or :data:`_ABSENT` (spec §0).
+        """A whole-value ``{$VAR}`` host-side: the value, or :data:`_ABSENT` (spec §0).
 
         ⚑ HOST SPACE ONLY, and the guard is at the call site: under ``space="defer"``
-        a ``$VAR`` is emitted VERBATIM for the BOX resolver (S17), so answering it
+        a ``{$VAR}`` is emitted VERBATIM for the BOX resolver (S17), so answering it
         here would resolve a box-side token against the HOST's environment.
         ⚑ Every REFUSING name still raises from ``resolve_var`` exactly as it does
-        through the embedded path — an unset ``$AGENT``, an unknown ``$XDG_*``, an
+        through the embedded path — an unset ``{$AGENT}``, an unknown ``{$XDG_*}``, an
         unknown name. :data:`~kanibako.settings.settings_resolve.UNSET` is the
         passthrough class alone, and it means the key is DROPPED rather than
         delivered empty.
@@ -840,7 +840,7 @@ class _Expander:
         segment's value is returned verbatim (a present-``None`` leaf → ``None``).
         """
         if dotted == _PREF_ROOT or dotted.startswith(f"{_PREF_ROOT}."):
-            # ⚑ A ``@pref.…`` reference is REFUSED, not resolved (spec §2h).
+            # ⚑ A ``{pref.…}`` reference is REFUSED, not resolved (spec §2h).
             # RAISED rather than answered ``_ABSENT``: absent would silently DROP
             # the referring key (spec §0), the failure class this phase exists to
             # eliminate. ``_expand_node`` catches it into the lenient error map.
@@ -849,7 +849,7 @@ class _Expander:
                 f"value (spec §2h). Reference the TARGET key instead."
             )
         if dotted.startswith("config."):
-            # @config.* → the Layer-1 foundation (prefix-driven; single-route).
+            # {config.*} → the Layer-1 foundation (prefix-driven; single-route).
             return self._ctx.config.get(dotted, _ABSENT)
         node: object = self._snapshot
         segments = dotted.split(".")
@@ -878,9 +878,9 @@ class _Expander:
     ) -> str:
         """Substitute embedded tokens in *value* via ``expand_expr`` (spec §0).
 
-        An ``@``-ref token resolves through :meth:`_lookup_str` (absent/None →
+        A ``{key}``-ref token resolves through :meth:`_lookup_str` (absent/None →
         ``""``, a None also RECORDED in *none_refs*, and a :func:`deferred_literal_expr` under
-        ``space="defer"``); ``~``/``$VAR`` expand host-side for ``space="host"`` and are
+        ``space="defer"``); ``~``/``{$VAR}`` expand host-side for ``space="host"`` and are
         left RAW (``defer_env=True``) for ``space="defer"`` (S17). A cycle reached
         through an embedded token still raises (B7). ONE scanner serves both spaces —
         no fork; the deferral is the engine's additive ``defer_env`` flag.

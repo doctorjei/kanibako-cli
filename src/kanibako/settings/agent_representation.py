@@ -7,7 +7,7 @@ parallel descriptor mount route.
 
 ⚑ PURE, and each half is load-bearing: no filesystem access (no existence check —
 the ``AGENT_CRITICAL`` must-exist safe-fail is a CONSUMER concern, S26), no override
-application (``override=""``, S26), no ``@``/``$XDG``/``~`` expansion (spec §0 "Files store
+application (``override=""``, S26), no ``{key}``/``{$XDG_*}``/``~`` expansion (spec §0 "Files store
 entries UNRESOLVED"), and no canonicalization of a host source (R-11). Only ``box_dest`` is
 normalized.
 
@@ -167,7 +167,7 @@ def agent_categories_for_node(
     BOTH halves move, and re-keying alone is not the fix (ruled 2026-08-27):
 
     * the KEY, so the §2d pick sees it;
-    * the SOURCE root, so the bind resolves through ``@meta.agent.<NODE>.path`` — a
+    * the SOURCE root, so the bind resolves through ``{meta.agent.<NODE>.path}`` — a
       SYMLINK that ``commands.start.ensure_persona_share_symlinks`` lays at the
       harness's real store. Sharing happens THROUGH that link, and *"the user can
       change the symlink to a directory or real target"*: replacing it is how a
@@ -181,8 +181,8 @@ def agent_categories_for_node(
     bug above is back.
 
     ⚑ The re-root is deliberately NARROW: only a source rooted at the harness's own
-    STORE (spec §2a's agent DECLARATION ROOT) moves. An absolute / ``~`` / ``$var`` /
-    unrelated ``@``-ref source is carried VERBATIM (spec §2a) — a plugin naming the
+    STORE (spec §2a's agent DECLARATION ROOT) moves. An absolute / ``~`` / ``{$var}`` /
+    unrelated ``{key}``-ref source is carried VERBATIM (spec §2a) — a plugin naming the
     host's real ``~/.claude`` means that dir for every node.
 
     ⚑ A value that is not a dict (a scalar source key) is re-keyed and carried
@@ -226,7 +226,7 @@ def _reroot_arm(
 
 
 def harness_store_root(node: str) -> str:
-    """The ``@``-ref DECLARATION ROOT of *node*'s whole agent store (spec §2a)."""
+    """The ``{key}``-ref DECLARATION ROOT of *node*'s whole agent store (spec §2a)."""
     # ⚑ Read from the ONE copy of the spec's table rather than spelled here, and it is
     # the WHOLE store root, not a category's: ``common`` is one entry under it and the
     # rule below has to hold for every other entry a plugin may name.
@@ -236,8 +236,8 @@ def harness_store_root(node: str) -> str:
 def harness_store_leaf(host_src: object, harness: str) -> str | None:
     """The store-relative path *host_src* names under *harness*'s store root, else ``None``.
 
-    ``@meta.agent.claude.path/common/plugins`` → ``"common/plugins"`` for harness
-    ``claude``; ``@meta.agent.claude.path/seedsrc`` → ``"seedsrc"``.
+    ``{meta.agent.claude.path}/common/plugins`` → ``"common/plugins"`` for harness
+    ``claude``; ``{meta.agent.claude.path}/seedsrc`` → ``"seedsrc"``.
 
     ⚑ THE ONE PLACE THIS RULE IS WRITTEN, and it has two consumers that would otherwise
     each invent it: :func:`_reroot_arm`, which re-roots a persona's inherited source,

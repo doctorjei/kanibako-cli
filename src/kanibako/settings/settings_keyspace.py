@@ -209,9 +209,9 @@ DECLARED_WORKSET_AUTH_LEAVES: Final[frozenset[str]] = frozenset({
 
 #: ``workset.channels.<leaf>`` (spec §2c). TWO sub-families make up the set:
 #: the workset-LOCAL type roots (``common``/``chat``/``broadcast``/``share`` —
-#: primary+named only, rooted at ``@workset.channelroot``) and the ALL-PROJECTS
+#: primary+named only, rooted at ``{workset.channelroot}``) and the ALL-PROJECTS
 #: per-workset ADDRESSES into the SYSTEM stores (``mailboxes``/``share_global``
-#: — ``@system.channels.{mailboxes,share}/@meta.workset.name``, present in
+#: — ``{system.channels.{mailboxes,share}}/{meta.workset.name}``, present in
 #: EVERY mode, keyed ``__PRIMARY__`` | ``<named>`` | ``__STANDALONE__``).
 #: Mailboxes still AGGREGATE at system only (§2f) — the workset leaf is the
 #: workset's declared ADDRESS into that aggregate, not a second aggregate,
@@ -512,7 +512,7 @@ DECLARED_META_WORKSET_LEAVES: Final[frozenset[str]] = frozenset({
     "path", "name", "settings",
 })
 # ⚑ `home` IS produced — `settings_launch.workset_anchor_floor`, beside the
-# `@meta.box.path` it derives from — and it is the ONLY spelling of that
+# `{meta.box.path}` it derives from — and it is the ONLY spelling of that
 # derivation: home does NOT route through `bindings.rw` (spec `:1015`), so the
 # assembly seam builds the pid-0 foundation bind by READING this key, and every
 # launch's home mount resolves through it.
@@ -2193,7 +2193,7 @@ def container_notes(
     the SPEC's and cannot depend on what a given session happened to write beneath
     it. An empty ``box: {}`` scope table in a settings file is a scope table, not a
     fabrication; so is a ``meta.box.agent`` whose only child was dropped (spec §0) when
-    its @-ref referent was absent. ⚑⚑ THIS REPLACES A DEPTH TEST. The rule used to
+    its {key}-ref referent was absent. ⚑⚑ THIS REPLACES A DEPTH TEST. The rule used to
     read ``len(segments) == 1``, which is a POSITIONAL PROXY for namespace-hood: it
     rescued ``meta`` and reported ``meta.box.agent``, though the spec calls both a
     namespace one sentence apart (:42, §2b). Ask the keyspace, do not count segments.

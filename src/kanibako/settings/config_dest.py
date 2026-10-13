@@ -333,7 +333,7 @@ def noun_settings_file(
 #: ``system.setup_completed`` — a rule that existed only because the marker's STORAGE
 #: (the config file) disagreed with its DECLARATION (spec §2g: a Layer-2 ``system.*``
 #: SETTINGS key).  Jei closed the delta by moving the storage: the marker is written to
-#: and read from ``@config.settings`` like ``system.agent``, so it routes through
+#: and read from ``{config.settings}`` like ``system.agent``, so it routes through
 #: ``_KEY_ROUTES`` under ``SCOPED`` and the class has no members left.
 #: 🛑 THERE IS NO "WRITE THE CONFIG FILE" RULE AND THERE MUST NOT BE ONE: ``config.*``
 #: keys LOCATE the files everything else lives in and are refused from every scope

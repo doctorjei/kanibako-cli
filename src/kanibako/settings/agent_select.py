@@ -14,7 +14,7 @@ much with a NARROW pre-pass
 a key.
 
 ⚑ Whatever wins is INSTALLED at ``system.agent`` as the §1A top-most level,
-unconditionally — separate readers dereference ``@system.agent``, so the snapshot
+unconditionally — separate readers dereference ``{system.agent}``, so the snapshot
 MUST agree with the process that runs.
 
 🛑 **IF NOTHING NAMES AN AGENT, NOTHING LAUNCHES — THE INSTALLED-AGENT COUNT IS NOT
@@ -65,7 +65,7 @@ class AgentSelection:
 
     ⚑ **The ``has_agent`` / ``target is None`` guards below are KEPT, and NOT
     because ``shell`` is coming.** Keyspec §2b makes the plain-shell box an
-    effective ``@system.agent`` of ``shell`` — a NAMED node (``meta.agent.shell.name
+    effective ``{system.agent}`` of ``shell`` — a NAMED node (``meta.agent.shell.name
     = "shell"``, §2d) — so a D2 selection is ``node="shell"`` and ``has_agent`` is
     TRUE for it. The guards stay because ``""`` still means opposite things on the
     two sides of the target seam, holding that shape costs one conjunct, and the
@@ -112,11 +112,11 @@ def launch_resolve_ctx(std, proj, agent_name: "str | None"):
 
     The ONE ctx builder for every snapshot resolve —
     ``settings_launch.resolve_inputs`` calls this too, so the selection pre-pass and
-    the launch snapshot cannot drift in what ``@config.*`` / ``$XDG_*`` / ``~`` mean.
+    the launch snapshot cannot drift in what ``{config.*}`` / ``{$XDG_*}`` / ``~`` mean.
     The llm-doc carries the §1A resolver SPLIT and the xdg map's shape.
 
     ⚑ *agent_name* is ``None`` for the SELECTION pass — no agent is known yet, so a
-    ``$AGENT`` resolves to a recorded refusal rather than to a silent ``""``.
+    ``{$AGENT}`` resolves to a recorded refusal rather than to a silent ``""``.
     """
     return host_resolve_ctx(std, proj.group, agent_name)
 
@@ -150,7 +150,7 @@ def host_resolve_ctx(std, group: "_WorksetGroup | None", agent_name: "str | None
         # ⚑⚑ BOTH MAPS ARE DERIVED BUILDERS, NEITHER IS A LITERAL HERE. The
         # ``config=`` half used to be five string literals, and ``CONFIG_PATH_DEFAULTS``
         # has declared SIX since ``config.journal`` landed the day after they were
-        # written: a binding sourced at ``@config.journal`` was accepted by ``config
+        # written: a binding sourced at ``{config.journal}`` was accepted by ``config
         # set`` and DROPPED at launch, silently, rc 0. ``paths.host_config_map`` derives
         # the tier from the declared table, so the two cannot part again.
         xdg=host_xdg_map(std.data_home),

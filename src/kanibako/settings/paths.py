@@ -132,7 +132,7 @@ class StandardPaths:
     channels_broadcast: Path | None
     channels_mailboxes: Path | None
     channels_share: Path | None
-    # PRIMARY-workset box store: ``@config.primary_workset/boxes`` (per-box meta + shell).
+    # PRIMARY-workset box store: ``{config.primary_workset}/boxes`` (per-box meta + shell).
     boxes: Path
     # PRIMARY-workset vault roots.  ⚑ ``None`` when the PRIMARY workset nulls the arm:
     # no such dir, so no vault bind and no per-box vault leaf.
@@ -157,7 +157,7 @@ class ProjectGroup:
 
 
 class _WorksetRooted(Protocol):
-    """Structural type for "anything rooted at ``@meta.workset.path``"."""
+    """Structural type for "anything rooted at ``{meta.workset.path}``"."""
     @property
     def root(self) -> Path: ...
 
@@ -169,12 +169,12 @@ def workset_settings_path(group: None) -> None: ...
 
 
 def workset_settings_path(group: _WorksetRooted | None) -> Path | None:
-    """THE workset-tier settings-file derivation: ``@meta.workset.path/workset.yaml`` (spec §2c)."""
+    """THE workset-tier settings-file derivation: ``{meta.workset.path}/workset.yaml`` (spec §2c)."""
     return group.root / WORKSET_META_FILE if group is not None else None
 
 
 def _default_project_group(std: StandardPaths) -> ProjectGroup:
-    """The PRIMARY (default) workset's :class:`ProjectGroup`, rooted at ``@config.primary_workset``."""
+    """The PRIMARY (default) workset's :class:`ProjectGroup`, rooted at ``{config.primary_workset}``."""
     return ProjectGroup(name="default", root=std.primary_workset,
                         is_default=True, local_shared_base=std.data_path)
 
@@ -273,7 +273,7 @@ def standalone_store_teardown_plan(
     ``workset.yaml`` repoints elsewhere is the USER'S OWN directory, wherever it sits,
     and no verb ``rm -rf``\\ s it on their behalf.  A value inherited from the SYSTEM
     tier is not that nomination, so it stays removable.  BOTH ENDS ARE RESOLVED: the key
-    is answered as it was SPELLED, so ``@meta.workset.path/../store`` or a symlinked
+    is answered as it was SPELLED, so ``{meta.workset.path}/../store`` or a symlinked
     parent reads as a descendant while sitting outside the root.  ``None`` on either arm
     means nothing to act on.
     """
@@ -327,7 +327,7 @@ def _box_settings_files(mode: BoxMode, metadata_path: Path,
                         early: EarlyScope | None = None) -> tuple[Path, Path | None]:
     """THE ``(box_tier, workset_tier)`` settings-file derivation (spec §2c) — spelled ONCE.
     ⚑ The box tier is non-optional BY TYPE; do not widen the return to ``Path | None``.
-    ⚑ *group* is anything rooted at ``@meta.workset.path``: a :class:`ProjectGroup` OR a
+    ⚑ *group* is anything rooted at ``{meta.workset.path}``: a :class:`ProjectGroup` OR a
     :class:`WorksetSpec`, since the NAMED resolver builds its group only at return time."""
     if mode is BoxMode.standalone:
         assert early is not None, "the standalone store is resolved, so it needs its scope"
@@ -579,7 +579,7 @@ def spec_default_xdg_map(data_home: Path | None) -> dict[str, str]:
     ⚑ Side-effect-free: unlike ``XDG_RUNTIME_DIR`` (see :func:`_fallback_runtime_dir`), none of
     these four ever mkdir a fallback dir — :func:`resolve_data_path` relies on that to stay total.
     ⚑ PUBLIC for the second caller that needs exactly that guarantee:
-    ``settings/workset_dirkeys.py`` resolves ``$XDG_*`` inside the ancestor WALK, where a
+    ``settings/workset_dirkeys.py`` resolves ``{$XDG_*}`` inside the ancestor WALK, where a
     mkdir-and-warn on a directory that turns out not to be a workset is a real side effect.
     It is the SAME builder, not a copy — :func:`host_xdg_map` still wraps it.
     """
@@ -639,7 +639,7 @@ def _refuse_bare_relative(key: str, raw: object, default: str, *,
     """Refuse a Layer-1/Layer-2 path key whose STORED value is a bare relative ([R147]).
 
     ⚑⚑ THE TEST IS ON THE STORED SPELLING, NOT ON WHAT IT RESOLVED TO, and the
-    difference is load-bearing.  [R147] rules on the value a user WROTE: ``$XDG_DATA_HOME
+    difference is load-bearing.  [R147] rules on the value a user WROTE: ``{$XDG_DATA_HOME}
     /kanibako`` is a legal stored value even in an environment where that variable
     answers something odd, and refusing it there would report a KEY defect for an
     ENVIRONMENT one — with a "did you mean" line that pastes the token back into itself.
@@ -711,8 +711,8 @@ def _resolve_system_path_keys(set_values: Mapping[str, str | None], keys: Iterab
     needs one key and passes :func:`spec_default_xdg_map`, which never resolves
     ``XDG_RUNTIME_DIR`` (whose fallback can mkdir and warn).  The *xdg_vars* argument is
     what lets the two share this resolve instead of keeping a copy each.
-    ⚑ *keys* narrows what is RETURNED, not what is REACHABLE: the ``@``-ref lookup below
-    still sees the whole table, so a stored ``@system.<other>`` resolves for a one-key
+    ⚑ *keys* narrows what is RETURNED, not what is REACHABLE: the ``{key}``-ref lookup below
+    still sees the whole table, so a stored ``{system.<other>}`` resolves for a one-key
     caller exactly as it does for the full pass.
     """
     # Split the merged set-values by layer prefix.  ⚑ ``config.*`` is not narrowed to text
@@ -734,14 +734,14 @@ def _resolve_system_path_keys(set_values: Mapping[str, str | None], keys: Iterab
     # This cell is how the null travels instead: ``lookup`` records the ref, and the key
     # being resolved is then omitted whole, which is what §0 says an embedded reference
     # to a present ``<None>`` means.  ⭐ MEASURED, not hypothetical: without it
-    # ``system.channels.broadcast`` (``@system.channels.chat/broadcast.md``) resolved to
+    # ``system.channels.broadcast`` (``{system.channels.chat}/broadcast.md``) resolved to
     # the path ``None/broadcast.md`` under a null chat, and the chat seeder created that
     # directory in the CWD.  ⚑ REBOUND PER KEY below — a null referent nulls only the
     # value that NAMES it, never a sibling that happens to resolve after it.
     nulled: set[str] = set()
 
     def lookup(ref: str, chain: tuple[str, ...]) -> str:
-        # Resolver SPLIT (spec §1A / JC-2), prefix-driven: ``@config.*`` vs ``@system.*``.
+        # Resolver SPLIT (spec §1A / JC-2), prefix-driven: ``{config.*}`` vs ``{system.*}``.
         if ref.startswith("config."):
             try:
                 return config[ref]
@@ -756,7 +756,7 @@ def _resolve_system_path_keys(set_values: Mapping[str, str | None], keys: Iterab
         # system.* config paths are always scalar strings; narrow the ``object``-typed value.
         return expand_expr(str(rv.value), space="host", ctx=ctx, lookup=lookup, chain=chain)
 
-    # Layer 2 system path keys, resolving ``@config.*`` via the foundation.
+    # Layer 2 system path keys, resolving ``{config.*}`` via the foundation.
     resolved: dict[str, Path] = {}
     # ⚑⚑ THE ASYMMETRY, IN ONE PLACE, BECAUSE IT IS ONE DECISION AND NOT TWO.
     # ``system.channels.broadcast: null`` WRITTEN is REFUSED — it is not a standard-bind
@@ -822,10 +822,10 @@ def _resolve_system_tier(set_values: Mapping[str, str | None], *, data_home: Pat
     for key, val in config.items():
         resolved[key] = Path(val)
 
-    # PRIMARY-workset box/vault/logs roots, derived from ``@config.primary_workset``.
+    # PRIMARY-workset box/vault/logs roots, derived from ``{config.primary_workset}``.
     # ⚑⚑ ALL FOUR ARE RESOLVED, NOT COMPOSED.  There are no ``system.{boxes,logs,vault_*}``
     # keys at all (spec ``:335``) — these are SURROGATES for the PRIMARY workset's
-    # ``@workset.{boxes,logs,vault_ro,vault_rw}``, which are declared, CLI-settable and
+    # ``{workset.{boxes,logs,vault_ro,vault_rw}}``, which are declared, CLI-settable and
     # repointable in EVERY mode (§2c ALL PROJECTS, R-29).  Composing them here answered
     # the key a second way: the settings file accepted a repoint and the filesystem
     # ignored it.  ⚑ The PRIMARY workset root is an ordinary workset root and carries an
@@ -878,7 +878,7 @@ def host_config_map(std: StandardPaths) -> dict[str, str]:
     """THE single builder for the ``config=`` argument of every host-side ``ResolveCtx``.
 
     The Layer-1 CONFIG-key foundation projected BACK onto its own dotted key names, so
-    a stored ``@config.*`` source resolves at launch; each value is the resolved path as a
+    a stored ``{config.*}`` source resolves at launch; each value is the resolved path as a
     :func:`~kanibako.settings.settings_resolve.literal_expr`.  The Layer-1 twin of
     :func:`system_path_floor`, and the ``config=`` twin of :func:`host_xdg_map` — a host
     ctx is built from those two and nothing else.
@@ -888,7 +888,7 @@ def host_config_map(std: StandardPaths) -> dict[str, str]:
     ``commands/workset_cmd._print_effective_shares``, five string literals each — and the
     table has held SIX keys since ``config.journal`` was declared the day after those
     literals were written.  So ``config set config.journal=…`` was accepted, and a binding
-    sourced at ``@config.journal`` resolved at SET time and reached ``_ABSENT`` at launch:
+    sourced at ``{config.journal}`` resolved at SET time and reached ``_ABSENT`` at launch:
     the key was dropped with no message and rc 0.  That is the ``system.channels.broadcast``
     shape exactly, one layer down — two carriers of one shape, with nothing comparing them.
     Deriving the key set means a Layer-1 key declared tomorrow reaches every host ctx
@@ -933,14 +933,14 @@ def _floor_field(key: str) -> str:
 def system_path_floor(std: StandardPaths) -> dict[str, str | None]:
     """The RESOLVED Layer-2 ``system.*`` path tier, keyed by its own dotted key names.
 
-    Every consumer folds this into a floor so a stored ``@system.*`` source resolves.
+    Every consumer folds this into a floor so a stored ``{system.*}`` source resolves.
     Each value is the corresponding ``std`` attribute as a
     :func:`~kanibako.settings.settings_resolve.literal_expr` — the same flat foundation
-    resolves both — so an ``@``-ref-routed bind is byte-identical to a runtime-probed
+    resolves both — so a ``{key}``-ref-routed bind is byte-identical to a runtime-probed
     literal.
 
     ⭐ A NULL KEY IS A REAL ``None`` HERE, and that is the whole point of the map: a
-    STANDARD bind's source is an ``@``-ref into it, so a present ``<None>`` makes the
+    STANDARD bind's source is a ``{key}``-ref into it, so a present ``<None>`` makes the
     embedded reference ``<None>`` (spec §0) and the bind COLLAPSES — the omission §2a
     asks for.  A ``"None"`` string would instead name a directory called ``None``.
 
@@ -952,7 +952,7 @@ def system_path_floor(std: StandardPaths) -> dict[str, str | None]:
     ``system.channels.broadcast``, so a binding sourcing that declared key collapsed to
     ``None`` and was DROPPED with no message and rc 0; the display map omitted all five
     ``system.channels.*`` leaves, so a workset binding sourcing
-    ``@system.channels.chat`` mounted at launch and did not appear in ``--effective``.
+    ``{system.channels.chat}`` mounted at launch and did not appear in ``--effective``.
     A display that lies about what a launch does is precisely what those comments
     existed to prevent, and a hand list on each side is how they failed to.
 
@@ -962,7 +962,7 @@ def system_path_floor(std: StandardPaths) -> dict[str, str | None]:
     ``system.cache`` and ``system.runtime`` — declared, manifest-defaulted, CLI-settable,
     and resolved by the SET-time tier (``config_interface._path_tier_split``) — answered
     ``__MISSING__`` in every launch snapshot.  ``config set`` therefore ACCEPTED a
-    binding sourced at ``@system.cache`` and the launch dropped it with no message and
+    binding sourced at ``{system.cache}`` and the launch dropped it with no message and
     rc 0: the ``system.channels.broadcast`` shape again, one omission over.  [R143]
     settles that it is a defect rather than a report — *"if it has a default value, yes,
     thay value should be placed in the keystore"* — universally, with no exemption list.
@@ -1038,12 +1038,12 @@ def _path_tier_set_values(user_config_path: Path, *, data_home: Path, home: Path
     ``update`` BELOW.  ``system.{template,canon,runtime,cache,backup,channelroot}`` and
     ``system.channels.*`` are Layer-2 SETTINGS keys (spec §2g: "set in settings files at
     the ``system`` cascade level"), and ``config set system.canon=…`` writes them to
-    ``@config.settings`` — the tier that must reach them, or a repoint is accepted,
+    ``{config.settings}`` — the tier that must reach them, or a repoint is accepted,
     persisted, and half-effective.  A settable key whose set does not reach the thing it
     names is worse than a refusal, because it never confesses.
 
     ⚑ THE LAYER-1 RESOLVE RUNS TWICE ON PURPOSE, and it is not a wasted read: locating the
-    settings file IS ``@config.settings``, so the foundation must resolve before the file
+    settings file IS ``{config.settings}``, so the foundation must resolve before the file
     can be opened.  The second pass is the caller's own, over the values returned here;
     :func:`resolve_config_paths` is a pure dict resolve over set-values already in hand, so
     it reopens nothing.
@@ -1164,7 +1164,7 @@ def resolve_data_path(*, config_home: Path | None = None,
     deliberately NOT ``host_xdg_map``) rather than the full Layer-1 resolve's usual map: resolving
     ``XDG_RUNTIME_DIR`` can mkdir a fallback dir when unset, and this function must create
     nothing. The one case that misses: a hand-edited config expression referencing
-    ``$XDG_RUNTIME_DIR`` (no shipped default does) degrades to the default rather than
+    ``{$XDG_RUNTIME_DIR}`` (no shipped default does) degrades to the default rather than
     resolving it — an acceptable trade for staying total and side-effect-free.
     """
     ch = config_home if config_home is not None else user_config_home()
@@ -1219,7 +1219,7 @@ def resolve_state_path(*, config_home: Path | None = None,
     ⚑ Side-effect-free by :func:`resolve_data_path`'s route, for the same reason: the
     ``xdg`` map is :func:`spec_default_xdg_map`, which never resolves ``XDG_RUNTIME_DIR``
     (whose fallback can mkdir a directory and warn).  ONE case misses because of it — a
-    ``system.state`` a user stored as an expression over ``$XDG_RUNTIME_DIR`` degrades to
+    ``system.state`` a user stored as an expression over ``{$XDG_RUNTIME_DIR}`` degrades to
     the default instead of resolving — the same trade, made the same way.
     """
     ch = config_home if config_home is not None else user_config_home()
@@ -1486,7 +1486,7 @@ def _workset_box_paths(metadata_path: Path, vault_ro_base: Path | None,
     ⚑ The two bases are the RESOLVED ``workset.{vault_ro,vault_rw}`` — one arm each,
     because either may be repointed independently of the other, and either may be a
     present ``<None>``.  Only the per-box
-    ``@meta.box.name`` LEAF is composed here; that leaf is the whole per-mode variation.
+    ``{meta.box.name}`` LEAF is composed here; that leaf is the whole per-mode variation.
     """
     shell = metadata_path / HOME_PATH
     return (shell,
@@ -1527,7 +1527,7 @@ def helper_log_path(std: StandardPaths, proj: ProjectPaths) -> Path | None:
     and the helper-log bind is omitted (companion, "The helper-log bind").
 
     ⚑⚑ THIS IS THE HUB'S WRITER, and the MOUNT it must agree with is the spec's own
-    spelling ``@workset.logs/@{meta.box.name}.jsonl`` (``data/rom/settings/core-defaults.yaml``,
+    spelling ``{workset.logs}/{meta.box.name}.jsonl`` (``data/rom/settings/core-defaults.yaml``,
     ``helpers``).  ⚑ ALL THREE arms RESOLVE the key, so there is one answer in every mode.
     STANDALONE resolves it against the degenerate workset rooted at the project dir.
     """
@@ -1603,7 +1603,7 @@ def standalone_logs_dir(root: Path, *, early: EarlyScope) -> Path | None:
     """The resolved ``workset.logs`` of the standalone box rooted at *root*.
 
     *root* is the workset root of the degenerate workset, so the key is read from the
-    root ``workset.yaml``; its default is ``@workset.boxes`` = ``box_data/``.  ``None``
+    root ``workset.yaml``; its default is ``{workset.boxes}`` = ``box_data/``.  ``None``
     when the key is a present ``<None>``.
     """
     # ⚑ Deferred import: the documented ``settings.paths`` <-> ``project.workset`` cycle.
@@ -1758,8 +1758,8 @@ def write_vault_gitignore(vault_root: Path, vault_rw_path: Path) -> None:
     (``project/workset.py::_VAULT_LEAF``), and the same file ``standalone_vault_teardown``
     clears.  ``vault_ro_path.parent`` was that position, and ``workset.vault_ro`` is a
     repointable key, so the parent stopped being the skeleton the moment it moved:
-    ``vault_ro: @meta.workset.path/store/ro`` named ``<root>/store`` — a directory no key
-    gave us — and in PRIMARY the arm carries a ``@meta.box.name`` leaf, so the parent was
+    ``vault_ro: {meta.workset.path}/store/ro`` named ``<root>/store`` — a directory no key
+    gave us — and in PRIMARY the arm carries a ``{meta.box.name}`` leaf, so the parent was
     the ``ro`` arm ITSELF, where an ``rw/`` pattern matches nothing.
 
     ⚑ The file's entire content is a CLAIM that ``rw/`` is a child of the skeleton, so it is

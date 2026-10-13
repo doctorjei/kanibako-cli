@@ -80,7 +80,7 @@ class ConfigLevel(Enum):
 #: The setup VERSION MARKER (spec §2g) — spelled ONCE, here.
 #: ⚑⚑ THE STORAGE/DECLARATION DELTA IS CLOSED (Jei, 2026-08-26).  Spec §2g declares this a
 #: Layer-2 ``system`` SETTINGS key, and the code now stores it as one: ``setup`` writes it
-#: to ``@config.settings`` (``setup_cmd._write_setup_marker``) and the staleness gate reads
+#: to ``{config.settings}`` (``setup_cmd._write_setup_marker``) and the staleness gate reads
 #: it from there (``config.read_setup_completed``), so it is an ORDINARY ``system.*`` key
 #: routed through :data:`_KEY_ROUTES` beside ``system.agent``.
 #: 🛑 It kept its own destination RULE (``config_dest._BOOTSTRAP``) and its own read family
@@ -164,7 +164,7 @@ KNOWN_CONFIG_KEYS: frozenset[str] = frozenset({
     "workset.template",
     # Per-workset CANON CONTRIBUTION root, the ``canon_hb_workset`` bind SOURCE (spec §2c).
     "workset.canon",
-    # Per-BOX canon contribution root (spec §2b). ⚑ ``@box.canon`` is NOT ``~/canon`` — llm-docs.
+    # Per-BOX canon contribution root (spec §2b). ⚑ ``{box.canon}`` is NOT ``~/canon`` — llm-docs.
     "box.canon",
     # Workset kuid + advisory-check toggle (settings-conformance P6d).
     "workset.kuid",
@@ -179,7 +179,7 @@ KNOWN_CONFIG_KEYS: frozenset[str] = frozenset({
     "config.journal",
     # Layer-2 system.* path SETTINGS (the ``system:`` table of the SYSTEM SETTINGS
     # file, spec §2g).  ``global`` is ELIMINATED (children inline
-    # ``@config.data/global/...``).
+    # ``{config.data}/global/...``).
     "system.backup",
     "system.channelroot",
     # M-11: ``system.base_template`` → ``system.template``, RETIRED not aliased.
@@ -495,10 +495,10 @@ def path_key_anchor(canonical: str) -> "tuple[str, str]":
     * a Layer-1/Layer-2 path key takes its own declared default's leading token, exactly
       as ``paths._refuse_bare_relative`` derives it (P13 — a key added to either table
       carries its own anchor here with no edit);
-    * every ``workset.*`` path key takes ``@meta.workset.path``, which is what
+    * every ``workset.*`` path key takes ``{meta.workset.path}``, which is what
       ``workset_dirkeys.resolve_workset_dir_key`` names for all of them — the six
       ``channels.*`` leaves included, since ``channels.py`` resolves them through that
-      same seam rather than through ``@workset.channelroot``;
+      same seam rather than through ``{workset.channelroot}``;
     * the rest take their spec §2a DECLARATION ROOT
       (:data:`~kanibako.settings.settings_categories.DECLARATION_ROOT_REF`).
 
@@ -538,7 +538,7 @@ def agent_node_of(canonical: str) -> str:
     the only place that says so.  ``agent set`` is handed the node; ``system set
     agent.<node>.canon=…`` holds it nowhere but the key, and without it the set-time
     snapshot floors no ``meta.agent.<node>.path`` — so a value spelled against the very
-    store root the write lands in is refused as a dangling ``@``-reference.
+    store root the write lands in is refused as a dangling ``{key}``-reference.
 
     ⚑ DERIVED FROM THE SAME TWO PARSERS :func:`path_key_anchor` CONSULTS, in the same
     order, so the anchor a refusal NAMES and the anchor the set-time floor PROVIDES cannot
@@ -1404,7 +1404,7 @@ def is_config_file_only_key(key: str) -> bool:
     # refusal telling the user to hand-edit the file the CLI could have written. This
     # predicate answers only "does a READ come from the config file".
     # ⚑⚑ ``config.*`` IS THE WHOLE FAMILY (2026-08-26). :data:`SETUP_MARKER_KEY` was the
-    # last non-``config.*`` member and its STORAGE moved to ``@config.settings`` (spec
+    # last non-``config.*`` member and its STORAGE moved to ``{config.settings}`` (spec
     # §2g), so it reads through ``_KEY_ROUTES`` like every other setting. What is left is
     # exactly spec §1's Layer-1 set — which is the definition, not a coincidence.
     # ⚑ set/reset short-circuit ``config.*`` earlier (B2) with their own ruled message.

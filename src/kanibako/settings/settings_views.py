@@ -472,7 +472,7 @@ class MetaBoxView(FiniteView):
     """Typed finite view over the ``meta.box`` NODE (block B1 + B2).
 
     The RO identity anchors materialized for the box (spec §2c; §0 meta-RO).
-    ``mode`` is surfaced from ``@meta.runtime.project_type`` (spec §2b — it was
+    ``mode`` is surfaced from ``{meta.runtime.project_type}`` (spec §2b — it was
     the settable ``box.mode``); ``workspace`` / ``inbox`` are the dests that
     ``box.bindings.rw`` routes through. ``container`` / ``helper_num`` are
     a non-bind RENDER and are NOT materialized here (JC-B2-3).
@@ -497,7 +497,7 @@ class MetaWorksetView(FiniteView):
 
     ``name`` is the partition token (``__PRIMARY__`` / ``<named>`` /
     ``__STANDALONE__``); ``path`` and ``settings`` both re-root off the single
-    source ``@meta.runtime.ws_root``.
+    source ``{meta.runtime.ws_root}``.
     """
 
     path: Path = typed_field(as_path)  # type: ignore[assignment]
@@ -508,9 +508,9 @@ class MetaWorksetView(FiniteView):
 class MetaAgentView(FiniteView):
     """Typed finite view over a ``meta.agent.<agent>`` NODE (block B2 + B5, spec §2d).
 
-    ``path`` is the agent STORE ROOT (``@config.agents/<agent>``) and doubles as
+    ``path`` is the agent STORE ROOT (``{config.agents}/<agent>``) and doubles as
     §2a's agent DECLARATION ROOT, so an abstract-category source storing
-    ``@meta.agent.<agent>.path/<category>/<leaf>`` resolves for real. The
+    ``{meta.agent.<agent>.path}/<category>/<leaf>`` resolves for real. The
     B5-materialized trio (§3.3 rulings) is ``settings`` (the agent-tier cascade
     FILE), ``mode`` (the harness's INTERACTIVE launch grammar) and ``exec`` (the
     STANDALONE one-shot fragment).

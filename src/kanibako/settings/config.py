@@ -34,7 +34,7 @@ BOX_META_FILE = "box.yaml"
 WORKSET_META_FILE = "workset.yaml"
 # Agent-tier settings cascade file, INSIDE the per-agent store dir (spec §2d
 # meta.agent.<agent>.settings).  ⚑ The SYSTEM tier is NOT here: it stays
-# @config.settings = global/settings.yaml.
+# {config.settings} = global/settings.yaml.
 AGENT_META_FILE = "agent.yaml"
 # tweakcc's own config file, inside its config dir (``TWEAKCC_CONFIG_DIR``).
 TWEAKCC_CONFIG_FILE = "config.json"
@@ -185,9 +185,9 @@ def bootstrap_config_paths(path: Path) -> dict[str, str]:
     TAIL, so ``config: {nonsense: /x}`` and ``config: {box: {image: X}}`` were carried to
     :func:`~kanibako.settings.paths.resolve_config_paths`.  🛑 THEY WERE NOT MERELY DROPPED
     THERE: that function's OUTPUT loop iterates the DECLARED table, but its inner ``lookup``
-    resolves ``@``-refs against a ``LevelView`` built from the FILE's set-values — so an
+    resolves ``{key}``-refs against a ``LevelView`` built from the FILE's set-values — so an
     undeclared leaf was an undeclared NAME THE RESOLVER WOULD FOLLOW, and
-    ``data: "@config.nonsense/kanibako"`` beside ``nonsense: /srv/elsewhere`` really did
+    ``data: "{config.nonsense}/kanibako"`` beside ``nonsense: /srv/elsewhere`` really did
     root the store at ``/srv/elsewhere/kanibako`` (measured both sides, 2026-09-09).  The
     refusal was therefore narrower than spec §1 (*"The Layer-1 set is exactly the config
     keys in the table below"*) in one direction only: a bare ``nonsense`` was loud,
@@ -352,8 +352,8 @@ def box_scalar_defaults_floor() -> dict[str, object]:
     from the declared defaults is what spec §1/§2b sanction.  Those two were ONE
     expression until now — ``getattr(load_config(cf), field)`` is the file's value when
     the file speaks and the default when it does not — so they are SEPARATED here rather
-    than deleted.  🛑 Do not delete the floor itself: ``@box.image`` resolves through it,
-    and without it a stored ``@box.image`` dangles at launch AND at set time.
+    than deleted.  🛑 Do not delete the floor itself: ``{box.image}`` resolves through it,
+    and without it a stored ``{box.image}`` dangles at launch AND at set time.
 
     One recipe for ``settings_launch.fold_floor`` (every resolve),
     ``paths._narrow_box_scalar_cascade`` and ``config_interface._category_set_lookups``.
@@ -364,7 +364,7 @@ def box_scalar_defaults_floor() -> dict[str, object]:
         value = getattr(defaults, field_name)
         # ⚑ A declared ``<None>`` is SUPPLIED as a present ``None`` (spec §2b
         # ``box.shell | <None>``) — never ``""``, which is a value, and which a
-        # ``default_categories`` fold drops as a suppression, so ``@box.shell`` would
+        # ``default_categories`` fold drops as a suppression, so ``{box.shell}`` would
         # dangle.  A winning present ``None`` lands on the flat field as ``None``
         # (auto-detect), via ``settings_launch.resolve_box_scalars``.  ⚑ ``False`` is a VALUE and survives — ``False == ""`` is False.
         floor[dotted] = None if value == "" else value
@@ -391,7 +391,7 @@ def _typed_box_scalar(defaults: KanibakoConfig, field_name: str, value: object) 
 
 
 def _system_settings_path(global_path: Path) -> Path | None:
-    """``@config.settings`` off the Layer-1 file — the SYSTEM tier, or ``None`` if absent."""
+    """``{config.settings}`` off the Layer-1 file — the SYSTEM tier, or ``None`` if absent."""
     from kanibako.settings.paths import default_data_home, load_system_config
 
     path = load_system_config(
@@ -661,7 +661,7 @@ def agent_settings_of(data: dict, agent_name: str) -> dict[str, str]:
 
 
 def system_settings_path() -> Path:
-    """THE system SETTINGS file (``@config.settings``), resolved from Layer-1 alone.
+    """THE system SETTINGS file (``{config.settings}``), resolved from Layer-1 alone.
 
     ⚑ Path resolution only, deliberately NOT ``paths.load_std_paths``: that one
     RAISES when no Layer-1 file exists, which a pre-cascade reader may not do to a
@@ -678,7 +678,7 @@ def system_settings_path() -> Path:
 def read_system_agent(system_path: Path | None) -> str | None:
     """The stored ``system.agent`` SETTING from the system settings tier; ``None`` when unset.
 
-    ⚑ *system_path* is the SETTINGS file (``@config.settings``), NOT
+    ⚑ *system_path* is the SETTINGS file (``{config.settings}``), NOT
     ``kanibako.cfg``. ⚑ PRE-CASCADE reader — the LAUNCH does not use it.
     """
     if system_path is None or stat_unless_gone(system_path) is None:
@@ -702,7 +702,7 @@ SYSTEM_HELPERS_SECTION: "tuple[str, ...]" = ("system", "helpers")
 def read_system_helpers(settings_path: Path | None) -> dict[str, int]:
     """The ``system.helpers.*`` SPAWN BUDGET leaves from a settings document; empty when unset.
 
-    ⚑ *settings_path* is any document carrying a ``system`` tier — ``@config.settings``
+    ⚑ *settings_path* is any document carrying a ``system`` tier — ``{config.settings}``
     for a box's own budget, and the RO document a parent writes into a helper's home for
     the budget that helper was HANDED.  One shape, so one reader answers both.
     ⚑ A RAW reader, the third of this file's three (:func:`read_system_agent`,
@@ -752,7 +752,7 @@ def system_helpers_leaf_int(leaf: str, value: object, settings_path: Path | None
 def read_setup_completed(settings_path: Path | None) -> str | None:
     """The ``system.setup_completed`` marker from the SYSTEM SETTINGS file; ``None`` means "setup never run".
 
-    ⚑⚑ *settings_path* is ``@config.settings`` = ``<data>/global/settings.yaml``, NOT
+    ⚑⚑ *settings_path* is ``{config.settings}`` = ``<data>/global/settings.yaml``, NOT
     ``kanibako.cfg`` — the SAME file :func:`read_system_agent` reads and the
     launch cascade's system tier assembles from.  It moved there on 2026-08-26 (Jei:
     "there is no reason whatsoever that ``system.setup_completed`` should go in the
@@ -920,7 +920,7 @@ def resolve_agent(
             f"Or run 'kanibako agent list' to see installed agents."
         )
 
-    # Nothing resolved at ANY tier ⇒ @system.agent is UNSET: setup has never chosen
+    # Nothing resolved at ANY tier ⇒ {system.agent} is UNSET: setup has never chosen
     # an agent (spec §2b).  ⚑ ``installed`` is deliberately NOT consulted — the old
     # count rule launched the single installed agent implicitly, and that is the
     # behavior this refusal replaces.
@@ -1062,7 +1062,7 @@ def refuses_box_store_value(canonical: str, value: object) -> bool:
 def chain_reaches(
     value: object, targets: Iterable[str], *, key: str, stored: "Callable[[str], object]",
 ) -> list[str]:
-    """The *targets* the edited *value* of *key* REACHES on its own ``@``-chain, in walk order.
+    """The *targets* the edited *value* of *key* REACHES on its own ref chain, in walk order.
 
     ⚑ THE SPLIT, STATED ONCE.  The set door passes a file's bad entries as *targets* (spec
     §2a).  A bad entry in a file the command reads has two arms: one the edited value's own
@@ -1071,7 +1071,7 @@ def chain_reaches(
     about the value; the second is a question about the file, and belongs to the door.
 
     ⚑ TRANSITIVE, through DECLARED keys only.  The walk follows a ref to a value ``stored``
-    reads, so a chain of two hops (``@a.b`` whose value is ``@c.d``) reaches ``c.d``.  A ref
+    reads, so a chain of two hops (``{a.b}`` whose value is ``{c.d}``) reaches ``c.d``.  A ref
     that is itself a target ends the walk there — its value is not a key's value to follow.
     *stored* answers ``None`` for a name no file holds, and the walk stops.
 
@@ -1079,7 +1079,7 @@ def chain_reaches(
     no chain: neither the edited value of a text *key* nor the stored value of a text key a
     ref names is scanned, so the ``@host`` in ``https://user:key@host/v1`` is no ref.
 
-    ⚑ A WORKLIST, NOT RECURSION, so a ``@``-chain that loops back on itself terminates on
+    ⚑ A WORKLIST, NOT RECURSION, so a ref chain that loops back on itself terminates on
     the SEEN set.  A self-reference is therefore a chain that reaches itself once.
     """
     from kanibako.settings.settings_configset import holds_verbatim_text, scan_tokens
@@ -1275,14 +1275,14 @@ def system_path_ref_error(canonical: str, value: "str | None") -> "str | None":
     ⚑ THE SCOPE IS THE LAUNCH'S OWN SPLIT, never a list written here.
     ``paths._resolve_system_path_keys`` resolves a ``system.*`` path value through ONE
     lookup that consults the ``config.*`` foundation and the single ``system`` level and
-    nothing else, so a ``@box.*`` ref is unresolvable there — the launch reports it as
-    ``Unknown @-reference`` at EVERY seam.  This function expands the value through
+    nothing else, so a ``{box.*}`` ref is unresolvable there — the launch reports it as
+    ``Unknown reference`` at EVERY seam.  This function expands the value through
     :func:`kanibako.settings.config_interface._path_tier_split`, the same
     ``(config.*`` foundation, ``system.*`` floor) that lookup resolves against, and
     refuses a ref that split cannot see (system-design "Ordering rule": a key may
     depend only on key sets preceding it, or on its own set).  A
-    ``@config.*`` key or a system PATH key is inside that split and passes; any other
-    ``@system.*`` ref (``@system.agent``) is not, and is refused.
+    ``{config.*}`` key or a system PATH key is inside that split and passes; any other
+    ``{system.*}`` ref (``{system.agent}``) is not, and is refused.
     ⚑ THE MEMBERSHIP IS :data:`SYSTEM_PATH_DEFAULTS` — the very table ``paths.py``
     resolves the tier from (P13), so a key added to the tier is judged here with no edit.
     ``config.*`` keys are ``set: file`` with no CLI write route and are carried by the
@@ -1333,7 +1333,7 @@ def _resolution_set(dotted: str) -> "str | None":
 
 
 def ref_order_error(canonical: str, value: "str | None") -> "str | None":
-    """THE set-door refusal of an ``@``-ref naming a set resolved after *canonical*'s, or ``None``.
+    """THE set-door refusal of a ``{key}``-ref naming a set resolved after *canonical*'s, or ``None``.
 
     System-design "Ordering rule": a key may depend only on key sets PRECEDING it, or on its
     own set. The verdict reads the SPELLING, so it holds whether or not this command's cascade

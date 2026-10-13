@@ -6,9 +6,9 @@ that FINDS the workset the snapshot will later be built for.  So it cannot call
 :func:`kanibako.settings.settings_expand.expand`, which needs that snapshot.
 
 ⚑⚑ IT STILL MUST NOT GROW A SECOND GRAMMAR.  Files store entries UNRESOLVED (spec
-``:214`` — ``@``-refs and ``$XDG``/``~`` verbatim), so every one of these values may
+``:214`` — ``{key}``-refs and ``{$XDG_*}``/``~`` verbatim), so every one of these values may
 carry a token, and the spec's own per-mode DEFAULT for the layout keys is
-``@meta.workset.path/<leaf>`` (the two vault arms take a TWO-SEGMENT leaf,
+``{meta.workset.path}/<leaf>`` (the two vault arms take a TWO-SEGMENT leaf,
 ``vault/ro`` and ``vault/rw``).  A resolver that merely ``expanduser()``-ed the string
 turned that documented default into a literal directory named ``@meta.workset.path``
 — silently relocating the box store, while the launch snapshot resolved the same key
@@ -19,11 +19,11 @@ correctly.  Two carriers, two answers.
 NARROWED to the references that are knowable without a snapshot: :data:`WORKSET_PATH_REF`,
 whose value is the workset root the caller already holds, the scope's name, the ``system.*``
 paths, and the OTHER workset early keys, which this same route resolves (the spec's own
-channel defaults are ``@workset.channelroot/<leaf>``, a same-set reference the ordering
-rule allows).  The scanner's chain guards a cycle among them.  ``~`` and ``$XDG_*``
+channel defaults are ``{workset.channelroot}/<leaf>``, a same-set reference the ordering
+rule allows).  The scanner's chain guards a cycle among them.  ``~`` and ``{$XDG_*}``
 expand host-side exactly as they do at launch.  Every other reference is REFUSED BY NAME.
 A refusal that names the key and the token is a correct answer to "this cannot be
-resolved yet"; a directory called ``@config.registry`` is not.
+resolved yet"; a directory called ``{config.registry}`` is not.
 """
 
 from __future__ import annotations
@@ -271,12 +271,12 @@ def early_system(set_values: Mapping[str, str | None],
 
 
 def _host_ctx() -> ResolveCtx:
-    """The host-side expansion namespace for a pre-snapshot resolve — ``~`` and ``$XDG_*``.
+    """The host-side expansion namespace for a pre-snapshot resolve — ``~`` and ``{$XDG_*}``.
 
     ⚑ ``spec_default_xdg_map`` and NOT ``host_xdg_map``: this runs inside the ancestor
     WALK, on directories that may not be worksets at all, and ``host_xdg_map`` adds
     ``XDG_RUNTIME_DIR``, whose fallback can mkdir a directory and warn.  Detection must
-    not have side effects.  ``$AGENT`` / ``$WORKSET`` are deliberately unset — neither
+    not have side effects.  ``{$AGENT}`` / ``{$WORKSET}`` are deliberately unset — neither
     is known before the snapshot, so both refuse rather than resolve to a guess.
     """
     from kanibako.settings.paths import spec_default_xdg_map
@@ -294,7 +294,7 @@ def resolve_workset_dir_key(
 ) -> Path:
     """Resolve the ``workset.<key>`` *repoint* (or its ``<root>/<default_leaf>`` default).
 
-    *repoint* is the RAW value as stored: it may carry ``@``-refs, ``$XDG_*`` or ``~``.
+    *repoint* is the RAW value as stored: it may carry ``{key}``-refs, ``{$XDG_*}`` or ``~``.
     *where* is the file a refusal names; it defaults to *workset_root*'s ``workset.yaml``.
     *standalone* is the box mode the caller reads *key* in (``None``: not known); it picks
     the declared default of an unset referent (see :func:`_referent_value`).
@@ -309,7 +309,7 @@ def resolve_workset_dir_key(
     ⚑⚑ A BARE-RELATIVE *repoint* IS REFUSED, NOT ANCHORED ([R147], 2026-08-29).  It
     used to anchor under *workset_root*, and this seam's own refusal text used to OFFER
     that form.  The reason it cannot: the reason to set one of these keys AT ALL is to
-    move the directory OFF its ``@meta.workset.path/<leaf>`` default, so "keep it with
+    move the directory OFF its ``{meta.workset.path}/<leaf>`` default, so "keep it with
     the workset" assumes precisely the intent the user is overriding — and the guess is
     not a confusing message, it is a directory created in the wrong place that then
     holds data.  The root-relative reading stays expressible; it has to be SAID.
@@ -408,7 +408,7 @@ def _referent_value(
     workset_root: Path, doc: Mapping[str, Any] | None, referent: str, *, key: str,
     standalone: bool | None, chain: tuple[str, ...], early: EarlyScope,
 ) -> str:
-    """The resolved ``@workset.<referent>``: its value in the cascade, else its declared default.
+    """The resolved ``{workset.<referent>}``: its value in the cascade, else its declared default.
 
     A referent that is unset takes its manifest default in the modes *key* is read in:
     *standalone*'s, or with ``None`` every mode in which *key* has a declared default.  When
@@ -492,7 +492,7 @@ def early_key_set_error(
     Runs :func:`resolve_workset_dir_key` itself on the value about to be written to
     *written_file*: a workset's own file, or the system settings file that
     :func:`early_repoint` reads beneath it.  So a value the launch snapshot would resolve
-    but this reader cannot (``$AGENT``, an ``@``-ref outside :data:`_USABLE_REFS`) is
+    but this reader cannot (``{$AGENT}``, a ``{key}``-ref outside :data:`_USABLE_REFS`) is
     refused, because this reader reads it first.  The resolved path is
     discarded, so the file's directory stands in for the workset root, and the file is the
     first tier a referent is read from.  It resolves once per mode the key's readers pass

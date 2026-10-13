@@ -22,7 +22,7 @@ Split (documented in each YAML header too):
   scalar default this plugin declares; no behavior default is written in plugin
   CODE), container env, cred-file lifecycle, host_prep/init_dirs, and the
   agent-common box_dests.  Box-side destinations under the guest home are written
-  as ``$GUEST_HOME`` EXPRESSIONS (e.g. ``$GUEST_HOME/.local/bin/claude``) that
+  as ``{$GUEST_HOME}`` EXPRESSIONS (e.g. ``{$GUEST_HOME}/.local/bin/claude``) that
   this loader expands from the single :data:`~kanibako.settings.settings_resolve.GUEST_HOME`
   constant — no ``/home/agent`` literal in the file.
 * CODE-RESOLVED — the CRITICAL/runtime-probed HOST binary paths stay in the
@@ -89,7 +89,7 @@ def _build_binding(entry: dict[str, Any], package: str) -> Binding:
 
     ``origin`` names the detected install field that supplies the host source
     (``binary`` / ``launcher`` / ``install_dir`` / ``literal``); ``box_dest`` is a
-    ``$GUEST_HOME`` expression expanded here.  ``kind`` / ``scope`` map to their
+    ``{$GUEST_HOME}`` expression expanded here.  ``kind`` / ``scope`` map to their
     enums; ``ro`` defaults to True.
 
     A ``literal`` origin's fixed host source is named EITHER as a
@@ -507,7 +507,7 @@ def load_descriptor(package: str, filename: str) -> PluginDescriptor:
     *package* is the plugin's import package (e.g. ``"kanibako.plugins.claude"``)
     and *filename* its declarative defaults file (e.g. ``"claude-defaults.yaml"``).
     The returned descriptor is byte-for-byte equivalent to the former hand-written
-    one — box_dest ``$GUEST_HOME`` expressions are expanded and every enum field
+    one — box_dest ``{$GUEST_HOME}`` expressions are expanded and every enum field
     is mapped from its string name.
 
     ⚑ A descriptor carries NO environment variables.  They are declared at the
@@ -622,10 +622,10 @@ def load_behavior(package: str, filename: str) -> "tuple[TargetSetting, ...]":
 def load_category_binds(
     package: str, filename: str, agent: str
 ) -> CategoryBindDefaults:
-    """Build a plugin's AGENT-scope ``@``-ref-sourced category BINDS from its file.
+    """Build a plugin's AGENT-scope ``{key}``-ref-sourced category BINDS from its file.
 
     Each entry in the file's ``category_binds:`` section declares one agent-scope
-    category default whose HOST SOURCE is an ``@``-ref (``meta_ref``) — the mirror
+    category default whose HOST SOURCE is a ``{key}``-ref (``meta_ref``) — the mirror
     of :mod:`kanibako.settings.core_defaults`'s ``meta_ref`` bind shape, at AGENT
     scope.  *agent* is the declaring plugin's own name; the agent tier is
     DISCRIMINATED (spec §2d / §0 — there is NO bare ``agent.<key>``), so every key
@@ -663,12 +663,12 @@ def load_category_binds(
     is refused a second time, by name, in
     :func:`kanibako.settings.settings_assemble._insert_dotted`.)
 
-    The value's element 0 is the RAW ``@``-ref STRING (e.g. a ``"@system.*"``
+    The value's element 0 is the RAW ``{key}``-ref STRING (e.g. a ``"{system.*}"``
     source key); the launch category cascade folds it into the floor and ``expand``
     resolves it to the referenced path — so a plugin declares a bind to a shared
     source WITHOUT any per-harness path knowledge in core (spec §2d).
 
-    ``box_dest`` is a ``~`` / ``$GUEST_HOME`` expression.  ``$GUEST_HOME`` is
+    ``box_dest`` is a ``~`` / ``{$GUEST_HOME}`` expression.  ``{$GUEST_HOME}`` is
     expanded here; a leading ``~`` survives that expansion and is then
     canonicalized to the guest home by ``normalize_bind_dest`` — a dest is a GUEST
     path, so it resolves the same on every host (R-11).
@@ -801,7 +801,7 @@ def load_envs(package: str, filename: str, agent: str) -> "dict[str, str]":
     declaring ``2FA`` or a reserved leaf name gets a refusal NAMING the key instead
     of a floor entry the launch would fail to resolve later.
 
-    ``$GUEST_HOME`` is expanded HERE, at load, not left to the snapshot's expand
+    ``{$GUEST_HOME}`` is expanded HERE, at load, not left to the snapshot's expand
     pass: an env value is a GUEST-side string, while the snapshot expands against
     the HOST (``~`` → the host home).  What is stored is the literal in-box path,
     which every later pass carries verbatim.
@@ -824,16 +824,16 @@ def load_common(package: str, filename: str, agent: str) -> "dict[str, BindArm]"
     ``{box_dest: (host_src[, options])}`` (spec §2a — structured, NOT a
     colon-joined string).  *agent* is the declaring plugin's own name; the agent
     tier is DISCRIMINATED (§2d / §0 — there is NO bare ``agent.<key>``).
-    ``box_dest`` is a ``$GUEST_HOME`` expression expanded here and then normalized
+    ``box_dest`` is a ``{$GUEST_HOME}`` expression expanded here and then normalized
     by :func:`~kanibako.settings.core_defaults.add_bind`, because it is the KEY.
     Returns ``{}`` when the file declares no ``common`` entries — an EMPTY table,
     not a key holding an empty map.
 
     ROOTED AT DECLARATION (spec §2a).  An author writes a bare leaf
     (``plugins``); what is STORED is the full self-resolving
-    ``@meta.agent.<agent>.path/common/plugins``, so no later layer prepends
+    ``{meta.agent.<agent>.path}/common/plugins``, so no later layer prepends
     anything (§2a — a source must fully resolve on its own).  A source
-    that is ALREADY self-resolving (absolute / ``~`` / ``$var`` / ``@``-ref) is
+    that is ALREADY self-resolving (absolute / ``~`` / ``{$var}`` / ``{key}``-ref) is
     stored VERBATIM (§2a); :func:`~kanibako.settings.agent_config.
     root_relative_source` owns that rule and
     :func:`~kanibako.settings.agent_config.agent_category_root_ref` owns the layout.

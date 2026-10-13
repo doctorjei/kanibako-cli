@@ -60,7 +60,7 @@ ENV: Final[Delivery] = "ENV"
 #: merely resolved against a surprising directory, it stops being a host path at all.
 #: Read by the three seams that refuse one: ``settings_resolve.refuse_unrooted_source``
 #: (the DECLARATION-LOAD entry refusal), ``settings_expand`` (the post-expansion guard,
-#: which catches the same defect after an ``@``-ref dereferences a bare-relative path key,
+#: which catches the same defect after a ``{key}``-ref dereferences a bare-relative path key,
 #: [R147]) and ``settings_launch`` (a ``secret_path`` host source).
 BARE_RELATIVE_SOURCE_HAZARD: Final[str] = (
     "a relative source resolves against whatever directory kanibako happens to be run "
@@ -267,7 +267,7 @@ class CategoryEntry:
     box home, landing where nothing reads it, and the discriminator is gone (llm-doc).
 
     ⚑ THE ``canon`` NAMING TRAP, here because both spellings meet in this dataclass:
-    **``@box.canon`` (= ``<box_dir>/canon``, the box's CONTRIBUTION root, one RO
+    **``{box.canon}`` (= ``<box_dir>/canon``, the box's CONTRIBUTION root, one RO
     chapter at ``~/canon/handbook/box``) is NOT ``~/canon``**, the ASSEMBLED GUEST
     VIEW at ``<box_dir>/home/canon`` that the home bind delivers.
     """
@@ -909,7 +909,7 @@ def internal_bind_cure(dests: Sequence[str]) -> str | None:
     ⚑ THE ONE PREDICATE for "is a collision participant internal" (spec §2c), shared by
     every collision remedy here and in ``store_collapse``: an internal bind is not
     repointable and not suppressible, so :data:`SUPPRESS_THEN_ADD` would name an edit
-    the resolve refuses.  Judged on the RESOLVED dest, so an ``@``-ref spelling that
+    the resolve refuses.  Judged on the RESOLVED dest, so a ``{key}``-ref spelling that
     passed the resolve's written-dest check still meets it.
     """
     from kanibako.settings.core_defaults import internal_bind_keys

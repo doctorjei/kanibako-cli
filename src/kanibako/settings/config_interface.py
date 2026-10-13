@@ -410,7 +410,7 @@ def _set_time_target(
     and a system or agent command's the system scope (neither). The caller passes the
     objects it already holds; nothing is re-loaded here. A key the target has no value
     for is OMITTED by ``resolve_inputs``, never fabricated — a working set names no box,
-    so no ``@meta.box.*`` anchor exists at workset scope.
+    so no ``{meta.box.*}`` anchor exists at workset scope.
     ⚑ NO *std*, NO TARGET: a caller that names none (a programmatic write) gets a
     snapshot with no box or working-set anchor at all, rather than one guessed from
     where its settings files sit.
@@ -441,7 +441,7 @@ def _target_scope_anchors(
     agent_path: "Path | None",
     agent_name: str,
 ) -> dict[str, object]:
-    """The ``@meta.{workset,box}.path`` directories *target*'s own snapshot resolves.
+    """The ``{meta.{workset,box}.path}`` directories *target*'s own snapshot resolves.
 
     Read out of the SAME set-time snapshot the E3 probe judges against, so a scope file
     that moves a root (``workset.boxes``, which ``meta.box.path`` hangs off) moves the
@@ -553,7 +553,7 @@ def _bare_relative_path_error(
 
     ⚑⚑ THE TEST IS ON THE SPELLING THE USER TYPED, BEFORE ANY EXPANSION, exactly as it is
     at read time.  [R147] rules on what is a legal value to have WRITTEN, so
-    ``$XDG_DATA_HOME/kanibako`` is legal here even in an environment where that variable
+    ``{$XDG_DATA_HOME}/kanibako`` is legal here even in an environment where that variable
     answers something odd — refusing it there would report a KEY defect for an
     ENVIRONMENT one.
     ⚑ AN EMPTY VALUE IS NOT THIS RULE'S BUSINESS, and the guard matches the read-time one:
@@ -607,7 +607,7 @@ def _unusable_store_root_error(canonical: str, value: "str | None") -> "str | No
     ⚑ ``--null`` (``None``) and ``""`` pass through: clearing the key is the recovery
     door and is never refused.
     ⚑ THE UNKNOWABLE IS NOT REFUSED: a value whose target cannot be expanded here (a
-    dangling ``@``-ref, an empty expansion) returns ``None`` rather than a guess —
+    dangling ``{key}``-ref, an empty expansion) returns ``None`` rather than a guess —
     the E3 probe below refuses those on its own terms.
     """
     if canonical != "system.state" or not value:
@@ -688,7 +688,7 @@ def _command_tier_files(
 def _dotted_match(node: object, dotted: str) -> "tuple[tuple[str, ...], object] | None":
     """``(segments, value)`` the joined *dotted* name spells in a settings VIEW, or ``None``.
 
-    ⚑ Matched against the view's own keys: a dest-keyed entry such as ``@box.env`` is one
+    ⚑ Matched against the view's own keys: a dest-keyed entry such as ``{box.env}`` is one
     segment that holds dots.
     """
     if not isinstance(node, dict):
@@ -987,13 +987,13 @@ def _set_time_snapshot(
     from kanibako.settings.settings_assemble import ReadPurpose, assemble_levels, cascade_files
     from kanibako.settings.settings_merge import merge
 
-    # The box scalars' DECLARED-DEFAULT floor, so an ``@box.image`` ref RESOLVES at set
+    # The box scalars' DECLARED-DEFAULT floor, so a ``{box.image}`` ref RESOLVES at set
     # time.  ⚑⚑ DECLARED DEFAULTS, NOT A SWEEP OF ``kanibako.cfg``.  A
     # ``_layer1_value_floor()`` stood here for one day and read every declared value out of
     # the Layer-1 file into this floor; Jei ruled that file cannot carry settings at all
     # ("kanibako_config.yaml <-- cannot have settings. Period.", 2026-08-26), so the sweep
     # went and the DECLARED half stayed.  🛑 Do not delete the floor to finish the job:
-    # without it ``@box.image`` dangles at every command scope, which is a REGRESSION, not
+    # without it ``{box.image}`` dangles at every command scope, which is a REGRESSION, not
     # conformance — the defaults are a legitimate carrier, the file is not.
     # ⚑ ``config.box_scalar_defaults_floor`` is the ONE recipe, shared with every BOX
     # launch resolve (``build_launch_snapshot``) so the set-time floor and the launch
@@ -1043,7 +1043,7 @@ def _set_time_snapshot(
     # SYSTEM scope it filed the Layer-1 ``kanibako.cfg`` as a real settings TIER,
     # which spec §1 forbids ("NOT part of the keyspace; NOT a settings tier"). ⚑⚑ AND THE
     # FILE HAS NO VALUES TO REACH ANY MORE: Jei's 2026-08-26 ruling took the settings out of
-    # it entirely, so there is neither a tier nor a reference to it — what an ``@box.*`` ref
+    # it entirely, so there is neither a tier nor a reference to it — what a ``{box.*}`` ref
     # resolves against is the DECLARED-DEFAULT floor built above.
     #
     # ⚑ ``noun_settings_file`` IS the "which file is this command scope's settings file"
@@ -1119,9 +1119,9 @@ def _floor_blind_referents(
                 continue
             segs = name.split(".", 2)
             ref_scope = segs[1] if segs[0] == "meta" and len(segs) > 1 else segs[0]
-            # ⚑ A scopeless ref — ``@config.*``, ``@meta.runtime.*`` — names no scope, so the
+            # ⚑ A scopeless ref — ``{config.*}``, ``{meta.runtime.*}`` — names no scope, so the
             # command's cascade is not what hides it, and it is not listed. A
-            # ``@meta.<scope>.*`` ref is judged by its SCOPE token.
+            # ``{meta.<scope>.*}`` ref is judged by its SCOPE token.
             if ref_scope in SCOPE_CONTAINMENT and key_validity(name, valid_agents=()) is None:
                 unseen.append(name)
     return unseen
@@ -1599,7 +1599,7 @@ def get_config_value(
         return read_stored_leaf(dest.path, dest.sections, dest.leaf)
 
     # ``config.*`` — the raw value from the bootstrap config file.  ⚑ The setup MARKER left
-    # this family on 2026-08-26 (its storage moved to ``@config.settings``), and
+    # this family on 2026-08-26 (its storage moved to ``{config.settings}``), and
     # ``is_config_file_only_key`` is now exactly ``key.startswith("config.")``.
     # ⚑ ``load_config``, NOT ``load_merged_config``: this tier is CONFIG-FILE-ONLY, and a
     # malformed box settings file must not break a bootstrap-tier read.
@@ -1994,7 +1994,7 @@ def set_config_value(
         if isinstance(scalar_verdict, _SetError):
             return _refusal(f"Error: {scalar_verdict.message}")
 
-    # A ``@``-ref a ``system.*`` PATH value points at OUTSIDE the system path tier is
+    # A ``{key}``-ref a ``system.*`` PATH value points at OUTSIDE the system path tier is
     # REFUSED at set time; scope and why are on :func:`config.system_path_ref_error`.
     # ⚑ AFTER the E3 probe, so a ref the probe already refuses keeps the probe's wording.
     ref_err = system_path_ref_error(canonical, value)
@@ -2183,7 +2183,7 @@ def set_config_value(
     # route would need a visible spec edit.
 
     # The setup VERSION MARKER — written to the ``system:`` table of the SYSTEM SETTINGS
-    # file (``@config.settings``), which is where ``setup`` puts it and where every reader
+    # file (``{config.settings}``), which is where ``setup`` puts it and where every reader
     # looks (spec §2g: "PERSISTS, user-resettable"); the route is ``_KEY_ROUTES``.
     if canonical == SETUP_MARKER_KEY:
         dest = _write_dest(
@@ -2783,7 +2783,7 @@ def write_system_value(system_settings_path: Path, leaf: str, value: object) -> 
     """Write a ``system: <leaf>`` key into *system_settings_path*'s ``system:`` table
     programmatically, past the CLI guard: none of ``set_config_value``'s refusals run here.
 
-    ⚑ *system_settings_path* is the SYSTEM SETTINGS file (``@config.settings``) —
+    ⚑ *system_settings_path* is the SYSTEM SETTINGS file (``{config.settings}``) —
     ``setup`` and the setup gate write the marker there; the Layer-1 config file may
     not carry a ``system:`` table.
     """
