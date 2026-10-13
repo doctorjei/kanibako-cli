@@ -19,13 +19,16 @@ _LEGACY_TS_RE = re.compile('^\\d{8}T\\d{6}Z$')
 ## Functions
 ```
 def box_snapshot_store(vault_rw_path: Path, box_name: str) -> Path
+def snapshot_base(vault_rw_path: Path, *, exclusive: bool) -> tuple[Path, Path]
+def link_refusal(link: Path) -> str
+def checked_store(vault_rw_path: Path, *, box_name: str, exclusive: bool) -> tuple[Path, Path]
 def migrate_legacy_versions(vault_rw_path: Path, *, box_name: str, store_exclusive: bool=False, create_base: bool=False, held: Mapping[str, str] | None=None) -> dict[str, list[str]]
 def detect_snapshot_strategy(vault_path: Path) -> str
 def create_snapshot(vault_rw_path: Path, *, box_name: str, strategy: str | None='hardlink', store_exclusive: bool=False, held: Mapping[str, str] | None=None) -> Path | None
 def list_snapshots(vault_rw_path: Path, *, box_name: str) -> list[tuple[str, str, int]]
 def list_unsorted(vault_rw_path: Path) -> list[tuple[str, str, int]]
 def adopt_standalone_store(vault_rw_path: Path, *, box_name: str, held: Mapping[str, str] | None=None) -> Path | None
-def relocate_snapshot_store(old_vault_rw: Path, new_vault_rw: Path, *, old_box: str, new_box: str, new_base_exclusive: bool=False) -> Path | None
+def relocate_snapshot_store(old_vault_rw: Path, new_vault_rw: Path, *, old_box: str, new_box: str, new_base_exclusive: bool=False, old_base_exclusive: bool=False) -> Path | None
 def restore_snapshot(vault_rw_path: Path, snapshot_name: str, *, box_name: str, store_exclusive: bool=False, held: Mapping[str, str] | None=None, box_ref: str | None=None) -> Path | None
 def snapshots_to_prune(vault_rw_path: Path, max_keep: int, *, box_name: str) -> list[Path]
 def prune_snapshots(vault_rw_path: Path, max_keep: int=_DEFAULT_MAX_SNAPSHOTS, *, box_name: str) -> int

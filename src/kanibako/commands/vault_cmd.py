@@ -19,8 +19,10 @@ from kanibako.snapshots import (
     _DEFAULT_MAX_SNAPSHOTS,
     ForeignSnapshotError,
     SnapshotSafetyError,
+    checked_store,
     create_snapshot,
     list_snapshots,
+    link_refusal,
     list_unsorted,
     migrate_legacy_versions,
     prune_snapshots,
@@ -177,6 +179,7 @@ def run_list(args: argparse.Namespace) -> int:
     quiet = getattr(args, "quiet", False)
 
     try:
+        checked_store(vault_rw, box_name=box_name, exclusive=exclusive)
         migrate_legacy_versions(vault_rw, box_name=box_name, store_exclusive=exclusive,
                                 held=held)
     except SymlinkRefusedError as e:
@@ -213,6 +216,7 @@ def run_restore(args: argparse.Namespace) -> int:
 
     # ⚑ Migrate first: ``known`` gates the prompt, and the move makes names visible.
     try:
+        checked_store(vault_rw, box_name=box_name, exclusive=exclusive)
         migrate_legacy_versions(vault_rw, box_name=box_name, store_exclusive=exclusive,
                                 held=held)
     except SymlinkRefusedError as e:
@@ -260,6 +264,7 @@ def run_prune(args: argparse.Namespace) -> int:
     vault_rw, box_name, exclusive, held, _ref = resolved
 
     try:
+        checked_store(vault_rw, box_name=box_name, exclusive=exclusive)
         migrate_legacy_versions(vault_rw, box_name=box_name, store_exclusive=exclusive,
                                 held=held)
     except SymlinkRefusedError as e:
@@ -284,8 +289,7 @@ def run_prune(args: argparse.Namespace) -> int:
 
 def _link_refused(exc: SymlinkRefusedError) -> int:
     """Print the refusal of a snapshot store behind a symlink; rc 1."""
-    print(f"Error: {exc.link} is a symlink, and kanibako does not follow symlinks in a "
-          f"box. Nothing was changed; replace it with a directory and try again.",
+    print(f"Error: {link_refusal(exc.link)}, and try again. Nothing was changed.",
           file=sys.stderr)
     return 1
 

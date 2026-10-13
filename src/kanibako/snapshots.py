@@ -157,6 +157,51 @@ def _is_migrated(versions: Path) -> bool:
     return (versions / LAYOUT_MARKER_NAME).exists()
 
 
+def snapshot_base(vault_rw_path: Path, *, exclusive: bool) -> tuple[Path, Path]:
+    """``(base, root)``: the ``.versions`` base a writer works in, and the root its
+    writes are checked below.
+
+    ⚑ A SHARED base (*exclusive* False) sits in the host-only parent of every box's
+    vault, which no box can reach: a link AT it is the user's own repoint, so it is
+    resolved and the links below it are still refused.  An exclusive base is in the
+    box's own tree, so it stays lexical and a link at it is refused.  A link that
+    cannot be resolved (a loop, a dangling target) raises
+    :class:`boxfs.SymlinkRefusedError`: fail closed.
+    """
+    versions = _versions_dir(vault_rw_path)
+    if exclusive or not versions.is_symlink():
+        return versions, vault_rw_path.parent
+    try:
+        real = versions.resolve(strict=True)
+    except (OSError, RuntimeError) as exc:
+        raise boxfs.SymlinkRefusedError(versions, versions) from exc
+    if not real.is_dir():
+        raise boxfs.SymlinkRefusedError(versions, versions)
+    return real, real.parent
+
+
+def link_refusal(link: Path) -> str:
+    """What is wrong with *link*, a path :func:`boxfs.first_symlink` returned, and the
+    cure: it is a symlink, or (failing closed) a directory that cannot be opened."""
+    if os.path.islink(link):
+        return (f"{link} is a symlink, and kanibako does not follow symlinks in a box; "
+                f"replace it with a directory")
+    return f"{link} cannot be opened; make it readable"
+
+
+def checked_store(vault_rw_path: Path, *, box_name: str, exclusive: bool) -> tuple[Path, Path]:
+    """``(store, root)`` for *box_name*, under :func:`snapshot_base`'s base.
+
+    Raises :class:`boxfs.SymlinkRefusedError` when a link a box could plant stands at
+    the store or between it and *root*.  A reader calls it too: a listing or a prune
+    through such a link would show, or delete, what the link points at.
+    """
+    base, root = snapshot_base(vault_rw_path, exclusive=exclusive)
+    store = base / _box_store(vault_rw_path, box_name).name
+    _refuse_link(store, root)
+    return store, root
+
+
 def _refuse_link(path: Path, root: Path) -> None:
     """Raise :class:`boxfs.SymlinkRefusedError` naming the link when *path*, or a parent
     of it below *root*, is a symlink (a looped one included).  Called before a write."""
@@ -215,15 +260,15 @@ def _migrate_flat_and_mark(
     sweeps a timestamp-named box.  An absent base is created marked only with
     *create_base* (a writer); a reader must never create one.
     """
-    versions = _versions_dir(vault_rw_path)
-    root = vault_rw_path.parent
     moved: dict[str, list[str]] = {"attributed": [], "unsorted": []}
-    if _is_migrated(versions):
+    if _is_migrated(_versions_dir(vault_rw_path)):
         return moved
-    exists = versions.is_dir()
+    exists = _versions_dir(vault_rw_path).is_dir()
     if not exists and not create_base:
         return moved
-    # ⚑ Before any write: a linked (or looped) base is refused, never written through.
+    # ⚑ Before any write: a link below the base (or at an exclusive one) is refused,
+    # never written through; see :func:`snapshot_base`.
+    versions, root = snapshot_base(vault_rw_path, exclusive=store_exclusive)
     _refuse_link(versions, root)
     if not exists:
         _write_layout_marker(versions, root)
@@ -234,8 +279,8 @@ def _migrate_flat_and_mark(
         and _LEGACY_TS_RE.match(entry.name)
     ]
     if legacy:
-        target = _box_store(vault_rw_path, box_name) if store_exclusive \
-            else versions / UNSORTED_DIRNAME
+        target = versions / _box_store(vault_rw_path, box_name).name \
+            if store_exclusive else versions / UNSORTED_DIRNAME
         boxfs.mkdir(target, root, parents=True, exist_ok=True)
         bucket = "attributed" if store_exclusive else "unsorted"
         for entry in sorted(legacy, key=lambda p: p.name):
@@ -542,11 +587,9 @@ def create_snapshot(
     if not contents:
         return None
 
-    store = _box_store(vault_rw_path, box_name)
-    root = vault_rw_path.parent
-    # ⚑ Before any write: the copy below lands in *store*, so a link at it or at the
-    # base is refused here rather than copied through.
-    _refuse_link(store, root)
+    # ⚑ Before any write: the copy below lands in *store*, so a link at it (or at an
+    # exclusive base) is refused here rather than copied through.
+    store, root = checked_store(vault_rw_path, box_name=box_name, exclusive=store_exclusive)
     migrate_legacy_versions(
         vault_rw_path, box_name=box_name, store_exclusive=store_exclusive,
         create_base=True, held=held,
@@ -673,7 +716,7 @@ def adopt_standalone_store(
 
 def relocate_snapshot_store(
     old_vault_rw: Path, new_vault_rw: Path, *, old_box: str, new_box: str,
-    new_base_exclusive: bool = False,
+    new_base_exclusive: bool = False, old_base_exclusive: bool = False,
 ) -> Path | None:
     """Carry *old_box*'s snapshot store to *new_box* across a rename or a move.
 
@@ -686,26 +729,32 @@ def relocate_snapshot_store(
 
     ⚑ A BASE change carries the store even when the name is kept.  Never
     overwrites: a taken destination name gets a suffix.
+
+    Each side's base is :func:`snapshot_base`'s, by its own *_exclusive* flag.
     """
-    old_base = _versions_dir(old_vault_rw)
-    new_base = _versions_dir(new_vault_rw)
     new_store = _box_store(new_vault_rw, new_box)
-    new_root = new_vault_rw.parent
 
-    carried, carried_root = None, new_root
+    from_new = False
     if new_base_exclusive and new_box != old_box:
-        in_new_base = new_base / old_box
-        if in_new_base.is_dir() and not in_new_base.is_symlink():
-            carried = in_new_base
-    if carried is None:
-        old_store = old_base / old_box
-        if (old_store != new_store and old_store.is_dir()
+        in_new_base = _versions_dir(new_vault_rw) / old_box
+        from_new = in_new_base.is_dir() and not in_new_base.is_symlink()
+    if not from_new:
+        old_store = _versions_dir(old_vault_rw) / old_box
+        if not (old_store != new_store and old_store.is_dir()
                 and not old_store.is_symlink()):
-            carried, carried_root = old_store, old_vault_rw.parent
-    if carried is None:
-        return None
+            return None
 
-    # ⚑ Before any write: a link on either side is refused, never moved through.
+    # ⚑ Before any write: a link below either base (or at an exclusive one) is
+    # refused, never moved through.
+    new_base, new_root = snapshot_base(new_vault_rw, exclusive=new_base_exclusive)
+    if from_new:
+        carried, carried_root = new_base / old_box, new_root
+    else:
+        old_base, carried_root = snapshot_base(old_vault_rw, exclusive=old_base_exclusive)
+        carried = old_base / old_box
+    new_store = new_base / new_box
+    if carried == new_store:  # two spellings of one base: nothing to carry
+        return None
     _refuse_link(carried, carried_root)
     _refuse_link(new_store, new_root)
     _migrate_flat_and_mark(

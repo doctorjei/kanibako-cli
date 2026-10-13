@@ -3272,14 +3272,15 @@ def _unmoved_snapshots(old: ProjectState, new: ProjectState) -> list[str]:
 
 
 def _stranded_snapshot_store(old: ProjectState, new: ProjectState) -> tuple[Path, Path] | None:
-    """The store step 4c would carry, still under *old*'s name, with the vault root it
-    sits under; or ``None``.
+    """The store step 4c would carry, still under *old*'s name, with the root its links
+    are checked below; or ``None``.
 
     The pick is ``relocate_snapshot_store``'s: in a standalone landing the copy the
     tree copy brought into the new base, else *old*'s own store; a store that is
-    itself a symlink is never picked.
+    itself a symlink is never picked.  Each base is ``snapshot_base``'s, so a link
+    that cannot be resolved raises ``SymlinkRefusedError``.
     """
-    from kanibako.snapshots import box_snapshot_store
+    from kanibako.snapshots import box_snapshot_store, snapshot_base
 
     store = _old_snapshot_store(old, new)
     if store is None:
@@ -3288,9 +3289,11 @@ def _stranded_snapshot_store(old: ProjectState, new: ProjectState) -> tuple[Path
     if new.mode is BoxMode.standalone and old.name != new.name:
         copied = box_snapshot_store(new.vault_rw, old.name)
         if copied.is_dir() and not copied.is_symlink():
-            return copied, new.vault_rw.parent
+            base, root = snapshot_base(new.vault_rw, exclusive=True)
+            return base / old.name, root
     if store.is_dir() and not store.is_symlink():
-        return store, old.vault_rw.parent
+        base, root = snapshot_base(old.vault_rw, exclusive=old.mode is BoxMode.standalone)
+        return base / old.name, root
     return None
 
 
@@ -3298,24 +3301,36 @@ def _snapshot_cure(old: ProjectState, new: ProjectState) -> str | None:
     """The Note naming the one command that carries a stranded store by hand.
 
     ⚑ An existing store is never merged over: only entries it lacks move in, and the
-    Note names the ones left behind.  A symlink at either store or base gets no
-    command, which would follow it; the Note names the link instead.
+    Note names the ones left behind.  A symlink a box could have planted (below a
+    shared base, or at or below an exclusive one) gets no command, which would follow
+    it; the Note names the link instead.
     """
     import os
 
     from kanibako import boxfs
-    from kanibako.snapshots import box_snapshot_store
+    from kanibako.snapshots import box_snapshot_store, link_refusal, snapshot_base
 
-    picked = _stranded_snapshot_store(old, new)
-    if picked is None or new.vault_rw is None:
+    if new.vault_rw is None:
         return None
-    src, src_root = picked
-    dst, dst_root = box_snapshot_store(new.vault_rw, new.name), new.vault_rw.parent
+    lexical_dst = box_snapshot_store(new.vault_rw, new.name)
+
+    def no_command(at: Path | None, link: Path) -> str:
+        return (f"Note: '{new.name}'s snapshots are still at {at}. No command is "
+                f"printed to move them into {lexical_dst}: {link_refusal(link)}, then "
+                f"move them by hand.")
+
+    try:
+        picked = _stranded_snapshot_store(old, new)
+        if picked is None:
+            return None
+        src, src_root = picked
+        base, dst_root = snapshot_base(new.vault_rw, exclusive=new.mode is BoxMode.standalone)
+    except boxfs.SymlinkRefusedError as exc:
+        return no_command(_old_snapshot_store(old, new), exc.link)
+    dst = base / new.name
     link = boxfs.first_symlink(src, src_root) or boxfs.first_symlink(dst, dst_root)
     if link is not None:
-        return (f"Note: '{new.name}'s snapshots are still at {src}. No command is "
-                f"printed to move them into {dst}: {link} is a symlink, which it would "
-                f"follow. Replace the link with a directory, then move them by hand.")
+        return no_command(src, link)
     if not os.path.lexists(dst):
         cmd = (f"mkdir -p -- {shlex.quote(str(dst.parent))} && "
                f"{shlex.join(['mv', '--', str(src), str(dst)])}")
@@ -4532,6 +4547,7 @@ def _relocate_snapshot_store(state: ProjectState, new_state: ProjectState) -> Pa
             state.vault_rw, new_state.vault_rw,
             old_box=state.name, new_box=new_state.name,
             new_base_exclusive=new_state.mode is BoxMode.standalone,
+            old_base_exclusive=state.mode is BoxMode.standalone,
         )
     except Exception as e:  # noqa: BLE001 - best-effort, mirrors step 4b
         print(

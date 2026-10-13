@@ -4108,7 +4108,7 @@ def _run_container(
         if (proj.vault_enabled() and proj.vault_rw_path is not None
                 and proj.vault_rw_path.is_dir()):
             from kanibako.boxfs import SymlinkRefusedError
-            from kanibako.snapshots import auto_snapshot
+            from kanibako.snapshots import auto_snapshot, link_refusal
             held: dict[str, str] = {}
             if proj.mode is BoxMode.standalone:
                 from kanibako.launch.box_resolve import held_standalone_stores
@@ -4121,9 +4121,8 @@ def _run_container(
                     store_exclusive=proj.mode is BoxMode.standalone, held=held)
             except SymlinkRefusedError as exc:
                 snap = None
-                print(f"Warning: no vault snapshot was taken: {exc.link} is a symlink, "
-                      f"and kanibako does not follow symlinks in a box. Replace it with "
-                      f"a directory to resume snapshots.", file=sys.stderr)
+                print(f"Warning: no vault snapshot was taken: {link_refusal(exc.link)}, "
+                      f"to resume snapshots.", file=sys.stderr)
             if snap:
                 print(f"Vault snapshot: {snap.name}", file=sys.stderr)
 
