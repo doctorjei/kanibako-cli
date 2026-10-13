@@ -11,6 +11,7 @@ import pytest
 
 from kanibako.settings.agent_select import AgentSelection
 from kanibako.commands.start import (
+    _agent_exit_rc,
     _apply_tweakcc,
     _check_box_components,
     _persona_token_pointer,
@@ -6238,6 +6239,116 @@ class TestDetachKeepAlive:
             assert rc == 0
             assert m.runtime.run.call_args.kwargs.get("detach") is True
             m.runtime.exec.assert_not_called()
+
+
+class TestPostAttachReadsEachAnswerOnce:
+    """After the attach returns, the box's running state and exit code are each read
+    once: a stopped box stays stopped and keeps its code, so a reading taken in the
+    attach loop is passed along.  The teardown's own running check is the only
+    re-read; it guards a removal after the writeback."""
+
+    _KW = dict(
+        project_dir=None, entrypoint=None, image_override=None,
+        new_session=False, safe_mode=False, resume_mode=False,
+        extra_args=[], persistent=True, detach=False,
+    )
+
+    @pytest.mark.parametrize("code", [0, 3])
+    def test_agent_exit_reads_running_state_and_exit_code_once(
+        self, start_mocks, code,
+    ):
+        """The measured path: the agent's session ends and the box stops."""
+        with start_mocks() as m, patch(
+            "kanibako.commands.start._container_exit_code", return_value=code,
+        ) as m_code, patch(
+            "kanibako.commands.start._container_logs", return_value="",
+        ), patch("time.sleep"):
+            m.target.should_run_setup.return_value = False
+            seen = {}
+
+            def _exec_then_exit(*_a, **_k):
+                seen["is_running"] = m.runtime.is_running.call_count
+                m.runtime.is_running.return_value = False
+                # Set only now: before the launch it would read as a stale box.
+                m.runtime.container_exists.return_value = True
+                return 0
+
+            m.runtime.exec.side_effect = _exec_then_exit
+            rc = _run_container(**self._KW)
+            assert rc == code
+            # _await_box_stop's reading + the teardown's guard; no post-loop re-read.
+            assert m.runtime.is_running.call_count - seen["is_running"] == 2
+            assert m_code.call_count == 1
+            m.runtime.rm.assert_called_once()
+
+    @pytest.mark.parametrize("code, rc_want", [(0, 0), (None, 1), (5, 5)])
+    def test_box_dead_before_attach_reads_its_exit_code_once(
+        self, start_mocks, code, rc_want,
+    ):
+        """The box dies before the readiness probe passes: the crash branch's
+        readings are the ones the post-loop path uses."""
+        with start_mocks() as m, patch(
+            "kanibako.commands.start._container_exit_code", return_value=code,
+        ) as m_code, patch(
+            "kanibako.commands.start._container_logs", return_value="",
+        ), patch("time.sleep"):
+            m.target.should_run_setup.return_value = False
+            seen = {}
+
+            def _dies(*_a, **_k):
+                seen["is_running"] = m.runtime.is_running.call_count
+                m.runtime.is_running.return_value = False
+                return False
+
+            m.runtime.exec_ready.side_effect = _dies
+            rc = _run_container(**self._KW)
+            assert rc == rc_want
+            # The crash branch's reading + the teardown's guard.
+            assert m.runtime.is_running.call_count - seen["is_running"] == 2
+            assert m_code.call_count == 1
+            m.runtime.exec.assert_not_called()
+
+    def test_unseen_session_on_a_down_box_reads_running_state_once(
+        self, start_mocks,
+    ):
+        """A non-zero attach, no session seen, a supervised box down: the
+        supervised running check in _agent_exit_rc stands for the stop wait."""
+        with start_mocks() as m, patch(
+            "kanibako.commands.start._container_exit_code", return_value=7,
+        ) as m_code, patch(
+            "kanibako.commands.start._container_logs", return_value="",
+        ), patch("time.sleep"):
+            m.target.should_run_setup.return_value = False
+            seen = {}
+
+            def _exec_fails(*_a, **_k):
+                seen["is_running"] = m.runtime.is_running.call_count
+                m.runtime.is_running.return_value = False
+                return 1
+
+            # No session before the attach: _agent_exit_rc takes the supervised path.
+            m.runtime.session_missing = True
+            m.runtime.exec.side_effect = _exec_fails
+            rc = _run_container(**self._KW)
+            assert rc == 7
+            assert m_code.call_count == 1
+            # _agent_exit_rc's supervised check + the teardown's guard.
+            assert m.runtime.is_running.call_count - seen["is_running"] == 2
+
+    def test_supervised_down_box_skips_the_stop_wait(self):
+        """_agent_exit_rc: a supervised box already read as down is not re-polled."""
+        runtime = MagicMock()
+        runtime.is_running.return_value = False
+        runtime.exec_succeeds.return_value = False
+        with patch(
+            "kanibako.commands.start._container_exit_code", return_value=9,
+        ) as m_code:
+            got = _agent_exit_rc(
+                runtime, "kb-x", 1, "tmux", session_seen=False, supervised=True,
+            )
+        assert got == 9
+        assert runtime.is_running.call_count == 1
+        assert m_code.call_count == 1
 
 
 class TestHostTerminalHygiene:

@@ -5393,6 +5393,10 @@ def _run_container(
             # (podman race: "container state improper").  Retry a few times.
             _max_exec_attempts = 5
             attached = False
+            # A stopped box stays stopped and keeps its exit code, so a reading
+            # taken in the loop below is passed along rather than re-read after it.
+            box_stopped = False  # the loop saw the box stopped
+            rc_adopted = False  # ... and rc already holds what its exit code implies
             for _exec_attempt in range(1, _max_exec_attempts + 1):
                 # Readiness probe (CAPTURED) before the TTY-inheriting
                 # interactive exec.  exec_ready runs the same operation with
@@ -5420,7 +5424,11 @@ def _run_container(
                             print(_COMMAND_ENDED_BEFORE_ATTACH, file=sys.stderr)
                             _teardown_persistent_box(runtime, container_name)
                             return 0
-                        rc = _container_exit_code(runtime, container_name) or 1
+                        code = _container_exit_code(
+                            runtime, container_name, undeterminable=None,
+                        )
+                        rc = code if supervise_agent and code is not None else (code or 1)
+                        box_stopped = rc_adopted = True
                         break
                     # Still running but not yet ready: transient startup race.
                     if _exec_attempt < _max_exec_attempts:
@@ -5446,7 +5454,9 @@ def _run_container(
                     session_seen=session_seen, supervised=supervise_agent,
                 )
                 if ended_rc is not None:
+                    # _agent_exit_rc saw the box stop and adopted its exit code.
                     rc = ended_rc
+                    box_stopped = rc_adopted = True
                     break
                 if rc == 0:
                     break
@@ -5454,6 +5464,7 @@ def _run_container(
                 # through to the log-showing code; otherwise (still running)
                 # retry.
                 if not runtime.is_running(container_name):
+                    box_stopped = True
                     break
                 # The container is up but the attach failed: tmux has no session
                 # yet, OR the agent already ran and its session ended.  Both look
@@ -5488,7 +5499,7 @@ def _run_container(
                 return rc or 1
             # If agent exited, show container logs so the user can
             # see why (tmux swallows output on exit).
-            if not runtime.is_running(container_name):
+            if box_stopped or not runtime.is_running(container_name):
                 # The supervised/foreground box has STOPPED after (or during) the
                 # attach.  The tmux-attach exec's rc does NOT reflect the agent's
                 # real code: under `--on-agent-exit teardown` the supervisor
@@ -5501,10 +5512,11 @@ def _run_container(
                 # code is the supervisor's verdict (1 only if the agent never
                 # started), so it is taken as is: an attach's 1 (no session yet)
                 # or 255 (box stopped mid-attach) is never the agent's.
-                code = _container_exit_code(
-                    runtime, container_name, undeterminable=None,
-                )
-                rc = code if supervise_agent and code is not None else (code or rc)
+                if not rc_adopted:
+                    code = _container_exit_code(
+                        runtime, container_name, undeterminable=None,
+                    )
+                    rc = code if supervise_agent and code is not None else (code or rc)
                 # (a) Terminal hygiene: the foreground attach just returned with the
                 # box STOPPED.  A full-screen agent TUI (e.g. claude) that DIED without
                 # restoring the screen leaves the host tty in the alternate screen with
@@ -10325,13 +10337,16 @@ def _agent_exit_rc(
     Otherwise the box is stopping: wait for it rather than race the supervisor's
     poll, and prefer its exit code, since the attach's rc is tmux's.
     """
-    if program != "tmux" or not (
-        rc == 0 or session_seen or (supervised and not runtime.is_running(name))
-    ):
+    if program != "tmux":
         return None
+    stopped = False
+    if not (rc == 0 or session_seen):
+        if not supervised or runtime.is_running(name):
+            return None
+        stopped = True
     if _bootstrap_session_exists(runtime, name):
         return None
-    if not _await_box_stop(runtime, name):
+    if not stopped and not _await_box_stop(runtime, name):
         return None
     code = _container_exit_code(runtime, name, undeterminable=None)
     return rc if code is None else code
