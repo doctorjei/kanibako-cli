@@ -12229,6 +12229,71 @@ class TestReattachFastPath(_RunningBoxDriver):
             self._start()
             assert m_comp.called
 
+    def test_a_live_box_missing_home_and_workspace_reattaches(self, start_mocks, capsys):
+        """MBR-6's early workspace refusal (home AND workspace gone) exempts a LIVE
+        box: the launch reattaches, as it did before that refusal existed."""
+        import shutil
+
+        with start_mocks() as m, patch(
+            "kanibako.commands.start._check_box_components", return_value=None,
+        ) as m_comp:
+            self._running(m)
+            proj = m.resolve_any_project.return_value
+            shutil.rmtree(proj.shell_path)
+            shutil.rmtree(proj.project_path)
+            assert self._start() == 0
+            m_comp.assert_not_called()  # the reattach fast path, not a fresh launch
+        assert "workspace" not in capsys.readouterr().err
+        # Control: the same box, stopped, is refused on the probe.
+        with start_mocks() as m:
+            proj = m.resolve_any_project.return_value
+            shutil.rmtree(proj.shell_path)
+            shutil.rmtree(proj.project_path)
+            assert self._start() == 1
+        assert capsys.readouterr().err == (
+            f"Error: the workspace for box 'testproject' is missing ({proj.project_path}).\n"
+            "  Kanibako will not launch a box with no workspace.\n"
+            "  If you moved it, re-create or remap the box.\n"
+        )
+
+    def test_no_runtime_falls_through_to_the_workspace_refusal(self, start_mocks, capsys):
+        """No runtime ⇒ nothing is live: the probe's workspace refusal stands."""
+        import shutil
+
+        from kanibako.errors import ContainerError
+
+        with start_mocks() as m:
+            self._running(m)
+            m.runtime_cls.side_effect = ContainerError("no runtime")
+            proj = m.resolve_any_project.return_value
+            shutil.rmtree(proj.shell_path)
+            shutil.rmtree(proj.project_path)
+            assert self._start() == 1
+        assert capsys.readouterr().err.startswith(
+            "Error: the workspace for box 'testproject' is missing"
+        )
+
+    def test_a_live_named_box_missing_home_warns_rebuilt_not_seeded(
+        self, start_mocks, caplog,
+    ):
+        """A reattach seeds nothing, so a live NAMED box gets the rebuild warning,
+        not the "creates it and seeds it" note."""
+        import logging
+        import shutil
+
+        with caplog.at_level(logging.WARNING), start_mocks() as m:
+            self._running(m)
+            proj = m.resolve_any_project.return_value
+            proj.mode = BoxMode.named
+            shutil.rmtree(proj.shell_path)
+            assert self._start() == 0
+        notes = [r.getMessage() for r in caplog.records if "home directory" in r.getMessage()]
+        assert notes == [
+            "Warning: the home directory for box 'testproject' is missing "
+            f"({proj.shell_path}); this launch re-creates it with only a minimal shell "
+            "profile; the seed and templates are not re-applied."
+        ]
+
     def test_reattach_does_not_probe_the_persona(self, start_mocks):
         """⚑ THE REPORTED BUG.  The load-or-error pre-flight posts a real 1-token
         completion and returns rc 1 on REJECTED — i.e. it could refuse to

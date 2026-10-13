@@ -1955,7 +1955,7 @@ def _unbuilt_box_error(proj: ProjectPaths, std: StandardPaths) -> str | None:
     return head + cure
 
 
-def _warn_launch_rebuilds(proj: ProjectPaths) -> None:
+def _warn_launch_rebuilds(proj: ProjectPaths, *, live: bool = False) -> None:
     """Name what the launch resolve is about to re-create under an existing box (MBR-6).
 
     MBR-6 (Jei, 2026-08-02f): *"a launch should not silently rebuild anything."*
@@ -1963,11 +1963,12 @@ def _warn_launch_rebuilds(proj: ProjectPaths) -> None:
     so it is announced here, on the NON-materializing probe, before anything exists.
     A notice, not a refusal: these launches work today.  A PRIMARY or NAMED box's
     missing workspace is refused, never rebuilt (before this call when the home is gone too).
+    A *live* box is reattached, never seeded, so a NAMED one gets the rebuild warning too.
     """
     logger = get_logger("start")
     label = proj.name or str(proj.project_path)
     if not proj.shell_path.is_dir():
-        template = (WARN_BOX_HOME_SEEDED if proj.mode is BoxMode.named
+        template = (WARN_BOX_HOME_SEEDED if proj.mode is BoxMode.named and not live
                     else WARN_BOX_HOME_REBUILT)
         logger.warning(template, label, proj.shell_path)
     if (proj.mode is BoxMode.standalone and proj.project_path is not None
@@ -3174,14 +3175,26 @@ def _run_container(
     # MBR-6: a PRIMARY or NAMED box with no workspace is refused at launch (below, in
     # ``_check_box_components``).  When its home is missing too, the resolve would
     # create the home first, and a NAMED box's home would then never be seeded.  So
-    # that case gets the same refusal here, on the probe.  Only then: a live box whose
-    # workspace alone is gone still reattaches, unchecked, as before.
+    # that case gets the same refusal here, on the probe.  A LIVE box is exempt: the
+    # launch reattaches to it and checks neither dir, as before.  A live box whose
+    # workspace alone is gone never reaches this branch.
+    _live = False
     if _existing.mode is not BoxMode.standalone and not _existing.shell_path.is_dir():
-        _workspace_error = _missing_workspace_error(_existing)
+        if (persistent or detach) and not restart:
+            try:
+                _probe_runtime = ContainerRuntime()
+            except ContainerError:
+                pass  # no runtime: nothing is live; the launch fails on it further down
+            else:
+                # Labeled container, else the rendered name; None only for an unrenderable
+                # name, which is refused further down.
+                _live_name = box_container(_probe_runtime, _existing)
+                _live = _live_name is not None and _probe_runtime.is_running(_live_name)
+        _workspace_error = None if _live else _missing_workspace_error(_existing)
         if _workspace_error is not None:
             print(_workspace_error, file=sys.stderr)
             return 1
-    _warn_launch_rebuilds(_existing)
+    _warn_launch_rebuilds(_existing, live=_live)
 
     proj = resolve_box_target(
         std, config, project_dir,
