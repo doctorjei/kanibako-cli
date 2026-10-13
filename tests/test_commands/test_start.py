@@ -7444,6 +7444,133 @@ class TestANullSecretPathOmitsTheMountTheGateCallsKeyless:
         assert mounts == {"GH_TOKEN": "/h/gh"}
 
 
+class TestAPerRunEBeatsASecretPath:
+    """``-e VAR=…`` beats a ``secret_path.VAR`` key for the launch (spec §1A).
+
+    The command line outranks every settings file.  The secret's export shim runs
+    after podman applies the env, so a mounted secret overwrote the ``-e`` value
+    in-box.  The secret for a VAR the env leaf holds is now not mounted or exported.
+    """
+
+    VAR = "ANTHROPIC_AUTH_TOKEN"
+
+    def _assemble(self, floor, cli_env, active="navigator+claude"):
+        """(container env, export vars, mount dests) off the PRODUCTION chain."""
+        import logging
+
+        from kanibako.commands.start import _assemble_launch_env
+        from kanibako.settings.settings_categories import launch_deliveries
+        from kanibako.settings.settings_launch import (
+            build_launch_snapshot, snapshot_category_entries,
+        )
+        from kanibako.settings.settings_resolve import ResolveCtx
+        from kanibako.settings.store_collapse import collapse_env
+
+        ctx = ResolveCtx(
+            agent_name=active, workset_name="ws", host_home="/home/u",
+            xdg={"XDG_DATA_HOME": "/data"}, config={},
+        )
+        snap = build_launch_snapshot(
+            agent_name=active, ctx=ctx, system_path=None, agent_path=None,
+            workset_path=None, box_path=None, default_categories=floor,
+        )
+        entries = snapshot_category_entries(snap, active_agent=active, box_ctx=ctx)
+        deliveries = launch_deliveries(entries, agent_dests=frozenset())
+        extra_mounts: list = []
+        env, export_vars = _assemble_launch_env(
+            deliveries=deliveries, env_slots=collapse_env(entries, cli_env),
+            extra_mounts=extra_mounts, logger=logging.getLogger("test.184p2"),
+        )
+        return env, export_vars, [str(mt.destination) for mt in extra_mounts]
+
+    @pytest.fixture
+    def tok(self, tmp_path):
+        p = tmp_path / "token"
+        p.write_text("sk-from-the-file\n")
+        return str(p)
+
+    def test_a_persona_token_var_set_by_e_wins(self, tok):
+        """The persona's token pointer is an ``agent.<node>.secret_path`` key."""
+        from kanibako.settings.settings_categories import SECRET_MOUNT_DIR
+
+        env, export_vars, dests = self._assemble(
+            {f"agent.navigator+claude.secret_path.{self.VAR}": tok},
+            {self.VAR: "sk-from-the-cli"},
+        )
+        assert env[self.VAR] == "sk-from-the-cli"
+        assert self.VAR not in export_vars
+        assert f"{SECRET_MOUNT_DIR}/{self.VAR}" not in dests
+
+    @pytest.mark.parametrize("scope", ["box", "workset", "system", "agent.default"])
+    def test_a_settings_file_secret_path_loses_to_e(self, tok, scope):
+        from kanibako.settings.settings_categories import SECRET_MOUNT_DIR
+
+        env, export_vars, dests = self._assemble(
+            {f"{scope}.secret_path.{self.VAR}": tok}, {self.VAR: "sk-from-the-cli"},
+        )
+        assert env[self.VAR] == "sk-from-the-cli"
+        assert export_vars == []
+        assert f"{SECRET_MOUNT_DIR}/{self.VAR}" not in dests
+
+    def test_only_the_named_var_is_dropped(self, tok):
+        from kanibako.settings.settings_categories import SECRET_MOUNT_DIR
+
+        env, export_vars, dests = self._assemble(
+            {f"box.secret_path.{self.VAR}": tok, "box.secret_path.GH_TOKEN": tok},
+            {self.VAR: "sk-from-the-cli"},
+        )
+        assert export_vars == ["GH_TOKEN"]
+        assert f"{SECRET_MOUNT_DIR}/GH_TOKEN" in dests
+        assert "GH_TOKEN" not in env
+
+    def test_without_e_the_secret_is_mounted(self, tok):
+        from kanibako.settings.settings_categories import SECRET_MOUNT_DIR
+
+        env, export_vars, dests = self._assemble(
+            {f"agent.navigator+claude.secret_path.{self.VAR}": tok}, None,
+        )
+        assert self.VAR not in env
+        assert export_vars == [self.VAR]
+        assert f"{SECRET_MOUNT_DIR}/{self.VAR}" in dests
+
+    def _launch(self, start_mocks, tok, *, is_new):
+        with start_mocks() as m, patch(
+            "kanibako.commands.start.persist_creation_level",
+        ):
+            m.proj.is_new = is_new
+            m.agent_cfg.secret_path = {self.VAR: tok}
+            m.load_agent_config.return_value = m.agent_cfg
+            _run_container(
+                project_dir=None, entrypoint=None, image_override=None,
+                new_session=False, safe_mode=False, resume_mode=False,
+                extra_args=[], cli_env=[f"{self.VAR}=sk-from-the-cli"],
+            )
+            return m
+
+    def test_a_non_creating_launch_delivers_the_e_value(self, start_mocks, tok):
+        """The whole launch: env carries ``-e``; no mount, no export shim."""
+        from kanibako.settings.settings_categories import SECRET_MOUNT_DIR
+
+        m = self._launch(start_mocks, tok, is_new=False)
+        kw = m.runtime.run.call_args.kwargs
+        assert (kw.get("env") or {}).get(self.VAR) == "sk-from-the-cli"
+        assert not any(
+            str(getattr(mt, "destination", "")).startswith(SECRET_MOUNT_DIR)
+            for mt in kw.get("extra_mounts") or []
+        )
+        argv = " ".join(
+            [str(kw.get("entrypoint") or "")] + [str(a) for a in kw.get("cli_args") or []]
+        )
+        assert SECRET_MOUNT_DIR not in argv
+
+    def test_a_creating_launch_still_refuses_to_save_the_e(self, start_mocks, tok):
+        """HIS 181-CX1 (a), unchanged: a creating launch saves ``-e`` as
+        ``box.env.VAR``, which beside a ``secret_path.VAR`` would refuse every later
+        launch, so it stops before the box runs."""
+        from kanibako.errors import KanibakoError
+
+        with pytest.raises(KanibakoError, match=f"-e {self.VAR} cannot be saved"):
+            self._launch(start_mocks, tok, is_new=True)
 
 
 class TestPersonaSecretTableNamesAndDeliveries:

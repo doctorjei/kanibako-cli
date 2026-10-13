@@ -517,6 +517,8 @@ inside boxes. In order of likely impact:
 55. **`workset connect --force` removes a standalone box's `workset.registry: null` line, so after
     `workset disconnect` the directory is a plain one, not a standalone box** — see *`workset connect
     --force` removes a standalone box's marker*.
+56. **`-e VAR=value` now beats a `secret_path.VAR` key for that launch; the secret used to win** — see *`-e`
+    beats a `secret_path` key*.
 
 ---
 
@@ -5349,8 +5351,8 @@ that variable, and there the cure runs the other way — drop the persona's vari
 
 **⚑ `-e VAR=VALUE` is not one of the two, and is unaffected.** The per-run flag is the `env`
 family's command-line level, not a key, so it can never be half of this pair. A `-e` naming a
-variable a `secret_path` also names is not refused — though the secret still lands last, which is
-the reason to spell the intent as keys and let this refusal find the conflict.
+variable a `secret_path` also names is not refused, and the `-e` value wins for that launch (see
+*`-e` beats a `secret_path` key*).
 
 **Turning a token OFF is still one line and is not this refusal.** Writing
 `secret_path.<VAR>: null` means "this endpoint needs no token" and declares no variable at all,
@@ -7890,6 +7892,22 @@ its files where they are, and the printed `kanibako workset connect` cure re-ado
 the old standalone box again. To make a new standalone box there, move `box_data/` out of it first
 (`box create --standalone` refuses while it is there); then `kanibako box create --standalone <path>`
 seeds a new home.
+
+### 2.116 `-e` beats a `secret_path` key
+
+**Read this if you pass `-e VAR=value` for a variable a `secret_path.VAR` key also delivers** — a
+persona's token pointer included.
+
+**What changed.** The box used to get the secret file's value: the box exported it at agent start,
+after the `-e` value was set, so the file won. Now the `-e` value wins for that launch, as `-e`
+beats every other key. kanibako does not mount the secret file for that variable on that launch.
+The `secret_path` key is unchanged, and the next launch without `-e` mounts it again.
+
+A launch that creates the box still stops on such a `-e` (see *A launch that creates a box saves its
+flags*).
+
+**What you must do.** Nothing, unless you passed a `-e` for a variable that a secret also set and
+relied on the secret winning. Drop that `-e`.
 
 ---
 

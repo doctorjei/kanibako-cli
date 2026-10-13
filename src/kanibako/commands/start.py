@@ -2672,7 +2672,18 @@ def _assemble_launch_env(
     # argv. Missing/unreadable/empty host file -> WARN + VAR unset (fail-soft).
     # ``secret_export_vars`` drives the box-side export shim below; an EMPTY list
     # means NO shim (a box with no secrets keeps the bare entrypoint byte-identical).
-    secret_mounts, secret_export_vars = _emit_secret_mounts(deliveries.secrets, logger)
+    # ⚑ A VAR THE ENV LEAF ALSO HOLDS IS NOT MOUNTED: the leaf's value wins (spec
+    # §1A, the command line outranks every settings file).  Spec §2a refuses a VAR
+    # named by both an ``env`` key and a ``secret_path`` key before this point, so
+    # the only way one VAR reaches both is a per-run ``-e`` filling a vacancy.  The
+    # shim exports after podman applies the env, so a mounted secret would win.
+    secrets = []
+    for e in deliveries.secrets:
+        if e.name in env_slots:
+            logger.info("secret_path: -e %s overrides %s for this launch", e.name, e.key)
+            continue
+        secrets.append(e)
+    secret_mounts, secret_export_vars = _emit_secret_mounts(secrets, logger)
     extra_mounts.extend(secret_mounts)
     # Claude Code's telemetry (CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC) and
     # auto-updater (DISABLE_AUTOUPDATER) vars are claude's own DECLARED
