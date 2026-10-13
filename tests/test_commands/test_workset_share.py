@@ -193,7 +193,7 @@ class TestShareAdd:
         assert str(workset.root / "sub" / "dir") in capsys.readouterr().out
 
     @pytest.mark.parametrize(
-        "src", ["/abs/host", "~/tdir", "$XDG_DATA_HOME/x", "@system.channelroot/x"],
+        "src", ["/abs/host", "~/tdir", "{$XDG_DATA_HOME}/x", "{system.channelroot}/x"],
     )
     def test_add_absolute_tilde_var_ref_are_stored_verbatim(
         self, config_file, tmp_home, workset, src
@@ -675,8 +675,8 @@ class TestEffectiveListingsResolveTheWorksetAnchors:
         return capsys.readouterr().out
 
     @pytest.mark.parametrize("src, leaf", [
-        ("@meta.workset.path/refdir", "refdir"),
-        ("@meta.runtime.ws_root/r", "r"),
+        ("{meta.workset.path}/refdir", "refdir"),
+        ("{meta.runtime.ws_root}/r", "r"),
     ])
     def test_a_workset_anchor_resolves_to_the_working_set_root(
         self, config_file, tmp_home, workset, capsys, src, leaf
@@ -689,7 +689,7 @@ class TestEffectiveListingsResolveTheWorksetAnchors:
     ):
         """Spec §2c: ``workset.auth.path`` defaults under the working-set root, so a
         share sourced there lists the directory a launch mounts, not ``/notes``."""
-        out = self._list_one(workset, capsys, "/opt/n", "@workset.auth.path/notes")
+        out = self._list_one(workset, capsys, "/opt/n", "{workset.auth.path}/notes")
         assert f"  {workset.root / 'auth' / 'notes'} -> /opt/n  [ro]" in out
 
 
@@ -733,7 +733,7 @@ class TestAPreviewRowTheBoxDecides:
     """Design 1C: a source that reads a ``box.*`` key or a box-only anchor previews
     as ``(depends on the box)``; any box may override it, so no box-less value is right."""
 
-    @pytest.mark.parametrize("src", ["/opt/@box.image", "@meta.box.path/x"])
+    @pytest.mark.parametrize("src", ["/opt/{box.image}", "{meta.box.path}/x"])
     def test_a_box_dependent_source_says_so(self, config_file, workset, capsys, src):
         from kanibako.settings.config_io import dump_doc
         from kanibako.settings.settings_launch import DEPENDS_ON_THE_BOX

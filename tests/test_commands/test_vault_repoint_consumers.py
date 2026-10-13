@@ -284,8 +284,8 @@ class TestStandalonePurgeFollowsAnInRootRepoint:
         std, config = _reload(config_file)
         root = tmp_home / "sa_store"
         root.mkdir()
-        _repoint(root, "vault_ro", "@meta.workset.path/store/ro")
-        _repoint(root, "vault_rw", "@meta.workset.path/store/rw")
+        _repoint(root, "vault_ro", "{meta.workset.path}/store/ro")
+        _repoint(root, "vault_rw", "{meta.workset.path}/store/rw")
         proj = resolve_standalone_project(std, config, project_dir=str(root),
                                           initialize=True)
         assert proj.vault_ro_path == root / "store" / "ro"
@@ -376,7 +376,7 @@ class TestTeardownResolvesBeforeItDeletes:
         (root / "file.txt").write_text("x")
         resolve_standalone_project(std, config, project_dir=str(root), initialize=True)
         # ``@config.registry`` is not reachable on the no-snapshot paths side.
-        _repoint(root, "vault_ro", "@config.registry/ro")
+        _repoint(root, "vault_ro", "{config.registry}/ro")
         return std, config, root
 
     def test_unresolvable_vault_refuses_the_purge_and_touches_nothing(
@@ -447,8 +447,8 @@ class TestCleanPurgeFollowsTheRepoint:
         std, config = _reload(config_file)
         root = tmp_home / "cl_store"
         root.mkdir()
-        _repoint(root, "vault_ro", "@meta.workset.path/store/ro")
-        _repoint(root, "vault_rw", "@meta.workset.path/store/rw")
+        _repoint(root, "vault_ro", "{meta.workset.path}/store/ro")
+        _repoint(root, "vault_rw", "{meta.workset.path}/store/rw")
         proj = resolve_standalone_project(std, config, project_dir=str(root),
                                           initialize=True)
         (proj.vault_ro_path / "keep.txt").write_text("vault data")
@@ -499,8 +499,8 @@ class TestStandaloneMoveSourceCleanupFollowsTheRepoint:
         root = tmp_home / "mv_store"
         root.mkdir()
         (root / "file.txt").write_text("x")
-        _repoint(root, "vault_ro", "@meta.workset.path/store/ro")
-        _repoint(root, "vault_rw", "@meta.workset.path/store/rw")
+        _repoint(root, "vault_ro", "{meta.workset.path}/store/ro")
+        _repoint(root, "vault_rw", "{meta.workset.path}/store/rw")
         proj = resolve_standalone_project(std, config, project_dir=str(root),
                                           initialize=True)
         assert proj.vault_ro_path == root / "store" / "ro"
