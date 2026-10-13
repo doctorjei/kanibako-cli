@@ -10,7 +10,7 @@ Covers the brief §5 checklist for the pure ``expand(snapshot, ctx) -> KeyStore`
   embedded ref to a present-None key makes the WHOLE value None (spec §0);
 * CYCLE (whole-value AND embedded) → hard ``SettingsError`` with the chain;
   KEPT DISTINCT from a legitimately absent/None referent (NOT an error);
-* ``host_src`` ``$XDG``/``~`` expand host-side; ``box_dest`` ``$XDG``/``~`` left
+* ``host_src`` ``{$XDG_*}``/``~`` expand host-side; ``box_dest`` ``{$XDG_*}``/``~`` left
   RAW (deferred — asserted PRESENT) while a ``box_dest`` ``@``-ref IS expanded;
 * escapes preserved; purity — input snapshot unmutated, idempotent on a terminal.
 
@@ -124,7 +124,7 @@ def test_fresh_tree_no_aliasing() -> None:
 
 
 # --------------------------------------------------------------------------- #
-# Host-side $XDG / ~ expansion                                                #
+# Host-side {$XDG_*} / ~ expansion                                            #
 # --------------------------------------------------------------------------- #
 
 
@@ -150,9 +150,9 @@ def test_braced_xdg_var() -> None:
 
 
 def test_transitive_chain_collapses() -> None:
-    # canon -> @workset.template -> @meta.workset.path -> $XDG_DATA_HOME terminal
+    # canon -> {workset.template} -> {meta.workset.path} -> {$XDG_DATA_HOME} terminal
     # (spec §1 chain shape: a workset's children derive from its path).
-    # ⚑ The chain stays INSIDE the snapshot on purpose — ``@config.*`` would not
+    # ⚑ The chain stays INSIDE the snapshot on purpose — ``{config.*}`` would not
     # test the fixpoint at all, since the resolver split (spec §1A / JC-2) routes
     # a config ref to the Layer-1 foundation, never to the merged snapshot.
     snap = KeyStore({
@@ -189,7 +189,7 @@ def test_multi_hop_whole_value_chain() -> None:
 
 
 def test_whole_value_absent_drops_key_full_chain() -> None:
-    # a = @b, b = @box.env.C, box.env.C ABSENT → a and b are both DROPPED (absence full chain).
+    # a = {b}, b = {box.env.C}, box.env.C ABSENT → a and b are both DROPPED (absence full chain).
     snap = KeyStore({"a": "{b}", "b": "{box.env.C}"})
     out = expand(snap, _ctx())
     assert _probe(out, "a") is __MISSING__
@@ -197,7 +197,7 @@ def test_whole_value_absent_drops_key_full_chain() -> None:
 
 
 def test_whole_value_present_none_propagates_none() -> None:
-    # a = @b, b = @c, c present-None → a, b carry None (spec §0 "References").
+    # a = {b}, b = {c}, c present-None → a, b carry None (spec §0 "References").
     snap = KeyStore({"a": "{b}", "b": "{c}", "c": None})
     out = expand(snap, _ctx())
     assert _probe(out, "a") is None
@@ -338,7 +338,7 @@ def test_whole_value_ref_to_subtree_fresh_and_expanded() -> None:
     # subtree comes back FRESH (not aliased — S19) AND fully expanded.
     snap = KeyStore({"ref": "{sub}", "sub": {"k": "{leaf}"}, "leaf": "/v"})
     out = expand(snap, _ctx())
-    assert out["ref"] == KeyStore({"k": "/v"})  # inner @leaf expanded.
+    assert out["ref"] == KeyStore({"k": "/v"})  # inner {leaf} expanded.
     assert out["ref"] is not snap["sub"]  # S19 — no aliasing of the input.
     assert out["ref"]["k"] == "/v" and snap["sub"]["k"] == "{leaf}"  # input intact.
 
@@ -424,7 +424,7 @@ def test_if_block_literal_carried_for_downstream_renderer() -> None:
 
 
 def test_bind_host_expands_box_xdg_deferred() -> None:
-    # host_src: @-ref + ~ expand host-side; box_dest $XDG left RAW (deferred).
+    # host_src: @-ref + ~ expand host-side; box_dest {$XDG_*} left RAW (deferred).
     snap = KeyStore({
         "workset": {"logs": "/ws/logs"},
         "box": {"bindings": {"ro": {"helper_log": Bind(
@@ -435,7 +435,7 @@ def test_bind_host_expands_box_xdg_deferred() -> None:
     b = out["box"]["bindings"]["ro"]["helper_log"]
     assert isinstance(b, Bind)
     assert b.host == "/ws/logs/h.jsonl"
-    # DEFERRED — the box-side $XDG token is PRESENT (raw), not host-expanded.
+    # DEFERRED — the box-side {$XDG_*} token is PRESENT (raw), not host-expanded.
     assert b.box == "{$XDG_STATE_HOME}/kanibako/helpers.jsonl"
 
 
@@ -452,7 +452,7 @@ def test_bind_box_tilde_deferred() -> None:
 
 
 def test_bind_box_at_ref_IS_expanded() -> None:
-    # box_dest @-ref (CONFIG) IS expanded even though $XDG/~ are not.
+    # box_dest @-ref (CONFIG) IS expanded even though {$XDG_*}/~ are not.
     snap = KeyStore({
         "dest_root": "/box/root",
         "box": {"bindings": {"rw": {"x": Bind("/h/src", "{dest_root}/sub")}}},
@@ -464,7 +464,7 @@ def test_bind_box_at_ref_IS_expanded() -> None:
 
 
 def test_bind_box_mixed_at_and_xdg() -> None:
-    # box_dest with BOTH an @-ref and a deferred $XDG: @ expands, $XDG stays raw.
+    # box_dest with BOTH an @-ref and a deferred {$XDG_*}: @ expands, {$XDG_*} stays raw.
     snap = KeyStore({
         "seg": "mid",
         "box": {"bindings": {"rw": {"x": Bind("/h", "{$XDG_STATE_HOME}/{seg}/end")}}},
@@ -498,7 +498,7 @@ def test_bind_whole_value_host_present_none_carries_none() -> None:
 
 
 def test_bind_host_xdg_and_tilde_expand_host_side() -> None:
-    # The host half of the asymmetry: host_src $XDG / ~ DO expand host-side.
+    # The host half of the asymmetry: host_src {$XDG_*} / ~ DO expand host-side.
     snap = KeyStore({
         "box": {"bindings": {"rw": {
             "h": Bind("{$XDG_DATA_HOME}/kanibako/x", "/box/x"),
@@ -623,7 +623,7 @@ def test_box_side_escaped_at_unescaped() -> None:
 
 
 def test_box_side_braced_var_deferred_verbatim() -> None:
-    # ${VAR} braces are part of the verbatim deferred span (Editor req 2).
+    # {$VAR} braces are part of the verbatim deferred span (Editor req 2).
     snap = KeyStore({"box": {"caches": {"c": Bind("/h", "{$XDG_CACHE_HOME}/k")}}})
     out = expand(snap, _ctx(xdg={"XDG_CACHE_HOME": "/host/cache"}))
     assert out["box"]["caches"]["c"].box == "{$XDG_CACHE_HOME}/k"
@@ -644,7 +644,7 @@ _ODD_REFERENT = "/d/a@b$c\\e~f"
 def test_a_box_dest_reaches_the_box_path_verbatim(dest, expected) -> None:
     r"""Keyspec "References", through the launch seam: ``\@`` unescapes to ``@``,
     which the box side reads as a literal like a referent's own ``@``; ``\$ \~ \\``
-    survive the deferral and unescape box-side; an ``@ref`` resolves host-side."""
+    survive the deferral and unescape box-side; a ``{ref}`` resolves host-side."""
     snap = KeyStore({
         "meta": {"box": {"path": literal_expr(_ODD_REFERENT)}},
         "box": {"bindings": {"rw": {dest: BindEntry("/h/src")}}},
@@ -726,7 +726,7 @@ def test_diamond_no_false_cycle() -> None:
 # --------------------------------------------------------------------------- #
 #
 # STRICT (default) is byte-identical (the suite above asserts it). LENIENT
-# collects dangling @-refs / unknown $VAR / cycles into an error map keyed by the
+# collects dangling @-refs / unknown {$VAR} / cycles into an error map keyed by the
 # owning leaf's dotted path, resolves everything else, and TERMINATES on a cycle.
 
 
@@ -892,7 +892,7 @@ def test_lenient_bind_dangling_host_recorded() -> None:
 
 
 def test_lenient_bind_box_dest_xdg_deferred_not_a_defect() -> None:
-    # A box_dest $XDG token is DEFERRED (S17), never resolved host-side, so an
+    # A box_dest {$XDG_*} token is DEFERRED (S17), never resolved host-side, so an
     # unknown-to-host XDG name in a box_dest is NOT a defect.
     snap = KeyStore({"x": Bind("/host", "{$XDG_CACHE_HOME}/d", "ro")})
     expanded, errors = expand(snap, _ctx(), collect_errors=True)
@@ -1036,7 +1036,7 @@ class TestPrefSubtreeIsNotExpanded:
 
 
 class TestPrefReferencesAreRefused:
-    """A ``@pref.…`` reference is REFUSED, never resolved (spec §2h)."""
+    """A ``{pref.…}`` reference is REFUSED, never resolved (spec §2h)."""
 
     def test_strict_mode_raises(self):
         """INVERT: return ``_ABSENT`` instead -> the referring key would be
@@ -1069,14 +1069,14 @@ class TestPrefReferencesAreRefused:
 
 
 # --------------------------------------------------------------------------- #
-# $TERM through the PRODUCTION env path                                        #
+# {$TERM} through the PRODUCTION env path                                      #
 # --------------------------------------------------------------------------- #
 
 
 def test_env_value_expands_term_host_side(monkeypatch: pytest.MonkeyPatch) -> None:
-    """``<scope>.env.<VAR> = "$TERM"`` reaches a TERMINAL eagerly, host-side (§2d, §1).
+    """``<scope>.env.<VAR> = "{$TERM}"`` reaches a TERMINAL eagerly, host-side (§2d, §1).
 
-    The spec declares ``agent.default.env.TERM | $TERM`` (2026-09-19, Jei's all-agents
+    The spec declares ``agent.default.env.TERM | {$TERM}`` (2026-09-19, Jei's all-agents
     ruling — it was the ``shell`` node's row before that); ``box.env.<VAR>`` rides the same
     channel, so this pins the MECHANISM at a second scope rather than re-testing the shipped
     declaration, whose own delivery is ``tests/test_cli.py``'s. Measured at HEAD before the
@@ -1100,12 +1100,12 @@ def test_env_value_term_falls_back_when_the_host_has_none(
 
 
 # --------------------------------------------------------------------------- #
-# $COLORTERM — a PASSTHROUGH, so absence is an ANSWER and not a failure         #
+# {$COLORTERM} — a PASSTHROUGH, so absence is an ANSWER and not a failure       #
 # --------------------------------------------------------------------------- #
 #
 # ⚑ THE PAIR ABOVE AND THE PAIR BELOW ARE THE WHOLE CONTRAST, which is why they sit
-# together: ``$TERM`` ALWAYS answers (``xterm`` when the host has none) and
-# ``$COLORTERM`` sometimes answers NOTHING.  The spec's ``box.env.COLORTERM`` row
+# together: ``{$TERM}`` ALWAYS answers (``xterm`` when the host has none) and
+# ``{$COLORTERM}`` sometimes answers NOTHING.  The spec's ``box.env.COLORTERM`` row
 # states it — "the host's signal PASSED THROUGH, and ABSENT in the box when the host
 # sets none" — because ``COLORTERM`` is unstandardized and an empty one is a third
 # state readers misparse.  A test asserting ``== ""`` here would be asserting the
@@ -1168,7 +1168,7 @@ def test_embedded_colorterm_substitutes_empty_and_keeps_its_key(
 
 
 def test_a_whole_value_var_box_side_stays_raw_in_deferred_space() -> None:
-    """A WHOLE-VALUE ``$VAR`` box-side stays RAW (S17) — the guard is the SPACE.
+    """A WHOLE-VALUE ``{$VAR}`` box-side stays RAW (S17) — the guard is the SPACE.
 
     🛑 THE VARIABLE IS DELIBERATELY NOT THE PASSTHROUGH, and that is the case. What
     the ``space == "host"`` guard protects is S17 for EVERY variable, so the hazard
@@ -1200,7 +1200,7 @@ def test_a_whole_value_var_box_side_stays_raw_in_deferred_space() -> None:
 def test_a_whole_value_passthrough_box_side_defers_instead_of_answering_absent(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The passthrough's box-side twin: ``$COLORTERM`` DEFERS, it does not answer.
+    """The passthrough's box-side twin: ``{$COLORTERM}`` DEFERS, it does not answer.
 
     Pathological as a destination and asserted anyway, because here the guard's
     absence would be LOUD and wrong rather than quiet: host-side this expression
@@ -1238,7 +1238,7 @@ def test_bind_entry_src_expands_host_side() -> None:
 
 def test_bind_entry_dest_key_expands_refs_but_defers_tilde_and_vars() -> None:
     # The destination moved from the VALUE to the KEY, so the key now carries the
-    # box_dest rule: ``@``-refs resolve; ``$XDG``/``~`` stay RAW for the box side
+    # box_dest rule: ``@``-refs resolve; ``{$XDG_*}``/``~`` stay RAW for the box side
     # (S17). Both halves of that rule are asserted on ONE arm.
     snap = _arm(
         {
@@ -1253,7 +1253,7 @@ def test_bind_entry_dest_key_expands_refs_but_defers_tilde_and_vars() -> None:
     assert set(dict.keys(arm)) == {
         "/data/box/home",  # @-ref expanded
         "~/.claude",  # ~ deferred, RAW
-        "{$XDG_STATE_HOME}/k",  # $VAR deferred, RAW
+        "{$XDG_STATE_HOME}/k",  # {$VAR} deferred, RAW
     }
 
 
@@ -1292,7 +1292,7 @@ def test_bind_entry_embedded_present_none_src_is_a_none_entry(category: str) -> 
     """An embedded source ref to a present None makes the ENTRY None (spec §0).
 
     ⚑ The hazard, measured on the launch path before the fix: standalone
-    ``workset.auth.path`` is ``<None>``, so ``@workset.auth.path/x`` rendered the
+    ``workset.auth.path`` is ``<None>``, so ``{workset.auth.path}/x`` rendered the
     HOST path ``/x`` and mounted it.  ONE rule for every bind-shaped category —
     ``seeded`` is no longer special in the expander.
     """
@@ -1399,7 +1399,7 @@ def test_a_seeded_layer_with_an_absent_whole_value_dest_still_raises() -> None:
 
 @pytest.mark.parametrize("dest", ["{k}/x", "{k}"])
 def test_bind_entry_present_none_dest_key_raises(dest: str) -> None:
-    # Outside ``seeded`` a destination has no omit: ``@k/x`` with ``k`` null must
+    # Outside ``seeded`` a destination has no omit: ``{k}/x`` with ``k`` null must
     # not become the guest path ``/x``.  Raised, embedded and whole-value alike,
     # naming the dest.
     snap = _arm({dest: BindEntry("/h/a")})
@@ -1630,7 +1630,7 @@ def test_space_selects_the_home_and_nothing_else_about_variables() -> None:
     """THE STRUCTURAL FACT the tests above rest on: there is no guest variable map.
 
     ``space`` picks which home a leading ``~`` becomes and NOTHING ELSE —
-    ``_resolve_var`` never consults it — so a ``$VAR``-only expression resolves
+    ``_resolve_var`` never consults it — so a ``{$VAR}``-only expression resolves
     IDENTICALLY in both spaces from one ctx.  A future guest-side map would have
     to break this equality, which is what makes it worth pinning.
     """
@@ -1665,7 +1665,7 @@ def test_tilde_is_the_box_home_in_a_box_dest_and_the_host_home_in_a_host_src() -
     """The one two-sided token, both directions, from a SINGLE context object.
 
     ``~`` is not a variable — it is part of the path itself — so it does NOT
-    follow the ``$VAR`` rule pinned above: it answers per SIDE, not per map.
+    follow the ``{$VAR}`` rule pinned above: it answers per SIDE, not per map.
     """
     host_ctx = _simulated_host_ctx()
     snap = _arm({"~/dest": BindEntry("~/src")})
@@ -1693,7 +1693,7 @@ def test_ref_to_a_bare_relative_path_key_is_refused_not_mounted() -> None:
     """🛑 THE HOLE [R147] CLOSES, measured before the guard existed.
 
     ``box.canon: relcanon`` is self-resolving where it is DECLARED — the source is
-    spelled ``@box.canon/handbook``, so ``_declared_source``'s parse-time refusal
+    spelled ``{box.canon}/handbook``, so ``_declared_source``'s parse-time refusal
     never sees a relative — and it only becomes one HERE, when the key is read.
     The launch seam then uses ``host_src`` AS-IS, and podman reads a source
     beginning with neither ``.`` nor ``/`` as a NAMED VOLUME: the box would have

@@ -702,7 +702,7 @@ def _real_auth_source(mode: str, *, agent_name: str = "goose"):
     build_launch_snapshot → resolve_auth_source), NOT a hand-built one.
 
     The hand-built AuthSource fixtures above set ``workset_source`` explicitly, so
-    they cannot reproduce the standalone ``@workset.auth.path/<agent>`` →
+    they cannot reproduce the standalone ``{workset.auth.path}/<agent>`` →
     ``/<agent>`` escape (workset.auth.path=None renders the @-ref as ``""``). This
     exercises the true resolver so the guard is proven against the real value.
     """
@@ -741,7 +741,7 @@ def _real_auth_source(mode: str, *, agent_name: str = "goose"):
 class TestNoHostRootEscape:
     """Regression: a non-workset box must NEVER mkdir a workset source dir.
 
-    For standalone, ``meta.box.auth.workset_path = @workset.auth.path/<agent>`` with
+    For standalone, ``meta.box.auth.workset_path = {workset.auth.path}/<agent>`` with
     ``workset.auth.path=None`` used to resolve to the literal ``/<agent>`` and be
     carried on ``AuthSource.workset_source``, so ``seed_box_credentials`` →
     ``_create_workset_source_dirs`` did ``Path("/<agent>").mkdir(parents=True)``

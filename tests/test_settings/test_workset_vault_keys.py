@@ -1,8 +1,8 @@
 """``workset.{vault_ro,vault_rw}`` are SETTABLE *and* HONORED — spec §2c ALL PROJECTS.
 
-⚑ Both keys are declared ONCE FOR EVERY MODE (``@meta.workset.path/vault/{ro,rw}``, R-29):
+⚑ Both keys are declared ONCE FOR EVERY MODE (``{meta.workset.path}/vault/{ro,rw}``, R-29):
 there is no ``standalone: <None>`` carve-out, and only the box BIND differs per mode (the
-per-box ``/@meta.box.name`` leaf a lone box does not need).  These tests pin BOTH halves:
+per-box ``/{meta.box.name}`` leaf a lone box does not need).  These tests pin BOTH halves:
 the resolver faces, and the three per-mode paths that actually CREATE the directory.
 """
 
@@ -257,7 +257,7 @@ class TestPrimaryModeVault:
         assert proj.vault_ro_path.is_dir()
 
     def test_gitignore_lands_in_the_skeleton_not_inside_the_ro_arm(self, std, config, tmp_home):
-        """⚑ PRIMARY's arm carries a ``@meta.box.name`` leaf, so its PARENT is the arm itself."""
+        """⚑ PRIMARY's arm carries a ``{meta.box.name}`` leaf, so its PARENT is the arm itself."""
         workspace = tmp_home / "code" / "giapp"
         workspace.mkdir(parents=True)
         proj = resolve_project(std, config, str(workspace), initialize=True)

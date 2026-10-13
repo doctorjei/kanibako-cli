@@ -90,7 +90,7 @@ class TestResolveStandaloneProject:
         """A set ``workset: {workspaces: …}`` in the ROOT workset.yaml
         repoints the standalone workspace (ruled 10, 2026-08-02: the spec's
         "changeable from workset level").  ⚑ The repoint is spelled
-        ``@meta.workset.path/code`` because [R147] refuses a BARE relative; it
+        ``{meta.workset.path}/code`` because [R147] refuses a BARE relative; it
         used to read ``"code"``, and the root-relative reading it meant is the
         one this spelling states."""
         from kanibako.settings.config_io import dump_doc, load_doc
@@ -306,7 +306,7 @@ class TestStandaloneFixedPaths:
         self, std, config, project_dir, credentials_dir, tmp_path,
     ):
         """⚑⚑ M-14, standalone arm: the MOUNT has always been the spec spelling
-        ``@workset.logs/@{meta.box.name}.jsonl``, so a writer that composed
+        ``{workset.logs}/{meta.box.name}.jsonl``, so a writer that composed
         ``box_data/`` sent the hub's writes where the box does not read — silently,
         because a repoint errors nowhere.  Writer and mount name ONE file."""
         proj = resolve_standalone_project(
@@ -321,7 +321,7 @@ class TestStandaloneFixedPaths:
         self, std, config, project_dir, credentials_dir,
     ):
         """A present ``<None>`` ``workset.logs`` is a value ([R177]): the standalone
-        default ``@meta.box.path`` must NOT stand in for it — there is no log."""
+        default ``{meta.box.path}`` must NOT stand in for it — there is no log."""
         from kanibako.settings.paths import standalone_logs_dir
 
         proj = resolve_standalone_project(
@@ -351,7 +351,7 @@ class TestStandaloneFixedPaths:
     def test_helper_log_resolves_a_logs_value_written_as_the_default_ref(
         self, std, config, project_dir, credentials_dir,
     ):
-        """``@workset.boxes`` is the STANDALONE default's own spelling, so a user may
+        """``{workset.boxes}`` is the STANDALONE default's own spelling, so a user may
         write it — and a subdir under it is the obvious tidy-up."""
         proj = resolve_standalone_project(
             std, config, str(project_dir), initialize=True,
@@ -365,7 +365,7 @@ class TestStandaloneFixedPaths:
     def test_helper_log_refuses_a_logs_value_written_as_the_box_root_ref(
         self, std, config, project_dir, credentials_dir,
     ):
-        """``@meta.box.path`` resolves after the workset keys (system-design "Ordering
+        """``{meta.box.path}`` resolves after the workset keys (system-design "Ordering
         rule"), so a hand-written one is refused by name, naming the file."""
         proj = resolve_standalone_project(
             std, config, str(project_dir), initialize=True,
@@ -384,7 +384,7 @@ class TestStandaloneFixedPaths:
     def test_helper_log_default_follows_a_boxes_repoint(
         self, std, config, project_dir, credentials_dir,
     ):
-        """With ``workset.logs`` UNSET the default is ``@workset.boxes`` — so moving the
+        """With ``workset.logs`` UNSET the default is ``{workset.boxes}`` — so moving the
         box store moves the log with it.
         🛑 This does NOT make the standalone box store repointable end to end: home,
         the vault teardown, ``box purge`` and detection still compose ``box_data``.
@@ -403,7 +403,7 @@ class TestStandaloneFixedPaths:
     ):
         """Widening the route for TWO refs it can answer widens it for no others: a
         value needing the launch snapshot still refuses, naming the key, the value and
-        the file that carries it — never a directory called ``@config.data``."""
+        the file that carries it — never a directory called ``{config.data}``."""
         from kanibako.settings.settings_resolve import SettingsError
 
         proj = resolve_standalone_project(

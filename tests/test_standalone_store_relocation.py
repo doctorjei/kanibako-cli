@@ -246,7 +246,7 @@ class TestAStoreThatLeavesTheRootIsNeverRemoved:
         assert (root / "user_code.py").is_file()
 
     def test_a_store_at_the_root_is_never_removed(self, config, std, tmp_home):
-        """``workset.boxes: '@meta.workset.path'`` nominates the root; only STRICTLY
+        """``workset.boxes: '{meta.workset.path}'`` nominates the root; only STRICTLY
         below counts as kanibako's."""
         root = _make_standalone(config, std, tmp_home, "esc_at_root")
         _point_at_verbatim(root, "{meta.workset.path}", root)

@@ -17,7 +17,7 @@ something, and the module's whole value is that non-empty return.  The shipped
 row's own persona adaptation is pinned separately below, against the REAL
 ``ClaudeTarget`` table, so a change to what claude ships fails by name.
 
-⚑ RE-KEY IS ONLY HALF. The source is re-rooted onto ``@meta.agent.<node>.path`` too,
+⚑ RE-KEY IS ONLY HALF. The source is re-rooted onto ``{meta.agent.<node>.path}`` too,
 which is a SYMLINK ``commands.start.ensure_persona_share_symlinks`` lays at the
 harness's real store (ruled 2026-08-27: *"the persona doesn't resolve to the claude
 dir. It resolves to its own symlink… the user can change the symlink to a directory or

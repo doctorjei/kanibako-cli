@@ -170,7 +170,7 @@ def test_expand_agent_var() -> None:
 
 
 # --------------------------------------------------------------------------- #
-# $TERM — the host-env twin of $XDG_*, with a LITERAL fallback and NO validation #
+# {$TERM} — host-env twin of {$XDG_*}, with a LITERAL fallback and NO validation #
 # --------------------------------------------------------------------------- #
 
 
@@ -205,7 +205,7 @@ def test_expand_term_var_set_value_is_never_validated(
 ) -> None:
     """A SET ``TERM`` reaches the box verbatim — ONLY an empty one falls back.
 
-    ⚑ THIS TEST EXISTS TO STOP A FUTURE "missing symmetry" FIX. The ``$XDG_*`` twin ignores a
+    ⚑ THIS TEST EXISTS TO STOP A FUTURE "missing symmetry" FIX. The ``{$XDG_*}`` twin ignores a
     value that fails ``isabs``; ``TERM`` has no such pure test (usability is a terminfo lookup,
     and the lookup that matters happens IN THE BOX, whose terminfo set this side cannot see).
     Adding a host-side check here is the defect, not the cure.
@@ -269,7 +269,7 @@ def test_expand_ref_simple() -> None:
 
 
 def test_expand_ref_double_hop() -> None:
-    # lookup for "a" itself expands "@b"; assert the double-hop resolves.
+    # lookup for "a" itself expands "{b}"; assert the double-hop resolves.
     calls: list[str] = []
 
     def lookup(ref: str, chain: tuple[str, ...]) -> str:

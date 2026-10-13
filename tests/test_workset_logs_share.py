@@ -9,7 +9,7 @@ Two consequences are tested here, both read off the SPEC rather than the impleme
 * **The door refuses by name.**  Aiming a second working set at a log directory some
   working set already resolves to is refused — naming the key, the value and the other
   working set — unless ``--force``.  The comparison is RESOLVED, never lexical:
-  ``@meta.workset.path/../shared`` is a different string in every workset's own file and
+  ``{meta.workset.path}/../shared`` is a different string in every workset's own file and
   ONE directory on disk, and a raw-value comparison would report no collision while both
   worksets wrote into the same files.
 * **A forced share's destructive verb takes only its own part.**  A per-box log is named
@@ -416,7 +416,7 @@ class TestBothCollidingValueShapesCloseTheSameDoor:
 
 
 class TestTheDefaultWorksetResolvesUnderTheTokenItsBoxesRead:
-    """The default's log dir is the one its boxes write: ``@meta.workset.name`` is
+    """The default's log dir is the one its boxes write: ``{meta.workset.name}`` is
     ``__PRIMARY__`` for it, never the registry id ``__default__``."""
 
     NAMED = "{meta.workset.name}"

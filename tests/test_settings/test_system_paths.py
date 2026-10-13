@@ -837,7 +837,7 @@ class TestLoadSystemConfig:
     ``kanibako.cfg`` now) — and the site ``base.cfg`` is the SAME family, the site half
     of the Layer-1 CONFIG set (spec §1 names both; the settings base is the separate
     ``/etc/kanibako/settings_base.yaml``). The Layer-2 ``system.*`` path half comes from
-    ``@config.settings`` alone, which is layer 3.
+    ``{config.settings}`` alone, which is layer 3.
     """
 
     def _redirect(self, monkeypatch, base: Path) -> None:
@@ -971,8 +971,8 @@ class TestLoadSystemConfig:
         )
         self._redirect(monkeypatch, base)
 
-        # Layer 3 — the SYSTEM SETTINGS file at the resolved ``@config.settings``
-        # (``@config.data/global/settings.yaml``, i.e. under the user-pinned data root).
+        # Layer 3 — the SYSTEM SETTINGS file at the resolved ``{config.settings}``
+        # (``{config.data}/global/settings.yaml``, i.e. under the user-pinned data root).
         ssp = data / "global" / "settings.yaml"
         ssp.parent.mkdir(parents=True)
         ssp.write_text('system:\n  channelroot: "/settings/channels"\n')
@@ -987,7 +987,7 @@ class TestResolveSystemPathsXdgCtx:
     """``resolve_system_paths`` populates the full XDG var set into ctx."""
 
     def test_xdg_config_state_cache_refs_resolve(self, tmp_path, monkeypatch):
-        """A config path expression referencing $XDG_CONFIG_HOME resolves."""
+        """A config path expression referencing {$XDG_CONFIG_HOME} resolves."""
         monkeypatch.setenv("HOME", str(tmp_path))
         cfg_home = tmp_path / "cfg"
         monkeypatch.setenv("XDG_CONFIG_HOME", str(cfg_home))
@@ -1010,13 +1010,13 @@ class TestResolveSystemPathsXdgCtx:
 
 
 class TestResolverSplitRouting:
-    """Spec §1A / JC-2: ``@config.*`` routes to the Layer-1 FOUNDATION
-    (``ctx.config``); ``@system.*`` to the merged settings snapshot.
+    """Spec §1A / JC-2: ``{config.*}`` routes to the Layer-1 FOUNDATION
+    (``ctx.config``); ``{system.*}`` to the merged settings snapshot.
 
     These exercise the launch-path expand engine directly (the same router both
     the launch snapshot and set-time validation use), proving the prefix-driven
-    split: a ``@config.*`` ref reads ``ctx.config`` even when the key is ABSENT
-    from the snapshot, while a ``@system.*`` ref reads the snapshot.
+    split: a ``{config.*}`` ref reads ``ctx.config`` even when the key is ABSENT
+    from the snapshot, while a ``{system.*}`` ref reads the snapshot.
     """
 
     def _ctx(self, config):
@@ -1045,7 +1045,7 @@ class TestResolverSplitRouting:
         from kanibako.settings.keystore import KeyStore
         from kanibako.settings.settings_expand import expand
 
-        # A whole-value @config.* ref to a declared key absent from the foundation
+        # A whole-value {config.*} ref to a declared key absent from the foundation
         # → the holder key is DROPPED (absence propagation, spec §0).
         snap = KeyStore()
         snap["x"] = "{config.journal}"
@@ -1057,7 +1057,7 @@ class TestResolverSplitRouting:
         from kanibako.settings.keystore import KeyStore
         from kanibako.settings.settings_expand import expand
 
-        # @system.* reads the snapshot (NOT ctx.config).
+        # {system.*} reads the snapshot (NOT ctx.config).
         snap = KeyStore()
         sysnode = KeyStore()
         sysnode["channelroot"] = "/snap/channels"
@@ -1287,7 +1287,7 @@ class TestCacheRootIsTheKey:
         assert std.state == std.state_home / "kanibako"
 
     def test_the_settings_file_key_reaches_the_root_without_creating_it(self, tmp_home, monkeypatch):
-        """``system set system.cache=…`` writes the ``system:`` table of ``@config.settings``;
+        """``system set system.cache=…`` writes the ``system:`` table of ``{config.settings}``;
         the write ARRIVES at what the consumers are handed — and the resolve leaves
         the filesystem alone.  The ``.is_dir()`` pin stood here until the set-door
         brick repair, asserting the eager ``mkdir`` that bricked every command on a

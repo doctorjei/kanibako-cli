@@ -53,8 +53,8 @@ _KEYSPACE: dict = {
     "config": {"data": "/sys/data"},
     "meta": {"box": {"name": "mybox"}},
 }
-#: A ctx whose XDG/home set makes $XDG_DATA_HOME/$XDG_STATE_HOME resolvable and
-#: $NOPE_VAR / $XDG_CACHE_HOME unset (→ a defect the lenient expand records).
+#: A ctx whose XDG/home set makes {$XDG_DATA_HOME}/{$XDG_STATE_HOME} resolvable and
+#: {$NOPE_VAR} / {$XDG_CACHE_HOME} unset (→ a defect the lenient expand records).
 _CTX = ResolveCtx(
     agent_name="claude",
     workset_name="ws",
@@ -129,7 +129,7 @@ def test_a_colon_in_a_value_is_ordinary_content() -> None:
 
 
 # --------------------------------------------------------------------------- #
-# Verdict — dangling @-ref / unknown $VAR → Error                             #
+# Verdict — dangling @-ref / unknown {$VAR} → Error                           #
 # --------------------------------------------------------------------------- #
 
 
@@ -290,7 +290,7 @@ def test_escaped_at_brace_is_literal_not_a_ref() -> None:
 # category write route, and Jei ruled its deletion.  21 test functions / 24
 # parametrized cases went with it (counted, not estimated): the
 # host_src swap keeping box_dest/options, the RAW-form preservation (``@``-refs /
-# ``$XDG`` / ``~`` stored verbatim, never expanded), the F10 cascade fallback
+# ``{$XDG_*}`` / ``~`` stored verbatim, never expanded), the F10 cascade fallback
 # (``test_repoint_cascade_fallback_*``, ``test_repoint_missing_key_raises`` — spec
 # §2a's "the key MUST ALREADY EXIST in the cascade"), the non-category-value /
 # non-mapping-intermediate refusals, the list-not-a-colon-string storage form, and
@@ -430,7 +430,7 @@ def test_e3_embedded_dangling_ELSEWHERE_allows() -> None:
 def test_e3_f_edit_introduces_cycle_blocks() -> None:
     # (f) The edit makes the edited value's chain a CYCLE → BLOCK.
     def probe(key, value):
-        # editing `a` to @b, with b=@a already present → a -> b -> a cycle.
+        # editing `a` to {b}, with b={a} already present → a -> b -> a cycle.
         return _resolves_with({"b": "{a}"}, key=key, value=value)
 
     v = _validate("a", "{b}", resolves=probe)

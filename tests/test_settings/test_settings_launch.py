@@ -247,7 +247,7 @@ def test_the_box_scalar_floor_is_folded_for_every_subject(subject_name):
 
 def test_a_box_file_scalar_beats_the_box_scalar_floor(tmp_path: Path):
     """The floor sits at the base rung: a box file's ``box.shell`` / ``box.share_images``
-    win by merge level, and an embedded ``@box.shell`` renders the user's value."""
+    win by merge level, and an embedded ``{box.shell}`` renders the user's value."""
     from kanibako.settings.config import box_scalar_defaults_floor
     from kanibako.settings.config_io import dump_doc
 
@@ -736,7 +736,7 @@ def test_adapter_does_not_root_a_relative_host_src():
     re-introduced prepend RED.
 
     ⚑ THE "SHOULD NEVER REACH HERE" PREMISE IS NOW TRUE, and it was not when this
-    was written: a source spelled ``@box.canon/handbook`` passed the declaration
+    was written: a source spelled ``{box.canon}/handbook`` passed the declaration
     parse and only became relative once the key it dereferences was read, so it
     reached the mount as a bare relative — which podman takes for a NAMED VOLUME.
     [R147] closed that on both sides (``settings_expand._refuse_relative_host_src``
@@ -1462,7 +1462,7 @@ def _auth_snapshot(
         workset_path=_to_path(workset_file), box_path=_to_path(box_file),
         auth_chain=chain, meta_runtime=mr, meta_identity=meta_id,
         # ⚑ P7: ``meta.box.auth.workset_path`` is now the spec's
-        # ``@workset.auth.path/@system.agent`` (§2c) rather than a
+        # ``{workset.auth.path}/{system.agent}`` (§2c) rather than a
         # Python-interpolated name, so the §1A SELECTION LEVEL must carry the
         # resolved agent — exactly as the launch does. A blank agent_name is the
         # NO-AGENT box and installs nothing (the embedded ref then coerces to "").
@@ -1492,7 +1492,7 @@ def test_auth_persona_node_name_with_punctuation_resolves(tmp_path, agent_name):
     """A persona node-name containing ``_`` must resolve the capability MIRROR.
 
     ``meta.box.agent.auth.share_support`` is the interpolated @-ref
-    ``@meta.agent.<node>.auth.share_support``.  When the ref grammar omitted a
+    ``{meta.agent.<node>.auth.share_support}``.  When the ref grammar omitted a
     character a persona segment allowed, the name truncated mid-node, the
     leftover survived as a literal, and ``as_bool`` raised "expected bool, got
     str".  The ref grammar is composed from the name rule's charset (spec §0),
@@ -1612,7 +1612,7 @@ def test_auth_clean_break_no_group_auth_keys():
     assert "box.auth.workset_path" not in chain
     assert "meta.box.auth.workset_path" in chain
     # ⮕ P7: SPELLED as the spec writes it (§2c) rather than interpolated; the
-    # per-box variation now arrives through @system.agent (the pref layer + the §1A
+    # per-box variation now arrives through {system.agent} (the pref layer + the §1A
     # selection level), which resolves strictly EARLIER than this L4.1 anchor.
     # INVERT: interpolate the name again and the F2 incoherence returns (a --agent
     # launch would resolve the WRONG per-agent credential dir).
@@ -1844,7 +1844,7 @@ def _snap_meta_box_auth_workset_path(snap):
 
 
 def test_p6d2_meta_anchor_resolves_and_box_auth_has_no_workset_path(tmp_path):
-    """change 8: meta.box.auth.workset_path resolves to @workset.auth.path/<agent>
+    """change 8: meta.box.auth.workset_path resolves to {workset.auth.path}/<agent>
     in the snapshot; the settable box.auth node carries ONLY the enable knobs (the
     source path no longer lives under box.auth)."""
     snap = _auth_snapshot("primary", tmp_path=tmp_path)
@@ -1871,7 +1871,7 @@ def test_p6d2_resolved_workset_source_reads_meta_node(tmp_path):
 def test_p6d2_meta_anchor_none_for_standalone(tmp_path):
     """change 7/8: standalone pins meta.box.auth.workset_path = None (the meta-
     anchor-is-None-for-standalone pattern). Mutation: dropping the None pin would
-    let @workset.auth.path/<agent> resolve to garbage /<agent>."""
+    let {workset.auth.path}/<agent> resolve to garbage /<agent>."""
     snap = _auth_snapshot("standalone", tmp_path=tmp_path)
     assert _snap_meta_box_auth_workset_path(snap) is None
 
@@ -1896,7 +1896,7 @@ def test_p6d2_safety_meta_anchor_dropped_from_settings_file(tmp_path):
 
 def test_p6d2_workset_auth_path_settable_and_overrides_default(tmp_path):
     """change 8: workset.auth.path is the ONLY settable auth-location surface. A
-    workset FILE value OVERRIDES the @meta.workset.path/auth floor default, and the
+    workset FILE value OVERRIDES the {meta.workset.path}/auth floor default, and the
     derived meta.box.auth.workset_path re-resolves against it. Mutation: unregister
     the route / drop the override handling → the custom root is not honored."""
     from kanibako.settings.config_keys import KNOWN_CONFIG_KEYS, _KEY_ROUTES
@@ -2137,7 +2137,7 @@ def test_R147_a_reset_or_empty_value_is_not_judged(tmp_path, value):
 
 
 def test_R147_an_AGENT_rooted_value_is_refused(tmp_path):
-    """``$AGENT`` expands to a bare name, so ``$AGENT/x`` is as relative as ``x``."""
+    """``{$AGENT}`` expands to a bare name, so ``{$AGENT}/x`` is as relative as ``x``."""
     from kanibako.settings.settings_resolve import SettingsError
 
     with pytest.raises(SettingsError) as exc:
@@ -2231,7 +2231,7 @@ from kanibako.settings.settings_resolve import SettingsError as _SettingsError  
 
 
 def _ctx_with_config(primary_workset: str = "/data/primary_workset") -> ResolveCtx:
-    """A ctx carrying the Layer-1 config foundation so @config.primary_workset
+    """A ctx carrying the Layer-1 config foundation so {config.primary_workset}
     resolves (mirrors settings_launch.resolve_inputs, #3a)."""
     return ResolveCtx(
         agent_name="claude",
@@ -2283,7 +2283,7 @@ def _meta_node(snap, *path):
 
 
 def test_meta_runtime_primary_ws_root_resolves_via_config_foundation():
-    """PRIMARY: meta.runtime.ws_root = @config.primary_workset → the foundation
+    """PRIMARY: meta.runtime.ws_root = {config.primary_workset} → the foundation
     literal (spec §1A); meta.workset.path single-sources from it."""
     snap = _meta_snapshot("primary", ctx=_ctx_with_config("/data/primary_workset"))
     runtime = _meta_node(snap, "meta", "runtime")
@@ -2341,7 +2341,7 @@ def test_meta_workset_path_single_sources_from_ws_root_all_modes():
 
 
 def test_meta_workset_settings_single_sources_all_modes():
-    """meta.workset.settings = @meta.runtime.ws_root/workset.yaml, UNIFORM across ALL
+    """meta.workset.settings = {meta.runtime.ws_root}/workset.yaml, UNIFORM across ALL
     modes incl. standalone (whose ROOT file plays the workset tier).
 
     ⚑ EQUIVALENCE BAR for the ``meta.runtime.ws_settings`` CUT: these EXPECTED VALUES
@@ -2385,7 +2385,7 @@ def test_meta_runtime_ws_name_per_mode():
 
 
 def test_meta_workset_name_single_sources_from_ws_name_all_modes():
-    """meta.workset.name resolves VIA the @meta.runtime.ws_name anchor (spec §2c
+    """meta.workset.name resolves VIA the {meta.runtime.ws_name} anchor (spec §2c
     , 2026-07-04) — the SAME token per mode B2 formerly set directly.
     Proving it is the ANCHOR: the resolved meta.workset.name EQUALS the resolved
     meta.runtime.ws_name for every mode (would go RED if the anchor were absent /
@@ -2585,7 +2585,7 @@ def test_meta_runtime_coexists_with_auth_chain():
 
 
 # --------------------------------------------------------------------------- #
-# meta.* IDENTITY-anchor materialization + @meta.*-routed binds (block B2)     #
+# meta.* IDENTITY-anchor materialization + {meta.*}-routed binds (block B2)    #
 # spec §2c/§2d, §0                                                             #
 # --------------------------------------------------------------------------- #
 
@@ -2604,7 +2604,7 @@ def _identity_snapshot(
     default_categories=None,
     ctx=None,
 ):
-    """Build a snapshot carrying the B2 identity floor + optional @meta.*-routed
+    """Build a snapshot carrying the B2 identity floor + optional {meta.*}-routed
     core-bind default tables (matching core-defaults.yaml's meta_ref entries)."""
     ident = meta_identity_floor(
         box_name=box_name,
@@ -2656,7 +2656,7 @@ class TestMetaAgentNameIsTheStoreDirname:
     spelling while its own key DISCRIMINATOR stays canonical (``℘``).
 
     ⚑ This is not a preference — it is what §2d's formula
-    ``meta.agent.<a>.path = @config.agents/@meta.agent.<a>.name`` REQUIRES. Spell
+    ``meta.agent.<a>.path = {config.agents}/{meta.agent.<a>.name}`` REQUIRES. Spell
     the value with ``℘`` and the formula composes a directory that is not there.
     A bare agent cannot show any of it (node == harness ⇒ one string), which is
     why the persona case carries the weight and the bare case is the control.
@@ -2677,7 +2677,7 @@ class TestMetaAgentNameIsTheStoreDirname:
 
     def test_the_spec_formula_composes(self):
         """⚑ THE RULE, not an inventory (P13): §2d says ``path`` IS
-        ``@config.agents/%tolower(@meta.agent.<a>.name)%`` (``[R176]``).  Asserting
+        ``{config.agents}/%tolower({meta.agent.<a>.name})%`` (``[R176]``).  Asserting
         the COMPOSITION reds if EITHER half drifts, which a literal on one half
         alone would not.  ⚑ The ``tolower`` is HIS adjustment and belongs in the
         assertion: leave it out and a case-carrying name reads as a drift.
@@ -2735,7 +2735,7 @@ class TestMetaAgentNameIsTheStoreDirname:
 class TestMetaAgentPath:
     """``meta.agent.<a>.path`` — the agent STORE ROOT (spec §2d) that is also
     §2a's agent DECLARATION ROOT: an abstract-category source stores
-    ``@meta.agent.<a>.path/<category>/<leaf>``, so this key MUST resolve or every
+    ``{meta.agent.<a>.path}/<category>/<leaf>``, so this key MUST resolve or every
     such source dangles."""
 
     def test_meta_agent_path_materialized_for_node_and_harness(self):
@@ -2769,7 +2769,7 @@ class TestMetaAgentPath:
         assert paths == {"meta.agent.claude.path"}
 
     def test_meta_agent_path_resolves_to_the_store_dir(self):
-        """It RESOLVES (the whole point): the @config.agents chain expands to the
+        """It RESOLVES (the whole point): the {config.agents} chain expands to the
         real per-agent store dir in the built snapshot.  The ctx carries the
         Layer-1 ``config.agents`` foundation, as every live caller's does
         (``resolve_inputs`` / ``_print_effective_shares``)."""
@@ -2902,7 +2902,7 @@ class TestMetaAgentGrammarSnapshot:
         assert dict.get(ma, "exec") == ["-p"]
 
     def test_settings_leaf_resolves_through_the_path_anchor(self):
-        """``meta.agent.<a>.settings`` = @meta.agent.<a>.path/agent.yaml —
+        """``meta.agent.<a>.settings`` = {meta.agent.<a>.path}/agent.yaml —
         the @-ref chain resolves through the sibling ``path`` anchor to the SAME
         file ``agent_settings_path`` composes (agents/<a>/agent.yaml)."""
         from kanibako.settings.agent_config import agent_settings_path
@@ -3002,7 +3002,7 @@ def test_shell_snapshot_carries_empty_mode():
 def test_shell_canon_falls_back_to_default_canon(tmp_path):
     """Step 7 falsifier: ``agent.shell.canon`` resolves to the default canon.
 
-    The spec fence says ``agent.shell.canon | @config.agents/default/canon``,
+    The spec fence says ``agent.shell.canon | {config.agents}/default/canon``,
     and the floor spells that LITERAL whenever the shell store carries no canon
     dir of its own — not the one-hop indirection the per-node arm uses, so the
     manifest row pins against the emitter output directly.
@@ -3123,7 +3123,7 @@ def test_meta_box_settings_anchor_tolerates_a_narrow_resolve():
 
 
 def test_workspace_bind_routes_through_meta_box_workspace():
-    """box.bindings.rw.workspace = (@meta.box.workspace, ~/workspace) expands to the
+    """box.bindings.rw.workspace = ({meta.box.workspace}, ~/workspace) expands to the
     SAME host_src as the proj-attr literal (byte-identical, JC-B2-4)."""
     snap = _identity_snapshot(
         project_path="/code/droste",
@@ -3135,14 +3135,14 @@ def test_workspace_bind_routes_through_meta_box_workspace():
     # ``/home/agent/workspace``); the entry carries (src, opts) only.
     bind = _meta_node(snap, "box", "bindings", "rw", "/home/agent/workspace")
     assert isinstance(bind, BindEntry)
-    # The @meta.box.workspace ref resolved to str(proj.project_path) — byte-identical
+    # The {meta.box.workspace} ref resolved to str(proj.project_path) — byte-identical
     # to the old `source: project_path` injection.
     assert bind.src == "/code/droste"
     assert bind.opts == "Z,U"
 
 
 def test_inbox_bind_routes_through_meta_box_inbox():
-    """box.bindings.rw.inbox = (@meta.box.inbox, ~/channels/inbox) expands to the
+    """box.bindings.rw.inbox = ({meta.box.inbox}, ~/channels/inbox) expands to the
     SAME host_src as the channels.box_channel_addresses literal (JC-B2-4)."""
     snap = _identity_snapshot(
         inbox="/data/channels/mailboxes/__PRIMARY__/droste",
@@ -3185,13 +3185,13 @@ def test_meta_box_view_standalone_share_workset_none():
 
 
 def test_routed_bind_equivalence_vs_literal_injection():
-    """EQUIVALENCE BAR (JC-B2-4): for workspace + inbox, the @meta.*-routed bind
+    """EQUIVALENCE BAR (JC-B2-4): for workspace + inbox, the {meta.*}-routed bind
     resolves to the IDENTICAL (host_src, box_dest, opts) the OLD literal-source
     injection produced — proving the route swap is byte-identical."""
     project_path = "/code/droste"
     inbox = "/data/channels/mailboxes/__PRIMARY__/droste"
 
-    # NEW: @meta.* routed (what core-defaults.yaml now emits via meta_ref).
+    # NEW: {meta.*} routed (what core-defaults.yaml now emits via meta_ref).
     routed = _identity_snapshot(
         project_path=project_path, inbox=inbox,
         default_categories={
@@ -3354,7 +3354,7 @@ def test_meta_box_agent_mirror_copy_is_not_an_alias():
 
 def test_meta_box_agent_mirror_repoints_on_agent_change():
     # Re-materialized when the SELECTED agent changes: agent_name IS the resolved
-    # active agent (``@system.agent`` — the stored key, a pref, or --agent), so a
+    # active agent (``{system.agent}`` — the stored key, a pref, or --agent), so a
     # different agent_name mirrors a different subtree.
     common = dict(
         ctx=_ctx(),
@@ -4003,7 +4003,7 @@ def _box_root_floor(mode: str) -> dict[str, object]:
 
 
 def test_meta_box_home_resolves_under_the_box_root_in_every_mode():
-    """``meta.box.home`` is the RO DERIVED box-home SOURCE ``@meta.box.path/home``.
+    """``meta.box.home`` is the RO DERIVED box-home SOURCE ``{meta.box.path}/home``.
 
     UNIFORM in every mode (spec §2c ALL PROJECTS), exactly like
     ``meta.box.settings``: ONE formula, with the whole per-mode variation living in
@@ -4039,7 +4039,7 @@ def test_home_bind_names_the_derived_key_and_resolves_through_it():
 
     ⚑ THIS REPLACES THE DRIFT GUARD (deleted 2026-08-10, A9 re-point), and it is
     RE-AIMED, never deleted. While the derivation existed TWICE — the key, and an
-    inline ``@meta.box.path/home`` in the ``home`` row of ``core-defaults.yaml`` — a
+    inline ``{meta.box.path}/home`` in the ``home`` row of ``core-defaults.yaml`` — a
     guard held the two spellings equal. Then the row NAMED the key. At cutover 6-H the
     row went away entirely: home does NOT route through ``bindings.rw`` (spec
     ``:1015``), and ``commands.start._install_assembly_collapse`` builds the pid-0
@@ -4057,8 +4057,8 @@ def test_home_bind_names_the_derived_key_and_resolves_through_it():
       fold, so nothing appends ``rw`` to it.
 
     MUTATION-PROOF: re-deriving the foundation from ``proj.shell_path`` or re-inlining
-    ``@meta.box.path/home`` at the seam → RED on the src; producing
-    ``@meta.box.path/home2`` in ``workset_anchor_floor`` → RED on the resolved value;
+    ``{meta.box.path}/home`` at the seam → RED on the src; producing
+    ``{meta.box.path}/home2`` in ``workset_anchor_floor`` → RED on the resolved value;
     ``store_collapse.HOME_OPTIONS = "Z,U,rw"`` → RED on the options.
     """
     from kanibako.commands.start import _install_assembly_collapse
@@ -4094,7 +4094,7 @@ def test_home_bind_names_the_derived_key_and_resolves_through_it():
 def test_box_root_that_does_not_resolve_is_a_named_error(tmp_path: Path):
     """A box root that resolves to nothing RAISES, naming the key.
 
-    ⚑ WHY THIS EXISTS. ``box.bindings.rw.home`` is ``@meta.box.path/home`` — an
+    ⚑ WHY THIS EXISTS. ``box.bindings.rw.home`` is ``{meta.box.path}/home`` — an
     EMBEDDED ref, and the embedded rule coerces an absent / present-None referent
     to ``""``. So a box root that fails to resolve does not error: it yields the
     host_src ``/home``, which the L7 guarantee-create then mkdir's and mounts OVER
@@ -4136,7 +4136,7 @@ def test_box_root_that_does_not_resolve_is_a_named_error(tmp_path: Path):
 def test_box_root_with_a_vanished_name_leaf_is_a_named_error():
     """An EMPTY ``meta.box.name`` must not silently yield the SHARED box store.
 
-    primary/named spell the root ``@workset.boxes/@meta.box.name``, so an empty name
+    primary/named spell the root ``{workset.boxes}/{meta.box.name}``, so an empty name
     leaves ``<…>/boxes/`` — and the home host_src ``<…>/boxes//home``, which is the
     box STORE's home rather than this box's (every box in the workset would resolve
     the same home directory); a None name makes the root None (spec §0).
@@ -4611,7 +4611,7 @@ class TestPrefRecomputeNotDelta:
     def test_a_key_derived_from_a_prefd_value_updates(self, tmp_path):
         """⚑ THE discriminator for the delta implementation.
 
-        ``box.bindings.rw.probe``'s host is ``@agent.claude.template/sub``. If
+        ``box.bindings.rw.probe``'s host is ``{agent.claude.template}/sub``. If
         prefs were installed by patching the EXPANDED snapshot (the delta), the
         target key would be right but this DERIVED value would still carry the
         old root — here, an empty substitution yielding ``/sub``.
@@ -4631,7 +4631,7 @@ class TestPrefRecomputeNotDelta:
         assert probe.src == "/custom/tpl/sub"
 
     def test_a_key_derived_from_a_prefd_system_agent_updates(self, tmp_path):
-        """The P7-critical key: ``@system.agent`` resolves to the REQUESTED
+        """The P7-critical key: ``{system.agent}`` resolves to the REQUESTED
         value everywhere it is referenced, not just at its own key."""
         snap = _pref_snap(
             tmp_path,
@@ -7381,7 +7381,7 @@ class TestASettingsFileEndpointIsText:
         assert env["ANTHROPIC_BASE_URL"] == _TEXT_ENDPOINT
 
     def test_a_ref_to_the_endpoint_reads_its_text(self, tmp_path):
-        """The referent is text too: ``@agent.claude.endpoint`` from another key
+        """The referent is text too: ``{agent.claude.endpoint}`` from another key
         substitutes the endpoint as written, not an expansion of it."""
         snap = _persona_snap(
             tmp_path, persona_values={},

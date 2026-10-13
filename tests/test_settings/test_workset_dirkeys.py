@@ -5,7 +5,7 @@ RULE over every resolver it DISCOVERS rather than over a list of names: a sixth
 ``workset.*`` dir key added tomorrow is swept the moment its resolver exists.  The
 defect it exists to make impossible: a resolver that ``expanduser()``-ed the raw value
 and joined the rest under the workset root, turning the spec's own documented default
-``@meta.workset.path/boxes`` into a literal directory named ``@meta.workset.path`` —
+``{meta.workset.path}/boxes`` into a literal directory named ``{meta.workset.path}`` —
 while the launch snapshot resolved the same key correctly.
 """
 

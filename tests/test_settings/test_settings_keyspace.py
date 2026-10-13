@@ -597,7 +597,7 @@ def test_a_pseudo_agent_keeps_its_meta_rows_and_the_categories(name):
 
 
 def test_the_default_fence_declares_its_path():
-    """§2d ``meta.agent.default.path`` (through ``@meta.agent.default.name``) — a fence row."""
+    """§2d ``meta.agent.default.path`` (through ``{meta.agent.default.name}``) — a fence row."""
     assert valid("meta.agent.default.path")
 
 
@@ -878,7 +878,7 @@ def test_a_collapse_output_is_indistinguishable_from_a_produced_sibling(leaf):
 #: attrs rather than the store, and ``helper_num`` travels as a structured field in
 #: helper messages.
 #: ⚑ ``home`` WAS HERE AND IS NOT ANY MORE. It IS produced —
-#: ``settings_launch.workset_anchor_floor`` writes it beside the ``@meta.box.path``
+#: ``settings_launch.workset_anchor_floor`` writes it beside the ``{meta.box.path}``
 #: it derives from (A9, ``b6ad780``) — and since cutover 6-H it is the only route to
 #: the box home there is: the ``core-defaults`` row that used to bind home is gone,
 #: and the assembly seam reads this key. Declared-but-unproduced is what this tuple
@@ -947,7 +947,7 @@ def test_workset_channel_addresses_into_the_system_stores_are_keys():
 
     Mailboxes still AGGREGATE at system only (§2f); the workset leaf is the
     workset's declared ADDRESS into that aggregate
-    (``@system.channels.mailboxes/@meta.workset.name``), present in EVERY mode.
+    (``{system.channels.mailboxes}/{meta.workset.name}``), present in EVERY mode.
     This test previously pinned the EXCLUSION of ``workset.channels.mailboxes``
     — that pin mis-read aggregation-at-system as absence-from-the-family, and
     made the validity table refuse a leaf the launch floor accepted (R-35,
