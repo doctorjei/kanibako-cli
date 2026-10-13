@@ -12413,19 +12413,43 @@ class TestReauthAtALiveBox(_RunningBoxDriver):
     which a live box blocks.  The refusal names reauth and its cure, and comes
     before the rig prep only that container would need."""
 
-    def test_refusal_names_reauth_and_its_cure(self, start_mocks, capsys):
+    def _refuse(self, start_mocks, capsys, **over):
+        """Refuse a reauth at a live NAMED member, whose cure ref is quoted
+        ``<workset>/<box>``; return (rc, stderr, the harness box's cure ref)."""
+        from kanibako.settings.paths import BoxMode, project_cure_ref
+
         with start_mocks() as m, patch(
             "kanibako.commands.start.resolve_rig",
         ) as m_rig:
             self._running(m)
-            rc = self._start(persistent=False, setup_only=True)
+            m.proj.mode = BoxMode.named
+            m.proj.group.name = "my ws"
+            rc = self._start(persistent=False, setup_only=True, **over)
             m_rig.assert_not_called()
             m.runtime.run.assert_not_called()
-        err = capsys.readouterr().err
+            ref = project_cure_ref(m.proj)
+        return rc, capsys.readouterr().err, ref
+
+    def test_refusal_names_reauth_and_its_cure(self, start_mocks, capsys):
+        rc, err, ref = self._refuse(start_mocks, capsys)
         assert rc == 1
-        assert "'kanibako agent reauth' cannot run its in-box setup" in err
-        assert "Stop it:   kanibako stop " in err
-        assert "Then run:  kanibako agent reauth " in err
+        assert ref == "'my ws/testproject'"
+        assert ("Error: Box 'testproject' is running, so 'kanibako agent reauth' "
+                "cannot run its in-box setup, which needs a new container.") in err
+        assert f"  Stop it:   kanibako stop {ref}\n" in err
+        assert f"  Then run:  kanibako agent reauth {ref}\n" in err
+        assert "--agent" not in err
+
+    @pytest.mark.parametrize("typed, shown", [
+        ("codex", "--agent codex"),
+        ("navigator℘claude", "--agent 'navigator℘claude'"),
+    ])
+    def test_the_cure_carries_a_typed_agent(self, start_mocks, capsys, typed, shown):
+        """reauth selects a typed ``--agent`` first; a cure without it would
+        reauth the box's own agent instead."""
+        rc, err, ref = self._refuse(start_mocks, capsys, explicit_agent=typed)
+        assert rc == 1
+        assert f"  Then run:  kanibako agent reauth {shown} {ref}\n" in err
 
     def test_a_stopped_box_still_runs_the_setup(self, start_mocks, capsys):
         """Control: the refusal is about liveness alone."""

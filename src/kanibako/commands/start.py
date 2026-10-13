@@ -3283,13 +3283,17 @@ def _run_container(
     box_running = not restart_stop and runtime.is_running(live_name)
     # ``agent reauth`` runs its in-box setup in a NEW container, which a live box
     # blocks.  Say so here, by name, before the rig prep and persona pre-flight
-    # that only that container would need.
+    # that only that container would need.  A typed ``--agent`` rides into the
+    # cure: reauth selects it first, so a cure without it would reauth another agent.
     if setup_only and box_running:
+        _ref = project_cure_ref(proj)
+        _agent_flag = ("" if explicit_agent is None
+                       else f"--agent {shlex.quote(explicit_agent)} ")
         print(
             f"Error: Box '{proj.name}' is running, so 'kanibako agent reauth' "
             "cannot run its in-box setup, which needs a new container.\n"
-            f"  Stop it:   kanibako stop {project_cure_ref(proj)}\n"
-            f"  Then run:  kanibako agent reauth {project_cure_ref(proj)}",
+            f"  Stop it:   kanibako stop {_ref}\n"
+            f"  Then run:  kanibako agent reauth {_agent_flag}{_ref}",
             file=sys.stderr,
         )
         return 1
