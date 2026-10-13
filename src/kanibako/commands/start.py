@@ -8460,7 +8460,7 @@ def _launch_bind_map(snapshot) -> "dict[str, object]":
 
     ⚑ The reconciled fallback this used to carry came out with that swallow. It
     existed so a refusal reached nobody while both routes ran; a refusal is the point
-    now (llm-docs ``commands/start.py.md``).
+    now (llm-doc).
     """
     from kanibako.settings.settings_resolve import SettingsError
 
@@ -8479,7 +8479,7 @@ def _bind_map_masks(bindings) -> "list[str]":
     """The map's MASK dests, depth-sorted — the other half of what the emitter skips.
 
     ⚑ Hand it the SAME map object :func:`_emit_category_mounts` gets: one value, both
-    arms (llm-docs ``commands/start.py.md``).
+    arms (llm-doc).
 
     ⚑ ASK IT AFTER :func:`_apply_synced_copies`, which may DELETE a mask from that map
     (spec §0: a synced FILE at a mask's own point replaces it).  Asked earlier, the

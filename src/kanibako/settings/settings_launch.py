@@ -3054,7 +3054,7 @@ def _assert_box_root_resolved(snapshot: KeyStore) -> None:
 
     ⚑ THREE SHAPES, so BOTH keys are read: absent / ``""``, primary-named's
     perfect ``/mybox``, and a root ending in ``/`` — the LEAF vanished, so every box
-    shares the BOXES DIRECTORY's home (llm-doc has each).
+    shares the BOXES DIRECTORY's home (llm-doc).
 
     ⚑ THE TEST IS EXISTENCE + LEAF, NOT ABSOLUTENESS — please do not "tighten" it to
     require a leading ``/``: that reddens 131 tests in ``test_commands/test_start.py``,
