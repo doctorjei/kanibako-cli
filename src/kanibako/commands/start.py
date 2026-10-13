@@ -73,6 +73,7 @@ from kanibako.settings.settings_categories import (
     is_read_only,
 )
 from kanibako.settings.settings_keyspace import (
+    ACCESS_TIERS,
     is_terminal_category_key,
     leaf_name_reason,
     pseudo_agent_fence,
@@ -949,6 +950,146 @@ def _no_bootstrap_reason(choice: BootstrapChoice) -> str:
     return cure
 
 
+class _NullRefused(NamedTuple):
+    """An agent behavior key whose present ``null`` REFUSES the launch (182-NA).
+
+    The key has a declared default and no meaning for ``None``, so a stored ``null``
+    is never read as unset (which would take the default). *values* names the cure,
+    *flags* the typed flags that set the key for one launch (``""`` for none).
+    """
+
+    key: str
+    values: str
+    flags: str
+
+
+_ALLOW_HELPERS_NULL = _NullRefused("allow_helpers", "true or false", "")
+_CONTINUE_MODE_NULL = _NullRefused("continue_mode", "true or false", "-N, -C, or -R")
+
+
+def _access_null(setting_key: str) -> _NullRefused:
+    """The rule for the descriptor's access key (*setting_key*, ``access`` for every shipped one)."""
+    return _NullRefused(setting_key, "one of " + " | ".join(ACCESS_TIERS), "-S or -A")
+
+
+def _declared_floor(key: str, agent_id: str) -> str | None:
+    """*agent_id*'s declared ``<key>`` floor; ``None`` for a ``<None>`` or absent row.
+
+    A pseudo-agent's floor is its own tier's, a true agent's ``agent.default``'s, as in
+    :func:`_declared_behavior_bool`. Unlike that read, this one does not raise: it
+    answers "does the key HAVE a default", which gates :func:`_refuse_null_behavior`.
+    """
+    if pseudo_agent_fence(agent_id) is not None:
+        return core_defaults.pseudo_tier_defaults().get(f"agent.{agent_id}.{key}")
+    return core_defaults.behavior_defaults().get(key)
+
+
+def _refuse_null_behavior(
+    snapshot, agent_id: str, rule: _NullRefused, *, written=(), prefs=(),
+) -> str | None:
+    """The refusal when *rule*'s key resolves to a present ``None``, else ``None``.
+
+    THE one check, for every key :class:`_NullRefused` covers and at every door: the
+    early read (:func:`_null_behavior_refusal`) and the main snapshot's reads.
+    :func:`~kanibako.settings.settings_launch.null_behavior_setter` keeps a present
+    ``None`` apart from an absent key, which keeps its declared default. ⚑ A key whose
+    DECLARED default is ``None`` is never refused: there a ``None`` is the default.
+    *written* (the snapshot's ``written_out``) names the file; *prefs* the box and
+    workset requests, so a ``pref.`` line is named as the user wrote it.
+    """
+    from kanibako.settings import settings_launch
+    from kanibako.settings.config import null_path_keys_error
+    from kanibako.settings.messages import (
+        ERR_BEHAVIOR_NULL_CURE,
+        ERR_BEHAVIOR_NULL_FLAGS,
+        ERR_BEHAVIOR_NULL_HEAD,
+        ERR_BEHAVIOR_NULL_KEY_HEAD,
+    )
+    from kanibako.settings.settings_prefs import pref_request_for
+
+    if _declared_floor(rule.key, agent_id) is None:
+        return None
+    hit = settings_launch.null_behavior_setter(
+        snapshot, written, active_agent=agent_id, key=rule.key,
+    )
+    if hit is None:
+        return None
+    dotted, where = hit
+    pref = pref_request_for(prefs, dotted)
+    line = display_agent_ref(
+        f"pref.{dotted}" if pref is not None and str(pref.source) == where else dotted
+    )
+    cure = ERR_BEHAVIOR_NULL_CURE % rule.values
+    if rule.flags:
+        cure += ERR_BEHAVIOR_NULL_FLAGS % rule.flags
+    if where is None:
+        text = null_path_keys_error(Path(), [line], head=ERR_BEHAVIOR_NULL_KEY_HEAD, cure=cure)
+    else:
+        text = null_path_keys_error(
+            Path(where), [line], read_head=ERR_BEHAVIOR_NULL_HEAD, cure=cure,
+        )
+    return text
+
+
+def _null_behavior_refusal(
+    proj,
+    system_settings_path: "Path | None",
+    agent_id: str,
+    target,
+    *,
+    std,
+    level: "Mapping[str, object] | None",
+    rules: "list[_NullRefused]",
+    agent_path: "Path | None" = None,
+) -> str | None:
+    """The launch's EARLY refusal of a stored ``null`` at any of *rules*' keys, or ``None``.
+
+    It runs before the rig prep and the box mkdir/seed, off the focused snapshot
+    :func:`_bootstrap_choice` also reads, so a stored ``null`` costs no side effect.
+    *level* is the selection plus this launch's typed flags
+    (:func:`~kanibako.settings.settings_cli_level.build_cli_level`), so ``-S``/``-A``
+    and ``-N``/``-C``/``-R`` shadow a stored ``null`` here exactly as in the launch.
+    The main snapshot's reads refuse the same values again, for a route this read
+    cannot see. Every offending key is named, one block each.
+    """
+    from kanibako.settings.settings_prefs import collect_prefs
+
+    box_path, workset_path = box_workset_settings_paths(proj)
+    prefs = collect_prefs(workset_path, box_path)
+    refusals: list[str] = []
+    for rule in rules:
+        written: list = []
+        snapshot = _focused_agent_snapshot(
+            proj, system_settings_path, agent_id, std=std,
+            selection_level=level, key=rule.key,
+            floor=_declared_floor(rule.key, agent_id),
+            agent_floor=_plugin_floor(target, rule.key),
+            agent_path=agent_path, written_out=written,
+        )
+        refusal = _refuse_null_behavior(
+            snapshot, agent_id, rule, written=written, prefs=prefs,
+        )
+        if refusal is not None:
+            refusals.append(refusal)
+    return "\n".join(refusals) or None
+
+
+def _plugin_floor(target, key: str) -> "dict[str, str | None]":
+    """The active plugin's declared ``agent.<active>.<key>`` floor row, ``{}`` if none.
+
+    A real target returns a list of TargetSetting; a MagicMock target in unit tests
+    returns a mock, and iterating it would fabricate a floor (same guard, same reason,
+    as ``_resolve_box_launch_decisions``).
+    """
+    descriptors = target.setting_descriptors() if target is not None else []
+    if target is None or not isinstance(descriptors, list):
+        return {}
+    return {
+        k: v for k, v in descriptor_floor(descriptors, plugin=target.name).items()
+        if k == key
+    }
+
+
 def _declared_behavior(key: str) -> str:
     """One DECLARED ``agent.default.<key>`` behavior floor value (spec §2d).
 
@@ -1106,11 +1247,14 @@ def _focused_agent_snapshot(
     floor: str | None,
     agent_floor: "Mapping[str, str | None] | None" = None,
     agent_path: "Path | None" = None,
+    written_out: "list | None" = None,
 ) -> "KeyStore":
     """The focused launch snapshot :func:`_agent_scalar_pick` reads *key* off (see there).
 
     *agent_path* is read as the main snapshot reads it: its root values, its categories, and
     its ``agent:`` table (``agent: default:`` included) all reach this snapshot.
+    *written_out* receives the cascade's labeled levels (``build_launch_snapshot``'s), so a
+    caller can name the file whose value won.
     """
     from kanibako.settings import settings_launch
 
@@ -1122,6 +1266,7 @@ def _focused_agent_snapshot(
         **inputs.as_kwargs(),
         agent_name=agent_id,
         agent_path=agent_path,
+        written_out=written_out,
         # Seed the behavior FLOOR with just *key* (→ agent.default.<key>) so the
         # snapshot's ``agent`` node ALWAYS exists.  Without it, a box whose SOLE
         # agent-scope setting is its ``pref.agent.<agent>.<key>`` request (§2h; e.g.
@@ -1155,7 +1300,8 @@ def _focused_agent_snapshot(
         # runs ahead of the baseline probe, and again from the host-side persistence
         # heuristic in ``_resolve_bootstrap_program``, which holds no target) for a
         # value that could not change.
-        # The SELECTION only (P8): no ephemeral flag reaches this read.
+        # The caller's level: the SELECTION (P8), plus, for the stored-``null``
+        # check alone (:func:`_null_behavior_refusal`), the typed flags that shadow it.
         cli_level=selection_level,
     )
 
@@ -1184,23 +1330,11 @@ def _effective_transform(
     feeds that snapshot's delivery binds, so the decision must precede it.
     *agent_cfg_path* is the per-agent file, read whole as the main snapshot reads it.
     """
-    descriptors = target.setting_descriptors() if target is not None else []
-    # A real target returns a list of TargetSetting; a MagicMock target in unit
-    # tests returns a mock, and iterating it would fabricate a floor (same guard,
-    # same reason, as ``_resolve_box_launch_decisions``).
-    agent_floor = (
-        {
-            k: v
-            for k, v in descriptor_floor(descriptors, plugin=target.name).items()
-            if k == "transform"
-        }
-        if target is not None and isinstance(descriptors, list) else {}
-    )
     return _effective_agent_scalar(
         proj, system_settings_path, agent_id, std=std,
         selection_level=selection_level,
         key="transform", floor=core_defaults.behavior_defaults()["transform"],
-        agent_floor=agent_floor,
+        agent_floor=_plugin_floor(target, "transform"),
         agent_path=agent_cfg_path,
     )
 
@@ -3079,8 +3213,8 @@ def _run_container(
     # under ``container_name``, the rendered ``meta.box.container``.
     live_name = box_container(runtime, proj) or rendered
 
-    # ``--restart``: STOP FIRST, then launch normally.  This is the CURE named by
-    # the already-running override gate below, and it runs BEFORE
+    # ``--restart``: STOP, then launch normally.  This is the CURE named by
+    # the already-running override gate below, and it is DECIDED BEFORE
     # ``reattach_running`` is computed on purpose: once the box is stopped there
     # is nothing to reattach to, so the entire running-box regime — the reattach
     # fast path, the Class-A/B override refusals, AND the mismatched ``--agent``
@@ -3104,17 +3238,12 @@ def _run_container(
     # either way.  No container at all is NOT an error — there is nothing to
     # clear, and erroring would make a ``--restart`` alias/script fail purely
     # because it won the race.
-    if restart and runtime.container_exists(live_name):
-        from kanibako.commands.stop import _stop_one
-        _stop_one(runtime, project_dir=project_dir)
-        if runtime.is_running(live_name):
-            print(
-                f"Error: --restart could not stop box '{proj.name}' — it is "
-                f"still running. Stop it manually (`kanibako stop "
-                f"{project_cure_ref(proj)}`), then start it again.",
-                file=sys.stderr,
-            )
-            return 1
+    #
+    # ⚑ The stop itself runs further down, after the launch's settings refusals (the
+    # bootstrap guard and the stored-``null`` check): a launch they refuse must leave
+    # the running box alone. Until then the box is read as already stopped, which is
+    # all the regime below needs.
+    restart_stop = restart and runtime.container_exists(live_name)
 
     legacy_refusal = _refuse_legacy_container(runtime, proj)
     if legacy_refusal:
@@ -3139,7 +3268,7 @@ def _run_container(
     # two values: the override gate below must refuse an explicit ``--ephemeral``
     # at a live box, and that invocation is precisely one where the box IS
     # running but a reattach is NOT what would happen.
-    box_running = runtime.is_running(live_name)
+    box_running = not restart_stop and runtime.is_running(live_name)
     reattach_running = False
     stored_agent: str | None = None
     if persistent and box_running:
@@ -3218,7 +3347,7 @@ def _run_container(
     # silently dropped: container-CREATION inputs (class A), agent argv (class
     # B), and the two SESSION-SHAPE flags.  This sits ahead of BOTH seams (the
     # flag persist and the reattach fast path below), so neither can ever
-    # observe one.  ``--restart`` never reaches here — it stopped the box above.
+    # observe one.  ``--restart`` never reaches here — its box reads as stopped.
     #
     # ⚑ THE SESSION-SHAPE PAIR IS KEYED ON THE FLAG THE USER TYPED, NOT ON
     # ``persistent``, which is DERIVED and would refuse every ordinary reattach.
@@ -3503,6 +3632,40 @@ def _run_container(
     # reads it otherwise; the sentinel only fills the type for the non-persistent
     # arm.  ``bootstrap`` keeps the resolved value for the messages.
     bootstrap_program: str = bootstrap.program or _BOOTSTRAP_NONE
+
+    # A stored ``null`` at ``access``, ``allow_helpers``, or ``continue_mode`` has no
+    # meaning and REFUSES the launch, here, ahead of the rig prep and the box
+    # mkdir/seed below. Each key is checked where the launch reads it, and the typed
+    # flags ride the level so they shadow a stored ``null`` as they do in the launch.
+    # A reattach reads none of them. The main snapshot's reads refuse again.
+    if not reattach_running:
+        _desc = target.descriptor if target is not None else None
+        _rules = [_ALLOW_HELPERS_NULL]
+        if _desc is not None:
+            _rules.append(_CONTINUE_MODE_NULL)
+            if _desc.access_realization is not None and _desc.access_realization.setting_key:
+                _rules.append(_access_null(_desc.access_realization.setting_key))
+        _null_refusal = _null_behavior_refusal(
+            proj, system_settings_path, agent_id, target, std=std,
+            level=_cli_level, rules=_rules, agent_path=agent_cfg_path,
+        )
+        if _null_refusal is not None:
+            print(f"Error: {_null_refusal}", file=sys.stderr)
+            return 1
+
+    # ``--restart``'s stop (see where ``restart_stop`` is set): past every settings
+    # refusal above, and before the image prep, which creates the new container.
+    if restart_stop:
+        from kanibako.commands.stop import _stop_one
+        _stop_one(runtime, project_dir=project_dir)
+        if runtime.is_running(live_name):
+            print(
+                f"Error: --restart could not stop box '{proj.name}' — it is "
+                f"still running. Stop it manually (`kanibako stop "
+                f"{project_cure_ref(proj)}`), then start it again.",
+                file=sys.stderr,
+            )
+            return 1
 
     # ── IMAGE PREP + LAUNCH BASELINE — for a launch that will CREATE a container.
     # Every step here exists to make a NEW container possible: resolve/build/pull
@@ -4419,13 +4582,15 @@ def _run_container(
         # coerced to bool. Resolved here for BOTH the agent and the no-agent/shell
         # path (agent_id == "shell") so the helper hub gate below sees the
         # effective value regardless of target.
-        # ⚑ THE None-GUARD STAYS, and applies the DECLARED value, because TWO
-        # distinct paths still reach it: an agent-less / mocked target carries no
-        # snapshot floor at all, and a user's present-``None`` reset-to-default in
-        # the winning slot is OMITTED by ``effective_behavior`` by contract (it
-        # shadows the agent.default rung below, leaving the consumer to apply its
-        # own default — settings_launch.effective_behavior's docstring).  A shell
-        # box's declared value is ``agent.shell.allow_helpers``, not the default's.
+        # ⚑ ABSENT and PRESENT-``None`` are two cases. An absent key (an agent-less
+        # / mocked target with no snapshot floor) takes the DECLARED value; a shell
+        # box's is ``agent.shell.allow_helpers``, not the default's. A present
+        # ``None`` (a stored ``null``) has no meaning here and REFUSES
+        # (:func:`_refuse_null_behavior`; the early check already refused what its
+        # read sees).
+        _refusal = _refuse_null_behavior(_snapshot, agent_id, _ALLOW_HELPERS_NULL)
+        if _refusal is not None:
+            raise ConfigError(_refusal)
         from kanibako.settings import settings_launch as _settings_launch
         _ah = coerce_bool(
             _settings_launch.effective_behavior(
@@ -4499,11 +4664,10 @@ def _run_container(
                 # continue_mode is an AGENT-scope behavior key (spec §2d
                 # ``agent.default.continue_mode``): resolve it off the SAME launch
                 # snapshot via the §2d active-over-default pick, coerced to bool —
-                # the same snapshot read as the ``access`` resolve above.  ⚑ The
-                # None-guard stays, and applies the DECLARED value, for the same
-                # two reasons as ``allow_helpers`` above: a mocked / floor-less
-                # snapshot, and a present-``None`` reset-to-default in the winning
-                # slot, which ``effective_behavior`` omits by contract.
+                # the same snapshot read as the ``access`` resolve above.  ⚑ ABSENT
+                # vs PRESENT-``None``, exactly as ``allow_helpers`` above: an absent
+                # key (a mocked / floor-less snapshot) takes the DECLARED value, and
+                # a present ``None`` REFUSES (a typed ``-N``/``-C``/``-R`` shadows it).
                 #
                 # ⚑ P8: the per-launch ``-N``/``-C``/``-R`` flags are ALREADY folded
                 # in — they rode the §1A CLI LEVEL as ``agent.<active>.continue_mode``
@@ -4521,6 +4685,11 @@ def _run_container(
                 # descriptor with no ``resume`` mode falls through to the
                 # skip_continue test, where a stored ``continue_mode: false`` would
                 # otherwise turn ``-R`` into a fresh start.)
+                _refusal = _refuse_null_behavior(
+                    _snapshot, agent_id, _CONTINUE_MODE_NULL,
+                )
+                if _refusal is not None:
+                    raise ConfigError(_refusal)
                 _cm = coerce_bool(effective_state.get("continue_mode"))
                 continue_default = (
                     _declared_behavior_bool("continue_mode", agent_id)
@@ -9974,6 +10143,16 @@ class _LaunchRealizer:
                 state.get(ar.setting_key) if ar is not None and ar.setting_key else None
             )
             flag_tier = self._cli_level.get(f"agent.{self._agent_id}.access")
+            # A present ``None`` (a stored ``null``) names no tier and REFUSES;
+            # ``state`` omits it, which would read as unset and take ``full``.
+            # :func:`_null_behavior_refusal` refused it earlier for the routes its
+            # focused read sees; this is the fence for the rest.
+            if flag_tier is None and ar is not None and ar.setting_key:
+                refusal = _refuse_null_behavior(
+                    snapshot, self._agent_id, _access_null(ar.setting_key),
+                )
+                if refusal is not None:
+                    raise ConfigError(refusal)
             access = assembly.resolve_access_tier(
                 stored if flag_tier is None else flag_tier
             )

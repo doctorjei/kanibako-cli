@@ -3365,6 +3365,23 @@ def behavior_slot(
     return behavior_pick(snapshot, active_agent=active_agent, key=key)[0]
 
 
+def null_behavior_setter(
+    snapshot: KeyStore, written: "Sequence[_WrittenLevel]", *, active_agent: str, key: str,
+) -> "tuple[str, str | None] | None":
+    """Where :func:`behavior_pick` for *key* landed on a present ``None``, else ``None``.
+
+    Returns ``(dotted, file)``: *dotted* is the slot's key (``agent.<active_agent>.<key>``
+    or ``agent.default.<key>``) and *file* the settings file of the tier that won
+    (:func:`_none_setter` over *written*, the snapshot's ``written_out``), or ``None``
+    when *written* names none. An absent key and a value both return ``None``.
+    """
+    slot, value = behavior_pick(snapshot, active_agent=active_agent, key=key)
+    if slot is None or value is not None:
+        return None
+    dotted = f"agent.{active_agent if slot == 'active' else 'default'}.{key}"
+    return dotted, _none_setter(written, dotted, None)
+
+
 def effective_behavior(
     snapshot: KeyStore, *, active_agent: str, keys: "list[str] | None" = None
 ) -> dict[str, str]:
@@ -3390,8 +3407,10 @@ def effective_behavior(
     are NOT behavior and are skipped.
 
     A key absent from BOTH slots is omitted. A present-``None`` scalar in the WINNING
-    slot is omitted (the consumer applies its own default, §3) — and, since
-    present-``None`` SETS the name, it shadows the ``agent.default`` value below it.
+    slot is omitted too — and, since present-``None`` SETS the name, it shadows the
+    ``agent.default`` value below it. The omission is not a default: a key with a
+    declared default and no meaning for ``None`` is refused by the launch before this
+    read (:func:`null_behavior_setter` tells the two apart).
     Values are stringified. Reads via the UNBOUND ``dict`` probe (S3).
 
     ⚑ A LEAF WHOSE STORED SHAPE IS NOT A SCALAR IS STRINGIFIED BY THE MODULE THAT OWNS THE

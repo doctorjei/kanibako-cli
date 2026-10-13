@@ -73,6 +73,7 @@ def snapshot_leaf(snapshot: KeyStore, dotted: str) -> object
 def post_expand_keys(snapshot: KeyStore, active_agent: str) -> Derive
 def behavior_pick(snapshot: KeyStore, *, active_agent: str, key: str) -> 'tuple[str | None, object]'
 def behavior_slot(snapshot: KeyStore, *, active_agent: str, key: str) -> 'str | None'
+def null_behavior_setter(snapshot: KeyStore, written: 'Sequence[_WrittenLevel]', *, active_agent: str, key: str) -> 'tuple[str, str | None] | None'
 def effective_behavior(snapshot: KeyStore, *, active_agent: str, keys: 'list[str] | None'=None) -> dict[str, str]
 def meta_agent_grammar(snapshot: KeyStore, *, active_agent: str) -> AgentGrammar
 def resolve_box_dest(raw: str, box_ctx: ResolveCtx) -> str

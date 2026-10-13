@@ -14,6 +14,8 @@ DIRECTIVE_FLATTENER = '/opt/kanibako/kanibako/scripts/import-directives.py'
 DIRECTIVE_MANIFEST_RELPATH = '.kanibako/directive-manifest.json'
 VAULT_MASK_DEST = core_defaults.vault_mask_default()
 _BOOTSTRAP_NONE = 'none'
+_ALLOW_HELPERS_NULL = _NullRefused('allow_helpers', 'true or false', '')
+_CONTINUE_MODE_NULL = _NullRefused('continue_mode', 'true or false', '-N, -C, or -R')
 _BOOTSTRAP_MISSING = object()
 _PERSONA_KEY_CURE = 'Set the key for this persona, then retry.'
 _PERSONA_MODEL_CURE = 'Set the model for this persona, then retry.'
@@ -59,13 +61,18 @@ def _add_launch_args(p: argparse.ArgumentParser) -> None
 def _bootstrap_choice(proj, system_settings_path: 'Path | None', agent_id: str, *, std, selection_level: 'Mapping[str, object] | None', agent_path: 'Path | None'=None) -> BootstrapChoice
 def _bootstrap_setting(choice: BootstrapChoice) -> str | None
 def _no_bootstrap_reason(choice: BootstrapChoice) -> str
+def _access_null(setting_key: str) -> _NullRefused
+def _declared_floor(key: str, agent_id: str) -> str | None
+def _refuse_null_behavior(snapshot, agent_id: str, rule: _NullRefused, *, written=(), prefs=()) -> str | None
+def _null_behavior_refusal(proj, system_settings_path: 'Path | None', agent_id: str, target, *, std, level: 'Mapping[str, object] | None', rules: 'list[_NullRefused]', agent_path: 'Path | None'=None) -> str | None
+def _plugin_floor(target, key: str) -> 'dict[str, str | None]'
 def _declared_behavior(key: str) -> str
 def _declared_behavior_bool(key: str, agent_id: str) -> bool
 def _bootstrap_default() -> str
 def _is_no_bootstrap(program: str | None) -> bool
 def _effective_agent_scalar(proj, system_settings_path: 'Path | None', agent_id: str, *, std, selection_level: 'Mapping[str, object] | None', key: str, floor: str | None, agent_floor: 'Mapping[str, str | None] | None'=None, agent_path: 'Path | None'=None) -> 'str | None'
 def _agent_scalar_pick(proj, system_settings_path: 'Path | None', agent_id: str, *, std, selection_level: 'Mapping[str, object] | None', key: str, floor: str | None, agent_floor: 'Mapping[str, str | None] | None'=None, agent_path: 'Path | None'=None) -> 'tuple[str | None, str | None]'
-def _focused_agent_snapshot(proj, system_settings_path: 'Path | None', agent_id: str, *, std, selection_level: 'Mapping[str, object] | None', key: str, floor: str | None, agent_floor: 'Mapping[str, str | None] | None'=None, agent_path: 'Path | None'=None) -> 'KeyStore'
+def _focused_agent_snapshot(proj, system_settings_path: 'Path | None', agent_id: str, *, std, selection_level: 'Mapping[str, object] | None', key: str, floor: str | None, agent_floor: 'Mapping[str, str | None] | None'=None, agent_path: 'Path | None'=None, written_out: 'list | None'=None) -> 'KeyStore'
 def _effective_transform(proj, system_settings_path: 'Path | None', agent_id: str, target, *, std, selection_level: 'Mapping[str, object] | None', agent_cfg_path: 'Path | None'=None) -> 'str | None'
 def _effective_transform_settings(proj, system_settings_path: 'Path | None', agent_id: str, *, std, selection_level: 'Mapping[str, object] | None', agent_cfg_path: 'Path | None'=None) -> dict
 def _plain_table(table: dict) -> dict
@@ -234,6 +241,11 @@ class LaunchRealization(NamedTuple):
     effective_state: dict[str, str]
     access: str
     env: dict[str, str]
+
+class _NullRefused(NamedTuple):
+    key: str
+    values: str
+    flags: str
 
 class _LaunchRealizer:
     def __init__(self, *, desc, agent_id: str, cli_level=None, provider_pin=())

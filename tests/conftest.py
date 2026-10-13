@@ -475,6 +475,11 @@ def start_mocks():
                 # default so a run_start unit test does not double-resolve the box.
                 # (Connect tests that exercise the heuristic patch it locally.)
                 _resolve_bootstrap_program=DEFAULT,
+                # The EARLY stored-``null`` check reads a focused snapshot off
+                # ``std``/``proj``; same MagicMock-path rationale as
+                # ``_bootstrap_choice``. Stubbed to "no refusal"; the real read is
+                # ``test_start_access_null.py`` with a REAL proj.
+                _null_behavior_refusal=DEFAULT,
                 # The persona SYMLINK SHIM.  Same MagicMock-path rationale as
                 # ``_seed_channel_files`` above, and it BECAME load-bearing on
                 # 2026-08-27: the shim now links the persona's ``template`` store
@@ -568,6 +573,7 @@ def start_mocks():
             # Default agent-scope transform = what the fixture's claude target
             # declares (spec §2d ``agent.claude.transform | tweakcc``).
             m_launch_mount_stubs["_effective_transform"].return_value = "tweakcc"
+            m_launch_mount_stubs["_null_behavior_refusal"].return_value = None
             m_launch_mount_stubs["_effective_transform_settings"].side_effect = (
                 lambda *_a, **_kw: dict(m_load_agent_cfg.return_value.transform_settings)
             )
@@ -1069,6 +1075,7 @@ def start_mocks():
                     bootstrap_program=m_bootstrap_program,
                     effective_transform=m_launch_mount_stubs["_effective_transform"],
                     resolve_bootstrap_program=m_launch_mount_stubs["_resolve_bootstrap_program"],
+                    null_behavior_refusal=m_launch_mount_stubs["_null_behavior_refusal"],
                     virtiofs_check=m_virtiofs_check,
                 )
             finally:

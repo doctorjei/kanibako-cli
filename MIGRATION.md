@@ -404,6 +404,9 @@ inside boxes. In order of likely impact:
     and a `null` at `box.image`, `box.share_images`, or `box.enable_vault` that wins the cascade is
     refused at launch and at `set --null` — see *A `null` at a box scalar with a value default is
     refused, not defaulted*;
+    and a stored `null` at `access`, `allow_helpers`, or `continue_mode` refuses the launch instead
+    of taking the default — see *A `null` at `access`, `allow_helpers`, or `continue_mode` refuses
+    the launch*;
     and `create <name>` under a named workset's root makes a named box of that workset, refusing a
     path, a bare `create`, and `--standalone` there — see *`create` inside a named workset's path
     space*; and `create` refuses a directory a named box holds as its workspace — see *`create` in a
@@ -6746,6 +6749,31 @@ default, or set the value you meant. Nothing is written and nothing is migrated 
 declared default. `box.shell` is untouched: its `<None>` is auto-detect, so `--null box.shell`
 remains a legal write. A `""` remains a real value, distinct from both. A `null` overridden by a
 higher tier or the CLI is not refused: the override wins.
+
+### A `null` at `access`, `allow_helpers`, or `continue_mode` refuses the launch
+
+**What changed.** These three agent keys have a default and no meaning for `null`. A `null` at
+`agent.<agent>.<key>` or `agent.default.<key>` in any settings file, or at a box or workset
+`pref.agent.<agent>.<key>`, used to read as unset: `access` ran at `full`, and the other two
+took their default. `start` now exits 1 before it prepares the image or creates the box, naming
+the file and the key; a refused `--restart` leaves the running box alone:
+
+```
+Error: /home/me/.local/share/kanibako/primary_workset/boxes/mybox/box.yaml sets this agent key to null:
+  pref.agent.claude.access
+A null has no meaning for this key. Set it to one of restricted | editing | full, or delete the
+line to use the default. -S or -A overrides it for one launch.
+```
+
+**What you must do.** Nothing, unless a settings file stores one of these keys as `null`. Delete
+the line to get the default, or set the value you meant: a tier for `access`, `true` or `false`
+for `allow_helpers` and `continue_mode`.
+
+**What is NOT covered.** A file that never mentions the key still gets its default. A `null`
+overridden by a higher tier or by a typed flag is not refused: the override wins. The flags are
+`-S` or `-A` for `access`, and `-N`, `-C`, or `-R` for `continue_mode`. A reattach to a running
+box reads none of the three. A key whose default is `null` is untouched: `model`, `endpoint`,
+and `run_args`.
 
 ### `workset.boxes` is refused at the door at a value the launch refuses
 

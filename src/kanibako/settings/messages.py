@@ -120,6 +120,23 @@ ERR_BOX_SCALAR_NULL_SET_HEAD = (
                         "the launch refuses a null at these box scalar keys, so this set is "
                         "refused too:\n  %s\n")
                                                     # the offending keys
+# ⚑ An AGENT BEHAVIOR KEY at a ``null`` it gives no meaning to (182-NA: ``access``,
+# ``allow_helpers``, ``continue_mode``): the key has a declared default, and a null is
+# never read as unset.  Same builder as the two blocks above,
+# ``config.null_path_keys_error``; the membership is ``start._NullRefused``.
+ERR_BEHAVIOR_NULL_HEAD = (
+                        "%s sets this agent key to null:\n  %s\n")
+                                                    # the file path, the key
+#: The lead when no file is known (the main snapshot's fence).
+ERR_BEHAVIOR_NULL_KEY_HEAD = (
+                        "the settings resolved for this box set this agent key to null:\n  %s\n")
+                                                    # the key
+ERR_BEHAVIOR_NULL_CURE = (
+                        "A null has no meaning for this key. Set it to %s, or delete the "
+                        "line to use the default.")
+                                                    # the legal values
+ERR_BEHAVIOR_NULL_FLAGS = " %s overrides it for one launch."
+                                                    # the typed flags
 # ⚑ The BOX STORE at a value the LAUNCH cannot use (spec §0, §2c) — the same
 # "one reason, one home" split, and the same carrier: ``config.refuses_box_store_value`` is
 # the membership and ``config.null_path_keys_error`` builds the text, so the ``--null`` and

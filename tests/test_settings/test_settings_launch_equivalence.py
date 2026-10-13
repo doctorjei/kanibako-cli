@@ -424,8 +424,9 @@ def test_higher_scope_present_none_suppresses_floor(tmp_path):
     """A higher-scope present-None (the KeyStore suppression idiom, spec §2h
     "Values are installed VERBATIM" — successor to the old terminal-``""``)
     over a declared-default floor value
-    SUPPRESSES it: the behavior read OMITs the key (the consumer applies its own
-    default), and the floor is NOT consulted. A sibling floor default with no
+    SUPPRESSES it: the behavior read OMITs the key, and the floor is NOT consulted.
+    (The launch refuses such a ``null`` for a key with no meaning for it, before
+    this read; ``test_start_access_null.py``.) A sibling floor default with no
     suppression still shows through.
 
     This is the STEP-4 (7c) replacement coverage for the retired
@@ -435,7 +436,7 @@ def test_higher_scope_present_none_suppresses_floor(tmp_path):
     snap = _behavior_snapshot(
         "claude",
         floor={"allow_helpers": "true", "model": "sonnet"},
-        agent_self={"allow_helpers": None},  # present-None resets the floor key
+        agent_self={"allow_helpers": None},  # present-None suppresses the floor key
         agent_path=tmp_path / "agent.yaml",
         box_path=None,
         system_path=None,
