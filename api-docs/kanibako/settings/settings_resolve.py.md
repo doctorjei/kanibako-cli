@@ -59,6 +59,7 @@ def check_bind_map(raw: Mapping[str, Any], *, category: str, where: str | None=N
 def check_bind_tables(tables: Mapping[str, Any], *, root: str, scope: str, contained: Sequence[str], where: str | None) -> None
 def match_braced(expr: str, i: int) -> tuple[Literal['ref', 'var'], str, int] | None
 def is_known_var(name: str) -> bool
+def bare_reference_at(expr: str, i: int) -> tuple[str, str] | None
 def refuse_bare_reference(expr: str, i: int) -> None
 def starts_bare_reference(expr: str) -> bool
 def iter_expr_tokens(expr: str) -> Iterator[ExprToken]

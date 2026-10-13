@@ -478,7 +478,9 @@ Refused with `ExprSyntaxError`, each naming the doubled spelling where a brace i
 * an empty `{}` or a malformed `{…}` (`{bad name}`, `{a.b.}`, `{$}`) — `{` opens a reference
   running to the first `}`, so its content must be one name;
 * a backslash before anything outside `\\ ~` (`\@`, `\$`, `\/`, `\{`, `\:`, `\x`); for `\@`
-  and `\$` the cure adds that the character is ordinary: write `\@` as `@`;
+  and `\$` the cure adds that the character is ordinary: write `\@` as `@`, unless the text after
+  the `\` is itself an old spelling (BARE-REF-GUARD): then the cure names the braced reference for
+  the value and says the literal text has no spelling until the guard is removed;
 * an old reference spelling, by `refuse_bare_reference` (below), unless *expr* is a `DataExpr`.
 
 A leading `~` is a `home` token; a TRAILING lone backslash is literal text; `@` and `$` are text.
@@ -486,6 +488,7 @@ A leading `~` is a `home` token; a TRAILING lone backslash is literal text; `@` 
 here.
 
 ```python
+bare_reference_at(expr: str, i: int) -> tuple[str, str] | None
 refuse_bare_reference(expr: str, i: int) -> None
 starts_bare_reference(expr: str) -> bool
 KNOWN_VARS: frozenset[str]; KNOWN_VAR_PREFIX = "XDG_"; is_known_var(name: str) -> bool
@@ -502,6 +505,7 @@ and the character is text. Refused:
 call time (the import-time closure stays `agent_ref` + `errors`). "Known" is `is_known_var`:
 `KNOWN_VARS` (the names `resolve_var` answers) or any `XDG_*` name. Everything else is text:
 `user@example.com`, `cost $5`, an undeclared `@foo.bar`, `$HOME`, a namespace like `@box`.
+`bare_reference_at` answers `(old spelling, braced cure)` or `None`, and the other two read it.
 `starts_bare_reference` asks, without raising, whether a value OPENS with a refused spelling;
 `agent_config`'s path predicates pass such a value on so the expander names its cure.
 ⚑ Every site carries the marker `BARE-REF-GUARD`. Removing the guard is: delete this function and

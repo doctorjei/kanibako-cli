@@ -111,6 +111,23 @@ def test_backslash_at_and_dollar_are_illegal_escapes(expr) -> None:
         scan_tokens(expr)
 
 
+# BARE-REF-GUARD: an escaped OLD spelling gets no cure that walks into the guard.
+@pytest.mark.parametrize(("expr", "old", "cure", "noun"), [
+    ("\\@meta.box.name", "@meta.box.name", "{meta.box.name}", "key"),
+    ("x/\\@meta.box.name.jsonl", "@meta.box.name.jsonl", "{meta.box.name}.jsonl", "key"),
+    ("\\$TERM/y", "$TERM", "{$TERM}", "variable"),
+])
+def test_an_escaped_old_spelling_is_not_cured_into_the_guard(expr, old, cure, noun) -> None:
+    with pytest.raises(SettingsError) as ei:
+        _host(expr)
+    message = str(ei.value)
+    assert (
+        f"'{old}' is refused for this release as an old reference spelling: write '{cure}' "
+        f"for the {noun}'s value; the literal text has no spelling until the guard is removed."
+    ) in message, message
+    assert "is an ordinary character" not in message, message
+
+
 def test_literal_expr_escapes_only_backslash_and_tilde() -> None:
     text = "/p/@meta.box.name/$TERM/~/a\\b/{x}"
     assert literal_expr(text) == "/p/@meta.box.name/$TERM/\\~/a\\\\b/{{x}}"

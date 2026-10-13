@@ -878,9 +878,13 @@ def start_mocks():
                 # 🛑 The value is the LITERAL path, not the ``{meta.box.path}/home``
                 # formula: this stub passes no ``meta_runtime``/``workset_anchor``, so
                 # an @-ref would not resolve.  ``proj.shell_path`` is a REAL mkdir'd
-                # dir above, so the L7 guarantee-create has nothing to do.
+                # dir above, so the L7 guarantee-create has nothing to do.  It enters as
+                # ``literal_expr`` -- DATA, as the real ``meta.box.path`` floor does -- so
+                # a tmp path holding ``@box.image`` or ``$TERM`` resolves as written.
+                from kanibako.settings.settings_resolve import literal_expr
+
                 _default_cats: dict[str, object] = {
-                    "meta.box.home": str(proj.shell_path),
+                    "meta.box.home": literal_expr(str(proj.shell_path)),
                 }
                 # The CORE ``KANIBAKO_*`` STAMPS (MBR-1 P4b) — ``system.env.<VAR>``
                 # keys the launch DERIVES, and part of the base-families branch this

@@ -452,6 +452,24 @@ def test_expand_braced_ref_cycle_via_lookup_reentry_raises() -> None:
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.parametrize(
+    "expr,name,end",
+    [
+        ("{a.b.c}", "a.b.c", 7),  # end is PAST the closing brace.
+        ("{a.b.c}/x", "a.b.c", 7),
+        ("{a.b.c}.jsonl", "a.b.c", 7),
+        ("{a}", "a", 3),
+    ],
+)
+def test_match_braced_name_and_end(expr: str, name: str, end: int) -> None:
+    assert match_braced(expr, 0) == ("ref", name, end)
+
+
+def test_match_braced_at_an_offset() -> None:
+    # Callers scan left-to-right and hand it the index OF the ``{``.
+    assert match_braced("pre-{a.b}-post", 4) == ("ref", "a.b", 9)
+
+
 def test_the_tokenizer_reads_dollar_as_text() -> None:
     """``$`` is an ordinary character: no ``var`` token, and ``scan_tokens`` finds none."""
     from kanibako.settings.settings_configset import scan_tokens

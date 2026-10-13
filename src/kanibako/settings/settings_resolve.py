@@ -728,46 +728,55 @@ def _is_declared_key(name: str) -> bool:
 
 
 # BARE-REF-GUARD: the one-release migration guard (keyspec "References"). Removing it:
-# delete this function, its call in :func:`iter_expr_tokens`, and ``@$`` from
-# :data:`_TOKEN_START`; grep BARE-REF-GUARD for every other site.
-def refuse_bare_reference(expr: str, i: int) -> None:
-    """RAISE when the ``@`` or ``$`` at *i* starts an old reference spelling; else return.
+# delete this function and :func:`refuse_bare_reference`, their calls in
+# :func:`iter_expr_tokens`, and ``@$`` from :data:`_TOKEN_START`; grep BARE-REF-GUARD for
+# every other site.
+def bare_reference_at(expr: str, i: int) -> tuple[str, str] | None:
+    """``(old spelling, braced cure)`` when the ``@`` or ``$`` at *i* starts an old
+    reference spelling; else ``None``.
 
-    Refused, each naming the braced spelling that cures it: a bare ``@a.b.c`` naming a
-    declared key, or whose leading dotted part is one (``@meta.box.name.jsonl``);
-    ``@{a.b.c}`` naming a declared key; a bare ``$NAME`` or ``${NAME}`` naming a known
-    variable. Any other ``@`` or ``$`` is plain text.
+    The spellings: a bare ``@a.b.c`` naming a declared key, or whose leading dotted part
+    is one (``@meta.box.name.jsonl``); ``@{a.b.c}`` naming a declared key; a bare
+    ``$NAME`` or ``${NAME}`` naming a known variable. Any other ``@`` or ``$`` is text.
     ⚑ PRECONDITION: ``expr[i]`` is ``@`` or ``$``.
     """
-    old = cure = None
     rest = expr[i + 1:]
     if expr[i] == "@":
         if rest.startswith("{"):
             braced = match_braced(expr, i + 1)
             if braced is not None and braced[0] == "ref" and _is_declared_key(braced[1]):
-                old, cure = expr[i:braced[2]], f"{{{braced[1]}}}"
-        else:
-            m = _REF_NAME_RE.match(expr, i + 1)
-            if m is not None:
-                parts = m.group(0).split(".")
-                for k in range(len(parts), 0, -1):
-                    head = ".".join(parts[:k])
-                    if _is_declared_key(head):
-                        old = expr[i:m.end()]
-                        cure = f"{{{head}}}" + "".join(f".{p}" for p in parts[k:])
-                        break
-    else:
-        in_braces = rest.startswith("{")
-        m = _VAR_NAME_RE.match(expr, i + 2 if in_braces else i + 1)
-        if m is not None and is_known_var(m.group(0)):
-            end = m.end()
-            if not in_braces:
-                old = expr[i:end]
-            elif expr[end:end + 1] == "}":
-                old = expr[i:end + 1]
-            if old is not None:
-                cure = f"{{${m.group(0)}}}"
-    if old is not None:
+                return expr[i:braced[2]], f"{{{braced[1]}}}"
+            return None
+        m = _REF_NAME_RE.match(expr, i + 1)
+        if m is None:
+            return None
+        parts = m.group(0).split(".")
+        for k in range(len(parts), 0, -1):
+            head = ".".join(parts[:k])
+            if _is_declared_key(head):
+                return expr[i:m.end()], f"{{{head}}}" + "".join(f".{p}" for p in parts[k:])
+        return None
+    in_braces = rest.startswith("{")
+    m = _VAR_NAME_RE.match(expr, i + 2 if in_braces else i + 1)
+    if m is None or not is_known_var(m.group(0)):
+        return None
+    end = m.end()
+    if in_braces:
+        if expr[end:end + 1] != "}":
+            return None
+        end += 1
+    return expr[i:end], f"{{${m.group(0)}}}"
+
+
+def refuse_bare_reference(expr: str, i: int) -> None:
+    """RAISE when the ``@`` or ``$`` at *i* starts an old reference spelling
+    (:func:`bare_reference_at`), naming the braced spelling that cures it; else return.
+
+    ⚑ PRECONDITION: ``expr[i]`` is ``@`` or ``$``.
+    """
+    found = bare_reference_at(expr, i)
+    if found is not None:
+        old, cure = found
         raise ExprSyntaxError(
             f"Old reference spelling '{old}' at: {expr[i:]!r} — references are braced "
             f"now: write '{cure}'."
@@ -782,13 +791,7 @@ def starts_bare_reference(expr: str) -> bool:
     such a value on, so the expander refuses it by name with the braced cure, rather
     than calling it a bare relative path.
     """
-    if expr[:1] not in ("@", "$"):
-        return False
-    try:
-        refuse_bare_reference(expr, 0)
-    except ExprSyntaxError:
-        return True
-    return False
+    return expr[:1] in ("@", "$") and bare_reference_at(expr, 0) is not None
 
 
 ExprTokenKind = Literal["text", "home", "escape", "brace", "ref", "var"]
@@ -867,10 +870,18 @@ def iter_expr_tokens(expr: str) -> Iterator[ExprToken]:
             else:
                 ordinary = expr[i + 1]
                 # ``\@``/``\$`` escaped a sigil before ``@`` and ``$`` became ordinary.
-                cure = (
-                    f" '{ordinary}' is an ordinary character: write '\\{ordinary}' as "
-                    f"'{ordinary}'." if ordinary in "@$" else ""
-                )
+                cure = ""
+                if ordinary in "@$":
+                    # BARE-REF-GUARD: a plain ``@``/``$`` here would be refused too.
+                    found = bare_reference_at(expr, i + 1)
+                    cure = (
+                        f" '{ordinary}' is an ordinary character: write "
+                        f"'\\{ordinary}' as '{ordinary}'." if found is None else
+                        f" '{found[0]}' is refused for this release as an old reference "
+                        f"spelling: write '{found[1]}' for the "
+                        f"{'key' if ordinary == '@' else 'variable'}'s value; the literal "
+                        f"text has no spelling until the guard is removed."
+                    )
                 raise ExprSyntaxError(
                     f"Illegal escape '{expr[i:i + 2]}' at: {expr[i:]!r} — only "
                     f"\\\\ and \\~ escape; write a literal '\\' as '\\\\'.{cure}"

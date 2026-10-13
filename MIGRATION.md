@@ -7952,7 +7952,10 @@ relied on the secret winning. Drop that `-e`.
   doubled spelling. An empty or malformed reference, such as `{}` or `{bad name}`, is refused by name.
 - **Only `\\` and `\~` escape.** `\\` is a literal `\` and `\~` a literal `~`; a `\` before any other
   character is refused by name, and a `\` that ends the value stays as written. Respell the old
-  escapes: write `\@` as `@`, `\$` as `$`, `\{` as `{{`, and `\/` as `/`. A backslash meant for
+  escapes: write `\@` as `@`, `\$` as `$`, `\{` as `{{`, and `\/` as `/`. For this release, an
+  escaped old spelling such as `\@meta.box.name` or `\$TERM` has no literal spelling: without the
+  `\` it is refused like any old spelling, so write the braced reference (`{meta.box.name}`) if you
+  meant the value, and the literal text has to wait until the guard is removed. A backslash meant for
   another program is doubled: the shell prompt `\u@\h:\w` is written `\\u@\\h:\\w`.
 
 **What you see.** A refusal prints the braced spelling of what it names:
