@@ -1126,6 +1126,70 @@ class TestRecoveryAgentIdentity:
         assert load_doc(std.boxes / "halfbox" / "box.yaml") == box_yaml
         assert journal.pending_create(std.journal, box_key) is None
 
+    def test_recovery_replays_the_recorded_flags_through_the_create_helper(
+        self, config_file, tmp_home, credentials_dir, monkeypatch
+    ):
+        """A replay re-saves attempt one's ``--agent`` and ``-i`` from the journal.
+
+        Attempt one dies after its persist; the box file then loses those keys
+        (as if the crash had come first).  ``create --recover`` replays the
+        recorded values through ``persist_creation_level``, so the box ends up
+        configured exactly as attempt one asked, with no flag typed again.
+        """
+        from kanibako.commands.box._parser import run_create
+        from kanibako.errors import ProjectError
+        from kanibako.settings.config import load_config
+        from kanibako.settings.config_io import dump_doc, load_doc
+        from kanibako.settings.paths import load_std_paths
+
+        std = load_std_paths(load_config(config_file))
+        path = tmp_home / "halfbox"
+        path.mkdir()
+
+        def boom(std, proj, **kw):
+            raise ProjectError("simulated registry collision")
+
+        with pytest.MonkeyPatch.context() as mp:
+            mp.setattr(
+                "kanibako.commands.start.seed_new_box",
+                lambda std, config, proj, **kw: None,
+            )
+            mp.setattr("kanibako.commands.start._register_new_box", boom)
+            with pytest.raises(ProjectError):
+                run_create(_create_args(
+                    path, name="halfbox", agent="claude", image="custom:v1",
+                ))
+
+        box_yaml = std.boxes / "halfbox" / "box.yaml"
+        doc = load_doc(box_yaml)
+        assert doc["pref"]["system"]["agent"] == "claude"
+        assert doc["box"]["image"] == "custom:v1"
+        doc.pop("pref")
+        doc["box"].pop("image")
+        if not doc["box"]:
+            doc.pop("box")
+        dump_doc(box_yaml, doc)
+
+        calls = []
+        from kanibako.settings import config_interface
+
+        real = config_interface.persist_creation_level
+
+        def spy(level, **kw):
+            calls.append((dict(level or {}), kw["typed_agent"]))
+            return real(level, **kw)
+
+        monkeypatch.setattr("kanibako.commands.box._parser.persist_creation_level", spy)
+        monkeypatch.setattr(
+            "kanibako.commands.start.seed_new_box", lambda std, config, proj, **kw: None,
+        )
+        assert run_create(_create_args(path, recover=True, no_vault=False)) == 0
+
+        assert calls == [({"box.image": "custom:v1"}, "claude")]
+        replayed = load_doc(box_yaml)
+        assert replayed["pref"]["system"]["agent"] == "claude"
+        assert replayed["box"]["image"] == "custom:v1"
+
     def test_a_recovery_refuses_a_second_agent_rather_than_dropping_it(
         self, config_file, tmp_home, credentials_dir, capsys
     ):
@@ -1360,36 +1424,45 @@ class TestBlankAgentFlagIsGivenAtBothDoors:
         assert parse_agent_ref(persisted)[0] == "goose"
 
     def test_the_two_doors_spell_given_the_same_way(self) -> None:
-        """STRUCTURAL twin: every ``_agent_arg`` guard in ``run_create`` is the
-        SAME expression.
+        """STRUCTURAL twin: the persona store check in ``run_create`` and the
+        ``pref.system.agent`` persist ask the SAME "was --agent given" question.
 
         The behavioral pins above catch today's disagreement; this one catches the
-        NEXT one, whatever value it happens to disagree about.  Asserted as mutual
-        agreement rather than against an expected spelling — the rule is "one
-        question", not "this question" — and it reds on emptiness (P15): a
-        ``run_create`` that guards on ``_agent_arg`` nowhere fails here.
+        NEXT one, whatever value it happens to disagree about.  The persist door
+        lives in the §1A helper ``persist_creation_level``, which receives the ref
+        as ``typed_agent``; its guard is compared with ``run_create``'s after that
+        one rename.  Asserted as mutual agreement rather than against an expected
+        spelling — the rule is "one question", not "this question" — and it reds
+        on emptiness (P15): a door that guards nowhere fails here.
         """
         import inspect
 
         from kanibako.commands.box._parser import run_create
+        from kanibako.settings.config_interface import persist_creation_level
 
-        fn = ast.parse(inspect.getsource(run_create)).body[0]
-        guards = [
-            n.test for n in ast.walk(fn)
-            if isinstance(n, ast.If)
-            and any(
-                isinstance(s, ast.Name) and s.id == "_agent_arg"
-                for s in ast.walk(n.test)
-            )
-        ]
-        assert len(guards) >= 2, (
-            "run_create must guard BOTH the persona store check and the "
-            "pref.system.agent persist on _agent_arg; found "
-            f"{len(guards)} such guard(s)."
+        def _guards(func, name):
+            fn = ast.parse(inspect.getsource(func)).body[0]
+            found = []
+            for n in ast.walk(fn):
+                if isinstance(n, ast.If) and any(
+                    isinstance(s, ast.Name) and s.id == name for s in ast.walk(n.test)
+                ):
+                    for s in ast.walk(n.test):
+                        if isinstance(s, ast.Name) and s.id == name:
+                            s.id = "_agent_arg"
+                    found.append(n.test)
+            return found
+
+        store_doors = _guards(run_create, "_agent_arg")
+        persist_doors = _guards(persist_creation_level, "typed_agent")
+        assert store_doors, "run_create no longer guards the store check on _agent_arg."
+        assert persist_doors, (
+            "persist_creation_level no longer guards the pref.system.agent write on "
+            "typed_agent."
         )
-        shapes = {ast.dump(g) for g in guards}
+        shapes = {ast.dump(g) for g in store_doors + persist_doors}
         assert len(shapes) == 1, (
-            "The _agent_arg guards in run_create ask "
+            "The --agent guards ask "
             f"{len(shapes)} different questions: {sorted(shapes)}. They must ask "
             "ONE — whether --agent was GIVEN. Truthiness and .strip() truthiness "
             "are different predicates, and an all-whitespace --agent used to "
@@ -2114,13 +2187,13 @@ def _at_window_end(mp, standalone, stand_in, *, at=None):
 
         mp.setattr(_parser, "_new_box_undo", _undo_then_stop)
         return
-    real = getattr(_parser, at or "persist_creation_flags")
+    real = getattr(_parser, at or "persist_creation_level")
 
     def _end(*a, **kw):
         real(*a, **kw)
         stand_in(None, None)
 
-    mp.setattr(_parser, at or "persist_creation_flags", _end)
+    mp.setattr(_parser, at or "persist_creation_level", _end)
 
 
 class TestPreJournalWindowUndoesItsOwnWrites:
@@ -2266,7 +2339,7 @@ class TestPreJournalWindowUndoesItsOwnWrites:
             raise _InterruptCreate("stopped inside the recovery's state replay")
 
         with pytest.MonkeyPatch.context() as mp:
-            _at_window_end(mp, False, _raise, at="persist_creation_flags")
+            _at_window_end(mp, False, _raise, at="persist_creation_level")
             with pytest.raises(_InterruptCreate):
                 run_create(_create_args(path, standalone=standalone, no_vault=False,
                                         recover=True, register=standalone))
@@ -3191,7 +3264,7 @@ def _kill(*a, **kw):
     os.kill(os.getpid(), signal.SIGKILL)
 
 if sys.argv[1] == "after-materialize":
-    _parser.persist_creation_flags = _kill
+    _parser.persist_creation_level = _kill
 else:
     for _n in ("resolve_project", "resolve_standalone_project"):
         def _wrap(*a, _real=getattr(_parser, _n), **kw):

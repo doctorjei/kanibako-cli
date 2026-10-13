@@ -59,6 +59,7 @@ def is_scalar_family_value(value: object) -> bool
 def is_path_key_value(value: object) -> bool
 def refuse_non_scalar_family_value(key: str, category: str, value: object) -> None
 def env_twin_refusal(var: str, claim: str, cure: str) -> str
+def secret_path_names(entries: list[CategoryEntry]) -> dict[str, list[str]]
 def refuse_env_secret_twins(entries: list[CategoryEntry]) -> None
 def launch_deliveries(entries: list[CategoryEntry], *, agent_dests: frozenset[str], narrow_bindings: 'dict[str, object] | None'=None, declared_by: 'dict[str, str] | None'=None, dest_keys: 'dict[tuple[str, ...], str] | None'=None, convenience_sources: 'dict[str, str] | None'=None) -> LaunchDeliveries
 def narrow_table_winners(entries: list[CategoryEntry], dests: frozenset[str]) -> list[CategoryEntry]
@@ -118,4 +119,5 @@ class LaunchDeliveries:
     declared_by: 'dict[str, str]' = field(default_factory=dict)
     dest_keys: 'dict[tuple[str, ...], str]' = field(default_factory=dict)
     convenience_sources: 'dict[str, str]' = field(default_factory=dict)
+    secret_names: 'dict[str, list[str]]' = field(default_factory=dict)
 ```

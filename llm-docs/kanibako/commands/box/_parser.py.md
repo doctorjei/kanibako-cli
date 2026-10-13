@@ -142,9 +142,10 @@ replay it like every other step.
 `.gitignore`. A recovery re-create reuses the half-built box's already-written meta: the on-disk
 record is authoritative and must not be overwritten with possibly-different args.
 
-* **Image** — the §1A CREATE EXCEPTION (R-11a) goes through the ONE shared gate
-  `persist_creation_flags`, the same gate the launch-materialization path in `start.py` calls, so
-  the persist rule has exactly one home. Only an EXPLICITLY-GIVEN `-i`/`--image` persists: a
+* **Image and `--agent`** — the §1A CREATE EXCEPTION (R-11a) goes through the ONE helper
+  `config_interface.persist_creation_level`, the same one the launch-materialization path in
+  `start.py` calls, so the persist rule has exactly one home. A refused write raises and the create's
+  cleanup undoes the box. Only an EXPLICITLY-GIVEN `-i`/`--image` persists: a
   no-flag create bakes NOTHING into the box tier, and the box resolves the live cascade for its
   image, so later default changes still reach it. The write target is the BOX-TIER file from the
   ONE pair (M-8) — for standalone, `box_data/box.yaml`, the same file `box set box.image=…`
@@ -161,14 +162,14 @@ record is authoritative and must not be overwritten with possibly-different args
   sharing tier and leak the host OAuth token into the seed. The write is additive: no scrub, two
   boolean overrides. `set_config_value` RETURNS an `"Error: …"` string and never raises, so an
   unchecked call would leak SILENTLY — hence the hard `KanibakoError` before the seed runs.
-* **`--agent`** — persists the §2h REQUEST `pref.system.agent` through the same sanctioned write
-  (single route, no bespoke YAML poke), so a plain `start` resolves this agent through the ordinary
+* **`--agent`** — persists the §2h REQUEST `pref.system.agent` (through the helper above, which
+  uses the sanctioned `set_config_value` write), so a plain `start` resolves this agent through the ordinary
   pref path instead of falling through to the system default. ⮕ P7: this used to write the RETIRED
   `box.agent_name` (spec §2b); a pref is how a box influences a key that resolves above it. It
   applies to ANY selector, persona or plain — `create --agent goose` must make a plain start launch
   goose too. The RAW user ref is stored (selection canonicalizes on read, exactly as for a
-  hand-set key), and `start --agent <other>` remains an ephemeral override on top: CLI args are
-  ephemeral over settings, and `start` never persists.
+  hand-set key), and `start --agent <other>` on an existing box remains an ephemeral override on
+  top; only a launch that creates the box saves it.
 * **`.gitignore`** — standalone only, written at the project ROOT (`metadata_path`), where
   `box_data/` and `vault/` live and need ignoring. `project_path` is the workspace SUBDIR, not the
   root. Its messages (`project already initialized in …`, `Created …`) and `box info`'s `Project`

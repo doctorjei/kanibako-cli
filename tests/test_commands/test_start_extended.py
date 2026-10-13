@@ -354,68 +354,65 @@ class TestFlagCombinations:
 
 class TestFirstBootImagePersistence:
     """The launch side of the §1A CREATE EXCEPTION (B6, R-11a + the 2026-08-02
-    materialization ruling): the launch calls the ONE shared gate
-    (``config.persist_creation_flags``) with its is-being-materialized signal;
-    the gate's own write/no-write matrix is pinned in
-    ``tests/test_settings/test_config.py``.
+    materialization ruling): a CREATING launch hands its whole CLI level to the
+    ONE helper (``config_interface.persist_creation_level``); a launch that does
+    not create never calls it.  The helper's writes are pinned in
+    ``tests/test_commands/test_create_exception.py``.
     """
 
     def test_materializing_launch_calls_the_gate_with_the_flag(self, start_mocks):
         with start_mocks() as m:
             m.proj.is_new = True
-            with patch("kanibako.commands.start.persist_creation_flags") as m_gate:
+            with patch("kanibako.commands.start.persist_creation_level") as m_gate:
                 _run_container(
                     project_dir=None, entrypoint=None, image_override="custom:v1",
                     new_session=False, safe_mode=False, resume_mode=False,
                     extra_args=[],
                 )
                 m_gate.assert_called_once()
-                kwargs = m_gate.call_args.kwargs
-                assert kwargs["materializing"] is True
-                assert kwargs["image"] == "custom:v1"
+                assert m_gate.call_args.args[0]["box.image"] == "custom:v1"
 
-    def test_existing_box_reports_not_materializing(self, start_mocks):
-        """`start --image` on an EXISTING box: the gate sees materializing=False
-        — strictly ephemeral (the prove-the-negative, unit half; the gate's
-        no-write on False is pinned at the gate)."""
+    def test_existing_box_never_reaches_the_helper(self, start_mocks):
+        """`start --image` on an EXISTING box is strictly ephemeral: the helper
+        is not called (the byte-identical box file is pinned with real files in
+        ``test_create_exception.py``)."""
         with start_mocks() as m:
             m.proj.is_new = False
-            with patch("kanibako.commands.start.persist_creation_flags") as m_gate:
+            with patch("kanibako.commands.start.persist_creation_level") as m_gate:
                 _run_container(
                     project_dir=None, entrypoint=None, image_override="custom:v1",
                     new_session=False, safe_mode=False, resume_mode=False,
                     extra_args=[],
                 )
-                m_gate.assert_called_once()
-                assert m_gate.call_args.kwargs["materializing"] is False
+                m_gate.assert_not_called()
 
     def test_no_flags_pass_no_values_to_the_gate(self, start_mocks):
         with start_mocks() as m:
             m.proj.is_new = True
-            with patch("kanibako.commands.start.persist_creation_flags") as m_gate:
+            with patch("kanibako.commands.start.persist_creation_level") as m_gate:
                 _run_container(
                     project_dir=None, entrypoint=None, image_override=None,
                     new_session=False, safe_mode=False, resume_mode=False,
                     extra_args=[],
                 )
                 m_gate.assert_called_once()
-                kwargs = m_gate.call_args.kwargs
-                assert kwargs["image"] is None
-                assert kwargs["share_images"] is None
+                level = m_gate.call_args.args[0] or {}
+                assert not [k for k in level if k.startswith(("box.", "agent."))]
+                assert m_gate.call_args.kwargs["typed_agent"] is None
 
     def test_share_images_flag_reaches_the_gate(self, start_mocks):
         """`--share-images` on a materializing launch persists too (ALL shadowing
         flags act uniformly — the 4a ruling)."""
         with start_mocks() as m:
             m.proj.is_new = True
-            with patch("kanibako.commands.start.persist_creation_flags") as m_gate:
+            with patch("kanibako.commands.start.persist_creation_level") as m_gate:
                 _run_container(
                     project_dir=None, entrypoint=None, image_override=None,
                     new_session=False, safe_mode=False, resume_mode=False,
                     extra_args=[], share_images=True,
                 )
                 m_gate.assert_called_once()
-                assert m_gate.call_args.kwargs["share_images"] is True
+                assert m_gate.call_args.args[0]["box.share_images"] is True
 
 
 class TestPersistWindow:
@@ -440,7 +437,7 @@ class TestPersistWindow:
         with start_mocks() as m:
             m.proj.is_new = True
             m.launch_check.return_value = _BOOTSTRAP_MISSING
-            with patch("kanibako.commands.start.persist_creation_flags") as m_gate:
+            with patch("kanibako.commands.start.persist_creation_level") as m_gate:
                 rc = _run_container(
                     project_dir=None, entrypoint=None, image_override="custom:v1",
                     new_session=False, safe_mode=False, resume_mode=False,
@@ -448,8 +445,7 @@ class TestPersistWindow:
                 )
             assert rc == 1                       # the launch really did fail
             m_gate.assert_called_once()          # ...and the flag was still stored
-            assert m_gate.call_args.kwargs["materializing"] is True
-            assert m_gate.call_args.kwargs["image"] == "custom:v1"
+            assert m_gate.call_args.args[0]["box.image"] == "custom:v1"
 
     def test_no_persist_when_the_rig_prep_fails(self, start_mocks):
         """The other side of the tension Jei named: an image that never pulled
@@ -457,7 +453,7 @@ class TestPersistWindow:
         with start_mocks() as m:
             m.proj.is_new = True
             m.runtime.ensure_image.side_effect = ContainerError("no such image")
-            with patch("kanibako.commands.start.persist_creation_flags") as m_gate:
+            with patch("kanibako.commands.start.persist_creation_level") as m_gate:
                 rc = _run_container(
                     project_dir=None, entrypoint=None, image_override="bogus:v1",
                     new_session=False, safe_mode=False, resume_mode=False,
@@ -506,7 +502,7 @@ class TestEphemeralImageHint:
         about — the hint is the ephemeral case ONLY."""
         with start_mocks() as m:
             m.proj.is_new = True
-            with patch("kanibako.commands.start.persist_creation_flags"):
+            with patch("kanibako.commands.start.persist_creation_level"):
                 _run_container(
                     project_dir=None, entrypoint=None, image_override="custom:v1",
                     new_session=False, safe_mode=False, resume_mode=False,
@@ -555,7 +551,7 @@ class TestEphemeralImageHint:
         """A MATERIALIZING launch stores the value — nothing to warn about."""
         with start_mocks() as m:
             m.proj.is_new = True
-            with patch("kanibako.commands.start.persist_creation_flags"):
+            with patch("kanibako.commands.start.persist_creation_level"):
                 _run_container(
                     project_dir=None, entrypoint=None, image_override=None,
                     new_session=False, safe_mode=False, resume_mode=False,
@@ -2384,6 +2380,54 @@ class TestProjectPositional:
             assert call_args[0][2] is None
 
 
+class TestACreatingLaunchSavesWhatItWasTold:
+    """§1A CREATE EXCEPTION, observed at the ONE settings writer both trees share.
+
+    Every flag a creating launch installs reaches ``set_config_value`` as its stored
+    key; a launch on an existing box reaches it with nothing.  Written against
+    names that predate the helper so it reads RED on the pre-helper base.
+    """
+
+    _CASES = [
+        (dict(model_override="m-1"), ("pref.agent.claude.model", "m-1")),
+        (dict(new_session=True), ("pref.agent.claude.continue_mode", "false")),
+        (dict(safe_mode=True), ("pref.agent.claude.access", "restricted")),
+        (dict(autonomous=True), ("pref.agent.claude.access", "full")),
+        (dict(explicit_agent="claude"), ("pref.system.agent", "claude")),
+        (dict(cli_env=["FOO=1"]), ("box.env.FOO", "1")),
+    ]
+
+    def _launch(self, start_mocks, *, is_new, **flags):
+        from kanibako.commands.start import _run_container
+        from kanibako.settings.store_collapse import CLI_PROVENANCE_SCOPE, CollapsedEnv
+
+        slots = {"FOO": CollapsedEnv("1", CLI_PROVENANCE_SCOPE, "-e FOO")}
+        kw = dict(
+            project_dir=None, entrypoint=None, image_override=None,
+            new_session=False, safe_mode=False, resume_mode=False, extra_args=[],
+        )
+        kw.update(flags)
+        with start_mocks() as m, patch(
+            "kanibako.settings.config_interface.set_config_value",
+            return_value="Set it",
+        ) as m_set, patch(
+            "kanibako.settings.config_interface.stat_unless_gone", return_value=None,
+        ), patch(
+            "kanibako.commands.start._launch_env_map", return_value=slots,
+        ):
+            m.proj.is_new = is_new
+            _run_container(**kw)
+        return [c.args[:2] for c in m_set.call_args_list]
+
+    @pytest.mark.parametrize(("flags", "write"), _CASES)
+    def test_a_creating_launch_writes_the_flag(self, start_mocks, flags, write):
+        assert write in self._launch(start_mocks, is_new=True, **flags)
+
+    @pytest.mark.parametrize(("flags", "write"), _CASES)
+    def test_an_existing_box_writes_nothing(self, start_mocks, flags, write):
+        assert self._launch(start_mocks, is_new=False, **flags) == []
+
+
 class TestSecureAutonomousFlags:
     """Verify -A/--autonomous and -S/--secure flag mapping."""
 
@@ -2392,7 +2436,11 @@ class TestSecureAutonomousFlags:
         from kanibako.commands.start import run_start
         import argparse
 
-        with start_mocks() as m:
+        # ⚑ A creating launch now SAVES -S (§1A CREATE EXCEPTION); the mock box path
+        # is not a file, so the helper is observed instead of writing.
+        with start_mocks() as m, patch(
+            "kanibako.commands.start.persist_creation_level",
+        ) as m_persist:
             m.proj.is_new = True
             args = argparse.Namespace(
                 entrypoint=None, image=None,
@@ -2405,6 +2453,8 @@ class TestSecureAutonomousFlags:
             run_start(args)
             cli_args = m.runtime.run.call_args.kwargs.get("cli_args") or []
             assert "--dangerously-skip-permissions" not in cli_args
+        saved = m_persist.call_args.args[0]
+        assert [v for k, v in saved.items() if k.endswith(".access")] == ["restricted"]
 
     def test_autonomous_maps_to_unsafe_mode(self, start_mocks):
         """-A/--autonomous should disable safe_mode (adds --dangerously-skip-permissions)."""

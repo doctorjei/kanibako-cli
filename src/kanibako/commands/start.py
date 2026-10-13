@@ -45,10 +45,10 @@ from kanibako.settings.config import (
     coerce_bool,
     user_config_file,
     load_config,
-    persist_creation_flags,
     read_system_agent,
     system_helpers_leaf_int,
 )
+from kanibako.settings.config_interface import persist_creation_env, persist_creation_level
 from kanibako.settings.settings_launch import load_merged_config
 from kanibako.settings import core_defaults
 from kanibako.runtime.container import (
@@ -429,31 +429,37 @@ def add_start_parser(subparsers: argparse._SubParsersAction) -> None:
     mode_group = p.add_mutually_exclusive_group()
     mode_group.add_argument(
         "-N", "--new", action="store_true", dest="new_session",
-        help="Start a new conversation (overrides continue_mode)",
+        help=("Start a new conversation (overrides continue_mode)"
+              "; saved when this launch creates the box"),
     )
     mode_group.add_argument(
         "-C", "--continue", action="store_true", dest="continue_session",
-        help="Continue the most recent conversation (overrides continue_mode)",
+        help=("Continue the most recent conversation (overrides continue_mode)"
+              "; saved when this launch creates the box"),
     )
     mode_group.add_argument(
         "-R", "--resume", action="store_true", dest="resume_session",
-        help="Resume with conversation picker",
+        help=("Resume with conversation picker"
+              "; saved when this launch creates the box"),
     )
 
     # Agent mode: -A/-S mutually exclusive
     agent_group = p.add_mutually_exclusive_group()
     agent_group.add_argument(
         "-A", "--autonomous", action="store_true",
-        help="Run with full permissions (--dangerously-skip-permissions)",
+        help=("Run with full permissions (--dangerously-skip-permissions)"
+              "; saved when this launch creates the box"),
     )
     agent_group.add_argument(
         "-S", "--secure", action="store_true",
-        help="Run without --dangerously-skip-permissions",
+        help=("Run without --dangerously-skip-permissions"
+              "; saved when this launch creates the box"),
     )
 
     p.add_argument(
         "-M", "--model", default=None,
-        help="Override the agent model for this run",
+        help=("Override the agent model for this run"
+              "; saved when this launch creates the box"),
     )
     # The CURE named by the already-running override gate (_run_container): stop
     # the box, then start it fresh with this invocation's flags in force.  It is
@@ -532,12 +538,13 @@ def _add_launch_args(p: argparse.ArgumentParser) -> None:
         # ⚑ VAR, not KEY (P4c-1). The flag names an environment VARIABLE and
         # overrides whichever settings key owns it; a dotted key spelling is
         # refused, so the metavar must not invite one.
-        help="Set per-run environment variable, overriding the key that owns it "
-             "(repeatable)",
+        help="Set per-run environment variable, overriding the key that owns it; "
+             "saved as box.env.VAR when this launch creates the box (repeatable)",
     )
     p.add_argument(
         "--image", default=None,
-        help="Use IMAGE as the container image for this run (--rig is the preferred spelling)",
+        help=("Use IMAGE as the container image for this run; saved when this "
+              "launch creates the box (--rig is the preferred spelling)"),
     )
     p.add_argument(
         "--rig", dest="image", default=None,
@@ -2753,13 +2760,19 @@ def _persist_or_announce_flags(
     *,
     image_override: str | None,
     share_images: bool,
+    cli_level: "Mapping[str, object] | None",
+    typed_agent: str | None,
+    workset_settings_path: Path | None,
+    std,
 ) -> None:
     """Settle a launch's SHADOWING flags: persist them, or say OUT LOUD they are ephemeral.
 
-    Ruling #12 (Jei, 2026-08-02): **"(c) BOTH"**.  Every flag value still routes
-    through the ONE §1A CREATE-EXCEPTION gate
-    (:func:`~kanibako.settings.config.persist_creation_flags`); this function adds no
-    persist logic of its own.
+    Ruling #12 (Jei, 2026-08-02): **"(c) BOTH"**.  A creating launch saves its whole
+    *cli_level* — the launch's own :func:`build_cli_level` output — and the typed
+    ``--agent`` through the ONE §1A CREATE-EXCEPTION helper
+    (:func:`~kanibako.settings.config_interface.persist_creation_level`); this
+    function adds no persist logic of its own.  Only the image flags are announced
+    on a launch that does not create: they are the flags a user expects to stick.
 
     ⚑ It must be called from the EARLIEST point on each launch arm at which BOTH
     preconditions hold — the rig is PREPPED and ``proj`` is MATERIALIZED.  Anything
@@ -2774,13 +2787,12 @@ def _persist_or_announce_flags(
     for both arms, the window either ordering leaves open, and why a REATTACH reaches
     this seam zero times.
     """
-    persist_creation_flags(
-        box_settings_path,
-        materializing=proj.is_new,
-        image=image_override,
-        share_images=True if share_images else None,
-    )
     if proj.is_new:
+        persist_creation_level(
+            cli_level, typed_agent=typed_agent,
+            box_settings_path=box_settings_path,
+            workset_settings_path=workset_settings_path, std=std, proj=proj,
+        )
         return
     # (flag as the user typed it, the noun for "its stored ___", the cure's
     # ``key=value``).  The cure verb is ``box set`` — checked against the LIVE
@@ -3021,7 +3033,7 @@ def _run_container(
         persistent = True
 
     # ⚑ NO per-path flag persist here: the §1A CREATE EXCEPTION runs through the
-    # ONE shared gate (``config.persist_creation_flags``), reached from the ONE
+    # ONE helper (``config_interface.persist_creation_level``), reached from the ONE
     # seam ``_persist_or_announce_flags``.  That seam is called AT MOST ONCE per
     # launch, from whichever of the two materialization arms this launch took —
     # the direct arm right after the rig prep succeeds, the deferred-persona arm
@@ -3397,6 +3409,41 @@ def _run_container(
     if shell_command is not None:
         extra_args = ["-lc", shell_command]
     selection_level = _launch_selection_level(agent_selection)
+    # The §1A CLI LEVEL (P8): the resolved agent selection PLUS this launch's
+    # ephemeral key-shadowing flags, built ONCE by the single flag→key table and
+    # guarded inside ``build_launch_snapshot``. It replaces the post-resolve
+    # ``effective_state["model"] = …`` patch and the ``resolve_new_session``
+    # fold that used to re-apply the flags at each consumer.
+    #
+    # ⚑ ``active_agent`` is the agent slot the flag values are spelled against,
+    # so it is given ONLY for a real agent launch. A ``kanibako shell`` /
+    # ``--entrypoint`` box resolves under the ``"shell"`` slot and drops the
+    # flags (``active_agent=None``): spelling ``agent.shell.model`` would
+    # install a flag value onto the shell tier.  ``shell`` does not parse
+    # them; ``start --entrypoint`` names each one in a Note above.
+    _cli_level = build_cli_level(
+        selection=selection_level,
+        active_agent=agent_id if target is not None else None,
+        model=model_override,
+        new_session=new_session,
+        continue_session=continue_override,
+        resume=resume_mode,
+        secure=safe_mode,
+        autonomous=autonomous,
+        # B6: the box-scope flags ride EVERY runtime resolve uniformly (§1A —
+        # box.image / box.share_images are agent-independent, so they install
+        # for shell/no-agent launches too; the image itself was settled off
+        # the merged-config resolve above, which carried the same level).
+        image=image_override,
+        share_images=share_images,
+    )
+    # Built HERE, at the selection, because the §1A CREATE EXCEPTION persists
+    # exactly this level from the materialization seam below — one level, so
+    # what a creating launch saves is what it ran with.
+    # ``agent reauth`` (``setup_only``) can reach a creating launch — a workset box's
+    # first launch after ``workset connect`` — but its ``--agent`` help says the
+    # choice is not saved, so that launch saves no ``pref.system.agent``.
+    _saved_agent = None if setup_only else explicit_agent
     agent_cfg_path = agent_settings_path(std.agents, agent_id)
 
     # The box scalars (the image the rig prep below reads), resolved through the
@@ -3524,6 +3571,8 @@ def _run_container(
             _persist_or_announce_flags(
                 proj, project_toml,
                 image_override=image_override, share_images=share_images,
+                cli_level=_cli_level, typed_agent=_saved_agent,
+                workset_settings_path=workset_path, std=std,
             )
 
         # Capture the image's login shell (idempotent, never fatal) so the
@@ -3872,6 +3921,8 @@ def _run_container(
         _persist_or_announce_flags(
             proj, project_toml,
             image_override=image_override, share_images=share_images,
+            cli_level=_cli_level, typed_agent=_saved_agent,
+            workset_settings_path=workset_path, std=std,
         )
 
     # D5 CRITICAL integrity gate (host components).  ``proj`` is now fully
@@ -4295,34 +4346,7 @@ def _run_container(
         # always-available category default tables, 7a's descriptor delivery partial,
         # and the resolved system.* tier.
         #
-        # The §1A CLI LEVEL (P8): the resolved agent selection PLUS this launch's
-        # ephemeral key-shadowing flags, built ONCE by the single flag→key table and
-        # guarded inside ``build_launch_snapshot``. It replaces the post-resolve
-        # ``effective_state["model"] = …`` patch and the ``resolve_new_session``
-        # fold that used to re-apply the flags at each consumer.
-        #
-        # ⚑ ``active_agent`` is the agent slot the flag values are spelled against,
-        # so it is given ONLY for a real agent launch. A ``kanibako shell`` /
-        # ``--entrypoint`` box resolves under the ``"shell"`` slot and drops the
-        # flags (``active_agent=None``): spelling ``agent.shell.model`` would
-        # install a flag value onto the shell tier.  ``shell`` does not parse
-        # them; ``start --entrypoint`` names each one in a Note above.
-        _cli_level = build_cli_level(
-            selection=selection_level,
-            active_agent=agent_id if target is not None else None,
-            model=model_override,
-            new_session=new_session,
-            continue_session=continue_override,
-            resume=resume_mode,
-            secure=safe_mode,
-            autonomous=autonomous,
-            # B6: the box-scope flags ride EVERY runtime resolve uniformly (§1A —
-            # box.image / box.share_images are agent-independent, so they install
-            # for shell/no-agent launches too; the image itself was settled off
-            # the merged-config resolve above, which carried the same level).
-            image=image_override,
-            share_images=share_images,
-        )
+        # The §1A CLI LEVEL (P8) — built where the agent was selected, above.
         # THE REALIZATION (MBR-1 P4c-2): everything this launch DERIVES from its
         # resolved settings — the behavior read, the access tier, and the
         # variables the descriptor realizes — computed ONCE, INSIDE the resolve
@@ -4369,6 +4393,18 @@ def _run_container(
             # so a stored map or a display must not carry one.
             realize=_realizer,
         )
+        # §1A CREATE EXCEPTION for ``-e`` (HIS 181-CX1 (a)): the collapse above is the
+        # first point that knows which key owns each variable — its env slots, and the
+        # entry list's ``secret_path`` names — and nothing has run in the box yet.  The
+        # box is already seeded and registered, which a refusal says.  A non-creating
+        # launch keeps ``-e`` per-run.
+        if proj.is_new and cli_env_values:
+            persist_creation_env(
+                cli_env_values, _launch_env_map(_snapshot),
+                secret_names=deliveries.secret_names,
+                box_settings_path=project_toml,
+                workset_settings_path=workset_path, std=std, proj=proj,
+            )
 
         # allow_helpers is an AGENT-scope behavior key (spec §2d,
         # ``agent.default.allow_helpers``): resolve it off the ONE launch

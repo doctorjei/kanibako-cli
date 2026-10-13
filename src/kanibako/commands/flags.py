@@ -56,14 +56,23 @@ AGENT_FLAG_COMMANDS: frozenset[str] = frozenset({
 # The subset of the above where ``--agent`` is SAVED rather than per-invocation:
 # ``run_create`` writes the §2h request ``pref.system.agent`` into the new box's
 # own settings (``commands/box/_parser.py``), so the box keeps that agent and a
-# later bare ``kanibako start`` launches it.  On every other member the flag is
-# per-invocation and nothing is written.
+# later bare ``kanibako start`` launches it.  The launch pair in
+# :data:`AGENT_FLAG_PERSISTS_AT_CREATION` saves it only on a launch that creates
+# the box (§1A CREATE EXCEPTION); every other member is per-invocation.
 # ⚑ This set exists because ONE help string covered both meanings and told every
 # ``create`` user their choice was "not persisted" — false, and a reader built
 # instructions on it.  :func:`_add_agent_flag` picks the wording from here.
 AGENT_FLAG_PERSISTS: frozenset[str] = frozenset({
     "create",
     "box create",
+})
+
+# The launch verbs: ``--agent`` is per-run, except on the launch that CREATES the
+# box, which saves it like every other shadowing flag (§1A CREATE EXCEPTION,
+# ``settings.config_interface.persist_creation_level``).
+AGENT_FLAG_PERSISTS_AT_CREATION: frozenset[str] = frozenset({
+    "start",
+    "box start",
 })
 
 # ``--box`` is the subject/anchor selector: every command that acts on a subject
@@ -140,12 +149,16 @@ _COMMAND_PATH_DEST = "_command_path"
 # with an enumerating message; ``advertise=False`` only withholds the help text,
 # so a command that would REFUSE the flag does not offer it first.
 
-# The two claims ``--agent`` can truthfully make, split on
-# :data:`AGENT_FLAG_PERSISTS`.  Plain wording on purpose: this text is the only
+# The three claims ``--agent`` can truthfully make, split on
+# :data:`AGENT_FLAG_PERSISTS` and :data:`AGENT_FLAG_PERSISTS_AT_CREATION`.  Plain wording on purpose: this text is the only
 # place most users learn whether their choice sticks.
 AGENT_FLAG_HELP_PER_RUN = (
     "Use agent NAME for this run only. It overrides the agent saved for the "
     "box, and is not saved itself."
+)
+AGENT_FLAG_HELP_SAVED_AT_CREATION = (
+    "Use agent NAME for this run. It overrides the agent saved for the box, "
+    "and is saved only when this launch creates the box."
 )
 AGENT_FLAG_HELP_PERSISTED = (
     "Create the box with agent NAME and save NAME as the box's agent, so "
@@ -155,16 +168,19 @@ AGENT_FLAG_HELP_PERSISTED = (
 
 
 def _add_agent_flag(
-    parser: argparse.ArgumentParser, *, advertise: bool, persists: bool,
+    parser: argparse.ArgumentParser, *, advertise: bool, cmd_key: str,
 ) -> None:
+    if cmd_key in AGENT_FLAG_PERSISTS:
+        claim = AGENT_FLAG_HELP_PERSISTED
+    elif cmd_key in AGENT_FLAG_PERSISTS_AT_CREATION:
+        claim = AGENT_FLAG_HELP_SAVED_AT_CREATION
+    else:
+        claim = AGENT_FLAG_HELP_PER_RUN
     parser.add_argument(
         "--agent",
         metavar="NAME",
         default=None,
-        help=(
-            (AGENT_FLAG_HELP_PERSISTED if persists else AGENT_FLAG_HELP_PER_RUN)
-            if advertise else argparse.SUPPRESS
-        ),
+        help=claim if advertise else argparse.SUPPRESS,
     )
 
 
@@ -415,7 +431,7 @@ def _walk(parser: argparse.ArgumentParser, prefix: tuple[str, ...]) -> None:
             _add_agent_flag(
                 parser,
                 advertise=cmd_key in AGENT_FLAG_COMMANDS,
-                persists=cmd_key in AGENT_FLAG_PERSISTS,
+                cmd_key=cmd_key,
             )
         if not _has_option(parser, "--box"):
             _add_box_flag(parser, advertise=cmd_key in BOX_FLAG_COMMANDS)

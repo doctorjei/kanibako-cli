@@ -12,10 +12,11 @@ from __future__ import annotations
 
 import os
 import sys
+from contextlib import contextmanager
 from dataclasses import fields
 from enum import Enum
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable, Mapping, NamedTuple
+from typing import TYPE_CHECKING, Any, Callable, Iterator, Mapping, NamedTuple, Sequence
 
 from kanibako.settings.config import (
     _BOX_SCALAR_FIELDS,
@@ -27,6 +28,7 @@ from kanibako.settings.config import (
     load_project_overrides,
     null_path_keys_error,
     identity_gap,
+    persist_creation_flags,
     reaches_identity,
     read_agent_settings,
     ref_order_error,
@@ -36,6 +38,7 @@ from kanibako.settings.config import (
     system_path_ref_error,
     unset_project_config_key,
 )
+from kanibako._atomic import atomic_write_text
 from kanibako.agent_ref import GENERAL_SLOT, display_agent_ref
 from kanibako.settings.settings_launch import load_merged_config, snapshot_leaf
 from kanibako.settings.messages import (
@@ -162,6 +165,7 @@ from kanibako.settings.settings_keyspace import (
     display_segments, display_store_path, entry_label, is_var_table, key_validity, shown_key,
 )
 from kanibako.settings.keystore import ReservedKeyError, clone_store
+from kanibako.settings.settings_cli_level import SELECTION_KEY
 from kanibako.settings.settings_prefs import PREF_ROOT
 from kanibako.utils import confirm_prompt, stat_unless_gone
 
@@ -2182,6 +2186,156 @@ def set_config_value(
     # ⚑ *value*, not *typed*: the RAW string the user typed round-trips by construction,
     # where the coerced form would answer ``true`` with ``True``.
     return _set_confirmation(canonical, value)
+
+
+def persist_creation_level(
+    level: "Mapping[str, object] | None",
+    *,
+    typed_agent: "str | None",
+    box_settings_path: Path,
+    workset_settings_path: "Path | None",
+    std: Any,
+    proj: Any,
+) -> None:
+    """The §1A CREATE EXCEPTION for a whole launch: save what its CLI level installs.
+
+    *level* is :func:`~kanibako.settings.settings_cli_level.build_cli_level`'s output for
+    the creating launch — the ONE flag→key table, read here, never restated. ``box.*``
+    goes through :func:`~kanibako.settings.config.persist_creation_flags`;
+    ``agent.<a>.<leaf>`` becomes the §2h request ``pref.agent.<a>.<leaf>`` (a box never
+    writes an agent key upward). ``system.agent`` is saved only as *typed_agent*, the
+    RAW ref the user typed: a selection the cascade resolved is not a choice to save.
+
+    The caller gates on creation. Any refused write RAISES ``KanibakoError`` naming the
+    key, and the box file is put back as it was (no partial write).
+    """
+    box: dict[str, object] = {}
+    prefs: list[tuple[str, str]] = []
+    if typed_agent is not None:
+        prefs.append((f"pref.{SELECTION_KEY}", typed_agent))
+    unwritable: list[str] = []
+    for key, value in (level or {}).items():
+        head, _, rest = key.partition(".")
+        if head == "box":
+            box[rest] = value
+        elif head == "agent":
+            prefs.append((f"pref.{key}", render_stored_scalar(value)))
+        elif key != SELECTION_KEY:
+            # ``system.agent`` is saved only as *typed_agent*, above.
+            unwritable.append(key)
+    unwritable += sorted(f"box.{k}" for k in set(box) - {"image", "share_images"})
+    if unwritable:
+        raise KanibakoError(
+            f"the create exception has no writer for {', '.join(sorted(unwritable))}"
+        )
+    if not box and not prefs:
+        return
+    with _restored_on_failure(box_settings_path):
+        if box:
+            persist_creation_flags(
+                box_settings_path, materializing=True,
+                image=str(box["image"]) if "image" in box else None,
+                share_images=bool(box["share_images"]) if "share_images" in box else None,
+            )
+        _write_creation_prefs(
+            prefs, box_settings_path=box_settings_path,
+            workset_settings_path=workset_settings_path, std=std, proj=proj,
+        )
+
+
+def persist_creation_env(
+    cli_env: "Mapping[str, str] | None",
+    slots: "Mapping[str, Any]",
+    *,
+    secret_names: "Mapping[str, Sequence[str]]",
+    box_settings_path: Path,
+    workset_settings_path: "Path | None",
+    std: Any,
+    proj: Any,
+) -> None:
+    """Save a creating launch's ``-e VAR=value`` as ``box.env.VAR`` (HIS 181-CX1 (a)).
+
+    *slots* is the launch's collapsed env map (``meta.assembly.env``) and
+    *secret_names* the ``secret_path.<VAR>`` keys off the same entry list
+    (``LaunchDeliveries.secret_names``): together they are every key that can own a
+    VAR. A VAR the ``-e`` filled as a vacancy, or one a ``box.env`` key owns, is saved.
+    A VAR another scope's ``env`` key owns, or any ``secret_path`` key names, is
+    REFUSED before anything is written: a ``box.env.VAR`` beside it would refuse every
+    later launch (the collapse's two-scope refusal; spec §2a's two-family refusal).
+
+    The caller runs after the box is seeded and registered, which the refusal says.
+    """
+    from kanibako.settings.store_collapse import CLI_PROVENANCE_SCOPE
+
+    prefs: list[tuple[str, str]] = []
+    for var, value in (cli_env or {}).items():
+        held = slots.get(var)
+        secret_owners = list(secret_names.get(var, ()))
+        if held is not None and held.scope not in (CLI_PROVENANCE_SCOPE, "box"):
+            owner = held.key
+            keep = f"set {owner} instead"
+        elif secret_owners:
+            # ⚑ A secret_path key holds a host PATH, never a value: the cure must not
+            # tell the user to write the value into it.
+            owner = secret_owners[0]
+            keep = (f"change the file {owner} points at, or remove {owner} and set "
+                    f"box.env.{var}")
+        else:
+            owner = None
+        if owner is not None:
+            raise KanibakoError(
+                f"-e {var} cannot be saved: {owner} already sets {var}, and a "
+                f"box.env.{var} beside it would refuse every later launch.\n"
+                f"  The box was created and registered with its other flags saved; "
+                f"no -e value was saved.\n"
+                f"  On the next launch -e {var} is per-run; to keep the value, {keep}."
+            )
+        prefs.append((f"box.env.{var}", value))
+    with _restored_on_failure(box_settings_path):
+        _write_creation_prefs(
+            prefs, box_settings_path=box_settings_path,
+            workset_settings_path=workset_settings_path, std=std, proj=proj,
+        )
+
+
+def _write_creation_prefs(
+    writes: "list[tuple[str, str]]",
+    *,
+    box_settings_path: Path,
+    workset_settings_path: "Path | None",
+    std: Any,
+    proj: Any,
+) -> None:
+    """Write each ``key=value`` into the new box's file through :func:`set_config_value`."""
+    for key, value in writes:
+        msg = set_config_value(
+            key, value,
+            config_path=box_settings_path,
+            cascade_system_path=std.settings,
+            cascade_workset_path=workset_settings_path,
+            cascade_box_path=box_settings_path,
+            command_scope=ConfigLevel.box,
+            std=std, proj=proj,
+        )
+        if not msg.startswith("Set "):
+            raise KanibakoError(
+                f"the new box could not save {key}={value}: {msg.removeprefix('Error: ')}\n"
+                f"  Nothing was saved. Fix the cause, or drop the flag that set {key}."
+            )
+
+
+@contextmanager
+def _restored_on_failure(path: Path) -> "Iterator[None]":
+    """Put *path* back byte-for-byte (or absent) when the block raises."""
+    before = path.read_text(encoding="utf-8") if stat_unless_gone(path) is not None else None
+    try:
+        yield
+    except BaseException:
+        if before is None:
+            path.unlink(missing_ok=True)
+        else:
+            atomic_write_text(path, before)
+        raise
 
 
 def reset_config_value(

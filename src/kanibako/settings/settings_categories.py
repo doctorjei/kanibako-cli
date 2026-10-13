@@ -406,6 +406,9 @@ class LaunchDeliveries:
     declared_by: "dict[str, str]" = field(default_factory=dict)
     dest_keys: "dict[tuple[str, ...], str]" = field(default_factory=dict)
     convenience_sources: "dict[str, str]" = field(default_factory=dict)
+    #: :func:`secret_path_names` of the same gated list — the ``secret_path`` owners
+    #: of each VAR, which the env collapse cannot see (a creating launch's ``-e``).
+    secret_names: "dict[str, list[str]]" = field(default_factory=dict)
 
 
 def secret_path_winners(entries: list[CategoryEntry]) -> list[CategoryEntry]:
@@ -621,6 +624,19 @@ def env_twin_refusal(var: str, claim: str, cure: str) -> str:
     return f"the environment variable {var!r} {claim}. {cure}"
 
 
+def secret_path_names(entries: list[CategoryEntry]) -> dict[str, list[str]]:
+    """Each VAR a ``secret_path.<VAR>`` key names, with every such key (any scope).
+
+    A present-``null`` pointer (keyless) names no host file and is not counted — the
+    same rows :func:`refuse_env_secret_twins` weighs against the ``env`` family.
+    """
+    names: dict[str, list[str]] = {}
+    for e in entries:
+        if e.category == "secret_path" and e.host_src is not None:
+            names.setdefault(e.name, []).append(e.key)
+    return names
+
+
 def refuse_env_secret_twins(entries: list[CategoryEntry]) -> None:
     """Refuse a VAR named by BOTH scalar families, naming both keys (spec §2a).
 
@@ -651,12 +667,10 @@ def refuse_env_secret_twins(entries: list[CategoryEntry]) -> None:
     from kanibako.settings.settings_resolve import SettingsError
 
     env_keys: dict[str, list[str]] = {}
-    secret_keys: dict[str, list[str]] = {}
     for e in entries:
         if e.category == "env":
             env_keys.setdefault(e.name, []).append(e.key)
-        elif e.category == "secret_path" and e.host_src is not None:
-            secret_keys.setdefault(e.name, []).append(e.key)
+    secret_keys = secret_path_names(entries)
 
     for var, env_group in env_keys.items():
         secret_group = secret_keys.get(var)
@@ -714,6 +728,7 @@ def launch_deliveries(
         declared_by=dict(declared_by or {}),
         dest_keys=dict(dest_keys or {}),
         convenience_sources=dict(convenience_sources or {}),
+        secret_names=secret_path_names(entries),
     )
 
 

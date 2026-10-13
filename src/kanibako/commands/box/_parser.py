@@ -30,8 +30,9 @@ from kanibako.settings.config import (
     WORKSET_META_FILE,
     user_config_file,
     load_config,
-    persist_creation_flags,
 )
+from kanibako.settings.config_interface import persist_creation_level
+from kanibako.settings.settings_cli_level import build_cli_level
 from kanibako.runtime.container import STUCK_STATES, ContainerRuntime, remove_path
 from kanibako.identifiers import agent_node_case, find_identifier
 from kanibako.errors import (BoxNameError, ContainerError, DerivedBoxNameError,
@@ -1798,11 +1799,18 @@ def run_create(args: argparse.Namespace, outcome: _CreateOutcome) -> int:
 
         # ⚑ A fresh create, or a replay: every write below is an idempotent set.
         if proj.is_new or is_recovery:
-            # ⚑ §1A CREATE EXCEPTION (R-11a) via the ONE shared gate, writing the BOX-TIER
-            # file from the ONE pair (M-8).  Only an EXPLICIT ``-i``/``--image`` persists.
+            # ⚑ §1A CREATE EXCEPTION (R-11a) via the ONE helper, writing the BOX-TIER file
+            # from the ONE pair (M-8): an EXPLICIT ``-i``/``--image`` through the one
+            # flag→key table, and ``--agent`` as the §2h REQUEST ``pref.system.agent``
+            # (never the retired ``box.agent_name``), stored as the RAW ref — selection
+            # canonicalizes on read.  ⚑ SAME "given" predicate as the store check above.
+            # A refused write raises, and the cleanup below undoes the create.
             project_toml, create_ws_path = box_workset_settings_paths(proj)
-            persist_creation_flags(
-                project_toml, materializing=True, image=_state.get("image"),
+            create_level = build_cli_level(image=_state.get("image"))
+            persist_creation_level(
+                create_level, typed_agent=_agent_arg,
+                box_settings_path=project_toml, workset_settings_path=create_ws_path,
+                std=std, proj=proj,
             )
 
             # ⚑ AUTH-CRITICAL: --private must run BEFORE the seed, and must write through the
@@ -1832,33 +1840,6 @@ def run_create(args: argparse.Namespace, outcome: _CreateOutcome) -> int:
                             f"settings ({_msg}); refusing to create a box that would "
                             f"forward host credentials."
                         )
-
-            # ⚑ `create --agent` persists the §2h REQUEST `pref.system.agent`, NOT the retired
-            # `box.agent_name`, and stores the RAW ref (selection canonicalizes on read).
-            # ⚑ SAME "given" predicate as the store check above, deliberately — the two used
-            # to spell it differently, and a blank ref fell down the gap between them.
-            if _agent_arg is not None:
-                from kanibako.settings.config_interface import set_config_value
-                from kanibako.settings.config_keys import ConfigLevel
-                # ⚑ The box being created is the target (spec §2a); no agent is selected
-                # yet, so the resolve is the no-agent one.
-                _msg = set_config_value(
-                    "pref.system.agent", _agent_arg,
-                    config_path=project_toml,
-                    cascade_system_path=std.settings,
-                    cascade_workset_path=create_ws_path,
-                    cascade_box_path=project_toml,
-                    command_scope=ConfigLevel.box,
-                    std=std, proj=proj,
-                )
-                if not _msg.startswith("Set "):
-                    # ⚑ A silent no-op would make plain `start` launch a DIFFERENT agent.
-                    print(
-                        f"Error: failed to persist the box agent selection "
-                        f"({_msg}).",
-                        file=sys.stderr,
-                    )
-                    return 1
 
             # ⚑ At the project ROOT (``metadata_path``), not ``project_path`` — box_data/ and
             # vault/ live there, and for standalone the workspace is a SUBDIR of the root.

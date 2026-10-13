@@ -14,7 +14,9 @@ from kanibako.commands.flags import (
     AGENT_FLAG_COMMANDS,
     AGENT_FLAG_HELP_PER_RUN,
     AGENT_FLAG_HELP_PERSISTED,
+    AGENT_FLAG_HELP_SAVED_AT_CREATION,
     AGENT_FLAG_PERSISTS,
+    AGENT_FLAG_PERSISTS_AT_CREATION,
     BOX_FLAG_COMMANDS,
     FlagRelevanceError,
     _AGENT_FLAG_EXCLUDE,
@@ -650,8 +652,12 @@ def _handler_persists_the_agent(func):
         source = inspect.getsource(func)
     except (OSError, TypeError):
         return False
+    # The create exception's ONE helper with the typed ref (§1A), or a direct
+    # write of the request.
     return re.search(
-        r'set_config_value\(\s*["\']pref\.system\.agent["\']', source,
+        r'set_config_value\(\s*["\']pref\.system\.agent["\']'
+        r'|persist_creation_level\((?:[^()]|\([^()]*\))*typed_agent=',
+        source,
     ) is not None
 
 
@@ -678,13 +684,20 @@ class TestTheAgentFlagHelpSaysWhetherItSticks:
         assert AGENT_FLAG_PERSISTS <= AGENT_FLAG_COMMANDS
         assert AGENT_FLAG_PERSISTS
         assert AGENT_FLAG_PERSISTS != AGENT_FLAG_COMMANDS
+        # The launch pair saves --agent only when the launch creates the box.
+        assert AGENT_FLAG_PERSISTS_AT_CREATION == {"start", "box start"}
+        assert AGENT_FLAG_PERSISTS_AT_CREATION <= AGENT_FLAG_COMMANDS
+        assert not AGENT_FLAG_PERSISTS_AT_CREATION & AGENT_FLAG_PERSISTS
 
-    def test_the_two_claims_contradict_each_other(self):
+    def test_the_three_claims_differ(self):
         per_run = AGENT_FLAG_HELP_PER_RUN.lower()
         persisted = AGENT_FLAG_HELP_PERSISTED.lower()
+        at_creation = AGENT_FLAG_HELP_SAVED_AT_CREATION.lower()
         assert "not saved" in per_run
         assert "not saved" not in persisted
         assert "save" in persisted
+        assert "not saved" not in at_creation
+        assert "saved only when this launch creates the box" in at_creation
 
     def test_the_persisting_set_is_what_the_handlers_actually_do(self, parser):
         """The set is a CLAIM about handlers, so the handlers settle it."""
@@ -711,6 +724,8 @@ class TestTheAgentFlagHelpSaysWhetherItSticks:
         leaves = _leaves(parser)
         canonical = _alias_keys(parser)
         persisting = _alias_closure(leaves, AGENT_FLAG_PERSISTS)
+        at_creation = _alias_closure(leaves, AGENT_FLAG_PERSISTS_AT_CREATION)
+        saw_at_creation: set[str] = set()
         wrong: list[str] = []
         saw_persisted: set[str] = set()
         saw_per_run: set[str] = set()
@@ -725,6 +740,9 @@ class TestTheAgentFlagHelpSaysWhetherItSticks:
             if key in persisting:
                 saw_persisted.add(key)
                 expected = AGENT_FLAG_HELP_PERSISTED
+            elif key in at_creation:
+                saw_at_creation.add(key)
+                expected = AGENT_FLAG_HELP_SAVED_AT_CREATION
             else:
                 saw_per_run.add(key)
                 expected = AGENT_FLAG_HELP_PER_RUN
@@ -732,7 +750,7 @@ class TestTheAgentFlagHelpSaysWhetherItSticks:
                 wrong.append(key)
         assert sorted(wrong) == []
         # Vacuity: both claims were really exercised by the sweep.
-        assert saw_persisted and saw_per_run
+        assert saw_persisted and saw_per_run and saw_at_creation
 
     @pytest.mark.parametrize("argv", [
         ["create", "--help"],
@@ -748,19 +766,23 @@ class TestTheAgentFlagHelpSaysWhetherItSticks:
         assert "not persisted" not in text
         assert "save" in text
 
-    @pytest.mark.parametrize("argv", [
-        ["start", "--help"],
-        ["box", "start", "--help"],
-        ["agent", "reauth", "--help"],
-    ])
-    def test_the_per_run_verbs_still_say_the_choice_is_not_saved(
-        self, parser, capsys, argv,
-    ):
+    def test_reauth_still_says_the_choice_is_not_saved(self, parser, capsys):
         with pytest.raises(SystemExit):
-            parser.parse_args(argv)
+            parser.parse_args(["agent", "reauth", "--help"])
         text = " ".join(capsys.readouterr().out.split()).lower()
         assert "this run only" in text
         assert "not saved" in text
+
+    @pytest.mark.parametrize("argv", [
+        ["start", "--help"],
+        ["box", "start", "--help"],
+    ])
+    def test_the_launch_verbs_say_creation_saves_it(self, parser, capsys, argv):
+        with pytest.raises(SystemExit):
+            parser.parse_args(argv)
+        text = " ".join(capsys.readouterr().out.split()).lower()
+        assert "saved only when this launch creates the box" in text
+        assert "not saved" not in text
 
 
 # ---------------------------------------------------------------------------

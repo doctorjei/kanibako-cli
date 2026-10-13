@@ -1736,7 +1736,11 @@ class TestStartArgs:
             assert "--continue" in cli_args
 
     def test_safe_mode_skips_permissions(self, start_mocks):
-        with start_mocks() as m:
+        # ⚑ A creating launch now SAVES -S (§1A CREATE EXCEPTION); the mock box path
+        # is not a file, so the helper is observed instead of writing.
+        with start_mocks() as m, patch(
+            "kanibako.commands.start.persist_creation_level",
+        ) as m_persist:
             m.proj.is_new = True
             _run_container(
                 project_dir=None,
@@ -1751,6 +1755,8 @@ class TestStartArgs:
             call_kwargs = m.runtime.run.call_args
             cli_args = call_kwargs.kwargs.get("cli_args") or []
             assert "--dangerously-skip-permissions" not in cli_args
+        saved = m_persist.call_args.args[0]
+        assert [v for k, v in saved.items() if k.endswith(".access")] == ["restricted"]
 
 
 class TestDescriptorLaunchPath:
@@ -9362,6 +9368,53 @@ class TestPersonaLoadOrErrorIntegration:
             written = load_doc(real / "box.yaml")
             assert written.get("box", {}).get("image") == "custom:img"
             assert not (probe_dir / "box.yaml").exists()
+
+    def test_deferred_creating_launch_saves_the_level_on_the_persona_node(
+        self, start_mocks, tmp_path, monkeypatch,
+    ):
+        """§1A CREATE EXCEPTION on the DEFERRED arm: the helper sees this launch's
+        whole level, spelled on the persona NODE, and the typed ref."""
+        real = tmp_path / "boxes" / "navigator-box"
+        real.mkdir(parents=True)
+        with start_mocks() as m:
+            cfg = self._drive_persona(m)
+            self._configured_persona(
+                cfg, tmp_path, monkeypatch, base_url="https://nav.example/v1",
+                token="sk-nav-bearer\n",
+            )
+
+            def _resolve(*a, **kw):
+                m.proj.metadata_path = real
+                m.proj.is_new = kw.get("initialize") is True
+                return m.proj
+
+            m.resolve_any_project.side_effect = _resolve
+            with (
+                patch(
+                    "kanibako.commands.start._resolve_box_launch_decisions",
+                    return_value=(_SHARED_AUTH, "https://nav.example/v1", None, dict(cfg.secret_path)),
+                ),
+                patch("kanibako.settings.agent_file.save"),
+                patch("kanibako.commands.start.credsync") as m_credsync,
+                patch("kanibako.commands.start.persist_creation_level") as m_helper,
+            ):
+                m_credsync.selected_source_root = m.credsync.selected_source_root
+                rc = _run_container(
+                    project_dir=None, entrypoint=None, image_override=None,
+                    new_session=False, safe_mode=True, resume_mode=False,
+                    extra_args=[], explicit_agent="navigator+claude",
+                    model_override="nav-model",
+                )
+            assert rc == 0
+            m_helper.assert_called_once()
+            level = m_helper.call_args.args[0]
+            agent_keys = sorted(k for k in level if k.startswith("agent."))
+            node = agent_keys[0].split(".")[1]
+            assert node != "claude" and "navigator" in node
+            assert agent_keys == [f"agent.{node}.access", f"agent.{node}.model"]
+            assert level[f"agent.{node}.model"] == "nav-model"
+            assert m_helper.call_args.kwargs["typed_agent"] == "navigator+claude"
+            assert m_helper.call_args.kwargs["box_settings_path"] == real / "box.yaml"
 
 
     def test_a_deferred_probe_never_asks_the_placeholder_for_the_vault_flag(

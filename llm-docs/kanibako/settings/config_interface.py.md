@@ -780,6 +780,30 @@ an oversight to "restore" — and the ordering note that used to live there (che
 belongs to the preamble refusal, which runs before every branch and so cannot be out-ordered.
 
 
+```persist_creation_level(level, *, typed_agent, box_settings_path, workset_settings_path, std, proj) -> None```
+The §1A CREATE EXCEPTION for one creating launch: saves what *level* (`build_cli_level`'s output)
+installs, so there is no second flag→key table. `box.*` → `config.persist_creation_flags`;
+`agent.<a>.<leaf>` → the §2h request `pref.agent.<a>.<leaf>` (never the agent key itself, which
+would be an upward write); the selection's `system.agent` only as *typed_agent*, the raw ref the
+user typed. Pref writes go through `set_config_value` at box scope. Callers: `run_create` and
+`start`'s `_persist_or_announce_flags`; each gates on creation itself.
+
+⚑ All or nothing: any refused write raises `KanibakoError` naming the key and the cure, and the
+box file is put back byte-for-byte (or removed if the helper created it). A level key it has no
+writer for (any prefix but `box.image`/`box.share_images`, `agent.*`, and `system.agent`) is
+refused by name, never dropped.
+
+```persist_creation_env(cli_env, slots, *, secret_names, box_settings_path, workset_settings_path, std, proj) -> None```
+`-e` at creation (his 181-CX1 (a)). The owners of a VAR are the launch's collapsed env map
+(*slots*, `meta.assembly.env`) and the `secret_path` keys off the same entry list (*secret_names*,
+`LaunchDeliveries.secret_names`), which the collapse cannot see. A VAR `-e` filled as a vacancy
+(`CLI_PROVENANCE_SCOPE`), or one a `box.env` key owns, is saved as `box.env.VAR`. A VAR another
+scope's `env` key owns, or any `secret_path` key names, is refused before anything is written: a
+`box.env.VAR` beside it would refuse every later launch. The caller runs after the box is seeded
+and registered, so the refusal says the box exists with its other flags saved, no `-e` was saved,
+and the cure: per-run on the next launch, or set the owning `env` key; for a `secret_path` owner (a
+PATH key), change the file it points at, or remove it and set `box.env.VAR`.
+
 ```reset_config_value(key, *, config_path, env_path=None, system_settings_path=None, command_scope=None, cascade_system_path=None, cascade_agent_path=None, cascade_workset_path=None, cascade_box_path=None, cascade_agent_name="", agents_root=None) -> str```
 Remove an override for a single key; returns a confirmation or an error, NEVER raises.
 

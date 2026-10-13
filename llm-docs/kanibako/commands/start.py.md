@@ -1235,9 +1235,15 @@ this launch will actually take would not apply it.
 
 ### The persist arm, and the window it closes
 
-Every flag value still routes through the ONE §1A CREATE-EXCEPTION gate
-(`settings.config.persist_creation_flags`), which reads the single `materializing` signal and
-decides; this function adds no persist logic of its own. It is called from the EARLIEST point on each
+On a creating launch (`proj.is_new`) the launch's whole §1A CLI level — the one `build_cli_level`
+output, built at the agent selection — and the typed `--agent` go to the ONE create-exception helper
+(`settings.config_interface.persist_creation_level`); this function adds no persist logic of its own.
+An `agent reauth` launch (`setup_only`) passes no typed agent: its `--agent` help says "not saved".
+Every shadowing flag persists alike (spec: "ALL shadowing flags act UNIFORMLY"). `-e` cannot persist
+here: which key owns a variable is known only after the launch resolve's env collapse, so
+`_run_container` calls `persist_creation_env` right after that resolve (with the carrier's
+`secret_names`), before anything runs in the box but after the seed and registration, which its
+refusal says. It is called from the EARLIEST point on each
 launch arm at which BOTH preconditions hold — the rig is PREPPED (built or pulled) and `proj` is
 MATERIALIZED — because everything between materialization and the persist is a window in which a
 failed launch leaves the box EXISTING with the flag unstored, so the user's retry is
@@ -1258,8 +1264,9 @@ told to `kanibako --restart`, which relaunches through the normal arm and lands 
 
 ### The announce arm, and why it is ONE notice
 
-On a NON-materializing launch a supplied shadowing flag applies to that launch alone (spec §1A) and,
-before this, said nothing about it. It now prints the ephemerality and the cure, which is the general
+On a NON-materializing launch a supplied shadowing flag applies to that launch alone (spec §1A) and
+leaves the box file byte-identical. Only the image flags are announced (the agent flags are per-run by
+their help text). It now prints the ephemerality and the cure, which is the general
 fix for the residual window above *and* for the far commoner case of a user who simply expected
 `start --image` to stick. BOTH shadowing flags this seam settles are announced — `--image` and
 `--share-images` have the identical silent gap.

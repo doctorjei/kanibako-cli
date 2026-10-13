@@ -7709,6 +7709,24 @@ value. The read-back `meta.box.agent.run_args` follows the same rule: the string
 
 **What you must do.** Fix or remove the value the error names, in the file it names.
 
+### 2.114 A launch that creates a box saves its flags
+
+**What changed.** Only on a launch that creates the box, the shadowing flags you pass now become
+the box's stored settings, all alike: `--agent` (as `pref.system.agent`), `-M` (as
+`pref.agent.<agent>.model`), `-N`/`-C`/`-R` (`continue_mode`), `-S`/`-A` (`access`), `--image`/`--rig`,
+and `--share-images`. `create --agent` and `create -i` already did; `start` and `shell` now do too when
+they create the box (a workset member's first launch after `workset connect`). `-e VAR=value` is saved
+as `box.env.VAR`, unless another scope's `env` key or any `secret_path.VAR` key already sets `VAR`: that
+launch now stops, naming the key (the box is already created and registered with its other flags saved,
+and no `-e` value is saved), because a second key naming one variable refuses every later launch.
+
+On a box that already exists nothing changes: every flag applies to that one launch, and the box's
+settings file is not touched.
+
+**What you must do.** Nothing, unless you relied on a creating launch's flags being one-off. To undo a
+saved value, `kanibako box reset <key>` in the box. For a refused `-e`, drop it, or set the `env` key the
+error names (for a `secret_path` key, change the file it points at, or remove it and set `box.env.VAR`).
+
 ---
 
 ## 3. For plugin authors

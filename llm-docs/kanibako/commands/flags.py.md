@@ -57,17 +57,17 @@ Two absences from that set are deliberate:
   from the blanket flag's per-invocation override — so the two never collide (see the Phase B /
   Phase D reconcile).
 
-## The two claims the `--agent` help text makes
+## The three claims the `--agent` help text makes
 
 `AGENT_FLAG_PERSISTS` is the SUBSET of `AGENT_FLAG_COMMANDS` where the flag is SAVED rather than
 per-invocation: `create` and `box create`. `run_create` writes the §2h request `pref.system.agent`
-into the new box's own settings file (`commands/box/_parser.py`, right after the `--private` auth
-writes), so the box keeps that agent and a later bare `kanibako start` launches it. On `start`,
-`box start` and `agent reauth` nothing is written — `--agent` reaches `select_agent` /
-`_run_container` as `explicit_agent` and dies with the process.
+into the new box's own settings file (`commands/box/_parser.py`), so the box keeps that agent and a
+later bare `kanibako start` launches it. `AGENT_FLAG_PERSISTS_AT_CREATION` (`start`, `box start`)
+saves it only on a launch that creates the box (§1A CREATE EXCEPTION); on any other launch, and on
+`agent reauth`, nothing is written.
 
-`_add_agent_flag` picks between `AGENT_FLAG_HELP_PER_RUN` and `AGENT_FLAG_HELP_PERSISTED` on that
-membership. Before the split, ONE string told every command's user the choice was "ephemeral …
+`_add_agent_flag` picks `AGENT_FLAG_HELP_PERSISTED`, `AGENT_FLAG_HELP_SAVED_AT_CREATION`, or
+`AGENT_FLAG_HELP_PER_RUN` on that membership. Before the split, ONE string told every command's user the choice was "ephemeral …
 not persisted" — true for the launch pair, FALSE for both create spellings, and a reader had already
 built instructions on the false half. `TestTheAgentFlagHelpSaysWhetherItSticks` asserts the split
 over the whole parser tree, so the two strings cannot silently re-merge.

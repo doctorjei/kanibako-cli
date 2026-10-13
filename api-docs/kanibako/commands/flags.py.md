@@ -10,8 +10,10 @@ Prose for these symbols lives in `llm-docs/kanibako/commands/flags.py.md`.
 ```
 AGENT_FLAG_COMMANDS: frozenset[str] = frozenset({'start', 'box start', 'create', 'box create', 'agent reauth'})
 AGENT_FLAG_PERSISTS: frozenset[str] = frozenset({'create', 'box create'})
+AGENT_FLAG_PERSISTS_AT_CREATION: frozenset[str] = frozenset({'start', 'box start'})
 BOX_FLAG_COMMANDS: frozenset[str] = frozenset({'start', 'shell', 'box start', 'box shell', 'stop', 'box stop', 'code', 'box convert', 'box move', 'box duplicate', 'box info', 'box set', 'box reset', 'box get', 'box show', 'box diagnose', 'box rm', 'box register', 'box remap', 'rm', 'register', 'agent reauth', 'workset disconnect'})
 AGENT_FLAG_HELP_PER_RUN = 'Use agent NAME for this run only. It overrides the agent saved for the box, and is not saved itself.'
+AGENT_FLAG_HELP_SAVED_AT_CREATION = 'Use agent NAME for this run. It overrides the agent saved for the box, and is saved only when this launch creates the box.'
 AGENT_FLAG_HELP_PERSISTED = "Create the box with agent NAME and save NAME as the box's agent, so later commands use it without the flag. Change it afterwards with 'kanibako box set pref.system.agent=<name>'."
 NULL_FLAG_HELP_TEMPLATE = "SUPPRESS the value this key would otherwise inherit: writes an explicit null (present-None) at this scope, so the scopes above it stop supplying the key and the consumer sees it as dropped (spec section 2h). This WRITES an override rather than removing one - to undo it and get the inherited value back, use the sibling 'reset' verb ('{undo}')."
 SET_FORCE_HELP = 'Set even though a settings file this command reads stores an entry that is not a key: warn and write instead of refusing (spec section 2a). The entry stays; remove it by editing that file. A value whose own upstream chain reaches such an entry is refused either way.'
@@ -29,7 +31,7 @@ def inject_blanket_flags(parser: argparse.ArgumentParser) -> None
 def command_key(args: argparse.Namespace) -> str
 def resolve_subject_value(positional: str | None, box_flag: str | None) -> str | None
 def check_flag_relevance(args: argparse.Namespace) -> None
-def _add_agent_flag(parser: argparse.ArgumentParser, *, advertise: bool, persists: bool) -> None
+def _add_agent_flag(parser: argparse.ArgumentParser, *, advertise: bool, cmd_key: str) -> None
 def _add_box_flag(parser: argparse.ArgumentParser, *, advertise: bool) -> None
 def _take_for(nargs: object) -> int
 def _option_take(option_nargs: dict[str, object], parser: argparse.ArgumentParser, token: str) -> int | None

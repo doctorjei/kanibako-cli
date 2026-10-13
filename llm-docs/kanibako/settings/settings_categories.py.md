@@ -498,6 +498,10 @@ entry list — the same list the collapse sees, so the two describe one box.
 first, above every dest question. A resolve that gets a carrier back has already been told that
 no VAR is named by both scalar families.
 
+`secret_names` is `secret_path_names` of that same list: each VAR a `secret_path.<VAR>` key names,
+with its keys. The collapse cannot see those owners, and a creating launch's `-e` needs them
+(`config_interface.persist_creation_env`).
+
 * *secrets* — the `secret_path` mounts the launch delivers (`secret_path_deliveries`: the
   per-VAR winners, minus what §0 gives to a `masks` at the same dest), in the emitter's order.
 * *agent_dests* — the normalized dests carrying the agent's delivery binds (the emitter's
@@ -573,6 +577,12 @@ rather than a user's value.
 🛑 **THE WRITE BOUNDARY IS THE WRONG PLACE and a refusal there would be unreachable code:**
 `config set` takes `value: str | None` off argv and cannot produce a list or a map, so every
 non-scalar in either family is hand-authored YAML.
+
+### `secret_path_names`
+
+Each VAR a `secret_path.<VAR>` key names, with every such key, at any scope. A present-null
+(keyless) pointer is not counted. `refuse_env_secret_twins` reads its secret half from here, and
+`launch_deliveries` puts it on the carrier as `secret_names`.
 
 ### `refuse_env_secret_twins`
 

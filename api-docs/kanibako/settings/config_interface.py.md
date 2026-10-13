@@ -19,6 +19,8 @@ _SET_VALUE_DOORS: 'tuple[_SetValueDoor, ...]' = (_SetValueDoor(lambda key, value
 def parse_config_arg(arg: str | None, *, set_null: bool=False) -> 'tuple[ConfigAction, str, str | None]'
 def get_config_value(key: str, *, global_config_path: Path, project_toml: Path | None=None, env_global: Path | None=None, env_project: Path | None=None, system_settings_path: Path | None=None, agents_root: Path | None=None, command_scope: 'ConfigLevel | None'=None, active_agent: str | None=None, cascade_system_path: Path | None=None, cascade_workset_path: Path | None=None, node_store: bool=True, std: Any=None, proj: Any=None, ws: Any=None) -> str | None
 def set_config_value(key: str, value: 'str | None', *, config_path: Path, env_path: Path | None=None, system_settings_path: Path | None=None, cascade_system_path: Path | None=None, cascade_agent_path: Path | None=None, cascade_workset_path: Path | None=None, cascade_box_path: Path | None=None, cascade_agent_name: str='', command_scope: ConfigLevel | None=None, agents_root: Path | None=None, std: Any=None, proj: Any=None, ws: Any=None, target_error: 'str | None'=None, force: bool=False, node_store: bool=True) -> str
+def persist_creation_level(level: 'Mapping[str, object] | None', *, typed_agent: 'str | None', box_settings_path: Path, workset_settings_path: 'Path | None', std: Any, proj: Any) -> None
+def persist_creation_env(cli_env: 'Mapping[str, str] | None', slots: 'Mapping[str, Any]', *, secret_names: 'Mapping[str, Sequence[str]]', box_settings_path: Path, workset_settings_path: 'Path | None', std: Any, proj: Any) -> None
 def reset_config_value(key: str, *, config_path: Path, env_path: Path | None=None, system_settings_path: Path | None=None, command_scope: ConfigLevel | None=None, cascade_system_path: Path | None=None, cascade_agent_path: Path | None=None, cascade_workset_path: Path | None=None, cascade_box_path: Path | None=None, cascade_agent_name: str='', agents_root: Path | None=None, node_store: bool=True) -> str
 def effective_value(canonical: str, sections: tuple[str, ...], leaf: str, *, agent_name: str, system_path: Path | None, agent_path: Path | None, workset_path: Path | None, box_path: Path | None, floor: 'Mapping[str, object] | None'=None, inputs: 'LaunchInputs | None'=None) -> 'tuple[str, str] | None'
 def write_system_value(system_settings_path: Path, leaf: str, value: object) -> None
@@ -57,6 +59,9 @@ def _stored_shape_for(canonical: str, value: object) -> object
 def _set_confirmation(display_key: str, value: object) -> str
 def _set_value_error(canonical: str, value: 'str | None', *, command_scope: 'ConfigLevel | None', config_path: Path, system_settings_path: 'Path | None') -> 'str | None'
 def _per_owner_set_error(canonical: str, value: 'str | None', *, command_scope: 'ConfigLevel | None', ws: Any, written: Path, stored: 'Callable[[str], object]') -> 'str | None'
+def _write_creation_prefs(writes: 'list[tuple[str, str]]', *, box_settings_path: Path, workset_settings_path: 'Path | None', std: Any, proj: Any) -> None
+@contextmanager
+def _restored_on_failure(path: Path) -> 'Iterator[None]'
 def _reset_dest(canonical: str, command_scope: 'ConfigLevel | None', config_path: Path, system_settings_path: 'Path | None') -> DestRoute
 def _honest_reset_message(key: str, command_scope: 'ConfigLevel | None', effective: 'tuple[str, str] | None'=None) -> str
 def _clear_writable_tables(path: Path, command_scope: 'ConfigLevel | None') -> dict[str, int]

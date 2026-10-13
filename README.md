@@ -750,7 +750,7 @@ kanibako workset set workset.env.EDITOR=vim     # workset-level
 kanibako system set system.env.EDITOR=nano      # global (all boxes)
 kanibako box get box.env.EDITOR                 # show one value
 
-# Per-run (not persisted)
+# Per-run (saved as box.env.<VAR> only when this launch creates the box)
 kanibako start -e EDITOR=vim -e DEBUG=1
 ```
 
