@@ -4547,7 +4547,7 @@ def _relocate_snapshot_store(state: ProjectState, new_state: ProjectState) -> Pa
         return None
     assert state.vault_rw is not None and new_state.vault_rw is not None
     try:
-        relocate_snapshot_store(
+        carried = relocate_snapshot_store(
             state.vault_rw, new_state.vault_rw,
             old_box=state.name, new_box=new_state.name,
             new_base_exclusive=new_state.mode is BoxMode.standalone,
@@ -4560,7 +4560,35 @@ def _relocate_snapshot_store(state: ProjectState, new_state: ProjectState) -> Pa
             f"and 'kanibako box vault list' will not show them.",
             file=sys.stderr,
         )
+    else:
+        if carried is None and old_store.is_symlink():
+            print(_linked_store_note(state, new_state, old_store), file=sys.stderr)
     return old_store if old_store.is_dir() else None
+
+
+def _linked_store_note(old: ProjectState, new: ProjectState, link: Path) -> str:
+    """The Note for an old store that is a link, which relocate never carries.
+
+    Not a refusal: the snapshots stay where the link points.  The relink cure is given
+    only when it is unambiguous: a shared new base, no store under the new name yet,
+    and a link that leads to a directory.
+    """
+    import os
+
+    from kanibako.snapshots import box_snapshot_store
+
+    assert new.vault_rw is not None  # a store came back
+    target = os.path.realpath(link) if link.is_dir() else os.readlink(link)
+    note = (f"Note: '{new.name}' lists none of its old vault snapshots: {link} is a link "
+            f"to {target}, and a linked snapshot store is never moved. The snapshots stay "
+            f"at {target}.")
+    new_store = box_snapshot_store(new.vault_rw, new.name)
+    if (new.mode is not BoxMode.standalone and link.is_dir()
+            and not os.path.lexists(new_store) and new_store.parent.is_dir()):
+        cmd = (f"{shlex.join(['ln', '-s', '--', target, str(new_store)])} && "
+               f"{shlex.join(['rm', '--', str(link)])}")
+        note += f" To give them to '{new.name}', run: {cmd}"
+    return note
 
 
 def _old_snapshot_store(old: ProjectState, new: ProjectState) -> Path | None:

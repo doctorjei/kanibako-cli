@@ -741,3 +741,55 @@ class TestTheRelocationWarningNamesABrokenRepoint:
         assert str(exc) == (f"{tmp_path / 'l'} is a link that does not lead to a directory; "
                             f"fix the link or mount its target")
         assert exc.errno == errno.ELOOP and exc.link == tmp_path / "l"
+
+
+class TestALinkedOldStoreIsNamed:
+    """Relocate never carries an old store that is itself a link (as before); the move
+    now says so, naming the link and its target, instead of listing none silently."""
+
+    def _move(self, tmp_path, capsys, *, target, new_mode=BoxMode.named):
+        from kanibako.commands.box._lifecycle import _relocate_snapshot_store
+
+        old, new = _rw(tmp_path / "old"), _rw(tmp_path / "new")
+        _versions_dir(old).mkdir()
+        _versions_dir(new).mkdir()
+        link = _versions_dir(old) / "a"
+        link.symlink_to(target)
+        o = SimpleNamespace(vault_rw=old, name="a", mode=BoxMode.named)
+        n = SimpleNamespace(vault_rw=new, name="b", mode=new_mode)
+        _relocate_snapshot_store(o, n)
+        return link, _versions_dir(new) / "b", capsys.readouterr().err
+
+    def test_the_note_and_its_relink_cure(self, tmp_path, capsys):
+        import subprocess
+
+        from kanibako.snapshots import list_snapshots
+
+        big = tmp_path / "bigdisk"
+        _snap(big)
+        link, new_store, err = self._move(tmp_path, capsys, target=big)
+        assert err.startswith(
+            f"Note: 'b' lists none of its old vault snapshots: {link} is a link to {big}, "
+            f"and a linked snapshot store is never moved. The snapshots stay at {big}. "
+            f"To give them to 'b', run: ln -s -- {big} {new_store} && rm -- {link}\n")
+        assert not os.path.lexists(new_store) and _tree(big) == {TS: ("dir", None),
+                                                                 f"{TS}/f": ("file", b"mine")}
+        cmd = err.split("run: ", 1)[1].strip()
+        subprocess.run(cmd, shell=True, check=True)
+        assert [s[0] for s in list_snapshots(new_store.parent.parent / "rw", box_name="b")] == [TS]
+        assert not os.path.lexists(link)
+
+    def test_a_dangling_link_gets_no_cure(self, tmp_path, capsys):
+        gone = tmp_path / "unmounted"
+        link, _new_store, err = self._move(tmp_path, capsys, target=gone)
+        assert err == (f"Note: 'b' lists none of its old vault snapshots: {link} is a link "
+                       f"to {gone}, and a linked snapshot store is never moved. The "
+                       f"snapshots stay at {gone}.\n")
+
+    def test_a_standalone_landing_gets_no_cure(self, tmp_path, capsys):
+        big = tmp_path / "bigdisk"
+        _snap(big)
+        _link, _new_store, err = self._move(tmp_path, capsys, target=big,
+                                            new_mode=BoxMode.standalone)
+        assert err.startswith("Note: 'b' lists none of its old vault snapshots:")
+        assert "run:" not in err
